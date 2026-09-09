@@ -807,180 +807,137 @@ export default function AdminAssetRecordPage() {
         }}
       />
     <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
-        <AdminFormCard title="筛选" className="shrink-0 mb-3"
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5">
-                <button type="button" onClick={() => setView("table")}
-                  className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${view === "table" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                  表格
-                </button>
-                <button type="button" onClick={() => setView("graph")}
-                  className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${view === "graph" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
-                  图形
-                </button>
-              </div>
-              <AdminButton
-                type="button"
-                tone="secondary"
-                className="inline-flex min-h-9 items-center gap-2"
-                onClick={() => {
-                  setSelectedAsset(null);
-                  setModalOpen(true);
-                }}
-              >
-                申请转移
-              </AdminButton>
-              <AdminButton type="button" tone="secondary" className="inline-flex min-h-9 items-center gap-2" onClick={openAddModal}>
-                <Plus className="h-4 w-4 shrink-0" aria-hidden />
-                新增资产
-              </AdminButton>
-              <AdminButton
-                type="button"
-                tone={tableEditMode ? "secondary" : "primary"}
-                className="inline-flex min-h-9 items-center gap-2"
-                onClick={() => {
-                  if (tableEditMode) {
-                    void finishEditing();
-                  } else {
-                    setTableEditMode(true);
-                  }
-                }}
-              >
-                <Pencil className="h-4 w-4 shrink-0" aria-hidden />
-                {tableEditMode ? "完成编辑" : "编辑表格"}
-              </AdminButton>
-              <DropdownMenu>
-                <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
-                  <MoreHorizontal className="h-4 w-4 shrink-0" />
-                  更多操作
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[12rem]">
-                  <DropdownMenuLabel className="text-xs font-normal text-[var(--twin-mute)]">数据与维护</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      window.setTimeout(() => importInputRef.current?.click(), 0);
-                    }}
-                  >
-                    <Upload className="mr-2 inline h-4 w-4" />
-                    导入文件
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => openExportPicker()}>
-                    <Download className="mr-2 inline h-4 w-4" />
-                    选择导出列…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void onAddColumn()}>
-                    <Plus className="mr-2 inline h-4 w-4" />
-                    新增表头
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => refreshColumnWidths()}>刷新列宽</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => void onClearTable()} className="text-rose-700 focus:text-rose-800">
-                    <Trash2 className="mr-2 inline h-4 w-4" />
-                    清空当前表格
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setDeleteKeyword("");
-                      setDeleteCandidates([]);
-                      setSelectedDeleteId("");
-                      setDeleteOpen(true);
-                    }}
-                  >
-                    <Trash2 className="mr-2 inline h-4 w-4" />
-                    删除资产
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setSearchReplaceColumnKey("");
-                      setSearchReplaceSearch("");
-                      setSearchReplaceReplace("");
-                      setSearchReplaceMode("exact");
-                      setSearchReplaceOpen(true);
-                    }}
-                  >
-                    查找替换
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => openBatchHistory()}>按批次删除</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          }
-        >
+        <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-hairline)] pb-2">
+          <div className="flex items-center gap-0.5 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5">
+            <button type="button" onClick={() => setView("table")}
+              className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${view === "table" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+              表格
+            </button>
+            <button type="button" onClick={() => setView("graph")}
+              className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${view === "graph" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+              图形
+            </button>
+          </div>
+
           {view === "table" && (
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex w-40 shrink-0 flex-col gap-1">
-              <span className={adminLabelClass}>全局搜索</span>
-              <input
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && applySearch()}
-                className={adminInputClass}
-                placeholder="编码/名称/地点/备注"
-              />
-            </label>
-            <label className="flex w-20 shrink-0 flex-col gap-1">
-              <span className={adminLabelClass}>校区</span>
-              <AdminSelect value={campus} onChange={(e) => setCampus(e.target.value)} className="w-full">
-                <option value="">全部</option>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <div className="w-44">
+                <input
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && applySearch()}
+                  className={adminInputClass}
+                  placeholder="编码/名称/地点/备注"
+                />
+              </div>
+              <AdminSelect value={campus} onChange={(e) => setCampus(e.target.value)} className="w-24">
+                <option value="">校区：全部</option>
                 <option value="浦东">浦东</option>
                 <option value="浦西">浦西</option>
               </AdminSelect>
-            </label>
-            <label className="flex w-40 shrink-0 flex-col gap-1">
-              <span className={adminLabelClass}>资产名称</span>
-              <AdminSearchSelect
-                value={assetName}
-                onChange={setAssetName}
-                options={facets.assetNames}
-                placeholder="全部"
-                className="w-full"
-              />
-            </label>
-            <label className="flex w-28 shrink-0 flex-col gap-1">
-              <span className={adminLabelClass}>使用人</span>
-              <AdminSearchSelect
-                value={user}
-                onChange={setUser}
-                options={facets.users ?? []}
-                placeholder="全部"
-                className="w-full"
-              />
-            </label>
-            <label className="flex w-40 shrink-0 flex-col gap-1">
-              <span className={adminLabelClass}>存放地点</span>
-              <AdminSearchSelect
-                value={location}
-                onChange={setLocation}
-                options={facets.locations ?? []}
-                placeholder="全部"
-                className="w-full"
-              />
-            </label>
-            <label className="flex w-36 shrink-0 flex-col gap-1">
-              <span className={adminLabelClass}>规格型号</span>
-              <AdminSearchSelect
-                value={model}
-                onChange={setModel}
-                options={facets.models}
-                placeholder="全部"
-                className="w-full"
-              />
-            </label>
-            <div className="flex shrink-0 items-end gap-2">
-              <AdminButton type="button" onClick={applySearch} className="inline-flex items-center gap-1">
-                <Search className="h-4 w-4" aria-hidden />
-                查询
-              </AdminButton>
-              <AdminButton type="button" tone="secondary" onClick={resetSearch} className="inline-flex items-center gap-1">
+              <div className="w-36"><AdminSearchSelect value={assetName} onChange={setAssetName} options={facets.assetNames} placeholder="资产名称" className="w-full" /></div>
+              <div className="w-28"><AdminSearchSelect value={user} onChange={setUser} options={facets.users ?? []} placeholder="使用人" className="w-full" /></div>
+              <div className="w-40"><AdminSearchSelect value={location} onChange={setLocation} options={facets.locations ?? []} placeholder="存放地点" className="w-full" /></div>
+              <div className="w-36"><AdminSearchSelect value={model} onChange={setModel} options={facets.models} placeholder="规格型号" className="w-full" /></div>
+              <button
+                type="button"
+                onClick={resetSearch}
+                className="h-9 shrink-0 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 text-xs text-[var(--twin-mute)] transition hover:text-[var(--twin-ink)]"
+              >
                 重置
-              </AdminButton>
+              </button>
             </div>
-          </div>
           )}
-        </AdminFormCard>
+
+          <div className="ml-auto flex items-center gap-2">
+            <AdminButton
+              type="button"
+              tone="secondary"
+              className="inline-flex min-h-9 items-center gap-2"
+              onClick={() => {
+                setSelectedAsset(null);
+                setModalOpen(true);
+              }}
+            >
+              申请转移
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" className="inline-flex min-h-9 items-center gap-2" onClick={openAddModal}>
+              <Plus className="h-4 w-4 shrink-0" aria-hidden />
+              新增资产
+            </AdminButton>
+            <AdminButton
+              type="button"
+              tone={tableEditMode ? "secondary" : "primary"}
+              className="inline-flex min-h-9 items-center gap-2"
+              onClick={() => {
+                if (tableEditMode) {
+                  void finishEditing();
+                } else {
+                  setTableEditMode(true);
+                }
+              }}
+            >
+              <Pencil className="h-4 w-4 shrink-0" aria-hidden />
+              {tableEditMode ? "完成编辑" : "编辑表格"}
+            </AdminButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
+                <MoreHorizontal className="h-4 w-4 shrink-0" />
+                更多操作
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[12rem]">
+                <DropdownMenuLabel className="text-xs font-normal text-[var(--twin-mute)]">数据与维护</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    window.setTimeout(() => importInputRef.current?.click(), 0);
+                  }}
+                >
+                  <Upload className="mr-2 inline h-4 w-4" />
+                  导入文件
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => openExportPicker()}>
+                  <Download className="mr-2 inline h-4 w-4" />
+                  选择导出列…
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void onAddColumn()}>
+                  <Plus className="mr-2 inline h-4 w-4" />
+                  新增表头
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => refreshColumnWidths()}>刷新列宽</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void onClearTable()} className="text-rose-700 focus:text-rose-800">
+                  <Trash2 className="mr-2 inline h-4 w-4" />
+                  清空当前表格
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setDeleteKeyword("");
+                    setDeleteCandidates([]);
+                    setSelectedDeleteId("");
+                    setDeleteOpen(true);
+                  }}
+                >
+                  <Trash2 className="mr-2 inline h-4 w-4" />
+                  删除资产
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setSearchReplaceColumnKey("");
+                    setSearchReplaceSearch("");
+                    setSearchReplaceReplace("");
+                    setSearchReplaceMode("exact");
+                    setSearchReplaceOpen(true);
+                  }}
+                >
+                  查找替换
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => openBatchHistory()}>按批次删除</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
 
         {view === "table" && selectedIds.size > 0 && (
           <div className="shrink-0 mb-2 flex flex-wrap items-center gap-2 rounded-twin-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2 text-sm">
@@ -1171,7 +1128,7 @@ export default function AdminAssetRecordPage() {
         </div>
       </div>
       ) : (
-        <div className="flex-1 min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col">
           <AssetVisualView />
         </div>
       )}

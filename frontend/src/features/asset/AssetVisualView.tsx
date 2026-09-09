@@ -119,7 +119,7 @@ export default function AssetVisualView() {
   };
 
   return (
-    <div className="flex h-full min-h-0 gap-3">
+    <div className="flex min-h-0 flex-1 gap-3">
       {/* ════════ 左：地点树 ════════ */}
       <div className="flex w-[236px] shrink-0 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-sm">
         <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--twin-hairline)] px-3 py-2 text-[11px] font-medium text-[var(--twin-mute)]">
