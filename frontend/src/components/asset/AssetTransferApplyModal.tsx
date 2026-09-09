@@ -4,8 +4,7 @@ import toast from "react-hot-toast";
 import { Upload } from "lucide-react";
 import { lockAsset, fetchAssetRecords, submitTransferRequest, type AssetRow } from "@/api/domains/asset.api";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
-import { useAssetLocationTree } from "@/api/hooks/useAssetLocation";
-import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
+import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import { authHttp } from "@/api/core/authHttp";
 import { authStorage } from "@/features/auth/authStorage";
 
@@ -18,16 +17,6 @@ function assetLocationText(a: Pick<AssetRow, "location" | "dynamicValues">) {
 }
 
 /** 地点树扁平化为全路径文本候选（与树内展示一致） */
-function flattenLocationPaths(nodes: AssetLocationNode[], prefix = ""): string[] {
-  const out: string[] = [];
-  for (const n of nodes) {
-    const path = prefix ? `${prefix} / ${n.name}` : n.name;
-    out.push(path);
-    if (n.children?.length) out.push(...flattenLocationPaths(n.children, path));
-  }
-  return out;
-}
-
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -49,8 +38,6 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
   const beforeFileRef = useRef<HTMLInputElement>(null);
   const afterFileRef = useRef<HTMLInputElement>(null);
 
-  const { data: locationTree = [] } = useAssetLocationTree();
-  const locationOptions = useMemo(() => flattenLocationPaths(locationTree), [locationTree]);
 
   const title = useMemo(() => (selected ? `${selected.assetName} (${selected.assetCode})` : ""), [selected]);
 
@@ -236,12 +223,10 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-700">
               申请转移地点
-              <AdminSearchSelect
+              <AssetLocationTreeSelect
                 value={transferLocation}
-                onChange={setTransferLocation}
-                options={locationOptions}
-                placeholder="选择或输入地点"
-                className="rounded border border-slate-300"
+                onChange={(path) => setTransferLocation(path)}
+                placeholder="选择地点"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-700">

@@ -30,10 +30,9 @@ import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
-import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { cn } from "@/lib/utils";
 import PromoteMoveLogDialog, { type PromoteMoveLogTarget } from "./PromoteMoveLogDialog";
-import AssetLocationSelect from "./AssetLocationSelect";
+import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import {
   ASSET_CAMPUS_OPTIONS,
   ASSET_STATUS_OPTIONS,
@@ -144,7 +143,6 @@ export default function AssetDetailDrawer(props: {
     walk(tree, "");
     return out;
   }, [tree]);
-  const locationLabels = useMemo(() => locationOptions.map((o) => o.label), [locationOptions]);
 
   // 存放地点以节点路径为准（节点是结构真源，文本只是镜像，移动后不会滞后）
   const currentPath = useMemo(() => {
@@ -635,10 +633,10 @@ export default function AssetDetailDrawer(props: {
                     <label key={c.columnKey} className="flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                       {c.columnLabel}
                       {isLocationColumn(c) ? (
-                        <AssetLocationSelect
+                        <AssetLocationTreeSelect
                           value={dynForm[c.columnKey] ?? ""}
-                          onChange={(v) => setDynForm((p) => ({ ...p, [c.columnKey]: v }))}
-                          className="!rounded-twin-sm !text-sm"
+                          onChange={(path) => setDynForm((p) => ({ ...p, [c.columnKey]: path }))}
+                          clearable
                         />
                       ) : isCampusColumn(c) ? (
                         <select
@@ -706,10 +704,9 @@ export default function AssetDetailDrawer(props: {
               </p>
               <label className="flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                 目标地点
-                <AdminSearchSelect
+                <AssetLocationTreeSelect
                   value={moveLabel}
-                  onChange={setMoveLabel}
-                  options={locationLabels}
+                  onChange={(path) => setMoveLabel(path)}
                   placeholder="请选择地点"
                   className="w-full"
                 />

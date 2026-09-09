@@ -42,7 +42,7 @@ import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import { useAssetRelocate } from "./useAssetRelocate";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
-import { AssetLocationTreeSelect } from "./AssetLocationTreeSelect";
+import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import { assetStatusLabel } from "./assetEditableFields";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
@@ -861,10 +861,10 @@ export default function AssetVisualView(props: {
             </span>
             <div className="w-64 shrink-0">
               <AssetLocationTreeSelect
-                value={batchTargetId}
-                onChange={(id, path) => {
-                  setBatchTargetId(id);
+                value={batchTarget}
+                onChange={(path, nodeId) => {
                   setBatchTarget(path);
+                  setBatchTargetId(nodeId);
                 }}
                 placeholder="选择目标地点"
               />

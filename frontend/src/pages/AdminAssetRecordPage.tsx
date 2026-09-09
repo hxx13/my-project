@@ -43,8 +43,7 @@ import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal"
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import AssetVisualView from "@/features/asset/AssetVisualView";
 import AssetDetailDrawer from "@/features/asset/AssetDetailDrawer";
-import AssetLocationSelect from "@/features/asset/AssetLocationSelect";
-import { AssetLocationTreeSelect } from "@/features/asset/AssetLocationTreeSelect";
+import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import {
   ASSET_CAMPUS_OPTIONS,
   ASSET_STATUS_OPTIONS,
@@ -1244,10 +1243,11 @@ export default function AdminAssetRecordPage() {
                       <td key={key} className="border-b px-2 py-1.5">
                         {tableEditMode ? (
                           isLocationColumn(c) ? (
-                            <AssetLocationSelect
+                            <AssetLocationTreeSelect
                               value={display}
-                              onChange={(v) => setEditing((prev) => ({ ...prev, [key]: v }))}
-                              className="!rounded-twin-sm !text-xs"
+                              onChange={(path) => setEditing((prev) => ({ ...prev, [key]: path }))}
+                              clearable
+                              className="!h-7 !rounded-twin-sm !px-2 !text-xs"
                             />
                           ) : isCampusColumn(c) ? (
                             <select
@@ -1397,10 +1397,10 @@ export default function AdminAssetRecordPage() {
                   <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                     {normalizeColumnLabel(c.columnLabel)}
                     {isLocationColumn(c) ? (
-                      <AssetLocationSelect
+                      <AssetLocationTreeSelect
                         value={addForm[c.columnKey] || ""}
-                        onChange={(v) => setAddForm((prev) => ({ ...prev, [c.columnKey]: v }))}
-                        className="!rounded-twin-sm !text-sm"
+                        onChange={(path) => setAddForm((prev) => ({ ...prev, [c.columnKey]: path }))}
+                        clearable
                       />
                     ) : isCampusColumn(c) ? (
                       <select
@@ -1790,10 +1790,10 @@ export default function AdminAssetRecordPage() {
                 <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                   目标地点
                   <AssetLocationTreeSelect
-                    value={batchMoveTargetId}
-                    onChange={(id, path) => {
-                      setBatchMoveTargetId(id);
+                    value={batchMoveTarget}
+                    onChange={(path, nodeId) => {
                       setBatchMoveTarget(path);
+                      setBatchMoveTargetId(nodeId);
                     }}
                     placeholder="选择目标地点"
                   />
