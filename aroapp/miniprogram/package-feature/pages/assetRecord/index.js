@@ -252,8 +252,6 @@ Page({
     searchRows: [],
     transferDate: '',
     transferLocation: '',
-    transferLocationFiltered: [],
-    transferLocationPickerShow: false,
     transferUserName: '',
     transferUserEmployeeId: '',
     transferRemark: '',
@@ -267,9 +265,6 @@ Page({
     addNote: '',
     addPhotoUrls: [],
     addUploadingPhoto: false,
-    allLocations: [],
-    locationFiltered: [],
-    showLocationPicker: false,
     addExistingAsset: null,
     showFilters: false,            // 筛选条件默认收起
     // ── 批量记录 ──
@@ -316,13 +311,11 @@ Page({
       this._pendingSearchCode = null;
       this.setData({ page: 1, rows: [], searchKeyword: searchCode }, () => this.loadData(1));
       this.loadFacets();
-      this.loadAllLocations();
       return;
     }
 
     this.setData({ page: 1, rows: [] }, () => this.loadData(1));
     this.loadFacets();
-    this.loadAllLocations();
   },
 
   onPullDownRefresh() {
@@ -712,9 +705,6 @@ Page({
     this.setData({ detailAssetName: e.detail.value || '' });
   },
 
-  onDetailLocationInput(e) {
-    this.setData({ detailLocation: e.detail.value || '' });
-  },
 
   onDetailEditInput(e) {
     const key = e.currentTarget.dataset.key;
@@ -800,11 +790,8 @@ Page({
       addNote: '',
       addPhotoUrls: [],
       addUploadingPhoto: false,
-      locationFiltered: [],
-      showLocationPicker: false,
       addExistingAsset: null,
     });
-    this.loadAllLocations();
   },
 
   closeAddPanel() {
@@ -819,12 +806,6 @@ Page({
     });
   },
 
-  async loadAllLocations() {
-    try {
-      const locations = await assetApi.fetchDistinctLocations();
-      this.setData({ allLocations: locations || [] });
-    } catch (e) { /* ignore */ }
-  },
 
   async onScanAddAssetCode() {
     wx.scanCode({
@@ -858,34 +839,25 @@ Page({
     });
   },
 
+  /**
+   * 地点树选择器统一回调（详情编辑 / 新增面板 / 转移申请共用）。
+   * e.detail = { path, nodeId }；这里只取全路径文本写回对应字段，
+   * 后端在 patchAsset / createAsset / completeTransfer 时会据此回填地点节点。
+   */
+  onLocationPicked(e) {
+    const path = (e.detail && e.detail.path) || '';
+    const target = (e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.target) || '';
+    if (target === 'detail') this.setData({ detailLocation: path });
+    else if (target === 'add') this.setData({ addLocation: path });
+    else if (target === 'transfer') this.setData({ transferLocation: path });
+  },
+
   onAddAssetNameInput(e) {
     this.setData({ addAssetName: e.detail.value || '' });
   },
 
-  onAddLocationInput(e) {
-    const value = e.detail.value || '';
-    const filtered = (this.data.allLocations || [])
-      .filter((l) => l.toLowerCase().includes(value.toLowerCase()))
-      .slice(0, 8);
-    this.setData({
-      addLocation: value,
-      locationFiltered: filtered,
-      showLocationPicker: filtered.length > 0 && value.length > 0,
-    });
-  },
 
-  selectLocationSuggestion(e) {
-    const idx = Number(e.currentTarget.dataset.index || 0);
-    const value = this.data.locationFiltered[idx] || '';
-    this.setData({
-      addLocation: value,
-      showLocationPicker: false,
-    });
-  },
 
-  onAddLocationBlur() {
-    setTimeout(() => this.setData({ showLocationPicker: false }), 200);
-  },
 
   onAddNoteInput(e) {
     this.setData({ addNote: e.detail.value || '' });
@@ -1214,9 +1186,7 @@ Page({
       searchKeyword: '',
       transferDate: todayStr(),
       transferLocation: '',
-      transferLocationFiltered: [],
-      transferLocationPickerShow: false,
-      transferUserName: '',
+          transferUserName: '',
       transferUserEmployeeId: '',
       transferRemark: '',
       transferPhotosBefore: [],
@@ -1248,9 +1218,7 @@ Page({
       searchKeyword: '',
       transferDate: todayStr(),
       transferLocation: '',
-      transferLocationFiltered: [],
-      transferLocationPickerShow: false,
-      transferUserName: '',
+          transferUserName: '',
       transferUserEmployeeId: '',
       transferRemark: '',
       transferPhotosBefore: [],
@@ -1337,30 +1305,8 @@ Page({
     this.setData({ transferDate: (e.detail && e.detail.value) || '' });
   },
 
-  onTransferLocationInput(e) {
-    const value = e.detail.value || '';
-    const filtered = (this.data.allLocations || [])
-      .filter((l) => l.toLowerCase().includes(value.toLowerCase()))
-      .slice(0, 6);
-    this.setData({
-      transferLocation: value,
-      transferLocationFiltered: filtered,
-      transferLocationPickerShow: filtered.length > 0 && value.length > 0,
-    });
-  },
 
-  onTransferLocationBlur() {
-    setTimeout(() => this.setData({ transferLocationPickerShow: false }), 200);
-  },
 
-  selectTransferLocationSuggestion(e) {
-    const idx = Number(e.currentTarget.dataset.index || 0);
-    const value = this.data.transferLocationFiltered[idx] || '';
-    this.setData({
-      transferLocation: value,
-      transferLocationPickerShow: false,
-    });
-  },
 
   onTransferUserNameInput(e) {
     this.setData({ transferUserName: e.detail.value || '' });

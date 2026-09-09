@@ -145,7 +145,7 @@
           <view class="detail-row">
             <text class="detail-label">存放地点</text>
             <block wx:if="{{ detailEditing }}">
-              <input class="input detail-edit-input" value="{{ detailLocation }}" bindinput="onDetailLocationInput" placeholder="请输入存放地点" />
+              <location-tree-picker value="{{ detailLocation }}" bind:change="onLocationPicked" data-target="detail" />
             </block>
             <block wx:else>
               <text class="detail-value">{{ detailLocation || '-' }}</text>
@@ -304,12 +304,7 @@
         </view>
         <view class="field">
           <text class="label">存放地点</text>
-          <view class="location-input-wrap">
-            <input class="input" value="{{ addLocation }}" bindinput="onAddLocationInput" bindblur="onAddLocationBlur" placeholder="输入或选择已有地点" />
-            <view wx:if="{{ showLocationPicker && locationFiltered.length }}" class="location-suggestions">
-              <view wx:for="{{ locationFiltered }}" wx:key="index" class="location-suggestion-item" data-index="{{ index }}" catchtap="selectLocationSuggestion">{{ item }}</view>
-            </view>
-          </view>
+          <location-tree-picker value="{{ addLocation }}" bind:change="onLocationPicked" data-target="add" />
         </view>
         <view class="field">
           <text class="label">备注（可选）</text>
@@ -384,12 +379,7 @@
 
         <view class="field">
           <text class="label">转移至</text>
-          <view class="location-input-wrap">
-            <input class="input" value="{{ transferLocation }}" bindinput="onTransferLocationInput" bindblur="onTransferLocationBlur" placeholder="目标存放地点" />
-            <view wx:if="{{ transferLocationPickerShow && transferLocationFiltered.length }}" class="location-suggestions">
-              <view wx:for="{{ transferLocationFiltered }}" wx:key="index" class="location-suggestion-item" data-index="{{ index }}" catchtap="selectTransferLocationSuggestion">{{ item }}</view>
-            </view>
-          </view>
+          <location-tree-picker value="{{ transferLocation }}" bind:change="onLocationPicked" data-target="transfer" />
         </view>
 
         <view class="field">
