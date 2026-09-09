@@ -1,12 +1,13 @@
 /**
  * AssetVisualView — 资产记录 · 图形视图（三栏可视化）
  *
- * 三栏：左「地点树」 + 中「资产卡片网格」 + 右「资产详情 / 地点小结」。
+ * 三栏：左「地点树」 + 中「资产卡片网格」 + 右「资产详情 / 地点小结 / 转移记录」。
  * 固定高度 flex 布局，三栏各自独立滚动（min-h-0 overflow-auto）。
  *
  * 数据流：
  *   useAssetLocationTree() → AssetLocationNode[]（左树 / 中栏面包屑 / 右栏路径共用）
  *   选中节点 → useAssetList({ locationNodeId }) 按节点精确筛资产（与树徽标 totalCount 同口径）。
+ *   选中卡片 → useAssetTransferHistory(assetId) 拉转移申请 + MOVE 留痕。
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,7 +21,7 @@ import {
   useDeleteAssetLocation,
   useMoveAssetLocation,
 } from "@/api/hooks/useAssetLocation";
-import { useAssetList } from "@/api/hooks/useAsset";
+import { useAssetList, useAssetTransferHistory } from "@/api/hooks/useAsset";
 import { appConfirm } from "@/lib/appDialog";
 import { cn } from "@/lib/utils";
 import LocationTree from "./LocationTree";
@@ -29,9 +30,30 @@ import { findPath } from "./locationTreeUtils";
 const CATEGORY_KEY = "col_资产类别";
 const USER_KEY = "col_使用人";
 
+const TRANSFER_STATUS_LABEL: Record<string, string> = {
+  IN_PROGRESS: "进行中",
+  COMPLETED: "转移完毕",
+  WITHDRAWN: "已撤回",
+};
+
+/** 归一化为可字典序比较的 "YYYY-MM-DD HH:mm:ss" */
+function normTime(v?: string | null) {
+  return v ? String(v).replace("T", " ").slice(0, 19) : "";
+}
+
 function formatTime(v?: string | null) {
   return v ? String(v).replace("T", " ").slice(0, 19) : "—";
 }
+
+type HistoryItem = {
+  key: string;
+  kind: "request" | "move";
+  time: string;
+  from: string;
+  to: string;
+  status?: string;
+  who?: string;
+};
 
 export default function AssetVisualView() {
   const { data: tree = [], isLoading: treeLoading, isError: treeError } = useAssetLocationTree();
@@ -79,6 +101,35 @@ export default function AssetVisualView() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [rows]);
 
+  // 转移记录：转移申请 + MOVE 留痕合并后按时间倒序
+  const { data: history, isLoading: historyLoading } = useAssetTransferHistory(selectedAsset?.id);
+  const historyItems = useMemo<HistoryItem[]>(() => {
+    const out: HistoryItem[] = [];
+    for (const r of history?.requests ?? []) {
+      out.push({
+        key: `r-${r.id}`,
+        kind: "request",
+        time: r.transferTime || r.createTime || "",
+        from: r.fromLocation?.trim() || "—",
+        to: r.transferLocation?.trim() || "—",
+        status: r.status,
+        who: r.applicantName,
+      });
+    }
+    for (const m of history?.moves ?? []) {
+      const [from, to] = String(m.remark ?? "").split(" → ");
+      out.push({
+        key: `m-${m.id}`,
+        kind: "move",
+        time: m.createTime || "",
+        from: from?.trim() || "—",
+        to: to?.trim() || "—",
+        who: m.operatorId,
+      });
+    }
+    return out.sort((a, b) => normTime(b.time).localeCompare(normTime(a.time)));
+  }, [history]);
+
   const toggle = (id: number) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -87,12 +138,20 @@ export default function AssetVisualView() {
       return next;
     });
 
+  const handleCreateRoot = (name: string) => {
+    createMut.mutate({ parentId: null, name });
+  };
+
   const handleCreateChild = (parentId: number, name: string) => {
     createMut.mutate({ parentId, name });
   };
 
   const handleRename = (id: number, name: string) => {
     updateMut.mutate({ id, payload: { name } });
+  };
+
+  const handleMove = (id: number, parentId: number) => {
+    updateMut.mutate({ id, payload: { parentId } });
   };
 
   const handleDelete = async (id: number) => {
@@ -147,8 +206,10 @@ export default function AssetVisualView() {
               keyword={keyword}
               onSelect={setSelectedId}
               onToggle={toggle}
+              onCreateRoot={handleCreateRoot}
               onCreateChild={handleCreateChild}
               onRename={handleRename}
+              onMove={handleMove}
               onDelete={handleDelete}
               onDropAsset={handleDropAsset}
             />
@@ -264,6 +325,52 @@ export default function AssetVisualView() {
                         {name}
                       </span>
                       <span className="shrink-0 text-[var(--twin-mute)]">{count}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {selectedAsset && (
+            <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2.5">
+              <div className="mb-1.5 text-[11.5px] font-semibold text-[var(--twin-ink)]">转移记录</div>
+              {historyLoading ? (
+                <div className="text-[11px] text-[var(--twin-mute)]">加载中…</div>
+              ) : historyItems.length === 0 ? (
+                <div className="text-[11px] text-[var(--twin-mute)]">暂无转移记录</div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {historyItems.map((it) => (
+                    <li key={it.key} className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-2 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "shrink-0 rounded-full px-1.5 text-[10px] leading-4",
+                            it.kind === "request"
+                              ? "bg-[var(--twin-link-deep)]/10 text-[var(--twin-link-deep)]"
+                              : "bg-[var(--twin-canvas)] text-[var(--twin-mute)]"
+                          )}
+                        >
+                          {it.kind === "request" ? "申请转移" : "地点移动"}
+                        </span>
+                        <span className="ml-auto shrink-0 font-mono text-[10px] text-[var(--twin-mute)]">
+                          {normTime(it.time).slice(0, 16) || "—"}
+                        </span>
+                      </div>
+                      <div className="mt-1 break-words text-[11.5px] text-[var(--twin-body)]">
+                        {it.from} → {it.to}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10.5px] text-[var(--twin-mute)]">
+                        {it.kind === "request" && it.status && (
+                          <span>{TRANSFER_STATUS_LABEL[it.status] ?? it.status}</span>
+                        )}
+                        {it.who && (
+                          <span className="truncate">
+                            {it.kind === "request" ? "申请人" : "操作人"} {it.who}
+                          </span>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>

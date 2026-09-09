@@ -409,3 +409,35 @@ export async function batchMoveAssetLocation(payload: { ids: string[]; nodeId: n
   return res.data.data;
 }
 
+/** 资产转移历史：转移申请 + MOVE 留痕（均按时间倒序） */
+export interface AssetTransferHistoryRequest {
+  id: string;
+  transferTime?: string;
+  transferLocation?: string;
+  fromLocation?: string | null;
+  status: string;
+  applicantName?: string;
+  remark?: string;
+  createTime?: string;
+}
+
+/** MOVE 留痕；remark 形如「旧地点 → 新地点」 */
+export interface AssetMoveLog {
+  id: string;
+  remark?: string;
+  operatorId?: string;
+  createTime?: string;
+}
+
+export interface AssetTransferHistory {
+  requests: AssetTransferHistoryRequest[];
+  moves: AssetMoveLog[];
+}
+
+export async function fetchAssetTransferHistory(assetId: string) {
+  const res = await authHttp.get<Result<AssetTransferHistory>>(
+    `/v1/assets/${encodeURIComponent(assetId)}/transfer-history`
+  );
+  return res.data.data;
+}
+

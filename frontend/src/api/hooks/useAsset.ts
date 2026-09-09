@@ -20,6 +20,7 @@ import {
   batchUpdateAssets,
   searchReplaceAssets,
   deleteByBatchId,
+  fetchAssetTransferHistory,
 } from "@/api/domains/asset.api";
 import { toast } from "react-hot-toast";
 
@@ -29,6 +30,15 @@ export function useAssetList(params: Record<string, unknown>, enabled = true) {
     queryFn: () => fetchAssetRecords(params as Parameters<typeof fetchAssetRecords>[0]),
     placeholderData: (prev) => prev,
     enabled,
+  });
+}
+
+/** 某资产的转移申请 + MOVE 留痕（按时间倒序，后端已排好） */
+export function useAssetTransferHistory(assetId: string | null | undefined) {
+  return useQuery({
+    queryKey: [...queryKeys.asset.all, "transfer-history", assetId] as const,
+    queryFn: () => fetchAssetTransferHistory(assetId as string),
+    enabled: !!assetId,
   });
 }
 
