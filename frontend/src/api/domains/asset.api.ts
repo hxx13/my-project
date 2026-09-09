@@ -156,11 +156,27 @@ export async function importAssetExcel(file: File) {
   return res.data.data;
 }
 
+/** 文件「存放地点」列的去重值（上限 200）；matchedNodeId/Name 为按名称归一化后的自动匹配结果，可能为 null */
+export interface ImportLocationValue {
+  text: string;
+  matchedNodeId: number | null;
+  matchedNodeName: string | null;
+}
+
+/** create=true 表示新建同名顶层节点；否则用 nodeId（nodeId=null 表示不关联） */
+export interface ImportLocationMapping {
+  text: string;
+  nodeId?: number | null;
+  create?: boolean;
+}
+
 export interface ImportPreview {
   previewId: string;
   columns: { header: string; matchedKey: string | null; matchedLabel: string | null }[];
   sample: Record<string, string>[];
-  warnings: { header: string; reason: string }[];
+  /** 后端 warnings 为空时该字段不下发 */
+  warnings?: { header: string; reason: string }[];
+  locationValues?: ImportLocationValue[];
 }
 
 export interface ImportBatch {
@@ -198,10 +214,15 @@ export async function previewImportAssets(file: File) {
   return res.data.data;
 }
 
-export async function confirmImportAssets(previewId: string, createNewColumns?: string[]) {
-  const res = await authHttp.post<Result<{ created: number; updated: number; skipped: number }>>("/v1/assets/import/confirm", {
+export async function confirmImportAssets(
+  previewId: string,
+  createNewColumns?: string[],
+  locationMappings?: ImportLocationMapping[]
+) {
+  const res = await authHttp.post<Result<{ created: number; updated: number; skipped: number; locationLinked?: number }>>("/v1/assets/import/confirm", {
     previewId,
     createNewColumns: createNewColumns || [],
+    locationMappings: locationMappings || [],
   }, { timeout: IMPORT_TIMEOUT });
   return res.data.data;
 }

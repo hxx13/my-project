@@ -18,6 +18,7 @@ import {
   deleteByBatchId,
   searchAssets,
   type ImportPreview,
+  type ImportLocationMapping,
   type ImportBatch,
   type AssetRecycleRow,
   type AssetColumnDef,
@@ -40,6 +41,9 @@ import {
 import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
 import AssetVisualView from "@/features/asset/AssetVisualView";
+import { findPath } from "@/features/asset/locationTreeUtils";
+import { useAssetLocationTree } from "@/api/hooks/useAssetLocation";
+import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { Portal } from "@/components/Portal";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
@@ -56,6 +60,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { appConfirm, appPrompt } from "@/lib/appDialog";
+
+/** 存放地点修正的哨兵选项：新建同名顶层节点（清空输入框 = 不关联） */
+const NEW_LOCATION_NODE = "（新建同名节点）";
+
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -159,6 +167,8 @@ export default function AdminAssetRecordPage() {
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
   const [importPreviewData, setImportPreviewData] = useState<ImportPreview | null>(null);
+  /** 存放地点修正：原始 text -> 选中的地点全路径（哨兵值见 NEW_LOCATION_NODE） */
+  const [importLocationSel, setImportLocationSel] = useState<Record<string, string>>({});
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
   const [batchEditColumnKey, setBatchEditColumnKey] = useState("");
   const [batchEditValue, setBatchEditValue] = useState("");
@@ -273,6 +283,27 @@ export default function AdminAssetRecordPage() {
   const batchUpdateMut = useBatchUpdateAssets();
   const searchReplaceMut = useSearchReplaceAssets();
   const deleteByBatchMut = useDeleteByBatchId();
+
+  // ── 导入预览：存放地点修正 ──
+  const { data: locationTree = [] } = useAssetLocationTree();
+  const locationOptions = useMemo(() => {
+    const out: { id: number; label: string }[] = [];
+    const walk = (nodes: AssetLocationNode[], prefix: string) => {
+      nodes.forEach((n) => {
+        const label = prefix ? `${prefix} / ${n.name}` : n.name;
+        out.push({ id: n.id, label });
+        walk(n.children ?? [], label);
+      });
+    };
+    walk(locationTree, "");
+    return out;
+  }, [locationTree]);
+  const locationLabels = useMemo(() => locationOptions.map((o) => o.label), [locationOptions]);
+  const locationLabelToId = useMemo(() => new Map(locationOptions.map((o) => [o.label, o.id])), [locationOptions]);
+  const locationPathLabel = (nodeId: number) => findPath(locationTree, nodeId).map((n) => n.name).join(" / ");
+  const importLocValues = importPreviewData?.locationValues ?? [];
+  const importLocMatched = importLocValues.filter((v) => v.matchedNodeId != null).length;
+  const importWarnings = importPreviewData?.warnings ?? [];
 
   const editableColumns = useMemo(
     () =>
@@ -446,6 +477,7 @@ export default function AdminAssetRecordPage() {
     try {
       const preview = await previewImportAssets(file);
       setImportPreviewData(preview);
+      setImportLocationSel(buildLocationDefaults(preview));
       setPendingImportFile(file);
       setImportPreviewOpen(true);
     } catch {
@@ -458,13 +490,35 @@ export default function AdminAssetRecordPage() {
     }
   };
 
+  /** 默认选择：自动匹配到的节点全路径；未匹配/树未加载时默认「新建同名节点」 */
+  const buildLocationDefaults = (preview: ImportPreview): Record<string, string> => {
+    const next: Record<string, string> = {};
+    for (const v of preview.locationValues ?? []) {
+      next[v.text] =
+        v.matchedNodeId != null
+          ? locationPathLabel(v.matchedNodeId) || v.matchedNodeName || NEW_LOCATION_NODE
+          : NEW_LOCATION_NODE;
+    }
+    return next;
+  };
+
+  /** 选择值 -> 提交映射：哨兵新建 / 空=不关联 / 全路径 -> nodeId（手输未命中时退回自动匹配结果） */
+  const buildLocationMappings = (): ImportLocationMapping[] =>
+    (importPreviewData?.locationValues ?? []).map((v) => {
+      const sel = importLocationSel[v.text] ?? "";
+      if (sel === NEW_LOCATION_NODE) return { text: v.text, create: true };
+      if (!sel) return { text: v.text, nodeId: null };
+      return { text: v.text, nodeId: locationLabelToId.get(sel) ?? v.matchedNodeId ?? null };
+    });
+
   const doConfirmImport = async () => {
     if (!importPreviewData) return;
     try {
-      await confirmImportAssets(importPreviewData.previewId);
-      toast.success("导入完成");
+      const res = await confirmImportAssets(importPreviewData.previewId, undefined, buildLocationMappings());
+      toast.success(res.locationLinked ? `导入完成，已关联地点 ${res.locationLinked} 条` : "导入完成");
       setImportPreviewOpen(false);
       setImportPreviewData(null);
+      setImportLocationSel({});
       setPendingImportFile(null);
       qc.invalidateQueries({ queryKey: queryKeys.asset.all });
     } catch (e) {
@@ -1468,10 +1522,10 @@ export default function AdminAssetRecordPage() {
                   关闭
                 </button>
               </div>
-              {importPreviewData.warnings.length > 0 && (
+              {importWarnings.length > 0 && (
                 <div className="mb-3 rounded-twin-sm border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
                   <p className="font-semibold mb-1">警告</p>
-                  {importPreviewData.warnings.map((w, i) => (
+                  {importWarnings.map((w, i) => (
                     <p key={i}>{w.header}: {w.reason}</p>
                   ))}
                 </div>
@@ -1511,6 +1565,28 @@ export default function AdminAssetRecordPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </div>
+              )}
+              {importLocValues.length > 0 && (
+                <div className="mb-3">
+                  <p className="mb-1 text-xs font-medium text-[var(--twin-ink)]">存放地点修正（{importLocValues.length} 个值）</p>
+                  <p className="mb-1 text-xs text-[var(--twin-mute)]">共 {importLocValues.length} 个地点值，{importLocMatched} 个已自动匹配</p>
+                  <div className="max-h-48 space-y-1.5 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] p-2">
+                    {importLocValues.map((v) => (
+                      <div key={v.text} className="flex items-center gap-2">
+                        <span className="w-40 shrink-0 truncate text-xs text-[var(--twin-body)]" title={v.text}>{v.text}</span>
+                        <div className="min-w-0 flex-1">
+                          <AdminSearchSelect
+                            value={importLocationSel[v.text] ?? ""}
+                            onChange={(val) => setImportLocationSel((prev) => ({ ...prev, [v.text]: val }))}
+                            options={[NEW_LOCATION_NODE, ...locationLabels]}
+                            placeholder="（不关联）"
+                            className="w-full !rounded-twin-sm !border-[var(--twin-hairline)] !text-xs"
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
