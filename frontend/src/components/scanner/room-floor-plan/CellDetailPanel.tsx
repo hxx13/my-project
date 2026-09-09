@@ -147,15 +147,13 @@ export function CellDetailPanel({
       <div className="app-themed-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {/* 二维码 */}
         {animalCageId ? (
-          <div className="flex items-center gap-3 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-2">
+          <div className="flex items-center gap-3 py-1">
             <div
-              className="shrink-0 cursor-zoom-in"
+              className="shrink-0 cursor-zoom-in rounded-lg border border-[var(--app-color-border-default)] bg-white p-1.5"
               title="点击放大"
               onClick={() => setQrZoom(true)}
             >
-              <div className="rounded bg-white p-1">
-                <QRCodeSVG value={animalCageId} size={128} level="M" />
-              </div>
+              <QRCodeSVG value={animalCageId} size={112} level="M" />
             </div>
             <div className="min-w-0 text-[10px] leading-relaxed text-[var(--app-color-text-tertiary)]">
               <div className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">笼位二维码</div>
@@ -166,16 +164,20 @@ export function CellDetailPanel({
         ) : null}
 
         {/* 关键信息 */}
-        <div className="mt-3 text-[11px] font-semibold text-[var(--app-color-text-primary)]">关键信息</div>
-        <div className="mb-1.5 mt-1 text-[9px] text-[var(--app-color-text-tertiary)]">只读 · 数据由系统自动获取</div>
+        <div className="mt-3 border-t border-[var(--app-color-border-default)] pt-2.5">
+          <div className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">关键信息</div>
+          <div className="mt-0.5 text-[9px] text-[var(--app-color-text-tertiary)]">
+            只读 · 数据由系统自动获取
+          </div>
+        </div>
 
         {GROUPS.map((g) => {
           const rows = FORM_ROWS.filter((r) => r.group === g);
           if (rows.length === 0) return null;
           const groupMasked = masked && g === "项目信息";
           return (
-            <div key={g} className="mb-2.5">
-              <div className="mb-1 flex items-center gap-2 text-[10px] font-bold tracking-wider text-[var(--app-color-text-tertiary)]">
+            <div key={g} className="mt-2.5">
+              <div className="mb-0.5 flex items-center gap-2 text-[10px] font-bold tracking-wider text-[var(--app-color-text-tertiary)]">
                 {g}
                 {groupMasked ? (
                   <span className="rounded bg-[var(--app-color-surface-hover)] px-1.5 py-px font-medium tracking-normal">
@@ -183,22 +185,15 @@ export function CellDetailPanel({
                   </span>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-x-6">
                 {rows.map((r) => {
                   const value = groupMasked ? "***" : pick(cell, r.key);
                   return (
                     <div
                       key={r.key}
-                      className="min-w-0 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-1.5"
+                      className="min-w-0 border-b border-[var(--app-color-border-default)] py-1.5"
                     >
-                      <div className="flex flex-wrap items-center gap-1 text-[10px] text-[var(--app-color-text-tertiary)]">
-                        {r.label}
-                        {r.derived ? (
-                          <span className="rounded border border-[color-mix(in_srgb,var(--app-color-text-tertiary)_25%,transparent)] bg-[color-mix(in_srgb,var(--app-color-text-tertiary)_9%,transparent)] px-1 text-[9px] font-semibold">
-                            自动获取
-                          </span>
-                        ) : null}
-                      </div>
+                      <div className="text-[10px] text-[var(--app-color-text-tertiary)]">{r.label}</div>
                       <div
                         className={
                           groupMasked
@@ -219,7 +214,7 @@ export function CellDetailPanel({
         {/* 实验记录（只读） */}
         <div className="border-t border-[var(--app-color-border-default)] pt-2">
           <div className="mb-1.5 text-[11px] font-semibold text-[var(--app-color-text-primary)]">📝 实验记录</div>
-          <div className="min-h-[48px] whitespace-pre-wrap break-words rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2.5 py-1.5 text-[11px] text-[var(--app-color-text-primary)]">
+          <div className="min-h-[48px] whitespace-pre-wrap break-words py-1 text-[11px] text-[var(--app-color-text-primary)]">
             {experimentDesc === "-" ? (
               <span className="text-[var(--app-color-text-tertiary)]">暂无记录</span>
             ) : (
