@@ -49,6 +49,8 @@ public class AssetController {
                                 @RequestParam(required = false) String campus,
                                 @RequestParam(required = false, name = "user") String userFilter,
                                 @RequestParam(required = false) String model,
+                                @RequestParam(required = false) String location,
+                                @RequestParam(required = false) Long locationNodeId,
                                 @RequestParam(required = false) Integer lockStatus,
                                 @RequestParam(required = false) String status,
                                 @RequestParam(defaultValue = "1") int page,
@@ -59,7 +61,7 @@ public class AssetController {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, lockStatus, status, page, size, sortBy, sortDirection, assetId));
+        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, location, locationNodeId, lockStatus, status, page, size, sortBy, sortDirection, assetId));
     }
 
     @PostMapping("/assets/import")
@@ -84,6 +86,7 @@ public class AssetController {
                                                @RequestParam(required = false) String campus,
                                                @RequestParam(required = false, name = "user") String userFilter,
                                                @RequestParam(required = false) String model,
+                                               @RequestParam(required = false) String location,
                                                @RequestParam(required = false) Integer lockStatus,
                                                @RequestParam(required = false) String status,
                                                @RequestParam(required = false) String columns) {
@@ -93,7 +96,7 @@ public class AssetController {
         }
         List<String> selectedColumns = columns != null && !columns.isBlank()
                 ? Arrays.asList(columns.split(",")) : null;
-        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, lockStatus, status, selectedColumns);
+        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, location, lockStatus, status, selectedColumns);
         String name = "asset-records-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
@@ -252,11 +255,12 @@ public class AssetController {
                                  @RequestParam(required = false) String assetName,
                                  @RequestParam(required = false) String campus,
                                  @RequestParam(required = false, name = "user") String userFilter,
-                                 @RequestParam(required = false) String model) {
+                                 @RequestParam(required = false) String model,
+                                 @RequestParam(required = false) String location) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssetFacets(keyword, assetName, campus, userFilter, model));
+        return Result.success(assetService.listAssetFacets(keyword, assetName, campus, userFilter, model, location));
     }
 
     @DeleteMapping("/assets")

@@ -43,9 +43,12 @@ public interface AssetMapper {
                                  @Param("campus") String campus,
                                  @Param("user") String user,
                                  @Param("model") String model,
+                                 @Param("location") String location,
+                                 @Param("locationNodeId") Long locationNodeId,
                                  @Param("campusKeys") List<String> campusKeys,
                                  @Param("userKeys") List<String> userKeys,
                                  @Param("modelKeys") List<String> modelKeys,
+                                 @Param("locationKey") String locationKey,
                                  @Param("lockStatus") Integer lockStatus,
                                  @Param("status") String status,
                                  @Param("limit") int limit,
@@ -58,9 +61,12 @@ public interface AssetMapper {
                     @Param("campus") String campus,
                     @Param("user") String user,
                     @Param("model") String model,
+                    @Param("location") String location,
+                    @Param("locationNodeId") Long locationNodeId,
                     @Param("campusKeys") List<String> campusKeys,
                     @Param("userKeys") List<String> userKeys,
                     @Param("modelKeys") List<String> modelKeys,
+                    @Param("locationKey") String locationKey,
                     @Param("lockStatus") Integer lockStatus,
                     @Param("status") String status);
 
@@ -69,9 +75,12 @@ public interface AssetMapper {
                                     @Param("campus") String campus,
                                     @Param("user") String user,
                                     @Param("model") String model,
+                                    @Param("location") String location,
+                                    @Param("locationNodeId") Long locationNodeId,
                                     @Param("campusKeys") List<String> campusKeys,
                                     @Param("userKeys") List<String> userKeys,
                                     @Param("modelKeys") List<String> modelKeys,
+                                    @Param("locationKey") String locationKey,
                                     @Param("lockStatus") Integer lockStatus,
                                     @Param("status") String status);
 

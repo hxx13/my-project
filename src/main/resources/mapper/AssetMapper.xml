@@ -258,6 +258,22 @@
                   AND mv.column_value LIKE CONCAT('%', #{model}, '%')
             )
         </if>
+        <if test="location != null and location != ''">
+            AND (
+                a.location LIKE CONCAT('%', #{location}, '%')
+                <if test="locationKey != null and locationKey != ''">
+                    OR EXISTS (
+                        SELECT 1 FROM asset_record_value lv
+                        WHERE lv.asset_id = a.id
+                          AND lv.column_key = #{locationKey}
+                          AND lv.column_value LIKE CONCAT('%', #{location}, '%')
+                    )
+                </if>
+            )
+        </if>
+        <if test="locationNodeId != null">
+            AND a.location_node_id = #{locationNodeId}
+        </if>
     </sql>
 
     <select id="listAssets" resultMap="AssetRecordResultMap">

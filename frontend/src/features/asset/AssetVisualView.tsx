@@ -6,9 +6,7 @@
  *
  * 数据流：
  *   useAssetLocationTree() → AssetLocationNode[]（左树 / 中栏面包屑 / 右栏路径共用）
- *   选中节点 → 节点全路径文本（findPath 拼 " / "）→ useAssetList({ location }) 模糊筛资产。
- *   ponytail: 中栏按「路径文本 LIKE」筛，与树徽标 totalCount（按 nodeId 统计）在用户重构层级后
- *   可能有偏差 —— P1 已知取舍，不对齐。
+ *   选中节点 → useAssetList({ locationNodeId }) 按节点精确筛资产（与树徽标 totalCount 同口径）。
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -61,8 +59,8 @@ export default function AssetVisualView() {
   const pathText = useMemo(() => path.map((n) => n.name).join(" / "), [path]);
 
   const { data: assetData, isLoading: assetsLoading, isError: assetsError } = useAssetList(
-    { page: 1, size: 200, location: pathText || undefined },
-    selectedId != null && pathText.length > 0
+    { page: 1, size: 200, locationNodeId: selectedId ?? undefined },
+    selectedId != null
   );
   const rows = assetData?.rows ?? [];
   const assetTotal = assetData?.total ?? rows.length;

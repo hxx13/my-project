@@ -129,7 +129,10 @@ public class AssetService {
         if (!StringUtils.hasText(path)) {
             throw new IllegalArgumentException("存放地点节点不存在");
         }
-        String oldLocation = StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : "(未设置)";
+        // 原地点留痕：优先 EAV「存放地点」（真实来源），为空才回落固定列
+        String eavLocation = pickCurrentDynamicValue(asset.getId(), "存放地点");
+        String oldLocation = StringUtils.hasText(eavLocation) ? eavLocation.trim()
+                : (StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : "(未设置)");
         assetMapper.updateAssetLocationNode(asset.getId(), nodeId);
         assetMapper.batchUpdateAssetFields(List.of(asset.getId()), null, path, null, operatorId);
         String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
@@ -196,6 +199,8 @@ public class AssetService {
                                           String campus,
                                           String user,
                                           String model,
+                                          String location,
+                                          Long locationNodeId,
                                           Integer lockStatus,
                                           String status,
                                           int page,
@@ -239,6 +244,7 @@ public class AssetService {
         String campusVal = trimOrNull(campus);
         String userVal = trimOrNull(user);
         String modelVal = trimOrNull(model);
+        String locationVal = trimOrNull(location);
         String statusVal = trimOrNull(status);
         String orderDir = "asc".equalsIgnoreCase(sortDirection) ? "asc" : "desc";
         String orderBy = StringUtils.hasText(sortBy) ? sortBy : "updateTime";
@@ -269,7 +275,7 @@ public class AssetService {
         List<AssetRecord> records;
         int total;
         if (sortByDynamic) {
-            List<AssetRecord> all = assetMapper.listAssetsAll(keywordVal, assetNameVal, campusVal, userVal, modelVal, campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+            List<AssetRecord> all = assetMapper.listAssetsAll(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
             Map<String, Map<String, String>> allValues = buildValueMap(extractIds(all));
             all.sort((a, b) -> {
                 String av = allValues.getOrDefault(a.getId(), Map.of()).getOrDefault(orderBy, "");
@@ -283,8 +289,8 @@ public class AssetService {
             records = all.subList(from, to);
         } else {
             int offset = (safePage - 1) * safeSize;
-            records = assetMapper.listAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, campusKeys, userKeys, modelKeys, lockStatus, statusVal, safeSize, offset, orderBy, orderDir);
-            total = assetMapper.countAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+            records = assetMapper.listAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal, safeSize, offset, orderBy, orderDir);
+            total = assetMapper.countAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
         }
 
         Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(records));
@@ -641,12 +647,13 @@ public class AssetService {
         return result;
     }
 
-    public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, Integer lockStatus, String status, java.util.List<String> selectedColumns) {
+    public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, String location, Integer lockStatus, String status, java.util.List<String> selectedColumns) {
         String keywordVal = trimOrNull(keyword);
         String assetNameVal = trimOrNull(assetName);
         String campusVal = trimOrNull(campus);
         String userVal = trimOrNull(user);
         String modelVal = trimOrNull(model);
+        String locationVal = trimOrNull(location);
         String statusVal = trimOrNull(status);
 
         List<AssetColumnDef> columnDefs = assetMapper.listColumnDefs();
@@ -663,11 +670,12 @@ public class AssetService {
         List<String> modelKeys = mergeKeys(
                 resolveKeys(columnDefs, List.of("规格型号", "型号"), List.of(), "col_型号"),
                 List.of("col_规格型号", "col_型号", "col_规格"));
+        String locationKey = pickStorageLocationColumnKey(columnDefs);
 
         // 使用 listAssetsAll 不截断，导出全部数据
         List<AssetRecord> allRecords = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, userVal, modelVal,
-                campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+                keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, null,
+                campusKeys, userKeys, modelKeys, locationKey, lockStatus, statusVal);
 
         Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(allRecords));
         List<String> requestIds = allRecords.stream()
@@ -1251,6 +1259,11 @@ public class AssetService {
         if (StringUtils.hasText(storageColKey)) {
             assetMapper.upsertAssetValue(asset.getId(), storageColKey, req.getTransferLocation().trim());
         }
+        // 文本 → 节点指针：正式转移后 location_node_id 不能还指着旧节点
+        Long locationNodeId = assetLocationService.resolveOrCreateTopLevelByName(req.getTransferLocation());
+        if (locationNodeId != null) {
+            assetMapper.updateAssetLocationNode(asset.getId(), locationNodeId);
+        }
         assetMapper.updateAssetLock(asset.getId(), 0, operatorId);
         assetMapper.insertTransferLog(
                 "ATL_" + UUID.randomUUID().toString().replace("-", ""),
@@ -1595,12 +1608,14 @@ public class AssetService {
                                                String assetName,
                                                String campus,
                                                String user,
-                                               String model) {
+                                               String model,
+                                               String location) {
         String keywordVal = trimOrNull(keyword);
         String assetNameVal = trimOrNull(assetName);
         String campusVal = trimOrNull(campus);
         String userVal = trimOrNull(user);
         String modelVal = trimOrNull(model);
+        String locationVal = trimOrNull(location);
 
         List<AssetColumnDef> defs = assetMapper.listColumnDefs();
         List<String> campusKeys = mergeKeys(
@@ -1622,23 +1637,23 @@ public class AssetService {
 
         // 维度联动：每个维度的可选项都由"其他维度 + 关键词"共同约束，不包含本维度自身过滤。
         List<AssetRecord> forAssetNames = assetMapper.listAssetsAll(
-                keywordVal, null, campusVal, userVal, modelVal,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, null, campusVal, userVal, modelVal, locationVal, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forCampuses = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, null, userVal, modelVal,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, assetNameVal, null, userVal, modelVal, locationVal, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forUsers = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, null, modelVal,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, assetNameVal, campusVal, null, modelVal, locationVal, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forModels = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, userVal, null,
-                campusKeys, userKeys, modelKeys,
+                keywordVal, assetNameVal, campusVal, userVal, null, locationVal, null,
+                campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
 
@@ -1647,6 +1662,8 @@ public class AssetService {
         data.put("campuses", distinctDynamicValues(forCampuses, campusKeys));
         data.put("users", distinctDynamicValues(forUsers, userKeys));
         data.put("models", distinctDynamicValues(forModels, modelKeys));
+        // 存放地点基数大（数百个），全局取一次，不做联动收敛
+        data.put("locations", listDistinctLocations());
         return data;
     }
 

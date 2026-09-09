@@ -141,6 +141,25 @@ public class AssetLocationService {
     }
 
     /**
+     * 文本 → 节点 id：归一化后按 name 在整棵树里精确匹配（任意层级）；找不到则新建顶层节点。
+     * 归一化后为空（null/空白串）返回 null，由调用方决定是否回落。
+     * 用于正式转移完成等「只有文本、没有节点」的写回场景。
+     */
+    @Transactional
+    public Long resolveOrCreateTopLevelByName(String rawName) {
+        String normalized = normalizeLocationName(rawName);
+        if (normalized == null) {
+            return null;
+        }
+        for (AssetLocation n : assetLocationMapper.listAll()) {
+            if (normalized.equals(n.getName())) {
+                return n.getId();
+            }
+        }
+        return create(null, normalized, null).getId();
+    }
+
+    /**
      * 局部更新：name / parentId / sortOrder 为 null 时保持原值（与 patchAsset 的 null=不改 一致）。
      * 防环：不能把节点挂到它自己或它的子孙下。
      * ponytail: parentId=null 表示不改父节点，P1 无「移到顶层」入口；需要时加显式 toRoot 标志。

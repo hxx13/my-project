@@ -53,6 +53,8 @@ export interface AssetFacets {
   campuses: string[];
   users?: string[];
   models: string[];
+  /** 存放地点（含 asset_record.location 与 EAV 存放地点列） */
+  locations?: string[];
 }
 
 export interface AssetTransferRecord {
@@ -127,6 +129,10 @@ export async function fetchAssetRecords(params: {
   campus?: string;
   user?: string;
   model?: string;
+  /** 存放地点，模糊匹配 */
+  location?: string;
+  /** 存放地点节点 id，精确匹配（可视化视图按节点筛） */
+  locationNodeId?: number;
   lockStatus?: number;
   status?: string;
   sortBy?: string;
@@ -226,6 +232,7 @@ export async function exportAssetExcel(params: {
   campus?: string;
   user?: string;
   model?: string;
+  location?: string;
   lockStatus?: number;
   status?: string;
   columns?: string;
@@ -329,7 +336,7 @@ export async function listTransferPdfLinks(requestId: string) {
   return res.data.data;
 }
 
-export async function fetchAssetFacets(params?: { keyword?: string; campus?: string; assetName?: string; user?: string; model?: string }) {
+export async function fetchAssetFacets(params?: { keyword?: string; campus?: string; assetName?: string; user?: string; model?: string; location?: string }) {
   const res = await authHttp.get<Result<AssetFacets>>("/v1/assets/facets", { params });
   return res.data.data;
 }
