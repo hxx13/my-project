@@ -166,6 +166,12 @@ public class AssetSchemaMigrator implements ApplicationRunner {
             ensureIndexExists("asset_record", "idx_asset_record_batch",
                     "CREATE INDEX idx_asset_record_batch ON asset_record(created_by_batch_id)");
 
+            // 1c. 存放地点树外键列 + 索引（asset_record 由本类创建，故不能放进更早的 bootstrap SQL）
+            ensureColumnExists("asset_record", "location_node_id",
+                    "ALTER TABLE asset_record ADD COLUMN location_node_id BIGINT NULL COMMENT '所属存放地点节点ID'");
+            ensureIndexExists("asset_record", "idx_asset_record_loc_node",
+                    "CREATE INDEX idx_asset_record_loc_node ON asset_record(location_node_id)");
+
             log.info("[asset-schema] 资产相关表已就绪");
         } catch (Exception e) {
             log.error("[asset-schema] 表结构迁移失败: {}", e.getMessage());

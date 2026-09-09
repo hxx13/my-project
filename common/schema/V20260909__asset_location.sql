@@ -1,4 +1,6 @@
--- 资产存放地点树 + 资产地点外键（与 src/main/resources/db/bootstrap-asset-location.sql 逐字一致）
+-- 资产存放地点树 + 资产地点外键（表定义与 src/main/resources/db/bootstrap-asset-location.sql 一致）
+-- 运行时：asset_location 由 bootstrap SQL 建；asset_record.location_node_id 与索引由
+-- AssetSchemaMigrator.ensureColumnExists/ensureIndexExists 补（asset_record 创建晚于启动链）。
 CREATE TABLE IF NOT EXISTS asset_location (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     parent_id BIGINT NULL COMMENT '父节点ID，NULL=顶层',
