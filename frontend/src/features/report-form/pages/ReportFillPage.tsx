@@ -129,16 +129,20 @@ export default function ReportFillPage() {
           <Eye className="w-3.5 h-3.5" /> 只读模式 — 你无权编辑此报表的内容
         </div>
       )}
-      <FormGridRenderer
-        layout={fillLayout ?? form.layoutJson}
-        themeJson={fillTheme ?? form.themeJson}
-        formSource={form.source}
-        values={values}
-        editable={canEdit}
-        onChange={updateValue}
-        permissionJson={form.permissionJson}
-        userRoles={[userRole]}
-      />
+      <div className="report-canvas">
+        <div className="report-sheet">
+          <FormGridRenderer
+            layout={fillLayout ?? form.layoutJson}
+            themeJson={fillTheme ?? form.themeJson}
+            formSource={form.source}
+            values={values}
+            editable={canEdit}
+            onChange={updateValue}
+            permissionJson={form.permissionJson}
+            userRoles={[userRole]}
+          />
+        </div>
+      </div>
     </AdminPageShell>
   );
 }

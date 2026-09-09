@@ -434,7 +434,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
 
   const tableEl = (
     <table
-      className="border-collapse overflow-visible"
+      className="overflow-visible report-grid report-grid--sticky-first"
       style={{
         tableLayout: 'fixed',
         width: totalWidth,
@@ -461,7 +461,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
                 return (
                   <td
                     key={key}
-                    className={`border border-[var(--app-color-border-default)] ${GRID_CELL_TD_CLASS}`}
+                    className={GRID_CELL_TD_CLASS}
                     style={strictRowHeight
                       ? { height: rowH, minHeight: rowH }
                       : { minHeight: rowH }}
@@ -494,7 +494,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
                   data-fill-cell-id={cell.id}
                   colSpan={cell.colSpan}
                   rowSpan={cell.rowSpan}
-                  className={`border border-[var(--app-color-border-default)] px-1.5 py-1 ${GRID_CELL_TD_CLASS} ${
+                  className={`px-1.5 py-1 ${GRID_CELL_TD_CLASS} ${
                     showFillEdit
                       ? 'outline outline-2 outline-[var(--app-color-accent)] outline-offset-[-2px] relative z-[var(--z-dropdown)]'
                       : fillMeasure && editable && fieldEditable
@@ -557,7 +557,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
   return (
     <div
       ref={containerRef}
-      className="overflow-auto border border-[var(--app-color-border-default)] rounded-[var(--app-radius-container)] w-full"
+      className="w-full"
     >
       <div
         className="flex justify-center w-full"
