@@ -42,7 +42,14 @@ import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal"
 import AssetVisualView from "@/features/asset/AssetVisualView";
 import AssetDetailDrawer from "@/features/asset/AssetDetailDrawer";
 import AssetLocationSelect from "@/features/asset/AssetLocationSelect";
-import { assetEditableFields, isLocationColumn } from "@/features/asset/assetEditableFields";
+import {
+  ASSET_CAMPUS_OPTIONS,
+  ASSET_STATUS_OPTIONS,
+  assetStatusLabel,
+  assetEditableFields,
+  isCampusColumn,
+  isLocationColumn,
+} from "@/features/asset/assetEditableFields";
 import { findPath } from "@/features/asset/locationTreeUtils";
 import { useAssetLocationTree } from "@/api/hooks/useAssetLocation";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
@@ -1146,13 +1153,25 @@ export default function AdminAssetRecordPage() {
                   </td>
                   <td className="border-b px-2 py-1.5" style={{ width: widths.status, minWidth: widths.status }}>
                     {tableEditMode ? (
-                      <input
+                      <select
                         value={editing[`${r.id}::status`] ?? r.status}
                         onChange={(e) => setEditing((prev) => ({ ...prev, [`${r.id}::status`]: e.target.value }))}
-                        className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
-                      />
+                        className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs"
+                      >
+                        {!ASSET_STATUS_OPTIONS.some((o) => o.value === (editing[`${r.id}::status`] ?? r.status)) &&
+                        (editing[`${r.id}::status`] ?? r.status) ? (
+                          <option value={editing[`${r.id}::status`] ?? r.status}>
+                            {editing[`${r.id}::status`] ?? r.status}
+                          </option>
+                        ) : null}
+                        {ASSET_STATUS_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
                     ) : (
-                      <span className="block min-w-0 truncate text-[var(--twin-ink)]" title={r.status}>{r.status || "—"}</span>
+                      <span className="block min-w-0 truncate text-[var(--twin-ink)]" title={r.status}>
+                        {assetStatusLabel(r.status)}
+                      </span>
                     )}
                   </td>
                   {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c) => {
@@ -1167,6 +1186,17 @@ export default function AdminAssetRecordPage() {
                               onChange={(v) => setEditing((prev) => ({ ...prev, [key]: v }))}
                               className="!rounded-twin-sm !text-xs"
                             />
+                          ) : isCampusColumn(c) ? (
+                            <select
+                              value={display}
+                              onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
+                              className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs"
+                            >
+                              <option value="">未设置</option>
+                              {ASSET_CAMPUS_OPTIONS.map((o) => (
+                                <option key={o} value={o}>{o}</option>
+                              ))}
+                            </select>
                           ) : (
                             <input
                               value={display}
@@ -1300,7 +1330,6 @@ export default function AdminAssetRecordPage() {
                   />
                 </label>
                 {editableColumns.map((c) => {
-                  const isCampusColumn = c.columnKey === "col_校区" || c.columnLabel?.includes("校区");
                   return (
                   <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                     {normalizeColumnLabel(c.columnLabel)}
@@ -1310,20 +1339,23 @@ export default function AdminAssetRecordPage() {
                         onChange={(v) => setAddForm((prev) => ({ ...prev, [c.columnKey]: v }))}
                         className="!rounded-twin-sm !text-sm"
                       />
+                    ) : isCampusColumn(c) ? (
+                      <select
+                        value={addForm[c.columnKey] || ""}
+                        onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
+                        className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                      >
+                        <option value="">未设置</option>
+                        {ASSET_CAMPUS_OPTIONS.map((o) => (
+                          <option key={o} value={o}>{o}</option>
+                        ))}
+                      </select>
                     ) : (
                       <input
                         value={addForm[c.columnKey] || ""}
                         onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
                         className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                        list={isCampusColumn ? "campus-suggestions" : undefined}
                       />
-                    )}
-                    {isCampusColumn && facets.campuses.length > 0 && (
-                      <datalist id="campus-suggestions">
-                        {facets.campuses.map((v) => (
-                          <option key={v} value={v} />
-                        ))}
-                      </datalist>
                     )}
                   </label>
                   );

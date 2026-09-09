@@ -34,7 +34,14 @@ import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { cn } from "@/lib/utils";
 import PromoteMoveLogDialog, { type PromoteMoveLogTarget } from "./PromoteMoveLogDialog";
 import AssetLocationSelect from "./AssetLocationSelect";
-import { assetEditableFields, isLocationColumn } from "./assetEditableFields";
+import {
+  ASSET_CAMPUS_OPTIONS,
+  ASSET_STATUS_OPTIONS,
+  assetStatusLabel,
+  assetEditableFields,
+  isCampusColumn,
+  isLocationColumn,
+} from "./assetEditableFields";
 import { findPath } from "./locationTreeUtils";
 
 const USER_KEY = "col_使用人";
@@ -368,7 +375,7 @@ export default function AssetDetailDrawer(props: {
                 ["资产名称", asset.assetName],
                 ["存放地点", currentPath || asset.dynamicValues?.[LOCATION_KEY] || asset.location],
                 ["使用人", asset.dynamicValues?.[USER_KEY]],
-                ["状态", asset.status],
+                ["状态", assetStatusLabel(asset.status)],
                 ["是否锁定", asset.locked === 1 ? "已锁定" : "未锁定"],
                 ["最近转移时间", formatTime(asset.latestTransferTime)],
               ].map(([label, value]) => (
@@ -563,11 +570,18 @@ export default function AssetDetailDrawer(props: {
                   </label>
                   <label className="flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                     状态
-                    <input
+                    <select
                       value={baseForm.status}
                       onChange={(e) => setBaseForm((p) => ({ ...p, status: e.target.value }))}
                       className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] outline-none focus-visible:border-[var(--twin-link-deep)]"
-                    />
+                    >
+                      {!ASSET_STATUS_OPTIONS.some((o) => o.value === baseForm.status) && baseForm.status ? (
+                        <option value={baseForm.status}>{baseForm.status}（未收录）</option>
+                      ) : null}
+                      {ASSET_STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
                   </label>
                   <label className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                     标注
@@ -626,6 +640,17 @@ export default function AssetDetailDrawer(props: {
                           onChange={(v) => setDynForm((p) => ({ ...p, [c.columnKey]: v }))}
                           className="!rounded-twin-sm !text-sm"
                         />
+                      ) : isCampusColumn(c) ? (
+                        <select
+                          value={dynForm[c.columnKey] ?? ""}
+                          onChange={(e) => setDynForm((p) => ({ ...p, [c.columnKey]: e.target.value }))}
+                          className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] outline-none focus-visible:border-[var(--twin-link-deep)]"
+                        >
+                          <option value="">未设置（按地点自动推断）</option>
+                          {ASSET_CAMPUS_OPTIONS.map((o) => (
+                            <option key={o} value={o}>{o}</option>
+                          ))}
+                        </select>
                       ) : (
                         <input
                           value={dynForm[c.columnKey] ?? ""}

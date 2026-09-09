@@ -36,6 +36,7 @@ import {
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
+import { assetStatusLabel } from "./assetEditableFields";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
 import AssetDetailDrawer from "./AssetDetailDrawer";
@@ -231,7 +232,7 @@ function SpaceGroup({ title, subTotal, rows, childNodes, onSelect, onOpen }: {
               <span
                 className="h-1.5 w-1.5 shrink-0 rounded-full"
                 style={{ background: statusDotColor(r.status) }}
-                title={r.status || "—"}
+                title={assetStatusLabel(r.status)}
               />
               {firstPhoto(r) ? (
                 <span className="inline-block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
