@@ -16,6 +16,14 @@ describe("cellGroupName", () => {
     expect(cellGroupName({ cageBoxInfo: { ProjectPiName: "李娜" } })).toBe("李娜");
     expect(cellGroupName({})).toBe("");
   });
+
+  it("回退到 cageBoxInfo.projectPiName", () => {
+    expect(cellGroupName({ cageBoxInfo: { projectPiName: "王芳" } })).toBe("王芳");
+  });
+
+  it("回退到 cageBoxInfo.piName（本次新增分支）", () => {
+    expect(cellGroupName({ cageBoxInfo: { piName: "赵敏" } })).toBe("赵敏");
+  });
 });
 
 describe("rackMatchesGroup", () => {
