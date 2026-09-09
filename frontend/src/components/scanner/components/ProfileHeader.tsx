@@ -74,21 +74,21 @@ export const ProfileHeader = ({
             </div>
         </div>
         {(onQuickActions || onEnterStudentCenter) && (
-            <div className="mt-3 flex gap-2 border-t border-[var(--app-color-border-default)] pt-3">
-                <ScanActionButton
-                    layout="compact"
-                    variant="quick"
-                    icon={LayoutGrid}
-                    label="快捷业务"
+            <div className="mt-3 flex gap-2 border-t border-[var(--app-color-border-default)] pt-2.5">
+                <button
+                    type="button"
                     onClick={() => onQuickActions?.()}
-                />
-                <ScanActionButton
-                    layout="compact"
-                    variant="student"
-                    icon={GraduationCap}
-                    label="个人中心"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] py-1.5 text-[11px] font-semibold text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
+                >
+                    <LayoutGrid className="h-3.5 w-3.5" aria-hidden /> 快捷业务
+                </button>
+                <button
+                    type="button"
                     onClick={() => onEnterStudentCenter?.()}
-                />
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] py-1.5 text-[11px] font-semibold text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
+                >
+                    <GraduationCap className="h-3.5 w-3.5" aria-hidden /> 个人中心
+                </button>
             </div>
         )}
     </div>
