@@ -35,7 +35,7 @@ public class AssetSchemaMigrator implements ApplicationRunner {
 
     /** 资产图标规则：按名称关键词匹配，顺序敏感 */
     static final List<IconRule> ASSET_ICON_RULES = List.of(
-            new IconRule("🧪", "生物安全柜", "超净工作台", "洁净工作台", "净化工作台"),
+            new IconRule("🪑", "生物安全柜", "超净工作台", "洁净工作台", "净化工作台"),
             new IconRule("💨", "通风柜", "通风系统"),
             new IconRule("❄️", "液氮"),
             new IconRule("🧊", "冰箱", "冷藏", "冷冻", "保存箱", "冰柜", "低温"),
