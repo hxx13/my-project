@@ -15,9 +15,9 @@ interface FieldInspectorProps {
 }
 
 const inputBase =
-  'w-full rounded-lg bg-[var(--app-color-surface-hover)] px-2 text-[11px] text-[var(--app-color-text-primary)] focus:bg-white focus:outline focus:outline-2 focus:outline-[color-mix(in_srgb,var(--app-color-accent)_45%,transparent)]';
+  'w-full rounded-lg bg-[var(--app-color-surface-hover)] px-2 text-[13px] text-[var(--app-color-text-primary)] focus:bg-white focus:outline focus:outline-2 focus:outline-[color-mix(in_srgb,var(--app-color-accent)_45%,transparent)]';
 const inputClass = `${inputBase} h-9`;
-const labelClass = 'text-[10px] font-medium text-[var(--app-color-text-secondary)] mb-0.5 block';
+const labelClass = 'text-[12px] font-medium text-[var(--app-color-text-secondary)] mb-1 block';
 
 export default function FieldInspector({
   layout, selectedCellIds, fieldType, fieldTypeMixed, collapsed,
@@ -82,7 +82,7 @@ export default function FieldInspector({
 
       {!referenceCell ? (
         <div className="flex-1 flex items-center justify-center p-4">
-          <p className="text-[11px] text-[var(--app-color-text-tertiary)]">点击表格中的格子查看属性</p>
+          <p className="text-[12px] text-[var(--app-color-text-tertiary)]">点击表格中的格子查看属性</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -150,7 +150,7 @@ export default function FieldInspector({
                   <span className="absolute inset-0 rounded-full bg-[var(--app-color-surface-hover)] peer-checked:bg-[var(--app-color-accent)] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-[var(--app-color-accent)]" />
                   <span className="absolute top-[2px] left-[2px] w-4 h-4 rounded-full bg-white shadow-sm transition-[left] duration-150 peer-checked:left-[16px]" />
                 </span>
-                <span className="text-[10px] text-[var(--app-color-text-secondary)]">必填</span>
+                <span className="text-[12px] text-[var(--app-color-text-secondary)]">必填</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer">
@@ -164,7 +164,7 @@ export default function FieldInspector({
                   <span className="absolute inset-0 rounded-full bg-[var(--app-color-surface-hover)] peer-checked:bg-[var(--app-color-accent)] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-[var(--app-color-accent)]" />
                   <span className="absolute top-[2px] left-[2px] w-4 h-4 rounded-full bg-white shadow-sm transition-[left] duration-150 peer-checked:left-[16px]" />
                 </span>
-                <span className="text-[10px] text-[var(--app-color-text-secondary)]">填报可编辑</span>
+                <span className="text-[12px] text-[var(--app-color-text-secondary)]">填报可编辑</span>
               </label>
 
               {fieldType === 'NUMBER' && (
@@ -203,7 +203,7 @@ export default function FieldInspector({
               )}
             </>
           ) : (
-            <p className="text-[10px] text-[var(--app-color-text-tertiary)]">该格子未关联字段定义</p>
+            <p className="text-[12px] text-[var(--app-color-text-tertiary)]">该格子未关联字段定义</p>
           )}
 
           {/* 单元格 */}
