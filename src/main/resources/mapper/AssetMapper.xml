@@ -703,6 +703,31 @@
         WHERE a.location_node_id = #{nodeId} AND v.column_key = #{columnKey}
     </update>
 
+    <update id="linkAssetsToLocationNode">
+        UPDATE asset_record a
+        JOIN asset_record_value v ON v.asset_id = a.id AND v.column_key = #{columnKey}
+        SET a.location_node_id = #{nodeId}
+        WHERE a.deleted = 0 AND TRIM(v.column_value) = #{text}
+          AND (a.created_by_batch_id = #{batchId} OR a.location_node_id IS NULL)
+    </update>
+
+    <select id="listTransferRequestsByAssetId" resultMap="AssetTransferRequestResultMap">
+        SELECT *
+        FROM asset_transfer_request
+        WHERE asset_id = #{assetId}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="listMoveLogsByAssetId" resultType="java.util.Map">
+        SELECT id AS id,
+               remark AS remark,
+               operator_id AS operatorId,
+               create_time AS createTime
+        FROM asset_transfer_log
+        WHERE asset_id = #{assetId} AND action_type = 'MOVE'
+        ORDER BY create_time DESC
+    </select>
+
     <!-- ==================== 导入批次 ==================== -->
 
     <insert id="insertImportBatch" parameterType="com.example.demo.modules.asset.entity.AssetImportBatch">

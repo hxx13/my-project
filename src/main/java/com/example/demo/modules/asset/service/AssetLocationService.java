@@ -51,6 +51,40 @@ public class AssetLocationService {
         return s.isEmpty() ? null : s;
     }
 
+    /** 全部未删除节点（导入地点匹配等只读场景用）。 */
+    public List<AssetLocation> listAll() {
+        return assetLocationMapper.listAll();
+    }
+
+    /** 节点存在且未删除 */
+    public boolean exists(Long id) {
+        return id != null && assetLocationMapper.findById(id) != null;
+    }
+
+    /**
+     * 归一化后按 name 精确匹配（任意层级）；命中多个取 id 最小的。
+     * 找不到返回 null。纯函数，便于单测。
+     */
+    public static AssetLocation matchByName(List<AssetLocation> nodes, String rawName) {
+        String target = normalizeLocationName(rawName);
+        if (target == null || nodes == null) {
+            return null;
+        }
+        AssetLocation best = null;
+        for (AssetLocation n : nodes) {
+            if (n == null || n.getId() == null) {
+                continue;
+            }
+            if (!target.equals(normalizeLocationName(n.getName()))) {
+                continue;
+            }
+            if (best == null || n.getId() < best.getId()) {
+                best = n;
+            }
+        }
+        return best;
+    }
+
     /**
      * 扁平节点 → 嵌套树。
      * parent_id 指向不存在节点的「孤儿」挂到根；同级按 sortOrder 再按 id 升序；

@@ -218,6 +218,20 @@ public class AssetController {
         }
     }
 
+    @GetMapping("/assets/{id}/transfer-history")
+    @Operation(summary = "资产转移历史（转移申请 + MOVE 日志）")
+    public Result<?> transferHistory(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     @PathVariable String id) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.transferHistory(id));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/assets/by-code")
     @Operation(summary = "按资产编号精确查找资产")
     public Result<?> getAssetByCode(@RequestHeader(value = "Authorization", required = false) String authorization,
@@ -607,10 +621,13 @@ public class AssetController {
             @SuppressWarnings("unchecked")
             List<String> createNewColumns = body.get("createNewColumns") instanceof List
                     ? (List<String>) body.get("createNewColumns") : new ArrayList<>();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> locationMappings = body.get("locationMappings") instanceof List
+                    ? (List<Map<String, Object>>) body.get("locationMappings") : new ArrayList<>();
             if (previewId == null || previewId.isBlank()) {
                 return Result.error("缺少 previewId 参数");
             }
-            return Result.success(assetService.confirmImport(previewId, createNewColumns, user.getId()));
+            return Result.success(assetService.confirmImport(previewId, createNewColumns, locationMappings, user.getId()));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

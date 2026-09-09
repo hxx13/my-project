@@ -214,5 +214,17 @@ public interface AssetMapper {
     int updateAssetValueTextByNode(@Param("nodeId") Long nodeId,
                                    @Param("columnKey") String columnKey,
                                    @Param("location") String location);
+
+    /** 导入回填：把本批次（或尚未关联的）资产的 EAV 地点文本对应的资产挂到节点 */
+    int linkAssetsToLocationNode(@Param("batchId") String batchId,
+                                 @Param("columnKey") String columnKey,
+                                 @Param("text") String text,
+                                 @Param("nodeId") Long nodeId);
+
+    /** 某资产的转移申请，按 create_time 倒序 */
+    List<AssetTransferRequest> listTransferRequestsByAssetId(@Param("assetId") String assetId);
+
+    /** 某资产的 MOVE 日志，按 create_time 倒序 */
+    List<Map<String, Object>> listMoveLogsByAssetId(@Param("assetId") String assetId);
 }
 
