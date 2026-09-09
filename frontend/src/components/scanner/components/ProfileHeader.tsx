@@ -16,7 +16,7 @@ interface ProfileHeaderProps {
 }
 
 const Field = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between text-xs border-b border-[var(--app-color-border-default)] py-1.5 last:border-b-0">
+    <div className="flex items-center justify-between text-xs border-b border-[var(--app-color-border-default)] py-1 last:border-b-0">
         <span className="text-[var(--app-color-text-tertiary)]">{label}</span>
         <span className="text-[var(--app-color-text-primary)] font-semibold">{value || "【无数据】"}</span>
     </div>
@@ -33,10 +33,10 @@ export const ProfileHeader = ({
 }: ProfileHeaderProps) => {
     const avatarSrc = resolvePersonnelAvatarUrl(user.head);
     return (
-    <div className={`w-full ${PROFILE_CARD} p-5`}>
-        <div className="flex items-center gap-4 border-b border-[var(--app-color-border-default)] pb-4">
+    <div className={`w-full ${PROFILE_CARD} p-4`}>
+        <div className="flex items-center gap-3 border-b border-[var(--app-color-border-default)] pb-3">
             <div
-                className="w-16 h-16 rounded-full overflow-hidden bg-[var(--app-color-surface-hover)] border-2 shadow-lg"
+                className="w-14 h-14 rounded-full overflow-hidden bg-[var(--app-color-surface-hover)] border-2 shadow-lg"
                 style={{ borderColor: "var(--scan-profile-border, var(--app-color-scan-profile-border))" }}
             >
                 {avatarSrc && isAvatarLoaded ? (
@@ -64,7 +64,7 @@ export const ProfileHeader = ({
                 </span>
             </div>
         </div>
-        <div className="mt-3 flex flex-col gap-1">
+        <div className="mt-2 flex flex-col gap-0.5">
             <Field label="院系" value={user.department_name || ""} />
             <Field label="课题组" value={user.project_group_name || ""} />
             <Field label="手机号" value={user.mobile_phone || ""} />
@@ -74,7 +74,7 @@ export const ProfileHeader = ({
             </div>
         </div>
         {(onQuickActions || onEnterStudentCenter) && (
-            <div className="mt-3 flex gap-2 border-t border-[var(--app-color-border-default)] pt-2.5">
+            <div className="mt-2 flex gap-2 border-t border-[var(--app-color-border-default)] pt-2">
                 <button
                     type="button"
                     onClick={() => onQuickActions?.()}

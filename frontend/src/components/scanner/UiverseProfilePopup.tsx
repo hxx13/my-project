@@ -294,8 +294,8 @@ export function UiverseProfilePopup(props: PopupProps) {
                         />
                     </div>
                     <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-visible">
-                    <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
-                        <div className="w-full h-[60px] mb-1">
+                    <div className="flex flex-col h-full min-h-0 pt-0 pb-6 gap-3">
+                        <div className="w-full h-[52px]">
                             <ScanLevelBadge
                                 level={state.user?.rpg?.level ?? 0}
                                 exp={state.user?.rpg?.exp ?? 0}
