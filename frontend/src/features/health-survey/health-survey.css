@@ -1,0 +1,208 @@
+/* 健康调查表：屏幕与打印共用一套样式，打印时页眉页脚每页重复 */
+
+.hs-doc {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 16mm 14mm 22mm;
+  background: #fff;
+  color: #111;
+  font-size: 10.5pt;
+  line-height: 1.5;
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* ── 页眉：两个 logo ── */
+.hs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8mm;
+  padding-bottom: 3mm;
+  border-bottom: 1px solid #333;
+}
+.hs-logo-shsmu {
+  height: 13mm;
+}
+.hs-logo-aaalac {
+  height: 11mm;
+}
+
+/* ── 标题块 ── */
+.hs-title {
+  text-align: center;
+  margin: 6mm 0 4mm;
+}
+.hs-title-org {
+  font-size: 13pt;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.hs-title-name {
+  font-size: 12pt;
+  font-weight: 700;
+  margin-top: 1mm;
+}
+
+/* ── 正文 ── */
+.hs-section {
+  margin-bottom: 5mm;
+}
+.hs-section-title {
+  font-size: 11pt;
+  font-weight: 700;
+  margin: 4mm 0 2mm;
+  padding-left: 2mm;
+  border-left: 3px solid #1e3a8a;
+}
+
+.hs-field {
+  margin-bottom: 3mm;
+  break-inside: avoid;
+}
+.hs-field-inline {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+}
+.hs-label {
+  font-weight: 600;
+  margin-bottom: 1mm;
+}
+.hs-field-inline .hs-label {
+  margin-bottom: 0;
+  min-width: 28mm;
+  font-weight: 500;
+}
+
+.hs-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2mm 6mm;
+  align-items: center;
+}
+.hs-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5mm;
+  cursor: pointer;
+}
+.hs-opt input {
+  width: 3.4mm;
+  height: 3.4mm;
+}
+
+.hs-input,
+.hs-inline-input,
+.hs-cell-input,
+.hs-textarea {
+  border: none;
+  border-bottom: 1px solid #666;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 0.5mm 1mm;
+  outline: none;
+}
+.hs-input {
+  flex: 1;
+  min-width: 40mm;
+}
+.hs-inline-input {
+  min-width: 60mm;
+}
+.hs-textarea {
+  width: 100%;
+  border: 1px solid #666;
+  resize: vertical;
+}
+.hs-cell-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ── 表格 ── */
+.hs-grid {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1mm;
+}
+.hs-grid th,
+.hs-grid td {
+  border: 1px solid #999;
+  padding: 1mm 2mm;
+  font-size: 10pt;
+}
+.hs-grid th {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+.hs-grid-cell {
+  text-align: center;
+  width: 14mm;
+}
+.hs-grid-cell input {
+  width: 3.4mm;
+  height: 3.4mm;
+}
+.hs-add-row {
+  margin-top: 1.5mm;
+  font-size: 10pt;
+  border: 1px solid #666;
+  background: #fff;
+  padding: 0.5mm 3mm;
+  cursor: pointer;
+}
+
+.hs-declaration {
+  margin-top: 6mm;
+  font-weight: 600;
+}
+
+/* ── 页脚 ── */
+.hs-footer {
+  margin-top: 6mm;
+  padding-top: 2mm;
+  border-top: 1px solid #333;
+  text-align: center;
+  font-size: 8.5pt;
+  color: #444;
+}
+
+/* ── 打印 ── */
+@page {
+  size: A4;
+  margin: 20mm 14mm 22mm;
+}
+
+@media print {
+  /* 固定定位在 Chromium 打印时每页重复 */
+  .hs-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+  }
+  .hs-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-top: none;
+    margin: 0;
+    background: #fff;
+  }
+  .hs-add-row,
+  .hs-grid-cell button {
+    display: none;
+  }
+  .hs-section-title {
+    break-after: avoid;
+  }
+  .hs-field,
+  .hs-grid tr {
+    break-inside: avoid;
+  }
+}

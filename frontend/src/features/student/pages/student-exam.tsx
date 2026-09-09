@@ -72,7 +72,6 @@ export default function StudentExamPage() {
   );
   const [view, setView] = useState<"card" | "list">("card");
   const [filter, setFilter] = useState<"all" | "unpassed" | "passed">("all");
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [previewMaterialId, setPreviewMaterialId] = useState<number | null>(null);
   const { data: quals = [] } = useStudentQuery(["my-qualifications"], fetchMyQualifications);
@@ -105,9 +104,8 @@ export default function StudentExamPage() {
             type="button"
             className="btn ghost small"
             style={{ marginLeft: "auto" }}
-            disabled={!healthFile}
-            title={healthFile ? "查看健康报告" : "健康报告填写入口即将开放"}
-            onClick={() => setPreviewOpen(true)}
+            title="在线填写 / 查看健康调查表"
+            onClick={() => navigate("/student/health-survey")}
           >
             {healthFile ? "查看健康报告" : "上传健康报告"}
           </button>
@@ -171,14 +169,6 @@ export default function StudentExamPage() {
           )}
         </div>
       </div>
-
-      {previewOpen && (
-        <PdfPreviewDialog
-          title="健康报告"
-          fetchPdf={() => fetchMyQualificationReport("health_report")}
-          onClose={() => setPreviewOpen(false)}
-        />
-      )}
 
       {materialsOpen && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setMaterialsOpen(false)}>

@@ -144,6 +144,11 @@ import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
 import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
 import StudentMaterialPage from "@/features/student/pages/student-material";
+import StudentExamPage from "@/features/student/pages/student-exam";
+import StudentExamAnswerPage from "@/features/student/pages/student-exam-answer";
+import StudentTrainingPage from "@/features/student/pages/student-training";
+import StudentTrainingMyPage from "@/features/student/pages/student-training-my";
+import StudentHealthSurveyPage from "@/features/student/pages/student-health-survey";
 import ReportFormListPage from "@/features/report-form/pages/ReportFormListPage";
 import ReportFormDesignPage from "@/features/report-form/pages/ReportFormDesignPage";
 import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
@@ -279,6 +284,11 @@ export const router = createHashRouter([
       { path: "animal-order", element: <ReferenceDataPage /> },
       { path: "aup", element: <StudentAupPage /> },
       { path: "aup/review/:id", element: <AupReviewPage /> },
+      { path: "exam", element: <StudentExamPage /> },
+      { path: "exam/:paperId", element: <StudentExamAnswerPage /> },
+      { path: "training", element: <StudentTrainingPage /> },
+      { path: "training/my", element: <StudentTrainingMyPage /> },
+      { path: "health-survey", element: <StudentHealthSurveyPage /> },
     ],
   },
 

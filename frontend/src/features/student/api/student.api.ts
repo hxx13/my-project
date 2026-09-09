@@ -895,3 +895,19 @@ export async function fetchLearningMaterialFile(id: number): Promise<Blob> {
   });
   return res.data as Blob;
 }
+
+export interface MyHealthSurvey {
+  data: Record<string, unknown>;
+  submittedAt?: string | null;
+}
+
+export async function fetchMyHealthSurvey(): Promise<MyHealthSurvey | null> {
+  const res = await authHttp.get<Result<MyHealthSurvey | null>>("/student/training/health-survey");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取健康调查表失败");
+  return res.data.data ?? null;
+}
+
+export async function submitHealthSurvey(data: Record<string, unknown>): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/student/training/health-survey", { data });
+  if (!res.data?.success) throw new Error(res.data?.message || "提交失败");
+}

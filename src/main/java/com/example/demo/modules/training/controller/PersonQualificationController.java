@@ -2,9 +2,12 @@ package com.example.demo.modules.training.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.training.entity.HealthSurveyResponse;
 import com.example.demo.modules.training.entity.QualificationItemConfig;
+import com.example.demo.modules.training.mapper.HealthSurveyResponseMapper;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
 import com.example.demo.modules.training.mapper.QualificationItemConfigMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,15 +26,21 @@ public class PersonQualificationController {
     private final AuthContextService authContextService;
     private final HttpServletRequest request;
     private final QualificationItemConfigMapper configMapper;
+    private final HealthSurveyResponseMapper healthSurveyMapper;
+    private final ObjectMapper objectMapper;
 
     public PersonQualificationController(PersonQualificationMapper mapper,
                                          AuthContextService authContextService,
                                          HttpServletRequest request,
-                                         QualificationItemConfigMapper configMapper) {
+                                         QualificationItemConfigMapper configMapper,
+                                         HealthSurveyResponseMapper healthSurveyMapper,
+                                         ObjectMapper objectMapper) {
         this.mapper = mapper;
         this.authContextService = authContextService;
         this.request = request;
         this.configMapper = configMapper;
+        this.healthSurveyMapper = healthSurveyMapper;
+        this.objectMapper = objectMapper;
     }
 
     /** 批量查健康报告资格（按人）。personIds 逗号分隔。 */
@@ -74,6 +83,21 @@ public class PersonQualificationController {
         cfg.setWordTemplateId(str(body.get("wordTemplateId")));
         configMapper.upsert(cfg);
         return Result.success(configMapper.findByItemKey(HEALTH_REPORT));
+    }
+
+    /** 查看某人的健康调查表答卷（未提交返回 null）。 */
+    @GetMapping("/health-survey/{personId}")
+    public Result<?> healthSurvey(@PathVariable String personId) {
+        if (resolveUser() == null) return Result.fail(401, "未登录");
+        HealthSurveyResponse row = healthSurveyMapper.findByPersonId(personId);
+        if (row == null) return Result.success(null);
+        try {
+            return Result.success(Map.of(
+                    "data", objectMapper.readValue(row.getDataJson(), Map.class),
+                    "submittedAt", String.valueOf(row.getSubmittedAt())));
+        } catch (Exception e) {
+            return Result.error("答卷解析失败");
+        }
     }
 
     private Object resolveUser() {
