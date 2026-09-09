@@ -16,6 +16,8 @@ public class RefOrderView {
     private Long projectGroupId;
     private Long aupRecordId;
     private String registerNo;
+    /** 下单校区：浦东 | 浦西 */
+    private String campus;
     private String status;
     private String submitRemark;
     private LocalDateTime submittedAt;

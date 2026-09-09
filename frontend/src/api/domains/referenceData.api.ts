@@ -69,6 +69,8 @@ export interface RefOrder {
   projectGroupId?: number | null;
   aupRecordId?: number | null;
   registerNo?: string;
+  /** 下单校区：浦东 | 浦西 */
+  campus?: string;
   status: string;
   submitRemark?: string;
   submittedAt?: string;
@@ -231,6 +233,8 @@ export async function submitOrder(body: {
     packageRemark?: string;
   }[];
   submitRemark?: string;
+  /** 下单校区：浦东 | 浦西 */
+  campus?: string;
 }) {
   const res = await authHttp.post<Result<RefOrder>>("/reference-data/orders", body);
   return res.data.data;
@@ -281,9 +285,23 @@ export async function fetchOrderLogs(id: number) {
   return res.data.data;
 }
 
-export async function fetchAllOrders(page = 1, pageSize = 50) {
-  const res = await authHttp.get<Result<{ list: RefOrder[]; total: number }>>("/reference-data/orders/all", { params: { page, pageSize } });
+export async function fetchAllOrders(
+  page = 1,
+  pageSize = 50,
+  campus?: string,
+  from?: string,
+  to?: string,
+) {
+  const res = await authHttp.get<Result<{ list: RefOrder[]; total: number }>>("/reference-data/orders/all", {
+    params: { page, pageSize, campus, from, to },
+  });
   return res.data.data;
+}
+
+/** 导出订购审核 Excel（后端按 课题组→申领人→物品 逐层小计）。 */
+export async function exportOrderReviewExcel(params: { campus?: string; from?: string; to?: string }) {
+  const res = await authHttp.get("/reference-data/orders/export", { params, responseType: "blob" });
+  return res.data as Blob;
 }
 
 export async function updateOrderStatus(id: number, status: string) {

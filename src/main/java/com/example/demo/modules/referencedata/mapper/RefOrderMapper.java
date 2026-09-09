@@ -25,8 +25,13 @@ public interface RefOrderMapper {
 
     int countByStatus(@Param("status") String status);
 
-    List<RefOrder> listAll(@Param("limit") int limit,
+    List<RefOrder> listAll(@Param("campus") String campus,
+                           @Param("from") String from,
+                           @Param("to") String to,
+                           @Param("limit") int limit,
                            @Param("offset") int offset);
 
-    int countAll();
+    int countAll(@Param("campus") String campus,
+                 @Param("from") String from,
+                 @Param("to") String to);
 }
