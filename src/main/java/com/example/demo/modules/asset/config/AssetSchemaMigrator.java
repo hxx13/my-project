@@ -174,6 +174,47 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         // 以下操作独立容错，顺序：先修错误标签，再合并重复
         safeRun("fix-bad-label", () -> ensureColumnDefFixBadLabel("存放地点2411033", "存放地点"));
         safeRun("cleanup-dup-col", this::ensureColumnDefCleanup);
+        // 地点树播种：表为空时用现有 EAV 地点文本建顶层节点并回填外键
+        safeRun("seed-asset-locations", this::seedAssetLocations);
+    }
+
+    /**
+     * 用现有「存放地点」文本播种地点树顶层节点，并回填 asset_record.location_node_id。
+     * 幂等：asset_location 非空即跳过；只在首启执行一次，不做全表重写。
+     */
+    private void seedAssetLocations() {
+        Integer existing = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM asset_location", Integer.class);
+        if (existing != null && existing > 0) {
+            return;
+        }
+        String columnKey = "col_存放地点";
+        List<String> keys = jdbcTemplate.queryForList(
+                "SELECT column_key FROM asset_column_def WHERE column_label LIKE '存放地点%' ORDER BY sort_order LIMIT 1",
+                String.class);
+        if (!keys.isEmpty() && keys.get(0) != null && !keys.get(0).isBlank()) {
+            columnKey = keys.get(0);
+        }
+        int inserted = jdbcTemplate.update(
+                """
+                INSERT INTO asset_location(parent_id, name, sort_order)
+                SELECT NULL, t.v, 0 FROM (
+                    SELECT DISTINCT TRIM(v.column_value) AS v
+                    FROM asset_record_value v
+                    JOIN asset_record a ON a.id = v.asset_id AND a.deleted = 0
+                    WHERE v.column_key = ? AND TRIM(v.column_value) <> ''
+                ) t
+                """,
+                columnKey);
+        int backfilled = jdbcTemplate.update(
+                """
+                UPDATE asset_record a
+                JOIN asset_record_value v ON v.asset_id = a.id AND v.column_key = ?
+                JOIN asset_location l ON l.parent_id IS NULL AND l.deleted = 0 AND l.name = TRIM(v.column_value)
+                SET a.location_node_id = l.id
+                WHERE a.deleted = 0 AND a.location_node_id IS NULL
+                """,
+                columnKey);
+        log.info("[asset-schema] 播种地点节点 {} 个，回填资产 {} 条", inserted, backfilled);
     }
 
     private void safeRun(String name, Runnable task) {

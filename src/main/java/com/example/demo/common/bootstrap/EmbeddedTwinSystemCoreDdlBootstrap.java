@@ -230,6 +230,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-stats-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory-item-images.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-asset-location.sql", ctx)) success++;
 
         // --- NHP 异种移植 CRF/EDC ---
         total++; if (runScript("db/bootstrap-nhp-meta.sql", ctx)) success++;
