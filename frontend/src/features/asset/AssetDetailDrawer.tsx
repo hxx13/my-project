@@ -600,7 +600,7 @@ export default function AssetDetailDrawer(props: {
                           key={u}
                           className="group relative h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
                         >
-                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
+                          <AutoImage src={u} alt="" className="h-full w-full object-contain p-0.5" />
                           <button
                             type="button"
                             onClick={() => setEditPhotos((prev) => prev.filter((x) => x !== u))}

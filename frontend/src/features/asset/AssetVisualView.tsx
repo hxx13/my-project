@@ -86,7 +86,7 @@ function AssetCard({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: Asse
     >
       <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
-          <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
+          <AutoImage src={photo} alt="" className="h-full w-full object-contain p-1" />
         ) : (
           <span className="text-[40px] leading-none">{iconOf(row)}</span>
         )}
