@@ -23,6 +23,7 @@
         <result property="purgeAfterTime" column="purge_after_time"/>
         <result property="photoUrls" column="photo_urls"/>
         <result property="createdByBatchId" column="created_by_batch_id"/>
+        <result property="locationNodeId" column="location_node_id"/>
     </resultMap>
 
     <resultMap id="AssetColumnDefResultMap" type="com.example.demo.modules.asset.entity.AssetColumnDef">

@@ -338,6 +338,7 @@ public class AssetService {
         row.put("assetName", r.getAssetName());
         row.put("status", r.getStatus());
         row.put("location", r.getLocation());
+        row.put("locationNodeId", r.getLocationNodeId());
         row.put("locked", r.getLocked());
         row.put("note", r.getNote());
         row.put("latestTransferRequestId", r.getLatestTransferRequestId());
