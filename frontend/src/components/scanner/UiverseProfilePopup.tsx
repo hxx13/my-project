@@ -36,7 +36,6 @@ import { commitStudentCenterEntryFromScan } from "./studentCenterEntry";
 import {
   resolveScanAccentVariant,
   SCAN_MODAL_LAYER_PROPS,
-  CHART_CARD,
   SCAN_POPUP_BACKDROP,
   scanPaletteCssVars,
 } from "./scanPopupTheme";
@@ -44,74 +43,11 @@ import { ScanLevelBadge } from "./ScanLevelBadge";
 import { ScanPopupBackdropDecor } from "./ScanPopupBackdropDecor";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
-
-/** 预期核心在馆时间带 — 颜色由父级 schemeCssVars 注入的 --scan-chart-* / --scan-card-tint */
-const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
-    const days = 7;
-    const width = 300;
-    const height = 60;
-    const entryCurve = new Array(days).fill(0);
-    const exitCurve = new Array(days).fill(0);
-    if (predictions?.length) {
-        const toArray = (raw: unknown, expected: number): number[] => {
-            if (Array.isArray(raw)) return raw.map((v) => Number(v) || 0);
-            return new Array(expected).fill(0);
-        };
-        let valid = 0;
-        predictions.forEach((p) => {
-            const wec = toArray(p?.weeklyEntryCurve, 7);
-            const wxc = toArray(p?.weeklyExitCurve, 7);
-            if (wec.length === 7 && wxc.length === 7 && (wec.some((v) => v > 0) || wxc.some((v) => v > 0))) {
-                valid += 1;
-                for (let i = 0; i < days; i += 1) {
-                    entryCurve[i] += wec[i] || 0;
-                    exitCurve[i] += wxc[i] || 0;
-                }
-            }
-        });
-        if (valid > 0) {
-            for (let i = 0; i < days; i += 1) {
-                entryCurve[i] /= valid;
-                exitCurve[i] /= valid;
-            }
-        } else {
-            entryCurve.fill(0.45);
-            exitCurve.fill(0.55);
-        }
-    }
-    const maxVal = Math.max(...entryCurve, ...exitCurve, 0.01);
-    const mapY = (val: number) => height - (Math.max(0, val) / maxVal) * height;
-    const getX = (idx: number) => (idx / (days - 1)) * width;
-    const entryPath = entryCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
-    const exitPath = exitCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
-    return (
-        <div className={`w-full ${CHART_CARD} p-4`}>
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold tracking-wider text-[var(--app-color-text-primary)]">预期核心在馆时间带</span>
-                <span className="scan-weekly-chart-badge rounded-full px-2 py-0.5 text-[9px] font-bold">
-                    Time Band
-                </span>
-            </div>
-            <div className="scan-weekly-chart-plot relative w-full pb-1 pl-8 pr-1">
-                <div className="absolute left-1 top-0 text-[8px] text-[var(--app-color-text-tertiary)]">{maxVal.toFixed(2)}</div>
-                <div className="absolute left-1 bottom-1 text-[8px] text-[var(--app-color-text-tertiary)]">0</div>
-                <svg className="w-full h-[60px]" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-                    {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke="var(--scan-chart-grid)" strokeDasharray="2" />
-                    ))}
-                    <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill="var(--scan-chart-fill)" stroke="none" />
-                    <path d={`M ${exitPath}`} fill="none" stroke="var(--scan-chart-exit)" strokeWidth="1.5" strokeDasharray="3 3" />
-                    <path d={`M ${entryPath}`} fill="none" stroke="var(--scan-chart-entry)" strokeWidth="1.5" />
-                </svg>
-                <div className="flex justify-between w-full mt-1.5">
-                    {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
-                        <span key={day} className="text-[9px] font-bold text-[var(--app-color-text-secondary)]">{day}</span>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
+import { RoomFloorPlan } from "./room-floor-plan/RoomFloorPlan";
+import { CellDetailPanel } from "./room-floor-plan/CellDetailPanel";
+import { useRoomFloorPlan } from "./room-floor-plan/useRoomFloorPlan";
+import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
+import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 
 export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified, pinAlternativeEnabled, onFaceVerifyRequest, onFaceVerifyCancel, personalCenterFace, onBindStudentCenterSuccess } = props;
@@ -160,6 +96,15 @@ export function UiverseProfilePopup(props: PopupProps) {
     const navigate = useNavigate();
     const [showKeypad, setShowKeypad] = useState<"set" | "verify" | null>(null);
     const [showQuickActions, setShowQuickActions] = useState(false);
+    const [planRoomIdx, setPlanRoomIdx] = useState(0);
+    const [detailCell, setDetailCell] = useState<CageShelfCell | null>(null);
+    const planRoom = state.targetRooms[planRoomIdx];
+    const floorPlan = useRoomFloorPlan(
+      planRoom?.officialRoomId || planRoom?.id,
+      planRoom?.displayName || planRoom?.name,
+      state.user?.project_group_name,
+    );
+    const { colors: cageColors } = useCageColors();
     const [keypadUserId, setKeypadUserId] = useState("");
     const pendingPersonalFaceVerifyRef = useRef(false);
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
@@ -369,22 +314,49 @@ export function UiverseProfilePopup(props: PopupProps) {
                             />
                         </div>
                     </div>
-                    <div className="flex flex-col items-center justify-center gap-14">
-                        <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px] mb-6">
-                            <WeeklyRoutineMatrixChart predictions={state.predictionList} />
-                        </div>
-                        <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px]">
-                            <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} accentVariant={accentVariant} onQuickActions={() => setShowQuickActions(true)} onEnterStudentCenter={handleEnterStudentCenter} />
+                    <div className="flex min-h-0 flex-col gap-2">
+                        {state.targetRooms.length > 1 && (
+                            <div className="flex shrink-0 flex-wrap gap-1.5">
+                                {state.targetRooms.map((r, i) => (
+                                    <button
+                                        key={r.officialRoomId || r.id || i}
+                                        type="button"
+                                        onClick={() => { setPlanRoomIdx(i); setDetailCell(null); }}
+                                        className={
+                                            i === planRoomIdx
+                                                ? "rounded-md bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-color-text-inverse)]"
+                                                : "rounded-md border border-[var(--app-color-border-default)] px-2.5 py-1 text-[11px] text-[var(--app-color-text-secondary)]"
+                                        }
+                                    >
+                                        {r.displayName || r.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        <div className="min-h-0 flex-1">
+                            {detailCell ? (
+                                <CellDetailPanel cell={detailCell} onClose={() => setDetailCell(null)} />
+                            ) : (
+                                <RoomFloorPlan
+                                    racks={floorPlan.data.racks}
+                                    mineCount={floorPlan.data.mineCount}
+                                    loading={floorPlan.isLoading}
+                                    error={floorPlan.isError}
+                                    empty={floorPlan.data.racks.length === 0}
+                                    onCellClick={(c) => setDetailCell(c)}
+                                    legendColors={cageColors}
+                                />
+                            )}
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
                         {/* 上 2/5：面包机区贴底，预留动画空间；下 3/5 给操作按钮 */}
-                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
+                        <div className="flex min-h-0 flex-[1] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
                             <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>
                         </div>
-                        <div className="flex min-h-0 flex-[3] flex-col overflow-visible">
+                        <div className="flex min-h-0 flex-[4] flex-col overflow-visible">
                             <div className="w-full max-w-[340px] mx-auto mb-2 space-y-1 shrink-0">
                                 <div className="flex gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5" title="由 twin_card_mapping 自动判定，打卡将写入流水">
                                     <div
