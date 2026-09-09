@@ -138,7 +138,12 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
     {/* 一级：笼位标识 */}
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
-        {typeInfo && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: typeInfo.bg, color: typeInfo.border, border: `1px solid ${typeInfo.border}` }}>{typeInfo.label}</span>}
+        {statusChips.length > 0
+          ? statusChips.map((a) => {
+              const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
+              return <span key={a.action} className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: c.bg, color: c.border, border: `1px solid ${c.border}` }}>{a.label}</span>;
+            })
+          : typeInfo && <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: typeInfo.bg, color: typeInfo.border, border: `1px solid ${typeInfo.border}` }}>{typeInfo.label}</span>}
         <span className="text-sm font-bold text-[var(--twin-ink)]">{cell.position}</span>
         {cageBoxCode && <span className="text-[10px] font-mono text-[var(--twin-mute)]">盒:{cageBoxCode}</span>}
         {cell.occupantName && <span className="text-[10px] text-[var(--twin-mute)]">所属:<span className="text-[var(--twin-ink)] font-semibold">{cell.occupantName}</span></span>}

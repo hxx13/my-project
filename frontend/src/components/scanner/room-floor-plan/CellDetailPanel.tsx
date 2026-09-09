@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { X } from "lucide-react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
+import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
 import { resolveCageType } from "./resolveCageType";
 
 /** cage_type_code 四值徽标色（架构文档 §4） */
@@ -101,6 +102,9 @@ export function CellDetailPanel({
   const cageBoxCode = firstText(detail?.cageBoxCode, cbi?.cageBoxCode, cbi?.CageBoxQrCode);
   const ct = resolveCageType(cell) ?? 0;
   const typeColor = CAGE_TYPE_COLOR[ct];
+  const { colors: cageColors } = useCageColors();
+  /** 表单里的状态标记（合笼/特殊饲养/需分笼/健康异常/动物转移…），比 cage_type_code 更能表达当前状态 */
+  const statusChips = (cell.specialStatuses ?? []).filter((s) => s.code !== "NORMAL");
 
   const experimentDesc = pick(cell, "experiment_desc");
   const photos: string[] = (() => {
@@ -119,7 +123,26 @@ export function CellDetailPanel({
       {/* 头部：状态徽标 + 位号 + 盒号 + 关闭 */}
       <div className="flex shrink-0 items-center justify-between gap-3 px-4 pb-2 pt-3">
         <div className="flex min-w-0 items-center gap-2">
-          {typeColor ? (
+          {statusChips.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1">
+              {statusChips.map((s) => {
+                const c = cageColors[s.code];
+                return (
+                  <span
+                    key={s.code}
+                    className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold"
+                    style={{
+                      background: c?.bg ?? "var(--app-color-surface-hover)",
+                      color: c?.border ?? "var(--app-color-text-secondary)",
+                      borderColor: c?.border ?? "var(--app-color-border-default)",
+                    }}
+                  >
+                    {s.label || s.code}
+                  </span>
+                );
+              })}
+            </div>
+          ) : typeColor ? (
             <span
               className="shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold"
               style={{ background: typeColor.bg, color: typeColor.fg, borderColor: typeColor.fg }}
