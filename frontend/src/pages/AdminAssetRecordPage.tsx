@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { ArrowDown, ArrowUp, Download, EyeOff, ImageIcon, Loader2, MoreHorizontal, Pencil, Plus, ScanLine, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowRightLeft, ArrowUp, Download, EyeOff, ImageIcon, Loader2, MoreHorizontal, Pencil, Plus, ScanLine, Search, Trash2, Upload, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearAssetTable,
@@ -13,6 +13,7 @@ import {
   confirmImportAssets,
   batchDeleteAssets,
   batchUpdateAssets,
+  batchMoveAssetLocation,
   searchReplaceAssets,
   deleteByBatchId,
   searchAssets,
@@ -162,6 +163,9 @@ export default function AdminAssetRecordPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchEditOpen, setBatchEditOpen] = useState(false);
+  /** 批量转移：勾选资产 → 选目标地点 → 批量移入 */
+  const [batchMoveOpen, setBatchMoveOpen] = useState(false);
+  const [batchMoveTarget, setBatchMoveTarget] = useState("");
   const [searchReplaceOpen, setSearchReplaceOpen] = useState(false);
   const [batchHistoryOpen, setBatchHistoryOpen] = useState(false);
   const [importPreviewOpen, setImportPreviewOpen] = useState(false);
@@ -765,8 +769,33 @@ export default function AdminAssetRecordPage() {
     }
   };
 
-  const doSearchReplace = async () => {
-    if (!searchReplaceColumnKey || !searchReplaceSearch) return;
+  /** 批量转移：把勾选的资产一次性移到所选地点（直接调接口，自行汇报失败明细） */
+  const doBatchMove = async () => {
+    const ids = Array.from(selectedIds);
+    const node = locationOptions.find((o) => o.label === batchMoveTarget);
+    if (!ids.length || !node) return;
+    try {
+      const res = await batchMoveAssetLocation({ ids, nodeId: node.id });
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      const failed = res.failed ?? [];
+      if (failed.length === 0) {
+        toast.success(`已转移 ${res.moved} 台到「${node.label}」`);
+      } else {
+        const codeOf = (id: string) => rows.find((r) => r.id === id)?.assetCode ?? id;
+        toast.error(
+          `成功 ${res.moved} 台，失败 ${failed.length} 台（${failed.map((f) => `${codeOf(f.id)}：${f.reason}`).join("；")}）`,
+          { duration: 6000 }
+        );
+      }
+      setSelectedIds(new Set());
+      setBatchMoveOpen(false);
+      setBatchMoveTarget("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "批量转移失败");
+    }
+  };
+
+  const doSearchReplace = async () => {    if (!searchReplaceColumnKey || !searchReplaceSearch) return;
     try {
       await searchReplaceMut.mutateAsync({
         columnKey: searchReplaceColumnKey,
@@ -1061,6 +1090,10 @@ export default function AdminAssetRecordPage() {
             <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setBatchEditOpen(true); setBatchEditColumnKey(""); setBatchEditValue(""); }}>
               <Pencil className="mr-1 inline h-3.5 w-3.5" />
               批量填入
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setBatchMoveTarget(""); setBatchMoveOpen(true); }}>
+              <ArrowRightLeft className="mr-1 inline h-3.5 w-3.5" />
+              批量转移
             </AdminButton>
             <AdminButton type="button" tone="secondary" size="sm" onClick={clearSelection}>
               取消选择
@@ -1733,6 +1766,47 @@ export default function AdminAssetRecordPage() {
                 </button>
               </div>
             </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* ── 批量转移对话框：勾选资产 → 选目标地点 ── */}
+        {batchMoveOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
+              <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量转移 ({selectedIds.size} 条)</h3>
+                  <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchMoveOpen(false)}>
+                    关闭
+                  </button>
+                </div>
+                <p className="mb-3 text-xs text-[var(--twin-mute)]">
+                  选中的资产将一次性转移到目标地点，并各留一条「地点移动」记录。
+                </p>
+                <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                  目标地点
+                  <AdminSearchSelect
+                    value={batchMoveTarget}
+                    onChange={setBatchMoveTarget}
+                    options={locationOptions.map((o) => o.label)}
+                    placeholder="搜索并选择地点"
+                    className="w-full"
+                  />
+                </label>
+                <div className="flex justify-end gap-2">
+                  <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchMoveOpen(false)}>
+                    取消
+                  </button>
+                  <button
+                    className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
+                    disabled={!batchMoveTarget || !locationOptions.some((o) => o.label === batchMoveTarget)}
+                    onClick={() => void doBatchMove()}
+                  >
+                    确认转移
+                  </button>
+                </div>
+              </div>
             </div>
           </Portal>
         )}
