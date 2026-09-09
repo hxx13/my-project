@@ -1696,22 +1696,14 @@ Page({
       wx.showToast({ title: '请先勾选资产', icon: 'none' });
       return;
     }
-    // 构建 fixedFields 和 dynamicValues（_location 兜底 → 动态列，与显示一致）
-    const locCol = pickCurrentLocationColumn(this.data.columns);
-    const locKey = locCol ? locCol.columnKey : '';
+    // 存放地点走「按节点批量移动」（后端同步文本与节点指针），不再当普通字段做文本覆盖
+    const locField = selectedFields.find((f) => f.key === '_location');
     const fixedFields = {};
     const dynamicValues = {};
     for (let i = 0; i < selectedFields.length; i += 1) {
       const f = selectedFields[i];
-      if (f.key === '_location') {
-        if (locKey) {
-          dynamicValues[locKey] = f.sourceValue;
-        } else {
-          fixedFields.location = f.sourceValue;
-        }
-      } else {
-        dynamicValues[f.key] = f.sourceValue;
-      }
+      if (f.key === '_location') continue;
+      dynamicValues[f.key] = f.sourceValue;
     }
     wx.showModal({
       title: '确认批量填充',
@@ -1720,12 +1712,26 @@ Page({
         if (!modalRes.confirm) return;
         wx.showLoading({ title: '批量更新中…', mask: true });
         try {
-          await assetApi.batchUpdateAssets({
-            ids: checkedIds,
-            fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
-            dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
-          });
-          wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          let movedFail = 0;
+          if (locField) {
+            const nodeId = (this.data.fillSourceAsset || {}).locationNodeId;
+            if (nodeId) {
+              const r = await assetApi.batchMoveAssetLocation(checkedIds, nodeId);
+              movedFail = (r.failed || []).length;
+            }
+          }
+          if (Object.keys(fixedFields).length || Object.keys(dynamicValues).length) {
+            await assetApi.batchUpdateAssets({
+              ids: checkedIds,
+              fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
+              dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
+            });
+          }
+          if (movedFail > 0) {
+            wx.showToast({ title: `已更新${checkedIds.length}条，${movedFail}条地点未改`, icon: 'none' });
+          } else {
+            wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          }
           // 清除批量快照 + 关闭面板 + 回第一页刷新列表
           this.setData({
             batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0,
@@ -1848,12 +1854,26 @@ Page({
         if (!modalRes.confirm) return;
         wx.showLoading({ title: '批量更新中…', mask: true });
         try {
-          await assetApi.batchUpdateAssets({
-            ids: checkedIds,
-            fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
-            dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
-          });
-          wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          let movedFail = 0;
+          if (locField) {
+            const nodeId = (this.data.fillSourceAsset || {}).locationNodeId;
+            if (nodeId) {
+              const r = await assetApi.batchMoveAssetLocation(checkedIds, nodeId);
+              movedFail = (r.failed || []).length;
+            }
+          }
+          if (Object.keys(fixedFields).length || Object.keys(dynamicValues).length) {
+            await assetApi.batchUpdateAssets({
+              ids: checkedIds,
+              fixedFields: Object.keys(fixedFields).length ? fixedFields : undefined,
+              dynamicValues: Object.keys(dynamicValues).length ? dynamicValues : undefined,
+            });
+          }
+          if (movedFail > 0) {
+            wx.showToast({ title: `已更新${checkedIds.length}条，${movedFail}条地点未改`, icon: 'none' });
+          } else {
+            wx.showToast({ title: `已更新${checkedIds.length}条`, icon: 'success' });
+          }
           this.setData({
             batchAssets: [], batchAssetIdMap: {}, batchChecked: {}, batchCheckedCount: 0,
             showBatchPanel: false, showBatchFillPanel: false, showBatchEditPanel: false,
