@@ -105,8 +105,10 @@ export default function AssetDetailDrawer(props: {
   // 详细字段：dynamicValues 的全部非空项，label 取 columns.columnLabel（取不到退回 columnKey）
   const detailEntries = useMemo(() => {
     const labelOf = new Map(columns.map((c) => [c.columnKey, c.columnLabel || c.columnKey]));
+    // 存放地点 / 使用人 已在「基本信息」里展示，这里不再重复
+    const shown = new Set([LOCATION_KEY, USER_KEY]);
     return Object.entries(asset?.dynamicValues ?? {})
-      .filter(([, v]) => String(v ?? "").trim())
+      .filter(([k, v]) => !shown.has(k) && String(v ?? "").trim())
       .map(([k, v]) => [labelOf.get(k) ?? k, String(v)] as const);
   }, [asset?.dynamicValues, columns]);
 
