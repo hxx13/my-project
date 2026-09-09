@@ -51,6 +51,7 @@ public class AssetController {
                                 @RequestParam(required = false) String model,
                                 @RequestParam(required = false) String location,
                                 @RequestParam(required = false) Long locationNodeId,
+                                @RequestParam(required = false) List<Long> locationNodeIds,
                                 @RequestParam(required = false) Integer lockStatus,
                                 @RequestParam(required = false) String status,
                                 @RequestParam(defaultValue = "1") int page,
@@ -61,7 +62,7 @@ public class AssetController {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, location, locationNodeId, lockStatus, status, page, size, sortBy, sortDirection, assetId));
+        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, location, locationNodeId, locationNodeIds, lockStatus, status, page, size, sortBy, sortDirection, assetId));
     }
 
     @PostMapping("/assets/import")

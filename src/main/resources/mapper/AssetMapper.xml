@@ -274,6 +274,12 @@
         <if test="locationNodeId != null">
             AND a.location_node_id = #{locationNodeId}
         </if>
+        <if test="locationNodeIds != null and locationNodeIds.size() > 0">
+            AND a.location_node_id IN
+            <foreach collection="locationNodeIds" item="nodeId" open="(" close=")" separator=",">
+                #{nodeId}
+            </foreach>
+        </if>
     </sql>
 
     <select id="listAssets" resultMap="AssetRecordResultMap">

@@ -211,6 +211,7 @@ public class AssetService {
                                           String model,
                                           String location,
                                           Long locationNodeId,
+                                          List<Long> locationNodeIds,
                                           Integer lockStatus,
                                           String status,
                                           int page,
@@ -285,7 +286,7 @@ public class AssetService {
         List<AssetRecord> records;
         int total;
         if (sortByDynamic) {
-            List<AssetRecord> all = assetMapper.listAssetsAll(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
+            List<AssetRecord> all = assetMapper.listAssetsAll(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, locationNodeIds, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
             Map<String, Map<String, String>> allValues = buildValueMap(extractIds(all));
             all.sort((a, b) -> {
                 String av = allValues.getOrDefault(a.getId(), Map.of()).getOrDefault(orderBy, "");
@@ -299,8 +300,8 @@ public class AssetService {
             records = all.subList(from, to);
         } else {
             int offset = (safePage - 1) * safeSize;
-            records = assetMapper.listAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal, safeSize, offset, orderBy, orderDir);
-            total = assetMapper.countAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
+            records = assetMapper.listAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, locationNodeIds, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal, safeSize, offset, orderBy, orderDir);
+            total = assetMapper.countAssets(keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, locationNodeId, locationNodeIds, campusKeys, userKeys, modelKeys, locationColKey, lockStatus, statusVal);
         }
 
         Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(records));
@@ -694,7 +695,7 @@ public class AssetService {
 
         // 使用 listAssetsAll 不截断，导出全部数据
         List<AssetRecord> allRecords = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, null,
+                keywordVal, assetNameVal, campusVal, userVal, modelVal, locationVal, null, null,
                 campusKeys, userKeys, modelKeys, locationKey, lockStatus, statusVal);
 
         Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(allRecords));
@@ -1780,22 +1781,22 @@ public class AssetService {
 
         // 维度联动：每个维度的可选项都由"其他维度 + 关键词"共同约束，不包含本维度自身过滤。
         List<AssetRecord> forAssetNames = assetMapper.listAssetsAll(
-                keywordVal, null, campusVal, userVal, modelVal, locationVal, null,
+                keywordVal, null, campusVal, userVal, modelVal, locationVal, null, null,
                 campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forCampuses = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, null, userVal, modelVal, locationVal, null,
+                keywordVal, assetNameVal, null, userVal, modelVal, locationVal, null, null,
                 campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forUsers = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, null, modelVal, locationVal, null,
+                keywordVal, assetNameVal, campusVal, null, modelVal, locationVal, null, null,
                 campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
         List<AssetRecord> forModels = assetMapper.listAssetsAll(
-                keywordVal, assetNameVal, campusVal, userVal, null, locationVal, null,
+                keywordVal, assetNameVal, campusVal, userVal, null, locationVal, null, null,
                 campusKeys, userKeys, modelKeys, locKey2,
                 null, null
         );
