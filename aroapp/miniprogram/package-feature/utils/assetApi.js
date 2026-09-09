@@ -190,6 +190,45 @@ async function fetchDistinctLocations() {
   return parsed.body.data || [];
 }
 
+/** 存放地点树（分级，节点含 id/name/icon/children） */
+async function fetchAssetLocationTree() {
+  const res = await springAuth.springRequest({
+    url: '/api/v1/asset-locations/tree',
+    method: 'GET',
+    data: {},
+  });
+  const parsed = parseResponse(res);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.body.data || [];
+}
+
+/**
+ * 改单个资产的存放地点（按节点 id）。
+ * 后端会把节点全路径文本同步到固定列与 EAV「存放地点」列。
+ */
+async function moveAssetLocation(assetId, nodeId) {
+  const res = await springAuth.springRequest({
+    url: `/api/v1/assets/${encodeURIComponent(assetId)}/location`,
+    method: 'POST',
+    data: { nodeId },
+  });
+  const parsed = parseResponse(res);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.body.data || {};
+}
+
+/** 批量改存放地点，返回 { moved, failed: [{ id, reason }] } */
+async function batchMoveAssetLocation(ids, nodeId) {
+  const res = await springAuth.springRequest({
+    url: '/api/v1/assets/batch-location',
+    method: 'POST',
+    data: { ids: ids || [], nodeId },
+  });
+  const parsed = parseResponse(res);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.body.data || {};
+}
+
 async function createAsset(payload) {
   const res = await springAuth.springRequest({
     url: '/api/v1/assets',
@@ -264,6 +303,9 @@ module.exports = {
   searchAssets,
   fetchAssetByCode,
   fetchDistinctLocations,
+  fetchAssetLocationTree,
+  moveAssetLocation,
+  batchMoveAssetLocation,
   createAsset,
   lockAsset,
   submitTransferRequest,
