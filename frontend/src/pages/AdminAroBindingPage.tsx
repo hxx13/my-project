@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, Star, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, Star, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { Portal } from "@/components/Portal";
 import { appConfirm } from "@/lib/appDialog";
+import Papa from "papaparse";
 import { authStorage } from "@/features/auth/authStorage";
 import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import {
@@ -24,6 +25,7 @@ import {
   scoreEnrollment,
   setEnrollmentRooms,
   syncTrainings,
+  fetchQualifications,
   type TrainingSeries,
   type TrainingOccurrence,
   type TrainingEnrollment,
@@ -39,21 +41,62 @@ function typeLabel(typeName?: string | null, type?: number | null): string {
 
 function seriesStatusBadge(s?: string | null) {
   const m: Record<string, [string, string]> = {
-    DRAFT: ["草稿", "bg-neutral-100 text-neutral-600"],
-    PUBLISHED: ["已发布", "bg-emerald-50 text-emerald-700"],
+    DRAFT: ["草稿", "bg-[var(--app-color-text-tertiary)]"],
+    PUBLISHED: ["已发布", "bg-[var(--app-color-feedback-success)]"],
   };
-  const [l, c] = m[s ?? ""] ?? [s || "—", "bg-neutral-100 text-neutral-500"];
-  return <span className={cn("text-[11px] px-2 py-0.5 rounded font-medium", c)}>{l}</span>;
+  const [l, dot] = m[s ?? ""] ?? [s || "—", "bg-[var(--app-color-text-tertiary)]"];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--app-color-text-secondary)]">
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
+      {l}
+    </span>
+  );
 }
 
-/** 场次数：懒取详情（与详情视图共享同一 queryKey，进入详情时命中缓存）。 */
-function OccurrenceCount({ id }: { id: number }) {
+/** 名单比对：按任意分隔符切分姓名，去空去重。 */
+function parseNames(text: string): Set<string> {
+  const out = new Set<string>();
+  text.split(/[\n,，、;；\s\t]+/).map((s) => s.trim()).filter(Boolean).forEach((s) => out.add(s));
+  return out;
+}
+
+/** 报名人数：按人去重（traineeId 缺失时退化为 姓名+编号）。 */
+function personKey(e: TrainingEnrollment): string {
+  return e.traineeId || `${e.name ?? ""}|${e.jobNumber ?? ""}`;
+}
+
+/** 待审批：testYn 既非通过(1)也非拒绝(2)。 */
+function isPending(e: TrainingEnrollment): boolean {
+  return e.testYn !== 1 && e.testYn !== 2;
+}
+
+/** 场次/报名统计：懒取详情（与详情视图共享同一 queryKey，进入详情时命中缓存）。 */
+function SeriesStats({ id }: { id: number }) {
   const { data } = useQuery({
     queryKey: ["training", id],
     queryFn: () => fetchTraining(id),
     staleTime: 60_000,
   });
-  return <span className="text-[var(--twin-mute)]">{data?.occurrences?.length ?? 0} 场</span>;
+  const occs = data?.occurrences ?? [];
+  const total = new Set<string>();
+  const passed = new Set<string>();
+  occs.forEach((o) => (o.enrollments ?? []).forEach((e) => {
+    const k = personKey(e);
+    total.add(k);
+    if (e.testYn === 1) passed.add(k);
+  }));
+  const pct = total.size > 0 ? Math.round((passed.size / total.size) * 100) : 0;
+  return (
+    <>
+      <div className="text-[var(--twin-mute)]">{occs.length} 场</div>
+      <div className="mt-1 flex items-center gap-2">
+        <span className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)]">
+          <span className="block h-full rounded-full bg-[var(--app-color-feedback-success)]" style={{ width: `${pct}%` }} />
+        </span>
+        <span className="text-[11px] tabular-nums text-[var(--app-color-text-secondary)]">通过 {passed.size}/{total.size}</span>
+      </div>
+    </>
+  );
 }
 
 export default function AdminAroBindingPage() {
@@ -81,6 +124,9 @@ export default function AdminAroBindingPage() {
   const [roomNav, setRoomNav] = useState<{ area: string; floor: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [matchOpen, setMatchOpen] = useState(false);
+  const [matchText, setMatchText] = useState("");
+  const [matchNames, setMatchNames] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
 
   const handleSync = async () => {
@@ -122,6 +168,7 @@ export default function AdminAroBindingPage() {
     queryKey: ["training", selected?.id],
     queryFn: () => fetchTraining(selected!.id),
     enabled: !!selected,
+    refetchOnMount: "always",
   });
   const { data: allRooms } = useQuery({
     queryKey: ["training-rooms"],
@@ -145,6 +192,25 @@ export default function AdminAroBindingPage() {
 
   const canWriteSeries = (s: TrainingSeries) => isPlatformOwner || (s.ownerIds ?? []).includes(currentUserId);
 
+  const traineeIds = useMemo(() => {
+    const ids = new Set<string>();
+    (detail?.occurrences ?? []).forEach((o) => (o.enrollments ?? []).forEach((e) => {
+      if (e.traineeId) ids.add(e.traineeId);
+    }));
+    return [...ids];
+  }, [detail]);
+
+  const { data: quals = [] } = useQuery({
+    queryKey: ["training-quals", traineeIds.join(",")],
+    queryFn: () => fetchQualifications(traineeIds),
+    enabled: traineeIds.length > 0,
+  });
+  const qualByPerson = useMemo(() => {
+    const m = new Map<string, string>();
+    quals.forEach((q) => { if (q.fileRef) m.set(q.personId, q.fileRef); });
+    return m;
+  }, [quals]);
+
   const seriesAction = async (fn: () => Promise<unknown>, ok: string) => {
     try {
       await fn();
@@ -162,6 +228,7 @@ export default function AdminAroBindingPage() {
   const sTotal = sd?.total ?? 0;
   const sPages = Math.max(1, Math.ceil(sTotal / PAGE_SIZE));
   const canWrite = !!selected && (isPlatformOwner || (selected.ownerIds ?? []).includes(currentUserId));
+  const showExam = (detail?.paperIds ?? []).length > 0;
 
   const roomById = useMemo(() => {
     const m = new Map<string, RoomMappingRoomRow>();
@@ -333,38 +400,50 @@ export default function AdminAroBindingPage() {
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
           {sl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>
-            : <table className="w-full min-w-max text-left text-sm border-collapse">
+            : <table className="w-full min-w-max text-left text-sm border-collapse twin-table">
               <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
-                <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次</th><th className="px-3 py-2">状态</th><th className="px-3 py-2 text-right">操作</th>
+                <th className="px-2 py-2 w-8"></th><th className="px-3 py-2">培训名称</th><th className="px-3 py-2">类型</th><th className="px-3 py-2">所属人</th><th className="px-3 py-2">场次 / 报名</th><th className="px-3 py-2">状态</th><th className="px-3 py-2 text-right">操作</th>
               </tr></thead>
               <tbody>
-                {series.length === 0 && !sl ? <tr><td colSpan={7} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无培训</td></tr>
-                  : series.map((s) => (
+                {series.length === 0 && !sl ? <tr><td colSpan={7} className="py-16 text-center"><div className="flex flex-col items-center gap-2 text-[var(--app-color-text-tertiary)]"><Inbox className="h-8 w-8 opacity-40" /><p className="text-sm">暂无培训</p><p className="text-xs">点右上角「发布培训」创建，或用「同步培训」从 ARO 拉取</p></div></td></tr>
+                  : series.map((s) => {
+                    const owners = s.ownerNames ?? s.ownerIds ?? [];
+                    const mine = (s.ownerIds ?? []).includes(currentUserId);
+                    return (
                     <tr key={s.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors cursor-pointer" onClick={() => goDetail(s)}>
                       <td className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <button type="button" onClick={() => toggleFavorite(s.id)} className="p-1 rounded hover:bg-[var(--app-color-surface-hover)]" aria-label="收藏">
                           <Star className={cn("h-4 w-4", favSet.has(s.id) ? "fill-amber-400 text-amber-400" : "text-[var(--twin-mute)] hover:text-amber-400")} />
                         </button>
                       </td>
-                      <td className="px-3 py-2.5"><div className="font-medium text-[var(--app-color-text-primary)]">{s.name}</div><div className="text-[11px] text-[var(--twin-mute)] mt-0.5 line-clamp-1">{s.code || ""}</div></td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)]">{typeLabel(s.typeName, s.type)}</td>
-                      <td className="px-3 py-2.5 text-[var(--twin-mute)] whitespace-nowrap">{(s.ownerIds ?? []).join("、") || "—"}{(s.ownerIds ?? []).includes(currentUserId) && <span className="ml-1 text-[10px] text-blue-600">（我）</span>}</td>
-                      <td className="px-3 py-2.5"><OccurrenceCount id={s.id} /></td>
+                      <td className="px-3 py-2.5"><div className="font-medium text-[var(--app-color-text-primary)]">{s.name}</div><div className="text-[11px] text-[var(--twin-mute)] mt-0.5 line-clamp-1 font-mono tabular-nums">{s.code || ""}</div></td>
+                      <td className="px-3 py-2.5"><span className="inline-block rounded-md bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]">{typeLabel(s.typeName, s.type)}</span></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {owners.length > 0 ? (
+                          <span className="flex items-center gap-2 text-[var(--app-color-text-secondary)]">
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--app-color-accent-soft)] text-[11px] font-semibold text-[var(--app-color-accent)]">{owners[0].slice(0, 1)}</span>
+                            {owners.join("、")}
+                            {mine && <span className="text-[10px] text-[var(--app-color-accent)]">（我）</span>}
+                          </span>
+                        ) : <span className="text-[var(--app-color-text-tertiary)]">未指定</span>}
+                      </td>
+                      <td className="px-3 py-2.5"><SeriesStats id={s.id} /></td>
                       <td className="px-3 py-2.5">{seriesStatusBadge(s.status)}</td>
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
                         {canWriteSeries(s) && (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <AdminButton type="button" tone="secondary" size="sm" onClick={() => navigate(`/console/admin/training/edit/${s.id}`)}>编辑</AdminButton>
+                          <div className="flex items-center justify-end gap-4">
+                            <button type="button" onClick={() => navigate(`/console/admin/training/edit/${s.id}`)} className="text-xs font-medium text-[var(--app-color-accent)] hover:underline">编辑</button>
                             {s.status === "PUBLISHED" ? (
-                              <AdminButton type="button" tone="secondary" size="sm" onClick={() => handleUnpublish(s)}>取消发布</AdminButton>
+                              <button type="button" onClick={() => handleUnpublish(s)} className="text-xs font-medium text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-text-secondary)]">取消发布</button>
                             ) : s.status === "DRAFT" ? (
-                              <AdminButton type="button" tone="primary" size="sm" onClick={() => handlePublish(s)}>发布</AdminButton>
+                              <button type="button" onClick={() => handlePublish(s)} className="text-xs font-medium text-[var(--app-color-accent)] hover:underline">发布</button>
                             ) : null}
                           </div>
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
               </tbody>
             </table>}
         </div>
@@ -412,11 +491,25 @@ export default function AdminAroBindingPage() {
     const ak = `a-${e.id}`;
     const sk = `s-${e.id}`;
     return (
-      <tr key={e.id} className="border-b hover:bg-[var(--twin-canvas-soft)] transition-colors">
+      <tr key={e.id} className={cn("border-b transition-colors", matchNames.size > 0 && matchNames.has(e.name ?? "") ? "bg-emerald-50" : "hover:bg-[var(--twin-canvas-soft)]")}>
         {lead != null && <td className="px-3 py-2.5 text-[var(--twin-mute)]">{lead}</td>}
-        <td className="px-3 py-2.5 font-medium text-[var(--app-color-text-primary)]">{e.name}</td>
+        <td className="px-3 py-2.5 font-medium text-[var(--app-color-text-primary)]">
+          {e.name}
+          {matchNames.size > 0 && (
+            <span className={cn("ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold", matchNames.has(e.name ?? "") ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300" : "bg-neutral-100 text-neutral-500")}>
+              {matchNames.has(e.name ?? "") ? "✓ 在名单" : "未命中"}
+            </span>
+          )}
+        </td>
         <td className="px-3 py-2.5 text-[var(--twin-mute)] font-mono text-xs">{e.jobNumber || "—"}</td>
         <td className="px-3 py-2.5 text-[var(--twin-mute)] max-w-[160px] truncate">{e.projectGroup || "—"}</td>
+        {showExam && (
+          <td className="px-3 py-2.5">
+            {e.examPassed
+              ? <span className="text-emerald-600 text-xs font-medium">合格</span>
+              : <span className="text-rose-600 text-xs font-medium">不合格</span>}
+          </td>
+        )}
         <td className="px-3 py-2.5 relative min-w-[160px] max-w-[260px]">
           <div className="flex flex-wrap items-center gap-1">
             {roomIds.length === 0 && <span className="text-[11px] text-[var(--twin-mute)]">无</span>}
@@ -452,6 +545,19 @@ export default function AdminAroBindingPage() {
             )}
           </div>
         </td>
+        <td className="px-3 py-2.5">
+          {qualByPerson.get(e.traineeId ?? "") ? (
+            <button
+              type="button"
+              className="text-xs font-medium text-blue-600 hover:underline"
+              onClick={() => navigate(`/console/admin/health-survey/${e.traineeId}`)}
+            >
+              查看
+            </button>
+          ) : (
+            <span className="text-xs text-[var(--twin-mute)]">未上传</span>
+          )}
+        </td>
       </tr>
     );
   };
@@ -460,13 +566,13 @@ export default function AdminAroBindingPage() {
     const hasLead = !!opts?.leadOf;
     const sticky = opts?.sticky !== false;
     return (
-      <table className="w-full min-w-max text-left text-sm border-collapse">
+      <table className="w-full min-w-max text-left text-sm border-collapse twin-table">
         <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className={cn("bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold", sticky && "sticky top-0 z-[2]")}>
           {hasLead && <th className="px-3 py-2">场次</th>}
-          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th><th className="px-3 py-2 min-w-[160px] max-w-[260px]">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th>
+          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th>{showExam && <th className="px-3 py-2">考试</th>}<th className="px-3 py-2 min-w-[160px] max-w-[260px]">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th><th className="px-3 py-2">报告</th>
         </tr></thead>
         <tbody>
-          {list.length === 0 ? <tr><td colSpan={hasLead ? 7 : 6} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
+          {list.length === 0 ? <tr><td colSpan={hasLead ? (showExam ? 9 : 8) : (showExam ? 8 : 7)} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
             : list.map((e) => renderEnrollmentRow(e, opts?.leadOf?.(e)))}
         </tbody>
       </table>
@@ -481,6 +587,7 @@ export default function AdminAroBindingPage() {
         ) : pageOccurrences.map((o) => {
           const open = expandedOccs.has(o.id);
           const count = o.enrollments?.length ?? 0;
+          const pending = (o.enrollments ?? []).filter(isPending).length;
           const kw = (enrollSearchByOcc[o.id] ?? "").trim().toLowerCase();
           const enrolls = (o.enrollments ?? []).filter((e) => !kw || (e.name ?? "").toLowerCase().includes(kw) || (e.jobNumber ?? "").toLowerCase().includes(kw));
           const page = enrollPageByOcc[o.id] ?? 0;
@@ -493,7 +600,7 @@ export default function AdminAroBindingPage() {
                   <span className="w-2 h-2 rounded-full bg-[var(--twin-mute)] shrink-0" />
                   <span className="text-sm font-medium text-[var(--twin-ink)] whitespace-nowrap"><Clock className="h-3.5 w-3.5 inline mr-1 text-[var(--twin-mute)]" />{o.startTime ?? "—"} ~ {o.endTime ?? "—"}</span>
                   <span className="text-sm text-[var(--twin-body)] whitespace-nowrap"><MapPin className="h-3.5 w-3.5 inline mr-1 text-[var(--twin-mute)]" />{o.address || "—"}</span>
-                  <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2.5 py-0.5 text-xs text-[var(--twin-body)] font-medium">{count} 人</span>
+                  <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2.5 py-0.5 text-xs text-[var(--twin-body)] font-medium whitespace-nowrap"><span className={pending > 0 ? "text-[var(--app-color-feedback-warning)] font-semibold" : "text-[var(--twin-mute)]"}>{pending} 待审批</span> / {count} 人</span>
                   <span className="ml-auto shrink-0 text-xs text-[var(--twin-mute)]">{open ? "收起 ▲" : "展开 ▼"}</span>
                 </button>
                 {canWrite && (
@@ -549,7 +656,7 @@ export default function AdminAroBindingPage() {
             <AdminButton type="button" tone="secondary" size="default" onClick={goList}><ChevronLeft className="h-4 w-4 mr-1" />返回</AdminButton>
             <div className="min-w-0">
               <h2 className="text-base font-bold text-[var(--app-color-text-primary)] truncate">{selected?.name}</h2>
-              <p className="text-xs text-[var(--twin-mute)]">{typeLabel(detail?.typeName ?? selected?.typeName, detail?.type ?? selected?.type)} · 所属人 {(selected?.ownerIds ?? []).join("、") || "—"}{(selected?.ownerIds ?? []).includes(currentUserId) && "（我）"} · {seriesStatusBadge(detail?.status ?? selected?.status)}</p>
+              <p className="text-xs text-[var(--twin-mute)]">{typeLabel(detail?.typeName ?? selected?.typeName, detail?.type ?? selected?.type)} · 所属人 {(detail?.ownerNames ?? selected?.ownerNames ?? selected?.ownerIds ?? []).join("、") || "—"}{(selected?.ownerIds ?? []).includes(currentUserId) && "（我）"} · {seriesStatusBadge(detail?.status ?? selected?.status)}</p>
             </div>
           </div>
           <div className={cn("flex items-center gap-1.5 h-9 rounded border border-[var(--app-color-border-default)] bg-sky-50/50 px-3 cursor-text min-w-[220px]", gsearch && "ring-1 ring-blue-300")}>
@@ -557,6 +664,11 @@ export default function AdminAroBindingPage() {
             <input value={gsearch} onChange={(e) => setGsearch(e.target.value)} placeholder="全局搜索姓名/编号..." className="flex-1 min-w-[60px] bg-transparent border-none outline-none text-sm" />
             {gsearch && <button onClick={() => setGsearch("")} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"><X className="h-3.5 w-3.5" /></button>}
           </div>
+          {matchNames.size > 0 ? (
+            <AdminButton type="button" tone="secondary" size="default" onClick={() => setMatchNames(new Set())}>清除比对</AdminButton>
+          ) : (
+            <AdminButton type="button" tone="secondary" size="default" onClick={() => { setMatchText(""); setMatchOpen(true); }}>名单比对</AdminButton>
+          )}
         </div>
       </AdminFormCard>
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
@@ -577,6 +689,46 @@ export default function AdminAroBindingPage() {
               <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2">
                 <AdminButton type="button" tone="secondary" size="default" onClick={() => setImportOpen(false)}>取消</AdminButton>
                 <AdminButton type="button" tone="primary" size="default" onClick={doImport}>导入</AdminButton>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+      {matchOpen && (
+        <Portal>
+          <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setMatchOpen(false)}>
+            <div className="relative w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 text-slate-900 shadow-lg" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100" onClick={() => setMatchOpen(false)} aria-label="关闭"><X className="h-4 w-4" /></button>
+              <h2 className="text-lg font-semibold leading-none tracking-tight">名单比对</h2>
+              <p className="mt-2 text-xs text-slate-500">粘贴线下申请名单姓名（换行/逗号/顿号/空格均可），或导入 CSV（Excel 请另存为 CSV）。比对后报名人列表按姓名高亮「在名单中」。</p>
+              <textarea value={matchText} onChange={(e) => setMatchText(e.target.value)} rows={7} placeholder={"张三\n李四、王五，赵六"} className="mt-3 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 font-mono" />
+              <div className="mt-3 flex items-center gap-3">
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    Papa.parse(f, {
+                      complete: (res) => {
+                        const names = new Set<string>();
+                        (res.data as unknown[][]).forEach((row) => {
+                          if (Array.isArray(row) && row.length > 0 && row[0] != null) {
+                            const s = String(row[0]).trim();
+                            if (s) names.add(s);
+                          }
+                        });
+                        setMatchNames(names);
+                        setMatchOpen(false);
+                      },
+                    });
+                  }}
+                  className="text-xs text-slate-500"
+                />
+              </div>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2">
+                <AdminButton type="button" tone="secondary" size="default" onClick={() => setMatchOpen(false)}>取消</AdminButton>
+                <AdminButton type="button" tone="primary" size="default" onClick={() => { setMatchNames(parseNames(matchText)); setMatchOpen(false); }}>开始比对</AdminButton>
               </div>
             </div>
           </div>
