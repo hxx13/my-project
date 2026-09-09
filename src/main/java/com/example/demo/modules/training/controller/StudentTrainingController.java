@@ -2,7 +2,10 @@ package com.example.demo.modules.training.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.adminfile.AdminFileTemplateService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.training.entity.LearningMaterial;
+import com.example.demo.modules.training.mapper.LearningMaterialMapper;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
 import com.example.demo.modules.training.service.QualificationReportService;
 import com.example.demo.modules.training.service.TrainingService;
@@ -23,17 +26,23 @@ public class StudentTrainingController {
     private final HttpServletRequest request;
     private final PersonQualificationMapper qualificationMapper;
     private final QualificationReportService reportService;
+    private final LearningMaterialMapper learningMaterialMapper;
+    private final AdminFileTemplateService adminFileTemplateService;
 
     public StudentTrainingController(TrainingService service,
                                      AuthContextService authContextService,
                                      HttpServletRequest request,
                                      PersonQualificationMapper qualificationMapper,
-                                     QualificationReportService reportService) {
+                                     QualificationReportService reportService,
+                                     LearningMaterialMapper learningMaterialMapper,
+                                     AdminFileTemplateService adminFileTemplateService) {
         this.service = service;
         this.authContextService = authContextService;
         this.request = request;
         this.qualificationMapper = qualificationMapper;
         this.reportService = reportService;
+        this.learningMaterialMapper = learningMaterialMapper;
+        this.adminFileTemplateService = adminFileTemplateService;
     }
 
     @GetMapping
@@ -91,6 +100,37 @@ public class StudentTrainingController {
                     .header("Content-Disposition", "inline; filename=\"report.pdf\"")
                     .body(pdf);
         } catch (IllegalStateException e) {
+            return ResponseEntity.status(404).build();
+        }
+    }
+
+    /** 已上架的学习资料。 */
+    @GetMapping("/learning-materials")
+    public Result<?> learningMaterials() {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        return Result.success(learningMaterialMapper.listActive());
+    }
+
+    /** 在线查看学习资料 PDF（仅已上架，inline 不下载）。 */
+    @GetMapping("/learning-materials/{id}/file")
+    public ResponseEntity<byte[]> learningMaterialFile(@PathVariable Long id) {
+        User user = resolveUser();
+        if (user == null) return ResponseEntity.status(401).build();
+        LearningMaterial m = learningMaterialMapper.findById(id);
+        if (m == null || m.getActive() == null || m.getActive() != 1) {
+            return ResponseEntity.status(404).build();
+        }
+        try {
+            var row = adminFileTemplateService.findForDownload(m.getFileId());
+            if (row.isEmpty()) return ResponseEntity.status(404).build();
+            String storageKey = String.valueOf(row.get().get("storageKey"));
+            java.io.InputStream in = adminFileTemplateService.openDownloadStream(storageKey);
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/pdf")
+                    .header("Content-Disposition", "inline; filename=\"material.pdf\"")
+                    .body(in.readAllBytes());
+        } catch (Exception e) {
             return ResponseEntity.status(404).build();
         }
     }
