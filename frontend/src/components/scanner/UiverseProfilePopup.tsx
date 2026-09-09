@@ -96,7 +96,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [showKeypad, setShowKeypad] = useState<"set" | "verify" | null>(null);
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [planRoomIdx, setPlanRoomIdx] = useState(0);
-    const [detailCell, setDetailCell] = useState<CageShelfCell | null>(null);
+    const [detailCell, setDetailCell] = useState<{ cell: CageShelfCell; masked: boolean } | null>(null);
 
     useEffect(() => {
         setPlanRoomIdx(0);
@@ -336,29 +336,26 @@ export function UiverseProfilePopup(props: PopupProps) {
                             </div>
                         )}
                         <div className="min-h-0 flex-1">
-                            {detailCell ? (
-                                <CellDetailPanel cell={detailCell} onClose={() => setDetailCell(null)} />
-                            ) : (
-                                <RoomFloorPlan
-                                    racks={floorPlan.data.racks}
-                                    mineCount={floorPlan.data.mineCount}
-                                    loading={floorPlan.isLoading}
-                                    error={floorPlan.isError}
-                                    empty={floorPlan.data.racks.length === 0}
-                                    onCellClick={(c) => setDetailCell(c)}
-                                    legendColors={cageColors}
-                                />
-                            )}
+                            <RoomFloorPlan
+                                racks={floorPlan.data.racks}
+                                mineCount={floorPlan.data.mineCount}
+                                columns={2}
+                                loading={floorPlan.isLoading}
+                                error={floorPlan.isError}
+                                empty={floorPlan.data.racks.length === 0}
+                                onCellClick={(c, r) => setDetailCell({ cell: c, masked: !r.isMine })}
+                                legendColors={cageColors}
+                            />
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
-                        {/* 上 1/5：面包机区贴底，预留动画空间；下 4/5 给操作按钮 */}
-                        <div className="flex min-h-0 flex-[1] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
+                        {/* 上 2/5：面包机区贴底，预留动画空间（ExpToaster 有 160px 固定高度，压缩会把动画卡出视图）；下 3/5 给操作按钮 */}
+                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
                             <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>
                         </div>
-                        <div className="flex min-h-0 flex-[4] flex-col overflow-visible">
+                        <div className="flex min-h-0 flex-[3] flex-col overflow-visible">
                             <div className="w-full max-w-[340px] mx-auto mb-2 space-y-1 shrink-0">
                                 <div className="flex gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5" title="由 twin_card_mapping 自动判定，打卡将写入流水">
                                     <div
@@ -443,6 +440,21 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     </div>
                 </div>
+
+                {/* 笼位详情：弹窗浮层，不销毁平面图（关闭后回到原来的滚动位置） */}
+                {detailCell ? (
+                    <div
+                        className="absolute inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/45 p-6 backdrop-blur-sm"
+                        onClick={() => setDetailCell(null)}
+                    >
+                        <div
+                            className="h-[min(78vh,680px)] w-full max-w-[600px]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <CellDetailPanel cell={detailCell.cell} masked={detailCell.masked} onClose={() => setDetailCell(null)} />
+                        </div>
+                    </div>
+                ) : null}
 
                 {/* 进入确认：居中弹窗 + 倒计时 → 最小化到角落胶囊。
                     离开确认弹窗打开时完全卸载，避免两个弹窗同时出现。 */}

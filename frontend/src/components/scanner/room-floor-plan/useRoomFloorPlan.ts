@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   fetchFullTree,
   fetchShelfCellsBatch,
-  type CageCellSnapshot,
   type CageShelfCell,
 } from "@/api/domains/cageShelf.api";
 import { snapshotCellToShelfCell } from "@/features/cage-shelf/components/ShelfGrid";
@@ -25,6 +24,24 @@ export interface FloorPlanRack {
 export interface RoomFloorPlanData {
   racks: FloorPlanRack[];
   mineCount: number;
+}
+
+/**
+ * 后端 `cells/batch` 返回的是 `SELECT *` 的原始列名（snake_case），
+ * 而 `snapshotCellToShelfCell` 按 camelCase 读——这里补一层归一化。
+ */
+function normalizeSnapshotCell(raw: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...raw,
+    roomId: raw.roomId ?? raw.room_id,
+    shelveId: raw.shelveId ?? raw.shelve_id,
+    positionX: raw.positionX ?? raw.position_x,
+    positionY: raw.positionY ?? raw.position_y,
+    positionLabel: raw.positionLabel ?? raw.position_label,
+    animalCageType: raw.animalCageType ?? raw.animal_cage_type,
+    cageBoxJson: raw.cageBoxJson ?? raw.cage_box_json,
+    specialStatusesJson: raw.specialStatusesJson ?? raw.special_statuses_json,
+  };
 }
 
 /**
@@ -75,18 +92,26 @@ export function useRoomFloorPlan(
   });
 
   const data = useMemo((): RoomFloorPlanData => {
-    const byKey = new Map<string, CageCellSnapshot[]>();
+    // 不信任 entry.key：后端 groupByShelf 按 camelCase 取 snake_case 行的字段，key 恒为 "null:null"。
+    // 改为按每个 cell 自己的 roomId/shelveId 重新分组。
+    const byKey = new Map<string, CageShelfCell[]>();
     for (const entry of cellsQuery.data ?? []) {
-      byKey.set(entry.key, entry.cells ?? []);
+      for (const raw of entry.cells ?? []) {
+        const normalized = normalizeSnapshotCell(raw as unknown as Record<string, unknown>);
+        const k = `${String(normalized.roomId)}:${String(normalized.shelveId)}`;
+        const cell = snapshotCellToShelfCell(normalized);
+        const list = byKey.get(k);
+        if (list) list.push(cell);
+        else byKey.set(k, [cell]);
+      }
     }
     const racks: FloorPlanRack[] = shelves.map((s) => {
-      const entry = byKey.get(`${s.roomId}:${s.shelveId}`);
-      const cells = entry ? entry.map(snapshotCellToShelfCell) : [];
+      const cells = byKey.get(`${s.roomId}:${s.shelveId}`) ?? [];
       return {
         shelveId: String(s.shelveId),
         shelveName: s.shelveName || String(s.shelveId),
         cells,
-        hasData: entry != null,
+        hasData: cells.length > 0,
         isMine: rackMatchesGroup(cells, myGroup),
       };
     });

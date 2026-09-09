@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { CageColorConfig, CageShelfCell } from "@/api/domains/cageShelf.api";
 import type { FloorPlanRack } from "./useRoomFloorPlan";
-import { CompactCell } from "./CompactCell";
+import { CompactCell, EMPTY_CELL_CLASS } from "./CompactCell";
 
 const STATUS_LEGEND: { code: string; label: string }[] = [
   { code: "NORMAL", label: "普通" },
@@ -81,20 +81,27 @@ export function RoomFloorPlan({
               key={rack.shelveId}
               className={
                 rack.isMine
-                  ? "rounded-lg border-[1.5px] border-[var(--app-color-feedback-success)] bg-[var(--app-color-feedback-success-soft)] p-2"
-                  : "rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2"
+                  ? "rounded-[var(--app-radius-element)] border-2 border-[var(--app-color-feedback-success)] bg-[color-mix(in_srgb,var(--app-color-feedback-success)_10%,transparent)] p-2 shadow-[0_0_0_3px_color-mix(in_srgb,var(--app-color-feedback-success)_16%,transparent)]"
+                  : "scan-inner-row p-2"
               }
             >
-              <div
-                className={
-                  rack.isMine
-                    ? "mb-1.5 truncate text-[10px] font-bold text-[var(--app-color-text-primary)]"
-                    : "mb-1.5 truncate text-[10px] text-[var(--app-color-text-secondary)]"
-                }
-              >
-                {rack.shelveName}
-                {rack.isMine ? " ★ 我的课题组" : ""}
+              <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
+                <span
+                  className={
+                    rack.isMine
+                      ? "truncate text-[11px] font-bold text-[var(--app-color-feedback-success)]"
+                      : "truncate text-[11px] text-[var(--app-color-text-secondary)]"
+                  }
+                >
+                  {rack.shelveName}
+                </span>
+                {rack.isMine ? (
+                  <span className="shrink-0 rounded-full bg-[var(--app-color-feedback-success)] px-1.5 py-px text-[9px] font-bold text-white">
+                    我的课题组
+                  </span>
+                ) : null}
               </div>
+              {/* 无数据也铺满 8×10 空格子，拿到数据只需填充，避免布局跳动 */}
               {rack.hasData ? (
                 <div className="grid grid-cols-8 gap-[2px]">
                   {rack.cells.map((cell) => (
@@ -106,8 +113,10 @@ export function RoomFloorPlan({
                   ))}
                 </div>
               ) : (
-                <div className="flex h-16 items-center justify-center text-[10px] text-[var(--app-color-text-tertiary)]">
-                  暂无笼位数据
+                <div className="grid grid-cols-8 gap-[2px]" aria-label="笼位数据加载中">
+                  {Array.from({ length: 80 }, (_, i) => (
+                    <span key={i} className={EMPTY_CELL_CLASS} />
+                  ))}
                 </div>
               )}
             </div>
