@@ -373,6 +373,7 @@ public class AssetService {
         for (AssetColumnDef d : defs) {
             defByKey.put(d.getColumnKey(), d);
         }
+        String storageColKey = pickStorageLocationColumnKey(defs);
 
         // 如果传入了 createNewColumns，先创建这些列定义
         if (createNewColumns != null) {
@@ -490,6 +491,10 @@ public class AssetService {
                     String value = getCellText(row, e.getKey(), formatter);
                     assetMapper.upsertAssetValue(record.getId(), e.getValue(), value);
                 }
+                // 「存放地点」是保留列（只写固定列），但列表/筛选/地点树读的是 EAV，这里补镜像
+                if (StringUtils.hasText(location) && StringUtils.hasText(storageColKey)) {
+                    assetMapper.upsertAssetValue(record.getId(), storageColKey, location.trim());
+                }
             }
         } catch (Exception e) {
             // 更新批次错误信息
@@ -534,6 +539,7 @@ public class AssetService {
         for (AssetColumnDef d : defs) {
             defByKey.put(d.getColumnKey(), d);
         }
+        String storageColKey = pickStorageLocationColumnKey(defs);
 
         // 插入导入批次记录（待导入完成后更新计数）
         assetMapper.insertImportBatch(batch);
@@ -618,6 +624,10 @@ public class AssetService {
                 for (Map.Entry<Integer, String> e : dynamicColumnByIndex.entrySet()) {
                     String value = getCsvCell(cells, e.getKey());
                     assetMapper.upsertAssetValue(record.getId(), e.getValue(), value);
+                }
+                // 「存放地点」是保留列（只写固定列），但列表/筛选/地点树读的是 EAV，这里补镜像
+                if (StringUtils.hasText(location) && StringUtils.hasText(storageColKey)) {
+                    assetMapper.upsertAssetValue(record.getId(), storageColKey, location.trim());
                 }
             }
         } catch (IllegalArgumentException e) {

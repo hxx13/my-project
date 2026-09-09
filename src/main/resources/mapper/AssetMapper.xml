@@ -705,9 +705,10 @@
 
     <update id="linkAssetsToLocationNode">
         UPDATE asset_record a
-        JOIN asset_record_value v ON v.asset_id = a.id AND v.column_key = #{columnKey}
+        LEFT JOIN asset_record_value v ON v.asset_id = a.id AND v.column_key = #{columnKey}
         SET a.location_node_id = #{nodeId}
-        WHERE a.deleted = 0 AND TRIM(v.column_value) = #{text}
+        WHERE a.deleted = 0
+          AND (TRIM(COALESCE(v.column_value, '')) = #{text} OR TRIM(COALESCE(a.location, '')) = #{text})
           AND (a.created_by_batch_id = #{batchId} OR a.location_node_id IS NULL)
     </update>
 
