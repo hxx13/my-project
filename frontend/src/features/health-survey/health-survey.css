@@ -58,29 +58,37 @@
 }
 
 .hs-field {
-  margin-bottom: 3mm;
+  margin-bottom: 3.5mm;
   break-inside: avoid;
 }
 .hs-field-inline {
   display: flex;
   align-items: center;
   gap: 2mm;
+  max-width: 110mm;
 }
 .hs-label {
   font-weight: 600;
-  margin-bottom: 1mm;
+  margin-bottom: 1.2mm;
 }
 .hs-field-inline .hs-label {
   margin-bottom: 0;
-  min-width: 28mm;
+  min-width: 24mm;
   font-weight: 500;
 }
 
 .hs-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 2mm 6mm;
+  gap: 1.8mm 6mm;
   align-items: center;
+}
+/* 选项多于 3 个时按列对齐，避免换行后参差 */
+.hs-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(52mm, 1fr));
+  gap: 2mm 5mm;
+  align-items: start;
 }
 .hs-opt {
   display: inline-flex;
@@ -89,8 +97,9 @@
   cursor: pointer;
 }
 .hs-opt input {
-  width: 3.4mm;
-  height: 3.4mm;
+  width: 3.6mm;
+  height: 3.6mm;
+  flex-shrink: 0;
 }
 
 .hs-input,
@@ -107,7 +116,8 @@
 }
 .hs-input {
   flex: 1;
-  min-width: 40mm;
+  min-width: 0;
+  max-width: 78mm;
 }
 .hs-inline-input {
   min-width: 60mm;

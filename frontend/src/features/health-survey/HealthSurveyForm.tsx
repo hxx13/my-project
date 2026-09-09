@@ -46,7 +46,7 @@ export function HealthSurveyForm({
         return (
           <div className="hs-field">
             <div className="hs-label">{f.label}</div>
-            <div className="hs-options">
+            <div className={f.options.length > 3 ? "hs-options hs-options-grid" : "hs-options"}>
               {f.options.map((o) => (
                 <label key={o} className="hs-opt">
                   <input

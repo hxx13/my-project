@@ -35,16 +35,16 @@ export default function StudentHealthSurveyPage() {
   return (
     <div className="hs-page">
       <div className="hs-page-bar">
-        <button type="button" className="btn ghost small" onClick={() => navigate(-1)}>
+        <button type="button" className="hs-btn hs-btn-ghost" onClick={() => navigate(-1)}>
           <ChevronLeft className="mr-1 h-4 w-4" />返回
         </button>
         <div className="hs-page-bar-title">健康调查表</div>
         <div className="hs-page-bar-actions">
           {submittedAt && <span className="hs-page-hint">上次提交：{submittedAt}</span>}
-          <button type="button" className="btn ghost small" onClick={() => window.print()}>
+          <button type="button" className="hs-btn hs-btn-ghost" onClick={() => window.print()}>
             <Printer className="mr-1 h-4 w-4" />打印 / 导出 PDF
           </button>
-          <button type="button" className="btn small" onClick={handleSubmit} disabled={saving}>
+          <button type="button" className="hs-btn hs-btn-primary" onClick={handleSubmit} disabled={saving}>
             {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />}
             提交
           </button>
