@@ -624,6 +624,10 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const isExitLocked = (room: RoomInfo) => Boolean(isStateUnknown);
     const isRoomLocked = (room: RoomInfo) => (action === "ENTER" ? isEnterLocked(room) : isExitLocked(room));
     const getButtonText = (room: RoomInfo, roomId: string): string => {
+        const bindId = String(room.officialRoomId || room.id || "");
+        const stat = myCapacityStats.find((s) => s.capacityBindRoomIds.includes(bindId));
+        const roomLabel =
+            stat && stat.total > 0 ? `${room.displayName}(${stat.count}/${stat.total}人)` : room.displayName;
         const isActed = actedRoomId === roomId || autoActionRoomId === roomId;
         const isFinished = finishedRooms.includes(roomId);
         if (isActed || isFinished) {
@@ -631,23 +635,23 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             if (isSameActionSuccess || isFinished) return "已完成";
         }
         if (isStateUnknown) return "状态同步异常，请重试";
-        if (action === "ENTER" && globalUserState === 3) return `[已封禁] 拒绝进入 ${room.displayName}`;
-        if (action === "ENTER" && isRoomFull(room)) return `[满员] 无法进入 ${room.displayName}`;
-        if (action === "ENTER" && isEntryTimeBlockedForRoom(room)) return `[非开放时段] 无法进入 ${room.displayName}`;
-        if (action === "ENTER" && unboundEnterLocked) return `[未绑卡] 禁止进入 ${room.displayName}`;
-        if (action === "ENTER" && violationEnterLocked) return `[违规处理] 禁止进入 ${room.displayName}`;
-        if (action === "ENTER" && room.enterBlocked) return `[不在此校区] ${room.displayName}`;
-        if (action === "ENTER" && room.isDisabled) return `[禁入] ${room.displayName}`;
+        if (action === "ENTER" && globalUserState === 3) return `[已封禁] 拒绝进入 ${roomLabel}`;
+        if (action === "ENTER" && isRoomFull(room)) return `[满员] 无法进入 ${roomLabel}`;
+        if (action === "ENTER" && isEntryTimeBlockedForRoom(room)) return `[非开放时段] 无法进入 ${roomLabel}`;
+        if (action === "ENTER" && unboundEnterLocked) return `[未绑卡] 禁止进入 ${roomLabel}`;
+        if (action === "ENTER" && violationEnterLocked) return `[违规处理] 禁止进入 ${roomLabel}`;
+        if (action === "ENTER" && room.enterBlocked) return `[不在此校区] ${roomLabel}`;
+        if (action === "ENTER" && room.isDisabled) return `[禁入] ${roomLabel}`;
         if (action === "ENTER") {
             // 豁免已通过时，在房间按钮上显示到期时间
             const ds = delayStatusMap[roomId];
             if (ds?.status === "approved" && ds.expireAt) {
                 const time = formatExpireClock(ds.expireAt);
-                if (time) return `进入 ${room.displayName} (截至 ${time})`;
+                if (time) return `进入 ${roomLabel} (截至 ${time})`;
             }
-            return `进入 ${room.displayName}`;
+            return `进入 ${roomLabel}`;
         }
-        return `离开 ${room.displayName}`;
+        return `离开 ${roomLabel}`;
     };
 
     const getDelayOptionsForRoom = useCallback(
