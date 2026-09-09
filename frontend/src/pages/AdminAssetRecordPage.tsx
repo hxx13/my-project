@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { ArrowDown, ArrowUp, Download, EyeOff, ImageIcon, Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, EyeOff, ImageIcon, Loader2, MoreHorizontal, Pencil, Plus, ScanLine, Search, Trash2, Upload, X } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearAssetTable,
@@ -39,6 +39,7 @@ import {
 } from "@/api/hooks/useAsset";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
+import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import AssetVisualView from "@/features/asset/AssetVisualView";
 import AssetDetailDrawer from "@/features/asset/AssetDetailDrawer";
 import AssetLocationSelect from "@/features/asset/AssetLocationSelect";
@@ -109,6 +110,10 @@ function normalizeColumnLabel(label: string) {
 export default function AdminAssetRecordPage() {
   type DeleteCandidate = Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked">;
   const [view, setView] = useState<"table" | "graph">("table");
+  /** 扫码弹窗开关 */
+  const [scanOpen, setScanOpen] = useState(false);
+  /** 图形视图的扫码请求：seq 变化即视为一次新扫描 */
+  const [scanRequest, setScanRequest] = useState<{ text: string; seq: number } | null>(null);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(200);
   const [pageInput, setPageInput] = useState("1");
@@ -565,6 +570,19 @@ export default function AdminAssetRecordPage() {
     }
   };
 
+  /** 扫码结果：原文当关键词。表格视图直接走全局搜索框；图形视图交给 AssetVisualView 定位+高亮 */
+  const handleScanResult = (raw: string) => {
+    const text = raw.trim();
+    if (!text) return;
+    if (view === "table") {
+      setKeyword(text);
+      setScanOpen(false);
+      return;
+    }
+    setScanRequest({ text, seq: Date.now() });
+    setScanOpen(false);
+  };
+
   const openAddModal = () => {
     const initial: Record<string, string> = { assetCode: "", assetName: "" };
     for (const c of editableColumns) {
@@ -965,6 +983,15 @@ export default function AdminAssetRecordPage() {
               <Pencil className="h-4 w-4 shrink-0" aria-hidden />
               {tableEditMode ? "完成编辑" : "编辑表格"}
             </AdminButton>
+            <AdminButton
+              type="button"
+              tone="secondary"
+              className="inline-flex min-h-9 items-center gap-2"
+              onClick={() => setScanOpen(true)}
+            >
+              <ScanLine className="h-4 w-4 shrink-0" aria-hidden />
+              扫码
+            </AdminButton>
             <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
                 <MoreHorizontal className="h-4 w-4 shrink-0" />
@@ -1270,7 +1297,7 @@ export default function AdminAssetRecordPage() {
       </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <AssetVisualView onCreateAsset={openAddModal} />
+          <AssetVisualView scanRequest={scanRequest} onCreateAsset={openAddModal} />
         </div>
       )}
 
@@ -1548,6 +1575,8 @@ export default function AdminAssetRecordPage() {
           columns={columns}
           onClose={() => setDetailAsset(null)}
         />
+
+        <MobileScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScanResult} />
 
         {/* ── 导入预览对话框 (4e) ── */}
         {importPreviewOpen && importPreviewData && (

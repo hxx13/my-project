@@ -66,18 +66,23 @@ function firstPhoto(row: AssetRow): string | null {
 /* ────────────────────────────────────────────────────────────
    资产卡片（本空间资产：大图 / emoji 兜底）
    ──────────────────────────────────────────────────────────── */
-function AssetCard({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => void }) {
+function AssetCard({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: AssetRow) => void; highlight?: boolean }) {
   const photo = firstPhoto(row);
   return (
     <div
       draggable
+      data-asset-id={row.id}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/asset-id", row.id);
         e.dataTransfer.effectAllowed = "move";
       }}
       onClick={() => onOpen(row)}
       title="拖到左侧地点可移动资产"
-      className="flex cursor-grab flex-col overflow-hidden rounded-twin-lg border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing"
+      className={`flex cursor-grab flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing ${
+        highlight
+          ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
+          : "border-[var(--twin-hairline-strong)]"
+      }`}
     >
       <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
@@ -102,11 +107,12 @@ function AssetCard({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => vo
 /* ────────────────────────────────────────────────────────────
    资产芯片（卡片内用 div：外层卡片是 button，不能套 button）
    ──────────────────────────────────────────────────────────── */
-function AssetChip({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => void }) {
+function AssetChip({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: AssetRow) => void; highlight?: boolean }) {
   const photo = firstPhoto(row);
   return (
     <div
       draggable
+      data-asset-id={row.id}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/asset-id", row.id);
         e.dataTransfer.effectAllowed = "move";
@@ -116,7 +122,11 @@ function AssetChip({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => vo
         onOpen(row);
       }}
       title="拖到左侧地点可移动资产"
-      className="flex min-w-0 cursor-grab items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing"
+      className={`flex min-w-0 cursor-grab items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] active:cursor-grabbing ${
+        highlight
+          ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
+          : "border-[var(--twin-hairline)]"
+      }`}
     >
       {photo ? (
         <span className="inline-block h-4 w-4 shrink-0 overflow-hidden rounded-sm">
@@ -138,11 +148,12 @@ function AssetChip({ row, onOpen }: { row: AssetRow; onOpen: (r: AssetRow) => vo
 /* ────────────────────────────────────────────────────────────
    子空间卡片（点击下钻）
    ──────────────────────────────────────────────────────────── */
-function SpaceCard({ node, chips, onSelect, onOpen }: {
+function SpaceCard({ node, chips, onSelect, onOpen, highlightId }: {
   node: AssetLocationNode;
   chips: AssetRow[];
   onSelect: (id: number) => void;
   onOpen: (r: AssetRow) => void;
+  highlightId?: string | null;
 }) {
   const hasChildren = (node.children ?? []).length > 0;
   return (
@@ -166,7 +177,7 @@ function SpaceCard({ node, chips, onSelect, onOpen }: {
       {chips.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
           {chips.map((r) => (
-            <AssetChip key={r.id} row={r} onOpen={onOpen} />
+            <AssetChip key={r.id} row={r} onOpen={onOpen} highlight={r.id === highlightId} />
           ))}
         </div>
       )}
@@ -271,8 +282,12 @@ function SpaceGroup({ title, subTotal, rows, childNodes, onSelect, onOpen }: {
   );
 }
 
-export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
-  const { onCreateAsset } = props;
+export default function AssetVisualView(props: {
+  onCreateAsset?: () => void;
+  /** 扫码请求（来自资产记录页扫码入口）：seq 变化即触发一次定位+高亮 */
+  scanRequest?: { text: string; seq: number } | null;
+}) {
+  const { onCreateAsset, scanRequest } = props;
   const { data: tree = [], isLoading: treeLoading, isError: treeError } = useAssetLocationTree();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -287,6 +302,12 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
   // 从全局结果跳转地点时，抑制「换地点关抽屉」的一次性副作用
   const keepDrawerOnNavRef = useRef(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetRow | null>(null);
+  /** 扫码定位后要高亮的资产 id（保留到下次扫描或用户切换地点） */
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  /** 待定位的扫描文本：全局检索结果回来后消费一次 */
+  const pendingLocateRef = useRef<string | null>(null);
+  /** 本次 selectedId 变化由扫码定位引起时，不清高亮 */
+  const locatingRef = useRef(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
@@ -412,6 +433,46 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
     setAssetKeyword("");
     setGlobalKeyword("");
   };
+
+  // ── 扫码定位：填全局检索框 → 结果回来 → 跳地点 + 高亮 ──
+  // seq 变化才算新的一次扫描（同一个码连扫两次也能再次触发）
+  useEffect(() => {
+    if (!scanRequest) return;
+    setSearchMode("global");
+    setAssetKeyword(scanRequest.text);
+    pendingLocateRef.current = scanRequest.text;
+  }, [scanRequest]);
+
+  // 全局检索结果就绪：按 assetCode 精确匹配（大小写/空格不敏感），找不到取第一条
+  useEffect(() => {
+    const pending = pendingLocateRef.current;
+    if (!pending || globalLoading || !globalData) return;
+    // 结果对应的关键词必须就是本次扫描文本，避免用到上一次检索的旧结果
+    if (globalKeyword !== pending) return;
+    const norm = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, "").toLowerCase();
+    const list = globalData.rows ?? [];
+    pendingLocateRef.current = null;
+    if (list.length === 0) return;
+    const target = list.find((r) => norm(r.assetCode) === norm(pending)) ?? list[0];
+    if (target.locationNodeId != null && target.locationNodeId !== selectedId) locatingRef.current = true;
+    openGlobalResult(target);
+    setHighlightId(target.id);
+  }, [globalData, globalLoading, globalKeyword]);
+
+  // 目标卡片渲染出来后滚动到可见（rows 变化时重试，直到卡片出现）
+  useEffect(() => {
+    if (highlightId == null) return;
+    document.querySelector(`[data-asset-id="${highlightId}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [highlightId, rows]);
+
+  // 用户切换地点后清除高亮（扫码定位自身引发的跳转除外）
+  useEffect(() => {
+    if (locatingRef.current) {
+      locatingRef.current = false;
+      return;
+    }
+    setHighlightId(null);
+  }, [selectedId]);
 
   const toggle = (id: number) =>
     setExpanded((prev) => {
@@ -709,7 +770,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
                         </div>
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
                           {visibleNodeRows.map((r) => (
-                            <AssetCard key={r.id} row={r} onOpen={setSelectedAsset} />
+                            <AssetCard key={r.id} row={r} onOpen={setSelectedAsset} highlight={r.id === highlightId} />
                           ))}
                         </div>
                       </div>
@@ -724,6 +785,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
                             chips={chipsFor(c.id).filter(matchAsset)}
                             onSelect={setSelectedId}
                             onOpen={setSelectedAsset}
+                            highlightId={highlightId}
                           />
                         ))}
                       </div>
