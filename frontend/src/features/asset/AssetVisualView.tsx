@@ -124,7 +124,7 @@ export default function AssetVisualView() {
         time: m.createTime || "",
         from: from?.trim() || "—",
         to: to?.trim() || "—",
-        who: m.operatorId,
+        who: m.operatorName || m.operatorId,
       });
     }
     return out.sort((a, b) => normTime(b.time).localeCompare(normTime(a.time)));

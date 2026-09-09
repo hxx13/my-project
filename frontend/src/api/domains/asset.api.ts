@@ -447,6 +447,8 @@ export interface AssetMoveLog {
   id: string;
   remark?: string;
   operatorId?: string;
+  /** 后端已解析的展示名，缺失时前端回落 operatorId */
+  operatorName?: string;
   createTime?: string;
 }
 

@@ -138,6 +138,10 @@ public class AssetService {
         String eavLocation = pickCurrentDynamicValue(asset.getId(), "存放地点");
         String oldLocation = StringUtils.hasText(eavLocation) ? eavLocation.trim()
                 : (StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : "(未设置)");
+        // 已在目标地点：幂等返回，不产生「A → A」的噪音留痕
+        if (path.equals(oldLocation)) {
+            return Map.of("id", asset.getId(), "location", path, "locationNodeId", nodeId);
+        }
         assetMapper.updateAssetLocationNode(asset.getId(), nodeId);
         assetMapper.batchUpdateAssetFields(List.of(asset.getId()), null, path, null, operatorId);
         String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
@@ -2024,10 +2028,22 @@ public class AssetService {
                 requests.add(row);
             }
         }
-        List<Map<String, Object>> moves = assetMapper.listMoveLogsByAssetId(id);
+        List<Map<String, Object>> rawMoves = assetMapper.listMoveLogsByAssetId(id);
+        List<Map<String, Object>> moves = new ArrayList<>();
+        if (rawMoves != null) {
+            for (Map<String, Object> m : rawMoves) {
+                Map<String, Object> row = new LinkedHashMap<>(m);
+                Object op = m.get("operatorId");
+                String operatorId = op == null ? null : String.valueOf(op);
+                row.put("operatorName", StringUtils.hasText(operatorId)
+                        ? userDisplayNameService.resolveDisplayName(operatorId)
+                        : null);
+                moves.add(row);
+            }
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("requests", requests);
-        data.put("moves", moves == null ? List.of() : moves);
+        data.put("moves", moves);
         return data;
     }
 
