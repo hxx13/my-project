@@ -721,6 +721,7 @@
 
     <select id="listMoveLogsByAssetId" resultType="java.util.Map">
         SELECT id AS id,
+               request_id AS requestId,
                remark AS remark,
                operator_id AS operatorId,
                create_time AS createTime
@@ -734,6 +735,25 @@
         WHERE id = #{id}
           AND action_type = 'MOVE'
     </delete>
+
+    <select id="findTransferLogById" resultType="java.util.Map">
+        SELECT id AS id,
+               request_id AS requestId,
+               asset_id AS assetId,
+               action_type AS actionType,
+               operator_id AS operatorId,
+               remark AS remark,
+               create_time AS createTime
+        FROM asset_transfer_log
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <update id="updateTransferLogRequestId">
+        UPDATE asset_transfer_log
+        SET request_id = #{requestId}
+        WHERE id = #{id}
+    </update>
 
     <!-- ==================== 导入批次 ==================== -->
 

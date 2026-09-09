@@ -450,6 +450,8 @@ export interface AssetMoveLog {
   /** 后端已解析的展示名，缺失时前端回落 operatorId */
   operatorName?: string;
   createTime?: string;
+  /** 已补建申请时指向该申请；非空表示该留痕不再单独展示 */
+  requestId?: string | null;
 }
 
 export interface AssetTransferHistory {
@@ -468,6 +470,18 @@ export async function fetchAssetTransferHistory(assetId: string) {
 export async function deleteAssetTransferLog(logId: string) {
   const res = await authHttp.delete<Result<number>>(
     `/v1/asset-transfer-logs/${encodeURIComponent(logId)}`
+  );
+  return res.data.data;
+}
+
+/** 由地点移动留痕补建一条已完成的转移申请 */
+export async function promoteAssetTransferLog(
+  logId: string,
+  payload: { remark?: string; photoUrlsBefore?: string[]; photoUrlsAfter?: string[] }
+) {
+  const res = await authHttp.post<Result<{ requestId: string }>>(
+    `/v1/asset-transfer-logs/${encodeURIComponent(logId)}/promote`,
+    payload
   );
   return res.data.data;
 }

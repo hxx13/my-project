@@ -471,6 +471,21 @@ public class AssetController {
         }
     }
 
+    @PostMapping("/asset-transfer-logs/{id}/promote")
+    @Operation(summary = "由地点移动留痕补建转移申请")
+    public Result<?> promoteTransferMoveLog(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @PathVariable String id,
+                                            @RequestBody(required = false) Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.promoteMoveLogToRequest(id, body, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/asset-transfer-records")
     @Operation(summary = "查询转移记录")
     public Result<?> listTransferRecords(@RequestHeader(value = "Authorization", required = false) String authorization,

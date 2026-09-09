@@ -41,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -1385,6 +1386,117 @@ public class AssetService {
             throw new IllegalArgumentException("留痕不存在或不可删除");
         }
         return deleted;
+    }
+
+    /** MOVE 留痕 remark「旧地点 → 新地点」的拆分结果 */
+    public record MoveRemarkParts(String from, String to) {}
+
+    /** 拆分 MOVE 留痕 remark；无箭头时 from=null、to=整串（纯函数，便于单测） */
+    public static MoveRemarkParts splitMoveRemark(String remark) {
+        String text = remark == null ? "" : remark.trim();
+        int idx = text.indexOf(" → ");
+        if (idx < 0) {
+            return new MoveRemarkParts(null, text.isEmpty() ? null : text);
+        }
+        String from = text.substring(0, idx).trim();
+        String to = text.substring(idx + " → ".length()).trim();
+        return new MoveRemarkParts(from.isEmpty() ? null : from, to.isEmpty() ? null : to);
+    }
+
+    /**
+     * 由地点移动留痕补建一条已完成的转移申请，并把该留痕挂到新申请上。
+     * payload: {remark?, photoUrlsBefore?: string[], photoUrlsAfter?: string[]}
+     */
+    @Transactional
+    public Map<String, Object> promoteMoveLogToRequest(String logId, Map<String, Object> payload, String operatorId) {
+        if (!StringUtils.hasText(logId)) {
+            throw new IllegalArgumentException("留痕 id 不能为空");
+        }
+        Map<String, Object> log = assetMapper.findTransferLogById(logId.trim());
+        if (log == null) {
+            throw new IllegalArgumentException("留痕不存在");
+        }
+        if (!"MOVE".equals(str(log.get("actionType")))) {
+            throw new IllegalArgumentException("仅地点移动留痕可补建申请");
+        }
+        if (StringUtils.hasText(str(log.get("requestId")))) {
+            throw new IllegalArgumentException("该留痕已关联申请");
+        }
+        String assetId = str(log.get("assetId"));
+        AssetRecord asset = StringUtils.hasText(assetId) ? assetMapper.findAssetById(assetId) : null;
+        if (asset == null) {
+            throw new IllegalArgumentException("资产不存在");
+        }
+        MoveRemarkParts parts = splitMoveRemark(str(log.get("remark")));
+        if (!StringUtils.hasText(parts.to())) {
+            throw new IllegalArgumentException("留痕缺少目标地点，无法补建申请");
+        }
+        String logOperatorId = str(log.get("operatorId"));
+        String applicantId = StringUtils.hasText(logOperatorId) ? logOperatorId : operatorId;
+        String applicantName = StringUtils.hasText(logOperatorId)
+                ? userDisplayNameService.resolveDisplayName(logOperatorId)
+                : null;
+        Object createdTime = log.get("createTime");
+        LocalDateTime transferTime = toLocalDateTime(createdTime);
+        if (transferTime == null) {
+            transferTime = LocalDateTime.now();
+        }
+
+        List<String> before = readPhotoUrlsFromPayload(payload == null ? null : payload.get("photoUrlsBefore"));
+        List<String> after = readPhotoUrlsFromPayload(payload == null ? null : payload.get("photoUrlsAfter"));
+
+        String reqId = "ATR_" + UUID.randomUUID().toString().replace("-", "");
+        AssetTransferRequest row = new AssetTransferRequest();
+        row.setId(reqId);
+        row.setAssetId(asset.getId());
+        row.setAssetCode(asset.getAssetCode());
+        row.setAssetName(asset.getAssetName());
+        row.setApplicantId(applicantId);
+        row.setApplicantName(StringUtils.hasText(applicantName) ? applicantName : applicantId);
+        row.setTransferTime(transferTime);
+        row.setTransferLocation(parts.to());
+        row.setFromLocation(parts.from());
+        row.setRemark(trimOrNull(payload == null ? null : str(payload.get("remark"))));
+        row.setPhotoUrl(before.isEmpty() ? null : before.get(0));
+        row.setPhotoUrlsBefore(before.isEmpty() ? null : writeJsonArray(before));
+        row.setPhotoUrlsAfter(after.isEmpty() ? null : writeJsonArray(after));
+        row.setStatus("COMPLETED");
+        row.setCreateTime(LocalDateTime.now());
+        assetMapper.insertTransferRequest(row);
+        assetMapper.updateTransferLogRequestId(logId.trim(), reqId);
+        assetMapper.updateAssetLatestTransferPointer(asset.getId(), reqId, operatorId);
+        return Map.of("requestId", reqId);
+    }
+
+    /** 请求体里的照片数组（JSON 反序列化为 List）转成去空字符串列表 */
+    private List<String> readPhotoUrlsFromPayload(Object raw) {
+        List<String> out = new ArrayList<>();
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null && StringUtils.hasText(String.valueOf(o))) {
+                    out.add(String.valueOf(o).trim());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** MyBatis Map 结果里的时间列可能是 LocalDateTime / java.util.Date / 字符串，统一成 LocalDateTime */
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof LocalDateTime ldt) {
+            return ldt;
+        }
+        if (value instanceof java.util.Date date) {
+            return LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
+        }
+        if (value instanceof CharSequence cs && StringUtils.hasText(cs)) {
+            try {
+                return parseTime(cs.toString().trim());
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     public Map<String, Object> listTransferRequests(String keyword, int page, int size) {

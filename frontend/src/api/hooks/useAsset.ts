@@ -22,6 +22,7 @@ import {
   deleteByBatchId,
   fetchAssetTransferHistory,
   deleteAssetTransferLog,
+  promoteAssetTransferLog,
 } from "@/api/domains/asset.api";
 import { toast } from "react-hot-toast";
 
@@ -53,6 +54,20 @@ export function useDeleteAssetTransferLog() {
       toast.success("留痕已删除");
     },
     onError: (e: Error) => toast.error(e.message || "删除失败"),
+  });
+}
+
+/** 由地点移动留痕补建转移申请 */
+export function usePromoteAssetTransferLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ logId, payload }: { logId: string; payload: Parameters<typeof promoteAssetTransferLog>[1] }) =>
+      promoteAssetTransferLog(logId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success("已补建转移申请");
+    },
+    onError: (e: Error) => toast.error(e.message || "补建失败"),
   });
 }
 

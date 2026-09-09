@@ -27,6 +27,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { cn } from "@/lib/utils";
 import LocationTree from "./LocationTree";
+import PromoteMoveLogDialog, { type PromoteMoveLogTarget } from "./PromoteMoveLogDialog";
 import { findPath } from "./locationTreeUtils";
 
 const CATEGORY_KEY = "col_资产类别";
@@ -57,6 +58,8 @@ type HistoryItem = {
   who?: string;
   /** MOVE 留痕主键，用于删除 */
   logId?: string;
+  /** 该申请由地点移动留痕补建而来 */
+  promoted?: boolean;
 };
 
 export default function AssetVisualView() {
@@ -75,6 +78,9 @@ export default function AssetVisualView() {
 
   // 仅最高权限可删除地点移动留痕
   const canDeleteLog = hasMinRole(authStorage.getRole(), "SUPER_ADMIN");
+  // 补建申请：STAFF 起（与资产写权限一致）
+  const canPromote = hasMinRole(authStorage.getRole(), "STAFF");
+  const [promoteTarget, setPromoteTarget] = useState<PromoteMoveLogTarget | null>(null);
 
   const handleDeleteMoveLog = async (logId: string) => {
     const ok = await appConfirm("确认删除这条地点移动留痕？删除后不可恢复。", {
@@ -119,9 +125,14 @@ export default function AssetVisualView() {
   }, [rows]);
 
   // 转移记录：转移申请 + MOVE 留痕合并后按时间倒序
+  // 已补建申请的 MOVE 留痕不再单独展示，改在对应申请上打标记
   const { data: history, isLoading: historyLoading } = useAssetTransferHistory(selectedAsset?.id);
   const historyItems = useMemo<HistoryItem[]>(() => {
     const out: HistoryItem[] = [];
+    const moves = history?.moves ?? [];
+    const linkedRequestIds = new Set(
+      moves.map((m) => m.requestId).filter((id): id is string => !!id),
+    );
     for (const r of history?.requests ?? []) {
       out.push({
         key: `r-${r.id}`,
@@ -131,9 +142,11 @@ export default function AssetVisualView() {
         to: r.transferLocation?.trim() || "—",
         status: r.status,
         who: r.applicantName,
+        promoted: linkedRequestIds.has(r.id),
       });
     }
-    for (const m of history?.moves ?? []) {
+    for (const m of moves) {
+      if (m.requestId) continue; // 已补建申请：不单独展示
       const [from, to] = String(m.remark ?? "").split(" → ");
       out.push({
         key: `m-${m.id}`,
@@ -375,6 +388,23 @@ export default function AssetVisualView() {
                         <span className="ml-auto shrink-0 font-mono text-[10px] text-[var(--twin-mute)]">
                           {normTime(it.time).slice(0, 16) || "—"}
                         </span>
+                        {it.kind === "move" && canPromote && it.logId && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPromoteTarget({
+                                id: it.logId as string,
+                                from: it.from,
+                                to: it.to,
+                                time: it.time,
+                                who: it.who,
+                              })
+                            }
+                            className="shrink-0 text-[10px] text-[var(--twin-link-deep)] hover:underline"
+                          >
+                            补建申请
+                          </button>
+                        )}
                         {it.kind === "move" && canDeleteLog && it.logId && (
                           <button
                             type="button"
@@ -394,6 +424,7 @@ export default function AssetVisualView() {
                         {it.kind === "request" && it.status && (
                           <span>{TRANSFER_STATUS_LABEL[it.status] ?? it.status}</span>
                         )}
+                        {it.promoted && <span>由地点移动补建</span>}
                         {it.who && (
                           <span className="truncate">
                             {it.kind === "request" ? "申请人" : "操作人"} {it.who}
@@ -408,6 +439,12 @@ export default function AssetVisualView() {
           )}
         </div>
       </div>
+
+      <PromoteMoveLogDialog
+        open={promoteTarget !== null}
+        target={promoteTarget}
+        onClose={() => setPromoteTarget(null)}
+      />
     </div>
   );
 }

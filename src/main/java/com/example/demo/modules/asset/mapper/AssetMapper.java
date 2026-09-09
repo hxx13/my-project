@@ -229,5 +229,11 @@ public interface AssetMapper {
 
     /** 删除一条 MOVE 留痕（带 action_type 条件，防误删正式流程日志） */
     int deleteMoveLogById(@Param("id") String id);
+
+    /** 单条转移留痕（由地点移动补建申请时读取） */
+    Map<String, Object> findTransferLogById(@Param("id") String id);
+
+    /** 把留痕挂到补建的转移申请上 */
+    int updateTransferLogRequestId(@Param("id") String id, @Param("requestId") String requestId);
 }
 
