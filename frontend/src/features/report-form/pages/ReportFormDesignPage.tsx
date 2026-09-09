@@ -692,7 +692,7 @@ function DesignerInner({
       {/* 未保存离开确认弹窗 */}
       <Dialog open={blocker.state === 'blocked'}>
         <DialogContent
-          className="sm:max-w-sm"
+          className="sm:max-w-sm border-0 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] shadow-xl"
           showClose={false}
           closeOnOverlayClick={false}
           onEscapeKeyDown={(e) => e.preventDefault()}

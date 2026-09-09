@@ -309,7 +309,7 @@
   min-height: 0;
   overflow: auto;
   background: var(--app-color-surface-page);
-  padding: 32px 40px 64px;
+  padding: 12px 24px 56px;
   display: flex;
   justify-content: center;
   align-items: flex-start;

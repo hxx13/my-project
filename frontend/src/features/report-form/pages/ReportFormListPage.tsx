@@ -400,7 +400,7 @@ export default function ReportFormListPage() {
 
       {/* Template selection dialog */}
       <Dialog open={showTemplateDialog} onOpenChange={(v) => { if (!v) setShowTemplateDialog(false); }}>
-        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto border-0 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] shadow-xl">
           <DialogHeader className="mb-4">
             <DialogTitle className="text-sm font-semibold text-[var(--app-color-text-primary)]">从模板创建</DialogTitle>
             <DialogDescription className="sr-only">选择一个模板来创建新报表</DialogDescription>
@@ -434,7 +434,7 @@ export default function ReportFormListPage() {
 
       {/* Version history dialog */}
       <Dialog open={versionFormId !== null} onOpenChange={(v) => { if (!v) setVersionFormId(null); }}>
-        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-md max-h-[70vh] overflow-y-auto border-0 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] shadow-xl">
           <DialogHeader className="mb-4">
             <DialogTitle className="text-sm font-semibold text-[var(--app-color-text-primary)]">
               版本历史 · {rawList.find(f => f.id === versionFormId)?.name}

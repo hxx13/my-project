@@ -228,8 +228,8 @@ export default function OptionEditor({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) void handleDone(); }}>
-      <DialogContent className="sm:max-w-lg sm:rounded-[var(--app-radius-container)] max-h-[90vh] overflow-y-auto flex flex-col gap-0 p-0 rounded-[var(--app-radius-container)] border-[var(--app-color-border)] bg-[var(--app-color-surface-elevated)] shadow-xl text-[var(--app-color-text-primary)]">
-        <DialogHeader className="space-y-0 px-4 py-3 border-b border-[var(--app-color-border)] shrink-0 text-left">
+      <DialogContent className="sm:max-w-lg sm:rounded-[var(--app-radius-container)] max-h-[90vh] overflow-y-auto flex flex-col gap-0 p-0 rounded-[var(--app-radius-container)] border-0 bg-[var(--app-color-surface-elevated)] shadow-xl text-[var(--app-color-text-primary)]">
+        <DialogHeader className="space-y-0 px-4 py-3 shadow-[inset_0_-1px_0_color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)] shrink-0 text-left">
           <DialogTitle className="text-[13px] font-semibold text-[var(--app-color-text-primary)]">
             {isMulti ? '编辑多选选项' : '编辑下拉选项'}
           </DialogTitle>

@@ -194,7 +194,7 @@ export default function EditorToolbar(props: Props) {
   const inputDisabled = !hasSelection ? 'opacity-[0.35] pointer-events-none' : '';
 
   return (
-    <div className="border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] shrink-0 z-[var(--z-sticky)]">
+    <div className="mx-6 mt-2 shrink-0 rounded-2xl bg-[var(--app-color-surface-container)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_-12px_rgba(0,0,0,.12)] z-[var(--z-sticky)]">
       <div className="flex items-center gap-2 px-3 py-1.5 min-h-[48px]">
         {/* 左栏：极窄视口下换行，1280px 单行 */}
         <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
@@ -219,8 +219,8 @@ export default function EditorToolbar(props: Props) {
                 setShowOptionEditor(true);
               }
             }}
-            className={`rounded-[var(--app-radius-element)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]
-                       h-[34px] px-2 text-[13px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] shrink-0 disabled:opacity-[0.35]`}
+            className={`rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)]
+                       h-[34px] px-2 text-[13px] text-[var(--app-color-text-primary)] outline-none shrink-0 disabled:opacity-[0.35]`}
           >
             {!hasSelection && <option value="">未选中</option>}
             {fieldTypeMixed && <option value="">多种类型</option>}
@@ -248,7 +248,7 @@ export default function EditorToolbar(props: Props) {
 
           <select value={selectedStyle?.fontSize || 13} disabled={!hasSelection}
             onChange={e => onStyleChange({ fontSize: Number(e.target.value) })}
-            className="rounded-[var(--app-radius-element)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] h-[34px] px-1.5 text-[13px] outline-none shrink-0 disabled:opacity-[0.35]" title="字号">
+            className="rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)] h-[34px] px-1.5 text-[13px] outline-none shrink-0 disabled:opacity-[0.35]" title="字号">
             {FONT_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
@@ -350,8 +350,7 @@ export default function EditorToolbar(props: Props) {
             </button>
             {moreOpen && (
               <div
-                className="absolute right-0 top-full mt-1 w-[168px] rounded-[var(--app-radius-container)] border border-[var(--app-color-border)]
-                           bg-[var(--app-color-surface-elevated)] shadow-lg py-1 z-[var(--z-dropdown)]"
+                className="absolute right-0 top-full mt-2 w-[176px] rounded-xl bg-[var(--app-color-surface-elevated)] shadow-[0_4px_6px_-2px_rgba(0,0,0,.08),0_12px_28px_-8px_rgba(0,0,0,.18)] py-1.5 overflow-hidden z-[var(--z-dropdown)]"
               >
                 <ToolbarMenuItem icon={Palette} label="主题" onClick={() => { onOpenTheme(); setMoreOpen(false); }} />
                 <ToolbarMenuItem icon={FileText} label="Word 模板" onClick={() => { onOpenWordTemplate(); setMoreOpen(false); }} />
@@ -376,7 +375,7 @@ export default function EditorToolbar(props: Props) {
                     onClick={() => { onResetPublishConditions(); setMoreOpen(false); }}
                   />
                 )}
-                <div className="my-1 border-t border-[var(--app-color-border)]" />
+                <div className="my-1.5 h-px bg-[color-mix(in_srgb,var(--app-color-text-primary)_8%,transparent)]" />
                 <div className="px-3 py-1 text-[10px] text-[var(--app-color-text-tertiary)]">
                   {cellCount} 格 · {selectedCount} 选
                   {isDirty && <span className="text-[var(--app-color-feedback-danger)] ml-0.5">*</span>}

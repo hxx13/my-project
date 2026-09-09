@@ -66,7 +66,7 @@ export default function ColorPalette({ value, onChange, mode }: Props) {
       >
         <Icon className="w-3.5 h-3.5" />
         <span
-          className="inline-block w-3 h-3 rounded-[2px] border border-[var(--app-color-border)]"
+          className="inline-block w-3.5 h-3.5 rounded-[4px] ring-1 ring-[color-mix(in_srgb,var(--app-color-text-primary)_14%,transparent)]"
           style={{
             backgroundColor: currentColor === 'transparent' || currentColor === 'inherit' ? 'transparent' : currentColor,
             backgroundImage: currentColor === 'transparent'
@@ -80,9 +80,9 @@ export default function ColorPalette({ value, onChange, mode }: Props) {
 
       {open && (
         <div
-          className="absolute top-full left-0 mt-1 p-2 rounded-[var(--app-radius-container)]
-                     border border-[var(--app-color-border)] bg-[var(--app-color-surface-elevated)]
-                     shadow-lg z-[var(--z-dropdown)] w-[180px]"
+          className="absolute top-full left-0 mt-2 p-2.5 rounded-xl
+                     bg-[var(--app-color-surface-elevated)]
+                     shadow-[0_4px_6px_-2px_rgba(0,0,0,.08),0_12px_28px_-8px_rgba(0,0,0,.18)] z-[var(--z-dropdown)] w-[188px]"
         >
           {/* 预置色块 */}
           <div className="grid grid-cols-5 gap-1.5 mb-2">
@@ -93,7 +93,7 @@ export default function ColorPalette({ value, onChange, mode }: Props) {
                   onChange(p.value === 'transparent' ? undefined : p.value === 'inherit' ? undefined : p.value);
                   setOpen(false);
                 }}
-                className="w-7 h-7 rounded-[4px] border border-[var(--app-color-border)]
+                className="w-7 h-7 rounded-lg ring-1 ring-[color-mix(in_srgb,var(--app-color-text-primary)_14%,transparent)]
                            hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]"
                 style={{
                   backgroundColor: p.value === 'transparent' || p.value === 'inherit' ? 'transparent' : p.value,
@@ -123,9 +123,9 @@ export default function ColorPalette({ value, onChange, mode }: Props) {
                 }
               }}
               placeholder="#FF0000"
-              className="flex-1 rounded-[4px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-page)]
-                         px-1.5 py-0.5 text-[10px] text-[var(--app-color-text-primary)] outline-none
-                         focus:border-[var(--app-color-accent)]"
+              className="flex-1 rounded-lg bg-[var(--app-color-surface-hover)] h-7
+                         px-2 text-[12px] text-[var(--app-color-text-primary)] outline-none
+                         focus:bg-[var(--app-color-surface-container)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_45%,transparent)]"
             />
             <button
               onClick={() => {
