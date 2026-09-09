@@ -225,34 +225,261 @@
   color: #15803d;
 }
 
-/* 后台数据表：AdminTableShell（.admin-table-shell-inner）与 AdminDataTableWrap（.admin-data-table-wrap）共用 */
+/* 后台数据表统一皮肤（方案 B：斑马纹 + 无行线 + 小号灰表头）
+   覆盖三类：AdminTableShell（.admin-table-shell-inner）、AdminDataTableWrap（.admin-data-table-wrap），
+   以及显式加 .twin-table 的裸表格。颜色全部走主题令牌，亮色/暗色一致。 */
 .admin-table-shell-inner table,
-.admin-data-table-wrap table {
-  @apply min-w-full border-collapse text-sm text-neutral-800;
+.admin-data-table-wrap table,
+.twin-table {
+  @apply min-w-full border-collapse text-sm;
+  color: var(--app-color-text-secondary);
+}
+
+.admin-table-shell-inner thead,
+.admin-data-table-wrap thead,
+.twin-table thead {
+  border-bottom: 0;
 }
 
 .admin-table-shell-inner thead th,
-.admin-data-table-wrap thead th {
-  @apply border-b border-neutral-200 bg-neutral-50 px-3 py-2.5 text-left text-xs font-semibold tracking-wide text-neutral-600;
+.admin-data-table-wrap thead th,
+.twin-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  box-shadow: 0 1px 0 0 rgb(229 231 235 / 0.9);
+  padding: 0.625rem 0.75rem;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--app-color-text-tertiary);
+  background: var(--app-color-surface-container);
+  border-bottom: 1px solid var(--app-color-border-default);
+}
+
+/* 表头默认左对齐；用 :where 压低优先级，让列级 text-right / text-center 仍能覆盖 */
+:where(.admin-table-shell-inner, .admin-data-table-wrap, .twin-table) th {
+  text-align: left;
+}
+
+.admin-table-shell-inner tbody tr,
+.admin-data-table-wrap tbody tr,
+.twin-table tbody tr {
+  border-bottom: 0;
 }
 
 .admin-table-shell-inner tbody td,
-.admin-data-table-wrap tbody td {
-  @apply border-b border-neutral-100 align-middle;
+.admin-data-table-wrap tbody td,
+.twin-table tbody td {
+  @apply align-middle;
+  border-bottom: 0;
 }
 
 .admin-table-shell-inner tbody tr:nth-child(even),
-.admin-data-table-wrap tbody tr:nth-child(even) {
-  @apply bg-neutral-50/55;
+.admin-data-table-wrap tbody tr:nth-child(even),
+.twin-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--app-color-text-primary) 3%, transparent);
 }
 
 .admin-table-shell-inner tbody tr:hover,
-.admin-data-table-wrap tbody tr:hover {
-  @apply bg-neutral-100/75;
+.admin-data-table-wrap tbody tr:hover,
+.twin-table tbody tr:hover {
+  background: color-mix(in srgb, var(--app-color-text-primary) 6%, transparent);
+}
+
+/* 资产台账表：斑马纹改用不透明底色，左侧冻结列用 bg-inherit 才能跟随行底色
+   （.twin-table 的斑马纹是半透明叠加，冻结列若不自带底色，横滚时内容会透出来） */
+.asset-ledger-table tbody tr {
+  background: var(--app-color-surface-container);
+}
+.asset-ledger-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--app-color-text-primary) 3%, var(--app-color-surface-container));
+}
+.asset-ledger-table tbody tr:hover {
+  background: color-mix(in srgb, var(--app-color-text-primary) 6%, var(--app-color-surface-container));
+}
+
+/* ── 报表设计页共用类：画布 + 纸张 + 零边框表格皮肤 ──
+   视觉方向：彻底去线条。画布是整页滚动容器，报表是一张带阴影的白纸；
+   表格零边框、斑马纹分带、选中格用 accent 软底 + 内描边。
+   颜色全部走主题令牌，亮色/暗色一致（阴影 rgba 是投影不是配色）。 */
+
+/* 画布：占满剩余高度、区域内滚动，纸张水平居中、顶部对齐 */
+.report-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--app-color-surface-page);
+  padding: 32px 40px 64px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* 纸张：白底圆角卡片，带多层柔和投影 */
+.report-sheet {
+  width: 100%;
+  max-width: 1100px;
+  background: var(--app-color-surface-container);
+  border-radius: 18px;
+  padding: 40px 44px 48px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 12px 32px -12px rgba(0, 0, 0, 0.14), 0 2px 8px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* 零边框表格：关掉 collapse 与 td/th 边框，改用斑马纹 + 行首末圆角分带 */
+.report-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.report-grid td,
+.report-grid th {
+  border: 0;
+}
+
+/* 斑马纹：偶数行半透明叠加深色 */
+.report-grid tbody tr:nth-child(even) > td {
+  background: color-mix(in srgb, var(--app-color-text-primary) 3.5%, transparent);
+}
+
+/* 悬停：比斑马纹稍深一档 */
+.report-grid tbody tr:hover > td {
+  background: color-mix(in srgb, var(--app-color-text-primary) 6%, transparent);
+}
+
+/* 行首末圆角：首列左圆角、末列右圆角 */
+.report-grid tbody tr > td:first-child {
+  border-radius: 8px 0 0 8px;
+}
+.report-grid tbody tr > td:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+/* 含合并格（rowspan/colspan）的行不圆角，避免合并单元格矩形切断行圆角 */
+.report-grid tbody tr:has(td[rowspan]) > td,
+.report-grid tbody tr:has(td[colspan]) > td {
+  border-radius: 0;
+}
+
+/* 网格线开关：默认关闭。td/th 右下内描边模拟网格线 */
+.report-grid--ruled td,
+.report-grid--ruled th {
+  box-shadow: inset -1px -1px 0 0 color-mix(in srgb, var(--app-color-text-primary) 6%, transparent);
+}
+
+/* 选中格：accent 软底 + 内描边。特异性 (0,3,3) 高于斑马纹 (0,2,3) 与本类网格线，偶数行选中格不被盖住 */
+.report-sheet .report-grid tbody tr td[data-cell-selected="true"] {
+  background: var(--app-color-accent-soft);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--app-color-accent) 55%, transparent);
+  border-radius: 8px;
+}
+
+/* 首行吸顶：默认开启。sticky 的滚动祖先必须是 .report-canvas（外层再有 overflow:auto 会失效） */
+.report-grid--sticky-first tbody tr:first-child > td {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--app-color-surface-container) 85%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+/* ── 审核通知卡片（物资审核页各 tab 共用） ──
+   对齐大厂通知列表的做法：白底 + 1px 细边 + 左侧状态色条，不再整卡铺色。 */
+.review-card {
+  position: relative;
+  background: var(--app-color-surface-container);
+  border: 1px solid var(--app-color-border-default);
+  border-radius: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.review-card:hover {
+  border-color: color-mix(in srgb, var(--app-color-text-primary) 16%, transparent);
+  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.1);
+}
+.review-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--review-accent, transparent);
+}
+.review-card[data-tone="pending"] { --review-accent: var(--app-color-feedback-warning); }
+.review-card[data-tone="ok"]      { --review-accent: var(--app-color-feedback-success); }
+.review-card[data-tone="bad"]     { --review-accent: var(--app-color-feedback-danger); }
+.review-card[data-tone="info"]    { --review-accent: var(--app-color-feedback-info); }
+.review-card[data-tone="none"]    { --review-accent: var(--app-color-border-strong); }
+
+/* 状态展示：圆点 + 文字（取代描边药丸） */
+.review-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--app-color-text-secondary);
+  white-space: nowrap;
+}
+.review-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--review-accent, var(--app-color-text-tertiary));
+}
+
+/* 卡片动作按钮 */
+.review-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.review-btn--approve {
+  background: var(--app-color-feedback-success-soft);
+  color: var(--app-color-feedback-success);
+  border: 1px solid color-mix(in srgb, var(--app-color-feedback-success) 25%, transparent);
+}
+.review-btn--approve:hover { background: color-mix(in srgb, var(--app-color-feedback-success) 18%, transparent); }
+.review-btn--reject {
+  background: transparent;
+  color: var(--app-color-text-secondary);
+  border: 1px solid var(--app-color-border-default);
+}
+.review-btn--reject:hover {
+  background: var(--app-color-feedback-danger-soft);
+  color: var(--app-color-feedback-danger);
+  border-color: color-mix(in srgb, var(--app-color-feedback-danger) 30%, transparent);
+}
+
+/* 分段式标签栏（取代实心主色药丸） */
+.review-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-color-text-primary) 5%, transparent);
+}
+.review-tab {
+  border-radius: 7px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--app-color-text-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.review-tab:hover { color: var(--app-color-text-primary); }
+.review-tab[data-active="true"] {
+  background: var(--app-color-surface-container);
+  color: var(--app-color-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* 表格内可编辑控件：与 ADMIN_UI_STYLE 中链接/焦点色一致 */
