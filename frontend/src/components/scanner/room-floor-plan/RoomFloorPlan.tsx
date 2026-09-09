@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import type { CageShelfCell } from "@/api/domains/cageShelf.api";
+import { useEffect, useMemo, useRef } from "react";
+import type { CageColorConfig, CageShelfCell } from "@/api/domains/cageShelf.api";
 import type { FloorPlanRack } from "./useRoomFloorPlan";
 import { CompactCell } from "./CompactCell";
 
@@ -15,6 +15,7 @@ const STATUS_LEGEND: { code: string; label: string }[] = [
 /**
  * 房间平面图：每排 `columns` 个架子，只有本区域纵向滚动。
  * 数据加载失败由父组件降级，这里只负责渲染。
+ * 须置于有确定高度的父容器（min-h-0 flex-1）内，否则内层滚动区会塌缩。
  */
 export function RoomFloorPlan({
   racks,
@@ -33,12 +34,18 @@ export function RoomFloorPlan({
   empty?: boolean;
   error?: boolean;
   onCellClick?: (cell: CageShelfCell, rack: FloorPlanRack) => void;
-  legendColors: Record<string, { bg: string; border: string }>;
+  legendColors: CageColorConfig;
 }) {
-  // 每个架子一个稳定的点击回调：否则每格传内联箭头函数会让 CompactCell 的 memo 失效
+  // onCellClick 存进 ref：调用方传内联箭头时不会让下面的 memo 每轮重建，
+  // 否则每个 CompactCell 的 onClick 都会换新引用、memo 失效。
+  const onCellClickRef = useRef(onCellClick);
+  useEffect(() => {
+    onCellClickRef.current = onCellClick;
+  }, [onCellClick]);
+
   const cellHandlers = useMemo(
-    () => new Map(racks.map((r) => [r, (c: CageShelfCell) => onCellClick?.(c, r)])),
-    [racks, onCellClick],
+    () => new Map(racks.map((r) => [r, (c: CageShelfCell) => onCellClickRef.current?.(c, r)])),
+    [racks],
   );
 
   if (loading) {
@@ -81,7 +88,7 @@ export function RoomFloorPlan({
               <div
                 className={
                   rack.isMine
-                    ? "mb-1.5 truncate text-[10px] font-bold text-[var(--app-color-feedback-success)]"
+                    ? "mb-1.5 truncate text-[10px] font-bold text-[var(--app-color-text-primary)]"
                     : "mb-1.5 truncate text-[10px] text-[var(--app-color-text-secondary)]"
                 }
               >
@@ -112,8 +119,11 @@ export function RoomFloorPlan({
         {STATUS_LEGEND.map((s) => (
           <span key={s.code} className="inline-flex items-center gap-1.5">
             <span
-              className="inline-block size-2.5 rounded-[2px]"
-              style={{ background: legendColors[s.code]?.bg ?? "transparent" }}
+              className="inline-block size-2.5 rounded-[2px] border"
+              style={{
+                background: legendColors[s.code]?.bg ?? "transparent",
+                borderColor: legendColors[s.code]?.border ?? "var(--app-color-border-default)",
+              }}
             />
             {s.label}
           </span>
