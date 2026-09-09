@@ -2090,7 +2090,17 @@ public class AssetService {
             @Override public void transferTo(java.io.File dest) throws IOException { java.nio.file.Files.write(dest.toPath(), cachedBytes); }
         };
         String batchId = "BATCH_" + UUID.randomUUID().toString().replace("-", "");
-        Map<String, Object> result = importAssetsFromExcelInternal(operatorId, file, batchId, createNewColumns);
+        // CSV 与 Excel 走各自的解析器：WorkbookFactory 打不开 CSV（会报 unsupported file type）
+        Map<String, Object> result;
+        if (cachedName != null && cachedName.toLowerCase(Locale.ROOT).endsWith(".csv")) {
+            result = importAssetsFromCsv(operatorId, file);
+        } else {
+            result = importAssetsFromExcelInternal(operatorId, file, batchId, createNewColumns);
+        }
+        Object resultBatchId = result.get("batchId");
+        if (resultBatchId != null) {
+            batchId = String.valueOf(resultBatchId);
+        }
         int linked = 0;
         if (locationMappings != null && !locationMappings.isEmpty()) {
             String columnKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
