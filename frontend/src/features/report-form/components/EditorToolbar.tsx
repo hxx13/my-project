@@ -1,4 +1,4 @@
-// components/EditorToolbar.tsx — 左栏可横向滚动，右栏紧凑 + 更多菜单
+// components/EditorToolbar.tsx — 四段分组工具栏：字段 / 样式 / 结构 / 操作
 import { useState, useEffect, useRef } from 'react';
 import {
   Undo2, Redo2, Save, Combine, Ungroup, Palette, FileText, Send,
@@ -173,19 +173,17 @@ export default function EditorToolbar(props: Props) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [moreOpen]);
 
-  const showOptions = fieldType === 'SELECT' || fieldType === 'MULTI_SELECT';
-
   const btnSm = 'px-2 py-1 rounded-[6px] text-[11px] font-medium transition-colors';
-  const btnOut = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 disabled:pointer-events-none inline-flex items-center gap-1`;
-  const btnIcon = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 disabled:pointer-events-none inline-flex items-center justify-center`;
-  const btnOn = `${btnSm} bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1`;
+  const btnSecondary = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1`;
+  const btnIcon = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-40 disabled:pointer-events-none inline-flex items-center justify-center`;
+  const btnPrimary = `${btnSm} bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1`;
   const inputDisabled = !hasSelection ? 'opacity-40 pointer-events-none' : '';
 
   return (
     <div className="border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] shrink-0 z-[var(--z-sticky)]">
       <div className="flex items-center gap-2 px-3 py-2 min-h-[44px]">
-        {/* 左栏：不换行，横向滚动 */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-color-border)]">
+        {/* 左栏：极窄视口下换行，1280px 单行 */}
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap">
           <span
             className={`text-[10px] font-medium shrink-0 px-1.5 py-0.5 rounded-[4px] min-w-[64px] text-center ${
               selectedCount > 1
@@ -217,9 +215,9 @@ export default function EditorToolbar(props: Props) {
 
           <button
             type="button"
-            disabled={!hasSelection || !showOptions}
+            disabled={!hasSelection || !isOptionFieldType}
             onClick={() => setShowOptionEditor(true)}
-            className={`${btnOut} shrink-0 ${!showOptions ? 'hidden' : ''}`}
+            className={`${btnSecondary} shrink-0`}
           >
             <ListTree className="w-3.5 h-3.5" />
             选项{(fieldOptionCount ?? (fieldOptions || []).length) > 0
@@ -288,19 +286,24 @@ export default function EditorToolbar(props: Props) {
           )}
         </div>
 
+        <span className="w-px h-5 bg-[var(--app-color-border)] shrink-0" />
+
         {/* 右栏：紧凑操作区 */}
-        <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-[var(--app-color-border)]">
+        <div className="flex items-center gap-1.5 shrink-0">
           <UndoRedoSplit onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} />
 
           <button
             type="button"
             onClick={onSave}
             disabled={isSaving}
-            className={`${btnOn} ${isDirty ? 'bg-[var(--app-color-feedback-danger)]' : ''}`}
+            className={btnPrimary}
             title={isSaving ? '保存中' : isDirty ? '有未保存修改' : '保存'}
           >
             <Save className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isSaving ? '保存中' : isDirty ? '保存*' : '保存'}</span>
+            <span className="hidden sm:inline">{isSaving ? '保存中' : '保存'}</span>
+            {isDirty && !isSaving && (
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-white" aria-hidden="true" />
+            )}
           </button>
 
           {isPublished ? (
@@ -308,14 +311,14 @@ export default function EditorToolbar(props: Props) {
               type="button"
               onClick={onRepublish}
               disabled={!onRepublish}
-              className={btnOn}
+              className={btnSecondary}
               title="重新发布（沿用上次发布条件）"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">重发</span>
             </button>
           ) : (
-            <button type="button" onClick={onPublish} className={btnOn} title="发布报表">
+            <button type="button" onClick={onPublish} className={btnSecondary} title="发布报表">
               <Send className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">发布</span>
             </button>
