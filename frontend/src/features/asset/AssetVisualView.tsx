@@ -102,7 +102,7 @@ function SpaceCard({ node, chips, onSelect, onOpen }: {
         />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
         <span className="shrink-0 rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--twin-mute)]">
-          {node.totalCount ?? 0} 件
+          {node.directCount ?? 0} 件
         </span>
         {hasChildren && <span className="shrink-0 text-[10px] text-[var(--twin-link-deep)]">▸ 进入</span>}
       </div>
@@ -449,7 +449,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
               <div className="flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] px-4 py-2.5">
                 <span className="text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
                 <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] text-[var(--twin-mute)]">
-                  {node.totalCount ?? 0} 件
+                  {directCount} 件
                 </span>
               </div>
               <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -537,7 +537,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
                 <SpaceGroup
                   key={c.id}
                   title={c.name}
-                  count={c.totalCount ?? 0}
+                  count={c.directCount ?? 0}
                   rows={chipsFor(c.id)}
                   onOpen={setSelectedAsset}
                 />

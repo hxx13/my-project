@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import PromoteMoveLogDialog, { type PromoteMoveLogTarget } from "./PromoteMoveLogDialog";
 
 const USER_KEY = "col_使用人";
+const LOCATION_KEY = "col_存放地点";
 
 const TRANSFER_STATUS_LABEL: Record<string, string> = {
   IN_PROGRESS: "进行中",
@@ -144,7 +145,7 @@ export default function AssetDetailDrawer(props: {
               {[
                 ["资产编码", asset.assetCode],
                 ["资产名称", asset.assetName],
-                ["存放地点", asset.location],
+                ["存放地点", asset.dynamicValues?.[LOCATION_KEY] || asset.location],
                 ["使用人", asset.dynamicValues?.[USER_KEY]],
                 ["状态", asset.status],
                 ["最近转移时间", formatTime(asset.latestTransferTime)],
