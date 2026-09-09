@@ -12,6 +12,7 @@ import { useFormGridEditor } from '../hooks/useFormGridEditor';
 import { useFieldOptionSets } from '../hooks/useFieldOptionSets';
 import { calcColumnWidths, columnWidthsToRecord, mergeColumnWidths, buildBaseColumnWidths, applyColumnWidthCap, getWordLayoutMaxCol, mergeWordWebColumnWidths } from '../utils/gridColumnWidths';
 import { calcRowHeights, rowHeightsToRecord } from '../utils/gridRowHeights';
+import { row0LooksLikeHeader } from '../utils/reportGridHeader';
 import toast from 'react-hot-toast';
 import ThemePanel from '../components/ThemePanel';
 import PublishWizard from '../components/PublishWizard';
@@ -136,6 +137,8 @@ function DesignerInner({
   const [autoFitKey, setAutoFitKey] = useState(0);
   const [gridRenderKey, setGridRenderKey] = useState(0);
   const [theme, setTheme] = useState<ThemeJson>(initialTheme);
+  const [stickyOverride, setStickyOverride] = useState<boolean | null>(null);
+  const [showGridLines, setShowGridLines] = useState(false);
   const initialColBaseRef = useRef<Record<number, number>>(
     columnWidthsToRecord(
       buildBaseColumnWidths(
@@ -195,6 +198,10 @@ function DesignerInner({
   const referenceStyle = selectedCells[0]?.style;
 
   const fieldKeys = Object.keys(editor.layout.fields || {});
+
+  // 首行吸顶：默认按「第 0 行像不像列名」自动判断，用户可手动覆盖（纯视图偏好，不进 JSON）
+  const headerRow = row0LooksLikeHeader(editor.layout);
+  const stickyFirstRow = stickyOverride ?? headerRow;
 
   // 导入 Excel 报表若未带列宽/行高，首次进入设计页按内容测算（Word 网页尺寸在渲染层计算，不写 theme）
   useEffect(() => {
@@ -584,6 +591,11 @@ function DesignerInner({
         hasSelection={editor.selectedCellIds.size > 0}
         selectionKey={[...editor.selectedCellIds].sort().join(',')}
         formId={formId}
+        showGridLines={showGridLines}
+        stickyFirstRow={stickyFirstRow}
+        firstRowIsHeader={headerRow}
+        onToggleGridLines={() => setShowGridLines(v => !v)}
+        onToggleStickyFirstRow={() => setStickyOverride(!stickyFirstRow)}
       />
       {showThemePanel && (
         <div className="shrink-0 border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-3 py-2">
@@ -603,7 +615,8 @@ function DesignerInner({
 
       {/* 主编辑区 — 左右分栏：左画布 + 右属性栏 */}
       <div className="flex-1 min-h-0 flex">
-        <div className="flex-1 min-h-0 min-w-0 overflow-auto p-3">
+        <div className="report-canvas">
+          <div className="report-sheet">
           {hasCells ? (
             <FormGridEditor
               key={`${gridRenderKey}-${optionSetRevision}`}
@@ -616,6 +629,8 @@ function DesignerInner({
               selectedCellIds={editor.selectedCellIds}
               editingCellId={editingCellId}
               editingText={editingText}
+              ruled={showGridLines}
+              stickyFirstRow={stickyFirstRow}
               onCellMouseDown={handleCellMouseDown}
               onCellMouseEnter={handleCellMouseEnter}
               onMouseUp={handleMouseUp}
@@ -632,6 +647,7 @@ function DesignerInner({
               </p>
             </div>
           )}
+          </div>
         </div>
         <div className={`${inspectorCollapsed ? 'w-8' : 'w-[300px]'} shrink-0 min-h-0 border-l border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]`}>
           <FieldInspector

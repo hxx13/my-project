@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Undo2, Redo2, Save, Combine, Ungroup, Palette, FileText, Send,
   ListTree, Columns2, PaintBucket, RefreshCw, Settings2, MoreHorizontal,
+  LayoutGrid, Pin, Check,
 } from 'lucide-react';
 import type { FieldType, CellStyle } from '../types';
 import ColorPalette from './ColorPalette';
@@ -66,6 +67,14 @@ interface Props {
   formId?: number;
   /** 选中格子 id 拼接，用于检测选区变化 */
   selectionKey?: string;
+  /** 网格线开关（纯视图偏好，不进 JSON） */
+  showGridLines: boolean;
+  /** 首行吸顶最终生效值（stickyOverride ?? headerRow） */
+  stickyFirstRow: boolean;
+  /** 首行是否像列名（false 时「首行吸顶」置灰） */
+  firstRowIsHeader: boolean;
+  onToggleGridLines: () => void;
+  onToggleStickyFirstRow: () => void;
 }
 
 function UndoRedoSplit({
@@ -108,23 +117,28 @@ function UndoRedoSplit({
 }
 
 function ToolbarMenuItem({
-  icon: Icon, label, onClick, disabled,
+  icon: Icon, label, onClick, disabled, active, title,
 }: {
   icon: typeof Save;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** 当前是否开启：开启时右侧显示勾选标记 */
+  active?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
+      title={title ?? label}
       className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-[var(--app-color-text-secondary)]
                  hover:bg-[var(--app-color-surface-hover)] text-left disabled:opacity-40 disabled:pointer-events-none"
     >
       <Icon className="w-3.5 h-3.5 shrink-0" />
       {label}
+      {active && <Check className="w-3.5 h-3.5 shrink-0 ml-auto text-[var(--app-color-accent)]" />}
     </button>
   );
 }
@@ -147,6 +161,7 @@ export default function EditorToolbar(props: Props) {
     onRestoreWordImportWidths, isWordSource,
     formatBrushActive, onBrushPickup, onBrushApply,
     cellCount, selectedCount, hasSelection, formId, selectionKey,
+    showGridLines, stickyFirstRow, firstRowIsHeader, onToggleGridLines, onToggleStickyFirstRow,
   } = props;
 
   const isOptionFieldType = fieldType === 'SELECT' || fieldType === 'MULTI_SELECT';
@@ -341,6 +356,20 @@ export default function EditorToolbar(props: Props) {
               >
                 <ToolbarMenuItem icon={Palette} label="主题" onClick={() => { onOpenTheme(); setMoreOpen(false); }} />
                 <ToolbarMenuItem icon={FileText} label="Word 模板" onClick={() => { onOpenWordTemplate(); setMoreOpen(false); }} />
+                <ToolbarMenuItem
+                  icon={LayoutGrid}
+                  label="显示网格线"
+                  active={showGridLines}
+                  onClick={() => { onToggleGridLines(); setMoreOpen(false); }}
+                />
+                <ToolbarMenuItem
+                  icon={Pin}
+                  label="首行吸顶"
+                  active={stickyFirstRow}
+                  disabled={!firstRowIsHeader}
+                  title={firstRowIsHeader ? '首行吸顶' : '首行不是列名'}
+                  onClick={() => { onToggleStickyFirstRow(); setMoreOpen(false); }}
+                />
                 {isPublished && onResetPublishConditions && (
                   <ToolbarMenuItem
                     icon={Settings2}

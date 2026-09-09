@@ -48,6 +48,8 @@ interface Props {
   permissionJson?: PermissionJson;
   /** word：网页展示专用行高/列宽（不影响 Word 导出） */
   formSource?: string;
+  /** 首行是否吸顶（默认开启，由 .report-grid--sticky-first 接管） */
+  stickyFirstRow?: boolean;
 }
 
 function parseThemeJson(raw: unknown): ThemeJson {
@@ -73,7 +75,7 @@ export function parseLayoutJson(raw: unknown): LayoutJson {
   return raw as LayoutJson;
 }
 
-export default function FormGridRenderer({ layout: rawLayout, themeJson, values, editable, onChange, userRoles = [], permissionJson, formSource }: Props) {
+export default function FormGridRenderer({ layout: rawLayout, themeJson, values, editable, onChange, userRoles = [], permissionJson, formSource, stickyFirstRow = true }: Props) {
   const layout = parseLayoutJson(rawLayout);
   const theme = parseThemeJson(themeJson);
   const { containerRef, containerWidth } = useWordTableContainerWidth(true);
@@ -434,7 +436,7 @@ export default function FormGridRenderer({ layout: rawLayout, themeJson, values,
 
   const tableEl = (
     <table
-      className="overflow-visible report-grid report-grid--sticky-first"
+      className={`overflow-visible report-grid${stickyFirstRow ? ' report-grid--sticky-first' : ''}`}
       style={{
         tableLayout: 'fixed',
         width: totalWidth,
