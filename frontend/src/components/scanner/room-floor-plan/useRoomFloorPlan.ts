@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchFullTree, fetchShelfCellsBatch, type CageShelfCell } from "@/api/domains/cageShelf.api";
+import {
+  fetchFullTree,
+  fetchShelfCellsBatch,
+  type CageCellSnapshot,
+  type CageShelfCell,
+} from "@/api/domains/cageShelf.api";
 import { snapshotCellToShelfCell } from "@/features/cage-shelf/components/ShelfGrid";
 import { rackMatchesGroup } from "./groupMatch";
 
@@ -8,6 +13,12 @@ export interface FloorPlanRack {
   shelveId: string;
   shelveName: string;
   cells: CageShelfCell[];
+  /**
+   * 批量接口是否为该架返回了条目。
+   * false = 后端没有该架的笼位快照数据（与「有架但格子全空」不同），
+   * 后端 groupByShelf 只对有数据的架输出条目。
+   */
+  hasData: boolean;
   isMine: boolean;
 }
 
@@ -28,9 +39,11 @@ export function useRoomFloorPlan(
   myGroup: string | null | undefined,
 ) {
   const treeQuery = useQuery({
-    queryKey: ["cage-full-tree"],
+    // 与 student-cage-shelf / AdminCageShelfPage 共用同一缓存键，避免同一份全量树被拉两遍
+    queryKey: ["cageShelfFullTree"],
     queryFn: fetchFullTree,
     staleTime: 10 * 60 * 1000,
+    enabled: Boolean(roomId) || Boolean(roomName && roomName.trim()),
   });
 
   const shelves = useMemo(() => {
@@ -48,6 +61,7 @@ export function useRoomFloorPlan(
     return [];
   }, [treeQuery.data, roomId, roomName]);
 
+  // key 必须与后端 groupByShelf 的回显格式严格一致（roomId:shelveId）
   const pairs = useMemo(
     () => shelves.map((s) => `${s.roomId}:${s.shelveId}`),
     [shelves],
@@ -61,16 +75,18 @@ export function useRoomFloorPlan(
   });
 
   const data = useMemo((): RoomFloorPlanData => {
-    const byKey = new Map<string, CageShelfCell[]>();
+    const byKey = new Map<string, CageCellSnapshot[]>();
     for (const entry of cellsQuery.data ?? []) {
-      byKey.set(entry.key, (entry.cells ?? []).map(snapshotCellToShelfCell));
+      byKey.set(entry.key, entry.cells ?? []);
     }
     const racks: FloorPlanRack[] = shelves.map((s) => {
-      const cells = byKey.get(`${s.roomId}:${s.shelveId}`) ?? [];
+      const entry = byKey.get(`${s.roomId}:${s.shelveId}`);
+      const cells = entry ? entry.map(snapshotCellToShelfCell) : [];
       return {
         shelveId: String(s.shelveId),
         shelveName: s.shelveName || String(s.shelveId),
         cells,
+        hasData: entry != null,
         isMine: rackMatchesGroup(cells, myGroup),
       };
     });
