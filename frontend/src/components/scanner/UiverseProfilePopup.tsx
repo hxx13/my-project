@@ -10,7 +10,6 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { useProfilePopup } from "./useProfilePopup";
 import { ProfileHeader } from "./components/ProfileHeader";
-import { StudentEntryCard } from "./StudentEntryCard";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessMotionOverlay } from "./ScanAccessMotionOverlay";
@@ -57,11 +56,6 @@ export function UiverseProfilePopup(props: PopupProps) {
         setViolationAckPatch(null);
     }, [result?.userInfo?.userId]);
 
-    useEffect(() => {
-        setPlanRoomIdx(0);
-        setDetailCell(null);
-    }, [result?.userInfo?.userId]);
-
     const mergedResult = useMemo(() => {
         if (!result) return result;
         if (!violationAckPatch) return result;
@@ -103,6 +97,12 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [planRoomIdx, setPlanRoomIdx] = useState(0);
     const [detailCell, setDetailCell] = useState<CageShelfCell | null>(null);
+
+    useEffect(() => {
+        setPlanRoomIdx(0);
+        setDetailCell(null);
+    }, [result?.userInfo?.userId]);
+
     const planRoom = state.targetRooms[planRoomIdx] ?? state.targetRooms[0];
     const floorPlan = useRoomFloorPlan(
       planRoom?.officialRoomId || planRoom?.id,
@@ -306,16 +306,13 @@ export function UiverseProfilePopup(props: PopupProps) {
                         <div className="flex-1 min-h-0">
                             <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
                         </div>
-                        <div className="flex-1 min-h-0 flex flex-col min-h-0">
-                            <StudentEntryCard
-                                capacityStats={state.myCapacityStats}
-                                roomOverviewFetching={state.roomOverviewFetching}
-                                roomOverviewSourceCount={state.roomOverviewSourceCount}
-                                studentUserId={studentUserId}
-                                studentName={state.user?.name}
+                        <div className="min-h-0 flex-[1.3] overflow-hidden">
+                            <AIPredictionCard
+                                predictions={state.predictionList}
+                                isLoading={state.isPredLoading}
+                                accentVariant={accentVariant}
+                                onQuickActions={() => setShowQuickActions(true)}
                                 onEnterStudentCenter={handleEnterStudentCenter}
-                                onOpenQuickActions={() => setShowQuickActions(true)}
-                                onClosePopup={onClose}
                             />
                         </div>
                     </div>
