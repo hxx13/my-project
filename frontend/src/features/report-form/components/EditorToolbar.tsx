@@ -44,22 +44,14 @@ interface Props {
   onStyleChange: (p: Partial<CellStyle>) => void;
   fieldType?: FieldType;
   fieldTypeMixed?: boolean;
-  fieldStaticText?: string;
-  onFieldStaticTextChange?: (text: string) => void;
   fieldOptions?: { label: string; value: string }[];
   fieldOptionCount?: number;
   fieldOptionSetId?: string;
-  fieldMaxLength?: number;
-  fieldMin?: number;
-  fieldMax?: number;
   onFieldTypeChange: (t: FieldType) => void;
   onBindOptionPreset: (id: string) => void;
   onUnbindOptionPreset: () => void;
   onInlineFieldOptionsChange: (opts: { label: string; value: string }[]) => void;
   onOptionPresetUpdated?: () => void;
-  onFieldMaxLengthChange: (v: number | undefined) => void;
-  onFieldMinChange: (v: number | undefined) => void;
-  onFieldMaxChange: (v: number | undefined) => void;
   onOpenTheme: () => void;
   onOpenWordTemplate: () => void;
   onAutoFit: () => void;
@@ -147,12 +139,10 @@ export default function EditorToolbar(props: Props) {
     canUndo, canRedo, isSaving, isDirty, isPublished,
     onMergeCells, onUnmergeCells, canMerge, canUnmerge,
     selectedStyle, onStyleChange,
-    fieldType, fieldTypeMixed, fieldStaticText, onFieldStaticTextChange,
+    fieldType, fieldTypeMixed,
     fieldOptions, fieldOptionCount, fieldOptionSetId,
-    fieldMaxLength, fieldMin, fieldMax,
     onFieldTypeChange,
     onBindOptionPreset, onUnbindOptionPreset, onInlineFieldOptionsChange, onOptionPresetUpdated,
-    onFieldMaxLengthChange, onFieldMinChange, onFieldMaxChange,
     onOpenTheme, onOpenWordTemplate, onAutoFit,
     onRestoreWordImportWidths, isWordSource,
     formatBrushActive, onBrushPickup, onBrushApply,
@@ -184,9 +174,6 @@ export default function EditorToolbar(props: Props) {
   }, [moreOpen]);
 
   const showOptions = fieldType === 'SELECT' || fieldType === 'MULTI_SELECT';
-  const showNumberRange = fieldType === 'NUMBER';
-  const showMaxLength = fieldType === 'TEXT';
-  const showStaticText = fieldType === 'STATIC';
 
   const btnSm = 'px-2 py-1 rounded-[6px] text-[11px] font-medium transition-colors';
   const btnOut = `${btnSm} border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 disabled:pointer-events-none inline-flex items-center gap-1`;
@@ -228,17 +215,6 @@ export default function EditorToolbar(props: Props) {
             {FIELD_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
           </select>
 
-          <input
-            type="text"
-            value={hasSelection && showStaticText ? (fieldStaticText ?? '') : ''}
-            disabled={!hasSelection || !showStaticText}
-            onChange={e => onFieldStaticTextChange?.(e.target.value)}
-            placeholder="静态文本"
-            className={`w-[100px] max-w-[180px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]
-                       px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] shrink-0
-                       disabled:opacity-40 ${!showStaticText ? 'w-0 min-w-0 max-w-0 px-0 border-transparent opacity-0 pointer-events-none overflow-hidden' : ''}`}
-          />
-
           <button
             type="button"
             disabled={!hasSelection || !showOptions}
@@ -250,23 +226,6 @@ export default function EditorToolbar(props: Props) {
               ? `(${fieldOptionCount ?? fieldOptions!.length})`
               : ''}
           </button>
-
-          <span className={`flex items-center gap-1 shrink-0 ${!showNumberRange ? 'hidden' : ''}`}>
-            <input type="number" step="any" value={fieldMin ?? ''} disabled={!hasSelection}
-              onChange={e => { const v = e.target.value; onFieldMinChange(v === '' ? undefined : Number(v)); }}
-              placeholder="最小" className="w-[56px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[11px] outline-none focus:border-[var(--app-color-accent)] disabled:opacity-40" />
-            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">~</span>
-            <input type="number" step="any" value={fieldMax ?? ''} disabled={!hasSelection}
-              onChange={e => { const v = e.target.value; onFieldMaxChange(v === '' ? undefined : Number(v)); }}
-              placeholder="最大" className="w-[56px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[11px] outline-none focus:border-[var(--app-color-accent)] disabled:opacity-40" />
-          </span>
-
-          <span className={`flex items-center gap-1 shrink-0 ${!showMaxLength ? 'hidden' : ''}`}>
-            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">最长</span>
-            <input type="number" value={fieldMaxLength ?? ''} disabled={!hasSelection}
-              onChange={e => onFieldMaxLengthChange(e.target.value ? Number(e.target.value) : undefined)}
-              placeholder="不限" className="w-[52px] rounded-[6px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-1.5 py-1 text-[11px] outline-none focus:border-[var(--app-color-accent)] disabled:opacity-40" />
-          </span>
 
           <span className="w-px h-5 bg-[var(--app-color-border)] shrink-0" />
 

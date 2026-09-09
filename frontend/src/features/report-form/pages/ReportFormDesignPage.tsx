@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
 import EditorToolbar from '../components/EditorToolbar';
+import FieldInspector from '../components/FieldInspector';
 import { fetchFormById, updateForm, publishForm } from '../api/reportForm.api';
 import type { LayoutJson, FieldType, FieldDefinition, CellStyle, ThemeJson, ReportFormDefinition, FillPolicyJson, PermissionJson, ScheduleJson } from '../types';
 import { useFormGridEditor } from '../hooks/useFormGridEditor';
@@ -131,6 +132,7 @@ function DesignerInner({
   const [publishWizardIntent, setPublishWizardIntent] = useState<'initial' | 'reset'>('initial');
   const [showWordTemplate, setShowWordTemplate] = useState(false);
   const [showThemePanel, setShowThemePanel] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [autoFitKey, setAutoFitKey] = useState(0);
   const [gridRenderKey, setGridRenderKey] = useState(0);
   const [theme, setTheme] = useState<ThemeJson>(initialTheme);
@@ -188,16 +190,6 @@ function DesignerInner({
   const field = selectedCell?.fieldKey
     ? editor.layout.fields[selectedCell.fieldKey]
     : (selectedCell?.kind === 'static' ? { type: 'STATIC' as FieldType, label: selectedCell.staticText || '' } : null);
-
-  const fieldStaticText = useMemo(() => {
-    if (selectedCells.length !== 1 || !selectedCell) return undefined;
-    if (selectedCell.kind === 'static') return selectedCell.staticText || '';
-    if (selectedCell.fieldKey) {
-      const f = editor.layout.fields[selectedCell.fieldKey];
-      if (f?.type === 'STATIC') return f.label || '';
-    }
-    return undefined;
-  }, [selectedCells, selectedCell, editor.layout.fields]);
 
   /** 多选时样式以第一个选中格为参考 */
   const referenceStyle = selectedCells[0]?.style;
@@ -374,6 +366,24 @@ function DesignerInner({
     }
   }, [editor.selectedCellIds, selectedCell]);
 
+  /** 字段 Key 重命名：参考格已在输入时改好 fieldKey，这里把其余引用旧 Key 的格子与 fields 键名一并更新（一次 setLayout，避免逐格 pushUndo） */
+  const handleRenameFieldKey = useCallback((oldKey: string, newKey: string) => {
+    if (oldKey === newKey) return;
+    const layout = editorRef.current.layout;
+    if (layout.fields[newKey]) {
+      toast.error('字段 Key 已存在');
+      return;
+    }
+    const fields: Record<string, FieldDefinition> = {};
+    for (const [key, def] of Object.entries(layout.fields)) {
+      fields[key === oldKey ? newKey : key] = def;
+    }
+    const cells = layout.cells.map(c =>
+      c.fieldKey === oldKey ? { ...c, fieldKey: newKey } : c
+    );
+    editorRef.current.setLayout({ ...layout, cells, fields });
+  }, []);
+
   const handleFieldTypeChange = useCallback((type: FieldType) => {
     if (editor.selectedCellIds.size === 0) return;
     editorRef.current.batchUpdateFieldType(editor.selectedCellIds, type);
@@ -394,22 +404,6 @@ function DesignerInner({
   const handleOptionPresetUpdated = useCallback(() => {
     setGridRenderKey(k => k + 1);
   }, []);
-
-  const handleFieldStaticTextChange = useCallback((text: string) => {
-    if (editor.selectedCellIds.size === 0) return;
-    if (editor.selectedCellIds.size === 1 && selectedCell) {
-      if (selectedCell.kind === 'static') {
-        editorRef.current.updateCell(selectedCell.id, { staticText: text });
-        return;
-      }
-      if (selectedCell.fieldKey) {
-        editorRef.current.updateFieldDefinition(selectedCell.fieldKey, { label: text });
-      }
-    } else {
-      editorRef.current.batchUpdateFieldType(editor.selectedCellIds, 'STATIC');
-      applyFieldPatch({ label: text });
-    }
-  }, [editor.selectedCellIds, selectedCell, applyFieldPatch]);
 
   const handleStyleChange = useCallback((patch: Partial<CellStyle>) => {
     if (editor.selectedCellIds.size === 0) return;
@@ -506,22 +500,14 @@ function DesignerInner({
         onStyleChange={handleStyleChange}
         fieldType={fieldTypeInfo.type ?? field?.type}
         fieldTypeMixed={fieldTypeInfo.mixed}
-        fieldStaticText={fieldStaticText}
-        onFieldStaticTextChange={handleFieldStaticTextChange}
         fieldOptions={field && !field.optionSetId ? (field.options || []) : []}
         fieldOptionCount={field ? getFieldOptions(field).length : 0}
         fieldOptionSetId={field?.optionSetId}
-        fieldMaxLength={field?.maxLength}
-        fieldMin={field?.min}
-        fieldMax={field?.max}
         onFieldTypeChange={handleFieldTypeChange}
         onBindOptionPreset={handleBindOptionPreset}
         onUnbindOptionPreset={handleUnbindOptionPreset}
         onInlineFieldOptionsChange={handleFieldOptionsChange}
         onOptionPresetUpdated={handleOptionPresetUpdated}
-        onFieldMaxLengthChange={(v) => applyFieldPatch({ maxLength: v })}
-        onFieldMinChange={(v) => applyFieldPatch({ min: v })}
-        onFieldMaxChange={(v) => applyFieldPatch({ max: v })}
         onOpenTheme={() => setShowThemePanel(!showThemePanel)}
         onOpenWordTemplate={() => setShowWordTemplate(true)}
         onAutoFit={() => {
@@ -612,36 +598,51 @@ function DesignerInner({
         </div>
       )}
 
-      {/* 主编辑区 — 全宽 */}
-      <div className="flex-1 min-h-0 overflow-auto p-3">
-        {hasCells ? (
-          <FormGridEditor
-            key={`${gridRenderKey}-${optionSetRevision}`}
-            autoFitVersion={autoFitKey}
-            columnWidths={theme.columnWidths}
-            rowHeights={theme.rowHeights}
-            formSource={source}
-            defaultAlign={theme.defaultAlign}
+      {/* 主编辑区 — 左右分栏：左画布 + 右属性栏 */}
+      <div className="flex-1 min-h-0 flex">
+        <div className="flex-1 min-h-0 min-w-0 overflow-auto p-3">
+          {hasCells ? (
+            <FormGridEditor
+              key={`${gridRenderKey}-${optionSetRevision}`}
+              autoFitVersion={autoFitKey}
+              columnWidths={theme.columnWidths}
+              rowHeights={theme.rowHeights}
+              formSource={source}
+              defaultAlign={theme.defaultAlign}
+              layout={editor.layout}
+              selectedCellIds={editor.selectedCellIds}
+              editingCellId={editingCellId}
+              editingText={editingText}
+              onCellMouseDown={handleCellMouseDown}
+              onCellMouseEnter={handleCellMouseEnter}
+              onMouseUp={handleMouseUp}
+              onCellDoubleClick={handleDoubleClick}
+              onEditingTextChange={setEditingText}
+              onEditingCommit={commitEdit}
+              onPreviewCellFocus={handlePreviewCellFocus}
+            />
+          ) : (
+            <div className="text-center py-16">
+              <p className="text-sm text-[var(--app-color-text-tertiary)] mb-3">当前表格为空</p>
+              <p className="text-xs text-[var(--app-color-text-tertiary)]">
+                请从列表页「从 Excel 创建」导入表格，或点击"导入"按钮
+              </p>
+            </div>
+          )}
+        </div>
+        <div className={`${inspectorCollapsed ? 'w-8' : 'w-[300px]'} shrink-0 min-h-0 border-l border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]`}>
+          <FieldInspector
             layout={editor.layout}
             selectedCellIds={editor.selectedCellIds}
-            editingCellId={editingCellId}
-            editingText={editingText}
-            onCellMouseDown={handleCellMouseDown}
-            onCellMouseEnter={handleCellMouseEnter}
-            onMouseUp={handleMouseUp}
-            onCellDoubleClick={handleDoubleClick}
-            onEditingTextChange={setEditingText}
-            onEditingCommit={commitEdit}
-            onPreviewCellFocus={handlePreviewCellFocus}
+            fieldType={fieldTypeInfo.type ?? field?.type}
+            fieldTypeMixed={fieldTypeInfo.mixed}
+            collapsed={inspectorCollapsed}
+            onToggleCollapsed={() => setInspectorCollapsed(c => !c)}
+            onPatchField={applyFieldPatch}
+            onUpdateCell={editor.updateCell}
+            onRenameFieldKey={handleRenameFieldKey}
           />
-        ) : (
-          <div className="text-center py-16">
-            <p className="text-sm text-[var(--app-color-text-tertiary)] mb-3">当前表格为空</p>
-            <p className="text-xs text-[var(--app-color-text-tertiary)]">
-              请从列表页「从 Excel 创建」导入表格，或点击"导入"按钮
-            </p>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* 发布向导 */}
