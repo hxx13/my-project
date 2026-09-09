@@ -102,17 +102,42 @@ function SpaceCard({ node, chips, onSelect, onOpen }: {
         />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
         <span className="shrink-0 rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--twin-mute)]">
-          {node.directCount ?? 0} 件
+          共 {node.totalCount ?? 0} 件
         </span>
         {hasChildren && <span className="shrink-0 text-[10px] text-[var(--twin-link-deep)]">▸ 进入</span>}
       </div>
-      {chips.length > 0 ? (
+      {chips.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
           {chips.map((r) => (
             <AssetChip key={r.id} row={r} onOpen={onOpen} />
           ))}
         </div>
-      ) : (
+      )}
+      {/* 下一级地点：点它继续下钻 */}
+      {hasChildren && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {(node.children ?? []).slice(0, 6).map((c) => (
+            <div
+              key={c.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(c.id);
+              }}
+              title={c.name}
+              className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[10px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)]"
+            >
+              <span className="truncate">{c.name}</span>
+              <span className="shrink-0 text-[var(--twin-mute)]">{c.totalCount ?? 0}</span>
+            </div>
+          ))}
+          {(node.children ?? []).length > 6 && (
+            <span className="self-center text-[10px] text-[var(--twin-mute)]">
+              +{(node.children ?? []).length - 6}
+            </span>
+          )}
+        </div>
+      )}
+      {chips.length === 0 && !hasChildren && (
         <div className="mt-2 text-[11px] text-[var(--twin-mute)]">暂无资产</div>
       )}
     </button>
@@ -122,17 +147,21 @@ function SpaceCard({ node, chips, onSelect, onOpen }: {
 /* ────────────────────────────────────────────────────────────
    右栏分组卡片（本空间 / 子空间）
    ──────────────────────────────────────────────────────────── */
-function SpaceGroup({ title, count, rows, onOpen }: {
+function SpaceGroup({ title, subTotal, rows, childNodes, onSelect, onOpen }: {
   title: string;
-  count: number;
+  /** 该空间含下级的资产总数（用于头部计数，避免「有下级但本级 0 件」的误导） */
+  subTotal: number;
   rows: AssetRow[];
+  /** 下一级地点（有则列出，可点进去） */
+  childNodes?: AssetLocationNode[];
+  onSelect?: (id: number) => void;
   onOpen: (r: AssetRow) => void;
 }) {
   return (
     <div className="mb-2.5 overflow-hidden rounded-twin-md border border-[var(--twin-hairline)]">
       <div className="flex items-center gap-1.5 bg-[var(--twin-canvas-soft)] px-2.5 py-1.5 text-[11.5px] font-semibold text-[var(--twin-ink)]">
         <span className="truncate">{title}</span>
-        <span className="ml-auto shrink-0 text-[10px] font-normal text-[var(--twin-mute)]">{count} 件</span>
+        <span className="ml-auto shrink-0 text-[10px] font-normal text-[var(--twin-mute)]">共 {subTotal} 件</span>
       </div>
       <div className="flex flex-wrap gap-1.5 p-2">
         {rows.length ? (
@@ -157,8 +186,22 @@ function SpaceGroup({ title, count, rows, onOpen }: {
             </button>
           ))
         ) : (
-          <span className="text-[10px] text-[var(--twin-mute)]">暂无资产</span>
+          <span className="text-[10px] text-[var(--twin-mute)]">
+            {subTotal > 0 ? "资产在下级地点内" : "暂无资产"}
+          </span>
         )}
+        {(childNodes ?? []).map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onSelect?.(c.id)}
+            title={c.name}
+            className="inline-flex max-w-full items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[10px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)]"
+          >
+            <span className="truncate">{c.name}</span>
+            <span className="shrink-0 text-[var(--twin-mute)]">{c.totalCount ?? 0}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -455,7 +498,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
               <div className="flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] px-4 py-2.5">
                 <span className="text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
                 <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] text-[var(--twin-mute)]">
-                  {directCount} 件
+                  共 {node.totalCount ?? 0} 件
                 </span>
               </div>
               <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -538,13 +581,15 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
             <div className="py-6 text-center text-[12px] text-[var(--twin-mute)]">资产加载失败，请重试</div>
           ) : (
             <>
-              <SpaceGroup title="本空间" count={directCount} rows={nodeRows} onOpen={setSelectedAsset} />
+              <SpaceGroup title="本空间" subTotal={directCount} rows={nodeRows} onOpen={setSelectedAsset} />
               {children.map((c) => (
                 <SpaceGroup
                   key={c.id}
                   title={c.name}
-                  count={c.directCount ?? 0}
+                  subTotal={c.totalCount ?? 0}
                   rows={chipsFor(c.id)}
+                  childNodes={c.children ?? []}
+                  onSelect={setSelectedId}
                   onOpen={setSelectedAsset}
                 />
               ))}
