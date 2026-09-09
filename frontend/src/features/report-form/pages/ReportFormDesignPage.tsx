@@ -649,7 +649,7 @@ function DesignerInner({
           )}
           </div>
         </div>
-        <div className={`${inspectorCollapsed ? 'w-8' : 'w-[300px]'} shrink-0 min-h-0 bg-[var(--app-color-surface-container)] shadow-[-1px_0_0_color-mix(in_srgb,var(--app-color-text-primary)_6%,transparent)]`}>
+        <div className={`${inspectorCollapsed ? 'w-8' : 'w-[300px]'} shrink-0 min-h-0 mb-6 mr-6 rounded-2xl overflow-hidden bg-[var(--app-color-surface-container)] shadow-[0_1px_2px_rgba(0,0,0,.04),0_8px_24px_-12px_rgba(0,0,0,.12)]`}>
           <FieldInspector
             layout={editor.layout}
             selectedCellIds={editor.selectedCellIds}

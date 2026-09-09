@@ -50,7 +50,7 @@ export default function FieldInspector({
   // 折叠态：仅一条竖直窄条 + 展开按钮，不渲染任何表单
   if (collapsed) {
     return (
-      <div className="w-8 h-full shrink-0 flex flex-col items-center py-2 bg-[var(--app-color-surface-container)] shadow-[-1px_0_0_color-mix(in_srgb,var(--app-color-text-primary)_6%,transparent)]">
+      <div className="w-8 h-full shrink-0 flex flex-col items-center py-2 bg-[var(--app-color-surface-container)]">
         <button
           type="button"
           onClick={onToggleCollapsed}
