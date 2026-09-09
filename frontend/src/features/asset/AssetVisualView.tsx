@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRightLeft, ChevronRight, Plus, Search, Settings, Smile, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, ChevronRight, Plus, ScanLine, Search, Settings, Smile, X } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import type { AssetRow } from "@/api/domains/asset.api";
 import {
@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
+import AssetRelocatePanel from "./AssetRelocatePanel";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
 import { assetStatusLabel } from "./assetEditableFields";
@@ -310,6 +311,8 @@ export default function AssetVisualView(props: {
   /** 本次 selectedId 变化由扫码定位引起时，不清高亮 */
   const locatingRef = useRef(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  /** 扫码归位面板：连续扫码把资产批量移入当前选中地点 */
+  const [relocateOpen, setRelocateOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
@@ -876,6 +879,15 @@ export default function AssetVisualView(props: {
           >
             <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" /> 申请转移
           </button>
+          <button
+            type="button"
+            onClick={() => setRelocateOpen(true)}
+            disabled={!node}
+            title={node ? `扫码把资产归位到「${node.name}」` : "请先选择一个地点"}
+            className="flex min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-1.5 text-[11px] text-[var(--twin-body)] transition hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ScanLine className="h-3.5 w-3.5 shrink-0" /> 扫码归位
+          </button>
         </div>
       </div>
 
@@ -897,6 +909,14 @@ export default function AssetVisualView(props: {
         onSuccess={() => {
           // query invalidation is handled by useCreateAssetTransfer hook internally
         }}
+      />
+
+      {/* ════════ 扫码归位面板 ════════ */}
+      <AssetRelocatePanel
+        open={relocateOpen && node != null}
+        targetNodeId={node?.id ?? null}
+        targetNodeName={node?.name ?? null}
+        onClose={() => setRelocateOpen(false)}
       />
 
       {/* ════════ 地点图标选择（右栏「设置」用；左树「⋯」由 LocationTree 自持） ════════ */}
