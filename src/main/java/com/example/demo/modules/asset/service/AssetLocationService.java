@@ -18,6 +18,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.Set;
 
 /**
@@ -141,9 +142,10 @@ public class AssetLocationService {
     }
 
     /**
-     * 文本 → 节点 id：归一化后按 name 在整棵树里精确匹配（任意层级）；找不到则新建顶层节点。
+     * 文本 → 节点 id。用于正式转移完成等「只有文本、没有节点」的写回场景。
+     * 归一化后依次尝试：① 按 " / " 逐段匹配整条路径；② 按末段名在任意层级匹配；
+     * ③ 仍找不到则以**末段名**新建顶层节点（避免把 "父 / 子" 整串当节点名）。
      * 归一化后为空（null/空白串）返回 null，由调用方决定是否回落。
-     * 用于正式转移完成等「只有文本、没有节点」的写回场景。
      */
     @Transactional
     public Long resolveOrCreateTopLevelByName(String rawName) {
@@ -151,12 +153,47 @@ public class AssetLocationService {
         if (normalized == null) {
             return null;
         }
-        for (AssetLocation n : assetLocationMapper.listAll()) {
-            if (normalized.equals(n.getName())) {
+        List<AssetLocation> all = assetLocationMapper.listAll();
+        Long byPath = findByPath(all, normalized);
+        if (byPath != null) {
+            return byPath;
+        }
+        String leaf = leafSegment(normalized);
+        for (AssetLocation n : all) {
+            if (leaf.equals(n.getName())) {
                 return n.getId();
             }
         }
-        return create(null, normalized, null).getId();
+        return create(null, leaf, null).getId();
+    }
+
+    /** 按 " / " 从根逐段匹配；任一段匹配不到返回 null。 */
+    private static Long findByPath(List<AssetLocation> all, String path) {
+        Long parentId = null;
+        AssetLocation current = null;
+        for (String rawSeg : path.split(Pattern.quote(PATH_SEP))) {
+            String seg = rawSeg.trim();
+            if (seg.isEmpty()) {
+                return null;
+            }
+            current = null;
+            for (AssetLocation n : all) {
+                if (Objects.equals(n.getParentId(), parentId) && seg.equals(n.getName())) {
+                    current = n;
+                    break;
+                }
+            }
+            if (current == null) {
+                return null;
+            }
+            parentId = current.getId();
+        }
+        return current == null ? null : current.getId();
+    }
+
+    private static String leafSegment(String normalized) {
+        int idx = normalized.lastIndexOf(PATH_SEP);
+        return idx < 0 ? normalized : normalized.substring(idx + PATH_SEP.length()).trim();
     }
 
     /**

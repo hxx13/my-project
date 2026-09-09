@@ -77,4 +77,46 @@ class AssetLocationResolveTest {
         assertNull(captor.getValue().getParentId());
         assertEquals("浦东校区 新地点", captor.getValue().getName());
     }
+
+    /** 三级树：浦东校区(1) → 动科部(2) → 办公室154(3) */
+    private static List<AssetLocation> threeLevelTree() {
+        return List.of(
+                node(1L, null, "浦东校区"),
+                node(2L, 1L, "动科部"),
+                node(3L, 2L, "办公室154")
+        );
+    }
+
+    @Test
+    void matchesFullPathSegmentBySegment() {
+        AssetLocationMapper mapper = mock(AssetLocationMapper.class);
+        when(mapper.listAll()).thenReturn(threeLevelTree());
+        assertEquals(3L, serviceWith(mapper).resolveOrCreateTopLevelByName("浦东校区 / 动科部 / 办公室154"));
+    }
+
+    @Test
+    void fallsBackToLeafNameWhenFullPathMissing() {
+        AssetLocationMapper mapper = mock(AssetLocationMapper.class);
+        when(mapper.listAll()).thenReturn(threeLevelTree());
+        // 路径首段不存在，但末段名能命中 → 用命中节点，不新建
+        assertEquals(3L, serviceWith(mapper).resolveOrCreateTopLevelByName("不存在的父 / 办公室154"));
+    }
+
+    @Test
+    void createsNodeNamedByLeafSegmentNotWholePath() {
+        AssetLocationMapper mapper = mock(AssetLocationMapper.class);
+        when(mapper.listAll()).thenReturn(new ArrayList<>(List.of(node(1L, null, "动科部"))));
+        when(mapper.insert(any(AssetLocation.class))).thenAnswer(inv -> {
+            inv.getArgument(0, AssetLocation.class).setId(99L);
+            return 1;
+        });
+
+        Long id = serviceWith(mapper).resolveOrCreateTopLevelByName("甲 / 乙");
+
+        assertEquals(99L, id);
+        ArgumentCaptor<AssetLocation> captor = ArgumentCaptor.forClass(AssetLocation.class);
+        verify(mapper).insert(captor.capture());
+        assertNull(captor.getValue().getParentId());
+        assertEquals("乙", captor.getValue().getName());
+    }
 }
