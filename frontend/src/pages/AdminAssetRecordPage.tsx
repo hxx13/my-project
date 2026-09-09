@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Archive, Download, EyeOff, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, EyeOff, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { AutoImage } from "@/components/ui/AutoImage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -39,10 +39,12 @@ import {
 } from "@/api/hooks/useAsset";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
+import AssetVisualView from "@/features/asset/AssetVisualView";
 import { Portal } from "@/components/Portal";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
+import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import {
   DropdownMenu,
@@ -108,20 +110,24 @@ function transferStatusLabel(s: string | undefined) {
 
 export default function AdminAssetRecordPage() {
   type DeleteCandidate = Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked">;
+  const [view, setView] = useState<"table" | "graph">("table");
   const [page, setPage] = useState(1);
-  const [size] = useState(200);
+  const [size, setSize] = useState(200);
+  const [pageInput, setPageInput] = useState("1");
   const [keyword, setKeyword] = useState("");
   const [appliedKeyword, setAppliedKeyword] = useState("");
-  const [assetName, setAssetName] = useState("__ALL__");
-  const [user, setUser] = useState("__ALL__");
-  const [model, setModel] = useState("__ALL__");
+  const [assetName, setAssetName] = useState("");
+  const [user, setUser] = useState("");
+  const [model, setModel] = useState("");
+  const [location, setLocation] = useState("");
   const [appliedAssetName, setAppliedAssetName] = useState("");
   const [appliedUser, setAppliedUser] = useState("");
   const [appliedModel, setAppliedModel] = useState("");
+  const [appliedLocation, setAppliedLocation] = useState("");
   const [campus, setCampus] = useState("");
   const [appliedCampus, setAppliedCampus] = useState("");
-  const [sortBy, setSortBy] = useState("updateTime");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [sortBy, setSortBy] = useState("assetCode");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetRow | null>(null);
   const [detailAsset, setDetailAsset] = useState<AssetRow | null>(null);
@@ -221,8 +227,6 @@ export default function AdminAssetRecordPage() {
     columnWidthOverrides[columnKey] ?? defaultCh;
   // ---
 
-  const normalizeAll = (value: string) => (value === "__ALL__" ? "" : value);
-
   const queryParams = useMemo(() => ({
     page,
     size,
@@ -231,9 +235,10 @@ export default function AdminAssetRecordPage() {
     assetName: appliedAssetName || undefined,
     user: appliedUser || undefined,
     model: appliedModel || undefined,
+    location: appliedLocation || undefined,
     sortBy,
     sortDirection,
-  }), [page, size, appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, sortBy, sortDirection]);
+  }), [page, size, appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, appliedLocation, sortBy, sortDirection]);
 
   const { data: assetData, isLoading } = useAssetList(queryParams);
   const rows = assetData?.rows ?? [];
@@ -241,17 +246,18 @@ export default function AdminAssetRecordPage() {
   const columns = assetData?.columns ?? [];
 
   const { data: facetsData } = useQuery({
-    queryKey: [...queryKeys.asset.all, "facets", appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel] as const,
+    queryKey: [...queryKeys.asset.all, "facets", appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, appliedLocation] as const,
     queryFn: () => fetchAssetFacets({
       keyword: appliedKeyword || undefined,
       campus: appliedCampus || undefined,
       assetName: appliedAssetName || undefined,
       user: appliedUser || undefined,
       model: appliedModel || undefined,
+      location: appliedLocation || undefined,
     }),
     placeholderData: (prev) => prev,
   });
-  const facets: AssetFacets = facetsData ?? { assetNames: [], campuses: [], users: [], models: [] };
+  const facets: AssetFacets = facetsData ?? { assetNames: [], campuses: [], users: [], models: [], locations: [] };
 
   const { data: recycleData } = useAssetRecycle({ page: recyclePage, size: 20, keyword: recycleKeyword.trim() || undefined });
   const recycleRows: AssetRecycleRow[] = recycleData?.rows ?? [];
@@ -267,15 +273,6 @@ export default function AdminAssetRecordPage() {
   const batchUpdateMut = useBatchUpdateAssets();
   const searchReplaceMut = useSearchReplaceAssets();
   const deleteByBatchMut = useDeleteByBatchId();
-
-  useEffect(() => {
-    const names = facets.assetNames || [];
-    const users = facets.users || [];
-    const models = facets.models || [];
-    if (assetName !== "__ALL__" && !names.includes(assetName)) setAssetName("__ALL__");
-    if (user !== "__ALL__" && !users.includes(user)) setUser("__ALL__");
-    if (model !== "__ALL__" && !models.includes(model)) setModel("__ALL__");
-  }, [facets]);
 
   const editableColumns = useMemo(
     () =>
@@ -339,12 +336,31 @@ export default function AdminAssetRecordPage() {
     setPage(1);
   };
 
+  const sortHeader = (field: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(field)}
+      className="inline-flex items-center gap-1 hover:text-[var(--app-color-text-primary)]"
+      title="点击切换排序"
+    >
+      {label}
+      {sortBy === field ? (
+        sortDirection === "asc" ? (
+          <ArrowUp className="h-3 w-3 shrink-0" aria-hidden />
+        ) : (
+          <ArrowDown className="h-3 w-3 shrink-0" aria-hidden />
+        )
+      ) : null}
+    </button>
+  );
+
   const applySearch = () => {
     setAppliedKeyword(keyword.trim());
     setAppliedCampus(campus);
-    setAppliedAssetName(assetName === "__ALL__" ? "" : assetName);
-    setAppliedUser(user === "__ALL__" ? "" : user);
-    setAppliedModel(model === "__ALL__" ? "" : model);
+    setAppliedAssetName(assetName.trim());
+    setAppliedUser(user.trim());
+    setAppliedModel(model.trim());
+    setAppliedLocation(location.trim());
     setPage(1);
   };
 
@@ -354,21 +370,45 @@ export default function AdminAssetRecordPage() {
       applySearch();
     }, 400);
     return () => clearTimeout(timer);
-  }, [keyword, campus, assetName, user, model]);
+  }, [keyword, campus, assetName, user, model, location]);
 
   const resetSearch = () => {
     setKeyword("");
     setCampus("");
-    setAssetName("__ALL__");
-    setUser("__ALL__");
-    setModel("__ALL__");
+    setAssetName("");
+    setUser("");
+    setModel("");
+    setLocation("");
     setAppliedKeyword("");
     setAppliedCampus("");
     setAppliedAssetName("");
     setAppliedUser("");
     setAppliedModel("");
+    setAppliedLocation("");
     setPage(1);
   };
+
+  // 换页/换筛选条件后清空勾选，避免批量删除误伤不在当前结果里的行
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, size, appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, appliedLocation]);
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const jumpToPage = () => {
+    const n = Number(pageInput);
+    if (!Number.isFinite(n)) {
+      setPageInput(String(page));
+      return;
+    }
+    setPage(Math.min(pages, Math.max(1, Math.round(n))));
+  };
+
+  const hasActiveFilter = Boolean(
+    appliedKeyword || appliedCampus || appliedAssetName || appliedUser || appliedModel || appliedLocation
+  );
 
   const applyColumnWidths = (showToast = false) => {
     const dynamic: Record<string, string> = {};
@@ -455,7 +495,8 @@ export default function AdminAssetRecordPage() {
       const blob = await exportAssetExcel({
         keyword: appliedKeyword || undefined, campus: appliedCampus || undefined,
         assetName: appliedAssetName || undefined, user: appliedUser || undefined,
-        model: appliedModel || undefined, columns: cols.join(","),
+        model: appliedModel || undefined, location: appliedLocation || undefined,
+        columns: cols.join(","),
       });
       downloadBlob(blob, `asset-records-${Date.now()}.xlsx`);
     } catch (e) { toast.error(e instanceof Error ? e.message : "导出失败"); }
@@ -769,6 +810,16 @@ export default function AdminAssetRecordPage() {
         <AdminFormCard title="筛选" className="shrink-0 mb-3"
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5">
+                <button type="button" onClick={() => setView("table")}
+                  className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${view === "table" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+                  表格
+                </button>
+                <button type="button" onClick={() => setView("graph")}
+                  className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${view === "graph" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+                  图形
+                </button>
+              </div>
               <AdminButton
                 type="button"
                 tone="secondary"
@@ -858,6 +909,7 @@ export default function AdminAssetRecordPage() {
             </div>
           }
         >
+          {view === "table" && (
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex w-40 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>全局搜索</span>
@@ -866,7 +918,7 @@ export default function AdminAssetRecordPage() {
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && applySearch()}
                 className={adminInputClass}
-                placeholder="编码/名称..."
+                placeholder="编码/名称/地点/备注"
               />
             </label>
             <label className="flex w-20 shrink-0 flex-col gap-1">
@@ -877,32 +929,45 @@ export default function AdminAssetRecordPage() {
                 <option value="浦西">浦西</option>
               </AdminSelect>
             </label>
-            <label className="flex w-36 shrink-0 flex-col gap-1">
+            <label className="flex w-40 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>资产名称</span>
-              <AdminSelect value={assetName} onChange={(e) => setAssetName(e.target.value)} className="w-full">
-                <option value="__ALL__">全部</option>
-                {facets.assetNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </AdminSelect>
+              <AdminSearchSelect
+                value={assetName}
+                onChange={setAssetName}
+                options={facets.assetNames}
+                placeholder="全部"
+                className="w-full"
+              />
             </label>
             <label className="flex w-28 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>使用人</span>
-              <AdminSelect value={user} onChange={(e) => setUser(e.target.value)} className="w-full">
-                <option value="__ALL__">全部</option>
-                {(facets.users && facets.users.length ? facets.users : facets.campuses).map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </AdminSelect>
+              <AdminSearchSelect
+                value={user}
+                onChange={setUser}
+                options={facets.users ?? []}
+                placeholder="全部"
+                className="w-full"
+              />
+            </label>
+            <label className="flex w-40 shrink-0 flex-col gap-1">
+              <span className={adminLabelClass}>存放地点</span>
+              <AdminSearchSelect
+                value={location}
+                onChange={setLocation}
+                options={facets.locations ?? []}
+                placeholder="全部"
+                className="w-full"
+              />
             </label>
             <label className="flex w-36 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>规格型号</span>
-              <AdminSelect value={model} onChange={(e) => setModel(e.target.value)} className="w-full">
-                <option value="__ALL__">全部</option>
-                {facets.models.map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </AdminSelect>
+              <AdminSearchSelect
+                value={model}
+                onChange={setModel}
+                options={facets.models}
+                placeholder="全部"
+                className="w-full"
+              />
             </label>
             <div className="flex shrink-0 items-end gap-2">
               <AdminButton type="button" onClick={applySearch} className="inline-flex items-center gap-1">
@@ -914,9 +979,10 @@ export default function AdminAssetRecordPage() {
               </AdminButton>
             </div>
           </div>
+          )}
         </AdminFormCard>
 
-        {selectedIds.size > 0 && (
+        {view === "table" && selectedIds.size > 0 && (
           <div className="shrink-0 mb-2 flex flex-wrap items-center gap-2 rounded-twin-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2 text-sm">
             <span className="text-[var(--app-color-text-secondary)]">已选 <strong className="text-[var(--app-color-text-primary)]">{selectedIds.size}</strong> 项</span>
             <AdminButton type="button" tone="secondary" size="sm" onClick={() => setBatchDeleteOpen(true)}>
@@ -933,15 +999,18 @@ export default function AdminAssetRecordPage() {
           </div>
         )}
 
+      {view === "table" ? (
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto">
         {isLoading ? (
           <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
         ) : !isLoading && rows.length === 0 ? (
-          <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]">暂无资产数据，请先导入 CSV/Excel。</div>
+          <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]">
+            {hasActiveFilter ? "没有符合筛选条件的资产，试试放宽条件或重置。" : "暂无资产数据，请先导入 CSV/Excel。"}
+          </div>
         ) : (
           <div>
-          <table className="w-max min-w-full border-collapse text-sm">
+          <table className="w-max min-w-full border-collapse text-sm twin-table asset-ledger-table">
             <colgroup>
               <col style={{ width: "3ch" }} />
               <col style={{ width: widths.assetCode }} />
@@ -954,11 +1023,11 @@ export default function AdminAssetRecordPage() {
             </colgroup>
             <thead>
               <tr className="sticky top-0 z-[var(--z-dropdown)] bg-[var(--app-color-surface-container)] shadow-sm">
-                <th className="sticky left-0 z-[1] border-b px-1 py-1.5 text-center bg-[var(--app-color-surface-container)]" style={{ width: "3ch" }}>
+                <th className="sticky left-0 z-[1] border-b px-1 py-1.5 text-center bg-[var(--app-color-surface-container)]" style={{ width: "3ch", zIndex: 3 }}>
                   <input type="checkbox" checked={selectedIds.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="h-3.5 w-3.5" />
                 </th>
-                <th className="sticky left-[3ch] z-[1] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]" style={{ width: widths.assetCode, minWidth: widths.assetCode }}>
-                  资产编码
+                <th className="sticky left-[3ch] z-[1] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]" style={{ width: widths.assetCode, minWidth: widths.assetCode, zIndex: 3 }}>
+                  {sortHeader("assetCode", "资产编码")}
                   <span
                     onMouseDown={(e) => onResizeMouseDown(e, "assetCode", parseCh(widths.assetCode))}
                     style={{
@@ -971,8 +1040,8 @@ export default function AdminAssetRecordPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
                   />
                 </th>
-                <th className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] z-[1] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>
-                  资产名称
+                <th className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] z-[1] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]" style={{ width: widths.assetName, minWidth: widths.assetName, zIndex: 3, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>
+                  {sortHeader("assetName", "资产名称")}
                   <span
                     onMouseDown={(e) => onResizeMouseDown(e, "assetName", parseCh(widths.assetName))}
                     style={{
@@ -987,7 +1056,7 @@ export default function AdminAssetRecordPage() {
                 </th>
                 {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c: AssetColumnDef) => (
                   <th key={c.columnKey} className="relative z-[var(--z-dropdown)] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]">
-                    <button className="underline decoration-dotted" onClick={() => toggleSort(c.columnKey)}>{normalizeColumnLabel(c.columnLabel)}</button>
+                    {sortHeader(c.columnKey, normalizeColumnLabel(c.columnLabel))}
                     <button
                       className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-secondary)]"
                       onClick={() => toggleColumnHidden(c.columnKey)}
@@ -1020,12 +1089,12 @@ export default function AdminAssetRecordPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-[var(--twin-canvas-soft)]">
-                  <td className="sticky left-0 border-b px-1 py-1.5 text-center bg-[var(--app-color-surface-page)]" style={{ width: "3ch", minWidth: "3ch" }}>
+                <tr key={r.id}>
+                  <td className="sticky left-0 border-b px-1 py-1.5 text-center bg-inherit" style={{ width: "3ch", minWidth: "3ch" }}>
                     <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectRow(r.id)} className="h-3.5 w-3.5" />
                   </td>
-                  <td className="sticky left-[3ch] border-b px-2 py-1.5 font-mono text-xs bg-[var(--app-color-surface-page)]" style={{ width: widths.assetCode, minWidth: widths.assetCode }}>{r.assetCode}</td>
-                  <td className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] border-b px-2 py-1.5 bg-[var(--app-color-surface-page)]" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>{r.assetName}</td>
+                  <td className="sticky left-[3ch] border-b px-2 py-1.5 font-mono text-xs bg-inherit" style={{ width: widths.assetCode, minWidth: widths.assetCode }}>{r.assetCode}</td>
+                  <td className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] border-b px-2 py-1.5 bg-inherit" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>{r.assetName}</td>
                   {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c) => {
                     const key = `${r.id}::${c.columnKey}`;
                     const display = editing[key] ?? r.dynamicValues?.[c.columnKey] ?? "";
@@ -1054,7 +1123,6 @@ export default function AdminAssetRecordPage() {
                         tone="secondary"
                         size="sm"
                         onClick={() => setDetailAsset(r)}
-                        className="border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                       >
                         详情
                       </AdminButton>
@@ -1067,18 +1135,46 @@ export default function AdminAssetRecordPage() {
           </div>
         )}
         </div>
-        <div className="shrink-0 pt-2 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+        <div className="shrink-0 pt-2 flex flex-wrap items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+          <label className="mr-auto flex items-center gap-2">
+            <span className="text-[var(--app-color-text-tertiary)]">每页</span>
+            <AdminSelect
+              value={String(size)}
+              onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }}
+              className="w-20"
+            >
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </AdminSelect>
+            <span className="text-[var(--app-color-text-tertiary)]">条，共 {total} 条</span>
+          </label>
           <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             上一页
           </AdminButton>
-          <span>
-            第 {page} / {pages} 页，共 {total} 条
+          <span className="flex items-center gap-1">
+            第
+            <input
+              value={pageInput}
+              onChange={(e) => setPageInput(e.target.value)}
+              onBlur={jumpToPage}
+              onKeyDown={(e) => { if (e.key === "Enter") jumpToPage(); }}
+              inputMode="numeric"
+              aria-label="跳转页码"
+              className="w-14 rounded-twin-sm border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-center text-sm text-[var(--app-color-text-primary)] focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]"
+            />
+            / {pages} 页
           </span>
           <AdminButton type="button" tone="secondary" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
             下一页
           </AdminButton>
         </div>
       </div>
+      ) : (
+        <div className="flex-1 min-h-0">
+          <AssetVisualView />
+        </div>
+      )}
 
         <AssetTransferApplyModal
           open={modalOpen}
@@ -1446,7 +1542,7 @@ export default function AdminAssetRecordPage() {
                 <div className="mb-3">
                   <p className="mb-1 text-xs text-[var(--twin-mute)]">示例数据（前3行）</p>
                   <div className="max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] text-xs">
-                    <table className="w-full border-collapse">
+                    <table className="w-full border-collapse twin-table">
                       <thead className="bg-[var(--twin-canvas-soft)]">
                         <tr>{Object.keys(importPreviewData.sample[0]).map((k) => (<th key={k} className="px-2 py-1 text-left whitespace-nowrap">{k}</th>))}</tr>
                       </thead>
