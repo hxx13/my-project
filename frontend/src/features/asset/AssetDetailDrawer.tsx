@@ -26,28 +26,17 @@ import { appConfirm } from "@/lib/appDialog";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { Portal } from "@/components/Portal";
+import { AutoImage } from "@/components/ui/AutoImage";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { cn } from "@/lib/utils";
 import PromoteMoveLogDialog, { type PromoteMoveLogTarget } from "./PromoteMoveLogDialog";
+import AssetLocationSelect from "./AssetLocationSelect";
+import { assetEditableFields, isLocationColumn } from "./assetEditableFields";
 import { findPath } from "./locationTreeUtils";
 
 const USER_KEY = "col_使用人";
 const LOCATION_KEY = "col_存放地点";
-
-/** 可编辑动态列：与 AdminAssetRecordPage 的 editableColumns 同规则（排除固定列 / 转移列 / 型号列） */
-function pickEditableColumns(columns: AssetColumnDef[]): AssetColumnDef[] {
-  return columns.filter((c) => {
-    const label = (c.columnLabel || "").trim();
-    if (label === "资产编号" || label === "资产编码") return false;
-    if (c.columnKey === "col_资产编号" || c.columnKey === "col_资产编码") return false;
-    if (label === "申请转移时间" || label === "申请转移地点" || label === "申请人" || label === "申请备注") return false;
-    if (label === "数量" || label === "单价" || label === "价值" || label === "记账日期" || label === "资产类别") return false;
-    if (label === "是否锁定") return false;
-    if (label.includes("规格型号") || label.includes("型号")) return false;
-    return true;
-  });
-}
 
 const TRANSFER_STATUS_LABEL: Record<string, string> = {
   IN_PROGRESS: "进行中",
@@ -82,17 +71,18 @@ export default function AssetDetailDrawer(props: {
   asset: AssetRow | null;
   /** 动态列定义（来自 useAssetList 的 columns），编辑弹层据此渲染字段 */
   columns?: AssetColumnDef[];
-  /** 当前选中地点名，用于「地点小结」标题 */
+  /** 当前选中地点名，用于「地点小结」标题；不传则不渲染地点小结（表格视图） */
   nodeName?: string | null;
   /** 当前地点直接资产数 */
-  nodeTotal: number;
+  nodeTotal?: number;
   /** 当前地点按资产类别的分布 */
-  byCategory: Array<[string, number]>;
+  byCategory?: Array<[string, number]>;
   onClose: () => void;
 }) {
   const { asset, columns = [], nodeName, nodeTotal, byCategory, onClose } = props;
 
   const [promoteTarget, setPromoteTarget] = useState<PromoteMoveLogTarget | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const deleteLogMut = useDeleteAssetTransferLog();
   // 仅最高权限可删除地点移动留痕
   const canDeleteLog = hasMinRole(authStorage.getRole(), "SUPER_ADMIN");
@@ -110,7 +100,20 @@ export default function AssetDetailDrawer(props: {
   const [dynForm, setDynForm] = useState<Record<string, string>>({});
   const [moveLabel, setMoveLabel] = useState("");
 
-  const editableCols = useMemo(() => pickEditableColumns(columns), [columns]);
+  const editableCols = useMemo(() => assetEditableFields(columns).dynamic, [columns]);
+
+  // 详细字段：dynamicValues 的全部非空项，label 取 columns.columnLabel（取不到退回 columnKey）
+  const detailEntries = useMemo(() => {
+    const labelOf = new Map(columns.map((c) => [c.columnKey, c.columnLabel || c.columnKey]));
+    return Object.entries(asset?.dynamicValues ?? {})
+      .filter(([, v]) => String(v ?? "").trim())
+      .map(([k, v]) => [labelOf.get(k) ?? k, String(v)] as const);
+  }, [asset?.dynamicValues, columns]);
+
+  const photos = useMemo(
+    () => (asset?.photoUrls ?? []).filter((u): u is string => typeof u === "string" && u.trim().length > 0),
+    [asset?.photoUrls]
+  );
 
   // 地点树全路径候选（label 即 "A / B / C"），移动弹层用
   const locationOptions = useMemo(() => {
@@ -201,10 +204,15 @@ export default function AssetDetailDrawer(props: {
     }
     // 只提交真正改动的动态列：后端对「校区」列会把空值也落库，未改动的空列不提交可避免写入空行
     const dynamicValues: Record<string, string> = {};
+    // 地点列同时写固定字段 location：后端据它回填 location_node_id（并同步 EAV 列）
+    let locationText: string | undefined;
     for (const c of editableCols) {
       const next = (dynForm[c.columnKey] ?? "").trim();
       const prev = (asset.dynamicValues?.[c.columnKey] ?? "").trim();
-      if (next !== prev) dynamicValues[c.columnKey] = next;
+      if (next !== prev) {
+        dynamicValues[c.columnKey] = next;
+        if (isLocationColumn(c)) locationText = next;
+      }
     }
     try {
       await updateMut.mutateAsync({
@@ -214,6 +222,7 @@ export default function AssetDetailDrawer(props: {
           status: baseForm.status.trim(),
           note: baseForm.note.trim(),
           dynamicValues,
+          ...(locationText !== undefined ? { location: locationText } : {}),
         },
       });
       setEditOpen(false);
@@ -323,6 +332,7 @@ export default function AssetDetailDrawer(props: {
                 ["存放地点", currentPath || asset.dynamicValues?.[LOCATION_KEY] || asset.location],
                 ["使用人", asset.dynamicValues?.[USER_KEY]],
                 ["状态", asset.status],
+                ["是否锁定", asset.locked === 1 ? "已锁定" : "未锁定"],
                 ["最近转移时间", formatTime(asset.latestTransferTime)],
               ].map(([label, value]) => (
                 <div key={label} className="flex gap-2">
@@ -332,31 +342,67 @@ export default function AssetDetailDrawer(props: {
               ))}
             </dl>
 
-            {/* 2. 地点小结 */}
-            <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2.5">
-              <div className="mb-1.5 flex items-baseline gap-1.5">
-                <span className="text-[11.5px] font-semibold text-[var(--twin-ink)]">地点小结</span>
-                <span className="text-[10.5px] text-[var(--twin-mute)]">
-                  {nodeName ?? "未选择地点"} · 共 {nodeTotal} 条
-                </span>
-              </div>
-              {byCategory.length === 0 ? (
-                <div className="text-[11px] text-[var(--twin-mute)]">暂无数据</div>
-              ) : (
-                <ul className="space-y-1">
-                  {byCategory.map(([name, count]) => (
-                    <li key={name} className="flex items-center gap-2 text-[11.5px]">
-                      <span className="min-w-0 flex-1 truncate text-[var(--twin-body)]" title={name}>
-                        {name}
-                      </span>
-                      <span className="shrink-0 text-[var(--twin-mute)]">{count}</span>
-                    </li>
+            {/* 2. 详细字段（全部非空动态值） */}
+            {detailEntries.length > 0 && (
+              <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2.5">
+                <div className="mb-1.5 text-[11.5px] font-semibold text-[var(--twin-ink)]">详细字段</div>
+                <dl className="space-y-1.5 text-[12px]">
+                  {detailEntries.map(([label, value]) => (
+                    <div key={label} className="flex gap-2">
+                      <dt className="w-[68px] shrink-0 text-[var(--twin-mute)]">{label}</dt>
+                      <dd className="min-w-0 flex-1 break-words text-[var(--twin-ink)]">{value}</dd>
+                    </div>
                   ))}
-                </ul>
-              )}
-            </div>
+                </dl>
+              </div>
+            )}
 
-            {/* 3. 转移记录 */}
+            {/* 3. 资产照片 */}
+            {photos.length > 0 && (
+              <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2.5">
+                <div className="mb-1.5 text-[11.5px] font-semibold text-[var(--twin-ink)]">资产照片</div>
+                <div className="flex flex-wrap gap-2">
+                  {photos.map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
+                      onClick={() => setPreviewUrl(u)}
+                    >
+                      <AutoImage src={u} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 4. 地点小结（仅图形视图传入地点上下文时渲染） */}
+            {byCategory !== undefined && (
+              <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2.5">
+                <div className="mb-1.5 flex items-baseline gap-1.5">
+                  <span className="text-[11.5px] font-semibold text-[var(--twin-ink)]">地点小结</span>
+                  <span className="text-[10.5px] text-[var(--twin-mute)]">
+                    {nodeName ?? "未选择地点"} · 共 {nodeTotal ?? 0} 条
+                  </span>
+                </div>
+                {byCategory.length === 0 ? (
+                  <div className="text-[11px] text-[var(--twin-mute)]">暂无数据</div>
+                ) : (
+                  <ul className="space-y-1">
+                    {byCategory.map(([name, count]) => (
+                      <li key={name} className="flex items-center gap-2 text-[11.5px]">
+                        <span className="min-w-0 flex-1 truncate text-[var(--twin-body)]" title={name}>
+                          {name}
+                        </span>
+                        <span className="shrink-0 text-[var(--twin-mute)]">{count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* 5. 转移记录 */}
             <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2.5">
               <div className="mb-1.5 text-[11.5px] font-semibold text-[var(--twin-ink)]">转移记录</div>
               {historyLoading ? (
@@ -480,11 +526,19 @@ export default function AssetDetailDrawer(props: {
                   {editableCols.map((c) => (
                     <label key={c.columnKey} className="flex flex-col gap-1 text-xs text-[var(--twin-mute)]">
                       {c.columnLabel}
-                      <input
-                        value={dynForm[c.columnKey] ?? ""}
-                        onChange={(e) => setDynForm((p) => ({ ...p, [c.columnKey]: e.target.value }))}
-                        className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] outline-none focus-visible:border-[var(--twin-link-deep)]"
-                      />
+                      {isLocationColumn(c) ? (
+                        <AssetLocationSelect
+                          value={dynForm[c.columnKey] ?? ""}
+                          onChange={(v) => setDynForm((p) => ({ ...p, [c.columnKey]: v }))}
+                          className="!rounded-twin-sm !text-sm"
+                        />
+                      ) : (
+                        <input
+                          value={dynForm[c.columnKey] ?? ""}
+                          onChange={(e) => setDynForm((p) => ({ ...p, [c.columnKey]: e.target.value }))}
+                          className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] outline-none focus-visible:border-[var(--twin-link-deep)]"
+                        />
+                      )}
                     </label>
                   ))}
                 </div>
@@ -555,6 +609,25 @@ export default function AssetDetailDrawer(props: {
         target={promoteTarget}
         onClose={() => setPromoteTarget(null)}
       />
+
+      {/* 照片放大预览 */}
+      {previewUrl && (
+        <Portal>
+          <button
+            type="button"
+            className="fixed inset-0 z-[80] flex cursor-default items-center justify-center border-0 bg-black/80 p-4"
+            onClick={() => setPreviewUrl(null)}
+            aria-label="关闭预览"
+          >
+            <AutoImage
+              src={previewUrl}
+              alt=""
+              className="max-h-[90vh] max-w-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </button>
+        </Portal>
+      )}
     </Portal>
   );
 }

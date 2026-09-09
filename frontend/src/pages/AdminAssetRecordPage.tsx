@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ArrowDown, ArrowUp, Download, EyeOff, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
-import { AutoImage } from "@/components/ui/AutoImage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearAssetTable,
@@ -41,6 +40,9 @@ import {
 import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
 import AssetVisualView from "@/features/asset/AssetVisualView";
+import AssetDetailDrawer from "@/features/asset/AssetDetailDrawer";
+import AssetLocationSelect from "@/features/asset/AssetLocationSelect";
+import { assetEditableFields, isLocationColumn } from "@/features/asset/assetEditableFields";
 import { findPath } from "@/features/asset/locationTreeUtils";
 import { useAssetLocationTree } from "@/api/hooks/useAssetLocation";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
@@ -94,28 +96,6 @@ function normalizeColumnLabel(label: string) {
   return text; // 不再把"存放地点N"映射为"当前存放地点"
 }
 
-function parseTransferPhotoUrls(v: unknown): string[] {
-  if (v == null) return [];
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim());
-  if (typeof v === "string") {
-    const s = v.trim();
-    if (!s) return [];
-    try {
-      const j = JSON.parse(s) as unknown;
-      if (Array.isArray(j)) return j.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim());
-    } catch {
-      return [s];
-    }
-  }
-  return [];
-}
-
-function transferStatusLabel(s: string | undefined) {
-  if (s === "IN_PROGRESS") return "进行中";
-  if (s === "COMPLETED" || s === "SUBMITTED") return "转移完毕";
-  return s || "-";
-}
-
 export default function AdminAssetRecordPage() {
   type DeleteCandidate = Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked">;
   const [view, setView] = useState<"table" | "graph">("table");
@@ -139,7 +119,6 @@ export default function AdminAssetRecordPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<AssetRow | null>(null);
   const [detailAsset, setDetailAsset] = useState<AssetRow | null>(null);
-  const [detailImagePreview, setDetailImagePreview] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<Record<string, string>>({});
@@ -153,6 +132,7 @@ export default function AdminAssetRecordPage() {
   const [widthProfile, setWidthProfile] = useState<{
     assetCode: string;
     assetName: string;
+    status: string;
     latestTransferTime: string;
     actions: string;
     dynamic: Record<string, string>;
@@ -305,43 +285,15 @@ export default function AdminAssetRecordPage() {
   const importLocMatched = importLocValues.filter((v) => v.matchedNodeId != null).length;
   const importWarnings = importPreviewData?.warnings ?? [];
 
-  const editableColumns = useMemo(
-    () =>
-      columns.filter((c) => {
-        const label = (c.columnLabel || "").trim();
-        if (label === "资产编号" || label === "资产编码") return false;
-        if (c.columnKey === "col_资产编号" || c.columnKey === "col_资产编码") return false;
-        // 移入详情弹窗
-        if (label === "申请转移时间" || label === "申请转移地点" || label === "申请人" || label === "申请备注") return false;
-        if (label === "数量" || label === "单价" || label === "价值" || label === "记账日期" || label === "资产类别") return false;
-        if (label === "是否锁定") return false;
-        if (label.includes("规格型号") || label.includes("型号")) return false;
-        return true;
-      }),
-    [columns]
-  );
+  const editableColumns = useMemo(() => assetEditableFields(columns).dynamic, [columns]);
 
   const pages = Math.max(1, Math.ceil(total / size));
-
-  const detailAfterPhotoUrls = useMemo(
-    () => (detailAsset ? parseTransferPhotoUrls(detailAsset.latestTransferPhotoUrlsAfter) : []),
-    [detailAsset]
-  );
-
-  const detailBeforePhotoUrls = useMemo(
-    () => (detailAsset ? parseTransferPhotoUrls(detailAsset.latestTransferPhotoUrlsBefore) : []),
-    [detailAsset]
-  );
-
-  const detailAssetPhotos = useMemo(
-    () => (detailAsset ? parseTransferPhotoUrls(detailAsset.photoUrls) : []),
-    [detailAsset]
-  );
 
   const widths = useMemo(() => {
     const base = widthProfile ?? {
       assetCode: "14ch",
       assetName: "20ch",
+      status: "8ch",
       latestTransferTime: "16ch",
       actions: "16ch",
       dynamic: Object.fromEntries(editableColumns.map((c) => [c.columnKey, "14ch"])),
@@ -349,6 +301,7 @@ export default function AdminAssetRecordPage() {
     return {
       assetCode: resolveColWidth("assetCode", base.assetCode),
       assetName: resolveColWidth("assetName", base.assetName),
+      status: resolveColWidth("status", base.status),
       latestTransferTime: resolveColWidth("latestTransferTime", base.latestTransferTime),
       actions: resolveColWidth("actions", base.actions),
       dynamic: Object.fromEntries(
@@ -454,6 +407,7 @@ export default function AdminAssetRecordPage() {
     setWidthProfile({
       assetCode: calcColumnWidth("资产编码", rows.map((r) => r.assetCode), 10, 40),
       assetName: calcColumnWidth("资产名称", rows.map((r) => r.assetName), 12, 80),
+      status: calcColumnWidth("状态", rows.map((r) => r.status), 6, 16),
       latestTransferTime: calcColumnWidth("转移时间", rows.map((r) => r.latestTransferTime), 14, 30),
       actions: "16ch",
       dynamic,
@@ -613,11 +567,20 @@ export default function AdminAssetRecordPage() {
       return;
     }
     const dynamicValues: Record<string, string> = {};
+    // 地点列同时写固定字段 location：后端据它回填 location_node_id（并同步 EAV 列）
+    let locationText: string | undefined;
     for (const c of editableColumns) {
-      dynamicValues[c.columnKey] = (addForm[c.columnKey] || "").trim();
+      const v = (addForm[c.columnKey] || "").trim();
+      dynamicValues[c.columnKey] = v;
+      if (v && isLocationColumn(c)) locationText = v;
     }
     try {
-      await createAssetMut.mutateAsync({ assetCode, assetName: newAssetName, dynamicValues });
+      await createAssetMut.mutateAsync({
+        assetCode,
+        assetName: newAssetName,
+        dynamicValues,
+        ...(locationText !== undefined ? { location: locationText } : {}),
+      });
       setAddOpen(false);
     } catch {
       // error handled by mutation
@@ -794,13 +757,17 @@ export default function AdminAssetRecordPage() {
   const showAllColumns = () => setHiddenColumns(new Set());
 
   const finishEditing = async () => {
-    // Collect all rows with pending unsaved edits
-    const pendingByRow = new Map<string, { row: AssetRow; dynamicValues: Record<string, string> }>();
+    // Collect all rows with pending unsaved edits（key = `${rowId}::${fieldKey}`）
+    const colByKey = new Map(columns.map((c) => [c.columnKey, c]));
+    const pendingByRow = new Map<
+      string,
+      { row: AssetRow; assetName?: string; status?: string; location?: string; dynamicValues: Record<string, string> }
+    >();
     for (const [key, value] of Object.entries(editing)) {
       const sepIdx = key.indexOf("::");
       if (sepIdx < 0) continue;
       const rowId = key.slice(0, sepIdx);
-      const columnKey = key.slice(sepIdx + 2);
+      const fieldKey = key.slice(sepIdx + 2);
       if (!pendingByRow.has(rowId)) {
         const row = rows.find((r) => r.id === rowId);
         if (!row) continue;
@@ -809,7 +776,15 @@ export default function AdminAssetRecordPage() {
           dynamicValues: { ...(row.dynamicValues || {}) },
         });
       }
-      pendingByRow.get(rowId)!.dynamicValues[columnKey] = value;
+      const entry = pendingByRow.get(rowId)!;
+      if (fieldKey === "assetName") entry.assetName = value;
+      else if (fieldKey === "status") entry.status = value;
+      else {
+        entry.dynamicValues[fieldKey] = value;
+        const col = colByKey.get(fieldKey);
+        // 地点列同时写固定字段 location，后端据它回填 location_node_id
+        if (col && isLocationColumn(col)) entry.location = value;
+      }
     }
 
     if (pendingByRow.size === 0) {
@@ -817,7 +792,21 @@ export default function AdminAssetRecordPage() {
       return;
     }
 
-    const patches = Array.from(pendingByRow.entries()).map(([, { row, dynamicValues }]) => [row.id, { dynamicValues }] as const);
+    // 资产名称不允许清空（与抽屉编辑弹层一致）
+    for (const { row, assetName } of pendingByRow.values()) {
+      if (assetName !== undefined && !assetName.trim()) {
+        toast.error(`${row.assetCode}: 资产名称不能为空`);
+        return;
+      }
+    }
+
+    const patches = Array.from(pendingByRow.entries()).map(([, { row, assetName, status, location, dynamicValues }]) => {
+      const payload: { assetName?: string; status?: string; location?: string; dynamicValues: Record<string, string> } = { dynamicValues };
+      if (assetName !== undefined) payload.assetName = assetName.trim();
+      if (status !== undefined) payload.status = status.trim();
+      if (location !== undefined) payload.location = location.trim();
+      return [row.id, payload] as const;
+    });
     const results = await Promise.allSettled(
       patches.map(([id, body]) => patchAssetRecord(id, body))
     );
@@ -1026,6 +1015,7 @@ export default function AdminAssetRecordPage() {
               <col style={{ width: "3ch" }} />
               <col style={{ width: widths.assetCode }} />
               <col style={{ width: widths.assetName }} />
+              <col style={{ width: widths.status }} />
               {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c) => (
                 <col key={c.columnKey} style={{ width: widths.dynamic[c.columnKey] }} />
               ))}
@@ -1064,6 +1054,9 @@ export default function AdminAssetRecordPage() {
                     onMouseEnter={(e) => (e.currentTarget.style.borderRightColor = "var(--twin-hairline-strong, #cbd5e1)")}
                     onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
                   />
+                </th>
+                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ width: widths.status, minWidth: widths.status }}>
+                  {sortHeader("status", "状态")}
                 </th>
                 {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c: AssetColumnDef) => (
                   <th key={c.columnKey} className="relative z-[var(--z-dropdown)] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]">
@@ -1105,19 +1098,48 @@ export default function AdminAssetRecordPage() {
                     <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectRow(r.id)} className="h-3.5 w-3.5" />
                   </td>
                   <td className="sticky left-[3ch] border-b px-2 py-1.5 font-mono text-xs bg-inherit" style={{ width: widths.assetCode, minWidth: widths.assetCode }}>{r.assetCode}</td>
-                  <td className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] border-b px-2 py-1.5 bg-inherit" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>{r.assetName}</td>
+                  <td className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] border-b px-2 py-1.5 bg-inherit" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>
+                    {tableEditMode ? (
+                      <input
+                        value={editing[`${r.id}::assetName`] ?? r.assetName}
+                        onChange={(e) => setEditing((prev) => ({ ...prev, [`${r.id}::assetName`]: e.target.value }))}
+                        className="w-full min-w-[14ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                      />
+                    ) : (
+                      r.assetName
+                    )}
+                  </td>
+                  <td className="border-b px-2 py-1.5" style={{ width: widths.status, minWidth: widths.status }}>
+                    {tableEditMode ? (
+                      <input
+                        value={editing[`${r.id}::status`] ?? r.status}
+                        onChange={(e) => setEditing((prev) => ({ ...prev, [`${r.id}::status`]: e.target.value }))}
+                        className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                      />
+                    ) : (
+                      <span className="block min-w-0 truncate text-[var(--twin-ink)]" title={r.status}>{r.status || "—"}</span>
+                    )}
+                  </td>
                   {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c) => {
                     const key = `${r.id}::${c.columnKey}`;
                     const display = editing[key] ?? r.dynamicValues?.[c.columnKey] ?? "";
                     return (
                       <td key={key} className="border-b px-2 py-1.5">
                         {tableEditMode ? (
-                          <input
-                            value={display}
-                            onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
-                            className="w-full min-w-[14ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
-                            style={{ width: "100%", minWidth: "10ch" }}
-                          />
+                          isLocationColumn(c) ? (
+                            <AssetLocationSelect
+                              value={display}
+                              onChange={(v) => setEditing((prev) => ({ ...prev, [key]: v }))}
+                              className="!rounded-twin-sm !text-xs"
+                            />
+                          ) : (
+                            <input
+                              value={display}
+                              onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
+                              className="w-full min-w-[14ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                              style={{ width: "100%", minWidth: "10ch" }}
+                            />
+                          )
                         ) : (
                           <span className="block min-w-0 max-w-[48ch] truncate text-[var(--twin-ink)]" title={String(display)}>
                             {display === "" ? <span className="text-[var(--twin-mute)]">—</span> : display}
@@ -1229,12 +1251,20 @@ export default function AdminAssetRecordPage() {
                   return (
                   <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                     {normalizeColumnLabel(c.columnLabel)}
-                    <input
-                      value={addForm[c.columnKey] || ""}
-                      onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
-                      className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                      list={isCampusColumn ? "campus-suggestions" : undefined}
-                    />
+                    {isLocationColumn(c) ? (
+                      <AssetLocationSelect
+                        value={addForm[c.columnKey] || ""}
+                        onChange={(v) => setAddForm((prev) => ({ ...prev, [c.columnKey]: v }))}
+                        className="!rounded-twin-sm !text-sm"
+                      />
+                    ) : (
+                      <input
+                        value={addForm[c.columnKey] || ""}
+                        onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
+                        className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                        list={isCampusColumn ? "campus-suggestions" : undefined}
+                      />
+                    )}
                     {isCampusColumn && facets.campuses.length > 0 && (
                       <datalist id="campus-suggestions">
                         {facets.campuses.map((v) => (
@@ -1382,134 +1412,11 @@ export default function AdminAssetRecordPage() {
             </div>
           </Portal>
         )}
-        {detailAsset && (
-          <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">资产详情</h3>
-                <button
-                  type="button"
-                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]"
-                  onClick={() => {
-                    setDetailImagePreview(null);
-                    setDetailAsset(null);
-                  }}
-                >
-                  关闭
-                </button>
-              </div>
-              <div className="space-y-2 text-sm text-[var(--twin-body)]">
-                <div><span className="text-[var(--twin-mute)]">资产编码：</span>{detailAsset.assetCode || "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">资产名称：</span>{detailAsset.assetName || "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">当前存放地点：</span>{detailAsset.location || "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">是否锁定：</span>{detailAsset.locked === 1 ? "已锁定" : "未锁定"}</div>
-                {(() => {
-                  const dynEntries = Object.entries(detailAsset.dynamicValues || {}).filter(([, v]) => v && String(v).trim());
-                  if (!dynEntries.length) return null;
-                  const modelCol = columns.find((c) => (c.columnLabel || "").includes("规格型号") || (c.columnLabel || "").includes("型号"));
-                  return (
-                    <div className="pt-2">
-                      <hr className="my-2 border-[var(--twin-hairline)]" />
-                      <div className="text-xs font-semibold text-[var(--twin-mute)] uppercase tracking-wide">详细字段</div>
-                      {modelCol && dynEntries.some(([k]) => k === modelCol.columnKey) && (
-                        <div className="mt-1"><span className="text-[var(--twin-mute)]">规格型号：</span>
-                          <span className="break-all">{detailAsset.dynamicValues[modelCol.columnKey] || "-"}</span>
-                        </div>
-                      )}
-                      {dynEntries.filter(([k]) => !modelCol || k !== modelCol.columnKey).map(([key, val]) => {
-                        const colDef = columns.find((c) => c.columnKey === key);
-                        const label = colDef ? (colDef.columnLabel || key) : key;
-                        return (
-                          <div key={key} className="mt-1"><span className="text-[var(--twin-mute)]">{label}：</span>
-                            <span className="break-all">{String(val)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-                {detailAssetPhotos.length > 0 && (
-                  <div className="pt-2">
-                    <div className="text-[var(--twin-mute)]">资产照片（转移前参考）</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {detailAssetPhotos.map((u) => (
-                        <button
-                          key={u}
-                          type="button"
-                          className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
-                          onClick={() => setDetailImagePreview(u)}
-                        >
-                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {detailAsset.latestTransferRequestId && (
-                  <>
-                    <hr className="my-2 border-[var(--twin-hairline)]" />
-                    <div className="text-xs font-semibold text-[var(--twin-mute)] uppercase tracking-wide">转移记录</div>
-                    <div><span className="text-[var(--twin-mute)]">申请单号：</span>{detailAsset.latestTransferRequestId}</div>
-                    <div><span className="text-[var(--twin-mute)]">转移状态：</span>{transferStatusLabel(detailAsset.latestTransferStatus)}</div>
-                    <div><span className="text-[var(--twin-mute)]">申请人：</span>{detailAsset.latestTransferApplicant || "-"}</div>
-                    <div><span className="text-[var(--twin-mute)]">转移时间：</span>{detailAsset.latestTransferTime ? String(detailAsset.latestTransferTime).replace("T", " ").slice(0, 19) : "-"}</div>
-                    <div><span className="text-[var(--twin-mute)]">转移地点：</span>{detailAsset.latestTransferLocation || "-"}</div>
-                    <div><span className="text-[var(--twin-mute)]">上次存放地点：</span>{detailAsset.latestTransferFromLocation || "-"}</div>
-                    <div><span className="text-[var(--twin-mute)]">转移备注：</span>{detailAsset.latestTransferRemark || "-"}</div>
-                  </>
-                )}
-                {detailBeforePhotoUrls.length > 0 && (
-                  <div className="pt-2">
-                    <div className="text-[var(--twin-mute)]">转移前照片</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {detailBeforePhotoUrls.map((u) => (
-                        <button
-                          key={u}
-                          type="button"
-                          className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
-                          onClick={() => setDetailImagePreview(u)}
-                        >
-                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {detailAfterPhotoUrls.length > 0 && (
-                  <div className="pt-2">
-                    <div className="text-[var(--twin-mute)]">转移后照片</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {detailAfterPhotoUrls.map((u) => (
-                        <button
-                          key={u}
-                          type="button"
-                          className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
-                          onClick={() => setDetailImagePreview(u)}
-                        >
-                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-            </div>
-          </Portal>
-        )}
-        {detailImagePreview && (
-          <Portal>
-            <button
-              type="button"
-              className="fixed inset-0 z-[60] flex cursor-default items-center justify-center border-0 bg-black/80 p-4"
-              onClick={() => setDetailImagePreview(null)}
-              aria-label="关闭预览"
-            >
-              <AutoImage src={detailImagePreview} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
-            </button>
-          </Portal>
-        )}
+        <AssetDetailDrawer
+          asset={detailAsset}
+          columns={columns}
+          onClose={() => setDetailAsset(null)}
+        />
 
         {/* ── 导入预览对话框 (4e) ── */}
         {importPreviewOpen && importPreviewData && (
