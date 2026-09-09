@@ -85,7 +85,7 @@
           </view>
           <view class="item-row">
             <text class="item-row-label">资产名称</text>
-            <text class="item-row-value">{{ item.assetName || '-' }}</text>
+            <text class="item-row-value"><text wx:if="{{ item.icon }}" class="item-icon">{{ item.icon }}</text>{{ item.assetName || '-' }}</text>
           </view>
           <view class="item-row">
             <text class="item-row-label">存放地点</text>
@@ -135,7 +135,7 @@
               <input class="input detail-edit-input" value="{{ detailAssetName }}" bindinput="onDetailAssetNameInput" placeholder="请输入资产名称" />
             </block>
             <block wx:else>
-              <text class="detail-value">{{ detailAsset.assetName || '-' }}</text>
+              <text class="detail-value"><text wx:if="{{ detailAsset.icon }}" class="item-icon">{{ detailAsset.icon }}</text>{{ detailAsset.assetName || '-' }}</text>
             </block>
           </view>
           <view class="detail-row">

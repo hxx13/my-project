@@ -1421,3 +1421,10 @@
   box-sizing: border-box;
 }
 
+
+/* 资产图标（emoji，来自地点/资产图标预置） */
+.item-icon {
+  margin-right: 6rpx;
+  font-size: 28rpx;
+  line-height: 1;
+}
