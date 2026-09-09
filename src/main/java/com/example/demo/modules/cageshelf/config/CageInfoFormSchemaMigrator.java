@@ -170,22 +170,30 @@ public class CageInfoFormSchemaMigrator implements ApplicationRunner {
     }
 
     /**
-     * 模板快照（cage_form_field）的类型/角色列以字典（cage_info_field）为准回灌。
+     * 模板快照（cage_form_field）的类型/角色/标签列以字典（cage_info_field）为准回灌，
+     * 并清掉字典已退役字段的孤儿快照行（快照是冻结副本，字典删字段不会自动消失）。
      *
      * 字典的 data_type 被 {@link #migrateDataTypeAndBackfillType()} 规范成大写 11 种并回填了 field_type，
      * 但先于该迁移生成的模板快照仍揣着旧值（data_type=小写题型、field_type=NULL），导致：
      *   - 前端 fieldType 为空 → 全字段退化成 text 控件 → INTEGER/BOOLEAN 值被 text 分支的类型守卫抹成空白；
      *   - 后端按字典真类型校验 → 往退化成文本框的数字字段写入即 400，整次 PUT 回滚。
-     * 校验侧只认字典，快照与字典不一致按定义就是脏数据，故无条件回灌（含 role：详情弹窗据此决定只读）。
+     * 校验侧只认字典，快照与字典不一致按定义就是脏数据，故无条件回灌（含 role/editable：详情弹窗据此决定只读）。
+     * 本迁移 @Order(133) 在 {@link CageInfoSchemaMigrator}（@Order(132)，含字段退役）之后执行，
+     * 因此退役字段此时已从字典消失，可被孤儿清理捕获。
      */
     private void resyncTemplateSnapshot() {
         int n = jdbcTemplate.update(
             "UPDATE cage_form_field ff JOIN cage_info_field f ON f.id = ff.field_id " +
-            "SET ff.data_type = f.data_type, ff.field_type = f.field_type, ff.role = f.role " +
+            "SET ff.data_type = f.data_type, ff.field_type = f.field_type, ff.role = f.role, ff.editable = f.editable, ff.config = f.config, ff.label = f.label " +
             "WHERE NOT (ff.data_type <=> f.data_type) " +
             "   OR NOT (ff.field_type <=> f.field_type) " +
-            "   OR NOT (ff.role <=> f.role)");
-        log.info("[cage-info-form-schema] 模板快照字典列回灌完成，修正 {} 个字段", n);
+            "   OR NOT (ff.role <=> f.role) " +
+            "   OR NOT (ff.editable <=> f.editable) " +
+            "   OR NOT (ff.config <=> f.config) " +
+            "   OR NOT (ff.label <=> f.label)");
+        int orphans = jdbcTemplate.update(
+            "DELETE ff FROM cage_form_field ff LEFT JOIN cage_info_field f ON f.id = ff.field_id WHERE f.id IS NULL");
+        log.info("[cage-info-form-schema] 模板快照字典列回灌完成，修正 {} 个字段，清理 {} 个孤儿字段", n, orphans);
     }
 
     private void ensureCodelistColumns() {
@@ -263,6 +271,8 @@ public class CageInfoFormSchemaMigrator implements ApplicationRunner {
                     field_type VARCHAR(32) NULL COMMENT '题型快照',
                     dict_key VARCHAR(64) NULL,
                     role VARCHAR(16) NULL COMMENT '字段角色快照 PK/FK/VALUE/DERIVED（缺省 VALUE）',
+                    editable TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否允许人工修改快照',
+                    config JSON NULL COMMENT '字段配置快照（如 optionsSource 动态选项源）',
                     required VARCHAR(8) NOT NULL DEFAULT 'NO',
                     sort_order INT NOT NULL DEFAULT 0,
                     KEY idx_cage_form_field_template (template_id, sort_order),
@@ -279,6 +289,14 @@ public class CageInfoFormSchemaMigrator implements ApplicationRunner {
         try {
             jdbcTemplate.execute(
                 "ALTER TABLE cage_form_field ADD COLUMN role VARCHAR(16) NULL COMMENT '字段角色快照 PK/FK/VALUE/DERIVED（缺省 VALUE）' AFTER dict_key");
+        } catch (Exception ignored) { /* 列已存在 */ }
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE cage_form_field ADD COLUMN editable TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否允许人工修改快照' AFTER role");
+        } catch (Exception ignored) { /* 列已存在 */ }
+        try {
+            jdbcTemplate.execute(
+                "ALTER TABLE cage_form_field ADD COLUMN config JSON NULL COMMENT '字段配置快照（如 optionsSource 动态选项源）' AFTER editable");
         } catch (Exception ignored) { /* 列已存在 */ }
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS cage_form_composite_atom (

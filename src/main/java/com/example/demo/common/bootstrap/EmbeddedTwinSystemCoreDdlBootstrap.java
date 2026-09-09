@@ -129,6 +129,11 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-door-swipe-rule.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper-folder.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-paper-scoring.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-submission.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-person-qualification.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-learning-material.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-health-survey.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-drop-aro-training.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-favorite.sql", ctx)) success++;
@@ -315,6 +320,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-nhp-form-access.sql", ctx)) success++;
         // 团队角色字典（内置 6 角色 + 团队自定义）
         total++; if (runScript("db/bootstrap-nhp-team-role.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-card-print.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");
@@ -401,6 +407,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
             populator.addScript(new ClassPathResource(classpath));
             populator.setSeparator(";");
+            populator.setSqlScriptEncoding("UTF-8");
             populator.setContinueOnError(false);
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;
@@ -414,6 +421,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
             populator.addScript(new ClassPathResource(classpath));
             populator.setSeparator(";");
+            populator.setSqlScriptEncoding("UTF-8");
             populator.setContinueOnError(false);
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;

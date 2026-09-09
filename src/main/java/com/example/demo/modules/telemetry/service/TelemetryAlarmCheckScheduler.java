@@ -3,6 +3,8 @@ package com.example.demo.modules.telemetry.service;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItem;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItemMapper;
 import com.example.demo.modules.notification.push.dispatch.PushService;
+import com.example.demo.modules.notification.push.source.NotifySource;
+import com.example.demo.modules.notification.push.source.NotifySourceService;
 import com.example.demo.modules.telemetry.dto.watchlist.TelemetryGlobalAlarmLimitsDto;
 import com.example.demo.modules.telemetry.entity.TelemetryAlarmLog;
 import com.example.demo.modules.telemetry.entity.TelemetryFloorAlarmConfig;
@@ -60,6 +62,7 @@ public class TelemetryAlarmCheckScheduler {
     private final TelemetrySnapshotService snapshotService;
     private final PushService pushService;
     private final NotifyDigestItemMapper digestItemMapper;
+    private final NotifySourceService sourceService;
 
     public TelemetryAlarmCheckScheduler(TelemetryWatchlistTagMapper watchlistTagMapper,
                                         TelemetryAlarmLogMapper alarmLogMapper,
@@ -67,7 +70,8 @@ public class TelemetryAlarmCheckScheduler {
                                         TelemetryGlobalAlarmLimitsService globalLimitsService,
                                         TelemetrySnapshotService snapshotService,
                                         PushService pushService,
-                                        NotifyDigestItemMapper digestItemMapper) {
+                                        NotifyDigestItemMapper digestItemMapper,
+                                        NotifySourceService sourceService) {
         this.watchlistTagMapper = watchlistTagMapper;
         this.alarmLogMapper = alarmLogMapper;
         this.alarmConfigService = alarmConfigService;
@@ -75,6 +79,7 @@ public class TelemetryAlarmCheckScheduler {
         this.snapshotService = snapshotService;
         this.pushService = pushService;
         this.digestItemMapper = digestItemMapper;
+        this.sourceService = sourceService;
     }
 
     // ── Layer-1 内存缓冲 ──
@@ -270,25 +275,12 @@ public class TelemetryAlarmCheckScheduler {
         }
 
         // ── Layer-3: 逐条即时推送（每条独立变量值，模板正常渲染）──
+        // 推送源若在通知源管理里被禁用，dispatch 会对每条报警打一次「已禁用」；
+        // 这里在 flush 前一次性判断，整批跳过并只打一条汇总，避免刷屏（检测与落库不受影响）。
         DateTimeFormatter readableDt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
         String nowFmt = LocalDateTime.now().format(readableDt);
-        for (AlarmItem it : alarms) {
-            try {
-                pushService.send("TELEMETRY_ALARM", Map.of(
-                        "floorCode", it.floorCode, "roomName", it.roomName,
-                        "metricKind", it.metricKind, "alarmDirection", it.alarmDirection,
-                        "currentValue", it.currentValue, "limitValue", it.limitValue,
-                        "sentAt", nowFmt));
-            } catch (Exception e) { log.warn("[遥测报警] 单条推送失败: {}", e.getMessage()); }
-        }
-        for (AlarmItem it : recoveries) {
-            try {
-                pushService.send("TELEMETRY_RECOVERY", Map.of(
-                        "floorCode", it.floorCode, "roomName", it.roomName,
-                        "metricKind", it.metricKind, "currentValue", it.currentValue,
-                        "recoveryAt", nowFmt));
-            } catch (Exception e) { log.warn("[遥测报警] 恢复推送失败: {}", e.getMessage()); }
-        }
+        pushIfEnabled("TELEMETRY_ALARM", alarms, nowFmt);
+        pushIfEnabled("TELEMETRY_RECOVERY", recoveries, nowFmt);
 
         // 清理旧日志
         try { alarmLogMapper.deleteOlderThan(LocalDateTime.now().minusDays(7)); }
@@ -296,6 +288,42 @@ public class TelemetryAlarmCheckScheduler {
 
         log.info("[遥测报警] Flush 完成: {} 报警 {} 恢复 {} 跳过（{} 楼层）",
                 alarms.size(), recoveries.size(), skipped, byFloor.size());
+    }
+
+    /** 推送源启用才逐条即时推送；禁用则整批跳过并汇总一条，避免每条报警都打「通知源已禁用」。 */
+    private void pushIfEnabled(String sourceCode, List<AlarmItem> items, String nowFmt) {
+        if (items.isEmpty()) return;
+        if (!isPushSourceEnabled(sourceCode)) {
+            log.info("[遥测报警] 推送源已禁用 {}，跳过 {} 条即时推送（检测/落库照旧）", sourceCode, items.size());
+            return;
+        }
+        for (AlarmItem it : items) {
+            try {
+                Map<String, String> vars;
+                if ("TELEMETRY_RECOVERY".equals(sourceCode)) {
+                    vars = Map.of("floorCode", it.floorCode, "roomName", it.roomName,
+                            "metricKind", it.metricKind, "currentValue", it.currentValue,
+                            "recoveryAt", nowFmt);
+                } else {
+                    vars = Map.of("floorCode", it.floorCode, "roomName", it.roomName,
+                            "metricKind", it.metricKind, "alarmDirection", it.alarmDirection,
+                            "currentValue", it.currentValue, "limitValue", it.limitValue,
+                            "sentAt", nowFmt);
+                }
+                pushService.send(sourceCode, vars);
+            } catch (Exception e) {
+                log.warn("[遥测报警] 单条推送失败: {}", e.getMessage());
+            }
+        }
+    }
+
+    private boolean isPushSourceEnabled(String sourceCode) {
+        try {
+            NotifySource s = sourceService.getByCode(sourceCode);
+            return s.getEnabled() != null && s.getEnabled() == 1;
+        } catch (Exception e) {
+            return true; // 查询失败回退原 dispatch 路径，由 engine 自行判定
+        }
     }
 
     // ── 单变量评估 ──

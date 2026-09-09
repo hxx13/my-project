@@ -1770,6 +1770,7 @@ Page({
       key: editLocKey,
       label: '存放地点',
       editValue: '',
+      isLocation: true,
       previews: this.buildBatchFieldPreviews(editLocKey),
     });
     // 默认不勾选，用户自行选择（跳过空表头和存放地点类）
@@ -1788,11 +1789,31 @@ Page({
       batchEditFields,
       batchEditChecked,
       batchEditValues,
+      batchEditLocationKey: editLocKey,
+      batchEditLocationNodeId: null,
     });
   },
 
   closeBatchEditPanel() {
-    this.setData({ showBatchEditPanel: false, batchEditFields: [], batchEditChecked: {}, batchEditValues: {} });
+    this.setData({
+      showBatchEditPanel: false,
+      batchEditFields: [],
+      batchEditChecked: {},
+      batchEditValues: {},
+      batchEditLocationKey: '',
+      batchEditLocationNodeId: null,
+    });
+  },
+
+  /** 批量编辑里的「存放地点」用树选择器：回填路径文本 + 记录节点 id */
+  onBatchEditLocationPicked(e) {
+    const path = (e.detail && e.detail.path) || '';
+    const nodeId = (e.detail && e.detail.nodeId) || null;
+    const key = this.data.batchEditLocationKey;
+    if (!key) return;
+    const values = Object.assign({}, this.data.batchEditValues || {});
+    values[key] = path;
+    this.setData({ batchEditValues: values, batchEditLocationNodeId: nodeId });
   },
 
   onBatchEditFieldToggle(e) {
@@ -1830,19 +1851,21 @@ Page({
       wx.showToast({ title: '请先勾选资产', icon: 'none' });
       return;
     }
-    const locCol2 = pickCurrentLocationColumn(this.data.columns);
-    const locKey2 = locCol2 ? locCol2.columnKey : '';
+    // 存放地点走「按节点批量移动」（后端同步文本与节点指针），其余字段走批量更新
+    const locFieldKey = this.data.batchEditLocationKey || '';
+    const locNodeId = this.data.batchEditLocationNodeId || null;
+    let locSelected = false;
     const fixedFields = {};
     const dynamicValues = {};
     for (let i = 0; i < selectedKeys.length; i += 1) {
       const key = selectedKeys[i];
       const val = (batchEditValues[key] || '').trim();
+      if (locFieldKey && key === locFieldKey) {
+        locSelected = true;
+        continue;
+      }
       if (key === '_location') {
-        if (locKey2) {
-          dynamicValues[locKey2] = val;
-        } else {
-          fixedFields.location = val;
-        }
+        fixedFields.location = val;
       } else {
         dynamicValues[key] = val;
       }
@@ -1855,12 +1878,9 @@ Page({
         wx.showLoading({ title: '批量更新中…', mask: true });
         try {
           let movedFail = 0;
-          if (locField) {
-            const nodeId = (this.data.fillSourceAsset || {}).locationNodeId;
-            if (nodeId) {
-              const r = await assetApi.batchMoveAssetLocation(checkedIds, nodeId);
-              movedFail = (r.failed || []).length;
-            }
+          if (locSelected && locNodeId) {
+            const r = await assetApi.batchMoveAssetLocation(checkedIds, locNodeId);
+            movedFail = (r.failed || []).length;
           }
           if (Object.keys(fixedFields).length || Object.keys(dynamicValues).length) {
             await assetApi.batchUpdateAssets({

@@ -41,6 +41,8 @@ import SpecSelectPanel from "./SpecSelectPanel";
 import SpecTemplateManager from "./SpecTemplateManager";
 import OrderTimeManager from "./OrderTimeManager";
 import OrderHistoryPanel from "./OrderHistoryPanel";
+import CampusGate from "./CampusGate";
+import { ANIMAL_ORDER_CAMPUSES, readStoredCampus, storeCampus, type AnimalOrderCampus } from "./campus";
 import type { CartLine } from "./CartDrawer";
 
 import { appConfirm } from "@/lib/appDialog";
@@ -86,6 +88,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const [packageRemark, setPackageRemark] = useState("");
   const [submitRemark, setSubmitRemark] = useState("");
   const [itemLabelMap, setItemLabelMap] = useState<Record<number, string>>({});
+  // 校区：首次进入强制选择，之后记住并可在顶栏切换
+  const [campus, setCampus] = useState<AnimalOrderCampus | null>(() => readStoredCampus());
 
   const role = authStorage.getRole() || "MEMBER";
   const userInfo = authStorage.getUserInfo();
@@ -107,7 +111,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     return undefined;
   }, [drillStack, specSelectItem, activeTypeKey]);
 
-  const { data: timePolicy } = useAnimalOrderTimePolicy(breedCategoryKey);
+  const { data: timePolicy } = useAnimalOrderTimePolicy(campus ?? undefined, breedCategoryKey);
   const orderingBlocked = timePolicy != null && !timePolicy.canOrderNow;
 
   const typeConfig = getTypeConfig(activeTypeKey);
@@ -438,6 +442,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         projectGroupName,
         cartIds: readyLines.map((l) => l.id),
         submitRemark: submitRemark.trim() || undefined,
+        campus: campus ?? undefined,
       },
       {
         onSuccess: () => {
@@ -449,7 +454,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         },
       },
     );
-  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, projectGroupName, submitRemark, qc, refetchCart]);
+  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, projectGroupName, submitRemark, campus, qc, refetchCart]);
 
   const parentOptionItems = useMemo(() => {
     if (!typeConfig?.parentType) return [];
@@ -547,6 +552,17 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     );
   }
 
+  if (!campus) {
+    return (
+      <CampusGate
+        onSelect={(c) => {
+          storeCampus(c);
+          setCampus(c);
+        }}
+      />
+    );
+  }
+
   const chromeOffset =
     mode === "student" ? "var(--student-chrome-offset, 64px)" : "var(--admin-chrome-offset)";
 
@@ -579,6 +595,25 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
         <div className="flex shrink-0 items-center gap-2 bg-[var(--twin-canvas)] px-3 py-2 overflow-visible">
           <BreadcrumbBar stack={breadcrumbStack} onNavigate={handleBreadcrumbNavigate} />
+          <div className="flex shrink-0 items-center gap-1">
+            {ANIMAL_ORDER_CAMPUSES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  storeCampus(c);
+                  setCampus(c);
+                }}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors whitespace-nowrap ${
+                  campus === c
+                    ? "bg-emerald-600 text-white"
+                    : "border border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                }`}
+              >
+                {c}校区
+              </button>
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => setAupPickerOpen(true)}
@@ -845,7 +880,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       )}
 
       {templateManagerOpen && <SpecTemplateManager onClose={() => setTemplateManagerOpen(false)} />}
-      {timeManagerOpen && <OrderTimeManager onClose={() => setTimeManagerOpen(false)} />}
+      {timeManagerOpen && <OrderTimeManager campus={campus} onClose={() => setTimeManagerOpen(false)} />}
       {orderHistoryOpen && <OrderHistoryPanel groupId={groupId} onClose={() => setOrderHistoryOpen(false)} />}
 
       {/* AUP 切换：portal 到 body，避开 AdminLayout 内容区 stacking context */}

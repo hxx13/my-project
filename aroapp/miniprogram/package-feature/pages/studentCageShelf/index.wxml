@@ -137,7 +137,6 @@
                         </view>
                       </view>
                     </view>
-                    <view wx:if="{{ shelf.highlight }}" class="shelf-card-highlight-badge"><text>本组</text></view>
                   </view>
                 </view>
               </view>
@@ -346,6 +345,18 @@
       <view class="back-link" bindtap="onBackToList">返回列表</view>
     </view>
 
+  <!-- 分笼/转移选位条 -->
+  <view wx:if="{{ opActive }}" class="op-select-bar">
+    <view class="op-select-info">
+      <text class="op-select-title">{{ opKind === 'divide' ? '分笼选位' : '转移选位' }}</text>
+      <text class="op-select-src">源笼位 {{ opSourceLabel }}</text>
+      <text class="op-select-hint">{{ opLoading ? '加载可选笼位…' : (opError ? opError : (opKind === 'divide' ? '点绿色高亮选目标（可多选，可切架）' : '点绿色高亮选目标（单选，可切架）')) }}</text>
+    </view>
+    <text class="op-select-count">已选 {{ opSelectedCount }}</text>
+    <view class="op-select-btn op-select-btn--primary {{ opSelectedCount === 0 ? 'is-disabled' : '' }}" bindtap="onOpOpenConfirm">确认</view>
+    <view class="op-select-btn" bindtap="onOpCancel">取消</view>
+  </view>
+
   <scroll-view wx:if="{{ !gridLoading && !gridError && pageMode !== 'booking' }}" class="grid-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ gridLoading }}" bindrefresherrefresh="onRetry">
     <!-- 图例：默认收起，点 "!" 展开 -->
     <view wx:if="{{ legendOpen }}" class="grid-legend-card">
@@ -432,7 +443,8 @@
   round
   closeable
   close-icon-position="top-right"
-  custom-style="width:90vw;max-width:680rpx;max-height:80vh;box-sizing:border-box;overflow:hidden;"
+  z-index="{{ 20000 }}"
+  custom-style="width:90vw;max-width:680rpx;max-height:82vh;box-sizing:border-box;overflow:hidden;border-radius:28rpx;"
   bind:close="onCloseCellDetail"
 >
   <scroll-view wx:if="{{ selectedCell && cellDetail }}" class="detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
@@ -456,10 +468,24 @@
           <text class="detail-head-position">{{ cellDetail.position }}</text>
           <text class="detail-head-coords">{{ cellDetail.coords }}</text>
           <!-- 标题栏只展示特殊状态；无特殊状态则不展示任何笼型/状态徽标 -->
-          <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="detail-head-chip" style="color:{{ item.color }}; background:{{ item.bg }};">
+          <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="detail-head-chip">
+            <view class="detail-head-chip-dot" style="background:{{ item.color }};" />
             <text>{{ item.label }}</text>
           </view>
         </view>
+      </view>
+
+      <!-- 分笼 / 转移 / 认领入口（后端按「认领记录 + 实验员字段 + 操作身份」判定） -->
+      <view wx:if="{{ detailOperable || detailOperableCode === 'NOT_CLAIMED' || detailCanClaimOnBehalf }}" class="detail-op-bar">
+        <block wx:if="{{ detailOperable }}">
+          <view class="detail-op-btn" data-kind="divide" bindtap="onStartOp">分笼</view>
+          <view class="detail-op-btn" data-kind="transfer" bindtap="onStartOp">转移笼位</view>
+        </block>
+        <block wx:if="{{ detailOperableCode === 'NOT_CLAIMED' }}">
+          <text class="detail-op-hint">{{ detailOperableReason }}</text>
+          <view class="detail-op-btn detail-op-btn--primary" bindtap="onSelfClaim">{{ detailClaiming ? '认领中…' : '认领该笼位' }}</view>
+        </block>
+        <view wx:if="{{ detailCanClaimOnBehalf }}" class="detail-op-btn" bindtap="onOpenClaimOnBehalf">认领</view>
       </view>
 
       <view class="detail-divider" />
@@ -470,10 +496,29 @@
         <view wx:elif="{{ formError }}" class="detail-form-hint detail-form-hint--error">{{ formError }}</view>
         <view wx:elif="{{ !formRows.length }}" class="detail-form-hint">表单无字段</view>
         <view wx:else class="detail-form-grid">
-          <view wx:for="{{ formRows }}" wx:key="key" class="detail-form-cell">
-            <text class="detail-form-cell-label">{{ item.label }}</text>
-            <text class="detail-form-cell-value">{{ item.value }}</text>
+          <view wx:for="{{ formRows }}" wx:key="key" class="detail-form-cell {{ item.fieldType === 'textarea' || item.fieldType === 'richText' ? 'detail-form-cell--wide' : '' }}">
+            <text class="detail-form-cell-label">{{ item.label }}<text wx:if="{{ item.required }}" class="detail-form-required"> *</text></text>
+            <!-- 编辑态：只放开可编辑字段（editable 由字段字典配置），其余仍只读 -->
+            <block wx:if="{{ formEditing && item.editable }}">
+              <switch wx:if="{{ item.fieldType === 'checkbox' }}" checked="{{ item.raw === true || item.raw === 1 || item.raw === '1' }}" data-idx="{{ index }}" bindchange="onFormSwitch" />
+              <picker wx:elif="{{ item.fieldType === 'select' || item.fieldType === 'choice' }}" range="{{ item.options }}" range-key="label" data-idx="{{ index }}" bindchange="onFormPicker">
+                <view class="detail-form-input">{{ item.value === '—' ? '请选择' : item.value }}</view>
+              </picker>
+              <picker wx:elif="{{ item.fieldType === 'date' || item.fieldType === 'dateRange' }}" mode="date" value="{{ item.raw }}" data-idx="{{ index }}" bindchange="onFormPicker">
+                <view class="detail-form-input">{{ item.raw || '选择日期' }}</view>
+              </picker>
+              <textarea wx:elif="{{ item.fieldType === 'textarea' || item.fieldType === 'richText' }}" value="{{ item.raw }}" data-idx="{{ index }}" bindinput="onFormInput" class="detail-form-textarea" auto-height />
+              <input wx:else type="{{ item.fieldType === 'number' ? 'digit' : 'text' }}" value="{{ item.raw }}" data-idx="{{ index }}" bindinput="onFormInput" class="detail-form-input" />
+            </block>
+            <text wx:else class="detail-form-cell-value">{{ item.value }}</text>
           </view>
+        </view>
+        <view wx:if="{{ formEditable }}" class="detail-form-actions">
+          <block wx:if="{{ formEditing }}">
+            <view class="op-select-btn op-select-btn--primary" bindtap="onFormSave">{{ formSaving ? '保存中…' : '保存' }}</view>
+            <view class="op-select-btn" bindtap="onFormEditCancel">取消</view>
+          </block>
+          <view wx:else class="op-select-btn" bindtap="onFormEditStart">编辑</view>
         </view>
       </view>
 
@@ -794,7 +839,7 @@
   bind:close="onCloseReservePerson"
 >
   <view class="cf-root">
-    <view class="cf-title">确认预定 · 选择占用者</view>
+    <view class="cf-title">{{ personPickerPurpose === 'claimOnBehalf' ? '代认领 · 选择实验员' : '确认预定 · 选择占用者' }}</view>
     <view class="rp-search-row">
       <input class="rp-input" type="text" value="{{ reserveKeyword }}" placeholder="姓名 / 工号" placeholder-class="list-search-placeholder" bindinput="onReserveKeywordInput" confirm-type="search" bindconfirm="onReserveSearch" />
       <view class="rp-search-btn" bindtap="onReserveSearch">搜索</view>
@@ -906,6 +951,39 @@
         </view>
       </block>
     </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 分笼/转移确认弹窗：复核已选坐标 + 保留源笼位 + 原因 -->
+<van-popup
+  show="{{ opConfirmOpen }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="onOpCloseConfirm"
+>
+  <view class="cf-root">
+    <view class="cf-title">{{ opKind === 'divide' ? '确认分笼' : '确认转移笼位' }}</view>
+    <view class="op-confirm-src">源笼位：{{ opSourceLabel }}</view>
+    <scroll-view scroll-y class="op-confirm-list">
+      <view wx:for="{{ opPicked }}" wx:key="animalCageId" class="op-confirm-row">
+        <text class="op-confirm-pos">{{ item.positionX }}-{{ item.positionY }}</text>
+        <text class="op-confirm-where">{{ item.campusName }} / {{ item.roomName }} / {{ item.shelveName }}</text>
+        <text class="op-confirm-aup">{{ item.aupNumber }}</text>
+      </view>
+    </scroll-view>
+    <view wx:if="{{ opKind === 'divide' }}" class="op-confirm-keep">
+      <switch checked="{{ opKeepSource }}" bindchange="onOpKeepSourceChange" color="#ac1736" />
+      <text>保留原笼位不变（默认保留；不勾选则源笼位归档为空笼盒）</text>
+    </view>
+    <input class="rp-input" placeholder="原因（可选，会记入留痕）" value="{{ opReason }}" bindinput="onOpReasonInput" />
+    <view class="op-confirm-actions">
+      <view class="op-select-btn" bindtap="onOpCloseConfirm">返回选位</view>
+      <view class="op-select-btn op-select-btn--primary" bindtap="onOpSubmit">{{ opSubmitting ? '提交中…' : (opKind === 'divide' ? '确认分笼（' + opSelectedCount + '）' : '确认转移') }}</view>
+    </view>
   </view>
 </van-popup>
 

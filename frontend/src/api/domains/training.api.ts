@@ -10,6 +10,8 @@ export interface TrainingSeries {
   typeName?: string | null;
   paperIds?: number[];
   ownerIds?: string[];
+  /** 所属人展示名，与 ownerIds 同序（后端 UserDisplayNameService 解析） */
+  ownerNames?: string[];
   recurrence?: string | null;
   recurrenceDay?: number | null;
   recurrenceTime?: string | null;
@@ -36,6 +38,7 @@ export interface TrainingEnrollment {
   projectGroup?: string | null;
   testYn?: number;
   testFraction?: number;
+  examPassed?: boolean;
   roomIds?: string[];
   rooms?: unknown[];
   createdAt?: string | null;
@@ -225,4 +228,24 @@ export async function starTraining(id: number | string): Promise<void> {
 
 export async function unstarTraining(id: number | string): Promise<void> {
   await adminHttp.delete(`/training/${id}/favorite`);
+}
+
+// ---- qualifications（健康报告等占位资格，人级通用） ----
+
+export interface PersonQualification {
+  id: number;
+  personId: string;
+  itemKey: string;
+  state: number; // 0未提交 1合格 2不合格
+  fileRef?: string;
+  updatedAt?: string;
+}
+
+export async function fetchQualifications(personIds: string[]): Promise<PersonQualification[]> {
+  const r = await adminHttp.get("/training/qualifications", { params: { personIds: personIds.join(",") } });
+  return (r.data?.data ?? []) as PersonQualification[];
+}
+
+export async function upsertQualification(body: { personId: string; state: number }): Promise<void> {
+  await adminHttp.post("/training/qualifications", body);
 }

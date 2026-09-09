@@ -42,6 +42,9 @@ public class DahuaService {
     @Autowired(required = false)
     private com.example.demo.modules.doortempunlock.engine.DoorTempUnlockEngine doorTempUnlockEngine;
 
+    @Autowired(required = false)
+    private com.example.demo.modules.doorswiperule.engine.DoorSwipeRuleEngine doorSwipeRuleEngine;
+
     // ---- Webhook → DB 入库依赖 ----
     @Autowired
     private DahuaSwingMapper dahuaSwingMapper;
@@ -207,6 +210,18 @@ public class DahuaService {
 
             // ---- enterOrExit 归一化（与轮询路径一致，非1/2的值回退到raw_json查找） ----
             com.example.demo.modules.twin.dahua.support.DahuaSwingEnterExitSupport.applyResolved(r);
+
+            // ---- 成功刷卡规则（独立于 STAFF_ALLOWED_CHANNELS 白名单，仅 webhook 路径） ----
+            // 有意只挂 webhook，不挂 DahuaSwingPullService.pullOnce：本业务依赖回调零延迟的
+            // 实时事件流做窗口计数，轮询补拉属历史回溯，会破坏「连刷成功即常开」的时序语义。
+            // 独立 try-catch，不阻断告警/临时解锁/联动引擎。
+            if (doorSwipeRuleEngine != null) {
+                try {
+                    doorSwipeRuleEngine.onSwingRecord(r);
+                } catch (Exception e) {
+                    log.warn("[door-swipe-rule] webhook feed failed: {}", e.getMessage());
+                }
+            }
 
             // ── 步骤1：两路分流 ──
             // 路A：部门26（学生）→ 直通入库

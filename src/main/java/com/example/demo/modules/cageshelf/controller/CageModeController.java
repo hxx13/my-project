@@ -40,7 +40,7 @@ public class CageModeController {
         if (u == null) return Result.fail(401, "未登录");
         if (u.getRole() == null) u.setRole(RoleEnum.MEMBER);
 
-        boolean student = u.getAccountSource() != null && "STUDENT".equalsIgnoreCase(u.getAccountSource());
+        boolean student = visibilityService.isStudent(u);
         Map<String, Object> out = new LinkedHashMap<>();
         if (student) {
             // 学生视角：查看 / 申请预约 / 确认（确认模式学生端默认开放，后续如需按身份配置再扩展）

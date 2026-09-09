@@ -11,8 +11,7 @@ public class TelemetryPartitionSummaryDto {
     private String partitionKey;
     private String partitionLabel;
     private String metricKindCode;
-    private List<TelemetryArchivePointDto> medianPoints;
-    private List<TelemetryArchivePointDto> p90Points;
+    private List<TelemetryArchivePointDto> avgPoints;
     private String queriedFrom;
     private String queriedTo;
 }

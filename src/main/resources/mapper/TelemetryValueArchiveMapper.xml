@@ -111,6 +111,9 @@
             AVG(numeric_value) AS avg_value,
             COUNT(1) AS sample_count,
             MAX(sample_at) AS latest_at
+            <if test="metricMin != null and metricMax != null">
+            , SUM(CASE WHEN numeric_value &gt;= #{metricMin} AND numeric_value &lt;= #{metricMax} THEN 1 ELSE 0 END) AS compliant_count
+            </if>
         FROM telemetry_value_archive
         WHERE sample_at &gt;= #{from}
           AND sample_at &lt;= #{to}
@@ -126,22 +129,24 @@
         GROUP BY room_canonical, metric_kind_code
     </select>
 
-    <select id="selectPartitionBucketSamples" resultMap="ArchiveMap">
-        SELECT id, sample_at, variable_name, numeric_value, raw_value,
-               metric_kind_code, room_canonical, bundle_code,
-               schema_version, ingest_batch_id, ext_json
+    <select id="selectPartitionAgg" resultType="com.example.demo.modules.telemetry.dto.archive.TelemetryPartitionAggRow">
+        SELECT
+            room_canonical AS roomCanonical,
+            TIMESTAMP(DATE(sample_at), MAKETIME(HOUR(sample_at), (MINUTE(sample_at) DIV 15) * 15, 0)) AS bucket_start,
+            AVG(numeric_value) AS avg_value
         FROM telemetry_value_archive
         WHERE sample_at &gt;= #{from}
           AND sample_at &lt;= #{to}
           AND numeric_value IS NOT NULL
           AND room_canonical IS NOT NULL
+          AND room_canonical != ''
         <if test="metricKindCode != null and metricKindCode != ''">
             AND metric_kind_code = #{metricKindCode}
         </if>
         <if test="floorFilter != null and floorFilter != ''">
             AND room_canonical LIKE CONCAT(#{floorFilter}, '%')
         </if>
-        ORDER BY sample_at ASC
-        LIMIT 50000
+        GROUP BY room_canonical, bucket_start
+        ORDER BY bucket_start ASC
     </select>
 </mapper>

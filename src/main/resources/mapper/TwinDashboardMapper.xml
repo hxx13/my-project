@@ -390,6 +390,42 @@
         </where>
     </select>
 
+    <!-- 采购汇总：面向供应商，只出 到货日期/供应商/品系/规格/性别 维度，不带 PI/课题组 -->
+    <select id="getProcurementSummary" resultType="map">
+        SELECT arrival_date AS arrivalDate,
+               supplier_name AS supplierName,
+               strain_name AS strainName,
+               spec_name AS specName,
+               SUM(male_qty) AS maleQty,
+               SUM(female_qty) AS femaleQty,
+               SUM(male_qty + female_qty) AS totalQty
+        FROM aro_animal_order
+        WHERE (order_state_name IS NULL
+               OR (order_state_name NOT LIKE '%取消%'
+                   AND order_state_name NOT LIKE '%不通过%'
+                   AND order_state_name NOT LIKE '%驳回%'))
+        <choose>
+            <when test="'order'.equals(dateField)">
+                <if test="startDate != null and startDate != ''">
+                    AND create_time &gt;= #{startDate}
+                </if>
+                <if test="endDate != null and endDate != ''">
+                    AND create_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+                </if>
+            </when>
+            <otherwise>
+                <if test="startDate != null and startDate != ''">
+                    AND arrival_date &gt;= #{startDate}
+                </if>
+                <if test="endDate != null and endDate != ''">
+                    AND arrival_date &lt;= #{endDate}
+                </if>
+            </otherwise>
+        </choose>
+        GROUP BY arrival_date, supplier_name, strain_name, spec_name
+        ORDER BY arrival_date ASC, supplier_name ASC, strain_name ASC, spec_name ASC
+    </select>
+
     <select id="getActiveRetentionWarnings" resultType="map">
         <bind name="areaPattern" value="'%' + areaName + '%'" />
         SELECT log.id AS logId,

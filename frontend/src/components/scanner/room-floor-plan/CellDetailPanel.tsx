@@ -16,8 +16,7 @@ const CAGE_TYPE_COLOR: Record<number, { bg: string; fg: string }> = {
 
 /** 字段清单按 docs/06-开发参考/2026-08-25-笼位信息字段架构-开发参考.md；derived=true 标「自动获取」 */
 const FORM_ROWS: { key: string; label: string; group: string; derived: boolean }[] = [
-  { key: "pi_name", label: "课题组长", group: "项目信息", derived: true },
-  { key: "project_pi_name", label: "项目组长", group: "项目信息", derived: true },
+  { key: "project_pi_name", label: "课题组组长", group: "项目信息", derived: true },
   { key: "project_name", label: "项目名称", group: "项目信息", derived: true },
   { key: "department_name", label: "部门", group: "项目信息", derived: true },
   { key: "aup_number", label: "AUP 注册号", group: "项目信息", derived: true },

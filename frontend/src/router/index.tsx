@@ -82,6 +82,7 @@ import CageScopeAssignmentPage from "@/features/cage-shelf/pages/CageScopeAssign
 import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
+import CardPrintPage from "@/features/card-print/pages/CardPrintPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AdminAroBindingPage from "@/pages/AdminAroBindingPage";
 import AdminHealthSurveyViewPage from "@/pages/AdminHealthSurveyViewPage";
@@ -381,6 +382,7 @@ export const router = createHashRouter([
               { path: "cage-shelves/records", element: <CageOccupancyRecordsPage /> },
               { path: "cage-shelves/scope", element: <CageScopeAssignmentPage /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
+              { path: "card-print", element: <CardPrintPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "aro-binding", element: <AdminAroBindingPage /> },
               { path: "health-survey/:personId", element: <AdminHealthSurveyViewPage /> },

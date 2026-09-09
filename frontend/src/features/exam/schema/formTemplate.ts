@@ -85,6 +85,8 @@ export interface FieldConfig {
   answer?: string;
   /** choice：多选题正确答案（选项 value 数组） */
   answers?: string[];
+  /** choice：单题分值（留空=等权重） */
+  score?: number;
   /** choice：选项排版（list 竖排 / grid 多列 / grouped 分组标题），缺省 list */
   layout?: "list" | "grid" | "grouped";
   /** choice/group：grid/grouped 时每行列数（2/3/4） */

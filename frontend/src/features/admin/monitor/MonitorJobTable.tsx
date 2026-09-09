@@ -313,7 +313,7 @@ export function MonitorJobTable({
   return (
     /* div 无 overflow — 由父容器处理滚动，保证 sticky thead 生效 */
     <div>
-      <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
+      <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse twin-table">
         <thead className="border-b-2 border-[var(--app-color-border-strong)]">
           <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
             <th className="p-3 pl-5 w-16">启用</th>

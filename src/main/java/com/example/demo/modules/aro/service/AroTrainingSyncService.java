@@ -22,9 +22,11 @@ import org.springframework.web.client.RestTemplate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 拉取 ARO 培训场次/学员，直接写入本地 training / training_occurrence / training_enrollment 表。
@@ -115,25 +117,38 @@ public class AroTrainingSyncService {
         }
         log.info("[AroSync] 拉取到 {} 个培训场次", allSessions.size());
 
-        // 2. 清掉上一次同步的 ARO 培训（先子后父）
+        // 2. 清掉上一次同步的场次/学员；training 行保留，用于按 code 复用本地字段与自增 id
         enrollmentMapper.deleteByTrainingCodePrefix(CODE_PREFIX);
         occurrenceMapper.deleteByTrainingCodePrefix(CODE_PREFIX);
-        trainingMapper.deleteByCodePrefix(CODE_PREFIX);
+
+        // 已有 ARO 培训按 code 索引：复用行可保住试卷/所属人/循环配置，且 id 不变（收藏等引用不失效）
+        Map<String, Training> existing = new LinkedHashMap<>();
+        for (Training t : trainingMapper.list()) {
+            if (t.getCode() != null && t.getCode().startsWith("aro-")) existing.put(t.getCode(), t);
+        }
+        Set<String> syncedCodes = new HashSet<>();
 
         // 3. 逐场次写入 training + occurrence + enrollment
         int totalTrainees = 0;
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         for (JSONObject s : allSessions) {
             Long sessionId = s.getLong("id");
-            Training training = new Training();
-            training.setCode("aro-" + sessionId);
+            String code = "aro-" + sessionId;
+            syncedCodes.add(code);
+            Training training = existing.get(code);
+            boolean isNew = training == null;
+            if (isNew) {
+                training = new Training();
+                training.setCode(code);
+                training.setCreatedBy("ARO_SYNC");
+            }
             training.setName(s.getString("title"));
             Integer certType = s.getInteger("examCertType");
             training.setType(certType != null && certType == 2 ? 2 : 1);
             training.setTypeName(certType != null && certType == 2 ? "手术培训" : "准入培训");
             training.setStatus("PUBLISHED");
-            training.setCreatedBy("ARO_SYNC");
-            trainingMapper.insert(training);
+            if (isNew) trainingMapper.insert(training);
+            else trainingMapper.update(training);
 
             TrainingOccurrence occ = new TrainingOccurrence();
             occ.setTrainingId(training.getId());
@@ -181,6 +196,16 @@ public class AroTrainingSyncService {
                     break;
                 }
             }
+        }
+        // 4. 删除本轮 ARO 已不再返回的培训（先子后父）
+        for (Map.Entry<String, Training> e : existing.entrySet()) {
+            if (syncedCodes.contains(e.getKey())) continue;
+            Long tid = e.getValue().getId();
+            for (TrainingOccurrence o : occurrenceMapper.listByTrainingId(tid)) {
+                enrollmentMapper.deleteByOccurrenceId(o.getId());
+            }
+            occurrenceMapper.deleteByTrainingId(tid);
+            trainingMapper.delete(tid);
         }
         log.info("[AroSync] 同步完成: {} 场次, {} 学员", allSessions.size(), totalTrainees);
     }

@@ -45,9 +45,11 @@ public interface TelemetryValueArchiveMapper {
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             @Param("metricKindCode") String metricKindCode,
-            @Param("floorFilter") String floorFilter);
+            @Param("floorFilter") String floorFilter,
+            @Param("metricMin") Double metricMin,
+            @Param("metricMax") Double metricMax);
 
-    List<TelemetryValueArchiveRow> selectPartitionBucketSamples(
+    List<com.example.demo.modules.telemetry.dto.archive.TelemetryPartitionAggRow> selectPartitionAgg(
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             @Param("metricKindCode") String metricKindCode,

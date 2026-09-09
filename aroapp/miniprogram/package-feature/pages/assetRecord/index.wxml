@@ -35,7 +35,7 @@
 
     <!-- Vant 下拉筛选（默认收起，紧凑尺寸） -->
     <view wx:if="{{ showFilters }}" class="filter-drop">
-      <van-dropdown-menu active-color="#3b82f6" z-index="{{ 900 }}">
+      <van-dropdown-menu active-color="#2563eb" z-index="{{ 900 }}">
         <van-dropdown-item
           title="{{ filterAssetNameIndex > 0 ? assetNameOptions[filterAssetNameIndex] : '资产名称' }}"
           value="{{ filterAssetNameIndex }}"
@@ -513,7 +513,12 @@
                 <text class="batch-fill-label">{{ field.label }}</text>
               </view>
               <block wx:if="{{ batchEditChecked[field.key] }}">
-                <input class="input batch-edit-input" value="{{ batchEditValues[field.key] || '' }}" data-key="{{ field.key }}" bindinput="onBatchEditValueInput" placeholder="输入新值" />
+                <location-tree-picker
+                  wx:if="{{ field.isLocation }}"
+                  value="{{ batchEditValues[field.key] || '' }}"
+                  bind:change="onBatchEditLocationPicked"
+                />
+                <input wx:else class="input batch-edit-input" value="{{ batchEditValues[field.key] || '' }}" data-key="{{ field.key }}" bindinput="onBatchEditValueInput" placeholder="输入新值" />
                 <view wx:if="{{ field.previews.length }}" class="batch-fill-previews">
                   <text class="batch-fill-previews-title">当前批量中的值：</text>
                   <view wx:for="{{ field.previews }}" wx:for-item="pv" wx:for-index="pvi" wx:key="pvi" class="batch-fill-preview-row">

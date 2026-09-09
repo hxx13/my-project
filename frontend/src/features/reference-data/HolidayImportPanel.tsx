@@ -26,12 +26,13 @@ function currentYear(): number {
   return new Date().getFullYear();
 }
 
-export default function HolidayImportPanel() {
+export default function HolidayImportPanel({ campus }: { campus: string }) {
   const [year, setYear] = useState(currentYear());
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: holidays = [], isLoading } = useAnimalOrderHolidays(year);
-  const { data: timePolicy } = useAnimalOrderTimePolicy();
+  // 节假日为全国口径，校区只用于取摘要里的「本年未导入」提示
+  const { data: timePolicy } = useAnimalOrderTimePolicy(campus);
 
   const createMut = useCreateAnimalOrderHoliday();
   const deleteMut = useDeleteAnimalOrderHoliday();

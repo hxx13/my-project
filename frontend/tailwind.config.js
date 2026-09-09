@@ -9,8 +9,9 @@ export default {
         extend: {
             colors: {
                 /* ── shadcn 现有：保持不变，通过 CSS 变量引用新令牌 ── */
-                border: "hsl(var(--border))",
-                input: "hsl(var(--input))",
+                /* 注意：--border/--input 等存放的是完整颜色值（oklch/hex），不能再包 hsl()，否则整条声明非法 → 回退 currentColor */
+                border: "var(--border)",
+                input: "var(--input)",
                 ring: "hsl(var(--ring))",
                 background: "hsl(var(--background))",
                 foreground: "hsl(var(--foreground))",

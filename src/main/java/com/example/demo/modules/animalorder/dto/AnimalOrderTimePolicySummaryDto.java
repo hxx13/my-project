@@ -9,6 +9,8 @@ import java.util.List;
 
 @Data
 public class AnimalOrderTimePolicySummaryDto {
+    /** 浦东 | 浦西 */
+    private String campus;
     private String defaultMode;
     private boolean canOrderNow;
     private String closedReason;

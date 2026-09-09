@@ -28,14 +28,19 @@ public class RpgEngineService {
     @Autowired(required = false)
     private TwinExpReconcileService twinExpReconcileService;
 
+    @Autowired
+    private com.example.demo.modules.twin.rpg.mapper.TwinExpRecordMapper twinExpRecordMapper;
+
     /**
-     * 方案 A 快轨：仅从 aro_access_log 全量计算（含今日未离开挂机），不读 personnel.total_exp。
+     * 经验值唯一口径：以 twin_exp_record 账本为准（排除已驳回），
+     * 叠加当前未结束会话的实时挂机经验——与 exp-stats 页共用同一账本，两边天然一致。
      */
     public RpgStatsDto calculateFullExpFromAccessLogs(String userId) {
         List<Map<String, Object>> logs = rpgMapper.getUserLogsForRecalc(
                 userId, rpgExpCutoffService.cutoffStartForQuery());
-        double totalExp = ExpSessionCalculator.calcTotalFromLogs(logs, LocalDateTime.now());
-        return buildDto(totalExp);
+        long ledgerExp = twinExpRecordMapper.sumExpByUserIdExcludeRejected(userId);
+        double ongoingExp = ExpSessionCalculator.ongoingSessionExp(logs, LocalDateTime.now());
+        return buildDto(ledgerExp + ongoingExp);
     }
 
     /**

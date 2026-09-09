@@ -2,6 +2,7 @@ package com.example.demo.modules.animalorder.service;
 
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.animalorder.AnimalOrderCampus;
 import com.example.demo.modules.animalorder.dto.AnimalOrderHolidayDto;
 import com.example.demo.modules.animalorder.dto.AnimalOrderTimePolicyAdminDto;
 import com.example.demo.modules.animalorder.dto.AnimalOrderTimePolicySummaryDto;
@@ -38,7 +39,6 @@ public class AnimalOrderTimePolicyService {
     static final String WARNING_HOLIDAY_YEAR_EMPTY = "ANIMAL_ORDER_HOLIDAY_YEAR_EMPTY";
     private static final String CLOSED_REASON = "当前不在可购时间窗口内";
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
-    private static final long POLICY_ID = 1L;
 
     @Autowired
     private AnimalOrderTimePolicyMapper policyMapper;
@@ -49,13 +49,15 @@ public class AnimalOrderTimePolicyService {
     @Autowired
     private AnimalOrderHolidayMapper holidayMapper;
 
-    public AnimalOrderTimePolicySummaryDto getSummary(String categoryKey, ZonedDateTime at) {
+    public AnimalOrderTimePolicySummaryDto getSummary(String campus, String categoryKey, ZonedDateTime at) {
+        String c = AnimalOrderCampus.normalize(campus);
         ZonedDateTime when = at != null ? at : ZonedDateTime.now(ZONE);
-        AnimalOrderTimePolicy policyRow = requirePolicy();
-        AnimalOrderTimeEngine engine = buildEngine(when.getYear());
+        AnimalOrderTimePolicy policyRow = requirePolicy(c);
+        AnimalOrderTimeEngine engine = buildEngine(c, when.getYear());
 
         boolean canOrder = engine.canOrder(when, categoryKey);
         AnimalOrderTimePolicySummaryDto dto = new AnimalOrderTimePolicySummaryDto();
+        dto.setCampus(c);
         dto.setDefaultMode(policyRow.getDefaultMode());
         dto.setEtaMode(policyRow.getEtaMode());
         dto.setEtaWorkdayOffset(policyRow.getEtaWorkdayOffset());
@@ -70,21 +72,25 @@ public class AnimalOrderTimePolicyService {
         return dto;
     }
 
-    public boolean canOrderAt(ZonedDateTime at, String categoryKey) {
+    public boolean canOrderAt(String campus, ZonedDateTime at, String categoryKey) {
+        String c = AnimalOrderCampus.normalize(campus);
         ZonedDateTime when = at != null ? at : ZonedDateTime.now(ZONE);
-        return buildEngine(when.getYear()).canOrder(when, categoryKey);
+        return buildEngine(c, when.getYear()).canOrder(when, categoryKey);
     }
 
-    public LocalDate estimateDeliveryAt(ZonedDateTime at, String categoryKey) {
+    public LocalDate estimateDeliveryAt(String campus, ZonedDateTime at, String categoryKey) {
+        String c = AnimalOrderCampus.normalize(campus);
         ZonedDateTime when = at != null ? at : ZonedDateTime.now(ZONE);
-        return buildEngine(when.getYear()).estimateDelivery(when, categoryKey);
+        return buildEngine(c, when.getYear()).estimateDelivery(when, categoryKey);
     }
 
-    public AnimalOrderTimePolicyAdminDto getAdminView() {
-        AnimalOrderTimePolicy policyRow = requirePolicy();
-        List<AnimalOrderWindowRule> ruleRows = ruleMapper.listActive();
+    public AnimalOrderTimePolicyAdminDto getAdminView(String campus) {
+        String c = AnimalOrderCampus.normalize(campus);
+        AnimalOrderTimePolicy policyRow = requirePolicy(c);
+        List<AnimalOrderWindowRule> ruleRows = ruleMapper.listActive(c);
 
         AnimalOrderTimePolicyAdminDto dto = new AnimalOrderTimePolicyAdminDto();
+        dto.setCampus(c);
         dto.setDefaultMode(policyRow.getDefaultMode());
         dto.setEtaMode(policyRow.getEtaMode());
         dto.setEtaWorkdayOffset(policyRow.getEtaWorkdayOffset());
@@ -94,10 +100,11 @@ public class AnimalOrderTimePolicyService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void saveAdmin(AnimalOrderTimePolicyAdminDto body) {
+    public void saveAdmin(String campus, AnimalOrderTimePolicyAdminDto body) {
         if (body == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
+        String c = AnimalOrderCampus.normalize(campus);
         validateEtaPolicy(body);
 
         List<AnimalOrderWindowRuleDto> ruleDtos = body.getRules() != null ? body.getRules() : List.of();
@@ -109,7 +116,7 @@ public class AnimalOrderTimePolicyService {
         }
         validateRuleGroups(ruleDtos);
 
-        AnimalOrderTimePolicy policyRow = requirePolicy();
+        AnimalOrderTimePolicy policyRow = requirePolicy(c);
         policyRow.setDefaultMode(body.getDefaultMode());
         policyRow.setEtaMode(body.getEtaMode());
         policyRow.setEtaWorkdayOffset(body.getEtaWorkdayOffset());
@@ -125,6 +132,8 @@ public class AnimalOrderTimePolicyService {
             }
             normalizeAndValidateRule(ruleDto);
             AnimalOrderWindowRule row = fromRuleDto(ruleDto);
+            // 校区由请求参数决定，不允许被请求体里的行数据改写
+            row.setCampus(c);
             if (row.getActive() == null) {
                 row.setActive(1);
             }
@@ -164,17 +173,17 @@ public class AnimalOrderTimePolicyService {
         holidayMapper.deleteById(id);
     }
 
-    private AnimalOrderTimeEngine buildEngine(int centerYear) {
-        AnimalOrderTimePolicy policyRow = requirePolicy();
-        List<AnimalOrderWindowRule> ruleRows = ruleMapper.listActive();
+    private AnimalOrderTimeEngine buildEngine(String campus, int centerYear) {
+        AnimalOrderTimePolicy policyRow = requirePolicy(campus);
+        List<AnimalOrderWindowRule> ruleRows = ruleMapper.listActive(campus);
         Map<LocalDate, String> holidayMap = loadHolidayMap(centerYear);
         return new AnimalOrderTimeEngine(toModel(policyRow), toRules(ruleRows), holidayMap);
     }
 
-    private AnimalOrderTimePolicy requirePolicy() {
-        AnimalOrderTimePolicy policy = policyMapper.findById(POLICY_ID);
+    private AnimalOrderTimePolicy requirePolicy(String campus) {
+        AnimalOrderTimePolicy policy = policyMapper.findByCampus(campus);
         if (policy == null) {
-            throw new IllegalStateException("动物订购时间策略未初始化");
+            throw new IllegalStateException("动物订购时间策略未初始化: " + campus);
         }
         return policy;
     }

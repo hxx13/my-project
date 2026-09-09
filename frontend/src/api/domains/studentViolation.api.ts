@@ -139,7 +139,10 @@ export async function batchCreateStudentViolations(body: BatchCreateStudentViola
 
 export interface StudentViolationListParams {
   targetUserId?: string;
+  /** 兼容旧调用：仅传 limit 时等价 pageSize=limit 且 page=1 */
   limit?: number;
+  page?: number;
+  pageSize?: number;
   /** 服务端 SQL 层过滤（避免先截断窗口再前端过滤导致的幻影记录） */
   statuses?: StudentViolationStatus[];
   sources?: string[];
@@ -149,16 +152,23 @@ export interface StudentViolationListParams {
   lockedOnly?: boolean;
 }
 
-export async function listStudentViolations(params: StudentViolationListParams = {}) {
+export interface StudentViolationListResult {
+  list: StudentViolationRow[];
+  total: number;
+}
+
+export async function listStudentViolations(params: StudentViolationListParams = {}): Promise<StudentViolationListResult> {
   const sp = new URLSearchParams();
-  sp.set("limit", String(params.limit ?? 50));
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.page != null) sp.set("page", String(params.page));
+  if (params.pageSize != null) sp.set("pageSize", String(params.pageSize));
   if (params.targetUserId) sp.set("targetUserId", params.targetUserId);
   if (params.statuses?.length) sp.set("statuses", params.statuses.join(","));
   if (params.sources?.length) sp.set("sources", params.sources.join(","));
   if (params.excludeCage != null) sp.set("excludeCage", String(params.excludeCage));
   if (params.lockedOnly != null) sp.set("lockedOnly", String(params.lockedOnly));
-  const res = await adminHttp.get<ApiResponse<StudentViolationRow[]>>(`/twin/student-violations?${sp.toString()}`);
-  return res.data?.data || [];
+  const res = await adminHttp.get<ApiResponse<StudentViolationListResult>>(`/twin/student-violations?${sp.toString()}`);
+  return res.data?.data ?? { list: [], total: 0 };
 }
 
 export async function createStudentViolation(body: CreateStudentViolationPayload) {

@@ -5,6 +5,8 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.aup.entity.AupRecord;
+import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellHistory;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
@@ -51,6 +53,7 @@ public class CageLocalController {
     private final CageInfoValueService infoValueService;
     private final CageModeVisibilityService modeVisibilityService;
     private final CageClaimMapper claimMapper;
+    private final AupRecordMapper aupRecordMapper;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -63,7 +66,8 @@ public class CageLocalController {
                                CageQuotaService quotaService,
                                CageInfoValueService infoValueService,
                                CageModeVisibilityService modeVisibilityService,
-                               CageClaimMapper claimMapper) {
+                               CageClaimMapper claimMapper,
+                               AupRecordMapper aupRecordMapper) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -76,6 +80,7 @@ public class CageLocalController {
         this.infoValueService = infoValueService;
         this.modeVisibilityService = modeVisibilityService;
         this.claimMapper = claimMapper;
+        this.aupRecordMapper = aupRecordMapper;
     }
 
     private String operatorDisplayName(User u) {
@@ -143,19 +148,22 @@ public class CageLocalController {
         Long shelveId = toLong(body.get("shelveId"));
         String piName = str(body, "piName");
         String aupNumber = str(body, "aupNumber");
+        // 项目名称不在请求里传：按 AUP 注册号从本地 aup_record 取（前端只需传 registerNo）
+        AupRecord aupRecord = (aupNumber == null || aupNumber.isBlank()) ? null : aupRecordMapper.selectByRegisterNo(aupNumber);
+        String projectName = aupRecord == null ? null : aupRecord.getProjectName();
 
         // 配额校验：实际占用 + 本次 ≤ 该 AUP 可用数（键用 register_number）
         quotaService.assertCanAllocate(roomId, aupNumber, list.size());
 
-        // ① 本地DB逐笼更新（含PI姓名、AUP编号、院系）+ 直写表单(cage_info_value)自动填充
+        // ① 本地DB逐笼更新（含PI姓名、AUP编号、项目名称、院系）+ 直写表单(cage_info_value)自动填充
         List<Long> cageIds = new ArrayList<>();
         for (Object id : list) {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
-            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber, aupId, String.valueOf(u.getId()));
+            CageCellDetail d = detailService.allocate(animalCageId, piName, aupNumber, aupId, projectName, String.valueOf(u.getId()));
             Map<String, Object> auto = new HashMap<>();
-            if (d.getPiName() != null && !d.getPiName().isBlank()) auto.put("pi_name", d.getPiName());
             if (d.getProjectPiName() != null && !d.getProjectPiName().isBlank()) auto.put("project_pi_name", d.getProjectPiName());
+            if (d.getProjectName() != null && !d.getProjectName().isBlank()) auto.put("project_name", d.getProjectName());
             if (d.getDepartmentName() != null && !d.getDepartmentName().isBlank()) auto.put("department_name", d.getDepartmentName());
             if (d.getAupNumber() != null && !d.getAupNumber().isBlank()) auto.put("aup_number", d.getAupNumber());
             if (!auto.isEmpty()) infoValueService.syncFromMapped(animalCageId, auto);

@@ -20,9 +20,10 @@ import {
 import { fetchTelemetryArchiveSeries } from "@/api/telemetryApi";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminCenteredPanelShell } from "@/components/admin/AdminCenteredPanelShell";
-import { AdminDataTableWrap, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminDataTableWrap, AdminFillScrollRegion, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { buildAutoChartGroupsFromSuites } from "@/features/telemetry-insights/buildAutoChartGroups";
+import { metricKindFromCode } from "@/features/telemetry-insights/buildWatchlistVariableCatalog";
 import { TelemetryChartGroupPanel } from "@/features/telemetry-insights/TelemetryChartGroupPanel";
 import { TelemetryFleetHeatmap } from "@/features/telemetry-insights/TelemetryFleetHeatmap";
 import { TelemetrySeriesChart } from "@/features/telemetry-insights/TelemetrySeriesChart";
@@ -35,10 +36,16 @@ const METRIC_OPTIONS = [
   { code: "PRESSURE", label: "压差" },
 ] as const;
 
+/** 本地时区 datetime-local 值（toISOString 是 UTC，会把默认窗口偏移掉） */
+function toLocalDateTimeValue(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function defaultRange(): { from: string; to: string } {
   const to = new Date();
   const from = new Date(to.getTime() - 24 * 3600_000);
-  return { from: from.toISOString().slice(0, 16), to: to.toISOString().slice(0, 16) };
+  return { from: toLocalDateTimeValue(from), to: toLocalDateTimeValue(to) };
 }
 
 type DrillTarget = {
@@ -111,13 +118,7 @@ function DrillDownDialog({
                 queriedFrom={seriesQ.data?.queriedFrom}
                 queriedTo={seriesQ.data?.queriedTo}
                 displayProfile={displayProfile}
-                metricKind={
-                  (cell.metricKindCode || "").toUpperCase().includes("HUM")
-                    ? "hum"
-                    : (cell.metricKindCode || "").toUpperCase().includes("PRESS")
-                      ? "pressure"
-                      : "temp"
-                }
+                metricKind={metricKindFromCode(cell.metricKindCode)}
                 height={200}
                 seriesLabel={target?.displayLabel}
               />
@@ -140,8 +141,9 @@ export default function AdminTelemetryInsightsPage() {
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [showAutoGroups, setShowAutoGroups] = useState(false);
 
-  const fromIso = new Date(range.from).toISOString();
-  const toIso = new Date(range.to).toISOString();
+  // 后端 LocalDateTime 按本地时区存；直接送本地时间，勿用 toISOString 转 UTC（会偏 8h）
+  const fromIso = `${range.from}:00`;
+  const toIso = `${range.to}:00`;
   const useRollup = (Date.parse(toIso) - Date.parse(fromIso)) / 3600_000 > 48;
 
   const snapshotQ = useQuery({
@@ -210,6 +212,8 @@ export default function AdminTelemetryInsightsPage() {
         profileCode: displayProfile,
         from: fromIso,
         to: toIso,
+        metricKindCode: metricCode,
+        floorFilter: floorFilter.trim() || undefined,
       }),
     onSuccess: () => {
       toast.success("快照已捕获");
@@ -219,12 +223,12 @@ export default function AdminTelemetryInsightsPage() {
   });
 
   const onSeriesDrill = useCallback(
-    (variableName: string, displayLabel: string) => {
-      tiDebug("series drill", { variableName, metricCode });
+    (variableName: string, displayLabel: string, metricKindCode: string) => {
+      tiDebug("series drill", { variableName, metricKindCode });
       setDrillTarget({
         cell: {
           roomCanonical: variableName,
-          metricKindCode: metricCode,
+          metricKindCode,
           variableName,
           displayLabel,
           complianceStatus: "UNKNOWN",
@@ -232,7 +236,7 @@ export default function AdminTelemetryInsightsPage() {
         displayLabel,
       });
     },
-    [metricCode]
+    []
   );
 
   const onHeatmapCellClick = useCallback((cell: TelemetryFleetMatrixCell) => {
@@ -281,7 +285,7 @@ export default function AdminTelemetryInsightsPage() {
   const floorOptions = useMemo(() => catalog.floors, [catalog.floors]);
 
   return (
-    <AdminPageShell>
+    <AdminPageShell fillHeight>
       <div className="flex items-center gap-3 shrink-0">
         <span className="inline-flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-[var(--app-color-accent-primary)]" />
@@ -289,7 +293,7 @@ export default function AdminTelemetryInsightsPage() {
         </span>
         <div className="flex flex-wrap gap-2 ml-auto">
           <Link
-            to="/console/admin/telemetry-insights-config"
+            to="/console/admin/telemetry-insights/config"
             className="inline-flex items-center rounded-[length:var(--admin-radius-md,0.375rem)] border-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm hover:bg-[var(--app-color-surface-hover)]"
           >
             <Settings2 className="mr-1 h-4 w-4" />
@@ -305,7 +309,7 @@ export default function AdminTelemetryInsightsPage() {
           </AdminButton>
         </div>
       </div>
-      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
+      <AdminFillScrollRegion className="space-y-4 p-4">
       <AdminDataTableWrap className="space-y-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs">
@@ -407,13 +411,11 @@ export default function AdminTelemetryInsightsPage() {
                     {p.partitionLabel}
                   </div>
                   <TelemetrySeriesChart
-                    points={p.medianPoints}
+                    points={p.avgPoints}
                     queriedFrom={p.queriedFrom}
                     queriedTo={p.queriedTo}
                     displayProfile={displayProfile}
-                    metricKind={
-                      metricCode.includes("HUM") ? "hum" : metricCode.includes("PRESS") ? "pressure" : "temp"
-                    }
+                    metricKind={metricKindFromCode(metricCode)}
                     height={80}
                     seriesLabel="median"
                     stroke="var(--app-color-accent-primary)"
@@ -443,7 +445,7 @@ export default function AdminTelemetryInsightsPage() {
             <div className="rounded-[var(--app-radius-container)] border border-dashed border-[var(--app-color-border-default)] p-4 text-sm text-[var(--app-color-text-muted)]">
               <p>尚未配置对比组。</p>
               <Link
-                to="/console/admin/telemetry-insights-config"
+                to="/console/admin/telemetry-insights/config"
                 className="mt-2 inline-flex text-[var(--app-color-accent-primary)] hover:underline"
               >
                 前往对比组配置 →
@@ -501,7 +503,7 @@ export default function AdminTelemetryInsightsPage() {
         toIso={toIso}
         onClose={() => setDrillTarget(null)}
       />
-      </div>
+      </AdminFillScrollRegion>
     </AdminPageShell>
   );
 }

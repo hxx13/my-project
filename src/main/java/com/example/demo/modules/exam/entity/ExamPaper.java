@@ -11,6 +11,8 @@ public class ExamPaper {
     private String status;
     private String createdBy;
     private Long folderId;
+    private Integer qualifyScore;
+    private Integer totalTime;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

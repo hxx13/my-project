@@ -851,3 +851,11 @@ html.portal-landing-scroll-hidden::-webkit-scrollbar {
     to   { opacity: 1; }
   }
 }
+
+/* ═══════ 滚轮修复：中和 overscroll-y-contain ═══════
+   在「没有可滚动溢出」的 overflow-y:auto 容器上，overscroll-behavior:contain 会让滚轮既不滚动自身、
+   也不冒泡给父级 —— 表现为「鼠标放在容器里滚不动，必须移到容器外才能滚」。
+   项目里大量区域依赖页面滚动，故统一中和该属性；确实需要隔离滚动链的地方再单独处理。
+   必须放在 tailwind 指令之后，靠源码顺序覆盖同名工具类。 */
+.overscroll-y-contain { overscroll-behavior-y: auto; }
+.overscroll-contain { overscroll-behavior: auto; }

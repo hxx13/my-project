@@ -14,19 +14,21 @@ import {
 } from "@/api/domains/animalOrderTime.api";
 import { queryKeys } from "./queryKeys";
 
-export function useAnimalOrderTimePolicy(categoryKey?: string) {
+export function useAnimalOrderTimePolicy(campus?: string, categoryKey?: string) {
   return useQuery({
-    queryKey: queryKeys.animalOrderTime.summary(categoryKey),
-    queryFn: () => fetchTimePolicySummary({ categoryKey }),
+    queryKey: queryKeys.animalOrderTime.summary(campus, categoryKey),
+    queryFn: () => fetchTimePolicySummary({ campus, categoryKey }),
+    enabled: !!campus,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
 }
 
-export function useAnimalOrderTimePolicyAdmin() {
+export function useAnimalOrderTimePolicyAdmin(campus?: string) {
   return useQuery({
-    queryKey: queryKeys.animalOrderTime.admin,
-    queryFn: fetchTimePolicyAdmin,
+    queryKey: queryKeys.animalOrderTime.admin(campus),
+    queryFn: () => fetchTimePolicyAdmin(campus),
+    enabled: !!campus,
   });
 }
 

@@ -110,7 +110,7 @@ function normalizeColumnLabel(label: string) {
 
 export default function AdminAssetRecordPage() {
   type DeleteCandidate = Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked">;
-  const [view, setView] = useState<"table" | "graph">("table");
+  const [view, setView] = useState<"table" | "graph">("graph");
   /** 扫码弹窗开关 */
   const [scanOpen, setScanOpen] = useState(false);
   /** 图形视图的扫码请求：seq 变化即视为一次新扫描 */

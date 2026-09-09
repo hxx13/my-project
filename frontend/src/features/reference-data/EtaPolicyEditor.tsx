@@ -23,7 +23,7 @@ function weekdayLabel(value: number | null | undefined): string {
 
 export default function EtaPolicyEditor({ draft, onChange }: EtaPolicyEditorProps) {
   const saveMut = useSaveAnimalOrderTimePolicyAdmin();
-  const { data: summary } = useAnimalOrderTimePolicy();
+  const { data: summary } = useAnimalOrderTimePolicy(draft.campus);
 
   const isRelative = draft.etaMode === "RELATIVE";
   const isFixed = draft.etaMode === "FIXED";

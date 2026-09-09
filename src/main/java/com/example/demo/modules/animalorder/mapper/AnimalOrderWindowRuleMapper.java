@@ -8,7 +8,7 @@ import java.util.List;
 
 @Mapper
 public interface AnimalOrderWindowRuleMapper {
-    List<AnimalOrderWindowRule> listActive();
+    List<AnimalOrderWindowRule> listActive(@Param("campus") String campus);
 
     List<AnimalOrderWindowRule> listActiveByScope(@Param("scope") String scope, @Param("categoryKey") String categoryKey);
 

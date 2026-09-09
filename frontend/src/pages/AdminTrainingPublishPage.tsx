@@ -56,11 +56,13 @@ function PaperPicker({
   folders,
   selected,
   onToggle,
+  onToggleMany,
 }: {
   papers: ExamPaperSummary[];
   folders: ExamPaperFolder[];
   selected: number[];
   onToggle: (id: number) => void;
+  onToggleMany: (ids: number[], value: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -110,8 +112,8 @@ function PaperPicker({
       </button>
       {open && (
         <div className="absolute z-30 mt-1 w-full min-w-[20rem] rounded-lg border border-neutral-200 bg-white shadow-lg">
-          <div className="p-2 pb-1">
-            <div className="relative">
+          <div className="flex items-center gap-2 p-2 pb-1">
+            <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
               <input
                 autoFocus
@@ -121,16 +123,32 @@ function PaperPicker({
                 className={cn(adminInputClass, "pl-8")}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => onToggleMany(papers.map((p) => p.id), !(papers.length > 0 && papers.every((p) => selected.includes(p.id))))}
+              className="shrink-0 rounded px-2 py-1 text-xs font-medium text-[var(--app-color-primary)] hover:bg-neutral-50"
+            >
+              {papers.length > 0 && papers.every((p) => selected.includes(p.id)) ? "清空" : "全选"}
+            </button>
           </div>
           <div className="max-h-64 space-y-1 overflow-auto p-2">
             {groups.length === 0 && (
               <div className="px-2 py-3 text-center text-xs text-neutral-400">无匹配试卷</div>
             )}
-            {groups.map((g) => (
+            {groups.map((g) => {
+              const gAll = g.items.length > 0 && g.items.every((p) => selected.includes(p.id));
+              return (
               <details key={g.name} className="rounded-md border border-neutral-100" open>
-                <summary className="cursor-pointer select-none px-2 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50">
-                  {g.name}
-                  <span className="ml-1 font-normal text-neutral-400">({g.items.length})</span>
+                <summary className="flex cursor-pointer select-none items-center gap-2 px-2 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50">
+                  <input
+                    type="checkbox"
+                    checked={gAll}
+                    onChange={() => onToggleMany(g.items.map((p) => p.id), !gAll)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-3.5 w-3.5 shrink-0 accent-[var(--app-color-primary)]"
+                  />
+                  <span className="flex-1">{g.name}</span>
+                  <span className="font-normal text-neutral-400">({g.items.length})</span>
                 </summary>
                 <div className="space-y-0.5 border-t border-neutral-100 p-1">
                   {g.items.map((p) => (
@@ -150,7 +168,8 @@ function PaperPicker({
                   ))}
                 </div>
               </details>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -225,8 +244,8 @@ export default function AdminTrainingPublishPage() {
     setRecurrenceStart(editDetail.recurrenceStart ?? "");
     setRecurrenceEnd(editDetail.recurrenceEnd ?? "");
     setOwnerIds(editDetail.ownerIds ?? []);
-    setOwnerNames(editDetail.ownerIds ?? []);
-    setPaperIds(editDetail.paperIds ?? []);
+    setOwnerNames(editDetail.ownerNames ?? editDetail.ownerIds ?? []);
+    setPaperIds((editDetail.paperIds ?? []).map((id) => Number(id)));
     const occs = (editDetail.occurrences ?? []).map((o) => ({
       id: o.id,
       startTime: toDatetimeLocal(o.startTime),
@@ -259,6 +278,16 @@ export default function AdminTrainingPublishPage() {
 
   const togglePaper = (id: number) =>
     setPaperIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const toggleManyPapers = (ids: number[], value: boolean) =>
+    setPaperIds((prev) => {
+      const set = new Set(prev);
+      for (const id of ids) {
+        if (value) set.add(id);
+        else set.delete(id);
+      }
+      return [...set];
+    });
 
   const occurrenceBody = (o: OccurrenceRow) => ({
     startTime: o.startTime || undefined,
@@ -440,6 +469,7 @@ export default function AdminTrainingPublishPage() {
                   folders={folders}
                   selected={paperIds}
                   onToggle={togglePaper}
+                  onToggleMany={toggleManyPapers}
                 />
               </div>
             </div>

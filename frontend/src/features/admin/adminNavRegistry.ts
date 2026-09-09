@@ -18,13 +18,13 @@ import {
   ClipboardList,
   Clock,
   CreditCard,
+  DoorClosed,
   DoorOpen,
   Download,
   FileText,
   GitBranch,
   KeyRound,
   LayoutGrid,
-  LineChart,
   LockKeyhole,
   MapPin,
   Megaphone,
@@ -48,6 +48,7 @@ import {
   Truck,
   Users,
   Wrench,
+  Printer,
 } from "lucide-react";
 import type { MinRole, PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import type { PendingBadges } from "@/api/domains/me.api";
@@ -371,6 +372,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/dahua-swing-rules", "ADMIN"),
       },
       {
+        id: "door-swipe-rules",
+        path: "/admin/door-swipe-rules",
+        label: "门禁成功刷卡规则",
+        icon: DoorClosed,
+        alias: ["成功刷卡", "刷卡规则", "连刷", "常开", "door swipe", "swipe rule"],
+        homeTone: "from-violet-400 to-purple-500",
+        fallbackMinRole: "PLATFORM_OWNER",
+        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/door-swipe-rules", "PLATFORM_OWNER"),
+      },
+      {
         id: "auto-logs",
         path: "/admin/automation-logs",
         label: "自动化日志",
@@ -423,15 +434,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/telemetry-insights", "ADMIN"),
-      },
-      {
-        id: "telemetry-insights-config",
-        path: "/admin/telemetry-insights-config",
-        label: "遥测对比组配置",
-        icon: LineChart,
-        homeTone: "from-orange-400 to-amber-500",
-        fallbackMinRole: "ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/telemetry-insights-config", "ADMIN"),
       },
       {
         id: "animal-tel",
@@ -524,6 +526,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelf-indexes", "STAFF"),
+      },
+      {
+        id: "card-print",
+        path: "/admin/card-print",
+        label: "卡牌打印",
+        icon: Printer,
+        homeTone: "from-sky-400 to-blue-500",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => show(ctx, "/admin/card-print", "STAFF"),
       },
       {
         id: "cage-special-status",
@@ -840,6 +851,7 @@ PATH_TITLE_MAP["/admin/dahua-swing-records"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-audit-source"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-fusion"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-clean-rule-profiles"] = "门禁数据工作台";
+PATH_TITLE_MAP["/admin/door-swipe-rules"] = "门禁成功刷卡规则";
 PATH_TITLE_MAP["/admin/cage-shelves/records"] = "人员追溯";
 
 function normalizePath(path: string): string {

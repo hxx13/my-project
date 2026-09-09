@@ -84,11 +84,11 @@ export function buildTree(rows: CageShelfTreeNode[]): TreeNode[] {
  *   pageMode                    — "view" | "allocate" | "booking"
  *   bookingRooms                — 预约模式下的房间数据
  */
-export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms }: {
+export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress }: {
   tree: TreeNode[]; exp: Set<string>; search: string; onToggle: (k: string) => void; onOpenRoom: (roomId: string, roomName: string) => void;
   viewMode: "room" | "shelf"; onOpenShelf: (shelveId: string, overrideRoomId?: string) => void;
   alertStatusesByShelf: Map<string, Set<string>>; alertStatusesByRoom: Map<string, Set<string>>;
-  pageMode?: "view" | "allocate" | "booking"; bookingRooms?: BookingRoom[];
+  pageMode?: "view" | "allocate" | "booking"; bookingRooms?: BookingRoom[]; hideProgress?: boolean;
 }) {
   const q = search.trim().toLowerCase();
   const tg = (k: string) => { const n = new Set(exp); n.has(k) ? n.delete(k) : n.add(k); onToggle(k); };
@@ -99,7 +99,7 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
           {open ? <ChevronDown className="h-3.5 w-3.5 text-white/80" /> : <ChevronRight className="h-3.5 w-3.5 text-white/80" />}
           <span className="flex-1 truncate text-xs font-bold" style={{ color: sty.text }}>{c.label}校区</span>
         </button>
-        {open && <div className="mt-1 ml-1 space-y-0.5">{c.children.map(n => renderNode(n, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms))}</div>}
+        {open && <div className="mt-1 ml-1 space-y-0.5">{c.children.map(n => renderNode(n, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress))}</div>}
       </div>;
     })}
     {tree.length === 0 && <div className="text-[var(--twin-mute)] py-6 text-center">暂无数据，请先导入 CSV</div>}
@@ -115,7 +115,7 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
  *   "room"   → 带聚合进度条 + 告警圆点 + (booking模式)双进度条
  *   "shelf"  → 带 type1~4 分色进度条 + 告警圆点，点击跳转
  */
-export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: string) => void, onOpenRoom: (rid: string, rname: string) => void, viewMode?: "room" | "shelf", onOpenShelf?: (sid: string, overrideRoomId?: string) => void, alertStatusesByShelf?: Map<string, Set<string>>, alertStatusesByRoom?: Map<string, Set<string>>, pageMode?: "view" | "allocate" | "booking", bookingRooms?: BookingRoom[]): React.ReactNode {
+export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: string) => void, onOpenRoom: (rid: string, rname: string) => void, viewMode?: "room" | "shelf", onOpenShelf?: (sid: string, overrideRoomId?: string) => void, alertStatusesByShelf?: Map<string, Set<string>>, alertStatusesByRoom?: Map<string, Set<string>>, pageMode?: "view" | "allocate" | "booking", bookingRooms?: BookingRoom[], hideProgress?: boolean): React.ReactNode {
   const open = exp.has(n.key);
   if (n.type === "shelf") {
     const r = n.raw;
@@ -141,9 +141,11 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
       <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]" /><span className="truncate text-[10px] font-medium text-[var(--twin-ink)]">{n.label}</span>
       {shelfStatuses && shelfStatuses.size > 0 && <span className="ml-auto shrink-0 flex items-center gap-0.5">{[...shelfStatuses].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>}
       </div>
-      <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1">
-        {hasData ? bars.map((b: any, i: number) => <div key={i} className="h-full min-w-[2px]" style={{ width: `${b.pct}%`, background: b.color }} />) : <div className="h-full w-full bg-[var(--twin-canvas-soft)]" />}
-      </div>
+      {hideProgress ? null : (
+        <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1">
+          {hasData ? bars.map((b: any, i: number) => <div key={i} className="h-full min-w-[2px]" style={{ width: `${b.pct}%`, background: b.color }} />) : <div className="h-full w-full bg-[var(--twin-canvas-soft)]" />}
+        </div>
+      )}
     </button>;
   }
   if (n.type === "room") {
@@ -186,11 +188,11 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
             {bkUsedPct > 0 ? <div className="h-full rounded-full bg-emerald-500" style={{ width: `${bkUsedPct}%` }} /> : <div className="h-full w-full bg-[var(--twin-canvas-soft)]" />}
           </div>
         </div>
-        : <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1.5">
+        : (hideProgress ? null : <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1.5">
           {aggHasData ? aggBars.map((b: any, i: number) => <div key={i} className="h-full min-w-[2px]" style={{ width: `${b.pct}%`, background: b.color }} />) : <div className="h-full w-full bg-[var(--twin-canvas-soft)]" />}
-        </div>}
+        </div>)}
       </button>
-      {open && n.children.length > 0 && <div className="flex flex-col gap-0.5 mt-1 ml-2">{n.children.map(s => renderNode(s, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms))}</div>}
+      {open && n.children.length > 0 && <div className="flex flex-col gap-0.5 mt-1 ml-2">{n.children.map(s => renderNode(s, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress))}</div>}
     </div>;
   }
   return <div key={n.key}>
@@ -198,6 +200,6 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
       {open ? <ChevronDown className="h-3 w-3 text-[var(--twin-mute)]" /> : <ChevronRight className="h-3 w-3 text-[var(--twin-mute)]" />}
       <span className="truncate">{n.label}</span>
     </button>
-    {open && <div className="ml-2 space-y-0.5">{n.children.map(c => renderNode(c, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms))}</div>}
+    {open && <div className="ml-2 space-y-0.5">{n.children.map(c => renderNode(c, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress))}</div>}
   </div>;
 }

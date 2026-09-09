@@ -5,6 +5,8 @@ import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { fetchLocalAnnotate, localAnnotate } from "@/api/domains/cageShelf.api";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
+import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
+import type { CageOpKind, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
 import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
@@ -54,10 +56,16 @@ export default function MobileCageCellDetailDialog({
   cell,
   onClose,
   staffView,
+  onStartOp,
+  onChanged,
 }: {
   cell: CageShelfCell;
   onClose: () => void;
   staffView?: boolean;
+  /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
+  onStartOp?: (kind: CageOpKind, source: CageOpSource) => void;
+  /** 认领成功后刷新 */
+  onChanged?: () => void;
 }) {
   const detail = (cell.detail ?? {}) as Record<string, unknown>;
   const cbi = (cell.cageBoxInfo ?? {}) as Record<string, unknown> | undefined;
@@ -192,42 +200,65 @@ export default function MobileCageCellDetailDialog({
       onClick={onClose}
     >
       <div
-        className="w-full flex flex-col rounded-2xl overflow-hidden shadow-2xl"
+        className="w-full flex flex-col rounded-[22px] overflow-hidden"
         style={{
           background: "#fff",
           maxWidth: 400,
           maxHeight: "100%",
+          boxShadow: "0 24px 64px -16px rgba(15, 23, 42, 0.32)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
         <div
-          className="flex items-center justify-between px-4 py-3 border-b shrink-0"
-          style={{ borderColor: "#ebedf0" }}
+          className="flex items-center justify-between gap-3 px-4 py-3.5 shrink-0"
+          style={{ background: "#fafbfc", borderBottom: "1px solid #eef0f6" }}
         >
-          <div className="min-w-0 pr-2 flex items-center gap-1.5 flex-wrap">
-            <span className="text-sm font-bold" style={{ color: "#323233" }}>
+          <div className="min-w-0 flex items-center gap-2 flex-wrap">
+            <span className="text-[15px] font-bold tracking-tight" style={{ color: "#1e293b" }}>
               {position}
             </span>
             {/* 标题栏只展示特殊状态；无特殊状态则不展示任何笼型/状态徽标 */}
             {specialChips.map((ch) => (
               <span
                 key={ch.code}
-                className="inline-flex items-center rounded-md px-1.5 py-[1px] text-[10px] font-semibold"
-                style={{ color: ch.color, background: `color-mix(in srgb, ${ch.color} 14%, transparent)` }}
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                style={{ color: "#334155", background: "#f1f5f9" }}
               >
+                <span className="size-1.5 shrink-0 rounded-full" style={{ background: ch.color }} />
                 {ch.label}
               </span>
             ))}
           </div>
-          <button type="button" onClick={onClose} className="p-1 rounded-lg shrink-0">
-            <X className="size-5" style={{ color: "#94a3b8" }} />
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-full p-1.5 transition active:scale-90"
+            style={{ background: "#f1f5f9" }}
+            aria-label="关闭"
+          >
+            <X className="size-4" style={{ color: "#64748b" }} />
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-4 space-y-3">
           {isPermitted ? (
             <>
+              {/* ── 分笼 / 转移笼位（仅占用中笼位出现） ── */}
+              {onStartOp && (
+                <CageOperationActions
+                  source={{
+                    animalCageId,
+                    position,
+                    occupantName: (cell as any).occupantName,
+                    cageTypeCode: (cell as any).cageTypeCode ?? cell.animalCageType,
+                  }}
+                  occupied={((cell as any).cageTypeCode ?? cell.animalCageType) === 3}
+                  onStart={onStartOp}
+                  onChanged={onChanged}
+                />
+              )}
+
               {/* ── 关键信息表单(直接读表单,与 web 端一致) ── */}
               <CageFormFill animalCageId={animalCageId || null} />
 
@@ -236,30 +267,30 @@ export default function MobileCageCellDetailDialog({
               {/* 通道一：状态标记照片（只读，仅编辑模式可管理） */}
               {specialChips.filter(ch=>ch.photoKey&&(statusPhotos[ch.photoKey]||[]).length>0).map(ch=>{
                 const spImgs=statusPhotos[ch.photoKey]||[];
-                return <div key={ch.code} className="rounded-lg px-2 py-1.5 mb-1" style={{background:"#f8f9fc",border:"1px solid #eef0f6"}}>
+                return <div key={ch.code} className="rounded-2xl px-3 py-2 mb-1" style={{background:"#f8fafc"}}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className="text-[10px] font-semibold" style={{color:ch.color}}>{ch.label}照片 ({spImgs.length})</span>
                   </div>
                   {spImgs.length>0&&<div className="flex flex-wrap gap-1">
-                    {spImgs.map((url:string,j:number)=><img key={j} src={url} onClick={()=>setPreviewUrl(url)} className="h-10 w-10 object-cover rounded border cursor-pointer" style={{borderColor:"#ebedf0"}} alt="" />)}
+                    {spImgs.map((url:string,j:number)=><img key={j} src={url} onClick={()=>setPreviewUrl(url)} className="h-11 w-11 object-cover rounded-xl cursor-pointer" style={{border:"1px solid #eef0f6"}} alt="" />)}
                   </div>}
                   <div className="text-[9px] italic mt-1" style={{color:"#969799"}}>通过编辑模式管理</div>
                 </div>;
               })}
               {/* 兜底 _status key：弹窗A上传但未绑定到具体状态标记的照片 */}
               {(()=>{const catchAll=(statusPhotos._status||[]);if(catchAll.length===0)return null;
-                return <div className="rounded-lg px-2 py-1.5 mb-1" style={{background:"#f8f9fc",border:"1px solid #eef0f6"}}>
+                return <div className="rounded-2xl px-3 py-2 mb-1" style={{background:"#f8fafc"}}>
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className="text-[10px] font-semibold" style={{color:"#64748b"}}>状态照片 ({catchAll.length})</span>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {catchAll.map((url:string,j:number)=><img key={j} src={url} onClick={()=>setPreviewUrl(url)} className="h-10 w-10 object-cover rounded border cursor-pointer" style={{borderColor:"#ebedf0"}} alt="" />)}
+                    {catchAll.map((url:string,j:number)=><img key={j} src={url} onClick={()=>setPreviewUrl(url)} className="h-11 w-11 object-cover rounded-xl cursor-pointer" style={{border:"1px solid #eef0f6"}} alt="" />)}
                   </div>
                   <div className="text-[9px] italic mt-1" style={{color:"#969799"}}>通过编辑模式管理</div>
                 </div>;
               })()}
               {/* 标注备注（通道一只读） */}
-              {typeof (statusPhotos as any)._note==="string"&&(statusPhotos as any)._note.trim()&&<div className="rounded-lg px-2 py-1.5 mb-1" style={{background:"#f8f9fc",border:"1px solid #eef0f6"}}>
+              {typeof (statusPhotos as any)._note==="string"&&(statusPhotos as any)._note.trim()&&<div className="rounded-2xl px-3 py-2 mb-1" style={{background:"#f8fafc"}}>
                 <div className="text-[10px] font-semibold mb-1" style={{color:"#64748b"}}>📝 标注备注</div>
                 <div className="text-[11px] whitespace-pre-wrap" style={{color:"#323233"}}>{(statusPhotos as any)._note}</div>
                 <div className="text-[9px] italic mt-1" style={{color:"#969799"}}>通过编辑模式管理</div>
@@ -267,14 +298,14 @@ export default function MobileCageCellDetailDialog({
 
               <div
                 className="border-t"
-                style={{ borderColor: "#ebedf0", margin: "4px 0" }}
+                style={{ borderColor: "#f1f5f9", margin: "6px 0 2px" }}
               />
 
               {/* ── 实验记录 ── */}
               <div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="text-base leading-none">📝</span>
-                  <span className="text-[12px] font-semibold" style={{ color: "#323233" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="h-3.5 w-[3px] rounded-full" style={{ background: BRAND }} />
+                  <span className="text-[12px] font-semibold tracking-wide" style={{ color: "#1e293b" }}>
                     实验记录
                   </span>
                 </div>
@@ -283,9 +314,9 @@ export default function MobileCageCellDetailDialog({
                   onChange={(e) => setExperimentDesc(e.target.value)}
                   rows={4}
                   placeholder="输入实验记录…"
-                  className="w-full rounded-lg border px-3 py-2 text-[13px] resize-y focus:outline-none"
+                  className="w-full rounded-2xl border px-3.5 py-2.5 text-[13px] resize-y focus:outline-none"
                   style={{
-                    borderColor: "#dde1e8",
+                    borderColor: "#eef0f6",
                     color: "#323233",
                     background: "#fafbfc",
                   }}
@@ -295,13 +326,13 @@ export default function MobileCageCellDetailDialog({
               {/* ── 照片 ── */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base leading-none">🧪</span>
-                    <span className="text-[12px] font-semibold" style={{ color: "#323233" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="h-3.5 w-[3px] rounded-full" style={{ background: BRAND }} />
+                    <span className="text-[12px] font-semibold tracking-wide" style={{ color: "#1e293b" }}>
                       实验记录照片
                     </span>
                     {images.length > 0 && (
-                      <span className="text-[10px]" style={{ color: "#969799" }}>
+                      <span className="text-[10px] tabular-nums" style={{ color: "#94a3b8" }}>
                         {images.length}
                       </span>
                     )}
@@ -331,10 +362,10 @@ export default function MobileCageCellDetailDialog({
                 </div>
 
                 {images.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="grid grid-cols-3 gap-2">
                     {images.map((url, i) => (
-                      <div key={`${i}-${url.slice(-20)}`} className="relative aspect-square rounded-lg overflow-hidden border"
-                        style={{ borderColor: "#ebedf0" }}>
+                      <div key={`${i}-${url.slice(-20)}`} className="relative aspect-square rounded-2xl overflow-hidden"
+                        style={{ border: "1px solid #eef0f6" }}>
                         <img
                           src={url}
                           alt={`photo-${i}`}
@@ -359,13 +390,13 @@ export default function MobileCageCellDetailDialog({
               </div>
 
               {/* ── 保存按钮 ── */}
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap pt-0.5">
                 <button
                   type="button"
                   onClick={handleSave}
                   disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50"
-                  style={{ background: BRAND }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full px-5 h-10 text-[13px] font-semibold text-white disabled:opacity-50 active:scale-[0.98] transition"
+                  style={{ background: BRAND, boxShadow: `0 8px 20px -8px ${BRAND}` }}
                 >
                   <Save className="size-4" />
                   {saving ? "保存中…" : "保存"}

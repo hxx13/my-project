@@ -14,7 +14,9 @@ public class CageFormField {
     private String dataType;
     private String fieldType;
     private String dictKey;
-    private String role;         // 字段角色快照 PK/FK/VALUE/DERIVED（缺省 VALUE），详情弹窗据此决定只读
+    private String role;         // 字段角色快照 PK/FK/VALUE/DERIVED（缺省 VALUE）
+    private Boolean editable;    // 是否允许人工修改快照（详情弹窗据此决定只读）
+    private String config;       // 字段配置快照（JSON，如 optionsSource 动态选项源）
     private String required;
     private Integer sortOrder;
 
@@ -47,6 +49,12 @@ public class CageFormField {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+
+    public Boolean getEditable() { return editable; }
+    public void setEditable(Boolean editable) { this.editable = editable; }
+
+    public String getConfig() { return config; }
+    public void setConfig(String config) { this.config = config; }
 
     public String getRequired() { return required; }
     public void setRequired(String required) { this.required = required; }

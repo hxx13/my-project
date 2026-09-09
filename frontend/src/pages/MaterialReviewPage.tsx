@@ -75,21 +75,6 @@ function isMaterialPendingStatus(status: string): boolean {
   return status === "PENDING" || status === "FIRST_OK";
 }
 
-function statusBadge(s: string): string {
-  if (s === "PENDING" || s === "FIRST_OK") return "bg-amber-50 text-amber-700 border-amber-200";
-  if (s === "APPROVED") return "bg-green-50 text-green-700 border-green-200";
-  if (s === "REJECTED") return "bg-red-50 text-red-700 border-red-200";
-  if (s === "FULFILLED") return "bg-blue-50 text-blue-700 border-blue-200";
-  if (s === "RECEIVED") return "bg-emerald-50 text-emerald-700 border-emerald-200";
-  return "bg-gray-50 text-gray-600 border-gray-200";
-}
-/** 卡片纯色背景：通过 twin token 切换明/暗色，不依赖 Tailwind dark: 变体。无彩色边框。 */
-function cardStatusTint(s: string): string {
-  if (s === "PENDING" || s === "FIRST_OK") return "bg-[var(--twin-card-pending)]";
-  if (s === "APPROVED" || s === "FULFILLED" || s === "RECEIVED") return "bg-[var(--twin-card-approved)]";
-  if (s === "REJECTED") return "bg-[var(--twin-card-rejected)]";
-  return "bg-[var(--twin-canvas)]";
-}
 function primaryItemName(req: MaterialRequest): string {
   return req.lines?.[0]?.snapshotName || "未命名物品";
 }
@@ -546,7 +531,7 @@ export default function MaterialReviewPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-1">
-        <div className="flex flex-wrap gap-1">
+        <div className="review-tabs">
           {([
             ["material", `物资审核${filteredMaterialPendingCount > 0 ? ` (${filteredMaterialPendingCount})` : ""}`],
             ["scanDelay", `延迟免冻结${filteredScanDelayPending.length > 0 ? ` (${filteredScanDelayPending.length})` : ""}`],
@@ -557,7 +542,7 @@ export default function MaterialReviewPage() {
               return `需求建议${open > 0 ? ` (${open})` : ""}`;
             })()],
           ] as [TabKey, string][]).map(([k, v]) => (
-            <button key={k} onClick={() => switchTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
+            <button key={k} onClick={() => switchTab(k)} className="review-tab" data-active={tab === k}>{v}</button>
           ))}
         </div>
         <div className="flex items-center gap-1.5">
@@ -567,9 +552,9 @@ export default function MaterialReviewPage() {
               onMouseLeave={() => setBatchDropdownOpen(false)}
             >
               <button type="button"
-                className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1 text-xs font-medium text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-hover)]"
               >
-                <span className="inline-block size-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+                <span className="inline-block size-1.5 rounded-full bg-[var(--app-color-feedback-success)]" />
                 一键通过 {batchSelectedIds.size}/{allPendingForBatch.length}
               </button>
             {batchDropdownOpen && (
@@ -755,10 +740,10 @@ export default function MaterialReviewPage() {
           </div>
         )}
         {(tab === "material" || tab === "scanDelay") && (
-          <button type="button" onClick={() => tab === "material" ? setMaterialAutoApproveOpen(true) : setAutoApproveOpen(true)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">自动审批</button>
+          <button type="button" onClick={() => tab === "material" ? setMaterialAutoApproveOpen(true) : setAutoApproveOpen(true)} className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1 text-xs font-medium text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-hover)]">自动审批</button>
         )}
         {tab === "material" && (
-          <button type="button" onClick={() => navigate(`${toAdminRoutePath("/admin/material/audit-export")}`, { state: { returnTo: `${location.pathname}${location.search}` } })} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">申领审计导出 →</button>
+          <button type="button" onClick={() => navigate(`${toAdminRoutePath("/admin/material/audit-export")}`, { state: { returnTo: `${location.pathname}${location.search}` } })} className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1 text-xs font-medium text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-hover)]">申领审计导出 →</button>
         )}
         {tab === "cageClaims" && selectedClaimIds.size > 0 && (
           <>
@@ -790,21 +775,21 @@ export default function MaterialReviewPage() {
                 const hasPending = pendingItems.length > 0;
                 const isCollapsed = scanDelayCollapse[group.groupKey] ?? (!hasPending);
                 return (
-                  <div key={group.groupKey} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] overflow-hidden">
+                  <div key={group.groupKey} className="overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
                     <button
                       type="button"
                       onClick={() => toggleScanDelayGroup(group.groupKey)}
-                      className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--twin-canvas-soft)] transition-colors text-left"
+                      className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[var(--app-color-surface-hover)]"
                     >
-                      <span className="text-xs transition-transform duration-200" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
-                      <span className="text-sm font-semibold text-[var(--twin-body)]">{group.optionLabel}</span>
+                      <span className="text-[13px] leading-none text-[var(--app-color-text-tertiary)] transition-transform duration-200" style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)' }}>›</span>
+                      <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{group.optionLabel}</span>
                       {hasPending && (
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{pendingItems.length} 待审</span>
+                        <span className="rounded-md bg-[var(--app-color-feedback-warning-soft)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-warning)]">{pendingItems.length} 待审</span>
                       )}
-                      <span className="text-[11px] text-[var(--twin-mute)] ml-auto">{group.count} 条</span>
+                      <span className="ml-auto rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{group.count} 条</span>
                     </button>
                     {!isCollapsed && (
-                      <div className="px-4 pb-4 space-y-3 border-t border-[var(--twin-hairline)] pt-3">
+                      <div className="space-y-3 border-t border-[var(--app-color-border-default)] px-4 pb-4 pt-3">
                         {hasPending && (
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
@@ -872,13 +857,14 @@ export default function MaterialReviewPage() {
       ) : tab === "cageClaims" ? (
         <div className="space-y-4">
           {/* 分组维度切换 */}
-          <div className="flex flex-wrap gap-1">
+          <div className="review-tabs">
             {(["space", "group", "person"] as CageClaimGroupDimension[]).map((d) => (
               <button
                 key={d}
                 type="button"
                 onClick={() => setClaimGroupDimension(d)}
-                className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${claimGroupDimension === d ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+                className="review-tab"
+                data-active={claimGroupDimension === d}
               >
                 {CAGE_CLAIM_DIMENSION_LABEL[d]}
               </button>
@@ -943,25 +929,28 @@ export default function MaterialReviewPage() {
           ) : (
             <div className="space-y-4">
               {/* 三分类子标签 */}
-              <div className="flex flex-wrap gap-1">
+              <div className="review-tabs">
                 <button
                   type="button"
                   onClick={() => setMaterialSubTab("today")}
-                  className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${materialSubTab === "today" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+                  className="review-tab"
+                  data-active={materialSubTab === "today"}
                 >
                   今天{materialTodayCount > 0 ? ` (${materialTodayCount})` : ""}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMaterialSubTab("scheduled")}
-                  className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${materialSubTab === "scheduled" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+                  className="review-tab"
+                  data-active={materialSubTab === "scheduled"}
                 >
                   预约类{materialScheduledCount > 0 ? ` (${materialScheduledCount})` : ""}
                 </button>
                 <button
                   type="button"
                   onClick={() => setMaterialSubTab("history")}
-                  className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${materialSubTab === "history" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}
+                  className="review-tab"
+                  data-active={materialSubTab === "history"}
                 >
                   历史
                 </button>
@@ -1194,46 +1183,36 @@ function CageClaimCard({
   const canJump = claim.shelveId != null && claim.positionX != null && claim.positionY != null;
   const isPendingApproval = claim.claimStatus === "pending_approval";
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1">
+    <div className="review-card p-3" data-tone={isPendingApproval ? "pending" : "none"}>
       <div className="flex items-start gap-3">
         {isPendingApproval && (
-          <input type="checkbox" checked={selectedClaimIds.has(claim.id)} onChange={() => toggleClaimSelect(claim.id)} className="w-3.5 h-3.5 accent-emerald-600 shrink-0 mt-0.5" />
+          <input type="checkbox" checked={selectedClaimIds.has(claim.id)} onChange={() => toggleClaimSelect(claim.id)} className="mt-1 size-3.5 shrink-0 accent-[var(--app-color-accent)]" />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-semibold text-[var(--twin-ink)]">{claim.claimantName}</span>
-            {claim.claimantDept && <span className="text-[11px] text-[var(--twin-mute)]">{claim.claimantDept}</span>}
-            <span className="text-[10px] px-2 py-0.5 rounded-full border font-medium bg-gray-50 text-gray-600 border-gray-200">{CLAIM_STATUS_LABEL[claim.claimStatus] || claim.claimStatus}</span>
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{claim.claimantName}</span>
+            {claim.claimantDept && <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{claim.claimantDept}</span>}
+            <span className="review-status">{CLAIM_STATUS_LABEL[claim.claimStatus] || claim.claimStatus}</span>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-[var(--twin-mute)] mb-1">
-            {claim.shelveName && <span className="font-medium text-[var(--twin-body)]">笼架：{claim.shelveName}</span>}
+          <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]">
+            {claim.shelveName && <span className="font-medium text-[var(--app-color-text-secondary)]">笼架：{claim.shelveName}</span>}
             {posLabel && <span>坐标：{posLabel}</span>}
-            {groupName && <span className="px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{groupName}</span>}
+            {groupName && <span className="rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[var(--app-color-text-secondary)]">{groupName}</span>}
             {claim.aupNumber && <span>AUP：{claim.aupNumber}</span>}
-            <span className="text-[var(--twin-mute)]/70">ID：{claim.animalCageId}</span>
+            <span>ID：{claim.animalCageId}</span>
           </div>
-          <div className="text-[11px] text-[var(--twin-mute)]">
+          <div className="text-[11px] text-[var(--app-color-text-tertiary)]">
             申请时间：{claim.createdAt?.substring(0, 16)?.replace("T", " ") || "—"}
             {claim.note && <span> · 备注：{claim.note}</span>}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
+        <div className="flex shrink-0 flex-col items-end gap-2">
           {canJump && (
-            <button type="button" onClick={() => onJump(claim)} className="text-[11px] text-blue-600 hover:underline">定位</button>
+            <button type="button" onClick={() => onJump(claim)} className="text-[11px] text-[var(--app-color-accent)] hover:underline">定位</button>
           )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onReject(claim)}
-              disabled={actionPending}
-              className="rounded-twin-md px-3 py-1.5 text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >驳回</button>
-            <button
-              type="button"
-              onClick={() => onApprove(claim)}
-              disabled={actionPending}
-              className="rounded-twin-md px-3 py-1.5 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-            >通过</button>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => onReject(claim)} disabled={actionPending} className="review-btn review-btn--reject disabled:opacity-50">驳回</button>
+            <button type="button" onClick={() => onApprove(claim)} disabled={actionPending} className="review-btn review-btn--approve disabled:opacity-50">通过</button>
           </div>
         </div>
       </div>
@@ -1288,10 +1267,10 @@ function MaterialRequestGroup({ items, dotColor, dimmed, canDelete, approve, rej
               onClick={() => toggleItem(itemName)}
               className="flex items-center gap-2 pl-1 cursor-pointer hover:text-[var(--app-color-text-primary)] transition-colors text-left w-full"
             >
-              <span className={`text-[10px] transition-transform shrink-0 ${isItemOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className={`text-[13px] leading-none text-[var(--app-color-text-tertiary)] transition-transform shrink-0 ${isItemOpen ? "rotate-90" : ""}`}>›</span>
               <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
-              <span className="text-xs font-medium text-[var(--twin-body)] truncate">{itemName}</span>
-              <span className="text-[11px] text-[var(--twin-mute)] shrink-0">{reqs.length} 条</span>
+              <span className="text-xs font-medium text-[var(--app-color-text-secondary)] truncate">{itemName}</span>
+              <span className="shrink-0 rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--app-color-text-tertiary)]">{reqs.length} 条</span>
             </button>
             {isItemOpen && (
               <div className={hasSingleSpec ? "space-y-0" : "space-y-1.5"}>
@@ -1309,13 +1288,13 @@ function MaterialRequestGroup({ items, dotColor, dimmed, canDelete, approve, rej
                           className="flex items-center gap-1.5 px-4 py-0.5 w-full text-left cursor-pointer hover:text-[var(--app-color-text-primary)] transition-colors"
                         >
                           {showSpecToggle && (
-                            <span className={`text-[9px] transition-transform shrink-0 text-[var(--twin-mute)] ${isSpecOpen ? "rotate-90" : ""}`}>▶</span>
+                            <span className={`text-[12px] leading-none transition-transform shrink-0 text-[var(--app-color-text-tertiary)] ${isSpecOpen ? "rotate-90" : ""}`}>›</span>
                           )}
                           {!showSpecToggle && <span className="w-2.5 shrink-0" />}
-                          <span className="text-xs font-medium text-[var(--twin-mute)]">
+                          <span className="text-xs font-medium text-[var(--app-color-text-tertiary)]">
                             {formatSpecLabel(specKey)}
                           </span>
-                          {showSpecToggle && <span className="text-[10px] text-[var(--twin-mute)] shrink-0">{specReqs.length} 条</span>}
+                          {showSpecToggle && <span className="text-[10px] tabular-nums text-[var(--app-color-text-tertiary)] shrink-0">{specReqs.length} 条</span>}
                         </button>
                       )}
                       {(specKey === '__no_spec__' || isSpecOpen) && (
@@ -1378,67 +1357,58 @@ function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteRe
   const groupName = (req as any).applicantGroup as string | undefined;
   const showGroupTag = isPending && groupName; // 仅在待审核时展示标记
   const hasScheduledTime = !!(req as any).scheduledPickupTime;
+  const tone = isPending ? "pending" : req.status === "REJECTED" ? "bad" : (req.status === "APPROVED" || req.status === "FULFILLED" || req.status === "RECEIVED") ? "ok" : "none";
   return (
-    <div className={`rounded-twin-lg border p-3 shadow-twin-level-1 flex flex-col gap-2 relative overflow-hidden ${cardStatusTint(req.status)} ${dimmed ? "opacity-65" : ""}`}
-      style={showGroupTag && isFriendly !== undefined ? {
-        borderLeftWidth: '4px',
-        borderLeftColor: isFriendly ? '#10b981' : '#f59e0b',
-        borderTopColor: 'var(--twin-hairline)',
-        borderRightColor: 'var(--twin-hairline)',
-        borderBottomColor: 'var(--twin-hairline)',
-        borderTopWidth: '1px',
-        borderRightWidth: '1px',
-        borderBottomWidth: '1px',
-      } : undefined}
-    >
-      {/* 顶栏：ID + 指示灯 + 状态 + 操作 */}
+    <div className={`review-card p-3 flex flex-col gap-2.5 ${dimmed ? "opacity-65" : ""}`} data-tone={tone}>
+      {/* 顶栏：编号 + 熟识标记 + 状态 + 次要操作 */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[11px] text-[var(--twin-mute)] font-mono shrink-0">{req.id}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] font-mono tabular-nums text-[var(--app-color-text-tertiary)] shrink-0">{req.id}</span>
           {showGroupTag && isFriendly !== undefined && (
-            <span className="shrink-0"
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-text-secondary)]"
               title={isFriendly ? "熟识课题组 · 历史有通过记录" : "新课题组 · 首次出现"}>
-              <span className={`inline-block size-2.5 rounded-full ring-1 ring-offset-1 ${isFriendly ? "bg-emerald-400 ring-emerald-300 ring-offset-[var(--twin-canvas)] shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-amber-400 ring-amber-300 ring-offset-[var(--twin-canvas)] shadow-[0_0_8px_rgba(245,158,11,0.4)]"}`} />
+              <span className={`inline-block size-1.5 rounded-full ${isFriendly ? "bg-[var(--app-color-feedback-success)]" : "bg-[var(--app-color-feedback-warning)]"}`} />
+              {isFriendly ? "熟识" : "新课题组"}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
-          <button onClick={() => handleExportPersonal(req.id)} className="text-[10px] text-blue-600 hover:underline shrink-0">导出</button>
-          {canRevoke && <button onClick={async () => { if (!await appConfirm("撤销此审核？申领将回到待审状态，库存将回退。")) return; revoke.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "撤销失败") }); }} className="text-[10px] text-amber-600 hover:underline shrink-0 font-medium">撤销</button>}
-          {canDelete && <button onClick={async () => { if (!await appConfirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[10px] text-red-500 hover:underline shrink-0">删除</button>}
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="review-status">{statusLabel(req.status)}</span>
+          <button onClick={() => handleExportPersonal(req.id)} className="text-[11px] text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-text-primary)]">导出</button>
+          {canRevoke && <button onClick={async () => { if (!await appConfirm("撤销此审核？申领将回到待审状态，库存将回退。")) return; revoke.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "撤销失败") }); }} className="text-[11px] text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-feedback-warning)]">撤销</button>}
+          {canDelete && <button onClick={async () => { if (!await appConfirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[11px] text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-feedback-danger)]">删除</button>}
         </div>
       </div>
-      {/* 主体：横向双栏 — 左：人员+物品 | 右：时间+操作 */}
+      {/* 主体：左 人员+物品 | 右 时间+操作 */}
       <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0 space-y-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-bold text-sm text-[var(--twin-primary)]">{req.applicantName || req.userId}</span>
-            {req.applicantGroup && <span className="text-[11px] text-[var(--twin-mute)]">({req.applicantGroup})</span>}
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{req.applicantName || req.userId}</span>
+            {req.applicantGroup && <span className="rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[11px] text-[var(--app-color-text-secondary)]">{req.applicantGroup}</span>}
           </div>
           <div className="space-y-0.5">{req.lines?.map((l: MaterialRequestLine, i: number) => (
             <div key={i} className="flex items-center gap-2 text-xs">
-              <span className="text-[var(--twin-body)] truncate">{l.snapshotName}</span>
-              <span className="text-[var(--twin-mute)] shrink-0">×{l.qty}</span>
-              {l.fulfilledQty > 0 && <span className="text-[10px] text-green-600 shrink-0">已出库 {l.fulfilledQty}</span>}
+              <span className="text-[var(--app-color-text-secondary)] truncate">{l.snapshotName}</span>
+              <span className="shrink-0 tabular-nums text-[var(--app-color-text-tertiary)]">×{l.qty}</span>
+              {l.fulfilledQty > 0 && <span className="shrink-0 text-[10px] text-[var(--app-color-feedback-success)]">已出库 {l.fulfilledQty}</span>}
             </div>
           ))}</div>
           {hasScheduledTime && (
-            <div className="text-[11px] text-blue-500">
-              <span className="inline-block size-1 rounded-full bg-blue-400 mr-1 align-middle" />
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-[var(--app-color-feedback-info-soft)] px-2 py-0.5 text-[11px] text-[var(--app-color-feedback-info)]">
+              <span className="inline-block size-1.5 rounded-full bg-current" />
               预约领取 {(() => { const v = (req as any).scheduledPickupTime; if (!v) return "—"; const s = String(v); return s.length >= 10 ? s.slice(0, 10).replace(/-/g, "/") : s; })()}
             </div>
           )}
         </div>
-        <div className="shrink-0 flex flex-col items-end gap-1.5 min-w-[120px]">
-          <span className="text-[11px] text-[var(--twin-mute)] text-right">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
+        <div className="shrink-0 flex flex-col items-end gap-2 min-w-[130px]">
+          <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
           {!isPending && (() => {
             const processor = (req.fulfilledByName && req.fulfilledByName.trim())
               || (req.firstReviewerName && req.firstReviewerName.trim())
               || (req.secondReviewerName && req.secondReviewerName.trim())
               || "";
             return processor ? (
-              <span className="text-[11px] text-[var(--twin-mute)] text-right">处理人 {processor}</span>
+              <span className="text-[11px] text-[var(--app-color-text-tertiary)]">处理人 {processor}</span>
             ) : null;
           })()}
           {isPending && (
@@ -1449,10 +1419,10 @@ function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteRe
                   if (!await appConfirm(`此申领为预约类申领，预约通知时间尚未到达。${pickupInfo}\n\n确定要提前审批通过吗？`)) return;
                 }
                 approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") });
-              }} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">
+              }} className="review-btn review-btn--approve">
                 {req.status === "FIRST_OK" ? "复审通过" : req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过"}
               </button>
-              <button onClick={() => reject.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "操作失败") })} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">拒绝</button>
+              <button onClick={() => reject.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "操作失败") })} className="review-btn review-btn--reject">拒绝</button>
             </div>
           )}
         </div>
@@ -1508,59 +1478,46 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete, isF
   const hasGroupTag = !!(req.subjectGroupName);
   const highlighted = highlightRequestId && String(req.id) === highlightRequestId;
   return (
-    <div className={`rounded-twin-lg border shadow-twin-level-1 flex flex-col overflow-hidden ${highlighted ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"} bg-[var(--twin-card-pending)]`}
-      style={hasGroupTag && isFriendly !== undefined ? {
-        borderLeftWidth: '4px',
-        borderLeftColor: isFriendly ? '#10b981' : '#f59e0b',
-        borderTopColor: highlighted ? 'var(--twin-primary)' : 'var(--twin-hairline)',
-        borderRightColor: highlighted ? 'var(--twin-primary)' : 'var(--twin-hairline)',
-        borderBottomColor: highlighted ? 'var(--twin-primary)' : 'var(--twin-hairline)',
-        borderTopWidth: '1px',
-        borderRightWidth: '1px',
-        borderBottomWidth: '1px',
-      } : undefined}
-    >
-      {/* 选项类型色条 + 顶栏 */}
-      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2" style={{ backgroundColor: `${optionColor}0D` }}>
+    <div className={`review-card flex flex-col overflow-hidden ${highlighted ? "ring-2 ring-[var(--app-color-accent)]/30" : ""}`} data-tone="pending">
+      {/* 顶栏：编号 + 熟识标记 + 选项 + 状态 + 删除 */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[11px] font-mono text-[var(--twin-mute)] shrink-0">#{req.id}</span>
+          <span className="text-[11px] font-mono tabular-nums text-[var(--app-color-text-tertiary)] shrink-0">#{req.id}</span>
           {hasGroupTag && isFriendly !== undefined && (
-            <span className="shrink-0"
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-text-secondary)]"
               title={isFriendly ? "熟识申请人 · 历史有通过记录" : "新申请人 · 首次出现"}>
-              <span className={`inline-block size-2.5 rounded-full ring-1 ring-offset-1 ${isFriendly ? "bg-emerald-400 ring-emerald-300 ring-offset-white shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-amber-400 ring-amber-300 ring-offset-white shadow-[0_0_8px_rgba(245,158,11,0.4)]"}`} />
+              <span className={`inline-block size-1.5 rounded-full ${isFriendly ? "bg-[var(--app-color-feedback-success)]" : "bg-[var(--app-color-feedback-warning)]"}`} />
+              {isFriendly ? "熟识" : "新申请人"}
             </span>
           )}
           <span className="text-xs font-semibold truncate" style={{ color: optionColor }}>{optionLabel}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">待审核</span>
-          <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[10px] px-1.5 py-0.5 rounded text-[var(--twin-mute)] hover:text-red-600 hover:bg-red-50 transition-colors" title="删除">删除</button>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="review-status">待审核</span>
+          <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[11px] text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-feedback-danger)]" title="删除">删除</button>
         </div>
       </div>
       {/* 主体内容 */}
-      <div className="flex items-start gap-3 px-3 pb-3 pt-2">
+      <div className="flex items-start gap-3 px-3 pb-3 pt-1">
         <div className="flex-1 min-w-0 space-y-1.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-bold text-sm text-[var(--twin-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
             {req.subjectGroupName && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{req.subjectGroupName}</span>
+              <span className="rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[11px] text-[var(--app-color-text-secondary)]">{req.subjectGroupName}</span>
             )}
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-[var(--twin-mute)]">
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-1 rounded-full bg-[var(--twin-mute)]/50" />
-              {req.roomName || req.roomId}
-            </span>
+          <div className="flex items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]">
+            <span>{req.roomName || req.roomId}</span>
             <span>·</span>
             <span>通过 {req.approvedCount ?? 0} 次</span>
             {(req.referenceSeq ?? 0) > 0 && <span>· 第 {req.referenceSeq} 次</span>}
           </div>
         </div>
         <div className="shrink-0 flex flex-col items-end gap-2 min-w-[130px]">
-          {req.createdAt && <span className="text-[11px] text-[var(--twin-mute)] text-right">{formatBeijingDateTimeFull(req.createdAt)}</span>}
+          {req.createdAt && <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{formatBeijingDateTimeFull(req.createdAt)}</span>}
           <div className="flex gap-1.5">
-            <button type="button" onClick={() => void onReview(req, true)} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap hover:bg-green-700 transition-colors">通过</button>
-            <button type="button" onClick={() => void onReview(req, false)} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap hover:bg-red-600 transition-colors">拒绝</button>
+            <button type="button" onClick={() => void onReview(req, true)} className="review-btn review-btn--approve">通过</button>
+            <button type="button" onClick={() => void onReview(req, false)} className="review-btn review-btn--reject">拒绝</button>
           </div>
         </div>
       </div>
@@ -1577,35 +1534,35 @@ function ScanDelayHistoryCard({ req, onDelete }: { req: ScanDelayHistoryRequest;
   const statusApproved = req.status === "APPROVED";
   const statusExpired = req.status === "EXPIRED";
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-1 flex flex-col overflow-hidden">
-      {/* 选项类型色条 + 顶栏 */}
-      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2" style={{ backgroundColor: `${optionColor}0D` }}>
+    <div className="review-card flex flex-col overflow-hidden" data-tone={statusApproved ? "ok" : statusExpired ? "none" : "bad"}>
+      {/* 顶栏：编号 + 选项 + 状态 + 删除 */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[11px] font-mono text-[var(--twin-mute)] shrink-0">#{req.id}</span>
+          <span className="text-[11px] font-mono tabular-nums text-[var(--app-color-text-tertiary)] shrink-0">#{req.id}</span>
           <span className="text-xs font-semibold truncate" style={{ color: optionColor }}>{optionLabel}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusApproved ? "bg-green-50 text-green-700 border-green-200" : statusExpired ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-200"}`}>{statusApproved ? "已通过" : statusExpired ? "已过期" : "已拒绝"}</span>
-          <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[10px] px-1.5 py-0.5 rounded text-[var(--twin-mute)] hover:text-red-600 hover:bg-red-50 transition-colors" title="删除">删除</button>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="review-status">{statusApproved ? "已通过" : statusExpired ? "已过期" : "已拒绝"}</span>
+          <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[11px] text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-feedback-danger)]" title="删除">删除</button>
         </div>
       </div>
       {/* 主体 */}
-      <div className="flex items-start gap-3 px-3 pb-3 pt-2">
+      <div className="flex items-start gap-3 px-3 pb-3 pt-1">
         <div className="flex-1 min-w-0 space-y-1.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-bold text-sm text-[var(--twin-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
             {req.subjectGroupName && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{req.subjectGroupName}</span>
+              <span className="rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[11px] text-[var(--app-color-text-secondary)]">{req.subjectGroupName}</span>
             )}
           </div>
-          <p className="text-[11px] text-[var(--twin-mute)]">{req.roomName || req.roomId}</p>
+          <p className="text-[11px] text-[var(--app-color-text-tertiary)]">{req.roomName || req.roomId}</p>
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1 min-w-[140px]">
-          {req.createdAt && <span className="text-[11px] text-[var(--twin-mute)] text-right">申请 {formatBeijingDateTimeFull(req.createdAt)}</span>}
+          {req.createdAt && <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">申请 {formatBeijingDateTimeFull(req.createdAt)}</span>}
           {req.reviewedAt && (
-            <span className="text-[11px] text-[var(--twin-mute)] text-right">
+            <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">
               处理 {formatBeijingDateTimeFull(req.reviewedAt)}
-              {reviewerDisplay && <span className="text-[var(--twin-ink)]"> · {reviewerDisplay}</span>}
+              {reviewerDisplay && <span className="text-[var(--app-color-text-secondary)]"> · {reviewerDisplay}</span>}
             </span>
           )}
         </div>
@@ -1628,18 +1585,6 @@ function traineeScoreLabel(fraction: number): string {
   return "待评分";
 }
 
-function traineeAuditBadge(yn: number): string {
-  if (yn === 1) return "bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)] border-[var(--app-color-feedback-success)]/20";
-  if (yn === 2) return "bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)] border-[var(--app-color-feedback-danger)]/20";
-  return "bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)] border-[var(--app-color-feedback-warning)]/20";
-}
-
-function traineeScoreBadge(fraction: number): string {
-  if (fraction === 1) return "bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)] border-[var(--app-color-feedback-success)]/20";
-  if (fraction === 2) return "bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)] border-[var(--app-color-feedback-danger)]/20";
-  return "bg-[var(--app-color-surface-hover)] text-[var(--twin-mute)] border-[var(--twin-hairline)]";
-}
-
 /** 单个待审批报名卡片（扁平列表，非按场次嵌套） */
 function PendingEnrollmentCard({
   enrollment,
@@ -1654,81 +1599,53 @@ function PendingEnrollmentCard({
   const testFraction = enrollment.testFraction ?? 0;
   const isPendingAudit = testYn === 0;
   const isPendingScore = testFraction === 0;
-  const [auditMore, setAuditMore] = useState(false);
-  const [scoreMore, setScoreMore] = useState(false);
   const occurrenceLabel = enrollment.startTime || enrollment.endTime
     ? `${enrollment.startTime ?? ""}${enrollment.startTime && enrollment.endTime ? " ~ " : ""}${enrollment.endTime ?? ""}`
     : "—";
+  const tone = isPendingAudit || isPendingScore ? "pending" : testYn === 2 || testFraction === 2 ? "bad" : "ok";
+  const dot = (state: number) => state === 1 ? "bg-[var(--app-color-feedback-success)]" : state === 2 ? "bg-[var(--app-color-feedback-danger)]" : "bg-[var(--app-color-feedback-warning)]";
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] p-3 shadow-twin-level-1 flex flex-col gap-2">
+    <div className="review-card flex flex-col gap-2 p-3" data-tone={tone}>
       {/* 顶行：培训名称 + 场次时间 */}
       <div className="flex items-start justify-between gap-2">
-        <span className="font-bold text-sm text-[var(--twin-primary)] min-w-0 truncate">{enrollment.trainingName || "—"}</span>
-        <span className="text-[11px] text-[var(--twin-mute)] shrink-0 text-right">{occurrenceLabel}</span>
+        <span className="min-w-0 truncate text-sm font-semibold text-[var(--app-color-text-primary)]">{enrollment.trainingName || "—"}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{occurrenceLabel}</span>
       </div>
-      {enrollment.address ? <div className="text-[11px] text-[var(--twin-mute)]">地点：{enrollment.address}</div> : null}
+      {enrollment.address ? <div className="text-[11px] text-[var(--app-color-text-tertiary)]">地点：{enrollment.address}</div> : null}
       {/* 中行：姓名 + 编号 + 课题组 */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-[var(--twin-ink)]">{enrollment.name || "—"}</span>
-        <span className="text-[11px] text-[var(--twin-mute)]">编号：{enrollment.jobNumber || "—"}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{enrollment.name || "—"}</span>
+        <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">编号：{enrollment.jobNumber || "—"}</span>
         {enrollment.projectGroup && (
-          <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{enrollment.projectGroup}</span>
+          <span className="rounded-md bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[11px] text-[var(--app-color-text-secondary)]">{enrollment.projectGroup}</span>
         )}
       </div>
-      {/* 状态标签：审批 + 评分 */}
-      <div className="flex items-center gap-1">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${traineeAuditBadge(testYn)}`}>
+      {/* 状态：审批 + 评分 */}
+      <div className="flex items-center gap-4">
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--app-color-text-secondary)]">
+          <span className={`size-1.5 rounded-full ${dot(testYn)}`} />
           {traineeAuditStatusLabel(testYn)}
         </span>
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${traineeScoreBadge(testFraction)}`}>
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-[var(--app-color-text-secondary)]">
+          <span className={`size-1.5 rounded-full ${dot(testFraction)}`} />
           {traineeScoreLabel(testFraction)}
         </span>
       </div>
       {/* 底行：审批 + 评分各自独立操作 */}
-      <div className="flex items-center gap-1.5">
-        {isPendingAudit ? (
-          <div className="relative inline-flex rounded-twin-sm overflow-visible">
-            <button type="button" onClick={() => onAudit(1)}
-              className="bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-white hover:brightness-90 rounded-l-twin-sm transition-colors">
-              通过
-            </button>
-            <button type="button" onClick={() => setAuditMore(!auditMore)}
-              className="bg-[var(--app-color-accent)] px-1.5 py-1 text-[10px] text-white hover:brightness-90 border-l border-white/30 rounded-r-twin-sm transition-colors">
-              ▼
-            </button>
-            {auditMore && (
-              <div className="absolute top-full left-0 mt-1 z-[var(--z-dropdown)] bg-[var(--app-color-surface-elevated)] border border-[var(--twin-hairline)] rounded-twin-md p-1 shadow-twin-level-2">
-                <button type="button" onClick={() => { onAudit(2); setAuditMore(false); }}
-                  className="rounded-twin-sm bg-[var(--app-color-feedback-danger)] px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90 whitespace-nowrap transition-colors">
-                  拒绝
-                </button>
-              </div>
-            )}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        {isPendingAudit && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">审批</span>
+            <button type="button" onClick={() => onAudit(1)} className="review-btn review-btn--approve">通过</button>
+            <button type="button" onClick={() => onAudit(2)} className="review-btn review-btn--reject">拒绝</button>
           </div>
-        ) : (
-          <span className="text-[10px] text-[var(--twin-mute)]">{testYn === 1 ? "已通过" : "已拒绝"}</span>
         )}
-        {isPendingScore ? (
-          <div className="relative inline-flex rounded-twin-sm overflow-visible">
-            <button type="button" onClick={() => onScore(1)}
-              className="bg-[var(--app-color-accent)] px-2.5 py-1 text-[11px] font-medium text-white hover:brightness-90 rounded-l-twin-sm transition-colors">
-              合格
-            </button>
-            <button type="button" onClick={() => setScoreMore(!scoreMore)}
-              className="bg-[var(--app-color-accent)] px-1.5 py-1 text-[10px] text-white hover:brightness-90 border-l border-white/30 rounded-r-twin-sm transition-colors">
-              ▼
-            </button>
-            {scoreMore && (
-              <div className="absolute top-full left-0 mt-1 z-[var(--z-dropdown)] bg-[var(--app-color-surface-elevated)] border border-[var(--twin-hairline)] rounded-twin-md p-1 shadow-twin-level-2">
-                <button type="button" onClick={() => { onScore(2); setScoreMore(false); }}
-                  className="rounded-twin-sm bg-[var(--app-color-feedback-danger)] px-2.5 py-1 text-[10px] font-medium text-white hover:opacity-90 whitespace-nowrap transition-colors">
-                  不合格
-                </button>
-              </div>
-            )}
+        {isPendingScore && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">评分</span>
+            <button type="button" onClick={() => onScore(1)} className="review-btn review-btn--approve">合格</button>
+            <button type="button" onClick={() => onScore(2)} className="review-btn review-btn--reject">不合格</button>
           </div>
-        ) : (
-          <span className="text-[10px] text-[var(--twin-mute)]">{testFraction === 1 ? "已评分：合格" : "已评分：不合格"}</span>
         )}
       </div>
     </div>

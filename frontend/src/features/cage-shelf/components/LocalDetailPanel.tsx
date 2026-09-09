@@ -6,6 +6,8 @@ import { DEFAULT_COLORS } from "./CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "../api/cageForm.api";
 import { type CageShelfCell } from "@/api/domains/cageShelf.api";
 import CageFormFill from "./CageFormFill";
+import CageOperationActions from "./CageOperationActions";
+import type { CageOpKind, CageOpSource } from "../useCageOpSelect";
 import toast from "react-hot-toast";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
@@ -34,7 +36,14 @@ import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
  *
  * ⚠️ 本组件只用于本地数据源。ARO 数据源走 AdminCageShelfPage 内联的 CAGE_BOX_INFO_FIELD_ORDER 渲染。
  */
-export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCell; onClose: () => void }) {
+export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged }: {
+  cell: CageShelfCell;
+  onClose: () => void;
+  /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
+  onStartOp?: (kind: CageOpKind, source: CageOpSource) => void;
+  /** 认领成功后刷新 */
+  onChanged?: () => void;
+}) {
   const detail = (cell as any).detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any).id ?? detail?.animalCageId ?? (cell as any).animalCageId ?? "");
   console.log("[cage-detail] 二维码ID animalCageId=", animalCageId, "| cell.id=", (cell as any).id, "| detail.animalCageId=", detail?.animalCageId, "| cell.animalCageId=", (cell as any).animalCageId, "| detail=", detail);
@@ -51,7 +60,7 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
   const [formValues, setFormValues] = useState<CageInfoValueRow[] | null>(null);
 
-  // ── 认领状态标识（表单值挂笼位，与认领无关；这里只判断是否已认领）──
+  // ── 认领状态标识：有认领记录即「已认领」（认领流程的领地，与一键认领入口互斥）──
   const claimed = !!((cell as any).activeClaimId);
 
   // ── 编辑权限：管理员及以上，或「饲养组长」身份标识（BREEDING_GROUP_LEADER，区别于 PI）──
@@ -182,7 +191,17 @@ export default function LocalDetailPanel({ cell, onClose }: { cell: CageShelfCel
     )}
 
     {/* 二级：关键信息 — 复用发布模板结构（内联填表，不跳答题页） */}
-    <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
+    <div className="flex items-center justify-between">
+      <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
+      {onStartOp && (
+        <CageOperationActions
+          source={{ animalCageId, position: cell.position, occupantName: cell.occupantName, cageTypeCode: ct }}
+          occupied={ct === 3}
+          onStart={onStartOp}
+          onChanged={onChanged}
+        />
+      )}
+    </div>
     <CageFormFill animalCageId={animalCageId || null} claimed={claimed} editable={canEdit} />
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}

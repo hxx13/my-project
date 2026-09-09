@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.doorswiperule.mapper.DoorSwipeRuleConfigMapper">
+
+    <select id="findByEnabledTrue" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleConfig">
+        SELECT id, name, enabled,
+               channel_codes AS channelCodes,
+               scope_type AS scopeType,
+               scope_values AS scopeValues,
+               threshold_count AS thresholdCount,
+               threshold_window_sec AS thresholdWindowSec,
+               stay_open_duration_sec AS stayOpenDurationSec,
+               cooldown_sec AS cooldownSec,
+               created_at AS createdAt,
+               updated_at AS updatedAt
+        FROM door_swipe_rule_config
+        WHERE enabled = 1
+    </select>
+
+    <select id="findAll" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleConfig">
+        SELECT id, name, enabled,
+               channel_codes AS channelCodes,
+               scope_type AS scopeType,
+               scope_values AS scopeValues,
+               threshold_count AS thresholdCount,
+               threshold_window_sec AS thresholdWindowSec,
+               stay_open_duration_sec AS stayOpenDurationSec,
+               cooldown_sec AS cooldownSec,
+               created_at AS createdAt,
+               updated_at AS updatedAt
+        FROM door_swipe_rule_config
+        ORDER BY enabled DESC, id ASC
+    </select>
+
+    <select id="findById" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleConfig">
+        SELECT id, name, enabled,
+               channel_codes AS channelCodes,
+               scope_type AS scopeType,
+               scope_values AS scopeValues,
+               threshold_count AS thresholdCount,
+               threshold_window_sec AS thresholdWindowSec,
+               stay_open_duration_sec AS stayOpenDurationSec,
+               cooldown_sec AS cooldownSec,
+               created_at AS createdAt,
+               updated_at AS updatedAt
+        FROM door_swipe_rule_config
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" parameterType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleConfig"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO door_swipe_rule_config
+            (name, enabled, channel_codes, scope_type, scope_values,
+             threshold_count, threshold_window_sec, stay_open_duration_sec, cooldown_sec)
+        VALUES
+            (#{name}, #{enabled}, #{channelCodes}, #{scopeType}, #{scopeValues},
+             #{thresholdCount}, #{thresholdWindowSec}, #{stayOpenDurationSec}, #{cooldownSec})
+    </insert>
+
+    <update id="update" parameterType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleConfig">
+        UPDATE door_swipe_rule_config SET
+            name = #{name},
+            enabled = #{enabled},
+            channel_codes = #{channelCodes},
+            scope_type = #{scopeType},
+            scope_values = #{scopeValues},
+            threshold_count = #{thresholdCount},
+            threshold_window_sec = #{thresholdWindowSec},
+            stay_open_duration_sec = #{stayOpenDurationSec},
+            cooldown_sec = #{cooldownSec}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM door_swipe_rule_config WHERE id = #{id}
+    </delete>
+</mapper>

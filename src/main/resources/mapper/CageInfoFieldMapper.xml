@@ -15,6 +15,7 @@
         <result property="domainCode" column="domain_code"/>
         <result property="submoduleCode" column="submodule_code"/>
         <result property="role" column="role"/>
+        <result property="editable" column="editable"/>
         <result property="required" column="required"/>
         <result property="showWhen" column="show_when"/>
         <result property="syncSource" column="sync_source"/>
@@ -27,7 +28,7 @@
     </resultMap>
 
     <sql id="BaseColumns">
-        id, canonical, label, data_type, field_type, dict_key, folder, domain_code, submodule_code, role, required,
+        id, canonical, label, data_type, field_type, dict_key, folder, domain_code, submodule_code, role, editable, required,
         show_when, sync_source, config, sort, published, status, created_at, updated_at
     </sql>
 
@@ -74,9 +75,9 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO cage_info_field
-        (canonical, label, data_type, field_type, dict_key, folder, domain_code, submodule_code, role, required, show_when, sync_source, config, sort, published, status, created_at, updated_at)
+        (canonical, label, data_type, field_type, dict_key, folder, domain_code, submodule_code, role, editable, required, show_when, sync_source, config, sort, published, status, created_at, updated_at)
         VALUES
-        (#{canonical}, #{label}, #{dataType}, #{fieldType}, #{dictKey}, #{folder}, #{domainCode}, #{submoduleCode}, #{role}, #{required}, #{showWhen}, #{syncSource}, #{config}, #{sort}, #{published}, #{status}, NOW(), NOW())
+        (#{canonical}, #{label}, #{dataType}, #{fieldType}, #{dictKey}, #{folder}, #{domainCode}, #{submoduleCode}, #{role}, #{editable}, #{required}, #{showWhen}, #{syncSource}, #{config}, #{sort}, #{published}, #{status}, NOW(), NOW())
     </insert>
 
     <update id="update">
@@ -88,6 +89,8 @@
             folder = #{folder},
             domain_code = #{domainCode},
             submodule_code = #{submoduleCode},
+            role = #{role},
+            editable = #{editable},
             required = #{required},
             show_when = #{showWhen},
             sort = #{sort},

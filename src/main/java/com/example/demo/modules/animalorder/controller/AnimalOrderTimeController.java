@@ -61,30 +61,33 @@ public class AnimalOrderTimeController {
     @GetMapping("/time-policy")
     @Operation(summary = "运行时策略摘要（登录用户）")
     public Result<AnimalOrderTimePolicySummaryDto> getSummary(
+            @RequestParam(required = false) String campus,
             @RequestParam(required = false) String categoryKey,
             @RequestParam(required = false) String at,
             HttpServletRequest request) {
         Result<?> denied = requireLogin(request);
         if (denied != null) return Result.fail(401, denied.getMessage());
         ZonedDateTime when = parseAt(at);
-        return Result.success(policyService.getSummary(categoryKey, when));
+        return Result.success(policyService.getSummary(campus, categoryKey, when));
     }
 
     @GetMapping("/time-policy/admin")
-    @Operation(summary = "管理端策略与规则（SUPER_ADMIN）")
-    public Result<AnimalOrderTimePolicyAdminDto> getAdmin(HttpServletRequest request) {
+    @Operation(summary = "管理端策略与规则（SUPER_ADMIN，按校区）")
+    public Result<AnimalOrderTimePolicyAdminDto> getAdmin(
+            @RequestParam(required = false) String campus,
+            HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(policyService.getAdminView());
+        return Result.success(policyService.getAdminView(campus));
     }
 
     @PutMapping("/time-policy/admin")
-    @Operation(summary = "保存管理端策略与规则（SUPER_ADMIN）")
+    @Operation(summary = "保存管理端策略与规则（SUPER_ADMIN，按校区）")
     public Result<Void> saveAdmin(@RequestBody AnimalOrderTimePolicyAdminDto body,
                                   HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
-        policyService.saveAdmin(body);
+        policyService.saveAdmin(body != null ? body.getCampus() : null, body);
         return Result.success(null);
     }
 

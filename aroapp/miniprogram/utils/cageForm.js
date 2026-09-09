@@ -62,10 +62,57 @@ function buildFormRows(fields, valueRows, dict) {
   });
 }
 
+/**
+ * 可编辑行：在只读行基础上补编辑态需要的元数据（fieldId/canonical/dataType/可编辑标记/原始值/码表选项）。
+ * 与 Web 端 CageFormFill 同源：能否编辑只看字段快照的 editable。
+ */
+function buildEditableFormRows(fields, valueRows, dict) {
+  var byCanonical = {};
+  (valueRows || []).forEach(function (r) { byCanonical[r.canonical] = r.value; });
+  return (fields || []).map(function (f) {
+    var raw = byCanonical[f.canonical];
+    var ft = f.fieldType || (f.dictKey ? 'select' : 'text');
+    var options = [];
+    var map = f.dictKey && dict ? dict[f.dictKey] : null;
+    if (map) {
+      for (var code in map) {
+        if (Object.prototype.hasOwnProperty.call(map, code)) options.push({ value: code, label: map[code] });
+      }
+    }
+    return {
+      key: f.fieldId,
+      fieldId: f.fieldId,
+      canonical: f.canonical,
+      label: f.label || f.canonical,
+      dataType: f.dataType || 'STRING',
+      fieldType: ft,
+      editable: !!f.editable,
+      required: f.required === 'YES',
+      value: formatFormValue(f, raw, dict),
+      raw: (raw === undefined || raw === null) ? '' : raw,
+      options: options
+    };
+  });
+}
+
+/** 提交给后端的值：按 dataType 归一（整数/小数→数字，布尔→bool，其余→字符串，空→null） */
+function toApiValue(dataType, v) {
+  var dt = String(dataType || '').toUpperCase();
+  if (dt === 'INTEGER' || dt === 'DECIMAL') {
+    if (v === '' || v === null || v === undefined) return null;
+    var n = Number(v);
+    return isNaN(n) ? null : n;
+  }
+  if (dt === 'BOOLEAN') return !!v;
+  return (v === '' || v === null || v === undefined) ? null : v;
+}
+
 module.exports = {
   CAGE_FORM_KEY: CAGE_FORM_KEY,
   flattenTemplateFields: flattenTemplateFields,
   formatFormValue: formatFormValue,
   buildCodelistDict: buildCodelistDict,
-  buildFormRows: buildFormRows
+  buildFormRows: buildFormRows,
+  buildEditableFormRows: buildEditableFormRows,
+  toApiValue: toApiValue
 };

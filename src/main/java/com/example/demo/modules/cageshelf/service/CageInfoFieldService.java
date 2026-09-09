@@ -62,6 +62,7 @@ public class CageInfoFieldService {
         String domainCode = upper(str(body, "domainCode"));
         String submoduleCode = upper(str(body, "submoduleCode"));
         String role = upper(str(body, "role"));
+        Boolean editable = toBool(body == null ? null : body.get("editable"));
         Integer sort = toInt(body == null ? null : body.get("sort"));
 
         if (canonical == null || canonical.isBlank()) {
@@ -91,6 +92,7 @@ public class CageInfoFieldService {
             fieldType = defaultFieldType(dataType);
         }
 
+        String resolvedRole = (role == null || role.isBlank()) ? "VALUE" : role;
         CageInfoField f = new CageInfoField();
         f.setCanonical(canonical);
         f.setLabel(label);
@@ -102,7 +104,9 @@ public class CageInfoFieldService {
         f.setSubmoduleCode(submoduleCode);
         f.setRequired(required == null || required.isBlank() ? "NO" : required);
         f.setSort(sort);
-        f.setRole(role == null || role.isBlank() ? "VALUE" : role);
+        f.setRole(resolvedRole);
+        // 未显式指定时按 role 给默认值：VALUE 可改，DERIVED/PK/FK 只读（之后可单独放开）
+        f.setEditable(editable != null ? editable : "VALUE".equals(resolvedRole));
         f.setSyncSource(null);
         f.setPublished(false);
         f.setStatus("DRAFT");
@@ -177,6 +181,9 @@ public class CageInfoFieldService {
                 throw new TwinBusinessException(400, "role 必须为 VALUE（可填写）/ DERIVED（自动获取·占位）/ PK（取号·占位）/ FK（实体·占位）");
             }
             f.setRole(role);
+        }
+        if (body.containsKey("editable")) {
+            f.setEditable(toBool(body.get("editable")));
         }
         if (body.containsKey("sort")) {
             f.setSort(toInt(body.get("sort")));
@@ -318,6 +325,7 @@ public class CageInfoFieldService {
         m.put("required", f.getRequired());
         m.put("sort", f.getSort());
         m.put("role", f.getRole());
+        m.put("editable", f.getEditable());
         m.put("published", f.getPublished());
         m.put("status", f.getStatus());
         return m;
@@ -365,5 +373,13 @@ public class CageInfoFieldService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private static Boolean toBool(Object v) {
+        if (v == null) return null;
+        if (v instanceof Boolean b) return b;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
     }
 }

@@ -11,6 +11,8 @@ import {
   FileText,
   Bell,
   ClipboardCheck,
+  ClipboardList,
+  GraduationCap,
   MessageSquare,
   Settings,
 } from "lucide-react";
@@ -110,6 +112,28 @@ export const STUDENT_NAV_REGISTRY: StudentNavRegistryGroup[] = [
         icon: FileText,
         fallbackMinRole: "MEMBER",
         sidebarVisible: (ctx) => show(ctx, "/student/aup", "MEMBER"),
+      },
+    ],
+  },
+  {
+    id: "training",
+    title: "培训",
+    items: [
+      {
+        id: "exam",
+        path: "/student/exam",
+        label: "培训",
+        icon: ClipboardList,
+        fallbackMinRole: "MEMBER",
+        sidebarVisible: (ctx) => show(ctx, "/student/exam", "MEMBER"),
+      },
+      {
+        id: "training",
+        path: "/student/training",
+        label: "培训报名",
+        icon: GraduationCap,
+        fallbackMinRole: "MEMBER",
+        sidebarVisible: (ctx) => show(ctx, "/student/training", "MEMBER"),
       },
     ],
   },

@@ -26,7 +26,7 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *
  * Props 共 21 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
@@ -36,6 +36,8 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
   /** 认领/扫码确认模式：该笼位是「本人待确认到位」的认领，高亮以便一眼找到 */
   isMyClaimCell?: boolean;
+  /** 只有池内格子可勾选（分笼/转移选位用；否则同架其他格子也会冒复选框） */
+  restrictSelectToPool?: boolean;
 }) {
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const singleStyle = useStatusStyle(dominant);
@@ -113,7 +115,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     }
     return "";
   })();
-  const isSelectable = selectable && !cell.empty;
+  const isSelectable = selectable && !cell.empty && (!restrictSelectToPool || isPoolCell);
   const isToggleMode = clickMode === "toggle"; // full-room = card toggle; single-shelf = checkbox only
   const isInCross = (isCrossCol || isCrossRow) && !isLastScanned;
   const baseCls = cell.empty ? "relative min-h-[82px] rounded-twin-md text-[10px] leading-tight border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]" : "relative min-h-[82px] rounded-twin-md text-[10px] leading-tight border-2 text-slate-900 hover:brightness-95";
@@ -157,12 +159,14 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       <div className="w-full font-bold text-[15px] leading-tight">{displayPosition(cell.position)}</div>
       {cell.empty
         ? <div className="text-[9px] text-[var(--twin-mute)]">空位</div>
-        : <>
-            {nonEmptyText(cell.projectGroup) && <div className="w-full truncate text-[10px] leading-tight">{cell.projectGroup}</div>}
-            {pi && <div className="w-full truncate text-[11px] leading-tight font-semibold text-[var(--twin-ink)]">{pi}</div>}
-            {cell.experimenterName && <div className="w-full truncate text-[9px] leading-tight text-[var(--twin-ink)]">{cell.experimenterName}</div>}
-            <div className="w-full text-[9px] text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[resolvedCageType ?? 0] || cell.stateLabel}</div>
-          </>}
+        : cell.visible === false
+          ? <div className="text-[9px] text-[var(--twin-mute)]">***</div>
+          : <>
+              {nonEmptyText(cell.projectGroup) && <div className="w-full truncate text-[10px] leading-tight">{cell.projectGroup}</div>}
+              {pi && <div className="w-full truncate text-[11px] leading-tight font-semibold text-[var(--twin-ink)]">{pi}</div>}
+              {cell.experimenterName && <div className="w-full truncate text-[9px] leading-tight text-[var(--twin-ink)]">{cell.experimenterName}</div>}
+              <div className="w-full text-[9px] text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[resolvedCageType ?? 0] || cell.stateLabel}</div>
+            </>}
     </div>
   </button>;
 });

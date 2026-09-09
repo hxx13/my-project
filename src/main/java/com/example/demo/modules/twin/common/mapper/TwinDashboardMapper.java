@@ -86,6 +86,11 @@ public interface TwinDashboardMapper {
 
     int getGroupedStatsPageTotalCount(@Param("keyword") String keyword);
 
+    /** 采购汇总：按 到货日期 × 供应商 × 品系 × 规格 聚合只数，排除取消/驳回订单。dateField 仅接受 arrival / order。 */
+    List<Map<String, Object>> getProcurementSummary(@Param("dateField") String dateField,
+                                                    @Param("startDate") String startDate,
+                                                    @Param("endDate") String endDate);
+
     List<Map<String, Object>> getActiveRetentionWarnings(
             @Param("limit") int limit,
             @Param("areaName") String areaName,

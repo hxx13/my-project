@@ -108,11 +108,11 @@ export default function StudentAupPage() {
 
   return (
     <div className="aup-app aup-list-fixed" style={{ padding: "16px" }}>
-      <div style={{ marginBottom: 14 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700 }}>AUP 计划书</h1>
-        <p style={{ marginTop: 4, fontSize: 13, color: "var(--muted)" }}>
-          {projectGroupName ? `课题组：${projectGroupName}` : "未关联课题组（仅显示本人相关计划书）"}
-        </p>
+      <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+        <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>AUP 计划书</h1>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>
+          {projectGroupName ? `课题组：${projectGroupName}` : "未关联课题组"}
+        </span>
       </div>
 
       {isLoading ? (

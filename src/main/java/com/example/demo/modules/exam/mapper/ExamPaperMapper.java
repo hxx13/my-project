@@ -9,8 +9,8 @@ import java.util.List;
 public interface ExamPaperMapper {
 
     @Insert("""
-            INSERT INTO exam_paper (code, title, status, created_by, folder_id, created_at, updated_at)
-            VALUES (#{code}, #{title}, #{status}, #{createdBy}, #{folderId}, NOW(), NOW())
+            INSERT INTO exam_paper (code, title, status, created_by, folder_id, qualify_score, total_time, created_at, updated_at)
+            VALUES (#{code}, #{title}, #{status}, #{createdBy}, #{folderId}, #{qualifyScore}, #{totalTime}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ExamPaper paper);
@@ -19,6 +19,8 @@ public interface ExamPaperMapper {
             SELECT id, code, title, status,
                    created_by AS createdBy,
                    folder_id AS folderId,
+                   qualify_score AS qualifyScore,
+                   total_time AS totalTime,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM exam_paper WHERE id = #{id}
@@ -29,6 +31,8 @@ public interface ExamPaperMapper {
             SELECT id, code, title, status,
                    created_by AS createdBy,
                    folder_id AS folderId,
+                   qualify_score AS qualifyScore,
+                   total_time AS totalTime,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM exam_paper WHERE code = #{code}
@@ -39,6 +43,8 @@ public interface ExamPaperMapper {
             SELECT id, code, title, status,
                    created_by AS createdBy,
                    folder_id AS folderId,
+                   qualify_score AS qualifyScore,
+                   total_time AS totalTime,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM exam_paper ORDER BY id DESC
@@ -50,6 +56,8 @@ public interface ExamPaperMapper {
                 title = #{title},
                 status = #{status},
                 folder_id = #{folderId},
+                qualify_score = #{qualifyScore},
+                total_time = #{totalTime},
                 updated_at = NOW()
             WHERE id = #{id}
             """)

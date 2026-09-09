@@ -37,7 +37,7 @@ public class CageInfoValueService {
 
     /** 占用字段（随个人/课题转移，不随笼位物理资产）—— 区别于笼位固有字段（物理状态/笼盒/坐标/名称）。 */
     private static final Set<String> OCCUPANCY_CANONICALS = Set.of(
-            "pi_name", "project_pi_name", "project_name", "department_name", "aup_number",
+            "project_pi_name", "project_name", "department_name", "aup_number",
             "experimenter_name", "lab_assistant_name",
             "needs_division", "needs_special_feeding", "needs_transfer", "has_health_abnormality", "needs_cohabitation",
             "special_breeding_name", "special_breeding_desc",
@@ -81,6 +81,7 @@ public class CageInfoValueService {
             row.put("dataType", f.getDataType());
             row.put("fieldType", f.getFieldType());
             row.put("role", f.getRole());
+            row.put("editable", Boolean.TRUE.equals(f.getEditable()));
             row.put("required", f.getRequired());
             row.put("sort", f.getSort());
             row.put("value", readValue(f, v));
@@ -110,10 +111,10 @@ public class CageInfoValueService {
             if (fieldId == null) throw new TwinBusinessException(400, "fieldId 必填");
             CageInfoField field = fieldById.get(fieldId);
             if (field == null) throw new TwinBusinessException(400, "字段不存在: " + fieldId);
-            // 非 VALUE 角色（DERIVED/PK/FK）拒绝手动填写：取值只来自外部同步或后续接入的引擎
-            //（笼位取号引擎未定，占位，绝不调用 NHP 取号器）。SYNC 直写路径不受此限制。
-            if (field.getRole() != null && !"VALUE".equals(field.getRole())) {
-                throw new TwinBusinessException(400, "字段「" + field.getCanonical() + "」为只读（role=" + field.getRole() + "），不允许手动填写");
+            // 可编辑性只看 editable（与 role 解耦）：DERIVED 字段被配置为可改时同样允许人工填写。
+            // SYNC/INHERIT 等直写路径不受此限制。
+            if (!Boolean.TRUE.equals(field.getEditable())) {
+                throw new TwinBusinessException(400, "字段「" + field.getCanonical() + "」为只读，不允许手动填写（可在字段管理中开启「允许人工修改」）");
             }
             String col = valueColumn(field.getDataType());
             if (col == null) throw new TwinBusinessException(400, "字段类型不支持: " + field.getDataType());
@@ -232,7 +233,6 @@ public class CageInfoValueService {
         // 5 个状态标记（4 Yn + 合笼）不从此迁移：ARO 源只在 /back 的 cageBoxVo（writeStatusFlagsFromBack 直写）。
         // cage_cell_detail.needs_* 是手动 toggle/历史残留，可能陈旧，若在此迁移会在每次启动/认领时用 stale 值覆盖同步结果。
 
-        upsertText(animalCageId, fieldIdByCanonical, "pi_name", detail.getPiName());
         upsertText(animalCageId, fieldIdByCanonical, "project_pi_name", detail.getProjectPiName());
         upsertText(animalCageId, fieldIdByCanonical, "project_name", detail.getProjectName());
         upsertText(animalCageId, fieldIdByCanonical, "department_name", detail.getDepartmentName());
@@ -252,7 +252,10 @@ public class CageInfoValueService {
         upsertJson(animalCageId, fieldIdByCanonical, "extra_data", detail.getExtraData());
     }
 
-    /** 分笼继承：把母笼的笼位级值整表复制到子笼（fill_source=INHERIT），再清空需重填字段。 */
+    /**
+     * 分笼继承：把母笼的笼位级值整表复制到子笼（fill_source=INHERIT）作为基础信息。
+     * 不自动清空任何字段——分笼后需要修正的数量/性别等由用户在子笼表单上按 editable 逐项改。
+     */
     @Transactional
     public void copyFrom(Long sourceAnimalCageId, Long targetAnimalCageId) {
         if (sourceAnimalCageId == null || targetAnimalCageId == null) return;
@@ -271,11 +274,44 @@ public class CageInfoValueService {
             copy.setFillSource("INHERIT");
             valueMapper.upsert(copy);
         }
-        for (String canonical : new String[]{"animal_male_number", "animal_female_number", "animal_sex"}) {
-            CageInfoField f = fieldMapper.selectByCanonical(canonical);
-            if (f != null && f.getId() != null) {
-                valueMapper.deleteByAnimalCageAndField(targetAnimalCageId, f.getId());
+    }
+
+    /**
+     * 随占用迁移的字段 = 占用者/动物/状态标记 + 实验记录照片。
+     * 不含课题组归属（project_pi_name、project_name、department_name、aup_number）——
+     * 那些锚笼位分配，不随转移走，否则会把目标笼位的 AUP 归属覆盖成源笼位的，与 cage_cell_detail 的固定字段对不上。
+     */
+    private Set<String> transferableCanonicals() {
+        return java.util.stream.Stream.concat(ARCHIVE_CLEAR_CANONICALS.stream(), LOCAL_FIELD_CANONICALS.stream())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    /** 转移：把可迁移字段从 source 复制到 target（不清理 target 其余字段）。 */
+    @Transactional
+    public void copyTransferableFields(Long sourceAnimalCageId, Long targetAnimalCageId, String fillSource) {
+        if (sourceAnimalCageId == null || targetAnimalCageId == null) return;
+        Set<String> transferable = transferableCanonicals();
+        Map<Long, CageInfoField> fieldById = new HashMap<>();
+        for (CageInfoField f : fieldMapper.selectAll()) {
+            if (f != null && f.getId() != null && transferable.contains(f.getCanonical())) {
+                fieldById.put(f.getId(), f);
             }
+        }
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(sourceAnimalCageId)) {
+            if (v == null || !fieldById.containsKey(v.getFieldId())) continue;
+            CageInfoValue copy = new CageInfoValue();
+            copy.setAnimalCageId(targetAnimalCageId);
+            copy.setFieldId(v.getFieldId());
+            copy.setValueString(v.getValueString());
+            copy.setValueText(v.getValueText());
+            copy.setValueInt(v.getValueInt());
+            copy.setValueDecimal(v.getValueDecimal());
+            copy.setValueDate(v.getValueDate());
+            copy.setValueDatetime(v.getValueDatetime());
+            copy.setValueBool(v.getValueBool());
+            copy.setValueJson(v.getValueJson());
+            copy.setFillSource(fillSource);
+            valueMapper.upsert(copy);
         }
     }
 

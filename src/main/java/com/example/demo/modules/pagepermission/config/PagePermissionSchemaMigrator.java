@@ -49,6 +49,7 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
         } catch (Exception e) {
             log.error("[page-permission-schema] 迁移失败: {}", e.getMessage());
         }
+        int existing = rowCount();
         try {
             jdbcTemplate.execute("""
                     INSERT IGNORE INTO page_permission_item(
@@ -61,7 +62,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 WEB sidebar：温湿度数据归档（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] telemetry-archive 入口种子跳过: {}", e.getMessage());
         }
@@ -88,7 +88,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 检查维护 WEB/MINI（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] facility-maintenance 入口种子跳过: {}", e.getMessage());
         }
@@ -104,7 +103,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 WEB sidebar：文件模板下载（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] file-templates 入口种子跳过: {}", e.getMessage());
         }
@@ -120,7 +118,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 MINI mine：文件模板下载（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] MINI file-templates 入口种子跳过: {}", e.getMessage());
         }
@@ -136,7 +133,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 WEB sidebar：小程序内容中心（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] content-hub WEB 入口种子跳过: {}", e.getMessage());
         }
@@ -163,7 +159,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 MINI settings：公告/版本管理入口（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] MINI 内容管理入口种子跳过: {}", e.getMessage());
         }
@@ -209,7 +204,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
             } catch (Exception e) {
                 log.debug("[page-permission-schema] MINI supplies-audit 展示名同步跳过: {}", e.getMessage());
             }
-            log.info("[page-permission-schema] 已种子 MINI：领用审计 PAGE + home/mine 入口（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] MINI supplies-audit 入口种子跳过: {}", e.getMessage());
         }
@@ -247,7 +241,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 MINI：学生申领 PAGE + mine 入口（INSERT IGNORE）");
             jdbcTemplate.execute("""
                     INSERT IGNORE INTO page_permission_item(
                         platform, node_key, node_type, display_name, path_or_route, entry_source,
@@ -259,7 +252,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 MINI：物品管理 PAGE（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] MINI student-material 入口种子跳过: {}", e.getMessage());
         }
@@ -297,7 +289,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 MINI：笼架 PAGE + tabbar/home 入口（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] MINI student-cage-shelf 入口种子跳过: {}", e.getMessage());
         }
@@ -324,7 +315,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 WEB sidebar：动物房温湿度/驾驶舱 Twin 全屏入口（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] 动物房 Twin 入口种子跳过: {}", e.getMessage());
         }
@@ -340,7 +330,6 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子 WEB sidebar：统计与审计（INSERT IGNORE）");
         } catch (Exception e) {
             log.debug("[page-permission-schema] 统计与审计入口种子跳过: {}", e.getMessage());
         }
@@ -368,10 +357,19 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         0, 0
                     )
                     """);
-            log.info("[page-permission-schema] 已种子填报报表模块双入口: report-form + report-fill");
         } catch (Exception e) {
             log.debug("[page-permission-schema] 填报报表入口种子跳过: {}", e.getMessage());
         }
+
+        int added = rowCount() - existing;
+        if (added > 0) {
+            log.info("[page-permission-schema] 页面权限种子新增 {} 项", added);
+        }
+    }
+
+    private int rowCount() {
+        Integer c = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM page_permission_item", Integer.class);
+        return c == null ? 0 : c;
     }
 }
 

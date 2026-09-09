@@ -4,6 +4,7 @@
 
     <resultMap id="Base" type="com.example.demo.modules.animalorder.entity.AnimalOrderWindowRule">
         <id property="id" column="id"/>
+        <result property="campus" column="campus"/>
         <result property="scope" column="scope"/>
         <result property="categoryKey" column="category_key"/>
         <result property="effect" column="effect"/>
@@ -24,7 +25,7 @@
 
     <select id="listActive" resultMap="Base">
         SELECT * FROM animal_order_window_rule
-        WHERE active = 1
+        WHERE campus = #{campus} AND active = 1
         ORDER BY sort_order ASC, id ASC
     </select>
 
@@ -43,13 +44,13 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO animal_order_window_rule (
-            scope, category_key, effect, shape, weekdays,
+            campus, scope, category_key, effect, shape, weekdays,
             start_weekday, end_weekday,
             daily_start_time, daily_end_time,
             range_start_at, range_end_at,
             label, sort_order, active
         ) VALUES (
-            #{scope}, #{categoryKey}, #{effect}, #{shape}, #{weekdays},
+            #{campus}, #{scope}, #{categoryKey}, #{effect}, #{shape}, #{weekdays},
             #{startWeekday}, #{endWeekday},
             #{dailyStartTime}, #{dailyEndTime},
             #{rangeStartAt}, #{rangeEndAt},

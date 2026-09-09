@@ -256,6 +256,33 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                     """);
             log.info("[cage-shelf-schema] cage_claims 表已就绪");
 
+            // ── 笼位操作请求表（分笼 / 转移笼位的待审队列 + 留痕）──
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS cage_op_request (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        op_type VARCHAR(20) NOT NULL COMMENT 'divide/transfer',
+                        source_animal_cage_id BIGINT NOT NULL COMMENT '源/母笼位ID',
+                        target_animal_cage_ids JSON NOT NULL COMMENT '目标笼位ID数组（转移时长度1）',
+                        keep_source TINYINT(1) NOT NULL DEFAULT 0 COMMENT '仅分笼有意义：1=源笼位保持占用不变',
+                        applicant_id VARCHAR(64) NOT NULL COMMENT '申请人 sys_user.id',
+                        applicant_name VARCHAR(128) NULL COMMENT '申请人姓名快照',
+                        applicant_scope VARCHAR(16) NOT NULL DEFAULT 'student' COMMENT 'student/staff，决定是否需审核',
+                        status VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT 'pending/approved/rejected/cancelled',
+                        reason VARCHAR(500) NULL COMMENT '申请原因',
+                        reviewer_id VARCHAR(64) NULL COMMENT '审核人 sys_user.id',
+                        reviewer_name VARCHAR(128) NULL,
+                        reviewed_at DATETIME NULL,
+                        reject_reason VARCHAR(500) NULL COMMENT '驳回理由（必填）',
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_op_status (status, op_type),
+                        INDEX idx_op_source (source_animal_cage_id),
+                        INDEX idx_op_applicant (applicant_id),
+                        INDEX idx_op_created (created_at)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位操作请求（分笼/转移）'
+                    """);
+            log.info("[cage-shelf-schema] cage_op_request 表已就绪");
+
             // ── 审批记录表 ──
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS approval_records (

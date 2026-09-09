@@ -8,6 +8,7 @@ import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.entity.CageTransferLog;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
+import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.mapper.CageTransferLogMapper;
 import com.example.demo.modules.personnel.entity.Personnel;
@@ -38,19 +39,22 @@ public class CageOccupancyService {
     private final PersonnelService personnelService;
     private final CageCellDetailMapper detailMapper;
     private final ApprovalRecordMapper approvalMapper;
+    private final CageCellIndexMapper cellIndexMapper;
 
     public CageOccupancyService(CageInfoValueService infoValueService,
                                 CageTransferLogMapper transferLogMapper,
                                 CageClaimMapper claimMapper,
                                 PersonnelService personnelService,
                                 CageCellDetailMapper detailMapper,
-                                ApprovalRecordMapper approvalMapper) {
+                                ApprovalRecordMapper approvalMapper,
+                                CageCellIndexMapper cellIndexMapper) {
         this.infoValueService = infoValueService;
         this.transferLogMapper = transferLogMapper;
         this.claimMapper = claimMapper;
         this.personnelService = personnelService;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
+        this.cellIndexMapper = cellIndexMapper;
     }
 
     /** 复制：占用字段从 from 复制到 to，from 保留；覆盖前给 to 打旧数据快照。 */
@@ -180,11 +184,24 @@ public class CageOccupancyService {
         transferLogMapper.insert(log);
     }
 
+    @SuppressWarnings("unchecked")
     public List<Map<String, Object>> records(String view, Long id) {
-        List<CageTransferLog> logs = "person".equals(view)
-                ? transferLogMapper.selectByOccupant(id)
-                : transferLogMapper.selectByCage(id);
-        List<Map<String, Object>> out = new ArrayList<>();
+        return (List<Map<String, Object>>) records(view, id, null, 1, 500).get("list");
+    }
+
+    /** 留痕页：按笼位/按人分页查，eventType 可选过滤；每行带源/目标笼位的位置描述。 */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> records(String view, Long id, String eventType, int page, int pageSize) {
+        boolean person = "person".equals(view);
+        int offset = (Math.max(page, 1) - 1) * pageSize;
+        List<CageTransferLog> logs = person
+                ? transferLogMapper.pageByOccupant(id, eventType, offset, pageSize)
+                : transferLogMapper.pageByCage(id, eventType, offset, pageSize);
+        int total = person
+                ? transferLogMapper.countByOccupant(id, eventType)
+                : transferLogMapper.countByCage(id, eventType);
+
+        List<Map<String, Object>> rows = new ArrayList<>();
         for (CageTransferLog l : logs) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", l.getId());
@@ -193,12 +210,35 @@ public class CageOccupancyService {
             m.put("occupantName", l.getOccupantName());
             m.put("fromAnimalCageId", l.getFromAnimalCageId() == null ? null : String.valueOf(l.getFromAnimalCageId()));
             m.put("toAnimalCageId", l.getToAnimalCageId() == null ? null : String.valueOf(l.getToAnimalCageId()));
+            m.put("fromLabel", positionLabel(l.getFromAnimalCageId()));
+            m.put("toLabel", positionLabel(l.getToAnimalCageId()));
             m.put("operatorName", l.getOperatorName());
             m.put("reason", l.getReason());
+            m.put("dataSnapshot", l.getDataSnapshot());
             m.put("createdAt", l.getCreatedAt());
-            out.add(m);
+            rows.add(m);
         }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("list", rows);
+        out.put("total", total);
+        out.put("page", Math.max(page, 1));
+        out.put("pageSize", pageSize);
         return out;
+    }
+
+    /** 笼位位置描述「校区/房间/笼架 (x,y)」，查不到返回 null。 */
+    private String positionLabel(Long animalCageId) {
+        if (animalCageId == null) return null;
+        try {
+            Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
+            if (loc == null) return null;
+            return String.format("%s/%s/%s (%s,%s)",
+                    loc.getOrDefault("campusName", "?"), loc.getOrDefault("roomName", "?"),
+                    loc.getOrDefault("shelveName", "?"), loc.getOrDefault("positionX", "?"),
+                    loc.getOrDefault("positionY", "?"));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private Map<String, Object> ok(String action) {

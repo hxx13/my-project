@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -35,13 +36,18 @@ public class TelemetryViewSnapshotService {
         this.objectMapper = objectMapper;
     }
 
-    public Map<String, Object> captureSnapshot(String profileCode, LocalDateTime from, LocalDateTime to, Long chartGroupId) {
+    public Map<String, Object> captureSnapshot(String profileCode, LocalDateTime from, LocalDateTime to,
+                                               Long chartGroupId, String metricKindCode, String floorFilter) {
         String profile = profileCode == null ? "PRESENTATION" : profileCode.trim().toUpperCase();
         LocalDateTime effTo = to == null ? LocalDateTime.now() : to;
         LocalDateTime effFrom = from == null ? effTo.minusHours(24) : from;
-        TelemetryFleetMatrixDto matrix = archiveService.queryFleetMatrix(effFrom, effTo, "TEMP", null);
+        String metric = StringUtils.hasText(metricKindCode) ? metricKindCode.trim().toUpperCase() : "TEMP";
+        String floor = StringUtils.hasText(floorFilter) ? floorFilter.trim() : null;
+        TelemetryFleetMatrixDto matrix = archiveService.queryFleetMatrix(effFrom, effTo, metric, floor);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("fleetMatrixTemp", matrix);
+        payload.put("fleetMatrix", matrix);
+        payload.put("metricKindCode", metric);
+        payload.put("floorFilter", floor);
         payload.put("profileCode", profile);
         try {
             String payloadJson = objectMapper.writeValueAsString(payload);

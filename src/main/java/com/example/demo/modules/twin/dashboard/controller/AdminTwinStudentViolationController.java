@@ -107,6 +107,8 @@ public class AdminTwinStudentViolationController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(value = "targetUserId", required = false) String targetUserId,
             @RequestParam(value = "limit", defaultValue = "100") int limit,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "pageSize", defaultValue = "0") int pageSize,
             @RequestParam(value = "statuses", required = false) List<String> statuses,
             @RequestParam(value = "sources", required = false) List<String> sources,
             @RequestParam(value = "excludeCage", required = false) Boolean excludeCage,
@@ -116,8 +118,12 @@ public class AdminTwinStudentViolationController {
         if (denied != null) {
             return denied;
         }
-        int lim = Math.min(Math.max(limit, 1), 500);
-        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, excludeCage, lockedOnly, lim);
+        // pageSize 优先；向后兼容：旧调用只传 limit 时等价 pageSize=limit 且 page=1
+        int ps = pageSize > 0 ? pageSize : limit;
+        ps = Math.min(Math.max(ps, 1), 500);
+        int offset = Math.max(0, (Math.max(page, 1) - 1) * ps);
+        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, excludeCage, lockedOnly, ps, offset);
+        int total = violationService.countRecent(targetUserId, statuses, sources, excludeCage, lockedOnly);
         Set<String> idSet = new HashSet<>();
         for (TwinStudentViolation v : rows) {
             if (v == null) continue;
@@ -133,7 +139,7 @@ public class AdminTwinStudentViolationController {
         }
         Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(idSet);
         List<Map<String, Object>> out = rows.stream().map(v -> toRow(v, displayNames)).collect(Collectors.toList());
-        return Result.success(out);
+        return Result.success(Map.of("list", out, "total", total));
     }
 
     @PutMapping("/{id}")

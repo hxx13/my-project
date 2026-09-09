@@ -89,6 +89,8 @@ public class ExamSeedService {
         paper.setTitle(p.get("title").asText());
         paper.setStatus(p.has("status") ? p.get("status").asText() : "PUBLISHED");
         paper.setCreatedBy("SEED");
+        paper.setQualifyScore(p.has("qualifyScore") ? p.get("qualifyScore").asInt() : 80);
+        paper.setTotalTime(p.has("totalTime") ? p.get("totalTime").asInt() : null);
         paperMapper.insert(paper);
 
         JsonNode sections = p.get("sections");

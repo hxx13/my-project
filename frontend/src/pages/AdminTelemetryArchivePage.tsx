@@ -388,7 +388,7 @@ export default function AdminTelemetryArchivePage() {
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div>
-              <table className="min-w-full border-collapse text-left text-sm">
+              <table className="min-w-full border-collapse text-left text-sm twin-table">
                 <thead className="border-b-2 border-[var(--app-color-border-strong)]">
                   <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                     <th className="p-3">时间</th>

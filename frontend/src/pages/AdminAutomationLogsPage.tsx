@@ -59,6 +59,14 @@ function toApiTime(value: string): string {
 
 const PAGE_SIZE = 100;
 
+/** 当天 00:00 ~ 23:59（datetime-local 格式），作为日志默认筛选范围，避免首次全量拉取卡顿。 */
+function todayRange(): { start: string; end: string } {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const d = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return { start: `${d}T00:00`, end: `${d}T23:59` };
+}
+
 function AuditImageThumb({ url, label }: { url: string; label: string }) {
   return (
     <a
@@ -125,8 +133,8 @@ export default function AdminAutomationLogsPage() {
   const [automationType, setAutomationType] = useState("");
   const [triggerType, setTriggerType] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
+  const [startTime, setStartTime] = useState(() => todayRange().start);
+  const [endTime, setEndTime] = useState(() => todayRange().end);
   const [showPenetrationLogs, setShowPenetrationLogs] = useState(false);
   const [pageInput, setPageInput] = useState("");
   const pageInputRef = useRef<HTMLInputElement>(null);
@@ -163,8 +171,9 @@ export default function AdminAutomationLogsPage() {
     setAutomationType("");
     setTriggerType("");
     setKeyword("");
-    setStartTime("");
-    setEndTime("");
+    const tr = todayRange();
+    setStartTime(tr.start);
+    setEndTime(tr.end);
     setShowPenetrationLogs(false);
     setPage(1);
     setPageInput("");
@@ -272,7 +281,7 @@ export default function AdminAutomationLogsPage() {
               <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无日志</div>
             ) : (
               <div>
-          <table className="w-full min-w-[800px] text-left text-xs border-collapse">
+          <table className="w-full min-w-[800px] text-left text-xs border-collapse twin-table">
             <thead className="sticky top-0 z-[3] border-b-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-hover)] shadow-[var(--app-elevation-card)]">
               <tr className="text-[var(--app-color-text-secondary)] font-bold">
                 <th className="px-2 py-1.5 whitespace-nowrap">时间</th>

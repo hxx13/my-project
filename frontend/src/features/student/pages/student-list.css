@@ -1,0 +1,169 @@
+/* ============================================================================
+ * 学生端培训/答题列表：从 aup.css 复制的「计划书式卡片 + 双视角列表」样式。
+ * 配色令牌改为学生端 --student-*，作用域 .stu-list，与 AUP 计划书样式完全隔离。
+ * 后续如与 AUP 样式分叉，只改本文件。
+ * ========================================================================== */
+
+.stu-list {
+  --card: #FBF9F4;
+  --border: #E8E3D8;
+  --text: #2A2823;
+  --muted: #8B8478;
+  --primary: #C15F3C;
+  --primary-weak: #F3E4DE;
+  --success: #5E8B5E;
+  --success-weak: #E6EDE3;
+  --warn: #B08A3E;
+  --warn-weak: #F1E9D6;
+  --danger: #B14E3E;
+  --danger-weak: #F2E1DD;
+  --slate: #6E675C;
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.stu-list *,
+.stu-list *::before,
+.stu-list *::after { box-sizing: border-box; }
+.stu-list h1, .stu-list h2, .stu-list h3, .stu-list h4, .stu-list h5, .stu-list h6,
+.stu-list p, .stu-list ul, .stu-list ol, .stu-list dl, .stu-list dd, .stu-list figure,
+.stu-list blockquote, .stu-list pre, .stu-list hr, .stu-list fieldset, .stu-list form {
+  margin: 0; padding: 0;
+}
+
+/* ---- 按钮 ---- */
+.stu-list .btn {
+  padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: 1px solid transparent; transition: .15s; white-space: nowrap;
+  background: var(--student-surface);
+}
+.stu-list .btn:disabled { opacity: .5; cursor: not-allowed; }
+.stu-list .btn.ghost { background: var(--student-surface); border-color: var(--student-hairline); color: var(--text); }
+.stu-list .btn.ghost:hover:not(:disabled) { border-color: var(--muted); }
+.stu-list .btn.primary { background: var(--primary); color: #fff; }
+.stu-list .btn.primary:hover:not(:disabled) { opacity: .9; }
+.stu-list .btn.danger { background: var(--student-surface); border-color: var(--danger); color: var(--danger); }
+.stu-list .btn.small { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+
+/* ---- 列表视图 ---- */
+.stu-list .list-table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.stu-list .list-table th { background: var(--student-canvas-soft-2); text-align: left; padding: 11px 16px; font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.stu-list .list-table td { padding: 14px 16px; border-bottom: 1px solid var(--student-hairline); font-size: 13px; vertical-align: middle; }
+.stu-list .list-table tr.row { cursor: pointer; transition: .12s; }
+.stu-list .list-table tr.row:hover { background: var(--student-canvas-soft); }
+.stu-list .list-table tr:last-child td { border-bottom: none; }
+.stu-list .proj-name { font-weight: 600; }
+
+/* ---- 状态徽标 ---- */
+.stu-list .status-badge { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.stu-list .status-badge.review { background: var(--primary-weak); color: var(--primary); }
+.stu-list .status-badge.approved { background: var(--success-weak); color: var(--success); }
+.stu-list .status-badge.modify { background: var(--warn-weak); color: var(--warn); }
+.stu-list .status-badge.terminated { background: var(--danger-weak); color: var(--danger); }
+.stu-list .status-badge.draft { background: var(--student-canvas-soft-2); color: var(--slate); }
+
+/* ---- 顶部卡片 + 内容卡片 ---- */
+.stu-list .list-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.stu-list .list-card-top { flex-shrink: 0; padding: 12px 16px; }
+.stu-list .list-card-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.stu-list .list-card-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; }
+
+/* ---- 双视角切换 + 紧凑工具栏 ---- */
+.stu-list .aup-filter-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.stu-list .aup-view-toggle { display: inline-flex; background: var(--student-canvas-soft-2); border-radius: 8px; padding: 3px; gap: 3px; flex-shrink: 0; }
+.stu-list .aup-view-toggle button { border: none; background: transparent; padding: 5px 12px; font-size: 13px; font-weight: 600; color: var(--slate); border-radius: 6px; cursor: pointer; font-family: inherit; }
+.stu-list .aup-view-toggle button.on { background: var(--student-surface); color: var(--primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .1); }
+
+/* ---- 卡片网格 ---- */
+.stu-list .aup-card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 14px; perspective: 1200px; padding: 14px 16px 18px; }
+@media (max-width: 1100px) { .stu-list .aup-card-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 720px) { .stu-list .aup-card-grid { grid-template-columns: 1fr; } }
+.stu-list .aup-card-cell { min-width: 0; }
+
+/* ---- 纸张堆叠 ---- */
+.stu-list .aup-doc-stack { position: relative; }
+.stu-list .aup-doc-stack::before,
+.stu-list .aup-doc-stack::after {
+  content: ''; position: absolute; left: 7px; right: -7px; top: 9px; bottom: -5px;
+  background: #F7F3EB; border: 1px solid var(--student-hairline); border-radius: 6px;
+  transform: rotate(1.4deg); box-shadow: 0 2px 6px rgba(0, 0, 0, .05);
+}
+.stu-list .aup-doc-stack::after {
+  left: 3px; right: -3px; top: 4px; bottom: -2px;
+  transform: rotate(-0.9deg); background: #FBF9F4;
+}
+
+/* ---- 文档卡片 ---- */
+.stu-list .aup-doc {
+  position: relative; z-index: 1;
+  background: linear-gradient(160deg, #FDFCF9 0%, #FBF9F4 55%, #F7F4ED 100%);
+  border: 1px solid var(--student-hairline); border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .10), 0 6px 14px rgba(0, 0, 0, .08), 0 18px 36px rgba(0, 0, 0, .12);
+  overflow: hidden; cursor: pointer;
+  transition: box-shadow .2s;
+}
+.stu-list .aup-doc:hover { box-shadow: 0 2px 4px rgba(0, 0, 0, .12), 0 12px 26px rgba(0, 0, 0, .16), 0 30px 60px rgba(0, 0, 0, .20); }
+.stu-list .aup-doc::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(0, 0, 0, .05));
+  pointer-events: none;
+}
+.stu-list .aup-doc-hd {
+  background: linear-gradient(180deg, #B85C3E 0%, #8F4129 100%);
+  color: #fff; padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), inset 0 -1px 0 rgba(0, 0, 0, .25);
+}
+.stu-list .aup-doc-title { font-size: 14px; font-weight: 700; letter-spacing: 2px; text-shadow: 0 1px 2px rgba(0, 0, 0, .3); }
+.stu-list .aup-doc-no { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11px; color: rgba(255, 255, 255, .8); white-space: nowrap; flex-shrink: 0; }
+
+/* ---- 卡片字段 ---- */
+.stu-list .aup-doc-body { padding: 14px 16px 0; }
+.stu-list .aup-f { margin-bottom: 11px; }
+.stu-list .aup-f-k { font-size: 11px; color: var(--muted); letter-spacing: 1px; margin-bottom: 2px; }
+.stu-list .aup-f-v { font-size: 13px; font-weight: 600; color: var(--text); padding-bottom: 4px; border-bottom: 1px solid var(--student-hairline); line-height: 1.4; }
+
+/* 固定行高 + 超长自动缩字号（配合 ShrinkText 组件） */
+.stu-list .shrink-line {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* ---- 卡片底部 + 印章 ---- */
+.stu-list .aup-doc-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 12px; padding: 10px 16px 14px; border-top: 1px solid var(--border); background: #F7F4ED;
+}
+.stu-list .aup-doc-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.stu-list .aup-doc-foot-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.stu-list .aup-seal {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 58px; height: 58px; border-radius: 50%;
+  border: 2.5px solid currentColor;
+  font-weight: 800; font-size: 11px; line-height: 1.25; letter-spacing: 1px; text-align: center;
+  transform: rotate(-12deg); opacity: .9; flex-shrink: 0;
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, .12);
+}
+.stu-list .aup-seal span { display: block; }
+.stu-list .aup-seal.review { color: var(--primary); }
+.stu-list .aup-seal.approved { color: var(--success); }
+.stu-list .aup-seal.terminated { color: var(--danger); }
+.stu-list .aup-seal.draft { color: var(--slate); }
+
+/* ---- 空态 ---- */
+.stu-list .aup-empty { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px; }

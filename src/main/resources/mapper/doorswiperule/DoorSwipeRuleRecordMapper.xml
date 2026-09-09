@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.doorswiperule.mapper.DoorSwipeRuleRecordMapper">
+
+    <insert id="insertIgnore" parameterType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleRecord">
+        INSERT IGNORE INTO door_swipe_rule_record (
+            record_id, card_number, channel_code, channel_name, open_type,
+            person_code, person_id, person_name, department_id,
+            swing_time, create_time, open_result, enter_or_exit, raw_json
+        ) VALUES (
+            #{recordId}, #{cardNumber}, #{channelCode}, #{channelName}, #{openType},
+            #{personCode}, #{personId}, #{personName}, #{departmentId},
+            #{swingTime}, #{createTime}, #{openResult}, #{enterOrExit}, #{rawJson}
+        )
+    </insert>
+
+    <select id="findByRecordId" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleRecord">
+        SELECT id, record_id AS recordId, card_number AS cardNumber,
+               channel_code AS channelCode, channel_name AS channelName,
+               open_type AS openType, person_code AS personCode, person_id AS personId,
+               person_name AS personName, department_id AS departmentId,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult, enter_or_exit AS enterOrExit,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM door_swipe_rule_record
+        WHERE record_id = #{recordId}
+        LIMIT 1
+    </select>
+
+    <sql id="recordFilterWhere">
+        WHERE 1 = 1
+        <if test="channelCode != null and channelCode != ''">AND channel_code = #{channelCode}</if>
+        <if test="person != null and person != ''">
+            AND (person_name LIKE CONCAT('%', #{person}, '%')
+                 OR person_code LIKE CONCAT('%', #{person}, '%')
+                 OR card_number LIKE CONCAT('%', #{person}, '%'))
+        </if>
+        <if test="openType != null">AND open_type = #{openType}</if>
+        <if test="startTime != null and startTime != ''">AND swing_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
+    </sql>
+
+    <select id="selectPage" resultType="com.example.demo.modules.doorswiperule.entity.DoorSwipeRuleRecord">
+        SELECT id, record_id AS recordId, card_number AS cardNumber,
+               channel_code AS channelCode, channel_name AS channelName,
+               open_type AS openType, person_code AS personCode, person_id AS personId,
+               person_name AS personName, department_id AS departmentId,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult, enter_or_exit AS enterOrExit,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM door_swipe_rule_record
+        <include refid="recordFilterWhere"/>
+        ORDER BY swing_time DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(1)
+        FROM door_swipe_rule_record
+        <include refid="recordFilterWhere"/>
+    </select>
+</mapper>

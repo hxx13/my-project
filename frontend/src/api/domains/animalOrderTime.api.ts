@@ -8,6 +8,8 @@ interface Result<T> {
 }
 
 export interface AnimalOrderTimePolicySummary {
+  /** 浦东 | 浦西 */
+  campus: string;
   defaultMode: string;
   canOrderNow: boolean;
   closedReason: string | null;
@@ -48,6 +50,8 @@ export interface AnimalOrderWindowRule {
 }
 
 export interface AnimalOrderTimePolicyAdmin {
+  /** 浦东 | 浦西 */
+  campus: string;
   defaultMode: string;
   etaMode: string;
   etaWorkdayOffset: number;
@@ -70,6 +74,7 @@ export interface HolidayImportResult {
 }
 
 export async function fetchTimePolicySummary(params?: {
+  campus?: string;
   categoryKey?: string;
   at?: string;
 }): Promise<AnimalOrderTimePolicySummary> {
@@ -80,9 +85,10 @@ export async function fetchTimePolicySummary(params?: {
   return res.data.data;
 }
 
-export async function fetchTimePolicyAdmin(): Promise<AnimalOrderTimePolicyAdmin> {
+export async function fetchTimePolicyAdmin(campus?: string): Promise<AnimalOrderTimePolicyAdmin> {
   const res = await authHttp.get<Result<AnimalOrderTimePolicyAdmin>>(
     "/animal-order/time-policy/admin",
+    { params: { campus } },
   );
   return res.data.data;
 }

@@ -8,6 +8,8 @@ import java.time.LocalTime;
 @Data
 public class AnimalOrderWindowRule {
     private Long id;
+    /** 浦东 | 浦西 */
+    private String campus;
     private String scope;            // GLOBAL | CATEGORY
     private String categoryKey;
     private String effect;           // OPEN | DISABLE

@@ -32,7 +32,7 @@ function LogTable({ ip }: { ip: string }) {
 
   return (
     <div className="overflow-auto max-h-full">
-      <table className="w-full text-[11px] border-collapse">
+      <table className="w-full text-[11px] border-collapse twin-table">
         <thead className="sticky top-0 bg-[var(--app-color-surface-container)]">
           <tr className="border-b border-[var(--app-color-border-default)]">
             <th className="text-left p-1.5 text-[var(--app-color-text-tertiary)] font-normal">时间</th>

@@ -7,7 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
-import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.cageshelf.service.CageOperationService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,20 +32,20 @@ public class CageInfoValueController {
 
     private final AuthContextService authContextService;
     private final CageInfoValueService infoValueService;
-    private final PersonIdentityService personIdentityService;
     private final StudentCageShelfService studentCageShelfService;
     private final CageCellDetailMapper detailMapper;
+    private final CageOperationService operationService;
 
     public CageInfoValueController(AuthContextService authContextService,
                                    CageInfoValueService infoValueService,
-                                   PersonIdentityService personIdentityService,
                                    StudentCageShelfService studentCageShelfService,
-                                   CageCellDetailMapper detailMapper) {
+                                   CageCellDetailMapper detailMapper,
+                                   CageOperationService operationService) {
         this.authContextService = authContextService;
         this.infoValueService = infoValueService;
-        this.personIdentityService = personIdentityService;
         this.studentCageShelfService = studentCageShelfService;
         this.detailMapper = detailMapper;
+        this.operationService = operationService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -53,15 +53,6 @@ public class CageInfoValueController {
         if (u == null) return null;
         if (u.getRole() == null) u.setRole(RoleEnum.MEMBER);
         return u;
-    }
-
-    /** 笼位表单值编辑权限 = 管理员及以上，或「饲养组长」身份标识（区别于 PI）。 */
-    private Result<?> requireEditor(User u) {
-        if (u == null) return Result.error("未登录");
-        if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
-        if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) return null;
-        if (personIdentityService.isBreedingGroupLeader(u.getId())) return null;
-        return Result.error("无编辑权限（仅管理员或饲养组长）");
     }
 
     /** 读权限 = 任意登录用户（MEMBER+），不加身份标识判定；笼位可见性由上层网格/详情脱敏控制。 */
@@ -90,7 +81,7 @@ public class CageInfoValueController {
         boolean visible = !"***".equals(detail.getProjectPiName());
         if (visible) return values;
         Map<String, String> mask = Map.of(
-                "pi_name", "***", "project_pi_name", "***", "project_name", "***",
+                "project_pi_name", "***", "project_name", "***",
                 "department_name", "***", "aup_number", "", "experimenter_name", "***",
                 "lab_assistant_name", "***", "experiment_desc", "", "images_json", "[]");
         for (Map<String, Object> row : values) {
@@ -108,8 +99,13 @@ public class CageInfoValueController {
                                                         @RequestBody Map<String, Object> body,
                                                         HttpServletRequest req) {
         User u = resolveUser(req);
-        Result<?> denied = requireEditor(u);
+        Result<?> denied = requireMember(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
+        // 编辑权限与分笼/转移同源：管理员+ / 额外操作身份 / 该笼位认领人或实验员本人
+        Map<String, Object> editInfo = operationService.cageEditInfo(u, animalCageId);
+        if (!Boolean.TRUE.equals(editInfo.get("editable"))) {
+            return Result.fail(403, String.valueOf(editInfo.get("reason")));
+        }
         try {
             Object raw = body == null ? null : body.get("values");
             @SuppressWarnings("unchecked")

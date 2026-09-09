@@ -13,6 +13,7 @@ import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveSeriesBatc
 import com.example.demo.modules.telemetry.dto.archive.TelemetryFleetAggRow;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryFleetMatrixCellDto;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryFleetMatrixDto;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryPartitionAggRow;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryPartitionSummaryDto;
 import com.example.demo.modules.telemetry.dto.watchlist.TelemetryGlobalAlarmLimitsDto;
 import com.example.demo.modules.telemetry.entity.TelemetryValueRollupRow;
@@ -41,7 +42,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.time.temporal.ChronoUnit;
 import java.util.regex.Pattern;
 
@@ -268,8 +268,12 @@ public class TelemetryArchiveService {
         ZoneId z = ZoneId.systemDefault();
         String metric = StringUtils.hasText(metricKindCode) ? metricKindCode.trim().toUpperCase() : null;
         String floor = StringUtils.hasText(floorFilter) ? floorFilter.trim() : null;
-        List<TelemetryFleetAggRow> rows = archiveMapper.selectFleetAgg(from, to, metric, floor);
         TelemetryGlobalAlarmLimitsDto limits = globalAlarmLimitsService.load();
+        Double[] metricLimits = metric == null ? null : resolveMetricLimits(metric, limits);
+        List<TelemetryFleetAggRow> rows = archiveMapper.selectFleetAgg(
+                from, to, metric, floor,
+                metricLimits == null ? null : metricLimits[0],
+                metricLimits == null ? null : metricLimits[1]);
         TelemetryWatchlistEnrichment enrichment = watchlistDbService.loadActiveWatchlistEnrichment();
         List<TelemetryFleetMatrixCellDto> cells = new ArrayList<>();
         if (rows != null) {
@@ -308,40 +312,29 @@ public class TelemetryArchiveService {
         ZoneId z = ZoneId.systemDefault();
         String metric = StringUtils.hasText(metricKindCode) ? metricKindCode.trim().toUpperCase() : null;
         String floor = StringUtils.hasText(floorFilter) ? floorFilter.trim() : null;
-        List<TelemetryValueArchiveRow> samples = archiveMapper.selectPartitionBucketSamples(from, to, metric, floor);
-        Map<String, Map<Long, List<Double>>> partitionBuckets = new LinkedHashMap<>();
-        for (TelemetryValueArchiveRow r : samples) {
-            if (r.getSampleAt() == null || r.getNumericValue() == null) {
-                continue;
+        // SQL 侧 15min 分桶（avg 为桶内代表值，口径同 L1 rollup），避免全量拉取与 LIMIT 截断
+        List<TelemetryPartitionAggRow> rows = archiveMapper.selectPartitionAgg(from, to, metric, floor);
+        Map<String, List<TelemetryArchivePointDto>> byPartition = new LinkedHashMap<>();
+        if (rows != null) {
+            for (TelemetryPartitionAggRow r : rows) {
+                if (r.getBucketStart() == null || r.getAvgValue() == null) {
+                    continue;
+                }
+                String pk = partitionKey(r.getRoomCanonical());
+                String t = r.getBucketStart().atZone(z).toOffsetDateTime().toString();
+                byPartition.computeIfAbsent(pk, k -> new ArrayList<>())
+                        .add(TelemetryArchivePointDto.builder().t(t).value(r.getAvgValue()).build());
             }
-            String pk = partitionKey(r.getRoomCanonical());
-            long bucketMs = r.getSampleAt().atZone(z).toInstant().toEpochMilli();
-            bucketMs = bucketMs - (bucketMs % (15 * 60_000L));
-            partitionBuckets.computeIfAbsent(pk, k -> new TreeMap<>())
-                    .computeIfAbsent(bucketMs, k -> new ArrayList<>())
-                    .add(r.getNumericValue());
         }
-        List<TelemetryPartitionSummaryDto> out = new ArrayList<>();
         String qFrom = from.atZone(z).toOffsetDateTime().toString();
         String qTo = to.atZone(z).toOffsetDateTime().toString();
-        for (Map.Entry<String, Map<Long, List<Double>>> pe : partitionBuckets.entrySet()) {
-            List<TelemetryArchivePointDto> medianPts = new ArrayList<>();
-            List<TelemetryArchivePointDto> p90Pts = new ArrayList<>();
-            for (Map.Entry<Long, List<Double>> be : pe.getValue().entrySet()) {
-                List<Double> vals = be.getValue();
-                vals.sort(Double::compareTo);
-                double med = percentile(vals, 0.5);
-                double p90 = percentile(vals, 0.9);
-                String t = java.time.Instant.ofEpochMilli(be.getKey()).atZone(z).toOffsetDateTime().toString();
-                medianPts.add(TelemetryArchivePointDto.builder().t(t).value(med).build());
-                p90Pts.add(TelemetryArchivePointDto.builder().t(t).value(p90).build());
-            }
+        List<TelemetryPartitionSummaryDto> out = new ArrayList<>();
+        for (Map.Entry<String, List<TelemetryArchivePointDto>> pe : byPartition.entrySet()) {
             out.add(TelemetryPartitionSummaryDto.builder()
                     .partitionKey(pe.getKey())
                     .partitionLabel(pe.getKey())
                     .metricKindCode(metric)
-                    .medianPoints(medianPts)
-                    .p90Points(p90Pts)
+                    .avgPoints(pe.getValue())
                     .queriedFrom(qFrom)
                     .queriedTo(qTo)
                     .build());
@@ -353,19 +346,15 @@ public class TelemetryArchiveService {
             TelemetryFleetAggRow r,
             TelemetryGlobalAlarmLimitsDto limits,
             TelemetryWatchlistEnrichment enrichment) {
-        Double minL = null;
-        Double maxL = null;
-        String mk = r.getMetricKindCode() == null ? "" : r.getMetricKindCode().trim().toUpperCase();
-        if (mk.contains("TEMP") || "T".equals(mk)) {
-            minL = parseLimit(limits.getTempMin());
-            maxL = parseLimit(limits.getTempMax());
-        } else if (mk.contains("HUM") || mk.contains("RH") || "H".equals(mk)) {
-            minL = parseLimit(limits.getHumMin());
-            maxL = parseLimit(limits.getHumMax());
-        } else if (mk.contains("PRESS") || mk.contains("PA") || "P".equals(mk)) {
-            minL = parseLimit(limits.getPressureMin());
-            maxL = parseLimit(limits.getPressureMax());
-        }
+        String vn = r.getVariableName();
+        Double[] globalLimits = resolveMetricLimits(r.getMetricKindCode(), limits);
+        Double minL = globalLimits == null ? null : globalLimits[0];
+        Double maxL = globalLimits == null ? null : globalLimits[1];
+        // per-tag 告警覆盖优先于全局限（telemetry-per-tag-alarm-control）
+        Double overrideMin = parseLimit(resolveWatchlistField(enrichment.getAlarmOverrideMinByVariable(), vn));
+        Double overrideMax = parseLimit(resolveWatchlistField(enrichment.getAlarmOverrideMaxByVariable(), vn));
+        if (overrideMin != null) minL = overrideMin;
+        if (overrideMax != null) maxL = overrideMax;
         Double latest = r.getLatestValue();
         String status = "UNKNOWN";
         Double deviation = null;
@@ -381,11 +370,11 @@ public class TelemetryArchiveService {
                 deviation = 0.0;
             }
         }
-        double compliance = 1.0;
-        if (latest != null && minL != null && maxL != null && (latest < minL || latest > maxL)) {
-            compliance = 0.0;
+        // 窗口合规率 = 在全局报警带内采样占比（SQL compliant_count 聚合）
+        Double complianceRate = null;
+        if (r.getSampleCount() != null && r.getSampleCount() > 0 && r.getCompliantCount() != null) {
+            complianceRate = r.getCompliantCount().doubleValue() / r.getSampleCount().doubleValue();
         }
-        String vn = r.getVariableName();
         String displayLabel = resolveWatchlistLabel(enrichment, vn);
         if (!StringUtils.hasText(displayLabel) && StringUtils.hasText(r.getRoomCanonical())) {
             displayLabel = r.getRoomCanonical();
@@ -404,7 +393,7 @@ public class TelemetryArchiveService {
                 .maxValue(r.getMaxValue())
                 .avgValue(r.getAvgValue())
                 .sampleCount(r.getSampleCount())
-                .complianceRate(compliance)
+                .complianceRate(complianceRate)
                 .complianceStatus(status)
                 .maxDeviation(deviation)
                 .build();
@@ -467,23 +456,6 @@ public class TelemetryArchiveService {
         return TelemetryArchiveDownsampleUtil.downsampleRollupPoints(rawPts, cap, dp);
     }
 
-    private static double percentile(List<Double> sorted, double p) {
-        if (sorted.isEmpty()) {
-            return Double.NaN;
-        }
-        if (sorted.size() == 1) {
-            return sorted.get(0);
-        }
-        double idx = p * (sorted.size() - 1);
-        int lo = (int) Math.floor(idx);
-        int hi = (int) Math.ceil(idx);
-        if (lo == hi) {
-            return sorted.get(lo);
-        }
-        double w = idx - lo;
-        return sorted.get(lo) * (1 - w) + sorted.get(hi) * w;
-    }
-
     private static String partitionKey(String roomCanonical) {
         if (!StringUtils.hasText(roomCanonical)) {
             return "_unknown";
@@ -502,6 +474,24 @@ public class TelemetryArchiveService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** 指标码 → 全局报警上下限（temp/hum/pressure）；未知或无配置返回 null */
+    private static Double[] resolveMetricLimits(String metricKindCode, TelemetryGlobalAlarmLimitsDto limits) {
+        if (limits == null) {
+            return null;
+        }
+        String mk = metricKindCode == null ? "" : metricKindCode.trim().toUpperCase();
+        if (mk.contains("TEMP") || "T".equals(mk)) {
+            return new Double[]{parseLimit(limits.getTempMin()), parseLimit(limits.getTempMax())};
+        }
+        if (mk.contains("HUM") || mk.contains("RH") || "H".equals(mk)) {
+            return new Double[]{parseLimit(limits.getHumMin()), parseLimit(limits.getHumMax())};
+        }
+        if (mk.contains("PRESS") || mk.contains("PA") || "P".equals(mk)) {
+            return new Double[]{parseLimit(limits.getPressureMin()), parseLimit(limits.getPressureMax())};
+        }
+        return null;
     }
 
     private boolean shouldUseRollup(LocalDateTime from, LocalDateTime to, Boolean fromRollup) {

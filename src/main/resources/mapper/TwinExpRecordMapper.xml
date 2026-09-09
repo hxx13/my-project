@@ -47,8 +47,7 @@
         LEFT JOIN aro_personnel p ON p.user_id = r.user_id
         WHERE (r.review_status IS NULL OR r.review_status != 2)
         GROUP BY r.user_id, p.name
-        HAVING todayExp > 0
-        ORDER BY todayExp DESC, totalExp DESC
+        ORDER BY totalExp DESC, todayExp DESC
         LIMIT #{limit}
     </select>
 

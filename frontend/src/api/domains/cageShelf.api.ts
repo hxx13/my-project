@@ -1340,15 +1340,222 @@ export async function fetchClaimHistory(id: number): Promise<ApprovalRecordItem[
 
 export interface CageOccupancyRecord {
   id: number; eventType: string; occupantId: number | null; occupantName?: string | null;
-  fromAnimalCageId?: string | null; toAnimalCageId?: string | null; operatorName?: string | null;
-  reason?: string | null; createdAt?: string | null;
+  fromAnimalCageId?: string | null; toAnimalCageId?: string | null;
+  fromLabel?: string | null; toLabel?: string | null;
+  operatorName?: string | null;
+  reason?: string | null; dataSnapshot?: string | null; createdAt?: string | null;
 }
 
-export async function fetchCageOccupancyRecords(view: "cage" | "person", id: number | string): Promise<CageOccupancyRecord[]> {
-  const params = view === "cage" ? { view, cageId: id } : { view, occupantId: id };
-  const res = await authHttp.get<Result<CageOccupancyRecord[]>>("/admin/cage-info/occupancy/records", { params });
+export interface CageOccupancyRecordsPage {
+  list: CageOccupancyRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchCageOccupancyRecords(
+  view: "cage" | "person",
+  id: number | string,
+  opts?: { eventType?: string; page?: number; pageSize?: number },
+): Promise<CageOccupancyRecordsPage> {
+  const params = {
+    view,
+    ...(view === "cage" ? { cageId: id } : { occupantId: id }),
+    ...(opts?.eventType ? { eventType: opts.eventType } : {}),
+    page: opts?.page ?? 1,
+    pageSize: opts?.pageSize ?? 20,
+  };
+  const res = await authHttp.get<Result<CageOccupancyRecordsPage>>("/admin/cage-info/occupancy/records", { params });
   if (!res.data?.success) throw new Error(res.data?.message || "加载记录失败");
+  return res.data.data ?? { list: [], total: 0, page: 1, pageSize: 20 };
+}
+
+// ── 笼位操作（分笼 / 转移笼位）— 三端通用 ──
+
+export interface CageOpTarget {
+  animalCageId: string;
+  positionX?: number | null;
+  positionY?: number | null;
+  shelfIndexId?: string | null;
+  shelveId?: string | null;
+  cageTypeCode?: number | null;
+  projectPiName?: string | null;
+  aupNumber?: string | null;
+  departmentName?: string | null;
+  projectName?: string | null;
+  roomId?: number | null;
+  roomName?: string | null;
+  shelveName?: string | null;
+  campusName?: string | null;
+  areaName?: string | null;
+  floorName?: string | null;
+  selectable: boolean;
+  reason?: string | null;
+}
+
+export interface CageOpRequestView {
+  id: string;
+  opType: "divide" | "transfer";
+  sourceAnimalCageId: string;
+  targetAnimalCageIds: string[];
+  keepSource?: boolean | null;
+  applicantId?: string | null;
+  applicantName?: string | null;
+  applicantScope?: string | null;
+  status: string;
+  reason?: string | null;
+  reviewerName?: string | null;
+  reviewedAt?: string | null;
+  rejectReason?: string | null;
+  createdAt?: string | null;
+  campusName?: string | null;
+  floorName?: string | null;
+  roomName?: string | null;
+  shelveName?: string | null;
+  positionX?: number | null;
+  positionY?: number | null;
+}
+
+export interface CageOpSubmitResult {
+  requestId: string;
+  status: string;
+  /** true=本次直接执行；false=进了待审队列 */
+  executed: boolean;
+  needApproval: boolean;
+}
+
+/** 该笼位当前用户能否分笼/转移；code=NOT_CLAIMED 时前端提示「先认领」并给认领按钮 */
+export async function fetchCageOpOperable(
+  animalCageId: number | string,
+): Promise<{
+  operable: boolean;
+  code?: string | null;
+  reason?: string | null;
+  /** 额外身份可代绑定（弹窗检索本课题组人员） */
+  canClaimOnBehalf?: boolean;
+  /** 该笼位所属课题组名，供人员检索弹窗过滤 */
+  groupNames?: string[];
+}> {
+  const res = await authHttp.get<Result<{
+    operable: boolean;
+    code?: string | null;
+    reason?: string | null;
+    canClaimOnBehalf?: boolean;
+    groupNames?: string[];
+  }>>("/cage-op/operable", { params: { animalCageId } });
+  if (!res.data?.success) throw new Error(res.data?.message || "查询操作权限失败");
+  return res.data.data ?? { operable: false };
+}
+
+/** 代认领：教职工给本课题组某人认领该笼位（支持覆盖已有认领） */
+export async function claimCageOnBehalf(
+  animalCageId: number | string,
+  accountId: string,
+): Promise<{ claimId: string; status: string; claimantName: string }> {
+  const res = await authHttp.post<Result<{ claimId: string; status: string; claimantName: string }>>(
+    "/cage-op/claim-on-behalf",
+    { animalCageId, accountId },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "代认领失败");
+  return res.data.data!;
+}
+
+/** 该笼位当前用户能否编辑表单值（与分笼/转移同源判定） */
+export async function fetchCageOpEditable(
+  animalCageId: number | string,
+): Promise<{ editable: boolean; reason?: string | null }> {
+  const res = await authHttp.get<Result<{ editable: boolean; reason?: string | null }>>("/cage-op/editable", {
+    params: { animalCageId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "查询编辑权限失败");
+  return res.data.data ?? { editable: false };
+}
+
+/** 动态字段选项（按笼位现算，如动物品系取该笼位 AUP 白名单） */
+export async function fetchCageOpFieldOptions(
+  animalCageId: number | string,
+  canonical: string,
+): Promise<{ options: Array<{ value: string; label: string }>; source?: string }> {
+  const res = await authHttp.get<Result<{ options: Array<{ value: string; label: string }>; source?: string }>>(
+    "/cage-op/field-options",
+    { params: { animalCageId, canonical } },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载字段选项失败");
+  return res.data.data ?? { options: [] };
+}
+
+/** 一键认领：把本人认领为该笼位实验员（限本课题组，直接生效） */
+export async function claimCageAsOwner(animalCageId: number | string): Promise<{ claimId: string; status: string }> {
+  const res = await authHttp.post<Result<{ claimId: string; status: string }>>("/cage-op/claim", { animalCageId });
+  if (!res.data?.success) throw new Error(res.data?.message || "认领失败");
+  return res.data.data!;
+}
+
+/** 目标笼位候选池；shelfIndexId 省略=全库按课题组过滤（转移可跨房间/跨架） */
+export async function fetchCageOpTargets(
+  sourceAnimalCageId: number | string,
+  shelfIndexId?: number | string | null,
+): Promise<CageOpTarget[]> {
+  const res = await authHttp.get<Result<CageOpTarget[]>>("/cage-op/targets", {
+    params: { sourceAnimalCageId, ...(shelfIndexId != null ? { shelfIndexId } : {}) },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载目标笼位失败");
   return res.data.data ?? [];
+}
+
+export async function submitCageDivide(body: {
+  sourceAnimalCageId: number | string;
+  targetAnimalCageIds: Array<number | string>;
+  keepSource: boolean;
+  reason?: string;
+}): Promise<CageOpSubmitResult> {
+  const res = await authHttp.post<Result<CageOpSubmitResult>>("/cage-op/divide", body);
+  if (!res.data?.success) throw new Error(res.data?.message || "分笼失败");
+  return res.data.data!;
+}
+
+export async function submitCageTransfer(body: {
+  fromAnimalCageId: number | string;
+  toAnimalCageId: number | string;
+  reason?: string;
+}): Promise<CageOpSubmitResult> {
+  const res = await authHttp.post<Result<CageOpSubmitResult>>("/cage-op/transfer", body);
+  if (!res.data?.success) throw new Error(res.data?.message || "转移失败");
+  return res.data.data!;
+}
+
+export async function fetchCageOpPending(opType?: "divide" | "transfer"): Promise<CageOpRequestView[]> {
+  const res = await authHttp.get<Result<CageOpRequestView[]>>("/cage-op/pending", {
+    params: opType ? { opType } : {},
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载待审列表失败");
+  return res.data.data ?? [];
+}
+
+export async function fetchMyCageOps(status?: string): Promise<CageOpRequestView[]> {
+  const res = await authHttp.get<Result<CageOpRequestView[]>>("/cage-op/my", {
+    params: status ? { status } : {},
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载我的操作失败");
+  return res.data.data ?? [];
+}
+
+export async function reviewCageOp(
+  id: number | string,
+  decision: "approved" | "rejected",
+  reason?: string,
+): Promise<{ requestId: string; status: string }> {
+  const res = await authHttp.post<Result<{ requestId: string; status: string }>>(
+    `/cage-op/${id}/approve`,
+    { decision, reason },
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "审批失败");
+  return res.data.data!;
+}
+
+export async function cancelCageOp(id: number | string, reason?: string): Promise<void> {
+  const res = await authHttp.post<Result<unknown>>(`/cage-op/${id}/cancel`, { reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "撤销失败");
 }
 
 // ── 笼位历史记录（按笼盒分组）──

@@ -50,6 +50,13 @@ public class CageCellIndexService {
                 return t;
             });
 
+    /** AUP 编号 → {负责人, 项目名称} 映射缓存：全量同步逐房间复用，避免重复拉 ARO /aup/audited。 */
+    private volatile Map<String, AupMeta> aupMetaCache = null;
+    private volatile long aupPiCacheAt = 0L;
+
+    /** ARO /aup/audited 的 projectPiName / projectName，按注册号缓存。 */
+    private record AupMeta(String pi, String projectName) {}
+
     public CageCellIndexService(CageCellIndexMapper cellIndexMapper,
                                 CageCellDetailMapper detailMapper,
                                 CageShelfMapper shelfMapper,
@@ -267,6 +274,19 @@ public class CageCellIndexService {
             if (name != null) e.getValue().setExperimenterName(name);
         }
 
+        // 课题组组长/项目名称同样以表单(cage_info_value)为真相源：网格渲染读的就是表单值，
+        // 不再依赖固定表 cage_cell_detail 的旧副本（同步/分配是双写，但表单才是权威）。
+        Map<Long, String> groupPis = infoValueService.textValueByCage(
+                new ArrayList<>(detailMap.keySet()), "project_pi_name");
+        Map<Long, String> projectNames = infoValueService.textValueByCage(
+                new ArrayList<>(detailMap.keySet()), "project_name");
+        for (Map.Entry<Long, CageCellDetail> e : detailMap.entrySet()) {
+            String pi = groupPis.get(e.getKey());
+            if (pi != null) e.getValue().setProjectPiName(pi);
+            String pn = projectNames.get(e.getKey());
+            if (pn != null) e.getValue().setProjectName(pn);
+        }
+
         // 批量解析占用者(所属人)姓名:复用 UserDisplayNameService,不裸返回 staff_id / aro_user_id
         Map<Long, CageClaim> activeClaimByCage = new LinkedHashMap<>();
         Set<String> claimantIds = new LinkedHashSet<>();
@@ -298,34 +318,34 @@ public class CageCellIndexService {
             Long activeClaimId = activeClaim == null ? null : activeClaim.getId();
             gc.put("activeClaimId", activeClaimId);
             gc.put("claimStatus", activeClaim == null ? null : activeClaim.getClaimStatus());
-            // 所属人姓名（统一人员解析，不回退裸 id/ARO 空名）
+            // 所属人姓名：**以表单实验员为准**（认领记录可能陈旧或缺失，实验员字段才是占用者真相源），
+            // 表单为空时才回退到活跃认领的认领人。
+            CageCellDetail detail = detailMap.get(cell.getAnimalCageId());
+            String formExp = detail == null ? null : detail.getExperimenterName();
             String claimantId = activeClaim == null ? null : activeClaim.getClaimantId();
-            gc.put("occupantName", (claimantId != null && !claimantId.isBlank())
-                    ? occupantNames.get(claimantId.trim()) : null);
+            gc.put("occupantName", (formExp != null && !formExp.isBlank())
+                    ? formExp.trim()
+                    : (claimantId != null && !claimantId.isBlank() ? occupantNames.get(claimantId.trim()) : null));
             gc.put("hasCageBox", cell.getHasCageBox());
             gc.put("cageBoxCode", cell.getCageBoxCode());
             boolean empty = cell.getAnimalCageId() == null;
             gc.put("empty", empty);
             gc.put("visible", !empty); // 本地数据源不做课题组过滤，有笼位即可见
 
-            CageCellDetail detail = detailMap.get(cell.getAnimalCageId());
             if (detail != null) {
                 gc.put("cageTypeCode", detail.getCageTypeCode());
                 gc.put("animalCageType", detail.getCageTypeCode()); // 前端网格图例渲染
                 gc.put("rentType", detail.getRentType());
                 gc.put("stateLabel", detail.getStateLabel());
-                // 对齐 ARO simplifyCell：projectGroup=项目名；PI 优先课题PI
+                // 对齐 ARO simplifyCell：projectGroup=项目名；PI = 课题组组长（唯一 PI 字段）
                 gc.put("projectGroup", trimStr(detail.getProjectName()));
-                gc.put("piName", trimStr(detail.getPiName()));
                 gc.put("projectPiName", trimStr(detail.getProjectPiName()));
                 gc.put("departmentName", trimStr(detail.getDepartmentName()));
                 gc.put("aupNumber", trimStr(detail.getAupNumber()));
                 gc.put("experimenterName", trimStr(detail.getExperimenterName()));
                 // 与 ARO cageBoxInfo 对齐，供编辑侧栏 / 前端兜底读 ProjectPiName
-                String displayPi = trimStr(detail.getProjectPiName());
-                if (displayPi == null) displayPi = trimStr(detail.getPiName());
                 Map<String, Object> cageBoxInfo = new LinkedHashMap<>();
-                cageBoxInfo.put("ProjectPiName", displayPi);
+                cageBoxInfo.put("ProjectPiName", trimStr(detail.getProjectPiName()));
                 cageBoxInfo.put("DepartmentName", trimStr(detail.getDepartmentName()));
                 cageBoxInfo.put("AupNumber", trimStr(detail.getAupNumber()));
                 cageBoxInfo.put("cageBoxCode", trimStr(detail.getCageBoxCode()));
@@ -351,6 +371,9 @@ public class CageCellIndexService {
                     statuses.add(Map.of("code","COHABITATION","label","合笼","iconKey","cohabitation"));
                 gc.put("specialStatuses", statuses);
 
+                // pi_name 已退役（与 project_pi_name 同义，只保留后者）：固定表仍有存量旧值，
+                // 置空后再回传，避免前端「projectPiName || piName」回退链读到陈旧的课题组名。
+                detail.setPiName(null);
                 gc.put("detail", detail); // 完整详情
             }
             grid.add(gc);
@@ -471,9 +494,8 @@ public class CageCellIndexService {
 
                     // DEBUG：打印第一条映射后的动物/PI字段
                     if (totalUpdated == 0) {
-                        log.info("[detail-sync-debug-mapped] animalCageId={} mapped fields: pi={} projectPi={} strain={} sex={} weekAge={} male={} female={} comeFrom={} exprName={} labName={}",
+                        log.info("[detail-sync-debug-mapped] animalCageId={} mapped fields: projectPi={} strain={} sex={} weekAge={} male={} female={} comeFrom={} exprName={} labName={}",
                                 animalCageId,
-                                mapped.get("pi_name"),
                                 mapped.get("project_pi_name"),
                                 mapped.get("animal_strain_name"),
                                 mapped.get("animal_sex"),
@@ -488,9 +510,6 @@ public class CageCellIndexService {
                     // 仅当 mapping 命中该 canonical（路径存在）才覆盖：空串→null 清空；路径不存在→不动
                     // 避免 /list 某条缺 cageBoxVo.projectPiName 时用 get()==null 误清空已有 PI
                     boolean changed = isNew;
-                    if (mapped.containsKey("pi_name") && !Objects.equals(mapped.get("pi_name"), d.getPiName())) {
-                        d.setPiName((String) mapped.get("pi_name")); changed = true;
-                    }
                     if (mapped.containsKey("project_pi_name") && !Objects.equals(mapped.get("project_pi_name"), d.getProjectPiName())) {
                         d.setProjectPiName((String) mapped.get("project_pi_name")); changed = true;
                     }
@@ -811,6 +830,120 @@ public class CageCellIndexService {
         return result;
     }
 
+    /**
+     * AUP 编号 → 负责人/项目名称 映射，5 分钟缓存。
+     * 全量同步逐房间复用同一映射，避免每房间重复拉 ARO /aup/audited。
+     */
+    private Map<String, AupMeta> getAupMetaMap() {
+        long now = System.currentTimeMillis();
+        if (aupMetaCache != null && now - aupPiCacheAt < 5 * 60_000L) return aupMetaCache;
+        Map<String, AupMeta> map = new HashMap<>();
+        for (Map<String, Object> aup : aroService.fetchAuditedAupsGlobal()) {
+            String reg = trimStr(aup.get("registerNumber"));
+            if (reg == null) continue;
+            String pi = trimStr(aup.get("projectPiName"));
+            String projectName = trimStr(aup.get("projectName"));
+            if (pi == null && projectName == null) continue;
+            map.put(reg, new AupMeta(pi, projectName));
+        }
+        aupMetaCache = map;
+        aupPiCacheAt = now;
+        return map;
+    }
+
+    /**
+     * 从 /two 回填无笼盒格的 AUP：/back 只在 cageBoxVo 内返回 AUP，无笼盒格为空；
+     * /two 额外在顶层 aupRegisterNumber/aupId 回填，补齐「已预约(无笼盒)」格的 AUP。
+     * 拿到 AUP 后经 AUP 编号反查课题组组长(projectPiName)与项目名称(projectName)，
+     * 一并补写空笼位的 project_pi_name/project_name。
+     * 双写 cage_info_value 表单与固定表 cage_cell_detail。
+     */
+    public Map<String, Object> syncAupFromBackTwo(Long roomId) {
+        Map<String, AupMeta> metaByAup = getAupMetaMap();
+        List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
+        int totalShelves = shelfList != null ? shelfList.size() : 0;
+        int success = 0, fail = 0, written = 0;
+        for (Map<String, Object> shelf : shelfList) {
+            Long sRoomId = toLongSafe(shelf.get("roomId"));
+            Long shelveId = toLongSafe(shelf.get("shelveId"));
+            Long shelfIdxId = toLongSafe(shelf.get("id"));
+            if (sRoomId == null || shelveId == null || shelfIdxId == null) { fail++; continue; }
+            if (roomId != null && !roomId.equals(sRoomId)) continue;
+            try {
+                Map<String, Object> aroResp = aroService.fetchAnimalCagesByRoomAndShelveTwo(sRoomId, shelveId);
+                Object dataObj = aroResp.get("data");
+                if (!(dataObj instanceof List<?> list)) { fail++; continue; }
+
+                // 本地详情按 animal_cage_id 建 map（固定表 aup 双写；JOIN 可能漏载，漏载时跳过固定表只写表单）
+                Map<Long, CageCellDetail> detailMap = new LinkedHashMap<>();
+                for (CageCellDetail d : detailMapper.selectByShelfIndexId(shelfIdxId)) {
+                    detailMap.put(d.getAnimalCageId(), d);
+                }
+
+                List<CageCellDetail> batch = new ArrayList<>();
+                for (Object item : list) {
+                    if (!(item instanceof Map<?, ?> cage)) continue;
+                    Map<String, Object> cm = (Map<String, Object>) cage;
+                    Long animalCageId = toLongSafe(cm.get("id"));
+                    if (animalCageId == null) continue;
+                    // 映射表翻译：aup_number 的 two 来源 = 顶层 aupRegisterNumber
+                    Map<String, Object> mapped = mappingService.applyPull("two", cm);
+                    if (mapped == null || !mapped.containsKey("aup_number")) continue;
+                    String aupNumber = (String) mapped.get("aup_number");
+                    if (aupNumber == null || aupNumber.isBlank()) continue; // 该格无 AUP，跳过不清空
+                    // 写表单 cage_info_value（aup_number）
+                    syncFromMappedWithRetry(animalCageId, mapped);
+
+                    // 空笼位（无笼盒）补负责人/项目名称：AUP 编号反查；有笼盒格沿用 /list 的值，不覆盖
+                    boolean boxless = !(cm.get("cageBoxVo") instanceof Map && !((Map<?, ?>) cm.get("cageBoxVo")).isEmpty());
+                    AupMeta meta = boxless ? metaByAup.get(aupNumber.trim()) : null;
+                    if (meta != null) {
+                        Map<String, Object> aupFields = new LinkedHashMap<>();
+                        if (meta.pi() != null) aupFields.put("project_pi_name", meta.pi());
+                        if (meta.projectName() != null) aupFields.put("project_name", meta.projectName());
+                        if (!aupFields.isEmpty()) syncFromMappedWithRetry(animalCageId, aupFields);
+                    }
+
+                    // 双写固定表（仅本地已有详情记录，避免造只含 AUP 的残缺记录）
+                    CageCellDetail d = detailMap.get(animalCageId);
+                    if (d == null) continue;
+                    Long aupId = toLongSafe(cm.get("aupId"));
+                    boolean changed = false;
+                    if (!Objects.equals(d.getAupNumber(), aupNumber)) { d.setAupNumber(aupNumber); changed = true; }
+                    if (!Objects.equals(d.getAupId(), aupId)) { d.setAupId(aupId); changed = true; }
+                    if (meta != null) {
+                        if (meta.pi() != null && !Objects.equals(d.getProjectPiName(), meta.pi())) {
+                            d.setProjectPiName(meta.pi()); changed = true;
+                        }
+                        if (meta.projectName() != null && !Objects.equals(d.getProjectName(), meta.projectName())) {
+                            d.setProjectName(meta.projectName()); changed = true;
+                        }
+                    }
+                    if (changed) {
+                        d.setSyncedAt(DT_FMT.format(LocalDateTime.now()));
+                        batch.add(d);
+                        detailMap.put(animalCageId, d);
+                        written++;
+                    }
+                }
+                if (!batch.isEmpty()) detailMapper.batchUpsert(batch);
+                success++;
+            } catch (Exception e) {
+                fail++;
+                log.warn("[aup-two-sync] shelveId={} AUP 回填失败: {}", shelveId, e.getMessage());
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("ok", true);
+        result.put("totalShelves", totalShelves);
+        result.put("successShelves", success);
+        result.put("failShelves", fail);
+        result.put("written", written);
+        result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
+        log.info("[aup-two-sync] 完成: {}成功 {}失败, 写 {} 个笼位 AUP", success, fail, written);
+        return result;
+    }
+
     public Map<String, Object> syncLocalPipeline(Long roomId) {
         LocalDateTime startedAt = LocalDateTime.now();
         Map<String, Object> result = new LinkedHashMap<>();
@@ -838,10 +971,11 @@ public class CageCellIndexService {
             Long rid = toLongSafe(rooms.get(i).get("roomId"));
             String rname = String.valueOf(rooms.get(i).getOrDefault("roomName", rid));
             try {
-                // ① /list 补全详情 → ② /book 笼位状态 → ③ /back 特殊状态
+                // ① /list 补全详情 → ② /book 笼位状态 → ③ /back 特殊状态 → ④ /two 无笼盒格 AUP 回填
                 syncDetailFields(rid);
                 syncStatusFromBook(rid);
                 syncCohabitationFromBack(rid);
+                syncAupFromBackTwo(rid);
                 successRooms++;
             } catch (Exception e) {
                 log.error("[local-pipeline] 房间 {} 同步失败: {}", rname, e.getMessage(), e);

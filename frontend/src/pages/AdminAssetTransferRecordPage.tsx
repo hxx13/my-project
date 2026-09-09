@@ -577,7 +577,7 @@ export default function AdminAssetTransferRecordPage() {
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex-1 min-h-0 overflow-y-auto">
       <div>
-        <table className="min-w-full border-collapse text-sm">
+        <table className="min-w-full border-collapse text-sm twin-table">
           <thead className="border-b-2 border-[var(--app-color-border-strong)]">
             <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
               <th className="border-b p-3 text-left text-xs">资产编码</th>
@@ -987,7 +987,7 @@ export default function AdminAssetTransferRecordPage() {
               </div>
             </div>
             <div className="max-h-[55vh] overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
-              <table className="min-w-full border-collapse text-xs">
+              <table className="min-w-full border-collapse text-xs twin-table">
                 <thead className="border-b-2 border-[var(--app-color-border-strong)]">
                   <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                     <th className="border-b px-2 py-2 text-left">文件名</th>

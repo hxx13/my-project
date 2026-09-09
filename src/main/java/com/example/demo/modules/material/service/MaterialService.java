@@ -1733,14 +1733,14 @@ public class MaterialService {
 
     private static boolean dateInRangeDay(String v, String from, String to) {
         if (!StringUtils.hasText(v)) return false;
-        if (!StringUtils.hasText(from) || !StringUtils.hasText(to)) return true;
         String d = v.length() >= 10 ? v.substring(0, 10) : v;
-        return d.compareTo(from) >= 0 && d.compareTo(to) <= 0;
+        if (StringUtils.hasText(from) && d.compareTo(from) < 0) return false;
+        if (StringUtils.hasText(to) && d.compareTo(to) > 0) return false;
+        return true;
     }
 
     private static boolean dateInRangeDayFromDateTime(LocalDateTime dt, String from, String to) {
         if (dt == null) return false;
-        if (!StringUtils.hasText(from) || !StringUtils.hasText(to)) return true;
         return dateInRangeDay(dt.toLocalDate().toString(), from, to);
     }
 

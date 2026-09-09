@@ -105,7 +105,38 @@ public final class ExpSessionCalculator {
         return total;
     }
 
-    /** 评估单次进出会话（慢轨对账用） */
+    /**
+     * 只算「当前仍未结束的会话」的实时经验。
+     * 账本 twin_exp_record 已含所有已结束会话，用本方法做增量即可避免重复计。
+     */
+    public static double ongoingSessionExp(List<Map<String, Object>> logs, LocalDateTime now) {
+        if (logs == null || logs.isEmpty()) {
+            return 0;
+        }
+        String lastDate = "";
+        LocalDateTime currentEnterTime = null;
+        for (Map<String, Object> log : logs) {
+            LocalDateTime recordTime = parseRecordTime(log.get("create_time"));
+            if (recordTime == null) {
+                continue;
+            }
+            String dateKey = recordTime.toLocalDate().toString();
+            if (!dateKey.equals(lastDate)) {
+                lastDate = dateKey;
+                currentEnterTime = null;
+            }
+            String action = String.valueOf(log.get("action"));
+            if (isEnterAction(action)) {
+                currentEnterTime = recordTime;
+            } else if (isExitAction(action) && currentEnterTime != null) {
+                currentEnterTime = null;
+            }
+        }
+        if (currentEnterTime != null && currentEnterTime.toLocalDate().equals(now.toLocalDate())) {
+            return sessionTimeExp(currentEnterTime, now);
+        }
+        return 0;
+    }
     public static SessionEval evaluateSession(LocalDateTime enterTime, LocalDateTime exitTime, LocalDate targetDate) {
         SessionEval eval = new SessionEval();
 

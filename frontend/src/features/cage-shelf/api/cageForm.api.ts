@@ -28,6 +28,8 @@ export interface CageInfoField {
   submoduleCode?: string | null;
   /** 字段角色，默认 VALUE */
   role?: string | null;
+  /** 能否人工修改（与 role 解耦：自动获取字段也可配置为可改） */
+  editable?: boolean | null;
   /** YES / NO */
   required?: string | null;
   /** 排序值 */
@@ -83,8 +85,10 @@ export interface CageInfoFieldPayload {
   folder?: string | null;
   domainCode?: string | null;
   submoduleCode?: string | null;
-  /** 字段角色：VALUE=可填写/选择，DERIVED=自动获取只读 */
+  /** 字段角色：VALUE=可填写/选择，DERIVED=自动获取 */
   role?: string | null;
+  /** 能否人工修改（与 role 解耦） */
+  editable?: boolean | null;
   required?: string;
   sort?: number | null;
 }
@@ -402,8 +406,12 @@ export interface CageTemplateField {
   dataType: string;
   fieldType?: string | null;
   dictKey?: string | null;
-  /** 字段角色快照：VALUE=可填写/选择，DERIVED=自动获取只读 */
+  /** 字段角色快照：VALUE=可填写/选择，DERIVED=自动获取 */
   role?: string | null;
+  /** 能否人工修改（与 role 解耦，字段管理页配置）；缺失时回退 role=VALUE */
+  editable?: boolean | null;
+  /** 字段配置快照（JSON 字符串，如 {"optionsSource":"AUP_ANIMAL_STRAIN"}） */
+  config?: string | null;
   required?: string | null;
   sortOrder?: number | null;
 }

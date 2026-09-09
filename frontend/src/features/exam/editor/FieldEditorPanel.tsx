@@ -173,6 +173,19 @@ export default function FieldEditorPanel({
                 />
               </div>
             )}
+            <div className="aup-row">
+              <label>分值</label>
+              <input
+                className="aup-input"
+                type="number"
+                min={0}
+                step={0.5}
+                disabled={!editable}
+                value={cfg.score != null ? String(cfg.score) : ""}
+                onChange={(e) => setCfg({ score: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="如 10（留空=等权重）"
+              />
+            </div>
           </>
         )}
 

@@ -8,8 +8,9 @@ import { fetchIdentityTags, type IdentityTag } from "@/api/domains/personIdentit
 import toast from "react-hot-toast";
 
 /**
- * 笼架「模式可见性」多选 — 每个模式一行，右侧 checkbox chips 选择身份 code。
+ * 笼架「模式可见性」+「分笼/转移操作身份」多选 — 每项一行，右侧 checkbox chips 选择身份 code。
  * 配置模块 cage_mode：valueType=STRING，落库为逗号分隔身份 code（view 恒可见不可配）。
+ * 分笼/转移额外支持特殊 token OWNER = 该笼位占用者本人。
  */
 const MODES: Array<{ key: string; label: string }> = [
   { key: "booking", label: "预约" },
@@ -20,6 +21,9 @@ const MODES: Array<{ key: string; label: string }> = [
   { key: "archive", label: "归档" },
   { key: "confirm", label: "确认" },
 ];
+
+/** 分笼/转移的额外操作身份（占用者本人恒定可操作，不是可配项） */
+const OP_MANAGE_KEY = "cage.op.manage_identities";
 
 export default function CageModeVisibilitySettings() {
   const [values, setValues] = useState<Record<string, string>>({});
@@ -82,38 +86,48 @@ export default function CageModeVisibilitySettings() {
 
   if (loading) return <div className="py-4 text-center text-xs text-[var(--twin-mute)]">加载中…</div>;
 
+  const renderRow = (key: string, label: string, hint: string | null, chips: Array<{ code: string; label: string }>) => {
+    const selected = new Set((values[key] ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+    const saving = savingKey === key;
+    return (
+      <div key={key} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2">
+        <div className="mb-1.5 text-xs font-semibold text-[var(--twin-ink)]">{label}</div>
+        {hint && <div className="mb-1.5 text-[10px] text-[var(--twin-mute)]">{hint}</div>}
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((t) => {
+            const on = selected.has(t.code);
+            return (
+              <button
+                key={t.code}
+                type="button"
+                disabled={saving}
+                onClick={() => toggleCode(key, t.code)}
+                className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+                  on
+                    ? "border-transparent bg-[var(--twin-primary)] text-white"
+                    : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const tagChips = tags.map((t) => ({ code: t.code, label: t.label }));
+
   return (
     <div className="space-y-2 max-h-[40vh] overflow-y-auto">
-      {MODES.map((m) => {
-        const key = `cage.mode.${m.key}`;
-        const selected = new Set((values[key] ?? "").split(",").map((s) => s.trim()).filter(Boolean));
-        const saving = savingKey === key;
-        return (
-          <div key={key} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2">
-            <div className="mb-1.5 text-xs font-semibold text-[var(--twin-ink)]">{m.label}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {tags.map((t) => {
-                const on = selected.has(t.code);
-                return (
-                  <button
-                    key={t.code}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => toggleCode(key, t.code)}
-                    className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
-                      on
-                        ? "border-transparent bg-[var(--twin-primary)] text-white"
-                        : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
+      {renderRow(
+        OP_MANAGE_KEY,
+        "分笼 / 转移额外操作身份",
+        "笼位占用者本人恒定可操作，无需配置；此处配置额外的身份。",
+        tagChips,
+      )}
+      {MODES.map((m) => renderRow(`cage.mode.${m.key}`, m.label, null, tagChips))}
     </div>
   );
 }

@@ -386,6 +386,40 @@ export const cancelAnimalOrderSync = async () => {
     return response.data;
 };
 
+// 🧾 采购汇总：面向供应商的备货口径，维度 到货日期×供应商×品系×规格×性别，不含课题组/PI
+export type ProcurementDateField = 'arrival' | 'order';
+
+export interface ProcurementRow {
+    rowType: 'DETAIL' | 'SUPPLIER_SUBTOTAL' | 'GRAND_TOTAL';
+    arrivalDate: string;
+    supplierName: string;
+    strainName: string;
+    specName: string;
+    maleQty: number;
+    femaleQty: number;
+    totalQty: number;
+}
+
+export interface ProcurementParams {
+    dateField: ProcurementDateField;
+    startDate?: string;
+    endDate?: string;
+}
+
+export const fetchProcurementSummary = async (params: ProcurementParams): Promise<ProcurementRow[]> => {
+    const response = await authHttp.get('/v1/twin/order/admin/procurement-summary', { params });
+    const payload = asData<{ data?: ProcurementRow[] }>(response.data, { data: [] });
+    return Array.isArray(payload?.data) ? payload.data : [];
+};
+
+export const downloadProcurementSummaryExcel = async (params: ProcurementParams): Promise<Blob> => {
+    const response = await authHttp.get('/v1/twin/order/admin/procurement-summary/export', {
+        params,
+        responseType: 'blob',
+    });
+    return response.data as Blob;
+};
+
 // 💥 增加 areaName 参数
 export const fetchRetentionWarnings = async (limit: number, areaName: string) => {
     const res = await authHttp.get('/v1/twin/dashboard/retention-warnings', {

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -39,6 +39,9 @@ export function personDisplayName(r: StudentViolationRow): string {
 
 /** 6 列主表 Grid 模板（对齐原型 v4 `.tablerow`）。 */
 const GRID_COLS = "grid-cols-[minmax(16rem,2.2fr)_6.5rem_8rem_7rem_8.5rem_7.5rem]";
+
+/** 违规记录每页条数：默认列表后端分页，避免全量渲染卡顿。 */
+const RECORDS_PAGE_SIZE = 20;
 
 const STATUS_PILL: Record<string, { cls: string; dot: string }> = {
   ACTIVE: {
@@ -117,19 +120,24 @@ type RecordsTableProps = {
 export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Element {
   const qc = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const keyword = filters.keyword.trim();
 
-  // 状态/来源/禁入/笼架排除已下沉到服务端 SQL（过滤在 LIMIT 之前），列表对该筛选确定且完整，
-  // 不再因 400 条截断窗口滑动而出现「幻影」记录；keyword 仍依赖展示名/规则名，留在前端收窄。
+  // 关键词变化时回到第 1 页（关键词场景不后端分页，走全量前端收窄）
+  useEffect(() => { setPage(1); }, [keyword]);
+
+  // 状态/来源/禁入/笼架排除已下沉到服务端 SQL（过滤在 LIMIT 之前），列表对该筛选确定且完整；
+  // keyword 依赖展示名/规则名，留在前端收窄。有 keyword 时拉全量(500)前端过滤；无 keyword 时后端分页。
   const personListKey = useMemo(
-    () => ["studentViolations", filters.statuses, filters.sources, filters.enterLocks] as const,
-    [filters.statuses, filters.sources, filters.enterLocks]
+    () => ["studentViolations", filters.statuses, filters.sources, filters.enterLocks, keyword ? "kw" : page] as const,
+    [filters.statuses, filters.sources, filters.enterLocks, keyword, page]
   );
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: personListKey,
     queryFn: () =>
       listStudentViolations({
-        limit: 400,
+        ...(keyword ? { limit: 500 } : { page, pageSize: RECORDS_PAGE_SIZE }),
         excludeCage: true,
         statuses: filters.statuses.length ? filters.statuses : undefined,
         sources: filters.sources.length ? filters.sources : undefined,
@@ -140,10 +148,17 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     placeholderData: (prev) => prev,
   });
 
+  const rows = data?.list ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / RECORDS_PAGE_SIZE)), [total]);
+
+  // 删除最后一条/筛选收窄后页码可能超界，回退到最后一页
+  useEffect(() => { if (!keyword && page > totalPages) setPage(totalPages); }, [page, totalPages, keyword]);
+
   const filteredRows = useMemo(() => {
     let filtered = rows;
-    if (filters.keyword.trim()) {
-      const kw = filters.keyword.trim().toLowerCase();
+    if (keyword) {
+      const kw = keyword.toLowerCase();
       filtered = filtered.filter(
         (r) =>
           (r.targetUserDisplayName ?? "").toLowerCase().includes(kw) ||
@@ -152,7 +167,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
       );
     }
     return filtered;
-  }, [rows, filters.keyword]);
+  }, [rows, keyword]);
 
   const handleClear = async (id: number) => {
     if (!await appConfirm("解除后该条将不再在扫码弹窗展示，记录仍保留。确定？")) return;
@@ -170,7 +185,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     try {
       await deleteStudentViolation(r.id);
       toast.success("已删除");
-      qc.setQueryData<StudentViolationRow[]>(personListKey, (prev) => (prev ?? []).filter((x) => x.id !== r.id));
+      await qc.invalidateQueries({ queryKey: ["studentViolations"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "删除失败");
     }
@@ -313,6 +328,22 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
           );
         })}
       </div>
+
+      {/* 分页器（仅无关键词时后端分页；关键词场景为全量前端收窄，不分页） */}
+      {!keyword && total > RECORDS_PAGE_SIZE && (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-3.5 py-2 border-t border-[var(--app-color-border-default)] text-xs">
+          <span className="text-[var(--app-color-text-tertiary)]">共 {total} 条 · 每页 {RECORDS_PAGE_SIZE} 条</span>
+          <div className="flex items-center gap-2">
+            <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              上一页
+            </AdminButton>
+            <span className="text-[var(--app-color-text-secondary)] whitespace-nowrap">{page} / {totalPages}</span>
+            <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)}>
+              下一页
+            </AdminButton>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

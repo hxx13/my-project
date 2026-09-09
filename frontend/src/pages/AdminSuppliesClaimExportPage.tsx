@@ -92,7 +92,7 @@ export default function AdminSuppliesClaimExportPage() {
       {isLoading ? <DataSkeleton variant="table" rows={4} /> : null}
       {detail ? (
         <div className="overflow-hidden rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
-          <table className="min-w-full border-collapse text-left text-sm">
+          <table className="min-w-full border-collapse text-left text-sm twin-table">
             <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
               <tr>
                 <th className="border-b border-[var(--twin-hairline)] px-3 py-2">物品</th>

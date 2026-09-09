@@ -107,6 +107,7 @@ public class CageCellIndexController {
                                 c.put("piName", "***");
                                 c.put("departmentName", "***");
                                 c.put("aupNumber", "");
+                                c.put("experimenterName", "***");
                                 // 保留 specialStatuses：笼位状态非敏感，脱敏只作用于课题组归属字段
                             }
                             masked.add(c);

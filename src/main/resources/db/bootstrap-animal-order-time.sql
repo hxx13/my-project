@@ -62,3 +62,48 @@ CREATE TABLE IF NOT EXISTS animal_order_holiday (
     UNIQUE KEY uk_holiday_date (holiday_date),
     KEY idx_holiday_year (holiday_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='动物订购节假日与调休';
+
+-- ── 补齐 eta_weekday（2026-09-09）────────────────────────────────────
+-- 建表用的是 CREATE IF NOT EXISTS，老库早于该列时不会被补；此处幂等 ALTER 自愈。
+SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_time_policy' AND COLUMN_NAME = 'eta_weekday');
+SET @sql = IF(@col = 0, 'ALTER TABLE animal_order_time_policy ADD COLUMN eta_weekday TINYINT NULL COMMENT ''FIXED：ISO weekday 1=Mon…7=Sun'' AFTER eta_workday_offset', 'SELECT ''eta_weekday exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+UPDATE animal_order_time_policy
+SET eta_weekday = MOD(DAYOFWEEK(eta_fixed_date) + 5, 7) + 1
+WHERE eta_mode = 'FIXED'
+  AND eta_fixed_date IS NOT NULL
+  AND eta_weekday IS NULL;
+
+-- ── 校区维度（2026-09-09）────────────────────────────────────────────
+-- 策略与可购窗口分浦东/浦西两套；节假日为全国口径，不分校区。
+-- 幂等：按 information_schema 判存在后再加列/加索引/播种子。
+
+SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_time_policy' AND COLUMN_NAME = 'campus');
+SET @sql = IF(@col = 0, 'ALTER TABLE animal_order_time_policy ADD COLUMN campus VARCHAR(16) NOT NULL DEFAULT ''浦东'' COMMENT ''校区：浦东|浦西''', 'SELECT ''policy.campus exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_time_policy' AND INDEX_NAME = 'uk_policy_campus');
+SET @sql = IF(@idx = 0, 'ALTER TABLE animal_order_time_policy ADD UNIQUE KEY uk_policy_campus (campus)', 'SELECT ''uk_policy_campus exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @cnt = (SELECT COUNT(*) FROM animal_order_time_policy WHERE campus = '浦西');
+SET @sql = IF(@cnt = 0, 'INSERT INTO animal_order_time_policy (campus, default_mode, eta_mode, eta_workday_offset, eta_weekday, active) SELECT ''浦西'', default_mode, eta_mode, eta_workday_offset, eta_weekday, active FROM animal_order_time_policy WHERE campus = ''浦东''', 'SELECT ''xipu policy exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_window_rule' AND COLUMN_NAME = 'campus');
+SET @sql = IF(@col = 0, 'ALTER TABLE animal_order_window_rule ADD COLUMN campus VARCHAR(16) NOT NULL DEFAULT ''浦东'' COMMENT ''校区：浦东|浦西''', 'SELECT ''rule.campus exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_window_rule' AND INDEX_NAME = 'idx_window_campus');
+SET @sql = IF(@idx = 0, 'ALTER TABLE animal_order_window_rule ADD KEY idx_window_campus (campus, active)', 'SELECT ''idx_window_campus exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @cnt = (SELECT COUNT(*) FROM animal_order_window_rule WHERE campus = '浦西');
+SET @sql = IF(@cnt = 0, 'INSERT INTO animal_order_window_rule (campus, scope, category_key, effect, shape, weekdays, start_weekday, end_weekday, daily_start_time, daily_end_time, range_start_at, range_end_at, label, sort_order, active) SELECT ''浦西'', scope, category_key, effect, shape, weekdays, start_weekday, end_weekday, daily_start_time, daily_end_time, range_start_at, range_end_at, label, sort_order, active FROM animal_order_window_rule WHERE campus = ''浦东''', 'SELECT ''xipu rules exist''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

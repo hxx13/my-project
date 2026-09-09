@@ -107,7 +107,9 @@ public class AdminTelemetryInsightsController {
             @RequestParam(value = "profileCode", defaultValue = "PRESENTATION") String profileCode,
             @RequestParam(value = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
-            @RequestParam(value = "chartGroupId", required = false) Long chartGroupId) {
-        return Result.success(viewSnapshotService.captureSnapshot(profileCode, from, to, chartGroupId));
+            @RequestParam(value = "chartGroupId", required = false) Long chartGroupId,
+            @RequestParam(value = "metricKindCode", required = false) String metricKindCode,
+            @RequestParam(value = "floorFilter", required = false) String floorFilter) {
+        return Result.success(viewSnapshotService.captureSnapshot(profileCode, from, to, chartGroupId, metricKindCode, floorFilter));
     }
 }

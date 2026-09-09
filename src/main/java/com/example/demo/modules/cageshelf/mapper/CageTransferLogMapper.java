@@ -18,4 +18,22 @@ public interface CageTransferLogMapper {
     List<CageTransferLog> selectByOccupant(@Param("occupantId") Long occupantId);
 
     List<CageTransferLog> selectByCage(@Param("animalCageId") Long animalCageId);
+
+    /** 留痕页：按笼位分页查（eventType 可选过滤） */
+    List<CageTransferLog> pageByCage(@Param("animalCageId") Long animalCageId,
+                                     @Param("eventType") String eventType,
+                                     @Param("offset") int offset,
+                                     @Param("limit") int limit);
+
+    int countByCage(@Param("animalCageId") Long animalCageId,
+                    @Param("eventType") String eventType);
+
+    /** 留痕页：按占用者分页查（eventType 可选过滤） */
+    List<CageTransferLog> pageByOccupant(@Param("occupantId") Long occupantId,
+                                         @Param("eventType") String eventType,
+                                         @Param("offset") int offset,
+                                         @Param("limit") int limit);
+
+    int countByOccupant(@Param("occupantId") Long occupantId,
+                        @Param("eventType") String eventType);
 }

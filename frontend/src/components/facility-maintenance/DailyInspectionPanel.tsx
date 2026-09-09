@@ -394,7 +394,7 @@ export default function DailyInspectionPanel() {
           与小程序「历史巡查」同源；点击「打开」可切换到该日期并加载矩阵。若换模板后无表：当日格子全空时会自动换绑模板；否则请「删除当日巡查表」后重开。
         </p>
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-left text-sm">
+          <table className="min-w-full border-collapse text-left text-sm twin-table">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
                 <th className="px-2 py-2">业务日</th>
@@ -530,7 +530,7 @@ export default function DailyInspectionPanel() {
 
       {hasSheet && items.length > 0 && sites.length > 0 && (
         <div className="overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full border-collapse text-sm">
+          <table className="min-w-full border-collapse text-sm twin-table">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="sticky left-0 z-10 border-r border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-700">

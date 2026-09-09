@@ -85,14 +85,14 @@ public class CageCellDetailService {
 
     /** 分配笼位 */
     public CageCellDetail allocate(Long animalCageId, String operatorId) {
-        return allocate(animalCageId, null, null, null, operatorId);
+        return allocate(animalCageId, null, null, null, null, operatorId);
     }
 
-    /** 分配笼位 — 写课题组组长(pi_name) + 项目组长(project_pi_name) + AUP注册号 + AUP ID 到笼位固定字段 */
-    public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId, String operatorId) {
+    /** 分配笼位 — 写课题组组长(project_pi_name) + 项目名称 + AUP注册号 + AUP ID 到笼位固定字段 */
+    public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId, String projectName, String operatorId) {
         CageCellDetail d = getOrCreate(animalCageId);
-        String beforePi = d.getPiName();
         String beforeProjectPi = d.getProjectPiName();
+        String beforeProjectName = d.getProjectName();
         String beforeDept = d.getDepartmentName();
         String beforeAupNumber = d.getAupNumber();
         Long beforeAupId = d.getAupId();
@@ -100,8 +100,7 @@ public class CageCellDetailService {
 
         d.setCageTypeCode(2); // 已预约(空笼盒)
         if (piName != null && !piName.isBlank()) {
-            // 课题组长与项目组长分配时同源（AUP 负责人），分别落 pi_name / project_pi_name
-            d.setPiName(piName);
+            // AUP 负责人 = 课题组组长，落唯一 PI 字段 project_pi_name
             d.setProjectPiName(piName);
             // 从 personnel 库查询 PI 所属院系
             try {
@@ -113,6 +112,9 @@ public class CageCellDetailService {
                 log.warn("[local] ALLOCATE 查询PI院系失败 piName={}: {}", piName, e.getMessage());
             }
         }
+        if (projectName != null && !projectName.isBlank()) {
+            d.setProjectName(projectName);
+        }
         if (aupNumber != null && !aupNumber.isBlank()) {
             d.setAupNumber(aupNumber);
         }
@@ -122,14 +124,14 @@ public class CageCellDetailService {
         detailMapper.batchUpsert(List.of(d));
 
         // 字段级审计（历史记录按笼盒分组需要每字段变化 + 操作人）
-        auditField(animalCageId, "pi_name", "课题组长", beforePi, d.getPiName(), operatorId);
-        auditField(animalCageId, "project_pi_name", "项目组长", beforeProjectPi, d.getProjectPiName(), operatorId);
+        auditField(animalCageId, "project_pi_name", "课题组组长", beforeProjectPi, d.getProjectPiName(), operatorId);
+        auditField(animalCageId, "project_name", "项目名称", beforeProjectName, d.getProjectName(), operatorId);
         auditField(animalCageId, "department_name", "部门", beforeDept, d.getDepartmentName(), operatorId);
         auditField(animalCageId, "aup_number", "AUP注册号", beforeAupNumber, d.getAupNumber(), operatorId);
         auditField(animalCageId, "aup_id", "AUP ID", str(beforeAupId), str(d.getAupId()), operatorId);
         auditField(animalCageId, "cage_type_code", "笼位状态", beforeType, "已预约(空笼盒)", operatorId);
 
-        log.info("[local] ALLOCATE animalCageId={} piName={} aup={} aupId={}", animalCageId, piName, aupNumber, aupId);
+        log.info("[local] ALLOCATE animalCageId={} piName={} aup={} aupId={} project={}", animalCageId, piName, aupNumber, aupId, projectName);
         return d;
     }
 
@@ -157,7 +159,6 @@ public class CageCellDetailService {
         }
 
         CageCellDetail d = getOrCreate(animalCageId);
-        String beforePi = d.getPiName();
         String beforeProjectPi = d.getProjectPiName();
         String beforeProjectName = d.getProjectName();
         String beforeDept = d.getDepartmentName();
@@ -168,7 +169,6 @@ public class CageCellDetailService {
         d.setCageTypeCode(1); // 等待分配
         d.setHasCageBox(false);
         d.setCageBoxCode(null);
-        d.setPiName(null);
         d.setProjectPiName(null);
         d.setProjectName(null);
         d.setDepartmentName(null);
@@ -186,8 +186,7 @@ public class CageCellDetailService {
         detailMapper.batchUpsert(List.of(d));
 
         // 字段级审计（清空归属字段）
-        auditField(animalCageId, "pi_name", "课题组长", beforePi, null, operatorId);
-        auditField(animalCageId, "project_pi_name", "项目组长", beforeProjectPi, null, operatorId);
+        auditField(animalCageId, "project_pi_name", "课题组组长", beforeProjectPi, null, operatorId);
         auditField(animalCageId, "project_name", "项目名称", beforeProjectName, null, operatorId);
         auditField(animalCageId, "department_name", "部门", beforeDept, null, operatorId);
         auditField(animalCageId, "aup_number", "AUP注册号", beforeAupNumber, null, operatorId);

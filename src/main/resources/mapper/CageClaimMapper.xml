@@ -28,11 +28,11 @@
         INSERT INTO cage_claims (
             animal_cage_id, claim_status, claimant_id, claimant_name, claimant_dept,
             aup_id, assigner_id, assigner_name, confirm_required,
-            retry_count, note, created_at
+            retry_count, note, confirmed_at, created_at
         ) VALUES (
             #{animalCageId}, #{claimStatus}, #{claimantId}, #{claimantName}, #{claimantDept},
             #{aupId}, #{assignerId}, #{assignerName}, #{confirmRequired},
-            #{retryCount}, #{note}, NOW()
+            #{retryCount}, #{note}, #{confirmedAt}, NOW()
         )
     </insert>
 
@@ -259,6 +259,41 @@
           AND ccd.cage_type_code = 2
           AND cl.id IS NULL
         ORDER BY cci.position_x, cci.position_y
+    </select>
+
+    <!-- 分笼/转移的目标候选池：全库空笼盒(type2) + 无活跃认领 + 已挂 AUP。
+         shelfIndexId 为 null 时不限笼架（转移可跨房间/跨架），准入 = 与源笼位同 AUP（Java 侧判定）。
+         无 AUP 的笼位不可能与任何源笼位同 AUP，SQL 层先排除。 -->
+    <select id="selectOpTargets" resultType="map">
+        SELECT
+            cci.animal_cage_id AS animalCageId,
+            cci.position_x AS positionX,
+            cci.position_y AS positionY,
+            cci.shelf_index_id AS shelfIndexId,
+            cci.shelve_id AS shelveId,
+            ccd.cage_type_code AS cageTypeCode,
+            ccd.project_pi_name AS projectPiName,
+            ccd.aup_number AS aupNumber,
+            ccd.department_name AS departmentName,
+            ccd.project_name AS projectName,
+            si.campus_name AS campusName,
+            si.area_name AS areaName,
+            si.floor_name AS floorName,
+            si.room_id AS roomId,
+            si.room_name AS roomName,
+            si.shelve_name AS shelveName
+        FROM cage_cell_index cci
+        JOIN cage_cell_detail ccd ON cci.animal_cage_id = ccd.animal_cage_id
+        JOIN cage_shelf_index si ON si.id = cci.shelf_index_id
+        LEFT JOIN cage_claims cl ON cci.animal_cage_id = cl.animal_cage_id
+            AND cl.claim_status IN ('pending_approval','locked','confirmed','pending_release_approval')
+        WHERE ccd.cage_type_code = 2
+          AND cl.id IS NULL
+          AND ccd.aup_number IS NOT NULL
+        <if test="shelfIndexId != null">
+            AND cci.shelf_index_id = #{shelfIndexId}
+        </if>
+        ORDER BY si.campus_name, si.floor_name, si.room_name, si.shelve_name, cci.position_x, cci.position_y
     </select>
 
     <select id="selectByAnimalCageIdForUpdate" resultMap="CageClaimMap">

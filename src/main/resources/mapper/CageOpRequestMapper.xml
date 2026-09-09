@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageOpRequestMapper">
+
+    <resultMap id="CageOpRequestMap" type="com.example.demo.modules.cageshelf.entity.CageOpRequest">
+        <id property="id" column="id"/>
+        <result property="opType" column="op_type"/>
+        <result property="sourceAnimalCageId" column="source_animal_cage_id"/>
+        <result property="targetAnimalCageIds" column="target_animal_cage_ids"/>
+        <result property="keepSource" column="keep_source"/>
+        <result property="applicantId" column="applicant_id"/>
+        <result property="applicantName" column="applicant_name"/>
+        <result property="applicantScope" column="applicant_scope"/>
+        <result property="status" column="status"/>
+        <result property="reason" column="reason"/>
+        <result property="reviewerId" column="reviewer_id"/>
+        <result property="reviewerName" column="reviewer_name"/>
+        <result property="reviewedAt" column="reviewed_at"/>
+        <result property="rejectReason" column="reject_reason"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_op_request
+        (op_type, source_animal_cage_id, target_animal_cage_ids, keep_source,
+         applicant_id, applicant_name, applicant_scope, status, reason, created_at, updated_at)
+        VALUES
+        (#{opType}, #{sourceAnimalCageId}, #{targetAnimalCageIds}, #{keepSource},
+         #{applicantId}, #{applicantName}, #{applicantScope}, #{status}, #{reason}, NOW(), NOW())
+    </insert>
+
+    <update id="update">
+        UPDATE cage_op_request
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="reviewerId != null">reviewer_id = #{reviewerId},</if>
+            <if test="reviewerName != null">reviewer_name = #{reviewerName},</if>
+            <if test="reviewedAt != null">reviewed_at = #{reviewedAt},</if>
+            <if test="rejectReason != null">reject_reason = #{rejectReason},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultMap="CageOpRequestMap">
+        SELECT * FROM cage_op_request WHERE id = #{id}
+    </select>
+
+    <select id="selectByIdForUpdate" resultMap="CageOpRequestMap">
+        SELECT * FROM cage_op_request WHERE id = #{id} FOR UPDATE
+    </select>
+
+    <select id="selectByStatus" resultMap="CageOpRequestMap">
+        SELECT * FROM cage_op_request
+        WHERE status = #{status}
+        <if test="opType != null and opType != ''">
+            AND op_type = #{opType}
+        </if>
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <select id="selectByApplicant" resultMap="CageOpRequestMap">
+        SELECT * FROM cage_op_request
+        WHERE applicant_id = #{applicantId}
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+</mapper>

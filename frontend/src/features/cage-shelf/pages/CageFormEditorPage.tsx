@@ -28,7 +28,6 @@ const CATEGORY_MAP: Record<string, string> = {
   cage_name: "笼位身份",
   cage_box_code: "笼位身份",
   cage_box_name: "笼位身份",
-  pi_name: "项目信息",
   project_pi_name: "项目信息",
   project_name: "项目信息",
   department_name: "项目信息",

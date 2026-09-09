@@ -67,8 +67,7 @@ export type TelemetryPartitionSummary = {
   partitionKey: string;
   partitionLabel: string;
   metricKindCode?: string | null;
-  medianPoints: TelemetryArchiveSeriesPoint[];
-  p90Points: TelemetryArchiveSeriesPoint[];
+  avgPoints: TelemetryArchiveSeriesPoint[];
   queriedFrom: string;
   queriedTo: string;
 };
@@ -227,6 +226,8 @@ export async function captureTelemetryViewSnapshot(params?: {
   from?: string;
   to?: string;
   chartGroupId?: number;
+  metricKindCode?: string;
+  floorFilter?: string;
 }): Promise<{ snapshotId?: number; capturedAt?: string }> {
   const res = await adminHttp.post<ApiResult<{ snapshotId?: number; capturedAt?: string }>>(
     "telemetry/snapshots/capture",
