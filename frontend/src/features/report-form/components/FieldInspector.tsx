@@ -14,8 +14,9 @@ interface FieldInspectorProps {
   onRenameFieldKey: (oldKey: string, newKey: string) => void;
 }
 
-const inputClass =
-  'w-full rounded-[4px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)]';
+const inputBase =
+  'w-full rounded-lg bg-[var(--app-color-surface-hover)] px-2 text-[11px] text-[var(--app-color-text-primary)] focus:bg-white focus:outline focus:outline-2 focus:outline-[color-mix(in_srgb,var(--app-color-accent)_45%,transparent)]';
+const inputClass = `${inputBase} h-9`;
 const labelClass = 'text-[10px] font-medium text-[var(--app-color-text-secondary)] mb-0.5 block';
 
 export default function FieldInspector({
@@ -49,7 +50,7 @@ export default function FieldInspector({
   // 折叠态：仅一条竖直窄条 + 展开按钮，不渲染任何表单
   if (collapsed) {
     return (
-      <div className="w-8 h-full shrink-0 flex flex-col items-center py-2 border-l border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]">
+      <div className="w-8 h-full shrink-0 flex flex-col items-center py-2 bg-[var(--app-color-surface-container)] shadow-[-1px_0_0_color-mix(in_srgb,var(--app-color-text-primary)_6%,transparent)]">
         <button
           type="button"
           onClick={onToggleCollapsed}
@@ -66,8 +67,8 @@ export default function FieldInspector({
   return (
     <div className="flex flex-col h-full w-full min-w-0">
       {/* 头部 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] shrink-0">
-        <span className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">属性</span>
+      <div className="flex items-center justify-between px-3 py-2 bg-[var(--app-color-surface-container)] shrink-0">
+        <span className="text-[11px] font-semibold tracking-[0.08em] text-[var(--app-color-text-tertiary)]">属性</span>
         <button
           type="button"
           onClick={onToggleCollapsed}
@@ -98,7 +99,7 @@ export default function FieldInspector({
                 }}
                 disabled={multi}
                 title={multi ? '多选时仅作用于第一个格' : undefined}
-                className={`${inputClass} h-16 resize-none disabled:opacity-40`}
+                className={`${inputBase} h-16 py-2 resize-none disabled:opacity-40`}
                 placeholder="输入文本..."
               />
             </div>
@@ -138,25 +139,33 @@ export default function FieldInspector({
                 </>
               )}
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={field.required ?? false}
-                  onChange={e => onPatchField({ required: e.target.checked })}
-                  className="w-3 h-3 accent-[var(--app-color-accent)]"
-                />
-                <label className="text-[10px] text-[var(--app-color-text-secondary)]">必填</label>
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="relative inline-flex w-[34px] h-[20px] shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={field.required ?? false}
+                    onChange={e => onPatchField({ required: e.target.checked })}
+                    className="peer sr-only"
+                  />
+                  <span className="absolute inset-0 rounded-full bg-[var(--app-color-surface-hover)] peer-checked:bg-[var(--app-color-accent)] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-[var(--app-color-accent)]" />
+                  <span className="absolute top-[2px] left-[2px] w-4 h-4 rounded-full bg-white shadow-sm transition-[left] duration-150 peer-checked:left-[16px]" />
+                </span>
+                <span className="text-[10px] text-[var(--app-color-text-secondary)]">必填</span>
+              </label>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={field.editableInFill ?? false}
-                  onChange={e => onPatchField({ editableInFill: e.target.checked })}
-                  className="w-3 h-3 accent-[var(--app-color-accent)]"
-                />
-                <label className="text-[10px] text-[var(--app-color-text-secondary)]">填报可编辑</label>
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="relative inline-flex w-[34px] h-[20px] shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={field.editableInFill ?? false}
+                    onChange={e => onPatchField({ editableInFill: e.target.checked })}
+                    className="peer sr-only"
+                  />
+                  <span className="absolute inset-0 rounded-full bg-[var(--app-color-surface-hover)] peer-checked:bg-[var(--app-color-accent)] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-[var(--app-color-accent)]" />
+                  <span className="absolute top-[2px] left-[2px] w-4 h-4 rounded-full bg-white shadow-sm transition-[left] duration-150 peer-checked:left-[16px]" />
+                </span>
+                <span className="text-[10px] text-[var(--app-color-text-secondary)]">填报可编辑</span>
+              </label>
 
               {fieldType === 'NUMBER' && (
                 <div className="grid grid-cols-2 gap-1.5">
@@ -198,8 +207,8 @@ export default function FieldInspector({
           )}
 
           {/* 单元格 */}
-          <div className="border-t border-[var(--app-color-border)] pt-3">
-            <h4 className="text-[10px] font-semibold text-[var(--app-color-text-secondary)] uppercase tracking-wider mb-1.5">单元格</h4>
+          <div className="!mt-[22px] shadow-[inset_0_1px_0_color-mix(in_srgb,var(--app-color-text-primary)_6%,transparent)] pt-3">
+            <h4 className="text-[11px] font-semibold tracking-[0.08em] text-[var(--app-color-text-tertiary)] mb-1.5">单元格</h4>
             <div className="grid grid-cols-2 gap-1.5">
               <div>
                 <label className={labelClass}>列跨度</label>
