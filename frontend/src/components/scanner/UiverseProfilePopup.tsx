@@ -57,6 +57,11 @@ export function UiverseProfilePopup(props: PopupProps) {
         setViolationAckPatch(null);
     }, [result?.userInfo?.userId]);
 
+    useEffect(() => {
+        setPlanRoomIdx(0);
+        setDetailCell(null);
+    }, [result?.userInfo?.userId]);
+
     const mergedResult = useMemo(() => {
         if (!result) return result;
         if (!violationAckPatch) return result;
@@ -98,7 +103,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [planRoomIdx, setPlanRoomIdx] = useState(0);
     const [detailCell, setDetailCell] = useState<CageShelfCell | null>(null);
-    const planRoom = state.targetRooms[planRoomIdx];
+    const planRoom = state.targetRooms[planRoomIdx] ?? state.targetRooms[0];
     const floorPlan = useRoomFloorPlan(
       planRoom?.officialRoomId || planRoom?.id,
       planRoom?.displayName || planRoom?.name,
@@ -314,7 +319,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                             />
                         </div>
                     </div>
-                    <div className="flex min-h-0 flex-col gap-2">
+                    <div className="flex h-full min-h-0 flex-col gap-2">
                         {state.targetRooms.length > 1 && (
                             <div className="flex shrink-0 flex-wrap gap-1.5">
                                 {state.targetRooms.map((r, i) => (
@@ -350,7 +355,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
-                        {/* 上 2/5：面包机区贴底，预留动画空间；下 3/5 给操作按钮 */}
+                        {/* 上 1/5：面包机区贴底，预留动画空间；下 4/5 给操作按钮 */}
                         <div className="flex min-h-0 flex-[1] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
                             <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
