@@ -244,7 +244,7 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
     [selectedId, children]
   );
   const { data: assetData, isLoading: assetsLoading, isError: assetsError } = useAssetList(
-    { page: 1, size: 500, locationNodeIds: nodeIdsParam },
+    { page: 1, size: 500, locationNodeIds: nodeIdsParam, sortBy: "assetCode", sortDirection: "asc" },
     selectedId != null
   );
   const rows = useMemo(() => assetData?.rows ?? [], [assetData]);
