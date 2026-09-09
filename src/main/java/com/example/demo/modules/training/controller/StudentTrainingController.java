@@ -10,7 +10,6 @@ import com.example.demo.modules.training.entity.PersonQualification;
 import com.example.demo.modules.training.mapper.HealthSurveyResponseMapper;
 import com.example.demo.modules.training.mapper.LearningMaterialMapper;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
-import com.example.demo.modules.training.service.QualificationReportService;
 import com.example.demo.modules.training.service.TrainingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,7 +28,6 @@ public class StudentTrainingController {
     private final AuthContextService authContextService;
     private final HttpServletRequest request;
     private final PersonQualificationMapper qualificationMapper;
-    private final QualificationReportService reportService;
     private final LearningMaterialMapper learningMaterialMapper;
     private final AdminFileTemplateService adminFileTemplateService;
     private final HealthSurveyResponseMapper healthSurveyMapper;
@@ -39,7 +37,6 @@ public class StudentTrainingController {
                                      AuthContextService authContextService,
                                      HttpServletRequest request,
                                      PersonQualificationMapper qualificationMapper,
-                                     QualificationReportService reportService,
                                      LearningMaterialMapper learningMaterialMapper,
                                      AdminFileTemplateService adminFileTemplateService,
                                      HealthSurveyResponseMapper healthSurveyMapper,
@@ -48,7 +45,6 @@ public class StudentTrainingController {
         this.authContextService = authContextService;
         this.request = request;
         this.qualificationMapper = qualificationMapper;
-        this.reportService = reportService;
         this.learningMaterialMapper = learningMaterialMapper;
         this.adminFileTemplateService = adminFileTemplateService;
         this.healthSurveyMapper = healthSurveyMapper;
@@ -96,22 +92,6 @@ public class StudentTrainingController {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
         return Result.success(qualificationMapper.listByItem("health_report", List.of(user.getId())));
-    }
-
-    /** 预览我自己的资格报告 PDF。 */
-    @GetMapping("/qualifications/{itemKey}/report")
-    public ResponseEntity<byte[]> myReport(@PathVariable String itemKey) {
-        User user = resolveUser();
-        if (user == null) return ResponseEntity.status(401).build();
-        try {
-            byte[] pdf = reportService.load(user.getId(), itemKey);
-            return ResponseEntity.ok()
-                    .header("Content-Type", "application/pdf")
-                    .header("Content-Disposition", "inline; filename=\"report.pdf\"")
-                    .body(pdf);
-        } catch (IllegalStateException e) {
-            return ResponseEntity.status(404).build();
-        }
     }
 
     /** 已上架的学习资料。 */

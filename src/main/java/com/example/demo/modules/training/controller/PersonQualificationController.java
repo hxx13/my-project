@@ -3,10 +3,8 @@ package com.example.demo.modules.training.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.training.entity.HealthSurveyResponse;
-import com.example.demo.modules.training.entity.QualificationItemConfig;
 import com.example.demo.modules.training.mapper.HealthSurveyResponseMapper;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
-import com.example.demo.modules.training.mapper.QualificationItemConfigMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
@@ -25,20 +23,17 @@ public class PersonQualificationController {
     private final PersonQualificationMapper mapper;
     private final AuthContextService authContextService;
     private final HttpServletRequest request;
-    private final QualificationItemConfigMapper configMapper;
     private final HealthSurveyResponseMapper healthSurveyMapper;
     private final ObjectMapper objectMapper;
 
     public PersonQualificationController(PersonQualificationMapper mapper,
                                          AuthContextService authContextService,
                                          HttpServletRequest request,
-                                         QualificationItemConfigMapper configMapper,
                                          HealthSurveyResponseMapper healthSurveyMapper,
                                          ObjectMapper objectMapper) {
         this.mapper = mapper;
         this.authContextService = authContextService;
         this.request = request;
-        this.configMapper = configMapper;
         this.healthSurveyMapper = healthSurveyMapper;
         this.objectMapper = objectMapper;
     }
@@ -62,27 +57,6 @@ public class PersonQualificationController {
         if (personId == null || state == null) return Result.fail(400, "缺少 personId/state");
         mapper.updateStateOnly(personId, HEALTH_REPORT, state);
         return Result.success(Map.of("ok", true));
-    }
-
-    /** 健康报告的表单/模板绑定（未配置时 data 为 null）。 */
-    @GetMapping("/config")
-    public Result<?> getConfig() {
-        if (resolveUser() == null) return Result.fail(401, "未登录");
-        return Result.success(configMapper.findByItemKey(HEALTH_REPORT));
-    }
-
-    /** 保存绑定：{formId, wordTemplateId(可空=用第一份模板)} */
-    @PutMapping("/config")
-    public Result<?> saveConfig(@RequestBody Map<String, Object> body) {
-        if (resolveUser() == null) return Result.fail(401, "未登录");
-        Long formId = body.get("formId") instanceof Number n ? n.longValue() : null;
-        if (formId == null) return Result.fail(400, "缺少 formId");
-        QualificationItemConfig cfg = new QualificationItemConfig();
-        cfg.setItemKey(HEALTH_REPORT);
-        cfg.setFormId(formId);
-        cfg.setWordTemplateId(str(body.get("wordTemplateId")));
-        configMapper.upsert(cfg);
-        return Result.success(configMapper.findByItemKey(HEALTH_REPORT));
     }
 
     /** 查看某人的健康调查表答卷（未提交返回 null）。 */

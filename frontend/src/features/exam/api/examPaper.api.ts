@@ -176,37 +176,6 @@ export async function importExamSeeds(codes: string[]): Promise<{ imported: numb
   return (r.data?.data ?? { imported: 0 }) as { imported: number };
 }
 
-export interface QualificationBinding {
-  itemKey: string;
-  formId: number;
-  wordTemplateId?: string | null;
-}
-
-export async function fetchQualificationBinding(): Promise<QualificationBinding | null> {
-  const r = await adminHttp.get("/training/qualifications/config");
-  return (r.data?.data ?? null) as QualificationBinding | null;
-}
-
-export async function saveQualificationBinding(body: {
-  formId: number;
-  wordTemplateId?: string | null;
-}): Promise<QualificationBinding> {
-  const r = await adminHttp.put("/training/qualifications/config", body);
-  return r.data?.data as QualificationBinding;
-}
-
-export async function fetchQualificationPreview(params: {
-  formId: number;
-  wordTemplateId?: string | null;
-  submissionId?: number | null;
-}): Promise<Blob> {
-  const r = await adminHttp.get("/training/qualifications/preview", {
-    params,
-    responseType: "blob",
-  });
-  return r.data as Blob;
-}
-
 // ---- 学习资料（PDF）----
 
 export interface LearningMaterial {

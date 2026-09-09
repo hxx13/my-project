@@ -1,8 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
-import { fetchFormPage, fetchWordTemplates } from "@/features/report-form/api/reportForm.api";
 import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
 import { Download, FileText, Loader2, Plus, Save, Search, Trash2, Undo2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,8 +17,6 @@ import {
   fetchExamPaper,
   fetchExamPapers,
   fetchExamSeeds,
-  fetchQualificationBinding,
-  fetchQualificationPreview,
   fetchLearningMaterials,
   uploadLearningFile,
   createLearningMaterial,
@@ -34,7 +30,6 @@ import {
   renameExamFolder,
   unpublishExamPaper,
   saveExamPaper,
-  saveQualificationBinding,
   type ExamPaperSummary,
   type ExamSeed,
 } from "../api/examPaper.api";
@@ -76,7 +71,7 @@ const FOLDER_LABELS = {
 
 export default function ExamPaperAdminPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [tab, setTab] = useState<0 | 1 | 2 | 3>(0);
   const [keyword, setKeyword] = useState("");
 
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -694,96 +689,6 @@ export default function ExamPaperAdminPage() {
     </div>
   );
 
-  // ── 健康报告 tab ──
-  const navigate = useNavigate();
-  const [bindingFormId, setBindingFormId] = useState<number | null>(null);
-  const [bindingWtId, setBindingWtId] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-
-  const { data: binding } = useQuery({
-    queryKey: ["qualification-binding"],
-    queryFn: fetchQualificationBinding,
-  });
-  const { data: forms = [] } = useQuery({
-    queryKey: ["report-forms", "all"],
-    queryFn: () => fetchFormPage(1, 100),
-  });
-  const effectiveFormId = bindingFormId ?? binding?.formId ?? null;
-  const { data: wordTemplates = [] } = useQuery({
-    queryKey: ["word-templates", effectiveFormId],
-    queryFn: () => fetchWordTemplates(effectiveFormId!),
-    enabled: effectiveFormId != null,
-  });
-  const effectiveWtId =
-    bindingWtId ?? (effectiveFormId === binding?.formId ? binding?.wordTemplateId : null) ?? wordTemplates[0]?.id ?? null;
-
-  const saveBinding = async () => {
-    if (effectiveFormId == null) { toast.error("请先选择表单"); return; }
-    try {
-      await saveQualificationBinding({ formId: effectiveFormId, wordTemplateId: effectiveWtId });
-      toast.success("已保存");
-      qc.invalidateQueries({ queryKey: ["qualification-binding"] });
-    } catch (e: any) { toast.error(e?.message || "保存失败"); }
-  };
-
-  const healthTab = (
-    <AdminFormCard title="健康报告配置" fill>
-      {forms.length === 0 ? (
-        <div className="py-8 text-center text-sm text-neutral-400">
-          还没有报表。先去「填报报表管理」用「Word 创建」上传健康报告模板，再回来这里选。
-        </div>
-      ) : (
-        <div className="space-y-4 max-w-xl">
-          <div className="space-y-1.5">
-            <label className="text-xs text-[var(--app-color-text-secondary)]">表单</label>
-            <select
-              className="w-full rounded border border-[var(--app-color-border-default)] px-2 py-1.5 text-sm"
-              value={effectiveFormId ?? ""}
-              onChange={(e) => { setBindingFormId(e.target.value ? Number(e.target.value) : null); setBindingWtId(null); }}
-            >
-              <option value="">选择表单…</option>
-              {forms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs text-[var(--app-color-text-secondary)]">Word 模板（决定页眉页脚）</label>
-            <select
-              className="w-full rounded border border-[var(--app-color-border-default)] px-2 py-1.5 text-sm"
-              value={effectiveWtId ?? ""}
-              onChange={(e) => setBindingWtId(e.target.value || null)}
-              disabled={effectiveFormId == null}
-            >
-              <option value="">第一份模板</option>
-              {wordTemplates.map((t) => <option key={t.id} value={t.id}>{t.name || t.id}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <AdminButton type="button" tone="primary" size="sm" onClick={saveBinding}>保存绑定</AdminButton>
-            {effectiveFormId != null && (
-              <AdminButton type="button" tone="secondary" size="sm"
-                onClick={() => navigate(`/console/admin/report-form/${effectiveFormId}/design`)}>
-                去设计字段
-              </AdminButton>
-            )}
-            {effectiveFormId != null && effectiveWtId != null && (
-              <AdminButton type="button" tone="secondary" size="sm" onClick={() => setPreviewOpen(true)}>预览</AdminButton>
-            )}
-          </div>
-          <p className="text-xs text-[var(--app-color-text-tertiary)]">
-            预览渲染的是空白数据版式；真实数据版式在学生提交后生成。
-          </p>
-        </div>
-      )}
-      {previewOpen && effectiveFormId != null && (
-        <PdfPreviewDialog
-          title="健康报告预览"
-          fetchPdf={() => fetchQualificationPreview({ formId: effectiveFormId, wordTemplateId: effectiveWtId })}
-          onClose={() => setPreviewOpen(false)}
-        />
-      )}
-    </AdminFormCard>
-  );
-
   // ── 学习资料（PDF） ──
   const [viewingMaterialId, setViewingMaterialId] = useState<number | null>(null);
   const materialFileRef = useRef<HTMLInputElement>(null);
@@ -913,8 +818,7 @@ export default function ExamPaperAdminPage() {
               {tabBtn(tab === 0, "配置题目", () => setTab(0))}
               {tabBtn(tab === 1, "发布题目", () => setTab(1))}
               {tabBtn(tab === 2, "成绩管理", () => setTab(2))}
-              {tabBtn(tab === 3, "健康报告", () => setTab(3))}
-              {tabBtn(tab === 4, "学习资料", () => setTab(4))}
+              {tabBtn(tab === 3, "学习资料", () => setTab(3))}
             </div>
             <div className="flex items-center gap-2">
               <AdminButton type="button" tone="secondary" size="sm" onClick={handleNew}><Plus className="h-4 w-4 mr-1" />新建试卷</AdminButton>
@@ -923,7 +827,7 @@ export default function ExamPaperAdminPage() {
             </div>
           </div>
         </AdminFormCard>
-        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : tab === 3 ? healthTab : learningTab}</div>
+        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : learningTab}</div>
       </div>
 
       <Dialog open={seedOpen} onOpenChange={(v) => { if (!v) setSeedOpen(false); }}>
