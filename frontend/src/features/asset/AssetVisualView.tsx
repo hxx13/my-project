@@ -206,6 +206,12 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
   );
   const rows = useMemo(() => assetData?.rows ?? [], [assetData]);
 
+  // 抽屉持有的选中项是点击时的快照；列表刷新后按 id 取最新行，保证编辑/移动后详情即时更新
+  const selectedAssetLive = useMemo(
+    () => (selectedAsset ? rows.find((r) => r.id === selectedAsset.id) ?? selectedAsset : null),
+    [rows, selectedAsset]
+  );
+
   // 按归属节点分组
   const byNode = useMemo(() => {
     const m = new Map<number, AssetRow[]>();
@@ -566,7 +572,8 @@ export default function AssetVisualView(props: { onCreateAsset?: () => void }) {
 
       {/* ════════ 抽屉：资产详情 / 地点小结 / 转移记录 ════════ */}
       <AssetDetailDrawer
-        asset={selectedAsset}
+        asset={selectedAssetLive}
+        columns={assetData?.columns ?? []}
         nodeName={node?.name ?? null}
         nodeTotal={directCount}
         byCategory={byCategory}
