@@ -206,3 +206,59 @@ export async function fetchQualificationPreview(params: {
   });
   return r.data as Blob;
 }
+
+// ---- 学习资料（PDF）----
+
+export interface LearningMaterial {
+  id: number;
+  fileId: string;
+  title: string;
+  category?: string | null;
+  sortOrder: number;
+  active: number;
+  originalName?: string | null;
+  sizeBytes?: number | null;
+}
+
+/** 上传文件本体（复用文件模板库），返回 fileId。 */
+export async function uploadLearningFile(file: File): Promise<{ id: string; originalName: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await adminHttp.post("/file-templates", fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return r.data?.data as { id: string; originalName: string };
+}
+
+export async function fetchLearningMaterials(): Promise<LearningMaterial[]> {
+  const r = await adminHttp.get("/training/learning-materials");
+  return (r.data?.data ?? []) as LearningMaterial[];
+}
+
+export async function createLearningMaterial(body: {
+  fileId: string;
+  title: string;
+  category?: string | null;
+  sortOrder?: number;
+}): Promise<LearningMaterial> {
+  const r = await adminHttp.post("/training/learning-materials", body);
+  return r.data?.data as LearningMaterial;
+}
+
+export async function updateLearningMaterial(
+  id: number,
+  body: { title?: string; category?: string | null; sortOrder?: number; active?: number },
+): Promise<LearningMaterial> {
+  const r = await adminHttp.put(`/training/learning-materials/${id}`, body);
+  return r.data?.data as LearningMaterial;
+}
+
+export async function deleteLearningMaterial(id: number): Promise<void> {
+  await adminHttp.delete(`/training/learning-materials/${id}`);
+}
+
+/** 管理端在线查看（inline blob，不下载）。 */
+export async function fetchLearningMaterialFileAdmin(id: number): Promise<Blob> {
+  const r = await adminHttp.get(`/training/learning-materials/${id}/file`, { responseType: "blob" });
+  return r.data as Blob;
+}

@@ -874,3 +874,24 @@ export async function fetchMyQualificationReport(itemKey: string): Promise<Blob>
   return res.data as Blob;
 }
 
+
+export interface StudentLearningMaterial {
+  id: number;
+  title: string;
+  category?: string | null;
+  originalName?: string | null;
+  sizeBytes?: number | null;
+}
+
+export async function fetchLearningMaterialsForStudent(): Promise<StudentLearningMaterial[]> {
+  const res = await authHttp.get<Result<StudentLearningMaterial[]>>("/student/training/learning-materials");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取学习资料失败");
+  return res.data.data ?? [];
+}
+
+export async function fetchLearningMaterialFile(id: number): Promise<Blob> {
+  const res = await authHttp.get(`/student/training/learning-materials/${id}/file`, {
+    responseType: "blob",
+  });
+  return res.data as Blob;
+}
