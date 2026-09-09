@@ -84,11 +84,12 @@ function AssetCard({ row, onOpen, highlight }: { row: AssetRow; onOpen: (r: Asse
           : "border-[var(--twin-hairline-strong)]"
       }`}
     >
-      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
+      {/* 图区用 3:4 竖版比例：手机竖拍照片能基本填满，留白最少 */}
+      <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
           <AutoImage src={photo} alt="" className="h-full w-full object-contain p-1" />
         ) : (
-          <span className="text-[40px] leading-none">{iconOf(row)}</span>
+          <span className="text-[56px] leading-none">{iconOf(row)}</span>
         )}
       </div>
       <div className="flex min-w-0 flex-col gap-0.5 p-2.5">

@@ -410,7 +410,7 @@ export default function AssetDetailDrawer(props: {
                     <button
                       key={u}
                       type="button"
-                      className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
+                      className="aspect-[3/4] w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
                       onClick={() => setPreviewUrl(u)}
                     >
                       <AutoImage src={u} alt="" className="h-full w-full object-cover" />
