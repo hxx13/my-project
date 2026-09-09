@@ -386,3 +386,19 @@ export async function exportTransferRecords(params: { keyword?: string }) {
   return res.data;
 }
 
+export async function moveAssetLocation(assetId: string, nodeId: number) {
+  const res = await authHttp.post<Result<{ id: string; location: string; locationNodeId: number }>>(
+    `/v1/assets/${encodeURIComponent(assetId)}/location`,
+    { nodeId }
+  );
+  return res.data.data;
+}
+
+export async function batchMoveAssetLocation(payload: { ids: string[]; nodeId: number }) {
+  const res = await authHttp.post<Result<{ moved: number; failed: { id: string; reason: string }[] }>>(
+    "/v1/assets/batch-location",
+    payload
+  );
+  return res.data.data;
+}
+
