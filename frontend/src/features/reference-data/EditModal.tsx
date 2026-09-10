@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import type { RefDataItem, RefSpecTemplate } from "@/api/domains/referenceData.api";
 import type { ReferenceTypeConfig, ReferenceFieldDef } from "./typeRegistry";
-import { isTemplateAvailableForCard } from "./typeRegistry";
+import { isTemplateAvailableForCard, extractSpecOptions, specPriceKey } from "./typeRegistry";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { webImageSrc } from "@/utils/mediaUrl";
 
@@ -39,6 +39,9 @@ export default function EditModal({
   );
   const [purchasable, setPurchasable] = useState(false);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
+  const [priceEnabled, setPriceEnabled] = useState(false);
+  const [price, setPrice] = useState("");
+  const [specPrices, setSpecPrices] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
 
@@ -65,6 +68,18 @@ export default function EditModal({
           /* ignore */
         }
       }
+
+      // 价格配置
+      setPriceEnabled(item.fieldData?.priceEnabled === true);
+      setPrice(item.fieldData?.price != null ? String(item.fieldData.price) : "");
+      const rawSpecPrices = item.fieldData?.specPrices;
+      const priceMap: Record<string, string> = {};
+      if (rawSpecPrices && typeof rawSpecPrices === "object") {
+        for (const [k, v] of Object.entries(rawSpecPrices as Record<string, unknown>)) {
+          priceMap[k] = v == null ? "" : String(v);
+        }
+      }
+      setSpecPrices(priceMap);
     } else {
       const values: Record<string, string> = {};
       for (const field of typeConfig.fields) {
@@ -74,8 +89,23 @@ export default function EditModal({
       setParentId(undefined);
       setPurchasable(false);
       setSelectedTemplateIds([]);
+      setPriceEnabled(false);
+      setPrice("");
+      setSpecPrices({});
     }
   }, [modalMode, item, typeConfig]);
+
+  /** 已选规格模板展开出的全部规格选项（用于逐项配价） */
+  const specOptionRows = useMemo(() => {
+    const rows: Array<{ key: string; templateName: string; label: string }> = [];
+    for (const tpl of templates ?? []) {
+      if (!selectedTemplateIds.includes(tpl.id)) continue;
+      for (const opt of extractSpecOptions(tpl.options)) {
+        rows.push({ key: specPriceKey(tpl.name, opt), templateName: tpl.name, label: opt });
+      }
+    }
+    return rows;
+  }, [templates, selectedTemplateIds]);
 
   const handleFieldChange = (key: string, value: string) => {
     setFieldValues((prev) => ({ ...prev, [key]: value }));
@@ -128,6 +158,26 @@ export default function EditModal({
     // Only store template IDs — specs come from templates
     if (selectedTemplateIds.length > 0) {
       fieldData.specTemplateIds = selectedTemplateIds;
+    }
+
+    // 价格：每个物品单独开关。有规格时逐规格定价，无规格时一个单价。
+    if (typeConfig.hasPurchasable) {
+      fieldData.priceEnabled = priceEnabled;
+      if (priceEnabled) {
+        if (specOptionRows.length > 0) {
+          const cleaned: Record<string, number> = {};
+          for (const row of specOptionRows) {
+            const raw = specPrices[row.key];
+            if (raw === undefined || raw === "") continue;
+            const n = Number(raw);
+            if (Number.isFinite(n) && n >= 0) cleaned[row.key] = n;
+          }
+          fieldData.specPrices = cleaned;
+        } else if (price.trim() !== "") {
+          const n = Number(price);
+          if (Number.isFinite(n) && n >= 0) fieldData.price = n;
+        }
+      }
     }
 
     body.status = 1; // default to active
@@ -365,6 +415,73 @@ export default function EditModal({
               })()}
 
               {/* Specs come from selected templates — no custom dimensions needed */}
+            </div>
+          )}
+
+          {/* 价格配置：每个物品单独开关；有规格逐规格定价，无规格一个单价 */}
+          {(purchasable || (typeConfig.hasPurchasable && modalMode === "edit" && item?.fieldData?.purchasable)) && (
+            <div className="rounded-lg p-3 space-y-3" style={{ backgroundColor: "#f0f9ff", border: "1px solid #bae6fd" }}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[13px] font-bold text-[var(--twin-ink)]">价格配置</span>
+                  <span className="text-[10px] text-[var(--twin-mute)] font-normal truncate">（关闭后购物车与订单不显示金额）</span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="text-[11px] font-semibold" style={{ color: priceEnabled ? "#0284c7" : "#9ca3af" }}>
+                    {priceEnabled ? "已开启" : "已关闭"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={priceEnabled}
+                    onClick={() => setPriceEnabled(!priceEnabled)}
+                    className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors"
+                    style={{ backgroundColor: priceEnabled ? "#0284c7" : "#d1d5db" }}
+                  >
+                    <span
+                      className="pointer-events-none inline-block h-4 w-4 translate-y-0.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      style={{ marginLeft: "2px", transform: priceEnabled ? "translateX(16px)" : "translateX(0)" }}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {priceEnabled && (specOptionRows.length > 0 ? (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[var(--twin-mute)]">该物品有规格，请为每个规格配置单价（元）</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {specOptionRows.map((row) => (
+                      <label key={row.key} className="flex items-center gap-1.5 rounded border border-[var(--twin-hairline)] bg-white px-2 py-1">
+                        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--twin-body)]" title={row.key}>
+                          {row.templateName} · {row.label}
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          placeholder="未定价"
+                          value={specPrices[row.key] ?? ""}
+                          onChange={(e) => setSpecPrices((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                          className="w-20 shrink-0 rounded border border-[var(--twin-hairline)] px-1 py-0.5 text-right text-[11px] outline-none focus:ring-2 focus:ring-sky-500"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-[var(--twin-mute)]">该物品无规格，单价（元）</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="如 85"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="w-32 rounded border border-[var(--twin-hairline)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </label>
+              ))}
             </div>
           )}
         </div>

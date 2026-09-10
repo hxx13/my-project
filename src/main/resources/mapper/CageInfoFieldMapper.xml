@@ -93,6 +93,7 @@
             editable = #{editable},
             required = #{required},
             show_when = #{showWhen},
+            config = #{config},
             sort = #{sort},
             updated_at = NOW()
         WHERE id = #{id}

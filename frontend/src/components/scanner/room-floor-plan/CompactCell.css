@@ -1,0 +1,26 @@
+/* 平面图：笼位表单「实验员」= 被扫人本人的呼吸环。
+   加在 button 自身（不是内部 span）——格子是 overflow-hidden，子元素的投影会被裁掉。 */
+@keyframes scan-plan-self-breath {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1.5px var(--app-color-accent),
+      0 0 6px 1px color-mix(in srgb, var(--app-color-accent) 45%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2.5px var(--app-color-accent),
+      0 0 12px 4px color-mix(in srgb, var(--app-color-accent) 75%, transparent);
+  }
+}
+
+.scan-plan-self-breath {
+  animation: scan-plan-self-breath 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-plan-self-breath {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--app-color-accent);
+  }
+}

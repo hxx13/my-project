@@ -92,9 +92,26 @@ function fetchMyRoles() {
   });
 }
 
+/** 领用房间树（校区 → 区域/楼 → 楼层 → 房间），只到房间级 */
+function fetchRoomTree() {
+  return springAuth.springRequest({ url: '/api/v1/cage-shelves/room-tree', method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data || [];
+  });
+}
+
+/** 领用人候选：仅本人课题组（服务端不接受课题组参数） */
+function fetchGroupMembers() {
+  return springAuth.springRequest({ url: '/api/reference-data/group-members', method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data || [];
+  });
+}
+
 // ── 购物车（服务端共享，非本地 storage）──
-function fetchCart(groupId) {
-  const url = withQuery('/api/reference-data/cart', { groupId: groupId });
+function fetchCart(groupId) {  const url = withQuery('/api/reference-data/cart', { groupId: groupId });
   return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
     const p = parseResponse(res);
     if (!p.ok) throw new Error(p.message);
@@ -172,6 +189,59 @@ function fetchOrders(groupId) {
   });
 }
 
+/** 学生端订单记录：本课题组（同组互见）。支持 page/pageSize + 全字段筛选（status/statusNot/from/to/…） */
+function fetchMyGroupOrders(params) {
+  const url = withQuery('/api/reference-data/orders/my-group', params || {});
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    const d = p.body.data || {};
+    return { list: Array.isArray(d.list) ? d.list : [], total: Number(d.total || 0) };
+  });
+}
+
+/** 学生端筛选下拉候选（范围由服务端限定在本课题组） */
+function fetchMyGroupOrderFilterOptions(column) {
+  const url = withQuery('/api/reference-data/orders/my-group/filter-options', { column: column });
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data || [];
+  });
+}
+
+// ── 待处理订单编辑：回填购物车 → 改 → 保存回原单 ──
+
+/** 把待处理订单回填到购物车（幂等，重入先清旧回填行） */
+function loadOrderToCart(orderId) {
+  return springAuth.springRequest({ url: '/api/reference-data/orders/' + orderId + '/edit/load', method: 'POST', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || [];
+    });
+}
+
+/** 放弃编辑：只清回填行，原单不受影响 */
+function discardOrderEdit(orderId) {
+  return springAuth.springRequest({ url: '/api/reference-data/orders/' + orderId + '/edit', method: 'DELETE', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return true;
+    });
+}
+
+/** 保存编辑：用回填内容整体替换原单明细，单号与状态不变 */
+function applyOrderEdit(orderId) {
+  return springAuth.springRequest({ url: '/api/reference-data/orders/' + orderId + '/edit', method: 'PUT', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data;
+    });
+}
+
 // ── 时间窗口 ──
 function fetchTimePolicy(categoryKey, campus) {
   const url = withQuery('/api/animal-order/time-policy', { categoryKey: categoryKey, campus: campus });
@@ -201,6 +271,8 @@ module.exports = {
   listSpecTemplates,
   fetchApprovedAups,
   fetchMyRoles,
+  fetchRoomTree,
+  fetchGroupMembers,
   fetchCart,
   addToCart,
   updateCartItem,
@@ -210,6 +282,11 @@ module.exports = {
   withdrawPackage,
   submitOrder,
   fetchOrders,
+  fetchMyGroupOrders,
+  fetchMyGroupOrderFilterOptions,
+  loadOrderToCart,
+  discardOrderEdit,
+  applyOrderEdit,
   fetchTimePolicy,
   resolveGroupId,
 };

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { authHttp } from "@/api/core/authHttp";
+import type { SubtotalSummary } from "@/features/export-config/subtotalConfig";
 
 interface Result<T> {
   code: number;
@@ -409,27 +410,53 @@ export async function fetchMaterialAuditTrail(params: {
   return res.data.data;
 }
 
-export async function exportMaterialAuditTrail(params: {
-  from?: string; to?: string; categoryId?: number; groupId?: string;
-  applicantUserId?: string; applicantGroup?: string; exportLabel?: string;
-}): Promise<Blob> {
+export async function exportMaterialAuditTrail(
+  params: {
+    from?: string; to?: string; categoryId?: number; groupId?: string;
+    applicantUserId?: string; applicantGroup?: string; exportLabel?: string;
+  },
+  config?: { levels?: string; excludeBlocks?: string },
+): Promise<Blob> {
   const res = await authHttp.get("/material/admin/stats/export", {
-    params,
+    params: { ...params, ...config },
     responseType: "blob",
   });
   return res.data as Blob;
 }
 
-export async function exportMaterialItemFlow(params: {
-  itemId?: number | null; from?: string; to?: string; applicantGroup?: string; exportLabel?: string;
-}): Promise<Blob> {
+/** 申领审计导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）。 */
+export async function exportMaterialAuditSummary(params: {
+  from?: string; to?: string; applicantUserId?: string; applicantGroup?: string;
+}): Promise<SubtotalSummary> {
+  const res = await authHttp.get<Result<SubtotalSummary>>("/material/admin/stats/export/summary", { params });
+  return res.data.data;
+}
+
+export async function exportMaterialItemFlow(
+  params: {
+    itemId?: number | null; from?: string; to?: string; applicantGroup?: string; exportLabel?: string;
+  },
+  config?: { levels?: string; excludeBlocks?: string },
+): Promise<Blob> {
   const id = params.itemId && params.itemId > 0 ? params.itemId : 0;
   const { itemId: _omit, ...rest } = params;
   const res = await authHttp.get(`/material/admin/audit/item/${id}/export`, {
-    params: rest,
+    params: { ...rest, ...config },
     responseType: "blob",
   });
   return res.data as Blob;
+}
+
+/** 物品来去流水导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）。 */
+export async function exportMaterialItemFlowSummary(params: {
+  itemId?: number | null; from?: string; to?: string; applicantGroup?: string;
+}): Promise<SubtotalSummary> {
+  const id = params.itemId && params.itemId > 0 ? params.itemId : 0;
+  const { from, to, applicantGroup } = params;
+  const res = await authHttp.get<Result<SubtotalSummary>>(`/material/admin/audit/item/${id}/export/summary`, {
+    params: { from, to, applicantGroup },
+  });
+  return res.data.data;
 }
 
 // ---- demand API ----

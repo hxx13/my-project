@@ -46,7 +46,8 @@ import { RoomFloorPlan } from "./room-floor-plan/RoomFloorPlan";
 import { CellDetailPanel } from "./room-floor-plan/CellDetailPanel";
 import { useRoomFloorPlan } from "./room-floor-plan/useRoomFloorPlan";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
-import type { CageShelfCell } from "@/api/domains/cageShelf.api";
+import { fetchGroupRooms, type CageShelfCell } from "@/api/domains/cageShelf.api";
+import { useQuery } from "@tanstack/react-query";
 
 export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified, pinAlternativeEnabled, onFaceVerifyRequest, onFaceVerifyCancel, personalCenterFace, onBindStudentCenterSuccess } = props;
@@ -103,16 +104,31 @@ export function UiverseProfilePopup(props: PopupProps) {
         setDetailCell(null);
     }, [result?.userInfo?.userId]);
 
-    const planRoom = state.targetRooms[planRoomIdx] ?? state.targetRooms[0];
+    const planRoomUser = String(state.user?.userId || result?.userInfo?.userId || "");
+    // 中栏平面图按【被扫人的课题组】选房间：门禁授权房间（targetRooms）与笼架房间不是同一套口径，
+    // 按权限房间取会渲染成空房间。
+    const groupRoomsQuery = useQuery({
+        queryKey: ["scan-popup-group-rooms", planRoomUser],
+        queryFn: () => fetchGroupRooms(planRoomUser),
+        enabled: Boolean(planRoomUser),
+        staleTime: 5 * 60 * 1000,
+    });
+    const groupRooms = groupRoomsQuery.data ?? [];
+    const planRoom = groupRooms[planRoomIdx] ?? groupRooms[0];
     const floorPlan = useRoomFloorPlan(
-      planRoom?.officialRoomId || planRoom?.id,
-      planRoom?.displayName || planRoom?.name,
+      planRoom?.roomId,
+      planRoom?.roomName,
       state.user?.project_group_name,
+    );
+    /** 本课题组笼架：<3 架时改单列纵向排布，格子有地方放大 */
+    const mineRacks = useMemo(
+        () => floorPlan.data.racks.filter((r) => r.isMine),
+        [floorPlan.data.racks],
     );
     const { colors: cageColors } = useCageColors();
     const [keypadUserId, setKeypadUserId] = useState("");
     const pendingPersonalFaceVerifyRef = useRef(false);
-    const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
+    const studentUserId = planRoomUser;
 
     // ──── 禁入帮助提示文案（从公开运行时配置读取） ────
     const [enterDisabledHintText, setEnterDisabledHintText] = useState("");
@@ -323,11 +339,11 @@ export function UiverseProfilePopup(props: PopupProps) {
                         </div>
                     </div>
                     <div className="flex h-full min-h-0 flex-col gap-2">
-                        {state.targetRooms.length > 1 && (
+                        {groupRooms.length > 0 && (
                             <div className="flex shrink-0 flex-wrap gap-1.5">
-                                {state.targetRooms.map((r, i) => (
+                                {groupRooms.map((r, i) => (
                                     <button
-                                        key={r.officialRoomId || r.id || i}
+                                        key={r.roomId || i}
                                         type="button"
                                         onClick={() => { setPlanRoomIdx(i); setDetailCell(null); }}
                                         className={
@@ -336,21 +352,24 @@ export function UiverseProfilePopup(props: PopupProps) {
                                                 : "rounded-md border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_65%,transparent)] px-2.5 py-1 text-[11px] text-[var(--app-color-text-secondary)]"
                                         }
                                     >
-                                        {r.displayName || r.name}
+                                        {r.roomName}
                                     </button>
                                 ))}
                             </div>
                         )}
                         <div className="min-h-0 flex-1">
                             <RoomFloorPlan
-                                racks={floorPlan.data.racks.filter((r) => r.isMine)}
-                                mineCount={floorPlan.data.mineCount}
-                                columns={2}
-                                loading={floorPlan.isLoading}
+                                racks={mineRacks}
+                                mineCount={mineRacks.length}
+                                columns={mineRacks.length < 3 ? 1 : 2}
+                                loading={floorPlan.isLoading || groupRoomsQuery.isLoading}
                                 error={floorPlan.isError}
-                                empty={floorPlan.data.racks.filter((r) => r.isMine).length === 0}
+                                empty={mineRacks.length === 0}
                                 onCellClick={(c, r) => setDetailCell({ cell: c, masked: !r.isMine })}
                                 legendColors={cageColors}
+                                selfName={String(state.user?.name ?? "")}
+                                selfUserId={planRoomUser}
+                                opMarkByCageId={floorPlan.opMarkByCageId}
                             />
                         </div>
                     </div>

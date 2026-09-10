@@ -55,8 +55,8 @@ public interface AupRecordMapper {
     /** 解锁返修时清空动物白名单与 registry status */
     int clearRegistryMeta(@Param("id") Long id);
 
-    /** 订购侧：按课题组名查已批准 AUP 下拉（id/registerNo/projectGroupName/projectGroupId） */
-    List<Map<String, Object>> selectApprovedForOrder(@Param("projectGroupName") String projectGroupName);
+    /** 订购侧：按课题组名（可多个，任一命中）查已批准 AUP 下拉（id/registerNo/projectGroupName/projectGroupId） */
+    List<Map<String, Object>> selectApprovedForOrder(@Param("projectGroupNames") List<String> projectGroupNames);
 
     /** 注册号取号：按年取最大序号（每年从 1 递增，uk_register_year_seq 兜底唯一） */
     Integer selectMaxSeqByYear(@Param("year") int year);
@@ -66,7 +66,7 @@ public interface AupRecordMapper {
 
     List<AupListItem> selectPage(@Param("scopeRole") String scopeRole,
                                  @Param("scopeUserId") String scopeUserId,
-                                 @Param("scopeProjectGroup") String scopeProjectGroup,
+                                 @Param("scopeProjectGroups") List<String> scopeProjectGroups,
                                  @Param("keyword") String keyword,
                                  @Param("registerNo") String registerNo,
                                  @Param("stage") String stage,
@@ -102,7 +102,7 @@ public interface AupRecordMapper {
 
     int countPage(@Param("scopeRole") String scopeRole,
                   @Param("scopeUserId") String scopeUserId,
-                  @Param("scopeProjectGroup") String scopeProjectGroup,
+                  @Param("scopeProjectGroups") List<String> scopeProjectGroups,
                   @Param("keyword") String keyword,
                   @Param("registerNo") String registerNo,
                   @Param("stage") String stage,

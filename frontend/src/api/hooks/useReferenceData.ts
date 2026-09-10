@@ -23,8 +23,13 @@ import {
   fetchOrderDetail,
   fetchOrderLogs,
   fetchAllOrders,
+  fetchMyGroupOrders,
+  fetchOrderFilterOptions,
+  importAroOrders,
   updateOrderStatus,
   fetchApprovedAups,
+  type OrderReviewFilter,
+  type OrderFilterColumn,
 } from "@/api/domains/referenceData.api";
 import { toast } from "react-hot-toast";
 
@@ -98,11 +103,43 @@ export function useOrderLogs(id: number) {
   });
 }
 
-export function useAllOrders(page = 1, pageSize = 50, campus?: string, from?: string, to?: string) {
+export function useAllOrders(page = 1, pageSize = 50, filter?: OrderReviewFilter, enabled = true) {
   return useQuery({
-    queryKey: [...queryKeys.referenceData.allOrders(page, pageSize, campus), from ?? "", to ?? ""],
-    queryFn: () => fetchAllOrders(page, pageSize, campus, from, to),
-    enabled: !!campus,
+    queryKey: [
+      ...queryKeys.referenceData.allOrders(page, pageSize, filter?.campus),
+      JSON.stringify(filter ?? {}),
+    ],
+    queryFn: () => fetchAllOrders(page, pageSize, filter),
+    enabled,
+  });
+}
+
+/** 学生端：本课题组订单（同组互见） */
+export function useMyGroupOrders(page = 1, pageSize = 50, filter?: OrderReviewFilter, enabled = true) {
+  return useQuery({
+    queryKey: ["referenceData", "myGroupOrders", page, pageSize, JSON.stringify(filter ?? {})],
+    queryFn: () => fetchMyGroupOrders(page, pageSize, filter),
+    enabled,
+  });
+}
+
+/** 审核页筛选下拉候选（供应商/品系/领用人/房间/课题组/AUP） */
+export function useOrderFilterOptions(column: OrderFilterColumn, scope: "admin" | "student" = "admin") {
+  return useQuery({
+    queryKey: ["referenceData", "orderFilterOptions", column, scope],
+    queryFn: () => fetchOrderFilterOptions(column, scope),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** ARO 历史订单导入本地库（仅超管；手动触发，幂等） */
+export function useImportAroOrders() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => importAroOrders(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
+    },
   });
 }
 

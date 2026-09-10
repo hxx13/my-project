@@ -37,6 +37,9 @@ public interface CageShelfMapper {
                                           @Param("roomId") String roomId,
                                           @Param("roomName") String roomName);
 
+    /** 房间树原始行：一行含 校区/区域/楼层/房间 四级，供 Java 组装成树（只到房间级，不含笼架）。 */
+    List<Map<String, Object>> listRoomTreeRows();
+
     CageShelfIndex findByShelveId(@Param("shelveId") String shelveId);
 
     CageShelfIndex findById(@Param("id") Long id);

@@ -52,13 +52,14 @@ public class CageFormAuditController {
     }
 
     @GetMapping("/audit")
-    @Operation(summary = "笼位表单审计分页（data / dict）")
+    @Operation(summary = "笼位表单审计分页（data / dict；operatorId=按操作人，personId=按占用者）")
     public Result<Map<String, Object>> audit(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String changeType,
             @RequestParam(required = false) String entity,
             @RequestParam(required = false) String operatorId,
+            @RequestParam(required = false) Long personId,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo,
             @RequestParam(defaultValue = "1") int page,
@@ -68,7 +69,27 @@ public class CageFormAuditController {
         Result<?> denied = requireMinRole(u, RoleEnum.STAFF);
         if (denied != null) return Result.fail(403, denied.getMessage());
         return Result.success(auditService.pageAudit(category, keyword, changeType, entity,
-                operatorId, dateFrom, dateTo, page, pageSize));
+                operatorId, personId, dateFrom, dateTo, page, pageSize));
+    }
+
+    @GetMapping("/audit/operations")
+    @Operation(summary = "笼位留痕按「操作」聚合分页（同笼位+同类型+同秒 = 一次操作；operatorKind=manual/system 分层）")
+    public Result<Map<String, Object>> auditOperations(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String changeType,
+            @RequestParam(required = false) String operatorId,
+            @RequestParam(required = false) Long personId,
+            @RequestParam(required = false) String operatorKind,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize,
+            HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMinRole(u, RoleEnum.STAFF);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        return Result.success(auditService.pageOperations(category, changeType, operatorId, personId,
+                operatorKind, dateFrom, dateTo, page, pageSize));
     }
 
     @GetMapping("/versions")

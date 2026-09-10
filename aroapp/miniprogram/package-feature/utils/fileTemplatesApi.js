@@ -35,38 +35,20 @@ async function fetchFileTemplates() {
 /** 下载到本地临时路径，供 wx.openDocument */
 async function downloadTemplateToTempFile(id, fallbackName) {
   const enc = encodeURIComponent(String(id || '').trim());
-  const res = await springAuth.springRequest({
-    url: `/api/admin/file-templates/${enc}/download`,
-    method: 'GET',
-    data: {},
-    responseType: 'arraybuffer',
-  });
-  if (res.statusCode !== 200 || !res.data || !res.data.isBase64) {
-    throw new Error('下载失败');
-  }
-  const b64 = res.data.bodyBase64 || '';
-  const cd = String(res.data.contentDisposition || '');
+  // 直连模式：直接拿 ArrayBuffer + 从响应头取文件名，不再有 isBase64/bodyBase64 那层
+  const { data, contentDisposition } = await springAuth.springRequestBinary(
+    `/api/admin/file-templates/${enc}/download`,
+    { errorMessage: '下载失败', forbiddenMessage: '无权限下载' },
+  );
   let ext = 'bin';
-  const m = cd.match(/filename\*=UTF-8''([^;]+)/i);
-  if (m && m[1]) {
-    try {
-      const name = decodeURIComponent(m[1].replace(/"/g, '').trim());
-      const dot = name.lastIndexOf('.');
-      if (dot > 0) ext = name.slice(dot + 1).slice(0, 12) || 'bin';
-    } catch (e) {
-      /* ignore */
-    }
-  } else {
-    const m2 = cd.match(/filename="([^"]+)"/i);
-    if (m2 && m2[1]) {
-      const name = m2[1];
-      const dot = name.lastIndexOf('.');
-      if (dot > 0) ext = name.slice(dot + 1).slice(0, 12) || 'bin';
-    }
+  const remoteName = springAuth.parseContentDispositionFilename(contentDisposition);
+  const dot = remoteName.lastIndexOf('.');
+  if (dot > 0) {
+    ext = remoteName.slice(dot + 1).replace(/[^A-Za-z0-9]/g, '').slice(0, 12) || 'bin';
   }
   const base = String(fallbackName || 'template').replace(/[\\/]/g, '_');
   const path = `${wx.env.USER_DATA_PATH}/tpl_${Date.now()}_${base.slice(0, 40)}.${ext}`;
-  wx.getFileSystemManager().writeFileSync(path, b64, 'base64');
+  wx.getFileSystemManager().writeFileSync(path, data);
   return path;
 }
 

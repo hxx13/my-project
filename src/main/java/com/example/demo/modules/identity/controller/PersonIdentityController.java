@@ -10,6 +10,7 @@ import com.example.demo.modules.identity.dto.IdentityTagVO;
 import com.example.demo.modules.identity.dto.PersonIdentityVO;
 import com.example.demo.modules.identity.dto.SetIdentityRequest;
 import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.cageshelf.service.GroupStewardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,13 +25,18 @@ import java.util.Map;
 @Tag(name = "人员身份标识", description = "人员身份标签字典与身份映射管理（学生/员工双视角独立）")
 public class PersonIdentityController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PersonIdentityController.class);
+
     private final PersonIdentityService personIdentityService;
     private final AuthContextService authContextService;
+    private final GroupStewardService groupStewardService;
 
     public PersonIdentityController(PersonIdentityService personIdentityService,
-                                    AuthContextService authContextService) {
+                                    AuthContextService authContextService,
+                                    GroupStewardService groupStewardService) {
         this.personIdentityService = personIdentityService;
         this.authContextService = authContextService;
+        this.groupStewardService = groupStewardService;
     }
 
     @GetMapping("/tags")
@@ -126,10 +132,19 @@ public class PersonIdentityController {
         if (denied != null) return denied;
         try {
             personIdentityService.setByUser(userId, body != null ? body.getTagIds() : null);
-            return Result.success();
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
+        // 身份变更后联动「管家」字段：该人员所属课题组的笼位重算 lab_assistant_name
+        // （打上 GROUP_STEWARD 写入，撤掉则从字段里删除）。失败不阻断标签写入本身。
+        // 注意这里的 userId 就是 personnel.id（person_identity.user_id 的口径），直接透传。
+        try {
+            int touched = groupStewardService.refreshCagesForUser(userId);
+            if (touched > 0) log.info("[cage-steward] 身份变更联动管家字段: user={} 更新 {} 个笼位", userId, touched);
+        } catch (Exception e) {
+            log.warn("[cage-steward] 身份变更联动管家字段失败: user={} err={}", userId, e.getMessage());
+        }
+        return Result.success();
     }
 
     @GetMapping("/me")

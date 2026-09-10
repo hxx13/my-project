@@ -40,6 +40,8 @@ export interface CageInfoField {
   status?: string | null;
   /** ARO 同步来源路径（非空 = 系统同步字段，不可删除） */
   syncSource?: string | null;
+  /** 字段配置 JSON（候选能力开关：optionsSource/restrictToAup/allowManualInput/allowAddOption 等） */
+  config?: string | null;
 }
 
 /** 笼位域码表摘要（cage_info_codelist，与 NHP 隔离） */
@@ -91,6 +93,8 @@ export interface CageInfoFieldPayload {
   editable?: boolean | null;
   required?: string;
   sort?: number | null;
+  /** 字段配置 JSON 字符串，null = 清空。整串覆盖，调用方负责保留其它键 */
+  config?: string | null;
 }
 
 export async function fetchCageInfoFields(): Promise<CageInfoField[]> {
@@ -210,10 +214,10 @@ export interface CageClaimInfoRow {
   fillSource?: string | null;
 }
 
-/** 认领信息保存项 */
+/** 认领信息保存项。value 为数组时对应 ENUM_MULTI 多值字段（存 value_json）。 */
 export interface CageClaimInfoValue {
   fieldId: number;
-  value: string | number | boolean | null;
+  value: string | number | boolean | string[] | null;
 }
 
 /** 查看认领信息（管理端） */

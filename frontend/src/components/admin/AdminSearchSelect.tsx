@@ -14,6 +14,17 @@ type AdminSearchSelectProps = {
   placeholder?: string;
   className?: string;
   id?: string;
+  /**
+   * 提供后，候选浮层底部多一行「新增」动作 —— 用于「输入框 + 候选 + 可增补候选」的场景。
+   * 入参是当前输入框里的文本（可能为空，由调用方决定是弹窗问名称还是直接用）。
+   *
+   * 为什么把新增放进浮层而不是外挂一个按钮：外挂按钮分不清「用户是自己敲的字」还是
+   * 「刚从候选里选的」，会引导用户把一个已经存在的候选再加一遍。放在候选列表里，
+   * 并且**输入值已经在候选中时不出这一行**，才不会误导。
+   */
+  onAddOption?: (name: string) => void | Promise<void>;
+  /** 新增行的前缀文案，默认「新增」 */
+  addOptionLabel?: string;
 };
 
 /**
@@ -30,6 +41,8 @@ export function AdminSearchSelect({
   placeholder = "全部",
   className,
   id,
+  onAddOption,
+  addOptionLabel = "新增",
 }: AdminSearchSelectProps) {
   const [open, setOpen] = useState(false);
   /** 本次打开后是否手输过：未输入时展示全部候选，避免「已填值把候选滤成一条」 */
@@ -47,6 +60,14 @@ export function AdminSearchSelect({
 
   const rowCls =
     "block w-full truncate rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]";
+
+  const typedText = value.trim();
+  /**
+   * 输入的值已经在候选里时不出「新增」那一行 —— 否则用户刚从候选里挑了一个，
+   * 浮层里还摆着「新增「同一个值」」，等于引导他把同一个候选再加一遍。
+   */
+  const showAdd =
+    !!onAddOption && (!typedText || !options.some((o) => o.toLowerCase() === typedText.toLowerCase()));
 
   return (
     <div className="relative">
@@ -88,7 +109,7 @@ export function AdminSearchSelect({
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-color-text-tertiary)]" />
       )}
 
-      {open && filtered.length > 0 && (
+      {open && (filtered.length > 0 || showAdd) && (
         <Portal>
           <div
             ref={panelRef}
@@ -112,6 +133,21 @@ export function AdminSearchSelect({
                 {o}
               </button>
             ))}
+            {showAdd && (
+              <button
+                type="button"
+                className={cn(
+                  rowCls,
+                  "mt-1 border-t border-[var(--app-color-border-default)] pt-1.5 font-medium text-[var(--app-color-accent-hover)]",
+                )}
+                onClick={() => {
+                  setOpen(false);
+                  void onAddOption?.(value.trim());
+                }}
+              >
+                ＋ {typedText ? `${addOptionLabel}「${typedText}」` : `${addOptionLabel}…`}
+              </button>
+            )}
           </div>
         </Portal>
       )}

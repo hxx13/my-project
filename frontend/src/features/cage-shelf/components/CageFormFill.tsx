@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { appPrompt } from "@/lib/appDialog";
 import {
   fetchCageTemplate,
   fetchCageInfoValues,
@@ -7,8 +8,10 @@ import {
   fetchCageInfoCodelist,
   type CageTemplateDetail,
   type CageTemplateField,
+  type CageClaimInfoValue,
 } from "../api/cageForm.api";
-import { fetchCageOpEditable, fetchCageOpFieldOptions } from "@/api/domains/cageShelf.api";
+import { fetchCageOpEditable, fetchCageOpFieldOptions, addCageOpFieldOption } from "@/api/domains/cageShelf.api";
+import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { CAGE_FORM_KEY } from "../cageFormConstants";
 
 type CodelistOptions = Record<string, { value: string; label: string }[]>;
@@ -24,8 +27,21 @@ function optionsSourceOf(field: CageTemplateField): string | null {
   }
 }
 
+/** 选择题模式（config.choiceType）：multiple = 多值，存 value_json 数组 */
+function choiceTypeOf(field: CageTemplateField): string | null {
+  if (!field.config) return null;
+  try {
+    const c = JSON.parse(field.config) as { choiceType?: unknown };
+    return typeof c?.choiceType === "string" ? c.choiceType : null;
+  } catch {
+    return null;
+  }
+}
+
+const isMultiChoiceField = (field: CageTemplateField) => choiceTypeOf(field) === "multiple";
+
 /** 从模板结构平铺出所有字段（去重，保留 section/subsection 归属） */
-function flattenFields(template: CageTemplateDetail): Array<{ section: string; subsection?: string; field: CageTemplateField }> {
+export function flattenFields(template: CageTemplateDetail): Array<{ section: string; subsection?: string; field: CageTemplateField }> {
   const out: Array<{ section: string; subsection?: string; field: CageTemplateField }> = [];
   for (const s of template.sections ?? []) {
     for (const sub of s.subsections ?? []) {
@@ -62,6 +78,10 @@ export default function CageFormFill({
   const [codelists, setCodelists] = useState<CodelistOptions>({});
   /** 动态选项（canonical → 选项），按笼位现算，如动物品系 */
   const [dynOptions, setDynOptions] = useState<CodelistOptions>({});
+  /** 字段配置开关（canonical → 能否手输 / 能否新增预设），随选项一起从后端下发 */
+  const [dynFlags, setDynFlags] = useState<Record<string, { allowAddOption?: boolean; allowManualInput?: boolean }>>({});
+  /** 正在新增预设的字段（防重复点击） */
+  const [addingOption, setAddingOption] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -153,31 +173,40 @@ export default function CageFormFill({
     };
   }, [template]);
 
-  // 载入动态选项源字段的选项（按笼位现算）
+  // 载入字段候选（按笼位现算）+ 配置开关。
+  // combo 题型即使没有 optionsSource 也要拉 —— 它的候选可能来自字段自己的码表，
+  // 而且「能否新增预设」这个开关只有后端知道。
   useEffect(() => {
     if (!template || animalCageId == null) {
       setDynOptions({});
+      setDynFlags({});
       return;
     }
     const targets = flattenFields(template)
       .map(({ field }) => field)
-      .filter((f) => optionsSourceOf(f) != null);
+      .filter((f) => optionsSourceOf(f) != null || f.fieldType === "combo");
     if (targets.length === 0) {
       setDynOptions({});
+      setDynFlags({});
       return;
     }
     let cancelled = false;
     (async () => {
       const m: CodelistOptions = {};
+      const fl: Record<string, { allowAddOption?: boolean; allowManualInput?: boolean }> = {};
       for (const f of targets) {
         try {
           const r = await fetchCageOpFieldOptions(animalCageId, f.canonical);
           m[f.canonical] = r.options ?? [];
+          fl[f.canonical] = { allowAddOption: r.allowAddOption, allowManualInput: r.allowManualInput };
         } catch {
           m[f.canonical] = [];
         }
       }
-      if (!cancelled) setDynOptions(m);
+      if (!cancelled) {
+        setDynOptions(m);
+        setDynFlags(fl);
+      }
     })();
     return () => {
       cancelled = true;
@@ -186,20 +215,57 @@ export default function CageFormFill({
 
   const setValue = (canonical: string, value: unknown) => setValues((v) => ({ ...v, [canonical]: value }));
 
+  /**
+   * 新增候选（浮层底部那一行触发的）。
+   * 写进字段码表还是该笼位所属 AUP 的白名单，由后端按字段配置决定；
+   * 后端返回刷新后的选项，直接替换本地那份，不额外再拉一次。
+   * 浮层里没字时会先弹窗问名称 —— 新增候选 ≠ 给这个字段赋值，两者是分开的。
+   */
+  const handleAddOption = async (field: CageTemplateField, typed: string) => {
+    if (animalCageId == null) return;
+    const input = typed || (await appPrompt("新增候选名称", "", {
+      title: "新增候选",
+      placeholder: "要加进候选的名称",
+      confirmText: "新增",
+    }));
+    const label = (input ?? "").trim();
+    if (!label) return;
+    setAddingOption(field.canonical);
+    try {
+      const r = await addCageOpFieldOption(animalCageId, field.canonical, label);
+      setDynOptions((p) => ({ ...p, [field.canonical]: r.options ?? [] }));
+      setDynFlags((p) => ({
+        ...p,
+        [field.canonical]: { allowAddOption: r.allowAddOption, allowManualInput: r.allowManualInput },
+      }));
+      toast.success(`已加入候选：${label}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "新增预设失败");
+    } finally {
+      setAddingOption(null);
+    }
+  };
+
   const handleSave = async () => {
     if (animalCageId == null || fields.length === 0) return;
     setSaving(true);
     try {
-      const payload = fields
-        .map(({ field }) => {
-          const raw = values[field.canonical];
-          const init = initialValues.current[field.canonical];
-          if (raw === init) return null;
-          const value: string | number | boolean | null =
-            typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" ? raw : null;
-          return { fieldId: field.fieldId, value };
-        })
-        .filter((x): x is { fieldId: number; value: string | number | boolean | null } => x !== null);
+      const payload: CageClaimInfoValue[] = [];
+      for (const { field } of fields) {
+        const raw = values[field.canonical];
+        const init = initialValues.current[field.canonical];
+        // 多值字段比较内容而非引用：取消勾选回到原集合时不应伪造成「有改动」
+        if (Array.isArray(raw) || Array.isArray(init)) {
+          if (JSON.stringify(raw ?? []) === JSON.stringify(init ?? [])) continue;
+          payload.push({ fieldId: field.fieldId, value: Array.isArray(raw) ? raw.map(String) : [] });
+          continue;
+        }
+        if (raw === init) continue;
+        payload.push({
+          fieldId: field.fieldId,
+          value: typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean" ? raw : null,
+        });
+      }
       if (payload.length === 0) {
         toast("没有改动");
         setSaving(false);
@@ -229,9 +295,12 @@ export default function CageFormFill({
 
   const isChoice = (field: CageTemplateField) => field.dictKey || optionsSourceOf(field) != null || field.fieldType === "select" || field.fieldType === "choice" || field.fieldType === "cascade";
 
-  /** 字段选项：动态源优先（按笼位现算），否则取静态码表 */
+  /** 字段选项：后端现算过就用它（含新增预设后的刷新结果），否则退回静态码表 */
   const optionsFor = (field: CageTemplateField) =>
-    optionsSourceOf(field) != null ? (dynOptions[field.canonical] ?? []) : (codelists[field.dictKey ?? ""] ?? []);
+    dynOptions[field.canonical] ?? (codelists[field.dictKey ?? ""] ?? []);
+
+  /** 该字段是否允许在填写时新增预设（后端最终还会再拦一道） */
+  const canAddOption = (field: CageTemplateField) => !!dynFlags[field.canonical]?.allowAddOption;
 
   /** 自动获取字段（role 非 VALUE）：只决定角标，不再决定能否编辑。 */
   const isAuto = (field: CageTemplateField) => field.role != null && field.role !== "VALUE";
@@ -254,6 +323,11 @@ export default function CageFormFill({
     const val = values[field.canonical];
     if (val === null || val === undefined || val === "") return "-";
     const ft = field.fieldType || (field.dictKey ? "select" : "text");
+    if (Array.isArray(val)) {
+      if (val.length === 0) return "-";
+      const opts = optionsFor(field);
+      return val.map((v) => opts.find((o) => o.value === String(v))?.label ?? String(v)).join("、");
+    }
     if (ft === "checkbox") return val === true ? "是" : "否";
     if (isChoice(field)) {
       const opt = optionsFor(field).find((o) => o.value === String(val));
@@ -305,6 +379,39 @@ export default function CageFormFill({
                 </span>
                 {!editing || !canEditField(field) ? (
                   <span className="text-[12px] font-semibold text-[var(--twin-ink)] font-variant-numeric tabular-nums">{readOnlyValue(field)}</span>
+                ) : isMultiChoiceField(field) ? (
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                    {optionsFor(field).map((o) => {
+                      const arr = Array.isArray(val) ? (val as unknown[]).map(String) : [];
+                      const on = arr.includes(o.value);
+                      return (
+                        <label key={o.value} className="flex items-center gap-1 text-[11px] text-[var(--twin-ink)]">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => setValue(field.canonical, on ? arr.filter((v) => v !== o.value) : [...arr, o.value])}
+                            className="h-3.5 w-3.5 accent-[var(--twin-primary)]"
+                          />
+                          {o.label}
+                        </label>
+                      );
+                    })}
+                    {optionsFor(field).length === 0 && <span className="text-[10px] text-[var(--twin-mute)]">无可选项（该笼位未关联 AUP）</span>}
+                  </div>
+                ) : ft === "combo" ? (
+                  /* 输入框 + 候选：复用通用 AdminSearchSelect（可直接输入，也可从候选点选）。
+                     它的浮层走 Portal + fixed，不会被表单所在的弹窗/滚动容器裁掉。
+                     「新增候选」作为浮层底部的一行并入候选列表 —— 不另挂按钮，
+                     否则分不清用户是手敲的还是刚从候选选的，会诱导重复新增。 */
+                  <AdminSearchSelect
+                    value={typeof val === "string" ? val : ""}
+                    onChange={(v) => setValue(field.canonical, v)}
+                    options={optionsFor(field).map((o) => o.value)}
+                    placeholder={optionsFor(field).length > 0 ? "可直接输入，或从候选中选" : "直接输入"}
+                    className="rounded-twin-md border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] shadow-none"
+                    onAddOption={canAddOption(field) ? (name) => void handleAddOption(field, name) : undefined}
+                    addOptionLabel={addingOption === field.canonical ? "新增中" : "新增"}
+                  />
                 ) : isChoice(field) ? (
                   <select
                     value={typeof val === "string" ? val : ""}

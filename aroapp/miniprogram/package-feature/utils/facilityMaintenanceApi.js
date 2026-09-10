@@ -20,26 +20,13 @@ async function fmRequest(url, method, data) {
   return parseResponse(res);
 }
 
-/** Excel / 二进制：仅当 Spring 返回 200 且云函数包装为 base64 时成功 */
+/** Excel / 二进制：直连模式返回 ArrayBuffer（旧的云函数 base64 包装已不存在）。 */
 async function fmRequestBinary(url, method, data) {
-  const res = await springAuth.springRequest({
-    url,
+  return springAuth.springRequestBinary(url, {
     method: method || 'GET',
     data: data != null ? data : {},
-    responseType: 'arraybuffer',
+    errorMessage: '请求失败',
   });
-  const { statusCode, data: payload } = res || {};
-  if (statusCode === 401 || statusCode === 403) throw new Error('无权限');
-  if (statusCode !== 200 || !payload || !payload.isBase64 || !payload.bodyBase64) {
-    let msg = '请求失败';
-    if (payload && typeof payload === 'object' && payload.message) msg = String(payload.message);
-    throw new Error(msg);
-  }
-  return {
-    base64: payload.bodyBase64,
-    contentType: payload.contentType || '',
-    contentDisposition: payload.contentDisposition || '',
-  };
 }
 
 async function listSites(includeDisabled) {

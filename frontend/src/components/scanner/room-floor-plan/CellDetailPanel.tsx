@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import { CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
+import { displayPosition } from "@/features/cage-shelf/constants";
 import { resolveCageType } from "./resolveCageType";
 
 /** cage_type_code 四值徽标色（架构文档 §4） */
@@ -149,7 +150,7 @@ export function CellDetailPanel({
               {CAGE_TYPE_LABEL[ct] ?? "-"}
             </span>
           ) : null}
-          <span className="text-sm font-bold text-[var(--app-color-text-primary)]">{cell.position}</span>
+          <span className="text-sm font-bold text-[var(--app-color-text-primary)]">{displayPosition(cell.position)}</span>
           {cageBoxCode ? (
             <span className="truncate font-mono text-[10px] text-[var(--app-color-text-tertiary)]">
               盒:{cageBoxCode}

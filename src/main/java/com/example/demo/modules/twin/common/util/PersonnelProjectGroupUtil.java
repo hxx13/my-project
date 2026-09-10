@@ -28,6 +28,31 @@ public final class PersonnelProjectGroupUtil {
                 .toList();
     }
 
+    /** 主课题组名（多组时取第一个）；空返回 null。用于只存单值的字段（aup_record/ref_order 的课题组列）。 */
+    public static String primaryGroup(String raw) {
+        List<String> groups = splitGroups(raw);
+        return groups.isEmpty() ? null : groups.get(0);
+    }
+
+    /**
+     * 两个课题组字段是否同组。两侧都可能是多组拼接串，逐个组名**精确**比对。
+     *
+     * <p>与 {@link #belongsToGroup} 的区别：本方法不做子串/前缀模糊 —— 鉴权与归属判定要确定性，
+     * 否则「33」这类组名会匹配到任何含 33 的组上。
+     */
+    public static boolean sameGroup(String a, String b) {
+        Set<String> left = new LinkedHashSet<>(splitGroups(a));
+        if (left.isEmpty()) {
+            return false;
+        }
+        for (String g : splitGroups(b)) {
+            if (left.contains(g)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean belongsToGroup(String projectGroupNameField, String targetGroup) {
         if (!StringUtils.hasText(targetGroup)) {
             return false;
@@ -85,6 +110,20 @@ public final class PersonnelProjectGroupUtil {
             }
         }
         return false;
+    }
+
+    /**
+     * 归纳一处笼位的课题组名：优先 AUP 的 projectGroupName，退回 project_pi_name + department_name。
+     * 与 {@code CageOperationService#cageGroupNames} 同规则，提取出来供多处复用。
+     */
+    public static List<String> groupNames(String aupGroupName, String projectPiName, String departmentName) {
+        if (aupGroupName != null && !aupGroupName.isBlank()) {
+            return splitGroups(aupGroupName);
+        }
+        List<String> out = new ArrayList<>();
+        out.addAll(splitGroups(projectPiName));
+        out.addAll(splitGroups(departmentName));
+        return out.stream().filter(s -> s != null && !s.isBlank()).distinct().toList();
     }
 
     /** 从「XXX的课题组」提取 PI 前缀（XXX） */

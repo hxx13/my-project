@@ -99,7 +99,16 @@ export function collectApprovalClaimIds(node: CageClaimGroupNode): number[] {
 }
 
 /** 跳转定位 query；shelveId/positionX/positionY 任一缺失返回 null */
+export function cageJumpQuery(loc: {
+  shelveId?: string | number | null;
+  positionX?: number | null;
+  positionY?: number | null;
+}): string | null {
+  if (loc == null || loc.shelveId == null || loc.positionX == null || loc.positionY == null) return null;
+  return `?jumpShelveId=${encodeURIComponent(String(loc.shelveId))}&jumpX=${loc.positionX}&jumpY=${loc.positionY}`;
+}
+
+/** 笼位申请的定位 query（与分笼/转移共用同一套跳转参数） */
 export function cageClaimJumpQuery(c: CageClaimItem): string | null {
-  if (c.shelveId == null || c.positionX == null || c.positionY == null) return null;
-  return `?jumpShelveId=${encodeURIComponent(String(c.shelveId))}&jumpX=${c.positionX}&jumpY=${c.positionY}`;
+  return cageJumpQuery(c);
 }

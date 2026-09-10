@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.common.service;
 
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
+import com.example.demo.common.excel.SubtotalRowStyles;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -109,13 +110,17 @@ public class AnimalOrderProcurementService {
             for (int i = 0; i < HEADERS.length; i++) {
                 head.createCell(i).setCellValue(HEADERS[i]);
             }
+            SubtotalRowStyles styles = SubtotalRowStyles.create(wb);
             int dataStart = r;
+            int blockIndex = 0;   // 供应商板块序号，用于交替底色
             for (Map<String, Object> row : rows) {
                 Row xr = sh.createRow(r++);
                 String type = str(row.get("rowType"));
-                if (ROW_GRAND_TOTAL.equals(type)) {
+                boolean grand = ROW_GRAND_TOTAL.equals(type);
+                boolean subtotal = ROW_SUPPLIER_SUBTOTAL.equals(type);
+                if (grand) {
                     xr.createCell(0).setCellValue("总计");
-                } else if (ROW_SUPPLIER_SUBTOTAL.equals(type)) {
+                } else if (subtotal) {
                     xr.createCell(0).setCellValue(str(row.get("arrivalDate")));
                     xr.createCell(1).setCellValue(str(row.get("supplierName")));
                     xr.createCell(2).setCellValue("小计");
@@ -128,6 +133,12 @@ public class AnimalOrderProcurementService {
                 xr.createCell(4).setCellValue(toLong(row.get("maleQty")));
                 xr.createCell(5).setCellValue(toLong(row.get("femaleQty")));
                 xr.createCell(6).setCellValue(toLong(row.get("totalQty")));
+                SubtotalRowStyles.apply(xr, HEADERS.length - 1,
+                        grand ? styles.total() : styles.block(blockIndex, subtotal));
+                if (subtotal) {   // 供应商小计后空一行，隔开各备货板块
+                    r++;
+                    blockIndex++;
+                }
             }
             if (r > dataStart) {
                 ExcelExportColumnAutosizer.autoSizeWithData(sh, dataStart - 1, dataStart, r - 1, 0, HEADERS.length - 1);

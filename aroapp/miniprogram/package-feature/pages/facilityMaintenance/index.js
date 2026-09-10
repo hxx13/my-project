@@ -593,22 +593,8 @@ Page({
     this.setData({ exportBusy: true });
     wx.showLoading({ title: '导出中', mask: true });
     try {
-      const { base64 } = await fmApi.exportDailySheetExcel(String(s.id));
-      const fs = wx.getFileSystemManager();
-      const path = `${wx.env.USER_DATA_PATH}/daily-inspection-${this.data.sheetDate}.xlsx`;
-      fs.writeFile({
-        filePath: path,
-        data: base64,
-        encoding: 'base64',
-        success: () => {
-          wx.openDocument({
-            filePath: path,
-            showMenu: true,
-            fail: (e) => wx.showToast({ title: (e && e.errMsg) || '无法打开文件', icon: 'none' }),
-          });
-        },
-        fail: (e) => wx.showToast({ title: (e && e.errMsg) || '写入失败', icon: 'none' }),
-      });
+      const { data } = await fmApi.exportDailySheetExcel(String(s.id));
+      await springAuth.saveAndOpenDocument(data, `daily-inspection-${this.data.sheetDate}.xlsx`, 'xlsx');
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
     } finally {
@@ -622,23 +608,9 @@ Page({
     this.setData({ exportBusy: true });
     wx.showLoading({ title: '导出中', mask: true });
     try {
-      const { base64 } = await fmApi.exportLedgerExcel(scope);
-      const fs = wx.getFileSystemManager();
+      const { data } = await fmApi.exportLedgerExcel(scope);
       const name = scope === 'replacements' ? 'facility-maintenance-replacements' : 'facility-maintenance-consumables';
-      const path = `${wx.env.USER_DATA_PATH}/${name}-${Date.now()}.xlsx`;
-      fs.writeFile({
-        filePath: path,
-        data: base64,
-        encoding: 'base64',
-        success: () => {
-          wx.openDocument({
-            filePath: path,
-            showMenu: true,
-            fail: (e) => wx.showToast({ title: (e && e.errMsg) || '无法打开文件', icon: 'none' }),
-          });
-        },
-        fail: (e) => wx.showToast({ title: (e && e.errMsg) || '写入失败', icon: 'none' }),
-      });
+      await springAuth.saveAndOpenDocument(data, `${name}-${Date.now()}.xlsx`, 'xlsx');
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
     } finally {

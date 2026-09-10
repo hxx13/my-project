@@ -84,7 +84,8 @@ public class CageCellIndexController {
         if (user == null || user.getRole() == null || user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
             return;
         }
-        // 有负责范围分配（校区/楼层/房间）→ 笼架级收口：命中才可见，忽略课题组。
+        // 可见范围分配只做「补充」：命中分配集的笼架整架放开、不脱敏；未命中的仍走下面的基本权限。
+        // 分配只在基本权限之上加可见范围，永远不会让人看得更少，也不覆盖课题组口径。
         if (studentCageShelfService.hasScopeAssignment(user)) {
             Object metaObj = result.get("shelfMeta");
             String shelveId = null, roomId = null, floorId = null, campusId = null;
@@ -94,31 +95,11 @@ public class CageCellIndexController {
                 floorId = str(meta.get("floorId"));
                 campusId = str(meta.get("campusId"));
             }
-            if (!studentCageShelfService.isShelfVisibleForUser(user, shelveId, roomId, floorId, campusId)) {
-                Object gridObj = result.get("grid");
-                if (gridObj instanceof List<?> list) {
-                    List<Map<String, Object>> masked = new ArrayList<>();
-                    for (Object o : list) {
-                        if (o instanceof Map<?, ?> cell) {
-                            Map<String, Object> c = new LinkedHashMap<>((Map<String, Object>) cell);
-                            if (!Boolean.TRUE.equals(c.get("empty"))) {
-                                c.put("visible", false);
-                                c.put("projectPiName", "***");
-                                c.put("piName", "***");
-                                c.put("departmentName", "***");
-                                c.put("aupNumber", "");
-                                c.put("experimenterName", "***");
-                                // 保留 specialStatuses：笼位状态非敏感，脱敏只作用于课题组归属字段
-                            }
-                            masked.add(c);
-                        }
-                    }
-                    result.put("grid", masked);
-                }
+            if (studentCageShelfService.isShelfVisibleForUser(user, shelveId, roomId, floorId, campusId)) {
+                return;
             }
-            return;
         }
-        // 无负责范围 → 保持原有 cell 级课题组过滤，不改动（避免误伤本组笼架）。
+        // 基本权限：cell 级课题组过滤，不改动（避免误伤本组笼架）。
         Object gridObj = result.get("grid");
         if (gridObj instanceof List<?> list) {
             @SuppressWarnings("unchecked")
@@ -413,10 +394,45 @@ public class CageCellIndexController {
         return Result.success(grid);
     }
 
+    /**
+     * 批量本地网格：ids = cage_shelf_index.id（主键，取自主树 full-tree 的 id 字段）。
+     *
+     * <p>刷卡弹窗平面图专用。不走 cage_shelf_cell_snapshot——那是历史扫描批次，
+     * 且 selectLatestByPairs 用 MAX(scan_batch_id) 挑批次（字符串比较）会挑到旧批次，
+     * 笼位的课题组/实验员字段全空，整架被判「非本组」而不渲染。本地网格以
+     * cage_info_value（笼位表单）为课题组/实验员真相源，与房间来源同源。</p>
+     *
+     * <p>**不做 applyGroupMask**：弹窗展示的是「被扫人」的课题组笼架，与登录人课题组无关；
+     * 前端只渲染 isMine 的架子。与旧路径（cells/batch 无脱敏）行为一致。</p>
+     */
+    @GetMapping("/local-grid/batch")
+    @Operation(summary = "批量从本地DB加载笼架网格")
+    public Result<List<Map<String, Object>>> localGridBatch(
+            @RequestParam String ids,
+            HttpServletRequest request) {
+        User user = resolveUser(request.getHeader("Authorization"));
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (String raw : ids.split(",")) {
+            String token = raw.trim();
+            if (token.isEmpty()) continue;
+            long shelfIndexId;
+            try {
+                shelfIndexId = Long.parseLong(token);
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            Map<String, Object> grid = cellIndexService.getLocalShelfGrid(shelfIndexId);
+            if (grid.containsKey("error")) continue;
+            out.add(grid);
+        }
+        return Result.success(out);
+    }
+
     // ── 按架子查详情列表 ──
 
-    @GetMapping("/shelf/{shelfIndexId}/details")
-    @Operation(summary = "查单个架子的全部笼位详情（含位置JOIN）")
+    @GetMapping("/shelf/{shelfIndexId}/details")    @Operation(summary = "查单个架子的全部笼位详情（含位置JOIN）")
     public Result<List<CageCellDetail>> detailsByShelf(
             @PathVariable Long shelfIndexId,
             HttpServletRequest request) {

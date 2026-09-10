@@ -64,7 +64,7 @@ public class CageOccupancyService {
         Personnel operator = personnelService.resolveByAccount(operatorAccountId);
         Personnel occupant = resolveOccupant(from);
         String snapshot = JSON.toJSONString(infoValueService.snapshotOccupancy(to));
-        infoValueService.copyOccupancyFields(from, to, "COPY");
+        infoValueService.copyOccupancyFields(from, to, "COPY", operatorAccountId);
         writeLog("copy", from, to, occupant, operator, snapshot, reason);
         return ok("copy");
     }
@@ -76,8 +76,8 @@ public class CageOccupancyService {
         Personnel operator = personnelService.resolveByAccount(operatorAccountId);
         Personnel occupant = resolveOccupant(from);
         String snapshot = JSON.toJSONString(infoValueService.snapshotOccupancy(to));
-        infoValueService.copyOccupancyFields(from, to, "TRANSFER");
-        infoValueService.clearOccupancyFields(from);
+        infoValueService.copyOccupancyFields(from, to, "TRANSFER", operatorAccountId);
+        infoValueService.clearOccupancyFields(from, "TRANSFER_OUT", operatorAccountId);
         writeLog("transfer", from, to, occupant, operator, snapshot, reason);
         return ok("transfer");
     }
@@ -89,7 +89,7 @@ public class CageOccupancyService {
         Personnel operator = personnelService.resolveByAccount(operatorAccountId);
         Personnel occupant = resolveOccupant(animalCageId);
         String snapshot = JSON.toJSONString(infoValueService.snapshotOccupancy(animalCageId));
-        infoValueService.clearOccupancyFields(animalCageId);
+        infoValueService.clearOccupancyFields(animalCageId, "EXIT", operatorAccountId);
         writeLog("exit", animalCageId, null, occupant, operator, snapshot, reason);
         return ok("exit");
     }
@@ -121,7 +121,7 @@ public class CageOccupancyService {
             approvalMapper.insert(ar);
         }
 
-        infoValueService.clearArchiveFields(animalCageId);
+        infoValueService.clearArchiveFields(animalCageId, "ARCHIVE", operatorAccountId);
         writeLog("archive", animalCageId, null, occupant, operator, snapshot, reason);
 
         CageCellDetail d = detailMapper.selectByAnimalCageId(animalCageId);
@@ -182,11 +182,6 @@ public class CageOccupancyService {
         log.setDataSnapshot(snapshot);
         log.setReason(reason);
         transferLogMapper.insert(log);
-    }
-
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> records(String view, Long id) {
-        return (List<Map<String, Object>>) records(view, id, null, 1, 500).get("list");
     }
 
     /** 留痕页：按笼位/按人分页查，eventType 可选过滤；每行带源/目标笼位的位置描述。 */

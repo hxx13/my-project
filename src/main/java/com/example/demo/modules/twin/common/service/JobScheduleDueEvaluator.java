@@ -19,6 +19,22 @@ public final class JobScheduleDueEvaluator {
 
     private static final DateTimeFormatter HM = DateTimeFormatter.ofPattern("HH:mm");
 
+    /**
+     * 错过补跑宽限：只容忍「节拍被长任务挤过、整分没命中」的几分钟偏差。
+     * 调大会让写动作在白天的意外时刻补执行（历史事故：重启后补跑把全馆在馆人员自动签退）。
+     */
+    private static final long CATCHUP_GRACE_MINUTES = 15;
+
+    /**
+     * 不可补跑的任务：执行即写 ARO 离馆登记 / 清退，误执行不可撤销。
+     * 只在计划时刻（放宽限）执行；错过就等管理员在「定时管理」页点「立即执行」。
+     */
+    private static final Set<String> NO_CATCHUP_JOBS = Set.of(
+            JobExecutionRegistry.JOB_STRANDED_VIOLATION_CHECK,
+            JobExecutionRegistry.JOB_STRANDED_SIGNOUT_CHECK,
+            JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET,
+            JobExecutionRegistry.JOB_RUN_REAPER_SECOND);
+
     private JobScheduleDueEvaluator() {
     }
 
@@ -55,6 +71,10 @@ public final class JobScheduleDueEvaluator {
         }
         LocalDateTime latestPlan = latestPlannedTime(cfg, now);
         if (latestPlan == null || latestPlan.isAfter(now)) {
+            return false;
+        }
+        if (NO_CATCHUP_JOBS.contains(cfg.getJobKey())
+                && latestPlan.plusMinutes(CATCHUP_GRACE_MINUTES).isBefore(now)) {
             return false;
         }
         LocalDateTime cfgUpdatedAt = cfg.getUpdateTime();

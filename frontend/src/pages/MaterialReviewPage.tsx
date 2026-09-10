@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { usePendingMaterialRequests, useFinishedMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useRevokeMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
@@ -13,7 +13,7 @@ import {
 } from "@/api/domains/scanDelay.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
 import { fetchPendingEnrollments, auditEnrollment, scoreEnrollment, type PendingEnrollment } from "@/api/domains/training.api";
-import { fetchPendingClaims, approveClaim, batchApproveClaims, type CageClaimItem } from "@/api/domains/cageShelf.api";
+import { fetchPendingClaims, approveClaim, batchApproveClaims, fetchCageOpPending, reviewCageOp, fetchReviewedCageOps, type CageClaimItem, type CageOpRequestView } from "@/api/domains/cageShelf.api";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
 import { authStorage } from "@/features/auth/authStorage";
@@ -28,6 +28,13 @@ import toast from "react-hot-toast";
 import { formatBeijingDateTimeFull, parseToDate, sameCalendarDayBeijing } from "@/utils/beijingTime";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
 import { MATERIAL_REVIEW_FINISHED_PAGE } from "@/features/student-review/materialReviewCache";
+import {
+  groupByItemName,
+  groupBySpec,
+  initiallyCollapsedItems,
+  initiallyCollapsedSpecs,
+  isMaterialPendingStatus,
+} from "@/features/student-review/materialReviewGrouping";
 import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
   ADMIN_PENDING_BADGES_REFRESH_EVENT,
@@ -44,6 +51,7 @@ import {
   buildGroupTree,
   cagePositionLabel,
   cageClaimJumpQuery,
+  cageJumpQuery,
   countCageClaims,
   countPendingCageClaims,
   isPendingCageClaim,
@@ -53,11 +61,11 @@ import {
 } from "@/utils/cageClaimReviewDisplay";
 
 import { appConfirm, appPrompt } from "@/lib/appDialog";
-type TabKey = "material" | "scanDelay" | "demands" | "aroTraining" | "cageClaims";
+type TabKey = "material" | "scanDelay" | "demands" | "aroTraining" | "cageClaims" | "cageDivide" | "cageTransfer";
 type MaterialSubTab = "today" | "scheduled" | "history";
 
 function parseReviewTab(raw: string | null): TabKey {
-  if (raw === "scanDelay" || raw === "demands" || raw === "aroTraining" || raw === "cageClaims") return raw;
+  if (raw === "scanDelay" || raw === "demands" || raw === "aroTraining" || raw === "cageClaims" || raw === "cageDivide" || raw === "cageTransfer") return raw;
   return "material";
 }
 
@@ -71,23 +79,6 @@ function isToday(dateStr?: string): boolean {
   return sameCalendarDayBeijing(d, new Date());
 }
 
-function isMaterialPendingStatus(status: string): boolean {
-  return status === "PENDING" || status === "FIRST_OK";
-}
-
-function primaryItemName(req: MaterialRequest): string {
-  return req.lines?.[0]?.snapshotName || "未命名物品";
-}
-function groupByItem(reqs: MaterialRequest[]): Map<string, MaterialRequest[]> {
-  const map = new Map<string, MaterialRequest[]>();
-  for (const r of reqs) {
-    const k = primaryItemName(r);
-    const list = map.get(k) || [];
-    list.push(r);
-    map.set(k, list);
-  }
-  return map;
-}
 function downloadBlob(blob: Blob, name: string) { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }
 
 /** 与后端 MaterialService.canonicalUserId / isInReviewerList 对齐：兼容 reviewer 配置存 userId 或 username */
@@ -164,10 +155,10 @@ export default function MaterialReviewPage() {
   });
 
   // ── 培训审批 ──
+  // 各 tab 的计数必须「进来就有」——不能等点进该 tab 才拉，否则角标要点进去才显示（等于没有）
   const { data: pendingEnrollments = [], isLoading: trainingLoading } = useQuery({
     queryKey: ["training", "pending"],
     queryFn: fetchPendingEnrollments,
-    enabled: tab === "aroTraining",
     ...studentReviewPendingQueryOptions,
   });
 
@@ -185,15 +176,52 @@ export default function MaterialReviewPage() {
   const { data: cageClaimsData, isLoading: cageClaimsLoading } = useQuery({
     queryKey: ["cage-claims", "pending"],
     queryFn: () => fetchPendingClaims(undefined, undefined, 1, 50),
-    enabled: tab === "cageClaims",
     ...studentReviewPendingQueryOptions,
   });
   const cageClaimsPending = cageClaimsData?.list ?? [];
+  /** 角标用后端 total（不受分页截断影响），与侧栏「学生审核」同源同值 */
+  const cageClaimsPendingCount = cageClaimsData?.total ?? 0;
   const cageClaimsApproveMutation = useMutation({
     mutationFn: ({ id, decision, reason }: { id: number; decision: "approved" | "rejected"; reason?: string }) =>
       approveClaim(id, decision, reason),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["cage-claims", "pending"] }); },
   });
+
+  // ── 分笼 / 转移审核 ──
+  // 一次拉全部待审（后端已按审核人归属过滤），本地按 opType 切分：
+  // 侧栏「学生审核」角标与页面共用同一个 query key —— 一条请求两边用，数目天然一致。
+  const { data: cageOpsPending = [], isLoading: cageOpsLoading } = useQuery({
+    queryKey: ["cage-op", "pending", "all"],
+    queryFn: () => fetchCageOpPending(),
+    ...studentReviewPendingQueryOptions,
+  });
+  const cageOpDividePending = useMemo(() => cageOpsPending.filter((r) => r.opType === "divide"), [cageOpsPending]);
+  const cageOpTransferPending = useMemo(() => cageOpsPending.filter((r) => r.opType === "transfer"), [cageOpsPending]);
+  /** 已审核历史：只列本人经手的（与物资审核的「我负责的物品」同口径） */
+  const { data: cageOpReviewed = [] } = useQuery({
+    queryKey: ["cage-op", "reviewed"],
+    queryFn: () => fetchReviewedCageOps(100),
+    enabled: tab === "cageDivide" || tab === "cageTransfer",
+    staleTime: 0,
+  });
+  const cageOpReviewMutation = useMutation({
+    mutationFn: ({ id, decision, reason }: { id: string; decision: "approved" | "rejected"; reason?: string }) =>
+      reviewCageOp(id, decision, reason),
+    onSuccess: (_r, v) => {
+      toast.success(v.decision === "approved" ? "已通过" : "已驳回");
+      // 前缀失效：待审列表、角标计数、以及笼架页的待审中间态标识一起刷
+      void qc.invalidateQueries({ queryKey: ["cage-op"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审批失败"),
+  });
+  const handleCageOpApprove = (r: CageOpRequestView) => cageOpReviewMutation.mutate({ id: r.id, decision: "approved" });
+  const handleCageOpReject = async (r: CageOpRequestView) => {
+    const reason = await appPrompt("驳回理由（必填）：");
+    if (!reason) return;
+    cageOpReviewMutation.mutate({ id: r.id, decision: "rejected", reason });
+  };
+
+
   const [selectedClaimIds, setSelectedClaimIds] = useState<Set<number>>(new Set());
   const toggleClaimSelect = (id: number) =>
     setSelectedClaimIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -238,6 +266,12 @@ export default function MaterialReviewPage() {
     if (!query) { toast.error("该申请缺少笼位定位信息"); return; }
     navigate(toAdminRoutePath("/admin/cage-shelves") + query);
   };
+  /** 分笼/转移的定位：与笼位申请同一套跳转参数，源与目标各可定位 */
+  const handleCageOpJump = (loc: { shelveId?: string | number | null; positionX?: number | null; positionY?: number | null }) => {
+    const query = cageJumpQuery(loc);
+    if (!query) { toast.error("该笼位缺少定位信息"); return; }
+    navigate(toAdminRoutePath("/admin/cage-shelves") + query);
+  };
 
   const trainingTotalPending = useMemo(
     () => pendingEnrollments.filter((e) => (e.testYn ?? 0) === 0 || (e.testFraction ?? 0) === 0).length,
@@ -251,6 +285,7 @@ export default function MaterialReviewPage() {
   });
 
   const demands = demandData?.data ?? [];
+  const openDemandCount = useMemo(() => demands.filter((d: MaterialDemand) => d.status === 0).length, [demands]);
 
   const itemReviewerMap = useMemo(() => {
     const map = new Map<number, string[]>();
@@ -290,6 +325,8 @@ export default function MaterialReviewPage() {
       void qc.invalidateQueries({ queryKey: materialQueryKeys.pendingRequests() });
       void qc.invalidateQueries({ queryKey: ["scan-delay", "pending"] });
       void qc.invalidateQueries({ queryKey: ["scan-delay", "pending", "alert-sync"] });
+      // 前缀失效：待审、已审核历史、角标计数、笼架页中间态标识一起刷
+      void qc.invalidateQueries({ queryKey: ["cage-op"] });
       if (tab === "scanDelay") {
         void qc.invalidateQueries({ queryKey: ["scan-delay", "history"] });
       }
@@ -468,6 +505,15 @@ export default function MaterialReviewPage() {
         ? trainingLoading
         : scanDelayLoading || scanDelayHistoryLoading;
 
+  // 分笼/转移当前 tab 的数据与加载态
+  const cageOpActiveItems = tab === "cageDivide" ? cageOpDividePending : cageOpTransferPending;
+  const cageOpActiveLoading = cageOpsLoading;
+  /** 已审核历史（只列本人经手的），按当前 tab 的类型切分 */
+  const cageOpDoneItems = useMemo(
+    () => cageOpReviewed.filter((r) => r.opType === (tab === "cageDivide" ? "divide" : "transfer")),
+    [cageOpReviewed, tab],
+  );
+
   const handleExportPersonal = async (reqId: string) => {
     try { const blob = await exportMaterialAuditTrail({}); downloadBlob(blob, `material-request-${reqId}.xlsx`); toast.success("已导出"); }
     catch { toast.error("导出失败"); }
@@ -532,17 +578,20 @@ export default function MaterialReviewPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-1">
         <div className="review-tabs">
+          {/* 红色数字角标：每条 = 该 tab 的待审数，且都是常驻查询（进来就有，不用点进 tab 才拉） */}
           {([
-            ["material", `物资审核${filteredMaterialPendingCount > 0 ? ` (${filteredMaterialPendingCount})` : ""}`],
-            ["scanDelay", `延迟免冻结${filteredScanDelayPending.length > 0 ? ` (${filteredScanDelayPending.length})` : ""}`],
-            ["aroTraining", `培训审批${trainingTotalPending > 0 ? ` (${trainingTotalPending})` : ""}`],
-            ["cageClaims", `笼位申请${cageClaimsPending.length > 0 ? ` (${cageClaimsPending.length})` : ""}`],
-            ["demands", (() => {
-              const open = demands.filter((d: MaterialDemand) => d.status === 0).length;
-              return `需求建议${open > 0 ? ` (${open})` : ""}`;
-            })()],
-          ] as [TabKey, string][]).map(([k, v]) => (
-            <button key={k} onClick={() => switchTab(k)} className="review-tab" data-active={tab === k}>{v}</button>
+            ["material", "物资审核", filteredMaterialPendingCount],
+            ["scanDelay", "延迟免冻结", filteredScanDelayPending.length],
+            ["aroTraining", "培训审批", trainingTotalPending],
+            ["cageClaims", "笼位申请", cageClaimsPendingCount],
+            ["cageDivide", "分笼审核", cageOpDividePending.length],
+            ["cageTransfer", "转移审核", cageOpTransferPending.length],
+            ["demands", "需求建议", openDemandCount],
+          ] as [TabKey, string, number][]).map(([k, label, count]) => (
+            <button key={k} onClick={() => switchTab(k)} className="review-tab" data-active={tab === k}>
+              {label}
+              {count > 0 && <span className="review-tab-badge">{count}</span>}
+            </button>
           ))}
         </div>
         <div className="flex items-center gap-1.5">
@@ -921,6 +970,34 @@ export default function MaterialReviewPage() {
             </div>
           )}
         </div>
+      ) : tab === "cageDivide" || tab === "cageTransfer" ? (
+        <div className="space-y-4">
+          {cageOpActiveLoading ? <DataSkeleton variant="card" rows={5} /> : null}
+          {cageOpActiveItems.length === 0 && cageOpDoneItems.length === 0 && !cageOpActiveLoading ? (
+            <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无可审批的{tab === "cageDivide" ? "分笼" : "转移"}</p>
+          ) : (
+            <>
+              {/* 待审核默认展开，已审核默认折叠 —— 与该页物资审核的子分区约定一致 */}
+              <CageOpSection title="待审核" count={cageOpActiveItems.length} defaultOpen>
+                {cageOpActiveItems.map((r) => (
+                  <CageOpReviewCard
+                    key={r.id}
+                    req={r}
+                    onApprove={handleCageOpApprove}
+                    onReject={handleCageOpReject}
+                    actionPending={cageOpReviewMutation.isPending}
+                    onJump={handleCageOpJump}
+                  />
+                ))}
+              </CageOpSection>
+              <CageOpSection title="已审核" count={cageOpDoneItems.length}>
+                {cageOpDoneItems.map((r) => (
+                  <CageOpReviewCard key={r.id} req={r} readOnly onJump={handleCageOpJump} />
+                ))}
+              </CageOpSection>
+            </>
+          )}
+        </div>
       ) : (
         <>
           {loading ? <DataSkeleton variant="card" rows={5} /> : null}
@@ -1220,43 +1297,128 @@ function CageClaimCard({
   );
 }
 
+/** 分笼 / 转移审核的分区（待审核默认展开、已审核默认折叠；与笼位申请的分区约定一致） */
+function CageOpSection({ title, count, defaultOpen, children }: {
+  title: string;
+  count: number;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
+  if (count === 0) return null;
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-xs text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
+      >
+        <span className="transition-transform duration-200" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
+        <span>{title}</span>
+        <span className="text-[11px]">{count} 条</span>
+      </button>
+      {open && <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{children}</div>}
+    </div>
+  );
+}
+
+const CAGE_OP_STATUS_LABEL: Record<string, string> = {
+  pending: "待审核", approved: "已通过", rejected: "已驳回", cancelled: "已撤销",
+};
+
+/** 分笼 / 转移审核卡片；readOnly = 已审核区（只展示结果，不再给操作） */
+function CageOpReviewCard({
+  req,
+  onApprove,
+  onReject,
+  actionPending,
+  readOnly,
+  onJump,
+}: {
+  req: CageOpRequestView;
+  onApprove?: (r: CageOpRequestView) => void;
+  onReject?: (r: CageOpRequestView) => void;
+  actionPending?: boolean;
+  readOnly?: boolean;
+  onJump?: (loc: { shelveId?: string | number | null; positionX?: number | null; positionY?: number | null }) => void;
+}) {
+  const isDivide = req.opType === "divide";
+  const srcPos = cagePositionLabel(req.positionX, req.positionY);
+  const loc = [req.campusName, req.roomName, req.shelveName].filter(Boolean).join(" / ");
+  const targets = req.targets ?? [];
+  const jumpBtn = "text-[11px] text-[var(--app-color-accent)] hover:underline shrink-0";
+  const tone = readOnly ? (req.status === "approved" ? "ok" : req.status === "rejected" ? "bad" : "none") : "pending";
+  return (
+    <div className="review-card p-3" data-tone={tone}>
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{req.applicantName || req.applicantId || "—"}</span>
+            <span className="review-status">{CAGE_OP_STATUS_LABEL[req.status] || req.status}</span>
+          </div>
+          {/* 只给坐标，不给笼位 id —— 审的人要判断的是「从哪搬到哪」，id 没有信息量 */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]">
+            <span className="font-medium text-[var(--app-color-text-secondary)]">{isDivide ? "分笼" : "转移"}</span>
+            <span>源：{loc}{loc && srcPos ? " · " : ""}{srcPos && `坐标 ${srcPos}`}</span>
+            {req.shelveId != null && srcPos && (
+              <button type="button" onClick={() => onJump?.({ shelveId: req.shelveId, positionX: req.positionX, positionY: req.positionY })} className={jumpBtn}>定位</button>
+            )}
+          </div>
+          <div className="space-y-0.5 text-[11px] text-[var(--app-color-text-secondary)]">
+            {targets.length === 0 ? (
+              <div className="text-[var(--app-color-text-tertiary)]">{isDivide ? `目标 ${req.targetAnimalCageIds.length} 个笼位（无定位信息）` : "目标笼位：—"}</div>
+            ) : targets.map((t) => {
+              const tWhere = [t.campusName, t.roomName, t.shelveName].filter(Boolean).join(" / ");
+              const tPos = cagePositionLabel(t.positionX, t.positionY);
+              return (
+                <div key={t.animalCageId} className="flex flex-wrap items-center gap-2">
+                  <span>→ {tWhere}{tWhere && tPos ? " · " : ""}{tPos && `坐标 ${tPos}`}</span>
+                  {t.shelveId != null && tPos && (
+                    <button type="button" onClick={() => onJump?.({ shelveId: t.shelveId, positionX: t.positionX, positionY: t.positionY })} className={jumpBtn}>定位</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {req.reason && <div className="text-[11px] text-[var(--app-color-text-tertiary)]">理由：{req.reason}</div>}
+          {readOnly && req.rejectReason && <div className="text-[11px] text-[var(--app-color-feedback-danger)]">驳回理由：{req.rejectReason}</div>}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
+          {readOnly ? (
+            req.reviewedAt ? (
+              <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">
+                处理 {formatBeijingDateTimeFull(req.reviewedAt)}
+                {req.reviewerName && <span className="text-[var(--app-color-text-secondary)]"> · {req.reviewerName}</span>}
+              </span>
+            ) : null
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={() => onReject?.(req)} disabled={actionPending} className="review-btn review-btn--reject disabled:opacity-50">驳回</button>
+              <button type="button" onClick={() => onApprove?.(req)} disabled={actionPending} className="review-btn review-btn--approve disabled:opacity-50">通过</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 按物品分组 + 按规格分子组，渲染请求卡片列表。物品名和规格均可折叠收纳。 */
 function MaterialRequestGroup({ items, dotColor, dimmed, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, friendlyGroups }: { items: MaterialRequest[]; dotColor: string; dimmed?: boolean; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; friendlyGroups?: Set<string> }) {
   const hasFriendly = friendlyGroups && friendlyGroups.size > 0;
 
-  // ── 初始折叠状态：待处理物品→展开物品层/折叠规格层；已处理→全折叠 ──
-  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(() => {
-    const collapsed = new Set<string>();
-    for (const [itemName, reqs] of groupByItem(items)) {
-      const hasPending = reqs.some(r => r.status === "PENDING" || r.status === "FIRST_OK");
-      if (!hasPending) collapsed.add(itemName);
-    }
-    return collapsed;
-  });
-  const [collapsedSpecs, setCollapsedSpecs] = useState<Set<string>>(() => {
-    // 所有规格默认折叠；单品规物品无需折叠（item 展开即直接看到卡片）
-    const collapsed = new Set<string>();
-    for (const [itemName, reqs] of groupByItem(items)) {
-      const specs = new Set(reqs.map(r => r.lines?.[0]?.specSnapshot || '__no_spec__'));
-      if (specs.size <= 1) continue; // 单品规不折叠
-      for (const specKey of specs) collapsed.add(`${itemName}::${specKey}`);
-    }
-    return collapsed;
-  });
+  // ── 初始折叠状态：含待审的层级自动展开，已处理的全折叠 ──
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(() => initiallyCollapsedItems(items));
+  const [collapsedSpecs, setCollapsedSpecs] = useState<Set<string>>(() => initiallyCollapsedSpecs(items));
 
   const toggleItem = (name: string) => setCollapsedItems(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n; });
   const toggleSpec = (key: string) => setCollapsedSpecs(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   return (
     <div className="space-y-3">
-      {Array.from(groupByItem(items)).map(([itemName, reqs]) => {
-        const specGroups = new Map<string, MaterialRequest[]>();
-        for (const req of reqs) {
-          const firstLine = req.lines?.[0];
-          const key = firstLine?.specSnapshot || '__no_spec__';
-          if (!specGroups.has(key)) specGroups.set(key, []);
-          specGroups.get(key)!.push(req);
-        }
+      {Array.from(groupByItemName(items)).map(([itemName, reqs]) => {
+        const specGroups = groupBySpec(reqs);
         const isItemOpen = !collapsedItems.has(itemName);
         const hasSingleSpec = specGroups.size <= 1;
         return (

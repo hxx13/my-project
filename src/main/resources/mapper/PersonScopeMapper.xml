@@ -23,4 +23,16 @@
         ORDER BY user_id ASC, scope_type ASC, scope_id ASC
     </select>
 
+    <!-- 已分配过的人：user_id 存的是 personnel.id 的字符串，join 回来取姓名 -->
+    <select id="listAssignees" resultType="map">
+        SELECT ps.user_id AS userId,
+               COALESCE(NULLIF(p.name, ''), ps.user_id) AS name,
+               p.staff_id AS staffId,
+               COUNT(*) AS scopeCount
+        FROM person_scope ps
+        LEFT JOIN personnel p ON p.id = ps.user_id
+        GROUP BY ps.user_id, p.name, p.staff_id
+        ORDER BY name ASC
+    </select>
+
 </mapper>

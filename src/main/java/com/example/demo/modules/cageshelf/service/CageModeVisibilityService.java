@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  *
  * 模式与默认身份（配置模块 cage_mode，key = cage.mode.{modeKey}，值为逗号分隔身份 code）：
  *   booking=SECRETARY, allocate=reserve=BREEDING_GROUP_LEADER,
- *   edit/record/archive/confirm=BREEDER,BREEDING_GROUP_LEADER；view 恒可见不可配。
+ *   edit/record/archive/confirm=BREEDER,BREEDING_GROUP_LEADER；division=GROUP_STEWARD；view 恒可见不可配。
  * SUPER_ADMIN（含 PLATFORM_OWNER）逃生口：无视身份看全部模式。
  */
 @Service
@@ -33,14 +33,15 @@ public class CageModeVisibilityService {
 
     public static final String MODULE = "cage_mode";
 
-    /** 教职工视角可配的 7 个模式（view 恒可见，不在此列）。 */
+    /** 教职工视角可配的 8 个模式（view 恒可见，不在此列）。 */
     public static final List<String> STAFF_CONFIGURABLE_MODES = List.of(
-            "booking", "allocate", "reserve", "edit", "record", "archive", "confirm");
+            "booking", "allocate", "reserve", "edit", "record", "archive", "confirm", "division");
 
     /** 身份 code 稳定值（与 PersonIdentityTagSeedBootstrap 种子一致）。 */
     public static final String CODE_BREEDER = "BREEDER";
     public static final String CODE_LEADER = "BREEDING_GROUP_LEADER";
     public static final String CODE_SECRETARY = "SECRETARY";
+    public static final String CODE_STEWARD = "GROUP_STEWARD";
 
     /** 分笼/转移的**额外**操作身份配置：值为逗号分隔身份 code（占用者本人恒定放行，不在此列）。 */
     public static final String KEY_OP_MANAGE = "cage.op.manage_identities";
@@ -53,7 +54,8 @@ public class CageModeVisibilityService {
             "edit", CODE_BREEDER + "," + CODE_LEADER,
             "record", CODE_BREEDER + "," + CODE_LEADER,
             "archive", CODE_BREEDER + "," + CODE_LEADER,
-            "confirm", CODE_BREEDER + "," + CODE_LEADER);
+            "confirm", CODE_BREEDER + "," + CODE_LEADER,
+            "division", CODE_STEWARD);
 
     private final NotificationSettingsService settingsService;
     private final PersonIdentityService identityService;

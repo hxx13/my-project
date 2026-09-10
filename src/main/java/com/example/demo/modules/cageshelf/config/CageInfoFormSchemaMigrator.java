@@ -160,7 +160,8 @@ public class CageInfoFormSchemaMigrator implements ApplicationRunner {
         // 回填默认题型（仅空）
         jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'number' WHERE data_type IN ('INTEGER','DECIMAL') AND (field_type IS NULL OR field_type = '')");
         jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'checkbox' WHERE data_type = 'BOOLEAN' AND (field_type IS NULL OR field_type = '')");
-        jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'select' WHERE data_type IN ('ENUM','ENUM_MULTI') AND (field_type IS NULL OR field_type = '')");
+        jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'choice' WHERE data_type = 'ENUM_MULTI' AND (field_type IS NULL OR field_type = '')");
+        jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'select' WHERE data_type = 'ENUM' AND (field_type IS NULL OR field_type = '')");
         jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'date' WHERE data_type = 'DATE' AND (field_type IS NULL OR field_type = '')");
         jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'date' WHERE data_type = 'DATETIME' AND (field_type IS NULL OR field_type = '')");
         jdbcTemplate.update("UPDATE cage_info_field SET field_type = 'textarea' WHERE data_type = 'TEXT' AND (field_type IS NULL OR field_type = '')");

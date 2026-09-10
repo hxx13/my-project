@@ -251,23 +251,13 @@ async function patchAssetRecord(assetId, payload) {
   return parsed.body.data || {};
 }
 
+/** 导出资产 Excel；返回 ArrayBuffer（直连模式下没有 base64 包装那层）。 */
 async function exportAssetExcel(params) {
-  const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
-  const authorization = token ? `Bearer ${token}` : '';
-  const res = await springAuth.callSpringDirect({
-    path: '/api/v1/assets/export',
-    method: 'GET',
+  const { data } = await springAuth.springRequestBinary('/api/v1/assets/export', {
     data: params || {},
-    authorization,
-    responseType: 'arraybuffer',
+    errorMessage: '导出失败',
   });
-  if (!res || Number(res.statusCode) !== 200) {
-    throw new Error(`导出失败(${res && res.statusCode ? res.statusCode : 0})`);
-  }
-  if (!res.data || res.data.isBase64 !== true || !res.data.bodyBase64) {
-    throw new Error('导出数据格式错误');
-  }
-  return String(res.data.bodyBase64);
+  return data;
 }
 
 async function batchUpdateAssets(payload) {

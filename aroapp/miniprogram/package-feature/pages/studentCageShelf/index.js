@@ -1,13 +1,36 @@
 var springAuth = require('../../../utils/springAuth.js');
 var pagePermission = require('../../../utils/pagePermission.js');
-var { isStudentAccount } = require('../../../utils/roleAccess.js');
+var { isStudentAccount, hasCageFormEditGrant } = require('../../../utils/roleAccess.js');
+var personIdentity = require('../../../utils/personIdentity.js');
 var { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
-var { CAGE_FORM_KEY, flattenTemplateFields, buildCodelistDict, buildFormRows, buildEditableFormRows, toApiValue } = require('../../../utils/cageForm.js');
+var {
+  CAGE_FORM_KEY, flattenTemplateFields, buildCodelistDict,
+  buildFormTree, refreshDirty, applyDefaultCollapse,
+  validateGroups, changedValues, revertGroups, summarizeGroups, toApiValue
+} = require('../../../utils/cageForm.js');
 var cageStatus = require('../../../utils/cageStatus.js');
 var CAGE_STATUS_ACTIONS = cageStatus.CAGE_STATUS_ACTIONS;
 var assetApi = require('../../utils/assetApi.js');
+var cageShelfApi = require('../../utils/cageShelfApi.js');
 
 var CAGE_SHELF_PAGE = '/package-feature/pages/studentCageShelf/index';
+
+/**
+ * 模式高亮色 —— 与 Web 端 CAGE_MODE_META 对齐（key/颜色同一套语义）。
+ * 选中模式时按钮用它上色，网格容器用它做呼吸光晕；空串 = 不强调（查看模式）。
+ */
+var MODE_COLOR = {
+  view: '',
+  allocate: '#3b82f6',
+  booking: '#06b6d4',
+  edit: '#f59e0b',
+  confirm: '#10b981',
+  archive: '#64748b',
+  reserve: '#8b5cf6',
+  record: '#ec4899',
+  studentClaim: '#0d9488',
+  division: '#e11d48'
+};
 
 function canAccessCageShelfPage(role) {
   return (
@@ -44,12 +67,77 @@ var STATUS_BG_PRIORITY = [
 
 var CAGE_TYPE_LABEL = { 1: "(等待分配)", 2: "(空笼位)", 3: "(饲养中)", 4: "(异常)" };
 
+/** 每个「源→目标」配对一色（直接抄 Web useCageOpSelect.ts 的 PAIR_COLORS，两端观感一致） */
+var PAIR_COLORS = [
+  "#8b5cf6", "#f97316", "#ec4899", "#0ea5e9",
+  "#f59e0b", "#d946ef", "#6366f1", "#f43f5e"
+];
+function pairColorAt(index) { return PAIR_COLORS[index % PAIR_COLORS.length]; }
+
+/** 分区编号：01 / 02 … */
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+/** 审计 changeType 原始枚举 → 中文（与 H5 CageHistoryModal 的 CHANGE_TYPE_LABEL 同源，两端改一处必须同步改另一处）
+ *  覆盖范围 = 后端全部 logDataChange/logDataJson 调用点的字面量：BIND/UNBIND/UPDATE/RELEASE/TRANSFER，
+ *  外加 CageFormAuditService 的 IN_TYPES/OUT_TYPES 里预留的迁移类枚举。
+ *  注意 RELEASE 在 H5 的同名映射里也是缺的，那边同样会显示英文——补这边时记得一并补 H5。 */
+var CHANGE_TYPE_LABEL = {
+  UPDATE: '字段修改',
+  TRANSFER: '转移笼位',
+  TRANSFER_OUT: '转出到其他笼位',
+  COPY: '复制占用',
+  DIVIDE: '分笼',
+  INHERIT: '分笼继承',
+  BIND: '绑定笼盒',
+  UNBIND: '解绑笼盒',
+  RELEASE: '释放认领',
+  ARCHIVE: '归档',
+  EXIT: '退出',
+  UNALLOCATE: '取消分配'
+};
+
+/** 事件性质 → 时间轴圆点色 + 标签（颜色与 H5 KIND_META 一致，避免三端对同一事件给出不同颜色） */
+var KIND_META = {
+  IN:   { label: '值迁入',   dot: '#10b981' },
+  OUT:  { label: '值清出',   dot: '#ef4444' },
+  EDIT: { label: '原地编辑', dot: '#8a91a0' }
+};
+
+/** 状态标注历史条目的图标与配色（原为 wxml 内的长三元表达式） */
+var STATUS_HISTORY_LABEL = {
+  needs_division: '需分笼',
+  needs_special_feeding: '特殊饲养',
+  _annotation: '标注记录'
+};
+
+/**
+ * 状态标注历史条目归一：解析图片、截断时间、预计算标签与圆点色。
+ * 有两条加载路径都会拿到这份数据（打开弹窗时、存为新记录后），必须共用，否则后一条路径的条目会没有标签。
+ */
+function normalizeStatusHistory(list) {
+  if (!list) return [];
+  list.forEach(function(h) {
+    try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch (e) { h._imgs = []; }
+    if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
+    var isUnmarked = h.action === 'unmarked';
+    var isAnnotated = h.action === 'annotated';
+    h._dot = isUnmarked ? '#ef4444' : isAnnotated ? '#3b82f6' : '#10b981';
+    h._label = (isUnmarked ? '✕ ' : isAnnotated ? '📝 ' : '✓ ') + (STATUS_HISTORY_LABEL[h.statusField] || '健康异常');
+  });
+  return list;
+}
+
+/** 笼位存在未决分笼/转移时的统一拦截文案 */
+var PENDING_OP_REASON = '该笼位有待审的分笼/转移请求，请先等它审完';
+
 /**
  * 分配模式笼位可选性判定。
  * 与 Web/H5 的 `features/cage-shelf/constants.ts → allocSelectVerdict` 是同一套规则，
  * 小程序是独立技术栈无法复用，改其中一处必须同步改另一处。
+ * hasPendingOp=true（该笼位有未决分笼/转移）优先判不可选：待审只是意向，笼位自身状态未变，拦不住。
  */
-function allocVerdict(cageTypeCode) {
+function allocVerdict(cageTypeCode, hasPendingOp) {
+  if (hasPendingOp) return { ok: false, reason: PENDING_OP_REASON };
   var ct = Number(cageTypeCode);
   if (ct === 1) return { ok: true, kind: 'allocate' };
   if (ct === 2) return { ok: true, kind: 'cancel' };
@@ -86,6 +174,8 @@ var BRAND = "#ac1736";
 var PAGE_BG = "#eef0f6";
 // shelveId → cage_shelf_index.id（shelfIndexId），学生申请池接口用（来自 full-tree，非 local-grid）
 var shelfIndexIdMap = {};
+// 当前登录账号 id（统一人员口径 accountId，与 divisionAssignees[].id 对齐），onLoad 时从 springUserInfo 读入
+var currentAccountId = '';
 
 /* ================================================================== */
 /*  Helpers                                                             */
@@ -141,7 +231,8 @@ function buildModeOptions(isStaffView, visibleModes) {
         { key: 'archive', label: '归档' },
         { key: 'reserve', label: '预定' },
         { key: 'record', label: '记录' },
-        { key: 'booking', label: '预约' }
+        { key: 'booking', label: '预约' },
+        { key: 'division', label: '划分' }
       ]
     : [
         { key: 'view', label: '查看' },
@@ -339,6 +430,19 @@ function enrichGridCell(cell) {
   if (cs === 'locked') enriched._claimBadge = { text: '未到位', cls: 'gcell-badge--locked' };
   else if (cs === 'pending_approval') enriched._claimBadge = { text: '待审批', cls: 'gcell-badge--pending' };
   else if (cs === 'pending_release_approval') enriched._claimBadge = { text: '待释放', cls: 'gcell-badge--release' };
+  // 划分名单：本人命中 → 专属标签；管家视角显示名单（wxml 按 isStaffView 渲染）
+  var divs = enriched.divisionAssignees;
+  enriched._divisionMine = false;
+  enriched._divisionNames = '';
+  if (Array.isArray(divs) && divs.length > 0) {
+    var dNames = [];
+    for (var di = 0; di < divs.length; di++) {
+      var dRow = divs[di] || {};
+      if (dRow.name) dNames.push(dRow.name);
+      if (currentAccountId && String(dRow.id) === currentAccountId) enriched._divisionMine = true;
+    }
+    enriched._divisionNames = dNames.join('、');
+  }
   // 显示坐标反转：A-1(顶)↔A-10(底)，内容不动仅编号反转
   enriched._displayPosition = (function(p) {
     var m = /^([A-H])-(\d+)$/.exec(p);
@@ -456,6 +560,7 @@ function buildCellDetailData(cell) {
   return {
     position: cell._displayPosition || cell.position,
     coords: '(' + cell.x + ',' + cell.y + ')',
+    cageBoxCode: ((cell.cageBoxInfo || {}).cageBoxCode || '').trim(),
     cageTypeAbbr: CAGE_TYPE_ABBR[ct] || '',
     cageTypeLabel: CAGE_TYPE_LABEL[ct] || cell.stateLabel || '—',
     cageTypeDotColor: ct === 3 ? '' : (CAGE_TYPE_DOT_COLOR[ct] || ''),
@@ -575,6 +680,8 @@ Page({
 
     // 模式系统（三端对齐：pageMode 单一真相源）
     pageMode: 'view',             // view|allocate|edit|confirm|archive|reserve|record|booking|studentClaim
+    /** 当前模式的呼吸光晕色（由 switchMode 按 MODE_COLOR 同步） */
+    modeColor: '',
     isStaffView: false,
     modeOptions: [],              // 依视角生成
     visibleModes: [],             // 后端下发的可见模式 key 列表（空=未返回，回退本地硬编码）
@@ -593,8 +700,12 @@ Page({
     reserveResults: [],
     reserveGroups: [],      // 已选笼位所属 AUP 的课题组名，供弹窗提示
     reserveSubmitting: false,
-    // 选人弹窗复用目的：'' = 预定；'claimOnBehalf' = 代认领
+    // 选人弹窗复用目的：'' = 预定；'claimOnBehalf' = 代认领；'division' = 划分
     personPickerPurpose: '',
+    // 划分模式：弹窗内已选成员（accountId → {id,name}）与提交态
+    divisionPicked: {},
+    divisionPickedCount: 0,
+    divisionSubmitting: false,
     // 分笼 / 转移（选位模式，对齐 Web 端 useCageOpSelect）
     opActive: false,
     opKind: '',                    // divide | transfer
@@ -610,6 +721,8 @@ Page({
     opKeepSource: true,            // 分笼默认保留源笼位；不勾选才归档
     opReason: '',
     opSubmitting: false,
+    // 待审分笼/转移中间态：animalCageId → { color, label, kind, abbr }（源与目标同色，仅作选位拦截与叠层）
+    cageOpMarkers: {},
     // 详情弹窗内的操作入口（/cage-op/operable 结果）
     detailOperable: false,
     detailOperableCode: '',
@@ -617,6 +730,7 @@ Page({
     detailCanClaimOnBehalf: false,
     detailGroupNames: [],
     detailClaiming: false,
+    detailClearingDivision: false,   // 详情弹窗「清空划分」提交态
     // 归档
     archiveTarget: null,
     showArchiveDialog: false,
@@ -625,7 +739,8 @@ Page({
     recordTarget: null,
     recordOpen: false,
     recordLoading: false,
-    recordGroups: [],
+    recordEvents: [],
+    recordFieldCount: 0,
     // 预约
     bookingRooms: [],
     bookingLoading: false,
@@ -683,27 +798,32 @@ Page({
     selectedCell: null,
     cellDetailMeta: null,
     showCellDetail: false,
+    // 弹窗分区折叠态（查看/状态弹窗共用；记录弹窗不使用）
+    openSections: { info: true, status: true, exp: true, history: false },
     cellDetail: null,
     experimentDesc: '',
     detailImages: [],
     detailStatusPhotos: {},
+    detailHasStatusBlock: false,
     detailAnnotationLoading: false,
     // 关键信息表单（统一表单系统动态渲染，取代原先硬编码的 PI/部门/AUP/动物信息几行）
-    formRows: [],
+    formRows: [],        // 扁平副本：扫码确认弹窗按平铺渲染，用这一份
+    formGroups: [],      // 按模板分区分组：查看弹窗渲染与编辑用这一份
+    statusSecNo: '',     // 「状态与照片」的编号，由 _refreshSectionNos 按需重算
+    expSecNo: '',        // 「实验记录」的编号
     formLoading: false,
     formError: '',
     formEditable: false,     // 服务端 /cage-op/editable 判定
+    formEditableReason: '',  // 判定不通过的原因，展示给用户（不展示他就只看到按钮消失了）
     formEditing: false,
     formSaving: false,
     formSaveMsg: '',
+    formSaveMsgType: '',
     detailSaving: false,
     detailSaveMsg: "",
     detailSaveMsgType: "",
     detailQrImageSrc: "",
     detailImageUploading: false,
-    // 教职工详情弹窗动作
-    detailActions: cageStatus.newActionState(),
-    detailActionSubmitting: false,
 
     // 特殊状态弹窗
     specialStatusOpen: false,
@@ -728,6 +848,15 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
+
+    // 当前账号 id + 本人课题组：划分名单比对与默认候选人来源
+    var ui = null;
+    try {
+      var rawUi = wx.getStorageSync(springAuth.KEYS.USER_INFO);
+      ui = rawUi ? (typeof rawUi === 'string' ? JSON.parse(rawUi) : rawUi) : null;
+    } catch (e) { ui = null; }
+    currentAccountId = (ui && ui.id != null) ? String(ui.id) : '';
+    self._myGroupName = (ui && ui.projectGroupName) || '';
 
     // 拉取用户自定义配色（与 web/H5 共享 /v1/cage-shelves/user-colors），失败回退默认色
     springAuth.springRequest({ url: '/api/v1/cage-shelves/user-colors', method: 'GET', data: {} }).then(function(res) {
@@ -759,6 +888,7 @@ Page({
     self.setData({
       isStaffView: isStaffView,
       pageMode: 'view',
+      modeColor: '',
       modeOptions: buildModeOptions(isStaffView),
       highlightTarget: highlightTarget,
       ...readCustomNavMetrics()
@@ -1341,6 +1471,7 @@ Page({
       self.applyPoolToGrid();
       self.applySelectionToGrid();
       self.applyMyClaimToGrid();
+      self.loadCageOpMarkers();
     }).catch(function(e) {
       self.setData({ gridLoading: false, gridError: (e && e.message) || '加载失败' });
     });
@@ -1445,7 +1576,7 @@ Page({
           if (animalCageId) {
             self.loadCellFormValues({ id: animalCageId, animalCageId: animalCageId });
           } else {
-            self.setData({ formRows: [], formLoading: false, formError: '' });
+            self.setData({ formRows: [], formGroups: [], formLoading: false, formError: '' });
           }
         }
       } else if (claim.claimStatus === 'confirmed') {
@@ -1507,6 +1638,7 @@ Page({
     var self = this;
     self.setData({
       pageMode: mode,
+      modeColor: MODE_COLOR[mode] || '',
       selectedCells: {},
       selectedCount: 0,
       scanCache: {},
@@ -1524,9 +1656,10 @@ Page({
       showArchiveDialog: false,
       recordTarget: null,
       recordOpen: false,
+      recordEvents: [],
+      recordFieldCount: 0,
       editActionPopup: false,
       editActionCell: null,
-      detailActions: cageStatus.newActionState(),
       actionSubmitting: false,
       bookingEditingId: null,
       bookingEdit: { piName: '', aupId: '', rentNumber: 0, memo: '', registerNumber: '' },
@@ -1534,7 +1667,12 @@ Page({
       bookingEditAupIndex: -1,
       bookingEditAupOptions: [],
       editingCapacity: false,
-      capacityDraft: ''
+      capacityDraft: '',
+      divisionPicked: {},
+      divisionPickedCount: 0,
+      // 模式切换时收起详情弹窗（原先靠 loadShelfDetail 顺带做，现在不再重拉网格，这里显式清）
+      selectedCell: null,
+      showCellDetail: false
     }, function() {
       self.applyCacheToGrid();
       if (mode === 'allocate') self.loadAupList();
@@ -1543,7 +1681,11 @@ Page({
       else if (mode === 'reserve') { self.loadAupList(); self.setData({ reserveKeyword: '', reserveResults: [], reserveGroups: [], reservePersonOpen: false }); }
       if (mode === 'confirm' && !self.data.isStaffView) self.loadMyClaimCageIds();
       else self.setData({ myClaimCageIds: {} });
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+      // 这里**不再**无条件调 loadShelfDetail 重拉笼架网格。
+      // 网格数据（cage_cell_index + detail）与模式无关，各模式的额外数据已在上面分别加载；
+      // 而 loadShelfDetail 开头的 setData({gridLoading:true}) 会让 wxml 里
+      // wx:if="{{ !gridLoading && ... }}" 的整个网格节点被销毁重建 ——
+      // 现象就是「每次切模式整页重新加载渲染一遍」，顺带把滚动位置也冲回顶部。
     });
   },
 
@@ -1578,7 +1720,7 @@ Page({
     var sel = this.data.selectedCells || {};
     // 已选中的再点一次是取消勾选，不过闸门
     if (!sel[key]) {
-      var v = allocVerdict(cageTypeOf(cell));
+      var v = allocVerdict(cageTypeOf(cell), !!this._pendingOpOf(cell));
       if (!v.ok) { wx.showToast({ title: v.reason, icon: 'none' }); return; }
       var batch = this.computeAllocBatchKind();
       if (batch && v.kind !== batch) { wx.showToast({ title: ALLOC_MIXED_KIND_HINT, icon: 'none' }); return; }
@@ -1592,7 +1734,7 @@ Page({
     var sel = this.data.selectedCells || {};
     for (var i = 0; i < grid.length; i++) {
       if (!sel[grid[i].x + ':' + grid[i].y]) continue;
-      var v = allocVerdict(cageTypeOf(grid[i]));
+      var v = allocVerdict(cageTypeOf(grid[i]), !!this._pendingOpOf(grid[i]));
       if (v.ok) return v.kind;
     }
     return '';
@@ -1600,6 +1742,7 @@ Page({
 
   /** 认领模式（教职工）：type2（已预约空笼盒）且无活跃认领可选 */
   toggleReserveCell: function(cell) {
+    if (this._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
     if (cageTypeOf(cell) !== 2) { wx.showToast({ title: '只能选择「已预约空笼盒」状态的笼位', icon: 'none' }); return; }
     if (cell.claimStatus && hasActiveClaim(cell.claimStatus)) { wx.showToast({ title: '该笼位已有预定，不可重复选择', icon: 'none' }); return; }
     this.toggleCellInSelection(cell);
@@ -1607,8 +1750,16 @@ Page({
 
   /** 学生申请模式：仅在笼位池内可选 */
   toggleStudentClaimCell: function(cell) {
+    if (this._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
     var cid = String(cell.id || cell.animalCageId || '');
     if (!this.data.poolByCageId[cid]) { wx.showToast({ title: '该笼位不在你的可申请范围内', icon: 'none' }); return; }
+    this.toggleCellInSelection(cell);
+  },
+
+  /** 划分模式（课题组管家）：不限笼位状态，但 type1（等待分配）除外 —— 未归属课题组，是底层约束 */
+  toggleDivisionCell: function(cell) {
+    if (this._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
+    if (cageTypeOf(cell) === 1) { wx.showToast({ title: '待分配状态的笼位未归属课题组，不能划分', icon: 'none' }); return; }
     this.toggleCellInSelection(cell);
   },
 
@@ -1817,16 +1968,77 @@ Page({
   },
 
   onReservePickPerson: function(e) {
+    var purpose = this.data.personPickerPurpose;
+    if (purpose === 'division') { this.toggleDivisionPerson(e); return; }
     var accountId = e.currentTarget.dataset.accountId;
     var name = e.currentTarget.dataset.name;
     if (!accountId) { wx.showToast({ title: '该人员无账号', icon: 'none' }); return; }
-    var purpose = this.data.personPickerPurpose;
     this.setData({ reservePersonOpen: false, personPickerPurpose: '' });
     if (purpose === 'claimOnBehalf') {
       this.handleClaimOnBehalfConfirm({ name: name, accountId: accountId });
       return;
     }
     this.handleReserveConfirm({ name: name, accountId: accountId });
+  },
+
+  /* ── 划分模式（课题组管家）：选人弹窗内多选 → 全量覆盖这批笼位名单 ── */
+
+  /** 打开选人弹窗，预览本人课题组成员（复用 /api/personnel 检索） */
+  openDivisionPerson: function() {
+    var self = this;
+    if (self.data.selectedCount === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
+    var names = self._myGroupName ? [self._myGroupName] : [];
+    self.setData({
+      personPickerPurpose: 'division',
+      reservePersonOpen: true, reserveKeyword: '', reserveResults: [], reserveSearching: false,
+      reserveGroups: names, divisionPicked: {}, divisionPickedCount: 0
+    });
+    self.previewReserveCandidates(names);
+  },
+
+  /** 弹窗内多选/取消选择成员（不关弹窗，累计后统一提交） */
+  toggleDivisionPerson: function(e) {
+    var accountId = e.currentTarget.dataset.accountId;
+    var name = e.currentTarget.dataset.name;
+    if (!accountId) { wx.showToast({ title: '该人员无账号', icon: 'none' }); return; }
+    var picked = Object.assign({}, this.data.divisionPicked || {});
+    if (picked[accountId]) delete picked[accountId];
+    else picked[accountId] = { id: accountId, name: name || accountId };
+    var count = 0;
+    for (var k in picked) { if (picked[k]) count++; }
+    this.setData({ divisionPicked: picked, divisionPickedCount: count });
+  },
+
+  /** 提交划分：所选成员全量覆盖所选笼位的名单 */
+  handleDivisionSubmit: function() {
+    var self = this;
+    if (self.data.divisionSubmitting) return;
+    var picked = self.data.divisionPicked || {};
+    var assignees = [];
+    for (var k in picked) { if (picked[k]) assignees.push({ id: picked[k].id, name: picked[k].name }); }
+    if (assignees.length === 0) { wx.showToast({ title: '请先选择成员', icon: 'none' }); return; }
+    var sel = self.data.selectedCells || {};
+    var cageIds = [];
+    for (var kk in sel) { if (Object.prototype.hasOwnProperty.call(sel, kk) && sel[kk]) cageIds.push(sel[kk]); }
+    if (cageIds.length === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
+    self.setData({ divisionSubmitting: true });
+    springAuth.springRequest({
+      url: '/api/cage-division/save',
+      method: 'POST',
+      data: { animalCageIds: cageIds, assignees: assignees, groupName: self._myGroupName || '' }
+    }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ divisionSubmitting: false }); wx.showToast({ title: p.message || '划分失败', icon: 'none' }); return; }
+      self.setData({
+        divisionSubmitting: false, reservePersonOpen: false, personPickerPurpose: '',
+        divisionPicked: {}, divisionPickedCount: 0, selectedCells: {}, selectedCount: 0
+      });
+      wx.showToast({ title: '已划分 ' + cageIds.length + ' 个笼位', icon: 'success' });
+      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+    }).catch(function(e) {
+      self.setData({ divisionSubmitting: false });
+      wx.showToast({ title: (e && e.message) || '划分失败', icon: 'none' });
+    });
   },
 
   handleReserveConfirm: function(p) {
@@ -1922,11 +2134,33 @@ Page({
     var self = this;
     var cid = String(cell.id || cell.animalCageId || '');
     if (!cid) { wx.showToast({ title: '该笼位无 ID', icon: 'none' }); return; }
-    self.setData({ recordTarget: { animalCageId: cid, positionLabel: cell._displayPosition || cell.position || '' }, recordOpen: true, recordLoading: true, recordGroups: [] });
+    self.setData({ recordTarget: { animalCageId: cid, positionLabel: cell._displayPosition || cell.position || '' }, recordOpen: true, recordLoading: true, recordEvents: [], recordLabel: '', recordFieldCount: 0 });
     springAuth.springRequest({ url: '/api/admin/cage-form/cage-history/' + cid, method: 'GET', data: {} }).then(function(res) {
       var p = unwrap(res);
-      var groups = (p.ok && p.data && p.data.groups) || [];
-      self.setData({ recordLoading: false, recordGroups: groups });
+      // 后端返回 { animalCageId, cageLabel, fieldLabels, current, hasStructural,
+      //            events:[{changeType, kind, at, operator, changes:[{canonical,label,before,after}]}] }
+      // 早先这里读的是 p.data.groups —— 那个字段不存在，于是永远落到空数组、显示「暂无历史记录」。
+      var data = (p.ok && p.data) || {};
+      var events = data.events || [];
+      var fieldSet = {};
+      events.forEach(function(ev) {
+        var meta = KIND_META[ev.kind] || KIND_META.EDIT;
+        ev._dot = meta.dot;
+        ev._kindLabel = meta.label;
+        ev._typeLabel = CHANGE_TYPE_LABEL[ev.changeType] || ev.changeType || '';
+        // 前后同值的变更行是噪声（审计日志理论上不该有，但历史数据里出现过），过滤掉
+        ev.changes = (ev.changes || []).filter(function(c) {
+          if ((c.before || '') === (c.after || '')) return false;
+          if (c.canonical) fieldSet[c.canonical] = true;
+          return true;
+        });
+      });
+      self.setData({
+        recordLoading: false,
+        recordEvents: events,
+        recordLabel: data.cageLabel || '',
+        recordFieldCount: Object.keys(fieldSet).length
+      });
     }).catch(function(e) {
       self.setData({ recordLoading: false });
       wx.showToast({ title: (e && e.message) || '加载历史失败', icon: 'none' });
@@ -1935,6 +2169,15 @@ Page({
 
   onCloseRecordDialog: function() {
     this.setData({ recordOpen: false, recordTarget: null });
+  },
+
+  /** 折叠分区开关：分区体级 wx:if 切换，不触碰外层 .cs-body 滚动容器 */
+  onToggleSection: function(e) {
+    var key = e.currentTarget.dataset.key;
+    if (!key) return;
+    var next = Object.assign({}, this.data.openSections);
+    next[key] = !next[key];
+    this.setData({ openSections: next });
   },
 
   /* ------------------------------------------------------------------ */
@@ -2289,6 +2532,50 @@ Page({
     this.setData(patch);
   },
 
+  /** 该笼位若有未决分笼/转移则返回其标记，否则 null（源与目标都在标记表内） */
+  _pendingOpOf: function(cell) {
+    if (!cell) return null;
+    var cid = String(cell.id || cell.animalCageId || '');
+    return (cid && (this.data.cageOpMarkers || {})[cid]) || null;
+  },
+
+  /** 拉待审分笼/转移标记，摊平成 animalCageId → 标记（同一请求源与目标同色） */
+  loadCageOpMarkers: function() {
+    var self = this;
+    cageShelfApi.fetchCageOpMarkers().then(function(list) {
+      var map = {};
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i] || {};
+        var isDivide = r.opType === 'divide';
+        var m = {
+          requestId: String(r.id || ''),
+          kind: r.opType,
+          color: pairColorAt(i),
+          label: isDivide ? '分笼审核中' : '转移审核中',
+          abbr: isDivide ? '分' : '移'
+        };
+        var ids = [String(r.sourceAnimalCageId || '')].concat(r.targetAnimalCageIds || []);
+        for (var j = 0; j < ids.length; j++) {
+          var cid = String(ids[j] || '');
+          if (cid) map[cid] = m;
+        }
+      }
+      self.setData({ cageOpMarkers: map }, self.applyCageOpMarkersToGrid.bind(self));
+    }).catch(function() { /* 标记拉取失败不阻塞网格 */ });
+  },
+
+  /** 待审标记 → grid 的 _opMark（配色环 + 底部色条 + 正中图标） */
+  applyCageOpMarkersToGrid: function() {
+    var grid = this.data.grid || [];
+    var map = this.data.cageOpMarkers || {};
+    var patch = {};
+    for (var i = 0; i < grid.length; i++) {
+      var cid = String(grid[i].id || grid[i].animalCageId || '');
+      patch['grid[' + i + ']._opMark'] = (cid && map[cid]) || null;
+    }
+    this.setData(patch);
+  },
+
   handleStudentClaim: function() {
     var self = this;
     var sel = self.data.selectedCells || {};
@@ -2401,12 +2688,15 @@ Page({
       scanCache: {},
       lastScannedKey: '',
       pageMode: 'view',
+      modeColor: '',
       selectedCells: {},
       selectedCount: 0,
       archiveTarget: null,
       showArchiveDialog: false,
       recordTarget: null,
       recordOpen: false,
+      recordEvents: [],
+      recordFieldCount: 0,
       confirmLookup: null,
       confirmRows: [],
       showConfirmDialog: false,
@@ -2419,6 +2709,9 @@ Page({
       detailImages: [],
     detailStatusPhotos: {},
       formRows: [],
+      formGroups: [],
+      statusSecNo: '',
+      expSecNo: '',
       formLoading: false,
       formError: '',
       detailQrImageSrc: "",
@@ -2455,6 +2748,7 @@ Page({
     if (mode === 'record') { self.openRecordDialog(cell); return; }
     if (mode === 'confirm') { self.openConfirmDialogFromCell(cell); return; }
     if (mode === 'studentClaim') { self.toggleStudentClaimCell(cell); return; }
+    if (mode === 'division') { self.toggleDivisionCell(cell); return; }
 
     // 编辑模式：弹出操作选择窗口而非详情
     if (mode === 'edit') {
@@ -2493,12 +2787,7 @@ Page({
         springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res) {
           var hp = unwrap(res);
           var list = (hp.ok ? hp.data : []) || [];
-          // 解析 imagesJson → _imgs 供模板渲染
-          list.forEach(function(h) {
-            try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch(e) { h._imgs = []; }
-            if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
-          });
-          self.setData({ editHistory: list, editHistoryLoading: false });
+          self.setData({ editHistory: normalizeStatusHistory(list), editHistoryLoading: false });
         }).catch(function() { self.setData({ editHistoryLoading: false }); });
       }
       // 从 annotate 加载已有备注和状态照片（不能从 cell.detail 读取）
@@ -2527,29 +2816,6 @@ Page({
     var cellDetail = buildCellDetailData(cell);
     var detailMeta = buildCellDetailMeta(cell, self.data.gridMeta);
 
-    var ck = x + ':' + y;
-    var cacheEntry = (self.data.scanCache || {})[ck];
-    var initialActions = cageStatus.newActionState();
-    var currentActions = cageStatus.newActionState();
-    if (cacheEntry && cacheEntry.initialActions && cacheEntry.currentActions) {
-      CAGE_STATUS_ACTIONS.forEach(function (a) {
-        initialActions[a.action] = !!cacheEntry.initialActions[a.action];
-        currentActions[a.action] = !!cacheEntry.currentActions[a.action];
-      });
-    } else {
-      var cbi = cell.cageBoxInfo || {};
-      var cvo = cbi.cageBoxVo || cbi['cageBoxVo'] || {};
-      var fromBox = cageStatus.actionsFromCageBoxInfo(cbi, cvo);
-      CAGE_STATUS_ACTIONS.forEach(function (a) {
-        currentActions[a.action] = !!fromBox[a.action];
-      });
-      // ARO 侧的两个旁证字段：有特殊饲养名 / 有健康记录也视为已标记
-      if ((typeof cbi.specialBreedingName === 'string' && cbi.specialBreedingName.trim()) || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) currentActions.SPECIAL_BREEDING = true;
-      if (cbi.animalHealthEntity != null || cvo.animalHealthEntity != null) currentActions.HEALTH_CHECK = true;
-      initialActions = Object.assign({}, currentActions);
-    }
-    this.initialDetailActions = JSON.parse(JSON.stringify(initialActions));
-
     self.setData({
       selectedCell: cell,
       cellDetailMeta: detailMeta,
@@ -2557,13 +2823,15 @@ Page({
       showCellDetail: true,
       experimentDesc: (cell.detail && cell.detail.experimentDesc) || '',
       detailImages: cellDetail.images,
+      // 换笼位必须清空上一只的标注照片：loadCellAnnotation 在「无标注」时提前 return，不会覆盖
+      detailStatusPhotos: {},
+      detailHasStatusBlock: false,
       detailAnnotationLoading: detailMeta.permitted,
       detailSaving: false,
       detailSaveMsg: '',
       detailSaveMsgType: '',
       detailQrImageSrc: '',
-      detailActions: JSON.parse(JSON.stringify(currentActions)),
-      initialDetailActions: JSON.parse(JSON.stringify(initialActions))
+      detailOpMark: self._pendingOpOf(cell)   // 未决分笼/转移 → 详情一句话提示
     });
 
     // 分笼/转移/认领入口：后端按「认领记录 + 实验员字段 + 操作身份」给出三态
@@ -2613,10 +2881,11 @@ Page({
       if (!up.ok) throw new Error(up.message || '表单模板读取失败');
       var tpl = up.data || {};
       if (tpl.status !== 'FROZEN') throw new Error('表单未发布（当前状态：' + (tpl.status || '未知') + '）');
-      var fields = flattenTemplateFields(tpl);
+      var entries = flattenTemplateFields(tpl);
       // 码表只拉模板里实际出现过的 dictKey；单个码表失败不拖垮整张表单
       var keys = [];
-      fields.forEach(function(f) {
+      entries.forEach(function(e) {
+        var f = (e && e.field) || {};
         if (f.dictKey && keys.indexOf(f.dictKey) < 0) keys.push(f.dictKey);
       });
       return Promise.all(keys.map(function(k) {
@@ -2629,7 +2898,7 @@ Page({
           return { key: k, items: [] };
         });
       })).then(function(lists) {
-        return { fields: fields, dict: buildCodelistDict(lists) };
+        return { entries: entries, dict: buildCodelistDict(lists) };
       });
     });
     p.catch(function() { self._cageFormPromise = null; });
@@ -2642,10 +2911,10 @@ Page({
     var self = this;
     var animalCageId = cell.id || cell.animalCageId || '';
     if (!animalCageId) {
-      self.setData({ formRows: [], formLoading: false, formError: '' });
+      self.setData({ formRows: [], formGroups: [], formLoading: false, formError: '' });
       return;
     }
-    self.setData({ formRows: [], formLoading: true, formError: '', formEditing: false, formSaveMsg: '' });
+    self.setData({ formRows: [], formGroups: [], formEditable: false, formEditableReason: '', formLoading: true, formError: '', formEditing: false, formSaveMsg: '', formSaveMsgType: '' });
     // 连点不同笼位时，只认最后一次请求的结果
     var seq = (self._formReqSeq || 0) + 1;
     self._formReqSeq = seq;
@@ -2658,13 +2927,19 @@ Page({
         if (!up.ok) throw new Error(up.message || '表单值读取失败');
         return up.data || [];
       }),
-      // 编辑权限与 Web/H5 同源：后端按「认领记录 + 实验员字段 + 操作身份」判定
+      // 编辑权限与 Web/H5 同源：后端按「认领记录 + 实验员字段 + 操作身份」判定。
+      // 判定不通过时后端会给出 reason（如「该笼位由「林安顺」占用，无编辑权限」），
+      // 必须带回来：光把按钮藏掉，用户只会觉得按钮"没了"，不知道为什么。
       springAuth.springRequest({
         url: '/api/cage-op/editable', method: 'GET', data: { animalCageId: animalCageId }
       }).then(function(res) {
         var up = unwrap(res);
-        return (up.ok && up.data && up.data.editable) ? true : false;
-      }).catch(function() { return false; })
+        if (!up.ok || !up.data) return { editable: false, reason: '' };
+        return { editable: !!up.data.editable, reason: up.data.reason || '' };
+      }).catch(function() { return { editable: false, reason: '' }; }),
+      // 身份标签（带缓存）。Web 端的编辑权是「客户端授权 ‖ 服务端按笼位判定」，
+      // 小程序原先只有后一半，同一个账号就会出现 Web 能编、小程序不能。
+      personIdentity.fetchMyIdentityCodes()
     ]).then(function(arr) {
       if (seq !== self._formReqSeq) return;
       var tpl = arr[0];
@@ -2672,98 +2947,187 @@ Page({
       var activeActions = cageStatus.actionsFromFormValues(arr[1]);
       var statusChips = cageStatus.CAGE_STATUS_ACTIONS
         .filter(function(a) { return activeActions[a.action]; })
-        .map(function(a) { return { code: a.statusField, label: a.label, color: a.color, bg: a.bg, statusField: a.statusField }; });
+        .map(function(a) { return { code: a.statusField, label: a.label, abbr: a.abbr, color: a.color, bg: a.bg, statusField: a.statusField }; });
+      // 按模板分区建树：弹窗按分区渲染；formRows 是扁平副本，扫码确认弹窗仍按平铺渲染
+      var tree = buildFormTree(tpl.entries, arr[1], tpl.dict);
+      refreshDirty(tree.groups);
+      summarizeGroups(tree.groups);
+      applyDefaultCollapse(tree.groups);
+      // 与 Web 端 CageFormFill 的 canEdit 同义：客户端授权（角色/身份）或服务端按笼位判定，取或
+      var serverEditable = !!(arr[2] && arr[2].editable);
+      var clientGrant = hasCageFormEditGrant(
+        wx.getStorageSync(springAuth.KEYS.ROLE) || '', arr[3]
+      );
+      var canEditForm = clientGrant || serverEditable;
       self.setData({
-        formRows: buildEditableFormRows(tpl.fields, arr[1], tpl.dict),
-        formEditable: !!arr[2],
+        formRows: tree.rows,
+        formGroups: tree.groups,
+        formEditable: canEditForm,
+        // 只在确实没有编辑权时展示服务端原因；被客户端授权放行时不该显示「无权限」
+        formEditableReason: canEditForm ? '' : ((arr[2] && arr[2].reason) || ''),
         'cellDetail.statusChips': statusChips,
         formLoading: false,
         formError: ''
       });
+      self._refreshSectionNos();
     }).catch(function(err) {
       if (seq !== self._formReqSeq) return;
       self.setData({
         formRows: [],
+        formGroups: [],
         formEditable: false,
+        formEditableReason: '',
         formLoading: false,
         formError: (err && err.message) || '表单加载失败'
       });
     });
   },
 
-  /** 表单编辑：进入编辑态（复制一份可改值，取消可还原） */
-  onFormEditStart: function() { this.setData({ formEditing: true, formSaveMsg: '' }); },
-  onFormEditCancel: function() { this.setData({ formEditing: false, formSaveMsg: '' }); },
-  onFormSaveMsgClear: function() { this.setData({ formSaveMsg: '' }); },
+  /* ── 关键信息编辑态：行按 g/s/r 寻址 formGroups[g].subs[s].rows[r] ── */
 
-  /** 文本框/数字框改动：写回 formRows[i].raw */
-  onFormInput: function(e) {
-    var idx = Number(e.currentTarget.dataset.idx);
-    var rows = this.data.formRows || [];
-    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
+  onFormEditStart: function() { this.setData({ formEditing: true, formSaveMsg: '', formSaveMsgType: '' }); },
+
+  /** 取消编辑：raw 还原到 initRaw，清掉脏值与行级错误 */
+  onFormEditCancel: function() {
+    var groups = this.data.formGroups || [];
+    revertGroups(groups);
+    this.setData({ formGroups: groups, formEditing: false, formSaveMsg: '', formSaveMsgType: '' });
+  },
+
+  onFormSaveMsgClear: function() { this.setData({ formSaveMsg: '', formSaveMsgType: '' }); },
+
+  /** 折叠/展开某个模板分区 */
+  onToggleFormSection: function(e) {
+    var gi = Number(e.currentTarget.dataset.g);
+    var groups = this.data.formGroups || [];
+    if (isNaN(gi) || gi < 0 || gi >= groups.length) return;
     var patch = {};
-    patch['formRows[' + idx + '].raw'] = e.detail.value;
+    patch['formGroups[' + gi + '].collapsed'] = !groups[gi].collapsed;
     this.setData(patch);
   },
 
-  /** 开关（BOOLEAN）改动 */
-  onFormSwitch: function(e) {
-    var idx = Number(e.currentTarget.dataset.idx);
-    var rows = this.data.formRows || [];
-    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
+  /** 改一行的统一入口：写 raw → 重算脏值 → 清该行错误 */
+  _patchFormRow: function(e, nextRaw, nextValue) {
+    var ds = e.currentTarget.dataset;
+    var gi = Number(ds.g), si = Number(ds.s), ri = Number(ds.r);
+    var groups = this.data.formGroups || [];
+    var g = groups[gi];
+    var row = g && g.subs[si] && g.subs[si].rows[ri];
+    if (!row) return;
+
+    row.raw = nextRaw;
+    row._error = '';
+    refreshDirty(groups);
+
+    var base = 'formGroups[' + gi + '].subs[' + si + '].rows[' + ri + ']';
     var patch = {};
-    patch['formRows[' + idx + '].raw'] = !!e.detail.value;
+    patch[base + '.raw'] = nextRaw;
+    if (nextValue !== undefined) patch[base + '.value'] = nextValue;
+    patch[base + '._error'] = '';
+    patch[base + '._dirty'] = !!row._dirty;
+    patch['formGroups[' + gi + '].dirtyCount'] = g.dirtyCount;
     this.setData(patch);
   },
 
-  /** 码表/日期 picker 选中 */
+  onFormInput: function(e) { this._patchFormRow(e, e.detail.value); },
+
+  /** 布尔：自绘开关（原生 switch 只有 color 一个可调项，撑不起设计稿）。取反当前 raw。 */
+  onFormToggleBool: function(e) {
+    var ds = e.currentTarget.dataset;
+    var groups = this.data.formGroups || [];
+    var g = groups[Number(ds.g)];
+    var row = g && g.subs[Number(ds.s)] && g.subs[Number(ds.s)].rows[Number(ds.r)];
+    if (!row) return;
+    var next = !(row.raw === true || row.raw === 1 || row.raw === '1');
+    this._patchFormRow(e, next);
+  },
+
+  /**
+   * 重算分区编号。模板分区占前几位，状态与照片、实验记录跟在其后，
+   * 所以「状态那节显不显示」会改变后面所有编号 —— 表单与标注是两条异步加载路径，
+   * 任一条落地后都要重算，否则编号会错位。
+   */
+  _refreshSectionNos: function() {
+    var groups = this.data.formGroups || [];
+    var patch = {};
+    var n = 0;
+    for (var i = 0; i < groups.length; i++) {
+      n++;
+      patch['formGroups[' + i + ']._no'] = pad2(n);
+    }
+    if (this.data.detailHasStatusBlock) {
+      n++;
+      patch.statusSecNo = pad2(n);
+    }
+    n++;
+    patch.expSecNo = pad2(n);
+    this.setData(patch);
+  },
+
+  onFormSwitch: function(e) { this._patchFormRow(e, !!e.detail.value); },
+
+  /** 码表/日期 picker：raw 存码值（提交用），value 存展示值 */
   onFormPicker: function(e) {
-    var idx = Number(e.currentTarget.dataset.idx);
-    var rows = this.data.formRows || [];
-    if (isNaN(idx) || idx < 0 || idx >= rows.length) return;
-    var row = rows[idx];
-    var val;
-    var patch = {};
+    var ds = e.currentTarget.dataset;
+    var groups = this.data.formGroups || [];
+    var g = groups[Number(ds.g)];
+    var si = Number(ds.s);
+    var row = g && g.subs[si] && g.subs[si].rows[Number(ds.r)];
+    if (!row) return;
     if (row.fieldType === 'select' || row.fieldType === 'choice') {
       var opt = row.options[Number(e.detail.value)] || {};
-      val = opt.value === undefined ? '' : opt.value;
-      patch['formRows[' + idx + '].value'] = opt.label === undefined ? '' : opt.label;
+      this._patchFormRow(e, opt.value === undefined ? '' : opt.value, opt.label === undefined ? '' : opt.label);
     } else {
-      val = e.detail.value;
-      patch['formRows[' + idx + '].value'] = val;
+      this._patchFormRow(e, e.detail.value, e.detail.value);
     }
-    patch['formRows[' + idx + '].raw'] = val;
-    this.setData(patch);
   },
 
-  /** 保存：只提交可编辑字段，值按 dataType 归一 */
+  /** 保存关键信息：先校验必填，再只提交有改动的字段 */
   onFormSave: function() {
     var self = this;
     var cell = self.data.selectedCell;
     var animalCageId = cell ? String(cell.id || cell.animalCageId || '') : '';
     if (!animalCageId) return;
-    var rows = self.data.formRows || [];
-    var values = [];
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      if (!r || !r.editable || !r.fieldId) continue;
-      values.push({ fieldId: r.fieldId, value: toApiValue(r.dataType, r.raw) });
+
+    var groups = self.data.formGroups || [];
+    var errors = validateGroups(groups);
+    if (errors.length) {
+      // 展开出错的分区让用户看得见；不弹 toast——错误已经挂在行上了
+      errors.forEach(function(er) { groups[er.gi].collapsed = false; });
+      self.setData({
+        formGroups: groups,
+        formSaveMsg: errors.length + ' 处待修正',
+        formSaveMsgType: 'err'
+      });
+      return;
     }
-    if (values.length === 0) { wx.showToast({ title: '没有可保存的字段', icon: 'none' }); return; }
-    self.setData({ formSaving: true, formSaveMsg: '' });
+
+    var changed = changedValues(groups);
+    if (changed.length === 0) {
+      wx.showToast({ title: '没有改动', icon: 'none' });
+      self.setData({ formEditing: false, formSaveMsg: '', formSaveMsgType: '' });
+      return;
+    }
+    var values = changed.map(function(r) {
+      return { fieldId: r.fieldId, value: toApiValue(r.dataType, r.raw) };
+    });
+
+    self.setData({ formGroups: groups, formSaving: true, formSaveMsg: '', formSaveMsgType: '' });
     springAuth.springRequest({
       url: '/api/admin/cage-info/values/' + animalCageId, method: 'PUT', data: { values: values }
     }).then(function(res) {
       var up = unwrap(res);
       self.setData({ formSaving: false });
-      if (!up.ok) { wx.showToast({ title: up.message || '保存失败', icon: 'none' }); return; }
+      if (!up.ok) {
+        self.setData({ formSaveMsg: up.message || '保存失败', formSaveMsgType: 'err' });
+        return;
+      }
       wx.showToast({ title: '已保存', icon: 'success' });
       self.setData({ formEditing: false });
-      // 重新拉一次，让只读展示与最新值一致
+      // 重新拉一次：initRaw 要跟着新值走，否则保存完那些行仍显示「已改动」
       self.loadCellFormValues(cell);
     }).catch(function(err) {
-      self.setData({ formSaving: false });
-      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
+      self.setData({ formSaving: false, formSaveMsg: (err && err.message) || '保存失败', formSaveMsgType: 'err' });
     });
   },
 
@@ -2804,8 +3168,10 @@ loadCellAnnotation: function(cell) {
         experimentDesc: a.experimentDesc || '',
         detailImages: images,
         detailStatusPhotos: statusPhotos,
+        detailHasStatusBlock: Object.keys(statusPhotos).length > 0,
         detailAnnotationLoading: false
       });
+      self._refreshSectionNos();
     }).catch(function() {
       self.setData({ detailAnnotationLoading: false });
     });
@@ -2815,10 +3181,26 @@ loadCellAnnotation: function(cell) {
     this.setData({ experimentDesc: e.detail.value || '' });
   },
 
+  /**
+   * 照片预览：把当前弹窗里所有可见图片汇成一个可左右滑动的大图列表。
+   * 原先只取 detailImages，导致点状态专属照片或状态弹窗里的照片时列表为空/串到别的笼位。
+   */
   onDetailPreviewImage: function(e) {
     var url = e.currentTarget.dataset.url;
-    var urls = this.data.detailImages || [];
-    if (urls.length === 0) return;
+    if (!url) return;
+    var urls = [];
+    var push = function(u) { if (u && urls.indexOf(u) < 0) urls.push(u); };
+
+    (this.data.detailImages || []).forEach(push);
+    var sp = this.data.detailStatusPhotos || {};
+    Object.keys(sp).forEach(function(k) {
+      if (Array.isArray(sp[k])) sp[k].forEach(push);
+    });
+    (this.data.editActionPhotos || []).forEach(push);
+    (this.data.editHistory || []).forEach(function(h) {
+      (h._imgs || []).forEach(push);
+    });
+    push(url); // 兜底：无论图片来自哪个字段，被点的那张一定在列表里
     wx.previewImage({
       current: url,
       urls: urls
@@ -2946,22 +3328,25 @@ _closeDetail: function() {
       cellDetail: null,
       experimentDesc: '',
       detailImages: [],
-    detailStatusPhotos: {},
+      detailStatusPhotos: {},
+      detailHasStatusBlock: false,
       detailAnnotationLoading: false,
       formRows: [],
+      formGroups: [],
+      statusSecNo: '',
+      expSecNo: '',
       formLoading: false,
       formError: '',
       detailSaving: false,
       detailSaveMsg: '',
       detailSaveMsgType: '',
       detailQrImageSrc: '',
+      detailOpMark: null,
       detailImageUploading: false,
-      detailActions: cageStatus.newActionState(),
-      initialDetailActions: cageStatus.newActionState(),
-      detailActionSubmitting: false,
-      formEditable: false, formEditing: false, formSaving: false, formSaveMsg: '',
+      formEditable: false, formEditableReason: '', formEditing: false, formSaving: false, formSaveMsg: '', formSaveMsgType: '',
       detailOperable: false, detailOperableCode: '', detailOperableReason: '',
-      detailCanClaimOnBehalf: false, detailGroupNames: [], detailClaiming: false
+      detailCanClaimOnBehalf: false, detailGroupNames: [], detailClaiming: false,
+      detailClearingDivision: false
     });
   },
 
@@ -2976,6 +3361,7 @@ _closeDetail: function() {
     var cell = self.data.selectedCell;
     var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
     if (!kind || !cageId) return;
+    if (self._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
     var label = (cell && (cell._displayPosition || cell.position)) || '';
     self._closeDetail();
     self.setData({
@@ -2998,6 +3384,10 @@ _closeDetail: function() {
   /** 选位模式：点击格子切换目标（分笼多选、转移单选） */
   toggleOpTarget: function(cell) {
     var cid = String(cell.id || cell.animalCageId || '');
+    // 已有未决请求的笼位不可作为新目标（取消勾选仍放行）
+    if (!(this.data.opSelectedCageIds || {})[cid] && this._pendingOpOf(cell)) {
+      wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return;
+    }
     var t = (this.data.opTargetMap || {})[cid];
     if (!t || !t.selectable) { wx.showToast({ title: '该笼位不在可选范围内', icon: 'none' }); return; }
     var sel = Object.assign({}, this.data.opSelectedCageIds || {});
@@ -3126,6 +3516,26 @@ _closeDetail: function() {
     });
   },
 
+  /** 详情弹窗「清空划分」：只清单个笼位（不传 assigneeIds → 清空该笼位全部划分） */
+  onClearDivision: function() {
+    var self = this;
+    var cell = self.data.selectedCell;
+    var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!cageId || self.data.detailClearingDivision) return;
+    self.setData({ detailClearingDivision: true });
+    springAuth.springRequest({ url: '/api/cage-division/clear', method: 'POST', data: { animalCageIds: [cageId] } }).then(function(res) {
+      var p = unwrap(res);
+      self.setData({ detailClearingDivision: false });
+      if (!p.ok) { wx.showToast({ title: p.message || '清空划分失败', icon: 'none' }); return; }
+      wx.showToast({ title: '已清空划分', icon: 'success' });
+      self._closeDetail();
+      self.onRetry();
+    }).catch(function(e) {
+      self.setData({ detailClearingDivision: false });
+      wx.showToast({ title: (e && e.message) || '清空划分失败', icon: 'none' });
+    });
+  },
+
   /* ------------------------------------------------------------------ */
   /*  WXS helpers for template use                                        */
   /* ------------------------------------------------------------------ */
@@ -3136,37 +3546,6 @@ getCellStyleWxs: function(cell) {
 
   getDominantCodeLabelWxs: function(code) {
     return getDominantCodeLabel(code);
-  },
-
-  /* ── 详情弹窗动作 ── */
-
-  onToggleDetailAction: function(e) {
-    var act = e.currentTarget.dataset.act;
-    if (!act) return;
-    var old = this.data.detailActions;
-    var newActions = cageStatus.toggleAction(old, act);
-    var cell = this.data.selectedCell;
-    if (cell && this.data.pageMode === 'edit') {
-      var ck = cell.x + ':' + cell.y;
-      // 确保缓存条目存在（点击格子 vs 扫码 → 统一走同一条缓存系统）
-      var cache = this.data.scanCache || {};
-      var newCache = {};
-      for (var k in cache) {
-        if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k];
-      }
-      if (!newCache[ck]) {
-        var cbi = cell.cageBoxInfo || {};
-        var cvo = cbi.cageBoxVo || cbi['cageBoxVo'] || {};
-        var code = String(cbi.cageBoxCode || cbi['cageBoxCode'] || cvo.cageBoxCode || cvo['cageBoxCode'] || '');
-        // 创建条目时从弹窗当前状态全量初始化，避免丢失已预选的其他动作
-        newCache[ck] = { cell: cell, code: code, initialActions: Object.assign({}, this.initialDetailActions), currentActions: Object.assign({}, newActions) };
-      } else {
-        newCache[ck].currentActions[act] = newActions[act];
-      }
-      this.setData({ detailActions: newActions, scanCache: newCache }, this.applyCacheToGrid.bind(this));
-    } else {
-      this.setData({ detailActions: newActions });
-    }
   },
 
   onSubmitDetailActions: function() {
@@ -3563,11 +3942,7 @@ getCellStyleWxs: function(cell) {
         springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res2) {
           var hp = unwrap(res2);
           var list = (hp.ok ? hp.data : []) || [];
-          list.forEach(function(h) {
-            try { h._imgs = JSON.parse(h.imagesJson || '[]'); } catch(e) { h._imgs = []; }
-            if (h.createdAt) h.createdAt = (h.createdAt || '').substring(0, 16);
-          });
-          self.setData({ editHistory: list });
+          self.setData({ editHistory: normalizeStatusHistory(list) });
         }).catch(function(){});
       }
       wx.showToast({ title: '已归档为新记录', icon: 'success', duration: 2000 });

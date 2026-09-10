@@ -154,6 +154,7 @@
     {
       "canonical": "animal_strain_name",
       "sqlColumn": "animal_strain_name",
+      "comment": "动物品系：单值字符串，存 value_string。填写方式是「输入框+候选」（cage_info_field.field_type=combo），候选由该笼位所属 AUP 的品系白名单现算，也允许自由输入。type 必须是 string —— 早先写 stringArray 会播种成 ENUM_MULTI（value_json），与既有的 value_string 数据对不上。",
       "type": "string",
       "sources": { "back": "cageBoxVo.animalStrainName", "list": "cageBoxVo.animalStrainName" }
     },

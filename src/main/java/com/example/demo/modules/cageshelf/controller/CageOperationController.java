@@ -20,7 +20,7 @@ import java.util.Map;
 
 /**
  * 笼位操作（分笼 / 转移笼位）—— 三端通用接口。
- * 权限与审核由服务按「身份 + cage.claim.student_op_approval_required」分流，前端不做视角判断。
+ * 权限与审核由服务按「身份 + 分笼/转移两个独立审核开关」分流，前端不做视角判断。
  */
 @RestController
 @RequestMapping("/api/cage-op")
@@ -80,11 +80,16 @@ public class CageOperationController {
         User u = resolveUser(req);
         Result<?> denied = requireLogin(u);
         if (denied != null) return Result.fail(401, denied.getMessage());
-        return Result.success(opService.cageEditInfo(u, animalCageId));
+        try {
+            return Result.success(opService.cageEditInfo(u, animalCageId));
+        } catch (Exception e) {
+            // 不能让它裸抛：前端只拿到 500 → 按钮消失且连 reason 都没有，用户无从判断是权限问题还是服务异常
+            return handle(e);
+        }
     }
 
     @GetMapping("/field-options")
-    @Operation(summary = "动态字段选项（按笼位现算，如动物品系取该笼位 AUP 白名单）")
+    @Operation(summary = "动态字段选项（按笼位现算，候选源由字段 config.optionsSource 决定）")
     public Result<Map<String, Object>> fieldOptions(@RequestParam Long animalCageId,
                                                     @RequestParam String canonical,
                                                     HttpServletRequest req) {
@@ -93,6 +98,23 @@ public class CageOperationController {
         if (denied != null) return Result.fail(401, denied.getMessage());
         try {
             return Result.success(opService.fieldOptions(u, animalCageId, canonical));
+        } catch (Exception e) {
+            return handle(e);
+        }
+    }
+
+    @PostMapping("/field-option")
+    @Operation(summary = "新增字段预设（落点=AUP 白名单或笼位域码表，返回刷新后的选项）")
+    public Result<Map<String, Object>> addFieldOption(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+        try {
+            Long animalCageId = toLong(body == null ? null : body.get("animalCageId"));
+            if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
+            String canonical = str(body, "canonical");
+            if (canonical == null || canonical.isBlank()) return Result.fail(400, "canonical 必填");
+            return Result.success(opService.addFieldOption(u, animalCageId, canonical, str(body, "label")));
         } catch (Exception e) {
             return handle(e);
         }
@@ -174,6 +196,25 @@ public class CageOperationController {
         Result<?> denied = requireLogin(u);
         if (denied != null) return Result.fail(401, denied.getMessage());
         return Result.success(opService.pending(u, opType));
+    }
+
+    @GetMapping("/markers")
+    @Operation(summary = "待审中间态（网格/详情画「分笼审核中」「转移审核中」）；学生只看自己的，教职工看全部")
+    public Result<List<Map<String, Object>>> markers(HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+        return Result.success(opService.pendingMarkers(u));
+    }
+
+    @GetMapping("/reviewed")
+    @Operation(summary = "我审过的分笼/转移（审核页「已审核」历史区）")
+    public Result<List<Map<String, Object>>> reviewed(@RequestParam(defaultValue = "100") int limit,
+                                                      HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireLogin(u);
+        if (denied != null) return Result.fail(401, denied.getMessage());
+        return Result.success(opService.reviewed(u, limit));
     }
 
     @GetMapping("/my")

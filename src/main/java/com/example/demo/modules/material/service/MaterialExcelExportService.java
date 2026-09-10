@@ -1,14 +1,16 @@
 package com.example.demo.modules.material.service;
 
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
+import com.example.demo.common.excel.SubtotalConfig;
 import com.example.demo.common.excel.SubtotalPlanBuilder;
 import com.example.demo.common.excel.SubtotalPlanBuilder.SubtotalEvent;
+import com.example.demo.common.excel.SubtotalRowStyles;
+import com.example.demo.common.excel.SubtotalSummary;
 import com.example.demo.modules.material.dto.MaterialAuditGridRow;
 import com.example.demo.modules.material.dto.MaterialAuditTrailView;
 import com.example.demo.modules.material.dto.MaterialItemFlowExportRow;
 import com.example.demo.modules.material.dto.MaterialRequestView;
 import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -31,6 +33,13 @@ public class MaterialExcelExportService {
      * 按 课题组 → 申领人 → 物品 排序并逐层插入小计，末尾总计。
      */
     public byte[] buildAuditGridSheet(List<MaterialAuditGridRow> rows) {
+        return buildAuditGridSheet(rows, SubtotalConfig.all());
+    }
+
+    /**
+     * 同上，但按 {@code config} 保留/排除部分小计层级与板块。
+     */
+    public byte[] buildAuditGridSheet(List<MaterialAuditGridRow> rows, SubtotalConfig config) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("申领审计"));
             int r = 0;
@@ -38,24 +47,14 @@ public class MaterialExcelExportService {
             String[] cols = { "单号", "物品", "数量", "状态", "申领人", "课题组", "时间" };
             for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
 
-            List<MaterialAuditGridRow> sorted = new ArrayList<>(rows == null ? List.of() : rows);
-            sorted.sort(Comparator
-                    .comparing((MaterialAuditGridRow x) -> safe(x.getApplicantGroup()))
-                    .thenComparing(x -> safe(x.getApplicantName()))
-                    .thenComparing(x -> safe(x.getItemName()))
-                    .thenComparing(x -> safe(x.getTime()), Comparator.reverseOrder()));
+            List<MaterialAuditGridRow> sorted = sortAuditRows(rows);
+            List<SubtotalEvent> details = toAuditDetails(sorted);
 
-            List<SubtotalEvent> details = new ArrayList<>();
-            for (int i = 0; i < sorted.size(); i++) {
-                MaterialAuditGridRow row = sorted.get(i);
-                Integer q = parseQtyText(row.getQty());
-                long n = q == null ? 0 : q;
-                details.add(new SubtotalEvent(-1, i, safe(row.getApplicantGroup()),
-                        safe(row.getApplicantName()), safe(row.getItemName()), n, 0, 0));
-            }
-
-            CellStyle bold = boldStyle(wb);
-            for (SubtotalEvent e : SubtotalPlanBuilder.build(details)) {
+            SubtotalRowStyles styles = SubtotalRowStyles.create(wb);
+            List<SubtotalEvent> plan = SubtotalPlanBuilder.build(details, config);
+            List<CellStyle> planStyles = styles.planStyles(plan);
+            for (int i = 0; i < plan.size(); i++) {
+                SubtotalEvent e = plan.get(i);
                 Row data = sh.createRow(r++);
                 if (e.isDetail()) {
                     MaterialAuditGridRow row = sorted.get(e.rowIndex());
@@ -66,6 +65,7 @@ public class MaterialExcelExportService {
                     data.createCell(4).setCellValue(safe(row.getApplicantName()));
                     data.createCell(5).setCellValue(safe(row.getApplicantGroup()));
                     data.createCell(6).setCellValue(safe(row.getTime()));
+                    SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
                     continue;
                 }
                 int labelCol = switch (e.level()) {
@@ -75,7 +75,6 @@ public class MaterialExcelExportService {
                     default -> 0;
                 };
                 data.createCell(labelCol).setCellValue(SubtotalPlanBuilder.label(e));
-                data.getCell(labelCol).setCellStyle(bold);
                 if (e.level() == 3) {
                     data.createCell(4).setCellValue(safe(e.lv2()));
                     data.createCell(5).setCellValue(safe(e.lv1()));
@@ -83,7 +82,8 @@ public class MaterialExcelExportService {
                     data.createCell(5).setCellValue(safe(e.lv1()));
                 }
                 data.createCell(2).setCellValue(e.net());
-                data.getCell(2).setCellStyle(bold);
+                SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
+                if (e.level() == 1) r++;   // 一级小计后空一行，隔开各板块
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
             wb.write(out);
@@ -94,10 +94,50 @@ public class MaterialExcelExportService {
     }
 
     /**
+     * 审计导出结构摘要：全量层级与板块（供勾选），不受配置影响。
+     * 与导出共用 {@link #sortAuditRows}/{@link #toAuditDetails}，保证摘要行数 == 成品行数。
+     */
+    public SubtotalSummary summarizeAuditGrid(List<MaterialAuditGridRow> rows) {
+        List<SubtotalEvent> details = toAuditDetails(sortAuditRows(rows));
+        return SubtotalPlanBuilder.summarize(SubtotalPlanBuilder.build(details, SubtotalConfig.all()));
+    }
+
+    /** 审计明细排序（排序规则导出与摘要共用）。 */
+    private static List<MaterialAuditGridRow> sortAuditRows(List<MaterialAuditGridRow> rows) {
+        List<MaterialAuditGridRow> sorted = new ArrayList<>(rows == null ? List.of() : rows);
+        sorted.sort(Comparator
+                .comparing((MaterialAuditGridRow x) -> safe(x.getApplicantGroup()))
+                .thenComparing(x -> safe(x.getApplicantName()))
+                .thenComparing(x -> safe(x.getItemName()))
+                .thenComparing(x -> safe(x.getTime()), Comparator.reverseOrder()));
+        return sorted;
+    }
+
+    /** 排序后的审计明细行 → 小计事件（导出与摘要同源，不复制两份）。 */
+    private static List<SubtotalEvent> toAuditDetails(List<MaterialAuditGridRow> sorted) {
+        List<SubtotalEvent> details = new ArrayList<>();
+        for (int i = 0; i < sorted.size(); i++) {
+            MaterialAuditGridRow row = sorted.get(i);
+            Integer q = parseQtyText(row.getQty());
+            long n = q == null ? 0 : q;
+            details.add(new SubtotalEvent(-1, i, safe(row.getApplicantGroup()),
+                    safe(row.getApplicantName()), safe(row.getItemName()), n, 0, 0));
+        }
+        return details;
+    }
+
+    /**
      * 按物品来去流水导出（列顺序与 Web 预览一致）。
      * 按 课题组 → 申领人 → 物品 排序并逐层插入小计，末尾总计（含入库/出库/净额）。
      */
     public byte[] buildItemFlowSheet(List<MaterialItemFlowExportRow> rows) {
+        return buildItemFlowSheet(rows, SubtotalConfig.all());
+    }
+
+    /**
+     * 同上，但按 {@code config} 保留/排除部分小计层级与板块。
+     */
+    public byte[] buildItemFlowSheet(List<MaterialItemFlowExportRow> rows, SubtotalConfig config) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("物品来去流水"));
             int r = 0;
@@ -105,25 +145,14 @@ public class MaterialExcelExportService {
             String[] cols = { "时间", "类型", "物品", "规格", "变动数量", "库存", "申领人", "课题组", "关联单号", "备注" };
             for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
 
-            List<MaterialItemFlowExportRow> sorted = new ArrayList<>(rows == null ? List.of() : rows);
-            sorted.sort(Comparator
-                    .comparing((MaterialItemFlowExportRow x) -> safe(x.getApplicantGroup()))
-                    .thenComparing(x -> safe(x.getApplicantName()))
-                    .thenComparing(x -> safe(x.getItemName()))
-                    .thenComparing(x -> safe(x.getTime()), Comparator.reverseOrder()));
+            List<MaterialItemFlowExportRow> sorted = sortItemFlowRows(rows);
+            List<SubtotalEvent> details = toItemFlowDetails(sorted);
 
-            List<SubtotalEvent> details = new ArrayList<>();
-            for (int i = 0; i < sorted.size(); i++) {
-                MaterialItemFlowExportRow row = sorted.get(i);
-                Integer q = parseQtyText(row.getQty());
-                long n = q == null ? 0 : q;
-                details.add(new SubtotalEvent(-1, i, safe(row.getApplicantGroup()),
-                        safe(row.getApplicantName()), safe(row.getItemName()),
-                        n, Math.max(n, 0), Math.min(n, 0)));
-            }
-
-            CellStyle bold = boldStyle(wb);
-            for (SubtotalEvent e : SubtotalPlanBuilder.build(details)) {
+            SubtotalRowStyles styles = SubtotalRowStyles.create(wb);
+            List<SubtotalEvent> plan = SubtotalPlanBuilder.build(details, config);
+            List<CellStyle> planStyles = styles.planStyles(plan);
+            for (int i = 0; i < plan.size(); i++) {
+                SubtotalEvent e = plan.get(i);
                 Row data = sh.createRow(r++);
                 if (e.isDetail()) {
                     MaterialItemFlowExportRow row = sorted.get(e.rowIndex());
@@ -137,6 +166,7 @@ public class MaterialExcelExportService {
                     data.createCell(7).setCellValue(safe(row.getApplicantGroup()));
                     data.createCell(8).setCellValue(safe(row.getRequestId()));
                     data.createCell(9).setCellValue(safe(row.getRemark()));
+                    SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
                     continue;
                 }
                 int labelCol = switch (e.level()) {
@@ -146,7 +176,6 @@ public class MaterialExcelExportService {
                     default -> 1;
                 };
                 data.createCell(labelCol).setCellValue(SubtotalPlanBuilder.label(e));
-                data.getCell(labelCol).setCellStyle(bold);
                 if (e.level() == 3) {
                     data.createCell(6).setCellValue(safe(e.lv2()));
                     data.createCell(7).setCellValue(safe(e.lv1()));
@@ -154,9 +183,10 @@ public class MaterialExcelExportService {
                     data.createCell(7).setCellValue(safe(e.lv1()));
                 }
                 data.createCell(4).setCellValue(e.net());
-                data.getCell(4).setCellStyle(bold);
                 data.createCell(9).setCellValue("入库合计 +" + e.inbound()
                         + "；出库合计 " + e.outbound() + "；净变动 " + e.net());
+                SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
+                if (e.level() == 1) r++;   // 一级小计后空一行，隔开各板块
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
             wb.write(out);
@@ -164,6 +194,40 @@ public class MaterialExcelExportService {
         } catch (Exception e) {
             throw new RuntimeException("导出物品来去流水 Excel 失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 来去流水导出结构摘要：全量层级与板块（供勾选），不受配置影响。
+     * 与导出共用 {@link #sortItemFlowRows}/{@link #toItemFlowDetails}，保证摘要行数 == 成品行数。
+     */
+    public SubtotalSummary summarizeItemFlow(List<MaterialItemFlowExportRow> rows) {
+        List<SubtotalEvent> details = toItemFlowDetails(sortItemFlowRows(rows));
+        return SubtotalPlanBuilder.summarize(SubtotalPlanBuilder.build(details, SubtotalConfig.all()));
+    }
+
+    /** 来去流水明细排序（排序规则导出与摘要共用）。 */
+    private static List<MaterialItemFlowExportRow> sortItemFlowRows(List<MaterialItemFlowExportRow> rows) {
+        List<MaterialItemFlowExportRow> sorted = new ArrayList<>(rows == null ? List.of() : rows);
+        sorted.sort(Comparator
+                .comparing((MaterialItemFlowExportRow x) -> safe(x.getApplicantGroup()))
+                .thenComparing(x -> safe(x.getApplicantName()))
+                .thenComparing(x -> safe(x.getItemName()))
+                .thenComparing(x -> safe(x.getTime()), Comparator.reverseOrder()));
+        return sorted;
+    }
+
+    /** 排序后的来去流水明细行 → 小计事件（导出与摘要同源，不复制两份）。 */
+    private static List<SubtotalEvent> toItemFlowDetails(List<MaterialItemFlowExportRow> sorted) {
+        List<SubtotalEvent> details = new ArrayList<>();
+        for (int i = 0; i < sorted.size(); i++) {
+            MaterialItemFlowExportRow row = sorted.get(i);
+            Integer q = parseQtyText(row.getQty());
+            long n = q == null ? 0 : q;
+            details.add(new SubtotalEvent(-1, i, safe(row.getApplicantGroup()),
+                    safe(row.getApplicantName()), safe(row.getItemName()),
+                    n, Math.max(n, 0), Math.min(n, 0)));
+        }
+        return details;
     }
 
     /**
@@ -249,14 +313,6 @@ public class MaterialExcelExportService {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    private static CellStyle boldStyle(Workbook wb) {
-        CellStyle style = wb.createCellStyle();
-        Font font = wb.createFont();
-        font.setBold(true);
-        style.setFont(font);
-        return style;
     }
 
     private static String statusZh(String s) {

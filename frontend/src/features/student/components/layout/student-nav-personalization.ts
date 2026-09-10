@@ -6,8 +6,6 @@
 import {
   fetchMiniPreferences,
   saveMiniPreferences,
-  defaultMiniPreferences,
-  type MiniPreferences,
 } from "@/api/domains/me.api";
 
 /* ------------------------------------------------------------------ */
@@ -25,23 +23,6 @@ export const STUDENT_NAV_PERSONALIZATION_EVENT = "aro-student-nav-personalizatio
 /* ------------------------------------------------------------------ */
 /*  Internal helpers                                                    */
 /* ------------------------------------------------------------------ */
-
-let cachedPrefs: MiniPreferences | null = null;
-let fetchPromise: Promise<MiniPreferences> | null = null;
-
-async function getPrefs(): Promise<MiniPreferences> {
-  if (cachedPrefs) return cachedPrefs;
-  if (!fetchPromise) {
-    fetchPromise = fetchMiniPreferences().then((p) => {
-      cachedPrefs = p ?? defaultMiniPreferences();
-      return cachedPrefs;
-    }).catch(() => {
-      cachedPrefs = defaultMiniPreferences();
-      return cachedPrefs;
-    });
-  }
-  return fetchPromise!;
-}
 
 function readLocal(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -73,25 +54,20 @@ function dispatchPersonalizationChanged() {
   }
 }
 
+/**
+ * 只提交学生端侧栏自己的字段。
+ * 曾经是「读整包 → 改三个字段 → 回写整包」，而整包来自页面级的陈旧副本，
+ * 学生端每次导航都会触发 —— 于是刚切好的亮/暗色会被这份旧包冲回原值。
+ * 后端对未提交（null）的字段保留库内值，局部提交即可。
+ */
 async function persistServer() {
   try {
-    const prefs = await getPrefs();
-    const merged: MiniPreferences = {
-      ...prefs,
-      roomWatch: prefs.roomWatch ?? { selections: [] },
+    await saveMiniPreferences({
       studentNavRecent: readStudentNavRecent(),
       studentNavStars: readStudentNavStars(),
       studentNavLock: readStudentNavLock() ?? "",
-    };
-    await saveMiniPreferences(merged);
-    cachedPrefs = merged;
+    });
   } catch { /* offline — keep local */ }
-}
-
-/** Invalidate cache so next read fetches from server */
-function invalidateCache() {
-  cachedPrefs = null;
-  fetchPromise = null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -122,7 +98,6 @@ export async function hydrateStudentNavPersonalization(): Promise<boolean> {
     writeLocalList(STARS_KEY, stars);
     writeLocal(LOCK_KEY, lock);
 
-    cachedPrefs = prefs;
     dispatchPersonalizationChanged();
     return true;
   } catch {

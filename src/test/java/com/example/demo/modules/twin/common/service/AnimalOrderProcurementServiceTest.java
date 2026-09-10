@@ -4,6 +4,7 @@ import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 
@@ -14,12 +15,22 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class AnimalOrderProcurementServiceTest {
+
+    private static final String A_BLOCK = "FFDDE9F7";
+    private static final String TOTAL_FILL = "FFD9D9D9";
+
+    /** 首列填充色（ARGB），板块内的明细与小计行应一致。 */
+    private static String fillHex(Row row, int col) {
+        XSSFColor c = (XSSFColor) row.getCell(col).getCellStyle().getFillForegroundColorColor();
+        return c == null ? null : c.getARGBHex();
+    }
 
     private static Map<String, Object> group(String arrival, String supplier, String strain, String spec,
                                              long male, long female) {
@@ -106,11 +117,17 @@ class AnimalOrderProcurementServiceTest {
             assertEquals("小计", text(subtotal, 2));
             assertEquals(140.0, subtotal.getCell(4).getNumericCellValue());
             assertEquals(180.0, subtotal.getCell(6).getNumericCellValue());
+            // 明细行与小计行同属一个板块 → 同一底色
+            assertEquals(A_BLOCK, fillHex(detail, 0));
+            assertEquals(A_BLOCK, fillHex(subtotal, 0));
 
-            Row grand = sh.getRow(header + 4);
+            // 供应商小计后空一行，再写总计
+            assertNull(sh.getRow(header + 4), "供应商小计后应留空行");
+            Row grand = sh.getRow(header + 5);
             assertEquals("总计", text(grand, 0));
             assertEquals(140.0, grand.getCell(4).getNumericCellValue());
             assertEquals(180.0, grand.getCell(6).getNumericCellValue());
+            assertEquals(TOTAL_FILL, fillHex(grand, 0));
         }
     }
 

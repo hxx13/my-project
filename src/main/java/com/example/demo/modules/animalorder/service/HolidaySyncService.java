@@ -1,15 +1,20 @@
 package com.example.demo.modules.animalorder.service;
 
+import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.animalorder.dto.HolidayImportResultDto;
 import com.example.demo.modules.animalorder.entity.AnimalOrderHoliday;
 import com.example.demo.modules.animalorder.mapper.AnimalOrderHolidayMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
@@ -18,8 +23,16 @@ import java.util.List;
 @Service
 public class HolidaySyncService {
 
-    private static final String CDN_URL =
-            "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json";
+    private static final Logger log = LoggerFactory.getLogger(HolidaySyncService.class);
+
+    /**
+     * 按顺序尝试的节假日数据源。jsdelivr 在部分网络环境下不可达（Connection refused），
+     * 回退到 GitHub 原始地址；两者都失败时给出可操作的提示，而不是抛未处理异常。
+     */
+    private static final String[] HOLIDAY_SOURCE_URLS = {
+            "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/%d.json",
+            "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/%d.json",
+    };
 
     @Autowired
     private AnimalOrderHolidayMapper holidayMapper;
@@ -28,6 +41,7 @@ public class HolidaySyncService {
     private ObjectMapper objectMapper;
 
     @Autowired
+    @Qualifier("holidayRestTemplate")
     private RestTemplate restTemplate;
 
     @Transactional(rollbackFor = Exception.class)
@@ -37,9 +51,23 @@ public class HolidaySyncService {
 
     @Transactional(rollbackFor = Exception.class)
     public HolidayImportResultDto syncFromCdn(int year) {
-        String url = String.format(CDN_URL, year);
-        String body = restTemplate.getForObject(url, String.class);
-        return doImportJson(body, "CDN", year);
+        String lastError = null;
+        for (String template : HOLIDAY_SOURCE_URLS) {
+            String url = String.format(template, year);
+            try {
+                String body = restTemplate.getForObject(url, String.class);
+                if (StringUtils.hasText(body)) {
+                    return doImportJson(body, "CDN", year);
+                }
+                lastError = "数据源返回空内容";
+                log.warn("[节假日同步] {} 返回空内容，尝试下一个数据源", url);
+            } catch (RestClientException e) {
+                lastError = e.getMessage();
+                log.warn("[节假日同步] {} 拉取失败，尝试下一个数据源: {}", url, e.getMessage());
+            }
+        }
+        throw new TwinBusinessException(502,
+                "无法连接节假日数据源（" + lastError + "）。可改用「上传 JSON 文件」手动导入。");
     }
 
     private HolidayImportResultDto doImportJson(String json, String source, Integer yearHint) {

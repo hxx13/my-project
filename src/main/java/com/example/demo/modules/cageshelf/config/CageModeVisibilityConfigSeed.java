@@ -34,8 +34,9 @@ public class CageModeVisibilityConfigSeed implements ApplicationRunner {
             def("record", "BREEDER,BREEDING_GROUP_LEADER", "记录模式可见身份（逗号分隔）");
             def("archive", "BREEDER,BREEDING_GROUP_LEADER", "归档模式可见身份（逗号分隔）");
             def("confirm", "BREEDER,BREEDING_GROUP_LEADER", "确认模式可见身份（逗号分隔）");
+            def("division", "GROUP_STEWARD", "划分模式可见身份（逗号分隔）");
             defOpManage();
-            log.info("[cage-mode-config] 模式可见性配置就绪（7 个可配模式 + 分笼/转移操作身份，view 不可配）");
+            log.info("[cage-mode-config] 模式可见性配置就绪（8 个可配模式 + 分笼/转移操作身份，view 不可配）");
         } catch (Exception e) {
             log.warn("[cage-mode-config] 播种跳过: {}", e.getMessage());
         }
@@ -87,21 +88,26 @@ public class CageModeVisibilityConfigSeed implements ApplicationRunner {
     }
 
     private void def(String modeKey, String defaultCodes, String labelZh) {
+        String key = "cage.mode." + modeKey;
         try {
             Integer exists = jdbc.queryForObject(
                     "SELECT COUNT(1) FROM sys_system_config_def WHERE module = ? AND config_key = ?",
-                    Integer.class, "cage_mode", "cage.mode." + modeKey);
-            if (exists != null && exists > 0) return;
-            jdbc.update("""
-                    INSERT INTO sys_system_config_def
-                    (module, config_key, label_zh, description, value_type, options_json, default_value, is_sensitive, requires_restart, is_public, update_time)
-                    VALUES (?, ?, ?, ?, 'STRING', NULL, ?, 0, 0, 0, NOW())
-                    """,
-                    "cage_mode", "cage.mode." + modeKey, labelZh,
-                    "身份 code 逗号分隔：BREEDER=饲养员 BREEDING_GROUP_LEADER=饲养组长 SECRETARY=秘书（view 不可配）",
-                    defaultCodes);
+                    Integer.class, "cage_mode", key);
+            if (exists == null || exists == 0) {
+                jdbc.update("""
+                        INSERT INTO sys_system_config_def
+                        (module, config_key, label_zh, description, value_type, options_json, default_value, is_sensitive, requires_restart, is_public, update_time)
+                        VALUES (?, ?, ?, ?, 'STRING', NULL, ?, 0, 0, 0, NOW())
+                        """,
+                        "cage_mode", key, labelZh,
+                        "身份 code 逗号分隔：BREEDER=饲养员 BREEDING_GROUP_LEADER=饲养组长 SECRETARY=秘书（view 不可配）",
+                        defaultCodes);
+            }
         } catch (Exception e) {
             log.warn("[cage-mode-config] 配置定义播种失败 cage.mode.{}: {}", modeKey, e.getMessage());
         }
+        // 运行值行也要补：设置中心按 id 更新值，缺行时前端显示「配置项未初始化」无法保存。
+        // 早期只给 defOpManage 补过，导致新增模式（division）有定义没运行值。幂等。
+        ensureRuntimeValue(key, defaultCodes);
     }
 }

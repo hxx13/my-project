@@ -1,5 +1,5 @@
 /** 手机版 — 动物订购子页（复用 PC 端 reference-data 数据层，移动端重排 UI） */
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/api/hooks/queryKeys";
@@ -19,21 +19,28 @@ import {
 import { useAnimalOrderTimePolicy } from "@/api/hooks/useAnimalOrderTime";
 import {
   resolveSharedCartGroupId,
+  resolveOrderGroupName,
+  splitGroupNames,
   type RefCartItem,
   type RefDataItem,
+  loadOrderToCart,
+  applyOrderEdit,
+  discardOrderEdit,
 } from "@/api/domains/referenceData.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import { useAupMyRoles } from "@/features/aup/hooks/useAup";
 import { getTypeConfig } from "@/features/reference-data/typeRegistry";
 import { webImageSrc } from "@/utils/mediaUrl";
-import SpecSelectPanel from "@/features/reference-data/SpecSelectPanel";
+import MobileOrderRecordsView from "./MobileOrderRecordsView";
+import CartTree from "@/features/reference-data/CartTree";
+import SpecSelectPanel, { type OrderPickupInfo } from "@/features/reference-data/SpecSelectPanel";
 import CampusGate from "@/features/reference-data/CampusGate";
 import { ANIMAL_ORDER_CAMPUSES, readStoredCampus, storeCampus, type AnimalOrderCampus } from "@/features/reference-data/campus";
 import { appConfirm } from "@/lib/appDialog";
 import { cn } from "@/lib/utils";
 import { SplitSidebarScrollLayout } from "@/components/layout/ScrollFillLayout";
-import { Loader2, WifiOff, ShoppingCart, X, ChevronRight, ChevronLeft, ClipboardList } from "lucide-react";
+import { Loader2, WifiOff, ShoppingCart, X, ChevronRight, ChevronLeft, ChevronDown, Check, ClipboardList, MapPin } from "lucide-react";
 
 interface DrillSegment {
   id: number;
@@ -67,13 +74,16 @@ function hasSpecForItem(item: RefDataItem): boolean {
   return false;
 }
 
-export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?: boolean }) {
+export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExitGuard }: { jwtMode?: boolean; onRegisterExitGuard?: (fn: (() => Promise<boolean>) | null) => void }) {
   const [activeTypeKey, setActiveTypeKey] = useState("SUPPLIER");
   const [drillStack, setDrillStack] = useState<DrillSegment[]>([]);
   const [specSelectItem, setSpecSelectItem] = useState<RefDataItem | null>(null);
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [aupPickerOpen, setAupPickerOpen] = useState(false);
+  const [campusSheetOpen, setCampusSheetOpen] = useState(false);
   const [orderHistoryOpen, setOrderHistoryOpen] = useState(false);
+  const [editOrderId, setEditOrderId] = useState<number | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [submitRemark, setSubmitRemark] = useState("");
   const [packageRemark, setPackageRemark] = useState("");
@@ -92,6 +102,21 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
   const projectGroupName = userInfo?.projectGroupName?.trim() || "";
 
   const { data: approvedAups = [] } = useApprovedAups();
+
+  // 本人课题组名（userInfo.projectGroupName 可能是多组拼接串，必须拆开）
+  const myGroupNames = useMemo(() => splitGroupNames(projectGroupName), [projectGroupName]);
+
+  // 下单归属课题组名：多课题组账号取所选 AUP 的课题组（单值），否则与同组其他人的口径对不上
+  const orderGroupName = useMemo(
+    () => resolveOrderGroupName(approvedAups, selectedAupId, myGroupNames),
+    [approvedAups, selectedAupId, myGroupNames],
+  );
+
+  // 领用人候选范围：本人课题组（缺失时回退 AUP 课题组；仍为空则选购弹窗禁用领用人选择）
+  const effectiveGroupNames = useMemo(
+    () => (myGroupNames.length ? myGroupNames : orderGroupName ? [orderGroupName] : []),
+    [myGroupNames, orderGroupName],
+  );
   const { data: myRoles } = useAupMyRoles();
   const isPi = !!myRoles?.isPi;
 
@@ -110,13 +135,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
   const { data: timePolicy } = useAnimalOrderTimePolicy(campus ?? undefined, breedCategoryKey);
   const orderingBlocked = timePolicy != null && !timePolicy.canOrderNow;
 
-  const groupId = useMemo(() => {
-    const fromAup = approvedAups.find((a) => a.projectGroupId != null)?.projectGroupId;
-    const effectiveGroupName =
-      projectGroupName ||
-      (approvedAups.find((a) => (a.projectGroupName || "").trim())?.projectGroupName ?? "");
-    return resolveSharedCartGroupId(fromAup ?? null, effectiveGroupName);
-  }, [approvedAups, projectGroupName]);
+  // 共享购物车 key 走课题组名，不用 project_group.id —— 该表同名多行，同组不同账号可能解析到不同 id
+  const groupId = useMemo(() => resolveSharedCartGroupId(null, orderGroupName), [orderGroupName]);
 
   useEffect(() => {
     if (!selectedAupId && approvedAups.length === 1) {
@@ -153,30 +173,42 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     [approvedAups, selectedAupId],
   );
 
+  const aupLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of approvedAups) m.set(String(a.id), a.registerNo);
+    return m;
+  }, [approvedAups]);
+
   const cartLines = useMemo(() => {
     return (serverCartItems || []).map((ci: RefCartItem) => {
       const addedByName = (ci.addedByName || "").trim();
       return {
         id: ci.id,
-        refDataId: ci.refDataId,
+        key: String(ci.id),
+        itemId: ci.refDataId,
         itemLabel: (ci.refDataLabel || "").trim() || itemLabelMap[ci.refDataId] || `ID ${ci.refDataId}`,
         specLabel: parseSpecLabel(ci.specSelections),
         qty: ci.quantity || 0,
+        unitPrice: ci.unitPrice ?? null,
+        lineAmount: ci.lineAmount ?? null,
+        pickupRoomName: ci.pickupRoomName ?? null,
+        collectorName: ci.collectorName ?? null,
         aupRecordId: ci.aupRecordId,
+        aupLabel: aupLabelById.get(String(ci.aupRecordId)) || "未归属",
         packageStatus: ci.packageStatus || "DRAFT",
         packageRemark: ci.packageRemark,
         addedBy: ci.addedBy,
         addedByLabel: addedByName || (ci.addedBy === currentUserId ? currentUserName : "") || ci.addedBy || "",
       };
     });
-  }, [serverCartItems, itemLabelMap, currentUserId, currentUserName]);
+  }, [serverCartItems, itemLabelMap, aupLabelById, currentUserId, currentUserName]);
 
   /** 无规格的可购商品：refDataId → 车行（直接加减数量用） */
   const plainCartByItem = useMemo(() => {
     const m = new Map<number, { id: number; qty: number }>();
     for (const l of cartLines) {
       if (l.specLabel) continue;
-      m.set(l.refDataId, { id: l.id, qty: l.qty });
+      m.set(l.itemId, { id: l.id, qty: l.qty });
     }
     return m;
   }, [cartLines]);
@@ -185,12 +217,24 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
   const qtyByRefDataId = useMemo(() => {
     const m = new Map<number, number>();
     for (const l of cartLines) {
-      m.set(l.refDataId, (m.get(l.refDataId) || 0) + l.qty);
+      m.set(l.itemId, (m.get(l.itemId) || 0) + l.qty);
     }
     return m;
   }, [cartLines]);
 
   const cartCount = useMemo(() => cartLines.reduce((s, l) => s + l.qty, 0), [cartLines]);
+
+  // 购物车实时总金额：只累加已定价的行；全车无定价时为 null（显示「—」而非 0）
+  const cartTotalAmount = useMemo(() => {
+    let sum = 0;
+    let any = false;
+    for (const l of cartLines) {
+      if (l.lineAmount == null) continue;
+      any = true;
+      sum += l.lineAmount;
+    }
+    return any ? sum : null;
+  }, [cartLines]);
   const myDraftLines = useMemo(
     () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus !== "READY"),
     [cartLines, currentUserId],
@@ -199,7 +243,11 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus === "READY"),
     [cartLines, currentUserId],
   );
-  const readyLines = useMemo(() => cartLines.filter((l) => l.packageStatus === "READY"), [cartLines]);
+  // PI 是最终提交人，本人加购的行不必再走「提交给 PI」确认，直接纳入提交范围
+  const readyLines = useMemo(
+    () => cartLines.filter((l) => l.packageStatus === "READY" || (isPi && l.addedBy === currentUserId)),
+    [cartLines, isPi, currentUserId],
+  );
 
   // ── Navigation ──
   const handleDrillDown = useCallback((item: RefDataItem) => {
@@ -258,11 +306,13 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     setItemLabelMap((prev) => ({ ...prev, [item.id]: title }));
     const existing = plainCartByItem.get(item.id);
     if (existing) {
+      // 已在车里：+1 复用该行已有的领用房间/领用人
       updateCartMut.mutate({ id: existing.id, body: { quantity: existing.qty + 1 } }, { onSuccess: () => void refetchCart() });
     } else {
-      addToCartMut.mutate({ groupId, body: { refDataId: item.id, aupRecordId: Number(selectedAupId), quantity: 1 } }, { onSuccess: () => void refetchCart() });
+      // 首次加购必须选领用方式/房间与领用人，走选购弹窗（内部含无规格的数量步进）
+      setSpecSelectItem(item);
     }
-  }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId, plainCartByItem, updateCartMut, addToCartMut, refetchCart]);
+  }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId, plainCartByItem, updateCartMut, refetchCart]);
 
   const handlePlainDec = useCallback((item: RefDataItem) => {
     const existing = plainCartByItem.get(item.id);
@@ -274,8 +324,12 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     }
   }, [plainCartByItem, removeCartMut, updateCartMut, refetchCart]);
 
-  const handleSpecConfirm = useCallback(async (entries: { optionLabel: string; qty: number }[]) => {
+  const handleSpecConfirm = useCallback(async (
+    entries: { optionLabel: string; qty: number }[],
+    pickup: OrderPickupInfo,
+  ) => {
     if (!specSelectItem || !selectedAupId || !groupId) return;
+    if (!pickup.pickupRoomId) { toast.error("请选择领用方式/房间"); return; }
     const aupId = Number(selectedAupId);
     let ok = 0;
     for (const entry of entries) {
@@ -286,7 +340,12 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
             refDataId: specSelectItem.id,
             aupRecordId: aupId,
             quantity: entry.qty,
-            specSelections: { option: entry.optionLabel },
+            // 无规格物品不写 spec_selections，服务端据此回退到物品自身的 price
+            ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
+            pickupRoomId: pickup.pickupRoomId,
+            pickupRoomName: pickup.pickupRoomName,
+            ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
+            ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
           },
         });
         ok += 1;
@@ -297,6 +356,89 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
     if (ok > 0) { toast.success(`已加入购物车 (${ok} 项)`); void refetchCart(); }
     setSpecSelectItem(null);
   }, [specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart]);
+
+  // ── 编辑模式：从订单记录页点「编辑」进入 ──
+  // 编辑期间原单不动，回填行带 editing_order_id 标记；保存才写回原单，放弃只清回填行。
+  const handleStartEdit = useCallback(async (orderId: number) => {
+    if (editOrderId != null && editOrderId !== orderId) {
+      toast.error(`请先保存或放弃对订单 #${editOrderId} 的修改`);
+      return;
+    }
+    try {
+      await loadOrderToCart(orderId);
+      setEditOrderId(orderId);
+      setOrderHistoryOpen(false);
+      setCartSheetOpen(true);
+      void refetchCart();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "回填购物车失败");
+    }
+  }, [editOrderId, refetchCart]);
+
+  const handleApplyEdit = useCallback(async (): Promise<boolean> => {
+    if (!editOrderId) return false;
+    setEditBusy(true);
+    try {
+      await applyOrderEdit(editOrderId);
+      toast.success("订单已保存");
+      setEditOrderId(null);
+      void refetchCart();
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+      return false;
+    } finally { setEditBusy(false); }
+  }, [editOrderId, refetchCart]);
+
+  const handleDiscardEdit = useCallback(async () => {
+    if (!editOrderId) return;
+    if (!await appConfirm("放弃本次编辑？\n\n购物车里回填的内容会被清除，原订单保持不变。")) return;
+    setEditBusy(true);
+    try {
+      await discardOrderEdit(editOrderId);
+      toast.success("已放弃编辑");
+      setEditOrderId(null);
+      void refetchCart();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "放弃编辑失败");
+    } finally { setEditBusy(false); }
+  }, [editOrderId, refetchCart]);
+
+  // 退出子页拦截：正在编辑就提示；确认离开＝自动回退（清空回填行，原单不动）。
+  // 关购物车不在拦截范围——那只是收起来继续选购，编辑态还在。
+  const editOrderIdRef = useRef<number | null>(editOrderId);
+  useEffect(() => { editOrderIdRef.current = editOrderId; }, [editOrderId]);
+  useEffect(() => {
+    if (!onRegisterExitGuard) return;
+    onRegisterExitGuard(async () => {
+      const id = editOrderIdRef.current;
+      if (id == null) return true;
+      if (!await appConfirm(`正在编辑订单 #${id}，离开将放弃本次修改（回填内容清空，原订单不受影响）。`)) return false;
+      try {
+        await discardOrderEdit(id);
+        editOrderIdRef.current = null; // 已回退，别再让卸载兜底重复调一次
+        return true;
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "放弃编辑失败");
+        return false;
+      }
+    });
+    return () => onRegisterExitGuard(null);
+  }, [onRegisterExitGuard]);
+
+  // 兜底：非返回键的离开（浏览器返回等）也要回退，不留中间态
+  useEffect(() => () => {
+    const id = editOrderIdRef.current;
+    if (id != null) void discardOrderEdit(id).catch(() => {});
+  }, []);
+
+  // 刷新/关标签页提醒（应用内离开由上面的退出守卫处理）
+  useEffect(() => {
+    if (!editOrderId) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editOrderId]);
 
   const handleCartQtyChange = useCallback((line: { id: number; addedBy: string }, qty: number) => {
     if (!isPi && line.addedBy !== currentUserId) { toast.error("只能修改本人加购的行"); return; }
@@ -327,13 +469,13 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
   const handleSubmitOrder = useCallback(() => {
     if (orderingBlocked) { toast.error(timePolicy?.closedReason ?? "当前不可购"); return; }
     if (!isPi) { toast.error("仅组长可正式提交申领单"); return; }
-    if (readyLines.length === 0) { toast.error("没有 READY 订单包可提交"); return; }
+    if (readyLines.length === 0) { toast.error("没有可提交的行：本人加购的行，或实验员已提交给 PI 的订单包"); return; }
     submitOrderMut.mutate(
       {
         groupId,
         submitterId: currentUserId,
         submitterName: currentUserName,
-        projectGroupName,
+        projectGroupName: orderGroupName,
         cartIds: readyLines.map((l) => l.id),
         submitRemark: submitRemark.trim() || undefined,
         campus: campus ?? undefined,
@@ -348,7 +490,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
         },
       },
     );
-  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, projectGroupName, submitRemark, campus, qc, refetchCart]);
+  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, orderGroupName, submitRemark, campus, qc, refetchCart]);
 
   const breadcrumb: DrillSegment[] = drillStack;
 
@@ -504,52 +646,34 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas)]">
-      {/* AUP + 订单记录 */}
+      {/* 加购上下文：校区 + AUP 合成一条紧凑栏，各自点开面板（订单入口只保留底部购物车旁那一个） */}
       <div className="shrink-0 border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-2">
-        <div className="mb-1.5 flex items-center gap-1">
-          {ANIMAL_ORDER_CAMPUSES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => {
-                storeCampus(c);
-                setCampus(c);
-              }}
-              className={cn(
-                "rounded-full px-2 py-0.5 text-[11px] font-medium",
-                campus === c
-                  ? "bg-emerald-600 text-white"
-                  : "border border-[var(--student-hairline)] text-[var(--student-mute)]",
-              )}
-            >
-              {c}校区
-            </button>
-          ))}
-        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setAupPickerOpen(true)}
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-2 rounded-[var(--student-radius-sm)] border px-3 py-2 text-left",
-              activeAup
-                ? "border-sky-200 bg-sky-50"
-                : "border-amber-200 bg-amber-50",
-            )}
+            onClick={() => setCampusSheetOpen(true)}
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--student-ink)] active:opacity-70"
           >
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-600">AUP</span>
-            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--student-ink)]">
-              {activeAup ? activeAup.registerNo : "点击选择加购上下文（必选）"}
-            </span>
-            <ChevronRight className="size-3.5 shrink-0 text-[var(--student-mute)]" />
+            <MapPin className="size-3.5 text-[var(--student-primary)]" />
+            {campus ? `${campus}校区` : "选择校区"}
+            <ChevronDown className="size-3 opacity-60" />
           </button>
           <button
             type="button"
-            onClick={() => setOrderHistoryOpen(true)}
-            className="flex shrink-0 items-center gap-1 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-2.5 py-2 text-xs font-medium text-[var(--student-body)]"
+            onClick={() => {
+              if (approvedAups.length === 0) { toast.error("本课题组暂无已批准的 AUP 计划书"); return; }
+              setAupPickerOpen(true);
+            }}
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium active:opacity-70",
+              activeAup ? "border-sky-200 bg-sky-50 text-[var(--student-ink)]" : "border-amber-200 bg-amber-50 text-amber-800",
+            )}
           >
-            <ClipboardList className="size-3.5" />
-            订单记录
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-sky-600">AUP</span>
+            <span className="min-w-0 flex-1 truncate text-left">
+              {activeAup ? activeAup.registerNo : "未选择 AUP（必选）"}
+            </span>
+            <ChevronDown className="size-3 shrink-0 opacity-60" />
           </button>
         </div>
 
@@ -658,38 +782,22 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
             )}
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-              {cartLines.length === 0 ? (
-                <p className="py-8 text-center text-xs text-[var(--student-mute)]">共享购物车是空的</p>
-              ) : (
-                cartLines.map((line) => {
-                  const canEdit = isPi || line.addedBy === currentUserId;
-                  return (
-                    <div key={line.id} className="flex items-center gap-2 border-b border-[var(--student-hairline)] py-2.5 last:border-b-0">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-[var(--student-ink)]">{line.itemLabel}</p>
-                        <p className="mt-0.5 text-[11px] text-[var(--student-mute)]">
-                          {line.specLabel && <span>{line.specLabel} · </span>}
-                          <span className="rounded bg-[var(--student-canvas-soft)] px-1 py-0.5 text-[10px]">
-                            {line.packageStatus === "READY" ? "READY" : "DRAFT"}
-                          </span>
-                          {line.addedByLabel && <span className="ml-1">· {line.addedByLabel}</span>}
-                        </p>
-                        {line.packageRemark && <p className="mt-0.5 truncate text-[10px] text-[var(--student-mute)]">{line.packageRemark}</p>}
-                      </div>
-                      {canEdit ? (
-                        <div className="flex shrink-0 items-center gap-1">
-                          <button type="button" onClick={() => handleCartQtyChange(line, line.qty - 1)} className="size-6 rounded border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-xs font-bold text-[var(--student-ink)]">−</button>
-                          <span className="w-6 text-center text-xs font-semibold tabular-nums">{line.qty}</span>
-                          <button type="button" onClick={() => handleCartQtyChange(line, line.qty + 1)} className="size-6 rounded bg-[var(--student-primary)] text-xs font-bold text-white">+</button>
-                        </div>
-                      ) : (
-                        <span className="shrink-0 text-xs font-semibold tabular-nums">×{line.qty}</span>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+              <CartTree
+                layout="mobile"
+                lines={cartLines}
+                isPi={isPi}
+                currentUserId={currentUserId}
+                onQtyChange={handleCartQtyChange}
+              />
             </div>
+
+            {/* 实时总金额：只统计已定价的行 */}
+            {cartTotalAmount != null && (
+              <div className="shrink-0 flex items-center justify-between border-t border-[var(--student-hairline)] px-4 py-2">
+                <span className="text-xs text-[var(--student-mute)]">合计金额</span>
+                <span className="text-sm font-bold text-sky-700">¥{cartTotalAmount.toFixed(2)}</span>
+              </div>
+            )}
 
             {/* 实验员：提交包给 PI */}
             {!isPi && (
@@ -719,20 +827,70 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
               </div>
             )}
 
+            {/* 编辑模式横幅：保存/放弃统一在这里，且禁掉另开新单，避免留下中间态 */}
+            {editOrderId != null && (
+              <div className="shrink-0 border-t border-sky-200 bg-sky-50 px-3 py-2">
+                <div className="text-xs font-semibold text-sky-900">正在编辑订单 #{editOrderId}</div>
+                <div className="mt-0.5 text-[11px] text-sky-800/80">
+                  改完点「保存」写回原单（单号不变）；点「放弃」清空回填内容，原单不受影响。
+                </div>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button type="button" disabled={editBusy} onClick={() => void handleDiscardEdit()} className="rounded-full border border-sky-300 px-3 py-1 text-[11px] text-sky-800 disabled:opacity-50">放弃编辑</button>
+                  <button type="button" disabled={editBusy} onClick={() => void handleApplyEdit()} className="rounded-full bg-sky-600 px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50">{editBusy ? "保存中…" : "保存"}</button>
+                </div>
+              </div>
+            )}
+
             {/* PI：正式提交 */}
             {isPi && (
               <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--student-hairline)] px-4 py-3">
-                <button type="button" disabled={cartCount === 0} onClick={handleClearCart} className="text-xs text-[var(--student-danger)] disabled:opacity-50">清空</button>
+                <button type="button" disabled={cartCount === 0 || editOrderId != null} onClick={handleClearCart} className="text-xs text-[var(--student-danger)] disabled:opacity-50">清空</button>
                 <button
                   type="button"
-                  disabled={orderingBlocked || submitOrderMut.isPending || readyLines.length === 0}
+                  disabled={orderingBlocked || submitOrderMut.isPending || readyLines.length === 0 || editOrderId != null}
                   onClick={() => setSubmitConfirmOpen(true)}
+                  title={editOrderId != null ? "编辑模式下请用上方「保存」写回原单，不能另开新单" : undefined}
                   className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 py-1.5 text-xs font-semibold text-[var(--student-primary-foreground)] disabled:opacity-50"
                 >
-                  {submitOrderMut.isPending ? "提交中…" : `正式提交 (${readyLines.length})`}
+                  {submitOrderMut.isPending ? "提交中…" : editOrderId != null ? "编辑中（用上方保存）" : `正式提交 (${readyLines.length})`}
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 校区选择 Sheet */}
+      {campusSheetOpen && (
+        <div className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/35" onClick={() => setCampusSheetOpen(false)} aria-hidden />
+          <div className="relative flex flex-col overflow-hidden rounded-t-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--student-hairline)] px-4 py-3">
+              <p className="text-base font-bold text-[var(--student-ink)]">选择校区</p>
+              <button type="button" onClick={() => setCampusSheetOpen(false)} className="flex size-8 items-center justify-center rounded-[var(--student-radius-sm)] text-[var(--student-mute)]">
+                <X className="size-4" />
+              </button>
+            </div>
+            <p className="px-4 pt-2 text-[11px] text-[var(--student-mute)]">可购时间、预计送达与订单归属均按校区区分</p>
+            <div className="px-3 pb-3 pt-2">
+              {ANIMAL_ORDER_CAMPUSES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => { storeCampus(c); setCampus(c); setCampusSheetOpen(false); }}
+                  className={cn(
+                    "mb-2 flex w-full items-center gap-2 rounded-[var(--student-radius-sm)] border px-3 py-2.5 text-left text-sm",
+                    campus === c
+                      ? "border-[var(--student-primary)] bg-[var(--student-primary)]/10 font-semibold text-[var(--student-ink)]"
+                      : "border-[var(--student-hairline)] text-[var(--student-body)]",
+                  )}
+                >
+                  <MapPin className="size-4 shrink-0 text-[var(--student-primary)]" />
+                  {c}校区
+                  {campus === c && <Check className="ml-auto size-4 text-[var(--student-primary)]" />}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -781,7 +939,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
         <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4" onClick={() => setSubmitConfirmOpen(false)}>
           <div className="w-full max-w-sm rounded-[var(--student-radius-lg)] bg-[var(--student-surface-raised)] p-4" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 text-sm font-semibold text-[var(--student-ink)]">正式提交申领单</div>
-            <div className="mb-2 text-xs text-[var(--student-mute)]">将提交 {readyLines.length} 条 READY 行，生成一张订单进入审批。</div>
+            <div className="mb-2 text-xs text-[var(--student-mute)]">将提交 {readyLines.length} 行（本人加购的行 + 实验员已提交给 PI 的订单包），生成一张订单进入审批。</div>
             <textarea
               placeholder="整单备注（可选）"
               value={submitRemark}
@@ -813,34 +971,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
             </button>
             <h2 className="flex-1 pr-10 text-center text-base font-semibold text-[var(--student-ink)]">我的订单</h2>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-            {orders.length === 0 ? (
-              <p className="py-16 text-center text-sm text-[var(--student-mute)]">暂无订单</p>
-            ) : (
-              orders.map((o) => (
-                <div key={o.id} className="mb-2.5 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="min-w-0 flex-1 text-sm font-medium text-[var(--student-ink)]">订单 #{o.id}</p>
-                    <span className="shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--student-body)]">{o.status}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-[var(--student-mute)]">
-                    {o.campus ? `${o.campus} · ` : ""}
-                    {o.submittedAt ? formatDateTimeAsiaShanghai(o.submittedAt) : ""}
-                    {o.estimatedDeliveryDate ? ` · 预计送达 ${o.estimatedDeliveryDate}` : ""}
-                  </p>
-                  {(o.lines?.length ?? 0) > 0 && (
-                    <p className="mt-0.5 text-xs text-[var(--student-mute)]">
-                      {(o.lines ?? []).map((l) => {
-                        const chain = Array.isArray(l.hierarchyChain) ? l.hierarchyChain : [];
-                        const name = chain.length ? (chain[0].displayName || `ID ${l.refDataId}`) : `ID ${l.refDataId}`;
-                        return `${name} × ${l.quantity}`;
-                      }).join("、")}
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+      <MobileOrderRecordsView onEdit={(id) => void handleStartEdit(id)} />
         </div>
       )}
 
@@ -852,6 +983,9 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode }: { jwtMode?:
           onConfirm={handleSpecConfirm}
           onClose={() => setSpecSelectItem(null)}
           orderingBlocked={orderingBlocked}
+          groupNames={effectiveGroupNames}
+          selfUserId={currentUserId}
+          selfUserName={currentUserName}
         />
       )}
     </div>

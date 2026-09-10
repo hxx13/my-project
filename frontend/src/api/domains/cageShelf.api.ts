@@ -56,6 +56,8 @@ export interface CageShelfCell {
     updatedAt?: string;
     updatedBy?: string;
   };
+  /** 划分名单：该笼位被预分给本课题组的哪些人（无划分时不下发）。前端比对自己 id 决定是否高亮「划给我」 */
+  divisionAssignees?: Array<{ id: string; name: string }>;
 }
 
 export interface CageShelfDetail {
@@ -111,6 +113,23 @@ export async function fetchCageShelfFilterOptions(params: {
     throw new Error(res.data?.message || "加载筛选项失败");
   }
   return res.data.data;
+}
+
+/** 领用房间树节点：校区 → 区域/楼 → 楼层 → 房间（room 级 children 为空） */
+export interface OrderRoomNode {
+  id: string;
+  name: string;
+  level: "CAMPUS" | "AREA" | "FLOOR" | "ROOM" | string;
+  children?: OrderRoomNode[] | null;
+}
+
+/** 领用房间树（到房间级，不含笼架）。MEMBER+ 可读。 */
+export async function fetchOrderRoomTree(): Promise<OrderRoomNode[]> {
+  const res = await authHttp.get<Result<OrderRoomNode[]>>("/v1/cage-shelves/room-tree");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "加载房间树失败");
+  }
+  return res.data.data ?? [];
 }
 
 export async function fetchCageShelfDetail(shelveId: string, batchId?: string) {
@@ -472,6 +491,24 @@ export interface CageShelfTreeNode {
 export async function fetchFullTree(): Promise<CageShelfTreeNode[]> {
   const res = await authHttp.get<Result<CageShelfTreeNode[]>>("/cage-shelves/full-tree");
   if (!res.data?.success) throw new Error(res.data?.message || "加载笼架树失败");
+  return res.data.data ?? [];
+}
+
+export interface GroupRoom {
+  roomId: string;
+  roomName: string;
+}
+
+/**
+ * GET /api/v1/cage-shelves/group-rooms?userId=
+ * 指定人员在笼架树中本课题组占用的房间——刷卡弹窗中栏平面图的房间来源。
+ * 不能用门禁授权房间（allowedRooms）：两套房间 ID/命名口径不同。
+ */
+export async function fetchGroupRooms(userId: string): Promise<GroupRoom[]> {
+  const res = await authHttp.get<Result<GroupRoom[]>>("/v1/cage-shelves/group-rooms", {
+    params: { userId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载课题组房间失败");
   return res.data.data ?? [];
 }
 
@@ -927,6 +964,51 @@ export interface CodeLookupResult {
   roomName?: string;
 }
 
+/** 扫码命中的定位坐标（两种命中形态归一后的结果） */
+export interface CodeLocateTarget {
+  positionX: number;
+  positionY: number;
+  roomId: string;
+  roomName: string;
+  shelveId: string;
+  shelveName: string;
+}
+
+/**
+ * 扫码结果 → 定位坐标。**两种命中形态必须在这里归一，别在各页面各写一遍。**
+ *
+ *  - CAGE_CELL：位置/房间/笼架嵌在 `cageCell` 里（笼盒二维码的正常形态）
+ *  - LEGACY_CAGE_BOX：平铺在顶层（旧盒码兜底）
+ *
+ * 之前学生端自己写了一份、只读了顶层字段，于是扫笼盒码时永远拿不到 shelveId，
+ * 报「该编码未关联笼架」—— 扫码定位在学生端等于坏的。返回 null 表示这条码不能用于定位。
+ */
+export function locateTargetOf(r: CodeLookupResult): CodeLocateTarget | null {
+  if (r.type === "CAGE_CELL" && r.cageCell) {
+    const c = r.cageCell;
+    if (c.positionX == null || c.positionY == null) return null;
+    return {
+      positionX: c.positionX,
+      positionY: c.positionY,
+      roomId: String(c.roomId ?? ""),
+      roomName: c.roomName ?? "",
+      shelveId: String(c.shelveId ?? ""),
+      shelveName: c.shelveName ?? "",
+    };
+  }
+  if (r.type === "LEGACY_CAGE_BOX" && r.positionX != null && r.positionY != null) {
+    return {
+      positionX: r.positionX,
+      positionY: r.positionY,
+      roomId: String(r.roomId ?? ""),
+      roomName: r.roomName ?? "",
+      shelveId: String(r.shelveId ?? ""),
+      shelveName: r.shelveName ?? "",
+    };
+  }
+  return null;
+}
+
 /** 统一扫码查询：根据二维码/条形码内容自动识别类型 */
 export async function lookupCode(code: string): Promise<CodeLookupResult> {
   const res = await authHttp.get<Result<CodeLookupResult>>("/v1/scan/lookup", {
@@ -1113,11 +1195,86 @@ export async function syncLocalCagePipeline(roomId?: string | number): Promise<L
   return res.data.data ?? { ok: false };
 }
 
+/** 同步保护锁层级：楼层 / 房间 / 笼架 / 笼位 */
+export type SyncLockScope = "FLOOR" | "ROOM" | "SHELF" | "CELL";
+
+export interface SyncLockEntry {
+  scopeType: SyncLockScope;
+  scopeKey: string;
+  /** true=锁定跳过同步；false=显式解锁（白名单） */
+  locked: boolean;
+  reason?: string | null;
+  operatorName?: string | null;
+}
+
+/** 全量同步保护锁（量小，一次拉完） */
+export async function fetchSyncLocks(): Promise<SyncLockEntry[]> {
+  const res = await authHttp.get<Result<SyncLockEntry[]>>("/cage-sync-lock/list");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载同步锁失败");
+  return res.data.data ?? [];
+}
+
+/** 加锁/解锁某层节点（locked=false 即白名单解锁） */
+export async function setSyncLock(
+  scopeType: SyncLockScope,
+  scopeKey: string,
+  locked: boolean,
+  reason?: string,
+): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/cage-sync-lock/set", {
+    scopeType, scopeKey, locked, reason,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "设置同步锁失败");
+}
+
+/** 清除某层锁设置，回到继承上级 */
+export async function clearSyncLock(scopeType: SyncLockScope, scopeKey: string): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/cage-sync-lock/clear", { scopeType, scopeKey });
+  if (!res.data?.success) throw new Error(res.data?.message || "清除同步锁失败");
+}
+
+/** 保存笼位划分：全量覆盖这批笼位的名单（传空名单即清空） */
+export async function saveCageDivision(
+  animalCageIds: Array<string | number>,
+  assignees: Array<{ id: string; name: string }>,
+  groupName?: string,
+): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/cage-division/save", {
+    animalCageIds, assignees, groupName,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存划分失败");
+}
+
+/** 撤销笼位划分：不传 assigneeIds 即清空这批笼位的全部划分 */
+export async function clearCageDivision(
+  animalCageIds: Array<string | number>,
+  assigneeIds?: string[],
+): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/cage-division/clear", {
+    animalCageIds, assigneeIds,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "撤销划分失败");
+}
+
 /** 本地数据源：通过 shelveId 加载笼架网格 */
 export async function fetchLocalShelfGridByShelveId(shelveId: string): Promise<CageShelfDetail> {
   const res = await authHttp.get<Result<CageShelfDetail>>(`/cage-cell-index/local-grid/by-shelve/${shelveId}`);
   if (!res.data?.success) throw new Error(res.data?.message || "加载本地数据失败");
   return res.data.data!;
+}
+
+/**
+ * 本地数据源批量：ids 为 cage_shelf_index 主键（full-tree 节点的 id）。
+ * 课题组/实验员取笼位表单真相源，一个房间一次拉完。
+ */
+export async function fetchLocalShelfGridsBatch(shelveIndexIds: Array<string | number>): Promise<CageShelfDetail[]> {
+  const ids = shelveIndexIds.filter((v) => v !== null && v !== undefined && String(v) !== "");
+  if (ids.length === 0) return [];
+  const res = await authHttp.get<Result<CageShelfDetail[]>>("/cage-cell-index/local-grid/batch", {
+    params: { ids: ids.join(",") },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载本地笼位失败");
+  return res.data.data ?? [];
 }
 
 /** 全局反查：根据 animalCageId 定位笼位 */
@@ -1398,6 +1555,10 @@ export interface CageOpRequestView {
   opType: "divide" | "transfer";
   sourceAnimalCageId: string;
   targetAnimalCageIds: string[];
+  /** 源笼位所在笼架 id（审核卡片「定位」跳转用） */
+  shelveId?: string | null;
+  /** 目标笼位坐标（转移 1:1、分笼 1:多）：卡片要显示「转到哪里」 */
+  targets?: CageOpTargetLoc[];
   keepSource?: boolean | null;
   applicantId?: string | null;
   applicantName?: string | null;
@@ -1410,6 +1571,17 @@ export interface CageOpRequestView {
   createdAt?: string | null;
   campusName?: string | null;
   floorName?: string | null;
+  roomName?: string | null;
+  shelveName?: string | null;
+  positionX?: number | null;
+  positionY?: number | null;
+}
+
+/** 分笼/转移请求里的单个目标笼位（审核卡片展示坐标 + 定位） */
+export interface CageOpTargetLoc {
+  animalCageId: string;
+  shelveId?: string | null;
+  campusName?: string | null;
   roomName?: string | null;
   shelveName?: string | null;
   positionX?: number | null;
@@ -1471,16 +1643,43 @@ export async function fetchCageOpEditable(
   return res.data.data ?? { editable: false };
 }
 
-/** 动态字段选项（按笼位现算，如动物品系取该笼位 AUP 白名单） */
+/**
+ * 字段候选选项（任意字段，按笼位现算）。
+ * 开关随选项一起下发，前端据此决定「能否手输 / 能否新增预设」——
+ * 但真正的拦截在后端，前端藏按钮只是不给入口。
+ */
+export interface CageFieldOptionResult {
+  options: Array<{ value: string; label: string }>;
+  source?: string;
+  allowManualInput?: boolean;
+  allowAddOption?: boolean;
+  restrictToAup?: boolean;
+}
+
 export async function fetchCageOpFieldOptions(
   animalCageId: number | string,
   canonical: string,
-): Promise<{ options: Array<{ value: string; label: string }>; source?: string }> {
-  const res = await authHttp.get<Result<{ options: Array<{ value: string; label: string }>; source?: string }>>(
+): Promise<CageFieldOptionResult> {
+  const res = await authHttp.get<Result<CageFieldOptionResult>>(
     "/cage-op/field-options",
     { params: { animalCageId, canonical } },
   );
   if (!res.data?.success) throw new Error(res.data?.message || "加载字段选项失败");
+  return res.data.data ?? { options: [] };
+}
+
+/** 新增字段预设（填写时的「＋」）。落点由后端按字段配置决定，返回刷新后的选项体。 */
+export async function addCageOpFieldOption(
+  animalCageId: number | string,
+  canonical: string,
+  label: string,
+): Promise<CageFieldOptionResult> {
+  const res = await authHttp.post<Result<CageFieldOptionResult>>("/cage-op/field-option", {
+    animalCageId,
+    canonical,
+    label,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "新增预设失败");
   return res.data.data ?? { options: [] };
 }
 
@@ -1540,6 +1739,31 @@ export async function fetchMyCageOps(status?: string): Promise<CageOpRequestView
   return res.data.data ?? [];
 }
 
+/** 我审过的分笼/转移（审核页「已审核」历史区） */
+export async function fetchReviewedCageOps(limit = 100): Promise<CageOpRequestView[]> {
+  const res = await authHttp.get<Result<CageOpRequestView[]>>("/cage-op/reviewed", { params: { limit } });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载已审核记录失败");
+  return res.data.data ?? [];
+}
+
+/** 待审中间态：学生只拿到自己提交的，教职工拿到全部（三端网格/详情据此画「分笼审核中/转移审核中」） */
+export interface CageOpMarker {
+  id: string;
+  opType: "divide" | "transfer";
+  sourceAnimalCageId: string;
+  targetAnimalCageIds: string[];
+  applicantId?: string | null;
+  applicantName?: string | null;
+  reason?: string | null;
+  createdAt?: string | null;
+}
+
+export async function fetchCageOpMarkers(): Promise<CageOpMarker[]> {
+  const res = await authHttp.get<Result<CageOpMarker[]>>("/cage-op/markers");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载待审分笼/转移失败");
+  return res.data.data ?? [];
+}
+
 export async function reviewCageOp(
   id: number | string,
   decision: "approved" | "rejected",
@@ -1558,21 +1782,52 @@ export async function cancelCageOp(id: number | string, reason?: string): Promis
   if (!res.data?.success) throw new Error(res.data?.message || "撤销失败");
 }
 
-// ── 笼位历史记录（按笼盒分组）──
+// ── 笼位历史记录（事件时间轴）──
 
+/** 一次事件里的单字段变化。 */
 export interface CageHistoryChange {
-  changeType: string; fieldName?: string | null; beforeValue?: string | null;
-  afterValue?: string | null; operator?: string | null; createdAt?: string | null;
+  canonical?: string | null; label?: string | null;
+  before?: string | null; after?: string | null;
 }
 
-export interface CageHistoryGroup {
-  cageBoxCode?: string | null; label: string; changes: CageHistoryChange[];
+/** 事件类型：EDIT=就地编辑；IN=值迁入（分笼/转移/复制/绑定）；OUT=值清出（归档/退出/解绑）。 */
+export type CageHistoryKind = "EDIT" | "IN" | "OUT";
+
+export interface CageHistoryEvent {
+  changeType: string; kind: CageHistoryKind;
+  at?: string | null; operator?: string | null;
+  /** 该事件发生前的整表快照：canonical → 值（null 表示字段为空） */
+  beforeState: Record<string, string | null>;
+  /** 该事件发生后的整表快照 */
+  afterState: Record<string, string | null>;
+  changes: CageHistoryChange[];
 }
 
-export async function fetchCageHistory(animalCageId: string | number): Promise<CageHistoryGroup[]> {
-  const res = await authHttp.get<Result<{ groups: CageHistoryGroup[] }>>(`/admin/cage-form/cage-history/${animalCageId}`);
+export interface CageHistoryView {
+  animalCageId: number | string;
+  /** 笼位位置映射「校区/房间/笼架 (x,y)」，后端查不到时为 null */
+  cageLabel?: string | null;
+  /** canonical → 字段名（含已下线字段的历史名） */
+  fieldLabels: Record<string, string>;
+  /** 按审计折叠出的当前表单值 */
+  current: Record<string, string | null>;
+  /** 是否存在结构性变更（决定前端渲染时间轴还是可点字段的表单） */
+  hasStructural: boolean;
+  events: CageHistoryEvent[];
+}
+
+export async function fetchCageHistory(animalCageId: string | number): Promise<CageHistoryView> {
+  const res = await authHttp.get<Result<CageHistoryView>>(`/admin/cage-form/cage-history/${animalCageId}`);
   if (!res.data?.success) throw new Error(res.data?.message || "加载历史记录失败");
-  return res.data.data?.groups ?? [];
+  const d = res.data.data;
+  return {
+    animalCageId: d?.animalCageId ?? animalCageId,
+    cageLabel: d?.cageLabel ?? null,
+    fieldLabels: d?.fieldLabels ?? {},
+    current: d?.current ?? {},
+    hasStructural: !!d?.hasStructural,
+    events: d?.events ?? [],
+  };
 }
 
 export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>> {
@@ -1600,11 +1855,45 @@ export async function replacePersonScopes(userId: string, scopes: PersonScopeEnt
   if (!res.data?.success) throw new Error(res.data?.message || "保存负责范围失败");
 }
 
+/** 已分配过的人：userId 是 personnel.id 字符串（后端已经由 personnel 表 join 出姓名） */
+export interface ScopeAssignee {
+  userId: string;
+  name: string;
+  staffId?: string | null;
+  scopeCount: number;
+}
+
+/** GET /api/person-scope/assignees — 已分配可见范围的人员列表 */
+export async function fetchScopeAssignees(): Promise<ScopeAssignee[]> {
+  const res = await authHttp.get<Result<ScopeAssignee[]>>("/person-scope/assignees");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载已分配人员失败");
+  return res.data.data ?? [];
+}
+
+/** DELETE /api/person-scope/{userId} — 撤销某人的全部分配 */
+export async function clearPersonScopes(userId: string): Promise<void> {
+  const res = await authHttp.delete<Result<unknown>>(`/person-scope/${encodeURIComponent(userId)}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "撤销失败");
+}
+
 // ── 审核人归属（校区/楼层/房间范围）──
 
 export interface CageAuditScope {
   scopeType: "CAMPUS" | "FLOOR" | "ROOM";
   scopeId: string;
+}
+
+/** GET /api/cage-audit-assignment — 全部归属总览（按审核人分组，带显示名） */
+export interface CageAuditAssignmentOverview {
+  reviewerUserId: string;
+  reviewerName: string;
+  scopes: CageAuditScope[];
+}
+
+export async function fetchAuditAssignmentOverview(): Promise<CageAuditAssignmentOverview[]> {
+  const res = await authHttp.get<Result<CageAuditAssignmentOverview[]>>("/cage-audit-assignment");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载审核归属总览失败");
+  return res.data.data ?? [];
 }
 
 /** GET /api/cage-audit-assignment/{reviewerUserId} — 查某审核人的归属范围 */
@@ -1620,8 +1909,50 @@ export async function replaceAuditAssignments(userId: string, scopes: CageAuditS
   if (!res.data?.success) throw new Error(res.data?.message || "保存审核归属失败");
 }
 
-export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }
-export async function assignBatchCages(animalCageIds: (string | number)[], studentUserId: string): Promise<AssignBatchResult[]> {
+// ── 所属人审核配置（到位确认 / 分笼审核 / 转移审核，按所属人）──
+
+export interface CageOwnerApprovalConfig {
+  ownerAccountId: string;
+  confirmRequired: boolean;
+  divideApprovalRequired: boolean;
+  transferApprovalRequired: boolean;
+}
+
+export interface CageOwnerApprovalOverview extends CageOwnerApprovalConfig {
+  ownerName: string;
+  updateBy?: string | null;
+  updateTime?: string | null;
+}
+
+/** GET /api/cage-owner-approval-config — 已配置的所属人总览 */
+export async function fetchOwnerApprovalOverview(): Promise<CageOwnerApprovalOverview[]> {
+  const res = await authHttp.get<Result<CageOwnerApprovalOverview[]>>("/cage-owner-approval-config");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载所属人审核配置失败");
+  return res.data.data ?? [];
+}
+
+/** GET /api/cage-owner-approval-config/{ownerAccountId} — 查某所属人的配置（没配过返回三个 true） */
+export async function fetchOwnerApprovalConfig(ownerAccountId: string): Promise<CageOwnerApprovalConfig> {
+  const res = await authHttp.get<Result<CageOwnerApprovalConfig>>(
+    `/cage-owner-approval-config/${encodeURIComponent(ownerAccountId)}`,
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "加载审核配置失败");
+  return res.data.data;
+}
+
+/** PUT /api/cage-owner-approval-config/{ownerAccountId} — 保存某所属人的配置 */
+export async function saveOwnerApprovalConfig(
+  ownerAccountId: string,
+  cfg: Omit<CageOwnerApprovalConfig, "ownerAccountId">,
+): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>(
+    `/cage-owner-approval-config/${encodeURIComponent(ownerAccountId)}`,
+    cfg,
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "保存审核配置失败");
+}
+
+export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }export async function assignBatchCages(animalCageIds: (string | number)[], studentUserId: string): Promise<AssignBatchResult[]> {
   const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, studentUserId });
   if (!res.data?.success) throw new Error(res.data?.message || "认领失败");
   return res.data.data ?? [];

@@ -133,7 +133,16 @@ export async function fetchMiniPreferences(): Promise<MiniPreferences | null> {
   }
 }
 
-export async function saveMiniPreferences(prefs: MiniPreferences): Promise<MiniPreferences> {
+/**
+ * 保存个人配置。
+ *
+ * ⚠️ 只传「本次要改的字段」，不要传整包。多个模块（主题 / 管理员侧栏 / 学生端侧栏 /
+ * 壳主题）共用同一份 mini_preferences_json，各自整包回写会用自己那份陈旧副本
+ * 覆盖掉别人刚存的字段（典型：学生端每次导航回写侧栏最近访问，把刚切的暗色冲回亮色）。
+ * 后端 MiniPreferencesService.mergeMissingFieldsFromExisting 对 null 字段保留库内值，
+ * 所以局部提交是安全的。
+ */
+export async function saveMiniPreferences(prefs: Partial<MiniPreferences>): Promise<MiniPreferences> {
   const res = await authHttp.put<MiniPreferencesResultBody>("/me/mini-preferences", prefs);
   const body = res.data;
   const ok = body?.success === true || Number(body?.code) === 200;

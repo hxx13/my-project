@@ -100,7 +100,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [userKey, setUserKey] = useState(() => resolveUserId());
   const [scheduleTick, setScheduleTick] = useState(0);
-  const lastPrefsRef = useRef<MiniPreferences | null>(null);
   const persistTimerRef = useRef<number | null>(null);
 
   const normalized = useMemo(() => normalizeAppearanceSchedulePrefs(appearance), [appearance]);
@@ -145,7 +144,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const prefs = await fetchMiniPreferences();
         if (cancelled) return;
         const base = prefs ?? defaultMiniPreferences();
-        lastPrefsRef.current = base;
         setAppearance(appearanceFromMiniPrefs(base));
         writeLocalAppearanceSchedule(appearanceFromMiniPrefs(base));
       } catch {
@@ -175,14 +173,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     persistTimerRef.current = window.setTimeout(() => {
       void (async () => {
         try {
-          const base = lastPrefsRef.current ?? (await fetchMiniPreferences()) ?? defaultMiniPreferences();
-          const merged: MiniPreferences = {
-            ...base,
-            roomWatch: base.roomWatch ?? { selections: [] },
-            appearanceSchedule: normalizedNext,
-          };
-          const saved = await saveMiniPreferences(merged);
-          lastPrefsRef.current = saved;
+          // 只提交本题负责的字段：整包回写会用陈旧副本覆盖别人刚存的字段
+          // （见 me.api.saveMiniPreferences 注释）
+          await saveMiniPreferences({ appearanceSchedule: normalizedNext });
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "保存外观偏好失败");
         }
@@ -261,14 +254,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (uid) {
           void (async () => {
             try {
-              const base = lastPrefsRef.current ?? (await fetchMiniPreferences()) ?? defaultMiniPreferences();
-              const merged: MiniPreferences = {
-                ...base,
-                roomWatch: base.roomWatch ?? { selections: [] },
-                appearanceSchedule: cleared,
-              };
-              const saved = await saveMiniPreferences(merged);
-              lastPrefsRef.current = saved;
+              await saveMiniPreferences({ appearanceSchedule: cleared });
             } catch {
               /* 边界清除失败不阻断 UI */
             }

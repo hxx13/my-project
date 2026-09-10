@@ -359,11 +359,20 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     }
   }, [activeTab]);
 
+  // 子页可在离开前注册守卫（动物订购的编辑态用它提示并自动回退）
+  const editExitGuardRef = useRef<(() => Promise<boolean>) | null>(null);
+  const registerEditExitGuard = useCallback((fn: (() => Promise<boolean>) | null) => {
+    editExitGuardRef.current = fn;
+  }, []);
+
   const handleTopNavBack = useCallback(() => {
     if (activeTab === "cage" && cageShelfRef.current?.pop()) {
       return;
     }
-    setActiveTab("home");
+    void (async () => {
+      if (editExitGuardRef.current && !(await editExitGuardRef.current())) return;
+      setActiveTab("home");
+    })();
   }, [activeTab]);
 
   if (loading) return <PageSkeleton />;
@@ -637,7 +646,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             onOpenAnnouncements={() => openAnnouncements()}
           />
         )}
-        {activeTab === "animalOrder" && <MobileAnimalOrderView jwtMode={jwtMode} />}
+        {activeTab === "animalOrder" && <MobileAnimalOrderView jwtMode={jwtMode} onRegisterExitGuard={registerEditExitGuard} />}
       </main>
       <MobileNoticesPanel
         open={showAnnouncements}

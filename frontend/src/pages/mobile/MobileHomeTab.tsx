@@ -182,7 +182,7 @@ export default function MobileHomeTab({
             {[
               { id: "records2", label: "出入记录", iconSrc: MOBILE_STUDENT_ICON.records, onClick: () => onNav("records") },
               { id: "notices", label: "通知", iconSrc: MOBILE_STUDENT_ICON.notify, onClick: () => onOpenFeedback(), badge: feedbackCount },
-              { id: "group", label: "课题组", iconSrc: MOBILE_STUDENT_ICON.group, onClick: () => onNav("group") },
+              { id: "animalOrder", label: "动物订购", iconSrc: MOBILE_STUDENT_ICON.animalOrder, onClick: () => onNav("animalOrder") },
               { id: "violations", label: "违规记录", iconSrc: MOBILE_STUDENT_ICON.violation, onClick: () => onNav("violations") },
             ].map((item) => (
               <button

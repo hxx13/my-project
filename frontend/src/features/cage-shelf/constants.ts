@@ -208,8 +208,13 @@ export type AllocSelectVerdict =
  *
  * 一个批次内不允许混选两种动作，否则「分配 / 取消」按钮语义不明。
  * H5 与 Web 直接调用本函数；小程序是独立技术栈，需按同一规则手写（见 index.js `allocVerdict`）。
+ *
+ * `pendingOp=true`（该笼位挂着未决的分笼/转移请求）时一律不可选：待审请求只是「意向」，
+ * 笼位状态还没变（空笼盒仍是空笼盒），只看类型拦不住 —— 选中后分配会改掉状态/AUP，
+ * 那条审批执行时就失败了。后端同口径兜底拒绝。
  */
-export function allocSelectVerdict(cageTypeCode?: number | null): AllocSelectVerdict {
+export function allocSelectVerdict(cageTypeCode?: number | null, pendingOp?: boolean): AllocSelectVerdict {
+  if (pendingOp) return { ok: false, reason: "该笼位有待审的分笼/转移请求，请先等它审完" };
   const ct = Number(cageTypeCode);
   if (ct === 1) return { ok: true, kind: "allocate" };
   if (ct === 2) return { ok: true, kind: "cancel" };

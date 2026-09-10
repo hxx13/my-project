@@ -6,17 +6,32 @@
         <id property="id" column="id"/>
         <result property="orderId" column="order_id"/>
         <result property="refDataId" column="ref_data_id"/>
+        <result property="supplierName" column="supplier_name"/>
+        <result property="strainName" column="strain_name"/>
+        <result property="specName" column="spec_name"/>
         <result property="specSelections" column="spec_selections"/>
         <result property="hierarchyChain" column="hierarchy_chain"/>
         <result property="quantity" column="quantity"/>
+        <result property="unitPrice" column="unit_price"/>
+        <result property="arrivalDate" column="arrival_date"/>
+        <result property="pickupRoomId" column="pickup_room_id"/>
+        <result property="pickupRoomName" column="pickup_room_name"/>
+        <result property="collectorId" column="collector_id"/>
+        <result property="collectorName" column="collector_name"/>
         <result property="lineRemark" column="line_remark"/>
         <result property="addedBy" column="added_by"/>
         <result property="aupRecordId" column="aup_record_id"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_order_line(order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark, added_by, aup_record_id)
-        VALUES (#{orderId}, #{refDataId}, #{specSelections}, #{hierarchyChain}, #{quantity}, #{lineRemark}, #{addedBy}, #{aupRecordId})
+        INSERT INTO ref_order_line(order_id, ref_data_id, supplier_name, strain_name, spec_name,
+                                   spec_selections, hierarchy_chain, quantity, unit_price, arrival_date,
+                                   pickup_room_id, pickup_room_name, collector_id, collector_name,
+                                   line_remark, added_by, aup_record_id)
+        VALUES (#{orderId}, #{refDataId}, #{supplierName}, #{strainName}, #{specName},
+                #{specSelections}, #{hierarchyChain}, #{quantity}, #{unitPrice}, #{arrivalDate},
+                #{pickupRoomId}, #{pickupRoomName}, #{collectorId}, #{collectorName},
+                #{lineRemark}, #{addedBy}, #{aupRecordId})
     </insert>
 
     <delete id="deleteByOrderId">
@@ -24,7 +39,10 @@
     </delete>
 
     <select id="listByOrderId" resultMap="Base">
-        SELECT id, order_id, ref_data_id, spec_selections, hierarchy_chain, quantity, line_remark, added_by, aup_record_id
+        SELECT id, order_id, ref_data_id, supplier_name, strain_name, spec_name,
+               spec_selections, hierarchy_chain, quantity, unit_price, arrival_date,
+               pickup_room_id, pickup_room_name, collector_id, collector_name,
+               line_remark, added_by, aup_record_id
         FROM ref_order_line WHERE order_id = #{orderId} ORDER BY id ASC
     </select>
 

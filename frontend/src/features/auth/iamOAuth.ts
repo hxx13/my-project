@@ -7,6 +7,10 @@
 
 const STATE_KEY = "iam_oauth_state";
 const PENDING_CALLBACK_KEY = "iam_oauth_pending_callback";
+/** 登录入口意图：回调统一落在根路径，靠它还原是 H5 还是门户发起的 */
+const PORTAL_INTENT_KEY = "iam_oauth_portal_intent";
+
+export type IamOAuthPortalIntent = "mobile";
 
 /** 根路径 search 上可能出现的 OAuth 回调 query（不含 Hash 内业务 ?code=） */
 const OAUTH_CALLBACK_QUERY_KEYS = [
@@ -126,11 +130,13 @@ export function stripOAuthCallbackQueryEarly(): void {
 }
 
 /** 跳转 IAM 授权页；state 写入 sessionStorage 供回调校验 */
-export function startIamOAuthLogin(): void {
+export function startIamOAuthLogin(portal?: IamOAuthPortalIntent): void {
   const { authBase, clientId, redirectUri } = getIamOAuthPublicConfig();
   const state = randomState();
   try {
     sessionStorage.setItem(STATE_KEY, state);
+    if (portal) sessionStorage.setItem(PORTAL_INTENT_KEY, portal);
+    else sessionStorage.removeItem(PORTAL_INTENT_KEY);
   } catch {
     /* ignore */
   }
@@ -214,6 +220,17 @@ export function validateAndClearIamState(returnedState: string): string | null {
     return "统一认证 state 校验失败，请重新登录";
   }
   return null;
+}
+
+/** 取出并清空登录入口意图；无意图（门户/教职工登录）返回 null */
+export function consumeIamOAuthPortalIntent(): IamOAuthPortalIntent | null {
+  try {
+    const v = sessionStorage.getItem(PORTAL_INTENT_KEY);
+    sessionStorage.removeItem(PORTAL_INTENT_KEY);
+    return v === "mobile" ? "mobile" : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 清掉根路径上的 OAuth 回调 query，保留 hash 路由与其它业务 query */

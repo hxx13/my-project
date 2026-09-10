@@ -55,6 +55,8 @@ const EMPTY_BADGE_COUNTS = {
   processScanDelay: 0,
   processAroTraining: 0,
   processCageClaim: 0,
+  /** 分笼/转移待审（后端 CageOpPendingBadgeContributor，badgeCounters.processCageOp） */
+  processCageOp: 0,
   material: 0,
   /** 站内信未读，与 GET /api/chat 已读游标同源 */
   chatUnread: 0,
@@ -107,6 +109,7 @@ function mapBodyToCounts(body) {
   const processScanDelay = pick('processScanDelay', 'processScanDelay', 'SCAN_DELAY_PROCESS');
   const processAroTraining = pick('processAroTraining', 'processAroTraining', 'ARO_TRAINING_PROCESS');
   const processCageClaim = pick('processCageClaim', 'processCageClaim', 'CAGE_CLAIM_PROCESS');
+  const processCageOp = pick('processCageOp', 'processCageOp', 'CAGE_OP_PROCESS');
   const material = pick('material', 'material', 'MATERIAL_REQUEST_APPLICANT', 'materialRequest');
   const chatUnread = pick('chatUnread', 'chatUnread', 'CHAT_DM_UNREAD');
   const staffUnifiedWorkInboxPending = pick(
@@ -147,6 +150,7 @@ function mapBodyToCounts(body) {
     processScanDelay,
     processAroTraining,
     processCageClaim,
+    processCageOp,
     material,
     chatUnread,
     staffUnifiedWorkInboxPending,
@@ -300,7 +304,9 @@ function studentReviewMenuBadgeText(c) {
   const scanDelay = Number(c.processScanDelay || 0);
   const aroTraining = Number(c.processAroTraining || 0);
   const cageClaim = Number(c.processCageClaim || 0);
-  const total = material + scanDelay + aroTraining + cageClaim;
+  // 分笼/转移待审与笼位申请同归「学生审核」入口（与 Web buildAdminNavModel 求和口径一致）
+  const cageOp = Number(c.processCageOp || 0);
+  const total = material + scanDelay + aroTraining + cageClaim + cageOp;
   if (total <= 0) return '';
   return formatBadgeText(total);
 }

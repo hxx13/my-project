@@ -29,6 +29,7 @@ import com.example.demo.modules.aup.mapper.AupDataMapper;
 import com.example.demo.modules.aup.mapper.AupRecordMapper;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
 import com.example.demo.modules.notification.service.NotificationService;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.example.demo.modules.upload.entity.UploadFileRecord;
 import com.example.demo.modules.upload.service.UploadFileRecordService;
 import com.example.demo.modules.upload.service.UploadFileStorageService;
@@ -191,13 +192,18 @@ public class AupService {
         return record;
     }
 
-    /** 从 aro_personnel 取用户课题组名（学生端按课题组协作查看用）；学生库没有时回退 sys_user.project_group_name（教职工账号） */
-    private String resolveProjectGroupName(String userId) {
+    /**
+     * 账号所属课题组名列表。
+     *
+     * <p>aro_personnel.project_group_name 是多课题组时逗号/顿号拼接的字段（如「A的课题组, B的课题组」），
+     * 而 aup_record.project_group_name 是单值。整串取值去比对单值永远匹配不到，必须拆分成单个组名再比。
+     * STAFF_* 账号还需经 user_aro_binding 展开成 aro_user_id 才能命中 aro_personnel。
+     */
+    private List<String> resolveProjectGroupNames(String userId) {
         if (userId == null || userId.isBlank()) {
-            return null;
+            return List.of();
         }
         try {
-            // STAFF_* 账号需经 user_aro_binding 展开成 aro_user_id，再索引 aro_personnel
             String aroUserId = userId;
             if (userId.startsWith("STAFF_")) {
                 UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
@@ -206,21 +212,24 @@ public class AupService {
                 }
             }
             AroPersonnel p = aroPersonnelMapper.findByUserId(aroUserId);
-            if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
-                return p.getProjectGroupName();
+            if (p == null && !aroUserId.equals(userId)) {
+                p = aroPersonnelMapper.findByUserId(userId);
             }
-            if (!aroUserId.equals(userId)) {
-                AroPersonnel p2 = aroPersonnelMapper.findByUserId(userId);
-                if (p2 != null && StringUtils.hasText(p2.getProjectGroupName())) {
-                    return p2.getProjectGroupName();
-                }
+            if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
+                return PersonnelProjectGroupUtil.splitGroups(p.getProjectGroupName());
             }
             List<String> rows = jdbcTemplate.queryForList(
                     "SELECT project_group_name FROM sys_user WHERE id = ?", String.class, userId);
-            return rows.isEmpty() ? null : rows.get(0);
+            return rows.isEmpty() ? List.of() : PersonnelProjectGroupUtil.splitGroups(rows.get(0));
         } catch (Exception e) {
-            return null;
+            return List.of();
         }
+    }
+
+    /** 主课题组名 —— 写入 aup_record 的单值课题组字段用；无课题组返回 null */
+    private String resolveProjectGroupName(String userId) {
+        List<String> groups = resolveProjectGroupNames(userId);
+        return groups.isEmpty() ? null : groups.get(0);
     }
 
     /** 保存草稿（乐观锁 CAS，非 draft 只读 403） */
@@ -770,11 +779,11 @@ public class AupService {
                                     String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
         String scopeUserId = user.getId();
-        String scopeProjectGroup = resolveProjectGroupName(scopeUserId);
+        List<String> scopeProjectGroups = resolveProjectGroupNames(scopeUserId);
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = (safePage - 1) * safeSize;
-        List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
+        List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroups, keyword, registerNo,
                 stage, excludeStage, excludeStages, projectGroupName, dept, excludeDraft, draftSource, roundNo,
                 submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly, sortBy, sortDir, offset, safeSize);
         Map<Long, String> speciesByAup = loadSpeciesByAup(items);
@@ -785,7 +794,7 @@ public class AupService {
         Map<Long, Integer> expertRounds = resolveExpertRounds(items);
         fillNames(items, expertRounds);
         fillVoteNames(items, expertRounds);
-        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo, stage, excludeStage, excludeStages, projectGroupName, dept, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly);
+        int total = recordMapper.countPage(scopeRole, scopeUserId, scopeProjectGroups, keyword, registerNo, stage, excludeStage, excludeStages, projectGroupName, dept, excludeDraft, draftSource, roundNo, submitterId, reviewerId, submitterName, reviewerName, relatedToMe, groupScopeOnly);
         Map<String, Object> data = new HashMap<>();
         data.put("total", total);
         data.put("items", items);
@@ -800,11 +809,11 @@ public class AupService {
     /** 订购侧：按课题组名列出已批准 AUP 下拉（含 projectGroupId），供下单必选 AUP 用。 */
     /** 订购侧：仅返回当前登录用户所属课题组的已批准 AUP；无课题组则空列表。 */
     public List<Map<String, Object>> listApprovedForOrder(User user) {
-        String projectGroupName = resolveProjectGroupName(user.getId());
-        if (!StringUtils.hasText(projectGroupName)) {
+        List<String> projectGroupNames = resolveProjectGroupNames(user.getId());
+        if (projectGroupNames.isEmpty()) {
             return List.of();
         }
-        return recordMapper.selectApprovedForOrder(projectGroupName);
+        return recordMapper.selectApprovedForOrder(projectGroupNames);
     }
 
     /** 课题组下拉数据源（本地 project_group 字典表，active=1），返回 [{value: id, label: name}]。 */
@@ -1203,12 +1212,12 @@ public class AupService {
                                       boolean relatedToMe, String sortBy, String sortDir) {
         String scopeRole = accessPolicy.resolveScopeRole(user);
         String scopeUserId = user.getId();
-        String scopeProjectGroup = resolveProjectGroupName(scopeUserId);
+        List<String> scopeProjectGroups = resolveProjectGroupNames(scopeUserId);
         List<Long> ids = new ArrayList<>();
         int offset = 0;
         int size = 100;
         while (true) {
-            List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroup, keyword, registerNo,
+            List<AupListItem> items = recordMapper.selectPage(scopeRole, scopeUserId, scopeProjectGroups, keyword, registerNo,
                     stage, null, excludeStages, projectGroupName, dept, true, draftSource, roundNo,
                     null, null, submitterName, reviewerName, relatedToMe, false, sortBy, sortDir, offset, size);
             if (items.isEmpty()) {

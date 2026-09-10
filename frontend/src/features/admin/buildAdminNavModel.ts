@@ -277,7 +277,9 @@ function resolveNavEntryBadgeText(
   pendingBadges: PendingBadges | null,
 ): string | undefined {
   if (isMaterialReviewNavPath(path)) {
-    return studentReviewBadgeText(pendingBadges, undefined, pendingBadges?.badgeCounters?.processCageClaim);
+    // 笼位申请 + 分笼/转移待审都归这个入口，角标求和才与页面内各 tab 相符
+    const cagePending = (pendingBadges?.badgeCounters?.processCageClaim ?? 0) + (pendingBadges?.badgeCounters?.processCageOp ?? 0);
+    return studentReviewBadgeText(pendingBadges, undefined, cagePending);
   }
   return badgeTextFromKey(
     pendingBadges,

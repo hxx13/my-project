@@ -25,4 +25,8 @@ public interface CageOpRequestMapper {
     /** 申请人自己的请求（学生视角「我的操作」） */
     List<CageOpRequest> selectByApplicant(@Param("applicantId") String applicantId,
                                           @Param("status") String status);
+
+    /** 我审过的请求（审核页「已审核」历史区） */
+    List<CageOpRequest> selectByReviewer(@Param("reviewerId") String reviewerId,
+                                         @Param("limit") int limit);
 }

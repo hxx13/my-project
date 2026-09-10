@@ -62,6 +62,14 @@ export const TYPE_REGISTRY: FieldTypeMeta[] = [
   },
   { value: "checkbox", label: "是否勾选", icon: "勾", group: "choice", hasOptions: true },
   { value: "cascade", label: "级联选择", icon: "级", group: "choice" },
+  {
+    value: "combo",
+    label: "输入框+候选",
+    icon: "候",
+    group: "choice",
+    hasOptions: true,
+    defaultConfig: { choiceType: "single" },
+  },
   { value: "table", label: "表格", icon: "表", group: "structure", nestable: true, defaultConfig: { columns: [] } },
   { value: "group", label: "字段组", icon: "组", group: "structure", nestable: true, defaultConfig: { fields: [] } },
   { value: "repeatGroup", label: "可重复块", icon: "块", group: "structure", defaultConfig: { fields: [] } },
@@ -98,14 +106,14 @@ export const TYPES_NESTABLE = new Set<FieldType>(
  * 编辑器选题型时按 dataType 过滤，避免 DECIMAL 字段选成下拉、ENUM 字段选成文本。
  */
 export const DATA_TYPE_COMPATIBLE_TYPES: Record<string, FieldType[]> = {
-  STRING: ["text", "textarea", "richText"],
+  STRING: ["text", "textarea", "richText", "combo"],
   TEXT: ["textarea", "richText"],
   INTEGER: ["number"],
   DECIMAL: ["number"],
   DATE: ["date", "dateRange", "time"],
   DATETIME: ["date", "dateRange", "time"],
   ENUM: ["select", "choice", "cascade"],
-  ENUM_MULTI: ["checkbox"],
+  ENUM_MULTI: ["choice", "checkbox"],
   BOOLEAN: ["checkbox"],
   FILE: ["file", "image"],
   CALC: [],

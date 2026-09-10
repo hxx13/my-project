@@ -171,10 +171,10 @@ async function fetchScanDelayOptions() {
   return unwrap(res.data) || [];
 }
 
-/** 获取待审核培训场次及学员 */
+/** 与 Web fetchPendingEnrollments 同源：所属人的待审核学员（扁平行） */
 async function fetchPendingTrainingSessions() {
   const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/sessions/pending',
+    url: '/api/admin/training/pending',
     method: 'GET',
     data: {},
   });
@@ -182,21 +182,21 @@ async function fetchPendingTrainingSessions() {
 }
 
 /** 审批学员 state: 1=通过, 2=拒绝 */
-async function auditTrainee(examSignId, state) {
+async function auditTrainee(enrollmentId, state) {
   const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/audit',
+    url: `/api/admin/training/enrollments/${encodeURIComponent(enrollmentId)}/audit`,
     method: 'POST',
-    data: { examSignId, state },
+    data: { state },
   });
   return unwrap(res.data);
 }
 
 /** 评分学员 state: 1=合格, 2=不合格 */
-async function scoreTrainee(examSignId, state) {
+async function scoreTrainee(enrollmentId, state) {
   const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/score',
+    url: `/api/admin/training/enrollments/${encodeURIComponent(enrollmentId)}/score`,
     method: 'POST',
-    data: { examSignId, state },
+    data: { state },
   });
   return unwrap(res.data);
 }
@@ -204,7 +204,7 @@ async function scoreTrainee(examSignId, state) {
 /** 获取收藏列表 */
 async function fetchAroFavorites() {
   const res = await springAuth.springRequest({
-    url: '/api/admin/aro-training/favorites',
+    url: '/api/admin/training/favorites',
     method: 'GET',
     data: {},
   });
@@ -225,6 +225,36 @@ async function fetchPendingCageClaims() {
 async function approveCageClaim(id, decision, reason) {
   const res = await springAuth.springRequest({
     url: `/api/admin/cage-claims/${encodeURIComponent(id)}/approve`,
+    method: 'POST',
+    data: { decision: decision, reason: reason || undefined },
+  });
+  return unwrap(res.data);
+}
+
+/** 分笼/转移待审列表（opType: 'divide' | 'transfer'），后端已按审核人归属过滤 */
+async function fetchCageOpsPending(opType) {
+  const res = await springAuth.springRequest({
+    url: '/api/cage-op/pending',
+    method: 'GET',
+    data: opType ? { opType } : {},
+  });
+  return unwrap(res.data) || [];
+}
+
+/** 我审过的分笼/转移历史（与 Web fetchReviewedCageOps 同源） */
+async function fetchCageOpsReviewed(limit = 100) {
+  const res = await springAuth.springRequest({
+    url: '/api/cage-op/reviewed',
+    method: 'GET',
+    data: { limit },
+  });
+  return unwrap(res.data) || [];
+}
+
+/** 审批分笼/转移 decision: 'approved' | 'rejected'（驳回必填 reason） */
+async function reviewCageOp(id, decision, reason) {
+  const res = await springAuth.springRequest({
+    url: `/api/cage-op/${encodeURIComponent(id)}/approve`,
     method: 'POST',
     data: { decision: decision, reason: reason || undefined },
   });
@@ -255,4 +285,7 @@ module.exports = {
   fetchAroFavorites,
   fetchPendingCageClaims,
   approveCageClaim,
+  fetchCageOpsPending,
+  fetchCageOpsReviewed,
+  reviewCageOp,
 };

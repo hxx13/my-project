@@ -7,6 +7,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper;
+import com.alibaba.fastjson2.JSON;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -107,8 +108,23 @@ public class CardDataAssembler {
             case "DECIMAL" -> v.getValueDecimal();
             case "DATE" -> v.getValueDate();
             case "DATETIME" -> v.getValueDatetime();
-            case "ENUM_MULTI", "FILE" -> v.getValueJson();
+            // 多值字段打印成顿号连接，不能把 JSON 数组原文印到卡上
+            case "ENUM_MULTI" -> multiText(v.getValueJson());
+            case "FILE" -> v.getValueJson();
             default -> v.getValueString() != null ? v.getValueString() : v.getValueText();
         };
+    }
+
+    private static Object multiText(String json) {
+        if (json == null || json.isBlank()) return null;
+        String t = json.trim();
+        if (!t.startsWith("[")) return t;
+        try {
+            List<String> parts = new ArrayList<>();
+            for (Object o : JSON.parseArray(t)) if (o != null) parts.add(String.valueOf(o));
+            return String.join("、", parts);
+        } catch (Exception e) {
+            return t;
+        }
     }
 }

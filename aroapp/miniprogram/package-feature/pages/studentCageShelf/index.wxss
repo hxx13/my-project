@@ -1165,93 +1165,19 @@
 /*  Cell Detail Popup（对齐 Web / H5）                                   */
 /* ================================================================== */
 
-.detail-scroll {
-  width: 100%;
-  max-width: 100%;
-  max-height: 60vh;
-  box-sizing: border-box;
-  overflow-x: hidden;
-}
 
-.detail-root {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
-  padding-bottom: 24rpx;
-}
 
-.detail-head {
-  padding: 24rpx 24rpx 16rpx;
-  background: #fafbfc;
-  border-bottom: 1rpx solid #eef0f6;
-  box-sizing: border-box;
-}
 
-.detail-head-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  max-width: 100%;
-}
 
-.detail-head-position {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #1e293b;
-}
 
-.detail-head-coords {
-  font-size: 22rpx;
-  color: #94a3b8;
-  font-family: monospace;
-}
 
-.detail-head-type {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #ac1736;
-  background: rgba(172,23,54,0.08);
-  padding: 4rpx 16rpx;
-  border-radius: 999rpx;
-}
 
 /* 标题栏里的特殊状态标签：中性底色 + 状态色圆点，比整块彩色更克制 */
-.detail-head-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  font-size: 20rpx;
-  font-weight: 500;
-  padding: 5rpx 16rpx;
-  border-radius: 999rpx;
-  background: #f1f5f9;
-  color: #334155;
-  box-sizing: border-box;
-}
 
-.detail-head-chip-dot {
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
 
 /* Info section (PI / Dept / AUP / Animal) */
-.detail-info-section {
-  padding: 8rpx 0;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
 /* 关键信息表单（模板动态渲染）：两列卡片，对齐 H5 CageFormFill 的 grid-cols-2 */
-.detail-form-fields {
-  padding: 8rpx 24rpx;
-  width: 100%;
-  box-sizing: border-box;
-}
 
 .detail-form-hint {
   padding: 24rpx 0;
@@ -1297,388 +1223,58 @@
   font-variant-numeric: tabular-nums;
 }
 
-.detail-info-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 12rpx 32rpx;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-info-icon {
-  font-size: 28rpx;
-  flex-shrink: 0;
-  width: 36rpx;
-  text-align: center;
-}
 
-.detail-info-label {
-  font-size: 24rpx;
-  color: #94a3b8;
-  flex-shrink: 0;
-  min-width: 56rpx;
-}
 
-.detail-info-value {
-  font-size: 26rpx;
-  color: #323233;
-  font-weight: 500;
-  flex: 1;
-  min-width: 0;
-  word-break: break-all;
-  line-height: 1.4;
-}
 
 /* Status chips section */
-.detail-chips-section {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  padding: 8rpx 32rpx 14rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-status-photos {
-  padding: 0 32rpx 8rpx;
-}
 
-.detail-chip {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 8rpx 20rpx;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-}
 
-.detail-chip-dot {
-  width: 16rpx;
-  height: 16rpx;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
 
-.detail-chip-photos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx;
-  padding: 4rpx 0 8rpx 24rpx;
-}
-.detail-chip-photo-wrap {
-  position: relative;
-}
-.detail-chip-photo {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid #ebedf0;
-}
-.detail-chip-photo-del {
-  position: absolute;
-  top: -10rpx;
-  right: -10rpx;
-  width: 32rpx;
-  height: 32rpx;
-  border-radius: 50%;
-  background: #ef4444;
-  color: #fff;
-  font-size: 18rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* Form section (experiment notes / photos) */
-.detail-form-section {
-  padding: 8rpx 32rpx 16rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-form-label-row {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  margin-bottom: 12rpx;
-}
 
-.detail-form-icon {
-  font-size: 28rpx;
-  flex-shrink: 0;
-}
 
-.detail-form-label {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #323233;
-}
 
 /* Photo grid */
-.detail-photo-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-photo-item {
-  position: relative;
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 12rpx;
-  overflow: hidden;
-  border: 1rpx solid #ebedf0;
-  background: #f7f8fa;
-}
 
-.detail-photo-img {
-  width: 100%;
-  height: 100%;
-}
 
-.detail-photo-remove {
-  position: absolute;
-  top: 4rpx;
-  right: 4rpx;
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.45);
-  color: #fff;
-  font-size: 22rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-}
 
 /* Upload row */
-.detail-upload-row {
-  padding: 0;
-}
 
 /* ================================================================== */
 /*  Cell Detail Popup (old field-grid — preserved for backward compat) */
 /* ================================================================== */
 
-.detail-head-main {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
 
-.detail-head-title-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  max-width: 100%;
-}
 
-.detail-head-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #323233;
-  max-width: 100%;
-}
 
-.detail-head-sub {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #969799;
-  max-width: 100%;
-  word-break: break-all;
-  line-height: 1.4;
-}
 
-.detail-head-position-badge {
-  padding: 4rpx 16rpx;
-  border-radius: 999rpx;
-  background: #f7f8fa;
-}
 
-.detail-head-position-badge text {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #646566;
-}
 
-.detail-head-dot {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.15);
-  border: 3rpx solid rgba(255,255,255,0.7);
-}
 
-.detail-head-dot text {
-  font-size: 22rpx;
-  font-weight: 700;
-  color: #fff;
-}
 
-.detail-section-label {
-  padding: 20rpx 32rpx 8rpx;
-  box-sizing: border-box;
-  max-width: 100%;
-}
 
-.detail-section-label text {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #969799;
-  letter-spacing: 1rpx;
-  word-break: break-all;
-}
 
-.detail-divider {
-  height: 1rpx;
-  margin: 8rpx 32rpx 0;
-  background: #ebedf0;
-}
 
-.detail-status-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10rpx;
-  padding: 8rpx 32rpx 12rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-status-chip {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 6rpx 16rpx;
-  border-radius: 999rpx;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-status-chip-label {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #fff;
-  flex: 1;
-  min-width: 0;
-  word-break: break-all;
-}
 
-.detail-status-chip--COHABITATION { background: #10b981; }
-.detail-status-chip--SPECIAL_FEEDING { background: #ef4444; }
-.detail-status-chip--NEED_DIVIDE { background: #eab308; }
-.detail-status-chip--HEALTH_ABNORMAL { background: #a855f7; }
-.detail-status-chip--ANIMAL_TRANSFER { background: #06b6d4; }
 
-.detail-status-chip-abbr {
-  width: 28rpx;
-  height: 28rpx;
-  line-height: 28rpx;
-  text-align: center;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.28);
-  font-size: 18rpx;
-  font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-}
 
-.detail-field-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  padding: 0 32rpx 8rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-field {
-  flex: 0 0 calc((100% - 12rpx) / 2);
-  width: calc((100% - 12rpx) / 2);
-  max-width: calc((100% - 12rpx) / 2);
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 14rpx 16rpx;
-  border-radius: 12rpx;
-  border: 1rpx solid #ebedf0;
-  background: #fff;
-  overflow: hidden;
-}
 
-.detail-field--full {
-  flex: 0 0 100%;
-  width: 100%;
-  max-width: 100%;
-}
 
-.detail-field-label {
-  display: block;
-  font-size: 22rpx;
-  color: #969799;
-  line-height: 1.3;
-}
 
-.detail-field-value {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 26rpx;
-  color: #323233;
-  word-break: break-all;
-  line-height: 1.4;
-}
 
-.detail-field-value--mono {
-  font-family: monospace;
-  font-size: 24rpx;
-}
 
-.detail-field-value--location {
-  font-size: 24rpx;
-  color: #646566;
-}
 
-.detail-field-value--danger { color: #ee0a24; font-weight: 600; }
-.detail-field-value--warn { color: #ed6a0c; font-weight: 600; }
-.detail-field-value--info { color: #1989fa; font-weight: 600; }
-.detail-field-value--health { color: #ff976a; font-weight: 600; }
 
-.detail-qr-wrap {
-  margin-top: 12rpx;
-  padding: 12rpx;
-  border: 1rpx solid #ebedf0;
-  border-radius: 12rpx;
-  display: inline-block;
-  background: #fff;
-}
 
-.detail-qr-image {
-  width: 160rpx;
-  height: 160rpx;
-  display: block;
-}
 
-.detail-qr-loading {
-  font-size: 22rpx;
-  color: #969799;
-  padding: 40rpx 24rpx;
-  display: block;
-}
 
 .detail-qr-canvas-offscreen {
   position: fixed;
@@ -1688,198 +1284,26 @@
   height: 160px;
 }
 
-.detail-no-permission {
-  padding: 48rpx 32rpx;
-  text-align: center;
-}
 
-.detail-no-permission text {
-  font-size: 26rpx;
-  color: #969799;
-  line-height: 1.5;
-}
 
-.detail-annotation-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12rpx;
-  padding: 32rpx;
-}
 
-.detail-annotation-loading text {
-  font-size: 24rpx;
-  color: #969799;
-}
 
-.detail-form-block {
-  padding: 0 32rpx 16rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
-}
 
-.detail-form-label {
-  display: block;
-  font-size: 24rpx;
-  color: #646566;
-  margin-bottom: 10rpx;
-}
 
-.detail-form-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10rpx;
-}
 
-.detail-upload-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 8rpx 20rpx;
-  border-radius: 48rpx;
-  font-size: 22rpx;
-  font-weight: 500;
-  color: #ac1736;
-  background: #fff;
-  border: 1rpx solid #ac1736;
-}
 
-.detail-upload-btn--disabled {
-  opacity: 0.5;
-}
 
-.detail-textarea {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  min-height: 160rpx;
-  padding: 16rpx 20rpx;
-  box-sizing: border-box;
-  border-radius: 12rpx;
-  border: 1rpx solid #ebedf0;
-  background: #f7f8fa;
-  font-size: 26rpx;
-  color: #323233;
-  line-height: 1.5;
-  overflow-x: hidden;
-  word-break: break-all;
-}
 
-.detail-textarea--mono {
-  min-height: 120rpx;
-  font-size: 22rpx;
-  font-family: monospace;
-}
 
-.detail-image-previews {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  padding: 0 32rpx 16rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-preview-image {
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 12rpx;
-  border: 1rpx solid #ebedf0;
-  background: #f7f8fa;
-}
 
-.detail-save-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16rpx;
-  padding: 8rpx 32rpx 16rpx;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-}
 
-.detail-save-btn {
-  padding: 18rpx 36rpx;
-  border-radius: 12rpx;
-  background: #ac1736;
-}
 
-.detail-save-btn text {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #fff;
-}
 
-.detail-save-btn--disabled {
-  opacity: 0.55;
-}
 
-.detail-save-msg {
-  font-size: 24rpx;
-}
 
-.detail-save-msg--ok { color: #07c160; }
-.detail-save-msg--err { color: #ee0a24; }
 
-.detail-head-submit {
-  padding: 8rpx 24rpx;
-  border-radius: 48rpx;
-  background: #ac1736;
-  color: #fff;
-  font-size: 24rpx;
-  font-weight: 600;
-  flex-shrink: 0;
-}
 /* 弹窗层提交按钮：absolute 定位在 popup 关闭图标左侧 */
-.detail-popup-submit {
-  position: absolute;
-  top: 14px;
-  right: 56px;
-  z-index: 2;
-  padding: 6rpx 20rpx;
-  border-radius: 48rpx;
-  background: #ac1736;
-  color: #fff;
-  font-size: 22rpx;
-  font-weight: 600;
-  flex-shrink: 0;
-  line-height: 1.4;
-}
-.detail-actions-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  padding: 8rpx 32rpx 16rpx;
-}
-.detail-action-btn {
-  padding: 10rpx 24rpx;
-  border-radius: 48rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #ac1736;
-  background: rgba(172,23,54,0.08);
-  border: 1rpx solid rgba(172,23,54,0.2);
-}
-.detail-action-btn--on {
-  color: #ac1736;
-  background: rgba(172,23,54,0.08);
-  border-color: #ac1736;
-}
-.detail-action-btn--keep {
-  color: #059669;
-  background: rgba(16,185,129,0.12);
-  border-color: #10b981;
-}
-.detail-action-btn--off {
-  color: #94a3b8;
-  background: transparent;
-  border-color: #cbd5e1;
-  text-decoration: line-through;
-}
 /* ── Grid 操作栏 ── */
 .gt-left-btns {
   display: flex;
@@ -2121,250 +1545,6 @@
   border-width: 3rpx !important;
 }
 
-/* ── 编辑模式操作弹窗 ── */
-.ea-header {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.ea-pos {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #323233;
-}
-.ea-type {
-  font-size: 22rpx;
-  color: #969799;
-}
-.ea-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.ea-chip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6rpx;
-  min-height: 56rpx;
-  padding: 10rpx 12rpx;
-  border-radius: 12rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  border: 2rpx solid #ebedf0;
-  background: #f7f8fa;
-  color: #646566;
-  box-sizing: border-box;
-}
-.ea-chip-hover {
-  opacity: 0.7;
-  transform: scale(0.98);
-}
-.ea-chip-on {
-  border-width: 2rpx;
-  border-style: solid;
-}
-.ea-chip-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.2;
-}
-.ea-chip-mark {
-  font-size: 20rpx;
-  font-weight: 700;
-  width: 26rpx;
-  height: 26rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.08);
-  flex-shrink: 0;
-}
-.ea-photo-section {
-  margin-bottom: 16rpx;
-}
-.ea-photo-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10rpx;
-}
-.ea-photo-title {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #646566;
-}
-.ea-photo-add {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ac1736;
-}
-.ea-photo-add-icon {
-  font-size: 28rpx;
-  color: #fff;
-  font-weight: 400;
-  line-height: 1;
-}
-.ea-photo-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10rpx;
-}
-.ea-photo-wrap {
-  position: relative;
-}
-.ea-photo {
-  width: 100rpx;
-  height: 100rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid #ebedf0;
-}
-.ea-photo-del {
-  position: absolute;
-  top: -10rpx;
-  right: -10rpx;
-  width: 32rpx;
-  height: 32rpx;
-  border-radius: 50%;
-  background: #ef4444;
-  color: #fff;
-  font-size: 18rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ea-note {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-  margin-bottom: 16rpx;
-}
-.ea-note textarea {
-  width: 100%;
-  min-height: 56rpx;
-  max-height: 100rpx;
-  padding: 10rpx 12rpx;
-  border: 1rpx solid #ebedf0;
-  border-radius: 8rpx;
-  font-size: 22rpx;
-  box-sizing: border-box;
-}
-.ea-note-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12rpx;
-}
-.ea-btn-new-version {
-  display: inline-block;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #ac1736;
-  background: transparent;
-  border: 1px solid #ac1736;
-  padding: 10rpx 24rpx;
-  border-radius: 8rpx;
-}
-.ea-btn-save {
-  display: inline-block;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #fff;
-  background: #ac1736;
-  padding: 10rpx 24rpx;
-  border-radius: 8rpx;
-}
-.ea-btns {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.ea-btn-close {
-  width: 100%;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #fff;
-  background: #323233;
-  padding: 18rpx 0;
-  border-radius: 12rpx;
-  text-align: center;
-}
-.ea-history {
-  border-top: 1rpx solid #ebedf0;
-  padding-top: 16rpx;
-  margin-bottom: 16rpx;
-}
-.ea-history-hd {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #969799;
-  margin-bottom: 10rpx;
-}
-.ea-history-scroll {
-  max-height: 240rpx;
-}
-.ea-history-item {
-  padding: 10rpx 12rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid #ebedf0;
-  margin-bottom: 8rpx;
-  font-size: 20rpx;
-}
-.ea-history-item-top {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-}
-.ea-history-label {
-  font-weight: 600;
-}
-.ea-history-time {
-  color: #969799;
-  font-size: 18rpx;
-  flex: 1;
-}
-.ea-history-del {
-  color: #ef4444;
-  font-size: 24rpx;
-  padding: 4rpx;
-}
-.ea-history-note {
-  color: #646566;
-  margin-top: 4rpx;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.ea-history-imgs {
-  display: flex;
-  gap: 8rpx;
-  margin-top: 8rpx;
-}
-.ea-history-img {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 6rpx;
-  border: 1rpx solid #ebedf0;
-}
-.ea-history-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  font-size: 22rpx;
-  color: #969799;
-  padding: 16rpx 0;
-}
-
 /* ================================================================== */
 /*  扫码定位 FAB（右下悬浮圆形按钮，常驻）                                    */
 /* ================================================================== */
@@ -2511,6 +1691,45 @@
 .gcell-badge--pending { background: #3b82f6; }
 .gcell-badge--release { background: #f97316; }
 
+/* 当前模式的呼吸光晕（与 Web 端 cage-mode-glow.css 同款效果）。
+   用 inset 内发光而非外投影：外层是滚动容器，外投影会被裁掉。
+   颜色由页面通过 --mode-color 传入（见 MODE_COLOR / switchMode 的 modeColor）。 */
+@keyframes cage-glow-breathe {
+  0%, 100% {
+    box-shadow: inset 0 0 0 2rpx var(--mode-color), inset 0 0 5rpx 0 var(--mode-color);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2rpx var(--mode-color), inset 0 0 18rpx 3rpx var(--mode-color);
+  }
+}
+.grid-wrapper--glow {
+  animation: cage-glow-breathe 2.6s ease-in-out infinite;
+}
+
+/* 笼位划分（格子有划分名单时的淡色环 + 淡玫瑰底，让划分范围成片一眼可辨；置于选中态之前让选中环优先覆盖） */
+.gcell-division {
+  box-shadow: inset 0 0 0 3rpx #fb7185, 0 0 8rpx rgba(244, 63, 94, 0.28);
+  /* 用 background-image 叠加，不覆盖格子自身的状态底色 */
+  background-image: linear-gradient(rgba(225, 29, 72, 0.10), rgba(225, 29, 72, 0.10));
+}
+/* 划分名单含本人：专属高亮（比淡色环更重） */
+.gcell-division--mine {
+  box-shadow: inset 0 0 0 4rpx #e11d48, 0 0 8rpx rgba(225, 29, 72, 0.45);
+  border-color: #e11d48 !important;
+  border-width: 4rpx !important;
+}
+/* 划分徽标：贴左下角，避开左上角的认领徽标；名单过长省略号收起 */
+.gcell-badge--division {
+  top: auto;
+  bottom: 2rpx;
+  left: 2rpx;
+  max-width: calc(100% - 4rpx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #e11d48;
+}
+
 /* 选中态（分配/认领/学生申请） */
 .gcell-selected {
   box-shadow: inset 0 0 0 4rpx #3b82f6, 0 0 8rpx rgba(59, 130, 246, 0.35);
@@ -2527,6 +1746,57 @@
   border-color: #fbbf24 !important;
   border-width: 3rpx !important;
 }
+
+/* ================================================================== */
+/*  待审分笼/转移中间态（对齐 Web CellButton opMarker + 正中图标层）        */
+/*  色环的 inset 阴影由 wxml 内联（配对色随请求变化），此处只管结构         */
+/* ================================================================== */
+.gcell-opmark {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  border-radius: 6rpx;
+  pointer-events: none;
+}
+.gcell-opmark-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.25);
+}
+.gcell-opmark-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44rpx;
+  height: 44rpx;
+  margin: -22rpx 0 0 -22rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
+  border: 4rpx solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+}
+.gcell-opmark-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  color: #fff;
+  font-size: 16rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 详情弹窗内的一句话提示 */
 
 /* ================================================================== */
 /*  模式操作条 + 按钮                                                    */
@@ -2680,6 +1950,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 划分模式：已选成员高亮 + 勾选标记 */
+.rp-row--on {
+  border-color: #e11d48;
+  background: #fff1f2;
+}
+.rp-check {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #e11d48;
+  flex-shrink: 0;
+}
 .rp-hint {
   padding: 40rpx 0;
   text-align: center;
@@ -2688,57 +1969,19 @@
 }
 
 /* ================================================================== */
-/*  记录 / 预约 / 我的申请 弹窗                                           */
+/*  预约 / 我的申请 弹窗                                                 */
 /* ================================================================== */
-.record-root,
 .booking-root,
 .my-claims-root {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
+/* 我的申请弹窗复用（记录弹窗已改用 .cs-body） */
 .record-scroll {
   flex: 1;
   min-height: 0;
   margin-top: 12rpx;
-}
-.record-group {
-  border: 1rpx solid #ebedf0;
-  border-radius: 12rpx;
-  padding: 16rpx;
-  margin-bottom: 16rpx;
-  background: #fff;
-}
-.record-group-label {
-  display: block;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #323233;
-  margin-bottom: 8rpx;
-}
-.record-change {
-  display: flex;
-  flex-direction: column;
-  gap: 2rpx;
-  padding: 10rpx 0;
-  border-top: 1rpx solid #f2f3f5;
-}
-.record-change-type {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #ac1736;
-}
-.record-change-field {
-  font-size: 20rpx;
-  color: #646566;
-}
-.record-change-val {
-  font-size: 20rpx;
-  color: #323233;
-}
-.record-change-meta {
-  font-size: 18rpx;
-  color: #969799;
 }
 
 .booking-sync-btn {
@@ -3142,33 +2385,7 @@
 /* ── 分笼 / 转移 / 认领 ── */
 
 /* 详情弹窗内的操作入口 */
-.detail-op-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16rpx;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid #eef0f6;
-}
-.detail-op-btn {
-  padding: 10rpx 24rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid #e2e8f0;
-  background: #f8fafc;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #0f172a;
-}
-.detail-op-btn--primary {
-  background: #ac1736;
-  border-color: #ac1736;
-  color: #fff;
-}
-.detail-op-hint {
-  flex: 1 1 100%;
-  font-size: 22rpx;
-  color: #d97706;
-}
+/* 划分名单：独立属性块，用中性色区别于「待认领」警示色 */
 
 /* 选位条（网格上方） */
 .op-select-bar {
@@ -3268,37 +2485,1033 @@
   gap: 12rpx;
   margin-top: 20rpx;
 }
+/* ================================================================== */
+/*  Cage Sheet —— 查看 / 状态 / 记录 三弹窗共用的结构与令牌                    */
+/*  方向：标本卡 / 笼位标签。编码与数值走等宽字，点线引导的规格行代替色块，       */
+/*  状态色继承网格那套（分笼黄/饲养红/异常紫/合笼橙/转移青），品牌红只留给主操作。 */
+/*  令牌作用域限定在 .cs-sheet 内，不写入 app.wxss，避免波及其他页面。          */
+/* ================================================================== */
 
-/* 详情表单编辑态 */
-.detail-form-cell--wide {
-  grid-column: span 2;
+.cs-sheet {
+  --paper: #fdfcfb;      /* 暖白纸面，不用纯白，避免与卡片叠在一起发灰 */
+  --ink: #171a1f;
+  --body: #4a5160;
+  --mute: #8f96a3;
+  --faint: #c2c7d0;
+  --line: #e9e6e3;       /* 暖调 hairline，不用蓝灰，跟纸面对齐 */
+  --line2: #f2f0ee;
+  --brand: #ac1736;
+  --soft: #f7f6f5;
+
+  display: flex;
+  flex-direction: column;
+  width: 86vw;
+  max-width: 680rpx;
+  max-height: 78vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--paper);
+  border-radius: 22rpx;
+  box-shadow: 0 12rpx 52rpx rgba(23, 26, 31, 0.18), 0 2rpx 6rpx rgba(23, 26, 31, 0.08);
 }
-.detail-form-required {
-  color: #ef4444;
+
+/* 编辑态：外壳加一圈极细红环，让人意识到「正在改数据」 */
+.cs-sheet--editing {
+  box-shadow: 0 0 0 3rpx rgba(172, 23, 54, 0.5), 0 12rpx 52rpx rgba(23, 26, 31, 0.18);
 }
-.detail-form-input {
-  margin-top: 4rpx;
-  padding: 8rpx 12rpx;
-  border: 2rpx solid #cbd5e1;
+
+/* ---- 身份条：位置 + 状态刻度 + 关闭，一行 ---- */
+.cs-id {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 26rpx 26rpx 22rpx;
+  border-bottom: 1rpx solid var(--line);
+}
+
+.cs-id-pos {
+  flex-shrink: 0;
+  font-family: monospace;
+  font-size: 34rpx;
+  font-weight: 600;
+  letter-spacing: 2rpx;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 身份条副信息（如记录弹窗的「N 次变更 · M 个字段」） */
+.cs-id-sub {
+  font-family: monospace;
+  font-size: 20rpx;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-ticks {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 状态刻度：反白单字块 + 浅底描边，像档案夹的索引标签 */
+.cs-tick {
+  display: inline-flex;
+  align-items: center;
+  height: 34rpx;
+  padding-right: 10rpx;
+  border: 1rpx solid var(--c);
+  border-radius: 6rpx;
+  background: var(--c-bg, var(--soft));
+  font-size: 20rpx;
+  font-weight: 600;
+  color: var(--c);
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cs-tick-g {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 7rpx;
+  margin-right: 7rpx;
+  background: var(--c);
+  color: #fff;
+  font-family: monospace;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cs-badge {
+  flex-shrink: 0;
+  padding: 3rpx 12rpx;
+  border-radius: 4rpx;
+  background: var(--brand);
+  color: #fff;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
+
+/* 自带关闭按钮：vant 那个是绝对定位，放不进身份条的行内节奏 */
+.cs-x {
+  flex-shrink: 0;
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 8rpx;
-  font-size: 24rpx;
-  color: #0f172a;
-  background: #fff;
+  color: var(--faint);
+  font-size: 26rpx;
+  line-height: 1;
 }
-.detail-form-textarea {
-  margin-top: 4rpx;
+
+.cs-x:active {
+  background: var(--line2);
+  color: var(--mute);
+}
+
+/* ---- 唯一滚动区 ---- */
+/* max-height 之外还要给一个确定的高度上限：外层 .cs-sheet 只有 max-height，
+   flex 不会因此收缩子项，scroll-view 会拿到内容高度并溢出到底栏底下。
+   62vh + 身份条 + 底栏 ≈ 76vh，留在 .cs-sheet 的 78vh 之内。 */
+.cs-body {
+  flex: 1;
+  min-height: 0;
+  max-height: 62vh;
   width: 100%;
   box-sizing: border-box;
-  padding: 8rpx 12rpx;
-  border: 2rpx solid #cbd5e1;
-  border-radius: 8rpx;
-  font-size: 24rpx;
-  color: #0f172a;
-  background: #fff;
 }
-.detail-form-actions {
+
+/* ---- 底部动作坞 ---- */
+.cs-dock {
+  flex-shrink: 0;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 16rpx;
-  margin-top: 20rpx;
+  padding: 20rpx 26rpx;
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid var(--line);
+  background: var(--paper);
+}
+
+.cs-dock-msg {
+  flex-shrink: 0;
+  margin-right: auto;
+  font-size: 21rpx;
+}
+
+/* 不可编辑的原因：占左侧、可折行、极淡，不与主操作抢视线 */
+.cs-dock-hint {
+  flex: 1;
+  min-width: 0;
+  padding-right: 12rpx;
+  font-size: 20rpx;
+  color: var(--faint);
+  line-height: 1.35;
+}
+
+.cs-dock-msg--ok { color: #10b981; }
+.cs-dock-msg--err { color: #e0574f; }
+
+.cs-dock-push { margin-left: auto; }
+
+/* ================================================================== */
+/*  分区                                                                */
+/* ================================================================== */
+
+.cs-sec {
+  border-bottom: 1rpx solid var(--line2);
+}
+
+.cs-sec:last-child {
+  border-bottom: none;
+}
+
+.cs-sec-hd {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 22rpx 26rpx;
+}
+
+.cs-sec-hd:active {
+  background: var(--soft);
+}
+
+.cs-sec-no {
+  flex-shrink: 0;
+  font-family: monospace;
+  font-size: 20rpx;
+  color: var(--faint);
+  letter-spacing: 1rpx;
+}
+
+.cs-sec-title {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 1rpx;
+}
+
+.cs-sec-n {
+  flex-shrink: 0;
+  padding: 2rpx 9rpx;
+  border-radius: 4rpx;
+  background: var(--line2);
+  color: var(--mute);
+  font-family: monospace;
+  font-size: 20rpx;
+}
+
+/* 收起的分区里有多少行改动过 —— 没有它用户是按黑箱保存 */
+.cs-sec-dirty {
+  flex-shrink: 0;
+  padding: 2rpx 9rpx;
+  border-radius: 4rpx;
+  background: var(--brand);
+  color: #fff;
+  font-family: monospace;
+  font-size: 20rpx;
+  font-weight: 700;
+}
+
+/* 收起态的行尾摘要，避免「折叠 = 藏起来」 */
+.cs-sec-sum {
+  flex: 1;
+  min-width: 0;
+  margin-right: 10rpx;
+  text-align: right;
+  font-size: 21rpx;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-chev {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 18rpx;
+  color: var(--faint);
+}
+
+.cs-sec-sum + .cs-chev {
+  margin-left: 0;
+}
+
+.cs-sec-bd {
+  padding: 0 26rpx 22rpx;
+}
+
+/* 无标题分区（如笼位操作行）自成一节，需要自己补上边距 */
+.cs-sec-bd--pad {
+  padding-top: 22rpx;
+}
+
+/* 编辑关键信息时，实验记录 / 照片区压灰禁用 —— 两条保存路径不能混 */
+.cs-sec--dim > .cs-sec-hd .cs-sec-title {
+  color: var(--mute);
+}
+
+.cs-sec--dim > .cs-sec-bd {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.cs-lockhint {
+  display: block;
+  padding: 2rpx 0 10rpx;
+  font-size: 20rpx;
+  color: var(--faint);
+}
+
+/* ---- 子模块小标题：分区内一层，不再往下折 ---- */
+.cs-sub {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 16rpx 0 6rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid var(--line2);
+  font-size: 20rpx;
+  font-weight: 600;
+  color: var(--mute);
+  letter-spacing: 1.5rpx;
+}
+
+.cs-sub:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.cs-sub-mark {
+  font-family: monospace;
+  font-size: 19rpx;
+  color: var(--faint);
+}
+
+/* ================================================================== */
+/*  规格行：固定标签列 + 值右对齐，不画任何线                                 */
+/*  分隔靠「列宽对齐 + 隔行极浅底」，不靠点线或框线                            */
+/* ================================================================== */
+
+.cs-row {
+  display: flex;
+  align-items: baseline;
+  gap: 20rpx;
+  padding: 11rpx 0;
+  min-width: 0;
+}
+
+/* 隔行浅底：整行内缩一点，让色带不贴边，读起来是「行」而不是「块」 */
+.cs-row--alt {
+  background: var(--soft);
+  border-radius: 6rpx;
+  padding-left: 10rpx;
+  padding-right: 10rpx;
+}
+
+.cs-row-label {
+  flex: 0 0 auto;
+  width: 196rpx;
+  font-size: 22rpx;
+  color: var(--mute);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-row-val {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.cs-row-val--mono {
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-row-val--blank {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.cs-req {
+  color: var(--brand);
+  font-weight: 700;
+  margin-right: 3rpx;
+}
+
+/* 只读行（字段字典 editable:false）：编辑态主动降调，不用锁图标 */
+.cs-row--ro .cs-row-label {
+  color: var(--faint);
+}
+
+.cs-row--ro .cs-row-val {
+  color: var(--mute);
+  font-weight: 500;
+}
+
+/* 本次改动过的行：标签后一个品牌红小点 */
+.cs-row--dirty .cs-row-label::after {
+  content: "";
+  display: inline-block;
+  width: 9rpx;
+  height: 9rpx;
+  border-radius: 50%;
+  background: var(--brand);
+  margin-left: 8rpx;
+  vertical-align: 2rpx;
+}
+
+.cs-row--err {
+  background: rgba(224, 87, 79, 0.07);
+  border-radius: 6rpx;
+}
+
+.cs-errmsg {
+  display: block;
+  padding: 0 0 4rpx;
+  text-align: right;
+  font-size: 20rpx;
+  color: #e0574f;
+}
+
+/* ================================================================== */
+/*  编辑控件：不做盒子，只留一条下划线，保住规格行的节奏                       */
+/* ================================================================== */
+
+.cs-ctl {
+  flex: 1;
+  min-width: 0;
+  padding: 2rpx 0;
+  border: none;
+  border-bottom: 3rpx solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: right;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+  box-sizing: border-box;
+}
+
+.cs-ctl--mono {
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-ctl--err {
+  border-bottom-color: #e0574f;
+}
+
+/* 选择类：值 + 细箭头，整行点开原生 picker */
+.cs-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8rpx;
+  padding: 2rpx 0;
+  border-bottom: 3rpx solid var(--line);
+  font-size: 25rpx;
+  font-weight: 600;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.cs-pick--blank {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.cs-pick--err {
+  border-bottom-color: #e0574f;
+}
+
+.cs-pick-txt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-pick-i {
+  flex-shrink: 0;
+  font-size: 18rpx;
+  color: var(--brand);
+}
+
+/* 布尔：小开关，居中于行 */
+.cs-sw {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 60rpx;
+  height: 34rpx;
+  border-radius: 18rpx;
+  background: #dcd9d6;
+  align-self: center;
+  transition: background 0.16s;
+}
+
+.cs-sw-knob {
+  position: absolute;
+  top: 3rpx;
+  left: 3rpx;
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.2);
+  transition: transform 0.16s;
+}
+
+.cs-sw--on {
+  background: var(--brand);
+}
+
+.cs-sw--on .cs-sw-knob {
+  transform: translateX(26rpx);
+}
+
+/* 长文本字段：整行铺开，唯一允许出现浅底的地方 */
+.cs-wide {
+  display: block;
+  padding: 12rpx 0 4rpx;
+}
+
+.cs-wide-label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 22rpx;
+  color: var(--mute);
+}
+
+.cs-textarea {
+  display: block;
+  width: 100%;
+  min-height: 132rpx;
+  padding: 14rpx 16rpx;
+  box-sizing: border-box;
+  border: 1rpx solid var(--line);
+  border-radius: 8rpx;
+  background: var(--paper);
+  font-size: 25rpx;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.cs-textarea--read {
+  min-height: 0;
+  padding: 12rpx 16rpx;
+  background: var(--soft);
+  color: var(--body);
+}
+
+.cs-textarea--disabled {
+  opacity: 0.45;
+}
+
+/* ================================================================== */
+/*  按钮                                                                */
+/* ================================================================== */
+
+.cs-btn {
+  flex-shrink: 0;
+  padding: 0 30rpx;
+  height: 58rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8rpx;
+  border: 1rpx solid transparent;
+  font-size: 24rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.cs-btn--primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.cs-btn--ghost {
+  padding: 0 16rpx;
+  background: transparent;
+  color: var(--mute);
+}
+
+.cs-btn--disabled {
+  opacity: 0.55;
+}
+
+/* ---- 笼位操作胶囊（分笼 / 转移 / 认领 / 清空划分） ---- */
+/* 自成一个无标题分区，上边距由 .cs-sec-bd--pad 给，这里不再画分隔线 */
+.cs-ops {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.cs-op-btn {
+  padding: 12rpx 22rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 6rpx;
+  background: var(--paper);
+  color: var(--body);
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.cs-op-btn--primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.cs-op-hint {
+  width: 100%;
+  font-size: 21rpx;
+  color: var(--mute);
+  line-height: 1.45;
+}
+
+/* ================================================================== */
+/*  提示 / 空态 / 未决条                                                 */
+/* ================================================================== */
+
+.cs-hint {
+  display: block;
+  padding: 14rpx 0;
+  font-size: 22rpx;
+  color: var(--mute);
+  line-height: 1.5;
+}
+
+.cs-hint--block {
+  padding: 140rpx 0;
+  text-align: center;
+}
+
+.cs-hint--error {
+  color: #e0574f;
+}
+
+/* 未决分笼/转移：用配对色做左侧色条，不做实心底（饱和色配深字读不出来） */
+.cs-notice {
+  display: flex;
+  align-items: flex-start;
+  margin: 18rpx 26rpx 0;
+  padding: 12rpx 0 12rpx 16rpx;
+  border-left: 6rpx solid var(--notice, #f59e0b);
+  font-size: 21rpx;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.cs-notice-txt {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ================================================================== */
+/*  照片                                                                */
+/* ================================================================== */
+
+.cs-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.cs-photo-wrap {
+  position: relative;
+}
+
+.cs-photo {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid var(--line);
+  background: var(--soft);
+}
+
+.cs-photo--sm {
+  width: 72rpx;
+  height: 72rpx;
+}
+
+.cs-photo-del {
+  position: absolute;
+  top: -9rpx;
+  right: -9rpx;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  background: #ef4444;
+  color: #fff;
+  font-size: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-photo-add {
+  width: 100rpx;
+  height: 100rpx;
+  border: 1rpx dashed var(--faint);
+  border-radius: 8rpx;
+  background: var(--paper);
+  color: var(--faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4rpx;
+  font-size: 19rpx;
+  box-sizing: border-box;
+}
+
+.cs-photo-add-icon {
+  font-size: 34rpx;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.cs-photo-hd {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 22rpx 0 12rpx;
+}
+
+.cs-photo-group {
+  margin-bottom: 16rpx;
+}
+
+.cs-photo-group:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- 只读备注：引用块 ---- */
+.cs-note {
+  margin-top: 16rpx;
+  padding: 12rpx 0 12rpx 16rpx;
+  border-left: 3rpx solid var(--line);
+}
+
+.cs-note-label {
+  display: block;
+  margin-bottom: 4rpx;
+  font-size: 20rpx;
+  color: var(--mute);
+  letter-spacing: 1rpx;
+}
+
+.cs-note-txt {
+  display: block;
+  font-size: 23rpx;
+  color: var(--body);
+  line-height: 1.55;
+  word-break: break-all;
+}
+
+/* ================================================================== */
+/*  状态标记：四态状态机（未标 / 已标 / 本次新增 / 本次移除）                  */
+/* ================================================================== */
+
+.cs-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12rpx;
+}
+
+.cs-stat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  min-height: 80rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 8rpx;
+  background: transparent;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.cs-stat--hover {
+  opacity: 0.75;
+}
+
+/* 状态字块：反白单字，没标记时是描边空块 */
+.cs-stat-g {
+  position: relative;
+  flex-shrink: 0;
+  width: 44rpx;
+  height: 44rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 6rpx;
+  background: var(--paper);
+  color: var(--faint);
+  font-family: monospace;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-stat-t {
+  min-width: 0;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: var(--mute);
+  letter-spacing: 1rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 已标记：用该状态自己的色（继承网格），不是一个统一的绿 */
+.cs-stat--on {
+  border-color: var(--c);
+  background: var(--c-bg, var(--soft));
+}
+
+.cs-stat--on .cs-stat-g {
+  background: var(--c);
+  border-color: var(--c);
+  color: #fff;
+}
+
+.cs-stat--on .cs-stat-t {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 本次新增：右上折角（狗耳朵），扫一眼就知道这次改了什么 */
+.cs-stat--add::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 22rpx 22rpx 0;
+  border-color: transparent var(--c) transparent transparent;
+}
+
+/* 本次移除：虚框 + 斜杠划过字块 + 文字删除线 */
+.cs-stat--rm {
+  border-style: dashed;
+  border-color: var(--mute);
+}
+
+.cs-stat--rm .cs-stat-g {
+  color: var(--mute);
+  border-color: var(--mute);
+  background: var(--paper);
+}
+
+.cs-stat-strike {
+  position: absolute;
+  left: -2rpx;
+  right: -2rpx;
+  top: 50%;
+  height: 2rpx;
+  background: var(--mute);
+  transform: rotate(-45deg);
+}
+
+.cs-stat--rm .cs-stat-t {
+  color: var(--mute);
+  text-decoration: line-through;
+}
+
+/* ================================================================== */
+/*  时间轴（记录弹窗 / 状态弹窗的历史）                                     */
+/* ================================================================== */
+
+.cs-tl {
+  padding-left: 30rpx;
+}
+
+/* 记录弹窗没有分区，时间轴直接进 body，需要自己留边距 */
+.cs-tl--inset {
+  padding: 22rpx 26rpx 24rpx 56rpx;
+}
+
+.cs-tl-node {
+  position: relative;
+  padding-bottom: 18rpx;
+}
+
+.cs-tl-node:last-child {
+  padding-bottom: 0;
+}
+
+.cs-tl-rail {
+  position: absolute;
+  left: -22rpx;
+  top: 30rpx;
+  bottom: -10rpx;
+  width: 1rpx;
+  background: var(--line);
+}
+
+.cs-tl-node:last-child .cs-tl-rail {
+  display: none;
+}
+
+.cs-tl-dot {
+  position: absolute;
+  left: -27rpx;
+  top: 16rpx;
+  width: 9rpx;
+  height: 9rpx;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5rpx var(--paper);
+}
+
+.cs-tl-card {
+  border: 1rpx solid var(--line);
+  border-radius: 8rpx;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.cs-tl-hd {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 18rpx;
+}
+
+.cs-tl-kind {
+  flex-shrink: 0;
+  font-size: 23rpx;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cs-tl-type {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: var(--mute);
+}
+
+.cs-tl-time {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: monospace;
+  font-size: 20rpx;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-tl-del {
+  flex-shrink: 0;
+  padding: 0 4rpx;
+  font-size: 22rpx;
+  color: var(--faint);
+}
+
+.cs-tl-bd {
+  padding: 14rpx 18rpx;
+  border-top: 1rpx solid var(--line2);
+  background: #fcfbfa;
+}
+
+.cs-tl-op {
+  display: block;
+  margin-bottom: 10rpx;
+  font-size: 21rpx;
+  color: var(--mute);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.cs-tl-op:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- 字段差异行：旧值划掉 → 新值加粗 ---- */
+.cs-diff {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  padding: 5rpx 0;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
+.cs-diff:first-child {
+  padding-top: 0;
+}
+
+.cs-diff:last-child {
+  padding-bottom: 0;
+}
+
+.cs-diff-label {
+  flex-shrink: 0;
+  width: 124rpx;
+  font-size: 21rpx;
+  color: var(--mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-diff-before {
+  flex-shrink: 0;
+  max-width: 40%;
+  font-family: monospace;
+  color: var(--faint);
+  text-decoration: line-through;
+  word-break: break-all;
+}
+
+.cs-diff-before--empty {
+  text-decoration: none;
+}
+
+.cs-diff-arrow {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: var(--faint);
+}
+
+.cs-diff-after {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--ink);
+  word-break: break-all;
 }

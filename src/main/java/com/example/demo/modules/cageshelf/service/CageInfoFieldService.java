@@ -191,6 +191,10 @@ public class CageInfoFieldService {
         if (body.containsKey("showWhen")) {
             f.setShowWhen(blankToNull(str(body, "showWhen")));
         }
+        // 字段 config JSON（候选能力开关等）。整串覆盖；前端负责合并保留 choiceType/columns 等其它键。
+        if (body.containsKey("config")) {
+            f.setConfig(blankToNull(str(body, "config")));
+        }
         fieldMapper.update(f);
         auditService.logDictChange("UPDATE", "field", f.getId(), f.getCanonical(), f.getLabel(),
                 before, snapshotField(f), operatorId);
@@ -326,6 +330,7 @@ public class CageInfoFieldService {
         m.put("sort", f.getSort());
         m.put("role", f.getRole());
         m.put("editable", f.getEditable());
+        m.put("config", f.getConfig());
         m.put("published", f.getPublished());
         m.put("status", f.getStatus());
         return m;
@@ -357,7 +362,8 @@ public class CageInfoFieldService {
         return switch (dataType.toUpperCase()) {
             case "INTEGER", "DECIMAL" -> "number";
             case "BOOLEAN" -> "checkbox";
-            case "ENUM", "ENUM_MULTI" -> "select";
+            case "ENUM" -> "select";
+            case "ENUM_MULTI" -> "choice";
             case "DATE", "DATETIME" -> "date";
             case "TEXT" -> "textarea";
             case "FILE" -> "file";

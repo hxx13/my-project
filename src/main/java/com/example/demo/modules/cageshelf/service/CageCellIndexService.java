@@ -6,6 +6,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellIndex;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.entity.CageDivision;
 import com.example.demo.modules.cageshelf.dto.CageScanProgressDto;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
@@ -38,6 +39,8 @@ public class CageCellIndexService {
     private final CageFieldMappingService mappingService;
     private final UserDisplayNameService userDisplayNameService;
     private final CageInfoValueService infoValueService;
+    private final CageSyncLockService syncLockService;
+    private final CageDivisionService divisionService;
 
     /** 一键本地同步（手动按钮）进度，进程内内存；与定时扫描的 CageScanProgressService 相互独立。 */
     private final AtomicReference<CageScanProgressDto> localPipelineProgress = new AtomicReference<>();
@@ -64,7 +67,9 @@ public class CageCellIndexService {
                                 AroService aroService,
                                 CageFieldMappingService mappingService,
                                 UserDisplayNameService userDisplayNameService,
-                                CageInfoValueService infoValueService) {
+                                CageInfoValueService infoValueService,
+                                CageSyncLockService syncLockService,
+                                CageDivisionService divisionService) {
         this.cellIndexMapper = cellIndexMapper;
         this.detailMapper = detailMapper;
         this.shelfMapper = shelfMapper;
@@ -73,6 +78,8 @@ public class CageCellIndexService {
         this.mappingService = mappingService;
         this.userDisplayNameService = userDisplayNameService;
         this.infoValueService = infoValueService;
+        this.syncLockService = syncLockService;
+        this.divisionService = divisionService;
     }
 
     /**
@@ -93,12 +100,16 @@ public class CageCellIndexService {
         int successShelves = 0;
         int failShelves = 0;
         int totalCells = 0;
+        int skippedShelves = 0;
         List<Map<String, Object>> failures = new ArrayList<>();
 
         log.info("[cell-sync] 开始全量笼位ID同步，共 {} 个架子", totalShelves);
+        CageSyncLockService.Snapshot lockSnap = syncLockService.snapshot();
 
         for (Map<String, Object> shelf : shelfList) {
             if (roomId != null && !roomId.equals(toLongSafe(shelf.get("roomId")))) continue;
+            // 同步保护锁：整架被锁则跳过（含楼层/房间级继承；本步删重建索引，按整架判定）
+            if (syncLockService.isShelfSkipped(lockSnap, shelf)) { skippedShelves++; continue; }
             Long sRoomId = toLongSafe(shelf.get("roomId"));
             Long shelveId = toLongSafe(shelf.get("shelveId"));
             Long shelfIdxId = toLongSafe(shelf.get("id"));
@@ -201,13 +212,14 @@ public class CageCellIndexService {
         result.put("successShelves", successShelves);
         result.put("failShelves", failShelves);
         result.put("totalCellsWritten", totalCells);
+        result.put("skippedShelves", skippedShelves);
         result.put("startedAt", DT_FMT.format(startedAt));
         result.put("finishedAt", finishedAt);
         if (!failures.isEmpty()) {
             result.put("failures", failures);
         }
-        log.info("[cell-sync] 完成: {}成功 {}失败, 写入{}个笼位",
-                successShelves, failShelves, totalCells);
+        log.info("[cell-sync] 完成: {}成功 {}失败, 写入{}个笼位, 跳过{}个受保护笼架",
+                successShelves, failShelves, totalCells, skippedShelves);
         return result;
     }
 
@@ -302,6 +314,10 @@ public class CageCellIndexService {
         }
         Map<String, String> occupantNames = userDisplayNameService.resolveDisplayNames(claimantIds);
 
+        // 划分名单（本架）：下发给两端渲染"已划分给谁"；前端比对自己 id 决定是否高亮"划给我"
+        Map<Long, List<CageDivision>> divisionByCage = divisionService.rowsByCages(
+                cells.stream().map(CageCellIndex::getAnimalCageId).filter(Objects::nonNull).toList());
+
         // 构建 grid
         List<Map<String, Object>> grid = new ArrayList<>();
         for (CageCellIndex cell : cells) {
@@ -331,6 +347,16 @@ public class CageCellIndexService {
             boolean empty = cell.getAnimalCageId() == null;
             gc.put("empty", empty);
             gc.put("visible", !empty); // 本地数据源不做课题组过滤，有笼位即可见
+
+            // 划分名单：本架该笼位有划分时下发，前端按角色渲染（管家看名单 / 本人看专属标签）
+            List<CageDivision> divs = cell.getAnimalCageId() == null ? null : divisionByCage.get(cell.getAnimalCageId());
+            if (divs != null && !divs.isEmpty()) {
+                List<Map<String, String>> dl = new ArrayList<>();
+                for (CageDivision cd : divs) {
+                    dl.add(Map.of("id", cd.getAssigneeId(), "name", cd.getAssigneeName() == null ? "" : cd.getAssigneeName()));
+                }
+                gc.put("divisionAssignees", dl);
+            }
 
             if (detail != null) {
                 gc.put("cageTypeCode", detail.getCageTypeCode());
@@ -425,6 +451,7 @@ public class CageCellIndexService {
         log.info("[detail-sync] 开始补全详情字段，共 {} 个架子", totalShelves);
 
         int count = 0;
+        CageSyncLockService.Snapshot lockSnap = syncLockService.snapshot();
         for (Map<String, Object> shelf : shelfList) {
             if (roomId != null && !roomId.equals(toLongSafe(shelf.get("roomId")))) continue;
             Long shelveId = toLongSafe(shelf.get("shelveId"));
@@ -478,6 +505,10 @@ public class CageCellIndexService {
 
                     Long animalCageId = (Long) mapped.get("animal_cage_id");
                     if (animalCageId == null) continue;
+                    // 同步保护锁：被锁的笼位整格跳过，表单与固定表都不写
+                    if (syncLockService.isCellSkipped(lockSnap, shelf, animalCageId)) { totalSkipped++; continue; }
+                    // 「管家」不在这里写 —— 它跟身份标签联动（打/撤 GROUP_STEWARD 时由 GroupStewardService 重算），
+                    // 不挂在同步上，避免每次同步都把人工维护的结果算一遍。
                     // 双写：同步直连 cage_info_value（与固定表 cage_cell_detail 双写）
                     syncFromMappedWithRetry(animalCageId, mapped);
                     boolean isNew = false;
@@ -612,10 +643,11 @@ public class CageCellIndexService {
         List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
 
         int totalShelves = shelfList != null ? shelfList.size() : 0;
-        int successShelves = 0, failShelves = 0, totalUpdated = 0;
+        int successShelves = 0, failShelves = 0, totalUpdated = 0, skipped = 0;
         log.info("[book-sync] 开始独立状态同步，共 {} 个架子", totalShelves);
 
         int count = 0;
+        CageSyncLockService.Snapshot lockSnap = syncLockService.snapshot();
         for (Map<String, Object> shelf : shelfList) {
             if (roomId != null && !roomId.equals(toLongSafe(shelf.get("roomId")))) continue;
             Long sRoomId = toLongSafe(shelf.get("roomId"));
@@ -666,6 +698,8 @@ public class CageCellIndexService {
                     // 按位置取正确的 animalCageId
                     Long animalCageId = posToAnimalCageId.get(x + "-" + y);
                     if (animalCageId == null) continue;
+                    // 同步保护锁：被锁的笼位整格跳过
+                    if (syncLockService.isCellSkipped(lockSnap, shelf, animalCageId)) { skipped++; continue; }
                     // 双写：同步直连 cage_info_value（与固定表 cage_cell_detail 双写）
                     syncFromMappedWithRetry(animalCageId, mapped);
 
@@ -718,6 +752,7 @@ public class CageCellIndexService {
         result.put("successShelves", successShelves);
         result.put("failShelves", failShelves);
         result.put("totalUpdated", totalUpdated);
+        result.put("skippedCells", skipped);
         result.put("startedAt", DT_FMT.format(startedAt));
         result.put("finishedAt", finishedAt);
         log.info("[book-sync] 完成: {}架成功 {}失败, 更新{}个笼位状态",
@@ -793,7 +828,8 @@ public class CageCellIndexService {
         // 一律用 listAllShelfSummaries（返回 roomId+shelveId），再在内存按 roomId 过滤。
         List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
         int totalShelves = shelfList != null ? shelfList.size() : 0;
-        int success = 0, fail = 0, written = 0;
+        int success = 0, fail = 0, written = 0, skipped = 0;
+        CageSyncLockService.Snapshot lockSnap = syncLockService.snapshot();
         for (Map<String, Object> shelf : shelfList) {
             Long sRoomId = toLongSafe(shelf.get("roomId"));
             Long shelveId = toLongSafe(shelf.get("shelveId"));
@@ -809,6 +845,7 @@ public class CageCellIndexService {
                     if (isTruthy(cageMap.get("isCageBox"))) continue;
                     Long animalCageId = toLongSafe(cageMap.get("id"));
                     if (animalCageId != null) {
+                        if (syncLockService.isCellSkipped(lockSnap, shelf, animalCageId)) { skipped++; continue; }
                         writeStatusFlagsFromBack(animalCageId, castMap(cageMap.get("cageBoxVo")));
                         written++;
                     }
@@ -825,6 +862,7 @@ public class CageCellIndexService {
         result.put("successShelves", success);
         result.put("failShelves", fail);
         result.put("written", written);
+        result.put("skippedCells", skipped);
         result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
         log.info("[cohab-sync] 完成: {}成功 {}失败, 写 {} 个笼位", success, fail, written);
         return result;
@@ -862,7 +900,8 @@ public class CageCellIndexService {
         Map<String, AupMeta> metaByAup = getAupMetaMap();
         List<Map<String, Object>> shelfList = shelfMapper.listAllShelfSummaries();
         int totalShelves = shelfList != null ? shelfList.size() : 0;
-        int success = 0, fail = 0, written = 0;
+        int success = 0, fail = 0, written = 0, skipped = 0;
+        CageSyncLockService.Snapshot lockSnap = syncLockService.snapshot();
         for (Map<String, Object> shelf : shelfList) {
             Long sRoomId = toLongSafe(shelf.get("roomId"));
             Long shelveId = toLongSafe(shelf.get("shelveId"));
@@ -886,6 +925,8 @@ public class CageCellIndexService {
                     Map<String, Object> cm = (Map<String, Object>) cage;
                     Long animalCageId = toLongSafe(cm.get("id"));
                     if (animalCageId == null) continue;
+                    // 同步保护锁：被锁的笼位整格跳过
+                    if (syncLockService.isCellSkipped(lockSnap, shelf, animalCageId)) { skipped++; continue; }
                     // 映射表翻译：aup_number 的 two 来源 = 顶层 aupRegisterNumber
                     Map<String, Object> mapped = mappingService.applyPull("two", cm);
                     if (mapped == null || !mapped.containsKey("aup_number")) continue;
@@ -939,6 +980,7 @@ public class CageCellIndexService {
         result.put("successShelves", success);
         result.put("failShelves", fail);
         result.put("written", written);
+        result.put("skippedCells", skipped);
         result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
         log.info("[aup-two-sync] 完成: {}成功 {}失败, 写 {} 个笼位 AUP", success, fail, written);
         return result;
@@ -966,16 +1008,18 @@ public class CageCellIndexService {
         pipelineStart(rooms.size());
 
         int successRooms = 0;
+        int totalSkippedCells = 0;
         List<Map<String, Object>> failures = new ArrayList<>();
         for (int i = 0; i < rooms.size(); i++) {
             Long rid = toLongSafe(rooms.get(i).get("roomId"));
             String rname = String.valueOf(rooms.get(i).getOrDefault("roomName", rid));
             try {
                 // ① /list 补全详情 → ② /book 笼位状态 → ③ /back 特殊状态 → ④ /two 无笼盒格 AUP 回填
-                syncDetailFields(rid);
-                syncStatusFromBook(rid);
-                syncCohabitationFromBack(rid);
-                syncAupFromBackTwo(rid);
+                // 每步内部按同步保护锁跳过被锁笼位，这里汇总跳过数
+                totalSkippedCells += skippedOf(syncDetailFields(rid));
+                totalSkippedCells += skippedOf(syncStatusFromBook(rid));
+                totalSkippedCells += skippedOf(syncCohabitationFromBack(rid));
+                totalSkippedCells += skippedOf(syncAupFromBackTwo(rid));
                 successRooms++;
             } catch (Exception e) {
                 log.error("[local-pipeline] 房间 {} 同步失败: {}", rname, e.getMessage(), e);
@@ -988,10 +1032,12 @@ public class CageCellIndexService {
             pipelineStep(i + 1, rname);
         }
 
-        pipelineDone("一键同步完成：" + successRooms + "/" + rooms.size() + " 房间");
+        pipelineDone("一键同步完成：" + successRooms + "/" + rooms.size() + " 房间"
+                + (totalSkippedCells > 0 ? "，跳过 " + totalSkippedCells + " 个受保护笼位" : ""));
         result.put("ok", failures.isEmpty());
         result.put("successRooms", successRooms);
         result.put("totalRooms", rooms.size());
+        result.put("skippedCells", totalSkippedCells);
         if (!failures.isEmpty()) result.put("failures", failures);
         result.put("finishedAt", DT_FMT.format(LocalDateTime.now()));
         log.info("[local-pipeline] 一键同步完成 {} 成功 / {} 失败", successRooms, failures.size());
@@ -1160,6 +1206,13 @@ public class CageCellIndexService {
         if (v instanceof Number n) return n.intValue();
         try { return Integer.parseInt(String.valueOf(v).trim()); }
         catch (NumberFormatException e) { return null; }
+    }
+
+    /** 从各步同步结果里取被保护锁跳过的笼位数（detail 步历史上用 totalSkipped 这个 key）。 */
+    private static int skippedOf(Map<String, Object> result) {
+        if (result == null) return 0;
+        Object v = result.get("skippedCells") != null ? result.get("skippedCells") : result.get("totalSkipped");
+        return v instanceof Number n ? n.intValue() : 0;
     }
 
     private static Long toLongSafe(Object v) {

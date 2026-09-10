@@ -100,26 +100,19 @@ async function uploadChatAttachment(conversationId, tempFilePath, meta) {
 
 /** 将附件写入本地临时文件并返回路径，供 wx.openDocument */
 async function downloadChatAttachmentToTempFile(attachmentId) {
-  const res = await springAuth.springRequest({
-    url: `/api/chat/attachments/${enc(attachmentId)}/download`,
-    method: 'GET',
-    data: {},
-    responseType: 'arraybuffer',
-  });
-  if (res.statusCode !== 200 || !res.data || !res.data.isBase64) {
-    throw new Error('下载失败');
-  }
-  const b64 = res.data.bodyBase64 || '';
-  const cd = String(res.data.contentDisposition || '');
+  // 直连模式：直接拿 ArrayBuffer + 从响应头取文件名
+  const { data, contentDisposition } = await springAuth.springRequestBinary(
+    `/api/chat/attachments/${enc(attachmentId)}/download`,
+    { errorMessage: '下载失败' },
+  );
   let ext = 'bin';
-  const m = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
-  if (m && m[1]) {
-    const name = decodeURIComponent(m[1].replace(/["']/g, '').trim());
-    const dot = name.lastIndexOf('.');
-    if (dot > 0) ext = name.slice(dot + 1).slice(0, 12) || 'bin';
+  const remoteName = springAuth.parseContentDispositionFilename(contentDisposition);
+  const dot = remoteName.lastIndexOf('.');
+  if (dot > 0) {
+    ext = remoteName.slice(dot + 1).replace(/[^A-Za-z0-9]/g, '').slice(0, 12) || 'bin';
   }
   const path = `${wx.env.USER_DATA_PATH}/chat_att_${Date.now()}.${ext}`;
-  wx.getFileSystemManager().writeFileSync(path, b64, 'base64');
+  wx.getFileSystemManager().writeFileSync(path, data);
   return path;
 }
 

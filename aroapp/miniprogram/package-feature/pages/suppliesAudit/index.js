@@ -635,19 +635,8 @@ Page({
     this.setData({ exportingPersonal: true });
     wx.showLoading({ title: '导出中…', mask: true });
     try {
-      const { base64 } = await suppliesExportApi.exportPersonalClaimExcel(id);
-      const fs = wx.getFileSystemManager();
-      const path = `${wx.env.USER_DATA_PATH}/supply-claim-${id.replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx`;
-      await new Promise((resolve, reject) => {
-        fs.writeFile({
-          filePath: path,
-          data: base64,
-          encoding: 'base64',
-          success: resolve,
-          fail: reject,
-        });
-      });
-      wx.openDocument({ filePath: path, fileType: 'xlsx', showMenu: true });
+      const { data } = await suppliesExportApi.exportPersonalClaimExcel(id);
+      await springAuth.saveAndOpenDocument(data, `supply-claim-${id.replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx`, 'xlsx');
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
     } finally {
@@ -735,24 +724,13 @@ Page({
     wx.showLoading({ title: '导出中…', mask: true });
     try {
       const applicantUserId = (this.data.rangeApplicantUserId || '').trim();
-      const { base64 } = await suppliesExportApi.exportPersonalClaimsRangeExcel({
+      const { data } = await suppliesExportApi.exportPersonalClaimsRangeExcel({
         from,
         to,
         applicantUserId: applicantUserId || undefined,
       });
       const uidPart = applicantUserId ? applicantUserId.replace(/[^A-Za-z0-9_-]/g, '_') : 'me';
-      const fs = wx.getFileSystemManager();
-      const path = `${wx.env.USER_DATA_PATH}/supply-claims-${uidPart}-${from}_${to}.xlsx`;
-      await new Promise((resolve, reject) => {
-        fs.writeFile({
-          filePath: path,
-          data: base64,
-          encoding: 'base64',
-          success: resolve,
-          fail: reject,
-        });
-      });
-      wx.openDocument({ filePath: path, fileType: 'xlsx', showMenu: true });
+      await springAuth.saveAndOpenDocument(data, `supply-claims-${uidPart}-${from}_${to}.xlsx`, 'xlsx');
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
     } finally {
@@ -962,19 +940,8 @@ Page({
     this.setData({ exportingAudit: true });
     wx.showLoading({ title: '导出中…', mask: true });
     try {
-      const { base64 } = await suppliesExportApi.exportAuditItemExcel(Number(itemId));
-      const fs = wx.getFileSystemManager();
-      const path = `${wx.env.USER_DATA_PATH}/supply-audit-item-${String(itemId)}.xlsx`;
-      await new Promise((resolve, reject) => {
-        fs.writeFile({
-          filePath: path,
-          data: base64,
-          encoding: 'base64',
-          success: resolve,
-          fail: reject,
-        });
-      });
-      wx.openDocument({ filePath: path, fileType: 'xlsx', showMenu: true });
+      const { data } = await suppliesExportApi.exportAuditItemExcel(Number(itemId));
+      await springAuth.saveAndOpenDocument(data, `supply-audit-item-${String(itemId)}.xlsx`, 'xlsx');
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
     } finally {

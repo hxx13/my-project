@@ -2,21 +2,18 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchFullTree,
-  fetchShelfCellsBatch,
+  fetchLocalShelfGridsBatch,
+  fetchCageOpMarkers,
   type CageShelfCell,
 } from "@/api/domains/cageShelf.api";
-import { snapshotCellToShelfCell } from "@/features/cage-shelf/components/ShelfGrid";
+import { buildCageOpMarks } from "@/features/cage-shelf/useCageOpSelect";
 import { rackMatchesGroup } from "./groupMatch";
 
 export interface FloorPlanRack {
   shelveId: string;
   shelveName: string;
   cells: CageShelfCell[];
-  /**
-   * 批量接口是否为该架返回了条目。
-   * false = 后端没有该架的笼位快照数据（与「有架但格子全空」不同），
-   * 后端 groupByShelf 只对有数据的架输出条目。
-   */
+  /** 该架是否拿到了网格数据（与「有架但格子全空」不同） */
   hasData: boolean;
   isMine: boolean;
 }
@@ -27,28 +24,16 @@ export interface RoomFloorPlanData {
 }
 
 /**
- * 后端 `cells/batch` 返回的是 `SELECT *` 的原始列名（snake_case），
- * 而 `snapshotCellToShelfCell` 按 camelCase 读——这里补一层归一化。
- */
-function normalizeSnapshotCell(raw: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...raw,
-    roomId: raw.roomId ?? raw.room_id,
-    shelveId: raw.shelveId ?? raw.shelve_id,
-    positionX: raw.positionX ?? raw.position_x,
-    positionY: raw.positionY ?? raw.position_y,
-    positionLabel: raw.positionLabel ?? raw.position_label,
-    animalCageType: raw.animalCageType ?? raw.animal_cage_type,
-    cageBoxJson: raw.cageBoxJson ?? raw.cage_box_json,
-    specialStatusesJson: raw.specialStatusesJson ?? raw.special_statuses_json,
-  };
-}
-
-/**
  * 按房间取笼架平面图数据。
  * @param roomId   笼架房间 ID（口径见设计文档 D2b / Task 0 结论）
  * @param roomName 房间名（ID 口径不一致时用于回退匹配）
  * @param myGroup  刷卡人的课题组字段（project_group_name，可能为多课题组分隔串）
+ *
+ * 网格数据取**本地表单真相源**（cage_cell_index + cage_cell_detail，状态/课题组/实验员
+ * 以 cage_info_value 覆盖），与房间来源同源。
+ * 曾用 cage_shelf_cell_snapshot 快照：它是历史扫描批次，且后端 selectLatestByPairs 用
+ * MAX(scan_batch_id) 挑批次（字符串比较）会挑到旧批次，课题组/实验员字段为空，
+ * 整架被判「非本组」而不渲染——房间能选中、架子却是空的。
  */
 export function useRoomFloorPlan(
   roomId: string | number | null | undefined,
@@ -78,35 +63,38 @@ export function useRoomFloorPlan(
     return [];
   }, [treeQuery.data, roomId, roomName]);
 
-  // key 必须与后端 groupByShelf 的回显格式严格一致（roomId:shelveId）
-  const pairs = useMemo(
-    () => shelves.map((s) => `${s.roomId}:${s.shelveId}`),
+  const shelfIndexIds = useMemo(
+    () => shelves.map((s) => s.id).filter((id) => id !== null && id !== undefined),
     [shelves],
   );
 
-  const cellsQuery = useQuery({
-    queryKey: ["room-floor-plan-cells", pairs.join(",")],
-    queryFn: () => fetchShelfCellsBatch(pairs),
-    enabled: pairs.length > 0,
+  const gridsQuery = useQuery({
+    queryKey: ["room-floor-plan-grids", shelfIndexIds.join(",")],
+    queryFn: () => fetchLocalShelfGridsBatch(shelfIndexIds),
+    enabled: shelfIndexIds.length > 0,
     staleTime: 5 * 60 * 1000,
   });
 
+  // 待审分笼/转移（「分笼审核中」「转移审核中」）：与笼架页共用缓存键
+  const markersQuery = useQuery({
+    queryKey: ["cage-op", "markers"],
+    queryFn: fetchCageOpMarkers,
+    staleTime: 60 * 1000,
+  });
+  const opMarkByCageId = useMemo(
+    () => buildCageOpMarks(markersQuery.data ?? []),
+    [markersQuery.data],
+  );
+
   const data = useMemo((): RoomFloorPlanData => {
-    // 不信任 entry.key：后端 groupByShelf 按 camelCase 取 snake_case 行的字段，key 恒为 "null:null"。
-    // 改为按每个 cell 自己的 roomId/shelveId 重新分组。
-    const byKey = new Map<string, CageShelfCell[]>();
-    for (const entry of cellsQuery.data ?? []) {
-      for (const raw of entry.cells ?? []) {
-        const normalized = normalizeSnapshotCell(raw as unknown as Record<string, unknown>);
-        const k = `${String(normalized.roomId)}:${String(normalized.shelveId)}`;
-        const cell = snapshotCellToShelfCell(normalized);
-        const list = byKey.get(k);
-        if (list) list.push(cell);
-        else byKey.set(k, [cell]);
-      }
+    const byShelfIndexId = new Map<string, CageShelfCell[]>();
+    for (const detail of gridsQuery.data ?? []) {
+      const key = detail.shelfMeta?.shelfIndexId ?? detail.shelfMeta?.shelveId;
+      if (key === null || key === undefined || String(key) === "") continue;
+      byShelfIndexId.set(String(key), detail.grid ?? []);
     }
     const racks: FloorPlanRack[] = shelves.map((s) => {
-      const cells = byKey.get(`${s.roomId}:${s.shelveId}`) ?? [];
+      const cells = byShelfIndexId.get(String(s.id)) ?? [];
       return {
         shelveId: String(s.shelveId),
         shelveName: s.shelveName || String(s.shelveId),
@@ -116,11 +104,12 @@ export function useRoomFloorPlan(
       };
     });
     return { racks, mineCount: racks.filter((r) => r.isMine).length };
-  }, [shelves, cellsQuery.data, myGroup]);
+  }, [shelves, gridsQuery.data, myGroup]);
 
   return {
     data,
-    isLoading: treeQuery.isLoading || (pairs.length > 0 && cellsQuery.isLoading),
-    isError: treeQuery.isError || cellsQuery.isError,
+    opMarkByCageId,
+    isLoading: treeQuery.isLoading || (shelfIndexIds.length > 0 && gridsQuery.isLoading),
+    isError: treeQuery.isError || gridsQuery.isError,
   };
 }

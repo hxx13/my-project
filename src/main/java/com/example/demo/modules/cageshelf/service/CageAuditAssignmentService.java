@@ -2,12 +2,14 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageAuditAssignment;
 import com.example.demo.modules.cageshelf.mapper.CageAuditAssignmentMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,13 +22,56 @@ import java.util.Map;
 public class CageAuditAssignmentService {
 
     private final CageAuditAssignmentMapper mapper;
+    private final UserDisplayNameService displayNameService;
 
-    public CageAuditAssignmentService(CageAuditAssignmentMapper mapper) {
+    public CageAuditAssignmentService(CageAuditAssignmentMapper mapper,
+                                      UserDisplayNameService displayNameService) {
         this.mapper = mapper;
+        this.displayNameService = displayNameService;
     }
 
     public List<CageAuditAssignment> listByReviewer(String reviewerUserId) {
         return mapper.listByReviewer(reviewerUserId);
+    }
+
+    /**
+     * 全部归属，按审核人分组并带显示名 —— 设置中心总览用（否则只看到一张空表，
+     * 不知道哪些位置已分配、归谁）。
+     */
+    public List<Map<String, Object>> listAllGrouped() {
+        List<CageAuditAssignment> all = mapper.listAll();
+        if (all.isEmpty()) {
+            return List.of();
+        }
+        List<String> reviewerIds = all.stream()
+                .map(CageAuditAssignment::getReviewerUserId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<String, String> names = displayNameService.resolveDisplayNames(reviewerIds);
+
+        Map<String, Map<String, Object>> byReviewer = new LinkedHashMap<>();
+        for (CageAuditAssignment a : all) {
+            String id = a.getReviewerUserId();
+            if (id == null) continue;
+            Map<String, Object> entry = byReviewer.computeIfAbsent(id, k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("reviewerUserId", k);
+                m.put("reviewerName", names.getOrDefault(k, k));
+                m.put("scopes", new ArrayList<Map<String, String>>());
+                return m;
+            });
+            @SuppressWarnings("unchecked")
+            List<Map<String, String>> scopes = (List<Map<String, String>>) entry.get("scopes");
+            Map<String, String> s = new LinkedHashMap<>();
+            s.put("scopeType", a.getScopeType());
+            s.put("scopeId", a.getScopeId());
+            scopes.add(s);
+        }
+        List<Map<String, Object>> out = new ArrayList<>(byReviewer.values());
+        out.sort(Comparator.comparing(m -> String.valueOf(m.get("reviewerName")),
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        return out;
     }
 
     /** 按 scope_type 分组返回，便于范围命中判定取并集。 */

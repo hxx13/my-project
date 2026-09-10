@@ -193,7 +193,7 @@ public class CageLocalController {
             Long animalCageId = toLong(id);
             if (animalCageId == null) continue;
             detailService.cancelAllocate(animalCageId, String.valueOf(u.getId()));
-            infoValueService.clearOccupancyFields(animalCageId);
+            infoValueService.clearOccupancyFields(animalCageId, "UNALLOCATE", String.valueOf(u.getId()));
             cageIds.add(animalCageId);
         }
 

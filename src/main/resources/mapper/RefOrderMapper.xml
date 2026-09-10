@@ -4,6 +4,8 @@
 
     <resultMap id="Base" type="com.example.demo.modules.referencedata.entity.RefOrder">
         <id property="id" column="id"/>
+        <result property="sn" column="sn"/>
+        <result property="source" column="source"/>
         <result property="groupId" column="group_id"/>
         <result property="submitterId" column="submitter_id"/>
         <result property="submitterName" column="submitter_name"/>
@@ -12,6 +14,7 @@
         <result property="aupRecordId" column="aup_record_id"/>
         <result property="registerNo" column="register_no"/>
         <result property="campus" column="campus"/>
+        <result property="aroAreaName" column="aro_area_name"/>
         <result property="status" column="status"/>
         <result property="submitRemark" column="submit_remark"/>
         <result property="submittedAt" column="submitted_at"/>
@@ -20,9 +23,27 @@
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_order(group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, campus, status, submit_remark, submitted_at, estimated_delivery_date)
-        VALUES (#{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{campus}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate})
+        INSERT INTO ref_order(sn, source, group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, campus, aro_area_name, status, submit_remark, submitted_at, estimated_delivery_date)
+        VALUES (#{sn}, COALESCE(#{source}, 'LOCAL'), #{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{campus}, #{aroAreaName}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate})
     </insert>
+
+    <!-- ARO 导入：按 (source, sn) upsert，重跑不产生重复单 -->
+    <select id="findBySourceAndSn" resultMap="Base">
+        SELECT * FROM ref_order WHERE source = #{source} AND sn = #{sn} LIMIT 1
+    </select>
+
+    <update id="updateAroOrder">
+        UPDATE ref_order
+        SET project_group_name = #{projectGroupName},
+            project_group_id = #{projectGroupId},
+            submitter_id = #{submitterId},
+            submitter_name = #{submitterName},
+            campus = #{campus},
+            aro_area_name = #{aroAreaName},
+            status = #{status},
+            submitted_at = #{submittedAt}
+        WHERE id = #{id}
+    </update>
 
     <update id="updateStatus">
         UPDATE ref_order
@@ -52,23 +73,102 @@
         SELECT COUNT(1) FROM ref_order WHERE status = #{status}
     </select>
 
+    <!-- 全字段筛选：行级字段走 EXISTS，保证过滤发生在 LIMIT 之前（先截断再过滤会漏数据） -->
+    <sql id="OrderFilterWhere">
+        <if test="q.campus != null and q.campus != ''">AND o.campus = #{q.campus}</if>
+        <if test="q.status != null and q.status != ''">AND o.status = #{q.status}</if>
+        <if test="q.statusNot != null and q.statusNot != ''">AND o.status != #{q.statusNot}</if>
+        <if test="q.source != null and q.source != ''">AND o.source = #{q.source}</if>
+        <if test="q.sn != null and q.sn != ''">AND o.sn LIKE CONCAT('%', #{q.sn}, '%')</if>
+        <if test="q.aup != null and q.aup != ''">AND o.register_no LIKE CONCAT('%', #{q.aup}, '%')</if>
+        <if test="q.projectGroup != null and q.projectGroup != ''">
+            AND o.project_group_name LIKE CONCAT('%', #{q.projectGroup}, '%')
+        </if>
+        <if test="q.groupIn != null and q.groupIn.size() > 0">
+            AND o.project_group_name IN
+            <foreach collection="q.groupIn" item="g" open="(" separator="," close=")">
+                #{g}
+            </foreach>
+        </if>
+        <!-- 时间口径统一走 submitted_at（真实下单时间），缺失才回退 created_at。
+             ARO 导入行的 created_at 是导入时刻，用它筛选/排序会把历史单全挤到今天。 -->
+        <if test="q.from != null and q.from != ''">
+            AND COALESCE(o.submitted_at, o.created_at) &gt;= CONCAT(#{q.from}, ' 00:00:00')
+        </if>
+        <if test="q.to != null and q.to != ''">
+            AND COALESCE(o.submitted_at, o.created_at) &lt;= CONCAT(#{q.to}, ' 23:59:59')
+        </if>
+        <if test="q.remark != null and q.remark != ''">
+            AND (o.submit_remark LIKE CONCAT('%', #{q.remark}, '%')
+                 OR EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
+                            AND rl.line_remark LIKE CONCAT('%', #{q.remark}, '%')))
+        </if>
+        <if test="q.supplier != null and q.supplier != ''">
+            AND EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
+                        AND rl.supplier_name LIKE CONCAT('%', #{q.supplier}, '%'))
+        </if>
+        <if test="q.strain != null and q.strain != ''">
+            AND EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
+                        AND rl.strain_name LIKE CONCAT('%', #{q.strain}, '%'))
+        </if>
+        <if test="q.collector != null and q.collector != ''">
+            AND EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
+                        AND rl.collector_name LIKE CONCAT('%', #{q.collector}, '%'))
+        </if>
+        <if test="q.room != null and q.room != ''">
+            AND EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
+                        AND rl.pickup_room_name LIKE CONCAT('%', #{q.room}, '%'))
+        </if>
+    </sql>
+
     <select id="listAll" resultMap="Base">
-        SELECT * FROM ref_order
+        SELECT o.* FROM ref_order o
         <where>
-            <if test="campus != null">AND campus = #{campus}</if>
-            <if test="from != null">AND created_at &gt;= #{from}</if>
-            <if test="to != null">AND created_at &lt;= #{to}</if>
+            <include refid="OrderFilterWhere"/>
         </where>
-        ORDER BY created_at DESC LIMIT #{limit} OFFSET #{offset}
+        ORDER BY COALESCE(o.submitted_at, o.created_at) DESC, o.id DESC LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="countAll" resultType="int">
-        SELECT COUNT(1) FROM ref_order
+        SELECT COUNT(1) FROM ref_order o
         <where>
-            <if test="campus != null">AND campus = #{campus}</if>
-            <if test="from != null">AND created_at &gt;= #{from}</if>
-            <if test="to != null">AND created_at &lt;= #{to}</if>
+            <include refid="OrderFilterWhere"/>
         </where>
+    </select>
+
+    <!-- column/表名由服务端白名单校验后传入，不接受前端任意值 -->
+    <select id="distinctLineValues" resultType="string">
+        SELECT DISTINCT ${column} FROM ref_order_line
+        WHERE ${column} IS NOT NULL AND ${column} != ''
+        ORDER BY ${column}
+    </select>
+
+    <select id="distinctOrderValues" resultType="string">
+        SELECT DISTINCT ${column} FROM ref_order
+        WHERE ${column} IS NOT NULL AND ${column} != ''
+        ORDER BY ${column}
+    </select>
+
+    <!-- 学生端：候选范围限定在调用者本人课题组内，避免枚举全库 -->
+    <select id="distinctLineValuesInGroup" resultType="string">
+        SELECT DISTINCT rl.${column} FROM ref_order_line rl
+        INNER JOIN ref_order o ON o.id = rl.order_id
+        WHERE o.project_group_name IN
+        <foreach collection="groups" item="g" open="(" separator="," close=")">
+            #{g}
+        </foreach>
+          AND rl.${column} IS NOT NULL AND rl.${column} != ''
+        ORDER BY rl.${column}
+    </select>
+
+    <select id="distinctOrderValuesInGroup" resultType="string">
+        SELECT DISTINCT o.${column} FROM ref_order o
+        WHERE o.project_group_name IN
+        <foreach collection="groups" item="g" open="(" separator="," close=")">
+            #{g}
+        </foreach>
+          AND o.${column} IS NOT NULL AND o.${column} != ''
+        ORDER BY o.${column}
     </select>
 
 </mapper>

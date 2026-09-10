@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -67,5 +68,35 @@ class UserGroupNameResolverTest {
         when(aroPersonnelMapper.findByUserId(STAFF_ID)).thenReturn(null);
 
         assertEquals(List.of(), resolver.resolve(STAFF_ID));
+    }
+
+    // ══════════ 账号规范化：claimant_id 只能有一种形态 ══════════
+
+    @Test
+    void canonicalUserId_staffId_折算成Aro编号() {
+        UserAroBinding binding = new UserAroBinding();
+        binding.setUserId(STAFF_ID);
+        binding.setAroUserId(ARO_ID);
+        when(userAroBindingMapper.selectByUserId(STAFF_ID)).thenReturn(binding);
+
+        assertEquals(ARO_ID, resolver.canonicalUserId(STAFF_ID));
+    }
+
+    @Test
+    void canonicalUserId_非StaffId_原样返回且不查绑定() {
+        assertEquals(ARO_ID, resolver.canonicalUserId(ARO_ID));
+        verifyNoInteractions(userAroBindingMapper);
+    }
+
+    @Test
+    void canonicalUserId_staffId无绑定_原样返回不丢人() {
+        when(userAroBindingMapper.selectByUserId(STAFF_ID)).thenReturn(null);
+
+        assertEquals(STAFF_ID, resolver.canonicalUserId(STAFF_ID));
+    }
+
+    @Test
+    void canonicalUserId_空值安全() {
+        assertNull(resolver.canonicalUserId(null));
     }
 }

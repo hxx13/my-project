@@ -115,6 +115,7 @@ import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
+import StudentOrderRecordsPage from "@/pages/StudentOrderRecordsPage";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
 import NotificationsSettings from "@/features/admin/settings/NotificationsSettings";
@@ -284,6 +285,7 @@ export const router = createHashRouter([
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },
       { path: "animal-order", element: <ReferenceDataPage /> },
+      { path: "animal-order/records", element: <StudentOrderRecordsPage /> },
       { path: "aup", element: <StudentAupPage /> },
       { path: "aup/review/:id", element: <AupReviewPage /> },
       { path: "exam", element: <StudentExamPage /> },

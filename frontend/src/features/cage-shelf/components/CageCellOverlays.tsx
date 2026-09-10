@@ -90,6 +90,64 @@ export const CAGE_TYPE_LABEL: Record<number, string> = {
   1: "(等待分配)", 2: "(空笼位)", 3: "(饲养中)", 4: "(异常)",
 };
 
+/**
+ * 笼位类型解析 —— 网格渲染与业务判定（如「只有饲养中才能转移」）必须同源，
+ * 所以从 CellButton 提出来共用。API 的 animalCageType 常为 0，需逐级回退。
+ */
+export function resolveCageType(cell: {
+  cageTypeCode?: number | null;
+  animalCageType?: number | null;
+  cageBoxInfo?: Record<string, unknown> | null;
+  specialStatuses?: SpecialStatusEntry[] | null;
+  stateLabel?: string | null;
+  empty?: boolean | null;
+  projectPiName?: string | null;
+  piName?: string | null;
+}): number | undefined {
+  let ct = (cell.cageTypeCode ?? cell.animalCageType) as number | undefined | null;
+  if ((ct == null || ct === 0 || Number.isNaN(ct)) && cell.cageBoxInfo) {
+    const raw = cell.cageBoxInfo.AnimalCageType ?? cell.cageBoxInfo.animalCageType;
+    if (raw != null && raw !== "" && Number(raw) !== 0) ct = Number(raw);
+  }
+  // COHABITATION/SPECIAL_FEEDING -> breeding (type 3)
+  if ((ct == null || ct === 0 || Number.isNaN(ct)) && Array.isArray(cell.specialStatuses)) {
+    const codes = cell.specialStatuses.map((s) => s.code);
+    if (codes.includes("COHABITATION") || codes.includes("SPECIAL_FEEDING")) ct = 3;
+  }
+  if ((ct == null || ct === 0 || Number.isNaN(ct)) && cell.stateLabel) {
+    const sl = String(cell.stateLabel);
+    if (sl.includes("等待分配")) ct = 1;
+    else if (sl.includes("空笼盒")) ct = 2;
+    else if (sl.includes("饲养")) ct = 3;
+    else if (sl.includes("异常")) ct = 4;
+  }
+  // Has PI or cageBoxCode -> at least reserved, not awaiting allocation
+  if ((ct == null || ct === 0 || Number.isNaN(ct)) && !cell.empty) {
+    const cbi = cell.cageBoxInfo;
+    if (cell.projectPiName || cell.piName || cbi?.ProjectPiName || cbi?.cageBoxCode || cbi?.CageBoxQrCode) ct = 3;
+    else ct = 1;
+  }
+  return ct != null && ct !== 0 && !Number.isNaN(ct) ? ct : undefined;
+}
+
+/** 笼位所属课题组的判定键（批量转移要求同组）。取不到时返回空串，调用方应据此拒绝。 */
+export function groupKeyOf(cell: {
+  projectPiName?: string | null;
+  projectGroup?: string | null;
+  departmentName?: string | null;
+  detail?: Record<string, unknown> | null;
+}): string {
+  const d = cell.detail ?? {};
+  const pick = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  return (
+    pick(cell.projectPiName) ||
+    pick(d.projectPiName) ||
+    pick(cell.projectGroup) ||
+    pick(cell.departmentName) ||
+    pick(d.departmentName)
+  );
+}
+
 /** cageType → 进度条颜色（与 AdminCageShelfPage sidebar 对齐） */
 export const CAGE_TYPE_BAR_COLOR: Record<number, string> = {
   3: "#f43f5e", // 饲养中 = 红

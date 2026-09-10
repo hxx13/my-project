@@ -69,4 +69,12 @@
         ORDER BY created_at DESC, id DESC
     </select>
 
+    <select id="selectByReviewer" resultMap="CageOpRequestMap">
+        SELECT * FROM cage_op_request
+        WHERE reviewer_id = #{reviewerId}
+          AND status &lt;&gt; 'pending'
+        ORDER BY reviewed_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
 </mapper>

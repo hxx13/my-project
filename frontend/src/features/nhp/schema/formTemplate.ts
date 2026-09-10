@@ -43,6 +43,8 @@ export type FieldType =
   | "select"
   | "checkbox"
   | "cascade"
+  /** 输入框 + 候选：可自由打字，也可从选项里选（存单值字符串） */
+  | "combo"
   // 结构化
   | "table"
   | "group"

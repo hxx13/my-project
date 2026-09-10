@@ -2,6 +2,8 @@ package com.example.demo.modules.referencedata.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.excel.SubtotalConfig;
+import com.example.demo.common.excel.SubtotalSummary;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.policy.BizDomains;
@@ -9,6 +11,7 @@ import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.referencedata.dto.*;
 import com.example.demo.modules.referencedata.registry.ReferenceFieldRegistry;
 import com.example.demo.modules.referencedata.service.AnimalOrderExportService;
+import com.example.demo.modules.referencedata.service.AroOrderImportService;
 import com.example.demo.modules.referencedata.service.ReferenceDataService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,17 +34,20 @@ public class ReferenceDataController {
     private final CapabilityPolicyService capabilityPolicyService;
     private final ReferenceFieldRegistry fieldRegistry;
     private final AnimalOrderExportService animalOrderExportService;
+    private final AroOrderImportService aroOrderImportService;
 
     public ReferenceDataController(AuthContextService authContextService,
                                     ReferenceDataService referenceDataService,
                                     CapabilityPolicyService capabilityPolicyService,
                                     ReferenceFieldRegistry fieldRegistry,
-                                    AnimalOrderExportService animalOrderExportService) {
+                                    AnimalOrderExportService animalOrderExportService,
+                                    AroOrderImportService aroOrderImportService) {
         this.authContextService = authContextService;
         this.referenceDataService = referenceDataService;
         this.capabilityPolicyService = capabilityPolicyService;
         this.fieldRegistry = fieldRegistry;
         this.animalOrderExportService = animalOrderExportService;
+        this.aroOrderImportService = aroOrderImportService;
     }
 
     // ==================== RefData ====================
@@ -169,6 +176,15 @@ public class ReferenceDataController {
 
     // ==================== Cart ====================
 
+    @GetMapping("/group-members")
+    @Operation(summary = "本课题组成员（下单选领用人用，仅本人课题组）")
+    public Result<List<Map<String, Object>>> myGroupMembers(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.listMyGroupMembers(user.getId());
+    }
+
     @GetMapping("/cart")
     @Operation(summary = "查看购物车")
     public Result<List<RefCartView>> listCart(
@@ -264,36 +280,154 @@ public class ReferenceDataController {
     }
 
     @GetMapping("/orders/all")
-    @Operation(summary = "全部订单（后台审核页，按校区分页，支持时间范围）")
+    @Operation(summary = "全部订单（后台审核页，全字段筛选 + 分页）")
     public Result<Map<String, Object>> listAllOrders(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int pageSize,
-            @RequestParam(required = false) String campus,
-            @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+            RefOrderQuery filter) {
         User user = resolveUser(authorization);
         Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(referenceDataService.listAllOrders(page, pageSize, campus, from, to));
+        return Result.success(referenceDataService.listAllOrders(page, pageSize, filter));
+    }
+
+    @GetMapping("/orders/filter-options")    @Operation(summary = "审核页筛选下拉候选（供应商/品系/领用人/房间）")
+    public Result<List<String>> orderFilterOptions(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String column) {
+        User user = resolveUser(authorization);
+        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        return referenceDataService.distinctFilterValues(column);
+    }
+
+    @GetMapping("/orders/my-group")
+    @Operation(summary = "本课题组订单（学生端；同组互见，服务端强制按本人课题组圈定）")
+    public Result<Map<String, Object>> listMyGroupOrders(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int pageSize,
+            RefOrderQuery filter) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return Result.success(referenceDataService.listMyGroupOrders(user.getId(), page, pageSize, filter));
+    }
+
+    @GetMapping("/orders/my-group/export")
+    @Operation(summary = "导出本课题组订单 Excel（学生端）")
+    public ResponseEntity<byte[]> exportMyGroupOrders(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            RefOrderQuery filter) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return ResponseEntity.status(401).contentType(MediaType.TEXT_PLAIN)
+                    .body("未登录".getBytes(StandardCharsets.UTF_8));
+        }
+        String from = filter != null ? filter.getFrom() : null;
+        String to = filter != null ? filter.getTo() : null;
+        try {
+            byte[] body = animalOrderExportService.buildReviewSheet(
+                    referenceDataService.listMyGroupOrdersForExport(user.getId(), filter));
+            String fn = "my-group-orders-" + (from == null ? "all" : from) + "_" + (to == null ? "now" : to) + ".xlsx";
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(body);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
+                    .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    @GetMapping("/orders/my-group/filter-options")
+    @Operation(summary = "本课题组订单的筛选候选（学生端；范围限定本人课题组）")
+    public Result<List<String>> myGroupOrderFilterOptions(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String column) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.distinctMyGroupFilterValues(user.getId(), column);
+    }
+
+    // ==================== 待处理订单编辑 ====================
+    // 流程：load（回填购物车）→ 用户在购物车改 → apply（写回原单）。
+    // 中途放弃走 discard，原单始终不动。
+
+    @PostMapping("/orders/{id}/edit/load")
+    @Operation(summary = "把待处理订单回填到购物车，进入编辑模式")
+    public Result<List<RefCartView>> loadOrderToCart(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.loadOrderToCart(id, user.getId(), canManageAnyOrder(user));
+    }
+
+    @DeleteMapping("/orders/{id}/edit")
+    @Operation(summary = "放弃编辑：清掉回填行，原单不受影响")
+    public Result<Void> discardOrderEdit(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.discardOrderEdit(id, user.getId(), canManageAnyOrder(user));
+    }
+
+    @PutMapping("/orders/{id}/edit")
+    @Operation(summary = "保存编辑：用回填的购物车内容整体替换原单明细（单号不变）")
+    public Result<RefOrderView> applyOrderEdit(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.applyOrderEdit(id, user.getId(), canManageAnyOrder(user));
+    }
+
+    /** 有参考数据管理权限（管理员）时可编辑任意课题组的单；否则只能编辑本组。 */
+    private boolean canManageAnyOrder(User user) {
+        return capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN) == null;
+    }
+
+    @PostMapping("/orders/import-aro")
+    @Operation(summary = "把 ARO 历史订单导入本地订单库（仅超管；手动执行，幂等可重跑）")
+    public Result<Map<String, Object>> importAroOrders(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
+        if (role.getLevel() < RoleEnum.SUPER_ADMIN.getLevel()) {
+            return Result.error("仅超级管理员可执行导入");
+        }
+        AroOrderImportService.ImportResult r = aroOrderImportService.importFromAro();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ordersCreated", r.ordersCreated());
+        out.put("ordersUpdated", r.ordersUpdated());
+        out.put("linesWritten", r.linesWritten());
+        out.put("failed", r.failed());
+        out.put("failedSns", r.failedSns());
+        return Result.success(out);
     }
 
     @GetMapping("/orders/export")
     @Operation(summary = "导出订购审核 Excel（按 课题组→申领人→物品 逐层小计）")
     public ResponseEntity<byte[]> exportOrderReviewExcel(
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @RequestParam(required = false) String campus,
-            @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
+            RefOrderQuery filter) {
         User user = resolveUser(authorization);
         Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
         if (denied != null) {
             return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN)
                     .body(String.valueOf(denied.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
+        String from = filter != null ? filter.getFrom() : null;
+        String to = filter != null ? filter.getTo() : null;
         try {
+            SubtotalConfig config = SubtotalConfig.parse(
+                    filter != null ? filter.getLevels() : null,
+                    filter != null ? filter.getExcludeBlocks() : null);
             byte[] body = animalOrderExportService.buildReviewSheet(
-                    referenceDataService.listOrdersForExport(campus, from, to));
+                    referenceDataService.listOrdersForExport(filter), config);
             String fn = "animal-order-review-" + (from == null ? "all" : from) + "_" + (to == null ? "now" : to) + ".xlsx";
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
@@ -303,6 +437,18 @@ public class ReferenceDataController {
             return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
                     .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    @GetMapping("/orders/export/summary")
+    @Operation(summary = "订购审核导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）")
+    public Result<SubtotalSummary> summarizeOrderReviewExport(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            RefOrderQuery filter) {
+        User user = resolveUser(authorization);
+        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(animalOrderExportService.summarizeReview(
+                referenceDataService.listOrdersForExport(filter)));
     }
 
     @GetMapping("/orders/{id}")

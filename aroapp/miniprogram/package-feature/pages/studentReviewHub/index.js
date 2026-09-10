@@ -1,7 +1,7 @@
 const springAuth = require('../../../utils/springAuth.js');
 const { hasMinRole } = require('../../../utils/roleAccess.js');
 const pagePermission = require('../../../utils/pagePermission.js');
-const { refreshPendingBadges } = require('../../../utils/badgeSnapshotStore.js');
+const { refreshPendingBadges, applyStudentReviewLiveCounts } = require('../../../utils/badgeSnapshotStore.js');
 const { formatBadgeText } = require('../../../utils/pendingBadgeCounts.js');
 const api = require('../../utils/studentReviewApi.js');
 const mat = require('../../utils/materialStudentApi.js');
@@ -14,7 +14,7 @@ const TAB_LABELS = {
   material: '物资审核',
   scanDelay: '延迟免冻结',
   aroTraining: '培训审核',
-  cage: '笼位申请',
+  cage: '笼位审核',
 };
 
 const STATUS_ZH = {
@@ -458,26 +458,33 @@ function syncTabMeta(rawCounts) {
       material: formatBadgeText(c.filteredMaterialPending),
       scanDelay: formatBadgeText(c.filteredScanDelayPending),
       aroTraining: formatBadgeText(c.aroTrainingPending),
-      cage: formatBadgeText(c.cageClaimPending),
+      // 笼位审核角标 = 笼位申请 + 分笼 + 转移待审之和（与 Web 侧栏「学生审核」口径一致）
+      cage: formatBadgeText(
+        Number(c.cageClaimPending || 0) + Number(c.cageDividePending || 0) + Number(c.cageTransferPending || 0),
+      ),
     },
   };
 }
 
-function pushGlobalReviewBadges() {
+/** 菜单「学生审核」角标 = 本页各 tab 角标之和：先回写实时数，再刷后端快照（store 会把实时数盖在网络值上） */
+function pushGlobalReviewBadges(liveCounts) {
+  if (liveCounts) applyStudentReviewLiveCounts(liveCounts);
   void refreshPendingBadges({ force: true });
 }
 
 /** ---- 培训审核：拍平场次学员、分组、折叠 ---- */
 
-function mapAroTraineeRow(trainee, session) {
-  const testYn = trainee.testYn != null ? Number(trainee.testYn) : 0;
-  const testFraction = trainee.testFraction != null ? Number(trainee.testFraction) : 0;
+function mapAroTraineeRow(row) {
+  const testYn = row.testYn != null ? Number(row.testYn) : 0;
+  const testFraction = row.testFraction != null ? Number(row.testFraction) : 0;
   return {
-    ...trainee,
-    sessionId: session.id || session.sessionId || '',
-    sessionTitle: session.title || '',
-    sessionAddress: session.address || '',
-    sessionStartTime: session.startTime || '',
+    ...row,
+    // 后端以 enrollmentId 为准，wxml 沿用 examSignId 作 data 标识
+    examSignId: row.enrollmentId,
+    sessionId: row.trainingId != null ? String(row.trainingId) : '',
+    sessionTitle: row.trainingName || '',
+    sessionAddress: row.address || '',
+    sessionStartTime: row.startTime || '',
     isAuditPending: testYn === 0,
     isAuditPassed: testYn === 1,
     isAuditRejected: testYn === 2,
@@ -492,16 +499,12 @@ function mapAroTraineeRow(trainee, session) {
   };
 }
 
+/** 后端返回扁平学员数组，兼容 { list: [...] } 包装 */
 function flattenTrainingSessions(sessions) {
-  const list = [];
-  // 后端返回 { list: [...], total: N }，兼容直接传数组的情况
-  const sessionList = Array.isArray(sessions) ? sessions : (sessions && sessions.list ? sessions.list : []);
-  sessionList.forEach(function (session) {
-    (session.trainees || []).forEach(function (trainee) {
-      list.push(mapAroTraineeRow(trainee, session));
-    });
-  });
-  return list;
+  const list = Array.isArray(sessions) ? sessions : (sessions && sessions.list ? sessions.list : []);
+  return list
+    .filter(function (row) { return row && row.enrollmentId != null; })
+    .map(mapAroTraineeRow);
 }
 
 function groupAroTrainingBySession(list) {
@@ -699,6 +702,56 @@ function buildCageView(list, dimension, collapseMap, selectedIds) {
   };
 }
 
+/* ---- 分笼/转移审核 ---- */
+
+var CAGE_OP_STATUS_ZH = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已驳回',
+  cancelled: '已取消',
+};
+
+function mapCageOpRow(item) {
+  var parts = [];
+  if (item.campusName) parts.push(item.campusName);
+  if (item.roomName) parts.push(item.roomName);
+  if (item.shelveName) parts.push(item.shelveName);
+  var srcLabel = cagePositionLabel(item);
+  var targets = Array.isArray(item.targetAnimalCageIds) ? item.targetAnimalCageIds : [];
+  // 目标坐标：审核的人要判断「搬到哪」，只给 id 没有信息量（分笼 1:多，逐个列）
+  var targetLocs = Array.isArray(item.targets) ? item.targets : [];
+  var targetLines = targetLocs.map(function (t) {
+    var tp = [];
+    if (t.campusName) tp.push(t.campusName);
+    if (t.roomName) tp.push(t.roomName);
+    if (t.shelveName) tp.push(t.shelveName);
+    var tLabel = cagePositionLabel(t);
+    return '→ ' + (tp.join(' / ') || '—') + (tLabel ? ' · 坐标 ' + tLabel : '');
+  });
+  var status = String(item.status || '').toLowerCase();
+  return Object.assign({}, item, {
+    applicantText: item.applicantName || item.applicantId || '-',
+    sourceLine: '源：' + (parts.join(' / ') || '—') + (srcLabel ? ' · 坐标 ' + srcLabel : ''),
+    targetText: targetLines.length
+      ? targetLines.join('\n')
+      : (item.opType === 'divide' ? ('目标 ' + targets.length + ' 个笼位（无定位信息）') : '目标笼位：—'),
+    createdAtText: fmtTime(item.createdAt),
+    reviewedAtText: fmtTime(item.reviewedAt),
+    statusText: CAGE_OP_STATUS_ZH[status] || item.status || '-',
+    statusTagClass: status === 'approved' ? 'tag-approved' : status === 'rejected' ? 'tag-rejected' : 'tag-muted',
+    isRejected: status === 'rejected',
+  });
+}
+
+function splitCageOpsByType(list) {
+  var divide = [];
+  var transfer = [];
+  (list || []).forEach(function (it) {
+    if (it.opType === 'divide') divide.push(it); else transfer.push(it);
+  });
+  return { divide: divide, transfer: transfer };
+}
+
 Page({
   data: {
     activeTab: 'material',
@@ -763,6 +816,16 @@ Page({
     cageCollapseMap: {},
     cageSelectedIds: {},
     cageSelectedCount: 0,
+    /** 笼位审核二级切换：笼位申请 / 分笼 / 转移 */
+    cageSubTab: 'claim',
+    cageDividePending: [],
+    cageDivideDone: [],
+    cageDividePendingOpen: true,
+    cageDivideDoneOpen: false,
+    cageTransferPending: [],
+    cageTransferDone: [],
+    cageTransferPendingOpen: true,
+    cageTransferDoneOpen: false,
   },
 
   onLoad(options) {
@@ -950,6 +1013,9 @@ Page({
         api.fetchPendingTrainingSessions(),
         api.fetchAroFavorites(),
         api.fetchPendingCageClaims(),
+        api.fetchCageOpsPending('divide'),
+        api.fetchCageOpsPending('transfer'),
+        api.fetchCageOpsReviewed(100),
       ]);
       const pendingRaw = results[0];
       const finishedRes = results[1];
@@ -960,6 +1026,9 @@ Page({
       const aroTrainingRaw = results[6];
       const aroFavoritesRaw = results[7];
       const cageRaw = results[8];
+      const cageDivideRaw = results[9];
+      const cageTransferRaw = results[10];
+      const cageOpsReviewedRaw = results[11];
 
       // 审核人姓名映射（历史卡片显示）
       let reviewerNameMap = {};
@@ -988,6 +1057,9 @@ Page({
         aroTrainingPending: 0, // 下面 flatten 后重新计算
         /** 笼位申请待审批数 */
         cageClaimPending: 0,
+        /** 分笼/转移待审数 */
+        cageDividePending: 0,
+        cageTransferPending: 0,
       };
 
       // 培训审核数据（使用 sessionStartTime 代替不存在的 trainee.createdAt 做今天/历史分组）
@@ -1016,6 +1088,13 @@ Page({
       const cageList = ((cageRaw && cageRaw.list) || []).map(mapCageClaimRow);
       const cageView = buildCageView(cageList, this.data.cageGroupBy || 'space', this.data.cageCollapseMap || {}, this.data.cageSelectedIds || {});
       counts.cageClaimPending = cageView.pendingCount;
+
+      // 分笼/转移：待审按类型分列，已审历史（/reviewed）按 opType 拆两类
+      const cageDividePending = (cageDivideRaw || []).map(mapCageOpRow);
+      const cageTransferPending = (cageTransferRaw || []).map(mapCageOpRow);
+      const cageOpsReviewedByType = splitCageOpsByType((cageOpsReviewedRaw || []).map(mapCageOpRow));
+      counts.cageDividePending = cageDividePending.length;
+      counts.cageTransferPending = cageTransferPending.length;
 
       if (!this._alive) return;
 
@@ -1064,10 +1143,23 @@ Page({
         cageDoneRender: cageView.doneRender,
         cagePendingCount: cageView.pendingCount,
         cageDoneCount: cageView.doneCount,
+        cageDividePending,
+        cageDivideDone: cageOpsReviewedByType.divide,
+        cageTransferPending,
+        cageTransferDone: cageOpsReviewedByType.transfer,
         ...syncTabMeta(counts),
       });
+      // 菜单「学生审核」角标 = 本页各 tab 角标之和：用同一份实时数回写快照，silent 刷新也要盖（否则脱钩）
+      const liveBadgeCounts = {
+        processMaterial: counts.filteredMaterialPending,
+        processScanDelay: counts.filteredScanDelayPending,
+        processAroTraining: counts.aroTrainingPending,
+        processCageClaim: counts.cageClaimPending,
+        processCageOp: counts.cageDividePending + counts.cageTransferPending,
+      };
+      applyStudentReviewLiveCounts(liveBadgeCounts);
       if (!silent) {
-        pushGlobalReviewBadges();
+        pushGlobalReviewBadges(liveBadgeCounts);
       }
     } catch (e) {
       if (!silent) {
@@ -1576,5 +1668,73 @@ Page({
       ...syncTabMeta(counts),
     });
     pushGlobalReviewBadges();
+  },
+
+  /* ---- 分笼 / 转移审核 ---- */
+
+  onCageSubTabChange(e) {
+    var sub = e.currentTarget.dataset.sub;
+    if (!sub || sub === this.data.cageSubTab) return;
+    this.setData({ cageSubTab: sub });
+  },
+
+  onCageToggleDividePending() {
+    this.setData({ cageDividePendingOpen: !this.data.cageDividePendingOpen });
+  },
+
+  onCageToggleDivideDone() {
+    this.setData({ cageDivideDoneOpen: !this.data.cageDivideDoneOpen });
+  },
+
+  onCageToggleTransferPending() {
+    this.setData({ cageTransferPendingOpen: !this.data.cageTransferPendingOpen });
+  },
+
+  onCageToggleTransferDone() {
+    this.setData({ cageTransferDoneOpen: !this.data.cageTransferDoneOpen });
+  },
+
+  async onCageOpApprove(e) {
+    var id = e.currentTarget.dataset.id;
+    if (id == null) return;
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      await api.reviewCageOp(id, 'approved');
+      wx.showToast({ title: '已通过', icon: 'success' });
+      await this.loadDashboard();
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  async onCageOpReject(e) {
+    var id = e.currentTarget.dataset.id;
+    if (id == null) return;
+    var content = await new Promise(function (resolve) {
+      wx.showModal({
+        title: '驳回申请',
+        editable: true,
+        placeholderText: '请填写驳回理由（必填）',
+        success: function (res) { resolve(res.confirm ? (res.content || '') : null); },
+        fail: function () { resolve(null); },
+      });
+    });
+    if (content == null) return;
+    if (!String(content).trim()) {
+      wx.showToast({ title: '驳回必须填写理由', icon: 'none' });
+      return;
+    }
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      await api.reviewCageOp(id, 'rejected', String(content).trim());
+      wx.showToast({ title: '已驳回', icon: 'success' });
+      await this.loadDashboard();
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
   },
 });

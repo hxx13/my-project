@@ -2,6 +2,8 @@ package com.example.demo.modules.material.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.excel.SubtotalConfig;
+import com.example.demo.common.excel.SubtotalSummary;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
@@ -465,7 +467,9 @@ public class MaterialAdminController {
                                                          @RequestParam(required = false) String applicantUserId,
                                                          @RequestParam(required = false) String applicantGroup,
                                                          @RequestParam(required = false) String groupId,
-                                                         @RequestParam(required = false) String exportLabel) {
+                                                         @RequestParam(required = false) String exportLabel,
+                                                         @RequestParam(value = "levels", required = false) String levels,
+                                                         @RequestParam(value = "excludeBlocks", required = false) String excludeBlocks) {
         User user = resolveUser(auth);
         if (user == null) {
             return ResponseEntity.status(401).contentType(MediaType.TEXT_PLAIN)
@@ -475,7 +479,7 @@ public class MaterialAdminController {
             String group = StringUtils.hasText(applicantGroup) ? applicantGroup : groupId;
             List<MaterialAuditGridRow> rows = materialService.collectAuditGridRows(
                     user, from, to, applicantUserId, group);
-            byte[] body = excelExportService.buildAuditGridSheet(rows);
+            byte[] body = excelExportService.buildAuditGridSheet(rows, SubtotalConfig.parse(levels, excludeBlocks));
             String fn = MaterialService.buildAuditExportFilename(
                     StringUtils.hasText(exportLabel) ? exportLabel : "申领审计", from, to);
             return ResponseEntity.ok()
@@ -488,6 +492,21 @@ public class MaterialAdminController {
         }
     }
 
+    @GetMapping("/stats/export/summary")
+    @Operation(summary = "申领审计导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）")
+    public Result<SubtotalSummary> summarizeAuditTrailExport(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                             @RequestParam(defaultValue = "2000-01-01") String from,
+                                                             @RequestParam(defaultValue = "2099-12-31") String to,
+                                                             @RequestParam(required = false) String applicantUserId,
+                                                             @RequestParam(required = false) String applicantGroup,
+                                                             @RequestParam(required = false) String groupId) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        String group = StringUtils.hasText(applicantGroup) ? applicantGroup : groupId;
+        List<MaterialAuditGridRow> rows = materialService.collectAuditGridRows(user, from, to, applicantUserId, group);
+        return Result.success(excelExportService.summarizeAuditGrid(rows));
+    }
+
     @GetMapping("/audit/item/{itemId}/export")
     @Operation(summary = "按物品导出来去流水 Excel（与 Web 预览列一致，可选课题组过滤）")
     public ResponseEntity<byte[]> exportItemFlowExcel(@RequestHeader(value = "Authorization", required = false) String auth,
@@ -495,7 +514,9 @@ public class MaterialAdminController {
                                                        @RequestParam(defaultValue = "2000-01-01") String from,
                                                        @RequestParam(defaultValue = "2099-12-31") String to,
                                                        @RequestParam(required = false) String applicantGroup,
-                                                       @RequestParam(required = false) String exportLabel) {
+                                                       @RequestParam(required = false) String exportLabel,
+                                                       @RequestParam(value = "levels", required = false) String levels,
+                                                       @RequestParam(value = "excludeBlocks", required = false) String excludeBlocks) {
         User user = resolveUser(auth);
         if (user == null) {
             return ResponseEntity.status(401).contentType(MediaType.TEXT_PLAIN)
@@ -507,7 +528,7 @@ public class MaterialAdminController {
         }
         try {
             List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(itemId, from, to, applicantGroup);
-            byte[] body = excelExportService.buildItemFlowSheet(rows);
+            byte[] body = excelExportService.buildItemFlowSheet(rows, SubtotalConfig.parse(levels, excludeBlocks));
             String label = StringUtils.hasText(exportLabel) ? exportLabel
                     : (itemId != null && itemId > 0 ? ("物品-" + itemId) : "全部物品");
             String fn = MaterialService.buildAuditExportFilename(label, from, to);
@@ -519,6 +540,22 @@ public class MaterialAdminController {
             return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
                     .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    @GetMapping("/audit/item/{itemId}/export/summary")
+    @Operation(summary = "物品来去流水导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）")
+    public Result<SubtotalSummary> summarizeItemFlowExport(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                           @PathVariable Long itemId,
+                                                           @RequestParam(defaultValue = "2000-01-01") String from,
+                                                           @RequestParam(defaultValue = "2099-12-31") String to,
+                                                           @RequestParam(required = false) String applicantGroup) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            return Result.error("需要教职工权限");
+        }
+        List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(itemId, from, to, applicantGroup);
+        return Result.success(excelExportService.summarizeItemFlow(rows));
     }
 
     @PostMapping("/maintenance/purge-orphan-movements")

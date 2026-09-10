@@ -103,6 +103,22 @@
         ORDER BY room_id ASC
     </select>
 
+    <!-- 一次取全四级，Java 侧组装成树；只到房间级，不含笼架 -->
+    <select id="listRoomTreeRows" resultType="map">
+        SELECT campus_id      AS campusId,
+               campus_name    AS campusName,
+               CAST(area_id AS CHAR)  AS areaId,
+               area_name      AS areaName,
+               CAST(floor_id AS CHAR) AS floorId,
+               floor_name     AS floorName,
+               CAST(room_id AS CHAR)  AS roomId,
+               room_name      AS roomName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+        GROUP BY campus_id, campus_name, area_id, area_name, floor_id, floor_name, room_id, room_name
+        ORDER BY campus_id ASC, area_id ASC, area_name ASC, floor_id ASC, floor_name ASC, room_id ASC, room_name ASC
+    </select>
+
     <select id="listShelves" resultType="map">
         SELECT id,
                CAST(shelve_id AS CHAR) AS shelveId,
@@ -127,6 +143,7 @@
                CAST(room_id AS CHAR) AS roomId,
                room_name AS roomName,
                campus_name AS campusName,
+               CAST(floor_id AS CHAR) AS floorId,
                floor_name AS floorName
         FROM cage_shelf_index
         WHERE deleted = 0

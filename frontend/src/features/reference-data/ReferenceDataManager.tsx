@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate, useSearchParams, useBlocker } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/api/hooks/queryKeys";
@@ -22,8 +23,12 @@ import {
 import { useAnimalOrderTimePolicy } from "@/api/hooks/useAnimalOrderTime";
 import {
   resolveSharedCartGroupId,
+  resolveOrderGroupName,
+  splitGroupNames,
   type RefCartItem,
   type RefDataItem,
+  applyOrderEdit,
+  discardOrderEdit,
 } from "@/api/domains/referenceData.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
@@ -37,13 +42,14 @@ import {
 import CardGrid from "./CardGrid";
 import BreadcrumbBar from "./BreadcrumbBar";
 import EditModal from "./EditModal";
-import SpecSelectPanel from "./SpecSelectPanel";
+import SpecSelectPanel, { type OrderPickupInfo } from "./SpecSelectPanel";
 import SpecTemplateManager from "./SpecTemplateManager";
 import OrderTimeManager from "./OrderTimeManager";
 import OrderHistoryPanel from "./OrderHistoryPanel";
 import CampusGate from "./CampusGate";
 import { ANIMAL_ORDER_CAMPUSES, readStoredCampus, storeCampus, type AnimalOrderCampus } from "./campus";
 import type { CartLine } from "./CartDrawer";
+import CartTree from "./CartTree";
 
 import { appConfirm } from "@/lib/appDialog";
 interface DrillSegment {
@@ -55,8 +61,6 @@ interface DrillSegment {
 interface ReferenceDataManagerProps {
   mode: "admin" | "console" | "student";
 }
-
-type CartTreeMode = "aup-user-spec" | "spec-user";
 
 function parseSpecLabel(ss?: Record<string, string> | string): string {
   if (!ss) return "";
@@ -84,7 +88,6 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const [selectedAupId, setSelectedAupId] = useState<string>(() => {
     try { return localStorage.getItem("ref_active_aup") || ""; } catch { return ""; }
   });
-  const [cartTreeMode, setCartTreeMode] = useState<CartTreeMode>("aup-user-spec");
   const [packageRemark, setPackageRemark] = useState("");
   const [submitRemark, setSubmitRemark] = useState("");
   const [itemLabelMap, setItemLabelMap] = useState<Record<number, string>>({});
@@ -92,6 +95,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const [campus, setCampus] = useState<AnimalOrderCampus | null>(() => readStoredCampus());
 
   const role = authStorage.getRole() || "MEMBER";
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const userInfo = authStorage.getUserInfo();
   const currentUserName = userInfo?.displayName?.trim() || userInfo?.username?.trim() || userInfo?.id?.trim() || "";
   const currentUserId = userInfo?.id?.trim() || "";
@@ -117,16 +122,24 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const typeConfig = getTypeConfig(activeTypeKey);
   const allTypes = getAllTypeConfigs();
 
-  // 共享购物车：pg-{projectGroupId}，否则归一化课题组名。
-  // 课题组名优先取登录用户（userInfo），缺失时回退到已批准 AUP 记录的 projectGroupName
-  // （STAFF_ 账号 sys_user.project_group_name 常为空，但 AUP 记录有值）。
-  const groupId = useMemo(() => {
-    const fromAup = approvedAups.find((a) => a.projectGroupId != null)?.projectGroupId;
-    const effectiveGroupName =
-      projectGroupName ||
-      (approvedAups.find((a) => (a.projectGroupName || "").trim())?.projectGroupName ?? "");
-    return resolveSharedCartGroupId(fromAup ?? null, effectiveGroupName);
-  }, [approvedAups, projectGroupName]);
+  // 本人课题组名（userInfo.projectGroupName 可能是多组拼接串，必须拆开）
+  const myGroupNames = useMemo(() => splitGroupNames(projectGroupName), [projectGroupName]);
+
+  // 下单归属课题组名：多课题组账号取所选 AUP 的课题组（单值），否则与同组其他人的口径对不上
+  const orderGroupName = useMemo(
+    () => resolveOrderGroupName(approvedAups, selectedAupId, myGroupNames),
+    [approvedAups, selectedAupId, myGroupNames],
+  );
+
+  // 共享购物车 key 走课题组名，不用 project_group.id —— 该表同名多行（3105 行 / 98 个组名），
+  // 同组不同账号可能解析到不同 id，反倒把同组人拆进不同购物车。
+  const groupId = useMemo(() => resolveSharedCartGroupId(null, orderGroupName), [orderGroupName]);
+
+  // 领用人候选范围：本人课题组（缺失时回退 AUP 课题组；仍为空则选购弹窗禁用领用人选择）
+  const effectiveGroupNames = useMemo(
+    () => (myGroupNames.length ? myGroupNames : orderGroupName ? [orderGroupName] : []),
+    [myGroupNames, orderGroupName],
+  );
 
   useEffect(() => {
     if (!selectedAupId && approvedAups.length === 1) {
@@ -157,6 +170,87 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const { data: parentListItems = [] } = useRefDataList(typeConfig?.parentType ?? "", undefined);
   const { data: templates = [] } = useSpecTemplates();
   const { data: serverCartItems = [], refetch: refetchCart } = useRefCart(groupId);
+
+  // ── 编辑模式：由订单记录页带 ?editOrder={id} 跳进来 ──
+  // 编辑期间原单不动，回填行带 editing_order_id 标记；保存才写回原单，放弃只清回填行。
+  const editingOrderId = useMemo(() => {
+    const raw = searchParams.get("editOrder");
+    const n = Number(raw);
+    return raw && Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+  const [editActive, setEditActive] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [pendingExit, setPendingExit] = useState(false);
+
+  useEffect(() => {
+    setEditActive(!!editingOrderId);
+    if (editingOrderId) {
+      // 进入编辑：自动打开购物车并刷新，让用户直接看到回填结果
+      setCartSheetOpen(true);
+      void refetchCart();
+    }
+  }, [editingOrderId, refetchCart]);
+
+  const exitEdit = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("editOrder");
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  // 保存/放弃后：先解除编辑态再跳回记录页，避免自己的离开拦截把自己挡住
+  useEffect(() => {
+    if (pendingExit && !editActive) {
+      setPendingExit(false);
+      navigate(mode === "student" ? "/student/animal-order/records" : "/console/admin/animal-order-review");
+    }
+  }, [pendingExit, editActive, navigate, mode]);
+
+  const handleApplyEdit = useCallback(async () => {
+    if (!editingOrderId) return;
+    setEditBusy(true);
+    try {
+      await applyOrderEdit(editingOrderId);
+      toast.success("订单已保存");
+      setPendingExit(true);
+      exitEdit();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally { setEditBusy(false); }
+  }, [editingOrderId, exitEdit]);
+
+  const handleDiscardEdit = useCallback(async () => {
+    if (!editingOrderId) return;
+    if (!await appConfirm("放弃本次编辑？\n\n购物车里回填的内容会被清除，原订单保持不变。")) return;
+    setEditBusy(true);
+    try {
+      await discardOrderEdit(editingOrderId);
+      toast.success("已放弃编辑");
+      setPendingExit(true);
+      exitEdit();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "放弃编辑失败");
+    } finally { setEditBusy(false); }
+  }, [editingOrderId, exitEdit]);
+
+  // 离开拦截：编辑中切路由先确认（回填行带标记，回来再点编辑可原样恢复）
+  const blocker = useBlocker(editActive);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    void (async () => {
+      const leave = await appConfirm("订单还在编辑中，尚未保存。\n\n离开不会改动原订单，购物车里的回填内容保留；回来点「编辑」可继续。\n\n确定离开？");
+      if (leave) blocker.proceed(); else blocker.reset();
+    })();
+  }, [blocker]);
+
+  // 刷新/关标签页同样提醒
+  useEffect(() => {
+    if (!editActive) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editActive]);
 
   const sidebarParentType = typeConfig?.parentType;
   const sidebarParentId = drillStack.length >= 2 ? drillStack[drillStack.length - 2].id : undefined;
@@ -208,6 +302,10 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         itemLabel: (ci.refDataLabel || "").trim() || itemLabelMap[ci.refDataId] || `ID ${ci.refDataId}`,
         specLabel,
         qty: ci.quantity || 0,
+        unitPrice: ci.unitPrice ?? null,
+        lineAmount: ci.lineAmount ?? null,
+        pickupRoomName: ci.pickupRoomName ?? null,
+        collectorName: ci.collectorName ?? null,
         aupRecordId: ci.aupRecordId,
         aupLabel: ci.aupRecordId != null ? (aupLabelById.get(String(ci.aupRecordId)) || `AUP#${ci.aupRecordId}`) : "未归属",
         packageStatus: ci.packageStatus || "DRAFT",
@@ -220,6 +318,18 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   }, [serverCartItems, itemLabelMap, aupLabelById, currentUserId, currentUserName]);
 
   const cartCount = useMemo(() => cartLines.reduce((s, l) => s + l.qty, 0), [cartLines]);
+
+  // 购物车实时总金额：只累加已定价的行；全车无定价时保持 null（显示「—」而非 0）
+  const cartTotalAmount = useMemo(() => {
+    let sum = 0;
+    let any = false;
+    for (const l of cartLines) {
+      if (l.lineAmount == null) continue;
+      any = true;
+      sum += l.lineAmount;
+    }
+    return any ? sum : null;
+  }, [cartLines]);
   const myDraftLines = useMemo(
     () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus !== "READY"),
     [cartLines, currentUserId],
@@ -228,7 +338,23 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus === "READY"),
     [cartLines, currentUserId],
   );
-  const readyLines = useMemo(() => cartLines.filter((l) => l.packageStatus === "READY"), [cartLines]);
+  // PI 是最终提交人，本人加购的行不必再走「提交给 PI」确认，直接纳入提交范围
+  const readyLines = useMemo(
+    () => cartLines.filter((l) => l.packageStatus === "READY" || (isPi && l.addedBy === currentUserId)),
+    [cartLines, isPi, currentUserId],
+  );
+
+  // 本次提交的总金额（只算 readyLines），与购物车整车的合计区分开
+  const readyTotalAmount = useMemo(() => {
+    let sum = 0;
+    let any = false;
+    for (const l of readyLines) {
+      if (l.lineAmount == null) continue;
+      any = true;
+      sum += l.lineAmount;
+    }
+    return any ? sum : null;
+  }, [readyLines]);
 
   const availableTypes = useMemo((): ReferenceTypeConfig[] => {
     if (drillStack.length > 0) return typeConfig ? [typeConfig] : [];
@@ -336,12 +462,19 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     setSpecSelectItem(item);
   }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId]);
 
-  const handleSpecConfirm = useCallback(async (entries: { optionLabel: string; qty: number }[]) => {
+  const handleSpecConfirm = useCallback(async (
+    entries: { optionLabel: string; qty: number }[],
+    pickup: OrderPickupInfo,
+  ) => {
     if (orderingBlocked) {
       toast.error(timePolicy?.closedReason ?? "当前不可购");
       return;
     }
     if (!specSelectItem || !selectedAupId || !groupId) return;
+    if (!pickup.pickupRoomId) {
+      toast.error("请选择领用方式/房间");
+      return;
+    }
     const aupId = Number(selectedAupId);
     let ok = 0;
     for (const entry of entries) {
@@ -352,7 +485,12 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             refDataId: specSelectItem.id,
             aupRecordId: aupId,
             quantity: entry.qty,
-            specSelections: { option: entry.optionLabel },
+            // 无规格物品不写 spec_selections，服务端据此回退到物品自身的 price
+            ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
+            pickupRoomId: pickup.pickupRoomId,
+            pickupRoomName: pickup.pickupRoomName,
+            ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
+            ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
           },
         });
         ok += 1;
@@ -431,7 +569,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       return;
     }
     if (readyLines.length === 0) {
-      toast.error("没有 READY 订单包可提交，请先让实验员提交给 PI");
+      toast.error("没有可提交的行：本人加购的行，或实验员已提交给 PI 的订单包");
       return;
     }
     submitOrderMut.mutate(
@@ -439,7 +577,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         groupId,
         submitterId: currentUserId,
         submitterName: currentUserName,
-        projectGroupName,
+        // 与购物车 groupId 同源：取所选 AUP 的课题组名（单值）。服务端也会自行校验归属。
+        projectGroupName: orderGroupName,
         cartIds: readyLines.map((l) => l.id),
         submitRemark: submitRemark.trim() || undefined,
         campus: campus ?? undefined,
@@ -454,7 +593,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         },
       },
     );
-  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, projectGroupName, submitRemark, campus, qc, refetchCart]);
+  }, [orderingBlocked, timePolicy?.closedReason, isPi, readyLines, submitOrderMut, groupId, currentUserId, currentUserName, orderGroupName, submitRemark, campus, qc, refetchCart]);
 
   const parentOptionItems = useMemo(() => {
     if (!typeConfig?.parentType) return [];
@@ -463,86 +602,6 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       return { id: po.id, label: String(fd?.title || fd?.subtitle || `ID ${po.id}`) };
     });
   }, [typeConfig?.parentType, parentListItems]);
-
-  // ── Cart tree rendering ──
-
-  const cartTreeContent = useMemo(() => {
-    if (cartLines.length === 0) {
-      return <div className="py-6 text-center text-xs text-[var(--twin-mute)]">共享购物车是空的</div>;
-    }
-
-    const renderLine = (line: CartLine) => {
-      const canEdit = isPi || line.addedBy === currentUserId;
-      return (
-        <div key={line.key} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-[var(--twin-ink)] truncate">{line.itemLabel}</div>
-              <div className="mt-0.5 text-[11px] text-[var(--twin-mute)]">
-                {line.specLabel && <span>{line.specLabel}</span>}
-                <span className="ml-1 rounded bg-slate-200/80 px-1 py-0.5 text-[10px]">
-                  {line.packageStatus === "READY" ? "READY" : "DRAFT"}
-                </span>
-              </div>
-            </div>
-            {canEdit ? (
-              <div className="flex items-center gap-0.5 shrink-0">
-                <button type="button" className="h-6 w-6 rounded border border-[var(--twin-hairline)] bg-white text-xs" onClick={() => handleCartQtyChange(line, line.qty - 1)}>−</button>
-                <span className="w-8 text-center text-xs font-semibold tabular-nums">{line.qty}</span>
-                <button type="button" className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white" onClick={() => handleCartQtyChange(line, line.qty + 1)}>+</button>
-              </div>
-            ) : (
-              <span className="text-xs font-semibold tabular-nums shrink-0">×{line.qty}</span>
-            )}
-          </div>
-          {line.packageRemark && (
-            <div className="mt-1 text-[10px] text-[var(--twin-mute)] truncate">包备注：{line.packageRemark}</div>
-          )}
-        </div>
-      );
-    };
-
-    if (cartTreeMode === "spec-user") {
-      const bySpec = new Map<string, CartLine[]>();
-      for (const line of cartLines) {
-        const sk = `${line.itemId}::${line.specLabel || "-"}`;
-        if (!bySpec.has(sk)) bySpec.set(sk, []);
-        bySpec.get(sk)!.push(line);
-      }
-      return Array.from(bySpec.entries()).map(([sk, lines]) => (
-        <div key={sk} className="space-y-1.5">
-          <div className="text-[11px] font-semibold text-[var(--twin-ink)]">
-            {lines[0].itemLabel}{lines[0].specLabel ? ` · ${lines[0].specLabel}` : ""}
-          </div>
-          {Array.from(new Map(lines.map((l) => [l.addedBy, l.addedByLabel || l.addedBy])).entries()).map(([uid, label]) => (
-            <div key={uid} className="pl-2 space-y-1">
-              <div className="text-[10px] text-[var(--twin-mute)]">实验员 · {label}</div>
-              {lines.filter((l) => l.addedBy === uid).map(renderLine)}
-            </div>
-          ))}
-        </div>
-      ));
-    }
-
-    // 默认：AUP → 实验员 → 规格
-    const byAup = new Map<string, CartLine[]>();
-    for (const line of cartLines) {
-      const ak = String(line.aupRecordId ?? "none");
-      if (!byAup.has(ak)) byAup.set(ak, []);
-      byAup.get(ak)!.push(line);
-    }
-    return Array.from(byAup.entries()).map(([ak, aupLines]) => (
-      <div key={ak} className="space-y-1.5">
-        <div className="text-[11px] font-semibold text-sky-700">AUP · {aupLines[0].aupLabel}</div>
-        {Array.from(new Map(aupLines.map((l) => [l.addedBy, l.addedByLabel || l.addedBy])).entries()).map(([uid, label]) => (
-          <div key={uid} className="pl-2 space-y-1">
-            <div className="text-[10px] text-[var(--twin-mute)]">实验员 · {label}</div>
-            {aupLines.filter((l) => l.addedBy === uid).map(renderLine)}
-          </div>
-        ))}
-      </div>
-    ));
-  }, [cartLines, cartTreeMode, isPi, currentUserId, handleCartQtyChange]);
 
   if (!typeConfig) {
     return (
@@ -643,7 +702,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
             placeholder={`搜索${typeConfig.label}...`}
-            className="h-8 w-full max-w-md rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
+            className="h-8 w-full max-w-[12rem] shrink-0 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
           />
           <div className="flex shrink-0 items-center gap-1">
             {isAdmin && (
@@ -656,7 +715,15 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 </button>
               </>
             )}
-            <button type="button" className="rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors whitespace-nowrap" onClick={() => setOrderHistoryOpen(true)}>
+            <button
+              type="button"
+              className="rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors whitespace-nowrap"
+              onClick={() => {
+                // 学生端订单记录已是独立子路由（同款展示 + 课题组范围 + 只读）
+                if (mode === "student") navigate("/student/animal-order/records");
+                else setOrderHistoryOpen(true);
+              }}
+            >
               订单记录
             </button>
           </div>
@@ -744,6 +811,34 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
               <button onClick={() => setCartSheetOpen(false)} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)] text-sm">✕</button>
             </div>
 
+            {/* 编辑模式横幅：保存/放弃都在这里，别处不提供出口，避免链断在半路 */}
+            {editActive && editingOrderId && (
+              <div className="mx-3 mt-2 rounded-twin-md border border-sky-300 bg-sky-50 px-3 py-2">
+                <div className="text-xs font-semibold text-sky-900">正在编辑订单 #{editingOrderId}</div>
+                <div className="mt-0.5 text-[11px] text-sky-800/80">
+                  改完点「保存」写回原单（单号不变）；点「放弃」清空回填内容，原单不受影响。
+                </div>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={editBusy}
+                    onClick={() => void handleDiscardEdit()}
+                    className="rounded-full border border-sky-300 px-3 py-1 text-[11px] text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                  >
+                    放弃编辑
+                  </button>
+                  <button
+                    type="button"
+                    disabled={editBusy}
+                    onClick={() => void handleApplyEdit()}
+                    className="rounded-full bg-sky-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {editBusy ? "保存中…" : "保存"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {orderingBlocked && (
               <div className="mx-3 mt-2 rounded-twin-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 <div>{timePolicy?.closedReason}</div>
@@ -766,28 +861,23 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
               </div>
             )}
 
-            {isPi && (
-              <div className="flex gap-1 px-3 pt-2">
-                <button
-                  type="button"
-                  className={`rounded-full px-2.5 py-0.5 text-[10px] ${cartTreeMode === "aup-user-spec" ? "bg-sky-600 text-white" : "border border-[var(--twin-hairline)] text-[var(--twin-mute)]"}`}
-                  onClick={() => setCartTreeMode("aup-user-spec")}
-                >
-                  AUP→实验员
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-2.5 py-0.5 text-[10px] ${cartTreeMode === "spec-user" ? "bg-sky-600 text-white" : "border border-[var(--twin-hairline)] text-[var(--twin-mute)]"}`}
-                  onClick={() => setCartTreeMode("spec-user")}
-                >
-                  规格→实验员
-                </button>
+            <div className="min-h-0 overflow-y-auto px-3 py-2 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
+              <CartTree
+                layout="desktop"
+                lines={cartLines}
+                isPi={isPi}
+                currentUserId={currentUserId}
+                onQtyChange={handleCartQtyChange}
+              />
+            </div>
+
+            {/* 实时总金额：只统计已定价的行 */}
+            {cartTotalAmount != null && (
+              <div className="shrink-0 border-t border-[var(--twin-hairline)] px-4 py-2 flex items-center justify-between">
+                <span className="text-xs text-[var(--twin-mute)]">合计金额</span>
+                <span className="text-sm font-bold text-sky-700">¥{cartTotalAmount.toFixed(2)}</span>
               </div>
             )}
-
-            <div className="min-h-0 overflow-y-auto px-3 py-2 space-y-3 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
-              {cartTreeContent}
-            </div>
 
             {!isPi && (
               <div className="border-t border-[var(--twin-hairline)] px-3 py-2 space-y-2">
@@ -818,14 +908,15 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
 
             {isPi && (
               <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
-                <button type="button" className="text-xs text-red-500 disabled:opacity-50" disabled={cartCount === 0} onClick={handleClearCart}>清空</button>
+                <button type="button" className="text-xs text-red-500 disabled:opacity-50" disabled={cartCount === 0 || editActive} onClick={handleClearCart}>清空</button>
                 <button
                   type="button"
-                  disabled={orderingBlocked || submitOrderMut.isPending || readyLines.length === 0}
+                  disabled={orderingBlocked || submitOrderMut.isPending || readyLines.length === 0 || editActive}
                   onClick={() => setSubmitConfirmOpen(true)}
+                  title={editActive ? "编辑模式下请用上方「保存」写回原单，不能另开新单" : undefined}
                   className="rounded-full bg-sky-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
-                  {submitOrderMut.isPending ? "提交中…" : `正式提交 (${readyLines.length})`}
+                  {submitOrderMut.isPending ? "提交中…" : editActive ? "编辑中（用上方保存）" : `正式提交 (${readyLines.length})`}
                 </button>
               </div>
             )}
@@ -876,6 +967,9 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
           onConfirm={handleSpecConfirm}
           onClose={() => setSpecSelectItem(null)}
           orderingBlocked={orderingBlocked}
+          groupNames={effectiveGroupNames}
+          selfUserId={currentUserId}
+          selfUserName={currentUserName}
         />
       )}
 
@@ -938,13 +1032,19 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
           <div className="w-full max-w-md rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-xl">
             <div className="mb-3 text-sm font-semibold text-[var(--twin-ink)]">正式提交申领单</div>
             <div className="mb-2 text-xs text-[var(--twin-mute)]">
-              将提交 {readyLines.length} 条 READY 行（可跨多个 AUP），生成一张订单进入接收人整单审批。
+              将提交 {readyLines.length} 行（本人加购的行 + 实验员已提交给 PI 的订单包，可跨多个 AUP），生成一张订单进入接收人整单审批。
             </div>
             {timePolicy?.canOrderNow && timePolicy.estimatedDeliveryDate && (
               <div className="mb-2 text-xs text-[var(--twin-body)]">
                 预计送达：{timePolicy.estimatedDeliveryDate}
               </div>
             )}
+            <div className="mb-2 flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
+              <span className="text-xs text-[var(--twin-mute)]">订单总金额</span>
+              <span className="text-sm font-bold text-sky-700">
+                {readyTotalAmount != null ? `¥${readyTotalAmount.toFixed(2)}` : "未定价"}
+              </span>
+            </div>
             <textarea
               placeholder="整单备注（可选，默认不覆盖实验员包备注）"
               value={submitRemark}

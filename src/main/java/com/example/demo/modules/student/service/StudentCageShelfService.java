@@ -525,7 +525,15 @@ public class StudentCageShelfService {
      * getLocalShelfGrid 同源，不再走 grid_cache / 快照）。
      */
     private Set<String> resolveOwnGroupShelveIds(User user) {
-        List<String> groupNames = resolveUserGroupNames(user.getId());
+        return resolveOwnGroupShelveIdsByUserId(user.getId());
+    }
+
+    /**
+     * 按 userId 解析「本课题组有笼位的笼架 ID」。
+     * 刷卡弹窗要按**被扫人**（而非当前登录人）取课题组房间，故不能走 {@link #resolveOwnGroupShelveIds(User)}。
+     */
+    public Set<String> resolveOwnGroupShelveIdsByUserId(String userId) {
+        List<String> groupNames = resolveUserGroupNames(userId);
         if (groupNames.isEmpty()) {
             return Set.of();
         }
@@ -546,6 +554,19 @@ public class StudentCageShelfService {
             log.warn("[student-cage-shelf] 本地笼架归属发现失败: {}", e.getMessage());
         }
         return shelveIds;
+    }
+
+    /**
+     * 该人员【课题组】在笼架树中占用的房间列表（[{roomId, roomName, highlight}]）。
+     * 刷卡弹窗中栏平面图按此选房间——门禁授权房间（allowedRooms）与笼架房间不是同一套口径。
+     */
+    public List<Map<String, Object>> roomsForUserGroup(String userId) {
+        Set<String> shelveIds = resolveOwnGroupShelveIdsByUserId(userId);
+        if (shelveIds.isEmpty()) {
+            return List.of();
+        }
+        List<CageShelfIndex> scope = cageShelfMapper.listIndexesByShelveIds(new ArrayList<>(shelveIds));
+        return distinctRooms(scope, shelveIds);
     }
 
     private Map<String, Object> buildScopedFilterOptions(List<CageShelfIndex> scope,
@@ -735,28 +756,30 @@ public class StudentCageShelfService {
                 String.valueOf(shelf.getRoomId()), String.valueOf(shelf.getFloorId()), String.valueOf(shelf.getCampusId()));
     }
 
-    /** 是否有负责范围分配（校区/楼层/房间）。有分配时数据范围以分配为准，忽略课题组。 */
+    /** 是否配了可见范围补充（校区/楼层/房间）。配了才需要在基本权限之上叠加放开。 */
     public boolean hasScopeAssignment(User user) {
         if (user == null || isAdminUser(user)) return false;
         return !personScopeService.listGroupedByType(user.getId()).isEmpty();
     }
 
     /**
-     * 数据范围判定（第一层）—— 仅在「有负责范围分配」时使用。
-     * roomId/floorId/campusId 命中分配集即可见（取并集），都不命中则不可见。
-     * 无负责范围时不应调用本方法（应走 cell 级课题组过滤 maskGridForUser）。
+     * 该笼架是否被可见范围补充命中（第一层，仅作「补充」用）。
+     * roomId/floorId/campusId 命中分配集即可见（取并集）。
+     *
+     * 语义是「额外放开」而非「数据范围」：未命中不代表不可见 —— 调用方应继续走基本权限
+     * （cell 级课题组过滤 maskGridForUser），只有命中时才整架放开。
      */
     public boolean isShelfVisibleForUser(User user, String shelveId, String roomId, String floorId, String campusId) {
         if (isAdminUser(user)) return true;
         Map<String, List<String>> scope = personScopeService.listGroupedByType(user.getId());
-        if (scope.isEmpty()) return true; // 无分配 → 交由调用方走课题组过滤
+        if (scope.isEmpty()) return false; // 无补充 → 不额外放开任何笼架
         List<String> rooms = scope.getOrDefault("ROOM", List.of());
         List<String> floors = scope.getOrDefault("FLOOR", List.of());
         List<String> campuses = scope.getOrDefault("CAMPUS", List.of());
         if (roomId != null && rooms.contains(roomId)) return true;
         if (floorId != null && floors.contains(floorId)) return true;
         if (campusId != null && campuses.contains(campusId)) return true;
-        return false; // 有分配但都不命中 = 不可见
+        return false; // 都没命中 → 不额外放开，回到基本权限
     }
 
     /** 教职工（STAFF+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
