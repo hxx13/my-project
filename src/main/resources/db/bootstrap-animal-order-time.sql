@@ -65,16 +65,12 @@ CREATE TABLE IF NOT EXISTS animal_order_holiday (
 
 -- ── 补齐 eta_weekday（2026-09-09）────────────────────────────────────
 -- 建表用的是 CREATE IF NOT EXISTS，老库早于该列时不会被补；此处幂等 ALTER 自愈。
+-- 注意：本脚本 continueOnError=false，任何一句报错都会中断后续所有语句，因此这里
+-- 不再做 eta_fixed_date 回填（该列已被 V20260821021 删除）。
 SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_time_policy' AND COLUMN_NAME = 'eta_weekday');
 SET @sql = IF(@col = 0, 'ALTER TABLE animal_order_time_policy ADD COLUMN eta_weekday TINYINT NULL COMMENT ''FIXED：ISO weekday 1=Mon…7=Sun'' AFTER eta_workday_offset', 'SELECT ''eta_weekday exists''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
-UPDATE animal_order_time_policy
-SET eta_weekday = MOD(DAYOFWEEK(eta_fixed_date) + 5, 7) + 1
-WHERE eta_mode = 'FIXED'
-  AND eta_fixed_date IS NOT NULL
-  AND eta_weekday IS NULL;
 
 -- ── 校区维度（2026-09-09）────────────────────────────────────────────
 -- 策略与可购窗口分浦东/浦西两套；节假日为全国口径，不分校区。
@@ -86,8 +82,8 @@ SET @sql = IF(@col = 0, 'ALTER TABLE animal_order_time_policy ADD COLUMN campus 
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @idx = (SELECT COUNT(*) FROM information_schema.STATISTICS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_time_policy' AND INDEX_NAME = 'uk_policy_campus');
-SET @sql = IF(@idx = 0, 'ALTER TABLE animal_order_time_policy ADD UNIQUE KEY uk_policy_campus (campus)', 'SELECT ''uk_policy_campus exists''');
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_time_policy' AND INDEX_NAME = 'idx_policy_campus');
+SET @sql = IF(@idx = 0, 'ALTER TABLE animal_order_time_policy ADD KEY idx_policy_campus (campus)', 'SELECT ''idx_policy_campus exists''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @cnt = (SELECT COUNT(*) FROM animal_order_time_policy WHERE campus = '浦西');

@@ -171,6 +171,72 @@ public class CageShelfService {
     }
 
     /**
+     * 领用房间树：校区 → 区域/楼 → 楼层 → 房间，只到房间级（不展开笼架）。
+     * 供动物订购「领用方式/房间」选择使用。
+     *
+     * <p>依赖 {@code listRoomTreeRows} 已按 campus→area→floor→room 全字段排序：
+     * GROUP BY 保证每行唯一，同组合并列，因此单趟「记住上一个节点」即可建树。
+     */
+    public List<Map<String, Object>> roomTree() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        String lastCampus = null;
+        String lastArea = null;
+        String lastFloor = null;
+        Map<String, Object> campus = null;
+        Map<String, Object> area = null;
+        Map<String, Object> floor = null;
+
+        for (Map<String, Object> row : cageShelfMapper.listRoomTreeRows()) {
+            String campusId = trim(row.get("campusId"));
+            String roomName = trim(row.get("roomName"));
+            if (campusId.isEmpty() || roomName.isEmpty()) {
+                continue;
+            }
+            String areaId = trim(row.get("areaId"));
+            String areaName = trim(row.get("areaName"));
+            String floorId = trim(row.get("floorId"));
+            String floorName = trim(row.get("floorName"));
+            // area_id 存在一号多名（如 1 同时映射「6号楼」「浦西」），键必须带上名称
+            String areaKey = campusId + "" + areaId + "" + areaName;
+            String floorKey = areaKey + "" + floorId + "" + floorName;
+
+            if (!campusId.equals(lastCampus)) {
+                campus = treeNode("campus:" + campusId, trim(row.get("campusName")), "CAMPUS");
+                out.add(campus);
+                lastCampus = campusId;
+                lastArea = null;
+            }
+            if (!areaKey.equals(lastArea)) {
+                area = treeNode("area:" + areaId, areaName, "AREA");
+                treeChildren(campus).add(area);
+                lastArea = areaKey;
+                lastFloor = null;
+            }
+            if (!floorKey.equals(lastFloor)) {
+                floor = treeNode("floor:" + floorId, floorName, "FLOOR");
+                treeChildren(area).add(floor);
+                lastFloor = floorKey;
+            }
+            treeChildren(floor).add(treeNode("room:" + trim(row.get("roomId")), roomName, "ROOM"));
+        }
+        return out;
+    }
+
+    private static Map<String, Object> treeNode(String id, String name, String level) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("id", id);
+        n.put("name", name);
+        n.put("level", level);
+        n.put("children", new ArrayList<Map<String, Object>>());
+        return n;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> treeChildren(Map<String, Object> node) {
+        return (List<Map<String, Object>>) node.get("children");
+    }
+
+    /**
      * 获取笼架详情：默认 snapshot-first。扫码模式下传 realtime=true 直读 grid cache。
      */
     public Map<String, Object> fetchShelfDetail(String shelveId) {

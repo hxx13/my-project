@@ -28,4 +28,10 @@ public interface RefCartMapper {
     List<RefCart> listByGroupId(@Param("groupId") String groupId);
 
     List<RefCart> listByIds(@Param("ids") List<Long> ids);
+
+    /** 编辑在途：回填自该订单的购物车行 */
+    List<RefCart> listByEditingOrderId(@Param("orderId") Long orderId);
+
+    /** 编辑在途：清掉回填行（放弃编辑 / 重入编辑 / 保存后收尾） */
+    int deleteByEditingOrderId(@Param("orderId") Long orderId);
 }

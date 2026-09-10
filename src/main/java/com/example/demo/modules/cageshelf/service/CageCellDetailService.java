@@ -7,10 +7,12 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellHistory;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.entity.CageOpRequest;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellHistoryMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
+import com.example.demo.modules.cageshelf.mapper.CageOpRequestMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -31,19 +33,22 @@ public class CageCellDetailService {
     private final CageCellHistoryMapper historyMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final CageFormAuditService auditService;
+    private final CageOpRequestMapper opRequestMapper;
 
     public CageCellDetailService(CageCellDetailMapper detailMapper,
                                   CageClaimMapper claimMapper,
                                   ApprovalRecordMapper approvalMapper,
                                   CageCellHistoryMapper historyMapper,
                                   AroPersonnelMapper aroPersonnelMapper,
-                                  CageFormAuditService auditService) {
+                                  CageFormAuditService auditService,
+                                  CageOpRequestMapper opRequestMapper) {
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
         this.approvalMapper = approvalMapper;
         this.historyMapper = historyMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.auditService = auditService;
+        this.opRequestMapper = opRequestMapper;
     }
 
     /** 绑定笼盒 */
@@ -90,6 +95,13 @@ public class CageCellDetailService {
 
     /** 分配笼位 — 写课题组组长(project_pi_name) + 项目名称 + AUP注册号 + AUP ID 到笼位固定字段 */
     public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId, String projectName, String operatorId) {
+        // 该笼位若正被未决的分笼/转移占住（它是那条请求的目标），分配会改掉状态与 AUP，让那条审批执行失败
+        for (Long id : CageOperationService.pendingOccupiedCages(
+                opRequestMapper.selectByStatus(CageOpRequest.STATUS_PENDING, null), null)) {
+            if (id.equals(animalCageId)) {
+                throw new TwinBusinessException(409, "该笼位已有待审的分笼/转移请求，请先等它审完再分配");
+            }
+        }
         CageCellDetail d = getOrCreate(animalCageId);
         String beforeProjectPi = d.getProjectPiName();
         String beforeProjectName = d.getProjectName();

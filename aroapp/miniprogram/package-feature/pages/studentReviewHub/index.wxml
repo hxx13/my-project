@@ -589,8 +589,16 @@
     </block>
   </block>
 
-  <!-- 笼位申请审核：待审/已审 + 可切换分组维度（按空间/按课题组/按人员） -->
+  <!-- 笼位审核：二级切换（笼位申请 / 分笼 / 转移） -->
   <block wx:if="{{ !loading && activeTab === 'cage' }}">
+    <view class="sub-tabs">
+      <view class="sub-tab {{ cageSubTab === 'claim' ? 'sub-tab-on' : '' }}" data-sub="claim" bindtap="onCageSubTabChange">笼位申请</view>
+      <view class="sub-tab {{ cageSubTab === 'divide' ? 'sub-tab-on' : '' }}" data-sub="divide" bindtap="onCageSubTabChange">分笼</view>
+      <view class="sub-tab {{ cageSubTab === 'transfer' ? 'sub-tab-on' : '' }}" data-sub="transfer" bindtap="onCageSubTabChange">转移</view>
+    </view>
+
+    <!-- 笼位申请：分组维度（仅申请有意义）+ 待审/已审 -->
+    <block wx:if="{{ cageSubTab === 'claim' }}">
     <view class="switch-row">
       <text class="switch-label">分组维度</text>
       <view class="sub-tabs">
@@ -661,7 +669,102 @@
         </block>
       </view>
     </block>
+    </block>
+
+    <!-- 分笼：待审/已审 -->
+    <block wx:if="{{ cageSubTab === 'divide' }}">
+      <view wx:if="{{ cageDividePending.length === 0 && cageDivideDone.length === 0 }}" class="hint empty">暂无分笼审核记录</view>
+      <view wx:if="{{ cageDividePending.length > 0 }}" class="time-group">
+        <view class="time-group-head" bindtap="onCageToggleDividePending">
+          <text class="time-group-arrow {{ cageDividePendingOpen ? 'open' : '' }}">▶</text>
+          <text>待审核 ({{ cageDividePending.length }})</text>
+        </view>
+        <block wx:if="{{ cageDividePendingOpen }}">
+          <block wx:for="{{ cageDividePending }}" wx:key="id" wx:for-item="item">
+            <template is="cageOpPendingCard" data="{{...item}}" />
+          </block>
+        </block>
+      </view>
+      <view wx:if="{{ cageDivideDone.length > 0 }}" class="time-group">
+        <view class="time-group-head" bindtap="onCageToggleDivideDone">
+          <text class="time-group-arrow {{ cageDivideDoneOpen ? 'open' : '' }}">▶</text>
+          <text>已审核 ({{ cageDivideDone.length }})</text>
+        </view>
+        <block wx:if="{{ cageDivideDoneOpen }}">
+          <block wx:for="{{ cageDivideDone }}" wx:key="id" wx:for-item="item">
+            <template is="cageOpDoneCard" data="{{...item}}" />
+          </block>
+        </block>
+      </view>
+    </block>
+
+    <!-- 转移：待审/已审 -->
+    <block wx:if="{{ cageSubTab === 'transfer' }}">
+      <view wx:if="{{ cageTransferPending.length === 0 && cageTransferDone.length === 0 }}" class="hint empty">暂无转移审核记录</view>
+      <view wx:if="{{ cageTransferPending.length > 0 }}" class="time-group">
+        <view class="time-group-head" bindtap="onCageToggleTransferPending">
+          <text class="time-group-arrow {{ cageTransferPendingOpen ? 'open' : '' }}">▶</text>
+          <text>待审核 ({{ cageTransferPending.length }})</text>
+        </view>
+        <block wx:if="{{ cageTransferPendingOpen }}">
+          <block wx:for="{{ cageTransferPending }}" wx:key="id" wx:for-item="item">
+            <template is="cageOpPendingCard" data="{{...item}}" />
+          </block>
+        </block>
+      </view>
+      <view wx:if="{{ cageTransferDone.length > 0 }}" class="time-group">
+        <view class="time-group-head" bindtap="onCageToggleTransferDone">
+          <text class="time-group-arrow {{ cageTransferDoneOpen ? 'open' : '' }}">▶</text>
+          <text>已审核 ({{ cageTransferDone.length }})</text>
+        </view>
+        <block wx:if="{{ cageTransferDoneOpen }}">
+          <block wx:for="{{ cageTransferDone }}" wx:key="id" wx:for-item="item">
+            <template is="cageOpDoneCard" data="{{...item}}" />
+          </block>
+        </block>
+      </view>
+    </block>
   </block>
+
+  <!-- 分笼/转移卡片模板 -->
+  <template name="cageOpPendingCard">
+    <view class="card">
+      <view class="row-head">
+        <text class="title">{{ applicantText }}</text>
+        <text class="tag tag-warn">待审核</text>
+      </view>
+      <text class="body">{{ sourceLine }}</text>
+      <text class="body">{{ targetText }}</text>
+      <text wx:if="{{ reason }}" class="body">原因：{{ reason }}</text>
+      <view class="card-footer">
+        <text wx:if="{{ createdAtText }}" class="meta">{{ createdAtText }}</text>
+        <view class="ops">
+          <view class="op op-primary" data-id="{{ id }}" catchtap="onCageOpApprove">通过</view>
+          <view class="op op-danger" data-id="{{ id }}" catchtap="onCageOpReject">驳回</view>
+        </view>
+      </view>
+    </view>
+  </template>
+
+  <template name="cageOpDoneCard">
+    <view class="card">
+      <view class="row-head">
+        <text class="title">{{ applicantText }}</text>
+        <text class="tag {{ statusTagClass }}">{{ statusText }}</text>
+      </view>
+      <text class="body">{{ sourceLine }}</text>
+      <text class="body">{{ targetText }}</text>
+      <text wx:if="{{ reason }}" class="body">原因：{{ reason }}</text>
+      <text wx:if="{{ isRejected && rejectReason }}" class="body">驳回理由：{{ rejectReason }}</text>
+      <view class="card-footer">
+        <view class="card-footer-info">
+          <text wx:if="{{ createdAtText }}" class="meta">{{ createdAtText }}</text>
+          <text wx:if="{{ reviewedAtText }}" class="meta">处理于 {{ reviewedAtText }}</text>
+          <text wx:if="{{ reviewerName }}" class="meta meta-reviewer">处理人：{{ reviewerName }}</text>
+        </view>
+      </view>
+    </view>
+  </template>
 
   <auto-approve-panel
     visible="{{ autoApproveVisible }}"

@@ -548,7 +548,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
       {
         id: "cage-scope",
         path: "/admin/cage-shelves/scope",
-        label: "负责范围分配",
+        label: "可见范围分配",
         icon: Users,
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "ADMIN",

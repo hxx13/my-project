@@ -5,11 +5,11 @@
  * 禁止再读 cage_cell_detail 的 camelCase 字段（已删 detailKey）。
  */
 var CAGE_STATUS_ACTIONS = [
-  { action: 'DIVIDE',           statusField: 'needs_division',         label: '需分笼',  color: '#eab308', bg: '#fef08a' },
-  { action: 'SPECIAL_BREEDING', statusField: 'needs_special_feeding',  label: '需特殊饲养', color: '#ef4444', bg: '#fecaca' },
-  { action: 'HEALTH_CHECK',     statusField: 'has_health_abnormality', label: '健康异常', color: '#a855f7', bg: '#e9d5ff' },
-  { action: 'COHABITATION',     statusField: 'needs_cohabitation',     label: '需合笼',  color: '#f97316', bg: '#fed7aa' },
-  { action: 'TRANSFER',         statusField: 'needs_transfer',         label: '动物转移', color: '#06b6d4', bg: '#cffafe' }
+  { action: 'DIVIDE',           statusField: 'needs_division',         label: '需分笼',  abbr: '分', color: '#eab308', bg: '#fef08a' },
+  { action: 'SPECIAL_BREEDING', statusField: 'needs_special_feeding',  label: '需特殊饲养', abbr: '饲', color: '#ef4444', bg: '#fecaca' },
+  { action: 'HEALTH_CHECK',     statusField: 'has_health_abnormality', label: '健康异常', abbr: '异', color: '#a855f7', bg: '#e9d5ff' },
+  { action: 'COHABITATION',     statusField: 'needs_cohabitation',     label: '需合笼',  abbr: '笼', color: '#f97316', bg: '#fed7aa' },
+  { action: 'TRANSFER',         statusField: 'needs_transfer',         label: '动物转移', abbr: '移', color: '#06b6d4', bg: '#cffafe' }
 ];
 
 var byAction = {};

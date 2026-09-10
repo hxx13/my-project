@@ -9,6 +9,7 @@ build/
 *.jar
 *.class
 .mvn/wrapper/maven-wrapper.jar
+javac*.args
 
 # ===== Environment files (secrets) =====
 .env
@@ -109,6 +110,9 @@ aro-aup-*.txt
 aro-aup-*.js
 aup-page-snapshot.md
 parse-render.js
+animalCages-*.json
+cagebox-aups-*.json
+aup-live-form.json
 
 # ===== 建库字段档案（本地权威文档，仅供 AI 建库参考，不进代码仓库） =====
 数据库字段档案/

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageOwnerApprovalConfigMapper">
+
+    <select id="selectByOwner" resultType="com.example.demo.modules.cageshelf.entity.CageOwnerApprovalConfig">
+        SELECT * FROM cage_owner_approval_config WHERE owner_account_id = #{ownerAccountId}
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.cageshelf.entity.CageOwnerApprovalConfig">
+        SELECT * FROM cage_owner_approval_config ORDER BY update_time DESC, id DESC
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO cage_owner_approval_config
+            (owner_account_id, confirm_required, divide_approval_required, transfer_approval_required,
+             update_by, update_time)
+        VALUES
+            (#{ownerAccountId}, #{confirmRequired}, #{divideApprovalRequired}, #{transferApprovalRequired},
+             #{updateBy}, NOW())
+        ON DUPLICATE KEY UPDATE
+            confirm_required = VALUES(confirm_required),
+            divide_approval_required = VALUES(divide_approval_required),
+            transfer_approval_required = VALUES(transfer_approval_required),
+            update_by = VALUES(update_by),
+            update_time = NOW()
+    </insert>
+
+</mapper>

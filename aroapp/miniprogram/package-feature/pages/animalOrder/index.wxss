@@ -6,43 +6,6 @@
   box-sizing: border-box;
 }
 
-/* AUP 选择条 */
-.aup-bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin: 16rpx 20rpx 0;
-  padding: 16rpx 20rpx;
-  background: #eef6ff;
-  border: 1rpx solid #bfdbfe;
-  border-radius: 16rpx;
-}
-.aup-bar-empty {
-  background: #fff7ed;
-  border-color: #fed7aa;
-}
-.aup-tag {
-  font-size: 20rpx;
-  font-weight: 700;
-  letter-spacing: 1rpx;
-  color: #0284c7;
-  text-transform: uppercase;
-}
-.aup-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #323233;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.aup-arrow {
-  color: #969799;
-  font-size: 30rpx;
-}
-
 /* 时间窗 */
 .time-banner {
   margin: 12rpx 20rpx 0;
@@ -415,6 +378,40 @@
   color: #969799;
 }
 
+/* ── 购物车分组（镜像 CartTree.tsx 的 AUP→实验员 / 规格→实验员） ── */
+.cart-tree-tabs {
+  display: flex;
+  gap: 12rpx;
+  padding: 8rpx 0 16rpx;
+}
+.ct-group { margin-bottom: 24rpx; }
+.ct-group-title {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #0369a1;
+}
+.ct-sub { padding-left: 16rpx; }
+.ct-sub-title {
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: #969799;
+}
+.cart-line-remark {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #969799;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cart-line-qty {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
 /* AUP 选项 */
 .aup-opt {
   display: flex;
@@ -470,33 +467,17 @@
   margin-top: 24rpx;
 }
 
-/* 订单 */
+/* 订单（整页显示，撑满导航栏以下） */
 .orders {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   background: #f7f4ef;
-}
-.orders-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 28rpx 32rpx;
-  border-bottom: 1rpx solid #ebecef;
-  background: #fff;
-}
-.orders-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #323233;
-}
-.orders-close {
-  font-size: 30rpx;
-  color: #969799;
-  padding: 8rpx;
 }
 .orders-scroll {
   flex: 1;
+  min-height: 0;
   padding: 20rpx 32rpx;
 }
 .order-card {
@@ -598,23 +579,301 @@
   border-radius: 16rpx;
 }
 
-/* ── 校区切换 ── */
-.campus-bar {
-  display: flex;
-  gap: 12rpx;
-  margin: 16rpx 20rpx 0;
+/* ── 领用方式/房间 + 代领人 ── */
+.pickup-block {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f0f0f0;
 }
-.campus-pill {
-  padding: 8rpx 22rpx;
+.pickup-field { margin-bottom: 20rpx; }
+.pickup-label {
+  display: block;
+  font-size: 24rpx;
+  color: #666;
+  margin-bottom: 10rpx;
+}
+.pickup-label .req { color: #e64340; }
+.pickup-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 12rpx;
+  background: #fff;
+  font-size: 26rpx;
+  color: #333;
+}
+.pickup-value-empty { color: #bbb; }
+.pickup-hint { color: #bbb; font-size: 22rpx; }
+.pickup-arrow { color: #bbb; font-size: 32rpx; line-height: 1; }
+
+/* 房间树 */
+.room-search { padding: 0 24rpx 12rpx; }
+.room-search-input {
+  height: 68rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 12rpx;
+  background: #f8f8f8;
+  font-size: 26rpx;
+}
+.room-row {
+  display: flex;
+  align-items: center;
+  min-height: 76rpx;
+  padding-right: 24rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+  font-size: 27rpx;
+  color: #333;
+}
+.room-row-folder { color: #666; font-weight: 500; }
+.room-row-leaf { color: #333; }
+.room-row-sel { background: #eef7ff; color: #1677ff; font-weight: 600; }
+.room-caret {
+  width: 34rpx;
+  flex: 0 0 34rpx;
+  color: #bbb;
+  font-size: 24rpx;
+}
+.room-name { flex: 1; min-width: 0; }
+
+/* 代领人 */
+.collector-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 84rpx;
+  padding: 0 24rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+  font-size: 28rpx;
+  color: #333;
+}
+.collector-row-sel { background: #eef7ff; color: #1677ff; font-weight: 600; }
+.collector-name { flex: 1; min-width: 0; }
+.collector-job { color: #999; font-size: 24rpx; }
+.foot-btn-off { opacity: 0.6; }
+
+/* ── 价格显示 ── */
+.spec-main { flex: 1; min-width: 0; }
+.spec-price {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 22rpx;
+  color: #64748b;
+}
+.spec-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-top: 1rpx solid #f0f0f0;
+  background: #f8fafc;
+  border-radius: 12rpx;
+}
+.spec-total-label { font-size: 24rpx; color: #64748b; }
+.spec-total-value { font-size: 30rpx; font-weight: 700; color: #0369a1; }
+.cart-line-price {
+  display: block;
+  margin-top: 2rpx;
   font-size: 22rpx;
   font-weight: 600;
-  color: #8a8578;
-  background: #ffffff;
-  border: 1rpx solid #e5e0d8;
+  color: #0369a1;
+}
+.cart-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 24rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+.cart-total-label { font-size: 24rpx; color: #64748b; }
+.cart-total-value { font-size: 30rpx; font-weight: 700; color: #0369a1; }
+
+/* ── 订单记录（页签 / 筛选 / 卡片 / 表格） ── */
+.ord-bar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 20rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+  flex-wrap: wrap;
+}
+.ord-tabs {
+  display: flex;
+  background: #f2f3f5;
+  border-radius: 999rpx;
+  padding: 4rpx;
+}
+.ord-tab {
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #646566;
   border-radius: 999rpx;
 }
-.campus-pill-on {
-  color: #ffffff;
-  background: #059669;
-  border-color: #059669;
+.ord-tab-on {
+  background: #fff;
+  color: #323233;
+  font-weight: 600;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.08);
 }
+.ord-count { font-size: 22rpx; color: #969799; margin-left: auto; }
+.ord-btn {
+  padding: 10rpx 26rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: #323233;
+}
+.ord-btn-primary { background: #1677ff; border-color: #1677ff; color: #fff; font-weight: 600; }
+.ord-btn-off { opacity: 0.45; }
+
+.ord-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  padding: 16rpx 20rpx;
+  background: #fafafa;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.ord-field { width: calc(50% - 8rpx); }
+.ord-field-wide { width: 100%; }
+.ord-flabel { display: block; font-size: 22rpx; color: #969799; margin-bottom: 6rpx; }
+.ord-finput {
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 16rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 10rpx;
+  background: #fff;
+  font-size: 26rpx;
+  color: #323233;
+}
+.ord-filter-actions { width: 100%; display: flex; justify-content: flex-end; gap: 16rpx; }
+
+/* 表格：scroll-x 撑开 + 外层纵向滚动，与 suppliesAudit 同一套做法 */
+.ord-table-wrap { width: 100%; border: 1rpx solid #ebedf0; border-radius: 12rpx; background: #fff; }
+.ord-table { min-width: 2200rpx; padding-bottom: 8rpx; }
+.ord-tr { display: flex; flex-direction: row; border-bottom: 1rpx solid #f2f3f5; }
+.ord-tr-head { background: #f7f8fa; font-size: 22rpx; color: #646566; font-weight: 600; }
+.ord-td { flex-shrink: 0; padding: 14rpx 12rpx; font-size: 22rpx; color: #323233; word-break: break-all; }
+.ord-td.mono { font-family: monospace; font-size: 20rpx; color: #969799; }
+.w-no { width: 220rpx; }
+.w-src { width: 110rpx; text-align: center; }
+.w-group { width: 240rpx; }
+.w-pi { width: 150rpx; }
+.w-item { width: 340rpx; }
+.w-supplier { width: 280rpx; }
+.w-xs { width: 96rpx; text-align: center; }
+.w-amt { width: 160rpx; text-align: right; color: #0369a1; font-weight: 600; }
+.w-aup { width: 220rpx; }
+.w-mid { width: 160rpx; }
+.w-room { width: 280rpx; }
+.w-date { width: 240rpx; }
+.w-remark { width: 340rpx; }
+
+/* 卡片 */
+.ord-card {
+  margin-bottom: 16rpx;
+  padding: 20rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  background: #fff;
+}
+.ord-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10rpx; }
+.ord-card-no { font-family: monospace; font-size: 22rpx; color: #969799; }
+.ord-chip {
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  background: #f2f3f5;
+  font-size: 20rpx;
+  color: #646566;
+}
+.ord-card-status { font-size: 24rpx; font-weight: 600; color: #323233; }
+.ord-card-toggle { margin-left: auto; font-size: 20rpx; color: #969799; }
+.ord-card-line { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 12rpx; font-size: 24rpx; }
+.ord-k { color: #969799; margin-right: 6rpx; }
+.ord-v { color: #323233; }
+.ord-v.strong { font-weight: 700; }
+.ord-v.price { font-weight: 700; color: #0369a1; }
+.ord-item-line { margin-top: 6rpx; font-size: 24rpx; color: #323233; }
+.ord-card-detail {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f2f3f5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx 24rpx;
+}
+.ord-kv { width: calc(50% - 12rpx); }
+.ord-kv-wide { width: 100%; }
+
+.ord-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24rpx;
+  padding: 16rpx;
+  border-top: 1rpx solid #f0f0f0;
+}
+.ord-page-text { font-size: 24rpx; color: #646566; }
+
+/* ── 编辑模式横幅 / 记录卡动作 ── */
+.edit-banner {
+  margin: 12rpx 24rpx 0;
+  padding: 16rpx 20rpx;
+  border: 1rpx solid #bae6fd;
+  border-radius: 12rpx;
+  background: #f0f9ff;
+}
+.edit-banner-title { font-size: 26rpx; font-weight: 700; color: #0c4a6e; }
+.edit-banner-desc { margin-top: 4rpx; font-size: 22rpx; color: #0c4a6e; opacity: 0.8; line-height: 1.5; }
+.edit-banner-actions { margin-top: 14rpx; display: flex; justify-content: flex-end; gap: 16rpx; }
+.ord-card-actions { margin-top: 14rpx; display: flex; justify-content: flex-end; }
+.foot-btn-off { opacity: 0.5; }
+
+/* ── 加购上下文条（校区 + AUP 合成一条） ── */
+.ctx-bar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 24rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.ctx-chip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 24rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 999rpx;
+  background: #f7f8fa;
+  font-size: 26rpx;
+  color: #323233;
+}
+.ctx-chip-flex { flex: 1; min-width: 0; }
+.ctx-chip-warn { border-color: #fcd34d; background: #fffbeb; color: #92400e; }
+.ctx-ico { font-size: 24rpx; }
+.ctx-tag { font-size: 20rpx; font-weight: 700; color: #0369a1; letter-spacing: 1rpx; }
+.ctx-txt { font-size: 26rpx; }
+.ctx-ellipsis { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ctx-arrow { font-size: 22rpx; color: #969799; }
+
+/* 校区选择项 */
+.campus-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 24rpx 16rpx;
+  padding: 24rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  background: #fff;
+  font-size: 28rpx;
+  color: #323233;
+}
+.campus-opt-on { border-color: #1677ff; background: rgba(22, 119, 255, 0.08); font-weight: 600; }
+.campus-opt-check { color: #1677ff; font-size: 30rpx; }

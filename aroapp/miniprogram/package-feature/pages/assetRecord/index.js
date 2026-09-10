@@ -1995,7 +1995,7 @@ Page({
     const total = this.data.total || 0;
     wx.showLoading({ title: `导出中（共${total}条）…`, mask: true });
     try {
-      const fileBase64 = await assetApi.exportAssetExcel({
+      const fileBuf = await assetApi.exportAssetExcel({
         keyword: this.data.appliedKeyword || undefined,
         campus: this.data.campus || undefined,
         assetName: this.data.appliedAssetName || undefined,
@@ -2006,7 +2006,8 @@ Page({
       wx.showLoading({ title: '写入文件…', mask: true });
       const filePath = `${wx.env.USER_DATA_PATH}/asset_records_${Date.now()}.xlsx`;
       await new Promise((resolve, reject) => {
-        wx.getFileSystemManager().writeFile({ filePath, data: fileBase64, encoding: 'base64', success: resolve, fail: reject });
+        // 直连模式拿到的是 ArrayBuffer，直接写，不需要 base64 编码
+        wx.getFileSystemManager().writeFile({ filePath, data: fileBuf, success: resolve, fail: reject });
       });
       wx.hideLoading();
       wx.showToast({ title: `导出成功（${total}条）`, icon: 'success' });

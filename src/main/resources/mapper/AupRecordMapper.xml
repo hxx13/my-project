@@ -93,8 +93,11 @@
             <choose>
                 <when test="scopeRole == 'lab'">
                     <choose>
-                        <when test="scopeProjectGroup != null and scopeProjectGroup != ''">
-                            AND r.project_group_name = #{scopeProjectGroup}
+                        <when test="scopeProjectGroups != null and scopeProjectGroups.size() > 0">
+                            AND r.project_group_name IN
+                            <foreach collection="scopeProjectGroups" item="sg" open="(" separator="," close=")">
+                                #{sg}
+                            </foreach>
                         </when>
                         <otherwise>
                             AND r.created_by = #{scopeUserId}
@@ -146,8 +149,11 @@
             <if test="groupScopeOnly">
                 AND (
                 <choose>
-                    <when test="scopeProjectGroup != null and scopeProjectGroup != ''">
-                        r.project_group_name = #{scopeProjectGroup}
+                    <when test="scopeProjectGroups != null and scopeProjectGroups.size() > 0">
+                        r.project_group_name IN
+                        <foreach collection="scopeProjectGroups" item="sg" open="(" separator="," close=")">
+                            #{sg}
+                        </foreach>
                     </when>
                     <otherwise>
                         (r.created_by = #{scopeUserId} OR r.pi_user_id = #{scopeUserId})
@@ -294,8 +300,11 @@
                project_group_id AS projectGroupId
         FROM aup_record
         WHERE current_stage = 'approved'
-        <if test="projectGroupName != null and projectGroupName != ''">
-            AND project_group_name = #{projectGroupName}
+        <if test="projectGroupNames != null and projectGroupNames.size() > 0">
+            AND project_group_name IN
+            <foreach collection="projectGroupNames" item="g" open="(" separator="," close=")">
+                #{g}
+            </foreach>
         </if>
         ORDER BY id ASC
     </select>

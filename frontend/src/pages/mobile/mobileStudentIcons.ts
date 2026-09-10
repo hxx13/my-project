@@ -7,4 +7,5 @@ export const MOBILE_STUDENT_ICON = {
   notify: "/mobile-student-icons/icon-notify.png",
   group: "/mobile-student-icons/icon-group.png",
   violation: "/mobile-student-icons/icon-violation.png",
+  animalOrder: "/mobile-student-icons/icon-animal-order.png",
 } as const;

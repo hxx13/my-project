@@ -56,4 +56,17 @@ public class PersonScopeService {
             scopeMapper.insert(row);
         }
     }
+
+    /** 已分配过的人（带姓名与条目数），供分配页左栏列表。 */
+    public List<Map<String, Object>> listAssignees() {
+        return scopeMapper.listAssignees();
+    }
+
+    /** 撤销某人的全部分配（整条移除，回到「未分配」状态）。 */
+    @Transactional
+    public void clearByAccount(String accountId) {
+        String pid = identityService.resolveIdByAccount(accountId);
+        if (pid == null || pid.isBlank()) return;
+        scopeMapper.deleteByUser(pid);
+    }
 }

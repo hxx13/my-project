@@ -538,22 +538,8 @@ Page({
     this.setData({ exportBusy: true });
     wx.showLoading({ title: '导出中', mask: true });
     try {
-      const { base64 } = await fmApi.exportDailySheetExcel(String(s.id));
-      const fs = wx.getFileSystemManager();
-      const path = `${wx.env.USER_DATA_PATH}/daily-inspection-${this.data.sheetViewDate}.xlsx`;
-      fs.writeFile({
-        filePath: path,
-        data: base64,
-        encoding: 'base64',
-        success: () => {
-          wx.openDocument({
-            filePath: path,
-            showMenu: true,
-            fail: (e) => wx.showToast({ title: (e && e.errMsg) || '无法打开文件', icon: 'none' }),
-          });
-        },
-        fail: (e) => wx.showToast({ title: (e && e.errMsg) || '写入失败', icon: 'none' }),
-      });
+      const { data } = await fmApi.exportDailySheetExcel(String(s.id));
+      await springAuth.saveAndOpenDocument(data, `daily-inspection-${this.data.sheetViewDate}.xlsx`, 'xlsx');
     } catch (err) {
       wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
     } finally {

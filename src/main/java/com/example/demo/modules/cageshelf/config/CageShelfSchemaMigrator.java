@@ -256,6 +256,59 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                     """);
             log.info("[cage-shelf-schema] cage_claims 表已就绪");
 
+            // ── 笼位同步保护锁（同步时跳过被锁节点的写入，避免人工修正被覆盖）──
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS cage_sync_lock (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        scope_type VARCHAR(16) NOT NULL COMMENT 'FLOOR | ROOM | SHELF | CELL',
+                        scope_key VARCHAR(64) NOT NULL COMMENT 'floor_id / room_id / shelve_id / animal_cage_id 字符串化',
+                        locked TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=锁定跳过同步 0=显式解锁(白名单)',
+                        reason VARCHAR(255) NULL COMMENT '加锁原因',
+                        operator_id VARCHAR(64) NULL COMMENT '操作人 sys_user.id',
+                        operator_name VARCHAR(128) NULL COMMENT '操作人姓名快照',
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_cage_sync_lock (scope_type, scope_key),
+                        KEY idx_cage_sync_lock_scope (scope_type)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位同步保护锁（楼层/房间/笼架/笼位）'
+                    """);
+            log.info("[cage-shelf-schema] cage_sync_lock 表已就绪");
+
+            // ── 笼位划分（把 type2 笼位预分给本课题组某人，划分后仅被划分人可申请/使用）──
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS cage_division (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        animal_cage_id BIGINT NOT NULL COMMENT '笼位ID',
+                        assignee_id VARCHAR(64) NOT NULL COMMENT '被划分人（统一人员口径 accountId）',
+                        assignee_name VARCHAR(128) NULL COMMENT '被划分人姓名快照',
+                        group_name VARCHAR(128) NULL COMMENT '划分时课题组快照',
+                        created_by VARCHAR(64) NULL COMMENT '操作管家 accountId',
+                        created_by_name VARCHAR(128) NULL COMMENT '操作管家姓名快照',
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_cage_division (animal_cage_id, assignee_id),
+                        KEY idx_cage_division_cage (animal_cage_id),
+                        KEY idx_cage_division_assignee (assignee_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位划分（预分给本课题组某人）'
+                    """);
+            log.info("[cage-shelf-schema] cage_division 表已就绪");
+
+            // ── 所属人审核配置（到位确认/分笼审核/转移审核按所属人而非全局）──
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS cage_owner_approval_config (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        owner_account_id VARCHAR(64) NOT NULL COMMENT '所属人账号 id（canonical：STAFF_ 已展开成 ARO 编号）',
+                        confirm_required TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=审核通过后仍需到场扫码确认',
+                        divide_approval_required TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=分笼需审核',
+                        transfer_approval_required TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=转移笼位需审核',
+                        update_by VARCHAR(64) NULL COMMENT '最后修改人账号 id',
+                        update_time DATETIME NULL,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_cage_owner_approval (owner_account_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='所属人审核配置（到位确认/分笼审核/转移审核）'
+                    """);
+            log.info("[cage-shelf-schema] cage_owner_approval_config 表已就绪");
+
             // ── 笼位操作请求表（分笼 / 转移笼位的待审队列 + 留痕）──
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS cage_op_request (
@@ -300,6 +353,23 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审批记录'
                     """);
             log.info("[cage-shelf-schema] approval_records 表已就绪");
+
+            // ── 存量清洗：认领人 id 统一成 ARO 人员编号 ──
+            // 选人弹窗给的是 staffId（STAFF_ 前缀），学生自己登录用的是 ARO 编号，
+            // 于是同一个人被存成两种 claimant_id：学生之后在这条笼位上认不出自己是认领人，
+            // 分笼/转移入口不显示、「我的申请」也查不到。这里把历史的 STAFF_ 行折算过去。
+            // 幂等：折算完不再有带绑定的 STAFF_ 行，稳态 0 行。
+            try {
+                int fixed = jdbcTemplate.update(
+                        "UPDATE cage_claims c "
+                                + "  JOIN user_aro_binding b ON b.user_id = c.claimant_id "
+                                + "   SET c.claimant_id = b.aro_user_id "
+                                + " WHERE c.claimant_id LIKE 'STAFF_%' "
+                                + "   AND b.aro_user_id IS NOT NULL AND b.aro_user_id <> ''");
+                if (fixed > 0) log.info("[cage-shelf-schema] 认领人 id 折算为 ARO 编号 {} 行", fixed);
+            } catch (Exception e) {
+                log.warn("[cage-shelf-schema] 认领人 id 折算失败: {}", e.getMessage());
+            }
         } catch (Exception e) {
             log.error("[cage-shelf-schema] 表结构迁移失败: {}", e.getMessage(), e);
         }

@@ -20,6 +20,7 @@ import com.example.demo.modules.referencedata.registry.ReferenceFieldRegistry;
 import com.example.demo.modules.identity.service.PersonIdentityService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
 import com.example.demo.modules.notification.service.NotificationService;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -30,6 +31,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -273,6 +276,10 @@ public class ReferenceDataService {
         entity.setAupRecordId(req.getAupRecordId());
         entity.setSpecSelections(toJson(req.getSpecSelections()));
         entity.setQuantity(req.getQuantity() != null ? req.getQuantity() : 1);
+        entity.setPickupRoomId(trimToNull(req.getPickupRoomId()));
+        entity.setPickupRoomName(trimToNull(req.getPickupRoomName()));
+        entity.setCollectorId(trimToNull(req.getCollectorId()));
+        entity.setCollectorName(trimToNull(req.getCollectorName()));
         // 加购路径不再写入每规格备注
         entity.setRemark(null);
         entity.setPackageStatus("DRAFT");
@@ -294,6 +301,10 @@ public class ReferenceDataService {
         }
         if (req.getSpecSelections() != null) existing.setSpecSelections(toJson(req.getSpecSelections()));
         if (req.getQuantity() != null) existing.setQuantity(req.getQuantity());
+        if (trimToNull(req.getPickupRoomId()) != null) existing.setPickupRoomId(trimToNull(req.getPickupRoomId()));
+        if (trimToNull(req.getPickupRoomName()) != null) existing.setPickupRoomName(trimToNull(req.getPickupRoomName()));
+        if (trimToNull(req.getCollectorId()) != null) existing.setCollectorId(trimToNull(req.getCollectorId()));
+        if (trimToNull(req.getCollectorName()) != null) existing.setCollectorName(trimToNull(req.getCollectorName()));
         // READY 行实验员改数量时自动回退 DRAFT（需重新提交订单包）
         if (!pi && "READY".equalsIgnoreCase(existing.getPackageStatus()) && req.getQuantity() != null) {
             existing.setPackageStatus("DRAFT");
@@ -451,9 +462,23 @@ public class ReferenceDataService {
         order.setSubmitterName(StringUtils.hasText(resolvedSubmitterName)
                 ? resolvedSubmitterName
                 : (StringUtils.hasText(req.getSubmitterName()) ? req.getSubmitterName().trim() : userId));
-        order.setProjectGroupName(req.getProjectGroupName());
+        // 课题组以服务端解析为准，不信客户端传值：
+        // STAFF_ 账号的 sys_user.project_group_name 常为空，必须经
+        // user_aro_binding → aro_personnel 展开才能拿到（与购物车 groupId 同一口径）。
+        // 曾经直接落 req.getProjectGroupName()，导致教职工下单后「课题组」列全空。
+        // 指定了 AUP 时以 AUP 的课题组为准：多课题组账号可能拿第二个组的 AUP 下单，
+        // 若仍落主课题组名，这单在自己的订单列表（按本人课题组筛选）里就会消失。
+        String groupName = headerAup != null && StringUtils.hasText(headerAup.getProjectGroupName())
+                ? headerAup.getProjectGroupName().trim()
+                : resolveProjectGroupName(userId);
+        if (!StringUtils.hasText(groupName)) {
+            groupName = req.getProjectGroupName();
+        }
+        order.setProjectGroupName(trimToNull(groupName));
         if (headerAup != null) {
-            order.setProjectGroupId(headerAup.getProjectGroupId());
+            order.setProjectGroupId(headerAup.getProjectGroupId() != null
+                    ? headerAup.getProjectGroupId()
+                    : resolveProjectGroupIdByName(groupName));
             order.setAupRecordId(headerAup.getId());
             order.setRegisterNo(headerAup.getRegisterNo());
         } else {
@@ -467,6 +492,9 @@ public class ReferenceDataService {
                     }
                     break;
                 }
+            }
+            if (order.getProjectGroupId() == null) {
+                order.setProjectGroupId(resolveProjectGroupIdByName(groupName));
             }
         }
         order.setStatus("PENDING");
@@ -506,8 +534,15 @@ public class ReferenceDataService {
             line.setLineRemark(lineRemark);
             line.setAddedBy(item.getAddedBy());
             line.setAupRecordId(item.getAupRecordId());
-            orderLineMapper.insert(line);
+            // 领用方式/房间与领用人：从购物车行快照到订单行，后续购物车清空不影响历史单
+            line.setPickupRoomId(item.getPickupRoomId());
+            line.setPickupRoomName(item.getPickupRoomName());
+            line.setCollectorId(item.getCollectorId());
+            line.setCollectorName(item.getCollectorName());
             RefData refData = referenceDataMapper.findById(item.getRefDataId());
+            // 单价快照：下单这一刻的价格，物品后续改价不影响本单
+            line.setUnitPrice(resolveUnitPrice(parseFieldData(refData), extractSpecOption(item.getSpecSelections())));
+            orderLineMapper.insert(line);
             if (refData != null) {
                 itemNames.add(extractDisplayName(refData));
             }
@@ -537,18 +572,89 @@ public class ReferenceDataService {
         if (aup == null || !"approved".equals(aup.getCurrentStage())) {
             return null;
         }
-        String userGroup = resolveProjectGroupName(userId);
-        if (StringUtils.hasText(userGroup) && StringUtils.hasText(aup.getProjectGroupName())
-                && !userGroup.equals(aup.getProjectGroupName())) {
+        List<String> myGroups = resolveProjectGroupNames(userId);
+        if (!myGroups.isEmpty() && StringUtils.hasText(aup.getProjectGroupName())
+                && !matchesAnyOfMyGroups(myGroups, aup.getProjectGroupName())) {
             return null;
         }
         return aup;
     }
 
-    /** 登录用户的课题组名：优先 aro_personnel，回退 sys_user。与订购侧下拉同源，杜绝客户端指定课题组绕过。 */
-    private String resolveProjectGroupName(String userId) {
-        if (userId == null || userId.isBlank()) {
+    /**
+     * 当前登录人所在课题组的成员，供下单时选择领用人。
+     *
+     * <p>刻意**不接收课题组参数**：只能查本人课题组，从根上杜绝越权查他人课题组。
+     * 返回项已排除本人（下单弹窗默认就是「本人」，列表只列可代领的其他人）。
+     */
+    public Result<List<Map<String, Object>>> listMyGroupMembers(String userId) {
+        List<String> groups = resolveProjectGroupNames(userId);
+        if (groups.isEmpty()) {
+            return Result.success(List.of());
+        }
+        // 成员行自身的 project_group_name 也可能是多组拼接串，单值 IN 会漏掉这类人：
+        // 先用本人组名做一次宽松 LIKE 取候选，再用 sameGroup 逐组精确复核（LIKE 的子串误召回在这里被滤掉）。
+        String where = groups.stream()
+                .map(g -> "(project_group_name = ? OR project_group_name LIKE CONCAT('%', ?, '%'))")
+                .collect(Collectors.joining(" OR "));
+        List<Object> args = new ArrayList<>();
+        for (String g : groups) {
+            args.add(g);
+            args.add(g);
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT staff_id, aro_user_id, name, job_number, project_group_name "
+                        + "FROM personnel WHERE " + where + " ORDER BY name ASC", args.toArray());
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            if (!matchesAnyOfMyGroups(groups, asText(row.get("project_group_name")))) {
+                continue;
+            }
+            String accountId = firstNonBlank(asText(row.get("staff_id")), asText(row.get("aro_user_id")));
+            if (!StringUtils.hasText(accountId) || accountId.equals(userId) || !seen.add(accountId)) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("accountId", accountId);
+            m.put("name", firstNonBlank(asText(row.get("name")), accountId));
+            m.put("jobNumber", asText(row.get("job_number")));
+            out.add(m);
+        }
+        return Result.success(out);
+    }
+
+    private static String asText(Object v) {
+        return v == null ? "" : String.valueOf(v).trim();
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        return StringUtils.hasText(a) ? a : (b == null ? "" : b);
+    }
+
+    /** 课题组名 → project_group.id；查不到返回 null（不阻断下单）。 */
+    private Long resolveProjectGroupIdByName(String projectGroupName) {
+        if (!StringUtils.hasText(projectGroupName)) {
             return null;
+        }
+        try {
+            List<Long> ids = jdbcTemplate.queryForList(
+                    "SELECT id FROM project_group WHERE name = ? LIMIT 1", Long.class, projectGroupName.trim());
+            return ids.isEmpty() ? null : ids.get(0);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 登录用户的课题组名列表：优先 aro_personnel，回退 sys_user。与订购侧下拉同源，杜绝客户端指定课题组绕过。
+     *
+     * <p>aro_personnel.project_group_name 是多课题组时逗号/顿号拼接的字段，必须拆开用；
+     * 整串去比对 aup_record/ref_order 的单值课题组列永远不命中。
+     */
+    private List<String> resolveProjectGroupNames(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return List.of();
         }
         try {
             // STAFF_* 账号需经 user_aro_binding 展开成 aro_user_id，再索引 aro_personnel
@@ -560,21 +666,30 @@ public class ReferenceDataService {
                 }
             }
             AroPersonnel p = aroPersonnelMapper.findByUserId(aroUserId);
-            if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
-                return p.getProjectGroupName();
+            if (p == null && !aroUserId.equals(userId)) {
+                p = aroPersonnelMapper.findByUserId(userId);
             }
-            if (!aroUserId.equals(userId)) {
-                AroPersonnel p2 = aroPersonnelMapper.findByUserId(userId);
-                if (p2 != null && StringUtils.hasText(p2.getProjectGroupName())) {
-                    return p2.getProjectGroupName();
-                }
+            if (p != null && StringUtils.hasText(p.getProjectGroupName())) {
+                return PersonnelProjectGroupUtil.splitGroups(p.getProjectGroupName());
             }
             List<String> rows = jdbcTemplate.queryForList(
                     "SELECT project_group_name FROM sys_user WHERE id = ?", String.class, userId);
-            return rows.isEmpty() ? null : rows.get(0);
+            return rows.isEmpty() ? List.of() : PersonnelProjectGroupUtil.splitGroups(rows.get(0));
         } catch (Exception e) {
-            return null;
+            return List.of();
         }
+    }
+
+    /** 主课题组名（多课题组账号取第一个）：写入只存单值的课题组列、以及单值筛选口径用。 */
+    private String resolveProjectGroupName(String userId) {
+        List<String> groups = resolveProjectGroupNames(userId);
+        return groups.isEmpty() ? null : groups.get(0);
+    }
+
+    /** 某课题组名是否命中本人课题组（多课题组账号命中任一即算，逐组精确比对不做模糊）。 */
+    private static boolean matchesAnyOfMyGroups(List<String> myGroups, String groupName) {
+        return StringUtils.hasText(groupName)
+                && myGroups.stream().anyMatch(g -> PersonnelProjectGroupUtil.sameGroup(g, groupName));
     }
 
     /** 按行用各自 aup_record_id 校验白名单。 */
@@ -718,26 +833,229 @@ public class ReferenceDataService {
         return orderMapper.listByGroupId(groupId).stream().map(this::toOrderView).toList();
     }
 
-    /** 全部订单（后台审核页：按校区过滤，状态 tab 前端过滤） */
-    public Map<String, Object> listAllOrders(int page, int pageSize, String campus, String from, String to) {
+    /** 全部订单（后台审核页：全字段筛选 + 分页） */
+    public Map<String, Object> listAllOrders(int page, int pageSize, RefOrderQuery query) {
+        RefOrderQuery q = normalizeQuery(query);
         int offset = (page - 1) * pageSize;
-        String campusFilter = StringUtils.hasText(campus) ? AnimalOrderCampus.normalize(campus) : null;
-        String fromFilter = StringUtils.hasText(from) ? from.trim() : null;
-        String toFilter = StringUtils.hasText(to) ? to.trim() : null;
-        List<RefOrderView> list = orderMapper.listAll(campusFilter, fromFilter, toFilter, pageSize, offset)
+        List<RefOrderView> list = orderMapper.listAll(q, pageSize, offset)
                 .stream().map(this::toOrderView).toList();
-        return Map.of("list", list,
-                "total", orderMapper.countAll(campusFilter, fromFilter, toFilter),
-                "page", page, "pageSize", pageSize);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("list", list);
+        out.put("total", orderMapper.countAll(q));
+        out.put("page", page);
+        out.put("pageSize", pageSize);
+        return out;
     }
 
-    /** 导出用：区间内全部订单（不分页）。 */
-    public List<RefOrderView> listOrdersForExport(String campus, String from, String to) {
-        String campusFilter = StringUtils.hasText(campus) ? AnimalOrderCampus.normalize(campus) : null;
-        String fromFilter = StringUtils.hasText(from) ? from.trim() : null;
-        String toFilter = StringUtils.hasText(to) ? to.trim() : null;
-        return orderMapper.listAll(campusFilter, fromFilter, toFilter, EXPORT_MAX_ROWS, 0)
+    // ── 待处理订单编辑（回填购物车 → 改 → 保存回原单）──
+    // 关键约束：编辑期间**原单完全不动**，只有 applyOrderEdit 才写回；
+    // 回填行带 editing_order_id 标记，放弃/重入/保存都按标记精确定位，
+    // 既不会误删用户其它购物车内容，也不会因中途退出留下半成品订单。
+
+    /** 校验可编辑：存在 + 待处理 + 有权限（本课题组；allowAnyGroup=管理员放行）。 */
+    private RefOrder requireEditableOrder(Long orderId, String userId, boolean allowAnyGroup) {
+        RefOrder o = orderMapper.findById(orderId);
+        if (o == null || !"PENDING".equalsIgnoreCase(o.getStatus())) {
+            return null;
+        }
+        if (allowAnyGroup) {
+            return o;
+        }
+        if (!matchesAnyOfMyGroups(resolveProjectGroupNames(userId), o.getProjectGroupName())) {
+            return null;
+        }
+        return o;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Result<List<RefCartView>> loadOrderToCart(Long orderId, String userId, boolean allowAnyGroup) {
+        RefOrder o = requireEditableOrder(orderId, userId, allowAnyGroup);
+        if (o == null) {
+            return Result.error("订单不存在、不是待处理状态，或无权编辑");
+        }
+        // 重入编辑：先清旧的回填行，保证幂等
+        cartMapper.deleteByEditingOrderId(orderId);
+
+        for (RefOrderLine l : orderLineMapper.listByOrderId(orderId)) {
+            RefCart c = new RefCart();
+            c.setGroupId(o.getGroupId());
+            c.setRefDataId(l.getRefDataId());
+            c.setAupRecordId(l.getAupRecordId());
+            c.setSpecSelections(l.getSpecSelections());
+            c.setQuantity(l.getQuantity());
+            c.setPickupRoomId(l.getPickupRoomId());
+            c.setPickupRoomName(l.getPickupRoomName());
+            c.setCollectorId(l.getCollectorId());
+            c.setCollectorName(l.getCollectorName());
+            c.setEditingOrderId(orderId);
+            c.setRemark(null);
+            c.setPackageStatus("DRAFT");
+            c.setPackageRemark(null);
+            c.setAddedBy(userId);
+            cartMapper.insert(c);
+        }
+        return Result.success(toCartViews(cartMapper.listByEditingOrderId(orderId)));
+    }
+
+    /** 放弃编辑：只清回填行，原单不受影响。 */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Void> discardOrderEdit(Long orderId, String userId, boolean allowAnyGroup) {
+        RefOrder o = requireEditableOrder(orderId, userId, allowAnyGroup);
+        if (o == null) {
+            return Result.error("订单不存在、不是待处理状态，或无权编辑");
+        }
+        cartMapper.deleteByEditingOrderId(orderId);
+        return Result.success(null);
+    }
+
+    /** 保存编辑：用回填行整体替换原单明细，单号与状态都不变（链条不断）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<RefOrderView> applyOrderEdit(Long orderId, String userId, boolean allowAnyGroup) {
+        RefOrder o = requireEditableOrder(orderId, userId, allowAnyGroup);
+        if (o == null) {
+            return Result.error("订单不存在、不是待处理状态，或无权编辑");
+        }
+        List<RefCart> rows = cartMapper.listByEditingOrderId(orderId);
+        if (rows.isEmpty()) {
+            return Result.error("没有待保存的编辑内容");
+        }
+
+        orderLineMapper.deleteByOrderId(orderId);
+        List<String> itemNames = new ArrayList<>();
+        for (RefCart c : rows) {
+            RefOrderLine l = new RefOrderLine();
+            l.setOrderId(orderId);
+            l.setRefDataId(c.getRefDataId());
+            l.setSpecSelections(c.getSpecSelections());
+            l.setHierarchyChain(resolveHierarchyChain(c.getRefDataId()));
+            l.setQuantity(c.getQuantity());
+            l.setLineRemark(StringUtils.hasText(c.getPackageRemark()) ? c.getPackageRemark() : c.getRemark());
+            l.setAddedBy(StringUtils.hasText(c.getAddedBy()) ? c.getAddedBy() : userId);
+            l.setAupRecordId(c.getAupRecordId());
+            l.setPickupRoomId(c.getPickupRoomId());
+            l.setPickupRoomName(c.getPickupRoomName());
+            l.setCollectorId(c.getCollectorId());
+            l.setCollectorName(c.getCollectorName());
+            RefData refData = referenceDataMapper.findById(c.getRefDataId());
+            l.setUnitPrice(resolveUnitPrice(parseFieldData(refData), extractSpecOption(c.getSpecSelections())));
+            orderLineMapper.insert(l);
+            if (refData != null) {
+                itemNames.add(extractDisplayName(refData));
+            }
+        }
+        cartMapper.deleteByEditingOrderId(orderId);
+        logOrderAction(orderId, "EDITED", userId, "编辑订单明细，共 " + rows.size() + " 项");
+        return Result.success(toOrderView(orderMapper.findById(orderId)));
+    }
+
+    /**
+     * 学生端：本人所在课题组的订单（同组成员互见）。
+     *
+     * <p>课题组由服务端解析并**强制**写进过滤条件——客户端传的课题组一律被覆盖，
+     * 避免越权看别组；解析不到课题组时返回空，而不是退化成「查全部」。
+     */
+    public Map<String, Object> listMyGroupOrders(String userId, int page, int pageSize, RefOrderQuery query) {
+        RefOrderQuery q = scopeToMyGroup(userId, query);
+        if (q == null) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("list", List.of());
+            empty.put("total", 0);
+            empty.put("page", page);
+            empty.put("pageSize", pageSize);
+            return empty;
+        }
+        int offset = (page - 1) * pageSize;
+        List<RefOrderView> list = orderMapper.listAll(q, pageSize, offset)
                 .stream().map(this::toOrderView).toList();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("list", list);
+        out.put("total", orderMapper.countAll(q));
+        out.put("page", page);
+        out.put("pageSize", pageSize);
+        return out;
+    }
+
+    /** 学生端导出：同样只导出本人课题组。 */
+    public List<RefOrderView> listMyGroupOrdersForExport(String userId, RefOrderQuery query) {
+        RefOrderQuery q = scopeToMyGroup(userId, query);
+        if (q == null) {
+            return List.of();
+        }
+        return orderMapper.listAll(q, EXPORT_MAX_ROWS, 0).stream().map(this::toOrderView).toList();
+    }
+
+    /** 归一筛选条件并把课题组钉死为调用者本人课题组；解析不到课题组返回 null。 */
+    private RefOrderQuery scopeToMyGroup(String userId, RefOrderQuery query) {
+        List<String> groups = resolveProjectGroupNames(userId);
+        if (groups.isEmpty()) {
+            return null;
+        }
+        RefOrderQuery q = normalizeQuery(query);
+        // 客户端传的模糊课题组一律丢弃，改用具名精确匹配
+        q.setProjectGroup(null);
+        q.setGroupIn(groups);
+        return q;
+    }
+
+    /** 导出用：区间内全部订单（不分页，同样走全字段筛选）。 */
+    public List<RefOrderView> listOrdersForExport(RefOrderQuery query) {
+        return orderMapper.listAll(normalizeQuery(query), EXPORT_MAX_ROWS, 0)
+                .stream().map(this::toOrderView).toList();
+    }
+
+    /** 筛选条件归一：空串统一成 null，校区走枚举归一，避免把 "" 当条件传下去。 */
+    private RefOrderQuery normalizeQuery(RefOrderQuery query) {
+        RefOrderQuery q = query != null ? query : new RefOrderQuery();
+        q.setCampus(StringUtils.hasText(q.getCampus()) ? AnimalOrderCampus.normalize(q.getCampus()) : null);
+        q.setFrom(StringUtils.hasText(q.getFrom()) ? q.getFrom().trim() : null);
+        q.setTo(StringUtils.hasText(q.getTo()) ? q.getTo().trim() : null);
+        q.setStatus(trimToNull(q.getStatus()));
+        q.setStatusNot(trimToNull(q.getStatusNot()));
+        q.setSource(trimToNull(q.getSource()));
+        q.setSn(trimToNull(q.getSn()));
+        q.setAup(trimToNull(q.getAup()));
+        q.setProjectGroup(trimToNull(q.getProjectGroup()));
+        q.setSupplier(trimToNull(q.getSupplier()));
+        q.setStrain(trimToNull(q.getStrain()));
+        q.setCollector(trimToNull(q.getCollector()));
+        q.setRoom(trimToNull(q.getRoom()));
+        q.setRemark(trimToNull(q.getRemark()));
+        return q;
+    }
+
+    /** 下拉候选白名单：列名进 ${} 拼接，必须由服务端校验后再用；值 = 该列所在表。 */
+    private static final Map<String, Boolean> FILTER_COLUMNS_ON_LINE = Map.of(
+            "supplier_name", true,
+            "strain_name", true,
+            "collector_name", true,
+            "pickup_room_name", true,
+            "project_group_name", false,
+            "register_no", false
+    );
+
+    /** 学生端筛选候选：范围限定本人课题组，避免借候选枚举全库。 */
+    public Result<List<String>> distinctMyGroupFilterValues(String userId, String column) {
+        Boolean onLine = FILTER_COLUMNS_ON_LINE.get(column);
+        if (onLine == null) {
+            return Result.error("不支持的筛选列");
+        }
+        List<String> groups = resolveProjectGroupNames(userId);
+        if (groups.isEmpty()) {
+            return Result.success(List.of());
+        }
+        return Result.success(onLine
+                ? orderMapper.distinctLineValuesInGroup(column, groups)
+                : orderMapper.distinctOrderValuesInGroup(column, groups));
+    }
+
+    public Result<List<String>> distinctFilterValues(String column) {
+        Boolean onLine = FILTER_COLUMNS_ON_LINE.get(column);
+        if (onLine == null) {
+            return Result.error("不支持的筛选列");
+        }
+        return Result.success(onLine
+                ? orderMapper.distinctLineValues(column)
+                : orderMapper.distinctOrderValues(column));
     }
 
     private static final int EXPORT_MAX_ROWS = 20000;
@@ -782,6 +1100,13 @@ public class ReferenceDataService {
             log.warn("JSON序列化失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    /** 去空白后为空则归一为 null，避免把 "" 写进可空列。 */
+    private static String trimToNull(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 
     private RefDataView toView(RefData row) {
@@ -832,17 +1157,25 @@ public class ReferenceDataService {
                 .filter(Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Map<Long, String> labelMap = new HashMap<>();
+        Map<Long, RefData> refDataMap = new HashMap<>();
         for (Long refId : refIds) {
-            labelMap.put(refId, extractDisplayName(referenceDataMapper.findById(refId)));
+            RefData refData = referenceDataMapper.findById(refId);
+            refDataMap.put(refId, refData);
+            labelMap.put(refId, extractDisplayName(refData));
         }
-        return rows.stream().map(row -> toCartView(row, nameMap, labelMap)).toList();
+        return rows.stream().map(row -> toCartView(row, nameMap, labelMap, refDataMap)).toList();
     }
 
     private RefCartView toCartView(RefCart row) {
-        return toCartView(row, null, null);
+        return toCartView(row, null, null, null);
     }
 
     private RefCartView toCartView(RefCart row, Map<String, String> nameMap, Map<Long, String> labelMap) {
+        return toCartView(row, nameMap, labelMap, null);
+    }
+
+    private RefCartView toCartView(RefCart row, Map<String, String> nameMap,
+                                   Map<Long, String> labelMap, Map<Long, RefData> refDataMap) {
         if (row == null) return null;
         RefCartView v = new RefCartView();
         v.setId(row.getId());
@@ -860,6 +1193,10 @@ public class ReferenceDataService {
             v.setSpecSelections(row.getSpecSelections());
         }
         v.setQuantity(row.getQuantity());
+        v.setPickupRoomId(row.getPickupRoomId());
+        v.setPickupRoomName(row.getPickupRoomName());
+        v.setCollectorId(row.getCollectorId());
+        v.setCollectorName(row.getCollectorName());
         v.setRemark(row.getRemark());
         v.setPackageStatus(row.getPackageStatus() != null ? row.getPackageStatus() : "DRAFT");
         v.setPackageRemark(row.getPackageRemark());
@@ -874,10 +1211,20 @@ public class ReferenceDataService {
         }
         if (row.getRefDataId() != null) {
             String label = labelMap != null ? labelMap.get(row.getRefDataId()) : null;
+            RefData refData = refDataMap != null ? refDataMap.get(row.getRefDataId()) : null;
+            if (refData == null) {
+                refData = referenceDataMapper.findById(row.getRefDataId());
+            }
             if (!StringUtils.hasText(label)) {
-                label = extractDisplayName(referenceDataMapper.findById(row.getRefDataId()));
+                label = extractDisplayName(refData);
             }
             v.setRefDataLabel(label);
+
+            Map<String, Object> fd = parseFieldData(refData);
+            v.setPriceEnabled(Boolean.TRUE.equals(fd.get("priceEnabled")));
+            BigDecimal unit = resolveUnitPrice(fd, extractSpecOption(row.getSpecSelections()));
+            v.setUnitPrice(unit);
+            v.setLineAmount(lineAmount(unit, row.getQuantity()));
         }
         v.setAddedAt(row.getAddedAt());
         return v;
@@ -887,6 +1234,8 @@ public class ReferenceDataService {
         if (row == null) return null;
         RefOrderView v = new RefOrderView();
         v.setId(row.getId());
+        v.setSn(row.getSn());
+        v.setSource(StringUtils.hasText(row.getSource()) ? row.getSource() : "LOCAL");
         v.setGroupId(row.getGroupId());
         v.setSubmitterId(row.getSubmitterId());
         v.setProjectGroupName(row.getProjectGroupName());
@@ -894,6 +1243,7 @@ public class ReferenceDataService {
         v.setAupRecordId(row.getAupRecordId());
         v.setRegisterNo(row.getRegisterNo());
         v.setCampus(row.getCampus());
+        v.setAroAreaName(row.getAroAreaName());
         v.setStatus(row.getStatus());
         v.setSubmitRemark(row.getSubmitRemark());
         v.setSubmittedAt(row.getSubmittedAt());
@@ -915,11 +1265,15 @@ public class ReferenceDataService {
         Map<String, String> nameMap = userDisplayNameService.resolveDisplayNames(nameIds);
 
         String submitterResolved = null;
-        if (StringUtils.hasText(row.getSubmitterId())) {
-            submitterResolved = nameMap.get(row.getSubmitterId().trim());
-        }
-        if (!StringUtils.hasText(submitterResolved) && StringUtils.hasText(row.getSubmitterId())) {
-            submitterResolved = userDisplayNameService.resolveDisplayName(row.getSubmitterId());
+        // ARO 导入单的 submitterId 是合成键（ARO:xxx），拿它反查展示名只会返回它本身，
+        // 反而把快照里的真实姓名盖掉，所以这类单直接用 submitter_name。
+        if (!"ARO".equalsIgnoreCase(row.getSource())) {
+            if (StringUtils.hasText(row.getSubmitterId())) {
+                submitterResolved = nameMap.get(row.getSubmitterId().trim());
+            }
+            if (!StringUtils.hasText(submitterResolved) && StringUtils.hasText(row.getSubmitterId())) {
+                submitterResolved = userDisplayNameService.resolveDisplayName(row.getSubmitterId());
+            }
         }
         if (!StringUtils.hasText(submitterResolved)) {
             submitterResolved = row.getSubmitterName();
@@ -927,9 +1281,20 @@ public class ReferenceDataService {
         v.setSubmitterName(submitterResolved);
 
         Map<Long, String> aupRegisterNoCache = new HashMap<>();
-        v.setLines(lines == null ? List.of() : lines.stream()
+        List<RefOrderLineView> lineViews = lines == null ? List.of() : lines.stream()
                 .map(line -> toOrderLineView(line, aupRegisterNoCache, nameMap))
-                .toList());
+                .toList();
+        v.setLines(lineViews);
+
+        // 总金额只累加有定价的行；整单无定价时 totalAmount 保持 null（前端显示「—」而非 0）
+        BigDecimal total = null;
+        for (RefOrderLineView lv : lineViews) {
+            if (lv != null && lv.getUnitPrice() != null && lv.getLineAmount() != null) {
+                total = (total == null ? BigDecimal.ZERO : total).add(lv.getLineAmount());
+            }
+        }
+        v.setPriceEnabled(total != null);
+        v.setTotalAmount(total);
         return v;
     }
 
@@ -941,6 +1306,9 @@ public class ReferenceDataService {
         v.setId(row.getId());
         v.setOrderId(row.getOrderId());
         v.setRefDataId(row.getRefDataId());
+        v.setSupplierName(row.getSupplierName());
+        v.setStrainName(row.getStrainName());
+        v.setSpecName(row.getSpecName());
         v.setSpecSelections(row.getSpecSelections());
         if (row.getHierarchyChain() != null) {
             try {
@@ -950,6 +1318,14 @@ public class ReferenceDataService {
             }
         }
         v.setQuantity(row.getQuantity());
+        // 价格取快照列，不重新解析 fieldData：物品后续改价不影响历史订单
+        v.setUnitPrice(row.getUnitPrice());
+        v.setLineAmount(lineAmount(row.getUnitPrice(), row.getQuantity()));
+        v.setArrivalDate(row.getArrivalDate());
+        v.setPickupRoomId(row.getPickupRoomId());
+        v.setPickupRoomName(row.getPickupRoomName());
+        v.setCollectorId(row.getCollectorId());
+        v.setCollectorName(row.getCollectorName());
         v.setLineRemark(row.getLineRemark());
         v.setAddedBy(row.getAddedBy());
         if (StringUtils.hasText(row.getAddedBy())) {
@@ -1041,6 +1417,10 @@ public class ReferenceDataService {
             item.setAupRecordId(line.getAupRecordId());
             item.setSpecSelections(toJson(line.getSpecSelections()));
             item.setQuantity(line.getQuantity() != null ? line.getQuantity() : 1);
+            item.setPickupRoomId(trimToNull(line.getPickupRoomId()));
+            item.setPickupRoomName(trimToNull(line.getPickupRoomName()));
+            item.setCollectorId(trimToNull(line.getCollectorId()));
+            item.setCollectorName(trimToNull(line.getCollectorName()));
             item.setRemark(line.getRemark());
             item.setPackageRemark(line.getPackageRemark() != null ? line.getPackageRemark() : line.getLineRemark());
             item.setPackageStatus(line.getPackageStatus());
@@ -1073,8 +1453,90 @@ public class ReferenceDataService {
         return "ID:" + refData.getId();
     }
 
-    private boolean isValidStatusTransition(String current, String next) {
-        if (current == null || next == null) return false;
+    // ── 价格 ──
+    // 价格配置存在 ref_data.field_data：
+    //   priceEnabled 该物品是否开启价格（每个物品单独开关）
+    //   price        无规格物品的单价
+    //   specPrices   有规格物品按规格选项定价 {"性别: 雌性": 80}，key 与 spec_selections.option 同串
+    // 单价恒由服务端解析，前端只做展示，避免客户端伪造价格。
+
+    private Map<String, Object> parseFieldData(RefData refData) {
+        if (refData == null || !StringUtils.hasText(refData.getFieldData())) {
+            return Map.of();
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> fd = objectMapper.readValue(refData.getFieldData(), Map.class);
+            return fd == null ? Map.of() : fd;
+        } catch (JsonProcessingException e) {
+            return Map.of();
+        }
+    }
+
+    /** 从 spec_selections JSON 取 option 值（加购时写入的「模板名: 选项」串）。 */
+    private String extractSpecOption(String specSelectionsJson) {
+        if (!StringUtils.hasText(specSelectionsJson)) {
+            return null;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> sel = objectMapper.readValue(specSelectionsJson, Map.class);
+            Object option = sel == null ? null : sel.get("option");
+            return option == null ? null : option.toString().trim();
+        } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 解析单价（元）。未开启价格返回 null；有规格价按选项命中，未定价返回 null。
+     * 纯函数，便于单测。
+     */
+    static BigDecimal resolveUnitPrice(Map<String, Object> fieldData, String specOption) {
+        if (fieldData == null || !Boolean.TRUE.equals(fieldData.get("priceEnabled"))) {
+            return null;
+        }
+        Object specPrices = fieldData.get("specPrices");
+        if (specPrices instanceof Map<?, ?> map && !map.isEmpty()) {
+            if (!StringUtils.hasText(specOption)) {
+                return null;
+            }
+            return toMoney(map.get(specOption));
+        }
+        return toMoney(fieldData.get("price"));
+    }
+
+    /** 小计 = 单价 × 数量；单价缺失时返回 null（前端显示「待定」而不是 0）。 */
+    static BigDecimal lineAmount(BigDecimal unitPrice, Integer quantity) {
+        if (unitPrice == null) {
+            return null;
+        }
+        int qty = quantity == null ? 0 : quantity;
+        return unitPrice.multiply(BigDecimal.valueOf(qty)).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal toMoney(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof BigDecimal bd) {
+            return bd.setScale(2, RoundingMode.HALF_UP);
+        }
+        if (raw instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+        }
+        String s = raw.toString().trim();
+        if (s.isEmpty()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(s).setScale(2, RoundingMode.HALF_UP);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean isValidStatusTransition(String current, String next) {        if (current == null || next == null) return false;
         String cur = current.toUpperCase();
         String nxt = next.toUpperCase();
         return switch (cur) {

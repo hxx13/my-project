@@ -435,20 +435,8 @@ Page({
     this.setData({ exportClaimBusy: true });
     wx.showLoading({ title: '导出中…', mask: true });
     try {
-      const { base64 } = await suppliesExportApi.exportPersonalClaimExcel(claim.id);
-      const fs = wx.getFileSystemManager();
-      const path = `${wx.env.USER_DATA_PATH}/supply-claim-${claim.id.replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx`;
-      fs.writeFile({
-        filePath: path,
-        data: base64,
-        encoding: 'base64',
-        success: () => {
-          wx.openDocument({ filePath: path, fileType: 'xlsx', showMenu: true });
-        },
-        fail: (err) => {
-          wx.showToast({ title: (err && err.errMsg) || '写入失败', icon: 'none' });
-        },
-      });
+      const { data } = await suppliesExportApi.exportPersonalClaimExcel(claim.id);
+      await springAuth.saveAndOpenDocument(data, `supply-claim-${claim.id.replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx`, 'xlsx');
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '导出失败', icon: 'none' });
     } finally {

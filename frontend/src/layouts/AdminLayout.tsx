@@ -33,10 +33,10 @@ import {
   type PublicPagePermissionNode,
 } from "@/api/domains/pagePermission.api";
 import { fetchPendingBadges, type PendingBadges } from "@/api/domains/me.api";
-import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
+import { fetchPendingMaterialRequests, fetchAllMaterialDemands } from "@/api/domains/material.api";
 import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
 import { fetchPendingEnrollments } from "@/api/domains/training.api";
-import { fetchPendingClaims } from "@/api/domains/cageShelf.api";
+import { fetchPendingClaims, fetchCageOpPending } from "@/api/domains/cageShelf.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
 import { refreshAuthSession, sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
@@ -390,9 +390,11 @@ export default function AdminLayout() {
     enabled: studentReviewBadgeQueriesEnabled,
     ...studentReviewPendingQueryOptions,
   });
+  // 与 material/review 页共用同一批 query key/参数 —— 侧栏「学生审核」角标 = 页面各 tab 角标之和，
+  // 一条请求两边用，不会出现「点进去数目才对」或两边对不上
   const { data: liveCageClaimsPending } = useQuery({
-    queryKey: ["cage-claims", "pending", "count"],
-    queryFn: () => fetchPendingClaims(undefined, undefined, 1, 1),
+    queryKey: ["cage-claims", "pending"],
+    queryFn: () => fetchPendingClaims(undefined, undefined, 1, 50),
     enabled: studentReviewBadgeQueriesEnabled,
     ...studentReviewPendingQueryOptions,
   });
@@ -401,9 +403,26 @@ export default function AdminLayout() {
     [liveTrainingPending],
   );
   const liveCageClaimPendingCount = liveCageClaimsPending?.total ?? 0;
+  /** 待审分笼/转移（与页面「分笼审核 / 转移审核」同源，计入学生审核角标） */
+  const { data: liveCageOpsPending = [] } = useQuery({
+    queryKey: ["cage-op", "pending", "all"],
+    queryFn: () => fetchCageOpPending(),
+    enabled: studentReviewBadgeQueriesEnabled,
+    ...studentReviewPendingQueryOptions,
+  });
+  /** 未处理的需求建议：也是本页一个 tab，一起计入总和 */
+  const { data: liveDemandData } = useQuery({
+    queryKey: ["material", "demands", "all"],
+    queryFn: () => fetchAllMaterialDemands({ page: 1, size: 200 }),
+    enabled: studentReviewBadgeQueriesEnabled,
+    ...studentReviewPendingQueryOptions,
+  });
+  const liveOpenDemandCount = (liveDemandData?.data ?? []).filter((d) => d.status === 0).length;
+  /** 除物资/免冻结外，其余 tab（培训 + 笼位申请 + 分笼 + 转移 + 需求建议）的待办合计 */
+  const liveOtherTabsPendingCount = liveTrainingPendingCount + liveCageClaimPendingCount + liveCageOpsPending.length + liveOpenDemandCount;
   const liveStudentReviewBadgeText = useMemo(
-    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount, liveCageClaimPendingCount),
-    [liveMaterialPending.length, liveScanDelayPending.length, liveTrainingPendingCount, liveCageClaimPendingCount],
+    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length, liveOtherTabsPendingCount),
+    [liveMaterialPending.length, liveScanDelayPending.length, liveOtherTabsPendingCount],
   );
 
   /** 全后台常驻一条通知 SSE：新消息/站内通知到达即刷新角标；此前仅子页订阅时，不点进通知页侧栏不会更新 */

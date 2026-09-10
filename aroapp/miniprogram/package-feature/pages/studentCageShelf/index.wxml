@@ -163,7 +163,7 @@
       <!-- 模式切换（横向滚动，8 项手机宽度放不下） -->
       <scroll-view class="gt-mode-scroll" scroll-x enhanced show-scrollbar="{{ false }}">
         <view class="gt-mode-seg">
-          <view wx:for="{{ modeOptions }}" wx:key="key" class="gt-mode-btn {{ pageMode === item.key ? 'gt-mode-btn--on' : '' }}" data-mode="{{ item.key }}" bindtap="onSwitchMode">{{ item.label }}</view>
+          <view wx:for="{{ modeOptions }}" wx:key="key" class="gt-mode-btn {{ pageMode === item.key ? 'gt-mode-btn--on' : '' }}" style="{{ pageMode === item.key && modeColor ? 'background:' + modeColor : '' }}" data-mode="{{ item.key }}" bindtap="onSwitchMode">{{ item.label }}</view>
         </view>
       </scroll-view>
     </view>
@@ -302,7 +302,7 @@
   </view>
 
   <!-- 模式操作条：各模式选中数 + 业务按钮 -->
-  <view wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' }}" class="mode-actions-strip">
+  <view wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' || pageMode === 'division' }}" class="mode-actions-strip">
     <!-- 分配按批次类型二选一：待分配→下发 AUP；已预约空笼盒→撤回 AUP 退回待分配 -->
     <block wx:if="{{ pageMode === 'allocate' }}">
       <view class="ma-count">{{ allocBatchKind === 'cancel' ? '撤回 AUP' : '待分配' }} · 已选 {{ selectedCount }}</view>
@@ -319,6 +319,11 @@
       <view class="ma-count">已选 {{ selectedCount }}</view>
       <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="handleStudentClaim">提交申请</view>
       <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
+    </block>
+    <block wx:if="{{ pageMode === 'division' }}">
+      <view class="ma-count">已选 {{ selectedCount }}</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="openDivisionPerson">提交划分</view>
+      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除选择</view>
     </block>
     <block wx:if="{{ pageMode === 'edit' }}">
       <view wx:if="{{ scanTotalActions > 0 }}" class="ma-btn ma-btn--primary" bindtap="onSubmitScanActions">提交 ({{ scanTotalActions }})</view>
@@ -401,12 +406,12 @@
       </view>
     </view>
 
-    <view class="grid-wrapper">
+    <view class="grid-wrapper {{ modeColor ? 'grid-wrapper--glow' : '' }}" style="{{ modeColor ? '--mode-color:' + modeColor : '' }}">
       <view class="grid-container">
         <view
           wx:for="{{ grid }}"
           wx:key="position"
-          class="grid-cell {{ item.empty ? 'gcell-empty' : (item.visible === false ? 'gcell-hidden' : 'gcell-filled') }} {{ item._cachedLast ? 'gcell-hit' : '' }} {{ item._cached && !item._cachedLast ? 'gcell-hit gcell-hit--cached' : '' }} {{ item._cachedBg ? 'gcell-cached' : '' }} {{ lastScannedKey && item.x === scannedCellX && item.y === scannedCellY ? '' : (lastScannedKey && (item.x === scannedCellX || item.y === scannedCellY) ? 'gcell-cross' : '') }} {{ item._selected ? 'gcell-selected' : '' }} {{ item._inPool ? 'gcell-inpool' : '' }} {{ item._myClaim ? 'gcell-myclaim' : '' }}"
+          class="grid-cell {{ item.empty ? 'gcell-empty' : (item.visible === false ? 'gcell-hidden' : 'gcell-filled') }} {{ item._cachedLast ? 'gcell-hit' : '' }} {{ item._cached && !item._cachedLast ? 'gcell-hit gcell-hit--cached' : '' }} {{ item._cachedBg ? 'gcell-cached' : '' }} {{ lastScannedKey && item.x === scannedCellX && item.y === scannedCellY ? '' : (lastScannedKey && (item.x === scannedCellX || item.y === scannedCellY) ? 'gcell-cross' : '') }} {{ item._selected ? 'gcell-selected' : '' }} {{ item._inPool ? 'gcell-inpool' : '' }} {{ item._myClaim ? 'gcell-myclaim' : '' }} {{ item._divisionNames ? 'gcell-division' : '' }} {{ item._divisionMine ? 'gcell-division--mine' : '' }}"
           style="{{ item._cellStyle }}"
           data-x="{{ item.x }}"
           data-y="{{ item.y }}"
@@ -414,6 +419,9 @@
         >
           <text class="gcell-pos">{{ item._displayPosition || item.position }}</text>
           <view wx:if="{{ item._claimBadge }}" class="gcell-badge {{ item._claimBadge.cls }}">{{ item._claimBadge.text }}</view>
+          <!-- 划分名单：本人命中 → 专属标签；管家（教职工视角）看名单 -->
+          <view wx:if="{{ item._divisionMine }}" class="gcell-badge gcell-badge--division">已划分给你</view>
+          <view wx:elif="{{ isStaffView && item._divisionNames }}" class="gcell-badge gcell-badge--division">已划分：{{ item._divisionNames }}</view>
           <block wx:if="{{ !item.empty && item.visible !== false }}">
             <text class="gcell-pi">{{ item._piShort || '' }}</text>
             <text wx:if="{{ item._experimenterShort }}" class="gcell-exp">{{ item._experimenterShort }}</text>
@@ -424,6 +432,12 @@
           <text wx:if="{{ item.empty }}" class="gcell-empty-text">空</text>
           <text wx:elif="{{ item.visible === false }}" class="gcell-hidden-text">***</text>
           <view wx:if="{{ scanLockHighlight && (scanLockHighlight.sid + '') === (gridMeta.shelveId + '') && scanLockHighlight.x === item.x && scanLockHighlight.y === item.y }}" class="scan-flash-overlay"></view>
+          <!-- 待审分笼/转移中间态：配对色环 + 底部色条 + 正中色底图标（对齐 Web CellButton） -->
+          <view wx:if="{{ item._opMark }}" class="gcell-opmark" style="box-shadow: inset 0 0 0 3px {{ item._opMark.color }}, 0 0 10px {{ item._opMark.color }}66;">
+            <view class="gcell-opmark-veil"></view>
+            <view class="gcell-opmark-icon" style="background:{{ item._opMark.color }};">{{ item._opMark.abbr }}</view>
+            <view class="gcell-opmark-bar" style="background:{{ item._opMark.color }};">{{ item._opMark.label }}</view>
+          </view>
         </view>
       </view>
       <view class="grid-pad-bottom" />
@@ -436,252 +450,342 @@
   </view>
 </view>
 
-<!-- Cell Detail Popup（卡片式布局，对齐 H5 / 设计稿） -->
+<!-- Cell Detail Popup（居中弹窗 · 标本卡式：等宽字 + 点线规格表 + 模板分组） -->
 <van-popup
   show="{{ showCellDetail }}"
   position="center"
-  round
-  closeable
-  close-icon-position="top-right"
+  root-portal="{{ true }}"
   z-index="{{ 20000 }}"
-  custom-style="width:90vw;max-width:680rpx;max-height:82vh;box-sizing:border-box;overflow:hidden;border-radius:28rpx;"
+  custom-class="cs-sheet {{ formEditing ? 'cs-sheet--editing' : '' }}"
   bind:close="onCloseCellDetail"
 >
-  <scroll-view wx:if="{{ selectedCell && cellDetail }}" class="detail-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-    <view class="detail-root">
-
-      <!-- 教职工动作选择（仅编辑模式） -->
-      <view wx:if="{{ isStaffView && pageMode === 'edit' && cellDetailMeta && cellDetailMeta.permitted }}" class="detail-actions-bar">
-        <view
-          wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
-          class="detail-action-btn {{ detailActions[a.action] ? (initialDetailActions[a.action] ? 'detail-action-btn--keep' : 'detail-action-btn--on') : (initialDetailActions[a.action] ? 'detail-action-btn--off' : '') }}"
-          data-act="{{ a.action }}" bindtap="onToggleDetailAction">
-          <text wx:if="{{ detailActions[a.action] }}">✓ </text>
-          <text wx:elif="{{ initialDetailActions[a.action] }}">✕ </text>
-          <text>{{ a.label }}</text>
-        </view>
+  <!-- 身份条：位置 + 状态刻度 + 编辑徽标 + 关闭，一行 -->
+  <view class="cs-id">
+    <text class="cs-id-pos">{{ cellDetail.position }}</text>
+    <view class="cs-ticks">
+      <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="cs-tick" style="--c:{{ item.color }};--c-bg:{{ item.bg }};">
+        <text class="cs-tick-g">{{ item.abbr }}</text>
+        <text>{{ item.label }}</text>
       </view>
-
-      <!-- Header: 位置 + 特殊状态（不再展示笼型） -->
-      <view class="detail-head">
-        <view class="detail-head-row">
-          <text class="detail-head-position">{{ cellDetail.position }}</text>
-          <text class="detail-head-coords">{{ cellDetail.coords }}</text>
-          <!-- 标题栏只展示特殊状态；无特殊状态则不展示任何笼型/状态徽标 -->
-          <view wx:for="{{ cellDetail.statusChips }}" wx:key="code" class="detail-head-chip">
-            <view class="detail-head-chip-dot" style="background:{{ item.color }};" />
-            <text>{{ item.label }}</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- 分笼 / 转移 / 认领入口（后端按「认领记录 + 实验员字段 + 操作身份」判定） -->
-      <view wx:if="{{ detailOperable || detailOperableCode === 'NOT_CLAIMED' || detailCanClaimOnBehalf }}" class="detail-op-bar">
-        <block wx:if="{{ detailOperable }}">
-          <view class="detail-op-btn" data-kind="divide" bindtap="onStartOp">分笼</view>
-          <view class="detail-op-btn" data-kind="transfer" bindtap="onStartOp">转移笼位</view>
-        </block>
-        <block wx:if="{{ detailOperableCode === 'NOT_CLAIMED' }}">
-          <text class="detail-op-hint">{{ detailOperableReason }}</text>
-          <view class="detail-op-btn detail-op-btn--primary" bindtap="onSelfClaim">{{ detailClaiming ? '认领中…' : '认领该笼位' }}</view>
-        </block>
-        <view wx:if="{{ detailCanClaimOnBehalf }}" class="detail-op-btn" bindtap="onOpenClaimOnBehalf">认领</view>
-      </view>
-
-      <view class="detail-divider" />
-
-      <!-- 关键信息表单（统一表单系统 cage_detail 动态渲染，与 H5 CageFormFill 同源） -->
-      <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}" class="detail-form-fields">
-        <view wx:if="{{ formLoading }}" class="detail-form-hint">加载表单…</view>
-        <view wx:elif="{{ formError }}" class="detail-form-hint detail-form-hint--error">{{ formError }}</view>
-        <view wx:elif="{{ !formRows.length }}" class="detail-form-hint">表单无字段</view>
-        <view wx:else class="detail-form-grid">
-          <view wx:for="{{ formRows }}" wx:key="key" class="detail-form-cell {{ item.fieldType === 'textarea' || item.fieldType === 'richText' ? 'detail-form-cell--wide' : '' }}">
-            <text class="detail-form-cell-label">{{ item.label }}<text wx:if="{{ item.required }}" class="detail-form-required"> *</text></text>
-            <!-- 编辑态：只放开可编辑字段（editable 由字段字典配置），其余仍只读 -->
-            <block wx:if="{{ formEditing && item.editable }}">
-              <switch wx:if="{{ item.fieldType === 'checkbox' }}" checked="{{ item.raw === true || item.raw === 1 || item.raw === '1' }}" data-idx="{{ index }}" bindchange="onFormSwitch" />
-              <picker wx:elif="{{ item.fieldType === 'select' || item.fieldType === 'choice' }}" range="{{ item.options }}" range-key="label" data-idx="{{ index }}" bindchange="onFormPicker">
-                <view class="detail-form-input">{{ item.value === '—' ? '请选择' : item.value }}</view>
-              </picker>
-              <picker wx:elif="{{ item.fieldType === 'date' || item.fieldType === 'dateRange' }}" mode="date" value="{{ item.raw }}" data-idx="{{ index }}" bindchange="onFormPicker">
-                <view class="detail-form-input">{{ item.raw || '选择日期' }}</view>
-              </picker>
-              <textarea wx:elif="{{ item.fieldType === 'textarea' || item.fieldType === 'richText' }}" value="{{ item.raw }}" data-idx="{{ index }}" bindinput="onFormInput" class="detail-form-textarea" auto-height />
-              <input wx:else type="{{ item.fieldType === 'number' ? 'digit' : 'text' }}" value="{{ item.raw }}" data-idx="{{ index }}" bindinput="onFormInput" class="detail-form-input" />
-            </block>
-            <text wx:else class="detail-form-cell-value">{{ item.value }}</text>
-          </view>
-        </view>
-        <view wx:if="{{ formEditable }}" class="detail-form-actions">
-          <block wx:if="{{ formEditing }}">
-            <view class="op-select-btn op-select-btn--primary" bindtap="onFormSave">{{ formSaving ? '保存中…' : '保存' }}</view>
-            <view class="op-select-btn" bindtap="onFormEditCancel">取消</view>
-          </block>
-          <view wx:else class="op-select-btn" bindtap="onFormEditStart">编辑</view>
-        </view>
-      </view>
-
-      <!-- 特殊状态 chips 已上移到标题栏，此处只保留其对应的照片与备注 -->
-
-      <!-- 通道一：状态专属照片（只读） + 标注备注（只读） -->
-      <view wx:if="{{ detailStatusPhotos }}" class="detail-status-photos">
-        <block wx:for="{{ cellDetail.statusChips }}" wx:key="code">
-          <view wx:if="{{ detailStatusPhotos[item.statusField] && detailStatusPhotos[item.statusField].length }}" class="detail-chip-photos">
-            <view wx:for="{{ detailStatusPhotos[item.statusField] }}" wx:key="*this" wx:for-item="img" class="detail-chip-photo-wrap">
-              <image src="{{ img }}" mode="aspectFill" class="detail-chip-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
-            </view>
-          </view>
-        </block>
-        <!-- 标注备注（_note 只读） -->
-        <view wx:if="{{ detailStatusPhotos._note }}" class="detail-chip-note">
-          <text class="detail-chip-note-label">📝 标注备注</text>
-          <text class="detail-chip-note-text">{{ detailStatusPhotos._note }}</text>
-        </view>
-      </view>
-
-      <view class="detail-divider" />
-
-      <!-- 加载标注时显示 loading -->
-      <view wx:if="{{ detailAnnotationLoading }}" class="detail-annotation-loading">
-        <van-loading size="20px" color="#ac1736" />
-        <text>加载标注…</text>
-      </view>
-
-      <!-- 无权限提示 -->
-      <view wx:if="{{ cellDetailMeta && !cellDetailMeta.permitted }}" class="detail-no-permission">
-        <text>仅限所属课题组及管理员查看详情</text>
-      </view>
-
-      <!-- 实验记录（有权限时显示） -->
-      <block wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}">
-        <view class="detail-form-section">
-          <view class="detail-form-label-row">
-            <text class="detail-form-icon">📝</text>
-            <text class="detail-form-label">实验记录</text>
-          </view>
-          <textarea
-            class="detail-textarea"
-            value="{{ experimentDesc }}"
-            placeholder="输入实验记录…"
-            maxlength="-1"
-            auto-height
-            bindinput="onDetailExperimentDescInput"
-          />
-        </view>
-
-        <!-- 照片 -->
-        <view class="detail-form-section">
-          <view class="detail-form-label-row">
-            <text class="detail-form-icon">📷</text>
-            <text class="detail-form-label">照片</text>
-          </view>
-          <view wx:if="{{ detailImages.length }}" class="detail-photo-grid">
-            <view wx:for="{{ detailImages }}" wx:key="*this" wx:for-item="imgUrl" wx:for-index="imgIdx" class="detail-photo-item">
-              <image class="detail-photo-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onDetailPreviewImage" />
-              <view class="detail-photo-remove" data-index="{{ imgIdx }}" catchtap="onDetailRemoveImage">✕</view>
-            </view>
-          </view>
-          <view class="detail-upload-row">
-            <view class="detail-upload-btn {{ detailImageUploading ? 'detail-upload-btn--disabled' : '' }}" bindtap="onDetailChooseImage">
-              <text>{{ detailImageUploading ? '上传中…' : '+ 上传图片' }}</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- 保存 -->
-        <view class="detail-save-row">
-          <view class="detail-save-btn {{ detailSaving ? 'detail-save-btn--disabled' : '' }}" bindtap="onSaveCellAnnotation">
-            <text>{{ detailSaving ? '保存中…' : '保存' }}</text>
-          </view>
-          <text wx:if="{{ detailSaveMsg }}" class="detail-save-msg detail-save-msg--{{ detailSaveMsgType }}">{{ detailSaveMsg }}</text>
-        </view>
-      </block>
-
     </view>
+    <view wx:if="{{ formEditing }}" class="cs-badge">编辑</view>
+    <view class="cs-x" bindtap="onCloseCellDetail">✕</view>
+  </view>
+
+  <scroll-view class="cs-body" scroll-y enhanced show-scrollbar="{{false}}">
+
+    <!-- 未决分笼/转移：配对色做左侧色条 -->
+    <view wx:if="{{ detailOpMark }}" class="cs-notice" style="--notice:{{ detailOpMark.color }};">
+      <text class="cs-notice-txt">{{ detailOpMark.label }}，暂不能对该笼位发起新的分笼/转移</text>
+    </view>
+
+    <!-- 关键信息：按模板分区渲染。字段多的分区默认收起，行尾带摘要 -->
+    <view wx:if="{{ formLoading }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">加载表单…</text></view>
+    </view>
+    <view wx:elif="{{ formError }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint cs-hint--error">{{ formError }}</text></view>
+    </view>
+    <view wx:elif="{{ !formGroups.length }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">表单无字段</text></view>
+    </view>
+    <block wx:else>
+      <view wx:for="{{ formGroups }}" wx:key="key" wx:for-item="grp" wx:for-index="gi" class="cs-sec">
+        <view class="cs-sec-hd" data-g="{{ gi }}" bindtap="onToggleFormSection">
+          <text class="cs-sec-no">{{ grp._no }}</text>
+          <text class="cs-sec-title">{{ grp.title }}</text>
+          <text class="cs-sec-n">{{ grp.count }}</text>
+          <text wx:if="{{ grp.dirtyCount }}" class="cs-sec-dirty">{{ grp.dirtyCount }}</text>
+          <text wx:if="{{ grp.collapsed && grp.summaryText }}" class="cs-sec-sum">{{ grp.summaryText }}</text>
+          <text class="cs-chev">{{ grp.collapsed ? '▸' : '▾' }}</text>
+        </view>
+
+        <view wx:if="{{ !grp.collapsed }}" class="cs-sec-bd">
+          <block wx:for="{{ grp.subs }}" wx:key="key" wx:for-item="sub" wx:for-index="si">
+            <view wx:if="{{ !sub._plain }}" class="cs-sub">
+              <text class="cs-sub-mark">▏</text>
+              <text>{{ sub.title }}</text>
+            </view>
+
+            <block wx:for="{{ sub.rows }}" wx:key="key" wx:for-item="row" wx:for-index="ri">
+              <!-- 长文本字段：整行铺开，不套规格行（套了会被渲染两遍）。
+                   阅读态且为空时退回规格行显示 —，避免一个大空盒子 -->
+              <block wx:if="{{ (row.fieldType === 'textarea' || row.fieldType === 'richText') && (formEditing || row.value !== '—') }}">
+                <view class="cs-wide">
+                  <text class="cs-wide-label"><text wx:if="{{ formEditing && row.required }}" class="cs-req">*</text>{{ row.label }}</text>
+                  <textarea wx:if="{{ formEditing && row.editable }}"
+                    class="cs-textarea {{ row._error ? 'cs-ctl--err' : '' }}"
+                    value="{{ row.raw }}" data-g="{{ gi }}" data-s="{{ si }}" data-r="{{ ri }}"
+                    bindinput="onFormInput" auto-height maxlength="-1" />
+                  <text wx:else class="cs-textarea cs-textarea--read">{{ row.value }}</text>
+                  <text wx:if="{{ row._error }}" class="cs-errmsg">{{ row._error }}</text>
+                </view>
+              </block>
+
+              <!-- 编辑态 + 该字段可编辑：值换成控件，只留下划线 -->
+              <block wx:elif="{{ formEditing && row.editable }}">
+                <view class="cs-row {{ ri % 2 === 1 ? 'cs-row--alt' : '' }} {{ row._dirty ? 'cs-row--dirty' : '' }} {{ row._error ? 'cs-row--err' : '' }}">
+                  <text class="cs-row-label"><text wx:if="{{ row.required }}" class="cs-req">*</text>{{ row.label }}</text>
+
+                  <view wx:if="{{ row.fieldType === 'checkbox' }}"
+                    class="cs-sw {{ row.raw === true || row.raw === 1 || row.raw === '1' ? 'cs-sw--on' : '' }}"
+                    data-g="{{ gi }}" data-s="{{ si }}" data-r="{{ ri }}" bindtap="onFormToggleBool">
+                    <view class="cs-sw-knob" />
+                  </view>
+
+                  <picker wx:elif="{{ row.fieldType === 'select' || row.fieldType === 'choice' }}"
+                    range="{{ row.options }}" range-key="label" data-g="{{ gi }}" data-s="{{ si }}" data-r="{{ ri }}" bindchange="onFormPicker">
+                    <view class="cs-pick {{ row.value === '—' || !row.value ? 'cs-pick--blank' : '' }} {{ row._error ? 'cs-pick--err' : '' }}">
+                      <text class="cs-pick-txt">{{ row.value === '—' || !row.value ? '请选择' : row.value }}</text>
+                      <text class="cs-pick-i">▼</text>
+                    </view>
+                  </picker>
+
+                  <picker wx:elif="{{ row.fieldType === 'date' || row.fieldType === 'dateRange' }}"
+                    mode="date" value="{{ row.raw }}" data-g="{{ gi }}" data-s="{{ si }}" data-r="{{ ri }}" bindchange="onFormPicker">
+                    <view class="cs-pick {{ !row.raw ? 'cs-pick--blank' : '' }} {{ row._error ? 'cs-pick--err' : '' }}">
+                      <text class="cs-pick-txt">{{ row.raw || '选择日期' }}</text>
+                      <text class="cs-pick-i">▼</text>
+                    </view>
+                  </picker>
+
+                  <input wx:else
+                    class="cs-ctl {{ row.fieldType === 'number' || row.dataType === 'INTEGER' || row.dataType === 'DECIMAL' ? 'cs-ctl--mono' : '' }} {{ row._error ? 'cs-ctl--err' : '' }}"
+                    type="{{ row.fieldType === 'number' || row.dataType === 'INTEGER' || row.dataType === 'DECIMAL' ? 'digit' : 'text' }}"
+                    value="{{ row.raw }}" data-g="{{ gi }}" data-s="{{ si }}" data-r="{{ ri }}" bindinput="onFormInput" />
+                </view>
+                <text wx:if="{{ row._error }}" class="cs-errmsg">{{ row._error }}</text>
+              </block>
+
+              <!-- 阅读态；编辑态下不可编辑的字段降调 -->
+              <view wx:else class="cs-row {{ ri % 2 === 1 ? 'cs-row--alt' : '' }} {{ formEditing ? 'cs-row--ro' : '' }}">
+                <text class="cs-row-label">{{ row.label }}</text>
+                <text class="cs-row-val {{ row.fieldType === 'number' || row.dataType === 'INTEGER' || row.dataType === 'DECIMAL' ? 'cs-row-val--mono' : '' }} {{ row.value === '—' ? 'cs-row-val--blank' : '' }}">{{ row.value }}</text>
+              </view>
+            </block>
+          </block>
+        </view>
+      </view>
+    </block>
+
+    <!-- 分笼 / 转移 / 认领 / 清空划分：笼位级动作，整节只出现一次 -->
+    <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted && (detailOperable || detailOperableCode === 'NOT_CLAIMED' || detailCanClaimOnBehalf || selectedCell._divisionNames) }}" class="cs-sec">
+      <view class="cs-sec-bd cs-sec-bd--pad">
+        <view class="cs-ops">
+          <block wx:if="{{ detailOperable }}">
+            <view class="cs-op-btn" data-kind="divide" bindtap="onStartOp">分笼</view>
+            <view class="cs-op-btn" data-kind="transfer" bindtap="onStartOp">转移笼位</view>
+          </block>
+          <block wx:if="{{ detailOperableCode === 'NOT_CLAIMED' }}">
+            <text class="cs-op-hint">{{ detailOperableReason }}</text>
+            <view class="cs-op-btn cs-op-btn--primary" bindtap="onSelfClaim">{{ detailClaiming ? '认领中…' : '认领该笼位' }}</view>
+          </block>
+          <view wx:if="{{ detailCanClaimOnBehalf }}" class="cs-op-btn" bindtap="onOpenClaimOnBehalf">认领</view>
+          <block wx:if="{{ selectedCell._divisionNames }}">
+            <text class="cs-op-hint">已划分给：{{ selectedCell._divisionNames }}</text>
+            <view class="cs-op-btn" bindtap="onClearDivision">{{ detailClearingDivision ? '清空中…' : '清空划分' }}</view>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <!-- 无权限 -->
+    <view wx:if="{{ cellDetailMeta && !cellDetailMeta.permitted }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">仅限所属课题组及管理员查看详情</text></view>
+    </view>
+
+    <!-- 状态与照片（只读；无标注时整节不渲染，避免空标题） -->
+    <view wx:if="{{ detailHasStatusBlock }}" class="cs-sec">
+      <view class="cs-sec-hd" data-key="status" bindtap="onToggleSection">
+        <text class="cs-sec-no">{{ statusSecNo }}</text>
+        <text class="cs-sec-title">状态与照片</text>
+        <text class="cs-chev">{{ openSections.status ? '▾' : '▸' }}</text>
+      </view>
+      <view wx:if="{{ openSections.status }}" class="cs-sec-bd">
+        <block wx:for="{{ cellDetail.statusChips }}" wx:key="code">
+          <view wx:if="{{ detailStatusPhotos[item.statusField] && detailStatusPhotos[item.statusField].length }}" class="cs-photo-group">
+            <view class="cs-tick" style="--c:{{ item.color }};--c-bg:{{ item.bg }};">
+              <text class="cs-tick-g">{{ item.abbr }}</text>
+              <text>{{ item.label }}</text>
+            </view>
+            <view class="cs-photos">
+              <view wx:for="{{ detailStatusPhotos[item.statusField] }}" wx:key="*this" wx:for-item="img" class="cs-photo-wrap">
+                <image src="{{ img }}" mode="aspectFill" class="cs-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
+              </view>
+            </view>
+          </view>
+        </block>
+        <view wx:if="{{ detailStatusPhotos._note }}" class="cs-note">
+          <text class="cs-note-label">标注备注</text>
+          <text class="cs-note-txt">{{ detailStatusPhotos._note }}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 实验记录 + 照片（通道二）。编辑关键信息时压灰禁用：两条保存路径不能混 -->
+    <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}" class="cs-sec {{ formEditing ? 'cs-sec--dim' : '' }}">
+      <view class="cs-sec-hd" data-key="exp" bindtap="onToggleSection">
+        <text class="cs-sec-no">{{ expSecNo }}</text>
+        <text class="cs-sec-title">实验记录</text>
+        <text class="cs-chev">{{ openSections.exp ? '▾' : '▸' }}</text>
+      </view>
+      <view wx:if="{{ openSections.exp }}" class="cs-sec-bd">
+        <text wx:if="{{ formEditing }}" class="cs-lockhint">编辑关键信息时不可修改</text>
+        <textarea
+          class="cs-textarea {{ formEditing ? 'cs-textarea--disabled' : '' }}"
+          value="{{ experimentDesc }}"
+          placeholder="{{ formEditing ? '退出编辑后可填写…' : '输入实验记录…' }}"
+          maxlength="-1"
+          auto-height
+          disabled="{{ formEditing }}"
+          bindinput="onDetailExperimentDescInput"
+        />
+        <view class="cs-photo-hd">
+          <text class="cs-sec-title">照片</text>
+          <text wx:if="{{ detailImages.length }}" class="cs-sec-n">{{ detailImages.length }}</text>
+        </view>
+        <view class="cs-photos">
+          <view wx:for="{{ detailImages }}" wx:key="*this" wx:for-item="imgUrl" wx:for-index="imgIdx" class="cs-photo-wrap">
+            <image class="cs-photo" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onDetailPreviewImage" />
+            <view class="cs-photo-del" data-index="{{ imgIdx }}" catchtap="onDetailRemoveImage">✕</view>
+          </view>
+          <view class="cs-photo-add {{ detailImageUploading ? 'cs-btn--disabled' : '' }}" bindtap="onDetailChooseImage">
+            <text class="cs-photo-add-icon">+</text>
+            <text>{{ detailImageUploading ? '上传中' : '上传' }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
   </scroll-view>
+
+  <!-- 底栏：一个时刻只有一个保存目标 -->
+  <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}" class="cs-dock">
+    <block wx:if="{{ formEditing }}">
+      <view class="cs-btn cs-btn--ghost" bindtap="onFormEditCancel">取消</view>
+      <text wx:if="{{ formSaveMsg }}" class="cs-dock-msg cs-dock-msg--err">{{ formSaveMsg }}</text>
+      <view class="cs-btn cs-btn--primary cs-dock-push {{ formSaving ? 'cs-btn--disabled' : '' }}" bindtap="onFormSave">{{ formSaving ? '保存中…' : '保存关键信息' }}</view>
+    </block>
+    <block wx:else>
+      <view wx:if="{{ formEditable }}" class="cs-btn cs-btn--ghost" bindtap="onFormEditStart">编辑关键信息</view>
+      <!-- 不可编辑时把后端给的原因说出来：只把按钮藏掉，用户只会觉得按钮"没了" -->
+      <text wx:elif="{{ formEditableReason }}" class="cs-dock-hint">{{ formEditableReason }}</text>
+      <text wx:if="{{ detailSaveMsg }}" class="cs-dock-msg cs-dock-msg--{{ detailSaveMsgType }}">{{ detailSaveMsg }}</text>
+      <view class="cs-btn cs-btn--primary cs-dock-push {{ detailSaving ? 'cs-btn--disabled' : '' }}" bindtap="onSaveCellAnnotation">{{ detailSaving ? '保存中…' : '保存记录' }}</view>
+    </block>
+  </view>
 </van-popup>
 
-<!-- 编辑模式操作弹窗 -->
+<!-- 状态模式：笼位状态标注（居中弹窗 · 四态状态机） -->
 <van-popup
   show="{{ editActionPopup }}"
   position="center"
-  round
-  closeable
-  close-icon-position="top-right"
   root-portal="{{ true }}"
   z-index="{{ 21000 }}"
-  custom-style="width:90vw;max-width:600rpx;padding:24rpx;box-sizing:border-box;"
+  custom-class="cs-sheet"
   bind:close="onEditActionJustClose"
 >
-  <view class="ea-header">
-    <text class="ea-pos">{{ editActionCell._displayPosition || '' }}</text>
+  <view class="cs-id">
+    <text class="cs-id-pos">{{ editActionCell._displayPosition || '' }}</text>
+    <view class="cs-ticks" />
+    <view class="cs-x" bindtap="onEditActionJustClose">✕</view>
   </view>
 
-  <!-- 操作按钮 -->
-  <view class="ea-actions">
-    <view wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
-      class="ea-chip {{ editActionCurrent[a.action] ? 'ea-chip-on' : '' }}"
-      style="{{ editActionCurrent[a.action] ? 'background:'+a.bg+';color:'+a.color+';border-color:'+a.color : '' }}"
-      hover-class="ea-chip-hover" hover-stay-time="60"
-      data-action="{{ a.action }}" bindtap="onEditActionToggle">
-      <text wx:if="{{ editActionCurrent[a.action] && !editActionInitial[a.action] }}" class="ea-chip-mark">+</text>
-      <text wx:if="{{ !editActionCurrent[a.action] && editActionInitial[a.action] }}" class="ea-chip-mark">−</text>
-      <text class="ea-chip-label">{{ a.label }}</text>
-    </view>
-  </view>
+  <scroll-view class="cs-body" scroll-y enhanced show-scrollbar="{{false}}">
 
-  <!-- 照片上传 -->
-  <view class="ea-photo-section">
-    <view class="ea-photo-header">
-      <text class="ea-photo-title">📷 状态专属照片 ({{ editActionPhotos.length }})</text>
-      <view class="ea-photo-add" bindtap="onEditActionChoosePhoto">
-        <text class="ea-photo-add-icon">{{ editActionUploading ? '⏳' : '+' }}</text>
+    <!-- 状态标记：未标 / 已标 / 本次新增 / 本次移除 -->
+    <view class="cs-sec">
+      <view class="cs-sec-hd">
+        <text class="cs-sec-no">01</text>
+        <text class="cs-sec-title">状态标记</text>
       </view>
-    </view>
-    <view wx:if="{{ editActionPhotos.length }}" class="ea-photo-grid">
-      <view wx:for="{{ editActionPhotos }}" wx:key="*this" wx:for-index="idx" class="ea-photo-wrap">
-        <image src="{{ item }}" mode="aspectFill" class="ea-photo" data-url="{{ item }}" bindtap="onDetailPreviewImage"/>
-        <view class="ea-photo-del" data-index="{{ idx }}" catchtap="onEditActionRemovePhoto">✕</view>
-      </view>
-    </view>
-  </view>
-
-  <!-- 备注 + 保存按钮 -->
-  <view class="ea-note">
-    <textarea value="{{ editActionNote }}" placeholder="备注..." bindinput="onEditActionNoteInput" maxlength="-1"/>
-    <view class="ea-note-actions">
-      <view class="ea-btn-save" bindtap="onEditActionSave">💾 保存标注</view>
-      <view class="ea-btn-new-version" bindtap="onEditActionNewVersion">📄 存为新记录</view>
-    </view>
-  </view>
-
-  <!-- 历史记录 -->
-  <view class="ea-history">
-    <view class="ea-history-hd">
-      <text>📦 历史记录 ({{ editHistory.length }})</text>
-    </view>
-    <scroll-view scroll-y class="ea-history-scroll">
-      <view wx:for="{{ editHistory }}" wx:key="id" class="ea-history-item">
-        <view class="ea-history-item-top">
-          <text class="ea-history-label" style="color:{{ item.action==='unmarked'?'#ef4444':item.action==='annotated'?'#3b82f6':'#10b981' }}">{{ item.action==='unmarked'?'✕':item.action==='annotated'?'📝':'✓' }} {{ item.statusField==='needs_division'?'需分笼':item.statusField==='needs_special_feeding'?'特殊饲养':item.statusField==='_annotation'?'标注记录':'健康异常' }}</text>
-          <text class="ea-history-time">{{ item.createdAt }}</text>
-          <view class="ea-history-del" data-id="{{ item.id }}" catchtap="onEditHistoryDelete">✕</view>
-        </view>
-        <view wx:if="{{ item.experimentDesc }}" class="ea-history-note">{{ item.experimentDesc }}</view>
-        <view wx:if="{{ item._imgs && item._imgs.length }}" class="ea-history-imgs">
-          <image wx:for="{{ item._imgs }}" wx:key="*this" wx:for-item="img" src="{{ img }}" mode="aspectFill" class="ea-history-img" data-url="{{ img }}" bindtap="onDetailPreviewImage"/>
+      <view class="cs-sec-bd">
+        <view class="cs-stat-grid">
+          <view wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
+            class="cs-stat {{ editActionCurrent[a.action] ? 'cs-stat--on' : '' }} {{ editActionCurrent[a.action] && !editActionInitial[a.action] ? 'cs-stat--add' : '' }} {{ !editActionCurrent[a.action] && editActionInitial[a.action] ? 'cs-stat--rm' : '' }}"
+            style="--c:{{ a.color }};--c-bg:{{ a.bg }};"
+            hover-class="cs-stat--hover" hover-stay-time="60"
+            data-action="{{ a.action }}" bindtap="onEditActionToggle">
+            <view class="cs-stat-g">
+              <text>{{ a.abbr }}</text>
+              <view wx:if="{{ !editActionCurrent[a.action] && editActionInitial[a.action] }}" class="cs-stat-strike" />
+            </view>
+            <text class="cs-stat-t">{{ a.label }}</text>
+          </view>
         </view>
       </view>
-    </scroll-view>
-  </view>
-  <view wx:if="{{ editHistoryLoading }}" class="ea-history-loading">
-    <van-loading size="16px" color="#ac1736"/><text>加载历史…</text>
-  </view>
+    </view>
 
-  <!-- 按钮 -->
-  <view class="ea-btns">
-    <view class="ea-btn-close" bindtap="onEditActionJustClose">关闭</view>
+    <!-- 照片 -->
+    <view class="cs-sec">
+      <view class="cs-sec-hd">
+        <text class="cs-sec-no">02</text>
+        <text class="cs-sec-title">照片</text>
+        <text wx:if="{{ editActionPhotos.length }}" class="cs-sec-n">{{ editActionPhotos.length }}</text>
+      </view>
+      <view class="cs-sec-bd">
+        <view class="cs-photos">
+          <view wx:for="{{ editActionPhotos }}" wx:key="*this" wx:for-index="idx" class="cs-photo-wrap">
+            <image src="{{ item }}" mode="aspectFill" class="cs-photo" data-url="{{ item }}" bindtap="onDetailPreviewImage"/>
+            <view class="cs-photo-del" data-index="{{ idx }}" catchtap="onEditActionRemovePhoto">✕</view>
+          </view>
+          <view class="cs-photo-add {{ editActionUploading ? 'cs-btn--disabled' : '' }}" bindtap="onEditActionChoosePhoto">
+            <text class="cs-photo-add-icon">{{ editActionUploading ? '⏳' : '+' }}</text>
+            <text>{{ editActionUploading ? '上传中' : '添加' }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 备注 -->
+    <view class="cs-sec">
+      <view class="cs-sec-hd">
+        <text class="cs-sec-no">03</text>
+        <text class="cs-sec-title">备注</text>
+      </view>
+      <view class="cs-sec-bd">
+        <textarea class="cs-textarea" value="{{ editActionNote }}" placeholder="备注…" bindinput="onEditActionNoteInput" maxlength="-1" />
+      </view>
+    </view>
+
+    <!-- 历史记录（默认折叠） -->
+    <view class="cs-sec">
+      <view class="cs-sec-hd" data-key="history" bindtap="onToggleSection">
+        <text class="cs-sec-no">04</text>
+        <text class="cs-sec-title">历史记录</text>
+        <text wx:if="{{ editHistory.length }}" class="cs-sec-n">{{ editHistory.length }}</text>
+        <text class="cs-chev">{{ openSections.history ? '▾' : '▸' }}</text>
+      </view>
+      <view wx:if="{{ openSections.history }}" class="cs-sec-bd">
+        <view wx:if="{{ editHistoryLoading }}" class="cs-hint">加载历史…</view>
+        <view wx:elif="{{ !editHistory.length }}" class="cs-hint">暂无历史记录</view>
+        <view wx:else class="cs-tl">
+          <view wx:for="{{ editHistory }}" wx:key="id" class="cs-tl-node">
+            <view class="cs-tl-rail" />
+            <view class="cs-tl-dot" style="background:{{ item._dot }};" />
+            <view class="cs-tl-card">
+              <view class="cs-tl-hd">
+                <text class="cs-tl-kind">{{ item._label }}</text>
+                <text class="cs-tl-time">{{ item.createdAt }}</text>
+                <view class="cs-tl-del" data-id="{{ item.id }}" catchtap="onEditHistoryDelete">✕</view>
+              </view>
+              <view wx:if="{{ item.experimentDesc || (item._imgs && item._imgs.length) }}" class="cs-tl-bd">
+                <text wx:if="{{ item.experimentDesc }}" class="cs-tl-op">{{ item.experimentDesc }}</text>
+                <view wx:if="{{ item._imgs && item._imgs.length }}" class="cs-photos">
+                  <image wx:for="{{ item._imgs }}" wx:key="*this" wx:for-item="img" src="{{ img }}" mode="aspectFill" class="cs-photo cs-photo--sm" data-url="{{ img }}" bindtap="onDetailPreviewImage"/>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+  </scroll-view>
+
+  <view class="cs-dock">
+    <view class="cs-btn cs-btn--ghost" bindtap="onEditActionNewVersion">存为新记录</view>
+    <view class="cs-btn cs-btn--primary cs-dock-push" bindtap="onEditActionSave">保存标注</view>
   </view>
 </van-popup>
 
@@ -839,7 +943,7 @@
   bind:close="onCloseReservePerson"
 >
   <view class="cf-root">
-    <view class="cf-title">{{ personPickerPurpose === 'claimOnBehalf' ? '代认领 · 选择实验员' : '确认预定 · 选择占用者' }}</view>
+    <view class="cf-title">{{ personPickerPurpose === 'claimOnBehalf' ? '代认领 · 选择实验员' : (personPickerPurpose === 'division' ? '划分 · 选择本课题组成员' : '确认预定 · 选择占用者') }}</view>
     <view class="rp-search-row">
       <input class="rp-input" type="text" value="{{ reserveKeyword }}" placeholder="姓名 / 工号" placeholder-class="list-search-placeholder" bindinput="onReserveKeywordInput" confirm-type="search" bindconfirm="onReserveSearch" />
       <view class="rp-search-btn" bindtap="onReserveSearch">搜索</view>
@@ -850,12 +954,18 @@
       <view wx:if="{{ reserveSearching }}" class="rp-hint">加载中…</view>
       <view wx:elif="{{ reserveResults.length === 0 }}" class="rp-hint">{{ reserveGroups.length > 0 ? '该课题组暂无可选成员，可手动搜索' : '输入关键字检索人员' }}</view>
       <block wx:else>
-        <view wx:for="{{ reserveResults }}" wx:key="accountId" class="rp-row" data-account-id="{{ item.accountId }}" data-name="{{ item.name }}" bindtap="onReservePickPerson">
+        <view wx:for="{{ reserveResults }}" wx:key="accountId" class="rp-row {{ divisionPicked[item.accountId] ? 'rp-row--on' : '' }}" data-account-id="{{ item.accountId }}" data-name="{{ item.name }}" bindtap="onReservePickPerson">
           <text class="rp-name">{{ item.name }}</text>
           <text class="rp-group">{{ item.projectGroupName }}</text>
+          <text wx:if="{{ divisionPicked[item.accountId] }}" class="rp-check">✓</text>
         </view>
       </block>
     </scroll-view>
+    <!-- 划分模式：弹窗内多选后统一提交 -->
+    <view wx:if="{{ personPickerPurpose === 'division' }}" class="cf-btns">
+      <view class="cf-btn-cancel" bindtap="onCloseReservePerson">取消</view>
+      <view class="cf-btn-confirm {{ (divisionPickedCount === 0 || divisionSubmitting) ? 'cf-btn-confirm--disabled' : '' }}" bindtap="{{ (divisionPickedCount === 0 || divisionSubmitting) ? '' : 'handleDivisionSubmit' }}">{{ divisionSubmitting ? '提交中...' : '确定划分 (' + divisionPickedCount + ')' }}</view>
+    </view>
   </view>
 </van-popup>
 
@@ -887,36 +997,52 @@
   </view>
 </van-popup>
 
-<!-- 记录模式：笼位历史记录弹窗 -->
+<!-- 记录模式：笼位变更留痕（居中弹窗 · 时间轴） -->
 <van-popup
   show="{{ recordOpen }}"
   position="center"
-  round
-  closeable
-  close-icon-position="top-right"
   root-portal="{{ true }}"
-  z-index="{{ 22000 }}"
-  custom-style="width:90vw;max-width:600rpx;height:70vh;box-sizing:border-box;overflow:hidden;"
+  z-index="{{ 21000 }}"
+  custom-class="cs-sheet"
   bind:close="onCloseRecordDialog"
 >
-  <view class="cf-root record-root">
-    <view class="cf-title">笼位历史 · {{ recordTarget.positionLabel }}</view>
-    <scroll-view scroll-y class="record-scroll">
-      <view wx:if="{{ recordLoading }}" class="rp-hint">加载中…</view>
-      <view wx:elif="{{ recordGroups.length === 0 }}" class="rp-hint">暂无历史记录</view>
-      <block wx:else>
-        <view wx:for="{{ recordGroups }}" wx:key="label" wx:for-item="grp" class="record-group">
-          <text class="record-group-label">{{ grp.label }}</text>
-          <view wx:for="{{ grp.changes }}" wx:key="*this" wx:for-item="ch" class="record-change">
-            <text class="record-change-type">{{ ch.changeType }}</text>
-            <text wx:if="{{ ch.fieldName }}" class="record-change-field">{{ ch.fieldName }}</text>
-            <text wx:if="{{ ch.beforeValue || ch.afterValue }}" class="record-change-val">{{ ch.beforeValue }} → {{ ch.afterValue }}</text>
-            <text wx:if="{{ ch.operator || ch.createdAt }}" class="record-change-meta">{{ ch.operator }} {{ ch.createdAt }}</text>
+  <view class="cs-id">
+    <text class="cs-id-pos">{{ recordTarget.positionLabel }}</text>
+    <view class="cs-ticks">
+      <text class="cs-id-sub">{{ recordEvents.length }} 次变更 · {{ recordFieldCount }} 个字段</text>
+    </view>
+    <view class="cs-x" bindtap="onCloseRecordDialog">✕</view>
+  </view>
+
+  <scroll-view scroll-y class="cs-body">
+    <view wx:if="{{ recordLoading }}" class="cs-hint cs-hint--block">加载中…</view>
+    <view wx:elif="{{ recordEvents.length === 0 }}" class="cs-hint cs-hint--block">该笼位暂无变更留痕</view>
+    <view wx:else class="cs-tl cs-tl--inset">
+      <!-- 后端结构：events[].{changeType, kind, at, operator, changes[].{label, before, after}}
+           kind ∈ IN|OUT|EDIT 由后端 CageFormAuditService 给出；_dot/_kindLabel/_typeLabel 由 JS 预计算 -->
+      <view wx:for="{{ recordEvents }}" wx:key="index" wx:for-item="ev" class="cs-tl-node">
+        <view class="cs-tl-rail" />
+        <view class="cs-tl-dot" style="background:{{ ev._dot }};" />
+        <view class="cs-tl-card">
+          <view class="cs-tl-hd">
+            <text class="cs-tl-kind">{{ ev._kindLabel }}</text>
+            <text class="cs-tl-type">{{ ev._typeLabel }}</text>
+            <text class="cs-tl-time">{{ ev.at }}</text>
+          </view>
+          <view class="cs-tl-bd">
+            <text wx:if="{{ ev.operator }}" class="cs-tl-op">{{ ev.operator }}</text>
+            <view wx:if="{{ !ev.changes.length }}" class="cs-hint">无字段变化</view>
+            <view wx:for="{{ ev.changes }}" wx:key="canonical" wx:for-item="ch" class="cs-diff">
+              <text class="cs-diff-label">{{ ch.label }}</text>
+              <text class="cs-diff-before {{ ch.before ? '' : 'cs-diff-before--empty' }}">{{ ch.before || '（空）' }}</text>
+              <text class="cs-diff-arrow">→</text>
+              <text class="cs-diff-after">{{ ch.after || '（清空）' }}</text>
+            </view>
           </view>
         </view>
-      </block>
-    </scroll-view>
-  </view>
+      </view>
+    </view>
+  </scroll-view>
 </van-popup>
 
 <!-- 我的申请列表 -->

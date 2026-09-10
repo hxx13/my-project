@@ -31,6 +31,16 @@ public class PersonScopeController {
         this.scopeService = scopeService;
     }
 
+    /** 已分配过的人，供分配页左栏列表（点击查看/编辑其可见范围）。 */
+    @GetMapping("/assignees")
+    @Operation(summary = "已分配可见范围的人员列表")
+    public Result<List<Map<String, Object>>> assignees(HttpServletRequest request) {
+        if (authContextService.resolveUserFromBearer(request.getHeader("Authorization")) == null) {
+            return Result.fail(401, "未登录");
+        }
+        return Result.success(scopeService.listAssignees());
+    }
+
     @GetMapping("/{userId}")
     @Operation(summary = "查某人的全部负责范围（校区/楼层/房间）")
     public Result<List<Map<String, Object>>> list(@PathVariable String userId, HttpServletRequest request) {
@@ -42,6 +52,17 @@ public class PersonScopeController {
             out.add(Map.of("scopeType", s.getScopeType(), "scopeId", s.getScopeId()));
         }
         return Result.success(out);
+    }
+
+    /** 撤销某人的全部分配（整条移除，不再出现在已分配列表里）。 */
+    @DeleteMapping("/{userId}")
+    @Operation(summary = "撤销某人的全部可见范围分配")
+    public Result<?> remove(@PathVariable String userId, HttpServletRequest request) {
+        if (authContextService.resolveUserFromBearer(request.getHeader("Authorization")) == null) {
+            return Result.fail(401, "未登录");
+        }
+        scopeService.clearByAccount(userId);
+        return Result.success(Map.of("ok", true));
     }
 
     /** body: [{ "scopeType": "FLOOR"|"ROOM"|"CAMPUS", "scopeId": "123" }, ...]，全量替换。 */

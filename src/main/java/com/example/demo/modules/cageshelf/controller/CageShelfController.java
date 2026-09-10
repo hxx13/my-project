@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/cage-shelves")
@@ -50,6 +51,7 @@ public class CageShelfController {
     private final com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown;
     private final CageQuotaService quotaService;
     private final com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService;
+    private final com.example.demo.modules.cageshelf.service.CageOperationService cageOpService;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -63,7 +65,8 @@ public class CageShelfController {
                                com.example.demo.modules.aro.AroPersonalTokenClient aroPersonalTokenClient,
                                com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown,
                                CageQuotaService quotaService,
-                               com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService) {
+                               com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService,
+                               com.example.demo.modules.cageshelf.service.CageOperationService cageOpService) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -77,6 +80,7 @@ public class CageShelfController {
         this.cooldown = cooldown;
         this.quotaService = quotaService;
         this.bookingLocalService = bookingLocalService;
+        this.cageOpService = cageOpService;
     }
 
     @PostMapping("/import")
@@ -115,6 +119,42 @@ public class CageShelfController {
         }
         Integer campusIdParam = campusId;
         return Result.success(studentCageShelfService.getFilterOptions(user, campusIdParam, areaId, floorId, roomId));
+    }
+
+    /**
+     * GET /api/v1/cage-shelves/room-tree
+     * 领用房间树（校区 → 区域/楼 → 楼层 → 房间），只到房间级，供动物订购「领用方式/房间」选择。
+     * MEMBER+ 可读：学生下单也要选房间，不能按管理端口径卡权限。
+     */
+    @GetMapping("/room-tree")
+    @Operation(summary = "领用房间树（到房间级）")
+    public Result<?> roomTree(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(cageShelfService.roomTree());
+    }
+
+    /**
+     * GET /api/v1/cage-shelves/group-rooms?userId=xxx
+     * 指定人员在笼架树中【本课题组】占用的房间。刷卡弹窗中栏平面图用此选房间：
+     * 门禁授权房间（allowedRooms）与笼架房间不是同一套 ID/命名口径，按权限房间取会渲染成空。
+     */
+    @GetMapping("/group-rooms")
+    @Operation(summary = "按人员取课题组笼架房间")
+    public Result<?> groupRooms(@RequestHeader(value = "Authorization", required = false) String authorization,
+                               @RequestParam(required = false) String userId) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
+        if (denied != null) {
+            return denied;
+        }
+        if (userId == null || userId.isBlank()) {
+            return Result.success(List.of());
+        }
+        return Result.success(studentCageShelfService.roomsForUserGroup(userId));
     }
 
     @GetMapping("/{shelveId}/detail")
@@ -481,6 +521,13 @@ public class CageShelfController {
         }
         if (roomId == null || aupId == null || cageIds.isEmpty()) {
             return Result.error("roomId/aupId/cageIds 不能为空");
+        }
+        // 审核中的笼位不能分配出去：待审请求不改笼位状态，只看类型拦不住（前端也挡，这里兜底）
+        Set<Long> pendingOpCages = cageOpService.pendingOccupiedCages();
+        for (Long cageId : cageIds) {
+            if (cageId != null && pendingOpCages.contains(cageId)) {
+                return Result.error("笼位 " + cageId + " 已有待审的分笼/转移请求，请先等它审完再分配");
+            }
         }
         // 配额校验：实际占用 + 本次 ≤ 该 AUP 可用数（键用 register_number）
         quotaService.assertCanAllocate(roomId, registerNumber, cageIds.size());

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-09T17:45:27.309Z",
+  "generatedAt": "2026-09-10T16:24:57.858Z",
   "pages": [
     {
       "path": "/about",
@@ -130,7 +130,7 @@
     },
     {
       "path": "/admin/cage-shelves/scope",
-      "label": "负责范围分配",
+      "label": "可见范围分配",
       "fallbackMinRole": "ADMIN",
       "groupTitle": "ARO 房间与联动",
       "registryId": "cage-scope"

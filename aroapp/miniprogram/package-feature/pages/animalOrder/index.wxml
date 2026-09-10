@@ -1,6 +1,10 @@
 <block wx:if="{{ pageGateOk }}">
 <view class="page">
-  <subpage-nav-bar title="动物订购" />
+  <subpage-nav-bar
+    title="{{ orderHistoryOpen ? '订单记录' : '动物订购' }}"
+    custom-back="{{ orderHistoryOpen }}"
+    bind:back="closeOrders"
+  />
 
   <!-- 校区门禁：未选校区前不渲染业务内容 -->
   <view wx:if="{{ !campus }}" class="campus-gate">
@@ -14,16 +18,20 @@
   </view>
 
   <block wx:else>
-  <!-- 校区切换 -->
-  <view class="campus-bar">
-    <view wx:for="{{ campusOptions }}" wx:key="*this" class="campus-pill {{ campus === item ? 'campus-pill-on' : '' }}" data-campus="{{ item }}" bindtap="onSelectCampus">{{ item }}</view>
-  </view>
-
-  <!-- AUP 选择条 -->
-  <view class="aup-bar {{ selectedAupId ? '' : 'aup-bar-empty' }}" bindtap="openAupSheet">
-    <text class="aup-tag">AUP</text>
-    <text class="aup-name">{{ selectedAupNo ? selectedAupNo : '点击选择加购上下文（必选）' }}</text>
-    <text class="aup-arrow">›</text>
+  <!-- 订购主体：订单记录打开时整页让位（抽屉会被顶部导航栏遮盖） -->
+  <block wx:if="{{ !orderHistoryOpen }}">
+  <!-- 加购上下文：校区 + AUP 合成一条，各自点开面板 -->
+  <view class="ctx-bar">
+    <view class="ctx-chip" bindtap="openCampusSheet">
+      <text class="ctx-ico">📍</text>
+      <text class="ctx-txt">{{ campus }}校区</text>
+      <text class="ctx-arrow">▾</text>
+    </view>
+    <view class="ctx-chip ctx-chip-flex {{ selectedAupId ? '' : 'ctx-chip-warn' }}" bindtap="openAupSheet">
+      <text class="ctx-tag">AUP</text>
+      <text class="ctx-txt ctx-ellipsis">{{ selectedAupNo ? selectedAupNo : '未选择（必选）' }}</text>
+      <text class="ctx-arrow">▾</text>
+    </view>
   </view>
 
   <!-- 时间窗 -->
@@ -94,19 +102,23 @@
     </view>
   </view>
   </block>
+  </block>
 </view>
 
 <!-- 规格选购 -->
-<van-popup show="{{ specSheetOpen }}" position="bottom" round closeable bind:close="closeSpec" custom-style="max-height:75vh;">
+<van-popup show="{{ specSheetOpen }}" position="bottom" round closeable bind:close="closeSpec" custom-style="max-height:85vh;">
   <view class="sheet" wx:if="{{ specItem }}">
     <view class="sheet-head">
       <text class="sheet-title">{{ specItem.title }} — 选购</text>
     </view>
     <scroll-view scroll-y class="sheet-scroll">
-      <view wx:if="{{ specOptionRows.length === 0 }}" class="muted pad">该物品未配置规格模板</view>
-      <block wx:else>
+      <!-- 有规格：逐规格配数量 -->
+      <block wx:if="{{ specOptionRows.length > 0 }}">
         <view class="spec-row" wx:for="{{ specOptionRows }}" wx:key="key" wx:for-item="opt">
-          <text class="spec-label">{{ opt.label }}</text>
+          <view class="spec-main">
+            <text class="spec-label">{{ opt.label }}</text>
+            <text class="spec-price" wx:if="{{ opt.priceText }}">单价 {{ opt.priceText }}</text>
+          </view>
           <view class="spec-step">
             <view class="step-btn {{ (specQtys[opt.key] || 0) <= 0 ? 'step-btn-off' : '' }}" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
             <text class="step-num">{{ specQtys[opt.key] || 0 }}</text>
@@ -114,11 +126,96 @@
           </view>
         </view>
       </block>
+      <!-- 无规格：直接按单品数量加购 -->
+      <block wx:else>
+        <view class="spec-row">
+          <view class="spec-main">
+            <text class="spec-label">{{ specItem.title }}</text>
+            <text class="spec-price" wx:if="{{ specFlatPriceText }}">单价 {{ specFlatPriceText }}</text>
+          </view>
+          <view class="spec-step">
+            <view class="step-btn {{ specNoQty <= 1 ? 'step-btn-off' : '' }}" bindtap="onNoSpecDec">−</view>
+            <text class="step-num">{{ specNoQty }}</text>
+            <view class="step-btn step-btn-plus" bindtap="onNoSpecInc">+</view>
+          </view>
+        </view>
+      </block>
+
+      <!-- 合计（仅开启价格的物品显示） -->
+      <view class="spec-total" wx:if="{{ specPriceEnabled }}">
+        <text class="spec-total-label">合计</text>
+        <text class="spec-total-value">{{ specTotalText }}</text>
+      </view>
+
+      <!-- 领用方式/房间（必选）+ 领用人（默认本人） -->
+      <view class="pickup-block">
+        <view class="pickup-field" bindtap="openRoomSheet">
+          <text class="pickup-label">领用方式/房间 <text class="req">*</text></text>
+          <view class="pickup-value {{ pickupRoomName ? '' : 'pickup-value-empty' }}">
+            <text>{{ pickupRoomName || '请选择领用房间' }}</text>
+            <text class="pickup-arrow">›</text>
+          </view>
+        </view>
+        <view class="pickup-field" bindtap="openCollectorSheet">
+          <text class="pickup-label">领用人</text>
+          <view class="pickup-value">
+            <text>{{ collectorName || '本人' }}<text class="pickup-hint">（默认为本人）</text></text>
+            <text class="pickup-arrow">›</text>
+          </view>
+        </view>
+      </view>
     </scroll-view>
     <view class="sheet-foot">
       <view class="foot-btn ghost" bindtap="closeSpec">取消</view>
-      <view class="foot-btn primary" bindtap="onSpecConfirm">加入购物车</view>
+      <view class="foot-btn primary {{ submitting ? 'foot-btn-off' : '' }}" bindtap="onSpecConfirm">{{ submitting ? '加入中…' : '加入购物车' }}</view>
     </view>
+  </view>
+</van-popup>
+
+<!-- 领用房间树（默认收起，支持搜索） -->
+<van-popup show="{{ roomSheetOpen }}" position="bottom" round closeable bind:close="closeRoomSheet" custom-style="max-height:75vh;">
+  <view class="sheet">
+    <view class="sheet-head"><text class="sheet-title">选择领用房间</text></view>
+    <view class="room-search">
+      <input class="room-search-input" placeholder="搜索房间…" value="{{ roomKeyword }}" bindinput="onRoomSearch" />
+    </view>
+    <scroll-view scroll-y class="sheet-scroll">
+      <view wx:if="{{ roomTree.length === 0 }}" class="muted pad">暂无房间数据</view>
+      <block wx:else>
+        <view
+          class="room-row {{ item.isRoom ? 'room-row-leaf' : 'room-row-folder' }} {{ item.selected ? 'room-row-sel' : '' }}"
+          wx:for="{{ roomTree }}" wx:key="key" wx:for-item="item"
+          style="padding-left: {{ 12 + item.depth * 24 }}rpx;"
+          data-key="{{ item.key }}" data-label="{{ item.label }}" data-isroom="{{ item.isRoom }}"
+          bindtap="onRoomPick"
+        >
+          <text class="room-caret" wx:if="{{ item.hasChildren }}">{{ item.expanded ? '▾' : '▸' }}</text>
+          <text class="room-caret" wx:else></text>
+          <text class="room-name">{{ item.name }}</text>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 领用人（仅本课题组） -->
+<van-popup show="{{ collectorSheetOpen }}" position="bottom" round closeable bind:close="closeCollectorSheet" custom-style="max-height:70vh;">
+  <view class="sheet">
+    <view class="sheet-head"><text class="sheet-title">选择领用人（本课题组）</text></view>
+    <scroll-view scroll-y class="sheet-scroll">
+      <view class="collector-row {{ collectorId === '' ? 'collector-row-sel' : '' }}" data-id="" bindtap="onCollectorPick">
+        <text class="collector-name">本人（默认）</text>
+      </view>
+      <view wx:if="{{ groupMembers.length === 0 }}" class="muted pad">未获取到课题组其他成员</view>
+      <block wx:else>
+        <view class="collector-row {{ collectorId === item.accountId ? 'collector-row-sel' : '' }}"
+          wx:for="{{ groupMembers }}" wx:key="accountId" wx:for-item="item"
+          data-id="{{ item.accountId }}" data-name="{{ item.name }}" bindtap="onCollectorPick">
+          <text class="collector-name">{{ item.name }}</text>
+          <text class="collector-job" wx:if="{{ item.jobNumber }}">{{ item.jobNumber }}</text>
+        </view>
+      </block>
+    </scroll-view>
   </view>
 </van-popup>
 
@@ -127,23 +224,57 @@
   <view class="sheet">
     <view class="sheet-head"><text class="sheet-title">共享购物车 · {{ cartCount }} 件</text></view>
     <scroll-view scroll-y class="sheet-scroll">
+      <!-- PI 分组视角切换（镜像 CartTree.tsx，仅 PI 且车非空时显示） -->
+      <view wx:if="{{ isPi && cart.length > 0 }}" class="cart-tree-tabs">
+        <view class="ord-tab {{ cartTreeMode === 'aup-user-spec' ? 'ord-tab-on' : '' }}" data-mode="aup-user-spec" bindtap="onCartTreeMode">AUP→实验员</view>
+        <view class="ord-tab {{ cartTreeMode === 'spec-user' ? 'ord-tab-on' : '' }}" data-mode="spec-user" bindtap="onCartTreeMode">规格→实验员</view>
+      </view>
+
       <view wx:if="{{ cart.length === 0 }}" class="muted pad">共享购物车是空的</view>
       <block wx:else>
-        <view class="cart-line" wx:for="{{ cart }}" wx:key="id" wx:for-item="line">
-          <view class="cart-line-mid">
-            <text class="cart-line-name">{{ line.itemLabel }}</text>
-            <text class="cart-line-meta">
-              {{ line.specLabel ? line.specLabel + ' · ' : '' }}{{ line.packageStatus }}<text wx:if="{{ line.addedByLabel }}"> · {{ line.addedByLabel }}</text>
-            </text>
-          </view>
-          <view class="spec-step">
-            <view class="step-btn {{ line.qty <= 1 ? 'step-btn-off' : '' }}" data-id="{{ line.id }}" bindtap="onCartDec">−</view>
-            <text class="step-num">{{ line.qty }}</text>
-            <view class="step-btn step-btn-plus" data-id="{{ line.id }}" bindtap="onCartInc">+</view>
+        <view class="ct-group" wx:for="{{ cartTree }}" wx:key="key" wx:for-item="grp">
+          <view class="ct-group-title">{{ grp.title }}</view>
+          <view class="ct-sub" wx:for="{{ grp.subGroups }}" wx:key="key" wx:for-item="sub">
+            <view class="ct-sub-title">{{ sub.title }}</view>
+            <view class="cart-line" wx:for="{{ sub.lines }}" wx:key="key" wx:for-item="line">
+              <view class="cart-line-mid">
+                <text class="cart-line-name">{{ line.itemLabel }}</text>
+                <text class="cart-line-meta">{{ line.specLabel ? line.specLabel + ' · ' : '' }}{{ line.packageStatus }}</text>
+                <text class="cart-line-price" wx:if="{{ line.lineAmountText }}">
+                  <text wx:if="{{ line.unitPriceText }}">{{ line.unitPriceText }} × {{ line.qty }} = </text>{{ line.lineAmountText }}
+                </text>
+                <text class="cart-line-meta" wx:if="{{ line.pickupRoomName || line.collectorName }}">
+                  <text wx:if="{{ line.pickupRoomName }}">房间 {{ line.pickupRoomName }}</text><text wx:if="{{ line.pickupRoomName && line.collectorName }}"> · </text><text wx:if="{{ line.collectorName }}">领用人 {{ line.collectorName }}</text>
+                </text>
+                <text class="cart-line-remark" wx:if="{{ line.packageRemark }}">包备注：{{ line.packageRemark }}</text>
+              </view>
+              <view class="spec-step" wx:if="{{ line.canEdit }}">
+                <view class="step-btn {{ line.qty <= 1 ? 'step-btn-off' : '' }}" data-id="{{ line.id }}" bindtap="onCartDec">−</view>
+                <text class="step-num">{{ line.qty }}</text>
+                <view class="step-btn step-btn-plus" data-id="{{ line.id }}" bindtap="onCartInc">+</view>
+              </view>
+              <text class="cart-line-qty" wx:else>×{{ line.qty }}</text>
+            </view>
           </view>
         </view>
       </block>
     </scroll-view>
+
+    <!-- 实时总金额：只统计已定价的行，全车无定价时不显示 -->
+    <view class="cart-total" wx:if="{{ cartTotalText }}">
+      <text class="cart-total-label">合计金额</text>
+      <text class="cart-total-value">{{ cartTotalText }}</text>
+    </view>
+
+    <!-- 编辑模式横幅：保存/放弃统一在这里，并禁掉另开新单 -->
+    <view wx:if="{{ editOrderId }}" class="edit-banner">
+      <view class="edit-banner-title">正在编辑订单 #{{ editOrderId }}</view>
+      <view class="edit-banner-desc">改完点「保存」写回原单（单号不变）；点「放弃」清空回填内容，原单不受影响。</view>
+      <view class="edit-banner-actions">
+        <view class="ord-btn" bindtap="onDiscardOrderEdit">放弃编辑</view>
+        <view class="ord-btn ord-btn-primary {{ editBusy ? 'ord-btn-off' : '' }}" bindtap="onApplyOrderEdit">{{ editBusy ? '保存中…' : '保存' }}</view>
+      </view>
+    </view>
 
     <block wx:if="{{ !isPi }}">
       <view class="sheet-remark">
@@ -156,10 +287,22 @@
     </block>
     <block wx:else>
       <view class="sheet-foot">
-        <view class="foot-btn ghost" bindtap="onClearCart">清空</view>
-        <view class="foot-btn primary" bindtap="openSubmitConfirm">正式提交 ({{ readyCount }})</view>
+        <view class="foot-btn ghost {{ editOrderId ? 'foot-btn-off' : '' }}" bindtap="onClearCart">清空</view>
+        <view class="foot-btn primary {{ editOrderId ? 'foot-btn-off' : '' }}" bindtap="openSubmitConfirm">{{ editOrderId ? '编辑中（用上方保存）' : '正式提交 (' + readyCount + ')' }}</view>
       </view>
     </block>
+  </view>
+</van-popup>
+
+<!-- 校区选择 -->
+<van-popup show="{{ campusSheetOpen }}" position="bottom" round closeable bind:close="closeCampusSheet" custom-style="max-height:50vh;">
+  <view class="sheet">
+    <view class="sheet-head"><text class="sheet-title">选择校区</text></view>
+    <view class="muted pad">可购时间、预计送达与订单归属均按校区区分</view>
+    <view class="campus-opt {{ campus === item ? 'campus-opt-on' : '' }}" wx:for="{{ campusOptions }}" wx:key="*this" data-campus="{{ item }}" bindtap="onSelectCampus">
+      <text>📍 {{ item }}校区</text>
+      <text wx:if="{{ campus === item }}" class="campus-opt-check">✓</text>
+    </view>
   </view>
 </van-popup>
 
@@ -183,7 +326,7 @@
 <van-popup show="{{ submitConfirmOpen }}" position="center" round closeable bind:close="closeSubmitConfirm" custom-style="width:88%;max-width:640rpx;">
   <view class="confirm">
     <view class="confirm-title">正式提交申领单</view>
-    <view class="confirm-sub">将提交 {{ readyCount }} 条 READY 行，生成一张订单进入审批。</view>
+    <view class="confirm-sub">将提交 {{ readyCount }} 行（本人加购的行 + 实验员已提交给 PI 的订单包），生成一张订单进入审批。</view>
     <textarea class="confirm-input" placeholder="整单备注（可选）" value="{{ submitRemark }}" bindinput="onSubmitRemarkInput" />
     <view class="confirm-actions">
       <view class="foot-btn ghost" bindtap="closeSubmitConfirm">取消</view>
@@ -192,27 +335,170 @@
   </view>
 </van-popup>
 
-<!-- 订单记录 -->
-<van-popup show="{{ orderHistoryOpen }}" position="right" custom-style="width:86%;height:100%;">
-  <view class="orders">
-    <view class="orders-head">
-      <text class="orders-title">我的订单</text>
-      <text class="orders-close" bindtap="closeOrders">✕</text>
+  <!-- 订单记录：整页显示，标题与返回走顶部导航栏 -->
+  <view wx:if="{{ orderHistoryOpen }}" class="orders">
+    <!-- 页签 + 视图切换 -->
+    <view class="ord-bar">
+      <view class="ord-tabs">
+        <view class="ord-tab {{ orderTab === 'pending' ? 'ord-tab-on' : '' }}" data-tab="pending" bindtap="onOrderTab">新订单</view>
+        <view class="ord-tab {{ orderTab === 'done' ? 'ord-tab-on' : '' }}" data-tab="done" bindtap="onOrderTab">已完成</view>
+      </view>
+      <view class="ord-tabs">
+        <view class="ord-tab {{ orderView === 'card' ? 'ord-tab-on' : '' }}" data-view="card" bindtap="onOrderView">卡片</view>
+        <view class="ord-tab {{ orderView === 'table' ? 'ord-tab-on' : '' }}" data-view="table" bindtap="onOrderView">表格</view>
+      </view>
+      <text class="ord-count">共 {{ orderTotal }} 单</text>
     </view>
+
+    <view class="ord-bar">
+      <view class="ord-btn" bindtap="toggleOrderFilters">筛选 {{ orderFiltersOpen ? '▲' : '▼' }}</view>
+      <view class="ord-btn ord-btn-primary {{ orderExporting ? 'ord-btn-off' : '' }}" bindtap="onExportOrders">{{ orderExporting ? '导出中…' : '导出 Excel' }}</view>
+    </view>
+
+    <!-- 筛选（可收起） -->
+    <view wx:if="{{ orderFiltersOpen }}" class="ord-filters">
+      <view class="ord-field">
+        <text class="ord-flabel">开始日期</text>
+        <picker mode="date" value="{{ orderFrom }}" bindchange="onOrderFilterInput" data-key="orderFrom">
+          <view class="ord-finput">{{ orderFrom || '不限' }}</view>
+        </picker>
+      </view>
+      <view class="ord-field">
+        <text class="ord-flabel">结束日期</text>
+        <picker mode="date" value="{{ orderTo }}" bindchange="onOrderFilterInput" data-key="orderTo">
+          <view class="ord-finput">{{ orderTo || '不限' }}</view>
+        </picker>
+      </view>
+      <view class="ord-field">
+        <text class="ord-flabel">校区</text>
+        <picker mode="selector" range="{{ ['全部','浦东','浦西'] }}" bindchange="onOrderFilterPick" data-key="orderCampus">
+          <view class="ord-finput">{{ orderCampus || '全部' }}</view>
+        </picker>
+      </view>
+      <view class="ord-field">
+        <text class="ord-flabel">AUP 编号</text>
+        <input class="ord-finput" placeholder="可直接输入" value="{{ orderAup }}" data-key="orderAup" bindinput="onOrderFilterInput" />
+      </view>
+      <view class="ord-field">
+        <text class="ord-flabel">供应商</text>
+        <input class="ord-finput" placeholder="可直接输入" value="{{ orderSupplier }}" data-key="orderSupplier" bindinput="onOrderFilterInput" />
+      </view>
+      <view class="ord-field">
+        <text class="ord-flabel">领用人</text>
+        <input class="ord-finput" placeholder="可直接输入" value="{{ orderCollector }}" data-key="orderCollector" bindinput="onOrderFilterInput" />
+      </view>
+      <view class="ord-field ord-field-wide">
+        <text class="ord-flabel">备注</text>
+        <input class="ord-finput" placeholder="整单/行备注" value="{{ orderRemark }}" data-key="orderRemark" bindinput="onOrderFilterInput" />
+      </view>
+      <view class="ord-filter-actions">
+        <view class="ord-btn" bindtap="resetOrderFilters">重置</view>
+        <view class="ord-btn ord-btn-primary" bindtap="applyOrderFilters">筛选</view>
+      </view>
+    </view>
+
     <scroll-view scroll-y class="orders-scroll">
-      <view wx:if="{{ orders.length === 0 }}" class="muted pad">暂无订单</view>
-      <block wx:else>
-        <view class="order-card" wx:for="{{ orders }}" wx:key="id" wx:for-item="o">
-          <view class="order-row">
-            <text class="order-id">订单 #{{ o.id }}</text>
-            <text class="order-status">{{ o.campus ? o.campus + ' · ' : '' }}{{ o.status }}</text>
+      <view wx:if="{{ orderRows.length === 0 }}" class="muted pad">{{ orderLoading ? '加载中…' : '暂无订单' }}</view>
+
+      <!-- 表格视图：横向滚动 + 纵向滚动（外层 scroll-view） -->
+      <scroll-view wx:elif="{{ orderView === 'table' }}" scroll-x class="ord-table-wrap">
+        <view class="ord-table">
+          <view class="ord-tr ord-tr-head">
+            <view class="ord-td w-no">单号</view>
+            <view class="ord-td w-src">来源</view>
+            <view class="ord-td w-group">课题组</view>
+            <view class="ord-td w-pi">负责人</view>
+            <view class="ord-td w-item">物品 / 规格</view>
+            <view class="ord-td w-supplier">供应商</view>
+            <view class="ord-td w-xs">雄数</view>
+            <view class="ord-td w-xs">雌数</view>
+            <view class="ord-td w-xs">总数</view>
+            <view class="ord-td w-amt">金额</view>
+            <view class="ord-td w-aup">AUP</view>
+            <view class="ord-td w-mid">领用人</view>
+            <view class="ord-td w-room">领用方式/房间</view>
+            <view class="ord-td w-date">到货日期</view>
+            <view class="ord-td w-src">校区</view>
+            <view class="ord-td w-remark">备注</view>
+            <view class="ord-td w-mid">状态</view>
+            <view class="ord-td w-date">提交时间</view>
           </view>
-          <text class="order-meta">{{ o.estimatedDeliveryDate ? '预计送达 ' + o.estimatedDeliveryDate : '' }}</text>
+          <view class="ord-tr" wx:for="{{ orderRows }}" wx:key="key" wx:for-item="r">
+            <view class="ord-td w-no mono">{{ r.no }}</view>
+            <view class="ord-td w-src">{{ r.sourceLabel }}</view>
+            <view class="ord-td w-group">{{ r.projectGroup }}</view>
+            <view class="ord-td w-pi">{{ r.submitter }}</view>
+            <view class="ord-td w-item">
+              <view wx:for="{{ r.items }}" wx:key="index" wx:for-item="it">{{ it.label }}{{ it.spec ? ' · ' + it.spec : '' }} × {{ it.qty }}</view>
+            </view>
+            <view class="ord-td w-supplier">{{ r.suppliers }}</view>
+            <view class="ord-td w-xs">{{ r.maleQty }}</view>
+            <view class="ord-td w-xs">{{ r.femaleQty }}</view>
+            <view class="ord-td w-xs">{{ r.totalQty }}</view>
+            <view class="ord-td w-amt">{{ r.amountText }}</view>
+            <view class="ord-td w-aup">{{ r.aup }}</view>
+            <view class="ord-td w-mid">{{ r.collector }}</view>
+            <view class="ord-td w-room">{{ r.room }}</view>
+            <view class="ord-td w-date">{{ r.arrivalDate }}</view>
+            <view class="ord-td w-src">{{ r.campus }}</view>
+            <view class="ord-td w-remark">{{ r.remark }}</view>
+            <view class="ord-td w-mid">{{ r.statusLabel }}</view>
+            <view class="ord-td w-date">{{ r.time }}</view>
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- 卡片视图 -->
+      <block wx:else>
+        <view class="ord-card" wx:for="{{ orderRows }}" wx:key="key" wx:for-item="r">
+          <view class="ord-card-head">
+            <text class="ord-card-no mono">{{ r.no }}</text>
+            <text class="ord-chip">{{ r.sourceLabel }}</text>
+            <text class="ord-card-status">{{ r.statusLabel }}</text>
+            <text class="ord-chip" wx:if="{{ r.aup !== '—' }}">{{ r.aup }}</text>
+            <text class="ord-card-toggle" data-key="{{ r.key }}" bindtap="toggleOrderExpand">{{ orderExpanded[r.key] ? '收起 ▲' : '展开 ▼' }}</text>
+          </view>
+          <view wx:if="{{ r.status === 'PENDING' }}" class="ord-card-actions">
+            <view class="ord-btn" data-id="{{ r.orderId }}" bindtap="onStartOrderEdit">编辑</view>
+          </view>
+          <view class="ord-card-line">
+            <text class="ord-k">课题组</text><text class="ord-v">{{ r.projectGroup }}</text>
+            <text class="ord-k">总数</text><text class="ord-v strong">{{ r.totalQty }}</text>
+            <text class="ord-k">金额</text><text class="ord-v price">{{ r.amountText }}</text>
+          </view>
+          <view wx:if="{{ !orderExpanded[r.key] }}">
+            <view class="ord-item-line" wx:for="{{ r.items }}" wx:key="index" wx:for-item="it" wx:if="{{ index < 2 }}">
+              {{ it.label }}{{ it.spec ? ' · ' + it.spec : '' }} × {{ it.qty }}
+            </view>
+            <view class="muted" wx:if="{{ r.items.length > 2 }}">另有 {{ r.items.length - 2 }} 项…</view>
+          </view>
+          <view wx:else class="ord-card-detail">
+            <view class="ord-kv"><text class="ord-k">课题组</text><text class="ord-v">{{ r.projectGroup }}</text></view>
+            <view class="ord-kv"><text class="ord-k">负责人</text><text class="ord-v">{{ r.submitter }}</text></view>
+            <view class="ord-kv"><text class="ord-k">供应商</text><text class="ord-v">{{ r.suppliers }}</text></view>
+            <view class="ord-kv"><text class="ord-k">品系</text><text class="ord-v">{{ r.strains }}</text></view>
+            <view class="ord-kv"><text class="ord-k">雄数</text><text class="ord-v">{{ r.maleQty }}</text></view>
+            <view class="ord-kv"><text class="ord-k">雌数</text><text class="ord-v">{{ r.femaleQty }}</text></view>
+            <view class="ord-kv"><text class="ord-k">总数</text><text class="ord-v strong">{{ r.totalQty }}</text></view>
+            <view class="ord-kv"><text class="ord-k">金额</text><text class="ord-v price">{{ r.amountText }}</text></view>
+            <view class="ord-kv"><text class="ord-k">领用人</text><text class="ord-v">{{ r.collector }}</text></view>
+            <view class="ord-kv"><text class="ord-k">领用方式/房间</text><text class="ord-v">{{ r.room }}</text></view>
+            <view class="ord-kv"><text class="ord-k">到货日期</text><text class="ord-v">{{ r.arrivalDate }}</text></view>
+            <view class="ord-kv"><text class="ord-k">校区</text><text class="ord-v">{{ r.campus }}</text></view>
+            <view class="ord-kv"><text class="ord-k">提交时间</text><text class="ord-v">{{ r.time }}</text></view>
+            <view class="ord-kv ord-kv-wide"><text class="ord-k">备注</text><text class="ord-v">{{ r.remark }}</text></view>
+          </view>
         </view>
       </block>
     </scroll-view>
+
+    <!-- 分页 -->
+    <view wx:if="{{ orderTotalPages > 1 }}" class="ord-pager">
+      <view class="ord-btn {{ orderPage <= 1 ? 'ord-btn-off' : '' }}" bindtap="prevOrderPage">上一页</view>
+      <text class="ord-page-text">第 {{ orderPage }} / {{ orderTotalPages }} 页</text>
+      <view class="ord-btn {{ orderPage >= orderTotalPages ? 'ord-btn-off' : '' }}" bindtap="nextOrderPage">下一页</view>
+    </view>
   </view>
-</van-popup>
 </block>
 
 <block wx:else>

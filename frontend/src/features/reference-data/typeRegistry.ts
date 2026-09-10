@@ -93,6 +93,31 @@ export function getChildTypes(parentTypeKey: string): ReferenceTypeConfig[] {
   return getAllTypeConfigs().filter((t) => t.parentType === parentTypeKey);
 }
 
+/** 规格模板的选项是纯字符串数组（兼容历史 {items:[...]} 包装与 JSON 字符串）。 */
+export function extractSpecOptions(raw: unknown): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw);
+      return Array.isArray(p) ? p.map(String) : (p?.items ?? []).map(String);
+    } catch { return []; }
+  }
+  if (typeof raw === "object" && raw !== null && Array.isArray((raw as { items?: unknown[] }).items)) {
+    return (raw as { items: unknown[] }).items.map(String);
+  }
+  return [];
+}
+
+/**
+ * 规格价格在 fieldData.specPrices 里的键。
+ * 必须与加购时写入 ref_cart.spec_selections.option 的串完全一致，
+ * 服务端解析单价就是按这个串查的。
+ */
+export function specPriceKey(templateName: string, optionLabel: string): string {
+  return `${templateName}: ${optionLabel}`;
+}
+
 /** Hierarchy from root to leaf */
 export const TYPE_HIERARCHY_ORDER = ["SUPPLIER", "ANIMAL_BREED", "ANIMAL_STRAIN", "GENOTYPE"];
 

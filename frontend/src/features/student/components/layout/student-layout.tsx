@@ -24,15 +24,21 @@ export default function StudentLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
 
+  /*
+   * 无操作倒计时退出【只在镜像模式启用】。
+   * 这是「教职工借学生视角」的前台场景：走开了就自动退回管理后台。
+   * 真实学生登录、模拟查看都不挂倒计时——StudentLayout 是所有 /student/* 的共用壳，
+   * 无条件启用会把倒计时退出挂到每一个 web 学生视角上（真实学生会被踢出登录）。
+   * 超时行为 = 镜像模式「返回首页」按钮的同一条路径。
+   */
+  const isMirrorMode = authStorage.isMirrorMode();
   const { showWarning, remainingSeconds } = useIdleTimeout({
+    enabled: isMirrorMode,
     timeoutMs: IDLE_TIMEOUT_MS,
     warningMs: IDLE_WARNING_MS,
     onTimeout: () => {
-      if (authStorage.isMirrorMode()) { authStorage.exitMirrorMode(); navigate("/console/admin", { replace: true }); return; }
-      if (getImpersonationState()?.isImpersonating) { returnToStaffView(); navigate("/console/admin", { replace: true }); return; }
-      const restored = authStorage.restorePreviousSession();
-      if (!restored) authStorage.clear();
-      navigate("/");
+      authStorage.exitMirrorMode();
+      navigate("/console/admin", { replace: true });
     },
   });
 

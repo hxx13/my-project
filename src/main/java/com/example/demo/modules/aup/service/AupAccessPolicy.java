@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.aup.entity.AupRecord;
 import com.example.demo.modules.identity.dto.IdentityTagVO;
 import com.example.demo.modules.identity.service.PersonIdentityService;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
@@ -197,17 +198,25 @@ public class AupAccessPolicy {
         if (!isPi(user)) {
             throw TwinBusinessException.of(403, "仅组长或管理员可执行组长审核");
         }
-        String reviewerGroup = projectGroupNameOf(user.getId());
-        if (!StringUtils.hasText(recordProjectGroupName) || !StringUtils.hasText(reviewerGroup)
-                || !recordProjectGroupName.trim().equals(reviewerGroup.trim())) {
+        if (!sameProjectGroup(recordProjectGroupName, user.getId())) {
             throw TwinBusinessException.of(403, "您不属于该计划书所在课题组，无法审核");
         }
     }
 
     /** 用户与计划书是否同课题组（课题组成员协作查看/编辑用） */
     private boolean sameProjectGroup(AupRecord record, User user) {
-        String pg = projectGroupNameOf(user != null ? user.getId() : null);
-        return pg != null && !pg.isBlank() && pg.equals(record.getProjectGroupName());
+        return sameProjectGroup(record == null ? null : record.getProjectGroupName(),
+                user == null ? null : user.getId());
+    }
+
+    /**
+     * 课题组名是否相交。
+     *
+     * <p>两侧都可能带多组：账号侧 aro_personnel.project_group_name 是多组拼接串（「A的课题组, B的课题组」），
+     * 计划书侧存单值。原先整串 equals 会让多课题组的组长审不了自己组的计划书，也会让多课题组的人看不到本组计划。
+     */
+    private boolean sameProjectGroup(String recordProjectGroupName, String userId) {
+        return PersonnelProjectGroupUtil.sameGroup(recordProjectGroupName, projectGroupNameOf(userId));
     }
 
     public boolean canView(AupRecord record, User user) {

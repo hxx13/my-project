@@ -316,15 +316,18 @@ export async function fetchFmReplacementRecords(params: { siteId?: string; page?
   return res.data.data;
 }
 
-export async function fetchFmReplacementSummary(siteId: string) {
-  const res = await authHttp.get<Result<Record<string, unknown>[]>>("/v1/facility-maintenance/replacement-summary", {
-    params: { siteId },
-  });
+export async function createFmReplacementRecord(body: Record<string, unknown>) {
+  const res = await authHttp.post<Result<{ id: string }>>("/v1/facility-maintenance/replacement-records", body);
   return res.data.data;
 }
 
-export async function createFmReplacementRecord(body: Record<string, unknown>) {
-  const res = await authHttp.post<Result<{ id: string }>>("/v1/facility-maintenance/replacement-records", body);
+export async function createFmReplacementBatch(body: {
+  siteId: string;
+  filterTypes: string[];
+  replacedAt: string;
+  note?: string;
+}): Promise<unknown> {
+  const res = await authHttp.post<Result<unknown>>("/v1/facility-maintenance/replacement-records/batch", body);
   return res.data.data;
 }
 

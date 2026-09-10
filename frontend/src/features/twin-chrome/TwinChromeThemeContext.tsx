@@ -1,11 +1,10 @@
 /* eslint-disable react-refresh/only-export-components -- Provider 与 hook 同文件，仅 Twin 壳使用 */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import {
     defaultMiniPreferences,
     fetchMiniPreferences,
     saveMiniPreferences,
-    type MiniPreferences,
     type TwinWebChromeThemeId,
 } from "@/api/domains/me.api";
 import { AUTH_USERINFO_UPDATED_EVENT, authStorage } from "@/features/auth/authStorage";
@@ -67,7 +66,6 @@ export function TwinChromeThemeProvider({ children }: { children: ReactNode }) {
     const [themeId, setThemeIdState] = useState<TwinWebChromeThemeId>("standard");
     const [hydrated, setHydrated] = useState(false);
     const [userKey, setUserKey] = useState(() => resolveUserId());
-    const lastPrefsRef = useRef<MiniPreferences | null>(null);
 
     useEffect(() => {
         const onUser = () => setUserKey(resolveUserId());
@@ -116,7 +114,6 @@ export function TwinChromeThemeProvider({ children }: { children: ReactNode }) {
                 if (cancelled) return;
                 clearLegacyDeviceOnlyKey();
                 const base = prefs ?? defaultMiniPreferences();
-                lastPrefsRef.current = base;
                 const tid = normalizeThemeId(base.twinWebChromeTheme);
                 setThemeIdState(tid);
                 writeThemeCache(uid, tid);
@@ -141,23 +138,15 @@ export function TwinChromeThemeProvider({ children }: { children: ReactNode }) {
             return;
         }
         try {
-            const base = lastPrefsRef.current ?? (await fetchMiniPreferences()) ?? defaultMiniPreferences();
-            const merged: MiniPreferences = {
-                ...base,
-                roomWatch: base.roomWatch ?? { selections: [] },
-                twinWebChromeTheme: next,
-            };
-            const saved = await saveMiniPreferences(merged);
-            lastPrefsRef.current = saved;
+            // 只提交本题负责的字段：整包回写会用陈旧副本覆盖别人刚存的字段
+            // （见 me.api.saveMiniPreferences 注释）
+            await saveMiniPreferences({ twinWebChromeTheme: next });
             clearLegacyDeviceOnlyKey();
         } catch (e) {
             toast.error(e instanceof Error ? e.message : "保存主题偏好失败");
             try {
                 const prefs = await fetchMiniPreferences();
-                if (prefs) {
-                    lastPrefsRef.current = prefs;
-                    setThemeIdState(normalizeThemeId(prefs.twinWebChromeTheme));
-                }
+                if (prefs) setThemeIdState(normalizeThemeId(prefs.twinWebChromeTheme));
             } catch {
                 /* ignore */
             }

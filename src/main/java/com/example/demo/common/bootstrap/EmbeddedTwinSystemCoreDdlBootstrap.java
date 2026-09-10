@@ -321,6 +321,14 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         // 团队角色字典（内置 6 角色 + 团队自定义）
         total++; if (runScript("db/bootstrap-nhp-team-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-card-print.sql", ctx)) success++;
+        // 笼位同步保护锁（楼层/房间/笼架/笼位）
+        total++; if (runScript("db/bootstrap-cage-sync-lock.sql", ctx)) success++;
+        // 笼位划分（预分给本课题组某人）
+        total++; if (runScript("db/bootstrap-cage-division.sql", ctx)) success++;
+        // 管家字段支持多人（扩到 VARCHAR(255)）
+        total++; if (runScript("db/bootstrap-cage-lab-assistant-multi.sql", ctx)) success++;
+        // 所属人审核配置（到位确认/分笼审核/转移审核）
+        total++; if (runScript("db/bootstrap-cage-owner-approval-config.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");

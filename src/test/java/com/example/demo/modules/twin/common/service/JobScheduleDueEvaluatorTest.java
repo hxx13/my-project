@@ -57,6 +57,44 @@ class JobScheduleDueEvaluatorTest {
                 JobScheduleDueEvaluator.parseTime("03:30")));
     }
 
+    /**
+     * 回归事故：二道滞留签退计划 21:00，服务器次日 09:09 才起来，
+     * 补跑把当时全馆在馆人员自动签退。写动作只允许在计划时刻附近执行。
+     */
+    @Test
+    void strandedSignout_missedByHours_nextMorning_notDue() {
+        TwinJobScheduleConfig cfg = strandedSignoutCfg();
+        LocalDateTime nextMorning = LocalDateTime.of(2026, 9, 10, 9, 9, 0);
+
+        assertFalse(JobScheduleDueEvaluator.shouldRun(cfg, nextMorning), "非计划整分不该命中");
+        assertFalse(JobScheduleDueEvaluator.isMissed(cfg, nextMorning), "迟到十余小时不许补跑");
+        assertFalse(JobScheduleDueEvaluator.dueForRun(cfg, nextMorning), "tick 不该补签退");
+    }
+
+    @Test
+    void strandedSignout_slippedWithinGrace_stillDue() {
+        TwinJobScheduleConfig cfg = strandedSignoutCfg();
+
+        assertTrue(JobScheduleDueEvaluator.dueForRun(
+                cfg, LocalDateTime.of(2026, 9, 9, 21, 0, 0)), "整分命中");
+        assertTrue(JobScheduleDueEvaluator.dueForRun(
+                cfg, LocalDateTime.of(2026, 9, 9, 21, 3, 0)), "节拍被长任务挤过 3 分钟仍应补跑");
+        assertFalse(JobScheduleDueEvaluator.dueForRun(
+                cfg, LocalDateTime.of(2026, 9, 9, 21, 40, 0)), "超宽限不再补跑");
+    }
+
+    private static TwinJobScheduleConfig strandedSignoutCfg() {
+        TwinJobScheduleConfig cfg = new TwinJobScheduleConfig();
+        cfg.setJobKey(JobExecutionRegistry.JOB_STRANDED_SIGNOUT_CHECK);
+        cfg.setScheduleType("DAILY");
+        cfg.setScheduleTime("21:00");
+        cfg.setWeekDays("1,2,3,4,5,6,7");
+        cfg.setScheduleStartTime("00:00");
+        cfg.setScheduleEndTime("23:59");
+        cfg.setEnabled(1);
+        return cfg;
+    }
+
     private static TwinJobScheduleConfig cageWeeklyCfg() {
         TwinJobScheduleConfig cfg = new TwinJobScheduleConfig();
         cfg.setJobKey(JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN);

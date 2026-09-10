@@ -23,6 +23,20 @@ import React from "react";
 import { ChevronDown, ChevronRight, LayoutGrid } from "lucide-react";
 import { CAMPUS_ORDER, cs, type TreeNode } from "../constants";
 import type { CageShelfTreeNode, BookingRoom } from "@/api/domains/cageShelf.api";
+import { LockBadge, type ScopeRef, type SyncLockScope } from "./SyncLockContext";
+
+/** 由树节点 raw 拼同步保护锁链（自下而上：本层 → 上级 → 顶层），空 ID 段跳过。 */
+function lockChain(raw: any, depth: SyncLockScope): ScopeRef[] {
+  const chain: ScopeRef[] = [];
+  const push = (type: SyncLockScope, v: any) => {
+    const s = v == null ? "" : String(v);
+    if (s) chain.push({ type, key: s });
+  };
+  if (depth === "SHELF") push("SHELF", raw?.shelveId);
+  if (depth !== "FLOOR") push("ROOM", raw?.roomId);
+  push("FLOOR", raw?.floorId);
+  return chain;
+}
 
 /**
  * buildTree — 全量 flat 数据 → 嵌套 TreeNode 树
@@ -138,7 +152,7 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
     const DOT: Record<string, string> = { NEED_DIVIDE: "bg-amber-500", HEALTH_ABNORMAL: "bg-purple-500", ANIMAL_TRANSFER: "bg-cyan-500", SPECIAL_FEEDING: "bg-red-500", COHABITATION: "bg-emerald-500" };
     return <button key={n.key} onClick={handleClick}
       className="w-full text-left rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 hover:border-[var(--twin-hairline-strong)] transition ml-2">
-      <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]" /><span className="truncate text-[10px] font-medium text-[var(--twin-ink)]">{n.label}</span>
+      <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]" /><span className="truncate text-[10px] font-medium text-[var(--twin-ink)]">{n.label}</span><LockBadge chain={lockChain(r, "SHELF")} label={n.label} />
       {shelfStatuses && shelfStatuses.size > 0 && <span className="ml-auto shrink-0 flex items-center gap-0.5">{[...shelfStatuses].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>}
       </div>
       {hideProgress ? null : (
@@ -175,7 +189,7 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
       <button onClick={() => { tg(n.key); if (isBooking) onOpenRoom(n.key.replace("r:", ""), n.label); }} className="w-full text-left rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 hover:border-[var(--twin-hairline-strong)] transition">
         <div className="flex items-center gap-1.5">
           {open ? <ChevronDown className="h-3 w-3 text-[var(--twin-mute)]" /> : <ChevronRight className="h-3 w-3 text-[var(--twin-mute)]" />}
-          <span className="flex-1 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span>
+          <span className="flex-1 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span><LockBadge chain={lockChain(n.raw, "ROOM")} label={n.label} />
           {isBooking && bkRoom ? <span className="text-[9px] text-[var(--twin-mute)] shrink-0">约{bkBooked} 用{bkUsed}</span>
           : <>{(() => { const rs = alertStatusesByRoom?.get(n.key.replace("r:", "")); if (!rs || rs.size === 0) return null; const DOT: Record<string, string> = { NEED_DIVIDE: "bg-amber-500", HEALTH_ABNORMAL: "bg-purple-500", ANIMAL_TRANSFER: "bg-cyan-500", SPECIAL_FEEDING: "bg-red-500", COHABITATION: "bg-emerald-500" }; return <span className="shrink-0 flex items-center gap-0.5 ml-1">{[...rs].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>; })()}
           <span className="text-[10px] text-[var(--twin-mute)]">{n.children.length}架</span></>}
@@ -199,6 +213,7 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
     <button onClick={() => tg(n.key)} className="w-full flex items-center gap-1 rounded-twin-sm px-1.5 py-1 hover:bg-[var(--twin-canvas-soft)] transition">
       {open ? <ChevronDown className="h-3 w-3 text-[var(--twin-mute)]" /> : <ChevronRight className="h-3 w-3 text-[var(--twin-mute)]" />}
       <span className="truncate">{n.label}</span>
+      {n.type === "floor" && <LockBadge chain={lockChain(n.raw, "FLOOR")} label={n.label} />}
     </button>
     {open && <div className="ml-2 space-y-0.5">{n.children.map(c => renderNode(c, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress))}</div>}
   </div>;

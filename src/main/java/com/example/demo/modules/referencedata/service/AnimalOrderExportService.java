@@ -1,12 +1,14 @@
 package com.example.demo.modules.referencedata.service;
 
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
+import com.example.demo.common.excel.SubtotalConfig;
 import com.example.demo.common.excel.SubtotalPlanBuilder;
 import com.example.demo.common.excel.SubtotalPlanBuilder.SubtotalEvent;
+import com.example.demo.common.excel.SubtotalRowStyles;
+import com.example.demo.common.excel.SubtotalSummary;
 import com.example.demo.modules.referencedata.dto.RefOrderLineView;
 import com.example.demo.modules.referencedata.dto.RefOrderView;
 import org.apache.poi.ss.usermodel.CellStyle;
-import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.WorkbookUtil;
@@ -34,6 +36,13 @@ public class AnimalOrderExportService {
     }
 
     public byte[] buildReviewSheet(List<RefOrderView> orders) {
+        return buildReviewSheet(orders, SubtotalConfig.all());
+    }
+
+    /**
+     * 同上，但按 {@code config} 保留/排除部分小计层级与板块。
+     */
+    public byte[] buildReviewSheet(List<RefOrderView> orders, SubtotalConfig config) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("订购审核"));
             int r = 0;
@@ -41,28 +50,14 @@ public class AnimalOrderExportService {
             org.apache.poi.ss.usermodel.Row head = sh.createRow(r++);
             for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
 
-            List<Detail> rows = new ArrayList<>();
-            for (RefOrderView o : orders == null ? List.<RefOrderView>of() : orders) {
-                String group = safe(o.getProjectGroupName());
-                String person = safe(o.getSubmitterName());
-                List<RefOrderLineView> lines = o.getLines() == null ? List.of() : o.getLines();
-                for (RefOrderLineView line : lines) {
-                    rows.add(new Detail(o, line, group, person, itemLabel(line)));
-                }
-            }
-            rows.sort(Comparator.comparing((Detail d) -> d.group())
-                    .thenComparing(d -> d.person())
-                    .thenComparing(d -> d.item())
-                    .thenComparing(d -> d.order().getCreatedAt(), Comparator.nullsLast(Comparator.reverseOrder())));
+            List<Detail> rows = sortDetails(orders);
+            List<SubtotalEvent> details = toDetails(rows);
 
-            List<SubtotalEvent> details = new ArrayList<>();
-            for (int i = 0; i < rows.size(); i++) {
-                Detail d = rows.get(i);
-                details.add(SubtotalPlanBuilder.detail(i, d.group(), d.person(), d.item(), qty(d.line()), 0, 0));
-            }
-
-            CellStyle bold = boldStyle(wb);
-            for (SubtotalEvent e : SubtotalPlanBuilder.build(details)) {
+            SubtotalRowStyles styles = SubtotalRowStyles.create(wb);
+            List<SubtotalEvent> plan = SubtotalPlanBuilder.build(details, config);
+            List<CellStyle> planStyles = styles.planStyles(plan);
+            for (int i = 0; i < plan.size(); i++) {
+                SubtotalEvent e = plan.get(i);
                 org.apache.poi.ss.usermodel.Row data = sh.createRow(r++);
                 if (e.isDetail()) {
                     Detail d = rows.get(e.rowIndex());
@@ -73,6 +68,7 @@ public class AnimalOrderExportService {
                     data.createCell(4).setCellValue(qty(d.line()));
                     data.createCell(5).setCellValue(statusLabel(d.order().getStatus()));
                     data.createCell(6).setCellValue(timeText(d.order()));
+                    SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
                     continue;
                 }
                 int labelCol = switch (e.level()) {
@@ -82,9 +78,9 @@ public class AnimalOrderExportService {
                     default -> 0;
                 };
                 data.createCell(labelCol).setCellValue(SubtotalPlanBuilder.label(e));
-                data.getCell(labelCol).setCellStyle(bold);
                 data.createCell(4).setCellValue(e.net());
-                data.getCell(4).setCellStyle(bold);
+                SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
+                if (e.level() == 1) r++;   // 一级小计后空一行，隔开各板块
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
             wb.write(out);
@@ -92,6 +88,43 @@ public class AnimalOrderExportService {
         } catch (Exception e) {
             throw new RuntimeException("导出订购审核 Excel 失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 导出结构摘要：全量层级与板块（供勾选），不受 levels/excludeBlocks 影响。
+     * 与导出共用 {@link #sortDetails}/{@link #toDetails}，保证摘要行数 == 成品行数。
+     */
+    public SubtotalSummary summarizeReview(List<RefOrderView> orders) {
+        List<SubtotalEvent> details = toDetails(sortDetails(orders));
+        return SubtotalPlanBuilder.summarize(SubtotalPlanBuilder.build(details, SubtotalConfig.all()));
+    }
+
+    /** 展开并排序明细行（排序规则导出与摘要共用）。 */
+    private static List<Detail> sortDetails(List<RefOrderView> orders) {
+        List<Detail> rows = new ArrayList<>();
+        for (RefOrderView o : orders == null ? List.<RefOrderView>of() : orders) {
+            String group = safe(o.getProjectGroupName());
+            String person = safe(o.getSubmitterName());
+            List<RefOrderLineView> lines = o.getLines() == null ? List.of() : o.getLines();
+            for (RefOrderLineView line : lines) {
+                rows.add(new Detail(o, line, group, person, itemLabel(line)));
+            }
+        }
+        rows.sort(Comparator.comparing((Detail d) -> d.group())
+                .thenComparing(d -> d.person())
+                .thenComparing(d -> d.item())
+                .thenComparing(d -> d.order().getCreatedAt(), Comparator.nullsLast(Comparator.reverseOrder())));
+        return rows;
+    }
+
+    /** 排序后的明细行 → 小计事件（导出与摘要同源，不复制两份）。 */
+    private static List<SubtotalEvent> toDetails(List<Detail> rows) {
+        List<SubtotalEvent> details = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            Detail d = rows.get(i);
+            details.add(SubtotalPlanBuilder.detail(i, d.group(), d.person(), d.item(), qty(d.line()), 0, 0));
+        }
+        return details;
     }
 
     private static long qty(RefOrderLineView line) {
@@ -134,13 +167,5 @@ public class AnimalOrderExportService {
 
     private static String safe(String v) {
         return v != null ? v : "";
-    }
-
-    private static CellStyle boldStyle(Workbook wb) {
-        CellStyle style = wb.createCellStyle();
-        Font f = wb.createFont();
-        f.setBold(true);
-        style.setFont(f);
-        return style;
     }
 }

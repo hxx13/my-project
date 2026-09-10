@@ -36,6 +36,7 @@ const studentAlerts = require('../../utils/studentAlertHelpers.js');
 const ICON_CAGE = '/pages/assets/images/icon-cage.png';
 const ICON_RECORDS = '/pages/assets/images/icon-records.png';
 const ICON_GROUP = '/pages/assets/images/icon-group.png';
+const ICON_ANIMAL_ORDER = '/pages/assets/images/icon-animal-order.png';
 const ICON_VIOLATION = '/pages/assets/images/icon-violation.png';
 
 const RECOMMENDED_ROOMS = [
@@ -85,9 +86,11 @@ Page({
     canQuickPurchaseRequest: false,
     canQuickSupplies: false,
     canQuickNotifications: true,
+    canQuickAnimalOrder: true,
     iconRepair: ICON_REPAIR,
     iconPurchase: ICON_PURCHASE,
     iconNotify: ICON_NOTIFY,
+    iconAnimalOrder: ICON_ANIMAL_ORDER,
     iconSupplies: ICON_SUPPLIES,
     canCreateAnnouncement: false,
     badgeRepairText: '',
@@ -154,7 +157,7 @@ Page({
     studentLowerRow: [
       { id: 'records', title: '出入记录', iconSrc: ICON_RECORDS },
       { id: 'notices', title: '通知', iconSrc: ICON_NOTIFY, badge: '' },
-      { id: 'group', title: '活跃度', iconSrc: ICON_GROUP },
+      { id: 'animalOrder', title: '动物订购', iconSrc: ICON_ANIMAL_ORDER },
       { id: 'violations', title: '违规记录', iconSrc: ICON_VIOLATION },
     ],
 
@@ -441,6 +444,7 @@ Page({
       /** 管理端进物资页；非处理教职工进「我的领用记录」，角标均为 pending-badges（处理者优先队列，否则本人待出库） */
       canQuickSupplies: canQuickSuppliesMall || canQuickSuppliesMine,
       canQuickNotifications: pagePermission.canShowMiniEntry('home', '/package-feature/pages/notifications/index', role, 'STUDENT'),
+      canQuickAnimalOrder: pagePermission.canShowMiniEntry('home', '/package-feature/pages/animalOrder/index', role, 'STUDENT'),
       canCreateAnnouncement: hasMinRole(role, 'PLATFORM_OWNER'),
       canPrimaryRoom: pagePermission.canShowMiniEntry('tabbar', '/pages/room/index', role, 'STUDENT'),
       canPrimaryStudentReview:
@@ -716,6 +720,19 @@ Page({
     wx.showToast({ title: '无权限', icon: 'none' });
   },
 
+  /**
+   * 动物订购（首页快捷入口）
+   * 学生视角：替换原「活跃度」入口；教职工视角：替换原「信息」入口。
+   */
+  goAnimalOrder() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE);
+    if (!pagePermission.canShowMiniEntry('home', '/package-feature/pages/animalOrder/index', role, 'STUDENT')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/animalOrder/index' });
+  },
+
   goNotifications() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
     if (!pagePermission.canShowMiniEntry('home', '/package-feature/pages/notifications/index', role, 'STUDENT')) {
@@ -957,8 +974,8 @@ Page({
       } else {
         wx.navigateTo({ url: '/package-feature/pages/staffChatHub/index' });
       }
-    } else if (id === 'group') {
-      wx.navigateTo({ url: '/package-feature/pages/studentGroupActivity/index' });
+    } else if (id === 'animalOrder') {
+      wx.navigateTo({ url: '/package-feature/pages/animalOrder/index' });
     } else if (id === 'violations') {
       wx.navigateTo({ url: '/package-feature/pages/studentViolations/index' });
     }

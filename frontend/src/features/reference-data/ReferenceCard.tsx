@@ -28,6 +28,34 @@ const LINE_FONTS = [
   "text-[10px] text-[var(--twin-mute)]",
 ];
 
+/**
+ * 卡片价格标签。未开启价格返回 null（不占位，避免多数卡片被「无价格」噪声填满）。
+ * 有规格价时取区间；区间为单值则只显示一个数。开启但未配价显示「待定」。
+ */
+function priceLabel(item: RefDataItem): string | null {
+  const fd = item.fieldData as Record<string, unknown> | undefined;
+  if (fd?.priceEnabled !== true) return null;
+
+  const nums: number[] = [];
+  const sp = fd.specPrices;
+  if (sp && typeof sp === "object" && !Array.isArray(sp)) {
+    for (const v of Object.values(sp as Record<string, unknown>)) {
+      const n = Number(v);
+      if (Number.isFinite(n)) nums.push(n);
+    }
+  }
+  if (nums.length === 0) {
+    const raw = fd.price;
+    const n = Number(raw);
+    if (raw !== null && raw !== undefined && raw !== "" && Number.isFinite(n)) nums.push(n);
+  }
+  if (nums.length === 0) return "待定";
+
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  return min === max ? `¥${min.toFixed(2)}` : `¥${min.toFixed(2)} ~ ¥${max.toFixed(2)}`;
+}
+
 export default function ReferenceCard({
   item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, orderingBlocked,
 }: ReferenceCardProps) {
@@ -46,6 +74,7 @@ export default function ReferenceCard({
   const keys = ["title", "subtitle", "description"];
   const lines = keys.map(k => getFieldVal(item, k));
   const isEmpty = lines.every(l => !l);
+  const priceText = priceLabel(item);
 
   return (
     <div
@@ -73,6 +102,10 @@ export default function ReferenceCard({
             )}
           </div>
         ))}
+
+        {priceText && (
+          <div className="mt-0.5 truncate text-xs font-bold tabular-nums text-[var(--twin-link)]">{priceText}</div>
+        )}
 
       </div>
 

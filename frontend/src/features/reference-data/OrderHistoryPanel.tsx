@@ -113,6 +113,9 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-2">
+          {order.totalAmount != null && (
+            <span className="text-[11px] font-bold text-sky-700">¥{Number(order.totalAmount).toFixed(2)}</span>
+          )}
           {order.estimatedDeliveryDate && (
             <span className="text-[11px] text-emerald-700">
               预计送达 {order.estimatedDeliveryDate}

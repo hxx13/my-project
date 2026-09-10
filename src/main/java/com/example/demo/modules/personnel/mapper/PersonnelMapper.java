@@ -21,6 +21,13 @@ public interface PersonnelMapper {
     @Select("SELECT * FROM personnel WHERE aro_user_id = #{aroUserId} LIMIT 1")
     Personnel findByAroUserId(@Param("aroUserId") String aroUserId);
 
+    /** 持有某身份标签（person_identity_tag.code）的全部人员，用于按身份反查人（如课题组管家）。 */
+    @Select("SELECT p.* FROM person_identity x "
+            + " JOIN personnel p ON p.id = x.user_id "
+            + " JOIN person_identity_tag t ON t.id = x.tag_id "
+            + " WHERE t.code = #{code} AND t.active = 1")
+    List<Personnel> listByTagCode(@Param("code") String code);
+
     @Select("SELECT * FROM personnel WHERE job_number = #{jobNumber}")
     List<Personnel> findByJobNumber(@Param("jobNumber") String jobNumber);
 

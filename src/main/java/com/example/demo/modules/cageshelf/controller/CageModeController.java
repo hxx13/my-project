@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,8 +44,12 @@ public class CageModeController {
         boolean student = visibilityService.isStudent(u);
         Map<String, Object> out = new LinkedHashMap<>();
         if (student) {
-            // 学生视角：查看 / 申请预约 / 确认（确认模式学生端默认开放，后续如需按身份配置再扩展）
-            out.put("modes", List.of("view", "studentClaim", "confirm"));
+            // 学生视角：查看 / 申请预约 / 确认。
+            // 「划分」是管家（GROUP_STEWARD）专属，且管家多为学生账号（单视角），
+            // 所以学生分支也要按身份配置补发，否则学生账号的管家永远看不到入口。
+            List<String> modes = new ArrayList<>(List.of("view", "studentClaim", "confirm"));
+            if (visibilityService.canUseMode(u, "division")) modes.add("division");
+            out.put("modes", modes);
         } else {
             out.put("modes", visibilityService.visibleStaffModes(u));
         }

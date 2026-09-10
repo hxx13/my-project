@@ -10,6 +10,9 @@ import {
   type PoolCell,
 } from "@/api/domains/cageShelf.api";
 import { CellButton } from "./CellButton";
+import { authStorage } from "@/features/auth/authStorage";
+import { useSyncLock, LockBadge, type ScopeRef, type LockState } from "./SyncLockContext";
+import type { CageOpMark } from "../useCageOpSelect";
 
 /**
  * ShelfGrid — 单个笼架的 8×10 网格视图
@@ -58,6 +61,9 @@ export function ShelfGrid({
   poolCells,
   myClaimCageIds,
   restrictSelectToPool,
+  pairColorByCageId,
+  opMarkerByCageId,
+  glowColor,
 }: {
   title: string;
   detail: CageShelfDetail | null;
@@ -90,9 +96,29 @@ export function ShelfGrid({
   myClaimCageIds?: Set<string>;
   /** 只有池内格子可勾选（分笼/转移选位用） */
   restrictSelectToPool?: boolean;
+  /** cageId → 配对色；批量转移用，源与目标同色 */
+  pairColorByCageId?: Map<string, string>;
+  /** cageId → 待审中间态标记（分笼审核中/转移审核中），源与目标同色 */
+  opMarkerByCageId?: Map<string, CageOpMark>;
+  /** 当前模式的呼吸灯颜色（查看模式不传 = 不高亮） */
+  glowColor?: string;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
+  /** 当前账号，用于把「划分名单」判定成「划给我」还是「划给别人」 */
+  const meId = String(authStorage.getUserInfo()?.id ?? "");
+
+  // 同步保护：笼架级锁链（自下而上 SHELF → ROOM → FLOOR）
+  const { protectMode, resolve, toggle, floorOfRoom } = useSyncLock();
+  const roomId = detail?.shelfMeta?.roomId;
+  const shelfChain = useMemo(() => {
+    const chain: ScopeRef[] = [];
+    if (sid) chain.push({ type: "SHELF", key: sid });
+    if (roomId != null && String(roomId)) chain.push({ type: "ROOM", key: String(roomId) });
+    const fid = floorOfRoom(roomId);
+    if (fid) chain.push({ type: "FLOOR", key: fid });
+    return chain;
+  }, [sid, roomId, floorOfRoom]);
 
   const gridContent = loading ? (
     <div className="flex-1 rounded-twin-lg border border-dashed text-xs text-[var(--twin-mute)] grid place-items-center">
@@ -107,6 +133,14 @@ export function ShelfGrid({
       <div className="grid grid-cols-8 gap-1.5">
         {cells.map((c) => {
           const alertKey = `${sid}:${c.position}`;
+          const cellId = String((c as any).id ?? "");
+          const divList = (c as any).divisionAssignees as Array<{ id: string; name: string }> | undefined;
+          const divisionLabel = divList && divList.length > 0
+            ? (divList.some(a => String(a.id) === meId) ? "已划分给你" : "已划分")
+            : undefined;
+          const cellChain: ScopeRef[] = cellId ? [{ type: "CELL", key: cellId }, ...shelfChain] : shelfChain;
+          // 只有带 animalCageId 的格子才是可上锁的最细颗粒度；空位（无 ID）不参与
+          const lockState: LockState | undefined = protectMode && cellId ? resolve(cellChain) : undefined;
           const selKey = `${sid}:${c.x}:${c.y}`;
           const ck = `${sid}:${c.x}:${c.y}`;
           const showCross = crossSid != null && crossSid === sid;
@@ -116,7 +150,9 @@ export function ShelfGrid({
             <CellButton
               key={c.position}
               cell={c}
-              onClick={onCellClick}
+              onClick={lockState !== undefined ? () => { void toggle(cellChain, `${title} ${c.position}`); } : onCellClick}
+              lockState={lockState}
+              divisionLabel={divisionLabel}
               alert={alertMap.get(alertKey)}
               selectable={selectable}
               selected={selectedCells?.has(selKey)}
@@ -138,9 +174,12 @@ export function ShelfGrid({
               flashOverlay={!!(scanLockTarget && scanLockTarget.sid === sid && scanLockTarget.x === c.x && scanLockTarget.y === c.y)}
               claimMode={claimMode}
               confirmMode={confirmMode}
-              isPoolCell={claimMode && poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
+              // isPoolCell 只决定「可否勾选」；绿环是否画由 CellButton 里的 claimMode 控制
+              isPoolCell={poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
               isMyClaimCell={myClaimCageIds ? myClaimCageIds.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
               restrictSelectToPool={restrictSelectToPool}
+              pairColor={pairColorByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? ""))}
+              opMarker={opMarkerByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? ""))}
             />
           );
         })}
@@ -149,9 +188,15 @@ export function ShelfGrid({
   );
 
   return (
-    <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 min-h-0 flex flex-col">
+    <div
+      className={`rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 min-h-0 flex flex-col${glowColor ? " cage-shelf-glow" : ""}`}
+      style={glowColor ? ({ ["--mode-color" as string]: glowColor } as React.CSSProperties) : undefined}
+    >
       <div className="mb-2 flex items-center justify-between shrink-0">
-        <div className="text-sm font-semibold text-[var(--twin-ink)]">{title}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="truncate text-sm font-semibold text-[var(--twin-ink)]">{title}</div>
+          {shelfChain.length > 0 && <LockBadge chain={shelfChain} label={title} size={3.5} />}
+        </div>
         <div className="flex items-center gap-2">
           {detail?.shelfMeta && (
             <div className="text-[11px] text-[var(--twin-mute)]">

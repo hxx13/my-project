@@ -9,6 +9,7 @@ import com.example.demo.modules.personnel.service.PersonnelService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -16,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +35,7 @@ public class PersonIdentityService {
 
     /** 饲养组长身份标识稳定码（种子标签 BREEDING_GROUP_LEADER / 饲养组长，与 PI 区分）。 */
     private static final String BREEDING_GROUP_LEADER_CODE = "BREEDING_GROUP_LEADER";
+    private static final String GROUP_STEWARD_CODE = "GROUP_STEWARD";
 
     @Value("${aup.identity.pi-code:PI}")
     private String piCode;
@@ -63,7 +66,15 @@ public class PersonIdentityService {
         if (userIds == null || userIds.isEmpty()) {
             rows = identityMapper.listAll();
         } else {
-            rows = identityMapper.listByUserIds(new ArrayList<>(userIds));
+            // 入参常是账号 id（staff_id / aro_user_id，通用选人组件给的就是 aro_user_id），
+            // 而身份表的主键口径是 personnel.id，先统一；解析不到就按原值试（调用方可能本来就传 personnel.id）。
+            LinkedHashSet<String> normalized = new LinkedHashSet<>();
+            for (String uid : userIds) {
+                if (!StringUtils.hasText(uid)) continue;
+                String pid = resolveIdByAccount(uid.trim());
+                normalized.add(pid != null ? pid : uid.trim());
+            }
+            rows = normalized.isEmpty() ? List.of() : identityMapper.listByUserIds(new ArrayList<>(normalized));
         }
         Map<Long, PersonIdentityTag> tags = tagMap(rows);
         Map<String, List<IdentityTagVO>> result = new LinkedHashMap<>();
@@ -110,6 +121,23 @@ public class PersonIdentityService {
         }
         for (IdentityTagVO tag : getByUser(pid)) {
             if (tag != null && Objects.equals(tag.getCode(), BREEDING_GROUP_LEADER_CODE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 是否课题组管家：code 固定 {@link #GROUP_STEWARD_CODE}（与 PersonIdentityTagSeedBootstrap 种子一致）。 */
+    public boolean isGroupSteward(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        String pid = resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : getByUser(pid)) {
+            if (tag != null && Objects.equals(tag.getCode(), GROUP_STEWARD_CODE)) {
                 return true;
             }
         }

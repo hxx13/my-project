@@ -5,18 +5,20 @@ import { CageColorProvider } from "@/features/cage-shelf/components/CageColorCon
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import { ShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import CageOpSelectBanner from "@/features/cage-shelf/components/CageOpSelectBanner";
+import CageModeIsland, { modeBorderColor, useIslandVariant, type CageModeKey } from "@/features/cage-shelf/components/CageModeIsland";
 import CageOperationDialog from "@/features/cage-shelf/components/CageOperationDialog";
-import { useCageOpSelect } from "@/features/cage-shelf/useCageOpSelect";
+import { useCageOpSelect, buildCageOpMarks } from "@/features/cage-shelf/useCageOpSelect";
 import { CampusTree, buildTree } from "@/features/cage-shelf/components/CampusTree";
 import { displayPosition } from "@/features/cage-shelf/constants";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, fetchCageModeVisible, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell } from "@/api/domains/cageShelf.api";
 import { fetchStudentMobileSpecialStatusOverview } from "@/api/domains/studentMobile.api";
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import MobileSpecialStatusPanel from "@/pages/mobile/MobileSpecialStatusPanel";
 import toast from "react-hot-toast";
 import { fetchPinnedCageShelves, toggleCageShelfPin, type PinnedCageShelfDetail } from "../api/student.api";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
-import { useQuery } from "@tanstack/react-query";
+import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 
 import { appAlert } from "@/lib/appDialog";
@@ -119,6 +121,11 @@ export default function StudentCageShelfPage() {
   const [poolCells, setPoolCells] = useState<Map<string, PoolCell>>(new Map()); // animalCageId → PoolCell
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimSelected, setClaimSelected] = useState<Set<string>>(new Set());
+  const [divisionMode, setDivisionMode] = useState(false);
+  const [divisionPickerOpen, setDivisionPickerOpen] = useState(false);
+  const [divisionSubmitting, setDivisionSubmitting] = useState(false);
+  const [divisionBoxSelect, setDivisionBoxSelect] = useState(false);
+  const divisionBoxAnchorRef = useRef<{ sid: string; x: number; y: number } | null>(null);
   const [claimReloadKey, setClaimReloadKey] = useState(0);
 
   // ── 扫码 / 特殊状态总览（对齐 H5、小程序）──
@@ -136,6 +143,36 @@ export default function StudentCageShelfPage() {
   }, []);
   const canClaim = allowedModes == null || allowedModes.includes("studentClaim");
   const canConfirm = allowedModes == null || allowedModes.includes("confirm");
+  /** 划分模式：管家专属（后端下发的能力位；具体写权限由后端二次校验） */
+  const canDivide = allowedModes == null || allowedModes.includes("division");
+
+  /* ---- 模式悬浮岛：与管理端同一套组件、同一份模式元数据、同一个形态选择 ---- */
+  const [islandVariant, toggleIslandVariant] = useIslandVariant();
+  const rightPanelRef = useRef<HTMLDivElement | null>(null);
+  const currentMode: CageModeKey = confirmMode ? "confirm" : claimMode ? "studentClaim" : divisionMode ? "division" : "view";
+  /** 圈圈形态收缩时只占一个小圆钮，不需要留白；横向程序坞才需要 */
+  const islandPadStyle = islandVariant === "dock" ? { paddingBottom: 88 } : undefined;
+  const modeGlow = modeBorderColor(currentMode);
+  const modeGlowProps = modeGlow ? { glowColor: modeGlow } : {};
+  /** 学生端可用的模式：查看恒有，申请/确认按后端下发的能力 */
+  const islandModes = useMemo<CageModeKey[]>(() => {
+    const list: CageModeKey[] = ["view"];
+    if (canClaim) list.push("studentClaim");
+    if (canConfirm) list.push("confirm");
+    if (canDivide) list.push("division");
+    return list;
+  }, [canClaim, canConfirm, canDivide]);
+  const switchMode = (k: CageModeKey) => {
+    setClaimMode(k === "studentClaim");
+    setConfirmMode(k === "confirm");
+    setDivisionMode(k === "division");
+    setDivisionBoxSelect(false);
+    divisionBoxAnchorRef.current = null;
+    if (k !== "studentClaim" && k !== "division") {
+      setPoolCells(new Map());
+      setClaimSelected(new Set());
+    }
+  };
 
   // 进入申请模式时，加载当前房间所有架子的池数据
   useEffect(() => {
@@ -173,6 +210,81 @@ export default function StudentCageShelfPage() {
       n.has(key) ? n.delete(key) : n.add(key);
       return n;
     });
+  };
+
+  /** 勾选集合 → animalCageId（划分与申请共用同一个 selected 集合） */
+  const selectedCageIds = () => {
+    const ids: string[] = [];
+    for (const key of claimSelected) {
+      const aid = cellIdByKey.get(key);
+      if (aid) ids.push(aid);
+    }
+    return ids;
+  };
+
+  const findCellByKey = (sid: string, x: number, y: number) => {
+    for (const d of details) {
+      if (String(d.shelfMeta?.shelveId) === sid) return d.grid?.find((c: any) => c.x === x && c.y === y);
+    }
+    if (shelfDetail && String(shelfDetail.shelfMeta?.shelveId) === sid) {
+      return shelfDetail.grid?.find((c: any) => c.x === x && c.y === y);
+    }
+    return undefined;
+  };
+
+  /** 划分模式勾选：单击切换 / 框选按钮点两格成矩形。type1（等待分配）不可划 —— 底层约束 */
+  const handleDivisionToggle = (sid: string, x: number, y: number, _shiftKey?: boolean) => {
+    const eligible = (cx: number, cy: number) => {
+      const id = cellIdByKey.get(`${sid}:${cx}:${cy}`);
+      if (!id) return false;
+      const c: any = findCellByKey(sid, cx, cy);
+      return (c?.cageTypeCode ?? c?.animalCageType) !== 1;
+    };
+    const badHint = "待分配状态的笼位未归属课题组，不能划分";
+    const key = `${sid}:${x}:${y}`;
+    const patch = (fn: (n: Set<string>) => void) =>
+      setClaimSelected(prev => { const n = new Set(prev); fn(n); return n; });
+
+    if (divisionBoxSelect) {
+      const anchor = divisionBoxAnchorRef.current;
+      if (!anchor || anchor.sid !== sid) {
+        if (!eligible(x, y)) { void appAlert(badHint); return; }
+        divisionBoxAnchorRef.current = { sid, x, y };
+        patch(n => n.add(key));
+        return;
+      }
+      const minX = Math.min(anchor.x, x), maxX = Math.max(anchor.x, x);
+      const minY = Math.min(anchor.y, y), maxY = Math.max(anchor.y, y);
+      patch(n => {
+        for (let cx = minX; cx <= maxX; cx++)
+          for (let cy = minY; cy <= maxY; cy++)
+            if (eligible(cx, cy)) n.add(`${sid}:${cx}:${cy}`);
+      });
+      divisionBoxAnchorRef.current = null;
+      setDivisionBoxSelect(false);
+      return;
+    }
+    if (!claimSelected.has(key) && !eligible(x, y)) { void appAlert(badHint); return; }
+    patch(n => { n.has(key) ? n.delete(key) : n.add(key); });
+  };
+
+  /** 划分提交：多笼位 × 多人 = 全部配对 */
+  const submitDivision = async (ids: string[], names: string[]) => {
+    const cageIds = selectedCageIds();
+    if (cageIds.length === 0) { void appAlert("请先勾选笼位"); return; }
+    if (ids.length === 0) { void appAlert("请选择要划分的人员"); return; }
+    setDivisionSubmitting(true);
+    try {
+      await saveCageDivision(cageIds, ids.map((id, i) => ({ id, name: names[i] ?? "" })));
+      toast.success(`已把 ${cageIds.length} 个笼位划分给 ${ids.length} 人`);
+      setClaimSelected(new Set());
+      setDivisionPickerOpen(false);
+      setClaimReloadKey(k => k + 1);
+    } catch (e: any) {
+      toast.error(e?.message || "保存划分失败");
+    } finally {
+      setDivisionSubmitting(false);
+    }
   };
 
   const submitClaims = async () => {
@@ -278,9 +390,34 @@ export default function StudentCageShelfPage() {
     return m;
   }, [details, shelfDetail]);
 
+  /** 划分模式的可选高亮：非 type1 且有笼位ID的格子 → 复用认领池那套绿环机制标出「哪些能划」 */
+  const divisionPoolCells = useMemo(() => {
+    if (!divisionMode) return undefined;
+    const m = new Map<string, PoolCell>();
+    const add = (grid: any[]) => {
+      for (const c of grid ?? []) {
+        const id = String(c.id ?? c.animalCageId ?? "");
+        const ct = c.cageTypeCode ?? c.animalCageType;
+        if (id && ct !== 1) m.set(id, c as PoolCell);
+      }
+    };
+    for (const d of details) add(d.grid);
+    if (shelfDetail) add(shelfDetail.grid);
+    return m;
+  }, [divisionMode, details, shelfDetail]);
+
   /* ---- 分笼 / 转移：选位模式 ---- */
   const opSel = useCageOpSelect();
   const opActive = opSel.active;
+  const qc = useQueryClient();
+  /** 待审分笼/转移的中间态：学生只看得到自己提交的（后端按身份过滤） */
+  const { data: pendingOps = [] } = useQuery({
+    queryKey: ["cage-op", "markers"],
+    queryFn: fetchCageOpMarkers,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+  });
+  const opMarkByCageId = useMemo(() => buildCageOpMarks(pendingOps), [pendingOps]);
   const keyByCageId = useMemo(() => {
     const m = new Map<string, string>();
     for (const [k, id] of cellIdByKey) m.set(id, k);
@@ -298,17 +435,20 @@ export default function StudentCageShelfPage() {
     const id = cellIdByKey.get(`${sid}:${x}:${y}`);
     if (id) opSel.toggle(id);
   };
-  const opGridProps = opActive ? {
-    selectable: true,
-    selectedCells: opSelectedCells,
-    onToggleCell: handleOpToggle,
-    allocMode: true,
-    clickMode: "toggle" as const,
-    claimMode: true,
-    poolCells: opSel.eligibleMap as Map<string, any>,
-    restrictSelectToPool: true,
-    onCellClick: undefined,
-  } : {};
+  const opGridProps = {
+    opMarkerByCageId: opMarkByCageId,
+    ...(opActive ? {
+      selectable: true,
+      selectedCells: opSelectedCells,
+      onToggleCell: handleOpToggle,
+      allocMode: true,
+      clickMode: "toggle" as const,
+      claimMode: true,
+      poolCells: opSel.eligibleMap as Map<string, any>,
+      restrictSelectToPool: true,
+      onCellClick: undefined,
+    } : {}),
+  };
 
   const onOpenRoom = (roomId: string, roomName: string) => { setARid(roomId); setARname(roomName); setShelfDetail(null); };
   const onOpenShelf = async (shelveId: string, _overrideRoomId?: string) => { setShelfLoading(true); setShelfDetail(null); try { const d = await fetchLocalShelfGridByShelveId(shelveId); setShelfDetail(d); } catch { setShelfDetail(null); } finally { setShelfLoading(false); } };
@@ -326,17 +466,21 @@ export default function StudentCageShelfPage() {
       return;
     }
     if (r.type === "NOT_FOUND") { toast.error("未找到对应笼位"); return; }
-    if (!r.shelveId) { toast.error("该编码未关联笼架"); return; }
+    // 两种命中形态（CAGE_CELL 嵌在 cageCell 里 / LEGACY_CAGE_BOX 平铺）统一在这里归一，
+    // 别自己读顶层字段 —— 笼盒码的定位信息不在顶层
+    const t = locateTargetOf(r);
+    if (!t) { toast.error(r.message || "该编码无法定位到笼位"); return; }
+    if (!t.shelveId) { toast.error("该编码未关联笼架"); return; }
     setTab("filter");
     setViewMode("shelf");
-    if (r.roomId != null) { setARid(String(r.roomId)); setARname(String((r as any).roomName || "")); }
+    if (t.roomId) { setARid(t.roomId); setARname(t.roomName || t.roomId); }
     setShelfLoading(true);
     setShelfDetail(null);
     try {
-      const d = await fetchLocalShelfGridByShelveId(String(r.shelveId));
+      const d = await fetchLocalShelfGridByShelveId(t.shelveId);
       setShelfDetail(d);
-      const hit = (d?.grid ?? []).find((c: any) => Number(c.x) === Number(r.positionX) && Number(c.y) === Number(r.positionY));
-      if (hit) { setShelfId(String(r.shelveId)); setCell(hit as CageShelfCell); }
+      const hit = (d?.grid ?? []).find((c: any) => Number(c.x) === Number(t.positionX) && Number(c.y) === Number(t.positionY));
+      if (hit) { setShelfId(t.shelveId); setCell(hit as CageShelfCell); }
       else toast.error("已定位到笼架，但未找到该格位");
     } catch (e: any) {
       setShelfDetail(null);
@@ -373,7 +517,7 @@ export default function StudentCageShelfPage() {
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="flex-1 min-w-0 grid grid-rows-[auto_1fr] h-full pr-1 overflow-hidden">
+        <div ref={rightPanelRef} className="flex-1 min-w-0 grid grid-rows-[auto_1fr] h-full pr-1 overflow-hidden">
           <div className="shrink-0 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1">
@@ -389,28 +533,43 @@ export default function StudentCageShelfPage() {
                   <button onClick={() => setViewMode("room")} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "room" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>全房间</button>
                   <button onClick={() => setViewMode("shelf")} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "shelf" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>单笼架</button>
                 </div>}
-                {tab === "filter" && (canClaim || canConfirm) && <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
-                  {canClaim && <button onClick={() => { setConfirmMode(false); setClaimMode(v => !v); if (claimMode) { setPoolCells(new Map()); setClaimSelected(new Set()); } }} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${claimMode ? "bg-emerald-600 text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>📝 申请预约</button>}
-                  {canConfirm && <button onClick={() => { setClaimMode(false); setConfirmMode(v => !v); }} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${confirmMode ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>确认</button>}
-                </div>}
+                {/* 模式切换已移到右下角的「模式悬浮岛」（见文件末尾 CageModeIsland），
+                    与管理端共用同一套组件与说明 */}
                 {claimMode && claimSelected.size > 0 && (
                   <button onClick={submitClaims} disabled={claimSubmitting}
                     className="rounded-student-sm px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
                     {claimSubmitting ? "提交中…" : `提交申请(${claimSelected.size})`}
                   </button>
                 )}
+                {divisionMode && <>
+                  <span className="text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">已选 {claimSelected.size} 个笼位</span>
+                  <button onClick={() => { setDivisionBoxSelect(v => !v); divisionBoxAnchorRef.current = null; }}
+                    className={`rounded-student-sm px-2 py-1 text-[11px] font-semibold transition ${divisionBoxSelect ? "bg-amber-500 text-white shadow-sm" : "border border-dashed border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]"}`}>
+                    {divisionBoxSelect ? "框选中 · 点击两格" : "⬜ 矩形框选"}
+                  </button>
+                  <button onClick={() => setDivisionPickerOpen(true)} disabled={claimSelected.size === 0 || divisionSubmitting}
+                    className="rounded-student-sm px-2.5 py-1 text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50">
+                    {divisionSubmitting ? "提交中…" : "选择人员并划分"}
+                  </button>
+                  <button onClick={() => setClaimSelected(new Set())} disabled={claimSelected.size === 0}
+                    className="rounded-student-sm px-2 py-1 text-[11px] font-semibold border border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)] disabled:opacity-40">
+                    清除
+                  </button>
+                </>}
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => setScanOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:text-[var(--app-color-text-primary)]" title="扫码定位"><Scan className="h-3 w-3" />扫码</button>
-                <button onClick={() => setSpecialOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:text-[var(--app-color-text-primary)]" title="特殊状态总览"><Activity className="h-3 w-3" />特殊状态</button>
+                <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
+                <button onClick={() => setScanOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]" title="扫码定位"><Scan className="h-3 w-3" />扫码</button>
+                <button onClick={() => setSpecialOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]" title="特殊状态总览"><Activity className="h-3 w-3" />特殊状态</button>
                 <button onClick={() => setLegend(v => !v)} className={`flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] transition ${legend ? "bg-[var(--app-color-accent-hover)] text-white" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><Info className="h-3 w-3" />图例{legend ? " ▲" : " ▼"}</button>
+                </div>
               </div>
             </div>
             {legend && <CageShelfLegend />}
             {opActive && <CageOpSelectBanner sel={opSel} />}
           </div>
 
-          <div className="cage-scroll flex-1 min-h-0 overflow-y-auto space-y-2">
+          <div className="cage-scroll flex-1 min-h-0 overflow-y-auto space-y-2" style={islandPadStyle}>
             {tab === "filter" && <>
               {/* ROOM MODE */}
               {viewMode === "room" && <>
@@ -419,7 +578,7 @@ export default function StudentCageShelfPage() {
                 {!loading && aRid && details.length === 0 && <div className="rounded-student-lg border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
                 {details.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d, idx) => {
                   const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(sid);
-                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode} poolCells={poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setShelfId(sid); setCell(c); } }} {...opGridProps} /></div>;
+                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode||divisionMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : undefined} allocMode={claimMode||divisionMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setShelfId(sid); setCell(c); } }} {...opGridProps} {...modeGlowProps} /></div>;
                 })}</div>}
               </>}
 
@@ -428,10 +587,10 @@ export default function StudentCageShelfPage() {
                 <div className="w-1/2 flex flex-col min-w-0">
                   {shelfLoading && <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] grid place-items-center text-sm text-[var(--app-color-text-tertiary)]">加载笼架…</div>}
                   {!shelfLoading && !shelfDetail && <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] flex flex-col items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20" />点击左侧笼架<br /><span className="text-[11px]">选中后显示该笼架 8x10 笼位</span></div>}
-                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode} poolCells={poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} alertMap={new Map()} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); setCell(c); } }} {...opGridProps} />}
+                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode||divisionMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} alertMap={new Map()} selectable={claimMode||divisionMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : undefined} allocMode={claimMode||divisionMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); setCell(c); } }} {...opGridProps} {...modeGlowProps} />}
                 </div>
                 <div className="w-1/2 flex flex-col min-w-0">
-                  {cell ? <CellDetailPanel cell={cell} gridMeta={shelfDetail?.shelfMeta ?? null} shelveId={shelfId ?? ""} onClose={() => setCell(null)} onStartOp={(k, s) => { setClaimMode(false); setConfirmMode(false); setCell(null); setShelfId(null); void opSel.start(k, s); }} onChanged={() => setClaimReloadKey(k => k + 1)} /> :
+                  {cell ? <CellDetailPanel cell={cell} opMarkByCageId={opMarkByCageId} gridMeta={shelfDetail?.shelfMeta ?? null} shelveId={shelfId ?? ""} onClose={() => setCell(null)} onStartOp={(k, s) => { setClaimMode(false); setConfirmMode(false); setCell(null); setShelfId(null); void opSel.start(k, s); }} onChanged={() => setClaimReloadKey(k => k + 1)} canDivide={canDivide} /> :
                     <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] flex flex-col items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br /><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>}
                 </div>
               </div>}
@@ -441,7 +600,7 @@ export default function StudentCageShelfPage() {
               {pinned.size === 0 && !bmLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无收藏的笼架<br /><span className="text-[11px]">在筛选页面将笼架加入收藏后在此处查看</span></div>}
               {!bmLoading && bmList.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b => {
                 const sid = b.shelfMeta.shelveId;
-                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode} poolCells={poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : undefined} allocMode={claimMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setCell(c); setShelfId(sid); } }} {...opGridProps} /></div>;
+                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode||divisionMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode} selectedCells={claimSelected} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : undefined} allocMode={claimMode||divisionMode} clickMode={claimMode ? "toggle" : undefined} onCellClick={(c: any) => { if (confirmMode) { void handleConfirmCell(c); } else { setCell(c); setShelfId(sid); } }} {...opGridProps} {...modeGlowProps} /></div>;
               })}</div>}
             </>}
 
@@ -494,7 +653,7 @@ export default function StudentCageShelfPage() {
       {cell && viewMode !== "shelf" && createPortal(<div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={() => { setCell(null); setShelfId(null); }}>
         <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-student-lg bg-[var(--app-color-surface-container)] p-4 shadow-[var(--student-shadow-modal)]" onClick={e => e.stopPropagation()}>
           <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--app-color-text-primary)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button className="text-xs text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" onClick={() => { setCell(null); setShelfId(null); }}>关闭</button></div>
-          <CellDetailPanel cell={cell} gridMeta={null} shelveId={shelfId ?? ""} onClose={() => { setCell(null); setShelfId(null); }} onStartOp={(k, s) => { setClaimMode(false); setConfirmMode(false); setCell(null); setShelfId(null); void opSel.start(k, s); }} onChanged={() => setClaimReloadKey(k => k + 1)} />
+          <CellDetailPanel cell={cell} opMarkByCageId={opMarkByCageId} gridMeta={null} shelveId={shelfId ?? ""} onClose={() => { setCell(null); setShelfId(null); }} onStartOp={(k, s) => { setClaimMode(false); setConfirmMode(false); setCell(null); setShelfId(null); void opSel.start(k, s); }} onChanged={() => setClaimReloadKey(k => k + 1)} canDivide={canDivide} />
         </div>
       </div>, document.body)}
       <CageOperationDialog
@@ -503,10 +662,26 @@ export default function StudentCageShelfPage() {
         source={opSel.source}
         picked={opSel.picked}
         onClose={opSel.closeConfirm}
-        onDone={() => { opSel.cancel(); setClaimReloadKey(k => k + 1); }}
+        onDone={() => { opSel.cancel(); setClaimReloadKey(k => k + 1); void qc.invalidateQueries({ queryKey: ["cage-op", "markers"] }); }}
       />
       <MobileScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScanResult} />
       <MobileSpecialStatusPanel open={specialOpen} onClose={() => setSpecialOpen(false)} apiFn={fetchStudentMobileSpecialStatusOverview} />
+      {/* 划分：选人（限定本课题组，多选）→ 全量覆盖所选笼位的名单 */}
+      {divisionPickerOpen && <PersonnelPicker
+        groupNames={[aRid || "本课题组"]}
+        onClose={() => setDivisionPickerOpen(false)}
+        onConfirm={(ids, names) => { void submitDivision(ids, names); }}
+      />}
+      {/* 模式悬浮岛：与管理端同一套组件、同一份模式元数据；给出说明是因为
+          「申请预约」「确认」光看名字分不清谁在做什么 */}
+      <CageModeIsland
+        current={currentMode}
+        allowed={islandModes}
+        onPick={switchMode}
+        variant={islandVariant}
+        anchorRef={rightPanelRef}
+        onToggleVariant={toggleIslandVariant}
+      />
     </CageColorProvider>
   );
 }

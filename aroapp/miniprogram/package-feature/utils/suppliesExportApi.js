@@ -1,35 +1,22 @@
 const springAuth = require('../../utils/springAuth.js');
 
 /**
- * Excel 二进制：云函数包装为 base64（与 facilityMaintenanceApi.fmRequestBinary 一致）
+ * 领用审计导出。
+ *
+ * 统一走 springAuth.springRequestBinary（直连 Spring 取 ArrayBuffer）。
+ * 旧版按云函数 {isBase64, bodyBase64} 协议解析，改直连后那层包装已不存在，必然报「请求失败」。
+ *
+ * 返回 { data: ArrayBuffer, contentDisposition }，调用方用
+ * springAuth.saveAndOpenDocument(data, 文件名, 'xlsx') 落盘并打开。
  */
-async function suppliesRequestBinary(path) {
-  const res = await springAuth.springRequest({
-    url: path,
-    method: 'GET',
-    data: {},
-    responseType: 'arraybuffer',
-  });
-  const { statusCode, data: payload } = res || {};
-  if (statusCode === 401 || statusCode === 403) throw new Error('无权限');
-  if (statusCode !== 200 || !payload || !payload.isBase64 || !payload.bodyBase64) {
-    let msg = '请求失败';
-    if (payload && typeof payload === 'object' && payload.message) msg = String(payload.message);
-    throw new Error(msg);
-  }
-  return {
-    base64: payload.bodyBase64,
-    contentDisposition: payload.contentDisposition || '',
-  };
-}
 
-async function exportPersonalClaimExcel(claimId) {
-  const p = `/api/supplies/claims/${encodeURIComponent(claimId)}/export/personal/excel`;
-  return suppliesRequestBinary(p);
+function exportPersonalClaimExcel(claimId) {
+  const p = `/api/supplies/claims/${encodeURIComponent(String(claimId))}/export/personal/excel`;
+  return springAuth.springRequestBinary(p, { forbiddenMessage: '无权限导出' });
 }
 
 /** 按申请日期区间导出「领用聚合明细」（无库存列） */
-async function exportPersonalClaimsRangeExcel({ from, to, applicantUserId }) {
+function exportPersonalClaimsRangeExcel({ from, to, applicantUserId }) {
   let p =
     `/api/supplies/claims/mine-range/export/excel?from=${encodeURIComponent(String(from || '').trim())}` +
     `&to=${encodeURIComponent(String(to || '').trim())}`;
@@ -37,12 +24,12 @@ async function exportPersonalClaimsRangeExcel({ from, to, applicantUserId }) {
   if (aid) {
     p += `&applicantUserId=${encodeURIComponent(aid)}`;
   }
-  return suppliesRequestBinary(p);
+  return springAuth.springRequestBinary(p, { forbiddenMessage: '无权限导出' });
 }
 
-async function exportAuditItemExcel(itemId) {
+function exportAuditItemExcel(itemId) {
   const p = `/api/supplies/admin/audit/items/${encodeURIComponent(String(itemId))}/export/excel`;
-  return suppliesRequestBinary(p);
+  return springAuth.springRequestBinary(p, { forbiddenMessage: '无权限导出' });
 }
 
 module.exports = {

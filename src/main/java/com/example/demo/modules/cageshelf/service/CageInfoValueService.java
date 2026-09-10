@@ -7,13 +7,16 @@ import com.example.demo.modules.cageshelf.entity.CageInfoValue;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper;
+import com.alibaba.fastjson2.JSON;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -241,6 +244,8 @@ public class CageInfoValueService {
         upsertText(animalCageId, fieldIdByCanonical, "special_breeding_desc", detail.getSpecialBreedingDesc());
         upsertText(animalCageId, fieldIdByCanonical, "experimenter_name", detail.getExperimenterName());
         upsertText(animalCageId, fieldIdByCanonical, "lab_assistant_name", detail.getLabAssistantName());
+        // 动物品系是单值文本（data_type=STRING → value_string）。
+        // 早先按 ENUM_MULTI 包成 JSON 数组写 value_json，与列的对应关系对不上，已改回文本。
         upsertText(animalCageId, fieldIdByCanonical, "animal_strain_name", detail.getAnimalStrainName());
         upsertText(animalCageId, fieldIdByCanonical, "animal_sex", detail.getAnimalSex());
         upsertText(animalCageId, fieldIdByCanonical, "animal_week_age", detail.getAnimalWeekAge());
@@ -257,8 +262,9 @@ public class CageInfoValueService {
      * 不自动清空任何字段——分笼后需要修正的数量/性别等由用户在子笼表单上按 editable 逐项改。
      */
     @Transactional
-    public void copyFrom(Long sourceAnimalCageId, Long targetAnimalCageId) {
+    public void copyFrom(Long sourceAnimalCageId, Long targetAnimalCageId, String operatorId) {
         if (sourceAnimalCageId == null || targetAnimalCageId == null) return;
+        Map<Long, Map<String, Object>> before = infoIndex(targetAnimalCageId);
         for (CageInfoValue v : valueMapper.selectByAnimalCageId(sourceAnimalCageId)) {
             CageInfoValue copy = new CageInfoValue();
             copy.setAnimalCageId(targetAnimalCageId);
@@ -274,6 +280,7 @@ public class CageInfoValueService {
             copy.setFillSource("INHERIT");
             valueMapper.upsert(copy);
         }
+        auditDiff(before, targetAnimalCageId, "DIVIDE", operatorId);
     }
 
     /**
@@ -288,8 +295,9 @@ public class CageInfoValueService {
 
     /** 转移：把可迁移字段从 source 复制到 target（不清理 target 其余字段）。 */
     @Transactional
-    public void copyTransferableFields(Long sourceAnimalCageId, Long targetAnimalCageId, String fillSource) {
+    public void copyTransferableFields(Long sourceAnimalCageId, Long targetAnimalCageId, String fillSource, String operatorId) {
         if (sourceAnimalCageId == null || targetAnimalCageId == null) return;
+        Map<Long, Map<String, Object>> before = infoIndex(targetAnimalCageId);
         Set<String> transferable = transferableCanonicals();
         Map<Long, CageInfoField> fieldById = new HashMap<>();
         for (CageInfoField f : fieldMapper.selectAll()) {
@@ -313,12 +321,14 @@ public class CageInfoValueService {
             copy.setFillSource(fillSource);
             valueMapper.upsert(copy);
         }
+        auditDiff(before, targetAnimalCageId, fillSource, operatorId);
     }
 
     /** 仅复制占用字段（不复制笼位固有字段）。target 上先 upsert，不清理 target 既有其他字段。 */
     @Transactional
-    public void copyOccupancyFields(Long sourceAnimalCageId, Long targetAnimalCageId, String fillSource) {
+    public void copyOccupancyFields(Long sourceAnimalCageId, Long targetAnimalCageId, String fillSource, String operatorId) {
         if (sourceAnimalCageId == null || targetAnimalCageId == null) return;
+        Map<Long, Map<String, Object>> before = infoIndex(targetAnimalCageId);
         Map<Long, CageInfoField> occupancyById = occupancyFieldById();
         for (CageInfoValue v : valueMapper.selectByAnimalCageId(sourceAnimalCageId)) {
             if (v == null || !occupancyById.containsKey(v.getFieldId())) continue;
@@ -336,15 +346,18 @@ public class CageInfoValueService {
             copy.setFillSource(fillSource);
             valueMapper.upsert(copy);
         }
+        auditDiff(before, targetAnimalCageId, fillSource, operatorId);
     }
 
     /** 清空某笼位的占用字段（转笼/退出后，源笼位回到空闲的占用维度）。 */
     @Transactional
-    public void clearOccupancyFields(Long animalCageId) {
+    public void clearOccupancyFields(Long animalCageId, String changeType, String operatorId) {
         if (animalCageId == null) return;
+        Map<Long, Map<String, Object>> before = infoIndex(animalCageId);
         for (CageInfoField f : occupancyFieldById().values()) {
             valueMapper.deleteByAnimalCageAndField(animalCageId, f.getId());
         }
+        auditDiff(before, animalCageId, changeType, operatorId);
     }
 
     private static final Set<String> ARCHIVE_CLEAR_CANONICALS = Set.of(
@@ -357,13 +370,50 @@ public class CageInfoValueService {
 
     /** 归档：清空占用者/动物/状态标记，保留课题组归属(pi/aup/dept/project)。 */
     @Transactional
-    public void clearArchiveFields(Long animalCageId) {
+    public void clearArchiveFields(Long animalCageId, String changeType, String operatorId) {
         if (animalCageId == null) return;
+        Map<Long, Map<String, Object>> before = infoIndex(animalCageId);
         for (CageInfoField f : fieldMapper.selectAll()) {
             if (f == null || f.getId() == null || f.getCanonical() == null) continue;
             if (ARCHIVE_CLEAR_CANONICALS.contains(f.getCanonical())) {
                 valueMapper.deleteByAnimalCageAndField(animalCageId, f.getId());
             }
+        }
+        auditDiff(before, animalCageId, changeType, operatorId);
+    }
+
+    // ── 结构性变更留痕 ──
+
+    /** 表单值索引 fieldId → {canonical,label,value}，用于写前/写后逐字段 diff。 */
+    private Map<Long, Map<String, Object>> infoIndex(Long animalCageId) {
+        Map<Long, Map<String, Object>> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : getInfo(animalCageId)) {
+            Long fid = toLong(row.get("fieldId"));
+            if (fid != null) out.put(fid, row);
+        }
+        return out;
+    }
+
+    /**
+     * 结构性变更（分笼/转移/归档/退出/取消分配）的字段级留痕。
+     * 这些路径直接写 cage_info_value，绕过 updateInfo，不 diff 就整段历史空白。
+     */
+    private void auditDiff(Map<Long, Map<String, Object>> before, Long animalCageId,
+                           String changeType, String operatorId) {
+        Map<Long, Map<String, Object>> after = infoIndex(animalCageId);
+        Set<Long> fieldIds = new LinkedHashSet<>(before.keySet());
+        fieldIds.addAll(after.keySet());
+        for (Long fieldId : fieldIds) {
+            Map<String, Object> b = before.get(fieldId);
+            Map<String, Object> a = after.get(fieldId);
+            String beforeValue = b == null ? null : stringify(b.get("value"));
+            String afterValue = a == null ? null : stringify(a.get("value"));
+            if (Objects.equals(beforeValue, afterValue)) continue;
+            Map<String, Object> meta = a != null ? a : b;
+            auditService.logDataChange(changeType, "cage_box", animalCageId, String.valueOf(animalCageId), null,
+                    "animal_cage", animalCageId, String.valueOf(animalCageId),
+                    String.valueOf(meta.get("canonical")), String.valueOf(meta.get("label")),
+                    beforeValue, afterValue, operatorId);
         }
     }
 
@@ -508,9 +558,43 @@ public class CageInfoValueService {
             case COL_DECIMAL -> v.getValueDecimal();
             case COL_DATE -> v.getValueDate();
             case COL_DATETIME -> v.getValueDatetime();
-            case COL_JSON -> v.getValueJson();
+            // 多值字段（ENUM_MULTI）返回数组，前端直接勾选；FILE 仍是原始 JSON 字符串（images_json 等按字符串用）。
+            case COL_JSON -> isMultiValue(field) ? parseMulti(v.getValueJson()) : v.getValueJson();
             default -> null;
         };
+    }
+
+    private static boolean isMultiValue(CageInfoField field) {
+        return field != null && "ENUM_MULTI".equalsIgnoreCase(field.getDataType());
+    }
+
+    /**
+     * 多值字段写入规范化：前端传数组直接序列化；同步路径（ARO 单值如 animalStrainName）传裸字符串则包成单元素数组，
+     * 保证 value_json 里始终是合法 JSON 数组，读侧不用猜格式。
+     */
+    static String jsonValue(CageInfoField field, Object raw) {
+        if (raw instanceof Collection<?> c) return JSON.toJSONString(c);
+        if (raw instanceof String s) {
+            String t = s.trim();
+            if (!isMultiValue(field) || t.startsWith("[")) return s;
+            return JSON.toJSONString(List.of(t));
+        }
+        throw new TwinBusinessException(400, "字段 " + field.getCanonical() + " 需要文本类型");
+    }
+
+    /** 读多值字段：兼容历史裸字符串（当成单项）。 */
+    static List<String> parseMulti(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        String t = json.trim();
+        if (!t.startsWith("[")) return List.of(t);
+        try {
+            List<?> arr = JSON.parseArray(t);
+            List<String> out = new ArrayList<>();
+            for (Object o : arr) if (o != null) out.add(String.valueOf(o));
+            return out;
+        } catch (Exception e) {
+            return List.of(t);
+        }
     }
 
     private boolean applyValue(CageInfoValue v, String col, CageInfoField field, Object raw) {
@@ -543,6 +627,10 @@ public class CageInfoValueService {
                 }
             }
             case COL_TEXT, COL_STRING, COL_DATE, COL_DATETIME, COL_JSON -> {
+                if (COL_JSON.equals(col)) {
+                    v.setValueJson(jsonValue(field, raw));
+                    return true;
+                }
                 if (!(raw instanceof String)) {
                     throw new TwinBusinessException(400, "字段 " + field.getCanonical() + " 需要文本类型");
                 }
@@ -551,7 +639,6 @@ public class CageInfoValueService {
                     case COL_STRING -> v.setValueString((String) raw);
                     case COL_DATE -> v.setValueDate((String) raw);
                     case COL_DATETIME -> v.setValueDatetime((String) raw);
-                    case COL_JSON -> v.setValueJson((String) raw);
                     default -> { /* no-op */ }
                 }
             }
@@ -606,8 +693,7 @@ public class CageInfoValueService {
     }
 
     /** dataType=TEXT → value_text（实验记录等长文本）。 */
-    private void upsertTextBlock(Long animalCageId, Map<String, Long> byCanonical, String canonical, String value) {
-        if (value == null || value.isBlank()) return;
+    private void upsertTextBlock(Long animalCageId, Map<String, Long> byCanonical, String canonical, String value) {        if (value == null || value.isBlank()) return;
         Long fieldId = byCanonical.get(canonical);
         if (fieldId == null) return;
         CageInfoValue v = new CageInfoValue();

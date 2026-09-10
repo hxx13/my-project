@@ -25,8 +25,8 @@
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
-    <sql id="FilterWhere">
-        <where>
+    <!-- 纯条件片段（不含 <where> 包裹），同时被平铺查询与按操作聚合查询复用 -->
+    <sql id="FilterCondition">
             <if test="category != null and category != ''">
                 AND category = #{category}
             </if>
@@ -38,6 +38,16 @@
             </if>
             <if test="operatorId != null and operatorId != ''">
                 AND operator_id = #{operatorId}
+            </if>
+            <!-- 按人员：审计行只记操作人，占用者维度由占用事件日志还原出「此人占用过的笼位」，再取这些笼位的留痕 -->
+            <if test="personId != null">
+                AND target_id IN (
+                    SELECT from_animal_cage_id FROM cage_transfer_log
+                    WHERE occupant_id = #{personId} AND from_animal_cage_id IS NOT NULL
+                    UNION
+                    SELECT to_animal_cage_id FROM cage_transfer_log
+                    WHERE occupant_id = #{personId} AND to_animal_cage_id IS NOT NULL
+                )
             </if>
             <if test="dateFrom != null and dateFrom != ''">
                 AND created_at &gt;= #{dateFrom}
@@ -55,6 +65,25 @@
                     OR before_value LIKE CONCAT('%', #{keyword}, '%')
                     OR after_value LIKE CONCAT('%', #{keyword}, '%')
                 )
+            </if>
+    </sql>
+
+    <sql id="FilterWhere">
+        <where>
+            <include refid="FilterCondition"/>
+        </where>
+    </sql>
+
+    <!-- 按操作聚合的口径：在通用条件之上，按「人工 / 系统同步」再分一层。
+         全表 99.9% 的行是 ARO 同步写进来的（operator_id='SYNC'），不分开就只剩噪声。 -->
+    <sql id="OperationFilterWhere">
+        <where>
+            <include refid="FilterCondition"/>
+            <if test="operatorKind != null and operatorKind == 'manual'">
+                AND (operator_id IS NULL OR operator_id &lt;&gt; 'SYNC')
+            </if>
+            <if test="operatorKind != null and operatorKind == 'system'">
+                AND operator_id = 'SYNC'
             </if>
         </where>
     </sql>
@@ -107,5 +136,57 @@
             AND category = #{category}
         </if>
         ORDER BY created_at ASC, id ASC
+    </select>
+
+    <!-- 按操作聚合：同笼位 + 同类型 + 同一秒 归为一次操作。id 单调，用 MIN(id) 当稳定排序键。 -->
+    <select id="pageOperationGroups" resultType="map">
+        SELECT target_id AS targetId,
+               change_type AS changeType,
+               DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               MAX(operator_id) AS operatorId,
+               COUNT(*) AS fieldCount,
+               MIN(id) AS firstId
+        FROM cage_form_audit_log
+        <include refid="OperationFilterWhere"/>
+        GROUP BY target_id, change_type, created_at
+        ORDER BY firstId DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countOperationGroups" resultType="long">
+        SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM cage_form_audit_log
+            <include refid="OperationFilterWhere"/>
+            GROUP BY target_id, change_type, created_at
+        ) t
+    </select>
+
+    <select id="listByOperationGroups" resultMap="CageFormAuditLogMap">
+        SELECT a.*
+        FROM cage_form_audit_log a
+        JOIN (
+            SELECT target_id, change_type, created_at, MIN(id) AS firstId
+            FROM cage_form_audit_log
+            <include refid="OperationFilterWhere"/>
+            GROUP BY target_id, change_type, created_at
+            ORDER BY firstId DESC
+            LIMIT #{limit} OFFSET #{offset}
+        ) g ON g.target_id = a.target_id
+           AND g.change_type = a.change_type
+           AND g.created_at = a.created_at
+        <!-- 组内所有行共享笼位/类型/时间，这里再补一遍按行生效的条件，保证明细条数与分组计数一致 -->
+        <where>
+            <if test="category != null and category != ''">
+                AND a.category = #{category}
+            </if>
+            <if test="operatorKind != null and operatorKind == 'manual'">
+                AND (a.operator_id IS NULL OR a.operator_id &lt;&gt; 'SYNC')
+            </if>
+            <if test="operatorKind != null and operatorKind == 'system'">
+                AND a.operator_id = 'SYNC'
+            </if>
+        </where>
+        ORDER BY a.created_at DESC, a.id ASC
     </select>
 </mapper>

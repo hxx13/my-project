@@ -37,7 +37,14 @@ import {
 } from "../api/cageForm.api";
 import { CAGE_DICT_KEY } from "./CageFieldDictWorkbench";
 import { CageFormModalPortal } from "./CageFormModalPortal";
+import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import { FIELD_TYPES, compatibleTypesFor, typeLabelOf } from "@/features/nhp/schema/typeRegistry";
+import {
+  OPTIONS_SOURCE_SUGGESTIONS,
+  hasOptionsType,
+  mergeOptionsConfig,
+  readOptionsConfig,
+} from "../utils/cageFieldOptionsConfig";
 import "@/features/aup/aup.css";
 
 const DATA_TYPES = [
@@ -126,6 +133,11 @@ type FieldForm = {
   editable: string;
   required: string;
   sort: string;
+  /** config 候选能力开关（均以 YES/NO 承载，提交时再折算回 config JSON） */
+  optionsSource: string;
+  restrictToAup: string;
+  allowManualInput: string;
+  allowAddOption: string;
 };
 
 const emptyForm = (): FieldForm => ({
@@ -140,6 +152,10 @@ const emptyForm = (): FieldForm => ({
   editable: "YES",
   required: "NO",
   sort: "",
+  optionsSource: "",
+  restrictToAup: "YES",
+  allowManualInput: "NO",
+  allowAddOption: "NO",
 });
 
 export interface CageFieldWorkbenchProps {
@@ -281,6 +297,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
 
   const selected = useMemo(() => fieldById.get(selectedId ?? -1) ?? null, [fieldById, selectedId]);
   const isSynced = !!selected?.syncSource;
+  const selectedConfig = useMemo(() => readOptionsConfig(selected?.config), [selected?.config]);
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["cage-info", "fields"] });
@@ -468,6 +485,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
       editable: (selected.editable ?? (selected.role == null || selected.role === "VALUE")) ? "YES" : "NO",
       required: selected.required ?? "NO",
       sort: selected.sort != null ? String(selected.sort) : "",
+      ...readOptionsConfig(selected.config),
     });
     setEditOpen(true);
   };
@@ -514,6 +532,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
         editable: form.editable === "YES",
         required: form.required,
         sort: form.sort.trim() === "" ? null : Number(form.sort),
+        config: mergeOptionsConfig(selected.config, form.fieldType, form),
       },
     });
   };
@@ -564,6 +583,49 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
       <label style={{ fontSize: 13, color: "var(--muted)", width: 88, flexShrink: 0, paddingTop: 8 }}>{label}</label>
       <div style={{ flex: 1 }}>{input}</div>
+    </div>
+  );
+
+  /** 是/否下拉（复用 REQUIRED_OPTS 的取值口径） */
+  const yesNo = (value: string, onChange: (v: string) => void) => (
+    <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+      {REQUIRED_OPTS.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+
+  const hintStyle = { margin: "-2px 0 10px 98px", fontSize: 12, color: "var(--muted)", lineHeight: 1.5 } as const;
+
+  /**
+   * 候选能力（config 四个开关）。只对选择类题型有意义；
+   * combo 才有「自由输入」，「受AUP限制」仅在填了候选来源时可配。
+   */
+  const optionsCapability = hasOptionsType(form.fieldType) ? (
+    <>
+      {row(
+        "候选来源",
+        <AdminSearchSelect
+          value={form.optionsSource}
+          onChange={(v) => setForm({ ...form, optionsSource: v })}
+          options={OPTIONS_SOURCE_SUGGESTIONS}
+          placeholder="如 AUP_ANIMAL_STRAIN；留空 = 无动态源"
+        />,
+      )}
+      {form.optionsSource.trim() ? row("受AUP限制", yesNo(form.restrictToAup, (v) => setForm({ ...form, restrictToAup: v }))) : null}
+      {form.fieldType === "combo"
+        ? row("允许自由输入", yesNo(form.allowManualInput, (v) => setForm({ ...form, allowManualInput: v })))
+        : null}
+      {row("允许新增预设", yesNo(form.allowAddOption, (v) => setForm({ ...form, allowAddOption: v })))}
+      <div style={hintStyle}>
+        候选来源取自该笼位所属 AUP 白名单；「受AUP限制」开启候选仅取白名单，关闭则并入该字段码表。
+      </div>
+    </>
+  ) : (
+    <div style={hintStyle}>
+      候选能力（来源 / AUP 限制 / 自由输入 / 新增预设）仅对选择类题型可用；当前题型「{typeLabelOf(form.fieldType as never)}」不渲染候选。
     </div>
   );
 
@@ -782,13 +844,20 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
             {metaCell("必填", requiredLabel(selected.required))}
             {metaCell("字段角色", roleLabel(selected.role))}
             {metaCell("允许修改", editableLabel(selected.editable, selected.role))}
+            {metaCell(
+              "候选来源",
+              selectedConfig.optionsSource
+                ? selectedConfig.optionsSource + (selectedConfig.restrictToAup === "NO" ? "（不限AUP）" : "")
+                : "—",
+              { mono: true },
+            )}
             {metaCell("排序", selected.sort != null ? String(selected.sort) : "—", { mono: true })}
             {metaCell("状态", statusLabel(selected.status))}
             {metaCell("同步来源", selected.syncSource || "—", { wrap: true, mono: true })}
           </div>
           <div style={{ marginTop: 12, fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
             字段字典表 <code>cage_info_field</code> · 字段套 <code>{dictLabel}</code>。编辑可改 label / dataType / dictKey /
-            domainCode / submoduleCode / required / role / sort；canonical 与同步来源不可改。
+            domainCode / submoduleCode / required / role / sort / 候选能力（存 config）；canonical 与同步来源不可改。
           </div>
         </div>
       )}
@@ -842,6 +911,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
               {row("显示名", <input className="input" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />)}
               {row("数据类型", <select className="select" value={form.dataType} onChange={(e) => setForm({ ...form, dataType: e.target.value, fieldType: defaultTypeFor(e.target.value) })}>{DATA_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select>)}
               {row("题型", <select className="select" value={form.fieldType} onChange={(e) => setForm({ ...form, fieldType: e.target.value })}>{compatibleTypesFor(form.dataType).map((t) => <option key={t} value={t}>{typeLabelOf(t as never)}</option>)}</select>)}
+              {optionsCapability}
               {row("码表键", dictKeySelect)}
               {row("数据域", domainSelect)}
               {form.domainCode && row("子模块", submoduleSelect)}

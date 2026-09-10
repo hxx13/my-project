@@ -4,10 +4,10 @@ import { authHttp } from "@/api/core/authHttp";
 import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues } from "../constants";
 import { DEFAULT_COLORS } from "./CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "../api/cageForm.api";
-import { type CageShelfCell } from "@/api/domains/cageShelf.api";
+import { type CageShelfCell, clearCageDivision } from "@/api/domains/cageShelf.api";
 import CageFormFill from "./CageFormFill";
 import CageOperationActions from "./CageOperationActions";
-import type { CageOpKind, CageOpSource } from "../useCageOpSelect";
+import type { CageOpKind, CageOpMark, CageOpSource } from "../useCageOpSelect";
 import toast from "react-hot-toast";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
@@ -36,13 +36,17 @@ import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
  *
  * ⚠️ 本组件只用于本地数据源。ARO 数据源走 AdminCageShelfPage 内联的 CAGE_BOX_INFO_FIELD_ORDER 渲染。
  */
-export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged }: {
+export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, opMarkByCageId, canDivide }: {
   cell: CageShelfCell;
   onClose: () => void;
   /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
   onStartOp?: (kind: CageOpKind, source: CageOpSource) => void;
   /** 认领成功后刷新 */
   onChanged?: () => void;
+  /** 待审分笼/转移中间态（按 animalCageId 取）；命中时显示「分笼审核中/转移审核中」状态条 */
+  opMarkByCageId?: Map<string, CageOpMark>;
+  /** 是否显示「清空划分」入口（管家身份） */
+  canDivide?: boolean;
 }) {
   const detail = (cell as any).detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any).id ?? detail?.animalCageId ?? (cell as any).animalCageId ?? "");
@@ -53,6 +57,23 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged }
     return [];
   });
   const [saving, setSaving] = useState(false);
+  const [clearingDivision, setClearingDivision] = useState(false);
+
+  /** 局部清空：只清当前这一个笼位的划分，不动其他笼位 */
+  const handleClearDivision = async () => {
+    if (!animalCageId) return;
+    setClearingDivision(true);
+    try {
+      await clearCageDivision([animalCageId]);
+      toast.success("已清空该笼位的划分");
+      onChanged?.();
+      onClose?.();
+    } catch (e: any) {
+      toast.error(e?.message || "清空划分失败");
+    } finally {
+      setClearingDivision(false);
+    }
+  };
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [qrZoom, setQrZoom] = useState(false);
@@ -190,12 +211,35 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged }
       </div>
     )}
 
+    {/* 划分：笼位属性，独立成块 —— 不入表单字段、不混进下面的 CageFormFill */}
+    {(() => {
+      const divList = (cell as any).divisionAssignees as Array<{ id: string; name: string }> | undefined;
+      if (!divList || divList.length === 0) return null;
+      return <div className="rounded-twin-sm border border-rose-200 bg-rose-50 px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold text-rose-700">已划分给</span>
+          {canDivide && (
+            <button type="button" onClick={handleClearDivision} disabled={clearingDivision}
+              className="rounded border border-rose-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50 transition">
+              {clearingDivision ? "清除中…" : "清空划分"}
+            </button>
+          )}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {divList.map(a => (
+            <span key={a.id} className="rounded border border-rose-200 bg-white px-1.5 py-px text-[10px] text-rose-700">{a.name || a.id}</span>
+          ))}
+        </div>
+      </div>;
+    })()}
+
     {/* 二级：关键信息 — 复用发布模板结构（内联填表，不跳答题页） */}
     <div className="flex items-center justify-between">
       <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
       {onStartOp && (
         <CageOperationActions
           source={{ animalCageId, position: cell.position, occupantName: cell.occupantName, cageTypeCode: ct }}
+          opMark={opMarkByCageId?.get(animalCageId) ?? null}
           occupied={ct === 3}
           onStart={onStartOp}
           onChanged={onChanged}

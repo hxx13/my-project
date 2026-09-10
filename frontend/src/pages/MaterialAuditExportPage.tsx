@@ -14,13 +14,15 @@ import {
   fetchAdminMaterialCategories, fetchAdminMaterialItems,
   fetchItemStockMovements, fetchItemClaimLines,
   fetchApplicantsWithRecords, fetchGroupsWithRecords,
-  exportMaterialAuditTrail,
-  exportMaterialItemFlow,
+  exportMaterialAuditTrail, exportMaterialAuditSummary,
+  exportMaterialItemFlow, exportMaterialItemFlowSummary,
   type MaterialRequest, type MaterialStockMovementRow, type MaterialItemClaimRow,
 } from "@/api/domains/material.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminDataTableWrap, AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import ExportConfigDialog from "@/features/export-config/ExportConfigDialog";
+import { toQuery, type SubtotalConfigState } from "@/features/export-config/subtotalConfig";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import { sanitizeExportFilenamePart } from "@/features/report-form/utils/reportFormExportFilename";
 import { recomputeMovementStockAfter } from "@/utils/materialStockAfterHelpers";
@@ -280,7 +282,10 @@ export default function MaterialAuditExportPage() {
   const [tab, setTab] = useState<TabKey>("personal");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [auditExportOpen, setAuditExportOpen] = useState(false);
+  const [itemFlowExportOpen, setItemFlowExportOpen] = useState(false);
+  const auditLevelsRef = useRef<string[]>([]);
+  const itemFlowLevelsRef = useRef<string[]>([]);
   const [listPage, setListPage] = useState(1);
 
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -438,41 +443,64 @@ export default function MaterialAuditExportPage() {
     return hit?.applicantName || userId || "未知";
   };
 
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const exportLabel = tab === "personal"
-        ? `个人审计-${isStaff ? (selectedUserId ? applicantLabel(selectedUserId) : "全部申领人") : "本人"}`
-        : `课题组审计-${isStaff ? (selectedGroup || "全部课题组") : (selectedGroup || studentGroup || "未分配")}`;
-      const blob = await exportMaterialAuditTrail({
-        ...auditDateParams(from, to),
-        exportLabel,
-        applicantUserId: tab === "personal" && isStaff && selectedUserId ? selectedUserId : undefined,
-        applicantGroup: tab === "group"
-          ? (isStaff ? (selectedGroup || undefined) : (studentGroup || undefined))
-          : undefined,
-      });
-      downloadBlob(blob, buildAuditExportFilename(exportLabel, from, to));
-      toast.success("已导出");
-    } catch { toast.error("导出失败"); } finally { setExporting(false); }
-  };
-  const handleExportAudit = async () => {
-    const itemName = selectedItemLabel;
+  /** 申领审计（个人/课题组页签）当前筛选参数：摘要与导出共用，摘要不传 exportLabel。 */
+  const auditExportParams = () => ({
+    ...auditDateParams(from, to),
+    applicantUserId: tab === "personal" && isStaff && selectedUserId ? selectedUserId : undefined,
+    applicantGroup: tab === "group"
+      ? (isStaff ? (selectedGroup || undefined) : (studentGroup || undefined))
+      : undefined,
+  });
+  const auditExportLabel = () => (tab === "personal"
+    ? `个人审计-${isStaff ? (selectedUserId ? applicantLabel(selectedUserId) : "全部申领人") : "本人"}`
+    : `课题组审计-${isStaff ? (selectedGroup || "全部课题组") : (selectedGroup || studentGroup || "未分配")}`);
+
+  /** 物品来去流水（按物品/物品+课题组页签）当前筛选参数。 */
+  const itemFlowExportParams = () => ({
+    itemId: selectedItemId === "" ? null : Number(selectedItemId),
+    ...auditDateParams(from, to),
+    applicantGroup: itemApplicantGroup,
+  });
+  const itemFlowExportLabel = () => {
     const groupSuffix = itemApplicantGroup ? `-${itemApplicantGroup}` : "";
-    const exportLabel = tab === "item-group"
-      ? `物品+课题组审计-${itemName}${groupSuffix}`
-      : `物品审计-${itemName}`;
-    setExporting(true);
+    return tab === "item-group"
+      ? `物品+课题组审计-${selectedItemLabel}${groupSuffix}`
+      : `物品审计-${selectedItemLabel}`;
+  };
+
+  /** 弹层导出：摘要里顺带拿 allLevels 存 ref，导出时本地折算 query，不额外发请求。 */
+  const fetchAuditSummary = async () => {
+    const s = await exportMaterialAuditSummary(auditExportParams());
+    auditLevelsRef.current = s.levels;
+    return s;
+  };
+  const handleAuditExport = async (state: SubtotalConfigState) => {
+    const exportLabel = auditExportLabel();
     try {
-      const blob = await exportMaterialItemFlow({
-        itemId: selectedItemId === "" ? null : Number(selectedItemId),
-        ...auditDateParams(from, to),
-        applicantGroup: itemApplicantGroup,
-        exportLabel,
-      });
+      const blob = await exportMaterialAuditTrail(
+        { ...auditExportParams(), exportLabel },
+        toQuery(state, auditLevelsRef.current),
+      );
       downloadBlob(blob, buildAuditExportFilename(exportLabel, from, to));
       toast.success("已导出");
-    } catch { toast.error("导出失败"); } finally { setExporting(false); }
+    } catch { toast.error("导出失败"); }
+  };
+
+  const fetchItemFlowSummary = async () => {
+    const s = await exportMaterialItemFlowSummary(itemFlowExportParams());
+    itemFlowLevelsRef.current = s.levels;
+    return s;
+  };
+  const handleItemFlowExport = async (state: SubtotalConfigState) => {
+    const exportLabel = itemFlowExportLabel();
+    try {
+      const blob = await exportMaterialItemFlow(
+        { ...itemFlowExportParams(), exportLabel },
+        toQuery(state, itemFlowLevelsRef.current),
+      );
+      downloadBlob(blob, buildAuditExportFilename(exportLabel, from, to));
+      toast.success("已导出");
+    } catch { toast.error("导出失败"); }
   };
 
   const inputCls = "rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm";
@@ -498,7 +526,7 @@ export default function MaterialAuditExportPage() {
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
                 <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={handleExport} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
+                  <button onClick={() => setAuditExportOpen(true)} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">导出表格</button>
                 </div>
               </div>
               <div className="flex flex-wrap items-end gap-3">
@@ -586,7 +614,7 @@ export default function MaterialAuditExportPage() {
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
                 <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={handleExportAudit} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
+                  <button onClick={() => setItemFlowExportOpen(true)} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">导出表格</button>
                 </div>
               </div>
               <div className="flex flex-wrap items-end gap-3">
@@ -680,6 +708,23 @@ export default function MaterialAuditExportPage() {
           </>
         )}
       </div>
+
+      <ExportConfigDialog
+        open={auditExportOpen}
+        onClose={() => setAuditExportOpen(false)}
+        title="导出申领审计"
+        storageKey="fm-export-subtotal:material-audit"
+        fetchSummary={fetchAuditSummary}
+        onExport={handleAuditExport}
+      />
+      <ExportConfigDialog
+        open={itemFlowExportOpen}
+        onClose={() => setItemFlowExportOpen(false)}
+        title="导出物品来去流水"
+        storageKey="fm-export-subtotal:material-item-flow"
+        fetchSummary={fetchItemFlowSummary}
+        onExport={handleItemFlowExport}
+      />
     </AdminPageShell>
   );
 }

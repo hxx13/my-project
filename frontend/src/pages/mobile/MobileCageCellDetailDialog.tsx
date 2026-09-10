@@ -6,7 +6,7 @@ import { uploadSingleImage } from "@/api/domains/upload.api";
 import { fetchLocalAnnotate, localAnnotate } from "@/api/domains/cageShelf.api";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
-import type { CageOpKind, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
+import type { CageOpKind, CageOpMark, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
 import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
@@ -58,6 +58,7 @@ export default function MobileCageCellDetailDialog({
   staffView,
   onStartOp,
   onChanged,
+  opMark,
 }: {
   cell: CageShelfCell;
   onClose: () => void;
@@ -66,6 +67,8 @@ export default function MobileCageCellDetailDialog({
   onStartOp?: (kind: CageOpKind, source: CageOpSource) => void;
   /** 认领成功后刷新 */
   onChanged?: () => void;
+  /** 该笼位待审的分笼/转移中间态 */
+  opMark?: CageOpMark | null;
 }) {
   const detail = (cell.detail ?? {}) as Record<string, unknown>;
   const cbi = (cell.cageBoxInfo ?? {}) as Record<string, unknown> | undefined;
@@ -256,6 +259,7 @@ export default function MobileCageCellDetailDialog({
                   occupied={((cell as any).cageTypeCode ?? cell.animalCageType) === 3}
                   onStart={onStartOp}
                   onChanged={onChanged}
+                  opMark={opMark}
                 />
               )}
 

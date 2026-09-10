@@ -487,7 +487,7 @@ export default function MobileLoginPage() {
             <div className="mt-4 border-t pt-4" style={{ borderColor: "rgba(30,55,90,0.1)" }}>
               <button
                 type="button"
-                onClick={() => startIamOAuthLogin()}
+                onClick={() => startIamOAuthLogin("mobile")}
                 className="w-full rounded-[var(--app-radius-element)] border px-4 py-3 text-sm font-medium transition"
                 style={{ borderColor: accent, color: accent, background: "transparent" }}
               >

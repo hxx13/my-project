@@ -20,6 +20,7 @@ const MODES: Array<{ key: string; label: string }> = [
   { key: "record", label: "记录" },
   { key: "archive", label: "归档" },
   { key: "confirm", label: "确认" },
+  { key: "division", label: "划分" },
 ];
 
 /** 分笼/转移的额外操作身份（占用者本人恒定可操作，不是可配项） */
@@ -120,7 +121,10 @@ export default function CageModeVisibilitySettings() {
   const tagChips = tags.map((t) => ({ code: t.code, label: t.label }));
 
   return (
-    <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+    <div className="space-y-2">
+      <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-[10px] leading-relaxed text-[var(--twin-mute)]">
+        每个模式选中若干身份后，只有这些身份能看到/进入该模式。不选 = 该模式对所有人不可见（管理员始终可见）。
+      </div>
       {renderRow(
         OP_MANAGE_KEY,
         "分笼 / 转移额外操作身份",

@@ -1,3 +1,9 @@
--- DEMO: 动物订购审核页示例订单（运行时由 RefOrderDemoSeedBootstrap 幂等写入）。
--- 本文件仅作变更说明；实际种子逻辑在 Java ApplicationRunner（group_id = DEMO-REF-ORDER）。
+-- DEMO（已移除）: 动物订购审核页示例订单。
+--
+-- 原实现：RefOrderDemoSeedBootstrap（ApplicationRunner）幂等写入
+--   group_id = DEMO-REF-ORDER 的 3 张演示订单 + 1 条演示 ref_data。
 -- 标记：[DEMO] 备注前缀 / DEMO-AUP-* 注册号 / ref_data.field_data.demoMarker。
+--
+-- 已下线原因：真实订单已可查询与导入，演示单会污染审核页列表。
+-- 2026-09-10 移除种子类并清除已写入的演示行（订单级联删明细与日志，随后删演示 ref_data）。
+-- 若日后要做演示环境，请另起带独立库/独立环境的种子，不要再往生产库塞演示数据。

@@ -34,7 +34,7 @@ public class UserGroupNameResolver {
 
     public List<String> resolve(String userId) {
         try {
-            AroPersonnel personnel = aroPersonnelMapper.findByUserId(personnelUserId(userId));
+            AroPersonnel personnel = aroPersonnelMapper.findByUserId(canonicalUserId(userId));
             if (personnel == null) {
                 return List.of();
             }
@@ -45,8 +45,17 @@ public class UserGroupNameResolver {
         }
     }
 
-    /** STAFF_* → user_aro_binding.aro_user_id；非 STAFF_ 或无绑定时原样返回。 */
-    private String personnelUserId(String userId) {
+    /**
+     * 账号规范化 —— 统一折算成 ARO 人员编号。
+     *
+     * <p>同一个人在本系统里有两种 id：STAFF_ 账号 id（sys_user 主键）和 ARO 人员编号
+     * （aro_personnel.user_id）。选人弹窗给的是 `staffId || aroUserId`（优先 STAFF_），
+     * 而学生自己登录时用的是 ARO 编号 —— 不折算就会出现「同一人两种 claimant_id」，
+     * 认领记录、课题组判定、我的申请列表全对不上。
+     *
+     * <p>非 STAFF_ 或无绑定则原样返回。
+     */
+    public String canonicalUserId(String userId) {
         if (userId == null || !userId.startsWith("STAFF_")) {
             return userId;
         }

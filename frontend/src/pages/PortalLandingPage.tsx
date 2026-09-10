@@ -13,6 +13,7 @@ import { isStudentAccount, resolvePostLoginTarget } from "@/features/auth/postLo
 import {
   clearOAuthQueryFromUrl,
   consumeIamOAuthCallback,
+  consumeIamOAuthPortalIntent,
   getIamOAuthPublicConfig,
   redactOAuthSecretsInText,
   validateAndClearIamState,
@@ -47,6 +48,9 @@ export default function PortalLandingPage() {
     const cb = consumeIamOAuthCallback();
     if (!cb) return;
 
+    // 一并取出（并清空）发起登录时的入口意图，避免残留影响后续门户登录
+    const portalIntent = consumeIamOAuthPortalIntent();
+
     oauthProcessedRef.current = true;
     // 成功换票前/失败收尾都保证地址栏无 code（early-strip 后再清一次）
     clearOAuthQueryFromUrl();
@@ -72,6 +76,13 @@ export default function PortalLandingPage() {
         const data = await loginOAuth(cb.code, cb.state, redirectUri);
         authStorage.setAuth(data.token, data.role, data.userInfo);
         clearOAuthQueryFromUrl();
+
+        // H5 入口发起：回到移动端首页（回调只能落在根路径，故在此还原）
+        if (portalIntent === "mobile") {
+          authStorage.markLoginPortal("mobile");
+          navigate("/m/home", { replace: true });
+          return;
+        }
 
         const isStudent = isStudentAccount();
 

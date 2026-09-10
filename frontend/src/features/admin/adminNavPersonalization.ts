@@ -6,10 +6,8 @@ import {
   normalizeAdminPath,
 } from "@/features/admin/buildAdminNavModel";
 import {
-  defaultMiniPreferences,
   fetchMiniPreferences,
   saveMiniPreferences,
-  type MiniPreferences,
 } from "@/api/domains/me.api";
 import { authStorage } from "@/features/auth/authStorage";
 
@@ -118,16 +116,13 @@ function schedulePersistToServer() {
     persistTimer = null;
     void (async () => {
       try {
-        const base = (await fetchMiniPreferences()) ?? defaultMiniPreferences();
-        const merged: MiniPreferences = {
-          ...base,
-          roomWatch: base.roomWatch ?? { selections: [] },
+        // 只提交管理员侧栏自己的字段：整包回写会把别人（主题等）刚存的字段冲回旧值
+        // （见 me.api.saveMiniPreferences 注释）
+        await saveMiniPreferences({
           adminNavRecent: readAdminNavRecent(),
           adminNavStars: readAdminNavStars(),
           adminNavLock: readAdminNavLock() ?? "",
-        };
-        // 保存后仅合并个人偏好，禁止整表 load；post-save-no-full-refresh.mdc
-        await saveMiniPreferences(merged);
+        });
       } catch {
         /* 离线或网络失败时保留 localStorage 副本 */
       }

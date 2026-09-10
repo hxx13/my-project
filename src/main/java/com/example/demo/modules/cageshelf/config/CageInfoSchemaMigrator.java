@@ -55,6 +55,8 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
             seedFromMapping();
             seedLocalFields();
             ensureAnimalFieldsEditable();
+            ensureExtraFieldsEditable();
+            patchStrainCombo();
             retireStateFields();
         } catch (Exception e) {
             log.error("[cage-info-schema] 迁移失败: {}", e.getMessage(), e);
@@ -272,13 +274,18 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
 
     /**
      * 动物信息四个字段开放人工编辑（一次性播种，用 config 是否为空当「没播过」的标记）。
-     *  - 动物品系：optionsSource=AUP_ANIMAL_STRAIN，选项按笼位所属 AUP 的白名单现算
+     *  - 动物品系：**输入框 + 候选**（题型 combo），存单值字符串到 value_string。
+     *    候选来自该笼位所属 AUP 的品系白名单（config.optionsSource=AUP_ANIMAL_STRAIN 现算），
+     *    同时允许自由输入白名单外的品系。
+     *    历史坑：早先按 choice + choiceType=multiple 播种，但 data_type 一直是 STRING ——
+     *    前端按多选提交数组、写侧按 STRING 要求字符串，保存直接报「需要文本类型」。
+     *    改成 combo 后：题型要单值、存储列要字符串，两边终于对上了。
      *  - 性别/周龄/动物来源：暂时手填（这些值最终来自动物订购订单，订单系统尚未接入）
      * 播种后 config 非空，管理员在字段管理页的改动不会再被启动覆盖。
      */
     private void ensureAnimalFieldsEditable() {
         Object[][] rows = {
-            {"animal_strain_name", "select", "{\"optionsSource\":\"AUP_ANIMAL_STRAIN\"}"},
+            {"animal_strain_name", "combo", "{\"optionsSource\":\"AUP_ANIMAL_STRAIN\",\"restrictToAup\":true,\"allowManualInput\":true,\"allowAddOption\":true}"},
             {"animal_sex", null, "{}"},
             {"animal_week_age", null, "{}"},
             {"animal_come_from", null, "{}"},
@@ -297,6 +304,51 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         if (n > 0) {
             log.info("[cage-info-schema] 动物信息字段开放人工编辑 {} 个", n);
         }
+    }
+
+    /**
+     * 存量库补丁：动物品系拉回「输入框 + 候选」，并补齐通配开关（restrictToAup/allowManualInput/allowAddOption）。
+     * 命中条件覆盖四种历史态：非 combo、config 丢了 optionsSource、config 还带着 multiple、config 缺 allowAddOption。
+     * 条件命中才写 → 稳态 0 行，不覆盖管理员此后对该字段的其他调整。
+     */
+    private void patchStrainCombo() {
+        try {
+            int n = jdbcTemplate.update(
+                    "UPDATE cage_info_field SET field_type = 'combo', "
+                            + "config = '{\"optionsSource\":\"AUP_ANIMAL_STRAIN\",\"restrictToAup\":true,\"allowManualInput\":true,\"allowAddOption\":true}' "
+                            + "WHERE canonical = 'animal_strain_name' "
+                            + "  AND (field_type IS NULL OR field_type <> 'combo' "
+                            + "       OR config IS NULL OR config NOT LIKE '%AUP_ANIMAL_STRAIN%' "
+                            + "       OR config LIKE '%\"multiple\"%' "
+                            + "       OR config NOT LIKE '%allowAddOption%')");
+            if (n > 0) log.info("[cage-info-schema] 动物品系校正为「输入框+候选」{} 行", n);
+        } catch (Exception e) {
+            log.warn("[cage-info-schema] 动物品系题型补丁失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 另外四个字段开放人工编辑：雄性/雌性数量、特殊饲养名称/描述。
+     * 它们的 role 是 DERIVED，插入时按 role 默认 editable=0，界面上就是只读。
+     * 用 config 是否为空当「还没播过」的标记（播完写 '{}'）——
+     * 只需生效一次，管理员之后在字段管理页把 editable 改回去也不会被每次启动冲掉。
+     */
+    private void ensureExtraFieldsEditable() {
+        String[] canonicals = {
+            "animal_male_number", "animal_female_number",
+            "special_breeding_name", "special_breeding_desc",
+        };
+        int n = 0;
+        for (String c : canonicals) {
+            try {
+                n += jdbcTemplate.update(
+                        "UPDATE cage_info_field SET editable = 1, config = '{}' "
+                                + "WHERE canonical = ? AND (config IS NULL OR config = '')", c);
+            } catch (Exception e) {
+                log.warn("[cage-info-schema] 开放人工编辑失败 {}: {}", c, e.getMessage());
+            }
+        }
+        if (n > 0) log.info("[cage-info-schema] 追加开放人工编辑字段 {} 个", n);
     }
 
     /** 退役字段：state/state_label/rent_type 为 ARO 原始残留或不再需要；pi_name 与 project_pi_name 同义，只保留后者（课题组组长）。从字段字典与表单值中删除。 */
@@ -383,6 +435,8 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
                 return "INTEGER";
             case "boolean":
                 return "BOOLEAN";
+            case "stringarray":
+                return "ENUM_MULTI";
             case "string":
             default:
                 return "STRING";

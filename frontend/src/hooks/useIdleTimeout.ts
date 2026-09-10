@@ -12,9 +12,14 @@ interface UseIdleTimeoutOptions {
   timeoutMs: number;
   warningMs: number;
   onTimeout: () => void;
+  /**
+   * 是否启用。false 时既不挂定时器也不注册全局事件监听（用于「只在某种模式下才倒计时」，
+   * 例如镜像模式；默认 true 会让所有用到本 hook 的视图都倒计时退出）。
+   */
+  enabled?: boolean;
 }
 
-export function useIdleTimeout({ timeoutMs, warningMs, onTimeout }: UseIdleTimeoutOptions) {
+export function useIdleTimeout({ timeoutMs, warningMs, onTimeout, enabled = true }: UseIdleTimeoutOptions) {
   const [showWarning, setShowWarning] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
 
@@ -38,6 +43,7 @@ export function useIdleTimeout({ timeoutMs, warningMs, onTimeout }: UseIdleTimeo
     clearTimers();
     setShowWarning(false);
     setRemainingSeconds(0);
+    if (!enabled) return;
 
     timeoutRef.current = setTimeout(() => {
       setShowWarning(true);
@@ -56,10 +62,14 @@ export function useIdleTimeout({ timeoutMs, warningMs, onTimeout }: UseIdleTimeo
         }
       }, 500);
     }, timeoutMs);
-  }, [timeoutMs, warningMs, clearTimers]);
+  }, [timeoutMs, warningMs, clearTimers, enabled]);
 
   useEffect(() => {
     reset();
+
+    if (!enabled) {
+      return () => clearTimers();
+    }
 
     const handler = () => reset();
 
@@ -73,7 +83,7 @@ export function useIdleTimeout({ timeoutMs, warningMs, onTimeout }: UseIdleTimeo
         window.removeEventListener(event, handler);
       });
     };
-  }, [reset, clearTimers]);
+  }, [reset, clearTimers, enabled]);
 
   return { showWarning, remainingSeconds };
 }

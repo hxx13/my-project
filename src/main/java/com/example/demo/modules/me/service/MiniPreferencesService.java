@@ -19,6 +19,11 @@ public class MiniPreferencesService {
     private static final int MAX_SELECTIONS = 64;
     private static final int MAX_ADMIN_NAV_RECENT = 8;
     private static final int MAX_ADMIN_NAV_STARS = 64;
+    private static final int MAX_STUDENT_NAV_RECENT = 8;
+    private static final int MAX_STUDENT_NAV_STARS = 64;
+    /** 侧栏路径前缀：管理员端 /admin、学生端 /student（与前端侧栏作用域一致） */
+    private static final String ADMIN_PATH_PREFIX = "/admin";
+    private static final String STUDENT_PATH_PREFIX = "/student";
 
     private final UserMapper userMapper;
     private final ObjectMapper objectMapper;
@@ -51,9 +56,12 @@ public class MiniPreferencesService {
             vo.setTwinWebChromeTheme(sanitizeTwinWebChromeTheme(vo.getTwinWebChromeTheme()));
             vo.setAppearanceSchedule(sanitizeAppearanceSchedule(vo.getAppearanceSchedule()));
             vo.setPageHelpIntroAck(sanitizePageHelpIntroAck(vo.getPageHelpIntroAck()));
-            vo.setAdminNavRecent(sanitizeAdminNavPaths(vo.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT));
-            vo.setAdminNavStars(sanitizeAdminNavPaths(vo.getAdminNavStars(), MAX_ADMIN_NAV_STARS));
-            vo.setAdminNavLock(sanitizeAdminNavLock(vo.getAdminNavLock()));
+            vo.setAdminNavRecent(sanitizeNavPaths(vo.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT, ADMIN_PATH_PREFIX));
+            vo.setAdminNavStars(sanitizeNavPaths(vo.getAdminNavStars(), MAX_ADMIN_NAV_STARS, ADMIN_PATH_PREFIX));
+            vo.setAdminNavLock(sanitizeNavLock(vo.getAdminNavLock(), ADMIN_PATH_PREFIX));
+            vo.setStudentNavRecent(sanitizeNavPaths(vo.getStudentNavRecent(), MAX_STUDENT_NAV_RECENT, STUDENT_PATH_PREFIX));
+            vo.setStudentNavStars(sanitizeNavPaths(vo.getStudentNavStars(), MAX_STUDENT_NAV_STARS, STUDENT_PATH_PREFIX));
+            vo.setStudentNavLock(sanitizeNavLock(vo.getStudentNavLock(), STUDENT_PATH_PREFIX));
             return vo;
         } catch (Exception e) {
             return empty();
@@ -96,17 +104,22 @@ public class MiniPreferencesService {
         }
         mergePageHelpIntroAck(existing, incoming);
         if (incoming.getAdminNavRecent() == null) {
-            if (existing.getAdminNavRecent() != null && !existing.getAdminNavRecent().isEmpty()) {
-                incoming.setAdminNavRecent(new ArrayList<>(existing.getAdminNavRecent()));
-            }
+            incoming.setAdminNavRecent(new ArrayList<>(existing.getAdminNavRecent() == null ? List.of() : existing.getAdminNavRecent()));
         }
         if (incoming.getAdminNavStars() == null) {
-            if (existing.getAdminNavStars() != null && !existing.getAdminNavStars().isEmpty()) {
-                incoming.setAdminNavStars(new ArrayList<>(existing.getAdminNavStars()));
-            }
+            incoming.setAdminNavStars(new ArrayList<>(existing.getAdminNavStars() == null ? List.of() : existing.getAdminNavStars()));
         }
         if (incoming.getAdminNavLock() == null && existing.getAdminNavLock() != null) {
             incoming.setAdminNavLock(existing.getAdminNavLock());
+        }
+        if (incoming.getStudentNavRecent() == null) {
+            incoming.setStudentNavRecent(new ArrayList<>(existing.getStudentNavRecent() == null ? List.of() : existing.getStudentNavRecent()));
+        }
+        if (incoming.getStudentNavStars() == null) {
+            incoming.setStudentNavStars(new ArrayList<>(existing.getStudentNavStars() == null ? List.of() : existing.getStudentNavStars()));
+        }
+        if (incoming.getStudentNavLock() == null && existing.getStudentNavLock() != null) {
+            incoming.setStudentNavLock(existing.getStudentNavLock());
         }
     }
 
@@ -173,7 +186,8 @@ public class MiniPreferencesService {
         return fallback;
     }
 
-    private static List<String> sanitizeAdminNavPaths(List<String> raw, int max) {
+    /** 侧栏路径白名单：必须落在 prefix 下（管理员 /admin、学生端 /student） */
+    private static List<String> sanitizeNavPaths(List<String> raw, int max, String prefix) {
         List<String> out = new ArrayList<>();
         if (raw == null) {
             return out;
@@ -184,7 +198,7 @@ public class MiniPreferencesService {
                 continue;
             }
             String path = p.trim();
-            if (path.isEmpty() || !path.startsWith("/admin") || path.length() > 512 || path.contains("..")) {
+            if (path.isEmpty() || !path.startsWith(prefix) || path.length() > 512 || path.contains("..")) {
                 continue;
             }
             if (seen.add(path)) {
@@ -197,12 +211,12 @@ public class MiniPreferencesService {
         return out;
     }
 
-    private static String sanitizeAdminNavLock(String raw) {
+    private static String sanitizeNavLock(String raw, String prefix) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
         String path = raw.trim();
-        if (!path.startsWith("/admin") || path.length() > 512 || path.contains("..")) {
+        if (!path.startsWith(prefix) || path.length() > 512 || path.contains("..")) {
             return null;
         }
         return path;
@@ -238,6 +252,9 @@ public class MiniPreferencesService {
         vo.setAdminNavRecent(new ArrayList<>());
         vo.setAdminNavStars(new ArrayList<>());
         vo.setAdminNavLock(null);
+        vo.setStudentNavRecent(new ArrayList<>());
+        vo.setStudentNavStars(new ArrayList<>());
+        vo.setStudentNavLock(null);
         vo.setRoomWatch(new MiniPreferencesVo.RoomWatchVo());
         vo.getRoomWatch().setSelections(new ArrayList<>());
         return vo;
@@ -248,9 +265,12 @@ public class MiniPreferencesService {
         out.setTwinWebChromeTheme(sanitizeTwinWebChromeTheme(in.getTwinWebChromeTheme()));
         out.setAppearanceSchedule(sanitizeAppearanceSchedule(in.getAppearanceSchedule()));
         out.setPageHelpIntroAck(sanitizePageHelpIntroAck(in.getPageHelpIntroAck()));
-        out.setAdminNavRecent(sanitizeAdminNavPaths(in.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT));
-        out.setAdminNavStars(sanitizeAdminNavPaths(in.getAdminNavStars(), MAX_ADMIN_NAV_STARS));
-        out.setAdminNavLock(sanitizeAdminNavLock(in.getAdminNavLock()));
+        out.setAdminNavRecent(sanitizeNavPaths(in.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT, ADMIN_PATH_PREFIX));
+        out.setAdminNavStars(sanitizeNavPaths(in.getAdminNavStars(), MAX_ADMIN_NAV_STARS, ADMIN_PATH_PREFIX));
+        out.setAdminNavLock(sanitizeNavLock(in.getAdminNavLock(), ADMIN_PATH_PREFIX));
+        out.setStudentNavRecent(sanitizeNavPaths(in.getStudentNavRecent(), MAX_STUDENT_NAV_RECENT, STUDENT_PATH_PREFIX));
+        out.setStudentNavStars(sanitizeNavPaths(in.getStudentNavStars(), MAX_STUDENT_NAV_STARS, STUDENT_PATH_PREFIX));
+        out.setStudentNavLock(sanitizeNavLock(in.getStudentNavLock(), STUDENT_PATH_PREFIX));
         MiniPreferencesVo.RoomWatchVo rw = new MiniPreferencesVo.RoomWatchVo();
         List<MiniPreferencesVo.RoomWatchSelectionVo> list =
                 in.getRoomWatch() != null && in.getRoomWatch().getSelections() != null

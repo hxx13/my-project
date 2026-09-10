@@ -63,7 +63,7 @@ function callSpringDirect(payload) {
       },
       responseType: payload.responseType || 'text',
       success(res) {
-        resolve({ statusCode: res.statusCode, data: res.data });
+        resolve({ statusCode: res.statusCode, data: res.data, header: res.header });
       },
       fail(err) {
         reject(new Error((err && err.errMsg) || '网络请求失败'));
@@ -99,6 +99,13 @@ function clearSpringSession() {
   try {
     wx.removeStorageSync(KEYS.AI_PORTRAIT_CACHE);
     wx.removeStorageSync(KEYS.AI_PORTRAIT_MANUAL_AT);
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    // 延迟 require：personIdentity 依赖本模块，顶层 require 会成环。
+    // 登出后要丢掉身份标签缓存，否则换号后可能读到上一个账号的身份。
+    require('./personIdentity.js').clearIdentityCache();
   } catch (e) {
     /* ignore */
   }
@@ -347,7 +354,65 @@ function springRequest(options) {
   return callSpringDirect(reqOpts).then((res) => ({
     statusCode: res.statusCode,
     data: res.data,
+    header: res.header,
   }));
+}
+
+/**
+ * 二进制下载统一入口（导出 xlsx、下载附件等）。
+ *
+ * 【别再按 {isBase64, bodyBase64} 解析】那是云函数中转时代的协议；
+ * 现在 springRequest 直连 Spring，responseType:'arraybuffer' 拿到的 res.data 就是 ArrayBuffer。
+ * 全项目已无任何地方生产那个包装，照旧协议解析必然拿不到数据。
+ *
+ * @returns {Promise<{data: ArrayBuffer, contentDisposition: string}>}
+ */
+async function springRequestBinary(path, options) {
+  const opts = options || {};
+  const res = await springRequest({
+    url: path,
+    method: opts.method || 'GET',
+    data: opts.data || {},
+    responseType: 'arraybuffer',
+  });
+  const statusCode = res && res.statusCode;
+  if (statusCode === 401 || statusCode === 403) {
+    throw new Error(opts.forbiddenMessage || '无权限');
+  }
+  if (statusCode !== 200 || !res.data) {
+    throw new Error(opts.errorMessage || `下载失败(${statusCode || 0})`);
+  }
+  const header = res.header || {};
+  const cd = header['Content-Disposition'] || header['content-disposition'] || '';
+  return { data: res.data, contentDisposition: String(cd) };
+}
+
+/** 从 Content-Disposition 取文件名（兼容 filename*=UTF-8''xx 与 filename="xx"）。 */
+function parseContentDispositionFilename(cd) {
+  const raw = String(cd || '');
+  if (!raw) return '';
+  const m = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (m && m[1]) {
+    try {
+      return decodeURIComponent(m[1].replace(/"/g, '').trim());
+    } catch (e) {
+      return '';
+    }
+  }
+  const m2 = raw.match(/filename="([^"]+)"/i);
+  return m2 && m2[1] ? m2[1].trim() : '';
+}
+
+/** 写盘并打开（导出/下载共用收尾）：data 传 ArrayBuffer，无需 encoding。 */
+async function saveAndOpenDocument(arrayBuffer, fileName, fileType) {
+  const fs = wx.getFileSystemManager();
+  const safe = String(fileName || 'download').replace(/[^A-Za-z0-9_一-龥.-]/g, '_');
+  const path = `${wx.env.USER_DATA_PATH}/${safe}`;
+  await new Promise((resolve, reject) => {
+    fs.writeFile({ filePath: path, data: arrayBuffer, success: resolve, fail: reject });
+  });
+  wx.openDocument({ filePath: path, fileType: fileType || 'xlsx', showMenu: true });
+  return path;
 }
 
 /**
@@ -648,6 +713,9 @@ module.exports = {
   loginWechat,
   bindWechat,
   springRequest,
+  springRequestBinary,
+  parseContentDispositionFilename,
+  saveAndOpenDocument,
   uploadSpringFile,
   uploadChatAttachment,
   uploadFileTemplate,

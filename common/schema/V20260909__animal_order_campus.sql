@@ -4,7 +4,7 @@
 
 ALTER TABLE animal_order_time_policy
     ADD COLUMN campus VARCHAR(16) NOT NULL DEFAULT '浦东' COMMENT '校区：浦东|浦西',
-    ADD UNIQUE KEY uk_policy_campus (campus);
+    ADD KEY idx_policy_campus (campus);
 
 -- 浦西策略初值：复制浦东现有配置，之后两校区各自独立维护
 INSERT INTO animal_order_time_policy (campus, default_mode, eta_mode, eta_workday_offset, eta_weekday, active)

@@ -417,6 +417,13 @@
 .review-card[data-tone="info"]    { --review-accent: var(--app-color-feedback-info); }
 .review-card[data-tone="none"]    { --review-accent: var(--app-color-border-strong); }
 
+/* 状态标签复用同一套 tone→色相映射（圆点取 --review-accent，见 .review-status::before） */
+.review-status[data-tone="pending"] { --review-accent: var(--app-color-feedback-warning); }
+.review-status[data-tone="ok"]      { --review-accent: var(--app-color-feedback-success); }
+.review-status[data-tone="bad"]     { --review-accent: var(--app-color-feedback-danger); }
+.review-status[data-tone="info"]    { --review-accent: var(--app-color-feedback-info); }
+.review-status[data-tone="none"]    { --review-accent: var(--app-color-border-strong); }
+
 /* 状态展示：圆点 + 文字（取代描边药丸） */
 .review-status {
   display: inline-flex;
@@ -487,6 +494,23 @@
   background: var(--app-color-surface-container);
   color: var(--app-color-text-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+/* tab 上的待审数字角标：红色实心胶囊。数据由常驻查询提供 —— 进来就有，不用点进该 tab */
+.review-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--app-color-feedback-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 表格内可编辑控件：与 ADMIN_UI_STYLE 中链接/焦点色一致 */

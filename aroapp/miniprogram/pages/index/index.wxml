@@ -224,15 +224,14 @@
               </view>
               <text class="quick-label">采购</text>
             </view>
-            <view wx:if="{{ canQuickNotifications }}" class="quick-item" hover-class="quick-item--hover" catchtap="goNotifications">
+            <view wx:if="{{ canQuickAnimalOrder }}" class="quick-item" hover-class="quick-item--hover" catchtap="goAnimalOrder">
               <view class="quick-icon-wrap">
-                <view wx:if="{{ badgeNotifyText }}" class="quick-badge">{{ badgeNotifyText }}</view>
                 <view class="quick-icon quick-icon--image">
-                  <image class="quick-icon-img" src="{{ iconNotify }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
+                  <image class="quick-icon-img" src="{{ iconAnimalOrder }}" mode="aspectFit" show-menu-by-longpress="{{ false }}" />
                 </view>
                 <view class="icon-hit-mask" />
               </view>
-              <text class="quick-label">信息</text>
+              <text class="quick-label">动物订购</text>
             </view>
             <view wx:if="{{ canQuickSupplies }}" class="quick-item" hover-class="quick-item--hover" catchtap="goSupplies">
               <view class="quick-icon-wrap">
