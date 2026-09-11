@@ -2281,7 +2281,7 @@ export default function DebugCardMappingPage() {
                                         const clean = sanitizeCardNo((e.target as HTMLInputElement).value);
                                         updateAddCardNoWithBuffer(clean);
                                     }}
-                                    className="w-full rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 font-mono font-semibold text-[var(--app-color-accent)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/30"
+                                    className="w-full rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 font-mono font-semibold text-[var(--app-color-accent)] text-sm focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
                                     placeholder="等待读卡器输入..."
                                 />
                                 <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">焦点置于输入框后刷卡，或手动粘贴卡号</p>

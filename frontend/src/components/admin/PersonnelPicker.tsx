@@ -207,7 +207,7 @@ export function PersonnelPicker({
                 return (
                   <label key={row.id} className={cn(
                     "flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer transition-colors text-xs",
-                    checked ? "bg-[var(--app-color-accent)]/10" : "hover:bg-[var(--app-color-surface-hover)]")}>
+                    checked ? "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]" : "hover:bg-[var(--app-color-surface-hover)]")}>
                     <input type={single ? "radio" : "checkbox"} checked={checked} onChange={() => toggle(row)}
                       className="h-3.5 w-3.5 rounded accent-[var(--app-color-accent)]" />
                     <span className="font-medium min-w-[60px]">{row.name}</span>

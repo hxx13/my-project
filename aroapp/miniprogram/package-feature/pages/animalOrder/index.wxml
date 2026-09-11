@@ -36,7 +36,7 @@
 
   <!-- 时间窗 -->
   <view wx:if="{{ orderingBlocked && timePolicy }}" class="time-banner">
-    {{ timePolicy.closedReason }}<text wx:if="{{ timePolicy.nextOpenAt }}"> · 下次开放 {{ timePolicy.nextOpenAt }}</text>
+    {{ timePolicy.closedReason }}<text wx:if="{{ nextOpenText }}"> · 下次开放 {{ nextOpenText }}</text>
   </view>
   <view wx:elif="{{ timePolicy && timePolicy.estimatedDeliveryDate }}" class="time-eta">
     预计送达：{{ timePolicy.estimatedDeliveryDate }}
@@ -74,19 +74,25 @@
           <image wx:if="{{ item.coverAbsUrl }}" class="goods-cover" src="{{ item.coverAbsUrl }}" mode="aspectFill" />
           <view wx:else class="goods-cover goods-cover-ph"><text>{{ item.nameInitial }}</text></view>
           <view class="goods-main">
-            <text class="goods-title">{{ item.title }}</text>
-            <text wx:if="{{ item.subtitle || item.description }}" class="goods-sub">{{ item.subtitle || item.description }}</text>
+            <view class="goods-title-line">
+              <text class="goods-title">{{ item.title }}</text><text wx:if="{{ item.subtitle }}" class="goods-sub">{{ item.subtitle }}</text>
+            </view>
+            <text wx:if="{{ item.description }}" class="goods-desc">{{ item.description }}</text>
+            <!-- 价格与操作控件同一行：操作区不再绝对定位独占一列/一行 -->
+            <view class="goods-foot">
+              <text class="goods-price {{ item.priceText ? '' : 'goods-price-empty' }}">{{ item.priceText || '待定' }}</text>
+              <view wx:if="{{ item.purchasable && item.hasSpec }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
+                <text>选择规格</text>
+                <view wx:if="{{ totalQtyByItem[item.id] > 0 }}" class="goods-spec-badge">{{ totalQtyByItem[item.id] }}</view>
+              </view>
+              <view wx:elif="{{ item.purchasable }}" class="step-inline">
+                <view wx:if="{{ (plainQtyByItem[item.id] || 0) > 0 }}" class="si-btn" hover-class="si-btn-hover" data-id="{{ item.id }}" catchtap="onPlainDec">−</view>
+                <input wx:if="{{ (plainQtyByItem[item.id] || 0) > 0 }}" class="si-num-input" type="number" value="{{ plainQtyByItem[item.id] || 0 }}" data-id="{{ item.id }}" bindblur="onPlainQtyInput" confirm-type="done" />
+                <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-id="{{ item.id }}" catchtap="onPlainAdd">+</view>
+              </view>
+              <text wx:elif="{{ item.childCount > 0 }}" class="goods-arrow">›</text>
+            </view>
           </view>
-          <view wx:if="{{ item.purchasable && item.hasSpec }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
-            <text>选择规格</text>
-            <view wx:if="{{ totalQtyByItem[item.id] > 0 }}" class="goods-spec-badge">{{ totalQtyByItem[item.id] }}</view>
-          </view>
-          <view wx:elif="{{ item.purchasable }}" class="step-inline">
-            <view class="step-btn {{ (plainQtyByItem[item.id] || 0) <= 0 ? 'step-btn-off' : '' }}" catchtap="onPlainDec" data-id="{{ item.id }}">−</view>
-            <text class="step-num">{{ plainQtyByItem[item.id] || 0 }}</text>
-            <view class="step-btn step-btn-plus" catchtap="onPlainAdd" data-id="{{ item.id }}">+</view>
-          </view>
-          <text wx:elif="{{ item.childCount > 0 }}" class="goods-arrow">›</text>
         </view>
       </block>
       <view class="list-pad" />
@@ -101,9 +107,6 @@
       <view wx:if="{{ cartCount > 0 }}" class="cart-badge">{{ cartCount > 99 ? '99+' : cartCount }}</view>
     </view>
   </view>
-  </block>
-  </block>
-</view>
 
 <!-- 规格选购 -->
 <van-popup show="{{ specSheetOpen }}" position="bottom" round closeable bind:close="closeSpec" custom-style="max-height:85vh;">
@@ -119,11 +122,12 @@
             <text class="spec-label">{{ opt.label }}</text>
             <text class="spec-price" wx:if="{{ opt.priceText }}">单价 {{ opt.priceText }}</text>
           </view>
-          <view class="spec-step">
-            <view class="step-btn {{ (specQtys[opt.key] || 0) <= 0 ? 'step-btn-off' : '' }}" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
-            <text class="step-num">{{ specQtys[opt.key] || 0 }}</text>
-            <view class="step-btn step-btn-plus" data-key="{{ opt.key }}" bindtap="onSpecInc">+</view>
+          <view class="step-inline">
+            <view wx:if="{{ (specQtys[opt.key] || 0) > 0 }}" class="si-btn" hover-class="si-btn-hover" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
+            <input wx:if="{{ (specQtys[opt.key] || 0) > 0 }}" class="si-num-input" type="number" value="{{ specQtys[opt.key] || 0 }}" data-key="{{ opt.key }}" bindblur="onSpecQtyInput" confirm-type="done" />
+            <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-key="{{ opt.key }}" bindtap="onSpecInc">+</view>
           </view>
+          <input class="spec-remark" placeholder="备注…" value="{{ specRemarks[opt.key] || '' }}" data-key="{{ opt.key }}" bindinput="onSpecRemarkInput" />
         </view>
       </block>
       <!-- 无规格：直接按单品数量加购 -->
@@ -133,12 +137,13 @@
             <text class="spec-label">{{ specItem.title }}</text>
             <text class="spec-price" wx:if="{{ specFlatPriceText }}">单价 {{ specFlatPriceText }}</text>
           </view>
-          <view class="spec-step">
-            <view class="step-btn {{ specNoQty <= 1 ? 'step-btn-off' : '' }}" bindtap="onNoSpecDec">−</view>
-            <text class="step-num">{{ specNoQty }}</text>
-            <view class="step-btn step-btn-plus" bindtap="onNoSpecInc">+</view>
+          <view class="step-inline">
+            <view wx:if="{{ specNoQty > 0 }}" class="si-btn" hover-class="si-btn-hover" bindtap="onNoSpecDec">−</view>
+            <input wx:if="{{ specNoQty > 0 }}" class="si-num-input" type="number" value="{{ specNoQty }}" bindblur="onNoSpecQtyInput" confirm-type="done" />
+            <view class="si-btn si-btn-plus" hover-class="si-btn-hover" bindtap="onNoSpecInc">+</view>
           </view>
         </view>
+        <input class="spec-remark" placeholder="备注…" value="{{ specNoRemark }}" bindinput="onNoSpecRemarkInput" />
       </block>
 
       <!-- 合计（仅开启价格的物品显示） -->
@@ -180,12 +185,13 @@
       <input class="room-search-input" placeholder="搜索房间…" value="{{ roomKeyword }}" bindinput="onRoomSearch" />
     </view>
     <scroll-view scroll-y class="sheet-scroll">
-      <view wx:if="{{ roomTree.length === 0 }}" class="muted pad">暂无房间数据</view>
+      <view wx:if="{{ roomTreeError }}" class="room-error" bindtap="loadRoomTree">房间树加载失败：{{ roomTreeError }}<text class="room-error-retry"> · 点此重试</text></view>
+      <view wx:elif="{{ roomTree.length === 0 }}" class="muted pad">暂无房间数据</view>
       <block wx:else>
         <view
           class="room-row {{ item.isRoom ? 'room-row-leaf' : 'room-row-folder' }} {{ item.selected ? 'room-row-sel' : '' }}"
           wx:for="{{ roomTree }}" wx:key="key" wx:for-item="item"
-          style="padding-left: {{ 12 + item.depth * 24 }}rpx;"
+          style="padding-left: {{ 10 + item.depth * 18 }}rpx;"
           data-key="{{ item.key }}" data-label="{{ item.label }}" data-isroom="{{ item.isRoom }}"
           bindtap="onRoomPick"
         >
@@ -246,12 +252,13 @@
                 <text class="cart-line-meta" wx:if="{{ line.pickupRoomName || line.collectorName }}">
                   <text wx:if="{{ line.pickupRoomName }}">房间 {{ line.pickupRoomName }}</text><text wx:if="{{ line.pickupRoomName && line.collectorName }}"> · </text><text wx:if="{{ line.collectorName }}">领用人 {{ line.collectorName }}</text>
                 </text>
+                <text class="cart-line-remark" wx:if="{{ line.remark }}">备注：{{ line.remark }}</text>
                 <text class="cart-line-remark" wx:if="{{ line.packageRemark }}">包备注：{{ line.packageRemark }}</text>
               </view>
-              <view class="spec-step" wx:if="{{ line.canEdit }}">
-                <view class="step-btn {{ line.qty <= 1 ? 'step-btn-off' : '' }}" data-id="{{ line.id }}" bindtap="onCartDec">−</view>
-                <text class="step-num">{{ line.qty }}</text>
-                <view class="step-btn step-btn-plus" data-id="{{ line.id }}" bindtap="onCartInc">+</view>
+              <view class="step-inline" wx:if="{{ line.canEdit }}">
+                <view wx:if="{{ line.qty > 0 }}" class="si-btn" hover-class="si-btn-hover" data-id="{{ line.id }}" bindtap="onCartDec">−</view>
+                <input wx:if="{{ line.qty > 0 }}" class="si-num-input" type="number" value="{{ line.qty }}" data-id="{{ line.id }}" bindblur="onCartQtyInput" confirm-type="done" />
+                <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-id="{{ line.id }}" bindtap="onCartInc">+</view>
               </view>
               <text class="cart-line-qty" wx:else>×{{ line.qty }}</text>
             </view>
@@ -334,6 +341,8 @@
     </view>
   </view>
 </van-popup>
+
+  </block>
 
   <!-- 订单记录：整页显示，标题与返回走顶部导航栏 -->
   <view wx:if="{{ orderHistoryOpen }}" class="orders">
@@ -499,6 +508,9 @@
       <view class="ord-btn {{ orderPage >= orderTotalPages ? 'ord-btn-off' : '' }}" bindtap="nextOrderPage">下一页</view>
     </view>
   </view>
+
+  </block>
+</view>
 </block>
 
 <block wx:else>

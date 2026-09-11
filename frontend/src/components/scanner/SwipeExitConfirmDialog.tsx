@@ -124,7 +124,7 @@ export function SwipeExitConfirmDialog({
                         <div className="p-8 pt-10">
                             {/* Icon */}
                             <div className="flex justify-center mb-5">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)]">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)]">
                                     <LogOut className="h-6 w-6 text-[var(--app-color-feedback-danger)]" />
                                 </div>
                             </div>
@@ -189,7 +189,7 @@ export function SwipeExitConfirmDialog({
                                 <button
                                     type="button"
                                     onClick={onConfirm}
-                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[var(--app-color-feedback-danger)]/60 hover:bg-[var(--app-color-feedback-danger-soft)]"
+                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_40%,transparent)] bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[color-mix(in_srgb,var(--app-color-feedback-danger)_60%,transparent)] hover:bg-[var(--app-color-feedback-danger-soft)]"
                                 >
                                     确认离开
                                 </button>

@@ -41,7 +41,7 @@ function toastActionClass(type: Props['type']): string {
   if (type === 'error') {
     return `${base} border-[color-mix(in_srgb,var(--app-color-feedback-danger)_45%,var(--app-color-border-default))] bg-[var(--app-color-surface-container)] text-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-surface-hover)]`;
   }
-  return `${base} border-[var(--app-color-accent)]/40 bg-[var(--app-color-accent)]/12 text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent)]/20`;
+  return `${base} border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--app-color-accent)_12%,transparent)] text-[var(--app-color-accent)] hover:bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]`;
 }
 
 export function FaceResultToast({ message, type, action, open, duration = 4000, onDismiss }: Props) {

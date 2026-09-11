@@ -15,12 +15,21 @@ import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 
+/** 与后台侧栏一致：收起状态跨刷新保留 */
+const SIDEBAR_COLLAPSED_KEY = "student-sidebar-collapsed";
+
 export default function StudentLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, effectiveMode } = useTheme();
   const isDark = effectiveMode === "dark";
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
 
@@ -42,7 +51,18 @@ export default function StudentLayout() {
     },
   });
 
-  const handleToggleCollapse = useCallback(() => setSidebarCollapsed((p) => !p), []);
+  /** 收起状态持久化，与后台 AdminLayout.setCollapsedPersist 同构 */
+  const handleToggleCollapse = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
 
   /* Ctrl+K */
   useEffect(() => {
@@ -123,7 +143,12 @@ export default function StudentLayout() {
 
       {/* Right content */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <StudentHeader onMenuClick={() => setMobileMenuOpen(true)} onOpenCommand={() => setCommandOpen(true)} />
+        <StudentHeader
+          onMenuClick={() => setMobileMenuOpen(true)}
+          onOpenCommand={() => setCommandOpen(true)}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={handleToggleCollapse}
+        />
 
         <main
           className={cn(

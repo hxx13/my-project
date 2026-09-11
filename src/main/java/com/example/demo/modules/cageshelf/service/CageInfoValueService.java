@@ -360,6 +360,25 @@ public class CageInfoValueService {
         auditDiff(before, animalCageId, changeType, operatorId);
     }
 
+    /**
+     * 按 canonical 精确清空表单值 —— 只撤销调用方自己写进去的那几个字段，
+     * 不动笼位上其它既有值（订购预定释放时用）。
+     */
+    @Transactional
+    public void clearByCanonicals(Long animalCageId, Collection<String> canonicals,
+                                  String changeType, String operatorId) {
+        if (animalCageId == null || canonicals == null || canonicals.isEmpty()) return;
+        Set<String> targets = new LinkedHashSet<>(canonicals);
+        Map<Long, Map<String, Object>> before = infoIndex(animalCageId);
+        for (CageInfoField f : fieldMapper.selectAll()) {
+            if (f == null || f.getId() == null || f.getCanonical() == null) continue;
+            if (targets.contains(f.getCanonical())) {
+                valueMapper.deleteByAnimalCageAndField(animalCageId, f.getId());
+            }
+        }
+        auditDiff(before, animalCageId, changeType, operatorId);
+    }
+
     private static final Set<String> ARCHIVE_CLEAR_CANONICALS = Set.of(
             "experimenter_name", "lab_assistant_name",
             "animal_strain_name", "animal_sex", "animal_week_age",

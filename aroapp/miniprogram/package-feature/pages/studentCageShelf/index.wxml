@@ -583,7 +583,7 @@
           <view wx:if="{{ detailCanClaimOnBehalf }}" class="cs-op-btn" bindtap="onOpenClaimOnBehalf">认领</view>
           <block wx:if="{{ selectedCell._divisionNames }}">
             <text class="cs-op-hint">已划分给：{{ selectedCell._divisionNames }}</text>
-            <view class="cs-op-btn" bindtap="onClearDivision">{{ detailClearingDivision ? '清空中…' : '清空划分' }}</view>
+            <view class="cs-op-btn cs-op-btn--danger" bindtap="onClearDivision">{{ detailClearingDivision ? '清空中…' : '清空划分' }}</view>
           </block>
         </view>
       </view>
@@ -662,12 +662,12 @@
   <!-- 底栏：一个时刻只有一个保存目标 -->
   <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}" class="cs-dock">
     <block wx:if="{{ formEditing }}">
-      <view class="cs-btn cs-btn--ghost" bindtap="onFormEditCancel">取消</view>
+      <view class="cs-btn cs-btn--soft" bindtap="onFormEditCancel">取消</view>
       <text wx:if="{{ formSaveMsg }}" class="cs-dock-msg cs-dock-msg--err">{{ formSaveMsg }}</text>
       <view class="cs-btn cs-btn--primary cs-dock-push {{ formSaving ? 'cs-btn--disabled' : '' }}" bindtap="onFormSave">{{ formSaving ? '保存中…' : '保存关键信息' }}</view>
     </block>
     <block wx:else>
-      <view wx:if="{{ formEditable }}" class="cs-btn cs-btn--ghost" bindtap="onFormEditStart">编辑关键信息</view>
+      <view wx:if="{{ formEditable }}" class="cs-btn cs-btn--soft" bindtap="onFormEditStart">编辑关键信息</view>
       <!-- 不可编辑时把后端给的原因说出来：只把按钮藏掉，用户只会觉得按钮"没了" -->
       <text wx:elif="{{ formEditableReason }}" class="cs-dock-hint">{{ formEditableReason }}</text>
       <text wx:if="{{ detailSaveMsg }}" class="cs-dock-msg cs-dock-msg--{{ detailSaveMsgType }}">{{ detailSaveMsg }}</text>
@@ -784,7 +784,7 @@
   </scroll-view>
 
   <view class="cs-dock">
-    <view class="cs-btn cs-btn--ghost" bindtap="onEditActionNewVersion">存为新记录</view>
+    <view class="cs-btn cs-btn--soft" bindtap="onEditActionNewVersion">存为新记录</view>
     <view class="cs-btn cs-btn--primary cs-dock-push" bindtap="onEditActionSave">保存标注</view>
   </view>
 </van-popup>

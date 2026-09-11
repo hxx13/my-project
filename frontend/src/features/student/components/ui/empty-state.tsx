@@ -12,7 +12,7 @@ interface EmptyStateProps {
 export function EmptyState({ icon: Icon, title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      <div className="flex items-center justify-center size-16 rounded-full bg-[var(--student-mute)]/60 text-[var(--student-mute-foreground)] mb-4">
+      <div className="flex items-center justify-center size-16 rounded-full bg-[color-mix(in_srgb,var(--student-mute)_60%,transparent)] text-[var(--student-mute-foreground)] mb-4">
         <Icon className="size-8" strokeWidth={1.5} />
       </div>
 

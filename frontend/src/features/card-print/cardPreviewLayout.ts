@@ -88,6 +88,8 @@ export function computePreviewLayout(spec: CardSpec, slots: CardSlot[]): Preview
     // center：二维码与槽位重叠，仅用于纯二维码卡
   }
 
+  const rowCount = slots.length;
+
   const table = spec.table;
   const tableOn = table != null;
   let tW: number, tH: number, tableX: number, tableY: number;
@@ -106,15 +108,30 @@ export function computePreviewLayout(spec: CardSpec, slots: CardSlot[]): Preview
       vAlign = defaultVAlign;
     }
 
-    tW = table.widthMm != null ? Math.min(table.widthMm, contentW) : slotAreaW;
-    tH = table.heightMm != null ? Math.min(table.heightMm, contentH) : contentH;
+    tW = table.widthMm != null ? Math.max(1, Math.min(table.widthMm, slotAreaW)) : slotAreaW;
+    // 表格块高：显式配置钳制在内容区内；未配置时 = 各行高之和（封顶到内容区），使 top/middle/bottom 锚点始终有效。
+    let fixedTotal = 0;
+    let autoCount = 0;
+    for (const s of slots) {
+      if (s.heightMm != null) fixedTotal += s.heightMm;
+      else autoCount++;
+    }
+    // 自动行的自然高度：全局 lineHeightMm 非空时取其与均分较小者，否则均分。
+    const autoRowH =
+      spec.lineHeightMm != null
+        ? Math.min(spec.lineHeightMm, contentH / Math.max(1, rowCount))
+        : contentH / Math.max(1, rowCount);
+    tH =
+      table.heightMm != null
+        ? Math.max(1, Math.min(table.heightMm, contentH))
+        : Math.min(contentH, fixedTotal + autoCount * autoRowH);
 
     tableX =
       hAlign === "left"
-        ? contentX
+        ? slotAreaX
         : hAlign === "center"
-          ? contentX + (contentW - tW) / 2
-          : contentX + contentW - tW;
+          ? slotAreaX + (slotAreaW - tW) / 2
+          : slotAreaX + slotAreaW - tW;
     tableY =
       vAlign === "top"
         ? contentY
@@ -128,8 +145,6 @@ export function computePreviewLayout(spec: CardSpec, slots: CardSlot[]): Preview
     tableY = contentY;
   }
 
-  const rowCount = slots.length;
-
   // 列数：优先表格块配置，否则取各行有效列数的最大值。
   let colCount: number;
   if (table?.colCount != null) {
@@ -140,30 +155,64 @@ export function computePreviewLayout(spec: CardSpec, slots: CardSlot[]): Preview
     colCount = Math.max(1, maxCells);
   }
 
-  // 列宽(mm)：配置列宽按比例缩放到 tW，否则等分 tW。
+  // 列宽(mm)：配置列宽按索引取用（缺的用均值补、多的截断），再按比例缩放到 tW；否则等分 tW。
   const colW: number[] = new Array<number>(colCount);
   const cfgWidths = table?.colWidthsMm ?? null;
-  if (cfgWidths != null && cfgWidths.length === colCount) {
+  if (cfgWidths != null && cfgWidths.length > 0) {
+    let posSum = 0;
+    let posCount = 0;
+    for (const v of cfgWidths) if (v > 0) { posSum += v; posCount++; }
+    const mean = posCount > 0 ? posSum / posCount : tW / colCount;
+    const raw: number[] = new Array<number>(colCount);
+    for (let i = 0; i < colCount; i++) {
+      const v = i < cfgWidths.length ? cfgWidths[i] : mean;
+      raw[i] = v > 0 ? v : mean;
+    }
     let sum = 0;
-    for (const v of cfgWidths) sum += v;
+    for (const v of raw) sum += v;
     if (sum <= 0) sum = colCount;
-    for (let i = 0; i < colCount; i++) colW[i] = (cfgWidths[i] / sum) * tW;
+    for (let i = 0; i < colCount; i++) colW[i] = (raw[i] / sum) * tW;
   } else {
     for (let i = 0; i < colCount; i++) colW[i] = tW / colCount;
   }
 
-  const rowH =
-    spec.lineHeightMm != null
-      ? spec.lineHeightMm
-      : rowCount > 0
-        ? tH / rowCount
-        : 0;
+  // 逐行行高（mm）。行高总和恒 ≤ tH，永不溢出（与后端 rowHeights 一致）。
+  const rowHs: number[] = new Array<number>(rowCount);
+  if (rowCount > 0) {
+    if (spec.lineHeightMm != null) {
+      // 全局行高也适配：装得下就用，装不下压缩到均分
+      const each = rowCount * spec.lineHeightMm <= tH ? spec.lineHeightMm : tH / rowCount;
+      rowHs.fill(each);
+    } else {
+      let fixedTotal = 0;
+      let autoCount = 0;
+      for (const s of slots) {
+        if (s.heightMm != null) fixedTotal += s.heightMm;
+        else autoCount++;
+      }
+      if (fixedTotal > tH) {
+        // 超配：固定行等比压缩到总和 = tH；auto 行得 0
+        const k = tH / fixedTotal;
+        for (let j = 0; j < rowCount; j++) {
+          const v = slots[j].heightMm;
+          rowHs[j] = v != null ? v * k : 0;
+        }
+      } else {
+        const autoH = autoCount > 0 ? (tH - fixedTotal) / autoCount : 0;
+        for (let j = 0; j < rowCount; j++) {
+          const v = slots[j].heightMm;
+          rowHs[j] = v != null ? v : autoH;
+        }
+      }
+    }
+  }
 
   // 列前缀和：colPrefix[i] = Σ colW[0..i-1]，用于定位第 i 列的 x 与跨列宽。
   const colPrefix: number[] = new Array<number>(colCount + 1).fill(0);
   for (let i = 0; i < colCount; i++) colPrefix[i + 1] = colPrefix[i] + colW[i];
 
   const rows: SlotRect[][] = [];
+  let y = tableY;
   for (let j = 0; j < rowCount; j++) {
     const cells = effectiveCells(slots[j]);
     const row: SlotRect[] = [];
@@ -176,11 +225,12 @@ export function computePreviewLayout(spec: CardSpec, slots: CardSlot[]): Preview
       if (!isBlankCell(c)) {
         const x = tableX + colPrefix[cursor];
         const w = colPrefix[cursor + span] - colPrefix[cursor];
-        row.push({ index: i, x, y: tableY + j * rowH, w, h: rowH });
+        row.push({ index: i, x, y, w, h: rowHs[j] });
       }
       cursor += span;
     }
     rows.push(row);
+    y += rowHs[j];
   }
 
   return {

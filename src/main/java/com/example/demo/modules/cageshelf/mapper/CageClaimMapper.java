@@ -25,6 +25,12 @@ public interface CageClaimMapper {
     /** 查某笼位当前活跃的认领（FOR UPDATE 用） */
     CageClaim selectActiveByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
+    /**
+     * 这批笼位里哪些有活跃认领（待审批/锁定/已确认/待释放审批）。
+     * 有活跃认领 = 处于认领中间态，不能被动物订购再预定走（否则同一笼位两套占用语义打架）。
+     */
+    List<Long> selectCageIdsWithActiveClaim(@Param("cageIds") List<Long> cageIds);
+
     /** 学生本人的认领列表 */
     List<CageClaim> selectByClaimantId(@Param("claimantId") String claimantId,
                                        @Param("status") String status);

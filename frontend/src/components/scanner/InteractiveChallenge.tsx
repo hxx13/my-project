@@ -125,12 +125,12 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
                 flex h-11 w-11 select-none items-center justify-center rounded-[var(--app-radius-element)] border text-lg font-black
                 transition-all duration-150
                 ${isClicked
-                  ? "border-[var(--app-color-feedback-success)]/60 bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]"
+                  ? "border-[color-mix(in_srgb,var(--app-color-feedback-success)_60%,transparent)] bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]"
                   : done
                     ? "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]"
                     : errorFlash
-                      ? "border-[var(--app-color-feedback-danger)]/60 bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]"
-                      : "border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-text-primary)] hover:border-[var(--app-color-feedback-warning)]/60 hover:bg-[var(--app-color-feedback-warning-soft)] active:scale-95"
+                      ? "border-[color-mix(in_srgb,var(--app-color-feedback-danger)_60%,transparent)] bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]"
+                      : "border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,transparent)] bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-text-primary)] hover:border-[color-mix(in_srgb,var(--app-color-feedback-warning)_60%,transparent)] hover:bg-[var(--app-color-feedback-warning-soft)] active:scale-95"
                 }
               `}
             >
@@ -141,7 +141,7 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
       </div>
 
       {allDone ? (
-        <div className="flex animate-in fade-in zoom-in items-center gap-2 rounded-full border border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] px-4 py-1.5">
+        <div className="flex animate-in fade-in zoom-in items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-4 py-1.5">
           <Check className="h-4 w-4 text-[var(--app-color-feedback-success)]" />
           <span className="text-xs font-bold text-[var(--app-color-feedback-success)]">验证通过</span>
         </div>

@@ -191,7 +191,8 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam String groupId) {
         User user = resolveUser(authorization);
-        return Result.success(referenceDataService.listCart(groupId));
+        // 带上当前人：购物车行要按「人」标 mine（同一人可能有 STAFF_xxx 与 aro_user_id 两个账号）
+        return Result.success(referenceDataService.listCart(groupId, user == null ? null : user.getId()));
     }
 
     @PostMapping("/cart")
@@ -270,8 +271,8 @@ public class ReferenceDataController {
     }
 
     @PostMapping("/orders")
-    @Operation(summary = "提交订单")
-    public Result<RefOrderView> submitOrder(
+    @Operation(summary = "提交订单（按投递房间分单，可能一次生成多张）")
+    public Result<List<RefOrderView>> submitOrder(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody RefOrderSubmitRequest body) {
         User user = resolveUser(authorization);

@@ -42,7 +42,7 @@ const TREND_ICON = {
 export function InfoCard({ title, subtitle, rows, footer, onClose, className = '' }: InfoCardProps) {
   return (
     <div
-      className={`bg-[var(--app-color-surface-elevated)]/95 backdrop-blur-md border border-[var(--app-color-border-default)] shadow-2xl rounded-2xl pointer-events-auto overflow-hidden ${className}`}
+      className={`bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_95%,transparent)] backdrop-blur-md border border-[var(--app-color-border-default)] shadow-2xl rounded-2xl pointer-events-auto overflow-hidden ${className}`}
       style={{ minWidth: 300, maxWidth: 420 }}
     >
       {/* 头部 */}
@@ -71,7 +71,7 @@ export function InfoCard({ title, subtitle, rows, footer, onClose, className = '
       {/* 数据行 */}
       {rows && rows.length > 0 && (
         <div className="px-5 pb-3.5">
-          <div className="border-t border-[var(--app-color-border-subtle)]/50 pt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+          <div className="border-t border-[color-mix(in_srgb,var(--app-color-border-subtle)_50%,transparent)] pt-3 grid grid-cols-2 gap-x-4 gap-y-3">
             {rows.map((row, i) => (
               <div key={i} className="flex flex-col">
                 <span className="text-[11px] text-[var(--app-color-text-secondary)] leading-tight">
@@ -92,7 +92,7 @@ export function InfoCard({ title, subtitle, rows, footer, onClose, className = '
 
       {/* 底部 */}
       {footer && (
-        <div className="px-5 pb-3.5 border-t border-[var(--app-color-border-subtle)]/50 pt-3">
+        <div className="px-5 pb-3.5 border-t border-[color-mix(in_srgb,var(--app-color-border-subtle)_50%,transparent)] pt-3">
           {footer}
         </div>
       )}

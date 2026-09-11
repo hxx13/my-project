@@ -71,6 +71,14 @@
         LIMIT 1
     </select>
 
+    <!-- 有活跃认领的笼位 = 认领中间态，不能被动物订购再预定 -->
+    <select id="selectCageIdsWithActiveClaim" resultType="long">
+        SELECT DISTINCT animal_cage_id FROM cage_claims
+        WHERE claim_status IN ('pending_approval','locked','confirmed','pending_release_approval')
+          AND animal_cage_id IN
+        <foreach collection="cageIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </select>
+
     <select id="selectByClaimantId" resultMap="CageClaimMap">
         SELECT * FROM cage_claims
         WHERE claimant_id = #{claimantId}

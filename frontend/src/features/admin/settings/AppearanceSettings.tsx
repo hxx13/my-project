@@ -209,7 +209,7 @@ function LoginBrandingSection() {
           onChange={(e) => setUrlsLightText(e.target.value)}
           rows={6}
           placeholder="/api/upload/files/20260624/xxxxxxxx.jpg"
-          className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 font-mono text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+          className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 font-mono text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
         />
       </label>
 
@@ -223,7 +223,7 @@ function LoginBrandingSection() {
           onChange={(e) => setUrlsDarkText(e.target.value)}
           rows={6}
           placeholder="/api/upload/files/20260624/yyyyyyyy.jpg"
-          className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 font-mono text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+          className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 font-mono text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
         />
       </label>
 
@@ -237,7 +237,7 @@ function LoginBrandingSection() {
           min={3}
           value={intervalSec}
           onChange={(e) => setIntervalSec(Number(e.target.value) || 8)}
-          className="mt-1 w-40 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+          className="mt-1 w-40 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
         />
       </label>
 

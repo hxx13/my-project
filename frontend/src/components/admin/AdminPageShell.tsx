@@ -89,10 +89,10 @@ export function AdminTableShell({
   }
   if (error) {
     return (
-      <div className={cn("flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[var(--app-color-feedback-error)]/30 bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]", className)}>
+      <div className={cn("flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-error)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]", className)}>
         <p>{error}</p>
         {onRetry ? (
-          <button type="button" onClick={onRetry} className="rounded-lg border border-[var(--app-color-feedback-error)]/40 bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]">重试</button>
+          <button type="button" onClick={onRetry} className="rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-error)_40%,transparent)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]">重试</button>
         ) : null}
       </div>
     );

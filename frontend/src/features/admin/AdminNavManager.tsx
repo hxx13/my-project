@@ -470,7 +470,7 @@ export default function AdminNavManager() {
 
         <DragOverlay dropAnimation={null}>
           {activeNode ? (
-            <div className="flex items-center gap-2 rounded-md border border-[var(--twin-primary)]/50 bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] shadow-twin-level-2">
+            <div className="flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--twin-primary)_50%,transparent)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] shadow-twin-level-2">
               <GripVertical className="h-3.5 w-3.5 text-[var(--twin-mute)]" />
               {activeNode.type === "GROUP" ? (
                 <Folder className="h-4 w-4 text-indigo-400" />

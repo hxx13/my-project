@@ -20,6 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, ChevronRight, ChevronLeft, MapPin, X } from "lucide-react";
+import { AdminButton } from "@/components/admin/AdminButton";
 import type { BatchPair, BatchPhase } from "../useCageOpSelect";
 
 /**
@@ -196,13 +197,14 @@ export default function BatchTransferPanel({
                 </button>
               ) : (
                 <div className="flex items-center gap-2">
-                  <button
+                  <AdminButton
                     type="button"
+                    tone="secondary"
+                    size="sm"
                     onClick={onBack}
-                    className="rounded-twin-md border border-[var(--twin-hairline-strong)] px-3 py-2 text-[12px] font-semibold text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft-2)]"
                   >
                     上一步
-                  </button>
+                  </AdminButton>
                   <button
                     type="button"
                     disabled={!canSubmit || submitting}
@@ -310,7 +312,7 @@ function PairRowContent({
   return (
     <div
       className={`flex flex-1 items-stretch gap-1 rounded-twin-md ${
-        lifted ? "shadow-xl ring-2 ring-[var(--twin-primary)]/40" : ""
+        lifted ? "shadow-xl ring-2 ring-[color-mix(in_srgb,var(--twin-primary)_40%,transparent)]" : ""
       } ${dragging ? "cursor-grabbing" : ""}`}
       style={{ background: "var(--twin-canvas)" }}
     >

@@ -298,7 +298,7 @@ export default function ScanSessionPage() {
                         if (v) void submitScan(v);
                       }
                     }}
-                    className="w-full rounded-lg border border-[var(--app-color-border-default)] bg-white px-4 py-3 font-mono text-lg text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)] focus-visible:border-[var(--app-color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/30 disabled:opacity-50"
+                    className="w-full rounded-lg border border-[var(--app-color-border-default)] bg-white px-4 py-3 font-mono text-lg text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)] focus-visible:border-[var(--app-color-accent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] disabled:opacity-50"
                     placeholder={!sessionActive(session) ? "盘点已结束" : busy ? "处理中…" : "扫描或输入 RFID 码后回车…"}
                   />
                 </div>

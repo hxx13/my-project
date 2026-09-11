@@ -39,4 +39,10 @@ public class RefOrderLineView {
     private Long aupRecordId;
     /** 行级 AUP 编号（由 aup_record_id 解析，供审核页展示） */
     private String registerNo;
+    /** 本行锁定的笼位 ID（订购 → 笼位预定）；未选笼位时为 null */
+    private Long targetAnimalCageId;
+    /** 笼位坐标快照（对象形式）：校区/区域/楼层/房间/笼架/坐标 */
+    private Object targetCageLocation;
+    /** 笼位坐标的人读串，如「浦东 / A101 / 架3 (4,5)」 */
+    private String targetCageLabel;
 }

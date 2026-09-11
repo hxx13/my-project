@@ -295,7 +295,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 {showUnboundBindHint ? (
                     <button
                         type="button"
-                        className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 max-w-[min(320px,90vw)] rounded-xl border border-[var(--app-color-accent)]/40 bg-[var(--app-color-accent)]/10 px-4 py-2.5 text-center text-[12px] font-bold text-[var(--app-color-text-primary)] shadow-lg hover:bg-[var(--app-color-accent)]/20 transition-colors"
+                        className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 max-w-[min(320px,90vw)] rounded-xl border border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] px-4 py-2.5 text-center text-[12px] font-bold text-[var(--app-color-text-primary)] shadow-lg hover:bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] transition-colors"
                         onClick={onOpenStudentBind}
                     >
                         当前未绑卡，点我绑定卡
@@ -375,7 +375,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
                         {/* 上 2/5：面包机区贴底，预留动画空间（ExpToaster 有 160px 固定高度，压缩会把动画卡出视图）；下 3/5 给操作按钮 */}
-                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
+                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_30%,transparent)] pb-0.5">
                             <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>

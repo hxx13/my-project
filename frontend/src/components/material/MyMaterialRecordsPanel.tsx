@@ -286,7 +286,7 @@ export default function MyMaterialRecordsPanel({ onClose }: { onClose: () => voi
                         key={req.id}
                         type="button"
                         onClick={() => openDetail(req.id)}
-                        className="w-full text-left rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-3 hover:border-[var(--student-primary)]/30 transition-colors"
+                        className="w-full text-left rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-3 hover:border-[color-mix(in_srgb,var(--student-primary)_30%,transparent)] transition-colors"
                       >
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[11px] font-mono text-[var(--student-mute)]">{req.id}</span>

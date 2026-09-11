@@ -39,10 +39,10 @@ export function AdminPageTabs({ tabs, value, onChange, className, panelIdPrefix 
             tabIndex={selected ? 0 : -1}
             className={cn(
               "inline-flex min-h-[var(--admin-control-height,2.25rem)] items-center gap-2 rounded-t-lg border px-4 py-2 text-sm font-medium transition-all",
-              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40",
+              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:color-mix(in_srgb,var(--admin-focus-ring)_40%,transparent)]",
               selected
                 ? "z-[1] -mb-px border-2 border-[var(--app-color-border-strong)] border-b-[var(--app-color-surface-container)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-sm"
-                : "border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/90 text-[var(--app-color-text-secondary)] shadow-sm hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"
+                : "border-2 border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_90%,transparent)] text-[var(--app-color-text-secondary)] shadow-sm hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"
             )}
             onClick={() => onChange(tab.id)}
           >

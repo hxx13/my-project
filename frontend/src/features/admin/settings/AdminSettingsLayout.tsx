@@ -81,7 +81,7 @@ export default function AdminSettingsLayout() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
               placeholder="搜索设置项…"
-              className="h-9 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pl-9 pr-3 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] outline-none transition-colors focus:border-[var(--app-color-accent-secondary)] focus:ring-1 focus:ring-[var(--app-color-accent-secondary)]/20"
+              className="h-9 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pl-9 pr-3 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] outline-none transition-colors focus:border-[var(--app-color-accent-secondary)] focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent-secondary)_20%,transparent)]"
             />
           </div>
           {/* Nav items — scrollable */}
@@ -102,7 +102,7 @@ export default function AdminSettingsLayout() {
                     className={cn(
                       "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
                       isActive
-                        ? "bg-[var(--app-color-primary)]/10 text-[var(--app-color-primary)]"
+                        ? "bg-[color-mix(in_srgb,var(--app-color-primary)_10%,transparent)] text-[var(--app-color-primary)]"
                         : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]",
                     )}
                     aria-current={isActive ? "page" : undefined}
@@ -127,7 +127,7 @@ export default function AdminSettingsLayout() {
                           "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
                           isActive
                             ? "bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-text-danger)]"
-                            : "text-[var(--app-color-text-danger)]/80 hover:bg-[var(--app-color-feedback-danger-soft)]/50 hover:text-[var(--app-color-text-danger)]",
+                            : "text-[color-mix(in_srgb,var(--app-color-text-danger)_80%,transparent)] hover:bg-[color-mix(in_srgb,var(--app-color-feedback-danger-soft)_50%,transparent)] hover:text-[var(--app-color-text-danger)]",
                         )}
                         aria-current={isActive ? "page" : undefined}
                       >

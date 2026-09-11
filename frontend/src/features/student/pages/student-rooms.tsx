@@ -419,7 +419,7 @@ export default function StudentRoomsPage() {
               <div className="max-h-[50vh] overflow-y-auto">
                 {occ && occ.occupants.length > 0 ? (
                   occ.occupants.map((o, i) => (
-                    <div key={o.userId || i} className="flex items-center gap-3 border-b border-[var(--student-hairline)] px-5 py-3 last:border-b-0 hover:bg-[var(--student-canvas-soft)]/50 transition-colors">
+                    <div key={o.userId || i} className="flex items-center gap-3 border-b border-[var(--student-hairline)] px-5 py-3 last:border-b-0 hover:bg-[color-mix(in_srgb,var(--student-canvas-soft)_50%,transparent)] transition-colors">
                       <div className={cn("size-8 shrink-0 rounded-full flex items-center justify-center", o.entryType === "BORROWED_CARD" ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600")}>
                         <User className="size-4" />
                       </div>

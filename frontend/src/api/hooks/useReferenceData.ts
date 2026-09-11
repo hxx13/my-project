@@ -288,7 +288,7 @@ export function useMarkCartPackageReady() {
       markCartPackageReady(groupId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
-      toast.success("已提交给 PI");
+      toast.success("已提交到共享购物车");
     },
     onError: (e: Error) => toast.error(e.message || "提交订单包失败"),
   });
@@ -311,9 +311,11 @@ export function useSubmitOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: submitOrder,
-    onSuccess: () => {
+    onSuccess: (orders) => {
       qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
-      toast.success("订单已提交");
+      // 按投递房间分单：跨房间会一次生成多张
+      const n = Array.isArray(orders) ? orders.length : 0;
+      toast.success(n > 1 ? `已生成 ${n} 张订单（按房间分开）` : "订单已提交");
     },
     onError: (e: Error) => toast.error(e.message || "提交失败"),
   });

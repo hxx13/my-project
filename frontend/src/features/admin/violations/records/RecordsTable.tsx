@@ -13,6 +13,7 @@ import { AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { violationEnterLocked } from "@/components/scanner/twinViolationInteractive";
 import { richTextPlainPreview } from "@/utils/announcementHtml";
+import { formatBeijingDateTimeMedium } from "@/utils/beijingTime";
 import { cn } from "@/lib/utils";
 import { dueSecondaryLabel, summarizeDispositionForDetail } from "../slots/dispositionTypes";
 import type { RecordsFilters } from "./RecordsToolbar";
@@ -45,19 +46,19 @@ const RECORDS_PAGE_SIZE = 20;
 
 const STATUS_PILL: Record<string, { cls: string; dot: string }> = {
   ACTIVE: {
-    cls: "border-[var(--app-color-feedback-danger)]/25 bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]",
+    cls: "border-[color-mix(in_srgb,var(--app-color-feedback-danger)_25%,transparent)] bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]",
     dot: "bg-[var(--app-color-feedback-danger)]",
   },
   SUPERSEDED: {
-    cls: "border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]",
+    cls: "border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]",
     dot: "bg-[var(--app-color-feedback-warning)]",
   },
   CLEARED: {
-    cls: "border-[var(--app-color-feedback-success)]/25 bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]",
+    cls: "border-[color-mix(in_srgb,var(--app-color-feedback-success)_25%,transparent)] bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]",
     dot: "bg-[var(--app-color-feedback-success)]",
   },
   PROCESSED: {
-    cls: "border-[var(--app-color-feedback-success)]/25 bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]",
+    cls: "border-[color-mix(in_srgb,var(--app-color-feedback-success)_25%,transparent)] bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]",
     dot: "bg-[var(--app-color-feedback-success)]",
   },
   EXPIRED: {
@@ -86,10 +87,10 @@ function statusPill(r: StudentViolationRow) {
 
 function sourceBadge(source: string | undefined): JSX.Element {
   if (source === "AUTO_STRANDED") {
-    return <span className="inline-flex items-center rounded-full border border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-warning)]">自动滞留</span>;
+    return <span className="inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,transparent)] bg-[var(--app-color-feedback-warning-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-warning)]">自动滞留</span>;
   }
   if (source === "CAGE_STATUS") {
-    return <span className="inline-flex items-center rounded-full border border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-success)]">笼架联动</span>;
+    return <span className="inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-success)]">笼架联动</span>;
   }
   return <span className="inline-flex items-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]">手动</span>;
 }
@@ -258,7 +259,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                 {/* 到期 */}
                 <div className={cn("text-xs tabular-nums text-[var(--app-color-text-primary)]", dm.late && "font-semibold text-[var(--app-color-feedback-danger)]")}>
                   {dm.primary}
-                  <div className={cn("mt-0.5 text-[11px]", dm.late ? "text-[var(--app-color-feedback-danger)]/80" : "text-[var(--app-color-text-tertiary)]")}>{dm.secondary}</div>
+                  <div className={cn("mt-0.5 text-[11px]", dm.late ? "text-[color-mix(in_srgb,var(--app-color-feedback-danger)_80%,transparent)]" : "text-[var(--app-color-text-tertiary)]")}>{dm.secondary}</div>
                 </div>
 
                 {/* 操作：hover 显现 */}
@@ -296,6 +297,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     <DetailItem k="进入计数" v={disp.maxEnter} />
                     <DetailItem k="到期时间" v={disp.expireAt} />
                     <DetailItem k="到期说明" v={disp.expireHint} mono={false} />
+                    <DetailItem k="创建时间" v={formatBeijingDateTimeMedium(r.createdAt)} />
                     <DetailItem
                       k={r.status === "CLEARED" || r.status === "PROCESSED" ? "解除人" : "创建人"}
                       v={

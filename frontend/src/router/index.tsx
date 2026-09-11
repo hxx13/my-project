@@ -373,6 +373,9 @@ export const router = createHashRouter([
               { path: "asset-records", element: <AdminAssetRecordPage /> },
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
               { path: "cage-shelves", element: <AdminCageShelfPage /> },
+              // 动物订购归 AdminAccessGuard + 页面权限表（minRole=STAFF）管。
+              // 别挪回 AdminGuard 块：那要 ADMIN，和权限表打架，STAFF 永远进不去。
+              { path: "animal-order", element: <ReferenceDataPage /> },
               { path: "cage-shelves/special-status", element: <AdminSpecialStatusOverviewPage /> },
               { path: "cage-shelves/forms", element: <CageFormListPage /> },
               { path: "cage-shelves/forms/audit", element: <CageFormAuditPage /> },
@@ -437,7 +440,6 @@ export const router = createHashRouter([
                   { path: "page-permissions", element: <Navigate to={`${STAFF_NS}/admin/settings/permissions`} replace /> },
                   { path: "login-branding", element: <Navigate to={`${STAFF_NS}/admin/settings/appearance`} replace /> },
                   { path: "conversation-archive", element: <AdminConversationArchivePage /> },
-                  { path: "animal-order", element: <ReferenceDataPage /> },
                   { path: "animal-order-review", element: <AdminOrderReviewPage /> },
                   { path: "inventory", element: <AdminInventoryPage /> },
                   { path: "inventory/scan", element: <ScanSessionPage /> },

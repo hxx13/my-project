@@ -3,6 +3,7 @@ import { SplitSquareHorizontal, MoveRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { claimCageAsOwner, claimCageOnBehalf, fetchCageOpOperable } from "@/api/domains/cageShelf.api";
 import ReservePersonDialog from "./ReservePersonDialog";
+import { AdminButton } from "@/components/admin/AdminButton";
 import type { CageOpKind, CageOpMark, CageOpSource } from "../useCageOpSelect";
 
 /**
@@ -134,11 +135,6 @@ export default function CageOperationActions({
 
   if (!occupied || !checked) return null;
 
-  const btn =
-    "rounded-twin-md px-2.5 py-1 text-[11px] font-semibold border border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft-2)] transition";
-  const primaryBtn =
-    "rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white transition hover:brightness-95 disabled:opacity-50";
-
   const showSelfClaim = !operable && code === "NOT_CLAIMED";
   /**
    * 不可操作时把原因露出来。之前这里直接 return null —— 用户只看到「没有入口」，
@@ -155,12 +151,12 @@ export default function CageOperationActions({
         )}
         {operable && (
           <>
-            <button type="button" className={btn} onClick={() => onStart("divide", source)}>
+            <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStart("divide", source)}>
               分笼
-            </button>
-            <button type="button" className={btn} onClick={() => onStart("transfer", source)}>
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStart("transfer", source)}>
               转移笼位
-            </button>
+            </AdminButton>
           </>
         )}
         {showSelfClaim && (
@@ -168,15 +164,15 @@ export default function CageOperationActions({
             <span className="text-[10px] text-[var(--twin-warning,#d97706)]">
               该笼位尚未认领，认领成本人后才能分笼 / 转移
             </span>
-            <button type="button" disabled={claiming} onClick={handleSelfClaim} className={primaryBtn}>
+            <AdminButton type="button" size="xs" loading={claiming} onClick={handleSelfClaim}>
               {claiming ? "认领中…" : "认领该笼位"}
-            </button>
+            </AdminButton>
           </>
         )}
         {canClaimOnBehalf && (
-          <button type="button" className={btn} onClick={() => setPickerOpen(true)}>
+          <AdminButton type="button" tone="secondary" size="xs" onClick={() => setPickerOpen(true)}>
             认领
-          </button>
+          </AdminButton>
         )}
       </div>
       {canClaimOnBehalf && (

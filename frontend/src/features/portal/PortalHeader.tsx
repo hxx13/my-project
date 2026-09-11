@@ -7,6 +7,7 @@ import { fullLogout } from "@/features/auth/impersonation";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { ChevronDown, ChevronRight, Smartphone, LayoutDashboard, FileEdit, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FullscreenToggleButton } from "@/components/shared/FullscreenToggleButton";
 import { fetchPublicCategories } from "@/api/domains/portalContent.api";
 import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
 import { useQuery } from "@tanstack/react-query";
@@ -267,6 +268,9 @@ export function PortalHeader({ onOpenLogin }: PortalHeaderProps) {
 
         {/* Right: user / login */}
         <div className="flex items-center gap-2" ref={userMenuRef}>
+          <FullscreenToggleButton
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 text-white/50 transition-colors hover:border-white/30 hover:text-white/80"
+          />
           {/* 手机版入口 */}
           <button
             type="button"

@@ -1,5 +1,6 @@
 import type { CageOpSelect } from "../useCageOpSelect";
 import { displayPosition } from "../constants";
+import { AdminButton } from "@/components/admin/AdminButton";
 
 /**
  * 选位模式横幅 — 三端共用。
@@ -31,13 +32,15 @@ export default function CageOpSelectBanner({
             ? "勾选需转移的笼位：仅限同一课题组且饲养中的笼位（可跨房间）。顺序即配对顺序，右侧面板可拖拽重排"
             : "按顺序点击绿色高亮的空笼位作为目标，同色即一对"}
         </span>
-        <button
+        <AdminButton
           type="button"
+          tone="secondary"
+          size="xs"
+          className="ml-auto"
           onClick={sel.cancel}
-          className="ml-auto rounded-twin-md border border-[var(--twin-hairline-strong)] px-3 py-1 text-[11px] font-semibold text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft-2)]"
         >
           退出批量转移
-        </button>
+        </AdminButton>
       </div>
     );
   }
@@ -61,29 +64,31 @@ export default function CageOpSelectBanner({
       <span className={`text-[11px] ${sel.error ? "text-red-500" : "text-[var(--twin-mute)]"}`}>{hint}</span>
       <span className="ml-auto text-[11px] font-semibold text-[var(--twin-ink)]">已选 {sel.selected.size}</span>
       {!isDivide && allowBatch && (
-        <button
+        <AdminButton
           type="button"
+          tone="secondary"
+          size="xs"
           onClick={sel.startBatch}
-          className="rounded-twin-md border border-[var(--twin-primary)] px-3 py-1 text-[11px] font-semibold text-[var(--twin-primary)] transition hover:bg-[var(--twin-primary)] hover:text-white"
         >
           批量转移
-        </button>
+        </AdminButton>
       )}
-      <button
+      <AdminButton
         type="button"
+        size="xs"
         disabled={sel.selected.size === 0}
         onClick={sel.openConfirm}
-        className="rounded-twin-md bg-[var(--twin-primary)] px-3 py-1 text-[11px] font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
       >
         确认
-      </button>
-      <button
+      </AdminButton>
+      <AdminButton
         type="button"
+        tone="secondary"
+        size="xs"
         onClick={sel.cancel}
-        className="rounded-twin-md border border-[var(--twin-hairline-strong)] px-3 py-1 text-[11px] font-semibold text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft-2)]"
       >
         取消
-      </button>
+      </AdminButton>
     </div>
   );
 }

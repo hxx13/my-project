@@ -199,7 +199,7 @@ public class CageOperationController {
     }
 
     @GetMapping("/markers")
-    @Operation(summary = "待审中间态（网格/详情画「分笼审核中」「转移审核中」）；学生只看自己的，教职工看全部")
+    @Operation(summary = "待审中间态（网格/详情画「分笼审核中」「转移审核中」）；学生看本课题组范围内，教职工看全部")
     public Result<List<Map<String, Object>>> markers(HttpServletRequest req) {
         User u = resolveUser(req);
         Result<?> denied = requireLogin(u);

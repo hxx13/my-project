@@ -87,12 +87,12 @@ function MaterialItemCard({
     : "bg-[var(--student-canvas-soft)] text-[var(--student-mute)]";
 
   return (
-    <StudentCard className="relative flex flex-col overflow-hidden hover:shadow-md hover:border-[var(--student-primary)]/20 transition-all duration-150" style={{ minHeight: "14rem" }}>
+    <StudentCard className="relative flex flex-col overflow-hidden hover:shadow-md hover:border-[color-mix(in_srgb,var(--student-primary)_20%,transparent)] transition-all duration-150" style={{ minHeight: "14rem" }}>
       {/* Cover image — 大卡片通栏头图，16:9 与源图一致（原 h-32 长条会裁切图片，改为 aspect-video 完整显示） */}
       <button type="button" className="relative w-full aspect-video bg-[var(--student-canvas-soft)] flex items-center justify-center overflow-hidden"
         onClick={() => cover && onPreviewCover(cover)} disabled={!cover}>
         {cover ? <img src={cover} alt={item.name} className="w-full h-full object-cover" />
-          : <span className="text-3xl font-bold text-[var(--student-primary)]/20">{coverChar}</span>}
+          : <span className="text-3xl font-bold text-[color-mix(in_srgb,var(--student-primary)_20%,transparent)]">{coverChar}</span>}
         {/* Novelty badges overlaid on image */}
         <div className="absolute top-1.5 left-1.5 flex gap-1">
           {item.isNewItem && <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white shadow">新品</span>}
@@ -303,7 +303,7 @@ export default function StudentMaterialPage() {
           <div className="min-w-0 flex-1">
             <input type="text" value={searchKeyword} onChange={e => setSearchKeyword(e.target.value)}
               placeholder="搜索物品名称、描述"
-              className="h-8 w-full max-w-md rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 text-xs outline-none focus:ring-2 focus:ring-[var(--student-primary)]/20 focus:border-[var(--student-primary)] transition-shadow" />
+              className="h-8 w-full max-w-md rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 text-xs outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--student-primary)_20%,transparent)] focus:border-[var(--student-primary)] transition-shadow" />
           </div>
           <button onClick={() => setView("requests")}
             className="relative rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)] whitespace-nowrap">
@@ -337,7 +337,7 @@ export default function StudentMaterialPage() {
               <button onClick={() => setActiveCategoryId("all")}
                 className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
                   activeCategoryId === "all" ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
-                                             : "text-[var(--student-body)] hover:bg-[var(--student-canvas)]/80 border-l-transparent")}>
+                                             : "text-[var(--student-body)] hover:bg-[color-mix(in_srgb,var(--student-canvas)_80%,transparent)] border-l-transparent")}>
                 全部
               </button>
               <div className="px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--student-mute)]">分类</div>
@@ -345,7 +345,7 @@ export default function StudentMaterialPage() {
                 <button key={c.id} onClick={() => setActiveCategoryId(c.id)}
                   className={cn("block w-full px-3 py-2 text-left text-xs leading-snug border-l-[3px]",
                     activeCategoryId === c.id ? "border-l-[var(--student-primary)] bg-[var(--student-canvas)] font-semibold text-[var(--student-primary)]"
-                                              : "text-[var(--student-body)] hover:bg-[var(--student-canvas)]/80 border-l-transparent")}>
+                                              : "text-[var(--student-body)] hover:bg-[color-mix(in_srgb,var(--student-canvas)_80%,transparent)] border-l-transparent")}>
                   {c.name}
                 </button>
               ))}
@@ -409,7 +409,7 @@ export default function StudentMaterialPage() {
               </button>
             ) : (
               <div className="space-y-1.5">
-                <textarea className="w-full rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-[12px] text-[var(--student-ink)] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--student-primary)]/20" rows={2}
+                <textarea className="w-full rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-[12px] text-[var(--student-ink)] resize-none focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--student-primary)_20%,transparent)]" rows={2}
                   placeholder="描述你需要的物品..." value={demandText} onChange={e => setDemandText(e.target.value)} />
                 <div className="flex justify-end gap-2">
                   <button onClick={async () => { if (!demandText.trim()) return; setDemandSubmitting(true); try { await createMaterialDemand(demandText.trim()); toast.success("建议已提交"); setDemandText(""); setShowDemandForm(false); } catch { toast.error("提交失败"); } finally { setDemandSubmitting(false); } }}

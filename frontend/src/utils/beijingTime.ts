@@ -51,6 +51,30 @@ export function formatBeijingDateTimeMedium(v: string | undefined | null): strin
   }).format(d);
 }
 
+/**
+ * yyyy-MM-dd HH:mm（24h，横杠、不含秒）。用于时间窗提示等紧凑场景。
+ * 与小程序 `utils/beijingTime.js` 的 formatBeijingDateTimeMinute 输出一致。
+ */
+export function formatBeijingDateTimeMinute(v: string | undefined | null): string {
+  const d = parseToDate(v);
+  if (!d) return "—";
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: ASIA_SHANGHAI,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const g = (t: string) => parts.find((x) => x.type === t)?.value ?? "";
+  const mm = g("month").padStart(2, "0");
+  const dd = g("day").padStart(2, "0");
+  const hh = g("hour").padStart(2, "0");
+  const mi = g("minute").padStart(2, "0");
+  return `${g("year")}-${mm}-${dd} ${hh}:${mi}`;
+}
+
 /** 含秒，用于通知全文等 */
 export function formatBeijingDateTimeFull(v: string | undefined | null): string {
   const d = parseToDate(v);

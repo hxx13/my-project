@@ -211,7 +211,7 @@ export function HomepageSettingsForm(): JSX.Element {
             <section key={g.title}>
               <div className="mb-1 flex items-baseline gap-2 px-1 text-[11px] font-bold tracking-wide text-[var(--app-color-text-tertiary)]">
                 {g.title}
-                {g.desc ? <span className="font-medium tracking-normal text-[var(--app-color-text-tertiary)]/75">{g.desc}</span> : null}
+                {g.desc ? <span className="font-medium tracking-normal text-[color-mix(in_srgb,var(--app-color-text-tertiary)_75%,transparent)]">{g.desc}</span> : null}
               </div>
               <div
                 className={cn(

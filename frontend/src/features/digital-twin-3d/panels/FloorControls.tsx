@@ -7,13 +7,13 @@ const FLOOR_BTN = (active: boolean) =>
   `px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 ${
     active
       ? 'bg-[var(--app-color-accent)] text-white'
-      : 'bg-[var(--app-color-surface-elevated)]/85 backdrop-blur-lg border border-[var(--app-color-border-subtle)]/60 text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-elevated)]'
+      : 'bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] backdrop-blur-lg border border-[color-mix(in_srgb,var(--app-color-border-subtle)_60%,transparent)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-elevated)]'
   }`;
 const MODE_BTN = (active: boolean) =>
   `px-3 py-1 rounded-md text-xs font-bold transition-colors ${
     active
       ? 'bg-[var(--app-color-accent)] text-white'
-      : 'bg-[var(--app-color-surface-elevated)]/85 text-[var(--app-color-text-primary)]'
+      : 'bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] text-[var(--app-color-text-primary)]'
   }`;
 
 function Slider({ label, value, min, max, step, onChange, unit = '' }: {
@@ -39,7 +39,7 @@ function NumberInput({ label, value, onChange, step = 1 }: {
       <span className="w-3 text-right">{label}</span>
       <input type="number" value={value} step={step}
         onChange={(e) => { const n = Number(e.target.value); if (!isNaN(n)) onChange(n); }}
-        className="w-14 px-1 py-0.5 rounded text-[10px] tabular-nums bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-subtle)]/50 text-[var(--app-color-text-primary)] text-right" />
+        className="w-14 px-1 py-0.5 rounded text-[10px] tabular-nums bg-[var(--app-color-surface-page)] border border-[color-mix(in_srgb,var(--app-color-border-subtle)_50%,transparent)] text-[var(--app-color-text-primary)] text-right" />
     </label>
   );
 }
@@ -167,7 +167,7 @@ export default function FloorControls() {
             </button>
           ))}
           <button onClick={resetFocus}
-            className="px-2 py-1.5 rounded-lg text-xs font-bold bg-[var(--app-color-surface-elevated)]/85 backdrop-blur-lg border border-[var(--app-color-border-subtle)]/60 text-[var(--app-color-text-secondary)]"
+            className="px-2 py-1.5 rounded-lg text-xs font-bold bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] backdrop-blur-lg border border-[color-mix(in_srgb,var(--app-color-border-subtle)_60%,transparent)] text-[var(--app-color-text-secondary)]"
             aria-label="还原视角">还原</button>
         </div>
 
@@ -183,13 +183,13 @@ export default function FloorControls() {
           </button>
           <button onClick={toggleConfig}
             className={`px-2 py-1 rounded-md text-xs font-bold transition-colors ${
-              showConfig ? 'bg-[var(--app-color-accent)] text-white' : 'bg-[var(--app-color-surface-elevated)]/85 text-[var(--app-color-text-secondary)]'}`}
+              showConfig ? 'bg-[var(--app-color-accent)] text-white' : 'bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] text-[var(--app-color-text-secondary)]'}`}
             aria-label="配置" title="间距/镜头配置">⚙</button>
         </div>
 
         {/* 配置面板 */}
         {showConfig && (
-          <div className="bg-[var(--app-color-surface-elevated)]/95 backdrop-blur-md border border-[var(--app-color-border-default)] rounded-xl p-3 flex flex-col gap-3 min-w-[240px] shadow-xl">
+          <div className="bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_95%,transparent)] backdrop-blur-md border border-[var(--app-color-border-default)] rounded-xl p-3 flex flex-col gap-3 min-w-[240px] shadow-xl">
             {/* 间距配置 */}
             <div>
               <div className="text-[11px] font-bold text-[var(--app-color-text-primary)] mb-1.5">
@@ -207,7 +207,7 @@ export default function FloorControls() {
               )}
             </div>
 
-            <div className="border-t border-[var(--app-color-border-subtle)]/50" />
+            <div className="border-t border-[color-mix(in_srgb,var(--app-color-border-subtle)_50%,transparent)]" />
 
             {/* 镜头预设 */}
             <div>
@@ -291,7 +291,7 @@ export default function FloorControls() {
 
                   <div className="flex gap-1.5 flex-wrap">
                     <button onClick={recordCurrentView}
-                      className="px-2 py-1 rounded text-[10px] font-bold bg-[var(--app-color-accent)]/20 text-[var(--app-color-accent)] hover:bg-[var(--app-color-accent)]/30 transition-colors">
+                      className="px-2 py-1 rounded text-[10px] font-bold bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] text-[var(--app-color-accent)] hover:bg-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] transition-colors">
                       📷 记录
                     </button>
                     <button onClick={() => {
@@ -302,14 +302,14 @@ export default function FloorControls() {
                       套用到全部楼层
                     </button>
                   </div>
-                  <div className="text-[9px] text-[var(--app-color-text-secondary)]/50">
+                  <div className="text-[9px] text-[color-mix(in_srgb,var(--app-color-text-secondary)_50%,transparent)]">
                     滑块调节实时预览 · 🔒锁定 · 📷存原始坐标不漂移
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="text-[10px] text-[var(--app-color-text-secondary)]/60">
+            <div className="text-[10px] text-[color-mix(in_srgb,var(--app-color-text-secondary)_60%,transparent)]">
               所有配置自动保存到浏览器。
             </div>
           </div>

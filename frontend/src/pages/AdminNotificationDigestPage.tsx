@@ -570,7 +570,7 @@ function DayPicker({ value, onChange }: { value: string; onChange: (s: string) =
           className={cn("w-8 h-7 rounded-md text-xs font-medium transition-colors border",
             selected.has(d)
               ? "bg-[var(--app-color-accent)] text-white border-[var(--app-color-accent)]"
-              : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border-[var(--app-color-border-default)] hover:border-[var(--app-color-accent)]/40")}>
+              : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border-[var(--app-color-border-default)] hover:border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)]")}>
           周{DAY_LABELS[d]}
         </button>
       ))}
@@ -744,7 +744,7 @@ function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, onTest
           <div className="max-h-[180px] overflow-auto space-y-1">
             {allSources.map((s) => (
               <label key={s.sourceCode} className={cn("flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer text-xs transition-colors",
-                selected.has(s.sourceCode) ? "bg-[var(--app-color-accent)]/10" : "hover:bg-[var(--app-color-surface-hover)]")}>
+                selected.has(s.sourceCode) ? "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]" : "hover:bg-[var(--app-color-surface-hover)]")}>
                 <input type="checkbox" checked={selected.has(s.sourceCode)} onChange={() => toggleSource(s.sourceCode)} className="h-3.5 w-3.5 rounded accent-[var(--app-color-accent)]" />
                 <span className="font-medium">{s.sourceName}</span>
                 <span className="text-[var(--app-color-text-tertiary)] truncate">{s.description}</span>
@@ -778,9 +778,9 @@ function GroupEditModal({ group, allSources, isPersonal, onClose, onSave, onTest
               {testNames.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1 mb-3">
                   {testNames.map((name, i) => (
-                    <span key={testIds[i]} className="inline-flex items-center gap-1 rounded-md bg-[var(--app-color-accent)]/15 border border-[var(--app-color-accent)]/25 px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-accent)] max-w-[160px]">
+                    <span key={testIds[i]} className="inline-flex items-center gap-1 rounded-md bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] border border-[color-mix(in_srgb,var(--app-color-accent)_25%,transparent)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-accent)] max-w-[160px]">
                       <span className="truncate">{name}</span>
-                      <button type="button" onClick={() => { setTestIds(p => p.filter((_, j) => j !== i)); setTestNames(p => p.filter((_, j) => j !== i)); }} className="rounded-sm p-0.5 hover:bg-[var(--app-color-accent)]/20 shrink-0"><X className="h-3 w-3" /></button>
+                      <button type="button" onClick={() => { setTestIds(p => p.filter((_, j) => j !== i)); setTestNames(p => p.filter((_, j) => j !== i)); }} className="rounded-sm p-0.5 hover:bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] shrink-0"><X className="h-3 w-3" /></button>
                     </span>
                   ))}
                 </div>
@@ -935,7 +935,7 @@ function CreateGroupModal({ allSources, onClose, onSave, saving }: {
             <div className="max-h-[200px] overflow-auto space-y-1">
               {allSources.map((s) => (
                 <label key={s.sourceCode} className={cn("flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer text-xs transition-colors",
-                  selected.has(s.sourceCode) ? "bg-[var(--app-color-accent)]/10" : "hover:bg-[var(--app-color-surface-hover)]")}>
+                  selected.has(s.sourceCode) ? "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]" : "hover:bg-[var(--app-color-surface-hover)]")}>
                   <input type="checkbox" checked={selected.has(s.sourceCode)} onChange={() => toggle(s.sourceCode)} className="h-3.5 w-3.5 rounded accent-[var(--app-color-accent)]" />
                   <span className="font-medium">{s.sourceName}</span>
                   <span className="text-[var(--app-color-text-tertiary)] truncate">{s.description}</span>

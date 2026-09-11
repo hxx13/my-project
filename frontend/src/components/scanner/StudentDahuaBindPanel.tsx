@@ -190,7 +190,7 @@ export function StudentDahuaBindPanel({
           部门与门组已由系统预设，仅需刷卡完成绑卡。卡号为 {STUDENT_DAHUA_CARD_LEN} 位字母或数字。
         </p>
 
-        <div className="mb-3 rounded-[var(--app-radius-element)] border border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] px-3 py-2">
+        <div className="mb-3 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] bg-[var(--app-color-accent-soft)] px-3 py-2">
           <p className="mb-0.5 text-[10px] font-bold text-[var(--app-color-accent)]">已锁定人员</p>
           <p className="text-sm font-black text-[var(--app-color-text-primary)]">
             {userName || "未知"}{" "}
@@ -199,7 +199,7 @@ export function StudentDahuaBindPanel({
         </div>
 
         <label className="mb-1 block text-[11px] font-bold text-[var(--app-color-text-tertiary)]">绑定卡号（请刷卡）</label>
-        <p className="mb-2 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[10px] leading-relaxed text-[var(--app-color-text-secondary)]">
+        <p className="mb-2 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[10px] leading-relaxed text-[var(--app-color-text-secondary)]">
           读卡器直接刷卡即可自动填入，无需点击输入框。卡号为 {STUDENT_DAHUA_CARD_LEN} 位字母或数字。
         </p>
         <input
@@ -264,7 +264,7 @@ export function StudentDahuaBindPanel({
             </button>
           </div>
         ) : (
-          <div className="mt-4 space-y-3 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] p-3">
+          <div className="mt-4 space-y-3 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,transparent)] bg-[var(--app-color-feedback-warning-soft)] p-3">
             <p className="text-[12px] font-bold text-[var(--app-color-text-primary)]">请再次确认是否绑定以下卡号？</p>
             <p className="break-all font-mono text-sm text-[var(--app-color-text-primary)]">{sanitizeStudentDahuaCardNo(cardNo)}</p>
             <DahuaCardMappingStatusPanel mapping={mapping} loading={false} compact />

@@ -76,7 +76,7 @@ export default function AgvTagFilterBar({
     allTagOptions.length > 0 && allTagOptions.every((t) => controlHidden.has(t));
 
   return (
-    <div className="absolute -top-6 right-4 z-[var(--z-overlay)] flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--app-color-surface-container)]/90 backdrop-blur border border-[var(--app-color-border-default)] shadow-md">
+    <div className="absolute -top-6 right-4 z-[var(--z-overlay)] flex items-center gap-1 px-2.5 py-1 rounded-full bg-[color-mix(in_srgb,var(--app-color-surface-container)_90%,transparent)] backdrop-blur border border-[var(--app-color-border-default)] shadow-md">
       {/* 路线开关 */}
       {showRouteBar && (
         <>

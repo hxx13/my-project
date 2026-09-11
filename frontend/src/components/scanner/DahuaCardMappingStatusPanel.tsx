@@ -25,7 +25,7 @@ export function DahuaCardMappingStatusPanel({
 
   if (!mapping?.bound) {
     return (
-      <div className={`rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] ${compact ? "p-2" : "p-3"}`}>
+      <div className={`rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] ${compact ? "p-2" : "p-3"}`}>
         <p className="text-[11px] font-bold text-[var(--app-color-feedback-warning)]">当前未绑卡</p>
         <p className="mt-0.5 text-[10px] text-[var(--app-color-text-secondary)]">绑卡后可使用自带校园卡进入门禁。</p>
       </div>
@@ -46,8 +46,8 @@ export function DahuaCardMappingStatusPanel({
         <span
           className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${
             cardStatus === "FROZEN"
-              ? "border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]"
-              : "border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]"
+              ? "border-[color-mix(in_srgb,var(--app-color-feedback-danger)_40%,transparent)] bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]"
+              : "border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]"
           }`}
         >
           卡片：{cardStatus === "FROZEN" ? "冻结" : "正常"}
@@ -55,7 +55,7 @@ export function DahuaCardMappingStatusPanel({
         <span
           className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${
             exempt
-              ? "border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]"
+              ? "border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,transparent)] bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]"
               : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]"
           }`}
         >

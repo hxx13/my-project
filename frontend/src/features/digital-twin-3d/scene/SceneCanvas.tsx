@@ -37,7 +37,7 @@ function LoadOverlay() {
   if (done) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--app-color-surface-page)]/80 backdrop-blur-sm pointer-events-none">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[color-mix(in_srgb,var(--app-color-surface-page)_80%,transparent)] backdrop-blur-sm pointer-events-none">
       <div className="flex flex-col items-center gap-3">
         <div className="w-10 h-10 border-[3px] border-[var(--app-color-accent)] border-t-transparent rounded-full animate-spin" />
         <span className="text-sm font-bold text-[var(--app-color-text-secondary)]">
@@ -51,7 +51,7 @@ function LoadOverlay() {
 /** P2.1 + P2.2: WebGL Context Lost 恢复层 */
 function ContextLostOverlay() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--app-color-surface-page)]/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color-mix(in_srgb,var(--app-color-surface-page)_90%,transparent)] backdrop-blur-sm">
       <div className="text-center max-w-sm">
         <p className="text-[var(--app-color-text-primary)] font-bold text-lg mb-2">3D 渲染引擎无响应</p>
         <p className="text-[var(--app-color-text-secondary)] text-sm mb-4">

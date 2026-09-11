@@ -71,8 +71,8 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_STYLE: Record<string, string> = {
-  SUCCESS: "bg-[var(--app-color-feedback-success)]/10 text-[var(--app-color-feedback-success)]",
-  FAILED: "bg-[var(--app-color-feedback-error)]/10 text-[var(--app-color-feedback-error)]",
+  SUCCESS: "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_10%,transparent)] text-[var(--app-color-feedback-success)]",
+  FAILED: "bg-[color-mix(in_srgb,var(--app-color-feedback-error)_10%,transparent)] text-[var(--app-color-feedback-error)]",
   SKIPPED_QUIET: "bg-yellow-500/10 text-yellow-600",
   SKIPPED_RATE_LIMIT: "bg-slate-500/10 text-slate-500",
   PENDING: "bg-blue-500/10 text-blue-500",
@@ -178,9 +178,9 @@ export default function AdminPushDashboardPage() {
                 加载中…
               </div>
             ) : error ? (
-              <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[var(--app-color-feedback-error)]/30 bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]">
+              <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-error)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]">
                 <p>{(error as Error)?.message ?? "加载失败"}</p>
-                <button type="button" onClick={() => refetch()} className="rounded-lg border border-[var(--app-color-feedback-error)]/40 bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]">重试</button>
+                <button type="button" onClick={() => refetch()} className="rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-error)_40%,transparent)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]">重试</button>
               </div>
             ) : !overview ? (
               <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]">
@@ -205,7 +205,7 @@ export default function AdminPushDashboardPage() {
                       return (
                         <div key={ch.channelCode} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
                           <div className="flex items-center gap-3">
-                            <span className={cn("flex items-center justify-center w-8 h-8 rounded-lg", ch.enabled ? "bg-[var(--app-color-feedback-success)]/10 text-[var(--app-color-feedback-success)]" : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]")}>{icon}</span>
+                            <span className={cn("flex items-center justify-center w-8 h-8 rounded-lg", ch.enabled ? "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_10%,transparent)] text-[var(--app-color-feedback-success)]" : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]")}>{icon}</span>
                             <div><p className="text-sm font-medium text-[var(--app-color-text-primary)]">{ch.channelName}</p></div>
                           </div>
                           <div className="flex items-center gap-3">
@@ -273,7 +273,7 @@ export default function AdminPushDashboardPage() {
                               <td className="px-3 py-2 text-[var(--app-color-text-primary)] max-w-[120px] truncate">
                                 {row.source_name || row.source_code || "-"}
                                 {(row.template_key || "").startsWith("DIGEST:") && (
-                                  <span className="ml-1 inline-block rounded-full bg-[var(--app-color-accent)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--app-color-accent)]">聚合</span>
+                                  <span className="ml-1 inline-block rounded-full bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] px-1.5 py-0.5 text-[9px] font-medium text-[var(--app-color-accent)]">聚合</span>
                                 )}
                               </td>
                               <td className="px-3 py-2">{row.channel_name || row.channel || "-"}</td>
@@ -429,8 +429,8 @@ function StatCard({ icon, label, value, tone, sub }: {
 }) {
   const colorMap = {
     accent: { text: "text-[var(--app-color-accent)]", bg: "bg-[var(--app-color-accent-soft)]" },
-    success: { text: "text-[var(--app-color-feedback-success)]", bg: "bg-[var(--app-color-feedback-success)]/10" },
-    error: { text: "text-[var(--app-color-feedback-error)]", bg: "bg-[var(--app-color-feedback-error)]/10" },
+    success: { text: "text-[var(--app-color-feedback-success)]", bg: "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_10%,transparent)]" },
+    error: { text: "text-[var(--app-color-feedback-error)]", bg: "bg-[color-mix(in_srgb,var(--app-color-feedback-error)_10%,transparent)]" },
   };
   const c = colorMap[tone];
   return (

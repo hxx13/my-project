@@ -6,6 +6,7 @@ import {
   useOrderLogs,
 } from "@/api/hooks/useReferenceData";
 import type { RefOrder, RefOrderLine, RefOrderLog } from "@/api/domains/referenceData.api";
+import CageLocationCell from "./CageLocationCell";
 
 interface OrderHistoryPanelProps {
   groupId: string;
@@ -153,6 +154,13 @@ function OrderCard({ order, expanded, onToggle }: { order: RefOrder; expanded: b
                       <span className="text-sky-600 ml-1">
                         {line.registerNo?.trim() || `AUP#${line.aupRecordId}`}
                       </span>
+                    )}
+                    {(line.targetCageLabel || line.targetCageLocation?.shelveId) && (
+                      <CageLocationCell
+                        label={line.targetCageLabel}
+                        location={line.targetCageLocation}
+                        className="text-[var(--twin-mute)] ml-1"
+                      />
                     )}
                     {line.addedBy && (
                       <span className="text-[var(--twin-mute)] ml-1">

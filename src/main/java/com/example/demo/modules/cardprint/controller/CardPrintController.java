@@ -8,8 +8,10 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cardprint.entity.CardPrintArchive;
 import com.example.demo.modules.cardprint.entity.CardPrintTemplate;
+import com.example.demo.modules.cardprint.entity.CardPrintValueMap;
 import com.example.demo.modules.cardprint.service.CardFieldDictionaryService;
 import com.example.demo.modules.cardprint.service.CardPrintService;
+import com.example.demo.modules.cardprint.service.CardPrintValueMapService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
@@ -31,15 +33,18 @@ public class CardPrintController {
 
     private final CardPrintService cardPrintService;
     private final CardFieldDictionaryService dictionaryService;
+    private final CardPrintValueMapService valueMapService;
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
 
     public CardPrintController(CardPrintService cardPrintService,
                                CardFieldDictionaryService dictionaryService,
+                               CardPrintValueMapService valueMapService,
                                AuthContextService authContextService,
                                UserDisplayNameService userDisplayNameService) {
         this.cardPrintService = cardPrintService;
         this.dictionaryService = dictionaryService;
+        this.valueMapService = valueMapService;
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
     }
@@ -104,6 +109,45 @@ public class CardPrintController {
         return Result.success();
     }
 
+    @GetMapping("/value-maps")
+    @Operation(summary = "字段值映射列表")
+    public Result<List<CardPrintValueMap>> valueMaps(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
+        requireStaff(auth);
+        return Result.success(valueMapService.list());
+    }
+
+    @PostMapping("/value-maps")
+    @Operation(summary = "新建字段值映射")
+    public Result<CardPrintValueMap> createValueMap(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @RequestBody CardPrintValueMap body) {
+        User u = requireStaff(auth);
+        body.setId(null);
+        return Result.success(valueMapService.save(body, displayName(u)));
+    }
+
+    @PutMapping("/value-maps/{id}")
+    @Operation(summary = "更新字段值映射")
+    public Result<CardPrintValueMap> updateValueMap(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @PathVariable Long id,
+            @RequestBody CardPrintValueMap body) {
+        User u = requireStaff(auth);
+        body.setId(id);
+        return Result.success(valueMapService.save(body, displayName(u)));
+    }
+
+    @DeleteMapping("/value-maps/{id}")
+    @Operation(summary = "删除字段值映射")
+    public Result<Void> deleteValueMap(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @PathVariable Long id) {
+        requireStaff(auth);
+        valueMapService.delete(id);
+        return Result.success();
+    }
+
     @PostMapping("/preview")
     @Operation(summary = "试打单张（返回 PDF）")
     public ResponseEntity<byte[]> preview(
@@ -111,7 +155,7 @@ public class CardPrintController {
             @RequestBody Map<String, Object> body) throws IOException {
         requireStaff(auth);
         Long templateId = Long.valueOf(String.valueOf(body.get("templateId")));
-        Long cageId = Long.valueOf(String.valueOf(body.get("animalCageId")));
+        Long cageId = parseOptionalLong(body.get("animalCageId"));
         return pdfResponse(cardPrintService.preview(templateId, cageId), "card-preview.pdf");
     }
 
@@ -124,7 +168,8 @@ public class CardPrintController {
         Long templateId = Long.valueOf(String.valueOf(body.get("templateId")));
         List<Long> cageIds = cardPrintService.parseCageIds(
                 body.get("animalCageIds") instanceof List<?> l ? l : null);
-        return Result.success(cardPrintService.generate(templateId, cageIds, displayName(u)));
+        String nameSuffix = body.get("nameSuffix") == null ? null : String.valueOf(body.get("nameSuffix"));
+        return Result.success(cardPrintService.generate(templateId, cageIds, displayName(u), nameSuffix));
     }
 
     @PostMapping("/data")
@@ -166,6 +211,14 @@ public class CardPrintController {
         User u = requireStaff(auth);
         cardPrintService.deleteArchive(id, displayName(u));
         return Result.success();
+    }
+
+    /** 可选笼位 ID：null/空白/"null" → null；否则解析为 Long。 */
+    private static Long parseOptionalLong(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty() || "null".equalsIgnoreCase(s)) return null;
+        return Long.valueOf(s);
     }
 
     private static ResponseEntity<byte[]> pdfResponse(byte[] pdf, String fileName) {

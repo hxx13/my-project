@@ -222,7 +222,7 @@ function ShelfRow({
         </td>
         <td className="border-b border-[var(--twin-hairline)] px-3 py-2 align-top text-xs text-center">
           {row.boundCells > 0 ? (
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-[var(--twin-primary)]/10 text-[var(--twin-link-deep)]">
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] text-[var(--twin-link-deep)]">
               {row.boundCells}
             </span>
           ) : (

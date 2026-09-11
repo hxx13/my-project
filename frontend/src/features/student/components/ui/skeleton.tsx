@@ -16,7 +16,7 @@ export function Skeleton({ className, variant = "text", ...props }: SkeletonProp
   return (
     <div
       className={cn(
-        "bg-[var(--student-mute)]/25",
+        "bg-[color-mix(in_srgb,var(--student-mute)_25%,transparent)]",
         variantClasses[variant],
         className,
       )}

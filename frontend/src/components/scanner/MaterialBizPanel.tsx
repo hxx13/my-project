@@ -254,7 +254,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
             <div className={`shrink-0 border-t ${CARD_BORDER} p-2`}>
               {successMessage ? (
                 <div
-                  className="rounded-xl border border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success-soft)] px-3 py-3 text-center"
+                  className="rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-success)_30%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-3 py-3 text-center"
                   role="status"
                   aria-live="polite"
                 >
@@ -344,7 +344,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                       <button
                         onClick={() => { setCart({}); setScheduledPickupTime(null); }}
                         disabled={cartCount === 0}
-                        className={`h-12 flex-1 rounded-xl border ${CARD_BORDER} text-base font-medium ${TEXT_SEC} hover:border-[var(--app-color-feedback-danger)]/40 hover:text-[var(--app-color-feedback-danger)] disabled:opacity-30 transition-colors`}
+                        className={`h-12 flex-1 rounded-xl border ${CARD_BORDER} text-base font-medium ${TEXT_SEC} hover:border-[color-mix(in_srgb,var(--app-color-feedback-danger)_40%,transparent)] hover:text-[var(--app-color-feedback-danger)] disabled:opacity-30 transition-colors`}
                       >
                         取消
                       </button>

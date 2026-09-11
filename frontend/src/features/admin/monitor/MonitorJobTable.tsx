@@ -199,7 +199,7 @@ function JobRow({
       className={cn(
         "border-b border-[var(--app-color-border-default)] transition-colors",
         isRunning && "bg-[var(--app-color-feedback-success-soft)]",
-        st.variant === "failed" && "bg-[var(--app-color-feedback-danger-soft)]/50",
+        st.variant === "failed" && "bg-[color-mix(in_srgb,var(--app-color-feedback-danger-soft)_50%,transparent)]",
         isDisabled && "opacity-50",
       )}
     >

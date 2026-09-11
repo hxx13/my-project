@@ -34,4 +34,8 @@ public class RefOrderLine {
     private String addedBy;
     /** 行级 AUP 合规归因 → aup_record.id */
     private Long aupRecordId;
+    /** 本行锁定的笼位 ID（自购物车快照；订购即已预定到该笼位） */
+    private Long targetAnimalCageId;
+    /** 笼位坐标快照（JSON）：校区/区域/楼层/房间/笼架/坐标。快照而非实时 join，笼位后搬动不改历史单 */
+    private String targetCageLocation;
 }

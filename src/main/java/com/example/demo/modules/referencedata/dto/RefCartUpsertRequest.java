@@ -28,4 +28,9 @@ public class RefCartUpsertRequest {
     /** DRAFT | READY */
     private String packageStatus;
     private String packageRemark;
+    /**
+     * 本行要锁定的笼位预定 id（先点笼位预定，再加购）。
+     * 加购时按它把预定挂到本行；笼位挂上后该笼位对别人不可选。
+     */
+    private Long reservationId;
 }

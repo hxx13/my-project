@@ -1,4 +1,4 @@
-import { formatBeijingDateTimeFull, formatBeijingDateTimeMedium, parseToDate } from "@/utils/beijingTime";
+import { formatBeijingDateTimeFull, formatBeijingDateTimeMedium, formatBeijingDateTimeMinute, parseToDate } from "@/utils/beijingTime";
 
 /**
  * 将接口返回的日期时间格式化为「北京时间」展示字符串（含秒）。
@@ -17,6 +17,15 @@ export function formatDateTimeAsiaShanghaiShort(v: unknown): string {
   if (v == null || v === "") return "-";
   const formatted = formatBeijingDateTimeMedium(String(v));
   return formatted === "—" ? "-" : formatted;
+}
+
+/** yyyy-MM-dd HH:mm：时间窗/「下次开放」这类紧凑提示用；解析失败退回截断原串 */
+export function formatDateTimeAsiaShanghaiMinute(v: unknown): string {
+  if (v == null || v === "") return "-";
+  const s = String(v).trim();
+  if (!s) return "-";
+  const formatted = formatBeijingDateTimeMinute(s);
+  return formatted === "—" ? s.slice(0, 16).replace("T", " ") : formatted;
 }
 
 /** 不含秒的北京时间展示（列表常用）；兼容旧 toTime/toTimeText 命名 */

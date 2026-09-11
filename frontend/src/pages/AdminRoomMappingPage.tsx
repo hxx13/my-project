@@ -222,7 +222,7 @@ export default function AdminRoomMappingPage() {
             onClick={() => selectRegion("")}
             className={`rounded-full px-3 py-1 text-sm border ${
               appliedRegion === ""
-                ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 text-[var(--twin-link-deep)]"
+                ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] text-[var(--twin-link-deep)]"
                 : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
             }`}
           >
@@ -236,7 +236,7 @@ export default function AdminRoomMappingPage() {
               onClick={() => selectRegion(r)}
               className={`rounded-full px-3 py-1 text-sm border ${
                 appliedRegion === r
-                  ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 text-[var(--twin-link-deep)]"
+                  ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] text-[var(--twin-link-deep)]"
                   : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
               }`}
             >
@@ -254,7 +254,7 @@ export default function AdminRoomMappingPage() {
                 onClick={() => selectFloor("")}
                 className={`rounded-full px-3 py-1 text-sm border ${
                   appliedFloor === ""
-                    ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 text-[var(--twin-link-deep)]"
+                    ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] text-[var(--twin-link-deep)]"
                     : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
                 }`}
               >
@@ -267,7 +267,7 @@ export default function AdminRoomMappingPage() {
                   onClick={() => selectFloor(f)}
                   className={`rounded-full px-3 py-1 text-sm border ${
                     appliedFloor === f
-                      ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 text-[var(--twin-link-deep)]"
+                      ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] text-[var(--twin-link-deep)]"
                       : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
                   }`}
                 >

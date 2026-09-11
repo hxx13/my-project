@@ -312,7 +312,7 @@ export default function InspectionTab({ tabs, activeTab, onTabChange }: Inspecti
         </div>
         <button
           type="button"
-          className="rounded-lg bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--app-color-accent)]/90"
+          className="rounded-lg bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color-mix(in_srgb,var(--app-color-accent)_90%,transparent)]"
           onClick={() => void openSheet()}
         >
           打开当日巡查表
@@ -343,7 +343,7 @@ export default function InspectionTab({ tabs, activeTab, onTabChange }: Inspecti
         {hasSheet && (
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded-lg bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--app-color-accent)]/90"
+            className="inline-flex items-center gap-1 rounded-lg bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color-mix(in_srgb,var(--app-color-accent)_90%,transparent)]"
             onClick={() => void onSubmitRegister()}
           >
             <ClipboardCheck className="h-4 w-4" /> 上传登记

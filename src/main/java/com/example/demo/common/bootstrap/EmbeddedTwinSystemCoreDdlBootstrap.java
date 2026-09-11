@@ -329,6 +329,14 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-cage-lab-assistant-multi.sql", ctx)) success++;
         // 所属人审核配置（到位确认/分笼审核/转移审核）
         total++; if (runScript("db/bootstrap-cage-owner-approval-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-card-print-value-map.sql", ctx)) success++;
+        // 笼位预定（动物订购锁定 type2 笼位，竞态闸门=active_cage_id 唯一索引）
+        total++; if (runScript("db/bootstrap-cage-order-reservation.sql", ctx)) success++;
+        // 订购行挂笼位（ref_cart / ref_order_line 各加 target_animal_cage_id）
+        total++; if (runScript("db/bootstrap-ref-cart-target-cage.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ref-order-line-target-cage.sql", ctx)) success++;
+        // 订单行的笼位坐标快照（一个文件一条 DDL：挤在一起会被前一条的 benign 失败整段跳过）
+        total++; if (runScript("db/bootstrap-ref-order-line-cage-location.sql", ctx)) success++;
 
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)");

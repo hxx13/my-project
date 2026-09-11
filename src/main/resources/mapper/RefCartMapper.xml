@@ -17,6 +17,7 @@
         <result property="remark" column="remark"/>
         <result property="packageStatus" column="package_status"/>
         <result property="packageRemark" column="package_remark"/>
+        <result property="targetAnimalCageId" column="target_animal_cage_id"/>
         <result property="addedBy" column="added_by"/>
         <result property="addedAt" column="added_at"/>
     </resultMap>
@@ -24,10 +25,10 @@
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ref_cart(group_id, ref_data_id, aup_record_id, spec_selections, quantity,
                              pickup_room_id, pickup_room_name, collector_id, collector_name, editing_order_id, remark,
-                             package_status, package_remark, added_by)
+                             package_status, package_remark, target_animal_cage_id, added_by)
         VALUES (#{groupId}, #{refDataId}, #{aupRecordId}, #{specSelections}, #{quantity},
                 #{pickupRoomId}, #{pickupRoomName}, #{collectorId}, #{collectorName}, #{editingOrderId}, #{remark},
-                COALESCE(#{packageStatus}, 'DRAFT'), #{packageRemark}, #{addedBy})
+                COALESCE(#{packageStatus}, 'DRAFT'), #{packageRemark}, #{targetAnimalCageId}, #{addedBy})
     </insert>
 
     <update id="update">

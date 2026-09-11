@@ -189,7 +189,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                 <motion.div
                     initial={false}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-warning-soft)] border border-[var(--app-color-feedback-warning)]/25 text-[11px] font-bold text-[var(--app-color-feedback-warning)] shrink-0"
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-warning-soft)] border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_25%,transparent)] text-[11px] font-bold text-[var(--app-color-feedback-warning)] shrink-0"
                 >
                     <span>⏱</span>
                     <span>

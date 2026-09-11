@@ -59,8 +59,32 @@ function parseToTimestamp(v, fallback) {
   return Number.isFinite(t) ? t : fb;
 }
 
+/** yyyy-MM-dd HH:mm（横杠、不含秒）：时间窗/「下次开放」这类紧凑提示用，与 Web formatBeijingDateTimeMinute 对齐 */
+function formatBeijingDateTimeMinute(v) {
+  const d = parseToDate(v);
+  if (!d) return '';
+  try {
+    const fmt = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(d);
+    const g = function (t) { return (parts.find(function (x) { return x.type === t; }) || {}).value || ''; };
+    return g('year') + '-' + pad2(Number(g('month'))) + '-' + pad2(Number(g('day')))
+      + ' ' + pad2(Number(g('hour'))) + ':' + pad2(Number(g('minute')));
+  } catch (e) {
+    return String(v).replace('T', ' ').slice(0, 16);
+  }
+}
+
 module.exports = {
   parseToDate,
   parseToTimestamp,
   formatBeijingDateTimeFull,
+  formatBeijingDateTimeMinute,
 };

@@ -162,4 +162,14 @@
         SELECT * FROM cage_cell_detail WHERE cage_box_code = #{code} LIMIT 1
     </select>
 
+    <select id="selectReservableByAup" resultMap="CageCellDetailMap">
+        SELECT * FROM cage_cell_detail
+        WHERE cage_type_code = 2
+          AND (
+            (#{aupId,jdbcType=BIGINT} IS NOT NULL AND aup_id = #{aupId,jdbcType=BIGINT})
+            OR (#{aupNumber,jdbcType=VARCHAR} IS NOT NULL AND #{aupNumber,jdbcType=VARCHAR} &lt;&gt; ''
+                AND aup_number = #{aupNumber,jdbcType=VARCHAR})
+          )
+    </select>
+
 </mapper>

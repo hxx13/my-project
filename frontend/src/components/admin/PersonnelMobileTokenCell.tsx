@@ -195,7 +195,7 @@ export function PersonnelMobileTokenCell({ userId, userName, role }: Props) {
         ) : (
           <>
             <div className="text-center py-6">
-              <QrCode className="size-10 mx-auto mb-2 text-[var(--app-color-text-tertiary)]/30" />
+              <QrCode className="size-10 mx-auto mb-2 text-[color-mix(in_srgb,var(--app-color-text-tertiary)_30%,transparent)]" />
               <p className="text-xs text-[var(--app-color-text-tertiary)] mb-3">
                 {expired ? "链接已过期" : "暂无直达链接"}
               </p>

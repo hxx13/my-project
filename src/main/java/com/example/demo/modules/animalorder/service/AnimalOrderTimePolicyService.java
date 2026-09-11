@@ -9,7 +9,6 @@ import com.example.demo.modules.animalorder.dto.AnimalOrderTimePolicySummaryDto;
 import com.example.demo.modules.animalorder.dto.AnimalOrderWindowRuleDto;
 import com.example.demo.modules.animalorder.engine.AnimalOrderTimeEngine;
 import com.example.demo.modules.animalorder.engine.AnimalOrderTimeModels;
-import com.example.demo.modules.animalorder.engine.WindowRuleConflictValidator;
 import com.example.demo.modules.animalorder.entity.AnimalOrderHoliday;
 import com.example.demo.modules.animalorder.entity.AnimalOrderTimePolicy;
 import com.example.demo.modules.animalorder.entity.AnimalOrderWindowRule;
@@ -26,9 +25,10 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static com.example.demo.modules.animalorder.engine.AnimalOrderTimeModels.Policy;
 import static com.example.demo.modules.animalorder.engine.AnimalOrderTimeModels.WindowRule;
@@ -87,7 +87,7 @@ public class AnimalOrderTimePolicyService {
     public AnimalOrderTimePolicyAdminDto getAdminView(String campus) {
         String c = AnimalOrderCampus.normalize(campus);
         AnimalOrderTimePolicy policyRow = requirePolicy(c);
-        List<AnimalOrderWindowRule> ruleRows = ruleMapper.listActive(c);
+        List<AnimalOrderWindowRule> ruleRows = ruleMapper.listAllByCampus(c);
 
         AnimalOrderTimePolicyAdminDto dto = new AnimalOrderTimePolicyAdminDto();
         dto.setCampus(c);
@@ -114,7 +114,6 @@ public class AnimalOrderTimePolicyService {
             }
             normalizeAndValidateRule(ruleDto);
         }
-        validateRuleGroups(ruleDtos);
 
         AnimalOrderTimePolicy policyRow = requirePolicy(c);
         policyRow.setDefaultMode(body.getDefaultMode());
@@ -144,6 +143,21 @@ public class AnimalOrderTimePolicyService {
                 ruleMapper.insert(row);
             } else {
                 ruleMapper.update(row);
+            }
+        }
+
+        // 显式删除：软删除（置 deleted=1，行保留），只处理既在 deletedRuleIds 里、又没被本次提交同时更新的行
+        Set<Long> upsertedIds = new HashSet<>();
+        for (AnimalOrderWindowRuleDto ruleDto : ruleDtos) {
+            if (ruleDto.getId() != null) {
+                upsertedIds.add(ruleDto.getId());
+            }
+        }
+        if (body.getDeletedRuleIds() != null) {
+            for (Long id : body.getDeletedRuleIds()) {
+                if (id != null && !upsertedIds.contains(id)) {
+                    ruleMapper.markDeleted(id);
+                }
             }
         }
     }
@@ -199,15 +213,17 @@ public class AnimalOrderTimePolicyService {
     }
 
     /**
-     * New rules: WEEKLY (Form A daily window on selected weekdays) or WEEKLY_SPAN (Form B
-     * cross-weekday continuous arc). Legacy RANGE rejected on save; DAILY normalized to WEEKLY.
+     * 时段形态：
+     * <ul>
+     *   <li>WEEKLY / WEEKLY_SPAN：按星期循环（DAILY 归一为 WEEKLY）</li>
+     *   <li>RANGE：一次性绝对区间，即「特殊时段」——全局、只能开放，区间过了自然不再命中（自动关闭）</li>
+     * </ul>
      */
     private void normalizeAndValidateRule(AnimalOrderWindowRuleDto dto) {
         String shape = dto.getShape();
         if (AnimalOrderTimeEngine.SHAPE_RANGE.equals(shape)) {
-            throw TwinBusinessException.of(
-                    ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CONFLICT,
-                    "可购时段请使用按星期循环配置，不再支持年月日一次性区间");
+            normalizeRangeRule(dto);
+            return;
         }
 
         if (AnimalOrderTimeEngine.SHAPE_WEEKLY_SPAN.equals(shape)) {
@@ -242,6 +258,27 @@ public class AnimalOrderTimePolicyService {
             throw TwinBusinessException.of(
                     ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CONFLICT, "请填写起止时间");
         }
+    }
+
+    /** 特殊时段：一次性绝对区间。固定全局开放；区间一过引擎自然不再命中，无需额外清理任务。 */
+    private void normalizeRangeRule(AnimalOrderWindowRuleDto dto) {
+        if (dto.getRangeStartAt() == null || dto.getRangeEndAt() == null) {
+            throw TwinBusinessException.of(
+                    ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CONFLICT, "请填写特殊时段的起止时间");
+        }
+        if (!dto.getRangeStartAt().isBefore(dto.getRangeEndAt())) {
+            throw TwinBusinessException.of(
+                    ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CONFLICT, "特殊时段的结束时间必须晚于开始时间");
+        }
+        dto.setShape(AnimalOrderTimeEngine.SHAPE_RANGE);
+        dto.setEffect(AnimalOrderTimeEngine.EFFECT_OPEN);
+        dto.setScope("GLOBAL");
+        dto.setCategoryKey(null);
+        dto.setWeekdays(null);
+        dto.setStartWeekday(null);
+        dto.setEndWeekday(null);
+        dto.setDailyStartTime(null);
+        dto.setDailyEndTime(null);
     }
 
     private void normalizeWeeklySpanRule(AnimalOrderWindowRuleDto dto) {
@@ -296,20 +333,6 @@ public class AnimalOrderTimePolicyService {
         return sb.toString();
     }
 
-    private void validateRuleGroups(List<AnimalOrderWindowRuleDto> ruleDtos) {
-        Map<String, List<WindowRule>> groups = new LinkedHashMap<>();
-        for (AnimalOrderWindowRuleDto dto : ruleDtos) {
-            if (dto.getActive() != null && dto.getActive() == 0) {
-                continue;
-            }
-            String key = groupKey(dto.getScope(), dto.getCategoryKey());
-            groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(toRule(fromRuleDto(dto)));
-        }
-        for (List<WindowRule> group : groups.values()) {
-            WindowRuleConflictValidator.validateNoOppositeOverlap(group);
-        }
-    }
-
     private Map<LocalDate, String> loadHolidayMap(int centerYear) {
         Map<LocalDate, String> map = new HashMap<>();
         for (int year = centerYear - 1; year <= centerYear + 1; year++) {
@@ -326,10 +349,6 @@ public class AnimalOrderTimePolicyService {
             warnings.add(WARNING_HOLIDAY_YEAR_EMPTY);
         }
         return warnings;
-    }
-
-    private static String groupKey(String scope, String categoryKey) {
-        return scope + ":" + (categoryKey != null ? categoryKey : "");
     }
 
     private Policy toModel(AnimalOrderTimePolicy row) {

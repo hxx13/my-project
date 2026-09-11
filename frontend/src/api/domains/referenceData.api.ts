@@ -70,8 +70,28 @@ export interface RefCartItem {
   addedBy: string;
   /** 后端解析的加购人展示名 */
   addedByName?: string;
+  /**
+   * 加购人的人级主键（personnel.id）。同一人可能同时持有 STAFF_xxx 与 aro_user_id 两个账号，
+   * 按「人」分组/判断能不能改必须用它，不能用 addedBy（裸账号 id）。
+   */
+  addedByKey?: string | null;
+  /** 这行是不是当前登录人（同一人换视角也算）加购的；服务端按 personnel.id 判定 */
+  mine?: boolean;
   /** 后端解析的参考数据展示名 */
   refDataLabel?: string;
+  /** 本行锁定的笼位 ID；未选笼位时为 null */
+  targetAnimalCageId?: number | null;
+  /** 笼位坐标（购物车活数据，现查）：用于显示位置与「定位」 */
+  targetCageLocation?: {
+    shelveId?: string | null;
+    positionX?: number | null;
+    positionY?: number | null;
+    campusName?: string | null;
+    roomName?: string | null;
+    shelveName?: string | null;
+  } | null;
+  /** 笼位坐标人读串，如「浦东 / A101 / 架3 (4,5)」 */
+  targetCageLabel?: string | null;
   addedAt?: string;
 }
 
@@ -139,6 +159,20 @@ export interface RefOrderLine {
   aupRecordId?: number | null;
   /** 行级 AUP 编号（后端由 aupRecordId 解析） */
   registerNo?: string | null;
+  /** 本行锁定的笼位 ID（订购 → 笼位预定）；未选笼位时为 null */
+  targetAnimalCageId?: number | null;
+  /** 笼位坐标快照（下单那一刻）：用于「定位到该笼位」 */
+  targetCageLocation?: {
+    animalCageId?: string | null;
+    shelveId?: string | null;
+    positionX?: number | null;
+    positionY?: number | null;
+    campusName?: string | null;
+    roomName?: string | null;
+    shelveName?: string | null;
+  } | null;
+  /** 笼位坐标人读串，如「浦东 / A101 / 架3 (4,5)」 */
+  targetCageLabel?: string | null;
 }
 
 export interface RefOrderLog {
@@ -238,6 +272,8 @@ export async function addToCart(
     /** 领用人；不传表示本人 */
     collectorId?: string;
     collectorName?: string;
+    /** 行备注（有规格时逐规格各一条） */
+    remark?: string;
   },
   groupId: string,
 ) {
@@ -299,8 +335,8 @@ export async function submitOrder(body: {
   /** 下单校区：浦东 | 浦西 */
   campus?: string;
 }) {
-  const res = await authHttp.post<Result<RefOrder>>("/reference-data/orders", body);
-  return res.data.data;
+  const res = await authHttp.post<Result<RefOrder[]>>("/reference-data/orders", body);
+  return res.data.data ?? [];
 }
 
 // ── Orders ──
@@ -317,6 +353,8 @@ export interface AupOption {
   registerNo: string;
   projectGroupName: string;
   projectGroupId?: number | null;
+  /** approved / expired —— expired 仍可选（笼位与白名单还挂在它上面），前端标「已过期」提示 */
+  currentStage?: string | null;
 }
 
 /** 拉取当前用户课题组的已批准 AUP（服务端按登录用户课题组过滤，不接受客户端指定） */

@@ -309,7 +309,7 @@ export default function CageOwnerApprovalSettings() {
                       type="button"
                       onClick={() => setSelected({ name: p.name, accountId: p.accountId })}
                       className={`flex w-full items-center gap-2 rounded-twin-sm px-2 py-1.5 text-left text-[11px] transition ${
-                        on ? "bg-[var(--twin-primary)]/10" : "hover:bg-[var(--twin-canvas-soft)]"
+                        on ? "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)]" : "hover:bg-[var(--twin-canvas-soft)]"
                       }`}
                     >
                       <span className={`font-semibold ${on ? "text-[var(--twin-primary)]" : "text-[var(--twin-ink)]"}`}>

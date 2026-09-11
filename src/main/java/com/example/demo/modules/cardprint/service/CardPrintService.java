@@ -159,12 +159,32 @@ public class CardPrintService {
         }
     }
 
-    /** 试打单张：返回单页 PDF，不归档。 */
+    /** 试打单张：返回单页 PDF，不归档。animalCageId 为 null 时用示例数据渲染（不查库）。 */
     public byte[] preview(Long templateId, Long animalCageId) throws IOException {
-        if (animalCageId == null) throw new TwinBusinessException(400, "请选择笼位");
         CardPrintTemplate t = getTemplate(templateId);
-        List<Map<String, Object>> rows = dataAssembler.assemble(List.of(animalCageId));
+        List<Map<String, Object>> rows = animalCageId == null
+                ? sampleRows(t)
+                : dataAssembler.assemble(List.of(animalCageId));
         return renderEngine.render(parseSpec(t.getSpecJson()), parseSlots(t.getSlotsJson()), rows);
+    }
+
+    /** 试打示例数据：遍历模板槽位的全部 cell.fieldKey（去重）生成一行固定示例值，不查库、一定成功。 */
+    private List<Map<String, Object>> sampleRows(CardPrintTemplate t) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        for (CardLayoutEngine.Slot s : parseSlots(t.getSlotsJson())) {
+            for (CardLayoutEngine.Cell c : s.effectiveCells()) {
+                String key = c.fieldKey();
+                if (key == null || key.isBlank() || row.containsKey(key)) continue;
+                row.put(key, sampleValue(key));
+            }
+        }
+        return List.of(row);
+    }
+
+    private static String sampleValue(String key) {
+        if (CardFieldDictionaryService.QR_FIELD.equals(key)) return "1234567890123456789";
+        if (CardFieldDictionaryService.POSITION_FIELD.equals(key)) return "示例笼架#A-10";
+        return "示例内容";
     }
 
     /** 取一批笼位组装好的卡牌数据（供前端实时预览，不生成 PDF、不落盘）。 */
@@ -178,7 +198,8 @@ public class CardPrintService {
 
     /** 批量生成并归档。 */
     @Transactional
-    public Map<String, Object> generate(Long templateId, List<Long> animalCageIds, String operator)
+    public Map<String, Object> generate(Long templateId, List<Long> animalCageIds, String operator,
+                                        String nameSuffix)
             throws IOException {
         if (animalCageIds == null || animalCageIds.isEmpty()) {
             throw new TwinBusinessException(400, "请至少选择一个笼位");
@@ -189,7 +210,9 @@ public class CardPrintService {
 
         byte[] pdf = renderEngine.render(parseSpec(t.getSpecJson()), parseSlots(t.getSlotsJson()), rows);
         String relPath = storage.store(pdf);
-        String fileName = "card-" + t.getName() + "-" + LocalDateTime.now().format(TS) + ".pdf";
+        String suffix = sanitizeSuffix(nameSuffix);
+        String fileName = "card-" + t.getName() + (suffix == null ? "" : "-" + suffix)
+                + "-" + LocalDateTime.now().format(TS) + ".pdf";
 
         CardPrintArchive a = new CardPrintArchive();
         a.setTemplateId(t.getId());
@@ -243,6 +266,14 @@ public class CardPrintService {
         CardPrintArchive a = getArchive(id);
         archiveMapper.deleteById(id);
         storage.delete(a.getStoredPath());
+    }
+
+    /** 文件名备注消毒：去掉路径分隔符/非法字符与控制字符，trim 后截断到 40 字符。 */
+    private static String sanitizeSuffix(String raw) {
+        if (raw == null) return null;
+        String s = raw.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "").trim();
+        if (s.isEmpty()) return null;
+        return s.length() > 40 ? s.substring(0, 40) : s;
     }
 
     /** 全部笼位 id 解析：入参为字符串以防雪花 ID 精度丢失。 */

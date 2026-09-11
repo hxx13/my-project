@@ -158,7 +158,7 @@ export default function PortalFooterSettings() {
               type="text" value={contact.phone}
               onChange={(e) => updateContact("phone", e.target.value)}
               placeholder="021-xxxxxxxx"
-              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
             />
           </label>
           <label className="block">
@@ -167,7 +167,7 @@ export default function PortalFooterSettings() {
               type="text" value={contact.email}
               onChange={(e) => updateContact("email", e.target.value)}
               placeholder="aro@shsmu.edu.cn"
-              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
             />
           </label>
           <label className="block sm:col-span-2">
@@ -177,7 +177,7 @@ export default function PortalFooterSettings() {
               onChange={(e) => updateContact("address", e.target.value)}
               placeholder="上海市黄浦区重庆南路227号"
               rows={3}
-              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30 resize-y"
+              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] resize-y"
             />
           </label>
           <label className="block">
@@ -186,7 +186,7 @@ export default function PortalFooterSettings() {
               type="text" value={contact.workHours}
               onChange={(e) => updateContact("workHours", e.target.value)}
               placeholder="周一至周五 8:00-17:00"
-              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+              className="mt-1 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
             />
           </label>
         </div>
@@ -198,7 +198,7 @@ export default function PortalFooterSettings() {
           type="text" value={copyright}
           onChange={(e) => setCopyright(e.target.value)}
           placeholder="© 2026 上海交通大学医学院 · 实验动物科学部"
-          className="w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--app-color-accent)]/30"
+          className="w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-1 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
         />
       </AdminFormCard>
 
@@ -253,7 +253,7 @@ export default function PortalFooterSettings() {
                   <button
                     type="button"
                     onClick={() => removeGroup(gi)}
-                    className="p-1.5 text-[var(--app-color-text-danger)]/70 hover:text-[var(--app-color-text-danger)] transition-colors"
+                    className="p-1.5 text-[color-mix(in_srgb,var(--app-color-text-danger)_70%,transparent)] hover:text-[var(--app-color-text-danger)] transition-colors"
                     title="删除分组"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -310,7 +310,7 @@ export default function PortalFooterSettings() {
                         <button
                           type="button"
                           onClick={() => removeLink(gi, li)}
-                          className="p-1 text-[var(--app-color-text-danger)]/60 hover:text-[var(--app-color-text-danger)]"
+                          className="p-1 text-[color-mix(in_srgb,var(--app-color-text-danger)_60%,transparent)] hover:text-[var(--app-color-text-danger)]"
                           title="删除链接"
                         >
                           <Trash2 className="h-3.5 w-3.5" />

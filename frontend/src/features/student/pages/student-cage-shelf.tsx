@@ -72,6 +72,14 @@ export default function StudentCageShelfPage() {
   const [search, setSearch] = useState("");
   const [legend, setLegend] = useState(false);
 
+  /**
+   * 左栏视图与 tab 解耦：「我的申请」只是右栏的一个视图，左栏没有对应列表。
+   * 若直接跟 tab 走，切到 claims 时两个分支都不成立 → CampusTree 被卸载、列表清空、滚动位置丢失。
+   * 所以记住最后一个非 claims 的视图，切到 claims 时左栏保持不变。
+   */
+  const [leftView, setLeftView] = useState<"filter" | "bookmarks">("filter");
+  useEffect(() => { if (tab !== "claims") setLeftView(tab); }, [tab]);
+
   // Tree
   const emptyTree = useMemo(() => [] as CageShelfTreeNode[], []);
   const { data: fullTree = emptyTree } = useQuery({ queryKey: ["cageShelfFullTree"], queryFn: fetchFullTree, staleTime: 10 * 60 * 1000 });
@@ -450,8 +458,10 @@ export default function StudentCageShelfPage() {
     } : {}),
   };
 
-  const onOpenRoom = (roomId: string, roomName: string) => { setARid(roomId); setARname(roomName); setShelfDetail(null); };
-  const onOpenShelf = async (shelveId: string, _overrideRoomId?: string) => { setShelfLoading(true); setShelfDetail(null); try { const d = await fetchLocalShelfGridByShelveId(shelveId); setShelfDetail(d); } catch { setShelfDetail(null); } finally { setShelfLoading(false); } };
+  // 点左栏目录即「看这个房间/笼架」，必须把右栏切回筛选视图：
+  // 「我的申请」状态下左栏仍显示目录，不切回来就会变成点了没反应的死点击
+  const onOpenRoom = (roomId: string, roomName: string) => { setTab("filter"); setARid(roomId); setARname(roomName); setShelfDetail(null); };
+  const onOpenShelf = async (shelveId: string, _overrideRoomId?: string) => { setTab("filter"); setShelfLoading(true); setShelfDetail(null); try { const d = await fetchLocalShelfGridByShelveId(shelveId); setShelfDetail(d); } catch { setShelfDetail(null); } finally { setShelfLoading(false); } };
 
   /** 扫码结果：定位到房间/笼架并打开该笼位详情（对齐 H5 handleResidentScan 的「纯定位」分支） */
   const handleScanResult = async (text: string) => {
@@ -504,8 +514,8 @@ export default function StudentCageShelfPage() {
             <Search className="h-3.5 w-3.5 shrink-0 text-[var(--app-color-text-tertiary)]" /><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)]" />
           </div>}
           {!collapsed && <div className="cage-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5">
-            {tab === "filter" && <CampusTree tree={tree} exp={exp} search={search} onToggle={k => setExp(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; })} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={new Map()} alertStatusesByRoom={new Map()} />}
-            {tab === "bookmarks" && <>
+            {leftView === "filter" && <CampusTree tree={tree} exp={exp} search={search} onToggle={k => setExp(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; })} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={new Map()} alertStatusesByRoom={new Map()} />}
+            {leftView === "bookmarks" && <>
               {bmLoading && <div className="text-[var(--app-color-text-tertiary)] py-4 text-center text-[11px]">加载中…</div>}
               {!bmLoading && bmList.length === 0 && <div className="text-[var(--app-color-text-tertiary)] py-4 text-center text-[11px]">暂无收藏</div>}
               {!bmLoading && bmList.map(b => <button key={b.shelfMeta.shelveId} onClick={() => { setTab("filter"); onOpenRoom(String(b.roomId ?? ""), b.shelfMeta.roomName); }} className="w-full text-left rounded-student-md border border-[var(--student-border)] bg-[var(--student-canvas)] px-2 py-1.5 mb-1 hover:border-[var(--student-primary)] transition">
@@ -612,7 +622,7 @@ export default function StudentCageShelfPage() {
                   <div key={room}>
                     <div className="flex items-center gap-1.5 px-1 pb-1.5">
                       <span className="text-[11px] font-semibold text-[var(--app-color-text-tertiary)]">{room}</span>
-                      <span className="text-[10px] text-[var(--app-color-text-tertiary)]/60">{items.length}</span>
+                      <span className="text-[10px] text-[color-mix(in_srgb,var(--app-color-text-tertiary)_60%,transparent)]">{items.length}</span>
                     </div>
                     <div className="space-y-1.5">
                       {items.map(c => (

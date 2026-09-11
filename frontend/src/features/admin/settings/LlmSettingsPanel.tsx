@@ -139,7 +139,7 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
             <input
               type={showApiKey ? "text" : "password"}
               autoComplete="new-password"
-              className="w-full rounded-[var(--app-radius-control)] border border-[var(--app-color-border-subtle)] bg-[var(--app-color-surface-page)] px-3 py-2 pr-10 text-sm text-[var(--app-color-text-primary)] outline-none transition placeholder:text-[var(--app-color-text-tertiary)] focus-visible:border-[var(--app-color-accent)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/25"
+              className="w-full rounded-[var(--app-radius-control)] border border-[var(--app-color-border-subtle)] bg-[var(--app-color-surface-page)] px-3 py-2 pr-10 text-sm text-[var(--app-color-text-primary)] outline-none transition placeholder:text-[var(--app-color-text-tertiary)] focus-visible:border-[var(--app-color-accent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--app-color-accent)_25%,transparent)]"
               placeholder="sk-…"
               value={displayApiKey}
               onChange={(e) => setApiKeyDraft(e.target.value)}
@@ -191,7 +191,7 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
                 onClick={() => void applyPreset(preset)}
                 className={`group relative flex flex-col gap-2 rounded-[var(--app-radius-container)] border-2 px-4 py-3.5 text-left transition-all
                   ${isActive
-                    ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)]/5 ring-2 ring-[var(--app-color-accent)]/20"
+                    ? "border-[var(--app-color-accent)] bg-[color-mix(in_srgb,var(--app-color-accent)_5%,transparent)] ring-2 ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
                     : "border-[var(--app-color-border-subtle)] bg-[var(--app-color-surface-container)] hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)]"
                   }
                   disabled:opacity-60 disabled:cursor-not-allowed

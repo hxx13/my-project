@@ -345,7 +345,7 @@ const GridCellButton = memo(function GridCellButton({
         // 选中态（分配/认领/申请勾选）—— 移动端没有勾选圆点，全靠这条高亮表达，所以加粗加亮
         selected && "ring-[3px] ring-inset ring-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.45)]",
         // 申请模式：池内可用笼位（未选中时绿色描边提示）
-        isPoolCell && !selected && "ring-2 ring-inset ring-emerald-400/70 shadow-[0_0_4px_rgba(52,211,153,0.2)]",
+        isPoolCell && !selected && "ring-2 ring-inset ring-red-500/70 shadow-[0_0_4px_rgba(239,68,68,0.3)]",
         // 确认模式：本人待确认到位的笼位（琥珀环，与「未到位」徽标同色系）
         isMyClaimCell && !selected && "ring-2 ring-inset ring-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.35)]",
         // 划分：淡玫瑰底 + 描边，让「哪些笼位被划分了」成片一眼可辨（本人看到的更实）

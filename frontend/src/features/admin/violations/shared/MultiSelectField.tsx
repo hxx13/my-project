@@ -35,10 +35,10 @@ type Tone = NonNullable<MultiSelectOption<string>["tone"]>;
 
 const TONE_CHIP: Record<Tone, string> = {
   default: "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)]",
-  danger: "border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]",
-  info: "border-[var(--app-color-feedback-info)]/40 bg-[var(--app-color-feedback-info-soft)] text-[var(--app-color-feedback-info)]",
-  ok: "border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]",
-  warn: "border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]",
+  danger: "border-[color-mix(in_srgb,var(--app-color-feedback-danger)_40%,transparent)] bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]",
+  info: "border-[color-mix(in_srgb,var(--app-color-feedback-info)_40%,transparent)] bg-[var(--app-color-feedback-info-soft)] text-[var(--app-color-feedback-info)]",
+  ok: "border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]",
+  warn: "border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,transparent)] bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]",
 };
 
 /**

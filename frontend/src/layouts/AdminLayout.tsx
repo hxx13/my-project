@@ -116,6 +116,7 @@ import {
 } from "@/features/admin/adminTelemetryNav";
 import { Button } from "@/components/ui/button";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
+import { FullscreenToggleButton } from "@/components/shared/FullscreenToggleButton";
 import {
   Dialog,
   DialogContent,
@@ -1139,7 +1140,7 @@ export default function AdminLayout() {
             // 顶栏只压住内容区（z-[1]），z-30 远低于 dropdown/overlay/modal/全屏，
             // 避免顶栏覆盖 Portal 弹层与全屏模式（同用 --z-sticky 时 DOM 顺序会导致顶栏盖住全屏）。
             "sticky top-0 z-30 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] px-4 py-2 shadow-twin-level-2 sm:px-6 md:h-16 md:flex-nowrap md:py-0",
-            isDark ? "bg-[var(--twin-canvas)]" : "bg-[var(--twin-canvas)]/95 backdrop-blur-md"
+            isDark ? "bg-[var(--twin-canvas)]" : "bg-[color-mix(in_srgb,var(--twin-canvas)_95%,transparent)] backdrop-blur-md"
           )}
         >
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-1 md:flex-nowrap">
@@ -1190,6 +1191,7 @@ export default function AdminLayout() {
                 {adminHeaderTitle}
               </h1>
               <ThemeSwitcher className="h-8 shrink-0 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 text-[11px] font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" />
+              <FullscreenToggleButton className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" />
               <PageHelpHost pagePath={pathname} variant="admin" suppressAutoIntro={pendingLockRedirect} />
               {hasMinRole(role, "SUPER_ADMIN") ? (
                 <button
@@ -1478,7 +1480,7 @@ export default function AdminLayout() {
             </button>
             <button
               type="button"
-              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-feedback-danger)]/85"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-inverse)] transition-colors hover:bg-[color-mix(in_srgb,var(--app-color-feedback-danger)_85%,transparent)]"
               onClick={() => {
                 const profile = authStorage.getUserInfo()?.authProfile;
                 authStorage.clear();

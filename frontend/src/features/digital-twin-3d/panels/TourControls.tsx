@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 
 // P2.8: 面板令牌
-const SELECT_STYLE = 'px-3 py-2 rounded-xl text-sm font-bold bg-[var(--app-color-surface-elevated)]/85 backdrop-blur-lg border border-[var(--app-color-border-subtle)]/60 text-[var(--app-color-text-primary)]';
+const SELECT_STYLE = 'px-3 py-2 rounded-xl text-sm font-bold bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] backdrop-blur-lg border border-[color-mix(in_srgb,var(--app-color-border-subtle)_60%,transparent)] text-[var(--app-color-text-primary)]';
 const BTN_STYLE = 'px-4 py-2 rounded-xl text-sm font-bold transition-colors disabled:opacity-40';
 
 export default function TourControls() {
@@ -88,7 +88,7 @@ export default function TourControls() {
           onClick={isTouring ? handleStop : runTour}
           disabled={!flyTo}
           aria-label={isTouring ? '停止巡航' : '启动巡航'}
-          className={`${BTN_STYLE} ${isTouring ? 'bg-red-500 text-white' : 'bg-[var(--app-color-surface-elevated)]/85 backdrop-blur-lg border border-[var(--app-color-border-subtle)]/60 text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-elevated)]'}`}
+          className={`${BTN_STYLE} ${isTouring ? 'bg-red-500 text-white' : 'bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] backdrop-blur-lg border border-[color-mix(in_srgb,var(--app-color-border-subtle)_60%,transparent)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-elevated)]'}`}
         >
           {isTouring ? '⏹ 停止' : '🚀 巡航'}
         </button>

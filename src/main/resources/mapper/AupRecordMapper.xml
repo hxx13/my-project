@@ -297,9 +297,12 @@
         SELECT CAST(id AS CHAR) AS id,
                register_no AS registerNo,
                project_group_name AS projectGroupName,
-               project_group_id AS projectGroupId
+               project_group_id AS projectGroupId,
+               current_stage AS currentStage
         FROM aup_record
-        WHERE current_stage = 'approved'
+        <!-- expired 也放行：过期只是有效期到了，方案本身仍是批准过的，笼位与白名单都还挂在它上面；
+             不放行就没法给这些笼位下单（用户口径：过期不影响使用）。draft/审查中/terminated 仍排除。 -->
+        WHERE current_stage IN ('approved', 'expired')
         <if test="projectGroupNames != null and projectGroupNames.size() > 0">
             AND project_group_name IN
             <foreach collection="projectGroupNames" item="g" open="(" separator="," close=")">

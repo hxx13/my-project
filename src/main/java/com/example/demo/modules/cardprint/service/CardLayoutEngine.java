@@ -31,8 +31,8 @@ public final class CardLayoutEngine {
     /**
      * 页面规格。所有长度单位 mm。
      * 布局引擎只消费几何字段（page/margin/offset/lineHeight/qr）；
-     * defaultFontSizePt / borderWidthMm / borderColor 与 Slot 是渲染字段，由渲染引擎读取。
-     * lineHeightMm 若显式指定，调用方需保证其不超过内容区高度，否则行会溢出页面底边。
+     * defaultFontSizePt / defaultFontWeight / borderWidthMm / borderColor 与 Slot 是渲染字段，由渲染引擎读取。
+     * lineHeightMm 若显式指定，行高会自适应到表格高（装不下时压缩为均分，不溢出）。
      */
     public record Spec(
             float pageWidthMm,
@@ -47,7 +47,8 @@ public final class CardLayoutEngine {
             Qr qr,
             Boolean landscape,
             Boolean rotate90,
-            Table table
+            Table table,
+            Integer defaultFontWeight
     ) {
         /** 二维码块。 */
         public record Qr(boolean enabled, String fieldKey, float sizeMm, float marginMm, String anchor) {}
@@ -60,39 +61,39 @@ public final class CardLayoutEngine {
         public static Spec defaults() {
             return new Spec(70f, 105f, 2f, 9f, null, 0f, 0f, 0.2f, "#000000",
                     new Qr(true, "__qr__", 33f, 1f, "top-right"),
-                    false, false, null);
+                    false, false, null, null);
         }
 
         public Spec withOffsetMm(float dxMm, float dyMm) {
             return new Spec(pageWidthMm, pageHeightMm, marginMm, defaultFontSizePt, lineHeightMm,
-                    dxMm, dyMm, borderWidthMm, borderColor, qr, landscape, rotate90, table);
+                    dxMm, dyMm, borderWidthMm, borderColor, qr, landscape, rotate90, table, defaultFontWeight);
         }
 
         public Spec withLineHeightMm(Float mm) {
             return new Spec(pageWidthMm, pageHeightMm, marginMm, defaultFontSizePt, mm,
-                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, landscape, rotate90, table);
+                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, landscape, rotate90, table, defaultFontWeight);
         }
 
         public Spec withQrEnabled(boolean enabled) {
             Qr q = qr == null ? new Qr(enabled, "__qr__", 33f, 1f, "top-right")
                     : new Qr(enabled, qr.fieldKey(), qr.sizeMm(), qr.marginMm(), qr.anchor());
             return new Spec(pageWidthMm, pageHeightMm, marginMm, defaultFontSizePt, lineHeightMm,
-                    offsetXMm, offsetYMm, borderWidthMm, borderColor, q, landscape, rotate90, table);
+                    offsetXMm, offsetYMm, borderWidthMm, borderColor, q, landscape, rotate90, table, defaultFontWeight);
         }
 
         public Spec withLandscape(boolean enabled) {
             return new Spec(pageWidthMm, pageHeightMm, marginMm, defaultFontSizePt, lineHeightMm,
-                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, enabled, rotate90, table);
+                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, enabled, rotate90, table, defaultFontWeight);
         }
 
         public Spec withRotate90(boolean enabled) {
             return new Spec(pageWidthMm, pageHeightMm, marginMm, defaultFontSizePt, lineHeightMm,
-                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, landscape, enabled, table);
+                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, landscape, enabled, table, defaultFontWeight);
         }
 
         public Spec withTable(Table t) {
             return new Spec(pageWidthMm, pageHeightMm, marginMm, defaultFontSizePt, lineHeightMm,
-                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, landscape, rotate90, t);
+                    offsetXMm, offsetYMm, borderWidthMm, borderColor, qr, landscape, rotate90, t, defaultFontWeight);
         }
     }
 
@@ -107,7 +108,9 @@ public final class CardLayoutEngine {
     /**
      * 槽位定义：一行一个槽位，行内可含 N 列单元格。
      * cells 为新模型；label/fieldKey/rightLabel/rightFieldKey 为旧模型遗留字段（仅用于兼容老模板 JSON）。
-     * align / bold 为预留字段，当前渲染引擎未消费。
+     * align / vAlign 为格内九宫格对齐（水平 left/center/right、垂直 top/middle/bottom），由渲染引擎消费；
+     * bold 为预留字段（保留兼容老 JSON，渲染不再消费）；fontWeight 为字重，null 时走 spec.defaultFontWeight，再 null 视为 700 加粗。
+     * heightMm 为单行高（mm），null 时走均分；行高优先级：全局 lineHeightMm &gt; 单行 heightMm &gt; 均分。
      */
     public record Slot(
             List<Cell> cells,
@@ -117,7 +120,10 @@ public final class CardLayoutEngine {
             String rightFieldKey,
             String align,
             Boolean bold,
-            Float fontSizePt
+            Float fontSizePt,
+            Float heightMm,
+            Integer fontWeight,
+            String vAlign
     ) {
         /** 有效列：优先 cells；为空则由旧字段合成（left、right 两列）。 */
         public List<Cell> effectiveCells() {
@@ -130,17 +136,17 @@ public final class CardLayoutEngine {
 
         /** 新模型：一行 N 列。 */
         public static Slot ofCells(Cell... cells) {
-            return new Slot(List.of(cells), null, null, null, null, "left", Boolean.TRUE, null);
+            return new Slot(List.of(cells), null, null, null, null, "left", Boolean.TRUE, null, null, null, null);
         }
 
         /** 旧模型：单列。保留原签名不变。 */
         public static Slot of(String label, String fieldKey) {
-            return new Slot(null, label, fieldKey, null, null, "left", Boolean.TRUE, null);
+            return new Slot(null, label, fieldKey, null, null, "left", Boolean.TRUE, null, null, null, null);
         }
 
         /** 旧模型：左右两列。保留原签名不变。 */
         public static Slot pair(String label, String fieldKey, String rightLabel, String rightFieldKey) {
-            return new Slot(null, label, fieldKey, rightLabel, rightFieldKey, "left", Boolean.TRUE, null);
+            return new Slot(null, label, fieldKey, rightLabel, rightFieldKey, "left", Boolean.TRUE, null, null, null, null);
         }
     }
 
@@ -236,6 +242,7 @@ public final class CardLayoutEngine {
             }
         }
 
+        int rowCount = slots.size();
         boolean tableOn = table != null;
         float tW, tH, tableX, tableY;
         if (tableOn) {
@@ -256,13 +263,27 @@ public final class CardLayoutEngine {
                 vAlign = defaultVAlign;
             }
 
-            tW = table.widthMm() != null ? Math.min(table.widthMm(), contentW) : slotAreaW;
-            tH = table.heightMm() != null ? Math.min(table.heightMm(), contentH) : contentH;
+            // S1：表格块可用区已让开二维码（availX=slotAreaX, availW=slotAreaW），显式宽高钳制在可用区内。
+            tW = table.widthMm() != null ? Math.max(1f, Math.min(table.widthMm(), slotAreaW)) : slotAreaW;
+            // 表格块高：显式配置钳制在内容区内；未配置时 = 各行高之和（封顶到内容区），使 top/middle/bottom 锚点始终有效。
+            float fixedTotal = 0f;
+            int autoCount = 0;
+            for (Slot s : slots) {
+                if (s.heightMm() != null) fixedTotal += s.heightMm();
+                else autoCount++;
+            }
+            // 自动行的自然高度：全局 lineHeightMm 非空时取其与均分较小者，否则均分。
+            float autoRowH = spec.lineHeightMm() != null
+                    ? Math.min(spec.lineHeightMm(), contentH / Math.max(1, rowCount))
+                    : contentH / Math.max(1, rowCount);
+            tH = table.heightMm() != null
+                    ? Math.max(1f, Math.min(table.heightMm(), contentH))
+                    : Math.min(contentH, fixedTotal + autoCount * autoRowH);
 
             tableX = switch (hAlign) {
-                case "left" -> contentX;
-                case "center" -> contentX + (contentW - tW) / 2;
-                case "right" -> contentX + contentW - tW;
+                case "left" -> slotAreaX;
+                case "center" -> slotAreaX + (slotAreaW - tW) / 2;
+                case "right" -> slotAreaX + slotAreaW - tW;
                 default -> throw new IllegalArgumentException("未知的表格锚点: " + anchor);
             };
             tableY = switch (vAlign) {
@@ -278,8 +299,6 @@ public final class CardLayoutEngine {
             tableY = contentY;
         }
 
-        int rowCount = slots.size();
-
         // 列数：优先表格块配置，否则取各行有效列数的最大值。
         int colCount;
         if (table != null && table.colCount() != null) {
@@ -290,25 +309,38 @@ public final class CardLayoutEngine {
             colCount = Math.max(1, maxCells);
         }
 
-        // 列宽(mm)：配置列宽按比例缩放到 tW，否则等分 tW。
+        // 列宽(mm)：配置列宽按索引取用（缺的用均值补、多的截断），再按比例缩放到 tW；否则等分 tW。
         float[] colW = new float[colCount];
-        if (table != null && table.colWidthsMm() != null && table.colWidthsMm().size() == colCount) {
+        if (table != null && table.colWidthsMm() != null && !table.colWidthsMm().isEmpty()) {
+            List<Float> src = table.colWidthsMm();
+            // mean = src 中 >0 的值的均值；全 0 则 tW/colCount
+            float posSum = 0f;
+            int posCount = 0;
+            for (float v : src) {
+                if (v > 0f) { posSum += v; posCount++; }
+            }
+            float mean = posCount > 0 ? posSum / posCount : tW / colCount;
+            float[] raw = new float[colCount];
+            for (int i = 0; i < colCount; i++) {
+                float v = i < src.size() ? src.get(i) : mean;
+                raw[i] = v > 0f ? v : mean;
+            }
             float sum = 0f;
-            for (float v : table.colWidthsMm()) sum += v;
+            for (float v : raw) sum += v;
             if (sum <= 0f) sum = colCount;
-            for (int i = 0; i < colCount; i++) colW[i] = table.colWidthsMm().get(i) / sum * tW;
+            for (int i = 0; i < colCount; i++) colW[i] = raw[i] / sum * tW;
         } else {
             for (int i = 0; i < colCount; i++) colW[i] = tW / colCount;
         }
 
-        float rowH = spec.lineHeightMm() != null ? spec.lineHeightMm()
-                : (rowCount > 0 ? tH / rowCount : 0f);
+        float[] rowH = rowHeights(spec, slots, tH);
 
         // 列前缀和：colPrefix[i] = Σ colW[0..i-1]，用于定位第 i 列的 x 与跨列宽。
         float[] colPrefix = new float[colCount + 1];
         for (int i = 0; i < colCount; i++) colPrefix[i + 1] = colPrefix[i] + colW[i];
 
         List<List<Rect>> rows = new ArrayList<>(rowCount);
+        float y = tableY;
         for (int j = 0; j < rowCount; j++) {
             List<Cell> cells = slots.get(j).effectiveCells();
             List<Rect> row = new ArrayList<>();
@@ -321,12 +353,51 @@ public final class CardLayoutEngine {
                 if (!isBlank(c)) {
                     float x = tableX + colPrefix[cursor];
                     float w = colPrefix[cursor + span] - colPrefix[cursor];
-                    row.add(new Rect(i, x * mm, (tableY + j * rowH) * mm, w * mm, rowH * mm));
+                    row.add(new Rect(i, x * mm, y * mm, w * mm, rowH[j] * mm));
                 }
                 cursor += span;
             }
             rows.add(row);
+            y += rowH[j];
         }
         return new Layout(rows, qrRect, paperW * mm, paperH * mm, layoutH * mm);
+    }
+
+    /**
+     * 逐行行高（mm）。行高总和恒 ≤ tH，永不溢出。
+     * <p>全局 lineHeightMm 非空时所有行等高（装得下就用，装不下压缩到均分）；否则单行 heightMm 非空的行取配置值，
+     * 其余行平分「表格高 − 已配置行高之和」；固定行高之和超配时按比例压缩到总和 = tH，auto 行得 0。</p>
+     */
+    private static float[] rowHeights(Spec spec, List<Slot> slots, float tH) {
+        int rowCount = slots.size();
+        float[] h = new float[rowCount];
+        if (rowCount == 0) return h;
+        if (spec.lineHeightMm() != null) {
+            // 全局行高也适配：装得下就用，装不下压缩到均分
+            float each = rowCount * spec.lineHeightMm() <= tH ? spec.lineHeightMm() : tH / rowCount;
+            java.util.Arrays.fill(h, each);
+            return h;
+        }
+        float fixedTotal = 0f;
+        int autoCount = 0;
+        for (Slot s : slots) {
+            if (s.heightMm() != null) fixedTotal += s.heightMm();
+            else autoCount++;
+        }
+        if (fixedTotal > tH) {
+            // 超配：固定行等比压缩到总和 = tH；auto 行得 0
+            float k = tH / fixedTotal;
+            for (int j = 0; j < rowCount; j++) {
+                Float v = slots.get(j).heightMm();
+                h[j] = v != null ? v * k : 0f;
+            }
+        } else {
+            float autoH = autoCount > 0 ? (tH - fixedTotal) / autoCount : 0f;
+            for (int j = 0; j < rowCount; j++) {
+                Float v = slots.get(j).heightMm();
+                h[j] = v != null ? v : autoH;
+            }
+        }
+        return h;
     }
 }

@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 // P2.8: 面板令牌 class 常量（替代硬编码 Tailwind 颜色）
 const BTN_BASE = 'w-10 h-10 rounded-xl backdrop-blur-lg border shadow-sm flex items-center justify-center text-lg transition-colors disabled:opacity-40';
-const BTN_STYLE = `${BTN_BASE} bg-[var(--app-color-surface-elevated)]/85 border-[var(--app-color-border-subtle)]/60 hover:bg-[var(--app-color-surface-elevated)]`;
+const BTN_STYLE = `${BTN_BASE} bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_85%,transparent)] border-[color-mix(in_srgb,var(--app-color-border-subtle)_60%,transparent)] hover:bg-[var(--app-color-surface-elevated)]`;
 
 export default function ViewControls() {
   const { flyTo, resetCamera, globalCenter, globalRadius } = useStore(
@@ -61,7 +61,7 @@ export default function ViewControls() {
         ))}
       </div>
       <div className="mt-3 pointer-events-auto">
-        <div className="text-[10px] text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-elevated)]/80 backdrop-blur rounded-md px-2 py-1 text-center leading-relaxed">
+        <div className="text-[10px] text-[var(--app-color-text-secondary)] bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_80%,transparent)] backdrop-blur rounded-md px-2 py-1 text-center leading-relaxed">
           🖱 左键旋转<br />右键/中键平移<br />滚轮缩放
         </div>
       </div>

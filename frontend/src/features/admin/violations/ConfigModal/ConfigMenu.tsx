@@ -22,7 +22,7 @@ function Group({ title, desc, items, onOpen }: { title: string; desc?: string; i
     <div>
       <div className="mb-0.5 flex items-baseline gap-2 px-1 pt-2 text-[11px] font-bold tracking-wide text-[var(--app-color-text-tertiary)]">
         {title}
-        {desc ? <span className="font-medium tracking-normal text-[var(--app-color-text-tertiary)]/75">{desc}</span> : null}
+        {desc ? <span className="font-medium tracking-normal text-[color-mix(in_srgb,var(--app-color-text-tertiary)_75%,transparent)]">{desc}</span> : null}
       </div>
       <div className="overflow-hidden rounded-lg border border-[var(--app-color-border-default)]">
         {items.map((it, i) => (

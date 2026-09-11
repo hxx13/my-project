@@ -340,6 +340,13 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
     .map((p) => pathMap.get(p))
     .filter(Boolean) as NavItem[];
 
+  /* 收起态：与后台侧栏一致，收藏/常用也一起拍平成图标列，只靠间距区分分组 */
+  const collapsedBlocks = [
+    { id: "stars", items: starredItems },
+    { id: "recent", items: recentItems },
+    ...navGroups.map((g) => ({ id: g.id, items: g.items })),
+  ].filter((b) => b.items.length > 0);
+
   const toggleGroup = useCallback((id: string) => {
     setOpenGroups((p) => ({ ...p, [id]: !p[id] }));
   }, []);
@@ -427,7 +434,9 @@ export function StudentSidebar({ collapsed, onToggle, onOpenCommand }: StudentSi
           <nav className={cn(collapsed && "space-y-1")}>
             {collapsed ? (
               <div className="space-y-3">
-                {navGroups.map((g) => <div key={g.id} className="space-y-1">{g.items.map((it) => renderNavItem(it))}</div>)}
+                {collapsedBlocks.map((b) => (
+                  <div key={b.id} className="space-y-1">{b.items.map((it) => renderNavItem(it))}</div>
+                ))}
               </div>
             ) : (
               <div className="space-y-1">

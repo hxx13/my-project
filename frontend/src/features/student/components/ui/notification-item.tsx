@@ -49,7 +49,7 @@ export function NotificationItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full cursor-pointer items-start gap-3 rounded-[10px] px-4 py-3 text-left transition-colors hover:bg-[var(--student-primary-soft)]/20",
+        "flex w-full cursor-pointer items-start gap-3 rounded-[10px] px-4 py-3 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--student-primary-soft)_20%,transparent)]",
         isRead ? "bg-white" : "bg-[#fafaff]",
         className,
       )}

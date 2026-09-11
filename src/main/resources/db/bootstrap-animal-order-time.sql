@@ -103,3 +103,11 @@ PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 SET @cnt = (SELECT COUNT(*) FROM animal_order_window_rule WHERE campus = '浦西');
 SET @sql = IF(@cnt = 0, 'INSERT INTO animal_order_window_rule (campus, scope, category_key, effect, shape, weekdays, start_weekday, end_weekday, daily_start_time, daily_end_time, range_start_at, range_end_at, label, sort_order, active) SELECT ''浦西'', scope, category_key, effect, shape, weekdays, start_weekday, end_weekday, daily_start_time, daily_end_time, range_start_at, range_end_at, label, sort_order, active FROM animal_order_window_rule WHERE campus = ''浦东''', 'SELECT ''xipu rules exist''');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ── 时段软删除标志（2026-09-11）──────────────────────────────────────
+-- 「删除」＝软删除后从列表消失且不参与判定，与「停用」（active=0，仍显示可重开）区分开。
+-- 与 active 正交，因此需要独立列；老库靠这段幂等 ALTER 自愈。
+SET @col = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'animal_order_window_rule' AND COLUMN_NAME = 'deleted');
+SET @sql = IF(@col = 0, 'ALTER TABLE animal_order_window_rule ADD COLUMN deleted TINYINT NOT NULL DEFAULT 0 COMMENT ''软删除：1=已删除（管理端列表不可见，行保留）''', 'SELECT ''rule.deleted exists''');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

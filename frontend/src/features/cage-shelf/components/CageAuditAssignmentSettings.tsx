@@ -259,7 +259,7 @@ export default function CageAuditAssignmentSettings() {
                   type="button"
                   title="载入此人到下方编辑"
                   onClick={() => setSelected({ name: nm, accountId: reviewerIdOf(nm) })}
-                  className="shrink-0 rounded-full bg-[var(--twin-primary)]/10 px-1.5 py-px text-[10px] font-semibold text-[var(--twin-primary)] hover:underline"
+                  className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] px-1.5 py-px text-[10px] font-semibold text-[var(--twin-primary)] hover:underline"
                 >
                   {nm}
                 </button>
@@ -346,7 +346,7 @@ export default function CageAuditAssignmentSettings() {
                   onClick={() => setSelected({ name: rv.reviewerName, accountId: rv.reviewerUserId })}
                   className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition ${
                     on
-                      ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 font-semibold text-[var(--twin-primary)]"
+                      ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] font-semibold text-[var(--twin-primary)]"
                       : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-[var(--twin-body)] hover:text-[var(--twin-ink)]"
                   }`}
                 >
@@ -384,7 +384,7 @@ export default function CageAuditAssignmentSettings() {
               const on = selected?.accountId === p.accountId;
               return (
                 <button key={p.accountId || p.id} type="button" onClick={() => setSelected({ name: p.name, accountId: p.accountId })}
-                  className={`flex w-full items-center gap-2 rounded-twin-sm px-2 py-1.5 text-left text-[11px] transition ${on ? "bg-[var(--twin-primary)]/10" : "hover:bg-[var(--twin-canvas-soft)]"}`}>
+                  className={`flex w-full items-center gap-2 rounded-twin-sm px-2 py-1.5 text-left text-[11px] transition ${on ? "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)]" : "hover:bg-[var(--twin-canvas-soft)]"}`}>
                   <span className={`font-semibold ${on ? "text-[var(--twin-primary)]" : "text-[var(--twin-ink)]"}`}>{p.name}</span>
                   {p.projectGroupName && <span className="text-[10px] text-[var(--twin-mute)]">{p.projectGroupName}</span>}
                 </button>

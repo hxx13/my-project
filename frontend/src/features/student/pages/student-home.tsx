@@ -64,7 +64,7 @@ function QuickActionItem({
         "transition-all duration-150",
         "cursor-pointer",
         "hover:bg-[var(--student-primary-soft)] hover:shadow-sm",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--student-primary)]/40",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--student-primary)_40%,transparent)]",
         "active:scale-[0.98]",
       )}
     >
@@ -510,7 +510,7 @@ export default function StudentHomePage() {
                 </div>
               ) : (
                 <div className="px-5 py-12 text-center text-[13px] text-[var(--student-mute)]">
-                  <Brain className="size-10 mx-auto mb-3 text-[var(--student-mute)]/40" />
+                  <Brain className="size-10 mx-auto mb-3 text-[color-mix(in_srgb,var(--student-mute)_40%,transparent)]" />
                   暂无 AI 行为预测数据
                   <p className="mt-1 text-[11px]">数据积累足够后系统将自动生成行为画像</p>
                 </div>

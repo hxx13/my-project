@@ -411,7 +411,7 @@ export default function ConversationArchivePage() {
                   "bg-[var(--app-color-surface-page)] pl-9 pr-3 text-sm",
                   "text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)]",
                   "outline-none transition-colors",
-                  "focus:border-[var(--app-color-border-strong)] focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                  "focus:border-[var(--app-color-border-strong)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
                 )}
               />
             </div>
@@ -664,7 +664,7 @@ export default function ConversationArchivePage() {
                   "h-9 w-full rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)]",
                   "bg-[var(--app-color-surface-page)] pl-9 pr-3 text-sm",
                   "text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)]",
-                  "outline-none focus:border-[var(--app-color-border-strong)] focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                  "outline-none focus:border-[var(--app-color-border-strong)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
                 )}
               />
             </div>
@@ -748,8 +748,8 @@ function ConsumedBadge({ consumed, compact, usageWindowStartAt }: { consumed?: b
       <span className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
         hasLastUsed
-          ? "bg-[var(--app-color-feedback-warning)]/12 text-[var(--app-color-feedback-warning)]"
-          : "bg-[var(--app-color-feedback-success)]/12 text-[var(--app-color-feedback-success)]"
+          ? "bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_12%,transparent)] text-[var(--app-color-feedback-warning)]"
+          : "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_12%,transparent)] text-[var(--app-color-feedback-success)]"
       )}>
         {hasLastUsed ? (
           <><AlertCircle className="h-3 w-3" />待更新</>
@@ -768,8 +768,8 @@ function ConsumedBadge({ consumed, compact, usageWindowStartAt }: { consumed?: b
       className={cn(
         "inline-flex items-center gap-1 rounded-full font-medium text-[var(--app-color-feedback-warning)]",
         compact
-          ? "bg-[var(--app-color-feedback-warning)]/12 px-1.5 py-0.5 text-[10px]"
-          : "bg-[var(--app-color-feedback-warning)]/12 px-2 py-0.5 text-[11px]"
+          ? "bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_12%,transparent)] px-1.5 py-0.5 text-[10px]"
+          : "bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_12%,transparent)] px-2 py-0.5 text-[11px]"
       )}
       title={`${cooldown.minutes}m${cooldown.seconds}s 后调度器将自动生成新对话`}
     >
@@ -799,7 +799,7 @@ function UserRow({
       className={cn(
         "flex w-full items-center gap-2 rounded-[var(--app-radius-element)] text-left transition-colors",
         isSelected
-          ? "bg-[var(--app-color-accent)]/10 ring-1 ring-[var(--app-color-accent)]/30"
+          ? "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
           : "hover:bg-[var(--app-color-surface-hover)]"
       )}
     >
@@ -843,12 +843,12 @@ function UserRow({
           <div className="flex items-center gap-2 text-xs text-[var(--app-color-text-tertiary)]">
             {user.department && <span className="truncate">{user.department}</span>}
             {user.projectGroup && (
-              <span className="truncate text-[var(--app-color-text-tertiary)]/70">
+              <span className="truncate text-[color-mix(in_srgb,var(--app-color-text-tertiary)_70%,transparent)]">
                 {user.projectGroup}
               </span>
             )}
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]/70">
+          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[color-mix(in_srgb,var(--app-color-text-tertiary)_70%,transparent)]">
             {user.lastScanTime && <span>{relativeTime(user.lastScanTime)}</span>}
             {user.messageCount > 0 && (
               <span>
@@ -916,7 +916,7 @@ function ChatBubble({
             "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
             isSystem
               ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]"
-              : "bg-[var(--app-color-accent)]/15 text-[var(--app-color-accent)]"
+              : "bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] text-[var(--app-color-accent)]"
           )}
         >
           {roleIcon(message.role)}
@@ -951,10 +951,10 @@ function ChatBubble({
                 className={cn(
                   "ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors",
                   isSpeaking
-                    ? "bg-[var(--app-color-accent)]/15 text-[var(--app-color-accent)]"
+                    ? "bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] text-[var(--app-color-accent)]"
                     : pregenReady
-                      ? "bg-[var(--app-color-feedback-success)]/12 text-[var(--app-color-feedback-success)] hover:bg-[var(--app-color-feedback-success)]/20"
-                      : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-accent)]/10 hover:text-[var(--app-color-accent)]"
+                      ? "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_12%,transparent)] text-[var(--app-color-feedback-success)] hover:bg-[color-mix(in_srgb,var(--app-color-feedback-success)_20%,transparent)]"
+                      : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] hover:bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] hover:text-[var(--app-color-accent)]"
                 )}
                 onClick={handleSpeak}
                 title={pregenReady ? "CosyVoice 3 预生成语音" : "浏览器语音朗读"}
@@ -973,7 +973,7 @@ function ChatBubble({
             isSystem &&
               "bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-secondary)] italic",
             isUser &&
-              "bg-[var(--app-color-accent)]/12 text-[var(--app-color-text-primary)]",
+              "bg-[color-mix(in_srgb,var(--app-color-accent)_12%,transparent)] text-[var(--app-color-text-primary)]",
             isAssistant &&
               "bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)]"
           )}
@@ -988,7 +988,7 @@ function ChatBubble({
         {/* meta: token count & time */}
         <div
           className={cn(
-            "mt-1 flex items-center gap-2 text-[10px] text-[var(--app-color-text-tertiary)]/70",
+            "mt-1 flex items-center gap-2 text-[10px] text-[color-mix(in_srgb,var(--app-color-text-tertiary)_70%,transparent)]",
             isUser && "justify-end"
           )}
         >
@@ -999,7 +999,7 @@ function ChatBubble({
 
       {/* avatar column (user only) */}
       {isUser && (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--app-color-accent)]/15 text-[var(--app-color-accent)]">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] text-[var(--app-color-accent)]">
           <User className="h-3.5 w-3.5" />
         </div>
       )}

@@ -43,11 +43,11 @@ export const DisciplinaryModal = ({
             <motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
-                className="w-[500px] overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
+                className="w-[500px] overflow-hidden rounded-[var(--app-radius-container)] border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
             >
                 <div className="flex items-center justify-between border-b border-[var(--app-color-border-default)] px-6 py-4">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-feedback-danger)]/20 bg-[var(--app-color-feedback-danger-soft)]">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_20%,transparent)] bg-[var(--app-color-feedback-danger-soft)]">
                             {currentState === 3 ? (
                                 <ShieldAlert className="h-5 w-5 text-[var(--app-color-feedback-danger)]" />
                             ) : (
@@ -89,8 +89,8 @@ export const DisciplinaryModal = ({
                             onClick={handleToggle}
                             className={`relative flex h-8 w-16 items-center rounded-full border transition-colors ${
                                 isBlocked
-                                    ? "border-[var(--app-color-feedback-danger)]/50 bg-[var(--app-color-feedback-danger-soft)]"
-                                    : "border-[var(--app-color-feedback-success)]/50 bg-[var(--app-color-feedback-success-soft)]"
+                                    ? "border-[color-mix(in_srgb,var(--app-color-feedback-danger)_50%,transparent)] bg-[var(--app-color-feedback-danger-soft)]"
+                                    : "border-[color-mix(in_srgb,var(--app-color-feedback-success)_50%,transparent)] bg-[var(--app-color-feedback-success-soft)]"
                             }`}
                         >
                             <div

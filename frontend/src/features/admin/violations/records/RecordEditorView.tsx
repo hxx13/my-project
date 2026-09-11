@@ -138,7 +138,7 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
           >
             {(controlId) => (
               form.picked ? (
-                <div className="flex items-center gap-2 rounded-md border border-[var(--app-color-accent)]/40 bg-[var(--app-color-accent-soft)] p-2">
+                <div className="flex items-center gap-2 rounded-md border border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[var(--app-color-accent-soft)] p-2">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-[var(--app-color-text-primary)]">{form.picked.name}</div>
                     <div className="font-mono text-[10px] text-[var(--app-color-text-tertiary)]">{form.picked.userId}</div>
@@ -199,7 +199,7 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
                       "flex items-center gap-2 rounded-md border p-2",
                       groupInvalid || membersInvalid
                         ? "border-[var(--app-color-feedback-danger)] bg-[var(--app-color-feedback-danger-soft)]"
-                        : "border-[var(--app-color-accent)]/40 bg-[var(--app-color-accent-soft)]",
+                        : "border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[var(--app-color-accent-soft)]",
                     )}
                   >
                     <div className="min-w-0 flex-1">

@@ -30,7 +30,7 @@ export default function SceneOverlay() {
       </div>
       {/* 小三角指示器 */}
       <div className="flex justify-center pointer-events-none">
-        <div className="w-3 h-3 rotate-45 bg-[var(--app-color-surface-elevated)]/95 border-r border-b border-[var(--app-color-border-default)] -mt-[7px]" />
+        <div className="w-3 h-3 rotate-45 bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_95%,transparent)] border-r border-b border-[var(--app-color-border-default)] -mt-[7px]" />
       </div>
     </div>
   );

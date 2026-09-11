@@ -196,7 +196,7 @@ export function TriggerRuleEditor({ ruleId, onDone, onCancel }: TriggerRuleEdito
             />
           </InspectorRow>
         )}
-        <div className="rounded-md border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] p-3">
+        <div className="rounded-md border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] p-3">
           <p className="text-[11px] leading-snug text-[var(--app-color-text-primary)]">
             <strong className="text-[var(--app-color-feedback-warning)]">上限行为：</strong>
             窗口内违规次数达到上限后，<strong>强制禁止进入</strong>

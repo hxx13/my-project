@@ -107,7 +107,7 @@ function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle }: {
           className={`absolute left-1.5 top-1.5 z-[1] flex h-5 w-5 items-center justify-center rounded-full border text-[11px] leading-none ${
             selected
               ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)] text-white"
-              : "border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)]/90 text-transparent"
+              : "border-[var(--twin-hairline-strong)] bg-[color-mix(in_srgb,var(--twin-canvas)_90%,transparent)] text-transparent"
           }`}
         >
           ✓
@@ -144,7 +144,7 @@ function RelocateCard({ row, onOpen, onRemove }: { row: AssetRow; onOpen: (r: As
     <div
       onClick={() => onOpen(row)}
       title="点击查看详情"
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-twin-lg border-2 border-dashed border-[var(--twin-link-deep)]/60 bg-[color-mix(in_srgb,var(--twin-link-deep)_6%,var(--twin-canvas))] transition hover:border-[var(--twin-link-deep)]"
+      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-twin-lg border-2 border-dashed border-[color-mix(in_srgb,var(--twin-link-deep)_60%,transparent)] bg-[color-mix(in_srgb,var(--twin-link-deep)_6%,var(--twin-canvas))] transition hover:border-[var(--twin-link-deep)]"
     >
       <span className="absolute left-1.5 top-1.5 z-[1] rounded-full bg-[var(--twin-link-deep)] px-1.5 py-0.5 text-[9px] font-medium text-white">
         待归位
@@ -161,7 +161,7 @@ function RelocateCard({ row, onOpen, onRemove }: { row: AssetRow; onOpen: (r: As
       >
         <X className="h-3 w-3" />
       </button>
-      <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-dashed border-[var(--twin-link-deep)]/30 bg-[var(--twin-canvas-soft)]">
+      <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-dashed border-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
           <AutoImage src={photo} alt="" className="h-full w-full object-contain p-1" />
         ) : (
@@ -851,7 +851,7 @@ export default function AssetVisualView(props: {
 
         {/* 批量转移横幅：点卡片多选，选好目标地点一次移入；转完自动退出 */}
         {batchMode && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-link-deep)]/30 bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)] bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
             <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-[var(--twin-ink)]">
               <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-[var(--twin-link-deep)]" />
               批量转移
@@ -891,7 +891,7 @@ export default function AssetVisualView(props: {
 
         {/* 扫码归位横幅：只在归位模式下出现，扫到的资产实时落到画布上的「待归位」区 */}
         {relocate.target && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-link-deep)]/30 bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)] bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
             <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-[var(--twin-ink)]">
               <ScanLine className="h-3.5 w-3.5 shrink-0 text-[var(--twin-link-deep)]" />
               归位到「{relocate.target.name}」
@@ -937,7 +937,7 @@ export default function AssetVisualView(props: {
                 type="button"
                 onClick={() => void relocate.submit()}
                 disabled={relocate.scanned.length === 0 || relocate.submitting}
-                className="rounded-twin-md border border-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-[var(--twin-link-deep)] transition hover:bg-[var(--twin-link-deep)]/10 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-twin-md border border-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-[var(--twin-link-deep)] transition hover:bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {relocate.submitting ? "移入中…" : `全部移入 ${relocate.scanned.length} 台`}
               </button>

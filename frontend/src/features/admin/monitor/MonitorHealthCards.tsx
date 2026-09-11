@@ -97,7 +97,7 @@ function formatWithMs(detail: string, responseMs: number): string {
 
 function cardBorderClass(status: HealthItem["status"]) {
   return status === "DOWN" || status === "DEGRADED"
-    ? "border-[var(--app-color-feedback-danger)]/30"
+    ? "border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)]"
     : "border-[var(--app-color-border-default)]";
 }
 
@@ -110,7 +110,7 @@ function ErrorPopover({ message, children }: { message?: string; children: React
         {children}
       </span>
       {open ? (
-        <div className="absolute right-0 top-full mt-1 z-[var(--z-tooltip)] max-w-[min(90vw,420px)] w-max rounded-lg border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-surface-elevated)] p-3 shadow-[var(--app-elevation-dropdown)]">
+        <div className="absolute right-0 top-full mt-1 z-[var(--z-tooltip)] max-w-[min(90vw,420px)] w-max rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] bg-[var(--app-color-surface-elevated)] p-3 shadow-[var(--app-elevation-dropdown)]">
           <p className="text-xs text-[var(--app-color-feedback-danger)] break-all leading-relaxed max-h-[240px] overflow-auto">{message}</p>
         </div>
       ) : null}
@@ -292,7 +292,7 @@ export function MonitorHealthCards() {
   if (loading && items.length === 0) return null;
   if (error && items.length === 0) {
     return (
-      <div className="rounded-xl border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)] p-5 text-sm text-[var(--app-color-feedback-danger)]">
+      <div className="rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-5 text-sm text-[var(--app-color-feedback-danger)]">
         健康检查加载失败: {error}
       </div>
     );

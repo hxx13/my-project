@@ -91,7 +91,7 @@ function SortableTreeNode({ node, depth, selectedId, onSelect, onAddClick }: {
         className={cn(
           "flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-sm transition-colors group",
           isSelected
-            ? "bg-[var(--twin-primary)]/15 text-[var(--twin-ink)] border-l-[3px] border-[var(--twin-primary)]"
+            ? "bg-[color-mix(in_srgb,var(--twin-primary)_15%,transparent)] text-[var(--twin-ink)] border-l-[3px] border-[var(--twin-primary)]"
             : "hover:bg-[var(--twin-canvas-soft)] text-[var(--twin-body)] border-l-[3px] border-transparent",
           depth > 0 && "ml-3"
         )}

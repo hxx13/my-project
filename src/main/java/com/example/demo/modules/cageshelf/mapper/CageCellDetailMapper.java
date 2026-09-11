@@ -32,4 +32,13 @@ public interface CageCellDetailMapper {
 
     /** 按笼盒编号查（扫码检索用） */
     CageCellDetail selectByCageBoxCode(@Param("code") String code);
+
+    /**
+     * 可被动物订购预定的笼位：状态 2（已预约空笼盒）且 AUP 与本单一致。
+     *
+     * <p>AUP 有本地 id 与 ARO 注册号两套口径（见 cage_cell_detail.aup_id / aup_number）：
+     * 分配写入的是 id、ARO 同步多为注册号，所以两个都匹配，任一中即算同源。
+     */
+    List<CageCellDetail> selectReservableByAup(@Param("aupId") Long aupId,
+                                               @Param("aupNumber") String aupNumber);
 }

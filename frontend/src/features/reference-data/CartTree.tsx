@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { CartLine } from "./CartDrawer";
+import CageLocationCell from "./CageLocationCell";
 
 /**
  * 共享购物车的分组模型与身份判定 —— **三端唯一实现**。
@@ -26,8 +27,11 @@ export interface CartGroup {
 function splitByUser(lines: CartLine[]): CartSubGroup[] {
   const byUser = new Map<string, CartLine[]>();
   for (const l of lines) {
-    if (!byUser.has(l.addedBy)) byUser.set(l.addedBy, []);
-    byUser.get(l.addedBy)!.push(l);
+    // 按「人」聚：同一人可能同时持有 STAFF_xxx 与 aro_user_id 两个账号（双视角），
+    // 用裸账号 id 会把自己拆成两个「实验员」分组。addedByKey 是 personnel.id。
+    const key = l.addedByKey || l.addedBy;
+    if (!byUser.has(key)) byUser.set(key, []);
+    byUser.get(key)!.push(l);
   }
   return Array.from(byUser.entries()).map(([uid, userLines]) => ({
     key: uid,
@@ -67,7 +71,8 @@ export function buildCartTree(lines: CartLine[], mode: CartTreeMode): CartGroup[
 
 /** PI 可改所有行；非 PI 只能改本人加购的行 */
 export function canEditCartLine(line: CartLine, opts: { isPi: boolean; currentUserId: string }): boolean {
-  return opts.isPi || line.addedBy === opts.currentUserId;
+  // mine 由服务端按 personnel.id 判出（同一人换视角也算本人）；回退到账号 id 比对待旧数据
+  return opts.isPi || line.mine === true || line.addedBy === opts.currentUserId;
 }
 
 interface CartTreeProps {
@@ -75,11 +80,16 @@ interface CartTreeProps {
   isPi: boolean;
   currentUserId: string;
   onQtyChange: (line: CartLine, qty: number) => void;
+  /**
+   * 购物车里的「定位」：**就地打开订购页的笼位抽屉并定位那一格**，
+   * 不是跳去笼架页（跳笼架页是实验动物审核页面的定位）。
+   */
+  onLocateCage?: (cageId: string) => void;
   /** 只切样式：desktop 走 twin 卡片，mobile 走 student 细条；分组与判定完全同源 */
   layout?: "desktop" | "mobile";
 }
 
-export default function CartTree({ lines, isPi, currentUserId, onQtyChange, layout = "desktop" }: CartTreeProps) {
+export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop" }: CartTreeProps) {
   const [mode, setMode] = useState<CartTreeMode>("aup-user-spec");
   const groups = useMemo(() => buildCartTree(lines, mode), [lines, mode]);
   const mobile = layout === "mobile";
@@ -109,6 +119,9 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, layo
                 {line.collectorName ? `领用人 ${line.collectorName}` : ""}
               </p>
             )}
+            {line.remark && (
+              <p className="mt-0.5 truncate text-[10px] text-[var(--student-ink)]">备注：{line.remark}</p>
+            )}
             {line.packageRemark && (
               <p className="mt-0.5 truncate text-[10px] text-[var(--student-mute)]">包备注：{line.packageRemark}</p>
             )}
@@ -136,6 +149,20 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, layo
               <span className="ml-1 rounded bg-slate-200/80 px-1 py-0.5 text-[10px]">{badge}</span>
             </div>
             {price && <div className="mt-0.5 text-[10px] font-semibold text-sky-700">{price}</div>}
+            {(line.targetCageLabel || line.targetCageLocation?.shelveId) && (
+              <div className="mt-0.5">
+                <CageLocationCell
+                  label={line.targetCageLabel}
+                  location={line.targetCageLocation}
+                  onLocate={
+                    onLocateCage && line.targetAnimalCageId != null
+                      ? () => onLocateCage(String(line.targetAnimalCageId))
+                      : undefined
+                  }
+                  className="text-[10px] text-[var(--twin-body)]"
+                />
+              </div>
+            )}
             {(line.pickupRoomName || line.collectorName) && (
               <div className="mt-0.5 truncate text-[10px] text-[var(--twin-mute)]">
                 {line.pickupRoomName ? `领用房间：${line.pickupRoomName}` : ""}
@@ -154,6 +181,9 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, layo
             <span className="shrink-0 text-xs font-semibold tabular-nums">×{line.qty}</span>
           )}
         </div>
+        {line.remark && (
+          <div className="mt-1 truncate text-[10px] text-[var(--twin-ink)]">备注：{line.remark}</div>
+        )}
         {line.packageRemark && (
           <div className="mt-1 truncate text-[10px] text-[var(--twin-mute)]">包备注：{line.packageRemark}</div>
         )}

@@ -1498,7 +1498,7 @@ export default function AdminSuppliesMallPage() {
                               className={`flex w-full items-center gap-3 rounded-twin-md border px-3 py-2 text-left text-sm ${
                                 selected
                                   ? "border-sky-500 bg-[var(--twin-canvas)]"
-                                  : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] hover:bg-[var(--twin-canvas)]/80"
+                                  : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] hover:bg-[color-mix(in_srgb,var(--twin-canvas)_80%,transparent)]"
                               }`}
                             >
                               <span
@@ -1530,7 +1530,7 @@ export default function AdminSuppliesMallPage() {
                           className={`flex w-full items-center gap-3 rounded-twin-md border px-3 py-2 text-left text-sm ${
                             selectedId === ""
                               ? "border-sky-500 bg-[var(--twin-canvas)]"
-                              : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] hover:bg-[var(--twin-canvas)]/80"
+                              : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] hover:bg-[color-mix(in_srgb,var(--twin-canvas)_80%,transparent)]"
                           }`}
                         >
                           <span

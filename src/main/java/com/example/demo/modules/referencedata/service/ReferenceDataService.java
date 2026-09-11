@@ -5,6 +5,7 @@ import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.animalorder.AnimalOrderCampus;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
+import com.example.demo.modules.animalorder.service.CageOrderReservationService;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aup.entity.AupRecord;
@@ -59,6 +60,7 @@ public class ReferenceDataService {
     private final AupRecordMapper aupRecordMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final AnimalOrderTimePolicyService animalOrderTimePolicyService;
+    private final CageOrderReservationService cageReservationService;
     private final AupAnimalAllowlistCompat allowlistCompat;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final UserAroBindingMapper userAroBindingMapper;
@@ -77,6 +79,7 @@ public class ReferenceDataService {
                                 AupRecordMapper aupRecordMapper,
                                 UserDisplayNameService userDisplayNameService,
                                 AnimalOrderTimePolicyService animalOrderTimePolicyService,
+                                CageOrderReservationService cageReservationService,
                                 AupAnimalAllowlistCompat allowlistCompat,
                                 AroPersonnelMapper aroPersonnelMapper,
                                 UserAroBindingMapper userAroBindingMapper,
@@ -94,6 +97,7 @@ public class ReferenceDataService {
         this.aupRecordMapper = aupRecordMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.animalOrderTimePolicyService = animalOrderTimePolicyService;
+        this.cageReservationService = cageReservationService;
         this.allowlistCompat = allowlistCompat;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.userAroBindingMapper = userAroBindingMapper;
@@ -246,8 +250,8 @@ public class ReferenceDataService {
 
     // ==================== Cart ====================
 
-    public List<RefCartView> listCart(String groupId) {
-        return toCartViews(cartMapper.listByGroupId(groupId));
+    public List<RefCartView> listCart(String groupId, String currentUserId) {
+        return toCartViews(cartMapper.listByGroupId(groupId), currentUserId);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -280,12 +284,22 @@ public class ReferenceDataService {
         entity.setPickupRoomName(trimToNull(req.getPickupRoomName()));
         entity.setCollectorId(trimToNull(req.getCollectorId()));
         entity.setCollectorName(trimToNull(req.getCollectorName()));
-        // 加购路径不再写入每规格备注
-        entity.setRemark(null);
+        // 每规格行备注：随加购落库，下单时快照到 ref_order_line.line_remark
+        entity.setRemark(trimToNull(req.getRemark()));
         entity.setPackageStatus("DRAFT");
         entity.setPackageRemark(null);
         entity.setAddedBy(userId);
+        // 订购 → 笼位：预定在点笼位时就已锁好，这里校验归属/规格，并把最终数量同步回笼位表单
+        if (req.getReservationId() != null) {
+            String specLabel = req.getSpecSelections() != null ? req.getSpecSelections().get("option") : null;
+            CageOrderReservation reservation = cageReservationService.requireActiveForCart(
+                    req.getReservationId(), userId, specLabel, entity.getQuantity());
+            entity.setTargetAnimalCageId(reservation.getAnimalCageId());
+        }
         cartMapper.insert(entity);
+        if (req.getReservationId() != null) {
+            cageReservationService.bindCart(req.getReservationId(), entity.getId());
+        }
         return Result.success(toCartView(cartMapper.findById(entity.getId())));
     }
 
@@ -296,7 +310,7 @@ public class ReferenceDataService {
             return Result.error("购物车项不存在");
         }
         boolean pi = personIdentityService.isPi(userId);
-        if (!pi && !Objects.equals(existing.getAddedBy(), userId)) {
+        if (!pi && !personIdentityService.samePerson(existing.getAddedBy(), userId)) {
             return Result.error("只能修改本人加购的行");
         }
         if (req.getSpecSelections() != null) existing.setSpecSelections(toJson(req.getSpecSelections()));
@@ -321,10 +335,14 @@ public class ReferenceDataService {
             return Result.error("购物车项不存在");
         }
         boolean pi = personIdentityService.isPi(userId);
-        if (!pi && !Objects.equals(existing.getAddedBy(), userId)) {
+        if (!pi && !personIdentityService.samePerson(existing.getAddedBy(), userId)) {
             return Result.error("只能删除本人加购的行");
         }
         cartMapper.deleteById(id);
+        // 行没了，锁着的笼位也要放掉，否则那个笼位对所有人永久不可选
+        if (existing.getTargetAnimalCageId() != null) {
+            cageReservationService.releaseByCartIds(List.of(id), "购物车行已删除");
+        }
         return Result.success();
     }
 
@@ -333,7 +351,9 @@ public class ReferenceDataService {
         if (!personIdentityService.isPi(userId)) {
             return Result.error("仅组长可清空课题组共享购物车");
         }
+        List<Long> cartIds = cartMapper.listByGroupId(groupId).stream().map(RefCart::getId).toList();
         cartMapper.deleteByGroupId(groupId);
+        cageReservationService.releaseByCartIds(cartIds, "购物车已清空");
         return Result.success();
     }
 
@@ -353,7 +373,7 @@ public class ReferenceDataService {
         for (RefCart item : targets) {
             cartMapper.updatePackageStatus(item.getId(), "READY", remark);
         }
-        return Result.success(toCartViews(cartMapper.listByGroupId(groupId)));
+        return Result.success(toCartViews(cartMapper.listByGroupId(groupId), userId));
     }
 
     /** 撤回订单包：本人 READY → DRAFT（非审批动作）。 */
@@ -371,13 +391,13 @@ public class ReferenceDataService {
                 cartMapper.updatePackageStatus(item.getId(), "DRAFT", null);
             }
         }
-        return Result.success(toCartViews(cartMapper.listByGroupId(groupId)));
+        return Result.success(toCartViews(cartMapper.listByGroupId(groupId), userId));
     }
 
     private List<RefCart> resolveOwnCartLines(String groupId, String userId, List<Long> cartIds) {
         List<RefCart> all = cartMapper.listByGroupId(groupId);
         return all.stream()
-                .filter(c -> Objects.equals(c.getAddedBy(), userId))
+                .filter(c -> personIdentityService.samePerson(c.getAddedBy(), userId))
                 .filter(c -> cartIds == null || cartIds.isEmpty() || cartIds.contains(c.getId()))
                 .toList();
     }
@@ -385,7 +405,7 @@ public class ReferenceDataService {
     // ==================== Orders ====================
 
     @Transactional(rollbackFor = Exception.class)
-    public Result<RefOrderView> submitOrder(String userId, RefOrderSubmitRequest req) {
+    public Result<List<RefOrderView>> submitOrder(String userId, RefOrderSubmitRequest req) {
         if (req == null || !StringUtils.hasText(req.getGroupId())) {
             return Result.error("参数无效，缺少 groupId");
         }
@@ -451,6 +471,20 @@ public class ReferenceDataService {
                 headerAup = resolveAupForOrder(distinctAups.iterator().next(), userId);
             }
         }
+
+        // ── 按投递房间分单：一个房间一张单 ──
+        // 笼位路径下每行的领用房间来自它自己那个笼位，跨房间时自然落到不同组；
+        // 非笼位行用弹窗选的那个房间，同样按房间归组（没填房间的归到同一组）。
+        Map<String, List<RefCart>> byRoom = new LinkedHashMap<>();
+        for (RefCart it : itemsToProcess) {
+            String roomKey = StringUtils.hasText(it.getPickupRoomId()) ? it.getPickupRoomId().trim() : "";
+            byRoom.computeIfAbsent(roomKey, k -> new ArrayList<>()).add(it);
+        }
+        List<RefOrder> createdOrders = new ArrayList<>();
+        for (List<RefCart> roomItems : byRoom.values()) {
+        // 每个房间独立成单：表头/ETA/明细/通知都按本组算，下面这段逻辑对每一组各跑一次。
+        itemsToProcess = roomItems;
+        List<Long> roomCartIds = roomItems.stream().map(RefCart::getId).filter(Objects::nonNull).toList();
 
         RefOrder order = new RefOrder();
         order.setGroupId(req.getGroupId());
@@ -518,6 +552,13 @@ public class ReferenceDataService {
         order.setEstimatedDeliveryDate(maxEta);
 
         orderMapper.insert(order);
+        // 笼位预定挂到订单上：此后不再算孤儿，动物到货再转 CONSUMED + 笼位 2→3
+        // 只绑定**本组**的购物车行，别把别的房间的预定挂到这张单上
+        cageReservationService.bindOrder(roomCartIds, order.getId());
+
+        // 笼位坐标快照：订单行要连带「下到哪个校区/房间/笼架的哪个坐标」，一次批量取，不逐行查
+        Map<Long, Map<String, Object>> cageLocById = cageReservationService.cageLocationSnapshots(
+                itemsToProcess.stream().map(RefCart::getTargetAnimalCageId).filter(Objects::nonNull).toList());
 
         List<String> itemNames = new ArrayList<>();
         for (RefCart item : itemsToProcess) {
@@ -534,6 +575,12 @@ public class ReferenceDataService {
             line.setLineRemark(lineRemark);
             line.setAddedBy(item.getAddedBy());
             line.setAupRecordId(item.getAupRecordId());
+            // 订购 → 笼位：快照锁定到的笼位 + 坐标，购物车清空后仍可追溯这单下到了哪个笼位的哪个位置
+            line.setTargetAnimalCageId(item.getTargetAnimalCageId());
+            if (item.getTargetAnimalCageId() != null) {
+                Map<String, Object> loc = cageLocById.get(item.getTargetAnimalCageId());
+                if (loc != null) line.setTargetCageLocation(toJson(loc));
+            }
             // 领用方式/房间与领用人：从购物车行快照到订单行，后续购物车清空不影响历史单
             line.setPickupRoomId(item.getPickupRoomId());
             line.setPickupRoomName(item.getPickupRoomName());
@@ -548,28 +595,48 @@ public class ReferenceDataService {
             }
         }
 
-        if (!cartIdsToClear.isEmpty()) {
-            cartMapper.deleteByIds(cartIdsToClear);
-        } else if (req.getLines() == null || req.getLines().isEmpty()) {
-            cartMapper.deleteByGroupId(req.getGroupId());
-        }
-
         String aupNote = headerAup != null
                 ? "，AUP " + headerAup.getRegisterNo()
                 : "，多 AUP 行级归因";
         logOrderAction(order.getId(), "CREATED", userId,
                 "提交订单，共 " + itemsToProcess.size() + " 项" + aupNote);
         notifyReceivers(order, userId, itemNames);
-        return Result.success(toOrderView(orderMapper.findById(order.getId())));
+        createdOrders.add(order);
+        }
+        // ← 结束「按房间分单」循环
+
+        if (!cartIdsToClear.isEmpty()) {
+            cartMapper.deleteByIds(cartIdsToClear);
+        } else if (req.getLines() == null || req.getLines().isEmpty()) {
+            cartMapper.deleteByGroupId(req.getGroupId());
+        }
+
+        // 一单变多单：调用方拿到本房间对应的那一张（多房间时是多张）
+        return Result.success(createdOrders.stream()
+                .map(o -> toOrderView(orderMapper.findById(o.getId())))
+                .toList());
     }
 
     /** 解析并校验下单 AUP：必须存在、已批准、属于当前登录用户的课题组。返回 null 表示未传或未命中。 */
+    /**
+     * 该 AUP 是否可用于下单 —— 与 {@code AupRecordMapper.selectApprovedForOrder} 的可选范围同一口径。
+     *
+     * <p>`expired` 也放行：过期只表示有效期到了，方案本身仍是批准过的，笼位与该 AUP 的白名单
+     * 都还挂在它上面；不放行就没法给这些笼位下单（用户 2026-09-11 明确「过期不影响使用」）。
+     * 未批准（draft/formatReview/expertReview）与已终止（terminated）仍然拒绝。
+     */
+    private static boolean usableForOrder(AupRecord aup) {
+        if (aup == null) return false;
+        String stage = aup.getCurrentStage();
+        return "approved".equals(stage) || "expired".equals(stage);
+    }
+
     private AupRecord resolveAupForOrder(Long aupRecordId, String userId) {
         if (aupRecordId == null) {
             return null;
         }
         AupRecord aup = aupRecordMapper.selectById(aupRecordId);
-        if (aup == null || !"approved".equals(aup.getCurrentStage())) {
+        if (!usableForOrder(aup)) {
             return null;
         }
         List<String> myGroups = resolveProjectGroupNames(userId);
@@ -702,7 +769,7 @@ public class ReferenceDataService {
                 return "订单行缺少 AUP 归属";
             }
             AupRecord aup = aupCache.computeIfAbsent(aupId, id -> aupRecordMapper.selectById(id));
-            if (aup == null || !"approved".equals(aup.getCurrentStage())) {
+            if (!usableForOrder(aup)) {
                 return "订单行关联的 AUP 无效或未获批准";
             }
             if (!StringUtils.hasText(aup.getAnimalAllowlist())) {
@@ -874,6 +941,7 @@ public class ReferenceDataService {
             return Result.error("订单不存在、不是待处理状态，或无权编辑");
         }
         // 重入编辑：先清旧的回填行，保证幂等
+        releaseReservationsForEditingOrder(orderId);
         cartMapper.deleteByEditingOrderId(orderId);
 
         for (RefOrderLine l : orderLineMapper.listByOrderId(orderId)) {
@@ -888,13 +956,20 @@ public class ReferenceDataService {
             c.setCollectorId(l.getCollectorId());
             c.setCollectorName(l.getCollectorName());
             c.setEditingOrderId(orderId);
-            c.setRemark(null);
+            c.setRemark(l.getLineRemark());
             c.setPackageStatus("DRAFT");
             c.setPackageRemark(null);
+            c.setTargetAnimalCageId(l.getTargetAnimalCageId());
             c.setAddedBy(userId);
             cartMapper.insert(c);
         }
-        return Result.success(toCartViews(cartMapper.listByEditingOrderId(orderId)));
+        return Result.success(toCartViews(cartMapper.listByEditingOrderId(orderId), userId));
+    }
+
+    /** 清回填行前先把它们锁着的笼位放掉，否则那批笼位对所有人永久不可选。 */
+    private void releaseReservationsForEditingOrder(Long orderId) {
+        List<Long> cartIds = cartMapper.listByEditingOrderId(orderId).stream().map(RefCart::getId).toList();
+        cageReservationService.releaseByCartIds(cartIds, "订单编辑调整，原笼位预定释放");
     }
 
     /** 放弃编辑：只清回填行，原单不受影响。 */
@@ -904,6 +979,7 @@ public class ReferenceDataService {
         if (o == null) {
             return Result.error("订单不存在、不是待处理状态，或无权编辑");
         }
+        releaseReservationsForEditingOrder(orderId);
         cartMapper.deleteByEditingOrderId(orderId);
         return Result.success(null);
     }
@@ -943,6 +1019,7 @@ public class ReferenceDataService {
                 itemNames.add(extractDisplayName(refData));
             }
         }
+        releaseReservationsForEditingOrder(orderId);
         cartMapper.deleteByEditingOrderId(orderId);
         logOrderAction(orderId, "EDITED", userId, "编辑订单明细，共 " + rows.size() + " 项");
         return Result.success(toOrderView(orderMapper.findById(orderId)));
@@ -1073,6 +1150,8 @@ public class ReferenceDataService {
                 "SUBMITTED".equalsIgnoreCase(newStatus) ? LocalDateTime.now() : null);
         logOrderAction(orderId, newStatus.toUpperCase(), operatorId,
                 "状态变更: " + order.getStatus() + " -> " + newStatus.toUpperCase());
+        // 笼位落地：通过=填表 + 2→3 进饲养中；驳回/取消=释放预定并撤掉预填
+        cageReservationService.settleForOrderStatus(orderId, newStatus, operatorId);
         return Result.success(toOrderView(orderMapper.findById(orderId)));
     }
 
@@ -1142,6 +1221,10 @@ public class ReferenceDataService {
     }
 
     private List<RefCartView> toCartViews(List<RefCart> rows) {
+        return toCartViews(rows, null);
+    }
+
+    private List<RefCartView> toCartViews(List<RefCart> rows, String currentUserId) {
         if (rows == null || rows.isEmpty()) {
             return List.of();
         }
@@ -1163,7 +1246,22 @@ public class ReferenceDataService {
             refDataMap.put(refId, refData);
             labelMap.put(refId, extractDisplayName(refData));
         }
-        return rows.stream().map(row -> toCartView(row, nameMap, labelMap, refDataMap)).toList();
+        // 一次渲染内缓存 account → personnel.id：逐行各查两遍太亏
+        Map<String, String> personKeyCache = new HashMap<>();
+        // 笼位坐标一次批量反查（购物车是活数据，位置现查；订单行才是快照）
+        Map<Long, Map<String, Object>> locByCage = cageReservationService.cageLocationSnapshots(
+                rows.stream().map(RefCart::getTargetAnimalCageId).filter(Objects::nonNull).toList());
+        return rows.stream()
+                .map(row -> toCartView(row, nameMap, labelMap, refDataMap, currentUserId, personKeyCache, locByCage))
+                .toList();
+    }
+
+    /** account id → personnel.id（带缓存；解析不到返回 null，调用方回退原值）。 */
+    private String personKeyOf(String accountId, Map<String, String> cache) {
+        if (!StringUtils.hasText(accountId)) return null;
+        String id = accountId.trim();
+        if (cache == null) return personIdentityService.resolveIdByAccount(id);
+        return cache.computeIfAbsent(id, k -> personIdentityService.resolveIdByAccount(k));
     }
 
     private RefCartView toCartView(RefCart row) {
@@ -1176,6 +1274,13 @@ public class ReferenceDataService {
 
     private RefCartView toCartView(RefCart row, Map<String, String> nameMap,
                                    Map<Long, String> labelMap, Map<Long, RefData> refDataMap) {
+        return toCartView(row, nameMap, labelMap, refDataMap, null, null, null);
+    }
+
+    private RefCartView toCartView(RefCart row, Map<String, String> nameMap,
+                                   Map<Long, String> labelMap, Map<Long, RefData> refDataMap,
+                                   String currentUserId, Map<String, String> personKeyCache,
+                                   Map<Long, Map<String, Object>> locByCage) {
         if (row == null) return null;
         RefCartView v = new RefCartView();
         v.setId(row.getId());
@@ -1200,6 +1305,14 @@ public class ReferenceDataService {
         v.setRemark(row.getRemark());
         v.setPackageStatus(row.getPackageStatus() != null ? row.getPackageStatus() : "DRAFT");
         v.setPackageRemark(row.getPackageRemark());
+        v.setTargetAnimalCageId(row.getTargetAnimalCageId());
+        if (row.getTargetAnimalCageId() != null && locByCage != null) {
+            Map<String, Object> loc = locByCage.get(row.getTargetAnimalCageId());
+            if (loc != null) {
+                v.setTargetCageLocation(loc);
+                v.setTargetCageLabel(cageLocationLabel(loc));
+            }
+        }
         v.setAddedBy(row.getAddedBy());
         if (StringUtils.hasText(row.getAddedBy())) {
             String uid = row.getAddedBy().trim();
@@ -1208,6 +1321,15 @@ public class ReferenceDataService {
                 name = userDisplayNameService.resolveDisplayName(uid);
             }
             v.setAddedByName(StringUtils.hasText(name) ? name : uid);
+            // 人级归属：同一人可能有 STAFF_xxx 与 aro_user_id 两个账号，
+            // 前端要按「人」分组、按「人」判断能不能改，所以给出 personnel.id 与本行是否属于当前人。
+            String key = personKeyOf(uid, personKeyCache);
+            v.setAddedByKey(key != null ? key : uid);
+            v.setMine(StringUtils.hasText(currentUserId)
+                    && (personIdentityService.samePerson(uid, currentUserId)
+                        || Objects.equals(key, personKeyOf(currentUserId, personKeyCache))));
+        } else {
+            v.setMine(Boolean.FALSE);
         }
         if (row.getRefDataId() != null) {
             String label = labelMap != null ? labelMap.get(row.getRefDataId()) : null;
@@ -1344,7 +1466,34 @@ public class ReferenceDataService {
             });
             v.setRegisterNo(registerNo);
         }
+        // 订购 → 笼位：把锁定的笼位与坐标快照透出，审核页/导出据此知道这单下到哪
+        v.setTargetAnimalCageId(row.getTargetAnimalCageId());
+        if (StringUtils.hasText(row.getTargetCageLocation())) {
+            try {
+                Object loc = objectMapper.readValue(row.getTargetCageLocation(), Object.class);
+                v.setTargetCageLocation(loc);
+                v.setTargetCageLabel(cageLocationLabel(loc));
+            } catch (Exception e) {
+                v.setTargetCageLocation(row.getTargetCageLocation());
+            }
+        }
         return v;
+    }
+
+    /** 坐标快照 → 人读串「校区 / 房间 / 笼架 (x,y)」，缺失的层级自动省略。 */
+    @SuppressWarnings("unchecked")
+    private String cageLocationLabel(Object loc) {
+        if (!(loc instanceof Map<?, ?> raw)) return null;
+        Map<String, Object> m = (Map<String, Object>) raw;
+        List<String> parts = new ArrayList<>();
+        for (String key : new String[]{"campusName", "roomName", "shelveName"}) {
+            Object v = m.get(key);
+            if (v != null && StringUtils.hasText(String.valueOf(v))) parts.add(String.valueOf(v).trim());
+        }
+        Object x = m.get("positionX");
+        Object y = m.get("positionY");
+        if (x != null && y != null) parts.add("(" + x + "," + y + ")");
+        return parts.isEmpty() ? null : String.join(" / ", parts);
     }
 
     /** Walk parent_id chain upward from a leaf. Returns JSON array [{id, refType, displayName}] leaf-first. */

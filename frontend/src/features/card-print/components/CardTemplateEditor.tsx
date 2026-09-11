@@ -13,7 +13,7 @@ interface Props {
 
 const EMPTY_SLOT: CardSlot = {
   cells: null, label: "", fieldKey: null, rightLabel: null, rightFieldKey: null,
-  align: "left", bold: null, fontSizePt: null,
+  align: "left", bold: null, fontSizePt: null, fontWeight: null, heightMm: null, vAlign: null,
 };
 
 const EMPTY_TABLE: NonNullable<CardSpec["table"]> = {
@@ -29,7 +29,38 @@ const BTN_OUTLINE =
   "rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-[12px] text-[var(--twin-ink)] transition hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50";
 
 const MUTED = "text-[var(--app-color-text-tertiary)]";
-const LBL = "w-20 shrink-0 text-[var(--app-color-text-tertiary)]";
+const LBL = "w-16 shrink-0 text-right text-[var(--app-color-text-tertiary)]";
+
+/** mm 值展示：整数原样，小数保留 1 位。 */
+const fmtMm = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 10) / 10));
+
+/** 默认字重预设：数值对应 CSS font-weight；null（未设置）按 700 加粗显示。 */
+const WEIGHT_PRESETS: { label: string; value: number; b?: boolean }[] = [
+  { label: "常规", value: 400 },
+  { label: "中等", value: 500 },
+  { label: "加粗", value: 700, b: true },
+  { label: "特粗", value: 900 },
+];
+
+/** 数字输入：内部存字符串，清空=null（不写 0），失焦恢复为当前值。必填项在 onChange 里丢弃 null。 */
+function NumInput({ value, onChange, step = 0.1, min, className, placeholder }: {
+  value: number | null | undefined;
+  onChange: (v: number | null) => void;
+  step?: number; min?: number; className?: string; placeholder?: string;
+}) {
+  const [text, setText] = useState(value == null ? "" : String(value));
+  useEffect(() => { setText(value == null ? "" : String(value)); }, [value]);
+  return <input type="number" step={step} min={min} className={className} placeholder={placeholder}
+    value={text}
+    onBlur={() => setText(value == null ? "" : String(value))}
+    onChange={(e) => {
+      const t = e.target.value;
+      setText(t);
+      if (t.trim() === "") { onChange(null); return; }        // 清空 = null，不写 0
+      const n = Number(t);
+      if (!Number.isNaN(n)) onChange(n);
+    }} />;
+}
 
 export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -37,7 +68,6 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
   const [spec, setSpec] = useState<CardSpec>(DEFAULT_SPEC);
   const [slots, setSlots] = useState<CardSlot[]>([]);
   const [isDefault, setIsDefault] = useState(false);
-  const [previewCageId, setPreviewCageId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -73,7 +103,7 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
   const sample = useMemo(() => {
     const out: Record<string, string> = {
       [QR_FIELD]: "1234567890123456789",
-      [POSITION_FIELD]: "605A A架 3-5",
+      [POSITION_FIELD]: "示例笼架#A-10",
     };
     for (const f of fields) if (f.source === "FORM") out[f.key] = f.label;
     return out;
@@ -107,6 +137,8 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
         return { ...s, cells };
       }),
     );
+  const updateSlot = (rowIdx: number, patch: Partial<CardSlot>) =>
+    setSlots((arr) => arr.map((s, j) => (j !== rowIdx ? s : { ...s, ...patch })));
 
   const save = async () => {
     setBusy(true);
@@ -130,19 +162,22 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
   };
 
   const preview = async () => {
-    if (!selectedId || !previewCageId) {
-      setError("请先保存模板并填写一个笼位ID");
+    if (!selectedId) {
+      setError("请先保存模板");
       return;
     }
     setError("");
     try {
-      downloadBlob(await previewCardPdf(selectedId, previewCageId), "card-preview.pdf");
+      downloadBlob(await previewCardPdf(selectedId), "card-preview.pdf");
     } catch (e) {
       setError(e instanceof Error ? e.message : "试打失败");
     }
   };
 
-  const num = (v: string) => (v === "" ? 0 : Number(v));
+  // 必填数字项：清空（null）不写回，保留上一个有效值
+  const reqNum = (apply: (n: number) => void) => (v: number | null) => {
+    if (v != null) apply(v);
+  };
 
   // 编辑器列数：表格块配置优先，否则取各行有效格数的最大值（与后端 colCount 推导一致）。
   const colCount =
@@ -150,7 +185,12 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
 
   const addColumn = () => {
     const next = colCount + 1;
-    setTableField({ colCount: next });
+    const widths = spec.table?.colWidthsMm ?? null;
+    setTableField({
+      colCount: next,
+      // 同步列宽数组长度 === colCount：缺的补 0（后端按均值补位），等分模式保持 null
+      colWidthsMm: widths == null ? null : [...widths, 0],
+    });
     setSlots((arr) =>
       arr.map((s) => {
         const cells = [...effectiveCells(s)];
@@ -161,16 +201,20 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
   };
   const removeColumn = () => {
     const next = Math.max(1, colCount - 1);
-    setTableField({ colCount: next });
+    const widths = spec.table?.colWidthsMm ?? null;
+    setTableField({
+      colCount: next,
+      colWidthsMm: widths == null ? null : widths.slice(0, next),
+    });
     setSlots((arr) =>
       arr.map((s) => ({ ...s, cells: effectiveCells(s).slice(0, next) })),
     );
   };
-  const setColWidth = (i: number, raw: string) => {
+  const setColWidth = (i: number, v: number | null) => {
     const arr = (spec.table?.colWidthsMm ?? []).slice(0, colCount);
     while (arr.length < colCount) arr.push(0);
-    arr[i] = raw === "" ? 0 : Number(raw);
-    setTableField({ colWidthsMm: arr.every((v) => v === 0) ? null : arr });
+    arr[i] = v ?? 0;
+    setTableField({ colWidthsMm: arr.every((x) => x === 0) ? null : arr });
   };
   const addRow = () =>
     setSlots((s) => [
@@ -178,11 +222,40 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
       { ...EMPTY_SLOT, cells: [{ label: null, fieldKey: null, colSpan: null }] },
     ]);
 
+  // S4：固定行高合计 vs 表格块可用高（表格块高为 null 时用内容区高 contentH，与布局引擎同口径）
+  const landscape = spec.landscape === true;
+  const rotate90 = spec.rotate90 === true;
+  const paperWmm = landscape ? spec.pageHeightMm : spec.pageWidthMm;
+  const paperHmm = landscape ? spec.pageWidthMm : spec.pageHeightMm;
+  const layoutHmm = rotate90 ? paperWmm : paperHmm;
+  const contentHmm = layoutHmm - 2 * spec.marginMm;
+  // 与 cardPreviewLayout / 后端 CardLayoutEngine 的 tH 推导逐字一致
+  const autoRowH =
+    spec.lineHeightMm != null
+      ? Math.min(spec.lineHeightMm, contentHmm / Math.max(1, slots.length))
+      : contentHmm / Math.max(1, slots.length);
+  const fixedRowTotal = slots.reduce((acc, s) => acc + (s.heightMm ?? 0), 0);
+  const autoRowCount = slots.filter((s) => s.heightMm == null).length;
+  const tHmm =
+    spec.table?.heightMm != null
+      ? Math.max(1, Math.min(spec.table.heightMm, contentHmm))
+      : Math.min(contentHmm, fixedRowTotal + autoRowCount * autoRowH);
+  const rowOverflow = fixedRowTotal > tHmm;
+  // 未配表格高、但行高合计已超出可用高度 → 块被撑满，位置锚点看不出效果
+  const rowCappedByContent =
+    spec.table?.heightMm == null &&
+    fixedRowTotal + autoRowCount * autoRowH > contentHmm + 0.001;
+
   return (
-    <div className="flex min-h-0 flex-1 gap-4">
-      <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overscroll-y-contain">
-        <AdminFormCard title="模板">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+    // 封顶高度：外壳自身不约束高度，必须在这里扣掉顶栏+页边距+工具行（-51px = 工具行 38 + pt-3 12）
+    <div className="flex min-h-0 flex-1 gap-4"
+      style={{ maxHeight: "calc(100dvh - var(--admin-chrome-offset) - 51px)", minHeight: "460px" }}>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain pr-1">
+        <AdminFormCard title="模板配置">
+          <div className="space-y-4">
+            <section>
+              <div className="border-b border-[var(--app-color-border-default)] pb-1 text-[12px] font-semibold text-[var(--app-color-text-secondary)]">模板</div>
+              <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
               <select className={inputCls} value={selectedId ?? ""}
                 onChange={(e) => setSelectedId(e.target.value ? Number(e.target.value) : null)}>
@@ -199,22 +272,21 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
                 <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={save}>保存</button>
                 <button type="button" className={BTN_OUTLINE} onClick={preview}>试打单张</button>
               </div>
-              <input className={inputCls} placeholder="笼位ID（试打用）" value={previewCageId}
-                onChange={(e) => setPreviewCageId(e.target.value)} />
             </div>
           </div>
           {error ? <div className="mt-2 text-[13px] text-[var(--app-color-error)]">{error}</div> : null}
-        </AdminFormCard>
+            </section>
 
-        <AdminFormCard title="卡牌与排版">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+            <section>
+              <div className="border-b border-[var(--app-color-border-default)] pb-1 text-[12px] font-semibold text-[var(--app-color-text-secondary)]">卡牌与排版</div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
             <label className="flex items-center gap-1.5">
               <span className={LBL}>尺寸</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.pageWidthMm}
-                onChange={(e) => setSpecField("pageWidthMm", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.pageWidthMm}
+                onChange={reqNum((n) => setSpecField("pageWidthMm", n))} />
               <span className={MUTED}>×</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.pageHeightMm}
-                onChange={(e) => setSpecField("pageHeightMm", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.pageHeightMm}
+                onChange={reqNum((n) => setSpecField("pageHeightMm", n))} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
@@ -235,48 +307,68 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>边距</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.marginMm}
-                onChange={(e) => setSpecField("marginMm", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.marginMm}
+                onChange={reqNum((n) => setSpecField("marginMm", n))} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>字号</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.defaultFontSizePt}
-                onChange={(e) => setSpecField("defaultFontSizePt", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.defaultFontSizePt}
+                onChange={reqNum((n) => setSpecField("defaultFontSizePt", n))} />
               <span className={MUTED}>pt</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>行高</span>
-              <input className={inputCls} type="number" step="0.5" placeholder="自动" value={spec.lineHeightMm ?? ""}
-                onChange={(e) => setSpecField("lineHeightMm", e.target.value === "" ? null : Number(e.target.value))} />
+              <NumInput className={inputCls} step={0.5} placeholder="自动" value={spec.lineHeightMm}
+                onChange={(v) => setSpecField("lineHeightMm", v)} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>边框</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.borderWidthMm}
-                onChange={(e) => setSpecField("borderWidthMm", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.borderWidthMm}
+                onChange={reqNum((n) => setSpecField("borderWidthMm", n))} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>偏移 X</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.offsetXMm}
-                onChange={(e) => setSpecField("offsetXMm", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.offsetXMm}
+                onChange={reqNum((n) => setSpecField("offsetXMm", n))} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>偏移 Y</span>
-              <input className={inputCls} type="number" step="0.1" value={spec.offsetYMm}
-                onChange={(e) => setSpecField("offsetYMm", num(e.target.value))} />
+              <NumInput className={inputCls} value={spec.offsetYMm}
+                onChange={reqNum((n) => setSpecField("offsetYMm", n))} />
               <span className={MUTED}>mm</span>
             </label>
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-[13px]">
+            <span className={LBL}>默认字重</span>
+            <div className="flex items-center gap-1.5">
+              {WEIGHT_PRESETS.map((p) => {
+                const active = (spec.defaultFontWeight ?? 700) === p.value;
+                return (
+                  <button key={p.value} type="button"
+                    className={`rounded-twin-md border px-2 py-1 text-[12px] transition ${active ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)] text-white" : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)] hover:bg-[var(--app-color-surface-hover)]"}`}
+                    style={{ fontWeight: p.value }}
+                    onClick={() => setSpecField("defaultFontWeight", p.value)}>
+                    {p.b ? <span className="mr-0.5 font-extrabold">[B]</span> : null}{p.label}
+                  </button>
+                );
+              })}
+            </div>
+            <NumInput className={`${inputCls} w-16`} step={100} min={100} placeholder="700"
+              value={spec.defaultFontWeight}
+              onChange={(v) => setSpecField("defaultFontWeight", v)} />
           </div>
           <div className="mt-1 text-[12px] text-[var(--app-color-text-tertiary)]">
             提示：纵向 70×105 / 横版 105×70
           </div>
-        </AdminFormCard>
+            </section>
 
-        <AdminFormCard title="二维码">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+            <section>
+              <div className="border-b border-[var(--app-color-border-default)] pb-1 text-[12px] font-semibold text-[var(--app-color-text-secondary)]">二维码</div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
             <label className="flex items-center gap-1.5">
               <input type="checkbox" checked={spec.qr.enabled}
                 onChange={(e) => setSpecField("qr", { ...spec.qr, enabled: e.target.checked })} />
@@ -284,14 +376,14 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>边长</span>
-              <input className={inputCls} type="number" value={spec.qr.sizeMm}
-                onChange={(e) => setSpecField("qr", { ...spec.qr, sizeMm: num(e.target.value) })} />
+              <NumInput className={inputCls} value={spec.qr.sizeMm}
+                onChange={reqNum((n) => setSpecField("qr", { ...spec.qr, sizeMm: n }))} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
               <span className={LBL}>间距</span>
-              <input className={inputCls} type="number" value={spec.qr.marginMm}
-                onChange={(e) => setSpecField("qr", { ...spec.qr, marginMm: num(e.target.value) })} />
+              <NumInput className={inputCls} value={spec.qr.marginMm}
+                onChange={reqNum((n) => setSpecField("qr", { ...spec.qr, marginMm: n }))} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
@@ -316,17 +408,18 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
               </select>
             </label>
           </div>
-        </AdminFormCard>
+            </section>
 
-        <AdminFormCard title="内容表格">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
+            <section>
+              <div className="border-b border-[var(--app-color-border-default)] pb-1 text-[12px] font-semibold text-[var(--app-color-text-secondary)]">内容表格</div>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
             <label className="flex items-center gap-1.5">
               <span className={LBL}>表格块</span>
-              <input className={inputCls} type="number" step="0.1" placeholder="自动" value={spec.table?.widthMm ?? ""}
-                onChange={(e) => setTableField({ widthMm: e.target.value === "" ? null : Number(e.target.value) })} />
+              <NumInput className={inputCls} placeholder="自动" value={spec.table?.widthMm}
+                onChange={(v) => setTableField({ widthMm: v })} />
               <span className={MUTED}>×</span>
-              <input className={inputCls} type="number" step="0.1" placeholder="自动" value={spec.table?.heightMm ?? ""}
-                onChange={(e) => setTableField({ heightMm: e.target.value === "" ? null : Number(e.target.value) })} />
+              <NumInput className={inputCls} placeholder="自动" value={spec.table?.heightMm}
+                onChange={(v) => setTableField({ heightMm: v })} />
               <span className={MUTED}>mm</span>
             </label>
             <label className="flex items-center gap-1.5">
@@ -361,11 +454,23 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
             </div>
             <span className="text-[var(--app-color-text-tertiary)]">列宽 mm（留空=等分）</span>
             {Array.from({ length: colCount }, (_, i) => (
-              <input key={i} className={`${inputCls} w-16`} type="number" step="0.5"
-                value={spec.table?.colWidthsMm?.[i] || ""}
-                onChange={(e) => setColWidth(i, e.target.value)} />
+              <NumInput key={i} className={`${inputCls} w-16`} step={0.5}
+                value={spec.table?.colWidthsMm?.[i] ?? null}
+                onChange={(v) => setColWidth(i, v)} />
             ))}
           </div>
+
+          {rowOverflow ? (
+            <div className="mt-2 text-[12px] text-[var(--app-color-feedback-warning)]">
+              ⚠ 固定行高合计 {fmtMm(fixedRowTotal)}mm 超出表格高度 {fmtMm(tHmm)}mm，已按比例压缩
+            </div>
+          ) : null}
+          {rowCappedByContent ? (
+            <div className="mt-2 text-[12px] text-[var(--app-color-feedback-warning)]">
+              ⚠ 行高合计 {fmtMm(fixedRowTotal + autoRowCount * autoRowH)}mm 超出可用高度 {fmtMm(contentHmm)}mm，
+              表格块已撑满整卡，位置锚点不再生效（调小行高或显式设表格块高度即可恢复）
+            </div>
+          ) : null}
 
           <div className="my-3 border-t border-[var(--app-color-border-default)]" />
 
@@ -402,6 +507,41 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
                   ))}
                   <button type="button" className={BTN_OUTLINE} title={cells.length >= colCount ? "已达网格列数上限" : "加一格"} aria-label="加一格"
                     disabled={cells.length >= colCount} onClick={() => addCell(j)}>+ 加一格</button>
+                  <label className="flex items-center gap-1">
+                    <span className="text-[12px] text-[var(--app-color-text-tertiary)]">对齐</span>
+                    <select className={`${inputCls} w-20`} value={`${s.align ?? "left"}-${s.vAlign ?? "middle"}`}
+                      onChange={(e) => {
+                        const [h, v] = e.target.value.split("-");
+                        updateSlot(j, { align: h as CardSlot["align"], vAlign: v === "middle" ? null : v });
+                      }}>
+                      <optgroup label="上">
+                        <option value="left-top">左上</option>
+                        <option value="center-top">上中</option>
+                        <option value="right-top">右上</option>
+                      </optgroup>
+                      <optgroup label="中">
+                        <option value="left-middle">左中</option>
+                        <option value="center-middle">居中</option>
+                        <option value="right-middle">右中</option>
+                      </optgroup>
+                      <optgroup label="下">
+                        <option value="left-bottom">左下</option>
+                        <option value="center-bottom">下中</option>
+                        <option value="right-bottom">右下</option>
+                      </optgroup>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <span className="text-[12px] text-[var(--app-color-text-tertiary)]">字重</span>
+                    <NumInput className={`${inputCls} w-16`} step={100} min={100} placeholder="默认" value={s.fontWeight}
+                      onChange={(v) => updateSlot(j, { fontWeight: v })} />
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <span className="text-[12px] text-[var(--app-color-text-tertiary)]">行高</span>
+                    <NumInput className={`${inputCls} w-16`} step={0.5} placeholder="自动" value={s.heightMm}
+                      onChange={(v) => updateSlot(j, { heightMm: v })} />
+                    <span className={MUTED}>mm</span>
+                  </label>
                   <button type="button" className="ml-1 text-[12px] text-[var(--app-color-error)] hover:underline"
                     title="删除此行" aria-label="删除此行"
                     onClick={() => setSlots((arr) => arr.filter((_, k) => k !== j))}>删除行</button>
@@ -410,10 +550,12 @@ export function CardTemplateEditor({ fields, templates, onSaved }: Props) {
             })}
           </div>
           <button type="button" className={`${BTN_OUTLINE} mt-3`} onClick={addRow}>+ 添加一行</button>
+            </section>
+          </div>
         </AdminFormCard>
       </div>
 
-      <div className="min-h-0 shrink-0 overflow-y-auto overscroll-y-contain">
+      <div className="flex min-h-0 w-[360px] shrink-0 flex-col overflow-y-auto overscroll-y-contain">
         <div className="mb-1 text-[12px] text-[var(--app-color-text-tertiary)]">
           预览 {spec.pageWidthMm}×{spec.pageHeightMm}mm
         </div>
