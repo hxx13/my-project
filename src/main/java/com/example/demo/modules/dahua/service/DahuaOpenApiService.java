@@ -64,10 +64,10 @@ public class DahuaOpenApiService {
     }
 
     /**
-     * 分页拉取设备通道列表（设备大类 + 设备小类过滤见文档）。
-     * pageSize 最大 1000。
+     * 分页拉取设备通道列表。deviceType 传 null 表示不限小类（大华按精确小类过滤，
+     * 门禁大类下小类有 8_1、8_16 等多种，只传一种会漏）。pageSize 最大 1000。
      */
-    public List<Map<String, Object>> fetchAllDeviceChannels(int deviceCategory, int deviceType) {
+    public List<Map<String, Object>> fetchAllDeviceChannels(Integer deviceCategory, Integer deviceType) {
         List<Map<String, Object>> all = new ArrayList<>();
         int pageNum = 1;
         int totalPage = 1;
@@ -77,8 +77,12 @@ public class DahuaOpenApiService {
             body.put("pageSize", 1000);
             body.put("sort", "channelSn");
             body.put("sortType", "ASC");
-            body.put("deviceCategory", deviceCategory);
-            body.put("deviceType", deviceType);
+            if (deviceCategory != null) {
+                body.put("deviceCategory", deviceCategory);
+            }
+            if (deviceType != null) {
+                body.put("deviceType", deviceType);
+            }
             body.put("includeSubOwnerCodeFlag", true);
             Map<String, Object> resp = post("/evo-apigw/evo-brm/1.2.0/device/channel/subsystem/page", body);
             Map<String, Object> data = asMap(resp.get("data"));

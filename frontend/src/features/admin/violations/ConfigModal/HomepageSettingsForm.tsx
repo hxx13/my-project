@@ -133,6 +133,34 @@ export function HomepageSettingsForm(): JSX.Element {
     setDirty((prev) => new Set(prev).add(key));
   };
 
+  /**
+   * 开关类字段切换即存：与「系统设置」页即时保存一致。
+   * 否则用户切完不点底部「保存全部」，配置静默不落库（开关看起来完全不起作用）。
+   */
+  const toggleSwitch = async (key: string, value: string) => {
+    setValue(key, value);
+    const cfg = cfgMap.get(key);
+    const def = defMap.get(key);
+    if (!cfg || !validateConfigValue(value, def?.valueType)) {
+      toast.error(`保存失败：${def?.labelZh || key}`);
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateSystemConfig(cfg.id, { configValue: value });
+      setDirty((prev) => {
+        const n = new Set(prev);
+        n.delete(key);
+        return n;
+      });
+      toast.success("已保存");
+    } catch {
+      toast.error(`保存失败：${def?.labelZh || key}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const saveAll = async () => {
     const keys = configs.filter((c) => dirty.has(c.configKey)).map((c) => c.configKey);
     if (keys.length === 0) {
@@ -215,7 +243,7 @@ export function HomepageSettingsForm(): JSX.Element {
                             size="sm"
                             checked={cfg.configValue === "true"}
                             disabled={saving}
-                            onChange={(checked) => setValue(f.key, checked ? "true" : "false")}
+                            onChange={(checked) => void toggleSwitch(f.key, checked ? "true" : "false")}
                           />
                         </div>
                       ) : f.kind === "select" ? (

@@ -133,12 +133,16 @@ export function RuleCodexCard() {
     queryKey: ["public-runtime-config"],
     queryFn: fetchPublicRuntimeConfig,
     staleTime: 60_000,
+    // 大屏常亮但常年不是焦点窗口：必须后台轮询，否则开关改完永远看不到
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
   });
 
   const boardQ = useQuery({
     queryKey: ["dashboard-violation-board"],
     queryFn: fetchDashboardViolationBoard,
     refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
     staleTime: 30_000,
   });
 

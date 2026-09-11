@@ -45,6 +45,7 @@ export function CodexViolationBoardPanel({
     queryKey: ["dashboard-violation-board"],
     queryFn: fetchDashboardViolationBoard,
     refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
     staleTime: 30_000,
   });
 

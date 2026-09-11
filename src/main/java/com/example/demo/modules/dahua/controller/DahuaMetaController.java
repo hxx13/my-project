@@ -83,7 +83,7 @@ public class DahuaMetaController {
     }
 
     @PostMapping("/device-channels/refresh")
-    @Operation(summary = "刷新设备通道缓存（大类8、小类1）")
+    @Operation(summary = "刷新设备通道缓存（大类8、不限小类）")
     public Result<?> refreshDeviceChannels(@RequestHeader(value = "Authorization", required = false) String authorization) {
         Result<?> denied = requireAdmin(authorization);
         if (denied != null) return denied;
