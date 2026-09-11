@@ -216,7 +216,7 @@ export function AnnouncementEditor({ id, onDone, onCancel }: AnnouncementEditorP
 
   const footer =
     editing && autoSuppressCount > 0 ? (
-      <div className="flex items-start gap-2 rounded-lg border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] px-3 py-2.5 text-sm text-[var(--app-color-text-primary)]">
+      <div className="flex items-start gap-2 rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] px-3 py-2.5 text-sm text-[var(--app-color-text-primary)]">
         <AdminSwitchScaled size="sm" id="clear-auto-suppress-checkbox" className="mt-0.5" checked={clearAutoSuppress} onChange={setClearAutoSuppress} />
         <label htmlFor="clear-auto-suppress-checkbox" className="cursor-pointer">
           <span className="font-medium">公告已更新，清空「下次不再弹出」记录</span>

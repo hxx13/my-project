@@ -76,7 +76,7 @@ export function RoomEnterConfirmDialog({
                             <div className="p-8 pt-10">
                                 {/* 图标 — 使用 accent 色系，与进入动作呼应 */}
                                 <div className="mb-5 flex justify-center">
-                                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent)]/10">
+                                    <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]">
                                         <DoorOpen className="h-6 w-6 text-[var(--app-color-accent)]" />
                                     </div>
                                 </div>
@@ -121,7 +121,7 @@ export function RoomEnterConfirmDialog({
                                     <button
                                         type="button"
                                         onClick={onConfirm}
-                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-accent)]/40 bg-[var(--app-color-accent)]/15 py-2.5 text-sm font-bold text-[var(--app-color-accent)] transition-colors hover:border-[var(--app-color-accent)]/60 hover:bg-[var(--app-color-accent)]/25"
+                                        className="flex-1 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] py-2.5 text-sm font-bold text-[var(--app-color-accent)] transition-colors hover:border-[color-mix(in_srgb,var(--app-color-accent)_60%,transparent)] hover:bg-[color-mix(in_srgb,var(--app-color-accent)_25%,transparent)]"
                                     >
                                         确认进入
                                     </button>

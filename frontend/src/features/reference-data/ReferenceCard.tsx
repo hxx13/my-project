@@ -29,10 +29,23 @@ const LINE_FONTS = [
 ];
 
 /**
+ * 卡片三行文本（主标题 / 副标题 / 描述）。三端唯一实现：
+ * PC 本组件、H5 `MobileAnimalOrderView` 都直接用；小程序在 `animalOrder/index.js` 内联镜像。
+ * 全空时由调用方回退成 `ID {id}`。
+ */
+export function refCardLines(item: RefDataItem): string[] {
+  const fd = item.fieldData as Record<string, unknown> | undefined;
+  return ["title", "subtitle", "description"].map((k) => {
+    const val = fd?.[k];
+    return val === undefined || val === null ? "" : String(val);
+  });
+}
+
+/**
  * 卡片价格标签。未开启价格返回 null（不占位，避免多数卡片被「无价格」噪声填满）。
  * 有规格价时取区间；区间为单值则只显示一个数。开启但未配价显示「待定」。
  */
-function priceLabel(item: RefDataItem): string | null {
+export function refCardPrice(item: RefDataItem): string | null {
   const fd = item.fieldData as Record<string, unknown> | undefined;
   if (fd?.priceEnabled !== true) return null;
 
@@ -71,10 +84,9 @@ export default function ReferenceCard({
   const showEdit = isAdmin;
 
   // Always show 3 lines (title, subtitle, description) — empty = placeholder
-  const keys = ["title", "subtitle", "description"];
-  const lines = keys.map(k => getFieldVal(item, k));
+  const lines = refCardLines(item);
   const isEmpty = lines.every(l => !l);
-  const priceText = priceLabel(item);
+  const priceText = refCardPrice(item);
 
   return (
     <div

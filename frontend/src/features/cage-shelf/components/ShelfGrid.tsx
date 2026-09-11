@@ -64,6 +64,7 @@ export function ShelfGrid({
   pairColorByCageId,
   opMarkerByCageId,
   glowColor,
+  highlightShelveIds,
 }: {
   title: string;
   detail: CageShelfDetail | null;
@@ -102,6 +103,8 @@ export function ShelfGrid({
   opMarkerByCageId?: Map<string, CageOpMark>;
   /** 当前模式的呼吸灯颜色（查看模式不传 = 不高亮） */
   glowColor?: string;
+  /** 有可选笼位的笼架 id 集合：命中时给整个笼架容器加一圈高亮，提示「这架里有能选的格子」 */
+  highlightShelveIds?: Set<string>;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
@@ -173,6 +176,7 @@ export function ShelfGrid({
               isCrossRow={showCross && c.y === crossY}
               flashOverlay={!!(scanLockTarget && scanLockTarget.sid === sid && scanLockTarget.x === c.x && scanLockTarget.y === c.y)}
               claimMode={claimMode}
+              poolColor={glowColor}
               confirmMode={confirmMode}
               // isPoolCell 只决定「可否勾选」；绿环是否画由 CellButton 里的 claimMode 控制
               isPoolCell={poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
@@ -189,7 +193,12 @@ export function ShelfGrid({
 
   return (
     <div
-      className={`rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 min-h-0 flex flex-col${glowColor ? " cage-shelf-glow" : ""}`}
+      className={`rounded-twin-xl border bg-[var(--twin-canvas)] p-3 min-h-0 flex flex-col${
+        highlightShelveIds?.has(sid)
+          /* 「这架里有可选格子」的架子级提示：跟格子上的「当前可选」标签同色，不再用红色 */
+          ? " border-emerald-500 ring-2 ring-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.35)]"
+          : " border-[var(--twin-hairline)]"
+      }${glowColor ? " cage-shelf-glow" : ""}`}
       style={glowColor ? ({ ["--mode-color" as string]: glowColor } as React.CSSProperties) : undefined}
     >
       <div className="mb-2 flex items-center justify-between shrink-0">

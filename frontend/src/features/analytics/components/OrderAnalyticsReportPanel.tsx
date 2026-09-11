@@ -181,7 +181,7 @@ function CollapsibleFilters({
       >
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         筛选条件
-        {!open ? <span className="text-[var(--app-color-text-tertiary)]/60">（点击展开）</span> : null}
+        {!open ? <span className="text-[color-mix(in_srgb,var(--app-color-text-tertiary)_60%,transparent)]">（点击展开）</span> : null}
       </button>
       {open && <div className="mt-1.5 flex flex-wrap items-center gap-1">{children}</div>}
     </div>

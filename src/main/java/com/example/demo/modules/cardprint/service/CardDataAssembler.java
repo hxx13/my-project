@@ -7,6 +7,8 @@ import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper;
+import com.example.demo.modules.cardprint.entity.CardPrintValueMap;
+import com.example.demo.modules.cardprint.mapper.CardPrintValueMapMapper;
 import com.alibaba.fastjson2.JSON;
 import org.springframework.stereotype.Service;
 
@@ -28,15 +30,18 @@ public class CardDataAssembler {
     private final CageInfoValueMapper valueMapper;
     private final CageCellDetailMapper detailMapper;
     private final CageCellIndexMapper indexMapper;
+    private final CardPrintValueMapMapper valueMapMapper;
 
     public CardDataAssembler(CageInfoFieldMapper fieldMapper,
                              CageInfoValueMapper valueMapper,
                              CageCellDetailMapper detailMapper,
-                             CageCellIndexMapper indexMapper) {
+                             CageCellIndexMapper indexMapper,
+                             CardPrintValueMapMapper valueMapMapper) {
         this.fieldMapper = fieldMapper;
         this.valueMapper = valueMapper;
         this.detailMapper = detailMapper;
         this.indexMapper = indexMapper;
+        this.valueMapMapper = valueMapMapper;
     }
 
     /** 按传入顺序返回每个笼位的数据行。 */
@@ -82,21 +87,45 @@ public class CardDataAssembler {
             }
             rows.add(row);
         }
+        applyValueMaps(rows);
         return rows;
     }
 
-    /** 位置串：「房间名 笼架名 坐标」，坐标格式与 /api/v1/scan/lookup 的 positionLabel 一致（X-Y）。 */
+    /** 字段值映射：原值 → 简称。整表只查一次，逐行替换命中字段。 */
+    private void applyValueMaps(List<Map<String, Object>> rows) {
+        if (rows.isEmpty()) return;
+        Map<String, Map<String, String>> maps = new HashMap<>();
+        for (CardPrintValueMap m : valueMapMapper.selectAll()) {
+            if (m == null || m.getCanonical() == null || m.getRawValue() == null || m.getShortValue() == null) continue;
+            maps.computeIfAbsent(m.getCanonical(), k -> new HashMap<>()).put(m.getRawValue(), m.getShortValue());
+        }
+        if (maps.isEmpty()) return;
+        for (Map<String, Object> row : rows) {
+            for (Map.Entry<String, Map<String, String>> e : maps.entrySet()) {
+                Object v = row.get(e.getKey());
+                if (v == null) continue;
+                String shortVal = e.getValue().get(String.valueOf(v));
+                if (shortVal != null) row.put(e.getKey(), shortVal);
+            }
+        }
+    }
+
+    /** 位置串：「笼架名#坐标」。坐标 = 列字母(A..H) + '-' + 倒序行号(11-y)。shelveName 为空返回空串；x/y 任一为空只返回 shelveName。 */
     private String positionLabel(Map<String, Object> pos) {
         if (pos == null) return "";
-        StringBuilder sb = new StringBuilder();
-        Object room = pos.get("roomName");
-        if (room != null && !String.valueOf(room).isBlank()) sb.append(room).append(' ');
         Object shelve = pos.get("shelveName");
-        if (shelve != null && !String.valueOf(shelve).isBlank()) sb.append(shelve).append(' ');
+        String shelveName = shelve == null ? "" : String.valueOf(shelve).trim();
+        if (shelveName.isEmpty()) return "";
         Object px = pos.get("positionX");
         Object py = pos.get("positionY");
-        if (px != null && py != null) sb.append(px).append('-').append(py);
-        return sb.toString().trim();
+        if (px == null || py == null) return shelveName;
+        try {
+            int x = Integer.parseInt(String.valueOf(px).trim());
+            int y = Integer.parseInt(String.valueOf(py).trim());
+            return shelveName + "#" + (char) ('A' + x - 1) + "-" + (11 - y);
+        } catch (NumberFormatException e) {
+            return shelveName;
+        }
     }
 
     /** 与 CageInfoValueService.valueColumn 对齐：STRING/ENUM/CALC 存 value_string，TEXT 存 value_text，ENUM_MULTI/FILE 存 value_json。 */

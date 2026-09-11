@@ -17,7 +17,7 @@ const StudentInput = React.forwardRef<HTMLInputElement, StudentInputProps>(
             "w-full rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-white px-3 py-2 text-sm text-foreground placeholder:text-[var(--student-mute)] transition-colors outline-none",
             "focus-visible:border-[var(--student-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--student-primary-soft)]",
             error &&
-              "border-[var(--student-destructive)] focus-visible:border-[var(--student-destructive)] focus-visible:ring-[var(--student-destructive)]/20",
+              "border-[var(--student-destructive)] focus-visible:border-[var(--student-destructive)] focus-visible:ring-[color-mix(in_srgb,var(--student-destructive)_20%,transparent)]",
             className
           )}
           aria-invalid={!!error}

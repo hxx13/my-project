@@ -9,9 +9,11 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
 import org.junit.jupiter.api.Test;
 
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -124,5 +126,83 @@ class CardRenderEngineTest {
             assertTrue(text.contains("周龄: 6"), "第一列");
             assertTrue(text.contains("公: 3"), "第三列内容不能被中间空格挤掉");
         }
+    }
+
+    /** 默认 spec（defaultFontWeight 为 null → 视为 700 加粗）应请求加粗字体且正常产出 PDF。 */
+    @Test
+    void defaultWeightIsBold() throws Exception {
+        List<CardLayoutEngine.Slot> slots = List.of(CardLayoutEngine.Slot.of("PI: ", "projectPiName"));
+        byte[] pdf = engine.render(CardLayoutEngine.Spec.defaults().withQrEnabled(false), slots,
+                List.of(Map.of("projectPiName", "郭滨")));
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertEquals(1, doc.getNumberOfPages());
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("PI:"), "默认字重仍应打印标签");
+            assertTrue(text.contains("郭滨"), "默认字重仍应提取中文值");
+        }
+    }
+
+    /** slot.fontWeight = 400（细字重）仍能正常产出 PDF 且文本可提取。 */
+    @Test
+    void lightWeightStillRenders() throws Exception {
+        CardLayoutEngine.Slot slot = new CardLayoutEngine.Slot(
+                null, "PI: ", "projectPiName", null, null, "left", Boolean.TRUE, null, null, 400, null);
+        byte[] pdf = engine.render(CardLayoutEngine.Spec.defaults().withQrEnabled(false), List.of(slot),
+                List.of(Map.of("projectPiName", "郭滨")));
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            assertEquals(1, doc.getNumberOfPages());
+            String text = new PDFTextStripper().getText(doc);
+            assertTrue(text.contains("郭滨"), "细字重仍应提取中文值");
+        }
+    }
+
+    /** 捕获每个 writeString 的首字符坐标（x 为 XDirAdj、y 为 YDirAdj）。 */
+    private static final class PositionStripper extends PDFTextStripper {
+        final List<float[]> positions = new ArrayList<>();
+        @Override
+        protected void writeString(String text, List<TextPosition> textPositions) throws java.io.IOException {
+            if (!textPositions.isEmpty()) {
+                TextPosition first = textPositions.get(0);
+                positions.add(new float[]{first.getXDirAdj(), first.getYDirAdj()});
+            }
+            super.writeString(text, textPositions);
+        }
+    }
+
+    private byte[] renderAligned(String hAlign, String vAlign) throws Exception {
+        CardLayoutEngine.Slot slot = new CardLayoutEngine.Slot(
+                null, "PI: ", "projectPiName", null, null, hAlign, Boolean.TRUE, null, null, null, vAlign);
+        return engine.render(CardLayoutEngine.Spec.defaults().withQrEnabled(false), List.of(slot),
+                List.of(Map.of("projectPiName", "郭滨")));
+    }
+
+    private float[] firstPosition(byte[] pdf) throws Exception {
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            PositionStripper stripper = new PositionStripper();
+            stripper.getText(doc);
+            assertTrue(!stripper.positions.isEmpty(), "应捕获到文本坐标");
+            return stripper.positions.get(0);
+        }
+    }
+
+    @Test
+    void slotAlignMovesTextX() throws Exception {
+        float xLeft = firstPosition(renderAligned("left", "middle"))[0];
+        float xCenter = firstPosition(renderAligned("center", "middle"))[0];
+        float xRight = firstPosition(renderAligned("right", "middle"))[0];
+        assertTrue(xLeft < xCenter, "left < center 首字符 x 应递增");
+        assertTrue(xCenter < xRight, "center < right 首字符 x 应递增");
+        assertTrue(xLeft != xCenter && xCenter != xRight, "三种水平对齐的 x 必须彼此不同");
+    }
+
+    @Test
+    void slotVAlignMovesTextY() throws Exception {
+        float yTop = firstPosition(renderAligned("left", "top"))[1];
+        float yMiddle = firstPosition(renderAligned("left", "middle"))[1];
+        float yBottom = firstPosition(renderAligned("left", "bottom"))[1];
+        // getYDirAdj 原点在左上（文本方向）：越靠上 y 越小
+        assertTrue(yTop < yMiddle, "top 应在 middle 上方（y 更小）");
+        assertTrue(yMiddle < yBottom, "middle 应在 bottom 上方（y 更小）");
+        assertTrue(yTop != yMiddle && yMiddle != yBottom, "三种垂直对齐的 y 必须彼此不同");
     }
 }

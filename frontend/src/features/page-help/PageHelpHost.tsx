@@ -14,7 +14,7 @@ const buttonClassByVariant: Record<Variant, string> = {
   student:
     "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors",
   twin:
-    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/90 text-[var(--app-color-text-secondary)] shadow-[var(--app-elevation-card)] backdrop-blur-sm hover:bg-[var(--app-color-surface-hover)]",
+    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_90%,transparent)] text-[var(--app-color-text-secondary)] shadow-[var(--app-elevation-card)] backdrop-blur-sm hover:bg-[var(--app-color-surface-hover)]",
 };
 
 type Props = {

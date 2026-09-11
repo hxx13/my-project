@@ -36,15 +36,42 @@ export async function deleteCardTemplate(id: number): Promise<void> {
   await authHttp.delete(`${BASE}/templates/${id}`);
 }
 
-export async function previewCardPdf(templateId: number, animalCageId: string): Promise<Blob> {
+export interface CardValueMap {
+  id: number;
+  canonical: string;
+  rawValue: string;
+  shortValue: string;
+}
+
+export async function fetchCardValueMaps(): Promise<CardValueMap[]> {
+  const res = await authHttp.get<Result<CardValueMap[]>>(`${BASE}/value-maps`);
+  return res.data.data ?? [];
+}
+
+export async function saveCardValueMap(
+  body: { id?: number; canonical: string; rawValue: string; shortValue: string },
+): Promise<CardValueMap | undefined> {
+  if (body.id) {
+    const res = await authHttp.put<Result<CardValueMap>>(`${BASE}/value-maps/${body.id}`, body);
+    return res.data.data;
+  }
+  const res = await authHttp.post<Result<CardValueMap>>(`${BASE}/value-maps`, body);
+  return res.data.data;
+}
+
+export async function deleteCardValueMap(id: number): Promise<void> {
+  await authHttp.delete(`${BASE}/value-maps/${id}`);
+}
+
+export async function previewCardPdf(templateId: number, animalCageId?: string): Promise<Blob> {
   const res = await authHttp.post(`${BASE}/preview`, { templateId, animalCageId }, { responseType: "blob" });
   return res.data as Blob;
 }
 
-export async function generateCardPdf(templateId: number, animalCageIds: string[]) {
+export async function generateCardPdf(templateId: number, animalCageIds: string[], nameSuffix?: string) {
   const res = await authHttp.post<Result<{ archiveId: number; pageCount: number; fileName: string }>>(
     `${BASE}/generate`,
-    { templateId, animalCageIds },
+    { templateId, animalCageIds, nameSuffix },
   );
   return res.data.data;
 }

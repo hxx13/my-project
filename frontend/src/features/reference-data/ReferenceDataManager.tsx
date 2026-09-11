@@ -31,7 +31,8 @@ import {
   discardOrderEdit,
 } from "@/api/domains/referenceData.api";
 import { authStorage } from "@/features/auth/authStorage";
-import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
+import { releaseCageReservation } from "@/api/domains/animalOrderCage.api";
+import { formatDateTimeAsiaShanghaiMinute } from "@/lib/formatDateTimeAsiaShanghai";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { useAupMyRoles } from "@/features/aup/hooks/useAup";
 import {
@@ -43,6 +44,9 @@ import CardGrid from "./CardGrid";
 import BreadcrumbBar from "./BreadcrumbBar";
 import EditModal from "./EditModal";
 import SpecSelectPanel, { type OrderPickupInfo } from "./SpecSelectPanel";
+import CagePickerPanel, { type PickedCage } from "./CagePickerPanel";
+import { CagePickerTab } from "./CagePickerDrawer";
+import { allocateInOrder } from "./cageAllocation";
 import SpecTemplateManager from "./SpecTemplateManager";
 import OrderTimeManager from "./OrderTimeManager";
 import OrderHistoryPanel from "./OrderHistoryPanel";
@@ -79,6 +83,37 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const [searchKeyword, setSearchKeyword] = useState("");
   const [editModal, setEditModal] = useState<{ mode: "create" | "edit"; item?: RefDataItem } | null>(null);
   const [specSelectItem, setSpecSelectItem] = useState<RefDataItem | null>(null);
+  /**
+   * 笼位抽屉常驻：开规格弹窗时展开，弹窗关掉不收。
+   * 所以它的状态（已锁笼位、当前规格上下文）都放在页面级，不跟着弹窗卸载。
+   */
+  const [cagePickerOpen, setCagePickerOpen] = useState(false);
+  /** 已锁定的笼位，**顺序即分配顺序**（支持连续多选） */
+  const [pickedCages, setPickedCages] = useState<PickedCage[]>([]);
+  /** 手动改过的笼位数量：作为下次自动分配的起点 */
+  const [allocPinned, setAllocPinned] = useState<Record<string, number>>({});
+  /** 单笼上限，由抽屉从 /reservable 取到后回报（页面要用它算分配） */
+  const [maxQuantityPerCage, setMaxQuantityPerCage] = useState(0);
+  /** 购物车点「定位」时把抽屉打开并聚焦到这个笼位（抽屉内定位，不是跳笼架页） */
+  const [focusCageId, setFocusCageId] = useState<string | null>(null);
+  const [cageSpecCtx, setCageSpecCtx] = useState<{ specOptionLabel: string; quantity: number }>({
+    specOptionLabel: "",
+    quantity: 0,
+  });
+
+  /**
+   * 笼位分配：按选中顺序 5 只/笼铺满，最后一个笼位拿余数。
+   * 规格弹窗填的只是**总数**，每个笼位实际拿多少由这里算。
+   */
+  const cageAlloc = useMemo(
+    () => allocateInOrder(
+      cageSpecCtx.quantity,
+      pickedCages.map((c) => c.animalCageId),
+      maxQuantityPerCage,
+      allocPinned,
+    ),
+    [cageSpecCtx.quantity, pickedCages, maxQuantityPerCage, allocPinned],
+  );
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [timeManagerOpen, setTimeManagerOpen] = useState(false);
@@ -310,12 +345,28 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         aupLabel: ci.aupRecordId != null ? (aupLabelById.get(String(ci.aupRecordId)) || `AUP#${ci.aupRecordId}`) : "未归属",
         packageStatus: ci.packageStatus || "DRAFT",
         packageRemark: ci.packageRemark,
+        remark: ci.remark,
         addedBy: ci.addedBy,
+        addedByKey: ci.addedByKey ?? null,
+        mine: ci.mine,
+        targetAnimalCageId: ci.targetAnimalCageId ?? null,
+        targetCageLabel: ci.targetCageLabel ?? null,
+        targetCageLocation: ci.targetCageLocation ?? null,
         // 展示名以后端 addedByName 为准；仅当为空时回退本人会话名 / 原始 id
-        addedByLabel: addedByName || (ci.addedBy === currentUserId ? currentUserName : "") || ci.addedBy || "",
+        addedByLabel: addedByName || (ci.mine || ci.addedBy === currentUserId ? currentUserName : "") || ci.addedBy || "",
       };
     });
   }, [serverCartItems, itemLabelMap, aupLabelById, currentUserId, currentUserName]);
+
+  /**
+   * 是不是「本人」的行 —— 以服务端按 personnel.id 判出的 mine 为准。
+   * 同一人可能同时持有 STAFF_xxx 与 aro_user_id 两个账号（教职工视角 / 学生视角），
+   * 直接比账号 id 会把同一个人的行判成别人的。
+   */
+  const isMyLine = useCallback(
+    (l: CartLine) => l.mine === true || l.addedBy === currentUserId,
+    [currentUserId],
+  );
 
   const cartCount = useMemo(() => cartLines.reduce((s, l) => s + l.qty, 0), [cartLines]);
 
@@ -331,17 +382,17 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     return any ? sum : null;
   }, [cartLines]);
   const myDraftLines = useMemo(
-    () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus !== "READY"),
-    [cartLines, currentUserId],
+    () => cartLines.filter((l) => isMyLine(l) && l.packageStatus !== "READY"),
+    [cartLines, isMyLine],
   );
   const myReadyLines = useMemo(
-    () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus === "READY"),
-    [cartLines, currentUserId],
+    () => cartLines.filter((l) => isMyLine(l) && l.packageStatus === "READY"),
+    [cartLines, isMyLine],
   );
   // PI 是最终提交人，本人加购的行不必再走「提交给 PI」确认，直接纳入提交范围
   const readyLines = useMemo(
-    () => cartLines.filter((l) => l.packageStatus === "READY" || (isPi && l.addedBy === currentUserId)),
-    [cartLines, isPi, currentUserId],
+    () => cartLines.filter((l) => l.packageStatus === "READY" || (isPi && isMyLine(l))),
+    [cartLines, isPi, isMyLine],
   );
 
   // 本次提交的总金额（只算 readyLines），与购物车整车的合计区分开
@@ -460,10 +511,42 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     const title = String((item.fieldData as Record<string, unknown>)?.title || `ID ${item.id}`);
     setItemLabelMap((prev) => ({ ...prev, [item.id]: title }));
     setSpecSelectItem(item);
+    // 开选购弹窗 = 展开右侧笼位抽屉；反过来收弹窗不动抽屉（抽屉可常驻查看）
+    setCagePickerOpen(true);
   }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId]);
 
+  /** 关抽屉才放掉笼位：弹窗关闭不在这里，两者生命周期已经拆开 */
+  const closeCagePicker = useCallback(async () => {
+    const cur = pickedCages;
+    setCagePickerOpen(false);
+    setPickedCages([]);
+    setAllocPinned({});
+    for (const r of cur) {
+      try {
+        await releaseCageReservation(r.reservationId);
+      } catch { /* 启动清理兜底 */ }
+    }
+  }, [pickedCages]);
+
+  /** 弹窗每次填数量都回报；值没变就不 set，避免 effect 来回触发 */
+  const handleCageContextChange = useCallback(
+    (ctx: { specOptionLabel: string; quantity: number }) => {
+      setCageSpecCtx((prev) =>
+        prev.specOptionLabel === ctx.specOptionLabel && prev.quantity === ctx.quantity ? prev : ctx,
+      );
+    },
+    [],
+  );
+
   const handleSpecConfirm = useCallback(async (
-    entries: { optionLabel: string; qty: number }[],
+    entries: {
+      optionLabel: string;
+      qty: number;
+      remark?: string;
+      reservationId?: string;
+      pickupRoomId?: string;
+      pickupRoomName?: string;
+    }[],
     pickup: OrderPickupInfo,
   ) => {
     if (orderingBlocked) {
@@ -471,13 +554,16 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       return;
     }
     if (!specSelectItem || !selectedAupId || !groupId) return;
-    if (!pickup.pickupRoomId) {
-      toast.error("请选择领用方式/房间");
-      return;
-    }
     const aupId = Number(selectedAupId);
     let ok = 0;
     for (const entry of entries) {
+      // 笼位路径下房间来自该行自己的笼位；非笼位路径用弹窗里选的那个房间
+      const roomId = entry.pickupRoomId || pickup.pickupRoomId;
+      const roomName = entry.pickupRoomName || pickup.pickupRoomName;
+      if (!roomId) {
+        toast.error("请选择领用方式/房间");
+        continue;
+      }
       try {
         await addToCartMut.mutateAsync({
           groupId,
@@ -487,10 +573,13 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             quantity: entry.qty,
             // 无规格物品不写 spec_selections，服务端据此回退到物品自身的 price
             ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
-            pickupRoomId: pickup.pickupRoomId,
-            pickupRoomName: pickup.pickupRoomName,
+            pickupRoomId: roomId,
+            pickupRoomName: roomName,
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
+            ...(entry.remark ? { remark: entry.remark } : {}),
+            // 一个笼位一条行：加购成功即把该笼位的预定挂到本行
+            ...(entry.reservationId ? { reservationId: Number(entry.reservationId) } : {}),
           },
         });
         ok += 1;
@@ -505,11 +594,21 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       toast.success(`已加入购物车 (${ok} 项)`);
       void refetchCart();
     }
+    // 多选的盒子最后没分到老鼠 → 自动取消掉它（释放预定），别白占着
+    const usedReservationIds = new Set(entries.map((e) => e.reservationId).filter(Boolean) as string[]);
+    for (const c of pickedCages) {
+      if (usedReservationIds.has(c.reservationId)) continue;
+      try {
+        await releaseCageReservation(c.reservationId);
+      } catch { /* 启动清理兜底 */ }
+    }
+    setPickedCages([]);
+    setAllocPinned({});
     setSpecSelectItem(null);
-  }, [orderingBlocked, timePolicy?.closedReason, specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart]);
+  }, [orderingBlocked, timePolicy?.closedReason, specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, pickedCages]);
 
   const handleCartQtyChange = useCallback((line: CartLine, qty: number) => {
-    if (!isPi && line.addedBy !== currentUserId) {
+    if (!isPi && !isMyLine(line)) {
       toast.error("只能修改本人加购的行");
       return;
     }
@@ -569,7 +668,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       return;
     }
     if (readyLines.length === 0) {
-      toast.error("没有可提交的行：本人加购的行，或实验员已提交给 PI 的订单包");
+      toast.error("没有可提交的行：本人加购的行，或实验员已提交到共享购物车的订单包");
       return;
     }
     submitOrderMut.mutate(
@@ -622,35 +721,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     );
   }
 
-  const chromeOffset =
-    mode === "student" ? "var(--student-chrome-offset, 64px)" : "var(--admin-chrome-offset)";
-
-  const aupIsland = createPortal(
-    <button
-      type="button"
-      onClick={() => setAupPickerOpen(true)}
-      className="pointer-events-auto fixed left-1/2 z-[var(--z-overlay)] flex max-w-[min(92vw,28rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-sky-200/90 bg-sky-50/95 px-3.5 py-1.5 text-left shadow-[0_8px_28px_rgba(14,165,233,0.28)] backdrop-blur-md hover:bg-sky-100 transition-colors"
-      style={{ top: `calc(${chromeOffset} + 10px)` }}
-      title="点击切换加购 AUP"
-    >
-      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-sky-600">AUP</span>
-      <span className="min-w-0 truncate text-xs font-semibold text-sky-900">
-        {activeAup ? activeAup.registerNo : "点击选择加购上下文"}
-      </span>
-      {activeAup?.projectGroupName ? (
-        <span className="hidden min-w-0 truncate text-[10px] text-sky-600 sm:inline">
-          {activeAup.projectGroupName}
-        </span>
-      ) : null}
-      <span className="shrink-0 text-[10px] text-sky-500">切换</span>
-    </button>,
-    document.body,
-  );
-
   return (
     <div className={`flex min-h-0 flex-col gap-2 ${mode === "student" ? "h-[calc(100dvh-var(--student-chrome-offset,64px))]" : "h-[calc(100dvh-var(--admin-chrome-offset))] max-h-[calc(100dvh-var(--admin-chrome-offset))]"}`}>
-      {aupIsland}
-
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
         <div className="flex shrink-0 items-center gap-2 bg-[var(--twin-canvas)] px-3 py-2 overflow-visible">
           <BreadcrumbBar stack={breadcrumbStack} onNavigate={handleBreadcrumbNavigate} />
@@ -844,7 +916,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 <div>{timePolicy?.closedReason}</div>
                 <div className="mt-0.5 text-[11px]">
                   {timePolicy?.nextOpenAt && (
-                    <span>下次开放：{formatDateTimeAsiaShanghai(timePolicy.nextOpenAt)}</span>
+                    <span>下次开放：{formatDateTimeAsiaShanghaiMinute(timePolicy.nextOpenAt)}</span>
                   )}
                   {timePolicy?.estimatedDeliveryDate && (
                     <span className={timePolicy?.nextOpenAt ? " · " : ""}>
@@ -868,6 +940,12 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 isPi={isPi}
                 currentUserId={currentUserId}
                 onQtyChange={handleCartQtyChange}
+                /* 购物车定位 = 就地打开笼位抽屉并聚焦；跳笼架页那种是审核页面的定位 */
+                onLocateCage={(cageId) => {
+                  setFocusCageId(cageId);
+                  if (selectedAupId) setCagePickerOpen(true);
+                  else setAupPickerOpen(true);
+                }}
               />
             </div>
 
@@ -883,7 +961,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
               <div className="border-t border-[var(--twin-hairline)] px-3 py-2 space-y-2">
                 <input
                   type="text"
-                  placeholder="订单包统一备注（提交给 PI）"
+                  placeholder="订单包统一备注（提交到共享购物车）"
                   value={packageRemark}
                   onChange={(e) => setPackageRemark(e.target.value)}
                   className="w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-1 text-[11px] outline-none"
@@ -900,7 +978,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                     disabled={orderingBlocked || myDraftLines.length === 0 || markReadyMut.isPending}
                     onClick={handleMarkPackageReady}
                   >
-                    {markReadyMut.isPending ? "提交中…" : "提交给 PI"}
+                    {markReadyMut.isPending ? "提交中…" : "提交到共享购物车"}
                   </button>
                 </div>
               </div>
@@ -960,16 +1038,90 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         />
       )}
 
-      {specSelectItem && (
-        <SpecSelectPanel
-          item={specSelectItem}
-          parentLabel={drillStack.length > 0 ? drillStack[drillStack.length - 1].label : undefined}
-          onConfirm={handleSpecConfirm}
-          onClose={() => setSpecSelectItem(null)}
-          orderingBlocked={orderingBlocked}
-          groupNames={effectiveGroupNames}
-          selfUserId={currentUserId}
-          selfUserName={currentUserName}
+      {/*
+        规格弹窗 + 笼位抽屉同处一个浮层：外层 flex 并排布局，两者在同一个文档流里，
+        不再各挂各的 fixed 互相遮盖（抽屉 620px 时原来的居中弹窗右侧会被压住）。
+        弹窗关掉时抽屉留着，只是外层退掉遮罩、变成不吃点击的透明层。
+      */}
+      {(specSelectItem || (cagePickerOpen && selectedAupId)) && createPortal(
+        <div
+          /*
+            只有抽屉开着时用透明层接点击：点空白处关闭抽屉（抽屉内部自己 stopPropagation）。
+            弹窗开着时这层是遮罩，点它只关弹窗 —— 抽屉这时不许关。
+          */
+          className={`fixed inset-0 z-[900] flex items-stretch justify-center gap-[2px] p-4 ${
+            specSelectItem ? "bg-black/40" : "bg-transparent"
+          }`}
+          onClick={() => {
+            if (specSelectItem) setSpecSelectItem(null);
+            else void closeCagePicker();
+          }}
+        >
+          {/*
+            弹窗在自己这半区里的对齐：抽屉打开时贴住抽屉（justify-end），
+            否则弹窗会停在中间、和抽屉之间空出一大截；抽屉不开时居中。
+          */}
+          <div className={`flex min-w-0 flex-1 items-center ${cagePickerOpen && selectedAupId ? "justify-end" : "justify-center"}`}>
+            {specSelectItem && (
+              <SpecSelectPanel
+                embedded
+                item={specSelectItem}
+                parentLabel={drillStack.length > 0 ? drillStack[drillStack.length - 1].label : undefined}
+                onConfirm={handleSpecConfirm}
+                onClose={() => setSpecSelectItem(null)}
+                orderingBlocked={orderingBlocked}
+                groupNames={effectiveGroupNames}
+                selfUserId={currentUserId}
+                selfUserName={currentUserName}
+                aupRecordId={selectedAupId || undefined}
+                pickedCages={pickedCages}
+                allocByCageId={cageAlloc.alloc}
+                maxQuantityPerCage={maxQuantityPerCage}
+                onCageContextChange={handleCageContextChange}
+              />
+            )}
+          </div>
+
+          {/* 笼位抽屉：常驻，不随规格弹窗关闭而卸载。
+              stopPropagation 必须有，否则点笼位会冒泡到外层遮罩、把弹窗一起关掉。 */}
+          {cagePickerOpen && selectedAupId && (
+            <div
+              className="pointer-events-auto flex min-h-0 shrink-0 items-stretch"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CagePickerPanel
+                embedded
+                aupRecordId={selectedAupId}
+                specOptionLabel={cageSpecCtx.specOptionLabel}
+                quantity={cageSpecCtx.quantity}
+                reservations={pickedCages}
+                onReservationsChange={setPickedCages}
+                alloc={cageAlloc.alloc}
+                allocPinned={allocPinned}
+                onAllocPinnedChange={setAllocPinned}
+                onMaxQuantityChange={setMaxQuantityPerCage}
+                focusCageId={focusCageId}
+                /* 规格弹窗还开着时不给关闭入口：只能关弹窗，抽屉留着等这轮选完 */
+                onClose={specSelectItem ? undefined : () => void closeCagePicker()}
+              />
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+
+      {/* 抽屉关着时右边缘留一个常驻小标签，随时点开查看本课题组笼架 */}
+      {!cagePickerOpen && (
+        <CagePickerTab
+          label="选择笼位"
+          onClick={() => {
+            if (!selectedAupId) {
+              toast.error("请先选择 AUP");
+              setAupPickerOpen(true);
+              return;
+            }
+            setCagePickerOpen(true);
+          }}
         />
       )}
 
@@ -1004,6 +1156,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                         : "hover:bg-[var(--twin-canvas-soft)] text-[var(--twin-ink)]"
                     }`}
                     onClick={() => {
+                      // 换 AUP 意味着换一批笼架，旧笼位预定必须放掉
+                      if (String(selectedAupId) !== String(aup.id)) void closeCagePicker();
                       setSelectedAupId(String(aup.id));
                       setAupPickerOpen(false);
                     }}
@@ -1012,6 +1166,15 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                     <span className={`ml-2 text-xs ${String(selectedAupId) === String(aup.id) ? "text-sky-100" : "text-[var(--twin-mute)]"}`}>
                       {aup.projectGroupName}
                     </span>
+                    {aup.currentStage === "expired" && (
+                      <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${
+                        String(selectedAupId) === String(aup.id)
+                          ? "bg-white/20 text-white"
+                          : "bg-amber-100 text-amber-700"
+                      }`}>
+                        已过期
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1032,7 +1195,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
           <div className="w-full max-w-md rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-xl">
             <div className="mb-3 text-sm font-semibold text-[var(--twin-ink)]">正式提交申领单</div>
             <div className="mb-2 text-xs text-[var(--twin-mute)]">
-              将提交 {readyLines.length} 行（本人加购的行 + 实验员已提交给 PI 的订单包，可跨多个 AUP），生成一张订单进入接收人整单审批。
+              将提交 {readyLines.length} 行（本人加购的行 + 实验员已提交到共享购物车的订单包，可跨多个 AUP），生成一张订单进入接收人整单审批。
             </div>
             {timePolicy?.canOrderNow && timePolicy.estimatedDeliveryDate && (
               <div className="mb-2 text-xs text-[var(--twin-body)]">

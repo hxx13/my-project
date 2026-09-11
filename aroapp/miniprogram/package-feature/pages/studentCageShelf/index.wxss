@@ -2502,6 +2502,8 @@
   --line2: #f2f0ee;
   --brand: #ac1736;
   --soft: #f7f6f5;
+  /* 次级按钮的实底。--soft 太接近纸面（#fdfcfb），当按钮底色会被看成白的 */
+  --soft-2: #efece9;
 
   display: flex;
   flex-direction: column;
@@ -3057,10 +3059,10 @@
   color: #fff;
 }
 
-.cs-btn--ghost {
-  padding: 0 16rpx;
-  background: transparent;
-  color: var(--mute);
+/* 次级动作：实底中性灰。原来是 transparent（ghost），等于没有按钮感 */
+.cs-btn--soft {
+  background: var(--soft-2);
+  color: var(--body);
 }
 
 .cs-btn--disabled {
@@ -3076,20 +3078,28 @@
   gap: 12rpx;
 }
 
+/* 实底，不用描边。9% 的浓度在纸面上混出来接近白，提到 20% 才看得出是按钮 */
 .cs-op-btn {
-  padding: 12rpx 22rpx;
-  border: 1rpx solid var(--line);
-  border-radius: 6rpx;
-  background: var(--paper);
-  color: var(--body);
+  padding: 13rpx 24rpx;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 8rpx;
+  background: rgba(172, 23, 54, 0.2);
+  color: var(--brand);
   font-size: 22rpx;
   font-weight: 600;
 }
 
 .cs-op-btn--primary {
   background: var(--brand);
-  border-color: var(--brand);
   color: #fff;
+}
+
+/* 清空划分是破坏性动作。品牌色本身也是红，用同一浓度会跟分笼撞成一片，
+   所以压成中性灰：语义上从属，且靠上方的「已划分给：X」提示给上下文 */
+.cs-op-btn--danger {
+  background: var(--soft-2);
+  color: var(--mute);
 }
 
 .cs-op-hint {

@@ -199,7 +199,7 @@ function RoomStatusCard({ config, activeStatus, activeTab }: { config: any, acti
                 <div className="relative group/menu z-20 shrink-0">
 
                     {/* 1. 触发按钮：平时只显示一个优雅的“三点”图标 */}
-                    <button className="p-1.5 text-[var(--app-color-text-tertiary)] hover:text-indigo-500 hover:bg-indigo-50 bg-[var(--app-color-surface-container)]/50 rounded-md transition-all border border-transparent shadow-[var(--app-elevation-card)] opacity-100 md:opacity-0 md:group-hover:opacity-100">
+                    <button className="p-1.5 text-[var(--app-color-text-tertiary)] hover:text-indigo-500 hover:bg-indigo-50 bg-[color-mix(in_srgb,var(--app-color-surface-container)_50%,transparent)] rounded-md transition-all border border-transparent shadow-[var(--app-elevation-card)] opacity-100 md:opacity-0 md:group-hover:opacity-100">
                         <MoreVertical className="w-4 h-4" />
                     </button>
 

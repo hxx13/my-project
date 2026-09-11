@@ -19,13 +19,13 @@ export const bareControlErrorClass =
  * 静止/聚焦都是填充面；open 时略加深，避免 focus 只剩细线框。
  */
 export const filledTriggerClass =
-  "min-h-8 rounded-md border-0 bg-[var(--app-color-surface-hover)] px-2.5 py-1.5 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm outline-none transition-colors hover:bg-[var(--app-color-border-default)] focus-visible:bg-[var(--app-color-border-default)] focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]/35 focus-visible:ring-offset-1";
+  "min-h-8 rounded-md border-0 bg-[var(--app-color-surface-hover)] px-2.5 py-1.5 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm outline-none transition-colors hover:bg-[var(--app-color-border-default)] focus-visible:bg-[var(--app-color-border-default)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--app-color-accent)_35%,transparent)] focus-visible:ring-offset-1";
 
 export const filledTriggerOpenClass =
-  "bg-[var(--app-color-border-default)] ring-2 ring-[var(--app-color-accent)]/35 ring-offset-1";
+  "bg-[var(--app-color-border-default)] ring-2 ring-[color-mix(in_srgb,var(--app-color-accent)_35%,transparent)] ring-offset-1";
 
 export const filledTriggerErrorClass =
-  "bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)] ring-2 ring-[var(--app-color-feedback-danger)]/40 ring-offset-1";
+  "bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)] ring-2 ring-[color-mix(in_srgb,var(--app-color-feedback-danger)_40%,transparent)] ring-offset-1";
 
 export function BareInput({
   invalid,

@@ -4,6 +4,7 @@
  * 学生/教职工视角通用；isPi 决定「谁可正式提交订单」。
  */
 const springAuth = require('../../../utils/springAuth.js');
+const beijingTime = require('../../../utils/beijingTime.js');
 const api = require('../../utils/animalOrderApi.js');
 const orderExportApi = require('../../utils/orderExportApi.js');
 
@@ -93,6 +94,31 @@ function buildCartTree(lines, mode) {
   });
 }
 
+/* 卡片价格标签：镜像 frontend/src/features/reference-data/ReferenceCard.tsx 的 refCardPrice。
+ * 未开启价格返回 ''（不占位）；有规格价取区间；开启未配价返回「待定」。改那边必须同步这里。
+ */
+function cardPriceText(item) {
+  const fd = item && item.fieldData;
+  if (!fd || fd.priceEnabled !== true) return '';
+  const nums = [];
+  const sp = fd.specPrices;
+  if (sp && typeof sp === 'object' && !Array.isArray(sp)) {
+    Object.keys(sp).forEach(function (k) {
+      const n = Number(sp[k]);
+      if (isFinite(n)) nums.push(n);
+    });
+  }
+  if (nums.length === 0) {
+    const raw = fd.price;
+    const n = Number(raw);
+    if (raw !== null && raw !== undefined && raw !== '' && isFinite(n)) nums.push(n);
+  }
+  if (nums.length === 0) return '待定';
+  const min = Math.min.apply(null, nums);
+  const max = Math.max.apply(null, nums);
+  return min === max ? '¥' + min.toFixed(2) : '¥' + min.toFixed(2) + ' ~ ¥' + max.toFixed(2);
+}
+
 function fieldVal(item, key) {
   const fd = item && item.fieldData;
   const v = fd ? fd[key] : undefined;
@@ -123,6 +149,7 @@ Page({
     campusSheetOpen: false,
 
     timePolicy: null,     // {canOrderNow, closedReason, nextOpenAt, estimatedDeliveryDate}
+    nextOpenText: '',     // nextOpenAt 的展示态（yyyy-MM-dd HH:mm 北京时间）
     orderingBlocked: false,
 
     groupId: '',
@@ -143,6 +170,8 @@ Page({
     specOptionRows: [],   // [{key, templateName, label}]
     specQtys: {},         // {key: qty}
     specNoQty: 1,         // 无规格物品的数量
+    specRemarks: {},      // {key: remark} 每个规格选项各一行备注
+    specNoRemark: '',     // 无规格物品的单行备注
     cartTotalText: '',
     specPriceEnabled: false,
     specFlatPriceText: '',
@@ -150,6 +179,7 @@ Page({
 
     // 领用方式/房间（必选）+ 领用人（默认本人）
     roomTree: [],         // 房间树（已展平为可见行：{key,name,level,depth,hasChildren,expanded}）
+    roomTreeError: '',    // 拉取失败时的原因（与「暂无房间数据」区分开）
     roomExpanded: {},     // {nodeKey: true}
     roomKeyword: '',
     roomSheetOpen: false,
@@ -291,6 +321,7 @@ Page({
           title: title,
           subtitle: fieldVal(it, 'subtitle'),
           description: fieldVal(it, 'description'),
+          priceText: cardPriceText(it),
           purchasable: !!(it.fieldData && it.fieldData.purchasable),
           childCount: it.childCount || 0,
           specTemplateIds: specTemplateIds,
@@ -372,6 +403,7 @@ Page({
           aupLabel: aupLabelById[String(ci.aupRecordId)] || '未归属',
           packageStatus: ci.packageStatus || 'DRAFT',
           packageRemark: ci.packageRemark || '',
+          remark: ci.remark || '',
           addedBy: ci.addedBy,
           addedByLabel: addedByName || (ci.addedBy === currentUserId ? displayName : '') || ci.addedBy || '',
         };
@@ -424,8 +456,11 @@ Page({
     const breedSeg = stack.find(function (s) { return s.typeKey === 'ANIMAL_BREED'; });
     const categoryKey = breedSeg ? String(breedSeg.id) : undefined;
     api.fetchTimePolicy(categoryKey, this.data.campus).then(function (policy) {
+      const p = policy || {};
       self.setData({
-        timePolicy: policy,
+        timePolicy: p,
+        // 后端 nextOpenAt 是带时区的 ISO（2026-09-12T08:00:00+08:00），直接渲染太难看
+        nextOpenText: p.nextOpenAt ? beijingTime.formatBeijingDateTimeMinute(p.nextOpenAt) : '',
         orderingBlocked: !!(policy && !policy.canOrderNow),
       });
     }).catch(function () { /* 静默 */ });
@@ -464,13 +499,14 @@ Page({
     }
     const plain = this.data.plainCart[id];
     if (plain) {
+      // 已在车里：+1 复用该行已有的领用房间/领用人
       api.updateCartItem(plain.id, { quantity: plain.qty + 1 }).then(function () { self.loadCart(); }).catch(function (err) {
         wx.showToast({ title: (err && err.message) || '更新失败', icon: 'none' });
       });
     } else {
-      api.addToCart({ refDataId: id, aupRecordId: Number(this.data.selectedAupId), quantity: 1 }, this.data.groupId)
-        .then(function () { self.loadCart(); })
-        .catch(function (err) { wx.showToast({ title: (err && err.message) || '加入失败', icon: 'none' }); });
+      // 首次加购必须选领用方式/房间与领用人，走选购弹窗；直接加购会写入房间为空的购物车行
+      const item = this.data.items.find(function (x) { return x.id === id; });
+      if (item) this.openSpec(item);
     }
   },
 
@@ -561,6 +597,8 @@ Page({
       specOptionRows: rows,
       specQtys: {},
       specNoQty: 1,
+      specRemarks: {},
+      specNoRemark: '',
       specSheetOpen: true,
       specPriceEnabled: priceEnabled,
       specFlatPriceText: priceEnabled ? (flatPrice != null ? '¥' + flatPrice.toFixed(2) : '待定') : '',
@@ -609,7 +647,7 @@ Page({
   },
 
   closeSpec() {
-    this.setData({ specSheetOpen: false, specItem: null, specOptionRows: [], specQtys: {}, specNoQty: 1 });
+    this.setData({ specSheetOpen: false, specItem: null, specOptionRows: [], specQtys: {}, specNoQty: 1, specRemarks: {}, specNoRemark: '' });
   },
 
   onNoSpecDec() {
@@ -646,18 +684,85 @@ Page({
     this.setData({ specQtys: specQtys }, this._recalcSpecTotal);
   },
 
+  /** 手动输入数量：卡片无规格商品（复用物资领用的失焦提交语义 —— 空/0/非法即移除该行） */
+  onPlainQtyInput(e) {
+    const self = this;
+    const id = Number(e.currentTarget.dataset.id);
+    const plain = this.data.plainCart[id];
+    if (!plain) return;
+    const raw = String((e.detail && e.detail.value) || '').trim();
+    const num = Number(raw);
+    if (!raw || !isFinite(num) || num <= 0) {
+      api.removeCartItem(plain.id).then(function () { self.loadCart(); })
+        .catch(function () { self.loadCart(); });
+      return;
+    }
+    const next = Math.min(999, Math.floor(num));
+    if (next === plain.qty) return;
+    api.updateCartItem(plain.id, { quantity: next }).then(function () { self.loadCart(); })
+      .catch(function (err) {
+        wx.showToast({ title: (err && err.message) || '更新失败', icon: 'none' });
+        self.loadCart();
+      });
+  },
+
+  /** 手动输入数量：购物车行（沿用 canEdit 判定） */
+  onCartQtyInput(e) {
+    const self = this;
+    const id = Number(e.currentTarget.dataset.id);
+    const line = this.data.cart.find(function (l) { return l.id === id; });
+    if (!line || !this._canEditLine(line)) return;
+    const raw = String((e.detail && e.detail.value) || '').trim();
+    const num = Number(raw);
+    if (!raw || !isFinite(num) || num <= 0) {
+      api.removeCartItem(id).then(function () { self.loadCart(); }).catch(function () { self.loadCart(); });
+      return;
+    }
+    const next = Math.min(999, Math.floor(num));
+    if (next === line.qty) return;
+    api.updateCartItem(id, { quantity: next }).then(function () { self.loadCart(); })
+      .catch(function (err) {
+        wx.showToast({ title: (err && err.message) || '更新失败', icon: 'none' });
+        self.loadCart();
+      });
+  },
+
+  /** 手动输入数量：规格弹窗逐规格（本地草稿，不发请求） */
+  onSpecQtyInput(e) {
+    const key = e.currentTarget.dataset.key;
+    const raw = String((e.detail && e.detail.value) || '').trim();
+    const num = Number(raw);
+    const specQtys = Object.assign({}, this.data.specQtys);
+    if (!raw || !isFinite(num) || num <= 0) delete specQtys[key];
+    else specQtys[key] = Math.min(999, Math.floor(num));
+    this.setData({ specQtys: specQtys }, this._recalcSpecTotal);
+  },
+
+  /** 手动输入数量：规格弹窗·无规格（本地草稿，至少 1） */
+  onNoSpecQtyInput(e) {
+    const raw = String((e.detail && e.detail.value) || '').trim();
+    const num = Number(raw);
+    const q = (!raw || !isFinite(num) || num <= 0) ? 1 : Math.min(999, Math.floor(num));
+    this.setData({ specNoQty: q }, this._recalcSpecTotal);
+  },
+
   // ── 领用方式/房间 + 领用人 ──
 
   /** 把房间树按展开状态展平成可见行，便于 wxml 直接遍历 */
   flattenRoomTree(nodes, depth, expanded, keyword, prefix) {
     const out = [];
     const k = (keyword || '').trim().toLowerCase();
+    // forEach 回调里 this 不是页面实例，必须先存下来（原实现直接在回调里用 this → TypeError，被静默 catch 吞成「暂无房间数据」）
+    const self = this;
     (nodes || []).forEach(function (n) {
       const children = n.children || [];
       const label = prefix ? (prefix + ' / ' + n.name) : n.name;
       const selfHit = !k || (n.name || '').toLowerCase().indexOf(k) >= 0;
-      const childRows = children.length
-        ? this.flattenRoomTree(children, depth + 1, expanded, keyword, label)
+      // 收起态不进子节点——原来无条件递归，导致树永远全展开、点箭头没有任何效果
+      const isOpen = !k && !!expanded[n.id];
+      // 搜索态：命中项连同祖先链一起显示，故命中时强制往下找
+      const childRows = (isOpen || !!k)
+        ? self.flattenRoomTree(children, depth + 1, expanded, keyword, label)
         : [];
       // 搜索态：只保留命中项及其祖先链
       if (k && !selfHit && !childRows.length) return;
@@ -669,8 +774,8 @@ Page({
         depth: depth,
         isRoom: n.level === 'ROOM',
         hasChildren: children.length > 0,
-        expanded: !!expanded[n.id] || (!!k && childRows.length > 0),
-        selected: n.level === 'ROOM' && label === this.data.pickupRoomName,
+        expanded: isOpen || (!!k && childRows.length > 0),
+        selected: n.level === 'ROOM' && label === self.data.pickupRoomName,
       });
       for (let i = 0; i < childRows.length; i++) out.push(childRows[i]);
     });
@@ -681,8 +786,21 @@ Page({
     const self = this;
     api.fetchRoomTree().then(function (tree) {
       self.roomTreeRaw = tree;
-      self.setData({ roomTree: self.flattenRoomTree(tree, 0, self.data.roomExpanded, self.data.roomKeyword, '') });
-    }).catch(function () { /* 房间树拉取失败不阻塞下单，弹窗内会提示 */ });
+      // 首层默认展开，否则从校区点到房间要四级
+      let expanded = self.data.roomExpanded;
+      if (!expanded || !Object.keys(expanded).length) {
+        expanded = {};
+        (tree || []).forEach(function (n) { expanded[n.id] = true; });
+      }
+      self.setData({
+        roomTreeError: '',
+        roomExpanded: expanded,
+        roomTree: self.flattenRoomTree(tree, 0, expanded, self.data.roomKeyword, ''),
+      });
+    }).catch(function (e) {
+      // 不静默：拉取失败与「确实没有房间」必须在界面上能区分，否则无从排查
+      self.setData({ roomTreeError: (e && e.message) || '房间树加载失败', roomTree: [] });
+    });
   },
 
   loadGroupMembers() {
@@ -731,6 +849,15 @@ Page({
     this.setData({ collectorId: d.id, collectorName: d.name, collectorSheetOpen: false });
   },
 
+  onSpecRemarkInput(e) {
+    const key = e.currentTarget.dataset.key;
+    const specRemarks = Object.assign({}, this.data.specRemarks);
+    specRemarks[key] = e.detail.value;
+    this.setData({ specRemarks: specRemarks });
+  },
+
+  onNoSpecRemarkInput(e) { this.setData({ specNoRemark: e.detail.value }); },
+
   onSpecConfirm() {
     const self = this;
     const item = this.data.specItem;
@@ -742,11 +869,17 @@ Page({
     // 有规格按规格数量，无规格走单品数量
     let entries = this.data.specOptionRows
       .filter(function (r) { return (self.data.specQtys[r.key] || 0) > 0; })
-      .map(function (r) { return { optionLabel: r.templateName + ': ' + r.label, qty: self.data.specQtys[r.key] }; });
+      .map(function (r) {
+        return {
+          optionLabel: r.templateName + ': ' + r.label,
+          qty: self.data.specQtys[r.key],
+          remark: (self.data.specRemarks[r.key] || '').trim(),
+        };
+      });
     if (!entries.length && !this.data.specOptionRows.length) {
       const q = Number(this.data.specNoQty) || 0;
       if (q <= 0) return;
-      entries = [{ optionLabel: '', qty: q }];
+      entries = [{ optionLabel: '', qty: q, remark: (this.data.specNoRemark || '').trim() }];
     }
     if (!entries.length) return;
 
@@ -773,12 +906,14 @@ Page({
         if (entry.optionLabel) body.specSelections = { option: entry.optionLabel };
         if (pickup.collectorId) body.collectorId = pickup.collectorId;
         if (pickup.collectorName) body.collectorName = pickup.collectorName;
+        if (entry.remark) body.remark = entry.remark;
         return api.addToCart(body, self.data.groupId).then(function () { ok += 1; });
       });
     });
     chain.then(function () {
       self.setData({
         submitting: false, specSheetOpen: false, specItem: null, specOptionRows: [], specQtys: {}, specNoQty: 1,
+        specRemarks: {}, specNoRemark: '',
         pickupRoomId: '', pickupRoomName: '',
       });
       wx.showToast({ title: '已加入购物车 (' + ok + ' 项)', icon: 'success' });

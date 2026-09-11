@@ -60,7 +60,14 @@ public class CardRenderEngine {
 
         try (PDDocument doc = new PDDocument();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            PDFont font = loadCjkFont(doc, false);
+            PDFont regularFont = loadCjkFont(doc, false);
+            PDFont boldFont;
+            try {
+                boldFont = loadCjkFont(doc, true);
+            } catch (IOException e) {
+                log.warn("[card-print] 加粗字体加载失败，回退常规字体: {}", e.getMessage());
+                boldFont = regularFont;
+            }
             Map<String, PDImageXObject> qrCache = new java.util.HashMap<>();
 
             for (Map<String, Object> row : rows) {
@@ -79,7 +86,7 @@ public class CardRenderEngine {
                             // 空格子不产矩形，矩形下标与 cells 下标会错位——按 r.index() 取对应单元格
                             if (r.index() < 0 || r.index() >= cells.size()) continue;
                             drawBorder(cs, spec, r, layoutH);
-                            drawCell(cs, font, spec, slots.get(j), cells.get(r.index()), r, layoutH, row);
+                            drawCell(cs, regularFont, boldFont, spec, slots.get(j), cells.get(r.index()), r, layoutH, row);
                         }
                     }
                     if (layout.qrRect() != null) {
@@ -117,19 +124,40 @@ public class CardRenderEngine {
         cs.stroke();
     }
 
-    private void drawCell(PDPageContentStream cs, PDFont font, CardLayoutEngine.Spec spec,
+    private void drawCell(PDPageContentStream cs, PDFont regularFont, PDFont boldFont, CardLayoutEngine.Spec spec,
                           CardLayoutEngine.Slot slot, CardLayoutEngine.Cell cell,
                           CardLayoutEngine.Rect r, float layoutH, Map<String, Object> row) throws IOException {
+        int weight = slot.fontWeight() != null ? slot.fontWeight()
+                : (spec.defaultFontWeight() != null ? spec.defaultFontWeight() : 700);
+        PDFont font = weight >= 600 ? boldFont : regularFont;
         float fontSize = slot.fontSizePt() != null ? slot.fontSizePt() : spec.defaultFontSizePt();
         float pad = 1f * MM;
-        float baselineY = layoutH - r.y() - r.h() + (r.h() - fontSize) / 2f + 1f;
 
         String fieldValue = cell.fieldKey() == null ? "" : value(row.get(cell.fieldKey()));
         String content = encodable(text(cell.label()) + fieldValue, font);
         if (!content.isEmpty()) {
+            String hAlign = slot.align() == null ? "left" : slot.align();
+            String vAlign = slot.vAlign() == null ? "middle" : slot.vAlign();
+
+            // 水平：先量文本宽度（content 是 encodable 之后的串）
+            float textW = font.getStringWidth(content) / 1000f * fontSize;
+            float x = switch (hAlign) {
+                case "center" -> r.x() + (r.w() - textW) / 2f;
+                case "right"  -> r.x() + r.w() - pad - textW;
+                default       -> r.x() + pad;                                 // left
+            };
+
+            // 垂直：以「现状的居中基线」为基准上下平移，保证 middle 与现在完全一致
+            float baseY = layoutH - r.y() - r.h() + (r.h() - fontSize) / 2f + 1f;
+            float baselineY = switch (vAlign) {
+                case "top"    -> baseY + (r.h() - fontSize) / 2f - pad;
+                case "bottom" -> baseY - ((r.h() - fontSize) / 2f) + pad;
+                default       -> baseY;
+            };
+
             cs.beginText();
             cs.setFont(font, fontSize);
-            cs.newLineAtOffset(r.x() + pad, baselineY);
+            cs.newLineAtOffset(x, baselineY);
             cs.showText(content);
             cs.endText();
         }

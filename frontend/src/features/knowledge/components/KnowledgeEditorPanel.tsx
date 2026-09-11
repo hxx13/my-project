@@ -50,7 +50,7 @@ export function KnowledgeEditorPanel({ page, categoryId, onSaved, onCancel }: Pr
         </button>
       </div>
       <div className="space-y-2 border-b border-[var(--app-color-border-default)] px-4 py-3 shrink-0">
-        <input value={title} onChange={e => { setTitle(e.target.value); if (!slug || slug === generateSlug(title)) setSlug(generateSlug(e.target.value)); }} placeholder="文档标题" className="w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-lg font-semibold outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/25" />
+        <input value={title} onChange={e => { setTitle(e.target.value); if (!slug || slug === generateSlug(title)) setSlug(generateSlug(e.target.value)); }} placeholder="文档标题" className="w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-lg font-semibold outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_25%,transparent)]" />
         <input value={slug} onChange={e => setSlug(e.target.value)} placeholder="URL 标识" className="w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm font-mono outline-none" />
       </div>
       <textarea value={contentMd} onChange={e => setContentMd(e.target.value)} placeholder="# Markdown 内容…" className="flex-1 resize-none bg-[var(--app-color-surface-page)] p-4 font-mono text-sm outline-none min-h-0" />

@@ -260,7 +260,7 @@ export function InspectionRecordsPanel({ sites, templates, selectedSiteId }: Ins
         </AdminSelect>
         <button
           type="button"
-          className="shrink-0 rounded-lg bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--app-color-accent)]/90"
+          className="shrink-0 rounded-lg bg-[var(--app-color-accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[color-mix(in_srgb,var(--app-color-accent)_90%,transparent)]"
           onClick={openNew}
         >
           新增单笔记录
@@ -414,7 +414,7 @@ export function InspectionRecordsPanel({ sites, templates, selectedSiteId }: Ins
           </button>
           <button
             type="button"
-            className="rounded-lg bg-[var(--app-color-accent)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--app-color-accent)]/90 disabled:opacity-50"
+            className="rounded-lg bg-[var(--app-color-accent)] px-3 py-2 text-sm font-medium text-white hover:bg-[color-mix(in_srgb,var(--app-color-accent)_90%,transparent)] disabled:opacity-50"
             disabled={saving}
             onClick={() => void save()}
           >

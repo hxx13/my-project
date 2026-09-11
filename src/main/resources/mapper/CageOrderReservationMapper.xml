@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.referencedata.mapper.CageOrderReservationMapper">
+
+    <resultMap id="base" type="com.example.demo.modules.referencedata.entity.CageOrderReservation">
+        <id property="id" column="id"/>
+        <result property="animalCageId" column="animal_cage_id"/>
+        <result property="activeCageId" column="active_cage_id"/>
+        <result property="aupRecordId" column="aup_record_id"/>
+        <result property="cartId" column="cart_id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="specKey" column="spec_key"/>
+        <result property="strainName" column="strain_name"/>
+        <result property="sex" column="sex"/>
+        <result property="quantity" column="quantity"/>
+        <result property="reserverId" column="reserver_id"/>
+        <result property="reserverName" column="reserver_name"/>
+        <result property="groupName" column="group_name"/>
+        <result property="status" column="status"/>
+        <result property="releaseReason" column="release_reason"/>
+        <result property="writtenJson" column="written_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, animal_cage_id, active_cage_id, aup_record_id, cart_id, order_id,
+        spec_key, strain_name, sex, quantity, reserver_id, reserver_name, group_name,
+        status, release_reason, written_json, created_at, updated_at
+    </sql>
+
+    <!-- 插入即抢占。撞 uk_reservation_active 时抛 DuplicateKeyException，调用方翻译成 409。 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_order_reservation
+            (animal_cage_id, active_cage_id, aup_record_id, cart_id, order_id,
+             spec_key, strain_name, sex, quantity, reserver_id, reserver_name, group_name,
+             status, written_json)
+        VALUES
+            (#{animalCageId}, #{activeCageId}, #{aupRecordId}, #{cartId}, #{orderId},
+             #{specKey}, #{strainName}, #{sex}, #{quantity}, #{reserverId}, #{reserverName}, #{groupName},
+             #{status}, #{writtenJson})
+    </insert>
+
+    <select id="findById" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation WHERE id = #{id}
+    </select>
+
+    <select id="listActiveByCageIds" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE status = 'LOCKED' AND animal_cage_id IN
+        <foreach collection="cageIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+    </select>
+
+    <select id="listActiveByReserver" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE status = 'LOCKED' AND reserver_id = #{reserverId}
+        ORDER BY id DESC
+    </select>
+
+    <select id="listAllActive" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE status = 'LOCKED'
+        ORDER BY id DESC
+    </select>
+
+    <select id="listActiveByOrderId" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE status = 'LOCKED' AND order_id = #{orderId}
+    </select>
+
+    <update id="markConsumed">
+        UPDATE cage_order_reservation
+        SET status = 'CONSUMED', active_cage_id = NULL
+        WHERE id = #{id} AND status = 'LOCKED'
+    </update>
+
+    <update id="releaseByOrderId">
+        UPDATE cage_order_reservation
+        SET status = 'RELEASED', active_cage_id = NULL, release_reason = #{reason}
+        WHERE status = 'LOCKED' AND order_id = #{orderId}
+    </update>
+
+    <select id="listActiveByCartIds" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE status = 'LOCKED' AND cart_id IN
+        <foreach collection="cartIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+    </select>
+
+    <update id="bindCart">
+        UPDATE cage_order_reservation SET cart_id = #{cartId} WHERE id = #{id}
+    </update>
+
+    <update id="updateQuantityAndWritten">
+        UPDATE cage_order_reservation
+        SET quantity = #{quantity}, written_json = #{writtenJson}
+        WHERE id = #{id} AND status = 'LOCKED'
+    </update>
+
+    <update id="releaseById">
+        UPDATE cage_order_reservation
+        SET status = 'RELEASED', active_cage_id = NULL, release_reason = #{reason}
+        WHERE id = #{id} AND status = 'LOCKED'
+    </update>
+
+    <update id="releaseByCartIds">
+        UPDATE cage_order_reservation
+        SET status = 'RELEASED', active_cage_id = NULL, release_reason = #{reason}
+        WHERE status = 'LOCKED' AND cart_id IN
+        <foreach collection="cartIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+    </update>
+
+    <update id="bindOrderByCartIds">
+        UPDATE cage_order_reservation SET order_id = #{orderId}
+        WHERE status = 'LOCKED' AND cart_id IN
+        <foreach collection="cartIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+    </update>
+
+    <!-- 孤儿预定：购物车行已被删（或从未挂上）且没进订单的 LOCKED 行。启动时清一次。 -->
+    <update id="releaseOrphans">
+        UPDATE cage_order_reservation r
+        LEFT JOIN ref_cart c ON c.id = r.cart_id
+        SET r.status = 'RELEASED', r.active_cage_id = NULL, r.release_reason = #{reason}
+        WHERE r.status = 'LOCKED'
+          AND r.order_id IS NULL
+          AND (r.cart_id IS NULL OR c.id IS NULL)
+    </update>
+
+</mapper>

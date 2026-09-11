@@ -58,7 +58,7 @@ export function MaterialSpecPickControl({
             "relative shrink-0 px-3 h-7 rounded-full text-[12px] font-semibold border transition-colors",
             open
               ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)]"
-              : "border-[var(--student-primary)]/25 bg-[var(--student-primary-soft)] text-[var(--student-primary)]",
+              : "border-[color-mix(in_srgb,var(--student-primary)_25%,transparent)] bg-[var(--student-primary-soft)] text-[var(--student-primary)]",
             soldOut && "opacity-40 cursor-not-allowed",
           );
 

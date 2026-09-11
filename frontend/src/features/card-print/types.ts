@@ -8,6 +8,7 @@ export interface CardSpec {
   pageHeightMm: number;
   marginMm: number;
   defaultFontSizePt: number;
+  defaultFontWeight: number | null;
   lineHeightMm: number | null;
   offsetXMm: number;
   offsetYMm: number;
@@ -48,6 +49,9 @@ export interface CardSlot {
   align: "left" | "center" | "right";
   bold: boolean | null;
   fontSizePt: number | null;
+  fontWeight: number | null;
+  heightMm: number | null;
+  vAlign: string | null;
 }
 
 /** 有效列：优先 cells；为空则由旧字段合成（left、right 两列）。复刻后端 effectiveCells。 */
@@ -104,6 +108,7 @@ export const DEFAULT_SPEC: CardSpec = {
   pageHeightMm: 105,
   marginMm: 2,
   defaultFontSizePt: 9,
+  defaultFontWeight: null,
   lineHeightMm: null,
   offsetXMm: 0,
   offsetYMm: 0,

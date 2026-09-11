@@ -70,7 +70,7 @@ export function AdminNavManagerRightPanel({
       </section>
 
       {/* 已隐藏条目 */}
-      <section className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]/50">
+      <section className="rounded-lg border border-[var(--twin-hairline)] bg-[color-mix(in_srgb,var(--twin-canvas-soft)_50%,transparent)]">
         <header className="flex items-center justify-between px-3 py-2 border-b border-[var(--twin-hairline)]">
           <span className="text-xs font-semibold text-[var(--twin-body)]">已隐藏条目 ({hiddenItems.length})</span>
         </header>

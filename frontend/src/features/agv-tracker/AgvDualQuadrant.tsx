@@ -201,7 +201,7 @@ export default function AgvDualQuadrant(props: Props) {
           {agvs.map(agv => {
             const fPct = agv.forkHeight != null ? Math.min(1, Math.max(0, agv.forkHeight / FORK_MAX_M)) * 100 : 0;
             return (
-              <div key={agv.ip} className="flex items-center gap-1.5 bg-[var(--app-color-surface-container)]/80 rounded px-1.5 py-1">
+              <div key={agv.ip} className="flex items-center gap-1.5 bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] rounded px-1.5 py-1">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agv.color }} />
                 <div className="relative w-2.5 h-24 rounded-full bg-[var(--app-color-border-default)]">
                   <div className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full border-2 border-white shadow-md"

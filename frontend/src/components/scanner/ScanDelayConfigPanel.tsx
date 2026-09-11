@@ -860,7 +860,7 @@ export function ScanDelayConfigPanel() {
             {masterSaving ? "保存中…" : masterEnabled ? "已开启" : "已关闭"}
           </label>
         </div>
-        <div className="flex flex-wrap items-end gap-2 border-t border-[var(--app-color-border-default)]/60 pt-3">
+        <div className="flex flex-wrap items-end gap-2 border-t border-[color-mix(in_srgb,var(--app-color-border-default)_60%,transparent)] pt-3">
           <label className="flex flex-col gap-1 text-sm min-w-[160px] flex-1">
             <span className="font-medium text-[var(--app-color-text-secondary)]">全局兜底按钮文案</span>
             <span className="text-[11px] text-[var(--app-color-text-tertiary)]">仅当载体按钮未配置文案时使用。</span>
@@ -937,8 +937,8 @@ export function ScanDelayConfigPanel() {
                     {options.map((r) => (
                       <tr
                         key={r.id}
-                        className={`border-b border-[var(--app-color-border-default)]/60 ${
-                          form.id === r.id && optionFormOpen ? "bg-[var(--app-color-accent-soft)]/40" : ""
+                        className={`border-b border-[color-mix(in_srgb,var(--app-color-border-default)_60%,transparent)] ${
+                          form.id === r.id && optionFormOpen ? "bg-[color-mix(in_srgb,var(--app-color-accent-soft)_40%,transparent)]" : ""
                         }`}
                       >
                         <td className="py-2 pr-3 font-medium">{r.optionLabel}</td>
@@ -1206,7 +1206,7 @@ export function ScanDelayConfigPanel() {
           <AdminFormCard title={bindingEditOriginalRoomIds ? "编辑房间搭配" : "新增房间搭配"}>
             <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
               {bindingEditOriginalRoomIds ? (
-                <p className="rounded-[var(--app-radius-element)] border border-[var(--app-color-accent-soft)] bg-[var(--app-color-accent-soft)]/40 px-3 py-2 text-xs text-[var(--app-color-text-secondary)]">
+                <p className="rounded-[var(--app-radius-element)] border border-[var(--app-color-accent-soft)] bg-[color-mix(in_srgb,var(--app-color-accent-soft)_40%,transparent)] px-3 py-2 text-xs text-[var(--app-color-text-secondary)]">
                   正在编辑历史搭配：保留勾选的房间并应用下方载体；<strong className="text-[var(--app-color-text-primary)]">取消勾选的房间将解除绑定</strong>。
                 </p>
               ) : (

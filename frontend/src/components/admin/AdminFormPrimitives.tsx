@@ -57,7 +57,7 @@ export function AdminFormInput({ className, type, ...props }: AdminFormInputProp
     <input
       type={type}
       className={cn(
-        "w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:ring-2 focus:ring-[color:var(--admin-focus-ring)]/40",
+        "w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--admin-focus-ring)_40%,transparent)]",
         className
       )}
       {...props}
@@ -77,7 +77,7 @@ export function AdminFormSelect({ className, children, ...props }: AdminFormSele
   return (
     <select
       className={cn(
-        "w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] focus:ring-2 focus:ring-[color:var(--admin-focus-ring)]/40",
+        "w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--admin-focus-ring)_40%,transparent)]",
         className
       )}
       {...props}

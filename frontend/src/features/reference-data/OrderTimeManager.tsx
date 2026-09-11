@@ -36,6 +36,7 @@ export default function OrderTimeManager({ campus: initialCampus, onClose }: Ord
         etaWorkdayOffset: admin.etaWorkdayOffset,
         etaWeekday: admin.etaWeekday,
         rules: admin.rules ?? [],
+        deletedRuleIds: [],
       });
     }
   }, [admin]);

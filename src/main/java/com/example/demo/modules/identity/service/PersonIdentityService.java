@@ -169,6 +169,28 @@ public class PersonIdentityService {
         return personnelService.resolveIdByAccount(accountId);
     }
 
+    /**
+     * 两个账号 id 是不是同一个人 —— 人级判定一律走这里，不要用裸账号 id 直接 equals。
+     *
+     * <p>同一个人可能同时持有两个 sys_user 账号（`STAFF_xxx` 与它的 `aro_user_id`，
+     * 例如教职工账号和他自己的学生账号），两个 id 指向同一个 `personnel.id`。
+     * 「这行是不是本人加购的」「这个笼位是不是本人预定的」这类判断若直接比账号 id，
+     * 换个视角看自己的数据就会变成「别人的」——用户报的「双视角被当成两个人」就是这个。
+     */
+    public boolean samePerson(String accountIdA, String accountIdB) {
+        if (!StringUtils.hasText(accountIdA) || !StringUtils.hasText(accountIdB)) {
+            return false;
+        }
+        String a = accountIdA.trim();
+        String b = accountIdB.trim();
+        if (a.equals(b)) {
+            return true;
+        }
+        String pa = resolveIdByAccount(a);
+        String pb = resolveIdByAccount(b);
+        return pa != null && pa.equals(pb);
+    }
+
     /** 通知/指派侧：personnel.id 集合 → staff_id 列表（过滤 staff_id 空者，无账号人员不参与账号通知）。 */
     public List<String> resolveStaffIds(Collection<String> personnelIds) {
         return personnelService.resolveStaffIds(personnelIds);

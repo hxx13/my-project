@@ -55,8 +55,8 @@ export const ProfileHeader = ({
                         title="查看风控档案"
                         className={`p-1 rounded-full border ${
                             globalUserState === 3
-                                ? "bg-[var(--app-color-feedback-danger)]/10 border-[var(--app-color-feedback-danger)]/30 text-[var(--app-color-feedback-danger)]"
-                                : "bg-[var(--app-color-feedback-success)]/10 border-[var(--app-color-feedback-success)]/20 text-[var(--app-color-feedback-success)]"
+                                ? "bg-[color-mix(in_srgb,var(--app-color-feedback-danger)_10%,transparent)] border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] text-[var(--app-color-feedback-danger)]"
+                                : "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_10%,transparent)] border-[color-mix(in_srgb,var(--app-color-feedback-success)_20%,transparent)] text-[var(--app-color-feedback-success)]"
                         }`}
                     >
                         {globalUserState === 3 ? <AlertOctagon className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}

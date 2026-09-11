@@ -12,6 +12,7 @@ import { ANIMAL_ORDER_CAMPUSES } from "@/features/reference-data/campus";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { adminInputClass } from "@/features/admin/adminFormUi";
+import CageLocationCell from "@/features/reference-data/CageLocationCell";
 import { cn } from "@/lib/utils";
 
 import { useNavigate } from "react-router-dom";
@@ -190,7 +191,7 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
             className={cn(
               "relative shrink-0 rounded-lg border px-3 py-1.5 text-xs transition-colors",
               filtersOpen
-                ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)]/10 text-[var(--app-color-accent)]"
+                ? "border-[var(--app-color-accent)] bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] text-[var(--app-color-accent)]"
                 : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]",
             )}
           >
@@ -402,7 +403,7 @@ function OrderTable({
             <tr key={d.key} className="border-b">
               <td className={cn(td, "font-mono text-xs text-[var(--app-color-text-tertiary)]")}>{d.no}</td>
               <td className={td}>
-                <span className={cn("rounded-md px-1.5 py-0.5 text-[10px]", d.source === "ARO" ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]" : "bg-[var(--app-color-accent)]/10 text-[var(--app-color-accent)]")}>
+                <span className={cn("rounded-md px-1.5 py-0.5 text-[10px]", d.source === "ARO" ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]" : "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] text-[var(--app-color-accent)]")}>
                   {d.source === "ARO" ? "ARO" : "本地"}
                 </span>
               </td>
@@ -499,7 +500,7 @@ function OrderCard({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
           <span className="text-[11px] font-mono tabular-nums text-[var(--app-color-text-tertiary)] shrink-0">{d.no}</span>
-          <span className={cn("rounded-md px-1.5 py-0.5 text-[10px]", d.source === "ARO" ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]" : "bg-[var(--app-color-accent)]/10 text-[var(--app-color-accent)]")}>
+          <span className={cn("rounded-md px-1.5 py-0.5 text-[10px]", d.source === "ARO" ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]" : "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] text-[var(--app-color-accent)]")}>
             {d.source === "ARO" ? "ARO" : "本地"}
           </span>
           <span className="review-status">{d.statusLabel}</span>
@@ -562,7 +563,7 @@ function OrderCard({
           </div>
 
           {lines.length > 0 && (
-            <div className="mt-1 space-y-3 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)]/40 px-3 py-2">
+            <div className="mt-1 space-y-3 rounded-lg border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-surface-hover)_40%,transparent)] px-3 py-2">
           <div className="text-[11px] font-semibold text-[var(--app-color-text-secondary)]">订单明细（按 AUP）</div>
           {aupGroups.map((group) => (
             <div key={group.key} className="space-y-1.5">
@@ -586,6 +587,9 @@ function OrderCard({
                             {specOptionText(line) && <span>{specOptionText(line)}</span>}
                             {line.collectorName && <span>领用人 {line.collectorName}</span>}
                             {line.pickupRoomName && <span>房间 {line.pickupRoomName}</span>}
+                            {(line.targetCageLabel || line.targetCageLocation?.shelveId) && (
+                              <CageLocationCell label={line.targetCageLabel} location={line.targetCageLocation} />
+                            )}
                             {line.arrivalDate && <span>到货 {line.arrivalDate}</span>}
                           </div>
                           {line.lineRemark && (

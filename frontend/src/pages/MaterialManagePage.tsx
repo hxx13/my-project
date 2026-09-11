@@ -192,7 +192,7 @@ export default function MaterialManagePage() {
             </div>
             <div className="space-y-1 max-h-[360px] overflow-y-auto">
               {categories.map(c => (
-                <div key={c.id} className={`flex items-center justify-between rounded-twin-sm border px-2 py-1.5 text-sm cursor-pointer transition-colors ${createCatId === c.id ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/5" : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"}`}
+                <div key={c.id} className={`flex items-center justify-between rounded-twin-sm border px-2 py-1.5 text-sm cursor-pointer transition-colors ${createCatId === c.id ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_5%,transparent)]" : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"}`}
                   onClick={() => setCreateCatId(c.id)}>
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[var(--twin-ink)] font-medium truncate">{c.name}</span>
@@ -294,7 +294,7 @@ export default function MaterialManagePage() {
             </div>
             {/* 封面图拖拽区 */}
             <div
-              className={`relative rounded-twin-md border-2 border-dashed p-3 text-center cursor-pointer transition-colors ${dragOverCreate ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/5" : "border-[var(--twin-hairline)] hover:border-gray-300"}`}
+              className={`relative rounded-twin-md border-2 border-dashed p-3 text-center cursor-pointer transition-colors ${dragOverCreate ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_5%,transparent)]" : "border-[var(--twin-hairline)] hover:border-gray-300"}`}
               onDragOver={e => { e.preventDefault(); setDragOverCreate(true); }}
               onDragLeave={() => setDragOverCreate(false)}
               onDrop={handleDropCreate}
@@ -471,7 +471,7 @@ export default function MaterialManagePage() {
           <div className="bg-[var(--twin-canvas)] rounded-twin-xl border border-[var(--twin-hairline)] shadow-twin-level-4 w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between"><h3 className="font-medium text-[var(--twin-ink)]">编辑 {editingItem.name}</h3><button type="button" onClick={() => setEditingItem(null)} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)] text-lg">&times;</button></div>
             <div
-              className={`rounded-twin-md border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${dragOverEdit ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/5" : "border-[var(--twin-hairline)]"}`}
+              className={`rounded-twin-md border-2 border-dashed p-4 text-center cursor-pointer transition-colors ${dragOverEdit ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_5%,transparent)]" : "border-[var(--twin-hairline)]"}`}
               onDragOver={e => { e.preventDefault(); setDragOverEdit(true); }}
               onDragLeave={() => setDragOverEdit(false)}
               onDrop={handleDropEdit}

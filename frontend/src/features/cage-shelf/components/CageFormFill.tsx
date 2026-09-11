@@ -12,6 +12,7 @@ import {
 } from "../api/cageForm.api";
 import { fetchCageOpEditable, fetchCageOpFieldOptions, addCageOpFieldOption } from "@/api/domains/cageShelf.api";
 import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
+import { AdminButton } from "@/components/admin/AdminButton";
 import { CAGE_FORM_KEY } from "../cageFormConstants";
 
 type CodelistOptions = Record<string, { value: string; label: string }[]>;
@@ -375,7 +376,7 @@ export default function CageFormFill({
                       {roleTagLabel(field)}
                     </span>
                   )}
-                  {subsection ? <span className="ml-1 text-[9px] text-[var(--twin-mute)]/60">{subsection}</span> : null}
+                  {subsection ? <span className="ml-1 text-[9px] text-[color-mix(in_srgb,var(--twin-mute)_60%,transparent)]">{subsection}</span> : null}
                 </span>
                 {!editing || !canEditField(field) ? (
                   <span className="text-[12px] font-semibold text-[var(--twin-ink)] font-variant-numeric tabular-nums">{readOnlyValue(field)}</span>
@@ -471,31 +472,33 @@ export default function CageFormFill({
         <div className="flex items-center gap-2">
           {editing ? (
             <>
-              <button
+              <AdminButton
                 type="button"
-                onClick={handleSave}
+                size="xs"
                 disabled={saving}
-                className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-[var(--twin-on-primary)] hover:brightness-95 disabled:opacity-50 transition"
+                onClick={handleSave}
               >
                 {saving ? "保存中..." : "保存"}
-              </button>
-              <button
+              </AdminButton>
+              <AdminButton
                 type="button"
-                onClick={cancelEdit}
+                tone="secondary"
+                size="xs"
                 disabled={saving}
-                className="rounded-twin-md px-3 py-1 text-[11px] font-semibold border border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft-2)] disabled:opacity-50 transition"
+                onClick={cancelEdit}
               >
                 取消
-              </button>
+              </AdminButton>
             </>
           ) : (
-            <button
+            <AdminButton
               type="button"
+              tone="secondary"
+              size="xs"
               onClick={() => setEditing(true)}
-              className="rounded-twin-md px-3 py-1 text-[11px] font-semibold border border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft-2)] transition"
             >
               编辑
-            </button>
+            </AdminButton>
           )}
         </div>
       )}

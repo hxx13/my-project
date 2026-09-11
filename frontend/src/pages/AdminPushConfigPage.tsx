@@ -516,12 +516,12 @@ export default function AdminPushConfigPage() {
                 加载中…
               </div>
             ) : sourcesError ? (
-              <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[var(--app-color-feedback-error)]/30 bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]">
+              <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-error)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]">
                 <p>{(sourcesError as Error)?.message ?? "加载失败"}</p>
                 <button
                   type="button"
                   onClick={() => refetchSources()}
-                  className="rounded-lg border border-[var(--app-color-feedback-error)]/40 bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]"
+                  className="rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-error)_40%,transparent)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]"
                 >
                   重试
                 </button>
@@ -540,7 +540,7 @@ export default function AdminPushConfigPage() {
                 return (
                   <AdminFormCard
                     key={source.sourceId}
-                    className={cn("transition-all", expanded && "ring-1 ring-[var(--app-color-accent)]/30")}
+                    className={cn("transition-all", expanded && "ring-1 ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]")}
                   >
                     {/* Header: name + toggle + expand */}
                     <div className="flex items-center justify-between gap-3">
@@ -571,7 +571,7 @@ export default function AdminPushConfigPage() {
                                 className={cn(
                                   "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium",
                                   enabled
-                                    ? "border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success)]/10 text-[var(--app-color-feedback-success)]"
+                                    ? "border-[color-mix(in_srgb,var(--app-color-feedback-success)_30%,transparent)] bg-[color-mix(in_srgb,var(--app-color-feedback-success)_10%,transparent)] text-[var(--app-color-feedback-success)]"
                                     : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]",
                                 )}
                               >
@@ -768,12 +768,12 @@ function TestSendModal({ sourceCode, onClose }: { sourceCode: string; onClose: (
         {testNames.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 mb-3">
             {testNames.map((name, i) => (
-              <span key={testIds[i]} className="inline-flex items-center gap-1 rounded-md bg-[var(--app-color-accent)]/15 border border-[var(--app-color-accent)]/25 px-2 py-1 text-xs font-medium text-[var(--app-color-accent)] max-w-[180px]">
+              <span key={testIds[i]} className="inline-flex items-center gap-1 rounded-md bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] border border-[color-mix(in_srgb,var(--app-color-accent)_25%,transparent)] px-2 py-1 text-xs font-medium text-[var(--app-color-accent)] max-w-[180px]">
                 <span className="truncate">{name}</span>
                 <button type="button" onClick={() => {
                   setTestIds(prev => prev.filter((_, j) => j !== i));
                   setTestNames(prev => prev.filter((_, j) => j !== i));
-                }} className="rounded-sm p-0.5 hover:bg-[var(--app-color-accent)]/20 transition-colors shrink-0">
+                }} className="rounded-sm p-0.5 hover:bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] transition-colors shrink-0">
                   <X className="h-3 w-3" />
                 </button>
               </span>
@@ -894,13 +894,13 @@ function ChannelConfigSection({
 
               {/* Variables */}
               {Object.keys(source.variables ?? {}).length > 0 && (
-                <div className="rounded-lg border border-dashed border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] p-2 mb-3">
+                <div className="rounded-lg border border-dashed border-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] bg-[var(--app-color-accent-soft)] p-2 mb-3">
                   <p className="text-[11px] font-medium text-[var(--app-color-text-primary)] mb-1 flex items-center gap-1">
                     <Variable className="h-3 w-3 text-[var(--app-color-accent)]" /> 可用变量
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {Object.entries(source.variables ?? {}).map(([k, v]) => (
-                      <code key={k} className="inline-block rounded bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)] cursor-pointer hover:bg-[var(--app-color-accent)]/10"
+                      <code key={k} className="inline-block rounded bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)] cursor-pointer hover:bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]"
                         onClick={() => onUpdate(source.sourceId, ch.id, { titleTpl: draft.titleTpl + `{${k}}` })} title={`${k}: ${v}`}>
                         {`{${k}}`}
                       </code>
@@ -1011,7 +1011,7 @@ function RecipientSection({
         <Users className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
         接收人
         {hasAutoResolve && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--app-color-accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] px-2 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]">
             <UserPlus className="h-3 w-3" />
             自动索引
           </span>
@@ -1030,14 +1030,14 @@ function RecipientSection({
           {selectedPeople.map(({ id, name, draftIdx }) => (
             <span
               key={id}
-              className="inline-flex items-center gap-1 rounded-md bg-[var(--app-color-accent)]/15 border border-[var(--app-color-accent)]/25 px-2 py-1 text-xs font-medium text-[var(--app-color-accent)] max-w-[200px]"
+              className="inline-flex items-center gap-1 rounded-md bg-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)] border border-[color-mix(in_srgb,var(--app-color-accent)_25%,transparent)] px-2 py-1 text-xs font-medium text-[var(--app-color-accent)] max-w-[200px]"
               title={id}
             >
               <span className="truncate">{name}</span>
               <button
                 type="button"
                 onClick={() => removePerson(id, draftIdx)}
-                className="rounded-sm p-0.5 hover:bg-[var(--app-color-accent)]/20 transition-colors shrink-0"
+                className="rounded-sm p-0.5 hover:bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] transition-colors shrink-0"
                 title="移除"
               >
                 <X className="h-3 w-3" />
@@ -1148,7 +1148,7 @@ function AnimalRoomAlarmTab({
         <input
           type="text"
           inputMode="decimal"
-          className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+          className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
           placeholder="下限"
           value={limitsDraft[loKey] ?? ""}
           onChange={(e) => setLimitsDraft((p) => p ? { ...p, [loKey]: e.target.value } : null)}
@@ -1157,7 +1157,7 @@ function AnimalRoomAlarmTab({
         <input
           type="text"
           inputMode="decimal"
-          className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+          className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
           placeholder="上限"
           value={limitsDraft[hiKey] ?? ""}
           onChange={(e) => setLimitsDraft((p) => p ? { ...p, [hiKey]: e.target.value } : null)}
@@ -1200,7 +1200,7 @@ function AnimalRoomAlarmTab({
                 <Thermometer className="h-3.5 w-3.5 text-orange-400" />温度死区
               </span>
               <input type="text" inputMode="decimal"
-                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
                 placeholder="0.3"
                 value={limitsDraft?.hysteresisTemp ?? ""}
                 onChange={(e) => setLimitsDraft((p) => p ? { ...p, hysteresisTemp: e.target.value } : null)} />
@@ -1211,7 +1211,7 @@ function AnimalRoomAlarmTab({
                 <Droplets className="h-3.5 w-3.5 text-blue-400" />湿度死区
               </span>
               <input type="text" inputMode="decimal"
-                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
                 placeholder="2.0"
                 value={limitsDraft?.hysteresisHum ?? ""}
                 onChange={(e) => setLimitsDraft((p) => p ? { ...p, hysteresisHum: e.target.value } : null)} />
@@ -1222,7 +1222,7 @@ function AnimalRoomAlarmTab({
                 <Gauge className="h-3.5 w-3.5 text-emerald-400" />压差死区
               </span>
               <input type="text" inputMode="decimal"
-                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+                className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
                 placeholder="5.0"
                 value={limitsDraft?.hysteresisPressure ?? ""}
                 onChange={(e) => setLimitsDraft((p) => p ? { ...p, hysteresisPressure: e.target.value } : null)} />
@@ -1298,7 +1298,7 @@ function AnimalRoomAlarmTab({
                         {Object.entries(variables).map(([k, v]) => (
                           <code
                             key={k}
-                            className="inline-flex items-center gap-1 rounded bg-[var(--app-color-accent)]/10 border border-[var(--app-color-accent)]/20 px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)]"
+                            className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] border border-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)]"
                             title={`${k}: ${v}`}
                           >
                             {`{${k}}`}
@@ -1519,7 +1519,7 @@ function FloorSuiteAlarmPanel() {
 
             return (
               <div key={floor.floorCode} className={cn("rounded-lg border transition-all",
-                fexp ? "border-[var(--app-color-accent)]/40 bg-[var(--app-color-surface-elevated)] ring-1 ring-[var(--app-color-accent)]/15"
+                fexp ? "border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[var(--app-color-surface-elevated)] ring-1 ring-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)]"
                       : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]")}>
                 {/* Floor header */}
                 <div className="flex items-center justify-between gap-3 px-3 py-2.5">
@@ -1568,7 +1568,7 @@ function FloorSuiteAlarmPanel() {
                               {alarmVars.length > 0 && <span className="text-[10px] text-[var(--app-color-text-tertiary)]">({alarmVars.length}报警{refVars.length > 0 ? `+${refVars.length}参考` : ""})</span>}
                               {sexp ? <ChevronUp className="h-3 w-3 text-[var(--app-color-text-tertiary)]" /> : <ChevronDown className="h-3 w-3 text-[var(--app-color-text-tertiary)]" />}
                             </button>
-                            {suite.hasCustomThresholds && <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--app-color-accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]"><SlidersHorizontal className="h-3 w-3" />自定义</span>}
+                            {suite.hasCustomThresholds && <span className="inline-flex items-center gap-0.5 rounded-full bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]"><SlidersHorizontal className="h-3 w-3" />自定义</span>}
                             <div className="flex-1" />
                             <button type="button" className="inline-flex items-center gap-1 rounded-md border border-[var(--app-color-border-default)] px-2 py-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
                               onClick={() => setEditingSuite({ ...suite })}><SlidersHorizontal className="h-3 w-3" />阈值</button>
@@ -1586,7 +1586,7 @@ function FloorSuiteAlarmPanel() {
                           {sexp && (
                             <div className="border-t border-[var(--app-color-border-default)] px-2.5 py-1.5 space-y-1">
                               {/* Batch operations bar */}
-                              <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[var(--app-color-border-default)]/60 bg-[var(--app-color-surface-elevated)]/30 rounded-t">
+                              <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[color-mix(in_srgb,var(--app-color-border-default)_60%,transparent)] bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_30%,transparent)] rounded-t">
                                 <label className="inline-flex items-center gap-1 text-[10px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
                                   <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]"
                                     checked={allAlarmTagsInSuite(suite).length > 0 && allAlarmTagsInSuite(suite).every(t => selectedTags.has(t.tagId))}
@@ -1614,7 +1614,7 @@ function FloorSuiteAlarmPanel() {
                                 </AdminButton>
                               </div>
                               {suite.rooms.map((room) => (
-                                <div key={room.roomCanonical} className="rounded border border-[var(--app-color-border-default)]/60 bg-[var(--app-color-surface-elevated)]/50 px-2 py-1">
+                                <div key={room.roomCanonical} className="rounded border border-[color-mix(in_srgb,var(--app-color-border-default)_60%,transparent)] bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_50%,transparent)] px-2 py-1">
                                   <div className="flex items-center gap-2 mb-0.5">
                                     <span className="text-[11px] font-medium text-[var(--app-color-text-primary)]">{room.roomDisplay}</span>
                                     <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{room.variableCount}变量</span>
@@ -1802,10 +1802,10 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
           {metrics.map((m) => (
             <div key={m.key} className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">{m.icon}{m.label}</span>
-              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20" placeholder="下限"
+              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]" placeholder="下限"
                 value={(suite[m.minKey] as string) ?? ""} onChange={(e) => onChange({ ...suite, [m.minKey]: e.target.value || null })} />
               <span className="text-[11px] text-[var(--app-color-text-tertiary)]">~</span>
-              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20" placeholder="上限"
+              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]" placeholder="上限"
                 value={(suite[m.maxKey] as string) ?? ""} onChange={(e) => onChange({ ...suite, [m.maxKey]: e.target.value || null })} />
               <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">{m.unit}</span>
             </div>
@@ -1823,7 +1823,7 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
               <Thermometer className="h-3.5 w-3.5 text-orange-400" />温度
             </span>
             <input type="text" inputMode="decimal"
-              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
               placeholder="0.3"
               value={(suite.hysteresisTemp as string) ?? ""}
               onChange={(e) => onChange({ ...suite, hysteresisTemp: e.target.value || null })} />
@@ -1834,7 +1834,7 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
               <Droplets className="h-3.5 w-3.5 text-blue-400" />湿度
             </span>
             <input type="text" inputMode="decimal"
-              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
               placeholder="2.0"
               value={(suite.hysteresisHum as string) ?? ""}
               onChange={(e) => onChange({ ...suite, hysteresisHum: e.target.value || null })} />
@@ -1845,7 +1845,7 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
               <Gauge className="h-3.5 w-3.5 text-emerald-400" />压差
             </span>
             <input type="text" inputMode="decimal"
-              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
               placeholder="5.0"
               value={(suite.hysteresisPressure as string) ?? ""}
               onChange={(e) => onChange({ ...suite, hysteresisPressure: e.target.value || null })} />
@@ -1915,7 +1915,7 @@ function PresetEditorModal({ preset, onClose, onSaved }: {
     finally { setSaving(false); }
   };
 
-  const inputCls = "w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/20";
+  const inputCls = "w-full rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]";
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>

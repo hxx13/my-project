@@ -210,7 +210,7 @@ export function WxPusherBindModal({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               maxLength={128}
-              className="mt-1.5 w-full rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 text-sm text-[var(--app-color-text-primary)] outline-none transition placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:ring-2 focus:ring-[var(--app-color-accent)]/20"
+              className="mt-1.5 w-full rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 text-sm text-[var(--app-color-text-primary)] outline-none transition placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
               placeholder="粘贴 WxPusher UID（如 UID_xxxx）"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && draft.trim() && !saving) {

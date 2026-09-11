@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { SplitSquareHorizontal, MoveRight, Clock, Unlock } from "lucide-react";
+import { SplitSquareHorizontal, MoveRight, Clock, Unlock, CalendarCheck } from "lucide-react";
 import type { LockState } from "./SyncLockContext";
 import { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL, resolveCageType, default as CageCellOverlays } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
@@ -28,7 +28,7 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *
  * Props 共 21 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
@@ -36,14 +36,16 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   isLastScanned?: boolean; bindHighlight?: boolean; bindPending?: boolean; editMode?: boolean; bindMode?: boolean;
   isCrossCol?: boolean; isCrossRow?: boolean; flashOverlay?: boolean;
   claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
+  /** 「当前可选」标签的底色；跟随当前模式配色，不传则用 emerald 兜底 */
+  poolColor?: string;
   /** 认领/扫码确认模式：该笼位是「本人待确认到位」的认领，高亮以便一眼找到 */
   isMyClaimCell?: boolean;
   /** 只有池内格子可勾选（分笼/转移选位用；否则同架其他格子也会冒复选框） */
   restrictSelectToPool?: boolean;
   /** 批量转移配对色：同色的一对即「源→目标」，只填源/目标两种，不与其他格撞色 */
   pairColor?: string;
-  /** 待审中间态（分笼审核中/转移审核中）：源与目标同配对色，底部色条注明状态 */
-  opMarker?: { requestId: string; kind: "divide" | "transfer"; color: string; label: string };
+  /** 待审中间态（分笼审核中/转移审核中/已被订单预定）：源与目标同配对色，底部色条注明状态 */
+  opMarker?: { requestId: string; kind: "divide" | "transfer" | "reserve"; color: string; label: string };
   /** 同步保护锁三态（仅保护模式下传入）：整格描边标示，点击整格切换锁 */
   lockState?: LockState;
   /** 笼位划分标签（仅该笼位有划分时传入）：本人=「已划分给你」，他人=「已划分」 */
@@ -105,7 +107,8 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
    * 覆盖范围 = 分笼/转移待审 + 认领待审批 + 释放待审批；共用同一套视觉（尚未生效 = 有图标压着）。
    */
   const pendingOverlay = opMarker
-    ? { color: opMarker.color, label: opMarker.label, Icon: opMarker.kind === "divide" ? SplitSquareHorizontal : MoveRight }
+    ? { color: opMarker.color, label: opMarker.label,
+        Icon: opMarker.kind === "divide" ? SplitSquareHorizontal : opMarker.kind === "transfer" ? MoveRight : CalendarCheck }
     : cell.claimStatus === "pending_approval"
       ? { color: "#3b82f6", label: "认领待审批", Icon: Clock }
       : cell.claimStatus === "pending_release_approval"
@@ -138,7 +141,19 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {bindHighlight && !bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)] pointer-events-none" />}
     {bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-green-500 shadow-[0_0_10px_rgba(34,197,94,0.35)] pointer-events-none" />}
     {/* Claim mode pool cell highlight */}
-    {claimMode && isPoolCell && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.35)] pointer-events-none" />}
+    {/*
+      池内可选不再画红环（原来那个 ring-red-500 太吵），改为底部标签「当前可选」。
+      claimMode 的语义就是「这格在当前池子里可选」，全 web 统一用这个标签表达。
+      注意：扫码/购物车「定位」的红色十字高亮是另一套（flashOverlay / crossX·crossY），别动。
+    */}
+    {claimMode && isPoolCell && (
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md text-center text-[8px] font-bold leading-[13px] text-white"
+        style={{ backgroundColor: poolColor || "#10b981" }}
+      >
+        当前可选
+      </div>
+    )}
     {/* 批量转移配对色：源与目标同色同环，靠颜色在网格上认出「谁转给谁」 */}
     {pairColor && <div className="absolute inset-0 z-10 rounded-twin-md pointer-events-none" style={{ boxShadow: `inset 0 0 0 3px ${pairColor}, 0 0 10px ${pairColor}66` }} />}
     {/* 待审中间态：源与目标同色环 + 底部色条，一眼看出「谁要转到哪」且尚未生效 */}
@@ -146,7 +161,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       <>
         <div className="absolute inset-0 z-10 rounded-twin-md pointer-events-none" style={{ boxShadow: `inset 0 0 0 3px ${opMarker.color}, 0 0 10px ${opMarker.color}66` }} />
         <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
-          style={{ background: opMarker.color }} title={`${opMarker.label}（${opMarker.kind === "divide" ? "分笼" : "转移"}请求 #${opMarker.requestId}）`}>
+          style={{ background: opMarker.color }} title={opMarker.kind === "reserve" ? opMarker.label : `${opMarker.label}（${opMarker.kind === "divide" ? "分笼" : "转移"}请求 #${opMarker.requestId}）`}>
           {opMarker.label}
         </div>
       </>

@@ -28,12 +28,13 @@ import {
   discardOrderEdit,
 } from "@/api/domains/referenceData.api";
 import { authStorage } from "@/features/auth/authStorage";
-import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
+import { formatDateTimeAsiaShanghaiMinute } from "@/lib/formatDateTimeAsiaShanghai";
 import { useAupMyRoles } from "@/features/aup/hooks/useAup";
 import { getTypeConfig } from "@/features/reference-data/typeRegistry";
 import { webImageSrc } from "@/utils/mediaUrl";
 import MobileOrderRecordsView from "./MobileOrderRecordsView";
 import CartTree from "@/features/reference-data/CartTree";
+import { refCardLines, refCardPrice } from "@/features/reference-data/ReferenceCard";
 import SpecSelectPanel, { type OrderPickupInfo } from "@/features/reference-data/SpecSelectPanel";
 import CampusGate from "@/features/reference-data/CampusGate";
 import { ANIMAL_ORDER_CAMPUSES, readStoredCampus, storeCampus, type AnimalOrderCampus } from "@/features/reference-data/campus";
@@ -197,6 +198,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
         aupLabel: aupLabelById.get(String(ci.aupRecordId)) || "未归属",
         packageStatus: ci.packageStatus || "DRAFT",
         packageRemark: ci.packageRemark,
+        remark: ci.remark,
         addedBy: ci.addedBy,
         addedByLabel: addedByName || (ci.addedBy === currentUserId ? currentUserName : "") || ci.addedBy || "",
       };
@@ -325,7 +327,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
   }, [plainCartByItem, removeCartMut, updateCartMut, refetchCart]);
 
   const handleSpecConfirm = useCallback(async (
-    entries: { optionLabel: string; qty: number }[],
+    entries: { optionLabel: string; qty: number; remark?: string }[],
     pickup: OrderPickupInfo,
   ) => {
     if (!specSelectItem || !selectedAupId || !groupId) return;
@@ -346,6 +348,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             pickupRoomName: pickup.pickupRoomName,
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
+            ...(entry.remark ? { remark: entry.remark } : {}),
           },
         });
         ok += 1;
@@ -513,9 +516,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             const purchasable = (item.fieldData as Record<string, unknown>)?.purchasable === true;
             const hasChildren = (item.childCount ?? 0) > 0;
             const canDrill = !!typeConfig?.childType && hasChildren;
-            const title = fieldVal(item, "title") || `ID ${item.id}`;
-            const subtitle = fieldVal(item, "subtitle");
-            const desc = fieldVal(item, "description");
+            const lines = refCardLines(item);
+            const priceText = refCardPrice(item);
             const imageUrl = fieldVal(item, "imageUrl");
             const cover = imageUrl ? webImageSrc(imageUrl) : null;
             return (
@@ -533,16 +535,21 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                     {(typeConfig?.label || "品").charAt(0)}
                   </div>
                 )}
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <div className="min-w-0 flex-1 py-0.5">
-                    <p className="break-words text-[13px] font-semibold leading-snug text-[var(--student-ink)]">{title}</p>
-                    {(subtitle || desc) && (
-                      <p className="mt-0.5 break-words text-[11px] leading-snug text-[var(--student-mute)]">
-                        {subtitle || desc}
-                      </p>
+                <div className="min-w-0 flex-1 py-0.5">
+                  {/* 主标题 + 副标题同排；描述单独一行 */}
+                  <p className="truncate text-[13px] font-semibold leading-snug text-[var(--student-ink)]">
+                    {lines[0] || `ID ${item.id}`}
+                    {lines[1] && (
+                      <span className="ml-1.5 text-[11px] font-normal text-[var(--student-mute)]">{lines[1]}</span>
                     )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  </p>
+                  {lines[2] && <p className="mt-0.5 break-words text-[11px] text-[var(--student-mute)]">{lines[2]}</p>}
+                  {/* 价格与操作控件同一行：控件不再绝对定位，既不抢文本宽度也不独占一行 */}
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className={cn("text-[11px] tabular-nums", priceText ? "font-bold text-[var(--student-primary)]" : "font-medium text-[var(--student-mute)]")}>
+                      {priceText || "待定"}
+                    </p>
+                    <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     {purchasable && hasSpecForItem(item) ? (
                       <button
                         type="button"
@@ -580,7 +587,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                         </button>
                       </div>
                     ) : null}
-                    {canDrill && <ChevronRight className="size-4 shrink-0 text-[var(--student-mute)]" />}
+                      {canDrill && <ChevronRight className="size-4 text-[var(--student-mute)]" />}
+                    </div>
                   </div>
                 </div>
               </li>
@@ -681,7 +689,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
           <div className="mt-1.5 rounded-[var(--student-radius-sm)] border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
             {timePolicy.closedReason}
             {timePolicy.nextOpenAt && (
-              <span className="ml-1">下次开放：{formatDateTimeAsiaShanghai(timePolicy.nextOpenAt)}</span>
+              <span className="ml-1">下次开放：{formatDateTimeAsiaShanghaiMinute(timePolicy.nextOpenAt)}</span>
             )}
           </div>
         )}
@@ -729,7 +737,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
           <div className="h-full overflow-y-auto overscroll-y-contain px-2 pb-24 pt-2">{cardContent}</div>
         ) : (
           <SplitSidebarScrollLayout
-            sidebarClassName="flex w-[128px] shrink-0 flex-col border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
+            sidebarClassName="flex w-24 shrink-0 flex-col border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
             contentClassName="px-2 pt-1.5 pb-24"
             sidebar={sidebarRail}
           >
@@ -881,7 +889,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                   className={cn(
                     "mb-2 flex w-full items-center gap-2 rounded-[var(--student-radius-sm)] border px-3 py-2.5 text-left text-sm",
                     campus === c
-                      ? "border-[var(--student-primary)] bg-[var(--student-primary)]/10 font-semibold text-[var(--student-ink)]"
+                      ? "border-[var(--student-primary)] bg-[color-mix(in_srgb,var(--student-primary)_10%,transparent)] font-semibold text-[var(--student-ink)]"
                       : "border-[var(--student-hairline)] text-[var(--student-body)]",
                   )}
                 >

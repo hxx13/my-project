@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchFullTree,
@@ -17,28 +17,33 @@ interface Props {
   templates: CardTemplate[];
   templateId: number | null;
   onTemplateChange: (id: number | null) => void;
+  boxSelectMode: boolean;
+  onBoxSelectModeChange: (v: boolean) => void;
+  nameSuffix: string;
+  onSelectionChange: (selected: number, total: number) => void;
+  onMessage: (m: string) => void;
+  onBusyChange: (b: boolean) => void;
+}
+
+export interface CardPrintPanelHandle {
+  generate: () => Promise<void>;
 }
 
 const inputCls =
   "rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-[13px] text-[var(--app-color-text-primary)]";
 
-const BTN_PRIMARY =
-  "rounded-twin-md bg-[var(--twin-link-deep)] px-3 py-1.5 text-[12px] font-semibold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50";
-const BTN_OUTLINE =
-  "rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-[12px] text-[var(--twin-ink)] transition hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50";
-
 const EMPTY_MAP: Map<string, Set<string>> = new Map();
 const EMPTY_ALERTS: Map<string, PersistedAlert> = new Map();
 
-export function CardPrintPanel({ templates, templateId, onTemplateChange }: Props) {
+export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function CardPrintPanel(
+  { templates, templateId, onTemplateChange, boxSelectMode, onBoxSelectModeChange, nameSuffix, onSelectionChange, onMessage, onBusyChange },
+  ref,
+) {
   const [exp, setExp] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<CageShelfDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [boxSelectMode, setBoxSelectMode] = useState(false);
   const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
   const anchorRef = useRef<{ shelveId: string; x: number; y: number } | null>(null);
 
@@ -62,12 +67,12 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
     expInited.current = true;
   }, [tree]);
 
-  const shelfLabel = detail?.shelfMeta
-    ? `${detail.shelfMeta.roomName} · ${detail.shelfMeta.shelveName}`
-    : "";
+  useEffect(() => {
+    onSelectionChange(selectedCells.size, detail?.grid.length ?? 0);
+  }, [selectedCells, detail, onSelectionChange]);
 
   const pickShelf = async (shelveId: string) => {
-    setMsg("");
+    onMessage("");
     setLoading(true);
     setDetail(null);
     try {
@@ -75,9 +80,9 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
       setDetail(d);
       setSelectedCells(new Set());
       anchorRef.current = null;
-      setBoxSelectMode(false);
+      onBoxSelectModeChange(false);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "加载笼位失败");
+      onMessage(e instanceof Error ? e.message : "加载笼位失败");
     } finally {
       setLoading(false);
     }
@@ -101,7 +106,7 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
         return next;
       });
       anchorRef.current = null;
-      setBoxSelectMode(false);
+      onBoxSelectModeChange(false);
       return;
     }
     setSelectedCells((prev) => {
@@ -145,11 +150,11 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
       try {
         setPreviewRows(await fetchCardData(ids));
       } catch (e) {
-        setMsg(e instanceof Error ? e.message : "预览加载失败");
+        onMessage(e instanceof Error ? e.message : "预览加载失败");
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [selectedCageIds]);
+  }, [selectedCageIds, onMessage]);
 
   const activeTemplate = useMemo(
     () => templates.find((t) => t.id === templateId) ?? null,
@@ -174,27 +179,31 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
 
   const generate = async () => {
     if (!templateId || selectedCageIds.length === 0) {
-      setMsg("请先选择模板与至少一个笼位");
+      onMessage("请先选择模板与至少一个笼位");
       return;
     }
-    setBusy(true);
-    setMsg("");
+    onBusyChange(true);
+    onMessage("");
     try {
-      const r = await generateCardPdf(templateId, selectedCageIds);
+      const r = await generateCardPdf(templateId, selectedCageIds, nameSuffix);
       if (r) {
-        setMsg(`已生成 ${r.pageCount} 页：${r.fileName}`);
+        onMessage(`已生成 ${r.pageCount} 页：${r.fileName}`);
         downloadBlob(await downloadCardArchive(r.archiveId), r.fileName);
       }
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "生成失败");
+      onMessage(e instanceof Error ? e.message : "生成失败");
     } finally {
-      setBusy(false);
+      onBusyChange(false);
     }
   };
 
+  useImperativeHandle(ref, () => ({ generate }));
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex gap-3" style={{ height: "calc(100dvh - var(--admin-chrome-offset) - 51px)", minHeight: "420px" }}>
+      {/* 封顶高度：外壳自身不约束高度，必须在这里扣掉顶栏+页边距+工具行（-51px = 工具行 38 + pt-3 12） */}
+      <div className="flex min-h-0 flex-1 gap-3"
+        style={{ maxHeight: "calc(100dvh - var(--admin-chrome-offset) - 51px)", minHeight: "420px" }}>
         {/* 左栏：层级树 */}
         <div className="w-[240px] shrink-0 min-h-0 overflow-y-auto overscroll-y-contain rounded-xl border border-[var(--app-color-border-default)] p-2">
           <input value={search} onChange={(e) => setSearch(e.target.value)}
@@ -213,24 +222,8 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
           />
         </div>
 
-        {/* 中栏：笼位网格 + 多选手势 */}
+        {/* 中栏：笼位网格 */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)]">
-          <div className="shrink-0 border-b border-[var(--app-color-border-default)] p-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-semibold text-[var(--app-color-text-primary)]">{shelfLabel || "未选择笼架"}</span>
-              <span className="text-[12px] text-[var(--app-color-text-tertiary)]">已选 {selectedCells.size} / {detail?.grid.length ?? 0}</span>
-            </div>
-            <div className="mt-1.5 flex items-center gap-2">
-              <button type="button" className={boxSelectMode ? BTN_PRIMARY : BTN_OUTLINE}
-                onClick={() => { setBoxSelectMode((v) => !v); anchorRef.current = null; }}>
-                ⬜ 矩形框选
-              </button>
-              <span className="text-[11px] text-[var(--app-color-text-tertiary)] select-none">
-                {boxSelectMode ? "请点击第一个笼位设置框选起点，再点击对角笼位完成框选" : "🖱️ 点击选中 · Shift+点击 矩形多选"}
-              </span>
-            </div>
-          </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3">
             <ShelfGrid
               title={detail?.shelfMeta?.shelveName ?? "未选择笼架"}
@@ -243,11 +236,6 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
               selectedCells={selectedCells}
               onToggleCell={handleToggleCell}
             />
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3 border-t border-[var(--app-color-border-default)] p-3">
-            <div className="flex-1 truncate text-[13px] text-[var(--app-color-text-secondary)]">{msg}</div>
-            <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={generate}>生成 PDF</button>
           </div>
         </div>
 
@@ -271,4 +259,4 @@ export function CardPrintPanel({ templates, templateId, onTemplateChange }: Prop
       </div>
     </div>
   );
-}
+});

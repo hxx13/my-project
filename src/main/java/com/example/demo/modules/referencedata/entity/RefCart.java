@@ -31,6 +31,8 @@ public class RefCart {
     private String packageStatus;
     /** 实验员提交订单包时的统一备注 */
     private String packageRemark;
+    /** 本行锁定的笼位 ID（订购 → 笼位预定，见 cage_order_reservation） */
+    private Long targetAnimalCageId;
     private String addedBy;
     private LocalDateTime addedAt;
 }

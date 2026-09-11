@@ -45,7 +45,7 @@ export function AdminSegmentedControl<T extends string>({
             disabled={disabled}
             className={cn(
               "min-h-[var(--admin-control-height,2.25rem)] rounded-md border-0 px-4 py-2 text-sm font-medium transition-all",
-              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40",
+              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:color-mix(in_srgb,var(--admin-focus-ring)_40%,transparent)]",
               pressed
                 ? "bg-[var(--app-color-accent)] text-white shadow-sm"
                 : "bg-transparent text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"

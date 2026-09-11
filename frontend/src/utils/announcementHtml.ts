@@ -39,7 +39,7 @@ export const SCAN_ANNOUNCEMENT_BODY_CLASS =
   "[&_code]:bg-[var(--app-color-surface-hover)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[var(--app-color-text-primary)] [&_code]:font-mono [&_code]:text-[0.85em] " +
   /* 图片排版见 rich-text-content.css（--rich-text-image-max-width） */
   /* 链接 + 强调 */
-  "[&_a]:text-[var(--app-color-accent)] [&_a]:underline [&_a]:decoration-[var(--app-color-accent)]/40 " +
+  "[&_a]:text-[var(--app-color-accent)] [&_a]:underline [&_a]:decoration-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] " +
   /* 标题层次 */
   "[&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-[var(--app-color-text-primary)] [&_h2]:mt-5 [&_h2]:mb-2 " +
   "[&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-[var(--app-color-text-secondary)] [&_h3]:mt-4 [&_h3]:mb-1.5 " +

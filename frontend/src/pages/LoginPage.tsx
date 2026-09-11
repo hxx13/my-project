@@ -780,7 +780,7 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-feedback-danger)]/85"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm text-[var(--app-color-text-inverse)] transition-colors hover:bg-[color-mix(in_srgb,var(--app-color-feedback-danger)_85%,transparent)]"
               onClick={() => {
                 authStorage.clear();
                 toast.success("已退出登录");

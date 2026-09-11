@@ -303,7 +303,7 @@ export default function AgvPlaybackTimeline(props: Props) {
 
       {/* ── Playback mode: compact scrubber bar only ── */}
       {playbackActive && playbackData && (
-      <div className="flex items-center justify-center gap-2 px-2 py-1 bg-[var(--app-color-surface-container)] rounded-lg border border-[var(--app-color-accent)]/30 shadow-sm">
+      <div className="flex items-center justify-center gap-2 px-2 py-1 bg-[var(--app-color-surface-container)] rounded-lg border border-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)] shadow-sm">
         {/* Play/Pause */}
         <button onClick={playbackPlaying ? onPlaybackPause : onPlaybackPlay}
           className="w-5 h-5 rounded-full bg-white border-2 border-[var(--app-color-accent)] text-[var(--app-color-accent)] flex items-center justify-center shadow-sm hover:bg-[var(--app-color-accent-soft)] shrink-0 transition-colors">
@@ -334,10 +334,10 @@ export default function AgvPlaybackTimeline(props: Props) {
             window.addEventListener("pointerup", onUp2);
           }}>
           {/* Fill */}
-          <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-[var(--app-color-accent)]/40 to-[var(--app-color-accent)]/60 rounded-full"
+          <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] to-[color-mix(in_srgb,var(--app-color-accent)_60%,transparent)] rounded-full"
             style={{ width: `${(playbackProgress ?? 0) * 100}%` }} />
           {/* Knob */}
-          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 -translate-x-1.5 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow-md ring-1 ring-[var(--app-color-accent)]/30"
+          <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 -translate-x-1.5 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow-md ring-1 ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]"
             style={{ left: `${(playbackProgress ?? 0) * 100}%` }} />
         </div>
 
@@ -402,7 +402,7 @@ export default function AgvPlaybackTimeline(props: Props) {
             const d = new Date(ts);
             return (
               <div key={ts} className="absolute top-0 h-full" style={{ left: px }}>
-                <div className={`absolute top-0 w-px ${minor ? "h-1 bg-[var(--app-color-border-default)]/50" : "h-1.5 bg-[var(--app-color-border-default)]"}`} />
+                <div className={`absolute top-0 w-px ${minor ? "h-1 bg-[color-mix(in_srgb,var(--app-color-border-default)_50%,transparent)]" : "h-1.5 bg-[var(--app-color-border-default)]"}`} />
                 {!minor && (
                   <span className="absolute top-1.5 left-0 -translate-x-1/2 text-[7px] font-medium text-[var(--app-color-text-tertiary)] whitespace-nowrap">
                     {`${pad(d.getHours())}:${pad(d.getMinutes())}`}
@@ -448,9 +448,9 @@ export default function AgvPlaybackTimeline(props: Props) {
 
         {/* Selection window (idle only; hidden during playback) */}
         {!playbackActive && (
-        <div className="absolute top-0 h-full border border-[var(--app-color-accent)]/50 z-10"
+        <div className="absolute top-0 h-full border border-[color-mix(in_srgb,var(--app-color-accent)_50%,transparent)] z-10"
           style={{ left: selLeft, width: selW }}>
-          <div className="absolute inset-0 cursor-grab active:cursor-grabbing bg-[var(--app-color-accent)]/12"
+          <div className="absolute inset-0 cursor-grab active:cursor-grabbing bg-[color-mix(in_srgb,var(--app-color-accent)_12%,transparent)]"
             onPointerDown={e => onPointerDown("body", e)} />
           {/* Left anchor pin */}
           <div className="absolute -left-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10"

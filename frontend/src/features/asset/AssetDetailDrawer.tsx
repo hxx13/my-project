@@ -460,7 +460,7 @@ export default function AssetDetailDrawer(props: {
                           className={cn(
                             "shrink-0 rounded-full px-1.5 text-[10px] leading-4",
                             it.kind === "request"
-                              ? "bg-[var(--twin-link-deep)]/10 text-[var(--twin-link-deep)]"
+                              ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)] text-[var(--twin-link-deep)]"
                               : "bg-[var(--twin-canvas)] text-[var(--twin-mute)]"
                           )}
                         >

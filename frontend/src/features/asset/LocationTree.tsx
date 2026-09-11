@@ -178,7 +178,7 @@ export function LocationTree(props: LocationTreeProps) {
         <div
           className={cn(
             "group flex items-center rounded-twin-sm",
-            isDragOver && "bg-[var(--twin-primary)]/10 ring-2 ring-inset ring-[var(--twin-primary)]"
+            isDragOver && "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
           )}
           style={{ paddingLeft: depth * 12 }}
           onDragOver={(e) => {
@@ -202,7 +202,7 @@ export function LocationTree(props: LocationTreeProps) {
             }}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-1 rounded-twin-sm py-1 pr-1 text-left transition",
-              isSelected ? "bg-[var(--twin-link-deep)]/10" : "hover:bg-[var(--twin-canvas-soft)]"
+              isSelected ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]" : "hover:bg-[var(--twin-canvas-soft)]"
             )}
           >
             {/* 展开箭头是独立热区：点击只切换展开/收起，不再被行点击吞掉 */}

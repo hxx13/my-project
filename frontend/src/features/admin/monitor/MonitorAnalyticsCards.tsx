@@ -38,7 +38,7 @@ export default function MonitorAnalyticsCards() {
     return (
       <section>
         {indicatorBar}
-        <div className="rounded-xl border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)] p-5 text-sm text-[var(--app-color-feedback-danger)]">
+        <div className="rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-danger)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-5 text-sm text-[var(--app-color-feedback-danger)]">
           分析数据加载失败: {error}
         </div>
       </section>

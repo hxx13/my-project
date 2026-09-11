@@ -209,6 +209,7 @@ public class NotificationSettingsService {
     }
 
     private String moduleLabel(String module) {
+        if ("animal_order".equals(module)) return "动物订购";
         if ("mini_program".equals(module)) return "小程序推送";
         if ("frontend_runtime".equals(module)) return "前端运行时";
         if ("network".equals(module)) return "网络配置";

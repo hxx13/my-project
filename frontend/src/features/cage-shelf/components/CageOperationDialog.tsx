@@ -196,7 +196,7 @@ export default function CageOperationDialog({
               placeholder="原因（可选，会记入留痕）"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="mt-3 mb-5 w-full rounded-twin-lg bg-[var(--twin-canvas-soft)] px-3.5 py-2.5 text-[12px] text-[var(--twin-ink)] outline-none ring-1 ring-transparent transition placeholder:text-[var(--twin-mute)] focus:bg-[var(--twin-canvas)] focus:ring-[var(--twin-primary)]/40"
+              className="mt-3 mb-5 w-full rounded-twin-lg bg-[var(--twin-canvas-soft)] px-3.5 py-2.5 text-[12px] text-[var(--twin-ink)] outline-none ring-1 ring-transparent transition placeholder:text-[var(--twin-mute)] focus:bg-[var(--twin-canvas)] focus:ring-[color-mix(in_srgb,var(--twin-primary)_40%,transparent)]"
             />
           </div>
 

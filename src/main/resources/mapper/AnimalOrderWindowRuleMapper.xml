@@ -19,26 +19,20 @@
         <result property="label" column="label"/>
         <result property="sortOrder" column="sort_order"/>
         <result property="active" column="active"/>
+        <result property="deleted" column="deleted"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <select id="listActive" resultMap="Base">
         SELECT * FROM animal_order_window_rule
-        WHERE campus = #{campus} AND active = 1
+        WHERE campus = #{campus} AND active = 1 AND deleted = 0
         ORDER BY sort_order ASC, id ASC
     </select>
 
-    <select id="listActiveByScope" resultMap="Base">
+    <select id="listAllByCampus" resultMap="Base">
         SELECT * FROM animal_order_window_rule
-        WHERE active = 1
-          AND scope = #{scope}
-        <if test="categoryKey != null">
-          AND category_key = #{categoryKey}
-        </if>
-        <if test="categoryKey == null">
-          AND category_key IS NULL
-        </if>
+        WHERE campus = #{campus} AND deleted = 0
         ORDER BY sort_order ASC, id ASC
     </select>
 
@@ -79,6 +73,10 @@
 
     <update id="softDelete">
         UPDATE animal_order_window_rule SET active = 0 WHERE id = #{id}
+    </update>
+
+    <update id="markDeleted">
+        UPDATE animal_order_window_rule SET deleted = 1 WHERE id = #{id}
     </update>
 
 </mapper>

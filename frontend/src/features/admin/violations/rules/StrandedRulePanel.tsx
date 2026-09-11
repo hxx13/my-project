@@ -172,7 +172,7 @@ export function StrandedRulePanel(): JSX.Element {
     <div className="space-y-3">
       {testOpen && (
         <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-3">
-          <p className="mb-2 rounded-md border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--app-color-feedback-warning)]">
+          <p className="mb-2 rounded-md border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--app-color-feedback-warning)]">
             真实执行：会对指定人员真实创建违规记录，勾选「同时签退」时可能触发真实签退。
           </p>
           {testPicked ? (

@@ -36,6 +36,8 @@ public class CageCellIndexController {
     private final StudentCageShelfService studentCageShelfService;
     private final UserDisplayNameService userDisplayNameService;
     private final com.example.demo.modules.cageshelf.service.CageFormAuditService auditService;
+    private final com.example.demo.modules.identity.service.PersonIdentityService personIdentityService;
+    private final com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver;
 
     public CageCellIndexController(AuthContextService authContextService,
                                    CageCellIndexService cellIndexService,
@@ -45,7 +47,9 @@ public class CageCellIndexController {
                                    com.example.demo.modules.cageshelf.service.CageCellDetailService detailService,
                                    StudentCageShelfService studentCageShelfService,
                                    UserDisplayNameService userDisplayNameService,
-                                   com.example.demo.modules.cageshelf.service.CageFormAuditService auditService) {
+                                   com.example.demo.modules.cageshelf.service.CageFormAuditService auditService,
+                                   com.example.demo.modules.identity.service.PersonIdentityService personIdentityService,
+                                   com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver) {
         this.authContextService = authContextService;
         this.cellIndexService = cellIndexService;
         this.detailMapper = detailMapper;
@@ -55,6 +59,43 @@ public class CageCellIndexController {
         this.studentCageShelfService = studentCageShelfService;
         this.userDisplayNameService = userDisplayNameService;
         this.auditService = auditService;
+        this.personIdentityService = personIdentityService;
+        this.userGroupNameResolver = userGroupNameResolver;
+    }
+
+    /**
+     * 划分名单按查看者收口：**组员只看划给自己的，管家 / 管理员看全部**。
+     *
+     * 与课题组脱敏是两件事（脱敏同组内不区分权限，划分名单要区分），所以单独走一遍；
+     * 且放在 applyGroupMask 最前面 —— 下面「已分配范围整架放开」会提前 return，
+     * 挂在后面会漏掉那批笼架。非本人的名单项直接从下发数据里剔除，不靠前端自觉。
+     */
+    private void keepOnlyOwnDivision(Map<String, Object> result, String viewerAccountId) {
+        Object gridObj = result.get("grid");
+        if (!(gridObj instanceof List<?> list)) return;
+        String me = userGroupNameResolver.canonicalUserId(viewerAccountId);
+        if (me == null) me = viewerAccountId;
+        for (Object o : list) {
+            if (!(o instanceof Map<?, ?> raw)) continue;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> cell = (Map<String, Object>) raw;
+            Object divObj = cell.get("divisionAssignees");
+            if (!(divObj instanceof List<?> divs) || divs.isEmpty()) continue;
+            List<Map<String, String>> mine = new ArrayList<>();
+            for (Object d : divs) {
+                if (!(d instanceof Map<?, ?> dm)) continue;
+                String id = str(dm.get("id"));
+                String cid = id == null ? null : userGroupNameResolver.canonicalUserId(id);
+                if (cid != null && cid.equals(me)) {
+                    Map<String, String> keep = new LinkedHashMap<>();
+                    keep.put("id", id);
+                    keep.put("name", str(dm.get("name")));
+                    mine.add(keep);
+                }
+            }
+            if (mine.isEmpty()) cell.remove("divisionAssignees");
+            else cell.put("divisionAssignees", mine);
+        }
     }
 
     private String operatorDisplayName(User user) {
@@ -83,6 +124,11 @@ public class CageCellIndexController {
     private void applyGroupMask(User user, Map<String, Object> result) {
         if (user == null || user.getRole() == null || user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
             return;
+        }
+        // 划分名单先收口（管家看全部，其余只看自己的）。必须在下面「已分配范围整架放开」
+        // 的提前 return 之前做，否则那批笼架会漏掉这层过滤。
+        if (!personIdentityService.isGroupSteward(user.getId())) {
+            keepOnlyOwnDivision(result, user.getId());
         }
         // 可见范围分配只做「补充」：命中分配集的笼架整架放开、不脱敏；未命中的仍走下面的基本权限。
         // 分配只在基本权限之上加可见范围，永远不会让人看得更少，也不覆盖课题组口径。

@@ -87,7 +87,7 @@ export function AssetLocationTreeSelect({
         <div
           className={cn(
             "flex items-center rounded-md",
-            isSelected ? "bg-[var(--twin-link-deep)]/10" : "hover:bg-[var(--app-color-surface-hover)]"
+            isSelected ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]" : "hover:bg-[var(--app-color-surface-hover)]"
           )}
           style={{ paddingLeft: depth * 12 }}
         >

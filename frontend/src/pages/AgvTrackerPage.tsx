@@ -342,7 +342,7 @@ export default function AgvTrackerPage() {
       {/* Edit mode hint */}
       {(coordEditMode || zoneEditMode) && !zonePopover && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[var(--z-tooltip)] pointer-events-none">
-          <span className="text-[10px] text-[var(--app-color-text-tertiary)] bg-[var(--app-color-surface-container)]/80 backdrop-blur px-3 py-1 rounded-full border border-[var(--app-color-border-default)]">
+          <span className="text-[10px] text-[var(--app-color-text-tertiary)] bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] backdrop-blur px-3 py-1 rounded-full border border-[var(--app-color-border-default)]">
             编辑模式已开启 · 点击区域选中后可拖拽调整
           </span>
         </div>

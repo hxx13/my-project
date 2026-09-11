@@ -4,6 +4,9 @@ import { fetchCageOpTargets, type CageOpTarget } from "@/api/domains/cageShelf.a
 
 export type CageOpKind = "divide" | "transfer";
 
+/** 网格中间态标记的类型：分笼/转移待审之外，还有「已被订单预定」这种非操作类占位。 */
+export type CageOpMarkKind = CageOpKind | "reserve";
+
 export interface CageOpSource {
   animalCageId: string;
   position?: string;
@@ -34,7 +37,7 @@ export function pairColorAt(index: number): string {
 /** 待审中间态在网格/详情上的展示形态：同一请求的源与目标同色。 */
 export interface CageOpMark {
   requestId: string;
-  kind: CageOpKind;
+  kind: CageOpMarkKind;
   color: string;
   label: string;
   applicantName?: string | null;

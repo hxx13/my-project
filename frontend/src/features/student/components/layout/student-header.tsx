@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, Bell, ChevronDown, LogOut, Mail, Menu, MessageCircle, Search, Smartphone, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Mail, Menu, MessageCircle, Search, Smartphone, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
@@ -27,15 +27,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { FullscreenToggleButton } from "@/components/shared/FullscreenToggleButton";
 import { adminInputClass } from "@/features/admin/adminFormUi";
 
 import { appConfirm } from "@/lib/appDialog";
 interface StudentHeaderProps {
   onMenuClick: () => void;
   onOpenCommand?: () => void;
+  /** 与后台 header 一致的侧栏收起切换 */
+  sidebarCollapsed: boolean;
+  onToggleSidebar: () => void;
 }
 
-export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps) {
+export function StudentHeader({ onMenuClick, onOpenCommand, sidebarCollapsed, onToggleSidebar }: StudentHeaderProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const impersonation = useMemo(() => getImpersonationState(), []);
@@ -178,7 +182,7 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
     <header
       className={cn(
         "sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--student-hairline)] px-4 py-2 shadow-sm sm:px-6 md:h-16 md:flex-nowrap md:py-0",
-        "bg-[var(--student-canvas)]/95 backdrop-blur-md",
+        "bg-[color-mix(in_srgb,var(--student-canvas)_95%,transparent)] backdrop-blur-md",
       )}
     >
       {/* Left side */}
@@ -190,6 +194,16 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
           aria-label="打开导航菜单"
         >
           <Menu className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] md:inline-flex"
+          title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+          aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+        >
+          {sidebarCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
         </button>
 
         {/* Search — matches admin header Ctrl+K search bar */}
@@ -246,6 +260,8 @@ export function StudentHeader({ onMenuClick, onOpenCommand }: StudentHeaderProps
         <ThemeSwitcher
           className="h-8 shrink-0 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-2.5 text-[11px] font-medium text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]"
         />
+
+        <FullscreenToggleButton className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] transition-colors hover:bg-[var(--student-canvas-soft)]" />
 
         <PageHelpHost pagePath={pathname} variant="student" enableFullHelpDialog />
 

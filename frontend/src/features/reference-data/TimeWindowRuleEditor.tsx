@@ -1,14 +1,24 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { GripVertical } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useRefDataList } from "@/api/hooks/useReferenceData";
 import { useSaveAnimalOrderTimePolicyAdmin } from "@/api/hooks/useAnimalOrderTime";
 import type {
   AnimalOrderTimePolicyAdmin,
   AnimalOrderWindowRule,
 } from "@/api/domains/animalOrderTime.api";
-import { validateRuleGroups } from "./timeWindowConflict";
-
 import { appConfirm } from "@/lib/appDialog";
+
 interface TimeWindowRuleEditorProps {
   draft: AnimalOrderTimePolicyAdmin;
   onChange: (next: AnimalOrderTimePolicyAdmin) => void;
@@ -41,6 +51,22 @@ const EMPTY_RULE: AnimalOrderWindowRule = {
   active: 1,
 };
 
+/** 特殊时段：一次性绝对区间，全局、只能开放，新区间默认「今天 09:00 → 今天 18:00」 */
+const EMPTY_SPECIAL_RULE: AnimalOrderWindowRule = {
+  scope: "GLOBAL",
+  categoryKey: null,
+  effect: "OPEN",
+  shape: "RANGE",
+  weekdays: null,
+  dailyStartTime: undefined,
+  dailyEndTime: undefined,
+  rangeStartAt: "",
+  rangeEndAt: "",
+  label: "",
+  sortOrder: 0,
+  active: 1,
+};
+
 function toTimeInput(value?: string | null): string {
   if (!value) return "09:00";
   return value.slice(0, 5);
@@ -48,6 +74,31 @@ function toTimeInput(value?: string | null): string {
 
 function fromTimeInput(value: string): string {
   return value.length === 5 ? `${value}:00` : value;
+}
+
+/**
+ * 后端 LocalDateTime 串 ↔ datetime-local 输入值。
+ * 项目 Jackson 统一用 `yyyy-MM-dd HH:mm:ss`（JacksonTimeConfig.WALL_CLOCK，空格分隔且必须带秒），
+ * 而 datetime-local 给的是 `yyyy-MM-ddTHH:mm`，两边都要转，否则反序列化直接 400。
+ */
+function toDateTimeInput(value?: string | null): string {
+  if (!value) return "";
+  return value.slice(0, 16).replace(" ", "T");
+}
+
+/** datetime-local 值 → 后端要求的 `yyyy-MM-dd HH:mm:ss` */
+function toApiDateTime(value?: string | null): string {
+  const v = (value ?? "").trim();
+  if (!v) return "";
+  const withSpace = v.replace("T", " ");
+  return withSpace.length === 16 ? `${withSpace}:00` : withSpace;
+}
+
+/** 一次性区间是否已过期（过期即自动失效，界面给个标记） */
+function isRangeExpired(rule: AnimalOrderWindowRule): boolean {
+  if (rule.shape !== "RANGE" || !rule.rangeEndAt) return false;
+  const end = new Date(toDateTimeInput(rule.rangeEndAt));
+  return Number.isFinite(end.getTime()) && end.getTime() < Date.now();
 }
 
 function parseWeekdays(csv?: string | null): number[] {
@@ -83,7 +134,9 @@ function weekdayLabels(csv?: string | null): string {
 function ruleSummary(rule: AnimalOrderWindowRule): string {
   const effect = rule.effect === "OPEN" ? "开放" : "禁用";
   if (rule.shape === "RANGE") {
-    return `${effect} · 旧区间（一次性） ${rule.rangeStartAt ?? "?"} ~ ${rule.rangeEndAt ?? "?"} · 请改为按星期循环`;
+    const s = toDateTimeInput(rule.rangeStartAt).replace("T", " ");
+    const e = toDateTimeInput(rule.rangeEndAt).replace("T", " ");
+    return `特殊开放 ${s || "?"} ~ ${e || "?"}`;
   }
   if (rule.shape === "WEEKLY_SPAN") {
     return `${effect} · ${weekdayLabel(rule.startWeekday)} ${toTimeInput(rule.dailyStartTime)} → ${weekdayLabel(rule.endWeekday)} ${toTimeInput(rule.dailyEndTime)}（跨星期连续）`;
@@ -92,6 +145,18 @@ function ruleSummary(rule: AnimalOrderWindowRule): string {
 }
 
 function toEditableForm(rule: AnimalOrderWindowRule): AnimalOrderWindowRule {
+  if (rule.shape === "RANGE") {
+    // 特殊时段：保留区间，表单里用 datetime-local 值
+    return {
+      ...rule,
+      shape: "RANGE",
+      scope: "GLOBAL",
+      effect: "OPEN",
+      categoryKey: null,
+      rangeStartAt: toDateTimeInput(rule.rangeStartAt),
+      rangeEndAt: toDateTimeInput(rule.rangeEndAt),
+    };
+  }
   if (rule.shape === "WEEKLY_SPAN") {
     return {
       ...rule,
@@ -132,6 +197,99 @@ function toEditableForm(rule: AnimalOrderWindowRule): AnimalOrderWindowRule {
   };
 }
 
+/** 行 id：优先用数据库 id，新建未保存的用下标兜底 */
+function rowId(rule: AnimalOrderWindowRule, index: number): string {
+  return rule.id != null ? `rule-${rule.id}` : `new-${index}`;
+}
+
+interface SortableRuleRowProps {
+  id: string;
+  rule: AnimalOrderWindowRule;
+  scopeText: string;
+  draggable: boolean;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}
+
+function SortableRuleRow({ id, rule, scopeText, draggable, onEdit, onToggleActive, onDelete }: SortableRuleRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !draggable,
+  });
+  const off = rule.active === 0;
+  const isSpecial = rule.shape === "RANGE";
+  const expired = !off && isRangeExpired(rule);
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className={`flex items-center gap-2 rounded-twin-md border px-3 py-2 ${
+        off
+          ? "border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)]"
+          : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
+      }`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={!draggable}
+        title={draggable ? "拖拽调整优先级" : isSpecial ? "特殊时段恒为最高优先级" : "停用的时段不参与排序"}
+        className={`shrink-0 rounded p-0.5 text-[var(--twin-mute)] ${
+          draggable ? "cursor-grab hover:text-[var(--twin-link)]" : "cursor-not-allowed opacity-30"
+        }`}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <div className={`min-w-0 flex-1 ${off ? "opacity-50" : ""}`}>
+        <div className="flex items-center gap-1.5">
+          {isSpecial && (
+            <span className="shrink-0 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-700">
+              特殊
+            </span>
+          )}
+          <span className="truncate text-sm font-medium text-[var(--twin-ink)]">
+            {scopeText}
+            {rule.label ? ` · ${rule.label}` : ""}
+          </span>
+        </div>
+        <div className="mt-0.5 text-[10px] text-[var(--twin-mute)]">
+          {ruleSummary(rule)}
+          {expired && <span className="ml-1 text-amber-600">· 已失效</span>}
+        </div>
+      </div>
+      <div className="ml-1 flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onToggleActive}
+          className={`rounded border px-2 py-0.5 text-[10px] ${
+            off
+              ? "border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+          }`}
+        >
+          {off ? "启用" : "停用"}
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
+        >
+          编辑
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] text-red-500 hover:bg-red-50"
+        >
+          删除
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRuleEditorProps) {
   const saveMut = useSaveAnimalOrderTimePolicyAdmin();
   const { data: breedItems = [] } = useRefDataList("ANIMAL_BREED");
@@ -139,6 +297,9 @@ export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRule
   const [formVisible, setFormVisible] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [form, setForm] = useState<AnimalOrderWindowRule>(EMPTY_RULE);
+  const [specialVisible, setSpecialVisible] = useState(false);
+  const [specialEditIndex, setSpecialEditIndex] = useState<number | null>(null);
+  const [specialForm, setSpecialForm] = useState<AnimalOrderWindowRule>(EMPTY_SPECIAL_RULE);
 
   const breedOptions = useMemo(() => {
     return breedItems.map((item) => {
@@ -148,25 +309,106 @@ export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRule
     });
   }, [breedItems]);
 
-  const activeRules = useMemo(
-    () => (draft.rules ?? []).filter((r) => r.active !== 0),
-    [draft.rules],
-  );
+  /**
+   * 展示与优先级顺序：特殊时段（RANGE）固定置顶且不可拖，其余按 sortOrder。
+   * 引擎按同一顺序「首个命中者胜出」，所以这里的顺序就是生效优先级。
+   */
+  const orderedRules = useMemo(() => {
+    const all = draft.rules ?? [];
+    const specials = all.filter((r) => r.shape === "RANGE");
+    const rest = all
+      .filter((r) => r.shape !== "RANGE")
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0));
+    return [...specials, ...rest];
+  }, [draft.rules]);
+
+  const activeRules = useMemo(() => orderedRules.filter((r) => r.active !== 0), [orderedRules]);
 
   const selectedWeekdays = useMemo(() => new Set(parseWeekdays(form.weekdays)), [form.weekdays]);
   const isSpanMode = form.shape === "WEEKLY_SPAN";
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = orderedRules.findIndex((r, i) => rowId(r, i) === String(active.id));
+    const to = orderedRules.findIndex((r, i) => rowId(r, i) === String(over.id));
+    if (from < 0 || to < 0) return;
+    moveRule(from, to);
+  }
+
   function openCreate() {
     setEditIndex(null);
-    setForm({ ...EMPTY_RULE, sortOrder: activeRules.length });
+    setForm({ ...EMPTY_RULE, sortOrder: orderedRules.length });
     setFormVisible(true);
   }
 
   function openEdit(index: number) {
-    const rule = activeRules[index];
+    const rule = orderedRules[index];
+    if (!rule) return;
+    if (rule.shape === "RANGE") {
+      setSpecialEditIndex(index);
+      setSpecialForm(toEditableForm(rule));
+      setSpecialVisible(true);
+      return;
+    }
     setEditIndex(index);
     setForm(toEditableForm(rule));
     setFormVisible(true);
+  }
+
+  function openCreateSpecial() {
+    setSpecialEditIndex(null);
+    const now = new Date();
+    const start = new Date(now.getTime() + 60 * 60 * 1000);
+    const end = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    const fmt = (d: Date) => {
+      const p = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
+    setSpecialForm({ ...EMPTY_SPECIAL_RULE, rangeStartAt: fmt(start), rangeEndAt: fmt(end) });
+    setSpecialVisible(true);
+  }
+
+  function resetSpecialForm() {
+    setSpecialEditIndex(null);
+    setSpecialForm({ ...EMPTY_SPECIAL_RULE });
+    setSpecialVisible(false);
+  }
+
+  /** 启用/停用：写 active 标志位，行保留（后端 softDelete 就是 SET active=0） */
+  function toggleRuleActive(index: number) {
+    const target = orderedRules[index];
+    if (!target) return;
+    const rules = (draft.rules ?? []).map((r) =>
+      r === target ? { ...r, active: r.active === 0 ? 1 : 0 } : r,
+    );
+    onChange({ ...draft, rules });
+  }
+
+  /** 删除：软删除——先移出草稿、记下 id，随保存一起落库（deleted=1，行保留可恢复） */
+  async function deleteRule(index: number) {
+    const target = orderedRules[index];
+    if (!target) return;
+    if (!await appConfirm("确认删除此时段？\n\n删除后不再参与可购判定，数据库中保留、可恢复。")) return;
+    const rules = (draft.rules ?? []).filter((r) => r !== target);
+    const deletedRuleIds = target.id != null
+      ? [...(draft.deletedRuleIds ?? []), target.id]
+      : (draft.deletedRuleIds ?? []);
+    onChange({ ...draft, rules, deletedRuleIds });
+  }
+
+  /** 拖拽换序：只重排非特殊规则，随后整表按展示顺序重编号 sortOrder（特殊时段恒为最前） */
+  function moveRule(fromIndex: number, toIndex: number) {
+    const ids = orderedRules.map((r) => r);
+    const specialCount = ids.filter((r) => r.shape === "RANGE").length;
+    if (fromIndex < specialCount || toIndex < specialCount) return;
+    const movable = ids.slice(specialCount);
+    const reordered = arrayMove(movable, fromIndex - specialCount, toIndex - specialCount);
+    const next = [...ids.slice(0, specialCount), ...reordered].map((r, i) => ({ ...r, sortOrder: i }));
+    onChange({ ...draft, rules: next });
   }
 
   function resetForm() {
@@ -212,6 +454,13 @@ export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRule
   }
 
   function validateFormRule(rule: AnimalOrderWindowRule): string | null {
+    if (rule.shape === "RANGE") {
+      if (!rule.rangeStartAt || !rule.rangeEndAt) return "请填写特殊时段的起止时间";
+      if (new Date(rule.rangeStartAt).getTime() >= new Date(rule.rangeEndAt).getTime()) {
+        return "结束时间必须晚于开始时间";
+      }
+      return null;
+    }
     if (rule.scope === "CATEGORY" && !rule.categoryKey) {
       return "品类规则需选择品种";
     }
@@ -274,47 +523,62 @@ export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRule
           };
 
     if (editIndex != null) {
-      const target = activeRules[editIndex];
+      const target = orderedRules[editIndex];
       const idx = rules.findIndex((r) => r === target);
       if (idx >= 0) rules[idx] = { ...target, ...nextRule };
     } else {
       rules.push(nextRule);
     }
 
-    try {
-      validateRuleGroups(rules.filter((r) => r.active !== 0));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "规则冲突");
-      return;
-    }
-
     onChange({ ...draft, rules });
     resetForm();
   }
 
-  async function removeRule(index: number) {
-    if (!await appConfirm("确认删除此时段？")) return;
-    const target = activeRules[index];
-    const rules = (draft.rules ?? []).map((r) =>
-      r === target ? { ...r, active: 0 } : r,
-    );
-    onChange({ ...draft, rules });
+  /** 特殊时段：新建/编辑。固定全局开放，一次性区间过期后引擎自然不再命中 */
+  function saveSpecial() {
+    const err = validateFormRule(specialForm);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    const next: AnimalOrderWindowRule = {
+      ...specialForm,
+      shape: "RANGE",
+      effect: "OPEN",
+      scope: "GLOBAL",
+      categoryKey: null,
+      weekdays: null,
+      startWeekday: null,
+      endWeekday: null,
+      dailyStartTime: undefined,
+      dailyEndTime: undefined,
+      // 表单里是 datetime-local 值，落草稿前转成后端 WALL_CLOCK 格式
+      rangeStartAt: toApiDateTime(specialForm.rangeStartAt),
+      rangeEndAt: toApiDateTime(specialForm.rangeEndAt),
+      active: 1,
+    };
+    const rules = [...(draft.rules ?? [])];
+    if (specialEditIndex != null) {
+      const target = orderedRules[specialEditIndex];
+      const idx = rules.findIndex((r) => r === target);
+      if (idx >= 0) rules[idx] = { ...target, ...next };
+      onChange({ ...draft, rules });
+    } else {
+      // 特殊时段恒为最高优先级：自身 sortOrder=0，其余整体后移一位
+      const shifted = rules.map((r) => ({ ...r, sortOrder: (r.sortOrder ?? 0) + 1 }));
+      shifted.push({ ...next, sortOrder: 0 });
+      onChange({ ...draft, rules: shifted });
+    }
+    resetSpecialForm();
   }
 
   function handleSave() {
-    if (activeRules.some((r) => r.shape === "RANGE")) {
-      toast.error("存在旧的一次性区间规则，请先编辑并改为按星期循环后再保存");
-      return;
-    }
-    const normalizedRules = (draft.rules ?? []).map((r) =>
-      r.active === 0 ? r : toEditableForm(r),
+    // 展示顺序即优先级顺序（特殊时段已在最前），整表重编号后提交。
+    // RANGE 不经 toEditableForm：它进草稿时已是后端 WALL_CLOCK 格式，不能再转回输入框用的 T 形式。
+    const ordered = orderedRules.map((r, i) => ({ ...r, sortOrder: i }));
+    const normalizedRules = ordered.map((r) =>
+      r.active === 0 || r.shape === "RANGE" ? r : toEditableForm(r),
     );
-    try {
-      validateRuleGroups(normalizedRules.filter((r) => r.active !== 0));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "规则冲突");
-      return;
-    }
     saveMut.mutate(
       { ...draft, rules: normalizedRules },
       {
@@ -355,16 +619,8 @@ export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRule
         </div>
       </div>
 
+      {formVisible && (
       <div className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
-        {!formVisible ? (
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-full border border-dashed border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)]"
-          >
-            + 新建时段
-          </button>
-        ) : (
           <div className="space-y-3">
             <div className="text-xs font-semibold text-[var(--twin-ink)]">
               {editIndex != null ? "编辑时段" : "新建时段"}
@@ -611,48 +867,115 @@ export default function TimeWindowRuleEditor({ draft, onChange }: TimeWindowRule
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {specialVisible && (
+        <div className="space-y-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
+          <div className="text-xs font-semibold text-[var(--twin-ink)]">
+            {specialEditIndex != null ? "编辑特殊时段" : "新建特殊时段"}
+          </div>
+          <div className="text-[10px] text-[var(--twin-mute)]">
+            特殊时段优先级最高（置顶）、全局开放，只在这一区间内开放加购；区间一过自动失效，无需手动关闭。
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--twin-mute)]">开始时间</span>
+              <input
+                type="datetime-local"
+                value={specialForm.rangeStartAt ?? ""}
+                onChange={(e) => setSpecialForm((f) => ({ ...f, rangeStartAt: e.target.value }))}
+                className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--twin-mute)]">结束时间</span>
+              <input
+                type="datetime-local"
+                value={specialForm.rangeEndAt ?? ""}
+                onChange={(e) => setSpecialForm((f) => ({ ...f, rangeEndAt: e.target.value }))}
+                className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-[var(--twin-mute)]">备注标签（可选）</span>
+              <input
+                type="text"
+                value={specialForm.label ?? ""}
+                onChange={(e) => setSpecialForm((f) => ({ ...f, label: e.target.value }))}
+                placeholder="如：节前补单"
+                className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveSpecial}
+              className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
+            >
+              {specialEditIndex != null ? "更新特殊时段" : "添加特殊时段"}
+            </button>
+            <button
+              type="button"
+              onClick={resetSpecialForm}
+              className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
 
       <div>
-        <div className="mb-2 text-xs font-semibold text-[var(--twin-body)]">
-          已有时段 ({activeRules.length})
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <span className="text-xs font-semibold text-[var(--twin-body)]">
+            已有时段 ({activeRules.length})
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openCreateSpecial}
+              className="rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-[11px] text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)]"
+            >
+              + 特殊时段
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-full bg-sky-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-sky-700"
+            >
+              + 新建时段
+            </button>
+          </div>
         </div>
-        {activeRules.length === 0 ? (
+        <div className="mb-1.5 text-[10px] text-[var(--twin-mute)]">
+          从上到下优先级递减，命中即止；特殊时段恒在最顶且不可拖拽。
+        </div>
+        {orderedRules.length === 0 ? (
           <div className="py-4 text-center text-xs text-[var(--twin-mute)]">暂无时段</div>
         ) : (
-          <div className="space-y-1.5">
-            {activeRules.map((rule, index) => (
-              <div
-                key={rule.id ?? `new-${index}`}
-                className="flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-[var(--twin-ink)]">
-                    {scopeLabel(rule)}
-                    {rule.label ? ` · ${rule.label}` : ""}
-                  </div>
-                  <div className="mt-0.5 text-[10px] text-[var(--twin-mute)]">{ruleSummary(rule)}</div>
-                </div>
-                <div className="ml-2 flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(index)}
-                    className="rounded border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeRule(index)}
-                    className="rounded border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] text-red-500 hover:bg-red-50"
-                  >
-                    删除
-                  </button>
-                </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext
+              items={orderedRules.map((r, i) => rowId(r, i))}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-1.5">
+                {orderedRules.map((rule, index) => (
+                  <SortableRuleRow
+                    key={rowId(rule, index)}
+                    id={rowId(rule, index)}
+                    rule={rule}
+                    scopeText={rule.shape === "RANGE" ? "特殊时段" : scopeLabel(rule)}
+                    draggable={rule.shape !== "RANGE" && rule.active !== 0}
+                    onEdit={() => openEdit(index)}
+                    onToggleActive={() => toggleRuleActive(index)}
+                    onDelete={() => void deleteRule(index)}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 

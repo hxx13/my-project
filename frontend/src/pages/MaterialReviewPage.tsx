@@ -643,9 +643,9 @@ export default function MaterialReviewPage() {
                       return Array.from(groups.entries()).map(([itemName, reqs]) => (
                         <div key={itemName} className="space-y-1">
                           <div className="flex items-center gap-1.5 pt-1 pb-0.5">
-                            <span className="w-1 h-1 rounded-full bg-[var(--twin-mute)]/50 shrink-0" />
+                            <span className="w-1 h-1 rounded-full bg-[color-mix(in_srgb,var(--twin-mute)_50%,transparent)] shrink-0" />
                             <span className="text-[10px] font-medium text-[var(--twin-mute)]">{itemName}</span>
-                            <span className="text-[10px] text-[var(--twin-mute)]/70">{reqs.length} 条</span>
+                            <span className="text-[10px] text-[color-mix(in_srgb,var(--twin-mute)_70%,transparent)]">{reqs.length} 条</span>
                           </div>
                           {reqs.map(req => {
                             const rid = String(req.id);
@@ -741,9 +741,9 @@ export default function MaterialReviewPage() {
                       return Array.from(groups.entries()).map(([optLabel, reqs]) => (
                         <div key={optLabel} className="space-y-1">
                           <div className="flex items-center gap-1.5 pt-1 pb-0.5">
-                            <span className="w-1 h-1 rounded-full bg-[var(--twin-mute)]/50 shrink-0" />
+                            <span className="w-1 h-1 rounded-full bg-[color-mix(in_srgb,var(--twin-mute)_50%,transparent)] shrink-0" />
                             <span className="text-[10px] font-medium text-[var(--twin-mute)]">{optLabel}</span>
-                            <span className="text-[10px] text-[var(--twin-mute)]/70">{reqs.length} 条</span>
+                            <span className="text-[10px] text-[color-mix(in_srgb,var(--twin-mute)_70%,transparent)]">{reqs.length} 条</span>
                           </div>
                           {reqs.map(req => {
                             const rid = req.id;
@@ -1640,7 +1640,7 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete, isF
   const hasGroupTag = !!(req.subjectGroupName);
   const highlighted = highlightRequestId && String(req.id) === highlightRequestId;
   return (
-    <div className={`review-card flex flex-col overflow-hidden ${highlighted ? "ring-2 ring-[var(--app-color-accent)]/30" : ""}`} data-tone="pending">
+    <div className={`review-card flex flex-col overflow-hidden ${highlighted ? "ring-2 ring-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]" : ""}`} data-tone="pending">
       {/* 顶栏：编号 + 熟识标记 + 选项 + 状态 + 删除 */}
       <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2">
         <div className="flex items-center gap-2 min-w-0">

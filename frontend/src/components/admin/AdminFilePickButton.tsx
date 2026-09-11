@@ -24,7 +24,7 @@ export function AdminFilePickButton({
     <label
       className={cn(
         "inline-flex min-h-[var(--admin-control-height,2.25rem)] cursor-pointer items-center justify-center gap-1.5 rounded-[length:var(--admin-radius-md,0.375rem)] border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm transition-all",
-        "hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] focus-within:ring-[3px] focus-within:ring-[color:var(--admin-focus-ring)]/40 active:translate-y-px",
+        "hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] focus-within:ring-[3px] focus-within:ring-[color:color-mix(in_srgb,var(--admin-focus-ring)_40%,transparent)] active:translate-y-px",
         disabled && "pointer-events-none cursor-not-allowed opacity-50",
         className
       )}

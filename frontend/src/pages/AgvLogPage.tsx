@@ -120,7 +120,7 @@ export default function AgvLogPage() {
                 const row = g.rows[0];
                 const merged = g.rows.length > 1;
                 return (
-                <tr key={row.id} className={`border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)] ${merged ? "bg-[var(--app-color-surface-hover)]/40" : ""}`}>
+                <tr key={row.id} className={`border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)] ${merged ? "bg-[color-mix(in_srgb,var(--app-color-surface-hover)_40%,transparent)]" : ""}`}>
                   {columns.map((c) => {
                     if (c.key === "time" && merged) {
                       return (

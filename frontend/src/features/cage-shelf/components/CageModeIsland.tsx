@@ -157,10 +157,16 @@ export default function CageModeIsland({
   const [hovered, setHovered] = useState<CageModeKey | null>(null);
   const rect = useAnchorRect(anchorRef);
 
+  /**
+   * 再次点击当前模式 = 退回默认的「查看」模式。
+   * 包在这里而不是各页面，两种形态（dock / radial）与三端调用方自动一致。
+   */
+  const pickMode = (k: CageModeKey) => onPick(k === current ? "view" : k);
+
   const common = {
     current,
     modes,
-    onPick,
+    onPick: pickMode,
     onHover: setHovered,
     hovered,
     rect,
@@ -203,7 +209,7 @@ function DockIsland({ current, modes, onPick, onHover, hovered, rect, onToggleVa
         initial={{ y: 24, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 320, damping: 30 }}
-        className="pointer-events-auto flex items-center gap-1 rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]/85 px-2 py-1.5 shadow-[0_10px_40px_-10px_rgba(15,23,42,0.35)] backdrop-blur-md"
+        className="pointer-events-auto flex items-center gap-1 rounded-twin-xl border border-[var(--twin-hairline)] bg-[color-mix(in_srgb,var(--twin-canvas)_85%,transparent)] px-2 py-1.5 shadow-[0_10px_40px_-10px_rgba(15,23,42,0.35)] backdrop-blur-md"
       >
         {modes.map((m) => {
           const active = m.key === current;
@@ -483,7 +489,7 @@ function Caption({ meta }: { meta: CageModeMeta }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.15 }}
-      className="pointer-events-none max-w-[220px] rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]/95 px-3 py-2 text-right shadow-[0_8px_30px_-12px_rgba(15,23,42,0.3)] backdrop-blur-md"
+      className="pointer-events-none max-w-[220px] rounded-twin-lg border border-[var(--twin-hairline)] bg-[color-mix(in_srgb,var(--twin-canvas)_95%,transparent)] px-3 py-2 text-right shadow-[0_8px_30px_-12px_rgba(15,23,42,0.3)] backdrop-blur-md"
     >
       <div className="flex items-center justify-end gap-1.5">
         {meta.color && <span className="h-2 w-2 rounded-full" style={{ background: meta.color }} />}

@@ -942,14 +942,30 @@ public class CageOperationService {
 
     /**
      * 待审中间态（三端网格与详情画「分笼审核中」「转移审核中」用）。
-     * 学生只看自己提交的待审；教职工 / 额外操作身份看全部待审（这批正是他们要审的）。
+     *
+     * 可见范围：
+     *   - 教职工 / 额外操作身份：全部待审（这批正是他们要审的）
+     *   - 学生：**本课题组范围内互相可见**，与前端能看到的笼位范围一致；
+     *     自己提交的一律可见（即便源笼位已移出课题组，也不该把自己的请求看丢）
+     *
+     * 判组只看**源笼位**：目标准入本就要求与源同 AUP，同组是推论。
      */
     public List<Map<String, Object>> pendingMarkers(User user) {
-        List<CageOpRequest> rows = modeVisibilityService.isStudent(user)
-                ? opMapper.selectByApplicant(user.getId(), CageOpRequest.STATUS_PENDING)
-                : opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, null);
+        // ADMIN 及以上不受视角收口：isStudent 只看 account_source，不看 role，
+        // 双视角绑定被抬到高权限的账号（account_source=STUDENT）会被误判成学生而丢失可见范围。
+        boolean isAdmin = user != null && user.getRole() != null
+                && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        boolean student = !isAdmin && modeVisibilityService.isStudent(user);
+        List<CageOpRequest> rows = opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, null);
         List<Map<String, Object>> out = new ArrayList<>();
         for (CageOpRequest r : rows) {
+            if (student) {
+                boolean own = user.getId() != null && user.getId().equals(r.getApplicantId());
+                if (!own) {
+                    CageCellDetail src = detailMapper.selectByAnimalCageId(r.getSourceAnimalCageId());
+                    if (src == null || !cageInUserGroup(user, src)) continue;
+                }
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", String.valueOf(r.getId()));
             m.put("opType", r.getOpType());

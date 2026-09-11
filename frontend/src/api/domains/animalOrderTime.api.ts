@@ -57,6 +57,8 @@ export interface AnimalOrderTimePolicyAdmin {
   etaWorkdayOffset: number;
   etaWeekday: number | null;
   rules: AnimalOrderWindowRule[];
+  /** 本次保存要软删除的时段 id（编辑器里点「删除」先改草稿，随保存一起提交） */
+  deletedRuleIds?: number[];
 }
 
 export interface AnimalOrderHoliday {

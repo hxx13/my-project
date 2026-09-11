@@ -27,6 +27,8 @@ public class AnimalOrderWindowRule {
     private String label;
     private Integer sortOrder;
     private Integer active;
+    /** 软删除：1=已删除（管理端列表不可见、不参与判定，行保留可恢复），与 active 正交 */
+    private Integer deleted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -144,7 +144,7 @@ export default function SpaceTree(props: {
             }}
             className={cn(
               "flex min-w-0 flex-1 items-center gap-1 rounded-twin-sm py-1 pr-1 text-left transition",
-              isSelected ? "bg-[var(--twin-link-deep)]/10" : "hover:bg-[var(--twin-canvas-soft)]"
+              isSelected ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]" : "hover:bg-[var(--twin-canvas-soft)]"
             )}
           >
             {/* 展开箭头是独立热区：点击只切换展开/收起，不再被行点击吞掉 */}

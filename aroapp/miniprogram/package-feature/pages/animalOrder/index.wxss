@@ -73,7 +73,7 @@
   flex-direction: row;
 }
 .side {
-  width: 256rpx;
+  width: 192rpx;
   flex-shrink: 0;
   min-height: 0;
   border-right: 1rpx solid #ebecef;
@@ -127,6 +127,7 @@
   padding: 48rpx 24rpx;
 }
 .goods {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16rpx;
@@ -155,16 +156,66 @@
   flex: 1;
   min-width: 0;
 }
+/* 价格 + 操作控件同一行；控件不再绝对定位，不抢文本宽度也不独占一行 */
+.goods-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-top: 8rpx;
+}
 .goods-spec {
   position: relative;
   flex-shrink: 0;
-  padding: 10rpx 22rpx;
-  background: #fbecee;
-  color: #ac1736;
-  border: 1rpx solid rgba(172, 23, 54, 0.25);
+  padding: 8rpx 20rpx;
+  background: #f7f8fa;
+  color: #323233;
+  border: 1rpx solid #e3e5e8;
   border-radius: 999rpx;
   font-size: 24rpx;
+  font-weight: 500;
+}
+/* 数量选择器：复用物资领用的胶囊组（一条描边 + 中间手动输入框），替代原来的独立大方块 */
+.step-inline {
+  flex-shrink: 0;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  border: 1rpx solid #dcdee0;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #fff;
+  box-sizing: border-box;
+}
+/* 卡片里的实例脱离文档流（文字已按此预留右侧空间） */
+.si-btn {
+  width: 52rpx;
+  height: 52rpx;
+  line-height: 52rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #323233;
+}
+.si-btn-plus {
+  color: #fff;
+  background: #1989fa;
+}
+.si-btn-hover {
+  opacity: 0.88;
+}
+.si-num-input {
+  width: 72rpx;
+  height: 44rpx;
+  line-height: 44rpx;
+  padding: 0 4rpx;
+  text-align: center;
+  font-size: 24rpx;
   font-weight: 600;
+  color: #323233;
+  background: #f7f8fa;
+  border-left: 1rpx solid #ebecef;
+  border-right: 1rpx solid #ebecef;
+  box-sizing: border-box;
 }
 .goods-spec-badge {
   position: absolute;
@@ -181,15 +232,19 @@
   font-size: 18rpx;
   font-weight: 700;
 }
+/* 主标题 + 副标题同排：容器裁切，副标题跟在标题后面 */
+.goods-title-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .goods-title {
-  display: block;
   font-size: 28rpx;
   font-weight: 600;
   color: #323233;
 }
 .goods-sub {
-  display: block;
-  margin-top: 6rpx;
+  margin-left: 10rpx;
   font-size: 22rpx;
   color: #969799;
 }
@@ -197,6 +252,22 @@
   flex-shrink: 0;
   color: #c8c9cc;
   font-size: 36rpx;
+}
+.goods-desc {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: #969799;
+}
+.goods-price {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #0369a1;
+}
+/* 未开启价格时的占位，保持各行高度与操作区位置一致 */
+.goods-price-empty {
+  color: #c8c9cc;
+  font-weight: 500;
 }
 
 /* 底部栏 */
@@ -308,10 +379,24 @@
 /* 规格行 */
 .spec-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding: 20rpx 0;
   border-bottom: 1rpx solid #f2f3f5;
+}
+/* 每规格行备注：换行占满整行 */
+.spec-remark {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 12rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  border: 1rpx solid #e5e5e5;
+  border-radius: 10rpx;
+  background: #fff;
+  font-size: 24rpx;
+  color: #323233;
 }
 .spec-label {
   flex: 1;
@@ -319,37 +404,6 @@
   font-size: 26rpx;
   color: #323233;
 }
-.spec-step {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-}
-.step-btn {
-  width: 56rpx;
-  height: 56rpx;
-  line-height: 56rpx;
-  text-align: center;
-  border: 1rpx solid #ebecef;
-  border-radius: 8rpx;
-  font-size: 32rpx;
-  color: #323233;
-  background: #fff;
-}
-.step-btn-plus {
-  background: #ac1736;
-  color: #fff;
-  border-color: #ac1736;
-}
-.step-btn-off {
-  opacity: 0.4;
-}
-.step-num {
-  min-width: 56rpx;
-  text-align: center;
-  font-size: 26rpx;
-  font-weight: 600;
-}
-
 /* 购物车行 */
 .cart-line {
   display: flex;
@@ -465,6 +519,15 @@
   justify-content: flex-end;
   gap: 16rpx;
   margin-top: 24rpx;
+}
+
+/* 订单页统一 border-box：小程序无全局 reset，content-box 下的 padding 会把整页撑出屏幕 */
+.orders,
+.orders view,
+.orders scroll-view,
+.orders text,
+.orders input {
+  box-sizing: border-box;
 }
 
 /* 订单（整页显示，撑满导航栏以下） */
@@ -610,6 +673,14 @@
 .pickup-arrow { color: #bbb; font-size: 32rpx; line-height: 1; }
 
 /* 房间树 */
+.room-error {
+  padding: 24rpx 8rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #ac1736;
+  word-break: break-all;
+}
+.room-error-retry { color: #0369a1; }
 .room-search { padding: 0 24rpx 12rpx; }
 .room-search-input {
   height: 68rpx;
@@ -622,20 +693,20 @@
 .room-row {
   display: flex;
   align-items: center;
-  min-height: 76rpx;
-  padding-right: 24rpx;
+  min-height: 56rpx;
+  padding-right: 20rpx;
   border-bottom: 1rpx solid #f5f5f5;
-  font-size: 27rpx;
+  font-size: 24rpx;
   color: #333;
 }
 .room-row-folder { color: #666; font-weight: 500; }
 .room-row-leaf { color: #333; }
 .room-row-sel { background: #eef7ff; color: #1677ff; font-weight: 600; }
 .room-caret {
-  width: 34rpx;
-  flex: 0 0 34rpx;
+  width: 26rpx;
+  flex: 0 0 26rpx;
   color: #bbb;
-  font-size: 24rpx;
+  font-size: 20rpx;
 }
 .room-name { flex: 1; min-width: 0; }
 

@@ -175,7 +175,7 @@ export function QrUploader({ onVerified }: QrUploaderProps) {
               "w-full rounded-[var(--student-radius-md)] border-2 border-[var(--student-primary)]",
               "bg-[var(--student-primary-soft)] p-6",
               "flex flex-col items-center justify-center gap-3",
-              "transition-colors hover:bg-[var(--student-primary)]/15",
+              "transition-colors hover:bg-[color-mix(in_srgb,var(--student-primary)_15%,transparent)]",
               "cursor-pointer disabled:opacity-50",
             )}
           >

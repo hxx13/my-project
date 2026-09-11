@@ -83,7 +83,7 @@ function FilterPill({
         "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors",
         active
           ? "bg-[var(--student-primary)] text-white shadow-sm"
-          : "bg-[var(--student-surface)] text-[var(--student-mute-foreground)] hover:bg-[var(--student-primary-soft)]/20",
+          : "bg-[var(--student-surface)] text-[var(--student-mute-foreground)] hover:bg-[color-mix(in_srgb,var(--student-primary-soft)_20%,transparent)]",
       )}
     >
       {children}

@@ -27,6 +27,11 @@
 @tailwind utilities;
 
 @layer base {
+  /* 顶栏 + 页面上下内边距的总高度。被 10+ 处 calc(100dvh - var(--admin-chrome-offset)) 引用；
+     此前该变量从未定义，导致那些封顶高度静默失效（整页可无限下滚）。64 顶栏 + 32×2 内边距 = 128。 */
+  :root {
+    --admin-chrome-offset: 128px;
+  }
   /* ═══════ shadcn 兼容映射（保留现有组件不崩） ═══════ */
   :root {
     --background:            var(--app-color-surface-page);

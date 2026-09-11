@@ -298,7 +298,7 @@ export default function AgvQuadrant(props: Props) {
         })()}
 
         {/* Top-left: fork height dot indicator */}
-        <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-2 py-1.5">
+        <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] rounded px-2 py-1.5">
           {/* Vertical track + dot */}
           <div className="relative w-4 h-40 rounded-full bg-[var(--app-color-border-default)]">
             <div className="absolute left-1/2 -translate-x-1/2 w-8 h-8 rounded-full border-4 border-white shadow-md"
@@ -311,7 +311,7 @@ export default function AgvQuadrant(props: Props) {
         </div>
 
         {/* Top-left (next to fork): jack icon + secondary status */}
-        <div className="absolute top-2 left-20 flex flex-col gap-0.5 text-[9px] text-[var(--app-color-text-secondary)] pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-1.5 py-1">
+        <div className="absolute top-2 left-20 flex flex-col gap-0.5 text-[9px] text-[var(--app-color-text-secondary)] pointer-events-none bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] rounded px-1.5 py-1">
           <JackIcon enable={jackEnable} state={jackState} isFull={jackIsFull} mode={jackMode} />
           {jackErrorCode != null && jackErrorCode !== 0 && (
             <span className="text-red-500 font-medium">E{jackErrorCode}</span>
@@ -337,7 +337,7 @@ export default function AgvQuadrant(props: Props) {
 
         {/* Bottom-center: DI channels */}
         {diChannels && diChannels.length > 0 && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-1.5 py-0.5">
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 pointer-events-none bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] rounded px-1.5 py-0.5">
             {diChannels.map((ch) => (
               <span key={ch.id}
                 className={`inline-flex items-center gap-0.5 text-[8px] ${
@@ -352,7 +352,7 @@ export default function AgvQuadrant(props: Props) {
         )}
 
         {/* Bottom-left: coordinates + trail count */}
-        <div className="absolute bottom-1 left-2 text-[10px] text-[var(--app-color-text-primary)] tabular-nums pointer-events-none bg-[var(--app-color-surface-container)]/80 rounded px-1.5 py-0.5">
+        <div className="absolute bottom-1 left-2 text-[10px] text-[var(--app-color-text-primary)] tabular-nums pointer-events-none bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] rounded px-1.5 py-0.5">
           {playbackActive && playbackData
             ? `${playbackData.totalPoints}点 · 回放`
             : (x != null && y != null ? `(${x.toFixed(2)}, ${y.toFixed(2)})` : "—") + ` · ${trail.length}点`
@@ -375,7 +375,7 @@ export default function AgvQuadrant(props: Props) {
 
         {/* ── History playback: loading overlay ── */}
         {playbackLoading && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--app-color-surface-container)]/60 backdrop-blur-sm pointer-events-none">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[color-mix(in_srgb,var(--app-color-surface-container)_60%,transparent)] backdrop-blur-sm pointer-events-none">
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] shadow-lg">
               <span className="text-xs text-[var(--app-color-text-secondary)]">加载回放数据...</span>
             </div>

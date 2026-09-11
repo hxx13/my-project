@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -189,32 +190,24 @@ public class AnimalOrderTimeEngine {
         return days;
     }
 
-    /** Spec §3.5 — returns {@code OPEN} or {@code CLOSED}. */
+    /**
+     * Spec §3.5 — returns {@code OPEN} or {@code CLOSED}.
+     *
+     * <p>优先级语义：同组规则按 {@code (sortOrder, id)} 自上而下排列，**首个命中者胜出**，
+     * 全部不命中才回落 {@code policy.defaultMode()}。因此重叠不是错误，而是「上层向下覆盖下层」
+     * 的表达方式（例如：上层开放整周，下层再挖掉午休）。
+     */
     public String effectiveEffectAt(ZonedDateTime instant, String categoryKey) {
-        List<WindowRule> rules = selectRuleSet(categoryKey, allRules);
-        boolean hasOpen = false;
-        boolean hasDisable = false;
+        List<WindowRule> rules = new ArrayList<>(selectRuleSet(categoryKey, allRules));
+        rules.sort(Comparator
+                .comparingInt(WindowRule::sortOrder)
+                .thenComparingLong(r -> r.id() == null ? 0L : r.id()));
         for (WindowRule rule : rules) {
-            if (!ruleCoversInstant(rule, instant)) {
-                continue;
-            }
-            if (EFFECT_OPEN.equals(rule.effect())) {
-                hasOpen = true;
-            } else if (EFFECT_DISABLE.equals(rule.effect())) {
-                hasDisable = true;
+            if (ruleCoversInstant(rule, instant)) {
+                return EFFECT_OPEN.equals(rule.effect()) ? EFFECT_OPEN : "CLOSED";
             }
         }
-        if (hasOpen && hasDisable) {
-            throw TwinBusinessException.of(
-                    ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CONFLICT, "时间窗口配置异常");
-        }
-        if (!hasOpen && !hasDisable) {
-            return policy.defaultMode();
-        }
-        if (hasDisable) {
-            return "CLOSED";
-        }
-        return EFFECT_OPEN;
+        return policy.defaultMode();
     }
 
     /** Spec §3.6 */

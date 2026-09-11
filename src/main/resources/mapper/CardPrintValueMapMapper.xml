@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cardprint.mapper.CardPrintValueMapMapper">
+
+    <resultMap id="CardPrintValueMapMap" type="com.example.demo.modules.cardprint.entity.CardPrintValueMap">
+        <id property="id" column="id"/>
+        <result property="canonical" column="canonical"/>
+        <result property="rawValue" column="raw_value"/>
+        <result property="shortValue" column="short_value"/>
+        <result property="sort" column="sort"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, canonical, raw_value, short_value, sort, created_by, created_at, updated_at
+    </sql>
+
+    <select id="selectAll" resultMap="CardPrintValueMapMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_value_map ORDER BY canonical, sort, id
+    </select>
+
+    <select id="selectById" resultMap="CardPrintValueMapMap">
+        SELECT <include refid="BaseColumns"/> FROM card_print_value_map WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO card_print_value_map (canonical, raw_value, short_value, sort, created_by)
+        VALUES (#{canonical}, #{rawValue}, #{shortValue}, #{sort}, #{createdBy})
+    </insert>
+
+    <update id="update">
+        UPDATE card_print_value_map
+        SET canonical = #{canonical}, raw_value = #{rawValue}, short_value = #{shortValue}, sort = #{sort}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM card_print_value_map WHERE id = #{id}
+    </delete>
+</mapper>

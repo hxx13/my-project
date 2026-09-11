@@ -333,7 +333,7 @@ export function ScanDelayMenuPortal({
           </ul>
         )}
         {submitting ? (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[var(--app-color-surface-container)]/80">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)]">
             <Loader2 className="h-5 w-5 animate-spin text-[var(--app-color-accent)]" />
           </div>
         ) : null}

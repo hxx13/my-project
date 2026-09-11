@@ -129,7 +129,7 @@ export default function AdminSuppliesManagePage() {
             type="button"
             className={`rounded-twin-sm px-2.5 py-1 text-xs font-medium border ${
               createCatOpen
-                ? "border-[var(--twin-primary)] bg-[var(--twin-primary)]/10 text-[var(--twin-primary)]"
+                ? "border-[var(--twin-primary)] bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] text-[var(--twin-primary)]"
                 : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
             }`}
             onClick={() => setCreateCatOpen((v) => !v)}

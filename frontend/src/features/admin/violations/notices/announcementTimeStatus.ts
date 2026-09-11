@@ -16,12 +16,12 @@ export const TIME_STATUS_META: Record<TimeStatus, { label: string; color: string
   pending: {
     label: "待生效",
     color:
-      "text-[var(--app-color-feedback-warning)] bg-[var(--app-color-feedback-warning-soft)] border-[var(--app-color-feedback-warning)]/30",
+      "text-[var(--app-color-feedback-warning)] bg-[var(--app-color-feedback-warning-soft)] border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)]",
   },
   active: {
     label: "生效中",
     color:
-      "text-[var(--app-color-feedback-success)] bg-[var(--app-color-feedback-success-soft)] border-[var(--app-color-feedback-success)]/30",
+      "text-[var(--app-color-feedback-success)] bg-[var(--app-color-feedback-success-soft)] border-[color-mix(in_srgb,var(--app-color-feedback-success)_30%,transparent)]",
   },
   expired: {
     label: "已过期",
@@ -30,6 +30,6 @@ export const TIME_STATUS_META: Record<TimeStatus, { label: string; color: string
   },
   indefinite: {
     label: "永久有效",
-    color: "text-[var(--app-color-accent)] bg-[var(--app-color-accent-soft)] border-[var(--app-color-accent)]/30",
+    color: "text-[var(--app-color-accent)] bg-[var(--app-color-accent-soft)] border-[color-mix(in_srgb,var(--app-color-accent)_30%,transparent)]",
   },
 };

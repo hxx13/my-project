@@ -83,7 +83,7 @@ export default function EmojiPicker({ value, onChange, onClose }: EmojiPickerPro
                   className={cn(
                     "rounded-full border px-2.5 py-1 text-[11px] transition",
                     catKey === c.key
-                      ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)]/10 font-medium text-[var(--twin-link-deep)]"
+                      ? "border-[var(--twin-link-deep)] bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)] font-medium text-[var(--twin-link-deep)]"
                       : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
                   )}
                 >
@@ -111,7 +111,7 @@ export default function EmojiPicker({ value, onChange, onClose }: EmojiPickerPro
                       className={cn(
                         "flex aspect-square items-center justify-center rounded-twin-sm border text-2xl leading-none transition",
                         active
-                          ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)]/10 ring-2 ring-[var(--twin-link-deep)]/30"
+                          ? "border-[var(--twin-link-deep)] bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)] ring-2 ring-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)]"
                           : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] hover:bg-[var(--twin-canvas)] hover:ring-1 hover:ring-[var(--twin-hairline-strong)]"
                       )}
                     >
