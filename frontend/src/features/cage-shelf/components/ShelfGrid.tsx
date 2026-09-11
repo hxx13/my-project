@@ -166,7 +166,9 @@ export function ShelfGrid({
               }
               allocMode={allocMode}
               clickMode={clickMode}
-              editCacheEntry={scanCache?.get(ck)}
+              // 预览色只在状态模式生效：缓存是「待提交」的真相源，跨模式留着，
+              // 但别的模式不该看到状态模式的预览色（否则切出去还会花着）
+              editCacheEntry={editMode ? scanCache?.get(ck) : undefined}
               isLastScanned={lastScannedKey === ck}
               bindHighlight={bindSelectedKey === ck}
               bindPending={isBindCached || isUnbindCached}

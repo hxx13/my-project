@@ -32,6 +32,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -371,6 +372,55 @@ public class TwinStudentViolationService {
             }
             log.warn("[student-violation] increment enter 失败 id={} err={}", row.getId(), e.getMessage());
         }
+    }
+
+    /** 某人当前在大屏「提醒公示」的可见情况：生效条数 + 实际展示的那条 id（同人 MAX(id)）。 */
+    public record BoardVisibility(int activeCount, Long boardRowId) {}
+
+    /**
+     * 批量查询管理端列表用的大屏可见性。
+     * 同人可有多条 ACTIVE，而大屏每人只展示 MAX(id)，删除其中一条不会让人下榜——
+     * 管理端需要据此提示，否则"删了还在"无法解释。
+     */
+    public Map<String, BoardVisibility> boardVisibilityByUsers(Collection<String> userIds) {
+        if (userIds == null || userIds.isEmpty() || violationTableAbsent.get()) {
+            return Collections.emptyMap();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (String uid : userIds) {
+            if (StringUtils.hasText(uid)) {
+                ids.add(uid.trim());
+            }
+        }
+        if (ids.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<TwinStudentViolation> rows;
+        try {
+            rows = violationMapper.selectBoardVisibleActiveByUserIds(ids);
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                return Collections.emptyMap();
+            }
+            log.warn("[student-violation] 查询大屏可见性失败: {}", e.getMessage());
+            return Collections.emptyMap();
+        }
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, BoardVisibility> out = new HashMap<>();
+        for (TwinStudentViolation r : rows) {
+            if (r == null || r.getId() == null || !StringUtils.hasText(r.getTargetUserId())) {
+                continue;
+            }
+            String uid = r.getTargetUserId().trim();
+            BoardVisibility cur = out.get(uid);
+            out.put(uid, new BoardVisibility(
+                    (cur == null ? 0 : cur.activeCount()) + 1,
+                    cur == null || cur.boardRowId() == null ? r.getId() : Math.max(cur.boardRowId(), r.getId())));
+        }
+        return out;
     }
 
     /**

@@ -122,6 +122,8 @@ export interface RefOrder {
   totalAmount?: number | null;
   /** 订单内是否含已开启价格的物品 */
   priceEnabled?: boolean;
+  /** 当前登录人能否编辑这张单（待处理 + 本人即该单提交人）；由服务端判定下发 */
+  editable?: boolean;
   lines?: RefOrderLine[];
 }
 
@@ -274,6 +276,11 @@ export async function addToCart(
     collectorName?: string;
     /** 行备注（有规格时逐规格各一条） */
     remark?: string;
+    /**
+     * 正在编辑的待处理订单 id。带着它加购，这一行归入那场编辑会话：
+     * 放弃编辑一并清掉、保存一并写回原单，不会留成清不掉的残行。
+     */
+    editingOrderId?: number;
   },
   groupId: string,
 ) {

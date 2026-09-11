@@ -215,6 +215,18 @@
         LIMIT #{limit}
     </select>
 
+    <!-- 管理端标记：同人是否还有其它 ACTIVE、以及哪条正被大屏展示（同人 MAX(id)）。口径与上面严格一致。 -->
+    <select id="selectBoardVisibleActiveByUserIds" resultMap="TwinStudentViolationMap">
+        SELECT v.*
+        FROM twin_student_violation v
+        WHERE v.status = 'ACTIVE'
+          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+          AND v.target_user_id IN
+          <foreach collection="userIds" item="uid" open="(" separator="," close=")">
+              #{uid}
+          </foreach>
+    </select>
+
     <select id="selectById" resultMap="TwinStudentViolationMap">
         SELECT v.*
         FROM twin_student_violation v

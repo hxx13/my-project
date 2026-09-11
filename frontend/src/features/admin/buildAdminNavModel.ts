@@ -271,6 +271,10 @@ function isMaterialReviewNavPath(path: string): boolean {
   return normalizeAdminPath(path) === normalizeAdminPath("/admin/material/review");
 }
 
+function isAnimalOrderReviewNavPath(path: string): boolean {
+  return normalizeAdminPath(path) === normalizeAdminPath("/admin/animal-order-review");
+}
+
 function resolveNavEntryBadgeText(
   path: string,
   itemBadgeKey: string | null | undefined,
@@ -280,6 +284,10 @@ function resolveNavEntryBadgeText(
     // 笼位申请 + 分笼/转移待审都归这个入口，角标求和才与页面内各 tab 相符
     const cagePending = (pendingBadges?.badgeCounters?.processCageClaim ?? 0) + (pendingBadges?.badgeCounters?.processCageOp ?? 0);
     return studentReviewBadgeText(pendingBadges, undefined, cagePending);
+  }
+  if (isAnimalOrderReviewNavPath(path)) {
+    // 待审订单数：后端 badgeCounters.processAnimalOrder，与审核页「新订单」页签同一口径
+    return formatBadgeCount(Math.max(0, pendingBadges?.badgeCounters?.processAnimalOrder ?? 0)) || undefined;
   }
   return badgeTextFromKey(
     pendingBadges,

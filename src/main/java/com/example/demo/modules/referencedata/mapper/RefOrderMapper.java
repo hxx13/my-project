@@ -44,9 +44,13 @@ public interface RefOrderMapper {
     /** 筛选下拉用的去重值（订单级：课题组/AUP 编号） */
     List<String> distinctOrderValues(@Param("column") String column);
 
-    /** 学生端候选：限定在本课题组内去重（行级） */
-    List<String> distinctLineValuesInGroup(@Param("column") String column, @Param("groups") List<String> groups);
+    /** 学生端候选：限定在「本人课题组 ∪ 本人提交」内去重（行级） */
+    List<String> distinctLineValuesInGroup(@Param("column") String column,
+                                          @Param("groups") List<String> groups,
+                                          @Param("submitters") List<String> submitters);
 
-    /** 学生端候选：限定在本课题组内去重（订单级） */
-    List<String> distinctOrderValuesInGroup(@Param("column") String column, @Param("groups") List<String> groups);
+    /** 学生端候选：限定在「本人课题组 ∪ 本人提交」内去重（订单级） */
+    List<String> distinctOrderValuesInGroup(@Param("column") String column,
+                                           @Param("groups") List<String> groups,
+                                           @Param("submitters") List<String> submitters);
 }

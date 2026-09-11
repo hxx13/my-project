@@ -841,6 +841,10 @@
 .ord-tr-head { background: #f7f8fa; font-size: 22rpx; color: #646566; font-weight: 600; }
 .ord-td { flex-shrink: 0; padding: 14rpx 12rpx; font-size: 22rpx; color: #323233; word-break: break-all; }
 .ord-td.mono { font-family: monospace; font-size: 20rpx; color: #969799; }
+/* 表格拆成明细行：订单级块与行级块之间加竖分隔线，相邻订单之间加粗上边线 */
+.ord-td.ord-line-split { border-left: 2rpx solid #e5e6eb; }
+.ord-tr-order { border-top: 2rpx solid #dcdfe6; }
+.ord-sub { font-size: 20rpx; color: #969799; }
 .w-no { width: 220rpx; }
 .w-src { width: 110rpx; text-align: center; }
 .w-group { width: 240rpx; }
@@ -852,6 +856,7 @@
 .w-aup { width: 220rpx; }
 .w-mid { width: 160rpx; }
 .w-room { width: 280rpx; }
+.w-cage { width: 280rpx; }
 .w-date { width: 240rpx; }
 .w-remark { width: 340rpx; }
 

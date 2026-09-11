@@ -289,11 +289,19 @@ public class ReferenceDataService {
         entity.setPackageStatus("DRAFT");
         entity.setPackageRemark(null);
         entity.setAddedBy(userId);
+        // 编辑中加购：归入那场编辑会话，放弃时一并清、保存时一并写回原单。
+        // 校验放在服务端——否则编辑期新加的行永远没有标记，成为清不掉的残行。
+        if (req.getEditingOrderId() != null) {
+            if (requireEditableOrder(req.getEditingOrderId(), userId) == null) {
+                return Result.error("该订单已不可编辑，请退出编辑模式后重新加购");
+            }
+            entity.setEditingOrderId(req.getEditingOrderId());
+        }
         // 订购 → 笼位：预定在点笼位时就已锁好，这里校验归属/规格，并把最终数量同步回笼位表单
         if (req.getReservationId() != null) {
             String specLabel = req.getSpecSelections() != null ? req.getSpecSelections().get("option") : null;
             CageOrderReservation reservation = cageReservationService.requireActiveForCart(
-                    req.getReservationId(), userId, specLabel, entity.getQuantity());
+                    req.getReservationId(), userId, req.getRefDataId(), specLabel, entity.getQuantity());
             entity.setTargetAnimalCageId(reservation.getAnimalCageId());
         }
         cartMapper.insert(entity);
@@ -456,6 +464,45 @@ public class ReferenceDataService {
                     return Result.error("购物车行缺少 AUP 归属，请清空后重新按 AUP 加购");
                 }
                 cartIdsToClear.add(c.getId());
+            }
+        }
+
+        // 编辑中的回填行不能当新单提交：原单还在，再提交一次就是同一批东西下两张单。
+        // 但订单已经离开待处理（被驳回/通过/取消）时，这些回填行是**清不掉的僵尸**——
+        // 编辑入口只受理 PENDING，靠报错把它们挡在这里，整个课题组就再也提交不了单。
+        // 所以：还在编辑中 → 拦；已失效 → 就地清掉再继续。
+        List<RefCart> editingRows = itemsToProcess.stream()
+                .filter(c -> c.getEditingOrderId() != null).toList();
+        if (!editingRows.isEmpty()) {
+            Set<Long> editingOrderIds = editingRows.stream()
+                    .map(RefCart::getEditingOrderId)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            for (Long editingOrderId : editingOrderIds) {
+                RefOrder editing = orderMapper.findById(editingOrderId);
+                if (editing != null && "PENDING".equalsIgnoreCase(editing.getStatus())) {
+                    return Result.error("有订单正在编辑中：请先在购物车里「保存」或「放弃编辑」，再提交新订单");
+                }
+                clearEditingCartRows(editingOrderId, "关联订单已结束，编辑回填行清理");
+            }
+            itemsToProcess = itemsToProcess.stream()
+                    .filter(c -> c.getEditingOrderId() == null)
+                    .toList();
+            if (itemsToProcess.isEmpty()) {
+                return Result.error("购物车里只剩已结束订单的编辑回填内容，已为你清理，请重新加购后再提交");
+            }
+        }
+
+        // 笼位占用兜底：加购时的校验挡不住「加购之后预定被释放/被别人拿走」。
+        // 这里再确认一次，否则会下出「行上写着笼位、笼位其实已经不在了」的单子。
+        List<Long> targetedCartIds = itemsToProcess.stream()
+                .filter(c -> c.getTargetAnimalCageId() != null && c.getId() != null)
+                .map(RefCart::getId).toList();
+        if (!targetedCartIds.isEmpty()) {
+            Set<Long> heldCages = cageReservationService.heldReservations(null, targetedCartIds).keySet();
+            for (RefCart c : itemsToProcess) {
+                if (c.getTargetAnimalCageId() != null && !heldCages.contains(c.getTargetAnimalCageId())) {
+                    return Result.error("部分物品锁定的笼位预定已失效，请重新选择笼位后再提交");
+                }
             }
         }
 
@@ -763,6 +810,33 @@ public class ReferenceDataService {
         return groups.isEmpty() ? null : groups.get(0);
     }
 
+    /**
+     * 本人持有的全部账号 id：当前账号 + 它的对偶账号（STAFF_ ↔ aro_user_id）。
+     *
+     * <p>订单的 submitter_id 记的是下单那一刻的登录账号，同一人换个账号看自己的单不该丢，
+     * 所以「我的订单」的可见范围按账号集合算，而不是只比当前这一个账号。
+     */
+    private List<String> resolveMyAccountIds(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return List.of();
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        ids.add(userId.trim());
+        try {
+            UserAroBinding b = userAroBindingMapper.selectByUserId(userId.trim());
+            if (b == null) {
+                b = userAroBindingMapper.selectByAroUserId(userId.trim());
+            }
+            if (b != null) {
+                if (StringUtils.hasText(b.getAroUserId())) ids.add(b.getAroUserId().trim());
+                if (StringUtils.hasText(b.getUserId())) ids.add(b.getUserId().trim());
+            }
+        } catch (Exception e) {
+            log.warn("[reference-data] 解析本人对偶账号失败 user={}: {}", userId, e.getMessage());
+        }
+        return new ArrayList<>(ids);
+    }
+
     /** 某课题组名是否命中本人课题组（多课题组账号命中任一即算，逐组精确比对不做模糊）。 */
     private static boolean matchesAnyOfMyGroups(List<String> myGroups, String groupName) {
         return StringUtils.hasText(groupName)
@@ -924,35 +998,44 @@ public class ReferenceDataService {
         return out;
     }
 
-    // ── 待处理订单编辑（回填购物车 → 改 → 保存回原单）──
-    // 关键约束：编辑期间**原单完全不动**，只有 applyOrderEdit 才写回；
+    /** 待审核订单数（侧栏角标用）：与审核页「新订单」页签同一口径，不加别的过滤。 */
+    public int countPendingOrders() {
+        RefOrderQuery q = new RefOrderQuery();
+        q.setStatus("PENDING");
+        return orderMapper.countAll(q);
+    }
+
+    // ── 待处理订单编辑（回填购物车 → 改 → 保存回原单）──    // 关键约束：编辑期间**原单完全不动**，只有 applyOrderEdit 才写回；
     // 回填行带 editing_order_id 标记，放弃/重入/保存都按标记精确定位，
     // 既不会误删用户其它购物车内容，也不会因中途退出留下半成品订单。
 
-    /** 校验可编辑：存在 + 待处理 + 有权限（本课题组；allowAnyGroup=管理员放行）。 */
-    private RefOrder requireEditableOrder(Long orderId, String userId, boolean allowAnyGroup) {
+    /**
+     * 校验可编辑：存在 + 待处理 + **提交人本人**。
+     *
+     * <p>只认该单的提交人（PI，即最终稿提交人）。多账号汇总单里组员的加购内容也会并进这张单，
+     * 但编辑入口只归提交人——组员各改各的会与共享购物车的归属判定打架，也会让编辑后的
+     * 内容回填到非提交人名下。管理员同样不放行：下单严格按课题组匹配，放开就得先选组，不值当。
+     * 用 person 级比较而不是裸 account id：同一人可能同时持有 STAFF_ 与 aro_user_id 两个账号。
+     */
+    private RefOrder requireEditableOrder(Long orderId, String userId) {
         RefOrder o = orderMapper.findById(orderId);
         if (o == null || !"PENDING".equalsIgnoreCase(o.getStatus())) {
             return null;
         }
-        if (allowAnyGroup) {
-            return o;
-        }
-        if (!matchesAnyOfMyGroups(resolveProjectGroupNames(userId), o.getProjectGroupName())) {
+        if (!personIdentityService.samePerson(o.getSubmitterId(), userId)) {
             return null;
         }
         return o;
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Result<List<RefCartView>> loadOrderToCart(Long orderId, String userId, boolean allowAnyGroup) {
-        RefOrder o = requireEditableOrder(orderId, userId, allowAnyGroup);
+    public Result<List<RefCartView>> loadOrderToCart(Long orderId, String userId) {
+        RefOrder o = requireEditableOrder(orderId, userId);
         if (o == null) {
-            return Result.error("订单不存在、不是待处理状态，或无权编辑");
+            return Result.error("只有该订单的提交人（PI）可以编辑，且订单需处于待处理状态");
         }
         // 重入编辑：先清旧的回填行，保证幂等
-        releaseReservationsForEditingOrder(orderId);
-        cartMapper.deleteByEditingOrderId(orderId);
+        clearEditingCartRows(orderId, "订单编辑调整，原笼位预定释放");
 
         for (RefOrderLine l : orderLineMapper.listByOrderId(orderId)) {
             RefCart c = new RefCart();
@@ -970,40 +1053,93 @@ public class ReferenceDataService {
             c.setPackageStatus("DRAFT");
             c.setPackageRemark(null);
             c.setTargetAnimalCageId(l.getTargetAnimalCageId());
-            c.setAddedBy(userId);
+            // 归属固定落提交人：回填内容只算 PI 的，不会挂到当初加购的组员名下
+            c.setAddedBy(o.getSubmitterId());
             cartMapper.insert(c);
         }
         return Result.success(toCartViews(cartMapper.listByEditingOrderId(orderId), userId));
     }
 
-    /** 清回填行前先把它们锁着的笼位放掉，否则那批笼位对所有人永久不可选。 */
-    private void releaseReservationsForEditingOrder(Long orderId) {
-        List<Long> cartIds = cartMapper.listByEditingOrderId(orderId).stream().map(RefCart::getId).toList();
-        cageReservationService.releaseByCartIds(cartIds, "订单编辑调整，原笼位预定释放");
+    /**
+     * 把某订单的编辑回填行连同它们锁着的笼位一起清掉。
+     *
+     * <p>三个入口共用：重入编辑前清旧的、放弃编辑、以及订单离开待处理后的收尾。
+     * 最后一种是必须的——订单一旦不是 PENDING，编辑入口也不再受理，
+     * 那些回填行就再也清不掉，会一直挂在购物车里、并把后续「提交订单」挡死。
+     */
+    private void clearEditingCartRows(Long orderId, String reason) {
+        List<Long> cartIds = cartMapper.listByEditingOrderId(orderId).stream()
+                .map(RefCart::getId).filter(Objects::nonNull).toList();
+        if (cartIds.isEmpty()) return;
+        cageReservationService.releaseByCartIds(cartIds, reason);
+        cartMapper.deleteByEditingOrderId(orderId);
     }
 
-    /** 放弃编辑：只清回填行，原单不受影响。 */
+    /**
+     * 放弃编辑：只清回填行，原单不受影响。
+     *
+     * <p>按 {@code editing_order_id} 精确删除——编辑期间新加的行也会带上同一标记
+     * （见 {@link #addToCart}），所以整场会话的内容一次清干净，不会留残行。
+     *
+     * <p>**刻意不要求订单还在待处理**：订单被审核掉之后，回填行更需要一个出口来清理，
+     * 否则它们永远留在购物车里（编辑入口已不再受理），还会把后续提交订单挡死。
+     * 权限只校验「本人提交的单」。
+     */
     @Transactional(rollbackFor = Exception.class)
-    public Result<Void> discardOrderEdit(Long orderId, String userId, boolean allowAnyGroup) {
-        RefOrder o = requireEditableOrder(orderId, userId, allowAnyGroup);
-        if (o == null) {
-            return Result.error("订单不存在、不是待处理状态，或无权编辑");
+    public Result<Void> discardOrderEdit(Long orderId, String userId) {
+        RefOrder o = orderMapper.findById(orderId);
+        if (o == null || !personIdentityService.samePerson(o.getSubmitterId(), userId)) {
+            return Result.error("只有该订单的提交人（PI）可以放弃编辑");
         }
-        releaseReservationsForEditingOrder(orderId);
-        cartMapper.deleteByEditingOrderId(orderId);
+        clearEditingCartRows(orderId, "放弃编辑");
         return Result.success(null);
     }
 
-    /** 保存编辑：用回填行整体替换原单明细，单号与状态都不变（链条不断）。 */
+    /**
+     * 保存编辑：用回填行整体替换原单明细，单号与状态都不变（链条不断）。
+     *
+     * <p>回填行是 loadOrderToCart 直接落库的，绕过了加购那一刻的校验，若这里不补一遍，
+     * 编辑就成了绕过占用校验的后门：能改出「笼位已经失效却还写在行上」的单子，
+     * 审核通过时再把失效笼位一并转成饲养中。所以逐行复刻 AUP / 白名单 / 笼位在持 / 单笼上限。
+     */
     @Transactional(rollbackFor = Exception.class)
-    public Result<RefOrderView> applyOrderEdit(Long orderId, String userId, boolean allowAnyGroup) {
-        RefOrder o = requireEditableOrder(orderId, userId, allowAnyGroup);
+    public Result<RefOrderView> applyOrderEdit(Long orderId, String userId) {
+        RefOrder o = requireEditableOrder(orderId, userId);
         if (o == null) {
-            return Result.error("订单不存在、不是待处理状态，或无权编辑");
+            return Result.error("只有该订单的提交人（PI）可以编辑，且订单需处于待处理状态");
         }
         List<RefCart> rows = cartMapper.listByEditingOrderId(orderId);
         if (rows.isEmpty()) {
             return Result.error("没有待保存的编辑内容");
+        }
+        for (RefCart c : rows) {
+            if (c.getAupRecordId() == null) {
+                return Result.error("订单行缺少 AUP 归属，请重新加购");
+            }
+            if (resolveAupForOrder(c.getAupRecordId(), userId) == null) {
+                return Result.error("订单行关联的 AUP 不存在、未获批准，或不属于本人课题组");
+            }
+        }
+        String allowlistError = validateOrderLinesAgainstAllowlist(rows);
+        if (allowlistError != null) {
+            return Result.error(allowlistError);
+        }
+
+        List<Long> cartIds = rows.stream().map(RefCart::getId).filter(Objects::nonNull).toList();
+        // 笼位在持校验：行上写着哪个笼位，就得真有一张还活着的预定（订单级 or 本次会话新挑的）
+        Map<Long, CageOrderReservation> held = cageReservationService.heldReservations(orderId, cartIds);
+        int cap = cageReservationService.maxQuantityPerCage();
+        Set<Long> keepCageIds = new LinkedHashSet<>();
+        for (RefCart c : rows) {
+            Long cageId = c.getTargetAnimalCageId();
+            if (cageId == null) continue;
+            if (!held.containsKey(cageId)) {
+                return Result.error("订单锁定的笼位预定已失效，请重新选择笼位后再保存");
+            }
+            if (c.getQuantity() != null && c.getQuantity() > cap) {
+                return Result.error("单个笼位最多放 " + cap + " 只，请减少数量或增加笼位");
+            }
+            keepCageIds.add(cageId);
         }
 
         orderLineMapper.deleteByOrderId(orderId);
@@ -1022,6 +1158,12 @@ public class ReferenceDataService {
             l.setPickupRoomName(c.getPickupRoomName());
             l.setCollectorId(c.getCollectorId());
             l.setCollectorName(c.getCollectorName());
+            l.setTargetAnimalCageId(c.getTargetAnimalCageId());
+            if (c.getTargetAnimalCageId() != null) {
+                Map<String, Object> loc = cageReservationService
+                        .cageLocationSnapshots(List.of(c.getTargetAnimalCageId())).get(c.getTargetAnimalCageId());
+                if (loc != null) l.setTargetCageLocation(toJson(loc));
+            }
             RefData refData = referenceDataMapper.findById(c.getRefDataId());
             l.setUnitPrice(resolveUnitPrice(parseFieldData(refData), extractSpecOption(c.getSpecSelections())));
             orderLineMapper.insert(l);
@@ -1029,7 +1171,10 @@ public class ReferenceDataService {
                 itemNames.add(extractDisplayName(refData));
             }
         }
-        releaseReservationsForEditingOrder(orderId);
+        // 本次新挑的笼位预定还挂在购物车行上，先挂到订单（否则删行时会被当成待释放的），
+        // 再把「仍持有但明细已不再引用」的老预定放掉——换笼位不能把旧笼位一直占着。
+        cageReservationService.bindOrder(cartIds, orderId);
+        cageReservationService.releaseHeldNotUsed(held.values(), keepCageIds, "订单编辑调整，原笼位预定释放");
         cartMapper.deleteByEditingOrderId(orderId);
         logOrderAction(orderId, "EDITED", userId, "编辑订单明细，共 " + rows.size() + " 项");
         return Result.success(toOrderView(orderMapper.findById(orderId)));
@@ -1052,8 +1197,9 @@ public class ReferenceDataService {
             return empty;
         }
         int offset = (page - 1) * pageSize;
+        Set<String> myAccounts = new HashSet<>(resolveMyAccountIds(userId));
         List<RefOrderView> list = orderMapper.listAll(q, pageSize, offset)
-                .stream().map(this::toOrderView).toList();
+                .stream().map(row -> toOrderView(row, myAccounts)).toList();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("list", list);
         out.put("total", orderMapper.countAll(q));
@@ -1071,16 +1217,24 @@ public class ReferenceDataService {
         return orderMapper.listAll(q, EXPORT_MAX_ROWS, 0).stream().map(this::toOrderView).toList();
     }
 
-    /** 归一筛选条件并把课题组钉死为调用者本人课题组；解析不到课题组返回 null。 */
+    /**
+     * 归一筛选条件，并把可见范围钉死为「本人课题组 ∪ 本人提交」。
+     *
+     * <p>为什么要有后半截：提交侧的组校验在 {@code resolveProjectGroupNames} 为空时是**跳过**的
+     * （见 resolveAupForOrder），所以课题组成员解析不出的账号照样下得了单；列表若只按组名精确筛，
+     * 那些单永远落在自己的视野之外，也就谈不上编辑。范围仍由服务端强制写死，客户端传的一律覆盖。
+     */
     private RefOrderQuery scopeToMyGroup(String userId, RefOrderQuery query) {
         List<String> groups = resolveProjectGroupNames(userId);
-        if (groups.isEmpty()) {
+        List<String> myAccounts = resolveMyAccountIds(userId);
+        if (groups.isEmpty() && myAccounts.isEmpty()) {
             return null;
         }
         RefOrderQuery q = normalizeQuery(query);
         // 客户端传的模糊课题组一律丢弃，改用具名精确匹配
         q.setProjectGroup(null);
-        q.setGroupIn(groups);
+        q.setGroupIn(groups.isEmpty() ? null : groups);
+        q.setSubmitterIn(myAccounts.isEmpty() ? null : myAccounts);
         return q;
     }
 
@@ -1120,19 +1274,20 @@ public class ReferenceDataService {
             "register_no", false
     );
 
-    /** 学生端筛选候选：范围限定本人课题组，避免借候选枚举全库。 */
+    /** 学生端筛选候选：范围限定「本人课题组 ∪ 本人提交」，避免借候选枚举全库。 */
     public Result<List<String>> distinctMyGroupFilterValues(String userId, String column) {
         Boolean onLine = FILTER_COLUMNS_ON_LINE.get(column);
         if (onLine == null) {
             return Result.error("不支持的筛选列");
         }
         List<String> groups = resolveProjectGroupNames(userId);
-        if (groups.isEmpty()) {
+        List<String> myAccounts = resolveMyAccountIds(userId);
+        if (groups.isEmpty() && myAccounts.isEmpty()) {
             return Result.success(List.of());
         }
         return Result.success(onLine
-                ? orderMapper.distinctLineValuesInGroup(column, groups)
-                : orderMapper.distinctOrderValuesInGroup(column, groups));
+                ? orderMapper.distinctLineValuesInGroup(column, groups, myAccounts)
+                : orderMapper.distinctOrderValuesInGroup(column, groups, myAccounts));
     }
 
     public Result<List<String>> distinctFilterValues(String column) {
@@ -1162,6 +1317,11 @@ public class ReferenceDataService {
                 "状态变更: " + order.getStatus() + " -> " + newStatus.toUpperCase());
         // 笼位落地：通过=填表 + 2→3 进饲养中；驳回/取消=释放预定并撤掉预填
         cageReservationService.settleForOrderStatus(orderId, newStatus, operatorId);
+        // 订单离开待处理 → 它的编辑会话就此作废。回填行不清掉的话，编辑入口已不再受理它们，
+        // 只会一直挂在购物车里，还会把后续「提交订单」挡死（曾经真的把课题组锁住过）。
+        if (!"PENDING".equalsIgnoreCase(newStatus)) {
+            clearEditingCartRows(orderId, "订单已结束，编辑回填行清理");
+        }
         return Result.success(toOrderView(orderMapper.findById(orderId)));
     }
 
@@ -1363,6 +1523,14 @@ public class ReferenceDataService {
     }
 
     private RefOrderView toOrderView(RefOrder row) {
+        return toOrderView(row, null);
+    }
+
+    /**
+     * @param myAccounts 传入则一并算出 {@code editable}（订单待处理 + 提交人属于本人账号集合）。
+     *                   用账号集合而不是逐行查人员库：一页 50 条，逐条 samePerson 会打出上百次查询。
+     */
+    private RefOrderView toOrderView(RefOrder row, Set<String> myAccounts) {
         if (row == null) return null;
         RefOrderView v = new RefOrderView();
         v.setId(row.getId());
@@ -1427,6 +1595,10 @@ public class ReferenceDataService {
         }
         v.setPriceEnabled(total != null);
         v.setTotalAmount(total);
+        String submitter = row.getSubmitterId() == null ? "" : row.getSubmitterId().trim();
+        v.setEditable(StringUtils.hasText(submitter)
+                && myAccounts != null && myAccounts.contains(submitter)
+                && "PENDING".equalsIgnoreCase(row.getStatus()));
         return v;
     }
 
@@ -1584,6 +1756,8 @@ public class ReferenceDataService {
             item.setPackageRemark(line.getPackageRemark() != null ? line.getPackageRemark() : line.getLineRemark());
             item.setPackageStatus(line.getPackageStatus());
             item.setAddedBy(StringUtils.hasText(line.getAddedBy()) ? line.getAddedBy() : userId);
+            // 显式 lines 路径同样带上编辑标记，好让「提交订单」的重复下单闸门也拦得住
+            item.setEditingOrderId(line.getEditingOrderId());
             result.add(item);
         }
         return result;

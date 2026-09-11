@@ -34,5 +34,10 @@ public class RefOrderView {
     private BigDecimal totalAmount;
     /** 订单内是否含已开启价格的物品 */
     private Boolean priceEnabled;
+    /**
+     * 当前登录人能否编辑这张单（订单待处理 + 本人就是该单提交人/PI）。
+     * 由服务端按 personnel 级身份判定后下发，三端只按这个标记渲染编辑入口。
+     */
+    private Boolean editable;
     private List<RefOrderLineView> lines;
 }

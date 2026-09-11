@@ -60,6 +60,7 @@ public class CageClaimService {
     private final UserGroupNameResolver userGroupNameResolver;
     private final CageOpRequestMapper opRequestMapper;
     private final CageDivisionService divisionService;
+    private final CageIntermediateStateService intermediateStateService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -79,7 +80,8 @@ public class CageClaimService {
                             CageCellIndexMapper cellIndexMapper,
                             UserGroupNameResolver userGroupNameResolver,
                             CageOpRequestMapper opRequestMapper,
-                            CageDivisionService divisionService) {
+                            CageDivisionService divisionService,
+                            CageIntermediateStateService intermediateStateService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -99,6 +101,7 @@ public class CageClaimService {
         this.userGroupNameResolver = userGroupNameResolver;
         this.opRequestMapper = opRequestMapper;
         this.divisionService = divisionService;
+        this.intermediateStateService = intermediateStateService;
     }
 
     private String displayNameOf(User user) {
@@ -177,6 +180,13 @@ public class CageClaimService {
         // ①¾ 该笼位若正被未决的分笼/转移占住，先等那条审完（否则两边审批会互相打架）
         if (pendingOpOccupiedKeys().contains(String.valueOf(animalCageId))) {
             throw new TwinBusinessException(409, "该笼位已有待审的分笼/转移请求，请等它审完再申请");
+        }
+
+        // ①⅞ 已被订购预定（含已下单待审）的笼位不能认领：那张单审核通过时会把占用人写进同一格，
+        // 两个流程都认为自己占着它。中间态口径统一走 CageIntermediateStateService。
+        String reserved = intermediateStateService.reservationReason(animalCageId);
+        if (reserved != null) {
+            throw new TwinBusinessException(409, reserved + "，请等它结束再申请");
         }
 
         // ② FOR UPDATE 锁已有活跃认领（只锁活跃态，不锁历史）

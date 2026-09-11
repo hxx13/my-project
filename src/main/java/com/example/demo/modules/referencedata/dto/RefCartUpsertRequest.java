@@ -33,4 +33,10 @@ public class RefCartUpsertRequest {
      * 加购时按它把预定挂到本行；笼位挂上后该笼位对别人不可选。
      */
     private Long reservationId;
+    /**
+     * 正在编辑的待处理订单 id。带着它加购，本行就归入那场编辑会话：
+     * 放弃编辑时一并清掉、保存时一并写回原单，不会留成清不掉的残行。
+     * 服务端会先校验该单确实由本人的提交人身份在编辑，才落这个标记。
+     */
+    private Long editingOrderId;
 }

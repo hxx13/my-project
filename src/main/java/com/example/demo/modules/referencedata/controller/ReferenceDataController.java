@@ -354,6 +354,8 @@ public class ReferenceDataController {
     // ==================== 待处理订单编辑 ====================
     // 流程：load（回填购物车）→ 用户在购物车改 → apply（写回原单）。
     // 中途放弃走 discard，原单始终不动。
+    // 权限：只认该单的提交人（PI）——多账号汇总单也只由最终稿提交人来改；
+    // 管理员不放行，下单严格按课题组匹配，放开就得先选组，不划算。
 
     @PostMapping("/orders/{id}/edit/load")
     @Operation(summary = "把待处理订单回填到购物车，进入编辑模式")
@@ -362,7 +364,7 @@ public class ReferenceDataController {
             @PathVariable Long id) {
         User user = resolveUser(authorization);
         if (user == null) return Result.error("请先登录");
-        return referenceDataService.loadOrderToCart(id, user.getId(), canManageAnyOrder(user));
+        return referenceDataService.loadOrderToCart(id, user.getId());
     }
 
     @DeleteMapping("/orders/{id}/edit")
@@ -372,7 +374,7 @@ public class ReferenceDataController {
             @PathVariable Long id) {
         User user = resolveUser(authorization);
         if (user == null) return Result.error("请先登录");
-        return referenceDataService.discardOrderEdit(id, user.getId(), canManageAnyOrder(user));
+        return referenceDataService.discardOrderEdit(id, user.getId());
     }
 
     @PutMapping("/orders/{id}/edit")
@@ -382,12 +384,7 @@ public class ReferenceDataController {
             @PathVariable Long id) {
         User user = resolveUser(authorization);
         if (user == null) return Result.error("请先登录");
-        return referenceDataService.applyOrderEdit(id, user.getId(), canManageAnyOrder(user));
-    }
-
-    /** 有参考数据管理权限（管理员）时可编辑任意课题组的单；否则只能编辑本组。 */
-    private boolean canManageAnyOrder(User user) {
-        return capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN) == null;
+        return referenceDataService.applyOrderEdit(id, user.getId());
     }
 
     @PostMapping("/orders/import-aro")

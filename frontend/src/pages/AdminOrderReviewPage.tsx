@@ -17,11 +17,13 @@ import { cn } from "@/lib/utils";
 
 import { useNavigate } from "react-router-dom";
 import { appConfirm } from "@/lib/appDialog";
+import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { toast } from "react-hot-toast";
 import {
   STATUS_LABELS,
   statusTone,
   buildOrderDisplay,
+  lineGenderQty,
   lineNames,
   specOptionText,
   groupLinesByAup,
@@ -45,7 +47,7 @@ function defaultDateRange(): { from: string; to: string } {
 /**
  * 订单记录页。同一套展示（页签/卡片/表格/筛选/导出）供两端复用：
  * - scope="admin"（默认）：后台审核，看全量，可批准/驳回/标记完成，超管可同步 ARO
- * - scope="student"：学生端，只能看本人课题组（服务端强制圈定），只读
+ * - scope="student"：学生端，只能看本人课题组（服务端强制圈定），可编辑自己的待审单
  */
 export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "admin" | "student" } = {}) {
   const isStudent = scope === "student";
@@ -81,6 +83,12 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / ORDER_PAGE_SIZE));
   const displays = useMemo(() => orders.map(buildOrderDisplay), [orders]);
+  /** 订单 key → 明细行：表格拆行与卡片明细共用同一份，避免两处各 find 一遍 */
+  const linesByKey = useMemo(() => {
+    const m = new Map<string, RefOrderLine[]>();
+    for (const o of orders) m.set(`${o.source === "ARO" ? "ARO" : "LOCAL"}-${o.id}`, o.lines ?? []);
+    return m;
+  }, [orders]);
 
   const setDraftField = (k: keyof OrderReviewFilter, v: string) => setDraft((p) => ({ ...p, [k]: v }));
   const applyFilters = () => { setApplied(draft); setPage(1); };
@@ -151,15 +159,18 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
 
   const act = async (d: OrderDisplay, status: string, label: string) => {
     if (!await appConfirm(`确定${label}订单 ${d.no}？将整单生效。`)) return;
-    updateStatus.mutate({ id: d.orderId, status });
+    updateStatus.mutate({ id: d.orderId, status }, {
+      // 侧栏「动物订购审核」角标与待审数是同一口径，改完状态立刻推它刷新，别等 60s 轮询
+      onSuccess: () => window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT)),
+    });
   };
 
-  /** 进入编辑：把原单回填到购物车，再跳到动物订购页并自动打开购物车。 */
+  /** 进入编辑：把原单回填到购物车，再跳到动物订购页并自动打开购物车。
+   *  仅学生端开放——管理端回填的是别人课题组的单，校验必失败。 */
   const startEdit = async (d: OrderDisplay) => {
     try {
       await loadOrderToCart(d.orderId);
-      const base = isStudent ? "/student/animal-order" : "/console/admin/animal-order";
-      navigate(`${base}?editOrder=${d.orderId}`);
+      navigate(`/student/animal-order?editOrder=${d.orderId}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "回填购物车失败");
     }
@@ -241,11 +252,11 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
               {tab === "pending" ? "暂无待处理订单" : "暂无已完成订单"}
             </div>
           ) : view === "table" ? (
-            <OrderTable displays={displays} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent} />
+            <OrderTable displays={displays} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent} allowEdit={isStudent} linesByKey={linesByKey} />
           ) : (
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
               {displays.map((d) => (
-                <OrderCard key={d.key} d={d} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent} lines={orders.find((o) => `${o.source === "ARO" ? "ARO" : "LOCAL"}-${o.id}` === d.key)?.lines ?? []} />
+                <OrderCard key={d.key} d={d} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent} allowEdit={isStudent} lines={linesByKey.get(d.key) ?? []} />
               ))}
             </div>
           )}
@@ -354,104 +365,145 @@ function OrderFilterBar({
 
 /* ════════════ 表格模式 ════════════ */
 
+/**
+ * 表格视图：**一明细行一行**。
+ *
+ * 订单级列（单号/来源/课题组/负责人/AUP/校区/总数/总额/整单备注/状态/提交时间/操作）整块放左边、
+ * rowSpan 跨行合并；行级列（物品·规格/供应商/雄/雌/数量/小计/领用人/房间/笼位/到货/行备注）逐行。
+ * 原来把领用人/房间/笼位用「、」拼在一格里，看不出哪个属于哪一行，导出又是行级的，两边对不上。
+ * 操作按钮留在订单块末尾——它作用于整单，跟着订单走，且在左侧不用横向滚到头。
+ */
 function OrderTable({
-  displays, busy, onAction, onEdit, readOnly = false,
+  displays, busy, onAction, onEdit, readOnly = false, allowEdit = false, linesByKey,
 }: {
   displays: OrderDisplay[];
   busy: boolean;
   onAction: (d: OrderDisplay, status: string, label: string) => void;
   onEdit: (d: OrderDisplay) => void;
   readOnly?: boolean;
+  allowEdit?: boolean;
+  linesByKey: Map<string, RefOrderLine[]>;
 }) {
   const th = "px-3 py-2 whitespace-nowrap";
   const td = "px-3 py-2 align-top";
-  // 每列给最小宽度：19 列合计必然超过容器，表格才能横向滚动，
-  // 否则会被压成 100% 宽、长内容反复折行。
-  const COLUMNS: Array<[string, string]> = [
+  // 每列给最小宽度：列多必然超过容器，表格才能横向滚动，否则会被压成 100% 宽、长内容反复折行。
+  const ORDER_COLS: Array<[string, string]> = [
     ["单号", "min-w-[130px]"],
     ["来源", "min-w-[64px]"],
     ["课题组", "min-w-[150px]"],
     ["负责人", "min-w-[90px]"],
-    ["物品 / 规格", "min-w-[220px]"],
-    ["供应商", "min-w-[170px]"],
-    ["雄数", "min-w-[60px]"],
-    ["雌数", "min-w-[60px]"],
-    ["总数", "min-w-[60px]"],
-    ["金额", "min-w-[100px]"],
     ["AUP", "min-w-[130px]"],
-    ["领用人", "min-w-[90px]"],
-    ["领用方式/房间", "min-w-[170px]"],
-    ["到货日期", "min-w-[110px]"],
     ["校区", "min-w-[70px]"],
-    ["备注", "min-w-[220px]"],
+    ["总数", "min-w-[60px]"],
+    ["总额", "min-w-[100px]"],
+    ["整单备注", "min-w-[200px]"],
     ["状态", "min-w-[90px]"],
     ["提交时间", "min-w-[150px]"],
     ["操作", "min-w-[130px]"],
   ];
+  const LINE_COLS: Array<[string, string]> = [
+    ["物品 / 规格", "min-w-[220px]"],
+    ["供应商", "min-w-[170px]"],
+    ["雄数", "min-w-[60px]"],
+    ["雌数", "min-w-[60px]"],
+    ["数量", "min-w-[60px]"],
+    ["小计", "min-w-[100px]"],
+    ["领用人", "min-w-[90px]"],
+    ["领用方式/房间", "min-w-[170px]"],
+    ["笼位", "min-w-[170px]"],
+    ["到货日期", "min-w-[110px]"],
+    ["行备注", "min-w-[180px]"],
+  ];
+  /** 相邻订单之间加粗上边线，避免两个订单的明细行连成一片 */
+  const orderSep = "border-t-2 border-t-[var(--twin-hairline)]";
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">
       <table className="twin-table w-max min-w-full border-collapse text-left text-sm">
         <thead>
           <tr>
-            {COLUMNS.map(([label, w], i) => (
-              <th key={label} className={cn(th, w, i === COLUMNS.length - 1 && "text-right")}>{label}</th>
+            {ORDER_COLS.map(([label, w], i) => (
+              <th key={label} className={cn(th, w, i === ORDER_COLS.length - 1 && "text-right")}>{label}</th>
+            ))}
+            {LINE_COLS.map(([label, w], i) => (
+              <th key={label} className={cn(th, w, i === 0 && "border-l border-l-[var(--twin-hairline)]")}>{label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {displays.map((d) => (
-            <tr key={d.key} className="border-b">
-              <td className={cn(td, "font-mono text-xs text-[var(--app-color-text-tertiary)]")}>{d.no}</td>
-              <td className={td}>
-                <span className={cn("rounded-md px-1.5 py-0.5 text-[10px]", d.source === "ARO" ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]" : "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] text-[var(--app-color-accent)]")}>
-                  {d.source === "ARO" ? "ARO" : "本地"}
-                </span>
-              </td>
-              <td className={td}>{d.projectGroup}</td>
-              <td className={td}>{d.submitter}</td>
-              <td className={cn(td, "max-w-[280px] whitespace-normal break-words")}>
-                {d.items.length === 0 ? "—" : d.items.map((it, i) => (
-                  <div key={i}>
-                    {it.label}{it.spec ? ` · ${it.spec}` : ""} × {it.qty}
-                  </div>
-                ))}
-              </td>
-              <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{d.suppliers}</td>
-              <td className={cn(td, "tabular-nums")}>{d.maleQty}</td>
-              <td className={cn(td, "tabular-nums")}>{d.femaleQty}</td>
-              <td className={cn(td, "tabular-nums font-semibold")}>{d.totalQty}</td>
-              <td className={cn(td, "text-right tabular-nums font-semibold text-sky-700")}>
-                {d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—"}
-              </td>
-              <td className={cn(td, "text-xs")}>{d.aup}</td>
-              <td className={cn(td, "whitespace-normal break-words")}>{d.collector}</td>
-              <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{d.room}</td>
-              <td className={cn(td, "text-xs")}>{d.arrivalDate}</td>
-              <td className={td}>{d.campus}</td>
-              <td className={cn(td, "max-w-[260px] whitespace-normal break-words")}>{d.remark}</td>
-              <td className={td}><span className="review-status">{d.statusLabel}</span></td>
-              <td className={cn(td, "text-xs text-[var(--app-color-text-tertiary)]")}>{d.time}</td>
-              <td className={td}>
-                <div className="flex items-center justify-end gap-1.5">
-                  {d.status === "PENDING" && (
-                    <button type="button" disabled={busy} onClick={() => onEdit(d)} className="rounded-md border border-[var(--app-color-border-default)] px-2.5 py-1 text-xs disabled:opacity-50">编辑</button>
+          {displays.map((d) => {
+            const lines = linesByKey.get(d.key) ?? [];
+            // 没有明细行（异常数据）也要出一行，别让整单从表里消失
+            const rows: Array<RefOrderLine | null> = lines.length > 0 ? lines : [null];
+            const span = rows.length;
+            return rows.map((line, i) => {
+              const names = line ? lineNames(line) : null;
+              const opt = line ? specOptionText(line) : "";
+              const sex = line ? lineGenderQty(line) : { male: 0, female: 0 };
+              const label = names ? (names.strain || names.spec || "物品") : "";
+              const sub = names ? [names.spec && names.spec !== label ? names.spec : "", opt].filter(Boolean).join(" · ") : "";
+              const merge = (node: ReactNode, extra?: string) =>
+                i === 0 ? <td rowSpan={span} className={cn(td, extra)}>{node}</td> : null;
+              return (
+                <tr key={`${d.key}-${line?.id ?? "none"}`} className={cn("border-b border-[var(--twin-hairline)]", i === 0 && orderSep)}>
+                  {merge(<span className="font-mono text-xs text-[var(--app-color-text-tertiary)]">{d.no}</span>)}
+                  {merge(
+                    <span className={cn("rounded-md px-1.5 py-0.5 text-[10px]", d.source === "ARO" ? "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]" : "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] text-[var(--app-color-accent)]")}>
+                      {d.source === "ARO" ? "ARO" : "本地"}
+                    </span>,
                   )}
-                  {readOnly ? (
-                    d.status !== "PENDING" && <span className="text-xs text-[var(--twin-mute)]">—</span>
-                  ) : d.status === "PENDING" ? (
-                    <>
-                      <button type="button" disabled={busy} onClick={() => void onAction(d, "APPROVED", "批准")} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs text-white disabled:opacity-50">批准</button>
-                      <button type="button" disabled={busy} onClick={() => void onAction(d, "REJECTED", "驳回")} className="rounded-md border border-rose-300 px-2.5 py-1 text-xs text-rose-600 disabled:opacity-50">驳回</button>
-                    </>
-                  ) : d.status === "APPROVED" ? (
-                    <button type="button" disabled={busy} onClick={() => void onAction(d, "COMPLETED", "标记完成")} className="rounded-md border border-[var(--app-color-border-default)] px-2.5 py-1 text-xs disabled:opacity-50">标记完成</button>
-                  ) : (
-                    <span className="text-xs text-[var(--twin-mute)]">—</span>
+                  {merge(d.projectGroup)}
+                  {merge(d.submitter)}
+                  {merge(d.aup, "text-xs")}
+                  {merge(d.campus)}
+                  {merge(d.totalQty, "tabular-nums font-semibold")}
+                  {merge(d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—", "text-right tabular-nums font-semibold text-sky-700")}
+                  {merge(<span className="block max-w-[260px] whitespace-normal break-words">{d.orderRemark}</span>)}
+                  {merge(<span className="review-status">{d.statusLabel}</span>)}
+                  {merge(d.time, "text-xs text-[var(--app-color-text-tertiary)]")}
+                  {merge(
+                    <div className="flex items-center justify-end gap-1.5">
+                      {allowEdit && d.editable && d.status === "PENDING" && (
+                        <button type="button" disabled={busy} onClick={() => onEdit(d)} className="rounded-md border border-[var(--app-color-border-default)] px-2.5 py-1 text-xs disabled:opacity-50">编辑</button>
+                      )}
+                      {readOnly ? (
+                        !(d.editable && d.status === "PENDING") && <span className="text-xs text-[var(--twin-mute)]">—</span>
+                      ) : d.status === "PENDING" ? (
+                        <>
+                          <button type="button" disabled={busy} onClick={() => void onAction(d, "APPROVED", "批准")} className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs text-white disabled:opacity-50">批准</button>
+                          <button type="button" disabled={busy} onClick={() => void onAction(d, "REJECTED", "驳回")} className="rounded-md border border-rose-300 px-2.5 py-1 text-xs text-rose-600 disabled:opacity-50">驳回</button>
+                        </>
+                      ) : d.status === "APPROVED" ? (
+                        <button type="button" disabled={busy} onClick={() => void onAction(d, "COMPLETED", "标记完成")} className="rounded-md border border-[var(--app-color-border-default)] px-2.5 py-1 text-xs disabled:opacity-50">标记完成</button>
+                      ) : (
+                        <span className="text-xs text-[var(--twin-mute)]">—</span>
+                      )}
+                    </div>,
                   )}
-                </div>
-              </td>
-            </tr>
-          ))}
+
+                  {/* ── 行级 ── */}
+                  <td className={cn(td, "border-l border-l-[var(--twin-hairline)] max-w-[280px] whitespace-normal break-words")}>
+                    {line ? (<>
+                      <div>{label}</div>
+                      {sub && <div className="text-[10px] text-[var(--app-color-text-tertiary)]">{sub}</div>}
+                    </>) : "—"}
+                  </td>
+                  <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{names?.supplier || "—"}</td>
+                  <td className={cn(td, "tabular-nums")}>{line ? sex.male : "—"}</td>
+                  <td className={cn(td, "tabular-nums")}>{line ? sex.female : "—"}</td>
+                  <td className={cn(td, "tabular-nums")}>{line ? (line.quantity ?? 0) : "—"}</td>
+                  <td className={cn(td, "text-right tabular-nums")}>
+                    {line?.lineAmount != null ? `¥${Number(line.lineAmount).toFixed(2)}` : "—"}
+                  </td>
+                  <td className={cn(td, "whitespace-normal break-words")}>{line?.collectorName?.trim() || "—"}</td>
+                  <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{line?.pickupRoomName?.trim() || "—"}</td>
+                  <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{line?.targetCageLabel?.trim() || "—"}</td>
+                  <td className={cn(td, "text-xs")}>{line?.arrivalDate?.trim() || d.arrivalDate}</td>
+                  <td className={cn(td, "max-w-[220px] whitespace-normal break-words")}>{line?.lineRemark?.trim() || "—"}</td>
+                </tr>
+              );
+            });
+          })}
         </tbody>
       </table>
     </div>
@@ -461,7 +513,7 @@ function OrderTable({
 /* ════════════ 卡片模式 ════════════ */
 
 function OrderCard({
-  d, busy, onAction, onEdit, lines, readOnly = false,
+  d, busy, onAction, onEdit, lines, readOnly = false, allowEdit = false,
 }: {
   d: OrderDisplay;
   busy: boolean;
@@ -469,6 +521,7 @@ function OrderCard({
   onEdit: (d: OrderDisplay) => void;
   lines: RefOrderLine[];
   readOnly?: boolean;
+  allowEdit?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const aupGroups = useMemo(() => groupLinesByAup(lines), [lines]);
@@ -476,10 +529,10 @@ function OrderCard({
   const fieldLabel = "text-[10px] text-[var(--app-color-text-tertiary)]";
   const fieldValue = "text-xs text-[var(--app-color-text-primary)]";
 
-  /** 顶栏右侧动作：编辑对所有可编辑人开放；审批类按钮仅管理端 */
+  /** 顶栏右侧动作：编辑仅学生端开放；审批类按钮仅管理端 */
   const actions = (
     <div className="flex items-center gap-1.5 shrink-0">
-      {d.status === "PENDING" && (
+      {allowEdit && d.editable && d.status === "PENDING" && (
         <button type="button" disabled={busy} onClick={() => onEdit(d)} className="review-btn review-btn--reject disabled:opacity-50">编辑</button>
       )}
       {!readOnly && d.status === "PENDING" && (
@@ -556,6 +609,7 @@ function OrderCard({
             <Field label="金额" value={d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—"} labelCls={fieldLabel} valueCls={cn(fieldValue, "font-semibold text-sky-700")} />
             <Field label="领用人" value={d.collector} labelCls={fieldLabel} valueCls={fieldValue} />
             <Field label="领用方式/房间" value={d.room} labelCls={fieldLabel} valueCls={fieldValue} />
+            <Field label="笼位" value={d.cage} labelCls={fieldLabel} valueCls={fieldValue} />
             <Field label="到货日期" value={d.arrivalDate} labelCls={fieldLabel} valueCls={fieldValue} />
             <Field label="校区" value={d.campus} labelCls={fieldLabel} valueCls={fieldValue} />
             <Field label="备注" value={d.remark} labelCls={fieldLabel} valueCls={fieldValue} span />

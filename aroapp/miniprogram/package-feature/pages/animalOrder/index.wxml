@@ -418,43 +418,70 @@
             <view class="ord-td w-src">来源</view>
             <view class="ord-td w-group">课题组</view>
             <view class="ord-td w-pi">负责人</view>
-            <view class="ord-td w-item">物品 / 规格</view>
+            <view class="ord-td w-aup">AUP</view>
+            <view class="ord-td w-src">校区</view>
+            <view class="ord-td w-xs">总数</view>
+            <view class="ord-td w-amt">总额</view>
+            <view class="ord-td w-remark">整单备注</view>
+            <view class="ord-td w-mid">状态</view>
+            <view class="ord-td w-date">提交时间</view>
+            <view class="ord-td w-item ord-line-split">物品 / 规格</view>
             <view class="ord-td w-supplier">供应商</view>
             <view class="ord-td w-xs">雄数</view>
             <view class="ord-td w-xs">雌数</view>
-            <view class="ord-td w-xs">总数</view>
-            <view class="ord-td w-amt">金额</view>
-            <view class="ord-td w-aup">AUP</view>
+            <view class="ord-td w-xs">数量</view>
+            <view class="ord-td w-amt">小计</view>
             <view class="ord-td w-mid">领用人</view>
             <view class="ord-td w-room">领用方式/房间</view>
+            <view class="ord-td w-cage">笼位</view>
             <view class="ord-td w-date">到货日期</view>
-            <view class="ord-td w-src">校区</view>
-            <view class="ord-td w-remark">备注</view>
-            <view class="ord-td w-mid">状态</view>
-            <view class="ord-td w-date">提交时间</view>
+            <view class="ord-td w-remark">行备注</view>
           </view>
-          <view class="ord-tr" wx:for="{{ orderRows }}" wx:key="key" wx:for-item="r">
-            <view class="ord-td w-no mono">{{ r.no }}</view>
-            <view class="ord-td w-src">{{ r.sourceLabel }}</view>
-            <view class="ord-td w-group">{{ r.projectGroup }}</view>
-            <view class="ord-td w-pi">{{ r.submitter }}</view>
-            <view class="ord-td w-item">
-              <view wx:for="{{ r.items }}" wx:key="index" wx:for-item="it">{{ it.label }}{{ it.spec ? ' · ' + it.spec : '' }} × {{ it.qty }}</view>
+          <!-- 一明细行一行：订单级字段只在首行渲染（flex 表没有 rowspan，空单元格用来对齐） -->
+          <block wx:for="{{ orderRows }}" wx:key="key" wx:for-item="r">
+            <view class="ord-tr {{li === 0 ? 'ord-tr-order' : ''}}" wx:for="{{ r.lineRows }}" wx:key="key" wx:for-item="ln" wx:for-index="li">
+              <block wx:if="{{ li === 0 }}">
+                <view class="ord-td w-no mono">{{ r.no }}</view>
+                <view class="ord-td w-src">{{ r.sourceLabel }}</view>
+                <view class="ord-td w-group">{{ r.projectGroup }}</view>
+                <view class="ord-td w-pi">{{ r.submitter }}</view>
+                <view class="ord-td w-aup">{{ r.aup }}</view>
+                <view class="ord-td w-src">{{ r.campus }}</view>
+                <view class="ord-td w-xs">{{ r.totalQty }}</view>
+                <view class="ord-td w-amt">{{ r.amountText }}</view>
+                <view class="ord-td w-remark">{{ r.orderRemark }}</view>
+                <view class="ord-td w-mid">{{ r.statusLabel }}</view>
+                <view class="ord-td w-date">{{ r.time }}</view>
+              </block>
+              <block wx:else>
+                <view class="ord-td w-no"></view>
+                <view class="ord-td w-src"></view>
+                <view class="ord-td w-group"></view>
+                <view class="ord-td w-pi"></view>
+                <view class="ord-td w-aup"></view>
+                <view class="ord-td w-src"></view>
+                <view class="ord-td w-xs"></view>
+                <view class="ord-td w-amt"></view>
+                <view class="ord-td w-remark"></view>
+                <view class="ord-td w-mid"></view>
+                <view class="ord-td w-date"></view>
+              </block>
+              <view class="ord-td w-item ord-line-split">
+                <view>{{ ln.label }}</view>
+                <view wx:if="{{ ln.sub }}" class="ord-sub">{{ ln.sub }}</view>
+              </view>
+              <view class="ord-td w-supplier">{{ ln.supplier }}</view>
+              <view class="ord-td w-xs">{{ ln.male }}</view>
+              <view class="ord-td w-xs">{{ ln.female }}</view>
+              <view class="ord-td w-xs">{{ ln.qty }}</view>
+              <view class="ord-td w-amt">{{ ln.amountText }}</view>
+              <view class="ord-td w-mid">{{ ln.collector }}</view>
+              <view class="ord-td w-room">{{ ln.room }}</view>
+              <view class="ord-td w-cage">{{ ln.cage }}</view>
+              <view class="ord-td w-date">{{ ln.arrival }}</view>
+              <view class="ord-td w-remark">{{ ln.lineRemark }}</view>
             </view>
-            <view class="ord-td w-supplier">{{ r.suppliers }}</view>
-            <view class="ord-td w-xs">{{ r.maleQty }}</view>
-            <view class="ord-td w-xs">{{ r.femaleQty }}</view>
-            <view class="ord-td w-xs">{{ r.totalQty }}</view>
-            <view class="ord-td w-amt">{{ r.amountText }}</view>
-            <view class="ord-td w-aup">{{ r.aup }}</view>
-            <view class="ord-td w-mid">{{ r.collector }}</view>
-            <view class="ord-td w-room">{{ r.room }}</view>
-            <view class="ord-td w-date">{{ r.arrivalDate }}</view>
-            <view class="ord-td w-src">{{ r.campus }}</view>
-            <view class="ord-td w-remark">{{ r.remark }}</view>
-            <view class="ord-td w-mid">{{ r.statusLabel }}</view>
-            <view class="ord-td w-date">{{ r.time }}</view>
-          </view>
+          </block>
         </view>
       </scroll-view>
 
@@ -468,7 +495,7 @@
             <text class="ord-chip" wx:if="{{ r.aup !== '—' }}">{{ r.aup }}</text>
             <text class="ord-card-toggle" data-key="{{ r.key }}" bindtap="toggleOrderExpand">{{ orderExpanded[r.key] ? '收起 ▲' : '展开 ▼' }}</text>
           </view>
-          <view wx:if="{{ r.status === 'PENDING' }}" class="ord-card-actions">
+          <view wx:if="{{ r.editable && r.status === 'PENDING' }}" class="ord-card-actions">
             <view class="ord-btn" data-id="{{ r.orderId }}" bindtap="onStartOrderEdit">编辑</view>
           </view>
           <view class="ord-card-line">
@@ -493,6 +520,7 @@
             <view class="ord-kv"><text class="ord-k">金额</text><text class="ord-v price">{{ r.amountText }}</text></view>
             <view class="ord-kv"><text class="ord-k">领用人</text><text class="ord-v">{{ r.collector }}</text></view>
             <view class="ord-kv"><text class="ord-k">领用方式/房间</text><text class="ord-v">{{ r.room }}</text></view>
+            <view class="ord-kv"><text class="ord-k">笼位</text><text class="ord-v">{{ r.cage }}</text></view>
             <view class="ord-kv"><text class="ord-k">到货日期</text><text class="ord-v">{{ r.arrivalDate }}</text></view>
             <view class="ord-kv"><text class="ord-k">校区</text><text class="ord-v">{{ r.campus }}</text></view>
             <view class="ord-kv"><text class="ord-k">提交时间</text><text class="ord-v">{{ r.time }}</text></view>

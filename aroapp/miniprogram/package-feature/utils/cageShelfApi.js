@@ -18,6 +18,25 @@ function fetchCageOpMarkers() {
   });
 }
 
+/**
+ * 已被订单预定、还没落定的笼位（动物订购锁的笼位）。
+ * 这些笼位外观上还是空笼位，网格上必须标出来，否则别的模式会误选。
+ * 返回数组：{ reservationId, animalCageId, reserverName, quantity, orderId, cartId }
+ */
+function fetchActiveCageReservations() {
+  return springAuth.springRequest({ url: '/api/animal-order/cage-reservations/active', method: 'GET', data: {} }).then(function(res) {
+    var body = res && res.data;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch (e) { body = null; }
+    }
+    if (!body || body.success !== true) {
+      throw new Error((body && body.message) || '加载笼位预定失败');
+    }
+    return body.data || [];
+  });
+}
+
 module.exports = {
-  fetchCageOpMarkers: fetchCageOpMarkers
+  fetchCageOpMarkers: fetchCageOpMarkers,
+  fetchActiveCageReservations: fetchActiveCageReservations
 };

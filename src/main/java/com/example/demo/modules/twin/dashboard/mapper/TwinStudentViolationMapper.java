@@ -4,6 +4,7 @@ import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 @Mapper
@@ -58,6 +59,9 @@ public interface TwinStudentViolationMapper {
 
     /** 主页大屏公示：仅 ACTIVE 且未过期，每人最新一条；按创建时间倒序 */
     List<TwinStudentViolation> selectActiveForDashboardBoard(@Param("limit") int limit);
+
+    /** 指定用户的全部「大屏可见」ACTIVE 行，与 selectActiveForDashboardBoard 同口径（管理端标记用） */
+    List<TwinStudentViolation> selectBoardVisibleActiveByUserIds(@Param("userIds") Collection<String> userIds);
 
     TwinStudentViolation selectById(@Param("id") long id);
 

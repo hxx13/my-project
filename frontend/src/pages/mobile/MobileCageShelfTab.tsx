@@ -31,7 +31,8 @@ import CageBookingPanel from "@/features/cage-shelf/components/CageBookingPanel"
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import CageOpSelectBanner from "@/features/cage-shelf/components/CageOpSelectBanner";
 import CageOperationDialog from "@/features/cage-shelf/components/CageOperationDialog";
-import { useCageOpSelect, buildCageOpMarks, type CageOpMark } from "@/features/cage-shelf/useCageOpSelect";
+import { useCageOpSelect, buildCageOpMarks, mergeReservationMarks, type CageOpMark } from "@/features/cage-shelf/useCageOpSelect";
+import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileScanDialog from "./MobileScanDialog";
@@ -1580,11 +1581,17 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     return () => { cancelled = true; };
   }, [isStaffView, mode, detailReloadKey]);
 
-  // 待审分笼/转移标识：列表或网格刷新时重拉（审核通过后自动消失）
+  // 待审分笼/转移 + 已被订单预定：并进同一张标记表。
+  // 分配/编辑等模式的准入都看它，少算「已被预定」这半边，空笼位明明被订单占了还能被选走。
   useEffect(() => {
     let cancelled = false;
-    fetchCageOpMarkers()
-      .then((list) => { if (!cancelled) setOpMarks(buildCageOpMarks(list)); })
+    Promise.all([
+      fetchCageOpMarkers(),
+      fetchActiveCageReservations().catch(() => []),
+    ])
+      .then(([list, reservations]) => {
+        if (!cancelled) setOpMarks(mergeReservationMarks(buildCageOpMarks(list), reservations));
+      })
       .catch(() => { if (!cancelled) setOpMarks(new Map()); });
     return () => { cancelled = true; };
   }, [listReloadKey, detailReloadKey]);
@@ -2068,9 +2075,19 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     const matched = detail.grid.find((c: any) => c.x === p.x && c.y === p.y);
     if (!matched) { toast.error(`当前笼架未找到坐标 (${p.x},${p.y})`); return; }
     const key = `${matched.x}:${matched.y}`;
+    const cageId = String((matched as any).id ?? (matched as any).animalCageId ?? "");
+    // 状态标记只对「饲养中/异常」开放（与 Web 管理端同一口径）：空笼位/等待分配没有动物可标记。
+    const editCt = (matched as any).cageTypeCode ?? (matched as any).animalCageType;
+    if (editCt !== 3 && editCt !== 4) { toast.error("当前状态不可标记（仅饲养中/异常笼位）"); return; }
+    // 笼位还在中间态时也不能标记：预定/已下单待审/分笼转移在审都在 opMarks 里，认领在审看 claimStatus。
+    if (cageId && opMarks.has(cageId)) { toast.error("该笼位有进行中的流程，不能标记饲养状态"); return; }
+    if (["pending_approval", "locked", "confirmed", "pending_release_approval"]
+          .includes(String((matched as any).claimStatus ?? ""))) {
+      toast.error("该笼位有认领申请在处理中，不能标记饲养状态");
+      return;
+    }
     // 状态标记以表单为真相源：先拉表单值再建缓存条目
     let preActions = new Set<CageBoxAction>();
-    const cageId = String((matched as any).id ?? (matched as any).animalCageId ?? "");
     if (cageId) {
       try {
         const rows = await fetchCageInfoValues(cageId);
@@ -2087,7 +2104,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     });
     setLastScannedKey(key);
     openEditActionPopup(matched);
-  }, [detail, openEditActionPopup]);
+  }, [detail, openEditActionPopup, opMarks]);
 
   // ── 扫码确认模式：定位 → 判定认领状态 → 打开核对弹窗 ──
   const handleConfirmScan = useCallback(async (r: CodeLookupResult) => {

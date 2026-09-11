@@ -139,6 +139,25 @@ public class AdminTwinStudentViolationController {
         }
         Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(idSet);
         List<Map<String, Object>> out = rows.stream().map(v -> toRow(v, displayNames)).collect(Collectors.toList());
+
+        // 大屏每人只展示一条（同人 MAX(id)），管理端须标出"此人还有别的生效违规 / 哪条正在公示"，
+        // 否则删掉其中一条后大屏仍显示同人另一条，看起来像删除没生效。
+        Set<String> targetIds = new HashSet<>();
+        for (TwinStudentViolation v : rows) {
+            if (v != null && StringUtils.hasText(v.getTargetUserId())) {
+                targetIds.add(v.getTargetUserId().trim());
+            }
+        }
+        Map<String, TwinStudentViolationService.BoardVisibility> visibility =
+                violationService.boardVisibilityByUsers(targetIds);
+        for (int i = 0; i < rows.size(); i++) {
+            TwinStudentViolation v = rows.get(i);
+            TwinStudentViolationService.BoardVisibility bv = StringUtils.hasText(v.getTargetUserId())
+                    ? visibility.get(v.getTargetUserId().trim()) : null;
+            Map<String, Object> row = out.get(i);
+            row.put("activeSameUserCount", bv == null ? 0 : bv.activeCount());
+            row.put("boardDisplayed", bv != null && bv.boardRowId() != null && bv.boardRowId().equals(v.getId()));
+        }
         return Result.success(Map.of("list", out, "total", total));
     }
 

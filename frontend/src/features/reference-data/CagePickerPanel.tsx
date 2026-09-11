@@ -20,7 +20,7 @@ import {
   type ReservableCell,
 } from "@/api/domains/animalOrderCage.api";
 import { buildCageOpMarks } from "@/features/cage-shelf/useCageOpSelect";
-import CagePickerDrawer from "./CagePickerDrawer";
+import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { allocatedTotal } from "./cageAllocation";
 
 /** 抽屉里的一个已锁定笼位 */
@@ -633,7 +633,7 @@ export default function CagePickerPanel({
     ) : null;
 
   return (
-    <CagePickerDrawer
+    <CageOpDrawer
       /* 头部不展示徽标/标题/计数/说明，只留房间 tab；关闭按钮由 headerExtra 同一行靠右 */
       headerExtra={roomTabs}
       collapseLabel="选择笼位"
@@ -682,6 +682,6 @@ export default function CagePickerPanel({
           </div>
         ))}
       {busy && <div className="pb-2 text-center text-[10px] text-[var(--twin-mute)]">锁定中…</div>}
-    </CagePickerDrawer>
+    </CageOpDrawer>
   );
 }

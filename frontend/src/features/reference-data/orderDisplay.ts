@@ -58,6 +58,16 @@ function lineGender(line: RefOrderLine): "male" | "female" | "" {
   return "";
 }
 
+/**
+ * 单行的雄/雌数量：性别只写在行的规格选项上，所以一行最多落在一边。
+ * 表格拆成明细行后每行要各显各的，订单级汇总仍看 {@link OrderDisplay} 的 maleQty/femaleQty。
+ */
+export function lineGenderQty(line: RefOrderLine): { male: number; female: number } {
+  const qty = line.quantity ?? 0;
+  const g = lineGender(line);
+  return { male: g === "male" ? qty : 0, female: g === "female" ? qty : 0 };
+}
+
 export function lineAupLabel(line: RefOrderLine): string {
   if (line.registerNo?.trim()) return line.registerNo.trim();
   return line.aupRecordId != null ? `AUP#${line.aupRecordId}` : "";
@@ -93,11 +103,18 @@ export interface OrderDisplay {
   aup: string;
   collector: string;
   room: string;
+  /** 目标笼位人读串（订购→笼位预定），多笼位用「、」连接 */
+  cage: string;
   arrivalDate: string;
   campus: string;
+  /** 备注（整单优先，无整单备注时汇总行备注）——卡片按这个显示 */
   remark: string;
+  /** 只含整单备注：表格拆成明细行后「整单备注」与「行备注」分列，不能再回退拼接 */
+  orderRemark: string;
   status: string;
   statusLabel: string;
+  /** 服务端判定：当前人是不是该单提交人（PI）且订单待处理 —— 只有他能进编辑 */
+  editable: boolean;
   time: string;
 }
 
@@ -107,6 +124,7 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
   const suppliers = new Set<string>(), strains = new Set<string>();
   const items: Array<{ label: string; spec: string; qty: number }> = [];
   const collectors = new Set<string>(), rooms = new Set<string>(), arrivals = new Set<string>();
+  const cages = new Set<string>();
   const lineRemarks: string[] = [];
 
   for (const l of lines) {
@@ -125,12 +143,16 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
     total += l.quantity ?? 0;
     if (l.collectorName?.trim()) collectors.add(l.collectorName.trim());
     if (l.pickupRoomName?.trim()) rooms.add(l.pickupRoomName.trim());
+    // 笼位快照串可能为空但已锁位（老数据/坐标缺失），退化成「已选笼位」而不是漏掉
+    if (l.targetCageLabel?.trim()) cages.add(l.targetCageLabel.trim());
+    else if (l.targetAnimalCageId != null) cages.add("已选笼位");
     if (l.arrivalDate?.trim()) arrivals.add(l.arrivalDate.trim());
     if (l.lineRemark?.trim()) lineRemarks.push(l.lineRemark.trim());
   }
 
   // 备注：整单备注优先，其次汇总行备注——两个视图都靠这一个字段
-  const remark = (order.submitRemark || "").trim() || lineRemarks.join("；");
+  const orderRemark = (order.submitRemark || "").trim();
+  const remark = orderRemark || lineRemarks.join("；");
   const source = (order.source === "ARO" ? "ARO" : "LOCAL") as "LOCAL" | "ARO";
 
   return {
@@ -153,14 +175,17 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
     aup: order.registerNo?.trim() || (order.aupRecordId != null ? `AUP#${order.aupRecordId}` : "—"),
     collector: Array.from(collectors).join("、") || "—",
     room: Array.from(rooms).join("、") || "—",
+    cage: Array.from(cages).join("、") || "—",
     // 实际到货日只有 ARO 导入单有；本地自建单下单时算的是「预计送达日」，
     // 没有实际到货就回退显示预计值并标注，避免这一列对本地单永远是「—」。
     arrivalDate: Array.from(arrivals).join("、")
       || (order.estimatedDeliveryDate?.trim() ? `预计 ${order.estimatedDeliveryDate.trim()}` : "—"),
     campus: order.campus?.trim() || order.aroAreaName?.trim() || "—",
     remark: remark || "—",
+    orderRemark: orderRemark || "—",
     status: order.status,
     statusLabel: STATUS_LABELS[order.status] || order.status,
+    editable: Boolean(order.editable),
     time: formatBeijingDateTimeFull(order.submittedAt || order.createdAt),
   };
 }

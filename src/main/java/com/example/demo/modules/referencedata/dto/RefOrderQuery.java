@@ -32,6 +32,12 @@ public class RefOrderQuery {
      * 多课题组账号需按全部组名定界，否则用第二个组下的单在自己列表里看不到。
      */
     private List<String> groupIn;
+    /**
+     * 学生端专用：本人持有的账号 id（STAFF_ 与它的 aro_user_id 一对）。
+     * 与 {@link #groupIn} 是「或」关系——自己提交的单必须看得见：课题组名解析不出的账号
+     * 照样能下单（提交侧的组校验在解析为空时会跳过），列表侧再按组名硬筛就把自己刚提交的单吞了。
+     */
+    private List<String> submitterIn;
     /** 行级：供应商模糊 */
     private String supplier;
     /** 行级：品系模糊 */

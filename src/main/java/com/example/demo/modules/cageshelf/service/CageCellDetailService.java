@@ -7,12 +7,10 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.entity.CageCellHistory;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
-import com.example.demo.modules.cageshelf.entity.CageOpRequest;
 import com.example.demo.modules.cageshelf.mapper.ApprovalRecordMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellHistoryMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
-import com.example.demo.modules.cageshelf.mapper.CageOpRequestMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -33,7 +31,7 @@ public class CageCellDetailService {
     private final CageCellHistoryMapper historyMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final CageFormAuditService auditService;
-    private final CageOpRequestMapper opRequestMapper;
+    private final CageIntermediateStateService intermediateStateService;
 
     public CageCellDetailService(CageCellDetailMapper detailMapper,
                                   CageClaimMapper claimMapper,
@@ -41,14 +39,14 @@ public class CageCellDetailService {
                                   CageCellHistoryMapper historyMapper,
                                   AroPersonnelMapper aroPersonnelMapper,
                                   CageFormAuditService auditService,
-                                  CageOpRequestMapper opRequestMapper) {
+                                  CageIntermediateStateService intermediateStateService) {
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
         this.approvalMapper = approvalMapper;
         this.historyMapper = historyMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.auditService = auditService;
-        this.opRequestMapper = opRequestMapper;
+        this.intermediateStateService = intermediateStateService;
     }
 
     /** 绑定笼盒 */
@@ -95,12 +93,11 @@ public class CageCellDetailService {
 
     /** 分配笼位 — 写课题组组长(project_pi_name) + 项目名称 + AUP注册号 + AUP ID 到笼位固定字段 */
     public CageCellDetail allocate(Long animalCageId, String piName, String aupNumber, Long aupId, String projectName, String operatorId) {
-        // 该笼位若正被未决的分笼/转移占住（它是那条请求的目标），分配会改掉状态与 AUP，让那条审批执行失败
-        for (Long id : CageOperationService.pendingOccupiedCages(
-                opRequestMapper.selectByStatus(CageOpRequest.STATUS_PENDING, null), null)) {
-            if (id.equals(animalCageId)) {
-                throw new TwinBusinessException(409, "该笼位已有待审的分笼/转移请求，请先等它审完再分配");
-            }
+        // 分配会改掉笼位状态与 AUP：笼位只要还在任何中间态（划分/预定/在审/认领），
+        // 分配下去就会让那条流程审完时对不上。判定统一收在 CageIntermediateStateService，三端同一口径。
+        String busy = intermediateStateService.busyReason(animalCageId);
+        if (busy != null) {
+            throw new TwinBusinessException(409, busy + "，不能分配笼位");
         }
         CageCellDetail d = getOrCreate(animalCageId);
         String beforeProjectPi = d.getProjectPiName();
@@ -223,7 +220,8 @@ public class CageCellDetailService {
         return v == null ? null : String.valueOf(v);
     }
 
-    private static String cageTypeLabel(Integer v) {
+    /** 笼位状态码 → 中文（分笼/转移的目标校验也要报同一个说法，故公开）。 */
+    public static String cageTypeLabel(Integer v) {
         if (v == null) return null;
         return switch (v) {
             case 1 -> "等待分配";
@@ -250,6 +248,15 @@ public class CageCellDetailService {
             case "needs_transfer" -> Boolean.TRUE.equals(d.getNeedsTransfer());
             default -> false;
         };
+
+        // 打上标记这个方向要挡中间态（与 CageInfoValueService.setStatus 同一口径，三端共用）；
+        // 取消标记不受限，否则笼位一旦被占，标记就再也退不回来。
+        if (!wasOn) {
+            String busy = intermediateStateService.busyReason(animalCageId);
+            if (busy != null) {
+                throw new TwinBusinessException(409, busy + "，不能标记饲养状态");
+            }
+        }
 
         // 状态从 ON → OFF：归档当前照片和笔记
         if (wasOn) {

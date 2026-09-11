@@ -38,13 +38,17 @@ public interface CageOrderReservationMapper {
     int bindCart(@Param("id") Long id, @Param("cartId") Long cartId);
 
     /**
-     * 加购时数量与锁定时不一样：改预定量并按新的 written_json 覆盖笼位表单，
-     * 否则笼位里预填的数量和订单行对不上。
+     * 加购时补齐预定量与笼位表单内容。
+     *
+     * <p>「先点笼位、后选规格」是正常顺序，预定那一刻还不知道订的是什么，品系/来源取不到；
+     * 走到加购这里才拿到 refDataId，所以品系（strain_name）也在这时补上。
+     * 传 null 时不覆盖原值（COALESCE），别把已有的品系写成空。
      */
     int updateSpecQuantityWritten(@Param("id") Long id,
                                  @Param("specKey") String specKey,
                                  @Param("sex") String sex,
                                  @Param("quantity") Integer quantity,
+                                 @Param("strainName") String strainName,
                                  @Param("writtenJson") String writtenJson);
 
     /** 释放：status→RELEASED 且 active_cage_id 置空，放掉竞态闸门。 */

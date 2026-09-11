@@ -54,15 +54,18 @@ public class CageInfoValueService {
     private final CageInfoValueMapper valueMapper;
     private final CageCellDetailMapper detailMapper;
     private final CageFormAuditService auditService;
+    private final CageIntermediateStateService intermediateStateService;
 
     public CageInfoValueService(CageInfoFieldMapper fieldMapper,
                                 CageInfoValueMapper valueMapper,
                                 CageCellDetailMapper detailMapper,
-                                CageFormAuditService auditService) {
+                                CageFormAuditService auditService,
+                                CageIntermediateStateService intermediateStateService) {
         this.fieldMapper = fieldMapper;
         this.valueMapper = valueMapper;
         this.detailMapper = detailMapper;
         this.auditService = auditService;
+        this.intermediateStateService = intermediateStateService;
     }
 
     /** 读某笼位的全部表单值（字段字典 + 实例值），未填写返回 null 值行。 */
@@ -147,6 +150,15 @@ public class CageInfoValueService {
     @Transactional
     public void setStatus(Long animalCageId, String canonical, boolean enable, String operatorId) {
         if (animalCageId == null || canonical == null || canonical.isBlank()) return;
+        // 只拦「打上标记」这个方向：笼位已被进行中的流程占着（预定/已下单待审/分笼转移在审/认领在审）时
+        // 不能再叠一层占用语义——那条流程审完，笼位上的标记就和它的预期对不上了。
+        // 取消标记不受限，否则一旦占上就再也退不回来。
+        if (enable) {
+            String busy = intermediateStateService.busyReason(animalCageId);
+            if (busy != null) {
+                throw new TwinBusinessException(409, busy + "，不能标记饲养状态");
+            }
+        }
         CageInfoField field = fieldMapper.selectByCanonical(canonical);
         if (field == null || field.getId() == null) return;
 

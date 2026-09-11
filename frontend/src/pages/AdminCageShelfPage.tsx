@@ -77,19 +77,20 @@ import {
   updateAnimalCage, type AnimalCageUpdatePayload,
   fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry, type PoolCell,
   syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds, fetchSyncLocks, saveCageDivision,
+  searchPersonnelByKeyword,
   fetchCageModeVisible,
   fetchCageOpMarkers, lookupCode, locateTargetOf, adminConfirmClaim, archiveCage, reconcileCageOccupancy, type CodeLookupResult,
   assignBatchCages, submitCageTransfer,
 } from "@/api/domains/cageShelf.api";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
+import { fetchMyGroupMembers } from "@/api/domains/referenceData.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
+import SearchSelect, { type SearchOption } from "@/components/cage/SearchSelect";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { Portal } from "@/components/Portal";
 import CageBookingPanel from "@/features/cage-shelf/components/CageBookingPanel";
 import AupSearchBar from "@/features/cage-shelf/components/AupSearchBar";
-import AllocDialog from "@/features/cage-shelf/components/AllocDialog";
-import ReservePersonDialog from "@/features/cage-shelf/components/ReservePersonDialog";
 import {
   Dialog,
   DialogContent,
@@ -108,19 +109,38 @@ import {
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import LocalDetailPanel from "@/features/cage-shelf/components/LocalDetailPanel";
 import CageOperationDialog from "@/features/cage-shelf/components/CageOperationDialog";
-import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
 import CageOpSelectBanner from "@/features/cage-shelf/components/CageOpSelectBanner";
 import BatchTransferPanel from "@/features/cage-shelf/components/BatchTransferPanel";
 import CageModeIsland, { modeBorderColor, useIslandVariant, type CageModeKey } from "@/features/cage-shelf/components/CageModeIsland";
 import { resolveCageType, groupKeyOf } from "@/features/cage-shelf/components/CageCellOverlays";
 import { scopeAupsByRoom } from "@/features/cage-shelf/allocationAupScope";
-import { useCageOpSelect, buildCageOpMarks, type CageOpLabel } from "@/features/cage-shelf/useCageOpSelect";
+import { useCageOpSelect, buildCageOpMarks, mergeReservationMarks, type CageOpLabel } from "@/features/cage-shelf/useCageOpSelect";
+import CageModeDrawer from "@/features/cage-shelf/components/CageModeDrawer";
+import PendingBufferList from "@/features/cage-shelf/components/PendingBufferList";
+import BufferTargetZones, { type BufferZone, type EditCacheEntry } from "@/features/cage-shelf/components/BufferTargetZones";
+import CageModeTabs from "@/features/cage-shelf/components/CageModeTabs";
+import { modeMetaOf } from "@/features/cage-shelf/components/CageModeIsland";
+import {
+  applyResults,
+  batchOf,
+  clearBatch,
+  groupItems,
+  moveItem,
+  removeItem,
+  setParams,
+  summarize,
+  upsertItem,
+  type PendingBatch,
+  type PendingByMode,
+  type PendingItem,
+  type SubmitResult,
+} from "@/features/cage-shelf/pendingBatch";
 import CageHistoryModal from "@/features/cage-shelf/components/CageHistoryModal";
 import CageSettingsCenter from "@/features/cage-shelf/components/CageSettingsCenter";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { ShelfGrid, BookmarkShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
-import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, statusPhotoKeys, allocSelectVerdict, ALLOC_MIXED_KIND_HINT } from "@/features/cage-shelf/constants";
+import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, statusPhotoKeys, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone } from "@/features/cage-shelf/constants";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import CageScanProgressBanner from "@/features/cage-shelf/components/CageScanProgressBanner";
@@ -131,6 +151,9 @@ import { SyncLockProvider, useSyncLock } from "@/features/cage-shelf/components/
 import { appConfirm } from "@/lib/appDialog";
 export default function AdminCageShelfPage(){return<CageColorProvider><Inner/></CageColorProvider>;}
 type ShelfTab="bookmarks"|"filter";
+
+/** 两个状态动作集是否相同（顺序无关）—— 判断「改回原样」用 */
+const sameActions=(a:Set<CageBoxAction>,b:Set<CageBoxAction>)=>a.size===b.size&&[...a].every(x=>b.has(x));
 
 /* ==================================================================
  * Inner — 核心业务组件
@@ -184,8 +207,6 @@ function Inner(){
   const[boxSelectMode,setBoxSelectMode]=useState(false); // 矩形框选模式：点击两格自动框选
   const boxSelectAnchorRef=useRef<{shelveId:string;x:number;y:number}|null>(null); // 框选模式第一格锚点
   const shiftHintShownRef=useRef(false); // 首次勾选时弹出 Shift 框选提示
-  const[allocDialogOpen,setAllocDialogOpen]=useState(false);
-  const[selectedAupId,setSelectedAupId]=useState("");
   const[realtimeMeta,setRealtimeMeta]=useState<{fromRealtime:boolean;cachedAt:string}|null>(null);
   const[allocSubmitting,setAllocSubmitting]=useState(false);
   // ═══════════════════════════════════════════════════════════
@@ -193,6 +214,21 @@ function Inner(){
   // ═══════════════════════════════════════════════════════════
   // ── 编辑模式 ──
   const[editMode,setEditMode]=useState(false);
+  /**
+   * 状态模式两种改法（抽屉标题右侧的切换按钮）：
+   *   false = 拖色区：点格子攒进「待提交」，拖到色彩区标记，最后统一提交（走缓存）
+   *   true  = 直接改：点格子开原状态弹窗，弹窗里点一下立刻写服务端（不走缓存）
+   */
+  const[editDirect,setEditDirect]=useState(false);
+  /** 只有「拖色区」才谈得上攒着提交 */
+  const editStaged = editMode && !editDirect;
+  /**
+   * 「加入待提交」的转发 ref：确认/归档的点击处理函数声明在待提交状态之前，
+   * 直接引用会 TDZ 报错；用 ref 转发，避免把一大块状态搬来搬去。
+   */
+  const addPendingRef = useRef<(cageId: string, extra?: Partial<PendingItem>) => void>(() => {});
+  /** 矩形框选一次性入缓冲（与 addPendingRef 同理，供声明在前的 toggle 处理函数调用） */
+  const addRangeRef = useRef<(mode: string, shelveId: string, ax: number, ay: number, bx: number, by: number, accept: (c: unknown) => boolean) => void>(() => {});
   const[scanCache,setScanCache]=useState<Map<string,{cell:CageShelfCell;code:string;initialActions:Set<CageBoxAction>;currentActions:Set<CageBoxAction>;images:string[];notes:string}>>(new Map());
   const[lastScannedKey,setLastScannedKey]=useState<string|null>(null);
   const[actionSubmitting,setActionSubmitting]=useState(false);
@@ -218,13 +254,17 @@ function Inner(){
   const[archiveTarget,setArchiveTarget]=useState<{ animalCageId: string; positionLabel: string; occupantName?: string; projectPiName?: string; aupNumber?: string } | null>(null);
   const[archiveSubmitting,setArchiveSubmitting]=useState(false);
   const[reserveMode,setReserveMode]=useState(false);
-  const[reservePerson,setReservePerson]=useState<{ name: string; accountId: string } | null>(null);
-  const[reserveSubmitting,setReserveSubmitting]=useState(false);
-  const[reserveOpen,setReserveOpen]=useState(false);
   const[recordMode,setRecordMode]=useState(false);
   const[divisionMode,setDivisionMode]=useState(false);
-  const[divisionPickerOpen,setDivisionPickerOpen]=useState(false);
-  const[divisionSubmitting,setDivisionSubmitting]=useState(false);
+  /** 当前模式（模式布尔 → 模式 key）。放最前面：待提交缓冲和各模式点击处理都要用它。 */
+  const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm"|"archive"|"reserve"|"record"|"division" = editMode?"edit":confirmMode?"confirm":archiveMode?"archive":reserveMode?"reserve":recordMode?"record":divisionMode?"division":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
+  // ── 多模式「待提交」抽屉的状态：操作先在抽屉里攒着，最后一次性提交 ──
+  const [pendingByMode, setPendingByMode] = useState<PendingByMode>({});
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const patchPending = useCallback((m: string, fn: (b: PendingBatch) => PendingBatch) => {
+    setPendingByMode((prev) => ({ ...prev, [m]: fn(batchOf(prev, m)) }));
+  }, []);
   const[recordTarget,setRecordTarget]=useState<string|null>(null);
   const[settingsOpen,setSettingsOpen]=useState(false);
 
@@ -418,6 +458,7 @@ function Inner(){
   /**
    * 活跃笼位预定（动物订购锁的笼位）：也走同一套中间态标记渲染，
    * 让「这个空笼位已经许给别人了」在网格上可见，不必进订购页才知道。
+   * 与学生端笼架页共用 mergeReservationMarks —— 两端的颜色/文案不会各写各的。
    */
   const { data: cageReservations = [] } = useQuery({
     queryKey: ["cage-reservations", "active"],
@@ -425,21 +466,10 @@ function Inner(){
     staleTime: 15_000,
     refetchOnWindowFocus: true,
   });
-  const opMarkWithReservations = useMemo(() => {
-    if (cageReservations.length === 0) return opMarkByCageId;
-    const m = new Map(opMarkByCageId);
-    for (const r of cageReservations) {
-      const key = String(r.animalCageId);
-      if (m.has(key)) continue; // 待审分笼/转移优先，别被预定标记盖掉
-      m.set(key, {
-        requestId: String(r.reservationId),
-        kind: "reserve",
-        color: "#f59e0b",
-        label: `已被${r.reserverName || "他人"}预订`,
-      });
-    }
-    return m;
-  }, [opMarkByCageId, cageReservations]);
+  const opMarkWithReservations = useMemo(
+    () => mergeReservationMarks(opMarkByCageId, cageReservations),
+    [opMarkByCageId, cageReservations],
+  );
   const cageIdOfCell = useCallback((c: any) => String((c as any)?.id ?? (c as any)?.animalCageId ?? (c as any)?.detail?.animalCageId ?? ""), []);
   /** cageId → sid:x:y（把选中的目标映射回网格的 selectedCells） */
   const keyByCageId = useMemo(() => {
@@ -458,6 +488,18 @@ function Inner(){
     }
     return s;
   }, [opSel.selected, keyByCageId]);
+  /**
+   * 分配/预定/划分：点击即进/出待提交缓冲，不再写 selectedCells 状态。
+   * 网格上的「已选中」标记（绿圈 + 蓝边）于是要**从缓冲反查**，否则点完只有工具栏计数在动。
+   */
+  const pendingSelectedCells = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of batchOf(pendingByMode, currentMode).items) {
+      const k = keyByCageId.get(it.cageId);
+      if (k) s.add(k);
+    }
+    return s;
+  }, [pendingByMode, currentMode, keyByCageId]);
   const handleOpToggle = useCallback((sid: string, x: number, y: number) => {
     const id = cageIdOfCell(cellAtKey.get(`${sid}:${x}:${y}`));
     if (id) opSel.toggle(id);
@@ -524,24 +566,24 @@ function Inner(){
     if (list.length === 0) return;
     setBatchSubmitting(true);
     const failed: string[] = [];
-    let done = 0;
+    let done = 0, toReview = 0;
     for (const p of list) {
       try {
-        await submitCageTransfer({ fromAnimalCageId: p.sourceId, toAnimalCageId: p.targetId! });
-        done++;
+        /* 后端逐条判定：学生提交且接收方配置要求审核 → 只落待审单，不立即生效。
+           必须分开计数，否则「转了待审」会被误报成「已完成」。 */
+        const res = await submitCageTransfer({ fromAnimalCageId: p.sourceId, toAnimalCageId: p.targetId! });
+        if (res?.needApproval) toReview++; else done++;
       } catch (e: any) {
         failed.push(`${p.sourceLabel?.position ?? p.sourceId}：${e?.message || "失败"}`);
       }
     }
     setBatchSubmitting(false);
-    if (failed.length === 0) {
-      toast.success(`已完成 ${done} 个笼位的转移`);
-    } else {
-      toast.error(
-        `${done} 个成功，${failed.length} 个失败：${failed.slice(0, 3).join("；")}${failed.length > 3 ? "…" : ""}`,
-        { duration: 8000 },
-      );
-    }
+    const msg = [
+      `已完成 ${done} 个笼位`,
+      toReview > 0 ? `${toReview} 个已提交待审核` : "",
+      failed.length > 0 ? `${failed.length} 个失败：${failed.slice(0, 3).join("；")}${failed.length > 3 ? "…" : ""}` : "",
+    ].filter(Boolean).join("，");
+    if (failed.length === 0) toast.success(msg); else toast.error(msg, { duration: 8000 });
     opSel.cancel();
     setDetailReloadKey(k => k + 1);
     void qc.invalidateQueries({ queryKey: ["cage-op", "markers"] });
@@ -901,90 +943,81 @@ function Inner(){
     if(st&&["pending_approval","locked","confirmed","pending_release_approval"].includes(st)){
       return {ok:false,reason:"该笼位已有认领在办，不可分配"};
     }
-    return allocSelectVerdict((c as any)?.cageTypeCode??(c as any)?.animalCageType, c?opMarkByCageId.has(cageIdOfCell(c)):false);
-  },[opMarkByCageId,cageIdOfCell]);
+    return allocSelectVerdict((c as any)?.cageTypeCode??(c as any)?.animalCageType, c?opMarkWithReservations.has(cageIdOfCell(c)):false);
+  },[opMarkWithReservations,cageIdOfCell]);
 
-  const allocBatchKind=useMemo(()=>{
-    for(const key of selectedCells){
-      const c=cellAtKey.get(key);
-      const v=allocCellVerdict(c);
-      if(v.ok)return v.kind;
-    }
-    return null;
-  },[selectedCells,cellAtKey,allocCellVerdict]);
+  /* 原来这里有个 allocBatchKind（从勾选集推断「本批是下发还是撤销」）——
+     它服务于「一批只能一种动作」那套旧规则，现在同批允许混、提交按 kind 分组，没人再读它，删掉。 */
 
-  /* ---- 框选模式：点击两格自动矩形选中 ---- */
+  /* ---- 分配模式：点格子直接进出「待提交」；框选 / Shift 矩形一次性入缓冲 ---- */
   const handleAllocateToggle=useCallback((shelveId:string,x:number,y:number,shiftKey?:boolean)=>{
-    const kindAt=(cx:number,cy:number)=>{
-      const c=cellAtKey.get(`${shelveId}:${cx}:${cy}`);
-      return allocCellVerdict(c);
-    };
-    // 本批已确定的动作类型（分配 / 取消分配）；空选时为 null，由首次点击决定
-    const batchKind=allocBatchKind;
-    /** 框选/Shift 批量填充时静默跳过不合规的格子，只有单点才弹 toast */
-    const canJoin=(cx:number,cy:number)=>{
-      const v=kindAt(cx,cy);
-      return v.ok && (batchKind===null || v.kind===batchKind);
-    };
+    const c=cellAtKey.get(`${shelveId}:${x}:${y}`);
+    if(!c)return;
+    const cageId=cageIdOfCell(c);
+    if(!cageId)return;
+    const accept=(cc:unknown)=>allocCellVerdict(cc).ok;
+
     if(boxSelectMode){
       const anchor=boxSelectAnchorRef.current;
       if(!anchor||anchor.shelveId!==shelveId){
-        const v=kindAt(x,y);
+        const v=allocCellVerdict(c);
         if(!v.ok){toast(v.reason);return;}
-        if(batchKind!==null&&v.kind!==batchKind){toast(ALLOC_MIXED_KIND_HINT);return;}
         boxSelectAnchorRef.current={shelveId,x,y};
-        setSelectedCells(prev=>{const next=new Set(prev);next.add(`${shelveId}:${x}:${y}`);return next;});
         anchorCellRef.current={shelveId,x,y};
+        addPendingRef.current(cageId,{kind:v.kind});
         return;
       }
-      const minX=Math.min(anchor.x,x),maxX=Math.max(anchor.x,x);
-      const minY=Math.min(anchor.y,y),maxY=Math.max(anchor.y,y);
-      setSelectedCells(prev=>{
-        const next=new Set(prev);
-        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++) if(canJoin(cx,cy)) next.add(`${shelveId}:${cx}:${cy}`);
-        return next;
-      });
+      addRangeRef.current("allocate",shelveId,anchor.x,anchor.y,x,y,accept);
       boxSelectAnchorRef.current=null;
       setBoxSelectMode(false);
       anchorCellRef.current={shelveId,x,y};
       return;
     }
-    if(!shiftHintShownRef.current){shiftHintShownRef.current=true;toast('按住 Shift 键点击另一个笼位，可快速框选矩形区域',{icon:'💡',duration:4000});}
-    const key=`${shelveId}:${x}:${y}`;
-    const alreadySelected=selectedCells.has(key);
-    if(!alreadySelected){
-      const v=kindAt(x,y);
-      if(!v.ok){toast(v.reason);return;}
-      if(batchKind!==null&&v.kind!==batchKind){toast(ALLOC_MIXED_KIND_HINT);return;}
-    }
-    setSelectedCells(prev=>{
-      const next=new Set(prev);
+    if(shiftKey){
       const anchor=anchorCellRef.current;
-      if(shiftKey && anchor && anchor.shelveId===shelveId){
-        const minX=Math.min(anchor.x,x),maxX=Math.max(anchor.x,x);
-        const minY=Math.min(anchor.y,y),maxY=Math.max(anchor.y,y);
-        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++) if(canJoin(cx,cy)) next.add(`${shelveId}:${cx}:${cy}`);
-      }else{
-        next.has(key)?next.delete(key):next.add(key);
+      if(anchor&&anchor.shelveId===shelveId){
+        addRangeRef.current("allocate",shelveId,anchor.x,anchor.y,x,y,accept);
         anchorCellRef.current={shelveId,x,y};
+        return;
       }
-      return next;
-    });
-  },[boxSelectMode,cellAtKey,allocBatchKind,selectedCells]);
+    }
+    const cur=batchOf(pendingByMode,"allocate");
+    if(cur.items.some(it=>it.cageId===cageId)){
+      patchPending("allocate",(b)=>removeItem(b,cageId));
+      anchorCellRef.current={shelveId,x,y};
+      return;
+    }
+    const v=allocCellVerdict(c);
+    if(!v.ok){toast(v.reason);return;}
+    /*
+      同一批**允许混**「下发 AUP」与「撤销分配」：两种在缓冲区分段陈列、各有各的落点区，
+      提交时按 kind 分组下发（一组一次调用，接口形状没变）。所以这里不再拦，
+      用户不必为两种动作各提交一批。
+    */
+    anchorCellRef.current={shelveId,x,y};
+    addPendingRef.current(cageId,{kind:v.kind});
+  },[boxSelectMode,cellAtKey,cageIdOfCell,pendingByMode,patchPending,addPendingRef,addRangeRef]);
 
-  /* ---- 认领模式：只允许选择已预约空笼盒(type2)且无活跃认领 ---- */
+  /* ---- 认领/预定模式：一步到位，点格子直接进出「待提交」 ---- */
   const handleReserveToggle=useCallback((shelveId:string,x:number,y:number,shiftKey?:boolean)=>{
+    void shiftKey;
     const c=cellAtKey.get(`${shelveId}:${x}:${y}`);
+    if(!c)return;
+    const cageId=cageIdOfCell(c);
+    if(!cageId)return;
+    const cur=batchOf(pendingByMode,"reserve");
+    if(cur.items.some(it=>it.cageId===cageId)){patchPending("reserve",(b)=>removeItem(b,cageId));return;}
     const ct=(c as any)?.cageTypeCode ?? (c as any)?.animalCageType;
     const status=(c as any)?.claimStatus;
     if(ct!==2){toast("只能选择「已预约空笼盒」状态的笼位");return;}
     if(status && ["pending_approval","locked","confirmed","pending_release_approval"].includes(status)){
       toast("该笼位已有认领，不可重复选择");return;
     }
-    // 审核中的笼位（别人的分笼/转移目标）不能预定：待审不改笼位状态，只看类型拦不住
-    if(opMarkByCageId.has(cageIdOfCell(c))){toast("该笼位有待审的分笼/转移请求，请先等它审完");return;}
-    toggleCell(shelveId,x,y,shiftKey);
-  },[cellAtKey,toggleCell,opMarkByCageId,cageIdOfCell]);
+    // 审核中 / 已被订单预定的笼位都不能再预定：这两种中间态都不改笼位类型，只看类型拦不住
+    const mark = opMarkWithReservations.get(cageId);
+    if(mark){toast(mark.label + "，请先等它结束");return;}
+    addPendingRef.current(cageId);
+  },[cellAtKey,cageIdOfCell,pendingByMode,patchPending,opMarkWithReservations]);
 
   /* ---- 划分模式：勾选笼位（不限状态，但 type1 除外）----
      划分只是「预分配标记」，不改变笼位现状：type3 占用中的笼位被划分也不影响其现有归属。
@@ -993,51 +1026,47 @@ function Inner(){
      支持与分配模式相同的三种选择方式：单击切换 / Shift 矩形 / 框选按钮点两格。 */
   const DIV_INELIGIBLE_HINT="待分配状态的笼位未归属课题组，不能划分";
   const handleDivisionToggle=useCallback((shelveId:string,x:number,y:number,shiftKey?:boolean)=>{
-    const eligible=(cx:number,cy:number)=>{
-      const c=cellAtKey.get(`${shelveId}:${cx}:${cy}`);
-      if(!c)return false;
-      const ct=(c as any)?.cageTypeCode??(c as any)?.animalCageType;
+    const c=cellAtKey.get(`${shelveId}:${x}:${y}`);
+    if(!c)return;
+    const cageId=cageIdOfCell(c);
+    if(!cageId)return;
+    const eligible=(cc:unknown)=>{
+      const ct=(cc as any)?.cageTypeCode??(cc as any)?.animalCageType;
       return ct!==1;
     };
-    const key=`${shelveId}:${x}:${y}`;
     if(boxSelectMode){
       const anchor=boxSelectAnchorRef.current;
       if(!anchor||anchor.shelveId!==shelveId){
-        if(!eligible(x,y)){toast(DIV_INELIGIBLE_HINT);return;}
+        if(!eligible(c)){toast(DIV_INELIGIBLE_HINT);return;}
         boxSelectAnchorRef.current={shelveId,x,y};
-        setSelectedCells(prev=>{const next=new Set(prev);next.add(key);return next;});
         anchorCellRef.current={shelveId,x,y};
+        addPendingRef.current(cageId);
         return;
       }
-      const minX=Math.min(anchor.x,x),maxX=Math.max(anchor.x,x);
-      const minY=Math.min(anchor.y,y),maxY=Math.max(anchor.y,y);
-      setSelectedCells(prev=>{
-        const next=new Set(prev);
-        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++) if(eligible(cx,cy)) next.add(`${shelveId}:${cx}:${cy}`);
-        return next;
-      });
+      addRangeRef.current("division",shelveId,anchor.x,anchor.y,x,y,eligible);
       boxSelectAnchorRef.current=null;
       setBoxSelectMode(false);
       anchorCellRef.current={shelveId,x,y};
       return;
     }
-    if(!shiftHintShownRef.current){shiftHintShownRef.current=true;toast('按住 Shift 键点击另一个笼位，可快速框选矩形区域',{icon:'💡',duration:4000});}
-    const alreadySelected=selectedCells.has(key);
-    if(!alreadySelected&&!eligible(x,y)){toast(DIV_INELIGIBLE_HINT);return;}
-    setSelectedCells(prev=>{
-      const next=new Set(prev);
+    if(shiftKey){
       const anchor=anchorCellRef.current;
-      if(shiftKey&&anchor&&anchor.shelveId===shelveId){
-        const minX=Math.min(anchor.x,x),maxX=Math.max(anchor.x,x);
-        const minY=Math.min(anchor.y,y),maxY=Math.max(anchor.y,y);
-        for(let cx=minX;cx<=maxX;cx++)for(let cy=minY;cy<=maxY;cy++) if(eligible(cx,cy)) next.add(`${shelveId}:${cx}:${cy}`);
-      }else{
-        next.has(key)?next.delete(key):next.add(key);
+      if(anchor&&anchor.shelveId===shelveId){
+        addRangeRef.current("division",shelveId,anchor.x,anchor.y,x,y,eligible);
         anchorCellRef.current={shelveId,x,y};
+        return;
       }
-      return next;
-    });
-  },[boxSelectMode,cellAtKey,selectedCells]);
+    }
+    const cur=batchOf(pendingByMode,"division");
+    if(cur.items.some(it=>it.cageId===cageId)){
+      patchPending("division",(b)=>removeItem(b,cageId));
+      anchorCellRef.current={shelveId,x,y};
+      return;
+    }
+    if(!eligible(c)){toast(DIV_INELIGIBLE_HINT);return;}
+    anchorCellRef.current={shelveId,x,y};
+    addPendingRef.current(cageId);
+  },[boxSelectMode,cellAtKey,cageIdOfCell,pendingByMode,patchPending]);
 
   /** 勾选的格子 → animalCageId 列表（selectedCells 存的是 shelveId:x:y） */
   const selectedCageIds=useCallback(():string[]=>{
@@ -1089,7 +1118,7 @@ function Inner(){
         const id = String(c.id ?? c.animalCageId ?? "");
         if (!id) continue;
         const ct = c.cageTypeCode ?? c.animalCageType;
-        const pending = opMarkByCageId.has(id);
+        const pending = opMarkWithReservations.has(id);
         /**
          * 有活跃认领（含「待审批」）的笼位，**分配和预定都不能选**。
          * 以前只有预定分支查了认领，分配分支漏了 —— type2 带待审批认领的笼位照样进池、
@@ -1109,7 +1138,7 @@ function Inner(){
     for (const d of details) add(d.grid);
     if (shelfDetail) add(shelfDetail.grid);
     return m;
-  }, [pageMode, reserveMode, details, shelfDetail, opMarkByCageId]);
+  }, [pageMode, reserveMode, details, shelfDetail, opMarkWithReservations]);
 
   /** 当前模式该传给网格的可选高亮（分笼/转移选位时会被 opGridProps 覆盖，故不在此处算） */
   const modePoolCells = pageMode === "allocate" || reserveMode ? allocReservePoolCells : divisionPoolCells;
@@ -1128,22 +1157,6 @@ function Inner(){
     if (shelfDetail) add(shelfDetail);
     return s;
   }, [details, shelfDetail, modePoolCells]);
-
-  /* ---- 划分模式：选定人员后提交（多笼位 × 多人 = 全部配对）---- */
-  const handleDivisionSubmit=useCallback(async(ids:string[],names:string[])=>{
-    const cageIds=selectedCageIds();
-    if(cageIds.length===0){toast.error("请先勾选笼位");return;}
-    if(ids.length===0){toast.error("请选择要划分的人员");return;}
-    setDivisionSubmitting(true);
-    try{
-      await saveCageDivision(cageIds,ids.map((id,i)=>({id,name:names[i]??""})));
-      toast.success(`已把 ${cageIds.length} 个笼位划分给 ${ids.length} 人`);
-      setSelectedCells(new Set());
-      setDivisionPickerOpen(false);
-      setDetailReloadKey(k=>k+1);
-    }catch(e:any){toast.error(e?.message||"保存划分失败");}
-    finally{setDivisionSubmitting(false);}
-  },[selectedCageIds]);
 
   /* ---- 分配模式：取消分配 ---- */
   const handleCancelAssign=async()=>{
@@ -1182,92 +1195,26 @@ function Inner(){
     finally{setAllocSubmitting(false);}
   };
 
-  /* ---- 分配模式：确认分配 ---- */
-  const handleConfirmAssign=async()=>{
-    if(!selectedAupId||selectedCells.size===0||!aRid)return;
-    const cageIds:string[]=[];
-    let assignShelveId="";
-    for(const key of selectedCells){
-      const [sid,xStr,yStr]=key.split(":");
-      assignShelveId=sid;
-      const x=parseInt(xStr),y=parseInt(yStr);
-      for(const d of details){
-        if(String(d.shelfMeta?.shelveId)===sid){
-          const cell=d.grid?.find(c=>c.x===x&&c.y===y);
-          if(cell?.id)cageIds.push(String(cell.id));
-          break;
-        }
-      }
-      if(shelfDetail&&String(shelfDetail.shelfMeta?.shelveId)===sid){
-        const cell=shelfDetail.grid?.find(c=>c.x===x&&c.y===y);
-        if(cell?.id)cageIds.push(String(cell.id));
-      }
-    }
-    if(cageIds.length===0){toast.error("无法获取选中笼位的 ID");return;}
-    setAllocSubmitting(true);
-
-    // 本地数据源
-    if(dataSource==="local"){
-      const aup=aupList.find(x=>String(x.id)===String(selectedAupId));
-      const piName=aup?.piName||"";
-      const aupNumber=aup?.registerNo||"";
-      try{await localAllocate(cageIds,selectedAupId,aRid,assignShelveId,piName,aupNumber);toast.success(`已分配 ${cageIds.length} 个笼位（本地）`);}
-      catch(e:any){toast.error(e?.message||"分配失败");}
-      setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
-      setAllocSubmitting(false);setDetailReloadKey(k=>k+1);
-      return;
-    }
-
-    try{const aup=aupList.find(x=>String(x.id)===String(selectedAupId));await assignCages(aRid,assignShelveId,cageIds,selectedAupId,aup?.registerNo);toast.success(`已分配 ${cageIds.length} 个笼位`);setAllocDialogOpen(false);setSelectedCells(new Set());anchorCellRef.current=null;setSelectedAupId("");
-      const r=await fetchRealtimeRefresh(aRid);setDetails(r.shelves??[]);setRealtimeMeta({fromRealtime:r.fromRealtime,cachedAt:r.cachedAt});
-    }catch(e:any){toast.error(e instanceof Error?e.message:"分配失败");}
-    finally{setAllocSubmitting(false);}
-  };
-
-  /* ---- 认领模式：确认认领（建 locked 认领 + 填占用者，免审核） ---- */
-  const handleReserveConfirm=useCallback(async(p:{ name: string; accountId: string })=>{
-    if(selectedCells.size===0||!p.accountId)return;
-    const cageIds:string[]=[];
-    for(const key of selectedCells){
-      const [sid,xStr,yStr]=key.split(":");
-      const x=parseInt(xStr),y=parseInt(yStr);
-      for(const d of details){
-        if(String(d.shelfMeta?.shelveId)===sid){
-          const cell=d.grid?.find(c=>c.x===x&&c.y===y);
-          if(cell?.id)cageIds.push(String(cell.id));
-          break;
-        }
-      }
-      if(shelfDetail&&String(shelfDetail.shelfMeta?.shelveId)===sid){
-        const cell=shelfDetail.grid?.find(c=>c.x===x&&c.y===y);
-        if(cell?.id)cageIds.push(String(cell.id));
-      }
-    }
-    if(cageIds.length===0){toast.error("无法获取选中笼位的 ID");return;}
-    setReserveSubmitting(true);
-    try{
-      const results=await assignBatchCages(cageIds,p.accountId);
-      const failed=results.filter(r=>!r.ok).length;
-      if(failed>0){toast.error(`已预定 ${cageIds.length-failed} 个笼位给 ${p.name}，${failed} 个失败`);}
-      else{toast.success(`已预定 ${cageIds.length} 个笼位给 ${p.name}`);}
-    }catch(e:any){toast.error(e?.message||"预定失败");}
-    finally{
-      setReserveSubmitting(false);
-      setReservePerson(null);
-      setReserveOpen(false);
-      setSelectedCells(new Set());anchorCellRef.current=null;
-      setDetailReloadKey(k=>k+1);
-    }
-  },[selectedCells,details,shelfDetail]);
-
   // 从 details 或 shelfDetail 找到 cell 所属的 shelveId
   const findShelfIdForCell=(cell:CageShelfCell):string=>{
     for(const d of details){const sid=String(d.shelfMeta?.shelveId??"");for(const c of d.grid){if(c.x===cell.x&&c.y===cell.y)return sid;}}
     if(shelfDetail){const sid=String(shelfDetail.shelfMeta?.shelveId??"");for(const c of shelfDetail.grid){if(c.x===cell.x&&c.y===cell.y)return sid;}}
     return"";
   };
-  // 两个 Set 是否完全一致
-  const setsEqual=<T,>(a:Set<T>,b:Set<T>)=>a.size===b.size&&[...a].every(x=>b.has(x));
+  /**
+   * 状态模式：打开某笼位的状态编辑 —— 全房间视图走弹窗，单笼架视图走右侧面板。
+   * 网格点击和抽屉条目的「点击继续编辑」都走这里，两条入口的落点才不会各走各的。
+   */
+  const openEditCell=useCallback((cell:CageShelfCell,sidHint?:string)=>{
+    const cageId=String((cell as any).id ?? (cell as any).animalCageId ?? "");
+    // 拉取表单值(cage_info_value)：状态标记唯一真相源，编辑弹窗据此反向使能按钮
+    setEditFormValues(null);
+    if(cageId&&dataSource==="local"){
+      fetchCageInfoValues(cageId).then(setEditFormValues).catch(()=>setEditFormValues(null));
+    }
+    if(viewMode==="room"){setEditDialogCell(cell);setEditDialogShelfId(sidHint??findShelfIdForCell(cell));return;}
+    setCell(cell);setShelfId("");
+  },[dataSource,viewMode,findShelfIdForCell]);
   // ── 统一 cell 点击：编辑/查看 ──
   const handleGridCellClick=useCallback((cell:CageShelfCell, sidHint?:string)=>{
     if(cell.empty)return;
@@ -1277,24 +1224,16 @@ function Inner(){
       if(cageId){setRecordTarget(cageId);}else{toast.error("该笼位无 ID");}
       return;
     }
-    // 编辑模式：全房间→弹窗 / 单笼架→右侧面板（仅 state=3 可操作）
+    // 编辑模式：全房间→弹窗 / 单笼架→右侧面板（仅 state=3/4 可操作）
     if(editMode){
-      if(cell.empty)return;
       const ct=dataSource==="local" ? ((cell as any).cageTypeCode) : (cell as any).animalCageType;
       if(ct!==3&&ct!==4){toast.error("当前状态不可编辑");return;}
-      // 拉取表单值(cage_info_value)：状态标记唯一真相源，编辑弹窗据此反向使能按钮
-      const cageId=String((cell as any).id ?? (cell as any).animalCageId ?? "");
-      setEditFormValues(null);
-      if(cageId&&dataSource==="local"){
-        fetchCageInfoValues(cageId).then(setEditFormValues).catch(()=>setEditFormValues(null));
-      }
-      if(viewMode==="room"){setEditDialogCell(cell);setEditDialogShelfId(sidHint??findShelfIdForCell(cell));return;}
-      setCell(cell);setShelfId(""); // 单笼架走右侧面板
+      openEditCell(cell,sidHint);
       return;
     }
     // 查看模式 / 扫码确认模式（确认由扫码触发，点击格子仅查看）
     setCell(cell);setShelfId("");
-  },[editMode,recordMode,lastScannedKey,viewMode,aRid,dataSource]);
+  },[editMode,recordMode,openEditCell,dataSource]);
 
   // ═══════════════════════════════════════════════════════════
   //  HANDLERS — 编辑模式
@@ -1377,58 +1316,6 @@ function Inner(){
   },[lastScannedKey]);
 
   // ── 编辑模式：提交 ──
-  const handleEditSubmit=useCallback(async()=>{
-    if(!aRid||scanCache.size===0)return;
-    setActionSubmitting(true);
-
-    // 本地数据源 — 双向检测：新增和取消都算变化
-    if(dataSource==="local"){
-      let ok=0,fail=0;
-      for(const[key,e]of scanCache){
-        const cageId=String((e.cell as any).id??(e.cell as any).animalCageId??"");
-        if(!cageId)continue;
-        const allActions = CAGE_BOX_ACTION_LIST;
-        for(const a of allActions){
-          const was = e.initialActions.has(a);
-          const now = e.currentActions.has(a);
-          if(was === now) continue;
-          const toggle=cageBoxAction(a).statusField;
-          try{await localEdit(cageId,toggle,now,e.code);ok++;}
-          catch(err:any){toast.error(`${e.cell.position} ${a}: ${err?.message||"失败"}`);fail++;}
-        }
-      }
-      if(fail===0){toast.success(`已完成 ${ok} 个操作（本地）`);setScanCache(new Map());setLastScannedKey(null);setDetailReloadKey(k=>k+1);}
-      else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
-      setActionSubmitting(false);
-      return;
-    }
-
-    const toAdd:{sid:string;entry:any;action:CageBoxAction}[]=[];
-    const toRemove:{sid:string;entry:any;action:CageBoxAction}[]=[];
-    for(const[key,e]of scanCache){
-      const parts=key.split(":");const sid=parts[0]||"";
-      for(const a of e.currentActions){if(!e.initialActions.has(a))toAdd.push({sid,entry:e,action:a});}
-      for(const a of e.initialActions){if(!e.currentActions.has(a))toRemove.push({sid,entry:e,action:a});}
-    }
-    let ok=0,fail=0;
-    for(const{sid,entry,action}of toAdd){
-      if(!sid)continue;
-      try{await executeCageBoxAction({roomId:aRid,shelveId:sid,cageBoxCode:entry.code,action});ok++;}
-      catch(e:any){toast.error(`${entry.cell.position} ${action}: ${e?.message||"失败"}`);fail++;}
-    }
-    for(const{sid,entry,action}of toRemove){
-      if(!sid)continue;
-      // 合笼/动物转移是本地状态，ARO 无对应取消色 → 跳过这条 ARO 调用，本地状态已由 localEdit 落库
-      const color=ACTION_CANCEL_COLOR[action];
-      if(color===undefined)continue;
-      try{await cancelCageBoxColor(aRid,sid,entry.code,color);ok++;}
-      catch(e:any){toast.error(`${entry.cell.position} 取消${action}: ${e?.message||"失败"}`);fail++;}
-    }
-    if(fail===0){toast.success(`已完成 ${ok} 个操作`);setScanCache(new Map());setLastScannedKey(null);setDetailReloadKey(k=>k+1);}
-    else toast(`${ok} 成功 / ${fail} 失败`,{icon:"⚠️"});
-    setActionSubmitting(false);
-  },[aRid,scanCache,details,dataSource]);
-
   // ═══════════════════════════════════════════════════════════
   //  HANDLERS — 扫码确认模式
   // ═══════════════════════════════════════════════════════════
@@ -1475,28 +1362,10 @@ function Inner(){
     const status = c?.claimStatus;
     if (!status) { toast.error("该笼位未分配"); return; }
     if (status === "locked") {
-      setConfirmLookup({
-        type: "CAGE_CELL",
-        cageCell: {
-          animalCageId: String(c.id ?? c.animalCageId ?? ""),
-          positionLabel: displayPosition(c.position),
-          positionX: c.x,
-          positionY: c.y,
-          campusName: "",
-          roomName: "",
-          shelveId: sid ?? "",
-        } as any,
-        claim: {
-          id: Number(c.activeClaimId),
-          claimStatus: status,
-          claimantId: "",
-          claimantName: c.occupantName ?? "",
-          projectPiName: c.projectPiName ?? "",
-          aupNumber: c.aupNumber ?? c.detail?.aupNumber ?? "",
-          projectName: c.projectGroup ?? "",
-          hasInfo: true,
-        } as any,
-      });
+      // 不再弹确认弹窗：点格子直接进「待提交」，到抽屉里统一提交
+      const cageId = String(c.id ?? c.animalCageId ?? "");
+      if (!cageId) { toast.error("该笼位缺少 ID"); return; }
+      addPendingRef.current(cageId, { claimId: Number(c.activeClaimId) });
       return;
     }
     if (status === "confirmed") { toast.success("该笼位已到位"); return; }
@@ -1509,13 +1378,10 @@ function Inner(){
   const handleArchiveCell = useCallback((c: any, _sid?: string) => {
     const ct = (c as any).cageTypeCode ?? (c as any).animalCageType;
     if (ct !== 3) { toast.error("该笼位当前无笼盒/未占用，无需归档"); return; }
-    setArchiveTarget({
-      animalCageId: String((c as any).id ?? (c as any).animalCageId ?? ""),
-      positionLabel: displayPosition(c.position),
-      occupantName: c.occupantName,
-      projectPiName: c.projectPiName ?? c.detail?.projectPiName,
-      aupNumber: c.aupNumber ?? c.detail?.aupNumber,
-    });
+    // 不再弹归档弹窗：点格子直接进「待提交」
+    const cageId = String((c as any).id ?? (c as any).animalCageId ?? "");
+    if (!cageId) { toast.error("该笼位缺少 ID"); return; }
+    addPendingRef.current(cageId);
   }, []);
 
   // ── 归档模式：扫码 → 定位 → 开归档弹窗 ──
@@ -1579,7 +1445,13 @@ function Inner(){
   const switchMode=useCallback((mode:CageModeKey)=>{
     if(!allowedModeKeys.includes(mode))return; // 无该模式权限，忽略
     setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setReservePerson(null);setReserveOpen(false);setRecordMode(false);setRecordTarget(null);setDivisionMode(false);setScanCache(new Map());setLastScannedKey(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setRecordMode(false);setRecordTarget(null);setDivisionMode(false);
+    /*
+      编辑缓存**不能在这里清**：它就是「待提交」那批状态改动的真相源（配色 + 每格的初始快照），
+      而批次是跨模式留着的。清了缓存、留着批次 → 再回到状态模式颜色全丢（抽屉开合会走这里，
+      右边缘书签点开就是 switchMode + setPendingOpen）。
+      别的模式看不到预览色由网格那侧的门控负责（ShelfGrid 只在 editMode 传 editCacheEntry）。
+    */
     if(mode==="allocate")setPageMode("allocate");
     else if(mode==="booking")setPageMode("booking");
     else setPageMode("view");
@@ -1589,6 +1461,14 @@ function Inner(){
     else if(mode==="reserve")setReserveMode(true);
     else if(mode==="record")setRecordMode(true);
     else if(mode==="division")setDivisionMode(true);
+    /*
+      切进**有抽屉**的模式（分配/预定/划分/确认/归档）就把抽屉抽出来 —— 这是唯一会自动弹的时机；
+      点格子只入缓冲、不弹（见 addPendingFor / 编辑同步那几处）。
+      状态模式（edit）除外：抽屉是右侧固定浮层，开在状态模式会盖住右半屏的「状态选择」面板，
+      而用户得看着那个面板改动作。切到没有抽屉的模式（查看/记录/预约）顺带关掉，
+      否则 pendingOpen 留 true → 抽屉因模式不匹配不渲染、书签又被「抽屉开着」隐藏 → 标签全没了。
+    */
+    setPendingOpen(mode !== "view" && mode !== "record" && mode !== "booking" && mode !== "edit");
   },[allowedModeKeys]);
 
   /* 模式悬浮岛形态 —— 两种都做了，先用开关切换对比，定稿后固定一种并删掉开关 */
@@ -1597,7 +1477,7 @@ function Inner(){
   // ── 数据源切换（设置中心）──
   const switchDataSource=useCallback((ds:"aro"|"local")=>{
     setDataSource(ds);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setReservePerson(null);setReserveOpen(false);setScanCache(new Map());setLastScannedKey(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setScanCache(new Map());setLastScannedKey(null);
     setSelectedCells(new Set());setCell(null);setShelfId(null);
   },[]);
 
@@ -1610,11 +1490,716 @@ function Inner(){
     }
   }, [pageMode]);
 
-  const currentMode: "view"|"allocate"|"booking"|"edit"|"confirm"|"archive"|"reserve"|"record"|"division" = editMode?"edit":confirmMode?"confirm":archiveMode?"archive":reserveMode?"reserve":recordMode?"record":divisionMode?"division":pageMode==="allocate"?"allocate":pageMode==="booking"?"booking":"view";
   /** 当前模式的容器描边色（查看模式为空 = 不描边） */
   const modeColor = modeBorderColor(currentMode as CageModeKey);
   /** 当前模式呼吸灯：挂在每个笼架容器上，不罩整页 */
   const modeGlowProps = modeColor ? { glowColor: modeColor } : {};
+
+  // ── 多模式「待提交」抽屉：操作先在抽屉里攒着，最后一次性提交（成功的移出、失败的列出原因）──
+  // 状态与 patchPending 已提到组件顶部（各模式点击处理要用）；这里只留依赖位置信息的派生值。
+  const pending = batchOf(pendingByMode, currentMode);
+  /** 右侧书签标签上的数字：各模式待提交条数 */
+  const pendingCounts = useMemo(() => {
+    const c: Partial<Record<CageModeKey, number>> = {};
+    for (const k of Object.keys(pendingByMode) as CageModeKey[]) c[k] = batchOf(pendingByMode, k).items.length;
+    return c;
+  }, [pendingByMode]);
+
+  /** 预定模式的人员区域（accountId → 姓名），随批次参数持久化，关抽屉也不丢 */
+  const reservePersons = (pending.params.persons as Record<string, string> | undefined) ?? {};
+  const reserveZones = useMemo(
+    () => Object.entries(reservePersons).map(([key, name]) => ({ key, title: name, color: "#8b5cf6" })),
+    [reservePersons],
+  );
+  const searchReservePerson = useCallback(async (kw: string): Promise<SearchOption[]> => {
+    const toOpt = (p: { accountId: string; name: string; projectGroupName?: string }) =>
+      ({ key: p.accountId, label: p.name, subtitle: p.projectGroupName || undefined });
+    if (kw) return (await searchPersonnelByKeyword(kw)).map(toOpt);
+    const all: SearchOption[] = [];
+    for (const g of reserveAupGroupNames) {
+      const list = await searchPersonnelByKeyword(g);
+      all.push(...list.filter((p) => p.projectGroupName === g).map(toOpt));
+    }
+    return all;
+  }, [reserveAupGroupNames]);
+
+  /** 划分模式的人员区域（accountId → 姓名），与预定同构 */
+  const divisionPersons = (pending.params.persons as Record<string, string> | undefined) ?? {};
+  const divisionZones = useMemo(
+    () => Object.entries(divisionPersons).map(([key, name]) => ({ key, title: name, color: "#e11d48" })),
+    [divisionPersons],
+  );
+  const searchDivisionPerson = useCallback(
+    async (kw: string): Promise<SearchOption[]> => {
+      if (kw) return (await searchPersonnelByKeyword(kw)).map((p) => ({ key: p.accountId, label: p.name, subtitle: p.projectGroupName || undefined }));
+      return (await fetchMyGroupMembers()).map((m) => ({ key: m.accountId, label: m.name, subtitle: m.jobNumber || undefined }));
+    },
+    [],
+  );
+
+  // ── 分配模式：缓冲勾选集（抽屉本地 UI 状态，不写进批次）与区域归属 ──
+  const [bufferSelected, setBufferSelected] = useState<Set<string>>(new Set());
+  const toggleBufferSelected = (cageId: string) => setBufferSelected((p) => {
+    const n = new Set(p);
+    if (n.has(cageId)) n.delete(cageId); else n.add(cageId);
+    return n;
+  });
+  const toggleAllBufferSelected = (ids: string[]) => setBufferSelected((p) =>
+    (p.size > 0 && ids.every((id) => p.has(id))) ? new Set<string>() : new Set(ids),
+  );
+  /** 未归属条目：分配=还没落到 AUP/撤销区；预定=无 assigneeAccountId */
+  const unassignedItems = useMemo(
+    () => pending.items.filter((it) => currentMode === "allocate" ? !it.aupId : !it.assigneeAccountId),
+    [pending.items, currentMode],
+  );
+  /**
+   * 分配模式：缓冲里两种状态各占一段。
+   * 「待分配」= 等待分配的笼位（要挑一个 AUP）；「撤销分配」= 空笼盒（撤回原有 AUP）。
+   * 落到 AUP 区/撤销区的条目会带上 aupId，随之离开缓冲段（归到右侧对应区域里）。
+   */
+  const allocWaitItems = useMemo(() => unassignedItems.filter((it) => it.kind !== "cancel"), [unassignedItems]);
+  const allocCancelItems = useMemo(() => unassignedItems.filter((it) => it.kind === "cancel"), [unassignedItems]);
+  /**
+   * 状态模式：缓冲区只留**还没落到任何色区**的笼位。
+   * 落了色的条目已经由左侧色区认领（可以从那里拖回来），再挂在缓冲区就是重复一份。
+   */
+  const editStagedItems = useMemo(
+    () => pending.items.filter((it) => (it.actions?.length ?? 0) + (it.removedActions?.length ?? 0) === 0),
+    [pending.items],
+  );
+  /** 挑中的 AUP（带顺序），关抽屉不丢 */
+  const zoneAups = (pending.params.zoneAups as string[] | undefined) ?? [];
+  /**
+   * 分配模式右侧区域 = 一个固定的「撤销分配」区 + 若干临时挑中的 AUP 区。
+   * 撤销区常驻：type2（空笼盒）的笼位归属于「撤销」而不是某个 AUP，
+   * 没有它的话这批笼位只能靠 kind 隐式提交，用户看不到自己到底放对了没有。
+   */
+  const allocZones = useMemo(
+    () => [
+      {
+        key: ALLOC_CANCEL_ZONE,
+        title: "撤销分配",
+        subtitle: "空笼盒退回「等待分配」",
+        color: "#f97316",
+        variant: "cancel" as const,
+      },
+      ...zoneAups
+        .map((id) => allocAupList.find((a) => String(a.id) === id))
+        .filter(Boolean)
+        .map((a) => ({
+          key: String(a!.id),
+          title: `${a!.registerNo ?? ""}${a!.piName ? ` · ${a!.piName}` : ""}`,
+          subtitle: a!.projectGroupName || undefined,
+          color: "#3b82f6",
+        })),
+    ],
+    [zoneAups, allocAupList],
+  );
+  const searchAup = useCallback(
+    async (kw: string): Promise<SearchOption[]> => {
+      const k = kw.toLowerCase();
+      return allocAupList
+        .filter((a) => !k || `${a.registerNo ?? ""} ${a.piName ?? ""} ${a.projectGroupName ?? ""}`.toLowerCase().includes(k))
+        .map((a) => ({ key: String(a.id), label: a.registerNo ?? String(a.id), subtitle: a.piName || a.projectGroupName || undefined }));
+    },
+    [allocAupList],
+  );
+  /**
+   * zone.key → 条目。
+   * 分配/预定/划分：一个条目只属一个区（AUP / 人员 / 撤销）。
+   * 状态模式：一个条目可以同时挂在多个状态区（改了 3 个状态就出现在 3 枚标记区里）。
+   */
+  const itemsByZone = useMemo(() => {
+    const m = new Map<string, PendingItem[]>();
+    const push = (k: string, it: PendingItem) => {
+      const arr = m.get(k);
+      if (arr) arr.push(it); else m.set(k, [it]);
+    };
+    for (const it of pending.items) {
+      if (currentMode === "edit") {
+        for (const a of it.actions ?? []) push(`add:${a}`, it);
+        for (const a of it.removedActions ?? []) push(`del:${a}`, it);
+        continue;
+      }
+      const k = currentMode === "allocate" ? it.aupId : it.assigneeAccountId;
+      if (k) push(String(k), it);
+    }
+    return m;
+  }, [pending.items, currentMode]);
+  /**
+   * 把若干缓冲条目落定到某目标；zoneKey=null 表示退回缓冲区。
+   * 分配模式两个方向互斥（见 {@link allocZoneReject}）：放错区整条跳过并提示 ——
+   * 静默吞掉会让用户以为「拖进去了」，提交时才发现对不上。
+   * 返回 true = 全部接受（调用方据此决定要不要清掉勾选；被拒就留着让用户重试）。
+   */
+  const dropToZone = useCallback((mode: "allocate" | "reserve" | "division", cageIds: string[], zoneKey: string | null): boolean => {
+    const batch = batchOf(pendingByMode, mode);
+    const accepted = new Set<string>();
+    let rejectedReason: string | null = null;
+    let rejected = 0;
+    for (const id of cageIds) {
+      const it = batch.items.find((x) => x.cageId === id);
+      if (!it) continue;
+      if (mode === "allocate" && zoneKey) {
+        const reason = allocZoneReject(zoneKey, it.kind);
+        if (reason) { rejected += 1; rejectedReason = reason; continue; }
+      }
+      accepted.add(id);
+    }
+    if (rejected > 0) toast.error(`${rejectedReason}（已跳过 ${rejected} 个）`);
+    if (accepted.size > 0) {
+      patchPending(mode, (b) => {
+        let next = b;
+        for (const id of accepted) {
+          const it = next.items.find((x) => x.cageId === id);
+          if (!it) continue;
+          next = upsertItem(next, mode === "allocate"
+            ? { ...it, aupId: zoneKey ?? undefined }
+            : { ...it, assigneeAccountId: zoneKey ?? undefined });
+        }
+        return next;
+      });
+    }
+    return rejected === 0 && accepted.size > 0;
+  }, [patchPending, pendingByMode]);
+
+  /* ═══════════════════════════════════════════════════════════
+     状态模式 —— 色彩区：5 个状态 + 5 个对应的撤销区
+     ═══════════════════════════════════════════════════════════ */
+  /**
+   * 右侧区域 = 每个状态标记一枚「标记区」+ 一枚「撤销区」，颜色就是该状态在网格上的配色。
+   * 撤销区用空心描边（同色），和标记区一眼能分开。
+   */
+  const editZones = useMemo<BufferZone[]>(
+    () => CAGE_BOX_ACTIONS.flatMap(({ action, label, statusCode }) => {
+      const color = (cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode])?.border || "#64748b";
+      return [
+        { key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color },
+        { key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const },
+      ];
+    }),
+    [cageStatusColors],
+  );
+  /**
+   * 把某个动作按 on/off 写进编辑缓存。**不 toggle** —— 落区语义要求显式方向，
+   * 否则「拖回同一个区」会变成反选。
+   *
+   * scanCache 是状态模式的唯一真相源：edit 批次由 useEffect 从这里同步过来，
+   * 网格格子与抽屉缩略图也都读它，所以写完立刻就能看到颜色变化（实时反馈）。
+   */
+  const applyEditAction = useCallback(async (
+    cell: CageShelfCell, sid: string, action: CageBoxAction, on: boolean,
+  ) => {
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
+    const cvo = (cbi?.cageBoxVo ?? cbi?.["cageBoxVo"] ?? {}) as Record<string, any>;
+    let code = (cell as any).cageBoxCode ?? cbi?.cageBoxCode;
+    if (!code) code = cvo.cageBoxCode ?? cvo["cageBoxCode"] ?? "";
+    // 本地数据源的状态真相源是表单值（cage_info_value），得先拉一次；ARO 直接从 cageBoxInfo 推
+    let fallback: Set<CageBoxAction> | null = null;
+    if (dataSource === "local" && !scanCache.has(ck)) {
+      const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
+      const rows = cageId ? await fetchCageInfoValues(cageId).catch(() => null) : null;
+      fallback = actionsFromFormValues(rows);
+    }
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const init = e ? e.initialActions : (fallback ?? actionsFromCageBoxInfo(cbi, cvo));
+      const cur = new Set(e ? e.currentActions : init);
+      if (on) cur.add(action); else cur.delete(action);
+      // 改回原样就别留一条零差异的缓存：useEffect 会按它把批次条目摘掉，
+      // 缓存却还挂着，下次点这格再加进批次时又会被它悄悄摘走。
+      if (sameActions(cur, init)) next.delete(ck);
+      else next.set(ck, e ? { ...e, currentActions: cur }
+        : { cell, code, initialActions: init, currentActions: cur, images: [], notes: "" });
+      return next;
+    });
+    setLastScannedKey(ck);
+  }, [dataSource, scanCache]);
+  /**
+   * 状态模式拖放：fromZone 决定「拖回缓冲区」时撤销哪一个动作，
+   * 拖到另一个区则把动作搬过去（先撤销来源、再落到新位置，所以重复拖是幂等的）。
+   */
+  const handleEditZoneDrop = useCallback((cageIds: string[], zoneKey: string | null, fromZone: string | null): boolean => {
+    const to = parseStatusZone(zoneKey);
+    const from = parseStatusZone(fromZone);
+    // 只对「待提交」里的笼位生效：勾选集可能留着早已移出批次的陈旧 id，
+    // 不挡的话会顺手给一个用户根本没打算动的笼位改状态（改完还会被同步 effect 拉进批次）。
+    const staged = new Set(batchOf(pendingByMode, "edit").items.map((it) => it.cageId));
+    let applied = 0;
+    for (const id of cageIds) {
+      if (!staged.has(id)) continue;
+      const key = keyByCageId.get(id);
+      const cell = key ? cellAtKey.get(key) : undefined;
+      if (!key || !cell) { toast.error("该笼位不在当前视图，先切到它所在的笼架再操作"); continue; }
+      const sid = key.split(":")[0] || "";
+      if (from) void applyEditAction(cell, sid, from.action, !from.on);
+      if (to) void applyEditAction(cell, sid, to.action, to.on);
+      applied += 1;
+    }
+    // 陈旧的勾选项不算「没放成」，真正落地的有东西就可以清掉勾选
+    return applied > 0;
+  }, [applyEditAction, keyByCageId, cellAtKey, pendingByMode]);
+
+  /**
+   * 状态模式：条目连同它的编辑缓存一起摘掉。
+   * 只摘批次的话，同步用的 useEffect 下一轮会按缓存把它加回来 —— 删了等于没删。
+   */
+  const removeEditItem = useCallback((cageId: string) => {
+    const key = keyByCageId.get(cageId);
+    patchPending("edit", (b) => removeItem(b, cageId));
+    if (key) setScanCache((prev) => {
+      if (!prev.has(key)) return prev;
+      const n = new Map(prev); n.delete(key); return n;
+    });
+  }, [keyByCageId, patchPending]);
+
+  /** cageId → 位置信息（加入待提交时用；跨房间，所以按全部已加载的架子建） */
+  const itemMetaByCageId = useMemo(() => {
+    const m = new Map<string, { label: string; shelveId: string; x: number; y: number; roomId: string | null }>();
+    const add = (d: { shelfMeta?: Record<string, unknown>; grid?: unknown[] } | null | undefined) => {
+      const meta = d?.shelfMeta as Record<string, unknown> | undefined;
+      if (!meta) return;
+      for (const raw of (d?.grid ?? []) as Array<Record<string, unknown>>) {
+        const id = cageIdOfCell(raw);
+        if (!id) continue;
+        const pos = displayPosition(String(raw.position ?? `${raw.x}-${raw.y}`));
+        m.set(id, {
+          label: [meta.campusName, meta.roomName, meta.shelveName].filter(Boolean).join(" / ") + ` (${pos})`,
+          shelveId: String(meta.shelveId ?? ""),
+          x: Number(raw.x),
+          y: Number(raw.y),
+          roomId: meta.roomId != null ? String(meta.roomId) : null,
+        });
+      }
+    };
+    for (const d of details) add(d as never);
+    add(shelfDetail as never);
+    return m;
+  }, [details, shelfDetail, cageIdOfCell]);
+
+  /**
+   * 状态模式：点格子进出「待提交」（状态靠拖到右侧色彩区标记）。
+   * 撤销时连编辑缓存一起删 —— 只从批次里摘掉的话，useEffect 下一轮又按缓存把它加回来。
+   */
+  const handleEditToggle = useCallback((shelveId: string, x: number, y: number) => {
+    const c = cellAtKey.get(`${shelveId}:${x}:${y}`);
+    if (!c) return;
+    const cageId = cageIdOfCell(c);
+    if (!cageId) return;
+    const ct = dataSource === "local" ? (c as any).cageTypeCode : (c as any).animalCageType;
+    if (ct !== 3 && ct !== 4) { toast.error("当前状态不可编辑"); return; }
+    if (batchOf(pendingByMode, "edit").items.some((it) => it.cageId === cageId)) {
+      removeEditItem(cageId);
+      return;
+    }
+    const meta = itemMetaByCageId.get(cageId);
+    if (!meta) { toast.error("该笼位缺少位置信息，无法加入待提交"); return; }
+    patchPending("edit", (b) => upsertItem(b, { cageId, ...meta }));
+    // 点格子只入缓冲，不自动弹抽屉 —— 唯一自动弹的时机是「切进这个模式」（见 switchMode）
+  }, [cellAtKey, cageIdOfCell, dataSource, pendingByMode, patchPending, itemMetaByCageId, removeEditItem]);
+
+  /** 状态模式：从抽屉条目打开某笼位的状态编辑（全房间走弹窗，单笼架走右侧面板） */
+  const openEditItemById = useCallback((cageId: string) => {
+    const key = keyByCageId.get(cageId);
+    if (!key) { toast.error("该笼位不在当前视图，请切到它所在笼架再编辑"); return; }
+    const c = cellAtKey.get(key);
+    if (!c) return;
+    openEditCell(c, key.split(":")[0] || "");
+  }, [keyByCageId, cellAtKey, openEditCell]);
+
+  /** 抽屉里的缩略图查表：格子 + 笼架名 + （状态模式）编辑缓存 —— 两栏共用同一份，外观不会再漂 */
+  const cellOfItem = useCallback(
+    (it: PendingItem) => (it.x != null && it.y != null ? cellAtKey.get(`${it.shelveId}:${it.x}:${it.y}`) : undefined),
+    [cellAtKey],
+  );
+  const shelfNameOfItem = useCallback((it: PendingItem) => shelfMetaBySid.get(it.shelveId)?.shelveName, [shelfMetaBySid]);
+  const editCacheOfItem = useCallback((it: PendingItem): EditCacheEntry | undefined => {
+    if (it.x == null || it.y == null) return undefined;
+    const e = scanCache.get(`${it.shelveId}:${it.x}:${it.y}`);
+    return e ? { initialActions: e.initialActions, currentActions: e.currentActions } : undefined;
+  }, [scanCache]);
+
+  /**
+   * 「直接改」模式下把拖拽区罩灰 —— **不销毁**：区卡片、磁贴、布局都原样留着
+   * （切回「拖色区」立刻能接着用，也不会因为组件来回挂载而丢滚动位置/尺寸）。
+   *
+   * 两种罩法：
+   *   passClicks=false（色区）：遮罩自己吃指针事件 —— 彻底禁用，拖和点都进不去；
+   *   passClicks=true （缓冲区）：只压灰不吃事件，磁贴仍可点开状态弹窗，
+   *                             拖拽由 dragDisabled 单独关掉（只禁拖、不禁点）。
+   */
+  const maskWhenDirect = (node: React.ReactNode, { label = false, passClicks = false } = {}) => !editDirect ? node : (
+    <div className="pointer-events-none relative flex min-h-0 flex-1 flex-col opacity-45">
+      {node}
+      <div className={`absolute inset-0 z-10 grid place-items-center rounded-twin-lg bg-[var(--twin-canvas)]/60 px-2 text-center text-[10px] font-semibold leading-snug text-[var(--twin-mute)] ${
+        passClicks ? "pointer-events-none" : "pointer-events-auto"
+      }`}>
+        {label ? "直接改模式 · 已禁用" : null}
+      </div>
+    </div>
+  );
+
+  /** 点格子 = 加入待提交（不再直接弹窗/单条提交） */
+  const addPendingFor = useCallback((cageId: string, extra?: Partial<PendingItem>) => {
+    const meta = itemMetaByCageId.get(cageId);
+    if (!meta) {
+      toast.error("该笼位缺少位置信息，无法加入待提交");
+      return;
+    }
+    patchPending(currentMode, (b) => upsertItem(b, { cageId, ...meta, ...extra }));
+  }, [itemMetaByCageId, patchPending, currentMode]);
+  // 转发给声明在前面的确认/归档处理函数（见 addPendingRef 声明处的说明）
+  addPendingRef.current = addPendingFor;
+
+  /**
+   * 矩形范围内能选的笼位**一次性进缓冲**（框选两点 / Shift 矩形用）。
+   * 保留原有矩形交互，只是落点从 selectedCells 换成待提交；范围内不合规的静默跳过（与原来一致）。
+   */
+  const addRangeToPending = useCallback((
+    mode: string, shelveId: string, ax: number, ay: number, bx: number, by: number,
+    accept: (c: unknown) => boolean,
+  ) => {
+    const minX = Math.min(ax, bx), maxX = Math.max(ax, bx);
+    const minY = Math.min(ay, by), maxY = Math.max(ay, by);
+    const adds: PendingItem[] = [];
+    for (let cx = minX; cx <= maxX; cx++) {
+      for (let cy = minY; cy <= maxY; cy++) {
+        const c = cellAtKey.get(`${shelveId}:${cx}:${cy}`);
+        if (!c || !accept(c)) continue;
+        const cageId = cageIdOfCell(c);
+        if (!cageId) continue;
+        const meta = itemMetaByCageId.get(cageId);
+        if (!meta) continue;
+        adds.push({ cageId, ...meta });
+      }
+    }
+    if (adds.length === 0) return;
+    patchPending(mode, (b) => adds.reduce((acc, it) => upsertItem(acc, it), b));
+  }, [cellAtKey, cageIdOfCell, itemMetaByCageId, patchPending]);
+  addRangeRef.current = addRangeToPending;
+
+  /**
+   * 把当前勾选转移进「待提交」缓冲。
+   * 勾选方式完全不变（单击 / Shift 矩形 / 框选），只是把**提交点**从「选完即提交」
+   * 挪到抽屉里 —— 这样才能跨房间攒着一次交，也不必给每个模式重写一套选择逻辑。
+   */
+  const commitSelectionToPending = useCallback(() => {
+    const ids = selectedCageIds();
+    if (ids.length === 0) { toast.error("请先勾选笼位"); return; }
+    let added = 0;
+    for (const id of ids) {
+      const meta = itemMetaByCageId.get(id);
+      if (!meta) continue;
+      patchPending(currentMode, (b) => upsertItem(b, { cageId: id, ...meta }));
+      added += 1;
+    }
+    if (added === 0) { toast.error("选中的笼位缺少位置信息，无法加入待提交"); return; }
+    setSelectedCells(new Set());
+    anchorCellRef.current = null;
+  }, [selectedCageIds, itemMetaByCageId, patchPending, currentMode]);
+
+  /**
+   * 各模式的「逐条提交」实现，统一返回 per-id 结果供抽屉汇总失败。
+   * 复用现有 API，不改它们的签名；只是不再由页面直接 toast，改由 submitPending 汇总。
+   */
+  const runReservePending = useCallback(async (
+    items: PendingItem[],
+  ): Promise<SubmitResult[]> => {
+    const rows: SubmitResult[] = [];
+    // 只按人员分组：assignBatchCages 不接收房间/笼架，再拆只会多出无意义的调用。
+    const groups = groupItems(items, (it) => it.assigneeAccountId ?? "");
+    for (const g of groups.values()) {
+      const first = g[0]!;
+      const accountId = first.assigneeAccountId ?? "";
+      const ids = g.map((it) => it.cageId);
+      if (!accountId || !(accountId in reservePersons)) {
+        ids.forEach((cageId) => rows.push({ cageId, ok: false, reason: "未指定预定人员" }));
+        continue;
+      }
+      // assignBatchCages 本来就返回 per-id {ok,error}，直接搬过来
+      const res = await assignBatchCages(ids, accountId);
+      for (const r of res) rows.push({ cageId: String(r.animalCageId), ok: !!r.ok, reason: r.error });
+    }
+    return rows;
+  }, [reservePersons]);
+
+  /**
+   * 分配 / 撤销分配：按「房间 + 笼架 + AUP」分组调用（两个接口都是 room+shelf+cageIds 的形状）。
+   * 缓冲可以跨房间，所以房间取每个条目自己的 roomId，不取当前选中的房间。
+   * 取消分配类（空笼盒）不需要 AUP；同一组的目标 AUP 才能合成一次调用。
+   */
+  const runAllocatePending = useCallback(async (
+    items: PendingItem[],
+  ): Promise<SubmitResult[]> => {
+    const rows: SubmitResult[] = [];
+    const groups = groupItems(items, (it) =>
+      it.kind === "cancel"
+        ? `${it.roomId ?? ""}:${it.shelveId}:@cancel`
+        : `${it.roomId ?? ""}:${it.shelveId}:${it.aupId ?? ""}`,
+    );
+    for (const g of groups.values()) {
+      const first = g[0]!;
+      const ids = g.map((it) => it.cageId);
+      const gAupId = first.aupId ?? "";
+      const aup = aupList.find((x) => String(x.id) === String(gAupId));
+      const fail = (reason: string) => ids.forEach((cageId) => rows.push({ cageId, ok: false, reason }));
+      try {
+        if (first.kind === "cancel") {
+          if (dataSource === "local") await localCancelAllocate(ids);
+          else await cancelCageAssignment(ids, String(first.roomId ?? aRid ?? "") || undefined);
+        } else {
+          if (!gAupId) { fail("未指定 AUP"); continue; }
+          if (dataSource === "local") {
+            await localAllocate(ids, gAupId, String(first.roomId ?? ""), first.shelveId, aup?.piName || "", aup?.registerNo || "");
+          } else {
+            await assignCages(String(first.roomId ?? ""), first.shelveId, ids, gAupId, aup?.registerNo);
+          }
+        }
+        ids.forEach((cageId) => rows.push({ cageId, ok: true }));
+      } catch (e) {
+        fail(e instanceof Error ? e.message : "提交失败");
+      }
+    }
+    return rows;
+  }, [aRid, aupList, dataSource]);
+
+  /** 划分：按人员分组，每组一次 saveCageDivision（接口一次一人），逐条汇总结果 */
+  const runDivisionPending = useCallback(async (items: PendingItem[]): Promise<SubmitResult[]> => {
+    const rows: SubmitResult[] = [];
+    const groups = groupItems(items, (it) => it.assigneeAccountId ?? "");
+    for (const g of groups.values()) {
+      const first = g[0]!;
+      const accountId = first.assigneeAccountId ?? "";
+      const ids = g.map((it) => it.cageId);
+      const name = divisionPersons[accountId];
+      if (!accountId || !name) { ids.forEach((cageId) => rows.push({ cageId, ok: false, reason: "未指定划分人员" })); continue; }
+      try {
+        await saveCageDivision(ids, [{ id: accountId, name }]);
+        ids.forEach((cageId) => rows.push({ cageId, ok: true }));
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : "保存划分失败";
+        ids.forEach((cageId) => rows.push({ cageId, ok: false, reason }));
+      }
+    }
+    return rows;
+  }, [divisionPersons]);
+
+  /**
+   * 状态模式：把编辑缓存里的差异同步进 edit 批次（缓存的 currentActions 就是「目标状态全集」）。
+   *
+   * 两条规则保证批次与缓存永不脱节：
+   *   1) 缓存里**有**的笼位：按差异更新；改回原样只清差异，条目留在「待提交」（用户是显式暂存它的）；
+   *   2) 缓存里**没有**的笼位：一律不许带差异 —— 缓存被删掉（拖出色区撤销）后，
+   *      批次若还留着那份差异，就成了「磁贴挂在色区里、网格却没颜色」的幽灵条目。
+   */
+  useEffect(() => {
+    // 「直接改」模式不碰缓存：同步一关，切过去时已攒的那批也不会被误清
+    if (!editStaged) return;
+    patchPending("edit", (b) => {
+      let next = b;
+      const cached = new Set<string>();
+      for (const [key, e] of scanCache) {
+        const cageId = String((e.cell as any)?.id ?? (e.cell as any)?.animalCageId ?? "");
+        if (!cageId) continue;
+        cached.add(cageId);
+        const meta = itemMetaByCageId.get(cageId);
+        if (!meta || !next.items.some((x) => x.cageId === cageId)) continue;
+        const toAdd = [...e.currentActions].filter((a) => !e.initialActions.has(a));
+        const toRemove = [...e.initialActions].filter((a) => !e.currentActions.has(a));
+        next = upsertItem(next, toAdd.length || toRemove.length
+          ? {
+              cageId, ...meta,
+              shelveId: key.split(":")[0] || meta.shelveId,
+              cageBoxCode: e.code,
+              actions: toAdd,
+              removedActions: toRemove,
+            }
+          : { cageId, ...meta, actions: [], removedActions: [] });
+      }
+      for (const it of next.items) {
+        if (cached.has(it.cageId)) continue;
+        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0) {
+          next = upsertItem(next, { ...it, actions: [], removedActions: [] });
+        }
+      }
+      return next;
+    });
+  }, [scanCache, editStaged, itemMetaByCageId, patchPending]);
+
+  /**
+   * 状态模式：逐笼位提交动作。
+   * 与 handleEditSubmit 同一条逻辑（local 走 localEdit；ARO 走 executeCageBoxAction /
+   * cancelCageBoxColor，无取消色的动作跳过），只是按笼位汇总结果而不是逐条 toast。
+   */
+  const runEditPending = useCallback(async (items: PendingItem[]): Promise<SubmitResult[]> => {
+    const rows: SubmitResult[] = [];
+    for (const it of items) {
+      const adds = it.actions ?? [];
+      const removes = it.removedActions ?? [];
+      const roomId = String(it.roomId ?? aRid ?? "");
+      try {
+        if (dataSource === "local") {
+          for (const a of adds) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, true, it.cageBoxCode);
+          for (const a of removes) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, false, it.cageBoxCode);
+        } else {
+          for (const a of adds) {
+            await executeCageBoxAction({ roomId, shelveId: it.shelveId, cageBoxCode: it.cageBoxCode ?? "", action: a as CageBoxAction });
+          }
+          for (const a of removes) {
+            // 合笼/动物转移是本地状态，ARO 无对应取消色 → 跳过（与 handleEditSubmit 一致）
+            const color = ACTION_CANCEL_COLOR[a as CageBoxAction];
+            if (color === undefined) continue;
+            await cancelCageBoxColor(roomId, it.shelveId, it.cageBoxCode ?? "", color);
+          }
+        }
+        rows.push({ cageId: it.cageId, ok: true });
+      } catch (e) {
+        rows.push({ cageId: it.cageId, ok: false, reason: e instanceof Error ? e.message : "操作失败" });
+      }
+    }
+    return rows;
+  }, [dataSource, aRid]);
+
+  /* ═══════════════════════════════════════════════════════════
+     状态模式「直接改」—— 点格子开原状态弹窗，点一下立刻写服务端
+     （editDirect / editStaged 声明在组件顶部的状态区）
+     ═══════════════════════════════════════════════════════════ */
+  const [editDirectBusy, setEditDirectBusy] = useState(false);
+
+  /**
+   * 直接改：把单个笼位的一个动作**立刻**写进服务端（复用提交用的 runEditPending，local/ARO 两条路都覆盖）。
+   *
+   * 刻意不写 scanCache —— 缓存一有差异，同步 effect 就会把这笼位拉进「待提交」，
+   * 那就又绕回缓存了。写完刷新网格与表单值，界面上的颜色直接来自服务端。
+   */
+  const applyEditActionNow = useCallback(async (
+    cell: CageShelfCell, sid: string, action: CageBoxAction, on: boolean,
+  ) => {
+    const cageId = cageIdOfCell(cell);
+    const meta = cageId ? itemMetaByCageId.get(cageId) : undefined;
+    if (!cageId || !meta) { toast.error("该笼位缺少 ID 或位置信息，无法直接修改"); return; }
+    const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
+    const cvo = (cbi?.cageBoxVo ?? cbi?.["cageBoxVo"] ?? {}) as Record<string, any>;
+    let code = (cell as any).cageBoxCode ?? cbi?.cageBoxCode;
+    if (!code) code = cvo.cageBoxCode ?? cvo["cageBoxCode"] ?? "";
+    setEditDirectBusy(true);
+    try {
+      const [r] = await runEditPending([{
+        cageId, ...meta, shelveId: sid, cageBoxCode: code,
+        actions: on ? [action] : [],
+        removedActions: on ? [] : [action],
+      }]);
+      if (!r?.ok) { toast.error(r?.reason || "操作失败"); return; }
+      toast.success(on ? "已标记" : "已取消");
+      setLastScannedKey(`${sid}:${cell.x}:${cell.y}`);
+      setDetailReloadKey((k) => k + 1);
+      if (dataSource === "local") fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => {});
+    } finally {
+      setEditDirectBusy(false);
+    }
+  }, [cageIdOfCell, itemMetaByCageId, runEditPending, dataSource]);
+
+  /**
+   * 状态弹窗 / 单笼架面板里点一个状态。
+   * 两条入口共用这一份，行为不会再分叉；`has` 是点之前该状态是否已标记，决定这是标记还是取消。
+   */
+  const toggleEditStatus = useCallback((cell: CageShelfCell, sid: string, action: CageBoxAction, has: boolean) => {
+    if (editDirect) { void applyEditActionNow(cell, sid, action, !has); return; }
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
+    const cvo = (cbi?.cageBoxVo ?? cbi?.["cageBoxVo"] ?? {}) as Record<string, any>;
+    let code = (cell as any).cageBoxCode ?? cbi?.cageBoxCode;
+    if (!code) code = cvo.cageBoxCode ?? cvo["cageBoxCode"] ?? "";
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const init = e ? e.initialActions : (dataSource === "local" ? actionsFromFormValues(editFormValues) : actionsFromCageBoxInfo(cbi, cvo));
+      const cur = new Set(e ? e.currentActions : init);
+      if (has) cur.delete(action); else cur.add(action);
+      next.set(ck, e
+        ? { ...e, currentActions: cur }
+        : { cell, code, initialActions: init, currentActions: cur, images: [], notes: "" });
+      return next;
+    });
+    setLastScannedKey(ck);
+  }, [editDirect, applyEditActionNow, dataSource, editFormValues]);
+
+  /** 统一提交入口：逐条跑 → 成功的移出缓冲、失败的留在列表里并写明原因 */
+  const submitPending = useCallback(async () => {
+    const items = pending.items;
+    if (items.length === 0) return;
+    const ids = items.map((i) => i.cageId);
+    setPendingBusy(true);
+    let results: SubmitResult[] = [];
+    try {
+      switch (currentMode) {
+        case "reserve": {
+          results = await runReservePending(items);
+          break;
+        }
+        case "allocate": {
+          results = await runAllocatePending(items);
+          break;
+        }
+        case "division": {
+          results = await runDivisionPending(items);
+          break;
+        }
+        case "edit": {
+          results = await runEditPending(items);
+          // 提交成功的笼位在服务端已经是新状态了：缓存留着的话，
+          // 同步 effect 下一轮又会拿它把条目加回待提交，用户会看到「交完又回来了」。
+          const done = new Set(results.filter((r) => r.ok).map((r) => r.cageId));
+          if (done.size > 0) {
+            setScanCache((prev) => {
+              const n = new Map(prev);
+              for (const [k, e] of n) if (done.has(cageIdOfCell(e.cell))) n.delete(k);
+              return n;
+            });
+          }
+          break;
+        }
+        case "confirm": {
+          // 到场确认：逐条（后端只有单条接口）
+          const rows: SubmitResult[] = [];
+          for (const it of items) {
+            if (it.claimId == null) { rows.push({ cageId: it.cageId, ok: false, reason: "缺少认领信息" }); continue; }
+            try { await adminConfirmClaim(it.claimId); rows.push({ cageId: it.cageId, ok: true }); }
+            catch (e) { rows.push({ cageId: it.cageId, ok: false, reason: e instanceof Error ? e.message : "确认失败" }); }
+          }
+          results = rows;
+          break;
+        }
+        case "archive": {
+          // 归档：逐条（后端只有单条接口）；原因取抽屉参数区的输入
+          const reason = (pending.params.reason as string | undefined) || undefined;
+          const rows: SubmitResult[] = [];
+          for (const it of items) {
+            try { await archiveCage(it.cageId, reason); rows.push({ cageId: it.cageId, ok: true }); }
+            catch (e) { rows.push({ cageId: it.cageId, ok: false, reason: e instanceof Error ? e.message : "归档失败" }); }
+          }
+          results = rows;
+          break;
+        }
+        default:
+          toast.error(`「${currentMode}」模式还没接入待提交`);
+          return;
+      }
+    } catch (e) {
+      // 整体失败（网络/接口异常）：整批记为失败，原因写进抽屉
+      const reason = e instanceof Error ? e.message : "提交失败";
+      results = ids.map((cageId) => ({ cageId, ok: false, reason }));
+    } finally {
+      setPendingBusy(false);
+    }
+    const sum = summarize(results);
+    patchPending(currentMode, (b) => applyResults(b, results));
+    if (sum.failed === 0) toast.success(`已提交 ${sum.ok} 个`);
+    else toast.error(`${sum.ok} 个成功、${sum.failed} 个失败（原因见抽屉）`);
+    setDetailReloadKey((k) => k + 1);
+  }, [pending, currentMode, runReservePending, runAllocatePending, runDivisionPending, runEditPending, patchPending, cageIdOfCell]);
   /**
    * 横向程序坞贴底铺开，会压住内容区底部 —— 给**滚动容器的内容末尾**补一段留白：
    * 平时照常滚动、被盖住就往下滚，滚到底才多出这段空白，不是常驻的留白带。
@@ -1753,18 +2338,10 @@ function Inner(){
                 {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
               </button>}
               {divisionMode&&<>
-                <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">已选 {selectedCells.size} 个笼位</span>
+                <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">待提交 {batchOf(pendingByMode,"division").items.length} 个笼位</span>
                 <button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
                   className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
                   {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-                </button>
-                <button type="button" disabled={selectedCells.size===0||divisionSubmitting} onClick={()=>setDivisionPickerOpen(true)}
-                  className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition">
-                  {divisionSubmitting?"提交中…":"选择人员并划分"}
-                </button>
-                <button type="button" disabled={selectedCells.size===0} onClick={()=>setSelectedCells(new Set())}
-                  className="rounded-twin-md px-2 py-1 text-[11px] font-semibold text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-[var(--twin-hairline)] disabled:opacity-40 transition">
-                  清除
                 </button>
               </>}
           </div>
@@ -1807,29 +2384,16 @@ function Inner(){
               )}
             </>}
 
-            {/* ---- 分配模式业务按钮（选中 >0 时出现） ---- */}
-            {pageMode==="allocate"&&selectedCells.size>0&&<>
-              {/* 按批次类型二选一：待分配→下发 AUP；已预约空笼盒→撤回 AUP */}
-              {allocBatchKind==="allocate"&&<button type="button" onClick={()=>setAllocDialogOpen(true)} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-blue-600 text-white hover:bg-blue-700 transition">分配选定笼位({selectedCells.size})</button>}
-              {allocBatchKind==="cancel"&&<button type="button" onClick={handleCancelAssign} disabled={allocSubmitting} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-red-500 text-white hover:bg-red-600 transition">取消分配({selectedCells.size})</button>}
-              <button type="button" onClick={()=>{setSelectedCells(new Set());anchorCellRef.current=null;}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300 transition">清除所有勾选({selectedCells.size})</button>
-            </>}
-            {/* ---- 认领模式业务按钮（选中 >0 时出现） ---- */}
-            {reserveMode&&selectedCells.size>0&&<>
-              <button type="button" onClick={()=>setReserveOpen(true)} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition">确认预定({selectedCells.size})</button>
-              <button type="button" onClick={()=>{setSelectedCells(new Set());anchorCellRef.current=null;}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300 transition">清除所有勾选({selectedCells.size})</button>
-            </>}
-            {reserveMode&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">🖱️ 点击勾选可认领的 type2 笼位 · <kbd className="text-[9px] px-0.5 py-px rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">Shift</kbd>+点击 矩形多选</span>}
+            {/* ---- 分配模式：提交在右侧抽屉里，这里只显示待提交数 ---- */}
+            {pageMode==="allocate"&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">待提交 {batchOf(pendingByMode,"allocate").items.length} 个笼位 · 点格子选中/取消，{boxSelectMode?"框选中（点两格）":"可用矩形框选"}</span>}
+            {/* ---- 认领模式：同上，提交在抽屉里 ---- */}
+            {reserveMode&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">待提交 {batchOf(pendingByMode,"reserve").items.length} 个笼位 · 点格子直接选中可认领的 type2 笼位</span>}
             {pageMode==="allocate"&&!boxSelectMode&&<span className="text-[10px] text-[var(--twin-mute)] ml-1 select-none">🖱️ 点击选中 · <kbd className="text-[9px] px-0.5 py-px rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">Shift</kbd>+点击 矩形多选</span>}
             {boxSelectMode&&<span className="text-[10px] text-amber-600 font-medium ml-1 select-none animate-pulse">⬜ 请点击第一个笼位设置框选起点</span>}
 
             {/* ── 编辑模式操作按钮（扫码由常驻「扫码定位」联动） ── */}
             {editMode&&<>
-              {scanCache.size>0&&(()=>{const addCount=Array.from(scanCache.values()).reduce((n,e)=>{for(const a of e.currentActions)if(!e.initialActions.has(a))n++;return n;},0);const delCount=Array.from(scanCache.values()).reduce((n,e)=>{for(const a of e.initialActions)if(!e.currentActions.has(a))n++;return n;},0);const total=addCount+delCount;return<button onClick={handleEditSubmit} disabled={actionSubmitting||total===0}
-                className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white disabled:opacity-40">
-                提交{total>0?` +${addCount} −${delCount}`:` (${scanCache.size})`}
-              </button>;})()}
-              <button type="button" onClick={()=>{setScanCache(new Map());setLastScannedKey(null);}}
+              <button type="button" onClick={()=>{setScanCache(new Map());setLastScannedKey(null);patchPending("edit",()=>clearBatch());}}
                 className="rounded-twin-md px-3 py-1.5 text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-700 transition">清除</button>
             </>}
             {/* ── 扫码确认模式：由常驻「扫码定位」联动判定，无专用输入 ── */}
@@ -1843,39 +2407,6 @@ function Inner(){
         </div>
         {legend&&<CageShelfLegend/>}
         {opActive&&<div className="shrink-0"><CageOpSelectBanner sel={opSel} allowBatch/></div>}
-        {/* ── 编辑模式：动作缓存面板 ── */}
-        {editMode&&<div className="shrink-0 rounded-twin-lg border border-transparent bg-transparent p-2" style={scanCache.size===0?{padding:0,borderWidth:0}:{borderColor:"var(--twin-hairline)",backgroundColor:"var(--twin-canvas)"}}>
-          <div className="flex flex-wrap gap-2">{Array.from(scanCache.entries()).map(([key,entry])=>{
-            const pos=entry.cell.position;const code=entry.code;
-            const changed=(a:CageBoxAction)=>entry.initialActions.has(a)!==entry.currentActions.has(a);
-            const ACTIONS=CAGE_BOX_ACTION_LIST;
-            const parts=key.split(":");const jumpSid=parts[0]||"";
-            return <div key={key} onClick={()=>{
-              // 自动切到该笼架所在房间
-              let foundRid="";for(const[rid,shelves]of roomShelveMap){if(shelves.some(s=>s.shelveId===jumpSid)){foundRid=rid;break;}}
-              if(foundRid&&foundRid!==aRid){setARid(foundRid);setARname(foundRid);expandToRoom(foundRid);}
-              setTimeout(()=>{document.getElementById(`shelf-${jumpSid}`)?.scrollIntoView({behavior:"smooth",block:"center"});},300);
-            }}
-              className="rounded-twin-md border border-[var(--twin-hairline)] bg-white px-3 py-2 text-[11px] cursor-pointer hover:shadow-sm hover:border-[color-mix(in_srgb,var(--twin-primary)_30%,transparent)] transition">
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="font-semibold text-[var(--twin-ink)] text-xs">{pos}</span>
-                <span className="text-[var(--twin-mute)] font-mono text-[10px]">{code}</span>
-                <button onClick={(e)=>{e.stopPropagation();setScanCache(prev=>{const next=new Map(prev);next.delete(key);return next;});if(lastScannedKey===key)setLastScannedKey(null);}}
-                  className="ml-auto text-[var(--twin-mute)] hover:text-red-500 text-xs">✕</button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">{ACTIONS.map(a=>{const meta=cageBoxAction(a);const c=cageStatusColors[meta.statusCode]??DEFAULT_COLORS[meta.statusCode];const has=entry.currentActions.has(a);const init=entry.initialActions.has(a);const ch=has!==init;
-                return <button key={a} onClick={(e)=>{e.stopPropagation();setScanCache(prev=>{const next=new Map(prev);const e2=next.get(key);if(!e2)return prev;const cur=new Set(e2.currentActions);cur.has(a)?cur.delete(a):cur.add(a);if(setsEqual(cur,e2.initialActions))next.delete(key);else next.set(key,{...e2,currentActions:cur});return next;});}}
-                  className="flex items-center gap-1 rounded-twin-sm px-1.5 py-0.5 text-[10px] font-semibold transition border"
-                  style={{ borderColor: has?(ch?"#f59e0b":c?.border):"var(--twin-hairline)", background:"var(--twin-canvas)" }}>
-                  {/* 色块预览：选中即用该状态配置色，未选灰色占位 */}
-                  <span className="w-5 h-3 rounded border-2 shrink-0" style={{ backgroundColor: has?c?.bg:"#e5e7eb", borderColor: has?c?.border:"#cbd5e1" }} />
-                  <span style={{ color:"var(--twin-ink)" }}>{meta.label}</span>
-                  <span className="text-[9px]" style={{ color: ch?(has?"#b45309":"#dc2626"):"transparent" }}>{ch?(has?"+":"−"):""}</span>
-                </button>;})}
-              </div>
-            </div>;})}
-          </div>
-        </div>}
         </div>
         <div className="cage-scroll flex-1 min-h-0 overflow-y-auto space-y-2 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]" style={islandPadStyle}>
         {tab==="filter"&&<>
@@ -1920,7 +2451,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode} selectedCells={pageMode==="allocate"||reserveMode||divisionMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode||editStaged} selectedCells={pageMode==="allocate"||reserveMode||divisionMode||editStaged?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged} clickMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/></div>;
             })}</div>}
           </>}
 
@@ -1930,7 +2461,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode} selectedCells={pageMode==="allocate"||reserveMode||divisionMode?selectedCells:undefined} onToggleCell={pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode} clickMode={reserveMode?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode||editStaged} selectedCells={pageMode==="allocate"||reserveMode||divisionMode||editStaged?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged} clickMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -1940,17 +2471,14 @@ function Inner(){
                   <div className="shrink-0 px-3 py-2 flex items-center justify-between" style={{background:"rgba(172,23,54,0.06)"}}><div className="text-sm font-semibold text-[var(--twin-ink)]">状态选择 · {cell.position}</div><button className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>清除</button></div>
                   <div className="flex-1 overflow-y-auto p-3 space-y-3" style={islandPadStyle}>
                     <div className="flex flex-col gap-2">{CAGE_BOX_ACTIONS.map(({action:a,label,statusCode})=>{const c= cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode];const cbi2=cell.cageBoxInfo as Record<string,any>|undefined;const cvo2=cbi2?.cageBoxVo??cbi2?.["cageBoxVo"]??{};const ld=(cell as any).detail as Record<string,any>|undefined;const localActions=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cbi2,cvo2);const srvHas=!entry&&(localActions.has(a)||((a==="SPECIAL_BREEDING"&&!!cbi2?.specialBreedingName)||(a==="HEALTH_CHECK"&&!!cbi2?.animalHealthEntity)));const has=entry?entry.currentActions.has(a):srvHas;const init=entry?entry.initialActions.has(a):srvHas;const changed=has!==init;
-                      return<button key={a} onClick={()=>{const cbi=cell.cageBoxInfo as Record<string,any>|undefined;const cvo=cbi?.cageBoxVo??cbi?.["cageBoxVo"]??{};let code=(cell as any).cageBoxCode??cbi?.cageBoxCode;if(!code)code=cvo.cageBoxCode??cvo["cageBoxCode"]??"";
-                        setScanCache(prev=>{const next=new Map(prev);
-                          if(next.has(ck)){const e=next.get(ck)!;const cur=new Set(e.currentActions);cur.has(a)?cur.delete(a):cur.add(a);if(setsEqual(cur,e.initialActions))next.delete(ck);else next.set(ck,{...e,currentActions:cur});}
-                          else{const initSet=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cbi,cvo);const curSet=new Set(initSet);curSet.add(a);next.set(ck,{cell,code,initialActions:initSet,currentActions:curSet,images:[],notes:""});}
-                          return next;});setLastScannedKey(ck);}}
-                        className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95"
+                      return<button key={a} onClick={()=>toggleEditStatus(cell,sid,a,has)}
+                        disabled={editDirect&&editDirectBusy}
+                        className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95 disabled:opacity-50"
                         style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
                         {/* 色块预览：选中即用该状态配置的背景/边框色（与图例说明一致） */}
                         <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
                         <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
-                        <span className="text-[11px]" style={{color:changed?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{changed?"已变更":has?"已标记":"点击标记"}</span>
+                        <span className="text-[11px]" style={{color:changed?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{editDirect?(has?"已标记 · 点击取消":"点击标记"):(changed?"已变更":has?"已标记":"点击标记")}</span>
                       </button>;})}
                     </div>
                     <div className="pt-2 border-t border-[var(--twin-hairline)] text-[10px] text-[var(--twin-mute)]">笼位信息</div>
@@ -1962,7 +2490,7 @@ function Inner(){
                 return<div className="flex-1 overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3" style={islandPadStyle}>
                 <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>setCell(null)}>清除</button></div>
                 {dataSource==="local"
-                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkByCageId} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")}/>
+                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")}/>
                   : <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
                   return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
                 })}</div>
@@ -1984,7 +2512,7 @@ function Inner(){
     {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
-          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkByCageId} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")}/>
+          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")}/>
           : <>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
@@ -2002,9 +2530,200 @@ function Inner(){
              DIALOGS — 分配弹窗 / 扫码弹窗 / 编辑状态弹窗 / 扫码确认核对 / CAS提示
              ═══════════════════════════════════════════════════ */}
     {/* ---- 分配确认弹窗 ---- */}
-    {allocDialogOpen&&<AllocDialog aupList={allocAupList} selectedAupId={selectedAupId} setSelectedAupId={setSelectedAupId} selectedCells={selectedCells} allocSubmitting={allocSubmitting} onClose={()=>setAllocDialogOpen(false)} onConfirm={handleConfirmAssign}/>}
-    <ReservePersonDialog open={reserveOpen} submitting={reserveSubmitting} groupNames={reserveAupGroupNames} onClose={()=>{setReserveOpen(false);setReservePerson(null);}} onConfirm={(p)=>{setReservePerson(p);handleReserveConfirm(p);}}/>
-
+    {/* 抽屉关着时，右边缘留一排书签标签（每模式一枚），点谁展开谁的抽屉 */}
+    {!pendingOpen&&(
+      <CageModeTabs
+        allowed={allowedModeKeys}
+        counts={pendingCounts}
+        onPick={(k)=>{switchMode(k);setPendingOpen(true);}}
+      />
+    )}
+    {/* 多模式「待提交」抽屉：各模式的操作在这里攒着，统一提交并汇总失败 */}
+    {pendingOpen&&!["view","record","booking"].includes(currentMode)&&(
+      <CageModeDrawer
+        modeLabel={modeMetaOf(currentMode as CageModeKey)?.label??currentMode}
+        modeColor={modeColor}
+        /* 状态模式左栏要放 10 个色区（一行两个），窄了每张卡只剩标题 */
+        width={currentMode === "edit" ? 480 : 400}
+        batch={pending}
+        submitting={pendingBusy}
+        onRemove={(cageId)=>currentMode==="edit"?removeEditItem(cageId):patchPending(currentMode,(b)=>removeItem(b,cageId))}
+        onMove={(from,to)=>patchPending(currentMode,(b)=>moveItem(b,from,to))}
+        onClear={()=>{
+          patchPending(currentMode,()=>clearBatch());
+          // 状态模式的批次是从编辑缓存同步来的，清批次不清缓存 = 下一轮又被加回来
+          if(currentMode==="edit")setScanCache(new Map());
+        }}
+        onSubmit={()=>void submitPending()}
+        onEditItem={currentMode==="edit"?openEditItemById:undefined}
+        /* 状态模式两种改法的切换：拖色区（攒着统一提交） / 直接改（点笼位开弹窗，点一下即生效） */
+        headerToggle={currentMode==="edit"?(
+          <button type="button" onClick={()=>setEditDirect(v=>!v)}
+            title={editDirect
+              ? "当前：点笼位开状态弹窗，点一下立刻生效。点这里改回「拖到色区攒着」"
+              : "当前：点笼位攒进待提交，拖到色区标记后统一提交。点这里改成「直接改」"}
+            className={`rounded-twin-md border px-2 py-0.5 text-[11px] font-semibold transition ${
+              editDirect
+                ? "border-[var(--twin-warning)] bg-amber-50 text-[var(--twin-warning)]"
+                : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+            }`}>
+            {editDirect?"直接改":"拖色区"}
+          </button>
+        ):undefined}
+        onClose={()=>setPendingOpen(false)}
+        selectedIds={bufferSelected}
+        onSelectedChange={setBufferSelected}
+        needsTarget={currentMode === "allocate" || currentMode === "reserve" || currentMode === "division"}
+        targetNoun={currentMode === "allocate" ? "AUP / 撤销区" : "人员"}
+        targetKeyOf={(it) => (currentMode === "allocate" ? it.aupId : it.assigneeAccountId)}
+        onDrop={(ids, zoneKey, fromZone) => {
+          if (currentMode === "edit") { handleEditZoneDrop(ids, zoneKey, fromZone); return; }
+          if (currentMode === "allocate" || currentMode === "reserve" || currentMode === "division") dropToZone(currentMode, ids, zoneKey);
+        }}
+        bufferSlot={currentMode === "allocate" ? (
+          <PendingBufferList
+            sections={[
+              /* 两种状态在缓冲区各占一段：等待分配（要选 AUP）与空笼盒（撤销分配）。
+                 分段只为**看得清**，不再要求分两批 —— 同一批可同时含两种，提交时按 kind 分组下发。 */
+              { key: "alloc", title: "待分配", hint: "拖到右侧 AUP", items: allocWaitItems },
+              { key: "cancel", title: "撤销分配", hint: "空笼盒，无需选 AUP", items: allocCancelItems },
+            ]}
+            total={unassignedItems.length}
+            selected={bufferSelected}
+            onToggle={toggleBufferSelected}
+            onToggleAll={() => toggleAllBufferSelected(unassignedItems.map((i) => i.cageId))}
+            onRemove={(cageId) => patchPending("allocate", (b) => removeItem(b, cageId))}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+          />
+        ) : currentMode === "edit" ? (
+          maskWhenDirect(
+          /* 状态模式的色区排在左栏（一行两个 × 五行）：10 个区一列排下来太长，两列一眼扫完 */          <BufferTargetZones
+            grid
+            zones={editZones}
+            itemsByZone={itemsByZone}
+            selectedCount={bufferSelected.size}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+            cacheOf={editCacheOfItem}
+            onOpen={openEditItemById}
+            onAssignSelected={(zoneKey) => { if (handleEditZoneDrop([...bufferSelected], zoneKey, null)) setBufferSelected(new Set()); }}
+            onUnassignAll={(zoneKey) => {
+              // 区里全部条目反向操作一遍 = 整区撤销
+              handleEditZoneDrop((itemsByZone.get(zoneKey) ?? []).map((i) => i.cageId), null, zoneKey);
+            }}
+            header={
+              <div className="shrink-0 border-b border-[var(--twin-hairline)] px-2 py-1.5 text-[10px] text-[var(--twin-mute)]">
+                拖笼位到对应色区即标记，拖到虚线区即撤销
+              </div>
+            }
+          />
+          , { label: true })
+        ) : (currentMode === "reserve" || currentMode === "division") ? (
+          <PendingBufferList
+            sections={[
+              { key: currentMode, title: currentMode === "reserve" ? "待预定" : "待划分", hint: "拖到右侧人员", items: unassignedItems },
+            ]}
+            total={unassignedItems.length}
+            selected={bufferSelected}
+            onToggle={toggleBufferSelected}
+            onToggleAll={() => toggleAllBufferSelected(unassignedItems.map((i) => i.cageId))}
+            onRemove={(cageId) => patchPending(currentMode, (b) => removeItem(b, cageId))}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+          />
+        ) : (
+          /* 兜底：确认 / 归档这类「没有目标区域」的模式，也用同款磁贴缓冲，
+             不再退回抽屉里那套文字行列表（两套观感差太远） */
+          <PendingBufferList
+            sections={[{ key: currentMode, title: `待${modeMetaOf(currentMode as CageModeKey)?.label ?? "提交"}`, items: pending.items }]}
+            total={pending.items.length}
+            selected={bufferSelected}
+            onToggle={toggleBufferSelected}
+            onToggleAll={() => toggleAllBufferSelected(pending.items.map((i) => i.cageId))}
+            onRemove={(cageId) => patchPending(currentMode, (b) => removeItem(b, cageId))}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+          />
+        )}
+        zonesSlot={currentMode === "allocate" ? (
+          <BufferTargetZones
+            zones={allocZones}
+            itemsByZone={itemsByZone}
+            selectedCount={bufferSelected.size}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+            onAssignSelected={(zoneKey) => { if (dropToZone("allocate", [...bufferSelected], zoneKey)) setBufferSelected(new Set()); }}
+            onUnassignAll={(zoneKey) => {
+              dropToZone("allocate", (itemsByZone.get(zoneKey) ?? []).map((i) => i.cageId), null);
+              if (zoneKey !== ALLOC_CANCEL_ZONE) {
+                patchPending("allocate", (b) => setParams(b, { zoneAups: zoneAups.filter((id) => id !== zoneKey) }));
+              }
+            }}
+            header={
+              <div className="shrink-0 border-b border-[var(--twin-hairline)] p-2">
+                <SearchSelect
+                  search={searchAup}
+                  placeholder="搜索 AUP 注册号 / PI"
+                  excludeKeys={zoneAups}
+                  onPick={(o) => patchPending("allocate", (b) => setParams(b, { zoneAups: [...zoneAups, o.key] }))}
+                />
+              </div>
+            }
+          />
+        ) : currentMode === "edit" ? (
+          /* 色区占了左栏，缓冲就挪到最右一列（直接改模式只压灰：还能点开状态弹窗，只是不能拖） */
+          maskWhenDirect(
+          <PendingBufferList
+            sections={[{ key: "edit", title: "待提交", hint: "拖到左侧色区", items: editStagedItems }]}
+            total={editStagedItems.length}
+            selected={bufferSelected}
+            onToggle={toggleBufferSelected}
+            onToggleAll={() => toggleAllBufferSelected(editStagedItems.map((i) => i.cageId))}
+            onRemove={removeEditItem}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+            cacheOf={editCacheOfItem}
+            onOpen={openEditItemById}
+            dragDisabled={editDirect}
+          />
+          , { passClicks: true })
+        ) : (currentMode === "reserve" || currentMode === "division") ? (
+          <BufferTargetZones
+            zones={currentMode === "reserve" ? reserveZones : divisionZones}
+            itemsByZone={itemsByZone}
+            selectedCount={bufferSelected.size}
+            cellOf={cellOfItem}
+            shelfNameOf={shelfNameOfItem}
+            onAssignSelected={(zoneKey) => { if (dropToZone(currentMode, [...bufferSelected], zoneKey)) setBufferSelected(new Set()); }}
+            onUnassignAll={(zoneKey) => {
+              dropToZone(currentMode, (itemsByZone.get(zoneKey) ?? []).map((i) => i.cageId), null);
+              const persons = currentMode === "reserve" ? reservePersons : divisionPersons;
+              patchPending(currentMode, (b) => setParams(b, { persons: Object.fromEntries(Object.entries(persons).filter(([k]) => k !== zoneKey)) }));
+            }}
+            header={
+              <div className="shrink-0 border-b border-[var(--twin-hairline)] p-2">
+                <SearchSelect
+                  search={currentMode === "reserve" ? searchReservePerson : searchDivisionPerson}
+                  placeholder="搜索姓名 / 工号"
+                  excludeKeys={currentMode === "reserve" ? Object.keys(reservePersons) : Object.keys(divisionPersons)}
+                  onPick={(o) => patchPending(currentMode, (b) => setParams(b, { persons: { ...(currentMode === "reserve" ? reservePersons : divisionPersons), [o.key]: o.label } }))}
+                />
+              </div>
+            }
+          />
+        ) : undefined}
+        paramsSlot={currentMode==="archive"?(
+          <div className="space-y-1.5">
+            <div className="text-[10px] text-[var(--twin-mute)]">归档原因（可选）</div>
+            <input type="text" value={(pending.params.reason as string|undefined)??""}
+              onChange={(e)=>patchPending("archive",(b)=>setParams(b,{reason:e.target.value}))}
+              placeholder="如：实验结束"
+              className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5 text-[11px] outline-none"/>
+          </div>
+        ):null}
+      />
+    )}
     {/* ---- 常驻扫码定位（按当前模式联动判定） ---- */}
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
     {/* ---- 编辑模式状态选择弹窗 ---- */}
@@ -2024,19 +2743,10 @@ function Inner(){
             return <button key={a} onClick={async ()=>{
               if(!editDialogCell)return;
               const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);if(!sid)return;
-              const ck=`${sid}:${editDialogCell.x}:${editDialogCell.y}`;
-              // ARO 模式：批量缓存
-              const cbi=editDialogCell.cageBoxInfo as Record<string,any>|undefined;
-              const cvo=cbi?.cageBoxVo??cbi?.["cageBoxVo"]??{};
-              let code=(editDialogCell as any).cageBoxCode??cbi?.cageBoxCode;
-              if(!code)code=cvo.cageBoxCode??cvo["cageBoxCode"]??"";
-              setScanCache(prev=>{const next=new Map(prev);
-                if(next.has(ck)){const e=next.get(ck)!;const cur=new Set(e.currentActions);cur.has(a)?cur.delete(a):cur.add(a);if(setsEqual(cur,e.initialActions))next.delete(ck);else next.set(ck,{...e,currentActions:cur});}
-                else{const init=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cbi,cvo);const cur=new Set(init);cur.has(a)?cur.delete(a):cur.add(a);next.set(ck,{cell:editDialogCell,code,initialActions:init,currentActions:cur,images:[],notes:""});}
-                return next;});
-              setLastScannedKey(ck);
+              toggleEditStatus(editDialogCell,sid,a,has);
             }}
-              className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95"
+              disabled={editDirect&&editDirectBusy}
+              className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95 disabled:opacity-50"
               style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
               <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
               <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
@@ -2308,12 +3018,6 @@ function Inner(){
       cellIdSyncing={localPipelineSyncing}
     />
     {/* ---- 笼位ID同步方式选择 ---- */}
-    {/* 划分：选人（限定本课题组，多选）→ 全量覆盖所选笼位的名单 */}
-    {divisionPickerOpen&&<PersonnelPicker
-      groupNames={[aRname||aRid||"本课题组"]}
-      onClose={()=>setDivisionPickerOpen(false)}
-      onConfirm={(ids,names)=>{void handleDivisionSubmit(ids,names);}}
-    />}
     {/* 同步前二次确认：明确告知哪些范围已被锁定、本次会被跳过 */}
     <Dialog open={syncConfirmOpen} onOpenChange={setSyncConfirmOpen}>
       <DialogContent className="z-[var(--z-modal)] sm:max-w-md">
