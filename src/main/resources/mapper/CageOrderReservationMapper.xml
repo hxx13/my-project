@@ -90,9 +90,9 @@
         UPDATE cage_order_reservation SET cart_id = #{cartId} WHERE id = #{id}
     </update>
 
-    <update id="updateQuantityAndWritten">
+    <update id="updateSpecQuantityWritten">
         UPDATE cage_order_reservation
-        SET quantity = #{quantity}, written_json = #{writtenJson}
+        SET spec_key = #{specKey}, sex = #{sex}, quantity = #{quantity}, written_json = #{writtenJson}
         WHERE id = #{id} AND status = 'LOCKED'
     </update>
 

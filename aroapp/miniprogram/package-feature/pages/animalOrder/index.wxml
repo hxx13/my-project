@@ -117,10 +117,11 @@
     <scroll-view scroll-y class="sheet-scroll">
       <!-- 有规格：逐规格配数量 -->
       <block wx:if="{{ specOptionRows.length > 0 }}">
-        <view class="spec-row" wx:for="{{ specOptionRows }}" wx:key="key" wx:for-item="opt">
+        <view class="spec-row {{ opt._blocked ? 'spec-row--blocked' : '' }}" wx:for="{{ specOptionRows }}" wx:key="key" wx:for-item="opt">
           <view class="spec-main">
             <text class="spec-label">{{ opt.label }}</text>
             <text class="spec-price" wx:if="{{ opt.priceText }}">单价 {{ opt.priceText }}</text>
+            <text class="spec-blocked-hint" wx:if="{{ opt._blocked }}">同规格只能选一项</text>
           </view>
           <view class="step-inline">
             <view wx:if="{{ (specQtys[opt.key] || 0) > 0 }}" class="si-btn" hover-class="si-btn-hover" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>

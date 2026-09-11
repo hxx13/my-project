@@ -157,6 +157,21 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   const [noSpecQty, setNoSpecQty] = useState(1);
 
   /**
+   * 同一规格模板内互斥：某选项已填数量时，同模板的其他选项禁用。
+   *
+   * 典型是「性别」模板的 雌性 / 雄性 —— 一个笼位只能放一种性别，两行都填会导致
+   * 锁笼位时只取第一行（`filledEntries[0]`），第二行永远对不上笼位。
+   * 跨模板不互斥（不同模板是不同维度，可以并存）。
+   */
+  const activeKeyByTemplate = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of optionRows) {
+      if ((qtys[r.key] || 0) > 0) m.set(r.key.split(":")[0], r.key);
+    }
+    return m;
+  }, [optionRows, qtys]);
+
+  /**
    * 把当前填的规格与数量报给页面级抽屉。
    * 抽屉常驻、弹窗关了不收，所以它得知道「上次在选哪个规格、多少只」才能算分配。
    */
@@ -495,11 +510,18 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2">
           {optionRows.map(row => {
             const q = qtys[row.key] || 0;
+            const activeSibling = activeKeyByTemplate.get(row.key.split(":")[0]);
+            const blocked = !!activeSibling && activeSibling !== row.key;
             return (
-              <div key={row.key} className="rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
+              <div key={row.key} className={`rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2${blocked ? " opacity-45" : ""}`}>
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 mr-2">
                     <div className="text-xs font-medium text-[var(--twin-ink)] truncate">{row.label}</div>
+                    {blocked && (
+                      <div className="text-[10px] text-[var(--twin-mute)]">
+                        同规格只能选一项，已选「{optionRows.find(r => r.key === activeSibling)?.label ?? ""}」
+                      </div>
+                    )}
                     {priceEnabled && (
                       <div className="text-[10px] text-[var(--twin-mute)]">
                         单价 {money(unitPriceOf(row.templateName, row.label))}
@@ -510,7 +532,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                     <button
                       type="button"
                       className="h-6 w-6 rounded border border-[var(--twin-hairline)] bg-white text-xs font-bold text-[var(--twin-body)] disabled:opacity-30"
-                      disabled={q <= 0}
+                      disabled={q <= 0 || blocked}
                       onClick={() => setQtys(prev => {
                         const cur = prev[row.key] || 0;
                         if (cur <= 1) { const n = { ...prev }; delete n[row.key]; return n; }
@@ -521,6 +543,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                       type="number" min={0} max={capMax}
                       value={q || ""}
                       placeholder="0"
+                      disabled={blocked}
                       onChange={e => {
                         const n = parseInt(e.target.value || "0", 10);
                         if (n <= 0) { setQtys(prev => { const nxt = { ...prev }; delete nxt[row.key]; return nxt; }); }
@@ -530,7 +553,8 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                     />
                     <button
                       type="button"
-                      className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white"
+                      className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white disabled:opacity-30 disabled:bg-slate-400"
+                      disabled={blocked}
                       onClick={() => {
                         const next = (qtys[row.key] || 0) + 1;
                         if (bumpOverCap(next)) return;
@@ -550,6 +574,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                 <input
                   type="text"
                   placeholder="备注…"
+                  disabled={blocked}
                   value={remarks[row.key] || ""}
                   onChange={e => setRemarks(prev => ({ ...prev, [row.key]: e.target.value }))}
                   className="mt-1.5 w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-1 text-[11px] text-[var(--twin-ink)] outline-none ring-sky-500 focus:ring-1"

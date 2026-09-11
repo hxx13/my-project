@@ -657,9 +657,41 @@ Page({
     this.setData({ specNoQty: Math.min(999, (Number(this.data.specNoQty) || 1) + 1) }, this._recalcSpecTotal);
   },
   /** 数量变化后刷新合计（setData 回调里调，保证读到最新值） */
+  /**
+   * 同一规格模板内互斥：某选项已填数量时，同模板其他选项置灰。
+   * 典型是「性别」模板的 雌性 / 雄性 —— 一个笼位只能放一种性别，两行都填会导致
+   * 锁笼位时只取第一行，第二行永远对不上笼位。与 Web 端 SpecSelectPanel 同规则。
+   */
+  _specBlocked(key) {
+    const tpl = String(key || '').split(':')[0];
+    if (!tpl) return false;
+    const qs = this.data.specQtys || {};
+    const rows = this.data.specOptionRows || [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (String(r.key).split(':')[0] !== tpl) continue;
+      if (r.key === key) continue;
+      if ((qs[r.key] || 0) > 0) return true;
+    }
+    return false;
+  },
+
   _recalcSpecTotal() {
-    if (!this.data.specPriceEnabled) return;
-    this.setData({ specTotalText: this._calcSpecTotalText() });
+    // 互斥置灰随数量变化重算（放在这里，三个数量入口都以它作 setData 回调）
+    const actives = {};
+    const qs = this.data.specQtys || {};
+    const rows = this.data.specOptionRows || [];
+    for (let i = 0; i < rows.length; i++) {
+      const k = rows[i].key;
+      if ((qs[k] || 0) > 0) actives[String(k).split(':')[0]] = k;
+    }
+    const patch = {};
+    for (let j = 0; j < rows.length; j++) {
+      const t = String(rows[j].key).split(':')[0];
+      patch['specOptionRows[' + j + ']._blocked'] = !!actives[t] && actives[t] !== rows[j].key;
+    }
+    if (this.data.specPriceEnabled) patch.specTotalText = this._calcSpecTotalText();
+    this.setData(patch);
   },
   onNoSpecInput(e) {
     const n = parseInt(e.detail.value || '1', 10);
@@ -669,6 +701,7 @@ Page({
 
   onSpecDec(e) {
     const key = e.currentTarget.dataset.key;
+    if (this._specBlocked(key)) return;
     const cur = this.data.specQtys[key] || 0;
     const next = Math.max(0, cur - 1);
     const specQtys = Object.assign({}, this.data.specQtys);
@@ -679,6 +712,7 @@ Page({
 
   onSpecInc(e) {
     const key = e.currentTarget.dataset.key;
+    if (this._specBlocked(key)) return;
     const specQtys = Object.assign({}, this.data.specQtys);
     specQtys[key] = Math.min(999, (specQtys[key] || 0) + 1);
     this.setData({ specQtys: specQtys }, this._recalcSpecTotal);
@@ -730,6 +764,7 @@ Page({
   /** 手动输入数量：规格弹窗逐规格（本地草稿，不发请求） */
   onSpecQtyInput(e) {
     const key = e.currentTarget.dataset.key;
+    if (this._specBlocked(key)) return;
     const raw = String((e.detail && e.detail.value) || '').trim();
     const num = Number(raw);
     const specQtys = Object.assign({}, this.data.specQtys);

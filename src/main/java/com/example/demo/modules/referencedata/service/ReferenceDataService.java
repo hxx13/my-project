@@ -314,7 +314,17 @@ public class ReferenceDataService {
             return Result.error("只能修改本人加购的行");
         }
         if (req.getSpecSelections() != null) existing.setSpecSelections(toJson(req.getSpecSelections()));
-        if (req.getQuantity() != null) existing.setQuantity(req.getQuantity());
+        if (req.getQuantity() != null) {
+            // 挂了笼位预定的行才受「单笼上限」约束：加购时校验过一次，但之后在购物车里
+            // 反复点 + 会绕过它，把数量加到笼位放不下。房间领用路径没有笼位，不受此限。
+            if (cageReservationService.hasActiveReservation(id)) {
+                int cap = cageReservationService.maxQuantityPerCage();
+                if (req.getQuantity() > cap) {
+                    return Result.error("单个笼位最多放 " + cap + " 只，请减少数量或增加笼位");
+                }
+            }
+            existing.setQuantity(req.getQuantity());
+        }
         if (trimToNull(req.getPickupRoomId()) != null) existing.setPickupRoomId(trimToNull(req.getPickupRoomId()));
         if (trimToNull(req.getPickupRoomName()) != null) existing.setPickupRoomName(trimToNull(req.getPickupRoomName()));
         if (trimToNull(req.getCollectorId()) != null) existing.setCollectorId(trimToNull(req.getCollectorId()));

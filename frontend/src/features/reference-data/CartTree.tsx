@@ -80,6 +80,8 @@ interface CartTreeProps {
   isPi: boolean;
   currentUserId: string;
   onQtyChange: (line: CartLine, qty: number) => void;
+  /** 单笼位上限：已挂笼位的行到上限后 `+` 置灰（房间领用行没有笼位，不传即不受限） */
+  maxQtyPerCage?: number;
   /**
    * 购物车里的「定位」：**就地打开订购页的笼位抽屉并定位那一格**，
    * 不是跳去笼架页（跳笼架页是实验动物审核页面的定位）。
@@ -89,13 +91,15 @@ interface CartTreeProps {
   layout?: "desktop" | "mobile";
 }
 
-export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop" }: CartTreeProps) {
+export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop", maxQtyPerCage }: CartTreeProps) {
   const [mode, setMode] = useState<CartTreeMode>("aup-user-spec");
   const groups = useMemo(() => buildCartTree(lines, mode), [lines, mode]);
   const mobile = layout === "mobile";
 
   const renderLine = (line: CartLine) => {
     const canEdit = canEditCartLine(line, { isPi, currentUserId });
+    // 挂了笼位的行受「单笼上限」约束：到上限后 + 置灰，不然就是能绕过校验的漏洞
+    const atCap = !!line.targetAnimalCageId && (maxQtyPerCage ?? 0) > 0 && line.qty >= (maxQtyPerCage ?? 0);
     const badge = line.packageStatus === "READY" ? "READY" : "DRAFT";
     const price =
       line.lineAmount != null
@@ -130,7 +134,7 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
             <div className="flex shrink-0 items-center gap-1">
               <button type="button" onClick={() => onQtyChange(line, line.qty - 1)} className="size-6 rounded border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-xs font-bold text-[var(--student-ink)]">−</button>
               <span className="w-6 text-center text-xs font-semibold tabular-nums">{line.qty}</span>
-              <button type="button" onClick={() => onQtyChange(line, line.qty + 1)} className="size-6 rounded bg-[var(--student-primary)] text-xs font-bold text-white">+</button>
+              <button type="button" disabled={atCap} title={atCap ? `单个笼位最多放 ${maxQtyPerCage} 只` : undefined} onClick={() => onQtyChange(line, line.qty + 1)} className="size-6 rounded bg-[var(--student-primary)] text-xs font-bold text-white disabled:bg-slate-300">+</button>
             </div>
           ) : (
             <span className="shrink-0 text-xs font-semibold tabular-nums">×{line.qty}</span>
@@ -175,7 +179,7 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
             <div className="flex shrink-0 items-center gap-0.5">
               <button type="button" onClick={() => onQtyChange(line, line.qty - 1)} className="h-6 w-6 rounded border border-[var(--twin-hairline)] bg-white text-xs">−</button>
               <span className="w-8 text-center text-xs font-semibold tabular-nums">{line.qty}</span>
-              <button type="button" onClick={() => onQtyChange(line, line.qty + 1)} className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white">+</button>
+              <button type="button" disabled={atCap} title={atCap ? `单个笼位最多放 ${maxQtyPerCage} 只` : undefined} onClick={() => onQtyChange(line, line.qty + 1)} className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white disabled:bg-slate-300">+</button>
             </div>
           ) : (
             <span className="shrink-0 text-xs font-semibold tabular-nums">×{line.qty}</span>
