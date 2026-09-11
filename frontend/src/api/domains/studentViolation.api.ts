@@ -59,6 +59,10 @@ export interface StudentViolationRow {
   cageParentPosition?: string | null;
   /** 笼架联动：课题组 */
   cageParentGroup?: string | null;
+  /** 该人当前在大屏「提醒公示」生效的记录数（同一人可并列多条 ACTIVE） */
+  activeSameUserCount?: number;
+  /** 本条是否就是大屏正在展示的那条（同人取 MAX(id)） */
+  boardDisplayed?: boolean;
 }
 
 export interface CreateStudentViolationPayload {

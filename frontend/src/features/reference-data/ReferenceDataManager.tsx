@@ -45,7 +45,7 @@ import BreadcrumbBar from "./BreadcrumbBar";
 import EditModal from "./EditModal";
 import SpecSelectPanel, { type OrderPickupInfo } from "./SpecSelectPanel";
 import CagePickerPanel, { type PickedCage } from "./CagePickerPanel";
-import { CagePickerTab } from "./CagePickerDrawer";
+import { CagePickerTab } from "@/components/cage/CageOpDrawer";
 import { allocateInOrder } from "./cageAllocation";
 import SpecTemplateManager from "./SpecTemplateManager";
 import OrderTimeManager from "./OrderTimeManager";
@@ -580,6 +580,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             ...(entry.remark ? { remark: entry.remark } : {}),
             // 一个笼位一条行：加购成功即把该笼位的预定挂到本行
             ...(entry.reservationId ? { reservationId: Number(entry.reservationId) } : {}),
+            // 编辑中加购：归入这场编辑会话，放弃时一并清、保存时一并写回原单
+            ...(editingOrderId ? { editingOrderId } : {}),
           },
         });
         ok += 1;
@@ -605,7 +607,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     setPickedCages([]);
     setAllocPinned({});
     setSpecSelectItem(null);
-  }, [orderingBlocked, timePolicy?.closedReason, specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, pickedCages]);
+  }, [orderingBlocked, timePolicy?.closedReason, specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, pickedCages, editingOrderId]);
 
   const handleCartQtyChange = useCallback((line: CartLine, qty: number) => {
     if (!isPi && !isMyLine(line)) {

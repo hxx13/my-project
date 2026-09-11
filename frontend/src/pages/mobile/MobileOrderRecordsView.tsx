@@ -6,6 +6,7 @@ import { AdminSearchSelect } from "@/components/admin/AdminSearchSelect";
 import {
   STATUS_LABELS,
   buildOrderDisplay,
+  lineGenderQty,
   lineNames,
   specOptionText,
   groupLinesByAup,
@@ -141,7 +142,7 @@ export default function MobileOrderRecordsView({ onEdit }: { onEdit?: (orderId: 
             {tab === "pending" ? "暂无待处理订单" : "暂无已完成订单"}
           </p>
         ) : view === "table" ? (
-          <OrderTable displays={displays} />
+          <OrderTable displays={displays} linesByKey={lineMap} />
         ) : (
           <div className="space-y-2">
             {displays.map((d) => (
@@ -225,61 +226,100 @@ function MobileFilterBar({
 
 /* ════════════ 表格（横向滚动） ════════════ */
 
-const COLS: Array<[string, string]> = [
+/**
+ * 表格视图：**一明细行一行**，列口径与 Web 审核页一致
+ * （订单级块跨行合并 → 行级块逐行）。领用人/房间/笼位原来用「、」拼在一格，
+ * 看不出对应哪一行，也和行级的导出对不上。
+ */
+const ORDER_COLS: Array<[string, string]> = [
   ["单号", "min-w-[120px]"],
   ["来源", "min-w-[56px]"],
   ["课题组", "min-w-[130px]"],
   ["负责人", "min-w-[80px]"],
+  ["AUP", "min-w-[120px]"],
+  ["校区", "min-w-[64px]"],
+  ["总数", "min-w-[52px]"],
+  ["总额", "min-w-[90px]"],
+  ["整单备注", "min-w-[180px]"],
+  ["状态", "min-w-[80px]"],
+  ["提交时间", "min-w-[130px]"],
+];
+const LINE_COLS: Array<[string, string]> = [
   ["物品 / 规格", "min-w-[180px]"],
   ["供应商", "min-w-[150px]"],
   ["雄数", "min-w-[52px]"],
   ["雌数", "min-w-[52px]"],
-  ["总数", "min-w-[52px]"],
-  ["金额", "min-w-[90px]"],
-  ["AUP", "min-w-[120px]"],
+  ["数量", "min-w-[52px]"],
+  ["小计", "min-w-[90px]"],
   ["领用人", "min-w-[80px]"],
   ["领用方式/房间", "min-w-[150px]"],
+  ["笼位", "min-w-[150px]"],
   ["到货日期", "min-w-[100px]"],
-  ["校区", "min-w-[64px]"],
-  ["备注", "min-w-[180px]"],
-  ["状态", "min-w-[80px]"],
-  ["提交时间", "min-w-[130px]"],
+  ["行备注", "min-w-[160px]"],
 ];
 
-function OrderTable({ displays }: { displays: OrderDisplay[] }) {
+function OrderTable({ displays, linesByKey }: { displays: OrderDisplay[]; linesByKey: Map<string, RefOrderLine[] | undefined> }) {
   const th = "px-2 py-2 whitespace-nowrap text-[11px] text-[var(--student-mute)] bg-[var(--student-canvas-soft)]";
   const td = "px-2 py-2 align-top text-[11px] text-[var(--student-ink)] break-words";
+  const split = "border-l border-l-[var(--student-hairline)]";
+  const orderSep = "border-t-2 border-t-[var(--student-hairline)]";
   return (
     <div className="overflow-auto rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface-raised)]">
       <table className="w-max min-w-full border-collapse text-left">
         <thead>
-          <tr>{COLS.map(([c, w]) => <th key={c} className={cn(th, w)}>{c}</th>)}</tr>
+          <tr>
+            {ORDER_COLS.map(([c, w]) => <th key={c} className={cn(th, w)}>{c}</th>)}
+            {LINE_COLS.map(([c, w], i) => <th key={c} className={cn(th, w, i === 0 && split)}>{c}</th>)}
+          </tr>
         </thead>
         <tbody>
-          {displays.map((d) => (
-            <tr key={d.key} className="border-t border-[var(--student-hairline)]">
-              <td className={cn(td, "font-mono text-[10px] text-[var(--student-mute)]")}>{d.no}</td>
-              <td className={td}>{d.source === "ARO" ? "ARO" : "本地"}</td>
-              <td className={td}>{d.projectGroup}</td>
-              <td className={td}>{d.submitter}</td>
-              <td className={cn(td, "max-w-[180px]")}>
-                {d.items.map((it, i) => <div key={i}>{it.label}{it.spec ? ` · ${it.spec}` : ""} × {it.qty}</div>)}
-              </td>
-              <td className={cn(td, "max-w-[150px]")}>{d.suppliers}</td>
-              <td className={cn(td, "tabular-nums")}>{d.maleQty}</td>
-              <td className={cn(td, "tabular-nums")}>{d.femaleQty}</td>
-              <td className={cn(td, "tabular-nums font-semibold")}>{d.totalQty}</td>
-              <td className={cn(td, "text-right tabular-nums font-semibold text-sky-700")}>{d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—"}</td>
-              <td className={td}>{d.aup}</td>
-              <td className={td}>{d.collector}</td>
-              <td className={cn(td, "max-w-[150px]")}>{d.room}</td>
-              <td className={td}>{d.arrivalDate}</td>
-              <td className={td}>{d.campus}</td>
-              <td className={cn(td, "max-w-[180px]")}>{d.remark}</td>
-              <td className={td}>{d.statusLabel}</td>
-              <td className={cn(td, "text-[10px] text-[var(--student-mute)]")}>{d.time}</td>
-            </tr>
-          ))}
+          {displays.map((d) => {
+            const lines = linesByKey.get(d.key) ?? [];
+            const rows: Array<RefOrderLine | null> = lines.length > 0 ? lines : [null];
+            const span = rows.length;
+            return rows.map((line, i) => {
+              const names = line ? lineNames(line) : null;
+              const opt = line ? specOptionText(line) : "";
+              const sex = line ? lineGenderQty(line) : { male: 0, female: 0 };
+              const label = names ? (names.strain || names.spec || "物品") : "";
+              const sub = names ? [names.spec && names.spec !== label ? names.spec : "", opt].filter(Boolean).join(" · ") : "";
+              const merge = (node: ReactNode, extra?: string) =>
+                i === 0 ? <td rowSpan={span} className={cn(td, extra)}>{node}</td> : null;
+              return (
+                <tr key={`${d.key}-${line?.id ?? "none"}`} className={cn("border-t border-[var(--student-hairline)]", i === 0 && orderSep)}>
+                  {merge(<span className="font-mono text-[10px] text-[var(--student-mute)]">{d.no}</span>)}
+                  {merge(d.source === "ARO" ? "ARO" : "本地")}
+                  {merge(d.projectGroup)}
+                  {merge(d.submitter)}
+                  {merge(d.aup)}
+                  {merge(d.campus)}
+                  {merge(d.totalQty, "tabular-nums font-semibold")}
+                  {merge(d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—", "text-right tabular-nums font-semibold text-sky-700")}
+                  {merge(<span className="block max-w-[180px] whitespace-normal break-words">{d.orderRemark}</span>)}
+                  {merge(d.statusLabel)}
+                  {merge(d.time, "text-[10px] text-[var(--student-mute)]")}
+
+                  {/* ── 行级 ── */}
+                  <td className={cn(td, split, "max-w-[180px]")}>
+                    {line ? (<>
+                      <div>{label}</div>
+                      {sub && <div className="text-[10px] text-[var(--student-mute)]">{sub}</div>}
+                    </>) : "—"}
+                  </td>
+                  <td className={cn(td, "max-w-[150px]")}>{names?.supplier || "—"}</td>
+                  <td className={cn(td, "tabular-nums")}>{line ? sex.male : "—"}</td>
+                  <td className={cn(td, "tabular-nums")}>{line ? sex.female : "—"}</td>
+                  <td className={cn(td, "tabular-nums")}>{line ? (line.quantity ?? 0) : "—"}</td>
+                  <td className={cn(td, "text-right tabular-nums")}>{line?.lineAmount != null ? `¥${Number(line.lineAmount).toFixed(2)}` : "—"}</td>
+                  <td className={td}>{line?.collectorName?.trim() || "—"}</td>
+                  <td className={cn(td, "max-w-[150px]")}>{line?.pickupRoomName?.trim() || "—"}</td>
+                  <td className={cn(td, "max-w-[150px]")}>{line?.targetCageLabel?.trim() || "—"}</td>
+                  <td className={td}>{line?.arrivalDate?.trim() || d.arrivalDate}</td>
+                  <td className={cn(td, "max-w-[160px]")}>{line?.lineRemark?.trim() || "—"}</td>
+                </tr>
+              );
+            });
+          })}
         </tbody>
       </table>
     </div>
@@ -308,7 +348,8 @@ function OrderCard({ d, lines, onEdit }: { d: OrderDisplay; lines: RefOrderLine[
         </button>
       </div>
 
-      {d.status === "PENDING" && onEdit && (
+      {/* 只有该单提交人（PI）能编辑：editable 由服务端判定下发 */}
+      {d.editable && d.status === "PENDING" && onEdit && (
         <div className="mt-1.5 flex justify-end">
           <button type="button" onClick={() => onEdit(d.orderId)} className="rounded-full border border-[var(--student-hairline)] px-3 py-1 text-[11px] text-[var(--student-body)]">
             编辑
@@ -339,6 +380,7 @@ function OrderCard({ d, lines, onEdit }: { d: OrderDisplay; lines: RefOrderLine[
               ["雄数", String(d.maleQty)], ["雌数", String(d.femaleQty)],
               ["总数", String(d.totalQty)], ["金额", d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—"],
               ["领用人", d.collector], ["领用方式/房间", d.room],
+              ["笼位", d.cage],
               ["到货日期", d.arrivalDate], ["校区", d.campus],
               ["提交时间", d.time],
             ] as [string, string][]).map(([k, v]) => (
@@ -370,6 +412,7 @@ function OrderCard({ d, lines, onEdit }: { d: OrderDisplay; lines: RefOrderLine[
                           {supplier && <span>供应商 {supplier}</span>}
                           {line.collectorName && <span>领用人 {line.collectorName}</span>}
                           {line.pickupRoomName && <span>房间 {line.pickupRoomName}</span>}
+                          {line.targetCageLabel && <span>笼位 {line.targetCageLabel}</span>}
                           {line.arrivalDate && <span>到货 {line.arrivalDate}</span>}
                         </div>
                         {line.lineRemark && <div className="truncate text-[10px] text-amber-700">行备注：{line.lineRemark}</div>}

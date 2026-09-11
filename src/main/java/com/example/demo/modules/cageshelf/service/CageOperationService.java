@@ -88,6 +88,7 @@ public class CageOperationService {
     private final UserMapper userMapper;
     private final ReferenceDataMapper referenceDataMapper;
     private final UserGroupNameResolver userGroupNameResolver;
+    private final CageIntermediateStateService intermediateStateService;
 
     public CageOperationService(CageOpRequestMapper opMapper,
                                 CageCellDetailMapper detailMapper,
@@ -111,7 +112,8 @@ public class CageOperationService {
                                 CageInfoCodelistItemMapper cageInfoCodelistItemMapper,
                                 UserMapper userMapper,
                                 ReferenceDataMapper referenceDataMapper,
-                                UserGroupNameResolver userGroupNameResolver) {
+                                UserGroupNameResolver userGroupNameResolver,
+                                CageIntermediateStateService intermediateStateService) {
         this.opMapper = opMapper;
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
@@ -135,6 +137,7 @@ public class CageOperationService {
         this.userMapper = userMapper;
         this.referenceDataMapper = referenceDataMapper;
         this.userGroupNameResolver = userGroupNameResolver;
+        this.intermediateStateService = intermediateStateService;
     }
 
     // ═══════════════════════════════════════════
@@ -224,14 +227,18 @@ public class CageOperationService {
         Set<Long> busy = pendingOccupiedCages(null);
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> row : claimMapper.selectOpTargets(shelfIndexId)) {
+            Long targetId = toLong(row.get("animalCageId"));
             // 源笼位本身不出现在目标池里（自己不能是自己的目标）
-            if (Objects.equals(toLong(row.get("animalCageId")), sourceAnimalCageId)) continue;
+            if (Objects.equals(targetId, sourceAnimalCageId)) continue;
             Map<String, Object> m = new LinkedHashMap<>(row);
-            // 审核中的笼位优先报「已有待审请求」——比 AUP 不符更贴近真实原因
-            m.put("reason", busy.contains(toLong(row.get("animalCageId")))
+            // 不可选的原因按「最贴近真实原因」排序下发：待审请求 → 已被订购预定 → AUP/划分不符。
+            // 原因由服务端给，三端直接照着置灰，各端不再自己判一遍（判漏了就会点了才报错）。
+            String reason = busy.contains(targetId)
                     ? "该笼位已有待审的分笼/转移请求"
-                    : ineligibleReason(sourceAup, row, user));
-            m.put("selectable", m.get("reason") == null);
+                    : intermediateStateService.reservationReason(targetId);
+            if (reason == null) reason = ineligibleReason(sourceAup, row, user);
+            m.put("reason", reason);
+            m.put("selectable", reason == null);
             CageCellIndexService.stringifySnowflakeIds(m, "animalCageId", "shelveId", "shelfIndexId");
             out.add(m);
         }
@@ -700,6 +707,11 @@ public class CageOperationService {
         String exp = experimenterOf(animalCageId);
         if (exp != null) {
             throw new TwinBusinessException(409, "该笼位实验员已填写（" + exp + "），无需认领");
+        }
+        // 该笼位正被分笼/转移在审时先别认领：那条审完会改写占用者，认领白认。
+        String busyOp = intermediateStateService.pendingOpReason(animalCageId);
+        if (busyOp != null) {
+            throw new TwinBusinessException(409, busyOp + "，不能认领");
         }
 
         String now = DT_FMT.format(LocalDateTime.now());
@@ -1186,6 +1198,21 @@ public class CageOperationService {
         for (Long id : targets) {
             CageCellDetail d = detailMapper.selectByAnimalCageId(id);
             if (d == null) throw new TwinBusinessException(404, "目标笼位不存在: " + id);
+            // 目标必须与候选池 (CageClaimMapper.selectOpTargets) 同一口径：空笼盒、没人占、无活跃认领。
+            // 候选池筛掉不等于服务端能省这一步——API 直调绕过候选池，就能把动物分进别人正在养的格子。
+            if (!Integer.valueOf(2).equals(d.getCageTypeCode())) {
+                throw new TwinBusinessException(409, "目标笼位 " + id + " 是「"
+                        + CageCellDetailService.cageTypeLabel(d.getCageTypeCode()) + "」，只能分到空笼盒");
+            }
+            String occupant = experimenterOf(id);
+            if (occupant != null) {
+                throw new TwinBusinessException(409, "目标笼位 " + id + " 已被「" + occupant + "」占用");
+            }
+            String claimBusy = intermediateStateService.pendingClaimReason(id);
+            if (claimBusy != null) throw new TwinBusinessException(409, "目标笼位 " + id + "：" + claimBusy);
+            // 已被订购预定（含已下单待审）的空笼位，分笼/转移进去会和那张单的预定打架
+            String busy = intermediateStateService.reservationReason(id);
+            if (busy != null) throw new TwinBusinessException(409, "目标笼位 " + id + "：" + busy);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("aupNumber", d.getAupNumber());
             row.put("animalCageId", id);

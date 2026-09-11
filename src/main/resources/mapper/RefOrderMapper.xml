@@ -84,11 +84,27 @@
         <if test="q.projectGroup != null and q.projectGroup != ''">
             AND o.project_group_name LIKE CONCAT('%', #{q.projectGroup}, '%')
         </if>
-        <if test="q.groupIn != null and q.groupIn.size() > 0">
-            AND o.project_group_name IN
-            <foreach collection="q.groupIn" item="g" open="(" separator="," close=")">
-                #{g}
-            </foreach>
+        <!-- 可见范围：本人课题组 ∪ 本人提交，两者是「或」。
+             只按组名筛时，课题组名解析不出的账号会把自己刚提交的单也筛掉——那种账号确实
+             下得了单（提交侧的组校验在解析为空时是跳过的），但列表永远空，也就没法编辑。
+             单值精确匹配而非 LIKE：组名互为子串时会跨组泄露。 -->
+        <if test="(q.groupIn != null and q.groupIn.size() > 0) or (q.submitterIn != null and q.submitterIn.size() > 0)">
+            AND (
+            <trim prefixOverrides="OR">
+                <if test="q.groupIn != null and q.groupIn.size() > 0">
+                    o.project_group_name IN
+                    <foreach collection="q.groupIn" item="g" open="(" separator="," close=")">
+                        #{g}
+                    </foreach>
+                </if>
+                <if test="q.submitterIn != null and q.submitterIn.size() > 0">
+                    OR o.submitter_id IN
+                    <foreach collection="q.submitterIn" item="s" open="(" separator="," close=")">
+                        #{s}
+                    </foreach>
+                </if>
+            </trim>
+            )
         </if>
         <!-- 时间口径统一走 submitted_at（真实下单时间），缺失才回退 created_at。
              ARO 导入行的 created_at 是导入时刻，用它筛选/排序会把历史单全挤到今天。 -->
@@ -149,24 +165,49 @@
         ORDER BY ${column}
     </select>
 
-    <!-- 学生端：候选范围限定在调用者本人课题组内，避免枚举全库 -->
+    <!-- 学生端：候选范围限定在调用者本人课题组内，避免枚举全库。
+         与列表同口径：本人课题组 ∪ 本人提交，否则自己提交的单筛不到值。 -->
     <select id="distinctLineValuesInGroup" resultType="string">
         SELECT DISTINCT rl.${column} FROM ref_order_line rl
         INNER JOIN ref_order o ON o.id = rl.order_id
-        WHERE o.project_group_name IN
-        <foreach collection="groups" item="g" open="(" separator="," close=")">
-            #{g}
-        </foreach>
+        WHERE (
+        <trim prefixOverrides="OR">
+            <if test="groups != null and groups.size() > 0">
+                o.project_group_name IN
+                <foreach collection="groups" item="g" open="(" separator="," close=")">
+                    #{g}
+                </foreach>
+            </if>
+            <if test="submitters != null and submitters.size() > 0">
+                OR o.submitter_id IN
+                <foreach collection="submitters" item="s" open="(" separator="," close=")">
+                    #{s}
+                </foreach>
+            </if>
+        </trim>
+        )
           AND rl.${column} IS NOT NULL AND rl.${column} != ''
         ORDER BY rl.${column}
     </select>
 
     <select id="distinctOrderValuesInGroup" resultType="string">
         SELECT DISTINCT o.${column} FROM ref_order o
-        WHERE o.project_group_name IN
-        <foreach collection="groups" item="g" open="(" separator="," close=")">
-            #{g}
-        </foreach>
+        WHERE (
+        <trim prefixOverrides="OR">
+            <if test="groups != null and groups.size() > 0">
+                o.project_group_name IN
+                <foreach collection="groups" item="g" open="(" separator="," close=")">
+                    #{g}
+                </foreach>
+            </if>
+            <if test="submitters != null and submitters.size() > 0">
+                OR o.submitter_id IN
+                <foreach collection="submitters" item="s" open="(" separator="," close=")">
+                    #{s}
+                </foreach>
+            </if>
+        </trim>
+        )
           AND o.${column} IS NOT NULL AND o.${column} != ''
         ORDER BY o.${column}
     </select>

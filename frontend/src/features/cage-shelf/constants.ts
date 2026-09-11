@@ -226,3 +226,46 @@ export function allocSelectVerdict(cageTypeCode?: number | null, pendingOp?: boo
 
 /** 混选拦截文案（三端共用） */
 export const ALLOC_MIXED_KIND_HINT = "不能同时勾选「等待分配」与「空笼位」笼位，请分两批操作";
+
+/** 分配抽屉里那个常驻「撤销分配」区的键（不是 AUP id，只是落点标记） */
+export const ALLOC_CANCEL_ZONE = "@cancel";
+
+/**
+ * 分配抽屉的两个区各收哪些笼位：撤销区只收空笼盒（kind=cancel），AUP 区只收等待分配。
+ * 返回 null = 可落；否则是拒绝原因。
+ *
+ * 这层校验和 {@link allocSelectVerdict} 是一对：verdict 决定点一下选中后是哪种动作，
+ * 这里决定那个动作只能落到哪个区。两边不同口径就会出现「选得进、拖不进去」。
+ */
+export function allocZoneReject(zoneKey: string, kind?: string | null): string | null {
+  const isCancel = kind === "cancel";
+  if (zoneKey === ALLOC_CANCEL_ZONE) return isCancel ? null : "「撤销分配」只收已分配的空笼盒";
+  return isCancel ? "AUP 区只收等待分配的笼位" : null;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   状态模式 — 色彩区键（右侧「标记区 / 撤销区」的落点标识）
+   ═══════════════════════════════════════════════════════════ */
+
+/** 色彩区键：`add:DIVIDE` = 标记该状态，`del:DIVIDE` = 撤销该状态色 */
+export function statusZoneKey(action: CageBoxAction, on: boolean): string {
+  return `${on ? "add" : "del"}:${action}`;
+}
+
+/** 反解色彩区键；拖回缓冲区/不是状态区 → null（不产生动作，而不是当撤销用） */
+export function parseStatusZone(key: string | null | undefined): { action: CageBoxAction; on: boolean } | null {
+  const [dir, action] = String(key ?? "").split(":");
+  if (dir !== "add" && dir !== "del") return null;
+  if (!CAGE_BOX_ACTION_LIST.includes(action as CageBoxAction)) return null;
+  return { action: action as CageBoxAction, on: dir === "add" };
+}
+
+/**
+ * 状态模式的网格预览：**目标状态全集** → 该显示的色码（按 CAGE_BOX_ACTIONS 顺序，稳定）。
+ *
+ * 网格底色必须由整集算，不能「叠加服务端已有的色」—— 叠加是加法，撤销减不掉，
+ * 往撤销区拖就永远看不到颜色变化。取全集则加了要显、撤了要没，且预览=实提交。
+ */
+export function previewStatusCodes(actions: ReadonlySet<CageBoxAction>): string[] {
+  return CAGE_BOX_ACTIONS.filter((a) => actions.has(a.action)).map((a) => a.statusCode);
+}

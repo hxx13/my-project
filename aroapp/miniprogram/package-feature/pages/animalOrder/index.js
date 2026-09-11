@@ -942,6 +942,8 @@ Page({
         if (pickup.collectorId) body.collectorId = pickup.collectorId;
         if (pickup.collectorName) body.collectorName = pickup.collectorName;
         if (entry.remark) body.remark = entry.remark;
+        // 编辑中加购：归入这场编辑会话，放弃时一并清、保存时一并写回原单
+        if (self.data.editOrderId) body.editingOrderId = self.data.editOrderId;
         return api.addToCart(body, self.data.groupId).then(function () { ok += 1; });
       });
     });
@@ -1142,7 +1144,7 @@ Page({
     const self = this;
     const lines = Array.isArray(o.lines) ? o.lines : [];
     let male = 0, female = 0, total = 0;
-    const suppliers = [], strains = [], collectors = [], rooms = [], arrivals = [], itemRows = [], remarks = [];
+    const suppliers = [], strains = [], collectors = [], rooms = [], arrivals = [], cages = [], itemRows = [], remarks = [], lineRows = [];
     lines.forEach(function (l) {
       const n = self._lineNames(l);
       if (n.supplier && suppliers.indexOf(n.supplier) < 0) suppliers.push(n.supplier);
@@ -1159,13 +1161,45 @@ Page({
       total += qty;
       if (l.collectorName && collectors.indexOf(l.collectorName) < 0) collectors.push(l.collectorName);
       if (l.pickupRoomName && rooms.indexOf(l.pickupRoomName) < 0) rooms.push(l.pickupRoomName);
+      // 笼位快照串可能为空但已锁位，退化成「已选笼位」而不是漏掉
+      if (l.targetCageLabel) { const c = String(l.targetCageLabel).trim(); if (c && cages.indexOf(c) < 0) cages.push(c); }
+      else if (l.targetAnimalCageId != null && cages.indexOf('已选笼位') < 0) cages.push('已选笼位');
       if (l.arrivalDate && arrivals.indexOf(l.arrivalDate) < 0) arrivals.push(l.arrivalDate);
       if (l.lineRemark) remarks.push(String(l.lineRemark).trim());
+
+      // 表格拆成明细行用：一行一条明细，订单级字段只在首行渲染（flex 表做不了真合并）
+      var lbl = n.strain || n.spec || '物品';
+      var subParts = [];
+      if (n.spec && n.spec !== lbl) subParts.push(n.spec);
+      if (opt) subParts.push(opt);
+      lineRows.push({
+        key: String(l.id != null ? l.id : lineRows.length),
+        label: lbl,
+        sub: subParts.join(' · '),
+        supplier: (n.supplier || '').trim() || '—',
+        male: opt.indexOf('雄性') >= 0 ? qty : 0,
+        female: opt.indexOf('雌性') >= 0 ? qty : 0,
+        qty: qty,
+        amountText: l.lineAmount != null ? '¥' + Number(l.lineAmount).toFixed(2) : '—',
+        collector: (l.collectorName || '').trim() || '—',
+        room: (l.pickupRoomName || '').trim() || '—',
+        cage: (l.targetCageLabel || '').trim() || '—',
+        arrival: (l.arrivalDate || '').trim(),
+        lineRemark: (l.lineRemark || '').trim() || '—',
+      });
     });
 
     const source = o.source === 'ARO' ? 'ARO' : 'LOCAL';
     const dash = function (arr, join) { return arr.length ? arr.join(join || '、') : '—'; };
-    const remark = String(o.submitRemark || '').trim() || remarks.join('；');
+    const orderRemark = String(o.submitRemark || '').trim();
+    const remark = orderRemark || remarks.join('；');
+    // 本地单没有实际到货日，回退显示预计送达；行级到货日沿用同一回退
+    const arrivalDate = dash(arrivals) !== '—' ? dash(arrivals) : (o.estimatedDeliveryDate ? '预计 ' + o.estimatedDeliveryDate : '—');
+    lineRows.forEach(function (lr) { if (!lr.arrival) lr.arrival = arrivalDate; });
+    if (lineRows.length === 0) {
+      lineRows.push({ key: 'none', label: '—', sub: '', supplier: '—', male: '—', female: '—', qty: '—',
+        amountText: '—', collector: '—', room: '—', cage: '—', arrival: arrivalDate, lineRemark: '—' });
+    }
     return {
       key: source + '-' + o.id,
       orderId: o.id,
@@ -1176,6 +1210,8 @@ Page({
       // ARO 单的 submitterId 是合成键，没有真名宁可显示「—」
       submitter: String(o.submitterName || '').trim() || (source === 'ARO' ? '' : String(o.submitterId || '').trim()) || '—',
       items: itemRows,
+      // 表格明细行（订单级字段在首行渲染）：flex 表没有 rowspan，只能首行填、后续留空
+      lineRows: lineRows,
       suppliers: dash(suppliers),
       strains: dash(strains),
       maleQty: male,
@@ -1185,12 +1221,17 @@ Page({
       aup: String(o.registerNo || '').trim() || (o.aupRecordId != null ? 'AUP#' + o.aupRecordId : '—'),
       collector: dash(collectors),
       room: dash(rooms),
+      cage: dash(cages),
       // 本地单没有实际到货日，回退显示预计送达
       arrivalDate: dash(arrivals) !== '—' ? dash(arrivals) : (o.estimatedDeliveryDate ? '预计 ' + o.estimatedDeliveryDate : '—'),
       campus: String(o.campus || '').trim() || String(o.aroAreaName || '').trim() || '—',
       remark: remark || '—',
+      // 整单备注单列：表格拆行后「整单备注」与「行备注」分列，这个不再回退拼接行备注
+      orderRemark: orderRemark || '—',
       status: o.status,
       statusLabel: ORDER_STATUS_LABELS[o.status] || o.status,
+      // 服务端判定：本人是不是该单提交人（PI）且订单待处理 —— 只有他能进编辑
+      editable: !!o.editable,
       time: o.submittedAt || o.createdAt || '',
     };
   },

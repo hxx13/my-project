@@ -266,6 +266,10 @@
         WHERE cci.shelf_index_id = #{shelfIndexId}
           AND ccd.cage_type_code = 2
           AND cl.id IS NULL
+          <!-- 已被订购预定（含已下单待审）的空笼位不进申请池：它外观仍是空笼盒，
+               不排除的话三端都会把它当可申请，点下去才被服务端拒。 -->
+          AND NOT EXISTS (SELECT 1 FROM cage_order_reservation r
+                          WHERE r.animal_cage_id = cci.animal_cage_id AND r.status = 'LOCKED')
         ORDER BY cci.position_x, cci.position_y
     </select>
 

@@ -2539,7 +2539,7 @@ Page({
     return (cid && (this.data.cageOpMarkers || {})[cid]) || null;
   },
 
-  /** 拉待审分笼/转移标记，摊平成 animalCageId → 标记（同一请求源与目标同色） */
+  /** 拉待审分笼/转移 + 已被订单预定 两类标记，摊平成 animalCageId → 标记（同一请求源与目标同色） */
   loadCageOpMarkers: function() {
     var self = this;
     cageShelfApi.fetchCageOpMarkers().then(function(list) {
@@ -2560,6 +2560,24 @@ Page({
           if (cid) map[cid] = m;
         }
       }
+      // 已被订单预定、还没落定的笼位：外观仍是空笼位，标出来免得别的模式误选。
+      // 待审分笼/转移优先，同一格不覆盖（与 Web 端 mergeReservationMarks 同口径）。
+      return cageShelfApi.fetchActiveCageReservations().then(function(rs) {
+        for (var k = 0; k < rs.length; k++) {
+          var res = rs[k] || {};
+          var rid = String(res.animalCageId || '');
+          if (!rid || map[rid]) continue;
+          map[rid] = {
+            requestId: String(res.reservationId || ''),
+            kind: 'reserve',
+            color: '#f59e0b',
+            label: '已被' + (res.reserverName || '他人') + '预订',
+            abbr: '订'
+          };
+        }
+        return map;
+      }).catch(function() { return map; });
+    }).then(function(map) {
       self.setData({ cageOpMarkers: map }, self.applyCageOpMarkersToGrid.bind(self));
     }).catch(function() { /* 标记拉取失败不阻塞网格 */ });
   },
@@ -3639,6 +3657,22 @@ getCellStyleWxs: function(cell) {
         wx.showToast({ title: '当前笼架未找到坐标 (' + cc.positionX + ',' + cc.positionY + ')', icon: 'none' });
         return;
       }
+      // 状态标记只对「饲养中/异常」开放（与 Web 管理端同一口径）：空笼位/等待分配没有动物可标记。
+      var editCt = cageTypeOf(matched);
+      if (editCt !== 3 && editCt !== 4) {
+        wx.showToast({ title: '当前状态不可标记（仅饲养中/异常笼位）', icon: 'none' });
+        return;
+      }
+      // 笼位还在中间态时也不能标记：预定/已下单待审/分笼转移在审（都进了 _pendingOpOf 的标记表）
+      // 或认领在审——否则那条流程审完就和标记打架。
+      if (self._pendingOpOf(matched)) {
+        wx.showToast({ title: '该笼位有进行中的流程，不能标记饲养状态', icon: 'none' });
+        return;
+      }
+      if (matched.claimStatus && hasActiveClaim(matched.claimStatus)) {
+        wx.showToast({ title: '该笼位有认领申请在处理中，不能标记饲养状态', icon: 'none' });
+        return;
+      }
       var key = matched.x + ':' + matched.y;
       var animalCageId = matched.id || matched.animalCageId || '';
       var finalize = function(rows) {
@@ -4021,24 +4055,29 @@ getCellStyleWxs: function(cell) {
       return;
     }
     self.setData({ actionSubmitting: true });
-    var ok=0, fail=0, total=toAdd.length+toRemove.length;
+    var ok=0, fail=0, total=toAdd.length+toRemove.length, lastErr='';
     var tasks = [];
+    // 业务错误是 HTTP 200 + {success:false}（服务端拦中间态就是这种），
+    // 不看 success 就会把「被拦下」当成「提交成功」——必须解包后再计数。
+    var count = function(res){ var p = unwrap(res); if (p.ok) { ok++; } else { fail++; if (!lastErr) lastErr = p.message || ''; } };
     for (var i=0;i<toAdd.length;i++) {
       (function(action){
         var toggle = cageStatus.statusField(action);
-        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:true,cageBoxCode:''}}).then(function(){ok++;}).catch(function(){fail++;}));
+        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:true,cageBoxCode:''}}).then(count).catch(function(){fail++;}));
       })(toAdd[i]);
     }
     for (var j=0;j<toRemove.length;j++) {
       (function(action){
         var toggle = cageStatus.statusField(action);
-        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:false,cageBoxCode:''}}).then(function(){ok++;}).catch(function(){fail++;}));
+        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:false,cageBoxCode:''}}).then(count).catch(function(){fail++;}));
       })(toRemove[j]);
     }
     Promise.all(tasks).then(function(){
       self.setData({ actionSubmitting: false, editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
       if(fail===0){wx.showToast({title:'已完成 '+ok+' 个操作（本地+异步投递）',icon:'success'});self.onRetry();}
-      else{wx.showToast({title:ok+' 成功 / '+fail+' 失败',icon:'none'});}
+      // 失败时把服务端原因带出来（例如「该笼位已被预定（还在购物车里），不能标记饲养状态」），
+      // 否则用户只看到「失败」不知道为什么。
+      else{wx.showToast({title: lastErr || (ok+' 成功 / '+fail+' 失败'),icon:'none',duration:3000});}
     });
   },
 

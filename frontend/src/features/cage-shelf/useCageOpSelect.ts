@@ -71,6 +71,34 @@ export function buildCageOpMarks(
   return out;
 }
 
+/**
+ * 把「已被订单预定」的笼位并进网格标记。
+ *
+ * 订购预定过的笼位外观上还是空笼位，网格上不加这层标记，别的模式（分笼/转移/认领/预定）
+ * 就会把它当成可选，选到一半才在服务端报错——所以订购页之外，笼架网格也要渲染。
+ * 待审分笼/转移优先：同一格已经有操作类标记就不覆盖。
+ *
+ * 学生端与管理端共用这一个函数，标记颜色/文案不会各写各的。
+ */
+export function mergeReservationMarks(
+  base: Map<string, CageOpMark>,
+  reservations: Array<{ reservationId: string; animalCageId: string; reserverName?: string | null }>,
+): Map<string, CageOpMark> {
+  if (reservations.length === 0) return base;
+  const out = new Map(base);
+  for (const r of reservations) {
+    const key = String(r.animalCageId);
+    if (out.has(key)) continue;
+    out.set(key, {
+      requestId: String(r.reservationId),
+      kind: "reserve",
+      color: "#f59e0b",
+      label: `已被${r.reserverName || "他人"}预订`,
+    });
+  }
+  return out;
+}
+
 /** 面板/网格展示用的位置标签（源笼位在选中时由页面提供，目标笼位来自 /cage-op/targets） */
 export interface CageOpLabel {
   position: string;

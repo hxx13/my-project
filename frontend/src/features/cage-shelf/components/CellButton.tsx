@@ -1,9 +1,10 @@
 import { memo } from "react";
 import { SplitSquareHorizontal, MoveRight, Clock, Unlock, CalendarCheck } from "lucide-react";
+import { SelectCheck } from "./SelectCheck";
 import type { LockState } from "./SyncLockContext";
 import { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL, resolveCageType, default as CageCellOverlays } from "@/features/cage-shelf/components/CageCellOverlays";
-import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
-import { displayPosition, nonEmptyText, CAGE_BOX_ACTIONS } from "../constants";
+import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
+import { displayPosition, nonEmptyText, previewStatusCodes } from "../constants";
 import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 
 /**
@@ -56,28 +57,50 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   const { colors: ctxColors } = useCageColors();
   const resolvedCageType = resolveCageType(cell);
 
-  // Multi-status split color: collect all non-NORMAL status colors, gradient when 2+
+  /**
+   * 有编辑缓存时，底色**完全由 currentActions（= 这批要提交的目标状态全集）决定**。
+   *
+   * 原来是「服务端派生色 + 缓存里新增的色」叠加：新增能显出来，撤销永远减不掉服务端那层，
+   * 所以往「撤销色区」拖根本看不到颜色变化。改成取目标全集后，加了要显、撤了要没，
+   * 而且网格预览与真正提交的内容是同一份数据（预览=实提交）。
+   */
+  const desired = editCacheEntry ? previewStatusCodes(editCacheEntry.currentActions) : null;
   const allBgColors: string[] = [];
-  (cell.specialStatuses ?? [])
-    .filter((s: any) => s.code !== "NORMAL")
-    .forEach((s: any) => {
-      const c = ctxColors[s.code];
-      if (c) allBgColors.push(c.bg);
-    });
-  // 编辑缓存动作色（预览）：与 H5 GridCellButton 一致，选中即把该状态色并入背景
-  if (editCacheEntry) {
-    for (const a of CAGE_BOX_ACTIONS) if (editCacheEntry.currentActions.has(a.action)) allBgColors.push(ctxColors[a.statusCode]?.bg ?? "#ccc");
+  if (desired) {
+    for (const code of desired) allBgColors.push(ctxColors[code]?.bg ?? "#ccc");
+  } else {
+    (cell.specialStatuses ?? [])
+      .filter((s: any) => s.code !== "NORMAL")
+      .forEach((s: any) => {
+        const c = ctxColors[s.code];
+        if (c) allBgColors.push(c.bg);
+      });
   }
-  const combinedBg = allBgColors.length >= 2
+  /** 底色：≥2 个状态用渐变分块，单个用纯色 */
+  const gradient = allBgColors.length >= 2
     ? `linear-gradient(to bottom, ${allBgColors.map((bg, i) => {
         const pct = Math.round((i / allBgColors.length) * 100);
         const pctNext = Math.round(((i + 1) / allBgColors.length) * 100);
         return `${bg} ${pct}%, ${bg} ${pctNext}%`;
       }).join(", ")})`
-    : allBgColors.length === 1 ? allBgColors[0] : null;
-  const style = combinedBg
-    ? { ...singleStyle, background: combinedBg }
+    : null;
+  const solidBg = gradient ? null : (allBgColors[0] ?? null);
+  /** 编辑缓存下底色/描边都跟随目标全集；没有目标状态时回到中性色（NORMAL） */
+  const previewColors = desired
+    ? (desired.length ? ctxColors[desired[0]] : undefined) ?? DEFAULT_COLORS.NORMAL
+    : null;
+  const baseStyle = previewColors
+    ? { ...singleStyle, backgroundColor: previewColors.bg, borderColor: previewColors.border }
     : singleStyle;
+  /*
+    只用长写属性（backgroundColor / backgroundImage）：混用 background 简写会在重渲染时
+    被 React 判成冲突并丢掉其中一个，底色时有时无。
+  */
+  const style = gradient
+    ? { ...baseStyle, backgroundImage: gradient }
+    : solidBg
+      ? { ...baseStyle, backgroundColor: solidBg }
+      : baseStyle;
   const pi = (() => {
     if (nonEmptyText(cell.projectPiName)) return cell.projectPiName!.trim();
     if (nonEmptyText(cell.piName)) return cell.piName!.trim();
@@ -135,7 +158,20 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   return <button type="button" className={cls} style={selected ? { ...style, borderColor: "#3b82f6", borderWidth: "2px" } : style}
     onClick={handleCardClick} disabled={cell.empty && !isSelectable && lockState === undefined}
     data-x={cell.x} data-y={cell.y}>
-    {allocMode && isSelectable && <input type="checkbox" checked={selected ?? false} onChange={handleCheckboxChange} onClick={(e) => e.stopPropagation()} className="absolute top-0.5 left-0.5 z-20 w-3 h-3 accent-blue-600" />}
+    {/*
+      勾选态：居中绿色圆形对勾（原来是左上角复选框）。标记本体走共用的 SelectCheck，
+      与抽屉磁贴是同一枚；未选中时**只在非 toggle 模式**给空心圆 —— 那种模式下整格点击不是切换，
+      这个圆是唯一的勾选入口（学生端划分模式就是），不能只画选中态。
+    */}
+    {allocMode && isSelectable && (selected || !isToggleMode) && (
+      <div className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2">
+        <SelectCheck
+          checked={!!selected}
+          onToggle={handleCheckboxChange}
+          title={selected ? "取消选择" : "选择"}
+        />
+      </div>
+    )}
     {!allocMode && alert && (() => { const ALERT_COLORS: Record<string, string> = { NEED_DIVIDE: "bg-amber-500 ring-amber-300", HEALTH_ABNORMAL: "bg-purple-500 ring-purple-300", ANIMAL_TRANSFER: "bg-cyan-500 ring-cyan-300", SPECIAL_FEEDING: "bg-red-500 ring-red-300", COHABITATION: "bg-emerald-500 ring-emerald-300" }; const ac = ALERT_COLORS[alert.statusCode] || "bg-red-500 ring-red-300"; return <div className="absolute top-0.5 left-0.5 z-20" title={`${alert.statusLabel} · persisted ${alert.spanDays ?? alert.persistedDays}d (threshold ${alert.thresholdDays}d)`}><div className={`w-4 h-4 rounded-full ring-1 flex items-center justify-center shadow-sm animate-pulse ${ac}`}><span className="text-white text-[9px] font-bold leading-none">!</span></div></div>; })()}
     {/* Bind highlight (selected = blue, cache-pending = green) */}
     {bindHighlight && !bindPending && <div className="absolute inset-0 z-10 rounded-twin-md ring-2 ring-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)] pointer-events-none" />}

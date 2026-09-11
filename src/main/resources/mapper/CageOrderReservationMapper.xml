@@ -92,7 +92,9 @@
 
     <update id="updateSpecQuantityWritten">
         UPDATE cage_order_reservation
-        SET spec_key = #{specKey}, sex = #{sex}, quantity = #{quantity}, written_json = #{writtenJson}
+        SET spec_key = #{specKey}, sex = #{sex}, quantity = #{quantity},
+            strain_name = COALESCE(#{strainName}, strain_name),
+            written_json = #{writtenJson}
         WHERE id = #{id} AND status = 'LOCKED'
     </update>
 

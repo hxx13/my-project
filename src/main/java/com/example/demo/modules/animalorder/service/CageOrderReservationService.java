@@ -31,6 +31,8 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -57,6 +59,8 @@ public class CageOrderReservationService {
 
     private static final Logger log = LoggerFactory.getLogger(CageOrderReservationService.class);
     private static final String MODULE = AnimalOrderCageConfigSeed.MODULE;
+    /** 使用时间是 STRING 字段，格式对齐 ARO cageBoxVo.createTime（如 2026-03-09 08:27:36）。 */
+    private static final DateTimeFormatter USE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final CageCellDetailMapper detailMapper;
     private final CageCellIndexMapper cellIndexMapper;
@@ -385,8 +389,17 @@ public class CageOrderReservationService {
      * 会和订单行对不上（先锁笼位、再改数量是常见操作顺序）。
      * 规格换了则直接拒绝：那个笼位是按另一种规格挑的，得重新选。
      */
+    /**
+     * 加购前校验：预定还在、是本人锁的、规格没被换掉，并把这一刻才知道的信息补进笼位表单。
+     *
+     * <p>数量/规格：与锁定时不同就按最终值改写，否则笼位里预填的数量会和订单行对不上
+     * （先锁笼位、再改数量是常见操作顺序）。规格换了则直接拒绝：那个笼位是按另一种规格挑的。
+     *
+     * <p>品系/来源：**只能在这时写**。预定是「先点笼位、后选规格」，reserve() 那一刻还不知道
+     * 订的是哪个物品（refDataId 为空），链上取不到品系与来源；走到加购才拿到 refDataId。
+     */
     @Transactional(rollbackFor = Exception.class)
-    public CageOrderReservation requireActiveForCart(Long reservationId, String userId,
+    public CageOrderReservation requireActiveForCart(Long reservationId, String userId, Long refDataId,
                                                      String specOptionLabel, Integer quantity) {
         CageOrderReservation r = reservationMapper.findById(reservationId);
         if (r == null || !"LOCKED".equals(r.getStatus())) {
@@ -420,9 +433,12 @@ public class CageOrderReservationService {
             throw new TwinBusinessException(400, "单个笼位最多放 " + cap + " 只，请换笼位或减少数量");
         }
 
-        // 规格补写 + 数量调整合并成一次写入，只把**真正改动**的字段回写笼位表单
+        // 规格补写 + 数量调整 + 品系/来源 合并成一次写入，只把**真正改动**的字段回写笼位表单
+        String strain = chainNodeName(refDataId, "ANIMAL_STRAIN");
+        String supplier = chainNodeName(refDataId, "SUPPLIER");
         boolean qtyChanged = !Objects.equals(r.getQuantity(), qty);
-        if (specAdopted || qtyChanged) {
+        boolean hasRefInfo = notBlank(strain) || notBlank(supplier);
+        if (specAdopted || qtyChanged || hasRefInfo) {
             Map<String, Object> written = readWritten(r);
             Map<String, Object> patch = new LinkedHashMap<>();
             if (specAdopted) {
@@ -446,9 +462,11 @@ public class CageOrderReservationService {
                 }
                 r.setQuantity(qty);
             }
+            if (notBlank(strain)) { written.put("animal_strain_name", strain); patch.put("animal_strain_name", strain); }
+            if (notBlank(supplier)) { written.put("animal_come_from", supplier); patch.put("animal_come_from", supplier); }
             r.setWrittenJson(toJson(written));
             reservationMapper.updateSpecQuantityWritten(
-                    r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), r.getWrittenJson());
+                    r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), strain, r.getWrittenJson());
             if (!patch.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), patch);
         }
         return r;
@@ -520,6 +538,10 @@ public class CageOrderReservationService {
         d.setCageTypeCode(3);
         detailMapper.batchUpsert(List.of(d));
         reservationMapper.markConsumed(reservationId);
+        // 使用时间 = 笼位 2→3（进饲养中）的这一刻。ARO 那条路走 /back 同步 createTime，
+        // 本地订购这条路以前完全没写，审核通过后笼位上的「使用时间」会一直是空的。
+        infoValueService.syncFromMapped(animalCageId, Map.of("cage_use_time",
+                LocalDateTime.now().format(USE_TIME_FMT)));
         try {
             auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
                     "animal_cage", animalCageId, String.valueOf(animalCageId),
@@ -553,6 +575,45 @@ public class CageOrderReservationService {
     public boolean hasActiveReservation(Long cartId) {
         if (cartId == null) return false;
         return !reservationMapper.listActiveByCartIds(List.of(cartId)).isEmpty();
+    }
+
+    /**
+     * 本单当前实际持有的笼位预定，按笼位聚合，供「编辑保存 / 提交订单」校验用。
+     *
+     * <p>两个来源都算：下单时挂到订单上的（order_id），以及本次在购物车里新挑、还挂在
+     * 购物车行上的（cart_id）。少算后者就会把刚挑好的笼位判成「预定失效」。
+     */
+    public Map<Long, CageOrderReservation> heldReservations(Long orderId, Collection<Long> cartIds) {
+        Map<Long, CageOrderReservation> out = new LinkedHashMap<>();
+        if (cartIds != null && !cartIds.isEmpty()) {
+            for (CageOrderReservation r : reservationMapper.listActiveByCartIds(new ArrayList<>(cartIds))) {
+                out.putIfAbsent(r.getAnimalCageId(), r);
+            }
+        }
+        if (orderId != null) {
+            for (CageOrderReservation r : reservationMapper.listActiveByOrderId(orderId)) {
+                out.putIfAbsent(r.getAnimalCageId(), r);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 编辑保存对账：把「仍被本单持有、但新明细里已经不再引用」的预定释放掉。
+     *
+     * <p>必须释放，否则旧笼位会一直挂着 LOCKED，等订单审核通过时被 {@link #settleForOrderStatus}
+     * 一并转成「饲养中」——那张单换了笼位，结果两个笼位都被占了。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int releaseHeldNotUsed(Collection<CageOrderReservation> held, Collection<Long> keepCageIds, String reason) {
+        if (held == null || held.isEmpty()) return 0;
+        int n = 0;
+        for (CageOrderReservation r : held) {
+            if (keepCageIds != null && keepCageIds.contains(r.getAnimalCageId())) continue;
+            clearWrittenFields(r);
+            n += reservationMapper.releaseById(r.getId(), reason);
+        }
+        return n;
     }
 
     /** 购物车行被删/被清空时释放对应预定，并把预填进笼位表单的值撤掉。 */

@@ -14,6 +14,23 @@ type CageGroupedViewProps = {
   onEdit: (row: StudentViolationRow) => void;
 };
 
+/** 逐条执行，返回失败原因；不吞异常——静默失败会让管理员以为删干净了，大屏却还在公示。 */
+async function runPerParent<T>(parents: T[], fn: (p: T) => Promise<unknown>): Promise<string[]> {
+  const failed: string[] = [];
+  for (const p of parents) {
+    try { await fn(p); } catch (e) { failed.push(e instanceof Error ? e.message : "未知错误"); }
+  }
+  return failed;
+}
+
+function reportBulkResult(action: string, total: number, failed: string[]): void {
+  if (failed.length === 0) {
+    toast.success(`已全部${action}`);
+    return;
+  }
+  toast.error(`${total - failed.length} 条已${action}，${failed.length} 条失败：${failed[0]}`);
+}
+
 export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.Element {
   const qc = useQueryClient();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -90,10 +107,8 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
     if (!await appConfirm(`确定解除「${group.groupName}」下全部 ${activeParents.length} 条生效中的违规记录？`)) return;
     setBusyGroup(group.groupName);
     try {
-      for (const p of activeParents) {
-        try { await clearCageStatusViolation(p.id); } catch {}
-      }
-      toast.success("已全部解除");
+      const failed = await runPerParent(activeParents, (p) => clearCageStatusViolation(p.id));
+      reportBulkResult("解除", activeParents.length, failed);
       qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
       qc.invalidateQueries({ queryKey: ["studentViolations"] });
     } finally { setBusyGroup(null); }
@@ -103,10 +118,8 @@ export function CageGroupedView({ keyword, onEdit }: CageGroupedViewProps): JSX.
     if (!await appConfirm(`确定删除「${group.groupName}」下全部 ${group.parents.length} 条记录？不可恢复。`)) return;
     setBusyGroup(group.groupName);
     try {
-      for (const p of group.parents) {
-        try { await deleteCageStatusViolation(p.id); } catch {}
-      }
-      toast.success("已全部删除");
+      const failed = await runPerParent(group.parents, (p) => deleteCageStatusViolation(p.id));
+      reportBulkResult("删除", group.parents.length, failed);
       qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
       qc.invalidateQueries({ queryKey: ["studentViolations"] });
     } finally { setBusyGroup(null); }

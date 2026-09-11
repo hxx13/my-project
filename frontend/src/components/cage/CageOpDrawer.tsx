@@ -50,7 +50,7 @@ export function CagePickerTab({
  * 样式口径保持一致：贴右固定 400px、圆角只留左侧、twin 令牌描边与底色、
  * 左上角竖排收纳把手、头/身/脚三段。
  */
-export default function CagePickerDrawer({
+export default function CageOpDrawer({
   title,
   badge,
   countText,
@@ -63,6 +63,7 @@ export default function CagePickerDrawer({
   rightColumn,
   zIndex = 40,
   width = 400,
+  bottom = 12,
   embedded = false,
 }: {
   /** 头部徽标文字；与 title 一起可省略（省略则整个头部不渲染，只留关闭按钮） */
@@ -93,6 +94,11 @@ export default function CagePickerDrawer({
   zIndex?: number;
   /** 抽屉宽度。默认 400 与原批量转移面板一致；笼架格子密，选用时放宽。 */
   width?: number;
+  /**
+   * 距视口底边。默认 12；笼架页要传大一点让开底部的模式悬浮岛
+   * （岛是 bottom:16 锚定、z-index 只有 3，抽屉盖上去就点不到，而抽屉开着时必须能切模式）。
+   */
+  bottom?: number;
   /**
    * 与规格弹窗同处一个文档流时置 true：不再自己 fixed + portal，
    * 而是当外层 flex 容器的子元素，两者并排、互不遮盖。
@@ -176,7 +182,7 @@ export default function CagePickerDrawer({
       initial={{ x: totalWidth + 20, opacity: 0 }}
       animate={{ x: collapsed ? collapsedX : 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 320, damping: 34 }}
-      style={{ position: "fixed", top: CAGE_DRAWER_TOP, right: 0, bottom: 12, width: totalWidth, zIndex }}
+      style={{ position: "fixed", top: CAGE_DRAWER_TOP, right: 0, bottom, width: totalWidth, zIndex }}
       className="flex flex-col rounded-l-twin-xl border border-r-0 border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-2xl"
     >
       <button

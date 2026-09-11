@@ -349,6 +349,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
             ...(entry.remark ? { remark: entry.remark } : {}),
+            // 编辑中加购：归入这场编辑会话，放弃时一并清、保存时一并写回原单
+            ...(editOrderId ? { editingOrderId: editOrderId } : {}),
           },
         });
         ok += 1;
@@ -358,7 +360,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     }
     if (ok > 0) { toast.success(`已加入购物车 (${ok} 项)`); void refetchCart(); }
     setSpecSelectItem(null);
-  }, [specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart]);
+  }, [specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, editOrderId]);
 
   // ── 编辑模式：从订单记录页点「编辑」进入 ──
   // 编辑期间原单不动，回填行带 editing_order_id 标记；保存才写回原单，放弃只清回填行。

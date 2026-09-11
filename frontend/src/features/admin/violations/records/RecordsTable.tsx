@@ -95,6 +95,28 @@ function sourceBadge(source: string | undefined): JSX.Element {
   return <span className="inline-flex items-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]">手动</span>;
 }
 
+/**
+ * 大屏「提醒公示」每人只展示一条（同人 MAX(id)）。同一人有多条生效时，
+ * 删掉其中一条不会让人下榜，另一条会顶上来——必须让管理员在删之前就看到。
+ */
+function boardBadge(r: StudentViolationRow): JSX.Element | null {
+  const n = r.activeSameUserCount ?? 0;
+  if (n <= 1) return null;
+  const base = "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium";
+  if (r.boardDisplayed) {
+    return (
+      <span className={`${base} border-[color-mix(in_srgb,var(--app-color-feedback-info)_40%,transparent)] bg-[var(--app-color-feedback-info-soft)] text-[var(--app-color-feedback-info)]`}>
+        大屏公示中 · 同人共 {n} 条
+      </span>
+    );
+  }
+  return (
+    <span className={`${base} border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]`}>
+      同人共 {n} 条 · 大屏另展示一条
+    </span>
+  );
+}
+
 function dueMeta(r: StudentViolationRow): { primary: string; secondary: string; late: boolean } {
   if (r.status === "CLEARED" || r.status === "PROCESSED") {
     return { primary: String(r.expireAt ?? "").slice(0, 10) || "—", secondary: "已解除", late: false };
@@ -224,6 +246,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
           const locked = violationEnterLocked(r);
           const open = expandedId === r.id;
           const disp = summarizeDispositionForDetail(r);
+          const bbadge = boardBadge(r);
           return (
             <Fragment key={r.id}>
               <div className={cn("group grid items-center border-b border-[var(--app-color-border-default)] px-3.5 py-2.5 transition-colors hover:bg-[var(--app-color-surface-hover)]", GRID_COLS)}>
@@ -233,6 +256,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     <span className="truncate text-sm font-semibold text-[var(--app-color-text-primary)]">{personDisplayName(r)}</span>
                     <span className="shrink-0 font-mono text-[11px] text-[var(--app-color-text-tertiary)]">{r.targetUserId}</span>
                   </div>
+                  {bbadge ? <div className="mt-0.5">{bbadge}</div> : null}
                   <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[var(--app-color-text-secondary)]">
                     {richTextPlainPreview(r.violationText || "", 120) || "—"}
                   </p>
