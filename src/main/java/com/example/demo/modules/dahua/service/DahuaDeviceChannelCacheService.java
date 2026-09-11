@@ -13,7 +13,8 @@ import java.util.Map;
 @Service
 public class DahuaDeviceChannelCacheService {
     public static final int DEFAULT_DEVICE_CATEGORY = 8;
-    public static final int DEFAULT_DEVICE_TYPE = 1;
+    /** 入库占位值：0 = 未按小类过滤（大华通道分页接口不回传设备小类，本地仅作标记）。 */
+    public static final int DEVICE_TYPE_ALL = 0;
 
     private final DahuaDeviceChannelCacheMapper mapper;
     private final DahuaOpenApiService openApiService;
@@ -31,7 +32,7 @@ public class DahuaDeviceChannelCacheService {
     }
 
     public Map<String, Object> refreshFromUpstream() {
-        List<Map<String, Object>> all = openApiService.fetchAllDeviceChannels(DEFAULT_DEVICE_CATEGORY, DEFAULT_DEVICE_TYPE);
+        List<Map<String, Object>> all = openApiService.fetchAllDeviceChannels(DEFAULT_DEVICE_CATEGORY, null);
         int synced = 0;
         for (Map<String, Object> item : all) {
             DahuaDeviceChannelCache d = fromUpstreamMap(item);
@@ -44,7 +45,7 @@ public class DahuaDeviceChannelCacheService {
         stats.put("upstreamCount", all.size());
         stats.put("syncedRows", synced);
         stats.put("deviceCategory", DEFAULT_DEVICE_CATEGORY);
-        stats.put("deviceType", DEFAULT_DEVICE_TYPE);
+        stats.put("deviceType", DEVICE_TYPE_ALL);
         return stats;
     }
 
@@ -147,7 +148,7 @@ public class DahuaDeviceChannelCacheService {
         d.setChExt(toJsonText(firstObj(item, "chExt", "ch_ext")));
         d.setIsVirtual(parseTinyInt(item.get("isVirtual")));
         d.setDeviceCategory(DEFAULT_DEVICE_CATEGORY);
-        d.setDeviceType(DEFAULT_DEVICE_TYPE);
+        d.setDeviceType(DEVICE_TYPE_ALL);
         return d;
     }
 

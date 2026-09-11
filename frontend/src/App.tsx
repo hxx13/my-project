@@ -317,6 +317,8 @@ function GlobalSocketListener() {
         const onCodexRefresh = (payload: { key?: string; at?: string }) => {
             console.log("📋 公告配置已更新:", payload?.key);
             queryClient.invalidateQueries({ queryKey: ["public-runtime-config"] });
+            // 开关变更同时影响公示内容，一并失效，避免只改开关不刷新列表
+            queryClient.invalidateQueries({ queryKey: ["dashboard-violation-board"] });
         };
         socket.on("DASHBOARD_CODEX_REFRESH", onCodexRefresh);
 
