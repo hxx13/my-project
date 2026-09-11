@@ -41,7 +41,9 @@ public interface CageOrderReservationMapper {
      * 加购时数量与锁定时不一样：改预定量并按新的 written_json 覆盖笼位表单，
      * 否则笼位里预填的数量和订单行对不上。
      */
-    int updateQuantityAndWritten(@Param("id") Long id,
+    int updateSpecQuantityWritten(@Param("id") Long id,
+                                 @Param("specKey") String specKey,
+                                 @Param("sex") String sex,
                                  @Param("quantity") Integer quantity,
                                  @Param("writtenJson") String writtenJson);
 

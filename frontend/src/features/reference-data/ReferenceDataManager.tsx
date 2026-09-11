@@ -940,6 +940,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 isPi={isPi}
                 currentUserId={currentUserId}
                 onQtyChange={handleCartQtyChange}
+                maxQtyPerCage={maxQuantityPerCage}
                 /* 购物车定位 = 就地打开笼位抽屉并聚焦；跳笼架页那种是审核页面的定位 */
                 onLocateCage={(cageId) => {
                   setFocusCageId(cageId);

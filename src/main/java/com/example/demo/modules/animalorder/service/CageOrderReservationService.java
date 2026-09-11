@@ -397,7 +397,17 @@ public class CageOrderReservationService {
         }
         String spec = specOptionLabel == null ? "" : specOptionLabel.trim();
         String locked = r.getSpecKey() == null ? "" : r.getSpecKey().trim();
-        if (!locked.equals(spec)) {
+        /**
+         * 锁定时规格为空 = **当时还没定**，不是「换了别的规格」。
+         *
+         * 「先点笼位、后填规格」是支持的正常顺序（见 CagePickerPanel 的注释：数量由笼位数
+         * 决定上限，所以先点笼位），那一刻 specOptionLabel 还是空串。若把它当成不匹配，
+         * 用户填完规格一加购就被拒——这是实际发生过的线上问题。
+         *
+         * 只有**两边都非空且不相等**才是真的换过规格，那种必须拦（笼位是按另一种规格挑的）。
+         */
+        boolean specAdopted = locked.isEmpty() && !spec.isEmpty();
+        if (!specAdopted && !locked.equals(spec)) {
             throw new TwinBusinessException(409,
                     "笼位是按「" + (locked.isEmpty() ? "无规格" : locked) + "」选的，与本行规格不一致，请重新选择笼位");
         }
@@ -409,17 +419,37 @@ public class CageOrderReservationService {
         if (qty > cap) {
             throw new TwinBusinessException(400, "单个笼位最多放 " + cap + " 只，请换笼位或减少数量");
         }
-        if (!Objects.equals(r.getQuantity(), qty)) {
+
+        // 规格补写 + 数量调整合并成一次写入，只把**真正改动**的字段回写笼位表单
+        boolean qtyChanged = !Objects.equals(r.getQuantity(), qty);
+        if (specAdopted || qtyChanged) {
             Map<String, Object> written = readWritten(r);
-            String countField = "雌性".equals(r.getSex()) ? "animal_female_number"
-                    : "雄性".equals(r.getSex()) ? "animal_male_number" : null;
-            if (countField != null) {
-                written.put(countField, qty);
-                infoValueService.syncFromMapped(r.getAnimalCageId(), Map.of(countField, qty));
+            Map<String, Object> patch = new LinkedHashMap<>();
+            if (specAdopted) {
+                SpecParts parsed = SpecParts.parse(spec);
+                if (notBlank(parsed.sex())) { written.put("animal_sex", parsed.sex()); patch.put("animal_sex", parsed.sex()); }
+                for (Map.Entry<String, String> e : specFieldMapping().entrySet()) {
+                    if (e.getKey().equals(parsed.templateName()) && notBlank(e.getValue()) && notBlank(parsed.label())) {
+                        written.put(e.getValue(), parsed.label());
+                        patch.put(e.getValue(), parsed.label());
+                    }
+                }
+                r.setSpecKey(spec);
+                r.setSex(parsed.sex());   // 先落性别，下面的数量列才能按新性别写对
             }
-            r.setQuantity(qty);
+            if (qtyChanged) {
+                String countField = "雌性".equals(r.getSex()) ? "animal_female_number"
+                        : "雄性".equals(r.getSex()) ? "animal_male_number" : null;
+                if (countField != null) {
+                    written.put(countField, qty);
+                    patch.put(countField, qty);
+                }
+                r.setQuantity(qty);
+            }
             r.setWrittenJson(toJson(written));
-            reservationMapper.updateQuantityAndWritten(r.getId(), qty, r.getWrittenJson());
+            reservationMapper.updateSpecQuantityWritten(
+                    r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), r.getWrittenJson());
+            if (!patch.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), patch);
         }
         return r;
     }
@@ -517,6 +547,12 @@ public class CageOrderReservationService {
         }
         clearWrittenFields(r);
         reservationMapper.releaseById(r.getId(), reason);
+    }
+
+    /** 该购物车行是否挂了活跃的笼位预定 —— 挂了才受「单笼上限」约束（房间领用路径没笼位，不适用）。 */
+    public boolean hasActiveReservation(Long cartId) {
+        if (cartId == null) return false;
+        return !reservationMapper.listActiveByCartIds(List.of(cartId)).isEmpty();
     }
 
     /** 购物车行被删/被清空时释放对应预定，并把预填进笼位表单的值撤掉。 */

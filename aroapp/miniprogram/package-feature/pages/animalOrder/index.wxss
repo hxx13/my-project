@@ -385,6 +385,16 @@
   padding: 20rpx 0;
   border-bottom: 1rpx solid #f2f3f5;
 }
+/* 同规格模板内互斥：另一个选项已选时本行置灰（如性别只能二选一） */
+.spec-row--blocked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.spec-blocked-hint {
+  display: block;
+  font-size: 20rpx;
+  color: #969799;
+}
 /* 每规格行备注：换行占满整行 */
 .spec-remark {
   width: 100%;
