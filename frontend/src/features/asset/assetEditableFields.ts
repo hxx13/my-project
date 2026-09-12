@@ -40,17 +40,6 @@ export function isLocationColumn(c: AssetColumnDef): boolean {
   return c.columnKey === ASSET_LOCATION_COLUMN_KEY || (c.columnLabel || "").includes("存放地点");
 }
 
-/**
- * 「校区」动态列：编辑态固定两项。
- * 空值 = 不覆盖，小程序端 resolveRowCampus 会回落到「按存放地点文本 LIKE 浦东/浦西」的推断。
- */
-export const ASSET_CAMPUS_COLUMN_KEY = "col_校区";
-export const ASSET_CAMPUS_OPTIONS = ["浦东", "浦西"] as const;
-
-export function isCampusColumn(c: AssetColumnDef): boolean {
-  return c.columnKey === ASSET_CAMPUS_COLUMN_KEY || (c.columnLabel || "").includes("校区");
-}
-
 /** 资产状态：库里存英文码，界面展示中文；未收录的码原样显示 */
 export const ASSET_STATUS_OPTIONS = [
   { value: "NORMAL", label: "正常" },

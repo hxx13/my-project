@@ -26,6 +26,17 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
   const [fileMode, setFileMode] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** 回调用 ref 持有：否则父组件每次重渲染都会换掉 onResult/onClose 的引用，
+   *  连带 startScanner 身份变化，把摄像头反复重启 */
+  const onResultRef = useRef(onResult);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onResultRef.current = onResult;
+    onCloseRef.current = onClose;
+  }, [onResult, onClose]);
+  /** 一次开启只交付一次结果：fps 10 下同一画面会连续解码多次，
+   *  重复交付会把调用方的输入框反复回填 */
+  const deliveredRef = useRef(false);
 
   const stopScanner = useCallback(async () => {
     const s = scannerRef.current;
@@ -47,8 +58,11 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
       const text = await html5Qr.scanFile(file, false);
       console.log("[scan-file] 识别文本=", text);
       if (text) {
-        onResult(text);
-        onClose();
+        if (!deliveredRef.current) {
+          deliveredRef.current = true;
+          onResultRef.current(text);
+          onCloseRef.current();
+        }
       } else {
         console.log("[scan-file] 识别文本为空");
         setError("未识别到二维码/条形码，请选择其他图片");
@@ -59,7 +73,7 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
       setError("未识别到二维码/条形码，请选择其他图片");
       setFileMode(false);
     }
-  }, [onResult, onClose, stopScanner]);
+  }, [stopScanner]);
 
   const handleFilePick = useCallback(() => {
     fileInputRef.current?.click();
@@ -84,10 +98,13 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1 },
         (decoded: string) => {
+          // 同一画面会连续解码：只交付第一次，其余直接丢弃
+          if (deliveredRef.current) return;
+          deliveredRef.current = true;
           console.log("[scan-camera] 识别文本=", decoded);
-          onResult(decoded);
-          stopScanner();
-          onClose();
+          onResultRef.current(decoded);
+          void stopScanner();
+          onCloseRef.current();
         },
         () => { /* scan tick */ },
       );
@@ -104,10 +121,11 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
       // 无摄像头自动拉起文件选择
       window.setTimeout(() => fileInputRef.current?.click(), 500);
     }
-  }, [onResult, onClose, stopScanner]);
+  }, [stopScanner]);
 
   useEffect(() => {
     if (!open) return;
+    deliveredRef.current = false;
     const e = detectEnv();
     setEnv(e);
     setError(null);

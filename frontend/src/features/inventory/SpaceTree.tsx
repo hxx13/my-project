@@ -32,10 +32,13 @@ export default function SpaceTree(props: {
   onSelect: (id: number) => void;
   onCreateItem?: (spaceId: number) => void;
   onOpenItem?: (item: Item) => void;
+  /** 物品拖到本行 → 移到这个空间（与画布上的落点同一套语义） */
+  onDropItem?: (itemId: number, spaceId: number) => void;
 }) {
-  const { tree, selectedId, expanded, search, itemsBySpace, onToggle, onSelect, onCreateItem, onOpenItem } = props;
+  const { tree, selectedId, expanded, search, itemsBySpace, onToggle, onSelect, onCreateItem, onOpenItem, onDropItem } = props;
   const qc = useQueryClient();
   const [creating, setCreating] = useState<{ parentId: number | null; name: string } | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SpaceNode | null>(null);
   const [moveTarget, setMoveTarget] = useState<SpaceNode | null>(null);
   const [moveParentId, setMoveParentId] = useState("");
@@ -142,11 +145,34 @@ export default function SpaceTree(props: {
     const open = searching ? true : expanded.has(n.id);
     const hasChildren = n.children.length > 0;
     const isSelected = selectedId === n.id;
+    const isDragOver = dragOverId === n.id;
     const isCreatingHere = creating?.parentId === n.id;
     const items = itemsBySpace?.get(n.id) ?? [];
     return (
       <div key={n.id}>
-        <div className="group flex items-center" style={{ paddingLeft: depth * 12 }}>
+        <div
+          className={cn(
+            "group flex items-center rounded-twin-sm",
+            isDragOver && "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
+          )}
+          style={{ paddingLeft: depth * 12 }}
+          onDragOver={(e) => {
+            if (!onDropItem) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (dragOverId !== n.id) setDragOverId(n.id);
+          }}
+          onDragLeave={() => setDragOverId((prev) => (prev === n.id ? null : prev))}
+          onDrop={(e) => {
+            if (!onDropItem) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOverId(null);
+            // 载荷与 FloorCanvas 的物品拖拽同格式，所以画布与左树可以互为落点
+            const itemId = Number(e.dataTransfer.getData("text/plain"));
+            if (Number.isFinite(itemId) && itemId > 0) onDropItem(itemId, n.id);
+          }}
+        >
           <button
             type="button"
             onClick={() => {

@@ -54,7 +54,6 @@ export interface AssetPagedData {
 
 export interface AssetFacets {
   assetNames: string[];
-  campuses: string[];
   users?: string[];
   models: string[];
   /** 存放地点（含 asset_record.location 与 EAV 存放地点列） */
@@ -130,13 +129,14 @@ export async function fetchAssetRecords(params: {
   /** 精确按资产主键拉取一条（用于转移记录摘要等，避免关键词分页找不到） */
   assetId?: string;
   assetName?: string;
-  campus?: string;
   user?: string;
   model?: string;
   /** 存放地点，模糊匹配 */
   location?: string;
   /** 存放地点节点 id，精确匹配（可视化视图按节点筛） */
   locationNodeId?: number;
+  /** 是否把 locationNodeId 展开成整棵子树（多级内联视图用；与物品台账「含子孙」同口径） */
+  includeDescendants?: boolean;
   /** 存放地点节点 id 多值筛选。必须传逗号分隔字符串（如 "1,2,3"）：axios 默认把数组序列化成
    *  `locationNodeIds[]=1`，Spring @RequestParam List 绑不上。 */
   locationNodeIds?: string;
@@ -257,7 +257,6 @@ export async function searchReplaceAssets(payload: {
 export async function exportAssetExcel(params: {
   keyword?: string;
   assetName?: string;
-  campus?: string;
   user?: string;
   model?: string;
   location?: string;
@@ -364,7 +363,7 @@ export async function listTransferPdfLinks(requestId: string) {
   return res.data.data;
 }
 
-export async function fetchAssetFacets(params?: { keyword?: string; campus?: string; assetName?: string; user?: string; model?: string; location?: string }) {
+export async function fetchAssetFacets(params?: { keyword?: string; assetName?: string; user?: string; model?: string; location?: string }) {
   const res = await authHttp.get<Result<AssetFacets>>("/v1/assets/facets", { params });
   return res.data.data;
 }

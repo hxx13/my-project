@@ -46,12 +46,13 @@ public class AssetController {
     public Result<?> listAssets(@RequestHeader(value = "Authorization", required = false) String authorization,
                                 @RequestParam(required = false) String keyword,
                                 @RequestParam(required = false) String assetName,
-                                @RequestParam(required = false) String campus,
                                 @RequestParam(required = false, name = "user") String userFilter,
                                 @RequestParam(required = false) String model,
                                 @RequestParam(required = false) String location,
                                 @RequestParam(required = false) Long locationNodeId,
                                 @RequestParam(required = false) List<Long> locationNodeIds,
+                                @RequestParam(required = false) Boolean unassigned,
+                                @RequestParam(required = false) Boolean includeDescendants,
                                 @RequestParam(required = false) Integer lockStatus,
                                 @RequestParam(required = false) String status,
                                 @RequestParam(defaultValue = "1") int page,
@@ -62,7 +63,7 @@ public class AssetController {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssets(keyword, assetName, campus, userFilter, model, location, locationNodeId, locationNodeIds, lockStatus, status, page, size, sortBy, sortDirection, assetId));
+        return Result.success(assetService.listAssets(keyword, assetName, userFilter, model, location, locationNodeId, locationNodeIds, unassigned, includeDescendants, lockStatus, status, page, size, sortBy, sortDirection, assetId));
     }
 
     @PostMapping("/assets/import")
@@ -84,7 +85,6 @@ public class AssetController {
     public ResponseEntity<byte[]> exportAssets(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                @RequestParam(required = false) String keyword,
                                                @RequestParam(required = false) String assetName,
-                                               @RequestParam(required = false) String campus,
                                                @RequestParam(required = false, name = "user") String userFilter,
                                                @RequestParam(required = false) String model,
                                                @RequestParam(required = false) String location,
@@ -97,7 +97,7 @@ public class AssetController {
         }
         List<String> selectedColumns = columns != null && !columns.isBlank()
                 ? Arrays.asList(columns.split(",")) : null;
-        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, location, lockStatus, status, selectedColumns);
+        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, userFilter, model, location, lockStatus, status, selectedColumns);
         String name = "asset-records-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
@@ -266,18 +266,17 @@ public class AssetController {
     }
 
     @GetMapping("/assets/facets")
-    @Operation(summary = "资产筛选项（资产名称/校区/型号）")
+    @Operation(summary = "资产筛选项（资产名称/型号）")
     public Result<?> assetFacets(@RequestHeader(value = "Authorization", required = false) String authorization,
                                  @RequestParam(required = false) String keyword,
                                  @RequestParam(required = false) String assetName,
-                                 @RequestParam(required = false) String campus,
                                  @RequestParam(required = false, name = "user") String userFilter,
                                  @RequestParam(required = false) String model,
                                  @RequestParam(required = false) String location) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) return denied;
-        return Result.success(assetService.listAssetFacets(keyword, assetName, campus, userFilter, model, location));
+        return Result.success(assetService.listAssetFacets(keyword, assetName, userFilter, model, location));
     }
 
     @DeleteMapping("/assets")

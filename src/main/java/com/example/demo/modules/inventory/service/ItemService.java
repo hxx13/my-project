@@ -3,6 +3,7 @@ package com.example.demo.modules.inventory.service;
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.inventory.dto.ItemBatchTransferReq;
 import com.example.demo.modules.inventory.dto.ItemLogView;
 import com.example.demo.modules.inventory.dto.ItemRetireReq;
 import com.example.demo.modules.inventory.dto.ItemTransferReq;
@@ -187,6 +188,46 @@ public class ItemService {
         itemMapper.updateSpace(id, req.getSpaceId());
         writeLog(id, "TRANSFER", fromSpaceId, req.getSpaceId(), operator, null, null);
         return Result.success(null);
+    }
+
+    /**
+     * 批量调拨：某条失败不影响其他条，逐条的原因回传给前端展示。
+     * 目标空间先校验一次；已在目标空间的直接跳过，不写 A→A 的噪音留痕。
+     */
+    public Result<Map<String, Object>> batchTransfer(User operator, ItemBatchTransferReq req) {
+        List<Long> ids = req.getIds();
+        if (ids == null || ids.isEmpty()) {
+            return Result.error("请先选择物品");
+        }
+        Long spaceId = req.getSpaceId();
+        if (spaceId == null || spaceMapper.selectById(spaceId) == null) {
+            return Result.error("目标空间不存在");
+        }
+        int moved = 0;
+        List<Map<String, Object>> failed = new ArrayList<>();
+        for (Long id : ids) {
+            InvItem item = itemMapper.selectById(id);
+            if (item == null) {
+                failed.add(Map.<String, Object>of("id", id, "reason", "物品不存在"));
+                continue;
+            }
+            if ("RETIRED".equals(item.getStatus())) {
+                failed.add(Map.<String, Object>of("id", id, "reason", "已废弃"));
+                continue;
+            }
+            if (spaceId.equals(item.getSpaceId())) {
+                failed.add(Map.<String, Object>of("id", id, "reason", "已在该空间"));
+                continue;
+            }
+            Long fromSpaceId = item.getSpaceId();
+            itemMapper.updateSpace(id, spaceId);
+            writeLog(id, "TRANSFER", fromSpaceId, spaceId, operator, null, null);
+            moved++;
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("moved", moved);
+        data.put("failed", failed);
+        return Result.success(data);
     }
 
     @Transactional

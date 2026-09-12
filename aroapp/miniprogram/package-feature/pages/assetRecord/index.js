@@ -82,29 +82,6 @@ function todayStr() {
   return `${y}-${m}-${day}`;
 }
 
-/** 从存放地点文本推断校区（无「浦东/浦西」则返回空，禁止默认浦西） */
-function detectCampus(locationText) {
-  const s = (locationText || '').trim();
-  if (!s) return '';
-  if (s.includes('浦东')) return '浦东';
-  if (s.includes('浦西')) return '浦西';
-  return '';
-}
-
-function pickCampusColumn(columns) {
-  const list = Array.isArray(columns) ? columns : [];
-  for (let i = 0; i < list.length; i += 1) {
-    const col = list[i] || {};
-    const label = String(col.columnLabel || '').trim();
-    if (label === '校区' || label.includes('所属校区')) return col;
-  }
-  for (let i = 0; i < list.length; i += 1) {
-    const key = String((list[i] || {}).columnKey || '');
-    if (key === 'col_校区' || key === 'col_所属校区') return list[i];
-  }
-  return null;
-}
-
 function primaryLocationText(row, locationCol) {
   if (!row) return '';
   const dynLoc = locationCol && row.dynamicValues
@@ -114,35 +91,37 @@ function primaryLocationText(row, locationCol) {
   return dynLoc || baseLoc;
 }
 
-function normalizeCampusLabel(raw) {
-  const s = (raw || '').trim();
-  if (!s) return '';
-  if (s.includes('浦东')) return '浦东';
-  if (s.includes('浦西')) return '浦西';
-  return '';
-}
-
-function resolveRowCampus(row, locationCol, campusCol) {
-  const loc = primaryLocationText(row, locationCol);
-  const detected = detectCampus(loc);
-  const manualRaw = campusCol && row.dynamicValues
-    ? String(row.dynamicValues[campusCol.columnKey] || '').trim()
-    : '';
-  const manual = normalizeCampusLabel(manualRaw);
-  if (manual) {
-    return { rowCampus: manual, campusManual: true };
-  }
-  return { rowCampus: detected, campusManual: false };
-}
-
-function decorateAssetRow(row, locationCol, campusCol) {
-  const currentLocation = primaryLocationText(row, locationCol);
-  const campusInfo = resolveRowCampus(row, locationCol, campusCol);
+/** 行上只补一个展示用的地点文本。校区已废弃，改由「存放地点树（文件夹）」表达 */
+function decorateAssetRow(row, locationCol) {
   return {
     ...row,
-    currentLocation,
-    ...campusInfo,
+    currentLocation: primaryLocationText(row, locationCol),
   };
+}
+
+/** 在节点树里按 id 找节点，找不到返回 null */
+function findNodeById(nodes, id) {
+  if (id == null) return null;
+  const list = nodes || [];
+  for (let i = 0; i < list.length; i += 1) {
+    if (list[i].id === id) return list[i];
+    const hit = findNodeById(list[i].children, id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** 根到目标节点的路径（面包屑用），找不到返回空数组 */
+function findNodePath(nodes, id, trail) {
+  const acc = trail || [];
+  const list = nodes || [];
+  for (let i = 0; i < list.length; i += 1) {
+    const next = acc.concat([{ id: list[i].id, name: list[i].name }]);
+    if (list[i].id === id) return next;
+    const hit = findNodePath(list[i].children, id, next);
+    if (hit.length) return hit;
+  }
+  return [];
 }
 
 function parsePhotoUrlField(v) {
@@ -206,12 +185,6 @@ Page({
     total: 0,
     keyword: '',
     appliedKeyword: '',
-    campus: '',
-    campusOptions: [
-      { label: '全部', value: '' },
-      { label: '浦东校区', value: '浦东' },
-      { label: '浦西校区', value: '浦西' },
-    ],
     assetNameOptions: ['全部'],
     userOptions: ['全部'],
     modelOptions: ['全部'],
@@ -239,7 +212,16 @@ Page({
     detailAfterPhotos: [],
     detailTransferStatusText: '',
     currentLocationColumnKey: '',
-    campusColumnKey: '',
+    // ── 文件夹（存放地点树）导航：null = 根层，显示未归类资产 ──
+    currentNodeId: null,
+    breadcrumb: [],
+    childFolders: [],
+    // ── 扫码归位（与批量缓冲区反向：先定文件夹，再扫进来） ──
+    relocateNodeId: null,
+    relocateNodeName: '',
+    relocateScanned: [],
+    relocateSubmitting: false,
+    relocateContinuous: true,
     showFillPanel: false,
     fillSourceAsset: null,
     fillFields: [],
@@ -309,11 +291,13 @@ Page({
     const searchCode = this._pendingSearchCode;
     if (searchCode) {
       this._pendingSearchCode = null;
+      this.ensureLocationTree();
       this.setData({ page: 1, rows: [], searchKeyword: searchCode }, () => this.loadData(1));
       this.loadFacets();
       return;
     }
 
+    this.ensureLocationTree();
     this.setData({ page: 1, rows: [] }, () => this.loadData(1));
     this.loadFacets();
   },
@@ -345,88 +329,183 @@ Page({
     }, 400);
   },
 
-  mergeAssetRowCampus(assetId, patchDynamicValues) {
-    const locationCol = pickCurrentLocationColumn(this.data.columns);
-    const campusCol = pickCampusColumn(this.data.columns) || { columnKey: this.data.campusColumnKey || 'col_校区' };
-    const rows = (this.data.rows || []).map((r) => {
-      if (r.id !== assetId) return r;
-      const dynamicValues = { ...(r.dynamicValues || {}) };
-      Object.keys(patchDynamicValues || {}).forEach((k) => {
-        const v = patchDynamicValues[k];
-        if (v == null || v === '') delete dynamicValues[k];
-        else dynamicValues[k] = v;
-      });
-      const merged = decorateAssetRow({ ...r, dynamicValues }, locationCol, campusCol);
-      return {
-        ...merged,
-        specModel: r.specModel,
-        assetUser: r.assetUser,
-      };
-    });
-    this.setData({ rows });
-  },
-
-  onRowCampusTap(e) {
-    const id = e.currentTarget.dataset.id;
-    if (!id) return;
-    const row = (this.data.rows || []).find((x) => x.id === id);
-    if (!row) return;
-    const cur = row.rowCampus || '';
-    wx.showActionSheet({
-      itemList: [
-        `标记为浦东${cur === '浦东' ? ' ✓' : ''}`,
-        `标记为浦西${cur === '浦西' ? ' ✓' : ''}`,
-        '改为自动识别（按存放地点）',
-      ],
-      success: (res) => {
-        if (res.tapIndex === 0) this.setRowCampus(id, '浦东');
-        else if (res.tapIndex === 1) this.setRowCampus(id, '浦西');
-        else if (res.tapIndex === 2) this.setRowCampus(id, '');
-      },
-    });
-  },
-
-  async setRowCampus(assetId, campus) {
-    const campusKey = this.data.campusColumnKey || 'col_校区';
-    const dynamicValues = {};
-    if (campus) {
-      dynamicValues[campusKey] = campus;
-    } else {
-      dynamicValues[campusKey] = '';
-    }
-    wx.showLoading({ title: '保存中', mask: true });
-    try {
-      await assetApi.patchAssetRecord(assetId, { dynamicValues });
-      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
-      this.mergeAssetRowCampus(assetId, dynamicValues);
-      wx.showToast({ title: campus ? `已标记${campus}` : '已改为自动识别', icon: 'success' });
-    } catch (err) {
-      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '保存失败', icon: 'none' });
-    } finally {
-      wx.hideLoading();
-    }
-  },
-
-  onCampusTap() {
-    const labels = this.data.campusOptions.map((o) => o.label);
-    wx.showActionSheet({
-      itemList: labels,
-      success: (res) => {
-        const opt = this.data.campusOptions[res.tapIndex];
-        const campus = opt ? opt.value : '';
-        this.setData({ campus, page: 1 }, () => {
-          this.loadData(1);
-          this.loadFacets();
-        });
-      },
-    });
-  },
-
   refreshList() {
     this.setData({ page: 1 }, async () => {
       await this.loadData(1);
       wx.showToast({ title: '已刷新', icon: 'success' });
     });
+    // 位置变动后文件夹件数会变，顺手重拉树
+    this._tree = null;
+    this.ensureLocationTree();
+  },
+
+  // ── 文件夹导航 ──
+
+  /** 地点树只拉一次；已拉过就只重算面包屑与子文件夹 */
+  async ensureLocationTree() {
+    if (this._tree) {
+      this.rebuildFolderNav();
+      return;
+    }
+    try {
+      this._tree = await assetApi.fetchAssetLocationTree();
+    } catch (e) {
+      this._tree = [];
+    }
+    this.rebuildFolderNav();
+  },
+
+  /** 按 currentNodeId 重算面包屑与子文件夹入口（件数用 totalCount，含子孙） */
+  rebuildFolderNav() {
+    const id = this.data.currentNodeId;
+    const tree = this._tree || [];
+    const node = id == null ? null : findNodeById(tree, id);
+    const children = node ? (node.children || []) : tree;
+    this.setData({
+      breadcrumb: id == null ? [] : findNodePath(tree, id),
+      childFolders: (children || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        icon: c.icon || '',
+        totalCount: Number(c.totalCount || 0),
+      })),
+    });
+  },
+
+  /** 进/退文件夹的统一入口（id 传 null = 回根层） */
+  navigateToFolder(id) {
+    this.setData({ currentNodeId: id == null ? null : Number(id), page: 1, rows: [] }, () => {
+      this.rebuildFolderNav();
+      this.loadData(1);
+    });
+  },
+
+  onEnterFolder(e) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!id) return;
+    this.navigateToFolder(id);
+  },
+
+  onBackToParent() {
+    const crumb = this.data.breadcrumb || [];
+    this.navigateToFolder(crumb.length >= 2 ? crumb[crumb.length - 2].id : null);
+  },
+
+  onBreadcrumbTap(e) {
+    const raw = e.currentTarget.dataset.id;
+    this.navigateToFolder(raw === '' || raw == null ? null : Number(raw));
+  },
+
+  // ── 扫码归位 ──
+
+  /** 只能在一个文件夹里开启（根层的「未归类」不是落点） */
+  startRelocate() {
+    const crumb = this.data.breadcrumb || [];
+    if (this.data.currentNodeId == null || !crumb.length) {
+      wx.showToast({ title: '先进入一个文件夹', icon: 'none' });
+      return;
+    }
+    this.setData({
+      relocateNodeId: this.data.currentNodeId,
+      relocateNodeName: crumb[crumb.length - 1].name,
+      relocateScanned: [],
+    }, () => this.scanForRelocate());
+  },
+
+  exitRelocate() {
+    this.setData({
+      relocateNodeId: null,
+      relocateNodeName: '',
+      relocateScanned: [],
+      relocateSubmitting: false,
+    });
+  },
+
+  toggleRelocateContinuous() {
+    this.setData({ relocateContinuous: !this.data.relocateContinuous });
+  },
+
+  removeRelocateItem(e) {
+    const id = e.currentTarget.dataset.id;
+    this.setData({ relocateScanned: (this.data.relocateScanned || []).filter((x) => x.id !== id) });
+  },
+
+  /** 扫一台 → 校验 → 入待归位；连续模式下 400ms 后自动重开扫码 */
+  scanForRelocate() {
+    if (this.data.relocateNodeId == null) return;
+    wx.scanCode({
+      onlyFromCamera: false,
+      success: async (res) => {
+        const code = (res && (res.result || res.rawData)) ? String(res.result || res.rawData).trim() : '';
+        if (!code) return;
+        wx.showLoading({ title: '检索中…', mask: true });
+        try {
+          const asset = await assetApi.fetchAssetByCode(code);
+          wx.hideLoading();
+          if (!asset || !asset.id) {
+            wx.showToast({ title: '未找到该资产', icon: 'none' });
+            return;
+          }
+          if (asset.locationNodeId != null && asset.locationNodeId === this.data.relocateNodeId) {
+            wx.showToast({ title: '已在此文件夹', icon: 'none' });
+            return;
+          }
+          const scanned = this.data.relocateScanned || [];
+          if (scanned.some((x) => x.id === asset.id)) {
+            wx.showToast({ title: '已在待归位列表', icon: 'none' });
+            return;
+          }
+          const locCol = pickCurrentLocationColumn(this.data.columns);
+          this.setData({
+            relocateScanned: scanned.concat([{
+              id: asset.id,
+              assetCode: asset.assetCode || '',
+              assetName: asset.assetName || '',
+              fromLocation: primaryLocationText(asset, locCol) || '未设置',
+            }]),
+          });
+          wx.showToast({ title: '已扫入', icon: 'success' });
+          if (this.data.relocateContinuous) {
+            setTimeout(() => this.scanForRelocate(), 400);
+          }
+        } catch (e) {
+          wx.hideLoading();
+          wx.showToast({ title: e && e.message ? String(e.message).slice(0, 18) : '检索失败', icon: 'none' });
+        }
+      },
+    });
+  },
+
+  /** 待归位全部移入当前文件夹；部分失败时只留失败项，方便重试 */
+  async submitRelocate() {
+    const ids = (this.data.relocateScanned || []).map((x) => x.id);
+    const nodeId = this.data.relocateNodeId;
+    if (!ids.length || nodeId == null || this.data.relocateSubmitting) return;
+    this.setData({ relocateSubmitting: true });
+    wx.showLoading({ title: '归位中…', mask: true });
+    try {
+      const res = await assetApi.batchMoveAssetLocation(ids, nodeId);
+      wx.hideLoading();
+      const failed = (res && res.failed) || [];
+      const moved = (res && res.moved) || 0;
+      if (!failed.length) {
+        wx.showToast({ title: `已归位 ${moved} 台`, icon: 'success' });
+        this.exitRelocate();
+      } else {
+        const failedIds = failed.map((f) => f.id);
+        wx.showToast({ title: `成功 ${moved} 台，失败 ${failed.length} 台`, icon: 'none' });
+        this.setData({ relocateScanned: (this.data.relocateScanned || []).filter((x) => failedIds.indexOf(x.id) >= 0) });
+      }
+      // 位置变了：文件夹件数与列表都要更新
+      this._tree = null;
+      this.ensureLocationTree();
+      await this.loadData(1);
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: e && e.message ? String(e.message).slice(0, 18) : '归位失败', icon: 'none' });
+    } finally {
+      this.setData({ relocateSubmitting: false });
+    }
   },
 
   async loadFacets() {
@@ -436,13 +515,12 @@ Page({
       const currentModel = this.data.modelOptions[this.data.filterModelIndex] || '全部';
       const data = await assetApi.fetchAssetFacets({
         keyword: (this.data.appliedKeyword || '').trim() || undefined,
-        campus: this.data.campus || undefined,
         assetName: currentAssetName === '全部' ? undefined : currentAssetName,
         user: currentUser === '全部' ? undefined : currentUser,
         model: currentModel === '全部' ? undefined : currentModel,
       });
       const assetNameOptions = ['全部'].concat(data.assetNames || []);
-      const userOptions = ['全部'].concat(data.users || data.campuses || []);
+      const userOptions = ['全部'].concat(data.users || []);
       const modelOptions = ['全部'].concat(data.models || []);
       // 生成 van-dropdown-item 格式的选项列表
       const toDropdown = (arr) => arr.map((text, idx) => ({ text, value: idx }));
@@ -522,12 +600,19 @@ Page({
   async loadData(targetPage) {
     const page = Number(targetPage || this.data.page || 1);
     if (page === 1) this.setData({ loading: true });
+    // 有关键词 → 跨文件夹全局搜；否则按当前文件夹取本层资产；根层 = 未归类
+    const kw = (this.data.appliedKeyword || '').trim();
+    const scopeParams = kw
+      ? {}
+      : (this.data.currentNodeId == null
+        ? { unassigned: true }
+        : { locationNodeId: this.data.currentNodeId });
     try {
       const data = await assetApi.fetchAssetRecords({
         page,
         size: this.data.size,
-        keyword: this.data.appliedKeyword || undefined,
-        campus: this.data.campus || undefined,
+        keyword: kw || undefined,
+        ...scopeParams,
         assetName: this.data.appliedAssetName || undefined,
         user: this.data.appliedUser || undefined,
         model: this.data.appliedModel || undefined,
@@ -537,7 +622,6 @@ Page({
         displayLabel: normalizeColumnLabel(c.columnLabel || ''),
       }));
       const locationCol = pickCurrentLocationColumn(columns);
-      const campusCol = pickCampusColumn(columns);
       const specModelCol = pickSpecModelColumn(columns);
       const userCol = pickUserColumn(columns);
       const rows = (data.rows || []).map((r) => {
@@ -547,7 +631,6 @@ Page({
             latestTransferTimeText: toTextTime(r.latestTransferTime),
           },
           locationCol,
-          campusCol,
         );
         return {
           ...base,
@@ -567,7 +650,6 @@ Page({
         rows: dedupRows,
         columns,
         currentLocationColumnKey: locationCol ? locationCol.columnKey : '',
-        campusColumnKey: campusCol ? campusCol.columnKey : 'col_校区',
         total: Number(data.total || 0),
         page,
       });
@@ -1740,6 +1822,9 @@ Page({
             batchEditFields: [], batchEditChecked: {}, batchEditValues: {},
             page: 1, rows: [],
           });
+          // 地点可能刚改过，文件夹件数要跟着更新
+          this._tree = null;
+          this.ensureLocationTree();
           await this.loadData(1);
         } finally {
           wx.hideLoading();
@@ -1901,6 +1986,9 @@ Page({
             batchEditFields: [], batchEditChecked: {}, batchEditValues: {},
             page: 1, rows: [],
           });
+          // 地点可能刚改过，文件夹件数要跟着更新
+          this._tree = null;
+          this.ensureLocationTree();
           await this.loadData(1);
         } catch (e) {
           wx.showToast({ title: e && e.message ? String(e.message).slice(0, 18) : '更新失败', icon: 'none' });
@@ -1997,7 +2085,6 @@ Page({
     try {
       const fileBuf = await assetApi.exportAssetExcel({
         keyword: this.data.appliedKeyword || undefined,
-        campus: this.data.campus || undefined,
         assetName: this.data.appliedAssetName || undefined,
         user: this.data.appliedUser || undefined,
         model: this.data.appliedModel || undefined,

@@ -7,6 +7,7 @@ import { StudentCommandPalette } from "./student-command-palette";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView } from "@/features/auth/impersonation";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
+import { useTouchMenuGuard } from "@/hooks/useTouchMenuGuard";
 import { IDLE_TIMEOUT_MS, IDLE_WARNING_MS } from "@/config/idleTimeout";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
@@ -19,6 +20,8 @@ import {
 const SIDEBAR_COLLAPSED_KEY = "student-sidebar-collapsed";
 
 export default function StudentLayout() {
+  // 学生端同样禁用触摸长按菜单（拖拽/长按误触）
+  useTouchMenuGuard();
   const navigate = useNavigate();
   const location = useLocation();
   const { theme, effectiveMode } = useTheme();
@@ -111,7 +114,7 @@ export default function StudentLayout() {
   return (
     <div
       className={cn(
-        "flex h-screen overflow-hidden",
+        "flex h-screen overflow-hidden [-webkit-touch-callout:none]",
         theme.className,
         isDark && "dark student-layout-root--night-sky",
         !isDark && "bg-[var(--student-canvas-soft)]",

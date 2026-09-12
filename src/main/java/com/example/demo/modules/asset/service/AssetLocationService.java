@@ -137,6 +137,41 @@ public class AssetLocationService {
         return sum;
     }
 
+    /**
+     * 节点 id + 其全部后代 id（BFS）。与物品台账的 collectSpaceIdsWithDescendants 同口径，
+     * 是「一次拉整棵子树、多级内联渲染」的前提。
+     */
+    public List<Long> collectIdsWithDescendants(Long nodeId) {
+        if (nodeId == null) {
+            return List.of();
+        }
+        List<AssetLocation> all = assetLocationMapper.listAll();
+        Map<Long, List<Long>> childrenByParent = new HashMap<>();
+        for (AssetLocation n : all) {
+            if (n.getParentId() != null) {
+                childrenByParent.computeIfAbsent(n.getParentId(), k -> new ArrayList<>()).add(n.getId());
+            }
+        }
+        List<Long> result = new ArrayList<>();
+        Deque<Long> stack = new ArrayDeque<>();
+        Set<Long> seen = new HashSet<>();
+        stack.push(nodeId);
+        while (!stack.isEmpty()) {
+            Long cur = stack.pop();
+            if (cur == null || !seen.add(cur)) {
+                continue;
+            }
+            result.add(cur);
+            List<Long> children = childrenByParent.get(cur);
+            if (children != null) {
+                for (Long c : children) {
+                    stack.push(c);
+                }
+            }
+        }
+        return result;
+    }
+
     /** 完整地点树（含直属/子树资产计数） */
     public List<AssetLocation> tree() {
         List<AssetLocation> all = assetLocationMapper.listAll();

@@ -165,7 +165,7 @@ async function fetchAssetFacets(params) {
   });
   const parsed = parseResponse(res);
   if (!parsed.ok) throw new Error(parsed.message);
-  return parsed.body.data || { assetNames: [], campuses: [], users: [], models: [] };
+  return parsed.body.data || { assetNames: [], users: [], models: [] };
 }
 
 async function fetchAssetByCode(code) {

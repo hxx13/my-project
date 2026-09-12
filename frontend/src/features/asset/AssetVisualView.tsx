@@ -149,7 +149,7 @@ function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle, met
       }}
       onClick={() => (selectable ? onToggle?.(row.id) : onOpen(row))}
       title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到左侧地点可移动资产"}
-      className={`relative flex flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] ${
+      className={`relative flex select-none flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] ${
         selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
       } ${
         selected || highlight
@@ -240,13 +240,15 @@ function RelocateCard({ row, onOpen, onRemove }: { row: AssetRow; onOpen: (r: As
 /* ────────────────────────────────────────────────────────────
    资产芯片（卡片内用 div：外层卡片是 button，不能套 button）
    ──────────────────────────────────────────────────────────── */
-function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle }: {
+function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle, compact }: {
   row: AssetRow;
   onOpen: (r: AssetRow) => void;
   highlight?: boolean;
   selectable?: boolean;
   selected?: boolean;
   onToggle?: (id: string) => void;
+  /** 最深层的最小标签形态：只留图标 + 名称，不显示编号 */
+  compact?: boolean;
 }) {
   const photo = firstPhoto(row);
   return (
@@ -264,7 +266,7 @@ function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle }: {
         else onOpen(row);
       }}
       title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到左侧地点可移动资产"}
-      className={`flex min-w-0 items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] ${
+      className={`flex min-w-0 select-none items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] ${
         selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
       } ${
         selected || highlight
@@ -280,10 +282,10 @@ function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle }: {
         <span className="shrink-0 text-[15px] leading-none">{iconOf(row)}</span>
       )}
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-[11px] text-[var(--twin-ink)]" title={row.assetName}>
+        <span className="truncate text-[11px] text-[var(--twin-ink)]" title={compact ? `${row.assetName} ${row.assetCode}` : row.assetName}>
           {row.assetName}
         </span>
-        <span className="truncate font-mono text-[9px] text-[var(--twin-mute)]">{row.assetCode}</span>
+        {!compact && <span className="truncate font-mono text-[9px] text-[var(--twin-mute)]">{row.assetCode}</span>}
       </span>
     </div>
   );
@@ -292,7 +294,42 @@ function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle }: {
 /* ────────────────────────────────────────────────────────────
    子空间卡片（点击下钻）
    ──────────────────────────────────────────────────────────── */
-function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle, onDropAsset }: {
+/** 卡片内联的层数；再往下一层（第 4 层）无论文件夹还是物资都退化成最小标签，不再展开 */
+const MAX_INLINE_DEPTH = 3;
+
+/** 最深层的最小标签：图标 + 名称，不再有卡片外壳 */
+function NodeTag({ node, chips, onOpen, highlightId, onSelect, selectable, selectedIds, onToggle }: {
+  node: AssetLocationNode;
+  chips: AssetRow[];
+  onOpen: (r: AssetRow) => void;
+  highlightId?: string | null;
+  onSelect: (id: number) => void;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggle?: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(node.id);
+        }}
+        title={`进入「${node.name}」（共 ${node.totalCount ?? 0} 件）`}
+        className="inline-flex max-w-full items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[10px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)]"
+      >
+        <span className="shrink-0 text-[11px] leading-none">{node.icon || "📁"}</span>
+        <span className="truncate">{node.name}</span>
+      </button>
+      {chips.map((r) => (
+        <AssetChip key={r.id} row={r} onOpen={onOpen} highlight={r.id === highlightId} selectable={selectable} selected={selectedIds?.has(r.id)} onToggle={onToggle} compact />
+      ))}
+    </div>
+  );
+}
+
+function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle, onDropAsset, chipsFor, matchAsset, hasMatch, searching, depth = 0 }: {
   node: AssetLocationNode;
   chips: AssetRow[];
   onSelect: (id: number) => void;
@@ -303,13 +340,62 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
   onToggle?: (id: string) => void;
   /** 资产卡片拖到本卡片上 → 移到这个地点（与左树落点同一套回调） */
   onDropAsset?: (assetId: string, nodeId: number) => void;
+  /** 多级内联：取某节点的芯片 / 检索过滤 / 整枝命中判定（往下递归时原样传递） */
+  chipsFor: (id: number) => AssetRow[];
+  matchAsset: (r: AssetRow) => boolean;
+  hasMatch: (n: AssetLocationNode) => boolean;
+  /** 是否处于检索态：只有检索时才按命中裁枝，平时必须保留「只有子文件夹、没有物品」的中间层 */
+  searching: boolean;
+  depth?: number;
 }) {
-  const hasChildren = (node.children ?? []).length > 0;
+  // 检索时整枝没命中的不出现；平时不过滤——否则空中间层会被误判成「没有子级」
+  const children = searching ? (node.children ?? []).filter((c) => hasMatch(c)) : (node.children ?? []);
+  const hasChildren = children.length > 0;
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // 最深一层：无论文件夹还是物资都退化成最小标签（带图），不再展开
+  if (depth >= MAX_INLINE_DEPTH) {
+    return (
+      <div
+        onDragOver={(e) => {
+          if (!onDropAsset) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          if (!onDropAsset) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const assetId = e.dataTransfer.getData("text/asset-id");
+          if (assetId) onDropAsset(assetId, node.id);
+        }}
+      >
+        <NodeTag
+          node={node}
+          chips={chips}
+          onOpen={onOpen}
+          highlightId={highlightId}
+          onSelect={onSelect}
+          selectable={selectable}
+          selectedIds={selectedIds}
+          onToggle={onToggle}
+        />
+      </div>
+    );
+  }
+
   return (
-    <button
-      type="button"
+    // 用 div[role=button] 而不是 button：子级要内联嵌卡片，而 HTML 不允许 button 嵌套 button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onSelect(node.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(node.id);
+        }
+      }}
       onDragOver={(e) => {
         if (!onDropAsset) return;
         e.preventDefault();
@@ -327,7 +413,8 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
         if (assetId) onDropAsset(assetId, node.id);
       }}
       className={
-        "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] p-3 text-left shadow-sm transition hover:border-[var(--twin-link-deep)] " +
+        "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] text-left shadow-sm transition hover:border-[var(--twin-link-deep)] " +
+        (depth > 0 ? "p-2 " : "p-3 ") +
         (isDragOver
           ? "border-[var(--twin-link-deep)] ring-2 ring-inset ring-[var(--twin-link-deep)]"
           : "border-[var(--twin-hairline-strong)]")
@@ -339,7 +426,7 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
           style={{ background: chips.length > 0 ? categoryColor(chips[0].dynamicValues?.[CATEGORY_KEY]) : "#a1a1a1" }}
         />
         {node.icon && <span className="shrink-0 text-[14px] leading-none">{node.icon}</span>}
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
+        <span className={`min-w-0 flex-1 truncate font-semibold text-[var(--twin-ink)] ${depth > 0 ? "text-[12px]" : "text-[13px]"}`}>{node.name}</span>
         <span className="shrink-0 rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--twin-mute)]">
           共 {node.totalCount ?? 0} 件
         </span>
@@ -352,34 +439,42 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
           ))}
         </div>
       )}
-      {/* 下一级地点：点它继续下钻 */}
+      {/* 子级内联渲染（跨框跨层级拖拽不用逐级下钻）；到 MAX_INLINE_DEPTH 由 SpaceCard 自己退化成标签。
+          本级没有物品的「空中间层」不叠缩进引导线，子级同宽铺开——否则连层级空文件夹会一路缩进去 */}
       {hasChildren && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {(node.children ?? []).slice(0, 6).map((c) => (
-            <div
+        <div
+          className={
+            chips.length === 0
+              ? "mt-2 flex flex-col gap-1.5"
+              : "mt-2 flex flex-col gap-1.5 border-l-2 border-[var(--twin-hairline)] pl-2"
+          }
+        >
+          {children.map((c) => (
+            <SpaceCard
               key={c.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(c.id);
-              }}
-              title={c.name}
-              className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[10px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)]"
-            >
-              <span className="truncate">{c.name}</span>
-              <span className="shrink-0 text-[var(--twin-mute)]">{c.totalCount ?? 0}</span>
-            </div>
+              node={c}
+              chips={chipsFor(c.id).filter(matchAsset)}
+              onSelect={onSelect}
+              onOpen={onOpen}
+              highlightId={highlightId}
+              selectable={selectable}
+              selectedIds={selectedIds}
+              onToggle={onToggle}
+              onDropAsset={onDropAsset}
+              chipsFor={chipsFor}
+              matchAsset={matchAsset}
+              hasMatch={hasMatch}
+              searching={searching}
+              // 只有「本级有物品」才消耗一层嵌套预算：连续多级纯中转的空文件夹可以一路内联到有内容那层
+              depth={depth + (chips.length > 0 ? 1 : 0)}
+            />
           ))}
-          {(node.children ?? []).length > 6 && (
-            <span className="self-center text-[10px] text-[var(--twin-mute)]">
-              +{(node.children ?? []).length - 6}
-            </span>
-          )}
         </div>
       )}
       {chips.length === 0 && !hasChildren && (
         <div className="mt-2 text-[11px] text-[var(--twin-mute)]">暂无资产</div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -526,13 +621,10 @@ export default function AssetVisualView(props: {
   const pathText = useMemo(() => path.map((n) => n.name).join(" / "), [path]);
   const children = useMemo(() => node?.children ?? [], [node]);
 
-  // 选中节点 + 其直接子节点一次拉取；axios 数组会序列化成 a[]=，故传逗号分隔字符串
-  const nodeIdsParam = useMemo(
-    () => (selectedId == null ? undefined : [selectedId, ...children.map((c) => c.id)].join(",")),
-    [selectedId, children]
-  );
+  // 选中节点 + 整棵子树一次拉取：多级内联视图要能看到深层内容，靠 includeDescendants 在服务端展开
+  // （与物品台账「spaceId 含子孙」同口径）
   const { data: assetData, isLoading: assetsLoading, isError: assetsError } = useAssetList(
-    { page: 1, size: 500, locationNodeIds: nodeIdsParam, sortBy: "assetCode", sortDirection: "asc" },
+    { page: 1, size: 1000, locationNodeId: selectedId ?? undefined, includeDescendants: true, sortBy: "assetCode", sortDirection: "asc" },
     selectedId != null
   );
   const rows = useMemo(() => assetData?.rows ?? [], [assetData]);
@@ -576,6 +668,13 @@ export default function AssetVisualView(props: {
   }, [rows]);
   const chipsFor = (id: number | null | undefined): AssetRow[] => (id == null ? [] : byNode.get(id) ?? []);
 
+  /** 该节点或其任一后代是否有命中检索的资产（多级内联时用来整枝裁掉没命中的）。
+   *  必须定义在 visibleChildren 之前：useMemo 的工厂在渲染期立即执行，晚定义会踩 TDZ。 */
+  const nodeHasMatch = (n: AssetLocationNode): boolean => {
+    if ((byNode.get(n.id) ?? []).some(matchAsset)) return true;
+    return (n.children ?? []).some(nodeHasMatch);
+  };
+
   const nodeRows = useMemo(() => chipsFor(node?.id), [byNode, node]);
   const directCount = nodeRows.length;
   const byCategory = useMemo(() => {
@@ -605,15 +704,16 @@ export default function AssetVisualView(props: {
   const q = assetKeyword.trim().toLowerCase();
   const matchAsset = (r: AssetRow) =>
     !q || (r.assetCode ?? "").toLowerCase().includes(q) || (r.assetName ?? "").toLowerCase().includes(q);
-  const visibleChildren = useMemo(() => {
-    if (!q) return children;
-    const hit = (r: AssetRow) => (r.assetCode ?? "").toLowerCase().includes(q) || (r.assetName ?? "").toLowerCase().includes(q);
-    return children.filter((c) => (byNode.get(c.id) ?? []).some(hit));
-  }, [children, q, byNode]);
+  const visibleChildren = useMemo(
+    () => (q ? children.filter(nodeHasMatch) : children),
+    [children, q, byNode]
+  );
   const visibleNodeRows = useMemo(() => {
     if (!q) return nodeRows;
     return nodeRows.filter((r) => (r.assetCode ?? "").toLowerCase().includes(q) || (r.assetName ?? "").toLowerCase().includes(q));
   }, [nodeRows, q]);
+
+  /** 卡片尺寸档位：按当前展示的件数分档 */
 
   /** 卡片尺寸按当前展示的件数分档：东西多的时候自动缩小，免得一屏堆几张大卡片 */
   const cards = cardMetrics(visibleNodeRows.length);
@@ -729,6 +829,13 @@ export default function AssetVisualView(props: {
       else next.add(id);
       return next;
     });
+
+  /** 批量转移可勾选的资产 = 当前地点整棵子树里通过「本地点」检索的资产（含内联渲染的深层） */
+  const selectableIds = useMemo(() => rows.filter(matchAsset).map((r) => r.id), [rows, q]);
+
+  const allVisibleSelected = selectableIds.length > 0 && selectableIds.every((id) => batchIds.has(id));
+
+  const toggleSelectAllVisible = () => setBatchIds(allVisibleSelected ? new Set() : new Set(selectableIds));
 
   const submitBatchMove = async () => {
     const nodeId = batchTargetId;
@@ -951,6 +1058,14 @@ export default function AssetVisualView(props: {
             <span className="rounded-full bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)]">
               已选 {batchIds.size} 台
             </span>
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              disabled={selectableIds.length === 0}
+              className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-link-deep)] disabled:opacity-50"
+            >
+              {allVisibleSelected ? "取消全选" : `全选本地点 ${selectableIds.length} 台`}
+            </button>
             <div className="w-64 shrink-0">
               <AssetLocationTreeSelect
                 value={batchTarget}
@@ -1146,6 +1261,12 @@ export default function AssetVisualView(props: {
                         </div>
                       </div>
                     )}
+                    {/* 子树超过一次拉取上限时明确提示，避免「怎么少了东西」 */}
+                    {rows.length >= 1000 && (
+                      <div className="mb-3 rounded-twin-sm border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+                        本地点子树超过 1000 件，只显示了前 1000 件；进入子文件夹可以看到更完整的。
+                      </div>
+                    )}
                     {/* 本空间资产：大图 / emoji 兜底卡片 */}
                     {visibleNodeRows.length > 0 && (
                       <div className="mb-4">
@@ -1189,6 +1310,10 @@ export default function AssetVisualView(props: {
                             selectedIds={batchIds}
                             onToggle={toggleBatchId}
                             onDropAsset={handleDropAsset}
+                            chipsFor={chipsFor}
+                            matchAsset={matchAsset}
+                            hasMatch={nodeHasMatch}
+                            searching={Boolean(q)}
                           />
                         ))}
                       </div>
