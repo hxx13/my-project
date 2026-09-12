@@ -12,8 +12,10 @@ public interface LearningMaterialMapper {
             SELECT m.id, m.file_id AS fileId, m.title, m.category, m.sort_order AS sortOrder,
                    m.active, m.created_by AS createdBy, m.created_at AS createdAt, m.updated_at AS updatedAt,
                    f.original_name AS originalName, f.size_bytes AS sizeBytes, f.mime_type AS mimeType
-            FROM learning_material m LEFT JOIN admin_file_template f ON f.id = m.file_id
+            FROM learning_material m LEFT JOIN admin_file_template f ON f.id COLLATE utf8mb4_unicode_ci = m.file_id COLLATE utf8mb4_unicode_ci
             """;
+    // COLLATE 写死两边：learning_material 与 admin_file_template 的排序规则不一致时会抛 1267；
+    // 代价是 f.id 上的索引用不上（两张表都小，可接受），全库排序规则统一后可去掉。
 
     @Select(SELECT_WITH_FILE + " ORDER BY m.sort_order ASC, m.id DESC")
     List<LearningMaterial> listAll();

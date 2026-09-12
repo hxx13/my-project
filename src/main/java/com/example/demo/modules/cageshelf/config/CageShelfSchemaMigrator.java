@@ -359,10 +359,11 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
             // 于是同一个人被存成两种 claimant_id：学生之后在这条笼位上认不出自己是认领人，
             // 分笼/转移入口不显示、「我的申请」也查不到。这里把历史的 STAFF_ 行折算过去。
             // 幂等：折算完不再有带绑定的 STAFF_ 行，稳态 0 行。
+            // COLLATE 写死两边：cage_claims 与 user_aro_binding 的排序规则不一致时此句会抛 1267 被吞掉。
             try {
                 int fixed = jdbcTemplate.update(
                         "UPDATE cage_claims c "
-                                + "  JOIN user_aro_binding b ON b.user_id = c.claimant_id "
+                                + "  JOIN user_aro_binding b ON b.user_id COLLATE utf8mb4_unicode_ci = c.claimant_id COLLATE utf8mb4_unicode_ci "
                                 + "   SET c.claimant_id = b.aro_user_id "
                                 + " WHERE c.claimant_id LIKE 'STAFF_%' "
                                 + "   AND b.aro_user_id IS NOT NULL AND b.aro_user_id <> ''");
