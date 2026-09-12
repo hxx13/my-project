@@ -315,7 +315,7 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
               </div>
             ),
           }}
-          className="group flex items-center rounded-twin-sm"
+          className="group relative flex items-center rounded-twin-sm"
           overClassName="bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
           style={{ paddingLeft: depth * 8 }}
         >
@@ -351,10 +351,11 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
                 <span className="h-3.5 w-3.5" />
               )}
             </span>
-            {/* 固定宽度的计数槽：始终占位且数字居中，位数变化（9 → 10）或有无计数都不会推动后面的图标与名称 */}
+            {/* 计数槽：**固定宽度**（不是自适应），所以位数变化（9 → 10）或有无计数都不会推动名称。
+                只是把宽度从 w-6(24px) 收到 18px —— 9px 字号下三位数放得下，省下的给名称 */}
             <span
               className={cn(
-                "w-6 shrink-0 truncate rounded-full text-center text-[9px] leading-[15px]",
+                "w-[18px] shrink-0 truncate rounded-full text-center text-[9px] leading-[15px]",
                 hasCount
                   ? (isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]")
                   : ""
@@ -384,7 +385,12 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
                 aria-label="更多操作"
                 // 不吃拖拽：菜单是 pointerdown 就开的，让它别被行的拖拽把手接走
                 onPointerDown={(e) => e.stopPropagation()}
-                className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+                // 脱离文档流：平时不占宽度，名称能多吃 20px；悬停/聚焦时才浮出来
+                // 代价是悬停时它会盖住名称的尾巴（VS Code 那种做法），所以要自己带底色
+                className={cn(
+                  "absolute right-0.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:text-[var(--twin-ink)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100",
+                  isSelected ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]" : "bg-[var(--twin-canvas-soft)]"
+                )}
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </DropdownMenuTrigger>
