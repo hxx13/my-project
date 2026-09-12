@@ -318,13 +318,10 @@ public class AssetSchemaMigrator implements ApplicationRunner {
 
     /**
      * 用现有「存放地点」文本播种地点树顶层节点，并回填 asset_record.location_node_id。
-     * 幂等：asset_location 非空即跳过；只在首启执行一次，不做全表重写。
+     * 建节点只在首次（表为空）执行；回填每次都跑，只补 location_node_id IS NULL 的行
+     * （导入等路径只写文本、不写指针，靠这里自愈）。
      */
     private void seedAssetLocations() {
-        Integer existing = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM asset_location", Integer.class);
-        if (existing != null && existing > 0) {
-            return;
-        }
         String columnKey = "col_存放地点";
         List<String> keys = jdbcTemplate.queryForList(
                 "SELECT column_key FROM asset_column_def WHERE column_label LIKE '存放地点%' ORDER BY sort_order LIMIT 1",
@@ -332,27 +329,42 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         if (!keys.isEmpty() && keys.get(0) != null && !keys.get(0).isBlank()) {
             columnKey = keys.get(0);
         }
-        int inserted = jdbcTemplate.update(
-                """
-                INSERT INTO asset_location(parent_id, name, sort_order)
-                SELECT NULL, t.v, 0 FROM (
-                    SELECT DISTINCT TRIM(v.column_value) AS v
-                    FROM asset_record_value v
-                    JOIN asset_record a ON a.id = v.asset_id AND a.deleted = 0
-                    WHERE v.column_key = ? AND TRIM(v.column_value) <> ''
-                ) t
-                """,
-                columnKey);
-        int backfilled = jdbcTemplate.update(
+        Integer existing = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM asset_location", Integer.class);
+        int inserted = 0;
+        if (existing == null || existing == 0) {
+            inserted = jdbcTemplate.update(
+                    """
+                    INSERT INTO asset_location(parent_id, name, sort_order)
+                    SELECT NULL, t.v, 0 FROM (
+                        SELECT DISTINCT TRIM(v.column_value) AS v
+                        FROM asset_record_value v
+                        JOIN asset_record a ON a.id = v.asset_id AND a.deleted = 0
+                        WHERE v.column_key = ? AND TRIM(v.column_value) <> ''
+                    ) t
+                    """,
+                    columnKey);
+        }
+        int backfilled = backfillLocationNodes(columnKey);
+        log.info("[asset-schema] 播种地点节点 {} 个，回填资产 {} 条", inserted, backfilled);
+    }
+
+    /**
+     * 文本 → 指针回填，只处理 location_node_id IS NULL 的行（幂等）。
+     * 两句 COLLATE 必须写死：asset_location 与 asset_record_value 的排序规则可能不一致
+     * （列对列比较会抛 1267「Illegal mix of collations」，整段被 safeRun 跳过）。
+     * 统一到 utf8mb4_unicode_ci 而非硬编码建表排序规则，方可同时适配 MySQL 8 / MariaDB。
+     */
+    private int backfillLocationNodes(String columnKey) {
+        return jdbcTemplate.update(
                 """
                 UPDATE asset_record a
                 JOIN asset_record_value v ON v.asset_id = a.id AND v.column_key = ?
-                JOIN asset_location l ON l.parent_id IS NULL AND l.deleted = 0 AND l.name = TRIM(v.column_value)
+                JOIN asset_location l ON l.parent_id IS NULL AND l.deleted = 0
+                     AND l.name COLLATE utf8mb4_unicode_ci = TRIM(v.column_value) COLLATE utf8mb4_unicode_ci
                 SET a.location_node_id = l.id
                 WHERE a.deleted = 0 AND a.location_node_id IS NULL
                 """,
                 columnKey);
-        log.info("[asset-schema] 播种地点节点 {} 个，回填资产 {} 条", inserted, backfilled);
     }
 
     private void safeRun(String name, Runnable task) {
