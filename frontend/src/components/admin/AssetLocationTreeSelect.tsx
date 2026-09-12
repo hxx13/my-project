@@ -74,6 +74,14 @@ export function AssetLocationTreeSelect({
       return next;
     });
 
+  /** 展开后把第一个子节点滚进视野：否则子节点落在面板可视区外，看着像没展开 */
+  const revealChild = (childId?: number) => {
+    if (childId == null) return;
+    requestAnimationFrame(() => {
+      panelRef.current?.querySelector(`[data-node-id="${childId}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+  };
+
   const renderNode = (node: AssetLocationNode, depth: number, prefix: string) => {
     const children = node.children ?? [];
     const hasChildren = children.length > 0;
@@ -85,6 +93,7 @@ export function AssetLocationTreeSelect({
     return (
       <div key={node.id}>
         <div
+          data-node-id={node.id}
           className={cn(
             "flex items-center rounded-md",
             isSelected ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]" : "hover:bg-[var(--app-color-surface-hover)]"
@@ -96,15 +105,19 @@ export function AssetLocationTreeSelect({
             aria-label={isOpen ? "收起" : "展开"}
             onClick={(e) => {
               e.stopPropagation();
-              if (hasChildren) toggleExpand(node.id);
+              if (!hasChildren) return;
+              toggleExpand(node.id);
+              if (!isOpen) revealChild(children[0]?.id);
             }}
             className={cn(
-              "flex h-6 w-5 shrink-0 items-center justify-center text-[var(--app-color-text-tertiary)]",
-              hasChildren ? "hover:text-[var(--app-color-text-primary)]" : "opacity-0"
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--app-color-text-tertiary)]",
+              hasChildren
+                ? "hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
+                : "opacity-0"
             )}
           >
             {hasChildren ? (
-              isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+              isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
             ) : null}
           </button>
           <button

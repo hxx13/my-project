@@ -27,21 +27,31 @@
         <text wx:if="{{keyword}}" class="ltp-clear" bindtap="onClearKeyword">✕</text>
       </view>
 
-      <scroll-view scroll-y class="ltp-list">
+      <scroll-view
+        scroll-y
+        class="ltp-list"
+        scroll-into-view="{{scrollIntoViewId}}"
+        scroll-with-animation
+      >
         <view
           wx:for="{{rows}}"
           wx:key="id"
+          id="ltp-row-{{item.id}}"
           class="ltp-row {{item.selected ? 'ltp-row-selected' : ''}}"
           style="padding-left: {{item.depth * 24}}rpx"
           data-id="{{item.id}}"
           data-path="{{item.path}}"
           bindtap="onPick"
         >
+          <!-- 叶子节点不渲染可点区域：否则那块空白会把整行的「选中」点击吃掉 -->
           <view
+            wx:if="{{item.hasChildren}}"
             class="ltp-chevron"
+            hover-class="ltp-chevron-hover"
             catchtap="onToggleExpand"
             data-id="{{item.id}}"
-          >{{item.hasChildren ? (item.open ? '▾' : '▸') : ''}}</view>
+          >{{item.open ? '▾' : '▸'}}</view>
+          <view wx:else class="ltp-chevron-gap"></view>
           <text wx:if="{{item.icon}}" class="ltp-icon">{{item.icon}}</text>
           <text class="ltp-name">{{item.name}}</text>
         </view>

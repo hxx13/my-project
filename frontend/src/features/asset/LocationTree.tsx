@@ -10,7 +10,7 @@
  * 只负责渲染与交互，接口调用全部由父级回调处理。
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRightLeft,
   ChevronDown,
@@ -85,7 +85,20 @@ export function LocationTree(props: LocationTreeProps) {
   const [moveParentId, setMoveParentId] = useState("");
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const searching = keyword.trim().length > 0;
+
+  /** 展开后把第一个子节点滚进视野：子节点落在可视区外时看着像没展开 */
+  const expandAndReveal = (node: AssetLocationNode) => {
+    const willOpen = !(searching || expanded.has(node.id));
+    onToggle(node.id);
+    if (!willOpen) return;
+    const firstChild = (node.children ?? [])[0];
+    if (!firstChild) return;
+    requestAnimationFrame(() => {
+      rootRef.current?.querySelector(`[data-node-id="${firstChild.id}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+  };
 
   const visible = useMemo(() => filterTree(tree, keyword), [tree, keyword]);
 
@@ -176,6 +189,7 @@ export function LocationTree(props: LocationTreeProps) {
     return (
       <div key={node.id}>
         <div
+          data-node-id={node.id}
           className={cn(
             "group flex items-center rounded-twin-sm",
             isDragOver && "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
@@ -197,7 +211,7 @@ export function LocationTree(props: LocationTreeProps) {
           <button
             type="button"
             onClick={() => {
-              if (hasChildren && !open) onToggle(node.id);
+              if (hasChildren && !open) expandAndReveal(node);
               onSelect(node.id);
             }}
             className={cn(
@@ -213,21 +227,21 @@ export function LocationTree(props: LocationTreeProps) {
               onClick={(e) => {
                 if (!hasChildren) return;
                 e.stopPropagation();
-                onToggle(node.id);
+                expandAndReveal(node);
               }}
               className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--twin-mute)]",
+                "flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--twin-mute)]",
                 hasChildren && "hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)]"
               )}
             >
               {hasChildren ? (
                 open ? (
-                  <ChevronDown className="h-3 w-3" />
+                  <ChevronDown className="h-3.5 w-3.5" />
                 ) : (
-                  <ChevronRight className="h-3 w-3" />
+                  <ChevronRight className="h-3.5 w-3.5" />
                 )
               ) : (
-                <span className="h-3 w-3" />
+                <span className="h-3.5 w-3.5" />
               )}
             </span>
             {node.icon ? (
@@ -313,7 +327,7 @@ export function LocationTree(props: LocationTreeProps) {
   };
 
   return (
-    <div className="space-y-0.5">
+    <div ref={rootRef} className="space-y-0.5">
       <button
         type="button"
         onClick={() => setCreating({ parentId: null, name: "" })}

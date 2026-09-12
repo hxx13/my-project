@@ -34,6 +34,8 @@ Component({
     open: false,
     keyword: '',
     rows: [],
+    /** 展开后要把哪一行滚到顶部（scroll-view 的 scroll-into-view） */
+    scrollIntoViewId: '',
   },
 
   lifetimes: {
@@ -62,7 +64,7 @@ Component({
     },
 
     /** 展平成带 depth 的行（WXML 不能递归，用缩进模拟层级） */
-    rebuild() {
+    rebuild(scrollIntoViewId = '') {
       const k = (this.data.keyword || '').trim().toLowerCase();
       const source = k ? filterKeepSubtrees(this._tree, k) : this._tree;
       const rows = [];
@@ -86,7 +88,7 @@ Component({
         });
       };
       walk(source, 0, '');
-      this.setData({ rows });
+      this.setData({ rows, scrollIntoViewId });
     },
 
     onToggleOpen() {
@@ -112,8 +114,13 @@ Component({
 
     onToggleExpand(e) {
       const id = e.currentTarget.dataset.id;
+      const k = (this.data.keyword || '').trim();
+      // 搜索态本来是全部展开的，点箭头不产生视觉变化，也就没必要滚动
+      const willOpen = !k && !this._expanded[id];
       this._expanded[id] = !this._expanded[id];
-      this.rebuild();
+      // 展开后把该行滚到顶部，子节点自然在下面露出来；收起时清空，
+      // 否则下次展开同一行时值没变、scroll-into-view 不会重新触发
+      this.rebuild(willOpen ? `ltp-row-${id}` : '');
     },
 
     onPick(e) {
