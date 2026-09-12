@@ -13,6 +13,7 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRightLeft,
+  Check,
   ChevronDown,
   ChevronRight,
   File,
@@ -24,6 +25,7 @@ import {
   Plus,
   Smile,
   Trash2,
+  X,
 } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
@@ -38,6 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { collectDescendantIds, filterTree } from "./locationTreeUtils";
+import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 
 export type LocationTreeProps = {
   tree: AssetLocationNode[];
@@ -82,7 +85,8 @@ export function LocationTree(props: LocationTreeProps) {
 
   const [creating, setCreating] = useState<{ parentId: number | null; name: string } | null>(null);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
-  const [moveParentId, setMoveParentId] = useState("");
+  const [moveParentId, setMoveParentId] = useState<number | null>(null);
+  const [moveParentPath, setMoveParentPath] = useState("");
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -102,23 +106,11 @@ export function LocationTree(props: LocationTreeProps) {
 
   const visible = useMemo(() => filterTree(tree, keyword), [tree, keyword]);
 
-  const nodeOptions = useMemo(() => {
-    const out: { value: number; label: string }[] = [];
-    const walk = (nodes: AssetLocationNode[], depth: number) => {
-      for (const n of nodes) {
-        out.push({ value: n.id, label: `${"　".repeat(depth)}${n.name}` });
-        if (n.children?.length) walk(n.children, depth + 1);
-      }
-    };
-    walk(tree, 0);
-    return out;
-  }, [tree]);
-
-  const moveCandidates = useMemo(() => {
-    if (!moveTarget) return [];
-    const excluded = new Set(collectDescendantIds(moveTarget));
-    return nodeOptions.filter((o) => !excluded.has(o.value));
-  }, [moveTarget, nodeOptions]);
+  /** 移动地点的候选要排除自己和自己整棵子树（否则会把节点挪进自己的子树里） */
+  const moveExcludeIds = useMemo(
+    () => new Set(moveTarget ? collectDescendantIds(moveTarget) : []),
+    [moveTarget]
+  );
 
   const submitCreate = () => {
     const current = creating;
@@ -152,14 +144,15 @@ export function LocationTree(props: LocationTreeProps) {
   };
 
   const submitMove = () => {
-    if (!moveTarget || !moveParentId) return;
-    onMove(moveTarget.id, Number(moveParentId));
+    if (!moveTarget || moveParentId == null) return;
+    onMove(moveTarget.id, moveParentId);
     setMoveTarget(null);
-    setMoveParentId("");
+    setMoveParentId(null);
+    setMoveParentPath("");
   };
 
   const renderCreateInput = (depth: number): ReactNode => (
-    <div className="flex items-center" style={{ paddingLeft: depth * 12 + 18 }}>
+    <div className="flex items-center gap-1" style={{ paddingLeft: depth * 8 + 18 }}>
       <input
         autoFocus
         value={creating?.name ?? ""}
@@ -173,9 +166,30 @@ export function LocationTree(props: LocationTreeProps) {
           }
         }}
         onBlur={() => setCreating(null)}
-        placeholder="地点名称，回车确认"
-        className="h-7 w-full rounded-twin-sm border border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] px-2 text-[12px] text-[var(--twin-ink)] outline-none placeholder:text-[var(--twin-mute)]"
+        placeholder="地点名称"
+        className="h-7 min-w-0 flex-1 rounded-twin-sm border border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] px-2 text-[12px] text-[var(--twin-ink)] outline-none placeholder:text-[var(--twin-mute)]"
       />
+      {/* 两个按钮都要 onMouseDown preventDefault：否则按下即失焦、输入框（连同按钮）先被卸载，点击落不到 */}
+      <button
+        type="button"
+        aria-label="确认"
+        title="确认（回车）"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={submitCreate}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-twin-sm border border-[var(--twin-link-deep)] text-[var(--twin-link-deep)] transition hover:bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]"
+      >
+        <Check className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        aria-label="取消"
+        title="取消（Esc）"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setCreating(null)}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-twin-sm border border-[var(--twin-hairline)] text-[var(--twin-mute)] transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)]"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 
@@ -194,7 +208,7 @@ export function LocationTree(props: LocationTreeProps) {
             "group flex items-center rounded-twin-sm",
             isDragOver && "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
           )}
-          style={{ paddingLeft: depth * 12 }}
+          style={{ paddingLeft: depth * 8 }}
           onDragOver={(e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = "move";
@@ -244,6 +258,16 @@ export function LocationTree(props: LocationTreeProps) {
                 <span className="h-3.5 w-3.5" />
               )}
             </span>
+            {node.totalCount != null && node.totalCount > 0 && (
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-1 text-[9px] leading-[15px]",
+                  isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]"
+                )}
+              >
+                {node.totalCount}
+              </span>
+            )}
             {node.icon ? (
               <span className="shrink-0 text-[13px] leading-none">{node.icon}</span>
             ) : hasChildren ? (
@@ -254,16 +278,6 @@ export function LocationTree(props: LocationTreeProps) {
               )
             ) : (
               <File className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />
-            )}
-            {node.totalCount != null && node.totalCount > 0 && (
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-1.5 text-[10px] leading-4",
-                  isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]"
-                )}
-              >
-                {node.totalCount}
-              </span>
             )}
             <span
               className={cn(
@@ -306,7 +320,8 @@ export function LocationTree(props: LocationTreeProps) {
               <DropdownMenuItem
                 onSelect={() => {
                   setMoveTarget(node);
-                  setMoveParentId("");
+                  setMoveParentId(null);
+                  setMoveParentPath("");
                 }}
               >
                 <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
@@ -352,18 +367,17 @@ export function LocationTree(props: LocationTreeProps) {
             >
               <h3 className="text-base font-semibold text-[var(--twin-ink)]">移动地点</h3>
               <p className="mt-2 text-sm text-[var(--twin-body)]">将「{moveTarget.name}」移动到：</p>
-              <select
-                value={moveParentId}
-                onChange={(e) => setMoveParentId(e.target.value)}
-                className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-              >
-                <option value="">请选择新父地点</option>
-                {moveCandidates.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-3">
+                <AssetLocationTreeSelect
+                  value={moveParentPath}
+                  onChange={(path, nodeId) => {
+                    setMoveParentPath(path);
+                    setMoveParentId(nodeId || null);
+                  }}
+                  excludeIds={moveExcludeIds}
+                  placeholder="选择新父地点"
+                />
+              </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button
                   className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]"
@@ -373,7 +387,7 @@ export function LocationTree(props: LocationTreeProps) {
                 </button>
                 <button
                   className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
-                  disabled={!moveParentId}
+                  disabled={moveParentId == null}
                   onClick={submitMove}
                 >
                   确认移动

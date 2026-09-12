@@ -32,6 +32,14 @@ function filterKeepSubtrees(nodes: AssetLocationNode[], keyword: string): AssetL
   return out;
 }
 
+/** 排除指定节点及其整棵子树（移动地点时不能把节点挪进自己的子树） */
+function excludeSubtrees(nodes: AssetLocationNode[], exclude?: Set<number>): AssetLocationNode[] {
+  if (!exclude || exclude.size === 0) return nodes;
+  return nodes
+    .filter((n) => !exclude.has(n.id))
+    .map((n) => ({ ...n, children: excludeSubtrees(n.children ?? [], exclude) }));
+}
+
 export type AssetLocationTreeSelectProps = {
   /** 地点全路径文本；空串表示未选 */
   value: string;
@@ -43,6 +51,8 @@ export type AssetLocationTreeSelectProps = {
   className?: string;
   disabled?: boolean;
   id?: string;
+  /** 这些节点及其子孙不出现（如「移动地点」时排除自己与自己的子树） */
+  excludeIds?: Set<number>;
 };
 
 export function AssetLocationTreeSelect({
@@ -53,6 +63,7 @@ export function AssetLocationTreeSelect({
   className,
   disabled = false,
   id,
+  excludeIds,
 }: AssetLocationTreeSelectProps) {
   const { data: tree = [] } = useAssetLocationTree();
   const [open, setOpen] = useState(false);
@@ -64,7 +75,10 @@ export function AssetLocationTreeSelect({
   const { panelStyle } = useMultiSelectPopover({ triggerRef, panelRef, open, onClose: close });
 
   const searching = keyword.trim().length > 0;
-  const visible = useMemo(() => filterKeepSubtrees(tree, keyword), [tree, keyword]);
+  const visible = useMemo(
+    () => filterKeepSubtrees(excludeSubtrees(tree, excludeIds), keyword),
+    [tree, keyword, excludeIds]
+  );
 
   const toggleExpand = (nodeId: number) =>
     setExpanded((prev) => {

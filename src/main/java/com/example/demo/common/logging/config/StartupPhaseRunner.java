@@ -4,7 +4,7 @@ import com.example.demo.common.logging.annotation.LogCategoryAnno;
 import com.example.demo.common.logging.annotation.StartupPhase;
 import com.example.demo.common.logging.banner.*;
 import com.example.demo.common.logging.model.StartupContext;
-import com.example.demo.common.text.FigletRenderer;
+import com.example.demo.common.text.BlockTitle;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
 import ch.qos.logback.classic.Level;
@@ -30,7 +30,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 
 /**
- * 启动阶段编排器 — 粘性底部状态栏 + 赛博朋克动画。
+ * 启动阶段编排器 — 单行粘性状态栏（原地刷新）+ 阶段完成后逐行落定。
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -48,9 +48,6 @@ public class StartupPhaseRunner implements ApplicationRunner {
 
     @Value("${twin.app.version:2.0}")
     private String appVersion;
-
-    @Value("${twin.banner.style:figlet}")
-    private String bannerStyle;
 
     @Value("${twin.banner.spinner-style:dots}")
     private String spinnerStyleConfig;
@@ -83,135 +80,163 @@ public class StartupPhaseRunner implements ApplicationRunner {
         }
         entries.sort(Comparator.comparingInt(PhaseEntry::order));
 
-        // ── 列对齐常量 ──
-        final int NAME_W = 12;   // 阶段名宽度
-        final int BAR_W  = 27;   // ProgressBar 输出宽度 "[████████████████████] 100%"
+        StartupDashboard dash = new StartupDashboard(System.out, parseSpinnerStyle(spinnerStyleConfig));
+        List<StartupDashboard.Row> dashRows = new ArrayList<>(entries.size());
+        for (PhaseEntry e : entries) dashRows.add(dash.declare(e.name));
 
-        Spinner spinner = new Spinner(parseSpinnerStyle(spinnerStyleConfig));
         boolean anyFailed = false;
+        dash.open();
+        try {
+            for (int i = 0; i < entries.size(); i++) {
+                PhaseEntry entry = entries.get(i);
+                StartupDashboard.Row row = dashRows.get(i);
+                dash.begin(row);
 
-        for (PhaseEntry entry : entries) {
-            AtomicInteger done = new AtomicInteger(0);
-            AtomicInteger total = new AtomicInteger(0);
-            long phaseStart = System.nanoTime();
+                AtomicInteger done = new AtomicInteger(0);
+                AtomicInteger total = new AtomicInteger(0);
+                long phaseStart = System.nanoTime();
 
-            StartupContext phaseCtx = new StartupContext() {
-                private void renderProgress() {
-                    String bar = ProgressBar.render(done.get(), Math.max(total.get(), done.get()), null);
-                    String line = String.format("  %s %-" + NAME_W + "s %s",
-                            spinner.tick(), entry.name, bar);
-                    System.err.print("\r" + line);
+                StartupContext phaseCtx = new StartupContext() {
+                    @Override
+                    public void subtask(String label, Runnable task) {
+                        int started = total.incrementAndGet();
+                        dash.progress(row, done.get(), started, label);
+                        try {
+                            task.run();
+                        } finally {
+                            dash.progress(row, done.incrementAndGet(), total.get(), label);
+                        }
+                    }
+
+                    @Override
+                    public void progress(int current, int totalVal, String detail) {
+                        if (totalVal > 0) total.set(totalVal);
+                        done.set(current);
+                        dash.progress(row, current, Math.max(total.get(), current), detail);
+                    }
+
+                    @Override
+                    public void warn(String message) {
+                        dash.note(CyberColor.AMBER + "  ! " + entry.name + ": " + message + CyberColor.RESET);
+                    }
+                };
+
+                StartupResult result;
+                try {
+                    result = entry.runner.run(phaseCtx);
+                } catch (Exception e) {
+                    result = StartupResult.failed(e.getMessage(), e);
                 }
 
-                @Override
-                public void subtask(String label, Runnable task) {
-                    total.incrementAndGet();
-                    try { task.run(); } finally { done.incrementAndGet(); renderProgress(); }
-                }
-
-                @Override
-                public void progress(int current, int totalVal, String detail) {
-                    done.set(current); total.set(totalVal); renderProgress();
-                }
-
-                @Override
-                public void warn(String message) {
-                    // 换行输出 → 重新渲染进度条
-                    System.err.println();
-                    System.err.println("  ! " + entry.name + ": " + message);
-                    renderProgress();
-                }
-            };
-
-            System.err.print("\r  " + spinner.tick() + " "
-                    + String.format("%-" + NAME_W + "s", entry.name) + " …");
-            StartupResult result;
-            try {
-                result = entry.runner.run(phaseCtx);
-            } catch (Exception e) {
-                result = StartupResult.failed(e.getMessage(), e);
-            }
-
-            double elapsed = (System.nanoTime() - phaseStart) / 1_000_000_000.0;
-            int finalTotal = total.get();
-            if (finalTotal > 0 || elapsed >= 0.05) {
+                double elapsed = (System.nanoTime() - phaseStart) / 1_000_000_000.0;
                 String summary = result.summary() != null ? result.summary() : "";
-                if (elapsed >= 0.05) summary += " (" + String.format("%.1f", elapsed) + "s)";
-                String mark = result.success() ? "✓" : "✗";
-
-                String barPart;
-                if (finalTotal > 0) {
-                    barPart = ProgressBar.render(done.get(), finalTotal, null);
-                } else {
-                    barPart = " ".repeat(BAR_W);  // 占位对齐
+                if (elapsed >= 0.05) {
+                    summary += (summary.isEmpty() ? "" : " ") + String.format("(%.1fs)", elapsed);
                 }
-                String statusLine = String.format("%s %-" + NAME_W + "s %s  %s",
-                        mark, entry.name, barPart, summary);
-                System.out.println("  " + statusLine);
-            } else {
-                System.err.print("\r" + " ".repeat(80) + "\r");
+                if (!result.success()) {
+                    anyFailed = true;
+                    if (result.error() != null) {
+                        String msg = result.error().getMessage() != null
+                                ? result.error().getMessage()
+                                : result.error().getClass().getSimpleName();
+                        summary += (summary.isEmpty() ? "" : " — ") + msg;
+                    }
+                }
+                dash.complete(row, result.success(), summary);
             }
-
-            if (!result.success()) anyFailed = true;
+        } finally {
+            dash.close();
         }
 
         // ── 启动信息面板 ──
         System.out.println();
-        renderStartupPanel(anyFailed);
+        renderStartupPanel(anyFailed, entries.size(), dash);
         System.out.println();
     }
 
     // ── 标题横幅 + 结果框 + Spinner 配置解析 ──
 
-    private void renderStartupPanel(boolean degraded) {
+    private void renderStartupPanel(boolean degraded, int phaseCount, StartupDashboard dash) {
         String javaVer = System.getProperty("java.version", "?");
         String osName  = System.getProperty("os.name", "?");
 
         // 从 JDBC URL 中提取数据库类型
         String dbType = "MySQL";
-        if (dbUrl.contains(":mysql:")) dbType = "MySQL";
-        else if (dbUrl.contains(":mariadb:")) dbType = "MariaDB";
+        if (dbUrl.contains(":mariadb:")) dbType = "MariaDB";
         else if (dbUrl.contains(":postgresql:")) dbType = "PostgreSQL";
         else if (dbUrl.contains(":h2:")) dbType = "H2";
 
-        java.util.List<String> figletLines = FigletRenderer.render("TWIN");
-        boolean hasFiglet = figletLines.size() > 1;
+        List<String> titleLines = BlockTitle.render("TWIN");
+        boolean hasTitle = titleLines.size() > 1;
 
-        // 信息行
         List<String> infoLines = new ArrayList<>();
-        infoLines.add("Java " + javaVer + "  |  " + dbType + "  |  " + osName);
-        infoLines.add(":" + port + "  |  http://localhost:5173  |  Socket.IO :" + socketioPort);
-        infoLines.add("profile: " + profile + "  |  v" + appVersion);
-        String statusLine = (degraded ? "DEGRADED" : "READY")
-                + "  ·  startup complete";
+        infoLines.add("Java " + javaVer + "   ·   " + dbType + "   ·   " + osName);
+        infoLines.add("http://localhost:5173   ·   :" + port + "   ·   Socket.IO :" + socketioPort);
+        infoLines.add("profile: " + profile + "   ·   v" + appVersion);
+
+        String status = (degraded ? "✗ DEGRADED" : "✓ READY")
+                + "   ·   " + phaseCount + " phases   ·   "
+                + String.format("%.1fs", dash.elapsedSeconds());
 
         // 计算面板宽度
-        int w = statusLine.length();
+        int w = status.length();
         for (String l : infoLines) if (l.length() > w) w = l.length();
-        for (String l : figletLines) if (l.length() > w) w = l.length();
-        w = Math.max(w, 44) + 4;
+        for (String l : titleLines) if (l.length() > w) w = l.length();
+        w = Math.max(w, 46) + 4;
         String barH = "═".repeat(w);
         String barS = "─".repeat(w);
 
         // ── 面板 ──
-        System.out.println("  ╔" + barH + "╗");
-
-        if (hasFiglet) {
-            for (String line : figletLines) {
-                System.out.println("  ║  " + center(line, w - 4) + "  ║");
-            }
+        List<String> box = new ArrayList<>();
+        box.add("  " + CyberColor.PURPLE + "╔" + barH + "╗" + CyberColor.RESET);
+        if (hasTitle) {
+            for (String line : titleLines) box.add(edge(w, CyberColor.CYAN + CyberColor.BOLD, center(line, w - 4)));
         } else {
-            System.out.println("  ║  " + center("🧬  TWIN  SYSTEM  v" + appVersion, w - 4) + "  ║");
-            System.out.println("  ║  " + center("Neuro-Synced Infrastructure", w - 4) + "  ║");
+            box.add(edge(w, CyberColor.CYAN + CyberColor.BOLD, center("TWIN SYSTEM  v" + appVersion, w - 4)));
         }
+        box.add(edge(w, CyberColor.MAGENTA, center("NEURO-SYNCED INFRASTRUCTURE", w - 4)));
+        box.add("  " + CyberColor.PURPLE + "╟" + barS + "╢" + CyberColor.RESET);
+        for (String line : infoLines) box.add(edge(w, CyberColor.GRAY, padRightTo(line, w - 4)));
+        box.add("  " + CyberColor.PURPLE + "╟" + barS + "╢" + CyberColor.RESET);
+        box.add(edge(w, degraded ? CyberColor.RED : CyberColor.GREEN, padRightTo(status, w - 4)));
+        box.add("  " + CyberColor.PURPLE + "╚" + barH + "╝" + CyberColor.RESET);
 
-        System.out.println("  ╟" + barS + "╢");
-        for (String line : infoLines) {
-            System.out.println("  ║  " + line + " ".repeat(w - 4 - line.length()) + "  ║");
+        printBox(box, barH, dash.isLive());
+    }
+
+    /** 把内容套进左右边框，边框用暗紫、内容用给定色。 */
+    private static String edge(int w, String color, String content) {
+        return "  " + CyberColor.PURPLE + "║" + CyberColor.RESET
+                + "  " + color + content + CyberColor.RESET + "  "
+                + CyberColor.PURPLE + "║" + CyberColor.RESET;
+    }
+
+    /** 逐帧从中心向两侧铺开顶边框，然后自上而下落位每一行。 */
+    private static void printBox(List<String> box, String barH, boolean live) {
+        if (!live) {
+            for (String line : box) System.out.println(line);
+            return;
         }
-        System.out.println("  ╟" + barS + "╢");
-        System.out.println("  ║  " + statusLine + " ".repeat(w - 4 - statusLine.length()) + "  ║");
-        System.out.println("  ╚" + barH + "╝");
+        final int steps = 10;
+        for (int s = 1; s <= steps; s++) {
+            int len = Math.max(1, barH.length() * s / steps);
+            int start = (barH.length() - len) / 2;
+            System.out.print("\r\033[2K  " + CyberColor.PURPLE
+                    + barH.substring(start, start + len) + CyberColor.RESET);
+            System.out.flush();
+            sleep(20);
+        }
+        System.out.print("\r\033[2K" + box.get(0) + "\n");
+        for (int i = 1; i < box.size(); i++) {
+            System.out.println(box.get(i));
+            System.out.flush();
+            sleep(16);
+        }
+        System.out.flush();
+    }
+
+    private static void sleep(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
     private static String center(String s, int width) {
@@ -234,13 +259,6 @@ public class StartupPhaseRunner implements ApplicationRunner {
     }
 
     private static String padRightTo(String s, int width) {
-        if (s.length() >= width) return s;
-        return s + " ".repeat(width - s.length());
-    }
-
-    /** 补齐到 120 字符宽度，防止 \r 残留旧内容 */
-    private static String padRight(String s) {
-        int width = 120;
         if (s.length() >= width) return s;
         return s + " ".repeat(width - s.length());
     }

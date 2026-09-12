@@ -10,7 +10,7 @@ import java.net.URI;
 
 /**
  * 通用异步服务（保留兼容旧调用方）。
- * 启动阶段报告已迁移至 {@link com.example.demo.common.logging.banner.StartupBanner}。
+ * 启动阶段报告已迁移至 {@link com.example.demo.common.logging.banner.StartupDashboard}。
  */
 @Service
 public class CommonAsyncService {
