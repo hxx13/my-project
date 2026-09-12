@@ -11,12 +11,31 @@
  *     那样会把滑动手势抢走，手指就没法滚列表了。
  */
 
-import { useSensors, useSensor, MouseSensor, TouchSensor, DndContext, DragOverlay, useDroppable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
+import { useSensors, useSensor, MouseSensor, TouchSensor, DndContext, DragOverlay, useDroppable, type DragEndEvent, type DragStartEvent, type Modifier } from "@dnd-kit/core";
 import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { parseDndId, type DndKind } from "./dndIds";
 
 export type DndRef = { kind: DndKind; id: string };
+
+/**
+ * 把跟手浮层锚到**指针中心**上。
+ *
+ * dnd-kit 的默认行为是：浮层 top/left = 被拖元素的左上角，再用 transform 补指针位移。
+ * 于是你抓大卡片的中间时，标签会离光标差着一整个抓取偏移，看着就像「从卡片左上角冒出来」。
+ * 这里把抓取点那段偏移减掉、再减去浮层自身一半的宽高，标签就正好压在指针上。
+ */
+const cursorAnchored: Modifier = ({ transform, activatorEvent, draggingNodeRect, overlayNodeRect }) => {
+  if (!draggingNodeRect || !activatorEvent) return transform;
+  const ev = activatorEvent as MouseEvent & TouchEvent;
+  const point = ev.touches?.[0] ?? ev;
+  if (point?.clientX == null) return transform;
+  const grabX = point.clientX - draggingNodeRect.left;
+  const grabY = point.clientY - draggingNodeRect.top;
+  const dx = overlayNodeRect ? -overlayNodeRect.width / 2 : 0;
+  const dy = overlayNodeRect ? -overlayNodeRect.height / 2 : 0;
+  return { ...transform, x: transform.x + grabX + dx, y: transform.y + grabY + dy };
+};
 
 /**
  * 落点薄壳：铺满父容器的绝对定位层，只负责接掉落 + 画落点高亮。
@@ -89,7 +108,7 @@ export function DndScope({
       {children}
       {/* dropAnimation 关掉：默认的「飞回落点」动画在我的用法下收不了尾，
           会在屏幕上留一枚 opacity:1 / pointer-events:auto 的幽灵浮层，还会吃掉点击 */}
-      <DragOverlay dropAnimation={null}>{preview}</DragOverlay>
+      <DragOverlay dropAnimation={null} modifiers={[cursorAnchored]}>{preview}</DragOverlay>
     </DndContext>
   );
 }
