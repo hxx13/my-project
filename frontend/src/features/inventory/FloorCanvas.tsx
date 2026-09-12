@@ -3,21 +3,24 @@
  *
  * 统一卡片结构：每个空间 = 一张卡片（标题栏 + 物品区 + 子空间区），叶子卡片无子空间区。
  * 下钻：点卡片「放大」为当前焦点，画布渲染该焦点 + 其子卡片；面包屑/返回回退。
- * 拖拽转移：物品 tile 无条件可拖，拖到别的卡片或左树即改归属（不再需要先进编辑模式）。
+ * 拖拽转移：物品 tile 无条件可拖（dnd-kit 指针事件，触摸端同样生效），
+ *           拖到别的卡片或左树即改归属；落点在页面 DndScope.onDrop 里统一解析。
  * 批量转移：开启后点卡片多选（含全选），选目标空间一次性移入。
  * 检索：全局关键字检索物品，命中卡片高亮；点结果定位到所在空间。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent } from "react";
+import { useDraggable, useDndMonitor } from "@dnd-kit/core";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRightLeft, ChevronRight, Search, X } from "lucide-react";
-import { batchTransferItems, fetchItems, transferItem, type Item, type SpaceNode } from "@/api/domains/inventory.api";
+import { batchTransferItems, fetchItems, type Item, type SpaceNode } from "@/api/domains/inventory.api";
 import { categoryColor, groupBySpace, showQty, sumSubtreeItemCount } from "./constants";
 import { cn } from "@/lib/utils";
 import ItemIcon from "./ItemIcon";
 import { SpaceTreeSelect } from "@/components/admin/SpaceTreeSelect";
+import { dndId } from "@/components/tree/dndIds";
+import { DropHalo } from "@/components/tree/DndScope";
 
 const HIGHLIGHT_SHADOW = "0 0 0 2px rgba(245,158,11,0.5), 0 0 14px rgba(245,158,11,0.35)";
 
@@ -29,26 +32,38 @@ function HitBadge({ count }: { count: number }) {
   );
 }
 
+/** 拖拽跟手的那一枚：纯展示，不能挂 useDraggable（在 overlay 里会又变成一个拖源） */
+function ItemDragPreview({ it }: { it: Item }) {
+  return (
+    <div className="flex max-w-[16rem] items-center gap-1 rounded-twin-md border border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] px-1.5 py-1 text-[11px] text-[var(--twin-ink)] shadow-twin-level-3">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor(it.categoryName) }} />
+      <ItemIcon value={it.iconValue} className="text-[15px] leading-none" />
+      <span className="min-w-0 truncate">{it.name}</span>
+    </div>
+  );
+}
+
 /* ────────────────────────────────────────────────────────────
    物品 tile（可拖拽，点击打开详情）
    ──────────────────────────────────────────────────────────── */
-function ItemTile({ it, onOpenItem, onDragStart, selectable, selected, onToggle }: {
+function ItemTile({ it, onOpenItem, selectable, selected, onToggle }: {
   it: Item;
   onOpenItem?: (it: Item) => void;
-  onDragStart?: (e: DragEvent, it: Item) => void;
   /** 批量转移模式：禁用拖拽，点击即选中/取消 */
   selectable?: boolean;
   selected?: boolean;
   onToggle?: (id: number) => void;
 }) {
+  // touch-action:none 是触屏拖拽的必需品：不写的话浏览器把手指移动当成滚动，拖拽根本起不来
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: dndId("item-chip", it.id),
+    disabled: !!selectable,
+    data: { preview: <ItemDragPreview it={it} /> },
+  });
   return (
     <div
-      // 无条件可拖（与资产侧口径一致）：不再需要先进入「转移物品」模式
-      draggable={!selectable}
-      onDragStart={(e) => {
-        if (selectable) return;
-        onDragStart?.(e, it);
-      }}
+      ref={setNodeRef}
+      {...listeners}
       onClick={(e) => {
         e.stopPropagation();
         if (selectable) onToggle?.(it.id);
@@ -56,8 +71,9 @@ function ItemTile({ it, onOpenItem, onDragStart, selectable, selected, onToggle 
       }}
       title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到别的卡片以转移，点击查看详情"}
       className={cn(
-        "flex min-w-0 select-none items-center gap-1 rounded-twin-md border px-1.5 py-1 transition",
+        "flex min-w-0 select-none items-center gap-1 rounded-twin-md border px-1.5 py-1 transition [touch-action:none]",
         selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-40",
         selected
           ? "border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
           : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
@@ -74,21 +90,22 @@ function ItemTile({ it, onOpenItem, onDragStart, selectable, selected, onToggle 
 /* ────────────────────────────────────────────────────────────
    物品大卡片（叶子房间内部展示，含封面缩略图）
    ──────────────────────────────────────────────────────────── */
-function ItemCard({ it, onOpenItem, onDragStart, selectable, selected, onToggle }: {
+function ItemCard({ it, onOpenItem, selectable, selected, onToggle }: {
   it: Item;
   onOpenItem?: (it: Item) => void;
-  onDragStart?: (e: DragEvent, it: Item) => void;
   selectable?: boolean;
   selected?: boolean;
   onToggle?: (id: number) => void;
 }) {
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: dndId("item-chip", it.id),
+    disabled: !!selectable,
+    data: { preview: <ItemDragPreview it={it} /> },
+  });
   return (
     <div
-      draggable={!selectable}
-      onDragStart={(e) => {
-        if (selectable) return;
-        onDragStart?.(e, it);
-      }}
+      ref={setNodeRef}
+      {...listeners}
       onClick={(e) => {
         e.stopPropagation();
         if (selectable) onToggle?.(it.id);
@@ -96,8 +113,9 @@ function ItemCard({ it, onOpenItem, onDragStart, selectable, selected, onToggle 
       }}
       title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到别的卡片以转移，点击查看详情"}
       className={cn(
-        "flex flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition",
+        "flex flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition [touch-action:none]",
         selectable ? "cursor-pointer" : "cursor-grab select-none active:cursor-grabbing",
+        isDragging && "opacity-40",
         selected
           ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
           : "border-[var(--twin-hairline-strong)]"
@@ -124,15 +142,13 @@ function ItemCard({ it, onOpenItem, onDragStart, selectable, selected, onToggle 
 /* ────────────────────────────────────────────────────────────
    空间卡片（统一结构）
    ──────────────────────────────────────────────────────────── */
-function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelect, onOpenItem, onDragStartItem, onDropItem, selectable, selectedIds, onToggle, depth = 0 }: {
+function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelect, onOpenItem, selectable, selectedIds, onToggle, depth = 0 }: {
   node: SpaceNode;
   chipsFor: (spaceId: number) => Item[];
   highlightSpaceIds: Set<number>;
   highlightCounts: Map<number, number>;
   onSelect: (id: number) => void;
   onOpenItem?: (it: Item) => void;
-  onDragStartItem?: (e: DragEvent, it: Item) => void;
-  onDropItem?: (e: DragEvent, spaceId: number) => void;
   /** 批量转移模式：透传到物品 tile */
   selectable?: boolean;
   selectedIds?: Set<number>;
@@ -149,11 +165,13 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
   if (isEmptyIntermediate) {
     return (
       <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDropItem?.(e, node.id); }}
-        className={cn("relative flex flex-col rounded-twin-lg border bg-[var(--twin-canvas)] p-3", highlighted ? "border-[#f59e0b]" : "border-[var(--twin-hairline-strong)]")}
+        className={cn(
+          "relative flex flex-col rounded-twin-lg border bg-[var(--twin-canvas)] p-3",
+          highlighted ? "border-[#f59e0b]" : "border-[var(--twin-hairline-strong)]"
+        )}
         style={highlighted ? { boxShadow: HIGHLIGHT_SHADOW } : undefined}
       >
+        <DropHalo id={dndId("canvas-node", node.id)} />
         {highlighted && <HitBadge count={hitCount} />}
         <div className="flex items-center gap-2">
           <span className="h-3.5 w-1 shrink-0 rounded-full bg-[#a1a1a1]" />
@@ -170,8 +188,6 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
               highlightCounts={highlightCounts}
               onSelect={onSelect}
               onOpenItem={onOpenItem}
-              onDragStartItem={onDragStartItem}
-              onDropItem={onDropItem}
               selectable={selectable}
               selectedIds={selectedIds}
               onToggle={onToggle}
@@ -187,18 +203,13 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
     <button
       type="button"
       onClick={() => onSelect(node.id)}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onDropItem?.(e, node.id);
-      }}
       className={cn(
         "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] p-3 text-left shadow-sm transition hover:border-[var(--twin-link-deep)]",
         highlighted ? "border-[#f59e0b]" : "border-[var(--twin-hairline-strong)]"
       )}
       style={highlighted ? { boxShadow: HIGHLIGHT_SHADOW } : undefined}
     >
+      <DropHalo id={dndId("canvas-node", node.id)} />
       {highlighted && <HitBadge count={hitCount} />}
       {/* 标题栏 */}
       <div className="flex items-center gap-2">
@@ -211,7 +222,7 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
       {items.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
           {items.map((it) => (
-            <ItemTile key={it.id} it={it} onOpenItem={onOpenItem} onDragStart={onDragStartItem} selectable={selectable} selected={selectedIds?.has(it.id)} onToggle={onToggle} />
+            <ItemTile key={it.id} it={it} onOpenItem={onOpenItem} selectable={selectable} selected={selectedIds?.has(it.id)} onToggle={onToggle} />
           ))}
         </div>
       )}
@@ -240,6 +251,12 @@ export default function FloorCanvas(props: {
 
   // 拖拽落点后抑制紧随的 click，避免误触发卡片下钻
   const dropHandledRef = useRef(false);
+  useDndMonitor({
+    onDragEnd: () => {
+      dropHandledRef.current = true;
+      setTimeout(() => { dropHandledRef.current = false; }, 150);
+    },
+  });
 
   // 批量转移（与资产侧同一套交互）：点卡片多选 → 选目标空间 → 一次性移入
   const [batchMode, setBatchMode] = useState(false);
@@ -346,34 +363,6 @@ export default function FloorCanvas(props: {
     if (it.spaceId == null) return;
     setLocateSpaceId(it.spaceId);
     onLocateItem?.(it.spaceId);
-  };
-
-  const handleDragStartItem = (e: DragEvent, it: Item) => {
-    e.dataTransfer.setData("text/plain", String(it.id));
-    e.dataTransfer.effectAllowed = "move";
-  };
-
-  const handleDropItem = async (e: DragEvent, spaceId: number) => {
-    const raw = e.dataTransfer.getData("text/plain");
-    if (!raw) return;
-    const itemId = Number(raw);
-    if (!Number.isFinite(itemId) || itemId <= 0) return;
-    dropHandledRef.current = true;
-    setTimeout(() => { dropHandledRef.current = false; }, 150);
-    // 拖回原空间：不请求、不留痕（与资产侧拖放同口径）
-    const it = items.find((x) => x.id === itemId);
-    if (it && it.spaceId === spaceId) {
-      toast("该物品已在这个空间");
-      return;
-    }
-    try {
-      await transferItem(itemId, { spaceId });
-      toast.success("已转移");
-      qc.invalidateQueries({ queryKey: ["inventory", "items"] });
-      qc.invalidateQueries({ queryKey: ["inventory", "spaces"] });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "转移失败");
-    }
   };
 
   const handleCardSelect = (id: number) => {
@@ -559,7 +548,7 @@ export default function FloorCanvas(props: {
                   </div>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
                     {chipsFor(node.id).map((it) => (
-                      <ItemCard key={it.id} it={it} onOpenItem={onOpenItem} onDragStart={handleDragStartItem} selectable={batchMode} selected={batchIds.has(it.id)} onToggle={toggleBatchId} />
+                      <ItemCard key={it.id} it={it} onOpenItem={onOpenItem} selectable={batchMode} selected={batchIds.has(it.id)} onToggle={toggleBatchId} />
                     ))}
                   </div>
                 </div>
@@ -577,8 +566,6 @@ export default function FloorCanvas(props: {
                       highlightCounts={highlightCounts}
                       onSelect={handleCardSelect}
                       onOpenItem={onOpenItem}
-                      onDragStartItem={handleDragStartItem}
-                      onDropItem={handleDropItem}
                       selectable={batchMode}
                       selectedIds={batchIds}
                       onToggle={toggleBatchId}

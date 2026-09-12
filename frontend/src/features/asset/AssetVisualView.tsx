@@ -48,6 +48,9 @@ import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
 import AssetDetailDrawer from "./AssetDetailDrawer";
 import { collectDescendantIds, findPath } from "./locationTreeUtils";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { dndId } from "@/components/tree/dndIds";
+import { DndScope, DropHalo, type DndRef } from "@/components/tree/DndScope";
 
 const CATEGORY_KEY = "col_资产类别";
 const USER_KEY = "col_使用人";
@@ -126,6 +129,16 @@ function cardMetrics(count: number): CardMetrics {
 /* ────────────────────────────────────────────────────────────
    资产卡片（本空间资产：大图 / emoji 兜底）
    ──────────────────────────────────────────────────────────── */
+/** 拖拽跟手的那一枚：纯展示，不能挂 useDraggable（在 overlay 里会又变成一个拖源） */
+function AssetDragPreview({ row }: { row: AssetRow }) {
+  return (
+    <div className="flex max-w-[16rem] items-center gap-1 rounded-twin-md border border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] px-2 py-1 text-[12px] text-[var(--twin-ink)] shadow-twin-level-3">
+      <span className="shrink-0 text-[15px] leading-none">{iconOf(row)}</span>
+      <span className="min-w-0 truncate">{row.assetName}</span>
+    </div>
+  );
+}
+
 function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle, metrics = DEFAULT_CARD_METRICS }: {
   row: AssetRow;
   onOpen: (r: AssetRow) => void;
@@ -138,20 +151,22 @@ function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle, met
   metrics?: CardMetrics;
 }) {
   const photo = firstPhoto(row);
+  // touch-action:none 是触屏拖拽的必需品：不写的话浏览器把手指移动当成滚动，拖拽起不来
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: dndId("asset-chip", row.id),
+    disabled: !!selectable,
+    data: { preview: <AssetDragPreview row={row} /> },
+  });
   return (
     <div
-      draggable={!selectable}
+      ref={setNodeRef}
+      {...listeners}
       data-asset-id={row.id}
-      onDragStart={(e) => {
-        if (selectable) return;
-        e.dataTransfer.setData("text/asset-id", row.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
       onClick={() => (selectable ? onToggle?.(row.id) : onOpen(row))}
       title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到左侧地点可移动资产"}
-      className={`relative flex select-none flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition hover:border-[var(--twin-link-deep)] ${
+      className={`relative flex select-none flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition [touch-action:none] hover:border-[var(--twin-link-deep)] ${
         selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
-      } ${
+      } ${isDragging ? "opacity-40 " : ""}${
         selected || highlight
           ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
           : "border-[var(--twin-hairline-strong)]"
@@ -251,24 +266,25 @@ function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle, com
   compact?: boolean;
 }) {
   const photo = firstPhoto(row);
+  const { listeners, setNodeRef, isDragging } = useDraggable({
+    id: dndId("asset-chip", row.id),
+    disabled: !!selectable,
+    data: { preview: <AssetDragPreview row={row} /> },
+  });
   return (
     <div
-      draggable={!selectable}
+      ref={setNodeRef}
+      {...listeners}
       data-asset-id={row.id}
-      onDragStart={(e) => {
-        if (selectable) return;
-        e.dataTransfer.setData("text/asset-id", row.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
       onClick={(e) => {
         e.stopPropagation();
         if (selectable) onToggle?.(row.id);
         else onOpen(row);
       }}
       title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到左侧地点可移动资产"}
-      className={`flex min-w-0 select-none items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition hover:border-[var(--twin-link-deep)] ${
+      className={`flex min-w-0 select-none items-center gap-1 rounded-twin-md border bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition [touch-action:none] hover:border-[var(--twin-link-deep)] ${
         selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
-      } ${
+      } ${isDragging ? "opacity-40 " : ""}${
         selected || highlight
           ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
           : "border-[var(--twin-hairline)]"
@@ -329,7 +345,7 @@ function NodeTag({ node, chips, onOpen, highlightId, onSelect, selectable, selec
   );
 }
 
-function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle, onDropAsset, chipsFor, matchAsset, hasMatch, searching, depth = 0 }: {
+function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle, chipsFor, matchAsset, hasMatch, searching, depth = 0 }: {
   node: AssetLocationNode;
   chips: AssetRow[];
   onSelect: (id: number) => void;
@@ -338,8 +354,6 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
   selectable?: boolean;
   selectedIds?: Set<string>;
   onToggle?: (id: string) => void;
-  /** 资产卡片拖到本卡片上 → 移到这个地点（与左树落点同一套回调） */
-  onDropAsset?: (assetId: string, nodeId: number) => void;
   /** 多级内联：取某节点的芯片 / 检索过滤 / 整枝命中判定（往下递归时原样传递） */
   chipsFor: (id: number) => AssetRow[];
   matchAsset: (r: AssetRow) => boolean;
@@ -351,25 +365,12 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
   // 检索时整枝没命中的不出现；平时不过滤——否则空中间层会被误判成「没有子级」
   const children = searching ? (node.children ?? []).filter((c) => hasMatch(c)) : (node.children ?? []);
   const hasChildren = children.length > 0;
-  const [isDragOver, setIsDragOver] = useState(false);
 
   // 最深一层：无论文件夹还是物资都退化成最小标签（带图），不再展开
   if (depth >= MAX_INLINE_DEPTH) {
     return (
-      <div
-        onDragOver={(e) => {
-          if (!onDropAsset) return;
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
-        }}
-        onDrop={(e) => {
-          if (!onDropAsset) return;
-          e.preventDefault();
-          e.stopPropagation();
-          const assetId = e.dataTransfer.getData("text/asset-id");
-          if (assetId) onDropAsset(assetId, node.id);
-        }}
-      >
+      <div className="relative">
+        <DropHalo id={dndId("canvas-node", node.id)} radiusClass="rounded-twin-md" />
         <NodeTag
           node={node}
           chips={chips}
@@ -396,30 +397,12 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
           onSelect(node.id);
         }
       }}
-      onDragOver={(e) => {
-        if (!onDropAsset) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        if (!isDragOver) setIsDragOver(true);
-      }}
-      onDragLeave={() => setIsDragOver(false)}
-      onDrop={(e) => {
-        if (!onDropAsset) return;
-        e.preventDefault();
-        // 别再冒泡到画布，否则会被当成「落到当前节点」
-        e.stopPropagation();
-        setIsDragOver(false);
-        const assetId = e.dataTransfer.getData("text/asset-id");
-        if (assetId) onDropAsset(assetId, node.id);
-      }}
       className={
-        "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] text-left shadow-sm transition hover:border-[var(--twin-link-deep)] " +
-        (depth > 0 ? "p-2 " : "p-3 ") +
-        (isDragOver
-          ? "border-[var(--twin-link-deep)] ring-2 ring-inset ring-[var(--twin-link-deep)]"
-          : "border-[var(--twin-hairline-strong)]")
+        "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] text-left shadow-sm transition hover:border-[var(--twin-link-deep)] " +
+        (depth > 0 ? "p-2 " : "p-3 ")
       }
     >
+      <DropHalo id={dndId("canvas-node", node.id)} />
       <div className="flex items-center gap-2">
         <span
           className="h-3.5 w-1 shrink-0 rounded-full"
@@ -460,7 +443,6 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
               selectable={selectable}
               selectedIds={selectedIds}
               onToggle={onToggle}
-              onDropAsset={onDropAsset}
               chipsFor={chipsFor}
               matchAsset={matchAsset}
               hasMatch={hasMatch}
@@ -863,6 +845,9 @@ export default function AssetVisualView(props: {
     }
   };
 
+  // 画布空白处也是落点 = 当前节点（当前节点不会同时以卡片出现在自己的画布里，id 不撞）
+  const { setNodeRef: setCanvasDropRef } = useDroppable({ id: dndId("canvas-node", node?.id ?? 0), disabled: !node });
+
   const handleDropAsset = async (assetId: string, nodeId: number) => {
     const target = findPath(tree, nodeId).at(-1);
     if (!target) return;
@@ -876,6 +861,33 @@ export default function AssetVisualView(props: {
       await moveMut.mutateAsync({ assetId, nodeId });
     } catch {
       // 已由 hook toast 透出
+    }
+  };
+
+  /** 地点行拖到另一行 → 改父地点；拦掉同父与「拖进自己的子树」 */
+  const handleDropLocationNode = async (nodeId: number, newParentId: number) => {
+    const dragged = findPath(tree, nodeId).at(-1);
+    const target = findPath(tree, newParentId).at(-1);
+    if (!dragged || !target) return;
+    if (dragged.parentId === newParentId) return; // 已经是同一个父节点，不用打扰
+    if (collectDescendantIds(dragged).includes(newParentId)) {
+      toast.error("不能把文件夹移动到它自己的子文件夹里");
+      return;
+    }
+    const ok = await appConfirm(`把「${dragged.name}」移动到「${target.name}」下？`, { title: "移动地点" });
+    if (!ok) return;
+    handleMove(nodeId, newParentId);
+  };
+
+  /** 拖放总入口：dnd-kit 的 id 带类型前缀，这里按「拖的是什么 + 落到哪」分派 */
+  const handleDndDrop = (active: DndRef, over: DndRef) => {
+    const isNode = (k: DndRef["kind"]) => k === "tree-node" || k === "canvas-node";
+    if (active.kind === "asset-chip" && isNode(over.kind)) {
+      void handleDropAsset(active.id, Number(over.id));
+      return;
+    }
+    if (active.kind === "tree-node" && over.kind === "tree-node") {
+      void handleDropLocationNode(Number(active.id), Number(over.id));
     }
   };
 
@@ -912,6 +924,7 @@ export default function AssetVisualView(props: {
   };
 
   return (
+    <DndScope onDrop={handleDndDrop}>
     <div className="flex min-h-0 flex-1 gap-3">
       {/* ════════ 左：地点树 ════════ */}
       <div className="flex w-[236px] shrink-0 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-sm">
@@ -946,7 +959,6 @@ export default function AssetVisualView(props: {
               onMove={handleMove}
               onDelete={handleDelete}
               onSetIcon={handleSetIcon}
-              onDropAsset={handleDropAsset}
             />
           )}
         </div>
@@ -1221,19 +1233,7 @@ export default function AssetVisualView(props: {
           ) : (
             <div className="flex h-full min-h-[420px] flex-col">
               {/* 画布本身也是落点：拖到「本空间」任意位置 = 移到当前节点 */}
-              <div
-                className="min-h-0 flex-1 overflow-auto p-4"
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (!node) return;
-                  const assetId = e.dataTransfer.getData("text/asset-id");
-                  if (assetId) void handleDropAsset(assetId, node.id);
-                }}
-              >
+              <div ref={setCanvasDropRef} className="min-h-0 flex-1 overflow-auto p-4">
                 {assetsLoading ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">加载中…</div>
                 ) : visibleNodeRows.length === 0 && visibleChildren.length === 0 && relocate.scanned.length === 0 ? (
@@ -1306,7 +1306,6 @@ export default function AssetVisualView(props: {
                             selectable={batchMode}
                             selectedIds={batchIds}
                             onToggle={toggleBatchId}
-                            onDropAsset={handleDropAsset}
                             chipsFor={chipsFor}
                             matchAsset={matchAsset}
                             hasMatch={nodeHasMatch}
@@ -1496,5 +1495,6 @@ export default function AssetVisualView(props: {
         </Portal>
       )}
     </div>
+    </DndScope>
   );
 }

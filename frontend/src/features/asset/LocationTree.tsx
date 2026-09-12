@@ -6,21 +6,21 @@
  *   - 计数 = 服务端算好的 totalCount
  *   - 图标 = 自定义 emoji（没设才回落到文件夹/文件）
  *   - 菜单多「改名」「设置图标」
- *   - 落点：资产卡（text/asset-id）+ 文件夹（text/location-node-id）
  *   - 移动：后端不支持移到根，故选择器必选一个有效父节点
  * 只负责渲染与交互，接口调用全部由父级回调处理。
+ *
+ * 行的拖放只接线（draggable/droppable），落点由页面在 DndScope.onDrop 里解析。
  */
 
 import { useState } from "react";
 import { ArrowRightLeft, Pencil, FolderPlus, Smile, Trash2 } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
-import { toast } from "react-hot-toast";
 import { Tree } from "@/components/tree/Tree";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import EmojiPicker from "@/components/ui/EmojiPicker";
 import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
-import { collectDescendantIds, findPath } from "./locationTreeUtils";
+import { collectDescendantIds } from "./locationTreeUtils";
 
 export type LocationTreeProps = {
   tree: AssetLocationNode[];
@@ -42,8 +42,6 @@ export type LocationTreeProps = {
   onDelete: (id: number) => void;
   /** 设置地点图标；不传则不显示「设置图标」入口（父级接 mutation，本组件不直接调接口） */
   onSetIcon?: (id: number, icon: string) => void;
-  /** 资产卡片落到节点上 */
-  onDropAsset: (assetId: string, nodeId: number) => void;
 };
 
 export function LocationTree(props: LocationTreeProps) {
@@ -60,7 +58,6 @@ export function LocationTree(props: LocationTreeProps) {
     onMove,
     onDelete,
     onSetIcon,
-    onDropAsset,
   } = props;
 
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
@@ -82,22 +79,6 @@ export function LocationTree(props: LocationTreeProps) {
     onDelete(node.id);
   };
 
-  /** 拖文件夹到另一个文件夹：拦掉自环和「拖进自己的子树」这两种非法落点 */
-  const handleDropNode = async (nodeId: number, newParentId: number) => {
-    if (nodeId === newParentId) return;
-    const dragged = findPath(tree, nodeId).at(-1);
-    const target = findPath(tree, newParentId).at(-1);
-    if (!dragged || !target) return;
-    if (dragged.parentId === newParentId) return; // 已经是同一个父节点，不用打扰
-    if (collectDescendantIds(dragged).includes(newParentId)) {
-      toast.error("不能把文件夹移动到它自己的子文件夹里");
-      return;
-    }
-    const ok = await appConfirm(`把「${dragged.name}」移动到「${target.name}」下？`, { title: "移动地点" });
-    if (!ok) return;
-    onMove(nodeId, newParentId);
-  };
-
   return (
     <>
       <Tree<AssetLocationNode>
@@ -117,16 +98,8 @@ export function LocationTree(props: LocationTreeProps) {
         onCreate={(parentId, name) => (parentId == null ? onCreateRoot(name) : onCreateChild(parentId, name))}
         emptyText="暂无地点"
         noMatchText="没有匹配的地点"
-        dragPayloadType="text/location-node-id"
-        onDropRow={(nodeId, dt) => {
-          const assetId = dt.getData("text/asset-id");
-          if (assetId) {
-            onDropAsset(assetId, nodeId);
-            return;
-          }
-          const draggedNodeId = dt.getData("text/location-node-id");
-          if (draggedNodeId) void handleDropNode(Number(draggedNodeId), nodeId);
-        }}
+        draggable
+        droppable
         renderMenu={(n, h) => (
           <>
             <DropdownMenuItem onSelect={h.startCreateChild}>
