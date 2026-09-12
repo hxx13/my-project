@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useOverlayDismiss } from "@/lib/useOverlayDismiss";
 
 export type AppAlertOptions = {
   title?: string;
@@ -198,6 +199,8 @@ function AppDialogSurface({
     closePrompt(value);
   };
 
+  const overlayDismiss = useOverlayDismiss(onOverlayClick);
+
   return (
     <div
       className="fixed inset-0 z-[1100] flex items-center justify-center p-4"
@@ -205,9 +208,7 @@ function AppDialogSurface({
       data-modal-layer="true"
       role="presentation"
       onKeyDown={onKeyDown}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onOverlayClick();
-      }}
+      {...overlayDismiss}
     >
       <div
         role="dialog"

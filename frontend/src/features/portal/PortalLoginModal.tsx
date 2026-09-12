@@ -7,6 +7,7 @@ import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import ForgotPasswordPanel from "@/components/shared/ForgotPasswordPanel";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { authStorage } from "@/features/auth/authStorage";
+import { useOverlayDismiss } from "@/lib/useOverlayDismiss";
 
 interface PortalLoginModalProps {
   open: boolean;
@@ -135,9 +136,7 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
     }
   }, [username, password, turnstileToken, turnstileLoadFailed, onClose]);
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose();
-  };
+  const overlayDismiss = useOverlayDismiss(onClose);
 
   const isLoginDisabled = submitting
     || (turnstileEnabled && !!turnstileSiteKey && !turnstileToken && !turnstileLoadFailed);
@@ -147,7 +146,7 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
   return (
     <div
       className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={handleOverlayClick}
+      {...overlayDismiss}
       role="dialog"
       aria-modal="true"
       aria-label="登录"

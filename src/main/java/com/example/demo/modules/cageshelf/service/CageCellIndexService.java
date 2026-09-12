@@ -334,6 +334,10 @@ public class CageCellIndexService {
             Long activeClaimId = activeClaim == null ? null : activeClaim.getId();
             gc.put("activeClaimId", activeClaimId);
             gc.put("claimStatus", activeClaim == null ? null : activeClaim.getClaimStatus());
+            // 认领人账号 id —— 学生状态模式判断「这格是不是我的」要用它，
+            // 只带 activeClaimId（认领记录主键）判不了人。账号 id 有两种形态（STAFF_/ARO 编号），
+            // 由消费方按 personnel.id 折叠后再比，不要直接 equals。
+            gc.put("activeClaimantId", activeClaim == null ? null : activeClaim.getClaimantId());
             // 所属人姓名：**以表单实验员为准**（认领记录可能陈旧或缺失，实验员字段才是占用者真相源），
             // 表单为空时才回退到活跃认领的认领人。
             CageCellDetail detail = detailMap.get(cell.getAnimalCageId());

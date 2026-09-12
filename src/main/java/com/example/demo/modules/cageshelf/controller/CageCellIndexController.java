@@ -38,6 +38,7 @@ public class CageCellIndexController {
     private final com.example.demo.modules.cageshelf.service.CageFormAuditService auditService;
     private final com.example.demo.modules.identity.service.PersonIdentityService personIdentityService;
     private final com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver;
+    private final com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService;
 
     public CageCellIndexController(AuthContextService authContextService,
                                    CageCellIndexService cellIndexService,
@@ -49,7 +50,8 @@ public class CageCellIndexController {
                                    UserDisplayNameService userDisplayNameService,
                                    com.example.demo.modules.cageshelf.service.CageFormAuditService auditService,
                                    com.example.demo.modules.identity.service.PersonIdentityService personIdentityService,
-                                   com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver) {
+                                   com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver,
+                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService) {
         this.authContextService = authContextService;
         this.cellIndexService = cellIndexService;
         this.detailMapper = detailMapper;
@@ -61,6 +63,7 @@ public class CageCellIndexController {
         this.auditService = auditService;
         this.personIdentityService = personIdentityService;
         this.userGroupNameResolver = userGroupNameResolver;
+        this.cageOperationService = cageOperationService;
     }
 
     /**
@@ -118,6 +121,18 @@ public class CageCellIndexController {
         if (user.getStatus() != null && user.getStatus() == 0) return Result.error("账号已禁用");
         if (user.getRole().getLevel() < minRole.getLevel()) return Result.error("无权限访问");
         return null;
+    }
+
+    /**
+     * 学生视角额外给每格打「是否归本人使用」标记 —— 状态模式据此决定哪些格子可标。
+     * 判定本身在 {@code CageOperationService.markMine} 里收口（双 id 安全），
+     * 那里对非学生直接 return，所以这里不必再判一次身份。
+     */
+    @SuppressWarnings("unchecked")
+    private void markMineForStudent(User user, Map<String, Object> result) {
+        if (result.get("grid") instanceof List<?> list) {
+            cageOperationService.markMine(user, (List<Map<String, Object>>) list);
+        }
     }
 
     /** 非 admin 用户对本地 DB 网格按课题组脱敏（复用 StudentCageShelfService.maskGridForUser）。 */
@@ -423,6 +438,7 @@ public class CageCellIndexController {
         Map<String, Object> grid = cellIndexService.getLocalShelfGrid(shelfIndexId);
         if (grid.containsKey("error")) return Result.error(String.valueOf(grid.get("error")));
         applyGroupMask(user, grid);
+        markMineForStudent(user, grid);
         return Result.success(grid);
     }
 
@@ -437,6 +453,7 @@ public class CageCellIndexController {
         Map<String, Object> grid = cellIndexService.getLocalShelfGridByShelveId(shelveId);
         if (grid.containsKey("error")) return Result.error(String.valueOf(grid.get("error")));
         applyGroupMask(user, grid);
+        markMineForStudent(user, grid);
         return Result.success(grid);
     }
 

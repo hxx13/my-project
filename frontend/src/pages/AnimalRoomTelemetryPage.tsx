@@ -1312,7 +1312,8 @@ function WinccStripSwitch({
         startX.current = e.clientX;
       }}
       onPointerMove={(e) => {
-        if (disabled || e.buttons !== 1) return;
+        // buttons 只在鼠标上可靠：触摸/手写笔的 pointermove 各家实现不一致，会把拖动判成松手
+        if (disabled || (e.pointerType === "mouse" && e.buttons !== 1)) return;
         if (Math.abs(e.clientX - startX.current) > 5) dragRef.current = true;
       }}
       onPointerUp={(e) => {

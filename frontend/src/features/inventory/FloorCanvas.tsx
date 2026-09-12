@@ -17,6 +17,7 @@ import { batchTransferItems, fetchItems, transferItem, type Item, type SpaceNode
 import { categoryColor, groupBySpace, showQty, sumSubtreeItemCount } from "./constants";
 import { cn } from "@/lib/utils";
 import ItemIcon from "./ItemIcon";
+import { SpaceTreeSelect } from "@/components/admin/SpaceTreeSelect";
 
 const HIGHLIGHT_SHADOW = "0 0 0 2px rgba(245,158,11,0.5), 0 0 14px rgba(245,158,11,0.35)";
 
@@ -233,10 +234,8 @@ export default function FloorCanvas(props: {
   loadError?: boolean;
   onLocateItem?: (spaceId: number) => void;
   onOpenItem?: (item: Item) => void;
-  /** 空间树（批量转移选目标空间用） */
-  spaces?: SpaceNode[];
 }) {
-  const { node, path, items, selectedId, onSelect, onNavigate, loadError, onLocateItem, onOpenItem, spaces } = props;
+  const { node, path, items, selectedId, onSelect, onNavigate, loadError, onLocateItem, onOpenItem } = props;
   const qc = useQueryClient();
 
   // 拖拽落点后抑制紧随的 click，避免误触发卡片下钻
@@ -246,6 +245,7 @@ export default function FloorCanvas(props: {
   const [batchMode, setBatchMode] = useState(false);
   const [batchIds, setBatchIds] = useState<Set<number>>(new Set());
   const [batchTargetId, setBatchTargetId] = useState<number | null>(null);
+  const [batchTargetPath, setBatchTargetPath] = useState("");
   const [batchSubmitting, setBatchSubmitting] = useState(false);
 
   // 可勾选范围 = 当前地点整棵子树里展示的物品（与画布拉取范围一致）
@@ -292,17 +292,7 @@ export default function FloorCanvas(props: {
     }
   };
 
-  const spaceOptions = useMemo(() => {
-    const out: { id: number; label: string }[] = [];
-    const walk = (nodes: SpaceNode[], depth: number) => {
-      for (const n of nodes) {
-        out.push({ id: n.id, label: `${"　".repeat(depth)}${n.name}` });
-        if (n.children?.length) walk(n.children, depth + 1);
-      }
-    };
-    walk(spaces ?? [], 0);
-    return out;
-  }, [spaces]);
+  const spaceOptionsRemoved = null;
 
   // 检索物品
   const [searchQuery, setSearchQuery] = useState("");
@@ -370,6 +360,12 @@ export default function FloorCanvas(props: {
     if (!Number.isFinite(itemId) || itemId <= 0) return;
     dropHandledRef.current = true;
     setTimeout(() => { dropHandledRef.current = false; }, 150);
+    // 拖回原空间：不请求、不留痕（与资产侧拖放同口径）
+    const it = items.find((x) => x.id === itemId);
+    if (it && it.spaceId === spaceId) {
+      toast("该物品已在这个空间");
+      return;
+    }
     try {
       await transferItem(itemId, { spaceId });
       toast.success("已转移");
@@ -503,16 +499,15 @@ export default function FloorCanvas(props: {
             {allSelected ? "取消全选" : `全选本地点 ${selectableIds.length} 件`}
           </button>
           <div className="w-64 shrink-0">
-            <select
-              value={batchTargetId ?? ""}
-              onChange={(e) => setBatchTargetId(e.target.value ? Number(e.target.value) : null)}
-              className="h-8 w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 text-[11px] text-[var(--twin-ink)]"
-            >
-              <option value="">选择目标空间</option>
-              {spaceOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
-            </select>
+            <SpaceTreeSelect
+              value={batchTargetPath}
+              onChange={(path, nodeId) => {
+                setBatchTargetPath(path);
+                setBatchTargetId(nodeId || null);
+              }}
+              placeholder="选择目标空间"
+              className="!h-8 !text-[11px]"
+            />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <button

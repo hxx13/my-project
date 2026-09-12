@@ -16,6 +16,7 @@ import {
 } from "@/api/domains/inventory.api";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { SpaceTreeSelect } from "@/components/admin/SpaceTreeSelect";
 import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { Portal } from "@/components/Portal";
 import InventoryVisualView from "@/features/inventory/InventoryVisualView";
@@ -84,11 +85,13 @@ export default function AdminInventoryPage() {
 
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [transferTarget, setTransferTarget] = useState<Item | null>(null);
-  const [transferSpaceId, setTransferSpaceId] = useState("");
+  const [transferSpaceId, setTransferSpaceId] = useState<number | null>(null);
+  const [transferSpacePath, setTransferSpacePath] = useState("");
   /** 批量调拨：跨页累积勾选，换筛选条件时清空 */
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
-  const [batchSpaceId, setBatchSpaceId] = useState("");
+  const [batchSpaceId, setBatchSpaceId] = useState<number | null>(null);
+  const [batchSpacePath, setBatchSpacePath] = useState("");
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [selectingAll, setSelectingAll] = useState(false);
   const [retireTarget, setRetireTarget] = useState<Item | null>(null);
@@ -164,18 +167,18 @@ export default function AdminInventoryPage() {
 
   const openTransfer = (item: Item) => {
     setTransferTarget(item);
-    setTransferSpaceId("");
+    setTransferSpaceId(null);
+    setTransferSpacePath("");
   };
 
   const submitTransfer = async () => {
     if (!transferTarget) return;
-    const targetSpaceId = Number(transferSpaceId);
-    if (!Number.isFinite(targetSpaceId) || targetSpaceId <= 0) {
+    if (transferSpaceId == null) {
       toast.error("请选择目标空间");
       return;
     }
     try {
-      await transferItem(transferTarget.id, { spaceId: targetSpaceId });
+      await transferItem(transferTarget.id, { spaceId: transferSpaceId });
       toast.success("调拨成功");
       setTransferTarget(null);
       invalidateItems();
@@ -233,15 +236,14 @@ export default function AdminInventoryPage() {
   };
 
   const submitBatchTransfer = async () => {
-    const targetSpaceId = Number(batchSpaceId);
-    if (!Number.isFinite(targetSpaceId) || targetSpaceId <= 0) {
+    if (batchSpaceId == null) {
       toast.error("请选择目标空间");
       return;
     }
     if (selectedIds.size === 0) return;
     setBatchSubmitting(true);
     try {
-      const res = await batchTransferItems(Array.from(selectedIds), targetSpaceId);
+      const res = await batchTransferItems(Array.from(selectedIds), batchSpaceId);
       const failed = res.failed ?? [];
       if (failed.length === 0) {
         toast.success(`已调拨 ${res.moved} 件`);
@@ -370,7 +372,7 @@ export default function AdminInventoryPage() {
                     {selectingAll ? "选择中…" : `全选全部 ${total} 件`}
                   </button>
                 )}
-                <AdminButton type="button" tone="primary" size="sm" onClick={() => { setBatchSpaceId(""); setBatchOpen(true); }}>
+                <AdminButton type="button" tone="primary" size="sm" onClick={() => { setBatchSpaceId(null); setBatchSpacePath(""); setBatchOpen(true); }}>
                   批量调拨
                 </AdminButton>
                 <AdminButton type="button" tone="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>
@@ -485,16 +487,14 @@ export default function AdminInventoryPage() {
                 </button>
               </div>
               <p className="mb-3 text-sm text-[var(--twin-body)]">将「{transferTarget.name}」调拨到：</p>
-              <select
-                value={transferSpaceId}
-                onChange={(e) => setTransferSpaceId(e.target.value)}
-                className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-              >
-                <option value="">请选择目标空间</option>
-                {spaceOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <SpaceTreeSelect
+                value={transferSpacePath}
+                onChange={(path, nodeId) => {
+                  setTransferSpacePath(path);
+                  setTransferSpaceId(nodeId || null);
+                }}
+                placeholder="请选择目标空间"
+              />
               <div className="mt-4 flex justify-end gap-2">
                 <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setTransferTarget(null)}>
                   取消
@@ -519,16 +519,14 @@ export default function AdminInventoryPage() {
                 </button>
               </div>
               <p className="mb-3 text-sm text-[var(--twin-body)]">所选物品统一调拨到：</p>
-              <select
-                value={batchSpaceId}
-                onChange={(e) => setBatchSpaceId(e.target.value)}
-                className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-              >
-                <option value="">请选择目标空间</option>
-                {spaceOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <SpaceTreeSelect
+                value={batchSpacePath}
+                onChange={(path, nodeId) => {
+                  setBatchSpacePath(path);
+                  setBatchSpaceId(nodeId || null);
+                }}
+                placeholder="选择目标空间"
+              />
               <p className="mt-2 text-xs text-[var(--twin-mute)]">已废弃、或已经在该空间的会被跳过，结果里会逐条列出原因。</p>
               <div className="mt-4 flex justify-end gap-2">
                 <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchOpen(false)}>

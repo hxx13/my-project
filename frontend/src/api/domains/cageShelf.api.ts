@@ -43,6 +43,14 @@ export interface CageShelfCell {
   departmentName?: string;
   projectPiName?: string;
   activeClaimId?: string | number;
+  /** 活跃认领人的账号 id（可能是 STAFF_ 前缀或 ARO 编号，同一人的两种形态；随网格载荷下发） */
+  activeClaimantId?: string | null;
+  /**
+   * 该笼位是否归当前登录者使用。**只对学生视角下发**（后端 markMine 判定：
+   * 活跃认领人是本人 或 表单实验员是本人，双 id 已在服务端折叠）。
+   * 学生状态模式据此决定哪些格子能标；教职工视角该字段不下发。
+   */
+  mine?: boolean;
   occupantName?: string;
   experimenterName?: string;
   cageBoxInfo?: Record<string, unknown>;
@@ -1964,6 +1972,12 @@ export interface CageModeVisibleResult {
   modes: string[];
   isStudent: boolean;
   isSuperAdmin: boolean;
+  /**
+   * 「模式 → 可用动作 code」矩阵。只在后端收窄了动作范围时下发
+   * （当前仅有学生视角的 edit → ["COHABITATION"]）。前端据此过滤渲染动作按钮；
+   * 缺省 = 不限制（教职工走各自的身份判定）。加动作只改后端一处，前端不用动。
+   */
+  modeActions?: Record<string, string[]>;
 }
 
 /** GET /api/cage-mode/visible — 当前用户可见的笼架模式 key 列表（含恒可见的 view） */

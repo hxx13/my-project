@@ -17,6 +17,7 @@ import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.service.CageCellDetailService;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
+import com.example.demo.modules.cageshelf.service.CageOperationService;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.cageshelf.service.OutboxService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -54,6 +55,7 @@ public class CageLocalController {
     private final CageModeVisibilityService modeVisibilityService;
     private final CageClaimMapper claimMapper;
     private final AupRecordMapper aupRecordMapper;
+    private final CageOperationService cageOperationService;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -67,7 +69,8 @@ public class CageLocalController {
                                CageInfoValueService infoValueService,
                                CageModeVisibilityService modeVisibilityService,
                                CageClaimMapper claimMapper,
-                               AupRecordMapper aupRecordMapper) {
+                               AupRecordMapper aupRecordMapper,
+                               CageOperationService cageOperationService) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -81,6 +84,7 @@ public class CageLocalController {
         this.modeVisibilityService = modeVisibilityService;
         this.claimMapper = claimMapper;
         this.aupRecordMapper = aupRecordMapper;
+        this.cageOperationService = cageOperationService;
     }
 
     private String operatorDisplayName(User u) {
@@ -220,10 +224,6 @@ public class CageLocalController {
         User u = resolveUser(req.getHeader("Authorization"));
         Result<?> denied = requireRole(u, RoleEnum.MEMBER);
         if (denied != null) return denied;
-        // 状态模式：仅「能控制状态模式」的身份可改（读 cage_mode.edit 配置，替代旧的 STAFF 粗校验）
-        if (!modeVisibilityService.canUseMode(u, "edit")) {
-            return Result.fail(403, "无状态编辑权限（仅状态模式身份可操作）");
-        }
 
         Long animalCageId = toLong(body.get("animalCageId"));
         String toggle = str(body, "toggle");
@@ -231,7 +231,24 @@ public class CageLocalController {
         if (animalCageId == null || toggle == null)
             return Result.fail(400, "animalCageId 和 toggle 必填");
 
-        // 状态标记以表单(cage_info_value)为唯一真相源：只写表单，不回写固定表、不再 ARO 投递
+        // 学生侧单独一条路：只放行 CageModeVisibilityService.STUDENT_EDIT_ACTIONS，且只能动**本人使用中**的笼位。
+        // 不能复用 canUseMode(u,"edit") —— 它按身份 code 判（CageModeVisibilityService:136），
+        // 而学生也可能带 BREEDER/BREEDING_GROUP_LEADER，那样会把五个动作和别人的笼位一起放开。
+        // 教职工侧维持原判定不动。
+        if (modeVisibilityService.isStudent(u)) {
+            if (!modeVisibilityService.isStudentEditToggle(toggle)) {
+                return Result.fail(403, "学生当前只能标记「合笼」");
+            }
+            if (!cageOperationService.isOccupantSelf(u, animalCageId)) {
+                return Result.fail(403, "只能标记本人使用中的笼位");
+            }
+        } else if (!modeVisibilityService.canUseMode(u, "edit")) {
+            return Result.fail(403, "无状态编辑权限（仅状态模式身份可操作）");
+        }
+
+        // 状态标记以表单(cage_info_value)为唯一真相源：只写表单，不回写固定表、不再 ARO 投递。
+        // 留痕走 setStatus 内部的 CageFormAuditService.logDataChange（operator=当前账号显示名），
+        // 与教职工标记同一张表、同一条读取端（/admin/cage-form/audit/operations），不要另开旁路写入。
         infoValueService.setStatus(animalCageId, toggle, Boolean.TRUE.equals(enable), operatorDisplayName(u));
 
         String action = Boolean.TRUE.equals(enable) ? "标记" : "取消";
@@ -281,12 +298,16 @@ public class CageLocalController {
         boolean wantsStatusPhoto = statusPhotos != null;
 
         if (wantsRecord) {
-            CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
-            boolean isOwner = claim != null && claim.getClaimantId() != null && claim.getClaimantId().equals(u.getId());
+            // 双 id 安全：claimantId 可能是 STAFF_ 前缀也可能是 ARO 编号，同一个人的两种形态
+            boolean isOwner = cageOperationService.isActiveClaimantSelf(u, animalCageId);
             if (!isOwner) return Result.fail(403, "仅笼位占用者本人可编辑实验记录与图片");
         }
-        if (wantsStatusPhoto && !modeVisibilityService.canUseMode(u, "edit")) {
-            return Result.fail(403, "无状态照片编辑权限（仅状态模式身份可操作）");
+        if (wantsStatusPhoto) {
+            // 学生只被下放「合笼」这一个标记动作，状态照片不跟着开 —— 这条必须显式判 isStudent：
+            // 光看 canUseMode 会漏，因为带 BREEDER/LEADER 身份 code 的学生本来就能过那一道。
+            if (modeVisibilityService.isStudent(u) || !modeVisibilityService.canUseMode(u, "edit")) {
+                return Result.fail(403, "无状态照片编辑权限（仅状态模式身份可操作）");
+            }
         }
 
         Map<String, Object> values = new HashMap<>();

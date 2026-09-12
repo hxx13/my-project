@@ -56,6 +56,7 @@ public class StudentCageShelfService {
     private final CageCellIndexService cageCellIndexService;
     private final PersonScopeService personScopeService;
     private final CageShelfLocalAggCache localAggCache;
+    private final com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService;
 
     public StudentCageShelfService(CageShelfService cageShelfService,
                                    AroService aroService,
@@ -67,7 +68,8 @@ public class StudentCageShelfService {
                                    StudentCageShelfPinMapper cageShelfPinMapper,
                                    CageCellIndexService cageCellIndexService,
                                    PersonScopeService personScopeService,
-                                   CageShelfLocalAggCache localAggCache) {
+                                   CageShelfLocalAggCache localAggCache,
+                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService) {
         this.cageShelfService = cageShelfService;
         this.aroService = aroService;
         this.aroPersonnelMapper = aroPersonnelMapper;
@@ -79,6 +81,7 @@ public class StudentCageShelfService {
         this.cageCellIndexService = cageCellIndexService;
         this.personScopeService = personScopeService;
         this.localAggCache = localAggCache;
+        this.cageOperationService = cageOperationService;
     }
 
     // ---- filter options ----
@@ -243,6 +246,9 @@ public class StudentCageShelfService {
         Map<String, Object> out = new LinkedHashMap<>(adminDetail);
         out.put("grid", filteredGrid);
         out.put("filledCells", filled);
+        // 学生视角额外给每格打「是否归本人使用」标记（状态模式据此决定哪些格子可标）；
+        // markMine 内部对非学生直接 return，教职工这条路径不受影响。
+        cageOperationService.markMine(user, filteredGrid);
         out.remove("fromCache");
         out.remove("cachedAt");
         return out;

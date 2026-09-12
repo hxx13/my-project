@@ -134,20 +134,22 @@ var PENDING_OP_REASON = '该笼位有待审的分笼/转移请求，请先等它
  * 分配模式笼位可选性判定。
  * 与 Web/H5 的 `features/cage-shelf/constants.ts → allocSelectVerdict` 是同一套规则，
  * 小程序是独立技术栈无法复用，改其中一处必须同步改另一处。
- * hasPendingOp=true（该笼位有未决分笼/转移）优先判不可选：待审只是意向，笼位自身状态未变，拦不住。
+ * 第二参是**中间态拦截理由**（不是布尔）：待审分笼/转移和「已被订单预定」是两种不同的中间态，
+ * 原先共用一个布尔只能吐同一句错话，现在由调用方给准确文案。
  */
-function allocVerdict(cageTypeCode, hasPendingOp) {
-  if (hasPendingOp) return { ok: false, reason: PENDING_OP_REASON };
+function allocVerdict(cageTypeCode, busyReason) {
+  if (busyReason) return { ok: false, reason: busyReason };
   var ct = Number(cageTypeCode);
   if (ct === 1) return { ok: true, kind: 'allocate' };
   if (ct === 2) return { ok: true, kind: 'cancel' };
   if (ct === 3 || ct === 4) {
-    return { ok: false, reason: '该笼位为「' + CAGE_TYPE_LABEL[ct] + '」，需先归档' };
+    return { ok: false, reason: '该笼位为「' + CAGE_TYPE_LABEL[ct] + '」，需先归档当前笼位后才能分配' };
   }
   return { ok: false, reason: '该笼位状态未知，无法分配' };
 }
 
-var ALLOC_MIXED_KIND_HINT = '不能混选「等待分配」与「空笼位」，请分两批操作';
+// 文案照抄共享常量 constants.ts:228，不做改写
+var ALLOC_MIXED_KIND_HINT = '不能同时勾选「等待分配」与「空笼位」笼位，请分两批操作';
 var CAGE_TYPE_DOT_COLOR = { 1: "#f59e0b", 2: "#10b981", 3: "#f43f5e", 4: "#3b82f6" };
 var CAGE_TYPE_ABBR = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
@@ -221,6 +223,17 @@ function hasActiveClaim(status) {
 }
 
 /** 依视角生成模式选择器选项；命中后端下发的 visibleModes 才保留（label 用本地中文映射，key 不变） */
+/**
+ * 状态模式下可渲染的动作按钮。
+ * allowed 为后端下发的 action code 列表（modeActions.edit）；空/未下发 = 不限制，返回全量（教职工路径）。
+ */
+function filterEditActions(allowed) {
+  if (!allowed || !allowed.length) return cageStatus.CAGE_STATUS_ACTIONS;
+  var set = {};
+  for (var i = 0; i < allowed.length; i++) set[String(allowed[i])] = true;
+  return cageStatus.CAGE_STATUS_ACTIONS.filter(function(a) { return !!set[a.action]; });
+}
+
 function buildModeOptions(isStaffView, visibleModes) {
   var base = isStaffView
     ? [
@@ -237,7 +250,10 @@ function buildModeOptions(isStaffView, visibleModes) {
     : [
         { key: 'view', label: '查看' },
         { key: 'studentClaim', label: '申请预约' },
-        { key: 'confirm', label: '确认' }
+        { key: 'confirm', label: '确认' },
+        // 学生侧状态模式：后端只放行部分动作（当前仅合笼），动作清单由 /api/cage-mode/visible
+        // 的 modeActions.edit 下发，前端据此过滤渲染，不要在这里硬编码动作名。
+        { key: 'edit', label: '状态' }
       ];
   if (visibleModes && visibleModes.length > 0) {
     var byKey = {};
@@ -680,6 +696,8 @@ Page({
 
     // 模式系统（三端对齐：pageMode 单一真相源）
     pageMode: 'view',             // view|allocate|edit|confirm|archive|reserve|record|booking|studentClaim
+    /** 连续扫码：扫一台加入选中后自动重开扫码机（分配/状态/认领/预定四个模式） */
+    scanContinuous: true,
     /** 当前模式的呼吸光晕色（由 switchMode 按 MODE_COLOR 同步） */
     modeColor: '',
     isStaffView: false,
@@ -775,11 +793,16 @@ Page({
     scanCache: {},               // { "x:y": { cell, code, actions: {DIVIDE, SPECIAL_BREEDING, HEALTH_CHECK} } }
     scanCacheSize: 0,
     scanTotalActions: 0,
-    cachePreviews: [],
+    /** 待选区（缓冲区）统一视图模型：{ key, label, meta }，选中类模式取自 selectedCells，状态模式取自 scanCache */
+    stagedItems: [],
     lastScannedKey: '',
     lastScannedEntry: Object.assign({ position: '', code: '' }, cageStatus.newActionStateKeys()),
     // 状态动作表（供 wxml 遍历渲染，五个动作单一来源）
     CAGE_STATUS_ACTIONS: cageStatus.CAGE_STATUS_ACTIONS,
+    /** 状态模式里**可渲染**的动作按钮：默认全量（教职工），学生视角按后端 modeActions.edit 过滤 */
+    editActionOptions: cageStatus.CAGE_STATUS_ACTIONS,
+    /** 后端下发的「模式 → 可用动作 code」矩阵（学生视角才有） */
+    modeActions: {},
     actionSubmitting: false,
     editActionCell: null,       // 编辑模式弹出的 cell
     editActionPopup: false,     // 弹窗显隐
@@ -903,9 +926,12 @@ Page({
       // 否则不过滤——镜像/高权限场景后端下发的是教职工模式，取交集会把「申请预约」滤掉。
       var backendIsStudent = !!(up.ok && up.data && up.data.isStudent);
       if (modes.length > 0 && (self.data.isStaffView || backendIsStudent)) {
+        var modeActions = (up.ok && up.data && up.data.modeActions) || {};
         self.setData({
           visibleModes: modes,
-          modeOptions: buildModeOptions(self.data.isStaffView, modes)
+          modeActions: modeActions,
+          modeOptions: buildModeOptions(self.data.isStaffView, modes),
+          editActionOptions: filterEditActions(modeActions.edit)
         });
       }
     }).catch(function() { /* 保留默认硬编码 modeOptions */ });
@@ -1501,10 +1527,78 @@ Page({
 
   /** 按当前模式分派扫码结果 */
   handleResidentScan: function(code) {
-    if (this.data.pageMode === 'edit') { this.handleEditScan(code); return; }
-    if (this.data.pageMode === 'confirm') { this.handleConfirmScan(code); return; }
-    if (this.data.pageMode === 'archive') { this.handleArchiveScan(code); return; }
+    var mode = this.data.pageMode;
+    if (mode === 'edit') { this.handleEditScan(code); this._maybeRescan(); return; }
+    if (mode === 'confirm') { this.handleConfirmScan(code); return; }
+    if (mode === 'archive') { this.handleArchiveScan(code); return; }
+    // 选择类模式：扫码 = 把该笼位加入选中（走各模式自己的校验），不再退化成「仅定位」
+    if (mode === 'allocate' || mode === 'reserve' || mode === 'studentClaim') {
+      this.handleSelectScan(code);
+      this._maybeRescan();
+      return;
+    }
     this.handleViewScan(code);
+  },
+
+  /** 连续扫码开关 */
+  onToggleScanContinuous: function() {
+    this.setData({ scanContinuous: !this.data.scanContinuous });
+  },
+
+  /** 只有这四个模式 + 开关打开时才自动重开；回调里再校验一次模式，换模式后不会误触发 */
+  _maybeRescan: function() {
+    if (!this.data.scanContinuous) return;
+    var self = this;
+    var inScope = function(m) {
+      return m === 'allocate' || m === 'reserve' || m === 'studentClaim' || m === 'edit';
+    };
+    if (!inScope(this.data.pageMode)) return;
+    if (this._rescanTimer) clearTimeout(this._rescanTimer);
+    this._rescanTimer = setTimeout(function() {
+      if (!self.data.scanContinuous || !inScope(self.data.pageMode)) return;
+      self.onScanLock();
+    }, 400);
+  },
+
+  /** 码 → 本架网格单元；坐标取不到或笼架对不上返回 null（两种编码形态与 _locateLookup 一致） */
+  _cellFromLookup: function(r) {
+    var pos = null;
+    var sid = '';
+    if (r.type === 'CAGE_CELL' && r.cageCell) {
+      pos = { x: r.cageCell.positionX, y: r.cageCell.positionY };
+      sid = String(r.cageCell.shelveId || '');
+    } else if (r.type === 'LEGACY_CAGE_BOX') {
+      if (r.positionX != null && r.positionY != null) pos = { x: r.positionX, y: r.positionY };
+      sid = String(r.shelveId || '');
+    }
+    if (!pos) return null;
+    var meta = this.data.gridMeta || {};
+    var curSid = String(meta.shelveId || (this.data.selectedShelf && this.data.selectedShelf.shelveId) || '');
+    if (sid && curSid && sid !== curSid) return null;
+    var grid = this.data.grid || [];
+    for (var i = 0; i < grid.length; i++) {
+      if (Number(grid[i].x) === Number(pos.x) && Number(grid[i].y) === Number(pos.y)) return grid[i];
+    }
+    return null;
+  },
+
+  /** 扫码入选中：复用各模式已有的校验函数，避免绕过闸门把不合格笼位塞进来 */
+  handleSelectScan: function(code) {
+    var self = this;
+    assetApi.lookupCode(code).then(function(r) {
+      if (r.type === 'NOT_FOUND') { wx.showToast({ title: '未找到对应笼位', icon: 'none' }); return; }
+      if (r.type === 'ASSET') { wx.showToast({ title: '该编码为资产编号，非笼位', icon: 'none' }); return; }
+      var cell = self._cellFromLookup(r);
+      if (!cell) { wx.showToast({ title: '该笼位不在当前笼架', icon: 'none' }); return; }
+      var key = cell.x + ':' + cell.y;
+      if ((self.data.selectedCells || {})[key]) { wx.showToast({ title: '该笼位已选中', icon: 'none' }); return; }
+      var mode = self.data.pageMode;
+      if (mode === 'allocate') self.toggleAllocateCell(cell);
+      else if (mode === 'reserve') self.toggleReserveCell(cell);
+      else if (mode === 'studentClaim') self.toggleStudentClaimCell(cell);
+    }).catch(function() {
+      wx.showToast({ title: '扫码查询失败', icon: 'none' });
+    });
   },
 
   /** 查看模式：扫码定位笼位 */
@@ -1720,7 +1814,7 @@ Page({
     var sel = this.data.selectedCells || {};
     // 已选中的再点一次是取消勾选，不过闸门
     if (!sel[key]) {
-      var v = allocVerdict(cageTypeOf(cell), !!this._pendingOpOf(cell));
+      var v = allocVerdict(cageTypeOf(cell), this._busyReasonOf(cell));
       if (!v.ok) { wx.showToast({ title: v.reason, icon: 'none' }); return; }
       var batch = this.computeAllocBatchKind();
       if (batch && v.kind !== batch) { wx.showToast({ title: ALLOC_MIXED_KIND_HINT, icon: 'none' }); return; }
@@ -1734,31 +1828,40 @@ Page({
     var sel = this.data.selectedCells || {};
     for (var i = 0; i < grid.length; i++) {
       if (!sel[grid[i].x + ':' + grid[i].y]) continue;
-      var v = allocVerdict(cageTypeOf(grid[i]), !!this._pendingOpOf(grid[i]));
+      var v = allocVerdict(cageTypeOf(grid[i]), this._busyReasonOf(grid[i]));
       if (v.ok) return v.kind;
     }
     return '';
   },
 
-  /** 认领模式（教职工）：type2（已预约空笼盒）且无活跃认领可选 */
+  /**
+   * 预定模式（教职工）：与 H5 `handleReserveToggle`(MobileCageShelfTab.tsx:1870-1879) 同口径 ——
+   * 只判 ct===2 与活跃认领，**不判中间态**（顺序也是先 ct 后 claimStatus，保证提示语一致）。
+   */
   toggleReserveCell: function(cell) {
-    if (this._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
     if (cageTypeOf(cell) !== 2) { wx.showToast({ title: '只能选择「已预约空笼盒」状态的笼位', icon: 'none' }); return; }
     if (cell.claimStatus && hasActiveClaim(cell.claimStatus)) { wx.showToast({ title: '该笼位已有预定，不可重复选择', icon: 'none' }); return; }
     this.toggleCellInSelection(cell);
   },
 
-  /** 学生申请模式：仅在笼位池内可选 */
+  /**
+   * 学生申请模式：后端下发的池是唯一依据，前端不重算。
+   * 服务端 claim() 自己会做 reservationReason + 在审 + 课题组归属 + 划分拦截
+   * （CageClaimService.claim:187 / assertClaimableByUser:254），前端再叠一层中间态只会挡住合法申请。
+   */
   toggleStudentClaimCell: function(cell) {
-    if (this._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
     var cid = String(cell.id || cell.animalCageId || '');
-    if (!this.data.poolByCageId[cid]) { wx.showToast({ title: '该笼位不在你的可申请范围内', icon: 'none' }); return; }
+    if (!this.data.poolByCageId[cid]) { wx.showToast({ title: '该笼位不在你的可申请范围内，无法申请。', icon: 'none' }); return; }
     this.toggleCellInSelection(cell);
   },
 
-  /** 划分模式（课题组管家）：不限笼位状态，但 type1（等待分配）除外 —— 未归属课题组，是底层约束 */
+  /**
+   * 划分模式（课题组管家）：不限笼位状态，但 type1（等待分配）除外 —— 未归属课题组，是底层约束。
+   * 中间态不拦：服务端 /cage-division/save 是纯 delete+insert 零校验，
+   * Web 的 eligible 也只有 cageTypeCode !== 1（AdminCageShelfPage.tsx:1033），
+   * 划分后的后果由下游各自判（认领走 divisionService.isBlocked、状态标记走 busyReason）。
+   */
   toggleDivisionCell: function(cell) {
-    if (this._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
     if (cageTypeOf(cell) === 1) { wx.showToast({ title: '待分配状态的笼位未归属课题组，不能划分', icon: 'none' }); return; }
     this.toggleCellInSelection(cell);
   },
@@ -1768,13 +1871,40 @@ Page({
     var grid = this.data.grid || [];
     var sel = this.data.selectedCells || {};
     var patch = {};
+    var list = [];
     for (var i = 0; i < grid.length; i++) {
       var ck = grid[i].x + ':' + grid[i].y;
-      patch['grid[' + i + ']._selected'] = !!sel[ck];
+      var on = !!sel[ck];
+      patch['grid[' + i + ']._selected'] = on;
+      if (!on) continue;
+      var meta = [];
+      if (grid[i]._cageTypeAbbr) meta.push(grid[i]._cageTypeAbbr);
+      if (grid[i]._experimenterShort) meta.push(grid[i]._experimenterShort);
+      else if (grid[i]._piShort) meta.push(grid[i]._piShort);
+      list.push({
+        key: ck,
+        label: grid[i]._displayPosition || grid[i].position || ck,
+        meta: meta.join(' · ')
+      });
     }
+    patch.stagedItems = list;
     // 分配模式操作条按批次类型二选一，需把结果落到 data 供 wxml 判断
     patch.allocBatchKind = this.computeAllocBatchKind();
     this.setData(patch);
+  },
+
+  /** 待选区里单独移除一项：状态模式撤单格缓存，选中类模式移出选中集 */
+  onRemoveSelected: function(e) {
+    var key = e.currentTarget.dataset.key;
+    if (!key) return;
+    if (this.data.pageMode === 'edit') { this.onRemoveCacheEntry(e); return; }
+    var sel = this.data.selectedCells || {};
+    if (!sel[key]) return;
+    var newSel = {};
+    for (var k in sel) {
+      if (Object.prototype.hasOwnProperty.call(sel, k) && k !== key) newSel[k] = sel[k];
+    }
+    this.setData({ selectedCells: newSel, selectedCount: Object.keys(newSel).length }, this.applySelectionToGrid.bind(this));
   },
 
   /* ------------------------------------------------------------------ */
@@ -2539,6 +2669,20 @@ Page({
     return (cid && (this.data.cageOpMarkers || {})[cid]) || null;
   },
 
+  /**
+   * 中间态拦截理由，空串 = 可操作。
+   * cageOpMarkers 是**一个** map 装了两种语义的标记：待审分笼/转移(kind divide|transfer)
+   * 与「已被订单预定」(kind reserve)。原先两处共用 PENDING_OP_REASON 一句话，
+   * 于是被订单预定的笼位会被告知「有待审的分笼/转移请求」。
+   */
+  _busyReasonOf: function(cell) {
+    var m = this._pendingOpOf(cell);
+    if (!m) return '';
+    return m.kind === 'reserve'
+      ? ((m.label || '该笼位已被订单预定') + '，请等它结束')
+      : PENDING_OP_REASON;
+  },
+
   /** 拉待审分笼/转移 + 已被订单预定 两类标记，摊平成 animalCageId → 标记（同一请求源与目标同色） */
   loadCageOpMarkers: function() {
     var self = this;
@@ -2597,25 +2741,47 @@ Page({
   handleStudentClaim: function() {
     var self = this;
     var sel = self.data.selectedCells || {};
-    var keys = Object.keys(sel);
-    if (keys.length === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
-    var animalCageId = sel[keys[0]];
+    var ids = Object.keys(sel).map(function(k) { return sel[k]; }).filter(function(v) { return !!v; });
+    if (ids.length === 0) { wx.showToast({ title: '请先选择笼位', icon: 'none' }); return; }
     var meta = self.data.gridMeta || {};
     var shelveId = String(meta.shelveId || (self.data.selectedShelf && self.data.selectedShelf.shelveId) || '');
     var sid = shelfIndexIdMap[shelveId];
-    if (!animalCageId || sid == null || sid === '') { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
+    if (sid == null || sid === '') { wx.showToast({ title: '无法获取笼位ID', icon: 'none' }); return; }
     self.setData({ claimSubmitting: true });
-    springAuth.springRequest({ url: '/api/student/cage-claims', method: 'POST', data: { animalCageId: animalCageId, shelfIndexId: sid } }).then(function(res) {
-      var p = unwrap(res);
-      if (!p.ok) { self.setData({ claimSubmitting: false }); wx.showToast({ title: p.message || '申请失败', icon: 'none' }); return; }
-      var d = p.data || {};
-      self.setData({ claimSubmitting: false, selectedCells: {}, selectedCount: 0 });
-      wx.showToast({ title: d.needApproval ? '已提交申请，待审批' : '申请成功', icon: 'success' });
-      self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
-    }).catch(function(e) {
-      self.setData({ claimSubmitting: false });
-      wx.showToast({ title: (e && e.message) || '申请失败', icon: 'none' });
-    });
+    // 后端只有单笼位端点，逐个提交；此前只提交 sel[keys[0]]，其余被静默丢弃
+    var okCount = 0;
+    var failed = [];
+    var needApproval = false;
+    var step = function(i) {
+      if (i >= ids.length) {
+        self.setData({ claimSubmitting: false, selectedCells: {}, selectedCount: 0 }, self.applySelectionToGrid.bind(self));
+        if (failed.length === 0) {
+          wx.showToast({ title: needApproval ? '已提交申请，待审批' : '申请成功', icon: 'success' });
+        } else if (okCount > 0) {
+          wx.showToast({ title: '成功 ' + okCount + ' 个，失败 ' + failed.length + ' 个：' + failed[0], icon: 'none' });
+        } else {
+          wx.showToast({ title: failed[0] || '申请失败', icon: 'none' });
+        }
+        self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+        return;
+      }
+      springAuth.springRequest({ url: '/api/student/cage-claims', method: 'POST', data: { animalCageId: ids[i], shelfIndexId: sid } })
+        .then(function(res) {
+          var p = unwrap(res);
+          if (p.ok) {
+            okCount++;
+            if (p.data && p.data.needApproval) needApproval = true;
+          } else {
+            failed.push(p.message || '申请失败');
+          }
+          step(i + 1);
+        })
+        .catch(function(e) {
+          failed.push((e && e.message) || '申请失败');
+          step(i + 1);
+        });
+    };
+    step(0);
   },
 
   onOpenMyClaims: function() {
@@ -2770,6 +2936,16 @@ Page({
 
     // 编辑模式：弹出操作选择窗口而非详情
     if (mode === 'edit') {
+      // 与 H5 `handleCellClick`(MobileCageShelfTab.tsx:1961-1966) 同口径：只有饲养中/异常笼位可标记。
+      // 此前这里没有任何准入判定，无笼盒的格（ct1/2）也能打开弹窗并被授予状态。
+      var markCt = cageTypeOf(cell);
+      if (markCt !== 3 && markCt !== 4) { wx.showToast({ title: '该笼位不可标记状态', icon: 'none' }); return; }
+      // 学生视角再叠一层归属：只能标本人使用中的笼位。mine 由后端 markMine 按
+      // 「认领人是本人 或 表单实验员是本人」判定（双 id 已在服务端折叠），前端不自己比姓名。
+      if (!self.data.isStaffView && !cell.mine) {
+        wx.showToast({ title: '只能标记本人使用中的笼位', icon: 'none' });
+        return;
+      }
       var ck = cell.x + ':' + cell.y;
       var cacheEntry = (self.data.scanCache || {})[ck];
       // 优先从 scanCache 读取，否则空态（表单值到达后再用表单覆盖）
@@ -3379,7 +3555,7 @@ _closeDetail: function() {
     var cell = self.data.selectedCell;
     var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
     if (!kind || !cageId) return;
-    if (self._pendingOpOf(cell)) { wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return; }
+    if (self._pendingOpOf(cell)) { wx.showToast({ title: self._busyReasonOf(cell), icon: 'none' }); return; }
     var label = (cell && (cell._displayPosition || cell.position)) || '';
     self._closeDetail();
     self.setData({
@@ -3402,10 +3578,8 @@ _closeDetail: function() {
   /** 选位模式：点击格子切换目标（分笼多选、转移单选） */
   toggleOpTarget: function(cell) {
     var cid = String(cell.id || cell.animalCageId || '');
-    // 已有未决请求的笼位不可作为新目标（取消勾选仍放行）
-    if (!(this.data.opSelectedCageIds || {})[cid] && this._pendingOpOf(cell)) {
-      wx.showToast({ title: PENDING_OP_REASON, icon: 'none' }); return;
-    }
+    // 与 H5 `opSel.toggle`(useCageOpSelect.ts:271-276) 同口径：只认后端下发的 selectable，
+    // 前端不再叠一层中间态判定——那会把后端已经判为可选的目标挡掉，还会盖掉后端给的具体 reason。
     var t = (this.data.opTargetMap || {})[cid];
     if (!t || !t.selectable) { wx.showToast({ title: '该笼位不在可选范围内', icon: 'none' }); return; }
     var sel = Object.assign({}, this.data.opSelectedCageIds || {});
@@ -3663,13 +3837,17 @@ getCellStyleWxs: function(cell) {
         wx.showToast({ title: '当前状态不可标记（仅饲养中/异常笼位）', icon: 'none' });
         return;
       }
-      // 笼位还在中间态时也不能标记：预定/已下单待审/分笼转移在审（都进了 _pendingOpOf 的标记表）
-      // 或认领在审——否则那条流程审完就和标记打架。
+      // 扫码路径同样要过学生归属闸门（与点击路径同口径）
+      if (!self.data.isStaffView && !matched.mine) {
+        wx.showToast({ title: '只能标记本人使用中的笼位', icon: 'none' });
+        return;
+      }
+      // 扫码路径额外两道闸门，文案照抄 H5 `handleEditScan`(MobileCageShelfTab.tsx:2082-2088)
       if (self._pendingOpOf(matched)) {
         wx.showToast({ title: '该笼位有进行中的流程，不能标记饲养状态', icon: 'none' });
         return;
       }
-      if (matched.claimStatus && hasActiveClaim(matched.claimStatus)) {
+      if (hasActiveClaim(matched.claimStatus)) {
         wx.showToast({ title: '该笼位有认领申请在处理中，不能标记饲养状态', icon: 'none' });
         return;
       }
@@ -3756,6 +3934,24 @@ getCellStyleWxs: function(cell) {
     }, this.applyCacheToGrid.bind(this));
   },
 
+  /**
+   * 「取消」退出当前模式 → 回查看模式。五个带横幅的模式共用（分配/预定/申请预约/划分/状态）。
+   * 只有状态模式会把标记攒进 scanCache（那是准备写给服务端的东西），所以只有它会拦一下；
+   * 选中类模式的选中集纯粹是本地缓冲区，丢弃无副作用，直接退。
+   */
+  onExitMode: function() {
+    var self = this;
+    var hasCache = self.data.scanCache && Object.keys(self.data.scanCache).length > 0;
+    if (!hasCache) { self.switchMode('view'); return; }
+    wx.showModal({
+      title: '未提交修改',
+      content: '有未提交的扫码修改，是否放弃？',
+      confirmText: '放弃',
+      cancelText: '继续编辑',
+      success: function(res) { if (res.confirm) self.switchMode('view'); }
+    });
+  },
+
   /** 移除单条缓存 */
   onRemoveCacheEntry: function(e) {
     var key = e.currentTarget.dataset.key;
@@ -3809,24 +4005,27 @@ getCellStyleWxs: function(cell) {
     }
     patch.scanTotalActions = totalDiffs;
     patch.scanCacheSize = Object.keys(cache).length;
-    // 顶部编辑预览条：只列有 diff 的笼位坐标标签（对齐 Web 编辑历史预览 / H5 缓存预览）
-    var previews = [];
+    // 待选区：只列有变更的笼位，摘要把每个状态写成「需分笼 +1 · 健康异常 −1」
+    var staged = [];
     for (var k in cache) {
       if (!Object.prototype.hasOwnProperty.call(cache, k)) continue;
       var e = cache[k];
       var pinit = (e && e.initialActions) || {};
       var pcur = (e && e.currentActions) || {};
-      var diff = 0;
-      CAGE_STATUS_ACTIONS.forEach(function (a) { if (pcur[a.action] !== pinit[a.action]) diff++; });
-      if (diff > 0) {
-        previews.push({
-          key: k,
-          position: (e && e.cell && (e.cell._displayPosition || e.cell.position)) || k,
-          diff: diff
-        });
-      }
+      var parts = [];
+      CAGE_STATUS_ACTIONS.forEach(function (a) {
+        if (pcur[a.action] === pinit[a.action]) return;
+        // 用单字缩写而非全名，胶囊才不会被撑长（分+1 异−1）
+        parts.push(a.abbr + (pcur[a.action] ? '+1' : '−1'));
+      });
+      if (!parts.length) continue;
+      staged.push({
+        key: k,
+        label: (e && e.cell && (e.cell._displayPosition || e.cell.position)) || k,
+        meta: parts.join(' · ')
+      });
     }
-    patch.cachePreviews = previews;
+    patch.stagedItems = staged;
     this.setData(patch);
   },
 
@@ -4100,7 +4299,7 @@ getCellStyleWxs: function(cell) {
     if (addEntries.length === 0 && removeEntries.length === 0) return;
 
     self.setData({ actionSubmitting: true });
-    var okCount = 0, failCount = 0;
+    var okCount = 0, failCount = 0, lastErr = '';
     var totalTasks = addEntries.concat(removeEntries.map(function(r) {
       return { key: r.key, code: r.code, action: r.action, cancel: true, cell: r.cell };
     }));
@@ -4113,7 +4312,7 @@ getCellStyleWxs: function(cell) {
           self.onRetry();
           self.onExitScanMode();
         } else {
-          wx.showToast({ title: okCount + ' 成功 / ' + failCount + ' 失败', icon: 'none' });
+          wx.showToast({ title: lastErr || (okCount + ' 成功 / ' + failCount + ' 失败'), icon: 'none', duration: 3000 });
         }
         return;
       }
@@ -4129,8 +4328,9 @@ getCellStyleWxs: function(cell) {
       };
       springAuth.springRequest({ url: '/api/local/edit', method: 'POST', data: data })
         .then(function(res) {
-          var body = (res && typeof res.data === 'string') ? JSON.parse(res.data) : (res && res.data);
-          if (body && body.success) { okCount++; } else { failCount++; }
+          // 业务错误是 HTTP 200 + {success:false}（服务端拦中间态就是这种），解包后再计数并留原因
+          var p = unwrap(res);
+          if (p.ok) { okCount++; } else { failCount++; if (!lastErr) lastErr = p.message || ''; }
           next(idx + 1);
         }).catch(function() { failCount++; next(idx + 1); });
     };

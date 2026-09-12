@@ -311,7 +311,7 @@ export default function AgvPlaybackTimeline(props: Props) {
         </button>
 
         {/* Scrubber */}
-        <div className="relative h-5 bg-[var(--app-color-surface-page)] rounded-full border border-[var(--app-color-border-default)] cursor-pointer overflow-hidden shadow-inner"
+        <div className="relative h-5 bg-[var(--app-color-surface-page)] rounded-full border border-[var(--app-color-border-default)] cursor-pointer overflow-hidden shadow-inner [touch-action:none]"
           style={{ width: "clamp(140px, 50%, 400px)" }}
           onPointerDown={e => {
             const rect = e.currentTarget.getBoundingClientRect();
@@ -450,17 +450,17 @@ export default function AgvPlaybackTimeline(props: Props) {
         {!playbackActive && (
         <div className="absolute top-0 h-full border border-[color-mix(in_srgb,var(--app-color-accent)_50%,transparent)] z-10"
           style={{ left: selLeft, width: selW }}>
-          <div className="absolute inset-0 cursor-grab active:cursor-grabbing bg-[color-mix(in_srgb,var(--app-color-accent)_12%,transparent)]"
+          <div className="absolute inset-0 cursor-grab active:cursor-grabbing bg-[color-mix(in_srgb,var(--app-color-accent)_12%,transparent)] [touch-action:none]"
             onPointerDown={e => onPointerDown("body", e)} />
           {/* Left anchor pin */}
-          <div className="absolute -left-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10"
+          <div className="absolute -left-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10 [touch-action:none]"
             onPointerDown={e => onPointerDown("left", e)}>
             <div className="w-3 h-3 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow mt-0.5" />
             <div className="w-0.5 flex-1 bg-[var(--app-color-accent)]" />
             <div className="w-3 h-3 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow mb-0.5" />
           </div>
           {/* Right anchor pin */}
-          <div className="absolute -right-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10"
+          <div className="absolute -right-2 top-0 w-5 h-full flex flex-col items-center cursor-ew-resize z-10 [touch-action:none]"
             onPointerDown={e => onPointerDown("right", e)}>
             <div className="w-3 h-3 rounded-full bg-[var(--app-color-accent)] border-2 border-white shadow mt-0.5" />
             <div className="w-0.5 flex-1 bg-[var(--app-color-accent)]" />

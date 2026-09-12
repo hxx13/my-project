@@ -110,6 +110,21 @@ public class PersonnelService {
         }
     }
 
+    /**
+     * 姓名 → personnel.id 字符串;查不到返回 null。
+     *
+     * <p>笼位表单里的「实验员」存的是**姓名**而不是账号 id,要和本人比对必须先落到 personnel.id ——
+     * 双 id(`staff_id` / `aro_user_id`)是同一个人的两个登录入口,直接比姓名或账号 id 都会误判。
+     * 同名取一条,与 {@code PersonnelMapper.findByName} 既有口径一致。
+     */
+    public String resolveIdByName(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        Personnel p = personnelMapper.findByName(name.trim());
+        return p == null ? null : String.valueOf(p.getId());
+    }
+
     /** personnel.id 集合 → staff_id 列表(过滤空 staff_id;非数字 id 忽略)。 */
     public List<String> resolveStaffIds(Collection<String> personnelIds) {
         if (personnelIds == null || personnelIds.isEmpty()) {
