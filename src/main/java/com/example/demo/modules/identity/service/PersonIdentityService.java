@@ -36,6 +36,8 @@ public class PersonIdentityService {
     /** 饲养组长身份标识稳定码（种子标签 BREEDING_GROUP_LEADER / 饲养组长，与 PI 区分）。 */
     private static final String BREEDING_GROUP_LEADER_CODE = "BREEDING_GROUP_LEADER";
     private static final String GROUP_STEWARD_CODE = "GROUP_STEWARD";
+    /** 业务身份标识稳定码（种子标签 BUSINESS / 业务）——动物订购审核人。 */
+    private static final String BUSINESS_CODE = "BUSINESS";
 
     @Value("${aup.identity.pi-code:PI}")
     private String piCode;
@@ -144,6 +146,23 @@ public class PersonIdentityService {
         return false;
     }
 
+    /** 是否业务：code 固定 {@link #BUSINESS_CODE}（与 PersonIdentityTagSeedBootstrap 种子一致）。动物订购审核人。 */
+    public boolean isBusiness(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        String pid = resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : getByUser(pid)) {
+            if (tag != null && Objects.equals(tag.getCode(), BUSINESS_CODE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 持有指定标签 code 的全部 userId（通知/接收人用）。 */
     public List<String> listUserIdsByCode(String code) {
         Map<String, List<IdentityTagVO>> byUser = listByUserIds(null);
@@ -159,9 +178,14 @@ public class PersonIdentityService {
         return result;
     }
 
-    /** 全部秘书 userId（持有「秘书」标签，动物订购订单接收人默认值）。返回 staff_id，供通知按 sys_user.id 发推送。 */
+    /** 全部秘书 userId（持有「秘书」标签）。返回 staff_id，供通知按 sys_user.id 发推送。 */
     public List<String> listSecretaryUserIds() {
         return resolveStaffIds(listUserIdsByCode(secretaryCode));
+    }
+
+    /** 全部业务 userId（持有「业务」标签，动物订购订单审核人/接收人）。返回 staff_id。 */
+    public List<String> listBusinessUserIds() {
+        return resolveStaffIds(listUserIdsByCode(BUSINESS_CODE));
     }
 
     /** 鉴权侧：sys_user.id（staff_id 或 aro_user_id）→ personnel.id 字符串；personnel 不存在返回 null。 */

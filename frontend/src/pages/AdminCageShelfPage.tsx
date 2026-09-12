@@ -251,8 +251,6 @@ function Inner(){
   const[confirmLookup,setConfirmLookup]=useState<CodeLookupResult|null>(null);
   const[confirmSubmitting,setConfirmSubmitting]=useState(false);
   const[archiveMode,setArchiveMode]=useState(false);
-  const[archiveTarget,setArchiveTarget]=useState<{ animalCageId: string; positionLabel: string; occupantName?: string; projectPiName?: string; aupNumber?: string } | null>(null);
-  const[archiveSubmitting,setArchiveSubmitting]=useState(false);
   const[reserveMode,setReserveMode]=useState(false);
   const[recordMode,setRecordMode]=useState(false);
   const[divisionMode,setDivisionMode]=useState(false);
@@ -1374,17 +1372,29 @@ function Inner(){
     toast.error("该笼位状态：" + status);
   }, []);
 
-  // ── 归档模式：点格子 → 开归档弹窗（仅 cageTypeCode===3 已饲养中/有笼盒）──
-  const handleArchiveCell = useCallback((c: any, _sid?: string) => {
-    const ct = (c as any).cageTypeCode ?? (c as any).animalCageType;
+  /**
+   * 归档模式的选中切换：点一次入「待提交」，再点一次移出。
+   * 与分配/预定/划分同款 toggle 语义 —— 这四种模式共用网格上那一枚绿色对勾（SelectCheck）。
+   * 归档以前只走「点开弹窗」那套，网格拿不到 allocMode，所以格子上一直没有勾选标记。
+   *
+   * 签名必须与其它 toggle 一致：ShelfGrid 的 onToggleCell 传的是**坐标**不是格子对象
+   * （见 ShelfGrid.tsx:163 `onToggleCell(sid, c.x, c.y, e.shiftKey)`），要自己回查 cellAtKey。
+   */
+  const handleArchiveToggle = useCallback((shelveId: string, x: number, y: number, _shiftKey?: boolean) => {
+    const c = cellAtKey.get(`${shelveId}:${x}:${y}`);
+    if (!c) return;
+    const cageId = cageIdOfCell(c);
+    if (!cageId) return;
+    if (batchOf(pendingByMode, "archive").items.some((it) => it.cageId === cageId)) {
+      patchPending("archive", (b) => removeItem(b, cageId));
+      return;
+    }
+    const ct = (c as any)?.cageTypeCode ?? (c as any)?.animalCageType;
     if (ct !== 3) { toast.error("该笼位当前无笼盒/未占用，无需归档"); return; }
-    // 不再弹归档弹窗：点格子直接进「待提交」
-    const cageId = String((c as any).id ?? (c as any).animalCageId ?? "");
-    if (!cageId) { toast.error("该笼位缺少 ID"); return; }
     addPendingRef.current(cageId);
-  }, []);
+  }, [cellAtKey, cageIdOfCell, pendingByMode, patchPending]);
 
-  // ── 归档模式：扫码 → 定位 → 开归档弹窗 ──
+  // ── 归档模式：扫码 → 高亮定位 + 进「待提交」（与点格子同一条路）──
   const handleArchiveScan = useCallback(async (code: string) => {
     const q = code.trim(); if (!q) return;
     try {
@@ -1393,31 +1403,14 @@ function Inner(){
       if (r.type === "ASSET") { toast.error("该编码为资产编号，非笼位"); return; }
       if (r.type === "LEGACY_CAGE_BOX") { toast.error("旧盒码已废弃，请扫笼位码"); await locateLookup(r); return; }
       await locateLookup(r);
-      if (r.claim) {
-        setArchiveTarget({
-          animalCageId: String(r.cageCell?.animalCageId ?? ""),
-          positionLabel: r.cageCell?.positionLabel ?? "",
-          occupantName: r.claim.claimantName,
-          projectPiName: r.claim.projectPiName ?? "",
-          aupNumber: r.claim.aupNumber ?? "",
-        });
-      } else {
-        toast.error("该笼位无占用记录，无需归档");
-      }
+      if (!r.claim) { toast.error("该笼位无占用记录，无需归档"); return; }
+      const cageId = String(r.cageCell?.animalCageId ?? "");
+      if (!cageId) { toast.error("未识别笼位"); return; }
+      // 已在待归档就不重复入缓冲（入缓冲本身是 upsert，这里只是少一次重渲染）
+      if (batchOf(pendingByMode, "archive").items.some((it) => it.cageId === cageId)) return;
+      addPendingRef.current(cageId);
     } catch (e: any) { toast.error(e?.message || "扫码查询失败"); }
-  }, [locateLookup]);
-
-  const handleArchiveConfirm = useCallback(async () => {
-    if (!archiveTarget?.animalCageId) return;
-    setArchiveSubmitting(true);
-    try {
-      await archiveCage(archiveTarget.animalCageId);
-      toast.success("已归档");
-      setArchiveTarget(null);
-      setDetailReloadKey((k) => k + 1);
-    } catch (e: any) { toast.error(e?.message || "归档失败"); }
-    finally { setArchiveSubmitting(false); }
-  }, [archiveTarget]);
+  }, [locateLookup, pendingByMode]);
 
   // ── 手动修正历史 confirmed 笼位（2→3 + 写占用者）──
   const handleReconcileOccupancy = useCallback(async () => {
@@ -1445,7 +1438,7 @@ function Inner(){
   const switchMode=useCallback((mode:CageModeKey)=>{
     if(!allowedModeKeys.includes(mode))return; // 无该模式权限，忽略
     setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setRecordMode(false);setRecordTarget(null);setDivisionMode(false);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setReserveMode(false);setRecordMode(false);setRecordTarget(null);setDivisionMode(false);
     /*
       编辑缓存**不能在这里清**：它就是「待提交」那批状态改动的真相源（配色 + 每格的初始快照），
       而批次是跨模式留着的。清了缓存、留着批次 → 再回到状态模式颜色全丢（抽屉开合会走这里，
@@ -1477,7 +1470,7 @@ function Inner(){
   // ── 数据源切换（设置中心）──
   const switchDataSource=useCallback((ds:"aro"|"local")=>{
     setDataSource(ds);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setArchiveTarget(null);setReserveMode(false);setScanCache(new Map());setLastScannedKey(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setReserveMode(false);setScanCache(new Map());setLastScannedKey(null);
     setSelectedCells(new Set());setCell(null);setShelfId(null);
   },[]);
 
@@ -2273,7 +2266,7 @@ function Inner(){
       {/* ======== LEFT PANEL ======== */}
       <div className={`shrink-0 flex-col gap-1.5 transition-all h-full ${collapsed?'hidden':'flex w-48 xl:w-52'}`}>
         {!collapsed&&<div className="shrink-0 flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-1">
-          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"/>
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索房间 / 笼架…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"/>
         </div>}
         {!collapsed&&<div className="cage-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]">
           {tab==="filter"&&<CampusTree tree={tree} exp={exp} search={search} onToggle={k=>setExp(p=>{const n=new Set(p);n.has(k)?n.delete(k):n.add(k);return n;})} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={alertStatusesByShelf} alertStatusesByRoom={alertStatusesByRoom} pageMode={pageMode} bookingRooms={bookingRooms} highlightShelveIds={selectableShelveIds}/>}
@@ -2451,7 +2444,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,sid):confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode||editStaged} selectedCells={pageMode==="allocate"||reserveMode||divisionMode||editStaged?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged} clickMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode} selectedCells={(pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode} clickMode={(pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/></div>;
             })}</div>}
           </>}
 
@@ -2461,7 +2454,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:archiveMode?(c:any)=>handleArchiveCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode||editStaged} selectedCells={pageMode==="allocate"||reserveMode||divisionMode||editStaged?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged} clickMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode} selectedCells={(pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:undefined} allocMode={pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode} clickMode={(pageMode==="allocate"||reserveMode||divisionMode||editStaged||archiveMode)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -2941,40 +2934,6 @@ function Inner(){
           </AdminButton>
           <AdminButton type="button" size="default" onClick={handleConfirmArrival} disabled={confirmSubmitting}>
             {confirmSubmitting?"处理中...":"确认到位"}
-          </AdminButton>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-    {/* ---- 归档弹窗 ---- */}
-    <Dialog open={archiveMode && !!archiveTarget} onOpenChange={(o) => { if (!o) setArchiveTarget(null); }}>
-      <DialogContent className="z-[var(--z-modal)] sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>归档笼位</DialogTitle>
-          <DialogDescription className="space-y-2">
-            <div className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] divide-y divide-[var(--twin-hairline)]">
-              {(() => {
-                const rows: { label: string; value: string; em?: boolean }[] = [];
-                if (archiveTarget?.positionLabel) rows.push({ label: "笼位", value: archiveTarget.positionLabel });
-                if (archiveTarget?.occupantName) rows.push({ label: "占用者", value: archiveTarget.occupantName, em: true });
-                if (archiveTarget?.projectPiName) rows.push({ label: "课题组 PI", value: archiveTarget.projectPiName });
-                if (archiveTarget?.aupNumber) rows.push({ label: "AUP 编号", value: archiveTarget.aupNumber });
-                return rows.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
-                    <span className="text-[var(--twin-mute)]">{r.label}</span>
-                    <span className={r.em ? "font-semibold text-[var(--twin-ink)]" : "text-[var(--twin-ink)]"}>{r.value || "-"}</span>
-                  </div>
-                ));
-              })()}
-            </div>
-            <div className="rounded-twin-md bg-amber-50 border border-amber-200 px-3 py-2 text-center">
-              <span className="text-[11px] text-amber-700 font-semibold">确认归档该笼位？归档后释放占用并回到空笼盒</span>
-            </div>
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-2">
-          <AdminButton type="button" tone="secondary" size="default" onClick={() => setArchiveTarget(null)}>取消</AdminButton>
-          <AdminButton type="button" size="default" onClick={handleArchiveConfirm} disabled={archiveSubmitting}>
-            {archiveSubmitting ? "归档中..." : "确认归档"}
           </AdminButton>
         </DialogFooter>
       </DialogContent>

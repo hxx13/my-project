@@ -1,14 +1,16 @@
 import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
-import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath, type AdminNavContext } from "@/features/admin/adminNavRegistry";
 import { isAdminAreaPath, normalizeAdminPath, toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
+import { shouldHideAdminSidebarPath } from "@/features/admin/hiddenAdminNavPaths";
 
 /**
  * 后台壳层导航（顶栏返回 / 页题）：对齐 `docs/ADMIN_UI_STYLE.md` 中引用的 Vercel 式信息密度与层次，
  * 路径判定与侧栏注册表 + 权限下发的 sidebar ENTRY 一致，避免「一级入口误出返回」。
  */
 
-const REGISTRY_SIDEBAR_PATHS = new Set(
-  ADMIN_NAV_REGISTRY.flatMap((g) => collectRegistryGroupItems(g).map((it) => normalizeAdminPath(it.path)))
+/** path → 注册项：一级入口判定要看该项在当前身份下是否真的可见，不能只看路径在不在注册表里 */
+const REGISTRY_ITEMS_BY_PATH = new Map(
+  ADMIN_NAV_REGISTRY.flatMap((g) => collectRegistryGroupItems(g)).map((it) => [normalizeAdminPath(it.path), it] as const)
 );
 
 /** 注册表未列名、但路由存在的子页：用于页题；壳层「返回」仍由 shouldShowAdminShellBack 控制 */
@@ -59,24 +61,27 @@ function stripPathQuery(pathname: string): string {
   return normalizeAdminPath(trimmed);
 }
 
-/** 当前 URL 是否对应侧栏「一级」入口（含权限动态下发的 ENTRY） */
-export function isAdminPrimarySidebarPath(pathname: string, permSidebarPaths: Set<string>): boolean {
+/** 当前 URL 是否对应侧栏「一级」入口（含权限动态下发的 ENTRY）
+ *  —— 已从侧栏移除的路由（HIDDEN_ADMIN_SIDEBAR_PATHS / 已合并路由）不算一级，否则子页永远出不来返回；
+ *  —— 注册表项还要按当前身份过一遍 sidebarVisible，否则「注册表里有、但这个人的侧栏里没有」的页面同样会被误判。 */
+export function isAdminPrimarySidebarPath(pathname: string, permSidebarPaths: Set<string>, navCtx?: AdminNavContext): boolean {
   const p = stripPathQuery(pathname);
   if (p === "/admin") return true;
-  if (REGISTRY_SIDEBAR_PATHS.has(p)) return true;
-  if (permSidebarPaths.has(p)) return true;
-  return false;
+  if (shouldHideAdminSidebarPath(p)) return false;
+  const reg = REGISTRY_ITEMS_BY_PATH.get(p);
+  if (reg) return navCtx ? reg.sidebarVisible(navCtx) : true;
+  return permSidebarPaths.has(p);
 }
 
 /**
  * 是否在顶栏展示「返回」：非一级、且在 /admin 下；个人中心页内自带返回，壳层不再重复。
  */
-export function shouldShowAdminShellBack(pathname: string, permSidebarPaths: Set<string>): boolean {
+export function shouldShowAdminShellBack(pathname: string, permSidebarPaths: Set<string>, navCtx?: AdminNavContext): boolean {
   const p = stripPathQuery(pathname);
   if (!isAdminAreaPath(p)) return false;
   if (p === "/admin") return false;
   if (p === "/admin/profile-security") return false;
-  return !isAdminPrimarySidebarPath(pathname, permSidebarPaths);
+  return !isAdminPrimarySidebarPath(pathname, permSidebarPaths, navCtx);
 }
 
 /** 顶栏不展示标题的页面（页面自身已提供更强的视觉层级，重复标题属冗余） */

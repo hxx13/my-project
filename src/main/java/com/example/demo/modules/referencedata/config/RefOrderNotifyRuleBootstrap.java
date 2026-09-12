@@ -14,7 +14,7 @@ import java.util.List;
  * 动物订购订单流转的站内通知规则种子（biz_type=REF_ORDER）。
  *
  * <p>{@code ReferenceDataService.submitOrder} 已构造 {@code PublishNotificationEvent}
- * （eventType=REF_ORDER_SUBMITTED + bizType=REF_ORDER + relatedUserIds=秘书），
+ * （eventType=REF_ORDER_SUBMITTED + bizType=REF_ORDER + relatedUserIds=业务标签），
  * 但 {@code NotificationService.publish} 先查 sys_notify_rule，查不到即静默丢弃。
  * 本启动器补齐规则（recipient_mode=RELATED，消费 relatedUserIds）与站内信模板。幂等：先查再插。
  */

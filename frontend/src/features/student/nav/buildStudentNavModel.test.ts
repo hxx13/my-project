@@ -101,18 +101,18 @@ describe("convertStudentConfigToModel", () => {
 });
 
 describe("buildStudentNavModel fallback", () => {
-  it("falls back to registry (6 groups / 9 items) when config is empty", async () => {
+  it("falls back to registry (7 groups / 11 items) when config is empty", async () => {
     const result = await buildStudentNavModel({ role: "MEMBER", permNodes: [] });
 
-    expect(result.sidebarGroups).toHaveLength(6);
-    expect(result.flatNavigableItems).toHaveLength(9);
+    expect(result.sidebarGroups).toHaveLength(7);
+    expect(result.flatNavigableItems).toHaveLength(11);
   });
 
   it("excludes a hidden registry item from the fallback output", async () => {
     const result = await buildStudentNavModel({ role: "MEMBER", permNodes: [disablingPermNode] });
 
-    expect(result.sidebarGroups).toHaveLength(6);
-    expect(result.flatNavigableItems).toHaveLength(8);
+    expect(result.sidebarGroups).toHaveLength(7);
+    expect(result.flatNavigableItems).toHaveLength(10);
     expect(result.flatNavigableItems.some((it) => it.path === "/student/cage-shelf")).toBe(false);
   });
 });

@@ -11,6 +11,8 @@ import { formatBeijingDateTimeFull, calendarDayKeyBeijing } from "@/utils/beijin
 import { ANIMAL_ORDER_CAMPUSES } from "@/features/reference-data/campus";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { useQuery } from "@tanstack/react-query";
+import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
 import { adminInputClass } from "@/features/admin/adminFormUi";
 import CageLocationCell from "@/features/reference-data/CageLocationCell";
 import { cn } from "@/lib/utils";
@@ -46,7 +48,8 @@ function defaultDateRange(): { from: string; to: string } {
 
 /**
  * 订单记录页。同一套展示（页签/卡片/表格/筛选/导出）供两端复用：
- * - scope="admin"（默认）：后台审核，看全量，可批准/驳回/标记完成，超管可同步 ARO
+ * - scope="admin"（默认）：后台审核。业务标签/超管看全量且可批准/驳回/标记完成；
+ *   其余人由服务端收窄到本人课题组、且无审核按钮；超管可同步 ARO
  * - scope="student"：学生端，只能看本人课题组（服务端强制圈定），可编辑自己的待审单
  */
 export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "admin" | "student" } = {}) {
@@ -66,6 +69,13 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
   const updateStatus = useUpdateOrderStatus();
   const importMut = useImportAroOrders();
   const isSuperAdmin = hasMinRole(authStorage.getRole() || "MEMBER", "SUPER_ADMIN");
+  // 审核权：超管后门，或持「业务」身份标签 —— 与后端 RefOrderAccessPolicy 同口径。
+  // queryKey 与 PortalHeader 一致，共用同一份缓存。
+  const { data: myTags } = useQuery({
+    queryKey: ["personIdentity", "me"] as const,
+    queryFn: fetchMyIdentity,
+  });
+  const canReview = isSuperAdmin || (myTags ?? []).some((t) => t.code === "BUSINESS");
 
   const filter: OrderReviewFilter = useMemo(
     () => ({
@@ -252,11 +262,11 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
               {tab === "pending" ? "暂无待处理订单" : "暂无已完成订单"}
             </div>
           ) : view === "table" ? (
-            <OrderTable displays={displays} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent} allowEdit={isStudent} linesByKey={linesByKey} />
+            <OrderTable displays={displays} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent || !canReview} allowEdit={isStudent} linesByKey={linesByKey} />
           ) : (
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
               {displays.map((d) => (
-                <OrderCard key={d.key} d={d} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent} allowEdit={isStudent} lines={linesByKey.get(d.key) ?? []} />
+                <OrderCard key={d.key} d={d} busy={updateStatus.isPending} onAction={act} onEdit={startEdit} readOnly={isStudent || !canReview} allowEdit={isStudent} lines={linesByKey.get(d.key) ?? []} />
               ))}
             </div>
           )}

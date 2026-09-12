@@ -107,9 +107,10 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
   highlightShelveIds?: Set<string>;
 }) {
   const q = search.trim().toLowerCase();
+  const searching = !!q;
   const tg = (k: string) => { const n = new Set(exp); n.has(k) ? n.delete(k) : n.add(k); onToggle(k); };
   return <div className="text-[11px] space-y-1.5">
-    {tree.map(c => { const open = exp.has(c.key), sty = cs(c.label);
+    {tree.map(c => { if (searching && !subtreeMatches(c, q)) return null; const open = searching || exp.has(c.key), sty = cs(c.label);
       return <div key={c.key}>
         <button onClick={() => tg(c.key)} className="w-full flex items-center gap-1.5 px-2.5 py-2 rounded-twin-lg text-left shadow-sm active:scale-[0.99] transition" style={{ background: sty.bg }}>
           {open ? <ChevronDown className="h-3.5 w-3.5 text-white/80" /> : <ChevronRight className="h-3.5 w-3.5 text-white/80" />}
@@ -119,6 +120,9 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
       </div>;
     })}
     {tree.length === 0 && <div className="text-[var(--twin-mute)] py-6 text-center">暂无数据，请先导入 CSV</div>}
+    {searching && tree.length > 0 && !tree.some(c => subtreeMatches(c, q)) && (
+      <div className="text-[var(--twin-mute)] py-6 text-center">没有匹配的校区 / 房间 / 笼架</div>
+    )}
   </div>;
 }
 
@@ -131,8 +135,23 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
  *   "room"   → 带聚合进度条 + 告警圆点 + (booking模式)双进度条
  *   "shelf"  → 带 type1~4 分色进度条 + 告警圆点，点击跳转
  */
+/**
+ * 搜索态：该节点自身或任一后代命中关键词。
+ *
+ * 搜索必须**穿透整棵树**，不能只看当前已渲染的那一层 —— 以前只拿 q 比对「房间」标签，
+ * 且只在已展开的分支里生效，所以搜笼架名（201A-1）或没展开时看着像没反应（用户报的「摆设」）。
+ */
+function subtreeMatches(n: TreeNode, q: string): boolean {
+  if (!q) return true;
+  if (n.label.toLowerCase().includes(q)) return true;
+  return (n.children || []).some(c => subtreeMatches(c, q));
+}
+
 export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: string) => void, onOpenRoom: (rid: string, rname: string) => void, viewMode?: "room" | "shelf", onOpenShelf?: (sid: string, overrideRoomId?: string) => void, alertStatusesByShelf?: Map<string, Set<string>>, alertStatusesByRoom?: Map<string, Set<string>>, pageMode?: "view" | "allocate" | "booking", bookingRooms?: BookingRoom[], hideProgress?: boolean, highlightShelveIds?: Set<string>): React.ReactNode {
-  const open = exp.has(n.key);
+  // 搜索态下自动展开命中路径，并剪掉整条都不命中的分支
+  const searching = !!q;
+  if (searching && !subtreeMatches(n, q)) return null;
+  const open = searching || exp.has(n.key);
   if (n.type === "shelf") {
     const r = n.raw;
     const handleClick = () => {
@@ -170,8 +189,8 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
     </button>;
   }
   if (n.type === "room") {
-    const filtered = q ? n.label.toLowerCase().includes(q) : true;
-    if (!filtered) return null;
+    // 房间级不再自己过滤：是否显示由上面的 subtreeMatches 统一决定 ——
+    // 房间名不命中但里面有命中的笼架时也要露出来，否则搜笼架名会看不到房间。
     const isBooking = pageMode === "booking";
     const bkRoom = isBooking ? bookingRooms?.find(r => String(r.roomId) === n.key.replace("r:", "")) : null;
     const bkBooked = bkRoom?.rentAnimalCageNumber ?? 0;
