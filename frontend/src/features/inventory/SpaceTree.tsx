@@ -11,7 +11,7 @@
  * 搜索：大小写不敏感；搜索态下强制展开所有匹配分支。
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowRightLeft, ChevronDown, ChevronRight, File, FilePlus, Folder, FolderOpen, FolderPlus, Plus, Trash2 } from "lucide-react";
 import { createSpace, deleteSpace, updateSpace, type Item, type SpaceNode } from "@/api/domains/inventory.api";
@@ -41,6 +41,17 @@ export default function SpaceTree(props: {
   const [moveParentId, setMoveParentId] = useState("");
   const q = search.trim().toLowerCase();
   const searching = q.length > 0;
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  /** 展开后把新露出的内容滚进视野：内容落在可视区外时看着像没展开 */
+  const expandAndReveal = (n: SpaceNode) => {
+    const willOpen = !(searching || expanded.has(n.id));
+    onToggle(n.id);
+    if (!willOpen) return;
+    requestAnimationFrame(() => {
+      rootRef.current?.querySelector(`[data-tree-children="${n.id}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+  };
 
   const matches = (n: SpaceNode): boolean => n.name.toLowerCase().includes(q);
   const visible = (n: SpaceNode): boolean => {
@@ -139,7 +150,7 @@ export default function SpaceTree(props: {
           <button
             type="button"
             onClick={() => {
-              if (hasChildren && !open) onToggle(n.id);
+              if (hasChildren && !open) expandAndReveal(n);
               onSelect(n.id);
             }}
             className={cn(
@@ -155,17 +166,17 @@ export default function SpaceTree(props: {
               onClick={(e) => {
                 if (!hasChildren && items.length === 0) return;
                 e.stopPropagation();
-                onToggle(n.id);
+                expandAndReveal(n);
               }}
               className={cn(
-                "flex h-4 w-4 shrink-0 items-center justify-center rounded text-[var(--twin-mute)]",
+                "flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--twin-mute)]",
                 (hasChildren || items.length > 0) && "hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)]"
               )}
             >
               {hasChildren || items.length > 0 ? (
-                open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+                open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
               ) : (
-                <span className="h-3 w-3" />
+                <span className="h-3.5 w-3.5" />
               )}
             </span>
             {hasChildren ? (
@@ -232,7 +243,7 @@ export default function SpaceTree(props: {
           <>
             {/* 该空间直接物品（文件行） */}
             {items.length > 0 && (
-              <div className="space-y-0.5">
+              <div className="space-y-0.5" data-tree-children={n.id}>
                 {items.map((it) => (
                   <button
                     key={it.id}
@@ -250,7 +261,7 @@ export default function SpaceTree(props: {
                 ))}
               </div>
             )}
-            {hasChildren && <div className="space-y-0.5">{n.children.map((c) => render(c, depth + 1))}</div>}
+            {hasChildren && <div className="space-y-0.5" data-tree-children={n.id}>{n.children.map((c) => render(c, depth + 1))}</div>}
           </>
         )}
       </div>
@@ -258,7 +269,7 @@ export default function SpaceTree(props: {
   };
 
   return (
-    <div className="space-y-0.5">
+    <div ref={rootRef} className="space-y-0.5">
       <button
         type="button"
         onClick={() => setCreating({ parentId: null, name: "" })}

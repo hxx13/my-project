@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { fetchOrderRoomTree, type OrderRoomNode } from "@/api/domains/cageShelf.api";
@@ -52,9 +52,18 @@ export function OrderRoomTreeSelect({
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [keyword, setKeyword] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const searching = keyword.trim().length > 0;
   const visible = useMemo(() => filterKeepSubtrees(tree, keyword), [tree, keyword]);
+
+  /** 展开后把第一个子节点滚进视野：子节点落在面板可视区外时看着像没展开 */
+  const revealFirstChild = (childId?: string) => {
+    if (!childId) return;
+    requestAnimationFrame(() => {
+      panelRef.current?.querySelector(`[data-node-id="${childId}"]`)?.scrollIntoView({ block: "nearest" });
+    });
+  };
 
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
@@ -75,6 +84,7 @@ export function OrderRoomTreeSelect({
     return (
       <div key={node.id}>
         <div
+          data-node-id={node.id}
           className={cn(
             "flex items-center rounded-md",
             isSelected ? "bg-[color-mix(in_srgb,var(--twin-link-deep)_10%,transparent)]" : "hover:bg-[var(--app-color-surface-hover)]",
@@ -86,14 +96,16 @@ export function OrderRoomTreeSelect({
             aria-label={isOpen ? "收起" : "展开"}
             onClick={(e) => {
               e.stopPropagation();
-              if (hasChildren) toggleExpand(node.id);
+              if (!hasChildren) return;
+              toggleExpand(node.id);
+              if (!isOpen) revealFirstChild(children[0]?.id);
             }}
             className={cn(
-              "flex h-6 w-5 shrink-0 items-center justify-center text-[var(--app-color-text-tertiary)]",
-              hasChildren ? "hover:text-[var(--app-color-text-primary)]" : "opacity-0",
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded text-[var(--app-color-text-tertiary)]",
+              hasChildren ? "hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]" : "opacity-0",
             )}
           >
-            {hasChildren ? (isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />) : null}
+            {hasChildren ? (isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />) : null}
           </button>
           <button
             type="button"
@@ -103,6 +115,7 @@ export function OrderRoomTreeSelect({
                 setOpen(false);
               } else if (hasChildren) {
                 toggleExpand(node.id);
+                if (!isOpen) revealFirstChild(children[0]?.id);
               }
             }}
             title={label}
@@ -149,7 +162,7 @@ export function OrderRoomTreeSelect({
               className="h-8 w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 text-[12px] text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)]"
             />
           </div>
-          <div className="max-h-64 overflow-auto">
+          <div ref={panelRef} className="max-h-64 overflow-auto">
             {visible.length === 0 ? (
               <div className="px-2 py-3 text-center text-[11px] text-[var(--app-color-text-tertiary)]">没有匹配的房间</div>
             ) : (

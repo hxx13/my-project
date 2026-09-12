@@ -116,10 +116,15 @@ public class AssetLocationService {
         return roots;
     }
 
-    /** 排序并自底向上汇总计数，返回本层 totalCount 之和 */
+    /**
+     * 排序并自底向上汇总计数，返回本层 totalCount 之和。
+     * 排序规则：有子节点的（真正的「文件夹」）置顶，叶子节点排后面；组内仍按 sortOrder、id。
+     * 否则导入时批量建出来的几百个叶子地点，会把手工整理的文件夹挤到列表最末端。
+     */
     private static int sortAndCount(List<AssetLocation> level, Map<Long, Integer> counts) {
         level.sort(Comparator
-                .comparingInt((AssetLocation n) -> n.getSortOrder() == null ? 0 : n.getSortOrder())
+                .comparingInt((AssetLocation n) -> (n.getChildren() == null || n.getChildren().isEmpty()) ? 1 : 0)
+                .thenComparingInt(n -> n.getSortOrder() == null ? 0 : n.getSortOrder())
                 .thenComparing(AssetLocation::getId));
         int sum = 0;
         for (AssetLocation n : level) {
@@ -148,8 +153,19 @@ public class AssetLocationService {
         return buildTree(all, counts);
     }
 
+    /** 手工新建地点：排到同级最前，免得被导入时批量建的几百个节点压在列表末尾。 */
     @Transactional
     public AssetLocation create(Long parentId, String name, String icon, String operatorId) {
+        return create(parentId, name, icon, operatorId, true);
+    }
+
+    /**
+     * 新建地点。
+     * atTop=true → 排同级最前（手工新建，用户要能立刻看到自己刚建的）；
+     * atTop=false → 排同级最后（导入批量建点，保持文件里原有的先后顺序）。
+     */
+    @Transactional
+    public AssetLocation create(Long parentId, String name, String icon, String operatorId, boolean atTop) {
         String normalized = normalizeLocationName(name);
         if (normalized == null) {
             throw new IllegalArgumentException("地点名称不能为空");
@@ -158,19 +174,21 @@ public class AssetLocationService {
         if (parentId != null && findIn(all, parentId) == null) {
             throw new IllegalArgumentException("父节点不存在");
         }
-        int nextSort = 0;
+        int edgeSort = 0;
+        boolean hasSibling = false;
         for (AssetLocation n : all) {
             if (Objects.equals(n.getParentId(), parentId)) {
                 int s = n.getSortOrder() == null ? 0 : n.getSortOrder();
-                if (s + 1 > nextSort) {
-                    nextSort = s + 1;
+                if (!hasSibling || (atTop ? s < edgeSort : s > edgeSort)) {
+                    edgeSort = s;
                 }
+                hasSibling = true;
             }
         }
         AssetLocation node = new AssetLocation();
         node.setParentId(parentId);
         node.setName(normalized);
-        node.setSortOrder(nextSort);
+        node.setSortOrder(hasSibling ? (atTop ? edgeSort - 1 : edgeSort + 1) : 0);
         node.setIcon(normalizeIcon(icon));
         assetLocationMapper.insert(node);
         return node;
@@ -208,7 +226,7 @@ public class AssetLocationService {
                 return n.getId();
             }
         }
-        return create(null, leaf, null, null).getId();
+        return create(null, leaf, null, null, false).getId();
     }
 
     /** 按 " / " 从根逐段匹配；任一段匹配不到返回 null。 */

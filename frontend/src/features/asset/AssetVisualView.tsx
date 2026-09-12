@@ -52,6 +52,26 @@ import { collectDescendantIds, findPath } from "./locationTreeUtils";
 const CATEGORY_KEY = "col_资产类别";
 const USER_KEY = "col_使用人";
 
+/** 左树展开状态：存 sessionStorage，切地点/切表格视图/组件重建都不会把用户展开的节点收回去 */
+const EXPANDED_STORAGE_KEY = "asset-location-tree-expanded";
+
+function readExpandedIds(): Set<number> {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem(EXPANDED_STORAGE_KEY) ?? "null") as unknown;
+    return new Set(Array.isArray(arr) ? arr.filter((x): x is number => typeof x === "number") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistExpandedIds(ids: Set<number>) {
+  try {
+    sessionStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // 无痕模式等场景写不进去，忽略即可
+  }
+}
+
 /** 状态点颜色：NORMAL/在用 绿，报废/停用 灰，其余橙 */
 function statusDotColor(status?: string | null) {
   const v = (status ?? "").trim().toUpperCase();
@@ -406,7 +426,15 @@ export default function AssetVisualView(props: {
   const { data: tree = [], isLoading: treeLoading, isError: treeError } = useAssetLocationTree();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<number>>(readExpandedIds);
+
+  /** 展开状态统一从这走：改内存的同时写回 sessionStorage，组件重建后可恢复 */
+  const updateExpanded = (updater: (prev: Set<number>) => Set<number>) =>
+    setExpanded((prev) => {
+      const next = updater(prev);
+      persistExpandedIds(next);
+      return next;
+    });
   const [keyword, setKeyword] = useState("");
   const [assetKeyword, setAssetKeyword] = useState("");
   // 检索模式：local=客户端过滤当前节点（默认）；global=服务端跨全部资产检索。
@@ -443,11 +471,17 @@ export default function AssetVisualView(props: {
   const moveMut = useMoveAssetLocation();
 
   // 首次加载：选中第一个节点并展开其祖先链
+  // ⚠ 默认展开只能做一次：selectedId 之后会合法地变回 null（例如删掉当前选中的地点），
+  //   那时再「重新初始化」会把用户手动展开的节点全收起来。
+  const expandedInitedRef = useRef(false);
   useEffect(() => {
     if (selectedId != null || tree.length === 0) return;
     const first = tree[0];
     setSelectedId(first.id);
-    setExpanded(new Set(findPath(tree, first.id).map((n) => n.id)));
+    if (expandedInitedRef.current) return;
+    expandedInitedRef.current = true;
+    // 存过展开状态（用户手动整理过）就不要拿默认值覆盖
+    updateExpanded((prev) => (prev.size > 0 ? prev : new Set(findPath(tree, first.id).map((n) => n.id))));
   }, [tree, selectedId]);
 
   const path = useMemo(() => (selectedId == null ? [] : findPath(tree, selectedId)), [tree, selectedId]);
@@ -604,7 +638,7 @@ export default function AssetVisualView(props: {
   }, [selectedId]);
 
   const toggle = (id: number) =>
-    setExpanded((prev) => {
+    updateExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);

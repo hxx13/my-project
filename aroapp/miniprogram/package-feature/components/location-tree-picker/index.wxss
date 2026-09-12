@@ -120,7 +120,7 @@
   display: flex;
   align-items: center;
   gap: 8rpx;
-  min-height: 76rpx;
+  min-height: 88rpx;
   padding-right: 16rpx;
   border-radius: 12rpx;
 }
@@ -130,11 +130,24 @@
 }
 
 .ltp-chevron {
-  width: 44rpx;
+  width: 68rpx;
+  height: 68rpx;
+  line-height: 68rpx;
   flex-shrink: 0;
   text-align: center;
-  font-size: 22rpx;
+  border-radius: 10rpx;
+  font-size: 30rpx;
   color: #9aa0a6;
+}
+
+.ltp-chevron-hover {
+  background: #eceff3;
+}
+
+/* 叶子节点的占位：只为缩进对齐，不接收点击（点它应命中整行的选中） */
+.ltp-chevron-gap {
+  width: 68rpx;
+  flex-shrink: 0;
 }
 
 .ltp-icon {
