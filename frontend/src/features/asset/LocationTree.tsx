@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
+import { toast } from "react-hot-toast";
 import { Portal } from "@/components/Portal";
 import EmojiPicker from "@/components/ui/EmojiPicker";
 import {
@@ -39,7 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { collectDescendantIds, filterTree } from "./locationTreeUtils";
+import { collectDescendantIds, filterTree, findPath } from "./locationTreeUtils";
 import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 
 export type LocationTreeProps = {
@@ -151,6 +152,22 @@ export function LocationTree(props: LocationTreeProps) {
     setMoveParentPath("");
   };
 
+  /** 拖文件夹到另一个文件夹：拦掉自环和「拖进自己的子树」这两种非法落点 */
+  const handleDropNode = async (nodeId: number, newParentId: number) => {
+    if (nodeId === newParentId) return;
+    const dragged = findPath(tree, nodeId).at(-1);
+    const target = findPath(tree, newParentId).at(-1);
+    if (!dragged || !target) return;
+    if (dragged.parentId === newParentId) return; // 已经是同一个父节点，不用打扰
+    if (collectDescendantIds(dragged).includes(newParentId)) {
+      toast.error("不能把文件夹移动到它自己的子文件夹里");
+      return;
+    }
+    const ok = await appConfirm(`把「${dragged.name}」移动到「${target.name}」下？`, { title: "移动地点" });
+    if (!ok) return;
+    onMove(nodeId, newParentId);
+  };
+
   const renderCreateInput = (depth: number): ReactNode => (
     <div className="flex items-center gap-1" style={{ paddingLeft: depth * 8 + 18 }}>
       <input
@@ -198,12 +215,19 @@ export function LocationTree(props: LocationTreeProps) {
     const hasChildren = children.length > 0;
     const open = searching || expanded.has(node.id);
     const isSelected = selectedId === node.id;
+    const hasCount = node.totalCount != null && node.totalCount > 0;
     const isDragOver = dragOverId === node.id;
     const isCreatingHere = creating?.parentId === node.id;
     return (
       <div key={node.id}>
         <div
           data-node-id={node.id}
+          draggable
+          onDragStart={(e) => {
+            // 与资产卡片用不同的载荷类型区分：同一个落点要能分辨拖来的是资产还是文件夹
+            e.dataTransfer.setData("text/location-node-id", String(node.id));
+            e.dataTransfer.effectAllowed = "move";
+          }}
           className={cn(
             "group flex items-center rounded-twin-sm",
             isDragOver && "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
@@ -219,7 +243,12 @@ export function LocationTree(props: LocationTreeProps) {
             e.preventDefault();
             setDragOverId(null);
             const assetId = e.dataTransfer.getData("text/asset-id");
-            if (assetId) onDropAsset(assetId, node.id);
+            if (assetId) {
+              onDropAsset(assetId, node.id);
+              return;
+            }
+            const draggedNodeId = e.dataTransfer.getData("text/location-node-id");
+            if (draggedNodeId) void handleDropNode(Number(draggedNodeId), node.id);
           }}
         >
           <button
@@ -258,16 +287,17 @@ export function LocationTree(props: LocationTreeProps) {
                 <span className="h-3.5 w-3.5" />
               )}
             </span>
-            {node.totalCount != null && node.totalCount > 0 && (
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-1 text-[9px] leading-[15px]",
-                  isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]"
-                )}
-              >
-                {node.totalCount}
-              </span>
-            )}
+            {/* 固定宽度的计数槽：始终占位且数字居中，位数变化（9 → 10）或有无计数都不会推动后面的图标与名称 */}
+            <span
+              className={cn(
+                "w-6 shrink-0 truncate rounded-full text-center text-[9px] leading-[15px]",
+                hasCount
+                  ? (isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]")
+                  : ""
+              )}
+            >
+              {hasCount ? node.totalCount : ""}
+            </span>
             {node.icon ? (
               <span className="shrink-0 text-[13px] leading-none">{node.icon}</span>
             ) : hasChildren ? (

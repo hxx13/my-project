@@ -4,6 +4,7 @@ import { ScanLine, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
+  batchTransferItems,
   fetchCategoryTree,
   fetchItems,
   fetchSpaceTree,
@@ -84,6 +85,12 @@ export default function AdminInventoryPage() {
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [transferTarget, setTransferTarget] = useState<Item | null>(null);
   const [transferSpaceId, setTransferSpaceId] = useState("");
+  /** 批量调拨：跨页累积勾选，换筛选条件时清空 */
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchSpaceId, setBatchSpaceId] = useState("");
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
   const [retireTarget, setRetireTarget] = useState<Item | null>(null);
   const [retireReason, setRetireReason] = useState("用尽");
   const [retireRemark, setRetireRemark] = useState("");
@@ -139,6 +146,11 @@ export default function AdminInventoryPage() {
     qc.invalidateQueries({ queryKey: ["inventory", "spaces"] });
   };
 
+  // 换筛选条件就清空勾选，免得批量调拨误伤不在当前结果里的行；翻页不清（跨页累积）
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [appliedKeyword, categoryId, spaceId, granularity, status, hasCode, trashMode]);
+
   const resetFilters = () => {
     setKeyword("");
     setAppliedKeyword("");
@@ -169,6 +181,86 @@ export default function AdminInventoryPage() {
       invalidateItems();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "调拨失败");
+    }
+  };
+
+  const toggleSelectRow = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /** 表头勾选框：本页全选/全不选（不清空别的页已选的） */
+  const toggleSelectPage = () => {
+    const pageIds = rows.map((r) => r.id);
+    const allPicked = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of pageIds) {
+        if (allPicked) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  };
+
+  /** 按当前筛选拉全部 id。上限 1000，超过就要求先收窄条件，避免一次挪几千件 */
+  const selectAllMatching = async () => {
+    if (total > 1000) {
+      toast.error(`当前筛选共 ${total} 件，超过 1000，请先收窄条件`);
+      return;
+    }
+    setSelectingAll(true);
+    try {
+      const data = await fetchItems({
+        keyword: appliedKeyword || undefined,
+        categoryId: categoryId ? Number(categoryId) : undefined,
+        spaceId: spaceId ? Number(spaceId) : undefined,
+        granularity: granularity || undefined,
+        status: trashMode ? "RETIRED" : status || undefined,
+        hasCode: hasCode === "" ? undefined : hasCode === "true",
+        page: 1,
+        size: Math.max(total, 1),
+      });
+      setSelectedIds(new Set((data.list ?? []).map((r) => r.id)));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "全选失败");
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
+  const submitBatchTransfer = async () => {
+    const targetSpaceId = Number(batchSpaceId);
+    if (!Number.isFinite(targetSpaceId) || targetSpaceId <= 0) {
+      toast.error("请选择目标空间");
+      return;
+    }
+    if (selectedIds.size === 0) return;
+    setBatchSubmitting(true);
+    try {
+      const res = await batchTransferItems(Array.from(selectedIds), targetSpaceId);
+      const failed = res.failed ?? [];
+      if (failed.length === 0) {
+        toast.success(`已调拨 ${res.moved} 件`);
+        setBatchOpen(false);
+        setSelectedIds(new Set());
+      } else {
+        const nameOf = (id: number) => rows.find((r) => r.id === id)?.name ?? String(id);
+        toast.error(
+          `成功 ${res.moved} 件，失败 ${failed.length} 件（${failed.map((f) => `${nameOf(f.id)}：${f.reason}`).join("；")}）`,
+          { duration: 6000 }
+        );
+        // 只留失败项，改个目标空间就能重试
+        setSelectedIds(new Set(failed.map((f) => f.id)));
+      }
+      invalidateItems();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "批量调拨失败");
+    } finally {
+      setBatchSubmitting(false);
     }
   };
 
@@ -263,6 +355,29 @@ export default function AdminInventoryPage() {
 
         {view === "table" ? (
           <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {selectedIds.size > 0 && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-twin-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2 text-sm">
+                <span className="text-[var(--app-color-text-secondary)]">
+                  已选 <strong className="text-[var(--app-color-text-primary)]">{selectedIds.size}</strong> 件
+                </span>
+                {total > rows.length && (
+                  <button
+                    type="button"
+                    onClick={() => void selectAllMatching()}
+                    disabled={selectingAll}
+                    className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-link-deep)] transition hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50"
+                  >
+                    {selectingAll ? "选择中…" : `全选全部 ${total} 件`}
+                  </button>
+                )}
+                <AdminButton type="button" tone="primary" size="sm" onClick={() => { setBatchSpaceId(""); setBatchOpen(true); }}>
+                  批量调拨
+                </AdminButton>
+                <AdminButton type="button" tone="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  取消选择
+                </AdminButton>
+              </div>
+            )}
             <div className="min-h-0 flex-1 overflow-auto">
             <AdminTableShell
               loading={itemsQuery.isLoading}
@@ -274,6 +389,15 @@ export default function AdminInventoryPage() {
               <table className="w-full min-w-[960px] border-collapse text-sm twin-table">
                 <thead>
                   <tr className="border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-left text-xs text-[var(--app-color-text-secondary)]">
+                    <th className="w-10 px-3 py-2 font-medium">
+                      <input
+                        type="checkbox"
+                        aria-label="全选本页"
+                        checked={rows.length > 0 && rows.every((r) => selectedIds.has(r.id))}
+                        onChange={toggleSelectPage}
+                        className="h-3.5 w-3.5 align-middle"
+                      />
+                    </th>
                     <th className="px-3 py-2 font-medium">物品</th>
                     <th className="px-3 py-2 font-medium">RFID 码</th>
                     <th className="px-3 py-2 font-medium">分类</th>
@@ -288,6 +412,15 @@ export default function AdminInventoryPage() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${r.name}`}
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleSelectRow(r.id)}
+                          className="h-3.5 w-3.5 align-middle"
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <ItemIcon value={r.iconValue} className="mr-2" />
                         <span className="text-[var(--app-color-text-primary)]">{r.name}</span>
@@ -368,6 +501,45 @@ export default function AdminInventoryPage() {
                 </button>
                 <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void submitTransfer()}>
                   确认调拨
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+
+      {batchOpen && (
+        <Portal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量调拨 ({selectedIds.size} 件)</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <p className="mb-3 text-sm text-[var(--twin-body)]">所选物品统一调拨到：</p>
+              <select
+                value={batchSpaceId}
+                onChange={(e) => setBatchSpaceId(e.target.value)}
+                className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+              >
+                <option value="">请选择目标空间</option>
+                {spaceOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="mt-2 text-xs text-[var(--twin-mute)]">已废弃、或已经在该空间的会被跳过，结果里会逐条列出原因。</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchOpen(false)}>
+                  取消
+                </button>
+                <button
+                  className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
+                  disabled={batchSubmitting || !batchSpaceId}
+                  onClick={() => void submitBatchTransfer()}
+                >
+                  {batchSubmitting ? "调拨中…" : `确认调拨 ${selectedIds.size} 件`}
                 </button>
               </div>
             </div>

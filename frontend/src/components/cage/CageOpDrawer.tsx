@@ -68,8 +68,8 @@ export default function CageOpDrawer({
 }: {
   /** 头部徽标文字；与 title 一起可省略（省略则整个头部不渲染，只留关闭按钮） */
   badge?: string;
-  /** 头部标题文字 */
-  title?: string;
+  /** 头部标题；可传 ReactNode（如「图标 + 名称」） */
+  title?: ReactNode;
   /** 标题右侧计数文字（如「已选 2 / 3」） */
   countText?: string;
   /** 标题下方的说明文字 */

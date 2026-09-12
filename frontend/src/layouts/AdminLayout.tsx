@@ -134,6 +134,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 import { useTheme } from "@/features/theme/ThemeProvider";
+import { isTouchContextMenu } from "@/hooks/useTouchMenuGuard";
 import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
 
 import { appConfirm } from "@/lib/appDialog";
@@ -665,6 +666,9 @@ export default function AdminLayout() {
       if (!(e.target instanceof Element)) return;
       if (e.target.closest("[data-admin-chrome-ctx-surface]")) return;
       e.preventDefault();
+      // 触摸长按（iPad / 安卓平板）不是「右键」意图：拖拽时极易误触，
+      // 吃掉菜单就够了，不能顺手在长按坐标弹出后台自己的右键菜单。
+      if (isTouchContextMenu(e)) return;
       const friendOk =
         hasMinRole(role, "STAFF") && canShowWebEntry(permNodes, "/admin/staff-messages", "sidebar", role, "STAFF");
       let nav = parseAdminNavLinkFromEventTarget(e.target);

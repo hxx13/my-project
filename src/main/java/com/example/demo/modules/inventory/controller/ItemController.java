@@ -3,6 +3,7 @@ package com.example.demo.modules.inventory.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.inventory.dto.ItemBatchTransferReq;
 import com.example.demo.modules.inventory.dto.ItemLogView;
 import com.example.demo.modules.inventory.dto.ItemRetireReq;
 import com.example.demo.modules.inventory.dto.ItemTransferReq;
@@ -79,6 +80,15 @@ public class ItemController {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         return itemService.transfer(user, id, req);
+    }
+
+    @PostMapping("/batch-transfer")
+    @Operation(summary = "批量调拨物品（单条失败不影响其他条）")
+    public Result<Map<String, Object>> batchTransfer(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                     @RequestBody ItemBatchTransferReq req) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return itemService.batchTransfer(user, req);
     }
 
     @PostMapping("/{id}/retire")

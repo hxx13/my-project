@@ -19,6 +19,7 @@ import {
   fetchItemLogs,
   fetchItems,
   fetchSpaceTree,
+  transferItem,
   type Item,
   type ItemLog,
 } from "@/api/domains/inventory.api";
@@ -99,6 +100,18 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
 
   // 时间轴弹层：列出空间内物品，点击某物品拉取其留痕
   const [logItem, setLogItem] = useState<Item | null>(null);
+
+  /** 物品拖到左树某一行 → 移到该空间（与画布上拖到卡片是同一套结果） */
+  const handleDropItemToSpace = async (itemId: number, spaceId: number) => {
+    try {
+      await transferItem(itemId, { spaceId });
+      toast.success("已转移");
+      qc.invalidateQueries({ queryKey: ["inventory", "items"] });
+      qc.invalidateQueries({ queryKey: ["inventory", "spaces"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "转移失败");
+    }
+  };
   const [logs, setLogs] = useState<ItemLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
@@ -162,6 +175,7 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
                 setCreateOpen(true);
               }}
               onOpenItem={onOpenItem}
+              onDropItem={handleDropItemToSpace}
             />
           )}
         </div>
@@ -169,7 +183,7 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
 
       {/* ════════ 中：平面图 ════════ */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-sm">
-        <FloorCanvas node={node} path={path} items={items} selectedId={selectedId} onSelect={select} onNavigate={select} loadError={itemsError} onLocateItem={locateItem} onOpenItem={onOpenItem} />
+        <FloorCanvas node={node} path={path} items={items} selectedId={selectedId} onSelect={select} onNavigate={select} loadError={itemsError} onLocateItem={locateItem} onOpenItem={onOpenItem} spaces={tree} />
       </div>
 
       {/* ════════ 右：房间详情 ════════ */}

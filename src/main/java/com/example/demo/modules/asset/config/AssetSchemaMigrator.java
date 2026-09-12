@@ -105,7 +105,7 @@ public class AssetSchemaMigrator implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         // === 关键列定义：优先执行，独立容错，确保基本列始终存在 ===
-        safeRun("ensure-col-校区", () -> ensureAssetColumnDef("col_校区", "校区"));
+        // 「校区」列已废弃（改由存放地点树/文件夹表达），不再新建；存量列由 bootstrap-drop-asset-campus.sql 清理
         safeRun("ensure-col-管理部门", () -> ensureAssetColumnDef("col_管理部门", "管理部门"));
 
         // === 核心表结构 ===

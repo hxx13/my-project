@@ -1,12 +1,9 @@
 <view class="page">
   <view class="card">
-    <!-- 标题行：标题 + 校区选择 + 操作按钮 -->
+    <!-- 标题行：标题 + 操作按钮 -->
     <view class="title-row">
       <view class="title">资产记录</view>
       <view class="title-right">
-        <view class="ui-btn ui-btn-campus {{ campus === '浦东' ? 'campus-pudong' : (campus === '浦西' ? 'campus-puxi' : '') }}" bindtap="onCampusTap">
-          {{ campus || '校区' }} <text class="campus-arrow">▾</text>
-        </view>
         <view class="ui-btn ui-btn-add" bindtap="openAddPanel">
           <van-icon name="scan" size="16" /> 添加
         </view>
@@ -58,6 +55,27 @@
     </view>
   </view>
 
+  <!-- 文件夹面包屑（搜索是跨文件夹的，搜索时隐藏） -->
+  <view wx:if="{{ !appliedKeyword }}" class="folder-bar">
+    <view class="folder-crumb">
+      <text
+        class="folder-crumb-item {{ breadcrumb.length ? '' : 'folder-crumb-current' }}"
+        data-id=""
+        bindtap="onBreadcrumbTap"
+      >全部</text>
+      <block wx:for="{{ breadcrumb }}" wx:key="id">
+        <text class="folder-crumb-sep">/</text>
+        <text
+          class="folder-crumb-item {{ index === breadcrumb.length - 1 ? 'folder-crumb-current' : '' }}"
+          data-id="{{ item.id }}"
+          bindtap="onBreadcrumbTap"
+        >{{ item.name }}</text>
+      </block>
+    </view>
+    <view wx:if="{{ breadcrumb.length }}" class="folder-back" bindtap="onBackToParent">← 上层</view>
+    <view wx:if="{{ breadcrumb.length }}" class="folder-back folder-relocate" bindtap="startRelocate">扫码归位</view>
+  </view>
+
   <!-- 资产列表（flex 填充剩余空间，内部 scroll-view 独立滚动） -->
   <view class="list-panel">
     <scroll-view
@@ -68,20 +86,66 @@
       lower-threshold="120"
       bindscrolltolower="onListReachBottom"
     >
+      <!-- 扫码归位横幅：只在归位模式下出现 -->
+      <view wx:if="{{ relocateNodeName }}" class="relocate-bar">
+        <view class="relocate-head">
+          <text class="relocate-title">归位到「{{ relocateNodeName }}」</text>
+          <text class="relocate-count">已扫 {{ relocateScanned.length }} 台</text>
+        </view>
+        <view class="relocate-actions">
+          <view
+            class="relocate-btn {{ relocateContinuous ? 'relocate-btn-on' : '' }}"
+            bindtap="toggleRelocateContinuous"
+          >连续扫码{{ relocateContinuous ? '开' : '关' }}</view>
+          <view class="relocate-btn" bindtap="scanForRelocate">扫码</view>
+          <view
+            class="relocate-btn relocate-btn-primary {{ relocateScanned.length ? '' : 'relocate-btn-disabled' }}"
+            bindtap="submitRelocate"
+          >全部移入 {{ relocateScanned.length }} 台</view>
+          <view class="relocate-btn" bindtap="exitRelocate">退出</view>
+        </view>
+      </view>
+
+      <!-- 待归位：扫到的资产先落在这里，确认后一次性移入 -->
+      <view wx:if="{{ relocateScanned.length }}" class="relocate-staged">
+        <view class="list-section-title">待归位</view>
+        <view wx:for="{{ relocateScanned }}" wx:key="id" class="staged-item">
+          <view class="staged-main">
+            <view class="staged-name">{{ item.assetName }}</view>
+            <view class="staged-meta">{{ item.assetCode }} · 原地点 {{ item.fromLocation }}</view>
+          </view>
+          <view class="staged-remove" data-id="{{ item.id }}" bindtap="removeRelocateItem">移除</view>
+        </view>
+      </view>
+
+      <!-- 子文件夹入口（搜索时隐藏） -->
+      <view wx:if="{{ !appliedKeyword && childFolders.length }}" class="folder-list">
+        <view
+          wx:for="{{ childFolders }}"
+          wx:key="id"
+          class="folder-item"
+          data-id="{{ item.id }}"
+          bindtap="onEnterFolder"
+        >
+          <text class="folder-item-icon">{{ item.icon || '📁' }}</text>
+          <text class="folder-item-name">{{ item.name }}</text>
+          <text class="folder-item-count">共 {{ item.totalCount }} 件</text>
+          <text class="folder-item-arrow">›</text>
+        </view>
+      </view>
+
+      <view class="list-section-title">{{ appliedKeyword ? '搜索结果（全部文件夹）' : (breadcrumb.length ? '本层资产' : '未归类资产') }}</view>
+
       <view wx:if="{{ loading }}" class="meta">加载中…</view>
-      <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无资产记录" />
+      <van-empty
+        wx:elif="{{ rows.length === 0 }}"
+        description="{{ appliedKeyword ? '没有匹配的资产' : (breadcrumb.length ? '本文件夹暂无资产' : '没有未归类的资产') }}"
+      />
       <view wx:else>
-        <view wx:for="{{ rows }}" wx:key="id" class="asset-item-card card-campus-{{ item.rowCampus === '浦东' ? 'pudong' : (item.rowCampus === '浦西' ? 'puxi' : 'unknown') }}">
+        <view wx:for="{{ rows }}" wx:key="id" class="asset-item-card">
           <view class="item-row">
             <text class="item-row-label">资产编号</text>
             <text class="item-row-value">{{ item.assetCode || '-' }}</text>
-            <view
-              class="campus-tag {{ item.rowCampus === '浦东' ? 'campus-tag-pudong' : (item.rowCampus === '浦西' ? 'campus-tag-puxi' : 'campus-tag-unknown') }}"
-              data-id="{{ item.id }}"
-              catchtap="onRowCampusTap"
-            >
-              {{ item.rowCampus || '未识别' }}
-            </view>
           </view>
           <view class="item-row">
             <text class="item-row-label">资产名称</text>

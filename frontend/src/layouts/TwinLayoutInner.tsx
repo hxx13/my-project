@@ -11,6 +11,7 @@ import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier"
 import { twinChromeGlobalPointerShouldBypass } from "@/features/twin-chrome/twinChromeGlobalPointerBypass";
 import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
 import { useTheme } from "@/features/theme/ThemeProvider";
+import { useTouchMenuGuard } from "@/hooks/useTouchMenuGuard";
 import "@/features/twin-chrome/twinChromeDebugOutlet.css";
 import "@/features/twin-chrome/twinChromeDebugPipeline.css";
 import "@/features/twin-chrome/twinChromeDebugNeonGlobal.css";
@@ -37,6 +38,8 @@ function isAnimalRoomTelemetryPath(pathname: string): boolean {
 }
 
 export default function TwinLayoutInner() {
+    // 教职工端全程禁用触摸长按菜单（拖拽时误触）
+    useTouchMenuGuard();
     const { pathname } = useLocation();
     const showDock = !hideDockPath(pathname);
     const { themeId } = useTwinChromeTheme();
@@ -103,7 +106,7 @@ export default function TwinLayoutInner() {
     return (
         <div
             className={cn(
-                "fixed inset-0 w-screen m-0 p-0 overflow-x-hidden h-screen",
+                "fixed inset-0 w-screen m-0 p-0 overflow-x-hidden h-screen [-webkit-touch-callout:none]",
                 isPreview ? "overflow-hidden" : "overflow-y-auto",
                 theme.className,
                 isDark && "dark"

@@ -3,7 +3,8 @@
  *
  * 统一卡片结构：每个空间 = 一张卡片（标题栏 + 物品区 + 子空间区），叶子卡片无子空间区。
  * 下钻：点卡片「放大」为当前焦点，画布渲染该焦点 + 其子卡片；面包屑/返回回退。
- * 编辑模式（独立开关）：开启后物品 tile 可拖拽到别的卡片（转移），导航点击下钻锁定。
+ * 拖拽转移：物品 tile 无条件可拖，拖到别的卡片或左树即改归属（不再需要先进编辑模式）。
+ * 批量转移：开启后点卡片多选（含全选），选目标空间一次性移入。
  * 检索：全局关键字检索物品，命中卡片高亮；点结果定位到所在空间。
  */
 
@@ -11,8 +12,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronRight, Move, Search, X } from "lucide-react";
-import { fetchItems, transferItem, type Item, type SpaceNode } from "@/api/domains/inventory.api";
+import { ArrowLeft, ArrowRightLeft, ChevronRight, Search, X } from "lucide-react";
+import { batchTransferItems, fetchItems, transferItem, type Item, type SpaceNode } from "@/api/domains/inventory.api";
 import { categoryColor, groupBySpace, showQty, sumSubtreeItemCount } from "./constants";
 import { cn } from "@/lib/utils";
 import ItemIcon from "./ItemIcon";
@@ -30,24 +31,35 @@ function HitBadge({ count }: { count: number }) {
 /* ────────────────────────────────────────────────────────────
    物品 tile（可拖拽，点击打开详情）
    ──────────────────────────────────────────────────────────── */
-function ItemTile({ it, editMode, onOpenItem, onDragStart }: {
+function ItemTile({ it, onOpenItem, onDragStart, selectable, selected, onToggle }: {
   it: Item;
-  editMode: boolean;
   onOpenItem?: (it: Item) => void;
   onDragStart?: (e: DragEvent, it: Item) => void;
+  /** 批量转移模式：禁用拖拽，点击即选中/取消 */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (id: number) => void;
 }) {
   return (
     <div
-      draggable={editMode}
-      onDragStart={(e) => onDragStart?.(e, it)}
+      // 无条件可拖（与资产侧口径一致）：不再需要先进入「转移物品」模式
+      draggable={!selectable}
+      onDragStart={(e) => {
+        if (selectable) return;
+        onDragStart?.(e, it);
+      }}
       onClick={(e) => {
         e.stopPropagation();
-        onOpenItem?.(it);
+        if (selectable) onToggle?.(it.id);
+        else onOpenItem?.(it);
       }}
-      title={editMode ? "拖到别的卡片以转移" : `${it.name} · ${it.categoryName ?? "未分类"}`}
+      title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到别的卡片以转移，点击查看详情"}
       className={cn(
-        "flex min-w-0 items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-1 transition",
-        editMode ? "cursor-grab active:cursor-grabbing" : "cursor-pointer hover:border-[var(--twin-link-deep)]"
+        "flex min-w-0 select-none items-center gap-1 rounded-twin-md border px-1.5 py-1 transition",
+        selectable ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        selected
+          ? "border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
+          : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
       )}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor(it.categoryName) }} />
@@ -61,23 +73,33 @@ function ItemTile({ it, editMode, onOpenItem, onDragStart }: {
 /* ────────────────────────────────────────────────────────────
    物品大卡片（叶子房间内部展示，含封面缩略图）
    ──────────────────────────────────────────────────────────── */
-function ItemCard({ it, editMode, onOpenItem, onDragStart }: {
+function ItemCard({ it, onOpenItem, onDragStart, selectable, selected, onToggle }: {
   it: Item;
-  editMode: boolean;
   onOpenItem?: (it: Item) => void;
   onDragStart?: (e: DragEvent, it: Item) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (id: number) => void;
 }) {
   return (
     <div
-      draggable={editMode}
-      onDragStart={(e) => onDragStart?.(e, it)}
+      draggable={!selectable}
+      onDragStart={(e) => {
+        if (selectable) return;
+        onDragStart?.(e, it);
+      }}
       onClick={(e) => {
         e.stopPropagation();
-        onOpenItem?.(it);
+        if (selectable) onToggle?.(it.id);
+        else onOpenItem?.(it);
       }}
+      title={selectable ? (selected ? "点击取消选中" : "点击选中") : "拖到别的卡片以转移，点击查看详情"}
       className={cn(
-        "flex flex-col overflow-hidden rounded-twin-lg border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] shadow-sm transition",
-        editMode ? "cursor-grab active:cursor-grabbing" : "cursor-pointer hover:border-[var(--twin-link-deep)]"
+        "flex flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] shadow-sm transition",
+        selectable ? "cursor-pointer" : "cursor-grab select-none active:cursor-grabbing",
+        selected
+          ? "border-[var(--twin-link-deep)] ring-2 ring-[var(--twin-link-deep)] ring-offset-1"
+          : "border-[var(--twin-hairline-strong)]"
       )}
     >
       <div className="flex aspect-[4/3] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
@@ -101,16 +123,19 @@ function ItemCard({ it, editMode, onOpenItem, onDragStart }: {
 /* ────────────────────────────────────────────────────────────
    空间卡片（统一结构）
    ──────────────────────────────────────────────────────────── */
-function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, editMode, onSelect, onOpenItem, onDragStartItem, onDropItem, depth = 0 }: {
+function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelect, onOpenItem, onDragStartItem, onDropItem, selectable, selectedIds, onToggle, depth = 0 }: {
   node: SpaceNode;
   chipsFor: (spaceId: number) => Item[];
   highlightSpaceIds: Set<number>;
   highlightCounts: Map<number, number>;
-  editMode: boolean;
   onSelect: (id: number) => void;
   onOpenItem?: (it: Item) => void;
   onDragStartItem?: (e: DragEvent, it: Item) => void;
   onDropItem?: (e: DragEvent, spaceId: number) => void;
+  /** 批量转移模式：透传到物品 tile */
+  selectable?: boolean;
+  selectedIds?: Set<number>;
+  onToggle?: (id: number) => void;
   depth?: number;
 }) {
   const items = chipsFor(node.id);
@@ -123,8 +148,8 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, editMod
   if (isEmptyIntermediate) {
     return (
       <div
-        onDragOver={(e) => { if (editMode) e.preventDefault(); }}
-        onDrop={(e) => { if (editMode) { e.preventDefault(); e.stopPropagation(); onDropItem?.(e, node.id); } }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDropItem?.(e, node.id); }}
         className={cn("relative flex flex-col rounded-twin-lg border bg-[var(--twin-canvas)] p-3", highlighted ? "border-[#f59e0b]" : "border-[var(--twin-hairline-strong)]")}
         style={highlighted ? { boxShadow: HIGHLIGHT_SHADOW } : undefined}
       >
@@ -142,11 +167,13 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, editMod
               chipsFor={chipsFor}
               highlightSpaceIds={highlightSpaceIds}
               highlightCounts={highlightCounts}
-              editMode={editMode}
               onSelect={onSelect}
               onOpenItem={onOpenItem}
               onDragStartItem={onDragStartItem}
               onDropItem={onDropItem}
+              selectable={selectable}
+              selectedIds={selectedIds}
+              onToggle={onToggle}
               depth={depth + 1}
             />
           ))}
@@ -158,22 +185,15 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, editMod
   return (
     <button
       type="button"
-      onClick={() => {
-        if (!editMode) onSelect(node.id);
-      }}
-      onDragOver={(e) => {
-        if (editMode) e.preventDefault();
-      }}
+      onClick={() => onSelect(node.id)}
+      onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
-        if (editMode) {
-          e.preventDefault();
-          e.stopPropagation();
-          onDropItem?.(e, node.id);
-        }
+        e.preventDefault();
+        e.stopPropagation();
+        onDropItem?.(e, node.id);
       }}
       className={cn(
-        "relative flex min-w-0 flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] p-3 text-left shadow-sm transition",
-        editMode ? "cursor-default" : "cursor-pointer hover:border-[var(--twin-link-deep)]",
+        "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] p-3 text-left shadow-sm transition hover:border-[var(--twin-link-deep)]",
         highlighted ? "border-[#f59e0b]" : "border-[var(--twin-hairline-strong)]"
       )}
       style={highlighted ? { boxShadow: HIGHLIGHT_SHADOW } : undefined}
@@ -190,11 +210,12 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, editMod
       {items.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
           {items.map((it) => (
-            <ItemTile key={it.id} it={it} editMode={editMode} onOpenItem={onOpenItem} onDragStart={onDragStartItem} />
+            <ItemTile key={it.id} it={it} onOpenItem={onOpenItem} onDragStart={onDragStartItem} selectable={selectable} selected={selectedIds?.has(it.id)} onToggle={onToggle} />
           ))}
         </div>
       )}
-      {items.length === 0 && <div className="mt-2 text-[11px] text-[var(--twin-mute)]">暂无物品</div>}
+      {/* 只有子空间、本级没物品时不能报「暂无物品」——子级就在下面渲染 */}
+      {items.length === 0 && !hasChildren && <div className="mt-2 text-[11px] text-[var(--twin-mute)]">暂无物品</div>}
     </button>
   );
 }
@@ -212,14 +233,76 @@ export default function FloorCanvas(props: {
   loadError?: boolean;
   onLocateItem?: (spaceId: number) => void;
   onOpenItem?: (item: Item) => void;
+  /** 空间树（批量转移选目标空间用） */
+  spaces?: SpaceNode[];
 }) {
-  const { node, path, items, selectedId, onSelect, onNavigate, loadError, onLocateItem, onOpenItem } = props;
+  const { node, path, items, selectedId, onSelect, onNavigate, loadError, onLocateItem, onOpenItem, spaces } = props;
   const qc = useQueryClient();
 
-  // 编辑模式（独立开关）
-  const [editMode, setEditMode] = useState(false);
   // 拖拽落点后抑制紧随的 click，避免误触发卡片下钻
   const dropHandledRef = useRef(false);
+
+  // 批量转移（与资产侧同一套交互）：点卡片多选 → 选目标空间 → 一次性移入
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchIds, setBatchIds] = useState<Set<number>>(new Set());
+  const [batchTargetId, setBatchTargetId] = useState<number | null>(null);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+
+  // 可勾选范围 = 当前地点整棵子树里展示的物品（与画布拉取范围一致）
+  const selectableIds = useMemo(() => items.map((it) => it.id), [items]);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => batchIds.has(id));
+  const toggleSelectAll = () => setBatchIds(allSelected ? new Set() : new Set(selectableIds));
+  const toggleBatchId = (id: number) =>
+    setBatchIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const exitBatchMode = () => {
+    setBatchMode(false);
+    setBatchIds(new Set());
+    setBatchTargetId(null);
+  };
+
+  const submitBatch = async () => {
+    if (batchTargetId == null || batchIds.size === 0 || batchSubmitting) return;
+    setBatchSubmitting(true);
+    try {
+      const res = await batchTransferItems(Array.from(batchIds), batchTargetId);
+      const failed = res.failed ?? [];
+      if (!failed.length) {
+        toast.success(`已转移 ${res.moved} 件`);
+        exitBatchMode();
+      } else {
+        const nameOf = (id: number) => items.find((x) => x.id === id)?.name ?? String(id);
+        toast.error(
+          `成功 ${res.moved} 件，失败 ${failed.length} 件（${failed.map((f) => `${nameOf(f.id)}：${f.reason}`).join("；")}）`,
+          { duration: 6000 }
+        );
+        // 只留失败项，换个目标空间就能重试
+        setBatchIds(new Set(failed.map((f) => f.id)));
+      }
+      qc.invalidateQueries({ queryKey: ["inventory", "items"] });
+      qc.invalidateQueries({ queryKey: ["inventory", "spaces"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "批量转移失败");
+    } finally {
+      setBatchSubmitting(false);
+    }
+  };
+
+  const spaceOptions = useMemo(() => {
+    const out: { id: number; label: string }[] = [];
+    const walk = (nodes: SpaceNode[], depth: number) => {
+      for (const n of nodes) {
+        out.push({ id: n.id, label: `${"　".repeat(depth)}${n.name}` });
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    };
+    walk(spaces ?? [], 0);
+    return out;
+  }, [spaces]);
 
   // 检索物品
   const [searchQuery, setSearchQuery] = useState("");
@@ -372,16 +455,19 @@ export default function FloorCanvas(props: {
             )}
           </div>
 
-          {/* 编辑布局开关 */}
+          {/* 批量转移开关：开启后点卡片多选，选目标空间一次性移入 */}
           <button
             type="button"
-            onClick={() => setEditMode((v) => !v)}
+            onClick={() => (batchMode ? exitBatchMode() : setBatchMode(true))}
+            aria-pressed={batchMode}
             className={cn(
               "flex shrink-0 items-center gap-1 rounded-twin-sm border px-2 py-1 text-[11px] transition",
-              editMode ? "border-[#f59e0b] bg-[#f59e0b]/10 text-[#f59e0b]" : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+              batchMode
+                ? "border-[var(--twin-link-deep)] bg-[var(--twin-link-deep)] font-medium text-white"
+                : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
             )}
           >
-            <Move className="h-3 w-3" /> {editMode ? "转移中" : "转移物品"}
+            <ArrowRightLeft className="h-3 w-3" /> 批量转移
           </button>
 
           <div className="hidden shrink-0 items-center gap-3 lg:flex">
@@ -398,6 +484,55 @@ export default function FloorCanvas(props: {
           </div>
         </div>
       </div>
+
+      {/* 批量转移横幅 */}
+      {batchMode && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)] bg-[color-mix(in_srgb,var(--twin-link-deep)_8%,var(--twin-canvas))] px-3 py-2">
+          <span className="flex shrink-0 items-center gap-1.5 text-[12px] font-medium text-[var(--twin-ink)]">
+            <ArrowRightLeft className="h-3.5 w-3.5 text-[var(--twin-link-deep)]" /> 批量转移
+          </span>
+          <span className="rounded-full bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)]">
+            已选 {batchIds.size} 件
+          </span>
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            disabled={selectableIds.length === 0}
+            className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-[10px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-link-deep)] disabled:opacity-50"
+          >
+            {allSelected ? "取消全选" : `全选本地点 ${selectableIds.length} 件`}
+          </button>
+          <div className="w-64 shrink-0">
+            <select
+              value={batchTargetId ?? ""}
+              onChange={(e) => setBatchTargetId(e.target.value ? Number(e.target.value) : null)}
+              className="h-8 w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 text-[11px] text-[var(--twin-ink)]"
+            >
+              <option value="">选择目标空间</option>
+              {spaceOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void submitBatch()}
+              disabled={batchIds.size === 0 || batchTargetId == null || batchSubmitting}
+              className="rounded-twin-md bg-[var(--twin-link-deep)] px-2.5 py-1 text-[11px] font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {batchSubmitting ? "转移中…" : `确认转移 ${batchIds.size} 件`}
+            </button>
+            <button
+              type="button"
+              onClick={exitBatchMode}
+              className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-[11px] text-[var(--twin-body)] transition hover:bg-[var(--twin-canvas-soft)]"
+            >
+              退出
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* size 上限提示 */}
       {truncationHint && (
@@ -416,7 +551,7 @@ export default function FloorCanvas(props: {
             <div className="flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] px-4 py-2.5">
               <span className="text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
               <span className="rounded-full bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] text-[var(--twin-mute)]">{node.itemCount ?? 0} 件</span>
-              {editMode && <span className="ml-2 text-[10px] text-[#f59e0b]">拖拽物品到目标卡片以转移</span>}
+              <span className="ml-2 text-[10px] text-[var(--twin-mute)]">拖拽物品到目标卡片即可转移</span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -429,7 +564,7 @@ export default function FloorCanvas(props: {
                   </div>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
                     {chipsFor(node.id).map((it) => (
-                      <ItemCard key={it.id} it={it} editMode={editMode} onOpenItem={onOpenItem} onDragStart={handleDragStartItem} />
+                      <ItemCard key={it.id} it={it} onOpenItem={onOpenItem} onDragStart={handleDragStartItem} selectable={batchMode} selected={batchIds.has(it.id)} onToggle={toggleBatchId} />
                     ))}
                   </div>
                 </div>
@@ -445,11 +580,13 @@ export default function FloorCanvas(props: {
                       chipsFor={chipsFor}
                       highlightSpaceIds={highlightSpaceIds}
                       highlightCounts={highlightCounts}
-                      editMode={editMode}
                       onSelect={handleCardSelect}
                       onOpenItem={onOpenItem}
                       onDragStartItem={handleDragStartItem}
                       onDropItem={handleDropItem}
+                      selectable={batchMode}
+                      selectedIds={batchIds}
+                      onToggle={toggleBatchId}
                     />
                   ))}
                 </div>

@@ -16,6 +16,7 @@ import {
   type SpaceNode,
 } from "@/api/domains/inventory.api";
 import { Portal } from "@/components/Portal";
+import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSelect } from "@/components/admin/AdminSelect";
 import { uploadSingleImage } from "@/api/domains/upload.api";
@@ -316,30 +317,14 @@ export default function ItemDetailDrawer(props: {
   const showRecover = item.status === "RETIRED";
 
   return (
-    <Portal>
-      <div className="fixed inset-0 z-50 flex">
-        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-        <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white shadow-twin-level-3">
-          {/* 头部 */}
-          <div className="flex items-start justify-between gap-3 border-b border-[var(--app-color-border-default)] px-5 py-4">
-            <div className="flex items-center gap-3">
-              {renderIcon()}
-              <div className="min-w-0">
-                <h3 className="truncate text-lg font-semibold text-[var(--app-color-text-primary)]">{item.name}</h3>
-                <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${statusBadgeClass(item.status)}`}>
-                  {statusLabel(item.status)}
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]"
-              aria-label="关闭"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+    <>
+      <CageOpDrawer
+        title={<span className="inline-flex items-center gap-1.5">{renderIcon()}{item.name}</span>}
+        badge={statusLabel(item.status)}
+        collapseLabel="物品详情"
+        width={420}
+        onClose={onClose}
+      >
 
           {/* 操作按钮 */}
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--app-color-border-default)] px-5 py-3">
@@ -422,8 +407,7 @@ export default function ItemDetailDrawer(props: {
               )}
             </div>
           </div>
-        </div>
-      </div>
+      </CageOpDrawer>
 
       {/* 编辑弹层 */}
       {editOpen && (
@@ -688,6 +672,6 @@ export default function ItemDetailDrawer(props: {
           </div>
         </Portal>
       )}
-    </Portal>
+    </>
   );
 }

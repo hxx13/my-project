@@ -193,38 +193,6 @@
         <if test="assetName != null and assetName != ''">
             AND a.asset_name LIKE CONCAT('%', #{assetName}, '%')
         </if>
-        <if test="campus != null and campus != ''">
-            <choose>
-                <when test="campus == '浦西'">
-                    AND (
-                        a.location NOT LIKE CONCAT('%', '浦东', '%')
-                        <if test="campusKeys != null and campusKeys.size() > 0">
-                            AND NOT EXISTS (
-                                SELECT 1 FROM asset_record_value cv2
-                                WHERE cv2.asset_id = a.id
-                                  AND cv2.column_key IN
-                                  <foreach collection="campusKeys" item="key" open="(" close=")" separator=",">#{key}</foreach>
-                                  AND cv2.column_value LIKE CONCAT('%', '浦东', '%')
-                            )
-                        </if>
-                    )
-                </when>
-                <otherwise>
-                    AND (
-                        a.location LIKE CONCAT('%', #{campus}, '%')
-                        <if test="campusKeys != null and campusKeys.size() > 0">
-                            OR EXISTS (
-                                SELECT 1 FROM asset_record_value cv2
-                                WHERE cv2.asset_id = a.id
-                                  AND cv2.column_key IN
-                                  <foreach collection="campusKeys" item="key" open="(" close=")" separator=",">#{key}</foreach>
-                                  AND cv2.column_value LIKE CONCAT('%', #{campus}, '%')
-                            )
-                        </if>
-                    )
-                </otherwise>
-            </choose>
-        </if>
         <if test="user != null and user != ''">
             AND EXISTS (
                 SELECT 1 FROM asset_record_value uv
@@ -282,6 +250,10 @@
             <foreach collection="locationNodeIds" item="nodeId" open="(" close=")" separator=",">
                 #{nodeId}
             </foreach>
+        </if>
+        <!-- 未归类：还没挂到任何存放地点节点上的资产（图形视图/小程序的「未归类」入口） -->
+        <if test="unassigned != null and unassigned">
+            AND a.location_node_id IS NULL
         </if>
     </sql>
 

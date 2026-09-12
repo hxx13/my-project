@@ -45,11 +45,9 @@ import AssetVisualView from "@/features/asset/AssetVisualView";
 import AssetDetailDrawer from "@/features/asset/AssetDetailDrawer";
 import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import {
-  ASSET_CAMPUS_OPTIONS,
   ASSET_STATUS_OPTIONS,
   assetStatusLabel,
   assetEditableFields,
-  isCampusColumn,
   isLocationColumn,
 } from "@/features/asset/assetEditableFields";
 import { findPath } from "@/features/asset/locationTreeUtils";
@@ -128,8 +126,6 @@ export default function AdminAssetRecordPage() {
   const [appliedUser, setAppliedUser] = useState("");
   const [appliedModel, setAppliedModel] = useState("");
   const [appliedLocation, setAppliedLocation] = useState("");
-  const [campus, setCampus] = useState("");
-  const [appliedCampus, setAppliedCampus] = useState("");
   const [sortBy, setSortBy] = useState("assetCode");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [modalOpen, setModalOpen] = useState(false);
@@ -246,14 +242,13 @@ export default function AdminAssetRecordPage() {
     page,
     size,
     keyword: appliedKeyword || undefined,
-    campus: appliedCampus || undefined,
     assetName: appliedAssetName || undefined,
     user: appliedUser || undefined,
     model: appliedModel || undefined,
     location: appliedLocation || undefined,
     sortBy,
     sortDirection,
-  }), [page, size, appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, appliedLocation, sortBy, sortDirection]);
+  }), [page, size, appliedKeyword, appliedAssetName, appliedUser, appliedModel, appliedLocation, sortBy, sortDirection]);
 
   const { data: assetData, isLoading } = useAssetList(queryParams);
   const rows = assetData?.rows ?? [];
@@ -261,10 +256,9 @@ export default function AdminAssetRecordPage() {
   const columns = assetData?.columns ?? [];
 
   const { data: facetsData } = useQuery({
-    queryKey: [...queryKeys.asset.all, "facets", appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, appliedLocation] as const,
+    queryKey: [...queryKeys.asset.all, "facets", appliedKeyword, appliedAssetName, appliedUser, appliedModel, appliedLocation] as const,
     queryFn: () => fetchAssetFacets({
       keyword: appliedKeyword || undefined,
-      campus: appliedCampus || undefined,
       assetName: appliedAssetName || undefined,
       user: appliedUser || undefined,
       model: appliedModel || undefined,
@@ -272,7 +266,7 @@ export default function AdminAssetRecordPage() {
     }),
     placeholderData: (prev) => prev,
   });
-  const facets: AssetFacets = facetsData ?? { assetNames: [], campuses: [], users: [], models: [], locations: [] };
+  const facets: AssetFacets = facetsData ?? { assetNames: [], users: [], models: [], locations: [] };
 
   const { data: recycleData } = useAssetRecycle({ page: recyclePage, size: 20, keyword: recycleKeyword.trim() || undefined });
   const recycleRows: AssetRecycleRow[] = recycleData?.rows ?? [];
@@ -365,7 +359,6 @@ export default function AdminAssetRecordPage() {
 
   const applySearch = () => {
     setAppliedKeyword(keyword.trim());
-    setAppliedCampus(campus);
     setAppliedAssetName(assetName.trim());
     setAppliedUser(user.trim());
     setAppliedModel(model.trim());
@@ -379,17 +372,15 @@ export default function AdminAssetRecordPage() {
       applySearch();
     }, 400);
     return () => clearTimeout(timer);
-  }, [keyword, campus, assetName, user, model, location]);
+  }, [keyword, assetName, user, model, location]);
 
   const resetSearch = () => {
     setKeyword("");
-    setCampus("");
     setAssetName("");
     setUser("");
     setModel("");
     setLocation("");
     setAppliedKeyword("");
-    setAppliedCampus("");
     setAppliedAssetName("");
     setAppliedUser("");
     setAppliedModel("");
@@ -400,7 +391,7 @@ export default function AdminAssetRecordPage() {
   // 换页/换筛选条件后清空勾选，避免批量删除误伤不在当前结果里的行
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [page, size, appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, appliedLocation]);
+  }, [page, size, appliedKeyword, appliedAssetName, appliedUser, appliedModel, appliedLocation]);
 
   useEffect(() => {
     setPageInput(String(page));
@@ -416,7 +407,7 @@ export default function AdminAssetRecordPage() {
   };
 
   const hasActiveFilter = Boolean(
-    appliedKeyword || appliedCampus || appliedAssetName || appliedUser || appliedModel || appliedLocation
+    appliedKeyword || appliedAssetName || appliedUser || appliedModel || appliedLocation
   );
 
   const applyColumnWidths = (showToast = false) => {
@@ -526,7 +517,7 @@ export default function AdminAssetRecordPage() {
   const runExport = async (cols: string[]) => {
     try {
       const blob = await exportAssetExcel({
-        keyword: appliedKeyword || undefined, campus: appliedCampus || undefined,
+        keyword: appliedKeyword || undefined,
         assetName: appliedAssetName || undefined, user: appliedUser || undefined,
         model: appliedModel || undefined, location: appliedLocation || undefined,
         columns: cols.join(","),
@@ -964,11 +955,6 @@ export default function AdminAssetRecordPage() {
                   placeholder="编码/名称/地点/备注"
                 />
               </div>
-              <AdminSelect value={campus} onChange={(e) => setCampus(e.target.value)} className="w-24">
-                <option value="">校区：全部</option>
-                <option value="浦东">浦东</option>
-                <option value="浦西">浦西</option>
-              </AdminSelect>
               <div className="w-36"><AdminSearchSelect value={assetName} onChange={setAssetName} options={facets.assetNames} placeholder="资产名称" className="w-full" /></div>
               <div className="w-28"><AdminSearchSelect value={user} onChange={setUser} options={facets.users ?? []} placeholder="使用人" className="w-full" /></div>
               <div className="w-40"><AdminSearchSelect value={location} onChange={setLocation} options={facets.locations ?? []} placeholder="存放地点" className="w-full" /></div>
@@ -984,6 +970,9 @@ export default function AdminAssetRecordPage() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
+            {/* 表格视角专属操作：图形视图里这些入口在右栏/画布上，这里隐藏防止穿透 */}
+            {view === "table" && (
+              <>
             <AdminButton
               type="button"
               tone="secondary"
@@ -1014,6 +1003,8 @@ export default function AdminAssetRecordPage() {
               <Pencil className="h-4 w-4 shrink-0" aria-hidden />
               {tableEditMode ? "完成编辑" : "编辑表格"}
             </AdminButton>
+              </>
+            )}
             <AdminButton
               type="button"
               tone="secondary"
@@ -1023,6 +1014,7 @@ export default function AdminAssetRecordPage() {
               <ScanLine className="h-4 w-4 shrink-0" aria-hidden />
               扫码
             </AdminButton>
+            {view === "table" && (
             <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
                 <MoreHorizontal className="h-4 w-4 shrink-0" />
@@ -1079,6 +1071,7 @@ export default function AdminAssetRecordPage() {
                 <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
         </div>
 
@@ -1249,17 +1242,6 @@ export default function AdminAssetRecordPage() {
                               clearable
                               className="!h-7 !rounded-twin-sm !px-2 !text-xs"
                             />
-                          ) : isCampusColumn(c) ? (
-                            <select
-                              value={display}
-                              onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
-                              className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs"
-                            >
-                              <option value="">未设置</option>
-                              {ASSET_CAMPUS_OPTIONS.map((o) => (
-                                <option key={o} value={o}>{o}</option>
-                              ))}
-                            </select>
                           ) : (
                             <input
                               value={display}
@@ -1402,17 +1384,6 @@ export default function AdminAssetRecordPage() {
                         onChange={(path) => setAddForm((prev) => ({ ...prev, [c.columnKey]: path }))}
                         clearable
                       />
-                    ) : isCampusColumn(c) ? (
-                      <select
-                        value={addForm[c.columnKey] || ""}
-                        onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
-                        className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                      >
-                        <option value="">未设置</option>
-                        {ASSET_CAMPUS_OPTIONS.map((o) => (
-                          <option key={o} value={o}>{o}</option>
-                        ))}
-                      </select>
                     ) : (
                       <input
                         value={addForm[c.columnKey] || ""}

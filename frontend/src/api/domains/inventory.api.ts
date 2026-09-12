@@ -307,6 +307,18 @@ export async function transferItem(id: number, body: { spaceId: number }) {
   return res.data.data;
 }
 
+/** 批量调拨结果：单条失败不影响其他条，failed 里是逐条原因 */
+export type ItemBatchTransferResult = {
+  moved: number;
+  failed: { id: number; reason: string }[];
+};
+
+export async function batchTransferItems(ids: number[], spaceId: number): Promise<ItemBatchTransferResult> {
+  const res = await authHttp.post<Result<ItemBatchTransferResult>>("/v1/inventory/items/batch-transfer", { ids, spaceId });
+  if (!res.data?.success) throw new Error(res.data?.message || "批量调拨失败");
+  return res.data.data;
+}
+
 export async function retireItem(id: number, body: { reason?: string; remark?: string }) {
   const res = await authHttp.post<Result<unknown>>(`/v1/inventory/items/${encodeURIComponent(String(id))}/retire`, body);
   if (!res.data?.success) throw new Error(res.data?.message || "废弃失败");

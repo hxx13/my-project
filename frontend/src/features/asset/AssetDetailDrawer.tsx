@@ -32,13 +32,12 @@ import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { cn } from "@/lib/utils";
 import PromoteMoveLogDialog, { type PromoteMoveLogTarget } from "./PromoteMoveLogDialog";
+import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
 import {
-  ASSET_CAMPUS_OPTIONS,
   ASSET_STATUS_OPTIONS,
   assetStatusLabel,
   assetEditableFields,
-  isCampusColumn,
   isLocationColumn,
 } from "./assetEditableFields";
 import { findPath } from "./locationTreeUtils";
@@ -218,7 +217,7 @@ export default function AssetDetailDrawer(props: {
       toast.error("资产名称不能为空");
       return;
     }
-    // 只提交真正改动的动态列：后端对「校区」列会把空值也落库，未改动的空列不提交可避免写入空行
+    // 只提交真正改动的动态列：未改动的空列不提交，可避免写入空行
     const dynamicValues: Record<string, string> = {};
     // 地点列同时写固定字段 location：后端据它回填 location_node_id（并同步 EAV 列）
     let locationText: string | undefined;
@@ -313,17 +312,15 @@ export default function AssetDetailDrawer(props: {
   if (!asset) return null;
 
   return (
-    <Portal>
-      <div className="fixed inset-0 z-50 flex">
-        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-        <div className="relative ml-auto flex h-full w-full max-w-md flex-col bg-[var(--twin-canvas)] shadow-twin-level-3">
-          {/* 头部 */}
-          <div className="flex items-start justify-between gap-3 border-b border-[var(--twin-hairline)] px-4 py-3">
-            <div className="min-w-0">
-              <h3 className="truncate text-[15px] font-semibold text-[var(--twin-ink)]">{asset.assetName}</h3>
-              <p className="mt-0.5 truncate font-mono text-[11px] text-[var(--twin-mute)]">{asset.assetCode}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
+    <>
+      <CageOpDrawer
+        title={asset.assetName}
+        hint={asset.assetCode}
+        collapseLabel="资产详情"
+        width={420}
+        onClose={onClose}
+        headerExtra={
+          <div className="flex shrink-0 items-center gap-1.5">
               <AdminButton
                 type="button"
                 tone="secondary"
@@ -354,18 +351,10 @@ export default function AssetDetailDrawer(props: {
                 <Trash2 className="h-3.5 w-3.5" />
                 删除
               </AdminButton>
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-twin-sm text-[var(--twin-mute)] transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)]"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
           </div>
+        }
+      >
 
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
             {/* 1. 资产详情 */}
             <dl className="space-y-1.5 text-[12px]">
               {[
@@ -517,9 +506,7 @@ export default function AssetDetailDrawer(props: {
                 </ul>
               )}
             </div>
-          </div>
-        </div>
-      </div>
+      </CageOpDrawer>
 
       {/* 编辑弹层 */}
       {editOpen && (
@@ -638,17 +625,6 @@ export default function AssetDetailDrawer(props: {
                           onChange={(path) => setDynForm((p) => ({ ...p, [c.columnKey]: path }))}
                           clearable
                         />
-                      ) : isCampusColumn(c) ? (
-                        <select
-                          value={dynForm[c.columnKey] ?? ""}
-                          onChange={(e) => setDynForm((p) => ({ ...p, [c.columnKey]: e.target.value }))}
-                          className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] outline-none focus-visible:border-[var(--twin-link-deep)]"
-                        >
-                          <option value="">未设置（按地点自动推断）</option>
-                          {ASSET_CAMPUS_OPTIONS.map((o) => (
-                            <option key={o} value={o}>{o}</option>
-                          ))}
-                        </select>
                       ) : (
                         <input
                           value={dynForm[c.columnKey] ?? ""}
@@ -753,6 +729,6 @@ export default function AssetDetailDrawer(props: {
           </button>
         </Portal>
       )}
-    </Portal>
+    </>
   );
 }
