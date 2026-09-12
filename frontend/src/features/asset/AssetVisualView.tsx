@@ -236,7 +236,7 @@ function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle }: {
 /* ────────────────────────────────────────────────────────────
    子空间卡片（点击下钻）
    ──────────────────────────────────────────────────────────── */
-function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle }: {
+function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, selectedIds, onToggle, onDropAsset }: {
   node: AssetLocationNode;
   chips: AssetRow[];
   onSelect: (id: number) => void;
@@ -245,13 +245,37 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
   selectable?: boolean;
   selectedIds?: Set<string>;
   onToggle?: (id: string) => void;
+  /** 资产卡片拖到本卡片上 → 移到这个地点（与左树落点同一套回调） */
+  onDropAsset?: (assetId: string, nodeId: number) => void;
 }) {
   const hasChildren = (node.children ?? []).length > 0;
+  const [isDragOver, setIsDragOver] = useState(false);
   return (
     <button
       type="button"
       onClick={() => onSelect(node.id)}
-      className="relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] p-3 text-left shadow-sm transition hover:border-[var(--twin-link-deep)]"
+      onDragOver={(e) => {
+        if (!onDropAsset) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (!isDragOver) setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(e) => {
+        if (!onDropAsset) return;
+        e.preventDefault();
+        // 别再冒泡到画布，否则会被当成「落到当前节点」
+        e.stopPropagation();
+        setIsDragOver(false);
+        const assetId = e.dataTransfer.getData("text/asset-id");
+        if (assetId) onDropAsset(assetId, node.id);
+      }}
+      className={
+        "relative flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-twin-lg border bg-[var(--twin-canvas)] p-3 text-left shadow-sm transition hover:border-[var(--twin-link-deep)] " +
+        (isDragOver
+          ? "border-[var(--twin-link-deep)] ring-2 ring-inset ring-[var(--twin-link-deep)]"
+          : "border-[var(--twin-hairline-strong)]")
+      }
     >
       <div className="flex items-center gap-2">
         <span
@@ -662,6 +686,11 @@ export default function AssetVisualView(props: {
     const target = findPath(tree, nodeId).at(-1);
     if (!target) return;
     const asset = rows.find((r) => r.id === assetId);
+    // 拖回原地就什么都不做，免得白记一条转移留痕
+    if (asset && asset.locationNodeId === nodeId) {
+      toast("该资产已在这个地点");
+      return;
+    }
     const label = asset ? `${asset.assetCode} ${asset.assetName}` : assetId;
     const ok = await appConfirm(`把「${label}」移到「${target.name}」？`, { title: "移动资产" });
     if (!ok) return;
@@ -1016,7 +1045,20 @@ export default function AssetVisualView(props: {
             </div>
           ) : (
             <div className="flex h-full min-h-[420px] flex-col">
-              <div className="min-h-0 flex-1 overflow-auto p-4">
+              {/* 画布本身也是落点：拖到「本空间」任意位置 = 移到当前节点 */}
+              <div
+                className="min-h-0 flex-1 overflow-auto p-4"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!node) return;
+                  const assetId = e.dataTransfer.getData("text/asset-id");
+                  if (assetId) void handleDropAsset(assetId, node.id);
+                }}
+              >
                 {assetsLoading ? (
                   <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">加载中…</div>
                 ) : visibleNodeRows.length === 0 && visibleChildren.length === 0 && relocate.scanned.length === 0 ? (
@@ -1079,6 +1121,7 @@ export default function AssetVisualView(props: {
                             selectable={batchMode}
                             selectedIds={batchIds}
                             onToggle={toggleBatchId}
+                            onDropAsset={handleDropAsset}
                           />
                         ))}
                       </div>
