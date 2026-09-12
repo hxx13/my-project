@@ -273,13 +273,13 @@ public class CageOperationService {
 
         CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
         if (claim != null) {
-            return user.getId().equals(claim.getClaimantId())
+            return isClaimantSelf(user, claim)
                     ? operable()
                     : notOperable("NO_PERMISSION", "该笼位已被认领，无分笼/转移权限");
         }
         String exp = experimenterOf(animalCageId);
         if (exp == null) return notOperable("NOT_CLAIMED", "该笼位尚未认领，认领成本人后才能分笼/转移");
-        return exp.equals(displayNameOf(user))
+        return isExperimenterSelf(user, exp)
                 ? operable()
                 : notOperable("NO_PERMISSION", "该笼位由「" + exp + "」占用，无分笼/转移权限");
     }
@@ -302,6 +302,39 @@ public class CageOperationService {
     private String experimenterOf(Long animalCageId) {
         String v = infoValueService.textValueByCage(List.of(animalCageId), "experimenter_name").get(animalCageId);
         return (v == null || v.isBlank()) ? null : v.trim();
+    }
+
+    /**
+     * 认领人是否就是本人。
+     *
+     * <p>认领记录里的 {@code claimantId} 存的是账号 id,可能是教职工侧 {@code STAFF_} 前缀,
+     * 也可能是学生侧 ARO 编号 —— 同一个人的两种形态,直接 {@code equals} 会判成两个人。
+     * 所以先按裸 id 短路(最快路径),再各解析到 {@code personnel.id} 比一次。
+     */
+    private boolean isClaimantSelf(User user, CageClaim claim) {
+        if (user == null || user.getId() == null || claim == null) return false;
+        String claimantId = claim.getClaimantId();
+        if (claimantId == null || claimantId.isBlank()) return false;
+        if (user.getId().equals(claimantId)) return true;
+        String mine = personnelService.resolveIdByAccount(user.getId());
+        String theirs = personnelService.resolveIdByAccount(claimantId);
+        return mine != null && mine.equals(theirs);
+    }
+
+    /**
+     * 实验员字段（姓名）是否就是本人。
+     *
+     * <p>字段里存的是姓名不是账号 id,所以先把姓名解析到 {@code personnel.id} 再和本人比 ——
+     * 双 id 同 {@link #isClaimantSelf}。统一人员表还没收录该姓名时退回姓名比对,
+     * 保证这条判定不比原来更严。
+     */
+    private boolean isExperimenterSelf(User user, String experimenterName) {
+        if (user == null || user.getId() == null || experimenterName == null || experimenterName.isBlank()) return false;
+        String exp = experimenterName.trim();
+        String mine = personnelService.resolveIdByAccount(user.getId());
+        String theirs = personnelService.resolveIdByName(exp);
+        if (mine != null && theirs != null) return mine.equals(theirs);
+        return exp.equals(displayNameOf(user));
     }
 
     /**
@@ -661,12 +694,12 @@ public class CageOperationService {
             return out;
         }
         CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
-        if (claim != null && user.getId().equals(claim.getClaimantId())) {
+        if (claim != null && isClaimantSelf(user, claim)) {
             out.put("editable", true);
             return out;
         }
         String exp = experimenterOf(animalCageId);
-        if (exp != null && exp.equals(displayNameOf(user))) {
+        if (exp != null && isExperimenterSelf(user, exp)) {
             out.put("editable", true);
             return out;
         }
@@ -681,6 +714,79 @@ public class CageOperationService {
                 ? "该笼位尚未认领，认领成本人后才能编辑" + roleNote
                 : "该笼位由「" + exp + "」占用" + (admin ? "，无编辑权限" : roleNote));
         return out;
+    }
+
+    /** 该笼位的活跃认领人是不是本人（双 id 安全）。「仅占用者本人可写」的入口统一复用这一个判定。 */
+    public boolean isActiveClaimantSelf(User user, Long animalCageId) {
+        return isClaimantSelf(user, claimMapper.selectActiveByAnimalCageId(animalCageId));
+    }
+
+    /**
+     * 该笼位是否归本人使用：活跃认领人是本人 **或** 表单实验员是本人（均双 id 安全）。
+     *
+     * <p>与 {@link #cageEditInfo} 的两条「本人」腿同源，但**不含**管理员/额外操作身份的旁路 ——
+     * 那里回答「能不能编辑」，这里回答「是不是你的笼位」。学生标记状态要的是后者。
+     */
+    public boolean isOccupantSelf(User user, Long animalCageId) {
+        if (user == null || animalCageId == null) return false;
+        if (isClaimantSelf(user, claimMapper.selectActiveByAnimalCageId(animalCageId))) return true;
+        return isExperimenterSelf(user, experimenterOf(animalCageId));
+    }
+
+    /**
+     * 给网格每格打「是否归本人使用」标记（{@code mine}），供学生状态模式判断哪些格子能标。
+     * 判定与 {@link #isOccupantSelf} 同口径：活跃认领人是本人 **或** 表单实验员是本人，双 id 安全。
+     *
+     * <p>ponytail: 姓名 / 认领人账号**去重后各解析一次**，不做逐格查询 ——
+     * 一架 88 格通常只有个位数个不同的人。哪天一架里人特别多而这里变慢，
+     * 再把「姓名→personnel.id」「账号→personnel.id」两张映射换成一次 IN 查询。
+     */
+    public void markMine(User user, List<Map<String, Object>> grid) {
+        // 只对学生有意义：教职工按模式判定能不能编辑，不靠「这格是不是我的」。
+        // 在这里收口，调用方就不用各自再判一次身份，也不会为教职工白跑查询。
+        if (user == null || user.getId() == null || grid == null || grid.isEmpty()) return;
+        if (!modeVisibilityService.isStudent(user)) return;
+        String myPid = personnelService.resolveIdByAccount(user.getId());
+        if (myPid == null) return;
+
+        List<Long> cageIds = new ArrayList<>();
+        for (Map<String, Object> cell : grid) {
+            Long id = cellCageId(cell);
+            if (id != null) cageIds.add(id);
+        }
+        // 实验员必须读**表单**：网格上那一列来自固定列，而认领流程只写表单，两者可能不同步。
+        Map<Long, String> expByCage = cageIds.isEmpty()
+                ? Map.of()
+                : infoValueService.textValueByCage(cageIds, "experimenter_name");
+
+        Map<String, Boolean> byName = new java.util.HashMap<>();
+        Map<String, Boolean> byAccount = new java.util.HashMap<>();
+        for (Map<String, Object> cell : grid) {
+            Long id = cellCageId(cell);
+            boolean mine = false;
+            if (id != null) {
+                String exp = expByCage.get(id);
+                if (exp != null && !exp.isBlank()) {
+                    mine = byName.computeIfAbsent(exp.trim(),
+                            n -> myPid.equals(personnelService.resolveIdByName(n)));
+                }
+            }
+            if (!mine) {
+                Object claimant = cell.get("activeClaimantId");
+                if (claimant != null && !String.valueOf(claimant).isBlank()) {
+                    mine = byAccount.computeIfAbsent(String.valueOf(claimant), k -> {
+                        String pid = personnelService.resolveIdByAccount(k);
+                        return pid != null && pid.equals(myPid);
+                    });
+                }
+            }
+            cell.put("mine", mine);
+        }
+    }
+
+    private static Long cellCageId(Map<String, Object> cell) {
+        Object v = cell.get("animalCageId") != null ? cell.get("animalCageId") : cell.get("id");
+        return toLong(v);
     }
 
     /**

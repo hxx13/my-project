@@ -150,7 +150,9 @@ export function BufferChipTile({
       onDoubleClick={onToggle && onOpen ? handleTileDblClick : undefined}
       title={onToggle && onOpen ? `${item.label} · 点击选中，双击继续编辑` : onToggle ? `${item.label} · 点击选中/取消` : item.label}
       className={`relative w-fit rounded-twin-md border bg-white p-0.5 ${
-        dragDisabled ? "cursor-default" : "cursor-grab"
+        // 触摸端必须自己吃掉手势：否则浏览器把手指移动当成「选中文字/滚动」抢走手势，
+        // dnd-kit 收不到 pointermove（或被 pointercancel 打断）→ 磁贴拖不动
+        dragDisabled ? "cursor-default" : "cursor-grab select-none [touch-action:none]"
       } ${
         selected ? "border-[var(--twin-primary)] ring-1 ring-[var(--twin-primary)]" : "border-[var(--twin-hairline)]"
       } ${isDragging ? "opacity-40" : ""}`}

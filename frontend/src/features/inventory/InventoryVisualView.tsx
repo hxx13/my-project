@@ -103,6 +103,12 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
 
   /** 物品拖到左树某一行 → 移到该空间（与画布上拖到卡片是同一套结果） */
   const handleDropItemToSpace = async (itemId: number, spaceId: number) => {
+    // 拖回原空间：不请求、不留痕（与资产侧拖放同口径）
+    const it = items.find((x) => x.id === itemId);
+    if (it && it.spaceId === spaceId) {
+      toast("该物品已在这个空间");
+      return;
+    }
     try {
       await transferItem(itemId, { spaceId });
       toast.success("已转移");
@@ -183,7 +189,7 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
 
       {/* ════════ 中：平面图 ════════ */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-sm">
-        <FloorCanvas node={node} path={path} items={items} selectedId={selectedId} onSelect={select} onNavigate={select} loadError={itemsError} onLocateItem={locateItem} onOpenItem={onOpenItem} spaces={tree} />
+        <FloorCanvas node={node} path={path} items={items} selectedId={selectedId} onSelect={select} onNavigate={select} loadError={itemsError} onLocateItem={locateItem} onOpenItem={onOpenItem} />
       </div>
 
       {/* ════════ 右：房间详情 ════════ */}

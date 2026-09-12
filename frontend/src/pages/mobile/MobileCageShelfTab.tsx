@@ -1157,6 +1157,9 @@ const STUDENT_MODE_ITEMS: { key: ShelfMode; label: string }[] = [
   { key: "view", label: "查看" },
   { key: "claim", label: "申请预约" },
   { key: "confirm", label: "确认" },
+  // 状态模式：学生侧已开放，但只放行部分动作（当前仅合笼），动作清单由后端
+  // /api/cage-mode/visible 的 modeActions.edit 下发，前端据此过滤渲染，不硬编码动作名。
+  { key: "edit", label: "状态" },
   // 划分只对「课题组管家」可见：靠后端 /api/cage-mode/visible 过滤，这里登记一份键位
   { key: "division", label: "划分" },
 ];
@@ -1517,7 +1520,19 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [mode, setMode] = useState<ShelfMode>("view");
   // 后端下发的可见模式 key 列表（null=尚未拉取/失败，网格页回退本地硬编码）
   const [visibleModes, setVisibleModes] = useState<string[] | null>(null);
+  /** 后端下发的「模式 → 可用动作」矩阵（学生状态模式收窄用；null=不限制） */
+  const [modeActions, setModeActions] = useState<Record<string, string[]> | null>(null);
   const editMode = mode === "edit";
+  /**
+   * 状态模式里**可渲染**的动作按钮。后端没下发（教职工）就是全量；
+   * 学生视角只有 modeActions.edit 里那几个 —— 加动作只改后端一处，这里不用动。
+   */
+  const editActionOptions = useMemo(
+    () => (modeActions?.edit?.length
+      ? CAGE_BOX_ACTIONS.filter((a) => modeActions.edit!.includes(a.action))
+      : CAGE_BOX_ACTIONS),
+    [modeActions],
+  );
   const [scanCache, setScanCache] = useState<Map<string, ScanCacheEntry>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);  // "x:y" 刚扫的
   const [actionSubmitting, setActionSubmitting] = useState(false);
@@ -1563,7 +1578,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   useEffect(() => {
     let cancelled = false;
     fetchCageModeVisible()
-      .then((r) => { if (!cancelled && r.modes?.length) setVisibleModes(r.modes); })
+      .then((r) => {
+        if (cancelled) return;
+        if (r.modes?.length) setVisibleModes(r.modes);
+        // 「模式 → 可用动作」矩阵：后端收窄了动作范围才下发（当前只有学生 edit → 合笼）
+        setModeActions(r.modeActions ?? null);
+      })
       .catch(() => { /* 回退本地硬编码 */ });
     return () => { cancelled = true; };
   }, []);
@@ -1961,6 +1981,9 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     if (mode === "edit") {
       const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
       if (ct !== 3 && ct !== 4) { toast.error("该笼位不可标记状态"); return; }
+      // 学生视角再叠一层归属：只能标本人使用中的笼位。mine 由后端 markMine 判定
+      // （认领人是本人 或 表单实验员是本人，双 id 已在服务端折叠），前端不自己比姓名。
+      if (!isStaffView && !cell.mine) { toast.error("只能标记本人使用中的笼位"); return; }
       openEditActionPopup(cell);
       return;
     }
@@ -2079,6 +2102,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     // 状态标记只对「饲养中/异常」开放（与 Web 管理端同一口径）：空笼位/等待分配没有动物可标记。
     const editCt = (matched as any).cageTypeCode ?? (matched as any).animalCageType;
     if (editCt !== 3 && editCt !== 4) { toast.error("当前状态不可标记（仅饲养中/异常笼位）"); return; }
+    // 扫码路径同样要过学生归属闸门（与点击路径同口径）
+    if (!isStaffView && !(matched as any).mine) { toast.error("只能标记本人使用中的笼位"); return; }
     // 笼位还在中间态时也不能标记：预定/已下单待审/分笼转移在审都在 opMarks 里，认领在审看 claimStatus。
     if (cageId && opMarks.has(cageId)) { toast.error("该笼位有进行中的流程，不能标记饲养状态"); return; }
     if (["pending_approval", "locked", "confirmed", "pending_release_approval"]
@@ -2602,7 +2627,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
                 <div className="grid grid-cols-2 gap-1.5">
-                  {CAGE_BOX_ACTIONS.map(({ action, label }) => {
+                  {editActionOptions.map(({ action, label }) => {
                     const ck = `${editActionCell.x}:${editActionCell.y}`;
                     const entry = scanCache.get(ck);
                     // 无缓存条目时回退到格子当前状态（打开即同步，而非首次点击才懒加载）

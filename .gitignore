@@ -113,6 +113,9 @@ parse-render.js
 animalCages-*.json
 cagebox-aups-*.json
 aup-live-form.json
+# Playwright 无障碍快照 dump（根目录 *.yml 都是误存的页面快照，只有 docker-compose 是真配置）
+/*.yml
+!/docker-compose.yml
 
 # ===== 建库字段档案（本地权威文档，仅供 AI 建库参考，不进代码仓库） =====
 数据库字段档案/

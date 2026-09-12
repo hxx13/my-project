@@ -9,7 +9,7 @@ import { CAGE_MODE_META, type CageModeKey } from "@/features/cage-shelf/componen
  * 只列**有抽屉的模式**：查看/确认没有待提交缓冲，挂标签点了也是空抽屉。
  * 抽屉开着时整条标签栏由页面隐藏（抽屉自带收纳把手），避免和抽屉抢右边缘。
  */
-const DRAWER_MODES: CageModeKey[] = ["studentClaim", "division"];
+const DRAWER_MODES: CageModeKey[] = ["studentClaim", "division", "edit"];
 
 /** 标签顶距：让开内容区顶部那排工具栏（扫码/特殊状态/图例…），别压在上面 */
 const TABS_TOP = 140;

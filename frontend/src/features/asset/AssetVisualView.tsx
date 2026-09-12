@@ -872,9 +872,6 @@ export default function AssetVisualView(props: {
       toast("该资产已在这个地点");
       return;
     }
-    const label = asset ? `${asset.assetCode} ${asset.assetName}` : assetId;
-    const ok = await appConfirm(`把「${label}」移到「${target.name}」？`, { title: "移动资产" });
-    if (!ok) return;
     try {
       await moveMut.mutateAsync({ assetId, nodeId });
     } catch {

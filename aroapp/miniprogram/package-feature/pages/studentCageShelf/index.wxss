@@ -1416,45 +1416,6 @@
   font-weight: 600;
   flex-shrink: 0;
 }
-/* 编辑历史预览条：已编辑笼位坐标标签 */
-.edit-cache-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10rpx;
-  padding: 12rpx 24rpx;
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1rpx solid rgba(30, 55, 90, 0.06);
-  box-sizing: border-box;
-}
-.edit-cache-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  background: rgba(172, 23, 54, 0.08);
-  border: 1rpx solid rgba(172, 23, 54, 0.2);
-}
-.edit-cache-pos {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #ac1736;
-  font-family: monospace;
-}
-.edit-cache-diff {
-  min-width: 28rpx;
-  height: 28rpx;
-  padding: 0 6rpx;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999rpx;
-  background: #ac1736;
-  color: #fff;
-  font-size: 20rpx;
-  font-weight: 700;
-  box-sizing: border-box;
-}
 
 /* 扫码结果面板 */
 .scan-result-panel {
@@ -1799,40 +1760,90 @@
 /* 详情弹窗内的一句话提示 */
 
 /* ================================================================== */
-/*  模式操作条 + 按钮                                                    */
+/*  模式横幅：标题+计数 / 按钮组 / 待选卡片列表                          */
+/*  （形态对齐资产记录页「扫码归位」，配色跟随当前模式 --mode-color）      */
 /* ================================================================== */
-.mode-actions-strip {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12rpx;
-  padding: 12rpx 24rpx;
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1rpx solid rgba(30, 55, 90, 0.06);
+.mode-banner {
+  margin: 12rpx 24rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.1);
+  /* 左侧模式色条：底色无法由变量算透明度，改用色条承载模式身份 */
+  border-left: 6rpx solid var(--mode-color, #2563eb);
+  background: #f7f9fc;
   box-sizing: border-box;
 }
-.ma-count {
-  font-size: 24rpx;
+.mb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10rpx;
+}
+.mb-title {
+  margin-right: 4rpx;
+  font-size: 25rpx;
   font-weight: 600;
-  color: #646566;
+  color: var(--mode-color, #1d4ed8);
 }
-.ma-btn {
-  padding: 10rpx 24rpx;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 600;
+.mb-btn {
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid rgba(30, 55, 90, 0.14);
+  background: #fff;
+  font-size: 22rpx;
+  color: #4b5563;
 }
-.ma-btn--primary {
+.mb-btn--on {
+  border-color: var(--mode-color, #2563eb);
+  color: var(--mode-color, #2563eb);
+}
+.mb-btn--primary {
+  border-color: var(--mode-color, #2563eb);
+  background: var(--mode-color, #2563eb);
   color: #fff;
-  background: #ac1736;
 }
-.ma-btn--danger {
-  color: #fff;
+.mb-btn--danger {
+  border-color: #ef4444;
   background: #ef4444;
+  color: #fff;
 }
-.ma-btn--plain {
-  color: #646566;
-  background: #f2f3f5;
+/* 待选区：胶囊横排换行，不占整行 */
+.mb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx dashed rgba(30, 55, 90, 0.12);
+}
+.mb-chips-label {
+  font-size: 22rpx;
+  color: #8a8f98;
+}
+.mb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid var(--mode-color, #ac1736);
+  background: #fff;
+  font-size: 22rpx;
+  color: #333;
+}
+.mb-chip-pos {
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--mode-color, #ac1736);
+}
+.mb-chip-meta {
+  color: #8a8f98;
+}
+.mb-chip-x {
+  padding: 0 4rpx;
+  font-size: 24rpx;
+  color: #9aa0a6;
 }
 
 /* 我的申请入口 */

@@ -32,6 +32,14 @@
   :root {
     --admin-chrome-offset: 128px;
   }
+  /* dnd-kit 的拖拽节点（默认带 aria-roledescription="draggable"）：触摸端必须自己吃掉手势，
+     否则浏览器会把手指移动当成「选中文字 / 滚动」抢走，拖拽要么起不来、要么被 pointercancel 打断。
+     鼠标端不受影响。放在这里是为了覆盖所有 dnd-kit 拖拽点（卡贴、排序把手、导航管理等）。 */
+  [aria-roledescription="draggable"] {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   /* ═══════ shadcn 兼容映射（保留现有组件不崩） ═══════ */
   :root {
     --background:            var(--app-color-surface-page);

@@ -47,6 +47,29 @@ public class CageModeVisibilityService {
     public static final String KEY_OP_MANAGE = "cage.op.manage_identities";
     public static final String DEFAULT_OP_MANAGE = CODE_BREEDER + "," + CODE_LEADER;
 
+    /**
+     * 学生在**状态模式**下被放行的动作：action code → 表单 canonical。
+     *
+     * <p>目前只有合笼。后续逐批开放时**只改这一张表** —— 后端校验用 canonical
+     * （{@link #isStudentEditToggle}），下发给前端过滤渲染用 action code
+     * （{@link #studentEditActionCodes}），两边同源不会漂移。
+     *
+     * <p>学生这条路**不能**走 {@code canUseMode(u,"edit")}：那个判据是身份 code，
+     * 而学生也可能带 BREEDER/BREEDING_GROUP_LEADER，会连五个动作一起放开。
+     */
+    private static final Map<String, String> STUDENT_EDIT_ACTIONS = Map.of(
+            "COHABITATION", "needs_cohabitation");
+
+    /** 学生可用的状态动作 code 列表（下发给前端过滤渲染）。 */
+    public List<String> studentEditActionCodes() {
+        return List.copyOf(STUDENT_EDIT_ACTIONS.keySet());
+    }
+
+    /** 该表单 canonical 是否属于学生可用的状态动作。 */
+    public boolean isStudentEditToggle(String canonical) {
+        return canonical != null && STUDENT_EDIT_ACTIONS.containsValue(canonical);
+    }
+
     private static final Map<String, String> DEFAULTS = Map.of(
             "booking", CODE_SECRETARY,
             "allocate", CODE_LEADER,

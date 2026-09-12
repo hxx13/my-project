@@ -53,9 +53,9 @@ import {
 import { findPath } from "@/features/asset/locationTreeUtils";
 import { useAssetLocationTree } from "@/api/hooks/useAssetLocation";
 import type { AssetLocationNode } from "@/api/domains/assetLocation.api";
-import { Portal } from "@/components/Portal";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
@@ -1327,125 +1327,118 @@ export default function AdminAssetRecordPage() {
             // query invalidation is handled by useCreateAssetTransfer hook internally
           }}
         />
-        {addOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">新增资产</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
-                  关闭
-                </button>
+        <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
+          <DialogContent className="max-h-[85vh] max-w-3xl overflow-auto border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">新增资产</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                图标
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-2xl">
+                    {addIcon || "📦"}
+                  </div>
+                  <AdminButton
+                    type="button"
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => setAddIconPickerOpen(true)}
+                    className="inline-flex items-center gap-1.5"
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    选择图标
+                  </AdminButton>
+                </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                  图标
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-2xl">
-                      {addIcon || "📦"}
-                    </div>
-                    <AdminButton
-                      type="button"
-                      tone="secondary"
-                      size="sm"
-                      onClick={() => setAddIconPickerOpen(true)}
-                      className="inline-flex items-center gap-1.5"
+              <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                资产编号
+                <input
+                  value={addForm.assetCode || ""}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, assetCode: e.target.value }))}
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                  placeholder="请输入资产编号"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                资产名称
+                <input
+                  value={addForm.assetName || ""}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, assetName: e.target.value }))}
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                  placeholder="请输入资产名称"
+                />
+              </label>
+              {editableColumns.map((c) => {
+                return (
+                <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                  {normalizeColumnLabel(c.columnLabel)}
+                  {isLocationColumn(c) ? (
+                    <AssetLocationTreeSelect
+                      value={addForm[c.columnKey] || ""}
+                      onChange={(path) => setAddForm((prev) => ({ ...prev, [c.columnKey]: path }))}
+                      clearable
+                    />
+                  ) : (
+                    <input
+                      value={addForm[c.columnKey] || ""}
+                      onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                    />
+                  )}
+                </label>
+                );
+              })}
+              <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                照片
+                <div className="flex flex-wrap items-center gap-2">
+                  {addPhotos.map((u) => (
+                    <div
+                      key={u}
+                      className="group relative h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
                     >
-                      <ImageIcon className="h-3.5 w-3.5" />
-                      选择图标
-                    </AdminButton>
-                  </div>
-                </div>
-                <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                  资产编号
-                  <input
-                    value={addForm.assetCode || ""}
-                    onChange={(e) => setAddForm((prev) => ({ ...prev, assetCode: e.target.value }))}
-                    className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                    placeholder="请输入资产编号"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                  资产名称
-                  <input
-                    value={addForm.assetName || ""}
-                    onChange={(e) => setAddForm((prev) => ({ ...prev, assetName: e.target.value }))}
-                    className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                    placeholder="请输入资产名称"
-                  />
-                </label>
-                {editableColumns.map((c) => {
-                  return (
-                  <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                    {normalizeColumnLabel(c.columnLabel)}
-                    {isLocationColumn(c) ? (
-                      <AssetLocationTreeSelect
-                        value={addForm[c.columnKey] || ""}
-                        onChange={(path) => setAddForm((prev) => ({ ...prev, [c.columnKey]: path }))}
-                        clearable
-                      />
-                    ) : (
-                      <input
-                        value={addForm[c.columnKey] || ""}
-                        onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
-                        className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                      />
-                    )}
-                  </label>
-                  );
-                })}
-                <div className="col-span-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                  照片
-                  <div className="flex flex-wrap items-center gap-2">
-                    {addPhotos.map((u) => (
-                      <div
-                        key={u}
-                        className="group relative h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]"
+                      <AutoImage src={u} alt="" className="h-full w-full object-contain p-0.5" />
+                      <button
+                        type="button"
+                        onClick={() => setAddPhotos((prev) => prev.filter((x) => x !== u))}
+                        className="absolute right-0 top-0 inline-flex h-5 w-5 items-center justify-center bg-black/50 text-white opacity-0 transition group-hover:opacity-100"
+                        aria-label="删除照片"
                       >
-                        <AutoImage src={u} alt="" className="h-full w-full object-contain p-0.5" />
-                        <button
-                          type="button"
-                          onClick={() => setAddPhotos((prev) => prev.filter((x) => x !== u))}
-                          className="absolute right-0 top-0 inline-flex h-5 w-5 items-center justify-center bg-black/50 text-white opacity-0 transition group-hover:opacity-100"
-                          aria-label="删除照片"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                    <label className="flex h-16 cursor-pointer items-center gap-1.5 rounded-twin-sm border border-dashed border-[var(--twin-hairline-strong)] px-3 text-[11px] text-[var(--twin-mute)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-ink)]">
-                      {addUploading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="h-4 w-4" />
-                      )}
-                      上传照片
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          void onAddUploadPhotos(e.target.files);
-                          e.currentTarget.value = "";
-                        }}
-                      />
-                    </label>
-                  </div>
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex h-16 cursor-pointer items-center gap-1.5 rounded-twin-sm border border-dashed border-[var(--twin-hairline-strong)] px-3 text-[11px] text-[var(--twin-mute)] transition hover:border-[var(--twin-link-deep)] hover:text-[var(--twin-ink)]">
+                    {addUploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    上传照片
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        void onAddUploadPhotos(e.target.files);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
-                  取消
-                </button>
-                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void submitAddAsset()}>
-                  确认新增
-                </button>
-              </div>
             </div>
-            </div>
-          </Portal>
-        )}
+            <DialogFooter className="mt-4 gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
+                取消
+              </button>
+              <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void submitAddAsset()}>
+                确认新增
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {addIconPickerOpen && (
           <EmojiPicker
             value={addIcon}
@@ -1453,130 +1446,116 @@ export default function AdminAssetRecordPage() {
             onClose={() => setAddIconPickerOpen(false)}
           />
         )}
-        {deleteOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-2xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">删除资产（移入回收站）</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setDeleteOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  value={deleteKeyword}
-                  onChange={(e) => setDeleteKeyword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && void searchDeleteAssets()}
-                  className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                  placeholder="输入资产编码/名称检索"
-                />
-                <button onClick={() => void searchDeleteAssets()} className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">检索</button>
-              </div>
-              <div className="mt-3 max-h-64 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
-                {deleteCandidates.map((row) => (
-                  <label key={row.id} className="flex cursor-pointer items-center gap-2 border-b border-[var(--twin-hairline)] px-3 py-2 text-sm last:border-b-0">
-                    <input
-                      type="radio"
-                      checked={selectedDeleteId === row.id}
-                      onChange={() => setSelectedDeleteId(row.id)}
-                    />
-                    <span className="font-mono text-xs text-[var(--twin-body)]">{row.assetCode}</span>
-                    <span className="text-[var(--twin-ink)]">{row.assetName}</span>
-                    <span className="text-[var(--twin-mute)]">{row.location || "-"}</span>
-                  </label>
-                ))}
-                {!deleteCandidates.length && <div className="px-3 py-6 text-center text-sm text-[var(--twin-mute)]">暂无结果</div>}
-              </div>
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setDeleteOpen(false)}>
-                  取消
-                </button>
-                <button className="rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-danger)] px-3 py-2 text-sm font-medium text-[var(--app-color-text-on-danger)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-ring)]" onClick={() => void confirmDeleteAsset()}>
-                  确认删除
-                </button>
-              </div>
+        <Dialog open={deleteOpen} onOpenChange={(o) => { if (!o) setDeleteOpen(false); }}>
+          <DialogContent className="max-w-2xl border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">删除资产（移入回收站）</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center gap-2">
+              <input
+                value={deleteKeyword}
+                onChange={(e) => setDeleteKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void searchDeleteAssets()}
+                className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                placeholder="输入资产编码/名称检索"
+              />
+              <button onClick={() => void searchDeleteAssets()} className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">检索</button>
             </div>
+            <div className="mt-3 max-h-64 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
+              {deleteCandidates.map((row) => (
+                <label key={row.id} className="flex cursor-pointer items-center gap-2 border-b border-[var(--twin-hairline)] px-3 py-2 text-sm last:border-b-0">
+                  <input
+                    type="radio"
+                    checked={selectedDeleteId === row.id}
+                    onChange={() => setSelectedDeleteId(row.id)}
+                  />
+                  <span className="font-mono text-xs text-[var(--twin-body)]">{row.assetCode}</span>
+                  <span className="text-[var(--twin-ink)]">{row.assetName}</span>
+                  <span className="text-[var(--twin-mute)]">{row.location || "-"}</span>
+                </label>
+              ))}
+              {!deleteCandidates.length && <div className="px-3 py-6 text-center text-sm text-[var(--twin-mute)]">暂无结果</div>}
             </div>
-          </Portal>
-        )}
-        {recycleOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">回收站</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setRecycleOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <div className="mb-3 flex items-center gap-2">
-                <input
-                  value={recycleKeyword}
-                  onChange={(e) => setRecycleKeyword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && setRecyclePage(1)}
-                  className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-                  placeholder="检索回收站资产"
-                />
-                <button onClick={() => setRecyclePage(1)} className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">查询</button>
-              </div>
-              <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
-                <table className="w-full text-sm">
-                  <thead className="bg-[var(--twin-canvas-soft)]">
-                    <tr>
-                      <th className="px-3 py-2 text-left">资产编码</th>
-                      <th className="px-3 py-2 text-left">资产名称</th>
-                      <th className="px-3 py-2 text-left">删除时间</th>
-                      <th className="px-3 py-2 text-left">操作</th>
+            <DialogFooter className="mt-4 gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setDeleteOpen(false)}>
+                取消
+              </button>
+              <button className="rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-danger)] px-3 py-2 text-sm font-medium text-[var(--app-color-text-on-danger)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-ring)]" onClick={() => void confirmDeleteAsset()}>
+                确认删除
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={recycleOpen} onOpenChange={(o) => { if (!o) setRecycleOpen(false); }}>
+          <DialogContent className="max-h-[85vh] max-w-3xl overflow-auto border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">回收站</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center gap-2">
+              <input
+                value={recycleKeyword}
+                onChange={(e) => setRecycleKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && setRecyclePage(1)}
+                className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                placeholder="检索回收站资产"
+              />
+              <button onClick={() => setRecyclePage(1)} className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">查询</button>
+            </div>
+            <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--twin-canvas-soft)]">
+                  <tr>
+                    <th className="px-3 py-2 text-left">资产编码</th>
+                    <th className="px-3 py-2 text-left">资产名称</th>
+                    <th className="px-3 py-2 text-left">删除时间</th>
+                    <th className="px-3 py-2 text-left">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recycleRows.map((row) => (
+                    <tr key={row.id} className="border-t border-[var(--twin-hairline)]">
+                      <td className="px-3 py-2 font-mono text-xs">{row.assetCode}</td>
+                      <td className="px-3 py-2">{row.assetName}</td>
+                      <td className="px-3 py-2 text-[var(--twin-body)]">{row.deletedTime ? String(row.deletedTime).replace("T", " ").slice(0, 19) : "-"}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-2">
+                          <button className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700" onClick={() => void doRestore(row.id)}>
+                            恢复
+                          </button>
+                          <button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700" onClick={() => void doPurge(row.id)}>
+                            彻底删除
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {recycleRows.map((row) => (
-                      <tr key={row.id} className="border-t border-[var(--twin-hairline)]">
-                        <td className="px-3 py-2 font-mono text-xs">{row.assetCode}</td>
-                        <td className="px-3 py-2">{row.assetName}</td>
-                        <td className="px-3 py-2 text-[var(--twin-body)]">{row.deletedTime ? String(row.deletedTime).replace("T", " ").slice(0, 19) : "-"}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex gap-2">
-                            <button className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700" onClick={() => void doRestore(row.id)}>
-                              恢复
-                            </button>
-                            <button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700" onClick={() => void doPurge(row.id)}>
-                              彻底删除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!recycleRows.length && (
-                      <tr>
-                        <td className="px-3 py-8 text-center text-[var(--twin-mute)]" colSpan={4}>回收站为空</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
-                <button
-                  disabled={recyclePage <= 1}
-                  onClick={() => setRecyclePage((p) => Math.max(1, p - 1))}
-                  className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
-                >
-                  上一页
-                </button>
-                <span>第 {recyclePage} 页，共 {recycleTotal} 条</span>
-                <button
-                  disabled={recyclePage * 20 >= recycleTotal}
-                  onClick={() => setRecyclePage((p) => p + 1)}
-                  className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
-                >
-                  下一页
-                </button>
-              </div>
+                  ))}
+                  {!recycleRows.length && (
+                    <tr>
+                      <td className="px-3 py-8 text-center text-[var(--twin-mute)]" colSpan={4}>回收站为空</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
+            <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+              <button
+                disabled={recyclePage <= 1}
+                onClick={() => setRecyclePage((p) => Math.max(1, p - 1))}
+                className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
+              >
+                上一页
+              </button>
+              <span>第 {recyclePage} 页，共 {recycleTotal} 条</span>
+              <button
+                disabled={recyclePage * 20 >= recycleTotal}
+                onClick={() => setRecyclePage((p) => p + 1)}
+                className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
+              >
+                下一页
+              </button>
             </div>
-          </Portal>
-        )}
+          </DialogContent>
+        </Dialog>
         <AssetDetailDrawer
           asset={detailAsset}
           columns={columns}
@@ -1586,372 +1565,332 @@ export default function AdminAssetRecordPage() {
         <MobileScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScanResult} />
 
         {/* ── 导入预览对话框 (4e) ── */}
-        {importPreviewOpen && importPreviewData && (
-          <Portal>
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-h-[85vh] max-w-4xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">导入预览</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => { setImportPreviewOpen(false); setImportPreviewData(null); setPendingImportFile(null); }}>
-                  关闭
-                </button>
+        <Dialog
+          open={importPreviewOpen && !!importPreviewData}
+          onOpenChange={(o) => {
+            if (o) return;
+            setImportPreviewOpen(false);
+            setImportPreviewData(null);
+            setPendingImportFile(null);
+          }}
+        >
+          <DialogContent className="max-h-[85vh] max-w-4xl overflow-auto border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">导入预览</DialogTitle>
+            </DialogHeader>
+            {importWarnings.length > 0 && (
+              <div className="rounded-twin-sm border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-semibold mb-1">警告</p>
+                {importWarnings.map((w, i) => (
+                  <p key={i}>{w.header}: {w.reason}</p>
+                ))}
               </div>
-              {importWarnings.length > 0 && (
-                <div className="mb-3 rounded-twin-sm border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-                  <p className="font-semibold mb-1">警告</p>
-                  {importWarnings.map((w, i) => (
-                    <p key={i}>{w.header}: {w.reason}</p>
+            )}
+            <p className="text-xs text-[var(--twin-mute)]">列匹配情况</p>
+            <div className="max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
+              <table className="w-full text-xs">
+                <thead className="bg-[var(--twin-canvas-soft)]">
+                  <tr>
+                    <th className="px-2 py-1 text-left">文件列</th>
+                    <th className="px-2 py-1 text-left">匹配系统字段</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importPreviewData?.columns.map((col, i) => (
+                    <tr key={i} className="border-t border-[var(--twin-hairline)]">
+                      <td className="px-2 py-1">{col.header}</td>
+                      <td className="px-2 py-1 text-[var(--twin-body)]">{col.matchedLabel || <span className="text-[var(--twin-mute)]">未匹配</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {importPreviewData && importPreviewData.sample.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs text-[var(--twin-mute)]">示例数据（前3行）</p>
+                <div className="max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] text-xs">
+                  <table className="w-full border-collapse twin-table">
+                    <thead className="bg-[var(--twin-canvas-soft)]">
+                      <tr>{Object.keys(importPreviewData.sample[0]).map((k) => (<th key={k} className="px-2 py-1 text-left whitespace-nowrap">{k}</th>))}</tr>
+                    </thead>
+                    <tbody>
+                      {importPreviewData.sample.slice(0, 3).map((row, ri) => (
+                        <tr key={ri} className="border-t border-[var(--twin-hairline)]">
+                          {Object.values(row).map((v, vi) => (<td key={vi} className="px-2 py-1 whitespace-nowrap">{v}</td>))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {importLocValues.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium text-[var(--twin-ink)]">存放地点修正（{importLocValues.length} 个值）</p>
+                <p className="mb-1 text-xs text-[var(--twin-mute)]">共 {importLocValues.length} 个地点值，{importLocMatched} 个已自动匹配</p>
+                <div className="max-h-48 space-y-1.5 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] p-2">
+                  {importLocValues.map((v) => (
+                    <div key={v.text} className="flex items-center gap-2">
+                      <span className="w-40 shrink-0 truncate text-xs text-[var(--twin-body)]" title={v.text}>{v.text}</span>
+                      <div className="min-w-0 flex-1">
+                        <AdminSearchSelect
+                          value={importLocationSel[v.text] ?? ""}
+                          onChange={(val) => setImportLocationSel((prev) => ({ ...prev, [v.text]: val }))}
+                          options={[NEW_LOCATION_NODE, ...locationLabels]}
+                          placeholder="（不关联）"
+                          className="w-full !rounded-twin-sm !border-[var(--twin-hairline)] !text-xs"
+                        />
+                      </div>
+                    </div>
                   ))}
                 </div>
-              )}
-              <p className="mb-2 text-xs text-[var(--twin-mute)]">列匹配情况</p>
-              <div className="mb-3 max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
-                <table className="w-full text-xs">
-                  <thead className="bg-[var(--twin-canvas-soft)]">
-                    <tr>
-                      <th className="px-2 py-1 text-left">文件列</th>
-                      <th className="px-2 py-1 text-left">匹配系统字段</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreviewData.columns.map((col, i) => (
-                      <tr key={i} className="border-t border-[var(--twin-hairline)]">
-                        <td className="px-2 py-1">{col.header}</td>
-                        <td className="px-2 py-1 text-[var(--twin-body)]">{col.matchedLabel || <span className="text-[var(--twin-mute)]">未匹配</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
-              {importPreviewData.sample.length > 0 && (
-                <div className="mb-3">
-                  <p className="mb-1 text-xs text-[var(--twin-mute)]">示例数据（前3行）</p>
-                  <div className="max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] text-xs">
-                    <table className="w-full border-collapse twin-table">
-                      <thead className="bg-[var(--twin-canvas-soft)]">
-                        <tr>{Object.keys(importPreviewData.sample[0]).map((k) => (<th key={k} className="px-2 py-1 text-left whitespace-nowrap">{k}</th>))}</tr>
-                      </thead>
-                      <tbody>
-                        {importPreviewData.sample.slice(0, 3).map((row, ri) => (
-                          <tr key={ri} className="border-t border-[var(--twin-hairline)]">
-                            {Object.values(row).map((v, vi) => (<td key={vi} className="px-2 py-1 whitespace-nowrap">{v}</td>))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-              {importLocValues.length > 0 && (
-                <div className="mb-3">
-                  <p className="mb-1 text-xs font-medium text-[var(--twin-ink)]">存放地点修正（{importLocValues.length} 个值）</p>
-                  <p className="mb-1 text-xs text-[var(--twin-mute)]">共 {importLocValues.length} 个地点值，{importLocMatched} 个已自动匹配</p>
-                  <div className="max-h-48 space-y-1.5 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] p-2">
-                    {importLocValues.map((v) => (
-                      <div key={v.text} className="flex items-center gap-2">
-                        <span className="w-40 shrink-0 truncate text-xs text-[var(--twin-body)]" title={v.text}>{v.text}</span>
-                        <div className="min-w-0 flex-1">
-                          <AdminSearchSelect
-                            value={importLocationSel[v.text] ?? ""}
-                            onChange={(val) => setImportLocationSel((prev) => ({ ...prev, [v.text]: val }))}
-                            options={[NEW_LOCATION_NODE, ...locationLabels]}
-                            placeholder="（不关联）"
-                            className="w-full !rounded-twin-sm !border-[var(--twin-hairline)] !text-xs"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-end gap-2">
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => { setImportPreviewOpen(false); setImportPreviewData(null); setPendingImportFile(null); }}>
-                  取消
-                </button>
-                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void doConfirmImport()}>
-                  确认导入
-                </button>
-              </div>
-            </div>
-            </div>
-          </Portal>
-        )}
+            )}
+            <DialogFooter className="gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => { setImportPreviewOpen(false); setImportPreviewData(null); setPendingImportFile(null); }}>
+                取消
+              </button>
+              <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void doConfirmImport()}>
+                确认导入
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── 批量删除确认对话框 (4f) ── */}
-        {batchDeleteOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量删除</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchDeleteOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <p className="mb-2 text-sm text-[var(--twin-body)]">
-                确定删除选中的 <strong>{selectedIds.size}</strong> 条资产？删除后将移入回收站。
-              </p>
-              <p className="mb-3 text-xs text-[var(--twin-mute)]">
-                前5条: {rows.filter((r) => selectedIds.has(r.id)).slice(0, 5).map((r) => r.assetCode).join(", ") || "—"}{selectedIds.size > 5 ? "…等" : ""}
-              </p>
-              <div className="flex justify-end gap-2">
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchDeleteOpen(false)}>
-                  取消
-                </button>
-                <button className="rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-danger)] px-3 py-2 text-sm font-medium text-[var(--app-color-text-on-danger)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-ring)]" onClick={() => void doBatchDelete()}>
-                  确认删除
-                </button>
-              </div>
-            </div>
-            </div>
-          </Portal>
-        )}
+        <Dialog open={batchDeleteOpen} onOpenChange={(o) => { if (!o) setBatchDeleteOpen(false); }}>
+          <DialogContent className="max-w-md border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">批量删除</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-[var(--twin-body)]">
+              确定删除选中的 <strong>{selectedIds.size}</strong> 条资产？删除后将移入回收站。
+            </p>
+            <p className="text-xs text-[var(--twin-mute)]">
+              前5条: {rows.filter((r) => selectedIds.has(r.id)).slice(0, 5).map((r) => r.assetCode).join(", ") || "—"}{selectedIds.size > 5 ? "…等" : ""}
+            </p>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchDeleteOpen(false)}>
+                取消
+              </button>
+              <button className="rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-danger)] px-3 py-2 text-sm font-medium text-[var(--app-color-text-on-danger)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-ring)]" onClick={() => void doBatchDelete()}>
+                确认删除
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── 批量填入对话框 (4g) ── */}
-        {batchEditOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量填入 ({selectedIds.size} 条)</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchEditOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                选择目标列
-                <select value={batchEditColumnKey} onChange={(e) => setBatchEditColumnKey(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
-                  <option value="">-- 请选择 --</option>
-                  {editableColumns.map((c) => (
-                    <option key={c.columnKey} value={c.columnKey}>{normalizeColumnLabel(c.columnLabel)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                填入值
-                <input value={batchEditValue} onChange={(e) => setBatchEditValue(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="留空表示清空" />
-              </label>
-              <div className="flex justify-end gap-2">
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchEditOpen(false)}>
-                  取消
-                </button>
-                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" disabled={!batchEditColumnKey} onClick={() => void doBatchEdit()}>
-                  确认填入
-                </button>
-              </div>
-            </div>
-            </div>
-          </Portal>
-        )}
+        <Dialog open={batchEditOpen} onOpenChange={(o) => { if (!o) setBatchEditOpen(false); }}>
+          <DialogContent className="max-w-md border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">批量填入 ({selectedIds.size} 条)</DialogTitle>
+            </DialogHeader>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              选择目标列
+              <select value={batchEditColumnKey} onChange={(e) => setBatchEditColumnKey(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
+                <option value="">-- 请选择 --</option>
+                {editableColumns.map((c) => (
+                  <option key={c.columnKey} value={c.columnKey}>{normalizeColumnLabel(c.columnLabel)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              填入值
+              <input value={batchEditValue} onChange={(e) => setBatchEditValue(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="留空表示清空" />
+            </label>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchEditOpen(false)}>
+                取消
+              </button>
+              <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" disabled={!batchEditColumnKey} onClick={() => void doBatchEdit()}>
+                确认填入
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── 批量转移对话框：勾选资产 → 选目标地点 ── */}
-        {batchMoveOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
-              <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量转移 ({selectedIds.size} 条)</h3>
-                  <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchMoveOpen(false)}>
-                    关闭
-                  </button>
-                </div>
-                <p className="mb-3 text-xs text-[var(--twin-mute)]">
-                  选中的资产将一次性转移到目标地点，并各留一条「地点移动」记录。
-                </p>
-                <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                  目标地点
-                  <AssetLocationTreeSelect
-                    value={batchMoveTarget}
-                    onChange={(path, nodeId) => {
-                      setBatchMoveTarget(path);
-                      setBatchMoveTargetId(nodeId);
-                    }}
-                    placeholder="选择目标地点"
-                  />
-                </label>
-                <div className="flex justify-end gap-2">
-                  <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchMoveOpen(false)}>
-                    取消
-                  </button>
-                  <button
-                    className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
-                    disabled={batchMoveTargetId == null}
-                    onClick={() => void doBatchMove()}
-                  >
-                    确认转移
-                  </button>
-                </div>
-              </div>
-            </div>
-          </Portal>
-        )}
+        <Dialog open={batchMoveOpen} onOpenChange={(o) => { if (!o) setBatchMoveOpen(false); }}>
+          <DialogContent className="max-w-md border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">批量转移 ({selectedIds.size} 条)</DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-[var(--twin-mute)]">
+              选中的资产将一次性转移到目标地点，并各留一条「地点移动」记录。
+            </p>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              目标地点
+              <AssetLocationTreeSelect
+                value={batchMoveTarget}
+                onChange={(path, nodeId) => {
+                  setBatchMoveTarget(path);
+                  setBatchMoveTargetId(nodeId);
+                }}
+                placeholder="选择目标地点"
+              />
+            </label>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchMoveOpen(false)}>
+                取消
+              </button>
+              <button
+                className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
+                disabled={batchMoveTargetId == null}
+                onClick={() => void doBatchMove()}
+              >
+                确认转移
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── 查找替换对话框 (4h) ── */}
-        {searchReplaceOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">查找替换</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setSearchReplaceOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                目标列
-                <select value={searchReplaceColumnKey} onChange={(e) => setSearchReplaceColumnKey(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
-                  <option value="">-- 请选择 --</option>
-                  {editableColumns.map((c) => (
-                    <option key={c.columnKey} value={c.columnKey}>{normalizeColumnLabel(c.columnLabel)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                搜索文本
-                <input value={searchReplaceSearch} onChange={(e) => setSearchReplaceSearch(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="要查找的内容" />
-              </label>
-              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                替换为
-                <input value={searchReplaceReplace} onChange={(e) => setSearchReplaceReplace(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="替换后的内容（留空表示删除）" />
-              </label>
-              <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-                匹配模式
-                <select value={searchReplaceMode} onChange={(e) => setSearchReplaceMode(e.target.value as "exact" | "contains" | "startsWith")} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
-                  <option value="exact">完全匹配</option>
-                  <option value="contains">包含</option>
-                  <option value="startsWith">以…开头</option>
-                </select>
-              </label>
-              <div className="flex justify-end gap-2">
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setSearchReplaceOpen(false)}>
-                  取消
-                </button>
-                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" disabled={!searchReplaceColumnKey || !searchReplaceSearch} onClick={() => void doSearchReplace()}>
-                  全部替换
-                </button>
-              </div>
-            </div>
-            </div>
-          </Portal>
-        )}
+        <Dialog open={searchReplaceOpen} onOpenChange={(o) => { if (!o) setSearchReplaceOpen(false); }}>
+          <DialogContent className="max-w-md border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">查找替换</DialogTitle>
+            </DialogHeader>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              目标列
+              <select value={searchReplaceColumnKey} onChange={(e) => setSearchReplaceColumnKey(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
+                <option value="">-- 请选择 --</option>
+                {editableColumns.map((c) => (
+                  <option key={c.columnKey} value={c.columnKey}>{normalizeColumnLabel(c.columnLabel)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              搜索文本
+              <input value={searchReplaceSearch} onChange={(e) => setSearchReplaceSearch(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="要查找的内容" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              替换为
+              <input value={searchReplaceReplace} onChange={(e) => setSearchReplaceReplace(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="替换后的内容（留空表示删除）" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              匹配模式
+              <select value={searchReplaceMode} onChange={(e) => setSearchReplaceMode(e.target.value as "exact" | "contains" | "startsWith")} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
+                <option value="exact">完全匹配</option>
+                <option value="contains">包含</option>
+                <option value="startsWith">以…开头</option>
+              </select>
+            </label>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setSearchReplaceOpen(false)}>
+                取消
+              </button>
+              <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" disabled={!searchReplaceColumnKey || !searchReplaceSearch} onClick={() => void doSearchReplace()}>
+                全部替换
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ── 按批次删除对话框 (4i) ── */}
-        {batchHistoryOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-[var(--twin-ink)]">导入批次历史</h3>
-                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchHistoryOpen(false)}>
-                  关闭
-                </button>
-              </div>
-              <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
-                <table className="w-full text-sm">
-                  <thead className="bg-[var(--twin-canvas-soft)]">
-                    <tr>
-                      <th className="px-3 py-2 text-left">文件名</th>
-                      <th className="px-3 py-2 text-left">导入时间</th>
-                      <th className="px-3 py-2 text-left">导入人</th>
-                      <th className="px-3 py-2 text-center">新增</th>
-                      <th className="px-3 py-2 text-center">更新</th>
-                      <th className="px-3 py-2 text-center">跳过</th>
-                      <th className="px-3 py-2 text-left">操作</th>
+        <Dialog open={batchHistoryOpen} onOpenChange={(o) => { if (!o) setBatchHistoryOpen(false); }}>
+          <DialogContent className="max-h-[85vh] max-w-3xl overflow-auto border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-base font-semibold text-[var(--twin-ink)]">导入批次历史</DialogTitle>
+            </DialogHeader>
+            <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--twin-canvas-soft)]">
+                  <tr>
+                    <th className="px-3 py-2 text-left">文件名</th>
+                    <th className="px-3 py-2 text-left">导入时间</th>
+                    <th className="px-3 py-2 text-left">导入人</th>
+                    <th className="px-3 py-2 text-center">新增</th>
+                    <th className="px-3 py-2 text-center">更新</th>
+                    <th className="px-3 py-2 text-center">跳过</th>
+                    <th className="px-3 py-2 text-left">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchHistoryData.rows.map((batch) => (
+                    <tr key={batch.id} className="border-t border-[var(--twin-hairline)]">
+                      <td className="px-3 py-2">{batch.fileName}</td>
+                      <td className="px-3 py-2 text-xs text-[var(--twin-body)]">{batch.importedAt?.replace("T", " ").slice(0, 19) || "-"}</td>
+                      <td className="px-3 py-2 text-xs">{batch.importedBy || "-"}</td>
+                      <td className="px-3 py-2 text-center text-emerald-700">{batch.createdCount}</td>
+                      <td className="px-3 py-2 text-center text-sky-700">{batch.updatedCount}</td>
+                      <td className="px-3 py-2 text-center text-[var(--twin-mute)]">{batch.skippedCount}</td>
+                      <td className="px-3 py-2">
+                        <button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => void doDeleteByBatch(batch.id)}>
+                          删除
+                        </button>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {batchHistoryData.rows.map((batch) => (
-                      <tr key={batch.id} className="border-t border-[var(--twin-hairline)]">
-                        <td className="px-3 py-2">{batch.fileName}</td>
-                        <td className="px-3 py-2 text-xs text-[var(--twin-body)]">{batch.importedAt?.replace("T", " ").slice(0, 19) || "-"}</td>
-                        <td className="px-3 py-2 text-xs">{batch.importedBy || "-"}</td>
-                        <td className="px-3 py-2 text-center text-emerald-700">{batch.createdCount}</td>
-                        <td className="px-3 py-2 text-center text-sky-700">{batch.updatedCount}</td>
-                        <td className="px-3 py-2 text-center text-[var(--twin-mute)]">{batch.skippedCount}</td>
-                        <td className="px-3 py-2">
-                          <button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => void doDeleteByBatch(batch.id)}>
-                            删除
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {!batchHistoryData.rows.length && (
-                      <tr><td className="px-3 py-8 text-center text-[var(--twin-mute)]" colSpan={7}>暂无导入记录</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-3 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
-                <button disabled={batchHistoryPage <= 1} onClick={() => loadBatchHistory(batchHistoryPage - 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">上一页</button>
-                <span>第 {batchHistoryPage} 页，共 {batchHistoryData.total} 条</span>
-                <button disabled={batchHistoryPage * 20 >= batchHistoryData.total} onClick={() => loadBatchHistory(batchHistoryPage + 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">下一页</button>
-              </div>
+                  ))}
+                  {!batchHistoryData.rows.length && (
+                    <tr><td className="px-3 py-8 text-center text-[var(--twin-mute)]" colSpan={7}>暂无导入记录</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
+            <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+              <button disabled={batchHistoryPage <= 1} onClick={() => loadBatchHistory(batchHistoryPage - 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">上一页</button>
+              <span>第 {batchHistoryPage} 页，共 {batchHistoryData.total} 条</span>
+              <button disabled={batchHistoryPage * 20 >= batchHistoryData.total} onClick={() => loadBatchHistory(batchHistoryPage + 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">下一页</button>
             </div>
-          </Portal>
-        )}
+          </DialogContent>
+        </Dialog>
 
         {/* 导出确认对话框 */}
-        {exportConfirmOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40" onClick={() => setExportConfirmOpen(false)}>
-              <div className="w-[380px] rounded-twin-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                <p className="mb-2 text-sm font-semibold">确认导出 Excel</p>
-                <p className="mb-4 text-xs text-[var(--twin-mute)]">
-                  {getSavedExportCols() ? `当前默认导出 ${getSavedExportCols()!.length} 列。` : '尚未配置导出列，将导出全部列。'}
-                </p>
-                <div className="flex items-center justify-between">
-                  <span className="cursor-pointer text-xs text-[var(--twin-mute)] underline hover:text-[var(--twin-primary)]" onClick={onOpenConfig}>配置列</span>
-                  <div className="flex gap-3">
-                    <button className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5 text-xs" onClick={() => setExportConfirmOpen(false)}>取消</button>
-                    <button className="rounded-twin-sm bg-[var(--twin-primary)] px-4 py-1.5 text-xs text-white" onClick={onConfirmExport}>导出</button>
-                  </div>
-                </div>
+        <Dialog open={exportConfirmOpen} onOpenChange={(o) => { if (!o) setExportConfirmOpen(false); }}>
+          <DialogContent className="max-w-[380px] border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)]">
+            <DialogHeader>
+              <DialogTitle className="text-sm font-semibold">确认导出 Excel</DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-[var(--twin-mute)]">
+              {getSavedExportCols() ? `当前默认导出 ${getSavedExportCols()!.length} 列。` : '尚未配置导出列，将导出全部列。'}
+            </p>
+            <div className="flex items-center justify-between">
+              <span className="cursor-pointer text-xs text-[var(--twin-mute)] underline hover:text-[var(--twin-primary)]" onClick={onOpenConfig}>配置列</span>
+              <div className="flex gap-3">
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5 text-xs" onClick={() => setExportConfirmOpen(false)}>取消</button>
+                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-4 py-1.5 text-xs text-white" onClick={onConfirmExport}>导出</button>
               </div>
             </div>
-          </Portal>
-        )}
+          </DialogContent>
+        </Dialog>
 
         {/* 导出列选择对话框 */}
-        {exportPickerOpen && (
-          <Portal>
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40" onClick={() => setExportPickerOpen(false)}>
-              <div className="w-[420px] max-h-[70vh] flex flex-col overflow-hidden rounded-twin-lg bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between border-b border-[var(--twin-hairline)] px-5 py-3">
-                  <span className="font-semibold text-sm">配置导出列</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-primary)]"
-                      onClick={() => {
-                        const allChecked = Object.values(exportColumnsChecked).every(Boolean);
-                        const next: Record<string, boolean> = {};
-                        Object.keys(exportColumnsChecked).forEach((k) => { next[k] = !allChecked; });
-                        setExportColumnsChecked(next);
-                      }}
-                    >
-                      {Object.values(exportColumnsChecked).every(Boolean) ? "取消全选" : "全选"}
-                    </button>
-                    <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1 text-xs text-white" onClick={onSaveConfig}>保存</button>
-                    <button className="text-xs text-[var(--twin-mute)]" onClick={() => setExportPickerOpen(false)}>关闭</button>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-3">
-                  {Object.entries(exportColumnsChecked).map(([label, checked]) => (
-                    <label key={label} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-[var(--twin-surface)]">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => setExportColumnsChecked((prev) => ({ ...prev, [label]: !prev[label] }))}
-                        className="h-4 w-4 accent-[var(--twin-primary)]"
-                      />
-                      <span className="text-sm text-[var(--twin-text)]">{label}</span>
-                    </label>
-                  ))}
-                </div>
+        <Dialog open={exportPickerOpen} onOpenChange={(o) => { if (!o) setExportPickerOpen(false); }}>
+          <DialogContent className="flex max-h-[70vh] max-w-[420px] flex-col gap-0 overflow-hidden border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0 text-[var(--twin-ink)]">
+            <div className="flex items-center justify-between border-b border-[var(--twin-hairline)] px-5 py-3">
+              <DialogTitle className="text-sm font-semibold">配置导出列</DialogTitle>
+              <div className="flex items-center gap-2">
+                <button
+                  className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-primary)]"
+                  onClick={() => {
+                    const allChecked = Object.values(exportColumnsChecked).every(Boolean);
+                    const next: Record<string, boolean> = {};
+                    Object.keys(exportColumnsChecked).forEach((k) => { next[k] = !allChecked; });
+                    setExportColumnsChecked(next);
+                  }}
+                >
+                  {Object.values(exportColumnsChecked).every(Boolean) ? "取消全选" : "全选"}
+                </button>
+                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1 text-xs text-white" onClick={onSaveConfig}>保存</button>
+                <button className="text-xs text-[var(--twin-mute)]" onClick={() => setExportPickerOpen(false)}>关闭</button>
               </div>
             </div>
-          </Portal>
-        )}
+            <div className="flex-1 overflow-y-auto p-3">
+              {Object.entries(exportColumnsChecked).map(([label, checked]) => (
+                <label key={label} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-[var(--twin-surface)]">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => setExportColumnsChecked((prev) => ({ ...prev, [label]: !prev[label] }))}
+                    className="h-4 w-4 accent-[var(--twin-primary)]"
+                  />
+                  <span className="text-sm text-[var(--twin-text)]">{label}</span>
+                </label>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminPageShell>
   );

@@ -301,41 +301,49 @@
     </view>
   </view>
 
-  <!-- 模式操作条：各模式选中数 + 业务按钮 -->
-  <view wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' || pageMode === 'division' }}" class="mode-actions-strip">
-    <!-- 分配按批次类型二选一：待分配→下发 AUP；已预约空笼盒→撤回 AUP 退回待分配 -->
-    <block wx:if="{{ pageMode === 'allocate' }}">
-      <view class="ma-count">{{ allocBatchKind === 'cancel' ? '撤回 AUP' : '待分配' }} · 已选 {{ selectedCount }}</view>
-      <view wx:if="{{ selectedCount > 0 && allocBatchKind === 'allocate' }}" class="ma-btn ma-btn--primary" bindtap="onOpenAupDialog">分配选定笼位</view>
-      <view wx:if="{{ selectedCount > 0 && allocBatchKind === 'cancel' }}" class="ma-btn ma-btn--danger" bindtap="handleCancelAssign">取消分配</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
-    </block>
-    <block wx:if="{{ pageMode === 'reserve' }}">
-      <view class="ma-count">已选 {{ selectedCount }}</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="openReservePerson">确认预定</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
-    </block>
-    <block wx:if="{{ pageMode === 'studentClaim' }}">
-      <view class="ma-count">已选 {{ selectedCount }}</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="handleStudentClaim">提交申请</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除</view>
-    </block>
-    <block wx:if="{{ pageMode === 'division' }}">
-      <view class="ma-count">已选 {{ selectedCount }}</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--primary" bindtap="openDivisionPerson">提交划分</view>
-      <view wx:if="{{ selectedCount > 0 }}" class="ma-btn ma-btn--plain" bindtap="onClearSelection">清除选择</view>
-    </block>
-    <block wx:if="{{ pageMode === 'edit' }}">
-      <view wx:if="{{ scanTotalActions > 0 }}" class="ma-btn ma-btn--primary" bindtap="onSubmitScanActions">提交 ({{ scanTotalActions }})</view>
-      <view wx:if="{{ scanCacheSize > 0 }}" class="ma-btn ma-btn--plain" bindtap="onExitScanMode">清除</view>
-    </block>
-  </view>
+  <!-- 模式横幅（对齐资产记录页「扫码归位」）：模式名+计数 / 按钮组（单行换行）/ 待选胶囊 -->
+  <view wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' || pageMode === 'division' }}" class="mode-banner" style="{{ modeColor ? '--mode-color:' + modeColor : '' }}">
+    <view class="mb-row">
+      <text class="mb-title">
+        <block wx:if="{{ pageMode === 'allocate' }}">{{ allocBatchKind === 'cancel' ? '撤回 AUP' : '待分配' }}</block>
+        <block wx:elif="{{ pageMode === 'reserve' }}">预定选位</block>
+        <block wx:elif="{{ pageMode === 'studentClaim' }}">申请预约选位</block>
+        <block wx:elif="{{ pageMode === 'division' }}">划分选位</block>
+        <block wx:else>状态标记</block><block wx:if="{{ pageMode === 'edit' && stagedItems.length }}"> · {{ stagedItems.length }} 格</block>
+      </text>
+      <!-- 连续扫码开关：扫一台加入待选后自动重开扫码机（划分不走扫码，故不显示） -->
+      <view
+        wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' }}"
+        class="mb-btn {{ scanContinuous ? 'mb-btn--on' : '' }}"
+        bindtap="onToggleScanContinuous"
+      >连续扫码{{ scanContinuous ? '开' : '关' }}</view>
+      <!-- 扫码入口：扫一台即加入待选（右下角 FAB 仍可用） -->
+      <view
+        wx:if="{{ pageMode === 'allocate' || pageMode === 'reserve' || pageMode === 'studentClaim' || pageMode === 'edit' }}"
+        class="mb-btn"
+        bindtap="onScanLock"
+      >扫码</view>
+      <!-- 主操作：按模式二选一（分配区分下发 AUP / 撤回 AUP） -->
+      <view wx:if="{{ pageMode === 'allocate' && selectedCount > 0 && allocBatchKind === 'allocate' }}" class="mb-btn mb-btn--primary" bindtap="onOpenAupDialog">分配 {{ selectedCount }}</view>
+      <view wx:if="{{ pageMode === 'allocate' && selectedCount > 0 && allocBatchKind === 'cancel' }}" class="mb-btn mb-btn--danger" bindtap="handleCancelAssign">撤回 {{ selectedCount }}</view>
+      <view wx:if="{{ pageMode === 'reserve' && selectedCount > 0 }}" class="mb-btn mb-btn--primary" bindtap="openReservePerson">预定 {{ selectedCount }}</view>
+      <view wx:if="{{ pageMode === 'studentClaim' && selectedCount > 0 }}" class="mb-btn mb-btn--primary" bindtap="handleStudentClaim">申请 {{ selectedCount }}</view>
+      <view wx:if="{{ pageMode === 'division' && selectedCount > 0 }}" class="mb-btn mb-btn--primary" bindtap="openDivisionPerson">划分 {{ selectedCount }}</view>
+      <view wx:if="{{ pageMode === 'edit' && scanTotalActions > 0 }}" class="mb-btn mb-btn--primary" bindtap="onSubmitScanActions">提交 {{ scanTotalActions }} 项</view>
+      <view wx:if="{{ pageMode === 'edit' && scanCacheSize > 0 }}" class="mb-btn" bindtap="onExitScanMode">清除</view>
+      <view wx:if="{{ pageMode !== 'edit' && selectedCount > 0 }}" class="mb-btn" bindtap="onClearSelection">清除</view>
+      <!-- 取消模式：退回查看模式（对齐资产页「退出」的位次，放按钮组末尾） -->
+      <view class="mb-btn" bindtap="onExitMode">取消</view>
+    </view>
 
-  <!-- 编辑历史预览条：只显示已编辑笼位的坐标标签（对齐 Web 顶部缓存预览 / H5 缓存预览） -->
-  <view wx:if="{{ pageMode === 'edit' && cachePreviews.length }}" class="edit-cache-strip">
-    <view wx:for="{{ cachePreviews }}" wx:key="key" class="edit-cache-chip">
-      <text class="edit-cache-pos">{{ item.position }}</text>
-      <text class="edit-cache-diff">{{ item.diff }}</text>
+    <!-- 待选区：缓冲里的笼位以胶囊横排换行，点 ✕ 单独移除 -->
+    <view wx:if="{{ stagedItems.length }}" class="mb-chips">
+      <text class="mb-chips-label">{{ pageMode === 'edit' ? '待提交' : '待选' }}</text>
+      <view wx:for="{{ stagedItems }}" wx:key="key" class="mb-chip">
+        <text class="mb-chip-pos">{{ item.label }}</text>
+        <text wx:if="{{ item.meta }}" class="mb-chip-meta">{{ item.meta }}</text>
+        <text class="mb-chip-x" data-key="{{ item.key }}" catchtap="onRemoveSelected">✕</text>
+      </view>
     </view>
   </view>
 
@@ -398,7 +406,7 @@
       </view>
       <view class="scan-action-btns">
         <view
-          wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
+          wx:for="{{ editActionOptions }}" wx:key="action" wx:for-item="a"
           class="scan-action-btn {{ lastScannedEntry[a._actKey] ? 'scan-action-btn--on' : '' }}"
           data-key="{{ lastScannedKey }}" data-act="{{ a.action }}" bindtap="onToggleAction">
           <text wx:if="{{ lastScannedEntry[a._actKey] }}">✓ </text><text>{{ a.label }}</text>
@@ -701,7 +709,7 @@
       </view>
       <view class="cs-sec-bd">
         <view class="cs-stat-grid">
-          <view wx:for="{{ CAGE_STATUS_ACTIONS }}" wx:key="action" wx:for-item="a"
+          <view wx:for="{{ editActionOptions }}" wx:key="action" wx:for-item="a"
             class="cs-stat {{ editActionCurrent[a.action] ? 'cs-stat--on' : '' }} {{ editActionCurrent[a.action] && !editActionInitial[a.action] ? 'cs-stat--add' : '' }} {{ !editActionCurrent[a.action] && editActionInitial[a.action] ? 'cs-stat--rm' : '' }}"
             style="--c:{{ a.color }};--c-bg:{{ a.bg }};"
             hover-class="cs-stat--hover" hover-stay-time="60"

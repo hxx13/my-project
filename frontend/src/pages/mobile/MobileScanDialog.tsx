@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, CameraOff, AlertTriangle, Upload } from "lucide-react";
+import { useOverlayDismiss } from "@/lib/useOverlayDismiss";
 
 const QR_SCANNER_ID = "mobile-scan-reader";
 
@@ -24,6 +25,7 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [fileMode, setFileMode] = useState(false);
+  const overlayDismiss = useOverlayDismiss(onClose);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   /** 回调用 ref 持有：否则父组件每次重渲染都会换掉 onResult/onClose 的引用，
@@ -139,7 +141,7 @@ export default function MobileScanDialog({ open, onClose, onResult }: MobileScan
   return createPortal(
     <div
       className="fixed inset-0 z-[var(--z-modal)] bg-black/70 flex flex-col"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      {...overlayDismiss}
     >
       {/* 隐藏文件选择 */}
       <input

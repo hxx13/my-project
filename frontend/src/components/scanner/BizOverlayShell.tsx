@@ -5,6 +5,7 @@ import { X, ChevronLeft } from "lucide-react";
 import { Z_INDEX } from "@/constants/zIndex";
 import { getBizItems } from "./useBizRegistry";
 import type { BizOverlayShellProps, BizItem } from "./BizOverlayShell.types";
+import { useOverlayDismiss } from "@/lib/useOverlayDismiss";
 
 /** 菜单宽度 — 收起时 450px，展开右侧后缩小为 231px（150% scale） */
 const MENU_FULL = 450;
@@ -32,6 +33,8 @@ export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverla
     onCancel();
   }, [onCancel]);
 
+  const overlayDismiss = useOverlayDismiss(close);
+
   const handleSelect = useCallback((item: BizItem) => {
     setSelected(item);
   }, []);
@@ -52,7 +55,7 @@ export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverla
             exit={{ opacity: 0 }}
             className={`fixed inset-0 flex items-center justify-center p-4 ${SHELL_BACKDROP}`}
             style={{ zIndex: Z_INDEX.bizOverlay }}
-            onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+            {...overlayDismiss}
           >
             <motion.div
               layout
