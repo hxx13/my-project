@@ -1292,25 +1292,28 @@ export default function AssetVisualView(props: {
                         </div>
                       </div>
                     )}
-                    {/* 子空间卡片 */}
+                    {/* 子空间卡片用 CSS 多栏（瀑布流），不用 grid。
+                        grid 会把同排卡片拉成一行等高，短卡片下面留一大片空白；多栏下每张卡片
+                        只占自己需要的高度，下一张紧接着往上排。 */}
                     {visibleChildren.length > 0 && (
-                      <div className="grid auto-rows-[minmax(160px,1fr)] grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+                      <div className="columns-[240px] gap-4">
                         {visibleChildren.map((c) => (
-                          <SpaceCard
-                            key={c.id}
-                            node={c}
-                            chips={chipsFor(c.id).filter(matchAsset)}
-                            onSelect={setSelectedId}
-                            onOpen={setSelectedAsset}
-                            highlightId={highlightId}
-                            selectable={batchMode}
-                            selectedIds={batchIds}
-                            onToggle={toggleBatchId}
-                            chipsFor={chipsFor}
-                            matchAsset={matchAsset}
-                            hasMatch={nodeHasMatch}
-                            searching={Boolean(q)}
-                          />
+                          <div key={c.id} className="mb-4 break-inside-avoid">
+                            <SpaceCard
+                              node={c}
+                              chips={chipsFor(c.id).filter(matchAsset)}
+                              onSelect={setSelectedId}
+                              onOpen={setSelectedAsset}
+                              highlightId={highlightId}
+                              selectable={batchMode}
+                              selectedIds={batchIds}
+                              onToggle={toggleBatchId}
+                              chipsFor={chipsFor}
+                              matchAsset={matchAsset}
+                              hasMatch={nodeHasMatch}
+                              searching={Boolean(q)}
+                            />
+                          </div>
                         ))}
                       </div>
                     )}

@@ -951,7 +951,7 @@ public class ReferenceDataService {
 
     private void notifyReceivers(RefOrder order, String senderId, List<String> itemNames) {
         try {
-            List<String> receivers = personIdentityService.listSecretaryUserIds();
+            List<String> receivers = personIdentityService.listBusinessUserIds();
             if (receivers.isEmpty()) {
                 return;
             }
@@ -980,8 +980,45 @@ public class ReferenceDataService {
         return toOrderView(order);
     }
 
-    public List<RefOrderView> listOrders(String groupId) {
-        return orderMapper.listByGroupId(groupId).stream().map(this::toOrderView).toList();
+    /**
+     * 订单列表（按 groupId）。groupId 由客户端传入，故必须按人收窄。
+     *
+     * @param userId 传 null 表示调用方已确认全量视角（业务标签/超管）；否则只保留
+     *               「本人提交（含对偶账号）∪ 本人课题组」，防止拿别人的 groupId 枚举订单
+     */
+    public List<RefOrderView> listOrders(String groupId, String userId) {
+        List<RefOrder> rows = orderMapper.listByGroupId(groupId);
+        if (userId != null) {
+            List<String> groups = resolveProjectGroupNames(userId);
+            List<String> myAccounts = resolveMyAccountIds(userId);
+            rows = rows.stream().filter(o -> matchesScope(o, groups, myAccounts)).toList();
+        }
+        return rows.stream().map(this::toOrderView).toList();
+    }
+
+    /**
+     * 订单是否在本人可见范围内：本人提交（账号集合，含对偶账号）或本人课题组。
+     *
+     * <p>口径与 {@link #scopeToMyGroup} 写进 SQL 的条件一致，供详情/日志端点做归属校验；
+     * 全量视角由调用方先行放行，不必进这里判定。
+     */
+    public boolean isOrderVisibleTo(Long orderId, String userId) {
+        RefOrder order = orderMapper.findById(orderId);
+        if (order == null || !StringUtils.hasText(userId)) {
+            return false;
+        }
+        return matchesScope(order, resolveProjectGroupNames(userId), resolveMyAccountIds(userId));
+    }
+
+    /** 「本人课题组 ∪ 本人提交」的单条判定。组名走精确匹配——组名互为子串时会跨组泄露。 */
+    static boolean matchesScope(RefOrder o, List<String> groups, List<String> myAccounts) {
+        if (o == null) {
+            return false;
+        }
+        if (StringUtils.hasText(o.getSubmitterId()) && myAccounts.contains(o.getSubmitterId())) {
+            return true;
+        }
+        return StringUtils.hasText(o.getProjectGroupName()) && groups.contains(o.getProjectGroupName());
     }
 
     /** 全部订单（后台审核页：全字段筛选 + 分页） */

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-11T16:40:13.065Z",
+  "generatedAt": "2026-09-12T15:00:13.377Z",
   "pages": [
     {
       "path": "/about",
@@ -47,7 +47,7 @@
     {
       "path": "/admin/animal-order-review",
       "label": "动物订购审核",
-      "fallbackMinRole": "ADMIN",
+      "fallbackMinRole": "STAFF",
       "groupTitle": "AI 实验室",
       "registryId": "animal-order-review"
     },
@@ -564,7 +564,7 @@
     },
     {
       "path": "/student/exam",
-      "label": "培训",
+      "label": "培训考试",
       "fallbackMinRole": "MEMBER",
       "groupTitle": "培训",
       "registryId": null

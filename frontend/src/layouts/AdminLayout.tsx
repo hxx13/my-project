@@ -475,8 +475,8 @@ export default function AdminLayout() {
   const permSidebarPaths = useMemo(() => collectSidebarEntryPathsFromPerm(permNodes), [permNodes]);
   /** 仅非侧栏一级入口展示「返回」；与 adminShellNavigation.shouldShowAdminShellBack 一致，避免一级页误出返回后 history -1 跳出控制台 */
   const showAdminShellBack = useMemo(
-    () => shouldShowAdminShellBack(pathname, permSidebarPaths),
-    [pathname, permSidebarPaths]
+    () => shouldShowAdminShellBack(pathname, permSidebarPaths, navCtx),
+    [pathname, permSidebarPaths, navCtx]
   );
   const adminHeaderTitle = useMemo(() => adminChromeTitle(pathname), [pathname]);
 

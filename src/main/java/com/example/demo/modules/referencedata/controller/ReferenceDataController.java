@@ -13,6 +13,7 @@ import com.example.demo.modules.referencedata.registry.ReferenceFieldRegistry;
 import com.example.demo.modules.referencedata.service.AnimalOrderExportService;
 import com.example.demo.modules.referencedata.service.AroOrderImportService;
 import com.example.demo.modules.referencedata.service.ReferenceDataService;
+import com.example.demo.modules.referencedata.service.RefOrderAccessPolicy;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
@@ -35,19 +36,22 @@ public class ReferenceDataController {
     private final ReferenceFieldRegistry fieldRegistry;
     private final AnimalOrderExportService animalOrderExportService;
     private final AroOrderImportService aroOrderImportService;
+    private final RefOrderAccessPolicy refOrderAccessPolicy;
 
     public ReferenceDataController(AuthContextService authContextService,
                                     ReferenceDataService referenceDataService,
                                     CapabilityPolicyService capabilityPolicyService,
                                     ReferenceFieldRegistry fieldRegistry,
                                     AnimalOrderExportService animalOrderExportService,
-                                    AroOrderImportService aroOrderImportService) {
+                                    AroOrderImportService aroOrderImportService,
+                                    RefOrderAccessPolicy refOrderAccessPolicy) {
         this.authContextService = authContextService;
         this.referenceDataService = referenceDataService;
         this.capabilityPolicyService = capabilityPolicyService;
         this.fieldRegistry = fieldRegistry;
         this.animalOrderExportService = animalOrderExportService;
         this.aroOrderImportService = aroOrderImportService;
+        this.refOrderAccessPolicy = refOrderAccessPolicy;
     }
 
     // ==================== RefData ====================
@@ -267,7 +271,10 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam String groupId) {
         User user = resolveUser(authorization);
-        return Result.success(referenceDataService.listOrders(groupId));
+        if (user == null) return Result.error("请先登录");
+        // groupId 由客户端传入，只有全量视角能按它取；其余人按本人范围收窄
+        return Result.success(referenceDataService.listOrders(
+                groupId, refOrderAccessPolicy.canSeeAll(user) ? null : user.getId()));
     }
 
     @PostMapping("/orders")
@@ -288,8 +295,11 @@ public class ReferenceDataController {
             @RequestParam(defaultValue = "50") int pageSize,
             RefOrderQuery filter) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return Result.error(denied.getMessage());
+        if (user == null) return Result.error("未登录");
+        // 业务标签/超管看全部；其余人由服务端强制收窄到本人课题组（客户端传的课题组一律被覆盖）
+        if (!refOrderAccessPolicy.canSeeAll(user)) {
+            return Result.success(referenceDataService.listMyGroupOrders(user.getId(), page, pageSize, filter));
+        }
         return Result.success(referenceDataService.listAllOrders(page, pageSize, filter));
     }
 
@@ -298,8 +308,8 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam String column) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return Result.error(denied.getMessage());
+        if (user == null) return Result.error("未登录");
+        // 筛选候选值（供应商/品系/领用人/房间）不含订单数据，也不泄露订单范围，能进页面即可用
         return referenceDataService.distinctFilterValues(column);
     }
 
@@ -413,10 +423,9 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             RefOrderQuery filter) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) {
+        if (user == null) {
             return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN)
-                    .body(String.valueOf(denied.getMessage()).getBytes(StandardCharsets.UTF_8));
+                    .body("未登录".getBytes(StandardCharsets.UTF_8));
         }
         String from = filter != null ? filter.getFrom() : null;
         String to = filter != null ? filter.getTo() : null;
@@ -424,8 +433,11 @@ public class ReferenceDataController {
             SubtotalConfig config = SubtotalConfig.parse(
                     filter != null ? filter.getLevels() : null,
                     filter != null ? filter.getExcludeBlocks() : null);
-            byte[] body = animalOrderExportService.buildReviewSheet(
-                    referenceDataService.listOrdersForExport(filter), config);
+            // 业务标签/超管导出全量；其余人只导出本人课题组
+            List<RefOrderView> rows = refOrderAccessPolicy.canSeeAll(user)
+                    ? referenceDataService.listOrdersForExport(filter)
+                    : referenceDataService.listMyGroupOrdersForExport(user.getId(), filter);
+            byte[] body = animalOrderExportService.buildReviewSheet(rows, config);
             String fn = "animal-order-review-" + (from == null ? "all" : from) + "_" + (to == null ? "now" : to) + ".xlsx";
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
@@ -443,10 +455,11 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             RefOrderQuery filter) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(animalOrderExportService.summarizeReview(
-                referenceDataService.listOrdersForExport(filter)));
+        if (user == null) return Result.error("未登录");
+        List<RefOrderView> rows = refOrderAccessPolicy.canSeeAll(user)
+                ? referenceDataService.listOrdersForExport(filter)
+                : referenceDataService.listMyGroupOrdersForExport(user.getId(), filter);
+        return Result.success(animalOrderExportService.summarizeReview(rows));
     }
 
     @GetMapping("/orders/{id}")
@@ -455,6 +468,10 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable Long id) {
         User user = resolveUser(authorization);
+        if (user == null) return Result.error("未登录");
+        if (!refOrderAccessPolicy.canSeeAll(user) && !referenceDataService.isOrderVisibleTo(id, user.getId())) {
+            return Result.error("无权限访问");
+        }
         RefOrderView view = referenceDataService.getOrder(id);
         if (view == null) return Result.error("订单不存在");
         return Result.success(view);
@@ -467,8 +484,7 @@ public class ReferenceDataController {
             @PathVariable Long id,
             @RequestParam String status) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return Result.error(denied.getMessage());
+        if (!refOrderAccessPolicy.canReview(user)) return Result.error("无权限访问");
         return referenceDataService.updateOrderStatus(id, status, user.getId());
     }
 
@@ -478,6 +494,10 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable Long id) {
         User user = resolveUser(authorization);
+        if (user == null) return Result.error("未登录");
+        if (!refOrderAccessPolicy.canSeeAll(user) && !referenceDataService.isOrderVisibleTo(id, user.getId())) {
+            return Result.error("无权限访问");
+        }
         return Result.success(referenceDataService.getOrderLogs(id));
     }
 

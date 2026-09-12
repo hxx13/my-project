@@ -122,7 +122,7 @@ export const STUDENT_NAV_REGISTRY: StudentNavRegistryGroup[] = [
       {
         id: "exam",
         path: "/student/exam",
-        label: "培训",
+        label: "培训考试",
         icon: ClipboardList,
         fallbackMinRole: "MEMBER",
         sidebarVisible: (ctx) => show(ctx, "/student/exam", "MEMBER"),

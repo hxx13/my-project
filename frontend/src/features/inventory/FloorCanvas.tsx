@@ -178,21 +178,22 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
           <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">{node.children.length} 个子空间</span>
         </div>
-        <div className="mt-2 grid auto-rows-[minmax(140px,1fr)] grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+        <div className="mt-2 columns-[200px] gap-3">
           {node.children.map((c) => (
-            <SpaceCard
-              key={c.id}
-              node={c}
-              chipsFor={chipsFor}
-              highlightSpaceIds={highlightSpaceIds}
-              highlightCounts={highlightCounts}
-              onSelect={onSelect}
-              onOpenItem={onOpenItem}
-              selectable={selectable}
-              selectedIds={selectedIds}
-              onToggle={onToggle}
-              depth={depth + 1}
-            />
+            <div key={c.id} className="mb-3 break-inside-avoid">
+              <SpaceCard
+                node={c}
+                chipsFor={chipsFor}
+                highlightSpaceIds={highlightSpaceIds}
+                highlightCounts={highlightCounts}
+                onSelect={onSelect}
+                onOpenItem={onOpenItem}
+                selectable={selectable}
+                selectedIds={selectedIds}
+                onToggle={onToggle}
+                depth={depth + 1}
+              />
+            </div>
           ))}
         </div>
       </div>
@@ -554,22 +555,23 @@ export default function FloorCanvas(props: {
                 </div>
               )}
 
-              {/* 子空间卡片 */}
+              {/* 子空间卡片：CSS 多栏（瀑布流），避免 grid 同排等高留出的空白 */}
               {children.length > 0 ? (
-                <div className="grid auto-rows-[minmax(160px,1fr)] grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+                <div className="columns-[240px] gap-4">
                   {children.map((c) => (
-                    <SpaceCard
-                      key={c.id}
-                      node={c}
-                      chipsFor={chipsFor}
-                      highlightSpaceIds={highlightSpaceIds}
-                      highlightCounts={highlightCounts}
-                      onSelect={handleCardSelect}
-                      onOpenItem={onOpenItem}
-                      selectable={batchMode}
-                      selectedIds={batchIds}
-                      onToggle={toggleBatchId}
-                    />
+                    <div key={c.id} className="mb-4 break-inside-avoid">
+                      <SpaceCard
+                        node={c}
+                        chipsFor={chipsFor}
+                        highlightSpaceIds={highlightSpaceIds}
+                        highlightCounts={highlightCounts}
+                        onSelect={handleCardSelect}
+                        onOpenItem={onOpenItem}
+                        selectable={batchMode}
+                        selectedIds={batchIds}
+                        onToggle={toggleBatchId}
+                      />
+                    </div>
                   ))}
                 </div>
               ) : (
