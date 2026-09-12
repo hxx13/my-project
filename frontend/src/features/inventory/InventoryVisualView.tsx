@@ -20,11 +20,14 @@ import {
   fetchItems,
   fetchSpaceTree,
   transferItem,
+  updateSpace,
   type Item,
   type ItemLog,
 } from "@/api/domains/inventory.api";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { Portal } from "@/components/Portal";
+import { DndScope, type DndRef } from "@/components/tree/DndScope";
+import { appConfirm } from "@/lib/appDialog";
 import SpaceTree from "./SpaceTree";
 import FloorCanvas from "./FloorCanvas";
 import RoomDetailPanel from "./RoomDetailPanel";
@@ -101,7 +104,7 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
   // 时间轴弹层：列出空间内物品，点击某物品拉取其留痕
   const [logItem, setLogItem] = useState<Item | null>(null);
 
-  /** 物品拖到左树某一行 → 移到该空间（与画布上拖到卡片是同一套结果） */
+  /** 物品拖到左树某一行 / 画布某张卡片 → 移到该空间 */
   const handleDropItemToSpace = async (itemId: number, spaceId: number) => {
     // 拖回原空间：不请求、不留痕（与资产侧拖放同口径）
     const it = items.find((x) => x.id === itemId);
@@ -116,6 +119,40 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
       qc.invalidateQueries({ queryKey: ["inventory", "spaces"] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "转移失败");
+    }
+  };
+
+  /** 空间行拖到另一行 → 改父空间；拦掉同父与「拖进自己的子树」 */
+  const handleDropSpaceNode = async (draggedId: number, newParentId: number) => {
+    const dragged = findNode(tree, draggedId);
+    const target = findNode(tree, newParentId);
+    if (!dragged || !target) return;
+    if (dragged.parentId === newParentId) return; // 已经是同一个父节点，不用打扰
+    if (ancestorIds(tree, newParentId).includes(draggedId)) {
+      toast.error("不能把空间移动到它自己的子空间里");
+      return;
+    }
+    const ok = await appConfirm(`把「${dragged.name}」移动到「${target.name}」下？`, { title: "移动空间" });
+    if (!ok) return;
+    try {
+      await updateSpace(draggedId, { parentId: newParentId });
+      toast.success("已移动");
+      qc.invalidateQueries({ queryKey: ["inventory", "spaces"] });
+      qc.invalidateQueries({ queryKey: ["inventory", "items"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "移动失败");
+    }
+  };
+
+  /** 拖放总入口：dnd-kit 的 id 带类型前缀，这里按「拖的是什么 + 落到哪」分派 */
+  const handleDndDrop = (active: DndRef, over: DndRef) => {
+    const isSpace = (k: DndRef["kind"]) => k === "tree-node" || k === "canvas-node";
+    if (active.kind === "item-chip" && isSpace(over.kind)) {
+      void handleDropItemToSpace(Number(active.id), Number(over.id));
+      return;
+    }
+    if (active.kind === "tree-node" && over.kind === "tree-node") {
+      void handleDropSpaceNode(Number(active.id), Number(over.id));
     }
   };
   const [logs, setLogs] = useState<ItemLog[]>([]);
@@ -144,6 +181,7 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
   };
 
   return (
+    <DndScope onDrop={handleDndDrop}>
     <div
       className="flex h-full min-h-0 gap-3 overflow-auto"
       // 撑满父容器（页面已用 fillHeight + flex-1 提供高度）
@@ -181,7 +219,6 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
                 setCreateOpen(true);
               }}
               onOpenItem={onOpenItem}
-              onDropItem={handleDropItemToSpace}
             />
           )}
         </div>
@@ -258,5 +295,6 @@ export default function InventoryVisualView(props: { onOpenItem?: (item: Item) =
         />
       )}
     </div>
+    </DndScope>
   );
 }

@@ -8,7 +8,8 @@
  * 两棵树此前各抄一份、改一处漏一处，正是这些 chrome 的重复。
  */
 
-import { useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type DOMAttributes, type ReactNode } from "react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   Check,
   ChevronDown,
@@ -28,10 +29,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { filterTree, type TreeLike } from "./filterTree";
+import { dndId, type DndKind } from "./dndIds";
 
 /** 行内「⋯」菜单给调用方的把手：菜单项自己写在 renderMenu 里，这些是它需要的动作 */
-export type TreeMenuHelpers = {
-  /** 展开并在本节点下开内联新建输入框 */
+export type TreeMenuHelpers = {  /** 展开并在本节点下开内联新建输入框 */
   startCreateChild: () => void;
   /** 打开「移动」弹窗（本组件持有弹窗状态） */
   startMove: () => void;
@@ -58,6 +59,58 @@ export type TreeMoveConfig<T> = {
   allowMoveToRoot?: boolean;
 };
 
+/**
+ * 一行的拖放接线。
+ *
+ * 原生 HTML5 拖拽（draggable + DataTransfer）在触摸端浏览器上根本不产生
+ * dragstart/drop —— 那是桌面专属 API，所以统一走 dnd-kit 的指针事件，鼠标与触摸同一套。
+ *
+ * **行内容必须作为 children 元素传进来，不能传函数。**
+ * dnd-kit 的 useDroppable/useDraggable 里 `useContext(InternalContext)`，而那个
+ * context 的依赖含 activeNodeRect —— 拖拽中每次移动都变，于是注册过的组件
+ * （资产左树 461 行）每次移动都要重渲染一次。内容作为元素传进来时引用不变，
+ * React 会跳过整行内容，这一层就成了唯一重算的东西。
+ */
+function DndRow({
+  id,
+  draggable,
+  droppable,
+  data,
+  className,
+  overClassName,
+  style,
+  children,
+}: {
+  id: string;
+  draggable: boolean;
+  droppable: boolean;
+  data: Record<string, unknown>;
+  className?: string;
+  /** 拖到本行时追加的类（环）——由本层判断 isOver，调用方不用管 */
+  overClassName?: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  const drag = useDraggable({ id, data, disabled: !draggable });
+  const drop = useDroppable({ id, disabled: !droppable });
+  // 同一个元素既是拖源又是落点，两个 ref 都要挂上
+  const setRef = (el: HTMLElement | null) => {
+    drag.setNodeRef(el);
+    drop.setNodeRef(el);
+  };
+  return (
+    <div
+      ref={setRef}
+      // 只取 listeners，不铺 attributes：行本身已经是 button 结构，role/tabIndex 会打架
+      {...(draggable ? ((drag.listeners ?? {}) as DOMAttributes<HTMLElement>) : {})}
+      className={cn(className, drag.isDragging && "opacity-40", drop.isOver && overClassName)}
+      style={style}
+    >
+      {children}
+    </div>
+  );
+}
+
 export type TreeProps<T extends TreeLike<T>> = {
   nodes: T[];
   getId: (node: T) => number;
@@ -82,10 +135,14 @@ export type TreeProps<T extends TreeLike<T>> = {
   /** 行下方、子节点上方的内容（空间树用来列该空间直接挂的物品） */
   renderExtras?: (node: T, depth: number) => ReactNode;
 
-  /** 行被拖走时写入的载荷类型；不传则行不可拖 */
-  dragPayloadType?: string;
-  /** 有东西落到某行；dataTransfer 原样交给调用方解析 */
-  onDropRow?: (nodeId: number, dataTransfer: DataTransfer) => void;
+  /** 行本身可拖（触摸端也生效，走 dnd-kit 指针事件） */
+  draggable?: boolean;
+  /** 行可作为落点 */
+  droppable?: boolean;
+  /** dnd-kit 的 id 前缀：一个 DndContext 里放多棵树时才需要区分 */
+  dndIdPrefix?: string;
+  /** 拖拽/落点的 id 类型，按 [[dndId]] 的约定拼；调用方在 onDragEnd 里解析同一个约定 */
+  dndKind?: DndKind;
 
   /** 内联新建输入框的 placeholder，如「空间名称」 */
   createPlaceholder?: string;
@@ -116,8 +173,9 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
     keyword = "",
     renderMenu,
     renderExtras,
-    dragPayloadType,
-    onDropRow,
+    draggable = false,
+    droppable = false,
+    dndKind = "tree-node",
     createPlaceholder = "名称",
     createRootLabel,
     onCreate,
@@ -127,7 +185,6 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
   } = props;
 
   const [creating, setCreating] = useState<{ parentId: number | null; name: string } | null>(null);
-  const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [moveTarget, setMoveTarget] = useState<T | null>(null);
   const [moveParentId, setMoveParentId] = useState<number | null>(null);
   const [moveParentPath, setMoveParentPath] = useState("");
@@ -236,42 +293,31 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
     const expandableNode = canExpand(n);
     const open = searching || expanded.has(id);
     const isSelected = selectedId === id;
-    const isDragOver = dragOverId === id;
     const isCreatingHere = creating?.parentId === id;
     const count = getCount?.(n) ?? null;
     const hasCount = count != null && count > 0;
     const customIcon = getIcon?.(n);
     return (
       <div key={id}>
-        <div
-          draggable={!!dragPayloadType}
-          onDragStart={
-            dragPayloadType
-              ? (e: DragEvent) => {
-                  e.dataTransfer.setData(dragPayloadType, String(id));
-                  e.dataTransfer.effectAllowed = "move";
-                }
-              : undefined
-          }
-          className={cn(
-            "group flex items-center rounded-twin-sm",
-            isDragOver && "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
-          )}
+        <DndRow
+          id={dndId(dndKind, id)}
+          draggable={draggable}
+          droppable={droppable}
+          data={{
+            kind: dndKind,
+            nodeId: id,
+            // 跟手的那一枚：拖起来时贴着鼠标/手指，不然只能看到落点高亮
+            preview: (
+              <div className="flex items-center gap-1 rounded-twin-sm border border-[var(--twin-link-deep)] bg-[var(--twin-canvas)] px-2 py-1 text-[12px] text-[var(--twin-ink)] shadow-twin-level-3">
+                {customIcon ?? (children.length > 0 ? <Folder className="h-3.5 w-3.5 shrink-0 text-amber-400" /> : <File className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]" />)}
+                <span className="max-w-[12rem] truncate">{getName(n)}</span>
+                {hasCount ? <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">{count}</span> : null}
+              </div>
+            ),
+          }}
+          className="group flex items-center rounded-twin-sm"
+          overClassName="bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)] ring-2 ring-inset ring-[var(--twin-primary)]"
           style={{ paddingLeft: depth * 8 }}
-          onDragOver={(e) => {
-            if (!onDropRow) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "move";
-            if (dragOverId !== id) setDragOverId(id);
-          }}
-          onDragLeave={() => setDragOverId((prev) => (prev === id ? null : prev))}
-          onDrop={(e) => {
-            if (!onDropRow) return;
-            e.preventDefault();
-            e.stopPropagation();
-            setDragOverId(null);
-            onDropRow(id, e.dataTransfer);
-          }}
         >
           <button
             type="button"
@@ -336,6 +382,8 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
               <DropdownMenuTrigger
                 title="更多操作"
                 aria-label="更多操作"
+                // 不吃拖拽：菜单是 pointerdown 就开的，让它别被行的拖拽把手接走
+                onPointerDown={(e) => e.stopPropagation()}
                 className="ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] opacity-0 transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
@@ -349,7 +397,7 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-        </div>
+        </DndRow>
 
         {isCreatingHere && renderCreateInput(depth + 1)}
 

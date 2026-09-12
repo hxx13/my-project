@@ -6,9 +6,10 @@
  *   - 计数 = 子树物品数（含子孙）
  *   - 展开箭头还要看该空间有没有直接挂物品（有物品就要能展开）
  *   - 行下方列该空间的物品（文件行）
- *   - 落点：物品（text/plain，与画布同格式）+ 空间（text/space-node-id）
  *   - 移动：树选择器选新父空间，「移到根」单列一个按钮
  *   - 删除：本组件自持确认弹窗
+ *
+ * 行的拖放只接线（draggable/droppable），落点由页面在 DndScope.onDrop 里解析。
  */
 
 import { useState } from "react";
@@ -20,9 +21,8 @@ import { Portal } from "@/components/Portal";
 import { Tree } from "@/components/tree/Tree";
 import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { SpaceTreeSelect } from "@/components/admin/SpaceTreeSelect";
-import { appConfirm } from "@/lib/appDialog";
 import ItemIcon from "./ItemIcon";
-import { ancestorIds, categoryColor, findNode, showQty, sumSubtreeItemCount } from "./constants";
+import { categoryColor, showQty, sumSubtreeItemCount } from "./constants";
 
 export default function SpaceTree(props: {
   tree: SpaceNode[];
@@ -34,10 +34,8 @@ export default function SpaceTree(props: {
   onSelect: (id: number) => void;
   onCreateItem?: (spaceId: number) => void;
   onOpenItem?: (item: Item) => void;
-  /** 物品拖到本行 → 移到这个空间（与画布上的落点同一套语义） */
-  onDropItem?: (itemId: number, spaceId: number) => void;
 }) {
-  const { tree, selectedId, expanded, search, itemsBySpace, onToggle, onSelect, onCreateItem, onOpenItem, onDropItem } = props;
+  const { tree, selectedId, expanded, search, itemsBySpace, onToggle, onSelect, onCreateItem, onOpenItem } = props;
   const qc = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<SpaceNode | null>(null);
 
@@ -77,29 +75,6 @@ export default function SpaceTree(props: {
     setDeleteTarget(null);
   };
 
-  /** 把拖来的空间挂到目标节点下：拦掉自环、同父与「拖进自己的子空间」 */
-  const handleDropNode = async (draggedId: number, newParentId: number) => {
-    if (draggedId === newParentId) return;
-    const dragged = findNode(tree, draggedId);
-    const target = findNode(tree, newParentId);
-    if (!dragged || !target) return;
-    if (dragged.parentId === newParentId) return; // 已经是同一个父节点，不用打扰
-    if (ancestorIds(tree, newParentId).includes(draggedId)) {
-      toast.error("不能把空间移动到它自己的子空间里");
-      return;
-    }
-    const ok = await appConfirm(`把「${dragged.name}」移动到「${target.name}」下？`, { title: "移动空间" });
-    if (!ok) return;
-    try {
-      await updateSpace(draggedId, { parentId: newParentId });
-      toast.success("已移动");
-      refresh();
-      qc.invalidateQueries({ queryKey: ["inventory", "items"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "移动失败");
-    }
-  };
-
   return (
     <>
       <Tree<SpaceNode>
@@ -119,18 +94,8 @@ export default function SpaceTree(props: {
         onCreate={(parentId, name) => void handleCreate(parentId, name)}
         emptyText="暂无空间，点击上方「新建空间」"
         noMatchText="没有匹配的空间"
-        dragPayloadType="text/space-node-id"
-        onDropRow={(spaceId, dt) => {
-          // 物品：载荷与 FloorCanvas 同格式，画布与左树可互为落点
-          const itemId = Number(dt.getData("text/plain"));
-          if (Number.isFinite(itemId) && itemId > 0) {
-            onDropItem?.(itemId, spaceId);
-            return;
-          }
-          // 空间：把拖来的子空间挂到本节点下
-          const draggedId = Number(dt.getData("text/space-node-id"));
-          if (Number.isFinite(draggedId) && draggedId > 0) void handleDropNode(draggedId, spaceId);
-        }}
+        draggable
+        droppable
         renderExtras={(n, depth) => {
           const items = itemsBySpace?.get(n.id) ?? [];
           if (items.length === 0) return null;
