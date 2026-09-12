@@ -43,6 +43,7 @@ import { useAssetRelocate } from "./useAssetRelocate";
 import { AutoImage } from "@/components/ui/AutoImage";
 import EmojiPicker from "@/components/ui/EmojiPicker";
 import { AssetLocationTreeSelect } from "@/components/admin/AssetLocationTreeSelect";
+import { Masonry } from "@/components/ui/Masonry";
 import { assetStatusLabel } from "./assetEditableFields";
 import { categoryColor } from "@/features/inventory/constants";
 import LocationTree from "./LocationTree";
@@ -312,6 +313,8 @@ function AssetChip({ row, onOpen, highlight, selectable, selected, onToggle, com
    ──────────────────────────────────────────────────────────── */
 /** 卡片内联的层数；再往下一层（第 4 层）无论文件夹还是物资都退化成最小标签，不再展开 */
 const MAX_INLINE_DEPTH = 3;
+/** 一张卡片里最多直接铺多少个资产格；多余的只给个提示，点卡片进入看全部 */
+const MAX_CARD_CHIPS = 24;
 
 /** 最深层的最小标签：图标 + 名称，不再有卡片外壳 */
 function NodeTag({ node, chips, onOpen, highlightId, onSelect, selectable, selectedIds, onToggle }: {
@@ -338,9 +341,14 @@ function NodeTag({ node, chips, onOpen, highlightId, onSelect, selectable, selec
         <span className="shrink-0 text-[11px] leading-none">{node.icon || "📁"}</span>
         <span className="truncate">{node.name}</span>
       </button>
-      {chips.map((r) => (
+      {chips.slice(0, MAX_CARD_CHIPS).map((r) => (
         <AssetChip key={r.id} row={r} onOpen={onOpen} highlight={r.id === highlightId} selectable={selectable} selected={selectedIds?.has(r.id)} onToggle={onToggle} compact />
       ))}
+      {chips.length > MAX_CARD_CHIPS && (
+        <span className="inline-flex items-center rounded-twin-sm border border-dashed border-[var(--twin-hairline-strong)] px-1.5 py-0.5 text-[10px] text-[var(--twin-mute)]">
+          还有 {chips.length - MAX_CARD_CHIPS} 件
+        </span>
+      )}
     </div>
   );
 }
@@ -417,9 +425,16 @@ function SpaceCard({ node, chips, onSelect, onOpen, highlightId, selectable, sel
       </div>
       {chips.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
-          {chips.map((r) => (
+          {chips.slice(0, MAX_CARD_CHIPS).map((r) => (
             <AssetChip key={r.id} row={r} onOpen={onOpen} highlight={r.id === highlightId} selectable={selectable} selected={selectedIds?.has(r.id)} onToggle={onToggle} />
           ))}
+          {/* 一张卡片最多直接铺这么多个，否则 476 件的那种会撑成一条长柱。
+              点卡片本身就是「进入」，所以这里只是个提示，不再套一个按钮 */}
+          {chips.length > MAX_CARD_CHIPS && (
+            <span className="flex min-w-0 items-center justify-center rounded-twin-md border border-dashed border-[var(--twin-hairline-strong)] px-1.5 py-1 text-[11px] text-[var(--twin-mute)]">
+              还有 {chips.length - MAX_CARD_CHIPS} 件
+            </span>
+          )}
         </div>
       )}
       {/* 子级内联渲染（跨框跨层级拖拽不用逐级下钻）；到 MAX_INLINE_DEPTH 由 SpaceCard 自己退化成标签。
@@ -1292,30 +1307,30 @@ export default function AssetVisualView(props: {
                         </div>
                       </div>
                     )}
-                    {/* 子空间卡片用 CSS 多栏（瀑布流），不用 grid。
-                        grid 会把同排卡片拉成一行等高，短卡片下面留一大片空白；多栏下每张卡片
-                        只占自己需要的高度，下一张紧接着往上排。 */}
+                    {/* 子空间卡片：自适应瀑布流。grid 会让同排卡片等高、矮的下面留一大片空白；
+                        写死列宽的 CSS 多栏又会让只有一两个子文件夹时挤成一条窄柱。Masonry 两者都避开。 */}
                     {visibleChildren.length > 0 && (
-                      <div className="columns-[240px] gap-4">
-                        {visibleChildren.map((c) => (
-                          <div key={c.id} className="mb-4 break-inside-avoid">
-                            <SpaceCard
-                              node={c}
-                              chips={chipsFor(c.id).filter(matchAsset)}
-                              onSelect={setSelectedId}
-                              onOpen={setSelectedAsset}
-                              highlightId={highlightId}
-                              selectable={batchMode}
-                              selectedIds={batchIds}
-                              onToggle={toggleBatchId}
-                              chipsFor={chipsFor}
-                              matchAsset={matchAsset}
-                              hasMatch={nodeHasMatch}
-                              searching={Boolean(q)}
-                            />
-                          </div>
-                        ))}
-                      </div>
+                      <Masonry
+                        items={visibleChildren}
+                        minColumnWidth={240}
+                        getKey={(c) => c.id}
+                        renderItem={(c) => (
+                          <SpaceCard
+                            node={c}
+                            chips={chipsFor(c.id).filter(matchAsset)}
+                            onSelect={setSelectedId}
+                            onOpen={setSelectedAsset}
+                            highlightId={highlightId}
+                            selectable={batchMode}
+                            selectedIds={batchIds}
+                            onToggle={toggleBatchId}
+                            chipsFor={chipsFor}
+                            matchAsset={matchAsset}
+                            hasMatch={nodeHasMatch}
+                            searching={Boolean(q)}
+                          />
+                        )}
+                      />
                     )}
                   </>
                 )}

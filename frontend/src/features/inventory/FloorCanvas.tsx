@@ -19,10 +19,16 @@ import { categoryColor, groupBySpace, showQty, sumSubtreeItemCount } from "./con
 import { cn } from "@/lib/utils";
 import ItemIcon from "./ItemIcon";
 import { SpaceTreeSelect } from "@/components/admin/SpaceTreeSelect";
+import { Masonry } from "@/components/ui/Masonry";
 import { dndId } from "@/components/tree/dndIds";
 import { DropHalo } from "@/components/tree/DndScope";
 
 const HIGHLIGHT_SHADOW = "0 0 0 2px rgba(245,158,11,0.5), 0 0 14px rgba(245,158,11,0.35)";
+
+/** 卡片内联展开的最大层数：再深就改成一排小按钮点进去，免得容器无限嵌套 */
+const MAX_DEPTH = 3;
+/** 一张卡片里最多直接铺多少个物品；多余的只给个提示，点卡片进入看全部 */
+const MAX_CARD_CHIPS = 24;
 
 function HitBadge({ count }: { count: number }) {
   return (
@@ -160,7 +166,27 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
   const highlighted = highlightSpaceIds.has(node.id);
   const hitCount = highlightCounts.get(node.id) ?? 0;
   // 空中间层（无物品、只有子空间）→ 直接嵌套显示下一级子卡片，跳过一层下钻
-  const isEmptyIntermediate = items.length === 0 && hasChildren && depth < 3;
+  const isEmptyIntermediate = items.length === 0 && hasChildren && depth < MAX_DEPTH;
+  // 再往下就是第 MAX_DEPTH 层了：不再展开成卡片，改成一排小按钮，免得容器无限嵌套
+  const childrenTooDeep = depth + 1 >= MAX_DEPTH;
+
+  /** 深度到顶后的回落：每个子空间一个按钮，点进去看那一层 */
+  const renderChildrenCompact = () => (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {node.children.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onSelect(c.id); }}
+          title={`进入 ${c.name}`}
+          className="flex max-w-full items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] px-2 py-1 text-[11px] text-[var(--twin-body)] transition hover:border-[var(--twin-link-deep)]"
+        >
+          <span className="min-w-0 truncate">{c.name}</span>
+          <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">{c.itemCount ?? 0}</span>
+        </button>
+      ))}
+    </div>
+  );
 
   if (isEmptyIntermediate) {
     return (
@@ -178,9 +204,14 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--twin-ink)]">{node.name}</span>
           <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">{node.children.length} 个子空间</span>
         </div>
-        <div className="mt-2 columns-[200px] gap-3">
-          {node.children.map((c) => (
-            <div key={c.id} className="mb-3 break-inside-avoid">
+        <div className="mt-2">
+          {childrenTooDeep ? renderChildrenCompact() : (
+          <Masonry
+            items={node.children}
+            minColumnWidth={200}
+            gap={12}
+            getKey={(c) => c.id}
+            renderItem={(c) => (
               <SpaceCard
                 node={c}
                 chipsFor={chipsFor}
@@ -193,8 +224,9 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
                 onToggle={onToggle}
                 depth={depth + 1}
               />
-            </div>
-          ))}
+            )}
+          />
+          )}
         </div>
       </div>
     );
@@ -222,9 +254,14 @@ function SpaceCard({ node, chipsFor, highlightSpaceIds, highlightCounts, onSelec
       {/* 物品区 */}
       {items.length > 0 && (
         <div className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1.5">
-          {items.map((it) => (
+          {items.slice(0, MAX_CARD_CHIPS).map((it) => (
             <ItemTile key={it.id} it={it} onOpenItem={onOpenItem} selectable={selectable} selected={selectedIds?.has(it.id)} onToggle={onToggle} />
           ))}
+          {items.length > MAX_CARD_CHIPS && (
+            <span className="flex min-w-0 items-center justify-center rounded-twin-md border border-dashed border-[var(--twin-hairline-strong)] px-1.5 py-1 text-[11px] text-[var(--twin-mute)]">
+              还有 {items.length - MAX_CARD_CHIPS} 件
+            </span>
+          )}
         </div>
       )}
       {/* 只有子空间、本级没物品时不能报「暂无物品」——子级就在下面渲染 */}
@@ -555,25 +592,27 @@ export default function FloorCanvas(props: {
                 </div>
               )}
 
-              {/* 子空间卡片：CSS 多栏（瀑布流），避免 grid 同排等高留出的空白 */}
+              {/* 子空间卡片：自适应瀑布流（列数按容器宽度算，一两个就占满整行）。
+                  顶层永远是第 0 层，深度上限由 SpaceCard 自己判 */}
               {children.length > 0 ? (
-                <div className="columns-[240px] gap-4">
-                  {children.map((c) => (
-                    <div key={c.id} className="mb-4 break-inside-avoid">
-                      <SpaceCard
-                        node={c}
-                        chipsFor={chipsFor}
-                        highlightSpaceIds={highlightSpaceIds}
-                        highlightCounts={highlightCounts}
-                        onSelect={handleCardSelect}
-                        onOpenItem={onOpenItem}
-                        selectable={batchMode}
-                        selectedIds={batchIds}
-                        onToggle={toggleBatchId}
-                      />
-                    </div>
-                  ))}
-                </div>
+                <Masonry
+                  items={children}
+                  minColumnWidth={240}
+                  getKey={(c) => c.id}
+                  renderItem={(c) => (
+                    <SpaceCard
+                      node={c}
+                      chipsFor={chipsFor}
+                      highlightSpaceIds={highlightSpaceIds}
+                      highlightCounts={highlightCounts}
+                      onSelect={handleCardSelect}
+                      onOpenItem={onOpenItem}
+                      selectable={batchMode}
+                      selectedIds={batchIds}
+                      onToggle={toggleBatchId}
+                    />
+                  )}
+                />
               ) : (
                 chipsFor(node.id).length === 0 && <div className="py-10 text-center text-[12px] text-[var(--twin-mute)]">该空间暂无物品</div>
               )}
