@@ -5,7 +5,7 @@
       ================================
 
       三通道架构：
-        ① stderr — 启动动画 (StartupBanner 直接写入，不经过 Logback)
+        ① stdout — 启动动画 (StartupDashboard 直接写入，不经过 Logback)
         ② stdout — 运行时业务日志 (ERROR/WARN → 终端可见；INFO/DEBUG → 静默)
         ③ RingBuffer — Web 管理端日志查看器 (所有级别)
 
@@ -129,7 +129,7 @@
     <logger name="com.mysql" level="WARN"/>
     <logger name="com.mysql.cj" level="WARN"/>
 
-    <!-- DJL 引擎加载细节（通过 StartupBanner 阶段报告，无需逐行日志） -->
+    <!-- DJL 引擎加载细节（通过 StartupDashboard 阶段报告，无需逐行日志） -->
     <logger name="ai.djl" level="WARN"/>
 
     <!-- ============================== 业务模块 ============================== -->

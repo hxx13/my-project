@@ -90,10 +90,43 @@ function firstPhoto(row: AssetRow): string | null {
   return u ?? null;
 }
 
+/** 卡片尺寸档位：列宽下限 + 图框/文字字号 + 文字区内边距与行距。这些都是运行时算的，只能用内联 style */
+type CardMetrics = {
+  minCol: number;
+  icon: number;
+  name: number;
+  meta: number;
+  code: number;
+  pad: number;
+  lineGap: number;
+};
+
+const DEFAULT_CARD_METRICS: CardMetrics = {
+  minCol: 160,
+  icon: 48,
+  name: 13,
+  meta: 11,
+  // 编号是现场认资产的主要凭据，别比「使用人」还小
+  code: 11,
+  pad: 10,
+  lineGap: 2,
+};
+
+/**
+ * 卡片尺寸随本空间资产数自适应：东西一多就缩小，否则一屏几张大卡片翻起来很痛苦。
+ * 字号和内边距都要跟着缩——只缩图框的话，小卡片下方的详情块会比图还高。
+ */
+function cardMetrics(count: number): CardMetrics {
+  if (count <= 12) return DEFAULT_CARD_METRICS;
+  if (count <= 30) return { minCol: 128, icon: 40, name: 12, meta: 10, code: 10, pad: 8, lineGap: 2 };
+  if (count <= 60) return { minCol: 104, icon: 32, name: 11, meta: 9, code: 9, pad: 6, lineGap: 1 };
+  return { minCol: 84, icon: 26, name: 10, meta: 9, code: 9, pad: 4, lineGap: 1 };
+}
+
 /* ────────────────────────────────────────────────────────────
    资产卡片（本空间资产：大图 / emoji 兜底）
    ──────────────────────────────────────────────────────────── */
-function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle }: {
+function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle, metrics = DEFAULT_CARD_METRICS }: {
   row: AssetRow;
   onOpen: (r: AssetRow) => void;
   highlight?: boolean;
@@ -101,6 +134,8 @@ function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle }: {
   selectable?: boolean;
   selected?: boolean;
   onToggle?: (id: string) => void;
+  /** 尺寸档位，由调用方按件数给出 */
+  metrics?: CardMetrics;
 }) {
   const photo = firstPhoto(row);
   return (
@@ -133,22 +168,23 @@ function AssetCard({ row, onOpen, highlight, selectable, selected, onToggle }: {
           ✓
         </span>
       )}
-      {/* 图区用 3:4 竖版比例：手机竖拍照片能基本填满，留白最少 */}
-      <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
+      {/* 图与 emoji 共用同一个正方形框（卡片宽 ≈160 → 160×160）：形状一致、卡片高度才齐。
+          这里是缩略图，照片用 object-cover 填满；完整照片在详情抽屉里看 */}
+      <div className="flex aspect-square shrink-0 items-center justify-center overflow-hidden border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
-          <AutoImage src={photo} alt="" className="h-full w-full object-contain p-1" />
+          <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
         ) : (
-          <span className="text-[56px] leading-none">{iconOf(row)}</span>
+          <span className="leading-none" style={{ fontSize: metrics.icon }}>{iconOf(row)}</span>
         )}
       </div>
-      <div className="flex min-w-0 flex-col gap-0.5 p-2.5">
-        <span className="truncate text-[13px] font-semibold text-[var(--twin-ink)]" title={row.assetName}>
+      <div className="flex min-w-0 flex-col" style={{ padding: metrics.pad, gap: metrics.lineGap }}>
+        <span className="truncate font-semibold leading-tight text-[var(--twin-ink)]" style={{ fontSize: metrics.name }} title={row.assetName}>
           {row.assetName}
         </span>
-        <span className="truncate text-[11px] text-[var(--twin-mute)]">
+        <span className="truncate leading-tight text-[var(--twin-mute)]" style={{ fontSize: metrics.meta }}>
           使用人 {row.dynamicValues?.[USER_KEY] || "—"}
         </span>
-        <span className="truncate font-mono text-[10px] text-[var(--twin-mute)]">{row.assetCode}</span>
+        <span className="truncate font-mono leading-tight text-[var(--twin-mute)]" style={{ fontSize: metrics.code }}>{row.assetCode}</span>
       </div>
     </div>
   );
@@ -181,11 +217,11 @@ function RelocateCard({ row, onOpen, onRemove }: { row: AssetRow; onOpen: (r: As
       >
         <X className="h-3 w-3" />
       </button>
-      <div className="flex aspect-[3/4] items-center justify-center overflow-hidden border-b border-dashed border-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)] bg-[var(--twin-canvas-soft)]">
+      <div className="flex aspect-square shrink-0 items-center justify-center overflow-hidden border-b border-dashed border-[color-mix(in_srgb,var(--twin-link-deep)_30%,transparent)] bg-[var(--twin-canvas-soft)]">
         {photo ? (
-          <AutoImage src={photo} alt="" className="h-full w-full object-contain p-1" />
+          <AutoImage src={photo} alt="" className="h-full w-full object-cover" />
         ) : (
-          <span className="text-[56px] leading-none">{iconOf(row)}</span>
+          <span className="text-[48px] leading-none">{iconOf(row)}</span>
         )}
       </div>
       <div className="flex min-w-0 flex-col gap-0.5 p-2.5">
@@ -461,7 +497,8 @@ export default function AssetVisualView(props: {
   const [batchTarget, setBatchTarget] = useState("");
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [moveTarget, setMoveTarget] = useState<AssetLocationNode | null>(null);
-  const [moveParentId, setMoveParentId] = useState("");
+  const [moveParentId, setMoveParentId] = useState<number | null>(null);
+  const [moveParentPath, setMoveParentPath] = useState("");
   const [iconTarget, setIconTarget] = useState<AssetLocationNode | null>(null);
 
   const qc = useQueryClient();
@@ -577,6 +614,9 @@ export default function AssetVisualView(props: {
     if (!q) return nodeRows;
     return nodeRows.filter((r) => (r.assetCode ?? "").toLowerCase().includes(q) || (r.assetName ?? "").toLowerCase().includes(q));
   }, [nodeRows, q]);
+
+  /** 卡片尺寸按当前展示的件数分档：东西多的时候自动缩小，免得一屏堆几张大卡片 */
+  const cards = cardMetrics(visibleNodeRows.length);
 
   // 共用同一个输入框：切换模式时清空关键词与全局结果，两种检索互不污染
   const switchSearchMode = (m: "local" | "global") => {
@@ -753,29 +793,18 @@ export default function AssetVisualView(props: {
     void handleDelete(n.id);
   };
 
-  const nodeOptions = useMemo(() => {
-    const out: { value: number; label: string }[] = [];
-    const walk = (nodes: AssetLocationNode[], depth: number) => {
-      for (const n of nodes) {
-        out.push({ value: n.id, label: `${"　".repeat(depth)}${n.name}` });
-        if (n.children?.length) walk(n.children, depth + 1);
-      }
-    };
-    walk(tree, 0);
-    return out;
-  }, [tree]);
-
-  const moveCandidates = useMemo(() => {
-    if (!moveTarget) return [];
-    const excluded = new Set(collectDescendantIds(moveTarget));
-    return nodeOptions.filter((o) => !excluded.has(o.value));
-  }, [moveTarget, nodeOptions]);
+  /** 移动地点的候选要排除自己和自己整棵子树（否则会把节点挪进自己的子树里） */
+  const moveExcludeIds = useMemo(
+    () => new Set(moveTarget ? collectDescendantIds(moveTarget) : []),
+    [moveTarget]
+  );
 
   const submitMove = () => {
-    if (!moveTarget || !moveParentId) return;
-    handleMove(moveTarget.id, Number(moveParentId));
+    if (!moveTarget || moveParentId == null) return;
+    handleMove(moveTarget.id, moveParentId);
     setMoveTarget(null);
-    setMoveParentId("");
+    setMoveParentId(null);
+    setMoveParentPath("");
   };
 
   return (
@@ -1126,7 +1155,10 @@ export default function AssetVisualView(props: {
                             {visibleNodeRows.length} 件
                           </span>
                         </div>
-                        <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
+                        <div
+                          className="grid gap-3"
+                          style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cards.minCol}px, 1fr))` }}
+                        >
                           {visibleNodeRows.map((r) => (
                             <AssetCard
                               key={r.id}
@@ -1136,6 +1168,7 @@ export default function AssetVisualView(props: {
                               selectable={batchMode}
                               selected={batchIds.has(r.id)}
                               onToggle={toggleBatchId}
+                              metrics={cards}
                             />
                           ))}
                         </div>
@@ -1199,7 +1232,8 @@ export default function AssetVisualView(props: {
                   <DropdownMenuItem
                     onSelect={() => {
                       setMoveTarget(node);
-                      setMoveParentId("");
+                      setMoveParentId(null);
+                      setMoveParentPath("");
                     }}
                   >
                     移动地点
@@ -1307,18 +1341,17 @@ export default function AssetVisualView(props: {
             >
               <h3 className="text-base font-semibold text-[var(--twin-ink)]">移动地点</h3>
               <p className="mt-2 text-sm text-[var(--twin-body)]">将「{moveTarget.name}」移动到：</p>
-              <select
-                value={moveParentId}
-                onChange={(e) => setMoveParentId(e.target.value)}
-                className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
-              >
-                <option value="">请选择新父地点</option>
-                {moveCandidates.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+              <div className="mt-3">
+                <AssetLocationTreeSelect
+                  value={moveParentPath}
+                  onChange={(path, nodeId) => {
+                    setMoveParentPath(path);
+                    setMoveParentId(nodeId || null);
+                  }}
+                  excludeIds={moveExcludeIds}
+                  placeholder="选择新父地点"
+                />
+              </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button
                   type="button"
@@ -1330,7 +1363,7 @@ export default function AssetVisualView(props: {
                 <button
                   type="button"
                   className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
-                  disabled={!moveParentId}
+                  disabled={moveParentId == null}
                   onClick={submitMove}
                 >
                   确认移动

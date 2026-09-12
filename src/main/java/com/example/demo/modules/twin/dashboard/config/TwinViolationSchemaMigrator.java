@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * 学生违规模块表结构补充迁移（幂等：每次启动检测 information_schema 后决定是否添加）。
- * 已接入 StartupBanner 动画系统，成功静默。
+ * 已接入 StartupDashboard 动画系统，成功静默。
  */
 @StartupPhase(
     name = "违规模块迁移",

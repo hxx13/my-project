@@ -2,7 +2,7 @@ package com.example.demo.common.logging.model;
 
 /**
  * 启动阶段运行时上下文，提供子步骤追踪和进度报告。
- * 由 {@link com.example.demo.common.logging.banner.StartupBanner} 在阶段执行前创建并注入。
+ * 由 {@link com.example.demo.common.logging.banner.StartupDashboard} 在阶段执行前创建并注入。
  */
 public interface StartupContext {
 
