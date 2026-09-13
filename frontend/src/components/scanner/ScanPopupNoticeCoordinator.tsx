@@ -88,10 +88,6 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     () => bundle?.items?.filter((x) => x?.id) ?? [],
     [bundle?.items]
   );
-  const announcementIds = useMemo(
-    () => announcementItems.map((x) => x.id!),
-    [announcementItems]
-  );
   const announcementCount = announcementItems.length;
   const hasAnnouncement = Boolean(bundle?.enabled && announcementCount > 0);
   const hasCageNotice = cageNotice?.id != null;
@@ -352,19 +348,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
 
   return (
     <>
-      <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(67.2vw,784px)] flex-col items-center gap-2 px-1">
-        {/* 交互层：需要处置的违规独占一行；处置完成后自动落回下面那一行 */}
-        {hasViolation && violationNeedsLayer ? (
-          <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2">
-            <ScanPopupNoticeBanner
-              kind="violation"
-              notice={actualViolation}
-              panelOpen={isIslandOpen("violation")}
-              onPanelOpenChange={(open) => (open ? openManual("violation") : closePanel("violation"))}
-            />
-          </div>
-        ) : null}
-        <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2">
+      <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(67.2vw,784px)] flex-row flex-wrap items-stretch justify-center gap-2 px-1">
         {hasCageNotice ? (
           <ScanPopupNoticeBanner
             kind="cage-notice"
@@ -373,7 +357,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
             onPanelOpenChange={(open) => (open ? openManual("cage-notice") : closePanel("cage-notice"))}
           />
         ) : null}
-        {hasViolation && !violationNeedsLayer ? (
+        {hasViolation ? (
           <ScanPopupNoticeBanner
             kind="violation"
             notice={actualViolation}
@@ -401,7 +385,6 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
             }
           />
         ) : null}
-        </div>
       </div>
 
       <ScanNoticeStripPortal

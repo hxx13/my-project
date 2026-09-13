@@ -459,13 +459,39 @@
     width: 100%;
     max-width: 100vw;
     overflow-x: auto;
-    /* 通知分两层后内容可能高于视口（root 是 fixed+竖向居中，超出的部分会被推出屏幕裁掉），
-       故限高并允许纵向滚动，而不是把交互层的顶部切掉 */
-    overflow-y: auto;
-    max-height: 100%;
+    overflow-y: hidden;
     overscroll-behavior-x: contain;
     pointer-events: auto;
     padding: 0.5rem 0 0.75rem;
+  }
+
+  /* 交互层定位锚点：公告层仍是这里唯一的流内元素，位置与分层前完全一致 */
+  .scan-notice-strip-anchor {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* 交互层：需要处置的弹窗独立浮在公告层**上方**，脱离布局流 ——
+     公告层不被推走、也不被遮盖。可用高度就是公告层上方那半屏，故限高并允许内部滚动，
+     避免它向上顶出屏幕被裁掉。 */
+  .scan-notice-strip-layer {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: clamp(0.5rem, 2vh, 1rem);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    max-height: calc(50vh - 4rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    max-width: 100vw;
+    pointer-events: auto;
   }
 
   /* 横向滚动条 — 对齐 app-themed-scrollbar / page-help-scrollbar 语义色 */

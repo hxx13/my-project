@@ -7,21 +7,21 @@ type Props = {
   open: boolean;
   /** 公告层面板数（决定并排宽度档位） */
   panelCount: number;
-  /** 交互层面板数；>0 时单独占一行，按 --1 档拿全宽 */
+  /** 交互层面板数；>0 时作为独立一层浮在公告层之上 */
   interactiveCount?: number;
   onCloseAll: () => void;
   /** 公告层 */
   children: ReactNode;
-  /** 交互层（需要用户动手的违规面板）；独占一行，宽度不受公告层数量影响 */
+  /** 交互层（需要用户动手的违规面板）；独立浮层，**不占公告层位置** */
   interactiveChildren?: ReactNode;
 };
 
 /**
- * 通告分层展示：
- * - 交互层：需要处置的违规面板独占一行、拿满宽（`--1` 档 612px），拼图 / 答题 / 签名才有地方
- * - 公告层：其余通知按数量并排（`--2` / `--3` / `--many` 档）
+ * 通告分「图层」展示（不是把公告挤下去的两行）：
+ * - 交互层：需要处置的违规面板**脱离布局流**浮在公告层上方，公告层原位不动、不被遮盖
+ * - 公告层：其余通知照旧按数量并排居中（`--2` / `--3` / `--many` 档）
  *
- * 处置完成后面板自动落回公告层（判据见 `noticeLayer.ts`），交互层那一行随之消失。
+ * 处置完成后面板自动落回公告层（判据见 `noticeLayer.ts`），交互层随之消失。
  */
 export function ScanNoticeStripPortal({
   open,
@@ -47,15 +47,21 @@ export function ScanNoticeStripPortal({
           全部关闭
         </button>
       ) : null}
-      <div className="scan-notice-strip-scroll scan-notice-strip-scroll--themed">
-        <LayoutGroup id="scan-notice-strip">
-          {interactiveCount > 0 ? (
-            <div className="scan-notice-strip-row scan-notice-strip-row--1">{interactiveChildren}</div>
-          ) : null}
-          {panelCount > 0 ? (
-            <div className={`scan-notice-strip-row ${rowLayoutClass}`}>{children}</div>
-          ) : null}
-        </LayoutGroup>
+      {/* 这一层只用来给交互层当定位锚点：公告层仍是根容器里居中的唯一流内元素，
+          所以公告的位置和分层前完全一致 */}
+      <div className="scan-notice-strip-anchor">
+        {interactiveCount > 0 ? (
+          <div className="scan-notice-strip-layer" role="group" aria-label="待处置通知">
+            <LayoutGroup id="scan-notice-strip-interactive">{interactiveChildren}</LayoutGroup>
+          </div>
+        ) : null}
+        {panelCount > 0 ? (
+          <div className="scan-notice-strip-scroll scan-notice-strip-scroll--themed">
+            <LayoutGroup id="scan-notice-strip">
+              <div className={`scan-notice-strip-row ${rowLayoutClass}`}>{children}</div>
+            </LayoutGroup>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body
