@@ -332,18 +332,20 @@ public class TwinStudentViolationService {
 
     /**
      * 按该违规的处置策略校验答案。
-     * 优先用待办（twin_obligation）的策略注册表校验（SHOW_ONLY/ACK_READ/ACK_PUZZLE/QUIZ/SIGNATURE），
-     * 无待办或待办无策略时回退到记录级拼图短语；两者都没有则该违规本就无需交互确认。
+     * <p>记录级拼图短语优先：只要记录上有短语就必须拼对，不走待办策略。
+     * 否则管理端把待办策略覆盖成 ACK_READ/SHOW_ONLY（两者 verify 恒真）后，
+     * 任意答案都会通过并触发 interactive_unlock_on_verify 解禁——等于不解题就解锁。
+     * <p>记录上没有短语时，才按待办策略校验（ACK_READ/QUIZ/SIGNATURE）。
      */
-    private boolean verifyDispositionAnswer(TwinStudentViolation row, String answer) {
+    boolean verifyDispositionAnswer(TwinStudentViolation row, String answer) {
+        if (StringUtils.hasText(row.getInteractiveChallenge())) {
+            return InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer);
+        }
         if (obligationService != null) {
             TwinObligation ob = obligationService.findByViolationId(row.getId());
             if (ob != null && StringUtils.hasText(ob.getDispositionType()) && dispositionRegistry != null) {
                 return dispositionRegistry.verify(ob.getDispositionType(), ob.getDispositionConfigJson(), answer);
             }
-        }
-        if (StringUtils.hasText(row.getInteractiveChallenge())) {
-            return InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer);
         }
         throw new IllegalArgumentException("该违规无需交互确认");
     }
