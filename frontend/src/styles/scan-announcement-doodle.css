@@ -473,23 +473,13 @@
     width: 100%;
   }
 
-  /* 交互层：需要处置的弹窗独立浮在公告层**上方**，脱离布局流 ——
-     公告层不被推走、也不被遮盖。可用高度就是公告层上方那半屏，故限高并允许内部滚动，
-     避免它向上顶出屏幕被裁掉。 */
+  /* 交互层：需要处置时公告卡先收起，整屏给交互弹窗，尺寸完全由自己定 */
   .scan-notice-strip-layer {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    margin-bottom: clamp(0.5rem, 2vh, 1rem);
-    z-index: 3;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-end;
-    max-height: calc(50vh - 4rem);
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    justify-content: center;
+    width: 100%;
     max-width: 100vw;
     pointer-events: auto;
   }

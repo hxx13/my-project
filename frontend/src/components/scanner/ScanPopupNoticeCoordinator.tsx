@@ -80,8 +80,11 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     [violationNeedsLayer, openPanels]
   );
   const passivePanelKeys: ScanNoticePanelKey[] = useMemo(
-    () => openPanels.filter((k) => !interactivePanelKeys.includes(k)),
-    [openPanels, interactivePanelKeys]
+    // 有需要处置的违规时，公告卡先收起（不渲染），整屏让给交互层；
+    // 处置完成后 interactiveChallengeVerified 变 true → violationNeedsLayer 转假 → 公告卡照常出现。
+    // openPanels 本身不动，所以收起/恢复不需要额外的状态管理。
+    () => (violationNeedsLayer ? [] : openPanels.filter((k) => !interactivePanelKeys.includes(k))),
+    [violationNeedsLayer, openPanels, interactivePanelKeys]
   );
 
   const announcementItems = useMemo(
