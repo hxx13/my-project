@@ -1435,6 +1435,8 @@ public class TwinStudentViolationService {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -1460,6 +1462,8 @@ public class TwinStudentViolationService {
                 expireAfterDays,
                 createdByUserId,
                 interactiveChallenge,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -1494,6 +1498,8 @@ public class TwinStudentViolationService {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -1512,7 +1518,9 @@ public class TwinStudentViolationService {
             Long ruleId,
             Long cageViolationId,
             Integer noticeDisplayDays,
-            Integer noticeLinkExpire
+            Integer noticeLinkExpire,
+            String dispositionType,
+            String dispositionConfigJson
     ) {
         if (targetUserIds == null || targetUserIds.isEmpty()) {
             throw new IllegalArgumentException("缺少 targetUserIds");
@@ -1535,7 +1543,7 @@ public class TwinStudentViolationService {
         String batchId = newBatchKey();
         for (String tid : unique) {
             try {
-                create(
+                TwinStudentViolation createdRow = create(
                         tid,
                         violationText,
                         imageUrls,
@@ -1554,6 +1562,12 @@ public class TwinStudentViolationService {
                         batchId
                 );
                 created++;
+                // 批量下发也必须落处置策略：单条新建与编辑都调了 applyDispositionOverride，
+                // 只有批量漏掉，结果是「按课题组统一发布」选了确认阅读/答题，列表却显示「仅展示」
+                if (obligationService != null && StringUtils.hasText(dispositionType)
+                        && createdRow != null && createdRow.getId() != null) {
+                    obligationService.applyDispositionOverride(createdRow.getId(), dispositionType, dispositionConfigJson);
+                }
             } catch (Exception e) {
                 Map<String, String> f = new HashMap<>();
                 f.put("userId", tid);

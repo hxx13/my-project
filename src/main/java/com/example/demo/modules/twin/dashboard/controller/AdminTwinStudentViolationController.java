@@ -326,7 +326,10 @@ public class AdminTwinStudentViolationController {
                     effectiveRuleId,
                     body.getCageViolationId(),
                     body.getNoticeDisplayDays(),
-                    body.getNoticeLinkExpire()
+                    body.getNoticeLinkExpire(),
+                    // 批量同样要落处置策略；漏掉会让「按课题组统一发布」的策略保持默认 SHOW_ONLY
+                    body.getDispositionType(),
+                    body.getDispositionConfigJson()
             );
             return Result.success(summary);
         } catch (IllegalArgumentException e) {
