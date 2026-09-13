@@ -71,6 +71,14 @@ public class QuizBankService {
         return mapper.listBanks();
     }
 
+    /** 题库题目数（含停用题；后台列表用）。 */
+    public int questionCount(String bankId) {
+        if (!StringUtils.hasText(bankId)) {
+            return 0;
+        }
+        return mapper.countQuestions(bankId.trim());
+    }
+
     public List<TwinQuizQuestion> listQuestions(String bankId) {
         if (!StringUtils.hasText(bankId)) {
             throw new IllegalArgumentException("缺少题库编码");

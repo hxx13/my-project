@@ -115,6 +115,14 @@ export function ConfigMenu({ onOpen }: ConfigMenuProps): JSX.Element {
         ]}
       />
       <Group
+        title="答题处置"
+        desc="处置策略选「答题」时抽的题"
+        onOpen={onOpen}
+        items={[
+          { page: "quiz", icon: "🧠", name: "答题题库", desc: "违规「答题」处置的题库与题目：题干、选项与正确答案" },
+        ]}
+      />
+      <Group
         title="其他"
         onOpen={onOpen}
         items={[

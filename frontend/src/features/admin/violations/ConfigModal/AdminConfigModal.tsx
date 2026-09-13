@@ -10,6 +10,7 @@ import { CageRulePanel } from "@/features/admin/violations/rules/CageRulePanel";
 import { AnnouncementsPanel } from "@/features/admin/violations/notices/AnnouncementsPanel";
 import { UnboundNoticePanel } from "@/features/admin/violations/notices/UnboundNoticePanel";
 import { HintTextPanel } from "@/features/admin/violations/notices/HintTextPanel";
+import { QuizBankPanel } from "@/features/admin/violations/quiz/QuizBankPanel";
 import type { ConfigModalView } from "../violationsTabs";
 
 const PAGE_TITLES: Record<ConfigModalView, string> = {
@@ -21,12 +22,13 @@ const PAGE_TITLES: Record<ConfigModalView, string> = {
   unbound: "未绑卡提示",
   hint: "禁入文案",
   homepage: "主页文案",
+  quiz: "答题题库",
 };
 
 /** 重编辑器/列表页加宽弹窗；菜单与主页紧凑表单窄窗。 */
-const WIDE_PAGES = new Set<ConfigModalView>(["rules", "stranded", "cage", "announce", "unbound", "hint"]);
+const WIDE_PAGES = new Set<ConfigModalView>(["rules", "stranded", "cage", "announce", "unbound", "hint", "quiz"]);
 /** 挂载 ListPageLayout/EditorInspectorLayout 的面板页由子组件自滚（fill）；纯内容页弹窗体滚动。 */
-const FILL_PAGES = new Set<ConfigModalView>(["rules", "stranded", "cage", "announce", "unbound", "hint", "homepage"]);
+const FILL_PAGES = new Set<ConfigModalView>(["rules", "stranded", "cage", "announce", "unbound", "hint", "homepage", "quiz"]);
 
 type AdminConfigModalProps = {
   open: boolean;
@@ -82,8 +84,10 @@ export function AdminConfigModal({ open, page, onClose }: AdminConfigModalProps)
       <UnboundNoticePanel />
     ) : current === "hint" ? (
       <HintTextPanel />
-    ) : (
+    ) : current === "homepage" ? (
       <HomepageSettingsForm />
+    ) : (
+      <QuizBankPanel />
     );
 
   return (
