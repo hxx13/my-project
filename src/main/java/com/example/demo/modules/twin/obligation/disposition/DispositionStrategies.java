@@ -151,9 +151,14 @@ class AckPuzzleDispositionStrategy implements DispositionStrategy {
 @Component
 class QuizDispositionStrategy implements DispositionStrategy {
     private final ObjectMapper objectMapper;
+    /** 可空：题库读库服务；缺失时回落内置题库（便于无 Spring 的单测） */
+    private final com.example.demo.modules.twin.obligation.service.QuizBankService quizBankService;
 
-    QuizDispositionStrategy(ObjectMapper objectMapper) {
+    QuizDispositionStrategy(ObjectMapper objectMapper,
+                            @org.springframework.beans.factory.annotation.Autowired(required = false)
+                            com.example.demo.modules.twin.obligation.service.QuizBankService quizBankService) {
         this.objectMapper = objectMapper;
+        this.quizBankService = quizBankService;
     }
 
     @Override
@@ -178,7 +183,9 @@ class QuizDispositionStrategy implements DispositionStrategy {
 
     @Override
     public boolean verify(String configJson, String answerRaw) {
-        return QuizGradeSupport.passed(objectMapper, configJson, answerRaw);
+        return quizBankService != null
+                ? quizBankService.passed(configJson, answerRaw)
+                : QuizGradeSupport.passed(objectMapper, configJson, answerRaw);
     }
 }
 

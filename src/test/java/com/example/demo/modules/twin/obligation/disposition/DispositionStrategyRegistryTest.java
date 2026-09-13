@@ -22,7 +22,7 @@ class DispositionStrategyRegistryTest {
                 new ShowOnlyDispositionStrategy(),
                 new AckReadDispositionStrategy(om),
                 new AckPuzzleDispositionStrategy(om),
-                new QuizDispositionStrategy(om),
+                new QuizDispositionStrategy(om, null),
                 new SignatureDispositionStrategy(om)
         ));
     }

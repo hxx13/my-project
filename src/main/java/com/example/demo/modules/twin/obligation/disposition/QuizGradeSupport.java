@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /** 从策略 config + 用户 answer JSON 判定是否及格。 */
 public final class QuizGradeSupport {
@@ -13,7 +15,19 @@ public final class QuizGradeSupport {
     private QuizGradeSupport() {
     }
 
+    /** 只有内置题库可用时的入口（无 Spring 上下文/表不可用）。 */
     public static boolean passed(ObjectMapper om, String configJson, String answerRaw) {
+        return passed(om, configJson, answerRaw, QuizBank::questionsOf);
+    }
+
+    /**
+     * 按策略 config + 用户 answer JSON 判定是否及格。
+     *
+     * @param bankResolver 题库来源：生产走 {@code QuizBankService::questionsOf}（读库带回落），
+     *                     无 Spring 时回落内置
+     */
+    public static boolean passed(ObjectMapper om, String configJson, String answerRaw,
+                                 Function<String, List<QuizBank.Question>> bankResolver) {
         if (answerRaw == null || answerRaw.isBlank() || om == null) {
             return false;
         }
@@ -43,7 +57,8 @@ public final class QuizGradeSupport {
                     answers.put(id, ansNode.get(id).asInt(-1));
                 }
             }
-            int correct = QuizBank.grade(bankId, answers);
+            List<QuizBank.Question> bank = bankResolver == null ? null : bankResolver.apply(bankId);
+            int correct = QuizBank.grade(bank, answers);
             return correct >= passCount;
         } catch (Exception e) {
             return false;

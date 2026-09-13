@@ -37,15 +37,19 @@ public class ObligationService {
     private final TwinObligationReceiptMapper receiptMapper;
     private final DispositionStrategyRegistry dispositionRegistry;
     private final ObjectMapper objectMapper;
+    /** 可空：题库读库服务；缺失时回落内置题库 */
+    private final QuizBankService quizBankService;
 
     public ObligationService(TwinObligationMapper obligationMapper,
                              TwinObligationReceiptMapper receiptMapper,
                              @Autowired(required = false) DispositionStrategyRegistry dispositionRegistry,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             @Autowired(required = false) QuizBankService quizBankService) {
         this.obligationMapper = obligationMapper;
         this.receiptMapper = receiptMapper;
         this.dispositionRegistry = dispositionRegistry;
         this.objectMapper = objectMapper;
+        this.quizBankService = quizBankService;
     }
 
     /** 抽题结果（不含正确答案），供 H5 学生端与扫码端复用。 */
@@ -97,7 +101,9 @@ public class ObligationService {
         } catch (Exception ignored) {
             // 配置解析失败用默认
         }
-        return new QuizDrawPayload(bankId, QuizBank.drawPublic(bankId, drawCount));
+        return new QuizDrawPayload(bankId, quizBankService != null
+                ? quizBankService.drawPublic(bankId, drawCount)
+                : QuizBank.drawPublic(bankId, drawCount));
     }
 
     /** 违规创建后：写入/刷新待办为待处置。 */
