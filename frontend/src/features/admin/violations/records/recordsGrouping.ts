@@ -20,7 +20,9 @@ export type ViolationBatchBlock = {
 export function groupViolationRows(rows: StudentViolationRow[]): ViolationBatchBlock[] {
   const blocks: ViolationBatchBlock[] = [];
   for (const row of rows) {
-    const batchId = row.batchId ?? `SINGLE-${row.id}`;
+    // 空串也要回退：否则所有空 batchId 的行会塌成同一块
+    const rawBatchId = row.batchId?.trim();
+    const batchId = rawBatchId ? rawBatchId : `SINGLE-${row.id}`;
     const last = blocks[blocks.length - 1];
     if (last && last.batchId === batchId) last.rows.push(row);
     else blocks.push({ batchId, rows: [row], groups: [] });

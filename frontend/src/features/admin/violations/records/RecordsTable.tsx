@@ -112,24 +112,33 @@ function sourceBadge(source: string | undefined): JSX.Element {
  * 非生效状态本就不上板，显示「—」而不是「生效中」。
  */
 function noticeBadge(r: StudentViolationRow): JSX.Element {
-  if (r.noticeClearedAt) {
+  // noticeState 由后端按大屏可见性同口径算出（见 boardVisibleClause）
+  if (r.noticeState === "CLEARED") {
     return (
       <span
-        title={`解除时间 ${formatBeijingDateTimeMedium(r.noticeClearedAt)}`}
+        title={r.noticeClearedAt ? `解除时间 ${formatBeijingDateTimeMedium(r.noticeClearedAt)}` : undefined}
         className="inline-flex items-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]"
       >
         已解除
       </span>
     );
   }
-  if (r.status !== "ACTIVE") {
-    return <span className="text-[11px] text-[var(--app-color-text-tertiary)]">—</span>;
+  if (r.noticeState === "ACTIVE") {
+    return (
+      <span className="inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-success)]">
+        生效中
+      </span>
+    );
   }
-  return (
-    <span className="inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-success)]">
-      生效中
-    </span>
-  );
+  if (r.noticeState === "WINDOW_ENDED") {
+    return (
+      <span className="inline-flex items-center rounded-full border border-[var(--app-color-border-default)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-tertiary)]">
+        展示已结束
+      </span>
+    );
+  }
+  // NOT_ACTIVE（解除/过期等非生效状态）本就不上板
+  return <span className="text-[11px] text-[var(--app-color-text-tertiary)]">—</span>;
 }
 
 /**

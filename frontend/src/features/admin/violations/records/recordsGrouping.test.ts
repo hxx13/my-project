@@ -26,6 +26,12 @@ describe("groupViolationRows", () => {
     expect(blocks.every((b) => b.rows.length === 1)).toBe(true);
   });
 
+  it("batchId 为空串或纯空白时同样归一为 SINGLE-<id>，不得塌成一块", () => {
+    const blocks = groupViolationRows([row(9, ""), row(10, "   ")]);
+    expect(blocks.map((b) => b.batchId)).toEqual(["SINGLE-9", "SINGLE-10"]);
+    expect(blocks.every((b) => b.rows.length === 1)).toBe(true);
+  });
+
   it("块内按 projectGroupName 连续段切分，只有段首行带 startIndex/rowSpan", () => {
     const blocks = groupViolationRows([
       row(1, "B1", "甲组"),
