@@ -16,6 +16,9 @@ public interface CageRegionGrantMapper {
     /** 挂在该组长名下的行（MEMBER 行的 leader_user_id = 组长的 personnel.id）。 */
     List<CageRegionGrant> listByLeader(@Param("leaderUserId") String leaderUserId);
 
+    /** 撤销该组长名下的全部组员行（组员全量替换时先删）。 */
+    int deleteMembersByLeader(@Param("leaderUserId") String leaderUserId);
+
     /**
      * 组员带姓名与条目数。**在 SQL 里 join personnel 取名字**——`user_id` 存的是 personnel.id，
      * 而 UserDisplayNameService 按 staff_id/aro_user_id 建索引、不认 personnel.id（二期踩过）。

@@ -2039,6 +2039,8 @@ export interface MyRegionEntry {
 export interface MyRegionMember {
   memberUserId: string;
   memberName: string;
+  /** 账号 id（sys_user.id）——替换接口收的是这个口径，前端往返要带它 */
+  memberAccountId: string;
   regionCount: number;
 }
 export interface MyRegionOverview {
@@ -2052,4 +2054,10 @@ export async function fetchMyRegion(): Promise<MyRegionOverview> {
   const res = await authHttp.get<Result<MyRegionOverview>>("/cage-region/mine");
   if (!res.data?.success) throw new Error(res.data?.message || "加载我的区域失败");
   return res.data.data ?? { regions: [], members: [], isLeader: false };
+}
+
+/** PUT /api/cage-region/members — 设置本组组员（全量替换，收账号 id） */
+export async function saveMyRegionMembers(memberAccountIds: string[]): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-region/members", { memberAccountIds });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存组员失败");
 }

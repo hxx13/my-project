@@ -38,15 +38,69 @@ public class CageRegionGrantService {
         this.visibilityPolicy = visibilityPolicy;
     }
 
+    /** MEMBER 行的占位 region_type：组员行不表达区域，靠 leader_user_id 派生可见范围。 */
+    public static final String REGION_TYPE_LEADER_GROUP = "LEADER_GROUP";
+
     /**
      * 可见范围（第一层数据范围的「补充放开」部分）；accountId 为 sys_user.id。
      *
      * <p><b>必须同时含 LEADER</b>：分配页自 2026-09-15 起写的就是 LEADER（饲养组长负责区域），
      * 只读 SCOPE 会让「给组长分配区域」对他的可见范围完全无效——4A 上线时就是这么错的，
      * 是回头验可见范围才发现的。SCOPE 是二期迁移遗留，留着兼容老数据。
+     *
+     * <p><b>组员继承组长整块</b>（设计 5.2「自己的全部行 ∪ 组长的全部行」）：MEMBER 行本身不带区域，
+     * 这里按 leader_user_id 实时取组长的行——组长以后改区域，组员自动跟着变，不用同步。
      */
     public Map<String, List<String>> visibilityScopes(String accountId) {
-        return groupedByType(accountId, List.of(CageRegionGrant.ROLE_SCOPE, CageRegionGrant.ROLE_LEADER));
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        String pid = resolve(accountId);
+        if (pid == null) return out;
+        List<CageRegionGrant> mine = mapper.listByUser(pid);
+        collectVisibility(out, mine);
+        for (CageRegionGrant g : mine) {
+            if (CageRegionGrant.ROLE_MEMBER.equals(g.getGrantRole()) && g.getLeaderUserId() != null) {
+                collectVisibility(out, mapper.listByUser(g.getLeaderUserId()));
+            }
+        }
+        return out;
+    }
+
+    private void collectVisibility(Map<String, List<String>> out, List<CageRegionGrant> rows) {
+        for (CageRegionGrant g : rows) {
+            if (!CageRegionGrant.ROLE_SCOPE.equals(g.getGrantRole())
+                    && !CageRegionGrant.ROLE_LEADER.equals(g.getGrantRole())) continue;
+            out.computeIfAbsent(g.getRegionType(), k -> new ArrayList<>()).add(g.getRegionId());
+        }
+    }
+
+    /**
+     * 全量替换某组长的组员（组长维护本组；超管可代管任何组）。
+     *
+     * <p>MEMBER 行**不表达区域**：`region_type` 固定 {@link #REGION_TYPE_LEADER_GROUP}、
+     * `region_id` 存组长的 personnel.id 兼作归属键——表的唯一键是
+     * `(region_type, region_id, user_id, grant_role)`，这样天然约束「一个人在同一组里只有一行」。
+     *
+     * @param memberAccountIds 组员的**账号 id**（sys_user.id）列表
+     */
+    @Transactional
+    public void replaceMembers(String leaderAccountId, List<String> memberAccountIds, String operatorId) {
+        String leaderPid = resolve(leaderAccountId);
+        if (leaderPid == null || leaderPid.isBlank()) throw new IllegalArgumentException("组长不存在，无法维护组员");
+        mapper.deleteMembersByLeader(leaderPid);
+        if (memberAccountIds == null) return;
+        for (String acc : memberAccountIds) {
+            String memberPid = resolve(acc);
+            // 解析不到的人跳过；把组长自己加进来也跳过（成员是「他人」的概念）
+            if (memberPid == null || memberPid.equals(leaderPid)) continue;
+            CageRegionGrant row = new CageRegionGrant();
+            row.setRegionType(REGION_TYPE_LEADER_GROUP);
+            row.setRegionId(leaderPid);
+            row.setUserId(memberPid);
+            row.setGrantRole(CageRegionGrant.ROLE_MEMBER);
+            row.setLeaderUserId(leaderPid);
+            row.setGrantedBy(operatorId);
+            mapper.insert(row);
+        }
     }
 
     /** 审核作用域；accountId 为 sys_user.id。 */

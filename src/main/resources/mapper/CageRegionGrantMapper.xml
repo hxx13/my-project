@@ -30,17 +30,25 @@
         ORDER BY region_type ASC, region_id ASC, user_id ASC
     </select>
 
-    <!-- 组员带姓名：join personnel 取名字（user_id 是 personnel.id，不能用 UserDisplayNameService） -->
+    <!-- 组员带姓名：join personnel 取名字（user_id 是 personnel.id，不能用 UserDisplayNameService）。
+         同时回 staff_id 作 memberAccountId——替换接口收的是账号 id，前端要能往返。 -->
     <select id="listMemberRows" resultType="map">
         SELECT g.user_id AS memberUserId,
                COALESCE(NULLIF(p.name, ''), g.user_id) AS memberName,
+               COALESCE(NULLIF(p.staff_id, ''), g.user_id) AS memberAccountId,
                COUNT(*) AS regionCount
         FROM cage_region_grant g
         LEFT JOIN personnel p ON p.id = g.user_id
         WHERE g.leader_user_id = #{leaderUserId} AND g.grant_role = 'MEMBER'
-        GROUP BY g.user_id, p.name
+        GROUP BY g.user_id, p.name, p.staff_id
         ORDER BY memberName ASC
     </select>
+
+    <!-- 组员全量替换时先删本组全部 MEMBER 行。只删 MEMBER，不动该组长的 LEADER 行。 -->
+    <delete id="deleteMembersByLeader">
+        DELETE FROM cage_region_grant
+        WHERE leader_user_id = #{leaderUserId} AND grant_role = 'MEMBER'
+    </delete>
 
     <!-- 已分配过的人：user_id 存 personnel.id，但回给前端的必须是「账号 id」——
          分配页拿它去调 GET/PUT/DELETE /api/person-scope/{userId}，那几个接口走

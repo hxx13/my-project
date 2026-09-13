@@ -1,14 +1,19 @@
 package com.example.demo.modules.cageshelf.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
 import com.example.demo.modules.cageshelf.service.CageRegionGrantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -68,6 +73,41 @@ public class CageRegionMineController {
         out.put("members", members);
         out.put("isLeader", !regions.isEmpty());
         return Result.success(out);
+    }
+
+    /**
+     * 设置本组组员（**全量替换**）。body: {@code { "memberAccountIds": ["STAFF_xxx", ...] }}。
+     *
+     * <p>权限（设计 5.2：MEMBER 行组长写本组、超管写全部）：
+     * 超管可代管任何组（传 leaderAccountId）；非超管只能维护**自己的**组，且必须真的持有 LEADER 行。
+     */
+    @PutMapping("/members")
+    @Operation(summary = "设置本组组员（全量替换）")
+    public Result<?> replaceMembers(@RequestParam(required = false) String leaderAccountId,
+                                    @RequestBody Map<String, Object> body,
+                                    HttpServletRequest request) {
+        User u = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (u == null) return Result.fail(401, "未登录");
+
+        boolean superAdmin = u.getRole() != null && u.getRole().getLevel() >= RoleEnum.SUPER_ADMIN.getLevel();
+        String target = StringUtils.hasText(leaderAccountId) ? leaderAccountId : u.getId();
+        if (!target.equals(u.getId()) && !superAdmin) {
+            return Result.fail(403, "只能维护自己组的组员");
+        }
+        // 非超管维护自己的组：必须先真的是组长（有 LEADER 行），否则任何人都能凭空建组
+        if (!superAdmin && regionGrantService.leaderRegions(u.getId()).isEmpty()) {
+            return Result.fail(403, "你还不是任何区域的负责人，无法维护组员");
+        }
+
+        List<String> ids = new ArrayList<>();
+        Object raw = body == null ? null : body.get("memberAccountIds");
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null && StringUtils.hasText(String.valueOf(o))) ids.add(String.valueOf(o));
+            }
+        }
+        regionGrantService.replaceMembers(target, ids, u.getId());
+        return Result.success(Map.of("ok", true));
     }
 
     private static String str(Object v) {

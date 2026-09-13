@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
+import { X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { fetchFullTree, fetchMyRegion, type CageShelfTreeNode, type MyRegionEntry, type MyRegionMember } from "@/api/domains/cageShelf.api";
+import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
+import {
+  fetchFullTree,
+  fetchMyRegion,
+  saveMyRegionMembers,
+  type CageShelfTreeNode,
+  type MyRegionEntry,
+} from "@/api/domains/cageShelf.api";
 
 /**
  * 我的区域（弹窗）—— 饲养组长看自己负责的区域与组员。**只读**。
@@ -16,7 +25,11 @@ const TYPE_ORDER = ["CAMPUS", "FLOOR", "ROOM"];
 
 export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [regions, setRegions] = useState<MyRegionEntry[]>([]);
-  const [members, setMembers] = useState<MyRegionMember[]>([]);
+  // 组员是**可编辑的草稿**：加入/移除都改这里，点保存才整包 PUT（全量替换）。
+  const [draft, setDraft] = useState<Array<{ accountId: string; name: string }>>([]);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -28,7 +41,9 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
       .then(([mine, tree]) => {
         if (cancelled) return;
         setRegions(mine.regions);
-        setMembers(mine.members);
+        const list = mine.members.map((m) => ({ accountId: m.memberAccountId, name: m.memberName }));
+        setDraft(list);
+        setSavedIds(list.map((m) => m.accountId));
         // 区域名后端不下发（不为它多开 join），用已有的树在前端解析
         const map: Record<string, string> = {};
         for (const r of tree) {
@@ -41,7 +56,7 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
       .catch(() => {
         if (!cancelled) {
           setRegions([]);
-          setMembers([]);
+          setDraft([]);
         }
       })
       .finally(() => {
@@ -51,6 +66,24 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
       cancelled = true;
     };
   }, [open]);
+
+  const dirty = useMemo(
+    () => draft.map((m) => m.accountId).sort().join("|") !== [...savedIds].sort().join("|"),
+    [draft, savedIds],
+  );
+
+  const saveMembers = async () => {
+    setSaving(true);
+    try {
+      await saveMyRegionMembers(draft.map((m) => m.accountId));
+      setSavedIds(draft.map((m) => m.accountId));
+      toast.success("组员已保存");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const grouped = useMemo(() => {
     const byType = new Map<string, MyRegionEntry[]>();
@@ -107,10 +140,29 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
               </section>
 
               <section className="space-y-2">
-                <h4 className="text-[12px] font-semibold text-[var(--twin-ink)]">我的组员（{members.length}）</h4>
-                {members.length === 0 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-[12px] font-semibold text-[var(--twin-ink)]">我的组员（{draft.length}）</h4>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPickerOpen(true)}
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] font-semibold text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
+                    >
+                      ＋ 添加组员
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveMembers()}
+                      disabled={!dirty || saving}
+                      className="rounded-twin-sm bg-[var(--twin-primary)] px-2.5 py-0.5 text-[10px] font-semibold text-white transition hover:brightness-95 disabled:opacity-40"
+                    >
+                      {saving ? "保存中…" : "保存"}
+                    </button>
+                  </div>
+                </div>
+                {draft.length === 0 ? (
                   <div className="rounded-twin-sm border border-dashed border-[var(--twin-hairline)] px-3 py-4 text-center text-[10px] text-[var(--twin-mute)]">
-                    还没有组员。组员的纳入与权限配置将在后续版本开放。
+                    还没有组员。组员会自动继承你负责的全部区域的可见范围。
                   </div>
                 ) : (
                   <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
@@ -118,25 +170,53 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
                       <thead>
                         <tr>
                           <th>组员</th>
-                          <th className="w-28">覆盖区域数</th>
+                          <th className="w-24" />
                         </tr>
                       </thead>
                       <tbody>
-                        {members.map((m) => (
-                          <tr key={m.memberUserId}>
-                            <td className="px-2.5 py-1 text-[11px] text-[var(--twin-ink)]">{m.memberName}</td>
-                            <td className="px-2.5 py-1 text-[11px]">{m.regionCount}</td>
+                        {draft.map((m) => (
+                          <tr key={m.accountId}>
+                            <td className="px-2.5 py-1 text-[11px] text-[var(--twin-ink)]">{m.name}</td>
+                            <td className="px-2.5 py-1 text-right">
+                              <button
+                                type="button"
+                                title="移出本组"
+                                onClick={() => setDraft((d) => d.filter((x) => x.accountId !== m.accountId))}
+                                className="rounded-md p-0.5 text-[var(--twin-mute)] transition hover:text-[var(--app-color-feedback-danger)]"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 )}
+                <p className="text-[10px] leading-relaxed text-[var(--twin-mute)]">
+                  组员自动继承你负责的全部区域的可见范围；逐人配置组员能用哪些模式将在后续版本开放。改动后记得点「保存」。
+                </p>
               </section>
             </>
           )}
         </div>
       </DialogContent>
+
+      {pickerOpen && (
+        <PersonnelPicker
+          onClose={() => setPickerOpen(false)}
+          onConfirm={(ids, nameList) => {
+            setDraft((d) => {
+              const have = new Set(d.map((x) => x.accountId));
+              const added = ids
+                .map((id, i) => ({ accountId: id, name: nameList[i] || id }))
+                .filter((x) => !have.has(x.accountId));
+              return [...d, ...added];
+            });
+            setPickerOpen(false);
+          }}
+        />
+      )}
     </Dialog>
   );
 }
