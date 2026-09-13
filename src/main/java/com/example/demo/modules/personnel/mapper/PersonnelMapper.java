@@ -36,7 +36,8 @@ public interface PersonnelMapper {
      */
     @Select({
             "<script>",
-            "SELECT id, name, staff_id AS staffId, aro_user_id AS aroUserId",
+            "SELECT id, name, staff_id AS staffId, aro_user_id AS aroUserId,",
+            "       project_group_name AS projectGroupName",
             "FROM personnel",
             "WHERE staff_id IN",
             "<foreach collection='ids' item='id' open='(' separator=',' close=')'>#{id}</foreach>",
