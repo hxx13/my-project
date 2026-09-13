@@ -138,7 +138,9 @@ export default function ScannerPanel() {
     // 💥 核心 1：剥离出绝对纯净的“标准物理扫码扳机”
     // =========================================================
     const triggerStandardScan = (hardwareId: string) => {
-        const guard = tryBeginScanChannel(hardwareId, activeResult?.userInfo?.userId);
+        // 只传扫到的原始键：按 scanKey 判「同一个人」。**不要**传弹窗里那个人的 userId——
+        // 那是弹窗自己的身份，传进来会让 popupUserId === uid 恒真，把换人刷卡也一起拦掉。
+        const guard = tryBeginScanChannel(hardwareId);
         if (!guard.allow) {
             setSwipeWarning(guard.message);
             setSwipeWarningKey((k) => k + 1);
