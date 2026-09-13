@@ -125,7 +125,7 @@ export function ViolationQuizPanel({
                   type="button"
                   disabled={busy}
                   onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: idx }))}
-                  className={`rounded-[var(--app-radius-element)] border px-3 py-2 text-left text-sm ${
+                  className={`rounded-[var(--app-radius-element)] border px-3 py-2.5 text-left text-sm ${
                     checked
                       ? "border-[var(--app-color-accent)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)]"
                       : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]"

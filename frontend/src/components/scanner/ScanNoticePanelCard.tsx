@@ -101,7 +101,9 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
   const [interactiveDone, setInteractiveDone] = useState(
     Boolean(kind !== "announcement" && notice?.interactiveChallengeVerified)
   );
-  const [interactiveSaving, setInteractiveSaving] = useState(false);
+  // 一次性闸：interactiveSaving 是 state，被 useCallback 闭包捕获后同一 tick 内二次调用读到旧值，
+  // 挡不住连点；用 ref 同步置位才能真正单飞。
+  const ackSavingRef = useRef(false);
   // ack 失败时递增，强制 InteractiveChallenge 重挂，退回可重试状态（否则其内部 done 已为 true，绿「验证通过」不再消失）
   const [interactiveResetKey, setInteractiveResetKey] = useState(0);
   const [dismissCountdown, setDismissCountdown] = useState<number | null>(null);
@@ -133,7 +135,12 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
   const dispositionStrategy = useMemo(() => {
     if (kind === "announcement") return "";
     const declared = notice?.dispositionType?.trim().toUpperCase();
-    if (declared) return declared;
+    if (declared) {
+      // 拼图策略必须有短语才可作答：否则 footer 渲染不出、主按钮又被禁用，弹窗会卡死无出口。
+      // 缺短语时退回普通公告（与改前 showInteractivePuzzle 要求 interactivePhrase 的口径一致）。
+      if (declared === "ACK_PUZZLE" && !interactivePhrase) return "";
+      return declared;
+    }
     return interactivePhrase ? "ACK_PUZZLE" : "";
   }, [kind, notice?.dispositionType, interactivePhrase]);
 
@@ -163,8 +170,8 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
       if (kind === "announcement" || ackViolationId == null || !targetUserId) {
         throw new Error("无法提交处置");
       }
-      if (interactiveSaving || interactiveDone) return;
-      setInteractiveSaving(true);
+      if (ackSavingRef.current || interactiveDone) return;
+      ackSavingRef.current = true;
       try {
         const ack = await ackViolationInteractivePermanent(ackViolationId, targetUserId, answer);
         setInteractiveDone(true);
@@ -178,10 +185,10 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
         setInteractiveDone(false);
         throw e;
       } finally {
-        setInteractiveSaving(false);
+        ackSavingRef.current = false;
       }
     },
-    [kind, ackViolationId, targetUserId, interactiveSaving, interactiveDone, onInteractiveVerified]
+    [kind, ackViolationId, targetUserId, interactiveDone, onInteractiveVerified]
   );
 
   const images = useMemo(() => {
