@@ -72,6 +72,8 @@ public class CageRegionMineController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("memberUserId", str(row.get("memberUserId")));
             m.put("memberName", str(row.get("memberName")));
+            // 必须带上：前端拿它去调 member-capabilities（接口收的是账号 id），少了它子弹窗永远加载中
+            m.put("memberAccountId", str(row.get("memberAccountId")));
             m.put("regionCount", row.get("regionCount"));
             members.add(m);
         }
