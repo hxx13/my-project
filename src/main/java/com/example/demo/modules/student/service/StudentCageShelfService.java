@@ -1,6 +1,5 @@
 package com.example.demo.modules.student.service;
 
-import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
@@ -791,16 +790,9 @@ public class StudentCageShelfService {
         return false; // 都没命中 → 不额外放开，回到基本权限
     }
 
-    /** 教职工（STAFF+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
+    /** 全局可见者（SUPER_ADMIN+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
     private boolean shouldUseFullSpecialStatusOverview(User user, boolean mobileHtml5PrivilegeBypass) {
-        if (mobileHtml5PrivilegeBypass || isAdminUser(user)) {
-            return true;
-        }
-        if (user != null && user.getRole() != null
-                && user.getRole().getLevel() >= RoleEnum.STAFF.getLevel()) {
-            return true;
-        }
-        return false;
+        return mobileHtml5PrivilegeBypass || isAdminUser(user);
     }
 
     private boolean isCellVisible(Map<String, Object> cell, List<String> groupNames) {
