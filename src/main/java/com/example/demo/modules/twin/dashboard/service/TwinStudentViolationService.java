@@ -61,7 +61,7 @@ public class TwinStudentViolationService {
     private static final int AUTO_STRANDED_LOCK_TIMEOUT_SEC = 10;
 
     /** 批次键：13 位毫秒 + 8 位十六进制随机，定长 21，字典序即时间序 */
-    static String newBatchKey() {
+    public static String newBatchKey() {
         // %08x 补足高位零，保证随机段恒为 8 位（Long.toHexString 会省略前导零导致不定长）
         return System.currentTimeMillis()
                 + String.format("%08x", ThreadLocalRandom.current().nextLong() & 0xFFFFFFFFL);

@@ -7,7 +7,7 @@ import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 
 import toast, { Toaster } from "react-hot-toast";
 import { Z_INDEX } from "@/constants/zIndex";
 import { APP_BUILD_ID, getSharedSocket } from "@/config/socketUrl";
-import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT } from "@/config/socketEvents";
+import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT, SOCKET_CAGE_STATUS_ALERT_CHANGED } from "@/config/socketEvents";
 import { useClientVersionPoll, type ReloadTrigger } from "@/hooks/useClientVersionPoll";
 import { GracefulReloadBanner } from "@/components/GracefulReloadBanner";
 
@@ -303,6 +303,13 @@ function GlobalSocketListener() {
             useCageNoticeAlertStore.getState().showAlert(alert);
         });
 
+        // 📡 监听：笼位特殊状态告警变化 → 刷新管理端活跃告警 + 刷卡弹窗中栏告警标记
+        socket.on(SOCKET_CAGE_STATUS_ALERT_CHANGED, (payload: { changed?: number }) => {
+            console.log("🔄 笼位状态告警已变化:", payload?.changed);
+            queryClient.invalidateQueries({ queryKey: ["cageStatusAlerts", "active"] });
+            queryClient.invalidateQueries({ queryKey: ["room-floor-plan-grids"] });
+        });
+
         // 📡 监听：定时管理触发排行榜数据刷新
         socket.on("DASHBOARD_RANKING_REFRESH", (payload: { jobKey?: string; at?: string }) => {
             console.log("🔄 排行榜刷新信号:", payload?.jobKey);
@@ -354,6 +361,7 @@ function GlobalSocketListener() {
             socket.off(SOCKET_SWIPE_FAILURE_ALERT);
             socket.off(SOCKET_SWIPE_FAILURE_ALERT_DISMISS);
             socket.off(SOCKET_CAGE_NOTICE_ALERT);
+            socket.off(SOCKET_CAGE_STATUS_ALERT_CHANGED);
             socket.off("DASHBOARD_RANKING_REFRESH");
             socket.off("DASHBOARD_CODEX_REFRESH", onCodexRefresh);
             delete (window as any).__swipeAlertSocket;

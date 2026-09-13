@@ -63,9 +63,12 @@ public class CagePermissionService {
      * <p>「代认领」是「谁能再次分配笼位」的授权，本来就该由组长决定，不该被组员身份卡死——
      * 若套用「矩阵是上限」，这个功能会完全无用：身份本来有的不需要授、身份没有的授不了。
      * 其余能力（模式、编辑表单、分笼/转移操作身份）仍严格受身份上限约束。
+     *
+     * <p>「区域审核」同理：组长把审核权下放给组员，组员的身份（饲养员/实验员…）本来就不带这项能力，
+     * 套上限就永远授不出去。作用域仍由区域归属决定，不会因为下放而越出组长的区域。
      */
     public static final java.util.Set<String> LEADER_GRANTABLE =
-            java.util.Set.of("cage.op.claim_on_behalf");
+            java.util.Set.of("cage.op.claim_on_behalf", "cage.review.region");
 
     /** 能力 code → 允许的身份 code 集合。空集表示该能力无人可用（fail-closed）。 */
     public Map<String, Set<String>> allowedIdentitiesByCapability() {
@@ -83,6 +86,20 @@ public class CagePermissionService {
         Set<String> allowed = allowedIdentitiesByCapability().get(capabilityCode);
         if (allowed == null || allowed.isEmpty()) return false;
         return !Collections.disjoint(allowed, identityCodes);
+    }
+
+    /**
+     * 该账号是否拥有某能力：**矩阵按身份给的** 或 **组长逐人勾选的**（**加法**，不是全量覆盖）。
+     *
+     * <p>与模式刻意不同——{@code effectiveModeCapabilities} 是「有成员行就以勾的为准」，
+     * 那是为了让组长能**收窄**模式。审核、代认领这类「授权」用加法：组长勾一次不该顺带抹掉
+     * 组员靠身份拿到的其它能力。要收窄某人的审核权，正确的杠杆是收窄他的**区域**
+     * （区域归属那一层），不是在这里减勾。
+     */
+    public boolean hasCapability(String accountId, String capabilityCode) {
+        if (!StringUtils.hasText(capabilityCode)) return false;
+        if (canUse(capabilityCode, identityCodesOf(accountId))) return true;
+        return memberCapabilities(accountId).contains(capabilityCode);
     }
 
     /** 能力注册表（矩阵的列）。 */
@@ -117,6 +134,30 @@ public class CagePermissionService {
                 .map(CagePermissionCapability::getCode)
                 .filter(code -> !withGrants.contains(code))
                 .toList();
+    }
+
+    /** 学生视角的能力注册项（矩阵里 view_group = STUDENT 那一组，按 sort_order）。 */
+    public List<CagePermissionCapability> studentCapabilities() {
+        return mapper.listCapabilities().stream()
+                .filter(c -> "STUDENT".equalsIgnoreCase(c.getViewGroup()))
+                .toList();
+    }
+
+    /**
+     * 学生侧能力的**矩阵上限**：学生组能力中，至少被一个学生身份命中的那些。
+     *
+     * <p>区域配置只能在这个范围内勾（矩阵是上限，区域是收窄）。落到具体某个学生时，
+     * 还要再与他自己的 {@link #identityCeiling} 求交——两层不能合并：
+     * 这里是「学生这个群体最多能到哪」，那里是「这个人最多能到哪」。
+     */
+    public Set<String> studentCeiling() {
+        Map<String, Set<String>> grants = allowedIdentitiesByCapability();
+        Set<String> out = new LinkedHashSet<>();
+        for (CagePermissionCapability c : studentCapabilities()) {
+            Set<String> ids = grants.get(c.getCode());
+            if (ids != null && !ids.isEmpty()) out.add(c.getCode());
+        }
+        return out;
     }
 
     // ── 组员级勾选（组长逐人勾）──

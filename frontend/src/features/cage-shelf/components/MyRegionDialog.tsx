@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
 import MemberCapabilityDialog from "./MemberCapabilityDialog";
+import RegionCapabilityDialog from "./RegionCapabilityDialog";
+import RegionAlertRuleDialog from "./RegionAlertRuleDialog";
 import {
   fetchFullTree,
   fetchMyRegion,
@@ -13,12 +15,12 @@ import {
 } from "@/api/domains/cageShelf.api";
 
 /**
- * 我的区域（弹窗）—— 饲养组长看自己负责的区域与组员。**只读**。
+ * 我的区域（弹窗）—— 饲养组长看自己负责的区域与组员，并配本区域对学生开放的功能。
  *
  * 入口在笼架信息页的工具栏（仅当 `/api/cage-region/mine` 返回 isLeader=true 时才显示按钮），
  * 不做成独立页面：组长本来就要进笼架信息干活，多一个页面反而多一次跳转。
  *
- * 组员的纳入/移出与逐人勾权限属第四期 B，本期不放按钮——避免用户以为功能坏了。
+ * 三件事：区域（超管分配，只读）→ 组员（组长纳管）→ 区域学生功能（点区域那行的按钮进子弹窗）。
  */
 
 const TYPE_LABEL: Record<string, string> = { CAMPUS: "校区", FLOOR: "楼层", ROOM: "房间" };
@@ -33,6 +35,10 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
   const [pickerOpen, setPickerOpen] = useState(false);
   // 正在配置权限的组员（null = 子弹窗关闭）。仅在保存过组员后才可配——没入组的人不在列表里。
   const [capTarget, setCapTarget] = useState<{ accountId: string; name: string } | null>(null);
+  // 正在配「本区学生功能」的区域（null = 子弹窗关闭）
+  const [regionCapTarget, setRegionCapTarget] = useState<{ regionType: string; regionId: string; name: string } | null>(null);
+  // 正在配「本区告警阈值」的区域（null = 子弹窗关闭）
+  const [alertTarget, setAlertTarget] = useState<{ regionType: string; regionId: string; name: string } | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -105,7 +111,7 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
         <DialogHeader className="shrink-0 border-b border-[var(--twin-hairline)] px-5 py-3.5 text-left">
           <DialogTitle className="text-[14px] text-[var(--twin-ink)]">我的区域</DialogTitle>
           <DialogDescription className="text-[11px] text-[var(--twin-mute)]">
-            你作为饲养组长负责的区域与由你纳入的组员。区域由超级管理员分配；当前为只读视图。
+            你作为饲养组长负责的区域（由超级管理员分配）、由你纳入的组员，以及本区域对学生开放的功能。
           </DialogDescription>
         </DialogHeader>
 
@@ -130,16 +136,46 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
                           {TYPE_LABEL[type]}（{list.length}）
                         </div>
                         <ul className="space-y-0.5">
-                          {list.map((r) => (
-                            <li key={r.regionId} className="text-[11px] text-[var(--twin-ink)]">
-                              {label(r)}
-                            </li>
-                          ))}
+                          {list.map((r) => {
+                            const name = label(r);
+                            return (
+                              <li key={r.regionId} className="flex items-center justify-between gap-2">
+                                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--twin-ink)]">{name}</span>
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    title="配置本区域对学生开放的功能"
+                                    onClick={() =>
+                                      setRegionCapTarget({ regionType: r.regionType, regionId: r.regionId, name })
+                                    }
+                                    className="rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
+                                  >
+                                    学生功能
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="配置本区域的告警阈值（未单独配置时按上级或全局默认生效）"
+                                    onClick={() =>
+                                      setAlertTarget({ regionType: r.regionType, regionId: r.regionId, name })
+                                    }
+                                    className="rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
+                                  >
+                                    告警阈值
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     ))}
                   </div>
                 )}
+                <p className="text-[10px] leading-relaxed text-[var(--twin-mute)]">
+                  点区域那行的「学生功能」，可决定本区域的学生能用哪些功能——学生侧的模式入口按他课题组
+                  笼位所在各区域的并集给，但对某个笼位动手时以该笼位所在区域为准。
+                  「告警阈值」可配本区域特殊状态持续超时的告警阈值，未单独配置时按上级或全局默认生效。
+                </p>
               </section>
 
               <section className="space-y-2">
@@ -225,8 +261,35 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
         />
       )}
 
+      {regionCapTarget && (
+        <RegionCapabilityDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setRegionCapTarget(null);
+          }}
+          regionType={regionCapTarget.regionType}
+          regionId={regionCapTarget.regionId}
+          regionName={regionCapTarget.name}
+        />
+      )}
+
+      {alertTarget && (
+        <RegionAlertRuleDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setAlertTarget(null);
+          }}
+          regionType={alertTarget.regionType}
+          regionId={alertTarget.regionId}
+          regionName={alertTarget.name}
+        />
+      )}
+
       {pickerOpen && (
         <PersonnelPicker
+          identityCode="BREEDER"
+          identityLabel="饲养员"
+          excludeGroupedByOthers
           onClose={() => setPickerOpen(false)}
           onConfirm={(ids, nameList) => {
             setDraft((d) => {

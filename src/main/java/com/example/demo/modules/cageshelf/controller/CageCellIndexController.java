@@ -469,13 +469,14 @@ public class CageCellIndexController {
      * 笼位的课题组/实验员字段全空，整架被判「非本组」而不渲染。本地网格以
      * cage_info_value（笼位表单）为课题组/实验员真相源，与房间来源同源。</p>
      *
-     * <p>**不做 applyGroupMask**：弹窗展示的是「被扫人」的课题组笼架，与登录人课题组无关；
-     * 前端只渲染 isMine 的架子。与旧路径（cells/batch 无脱敏）行为一致。</p>
+     * <p>脱敏基准是**被扫人**（viewerUserId），不是登录人：弹窗的房间/架子都按被扫人课题组选，
+     * 脱敏基准不同就会出现「架子是被扫人的、格子整片 ***」。不传则不下发脱敏（保持旧行为）。</p>
      */
     @GetMapping("/local-grid/batch")
     @Operation(summary = "批量从本地DB加载笼架网格")
     public Result<List<Map<String, Object>>> localGridBatch(
             @RequestParam String ids,
+            @RequestParam(required = false) String viewerUserId,
             HttpServletRequest request) {
         User user = resolveUser(request.getHeader("Authorization"));
         Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
@@ -492,9 +493,25 @@ public class CageCellIndexController {
             }
             Map<String, Object> grid = cellIndexService.getLocalShelfGrid(shelfIndexId);
             if (grid.containsKey("error")) continue;
+            maskByViewerUserId(grid, viewerUserId);
             out.add(grid);
         }
         return Result.success(out);
+    }
+
+    /** 按被扫人课题组脱敏（复用 StudentCageShelfService 那套判据），只对 batch 弹窗路径生效。 */
+    @SuppressWarnings("unchecked")
+    private void maskByViewerUserId(Map<String, Object> result, String viewerUserId) {
+        if (viewerUserId == null || viewerUserId.isBlank()) return;
+        Object gridObj = result.get("grid");
+        if (!(gridObj instanceof List<?>)) return;
+        // 划分名单先按被扫人收口（管家看全部），与单架路径同规则；
+        // 必须在替换 grid 之前做 —— 下面会换成脱敏后的新列表。
+        if (!personIdentityService.isGroupSteward(viewerUserId)) {
+            keepOnlyOwnDivision(result, viewerUserId);
+        }
+        result.put("grid", studentCageShelfService.maskGridForUserId(
+                viewerUserId, (List<Map<String, Object>>) gridObj));
     }
 
     // ── 按架子查详情列表 ──

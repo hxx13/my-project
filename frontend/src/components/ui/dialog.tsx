@@ -14,6 +14,7 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
+    data-modal-layer="true"
     className={cn(
       // 全屏遮罩：勿加 top-16。否则会露出管理后台 sticky header，
       // 叠在半透明顶栏上形成「透明顶栏 / 图层冲突」观感。
@@ -45,16 +46,41 @@ const DialogContent = React.forwardRef<
   const rightSheet = variant === "rightSheet";
   const sheet = leftSheet || rightSheet;
   const showOverlay = overlay !== "none";
+  const innerRef = React.useRef<React.ElementRef<typeof DialogPrimitive.Content>>(null);
+  /** 自己的遮罩。判定「点的是不是别的弹层」时要把它摘出去，否则自己点自己遮罩关不掉。 */
+  const overlayRef = React.useRef<HTMLDivElement>(null);
+  /** 同时喂给 forwarded ref 与内部 ref —— 判定「是不是点了别的弹层」要用到自己的 DOM。 */
+  const setContentRef = (node: React.ElementRef<typeof DialogPrimitive.Content> | null) => {
+    innerRef.current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref) {
+      (ref as React.MutableRefObject<React.ElementRef<typeof DialogPrimitive.Content> | null>).current = node;
+    }
+  };
   const blockOutsideDismiss = (event: Event) => {
     if (!closeOnOverlayClick) {
       event.preventDefault();
+      return;
     }
+    // 事件来自**另一层**弹层时，不算「点了外面」。手写/portal 到 body 的弹层
+    // （appConfirm / appAlert / appPrompt，都带 data-modal-layer）Radix 不认识，
+    // 点它上面的按钮会被判成外部交互 —— 表现是「在设置弹窗里点确认框的『确定』，
+    // 设置弹窗跟着被卸载」。这是通用层的问题，任何 Radix 弹窗 + appConfirm 都会中。
+    //
+    // 嵌套的 Radix 弹窗同理：内层遮罩也带 data-modal-layer，所以点内层遮罩只关内层，
+    // 外层不受影响；自己的遮罩要排除掉，否则连自己都关不掉了。
+    const detail = (event as CustomEvent<{ originalEvent?: Event }>).detail;
+    const target = (detail?.originalEvent?.target ?? event.target) as HTMLElement | null;
+    const layer = target?.closest?.('[data-modal-layer="true"]');
+    if (layer && layer !== innerRef.current && layer !== overlayRef.current) event.preventDefault();
   };
   return (
     <DialogPortal>
       {showOverlay ? (
         alwaysShowOverlay ? (
           <div
+            ref={overlayRef}
+            data-modal-layer="true"
             className={cn(
               "fixed inset-0 z-[var(--z-overlay)] bg-black/50",
               overlayClassName
@@ -63,6 +89,7 @@ const DialogContent = React.forwardRef<
           />
         ) : (
           <DialogOverlay
+            ref={overlayRef}
             className={cn(
               sheet ? "z-[var(--z-overlay)]" : undefined,
               overlayClassName
@@ -71,7 +98,7 @@ const DialogContent = React.forwardRef<
         )
       ) : null}
       <DialogPrimitive.Content
-        ref={ref}
+        ref={setContentRef}
         data-modal-layer="true"
         onInteractOutside={(event) => {
           blockOutsideDismiss(event);

@@ -1574,10 +1574,13 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   /** 只分两个视角：教职工 = html5PrivilegeBypass 或非学生账号 */
   const isStaffView = !!(html5PrivilegeBypass || !isStudentAccount());
 
-  // 拉一次后端下发的可见模式列表（身份由后端算好）；失败保留 null，网格页回退本地硬编码
+  // 拉后端下发的可见模式列表（身份由后端算好）；失败保留 null，网格页回退本地硬编码。
+  // **按当前房间重算**：区域组长把某模式在本房关掉后，切到这个房间就不该再看到该模式入口。
+  // 只带 roomId —— 楼层/校区由后端按房间补齐（shelfMeta 里没有这两级）。
+  const currentRoomId = String(detail?.shelfMeta?.roomId ?? selectedShelf?.roomId ?? "");
   useEffect(() => {
     let cancelled = false;
-    fetchCageModeVisible()
+    fetchCageModeVisible(currentRoomId ? { roomId: currentRoomId } : undefined)
       .then((r) => {
         if (cancelled) return;
         if (r.modes?.length) setVisibleModes(r.modes);
@@ -1586,7 +1589,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       })
       .catch(() => { /* 回退本地硬编码 */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [currentRoomId]);
 
   // 学生视角进入确认模式时拉一次「我的认领」，用于高亮本人待到位的笼位
   useEffect(() => {

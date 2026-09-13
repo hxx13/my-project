@@ -72,16 +72,25 @@ public class CageModeVisibilityService {
                 .toList();
     }
 
+    /**
+     * **反查**：表单 canonical → 学生状态动作 code；不是学生动作返回 null。
+     * 控制器收到的是 canonical（如 `needs_cohabitation`），而能力码是按动作 code（`COHABITATION`）拼的，
+     * 方向搞反会拼出一个永远不存在的能力码，把功能整体锁死。
+     */
+    public static String studentActionOfCanonical(String canonical) {
+        if (canonical == null) return null;
+        for (Map.Entry<String, String> e : STUDENT_EDIT_ACTIONS.entrySet()) {
+            if (canonical.equals(e.getValue())) return e.getKey();
+        }
+        return null;
+    }
+
     /** 该学生能否操作某表单 canonical（控制器收口用）。 */
     public boolean canStudentEdit(User user, String canonical) {
-        if (canonical == null || user == null) return false;
-        Set<String> mine = identityCodesOf(user.getId());
-        for (Map.Entry<String, String> e : STUDENT_EDIT_ACTIONS.entrySet()) {
-            if (canonical.equals(e.getValue())) {
-                return permissionService.canUse(studentEditCapability(e.getKey()), mine);
-            }
-        }
-        return false;
+        if (user == null) return false;
+        String action = studentActionOfCanonical(canonical);
+        if (action == null) return false;
+        return permissionService.canUse(studentEditCapability(action), identityCodesOf(user.getId()));
     }
 
     /** 模式 key → 对应的矩阵能力码。 */

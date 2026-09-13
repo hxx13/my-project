@@ -78,7 +78,6 @@ import CageShelfFormManagePage from "@/features/cage-shelf/pages/CageShelfFormMa
 import CageFormListPage from "@/features/cage-shelf/pages/CageFormListPage";
 import CageFormAuditPage from "@/features/cage-shelf/pages/CageFormAuditPage";
 import CageOccupancyRecordsPage from "@/features/cage-shelf/pages/CageOccupancyRecordsPage";
-import CageScopeAssignmentPage from "@/features/cage-shelf/pages/CageScopeAssignmentPage";
 import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
@@ -387,7 +386,9 @@ export const router = createHashRouter([
               { path: "cage-shelves/forms/fields", element: <CageFieldPage /> },
               { path: "cage-shelves/forms/fields/:dictKey", element: <CageFieldPage /> },
               { path: "cage-shelves/records", element: <CageOccupancyRecordsPage /> },
-              { path: "cage-shelves/scope", element: <CageScopeAssignmentPage /> },
+              // 「可见范围分配」已收进笼架信息页的设置弹窗（设置 → 可见范围分配）。
+              // 这条只为兜住旧书签/收藏：直接删会渲染成一片空白，用户以为坏了。
+              { path: "cage-shelves/scope", element: <Navigate to="/console/admin/cage-shelves" replace /> },
               { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage /> },
               { path: "card-print", element: <CardPrintPage /> },
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },

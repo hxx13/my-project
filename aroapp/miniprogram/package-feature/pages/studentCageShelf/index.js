@@ -154,7 +154,7 @@ var CAGE_TYPE_DOT_COLOR = { 1: "#f59e0b", 2: "#10b981", 3: "#f43f5e", 4: "#3b82f
 var CAGE_TYPE_ABBR = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
 var STATUS_LABEL_MAP = {
-  COHABITATION: "需合笼",
+  COHABITATION: "合笼",
   SPECIAL_FEEDING: "需特殊饲养",
   NEED_DIVIDE: "需分笼",
   HEALTH_ABNORMAL: "健康异常",
@@ -251,6 +251,10 @@ function buildModeOptions(isStaffView, visibleModes) {
         { key: 'view', label: '查看' },
         { key: 'studentClaim', label: '申请预约' },
         { key: 'confirm', label: '确认' },
+        // 「划分」是管家（GROUP_STEWARD）专属，而管家多是学生账号（isStaffView 为 false），
+        // 所以学生这张表也得登记它——Web 学生端一直有（islandModes 里的 canDivide），
+        // 这里漏了就会把后端下发的能力位无声吃掉：下面按 visibleModes 过滤时只认 base 里的 key。
+        { key: 'division', label: '划分' },
         // 学生侧状态模式：后端只放行部分动作（当前仅合笼），动作清单由 /api/cage-mode/visible
         // 的 modeActions.edit 下发，前端据此过滤渲染，不要在这里硬编码动作名。
         { key: 'edit', label: '状态' }
@@ -302,7 +306,7 @@ function computeStatusesFromCageBoxInfo(cageBoxInfo) {
     return typeof cageBoxInfo[k] === "string" && (cageBoxInfo[k] || "").trim() !== "";
   };
   if (hasText("ClosingDate")) {
-    results.push({ code: "COHABITATION", label: "需合笼" });
+    results.push({ code: "COHABITATION", label: "合笼" });
   }
   if (yn("NeedFeedingYn")) {
     results.push({ code: "SPECIAL_FEEDING", label: "需特殊饲养" });
@@ -508,7 +512,7 @@ function computeStatusCodesForDisplay(cell) {
     var bi = cell.cageBoxInfo;
     if (!bi) return '';
     var parts = [];
-    if (bi["ClosingDate"]) parts.push("需合笼");
+    if (bi["ClosingDate"]) parts.push("合笼");
     if (bi["NeedFeedingYn"] === 1) parts.push("需特殊饲养");
     if (bi["NeedDivideYn"] === 1) parts.push("需分笼");
     if (bi["AbnormalHealthYn"] === 1) parts.push("健康异常");
@@ -918,8 +922,23 @@ Page({
     });
     self.loadShelves();
 
-    // 拉后端下发的可见模式列表（身份由后端算好）；失败保留本地硬编码默认 modeOptions
-    springAuth.springRequest({ url: '/api/cage-mode/visible', method: 'GET', data: {} }).then(function(res) {
+    self.loadVisibleModes();
+  },
+
+  /**
+   * 拉后端下发的可见模式列表（身份由后端算好）；失败保留本地硬编码默认 modeOptions。
+   *
+   * **按当前房间拉**：区域饲养组长把某模式在本房关掉后，切到这个房间就不该再看到该模式入口。
+   * 只带 roomId —— 楼层/校区由后端按房间反查补齐（gridMeta 里没有这两级）。
+   */
+  loadVisibleModes: function() {
+    var self = this;
+    var meta = self.data.gridMeta || {};
+    var roomId = String(meta.roomId || '');
+    springAuth.springRequest({
+      url: '/api/cage-mode/visible', method: 'GET',
+      data: roomId ? { roomId: roomId } : {}
+    }).then(function(res) {
       var up = unwrap(res);
       var modes = (up.ok && up.data && up.data.modes) || [];
       // 与 Web 一致（student-cage-shelf.tsx:134 `isStudent ? modes : null`）：学生视角仅在后端确认是学生时才用其列表过滤，
@@ -1498,6 +1517,8 @@ Page({
       self.applySelectionToGrid();
       self.applyMyClaimToGrid();
       self.loadCageOpMarkers();
+      // 换了房间 → 模式入口重算（区域组长可能把某些模式在本房关掉了）
+      self.loadVisibleModes();
     }).catch(function(e) {
       self.setData({ gridLoading: false, gridError: (e && e.message) || '加载失败' });
     });

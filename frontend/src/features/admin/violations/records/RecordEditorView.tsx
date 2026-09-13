@@ -44,7 +44,9 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
   const templateSlot = violationContentTemplateSlot(form.content, form.setContent);
 
   const cageKey = form.cagePick
-    ? `${form.cagePick.shelveId}-${form.cagePick.positionX}-${form.cagePick.positionY}`
+    ? form.cagePick.positionX != null && form.cagePick.positionY != null
+      ? `${form.cagePick.shelveId}-${form.cagePick.positionX}-${form.cagePick.positionY}`
+      : form.cagePick.positionLabel
     : "";
 
   const targetOk = isEdit

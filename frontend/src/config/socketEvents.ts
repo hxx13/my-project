@@ -14,3 +14,7 @@ export const SOCKET_SWIPE_FAILURE_ALERT_DISMISS = "SWIPE_FAILURE_ALERT_DISMISS";
 export const SOCKET_CAGE_NOTICE_ALERT = "CAGE_NOTICE_ALERT";
 /** 服务端 → 所有客户端：联动消失 */
 export const SOCKET_CAGE_NOTICE_ALERT_DISMISS = "CAGE_NOTICE_ALERT_DISMISS";
+
+// === 笼位特殊状态持续超时告警 ===
+/** 服务端 → 管理端：告警产生/升级/清除后推送（仅变化计数，客户端据此失效相关查询） */
+export const SOCKET_CAGE_STATUS_ALERT_CHANGED = "CAGE_STATUS_ALERT_CHANGED";

@@ -135,7 +135,9 @@ export function ShelfGrid({
     <div className="flex-1 min-h-0 overflow-y-auto content-start p-[3px]">
       <div className="grid grid-cols-8 gap-1.5">
         {cells.map((c) => {
-          const alertKey = `${sid}:${c.position}`;
+          // 告警查找 key 用 animalCageId（与 alertMap 的 key 一致），不再用 `${sid}:${position}`：
+          // 快照 position 是 A-1 口径、本地网格是 x-y，两者对不上。
+          const alertKey = String((c as any).id ?? (c as any).animalCageId ?? (c as any).detail?.animalCageId ?? "");
           const cellId = String((c as any).id ?? "");
           const divList = (c as any).divisionAssignees as Array<{ id: string; name: string }> | undefined;
           const divisionLabel = divList && divList.length > 0
@@ -185,7 +187,10 @@ export function ShelfGrid({
               isMyClaimCell={myClaimCageIds ? myClaimCageIds.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
               restrictSelectToPool={restrictSelectToPool}
               pairColor={pairColorByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? ""))}
-              opMarker={opMarkerByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? ""))}
+              /* 告警只进刷卡弹窗（CompactCell），管理端/学生端网格（CellButton）不吃 alert；
+                 这里的标记永远是 divide/transfer/reserve，收窄 kind 以满足 CellButton 的 opMarker 形状。 */
+              opMarker={opMarkerByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? "")) as
+                { requestId: string; kind: "divide" | "transfer" | "reserve"; color: string; label: string } | undefined}
             />
           );
         })}

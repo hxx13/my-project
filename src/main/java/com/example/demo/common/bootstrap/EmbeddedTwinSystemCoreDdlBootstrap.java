@@ -204,6 +204,14 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-cage-permission-matrix.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-member-capability.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-region-capability.sql", ctx)) success++;
+        // 必须排在上一行（建表）之后：它给该表换唯一键，让同一区域可以多位组长各配各的
+        total++; if (runScript("db/bootstrap-cage-region-capability-multi-leader.sql", ctx)) success++;
+        // 同上，必须建表之后：给该表加 enabled 列，让「配过但全关」表达得出来
+        total++; if (runScript("db/bootstrap-cage-region-capability-enabled.sql", ctx)) success++;
+        // 必须排在 bootstrap-cage-permission-matrix.sql 之后：它往能力注册表/授权表插行
+        total++; if (runScript("db/bootstrap-cage-review-capability.sql", ctx)) success++;
+        // 笼位特殊状态超时告警：三张表 + 全局默认阈值 + 能力码（能力种子依赖上面的 matrix）
+        total++; if (runScript("db/bootstrap-cage-status-alert.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-audit-assignment.sql", ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;

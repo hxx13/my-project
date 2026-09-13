@@ -3,6 +3,7 @@ package com.example.demo.modules.cageshelf.mapper;
 import com.example.demo.modules.cageshelf.entity.CageFormAuditLog;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -74,4 +75,11 @@ public interface CageFormAuditLogMapper {
     /** 某笼位(target_id)的全部 data 类审计，按时间升序（供按笼盒分组追溯）。 */
     List<CageFormAuditLog> listByTargetId(@Param("targetId") Long targetId,
                                           @Param("category") String category);
+
+    /**
+     * 只取五个特殊状态字段的 data 审计行（created_at >= since），按 id 升序。
+     * id 序是折叠区间的正确性前提——同秒多次变更 created_at 相同，只有自增 id 能定序。
+     */
+    List<CageFormAuditLog> listStatusFieldRows(@Param("fieldCodes") List<String> fieldCodes,
+                                               @Param("since") LocalDateTime since);
 }

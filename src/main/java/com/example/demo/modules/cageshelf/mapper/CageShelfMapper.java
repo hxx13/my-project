@@ -109,4 +109,11 @@ public interface CageShelfMapper {
 
     /** 本地笼架数据版本：cage_cell_detail.updated_at 与 cage_shelf_index.update_time 的最大值（聚合缓存失效判定） */
     Map<String, Object> selectLocalDataVersion();
+
+    /**
+     * 由房间 id 反查它所属的楼层/校区（返回 floorId / campusId）。
+     * 移动端只知道 roomId（shelfMeta 里没下发楼层/校区），区域能力解析要补齐这两级，
+     * 否则组长配在楼层/校区一级的关闭会查不到、被当成「没配过」而误放行。
+     */
+    Map<String, Object> lookupHierarchyByRoom(@Param("roomId") String roomId);
 }

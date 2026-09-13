@@ -66,7 +66,8 @@ import {
   fetchBookmarks, toggleBookmarkApi,
   type BookmarkEntry,
   fetchFullTree, type CageShelfTreeNode,
-  fetchPersistedAlerts, type PersistedAlert,
+  type PersistedAlert,
+  fetchActiveCageStatusAlerts,
   fetchSnapshotBatches, type SnapshotBatch,
   fetchRealtimeRefresh, forceRealtimeRefresh, type RealtimeRefreshResponse,
   fetchAllocationAups, type AupItem,
@@ -701,39 +702,33 @@ function Inner(){
   const{data:scan}=useQuery({queryKey:["cageLocalPipelineProgress"],queryFn:fetchLocalPipelineProgress,refetchInterval:(q)=>{const s=q.state.data?.status;return s==="running"||s==="done"||s==="failed"?5000:30000;}});
   const [scanDismissed, setScanDismissed] = useState(false);
   useEffect(() => { if (scan?.status === "running") setScanDismissed(false); }, [scan?.status]);
-  // 告警基线批次（独立于快照选择器）：自动=倒数第二个，手动=配置的对比基准
-  const alertBaselineId = useMemo(() => {
-    if (configMode === "auto") return batchList.length >= 2 ? batchList[1].scanBatchId : (batchList[0]?.scanBatchId || "");
-    return localStorage.getItem("cageCompareBaseline") || (batchList.length >= 2 ? batchList[1].scanBatchId : "");
-  }, [configMode, batchList]);
-  const{data:alertData}=useQuery({queryKey:["persistedAlerts",alertBaselineId,selectedBatchId,configMode],queryFn:()=>fetchPersistedAlerts(alertBaselineId||undefined,selectedBatchId||undefined,configMode),refetchInterval:60_000,enabled:configMode!=="off"});
+  const{data:alertData}=useQuery({queryKey:["cageStatusAlerts","active"],queryFn:()=>fetchActiveCageStatusAlerts(),refetchInterval:60_000});
+  // 网格角标：key=animalCageId（修掉快照 position=A-1 与本地网格 x-y 对不上的老问题）。
+  // 新端点无 persistedDays，这里映射成 CellButton 期望的 PersistedAlert 形状，CellButton 零改动。
   const alertMap=useMemo(()=>{
     const m=new Map<string,PersistedAlert>();
-    if(!alertData?.alerts)return m;
-    for(const a of alertData.alerts)m.set(`${a.shelveId}:${a.position}`,a);
-    return m;
-  },[alertData]);
-  // 告警按笼架/房间聚合
-  const alertCountByShelf=useMemo(()=>{
-    const m=new Map<string,number>();
-    if(!alertData?.alerts)return m;
-    for(const a of alertData.alerts)m.set(a.shelveId,(m.get(a.shelveId)||0)+1);
-    return m;
-  },[alertData]);
-  const alertCountByRoom=useMemo(()=>{
-    const m=new Map<string,number>();
-    if(!fullTree.length||!alertCountByShelf.size)return m;
-    for(const r of fullTree){
-      const rid=String(r.roomId??"");const sid=String(r.shelveId??"");
-      if(rid&&sid&&alertCountByShelf.has(sid))m.set(rid,(m.get(rid)||0)+1);
+    if(!alertData)return m;
+    for(const a of alertData){
+      m.set(a.animalCageId,{
+        statusCode:a.statusCode,
+        statusLabel:a.statusLabel,
+        thresholdDays:a.thresholdDays,
+        spanDays:a.spanDays,
+        persistedDays:a.spanDays,
+        shelveId:a.shelveId??"",
+        positionX:0,positionY:0,position:"",
+        campusName:"",roomName:"",cageBoxQrCode:"",projectPiName:"",
+        firstDetectedAt:a.startedAt,
+      });
     }
     return m;
-  },[fullTree,alertCountByShelf]);
-  // 每个笼架/房间含哪些状态码
+  },[alertData]);
+  // 左侧树徽标：每个笼架/房间含哪些状态码（新端点直接回 shelveId/roomId，不再经 fullTree 映射）
   const alertStatusesByShelf=useMemo(()=>{
     const m=new Map<string,Set<string>>();
-    if(!alertData?.alerts)return m;
-    for(const a of alertData.alerts){
+    if(!alertData)return m;
+    for(const a of alertData){
+      if(!a.shelveId)continue;
       if(!m.has(a.shelveId))m.set(a.shelveId,new Set());
       m.get(a.shelveId)!.add(a.statusCode);
     }
@@ -741,16 +736,14 @@ function Inner(){
   },[alertData]);
   const alertStatusesByRoom=useMemo(()=>{
     const m=new Map<string,Set<string>>();
-    if(!fullTree.length||!alertStatusesByShelf.size)return m;
-    for(const r of fullTree){
-      const rid=String(r.roomId??"");const sid=String(r.shelveId??"");
-      if(!rid||!sid)continue;
-      const ss=alertStatusesByShelf.get(sid);if(!ss)continue;
-      if(!m.has(rid))m.set(rid,new Set());
-      for(const s of ss)m.get(rid)!.add(s);
+    if(!alertData)return m;
+    for(const a of alertData){
+      if(!a.roomId)continue;
+      if(!m.has(a.roomId))m.set(a.roomId,new Set());
+      m.get(a.roomId)!.add(a.statusCode);
     }
     return m;
-  },[fullTree,alertStatusesByShelf]);
+  },[alertData]);
   const[pinned,setPinned]=useState<Set<string>>(new Set());
   const[bmList,setBmList]=useState<BookmarkEntry[]>([]);
   const[bmLoading,setBmLoading]=useState(false);

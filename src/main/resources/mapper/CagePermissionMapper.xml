@@ -39,4 +39,64 @@
         VALUES (#{userId}, #{capabilityCode}, #{grantedBy})
     </insert>
 
+    <!-- 区域级学生能力（该区域的饲养组长配）。区域键与 cage_region_grant 同一套。
+         一律只看 enabled=1：没勾的项也会落成 enabled=0 的行，用来标记「本区已配置」，
+         这样「配过但全关」才表达得出来（否则零行 = 从未配置 = 回落矩阵全开，组长永远关不掉）。 -->
+    <select id="listRegionCapabilities" resultType="string">
+        SELECT capability_code FROM cage_region_capability
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+          AND enabled = 1
+        ORDER BY capability_code ASC
+    </select>
+
+    <!-- 只看某一个人配的：一个区域可以有多个组长，并集生效，界面要区分「我勾的」和「别人开的」 -->
+    <select id="listRegionCapabilitiesBy" resultType="string">
+        SELECT capability_code FROM cage_region_capability
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+          AND configured_by &lt;=&gt; #{configuredBy}
+          AND enabled = 1
+        ORDER BY capability_code ASC
+    </select>
+
+    <!-- 这些区域里，有几个是「被配过的」（不论开还是关）。一条都没有 = 谁都没配过 → 回落矩阵上限 -->
+    <select id="countConfiguredRegions" resultType="int">
+        SELECT COUNT(DISTINCT CONCAT(region_type, ':', region_id)) FROM cage_region_capability
+        WHERE (region_type, region_id) IN
+        <foreach collection="regions" item="r" open="(" separator="," close=")">
+            (#{r.regionType}, #{r.regionId})
+        </foreach>
+    </select>
+
+    <!-- 批量取配置行（**含 enabled=0 的关闭行**）：逐架解析时要区分「没配过」和「配过但全关」。
+         行构造器 IN 走 (region_type, region_id) 索引；regions 为空时调用方须提前返回（会生成非法 SQL）。 -->
+    <select id="listRegionCapabilityRows" resultType="map">
+        SELECT region_type AS regionType, region_id AS regionId,
+               capability_code AS capabilityCode, enabled AS enabled
+        FROM cage_region_capability
+        WHERE (region_type, region_id) IN
+        <foreach collection="regions" item="r" open="(" separator="," close=")">
+            (#{r.regionType}, #{r.regionId})
+        </foreach>
+    </select>
+
+    <!-- 只删这个人配的：同一区域可能有多个组长，按区域整片删会抹掉别人的配置 -->
+    <delete id="deleteRegionCapabilities">
+        DELETE FROM cage_region_capability
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+          AND configured_by &lt;=&gt; #{configuredBy}
+    </delete>
+
+    <!-- 清掉该区域所有人的配置：超管保存 = 该区域重置（别人的行界面上是只读的，没有别的清理路径） -->
+    <delete id="deleteAllRegionCapabilities">
+        DELETE FROM cage_region_capability
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+    </delete>
+
+    <!-- 不能用 useGeneratedKeys/keyProperty：本方法收的是多个 @Param、没有可回填主键的对象，会运行期炸 -->
+    <insert id="insertRegionCapability">
+        INSERT INTO cage_region_capability (region_type, region_id, capability_code, configured_by, enabled)
+        VALUES (#{regionType}, #{regionId}, #{capabilityCode}, #{configuredBy}, #{enabled})
+        ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), configured_by = VALUES(configured_by)
+    </insert>
+
 </mapper>

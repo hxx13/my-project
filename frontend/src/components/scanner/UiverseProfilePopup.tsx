@@ -119,6 +119,7 @@ export function UiverseProfilePopup(props: PopupProps) {
       planRoom?.roomId,
       planRoom?.roomName,
       state.user?.project_group_name,
+      planRoomUser,
     );
     /** 本课题组笼架：<3 架时改单列纵向排布，格子有地方放大 */
     const mineRacks = useMemo(
@@ -365,7 +366,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 loading={floorPlan.isLoading || groupRoomsQuery.isLoading}
                                 error={floorPlan.isError}
                                 empty={mineRacks.length === 0}
-                                onCellClick={(c, r) => setDetailCell({ cell: c, masked: !r.isMine })}
+                                onCellClick={(c) => setDetailCell({ cell: c, masked: c.visible === false })}
                                 legendColors={cageColors}
                                 selfName={String(state.user?.name ?? "")}
                                 selfUserId={planRoomUser}

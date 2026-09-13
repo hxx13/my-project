@@ -30,4 +30,20 @@ public interface CageRegionGrantMapper {
 
     /** 概览行（join 出账号 id 与姓名），供设置中心按人分组展示。 */
     List<Map<String, Object>> listAllWithNames(@Param("grantRole") String grantRole);
+
+    /**
+     * 组员候选人：持有指定身份标签的人 + **已被哪位饲养组长纳入**（boundLeaderName 为 null = 没人占）。
+     * 已占用的人也在结果里（前端置灰展示），不做过滤。
+     */
+    List<Map<String, Object>> listMemberCandidates(@Param("identityCode") String identityCode);
+
+    /** 这批 personnel.id 里已经在**别人**（≠ exceptLeaderUserId）组里的那些，带双方姓名。 */
+    List<Map<String, Object>> listMemberOwners(@Param("exceptLeaderUserId") String exceptLeaderUserId,
+                                               @Param("userIds") List<String> userIds);
+
+    /**
+     * 分配里出现过的**真实区域**去重（region_type ∈ CAMPUS/FLOOR/ROOM，排除 MEMBER 行的 LEADER_GROUP 占位）。
+     * 超管配告警阈值/区域能力时列「全部可选区域」用。
+     */
+    List<Map<String, Object>> listDistinctRegions();
 }

@@ -194,6 +194,15 @@
                (SELECT MAX(update_time) FROM cage_shelf_index) AS shelfMax
     </select>
 
+    <!-- 房间 → 所属楼层/校区。移动端只带 roomId 进来，区域能力解析要补齐这两级 -->
+    <select id="lookupHierarchyByRoom" resultType="map">
+        SELECT CAST(floor_id AS CHAR) AS floorId,
+               CAST(campus_id AS CHAR) AS campusId
+        FROM cage_shelf_index
+        WHERE deleted = 0 AND CAST(room_id AS CHAR) = #{roomId}
+        LIMIT 1
+    </select>
+
     <select id="findById" resultMap="CageShelfIndexMap">
         SELECT * FROM cage_shelf_index WHERE id = #{id}
     </select>

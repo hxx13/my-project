@@ -52,6 +52,7 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
             ensureFolderColumn();
             createCodelistTablesIfNeeded();
             createAuditTablesIfNeeded();
+            ensureAuditFieldIndex();
             seedFromMapping();
             seedLocalFields();
             ensureAnimalFieldsEditable();
@@ -230,6 +231,40 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位表单发布版本'
                 """);
         log.info("[cage-info-schema] cage_form_audit_log / cage_form_template_version 表已就绪");
+    }
+
+    /**
+     * 补齐审计日志的 (field_code, created_at) 索引，供「按状态字段折叠审计区间」用（状态超时告警）。
+     * 现有索引只有 (target_type, target_id)，按 field_code 折叠全表会扫。
+     * 幂等：索引已存在时 MySQL/MariaDB 抛 "Duplicate key name"，仅此判为已就绪；
+     * 其余异常（权限不足/表被锁等）打 warn 留痕，不谎报「就绪」。
+     */
+    private void ensureAuditFieldIndex() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE cage_form_audit_log ADD INDEX idx_cage_form_audit_field (field_code, created_at)");
+            log.info("[cage-info-schema] cage_form_audit_log 字段索引就绪（新建）");
+        } catch (Exception e) {
+            if (isAlreadyExists(e)) {
+                log.info("[cage-info-schema] cage_form_audit_log 字段索引就绪（已存在）");
+            } else {
+                log.warn("[cage-info-schema] cage_form_audit_log 字段索引 idx_cage_form_audit_field 创建失败（非幂等）: {}",
+                        e.getMessage(), e);
+            }
+        }
+    }
+
+    /** 递归判断异常链是否为「对象已存在」类（MySQL/MariaDB：duplicate key / already exists），仅此类才算幂等成功。 */
+    private static boolean isAlreadyExists(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg != null) {
+                String lower = msg.toLowerCase();
+                if (lower.contains("duplicate") || lower.contains("already exists")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void seedFromMapping() {

@@ -1,6 +1,6 @@
 /**
  * 笼位特殊状态标准名称 — 与表单字段(cage_info_value canonical)中文名对齐：
- * 需分笼 / 需特殊饲养 / 动物转移 / 健康异常 / 需合笼。
+ * 需分笼 / 需特殊饲养 / 动物转移 / 健康异常 / 合笼。
  */
 export const SPECIAL_STATUS_LABELS: Record<string, string> = {
   COHABITATION: "合笼",

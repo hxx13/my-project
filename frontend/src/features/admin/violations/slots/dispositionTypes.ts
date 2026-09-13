@@ -274,21 +274,28 @@ export function toUpdateDisposition(v: DispositionValue): UpdateDispositionField
   };
 }
 
-function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
-  const actions: DispositionActionCode[] = [];
-  if (row.forbidEnter) actions.push("forbid");
-  if (row.showNoticeEveryScan) actions.push("every");
-  if (row.interactiveUnlockOnVerify) actions.push("unlock");
+/**
+ * 从 dispositionType + 配置 JSON 解析策略；两列为空（存量违规行、AUTO_STRANDED/MANUAL 规则行）
+ * 时回退到从 interactiveChallenge 反推拼图，必须能读、不能崩。
+ * 违规记录行与触发规则共用同一套注册表编码解析，避免两份漂移。
+ */
+export function strategyFromDispositionFields(
+  dispositionType: string | null | undefined,
+  dispositionConfigJson: string | null | undefined,
+  interactiveChallenge: string | null | undefined,
+  maxEnterSuccess: number | null | undefined
+): DispositionStrategy {
+  const dtype = (dispositionType ?? "").toUpperCase();
+  const maxEnter = maxEnterSuccess ?? null;
 
-  const dtype = (row.dispositionType ?? "").toUpperCase();
   if (dtype === "QUIZ") {
     let questionBankId = "default";
     let drawCount = 3;
     let passCount = 2;
     let maxAttempts = 3;
     try {
-      if (row.dispositionConfigJson) {
-        const cfg = JSON.parse(row.dispositionConfigJson) as Record<string, unknown>;
+      if (dispositionConfigJson) {
+        const cfg = JSON.parse(dispositionConfigJson) as Record<string, unknown>;
         if (typeof cfg.questionBankId === "string") questionBankId = cfg.questionBankId;
         if (typeof cfg.drawCount === "number") drawCount = cfg.drawCount;
         if (typeof cfg.passCount === "number") passCount = cfg.passCount;
@@ -297,76 +304,62 @@ function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
     } catch {
       /* keep defaults */
     }
-    return {
-      actions,
-      strategy: {
-        type: "quiz",
-        questionBankId,
-        drawCount,
-        passCount,
-        maxAttempts,
-        maxEnterSuccess: row.maxEnterSuccess ?? null,
-      },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "quiz", questionBankId, drawCount, passCount, maxAttempts, maxEnterSuccess: maxEnter };
   }
   if (dtype === "ACK_READ") {
     let minDwellSeconds = 0;
     let requireScrollToBottom = false;
     try {
-      if (row.dispositionConfigJson) {
-        const cfg = JSON.parse(row.dispositionConfigJson) as Record<string, unknown>;
+      if (dispositionConfigJson) {
+        const cfg = JSON.parse(dispositionConfigJson) as Record<string, unknown>;
         if (typeof cfg.minDwellSeconds === "number") minDwellSeconds = Math.max(0, cfg.minDwellSeconds);
         if (typeof cfg.requireScrollToBottom === "boolean") requireScrollToBottom = cfg.requireScrollToBottom;
       }
     } catch {
       /* keep defaults */
     }
-    return {
-      actions,
-      strategy: { type: "ack_read", minDwellSeconds, requireScrollToBottom, maxEnterSuccess: row.maxEnterSuccess ?? null },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "ack_read", minDwellSeconds, requireScrollToBottom, maxEnterSuccess: maxEnter };
   }
   if (dtype === "SIGNATURE") {
     let preamble = "";
     try {
-      if (row.dispositionConfigJson) {
-        const cfg = JSON.parse(row.dispositionConfigJson) as { preamble?: string };
+      if (dispositionConfigJson) {
+        const cfg = JSON.parse(dispositionConfigJson) as { preamble?: string };
         preamble = cfg.preamble ?? "";
       }
     } catch {
       /* ignore */
     }
-    return {
-      actions,
-      strategy: { type: "signature", preamble, maxEnterSuccess: row.maxEnterSuccess ?? null },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "signature", preamble, maxEnterSuccess: maxEnter };
   }
   if (dtype === "SHOW_ONLY") {
-    return {
-      actions,
-      strategy: {
-        type: "fixed",
-        challengePhrase: "",
-        maxEnterSuccess: row.maxEnterSuccess ?? null,
-        puzzle: false,
-      },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "fixed", challengePhrase: "", maxEnterSuccess: maxEnter, puzzle: false };
   }
 
-  const phrase = (row.interactiveChallenge ?? "").trim();
+  const phrase = (interactiveChallenge ?? "").trim();
   const puzzle = dtype === "ACK_PUZZLE" || phrase.length > 0;
   return {
+    type: "fixed",
+    challengePhrase: interactiveChallenge ?? "",
+    maxEnterSuccess: maxEnter,
+    puzzle,
+  };
+}
+
+function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
+  const actions: DispositionActionCode[] = [];
+  if (row.forbidEnter) actions.push("forbid");
+  if (row.showNoticeEveryScan) actions.push("every");
+  if (row.interactiveUnlockOnVerify) actions.push("unlock");
+
+  return {
     actions,
-    strategy: {
-      type: "fixed",
-      challengePhrase: row.interactiveChallenge ?? "",
-      maxEnterSuccess: row.maxEnterSuccess ?? null,
-      puzzle,
-    },
+    strategy: strategyFromDispositionFields(
+      row.dispositionType,
+      row.dispositionConfigJson,
+      row.interactiveChallenge,
+      row.maxEnterSuccess
+    ),
     expiry: { mode: "KEEP" },
   };
 }

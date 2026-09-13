@@ -263,6 +263,14 @@ public class CageOperationService {
             return notOperable("NOT_OCCUPIED", "笼位不是饲养中，无法分笼/转移");
         }
         if (modeVisibilityService.isOpExtraOperator(user)) {
+            // 额外操作身份（矩阵 cage.op.manage_identities）只给了「能不能做这类操作」的**资格**，
+            // 没给**作用域**。以前这里直接 return operable()，结果是：矩阵里勾了饲养组长/饲养员的人
+            // 对全院任意笼位都能分笼/转移/代认领 —— 包括对他脱敏、他根本看不到的别人课题组的笼位。
+            // 现在要求笼位落在本人的区域或课题组内，判据与网格脱敏同源（区域命中整架放开、否则按课题组），
+            // 保证「看不到就不能操作」。
+            if (!cageInScope(user, animalCageId, d)) {
+                return notOperable("NO_PERMISSION", "该笼位不在你负责的区域或课题组内");
+            }
             Map<String, Object> out = operable();
             // 额外身份（饲养员/饲养组长/超管）还能代绑定：弹窗检索本课题组人员
             out.put("canClaimOnBehalf", true);
@@ -294,6 +302,32 @@ public class CageOperationService {
         return isExperimenterSelf(user, exp)
                 ? operable()
                 : notOperable("NO_PERMISSION", "该笼位由「" + exp + "」占用，无分笼/转移权限");
+    }
+
+    /**
+     * 该笼位是否落在本人的作用域内：**区域分配命中**（可见范围补充）**或**在**本人的课题组**内。
+     *
+     * <p>与网格脱敏同一套判据（{@code CageCellIndexController.applyGroupMask}）：区域命中 → 整架放开；
+     * 否则按课题组过滤。所以「看得到这个笼位」与「能操作这个笼位」口径一致，不会出现
+     * 「对他脱敏、他看不到，却还能分笼/转移/代认领」。
+     */
+    private boolean cageInScope(User user, Long animalCageId, CageCellDetail d) {
+        // 全局查看者（SUPER_ADMIN+ / 平台管理者）不受作用域限制：他们本来就可见全部，
+        // 这次收窄针对的是「矩阵给了操作资格、但笼位不在他负责范围内」的饲养组长/饲养员。
+        if (visibilityPolicy.isGlobalViewer(user)) return true;
+        Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
+        if (loc != null) {
+            Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
+            String roomId = str(loc.get("roomId"));
+            String floorId = str(loc.get("floorId"));
+            String campusId = str(loc.get("campusId"));
+            if ((roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId))
+                    || (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId))
+                    || (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId))) {
+                return true;
+            }
+        }
+        return cageInUserGroup(user, d);
     }
 
     private static Map<String, Object> notOperable(String code, String reason) {
@@ -636,6 +670,12 @@ public class CageOperationService {
         if (d == null) throw new TwinBusinessException(404, "笼位不存在: " + animalCageId);
         if (d.getCageTypeCode() == null || d.getCageTypeCode() != 3) {
             throw new TwinBusinessException(400, "该笼位不是饲养中的笼位，无法认领");
+        }
+        // **操作者本人**的作用域：入口按钮上也判过，但按钮是前端在拦、可以直接打接口，
+        // 所以写路径必须自己再判一次。判据与按钮同源（区域分配 / 课题组），
+        // 否则脱敏看不到的笼位照样能被代认领。（下面 cageInUserGroup(target) 判的是目标人，两回事。）
+        if (!cageInScope(operator, animalCageId, d)) {
+            throw new TwinBusinessException(403, "该笼位不在你负责的区域或课题组内，无法代认领");
         }
         User target = userMapper.findById(targetAccountId);
         if (target == null) throw new TwinBusinessException(400, "目标人员不存在");
@@ -1083,13 +1123,14 @@ public class CageOperationService {
     // 审核
     // ═══════════════════════════════════════════
 
-    /** 待审列表：全局可见者（SUPER_ADMIN+）全量，否则按 cage_audit_assignment 的楼层/房间归属过滤。 */
+    /** 待审列表：全局可见者（SUPER_ADMIN+）全量，否则按可见范围（含组长下放的审核权）过滤。 */
     public List<Map<String, Object>> pending(User reviewer, String opType) {
-        boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
+        // 判定先算一次再逐行比：canReview 每次要查身份/矩阵/成员勾选/可见范围，逐行调会把查询数乘上行数
+        CageRegionGrantService.ReviewAuthority auth = regionGrantService.reviewAuthority(reviewer);
         List<Map<String, Object>> out = new ArrayList<>();
         for (CageOpRequest r : opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, opType)) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(r.getSourceAnimalCageId());
-            if (!isAdmin && !regionGrantService.canReview(reviewer,
+            if (!auth.covers(
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")))) {

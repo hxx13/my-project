@@ -615,6 +615,163 @@ export async function saveAlertConfig(configs: CageAlertConfig[], mode?: string)
   if (!res.data?.success) throw new Error(res.data?.message || "保存告警配置失败");
 }
 
+// ── 笼位特殊状态持续超时告警：阈值配置（T6a 端点）──
+
+export type CageStatusAlertAction = "HIGHLIGHT" | "VIOLATION" | "BOTH";
+
+/** 一条告警阈值规则。statusLabel 由后端按 STATUS_LABELS 下发，只读展示用。 */
+export interface CageStatusAlertRule {
+  statusCode: string;
+  statusLabel: string;
+  thresholdDays: number;
+  action: CageStatusAlertAction;
+  enabled: boolean;
+}
+
+/** 保存用的 wire 形状：statusLabel 不下发（后端自己算）。 */
+export type CageStatusAlertRuleInput = Omit<CageStatusAlertRule, "statusLabel">;
+
+/** 可配告警阈值的区域树节点（GET /config/regions 下发，层级固定 CAMPUS→FLOOR→ROOM）。 */
+export interface CageStatusAlertRegionNode {
+  regionType: string;
+  regionId: string;
+  /** 后端拼好的路径名（校区「浦东」/ 楼层「浦东 / 1号楼」/ 房间「1号楼 / 201C」），前端不再 join。 */
+  name: string;
+  /** 本层自己有配置行（含全关行）。 */
+  configured: boolean;
+  /** 任一后代有配置行（折叠时一眼看出「下面配过」）。 */
+  descendantConfigured: boolean;
+  /** true = 仅补路径定位的祖先节点，只显示路径、不可配。 */
+  locationOnly: boolean;
+  children: CageStatusAlertRegionNode[];
+}
+
+/** 单区域阈值读视图（形状照 cage-region/capabilities）。 */
+export interface CageStatusAlertRegionView {
+  regionType: string;
+  regionId: string;
+  /** 调用者是不是超管。超管保存 = 重置本区域。 */
+  asAdmin: boolean;
+  /** 本区被配过吗（含 enabled=0 的关闭行）。false = 谁都没配过 → 回落全局默认。 */
+  regionConfigured: boolean;
+  mine: CageStatusAlertRule[];
+  others: CageStatusAlertRule[];
+  defaults: CageStatusAlertRule[];
+}
+
+/** GET /cage-status-alert/config/global — 全局默认阈值（STAFF 可读）。 */
+export async function fetchGlobalStatusAlertConfig(): Promise<CageStatusAlertRule[]> {
+  const res = await authHttp.get<Result<CageStatusAlertRule[]>>("/cage-status-alert/config/global");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载全局告警阈值失败");
+  return res.data.data ?? [];
+}
+
+/** PUT /cage-status-alert/config/global — 全量替换五行（仅超管）。 */
+export async function saveGlobalStatusAlertConfig(rules: CageStatusAlertRuleInput[]): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-status-alert/config/global", { rules });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存全局告警阈值失败");
+}
+
+/** GET /cage-status-alert/config/regions — 当前登录人可配告警阈值的区域树（超管=全量；组长=自己负责的子树+祖先定位链）。 */
+export async function fetchStatusAlertConfigRegions(): Promise<CageStatusAlertRegionNode[]> {
+  const res = await authHttp.get<Result<{ regions: CageStatusAlertRegionNode[] }>>("/cage-status-alert/config/regions");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载区域列表失败");
+  return res.data.data?.regions ?? [];
+}
+
+/** GET /cage-status-alert/config/region — 某区域的告警阈值（mine/others/defaults + 是否配过）。 */
+export async function fetchRegionStatusAlertConfig(
+  regionType: string,
+  regionId: string,
+): Promise<CageStatusAlertRegionView> {
+  const res = await authHttp.get<Result<CageStatusAlertRegionView>>("/cage-status-alert/config/region", {
+    params: { regionType, regionId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载区域告警阈值失败");
+  return res.data.data ?? { regionType, regionId, asAdmin: false, regionConfigured: false, mine: [], others: [], defaults: [] };
+}
+
+/** PUT /cage-status-alert/config/region — 全量替换本人在该区域的告警阈值。 */
+export async function saveRegionStatusAlertConfig(
+  regionType: string,
+  regionId: string,
+  rules: CageStatusAlertRuleInput[],
+): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-status-alert/config/region", {
+    regionType,
+    regionId,
+    rules,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存区域告警阈值失败");
+}
+
+/** 活跃告警（GET /cage-status-alert/active）。animalCageId/shelveId/roomId 均为字符串（雪花 ID 超 JS 精度）。 */
+export interface ActiveCageStatusAlert {
+  animalCageId: string;
+  statusCode: string;
+  statusLabel: string;
+  startedAt: string;
+  firedAt: string;
+  thresholdDays: number;
+  spanDays: number;
+  action: string;
+  /** 孤儿告警（未在 cage_cell_index 反查到笼架）为 undefined */
+  shelveId?: string;
+  roomId?: string;
+}
+
+/**
+ * 活跃告警（GET /cage-status-alert/active）。animalCageId/shelveId/roomId 均为字符串（雪花 ID 超 JS 精度）。
+ * 带 cageIds=指定笼位（MEMBER 即可）；不带=全量（须 STAFF）。cageIds 一次最多 2000，超过由调用方分批。
+ */
+export async function fetchActiveCageStatusAlerts(
+  cageIds?: Array<string | number>,
+): Promise<ActiveCageStatusAlert[]> {
+  const res = await authHttp.get<Result<ActiveCageStatusAlert[]>>("/cage-status-alert/active", {
+    params: cageIds && cageIds.length ? { cageIds: cageIds.join(",") } : {},
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载活跃告警失败");
+  return res.data.data ?? [];
+}
+
+/** 违规页「笼架提交」预填结果（GET /cage-status-alert/violation-prefill，STAFF）。 */
+export interface CageViolationPrefill {
+  animalCageId: string;
+  statusCode: string;
+  statusLabel: string;
+  /** 后端反查笼架索引所得，雪花 ID 字符串；查不到为 null */
+  shelveId: string | null;
+  positionLabel: string | null;
+  /** 笼位坐标；索引缺失时为 null（前端按 positionLabel 模糊对齐兜底） */
+  positionX: number | null;
+  positionY: number | null;
+  roomName: string | null;
+  campusName: string | null;
+  projectPiName: string | null;
+  experimenterName: string | null;
+  /** 按「笼架联动规则」模板渲染好的文案；ruleMatched=false 时是保守兜底文案 */
+  violationText: string;
+  /** 命中规则的 id；未命中为 null */
+  ruleId: number | null;
+  /** false = 没找到匹配规则（violationText 为兜底） */
+  ruleMatched: boolean;
+}
+
+/**
+ * 违规页「笼架提交」预填：给定笼位（+ 可选状态码）→ 状态 + 笼位 + 文案 + 命中规则。
+ * statusCode 缺省时后端从该笼位活跃告警反推。未命中规则不报错（ruleMatched=false）。
+ */
+export async function fetchViolationPrefill(
+  animalCageId: string | number,
+  statusCode?: string,
+): Promise<CageViolationPrefill> {
+  const res = await authHttp.get<Result<CageViolationPrefill>>("/cage-status-alert/violation-prefill", {
+    params: { animalCageId, ...(statusCode ? { statusCode } : {}) },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载违规预填失败");
+  return res.data.data!;
+}
+
 // ==========================================================================
 // 🔧 实时数据源 + 笼位分配（2026-07-27 新增）
 // ==========================================================================
@@ -1274,12 +1431,18 @@ export async function fetchLocalShelfGridByShelveId(shelveId: string): Promise<C
 /**
  * 本地数据源批量：ids 为 cage_shelf_index 主键（full-tree 节点的 id）。
  * 课题组/实验员取笼位表单真相源，一个房间一次拉完。
+ *
+ * @param viewerUserId 脱敏基准人（刷卡弹窗传**被扫人**账号 id）。弹窗的房间/架子按被扫人课题组选，
+ *   脱敏基准必须同为被扫人，否则会出现「架子是被扫人的、格子整片 ***」。不传则不下发脱敏。
  */
-export async function fetchLocalShelfGridsBatch(shelveIndexIds: Array<string | number>): Promise<CageShelfDetail[]> {
+export async function fetchLocalShelfGridsBatch(
+  shelveIndexIds: Array<string | number>,
+  viewerUserId?: string,
+): Promise<CageShelfDetail[]> {
   const ids = shelveIndexIds.filter((v) => v !== null && v !== undefined && String(v) !== "");
   if (ids.length === 0) return [];
   const res = await authHttp.get<Result<CageShelfDetail[]>>("/cage-cell-index/local-grid/batch", {
-    params: { ids: ids.join(",") },
+    params: { ids: ids.join(","), ...(viewerUserId ? { viewerUserId } : {}) },
   });
   if (!res.data?.success) throw new Error(res.data?.message || "加载本地笼位失败");
   return res.data.data ?? [];
@@ -1865,9 +2028,12 @@ export async function replacePersonScopes(userId: string, scopes: PersonScopeEnt
 
 /** 已分配过的人：userId 是 personnel.id 字符串（后端已经由 personnel 表 join 出姓名） */
 export interface ScopeAssignee {
+  /** 账号 id（sys_user.id）——调 /person-scope/{userId} 用它 */
   userId: string;
   name: string;
   staffId?: string | null;
+  /** personnel.id —— 查身份标签（/person-identity 的 user_id 口径）必须用它，别用 userId */
+  personnelId?: string | null;
   scopeCount: number;
 }
 
@@ -1882,39 +2048,6 @@ export async function fetchScopeAssignees(): Promise<ScopeAssignee[]> {
 export async function clearPersonScopes(userId: string): Promise<void> {
   const res = await authHttp.delete<Result<unknown>>(`/person-scope/${encodeURIComponent(userId)}`);
   if (!res.data?.success) throw new Error(res.data?.message || "撤销失败");
-}
-
-// ── 审核人归属（校区/楼层/房间范围）──
-
-export interface CageAuditScope {
-  scopeType: "CAMPUS" | "FLOOR" | "ROOM";
-  scopeId: string;
-}
-
-/** GET /api/cage-audit-assignment — 全部归属总览（按审核人分组，带显示名） */
-export interface CageAuditAssignmentOverview {
-  reviewerUserId: string;
-  reviewerName: string;
-  scopes: CageAuditScope[];
-}
-
-export async function fetchAuditAssignmentOverview(): Promise<CageAuditAssignmentOverview[]> {
-  const res = await authHttp.get<Result<CageAuditAssignmentOverview[]>>("/cage-audit-assignment");
-  if (!res.data?.success) throw new Error(res.data?.message || "加载审核归属总览失败");
-  return res.data.data ?? [];
-}
-
-/** GET /api/cage-audit-assignment/{reviewerUserId} — 查某审核人的归属范围 */
-export async function fetchAuditAssignments(userId: string): Promise<CageAuditScope[]> {
-  const res = await authHttp.get<Result<CageAuditScope[]>>(`/cage-audit-assignment/${encodeURIComponent(userId)}`);
-  if (!res.data?.success) throw new Error(res.data?.message || "加载审核归属失败");
-  return res.data.data ?? [];
-}
-
-/** PUT /api/cage-audit-assignment/{reviewerUserId} — 全量替换某审核人的归属范围 */
-export async function replaceAuditAssignments(userId: string, scopes: CageAuditScope[]): Promise<void> {
-  const res = await authHttp.put<Result<unknown>>(`/cage-audit-assignment/${encodeURIComponent(userId)}`, scopes);
-  if (!res.data?.success) throw new Error(res.data?.message || "保存审核归属失败");
 }
 
 // ── 所属人审核配置（到位确认 / 分笼审核 / 转移审核，按所属人）──
@@ -1980,9 +2113,18 @@ export interface CageModeVisibleResult {
   modeActions?: Record<string, string[]>;
 }
 
-/** GET /api/cage-mode/visible — 当前用户可见的笼架模式 key 列表（含恒可见的 view） */
-export async function fetchCageModeVisible(): Promise<CageModeVisibleResult> {
-  const res = await authHttp.get<Result<CageModeVisibleResult>>("/cage-mode/visible");
+/**
+ * GET /api/cage-mode/visible — 当前用户可见的笼架模式 key 列表（含恒可见的 view）。
+ *
+ * 学生视角请带上**当前房间**的三个键：模式入口是按房间算的（A 房关掉的模式不该在 B 房生效，
+ * 也不该因为 B 房开着就让人从 A 房进去）。不传 = 不限定区域，取该学生各房间的并集。
+ */
+export async function fetchCageModeVisible(params?: {
+  roomId?: string;
+  floorId?: string;
+  campusId?: string;
+}): Promise<CageModeVisibleResult> {
+  const res = await authHttp.get<Result<CageModeVisibleResult>>("/cage-mode/visible", { params });
   if (!res.data?.success) throw new Error(res.data?.message || "加载模式列表失败");
   return res.data.data ?? { modes: [], isStudent: false, isSuperAdmin: false };
 }
@@ -2062,9 +2204,34 @@ export async function saveMyRegionMembers(memberAccountIds: string[]): Promise<v
   if (!res.data?.success) throw new Error(res.data?.message || "保存组员失败");
 }
 
+export interface MemberCandidate {
+  accountId: string;
+  name: string;
+  jobNumber: string;
+  /** 这个人的全部身份标签（饲养员/饲养组长/实验员…），组长靠它判断该不该加 */
+  identities: Array<{ code: string; label: string }>;
+  /** 已被哪位饲养组长纳入；null = 还没人占。有值时不可选（一人只能属于一个组） */
+  boundLeaderName: string | null;
+}
+
+/** GET /api/cage-region/member-candidates — 组员候选人（只列饲养员，带身份标签与占用者） */
+/**
+ * GET /api/cage-region/member-candidates — 按**身份**取候选人（默认饲养员），带身份标签与占用者。
+ * identityCode 传别的身份码即可复用（可见范围分配要选的是「饲养组长」）。
+ */
+export async function fetchMemberCandidates(identityCode?: string): Promise<MemberCandidate[]> {
+  const res = await authHttp.get<Result<MemberCandidate[]>>("/cage-region/member-candidates", {
+    params: identityCode ? { identityCode } : {},
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载候选人失败");
+  return res.data.data ?? [];
+}
+
 export interface MemberCapabilityView {
   /** 组长已勾选的能力码；**空 = 没配过**，此时该组员按身份矩阵走 */
   granted: string[];
+  /** 没配过时系统实际生效的那批（= 身份矩阵给的）。界面据此默认勾上，别拿 ceiling 顶替。 */
+  identityDefaults: string[];
   /** 该组员的身份上限——只能在这个范围里勾 */
   ceiling: string[];
   /** 能力码 → 中文名（矩阵接口是超管专属，标签由后端随这里下发） */
@@ -2077,13 +2244,55 @@ export async function fetchMemberCapabilities(memberAccountId: string): Promise<
     params: { memberAccountId },
   });
   if (!res.data?.success) throw new Error(res.data?.message || "加载组员权限失败");
-  return res.data.data ?? { granted: [], ceiling: [], labels: {} };
+  return res.data.data ?? { granted: [], identityDefaults: [], ceiling: [], labels: {} };
 }
 
 /** PUT /api/cage-region/member-capabilities — 设置某组员的能力（全量替换） */
 export async function saveMemberCapabilities(memberAccountId: string, capabilityCodes: string[]): Promise<void> {
   const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-region/member-capabilities", {
     memberAccountId,
+    capabilityCodes,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存失败");
+}
+
+export interface RegionCapabilityView {
+  regionType: string;
+  regionId: string;
+  /** 调用者是不是超管。超管保存 = **重置本区域**（清掉所有人的行再写他勾的），界面要提示 */
+  asAdmin?: boolean;
+  /**
+   * 本区域**被配过吗**（有任意一行就算，含"显式关闭"的行）。
+   * false = 谁都没配过 → 按矩阵默认全部开放呈现；true = 以库里的为准（可能一个都没开）。
+   */
+  regionConfigured?: boolean;
+  /** **我**在本区配的学生能力码；空 = 我没开任何一项（不代表本区全开，看 regionConfigured） */
+  configured: string[];
+  /** **其他组长**在本区开放的能力码。同一区域多位组长时生效取**并集**，所以这些项我只能看、不能取消 */
+  others: string[];
+  /** 矩阵允许的上限——只能在这个范围里勾（矩阵里 STUDENT 组且已被某个学生身份命中的） */
+  ceiling: string[];
+  labels: Record<string, string>;
+}
+
+/** GET /api/cage-region/capabilities — 某区域开放的学生能力（仅该区域组长或超管） */
+export async function fetchRegionCapabilities(regionType: string, regionId: string): Promise<RegionCapabilityView> {
+  const res = await authHttp.get<Result<RegionCapabilityView>>("/cage-region/capabilities", {
+    params: { regionType, regionId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载区域学生功能失败");
+  return res.data.data ?? { regionType, regionId, configured: [], others: [], ceiling: [], labels: {} };
+}
+
+/** PUT /api/cage-region/capabilities — 设置某区域开放的学生能力（全量替换） */
+export async function saveRegionCapabilities(
+  regionType: string,
+  regionId: string,
+  capabilityCodes: string[],
+): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-region/capabilities", {
+    regionType,
+    regionId,
     capabilityCodes,
   });
   if (!res.data?.success) throw new Error(res.data?.message || "保存失败");

@@ -362,6 +362,10 @@ export interface ViolationRule {
   cageGroupWhitelist?: string[];
   cageTriggerAction?: 'VIOLATION_ONLY' | 'NOTICE_ONLY' | 'BOTH';
   cageImageUrls?: string[];
+  /** 处置策略编码；空=存量规则走 interactiveChallenge 反推（后端 twin_violation_rule.disposition_type） */
+  dispositionType?: string | null;
+  /** 处置策略自带配置 JSON 字符串；空=无配置 */
+  dispositionConfigJson?: string | null;
 }
 
 /** 解析后端返回的笼架 JSON 字符串字段为 JS 数组/对象 */

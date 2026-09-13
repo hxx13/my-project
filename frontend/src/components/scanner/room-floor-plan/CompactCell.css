@@ -24,3 +24,80 @@
     box-shadow: 0 0 0 2px var(--app-color-accent);
   }
 }
+
+/* ── 格内尺寸一律相对格子自身宽度算（cqw），不写死 px ──
+   格子宽度是变的：8 列网格里由中栏宽度决定（两排时 ~50px），
+   本课题组架子 <3 架改单列时按可视高度反推（~64px），再叠加窗口缩放。
+   写死 px 就会「大格子里字小得看不清、小格子里顶破格子」。
+   基线 = 格子按钮本身，故 .scan-plan-cell 必须挂在 button 上。
+
+   注意：容器**不能**在这里写 font-size: Ncqw —— cqw 只对后代生效，
+   写在容器自身上会去找上一层容器（没有则回退视口宽度），字号会变成几百 px。
+   所以基准字号挂到 .scan-plan-sub，由需要它的行自己声明。
+
+   纵向预算按「占格子宽度的百分比」算（格子近似正方），各档加起来必须 ≤100cqw，
+   否则内容溢出被 overflow-hidden 裁掉。当前最坏组合（徽标 + 4 行 + 底部状态条）＝
+   17(pt) + 20 + 17 + 17 + 1.5×2(gap) + 20(pb) = 94cqw，留了余量。
+   改任何一档前先把这套加法重算一遍。 */
+.scan-plan-cell {
+  container-type: inline-size;
+}
+
+/* 居中各行：位号 / 课题组组长 / 实验员 /（无底部状态条时才有）类型文字 */
+.scan-plan-cell .scan-plan-body {
+  padding: 17cqw 6cqw 0; /* 顶部让开左上角认领徽标（徽标高约 16cqw） */
+  gap: 1.5cqw;
+}
+/* 底部状态条（分笼审核中/转移审核中/已被预订/已划分）是实心的，会盖住末行 ——
+   给它让出 20cqw。代价见 CompactCell.tsx：有状态条时不再渲染类型文字。 */
+.scan-plan-cell .scan-plan-body--bar {
+  padding-bottom: 20cqw;
+}
+.scan-plan-cell .scan-plan-pos {
+  font-size: 20cqw;
+}
+/* 课题组组长 / 实验员 / 脱敏 `***` —— 统一走这一档 */
+.scan-plan-cell .scan-plan-sub {
+  font-size: 17cqw;
+}
+.scan-plan-cell .scan-plan-type {
+  font-size: 14cqw;
+}
+
+/* 左上角认领徽标（未到位/待审批/待释放）。字号压到 12cqw，高度才被上面的
+   padding-top 让得开 —— 徽标一大就压住位号（旧版只有三行、内容矮，所以没暴露）。 */
+.scan-plan-cell .scan-plan-badge {
+  left: 1cqw;
+  top: 1cqw;
+  padding: 0.5cqw 2cqw;
+  border-radius: 1.5cqw;
+  font-size: 12cqw;
+}
+
+/* 底部状态条 */
+.scan-plan-cell .scan-plan-bar {
+  font-size: 14cqw;
+  line-height: 20cqw;
+}
+
+/* 中间态正中色底图标 —— 占格子 28%，与 CellButton 的 24px/87px 同比例 */
+.scan-plan-cell .scan-plan-pending {
+  width: 28cqw;
+  height: 28cqw;
+}
+.scan-plan-cell .scan-plan-pending > svg {
+  width: 17cqw;
+  height: 17cqw;
+}
+
+/* 右上角类型点由 CageCellOverlays 按 82px 的 CellButton 定死（且 CellButton 也在用 compact），
+   所以在格子上按比例覆盖，不动那个共享组件。 */
+.scan-plan-cell [data-cage-type-dot] {
+  top: 1.5cqw;
+  right: 1.5cqw;
+}
+.scan-plan-cell [data-cage-type-dot] > div {
+  width: 26cqw;
+  height: 26cqw;
+  font-size: 15cqw;
+}

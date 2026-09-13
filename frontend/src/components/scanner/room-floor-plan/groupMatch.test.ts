@@ -92,4 +92,14 @@ describe("rackMatchesGroup", () => {
   it("空笼位列表返回 false", () => {
     expect(rackMatchesGroup([], "卢令的课题组")).toBe(false);
   });
+  /**
+   * 脱敏后的格子 PI 被后端置为 `***`。架子过滤必须落在**脱敏后**的数据上 ——
+   * 若 `***` 被误判成命中，弹窗会渲染出整间房别人的架子（看得见的越权）；
+   * 若被判成空串不参与，则本组架子照常命中。这条锁住「混架只露本组」的前提。
+   */
+  it("脱敏格子（PI=***）不算命中，同一架里本组格子仍命中", () => {
+    const masked = { projectPiName: "***", piName: "***", cageBoxInfo: { ProjectPiName: "***" } };
+    expect(rackMatchesGroup([masked], "卢令的课题组")).toBe(false);
+    expect(rackMatchesGroup([masked, { projectPiName: "卢令" }], "卢令的课题组")).toBe(true);
+  });
 });
