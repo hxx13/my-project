@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,26 +41,41 @@ public class CageModeVisibilityService {
     public static final String CAP_OP_MANAGE = "cage.op.manage_identities";
 
     /**
-     * 学生在**状态模式**下被放行的动作：action code → 表单 canonical。
+     * 学生**状态模式**下的动作：action code → 表单 canonical。
      *
-     * <p>目前只有合笼。后续逐批开放时**只改这一张表** —— 后端校验用 canonical
-     * （{@link #isStudentEditToggle}），下发给前端过滤渲染用 action code
-     * （{@link #studentEditActionCodes}），两边同源不会漂移。
+     * <p>这张表只表达**命名关系**（动作码 ↔ 该动作写哪个表单字段），**不是策略**。
+     * 能不能用由矩阵决定：动作码小写即能力码，如 COHABITATION → {@code cage.student.edit.cohabitation}。
+     * 加动作 = 注册一行能力 + 在这里补一条命名映射，具体放行谁在矩阵里勾。
      *
-     * <p>学生这条路**不能**走 {@code canUseMode(u,"edit")}：那个判据是身份 code，
+     * <p>学生这条路**不能**走 {@code canUseMode(u,"edit")}：那个判据是教职工状态模式的身份码，
      * 而学生也可能带 BREEDER/BREEDING_GROUP_LEADER，会连五个动作一起放开。
      */
     private static final Map<String, String> STUDENT_EDIT_ACTIONS = Map.of(
             "COHABITATION", "needs_cohabitation");
 
-    /** 学生可用的状态动作 code 列表（下发给前端过滤渲染）。 */
-    public List<String> studentEditActionCodes() {
-        return List.copyOf(STUDENT_EDIT_ACTIONS.keySet());
+    /** 学生状态动作对应的矩阵能力码。 */
+    public static String studentEditCapability(String actionCode) {
+        return "cage.student.edit." + actionCode.toLowerCase(Locale.ROOT);
     }
 
-    /** 该表单 canonical 是否属于学生可用的状态动作。 */
-    public boolean isStudentEditToggle(String canonical) {
-        return canonical != null && STUDENT_EDIT_ACTIONS.containsValue(canonical);
+    /** 该学生**有权使用**的状态动作 code 列表（下发给前端过滤渲染）。 */
+    public List<String> studentEditActionCodes(User user) {
+        Set<String> mine = identityCodesOf(user == null ? null : user.getId());
+        return STUDENT_EDIT_ACTIONS.keySet().stream()
+                .filter(a -> permissionService.canUse(studentEditCapability(a), mine))
+                .toList();
+    }
+
+    /** 该学生能否操作某表单 canonical（控制器收口用）。 */
+    public boolean canStudentEdit(User user, String canonical) {
+        if (canonical == null || user == null) return false;
+        Set<String> mine = identityCodesOf(user.getId());
+        for (Map.Entry<String, String> e : STUDENT_EDIT_ACTIONS.entrySet()) {
+            if (canonical.equals(e.getValue())) {
+                return permissionService.canUse(studentEditCapability(e.getKey()), mine);
+            }
+        }
+        return false;
     }
 
     /** 模式 key → 对应的矩阵能力码。 */

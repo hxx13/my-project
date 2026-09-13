@@ -49,10 +49,13 @@ public class CageModeController {
             // 所以学生分支也要按身份配置补发，否则学生账号的管家永远看不到入口。
             List<String> modes = new ArrayList<>(List.of("view", "studentClaim", "confirm"));
             if (visibilityService.canUseMode(u, "division")) modes.add("division");
-            // 状态模式：学生侧已开放，但**只放行部分动作**（当前仅合笼）。
-            // 动作清单由后端下发，前端据此过滤渲染，不要在前端硬编码动作名。
-            modes.add("edit");
-            out.put("modeActions", Map.of("edit", visibilityService.studentEditActionCodes()));
+            // 状态模式：学生侧可用的动作清单由矩阵决定（cage.student.edit.*）。
+            // 一个动作都没授权就不发入口，避免学生点进去是死路。
+            List<String> editActions = visibilityService.studentEditActionCodes(u);
+            if (!editActions.isEmpty()) {
+                modes.add("edit");
+                out.put("modeActions", Map.of("edit", editActions));
+            }
             out.put("modes", modes);
         } else {
             out.put("modes", visibilityService.visibleStaffModes(u));

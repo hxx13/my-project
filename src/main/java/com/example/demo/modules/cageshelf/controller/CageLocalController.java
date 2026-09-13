@@ -231,13 +231,14 @@ public class CageLocalController {
         if (animalCageId == null || toggle == null)
             return Result.fail(400, "animalCageId 和 toggle 必填");
 
-        // 学生侧单独一条路：只放行 CageModeVisibilityService.STUDENT_EDIT_ACTIONS，且只能动**本人使用中**的笼位。
-        // 不能复用 canUseMode(u,"edit") —— 它按身份 code 判（CageModeVisibilityService:136），
+        // 学生侧单独一条路：只放行矩阵里授权的学生状态动作（cage.student.edit.*），
+        // 且只能动**本人使用中**的笼位。
+        // 不能复用 canUseMode(u,"edit") —— 它按教职工状态模式的身份码判，
         // 而学生也可能带 BREEDER/BREEDING_GROUP_LEADER，那样会把五个动作和别人的笼位一起放开。
         // 教职工侧维持原判定不动。
         if (modeVisibilityService.isStudent(u)) {
-            if (!modeVisibilityService.isStudentEditToggle(toggle)) {
-                return Result.fail(403, "学生当前只能标记「合笼」");
+            if (!modeVisibilityService.canStudentEdit(u, toggle)) {
+                return Result.fail(403, "学生当前可标记的状态动作不含该项");
             }
             if (!cageOperationService.isOccupantSelf(u, animalCageId)) {
                 return Result.fail(403, "只能标记本人使用中的笼位");

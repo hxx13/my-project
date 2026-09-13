@@ -84,3 +84,19 @@ WHERE NOT EXISTS (SELECT 1 FROM (SELECT id FROM cage_permission_grant LIMIT 1) A
 -- （CageClaimConfigSeed 里记的同一个教训）。必须放在迁移与基线播种**之后**。
 DELETE FROM sys_system_config_def WHERE module = 'cage_mode';
 DELETE FROM sys_system_config     WHERE module = 'cage_mode';
+
+-- 学生侧状态动作：学生视角的「状态模式」下可修改的动作，按**动作码**注册为能力。
+-- 取代 CageModeVisibilityService 里写死的 STUDENT_EDIT_ACTIONS 放行逻辑——那张 map 只保留
+-- 「动作码 → 表单 canonical」的命名关系，**放行与否读这里的授权**，与其他能力同一套机制。
+INSERT IGNORE INTO cage_permission_capability (code, label, view_group, sort_order) VALUES
+('cage.student.edit.cohabitation', '合笼（学生）', 'STUDENT', 200);
+
+-- 默认授权给全部学生视角身份，与迁移前「任何学生都能标记合笼」等价。
+-- 依据：实测 2501 个可折算的学生中 2497 个是纯 LAB_MEMBER，另有 PI / GROUP_LEADER / GROUP_STEWARD。
+-- 注意：折算不到 personnel 的账号（本地 112 个，无姓名、用户名为雪花 id 的同步残留）身份集为空，
+-- fail-closed 下会失去合笼——这是有意为之，不是遗漏。
+INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code) VALUES
+('cage.student.edit.cohabitation', 'LAB_MEMBER'),
+('cage.student.edit.cohabitation', 'PI'),
+('cage.student.edit.cohabitation', 'GROUP_LEADER'),
+('cage.student.edit.cohabitation', 'GROUP_STEWARD');
