@@ -185,6 +185,11 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             criticalNoticeText: asString(n.criticalNoticeText ?? n.critical_notice_text),
             autoOpenSuppressed:
                 asBooleanLike(n.autoOpenSuppressed ?? n.auto_open_suppressed) ?? false,
+            // 处置策略（后端 buildNotice 从待办带出）。这里是逐字段重建，**漏掉它就等于卡片永远拿不到策略**，
+            // 表现是弹窗只有公告正文、没有任何处置面板。
+            dispositionType: asString(n.dispositionType ?? n.disposition_type) ?? null,
+            dispositionConfigJson:
+                asString(n.dispositionConfigJson ?? n.disposition_config_json) ?? null,
         };
     };
     const studentViolationNotice = parseViolationNotice(
