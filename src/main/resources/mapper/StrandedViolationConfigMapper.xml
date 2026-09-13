@@ -49,7 +49,9 @@
             whitelist_depts = #{whitelistDepts},
             interactive_challenge_enabled = #{interactiveChallengeEnabled},
             interactive_challenge_phrase = #{interactiveChallengePhrase},
-            interactive_unlock_on_verify = #{interactiveUnlockOnVerify}
+            interactive_unlock_on_verify = #{interactiveUnlockOnVerify},
+            campus_pd_enabled = #{campusPdEnabled},
+            campus_px_enabled = #{campusPxEnabled}
         WHERE id = 1
     </update>
 </mapper>

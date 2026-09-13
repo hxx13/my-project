@@ -383,6 +383,8 @@ public class StrandedViolationService {
         String interactivePhrase = Objects.toString(body.get("interactive_challenge_phrase"), "");
         int interactiveEnabled = toInt(body.get("interactive_challenge_enabled"), 0);
         int interactiveUnlockOnVerify = toInt(body.get("interactive_unlock_on_verify"), 1);
+        int campusPd = toInt(body.get("campus_pd_enabled"), 1);
+        int campusPx = toInt(body.get("campus_px_enabled"), 1);
 
         configMapper.updateConfig(
                 toTinyIntFlag(body.get("auto_signout_enabled"), 1),
@@ -392,7 +394,9 @@ public class StrandedViolationService {
                 depts,
                 interactiveEnabled,
                 interactivePhrase,
-                interactiveUnlockOnVerify);
+                interactiveUnlockOnVerify,
+                campusPd,
+                campusPx);
         log.info("[stranded-violation] config saved: autoSignout={}, tpl={}, forbidEnter={}, expireDays={}, interactive={}",
                 toTinyIntFlag(body.get("auto_signout_enabled"), 1),
                 tpl,

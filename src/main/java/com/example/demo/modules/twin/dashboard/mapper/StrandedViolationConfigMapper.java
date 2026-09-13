@@ -33,5 +33,7 @@ public interface StrandedViolationConfigMapper {
                       @Param("whitelistDepts") String whitelistDepts,
                       @Param("interactiveChallengeEnabled") Integer interactiveChallengeEnabled,
                       @Param("interactiveChallengePhrase") String interactiveChallengePhrase,
-                      @Param("interactiveUnlockOnVerify") Integer interactiveUnlockOnVerify);
+                      @Param("interactiveUnlockOnVerify") Integer interactiveUnlockOnVerify,
+                      @Param("campusPdEnabled") Integer campusPdEnabled,
+                      @Param("campusPxEnabled") Integer campusPxEnabled);
 }
