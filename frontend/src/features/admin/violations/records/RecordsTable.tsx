@@ -239,7 +239,8 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     queryFn: () =>
       listStudentViolations({
         ...(keyword ? { limit: 500 } : { page, pageSize: RECORDS_PAGE_SIZE }),
-        excludeCage: true,
+        // 不要再传 excludeCage：那是旧「按人员 / 按笼架」双视图时代的遗留（人员视图排除笼架记录，
+        // 笼架记录走独立视图）。两视图已合并为一张表，继续排除会让**所有笼架触发的违规消失**。
         statuses: filters.statuses.length ? filters.statuses : undefined,
         sources: filters.sources.length ? filters.sources : undefined,
         // enterLocks 三态：[]=不过滤 / [LOCKED]=仅禁入 / [UNLOCKED]=仅可进入 / [两个]=全部
