@@ -2920,7 +2920,7 @@ function Inner(){
             {confirmLookup?.claim && !confirmLookup.claim.hasInfo && (
               <div className="border-t border-[var(--twin-hairline)] pt-2">
                 <div className="mb-1 text-[11px] font-semibold text-[var(--twin-ink)]">填写信息</div>
-                <CageFormFill animalCageId={confirmLookup.cageCell?.animalCageId ?? null} claimed editable />
+                <CageFormFill animalCageId={confirmLookup.cageCell?.animalCageId ?? null} claimed />
               </div>
             )}
             <div className="rounded-twin-md bg-amber-50 border border-amber-200 px-3 py-2 text-center">

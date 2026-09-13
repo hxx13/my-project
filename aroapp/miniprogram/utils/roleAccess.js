@@ -26,21 +26,8 @@ function hasMinRole(currentRole, minRole) {
 /** 「饲养组长」身份码。与后端 CageModeVisibilityService.CODE_LEADER 同一个码。 */
 var CODE_BREEDING_GROUP_LEADER = 'BREEDING_GROUP_LEADER';
 
-/**
- * 笼位关键信息表单的客户端编辑授权 —— Web 端 LocalDetailPanel 的同款判定：
- * 「管理员及以上」或「持饲养组长身份」。
- *
- * 服务端另有按笼位算的判定（管理员/额外操作身份/认领人/实验员本人），两者取或，
- * 见 CageFormFill.tsx 的 `canEdit = editable || serverEditable`。小程序也必须取或，
- * 否则同一个账号会在 Web 能编、在小程序不能。
- *
- * @param {string} currentRole 角色码（storage 里的 ROLE）
- * @param {Object} identityCodes 身份码集合，形如 { BREEDING_GROUP_LEADER: true }
- */
-function hasCageFormEditGrant(currentRole, identityCodes) {
-  if (hasMinRole(currentRole, 'ADMIN')) return true;
-  return !!(identityCodes && identityCodes[CODE_BREEDING_GROUP_LEADER]);
-}
+// 注：原 hasCageFormEditGrant（客户端「角色≥ADMIN 或身份含饲养组长」）已于 2026-09-15 移除。
+// 编辑权进矩阵后**只认服务端** cageEditInfo（读能力 cage.edit.form），客户端不再保留旁路。
 
 /**
  * 判定当前用户是否为学生账号。
@@ -67,6 +54,5 @@ module.exports = {
   CODE_BREEDING_GROUP_LEADER,
   getRoleLevel,
   hasMinRole,
-  hasCageFormEditGrant,
   isStudentAccount,
 };

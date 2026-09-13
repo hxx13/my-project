@@ -691,8 +691,10 @@ public class CageOperationService {
             out.put("reason", "笼位不存在");
             return out;
         }
-        boolean admin = user.getRole() != null && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
-        if (admin || modeVisibilityService.isOpExtraOperator(user)) {
+        // 编辑权读矩阵能力 cage.edit.form（2026-09-15 起）：
+        // 原先写死的「role>=ADMIN 或 isOpExtraOperator」已废——**ADMIN 不再自动拥有全量编辑**，
+        // 与用户定的「编辑权 = 饲养组长 / 学生限本人」一致。SUPER_ADMIN+ 由服务内逃生口放行。
+        if (modeVisibilityService.canEditCageForm(user)) {
             out.put("editable", true);
             return out;
         }
@@ -710,12 +712,11 @@ public class CageOperationService {
         // 失败原因必须说清卡在哪一条。原来一律写「由 X 占用」，于是角色等级不够的人
         // 也读到「被占用」，误以为是占用问题 —— 高权限账号尤其容易被这句话带偏。
         RoleEnum role = user.getRole();
-        String roleNote = admin ? ""
-                : "；当前角色「" + (role == null ? "未知" : role.getDescZh())
-                        + "」低于管理员，也不在额外操作身份名单里";
+        String roleNote = "；当前角色「" + (role == null ? "未知" : role.getDescZh())
+                + "」不在「编辑笼位表单」权限名单里";
         out.put("reason", exp == null
                 ? "该笼位尚未认领，认领成本人后才能编辑" + roleNote
-                : "该笼位由「" + exp + "」占用" + (admin ? "，无编辑权限" : roleNote));
+                : "该笼位由「" + exp + "」占用" + roleNote);
         return out;
     }
 

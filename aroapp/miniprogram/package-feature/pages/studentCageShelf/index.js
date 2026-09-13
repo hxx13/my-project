@@ -1,6 +1,6 @@
 var springAuth = require('../../../utils/springAuth.js');
 var pagePermission = require('../../../utils/pagePermission.js');
-var { isStudentAccount, hasCageFormEditGrant } = require('../../../utils/roleAccess.js');
+var { isStudentAccount } = require('../../../utils/roleAccess.js');
 var personIdentity = require('../../../utils/personIdentity.js');
 var { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
 var {
@@ -3147,12 +3147,11 @@ Page({
       refreshDirty(tree.groups);
       summarizeGroups(tree.groups);
       applyDefaultCollapse(tree.groups);
-      // 与 Web 端 CageFormFill 的 canEdit 同义：客户端授权（角色/身份）或服务端按笼位判定，取或
+      // 编辑权**只认服务端**（cageEditInfo，读矩阵能力 cage.edit.form）。
+      // 原先客户端还有一道「角色≥ADMIN 或身份含饲养组长」并与服务端取或——那是旁路，
+      // 会让被服务端拦住的账号在小程序里照样能编。2026-09-15 编辑权进矩阵后移除。
       var serverEditable = !!(arr[2] && arr[2].editable);
-      var clientGrant = hasCageFormEditGrant(
-        wx.getStorageSync(springAuth.KEYS.ROLE) || '', arr[3]
-      );
-      var canEditForm = clientGrant || serverEditable;
+      var canEditForm = serverEditable;
       self.setData({
         formRows: tree.rows,
         formGroups: tree.groups,

@@ -40,6 +40,9 @@ public class CageModeVisibilityService {
     /** 分笼/转移的**额外**操作身份能力码（占用者本人恒定放行，不是矩阵列）。 */
     public static final String CAP_OP_MANAGE = "cage.op.manage_identities";
 
+    /** 编辑笼位表单的能力码。 */
+    public static final String CAP_EDIT_FORM = "cage.edit.form";
+
     /**
      * 学生**状态模式**下的动作：action code → 表单 canonical。
      *
@@ -132,6 +135,19 @@ public class CageModeVisibilityService {
     public Set<String> opManageCodes() {
         return permissionService.allowedIdentitiesByCapability()
                 .getOrDefault(CAP_OP_MANAGE, Set.of());
+    }
+
+    /**
+     * 能否编辑笼位表单（读矩阵能力 {@code cage.edit.form}）。
+     * 取代原先写死的「role>=ADMIN 或 isOpExtraOperator」——**ADMIN 不再自动拥有全量编辑**。
+     * SUPER_ADMIN+ 仍走逃生口放行。
+     *
+     * <p>「限饲养组长所属区域」那半需要 {@code cage_region_grant} 的 LEADER 行，属第四期。
+     */
+    public boolean canEditCageForm(User user) {
+        if (user == null) return false;
+        if (isSuperAdmin(user)) return true;
+        return permissionService.canUse(CAP_EDIT_FORM, identityCodesOf(user.getId()));
     }
 
     /** 是否为分笼/转移的「额外操作身份」（饲养员/饲养组长等，见矩阵列 cage.op.manage_identities）。 */

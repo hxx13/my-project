@@ -100,3 +100,16 @@ INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code) VALUES
 ('cage.student.edit.cohabitation', 'PI'),
 ('cage.student.edit.cohabitation', 'GROUP_LEADER'),
 ('cage.student.edit.cohabitation', 'GROUP_STEWARD');
+
+-- 编辑笼位表单：谁能改 cage_info_value 的表单值。
+-- 取代 CageOperationService.cageEditInfo 里写死的「role>=ADMIN 或 isOpExtraOperator」。
+-- 用户 2026-09-13 定：编辑权 = 饲养组长（限其所属区域）+ 学生限本人；
+-- **ADMIN 不再自动拥有全量编辑**（角色不进矩阵，SUPER_ADMIN+ 仍由逃生口放行）。
+-- 「限饲养组长所属区域」那半需要 cage_region_grant 的 LEADER 行，属第四期，此处只落「能力」这半。
+INSERT IGNORE INTO cage_permission_capability (code, label, view_group, sort_order) VALUES
+('cage.edit.form', '编辑笼位表单', 'STAFF', 100);
+
+-- 默认授权沿用迁移前实际能编辑的身份集合（原 isOpExtraOperator = cage.op.manage_identities，默认 BREEDER,BGL）。
+INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code) VALUES
+('cage.edit.form', 'BREEDER'),
+('cage.edit.form', 'BREEDING_GROUP_LEADER');
