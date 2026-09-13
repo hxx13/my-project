@@ -61,7 +61,7 @@ class CagePermissionServiceTest {
 
     @Test
     void identityWithNoTagsCannotUseAnything() {
-        when(mapper.listGrants()).thenReturn(List.of(g("cage.mode.allocate", "BREEDING_GROUP_LEADER")));
+        // 不 stub listGrants：空身份集合应当短路返回 false，压根不该去查矩阵。
         assertFalse(service.canUse("cage.mode.allocate", Set.of()));
     }
 }

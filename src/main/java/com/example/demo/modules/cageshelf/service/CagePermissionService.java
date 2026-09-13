@@ -41,8 +41,9 @@ public class CagePermissionService {
 
     /** 某身份集合能否使用某能力。空列/空身份都返回 false。 */
     public boolean canUse(String capabilityCode, Set<String> identityCodes) {
-        Set<String> allowed = allowedIdentitiesByCapability().get(capabilityCode);
+        // 先短路再查库：账号没有任何身份标签是常见情况，不该白查一次矩阵。
         if (capabilityCode == null || identityCodes == null || identityCodes.isEmpty()) return false;
+        Set<String> allowed = allowedIdentitiesByCapability().get(capabilityCode);
         if (allowed == null || allowed.isEmpty()) return false;
         return !Collections.disjoint(allowed, identityCodes);
     }
