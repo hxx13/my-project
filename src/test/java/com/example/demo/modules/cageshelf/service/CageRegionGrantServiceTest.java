@@ -60,6 +60,17 @@ class CageRegionGrantServiceTest {
         assertTrue(grouped.getOrDefault("FLOOR", List.of()).isEmpty(), "REVIEWER 不应进入可见范围");
     }
 
+    /**
+     * 回归：分配页自 2026-09-15 起写的是 LEADER 行，可见范围**必须**认它。
+     * 只读 SCOPE 会让「给饲养组长分配区域」无效——4A 上线时就是这么错的。
+     */
+    @Test
+    void leaderRowsCountAsVisibilityScope() {
+        when(mapper.listByUser(PID)).thenReturn(List.of(grant("ROOM", "r1", "LEADER")));
+        Map<String, List<String>> grouped = service.visibilityScopes(ACCOUNT);
+        assertEquals(List.of("r1"), grouped.get("ROOM"), "组长负责区域必须计入可见范围");
+    }
+
     @Test
     void reviewScopesOnlyLookAtReviewerRole() {
         when(mapper.listByUser(PID)).thenReturn(List.of(

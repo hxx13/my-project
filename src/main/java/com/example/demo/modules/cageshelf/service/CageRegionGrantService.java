@@ -38,9 +38,15 @@ public class CageRegionGrantService {
         this.visibilityPolicy = visibilityPolicy;
     }
 
-    /** 可见范围（第一层数据范围的「补充放开」部分）；accountId 为 sys_user.id。 */
+    /**
+     * 可见范围（第一层数据范围的「补充放开」部分）；accountId 为 sys_user.id。
+     *
+     * <p><b>必须同时含 LEADER</b>：分配页自 2026-09-15 起写的就是 LEADER（饲养组长负责区域），
+     * 只读 SCOPE 会让「给组长分配区域」对他的可见范围完全无效——4A 上线时就是这么错的，
+     * 是回头验可见范围才发现的。SCOPE 是二期迁移遗留，留着兼容老数据。
+     */
     public Map<String, List<String>> visibilityScopes(String accountId) {
-        return groupedByType(accountId, List.of(CageRegionGrant.ROLE_SCOPE));
+        return groupedByType(accountId, List.of(CageRegionGrant.ROLE_SCOPE, CageRegionGrant.ROLE_LEADER));
     }
 
     /** 审核作用域；accountId 为 sys_user.id。 */
