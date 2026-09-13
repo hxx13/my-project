@@ -269,6 +269,15 @@ public class CageOperationService {
             out.put("groupNames", cageGroupNames(d));
             return out;
         }
+        // 仅被组长授权「代认领」的人（组员级勾选 cage.op.claim_on_behalf）：
+        // 给代认领入口，但**不给**分笼/转移——那是 cage.op.manage_identities 的领地，两件事分开。
+        if (modeVisibilityService.canClaimOnBehalf(user)) {
+            Map<String, Object> out = notOperable("ONLY_CLAIM_ON_BEHALF",
+                    "你可以代认领该笼位；分笼/转移需要额外操作身份");
+            out.put("canClaimOnBehalf", true);
+            out.put("groupNames", cageGroupNames(d));
+            return out;
+        }
         // 非额外身份：笼位必须落在本人课题组内，否则连入口都不给（否则会点出「认领」再被 403 兜底）
         if (!cageInUserGroup(user, d)) {
             return notOperable("NO_PERMISSION", "该笼位不在你的课题组范围内");
@@ -613,8 +622,8 @@ public class CageOperationService {
      */
     @Transactional
     public CageClaim claimOnBehalf(User operator, Long animalCageId, String targetAccountId) {
-        if (!modeVisibilityService.isOpExtraOperator(operator)) {
-            throw new TwinBusinessException(403, "无代认领权限（仅饲养员、饲养组长或管理员）");
+        if (!modeVisibilityService.canClaimOnBehalf(operator)) {
+            throw new TwinBusinessException(403, "无代认领权限（饲养员/饲养组长/管理员，或被组长授权的组员）");
         }
         if (targetAccountId == null || targetAccountId.isBlank()) {
             throw new TwinBusinessException(400, "请选择要认领的人员");

@@ -43,6 +43,9 @@ public class CageModeVisibilityService {
     /** 编辑笼位表单的能力码。 */
     public static final String CAP_EDIT_FORM = "cage.edit.form";
 
+    /** 代认领（把笼位再次分配给某人）的能力码。 */
+    public static final String CAP_CLAIM_ON_BEHALF = "cage.op.claim_on_behalf";
+
     /**
      * 学生**状态模式**下的动作：action code → 表单 canonical。
      *
@@ -148,8 +151,21 @@ public class CageModeVisibilityService {
         return permissionService.canUse(CAP_EDIT_FORM, identityCodesOf(user.getId()));
     }
 
-    /** 是否为分笼/转移的「额外操作身份」（饲养员/饲养组长等，见矩阵列 cage.op.manage_identities）。 */
-    public boolean isOpExtraOperator(User user) {
+    /**
+     * 能否代认领（把笼位再次分配给某人）。
+     *
+     * <p>**或**关系：矩阵给该身份（原 cage.op.manage_identities 的等价集合）**或**组长在
+     * 「我的区域 → 组员 → 模式权限」里逐人勾了 `cage.op.claim_on_behalf`。
+     * 与模式不同，这里不是全量覆盖——组员勾选只做**加法**，避免组长没配就顺手抹掉身份已有的能力。
+     */
+    public boolean canClaimOnBehalf(User user) {
+        if (user == null) return false;
+        if (isSuperAdmin(user)) return true;
+        if (permissionService.canUse(CAP_CLAIM_ON_BEHALF, identityCodesOf(user.getId()))) return true;
+        return permissionService.memberCapabilities(user.getId()).contains(CAP_CLAIM_ON_BEHALF);
+    }
+
+    /** 是否为分笼/转移的「额外操作身份」（饲养员/饲养组长等，见矩阵列 cage.op.manage_identities）。 */    public boolean isOpExtraOperator(User user) {
         if (user == null) return false;
         if (isSuperAdmin(user)) return true;
         // fail-closed：该列一个身份都没勾 = 除占用者本人外无人可操作。

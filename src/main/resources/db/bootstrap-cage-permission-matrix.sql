@@ -113,3 +113,13 @@ INSERT IGNORE INTO cage_permission_capability (code, label, view_group, sort_ord
 INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code) VALUES
 ('cage.edit.form', 'BREEDER'),
 ('cage.edit.form', 'BREEDING_GROUP_LEADER');
+
+-- 代认领（把笼位「再次分配给某个人」）。原逻辑只看 cage.op.manage_identities（矩阵，超管配）；
+-- 用户要求「只能由组长配置谁可以通过认领按钮再次分配」——所以它同时可被**组员级勾选**授予，
+-- 组长在「我的区域 → 组员 → 模式权限」里给本组成员勾。矩阵这层是上限：默认沿用原身份集合。
+INSERT IGNORE INTO cage_permission_capability (code, label, view_group, sort_order) VALUES
+('cage.op.claim_on_behalf', '代认领（再次分配）', 'STAFF', 110);
+
+INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code) VALUES
+('cage.op.claim_on_behalf', 'BREEDER'),
+('cage.op.claim_on_behalf', 'BREEDING_GROUP_LEADER');

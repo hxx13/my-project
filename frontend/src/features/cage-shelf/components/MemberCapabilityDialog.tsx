@@ -13,6 +13,8 @@ import { fetchMemberCapabilities, saveMemberCapabilities } from "@/api/domains/c
  * 所以界面必须把这句话写出来，否则组长会以为取消勾选等于禁用。
  */
 const MODE_PREFIX = "cage.mode.";
+/** 除模式外，组长还能逐人授予的能力（非模式类，逐项列出来而不是放开整个前缀）。 */
+const EXTRA_GRANTABLE = ["cage.op.claim_on_behalf"];
 
 export default function MemberCapabilityDialog({
   open,
@@ -41,7 +43,7 @@ export default function MemberCapabilityDialog({
     fetchMemberCapabilities(memberAccountId)
       .then((v) => {
         if (cancelled) return;
-        setCeiling(v.ceiling.filter((c) => c.startsWith(MODE_PREFIX)));
+        setCeiling(v.ceiling.filter((c) => c.startsWith(MODE_PREFIX) || EXTRA_GRANTABLE.includes(c)));
         setLabels(v.labels ?? {});
         const g = new Set(v.granted);
         setPicked(g);
