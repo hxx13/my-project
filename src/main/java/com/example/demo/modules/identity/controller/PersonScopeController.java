@@ -3,8 +3,8 @@ package com.example.demo.modules.identity.controller;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.identity.entity.PersonScope;
-import com.example.demo.modules.identity.service.PersonScopeService;
+import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
+import com.example.demo.modules.cageshelf.service.CageRegionGrantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +17,9 @@ import java.util.Map;
 /**
  * 人员负责范围：逐人挂载「校区/楼层/房间」，用于笼架数据范围收口。
  * 写接口由管理端负责范围分配页调用（admin 权限在外部网关/切面控制）。
+ *
+ * <p>数据落在 {@code cage_region_grant}，以 {@code grant_role=SCOPE} 区分于审核人归属（REVIEWER）。
+ * HTTP 契约与合并前一致，只是背后的服务从 PersonScopeService 换成了 CageRegionGrantService。
  */
 @RestController
 @RequestMapping("/api/person-scope")
@@ -24,11 +27,11 @@ import java.util.Map;
 public class PersonScopeController {
 
     private final AuthContextService authContextService;
-    private final PersonScopeService scopeService;
+    private final CageRegionGrantService regionGrantService;
 
-    public PersonScopeController(AuthContextService authContextService, PersonScopeService scopeService) {
+    public PersonScopeController(AuthContextService authContextService, CageRegionGrantService regionGrantService) {
         this.authContextService = authContextService;
-        this.scopeService = scopeService;
+        this.regionGrantService = regionGrantService;
     }
 
     /** 已分配过的人，供分配页左栏列表（点击查看/编辑其可见范围）。 */
@@ -38,7 +41,7 @@ public class PersonScopeController {
         if (authContextService.resolveUserFromBearer(request.getHeader("Authorization")) == null) {
             return Result.fail(401, "未登录");
         }
-        return Result.success(scopeService.listAssignees());
+        return Result.success(regionGrantService.listAssignees(CageRegionGrant.ROLE_SCOPE));
     }
 
     @GetMapping("/{userId}")
@@ -48,8 +51,8 @@ public class PersonScopeController {
             return Result.fail(401, "未登录");
         }
         List<Map<String, Object>> out = new ArrayList<>();
-        for (PersonScope s : scopeService.listByAccount(userId)) {
-            out.add(Map.of("scopeType", s.getScopeType(), "scopeId", s.getScopeId()));
+        for (CageRegionGrant s : regionGrantService.listByAccount(userId, CageRegionGrant.ROLE_SCOPE)) {
+            out.add(Map.of("scopeType", s.getRegionType(), "scopeId", s.getRegionId()));
         }
         return Result.success(out);
     }
@@ -58,10 +61,11 @@ public class PersonScopeController {
     @DeleteMapping("/{userId}")
     @Operation(summary = "撤销某人的全部可见范围分配")
     public Result<?> remove(@PathVariable String userId, HttpServletRequest request) {
-        if (authContextService.resolveUserFromBearer(request.getHeader("Authorization")) == null) {
+        User u = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (u == null) {
             return Result.fail(401, "未登录");
         }
-        scopeService.clearByAccount(userId);
+        regionGrantService.clearByAccount(userId, CageRegionGrant.ROLE_SCOPE);
         return Result.success(Map.of("ok", true));
     }
 
@@ -69,18 +73,19 @@ public class PersonScopeController {
     @PutMapping("/{userId}")
     @Operation(summary = "全量替换某人的负责范围")
     public Result<?> replace(@PathVariable String userId, @RequestBody List<Map<String, String>> body, HttpServletRequest request) {
-        if (authContextService.resolveUserFromBearer(request.getHeader("Authorization")) == null) {
+        User u = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (u == null) {
             return Result.fail(401, "未登录");
         }
-        List<PersonScope> scopes = new ArrayList<>();
+        List<CageRegionGrant> grants = new ArrayList<>();
         for (Map<String, String> item : body) {
-            PersonScope s = new PersonScope();
-            s.setScopeType(item.get("scopeType"));
-            s.setScopeId(item.get("scopeId"));
-            scopes.add(s);
+            CageRegionGrant g = new CageRegionGrant();
+            g.setRegionType(item.get("scopeType"));
+            g.setRegionId(item.get("scopeId"));
+            grants.add(g);
         }
         try {
-            scopeService.replaceByAccount(userId, scopes);
+            regionGrantService.replaceByAccount(userId, CageRegionGrant.ROLE_SCOPE, grants, u.getId());
             return Result.success(Map.of("ok", true));
         } catch (IllegalArgumentException e) {
             return Result.fail(400, e.getMessage());

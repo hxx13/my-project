@@ -10,10 +10,10 @@ import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.service.CageCellIndexService;
+import com.example.demo.modules.cageshelf.service.CageRegionGrantService;
 import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
 import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
-import com.example.demo.modules.identity.service.PersonScopeService;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
 import com.example.demo.modules.student.mapper.StudentCageShelfPinMapper;
@@ -54,7 +54,7 @@ public class StudentCageShelfService {
     private final CageCellAnnotationMapper annotationMapper;
     private final StudentCageShelfPinMapper cageShelfPinMapper;
     private final CageCellIndexService cageCellIndexService;
-    private final PersonScopeService personScopeService;
+    private final CageRegionGrantService regionGrantService;
     private final CageShelfLocalAggCache localAggCache;
     private final com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService;
     private final CageVisibilityPolicy visibilityPolicy;
@@ -68,7 +68,7 @@ public class StudentCageShelfService {
                                    CageCellAnnotationMapper annotationMapper,
                                    StudentCageShelfPinMapper cageShelfPinMapper,
                                    CageCellIndexService cageCellIndexService,
-                                   PersonScopeService personScopeService,
+                                   CageRegionGrantService regionGrantService,
                                    CageShelfLocalAggCache localAggCache,
                                    com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService,
                                    CageVisibilityPolicy visibilityPolicy) {
@@ -81,7 +81,7 @@ public class StudentCageShelfService {
         this.annotationMapper = annotationMapper;
         this.cageShelfPinMapper = cageShelfPinMapper;
         this.cageCellIndexService = cageCellIndexService;
-        this.personScopeService = personScopeService;
+        this.regionGrantService = regionGrantService;
         this.localAggCache = localAggCache;
         this.cageOperationService = cageOperationService;
         this.visibilityPolicy = visibilityPolicy;
@@ -767,7 +767,7 @@ public class StudentCageShelfService {
     /** 是否配了可见范围补充（校区/楼层/房间）。配了才需要在基本权限之上叠加放开。 */
     public boolean hasScopeAssignment(User user) {
         if (user == null || isAdminUser(user)) return false;
-        return !personScopeService.listGroupedByType(user.getId()).isEmpty();
+        return regionGrantService.hasVisibilityScope(user.getId());
     }
 
     /**
@@ -779,7 +779,7 @@ public class StudentCageShelfService {
      */
     public boolean isShelfVisibleForUser(User user, String shelveId, String roomId, String floorId, String campusId) {
         if (isAdminUser(user)) return true;
-        Map<String, List<String>> scope = personScopeService.listGroupedByType(user.getId());
+        Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
         if (scope.isEmpty()) return false; // 无补充 → 不额外放开任何笼架
         List<String> rooms = scope.getOrDefault("ROOM", List.of());
         List<String> floors = scope.getOrDefault("FLOOR", List.of());

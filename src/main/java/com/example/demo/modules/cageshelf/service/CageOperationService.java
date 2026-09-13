@@ -76,7 +76,7 @@ public class CageOperationService {
     private final PersonnelService personnelService;
     private final UserDisplayNameService userDisplayNameService;
     private final CageOwnerApprovalConfigService ownerApprovalConfigService;
-    private final CageAuditAssignmentService auditAssignmentService;
+    private final CageRegionGrantService regionGrantService;
     private final CageModeVisibilityService modeVisibilityService;
     private final CageDivisionService divisionService;
     private final CageOccupancyService occupancyService;
@@ -102,7 +102,7 @@ public class CageOperationService {
                                 PersonnelService personnelService,
                                 UserDisplayNameService userDisplayNameService,
                                 CageOwnerApprovalConfigService ownerApprovalConfigService,
-                                CageAuditAssignmentService auditAssignmentService,
+                                CageRegionGrantService regionGrantService,
                                 CageModeVisibilityService modeVisibilityService,
                                 CageDivisionService divisionService,
                                 CageOccupancyService occupancyService,
@@ -127,7 +127,7 @@ public class CageOperationService {
         this.personnelService = personnelService;
         this.userDisplayNameService = userDisplayNameService;
         this.ownerApprovalConfigService = ownerApprovalConfigService;
-        this.auditAssignmentService = auditAssignmentService;
+        this.regionGrantService = regionGrantService;
         this.modeVisibilityService = modeVisibilityService;
         this.divisionService = divisionService;
         this.occupancyService = occupancyService;
@@ -1049,7 +1049,7 @@ public class CageOperationService {
         List<Map<String, Object>> out = new ArrayList<>();
         for (CageOpRequest r : opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, opType)) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(r.getSourceAnimalCageId());
-            if (!isAdmin && !auditAssignmentService.canReview(reviewer,
+            if (!isAdmin && !regionGrantService.canReview(reviewer,
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")))) {
@@ -1128,7 +1128,7 @@ public class CageOperationService {
         boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
         if (!isAdmin) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(req.getSourceAnimalCageId());
-            if (!auditAssignmentService.canReview(reviewer,
+            if (!regionGrantService.canReview(reviewer,
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")))) {

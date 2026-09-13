@@ -1,5 +1,7 @@
 package com.example.demo.modules.cageshelf.service;
 
+import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
 import com.example.demo.modules.cageshelf.mapper.CageRegionGrantMapper;
 import com.example.demo.modules.identity.service.PersonIdentityService;
@@ -8,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,10 +29,17 @@ public class CageRegionGrantService {
 
     private final CageRegionGrantMapper mapper;
     private final PersonIdentityService identityService;
+    private final CageVisibilityPolicy visibilityPolicy;
+    private final UserDisplayNameService displayNameService;
 
-    public CageRegionGrantService(CageRegionGrantMapper mapper, PersonIdentityService identityService) {
+    public CageRegionGrantService(CageRegionGrantMapper mapper,
+                                  PersonIdentityService identityService,
+                                  CageVisibilityPolicy visibilityPolicy,
+                                  UserDisplayNameService displayNameService) {
         this.mapper = mapper;
         this.identityService = identityService;
+        this.visibilityPolicy = visibilityPolicy;
+        this.displayNameService = displayNameService;
     }
 
     /** 可见范围（第一层数据范围的「补充放开」部分）；accountId 为 sys_user.id。 */
@@ -101,5 +111,63 @@ public class CageRegionGrantService {
     private String resolve(String accountId) {
         if (!StringUtils.hasText(accountId)) return null;
         return identityService.resolveIdByAccount(accountId.trim());
+    }
+
+    /**
+     * 某审核人是否能审批某笼位（按楼层/房间/校区归属）。
+     * 全局可见者（SUPER_ADMIN+）逃生口：全量可审；否则命中 REVIEWER 归属才可审。
+     * roomId/floorId/campusId 传字符串化 id（null 跳过）。
+     */
+    public boolean canReview(User user, String roomId, String floorId, String campusId) {
+        if (user == null) return false;
+        if (visibilityPolicy.isGlobalViewer(user)) return true;
+        Map<String, List<String>> grouped = reviewScopes(user.getId());
+        if (grouped.isEmpty()) return false;
+        if (roomId != null && grouped.getOrDefault("ROOM", List.of()).contains(roomId)) return true;
+        if (floorId != null && grouped.getOrDefault("FLOOR", List.of()).contains(floorId)) return true;
+        if (campusId != null && grouped.getOrDefault("CAMPUS", List.of()).contains(campusId)) return true;
+        return false;
+    }
+
+    /**
+     * 全部归属，按审核人分组并带显示名 —— 设置中心总览用（否则只看到一张空表，
+     * 不知道哪些位置已分配、归谁）。
+     */
+    public List<Map<String, Object>> listAllGrouped() {
+        List<CageRegionGrant> all = mapper.listAll().stream()
+                .filter(g -> CageRegionGrant.ROLE_REVIEWER.equals(g.getGrantRole()))
+                .toList();
+        if (all.isEmpty()) {
+            return List.of();
+        }
+        List<String> reviewerIds = all.stream()
+                .map(CageRegionGrant::getUserId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<String, String> names = displayNameService.resolveDisplayNames(reviewerIds);
+
+        Map<String, Map<String, Object>> byReviewer = new LinkedHashMap<>();
+        for (CageRegionGrant a : all) {
+            String id = a.getUserId();
+            if (id == null) continue;
+            Map<String, Object> entry = byReviewer.computeIfAbsent(id, k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("reviewerUserId", k);
+                m.put("reviewerName", names.getOrDefault(k, k));
+                m.put("scopes", new ArrayList<Map<String, String>>());
+                return m;
+            });
+            @SuppressWarnings("unchecked")
+            List<Map<String, String>> scopes = (List<Map<String, String>>) entry.get("scopes");
+            Map<String, String> s = new LinkedHashMap<>();
+            s.put("scopeType", a.getRegionType());
+            s.put("scopeId", a.getRegionId());
+            scopes.add(s);
+        }
+        List<Map<String, Object>> out = new ArrayList<>(byReviewer.values());
+        out.sort(Comparator.comparing(m -> String.valueOf(m.get("reviewerName")),
+                Comparator.nullsLast(Comparator.naturalOrder())));
+        return out;
     }
 }

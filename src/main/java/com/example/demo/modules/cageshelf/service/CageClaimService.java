@@ -55,7 +55,7 @@ public class CageClaimService {
     private final CageTransferLogMapper transferLogMapper;
     private final PersonnelService personnelService;
     private final CageCellDetailService detailService;
-    private final CageAuditAssignmentService auditAssignmentService;
+    private final CageRegionGrantService regionGrantService;
     private final CageCellIndexMapper cellIndexMapper;
     private final UserGroupNameResolver userGroupNameResolver;
     private final CageOpRequestMapper opRequestMapper;
@@ -77,7 +77,7 @@ public class CageClaimService {
                             CageTransferLogMapper transferLogMapper,
                             PersonnelService personnelService,
                             CageCellDetailService detailService,
-                            CageAuditAssignmentService auditAssignmentService,
+                            CageRegionGrantService regionGrantService,
                             CageCellIndexMapper cellIndexMapper,
                             UserGroupNameResolver userGroupNameResolver,
                             CageOpRequestMapper opRequestMapper,
@@ -98,7 +98,7 @@ public class CageClaimService {
         this.transferLogMapper = transferLogMapper;
         this.personnelService = personnelService;
         this.detailService = detailService;
-        this.auditAssignmentService = auditAssignmentService;
+        this.regionGrantService = regionGrantService;
         this.cellIndexMapper = cellIndexMapper;
         this.userGroupNameResolver = userGroupNameResolver;
         this.opRequestMapper = opRequestMapper;
@@ -569,7 +569,7 @@ public class CageClaimService {
         boolean hasReviewScope = false;
         if (!isAdmin) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(claim.getAnimalCageId());
-            hasReviewScope = auditAssignmentService.canReview(approver,
+            hasReviewScope = regionGrantService.canReview(approver,
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")));
@@ -828,7 +828,7 @@ public class CageClaimService {
     /** 该待审记录是否落在审核人的负责范围内。全局可见者（SUPER_ADMIN+）恒 true。 */
     private boolean inReviewScope(User reviewer, Map<String, Object> row) {
         if (visibilityPolicy.isGlobalViewer(reviewer)) return true;
-        return auditAssignmentService.canReview(reviewer,
+        return regionGrantService.canReview(reviewer,
                 str(row.get("roomId")), str(row.get("floorId")), str(row.get("campusId")));
     }
 

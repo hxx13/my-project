@@ -1,5 +1,6 @@
 package com.example.demo.modules.cageshelf.service;
 
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
 import com.example.demo.modules.cageshelf.mapper.CageRegionGrantMapper;
 import com.example.demo.modules.identity.service.PersonIdentityService;
@@ -31,12 +32,14 @@ class CageRegionGrantServiceTest {
 
     @Mock private CageRegionGrantMapper mapper;
     @Mock private PersonIdentityService identityService;
+    @Mock private CageVisibilityPolicy visibilityPolicy;
+    @Mock private UserDisplayNameService displayNameService;
 
     private CageRegionGrantService service;
 
     @BeforeEach
     void setUp() {
-        service = new CageRegionGrantService(mapper, identityService);
+        service = new CageRegionGrantService(mapper, identityService, visibilityPolicy, displayNameService);
         when(identityService.resolveIdByAccount(anyString())).thenReturn(PID);
     }
 

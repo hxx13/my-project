@@ -4,8 +4,8 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.cageshelf.entity.CageAuditAssignment;
-import com.example.demo.modules.cageshelf.service.CageAuditAssignmentService;
+import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
+import com.example.demo.modules.cageshelf.service.CageRegionGrantService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +17,9 @@ import java.util.Map;
 
 /**
  * 笼位申请审核人归属：审核人 → 楼层/房间。配置入口在笼架信息右上角设置弹窗。
- * 写权限由网关/切面控制（平台所有者）。
+ *
+ * <p>数据落在 {@code cage_region_grant}，以 {@code grant_role=REVIEWER} 区分于可见范围（SCOPE）。
+ * HTTP 契约与合并前一致，只是背后的服务从 CageAuditAssignmentService 换成了 CageRegionGrantService。
  */
 @RestController
 @RequestMapping("/api/cage-audit-assignment")
@@ -25,11 +27,11 @@ import java.util.Map;
 public class CageAuditAssignmentController {
 
     private final AuthContextService authContextService;
-    private final CageAuditAssignmentService assignmentService;
+    private final CageRegionGrantService regionGrantService;
 
-    public CageAuditAssignmentController(AuthContextService authContextService, CageAuditAssignmentService assignmentService) {
+    public CageAuditAssignmentController(AuthContextService authContextService, CageRegionGrantService regionGrantService) {
         this.authContextService = authContextService;
-        this.assignmentService = assignmentService;
+        this.regionGrantService = regionGrantService;
     }
 
     /** 全部归属，按审核人分组 —— 设置中心总览（哪些位置已分配、归谁）。 */
@@ -39,7 +41,7 @@ public class CageAuditAssignmentController {
         if (authContextService.resolveUserFromBearer(request.getHeader("Authorization")) == null) {
             return Result.fail(401, "未登录");
         }
-        return Result.success(assignmentService.listAllGrouped());
+        return Result.success(regionGrantService.listAllGrouped());
     }
 
     @GetMapping("/{reviewerUserId}")
@@ -49,8 +51,8 @@ public class CageAuditAssignmentController {
             return Result.fail(401, "未登录");
         }
         List<Map<String, Object>> out = new ArrayList<>();
-        for (CageAuditAssignment a : assignmentService.listByReviewer(reviewerUserId)) {
-            out.add(Map.of("scopeType", a.getScopeType(), "scopeId", a.getScopeId()));
+        for (CageRegionGrant a : regionGrantService.listByAccount(reviewerUserId, CageRegionGrant.ROLE_REVIEWER)) {
+            out.add(Map.of("scopeType", a.getRegionType(), "scopeId", a.getRegionId()));
         }
         return Result.success(out);
     }
@@ -66,14 +68,14 @@ public class CageAuditAssignmentController {
         if (u.getRole() == null || u.getRole().getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.fail(403, "无权限配置审核人归属");
         }
-        List<CageAuditAssignment> assignments = new ArrayList<>();
+        List<CageRegionGrant> grants = new ArrayList<>();
         for (Map<String, String> item : body) {
-            CageAuditAssignment a = new CageAuditAssignment();
-            a.setScopeType(item.get("scopeType"));
-            a.setScopeId(item.get("scopeId"));
-            assignments.add(a);
+            CageRegionGrant a = new CageRegionGrant();
+            a.setRegionType(item.get("scopeType"));
+            a.setRegionId(item.get("scopeId"));
+            grants.add(a);
         }
-        assignmentService.replaceByReviewer(reviewerUserId, assignments);
+        regionGrantService.replaceByAccount(reviewerUserId, CageRegionGrant.ROLE_REVIEWER, grants, u.getId());
         return Result.success(Map.of("ok", true));
     }
 }

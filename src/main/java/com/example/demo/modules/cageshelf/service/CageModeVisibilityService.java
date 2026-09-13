@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
  * 笼架模式可见性服务：单一真相源，前端过滤模式列表 + 后端校验写接口都读它。
  *
  * 两层模型：
- *   数据范围（谁能看到哪些笼架）→ 见 {@link PersonScopeService} + 网格过滤。
+ *   数据范围（谁能看到哪些笼架）→ 见 {@link CageRegionGrantService} + 网格过滤。
  *   模式入口（进来后能用哪些模式）→ 本服务，按身份 code 可配。
  *
  * 模式与默认身份（配置模块 cage_mode，key = cage.mode.{modeKey}，值为逗号分隔身份 code）：
