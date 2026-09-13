@@ -694,7 +694,12 @@ public class CageOperationService {
         // 编辑权读矩阵能力 cage.edit.form（2026-09-15 起）：
         // 原先写死的「role>=ADMIN 或 isOpExtraOperator」已废——**ADMIN 不再自动拥有全量编辑**，
         // 与用户定的「编辑权 = 饲养组长 / 学生限本人」一致。SUPER_ADMIN+ 由服务内逃生口放行。
-        if (modeVisibilityService.canEditCageForm(user)) {
+        //
+        // 作用域（设计 10.1）：光有能力还不够，**笼位必须落在自己负责的范围内**
+        //（LEADER 行；饲养员作为组员时经 MEMBER 行继承组长的区域，见 visibilityScopes）。
+        // 超管不受区域约束。
+        if (modeVisibilityService.canEditCageForm(user)
+                && (modeVisibilityService.isSuperAdmin(user) || inMyRegions(user, animalCageId))) {
             out.put("editable", true);
             return out;
         }
@@ -711,13 +716,38 @@ public class CageOperationService {
         out.put("editable", false);
         // 失败原因必须说清卡在哪一条。原来一律写「由 X 占用」，于是角色等级不够的人
         // 也读到「被占用」，误以为是占用问题 —— 高权限账号尤其容易被这句话带偏。
+        // 现在还要再分一层：**有能力但不在区域内** ≠ **压根没这个能力**，提示不能一样。
         RoleEnum role = user.getRole();
-        String roleNote = "；当前角色「" + (role == null ? "未知" : role.getDescZh())
-                + "」不在「编辑笼位表单」权限名单里";
+        boolean hasCap = modeVisibilityService.canEditCageForm(user);
+        String roleNote = hasCap
+                ? "；该笼位不在你负责的区域内（区域由超级管理员分配）"
+                : "；当前角色「" + (role == null ? "未知" : role.getDescZh())
+                        + "」不在「编辑笼位表单」权限名单里";
         out.put("reason", exp == null
                 ? "该笼位尚未认领，认领成本人后才能编辑" + roleNote
                 : "该笼位由「" + exp + "」占用" + roleNote);
         return out;
+    }
+
+    /**
+     * 该笼位是否落在「我负责的范围内」——编辑权的作用域约束（设计 10.1）。
+     *
+     * <p>口径就是 {@code visibilityScopes}：LEADER 行（自己负责）+ SCOPE 遗留
+     * + 组员经 MEMBER 行继承的组长区域。所以**饲养员入组后自动获得该区域的编辑权**，
+     * 没入组则没有——这是「编辑权 = 饲养组长 / 组员继承」的自然结果，不是漏判。
+     */
+    private boolean inMyRegions(User user, Long animalCageId) {
+        Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
+        if (scope.isEmpty()) return false;
+        Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
+        if (loc == null) return false;
+        String roomId = str(loc.get("roomId"));
+        String floorId = str(loc.get("floorId"));
+        String campusId = str(loc.get("campusId"));
+        if (roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId)) return true;
+        if (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId)) return true;
+        if (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId)) return true;
+        return false;
     }
 
     /** 该笼位的活跃认领人是不是本人（双 id 安全）。「仅占用者本人可写」的入口统一复用这一个判定。 */
