@@ -9,6 +9,8 @@ type Props = {
   panelCount: number;
   /** 交互层面板数；>0 时作为独立一层浮在公告层之上 */
   interactiveCount?: number;
+  /** 交互层变体：signature 时再放宽一档（手写签名要横向空间） */
+  interactiveVariant?: "signature";
   onCloseAll: () => void;
   /** 公告层 */
   children: ReactNode;
@@ -28,6 +30,7 @@ export function ScanNoticeStripPortal({
   open,
   panelCount,
   interactiveCount = 0,
+  interactiveVariant,
   onCloseAll,
   children,
   interactiveChildren,
@@ -52,7 +55,11 @@ export function ScanNoticeStripPortal({
           所以公告的位置和分层前完全一致 */}
       <div className="scan-notice-strip-anchor">
         {interactiveCount > 0 ? (
-          <div className="scan-notice-strip-layer" role="group" aria-label="待处置通知">
+          <div
+            className={`scan-notice-strip-layer${interactiveVariant === "signature" ? " scan-notice-strip-layer--signature" : ""}`}
+            role="group"
+            aria-label="待处置通知"
+          >
             <LayoutGroup id="scan-notice-strip-interactive">{interactiveChildren}</LayoutGroup>
           </div>
         ) : null}

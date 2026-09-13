@@ -12,7 +12,7 @@ import {
   type ScanNoticePanelKey,
 } from "./scanNoticePanelId";
 import { canAutoOpenNoticesOnPopupOpen } from "./scanNoticeAutoOpen";
-import { needsInteractiveLayer } from "./noticeLayer";
+import { declaredInteractiveStrategy, needsInteractiveLayer } from "./noticeLayer";
 import type { NoticeKind } from "./scanPopupTheme";
 
 export type ScanNoticeDialogId = "violation" | "unbound" | "announcement" | "cage-notice";
@@ -394,6 +394,9 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
         open={openPanels.length > 0}
         panelCount={passivePanelKeys.length}
         interactiveCount={interactivePanelKeys.length}
+        interactiveVariant={
+          declaredInteractiveStrategy(actualViolation) === "SIGNATURE" ? "signature" : undefined
+        }
         onCloseAll={closeAllPanels}
         interactiveChildren={renderStripPanels(interactivePanelKeys)}
       >

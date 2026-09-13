@@ -484,6 +484,16 @@
     pointer-events: auto;
   }
 
+  /* 交互层只有一张卡，不受并排档位限制：默认档 612px 对手写签名等偏窄，统一放宽一档 */
+  .scan-notice-strip-layer .scan-doodle-card {
+    --doodle-card-width: min(96vw, 880px);
+  }
+
+  /* 手写签名要横向空间（画布越宽越好写），再放宽一档 */
+  .scan-notice-strip-layer--signature .scan-doodle-card {
+    --doodle-card-width: min(96vw, 1120px);
+  }
+
   /* 横向滚动条 — 对齐 app-themed-scrollbar / page-help-scrollbar 语义色 */
   .scan-notice-strip-scroll--themed {
     scrollbar-gutter: stable;
