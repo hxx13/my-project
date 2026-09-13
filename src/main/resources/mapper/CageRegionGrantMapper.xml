@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageRegionGrantMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_region_grant (region_type, region_id, user_id, grant_role, leader_user_id, granted_by)
+        VALUES (#{regionType}, #{regionId}, #{userId}, #{grantRole}, #{leaderUserId}, #{grantedBy})
+    </insert>
+
+    <delete id="deleteByUserAndRole">
+        DELETE FROM cage_region_grant WHERE user_id = #{userId} AND grant_role = #{grantRole}
+    </delete>
+
+    <select id="listByUser" resultType="com.example.demo.modules.cageshelf.entity.CageRegionGrant">
+        SELECT * FROM cage_region_grant WHERE user_id = #{userId}
+        ORDER BY grant_role ASC, region_type ASC, region_id ASC
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.cageshelf.entity.CageRegionGrant">
+        SELECT * FROM cage_region_grant
+        ORDER BY user_id ASC, grant_role ASC, region_type ASC, region_id ASC
+    </select>
+
+    <!-- 已分配过的人：user_id 存 personnel.id 字符串，join 回来取姓名 -->
+    <select id="listAssignees" resultType="map">
+        SELECT g.user_id AS userId,
+               COALESCE(NULLIF(p.name, ''), g.user_id) AS name,
+               p.staff_id AS staffId,
+               COUNT(*) AS scopeCount
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        WHERE g.grant_role = #{grantRole}
+        GROUP BY g.user_id, p.name, p.staff_id
+        ORDER BY name ASC
+    </select>
+
+</mapper>
