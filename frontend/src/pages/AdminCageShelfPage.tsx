@@ -58,7 +58,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown } from "lucide-react";
+import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown, MapPin } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail, fetchLocalPipelineProgress, refreshCellDetail,
@@ -81,6 +81,7 @@ import {
   fetchCageModeVisible,
   fetchCageOpMarkers, lookupCode, locateTargetOf, adminConfirmClaim, archiveCage, reconcileCageOccupancy, type CodeLookupResult,
   assignBatchCages, submitCageTransfer,
+  fetchMyRegion,
 } from "@/api/domains/cageShelf.api";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
 import { fetchMyGroupMembers } from "@/api/domains/referenceData.api";
@@ -137,6 +138,7 @@ import {
 } from "@/features/cage-shelf/pendingBatch";
 import CageHistoryModal from "@/features/cage-shelf/components/CageHistoryModal";
 import CageSettingsCenter from "@/features/cage-shelf/components/CageSettingsCenter";
+import MyRegionDialog from "@/features/cage-shelf/components/MyRegionDialog";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { ShelfGrid, BookmarkShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
@@ -265,6 +267,11 @@ function Inner(){
   }, []);
   const[recordTarget,setRecordTarget]=useState<string|null>(null);
   const[settingsOpen,setSettingsOpen]=useState(false);
+  // 我的区域：只有**真的是饲养组长**（后端按 LEADER 行判定）才显示入口。
+  // 组长是身份不是角色，前端算不出来，只能问后端一次。
+  const[myRegionOpen,setMyRegionOpen]=useState(false);
+  const[isRegionLeader,setIsRegionLeader]=useState(false);
+  useEffect(()=>{fetchMyRegion().then(r=>setIsRegionLeader(r.isLeader)).catch(()=>setIsRegionLeader(false));},[]);
 
   // 弹窗A 打开时从 /local/annotate 加载备注和状态照片（不能用 onOpenChange，Radix 只在用户关闭时触发）
   useEffect(()=>{
@@ -2396,6 +2403,7 @@ function Inner(){
             {isPlatformOwner&&<button type="button" onClick={handleReconcileOccupancy} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">修正占用</button>}
             <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
             {canOpenSettings&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
+            {isRegionLeader&&<button type="button" onClick={()=>setMyRegionOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="我作为饲养组长负责的区域"><MapPin className="h-3 w-3"/>我的区域</button>}
           </div>
         </div>
         {legend&&<CageShelfLegend/>}
@@ -2965,6 +2973,9 @@ function Inner(){
         onCancel={opSel.cancel}
       />
     )}
+
+    {/* 我的区域（饲养组长）：入口在工具栏，仅 isLeader 时显示 */}
+    <MyRegionDialog open={myRegionOpen} onOpenChange={setMyRegionOpen} />
 
     {/* 设置中心：左分类栏 + 右内容，见 CageSettingsCenter */}
     <CageSettingsCenter
