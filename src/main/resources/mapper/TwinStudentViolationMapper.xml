@@ -25,6 +25,10 @@
         <result column="interactive_unlock_on_verify" property="interactiveUnlockOnVerify"/>
         <result column="rule_id" property="ruleId"/>
         <result column="cage_violation_id" property="cageViolationId"/>
+        <result column="notice_display_days" property="noticeDisplayDays"/>
+        <result column="notice_link_expire" property="noticeLinkExpire"/>
+        <result column="notice_cleared_at" property="noticeClearedAt"/>
+        <result column="notice_cleared_by_user_id" property="noticeClearedByUserId"/>
     </resultMap>
 
     <!-- 交互验证未完成时，超期仍保持 ACTIVE，直至用户完成拼图 -->
@@ -98,12 +102,14 @@
             target_user_id, violation_text, content_json, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
             expire_at, status, created_by_user_id, source, interactive_challenge, interactive_unlock_on_verify,
-            rule_id, cage_violation_id
+            rule_id, cage_violation_id,
+            notice_display_days, notice_link_expire, notice_cleared_at, notice_cleared_by_user_id
         ) VALUES (
             #{targetUserId}, #{violationText}, #{contentJson}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
             #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}, #{interactiveUnlockOnVerify},
-            #{ruleId}, #{cageViolationId}
+            #{ruleId}, #{cageViolationId},
+            #{noticeDisplayDays}, #{noticeLinkExpire}, #{noticeClearedAt}, #{noticeClearedByUserId}
         )
     </insert>
 
@@ -245,8 +251,20 @@
             interactive_challenge_verified_at = #{interactiveChallengeVerifiedAt},
             interactive_unlock_on_verify = #{interactiveUnlockOnVerify},
             expire_at = #{expireAt},
+            notice_display_days = #{noticeDisplayDays},
+            notice_link_expire = #{noticeLinkExpire},
             updated_at = NOW()
         WHERE id = #{id}
+    </update>
+
+    <!-- 单独解除公告：只影响公告可见性，不动 status / forbid_enter / 记录本身。幂等（已解除则 0 行） -->
+    <update id="clearNoticeById">
+        UPDATE twin_student_violation
+        SET notice_cleared_at = NOW(),
+            notice_cleared_by_user_id = #{operatorId},
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND notice_cleared_at IS NULL
     </update>
 
     <update id="acknowledgeInteractiveById">

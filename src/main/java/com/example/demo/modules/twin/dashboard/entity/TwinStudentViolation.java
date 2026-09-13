@@ -37,4 +37,12 @@ public class TwinStudentViolation {
     private Long ruleId;
     /** 关联笼架违规父记录ID，NULL=非笼架触发 */
     private Long cageViolationId;
+    /** 公告展示天数；NULL=跟随到期时间 */
+    private Integer noticeDisplayDays;
+    /** 公告展示是否与到期时间联动；1=展示到到期时间，0=按 noticeDisplayDays */
+    private Integer noticeLinkExpire;
+    /** 公告被单独解除的时间；非空即公告下板（不影响记录与禁入） */
+    private LocalDateTime noticeClearedAt;
+    /** 解除公告的操作人 */
+    private String noticeClearedByUserId;
 }

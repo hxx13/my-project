@@ -67,6 +67,9 @@ public interface TwinStudentViolationMapper {
 
     int updateEditableById(TwinStudentViolation row);
 
+    /** 单独解除公告（只下板，不动 status/forbid_enter）；已解除则返回 0，幂等 */
+    int clearNoticeById(@Param("id") long id, @Param("operatorId") String operatorId);
+
     /** 交互拼图完成；unlockOnVerify=1 时同步解除禁入 */
     int acknowledgeInteractiveById(@Param("id") long id, @Param("unlockOnVerify") int unlockOnVerify);
 
