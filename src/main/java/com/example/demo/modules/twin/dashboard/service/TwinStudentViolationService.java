@@ -19,6 +19,7 @@ import com.example.demo.modules.twin.dashboard.support.InteractiveChallengeVerif
 import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
 import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.obligation.support.ObligationSupport;
@@ -86,6 +87,7 @@ public class TwinStudentViolationService {
     private final SocketIOServer socketServer;
     private final PushService pushService;
     private final ObligationService obligationService;
+    private final DispositionStrategyRegistry dispositionRegistry;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
@@ -100,7 +102,8 @@ public class TwinStudentViolationService {
                                        TwinCageStatusViolationMapper cageStatusViolationMapper,
                                        @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer,
                                        PushService pushService,
-                                       @org.springframework.beans.factory.annotation.Autowired(required = false) ObligationService obligationService) {
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) ObligationService obligationService,
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) DispositionStrategyRegistry dispositionRegistry) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
@@ -112,6 +115,7 @@ public class TwinStudentViolationService {
         this.socketServer = socketServer;
         this.pushService = pushService;
         this.obligationService = obligationService;
+        this.dispositionRegistry = dispositionRegistry;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -281,14 +285,12 @@ public class TwinStudentViolationService {
         if (!targetUserId.trim().equals(row.getTargetUserId())) {
             throw new IllegalArgumentException("无权确认该违规");
         }
-        if (!StringUtils.hasText(row.getInteractiveChallenge())) {
-            throw new IllegalArgumentException("该违规无需交互确认");
-        }
-        // 服务端校验答案。已验证过的记录走幂等返回路径，不重复校验。
+        // 处置策略校验：优先按该违规对应的待办策略校验，无待办时回退到记录级拼图短语。
+        // 已验证过的记录走幂等返回路径，不重复校验。
         if (row.getInteractiveChallengeVerifiedAt() == null
-                && !InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer)) {
-            log.warn("[student-violation] 交互确认答案不匹配 violationId={} userId={}", violationId, targetUserId);
-            throw new IllegalArgumentException("确认短语不正确");
+                && !verifyDispositionAnswer(row, answer)) {
+            log.warn("[student-violation] 处置确认未通过 violationId={} userId={}", violationId, targetUserId);
+            throw new IllegalArgumentException("确认未通过");
         }
         // 自助解禁规则才受窗口次数上限约束；记录级交互短语（含 MANUAL 默认规则）仍允许拼图确认
         if (row.getRuleId() != null && ruleService != null) {
@@ -326,6 +328,24 @@ public class TwinStudentViolationService {
             completeObligationDisposition(after.getId(), targetUserId.trim(), answer);
         }
         return finalizeAfterInteractiveAck(after);
+    }
+
+    /**
+     * 按该违规的处置策略校验答案。
+     * 优先用待办（twin_obligation）的策略注册表校验（SHOW_ONLY/ACK_READ/ACK_PUZZLE/QUIZ/SIGNATURE），
+     * 无待办或待办无策略时回退到记录级拼图短语；两者都没有则该违规本就无需交互确认。
+     */
+    private boolean verifyDispositionAnswer(TwinStudentViolation row, String answer) {
+        if (obligationService != null) {
+            TwinObligation ob = obligationService.findByViolationId(row.getId());
+            if (ob != null && StringUtils.hasText(ob.getDispositionType()) && dispositionRegistry != null) {
+                return dispositionRegistry.verify(ob.getDispositionType(), ob.getDispositionConfigJson(), answer);
+            }
+        }
+        if (StringUtils.hasText(row.getInteractiveChallenge())) {
+            return InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer);
+        }
+        throw new IllegalArgumentException("该违规无需交互确认");
     }
 
     private TwinStudentViolation finalizeAfterInteractiveAck(TwinStudentViolation row) {

@@ -63,7 +63,8 @@ class TwinStudentViolationCreateNoSupersedeTest {
                 cageStatusViolationMapper,
                 null,
                 pushService,
-                obligationService
+                obligationService,
+                null
         );
         when(violationMapper.selectIdsDueToExpire()).thenReturn(Collections.emptyList());
         when(violationMapper.expireActivePastDue()).thenReturn(0);
