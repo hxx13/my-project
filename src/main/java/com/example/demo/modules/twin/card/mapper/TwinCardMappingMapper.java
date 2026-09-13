@@ -33,7 +33,9 @@ public interface TwinCardMappingMapper {
     // 在 TwinCardMappingMapper 接口中补充
     void deleteMapping(@Param("cardNo") String cardNo);
 
-    List<String> findTodayStrandedUserIds(@Param("todayPrefix") String todayPrefix);
+    /** @param campusPatterns 校区 LIKE 模式（如 %浦东%）；空=不过滤，null=由调用方语义决定（此处 null 即不过滤） */
+    List<String> findTodayStrandedUserIds(@Param("todayPrefix") String todayPrefix,
+                                          @Param("campusPatterns") List<String> campusPatterns);
 
     List<String> findTodayExemptedThenRevokedUserIds();
 

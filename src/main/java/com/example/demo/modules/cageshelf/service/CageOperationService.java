@@ -76,7 +76,7 @@ public class CageOperationService {
     private final PersonnelService personnelService;
     private final UserDisplayNameService userDisplayNameService;
     private final CageOwnerApprovalConfigService ownerApprovalConfigService;
-    private final CageAuditAssignmentService auditAssignmentService;
+    private final CageRegionGrantService regionGrantService;
     private final CageModeVisibilityService modeVisibilityService;
     private final CageDivisionService divisionService;
     private final CageOccupancyService occupancyService;
@@ -89,6 +89,7 @@ public class CageOperationService {
     private final ReferenceDataMapper referenceDataMapper;
     private final UserGroupNameResolver userGroupNameResolver;
     private final CageIntermediateStateService intermediateStateService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageOperationService(CageOpRequestMapper opMapper,
                                 CageCellDetailMapper detailMapper,
@@ -101,7 +102,7 @@ public class CageOperationService {
                                 PersonnelService personnelService,
                                 UserDisplayNameService userDisplayNameService,
                                 CageOwnerApprovalConfigService ownerApprovalConfigService,
-                                CageAuditAssignmentService auditAssignmentService,
+                                CageRegionGrantService regionGrantService,
                                 CageModeVisibilityService modeVisibilityService,
                                 CageDivisionService divisionService,
                                 CageOccupancyService occupancyService,
@@ -113,7 +114,8 @@ public class CageOperationService {
                                 UserMapper userMapper,
                                 ReferenceDataMapper referenceDataMapper,
                                 UserGroupNameResolver userGroupNameResolver,
-                                CageIntermediateStateService intermediateStateService) {
+                                CageIntermediateStateService intermediateStateService,
+                                CageVisibilityPolicy visibilityPolicy) {
         this.opMapper = opMapper;
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
@@ -125,7 +127,7 @@ public class CageOperationService {
         this.personnelService = personnelService;
         this.userDisplayNameService = userDisplayNameService;
         this.ownerApprovalConfigService = ownerApprovalConfigService;
-        this.auditAssignmentService = auditAssignmentService;
+        this.regionGrantService = regionGrantService;
         this.modeVisibilityService = modeVisibilityService;
         this.divisionService = divisionService;
         this.occupancyService = occupancyService;
@@ -138,6 +140,7 @@ public class CageOperationService {
         this.referenceDataMapper = referenceDataMapper;
         this.userGroupNameResolver = userGroupNameResolver;
         this.intermediateStateService = intermediateStateService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     // ═══════════════════════════════════════════
@@ -260,8 +263,25 @@ public class CageOperationService {
             return notOperable("NOT_OCCUPIED", "笼位不是饲养中，无法分笼/转移");
         }
         if (modeVisibilityService.isOpExtraOperator(user)) {
+            // 额外操作身份（矩阵 cage.op.manage_identities）只给了「能不能做这类操作」的**资格**，
+            // 没给**作用域**。以前这里直接 return operable()，结果是：矩阵里勾了饲养组长/饲养员的人
+            // 对全院任意笼位都能分笼/转移/代认领 —— 包括对他脱敏、他根本看不到的别人课题组的笼位。
+            // 现在要求笼位落在本人的区域或课题组内，判据与网格脱敏同源（区域命中整架放开、否则按课题组），
+            // 保证「看不到就不能操作」。
+            if (!cageInScope(user, animalCageId, d)) {
+                return notOperable("NO_PERMISSION", "该笼位不在你负责的区域或课题组内");
+            }
             Map<String, Object> out = operable();
             // 额外身份（饲养员/饲养组长/超管）还能代绑定：弹窗检索本课题组人员
+            out.put("canClaimOnBehalf", true);
+            out.put("groupNames", cageGroupNames(d));
+            return out;
+        }
+        // 仅被组长授权「代认领」的人（组员级勾选 cage.op.claim_on_behalf）：
+        // 给代认领入口，但**不给**分笼/转移——那是 cage.op.manage_identities 的领地，两件事分开。
+        if (modeVisibilityService.canClaimOnBehalf(user)) {
+            Map<String, Object> out = notOperable("ONLY_CLAIM_ON_BEHALF",
+                    "你可以代认领该笼位；分笼/转移需要额外操作身份");
             out.put("canClaimOnBehalf", true);
             out.put("groupNames", cageGroupNames(d));
             return out;
@@ -282,6 +302,32 @@ public class CageOperationService {
         return isExperimenterSelf(user, exp)
                 ? operable()
                 : notOperable("NO_PERMISSION", "该笼位由「" + exp + "」占用，无分笼/转移权限");
+    }
+
+    /**
+     * 该笼位是否落在本人的作用域内：**区域分配命中**（可见范围补充）**或**在**本人的课题组**内。
+     *
+     * <p>与网格脱敏同一套判据（{@code CageCellIndexController.applyGroupMask}）：区域命中 → 整架放开；
+     * 否则按课题组过滤。所以「看得到这个笼位」与「能操作这个笼位」口径一致，不会出现
+     * 「对他脱敏、他看不到，却还能分笼/转移/代认领」。
+     */
+    private boolean cageInScope(User user, Long animalCageId, CageCellDetail d) {
+        // 全局查看者（SUPER_ADMIN+ / 平台管理者）不受作用域限制：他们本来就可见全部，
+        // 这次收窄针对的是「矩阵给了操作资格、但笼位不在他负责范围内」的饲养组长/饲养员。
+        if (visibilityPolicy.isGlobalViewer(user)) return true;
+        Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
+        if (loc != null) {
+            Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
+            String roomId = str(loc.get("roomId"));
+            String floorId = str(loc.get("floorId"));
+            String campusId = str(loc.get("campusId"));
+            if ((roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId))
+                    || (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId))
+                    || (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId))) {
+                return true;
+            }
+        }
+        return cageInUserGroup(user, d);
     }
 
     private static Map<String, Object> notOperable(String code, String reason) {
@@ -610,8 +656,8 @@ public class CageOperationService {
      */
     @Transactional
     public CageClaim claimOnBehalf(User operator, Long animalCageId, String targetAccountId) {
-        if (!modeVisibilityService.isOpExtraOperator(operator)) {
-            throw new TwinBusinessException(403, "无代认领权限（仅饲养员、饲养组长或管理员）");
+        if (!modeVisibilityService.canClaimOnBehalf(operator)) {
+            throw new TwinBusinessException(403, "无代认领权限（饲养员/饲养组长/管理员，或被组长授权的组员）");
         }
         if (targetAccountId == null || targetAccountId.isBlank()) {
             throw new TwinBusinessException(400, "请选择要认领的人员");
@@ -624,6 +670,12 @@ public class CageOperationService {
         if (d == null) throw new TwinBusinessException(404, "笼位不存在: " + animalCageId);
         if (d.getCageTypeCode() == null || d.getCageTypeCode() != 3) {
             throw new TwinBusinessException(400, "该笼位不是饲养中的笼位，无法认领");
+        }
+        // **操作者本人**的作用域：入口按钮上也判过，但按钮是前端在拦、可以直接打接口，
+        // 所以写路径必须自己再判一次。判据与按钮同源（区域分配 / 课题组），
+        // 否则脱敏看不到的笼位照样能被代认领。（下面 cageInUserGroup(target) 判的是目标人，两回事。）
+        if (!cageInScope(operator, animalCageId, d)) {
+            throw new TwinBusinessException(403, "该笼位不在你负责的区域或课题组内，无法代认领");
         }
         User target = userMapper.findById(targetAccountId);
         if (target == null) throw new TwinBusinessException(400, "目标人员不存在");
@@ -688,8 +740,15 @@ public class CageOperationService {
             out.put("reason", "笼位不存在");
             return out;
         }
-        boolean admin = user.getRole() != null && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
-        if (admin || modeVisibilityService.isOpExtraOperator(user)) {
+        // 编辑权读矩阵能力 cage.edit.form（2026-09-15 起）：
+        // 原先写死的「role>=ADMIN 或 isOpExtraOperator」已废——**ADMIN 不再自动拥有全量编辑**，
+        // 与用户定的「编辑权 = 饲养组长 / 学生限本人」一致。SUPER_ADMIN+ 由服务内逃生口放行。
+        //
+        // 作用域（设计 10.1）：光有能力还不够，**笼位必须落在自己负责的范围内**
+        //（LEADER 行；饲养员作为组员时经 MEMBER 行继承组长的区域，见 visibilityScopes）。
+        // 超管不受区域约束。
+        if (modeVisibilityService.canEditCageForm(user)
+                && (modeVisibilityService.isSuperAdmin(user) || inMyRegions(user, animalCageId))) {
             out.put("editable", true);
             return out;
         }
@@ -706,14 +765,38 @@ public class CageOperationService {
         out.put("editable", false);
         // 失败原因必须说清卡在哪一条。原来一律写「由 X 占用」，于是角色等级不够的人
         // 也读到「被占用」，误以为是占用问题 —— 高权限账号尤其容易被这句话带偏。
+        // 现在还要再分一层：**有能力但不在区域内** ≠ **压根没这个能力**，提示不能一样。
         RoleEnum role = user.getRole();
-        String roleNote = admin ? ""
+        boolean hasCap = modeVisibilityService.canEditCageForm(user);
+        String roleNote = hasCap
+                ? "；该笼位不在你负责的区域内（区域由超级管理员分配）"
                 : "；当前角色「" + (role == null ? "未知" : role.getDescZh())
-                        + "」低于管理员，也不在额外操作身份名单里";
+                        + "」不在「编辑笼位表单」权限名单里";
         out.put("reason", exp == null
                 ? "该笼位尚未认领，认领成本人后才能编辑" + roleNote
-                : "该笼位由「" + exp + "」占用" + (admin ? "，无编辑权限" : roleNote));
+                : "该笼位由「" + exp + "」占用" + roleNote);
         return out;
+    }
+
+    /**
+     * 该笼位是否落在「我负责的范围内」——编辑权的作用域约束（设计 10.1）。
+     *
+     * <p>口径就是 {@code visibilityScopes}：LEADER 行（自己负责）+ SCOPE 遗留
+     * + 组员经 MEMBER 行继承的组长区域。所以**饲养员入组后自动获得该区域的编辑权**，
+     * 没入组则没有——这是「编辑权 = 饲养组长 / 组员继承」的自然结果，不是漏判。
+     */
+    private boolean inMyRegions(User user, Long animalCageId) {
+        Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
+        if (scope.isEmpty()) return false;
+        Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
+        if (loc == null) return false;
+        String roomId = str(loc.get("roomId"));
+        String floorId = str(loc.get("floorId"));
+        String campusId = str(loc.get("campusId"));
+        if (roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId)) return true;
+        if (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId)) return true;
+        if (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId)) return true;
+        return false;
     }
 
     /** 该笼位的活跃认领人是不是本人（双 id 安全）。「仅占用者本人可写」的入口统一复用这一个判定。 */
@@ -1040,14 +1123,14 @@ public class CageOperationService {
     // 审核
     // ═══════════════════════════════════════════
 
-    /** 待审列表：ADMIN/PI 全量，否则按 cage_audit_assignment 的楼层/房间归属过滤。 */
+    /** 待审列表：全局可见者（SUPER_ADMIN+）全量，否则按可见范围（含组长下放的审核权）过滤。 */
     public List<Map<String, Object>> pending(User reviewer, String opType) {
-        boolean isAdmin = reviewer != null && reviewer.getRole() != null
-                && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        // 判定先算一次再逐行比：canReview 每次要查身份/矩阵/成员勾选/可见范围，逐行调会把查询数乘上行数
+        CageRegionGrantService.ReviewAuthority auth = regionGrantService.reviewAuthority(reviewer);
         List<Map<String, Object>> out = new ArrayList<>();
         for (CageOpRequest r : opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, opType)) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(r.getSourceAnimalCageId());
-            if (!isAdmin && !auditAssignmentService.canReview(reviewer,
+            if (!auth.covers(
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")))) {
@@ -1069,10 +1152,9 @@ public class CageOperationService {
      * 判组只看**源笼位**：目标准入本就要求与源同 AUP，同组是推论。
      */
     public List<Map<String, Object>> pendingMarkers(User user) {
-        // ADMIN 及以上不受视角收口：isStudent 只看 account_source，不看 role，
-        // 双视角绑定被抬到高权限的账号（account_source=STUDENT）会被误判成学生而丢失可见范围。
-        boolean isAdmin = user != null && user.getRole() != null
-                && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        // 全局可见者不受视角收口：isStudent 只看 account_source，不看 role，
+        // 双视角绑定被抬到全局可见的账号（account_source=STUDENT）会被误判成学生而丢失可见范围。
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(user);
         boolean student = !isAdmin && modeVisibilityService.isStudent(user);
         List<CageOpRequest> rows = opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, null);
         List<Map<String, Object>> out = new ArrayList<>();
@@ -1124,10 +1206,10 @@ public class CageOperationService {
         if (!CageOpRequest.STATUS_PENDING.equals(req.getStatus())) {
             throw new TwinBusinessException(400, "该请求已处理：" + req.getStatus());
         }
-        boolean isAdmin = reviewer.getRole() != null && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
         if (!isAdmin) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(req.getSourceAnimalCageId());
-            if (!auditAssignmentService.canReview(reviewer,
+            if (!regionGrantService.canReview(reviewer,
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")))) {

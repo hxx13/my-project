@@ -54,6 +54,10 @@ public class TwinViolationRule {
     private String cageTriggerAction;
     /** 违规图片 URL JSON 数组 */
     private String cageImageUrls;
+    /** 处置策略编码（SHOW_ONLY / ACK_READ / ACK_PUZZLE / QUIZ / SIGNATURE）；NULL=存量规则走拼图反推 */
+    private String dispositionType;
+    /** 处置策略自带配置 JSON（题数/短语/声明等）；NULL=无配置 */
+    private String dispositionConfigJson;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

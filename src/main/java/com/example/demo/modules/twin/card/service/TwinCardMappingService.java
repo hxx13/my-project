@@ -738,7 +738,7 @@ public class TwinCardMappingService {
 
         // 1. 查找当前所有"在馆"人员 (ENTER 次数 > EXIT 次数)
         String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayStr + "%");
+        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayStr + "%", null);
 
         for (String userId : strandedUserIds) {
             TwinCardMapping mapping = loadMappingByAroUserIdFromDb(userId);
@@ -868,7 +868,7 @@ public class TwinCardMappingService {
      */
     public List<String> listTodayExemptedThenRevokedStrandedUserIds() {
         String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(today + "%");
+        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(today + "%", null);
         List<String> out = new ArrayList<>();
         if (strandedUserIds == null || strandedUserIds.isEmpty()) {
             return out;

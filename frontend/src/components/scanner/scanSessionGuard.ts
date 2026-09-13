@@ -67,8 +67,10 @@ export function canScheduleAutoExit(userId: string, scanKey?: string): boolean {
 
 /**
  * 硬件/输入框发起 analyze 前调用。
- * @param scanKey 本次刷入的工号或卡号（analyze 前的原始键）
- * @param knownUserId 若弹窗已打开且已知人员，可传入以按人拦截
+ * @param scanKey 本次刷入的工号或卡号（analyze 前的原始键）——「同一个人」就是靠它判定的
+ * @param knownUserId **被扫人**的 userId，仅在调用方确实已经知道「正在被扫的是谁」时才传。
+ *                    ⚠️ 不要传弹窗里打开着的那个人的 userId：那是弹窗自己的身份，
+ *                    会让下面的 `popupUserId === uid` 恒真，导致弹窗一开着就拦掉**所有**人。
  */
 export function tryBeginScanChannel(
   scanKey: string,

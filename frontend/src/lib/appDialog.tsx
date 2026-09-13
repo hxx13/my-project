@@ -203,7 +203,11 @@ function AppDialogSurface({
 
   return (
     <div
-      className="fixed inset-0 z-[1100] flex items-center justify-center p-4"
+      // pointer-events-auto 不能省：Radix 的 Dialog 在 modal 模式下会给 **body** 加
+      // `pointer-events: none`（只放开它自己的 Overlay/Content）。本组件是手写的、portal 到 body 的，
+      // 不显式打开就会一路继承成 none —— 表现是「弹窗看得见、但确定/取消都点不动」，
+      // 且只在「从某个 Radix 弹窗里调用 appConfirm/appAlert/appPrompt」时复现。
+      className="pointer-events-auto fixed inset-0 z-[1100] flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.45)" }}
       data-modal-layer="true"
       role="presentation"

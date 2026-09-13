@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageAlertRuleMapper">
+
+    <select id="listDefaultRules" resultType="map">
+        SELECT status_code AS statusCode, threshold_days AS thresholdDays,
+               action AS action, enabled AS enabled
+        FROM cage_alert_default
+    </select>
+
+    <!-- 批量取区域告警规则行（含 enabled=0 的关闭行）：逐架解析要区分「没配过」和「配过但全关」。
+         行构造器 IN 走 idx_cra_region(region_type, region_id) 索引；regions 为空时调用方须提前返回。 -->
+    <select id="listRegionRules" resultType="map">
+        SELECT region_type AS regionType, region_id AS regionId,
+               status_code AS statusCode, threshold_days AS thresholdDays,
+               action AS action, enabled AS enabled, configured_by AS configuredBy
+        FROM cage_region_alert_rule
+        WHERE (region_type, region_id) IN
+        <foreach collection="regions" item="r" open="(" separator="," close=")">
+            (#{r.regionType}, #{r.regionId})
+        </foreach>
+        ORDER BY status_code ASC
+    </select>
+
+    <!-- 区域树配置态聚合：哪些 (region_type, region_id) 被配过（有任意行，含 enabled=0 的关闭行）。
+         「配过但全关」也算配过，与 regionView 的 regionConfigured 同口径。走 idx_cra_region 覆盖的全表去重。 -->
+    <select id="listConfiguredRegionKeys" resultType="map">
+        SELECT DISTINCT region_type AS regionType, region_id AS regionId
+        FROM cage_region_alert_rule
+    </select>
+
+    <insert id="upsertDefaultRule">
+        INSERT INTO cage_alert_default (status_code, threshold_days, action, enabled, updated_at)
+        VALUES (#{statusCode}, #{thresholdDays}, #{action}, #{enabled}, NOW())
+        ON DUPLICATE KEY UPDATE threshold_days = VALUES(threshold_days), action = VALUES(action),
+                                enabled = VALUES(enabled), updated_at = NOW()
+    </insert>
+
+    <!-- 只删这个人配的：同一区域可能有多个组长，按区域整片删会抹掉别人的配置 -->
+    <delete id="deleteRegionRules">
+        DELETE FROM cage_region_alert_rule
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+          AND configured_by &lt;=&gt; #{configuredBy}
+    </delete>
+
+    <!-- 清掉该区域所有人的规则行：超管保存 = 该区域重置（别人的行界面上是只读的，没有别的清理路径） -->
+    <delete id="deleteAllRegionRules">
+        DELETE FROM cage_region_alert_rule
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+    </delete>
+
+    <!-- 唯一键 (region_type, region_id, status_code, configured_by) 上的 upsert：
+         正常路径先删后插不会撞键，ON DUPLICATE 只是兜底幂等（并发/重放不报错） -->
+    <insert id="insertRegionRule">
+        INSERT INTO cage_region_alert_rule (region_type, region_id, status_code, threshold_days, action, enabled, configured_by, updated_at)
+        VALUES (#{regionType}, #{regionId}, #{statusCode}, #{thresholdDays}, #{action}, #{enabled}, #{configuredBy}, NOW())
+        ON DUPLICATE KEY UPDATE threshold_days = VALUES(threshold_days), action = VALUES(action),
+                                enabled = VALUES(enabled), updated_at = NOW()
+    </insert>
+
+</mapper>

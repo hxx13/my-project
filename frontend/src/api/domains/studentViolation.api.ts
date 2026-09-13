@@ -63,7 +63,33 @@ export interface StudentViolationRow {
   activeSameUserCount?: number;
   /** 本条是否就是大屏正在展示的那条（同人取 MAX(id)） */
   boardDisplayed?: boolean;
+  /** 公告展示天数；null=跟随到期时间（与 noticeLinkExpire=1 等价） */
+  noticeDisplayDays?: number | null;
+  /** 公告展示是否与到期时间联动；1=联动，0=按 noticeDisplayDays */
+  noticeLinkExpire?: number | null;
+  /** 公告单独解除时间；非空=该条已下大屏公示 */
+  noticeClearedAt?: string | null;
+  /** 一次下发的批次键；历史行后端归一为 `SINGLE-<id>`（每人自成一块） */
+  batchId?: string;
+  /** 课题组名（来自笼架违规父记录）；非笼架违规为 null */
+  projectGroupName?: string | null;
+  /** 公告状态：ACTIVE | CLEARED | WINDOW_ENDED | NOT_ACTIVE */
+  noticeState?: string | null;
+  /** 处置摘要（列表行不含签名图，图须走 dispositionDetail 按需拉取） */
+  disposition?: ViolationDispositionSummary | null;
 }
+
+/** 后端 `dispositionSummary` 映射：状态/类型/完成信息 + 是否带签名图布尔。 */
+export type ViolationDispositionSummary = {
+  type?: string | null;
+  typeLabel?: string | null;
+  status?: string | null;
+  stateLabel?: string | null;
+  completedAt?: string | null;
+  channel?: string | null;
+  detail?: string | null;
+  hasSignatureImage?: boolean;
+};
 
 export interface CreateStudentViolationPayload {
   targetUserId: string;
@@ -86,6 +112,10 @@ export interface CreateStudentViolationPayload {
   /** 期 3 处置策略覆盖（写入 Obligation） */
   dispositionType?: string | null;
   dispositionConfigJson?: string | null;
+  /** 公告展示天数；null=跟随到期时间（仅 noticeLinkExpire=0 时才生效） */
+  noticeDisplayDays?: number | null;
+  /** 公告展示是否与到期时间联动；不传默认 1 */
+  noticeLinkExpire?: number | null;
 }
 
 export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {
@@ -150,8 +180,6 @@ export interface StudentViolationListParams {
   /** 服务端 SQL 层过滤（避免先截断窗口再前端过滤导致的幻影记录） */
   statuses?: StudentViolationStatus[];
   sources?: string[];
-  /** true=仅非笼架联动记录；false/null=不过滤 */
-  excludeCage?: boolean;
   /** true=仅禁入 / false=仅可进入 / undefined=不过滤 */
   lockedOnly?: boolean;
 }
@@ -169,7 +197,6 @@ export async function listStudentViolations(params: StudentViolationListParams =
   if (params.targetUserId) sp.set("targetUserId", params.targetUserId);
   if (params.statuses?.length) sp.set("statuses", params.statuses.join(","));
   if (params.sources?.length) sp.set("sources", params.sources.join(","));
-  if (params.excludeCage != null) sp.set("excludeCage", String(params.excludeCage));
   if (params.lockedOnly != null) sp.set("lockedOnly", String(params.lockedOnly));
   const res = await adminHttp.get<ApiResponse<StudentViolationListResult>>(`/twin/student-violations?${sp.toString()}`);
   return res.data?.data ?? { list: [], total: 0 };
@@ -195,6 +222,10 @@ export interface UpdateStudentViolationPayload {
   interactiveUnlockOnVerify?: boolean;
   dispositionType?: string | null;
   dispositionConfigJson?: string | null;
+  /** 公告展示天数；null=保持原值 */
+  noticeDisplayDays?: number | null;
+  /** 公告展示是否与到期时间联动；null=保持原值 */
+  noticeLinkExpire?: number | null;
 }
 
 export async function updateStudentViolation(id: number, body: UpdateStudentViolationPayload) {
@@ -208,6 +239,27 @@ export async function deleteStudentViolation(id: number) {
 
 export async function clearStudentViolation(id: number) {
   await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/clear`);
+}
+
+/** 单独解除公告（大屏立即下板，记录与禁入不变）。后端幂等，success=false 由 adminHttp 拦截器抛错。 */
+export async function clearStudentViolationNotice(id: number): Promise<void> {
+  await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/clear-notice`);
+}
+
+/**
+ * 处置完整明细：摘要全部键 + `answerPayload` 原文（签名图在这里）。
+ * 后端 `Result.error` 以 HTTP 200 + success:false 返回，必须显式抛错，否则会把失败当成功。
+ */
+export async function dispositionDetail(
+  id: number
+): Promise<ViolationDispositionSummary & { answerPayload?: string | null }> {
+  const res = await adminHttp.get<ApiResponse<ViolationDispositionSummary & { answerPayload?: string | null }>>(
+    `/twin/student-violations/${id}/disposition-detail`
+  );
+  const body = res.data;
+  if (body && body.success === false) throw new Error(body.message || "查询处置明细失败");
+  if (!body?.data) throw new Error("查询处置明细失败");
+  return body.data;
 }
 
 /** 与后端 RoleEnum.code 一致 */
@@ -310,6 +362,10 @@ export interface ViolationRule {
   cageGroupWhitelist?: string[];
   cageTriggerAction?: 'VIOLATION_ONLY' | 'NOTICE_ONLY' | 'BOTH';
   cageImageUrls?: string[];
+  /** 处置策略编码；空=存量规则走 interactiveChallenge 反推（后端 twin_violation_rule.disposition_type） */
+  dispositionType?: string | null;
+  /** 处置策略自带配置 JSON 字符串；空=无配置 */
+  dispositionConfigJson?: string | null;
 }
 
 /** 解析后端返回的笼架 JSON 字符串字段为 JS 数组/对象 */

@@ -55,12 +55,14 @@ public class CageClaimService {
     private final CageTransferLogMapper transferLogMapper;
     private final PersonnelService personnelService;
     private final CageCellDetailService detailService;
-    private final CageAuditAssignmentService auditAssignmentService;
+    private final CageRegionGrantService regionGrantService;
     private final CageCellIndexMapper cellIndexMapper;
     private final UserGroupNameResolver userGroupNameResolver;
     private final CageOpRequestMapper opRequestMapper;
     private final CageDivisionService divisionService;
     private final CageIntermediateStateService intermediateStateService;
+    private final CageVisibilityPolicy visibilityPolicy;
+    private final CageRegionCapabilityService regionCapabilityService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -76,12 +78,14 @@ public class CageClaimService {
                             CageTransferLogMapper transferLogMapper,
                             PersonnelService personnelService,
                             CageCellDetailService detailService,
-                            CageAuditAssignmentService auditAssignmentService,
+                            CageRegionGrantService regionGrantService,
                             CageCellIndexMapper cellIndexMapper,
                             UserGroupNameResolver userGroupNameResolver,
                             CageOpRequestMapper opRequestMapper,
                             CageDivisionService divisionService,
-                            CageIntermediateStateService intermediateStateService) {
+                            CageIntermediateStateService intermediateStateService,
+                            CageVisibilityPolicy visibilityPolicy,
+                            CageRegionCapabilityService regionCapabilityService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -96,12 +100,14 @@ public class CageClaimService {
         this.transferLogMapper = transferLogMapper;
         this.personnelService = personnelService;
         this.detailService = detailService;
-        this.auditAssignmentService = auditAssignmentService;
+        this.regionGrantService = regionGrantService;
         this.cellIndexMapper = cellIndexMapper;
         this.userGroupNameResolver = userGroupNameResolver;
         this.opRequestMapper = opRequestMapper;
         this.divisionService = divisionService;
         this.intermediateStateService = intermediateStateService;
+        this.visibilityPolicy = visibilityPolicy;
+        this.regionCapabilityService = regionCapabilityService;
     }
 
     private String displayNameOf(User user) {
@@ -274,6 +280,11 @@ public class CageClaimService {
         // 划分规则：该笼位已划分给本课题组某人时，非被划分人不可申请
         if (divisionService.isBlocked(detail.getAnimalCageId(), student.getId())) {
             throw new TwinBusinessException(403, "该笼位已划分给其他人员，无法申请");
+        }
+        // 区域级学生能力：申请预约由**该笼位所在区域**的饲养组长开关（可见性取并集，这里按笼位收口）
+        if (!regionCapabilityService.cageRegionEnabled(student, detail.getAnimalCageId(),
+                CageRegionCapabilityService.modeCapability("studentClaim"))) {
+            throw new TwinBusinessException(403, "该笼位所在区域未开放「申请预约」，请联系该区域饲养组长");
         }
     }
 
@@ -478,6 +489,11 @@ public class CageClaimService {
         if (targetAnimalCageIds == null || targetAnimalCageIds.isEmpty()) {
             throw new TwinBusinessException(400, "请选择分笼目标笼位");
         }
+        // 区域级学生能力：分笼由母笼所在区域的饲养组长开关（同「操作按笼位收口」）
+        if (!regionCapabilityService.cageRegionEnabled(student, mother.getAnimalCageId(),
+                CageRegionCapabilityService.modeCapability("division"))) {
+            throw new TwinBusinessException(403, "该笼位所在区域未开放「划分」，请联系该区域饲养组长");
+        }
         // 去重 + 升序排序，保证多笼锁定顺序一致，避免并发 divide 死锁
         List<Long> targets = targetAnimalCageIds.stream().distinct().sorted().toList();
 
@@ -560,12 +576,13 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "当前状态不可审批: " + current);
         }
 
-        boolean isAdmin = approver.getRole() != null && approver.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
-        // 审核人归属校验：ADMIN/PI 放行（既有口径），否则须配置了该笼位所在楼层/房间
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(approver);
+        // 审核人归属校验：全局可见者放行，否则须配置了该笼位所在楼层/房间。
+        // PI 不再无条件放行 —— 原先 isPi 短路会让任何 PI 身份的人越过区域归属校验。
         boolean hasReviewScope = false;
-        if (!isAdmin && !personIdentityService.isPi(approver.getId())) {
+        if (!isAdmin) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(claim.getAnimalCageId());
-            hasReviewScope = auditAssignmentService.canReview(approver,
+            hasReviewScope = regionGrantService.canReview(approver,
                     loc == null ? null : str(loc.get("roomId")),
                     loc == null ? null : str(loc.get("floorId")),
                     loc == null ? null : str(loc.get("campusId")));
@@ -794,31 +811,39 @@ public class CageClaimService {
         return rows;
     }
 
-    public Map<String, Object> getPendingList(String status, String keyword, int page, int pageSize) {
-        int offset = (page - 1) * pageSize;
+    /**
+     * 待审列表（分页）。审核范围必须在分页**之前**下沉，否则会出现
+     * 「角标数得少、列表却看得到全部」——两者共用 {@link #inReviewScope}，保证恒等。
+     *
+     * ponytail: 全量拉取后内存过滤，与 countPendingForReviewer 同法；待审量大了再下沉到 SQL。
+     */
+    public Map<String, Object> getPendingList(User reviewer, String status, String keyword, int page, int pageSize) {
+        // 审核判定先算一次再逐行比：canReview 每次要查身份/矩阵/成员勾选/可见范围，逐行调会把查询数乘上行数
+        CageRegionGrantService.ReviewAuthority auth = regionGrantService.reviewAuthority(reviewer);
+        List<Map<String, Object>> all = claimMapper.selectPending(status, keyword, 0, 100000).stream()
+                .filter(c -> inReviewScope(auth, c))
+                .toList();
+        int from = Math.min(Math.max(0, (page - 1) * pageSize), all.size());
+        int to = Math.min(from + pageSize, all.size());
         return Map.of(
-            "list", claimMapper.selectPending(status, keyword, offset, pageSize),
-            "total", claimMapper.countPending(status, keyword),
+            "list", all.subList(from, to),
+            "total", all.size(),
             "page", page,
             "pageSize", pageSize
         );
     }
 
-    /** 待审数（按审核人过滤）：ADMIN/SUPER_ADMIN 全量；否则只数其负责楼层/房间内的待审。 */
+    /** 待审数（按审核人过滤）：全局可见者（SUPER_ADMIN+）全量；否则只数其负责区域内的待审。 */
     public int countPendingForReviewer(User reviewer) {
-        List<Map<String, Object>> pending = claimMapper.selectPending(null, null, 0, 100000);
-        if (pending.isEmpty()) return 0;
-        boolean isAdmin = reviewer != null && reviewer.getRole() != null
-                && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
-        if (isAdmin) return pending.size();
-        int count = 0;
-        for (Map<String, Object> c : pending) {
-            if (auditAssignmentService.canReview(reviewer,
-                    str(c.get("roomId")), str(c.get("floorId")), str(c.get("campusId")))) {
-                count++;
-            }
-        }
-        return count;
+        CageRegionGrantService.ReviewAuthority auth = regionGrantService.reviewAuthority(reviewer);
+        return (int) claimMapper.selectPending(null, null, 0, 100000).stream()
+                .filter(c -> inReviewScope(auth, c))
+                .count();
+    }
+
+    /** 该待审记录是否落在审核人的作用域内（全局查看者的 authority.active=true，恒命中）。 */
+    private boolean inReviewScope(CageRegionGrantService.ReviewAuthority auth, Map<String, Object> row) {
+        return auth.covers(str(row.get("roomId")), str(row.get("floorId")), str(row.get("campusId")));
     }
 
     public List<ApprovalRecord> getApprovalHistory(Long claimId) {

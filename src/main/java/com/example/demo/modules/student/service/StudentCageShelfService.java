@@ -1,6 +1,5 @@
 package com.example.demo.modules.student.service;
 
-import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
@@ -11,9 +10,10 @@ import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.service.CageCellIndexService;
+import com.example.demo.modules.cageshelf.service.CageRegionGrantService;
 import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
-import com.example.demo.modules.identity.service.PersonScopeService;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
 import com.example.demo.modules.student.mapper.StudentCageShelfPinMapper;
@@ -54,9 +54,10 @@ public class StudentCageShelfService {
     private final CageCellAnnotationMapper annotationMapper;
     private final StudentCageShelfPinMapper cageShelfPinMapper;
     private final CageCellIndexService cageCellIndexService;
-    private final PersonScopeService personScopeService;
+    private final CageRegionGrantService regionGrantService;
     private final CageShelfLocalAggCache localAggCache;
     private final com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public StudentCageShelfService(CageShelfService cageShelfService,
                                    AroService aroService,
@@ -67,9 +68,10 @@ public class StudentCageShelfService {
                                    CageCellAnnotationMapper annotationMapper,
                                    StudentCageShelfPinMapper cageShelfPinMapper,
                                    CageCellIndexService cageCellIndexService,
-                                   PersonScopeService personScopeService,
+                                   CageRegionGrantService regionGrantService,
                                    CageShelfLocalAggCache localAggCache,
-                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService) {
+                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService,
+                                   CageVisibilityPolicy visibilityPolicy) {
         this.cageShelfService = cageShelfService;
         this.aroService = aroService;
         this.aroPersonnelMapper = aroPersonnelMapper;
@@ -79,9 +81,10 @@ public class StudentCageShelfService {
         this.annotationMapper = annotationMapper;
         this.cageShelfPinMapper = cageShelfPinMapper;
         this.cageCellIndexService = cageCellIndexService;
-        this.personScopeService = personScopeService;
+        this.regionGrantService = regionGrantService;
         this.localAggCache = localAggCache;
         this.cageOperationService = cageOperationService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     // ---- filter options ----
@@ -264,6 +267,28 @@ public class StudentCageShelfService {
         }
         boolean isAdmin = isAdminUser(user);
         List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
+        return applyCellMask(grid, isAdmin, groupNames);
+    }
+
+    /**
+     * 按**指定账号**（而非登录人）的课题组脱敏网格 —— 刷卡弹窗中栏平面图专用。
+     *
+     * <p>弹窗的房间与架子都是按「被扫人」课题组选的（{@link #roomsForUserGroup}），
+     * 脱敏基准必须同为被扫人：按登录人（门禁终端会话，常是与被扫人无关的账号）脱敏，
+     * 会出现「架子是被扫人的、格子却整片 ***」。没有 admin 旁路 —— 被扫人的全局可见身份
+     * 不改变「只看自己课题组」这个口径。</p>
+     */
+    public List<Map<String, Object>> maskGridForUserId(String userId, List<Map<String, Object>> grid) {
+        if (grid == null) {
+            return List.of();
+        }
+        return applyCellMask(grid, false, resolveUserGroupNames(userId));
+    }
+
+    /** 课题组脱敏循环体 —— 两个入口共用一份，改判据只改这里。 */
+    private List<Map<String, Object>> applyCellMask(List<Map<String, Object>> grid,
+                                                    boolean isAdmin,
+                                                    List<String> groupNames) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> cell : grid) {
             Map<String, Object> c = new LinkedHashMap<>(cell);
@@ -274,20 +299,42 @@ public class StudentCageShelfService {
                 boolean visible = isAdmin || isCellVisible(c, groupNames);
                 c.put("visible", visible);
                 if (!visible) {
+                    // 字段集与 maskDetailForUser 保持一致：弹窗详情面板会渲染项目名称/管家/
+                    // 实验记录/照片，只遮 PI 与实验员的话那几项照样漏出去。
+                    // projectGroup 是项目名称的另一个下发口（= 项目名称），occupantName 是
+                    // 实验员的另一个下发口（占用者）—— 只遮同名键等于没遮。
                     c.put("projectPiName", "***");
                     c.put("piName", "***");
+                    c.put("projectName", "***");
+                    c.put("projectGroup", "***");
                     c.put("departmentName", "***");
                     c.put("aupNumber", "");
                     c.put("experimenterName", "***");
+                    c.put("occupantName", "***");
+                    c.put("labAssistantName", "***");
+                    c.put("experimentDesc", "");
+                    c.put("imagesJson", "[]");
                     // specialStatuses（需分笼/健康异常等）是笼位状态，非课题组归属信息，保留不做脱敏，
                     // 否则学生视角下非本组笼位的特殊状态色块会丢失。
-                    Map<String, Object> detail = castMap(c.get("detail"));
-                    if (detail != null) {
-                        detail.put("projectPiName", "***");
-                        detail.put("piName", "***");
-                        detail.put("departmentName", "***");
-                        detail.put("aupNumber", "");
-                        detail.put("experimenterName", "***");
+                    //
+                    // 「完整详情」是 CageCellDetail 实体而不是 Map —— 原先走 castMap 拿到 null，
+                    // 这层脱敏等于没做；而前端详情面板恰好优先读 cell.detail，漏的正是最要命的字段。
+                    Object detailObj = c.get("detail");
+                    if (detailObj instanceof CageCellDetail d) {
+                        blankSensitiveFields(d);
+                    } else {
+                        Map<String, Object> detail = castMap(detailObj);
+                        if (detail != null) {
+                            detail.put("projectPiName", "***");
+                            detail.put("piName", "***");
+                            detail.put("projectName", "***");
+                            detail.put("departmentName", "***");
+                            detail.put("aupNumber", "");
+                            detail.put("experimenterName", "***");
+                            detail.put("labAssistantName", "***");
+                            detail.put("experimentDesc", "");
+                            detail.put("imagesJson", "[]");
+                        }
                     }
                 }
             }
@@ -312,6 +359,15 @@ public class StudentCageShelfService {
         if (visible) {
             return detail;
         }
+        blankSensitiveFields(detail);
+        return detail;
+    }
+
+    /**
+     * 非本组笼位详情置空 —— 实体详情接口与网格内嵌详情共用一份，改字段只改这里。
+     * 除了课题组归属（PI/部门/项目名称/AUP/实验员/管家），实验记录与照片也是他人实验内容，一并清掉。
+     */
+    private static void blankSensitiveFields(CageCellDetail detail) {
         detail.setPiName("***");
         detail.setProjectPiName("***");
         detail.setProjectName("***");
@@ -321,7 +377,8 @@ public class StudentCageShelfService {
         detail.setLabAssistantName("***");
         detail.setExperimentDesc("");
         detail.setImagesJson("[]");
-        return detail;
+        // ARO 原文里同样带 PI/实验员，前端没有任何消费方 —— 直接清掉，别为了「完整性」留着。
+        detail.setAroRawData(null);
     }
 
     // ---- refresh ----
@@ -743,10 +800,9 @@ public class StudentCageShelfService {
         }
     }
 
-    /** Admin role or above bypasses project-group restrictions. */
+    /** 全局可见者（SUPER_ADMIN+）越过课题组限制。判据见 {@link CageVisibilityPolicy}。 */
     private boolean isAdminUser(User user) {
-        if (user == null || user.getRole() == null) return false;
-        return user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        return visibilityPolicy.isGlobalViewer(user);
     }
 
     /**
@@ -765,7 +821,7 @@ public class StudentCageShelfService {
     /** 是否配了可见范围补充（校区/楼层/房间）。配了才需要在基本权限之上叠加放开。 */
     public boolean hasScopeAssignment(User user) {
         if (user == null || isAdminUser(user)) return false;
-        return !personScopeService.listGroupedByType(user.getId()).isEmpty();
+        return regionGrantService.hasVisibilityScope(user.getId());
     }
 
     /**
@@ -777,7 +833,7 @@ public class StudentCageShelfService {
      */
     public boolean isShelfVisibleForUser(User user, String shelveId, String roomId, String floorId, String campusId) {
         if (isAdminUser(user)) return true;
-        Map<String, List<String>> scope = personScopeService.listGroupedByType(user.getId());
+        Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
         if (scope.isEmpty()) return false; // 无补充 → 不额外放开任何笼架
         List<String> rooms = scope.getOrDefault("ROOM", List.of());
         List<String> floors = scope.getOrDefault("FLOOR", List.of());
@@ -788,16 +844,9 @@ public class StudentCageShelfService {
         return false; // 都没命中 → 不额外放开，回到基本权限
     }
 
-    /** 教职工（STAFF+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
+    /** 全局可见者（SUPER_ADMIN+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
     private boolean shouldUseFullSpecialStatusOverview(User user, boolean mobileHtml5PrivilegeBypass) {
-        if (mobileHtml5PrivilegeBypass || isAdminUser(user)) {
-            return true;
-        }
-        if (user != null && user.getRole() != null
-                && user.getRole().getLevel() >= RoleEnum.STAFF.getLevel()) {
-            return true;
-        }
-        return false;
+        return mobileHtml5PrivilegeBypass || isAdminUser(user);
     }
 
     private boolean isCellVisible(Map<String, Object> cell, List<String> groupNames) {

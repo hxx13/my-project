@@ -9,9 +9,6 @@ import CageFormFill from "./CageFormFill";
 import CageOperationActions from "./CageOperationActions";
 import type { CageOpKind, CageOpMark, CageOpSource } from "../useCageOpSelect";
 import toast from "react-hot-toast";
-import { hasMinRole } from "@/features/auth/roleAccess";
-import { authStorage } from "@/features/auth/authStorage";
-import { fetchMyIdentity } from "@/api/domains/personIdentity.api";
 
 /**
  * LocalDetailPanel — 本地数据源笼位详情面板
@@ -84,17 +81,10 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
   // ── 认领状态标识：有认领记录即「已认领」（认领流程的领地，与一键认领入口互斥）──
   const claimed = !!((cell as any).activeClaimId);
 
-  // ── 编辑权限：管理员及以上，或「饲养组长」身份标识（BREEDING_GROUP_LEADER，区别于 PI）──
-  const [canEdit, setCanEdit] = useState(false);
-  useEffect(() => {
-    if (hasMinRole(authStorage.getRole(), "ADMIN")) {
-      setCanEdit(true);
-      return;
-    }
-    fetchMyIdentity()
-      .then((tags) => setCanEdit(tags.some((t) => t.code === "BREEDING_GROUP_LEADER")))
-      .catch(() => setCanEdit(false));
-  }, []);
+  // ── 编辑权限：**只认服务端**（cageEditInfo，读矩阵能力 cage.edit.form）──
+  // 原先这里还有一道客户端硬编码（角色≥ADMIN 或身份含 BREEDING_GROUP_LEADER）并与服务端取或，
+  // 结果是「服务端拦得住、客户端能绕过」——同一个账号 Web 能编、别处不能的根因。
+  // 2026-09-15 编辑权进矩阵后移除该旁路，判定收敛到 CageFormFill 的 serverEditable 一处。
 
   useEffect(() => {
     if (!animalCageId) return;
@@ -246,7 +236,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
         />
       )}
     </div>
-    <CageFormFill animalCageId={animalCageId || null} claimed={claimed} editable={canEdit} />
+    <CageFormFill animalCageId={animalCageId || null} claimed={claimed} />
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
     {(statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) && <div className="space-y-2">

@@ -138,6 +138,24 @@
         ORDER BY created_at ASC, id ASC
     </select>
 
+    <!-- 折叠状态区间用：只取五个特殊状态字段、data + animal_cage、created_at >= since。
+         命中索引 idx_cage_form_audit_field (field_code, created_at)；
+         ORDER BY id ASC 是折叠正确性的前提（同秒内 created_at 相同，靠 id 定序），调用方不重排。 -->
+    <select id="listStatusFieldRows" resultMap="CageFormAuditLogMap">
+        SELECT *
+        FROM cage_form_audit_log
+        WHERE category = 'data'
+          AND target_type = 'animal_cage'
+          AND field_code IN
+          <foreach collection="fieldCodes" item="fc" open="(" separator="," close=")">
+              #{fc}
+          </foreach>
+        <if test="since != null">
+          AND created_at &gt;= #{since}
+        </if>
+        ORDER BY id ASC
+    </select>
+
     <!-- 按操作聚合：同笼位 + 同类型 + 同一秒 归为一次操作。id 单调，用 MIN(id) 当稳定排序键。 -->
     <select id="pageOperationGroups" resultType="map">
         SELECT target_id AS targetId,

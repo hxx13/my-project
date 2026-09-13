@@ -716,7 +716,7 @@ public class CageOrderReservationService {
             "needs_special_feeding", "需特殊饲养",
             "needs_transfer", "动物转移",
             "has_health_abnormality", "健康异常",
-            "needs_cohabitation", "需合笼");
+            "needs_cohabitation", "合笼");
 
     /**
      * 「只能选空笼位」：带任一特殊状态/待处理标记的笼位不给预定 —— 那种笼位本身还有事没做完，

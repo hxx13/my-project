@@ -44,7 +44,9 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
   const templateSlot = violationContentTemplateSlot(form.content, form.setContent);
 
   const cageKey = form.cagePick
-    ? `${form.cagePick.shelveId}-${form.cagePick.positionX}-${form.cagePick.positionY}`
+    ? form.cagePick.positionX != null && form.cagePick.positionY != null
+      ? `${form.cagePick.shelveId}-${form.cagePick.positionX}-${form.cagePick.positionY}`
+      : form.cagePick.positionLabel
     : "";
 
   const targetOk = isEdit
@@ -117,7 +119,23 @@ export function RecordEditorView({ mode, onDone, onCancel }: RecordEditorViewPro
       <InspectorGroup title="对象">
         <InspectorRow label="来源">
           {(id) => (
-            <SelectField id={id} options={SOURCE_OPTIONS} value={form.source} disabled={isEdit} onChange={(v) => form.setSource(v)} />
+            <div className="review-tabs w-max" role="tablist" aria-label="来源" id={id}>
+              {SOURCE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={form.source === o.value}
+                  tabIndex={form.source === o.value ? 0 : -1}
+                  className="review-tab disabled:cursor-not-allowed disabled:opacity-50"
+                  data-active={form.source === o.value}
+                  disabled={isEdit}
+                  onClick={() => form.setSource(o.value)}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           )}
         </InspectorRow>
 

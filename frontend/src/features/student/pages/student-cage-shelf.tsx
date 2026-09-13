@@ -182,7 +182,18 @@ export default function StudentCageShelfPage() {
    */
   const [isStudentView, setIsStudentView] = useState(false);
   useEffect(() => {
-    fetchCageModeVisible()
+    // 模式入口按**当前房间**算：切房间要重算。未进房间（aRid 空）= 不限定区域，后端取并集。
+    // 区域组长把某模式在本房关掉后，学生进这个房间就看不到该模式入口（不是等提交才拒）。
+    const row = fullTree.find((r) => String(r.roomId ?? "") === aRid);
+    fetchCageModeVisible(
+      aRid
+        ? {
+            roomId: aRid,
+            floorId: row?.floorId != null ? String(row.floorId) : undefined,
+            campusId: row?.campusId != null ? String(row.campusId) : undefined,
+          }
+        : undefined,
+    )
       .then(r => {
         setIsStudentView(r.isStudent);
         // 空数组与不下发同义 = 不限制（只有收窄时才下发命中的那几个 action）
@@ -191,7 +202,7 @@ export default function StudentCageShelfPage() {
         setAllowedModes(r.isStudent ? r.modes : null);
       })
       .catch(() => setAllowedModes(null));
-  }, []);
+  }, [aRid, fullTree]);
   const canClaim = allowedModes == null || allowedModes.includes("studentClaim");
   const canConfirm = allowedModes == null || allowedModes.includes("confirm");
   /** 划分模式：管家专属（后端下发的能力位；具体写权限由后端二次校验） */

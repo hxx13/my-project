@@ -22,4 +22,6 @@ public class TwinObligation {
     private LocalDateTime dueAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** 已提交处置次数（含失败）；答题重试上限据此判定 */
+    private Integer attemptCount;
 }

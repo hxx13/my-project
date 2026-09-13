@@ -38,6 +38,8 @@ export type ScanNoticeDoodleCardProps = {
   compact?: boolean;
   /** 嵌入批量布局槽位：不包 fixed 全屏 anchor */
   embedded?: boolean;
+  /** 正文滚动到底时回调一次（「需滚动到底才能确认」用） */
+  onBodyScrollToBottom?: () => void;
 };
 
 function imageGridClass(count: number): string {
@@ -91,6 +93,7 @@ export function ScanNoticeDoodleCard({
   externalCloseTick = 0,
   compact = false,
   embedded = false,
+  onBodyScrollToBottom,
 }: ScanNoticeDoodleCardProps) {
   const reduceMotion = useReducedMotion();
   const [exiting, setExiting] = useState(false);
@@ -130,6 +133,19 @@ export function ScanNoticeDoodleCard({
     if (exiting) return;
     beginExit(onClose);
   }, [externalCloseTick, exiting, onClose, beginExit]);
+
+  // 「需滚动到底才能确认」：监听正文滚动容器，到底即回调（正文本身不可滚时也算到底）
+  useEffect(() => {
+    if (!onBodyScrollToBottom) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const check = () => {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight <= 8) onBodyScrollToBottom();
+    };
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    return () => el.removeEventListener("scroll", check);
+  }, [onBodyScrollToBottom, containerRef, pageIndex]);
 
   const exitTransition = reduceMotion ? CARD_EXIT_TRANSITION_REDUCED : CARD_EXIT_TRANSITION;
 

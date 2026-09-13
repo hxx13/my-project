@@ -410,6 +410,9 @@ public class CageCellIndexService {
         }
 
         // 构建 shelfMeta
+        // ⚠ 必须带上 campusId / floorId：CageCellIndexController.applyGroupMask 靠它们判
+        // 「可见范围分配」命不命中。只给名字不给 id 的话，楼层级/校区级的分配会静默失效
+        // （roomId 命中、floorId/campusId 恒为 null）——2026-09-15 修。
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("campusName", shelfIndex.getCampusName());
         meta.put("areaName", shelfIndex.getAreaName());
@@ -418,7 +421,9 @@ public class CageCellIndexService {
         meta.put("shelveId", String.valueOf(shelfIndex.getShelveId()));
         meta.put("shelveName", shelfIndex.getShelveName());
         meta.put("shelfIndexId", shelfIndex.getId());
-        meta.put("roomId", String.valueOf(shelfIndex.getRoomId()));
+        meta.put("roomId", shelfIndex.getRoomId() == null ? null : String.valueOf(shelfIndex.getRoomId()));
+        meta.put("floorId", shelfIndex.getFloorId() == null ? null : String.valueOf(shelfIndex.getFloorId()));
+        meta.put("campusId", shelfIndex.getCampusId() == null ? null : String.valueOf(shelfIndex.getCampusId()));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("shelfMeta", meta);

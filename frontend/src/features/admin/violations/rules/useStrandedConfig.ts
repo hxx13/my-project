@@ -13,6 +13,8 @@ export type StrandedConfig = {
   challengeEnabled: boolean;
   challengePhrase: string;
   unlockOnVerify: boolean;
+  campusPdEnabled: boolean;
+  campusPxEnabled: boolean;
 };
 
 export type StrandedSignout2Config = { enabled: boolean; lastResult: string | null };
@@ -26,6 +28,8 @@ const DEFAULT_STRANDED_CONFIG: StrandedConfig = {
   challengeEnabled: false,
   challengePhrase: "一人一卡,严禁尾随",
   unlockOnVerify: true,
+  campusPdEnabled: true,
+  campusPxEnabled: true,
 };
 
 const DEFAULT_SIGNOUT2_CONFIG: StrandedSignout2Config = { enabled: true, lastResult: null };
@@ -72,6 +76,8 @@ function mapConfig(raw: Record<string, unknown>): StrandedConfig {
     challengeEnabled: dbTinyIntOn(raw.interactive_challenge_enabled, false),
     challengePhrase: phrase.trim() !== "" ? phrase : "一人一卡,严禁尾随",
     unlockOnVerify: dbTinyIntOn(raw.interactive_unlock_on_verify, true),
+    campusPdEnabled: dbTinyIntOn(raw.campus_pd_enabled, true),
+    campusPxEnabled: dbTinyIntOn(raw.campus_px_enabled, true),
   };
 }
 
@@ -85,6 +91,8 @@ function serializeConfig(c: StrandedConfig): Record<string, unknown> {
     interactive_challenge_enabled: c.challengeEnabled ? 1 : 0,
     interactive_challenge_phrase: c.challengePhrase,
     interactive_unlock_on_verify: c.unlockOnVerify ? 1 : 0,
+    campus_pd_enabled: c.campusPdEnabled ? 1 : 0,
+    campus_px_enabled: c.campusPxEnabled ? 1 : 0,
   };
 }
 

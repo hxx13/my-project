@@ -41,14 +41,26 @@ public final class QuizBank {
         return List.copyOf(bank);
     }
 
-    /** 抽题（不含正确答案索引，供客户端展示）。 */
-    public static List<Map<String, Object>> drawPublic(String bankId, int drawCount) {
-        List<Question> bank = new ArrayList<>(questionsOf(bankId));
-        Collections.shuffle(bank, ThreadLocalRandom.current());
-        int n = Math.max(1, Math.min(drawCount <= 0 ? 3 : drawCount, bank.size()));
+    /** 内置默认题库（表不可用时的回落，且与 DB 种子逐字一致）。 */
+    public static List<Question> builtinQuestions() {
+        return List.copyOf(BANKS.get(DEFAULT_BANK_ID));
+    }
+
+    /**
+     * 抽题（不含正确答案索引，供客户端展示）。
+     *
+     * @param bank 题目来源——现在由 {@code QuizBankService} 从库里取，取不到才用 {@link #builtinQuestions()}
+     */
+    public static List<Map<String, Object>> drawPublic(List<Question> bank, int drawCount) {
+        List<Question> pool = new ArrayList<>(bank == null ? List.of() : bank);
+        if (pool.isEmpty()) {
+            return List.of();
+        }
+        Collections.shuffle(pool, ThreadLocalRandom.current());
+        int n = Math.max(1, Math.min(drawCount <= 0 ? 3 : drawCount, pool.size()));
         List<Map<String, Object>> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
-            Question q = bank.get(i);
+            Question q = pool.get(i);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", q.id());
             m.put("prompt", q.prompt());
@@ -58,17 +70,22 @@ public final class QuizBank {
         return out;
     }
 
+    /** 内置题库抽题（无 Spring 上下文/表不可用时的入口）。 */
+    public static List<Map<String, Object>> drawPublic(String bankId, int drawCount) {
+        return drawPublic(questionsOf(bankId), drawCount);
+    }
+
     /**
      * 批改：answers 为 questionId → selectedIndex。
      *
      * @return 答对题数
      */
-    public static int grade(String bankId, Map<String, Integer> answers) {
+    public static int grade(List<Question> bank, Map<String, Integer> answers) {
         if (answers == null || answers.isEmpty()) {
             return 0;
         }
         Map<String, Question> byId = new LinkedHashMap<>();
-        for (Question q : questionsOf(bankId)) {
+        for (Question q : bank == null ? List.<Question>of() : bank) {
             byId.put(q.id(), q);
         }
         int correct = 0;
@@ -79,5 +96,10 @@ public final class QuizBank {
             }
         }
         return correct;
+    }
+
+    /** 内置题库判分（无 Spring 上下文/表不可用时的入口）。 */
+    public static int grade(String bankId, Map<String, Integer> answers) {
+        return grade(questionsOf(bankId), answers);
     }
 }

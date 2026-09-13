@@ -233,7 +233,9 @@ export default function CageCellOverlays({ animalCageType, compact }: {
   const label = CAGE_TYPE_LABEL[t] ?? "未知";
   const size = compact ? "w-3.5 h-3.5 text-[8px]" : "w-4 h-4 text-[9px]";
   return (
-    <div className="absolute top-0.5 right-0.5 z-10">
+    // data-cage-type-dot：平面图（CompactCell）在自适应尺寸的格子里按 cqw 覆盖这枚点的
+    // 大小与偏移，共享组件本身的固定尺寸不改（CellButton 也走 compact）。
+    <div data-cage-type-dot className="absolute top-0.5 right-0.5 z-10">
       <div className={`${size} rounded-full ${dot} ring-1 flex items-center justify-center shadow-sm`} title={label}>
         <span className="text-white font-bold leading-none pointer-events-none select-none">{abbr}</span>
       </div>

@@ -10,7 +10,7 @@ import {
   getCageStatusViolation,
   updateCageStatusViolation,
 } from "@/api/domains/cageStatusViolation.api";
-import { fetchSpecialStatusOverview } from "@/api/domains/cageShelf.api";
+import { fetchSpecialStatusOverview, fetchViolationPrefill } from "@/api/domains/cageShelf.api";
 import { searchPersonnel } from "@/api/twinApi";
 import { normalizePersonnelRecord, type PersonnelRecordView } from "@/utils/personnelRecord";
 import { contentBodyFromHtml, serializeContentBody, type ContentBodyValue } from "../slots/ContentBodySlot";
@@ -27,14 +27,15 @@ import { appConfirm } from "@/lib/appDialog";
 export type TicketSource = "manual" | "cage";
 export type LockMode = "single" | "batch";
 export type RecordEditorMode =
-  | { kind: "create"; source?: TicketSource }
+  | { kind: "create"; source?: TicketSource; /** 告警一键跳转带入的笼位 id：触发预填 */ cagePrefillAnimalCageId?: string }
   | { kind: "edit"; row: StudentViolationRow };
 
 type PickUser = { userId: string; name: string };
 
 export type CagePick = {
   positionLabel: string; campusName: string; roomName: string;
-  shelveId: string; positionX: number; positionY: number; projectPiName: string;
+  /** positionX/Y 在预填路径可能为 null（预填接口不下发坐标），提交时落 null */
+  shelveId: string; positionX: number | null; positionY: number | null; projectPiName: string;
 };
 export type CageOption = { value: string; label: string; detail: CagePick };
 
@@ -50,6 +51,8 @@ const DEFAULT_DISPOSITION: DispositionValue = {
   actions: ["every", "unlock"],
   expiry: { mode: "RELATIVE", days: null },
   strategy: { type: "unset" },
+  // 默认公告展示跟随到期时间（与后端不传 noticeLinkExpire 的默认一致）
+  noticeDisplay: { linkExpire: true, days: null },
 };
 
 /** 提交前归一化处置数值：maxEnterSuccess 小数 floor、负值归 null；到期天数小数 floor（≤0 已在插槽归一为 null）。 */
@@ -137,6 +140,34 @@ export function useRecordForm(mode: RecordEditorMode) {
       cancelled = true;
     };
   }, [isEdit, row?.cageViolationId]);
+
+  // 告警一键跳转预填：给定 animalCageId → 反查状态 + 笼位 + 文案 + 命中规则。
+  // 只在首帧填一次；失败 / 未命中规则（ruleId=null + 兜底文案）都静默降级为手动，绝不弹错、绝不阻断。
+  const cagePrefillAnimalCageId = mode.kind === "create" ? mode.cagePrefillAnimalCageId : undefined;
+  const cagePrefillDone = useRef(false);
+  useEffect(() => {
+    if (isEdit || !cagePrefillAnimalCageId || cagePrefillDone.current) return;
+    cagePrefillDone.current = true;
+    void fetchViolationPrefill(cagePrefillAnimalCageId)
+      .then((p) => {
+        setCageStatusCodeState(p.statusCode || "");
+        setRuleId(p.ruleId ?? null);
+        if (p.violationText) setContent(contentBodyFromHtml(p.violationText, []));
+        setCagePick({
+          positionLabel: p.positionLabel ?? "",
+          campusName: p.campusName ?? "",
+          roomName: p.roomName ?? "",
+          shelveId: p.shelveId ?? "",
+          // 后端已下发真坐标，直接用；缺值时落 null 交给「坐标对齐 effect」按 positionLabel 模糊校正
+          positionX: p.positionX ?? null,
+          positionY: p.positionY ?? null,
+          projectPiName: p.projectPiName ?? "",
+        });
+      })
+      .catch(() => {
+        /* 预填失败静默降级为手动 */
+      });
+  }, [isEdit, cagePrefillAnimalCageId]);
 
   const cageOptions = useMemo<CageOption[]>(() => {
     if (!cageStatusCode) return [];

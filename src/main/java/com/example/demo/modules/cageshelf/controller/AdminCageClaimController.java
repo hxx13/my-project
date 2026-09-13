@@ -80,7 +80,7 @@ public class AdminCageClaimController {
         User u = resolveUser(req);
         Result<?> denied = requireApprover(u);
         if (denied != null) return Result.fail(403, denied.getMessage());
-        return Result.success(claimService.getPendingList(status, keyword, page, pageSize));
+        return Result.success(claimService.getPendingList(u, status, keyword, page, pageSize));
     }
 
     // ── 审批 ──

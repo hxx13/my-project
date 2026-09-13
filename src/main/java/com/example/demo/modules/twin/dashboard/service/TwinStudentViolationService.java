@@ -19,10 +19,15 @@ import com.example.demo.modules.twin.dashboard.support.InteractiveChallengeVerif
 import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
 import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.example.demo.modules.twin.obligation.disposition.DispositionStrategy;
+import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
+import com.example.demo.modules.twin.obligation.disposition.QuizBank;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
+import com.example.demo.modules.twin.obligation.entity.TwinObligationReceipt;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.obligation.support.ObligationSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,15 +47,25 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class TwinStudentViolationService {
     private static final Logger log = LoggerFactory.getLogger(TwinStudentViolationService.class);
+    /** 处置摘要纯函数专用（static 方法不能复用注入的实例 mapper） */
+    private static final ObjectMapper RECEIPT_JSON_MAPPER = new ObjectMapper();
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String SOURCE_AUTO_STRANDED = "AUTO_STRANDED";
     /** MySQL GET_LOCK 锁名最长 64 字符 */
     private static final int AUTO_STRANDED_LOCK_TIMEOUT_SEC = 10;
+
+    /** 批次键：13 位毫秒 + 8 位十六进制随机，定长 21，字典序即时间序 */
+    public static String newBatchKey() {
+        // %08x 补足高位零，保证随机段恒为 8 位（Long.toHexString 会省略前导零导致不定长）
+        return System.currentTimeMillis()
+                + String.format("%08x", ThreadLocalRandom.current().nextLong() & 0xFFFFFFFFL);
+    }
 
     private static final java.util.Map<String, String> CAGE_STATUS_LABEL = java.util.Map.of(
         "COHABITATION", "合笼/繁殖",
@@ -59,6 +74,135 @@ public class TwinStudentViolationService {
         "HEALTH_ABNORMAL", "动物健康异常",
         "ANIMAL_TRANSFER", "动物转移"
     );
+
+    /** 处置策略编码 → 中文（仅本文件使用） */
+    private static final Map<String, String> DISPOSITION_TYPE_LABEL = Map.of(
+        "SHOW_ONLY", "仅展示",
+        "ACK_READ", "确认阅读",
+        "ACK_PUZZLE", "拼图短语",
+        "QUIZ", "答题",
+        "SIGNATURE", "签名确认"
+    );
+
+    /** 待办状态编码 → 中文（仅本文件使用） */
+    private static final Map<String, String> DISPOSITION_STATE_LABEL = Map.of(
+        "PENDING_DELIVERY", "待处置",
+        "DELIVERED", "待处置",
+        "PENDING_DISPOSITION", "待处置",
+        "COMPLETED", "已处置",
+        "EXPIRED", "已过期",
+        "REVOKED", "已撤销"
+    );
+
+    /**
+     * 处置摘要解析器（纯函数）：把「策略类型 + 待办状态 + 回执原文」压成列表可用的一句话。
+     *
+     * <p>硬约束：签名图（dataUrl）绝不进返回值，只回布尔 {@code hasSignatureImage}，
+     * 图片走详情端点按需取；{@code answerPayload} 原文一律不出现在任何键里。
+     *
+     * <p>键名即契约：type / typeLabel / status / stateLabel / completedAt / channel / detail / hasSignatureImage。
+     *
+     * @param type          {@code twin_obligation.disposition_type} 原文，可为 null
+     * @param status        {@code twin_obligation.status} 原文，可为 null（无待办）
+     * @param answerPayload 回执 {@code twin_obligation_receipt.answer_payload}，可为 null
+     * @param completedAt   回执完成时间（本函数不推断时间，一律由调用方传入），可为 null
+     * @param channel       回执渠道，可为 null
+     */
+    public static Map<String, Object> dispositionSummary(String type, String status, String answerPayload,
+                                                         LocalDateTime completedAt, String channel,
+                                                         List<QuizBank.Question> quizBank) {
+        String rawType = StringUtils.hasText(type) ? type.trim() : null;
+        String rawStatus = StringUtils.hasText(status) ? status.trim() : null;
+        String typeKey = rawType != null ? rawType.toUpperCase() : null;
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("type", rawType);
+        out.put("typeLabel", typeKey == null ? null : DISPOSITION_TYPE_LABEL.getOrDefault(typeKey, rawType));
+        out.put("status", rawStatus);
+        out.put("stateLabel", resolveDispositionStateLabel(typeKey, rawStatus));
+        out.put("completedAt", completedAt);
+        out.put("channel", channel);
+
+        JsonNode answer = parseReceiptAnswer(answerPayload);
+        out.put("detail", resolveDispositionDetail(typeKey, rawStatus, completedAt, answer, quizBank));
+        out.put("hasSignatureImage", resolveHasSignatureImage(typeKey, answer));
+        return out;
+    }
+
+    /** SHOW_ONLY 与无待办均「无需处置」；其余按状态映射，未知状态保守落在「待处置」。 */
+    private static String resolveDispositionStateLabel(String typeKey, String rawStatus) {
+        if (rawStatus == null || "SHOW_ONLY".equals(typeKey)) {
+            return "无需处置";
+        }
+        return DISPOSITION_STATE_LABEL.getOrDefault(rawStatus.toUpperCase(), "待处置");
+    }
+
+    private static String resolveDispositionDetail(String typeKey, String rawStatus,
+                                                   LocalDateTime completedAt, JsonNode answer,
+                                                   List<QuizBank.Question> quizBank) {
+        if (typeKey == null) {
+            return "";
+        }
+        boolean done = completedAt != null || "COMPLETED".equalsIgnoreCase(rawStatus);
+        if (!done) {
+            return "";
+        }
+        return switch (typeKey) {
+            case "ACK_READ" -> "已阅读";
+            case "ACK_PUZZLE" -> "已拼图确认";
+            case "QUIZ" -> buildQuizDetail(answer, quizBank);
+            case "SIGNATURE" -> "已签名";
+            default -> "";
+        };
+    }
+
+    /**
+     * 答题得分描述。
+     *
+     * <p>必须按 {@code quizBank}（= 该待办配置指向的**数据库**题库）算：
+     * 抽题与判分都走库，详情若按内置题库算，两套题目 id 命名空间不同（库是 "1".."5"，
+     * 内置是 "q1".."q5"），会恒算 0 分。quizBank 为 null 时才回落内置（无 Spring 的单测）。
+     */
+    private static String buildQuizDetail(JsonNode answer, List<QuizBank.Question> quizBank) {
+        JsonNode ansNode = answer != null ? answer.get("answers") : null;
+        if (ansNode == null || !ansNode.isObject() || ansNode.isEmpty()) {
+            return "已完成答题";
+        }
+        Map<String, Integer> answers = new LinkedHashMap<>();
+        ansNode.fields().forEachRemaining(e -> answers.put(e.getKey(), e.getValue().asInt(-1)));
+        int correct = quizBank != null
+                ? QuizBank.grade(quizBank, answers)
+                : QuizBank.grade(QuizBank.DEFAULT_BANK_ID, answers);
+        return "答对 " + correct + "/" + answers.size() + " 题";
+    }
+
+    private static boolean resolveHasSignatureImage(String typeKey, JsonNode answer) {
+        if (!"SIGNATURE".equals(typeKey) || answer == null || !answer.isObject()) {
+            return false;
+        }
+        JsonNode sig = answer.get("signature");
+        return sig != null && sig.isTextual() && StringUtils.hasText(sig.asText());
+    }
+
+    /** 解包回执 answer_payload（形如 {"answer":"<原始提交>"}），内层是 JSON 对象才返回，否则 null。 */
+    private static JsonNode parseReceiptAnswer(String answerPayload) {
+        if (!StringUtils.hasText(answerPayload)) {
+            return null;
+        }
+        try {
+            JsonNode root = RECEIPT_JSON_MAPPER.readTree(answerPayload);
+            JsonNode inner = root != null ? root.get("answer") : null;
+            String raw = inner == null || inner.isNull() ? null
+                    : (inner.isTextual() ? inner.asText() : inner.toString());
+            if (!StringUtils.hasText(raw)) {
+                return null;
+            }
+            JsonNode parsed = RECEIPT_JSON_MAPPER.readTree(raw);
+            return parsed != null && parsed.isObject() ? parsed : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /** 解析笼位处理提示的标题：优先用父记录 statusCode 中文标签 */
     private String resolveCageNoticeTitle(TwinStudentViolation row) {
@@ -86,6 +230,7 @@ public class TwinStudentViolationService {
     private final SocketIOServer socketServer;
     private final PushService pushService;
     private final ObligationService obligationService;
+    private final DispositionStrategyRegistry dispositionRegistry;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
@@ -100,7 +245,8 @@ public class TwinStudentViolationService {
                                        TwinCageStatusViolationMapper cageStatusViolationMapper,
                                        @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer,
                                        PushService pushService,
-                                       @org.springframework.beans.factory.annotation.Autowired(required = false) ObligationService obligationService) {
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) ObligationService obligationService,
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) DispositionStrategyRegistry dispositionRegistry) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
@@ -112,6 +258,7 @@ public class TwinStudentViolationService {
         this.socketServer = socketServer;
         this.pushService = pushService;
         this.obligationService = obligationService;
+        this.dispositionRegistry = dispositionRegistry;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -219,6 +366,14 @@ public class TwinStudentViolationService {
         dto.setInteractiveChallengeVerified(row.getInteractiveChallengeVerifiedAt() != null);
         dto.setExpireAt(row.getExpireAt());
         dto.setPastExpireAwaitingInteractive(isPastExpireAwaitingInteractive(row));
+        // 处置策略：该条违规对应的待办（一一对应，uk_obligation_source）
+        if (obligationService != null) {
+            TwinObligation ob = obligationService.findByViolationId(row.getId());
+            if (ob != null) {
+                dto.setDispositionType(ob.getDispositionType());
+                dto.setDispositionConfigJson(ob.getDispositionConfigJson());
+            }
+        }
         // 笼位联动标记：前端据此渲染独立灵动岛
         boolean isCage = "CAGE_STATUS".equals(row.getSource());
         if (isCage) {
@@ -273,14 +428,24 @@ public class TwinStudentViolationService {
         if (!targetUserId.trim().equals(row.getTargetUserId())) {
             throw new IllegalArgumentException("无权确认该违规");
         }
-        if (!StringUtils.hasText(row.getInteractiveChallenge())) {
-            throw new IllegalArgumentException("该违规无需交互确认");
-        }
-        // 服务端校验答案。已验证过的记录走幂等返回路径，不重复校验。
-        if (row.getInteractiveChallengeVerifiedAt() == null
-                && !InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer)) {
-            log.warn("[student-violation] 交互确认答案不匹配 violationId={} userId={}", violationId, targetUserId);
-            throw new IllegalArgumentException("确认短语不正确");
+        // 处置策略校验：优先按该违规对应的待办策略校验，无待办时回退到记录级拼图短语。
+        // 已验证过的记录走幂等返回路径，不重复校验。
+        if (row.getInteractiveChallengeVerifiedAt() == null) {
+            TwinObligation obForLimit = obligationService != null
+                    ? obligationService.findByViolationId(row.getId()) : null;
+            // 答题等策略可配「重试上限」；不配则不限。计数含失败（见 recordAttempt）
+            Integer maxAttempts = obForLimit == null ? null
+                    : maxAttemptsOf(objectMapper, obForLimit.getDispositionConfigJson());
+            if (maxAttempts != null && obligationService.attemptCount(obForLimit.getId()) >= maxAttempts) {
+                throw new IllegalArgumentException("已达重试上限（" + maxAttempts + " 次）");
+            }
+            if (!verifyDispositionAnswer(row, answer)) {
+                if (obForLimit != null) {
+                    obligationService.recordAttempt(obForLimit.getId());
+                }
+                log.warn("[student-violation] 处置确认未通过 violationId={} userId={}", violationId, targetUserId);
+                throw new IllegalArgumentException("确认未通过");
+            }
         }
         // 自助解禁规则才受窗口次数上限约束；记录级交互短语（含 MANUAL 默认规则）仍允许拼图确认
         if (row.getRuleId() != null && ruleService != null) {
@@ -318,6 +483,50 @@ public class TwinStudentViolationService {
             completeObligationDisposition(after.getId(), targetUserId.trim(), answer);
         }
         return finalizeAfterInteractiveAck(after);
+    }
+
+    /** 从处置配置里取重试上限（目前只有答题有该字段）；无配置/≤0/非法 表示不限。 */
+    static Integer maxAttemptsOf(ObjectMapper om, String configJson) {
+        if (!StringUtils.hasText(configJson) || om == null) {
+            return null;
+        }
+        try {
+            JsonNode cfg = om.readTree(configJson);
+            int n = cfg.path("maxAttempts").asInt(0);
+            return n > 0 ? n : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 按该违规的处置策略校验答案。
+     * <p>记录级拼图短语优先：只要记录上有短语就必须拼对，不走待办策略。
+     * 否则管理端把待办策略覆盖成 ACK_READ/SHOW_ONLY（两者 verify 恒真）后，
+     * 任意答案都会通过并触发 interactive_unlock_on_verify 解禁——等于不解题就解锁。
+     * <p>记录上没有短语时，才按待办策略校验（ACK_READ/QUIZ/SIGNATURE）。
+     */
+    boolean verifyDispositionAnswer(TwinStudentViolation row, String answer) {
+        if (StringUtils.hasText(row.getInteractiveChallenge())) {
+            return InteractiveChallengeVerifier.matches(row.getInteractiveChallenge(), answer);
+        }
+        if (obligationService != null) {
+            TwinObligation ob = obligationService.findByViolationId(row.getId());
+            if (ob != null && StringUtils.hasText(ob.getDispositionType()) && dispositionRegistry != null) {
+                DispositionStrategy strategy = dispositionRegistry.find(ob.getDispositionType()).orElse(null);
+                if (strategy == null) {
+                    // 未注册的策略编码：不放行
+                    return false;
+                }
+                if (!strategy.requiresInteraction()) {
+                    // SHOW_ONLY 之类的「无需交互」策略不接受处置提交，
+                    // 否则任意答案都能把它标记成已处置（配上验证后解禁就是不解题即解锁）
+                    throw new IllegalArgumentException("该违规无需交互确认");
+                }
+                return strategy.verify(ob.getDispositionConfigJson(), answer);
+            }
+        }
+        throw new IllegalArgumentException("该违规无需交互确认");
     }
 
     private TwinStudentViolation finalizeAfterInteractiveAck(TwinStudentViolation row) {
@@ -679,7 +888,6 @@ public class TwinStudentViolationService {
             String targetUserId,
             List<String> statuses,
             List<String> sources,
-            Boolean excludeCage,
             Boolean lockedOnly,
             int limit,
             int offset) {
@@ -695,7 +903,7 @@ public class TwinStudentViolationService {
         try {
             return violationMapper.selectRecent(
                     StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
-                    statuses, sources, excludeCage, lockedOnly,
+                    statuses, sources, lockedOnly,
                     lim, off
             );
         } catch (Exception e) {
@@ -712,7 +920,6 @@ public class TwinStudentViolationService {
             String targetUserId,
             List<String> statuses,
             List<String> sources,
-            Boolean excludeCage,
             Boolean lockedOnly) {
         if (violationTableAbsent.get()) {
             return 0;
@@ -724,7 +931,7 @@ public class TwinStudentViolationService {
         try {
             return violationMapper.countRecent(
                     StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
-                    statuses, sources, excludeCage, lockedOnly
+                    statuses, sources, lockedOnly
             );
         } catch (Exception e) {
             if (isTwinStudentViolationTableMissing(e)) {
@@ -752,7 +959,8 @@ public class TwinStudentViolationService {
             String createdByUserId,
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify,
-            Long ruleId
+            Long ruleId,
+            String batchId
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -788,7 +996,10 @@ public class TwinStudentViolationService {
                     interactiveChallenge,
                     interactiveUnlockOnVerify,
                     ruleId,
-                    null);
+                    null,
+                    null,
+                    null,
+                    batchId);
         } finally {
             try {
                 violationMapper.releaseLock(lockName);
@@ -888,6 +1099,7 @@ public class TwinStudentViolationService {
                 interactiveChallenge, interactiveUnlockOnVerify, null, null);
     }
 
+    /** 13 参重载：不带公告展示配置，公告展示跟随到期时间 */
     @Transactional(rollbackFor = Exception.class)
     public TwinStudentViolation create(
             String targetUserId,
@@ -903,6 +1115,55 @@ public class TwinStudentViolationService {
             Boolean interactiveUnlockOnVerify,
             Long ruleId,
             Long cageViolationId
+    ) {
+        return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
+                showNoticeEveryScan, expireAfterDays, createdByUserId, source,
+                interactiveChallenge, interactiveUnlockOnVerify, ruleId, cageViolationId, null, null, null);
+    }
+
+    /** 15 参重载：单条创建（管理端），批次键由实现按本条自成一批生成 */
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId,
+            Long cageViolationId,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire
+    ) {
+        return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
+                showNoticeEveryScan, expireAfterDays, createdByUserId, source,
+                interactiveChallenge, interactiveUnlockOnVerify, ruleId, cageViolationId,
+                noticeDisplayDays, noticeLinkExpire, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId,
+            Long cageViolationId,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire,
+            String batchId
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -951,6 +1212,10 @@ public class TwinStudentViolationService {
         row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
         row.setRuleId(ruleId);
         row.setCageViolationId(cageViolationId);
+        row.setNoticeDisplayDays(noticeDisplayDays);
+        row.setNoticeLinkExpire(noticeLinkExpire == null ? 1 : noticeLinkExpire);
+        // 批次键：批量/滞留同一轮共享一个键；未传则本条自成一批
+        row.setBatchId(StringUtils.hasText(batchId) ? batchId.trim() : newBatchKey());
         try {
             violationMapper.insert(row);
         } catch (Exception e) {
@@ -1179,6 +1444,10 @@ public class TwinStudentViolationService {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -1204,6 +1473,10 @@ public class TwinStudentViolationService {
                 expireAfterDays,
                 createdByUserId,
                 interactiveChallenge,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null);
@@ -1234,6 +1507,10 @@ public class TwinStudentViolationService {
                 interactiveChallenge,
                 interactiveUnlockOnVerify,
                 null,
+                null,
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -1250,7 +1527,11 @@ public class TwinStudentViolationService {
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify,
             Long ruleId,
-            Long cageViolationId
+            Long cageViolationId,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire,
+            String dispositionType,
+            String dispositionConfigJson
     ) {
         if (targetUserIds == null || targetUserIds.isEmpty()) {
             throw new IllegalArgumentException("缺少 targetUserIds");
@@ -1269,9 +1550,11 @@ public class TwinStudentViolationService {
         }
         List<Map<String, String>> failed = new ArrayList<>();
         int created = 0;
+        // 一次批量下发共享同一批次键，列表按此成块展示
+        String batchId = newBatchKey();
         for (String tid : unique) {
             try {
-                create(
+                TwinStudentViolation createdRow = create(
                         tid,
                         violationText,
                         imageUrls,
@@ -1284,9 +1567,18 @@ public class TwinStudentViolationService {
                         interactiveChallenge,
                         interactiveUnlockOnVerify,
                         ruleId,
-                        cageViolationId
+                        cageViolationId,
+                        noticeDisplayDays,
+                        noticeLinkExpire,
+                        batchId
                 );
                 created++;
+                // 批量下发也必须落处置策略：单条新建与编辑都调了 applyDispositionOverride，
+                // 只有批量漏掉，结果是「按课题组统一发布」选了确认阅读/答题，列表却显示「仅展示」
+                if (obligationService != null && StringUtils.hasText(dispositionType)
+                        && createdRow != null && createdRow.getId() != null) {
+                    obligationService.applyDispositionOverride(createdRow.getId(), dispositionType, dispositionConfigJson);
+                }
             } catch (Exception e) {
                 Map<String, String> f = new HashMap<>();
                 f.put("userId", tid);
@@ -1299,6 +1591,25 @@ public class TwinStudentViolationService {
         out.put("createdCount", created);
         out.put("failed", failed);
         return out;
+    }
+
+    /**
+     * 单独解除公告：只让公告下板，不动 status / forbid_enter / 记录本身。
+     * 已解除时返回 false（幂等）。
+     */
+    public boolean clearNotice(long id, String operatorId) {
+        if (violationTableAbsent.get()) {
+            throw new IllegalStateException("库表 twin_student_violation 未创建");
+        }
+        TwinStudentViolation existing = getById(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("记录不存在: " + id);
+        }
+        int n = violationMapper.clearNoticeById(id, StringUtils.hasText(operatorId) ? operatorId : "UNKNOWN");
+        if (n > 0) {
+            log.info("[student-violation] 公告已解除 violationId={} operator={}", id, operatorId);
+        }
+        return n > 0;
     }
 
     public boolean clear(long id, String clearedByUserId) {
@@ -1377,6 +1688,45 @@ public class TwinStudentViolationService {
         }
     }
 
+    /**
+     * 管理端「按需拉完整处置明细」：摘要全部键 + 回执 answerPayload 原文（供签名图预览）。
+     *
+     * <p>记录不存在返回 null（由调用方转 error）；无待办/回执时摘要照常返回、answerPayload 为 null
+     * （大量老记录没有 obligation，不能因此报错）。
+     */
+    public Map<String, Object> dispositionDetail(long violationId) {
+        TwinStudentViolation row = getById(violationId);
+        if (row == null) {
+            return null;
+        }
+        String type = null;
+        String status = null;
+        String payload = null;
+        String channel = null;
+        LocalDateTime completedAt = null;
+        List<QuizBank.Question> quizBank = null;
+        if (obligationService != null) {
+            TwinObligation ob = obligationService.findByViolationId(violationId);
+            if (ob != null) {
+                type = ob.getDispositionType();
+                status = ob.getStatus();
+                // 答题详情必须按该待办实际用的题库算分，否则恒 0 分（见 buildQuizDetail）
+                quizBank = obligationService.quizQuestionsForConfig(ob.getDispositionConfigJson());
+                if (ob.getId() != null) {
+                    TwinObligationReceipt receipt = obligationService.findReceipt(ob.getId(), ob.getSubjectUserId());
+                    if (receipt != null) {
+                        payload = receipt.getAnswerPayload();
+                        completedAt = receipt.getCompletedAt();
+                        channel = receipt.getChannel();
+                    }
+                }
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>(dispositionSummary(type, status, payload, completedAt, channel, quizBank));
+        out.put("answerPayload", payload);
+        return out;
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public TwinStudentViolation update(
             long id,
@@ -1388,7 +1738,9 @@ public class TwinStudentViolationService {
             String expireMode,
             Integer expireAfterDays,
             String interactiveChallenge,
-            Boolean interactiveUnlockOnVerify
+            Boolean interactiveUnlockOnVerify,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire
     ) {
         if (violationTableAbsent.get()) {
             throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
@@ -1424,6 +1776,11 @@ public class TwinStudentViolationService {
         }
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
+        // 公告展示配置：null = 保持不变（与 expireMode=KEEP 同口径），避免未传时把既有配置重置成默认
+        row.setNoticeDisplayDays(noticeDisplayDays != null ? noticeDisplayDays : existing.getNoticeDisplayDays());
+        row.setNoticeLinkExpire(noticeLinkExpire != null
+                ? noticeLinkExpire
+                : (existing.getNoticeLinkExpire() != null ? existing.getNoticeLinkExpire() : 1));
         String mode = expireMode != null ? expireMode.trim().toUpperCase() : "KEEP";
         // 到期时间与「验证后解禁」可并存：仅编辑显式 CLEAR 才清空（到期后已验证者自动消弹窗）
         if ("CLEAR".equals(mode)) {
@@ -1593,15 +1950,18 @@ public class TwinStudentViolationService {
 
     private static int resolveInteractiveUnlockOnVerify(String interactiveChallenge, Boolean unlockOnVerify) {
         if (!StringUtils.hasText(interactiveChallenge)) {
-            return 0;
+            // 记录级无短语（ACK_READ/QUIZ/SIGNATURE 的答案存在待办里）：调用方显式勾了「验证后解禁」才置 1。
+            // 是否真的解禁由 ack 时的 isInteractiveUnlockOnVerify 决定；无交互的违规根本走不到 ack。
+            return Boolean.TRUE.equals(unlockOnVerify) ? 1 : 0;
         }
         return Boolean.FALSE.equals(unlockOnVerify) ? 0 : 1;
     }
 
     private static boolean isInteractiveUnlockOnVerify(TwinStudentViolation row) {
-        if (row == null || !StringUtils.hasText(row.getInteractiveChallenge())) {
+        if (row == null) {
             return false;
         }
+        // 不再要求记录级短语：ACK_READ/QUIZ/SIGNATURE 的交互在待办上，记录本身没有短语
         return row.getInteractiveUnlockOnVerify() == null || row.getInteractiveUnlockOnVerify() == 1;
     }
 

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.obligation.mapper.TwinQuizBankMapper">
+
+    <resultMap id="QuizBankMap" type="com.example.demo.modules.twin.obligation.entity.TwinQuizBank">
+        <id column="id" property="id"/>
+        <result column="bank_id" property="bankId"/>
+        <result column="name" property="name"/>
+        <result column="enabled" property="enabled"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <resultMap id="QuizQuestionMap" type="com.example.demo.modules.twin.obligation.entity.TwinQuizQuestion">
+        <id column="id" property="id"/>
+        <result column="bank_id" property="bankId"/>
+        <result column="prompt" property="prompt"/>
+        <result column="options_json" property="optionsJson"/>
+        <result column="correct_index" property="correctIndex"/>
+        <result column="enabled" property="enabled"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="listBanks" resultMap="QuizBankMap">
+        SELECT * FROM twin_quiz_bank ORDER BY bank_id
+    </select>
+
+    <select id="selectBank" resultMap="QuizBankMap">
+        SELECT * FROM twin_quiz_bank WHERE bank_id = #{bankId}
+    </select>
+
+    <insert id="insertBank" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO twin_quiz_bank (bank_id, name, enabled)
+        VALUES (#{bankId}, #{name}, #{enabled})
+    </insert>
+
+    <update id="updateBank">
+        UPDATE twin_quiz_bank
+        SET name = #{name}, enabled = #{enabled}
+        WHERE bank_id = #{bankId}
+    </update>
+
+    <delete id="deleteBank">
+        DELETE FROM twin_quiz_bank WHERE bank_id = #{bankId}
+    </delete>
+
+    <select id="selectEnabledByBank" resultMap="QuizQuestionMap">
+        SELECT * FROM twin_quiz_question
+        WHERE bank_id = #{bankId} AND enabled = 1
+        ORDER BY sort_order, id
+    </select>
+
+    <select id="selectAllByBank" resultMap="QuizQuestionMap">
+        SELECT * FROM twin_quiz_question
+        WHERE bank_id = #{bankId}
+        ORDER BY sort_order, id
+    </select>
+
+    <select id="selectQuestion" resultMap="QuizQuestionMap">
+        SELECT * FROM twin_quiz_question WHERE id = #{id}
+    </select>
+
+    <insert id="insertQuestion" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO twin_quiz_question (bank_id, prompt, options_json, correct_index, enabled, sort_order)
+        VALUES (#{bankId}, #{prompt}, #{optionsJson}, #{correctIndex}, #{enabled}, #{sortOrder})
+    </insert>
+
+    <update id="updateQuestion">
+        UPDATE twin_quiz_question
+        SET prompt = #{prompt},
+            options_json = #{optionsJson},
+            correct_index = #{correctIndex},
+            enabled = #{enabled}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteQuestion">
+        DELETE FROM twin_quiz_question WHERE id = #{id}
+    </delete>
+
+    <select id="nextSortOrder" resultType="int">
+        SELECT COALESCE(MAX(sort_order), 0) + 1 FROM twin_quiz_question WHERE bank_id = #{bankId}
+    </select>
+
+    <select id="countQuestions" resultType="int">
+        SELECT COUNT(1) FROM twin_quiz_question WHERE bank_id = #{bankId}
+    </select>
+
+</mapper>

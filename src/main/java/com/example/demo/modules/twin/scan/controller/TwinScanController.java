@@ -26,6 +26,7 @@ import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
+import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.scan.service.WebScanExitDahuaLinkageService;
 import com.example.demo.modules.twin.scan.service.TwinAccessRuleScanConfigService;
 import com.example.demo.modules.twin.scan.service.DahuaIssueAccessRulePrefillService;
@@ -130,6 +131,9 @@ public class TwinScanController {
     @Autowired
     private TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
 
+    @Autowired
+    private ObligationService obligationService;
+
     private static final long STUDENT_DAHUA_BIND_DEPT_ID = 26L;
     private static final java.util.List<Long> STUDENT_DAHUA_BIND_DOOR_GROUP_IDS = java.util.List.of(58L, 59L);
 
@@ -194,6 +198,19 @@ public class TwinScanController {
         } catch (Exception e) {
             log.warn("[scan] violation-interactive-ack failed: {}", e.getMessage());
             return Result.error("交互确认失败: " + e.getMessage());
+        }
+    }
+
+    /** 触摸屏端答题处置：按违规反查待办并抽题（不含正确答案，校验在提交时进行） */
+    @GetMapping("/violation-quiz-draw")
+    public Result<ObligationService.QuizDrawPayload> violationQuizDraw(@RequestParam long violationId) {
+        try {
+            return Result.success(obligationService.drawQuizForViolation(violationId));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.warn("[scan] violation-quiz-draw failed violationId={}: {}", violationId, e.getMessage());
+            return Result.error("抽题失败: " + e.getMessage());
         }
     }
 

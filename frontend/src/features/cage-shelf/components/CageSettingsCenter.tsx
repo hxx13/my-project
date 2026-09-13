@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Database, Lock, ShieldCheck, Eye, UserCheck, type LucideIcon } from "lucide-react";
+import { Database, Lock, Grid3x3, UserCheck, Users, BellRing, type LucideIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,9 +12,10 @@ import type { CageShelfTreeNode } from "@/api/domains/cageShelf.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
 import CageOwnerApprovalSettings from "./CageOwnerApprovalSettings";
-import CageAuditAssignmentSettings from "./CageAuditAssignmentSettings";
-import CageModeVisibilitySettings from "./CageModeVisibilitySettings";
+import CagePermissionMatrixPanel from "./CagePermissionMatrixPanel";
+import CageScopeAssignmentSettings from "./CageScopeAssignmentSettings";
 import CageSyncLockSettings from "./CageSyncLockSettings";
+import CageAlertSettings from "./CageAlertSettings";
 import { SettingsSection } from "./SettingsPrimitives";
 
 /**
@@ -27,7 +28,7 @@ import { SettingsSection } from "./SettingsPrimitives";
  * 每类带 minRole 门槛：够权限的分类才出现在侧栏，默认选中第一个可见的。
  */
 
-type CategoryKey = "dataSource" | "ownerApproval" | "audit" | "modes" | "syncLock";
+type CategoryKey = "dataSource" | "ownerApproval" | "scope" | "permissions" | "syncLock" | "statusAlert";
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string; description: string; icon: LucideIcon; minRole?: string }> = [
   {
@@ -41,21 +42,24 @@ const CATEGORIES: Array<{ key: CategoryKey; label: string; description: string; 
     key: "ownerApproval",
     label: "所属人审核配置",
     description:
-      "到位确认 / 分笼审核 / 转移审核三个开关，按所属人维护。任何人都能配自己的；看别人、配别人要管理员及以上。",
+      "到位确认 / 分笼审核 / 转移审核三个开关，按所属人维护。任何人都能配自己的；看别人、配别人要超级管理员及以上。",
     icon: UserCheck,
   },
   {
-    key: "audit",
-    label: "审核人归属",
-    description: "谁负责审批哪个校区/楼层/房间的笼位申请。未分配范围只能由管理员或组长审批。",
-    icon: ShieldCheck,
-    minRole: "ADMIN",
+    key: "scope",
+    label: "可见范围分配",
+    description:
+      "把校区/楼层/房间分配给饲养组长：组长据此获得该区域的可见范围与审核权，并可在「我的区域」里管理组员、下放审核权、配置区域学生功能。",
+    icon: Users,
+    // 写 LEADER 行与拉身份标签都要求超管；挂在 ADMIN 下会出现「页面打开但列表空、还弹无权限」的假死
+    minRole: "SUPER_ADMIN",
   },
   {
-    key: "modes",
-    label: "模式可见性",
-    description: "各操作模式对哪些身份可见，以及分笼/转移除占用者本人外还可由哪些身份操作。",
-    icon: Eye,
+    key: "permissions",
+    label: "权限矩阵",
+    description:
+      "身份 × 权限的矩阵：勾选 = 该身份拥有该权限。一个都不勾 = 该权限对所有人禁用。",
+    icon: Grid3x3,
     minRole: "SUPER_ADMIN",
   },
   {
@@ -64,6 +68,15 @@ const CATEGORIES: Array<{ key: CategoryKey; label: string; description: string; 
     description: "同步时跳过哪些范围，以及笼位ID同步方式。",
     icon: Lock,
     minRole: "SUPER_ADMIN",
+  },
+  {
+    key: "statusAlert",
+    label: "状态告警",
+    description:
+      "笼位特殊状态（需分笼 / 特殊饲养 / 动物转移 / 健康异常 / 合笼）持续超时的告警阈值：全局默认 + 按区域覆盖，触发后仅高亮 / 仅违规 / 两者。",
+    icon: BellRing,
+    // 不设门槛：设置中心本身已 ADMIN 起步；能读全局（STAFF）但只有超管能改、只有持「告警阈值配置」
+    // 能力的区域组长能配自己的区域，这些都由后端逐端点鉴权。设 SUPER_ADMIN 会把饲养组长挡在区域配置外。
   },
 ];
 
@@ -143,10 +156,10 @@ export default function CageSettingsCenter({
         return <DataSourcePanel dataSource={dataSource} onChange={onSwitchDataSource} />;
       case "ownerApproval":
         return <CageOwnerApprovalSettings />;
-      case "audit":
-        return <CageAuditAssignmentSettings />;
-      case "modes":
-        return <CageModeVisibilitySettings />;
+      case "scope":
+        return <CageScopeAssignmentSettings />;
+      case "permissions":
+        return <CagePermissionMatrixPanel />;
       case "syncLock":
         return (
           <CageSyncLockSettings
@@ -155,6 +168,8 @@ export default function CageSettingsCenter({
             cellIdSyncing={cellIdSyncing}
           />
         );
+      case "statusAlert":
+        return <CageAlertSettings />;
     }
   };
 
@@ -164,7 +179,7 @@ export default function CageSettingsCenter({
         <DialogHeader className="shrink-0 border-b border-[var(--twin-hairline)] px-5 py-3.5 text-left">
           <DialogTitle className="text-[14px] text-[var(--twin-ink)]">设置中心</DialogTitle>
           <DialogDescription className="text-[11px] text-[var(--twin-mute)]">
-            数据源 / 所属人审核配置 / 审核人归属 / 模式可见性 / 同步保护锁
+            数据源 / 所属人审核配置 / 可见范围分配 / 权限矩阵 / 同步保护锁 / 状态告警
           </DialogDescription>
         </DialogHeader>
 
@@ -195,9 +210,12 @@ export default function CageSettingsCenter({
               })}
             </nav>
           }
-          contentClassName="px-4 py-4"
+          // scope 面板要自己占满高度（内部有长列表），所以把内容区变成 flex 列：
+          // 只有容器是 flex 时，子元素的 flex-1/min-h-0 才可靠——靠 h-full 穿一层
+          // overflow-y-auto 解析高度是不可靠的（内容会被撑出、顶出外层滚动条）。
+          contentClassName={`px-4 py-4 ${active === "scope" ? "flex flex-col" : ""}`}
         >
-          <div className="mb-4 border-b border-[var(--twin-hairline)] pb-3">
+          <div className="mb-4 shrink-0 border-b border-[var(--twin-hairline)] pb-3">
             <h3 className="text-[13px] font-semibold text-[var(--twin-ink)]">{current.label}</h3>
             <p className="mt-1 text-[11px] leading-relaxed text-[var(--twin-mute)]">{current.description}</p>
           </div>

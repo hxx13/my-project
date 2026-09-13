@@ -25,6 +25,11 @@
         <result column="interactive_unlock_on_verify" property="interactiveUnlockOnVerify"/>
         <result column="rule_id" property="ruleId"/>
         <result column="cage_violation_id" property="cageViolationId"/>
+        <result column="batch_id" property="batchId"/>
+        <result column="notice_display_days" property="noticeDisplayDays"/>
+        <result column="notice_link_expire" property="noticeLinkExpire"/>
+        <result column="notice_cleared_at" property="noticeClearedAt"/>
+        <result column="notice_cleared_by_user_id" property="noticeClearedByUserId"/>
     </resultMap>
 
     <!-- 交互验证未完成时，超期仍保持 ACTIVE，直至用户完成拼图 -->
@@ -98,12 +103,14 @@
             target_user_id, violation_text, content_json, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
             expire_at, status, created_by_user_id, source, interactive_challenge, interactive_unlock_on_verify,
-            rule_id, cage_violation_id
+            rule_id, cage_violation_id, batch_id,
+            notice_display_days, notice_link_expire, notice_cleared_at, notice_cleared_by_user_id
         ) VALUES (
             #{targetUserId}, #{violationText}, #{contentJson}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
             #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}, #{interactiveUnlockOnVerify},
-            #{ruleId}, #{cageViolationId}
+            #{ruleId}, #{cageViolationId}, #{batchId},
+            #{noticeDisplayDays}, #{noticeLinkExpire}, #{noticeClearedAt}, #{noticeClearedByUserId}
         )
     </insert>
 
@@ -139,9 +146,6 @@
         <where>
             <if test="targetUserId != null and targetUserId != ''">
                 AND v.target_user_id = #{targetUserId}
-            </if>
-            <if test="excludeCage != null and excludeCage">
-                AND v.cage_violation_id IS NULL
             </if>
             <if test="statuses != null and statuses.size() > 0">
                 AND v.status IN
@@ -187,7 +191,8 @@
         SELECT v.*
         FROM twin_student_violation v
         <include refid="recentFilter"/>
-        ORDER BY v.id DESC
+        <!-- 批次倒序、批内正序；batch_id 为 NULL 的历史行在 DESC 下排最后（沉底） -->
+        ORDER BY v.batch_id DESC, v.id ASC
         LIMIT #{offset}, #{limit}
     </select>
 
@@ -199,16 +204,32 @@
 
     <!-- 大屏公示严格按到期时间过滤：拼图未完成者超期后扫码端仍弹窗（selectActiveByTargetUserId），
          但已下榜，不再出现在主页「提醒公示」 -->
+    <!--
+      大屏公告可见性口径（唯一来源，两处查询共用，禁止各自改写）：
+      ACTIVE + 公告未被单独解除 + 仍在公告展示窗口内。
+      联动(notice_link_expire=1)展示到到期时间；否则展示到 created_at + notice_display_days 天。
+      历史行 notice_link_expire 默认 1，故行为与加此列前一致。
+    -->
+    <sql id="boardVisibleClause">
+        status = 'ACTIVE'
+        AND notice_cleared_at IS NULL
+        AND (
+          CASE WHEN notice_link_expire = 1
+               THEN (expire_at IS NULL OR expire_at &gt; NOW())
+               ELSE (notice_display_days IS NULL
+                     OR created_at &gt; DATE_SUB(NOW(), INTERVAL notice_display_days DAY))
+          END
+        )
+    </sql>
+
     <select id="selectActiveForDashboardBoard" resultMap="TwinStudentViolationMap">
         SELECT v.*
         FROM twin_student_violation v
-        WHERE v.status = 'ACTIVE'
-          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+        WHERE <include refid="boardVisibleClause"/>
           AND v.id IN (
               SELECT MAX(id)
               FROM twin_student_violation
-              WHERE status = 'ACTIVE'
-                AND (expire_at IS NULL OR expire_at &gt; NOW())
+              WHERE <include refid="boardVisibleClause"/>
               GROUP BY target_user_id
           )
         ORDER BY v.created_at DESC, v.id DESC
@@ -219,8 +240,7 @@
     <select id="selectBoardVisibleActiveByUserIds" resultMap="TwinStudentViolationMap">
         SELECT v.*
         FROM twin_student_violation v
-        WHERE v.status = 'ACTIVE'
-          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+        WHERE <include refid="boardVisibleClause"/>
           AND v.target_user_id IN
           <foreach collection="userIds" item="uid" open="(" separator="," close=")">
               #{uid}
@@ -245,10 +265,27 @@
             interactive_challenge_verified_at = #{interactiveChallengeVerifiedAt},
             interactive_unlock_on_verify = #{interactiveUnlockOnVerify},
             expire_at = #{expireAt},
+            notice_display_days = #{noticeDisplayDays},
+            notice_link_expire = #{noticeLinkExpire},
             updated_at = NOW()
         WHERE id = #{id}
     </update>
 
+    <!-- 单独解除公告：只影响公告可见性，不动 status / forbid_enter / 记录本身。幂等（已解除则 0 行） -->
+    <update id="clearNoticeById">
+        UPDATE twin_student_violation
+        SET notice_cleared_at = NOW(),
+            notice_cleared_by_user_id = #{operatorId},
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND notice_cleared_at IS NULL
+    </update>
+
+    <!--
+      标记「已完成交互处置」。注意：**不能**再要求记录上有 interactive_challenge——
+      ACK_READ/QUIZ/SIGNATURE 的答案在待办（twin_obligation）里，记录本身没有短语。
+      是否需要交互由 service 的 verifyDispositionAnswer 把关（策略 requiresInteraction），此处不再重复设卡。
+    -->
     <update id="acknowledgeInteractiveById">
         UPDATE twin_student_violation
         SET interactive_challenge_verified_at = NOW(),
@@ -256,8 +293,6 @@
             updated_at = NOW()
         WHERE id = #{id}
           AND status = 'ACTIVE'
-          AND interactive_challenge IS NOT NULL
-          AND TRIM(interactive_challenge) &lt;&gt; ''
           AND interactive_challenge_verified_at IS NULL
     </update>
 

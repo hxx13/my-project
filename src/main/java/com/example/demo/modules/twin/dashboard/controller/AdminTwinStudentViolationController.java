@@ -18,12 +18,14 @@ import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNotic
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
 import com.example.demo.modules.twin.dashboard.service.ViolationTextTemplateService;
+import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -111,7 +113,6 @@ public class AdminTwinStudentViolationController {
             @RequestParam(value = "pageSize", defaultValue = "0") int pageSize,
             @RequestParam(value = "statuses", required = false) List<String> statuses,
             @RequestParam(value = "sources", required = false) List<String> sources,
-            @RequestParam(value = "excludeCage", required = false) Boolean excludeCage,
             @RequestParam(value = "lockedOnly", required = false) Boolean lockedOnly
     ) {
         Result<?> denied = requireAdmin(authorization);
@@ -122,8 +123,8 @@ public class AdminTwinStudentViolationController {
         int ps = pageSize > 0 ? pageSize : limit;
         ps = Math.min(Math.max(ps, 1), 500);
         int offset = Math.max(0, (Math.max(page, 1) - 1) * ps);
-        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, excludeCage, lockedOnly, ps, offset);
-        int total = violationService.countRecent(targetUserId, statuses, sources, excludeCage, lockedOnly);
+        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, lockedOnly, ps, offset);
+        int total = violationService.countRecent(targetUserId, statuses, sources, lockedOnly);
         Set<String> idSet = new HashSet<>();
         for (TwinStudentViolation v : rows) {
             if (v == null) continue;
@@ -138,7 +139,15 @@ public class AdminTwinStudentViolationController {
             }
         }
         Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(idSet);
-        List<Map<String, Object>> out = rows.stream().map(v -> toRow(v, displayNames)).collect(Collectors.toList());
+        // 「课题组」列：笼架来源有父记录可取，手动/滞留没有——按被下发的人批量取（一次 IN 查询）
+        Set<String> groupIds = new HashSet<>();
+        for (TwinStudentViolation v : rows) {
+            if (v != null && StringUtils.hasText(v.getTargetUserId())) {
+                groupIds.add(v.getTargetUserId().trim());
+            }
+        }
+        Map<String, String> projectGroups = userDisplayNameService.resolveProjectGroups(groupIds);
+        List<Map<String, Object>> out = rows.stream().map(v -> toRow(v, displayNames, projectGroups)).collect(Collectors.toList());
 
         // 大屏每人只展示一条（同人 MAX(id)），管理端须标出"此人还有别的生效违规 / 哪条正在公示"，
         // 否则删掉其中一条后大屏仍显示同人另一条，看起来像删除没生效。
@@ -159,6 +168,27 @@ public class AdminTwinStudentViolationController {
             row.put("boardDisplayed", bv != null && bv.boardRowId() != null && bv.boardRowId().equals(v.getId()));
         }
         return Result.success(Map.of("list", out, "total", total));
+    }
+
+    @GetMapping("/{id}/disposition-detail")
+    @Operation(summary = "违规处置完整明细（含签名图，按需拉取）")
+    public Result<?> dispositionDetail(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            Map<String, Object> detail = violationService.dispositionDetail(id);
+            if (detail == null) {
+                return Result.error("记录不存在");
+            }
+            return Result.success(detail);
+        } catch (Exception e) {
+            return Result.error("查询处置明细失败: " + readableError(e));
+        }
     }
 
     @PutMapping("/{id}")
@@ -190,7 +220,9 @@ public class AdminTwinStudentViolationController {
                     body.getExpireMode(),
                     body.getExpireAfterDays(),
                     body.getInteractiveChallenge(),
-                    body.getInteractiveUnlockOnVerify()
+                    body.getInteractiveUnlockOnVerify(),
+                    body.getNoticeDisplayDays(),
+                    body.getNoticeLinkExpire()
             );
             applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
             if (Boolean.TRUE.equals(body.getRequireReconfirm()) && row != null && row.getId() != null
@@ -200,7 +232,7 @@ public class AdminTwinStudentViolationController {
                     obligationService.requireReconfirm(ob.getId());
                 }
             }
-            return Result.success(toRow(row, null));
+            return Result.success(toRow(row, null, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (Exception e) {
@@ -292,7 +324,12 @@ public class AdminTwinStudentViolationController {
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify(),
                     effectiveRuleId,
-                    body.getCageViolationId()
+                    body.getCageViolationId(),
+                    body.getNoticeDisplayDays(),
+                    body.getNoticeLinkExpire(),
+                    // 批量同样要落处置策略；漏掉会让「按课题组统一发布」的策略保持默认 SHOW_ONLY
+                    body.getDispositionType(),
+                    body.getDispositionConfigJson()
             );
             return Result.success(summary);
         } catch (IllegalArgumentException e) {
@@ -344,10 +381,12 @@ public class AdminTwinStudentViolationController {
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify(),
                     effectiveRuleId,
-                    body.getCageViolationId()
+                    body.getCageViolationId(),
+                    body.getNoticeDisplayDays(),
+                    body.getNoticeLinkExpire()
             );
             applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
-            return Result.success(toRow(row, null));
+            return Result.success(toRow(row, null, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (Exception e) {
@@ -373,6 +412,31 @@ public class AdminTwinStudentViolationController {
         return ok ? Result.success() : Result.error("记录不存在或已非生效状态");
     }
 
+    @PostMapping("/{id}/clear-notice")
+    @Operation(summary = "单独解除公告（大屏立即下板；记录与禁入不变，已解除时幂等返回成功）")
+    public Result<?> clearNotice(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        User admin = authContextService.resolveUserFromBearer(authorization);
+        if (admin == null) {
+            return Result.error("未登录或令牌无效");
+        }
+        try {
+            // 已解除时 clearNotice 返回 false，但仍算成功（幂等）
+            violationService.clearNotice(id, admin.getId());
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("解除公告失败: " + readableError(e));
+        }
+    }
+
     @PostMapping("/{id}/mark-processed")
     @Operation(summary = "标记违规已处理（PROCESSED，扫码弹窗不再展示，记录仍保留）")
     public Result<?> markProcessed(
@@ -391,7 +455,8 @@ public class AdminTwinStudentViolationController {
         return ok ? Result.success() : Result.error("记录不存在或已非生效状态");
     }
 
-    private Map<String, Object> toRow(TwinStudentViolation v, Map<String, String> displayNameCache) {
+    private Map<String, Object> toRow(TwinStudentViolation v, Map<String, String> displayNameCache,
+                                      Map<String, String> projectGroupCache) {
         Map<String, Object> m = new HashMap<>();
         m.put("id", v.getId());
         m.put("targetUserId", v.getTargetUserId());
@@ -433,6 +498,11 @@ public class AdminTwinStudentViolationController {
         m.put("interactiveChallenge", v.getInteractiveChallenge());
         m.put("interactiveChallengeVerifiedAt", v.getInteractiveChallengeVerifiedAt());
         m.put("interactiveUnlockOnVerify", v.getInteractiveUnlockOnVerify());
+        // 公告展示配置：编辑器回填与列表「公告」列都依赖这四个字段
+        m.put("noticeDisplayDays", v.getNoticeDisplayDays());
+        m.put("noticeLinkExpire", v.getNoticeLinkExpire());
+        m.put("noticeClearedAt", v.getNoticeClearedAt());
+        m.put("noticeClearedByUserId", v.getNoticeClearedByUserId());
         m.put("ruleId", v.getRuleId());
         if (v.getRuleId() != null && ruleService != null) {
             TwinViolationRule rule = ruleService.getById(v.getRuleId());
@@ -441,21 +511,24 @@ public class AdminTwinStudentViolationController {
             m.put("ruleName", null);
         }
         // 笼架联动父记录信息
+        String cageParentGroup = null;
         m.put("cageViolationId", v.getCageViolationId());
         if (v.getCageViolationId() != null && cageStatusViolationMapper != null) {
             TwinCageStatusViolation parent = cageStatusViolationMapper.selectById(v.getCageViolationId());
+            cageParentGroup = parent != null ? parent.getProjectGroupName() : null;
             m.put("cageParentStatus", parent != null ? parent.getStatusCode() : null);
             m.put("cageParentPosition", parent != null ? parent.getPositionLabel() : null);
-            m.put("cageParentGroup", parent != null ? parent.getProjectGroupName() : null);
+            m.put("cageParentGroup", cageParentGroup);
         } else {
             m.put("cageParentStatus", null);
             m.put("cageParentPosition", null);
             m.put("cageParentGroup", null);
         }
         // Obligation 处置策略（列表详情与编辑器同源）
+        TwinObligation ob = null;
         if (obligationService != null && v.getId() != null) {
             try {
-                var ob = obligationService.findByViolationId(v.getId());
+                ob = obligationService.findByViolationId(v.getId());
                 if (ob != null) {
                     m.put("dispositionType", ob.getDispositionType());
                     m.put("dispositionConfigJson", ob.getDispositionConfigJson());
@@ -464,6 +537,7 @@ public class AdminTwinStudentViolationController {
                     m.put("dispositionConfigJson", null);
                 }
             } catch (Exception ignored) {
+                ob = null;
                 m.put("dispositionType", null);
                 m.put("dispositionConfigJson", null);
             }
@@ -471,7 +545,58 @@ public class AdminTwinStudentViolationController {
             m.put("dispositionType", null);
             m.put("dispositionConfigJson", null);
         }
+        // 批次键 / 课题组 / 公告状态 / 处置摘要（记录页按批次成块渲染）
+        m.put("batchId", v.getBatchId() == null || v.getBatchId().isBlank() ? ("SINGLE-" + v.getId()) : v.getBatchId());
+        // 笼架联动优先用父记录的课题组；手动/滞留没有父记录，回落到「被下发的人」的课题组，
+        // 否则这一列对多数记录恒为「—」（用户实测反馈）
+        String groupName = StringUtils.hasText(cageParentGroup)
+                ? cageParentGroup
+                : (projectGroupCache == null ? null : projectGroupCache.get(tid));
+        m.put("projectGroupName", groupName);
+        m.put("noticeState", resolveNoticeState(v));
+        Map<String, Object> disposition = null;
+        if (ob != null) {
+            // ponytail: 每行 1 次按 (obligation_id, subject_user_id) 唯一键点查；页面 20 行，若将来放大分页再改批量
+            try {
+                var receipt = obligationService.findReceipt(ob.getId(), v.getTargetUserId());
+                disposition = TwinStudentViolationService.dispositionSummary(
+                        ob.getDispositionType(),
+                        ob.getStatus(),
+                        receipt == null ? null : receipt.getAnswerPayload(),
+                        receipt == null ? null : receipt.getCompletedAt(),
+                        receipt == null ? null : receipt.getChannel(),
+                        // 答题得分要按该待办实际用的题库算（库与内置的题目 id 命名空间不同）
+                        obligationService.quizQuestionsForConfig(ob.getDispositionConfigJson()));
+            } catch (Exception ignored) {
+                disposition = null;
+            }
+        }
+        m.put("disposition", disposition);
         return m;
+    }
+
+    /**
+     * 公告状态编码（ACTIVE / CLEARED / WINDOW_ENDED / NOT_ACTIVE）。
+     * 判定必须与 TwinStudentViolationMapper.xml 的 boardVisibleClause 保持一致，改一处必须改另一处。
+     */
+    private String resolveNoticeState(TwinStudentViolation v) {
+        if (!"ACTIVE".equals(v.getStatus())) {
+            return "NOT_ACTIVE";
+        }
+        if (v.getNoticeClearedAt() != null) {
+            return "CLEARED";
+        }
+        LocalDateTime now = LocalDateTime.now();
+        Integer linkExpire = v.getNoticeLinkExpire();
+        if (linkExpire == null || linkExpire == 1) {
+            return (v.getExpireAt() == null || v.getExpireAt().isAfter(now)) ? "ACTIVE" : "WINDOW_ENDED";
+        }
+        // notice_link_expire = 0：按 created_at + notice_display_days 判定
+        if (v.getNoticeDisplayDays() == null) {
+            return "ACTIVE";
+        }
+        return (v.getCreatedAt() != null && v.getCreatedAt().plusDays(v.getNoticeDisplayDays()).isAfter(now))
+                ? "ACTIVE" : "WINDOW_ENDED";
     }
 
     private Result<?> requireAdmin(String authorization) {
@@ -556,6 +681,10 @@ public class AdminTwinStudentViolationController {
         /** 期 3：Obligation 处置策略覆盖 */
         private String dispositionType;
         private String dispositionConfigJson;
+        /** 公告展示天数；null=跟随到期时间 */
+        private Integer noticeDisplayDays;
+        /** 公告展示是否与到期时间联动；不传=联动（1） */
+        private Integer noticeLinkExpire;
     }
 
     @Data
@@ -575,6 +704,10 @@ public class AdminTwinStudentViolationController {
         private Long cageViolationId;
         private String dispositionType;
         private String dispositionConfigJson;
+        /** 公告展示天数；null=跟随到期时间 */
+        private Integer noticeDisplayDays;
+        /** 公告展示是否与到期时间联动；不传=联动（1） */
+        private Integer noticeLinkExpire;
     }
 
     @Data
@@ -596,6 +729,10 @@ public class AdminTwinStudentViolationController {
         private String dispositionConfigJson;
         /** 内容变更后是否要求已完成者重新确认 */
         private Boolean requireReconfirm;
+        /** 公告展示天数；null=保持原值 */
+        private Integer noticeDisplayDays;
+        /** 公告展示是否与到期时间联动；null=保持原值 */
+        private Integer noticeLinkExpire;
     }
 
     // ---- 违规文案模板预设 ----

@@ -58,7 +58,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown } from "lucide-react";
+import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown, MapPin } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail, fetchLocalPipelineProgress, refreshCellDetail,
@@ -66,7 +66,8 @@ import {
   fetchBookmarks, toggleBookmarkApi,
   type BookmarkEntry,
   fetchFullTree, type CageShelfTreeNode,
-  fetchPersistedAlerts, type PersistedAlert,
+  type PersistedAlert,
+  fetchActiveCageStatusAlerts,
   fetchSnapshotBatches, type SnapshotBatch,
   fetchRealtimeRefresh, forceRealtimeRefresh, type RealtimeRefreshResponse,
   fetchAllocationAups, type AupItem,
@@ -81,6 +82,7 @@ import {
   fetchCageModeVisible,
   fetchCageOpMarkers, lookupCode, locateTargetOf, adminConfirmClaim, archiveCage, reconcileCageOccupancy, type CodeLookupResult,
   assignBatchCages, submitCageTransfer,
+  fetchMyRegion,
 } from "@/api/domains/cageShelf.api";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
 import { fetchMyGroupMembers } from "@/api/domains/referenceData.api";
@@ -137,6 +139,7 @@ import {
 } from "@/features/cage-shelf/pendingBatch";
 import CageHistoryModal from "@/features/cage-shelf/components/CageHistoryModal";
 import CageSettingsCenter from "@/features/cage-shelf/components/CageSettingsCenter";
+import MyRegionDialog from "@/features/cage-shelf/components/MyRegionDialog";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { ShelfGrid, BookmarkShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
@@ -265,6 +268,11 @@ function Inner(){
   }, []);
   const[recordTarget,setRecordTarget]=useState<string|null>(null);
   const[settingsOpen,setSettingsOpen]=useState(false);
+  // 我的区域：只有**真的是饲养组长**（后端按 LEADER 行判定）才显示入口。
+  // 组长是身份不是角色，前端算不出来，只能问后端一次。
+  const[myRegionOpen,setMyRegionOpen]=useState(false);
+  const[isRegionLeader,setIsRegionLeader]=useState(false);
+  useEffect(()=>{fetchMyRegion().then(r=>setIsRegionLeader(r.isLeader)).catch(()=>setIsRegionLeader(false));},[]);
 
   // 弹窗A 打开时从 /local/annotate 加载备注和状态照片（不能用 onOpenChange，Radix 只在用户关闭时触发）
   useEffect(()=>{
@@ -694,39 +702,33 @@ function Inner(){
   const{data:scan}=useQuery({queryKey:["cageLocalPipelineProgress"],queryFn:fetchLocalPipelineProgress,refetchInterval:(q)=>{const s=q.state.data?.status;return s==="running"||s==="done"||s==="failed"?5000:30000;}});
   const [scanDismissed, setScanDismissed] = useState(false);
   useEffect(() => { if (scan?.status === "running") setScanDismissed(false); }, [scan?.status]);
-  // 告警基线批次（独立于快照选择器）：自动=倒数第二个，手动=配置的对比基准
-  const alertBaselineId = useMemo(() => {
-    if (configMode === "auto") return batchList.length >= 2 ? batchList[1].scanBatchId : (batchList[0]?.scanBatchId || "");
-    return localStorage.getItem("cageCompareBaseline") || (batchList.length >= 2 ? batchList[1].scanBatchId : "");
-  }, [configMode, batchList]);
-  const{data:alertData}=useQuery({queryKey:["persistedAlerts",alertBaselineId,selectedBatchId,configMode],queryFn:()=>fetchPersistedAlerts(alertBaselineId||undefined,selectedBatchId||undefined,configMode),refetchInterval:60_000,enabled:configMode!=="off"});
+  const{data:alertData}=useQuery({queryKey:["cageStatusAlerts","active"],queryFn:()=>fetchActiveCageStatusAlerts(),refetchInterval:60_000});
+  // 网格角标：key=animalCageId（修掉快照 position=A-1 与本地网格 x-y 对不上的老问题）。
+  // 新端点无 persistedDays，这里映射成 CellButton 期望的 PersistedAlert 形状，CellButton 零改动。
   const alertMap=useMemo(()=>{
     const m=new Map<string,PersistedAlert>();
-    if(!alertData?.alerts)return m;
-    for(const a of alertData.alerts)m.set(`${a.shelveId}:${a.position}`,a);
-    return m;
-  },[alertData]);
-  // 告警按笼架/房间聚合
-  const alertCountByShelf=useMemo(()=>{
-    const m=new Map<string,number>();
-    if(!alertData?.alerts)return m;
-    for(const a of alertData.alerts)m.set(a.shelveId,(m.get(a.shelveId)||0)+1);
-    return m;
-  },[alertData]);
-  const alertCountByRoom=useMemo(()=>{
-    const m=new Map<string,number>();
-    if(!fullTree.length||!alertCountByShelf.size)return m;
-    for(const r of fullTree){
-      const rid=String(r.roomId??"");const sid=String(r.shelveId??"");
-      if(rid&&sid&&alertCountByShelf.has(sid))m.set(rid,(m.get(rid)||0)+1);
+    if(!alertData)return m;
+    for(const a of alertData){
+      m.set(a.animalCageId,{
+        statusCode:a.statusCode,
+        statusLabel:a.statusLabel,
+        thresholdDays:a.thresholdDays,
+        spanDays:a.spanDays,
+        persistedDays:a.spanDays,
+        shelveId:a.shelveId??"",
+        positionX:0,positionY:0,position:"",
+        campusName:"",roomName:"",cageBoxQrCode:"",projectPiName:"",
+        firstDetectedAt:a.startedAt,
+      });
     }
     return m;
-  },[fullTree,alertCountByShelf]);
-  // 每个笼架/房间含哪些状态码
+  },[alertData]);
+  // 左侧树徽标：每个笼架/房间含哪些状态码（新端点直接回 shelveId/roomId，不再经 fullTree 映射）
   const alertStatusesByShelf=useMemo(()=>{
     const m=new Map<string,Set<string>>();
-    if(!alertData?.alerts)return m;
-    for(const a of alertData.alerts){
+    if(!alertData)return m;
+    for(const a of alertData){
+      if(!a.shelveId)continue;
       if(!m.has(a.shelveId))m.set(a.shelveId,new Set());
       m.get(a.shelveId)!.add(a.statusCode);
     }
@@ -734,16 +736,14 @@ function Inner(){
   },[alertData]);
   const alertStatusesByRoom=useMemo(()=>{
     const m=new Map<string,Set<string>>();
-    if(!fullTree.length||!alertStatusesByShelf.size)return m;
-    for(const r of fullTree){
-      const rid=String(r.roomId??"");const sid=String(r.shelveId??"");
-      if(!rid||!sid)continue;
-      const ss=alertStatusesByShelf.get(sid);if(!ss)continue;
-      if(!m.has(rid))m.set(rid,new Set());
-      for(const s of ss)m.get(rid)!.add(s);
+    if(!alertData)return m;
+    for(const a of alertData){
+      if(!a.roomId)continue;
+      if(!m.has(a.roomId))m.set(a.roomId,new Set());
+      m.get(a.roomId)!.add(a.statusCode);
     }
     return m;
-  },[fullTree,alertStatusesByShelf]);
+  },[alertData]);
   const[pinned,setPinned]=useState<Set<string>>(new Set());
   const[bmList,setBmList]=useState<BookmarkEntry[]>([]);
   const[bmLoading,setBmLoading]=useState(false);
@@ -2396,6 +2396,7 @@ function Inner(){
             {isPlatformOwner&&<button type="button" onClick={handleReconcileOccupancy} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold border border-[var(--twin-hairline)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)] transition">修正占用</button>}
             <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
             {canOpenSettings&&<button type="button" onClick={()=>setSettingsOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="设置中心"><Settings2 className="h-3 w-3"/>设置</button>}
+            {isRegionLeader&&<button type="button" onClick={()=>setMyRegionOpen(true)} className="flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title="我作为饲养组长负责的区域"><MapPin className="h-3 w-3"/>我的区域</button>}
           </div>
         </div>
         {legend&&<CageShelfLegend/>}
@@ -2920,7 +2921,7 @@ function Inner(){
             {confirmLookup?.claim && !confirmLookup.claim.hasInfo && (
               <div className="border-t border-[var(--twin-hairline)] pt-2">
                 <div className="mb-1 text-[11px] font-semibold text-[var(--twin-ink)]">填写信息</div>
-                <CageFormFill animalCageId={confirmLookup.cageCell?.animalCageId ?? null} claimed editable />
+                <CageFormFill animalCageId={confirmLookup.cageCell?.animalCageId ?? null} claimed />
               </div>
             )}
             <div className="rounded-twin-md bg-amber-50 border border-amber-200 px-3 py-2 text-center">
@@ -2965,6 +2966,9 @@ function Inner(){
         onCancel={opSel.cancel}
       />
     )}
+
+    {/* 我的区域（饲养组长）：入口在工具栏，仅 isLeader 时显示 */}
+    <MyRegionDialog open={myRegionOpen} onOpenChange={setMyRegionOpen} />
 
     {/* 设置中心：左分类栏 + 右内容，见 CageSettingsCenter */}
     <CageSettingsCenter

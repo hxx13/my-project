@@ -5,6 +5,8 @@ import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
 import com.example.demo.modules.twin.dashboard.support.CageViolationFkSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,8 @@ import org.springframework.stereotype.Component;
 @Component
 @Order(130)
 public class TwinViolationSchemaMigrator implements StartupRunner {
+    private static final Logger log = LoggerFactory.getLogger(TwinViolationSchemaMigrator.class);
+
     private final JdbcTemplate jdbcTemplate;
 
     public TwinViolationSchemaMigrator(JdbcTemplate jdbcTemplate) {
@@ -109,6 +113,18 @@ public class TwinViolationSchemaMigrator implements StartupRunner {
             ensureCageStatusViolationTable();
         }); ok++;
 
+        // ── 规则级处置策略（加列非幂等，实际执行见本方法；common/schema/V20260924 仅归档） ──
+        ctx.subtask("rule_disposition_type", () -> ensureDispositionColumn(
+                "disposition_type",
+                "ALTER TABLE twin_violation_rule ADD COLUMN disposition_type VARCHAR(32) NULL "
+                        + "COMMENT '处置策略编码 SHOW_ONLY/ACK_READ/ACK_PUZZLE/QUIZ/SIGNATURE'"));
+        ok++;
+        ctx.subtask("rule_disposition_config_json", () -> ensureDispositionColumn(
+                "disposition_config_json",
+                "ALTER TABLE twin_violation_rule ADD COLUMN disposition_config_json TEXT NULL "
+                        + "COMMENT '处置策略自带配置JSON'"));
+        ok++;
+
         ctx.subtask("cage_violation_id_fk", () -> {
             ensureColumnExists("twin_student_violation", "cage_violation_id",
                     "ALTER TABLE twin_student_violation ADD COLUMN cage_violation_id BIGINT COMMENT '关联 twin_cage_status_violation.id'");
@@ -177,6 +193,36 @@ public class TwinViolationSchemaMigrator implements StartupRunner {
         } catch (Exception ignored) {
             // 幂等：缺表/无权限时由启动日志其他路径暴露
         }
+    }
+
+    /**
+     * 补 twin_violation_rule 的处置策略列。加列非幂等（已存在时抛 Duplicate column），
+     * 故只把「已存在」类异常吞掉当成功；其余（权限不足 / 表被锁等）打 warn 留痕，不谎报就绪。
+     * 实际执行点即本方法；common/schema/V20260924__violation_rule_disposition_columns.sql 仅作归档记录。
+     */
+    private void ensureDispositionColumn(String colName, String alterSql) {
+        try {
+            jdbcTemplate.execute(alterSql);
+            log.info("[violation-schema] twin_violation_rule.{} 就绪（新建）", colName);
+        } catch (Exception e) {
+            if (isAlreadyExists(e)) {
+                log.info("[violation-schema] twin_violation_rule.{} 就绪（已存在）", colName);
+            } else {
+                log.warn("[violation-schema] twin_violation_rule.{} 创建失败（非幂等）: {}", colName, e.getMessage(), e);
+            }
+        }
+    }
+
+    /** 递归判断异常链是否为「对象已存在」类（MySQL/MariaDB：duplicate column / already exists）。 */
+    private static boolean isAlreadyExists(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg != null) {
+                String lower = msg.toLowerCase();
+                if (lower.contains("duplicate") || lower.contains("already exists")) return true;
+            }
+        }
+        return false;
     }
 
     private void ensureColumnExists(String tableName, String colName, String alterSql) {

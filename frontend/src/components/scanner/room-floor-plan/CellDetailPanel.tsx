@@ -238,7 +238,9 @@ export function CellDetailPanel({
         <div className="border-t border-[var(--app-color-border-default)] pt-2">
           <div className="mb-1.5 text-[11px] font-semibold text-[var(--app-color-text-primary)]">📝 实验记录</div>
           <div className="min-h-[48px] whitespace-pre-wrap break-words py-1 text-[11px] text-[var(--app-color-text-primary)]">
-            {experimentDesc === "-" ? (
+            {masked ? (
+              <span className="text-[var(--app-color-text-tertiary)]">*** 非本课题组</span>
+            ) : experimentDesc === "-" ? (
               <span className="text-[var(--app-color-text-tertiary)]">暂无记录</span>
             ) : (
               experimentDesc
@@ -249,9 +251,11 @@ export function CellDetailPanel({
         {/* 照片（只读） */}
         <div className="mt-2 border-t border-[var(--app-color-border-default)] pt-2">
           <div className="mb-1.5 text-[11px] font-semibold text-[var(--app-color-text-primary)]">
-            🧪 实验记录照片 ({photos.length})
+            🧪 实验记录照片 ({masked ? 0 : photos.length})
           </div>
-          {photos.length === 0 ? (
+          {masked ? (
+            <div className="text-[10px] text-[var(--app-color-text-tertiary)]">*** 非本课题组</div>
+          ) : photos.length === 0 ? (
             <div className="text-[10px] text-[var(--app-color-text-tertiary)]">暂无照片</div>
           ) : (
             <div className="flex flex-wrap gap-2">

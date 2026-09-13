@@ -19,6 +19,7 @@ import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
 import com.example.demo.modules.cageshelf.service.CageOperationService;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
+import com.example.demo.modules.cageshelf.service.CageRegionCapabilityService;
 import com.example.demo.modules.cageshelf.service.OutboxService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,6 +57,7 @@ public class CageLocalController {
     private final CageClaimMapper claimMapper;
     private final AupRecordMapper aupRecordMapper;
     private final CageOperationService cageOperationService;
+    private final CageRegionCapabilityService regionCapabilityService;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -70,7 +72,8 @@ public class CageLocalController {
                                CageModeVisibilityService modeVisibilityService,
                                CageClaimMapper claimMapper,
                                AupRecordMapper aupRecordMapper,
-                               CageOperationService cageOperationService) {
+                               CageOperationService cageOperationService,
+                               CageRegionCapabilityService regionCapabilityService) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -85,6 +88,7 @@ public class CageLocalController {
         this.claimMapper = claimMapper;
         this.aupRecordMapper = aupRecordMapper;
         this.cageOperationService = cageOperationService;
+        this.regionCapabilityService = regionCapabilityService;
     }
 
     private String operatorDisplayName(User u) {
@@ -231,16 +235,21 @@ public class CageLocalController {
         if (animalCageId == null || toggle == null)
             return Result.fail(400, "animalCageId 和 toggle 必填");
 
-        // 学生侧单独一条路：只放行 CageModeVisibilityService.STUDENT_EDIT_ACTIONS，且只能动**本人使用中**的笼位。
-        // 不能复用 canUseMode(u,"edit") —— 它按身份 code 判（CageModeVisibilityService:136），
+        // 学生侧单独一条路：只放行矩阵里授权的学生状态动作（cage.student.edit.*），
+        // 且只能动**本人使用中**的笼位。
+        // 不能复用 canUseMode(u,"edit") —— 它按教职工状态模式的身份码判，
         // 而学生也可能带 BREEDER/BREEDING_GROUP_LEADER，那样会把五个动作和别人的笼位一起放开。
         // 教职工侧维持原判定不动。
         if (modeVisibilityService.isStudent(u)) {
-            if (!modeVisibilityService.isStudentEditToggle(toggle)) {
-                return Result.fail(403, "学生当前只能标记「合笼」");
+            if (!modeVisibilityService.canStudentEdit(u, toggle)) {
+                return Result.fail(403, "学生当前可标记的状态动作不含该项");
             }
             if (!cageOperationService.isOccupantSelf(u, animalCageId)) {
                 return Result.fail(403, "只能标记本人使用中的笼位");
+            }
+            // 区域级学生能力：状态动作也要**该笼位所在区域**的饲养组长开着（当前学生侧只有合笼）
+            if (!regionCapabilityService.studentEditEnabledOnCage(u, animalCageId, toggle)) {
+                return Result.fail(403, "该笼位所在区域未开放该状态标记，请联系该区域饲养组长");
             }
         } else if (!modeVisibilityService.canUseMode(u, "edit")) {
             return Result.fail(403, "无状态编辑权限（仅状态模式身份可操作）");

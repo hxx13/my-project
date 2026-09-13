@@ -5,6 +5,7 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,7 +40,7 @@ class GroupRoomsByUserTest {
     void setUp() {
         // 末位 cageOperationService 只被 markMine（学生每格归属标记）用，本测试不触及房间分组，传 null 即可
         service = new StudentCageShelfService(null, null, aroPersonnelMapper, null, cageShelfMapper,
-                null, null, null, null, null, localAggCache, null);
+                null, null, null, null, null, localAggCache, null, new CageVisibilityPolicy());
     }
 
     private Map<String, Object> attribution(String shelveId, String projectPi, String pi, String dept) {

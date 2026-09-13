@@ -35,14 +35,13 @@ public interface TwinStudentViolationMapper {
     int incrementEnterSuccess(@Param("id") long id);
 
     /**
-     * 管理端/学生端共用列表。管理端传入 statuses/sources/excludeCage/lockedOnly 在 SQL 层过滤后再 LIMIT，
+     * 管理端/学生端共用列表。管理端传入 statuses/sources/lockedOnly 在 SQL 层过滤后再 LIMIT，
      * 避免先截断窗口再前端过滤导致的「幻影」记录；学生端传 null 即全量。
      */
     List<TwinStudentViolation> selectRecent(
             @Param("targetUserId") String targetUserId,
             @Param("statuses") List<String> statuses,
             @Param("sources") List<String> sources,
-            @Param("excludeCage") Boolean excludeCage,
             @Param("lockedOnly") Boolean lockedOnly,
             @Param("limit") int limit,
             @Param("offset") int offset
@@ -53,7 +52,6 @@ public interface TwinStudentViolationMapper {
             @Param("targetUserId") String targetUserId,
             @Param("statuses") List<String> statuses,
             @Param("sources") List<String> sources,
-            @Param("excludeCage") Boolean excludeCage,
             @Param("lockedOnly") Boolean lockedOnly
     );
 
@@ -66,6 +64,9 @@ public interface TwinStudentViolationMapper {
     TwinStudentViolation selectById(@Param("id") long id);
 
     int updateEditableById(TwinStudentViolation row);
+
+    /** 单独解除公告（只下板，不动 status/forbid_enter）；已解除则返回 0，幂等 */
+    int clearNoticeById(@Param("id") long id, @Param("operatorId") String operatorId);
 
     /** 交互拼图完成；unlockOnVerify=1 时同步解除禁入 */
     int acknowledgeInteractiveById(@Param("id") long id, @Param("unlockOnVerify") int unlockOnVerify);

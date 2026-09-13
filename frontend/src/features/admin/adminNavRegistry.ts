@@ -546,15 +546,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/special-status", "STAFF"),
       },
       {
-        id: "cage-scope",
-        path: "/admin/cage-shelves/scope",
-        label: "可见范围分配",
-        icon: Users,
-        homeTone: "from-amber-400 to-orange-500",
-        fallbackMinRole: "ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/scope", "ADMIN"),
-      },
-      {
         id: "cage-forms",
         path: "/admin/cage-shelves/forms",
         label: "表单发布",

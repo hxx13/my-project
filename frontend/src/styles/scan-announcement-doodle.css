@@ -465,6 +465,51 @@
     padding: 0.5rem 0 0.75rem;
   }
 
+  /* 交互层定位锚点：公告层仍是这里唯一的流内元素，位置与分层前完全一致 */
+  .scan-notice-strip-anchor {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* 交互层：需要处置时公告卡先收起，整屏给交互弹窗，尺寸完全由自己定 */
+  .scan-notice-strip-layer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 100vw;
+    pointer-events: auto;
+  }
+
+  /* 交互层只有一张卡，不受并排档位限制：宽度放宽一档（默认 612px 对手写签名偏窄），
+     高度也放开（默认 80vh 会让「正文 + 交互区 + 按钮」放不下） */
+  .scan-notice-strip-layer .scan-doodle-card {
+    --doodle-card-width: min(96vw, 880px);
+    --doodle-card-max-height: 92vh;
+  }
+
+  /* 手写签名要横向空间（画布越宽越好写），再放宽一档 */
+  .scan-notice-strip-layer--signature .scan-doodle-card {
+    --doodle-card-width: min(96vw, 1120px);
+  }
+
+  /* 正文按内容占位，但设下限：交互区再高也不许把公告正文压成一条线 */
+  .scan-notice-strip-layer .scan-doodle-card__body {
+    flex: 0 1 auto;
+    min-height: 6em;
+  }
+
+  /* 交互区参与滚动：卡片装不下时它自己滚，而不是把正文挤扁 / 自己被裁出卡片外 */
+  .scan-notice-strip-layer .scan-doodle-card__footer-slot {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
   /* 横向滚动条 — 对齐 app-themed-scrollbar / page-help-scrollbar 语义色 */
   .scan-notice-strip-scroll--themed {
     scrollbar-gutter: stable;

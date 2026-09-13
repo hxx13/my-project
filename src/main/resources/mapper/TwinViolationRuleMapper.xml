@@ -34,6 +34,8 @@
         <result column="cage_group_whitelist" property="cageGroupWhitelist"/>
         <result column="cage_trigger_action" property="cageTriggerAction"/>
         <result column="cage_image_urls" property="cageImageUrls"/>
+        <result column="disposition_type" property="dispositionType"/>
+        <result column="disposition_config_json" property="dispositionConfigJson"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
@@ -59,7 +61,8 @@
             unblock_window_start, unblock_window_end, critical_notice_text,
             auto_signout_enabled, whitelist_depts, cron_expression,
             cage_status_codes, cage_delay_days, cage_judge_mode, cage_manual_trigger,
-            cage_area_filter, cage_group_whitelist, cage_trigger_action, cage_image_urls
+            cage_area_filter, cage_group_whitelist, cage_trigger_action, cage_image_urls,
+            disposition_type, disposition_config_json
         ) VALUES (
             #{ruleCode}, #{ruleName}, #{enabled}, #{sourceTag},
             #{violationTextTpl}, #{forbidEnter}, #{expireAfterDays}, #{showNoticeEveryScan},
@@ -68,7 +71,8 @@
             #{unblockWindowStart}, #{unblockWindowEnd}, #{criticalNoticeText},
             #{autoSignoutEnabled}, #{whitelistDepts}, #{cronExpression},
             #{cageStatusCodes}, #{cageDelayDays}, #{cageJudgeMode}, #{cageManualTrigger},
-            #{cageAreaFilter}, #{cageGroupWhitelist}, #{cageTriggerAction}, #{cageImageUrls}
+            #{cageAreaFilter}, #{cageGroupWhitelist}, #{cageTriggerAction}, #{cageImageUrls},
+            #{dispositionType}, #{dispositionConfigJson}
         )
     </insert>
 
@@ -102,6 +106,8 @@
             cage_group_whitelist = #{cageGroupWhitelist},
             cage_trigger_action = #{cageTriggerAction},
             cage_image_urls = #{cageImageUrls},
+            disposition_type = #{dispositionType},
+            disposition_config_json = #{dispositionConfigJson},
             updated_at = NOW()
         WHERE id = #{id}
     </update>

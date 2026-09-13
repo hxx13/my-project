@@ -120,6 +120,13 @@
         SELECT user_id
         FROM aro_access_log
         WHERE create_time LIKE #{todayPrefix}
+        <if test="campusPatterns != null and campusPatterns.size() > 0">
+            AND (
+            <foreach collection="campusPatterns" item="p" separator=" OR ">
+                area_name LIKE #{p}
+            </foreach>
+            )
+        </if>
         GROUP BY user_id
         HAVING SUM(CASE WHEN accessType = 1 THEN 1 ELSE -1 END) > 0
     </select>

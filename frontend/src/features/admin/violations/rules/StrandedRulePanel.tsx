@@ -147,6 +147,12 @@ export function StrandedRulePanel(): JSX.Element {
         <InspectorRow stack label="白名单部门" hint="命中部门不触发自动违规">
           <DepartmentMultiSelect selected={config.whitelistDepts} onChange={(depts) => setConfig({ whitelistDepts: depts })} disabled={loading} />
         </InspectorRow>
+        <InspectorRow label="浦东校区参与检测">
+          {(id) => <AdminSwitchScaled size="sm" id={id} checked={config.campusPdEnabled} onChange={(checked) => setConfig({ campusPdEnabled: checked })} disabled={loading} />}
+        </InspectorRow>
+        <InspectorRow label="浦西校区参与检测">
+          {(id) => <AdminSwitchScaled size="sm" id={id} checked={config.campusPxEnabled} onChange={(checked) => setConfig({ campusPxEnabled: checked })} disabled={loading} />}
+        </InspectorRow>
       </InspectorGroup>
 
       <DispositionFieldsSlot

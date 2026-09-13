@@ -12,6 +12,7 @@ import {
   type ScanNoticePanelKey,
 } from "./scanNoticePanelId";
 import { canAutoOpenNoticesOnPopupOpen } from "./scanNoticeAutoOpen";
+import { declaredInteractiveStrategy, needsInteractiveLayer } from "./noticeLayer";
 import type { NoticeKind } from "./scanPopupTheme";
 
 export type ScanNoticeDialogId = "violation" | "unbound" | "announcement" | "cage-notice";
@@ -64,13 +65,31 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
   const unbound = result.unboundCardNotice;
   const bundle = result.scanPopupAnnouncements;
 
+  /**
+   * 需要处置的违规走「交互层」独占一行（给足宽度），其余通知并排。
+   * 处置完成那一刻 result 里的 interactiveChallengeVerified 变 true → 本值转假 → 自动落回公告层。
+   */
+  const violationNeedsLayer = needsInteractiveLayer(actualViolation);
+
+  /**
+   * 面板层分组：需要处置的违规面板独占交互层，其余（含已完成处置的违规）回公告层并排。
+   * 交互层最多 1 张（每种 kind 只有一个面板），所以不需要做 N 张的泛化。
+   */
+  const interactivePanelKeys: ScanNoticePanelKey[] = useMemo(
+    () => (violationNeedsLayer ? openPanels.filter((k) => k === "violation") : []),
+    [violationNeedsLayer, openPanels]
+  );
+  const passivePanelKeys: ScanNoticePanelKey[] = useMemo(
+    // 有需要处置的违规时，公告卡先收起（不渲染），整屏让给交互层；
+    // 处置完成后 interactiveChallengeVerified 变 true → violationNeedsLayer 转假 → 公告卡照常出现。
+    // openPanels 本身不动，所以收起/恢复不需要额外的状态管理。
+    () => (violationNeedsLayer ? [] : openPanels.filter((k) => !interactivePanelKeys.includes(k))),
+    [violationNeedsLayer, openPanels, interactivePanelKeys]
+  );
+
   const announcementItems = useMemo(
     () => bundle?.items?.filter((x) => x?.id) ?? [],
     [bundle?.items]
-  );
-  const announcementIds = useMemo(
-    () => announcementItems.map((x) => x.id!),
-    [announcementItems]
   );
   const announcementCount = announcementItems.length;
   const hasAnnouncement = Boolean(bundle?.enabled && announcementCount > 0);
@@ -228,10 +247,10 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     [openPanels]
   );
 
-  const renderStripPanels = () => {
-    if (openPanels.length === 0) return null;
+  const renderStripPanels = (keys: ScanNoticePanelKey[]) => {
+    if (keys.length === 0) return null;
 
-    if (!tiledAutoOpen && openPanels.includes("announcement-manual")) {
+    if (!tiledAutoOpen && keys.includes("announcement-manual")) {
       const item = announcementItems[Math.min(manualAnnPage, announcementCount - 1)];
       if (!item?.id) return null;
       return (
@@ -257,7 +276,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
       );
     }
 
-    return openPanels.map((key) => {
+    return keys.map((key) => {
       if (key === "cage-notice" && cageNotice?.id != null) {
         return (
           <ScanNoticePanelCard
@@ -373,10 +392,15 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
 
       <ScanNoticeStripPortal
         open={openPanels.length > 0}
-        panelCount={openPanels.length}
+        panelCount={passivePanelKeys.length}
+        interactiveCount={interactivePanelKeys.length}
+        interactiveVariant={
+          declaredInteractiveStrategy(actualViolation) === "SIGNATURE" ? "signature" : undefined
+        }
         onCloseAll={closeAllPanels}
+        interactiveChildren={renderStripPanels(interactivePanelKeys)}
       >
-        {renderStripPanels()}
+        {renderStripPanels(passivePanelKeys)}
       </ScanNoticeStripPortal>
     </>
   );

@@ -102,12 +102,25 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-stranded-config-interactive-unlock.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-stranded-config-interactive-challenge.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-stranded-config-violation-text-tpl-text.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-stranded-config-campus-pd.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-stranded-config-campus-px.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-violation-notice-display-days.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-violation-notice-link-expire.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-violation-notice-cleared-at.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-violation-notice-cleared-by.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-violation-batch-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-violation-batch-id-index.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-bank.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-question.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-bank-seed.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-question-seed.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-stranded-signout-config-row.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-status-violation-window-fix.sql", ctx)) success++;
         // T1-2：孤儿父/断链子清理（FK 由 TwinViolationSchemaMigrator 幂等添加）
         total++; if (runScript("db/bootstrap-cage-violation-fk-cascade.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-obligation-core.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-obligation-content-json.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-obligation-attempt-count.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-animal-order-time.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-animal-order-window-weekdays.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-animal-order-window-week-span.sql", ctx)) success++;
@@ -186,6 +199,19 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-personnel-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity-migrate-to-personnel-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-scope.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-visibility-promote.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-region-grant.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-permission-matrix.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-member-capability.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-region-capability.sql", ctx)) success++;
+        // 必须排在上一行（建表）之后：它给该表换唯一键，让同一区域可以多位组长各配各的
+        total++; if (runScript("db/bootstrap-cage-region-capability-multi-leader.sql", ctx)) success++;
+        // 同上，必须建表之后：给该表加 enabled 列，让「配过但全关」表达得出来
+        total++; if (runScript("db/bootstrap-cage-region-capability-enabled.sql", ctx)) success++;
+        // 必须排在 bootstrap-cage-permission-matrix.sql 之后：它往能力注册表/授权表插行
+        total++; if (runScript("db/bootstrap-cage-review-capability.sql", ctx)) success++;
+        // 笼位特殊状态超时告警：三张表 + 全局默认阈值 + 能力码（能力种子依赖上面的 matrix）
+        total++; if (runScript("db/bootstrap-cage-status-alert.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-audit-assignment.sql", ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;

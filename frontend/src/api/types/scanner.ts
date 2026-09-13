@@ -144,6 +144,16 @@ export interface StudentViolationNotice {
     autoOpenSuppressed?: boolean;
     /** CAGE_STATUS / MANUAL 等来源标识 */
     source?: string;
+    /** 处置策略类型：SHOW_ONLY/ACK_READ/ACK_PUZZLE/QUIZ/SIGNATURE */
+    dispositionType?: string | null;
+    /** 策略配置原文（JSON 字符串） */
+    dispositionConfigJson?: string | null;
+}
+
+/** 答题抽题返回（与 H5 端 /student/obligations/{id}/quiz-draw 同一结构） */
+export interface QuizDrawPayload {
+    questionBankId: string;
+    questions: Array<{ id: string; prompt: string; options: string[] }>;
 }
 
 export interface ExecutePayload {

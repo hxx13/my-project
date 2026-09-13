@@ -4,6 +4,7 @@ import type { ApiResponse } from "@/api/types/common";
 import type {
     AnalyzeResponse,
     ExecutePayload,
+    QuizDrawPayload,
     RoomCardStatus,
     RoomInfo,
     UserStatusResponse,
@@ -184,6 +185,11 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             criticalNoticeText: asString(n.criticalNoticeText ?? n.critical_notice_text),
             autoOpenSuppressed:
                 asBooleanLike(n.autoOpenSuppressed ?? n.auto_open_suppressed) ?? false,
+            // 处置策略（后端 buildNotice 从待办带出）。这里是逐字段重建，**漏掉它就等于卡片永远拿不到策略**，
+            // 表现是弹窗只有公告正文、没有任何处置面板。
+            dispositionType: asString(n.dispositionType ?? n.disposition_type) ?? null,
+            dispositionConfigJson:
+                asString(n.dispositionConfigJson ?? n.disposition_config_json) ?? null,
         };
     };
     const studentViolationNotice = parseViolationNotice(
@@ -371,6 +377,35 @@ export const acknowledgeViolationInteractive = async (body: {
         interactiveChallengeVerified: Boolean(raw.interactiveChallengeVerified),
         enterLocked: Boolean(raw.enterLocked),
         violationExpired: Boolean(raw.violationExpired),
+    };
+};
+
+/**
+ * 触摸屏按违规 id 抽题（答题策略用）。
+ * 后端 Result.error 仍以 HTTP 200 返回（success=false / code!=200），必须显式抛错，
+ * 否则界面会把「待办不存在 / 非答题策略」当成抽到空题。
+ */
+export const drawViolationQuiz = async (violationId: number): Promise<QuizDrawPayload> => {
+    const response = await http.get<ApiResponse<QuizDrawPayload> | QuizDrawPayload>(
+        "/scan/violation-quiz-draw",
+        { params: { violationId } }
+    );
+    const envelope =
+        response.data && typeof response.data === "object"
+            ? (response.data as unknown as Record<string, unknown>)
+            : {};
+    const failedByCode = typeof envelope.code === "number" && envelope.code !== 200;
+    if (failedByCode || envelope.success === false) {
+        const message =
+            (typeof envelope.message === "string" && envelope.message) ||
+            (typeof envelope.msg === "string" && envelope.msg) ||
+            "抽题失败";
+        throw new Error(message);
+    }
+    const payload = unwrapData(response.data, { questionBankId: "", questions: [] } as QuizDrawPayload);
+    return {
+        questionBankId: typeof payload.questionBankId === "string" ? payload.questionBankId : "",
+        questions: Array.isArray(payload.questions) ? payload.questions : [],
     };
 };
 

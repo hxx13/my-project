@@ -41,4 +41,8 @@ public class ScanStudentViolationNoticeDTO {
     private Boolean autoOpenSuppressed;
     /** CAGE_STATUS / MANUAL 等来源标识 */
     private String source;
+    /** 处置策略类型：SHOW_ONLY/ACK_READ/ACK_PUZZLE/QUIZ/SIGNATURE */
+    private String dispositionType;
+    /** 策略配置原文（JSON 字符串） */
+    private String dispositionConfigJson;
 }

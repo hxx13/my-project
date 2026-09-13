@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageRegionGrantMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_region_grant (region_type, region_id, user_id, grant_role, leader_user_id, granted_by)
+        VALUES (#{regionType}, #{regionId}, #{userId}, #{grantRole}, #{leaderUserId}, #{grantedBy})
+    </insert>
+
+    <delete id="deleteByUserAndRole">
+        DELETE FROM cage_region_grant WHERE user_id = #{userId} AND grant_role = #{grantRole}
+    </delete>
+
+    <select id="listByUser" resultType="com.example.demo.modules.cageshelf.entity.CageRegionGrant">
+        SELECT * FROM cage_region_grant WHERE user_id = #{userId}
+        ORDER BY grant_role ASC, region_type ASC, region_id ASC
+    </select>
+
+    <select id="listAll" resultType="com.example.demo.modules.cageshelf.entity.CageRegionGrant">
+        SELECT * FROM cage_region_grant
+        ORDER BY user_id ASC, grant_role ASC, region_type ASC, region_id ASC
+    </select>
+
+    <!-- 挂在该组长名下的行。idx_crg_leader 索引（二期建）覆盖此查询。 -->
+    <select id="listByLeader" resultType="com.example.demo.modules.cageshelf.entity.CageRegionGrant">
+        SELECT * FROM cage_region_grant
+        WHERE leader_user_id = #{leaderUserId}
+        ORDER BY region_type ASC, region_id ASC, user_id ASC
+    </select>
+
+    <!-- 组员带姓名：join personnel 取名字（user_id 是 personnel.id，不能用 UserDisplayNameService）。
+         同时回 staff_id 作 memberAccountId——替换接口收的是账号 id，前端要能往返。 -->
+    <select id="listMemberRows" resultType="map">
+        SELECT g.user_id AS memberUserId,
+               COALESCE(NULLIF(p.name, ''), g.user_id) AS memberName,
+               COALESCE(NULLIF(p.staff_id, ''), g.user_id) AS memberAccountId,
+               COUNT(*) AS regionCount
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        WHERE g.leader_user_id = #{leaderUserId} AND g.grant_role = 'MEMBER'
+        GROUP BY g.user_id, p.name, p.staff_id
+        ORDER BY memberName ASC
+    </select>
+
+    <!-- 组员全量替换时先删本组全部 MEMBER 行。只删 MEMBER，不动该组长的 LEADER 行。 -->
+    <delete id="deleteMembersByLeader">
+        DELETE FROM cage_region_grant
+        WHERE leader_user_id = #{leaderUserId} AND grant_role = 'MEMBER'
+    </delete>
+
+    <!-- 组员候选人：只列持有指定身份标签的人（默认 BREEDER 饲养员），并标注他**已被哪位饲养组长纳入**。
+         用 LEFT JOIN 而不是 EXISTS / 内连接：已被占用的人**必须留在列表里**——前端要把他置灰并写明
+         「已在 X 的组」，直接过滤掉会让人搜不到、以为数据缺失。
+
+         去重：理论上一个只能进一个组，历史数据里仍可能同一人被多位组长各纳一行，
+         GROUP BY + MAX 保证一人一行，不放大行数（同一个人多个 MEMBER 行时随便取一个占用人展示）。
+
+         两侧都显式 COLLATE：`CAST(x AS CHAR)` 的排序规则取自**连接**（session collation），
+         而列是建表时的 utf8mb4_unicode_ci。app 的 JDBC 恰好写了 connectionCollation=utf8mb4_unicode_ci
+         所以没事，但任何别的连接（客户端默认 0900_ai_ci）一跑就抛 1267，
+         而且常被静默吞成空结果。两列并列比较（如 listMemberRows 的 p.id = g.user_id）不受影响，
+         只有这种「列 vs CAST」的比较要钉。 -->
+    <select id="listMemberCandidates" resultType="map">
+        SELECT p.id AS personnelId,
+               COALESCE(NULLIF(p.staff_id, ''), NULLIF(p.aro_user_id, ''), CAST(p.id AS CHAR)) AS accountId,
+               COALESCE(NULLIF(p.name, ''), CAST(p.id AS CHAR)) AS name,
+               COALESCE(p.job_number, '') AS jobNumber,
+               MAX(lp.name) AS boundLeaderName
+        FROM personnel p
+        JOIN person_identity pi
+          ON pi.user_id COLLATE utf8mb4_unicode_ci = CAST(p.id AS CHAR) COLLATE utf8mb4_unicode_ci
+        JOIN person_identity_tag t ON t.id = pi.tag_id AND t.code = #{identityCode} AND t.active = 1
+        LEFT JOIN cage_region_grant g
+          ON g.user_id COLLATE utf8mb4_unicode_ci = CAST(p.id AS CHAR) COLLATE utf8mb4_unicode_ci
+         AND g.grant_role = 'MEMBER'
+        LEFT JOIN personnel lp ON lp.id = g.leader_user_id
+        GROUP BY p.id, p.staff_id, p.aro_user_id, p.name, p.job_number
+        ORDER BY name ASC
+    </select>
+
+    <!-- 这批人里，已经在**别人**的组里的那些。替换组员前用它挡「一人进两组」。
+         「别人」由 exceptLeaderUserId 表达：自己组里已有的成员重加一遍不算冲突。 -->
+    <select id="listMemberOwners" resultType="map">
+        SELECT COALESCE(NULLIF(p.name, ''), g.user_id) AS memberName,
+               COALESCE(NULLIF(lp.name, ''), g.leader_user_id) AS leaderName
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        LEFT JOIN personnel lp ON lp.id = g.leader_user_id
+        WHERE g.grant_role = 'MEMBER'
+          AND (g.leader_user_id IS NULL OR g.leader_user_id != #{exceptLeaderUserId})
+          AND g.user_id IN
+        <foreach collection="userIds" item="u" open="(" separator="," close=")">#{u}</foreach>
+    </select>
+
+    <!-- 已分配过的人：user_id 存 personnel.id，但回给前端的必须是「账号 id」——
+         分配页拿它去调 GET/PUT/DELETE /api/person-scope/{userId}，那几个接口走
+         resolveIdByAccount，喂 personnel.id 会解析失败、页面点进去一片空白。
+         personnel.id 另起一列：分配页还要拿它去查身份标签（/person-identity 的 user_id 就是
+         personnel.id），少了这列左栏的身份 pill 会全退化成「实验员（默认）」。 -->
+    <select id="listAssignees" resultType="map">
+        SELECT COALESCE(NULLIF(p.staff_id, ''), NULLIF(p.aro_user_id, ''), g.user_id) AS userId,
+               COALESCE(NULLIF(p.name, ''), g.user_id) AS name,
+               p.staff_id AS staffId,
+               g.user_id AS personnelId,
+               COUNT(*) AS scopeCount
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        WHERE g.grant_role = #{grantRole}
+        GROUP BY g.user_id, p.name, p.staff_id, p.aro_user_id
+        ORDER BY name ASC
+    </select>
+
+    <!-- 概览行：必须以「账号 id」回给前端（前端点一行会拿它去调 GET /{reviewerUserId}，
+         而那个接口走 resolveIdByAccount），所以这里取 staff_id 而非 personnel.id。
+         优先 staff_id（与迁移折算同一优先级），退回 aro_user_id，最后兜底 personnel.id。
+         personnel.id 另起一列，仅作分组键。 -->
+    <select id="listAllWithNames" resultType="map">
+        SELECT COALESCE(NULLIF(p.staff_id, ''), NULLIF(p.aro_user_id, ''), g.user_id) AS reviewerUserId,
+               COALESCE(NULLIF(p.name, ''), g.user_id) AS reviewerName,
+               g.user_id AS ownerPersonnelId,
+               g.region_type AS regionType,
+               g.region_id AS regionId
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        WHERE g.grant_role = #{grantRole}
+        ORDER BY reviewerName ASC, g.region_type ASC, g.region_id ASC
+    </select>
+
+    <!-- 分配里出现过的真实区域去重。排除 MEMBER 行的 LEADER_GROUP 占位（region_type 只可能是三种真实类型）。 -->
+    <select id="listDistinctRegions" resultType="map">
+        SELECT DISTINCT region_type AS regionType, region_id AS regionId
+        FROM cage_region_grant
+        WHERE region_type IN ('CAMPUS', 'FLOOR', 'ROOM')
+        ORDER BY region_type ASC, region_id ASC
+    </select>
+
+</mapper>

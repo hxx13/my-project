@@ -8,7 +8,6 @@ import {
   deleteViolationRule,
   type ViolationRule,
 } from "@/api/domains/studentViolation.api";
-import { manualTriggerRule } from "@/api/domains/cageStatusViolation.api";
 import { fetchSpecialStatusOverview, type SpecialStatusOverview } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 
@@ -27,10 +26,6 @@ const emptyRule = (): ViolationRule => ({
   unblockWindowType: "滑动窗口",
   unblockWindowValue: 30,
   autoSignoutEnabled: 0,
-  cageStatusCodes: [],
-  cageDelayDays: 7,
-  cageJudgeMode: "AUTO_SYNC_LINKED",
-  cageManualTrigger: 0,
   cageTriggerAction: "BOTH",
   cageAreaFilter: { campuses: [], rooms: [] },
   cageGroupWhitelist: [],
@@ -71,7 +66,6 @@ function parseAreaFilter(raw: unknown): NonNullable<ViolationRule["cageAreaFilte
 function normalizeForForm(rule: ViolationRule): ViolationRule {
   return {
     ...rule,
-    cageStatusCodes: parseStringArray(rule.cageStatusCodes),
     cageGroupWhitelist: parseStringArray(rule.cageGroupWhitelist),
     cageImageUrls: parseStringArray(rule.cageImageUrls),
     cageAreaFilter: parseAreaFilter(rule.cageAreaFilter),
@@ -86,7 +80,6 @@ export function useCageRuleForm() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
 
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
     queryKey: ["violation-rules"],
@@ -120,20 +113,9 @@ export function useCageRuleForm() {
     [rules]
   );
 
-  const openStatusPicker = useCallback(() => setStatusPickerOpen(true), []);
-  const closeStatusPicker = useCallback(() => setStatusPickerOpen(false), []);
-  const confirmStatusPick = useCallback((codes: string[]) => {
-    setFormState((prev) => ({ ...prev, cageStatusCodes: codes }));
-    setStatusPickerOpen(false);
-  }, []);
-
   const save = useCallback(async () => {
     if (!form.ruleName.trim()) {
       toast.error("请输入规则名称");
-      return;
-    }
-    if ((form.cageStatusCodes ?? []).length === 0) {
-      toast.error("请至少选择一种监控状态类型");
       return;
     }
 
@@ -189,34 +171,15 @@ export function useCageRuleForm() {
     [rules, editingId, reset, qc]
   );
 
-  const manualTrigger = useCallback(
-    async (id: number) => {
-      if (!await appConfirm("确定手动触发此规则的判定？")) return;
-      try {
-        await manualTriggerRule(id);
-        toast.success("手动触发已提交");
-        qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
-      } catch (e: any) {
-        toast.error(e?.response?.data?.message || e.message || "触发失败");
-      }
-    },
-    [qc]
-  );
-
   return {
     form,
     setForm,
     editingId,
     loadForEdit,
     reset,
-    statusPickerOpen,
-    openStatusPicker,
-    closeStatusPicker,
-    confirmStatusPick,
     saving,
     save,
     remove,
-    manualTrigger,
     rules,
     rulesLoading,
     specialStatus,

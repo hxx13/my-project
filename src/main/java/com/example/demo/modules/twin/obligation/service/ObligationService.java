@@ -3,11 +3,14 @@ package com.example.demo.modules.twin.obligation.service;
 import com.example.demo.modules.twin.dashboard.entity.TwinScanPopupAnnouncement;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
+import com.example.demo.modules.twin.obligation.disposition.QuizBank;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import com.example.demo.modules.twin.obligation.entity.TwinObligationReceipt;
 import com.example.demo.modules.twin.obligation.mapper.TwinObligationMapper;
 import com.example.demo.modules.twin.obligation.mapper.TwinObligationReceiptMapper;
 import com.example.demo.modules.twin.obligation.support.ObligationSupport;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +20,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 期 2 Obligation 核心服务：违规接入 + 公告/未绑卡懒同步 + 存量回填 + 查询。
@@ -32,13 +36,74 @@ public class ObligationService {
     private final TwinObligationMapper obligationMapper;
     private final TwinObligationReceiptMapper receiptMapper;
     private final DispositionStrategyRegistry dispositionRegistry;
+    private final ObjectMapper objectMapper;
+    /** 可空：题库读库服务；缺失时回落内置题库 */
+    private final QuizBankService quizBankService;
 
     public ObligationService(TwinObligationMapper obligationMapper,
                              TwinObligationReceiptMapper receiptMapper,
-                             @Autowired(required = false) DispositionStrategyRegistry dispositionRegistry) {
+                             @Autowired(required = false) DispositionStrategyRegistry dispositionRegistry,
+                             ObjectMapper objectMapper,
+                             @Autowired(required = false) QuizBankService quizBankService) {
         this.obligationMapper = obligationMapper;
         this.receiptMapper = receiptMapper;
         this.dispositionRegistry = dispositionRegistry;
+        this.objectMapper = objectMapper;
+        this.quizBankService = quizBankService;
+    }
+
+    /** 抽题结果（不含正确答案），供 H5 学生端与扫码端复用。 */
+    public record QuizDrawPayload(String questionBankId, List<Map<String, Object>> questions) {
+    }
+
+    /**
+     * 答题策略抽题（按待办 id）。
+     *
+     * @throws IllegalArgumentException 待办不存在或不是答题策略
+     */
+    public QuizDrawPayload drawQuiz(long obligationId) {
+        TwinObligation ob = findById(obligationId);
+        if (ob == null) {
+            throw new IllegalArgumentException("待办不存在");
+        }
+        if (!ObligationSupport.DISPOSITION_QUIZ.equals(ob.getDispositionType())) {
+            throw new IllegalArgumentException("该待办不是答题策略");
+        }
+        return buildQuizPayload(ob);
+    }
+
+    /**
+     * 扫码端抽题：按违规反查待办后复用 {@link #drawQuiz(long)}。
+     *
+     * @throws IllegalArgumentException 待办不存在或不是答题策略
+     */
+    public QuizDrawPayload drawQuizForViolation(long violationId) {
+        TwinObligation ob = findByViolationId(violationId);
+        if (ob == null || ob.getId() == null) {
+            throw new IllegalArgumentException("待办不存在");
+        }
+        return drawQuiz(ob.getId());
+    }
+
+    private QuizDrawPayload buildQuizPayload(TwinObligation ob) {
+        String bankId = QuizBank.DEFAULT_BANK_ID;
+        int drawCount = 3;
+        try {
+            if (StringUtils.hasText(ob.getDispositionConfigJson())) {
+                JsonNode cfg = objectMapper.readTree(ob.getDispositionConfigJson());
+                if (cfg.hasNonNull("questionBankId")) {
+                    bankId = cfg.get("questionBankId").asText(QuizBank.DEFAULT_BANK_ID);
+                }
+                if (cfg.has("drawCount")) {
+                    drawCount = cfg.get("drawCount").asInt(3);
+                }
+            }
+        } catch (Exception ignored) {
+            // 配置解析失败用默认
+        }
+        return new QuizDrawPayload(bankId, quizBankService != null
+                ? quizBankService.drawPublic(bankId, drawCount)
+                : QuizBank.drawPublic(bankId, drawCount));
     }
 
     /** 违规创建后：写入/刷新待办为待处置。 */
@@ -192,8 +257,43 @@ public class ObligationService {
         }
     }
 
-    /** 标记已投递（投递 ≠ 送达 ≠ 处置）。 */
-    public boolean markDelivered(long obligationId, String subjectUserId) {
+    /**
+     * 该待办答题策略实际使用的题库题目（按 config 的 questionBankId）。
+     *
+     * <p>给「处置详情」按同一份题目算分用：抽题与判分都走库，详情若按内置题库算，
+     * 两套题目 id 命名空间不同（库是 "1".."5"，内置是 "q1".."q5"）会恒算 0 分。
+     * 取不到返回 null，调用方自行回落内置。
+     */
+    public List<QuizBank.Question> quizQuestionsForConfig(String configJson) {
+        return quizBankService == null ? null : quizBankService.questionsForConfig(configJson);
+    }
+
+    /** 已提交处置次数（含失败）。答题重试上限据此判定。 */    public int attemptCount(long obligationId) {
+        if (obligationId <= 0) {
+            return 0;
+        }
+        try {
+            TwinObligation ob = obligationMapper.selectById(obligationId);
+            return ob == null || ob.getAttemptCount() == null ? 0 : ob.getAttemptCount();
+        } catch (Exception e) {
+            log.warn("[obligation] attemptCount failed id={}: {}", obligationId, e.getMessage());
+            return 0;
+        }
+    }
+
+    /** 记一次处置提交（成功或失败都算）。失败不阻断主流程。 */
+    public void recordAttempt(long obligationId) {
+        if (obligationId <= 0) {
+            return;
+        }
+        try {
+            obligationMapper.incrementAttempt(obligationId);
+        } catch (Exception e) {
+            log.warn("[obligation] recordAttempt failed id={}: {}", obligationId, e.getMessage());
+        }
+    }
+
+    /** 标记已投递（投递 ≠ 送达 ≠ 处置）。 */    public boolean markDelivered(long obligationId, String subjectUserId) {
         if (obligationId <= 0 || !StringUtils.hasText(subjectUserId)) {
             return false;
         }

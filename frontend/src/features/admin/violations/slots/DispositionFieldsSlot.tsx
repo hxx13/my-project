@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type JSX } from "react";
 import { fetchDispositionStrategies, type DispositionStrategyMeta } from "@/api/domains/obligation.api";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { InspectorGroup, InspectorRow } from "../shared/InspectorGroup";
 import { BareInput, BareNumberWithUnit } from "../shared/BareControl";
 import { MultiSelectField } from "../shared/MultiSelectField";
@@ -94,7 +95,12 @@ function strategyFromRegistryType(
         maxEnterSuccess: maxEnter,
       };
     case "ACK_READ":
-      return { type: "ack_read", maxEnterSuccess: maxEnter };
+      return {
+        type: "ack_read",
+        minDwellSeconds: prev.type === "ack_read" ? prev.minDwellSeconds : 0,
+        requireScrollToBottom: prev.type === "ack_read" ? prev.requireScrollToBottom : false,
+        maxEnterSuccess: maxEnter,
+      };
     case "SIGNATURE":
       return {
         type: "signature",
@@ -159,6 +165,8 @@ export function DispositionFieldsSlot({
   // 到期时间与验证后解禁可并存：不再因 unlock 禁用或改提示
   const expiryHint = expiryCopy?.hint ?? VIOLATION_FIELD_COPY.expireDays.hint;
   const expiryControlsDisabled = disabled;
+  const noticeLinkExpire = value.noticeDisplay?.linkExpire ?? true;
+  const noticeDays = value.noticeDisplay?.days ?? null;
   const registryType = registryDispositionType(value);
   const strategyOptions = strategies.map((s) => ({
     value: s.type,
@@ -168,6 +176,7 @@ export function DispositionFieldsSlot({
   const puzzleStrategy =
     value.strategy.type === "fixed" && value.strategy.puzzle ? value.strategy : null;
   const quizStrategy = value.strategy.type === "quiz" ? value.strategy : null;
+  const ackReadStrategy = value.strategy.type === "ack_read" ? value.strategy : null;
   const signatureStrategy = value.strategy.type === "signature" ? value.strategy : null;
   const phraseEmpty = puzzleStrategy != null && !puzzleStrategy.challengePhrase.trim();
   const strategyMissing = registryType === "";
@@ -251,6 +260,48 @@ export function DispositionFieldsSlot({
             />
           )}
         </InspectorRow>
+      ) : null}
+
+      {/* 确认阅读：没配门控时与「仅展示」无异，所以这里的两项就是它区别于仅展示的地方 */}
+      {ackReadStrategy ? (
+        <>
+          <InspectorRow label="最短阅读秒数">
+            {(controlId) => (
+              <BareNumberWithUnit
+                id={controlId}
+                value={ackReadStrategy.minDwellSeconds > 0 ? String(ackReadStrategy.minDwellSeconds) : ""}
+                onChange={(raw) =>
+                  onChange({
+                    ...value,
+                    strategy: {
+                      ...ackReadStrategy,
+                      minDwellSeconds: Math.max(0, toNumberOrNull(raw) ?? 0),
+                    },
+                  })
+                }
+                unit="秒"
+                placeholder="0 = 不限时"
+                disabled={disabled}
+              />
+            )}
+          </InspectorRow>
+          <InspectorRow label="需滚动到底才能确认">
+            {(controlId) => (
+              <AdminSwitchScaled
+                size="sm"
+                id={controlId}
+                checked={ackReadStrategy.requireScrollToBottom}
+                onChange={(checked) =>
+                  onChange({
+                    ...value,
+                    strategy: { ...ackReadStrategy, requireScrollToBottom: checked },
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+          </InspectorRow>
+        </>
       ) : null}
 
       {quizStrategy ? (
@@ -420,6 +471,50 @@ export function DispositionFieldsSlot({
             </InspectorRow>
           )
         : null}
+
+      {/* 公告与到期联动：不联动时必须给天数，空值会变成「一直展示」 */}
+      {capability.allowNotice ? (
+        <>
+          <InspectorRow label="公告与到期联动">
+            {(controlId) => (
+              <AdminSwitchScaled
+                id={controlId}
+                checked={noticeLinkExpire}
+                disabled={disabled}
+                onChange={(checked) =>
+                  onChange({
+                    ...value,
+                    // 关掉联动时沿用已有天数（通常为空，交由下方天数框补填）
+                    noticeDisplay: { linkExpire: checked, days: checked ? null : noticeDays },
+                  })
+                }
+              />
+            )}
+          </InspectorRow>
+          {!noticeLinkExpire ? (
+            <InspectorRow
+              label="公告展示天数"
+              tone={noticeDays == null ? "warn" : "default"}
+              hint={noticeDays == null ? "必填" : undefined}
+            >
+              {(controlId) => (
+                <BareNumberWithUnit
+                  id={controlId}
+                  value={noticeDays == null ? "" : String(noticeDays)}
+                  onChange={(raw) =>
+                    onChange({
+                      ...value,
+                      noticeDisplay: { linkExpire: false, days: toDaysOrNull(raw) },
+                    })
+                  }
+                  unit="天"
+                  disabled={disabled}
+                />
+              )}
+            </InspectorRow>
+          ) : null}
+        </>
+      ) : null}
     </InspectorGroup>
   );
 }

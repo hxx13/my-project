@@ -333,9 +333,9 @@ export default function DebugNav() {
         const cleanValue = String(code).trim();
         if (!cleanValue) return;
 
-        // 使用 ref 而非 state：全局 keydown 监听器因 [] deps 捕获过期闭包，ref 始终是最新值
-        const currentPopupUser = activeResultRef.current?.userInfo?.userId;
-        const guard = tryBeginScanChannel(cleanValue, currentPopupUser);
+        // 只传扫到的原始键：按 scanKey 判「同一个人」。**不要**把弹窗里的人当 knownUserId 传进来——
+        // 那是弹窗自己的身份，传进来会让 popupUserId === uid 恒真，换一个人刷卡也被拦 30 秒。
+        const guard = tryBeginScanChannel(cleanValue);
         if (!guard.allow) {
             // 弹窗已打开时重复刷卡 → 全屏红色脉冲警告；否则 → 底部 error toast
             if (activeResultRef.current !== null) {

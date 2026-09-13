@@ -140,6 +140,9 @@ public class StrandedViolationService {
         int skippedAroFailed = 0;
         List<String> errors = new ArrayList<>();
 
+        // 本轮检测共享同一批次键，学生端记录页按此成块（一次运行=一块）
+        String strandedBatchId = TwinStudentViolationService.newBatchKey();
+
         for (String userId : candidates) {
             try {
                 // 3. ARO 官方二次确认：是否仍在内
@@ -215,7 +218,8 @@ public class StrandedViolationService {
                         "SYSTEM",
                         challenge,
                         interactiveUnlockOnVerify,
-                        ruleId);
+                        ruleId,
+                        strandedBatchId);
                 if (newViolation != null) {
                     created++;
                 }
@@ -352,9 +356,23 @@ public class StrandedViolationService {
         log.info("[stranded-signout] config saved: autoSignout={}", autoSignout);
     }
 
+    /** 返回需要参与检测的校区 LIKE 模式；空列表 = 不按校区过滤；null = 两校区均关闭，检测整体跳过 */
+    static List<String> campusPatterns(boolean pd, boolean px) {
+        if (!pd && !px) return null;
+        if (pd && px) return List.of();
+        return pd ? List.of("%浦东%") : List.of("%浦西%");
+    }
+
     private Set<String> loadTodayStrandedCandidates() {
+        Map<String, Object> cfg = configMapper.selectConfig();
+        boolean pd = toInt(cfg == null ? null : cfg.get("campus_pd_enabled"), 1) == 1;
+        boolean px = toInt(cfg == null ? null : cfg.get("campus_px_enabled"), 1) == 1;
+        List<String> patterns = campusPatterns(pd, px);
+        if (patterns == null) {
+            return new LinkedHashSet<>();   // 两校区都关，检测整体跳过
+        }
         String todayPrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "%";
-        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayPrefix);
+        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayPrefix, patterns);
         Set<String> candidates = new LinkedHashSet<>();
         if (strandedUserIds != null) {
             for (String uid : strandedUserIds) {
@@ -383,6 +401,8 @@ public class StrandedViolationService {
         String interactivePhrase = Objects.toString(body.get("interactive_challenge_phrase"), "");
         int interactiveEnabled = toInt(body.get("interactive_challenge_enabled"), 0);
         int interactiveUnlockOnVerify = toInt(body.get("interactive_unlock_on_verify"), 1);
+        int campusPd = toInt(body.get("campus_pd_enabled"), 1);
+        int campusPx = toInt(body.get("campus_px_enabled"), 1);
 
         configMapper.updateConfig(
                 toTinyIntFlag(body.get("auto_signout_enabled"), 1),
@@ -392,7 +412,9 @@ public class StrandedViolationService {
                 depts,
                 interactiveEnabled,
                 interactivePhrase,
-                interactiveUnlockOnVerify);
+                interactiveUnlockOnVerify,
+                campusPd,
+                campusPx);
         log.info("[stranded-violation] config saved: autoSignout={}, tpl={}, forbidEnter={}, expireDays={}, interactive={}",
                 toTinyIntFlag(body.get("auto_signout_enabled"), 1),
                 tpl,
@@ -431,9 +453,24 @@ public class StrandedViolationService {
         Long testRuleId = (testRule != null && (testRule.getEnabled() == null || testRule.getEnabled() == 1))
                 ? testRule.getId() : null;
 
+        // 校区开关：与定时一道同一口径
+        boolean campusPd = toInt(config.get("campus_pd_enabled"), 1) == 1;
+        boolean campusPx = toInt(config.get("campus_px_enabled"), 1) == 1;
+        List<String> patterns = campusPatterns(campusPd, campusPx);
+        if (patterns == null) {
+            return "浦东/浦西均已关闭滞留检测，跳过";
+        }
         // 本地流水是否仍判定在馆
         if (!occupancyAuthorityService.isLocallyStrandedToday(userId)) {
             return "该用户今日流水未判定为滞留，无需处理";
+        }
+        // 该用户实际所在校区是否在检测范围内（不加过滤时为全部校区）
+        if (!patterns.isEmpty()) {
+            String todayPrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "%";
+            List<String> inScope = mappingMapper.findTodayStrandedUserIds(todayPrefix, patterns);
+            if (inScope == null || !inScope.contains(userId.trim())) {
+                return "该用户所在校区已关闭滞留检测，跳过";
+            }
         }
 
         // 免冻结豁免（读 DB，与定时任务同源）——必须在 ARO 查询之前
@@ -489,7 +526,8 @@ public class StrandedViolationService {
                 expireDays, "SYSTEM",
                 challenge,
                 interactiveUnlockOnVerify,
-                testRuleId);
+                testRuleId,
+                null);
 
         if (newViolation == null) {
             return sb.append("该用户已有 ACTIVE 的 AUTO_STRANDED 违规，跳过（去重）").toString();

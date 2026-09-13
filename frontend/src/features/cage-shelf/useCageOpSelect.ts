@@ -4,8 +4,8 @@ import { fetchCageOpTargets, type CageOpTarget } from "@/api/domains/cageShelf.a
 
 export type CageOpKind = "divide" | "transfer";
 
-/** 网格中间态标记的类型：分笼/转移待审之外，还有「已被订单预定」这种非操作类占位。 */
-export type CageOpMarkKind = CageOpKind | "reserve";
+/** 网格中间态标记的类型：分笼/转移待审之外，还有「已被订单预定」「状态超时告警」这种非操作类占位。 */
+export type CageOpMarkKind = CageOpKind | "reserve" | "alert";
 
 export interface CageOpSource {
   animalCageId: string;
@@ -40,6 +40,8 @@ export interface CageOpMark {
   kind: CageOpMarkKind;
   color: string;
   label: string;
+  /** 悬浮提示的完整文案；缺省时回退 label（分笼/转移/预定只在色条里放短文案，无需额外 title） */
+  title?: string;
   applicantName?: string | null;
   /** 该请求的目标笼位（分笼 1:多，转移 1:1） */
   targetAnimalCageIds?: string[];
@@ -99,7 +101,34 @@ export function mergeReservationMarks(
   return out;
 }
 
-/** 面板/网格展示用的位置标签（源笼位在选中时由页面提供，目标笼位来自 /cage-op/targets） */
+/** 告警色：红，与「已划分」rose-600、「已被预订」amber-500 区分；告警是最需要一眼看到的异常态。 */
+const ALERT_MARK_COLOR = "#ef4444";
+
+/**
+ * 把「特殊状态持续超时告警」并进网格标记，与 mergeReservationMarks 同一套「已存在则不覆盖」。
+ *
+ * 告警只是提醒、不可操作，分笼/转移/预订是可操作或待审的中间态，优先级更高——告警只填空位。
+ * label 给底部色条（格子小，≤4 字）；完整信息（哪个状态 + 已持续几天）放 title，悬浮才看得到。
+ */
+export function mergeAlertMarks(
+  base: Map<string, CageOpMark>,
+  alerts: Array<{ animalCageId: string; statusLabel: string; spanDays: number; thresholdDays: number }>,
+): Map<string, CageOpMark> {
+  if (alerts.length === 0) return base;
+  const out = new Map(base);
+  for (const a of alerts) {
+    const key = String(a.animalCageId);
+    if (out.has(key)) continue;
+    out.set(key, {
+      requestId: `alert:${key}`,
+      kind: "alert",
+      color: ALERT_MARK_COLOR,
+      label: "超时告警",
+      title: `${a.statusLabel}已持续 ${a.spanDays} 天（阈值 ${a.thresholdDays} 天）`,
+    });
+  }
+  return out;
+}
 export interface CageOpLabel {
   position: string;
   where: string;

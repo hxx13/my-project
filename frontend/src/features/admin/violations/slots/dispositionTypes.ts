@@ -30,13 +30,25 @@ export type DispositionStrategy =
       maxAttempts: number;
       maxEnterSuccess: number | null;
     }
-  | { type: "ack_read"; maxEnterSuccess: number | null }
+  | {
+      type: "ack_read";
+      /** 最短阅读秒数；0=不限时 */
+      minDwellSeconds: number;
+      /** 是否必须滚动到底部才能确认 */
+      requireScrollToBottom: boolean;
+      maxEnterSuccess: number | null;
+    }
   | { type: "signature"; preamble: string; maxEnterSuccess: number | null };
 
 export type DispositionValue = {
   actions: DispositionActionCode[];
   expiry: ExpiryValue;
   strategy: DispositionStrategy;
+  /**
+   * 公告展示配置。可选：规则→处置映射（ruleDisposition / 滞留面板）不涉及公告，不下发；
+   * 违规记录表单恒提供。linkExpire=true 时 days 被忽略（展示跟随到期时间）。
+   */
+  noticeDisplay?: { linkExpire: boolean; days: number | null };
 };
 
 export type DispositionCapability = {
@@ -44,6 +56,8 @@ export type DispositionCapability = {
   allowChallenge: boolean;
   allowMaxEnter: boolean;
   allowExpire: boolean;
+  /** 是否展示「公告与到期联动」配置。仅违规记录表单需要，规则编辑器不下发公告字段。 */
+  allowNotice: boolean;
 };
 
 export const DISPOSITION_FULL: DispositionCapability = {
@@ -51,6 +65,7 @@ export const DISPOSITION_FULL: DispositionCapability = {
   allowChallenge: true,
   allowMaxEnter: true,
   allowExpire: true,
+  allowNotice: true,
 };
 
 export const DISPOSITION_RULE_LEVEL: DispositionCapability = {
@@ -58,6 +73,7 @@ export const DISPOSITION_RULE_LEVEL: DispositionCapability = {
   allowChallenge: true,
   allowMaxEnter: true,
   allowExpire: true,
+  allowNotice: false,
 };
 
 /**
@@ -120,8 +136,12 @@ export function dispositionConfigJsonOf(v: DispositionValue): string | null {
       const phrase = v.strategy.challengePhrase.trim();
       return phrase ? JSON.stringify({ phrase }) : null;
     }
-    case "ack_read":
-      return null;
+    case "ack_read": {
+      const { minDwellSeconds, requireScrollToBottom } = v.strategy;
+      // 两项都没配＝点一下即可，不下发配置（后端按「无门控」处理，兼容老数据）
+      if (!minDwellSeconds && !requireScrollToBottom) return null;
+      return JSON.stringify({ minDwellSeconds, requireScrollToBottom });
+    }
     case "signature":
       return JSON.stringify({ preamble: v.strategy.preamble || "" });
     default: {
@@ -142,12 +162,35 @@ function challengeOf(v: DispositionValue): string | null {
   return t === "" ? null : t;
 }
 
+export const NOTICE_DAYS_REQUIRED_MESSAGE = "请填写公告展示天数";
+
+/**
+ * 非联动且天数为空 → 后端 boardVisibleClause 判为 `notice_display_days IS NULL` 恒真，
+ * 公告会「一直展示」直到人工解除。这是不可控状态，前后端都必须挡住。
+ */
+function noticeDaysMissing(v: DispositionValue): boolean {
+  const nd = v.noticeDisplay;
+  return nd != null && !nd.linkExpire && nd.days == null;
+}
+
+/** 仅当调用方提供了 noticeDisplay 才下发两个键（未提供＝不下发，交后端默认/保持原值）。 */
+function noticeFieldsOf(v: DispositionValue): {
+  noticeDisplayDays: number | null;
+  noticeLinkExpire: 0 | 1;
+} | null {
+  const nd = v.noticeDisplay;
+  if (!nd) return null;
+  // 联动到期时间时天数无意义，传 null（后端也只在非联动分支读天数）
+  return { noticeDisplayDays: nd.linkExpire ? null : nd.days, noticeLinkExpire: nd.linkExpire ? 1 : 0 };
+}
+
 /** 开单提交前校验；返回错误文案，通过则 null。 */
 export function validateDispositionForCreate(v: DispositionValue): string | null {
   if (v.strategy.type === "unset") return "请选择处置策略";
   if (v.strategy.type === "fixed" && v.strategy.puzzle && !v.strategy.challengePhrase.trim()) {
     return "请填写拼图短语";
   }
+  if (noticeDaysMissing(v)) return NOTICE_DAYS_REQUIRED_MESSAGE;
   return null;
 }
 
@@ -161,6 +204,8 @@ type CreateDispositionFields = Pick<
   | "expireAfterDays"
   | "dispositionType"
   | "dispositionConfigJson"
+  | "noticeDisplayDays"
+  | "noticeLinkExpire"
 >;
 
 type UpdateDispositionFields = Pick<
@@ -174,6 +219,8 @@ type UpdateDispositionFields = Pick<
   | "expireAfterDays"
   | "dispositionType"
   | "dispositionConfigJson"
+  | "noticeDisplayDays"
+  | "noticeLinkExpire"
 >;
 
 export function toCreateDisposition(v: DispositionValue): CreateDispositionFields {
@@ -183,7 +230,11 @@ export function toCreateDisposition(v: DispositionValue): CreateDispositionField
   if (v.strategy.type === "unset") {
     throw new Error("请选择处置策略");
   }
+  if (noticeDaysMissing(v)) {
+    throw new Error(NOTICE_DAYS_REQUIRED_MESSAGE);
+  }
   const unlock = actionsIncludeUnlock(v.actions);
+  const notice = noticeFieldsOf(v);
   return {
     forbidEnter: v.actions.includes("forbid"),
     showNoticeEveryScan: v.actions.includes("every"),
@@ -194,6 +245,8 @@ export function toCreateDisposition(v: DispositionValue): CreateDispositionField
     expireAfterDays: v.expiry.days,
     dispositionType: registryDispositionType(v),
     dispositionConfigJson: dispositionConfigJsonOf(v),
+    // 未提供 noticeDisplay 时补默认：联动到期（后端不传 noticeLinkExpire 亦默认 1）
+    ...(notice ?? { noticeDisplayDays: null, noticeLinkExpire: 1 as const }),
   };
 }
 
@@ -201,7 +254,11 @@ export function toUpdateDisposition(v: DispositionValue): UpdateDispositionField
   if (v.strategy.type === "unset") {
     throw new Error("请选择处置策略");
   }
+  if (noticeDaysMissing(v)) {
+    throw new Error(NOTICE_DAYS_REQUIRED_MESSAGE);
+  }
   const unlock = actionsIncludeUnlock(v.actions);
+  const notice = noticeFieldsOf(v);
   return {
     forbidEnter: v.actions.includes("forbid"),
     showNoticeEveryScan: v.actions.includes("every"),
@@ -212,24 +269,33 @@ export function toUpdateDisposition(v: DispositionValue): UpdateDispositionField
     expireAfterDays: v.expiry.mode === "RELATIVE" ? v.expiry.days : null,
     dispositionType: registryDispositionType(v),
     dispositionConfigJson: dispositionConfigJsonOf(v),
+    // 未提供 noticeDisplay 时两个键都不下发，后端按 null＝保持原值处理
+    ...(notice ?? {}),
   };
 }
 
-export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
-  const actions: DispositionActionCode[] = [];
-  if (row.forbidEnter) actions.push("forbid");
-  if (row.showNoticeEveryScan) actions.push("every");
-  if (row.interactiveUnlockOnVerify) actions.push("unlock");
+/**
+ * 从 dispositionType + 配置 JSON 解析策略；两列为空（存量违规行、AUTO_STRANDED/MANUAL 规则行）
+ * 时回退到从 interactiveChallenge 反推拼图，必须能读、不能崩。
+ * 违规记录行与触发规则共用同一套注册表编码解析，避免两份漂移。
+ */
+export function strategyFromDispositionFields(
+  dispositionType: string | null | undefined,
+  dispositionConfigJson: string | null | undefined,
+  interactiveChallenge: string | null | undefined,
+  maxEnterSuccess: number | null | undefined
+): DispositionStrategy {
+  const dtype = (dispositionType ?? "").toUpperCase();
+  const maxEnter = maxEnterSuccess ?? null;
 
-  const dtype = (row.dispositionType ?? "").toUpperCase();
   if (dtype === "QUIZ") {
     let questionBankId = "default";
     let drawCount = 3;
     let passCount = 2;
     let maxAttempts = 3;
     try {
-      if (row.dispositionConfigJson) {
-        const cfg = JSON.parse(row.dispositionConfigJson) as Record<string, unknown>;
+      if (dispositionConfigJson) {
+        const cfg = JSON.parse(dispositionConfigJson) as Record<string, unknown>;
         if (typeof cfg.questionBankId === "string") questionBankId = cfg.questionBankId;
         if (typeof cfg.drawCount === "number") drawCount = cfg.drawCount;
         if (typeof cfg.passCount === "number") passCount = cfg.passCount;
@@ -238,66 +304,80 @@ export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
     } catch {
       /* keep defaults */
     }
-    return {
-      actions,
-      strategy: {
-        type: "quiz",
-        questionBankId,
-        drawCount,
-        passCount,
-        maxAttempts,
-        maxEnterSuccess: row.maxEnterSuccess ?? null,
-      },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "quiz", questionBankId, drawCount, passCount, maxAttempts, maxEnterSuccess: maxEnter };
   }
   if (dtype === "ACK_READ") {
-    return {
-      actions,
-      strategy: { type: "ack_read", maxEnterSuccess: row.maxEnterSuccess ?? null },
-      expiry: { mode: "KEEP" },
-    };
+    let minDwellSeconds = 0;
+    let requireScrollToBottom = false;
+    try {
+      if (dispositionConfigJson) {
+        const cfg = JSON.parse(dispositionConfigJson) as Record<string, unknown>;
+        if (typeof cfg.minDwellSeconds === "number") minDwellSeconds = Math.max(0, cfg.minDwellSeconds);
+        if (typeof cfg.requireScrollToBottom === "boolean") requireScrollToBottom = cfg.requireScrollToBottom;
+      }
+    } catch {
+      /* keep defaults */
+    }
+    return { type: "ack_read", minDwellSeconds, requireScrollToBottom, maxEnterSuccess: maxEnter };
   }
   if (dtype === "SIGNATURE") {
     let preamble = "";
     try {
-      if (row.dispositionConfigJson) {
-        const cfg = JSON.parse(row.dispositionConfigJson) as { preamble?: string };
+      if (dispositionConfigJson) {
+        const cfg = JSON.parse(dispositionConfigJson) as { preamble?: string };
         preamble = cfg.preamble ?? "";
       }
     } catch {
       /* ignore */
     }
-    return {
-      actions,
-      strategy: { type: "signature", preamble, maxEnterSuccess: row.maxEnterSuccess ?? null },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "signature", preamble, maxEnterSuccess: maxEnter };
   }
   if (dtype === "SHOW_ONLY") {
-    return {
-      actions,
-      strategy: {
-        type: "fixed",
-        challengePhrase: "",
-        maxEnterSuccess: row.maxEnterSuccess ?? null,
-        puzzle: false,
-      },
-      expiry: { mode: "KEEP" },
-    };
+    return { type: "fixed", challengePhrase: "", maxEnterSuccess: maxEnter, puzzle: false };
   }
 
-  const phrase = (row.interactiveChallenge ?? "").trim();
+  const phrase = (interactiveChallenge ?? "").trim();
   const puzzle = dtype === "ACK_PUZZLE" || phrase.length > 0;
   return {
+    type: "fixed",
+    challengePhrase: interactiveChallenge ?? "",
+    maxEnterSuccess: maxEnter,
+    puzzle,
+  };
+}
+
+function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
+  const actions: DispositionActionCode[] = [];
+  if (row.forbidEnter) actions.push("forbid");
+  if (row.showNoticeEveryScan) actions.push("every");
+  if (row.interactiveUnlockOnVerify) actions.push("unlock");
+
+  return {
     actions,
-    strategy: {
-      type: "fixed",
-      challengePhrase: row.interactiveChallenge ?? "",
-      maxEnterSuccess: row.maxEnterSuccess ?? null,
-      puzzle,
-    },
+    strategy: strategyFromDispositionFields(
+      row.dispositionType,
+      row.dispositionConfigJson,
+      row.interactiveChallenge,
+      row.maxEnterSuccess
+    ),
     expiry: { mode: "KEEP" },
+  };
+}
+
+/**
+ * 行 → DispositionValue。公告联动缺省视为 true（旧数据无该列）；days 原样（null=跟随到期时间）。
+ * 行未带这两个字段（后端 toRow 尚未下发公告列）时不携带 noticeDisplay：提交时不下发这两个键，
+ * 避免把库里已配的 noticeLinkExpire=0 静默重置为 1。
+ */
+export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
+  const base = fromDispositionRowCore(row);
+  if (row.noticeDisplayDays === undefined && row.noticeLinkExpire === undefined) return base;
+  return {
+    ...base,
+    noticeDisplay: {
+      linkExpire: row.noticeLinkExpire !== 0,
+      days: row.noticeDisplayDays ?? null,
+    },
   };
 }
 
