@@ -196,6 +196,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-person-scope.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-visibility-promote.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-region-grant.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-permission-matrix.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-audit-assignment.sql", ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
