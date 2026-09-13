@@ -1,11 +1,14 @@
 /**
- * 可见范围分配 — 选人 + 勾「校区/楼层/房间」，在基本权限之上**补充**该人能看到哪些笼架。
+ * 区域负责分配 — 选人 + 勾「校区/楼层/房间」，把区域分配给**饲养组长**
+ *（写 cage_region_grant 的 grant_role='LEADER' 行）。
  *
  * 只做补充、不覆盖：命中的笼架整架放开（不再按课题组脱敏），未命中的照旧走基本权限。
- * 分配永远不会让人看得更少。读取方：CageCellIndexController.applyGroupMask。
+ * 读取方：CageCellIndexController.applyGroupMask。
+ *
+ * 2026-09-15 起本页写 LEADER；此前写 SCOPE（二期从 person_scope 迁来的「补充可见范围」，不含组长语义）。
  *
  * 与笼位归属无关 —— 某笼位归谁由认领和占用者决定。
- * 管理员不受此限制、始终可见全部，所以用管理员账号验证这里的效果是看不出来的。
+ * 超级管理员不受此限制、始终可见全部，所以用超管账号验证这里的效果是看不出来的。
  *
  * 左栏列出所有分配过的人（点一下看右侧）；增加/撤销走通用 {@link PersonnelPicker}。
  */
@@ -337,11 +340,12 @@ export default function CageScopeAssignmentPage() {
       <div className="mx-auto max-w-6xl px-4 py-6">
         {/* 这页最容易被误读成「把笼位分给谁」，先把边界写清楚 */}
         <div className={`${card} mb-4 text-[12px] leading-relaxed ${muted}`}>
-          在<b className="text-[var(--app-color-text-primary)]">基本权限之上做补充</b>
-          ：命中的笼架整架放开、不再按课题组脱敏；未命中的照旧按基本权限走。分配不会让人看得更少，也不覆盖课题组口径。
+          把<b className="text-[var(--app-color-text-primary)]">校区 / 楼层 / 房间</b>
+          分配给<b className="text-[var(--app-color-text-primary)]">饲养组长</b>
+          ：组长据此获得该区域的可见范围（命中的笼架整架放开、不再按课题组脱敏），并可在「我的区域」页里管理组员与组员权限。
           <br />
           与<b className="text-[var(--app-color-text-primary)]">笼位归属无关</b>
-          ——某笼位归谁由认领和占用者决定。管理员不受此表限制、始终可见全部，用管理员账号试不出效果。
+          ——某笼位归谁由认领和占用者决定。超级管理员不受此表限制、始终可见全部，用超管账号试不出效果。
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[280px_1fr]">
