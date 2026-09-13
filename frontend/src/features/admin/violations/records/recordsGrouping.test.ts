@@ -58,11 +58,30 @@ describe("groupViolationRows", () => {
 });
 
 describe("parseSignatureDataUrl", () => {
-  it("取出 answer.signature 的 dataUrl", () => {
+  // ⚠ 主用例：真实回执是**两层**——后端 writeReceiptAndComplete 统一包成 {answer: <原始提交>}，
+  // 而原始提交自己又是 JSON.stringify({signature})。只认扁平形状会永远解不出来（弹窗报「未找到签名图」）。
+  it("真实回执形状：{answer:\"{\\\"signature\\\":...}\"} 要能剥两层取出 dataUrl", () => {
+    const stored = JSON.stringify({ answer: JSON.stringify({ signature: "data:image/jpeg;base64,REAL" }) });
+    expect(parseSignatureDataUrl(stored)).toBe("data:image/jpeg;base64,REAL");
+  });
+
+  it("answer 直接就是 dataUrl（不套里层 JSON）也能取到", () => {
+    expect(parseSignatureDataUrl(JSON.stringify({ answer: "data:image/jpeg;base64,DIRECT" }))).toBe(
+      "data:image/jpeg;base64,DIRECT"
+    );
+  });
+
+  it("兼容扁平形状 {signature}", () => {
     expect(parseSignatureDataUrl(JSON.stringify({ signature: "data:image/png;base64,AAA" }))).toBe(
       "data:image/png;base64,AAA"
     );
   });
+
+  it("答题/拼图那类没有签名的回执返回 null", () => {
+    expect(parseSignatureDataUrl(JSON.stringify({ answer: JSON.stringify({ answers: { q1: 0 } }) }))).toBeNull();
+    expect(parseSignatureDataUrl(JSON.stringify({ answer: "知识就是力量" }))).toBeNull();
+  });
+
   it("空 / 非 JSON / 无 signature / 空白签名一律返回 null", () => {
     expect(parseSignatureDataUrl(null)).toBeNull();
     expect(parseSignatureDataUrl("")).toBeNull();

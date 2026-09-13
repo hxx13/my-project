@@ -42,14 +42,40 @@ function groupSegments(rows: StudentViolationRow[]): ViolationGroupSegment[] {
   return segs;
 }
 
-/** 签名图 dataUrl 只在点击「查看签名」后从 disposition-detail 的 answerPayload 里取。 */
+/**
+ * 签名图 dataUrl 只在点击「查看签名」后从 disposition-detail 的 answerPayload 里取。
+ *
+ * <p>回执的**真实形状是两层**：`{"answer":"{\"signature\":\"data:image/jpeg;...\"}"}`
+ * ——后端 `writeReceiptAndComplete` 统一包成 `{answer: <原始提交>}`，而原始提交自己又是
+ * `JSON.stringify({signature})`。只认扁平 `{signature}` 会永远解不出来（表现：弹窗报「未找到签名图」）。
+ * 兼容扁平与「answer 直接就是 dataUrl」两种写法。
+ */
 export function parseSignatureDataUrl(answerPayload?: string | null): string | null {
   if (!answerPayload) return null;
-  try {
-    const parsed = JSON.parse(answerPayload) as { signature?: unknown };
-    const sig = parsed?.signature;
-    return typeof sig === "string" && sig.trim() ? sig : null;
-  } catch {
+
+  const readSignature = (value: unknown): string | null => {
+    if (typeof value === "string") {
+      const s = value.trim();
+      if (s.startsWith("data:image/")) return s; // answer 直接就是图
+      try {
+        const inner = JSON.parse(s) as { signature?: unknown };
+        const sig = inner?.signature;
+        return typeof sig === "string" && sig.trim() ? sig : null;
+      } catch {
+        return null;
+      }
+    }
+    if (value && typeof value === "object") {
+      const sig = (value as { signature?: unknown }).signature;
+      return typeof sig === "string" && sig.trim() ? sig : null;
+    }
     return null;
+  };
+
+  try {
+    const parsed = JSON.parse(answerPayload) as { answer?: unknown; signature?: unknown };
+    return readSignature(parsed?.answer) ?? readSignature(parsed);
+  } catch {
+    return readSignature(answerPayload);
   }
 }
