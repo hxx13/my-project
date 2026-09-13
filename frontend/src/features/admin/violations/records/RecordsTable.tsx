@@ -194,12 +194,9 @@ function dispositionCell(disp: ViolationDispositionSummary | null | undefined, r
       {main ? <div className="text-xs font-medium text-[var(--app-color-text-primary)]">{main}</div> : null}
       {disp.detail ? <div className="text-[11px] text-[var(--app-color-text-tertiary)]">{disp.detail}</div> : null}
       {disp.hasSignatureImage ? (
-        // 行可点展开详情，这里必须阻止冒泡
-        <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
-          <AdminButton type="button" size="sm" tone="secondary" onClick={() => onViewSignature(rowId)}>
-            查看签名
-          </AdminButton>
-        </span>
+        <AdminButton type="button" size="sm" tone="secondary" onClick={() => onViewSignature(rowId)}>
+          查看签名
+        </AdminButton>
       ) : null}
     </div>
   );
@@ -386,11 +383,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     const c2 = historical ? "text-[var(--app-color-text-tertiary)]" : "text-[var(--app-color-text-secondary)]";
                     return (
                       <Fragment key={r.id}>
-                        {/* 整行可点：点击展开/收起详情（行内交互元素各自 stopPropagation） */}
-                        <tr
-                          className={cn("group cursor-pointer", i === 0 && batchSep)}
-                          onClick={() => setExpandedId(open ? null : r.id)}
-                        >
+                        <tr className={cn("group", i === 0 && batchSep)}>
                           {/* 课题组：段首行出合并格。合并块放最左、与逐行字段用竖线分开
                               （对齐 animal-order-review 的整单级/行级分栏形态） */}
                           {seg
@@ -443,16 +436,22 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                           {/* 处置情况 */}
                           <td className={td}>{dispositionCell(r.disposition, r.id, (id) => void openSignature(id))}</td>
 
-                          {/* 操作：收进单个「更多操作」下拉，hover 显现 */}
+                          {/* 操作：详情 + 「更多操作」下拉并排，hover 显现 */}
                           <td className={cn(td, "text-right")}>
-                            <div className="flex justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                            <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedId(open ? null : r.id)}
+                                className="inline-flex h-7 items-center rounded-md border border-[var(--app-color-border-default)] px-2.5 text-xs text-[var(--app-color-text-secondary)] outline-none transition-colors hover:bg-[var(--app-color-surface-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]"
+                              >
+                                {open ? "收起" : "详情"}
+                              </button>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <button
                                     type="button"
                                     aria-label="更多操作"
                                     title="更多操作"
-                                    onClick={(e) => e.stopPropagation()}
                                     className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] outline-none transition-colors hover:bg-[var(--app-color-surface-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]"
                                   >
                                     <MoreHorizontal className="h-4 w-4" />
