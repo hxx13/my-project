@@ -15,6 +15,14 @@ import {
 import { AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminCenteredPanelShell } from "@/components/admin/AdminCenteredPanelShell";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { MoreHorizontal } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { violationEnterLocked } from "@/components/scanner/twinViolationInteractive";
 import { richTextPlainPreview } from "@/utils/announcementHtml";
 import { formatBeijingDateTimeMedium } from "@/utils/beijingTime";
@@ -186,9 +194,12 @@ function dispositionCell(disp: ViolationDispositionSummary | null | undefined, r
       {main ? <div className="text-xs font-medium text-[var(--app-color-text-primary)]">{main}</div> : null}
       {disp.detail ? <div className="text-[11px] text-[var(--app-color-text-tertiary)]">{disp.detail}</div> : null}
       {disp.hasSignatureImage ? (
-        <AdminButton type="button" size="sm" tone="secondary" onClick={() => onViewSignature(rowId)}>
-          查看签名
-        </AdminButton>
+        // 行可点展开详情，这里必须阻止冒泡
+        <span className="inline-flex" onClick={(e) => e.stopPropagation()}>
+          <AdminButton type="button" size="sm" tone="secondary" onClick={() => onViewSignature(rowId)}>
+            查看签名
+          </AdminButton>
+        </span>
       ) : null}
     </div>
   );
@@ -339,7 +350,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
           会在表格下方留一大块空白。本页外层已由 h-[calc(100dvh-var(--admin-chrome-offset))] + flex 链
           给出确定高度，滚动交给 AdminTableShell 自带的外层 overflow-x-auto（y 轴随之计算为 auto）。 */}
       <AdminTableShell className="min-h-0 flex-1">
-        <table className="twin-table w-max min-w-full border-collapse text-left text-sm">
+        <table className="twin-table twin-table--merged-rows w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>
               <th className={cn(th, "min-w-[16rem]")}>人员 · 违规说明</th>
@@ -374,7 +385,11 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     const c2 = historical ? "text-[var(--app-color-text-tertiary)]" : "text-[var(--app-color-text-secondary)]";
                     return (
                       <Fragment key={r.id}>
-                        <tr className={cn("group", i === 0 && batchSep)}>
+                        {/* 整行可点：点击展开/收起详情（行内交互元素各自 stopPropagation） */}
+                        <tr
+                          className={cn("group cursor-pointer", i === 0 && batchSep)}
+                          onClick={() => setExpandedId(open ? null : r.id)}
+                        >
                           {/* 人员 · 违规说明 */}
                           <td className={cn(td, "min-w-[16rem] max-w-[24rem]")}>
                             <div className="min-w-0">
@@ -426,42 +441,59 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                           {/* 处置情况 */}
                           <td className={td}>{dispositionCell(r.disposition, r.id, (id) => void openSignature(id))}</td>
 
-                          {/* 操作：hover 显现 */}
+                          {/* 操作：收进单个「更多操作」下拉，hover 显现 */}
                           <td className={cn(td, "text-right")}>
-                            <div className="flex justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                              <AdminButton type="button" size="sm" tone="secondary" active={open} onClick={() => setExpandedId(open ? null : r.id)}>
-                                {open ? "收起" : "详情"}
-                              </AdminButton>
-                              <AdminButton type="button" size="sm" tone="secondary" onClick={() => onEdit(r)}>编辑</AdminButton>
-                              {r.status === "ACTIVE" ? (
-                                <AdminButton
-                                  type="button"
-                                  size="sm"
-                                  tone="secondary"
-                                  className="text-[var(--app-color-feedback-warning)]"
-                                  onClick={() => void handleClear(r.id)}
-                                >
-                                  解除
-                                </AdminButton>
-                              ) : null}
-                              {r.status === "ACTIVE" && !r.noticeClearedAt ? (
-                                <AdminButton
-                                  type="button"
-                                  size="sm"
-                                  tone="secondary"
-                                  className="text-[var(--app-color-feedback-info)]"
-                                  onClick={() => void handleClearNotice(r.id)}
-                                >
-                                  解除公告
-                                </AdminButton>
-                              ) : null}
-                              <AdminButton type="button" size="sm" tone="destructive" onClick={() => void handleDelete(r)}>删除</AdminButton>
+                            <div className="flex justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    aria-label="更多操作"
+                                    title="更多操作"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] outline-none transition-colors hover:bg-[var(--app-color-surface-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]"
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[9rem]">
+                                  <DropdownMenuItem
+                                    className="focus:bg-[var(--app-color-surface-hover)] focus:text-[var(--app-color-text-primary)]"
+                                    onSelect={() => onEdit(r)}
+                                  >
+                                    编辑
+                                  </DropdownMenuItem>
+                                  {r.status === "ACTIVE" ? (
+                                    <DropdownMenuItem
+                                      className="text-[var(--app-color-feedback-warning)] focus:bg-[var(--app-color-surface-hover)] focus:text-[var(--app-color-feedback-warning)]"
+                                      onSelect={() => void handleClear(r.id)}
+                                    >
+                                      解除
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  {r.status === "ACTIVE" && !r.noticeClearedAt ? (
+                                    <DropdownMenuItem
+                                      className="text-[var(--app-color-feedback-info)] focus:bg-[var(--app-color-surface-hover)] focus:text-[var(--app-color-feedback-info)]"
+                                      onSelect={() => void handleClearNotice(r.id)}
+                                    >
+                                      解除公告
+                                    </DropdownMenuItem>
+                                  ) : null}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-[var(--app-color-feedback-danger)] focus:bg-[var(--app-color-surface-hover)] focus:text-[var(--app-color-feedback-danger)]"
+                                    onSelect={() => void handleDelete(r)}
+                                  >
+                                    删除
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </td>
                         </tr>
 
                         {open ? (
-                          <tr>
+                          <tr data-detail-row>
                             <td colSpan={COLS} className="bg-[var(--app-color-surface-elevated)] px-3 py-3">
                               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                 <DetailItem k="记录 ID" v={`#${r.id}`} />
