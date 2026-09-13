@@ -61,6 +61,7 @@ public class CageClaimService {
     private final CageOpRequestMapper opRequestMapper;
     private final CageDivisionService divisionService;
     private final CageIntermediateStateService intermediateStateService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -81,7 +82,8 @@ public class CageClaimService {
                             UserGroupNameResolver userGroupNameResolver,
                             CageOpRequestMapper opRequestMapper,
                             CageDivisionService divisionService,
-                            CageIntermediateStateService intermediateStateService) {
+                            CageIntermediateStateService intermediateStateService,
+                            CageVisibilityPolicy visibilityPolicy) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -102,6 +104,7 @@ public class CageClaimService {
         this.opRequestMapper = opRequestMapper;
         this.divisionService = divisionService;
         this.intermediateStateService = intermediateStateService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     private String displayNameOf(User user) {
@@ -560,10 +563,11 @@ public class CageClaimService {
             throw new TwinBusinessException(400, "当前状态不可审批: " + current);
         }
 
-        boolean isAdmin = approver.getRole() != null && approver.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
-        // 审核人归属校验：ADMIN/PI 放行（既有口径），否则须配置了该笼位所在楼层/房间
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(approver);
+        // 审核人归属校验：全局可见者放行，否则须配置了该笼位所在楼层/房间。
+        // PI 不再无条件放行 —— 原先 isPi 短路会让任何 PI 身份的人越过区域归属校验。
         boolean hasReviewScope = false;
-        if (!isAdmin && !personIdentityService.isPi(approver.getId())) {
+        if (!isAdmin) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(claim.getAnimalCageId());
             hasReviewScope = auditAssignmentService.canReview(approver,
                     loc == null ? null : str(loc.get("roomId")),
@@ -804,12 +808,11 @@ public class CageClaimService {
         );
     }
 
-    /** 待审数（按审核人过滤）：ADMIN/SUPER_ADMIN 全量；否则只数其负责楼层/房间内的待审。 */
+    /** 待审数（按审核人过滤）：全局可见者（SUPER_ADMIN+）全量；否则只数其负责楼层/房间内的待审。 */
     public int countPendingForReviewer(User reviewer) {
         List<Map<String, Object>> pending = claimMapper.selectPending(null, null, 0, 100000);
         if (pending.isEmpty()) return 0;
-        boolean isAdmin = reviewer != null && reviewer.getRole() != null
-                && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
         if (isAdmin) return pending.size();
         int count = 0;
         for (Map<String, Object> c : pending) {
