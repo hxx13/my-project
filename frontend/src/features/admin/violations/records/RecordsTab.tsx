@@ -1,9 +1,8 @@
 import { useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RecordsToolbar, DEFAULT_PERSON_RECORDS_FILTERS, type RecordsFilters } from "./RecordsToolbar";
+import { RecordsToolbar, DEFAULT_RECORDS_FILTERS, type RecordsFilters } from "./RecordsToolbar";
 import { RecordsTable } from "./RecordsTable";
-import { CageGroupedView } from "./CageGroupedView";
 import { RecordEditorView } from "./RecordEditorView";
 import { ListPageLayout } from "../shared/ListPageLayout";
 import type { RecordEditorMode } from "./useRecordForm";
@@ -28,7 +27,7 @@ export function RecordsTab({ onOpenConfig }: RecordsTabProps): JSX.Element {
       ? { kind: "create", source: "manual" }
       : null
   );
-  const [filters, setFilters] = useState<RecordsFilters>(DEFAULT_PERSON_RECORDS_FILTERS);
+  const [filters, setFilters] = useState<RecordsFilters>(DEFAULT_RECORDS_FILTERS);
 
   const closeEditor = () => {
     setEditor(null);
@@ -62,11 +61,7 @@ export function RecordsTab({ onOpenConfig }: RecordsTabProps): JSX.Element {
         />
       }
     >
-      {filters.view === "person" ? (
-        <RecordsTable filters={filters} onEdit={(row) => setEditor({ kind: "edit", row })} />
-      ) : (
-        <CageGroupedView keyword={filters.keyword} onEdit={(row) => setEditor({ kind: "edit", row })} />
-      )}
+      <RecordsTable filters={filters} onEdit={(row) => setEditor({ kind: "edit", row })} />
     </ListPageLayout>
   );
 }

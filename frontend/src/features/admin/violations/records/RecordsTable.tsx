@@ -6,20 +6,25 @@ import {
   clearStudentViolation,
   clearStudentViolationNotice,
   deleteStudentViolation,
+  dispositionDetail,
   listStudentViolations,
   VIOLATION_STATUS_LABEL,
   type StudentViolationRow,
+  type ViolationDispositionSummary,
 } from "@/api/domains/studentViolation.api";
 import { AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminCenteredPanelShell } from "@/components/admin/AdminCenteredPanelShell";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { violationEnterLocked } from "@/components/scanner/twinViolationInteractive";
 import { richTextPlainPreview } from "@/utils/announcementHtml";
 import { formatBeijingDateTimeMedium } from "@/utils/beijingTime";
 import { cn } from "@/lib/utils";
 import { dueSecondaryLabel, summarizeDispositionForDetail } from "../slots/dispositionTypes";
+import { groupViolationRows, parseSignatureDataUrl, type ViolationGroupSegment } from "./recordsGrouping";
 import type { RecordsFilters } from "./RecordsToolbar";
 
 import { appConfirm } from "@/lib/appDialog";
+
 export function parseRowImageUrls(row: StudentViolationRow): string[] {
   const raw = row.imageUrls;
   if (Array.isArray(raw)) return raw.filter((x) => typeof x === "string");
@@ -39,11 +44,17 @@ export function personDisplayName(r: StudentViolationRow): string {
   return n || r.targetUserId;
 }
 
-/** 7 列主表 Grid 模板（对齐原型 v4 `.tablerow`）。 */
-const GRID_COLS = "grid-cols-[minmax(16rem,2.2fr)_6.5rem_8rem_7rem_8.5rem_5rem_7.5rem]";
-
 /** 违规记录每页条数：默认列表后端分页，避免全量渲染卡顿。 */
 const RECORDS_PAGE_SIZE = 20;
+
+/** 主表列数（人员·违规说明 / 课题组 / 状态 / 来源 / 禁入 / 到期 / 公告 / 处置情况 / 操作） */
+const COLS = 9;
+
+const th = "px-3 py-2 whitespace-nowrap";
+const td = "px-3 py-2 align-top";
+
+/** 块与块之间加粗上边线，避免两个下发批次连成一片。 */
+const batchSep = "border-t-2 border-t-[var(--twin-hairline)]";
 
 const STATUS_PILL: Record<string, { cls: string; dot: string }> = {
   ACTIVE: {
@@ -157,25 +168,46 @@ function dueMeta(r: StudentViolationRow): { primary: string; secondary: string; 
   return { primary: String(r.expireAt).slice(0, 10), secondary, late: false };
 }
 
+/** 处置情况列：stateLabel · typeLabel + detail + 按需拉签名图。 */
+function dispositionCell(disp: ViolationDispositionSummary | null | undefined, rowId: number, onViewSignature: (id: number) => void): JSX.Element {
+  if (!disp) return <span className="text-[var(--app-color-text-tertiary)]">—</span>;
+  const main = [disp.stateLabel, disp.typeLabel].filter(Boolean).join(" · ");
+  return (
+    <div className="space-y-0.5">
+      {main ? <div className="text-xs font-medium text-[var(--app-color-text-primary)]">{main}</div> : null}
+      {disp.detail ? <div className="text-[11px] text-[var(--app-color-text-tertiary)]">{disp.detail}</div> : null}
+      {disp.hasSignatureImage ? (
+        <AdminButton type="button" size="sm" tone="secondary" onClick={() => onViewSignature(rowId)}>
+          查看签名
+        </AdminButton>
+      ) : null}
+    </div>
+  );
+}
+
 type RecordsTableProps = {
   filters: RecordsFilters;
   onEdit: (row: StudentViolationRow) => void;
 };
 
 /**
- * 6 列主表：人员·违规说明 / 状态 / 来源 / 禁入 / 到期 / 操作(hover 显现)。
- * 次要字段下翻为展开详情行；数据查询与解除/删除逻辑与旧 11 列表一致。
+ * 单表：按下发批次成块，块内按课题组 rowSpan 合并；行级字段逐行。
+ * 数据查询与解除/删除逻辑不变；展开详情行保留（点「详情」）。
  */
 export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Element {
   const qc = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  const [sigOpen, setSigOpen] = useState(false);
+  const [sigUrl, setSigUrl] = useState<string | null>(null);
+  const [sigError, setSigError] = useState<string | null>(null);
+  const [sigLoading, setSigLoading] = useState(false);
   const keyword = filters.keyword.trim();
 
   // 关键词变化时回到第 1 页（关键词场景不后端分页，走全量前端收窄）
   useEffect(() => { setPage(1); }, [keyword]);
 
-  // 状态/来源/禁入/笼架排除已下沉到服务端 SQL（过滤在 LIMIT 之前），列表对该筛选确定且完整；
+  // 状态/来源/禁入已下沉到服务端 SQL（过滤在 LIMIT 之前），列表对该筛选确定且完整；
   // keyword 依赖展示名/规则名，留在前端收窄。有 keyword 时拉全量(500)前端过滤；无 keyword 时后端分页。
   const personListKey = useMemo(
     () => ["studentViolations", filters.statuses, filters.sources, filters.enterLocks, keyword ? "kw" : page] as const,
@@ -218,6 +250,9 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     return filtered;
   }, [rows, keyword]);
 
+  // 顺序完全依赖后端（batch_id DESC, id ASC）——只连续分段，不排序
+  const blocks = useMemo(() => groupViolationRows(filteredRows), [filteredRows]);
+
   const handleClear = async (id: number) => {
     if (!await appConfirm("解除后该条将不再在扫码弹窗展示，记录仍保留。确定？")) return;
     try {
@@ -251,8 +286,25 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     }
   };
 
+  // 签名图只在点击后拉取，不预取
+  const openSignature = async (id: number) => {
+    setSigOpen(true);
+    setSigUrl(null);
+    setSigError(null);
+    setSigLoading(true);
+    try {
+      const detail = await dispositionDetail(id);
+      const url = parseSignatureDataUrl(detail.answerPayload);
+      if (url) setSigUrl(url);
+      else setSigError("未找到签名图");
+    } catch (e) {
+      setSigError(e instanceof Error ? e.message : "加载签名失败");
+    } finally {
+      setSigLoading(false);
+    }
+  };
+
   if (isLoading) {
-    // loading/empty 分支不使用 children，传 null 占位（children 为必填 prop）
     return <AdminTableShell loading>{null}</AdminTableShell>;
   }
   if (filteredRows.length === 0) {
@@ -263,165 +315,231 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     );
   }
 
+  const groupCell = (seg: ViolationGroupSegment, allowMerge: boolean, dim: string) => (
+    <td
+      rowSpan={allowMerge ? seg.rowSpan : undefined}
+      className={cn(td, "min-w-[9rem] font-medium", dim)}
+    >
+      {seg.name ?? "—"}
+    </td>
+  );
+
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
-      {/* 表头固定：在滚动区外 */}
-      <div className={cn("grid shrink-0 items-center border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3.5", GRID_COLS)}>
-        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">人员 · 违规说明</div>
-        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">状态</div>
-        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">来源</div>
-        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">禁入</div>
-        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">到期</div>
-        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">公告</div>
-        <div className="py-2 text-right text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">操作</div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <AdminTableShell scrollable className="min-h-0 flex-1">
+        <table className="twin-table w-max min-w-full border-collapse text-left text-sm">
+          <thead>
+            <tr>
+              <th className={cn(th, "min-w-[16rem]")}>人员 · 违规说明</th>
+              <th className={cn(th, "min-w-[9rem]")}>课题组</th>
+              <th className={cn(th, "min-w-[6rem]")}>状态</th>
+              <th className={cn(th, "min-w-[6rem]")}>来源</th>
+              <th className={cn(th, "min-w-[5.5rem]")}>禁入</th>
+              <th className={cn(th, "min-w-[7rem]")}>到期</th>
+              <th className={cn(th, "min-w-[5.5rem]")}>公告</th>
+              <th className={cn(th, "min-w-[9rem]")}>处置情况</th>
+              <th className={cn(th, "min-w-[7.5rem] text-right")}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {blocks.map((block, bi) => {
+              // 该块内有展开详情行时禁用 rowSpan 合并（详情行会占满整行，撑破合并格）
+              const blockHasExpanded = expandedId != null && block.rows.some((r) => r.id === expandedId);
+              const allowMerge = !blockHasExpanded;
+              return (
+                <Fragment key={`${block.batchId}#${bi}`}>
+                  {block.rows.map((r, i) => {
+                    const imgs = parseRowImageUrls(r);
+                    const dm = dueMeta(r);
+                    const locked = violationEnterLocked(r);
+                    const open = expandedId === r.id;
+                    const disp = summarizeDispositionForDetail(r);
+                    const bbadge = boardBadge(r);
+                    const seg = block.groups.find((g) => g.startIndex === i);
+                    // 已解除 / 已过期保留展示，仅文字色降级（primary→secondary、secondary→tertiary）
+                    const historical = r.status === "CLEARED" || r.status === "EXPIRED";
+                    const c1 = historical ? "text-[var(--app-color-text-secondary)]" : "text-[var(--app-color-text-primary)]";
+                    const c2 = historical ? "text-[var(--app-color-text-tertiary)]" : "text-[var(--app-color-text-secondary)]";
+                    return (
+                      <Fragment key={r.id}>
+                        <tr className={cn("group", i === 0 && batchSep)}>
+                          {/* 人员 · 违规说明 */}
+                          <td className={cn(td, "min-w-[16rem] max-w-[24rem]")}>
+                            <div className="min-w-0">
+                              <div className="flex items-baseline gap-2">
+                                <span className={cn("truncate text-sm font-semibold", c1)}>{personDisplayName(r)}</span>
+                                <span className="shrink-0 font-mono text-[11px] text-[var(--app-color-text-tertiary)]">{r.targetUserId}</span>
+                              </div>
+                              {bbadge ? <div className="mt-0.5">{bbadge}</div> : null}
+                              <p className={cn("mt-0.5 line-clamp-2 text-xs leading-snug", c2)}>
+                                {richTextPlainPreview(r.violationText || "", 120) || "—"}
+                              </p>
+                              {imgs.length ? (
+                                <div className="mt-1 flex gap-1">
+                                  {imgs.slice(0, 3).map((u) => (
+                                    <img key={u} src={u} alt="" className="h-6 w-6 rounded border border-[var(--app-color-border-default)] object-cover" />
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </td>
 
-      {/* 表体：唯一滚动面 */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-        {filteredRows.map((r) => {
-          const imgs = parseRowImageUrls(r);
-          const dm = dueMeta(r);
-          const locked = violationEnterLocked(r);
-          const open = expandedId === r.id;
-          const disp = summarizeDispositionForDetail(r);
-          const bbadge = boardBadge(r);
-          return (
-            <Fragment key={r.id}>
-              <div className={cn("group grid items-center border-b border-[var(--app-color-border-default)] px-3.5 py-2.5 transition-colors hover:bg-[var(--app-color-surface-hover)]", GRID_COLS)}>
-                {/* 人员 · 违规说明 */}
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="truncate text-sm font-semibold text-[var(--app-color-text-primary)]">{personDisplayName(r)}</span>
-                    <span className="shrink-0 font-mono text-[11px] text-[var(--app-color-text-tertiary)]">{r.targetUserId}</span>
-                  </div>
-                  {bbadge ? <div className="mt-0.5">{bbadge}</div> : null}
-                  <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[var(--app-color-text-secondary)]">
-                    {richTextPlainPreview(r.violationText || "", 120) || "—"}
-                  </p>
-                  {imgs.length ? (
-                    <div className="mt-1 flex gap-1">
-                      {imgs.slice(0, 3).map((u) => (
-                        <img key={u} src={u} alt="" className="h-6 w-6 rounded border border-[var(--app-color-border-default)] object-cover" />
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                          {/* 课题组：段首行出合并格；块内有展开行时降级为逐行单元格 */}
+                          {seg
+                            ? groupCell(seg, allowMerge, c2)
+                            : allowMerge
+                              ? null
+                              : <td className={cn(td, "min-w-[9rem]")} />}
 
-                {/* 状态 */}
-                <div>{statusPill(r)}</div>
+                          {/* 状态 */}
+                          <td className={td}>{statusPill(r)}</td>
 
-                {/* 来源 */}
-                <div>{sourceBadge(r.source)}</div>
+                          {/* 来源 */}
+                          <td className={td}>{sourceBadge(r.source)}</td>
 
-                {/* 禁入 */}
-                <div className={cn("text-xs font-semibold", locked ? "text-[var(--app-color-feedback-danger)]" : "text-[var(--app-color-feedback-success)]")}>
-                  {locked ? "⛔ 已禁入" : "✓ 可进入"}
-                </div>
+                          {/* 禁入 */}
+                          <td className={cn(td, "text-xs font-semibold", locked ? "text-[var(--app-color-feedback-danger)]" : "text-[var(--app-color-feedback-success)]")}>
+                            {locked ? "⛔ 已禁入" : "✓ 可进入"}
+                          </td>
 
-                {/* 到期 */}
-                <div className={cn("text-xs tabular-nums text-[var(--app-color-text-primary)]", dm.late && "font-semibold text-[var(--app-color-feedback-danger)]")}>
-                  {dm.primary}
-                  <div className={cn("mt-0.5 text-[11px]", dm.late ? "text-[color-mix(in_srgb,var(--app-color-feedback-danger)_80%,transparent)]" : "text-[var(--app-color-text-tertiary)]")}>{dm.secondary}</div>
-                </div>
+                          {/* 到期 */}
+                          <td className={cn(td, "text-xs tabular-nums", dm.late ? "font-semibold text-[var(--app-color-feedback-danger)]" : c1)}>
+                            {dm.primary}
+                            <div className={cn("mt-0.5 text-[11px]", dm.late ? "text-[color-mix(in_srgb,var(--app-color-feedback-danger)_80%,transparent)]" : "text-[var(--app-color-text-tertiary)]")}>{dm.secondary}</div>
+                          </td>
 
-                {/* 公告 */}
-                <div>{noticeBadge(r)}</div>
+                          {/* 公告 */}
+                          <td className={td}>{noticeBadge(r)}</td>
 
-                {/* 操作：hover 显现 */}
-                <div className="flex justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-                  <AdminButton type="button" size="sm" tone="secondary" active={open} onClick={() => setExpandedId(open ? null : r.id)}>
-                    {open ? "收起" : "详情"}
-                  </AdminButton>
-                  <AdminButton type="button" size="sm" tone="secondary" onClick={() => onEdit(r)}>编辑</AdminButton>
-                  {r.status === "ACTIVE" ? (
-                    <AdminButton
-                      type="button"
-                      size="sm"
-                      tone="secondary"
-                      className="text-[var(--app-color-feedback-warning)]"
-                      onClick={() => void handleClear(r.id)}
-                    >
-                      解除
-                    </AdminButton>
-                  ) : null}
-                  {r.status === "ACTIVE" && !r.noticeClearedAt ? (
-                    <AdminButton
-                      type="button"
-                      size="sm"
-                      tone="secondary"
-                      className="text-[var(--app-color-feedback-info)]"
-                      onClick={() => void handleClearNotice(r.id)}
-                    >
-                      解除公告
-                    </AdminButton>
-                  ) : null}
-                  <AdminButton type="button" size="sm" tone="destructive" onClick={() => void handleDelete(r)}>删除</AdminButton>
-                </div>
-              </div>
+                          {/* 处置情况 */}
+                          <td className={td}>{dispositionCell(r.disposition, r.id, (id) => void openSignature(id))}</td>
 
-              {open ? (
-                <div className={cn("grid border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3.5 py-3", GRID_COLS)}>
-                  <div className="col-span-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <DetailItem k="记录 ID" v={`#${r.id}`} />
-                    <DetailItem k="关联规则" v={r.ruleName || "—"} mono={false} />
-                    <DetailItem k="处置策略" v={disp.strategyLabel} mono={false} />
-                    <DetailItem k="拼图短语" v={disp.challengePhrase} mono={false} />
-                    <DetailItem k="处置动作" v={disp.actionsLabel} mono={false} />
-                    <DetailItem k="立即禁入" v={disp.forbidEnter} mono={false} />
-                    <DetailItem k="验证后解禁" v={disp.unlockOnVerify} mono={false} />
-                    <DetailItem k="每次扫码提示" v={disp.everyScan} mono={false} />
-                    <DetailItem k="进入计数" v={disp.maxEnter} />
-                    <DetailItem k="到期时间" v={disp.expireAt} />
-                    <DetailItem k="到期说明" v={disp.expireHint} mono={false} />
-                    <DetailItem k="创建时间" v={formatBeijingDateTimeMedium(r.createdAt)} />
-                    <DetailItem
-                      k={r.status === "CLEARED" || r.status === "PROCESSED" ? "解除人" : "创建人"}
-                      v={
-                        (r.clearedByDisplayName || r.createdByDisplayName || "").trim()
-                        || r.clearedByUserId
-                        || r.createdByUserId
-                        || "系统"
-                      }
-                    />
-                    {r.cageViolationId != null ? (
-                      <>
-                        <DetailItem
-                          k="笼位状态"
-                          v={(CAGE_STATUS_LABEL[r.cageParentStatus ?? ""] ?? r.cageParentStatus) || "—"}
-                          mono={false}
-                        />
-                        <DetailItem k="笼位" v={r.cageParentPosition || "—"} mono={false} />
-                        <DetailItem k="课题组" v={r.cageParentGroup || "—"} mono={false} />
-                      </>
-                    ) : null}
-                    <DetailItem
-                      k="违规正文"
-                      v={richTextPlainPreview(r.violationText || "", 200) || "—"}
-                      mono={false}
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </Fragment>
-          );
-        })}
-      </div>
+                          {/* 操作：hover 显现 */}
+                          <td className={cn(td, "text-right")}>
+                            <div className="flex justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                              <AdminButton type="button" size="sm" tone="secondary" active={open} onClick={() => setExpandedId(open ? null : r.id)}>
+                                {open ? "收起" : "详情"}
+                              </AdminButton>
+                              <AdminButton type="button" size="sm" tone="secondary" onClick={() => onEdit(r)}>编辑</AdminButton>
+                              {r.status === "ACTIVE" ? (
+                                <AdminButton
+                                  type="button"
+                                  size="sm"
+                                  tone="secondary"
+                                  className="text-[var(--app-color-feedback-warning)]"
+                                  onClick={() => void handleClear(r.id)}
+                                >
+                                  解除
+                                </AdminButton>
+                              ) : null}
+                              {r.status === "ACTIVE" && !r.noticeClearedAt ? (
+                                <AdminButton
+                                  type="button"
+                                  size="sm"
+                                  tone="secondary"
+                                  className="text-[var(--app-color-feedback-info)]"
+                                  onClick={() => void handleClearNotice(r.id)}
+                                >
+                                  解除公告
+                                </AdminButton>
+                              ) : null}
+                              <AdminButton type="button" size="sm" tone="destructive" onClick={() => void handleDelete(r)}>删除</AdminButton>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {open ? (
+                          <tr>
+                            <td colSpan={COLS} className="bg-[var(--app-color-surface-elevated)] px-3 py-3">
+                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <DetailItem k="记录 ID" v={`#${r.id}`} />
+                                <DetailItem k="关联规则" v={r.ruleName || "—"} mono={false} />
+                                <DetailItem k="处置策略" v={disp.strategyLabel} mono={false} />
+                                <DetailItem k="拼图短语" v={disp.challengePhrase} mono={false} />
+                                <DetailItem k="处置动作" v={disp.actionsLabel} mono={false} />
+                                <DetailItem k="立即禁入" v={disp.forbidEnter} mono={false} />
+                                <DetailItem k="验证后解禁" v={disp.unlockOnVerify} mono={false} />
+                                <DetailItem k="每次扫码提示" v={disp.everyScan} mono={false} />
+                                <DetailItem k="进入计数" v={disp.maxEnter} />
+                                <DetailItem k="到期时间" v={disp.expireAt} />
+                                <DetailItem k="到期说明" v={disp.expireHint} mono={false} />
+                                <DetailItem k="创建时间" v={formatBeijingDateTimeMedium(r.createdAt)} />
+                                <DetailItem
+                                  k={r.status === "CLEARED" || r.status === "PROCESSED" ? "解除人" : "创建人"}
+                                  v={
+                                    (r.clearedByDisplayName || r.createdByDisplayName || "").trim()
+                                    || r.clearedByUserId
+                                    || r.createdByUserId
+                                    || "系统"
+                                  }
+                                />
+                                {r.cageViolationId != null ? (
+                                  <>
+                                    <DetailItem
+                                      k="笼位状态"
+                                      v={(CAGE_STATUS_LABEL[r.cageParentStatus ?? ""] ?? r.cageParentStatus) || "—"}
+                                      mono={false}
+                                    />
+                                    <DetailItem k="笼位" v={r.cageParentPosition || "—"} mono={false} />
+                                    <DetailItem k="课题组" v={r.cageParentGroup || "—"} mono={false} />
+                                  </>
+                                ) : null}
+                                <DetailItem
+                                  k="违规正文"
+                                  v={richTextPlainPreview(r.violationText || "", 200) || "—"}
+                                  mono={false}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </AdminTableShell>
 
       {/* 分页器（仅无关键词时后端分页；关键词场景为全量前端收窄，不分页） */}
       {!keyword && total > RECORDS_PAGE_SIZE && (
-        <div className="shrink-0 flex items-center justify-between gap-3 px-3.5 py-2 border-t border-[var(--app-color-border-default)] text-xs">
+        <div className="flex shrink-0 items-center justify-between gap-3 text-xs">
           <span className="text-[var(--app-color-text-tertiary)]">共 {total} 条 · 每页 {RECORDS_PAGE_SIZE} 条</span>
           <div className="flex items-center gap-2">
             <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
               上一页
             </AdminButton>
-            <span className="text-[var(--app-color-text-secondary)] whitespace-nowrap">{page} / {totalPages}</span>
+            <span className="whitespace-nowrap text-[var(--app-color-text-secondary)]">{page} / {totalPages}</span>
             <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)}>
               下一页
             </AdminButton>
           </div>
         </div>
       )}
+
+      <AdminCenteredPanelShell
+        open={sigOpen}
+        onClose={() => setSigOpen(false)}
+        ariaLabel="签名图"
+        title="签名确认"
+        className="max-w-[min(720px,96vw)]"
+      >
+        <div className="flex min-h-[200px] items-center justify-center p-4">
+          {sigLoading ? (
+            <span className="text-sm text-[var(--app-color-text-tertiary)]">加载中…</span>
+          ) : sigError ? (
+            <span className="text-sm text-[var(--app-color-feedback-danger)]">{sigError}</span>
+          ) : sigUrl ? (
+            <img
+              src={sigUrl}
+              alt="签名"
+              className="max-h-[60vh] w-auto rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]"
+            />
+          ) : null}
+        </div>
+      </AdminCenteredPanelShell>
     </div>
   );
 }

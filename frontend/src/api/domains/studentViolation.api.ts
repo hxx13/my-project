@@ -69,7 +69,27 @@ export interface StudentViolationRow {
   noticeLinkExpire?: number | null;
   /** 公告单独解除时间；非空=该条已下大屏公示 */
   noticeClearedAt?: string | null;
+  /** 一次下发的批次键；历史行后端归一为 `SINGLE-<id>`（每人自成一块） */
+  batchId?: string;
+  /** 课题组名（来自笼架违规父记录）；非笼架违规为 null */
+  projectGroupName?: string | null;
+  /** 公告状态：ACTIVE | CLEARED | WINDOW_ENDED | NOT_ACTIVE */
+  noticeState?: string | null;
+  /** 处置摘要（列表行不含签名图，图须走 dispositionDetail 按需拉取） */
+  disposition?: ViolationDispositionSummary | null;
 }
+
+/** 后端 `dispositionSummary` 映射：状态/类型/完成信息 + 是否带签名图布尔。 */
+export type ViolationDispositionSummary = {
+  type?: string | null;
+  typeLabel?: string | null;
+  status?: string | null;
+  stateLabel?: string | null;
+  completedAt?: string | null;
+  channel?: string | null;
+  detail?: string | null;
+  hasSignatureImage?: boolean;
+};
 
 export interface CreateStudentViolationPayload {
   targetUserId: string;
@@ -227,6 +247,22 @@ export async function clearStudentViolation(id: number) {
 /** 单独解除公告（大屏立即下板，记录与禁入不变）。后端幂等，success=false 由 adminHttp 拦截器抛错。 */
 export async function clearStudentViolationNotice(id: number): Promise<void> {
   await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/clear-notice`);
+}
+
+/**
+ * 处置完整明细：摘要全部键 + `answerPayload` 原文（签名图在这里）。
+ * 后端 `Result.error` 以 HTTP 200 + success:false 返回，必须显式抛错，否则会把失败当成功。
+ */
+export async function dispositionDetail(
+  id: number
+): Promise<ViolationDispositionSummary & { answerPayload?: string | null }> {
+  const res = await adminHttp.get<ApiResponse<ViolationDispositionSummary & { answerPayload?: string | null }>>(
+    `/twin/student-violations/${id}/disposition-detail`
+  );
+  const body = res.data;
+  if (body && body.success === false) throw new Error(body.message || "查询处置明细失败");
+  if (!body?.data) throw new Error("查询处置明细失败");
+  return body.data;
 }
 
 /** 与后端 RoleEnum.code 一致 */
