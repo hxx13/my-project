@@ -164,6 +164,14 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
 
   const ackViolationId = notice?.id ?? null;
 
+  // 「需滚动到底才能确认」用：正文滚动到底后置位，切违规时复位
+  const [bodyScrolledToBottom, setBodyScrolledToBottom] = useState(false);
+  useEffect(() => {
+    if (kind === "announcement") return;
+    setBodyScrolledToBottom(false);
+  }, [kind, ackViolationId]);
+  const handleBodyScrollToBottom = useCallback(() => setBodyScrolledToBottom(true), []);
+
   /** 四种策略共用的提交：成功后回写 onInteractiveVerified，失败向上抛给各面板自行提示与重试 */
   const submitAck = useCallback(
     async (answer: string) => {
@@ -310,6 +318,9 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
     >
       <ScanNoticeDoodleCard
         embedded
+        onBodyScrollToBottom={
+          pendingAckStrategy === "ACK_READ" ? handleBodyScrollToBottom : undefined
+        }
         kind={kind}
         titleId={`${meta.titleId}-${panelKey}`}
         title={title}
@@ -344,7 +355,12 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
               }}
             />
           ) : pendingAckStrategy === "ACK_READ" ? (
-            <ViolationAckReadPanel onSubmit={submitAck} />
+            <ViolationAckReadPanel
+              key={ackViolationId}
+              configJson={notice?.dispositionConfigJson}
+              scrolledToBottom={bodyScrolledToBottom}
+              onSubmit={submitAck}
+            />
           ) : pendingAckStrategy === "QUIZ" && ackViolationId != null ? (
             <ViolationQuizPanel key={ackViolationId} violationId={ackViolationId} onSubmit={submitAck} />
           ) : pendingAckStrategy === "SIGNATURE" ? (

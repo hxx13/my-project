@@ -154,7 +154,7 @@ describe("dispositionTypes 纯函数契约", () => {
     expect(strategyRequiresForbid({ type: "unset" })).toBe(false);
     expect(strategyRequiresForbid(fixed("", null, false))).toBe(false);
     expect(strategyRequiresForbid(fixed("", null, true))).toBe(true);
-    expect(strategyRequiresForbid({ type: "ack_read", maxEnterSuccess: null })).toBe(true);
+    expect(strategyRequiresForbid({ type: "ack_read", minDwellSeconds: 0, requireScrollToBottom: false, maxEnterSuccess: null })).toBe(true);
     expect(
       strategyRequiresForbid({
         type: "quiz",
@@ -170,11 +170,11 @@ describe("dispositionTypes 纯函数契约", () => {
 
   it("ensureForbidForStrategy：交互策略补 forbid；仅展示不改动", () => {
     expect(ensureForbidForStrategy([], fixed("", null, true))).toEqual(["forbid"]);
-    expect(ensureForbidForStrategy(["unlock"], { type: "ack_read", maxEnterSuccess: null })).toEqual([
+    expect(ensureForbidForStrategy(["unlock"], { type: "ack_read", minDwellSeconds: 0, requireScrollToBottom: false, maxEnterSuccess: null })).toEqual([
       "unlock",
       "forbid",
     ]);
-    expect(ensureForbidForStrategy(["forbid", "unlock"], { type: "ack_read", maxEnterSuccess: null })).toEqual([
+    expect(ensureForbidForStrategy(["forbid", "unlock"], { type: "ack_read", minDwellSeconds: 0, requireScrollToBottom: false, maxEnterSuccess: null })).toEqual([
       "forbid",
       "unlock",
     ]);

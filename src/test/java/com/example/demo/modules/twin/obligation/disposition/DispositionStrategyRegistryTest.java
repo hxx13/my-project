@@ -20,7 +20,7 @@ class DispositionStrategyRegistryTest {
         ObjectMapper om = new ObjectMapper();
         registry = new DispositionStrategyRegistry(List.of(
                 new ShowOnlyDispositionStrategy(),
-                new AckReadDispositionStrategy(),
+                new AckReadDispositionStrategy(om),
                 new AckPuzzleDispositionStrategy(om),
                 new QuizDispositionStrategy(om),
                 new SignatureDispositionStrategy(om)

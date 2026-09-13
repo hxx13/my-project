@@ -95,7 +95,12 @@ function strategyFromRegistryType(
         maxEnterSuccess: maxEnter,
       };
     case "ACK_READ":
-      return { type: "ack_read", maxEnterSuccess: maxEnter };
+      return {
+        type: "ack_read",
+        minDwellSeconds: prev.type === "ack_read" ? prev.minDwellSeconds : 0,
+        requireScrollToBottom: prev.type === "ack_read" ? prev.requireScrollToBottom : false,
+        maxEnterSuccess: maxEnter,
+      };
     case "SIGNATURE":
       return {
         type: "signature",
@@ -171,6 +176,7 @@ export function DispositionFieldsSlot({
   const puzzleStrategy =
     value.strategy.type === "fixed" && value.strategy.puzzle ? value.strategy : null;
   const quizStrategy = value.strategy.type === "quiz" ? value.strategy : null;
+  const ackReadStrategy = value.strategy.type === "ack_read" ? value.strategy : null;
   const signatureStrategy = value.strategy.type === "signature" ? value.strategy : null;
   const phraseEmpty = puzzleStrategy != null && !puzzleStrategy.challengePhrase.trim();
   const strategyMissing = registryType === "";
@@ -254,6 +260,48 @@ export function DispositionFieldsSlot({
             />
           )}
         </InspectorRow>
+      ) : null}
+
+      {/* 确认阅读：没配门控时与「仅展示」无异，所以这里的两项就是它区别于仅展示的地方 */}
+      {ackReadStrategy ? (
+        <>
+          <InspectorRow label="最短阅读秒数">
+            {(controlId) => (
+              <BareNumberWithUnit
+                id={controlId}
+                value={ackReadStrategy.minDwellSeconds > 0 ? String(ackReadStrategy.minDwellSeconds) : ""}
+                onChange={(raw) =>
+                  onChange({
+                    ...value,
+                    strategy: {
+                      ...ackReadStrategy,
+                      minDwellSeconds: Math.max(0, toNumberOrNull(raw) ?? 0),
+                    },
+                  })
+                }
+                unit="秒"
+                placeholder="0 = 不限时"
+                disabled={disabled}
+              />
+            )}
+          </InspectorRow>
+          <InspectorRow label="需滚动到底才能确认">
+            {(controlId) => (
+              <AdminSwitchScaled
+                size="sm"
+                id={controlId}
+                checked={ackReadStrategy.requireScrollToBottom}
+                onChange={(checked) =>
+                  onChange({
+                    ...value,
+                    strategy: { ...ackReadStrategy, requireScrollToBottom: checked },
+                  })
+                }
+                disabled={disabled}
+              />
+            )}
+          </InspectorRow>
+        </>
       ) : null}
 
       {quizStrategy ? (

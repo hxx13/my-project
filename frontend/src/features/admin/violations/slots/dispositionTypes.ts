@@ -30,7 +30,14 @@ export type DispositionStrategy =
       maxAttempts: number;
       maxEnterSuccess: number | null;
     }
-  | { type: "ack_read"; maxEnterSuccess: number | null }
+  | {
+      type: "ack_read";
+      /** 最短阅读秒数；0=不限时 */
+      minDwellSeconds: number;
+      /** 是否必须滚动到底部才能确认 */
+      requireScrollToBottom: boolean;
+      maxEnterSuccess: number | null;
+    }
   | { type: "signature"; preamble: string; maxEnterSuccess: number | null };
 
 export type DispositionValue = {
@@ -129,8 +136,12 @@ export function dispositionConfigJsonOf(v: DispositionValue): string | null {
       const phrase = v.strategy.challengePhrase.trim();
       return phrase ? JSON.stringify({ phrase }) : null;
     }
-    case "ack_read":
-      return null;
+    case "ack_read": {
+      const { minDwellSeconds, requireScrollToBottom } = v.strategy;
+      // 两项都没配＝点一下即可，不下发配置（后端按「无门控」处理，兼容老数据）
+      if (!minDwellSeconds && !requireScrollToBottom) return null;
+      return JSON.stringify({ minDwellSeconds, requireScrollToBottom });
+    }
     case "signature":
       return JSON.stringify({ preamble: v.strategy.preamble || "" });
     default: {
@@ -300,9 +311,20 @@ function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
     };
   }
   if (dtype === "ACK_READ") {
+    let minDwellSeconds = 0;
+    let requireScrollToBottom = false;
+    try {
+      if (row.dispositionConfigJson) {
+        const cfg = JSON.parse(row.dispositionConfigJson) as Record<string, unknown>;
+        if (typeof cfg.minDwellSeconds === "number") minDwellSeconds = Math.max(0, cfg.minDwellSeconds);
+        if (typeof cfg.requireScrollToBottom === "boolean") requireScrollToBottom = cfg.requireScrollToBottom;
+      }
+    } catch {
+      /* keep defaults */
+    }
     return {
       actions,
-      strategy: { type: "ack_read", maxEnterSuccess: row.maxEnterSuccess ?? null },
+      strategy: { type: "ack_read", minDwellSeconds, requireScrollToBottom, maxEnterSuccess: row.maxEnterSuccess ?? null },
       expiry: { mode: "KEEP" },
     };
   }

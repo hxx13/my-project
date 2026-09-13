@@ -33,9 +33,21 @@ class ShowOnlyDispositionStrategy implements DispositionStrategy {
     }
 }
 
-/** 确认阅读：需交互渠道点确认；答案可为空。 */
+/**
+ * 确认阅读：需交互渠道点确认。
+ * <p>可配「最短停留秒数」与「是否需滚到底」——两者都在服务端校验，
+ * 客户端提交 {@code {"dwellSeconds":N,"scrolledToBottom":bool}}。
+ * <p>不配门控时（两项皆空/0/false）恒通过，与旧行为一致；一旦配了就必须满足，
+ * 否则「确认阅读」与「仅展示」没有区别。
+ */
 @Component
 class AckReadDispositionStrategy implements DispositionStrategy {
+    private final ObjectMapper objectMapper;
+
+    AckReadDispositionStrategy(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     @Override
     public String type() {
         return ObligationSupport.DISPOSITION_ACK_READ;
@@ -49,14 +61,40 @@ class AckReadDispositionStrategy implements DispositionStrategy {
     @Override
     public Map<String, String> configSchema() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("minDwellSeconds", "最短停留秒数（可选）");
-        m.put("requireScrollToBottom", "是否需滚到底（可选）");
+        m.put("minDwellSeconds", "最短停留秒数（0=不限时）");
+        m.put("requireScrollToBottom", "是否需滚到底（true/false）");
         return m;
     }
 
     @Override
     public boolean verify(String configJson, String answerRaw) {
-        return true;
+        int minDwell = 0;
+        boolean requireBottom = false;
+        try {
+            if (configJson != null && !configJson.isBlank()) {
+                JsonNode cfg = objectMapper.readTree(configJson);
+                minDwell = Math.max(0, cfg.path("minDwellSeconds").asInt(0));
+                requireBottom = cfg.path("requireScrollToBottom").asBoolean(false);
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        // 未配门控：视为「点一下即可」，保持老数据可用
+        if (minDwell <= 0 && !requireBottom) {
+            return true;
+        }
+        try {
+            JsonNode answer = objectMapper.readTree(answerRaw == null || answerRaw.isBlank() ? "{}" : answerRaw);
+            if (requireBottom && !answer.path("scrolledToBottom").asBoolean(false)) {
+                return false;
+            }
+            if (minDwell > 0 && answer.path("dwellSeconds").asDouble(0) < minDwell) {
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
 

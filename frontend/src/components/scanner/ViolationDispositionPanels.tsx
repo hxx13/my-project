@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { drawViolationQuiz } from "@/api/domains/scanner.api";
 import type { QuizDrawPayload } from "@/api/types/scanner";
@@ -12,26 +12,64 @@ const PRIMARY_BTN =
 const GHOST_BTN =
   "rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 py-2 text-sm text-[var(--app-color-text-secondary)]";
 
+import { ackReadGateSatisfied, parseAckReadGate } from "./ackReadGate";
+
 /**
- * 确认阅读：只有一个确认按钮，答案为空对象。
- * 后端 AckReadDispositionStrategy 不做答案校验，恒通过。
+ * 确认阅读：按钮带门控——达到「最短阅读秒数」且（若要求）正文滚到底后才可点。
+ * 没配门控时与普通确认无异；配置了就必须满足，否则与「仅展示」没有区别。
+ * 答案上报 {@code {dwellSeconds, scrolledToBottom}}，由后端 AckReadDispositionStrategy 复核。
  */
-export function ViolationAckReadPanel({ onSubmit }: { onSubmit: SubmitDisposition }) {
+export function ViolationAckReadPanel({
+  configJson,
+  scrolledToBottom = true,
+  onSubmit,
+}: {
+  configJson?: string | null;
+  /** 正文是否已滚到底（由通知卡透传；未开启该门控时恒 true） */
+  scrolledToBottom?: boolean;
+  onSubmit: SubmitDisposition;
+}) {
+  const gate = useMemo(() => parseAckReadGate(configJson), [configJson]);
+  const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (gate.minDwellSeconds <= 0) return;
+    const timer = window.setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [gate.minDwellSeconds]);
+
+  const remaining = Math.max(0, gate.minDwellSeconds - elapsed);
+  const blockedByScroll = gate.requireScrollToBottom && !scrolledToBottom;
+  const canConfirm = ackReadGateSatisfied(gate, elapsed, scrolledToBottom) && !busy;
+  const hint = blockedByScroll
+    ? "请滑动阅读到底部后再确认"
+    : remaining > 0
+      ? `请继续阅读，${remaining} 秒后可确认`
+      : "";
+
   return (
-    <div className="px-3 py-2">
+    <div className="space-y-2 px-3 py-2">
+      {hint ? (
+        <p className="text-center text-xs text-[var(--app-color-text-tertiary)]">{hint}</p>
+      ) : null}
       <button
         type="button"
-        disabled={busy}
+        disabled={!canConfirm}
         onClick={() => {
           setBusy(true);
-          void onSubmit("{}")
+          void onSubmit(
+            JSON.stringify({
+              dwellSeconds: elapsed,
+              scrolledToBottom: gate.requireScrollToBottom ? scrolledToBottom : true,
+            })
+          )
             .catch((e) => toast.error(e instanceof Error ? e.message : "确认失败"))
             .finally(() => setBusy(false));
         }}
         className={PRIMARY_BTN}
       >
-        {busy ? "提交中…" : "我已阅读并确认"}
+        {busy ? "提交中…" : remaining > 0 ? `我已阅读并确认（${remaining}s）` : "我已阅读并确认"}
       </button>
     </div>
   );

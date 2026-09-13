@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ClipboardCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { InteractiveChallenge } from "@/components/scanner/InteractiveChallenge";
+import { ackReadGateSatisfied, parseAckReadGate } from "@/components/scanner/ackReadGate";
 import { SignaturePad } from "@/components/signature";
 import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 import {
@@ -27,6 +28,20 @@ export default function StudentObligationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<number | null>(focusId > 0 ? focusId : null);
+
+  // 「需滚动到底才能确认」：正文滚动到底后置位；切待办时复位并回到顶部
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [bodyScrolledToBottom, setBodyScrolledToBottom] = useState(false);
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 8) setBodyScrolledToBottom(true);
+  }, []);
+  useEffect(() => {
+    if (activeId == null) return;
+    setBodyScrolledToBottom(false);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [activeId]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -90,10 +105,11 @@ export default function StudentObligationsPage() {
                 </button>
               ))}
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">
               {active ? (
                 <ObligationDispositionPanel
                   row={active}
+                  scrolledToBottom={bodyScrolledToBottom}
                   onCompleted={async () => {
                     toast.success("已完成确认");
                     await reload();
@@ -111,9 +127,11 @@ export default function StudentObligationsPage() {
 
 function ObligationDispositionPanel({
   row,
+  scrolledToBottom = true,
   onCompleted,
 }: {
   row: StudentObligationRow;
+  scrolledToBottom?: boolean;
   onCompleted: () => void | Promise<void>;
 }) {
   if (row.deliveryMode === "GUIDE_ONLY") {
@@ -148,8 +166,10 @@ function ObligationDispositionPanel({
 
       {type === "SHOW_ONLY" || type === "ACK_READ" ? (
         <AckReadPanel
-          onSubmit={async () => {
-            await completeObligation(row.id, "{}", "H5");
+          configJson={row.dispositionConfigJson}
+          scrolledToBottom={scrolledToBottom}
+          onSubmit={async (answer) => {
+            await completeObligation(row.id, answer, "H5");
             await onCompleted();
           }}
         />
@@ -188,16 +208,49 @@ function ObligationDispositionPanel({
   );
 }
 
-function AckReadPanel({ onSubmit }: { onSubmit: () => Promise<void> }) {
+function AckReadPanel({
+  configJson,
+  scrolledToBottom = true,
+  onSubmit,
+}: {
+  configJson?: string | null;
+  scrolledToBottom?: boolean;
+  onSubmit: (answer: string) => Promise<void>;
+}) {
+  const gate = useMemo(() => parseAckReadGate(configJson), [configJson]);
+  const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (gate.minDwellSeconds <= 0) return;
+    const timer = window.setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [gate.minDwellSeconds]);
+
+  const remaining = Math.max(0, gate.minDwellSeconds - elapsed);
+  const blockedByScroll = gate.requireScrollToBottom && !scrolledToBottom;
+  const disabled = busy || !ackReadGateSatisfied(gate, elapsed, scrolledToBottom);
+
   return (
-    <div className="mt-4">
+    <div className="mt-4 space-y-2">
+      {blockedByScroll ? (
+        <p className="text-xs text-[var(--student-mute-foreground)]">请滑动阅读到底部后再确认</p>
+      ) : remaining > 0 ? (
+        <p className="text-xs text-[var(--student-mute-foreground)]">
+          请继续阅读，{remaining} 秒后可确认
+        </p>
+      ) : null}
       <StudentButton
-        disabled={busy}
+        disabled={disabled}
         onClick={async () => {
           setBusy(true);
           try {
-            await onSubmit();
+            await onSubmit(
+              JSON.stringify({
+                dwellSeconds: elapsed,
+                scrolledToBottom: gate.requireScrollToBottom ? scrolledToBottom : true,
+              })
+            );
           } catch (e) {
             toast.error(e instanceof Error ? e.message : "提交失败");
           } finally {
@@ -205,7 +258,7 @@ function AckReadPanel({ onSubmit }: { onSubmit: () => Promise<void> }) {
           }
         }}
       >
-        {busy ? "提交中…" : "我已阅读并确认"}
+        {busy ? "提交中…" : remaining > 0 ? `我已阅读并确认（${remaining}s）` : "我已阅读并确认"}
       </StudentButton>
     </div>
   );
