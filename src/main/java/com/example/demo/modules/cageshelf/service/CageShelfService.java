@@ -305,6 +305,11 @@ public class CageShelfService {
             shelfMeta.put("roomName", idx.getRoomName() != null ? idx.getRoomName() : "");
             shelfMeta.put("shelveId", idx.getShelveId() != null ? String.valueOf(idx.getShelveId()) : shelveId);
             shelfMeta.put("shelveName", idx.getShelveName() != null ? idx.getShelveName() : shelveId);
+            // 与 CageCellIndexService 的 shelfMeta 保持同构：可见范围分配按 id 判命中，
+            // 缺 roomId/floorId/campusId 会让对应层级的分配静默失效。
+            shelfMeta.put("roomId", idx.getRoomId() == null ? null : String.valueOf(idx.getRoomId()));
+            shelfMeta.put("floorId", idx.getFloorId() == null ? null : String.valueOf(idx.getFloorId()));
+            shelfMeta.put("campusId", idx.getCampusId() == null ? null : String.valueOf(idx.getCampusId()));
         } else {
             shelfMeta.put("shelveId", shelveId);
             shelfMeta.put("shelveName", shelveId);
@@ -361,6 +366,11 @@ public class CageShelfService {
             shelfMeta.put("roomName", idx.getRoomName() != null ? idx.getRoomName() : "");
             shelfMeta.put("shelveId", idx.getShelveId() != null ? String.valueOf(idx.getShelveId()) : shelveId);
             shelfMeta.put("shelveName", idx.getShelveName() != null ? idx.getShelveName() : shelveId);
+            // 与 CageCellIndexService 的 shelfMeta 保持同构：可见范围分配按 id 判命中，
+            // 缺 roomId/floorId/campusId 会让对应层级的分配静默失效。
+            shelfMeta.put("roomId", idx.getRoomId() == null ? null : String.valueOf(idx.getRoomId()));
+            shelfMeta.put("floorId", idx.getFloorId() == null ? null : String.valueOf(idx.getFloorId()));
+            shelfMeta.put("campusId", idx.getCampusId() == null ? null : String.valueOf(idx.getCampusId()));
         } else {
             shelfMeta.put("shelveId", shelveId);
             shelfMeta.put("shelveName", shelveId);
