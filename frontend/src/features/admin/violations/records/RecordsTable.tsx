@@ -335,7 +335,10 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <AdminTableShell scrollable className="min-h-0 flex-1">
+      {/* 不要传 scrollable：它会再给内层封 max-h-[min(72vh,780px)]，与外层 flex-1 拉伸出的高度差
+          会在表格下方留一大块空白。本页外层已由 h-[calc(100dvh-var(--admin-chrome-offset))] + flex 链
+          给出确定高度，滚动交给 AdminTableShell 自带的外层 overflow-x-auto（y 轴随之计算为 auto）。 */}
+      <AdminTableShell className="min-h-0 flex-1">
         <table className="twin-table w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>
