@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CagePermissionMapper">
+
+    <select id="listCapabilities" resultType="com.example.demo.modules.cageshelf.entity.CagePermissionCapability">
+        SELECT * FROM cage_permission_capability WHERE active = 1
+        ORDER BY sort_order ASC, code ASC
+    </select>
+
+    <select id="listGrants" resultType="com.example.demo.modules.cageshelf.entity.CagePermissionGrant">
+        SELECT * FROM cage_permission_grant
+        ORDER BY capability_code ASC, identity_code ASC
+    </select>
+
+    <insert id="insertGrant" useGeneratedKeys="true" keyProperty="id">
+        INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code)
+        VALUES (#{capabilityCode}, #{identityCode})
+    </insert>
+
+    <delete id="deleteGrant">
+        DELETE FROM cage_permission_grant
+        WHERE capability_code = #{capabilityCode} AND identity_code = #{identityCode}
+    </delete>
+
+</mapper>
