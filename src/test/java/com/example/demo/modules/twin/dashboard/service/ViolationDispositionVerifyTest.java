@@ -1,10 +1,13 @@
 package com.example.demo.modules.twin.dashboard.service;
 
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
+import com.example.demo.modules.twin.obligation.disposition.DispositionStrategy;
 import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import org.junit.jupiter.api.Test;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -75,5 +78,66 @@ class ViolationDispositionVerifyTest {
         return new TwinStudentViolationService(
                 null, null, null, null, null, null, null, null, null, null,
                 obligationService, registry);
+    }
+
+    /**
+     * 「无需交互」的策略（SHOW_ONLY）不接受处置提交。
+     * 否则任意答案都能把它标记成已处置；配上「验证后解禁」就是不解题即解锁。
+     */
+    @Test
+    void noPhrase_showOnlyStrategy_isRejected() {
+        ObligationService obligationService = mock(ObligationService.class);
+        DispositionStrategyRegistry registry = mock(DispositionStrategyRegistry.class);
+        TwinObligation ob = new TwinObligation();
+        ob.setDispositionType("SHOW_ONLY");
+        when(obligationService.findByViolationId(3L)).thenReturn(ob);
+        DispositionStrategy showOnly = mock(DispositionStrategy.class);
+        when(showOnly.requiresInteraction()).thenReturn(false);
+        when(registry.find("SHOW_ONLY")).thenReturn(Optional.of(showOnly));
+
+        TwinStudentViolationService service = newService(obligationService, registry);
+        TwinStudentViolation row = new TwinStudentViolation();
+        row.setId(3L);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.verifyDispositionAnswer(row, "{}"));
+    }
+
+    /** 记录无短语时按待办策略校验——ACK_READ / QUIZ / SIGNATURE 走的就是这条路。 */
+    @Test
+    void noPhrase_quizStrategy_delegatesToStrategyVerify() {
+        ObligationService obligationService = mock(ObligationService.class);
+        DispositionStrategyRegistry registry = mock(DispositionStrategyRegistry.class);
+        TwinObligation ob = new TwinObligation();
+        ob.setDispositionType("QUIZ");
+        ob.setDispositionConfigJson("{\"passCount\":1}");
+        when(obligationService.findByViolationId(4L)).thenReturn(ob);
+        DispositionStrategy quiz = mock(DispositionStrategy.class);
+        when(quiz.requiresInteraction()).thenReturn(true);
+        when(quiz.verify(eq("{\"passCount\":1}"), eq("{\"answers\":{}}"))).thenReturn(false);
+        when(registry.find("QUIZ")).thenReturn(Optional.of(quiz));
+
+        TwinStudentViolationService service = newService(obligationService, registry);
+        TwinStudentViolation row = new TwinStudentViolation();
+        row.setId(4L);
+
+        assertFalse(service.verifyDispositionAnswer(row, "{\"answers\":{}}"));
+    }
+
+    /** 未注册的策略编码不放行。 */
+    @Test
+    void noPhrase_unknownStrategy_isRejected() {
+        ObligationService obligationService = mock(ObligationService.class);
+        DispositionStrategyRegistry registry = mock(DispositionStrategyRegistry.class);
+        TwinObligation ob = new TwinObligation();
+        ob.setDispositionType("NOT_A_REAL_STRATEGY");
+        when(obligationService.findByViolationId(5L)).thenReturn(ob);
+        when(registry.find("NOT_A_REAL_STRATEGY")).thenReturn(Optional.empty());
+
+        TwinStudentViolationService service = newService(obligationService, registry);
+        TwinStudentViolation row = new TwinStudentViolation();
+        row.setId(5L);
+
+        assertFalse(service.verifyDispositionAnswer(row, "任意答案"));
     }
 }

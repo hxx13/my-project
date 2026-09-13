@@ -284,6 +284,11 @@
           AND notice_cleared_at IS NULL
     </update>
 
+    <!--
+      标记「已完成交互处置」。注意：**不能**再要求记录上有 interactive_challenge——
+      ACK_READ/QUIZ/SIGNATURE 的答案在待办（twin_obligation）里，记录本身没有短语。
+      是否需要交互由 service 的 verifyDispositionAnswer 把关（策略 requiresInteraction），此处不再重复设卡。
+    -->
     <update id="acknowledgeInteractiveById">
         UPDATE twin_student_violation
         SET interactive_challenge_verified_at = NOW(),
@@ -291,8 +296,6 @@
             updated_at = NOW()
         WHERE id = #{id}
           AND status = 'ACTIVE'
-          AND interactive_challenge IS NOT NULL
-          AND TRIM(interactive_challenge) &lt;&gt; ''
           AND interactive_challenge_verified_at IS NULL
     </update>
 

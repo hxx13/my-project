@@ -19,6 +19,7 @@ import com.example.demo.modules.twin.dashboard.support.InteractiveChallengeVerif
 import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificationSupport;
 import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
+import com.example.demo.modules.twin.obligation.disposition.DispositionStrategy;
 import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
 import com.example.demo.modules.twin.obligation.disposition.QuizBank;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
@@ -475,7 +476,17 @@ public class TwinStudentViolationService {
         if (obligationService != null) {
             TwinObligation ob = obligationService.findByViolationId(row.getId());
             if (ob != null && StringUtils.hasText(ob.getDispositionType()) && dispositionRegistry != null) {
-                return dispositionRegistry.verify(ob.getDispositionType(), ob.getDispositionConfigJson(), answer);
+                DispositionStrategy strategy = dispositionRegistry.find(ob.getDispositionType()).orElse(null);
+                if (strategy == null) {
+                    // 未注册的策略编码：不放行
+                    return false;
+                }
+                if (!strategy.requiresInteraction()) {
+                    // SHOW_ONLY 之类的「无需交互」策略不接受处置提交，
+                    // 否则任意答案都能把它标记成已处置（配上验证后解禁就是不解题即解锁）
+                    throw new IllegalArgumentException("该违规无需交互确认");
+                }
+                return strategy.verify(ob.getDispositionConfigJson(), answer);
             }
         }
         throw new IllegalArgumentException("该违规无需交互确认");
@@ -1887,15 +1898,18 @@ public class TwinStudentViolationService {
 
     private static int resolveInteractiveUnlockOnVerify(String interactiveChallenge, Boolean unlockOnVerify) {
         if (!StringUtils.hasText(interactiveChallenge)) {
-            return 0;
+            // 记录级无短语（ACK_READ/QUIZ/SIGNATURE 的答案存在待办里）：调用方显式勾了「验证后解禁」才置 1。
+            // 是否真的解禁由 ack 时的 isInteractiveUnlockOnVerify 决定；无交互的违规根本走不到 ack。
+            return Boolean.TRUE.equals(unlockOnVerify) ? 1 : 0;
         }
         return Boolean.FALSE.equals(unlockOnVerify) ? 0 : 1;
     }
 
     private static boolean isInteractiveUnlockOnVerify(TwinStudentViolation row) {
-        if (row == null || !StringUtils.hasText(row.getInteractiveChallenge())) {
+        if (row == null) {
             return false;
         }
+        // 不再要求记录级短语：ACK_READ/QUIZ/SIGNATURE 的交互在待办上，记录本身没有短语
         return row.getInteractiveUnlockOnVerify() == null || row.getInteractiveUnlockOnVerify() == 1;
     }
 
