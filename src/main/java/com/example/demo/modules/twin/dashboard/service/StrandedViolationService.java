@@ -452,8 +452,8 @@ public class StrandedViolationService {
         // 校区开关：与定时一道同一口径
         boolean campusPd = toInt(config.get("campus_pd_enabled"), 1) == 1;
         boolean campusPx = toInt(config.get("campus_px_enabled"), 1) == 1;
-        List<String> campusPatterns = campusPatterns(campusPd, campusPx);
-        if (campusPatterns == null) {
+        List<String> patterns = campusPatterns(campusPd, campusPx);
+        if (patterns == null) {
             return "浦东/浦西均已关闭滞留检测，跳过";
         }
         // 本地流水是否仍判定在馆
@@ -461,9 +461,9 @@ public class StrandedViolationService {
             return "该用户今日流水未判定为滞留，无需处理";
         }
         // 该用户实际所在校区是否在检测范围内（不加过滤时为全部校区）
-        if (!campusPatterns.isEmpty()) {
+        if (!patterns.isEmpty()) {
             String todayPrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "%";
-            List<String> inScope = mappingMapper.findTodayStrandedUserIds(todayPrefix, campusPatterns);
+            List<String> inScope = mappingMapper.findTodayStrandedUserIds(todayPrefix, patterns);
             if (inScope == null || !inScope.contains(userId.trim())) {
                 return "该用户所在校区已关闭滞留检测，跳过";
             }
