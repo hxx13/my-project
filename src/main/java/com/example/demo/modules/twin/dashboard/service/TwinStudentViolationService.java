@@ -109,7 +109,8 @@ public class TwinStudentViolationService {
      * @param channel       回执渠道，可为 null
      */
     public static Map<String, Object> dispositionSummary(String type, String status, String answerPayload,
-                                                         LocalDateTime completedAt, String channel) {
+                                                         LocalDateTime completedAt, String channel,
+                                                         List<QuizBank.Question> quizBank) {
         String rawType = StringUtils.hasText(type) ? type.trim() : null;
         String rawStatus = StringUtils.hasText(status) ? status.trim() : null;
         String typeKey = rawType != null ? rawType.toUpperCase() : null;
@@ -123,7 +124,7 @@ public class TwinStudentViolationService {
         out.put("channel", channel);
 
         JsonNode answer = parseReceiptAnswer(answerPayload);
-        out.put("detail", resolveDispositionDetail(typeKey, rawStatus, completedAt, answer));
+        out.put("detail", resolveDispositionDetail(typeKey, rawStatus, completedAt, answer, quizBank));
         out.put("hasSignatureImage", resolveHasSignatureImage(typeKey, answer));
         return out;
     }
@@ -137,7 +138,8 @@ public class TwinStudentViolationService {
     }
 
     private static String resolveDispositionDetail(String typeKey, String rawStatus,
-                                                   LocalDateTime completedAt, JsonNode answer) {
+                                                   LocalDateTime completedAt, JsonNode answer,
+                                                   List<QuizBank.Question> quizBank) {
         if (typeKey == null) {
             return "";
         }
@@ -148,20 +150,29 @@ public class TwinStudentViolationService {
         return switch (typeKey) {
             case "ACK_READ" -> "已阅读";
             case "ACK_PUZZLE" -> "已拼图确认";
-            case "QUIZ" -> buildQuizDetail(answer);
+            case "QUIZ" -> buildQuizDetail(answer, quizBank);
             case "SIGNATURE" -> "已签名";
             default -> "";
         };
     }
 
-    private static String buildQuizDetail(JsonNode answer) {
+    /**
+     * 答题得分描述。
+     *
+     * <p>必须按 {@code quizBank}（= 该待办配置指向的**数据库**题库）算：
+     * 抽题与判分都走库，详情若按内置题库算，两套题目 id 命名空间不同（库是 "1".."5"，
+     * 内置是 "q1".."q5"），会恒算 0 分。quizBank 为 null 时才回落内置（无 Spring 的单测）。
+     */
+    private static String buildQuizDetail(JsonNode answer, List<QuizBank.Question> quizBank) {
         JsonNode ansNode = answer != null ? answer.get("answers") : null;
         if (ansNode == null || !ansNode.isObject() || ansNode.isEmpty()) {
             return "已完成答题";
         }
         Map<String, Integer> answers = new LinkedHashMap<>();
         ansNode.fields().forEachRemaining(e -> answers.put(e.getKey(), e.getValue().asInt(-1)));
-        int correct = QuizBank.grade(QuizBank.DEFAULT_BANK_ID, answers);
+        int correct = quizBank != null
+                ? QuizBank.grade(quizBank, answers)
+                : QuizBank.grade(QuizBank.DEFAULT_BANK_ID, answers);
         return "答对 " + correct + "/" + answers.size() + " 题";
     }
 
@@ -1693,11 +1704,14 @@ public class TwinStudentViolationService {
         String payload = null;
         String channel = null;
         LocalDateTime completedAt = null;
+        List<QuizBank.Question> quizBank = null;
         if (obligationService != null) {
             TwinObligation ob = obligationService.findByViolationId(violationId);
             if (ob != null) {
                 type = ob.getDispositionType();
                 status = ob.getStatus();
+                // 答题详情必须按该待办实际用的题库算分，否则恒 0 分（见 buildQuizDetail）
+                quizBank = obligationService.quizQuestionsForConfig(ob.getDispositionConfigJson());
                 if (ob.getId() != null) {
                     TwinObligationReceipt receipt = obligationService.findReceipt(ob.getId(), ob.getSubjectUserId());
                     if (receipt != null) {
@@ -1708,7 +1722,7 @@ public class TwinStudentViolationService {
                 }
             }
         }
-        Map<String, Object> out = new LinkedHashMap<>(dispositionSummary(type, status, payload, completedAt, channel));
+        Map<String, Object> out = new LinkedHashMap<>(dispositionSummary(type, status, payload, completedAt, channel, quizBank));
         out.put("answerPayload", payload);
         return out;
     }

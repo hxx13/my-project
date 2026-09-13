@@ -2,6 +2,10 @@ package com.example.demo.modules.twin.dashboard.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
+import com.example.demo.modules.twin.obligation.disposition.QuizBank;
+
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -23,7 +27,28 @@ class ViolationDispositionSummaryTest {
     }
 
     private static Map<String, Object> sum(String type, String status, String payload) {
-        return TwinStudentViolationService.dispositionSummary(type, status, payload, null, null);
+        return TwinStudentViolationService.dispositionSummary(type, status, payload, null, null, null);
+    }
+
+    private static Map<String, Object> sumWithBank(String type, String status, String payload,
+                                                   List<QuizBank.Question> bank) {
+        return TwinStudentViolationService.dispositionSummary(type, status, payload, null, null, bank);
+    }
+
+    /**
+     * 回归：答题得分必须按「该待办实际用的题库」算。
+     *
+     * <p>抽题与判分都走库（题目 id 是 "1".."5"），而详情原先按**内置**题库算（id 是 "q1".."q5"），
+     * 两套命名空间对不上 → 恒算 0 分，出现「明明全对却显示答对 0/2 题」。
+     */
+    @Test
+    void quizDetail_gradesAgainstProvidedBank() {
+        List<QuizBank.Question> bank = List.of(
+                new QuizBank.Question("1", "题一", List.of("A", "B"), 0),
+                new QuizBank.Question("4", "题四", List.of("A", "B"), 0));
+        Map<String, Object> out = sumWithBank("QUIZ", "COMPLETED",
+                wrap("{\"answers\":{\"1\":0,\"4\":0}}"), bank);
+        assertEquals("答对 2/2 题", out.get("detail"));
     }
 
     @Test

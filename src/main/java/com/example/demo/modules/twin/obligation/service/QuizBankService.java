@@ -6,6 +6,7 @@ import com.example.demo.modules.twin.obligation.entity.TwinQuizBank;
 import com.example.demo.modules.twin.obligation.entity.TwinQuizQuestion;
 import com.example.demo.modules.twin.obligation.mapper.TwinQuizBankMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +64,27 @@ public class QuizBankService {
     /** 按策略配置判分：config 里读 questionBankId / passCount。 */
     public boolean passed(String configJson, String answerRaw) {
         return QuizGradeSupport.passed(objectMapper, configJson, answerRaw, this::questionsOf);
+    }
+
+    /**
+     * 按策略配置里的 questionBankId 取题库题目。
+     *
+     * <p>给「处置详情」按**同一份题目**算分用：抽题与判分都走库，详情若按内置题库算，
+     * 两套题目 id 命名空间不同（库是 "1".."5"，内置是 "q1".."q5"），会恒算 0 分。
+     */
+    public List<QuizBank.Question> questionsForConfig(String configJson) {
+        String bankId = QuizBank.DEFAULT_BANK_ID;
+        try {
+            if (StringUtils.hasText(configJson)) {
+                JsonNode cfg = objectMapper.readTree(configJson);
+                if (cfg.hasNonNull("questionBankId")) {
+                    bankId = cfg.get("questionBankId").asText(QuizBank.DEFAULT_BANK_ID);
+                }
+            }
+        } catch (Exception ignored) {
+            /* 配置坏了就按默认库 */
+        }
+        return questionsOf(bankId);
     }
 
     // ── 后台管理 ──

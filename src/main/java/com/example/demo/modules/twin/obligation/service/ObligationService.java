@@ -257,8 +257,18 @@ public class ObligationService {
         }
     }
 
-    /** 已提交处置次数（含失败）。答题重试上限据此判定。 */
-    public int attemptCount(long obligationId) {
+    /**
+     * 该待办答题策略实际使用的题库题目（按 config 的 questionBankId）。
+     *
+     * <p>给「处置详情」按同一份题目算分用：抽题与判分都走库，详情若按内置题库算，
+     * 两套题目 id 命名空间不同（库是 "1".."5"，内置是 "q1".."q5"）会恒算 0 分。
+     * 取不到返回 null，调用方自行回落内置。
+     */
+    public List<QuizBank.Question> quizQuestionsForConfig(String configJson) {
+        return quizBankService == null ? null : quizBankService.questionsForConfig(configJson);
+    }
+
+    /** 已提交处置次数（含失败）。答题重试上限据此判定。 */    public int attemptCount(long obligationId) {
         if (obligationId <= 0) {
             return 0;
         }

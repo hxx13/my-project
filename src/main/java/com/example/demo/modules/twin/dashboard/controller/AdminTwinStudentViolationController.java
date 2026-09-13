@@ -564,7 +564,9 @@ public class AdminTwinStudentViolationController {
                         ob.getStatus(),
                         receipt == null ? null : receipt.getAnswerPayload(),
                         receipt == null ? null : receipt.getCompletedAt(),
-                        receipt == null ? null : receipt.getChannel());
+                        receipt == null ? null : receipt.getChannel(),
+                        // 答题得分要按该待办实际用的题库算（库与内置的题目 id 命名空间不同）
+                        obligationService.quizQuestionsForConfig(ob.getDispositionConfigJson()));
             } catch (Exception ignored) {
                 disposition = null;
             }
