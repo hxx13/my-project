@@ -51,3 +51,36 @@ JOIN (SELECT 1 AS i UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
 WHERE s.module = 'cage_mode'
   AND s.config_key LIKE 'cage.%'
   AND TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(s.config_value, ',', n.i), ',', -1)) <> '';
+
+-- 基线播种：**仅当矩阵完全为空**时执行。
+-- 为什么需要它：上面那条迁移依赖 cage_mode 配置存在，而配置在下方被退役了。
+-- 全新环境（空库启动）没有配置可迁 → 矩阵为空 → fail-closed 会把所有模式锁死。
+--
+-- 守卫必须用「派生表」包一层再 NOT EXISTS：MySQL 不允许 INSERT...SELECT 直接引用目标表，
+-- 套一层派生表即可materialize。已实测三种场景：空表播种 / 非空跳过 / 部分清空后**不会把
+-- 管理员删掉的授权复活**（所以不能用「配置不存在就播种」那种守卫）。
+INSERT IGNORE INTO cage_permission_grant (capability_code, identity_code)
+SELECT t.c, t.i FROM (
+    SELECT 'cage.mode.booking'         AS c, 'SECRETARY'              AS i UNION ALL
+    SELECT 'cage.mode.allocate',              'BREEDING_GROUP_LEADER'          UNION ALL
+    SELECT 'cage.mode.reserve',               'BREEDING_GROUP_LEADER'          UNION ALL
+    SELECT 'cage.mode.edit',                  'BREEDER'                        UNION ALL
+    SELECT 'cage.mode.edit',                  'BREEDING_GROUP_LEADER'          UNION ALL
+    SELECT 'cage.mode.record',                'BREEDER'                        UNION ALL
+    SELECT 'cage.mode.record',                'BREEDING_GROUP_LEADER'          UNION ALL
+    SELECT 'cage.mode.archive',               'BREEDER'                        UNION ALL
+    SELECT 'cage.mode.archive',               'BREEDING_GROUP_LEADER'          UNION ALL
+    SELECT 'cage.mode.confirm',               'BREEDER'                        UNION ALL
+    SELECT 'cage.mode.confirm',               'BREEDING_GROUP_LEADER'          UNION ALL
+    SELECT 'cage.mode.confirm',               'LAB_MEMBER'                     UNION ALL
+    SELECT 'cage.mode.division',              'GROUP_STEWARD'                  UNION ALL
+    SELECT 'cage.op.manage_identities',       'BREEDER'                        UNION ALL
+    SELECT 'cage.op.manage_identities',       'BREEDING_GROUP_LEADER'
+) t
+WHERE NOT EXISTS (SELECT 1 FROM (SELECT id FROM cage_permission_grant LIMIT 1) AS probe);
+
+-- 退役 cage_mode 配置：定义与运行值都删掉。
+-- 不删的话设置面板的 schema 驱动渲染会继续显示一组「改了没有任何效果」的死开关
+-- （CageClaimConfigSeed 里记的同一个教训）。必须放在迁移与基线播种**之后**。
+DELETE FROM sys_system_config_def WHERE module = 'cage_mode';
+DELETE FROM sys_system_config     WHERE module = 'cage_mode';
