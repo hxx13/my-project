@@ -1986,3 +1986,46 @@ export async function fetchCageModeVisible(): Promise<CageModeVisibleResult> {
   if (!res.data?.success) throw new Error(res.data?.message || "加载模式列表失败");
   return res.data.data ?? { modes: [], isStudent: false, isSuperAdmin: false };
 }
+
+// ── 身份权限矩阵（取代原 cage_mode 配置模块）──
+
+export interface CagePermissionCapability {
+  code: string;
+  label: string;
+  /** 仅用于矩阵行分组展示，不参与判定 */
+  viewGroup: "STAFF" | "STUDENT";
+  leaderExclusive: number;
+}
+
+export interface CagePermissionGrant {
+  capabilityCode: string;
+  identityCode: string;
+}
+
+export interface CagePermissionMatrix {
+  capabilities: CagePermissionCapability[];
+  grants: CagePermissionGrant[];
+  /** 一个身份都没勾的能力码 = 该能力全员禁用（fail-closed）。界面要标红。 */
+  emptyCapabilities: string[];
+}
+
+/** GET /api/cage-permission/matrix — 能力列 + 授权行 + 空列清单（SUPER_ADMIN） */
+export async function fetchCagePermissionMatrix(): Promise<CagePermissionMatrix> {
+  const res = await authHttp.get<Result<CagePermissionMatrix>>("/cage-permission/matrix");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载权限矩阵失败");
+  return res.data.data ?? { capabilities: [], grants: [], emptyCapabilities: [] };
+}
+
+/** PUT /api/cage-permission/grant — 单格勾选/取消（SUPER_ADMIN） */
+export async function saveCagePermissionGrant(
+  capabilityCode: string,
+  identityCode: string,
+  granted: boolean,
+): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-permission/grant", {
+    capabilityCode,
+    identityCode,
+    granted,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存失败");
+}

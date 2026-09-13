@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Database, Lock, ShieldCheck, Eye, UserCheck, type LucideIcon } from "lucide-react";
+import { Database, Lock, ShieldCheck, Grid3x3, UserCheck, type LucideIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
 import CageOwnerApprovalSettings from "./CageOwnerApprovalSettings";
 import CageAuditAssignmentSettings from "./CageAuditAssignmentSettings";
-import CageModeVisibilitySettings from "./CageModeVisibilitySettings";
+import CagePermissionMatrixPanel from "./CagePermissionMatrixPanel";
 import CageSyncLockSettings from "./CageSyncLockSettings";
 import { SettingsSection } from "./SettingsPrimitives";
 
@@ -27,7 +27,7 @@ import { SettingsSection } from "./SettingsPrimitives";
  * 每类带 minRole 门槛：够权限的分类才出现在侧栏，默认选中第一个可见的。
  */
 
-type CategoryKey = "dataSource" | "ownerApproval" | "audit" | "modes" | "syncLock";
+type CategoryKey = "dataSource" | "ownerApproval" | "audit" | "permissions" | "syncLock";
 
 const CATEGORIES: Array<{ key: CategoryKey; label: string; description: string; icon: LucideIcon; minRole?: string }> = [
   {
@@ -41,7 +41,7 @@ const CATEGORIES: Array<{ key: CategoryKey; label: string; description: string; 
     key: "ownerApproval",
     label: "所属人审核配置",
     description:
-      "到位确认 / 分笼审核 / 转移审核三个开关，按所属人维护。任何人都能配自己的；看别人、配别人要管理员及以上。",
+      "到位确认 / 分笼审核 / 转移审核三个开关，按所属人维护。任何人都能配自己的；看别人、配别人要超级管理员及以上。",
     icon: UserCheck,
   },
   {
@@ -52,10 +52,11 @@ const CATEGORIES: Array<{ key: CategoryKey; label: string; description: string; 
     minRole: "ADMIN",
   },
   {
-    key: "modes",
-    label: "模式可见性",
-    description: "各操作模式对哪些身份可见，以及分笼/转移除占用者本人外还可由哪些身份操作。",
-    icon: Eye,
+    key: "permissions",
+    label: "权限矩阵",
+    description:
+      "身份 × 权限的矩阵：勾选 = 该身份拥有该权限。一个都不勾 = 该权限对所有人禁用。",
+    icon: Grid3x3,
     minRole: "SUPER_ADMIN",
   },
   {
@@ -145,8 +146,8 @@ export default function CageSettingsCenter({
         return <CageOwnerApprovalSettings />;
       case "audit":
         return <CageAuditAssignmentSettings />;
-      case "modes":
-        return <CageModeVisibilitySettings />;
+      case "permissions":
+        return <CagePermissionMatrixPanel />;
       case "syncLock":
         return (
           <CageSyncLockSettings
@@ -164,7 +165,7 @@ export default function CageSettingsCenter({
         <DialogHeader className="shrink-0 border-b border-[var(--twin-hairline)] px-5 py-3.5 text-left">
           <DialogTitle className="text-[14px] text-[var(--twin-ink)]">设置中心</DialogTitle>
           <DialogDescription className="text-[11px] text-[var(--twin-mute)]">
-            数据源 / 所属人审核配置 / 审核人归属 / 模式可见性 / 同步保护锁
+            数据源 / 所属人审核配置 / 审核人归属 / 权限矩阵 / 同步保护锁
           </DialogDescription>
         </DialogHeader>
 
