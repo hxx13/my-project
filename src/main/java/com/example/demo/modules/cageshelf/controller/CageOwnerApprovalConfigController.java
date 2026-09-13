@@ -59,7 +59,7 @@ public class CageOwnerApprovalConfigController {
         return Result.success(configService.listDetailed());
     }
 
-    /** 某所属人的生效配置（没配过返回三个 true 的默认值）。本人或 ADMIN 及以上可读。 */
+    /** 某所属人的生效配置（没配过返回三个 true 的默认值）。本人或 SUPER_ADMIN 及以上可读。 */
     @GetMapping("/{ownerAccountId}")
     @Operation(summary = "查某所属人的审核配置")
     public Result<Map<String, Object>> get(@PathVariable String ownerAccountId, HttpServletRequest request) {
@@ -75,7 +75,7 @@ public class CageOwnerApprovalConfigController {
         return Result.success(m);
     }
 
-    /** body: { confirmRequired, divideApprovalRequired, transferApprovalRequired }，整体覆盖。本人或 ADMIN 及以上可写。 */
+    /** body: { confirmRequired, divideApprovalRequired, transferApprovalRequired }，整体覆盖。本人或 SUPER_ADMIN 及以上可写。 */
     @PutMapping("/{ownerAccountId}")
     @Operation(summary = "保存某所属人的审核配置")
     public Result<?> save(@PathVariable String ownerAccountId,

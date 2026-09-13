@@ -55,7 +55,7 @@ export default function CageOwnerApprovalSettings() {
     };
   }, [myAccountId]);
 
-  /* ══════════ 下区：其他人（仅 ADMIN+） ══════════ */
+  /* ══════════ 下区：其他人（仅 SUPER_ADMIN+） ══════════ */
   const [overview, setOverview] = useState<CageOwnerApprovalOverview[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -220,7 +220,7 @@ export default function CageOwnerApprovalSettings() {
         )}
       </SettingsSection>
 
-      {/* ── 下区：其他人（仅 ADMIN 及以上） ── */}
+      {/* ── 下区：其他人（仅 SUPER_ADMIN 及以上） ── */}
       {canManageOthers && (
         <>
           <SettingsSection
