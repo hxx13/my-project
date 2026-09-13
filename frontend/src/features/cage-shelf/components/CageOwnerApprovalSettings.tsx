@@ -17,14 +17,14 @@ import { SettingsRow, SettingsSection, SettingsSwitch } from "./SettingsPrimitiv
  *
  * 分上下两区：
  *  - 上「我的审核开关」：能打开设置中心的人都能配自己那份（后端同样放行本人）。
- *  - 下「其他人的审核配置」：仅 ADMIN 及以上可见/可用（后端也做了同等校验，前端只是不显示）。
+ *  - 下「其他人的审核配置」：仅 SUPER_ADMIN 及以上可见/可用（后端也做了同等校验，前端只是不显示）。
  *
  * 判定口径：学生提交的分笼/转移看**目标所属人（接收方）**的配置；认领/代认领看接收人自己的配置。
  * 没配过的所属人一律按「三个开关全 true」（需要审核）处理。
  */
 export default function CageOwnerApprovalSettings() {
   const role = authStorage.getRole();
-  const canManageOthers = hasMinRole(role, "ADMIN");
+  const canManageOthers = hasMinRole(role, "SUPER_ADMIN");
   const myAccountId = String(authStorage.getUserInfo()?.id ?? "");
 
   /* ══════════ 上区：我的三个开关 ══════════
