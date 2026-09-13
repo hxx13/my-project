@@ -1,6 +1,5 @@
 package com.example.demo.modules.cageshelf.service;
 
-import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageAuditAssignment;
@@ -23,11 +22,14 @@ public class CageAuditAssignmentService {
 
     private final CageAuditAssignmentMapper mapper;
     private final UserDisplayNameService displayNameService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageAuditAssignmentService(CageAuditAssignmentMapper mapper,
-                                      UserDisplayNameService displayNameService) {
+                                      UserDisplayNameService displayNameService,
+                                      CageVisibilityPolicy visibilityPolicy) {
         this.mapper = mapper;
         this.displayNameService = displayNameService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     public List<CageAuditAssignment> listByReviewer(String reviewerUserId) {
@@ -98,12 +100,12 @@ public class CageAuditAssignmentService {
 
     /**
      * 某审核人是否能审批某笼位（按楼层/房间/校区归属）。
-     * ADMIN/SUPER_ADMIN 逃生口：全量可审；否则命中 cage_audit_assignment 才可审。
+     * 全局可见者（SUPER_ADMIN+）逃生口：全量可审；否则命中 cage_audit_assignment 才可审。
      * roomId/floorId/campusId 传字符串化 id（null 跳过）。
      */
     public boolean canReview(User user, String roomId, String floorId, String campusId) {
         if (user == null) return false;
-        if (user.getRole() != null && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) return true;
+        if (visibilityPolicy.isGlobalViewer(user)) return true;
         Map<String, List<String>> grouped = listGroupedByType(user.getId());
         if (grouped.isEmpty()) return false;
         if (roomId != null && grouped.getOrDefault("ROOM", List.of()).contains(roomId)) return true;
