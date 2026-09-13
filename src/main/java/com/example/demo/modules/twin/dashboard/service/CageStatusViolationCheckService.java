@@ -211,6 +211,8 @@ public class CageStatusViolationCheckService {
                     : (rule.getShowNoticeEveryScan() != null && rule.getShowNoticeEveryScan() == 1 ? 1 : 0);
 
             List<String> memberIds = resolveGroupMemberIds(evt.getProjectPiName());
+            // 一次规则事件下发给全组＝一块：共用批次键，记录页按此成块（与滞留检测「一轮一块」同口径）
+            String batchId = TwinStudentViolationService.newBatchKey();
             for (String userId : memberIds) {
                 try {
                     TwinStudentViolation violation = violationService.create(
@@ -226,7 +228,10 @@ public class CageStatusViolationCheckService {
                             effectiveInteractiveChallenge,
                             effectiveInteractiveUnlock,
                             rule.getId(),
-                            parent.getId()
+                            parent.getId(),
+                            null,
+                            null,
+                            batchId
                     );
                 } catch (Exception e) {
                     log.warn("[cage-v-check] 创建个人违规失败 userId={} err={}", userId, e.getMessage());
