@@ -219,6 +219,14 @@ public class TwinStudentViolationService {
         dto.setInteractiveChallengeVerified(row.getInteractiveChallengeVerifiedAt() != null);
         dto.setExpireAt(row.getExpireAt());
         dto.setPastExpireAwaitingInteractive(isPastExpireAwaitingInteractive(row));
+        // 处置策略：该条违规对应的待办（一一对应，uk_obligation_source）
+        if (obligationService != null) {
+            TwinObligation ob = obligationService.findByViolationId(row.getId());
+            if (ob != null) {
+                dto.setDispositionType(ob.getDispositionType());
+                dto.setDispositionConfigJson(ob.getDispositionConfigJson());
+            }
+        }
         // 笼位联动标记：前端据此渲染独立灵动岛
         boolean isCage = "CAGE_STATUS".equals(row.getSource());
         if (isCage) {

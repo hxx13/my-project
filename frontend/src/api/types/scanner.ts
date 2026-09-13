@@ -144,6 +144,10 @@ export interface StudentViolationNotice {
     autoOpenSuppressed?: boolean;
     /** CAGE_STATUS / MANUAL 等来源标识 */
     source?: string;
+    /** 处置策略类型：SHOW_ONLY/ACK_READ/ACK_PUZZLE/QUIZ/SIGNATURE */
+    dispositionType?: string | null;
+    /** 策略配置原文（JSON 字符串） */
+    dispositionConfigJson?: string | null;
 }
 
 export interface ExecutePayload {
