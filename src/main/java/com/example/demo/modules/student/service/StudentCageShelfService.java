@@ -13,6 +13,7 @@ import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.service.CageCellIndexService;
 import com.example.demo.modules.cageshelf.service.CageShelfLocalAggCache;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import com.example.demo.modules.identity.service.PersonScopeService;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
@@ -57,6 +58,7 @@ public class StudentCageShelfService {
     private final PersonScopeService personScopeService;
     private final CageShelfLocalAggCache localAggCache;
     private final com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public StudentCageShelfService(CageShelfService cageShelfService,
                                    AroService aroService,
@@ -69,7 +71,8 @@ public class StudentCageShelfService {
                                    CageCellIndexService cageCellIndexService,
                                    PersonScopeService personScopeService,
                                    CageShelfLocalAggCache localAggCache,
-                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService) {
+                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService,
+                                   CageVisibilityPolicy visibilityPolicy) {
         this.cageShelfService = cageShelfService;
         this.aroService = aroService;
         this.aroPersonnelMapper = aroPersonnelMapper;
@@ -82,6 +85,7 @@ public class StudentCageShelfService {
         this.personScopeService = personScopeService;
         this.localAggCache = localAggCache;
         this.cageOperationService = cageOperationService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     // ---- filter options ----
@@ -743,10 +747,9 @@ public class StudentCageShelfService {
         }
     }
 
-    /** Admin role or above bypasses project-group restrictions. */
+    /** 全局可见者（SUPER_ADMIN+）越过课题组限制。判据见 {@link CageVisibilityPolicy}。 */
     private boolean isAdminUser(User user) {
-        if (user == null || user.getRole() == null) return false;
-        return user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        return visibilityPolicy.isGlobalViewer(user);
     }
 
     /**

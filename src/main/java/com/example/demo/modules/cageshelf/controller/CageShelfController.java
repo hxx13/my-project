@@ -11,6 +11,7 @@ import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
 import com.example.demo.modules.cageshelf.service.CageAlertService;
 import com.example.demo.modules.cageshelf.service.CageScanProgressService;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,6 +53,7 @@ public class CageShelfController {
     private final CageQuotaService quotaService;
     private final com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService;
     private final com.example.demo.modules.cageshelf.service.CageOperationService cageOpService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -66,7 +68,8 @@ public class CageShelfController {
                                com.example.demo.modules.cageshelf.service.CageShelfRealtimeCooldown cooldown,
                                CageQuotaService quotaService,
                                com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService,
-                               com.example.demo.modules.cageshelf.service.CageOperationService cageOpService) {
+                               com.example.demo.modules.cageshelf.service.CageOperationService cageOpService,
+                               CageVisibilityPolicy visibilityPolicy) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -81,6 +84,7 @@ public class CageShelfController {
         this.quotaService = quotaService;
         this.bookingLocalService = bookingLocalService;
         this.cageOpService = cageOpService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     @PostMapping("/import")
@@ -114,7 +118,7 @@ public class CageShelfController {
         if (denied != null) {
             return denied;
         }
-        if (user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+        if (visibilityPolicy.isGlobalViewer(user)) {
             return Result.success(cageShelfService.filterOptions(campusId, areaId, areaName, floorId, floorName, roomId, roomName));
         }
         Integer campusIdParam = campusId;
@@ -168,7 +172,7 @@ public class CageShelfController {
             return denied;
         }
         try {
-            if (user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            if (visibilityPolicy.isGlobalViewer(user)) {
                 return Result.success(cageShelfService.fetchShelfDetail(shelveId, batchId));
             }
             return Result.success(studentCageShelfService.getShelfDetail(user, shelveId));
@@ -232,7 +236,7 @@ public class CageShelfController {
             return denied;
         }
         try {
-            if (user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            if (visibilityPolicy.isGlobalViewer(user)) {
                 return Result.success(cageShelfService.getSpecialStatusOverview(batchId));
             }
             return Result.success(studentCageShelfService.getSpecialStatusOverview(user));

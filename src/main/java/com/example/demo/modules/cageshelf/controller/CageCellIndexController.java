@@ -71,7 +71,7 @@ public class CageCellIndexController {
     }
 
     /**
-     * 划分名单按查看者收口：**组员只看划给自己的，管家 / 管理员看全部**。
+     * 划分名单按查看者收口：**组员只看划给自己的，全局可见者（SUPER_ADMIN+）/ 管家看全部**。
      *
      * 与课题组脱敏是两件事（脱敏同组内不区分权限，划分名单要区分），所以单独走一遍；
      * 且放在 applyGroupMask 最前面 —— 下面「已分配范围整架放开」会提前 return，
@@ -420,7 +420,7 @@ public class CageCellIndexController {
 
         CageCellDetail detail = detailMapper.selectByAnimalCageId(animalCageId);
         if (detail == null) return Result.error("未找到该笼位详情: " + animalCageId);
-        // 非 admin 按课题组脱敏（PI/部门/AUP/实验员等敏感字段）
+        // 非全局可见者按课题组脱敏（PI/部门/AUP/实验员等敏感字段）
         detail = studentCageShelfService.maskDetailForUser(user, detail);
 
         Map<String, Object> result = new LinkedHashMap<>();

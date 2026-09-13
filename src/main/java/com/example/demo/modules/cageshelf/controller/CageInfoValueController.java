@@ -8,6 +8,7 @@ import com.example.demo.modules.cageshelf.entity.CageCellDetail;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageOperationService;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,17 +36,20 @@ public class CageInfoValueController {
     private final StudentCageShelfService studentCageShelfService;
     private final CageCellDetailMapper detailMapper;
     private final CageOperationService operationService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageInfoValueController(AuthContextService authContextService,
                                    CageInfoValueService infoValueService,
                                    StudentCageShelfService studentCageShelfService,
                                    CageCellDetailMapper detailMapper,
-                                   CageOperationService operationService) {
+                                   CageOperationService operationService,
+                                   CageVisibilityPolicy visibilityPolicy) {
         this.authContextService = authContextService;
         this.infoValueService = infoValueService;
         this.studentCageShelfService = studentCageShelfService;
         this.detailMapper = detailMapper;
         this.operationService = operationService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -71,10 +75,10 @@ public class CageInfoValueController {
         return Result.success(maskValuesForUser(u, animalCageId, infoValueService.getInfo(animalCageId)));
     }
 
-    /** 非 admin 按课题组脱敏：复用 maskDetailForUser 判定可见性，不可见时对敏感字段置 *** / 空。 */
+    /** 非全局可见者按课题组脱敏：复用 maskDetailForUser 判定可见性，不可见时对敏感字段置 *** / 空。 */
     private List<Map<String, Object>> maskValuesForUser(User u, Long animalCageId, List<Map<String, Object>> values) {
         if (u == null || values == null || values.isEmpty()) return values;
-        if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) return values;
+        if (visibilityPolicy.isGlobalViewer(u)) return values;
         CageCellDetail detail = detailMapper.selectByAnimalCageId(animalCageId);
         if (detail == null) return values;
         studentCageShelfService.maskDetailForUser(u, detail);
