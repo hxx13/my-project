@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-12T15:00:13.377Z",
+  "generatedAt": "2026-09-13T09:13:09.124Z",
   "pages": [
     {
       "path": "/about",
@@ -127,6 +127,13 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "ARO 房间与联动",
       "registryId": "cage-forms-audit"
+    },
+    {
+      "path": "/admin/cage-shelves/my-region",
+      "label": "我的区域",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "ARO 房间与联动",
+      "registryId": "cage-my-region"
     },
     {
       "path": "/admin/cage-shelves/scope",

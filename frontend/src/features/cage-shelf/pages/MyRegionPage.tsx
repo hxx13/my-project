@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { ChevronLeft } from "lucide-react";
+import { useGoBack } from "@/features/aup/hooks/useGoBack";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import {
   fetchFullTree,
@@ -24,6 +26,9 @@ const card = "rounded-lg border border-[var(--app-color-border-default)] bg-[var
 const muted = "text-[var(--app-color-text-tertiary)]";
 
 export default function MyRegionPage() {
+  // 返回笼架信息（本页是它的子路由，与 cage-shelves/scope 同构）。
+  // 跳转必须带 /console 前缀——裸 /admin/... 会命中顶层 legacy 重定向、整个后台壳层重建。
+  const goBack = useGoBack("/console/admin/cage-shelves");
   const [regions, setRegions] = useState<MyRegionEntry[]>([]);
   const [members, setMembers] = useState<MyRegionMember[]>([]);
   const [isLeader, setIsLeader] = useState(false);
@@ -78,6 +83,14 @@ export default function MyRegionPage() {
   return (
     <AdminFullWidthPage>
       <div className="mx-auto max-w-6xl px-4 py-6">
+        <button
+          type="button"
+          onClick={goBack}
+          className={`mb-3 inline-flex items-center gap-1 text-[12px] ${muted} hover:text-[var(--app-color-text-primary)]`}
+        >
+          <ChevronLeft className="size-3.5" />
+          返回笼架信息
+        </button>
         <div className={`${card} mb-4 p-4 text-[12px] leading-relaxed ${muted}`}>
           这里显示<b className="text-[var(--app-color-text-primary)]">你作为饲养组长负责的区域</b>
           ，以及由你纳入的组员。区域由超级管理员分配；本页当前为只读视图——组员管理与组员权限配置将在后续版本开放。
