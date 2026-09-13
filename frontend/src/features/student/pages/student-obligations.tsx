@@ -4,6 +4,7 @@ import { ClipboardCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { InteractiveChallenge } from "@/components/scanner/InteractiveChallenge";
+import { SignaturePad } from "@/components/signature";
 import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 import {
   completeObligation,
@@ -321,7 +322,7 @@ function SignaturePanel({
   configJson?: string | null;
   onSubmit: (signature: string) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
+  const [sig, setSig] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   let preamble = "";
   try {
@@ -334,18 +335,13 @@ function SignaturePanel({
   return (
     <div className="mt-4 space-y-3">
       {preamble ? <p className="text-sm text-[var(--student-mute-foreground)]">{preamble}</p> : null}
-      <input
-        className="w-full rounded-md border border-[var(--app-color-border-default)] px-3 py-2 text-sm"
-        placeholder="请输入姓名作为签名"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
+      <SignaturePad value={sig} onChange={setSig} disabled={busy} />
       <StudentButton
-        disabled={busy || name.trim().length < 2}
+        disabled={busy || !sig}
         onClick={async () => {
           setBusy(true);
           try {
-            await onSubmit(name.trim());
+            await onSubmit(sig!);
           } catch (e) {
             toast.error(e instanceof Error ? e.message : "签名提交失败");
           } finally {
