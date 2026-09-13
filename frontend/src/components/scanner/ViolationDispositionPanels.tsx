@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { drawViolationQuiz } from "@/api/domains/scanner.api";
@@ -162,14 +163,26 @@ export function ViolationQuizPanel({
                   key={`${q.id}-${idx}`}
                   type="button"
                   disabled={busy}
+                  aria-pressed={checked}
                   onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: idx }))}
-                  className={`rounded-[var(--app-radius-element)] border px-3 py-2.5 text-left text-sm ${
+                  className={`flex items-center gap-2.5 rounded-[var(--app-radius-element)] border-2 px-3 py-2.5 text-left text-sm transition-colors ${
                     checked
-                      ? "border-[var(--app-color-accent)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)]"
-                      : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]"
+                      ? // 选中态要一眼看得出来：2px 主色描边 + 主色浅底 + 实心勾选圆点 + 加粗
+                        "border-[var(--app-color-accent)] bg-[var(--app-color-accent-soft)] font-medium text-[var(--app-color-text-primary)]"
+                      : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
                   }`}
                 >
-                  {opt}
+                  <span
+                    aria-hidden
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                      checked
+                        ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)] text-white"
+                        : "border-[var(--app-color-border-default)]"
+                    }`}
+                  >
+                    {checked ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1">{opt}</span>
                 </button>
               );
             })}
