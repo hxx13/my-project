@@ -10,11 +10,11 @@ import { fetchIdentityTags, type IdentityTag } from "@/api/domains/personIdentit
 import { SettingsSection } from "./SettingsPrimitives";
 
 /**
- * 身份权限矩阵：行 = 身份标识（person_identity_tag），列 = 能力（cage_permission_capability），
+ * 身份权限矩阵：**行 = 身份标识**（person_identity_tag），**列 = 能力**（cage_permission_capability），
  * 格子勾选 = 授予。取代原来「模式可见性」那套逗号串配置。
  *
- * 空列语义是 **fail-closed**：某能力一个身份都没勾 = 全员禁用（不是「不限制」）。
- * 所以空列会标红并给顶部提示——迁移漏一行就会静默锁死一个模式，必须一眼看得见。
+ * 空行语义是 **fail-closed**：某能力一个身份都没勾 = 全员禁用（不是「不限制」）。
+ * 所以空行会标红并给顶部提示——迁移漏一行就会静默锁死一个模式，必须一眼看得见。
  *
  * 样式走笼架设置弹窗自己的 --twin-* 令牌，与弹窗内其他分类一致；
  * 不复用 NHP 的 MatrixTable（那套走 nhp.css 的 --primary/--text，两套变量混用会整体失效）。
@@ -78,7 +78,7 @@ export default function CagePermissionMatrixPanel() {
     });
     try {
       await saveCagePermissionGrant(cap, identity, next);
-      // 空列清单由后端口径决定，改动后重新拉一次（只读、代价小），不在前端自己算。
+      // 空行清单由后端口径决定，改动后重新拉一次（只读、代价小），不在前端自己算。
       const fresh = await fetchCagePermissionMatrix();
       setEmptyCaps(fresh.emptyCapabilities);
     } catch (e) {
@@ -123,11 +123,11 @@ export default function CagePermissionMatrixPanel() {
             </span>
           }
         >
-          <div className="max-h-80 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
-            <table className="border-collapse text-[11px]">
+          <div className="overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
+            <table className="w-full border-collapse text-[11px]">
               <thead>
                 <tr>
-                  <th className="sticky left-0 top-0 z-20 min-w-[132px] border-b border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-2 text-left font-semibold text-[var(--twin-mute)]">
+                  <th className="sticky left-0 top-0 z-20 w-[132px] min-w-[132px] border-b border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-2 text-left font-semibold text-[var(--twin-mute)]">
                     身份 \ 权限
                   </th>
                   {cols.map((c) => {
@@ -136,13 +136,13 @@ export default function CagePermissionMatrixPanel() {
                       <th
                         key={c.code}
                         title={c.code}
-                        className={`sticky top-0 z-10 min-w-[76px] border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-2 align-bottom font-semibold ${
+                        className={`sticky top-0 z-10 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-2 align-bottom font-semibold ${
                           isEmpty ? "text-[var(--app-color-feedback-danger)]" : "text-[var(--twin-ink)]"
                         }`}
                       >
                         <div className="flex flex-col items-center gap-0.5">
-                          <span>{c.label}</span>
-                          {isEmpty && <span className="text-[9px] font-normal">无人可用</span>}
+                          <span className="whitespace-nowrap">{c.label}</span>
+                          {isEmpty && <span className="text-[9px] font-normal whitespace-nowrap">无人可用</span>}
                         </div>
                       </th>
                     );
@@ -152,7 +152,7 @@ export default function CagePermissionMatrixPanel() {
               <tbody>
                 {identities.map((idt) => (
                   <tr key={idt.code} className="odd:bg-[var(--twin-canvas-soft)]">
-                    <td className="sticky left-0 z-10 border-b border-r border-[var(--twin-hairline)] bg-inherit px-2.5 py-1.5">
+                    <td className="sticky left-0 z-10 border-b border-r border-[var(--twin-hairline)] bg-inherit px-2.5 py-2">
                       <div className="font-semibold text-[var(--twin-ink)]">{idt.label}</div>
                       <div className="text-[9px] text-[var(--twin-mute)]">{idt.code}</div>
                     </td>
@@ -162,7 +162,7 @@ export default function CagePermissionMatrixPanel() {
                       return (
                         <td
                           key={c.code}
-                          className="border-b border-[var(--twin-hairline)] px-2 py-1.5 text-center"
+                          className="border-b border-[var(--twin-hairline)] px-2 py-2 text-center"
                         >
                           <button
                             type="button"
