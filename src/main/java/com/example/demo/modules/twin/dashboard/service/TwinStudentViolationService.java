@@ -20,10 +20,13 @@ import com.example.demo.modules.twin.dashboard.support.ViolationMirrorNotificati
 import com.example.demo.modules.twin.dashboard.support.ViolationTextTemplateRenderer;
 import com.example.demo.modules.twin.obligation.content.ContentJsonSupport;
 import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
+import com.example.demo.modules.twin.obligation.disposition.QuizBank;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
+import com.example.demo.modules.twin.obligation.entity.TwinObligationReceipt;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.obligation.support.ObligationSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +52,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class TwinStudentViolationService {
     private static final Logger log = LoggerFactory.getLogger(TwinStudentViolationService.class);
+    /** 处置摘要纯函数专用（static 方法不能复用注入的实例 mapper） */
+    private static final ObjectMapper RECEIPT_JSON_MAPPER = new ObjectMapper();
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String SOURCE_AUTO_STRANDED = "AUTO_STRANDED";
     /** MySQL GET_LOCK 锁名最长 64 字符 */
@@ -68,6 +73,124 @@ public class TwinStudentViolationService {
         "HEALTH_ABNORMAL", "动物健康异常",
         "ANIMAL_TRANSFER", "动物转移"
     );
+
+    /** 处置策略编码 → 中文（仅本文件使用） */
+    private static final Map<String, String> DISPOSITION_TYPE_LABEL = Map.of(
+        "SHOW_ONLY", "仅展示",
+        "ACK_READ", "确认阅读",
+        "ACK_PUZZLE", "拼图短语",
+        "QUIZ", "答题",
+        "SIGNATURE", "签名确认"
+    );
+
+    /** 待办状态编码 → 中文（仅本文件使用） */
+    private static final Map<String, String> DISPOSITION_STATE_LABEL = Map.of(
+        "PENDING_DELIVERY", "待处置",
+        "DELIVERED", "待处置",
+        "PENDING_DISPOSITION", "待处置",
+        "COMPLETED", "已处置",
+        "EXPIRED", "已过期",
+        "REVOKED", "已撤销"
+    );
+
+    /**
+     * 处置摘要解析器（纯函数）：把「策略类型 + 待办状态 + 回执原文」压成列表可用的一句话。
+     *
+     * <p>硬约束：签名图（dataUrl）绝不进返回值，只回布尔 {@code hasSignatureImage}，
+     * 图片走详情端点按需取；{@code answerPayload} 原文一律不出现在任何键里。
+     *
+     * <p>键名即契约：type / typeLabel / status / stateLabel / completedAt / channel / detail / hasSignatureImage。
+     *
+     * @param type          {@code twin_obligation.disposition_type} 原文，可为 null
+     * @param status        {@code twin_obligation.status} 原文，可为 null（无待办）
+     * @param answerPayload 回执 {@code twin_obligation_receipt.answer_payload}，可为 null
+     * @param completedAt   回执完成时间（本函数不推断时间，一律由调用方传入），可为 null
+     * @param channel       回执渠道，可为 null
+     */
+    static Map<String, Object> dispositionSummary(String type, String status, String answerPayload,
+                                                  LocalDateTime completedAt, String channel) {
+        String rawType = StringUtils.hasText(type) ? type.trim() : null;
+        String rawStatus = StringUtils.hasText(status) ? status.trim() : null;
+        String typeKey = rawType != null ? rawType.toUpperCase() : null;
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("type", rawType);
+        out.put("typeLabel", typeKey == null ? null : DISPOSITION_TYPE_LABEL.getOrDefault(typeKey, rawType));
+        out.put("status", rawStatus);
+        out.put("stateLabel", resolveDispositionStateLabel(typeKey, rawStatus));
+        out.put("completedAt", completedAt);
+        out.put("channel", channel);
+
+        JsonNode answer = parseReceiptAnswer(answerPayload);
+        out.put("detail", resolveDispositionDetail(typeKey, rawStatus, completedAt, answer));
+        out.put("hasSignatureImage", resolveHasSignatureImage(typeKey, answer));
+        return out;
+    }
+
+    /** SHOW_ONLY 与无待办均「无需处置」；其余按状态映射，未知状态保守落在「待处置」。 */
+    private static String resolveDispositionStateLabel(String typeKey, String rawStatus) {
+        if (rawStatus == null || "SHOW_ONLY".equals(typeKey)) {
+            return "无需处置";
+        }
+        return DISPOSITION_STATE_LABEL.getOrDefault(rawStatus.toUpperCase(), "待处置");
+    }
+
+    private static String resolveDispositionDetail(String typeKey, String rawStatus,
+                                                   LocalDateTime completedAt, JsonNode answer) {
+        if (typeKey == null) {
+            return "";
+        }
+        boolean done = completedAt != null || "COMPLETED".equalsIgnoreCase(rawStatus);
+        if (!done) {
+            return "";
+        }
+        return switch (typeKey) {
+            case "ACK_READ" -> "已阅读";
+            case "ACK_PUZZLE" -> "已拼图确认";
+            case "QUIZ" -> buildQuizDetail(answer);
+            case "SIGNATURE" -> "已签名";
+            default -> "";
+        };
+    }
+
+    private static String buildQuizDetail(JsonNode answer) {
+        JsonNode ansNode = answer != null ? answer.get("answers") : null;
+        if (ansNode == null || !ansNode.isObject() || ansNode.isEmpty()) {
+            return "已完成答题";
+        }
+        Map<String, Integer> answers = new LinkedHashMap<>();
+        ansNode.fields().forEachRemaining(e -> answers.put(e.getKey(), e.getValue().asInt(-1)));
+        int correct = QuizBank.grade(QuizBank.DEFAULT_BANK_ID, answers);
+        return "答对 " + correct + "/" + answers.size() + " 题";
+    }
+
+    private static boolean resolveHasSignatureImage(String typeKey, JsonNode answer) {
+        if (!"SIGNATURE".equals(typeKey) || answer == null || !answer.isObject()) {
+            return false;
+        }
+        JsonNode sig = answer.get("signature");
+        return sig != null && sig.isTextual() && StringUtils.hasText(sig.asText());
+    }
+
+    /** 解包回执 answer_payload（形如 {"answer":"<原始提交>"}），内层是 JSON 对象才返回，否则 null。 */
+    private static JsonNode parseReceiptAnswer(String answerPayload) {
+        if (!StringUtils.hasText(answerPayload)) {
+            return null;
+        }
+        try {
+            JsonNode root = RECEIPT_JSON_MAPPER.readTree(answerPayload);
+            JsonNode inner = root != null ? root.get("answer") : null;
+            String raw = inner == null || inner.isNull() ? null
+                    : (inner.isTextual() ? inner.asText() : inner.toString());
+            if (!StringUtils.hasText(raw)) {
+                return null;
+            }
+            JsonNode parsed = RECEIPT_JSON_MAPPER.readTree(raw);
+            return parsed != null && parsed.isObject() ? parsed : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /** 解析笼位处理提示的标题：优先用父记录 statusCode 中文标签 */
     private String resolveCageNoticeTitle(TwinStudentViolation row) {
@@ -1503,6 +1626,42 @@ public class TwinStudentViolationService {
             }
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * 管理端「按需拉完整处置明细」：摘要全部键 + 回执 answerPayload 原文（供签名图预览）。
+     *
+     * <p>记录不存在返回 null（由调用方转 error）；无待办/回执时摘要照常返回、answerPayload 为 null
+     * （大量老记录没有 obligation，不能因此报错）。
+     */
+    public Map<String, Object> dispositionDetail(long violationId) {
+        TwinStudentViolation row = getById(violationId);
+        if (row == null) {
+            return null;
+        }
+        String type = null;
+        String status = null;
+        String payload = null;
+        String channel = null;
+        LocalDateTime completedAt = null;
+        if (obligationService != null) {
+            TwinObligation ob = obligationService.findByViolationId(violationId);
+            if (ob != null) {
+                type = ob.getDispositionType();
+                status = ob.getStatus();
+                if (ob.getId() != null) {
+                    TwinObligationReceipt receipt = obligationService.findReceipt(ob.getId(), ob.getSubjectUserId());
+                    if (receipt != null) {
+                        payload = receipt.getAnswerPayload();
+                        completedAt = receipt.getCompletedAt();
+                        channel = receipt.getChannel();
+                    }
+                }
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>(dispositionSummary(type, status, payload, completedAt, channel));
+        out.put("answerPayload", payload);
+        return out;
     }
 
     @Transactional(rollbackFor = Exception.class)

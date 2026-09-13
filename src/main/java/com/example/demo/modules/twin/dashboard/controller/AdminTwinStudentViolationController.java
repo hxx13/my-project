@@ -161,6 +161,27 @@ public class AdminTwinStudentViolationController {
         return Result.success(Map.of("list", out, "total", total));
     }
 
+    @GetMapping("/{id}/disposition-detail")
+    @Operation(summary = "违规处置完整明细（含签名图，按需拉取）")
+    public Result<?> dispositionDetail(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            Map<String, Object> detail = violationService.dispositionDetail(id);
+            if (detail == null) {
+                return Result.error("记录不存在");
+            }
+            return Result.success(detail);
+        } catch (Exception e) {
+            return Result.error("查询处置明细失败: " + readableError(e));
+        }
+    }
+
     @PutMapping("/{id}")
     @Operation(summary = "编辑违规记录（不改人员与状态；到期：expireMode=KEEP|CLEAR|RELATIVE，RELATIVE 配合 expireAfterDays>0）")
     public Result<?> update(
