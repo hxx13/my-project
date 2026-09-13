@@ -353,8 +353,8 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
         <table className="twin-table twin-table--merged-rows w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>
-              <th className={cn(th, "min-w-[16rem]")}>人员 · 违规说明</th>
               <th className={cn(th, "min-w-[9rem]")}>课题组</th>
+              <th className={cn(th, "min-w-[16rem] border-l border-l-[var(--twin-hairline)]")}>人员 · 违规说明</th>
               <th className={cn(th, "min-w-[6rem]")}>状态</th>
               <th className={cn(th, "min-w-[6rem]")}>来源</th>
               <th className={cn(th, "min-w-[5.5rem]")}>禁入</th>
@@ -390,8 +390,16 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                           className={cn("group cursor-pointer", i === 0 && batchSep)}
                           onClick={() => setExpandedId(open ? null : r.id)}
                         >
-                          {/* 人员 · 违规说明 */}
-                          <td className={cn(td, "min-w-[16rem] max-w-[24rem]")}>
+                          {/* 课题组：段首行出合并格。合并块放最左、与逐行字段用竖线分开
+                              （对齐 animal-order-review 的整单级/行级分栏形态） */}
+                          {seg
+                            ? groupCell(seg, allowMerge, c2)
+                            : allowMerge
+                              ? null
+                              : <td className={cn(td, "min-w-[9rem]")} />}
+
+                          {/* 人员 · 违规说明 —— 左竖线即「合并块 | 逐行字段」的分界 */}
+                          <td className={cn(td, "min-w-[16rem] max-w-[24rem] border-l border-l-[var(--twin-hairline)]")}>
                             <div className="min-w-0">
                               <div className="flex items-baseline gap-2">
                                 <span className={cn("truncate text-sm font-semibold", c1)}>{personDisplayName(r)}</span>
@@ -410,13 +418,6 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                               ) : null}
                             </div>
                           </td>
-
-                          {/* 课题组：段首行出合并格；块内有展开行时降级为逐行单元格 */}
-                          {seg
-                            ? groupCell(seg, allowMerge, c2)
-                            : allowMerge
-                              ? null
-                              : <td className={cn(td, "min-w-[9rem]")} />}
 
                           {/* 状态 */}
                           <td className={td}>{statusPill(r)}</td>

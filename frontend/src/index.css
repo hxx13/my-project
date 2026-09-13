@@ -311,15 +311,16 @@
 /* 带 rowSpan 合并格的表格（违规记录按批次成块）：
    斑马纹是按 <tr> 数的，合并格跨行属于首行、展开详情行又占一个 <tr>，
    于是相邻格会落到相同/错位的底色上，分不清边界。
-   补一层极淡网格线兜底——inset box-shadow 不参与布局，加不加都不位移。
+   这里只补「每行一条极淡横线」兜底——inset box-shadow 不参与布局，加不加都不位移。
+   竖线不在这里画：合并块与逐行字段的分界由页面自己给首个逐行列加
+   `border-l border-l-[var(--twin-hairline)]`（对齐 animal-order-review 的做法，
+   一条线划清「整单级 | 行级」两栏，比每格都画竖线干净）。
    线色 10% 是既有结论（见记忆「表格/卡片视觉偏好」）。 */
 .twin-table--merged-rows {
   --merged-row-hair: color-mix(in srgb, var(--app-color-text-primary) 10%, transparent);
 }
 .twin-table--merged-rows tbody td {
-  box-shadow:
-    inset 0 -1px 0 0 var(--merged-row-hair),
-    inset -1px 0 0 0 var(--merged-row-hair);
+  box-shadow: inset 0 -1px 0 0 var(--merged-row-hair);
 }
 /* 展开的详情行自带底色，不要再叠网格线干扰阅读 */
 .twin-table--merged-rows tbody tr[data-detail-row] td {
