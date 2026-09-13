@@ -4,10 +4,8 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.identity.dto.IdentityTagVO;
 import com.example.demo.modules.identity.service.PersonIdentityService;
-import com.example.demo.modules.notification.service.NotificationSettingsService;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -21,31 +19,25 @@ import java.util.stream.Collectors;
  *
  * 两层模型：
  *   数据范围（谁能看到哪些笼架）→ 见 {@link CageRegionGrantService} + 网格过滤。
- *   模式入口（进来后能用哪些模式）→ 本服务，按身份 code 可配。
+ *   模式入口（进来后能用哪些模式）→ 本服务，读**身份权限矩阵**（{@link CagePermissionService}）。
  *
- * 模式与默认身份（配置模块 cage_mode，key = cage.mode.{modeKey}，值为逗号分隔身份 code）：
- *   booking=SECRETARY, allocate=reserve=BREEDING_GROUP_LEADER,
- *   edit/record/archive/confirm=BREEDER,BREEDING_GROUP_LEADER；division=GROUP_STEWARD；view 恒可见不可配。
+ * 矩阵：行 = 身份 code（person_identity_tag），列 = 能力码。
+ *   模式能力码 = {@code cage.mode.{modeKey}}；分笼/转移额外操作身份 = {@code cage.op.manage_identities}。
+ *   view 恒可见，不占矩阵列。
  * SUPER_ADMIN（含 PLATFORM_OWNER）逃生口：无视身份看全部模式。
+ *
+ * <p><b>空列语义是 fail-closed</b>（2026-09-15 起）：某能力在矩阵里一个身份都没勾 =
+ * 谁也用不了。此前读逗号串配置时是「不配 = 不限制 = 全放开」，方向相反，排查时别搞反。
  */
 @Service
 public class CageModeVisibilityService {
-
-    public static final String MODULE = "cage_mode";
 
     /** 教职工视角可配的 8 个模式（view 恒可见，不在此列）。 */
     public static final List<String> STAFF_CONFIGURABLE_MODES = List.of(
             "booking", "allocate", "reserve", "edit", "record", "archive", "confirm", "division");
 
-    /** 身份 code 稳定值（与 PersonIdentityTagSeedBootstrap 种子一致）。 */
-    public static final String CODE_BREEDER = "BREEDER";
-    public static final String CODE_LEADER = "BREEDING_GROUP_LEADER";
-    public static final String CODE_SECRETARY = "SECRETARY";
-    public static final String CODE_STEWARD = "GROUP_STEWARD";
-
-    /** 分笼/转移的**额外**操作身份配置：值为逗号分隔身份 code（占用者本人恒定放行，不在此列）。 */
-    public static final String KEY_OP_MANAGE = "cage.op.manage_identities";
-    public static final String DEFAULT_OP_MANAGE = CODE_BREEDER + "," + CODE_LEADER;
+    /** 分笼/转移的**额外**操作身份能力码（占用者本人恒定放行，不是矩阵列）。 */
+    public static final String CAP_OP_MANAGE = "cage.op.manage_identities";
 
     /**
      * 学生在**状态模式**下被放行的动作：action code → 表单 canonical。
@@ -70,30 +62,25 @@ public class CageModeVisibilityService {
         return canonical != null && STUDENT_EDIT_ACTIONS.containsValue(canonical);
     }
 
-    private static final Map<String, String> DEFAULTS = Map.of(
-            "booking", CODE_SECRETARY,
-            "allocate", CODE_LEADER,
-            "reserve", CODE_LEADER,
-            "edit", CODE_BREEDER + "," + CODE_LEADER,
-            "record", CODE_BREEDER + "," + CODE_LEADER,
-            "archive", CODE_BREEDER + "," + CODE_LEADER,
-            "confirm", CODE_BREEDER + "," + CODE_LEADER,
-            "division", CODE_STEWARD);
+    /** 模式 key → 对应的矩阵能力码。 */
+    public static String modeCapability(String modeKey) {
+        return "cage.mode." + modeKey;
+    }
 
-    private final NotificationSettingsService settingsService;
+    private final CagePermissionService permissionService;
     private final PersonIdentityService identityService;
 
-    public CageModeVisibilityService(NotificationSettingsService settingsService, PersonIdentityService identityService) {
-        this.settingsService = settingsService;
+    public CageModeVisibilityService(CagePermissionService permissionService, PersonIdentityService identityService) {
+        this.permissionService = permissionService;
         this.identityService = identityService;
     }
 
-    /** 模式 key → 允许的身份 code 集合（读配置，逗号分隔）。 */
-    public Map<String, Set<String>> modeAllowedCodes() {
+    /** 模式 key → 允许的身份 code 集合（读矩阵）。空集 = 该模式无人可用。 */
+    private Map<String, Set<String>> modeAllowedCodes() {
+        Map<String, Set<String>> all = permissionService.allowedIdentitiesByCapability();
         Map<String, Set<String>> out = new LinkedHashMap<>();
         for (String mode : STAFF_CONFIGURABLE_MODES) {
-            String raw = settingsService.getEffectiveValue(MODULE, "cage.mode." + mode, DEFAULTS.getOrDefault(mode, ""));
-            out.put(mode, splitCodes(raw));
+            out.put(mode, all.getOrDefault(modeCapability(mode), Set.of()));
         }
         return out;
     }
@@ -125,18 +112,19 @@ public class CageModeVisibilityService {
                 && "STUDENT".equalsIgnoreCase(user.getAccountSource());
     }
 
-    /** 分笼/转移允许的**额外**操作身份 code 集合（占用者本人恒定放行，不在配置里）。 */
+    /** 分笼/转移允许的**额外**操作身份 code 集合（占用者本人恒定放行，不在矩阵里）。 */
     public Set<String> opManageCodes() {
-        return splitCodes(settingsService.getEffectiveValue(MODULE, KEY_OP_MANAGE, DEFAULT_OP_MANAGE));
+        return permissionService.allowedIdentitiesByCapability()
+                .getOrDefault(CAP_OP_MANAGE, Set.of());
     }
 
-    /** 是否为分笼/转移的「额外操作身份」（饲养员/饲养组长等，配置见 cage.op.manage_identities）。 */
+    /** 是否为分笼/转移的「额外操作身份」（饲养员/饲养组长等，见矩阵列 cage.op.manage_identities）。 */
     public boolean isOpExtraOperator(User user) {
         if (user == null) return false;
         if (isSuperAdmin(user)) return true;
-        Set<String> allowed = opManageCodes();
-        if (allowed.isEmpty()) return true; // 未配置 = 不限制
-        return !Collections.disjoint(allowed, identityCodesOf(user.getId()));
+        // fail-closed：该列一个身份都没勾 = 除占用者本人外无人可操作。
+        // （旧配置语义是「未配置 = 不限制」，方向相反。）
+        return permissionService.canUse(CAP_OP_MANAGE, identityCodesOf(user.getId()));
     }
 
     /**
@@ -153,14 +141,11 @@ public class CageModeVisibilityService {
     public boolean canUseMode(User user, String modeKey) {
         if ("view".equals(modeKey)) return true;
         if (isSuperAdmin(user)) return true;
-        Map<String, Set<String>> allowed = modeAllowedCodes();
-        Set<String> codes = allowed.get(modeKey);
-        if (codes == null || codes.isEmpty()) return true; // 未配置 = 不限制
-        Set<String> mine = identityCodesOf(user.getId());
-        return !Collections.disjoint(codes, mine);
+        return permissionService.canUse(modeCapability(modeKey), identityCodesOf(user.getId()));
     }
 
-    /** 教职工视角可见模式 key 列表（含恒可见的 view）。 */    public List<String> visibleStaffModes(User user) {
+    /** 教职工视角可见模式 key 列表（含恒可见的 view）。 */
+    public List<String> visibleStaffModes(User user) {
         if (isSuperAdmin(user)) {
             LinkedHashSet<String> all = new LinkedHashSet<>();
             all.add("view");
@@ -168,22 +153,16 @@ public class CageModeVisibilityService {
             return List.copyOf(all);
         }
         Set<String> mine = identityCodesOf(user.getId());
+        Map<String, Set<String>> allowed = modeAllowedCodes();
         List<String> out = new java.util.ArrayList<>();
         out.add("view");
         for (String mode : STAFF_CONFIGURABLE_MODES) {
-            Set<String> allowed = modeAllowedCodes().get(mode);
-            if (allowed == null || allowed.isEmpty() || !Collections.disjoint(allowed, mine)) {
+            Set<String> codes = allowed.get(mode);
+            // fail-closed：空列不再放行（旧语义是「未配置 = 不限制」）。
+            if (codes != null && !codes.isEmpty() && !Collections.disjoint(codes, mine)) {
                 out.add(mode);
             }
         }
         return out;
-    }
-
-    private Set<String> splitCodes(String raw) {
-        if (raw == null || raw.isBlank()) return Collections.emptySet();
-        return Arrays.stream(raw.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }
