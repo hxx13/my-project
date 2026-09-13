@@ -484,14 +484,30 @@
     pointer-events: auto;
   }
 
-  /* 交互层只有一张卡，不受并排档位限制：默认档 612px 对手写签名等偏窄，统一放宽一档 */
+  /* 交互层只有一张卡，不受并排档位限制：宽度放宽一档（默认 612px 对手写签名偏窄），
+     高度也放开（默认 80vh 会让「正文 + 交互区 + 按钮」放不下） */
   .scan-notice-strip-layer .scan-doodle-card {
     --doodle-card-width: min(96vw, 880px);
+    --doodle-card-max-height: 92vh;
   }
 
   /* 手写签名要横向空间（画布越宽越好写），再放宽一档 */
   .scan-notice-strip-layer--signature .scan-doodle-card {
     --doodle-card-width: min(96vw, 1120px);
+  }
+
+  /* 正文按内容占位，但设下限：交互区再高也不许把公告正文压成一条线 */
+  .scan-notice-strip-layer .scan-doodle-card__body {
+    flex: 0 1 auto;
+    min-height: 6em;
+  }
+
+  /* 交互区参与滚动：卡片装不下时它自己滚，而不是把正文挤扁 / 自己被裁出卡片外 */
+  .scan-notice-strip-layer .scan-doodle-card__footer-slot {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   /* 横向滚动条 — 对齐 app-themed-scrollbar / page-help-scrollbar 语义色 */
