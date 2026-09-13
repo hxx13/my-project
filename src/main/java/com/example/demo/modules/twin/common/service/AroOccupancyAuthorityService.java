@@ -85,7 +85,7 @@ public class AroOccupancyAuthorityService {
             return false;
         }
         String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        List<String> stranded = mappingMapper.findTodayStrandedUserIds(today + "%");
+        List<String> stranded = mappingMapper.findTodayStrandedUserIds(today + "%", null);
         return stranded != null && stranded.contains(userId.trim());
     }
 

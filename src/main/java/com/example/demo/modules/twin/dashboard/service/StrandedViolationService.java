@@ -352,9 +352,23 @@ public class StrandedViolationService {
         log.info("[stranded-signout] config saved: autoSignout={}", autoSignout);
     }
 
+    /** 返回需要参与检测的校区 LIKE 模式；空列表 = 不按校区过滤；null = 两校区均关闭，检测整体跳过 */
+    static List<String> campusPatterns(boolean pd, boolean px) {
+        if (!pd && !px) return null;
+        if (pd && px) return List.of();
+        return pd ? List.of("%浦东%") : List.of("%浦西%");
+    }
+
     private Set<String> loadTodayStrandedCandidates() {
+        Map<String, Object> cfg = configMapper.selectConfig();
+        boolean pd = toInt(cfg == null ? null : cfg.get("campus_pd_enabled"), 1) == 1;
+        boolean px = toInt(cfg == null ? null : cfg.get("campus_px_enabled"), 1) == 1;
+        List<String> patterns = campusPatterns(pd, px);
+        if (patterns == null) {
+            return new LinkedHashSet<>();   // 两校区都关，检测整体跳过
+        }
         String todayPrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "%";
-        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayPrefix);
+        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayPrefix, patterns);
         Set<String> candidates = new LinkedHashSet<>();
         if (strandedUserIds != null) {
             for (String uid : strandedUserIds) {
