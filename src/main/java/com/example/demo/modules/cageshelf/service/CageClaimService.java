@@ -798,11 +798,21 @@ public class CageClaimService {
         return rows;
     }
 
-    public Map<String, Object> getPendingList(String status, String keyword, int page, int pageSize) {
-        int offset = (page - 1) * pageSize;
+    /**
+     * 待审列表（分页）。审核范围必须在分页**之前**下沉，否则会出现
+     * 「角标数得少、列表却看得到全部」——两者共用 {@link #inReviewScope}，保证恒等。
+     *
+     * ponytail: 全量拉取后内存过滤，与 countPendingForReviewer 同法；待审量大了再下沉到 SQL。
+     */
+    public Map<String, Object> getPendingList(User reviewer, String status, String keyword, int page, int pageSize) {
+        List<Map<String, Object>> all = claimMapper.selectPending(status, keyword, 0, 100000).stream()
+                .filter(c -> inReviewScope(reviewer, c))
+                .toList();
+        int from = Math.min(Math.max(0, (page - 1) * pageSize), all.size());
+        int to = Math.min(from + pageSize, all.size());
         return Map.of(
-            "list", claimMapper.selectPending(status, keyword, offset, pageSize),
-            "total", claimMapper.countPending(status, keyword),
+            "list", all.subList(from, to),
+            "total", all.size(),
             "page", page,
             "pageSize", pageSize
         );
@@ -810,18 +820,16 @@ public class CageClaimService {
 
     /** 待审数（按审核人过滤）：全局可见者（SUPER_ADMIN+）全量；否则只数其负责楼层/房间内的待审。 */
     public int countPendingForReviewer(User reviewer) {
-        List<Map<String, Object>> pending = claimMapper.selectPending(null, null, 0, 100000);
-        if (pending.isEmpty()) return 0;
-        boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
-        if (isAdmin) return pending.size();
-        int count = 0;
-        for (Map<String, Object> c : pending) {
-            if (auditAssignmentService.canReview(reviewer,
-                    str(c.get("roomId")), str(c.get("floorId")), str(c.get("campusId")))) {
-                count++;
-            }
-        }
-        return count;
+        return (int) claimMapper.selectPending(null, null, 0, 100000).stream()
+                .filter(c -> inReviewScope(reviewer, c))
+                .count();
+    }
+
+    /** 该待审记录是否落在审核人的负责范围内。全局可见者（SUPER_ADMIN+）恒 true。 */
+    private boolean inReviewScope(User reviewer, Map<String, Object> row) {
+        if (visibilityPolicy.isGlobalViewer(reviewer)) return true;
+        return auditAssignmentService.canReview(reviewer,
+                str(row.get("roomId")), str(row.get("floorId")), str(row.get("campusId")));
     }
 
     public List<ApprovalRecord> getApprovalHistory(Long claimId) {
