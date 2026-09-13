@@ -190,7 +190,9 @@ public class AdminTwinStudentViolationController {
                     body.getExpireMode(),
                     body.getExpireAfterDays(),
                     body.getInteractiveChallenge(),
-                    body.getInteractiveUnlockOnVerify()
+                    body.getInteractiveUnlockOnVerify(),
+                    body.getNoticeDisplayDays(),
+                    body.getNoticeLinkExpire()
             );
             applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
             if (Boolean.TRUE.equals(body.getRequireReconfirm()) && row != null && row.getId() != null
@@ -292,7 +294,9 @@ public class AdminTwinStudentViolationController {
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify(),
                     effectiveRuleId,
-                    body.getCageViolationId()
+                    body.getCageViolationId(),
+                    body.getNoticeDisplayDays(),
+                    body.getNoticeLinkExpire()
             );
             return Result.success(summary);
         } catch (IllegalArgumentException e) {
@@ -344,7 +348,9 @@ public class AdminTwinStudentViolationController {
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify(),
                     effectiveRuleId,
-                    body.getCageViolationId()
+                    body.getCageViolationId(),
+                    body.getNoticeDisplayDays(),
+                    body.getNoticeLinkExpire()
             );
             applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
             return Result.success(toRow(row, null));
@@ -371,6 +377,31 @@ public class AdminTwinStudentViolationController {
         }
         boolean ok = violationService.clear(id, admin.getId());
         return ok ? Result.success() : Result.error("记录不存在或已非生效状态");
+    }
+
+    @PostMapping("/{id}/clear-notice")
+    @Operation(summary = "单独解除公告（大屏立即下板；记录与禁入不变，已解除时幂等返回成功）")
+    public Result<?> clearNotice(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        User admin = authContextService.resolveUserFromBearer(authorization);
+        if (admin == null) {
+            return Result.error("未登录或令牌无效");
+        }
+        try {
+            // 已解除时 clearNotice 返回 false，但仍算成功（幂等）
+            violationService.clearNotice(id, admin.getId());
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("解除公告失败: " + readableError(e));
+        }
     }
 
     @PostMapping("/{id}/mark-processed")
@@ -556,6 +587,10 @@ public class AdminTwinStudentViolationController {
         /** 期 3：Obligation 处置策略覆盖 */
         private String dispositionType;
         private String dispositionConfigJson;
+        /** 公告展示天数；null=跟随到期时间 */
+        private Integer noticeDisplayDays;
+        /** 公告展示是否与到期时间联动；不传=联动（1） */
+        private Integer noticeLinkExpire;
     }
 
     @Data
@@ -575,6 +610,10 @@ public class AdminTwinStudentViolationController {
         private Long cageViolationId;
         private String dispositionType;
         private String dispositionConfigJson;
+        /** 公告展示天数；null=跟随到期时间 */
+        private Integer noticeDisplayDays;
+        /** 公告展示是否与到期时间联动；不传=联动（1） */
+        private Integer noticeLinkExpire;
     }
 
     @Data
@@ -596,6 +635,10 @@ public class AdminTwinStudentViolationController {
         private String dispositionConfigJson;
         /** 内容变更后是否要求已完成者重新确认 */
         private Boolean requireReconfirm;
+        /** 公告展示天数；null=保持原值 */
+        private Integer noticeDisplayDays;
+        /** 公告展示是否与到期时间联动；null=保持原值 */
+        private Integer noticeLinkExpire;
     }
 
     // ---- 违规文案模板预设 ----

@@ -918,7 +918,7 @@ public class TwinStudentViolationService {
                 interactiveChallenge, interactiveUnlockOnVerify, null, null);
     }
 
-    @Transactional(rollbackFor = Exception.class)
+    /** 13 参重载：不带公告展示配置，公告展示跟随到期时间 */
     public TwinStudentViolation create(
             String targetUserId,
             String violationText,
@@ -933,6 +933,29 @@ public class TwinStudentViolationService {
             Boolean interactiveUnlockOnVerify,
             Long ruleId,
             Long cageViolationId
+    ) {
+        return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
+                showNoticeEveryScan, expireAfterDays, createdByUserId, source,
+                interactiveChallenge, interactiveUnlockOnVerify, ruleId, cageViolationId, null, null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId,
+            Long cageViolationId,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -981,6 +1004,8 @@ public class TwinStudentViolationService {
         row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
         row.setRuleId(ruleId);
         row.setCageViolationId(cageViolationId);
+        row.setNoticeDisplayDays(noticeDisplayDays);
+        row.setNoticeLinkExpire(noticeLinkExpire == null ? 1 : noticeLinkExpire);
         try {
             violationMapper.insert(row);
         } catch (Exception e) {
@@ -1209,6 +1234,8 @@ public class TwinStudentViolationService {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -1234,6 +1261,8 @@ public class TwinStudentViolationService {
                 expireAfterDays,
                 createdByUserId,
                 interactiveChallenge,
+                null,
+                null,
                 null,
                 null,
                 null);
@@ -1264,6 +1293,8 @@ public class TwinStudentViolationService {
                 interactiveChallenge,
                 interactiveUnlockOnVerify,
                 null,
+                null,
+                null,
                 null);
     }
 
@@ -1280,7 +1311,9 @@ public class TwinStudentViolationService {
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify,
             Long ruleId,
-            Long cageViolationId
+            Long cageViolationId,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire
     ) {
         if (targetUserIds == null || targetUserIds.isEmpty()) {
             throw new IllegalArgumentException("缺少 targetUserIds");
@@ -1314,7 +1347,9 @@ public class TwinStudentViolationService {
                         interactiveChallenge,
                         interactiveUnlockOnVerify,
                         ruleId,
-                        cageViolationId
+                        cageViolationId,
+                        noticeDisplayDays,
+                        noticeLinkExpire
                 );
                 created++;
             } catch (Exception e) {
@@ -1329,6 +1364,25 @@ public class TwinStudentViolationService {
         out.put("createdCount", created);
         out.put("failed", failed);
         return out;
+    }
+
+    /**
+     * 单独解除公告：只让公告下板，不动 status / forbid_enter / 记录本身。
+     * 已解除时返回 false（幂等）。
+     */
+    public boolean clearNotice(long id, String operatorId) {
+        if (violationTableAbsent.get()) {
+            throw new IllegalStateException("库表 twin_student_violation 未创建");
+        }
+        TwinStudentViolation existing = getById(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("记录不存在: " + id);
+        }
+        int n = violationMapper.clearNoticeById(id, StringUtils.hasText(operatorId) ? operatorId : "UNKNOWN");
+        if (n > 0) {
+            log.info("[student-violation] 公告已解除 violationId={} operator={}", id, operatorId);
+        }
+        return n > 0;
     }
 
     public boolean clear(long id, String clearedByUserId) {
@@ -1418,7 +1472,9 @@ public class TwinStudentViolationService {
             String expireMode,
             Integer expireAfterDays,
             String interactiveChallenge,
-            Boolean interactiveUnlockOnVerify
+            Boolean interactiveUnlockOnVerify,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire
     ) {
         if (violationTableAbsent.get()) {
             throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
@@ -1454,6 +1510,11 @@ public class TwinStudentViolationService {
         }
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
+        // 公告展示配置：null = 保持不变（与 expireMode=KEEP 同口径），避免未传时把既有配置重置成默认
+        row.setNoticeDisplayDays(noticeDisplayDays != null ? noticeDisplayDays : existing.getNoticeDisplayDays());
+        row.setNoticeLinkExpire(noticeLinkExpire != null
+                ? noticeLinkExpire
+                : (existing.getNoticeLinkExpire() != null ? existing.getNoticeLinkExpire() : 1));
         String mode = expireMode != null ? expireMode.trim().toUpperCase() : "KEEP";
         // 到期时间与「验证后解禁」可并存：仅编辑显式 CLEAR 才清空（到期后已验证者自动消弹窗）
         if ("CLEAR".equals(mode)) {
