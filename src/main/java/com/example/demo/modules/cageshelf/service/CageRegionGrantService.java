@@ -104,6 +104,21 @@ public class CageRegionGrantService {
                 .toList();
     }
 
+    /** 某人作为**饲养组长**负责的区域（LEADER 行）；accountId 为 sys_user.id。 */
+    public List<CageRegionGrant> leaderRegions(String accountId) {
+        return listByAccount(accountId, CageRegionGrant.ROLE_LEADER);
+    }
+
+    /**
+     * 挂在该组长名下的组员（带姓名与条目数）。
+     * 先把自己的 accountId 折成 personnel.id，因为 MEMBER 行的 leader_user_id 存的是后者。
+     */
+    public List<Map<String, Object>> memberRows(String leaderAccountId) {
+        String pid = resolve(leaderAccountId);
+        if (pid == null) return List.of();
+        return mapper.listMemberRows(pid);
+    }
+
     private String resolve(String accountId) {
         if (!StringUtils.hasText(accountId)) return null;
         return identityService.resolveIdByAccount(accountId.trim());

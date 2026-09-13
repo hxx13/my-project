@@ -13,6 +13,15 @@ public interface CageRegionGrantMapper {
     List<CageRegionGrant> listByUser(@Param("userId") String userId);
     List<CageRegionGrant> listAll();
 
+    /** 挂在该组长名下的行（MEMBER 行的 leader_user_id = 组长的 personnel.id）。 */
+    List<CageRegionGrant> listByLeader(@Param("leaderUserId") String leaderUserId);
+
+    /**
+     * 组员带姓名与条目数。**在 SQL 里 join personnel 取名字**——`user_id` 存的是 personnel.id，
+     * 而 UserDisplayNameService 按 staff_id/aro_user_id 建索引、不认 personnel.id（二期踩过）。
+     */
+    List<Map<String, Object>> listMemberRows(@Param("leaderUserId") String leaderUserId);
+
     /** 已分配过的人（user_id = personnel.id 字符串），带姓名与条目数，按姓名排序。 */
     List<Map<String, Object>> listAssignees(@Param("grantRole") String grantRole);
 

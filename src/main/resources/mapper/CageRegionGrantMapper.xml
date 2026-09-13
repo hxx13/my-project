@@ -23,6 +23,25 @@
         ORDER BY user_id ASC, grant_role ASC, region_type ASC, region_id ASC
     </select>
 
+    <!-- 挂在该组长名下的行。idx_crg_leader 索引（二期建）覆盖此查询。 -->
+    <select id="listByLeader" resultType="com.example.demo.modules.cageshelf.entity.CageRegionGrant">
+        SELECT * FROM cage_region_grant
+        WHERE leader_user_id = #{leaderUserId}
+        ORDER BY region_type ASC, region_id ASC, user_id ASC
+    </select>
+
+    <!-- 组员带姓名：join personnel 取名字（user_id 是 personnel.id，不能用 UserDisplayNameService） -->
+    <select id="listMemberRows" resultType="map">
+        SELECT g.user_id AS memberUserId,
+               COALESCE(NULLIF(p.name, ''), g.user_id) AS memberName,
+               COUNT(*) AS regionCount
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        WHERE g.leader_user_id = #{leaderUserId} AND g.grant_role = 'MEMBER'
+        GROUP BY g.user_id, p.name
+        ORDER BY memberName ASC
+    </select>
+
     <!-- 已分配过的人：user_id 存 personnel.id，但回给前端的必须是「账号 id」——
          分配页拿它去调 GET/PUT/DELETE /api/person-scope/{userId}，那几个接口走
          resolveIdByAccount，喂 personnel.id 会解析失败、页面点进去一片空白。 -->
