@@ -140,7 +140,15 @@ public class AdminTwinStudentViolationController {
             }
         }
         Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(idSet);
-        List<Map<String, Object>> out = rows.stream().map(v -> toRow(v, displayNames)).collect(Collectors.toList());
+        // 「课题组」列：笼架来源有父记录可取，手动/滞留没有——按被下发的人批量取（一次 IN 查询）
+        Set<String> groupIds = new HashSet<>();
+        for (TwinStudentViolation v : rows) {
+            if (v != null && StringUtils.hasText(v.getTargetUserId())) {
+                groupIds.add(v.getTargetUserId().trim());
+            }
+        }
+        Map<String, String> projectGroups = userDisplayNameService.resolveProjectGroups(groupIds);
+        List<Map<String, Object>> out = rows.stream().map(v -> toRow(v, displayNames, projectGroups)).collect(Collectors.toList());
 
         // 大屏每人只展示一条（同人 MAX(id)），管理端须标出"此人还有别的生效违规 / 哪条正在公示"，
         // 否则删掉其中一条后大屏仍显示同人另一条，看起来像删除没生效。
@@ -225,7 +233,7 @@ public class AdminTwinStudentViolationController {
                     obligationService.requireReconfirm(ob.getId());
                 }
             }
-            return Result.success(toRow(row, null));
+            return Result.success(toRow(row, null, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (Exception e) {
@@ -376,7 +384,7 @@ public class AdminTwinStudentViolationController {
                     body.getNoticeLinkExpire()
             );
             applyDispositionOverride(row, body.getDispositionType(), body.getDispositionConfigJson());
-            return Result.success(toRow(row, null));
+            return Result.success(toRow(row, null, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (Exception e) {
@@ -445,7 +453,8 @@ public class AdminTwinStudentViolationController {
         return ok ? Result.success() : Result.error("记录不存在或已非生效状态");
     }
 
-    private Map<String, Object> toRow(TwinStudentViolation v, Map<String, String> displayNameCache) {
+    private Map<String, Object> toRow(TwinStudentViolation v, Map<String, String> displayNameCache,
+                                      Map<String, String> projectGroupCache) {
         Map<String, Object> m = new HashMap<>();
         m.put("id", v.getId());
         m.put("targetUserId", v.getTargetUserId());
@@ -536,7 +545,12 @@ public class AdminTwinStudentViolationController {
         }
         // 批次键 / 课题组 / 公告状态 / 处置摘要（记录页按批次成块渲染）
         m.put("batchId", v.getBatchId() == null || v.getBatchId().isBlank() ? ("SINGLE-" + v.getId()) : v.getBatchId());
-        m.put("projectGroupName", cageParentGroup);
+        // 笼架联动优先用父记录的课题组；手动/滞留没有父记录，回落到「被下发的人」的课题组，
+        // 否则这一列对多数记录恒为「—」（用户实测反馈）
+        String groupName = StringUtils.hasText(cageParentGroup)
+                ? cageParentGroup
+                : (projectGroupCache == null ? null : projectGroupCache.get(tid));
+        m.put("projectGroupName", groupName);
         m.put("noticeState", resolveNoticeState(v));
         Map<String, Object> disposition = null;
         if (ob != null) {

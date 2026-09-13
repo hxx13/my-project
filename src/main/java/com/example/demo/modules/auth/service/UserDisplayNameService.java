@@ -148,8 +148,66 @@ public class UserDisplayNameService {
         return out;
     }
 
-    private String resolvePersonnelName(String accountId) {
-        if (!StringUtils.hasText(accountId)) {
+    /**
+     * 批量解析人员所属课题组，账号展开规则与展示名完全一致（STAFF_* 经 user_aro_binding → aro_user_id）。
+     *
+     * <p>违规记录的「课题组」列要用它：笼架来源的记录能从父记录取到组名，
+     * 而手动 / 滞留自动生成的记录没有父记录，只能按**被下发的人**取，否则整列都是「—」。
+     * 一次 IN 查询取完，不逐行查库。
+     */
+    public Map<String, String> resolveProjectGroups(Collection<String> userIds) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        if (userIds != null) {
+            for (String raw : userIds) {
+                if (StringUtils.hasText(raw)) {
+                    ids.add(raw.trim());
+                }
+            }
+        }
+        if (ids.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<String> idList = new ArrayList<>(ids);
+        Map<String, String> staffToAro = resolveStaffAroBindings(idList);
+
+        LinkedHashSet<String> lookupIds = new LinkedHashSet<>();
+        for (String id : idList) {
+            lookupIds.addAll(expandedLookupKeys(id, staffToAro));
+        }
+        Map<String, String> byStaff = new HashMap<>();
+        Map<String, String> byAro = new HashMap<>();
+        List<Personnel> rows = personnelMapper.findByAccountIds(new ArrayList<>(lookupIds));
+        if (rows != null) {
+            for (Personnel p : rows) {
+                if (p == null || !StringUtils.hasText(p.getProjectGroupName())) {
+                    continue;
+                }
+                String group = p.getProjectGroupName().trim();
+                if (StringUtils.hasText(p.getStaffId())) {
+                    byStaff.put(p.getStaffId().trim(), group);
+                }
+                if (StringUtils.hasText(p.getAroUserId())) {
+                    byAro.put(p.getAroUserId().trim(), group);
+                }
+            }
+        }
+        Map<String, String> out = new HashMap<>();
+        for (String id : idList) {
+            for (String key : expandedLookupKeys(id, staffToAro)) {
+                String group = byStaff.get(key);
+                if (!StringUtils.hasText(group)) {
+                    group = byAro.get(key);
+                }
+                if (StringUtils.hasText(group)) {
+                    out.put(id, group);
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    private String resolvePersonnelName(String accountId) {        if (!StringUtils.hasText(accountId)) {
             return null;
         }
         Map<String, String> staffToAro = resolveStaffAroBindings(List.of(accountId.trim()));
