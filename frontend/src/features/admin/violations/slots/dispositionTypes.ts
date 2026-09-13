@@ -37,6 +37,11 @@ export type DispositionValue = {
   actions: DispositionActionCode[];
   expiry: ExpiryValue;
   strategy: DispositionStrategy;
+  /**
+   * 公告展示配置。可选：规则→处置映射（ruleDisposition / 滞留面板）不涉及公告，不下发；
+   * 违规记录表单恒提供。linkExpire=true 时 days 被忽略（展示跟随到期时间）。
+   */
+  noticeDisplay?: { linkExpire: boolean; days: number | null };
 };
 
 export type DispositionCapability = {
@@ -44,6 +49,8 @@ export type DispositionCapability = {
   allowChallenge: boolean;
   allowMaxEnter: boolean;
   allowExpire: boolean;
+  /** 是否展示「公告与到期联动」配置。仅违规记录表单需要，规则编辑器不下发公告字段。 */
+  allowNotice: boolean;
 };
 
 export const DISPOSITION_FULL: DispositionCapability = {
@@ -51,6 +58,7 @@ export const DISPOSITION_FULL: DispositionCapability = {
   allowChallenge: true,
   allowMaxEnter: true,
   allowExpire: true,
+  allowNotice: true,
 };
 
 export const DISPOSITION_RULE_LEVEL: DispositionCapability = {
@@ -58,6 +66,7 @@ export const DISPOSITION_RULE_LEVEL: DispositionCapability = {
   allowChallenge: true,
   allowMaxEnter: true,
   allowExpire: true,
+  allowNotice: false,
 };
 
 /**
@@ -142,12 +151,35 @@ function challengeOf(v: DispositionValue): string | null {
   return t === "" ? null : t;
 }
 
+export const NOTICE_DAYS_REQUIRED_MESSAGE = "请填写公告展示天数";
+
+/**
+ * 非联动且天数为空 → 后端 boardVisibleClause 判为 `notice_display_days IS NULL` 恒真，
+ * 公告会「一直展示」直到人工解除。这是不可控状态，前后端都必须挡住。
+ */
+function noticeDaysMissing(v: DispositionValue): boolean {
+  const nd = v.noticeDisplay;
+  return nd != null && !nd.linkExpire && nd.days == null;
+}
+
+/** 仅当调用方提供了 noticeDisplay 才下发两个键（未提供＝不下发，交后端默认/保持原值）。 */
+function noticeFieldsOf(v: DispositionValue): {
+  noticeDisplayDays: number | null;
+  noticeLinkExpire: 0 | 1;
+} | null {
+  const nd = v.noticeDisplay;
+  if (!nd) return null;
+  // 联动到期时间时天数无意义，传 null（后端也只在非联动分支读天数）
+  return { noticeDisplayDays: nd.linkExpire ? null : nd.days, noticeLinkExpire: nd.linkExpire ? 1 : 0 };
+}
+
 /** 开单提交前校验；返回错误文案，通过则 null。 */
 export function validateDispositionForCreate(v: DispositionValue): string | null {
   if (v.strategy.type === "unset") return "请选择处置策略";
   if (v.strategy.type === "fixed" && v.strategy.puzzle && !v.strategy.challengePhrase.trim()) {
     return "请填写拼图短语";
   }
+  if (noticeDaysMissing(v)) return NOTICE_DAYS_REQUIRED_MESSAGE;
   return null;
 }
 
@@ -161,6 +193,8 @@ type CreateDispositionFields = Pick<
   | "expireAfterDays"
   | "dispositionType"
   | "dispositionConfigJson"
+  | "noticeDisplayDays"
+  | "noticeLinkExpire"
 >;
 
 type UpdateDispositionFields = Pick<
@@ -174,6 +208,8 @@ type UpdateDispositionFields = Pick<
   | "expireAfterDays"
   | "dispositionType"
   | "dispositionConfigJson"
+  | "noticeDisplayDays"
+  | "noticeLinkExpire"
 >;
 
 export function toCreateDisposition(v: DispositionValue): CreateDispositionFields {
@@ -183,7 +219,11 @@ export function toCreateDisposition(v: DispositionValue): CreateDispositionField
   if (v.strategy.type === "unset") {
     throw new Error("请选择处置策略");
   }
+  if (noticeDaysMissing(v)) {
+    throw new Error(NOTICE_DAYS_REQUIRED_MESSAGE);
+  }
   const unlock = actionsIncludeUnlock(v.actions);
+  const notice = noticeFieldsOf(v);
   return {
     forbidEnter: v.actions.includes("forbid"),
     showNoticeEveryScan: v.actions.includes("every"),
@@ -194,6 +234,8 @@ export function toCreateDisposition(v: DispositionValue): CreateDispositionField
     expireAfterDays: v.expiry.days,
     dispositionType: registryDispositionType(v),
     dispositionConfigJson: dispositionConfigJsonOf(v),
+    // 未提供 noticeDisplay 时补默认：联动到期（后端不传 noticeLinkExpire 亦默认 1）
+    ...(notice ?? { noticeDisplayDays: null, noticeLinkExpire: 1 as const }),
   };
 }
 
@@ -201,7 +243,11 @@ export function toUpdateDisposition(v: DispositionValue): UpdateDispositionField
   if (v.strategy.type === "unset") {
     throw new Error("请选择处置策略");
   }
+  if (noticeDaysMissing(v)) {
+    throw new Error(NOTICE_DAYS_REQUIRED_MESSAGE);
+  }
   const unlock = actionsIncludeUnlock(v.actions);
+  const notice = noticeFieldsOf(v);
   return {
     forbidEnter: v.actions.includes("forbid"),
     showNoticeEveryScan: v.actions.includes("every"),
@@ -212,10 +258,12 @@ export function toUpdateDisposition(v: DispositionValue): UpdateDispositionField
     expireAfterDays: v.expiry.mode === "RELATIVE" ? v.expiry.days : null,
     dispositionType: registryDispositionType(v),
     dispositionConfigJson: dispositionConfigJsonOf(v),
+    // 未提供 noticeDisplay 时两个键都不下发，后端按 null＝保持原值处理
+    ...(notice ?? {}),
   };
 }
 
-export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
+function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
   const actions: DispositionActionCode[] = [];
   if (row.forbidEnter) actions.push("forbid");
   if (row.showNoticeEveryScan) actions.push("every");
@@ -298,6 +346,19 @@ export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
       puzzle,
     },
     expiry: { mode: "KEEP" },
+  };
+}
+
+/**
+ * 行 → DispositionValue。公告联动缺省视为 true（旧数据无该列）；days 原样（null=跟随到期时间）。
+ */
+export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
+  return {
+    ...fromDispositionRowCore(row),
+    noticeDisplay: {
+      linkExpire: row.noticeLinkExpire !== 0,
+      days: row.noticeDisplayDays ?? null,
+    },
   };
 }
 

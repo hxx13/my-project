@@ -10,6 +10,7 @@ import {
   actionsIncludeUnlock,
   dueSecondaryLabel,
   summarizeDispositionForDetail,
+  NOTICE_DAYS_REQUIRED_MESSAGE,
 } from "../dispositionTypes";
 import type { DispositionStrategy, DispositionValue } from "../dispositionTypes";
 import type { StudentViolationRow } from "@/api/domains/studentViolation.api";
@@ -29,6 +30,7 @@ const baseValue = (overrides: Partial<DispositionValue> = {}): DispositionValue 
   actions: [],
   expiry: { mode: "RELATIVE", days: null },
   strategy: fixed(),
+  noticeDisplay: { linkExpire: true, days: null },
   ...overrides,
 });
 
@@ -245,5 +247,60 @@ describe("dispositionTypes 纯函数契约", () => {
       expireAt: null,
     };
     expect(dueSecondaryLabel(row)).toBe("需人工解除");
+  });
+
+  it("公告联动到期：create/update 均下发 noticeLinkExpire=1 且天数为 null", () => {
+    const c = toCreateDisposition(baseValue({ noticeDisplay: { linkExpire: true, days: 7 } }));
+    expect(c.noticeLinkExpire).toBe(1);
+    expect(c.noticeDisplayDays).toBeNull();
+
+    const u = toUpdateDisposition(baseValue({ noticeDisplay: { linkExpire: true, days: 7 } }));
+    expect(u.noticeLinkExpire).toBe(1);
+    expect(u.noticeDisplayDays).toBeNull();
+  });
+
+  it("公告不联动：天数原样下发，noticeLinkExpire=0", () => {
+    const c = toCreateDisposition(baseValue({ noticeDisplay: { linkExpire: false, days: 5 } }));
+    expect(c.noticeLinkExpire).toBe(0);
+    expect(c.noticeDisplayDays).toBe(5);
+
+    const u = toUpdateDisposition(baseValue({ noticeDisplay: { linkExpire: false, days: 5 } }));
+    expect(u.noticeLinkExpire).toBe(0);
+    expect(u.noticeDisplayDays).toBe(5);
+  });
+
+  it("不联动且天数为空会被后端判为永久展示：create 校验拦截、两个转换器都抛错", () => {
+    const bad = baseValue({ noticeDisplay: { linkExpire: false, days: null } });
+    expect(validateDispositionForCreate(bad)).toBe(NOTICE_DAYS_REQUIRED_MESSAGE);
+    expect(() => toCreateDisposition(bad)).toThrow(NOTICE_DAYS_REQUIRED_MESSAGE);
+    expect(() => toUpdateDisposition(bad)).toThrow(NOTICE_DAYS_REQUIRED_MESSAGE);
+  });
+
+  it("未携带 noticeDisplay：create 补默认联动，update 不下发这两键（保留原值）", () => {
+    const v: DispositionValue = {
+      actions: [],
+      expiry: { mode: "RELATIVE", days: null },
+      strategy: fixed(),
+    };
+    const c = toCreateDisposition(v);
+    expect(c.noticeLinkExpire).toBe(1);
+    expect(c.noticeDisplayDays).toBeNull();
+
+    const u = toUpdateDisposition(v);
+    expect("noticeLinkExpire" in u).toBe(false);
+    expect("noticeDisplayDays" in u).toBe(false);
+  });
+
+  it("fromDispositionRow 还原公告联动：缺省视为联动，noticeLinkExpire=0 视为不联动", () => {
+    expect(fromDispositionRow({ id: 1, targetUserId: "u1" }).noticeDisplay).toEqual({
+      linkExpire: true,
+      days: null,
+    });
+    expect(
+      fromDispositionRow({ id: 1, targetUserId: "u1", noticeLinkExpire: 0, noticeDisplayDays: 10 }).noticeDisplay
+    ).toEqual({ linkExpire: false, days: 10 });
+    expect(
+      fromDispositionRow({ id: 1, targetUserId: "u1", noticeLinkExpire: 1, noticeDisplayDays: 10 }).noticeDisplay
+    ).toEqual({ linkExpire: true, days: 10 });
   });
 });

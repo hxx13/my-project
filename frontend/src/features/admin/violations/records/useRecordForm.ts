@@ -50,6 +50,8 @@ const DEFAULT_DISPOSITION: DispositionValue = {
   actions: ["every", "unlock"],
   expiry: { mode: "RELATIVE", days: null },
   strategy: { type: "unset" },
+  // 默认公告展示跟随到期时间（与后端不传 noticeLinkExpire 的默认一致）
+  noticeDisplay: { linkExpire: true, days: null },
 };
 
 /** 提交前归一化处置数值：maxEnterSuccess 小数 floor、负值归 null；到期天数小数 floor（≤0 已在插槽归一为 null）。 */

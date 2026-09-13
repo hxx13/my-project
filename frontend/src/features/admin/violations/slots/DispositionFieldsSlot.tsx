@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type JSX } from "react";
 import { fetchDispositionStrategies, type DispositionStrategyMeta } from "@/api/domains/obligation.api";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { InspectorGroup, InspectorRow } from "../shared/InspectorGroup";
 import { BareInput, BareNumberWithUnit } from "../shared/BareControl";
 import { MultiSelectField } from "../shared/MultiSelectField";
@@ -159,6 +160,8 @@ export function DispositionFieldsSlot({
   // 到期时间与验证后解禁可并存：不再因 unlock 禁用或改提示
   const expiryHint = expiryCopy?.hint ?? VIOLATION_FIELD_COPY.expireDays.hint;
   const expiryControlsDisabled = disabled;
+  const noticeLinkExpire = value.noticeDisplay?.linkExpire ?? true;
+  const noticeDays = value.noticeDisplay?.days ?? null;
   const registryType = registryDispositionType(value);
   const strategyOptions = strategies.map((s) => ({
     value: s.type,
@@ -420,6 +423,50 @@ export function DispositionFieldsSlot({
             </InspectorRow>
           )
         : null}
+
+      {/* 公告与到期联动：不联动时必须给天数，空值会变成「一直展示」 */}
+      {capability.allowNotice ? (
+        <>
+          <InspectorRow label="公告与到期联动">
+            {(controlId) => (
+              <AdminSwitchScaled
+                id={controlId}
+                checked={noticeLinkExpire}
+                disabled={disabled}
+                onChange={(checked) =>
+                  onChange({
+                    ...value,
+                    // 关掉联动时沿用已有天数（通常为空，交由下方天数框补填）
+                    noticeDisplay: { linkExpire: checked, days: checked ? null : noticeDays },
+                  })
+                }
+              />
+            )}
+          </InspectorRow>
+          {!noticeLinkExpire ? (
+            <InspectorRow
+              label="公告展示天数"
+              tone={noticeDays == null ? "warn" : "default"}
+              hint={noticeDays == null ? "必填" : undefined}
+            >
+              {(controlId) => (
+                <BareNumberWithUnit
+                  id={controlId}
+                  value={noticeDays == null ? "" : String(noticeDays)}
+                  onChange={(raw) =>
+                    onChange({
+                      ...value,
+                      noticeDisplay: { linkExpire: false, days: toDaysOrNull(raw) },
+                    })
+                  }
+                  unit="天"
+                  disabled={disabled}
+                />
+              )}
+            </InspectorRow>
+          ) : null}
+        </>
+      ) : null}
     </InspectorGroup>
   );
 }

@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearStudentViolation,
+  clearStudentViolationNotice,
   deleteStudentViolation,
   listStudentViolations,
   VIOLATION_STATUS_LABEL,
@@ -38,8 +39,8 @@ export function personDisplayName(r: StudentViolationRow): string {
   return n || r.targetUserId;
 }
 
-/** 6 列主表 Grid 模板（对齐原型 v4 `.tablerow`）。 */
-const GRID_COLS = "grid-cols-[minmax(16rem,2.2fr)_6.5rem_8rem_7rem_8.5rem_7.5rem]";
+/** 7 列主表 Grid 模板（对齐原型 v4 `.tablerow`）。 */
+const GRID_COLS = "grid-cols-[minmax(16rem,2.2fr)_6.5rem_8rem_7rem_8.5rem_5rem_7.5rem]";
 
 /** 违规记录每页条数：默认列表后端分页，避免全量渲染卡顿。 */
 const RECORDS_PAGE_SIZE = 20;
@@ -93,6 +94,31 @@ function sourceBadge(source: string | undefined): JSX.Element {
     return <span className="inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-success)]">笼架联动</span>;
   }
   return <span className="inline-flex items-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]">手动</span>;
+}
+
+/**
+ * 公告列：大屏公示要求 status=ACTIVE 且未被单独解除（与后端 boardVisibleClause 同口径）。
+ * 非生效状态本就不上板，显示「—」而不是「生效中」。
+ */
+function noticeBadge(r: StudentViolationRow): JSX.Element {
+  if (r.noticeClearedAt) {
+    return (
+      <span
+        title={`解除时间 ${formatBeijingDateTimeMedium(r.noticeClearedAt)}`}
+        className="inline-flex items-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]"
+      >
+        已解除
+      </span>
+    );
+  }
+  if (r.status !== "ACTIVE") {
+    return <span className="text-[11px] text-[var(--app-color-text-tertiary)]">—</span>;
+  }
+  return (
+    <span className="inline-flex items-center rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[var(--app-color-feedback-success-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-feedback-success)]">
+      生效中
+    </span>
+  );
 }
 
 /**
@@ -203,6 +229,17 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     }
   };
 
+  const handleClearNotice = async (id: number) => {
+    if (!await appConfirm("解除公告后该条不再上大屏公示，记录与禁入均不变。确定？")) return;
+    try {
+      await clearStudentViolationNotice(id);
+      toast.success("已解除公告");
+      await qc.invalidateQueries({ queryKey: ["studentViolations"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "解除公告失败");
+    }
+  };
+
   const handleDelete = async (r: StudentViolationRow) => {
     if (!await appConfirm(`确定物理删除记录 #${r.id}？不可恢复。`)) return;
     try {
@@ -235,6 +272,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
         <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">来源</div>
         <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">禁入</div>
         <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">到期</div>
+        <div className="py-2 text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">公告</div>
         <div className="py-2 text-right text-[11px] font-semibold tracking-wide text-[var(--app-color-text-tertiary)]">操作</div>
       </div>
 
@@ -286,6 +324,9 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                   <div className={cn("mt-0.5 text-[11px]", dm.late ? "text-[color-mix(in_srgb,var(--app-color-feedback-danger)_80%,transparent)]" : "text-[var(--app-color-text-tertiary)]")}>{dm.secondary}</div>
                 </div>
 
+                {/* 公告 */}
+                <div>{noticeBadge(r)}</div>
+
                 {/* 操作：hover 显现 */}
                 <div className="flex justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                   <AdminButton type="button" size="sm" tone="secondary" active={open} onClick={() => setExpandedId(open ? null : r.id)}>
@@ -303,13 +344,24 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                       解除
                     </AdminButton>
                   ) : null}
+                  {r.status === "ACTIVE" && !r.noticeClearedAt ? (
+                    <AdminButton
+                      type="button"
+                      size="sm"
+                      tone="secondary"
+                      className="text-[var(--app-color-feedback-info)]"
+                      onClick={() => void handleClearNotice(r.id)}
+                    >
+                      解除公告
+                    </AdminButton>
+                  ) : null}
                   <AdminButton type="button" size="sm" tone="destructive" onClick={() => void handleDelete(r)}>删除</AdminButton>
                 </div>
               </div>
 
               {open ? (
                 <div className={cn("grid border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3.5 py-3", GRID_COLS)}>
-                  <div className="col-span-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="col-span-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <DetailItem k="记录 ID" v={`#${r.id}`} />
                     <DetailItem k="关联规则" v={r.ruleName || "—"} mono={false} />
                     <DetailItem k="处置策略" v={disp.strategyLabel} mono={false} />

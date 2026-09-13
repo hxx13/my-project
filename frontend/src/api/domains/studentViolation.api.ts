@@ -63,6 +63,12 @@ export interface StudentViolationRow {
   activeSameUserCount?: number;
   /** 本条是否就是大屏正在展示的那条（同人取 MAX(id)） */
   boardDisplayed?: boolean;
+  /** 公告展示天数；null=跟随到期时间（与 noticeLinkExpire=1 等价） */
+  noticeDisplayDays?: number | null;
+  /** 公告展示是否与到期时间联动；1=联动，0=按 noticeDisplayDays */
+  noticeLinkExpire?: number | null;
+  /** 公告单独解除时间；非空=该条已下大屏公示 */
+  noticeClearedAt?: string | null;
 }
 
 export interface CreateStudentViolationPayload {
@@ -86,6 +92,10 @@ export interface CreateStudentViolationPayload {
   /** 期 3 处置策略覆盖（写入 Obligation） */
   dispositionType?: string | null;
   dispositionConfigJson?: string | null;
+  /** 公告展示天数；null=跟随到期时间（仅 noticeLinkExpire=0 时才生效） */
+  noticeDisplayDays?: number | null;
+  /** 公告展示是否与到期时间联动；不传默认 1 */
+  noticeLinkExpire?: number | null;
 }
 
 export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {
@@ -195,6 +205,10 @@ export interface UpdateStudentViolationPayload {
   interactiveUnlockOnVerify?: boolean;
   dispositionType?: string | null;
   dispositionConfigJson?: string | null;
+  /** 公告展示天数；null=保持原值 */
+  noticeDisplayDays?: number | null;
+  /** 公告展示是否与到期时间联动；null=保持原值 */
+  noticeLinkExpire?: number | null;
 }
 
 export async function updateStudentViolation(id: number, body: UpdateStudentViolationPayload) {
@@ -208,6 +222,11 @@ export async function deleteStudentViolation(id: number) {
 
 export async function clearStudentViolation(id: number) {
   await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/clear`);
+}
+
+/** 单独解除公告（大屏立即下板，记录与禁入不变）。后端幂等，success=false 由 adminHttp 拦截器抛错。 */
+export async function clearStudentViolationNotice(id: number): Promise<void> {
+  await adminHttp.post<ApiResponse<unknown>>(`/twin/student-violations/${id}/clear-notice`);
 }
 
 /** 与后端 RoleEnum.code 一致 */
