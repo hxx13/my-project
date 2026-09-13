@@ -7,12 +7,9 @@ import com.example.demo.modules.twin.obligation.delivery.ChannelCapability;
 import com.example.demo.modules.twin.obligation.delivery.ChannelDeliveryPolicy;
 import com.example.demo.modules.twin.obligation.delivery.NotifyChannelGuide;
 import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
-import com.example.demo.modules.twin.obligation.disposition.QuizBank;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.obligation.support.ObligationSupport;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
@@ -32,18 +29,15 @@ public class StudentObligationController {
     private final ObligationService obligationService;
     private final DispositionStrategyRegistry dispositionRegistry;
     private final AuthContextService authContextService;
-    private final ObjectMapper objectMapper;
 
     public StudentObligationController(
             ObligationService obligationService,
             DispositionStrategyRegistry dispositionRegistry,
-            AuthContextService authContextService,
-            ObjectMapper objectMapper
+            AuthContextService authContextService
     ) {
         this.obligationService = obligationService;
         this.dispositionRegistry = dispositionRegistry;
         this.authContextService = authContextService;
-        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/mine")
@@ -75,32 +69,16 @@ public class StudentObligationController {
         if (user == null || !StringUtils.hasText(user.getId())) {
             return Result.error("未登录或令牌无效");
         }
+        // 归属校验依赖登录身份，留在 controller；抽题逻辑下沉 service
         TwinObligation ob = obligationService.findById(id);
         if (ob == null || !user.getId().equals(ob.getSubjectUserId())) {
             return Result.error("待办不存在");
         }
-        if (!ObligationSupport.DISPOSITION_QUIZ.equals(ob.getDispositionType())) {
-            return Result.error("该待办不是答题策略");
-        }
-        String bankId = QuizBank.DEFAULT_BANK_ID;
-        int drawCount = 3;
         try {
-            if (StringUtils.hasText(ob.getDispositionConfigJson())) {
-                JsonNode cfg = objectMapper.readTree(ob.getDispositionConfigJson());
-                if (cfg.hasNonNull("questionBankId")) {
-                    bankId = cfg.get("questionBankId").asText(QuizBank.DEFAULT_BANK_ID);
-                }
-                if (cfg.has("drawCount")) {
-                    drawCount = cfg.get("drawCount").asInt(3);
-                }
-            }
-        } catch (Exception ignored) {
-            // 配置解析失败用默认
+            return Result.success(obligationService.drawQuiz(id));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
         }
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("questionBankId", bankId);
-        payload.put("questions", QuizBank.drawPublic(bankId, drawCount));
-        return Result.success(payload);
     }
 
     @PostMapping("/{id}/delivered")
