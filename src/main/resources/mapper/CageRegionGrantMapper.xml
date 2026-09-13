@@ -23,16 +23,18 @@
         ORDER BY user_id ASC, grant_role ASC, region_type ASC, region_id ASC
     </select>
 
-    <!-- 已分配过的人：user_id 存 personnel.id 字符串，join 回来取姓名 -->
+    <!-- 已分配过的人：user_id 存 personnel.id，但回给前端的必须是「账号 id」——
+         分配页拿它去调 GET/PUT/DELETE /api/person-scope/{userId}，那几个接口走
+         resolveIdByAccount，喂 personnel.id 会解析失败、页面点进去一片空白。 -->
     <select id="listAssignees" resultType="map">
-        SELECT g.user_id AS userId,
+        SELECT COALESCE(NULLIF(p.staff_id, ''), NULLIF(p.aro_user_id, ''), g.user_id) AS userId,
                COALESCE(NULLIF(p.name, ''), g.user_id) AS name,
                p.staff_id AS staffId,
                COUNT(*) AS scopeCount
         FROM cage_region_grant g
         LEFT JOIN personnel p ON p.id = g.user_id
         WHERE g.grant_role = #{grantRole}
-        GROUP BY g.user_id, p.name, p.staff_id
+        GROUP BY g.user_id, p.name, p.staff_id, p.aro_user_id
         ORDER BY name ASC
     </select>
 
