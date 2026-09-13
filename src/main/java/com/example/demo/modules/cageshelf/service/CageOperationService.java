@@ -89,6 +89,7 @@ public class CageOperationService {
     private final ReferenceDataMapper referenceDataMapper;
     private final UserGroupNameResolver userGroupNameResolver;
     private final CageIntermediateStateService intermediateStateService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageOperationService(CageOpRequestMapper opMapper,
                                 CageCellDetailMapper detailMapper,
@@ -113,7 +114,8 @@ public class CageOperationService {
                                 UserMapper userMapper,
                                 ReferenceDataMapper referenceDataMapper,
                                 UserGroupNameResolver userGroupNameResolver,
-                                CageIntermediateStateService intermediateStateService) {
+                                CageIntermediateStateService intermediateStateService,
+                                CageVisibilityPolicy visibilityPolicy) {
         this.opMapper = opMapper;
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
@@ -138,6 +140,7 @@ public class CageOperationService {
         this.referenceDataMapper = referenceDataMapper;
         this.userGroupNameResolver = userGroupNameResolver;
         this.intermediateStateService = intermediateStateService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     // ═══════════════════════════════════════════
@@ -1040,10 +1043,9 @@ public class CageOperationService {
     // 审核
     // ═══════════════════════════════════════════
 
-    /** 待审列表：ADMIN/PI 全量，否则按 cage_audit_assignment 的楼层/房间归属过滤。 */
+    /** 待审列表：全局可见者（SUPER_ADMIN+）全量，否则按 cage_audit_assignment 的楼层/房间归属过滤。 */
     public List<Map<String, Object>> pending(User reviewer, String opType) {
-        boolean isAdmin = reviewer != null && reviewer.getRole() != null
-                && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
         List<Map<String, Object>> out = new ArrayList<>();
         for (CageOpRequest r : opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, opType)) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(r.getSourceAnimalCageId());
@@ -1069,10 +1071,9 @@ public class CageOperationService {
      * 判组只看**源笼位**：目标准入本就要求与源同 AUP，同组是推论。
      */
     public List<Map<String, Object>> pendingMarkers(User user) {
-        // ADMIN 及以上不受视角收口：isStudent 只看 account_source，不看 role，
-        // 双视角绑定被抬到高权限的账号（account_source=STUDENT）会被误判成学生而丢失可见范围。
-        boolean isAdmin = user != null && user.getRole() != null
-                && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        // 全局可见者不受视角收口：isStudent 只看 account_source，不看 role，
+        // 双视角绑定被抬到全局可见的账号（account_source=STUDENT）会被误判成学生而丢失可见范围。
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(user);
         boolean student = !isAdmin && modeVisibilityService.isStudent(user);
         List<CageOpRequest> rows = opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, null);
         List<Map<String, Object>> out = new ArrayList<>();
@@ -1124,7 +1125,7 @@ public class CageOperationService {
         if (!CageOpRequest.STATUS_PENDING.equals(req.getStatus())) {
             throw new TwinBusinessException(400, "该请求已处理：" + req.getStatus());
         }
-        boolean isAdmin = reviewer.getRole() != null && reviewer.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
         if (!isAdmin) {
             Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(req.getSourceAnimalCageId());
             if (!auditAssignmentService.canReview(reviewer,
