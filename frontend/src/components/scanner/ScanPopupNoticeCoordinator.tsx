@@ -12,6 +12,7 @@ import {
   type ScanNoticePanelKey,
 } from "./scanNoticePanelId";
 import { canAutoOpenNoticesOnPopupOpen } from "./scanNoticeAutoOpen";
+import { needsInteractiveLayer } from "./noticeLayer";
 import type { NoticeKind } from "./scanPopupTheme";
 
 export type ScanNoticeDialogId = "violation" | "unbound" | "announcement" | "cage-notice";
@@ -63,6 +64,25 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
   const actualViolation = isCageNotice ? undefined : violation;
   const unbound = result.unboundCardNotice;
   const bundle = result.scanPopupAnnouncements;
+
+  /**
+   * 需要处置的违规走「交互层」独占一行（给足宽度），其余通知并排。
+   * 处置完成那一刻 result 里的 interactiveChallengeVerified 变 true → 本值转假 → 自动落回公告层。
+   */
+  const violationNeedsLayer = needsInteractiveLayer(actualViolation);
+
+  /**
+   * 面板层分组：需要处置的违规面板独占交互层，其余（含已完成处置的违规）回公告层并排。
+   * 交互层最多 1 张（每种 kind 只有一个面板），所以不需要做 N 张的泛化。
+   */
+  const interactivePanelKeys: ScanNoticePanelKey[] = useMemo(
+    () => (violationNeedsLayer ? openPanels.filter((k) => k === "violation") : []),
+    [violationNeedsLayer, openPanels]
+  );
+  const passivePanelKeys: ScanNoticePanelKey[] = useMemo(
+    () => openPanels.filter((k) => !interactivePanelKeys.includes(k)),
+    [openPanels, interactivePanelKeys]
+  );
 
   const announcementItems = useMemo(
     () => bundle?.items?.filter((x) => x?.id) ?? [],
@@ -228,10 +248,10 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     [openPanels]
   );
 
-  const renderStripPanels = () => {
-    if (openPanels.length === 0) return null;
+  const renderStripPanels = (keys: ScanNoticePanelKey[]) => {
+    if (keys.length === 0) return null;
 
-    if (!tiledAutoOpen && openPanels.includes("announcement-manual")) {
+    if (!tiledAutoOpen && keys.includes("announcement-manual")) {
       const item = announcementItems[Math.min(manualAnnPage, announcementCount - 1)];
       if (!item?.id) return null;
       return (
@@ -257,7 +277,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
       );
     }
 
-    return openPanels.map((key) => {
+    return keys.map((key) => {
       if (key === "cage-notice" && cageNotice?.id != null) {
         return (
           <ScanNoticePanelCard
@@ -332,7 +352,19 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
 
   return (
     <>
-      <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(67.2vw,784px)] flex-row flex-wrap items-stretch justify-center gap-2 px-1">
+      <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(67.2vw,784px)] flex-col items-center gap-2 px-1">
+        {/* 交互层：需要处置的违规独占一行；处置完成后自动落回下面那一行 */}
+        {hasViolation && violationNeedsLayer ? (
+          <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2">
+            <ScanPopupNoticeBanner
+              kind="violation"
+              notice={actualViolation}
+              panelOpen={isIslandOpen("violation")}
+              onPanelOpenChange={(open) => (open ? openManual("violation") : closePanel("violation"))}
+            />
+          </div>
+        ) : null}
+        <div className="flex w-full flex-row flex-wrap items-stretch justify-center gap-2">
         {hasCageNotice ? (
           <ScanPopupNoticeBanner
             kind="cage-notice"
@@ -341,7 +373,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
             onPanelOpenChange={(open) => (open ? openManual("cage-notice") : closePanel("cage-notice"))}
           />
         ) : null}
-        {hasViolation ? (
+        {hasViolation && !violationNeedsLayer ? (
           <ScanPopupNoticeBanner
             kind="violation"
             notice={actualViolation}
@@ -369,14 +401,17 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
             }
           />
         ) : null}
+        </div>
       </div>
 
       <ScanNoticeStripPortal
         open={openPanels.length > 0}
-        panelCount={openPanels.length}
+        panelCount={passivePanelKeys.length}
+        interactiveCount={interactivePanelKeys.length}
         onCloseAll={closeAllPanels}
+        interactiveChildren={renderStripPanels(interactivePanelKeys)}
       >
-        {renderStripPanels()}
+        {renderStripPanels(passivePanelKeys)}
       </ScanNoticeStripPortal>
     </>
   );
