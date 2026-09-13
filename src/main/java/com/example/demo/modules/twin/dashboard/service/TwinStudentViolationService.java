@@ -107,8 +107,8 @@ public class TwinStudentViolationService {
      * @param completedAt   回执完成时间（本函数不推断时间，一律由调用方传入），可为 null
      * @param channel       回执渠道，可为 null
      */
-    static Map<String, Object> dispositionSummary(String type, String status, String answerPayload,
-                                                  LocalDateTime completedAt, String channel) {
+    public static Map<String, Object> dispositionSummary(String type, String status, String answerPayload,
+                                                         LocalDateTime completedAt, String channel) {
         String rawType = StringUtils.hasText(type) ? type.trim() : null;
         String rawStatus = StringUtils.hasText(status) ? status.trim() : null;
         String typeKey = rawType != null ? rawType.toUpperCase() : null;

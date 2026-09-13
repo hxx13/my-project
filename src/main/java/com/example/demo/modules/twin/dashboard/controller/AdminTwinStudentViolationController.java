@@ -18,12 +18,14 @@ import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNotic
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
 import com.example.demo.modules.twin.dashboard.service.ViolationTextTemplateService;
+import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -498,21 +500,24 @@ public class AdminTwinStudentViolationController {
             m.put("ruleName", null);
         }
         // 笼架联动父记录信息
+        String cageParentGroup = null;
         m.put("cageViolationId", v.getCageViolationId());
         if (v.getCageViolationId() != null && cageStatusViolationMapper != null) {
             TwinCageStatusViolation parent = cageStatusViolationMapper.selectById(v.getCageViolationId());
+            cageParentGroup = parent != null ? parent.getProjectGroupName() : null;
             m.put("cageParentStatus", parent != null ? parent.getStatusCode() : null);
             m.put("cageParentPosition", parent != null ? parent.getPositionLabel() : null);
-            m.put("cageParentGroup", parent != null ? parent.getProjectGroupName() : null);
+            m.put("cageParentGroup", cageParentGroup);
         } else {
             m.put("cageParentStatus", null);
             m.put("cageParentPosition", null);
             m.put("cageParentGroup", null);
         }
         // Obligation 处置策略（列表详情与编辑器同源）
+        TwinObligation ob = null;
         if (obligationService != null && v.getId() != null) {
             try {
-                var ob = obligationService.findByViolationId(v.getId());
+                ob = obligationService.findByViolationId(v.getId());
                 if (ob != null) {
                     m.put("dispositionType", ob.getDispositionType());
                     m.put("dispositionConfigJson", ob.getDispositionConfigJson());
@@ -521,6 +526,7 @@ public class AdminTwinStudentViolationController {
                     m.put("dispositionConfigJson", null);
                 }
             } catch (Exception ignored) {
+                ob = null;
                 m.put("dispositionType", null);
                 m.put("dispositionConfigJson", null);
             }
@@ -528,7 +534,51 @@ public class AdminTwinStudentViolationController {
             m.put("dispositionType", null);
             m.put("dispositionConfigJson", null);
         }
+        // 批次键 / 课题组 / 公告状态 / 处置摘要（记录页按批次成块渲染）
+        m.put("batchId", v.getBatchId() == null || v.getBatchId().isBlank() ? ("SINGLE-" + v.getId()) : v.getBatchId());
+        m.put("projectGroupName", cageParentGroup);
+        m.put("noticeState", resolveNoticeState(v));
+        Map<String, Object> disposition = null;
+        if (ob != null) {
+            // ponytail: 每行 1 次按 (obligation_id, subject_user_id) 唯一键点查；页面 20 行，若将来放大分页再改批量
+            try {
+                var receipt = obligationService.findReceipt(ob.getId(), v.getTargetUserId());
+                disposition = TwinStudentViolationService.dispositionSummary(
+                        ob.getDispositionType(),
+                        ob.getStatus(),
+                        receipt == null ? null : receipt.getAnswerPayload(),
+                        receipt == null ? null : receipt.getCompletedAt(),
+                        receipt == null ? null : receipt.getChannel());
+            } catch (Exception ignored) {
+                disposition = null;
+            }
+        }
+        m.put("disposition", disposition);
         return m;
+    }
+
+    /**
+     * 公告状态编码（ACTIVE / CLEARED / WINDOW_ENDED / NOT_ACTIVE）。
+     * 判定必须与 TwinStudentViolationMapper.xml 的 boardVisibleClause 保持一致，改一处必须改另一处。
+     */
+    private String resolveNoticeState(TwinStudentViolation v) {
+        if (!"ACTIVE".equals(v.getStatus())) {
+            return "NOT_ACTIVE";
+        }
+        if (v.getNoticeClearedAt() != null) {
+            return "CLEARED";
+        }
+        LocalDateTime now = LocalDateTime.now();
+        Integer linkExpire = v.getNoticeLinkExpire();
+        if (linkExpire == null || linkExpire == 1) {
+            return (v.getExpireAt() == null || v.getExpireAt().isAfter(now)) ? "ACTIVE" : "WINDOW_ENDED";
+        }
+        // notice_link_expire = 0：按 created_at + notice_display_days 判定
+        if (v.getNoticeDisplayDays() == null) {
+            return "ACTIVE";
+        }
+        return (v.getCreatedAt() != null && v.getCreatedAt().plusDays(v.getNoticeDisplayDays()).isAfter(now))
+                ? "ACTIVE" : "WINDOW_ENDED";
     }
 
     private Result<?> requireAdmin(String authorization) {

@@ -194,7 +194,8 @@
         SELECT v.*
         FROM twin_student_violation v
         <include refid="recentFilter"/>
-        ORDER BY v.id DESC
+        <!-- 批次倒序、批内正序；batch_id 为 NULL 的历史行在 DESC 下排最后（沉底） -->
+        ORDER BY v.batch_id DESC, v.id ASC
         LIMIT #{offset}, #{limit}
     </select>
 
