@@ -205,16 +205,32 @@
 
     <!-- 大屏公示严格按到期时间过滤：拼图未完成者超期后扫码端仍弹窗（selectActiveByTargetUserId），
          但已下榜，不再出现在主页「提醒公示」 -->
+    <!--
+      大屏公告可见性口径（唯一来源，两处查询共用，禁止各自改写）：
+      ACTIVE + 公告未被单独解除 + 仍在公告展示窗口内。
+      联动(notice_link_expire=1)展示到到期时间；否则展示到 created_at + notice_display_days 天。
+      历史行 notice_link_expire 默认 1，故行为与加此列前一致。
+    -->
+    <sql id="boardVisibleClause">
+        status = 'ACTIVE'
+        AND notice_cleared_at IS NULL
+        AND (
+          CASE WHEN notice_link_expire = 1
+               THEN (expire_at IS NULL OR expire_at &gt; NOW())
+               ELSE (notice_display_days IS NULL
+                     OR created_at &gt; DATE_SUB(NOW(), INTERVAL notice_display_days DAY))
+          END
+        )
+    </sql>
+
     <select id="selectActiveForDashboardBoard" resultMap="TwinStudentViolationMap">
         SELECT v.*
         FROM twin_student_violation v
-        WHERE v.status = 'ACTIVE'
-          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+        WHERE <include refid="boardVisibleClause"/>
           AND v.id IN (
               SELECT MAX(id)
               FROM twin_student_violation
-              WHERE status = 'ACTIVE'
-                AND (expire_at IS NULL OR expire_at &gt; NOW())
+              WHERE <include refid="boardVisibleClause"/>
               GROUP BY target_user_id
           )
         ORDER BY v.created_at DESC, v.id DESC
@@ -225,8 +241,7 @@
     <select id="selectBoardVisibleActiveByUserIds" resultMap="TwinStudentViolationMap">
         SELECT v.*
         FROM twin_student_violation v
-        WHERE v.status = 'ACTIVE'
-          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+        WHERE <include refid="boardVisibleClause"/>
           AND v.target_user_id IN
           <foreach collection="userIds" item="uid" open="(" separator="," close=")">
               #{uid}
