@@ -113,7 +113,6 @@ public class AdminTwinStudentViolationController {
             @RequestParam(value = "pageSize", defaultValue = "0") int pageSize,
             @RequestParam(value = "statuses", required = false) List<String> statuses,
             @RequestParam(value = "sources", required = false) List<String> sources,
-            @RequestParam(value = "excludeCage", required = false) Boolean excludeCage,
             @RequestParam(value = "lockedOnly", required = false) Boolean lockedOnly
     ) {
         Result<?> denied = requireAdmin(authorization);
@@ -124,8 +123,8 @@ public class AdminTwinStudentViolationController {
         int ps = pageSize > 0 ? pageSize : limit;
         ps = Math.min(Math.max(ps, 1), 500);
         int offset = Math.max(0, (Math.max(page, 1) - 1) * ps);
-        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, excludeCage, lockedOnly, ps, offset);
-        int total = violationService.countRecent(targetUserId, statuses, sources, excludeCage, lockedOnly);
+        List<TwinStudentViolation> rows = violationService.listRecent(targetUserId, statuses, sources, lockedOnly, ps, offset);
+        int total = violationService.countRecent(targetUserId, statuses, sources, lockedOnly);
         Set<String> idSet = new HashSet<>();
         for (TwinStudentViolation v : rows) {
             if (v == null) continue;

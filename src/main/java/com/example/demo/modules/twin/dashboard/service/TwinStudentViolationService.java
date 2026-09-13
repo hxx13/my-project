@@ -877,7 +877,6 @@ public class TwinStudentViolationService {
             String targetUserId,
             List<String> statuses,
             List<String> sources,
-            Boolean excludeCage,
             Boolean lockedOnly,
             int limit,
             int offset) {
@@ -893,7 +892,7 @@ public class TwinStudentViolationService {
         try {
             return violationMapper.selectRecent(
                     StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
-                    statuses, sources, excludeCage, lockedOnly,
+                    statuses, sources, lockedOnly,
                     lim, off
             );
         } catch (Exception e) {
@@ -910,7 +909,6 @@ public class TwinStudentViolationService {
             String targetUserId,
             List<String> statuses,
             List<String> sources,
-            Boolean excludeCage,
             Boolean lockedOnly) {
         if (violationTableAbsent.get()) {
             return 0;
@@ -922,7 +920,7 @@ public class TwinStudentViolationService {
         try {
             return violationMapper.countRecent(
                     StringUtils.hasText(targetUserId) ? targetUserId.trim() : null,
-                    statuses, sources, excludeCage, lockedOnly
+                    statuses, sources, lockedOnly
             );
         } catch (Exception e) {
             if (isTwinStudentViolationTableMissing(e)) {

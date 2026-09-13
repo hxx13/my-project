@@ -180,8 +180,6 @@ export interface StudentViolationListParams {
   /** 服务端 SQL 层过滤（避免先截断窗口再前端过滤导致的幻影记录） */
   statuses?: StudentViolationStatus[];
   sources?: string[];
-  /** true=仅非笼架联动记录；false/null=不过滤 */
-  excludeCage?: boolean;
   /** true=仅禁入 / false=仅可进入 / undefined=不过滤 */
   lockedOnly?: boolean;
 }
@@ -199,7 +197,6 @@ export async function listStudentViolations(params: StudentViolationListParams =
   if (params.targetUserId) sp.set("targetUserId", params.targetUserId);
   if (params.statuses?.length) sp.set("statuses", params.statuses.join(","));
   if (params.sources?.length) sp.set("sources", params.sources.join(","));
-  if (params.excludeCage != null) sp.set("excludeCage", String(params.excludeCage));
   if (params.lockedOnly != null) sp.set("lockedOnly", String(params.lockedOnly));
   const res = await adminHttp.get<ApiResponse<StudentViolationListResult>>(`/twin/student-violations?${sp.toString()}`);
   return res.data?.data ?? { list: [], total: 0 };

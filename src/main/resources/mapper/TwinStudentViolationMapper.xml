@@ -147,9 +147,6 @@
             <if test="targetUserId != null and targetUserId != ''">
                 AND v.target_user_id = #{targetUserId}
             </if>
-            <if test="excludeCage != null and excludeCage">
-                AND v.cage_violation_id IS NULL
-            </if>
             <if test="statuses != null and statuses.size() > 0">
                 AND v.status IN
                 <foreach collection="statuses" item="s" open="(" separator="," close=")">
