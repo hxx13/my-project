@@ -135,7 +135,10 @@ public class CageRegionMineController {
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("granted", permissionService.memberCapabilities(memberAccountId));
-        out.put("ceiling", permissionService.identityCeiling(memberAccountId));
+        // 上限 = 身份矩阵允许的 ∪ 组长可逐人授予的额外能力（后者不受身份约束，见 LEADER_GRANTABLE）
+        java.util.Set<String> ceiling = new java.util.LinkedHashSet<>(permissionService.identityCeiling(memberAccountId));
+        ceiling.addAll(CagePermissionService.LEADER_GRANTABLE);
+        out.put("ceiling", ceiling);
         // 标签一并下发：矩阵接口是超管专属，组长拿不到，总不能在前端再抄一份模式名
         Map<String, String> labels = new LinkedHashMap<>();
         for (var c : permissionService.listCapabilities()) labels.put(c.getCode(), c.getLabel());

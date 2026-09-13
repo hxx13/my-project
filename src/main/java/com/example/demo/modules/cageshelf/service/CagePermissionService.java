@@ -57,6 +57,16 @@ public class CagePermissionService {
         return identityService.resolveIdByAccount(accountId.trim());
     }
 
+    /**
+     * 组长可**逐人授予且不受身份上限约束**的额外能力。
+     *
+     * <p>「代认领」是「谁能再次分配笼位」的授权，本来就该由组长决定，不该被组员身份卡死——
+     * 若套用「矩阵是上限」，这个功能会完全无用：身份本来有的不需要授、身份没有的授不了。
+     * 其余能力（模式、编辑表单、分笼/转移操作身份）仍严格受身份上限约束。
+     */
+    public static final java.util.Set<String> LEADER_GRANTABLE =
+            java.util.Set.of("cage.op.claim_on_behalf");
+
     /** 能力 code → 允许的身份 code 集合。空集表示该能力无人可用（fail-closed）。 */
     public Map<String, Set<String>> allowedIdentitiesByCapability() {
         Map<String, Set<String>> out = new LinkedHashMap<>();
@@ -142,7 +152,7 @@ public class CagePermissionService {
         if (pid == null || pid.isBlank()) throw new IllegalArgumentException("组员不存在，无法配置能力");
         Set<String> ceiling = identityCeiling(memberAccountId);
         List<String> bad = (codes == null ? List.<String>of() : codes).stream()
-                .filter(c -> !ceiling.contains(c))
+                .filter(c -> !ceiling.contains(c) && !LEADER_GRANTABLE.contains(c))
                 .distinct()
                 .toList();
         if (!bad.isEmpty()) {
