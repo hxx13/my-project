@@ -140,6 +140,9 @@ public class StrandedViolationService {
         int skippedAroFailed = 0;
         List<String> errors = new ArrayList<>();
 
+        // 本轮检测共享同一批次键，学生端记录页按此成块（一次运行=一块）
+        String strandedBatchId = TwinStudentViolationService.newBatchKey();
+
         for (String userId : candidates) {
             try {
                 // 3. ARO 官方二次确认：是否仍在内
@@ -215,7 +218,8 @@ public class StrandedViolationService {
                         "SYSTEM",
                         challenge,
                         interactiveUnlockOnVerify,
-                        ruleId);
+                        ruleId,
+                        strandedBatchId);
                 if (newViolation != null) {
                     created++;
                 }
@@ -522,7 +526,8 @@ public class StrandedViolationService {
                 expireDays, "SYSTEM",
                 challenge,
                 interactiveUnlockOnVerify,
-                testRuleId);
+                testRuleId,
+                null);
 
         if (newViolation == null) {
             return sb.append("该用户已有 ACTIVE 的 AUTO_STRANDED 违规，跳过（去重）").toString();

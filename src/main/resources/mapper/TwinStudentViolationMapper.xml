@@ -25,6 +25,7 @@
         <result column="interactive_unlock_on_verify" property="interactiveUnlockOnVerify"/>
         <result column="rule_id" property="ruleId"/>
         <result column="cage_violation_id" property="cageViolationId"/>
+        <result column="batch_id" property="batchId"/>
         <result column="notice_display_days" property="noticeDisplayDays"/>
         <result column="notice_link_expire" property="noticeLinkExpire"/>
         <result column="notice_cleared_at" property="noticeClearedAt"/>
@@ -102,13 +103,13 @@
             target_user_id, violation_text, content_json, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
             expire_at, status, created_by_user_id, source, interactive_challenge, interactive_unlock_on_verify,
-            rule_id, cage_violation_id,
+            rule_id, cage_violation_id, batch_id,
             notice_display_days, notice_link_expire, notice_cleared_at, notice_cleared_by_user_id
         ) VALUES (
             #{targetUserId}, #{violationText}, #{contentJson}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
             #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}, #{interactiveUnlockOnVerify},
-            #{ruleId}, #{cageViolationId},
+            #{ruleId}, #{cageViolationId}, #{batchId},
             #{noticeDisplayDays}, #{noticeLinkExpire}, #{noticeClearedAt}, #{noticeClearedByUserId}
         )
     </insert>

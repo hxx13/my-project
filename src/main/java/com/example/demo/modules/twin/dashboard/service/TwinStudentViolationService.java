@@ -43,6 +43,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -52,6 +53,13 @@ public class TwinStudentViolationService {
     private static final String SOURCE_AUTO_STRANDED = "AUTO_STRANDED";
     /** MySQL GET_LOCK 锁名最长 64 字符 */
     private static final int AUTO_STRANDED_LOCK_TIMEOUT_SEC = 10;
+
+    /** 批次键：13 位毫秒 + 8 位十六进制随机，定长 21，字典序即时间序 */
+    static String newBatchKey() {
+        // %08x 补足高位零，保证随机段恒为 8 位（Long.toHexString 会省略前导零导致不定长）
+        return System.currentTimeMillis()
+                + String.format("%08x", ThreadLocalRandom.current().nextLong() & 0xFFFFFFFFL);
+    }
 
     private static final java.util.Map<String, String> CAGE_STATUS_LABEL = java.util.Map.of(
         "COHABITATION", "合笼/繁殖",
@@ -782,7 +790,8 @@ public class TwinStudentViolationService {
             String createdByUserId,
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify,
-            Long ruleId
+            Long ruleId,
+            String batchId
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -818,7 +827,10 @@ public class TwinStudentViolationService {
                     interactiveChallenge,
                     interactiveUnlockOnVerify,
                     ruleId,
-                    null);
+                    null,
+                    null,
+                    null,
+                    batchId);
         } finally {
             try {
                 violationMapper.releaseLock(lockName);
@@ -937,7 +949,32 @@ public class TwinStudentViolationService {
     ) {
         return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
                 showNoticeEveryScan, expireAfterDays, createdByUserId, source,
-                interactiveChallenge, interactiveUnlockOnVerify, ruleId, cageViolationId, null, null);
+                interactiveChallenge, interactiveUnlockOnVerify, ruleId, cageViolationId, null, null, null);
+    }
+
+    /** 15 参重载：单条创建（管理端），批次键由实现按本条自成一批生成 */
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId,
+            Long cageViolationId,
+            Integer noticeDisplayDays,
+            Integer noticeLinkExpire
+    ) {
+        return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
+                showNoticeEveryScan, expireAfterDays, createdByUserId, source,
+                interactiveChallenge, interactiveUnlockOnVerify, ruleId, cageViolationId,
+                noticeDisplayDays, noticeLinkExpire, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -956,7 +993,8 @@ public class TwinStudentViolationService {
             Long ruleId,
             Long cageViolationId,
             Integer noticeDisplayDays,
-            Integer noticeLinkExpire
+            Integer noticeLinkExpire,
+            String batchId
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -1007,6 +1045,8 @@ public class TwinStudentViolationService {
         row.setCageViolationId(cageViolationId);
         row.setNoticeDisplayDays(noticeDisplayDays);
         row.setNoticeLinkExpire(noticeLinkExpire == null ? 1 : noticeLinkExpire);
+        // 批次键：批量/滞留同一轮共享一个键；未传则本条自成一批
+        row.setBatchId(StringUtils.hasText(batchId) ? batchId.trim() : newBatchKey());
         try {
             violationMapper.insert(row);
         } catch (Exception e) {
@@ -1333,6 +1373,8 @@ public class TwinStudentViolationService {
         }
         List<Map<String, String>> failed = new ArrayList<>();
         int created = 0;
+        // 一次批量下发共享同一批次键，列表按此成块展示
+        String batchId = newBatchKey();
         for (String tid : unique) {
             try {
                 create(
@@ -1350,7 +1392,8 @@ public class TwinStudentViolationService {
                         ruleId,
                         cageViolationId,
                         noticeDisplayDays,
-                        noticeLinkExpire
+                        noticeLinkExpire,
+                        batchId
                 );
                 created++;
             } catch (Exception e) {
