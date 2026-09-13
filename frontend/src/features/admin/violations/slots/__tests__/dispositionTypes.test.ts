@@ -292,10 +292,11 @@ describe("dispositionTypes 纯函数契约", () => {
   });
 
   it("fromDispositionRow 还原公告联动：缺省视为联动，noticeLinkExpire=0 视为不联动", () => {
-    expect(fromDispositionRow({ id: 1, targetUserId: "u1" }).noticeDisplay).toEqual({
-      linkExpire: true,
-      days: null,
-    });
+    // 行未带公告列（后端 toRow 尚未下发）：不下发 noticeDisplay，避免提交时静默重置
+    expect(fromDispositionRow({ id: 1, targetUserId: "u1" }).noticeDisplay).toBeUndefined();
+    expect(
+      fromDispositionRow({ id: 1, targetUserId: "u1", noticeLinkExpire: 1 }).noticeDisplay
+    ).toEqual({ linkExpire: true, days: null });
     expect(
       fromDispositionRow({ id: 1, targetUserId: "u1", noticeLinkExpire: 0, noticeDisplayDays: 10 }).noticeDisplay
     ).toEqual({ linkExpire: false, days: 10 });

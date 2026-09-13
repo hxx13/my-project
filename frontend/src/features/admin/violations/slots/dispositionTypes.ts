@@ -351,10 +351,14 @@ function fromDispositionRowCore(row: StudentViolationRow): DispositionValue {
 
 /**
  * 行 → DispositionValue。公告联动缺省视为 true（旧数据无该列）；days 原样（null=跟随到期时间）。
+ * 行未带这两个字段（后端 toRow 尚未下发公告列）时不携带 noticeDisplay：提交时不下发这两个键，
+ * 避免把库里已配的 noticeLinkExpire=0 静默重置为 1。
  */
 export function fromDispositionRow(row: StudentViolationRow): DispositionValue {
+  const base = fromDispositionRowCore(row);
+  if (row.noticeDisplayDays === undefined && row.noticeLinkExpire === undefined) return base;
   return {
-    ...fromDispositionRowCore(row),
+    ...base,
     noticeDisplay: {
       linkExpire: row.noticeLinkExpire !== 0,
       days: row.noticeDisplayDays ?? null,
