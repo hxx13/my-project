@@ -27,6 +27,9 @@ public interface TwinObligationMapper {
 
     int updateStatus(@Param("id") long id, @Param("status") String status);
 
+    /** 提交处置计数 +1（成功或失败都算）；答题重试上限据此判定 */
+    int incrementAttempt(@Param("id") long id);
+
     int updateContentAndDue(TwinObligation row);
 
     /** 存量违规回填：插入尚无 obligation 的 ACTIVE 违规对应行 */

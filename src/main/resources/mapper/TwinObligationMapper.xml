@@ -17,7 +17,16 @@
         <result column="due_at" property="dueAt"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
+        <result column="attempt_count" property="attemptCount"/>
     </resultMap>
+
+    <!-- 每次提交处置（成功或失败）计数 +1；答题重试上限据此判定 -->
+    <update id="incrementAttempt">
+        UPDATE twin_obligation
+        SET attempt_count = attempt_count + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO twin_obligation (

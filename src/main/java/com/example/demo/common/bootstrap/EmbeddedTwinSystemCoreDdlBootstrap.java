@@ -120,6 +120,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-cage-violation-fk-cascade.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-obligation-core.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-obligation-content-json.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-obligation-attempt-count.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-animal-order-time.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-animal-order-window-weekdays.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-animal-order-window-week-span.sql", ctx)) success++;

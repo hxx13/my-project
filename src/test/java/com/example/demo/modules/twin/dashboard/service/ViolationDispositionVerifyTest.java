@@ -5,11 +5,14 @@ import com.example.demo.modules.twin.obligation.disposition.DispositionStrategy;
 import com.example.demo.modules.twin.obligation.disposition.DispositionStrategyRegistry;
 import com.example.demo.modules.twin.obligation.entity.TwinObligation;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -139,5 +142,17 @@ class ViolationDispositionVerifyTest {
         row.setId(5L);
 
         assertFalse(service.verifyDispositionAnswer(row, "任意答案"));
+    }
+
+    /** 答题重试上限只在配置里给了正整数时生效；其余一律「不限」。 */
+    @Test
+    void maxAttemptsOf_onlyPositiveNumberMeansLimit() {
+        ObjectMapper om = new ObjectMapper();
+        assertEquals(3, TwinStudentViolationService.maxAttemptsOf(om, "{\"maxAttempts\":3}"));
+        assertNull(TwinStudentViolationService.maxAttemptsOf(om, "{\"maxAttempts\":0}"), "0＝不限");
+        assertNull(TwinStudentViolationService.maxAttemptsOf(om, "{\"maxAttempts\":-1}"), "负数＝不限");
+        assertNull(TwinStudentViolationService.maxAttemptsOf(om, "{}"), "没配＝不限");
+        assertNull(TwinStudentViolationService.maxAttemptsOf(om, null));
+        assertNull(TwinStudentViolationService.maxAttemptsOf(om, "not-json"), "非法配置不得抛异常");
     }
 }

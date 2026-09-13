@@ -257,8 +257,33 @@ public class ObligationService {
         }
     }
 
-    /** 标记已投递（投递 ≠ 送达 ≠ 处置）。 */
-    public boolean markDelivered(long obligationId, String subjectUserId) {
+    /** 已提交处置次数（含失败）。答题重试上限据此判定。 */
+    public int attemptCount(long obligationId) {
+        if (obligationId <= 0) {
+            return 0;
+        }
+        try {
+            TwinObligation ob = obligationMapper.selectById(obligationId);
+            return ob == null || ob.getAttemptCount() == null ? 0 : ob.getAttemptCount();
+        } catch (Exception e) {
+            log.warn("[obligation] attemptCount failed id={}: {}", obligationId, e.getMessage());
+            return 0;
+        }
+    }
+
+    /** 记一次处置提交（成功或失败都算）。失败不阻断主流程。 */
+    public void recordAttempt(long obligationId) {
+        if (obligationId <= 0) {
+            return;
+        }
+        try {
+            obligationMapper.incrementAttempt(obligationId);
+        } catch (Exception e) {
+            log.warn("[obligation] recordAttempt failed id={}: {}", obligationId, e.getMessage());
+        }
+    }
+
+    /** 标记已投递（投递 ≠ 送达 ≠ 处置）。 */    public boolean markDelivered(long obligationId, String subjectUserId) {
         if (obligationId <= 0 || !StringUtils.hasText(subjectUserId)) {
             return false;
         }

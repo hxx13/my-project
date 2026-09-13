@@ -419,10 +419,22 @@ public class TwinStudentViolationService {
         }
         // 处置策略校验：优先按该违规对应的待办策略校验，无待办时回退到记录级拼图短语。
         // 已验证过的记录走幂等返回路径，不重复校验。
-        if (row.getInteractiveChallengeVerifiedAt() == null
-                && !verifyDispositionAnswer(row, answer)) {
-            log.warn("[student-violation] 处置确认未通过 violationId={} userId={}", violationId, targetUserId);
-            throw new IllegalArgumentException("确认未通过");
+        if (row.getInteractiveChallengeVerifiedAt() == null) {
+            TwinObligation obForLimit = obligationService != null
+                    ? obligationService.findByViolationId(row.getId()) : null;
+            // 答题等策略可配「重试上限」；不配则不限。计数含失败（见 recordAttempt）
+            Integer maxAttempts = obForLimit == null ? null
+                    : maxAttemptsOf(objectMapper, obForLimit.getDispositionConfigJson());
+            if (maxAttempts != null && obligationService.attemptCount(obForLimit.getId()) >= maxAttempts) {
+                throw new IllegalArgumentException("已达重试上限（" + maxAttempts + " 次）");
+            }
+            if (!verifyDispositionAnswer(row, answer)) {
+                if (obForLimit != null) {
+                    obligationService.recordAttempt(obForLimit.getId());
+                }
+                log.warn("[student-violation] 处置确认未通过 violationId={} userId={}", violationId, targetUserId);
+                throw new IllegalArgumentException("确认未通过");
+            }
         }
         // 自助解禁规则才受窗口次数上限约束；记录级交互短语（含 MANUAL 默认规则）仍允许拼图确认
         if (row.getRuleId() != null && ruleService != null) {
@@ -460,6 +472,20 @@ public class TwinStudentViolationService {
             completeObligationDisposition(after.getId(), targetUserId.trim(), answer);
         }
         return finalizeAfterInteractiveAck(after);
+    }
+
+    /** 从处置配置里取重试上限（目前只有答题有该字段）；无配置/≤0/非法 表示不限。 */
+    static Integer maxAttemptsOf(ObjectMapper om, String configJson) {
+        if (!StringUtils.hasText(configJson) || om == null) {
+            return null;
+        }
+        try {
+            JsonNode cfg = om.readTree(configJson);
+            int n = cfg.path("maxAttempts").asInt(0);
+            return n > 0 ? n : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
