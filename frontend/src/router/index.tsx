@@ -79,6 +79,7 @@ import CageFormListPage from "@/features/cage-shelf/pages/CageFormListPage";
 import CageFormAuditPage from "@/features/cage-shelf/pages/CageFormAuditPage";
 import CageOccupancyRecordsPage from "@/features/cage-shelf/pages/CageOccupancyRecordsPage";
 import CageScopeAssignmentPage from "@/features/cage-shelf/pages/CageScopeAssignmentPage";
+import MyRegionPage from "@/features/cage-shelf/pages/MyRegionPage";
 import CageFormEditorPage from "@/features/cage-shelf/pages/CageFormEditorPage";
 import CageCodelistPage from "@/features/cage-shelf/pages/CageCodelistPage";
 import CageFieldPage from "@/features/cage-shelf/pages/CageFieldPage";
@@ -373,6 +374,9 @@ export const router = createHashRouter([
               { path: "asset-records", element: <AdminAssetRecordPage /> },
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
               { path: "cage-shelves", element: <AdminCageShelfPage /> },
+              // 我的区域：饲养组长是**身份**不是角色，role 可能只是 STAFF，
+              // 所以必须留在这一档（AdminAccessGuard + 页面权限表 STAFF），不能挂 AdminGuard。
+              { path: "my-region", element: <MyRegionPage /> },
               // 动物订购归 AdminAccessGuard + 页面权限表（minRole=STAFF）管。
               // 别挪回 AdminGuard 块：那要 ADMIN，和权限表打架，STAFF 永远进不去。
               { path: "animal-order", element: <ReferenceDataPage /> },

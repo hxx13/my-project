@@ -2029,3 +2029,27 @@ export async function saveCagePermissionGrant(
   });
   if (!res.data?.success) throw new Error(res.data?.message || "保存失败");
 }
+
+// ── 我的区域（饲养组长只读）──
+
+export interface MyRegionEntry {
+  regionType: "CAMPUS" | "FLOOR" | "ROOM";
+  regionId: string;
+}
+export interface MyRegionMember {
+  memberUserId: string;
+  memberName: string;
+  regionCount: number;
+}
+export interface MyRegionOverview {
+  regions: MyRegionEntry[];
+  members: MyRegionMember[];
+  isLeader: boolean;
+}
+
+/** GET /api/cage-region/mine — 我负责的区域与我的组员（非组长返回空结构，不是 403） */
+export async function fetchMyRegion(): Promise<MyRegionOverview> {
+  const res = await authHttp.get<Result<MyRegionOverview>>("/cage-region/mine");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载我的区域失败");
+  return res.data.data ?? { regions: [], members: [], isLeader: false };
+}

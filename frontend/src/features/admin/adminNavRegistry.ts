@@ -519,6 +519,18 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves", "STAFF"),
       },
       {
+        // 饲养组长是**身份**不是角色（role 可能只是 STAFF），minRole 必须与路由同档（STAFF）。
+        // 是否真有内容由页面内的 /api/cage-region/mine 决定，入口本身不按身份过滤。
+        id: "cage-my-region",
+        path: "/admin/my-region",
+        label: "我的区域",
+        icon: MapPin,
+        homeTone: "from-emerald-400 to-teal-500",
+        fallbackMinRole: "STAFF",
+        alias: ["我的区域", "区域", "组长", "region"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/my-region", "STAFF"),
+      },
+      {
         id: "cage-index",
         path: "/admin/cage-shelf-indexes",
         label: "笼架与笼位索引",
