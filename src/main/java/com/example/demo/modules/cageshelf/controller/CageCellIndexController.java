@@ -10,6 +10,7 @@ import com.example.demo.modules.cageshelf.entity.CageCellIndex;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.service.CageCellIndexService;
+import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +40,7 @@ public class CageCellIndexController {
     private final com.example.demo.modules.identity.service.PersonIdentityService personIdentityService;
     private final com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver;
     private final com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService;
+    private final CageVisibilityPolicy visibilityPolicy;
 
     public CageCellIndexController(AuthContextService authContextService,
                                    CageCellIndexService cellIndexService,
@@ -51,7 +53,8 @@ public class CageCellIndexController {
                                    com.example.demo.modules.cageshelf.service.CageFormAuditService auditService,
                                    com.example.demo.modules.identity.service.PersonIdentityService personIdentityService,
                                    com.example.demo.modules.cageshelf.service.UserGroupNameResolver userGroupNameResolver,
-                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService) {
+                                   com.example.demo.modules.cageshelf.service.CageOperationService cageOperationService,
+                                   CageVisibilityPolicy visibilityPolicy) {
         this.authContextService = authContextService;
         this.cellIndexService = cellIndexService;
         this.detailMapper = detailMapper;
@@ -64,6 +67,7 @@ public class CageCellIndexController {
         this.personIdentityService = personIdentityService;
         this.userGroupNameResolver = userGroupNameResolver;
         this.cageOperationService = cageOperationService;
+        this.visibilityPolicy = visibilityPolicy;
     }
 
     /**
@@ -135,9 +139,9 @@ public class CageCellIndexController {
         }
     }
 
-    /** 非 admin 用户对本地 DB 网格按课题组脱敏（复用 StudentCageShelfService.maskGridForUser）。 */
+    /** 非全局可见者对本地面板网格按课题组脱敏（复用 StudentCageShelfService.maskGridForUser）。 */
     private void applyGroupMask(User user, Map<String, Object> result) {
-        if (user == null || user.getRole() == null || user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+        if (visibilityPolicy.isGlobalViewer(user)) {
             return;
         }
         // 划分名单先收口（管家看全部，其余只看自己的）。必须在下面「已分配范围整架放开」
@@ -503,8 +507,8 @@ public class CageCellIndexController {
         Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         List<CageCellDetail> details = detailMapper.selectByShelfIndexId(shelfIndexId);
-        // 非 admin 按课题组脱敏
-        if (user.getRole() != null && user.getRole().getLevel() < RoleEnum.ADMIN.getLevel()) {
+        // 非全局可见者按课题组脱敏
+        if (!visibilityPolicy.isGlobalViewer(user)) {
             details = details.stream()
                     .map(d -> studentCageShelfService.maskDetailForUser(user, d))
                     .toList();
