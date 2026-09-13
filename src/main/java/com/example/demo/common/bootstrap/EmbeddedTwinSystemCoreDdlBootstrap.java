@@ -110,6 +110,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-violation-notice-cleared-by.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-violation-batch-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-violation-batch-id-index.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-bank.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-question.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-bank-seed.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-quiz-question-seed.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-stranded-signout-config-row.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-status-violation-window-fix.sql", ctx)) success++;
         // T1-2：孤儿父/断链子清理（FK 由 TwinViolationSchemaMigrator 幂等添加）
