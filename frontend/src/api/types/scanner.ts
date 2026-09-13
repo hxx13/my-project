@@ -150,6 +150,12 @@ export interface StudentViolationNotice {
     dispositionConfigJson?: string | null;
 }
 
+/** 答题抽题返回（与 H5 端 /student/obligations/{id}/quiz-draw 同一结构） */
+export interface QuizDrawPayload {
+    questionBankId: string;
+    questions: Array<{ id: string; prompt: string; options: string[] }>;
+}
+
 export interface ExecutePayload {
     userId: string;
     roomId: string;

@@ -5,6 +5,11 @@ import { AlertTriangle, CreditCard, Megaphone, type LucideIcon } from "lucide-re
 import type { ScanPopupAnnouncementItem, StudentViolationNotice } from "@/api/types/scanner";
 import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 import { InteractiveChallenge } from "./InteractiveChallenge";
+import {
+  ViolationAckReadPanel,
+  ViolationQuizPanel,
+  ViolationSignaturePanel,
+} from "./ViolationDispositionPanels";
 import { ScanNoticeDoodleCard } from "./ScanNoticeDoodleCard";
 import { ackViolationInteractivePermanent, type InteractiveVerifiedPatch } from "./twinViolationInteractive";
 import {
@@ -123,8 +128,61 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
   // 记录级 interactiveChallenge 为管理员/系统显式开启；不受 MANUAL 等「仅工作人员」规则默认解禁方式影响
   const interactiveBlockedByLimit =
     Boolean(interactivePhrase) && !interactiveDone && unblockMethod === "自助解禁" && canSelfUnblock === false;
-  const showInteractivePuzzle =
-    Boolean(interactivePhrase) && !interactiveDone && !interactiveBlockedByLimit;
+
+  // 处置策略：后端下发的 dispositionType 优先；老数据没有该字段时回退到「有拼图短语即拼图」
+  const dispositionStrategy = useMemo(() => {
+    if (kind === "announcement") return "";
+    const declared = notice?.dispositionType?.trim().toUpperCase();
+    if (declared) return declared;
+    return interactivePhrase ? "ACK_PUZZLE" : "";
+  }, [kind, notice?.dispositionType, interactivePhrase]);
+
+  /** 待完成的交互式处置（拼图 / 确认阅读 / 答题 / 签名）；空串表示无需处置 */
+  const pendingAckStrategy = useMemo(() => {
+    if (interactiveDone || interactiveBlockedByLimit) return "";
+    const interactive = ["ACK_PUZZLE", "ACK_READ", "QUIZ", "SIGNATURE"];
+    return interactive.includes(dispositionStrategy) ? dispositionStrategy : "";
+  }, [dispositionStrategy, interactiveDone, interactiveBlockedByLimit]);
+
+  const dispositionConfig = useMemo(() => {
+    if (kind === "announcement" || !notice?.dispositionConfigJson) return null;
+    try {
+      return JSON.parse(notice.dispositionConfigJson) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }, [kind, notice?.dispositionConfigJson]);
+  const signaturePreamble =
+    typeof dispositionConfig?.preamble === "string" ? dispositionConfig.preamble : "";
+
+  const ackViolationId = notice?.id ?? null;
+
+  /** 四种策略共用的提交：成功后回写 onInteractiveVerified，失败向上抛给各面板自行提示与重试 */
+  const submitAck = useCallback(
+    async (answer: string) => {
+      if (kind === "announcement" || ackViolationId == null || !targetUserId) {
+        throw new Error("无法提交处置");
+      }
+      if (interactiveSaving || interactiveDone) return;
+      setInteractiveSaving(true);
+      try {
+        const ack = await ackViolationInteractivePermanent(ackViolationId, targetUserId, answer);
+        setInteractiveDone(true);
+        onInteractiveVerified?.({
+          violationId: ack.violationId,
+          enterLocked: ack.enterLocked,
+          interactiveChallengeVerified: ack.interactiveChallengeVerified,
+          violationExpired: ack.violationExpired,
+        });
+      } catch (e) {
+        setInteractiveDone(false);
+        throw e;
+      } finally {
+        setInteractiveSaving(false);
+      }
+    },
+    [kind, ackViolationId, targetUserId, interactiveSaving, interactiveDone, onInteractiveVerified]
+  );
 
   const images = useMemo(() => {
     if (kind === "announcement" || !notice?.imageUrls?.length) return [];
@@ -217,10 +275,10 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
       onClose();
       return;
     }
-    if (recordId == null || showEveryScan || showInteractivePuzzle) return;
+    if (recordId == null || showEveryScan || pendingAckStrategy) return;
     persistAck(kind, recordId, showEveryScan);
     onClose();
-  }, [kind, recordId, showEveryScan, showInteractivePuzzle, onClose, cancelDismissCountdown]);
+  }, [kind, recordId, showEveryScan, pendingAckStrategy, onClose, cancelDismissCountdown]);
 
   const handleClose = useCallback(() => {
     cancelDismissCountdown();
@@ -267,39 +325,23 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
           </>
         }
         footerSlot={
-          showInteractivePuzzle ? (
+          pendingAckStrategy === "ACK_PUZZLE" && interactivePhrase ? (
             <InteractiveChallenge
               key={interactiveResetKey}
-              phrase={interactivePhrase!}
+              phrase={interactivePhrase}
               onComplete={(answer) => {
-                if (
-                  kind === "announcement" ||
-                  notice?.id == null ||
-                  !targetUserId ||
-                  interactiveSaving ||
-                  interactiveDone
-                ) {
-                  return;
-                }
-                setInteractiveSaving(true);
-                void ackViolationInteractivePermanent(notice.id, targetUserId, answer)
-                  .then((ack) => {
-                    setInteractiveDone(true);
-                    onInteractiveVerified?.({
-                      violationId: ack.violationId,
-                      enterLocked: ack.enterLocked,
-                      interactiveChallengeVerified: ack.interactiveChallengeVerified,
-                      violationExpired: ack.violationExpired,
-                    });
-                  })
-                  .catch((e) => {
-                    setInteractiveDone(false);
-                    setInteractiveResetKey((k) => k + 1);
-                    toast.error(e instanceof Error ? e.message : "交互确认失败");
-                  })
-                  .finally(() => setInteractiveSaving(false));
+                void submitAck(answer).catch((e) => {
+                  setInteractiveResetKey((k) => k + 1);
+                  toast.error(e instanceof Error ? e.message : "交互确认失败");
+                });
               }}
             />
+          ) : pendingAckStrategy === "ACK_READ" ? (
+            <ViolationAckReadPanel onSubmit={submitAck} />
+          ) : pendingAckStrategy === "QUIZ" && ackViolationId != null ? (
+            <ViolationQuizPanel key={ackViolationId} violationId={ackViolationId} onSubmit={submitAck} />
+          ) : pendingAckStrategy === "SIGNATURE" ? (
+            <ViolationSignaturePanel preamble={signaturePreamble} onSubmit={submitAck} />
           ) : interactiveBlockedByLimit ? (
             <p className="text-[11px] text-center text-[var(--app-color-feedback-danger)] px-3 py-2">
               已达解禁上限
@@ -309,11 +351,11 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
         primaryLabel={
           kind === "announcement"
             ? "知道了"
-            : showInteractivePuzzle
-              ? "请先完成上方验证"
+            : pendingAckStrategy
+              ? "请先完成上方处置"
               : "已知悉，关闭"
         }
-        primaryDisabled={showInteractivePuzzle}
+        primaryDisabled={Boolean(pendingAckStrategy)}
         showPrimary={kind === "announcement" || !showEveryScan}
         onPrimary={handlePrimary}
         showSecondary={showDismissForever}
