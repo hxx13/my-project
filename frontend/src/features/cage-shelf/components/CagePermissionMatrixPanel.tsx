@@ -136,7 +136,7 @@ export default function CagePermissionMatrixPanel() {
                       <th
                         key={c.code}
                         title={c.code}
-                        className={`sticky top-0 z-10 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-2 align-bottom font-semibold ${
+                        className={`sticky top-0 z-10 min-w-[84px] border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-2 align-bottom font-semibold ${
                           isEmpty ? "text-[var(--app-color-feedback-danger)]" : "text-[var(--twin-ink)]"
                         }`}
                       >
@@ -162,7 +162,7 @@ export default function CagePermissionMatrixPanel() {
                       return (
                         <td
                           key={c.code}
-                          className="border-b border-[var(--twin-hairline)] px-2 py-2 text-center"
+                          className="min-w-[84px] border-b border-[var(--twin-hairline)] px-2 py-2 text-center"
                         >
                           <button
                             type="button"
