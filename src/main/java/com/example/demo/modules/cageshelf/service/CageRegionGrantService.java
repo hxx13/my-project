@@ -1,7 +1,6 @@
 package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
 import com.example.demo.modules.cageshelf.mapper.CageRegionGrantMapper;
 import com.example.demo.modules.identity.service.PersonIdentityService;
@@ -30,16 +29,13 @@ public class CageRegionGrantService {
     private final CageRegionGrantMapper mapper;
     private final PersonIdentityService identityService;
     private final CageVisibilityPolicy visibilityPolicy;
-    private final UserDisplayNameService displayNameService;
 
     public CageRegionGrantService(CageRegionGrantMapper mapper,
                                   PersonIdentityService identityService,
-                                  CageVisibilityPolicy visibilityPolicy,
-                                  UserDisplayNameService displayNameService) {
+                                  CageVisibilityPolicy visibilityPolicy) {
         this.mapper = mapper;
         this.identityService = identityService;
         this.visibilityPolicy = visibilityPolicy;
-        this.displayNameService = displayNameService;
     }
 
     /** 可见范围（第一层数据范围的「补充放开」部分）；accountId 为 sys_user.id。 */
@@ -132,42 +128,42 @@ public class CageRegionGrantService {
     /**
      * 全部归属，按审核人分组并带显示名 —— 设置中心总览用（否则只看到一张空表，
      * 不知道哪些位置已分配、归谁）。
+     *
+     * <p>两个 id 口径必须分清：{@code reviewerUserId} 回给前端的是**账号 id**（前端点一行会拿它
+     * 去调 {@code GET /cage-audit-assignment/{reviewerUserId}}，那个接口走 resolveIdByAccount），
+     * 而分组键是 {@code personnel.id}。名字也由 SQL join 出（{@code personnel.name}），
+     * 不能交给 UserDisplayNameService —— 它按 staff_id/aro_user_id 建索引，不认 personnel.id。
      */
     public List<Map<String, Object>> listAllGrouped() {
-        List<CageRegionGrant> all = mapper.listAll().stream()
-                .filter(g -> CageRegionGrant.ROLE_REVIEWER.equals(g.getGrantRole()))
-                .toList();
-        if (all.isEmpty()) {
+        List<Map<String, Object>> rows = mapper.listAllWithNames(CageRegionGrant.ROLE_REVIEWER);
+        if (rows.isEmpty()) {
             return List.of();
         }
-        List<String> reviewerIds = all.stream()
-                .map(CageRegionGrant::getUserId)
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .toList();
-        Map<String, String> names = displayNameService.resolveDisplayNames(reviewerIds);
-
         Map<String, Map<String, Object>> byReviewer = new LinkedHashMap<>();
-        for (CageRegionGrant a : all) {
-            String id = a.getUserId();
-            if (id == null) continue;
-            Map<String, Object> entry = byReviewer.computeIfAbsent(id, k -> {
+        for (Map<String, Object> r : rows) {
+            String owner = str(r.get("ownerPersonnelId"));
+            if (owner == null) continue;
+            Map<String, Object> entry = byReviewer.computeIfAbsent(owner, k -> {
                 Map<String, Object> m = new LinkedHashMap<>();
-                m.put("reviewerUserId", k);
-                m.put("reviewerName", names.getOrDefault(k, k));
+                m.put("reviewerUserId", str(r.get("reviewerUserId")));
+                m.put("reviewerName", str(r.get("reviewerName")));
                 m.put("scopes", new ArrayList<Map<String, String>>());
                 return m;
             });
             @SuppressWarnings("unchecked")
             List<Map<String, String>> scopes = (List<Map<String, String>>) entry.get("scopes");
             Map<String, String> s = new LinkedHashMap<>();
-            s.put("scopeType", a.getRegionType());
-            s.put("scopeId", a.getRegionId());
+            s.put("scopeType", str(r.get("regionType")));
+            s.put("scopeId", str(r.get("regionId")));
             scopes.add(s);
         }
         List<Map<String, Object>> out = new ArrayList<>(byReviewer.values());
         out.sort(Comparator.comparing(m -> String.valueOf(m.get("reviewerName")),
                 Comparator.nullsLast(Comparator.naturalOrder())));
         return out;
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : String.valueOf(v);
     }
 }

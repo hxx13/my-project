@@ -15,4 +15,7 @@ public interface CageRegionGrantMapper {
 
     /** 已分配过的人（user_id = personnel.id 字符串），带姓名与条目数，按姓名排序。 */
     List<Map<String, Object>> listAssignees(@Param("grantRole") String grantRole);
+
+    /** 概览行（join 出账号 id 与姓名），供设置中心按人分组展示。 */
+    List<Map<String, Object>> listAllWithNames(@Param("grantRole") String grantRole);
 }
