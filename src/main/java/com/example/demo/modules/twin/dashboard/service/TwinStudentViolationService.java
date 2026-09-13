@@ -919,6 +919,7 @@ public class TwinStudentViolationService {
     }
 
     /** 13 参重载：不带公告展示配置，公告展示跟随到期时间 */
+    @Transactional(rollbackFor = Exception.class)
     public TwinStudentViolation create(
             String targetUserId,
             String violationText,

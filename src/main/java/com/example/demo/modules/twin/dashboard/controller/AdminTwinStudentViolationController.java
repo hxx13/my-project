@@ -464,6 +464,11 @@ public class AdminTwinStudentViolationController {
         m.put("interactiveChallenge", v.getInteractiveChallenge());
         m.put("interactiveChallengeVerifiedAt", v.getInteractiveChallengeVerifiedAt());
         m.put("interactiveUnlockOnVerify", v.getInteractiveUnlockOnVerify());
+        // 公告展示配置：编辑器回填与列表「公告」列都依赖这四个字段
+        m.put("noticeDisplayDays", v.getNoticeDisplayDays());
+        m.put("noticeLinkExpire", v.getNoticeLinkExpire());
+        m.put("noticeClearedAt", v.getNoticeClearedAt());
+        m.put("noticeClearedByUserId", v.getNoticeClearedByUserId());
         m.put("ruleId", v.getRuleId());
         if (v.getRuleId() != null && ruleService != null) {
             TwinViolationRule rule = ruleService.getById(v.getRuleId());
