@@ -87,33 +87,31 @@ public class CageModeVisibilityService {
     }
 
     private final CagePermissionService permissionService;
-    private final PersonIdentityService identityService;
 
-    public CageModeVisibilityService(CagePermissionService permissionService, PersonIdentityService identityService) {
+    public CageModeVisibilityService(CagePermissionService permissionService) {
         this.permissionService = permissionService;
-        this.identityService = identityService;
     }
 
-    /** 模式 key → 允许的身份 code 集合（读矩阵）。空集 = 该模式无人可用。 */
-    private Map<String, Set<String>> modeAllowedCodes() {
-        Map<String, Set<String>> all = permissionService.allowedIdentitiesByCapability();
-        Map<String, Set<String>> out = new LinkedHashMap<>();
-        for (String mode : STAFF_CONFIGURABLE_MODES) {
-            out.put(mode, all.getOrDefault(modeCapability(mode), Set.of()));
-        }
-        return out;
+    /** 该账号持有的身份 code 集合（转发 CagePermissionService，身份解析只有那一处实现）。 */
+    private Set<String> identityCodesOf(String accountId) {
+        return permissionService.identityCodesOf(accountId);
     }
 
-    /** 当前用户（按账号 id）的身份 code 集合；SUPER_ADMIN 返回空集（调用方按 superAdmin 特判）。 */
-    public Set<String> identityCodesOf(String accountId) {
-        if (accountId == null || accountId.isBlank()) return Collections.emptySet();
-        // 身份表 user_id = personnel.id，而 accountId 是 sys_user.id（staff_id / aro_user_id），
-        // 必须先 resolve 到 personnel.id 再查，否则身份永远查不到（getByUser 不 resolve）。
-        String pid = identityService.resolveIdByAccount(accountId);
-        if (pid == null || pid.isBlank()) return Collections.emptySet();
-        return identityService.getByUser(pid).stream()
-                .map(IdentityTagVO::getCode)
-                .collect(Collectors.toSet());
+    /**
+     * 该人**生效的**模式能力码集合。
+     *
+     * <p>两层：**组员级勾选优先**——只要这个人有 {@code cage_member_capability} 行，就**以组长勾的为准**
+     * （全量覆盖，不是求并）；没配过才回落到身份矩阵。
+     *
+     * <p>注意只影响**模式**：`cage.op.manage_identities`（分笼/转移操作身份）与
+     * `cage.edit.form`（编辑表单）仍走矩阵，不受组员勾选影响——否则组长配一次模式
+     * 会把组员靠身份拿到的其它能力一起抹掉。
+     */
+    private Set<String> effectiveModeCapabilities(User user) {
+        if (user == null) return Collections.emptySet();
+        Set<String> member = permissionService.memberCapabilities(user.getId());
+        if (!member.isEmpty()) return member;
+        return permissionService.identityCeiling(user.getId());
     }
 
     /** 是否为超管（逃生口）。 */
@@ -173,7 +171,7 @@ public class CageModeVisibilityService {
     public boolean canUseMode(User user, String modeKey) {
         if ("view".equals(modeKey)) return true;
         if (isSuperAdmin(user)) return true;
-        return permissionService.canUse(modeCapability(modeKey), identityCodesOf(user.getId()));
+        return effectiveModeCapabilities(user).contains(modeCapability(modeKey));
     }
 
     /** 教职工视角可见模式 key 列表（含恒可见的 view）。 */
@@ -184,16 +182,11 @@ public class CageModeVisibilityService {
             all.addAll(STAFF_CONFIGURABLE_MODES);
             return List.copyOf(all);
         }
-        Set<String> mine = identityCodesOf(user.getId());
-        Map<String, Set<String>> allowed = modeAllowedCodes();
+        Set<String> eff = effectiveModeCapabilities(user);
         List<String> out = new java.util.ArrayList<>();
         out.add("view");
         for (String mode : STAFF_CONFIGURABLE_MODES) {
-            Set<String> codes = allowed.get(mode);
-            // fail-closed：空列不再放行（旧语义是「未配置 = 不限制」）。
-            if (codes != null && !codes.isEmpty() && !Collections.disjoint(codes, mine)) {
-                out.add(mode);
-            }
+            if (eff.contains(modeCapability(mode))) out.add(mode);
         }
         return out;
     }

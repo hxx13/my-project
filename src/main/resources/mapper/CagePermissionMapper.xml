@@ -24,4 +24,19 @@
         WHERE capability_code = #{capabilityCode} AND identity_code = #{identityCode}
     </delete>
 
+    <!-- 组员级勾选（组长逐人勾）：user_id = personnel.id -->
+    <select id="listMemberCapabilities" resultType="com.example.demo.modules.cageshelf.entity.CageMemberCapability">
+        SELECT * FROM cage_member_capability WHERE user_id = #{userId}
+        ORDER BY capability_code ASC
+    </select>
+
+    <delete id="deleteMemberCapabilities">
+        DELETE FROM cage_member_capability WHERE user_id = #{userId}
+    </delete>
+
+    <insert id="insertMemberCapability" useGeneratedKeys="true" keyProperty="id">
+        INSERT IGNORE INTO cage_member_capability (user_id, capability_code, granted_by)
+        VALUES (#{userId}, #{capabilityCode}, #{grantedBy})
+    </insert>
+
 </mapper>

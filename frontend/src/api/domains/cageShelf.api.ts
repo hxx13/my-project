@@ -2061,3 +2061,30 @@ export async function saveMyRegionMembers(memberAccountIds: string[]): Promise<v
   const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-region/members", { memberAccountIds });
   if (!res.data?.success) throw new Error(res.data?.message || "保存组员失败");
 }
+
+export interface MemberCapabilityView {
+  /** 组长已勾选的能力码；**空 = 没配过**，此时该组员按身份矩阵走 */
+  granted: string[];
+  /** 该组员的身份上限——只能在这个范围里勾 */
+  ceiling: string[];
+  /** 能力码 → 中文名（矩阵接口是超管专属，标签由后端随这里下发） */
+  labels: Record<string, string>;
+}
+
+/** GET /api/cage-region/member-capabilities — 某组员的可配范围与已勾选 */
+export async function fetchMemberCapabilities(memberAccountId: string): Promise<MemberCapabilityView> {
+  const res = await authHttp.get<Result<MemberCapabilityView>>("/cage-region/member-capabilities", {
+    params: { memberAccountId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载组员权限失败");
+  return res.data.data ?? { granted: [], ceiling: [], labels: {} };
+}
+
+/** PUT /api/cage-region/member-capabilities — 设置某组员的能力（全量替换） */
+export async function saveMemberCapabilities(memberAccountId: string, capabilityCodes: string[]): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-region/member-capabilities", {
+    memberAccountId,
+    capabilityCodes,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存失败");
+}

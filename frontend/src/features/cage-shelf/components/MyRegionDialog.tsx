@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
+import MemberCapabilityDialog from "./MemberCapabilityDialog";
 import {
   fetchFullTree,
   fetchMyRegion,
@@ -30,6 +31,8 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // 正在配置权限的组员（null = 子弹窗关闭）。仅在保存过组员后才可配——没入组的人不在列表里。
+  const [capTarget, setCapTarget] = useState<{ accountId: string; name: string } | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -170,7 +173,7 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
                       <thead>
                         <tr>
                           <th>组员</th>
-                          <th className="w-24" />
+                          <th className="w-40" />
                         </tr>
                       </thead>
                       <tbody>
@@ -178,6 +181,14 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
                           <tr key={m.accountId}>
                             <td className="px-2.5 py-1 text-[11px] text-[var(--twin-ink)]">{m.name}</td>
                             <td className="px-2.5 py-1 text-right">
+                              <button
+                                type="button"
+                                title="配置该组员能用哪些模式"
+                                onClick={() => setCapTarget({ accountId: m.accountId, name: m.name })}
+                                className="mr-1 rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
+                              >
+                                模式权限
+                              </button>
                               <button
                                 type="button"
                                 title="移出本组"
@@ -194,13 +205,25 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
                   </div>
                 )}
                 <p className="text-[10px] leading-relaxed text-[var(--twin-mute)]">
-                  组员自动继承你负责的全部区域的可见范围；逐人配置组员能用哪些模式将在后续版本开放。改动后记得点「保存」。
+                  组员自动继承你负责的全部区域的可见范围；点「模式权限」可逐人收窄他能用的模式（矩阵是上限）。
+                  组员改动后记得点「保存」。
                 </p>
               </section>
             </>
           )}
         </div>
       </DialogContent>
+
+      {capTarget && (
+        <MemberCapabilityDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) setCapTarget(null);
+          }}
+          memberAccountId={capTarget.accountId}
+          memberName={capTarget.name}
+        />
+      )}
 
       {pickerOpen && (
         <PersonnelPicker

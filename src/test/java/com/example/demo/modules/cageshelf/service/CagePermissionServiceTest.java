@@ -2,6 +2,7 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.modules.cageshelf.entity.CagePermissionGrant;
 import com.example.demo.modules.cageshelf.mapper.CagePermissionMapper;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,12 +26,13 @@ import static org.mockito.Mockito.when;
 class CagePermissionServiceTest {
 
     @Mock private CagePermissionMapper mapper;
+    @Mock private PersonIdentityService identityService;
 
     private CagePermissionService service;
 
     @BeforeEach
     void setUp() {
-        service = new CagePermissionService(mapper);
+        service = new CagePermissionService(mapper, identityService);
     }
 
     private CagePermissionGrant g(String cap, String identity) {
