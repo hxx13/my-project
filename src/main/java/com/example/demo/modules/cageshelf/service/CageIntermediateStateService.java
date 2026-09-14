@@ -19,7 +19,7 @@ import java.util.Set;
  *   <li>订购预定：还没加购（某人已锁）、已进购物车（PI 未提交）、已随订单提交（待审核）——都还是
  *       {@code LOCKED} 的 {@code cage_order_reservation}</li>
  *   <li>分笼/转移在审（{@code cage_op_request} 的源或目标）</li>
- *   <li>认领在审（待审批/锁定/已确认/待释放审批）</li>
+ *   <li>认领在审（待审批/未到位锁定/待释放审批）——「已确认」不算：流程已走完，笼位进入正常占用稳态</li>
  * </ul>
  *
  * <p><b>为什么要有这个统一入口：</b>前端三端（Web / H5 / 小程序）各自写的拦截条件不一样，
@@ -87,10 +87,16 @@ public class CageIntermediateStateService {
         return pendingOp.contains(animalCageId) ? "该笼位有分笼/转移在审" : null;
     }
 
-    /** 只判「认领在审」。 */
+    /**
+     * 只判「认领还在审」。
+     *
+     * <p>用**不含 confirmed** 的那支：已确认（老师代确认到位 / 学生自己确认）表示这条认领已经走完，
+     * 笼位处于正常占用稳态，此时打特殊状态标记正是该做的事。把它算成中间态，
+     * 就会出现「确认到位之后反而不能标特殊状态」。
+     */
     public String pendingClaimReason(Long animalCageId) {
         if (animalCageId == null) return null;
-        return claimMapper.selectCageIdsWithActiveClaim(List.of(animalCageId)).isEmpty()
+        return claimMapper.selectCageIdsWithPendingClaim(List.of(animalCageId)).isEmpty()
                 ? null : "该笼位有认领申请在处理中";
     }
 }

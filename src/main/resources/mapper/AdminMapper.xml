@@ -30,6 +30,10 @@
                     OR ap.name LIKE CONCAT('%', #{keyword}, '%')
                     OR ap.job_number LIKE CONCAT('%', #{keyword}, '%')
                     OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                    <!-- 课题组也要能搜：笼位预定/划分的选人框是「先搜课题组、再挑组内成员」，
+                         前端各处（AdminCageShelfPage / ReservePersonDialog / 审批设置 / 学生端）
+                         都在拿课题组名来查人。这条漏了，那些入口就永远搜不出人。 -->
+                    OR ap.project_group_name LIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
         </where>
@@ -48,6 +52,8 @@
                     OR ap.name LIKE CONCAT('%', #{keyword}, '%')
                     OR ap.job_number LIKE CONCAT('%', #{keyword}, '%')
                     OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                    <!-- 必须与 getPersonnelWithAuth 的条件逐字一致：只改一边会让总数与实际返回对不上 -->
+                    OR ap.project_group_name LIKE CONCAT('%', #{keyword}, '%')
                 )
             </if>
         </where>

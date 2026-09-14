@@ -75,7 +75,7 @@ export default function StudentSearchSelect({
             <button
               key={o.key}
               type="button"
-              onClick={() => { onPick(o); setKw(""); }}
+              onClick={() => { onPick(o); setKw(""); setOpen(false); }}
               className="block w-full px-2 py-1.5 text-left text-[11px] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
             >
               {o.label}

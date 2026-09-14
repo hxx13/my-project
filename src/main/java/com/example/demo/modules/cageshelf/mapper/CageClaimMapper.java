@@ -31,6 +31,16 @@ public interface CageClaimMapper {
      */
     List<Long> selectCageIdsWithActiveClaim(@Param("cageIds") List<Long> cageIds);
 
+    /**
+     * 这批笼位里哪些的认领**还在流程里**（待审批/未到位锁定/待释放审批）。
+     *
+     * <p>与 {@link #selectCageIdsWithActiveClaim} 的差别只有一处：**不含 `confirmed`**。
+     * 「已确认」是认领流程走完后的稳态（笼位已到位、已写占用者），不是中间态；
+     * 拿它当中间态拦「打特殊状态标记」，就会出现「老师代确认到位之后反而不能标记」。
+     * 订购侧的「只能选空笼位」仍要用含 confirmed 的那支，别混。
+     */
+    List<Long> selectCageIdsWithPendingClaim(@Param("cageIds") List<Long> cageIds);
+
     /** 学生本人的认领列表 */
     List<CageClaim> selectByClaimantId(@Param("claimantId") String claimantId,
                                        @Param("status") String status);

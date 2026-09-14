@@ -330,6 +330,36 @@
   background: color-mix(in srgb, var(--app-color-text-primary) 6%, var(--app-color-surface-container));
 }
 
+/* 违规记录表：操作列冻结在右端，横向滚动时「详情 / 更多操作」始终可点。
+   做法与 .asset-ledger-table 的左侧冻结列同源 —— **行底色必须先改成不透明**，
+   冻结格才能用 bg-inherit 跟随行底色；否则 .twin-table 那层半透明斑马纹会透出下面的列。 */
+.violation-records-table tbody tr {
+  background: var(--app-color-surface-container);
+}
+.violation-records-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--app-color-text-primary) 3%, var(--app-color-surface-container));
+}
+.violation-records-table tbody tr:hover {
+  background: color-mix(in srgb, var(--app-color-text-primary) 6%, var(--app-color-surface-container));
+}
+/* 冻结的操作列。竖线用 inset box-shadow 而不是 border：本表是 border-collapse: collapse，
+   且 td 上已经有一条合并行横线的 box-shadow（.twin-table--merged-rows），用 border 会跟它打架，
+   合并成一整条更稳。 */
+.violation-records-table .col-actions {
+  position: sticky;
+  right: 0;
+  background: inherit;
+  box-shadow:
+    inset 0 -1px 0 0 var(--merged-row-hair),
+    inset 1px 0 0 0 var(--twin-hairline);
+}
+/* 表头那个冻结角格要压过其它 th（.twin-table thead th 自己的 z-index 是 2）；
+   thead 的 tr 没有底色，bg-inherit 拿不到东西，所以这里给显式底色。 */
+.violation-records-table thead th.col-actions {
+  z-index: 3;
+  background: var(--app-color-surface-container);
+}
+
 /* ── 报表设计页共用类：画布 + 纸张 + 零边框表格皮肤 ──
    视觉方向：彻底去线条。画布是整页滚动容器，报表是一张带阴影的白纸；
    表格零边框、斑马纹分带、选中格用 accent 软底 + 内描边。
