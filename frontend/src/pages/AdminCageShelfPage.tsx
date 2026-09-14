@@ -1580,6 +1580,9 @@ function Inner(){
   const switchMode=useCallback((mode:CageModeKey)=>{
     if(!allowedModeKeys.includes(mode))return; // 无该模式权限，忽略
     setSelectedCells(new Set());anchorCellRef.current=null;boxSelectAnchorRef.current=null;setBoxSelectMode(false);shiftHintShownRef.current=false;setCell(null);setShelfId(null);
+    /* 扫码定位的十字也是「上一个模式的残留」：不清的话切进来就顶着一道十字，
+       用户会以为是自己刚改状态才冒出来的。定位标记只属于扫码那一下。 */
+    setScanLockTarget(null);
     setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setReserveMode(false);setRecordMode(false);setRecordTarget(null);setDivisionMode(false);
     /*
       编辑缓存**不能在这里清**：它就是「待提交」那批状态改动的真相源（配色 + 每格的初始快照），
@@ -1614,7 +1617,7 @@ function Inner(){
   // ── 数据源切换（设置中心）──
   const switchDataSource=useCallback((ds:"aro"|"local")=>{
     setDataSource(ds);
-    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setReserveMode(false);setScanCache(new Map());setLastScannedKey(null);
+    setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setReserveMode(false);setScanCache(new Map());setLastScannedKey(null);setScanLockTarget(null);
     setSelectedCells(new Set());setCell(null);setShelfId(null);
   },[]);
 
@@ -1877,7 +1880,8 @@ function Inner(){
         : { cell, code, initialActions: init, currentActions: cur, images: [], notes: "" });
       return next;
     });
-    setLastScannedKey(ck);
+    /* 不要 setLastScannedKey：它是喂给网格十字高亮的「扫码扫到哪一格」定位标记，
+       改状态（拖色区/直接改/点按钮）不该挪它 —— 见同文件另外三处的说明。 */
   }, [dataSource, scanCache]);
   /**
    * 状态模式拖放：fromZone 决定「拖回缓冲区」时撤销哪一个动作，
@@ -2300,7 +2304,6 @@ function Inner(){
       }]);
       if (!r?.ok) { toast.error(r?.reason || "操作失败"); return; }
       toast.success(on ? "已标记" : "已取消");
-      setLastScannedKey(`${sid}:${cell.x}:${cell.y}`);
       setDetailReloadKey((k) => k + 1);
       if (dataSource === "local") fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => {});
     } finally {
@@ -2634,7 +2637,7 @@ function Inner(){
 
             {/* ── 编辑模式操作按钮（扫码由常驻「扫码定位」联动） ── */}
             {editMode&&<>
-              <button type="button" onClick={()=>{setScanCache(new Map());setLastScannedKey(null);patchPending("edit",()=>clearBatch());}}
+              <button type="button" onClick={()=>{setScanCache(new Map());setLastScannedKey(null);setScanLockTarget(null);patchPending("edit",()=>clearBatch());}}
                 className="rounded-twin-md px-3 py-1.5 text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 hover:bg-slate-200 hover:text-slate-700 transition">清除</button>
             </>}
             {/* ── 扫码确认模式：由常驻「扫码定位」联动判定，无专用输入 ── */}
