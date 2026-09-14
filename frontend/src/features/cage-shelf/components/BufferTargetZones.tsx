@@ -18,6 +18,11 @@ export interface BufferZone {
   variant?: "add" | "cancel";
   /** true = 用户手动加的目标区（AUP / 人员），整张卡可以删掉；固定区（撤销分配、状态色区）不给删 */
   removable?: boolean;
+  /**
+   * 折叠在卡内的子区 —— 「需特殊饲养」下面那四个明细色区走这条。
+   * 明细用量少，平铺会把右栏撑到 18 张卡，所以默认收起，点卡内的「明细」一行才展开。
+   */
+  children?: BufferZone[];
 }
 
 /** 状态模式：格子当前的编辑缓存快照（喂给缩略图做实时配色） */
@@ -56,6 +61,7 @@ function ZoneCard({
   shelfNameOf,
   cacheOf,
   onOpen,
+  childrenSlot,
 }: {
   zone: BufferZone;
   items: PendingItem[];
@@ -68,6 +74,8 @@ function ZoneCard({
   shelfNameOf?: (item: PendingItem) => string | undefined;
   cacheOf?: (item: PendingItem) => EditCacheEntry | undefined;
   onOpen?: (cageId: string) => void;
+  /** 卡内折叠的子区（明细色区）；由容器递归渲染好传进来 */
+  childrenSlot?: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `zone:${zone.key}` });
   const color = zone.color || "var(--twin-primary)";
@@ -129,6 +137,7 @@ function ZoneCard({
         ))}
         {items.length === 0 && <div className="px-1 text-[10px] text-[var(--twin-mute)]">拖笼位到这里</div>}
       </div>
+      {childrenSlot}
     </div>
   );
 }
@@ -174,6 +183,32 @@ export default function BufferTargetZones({
   /** true=一行两个（状态模式 10 个区排成 2×5，比一列长条好扫） */
   grid?: boolean;
 }) {
+  /** 递归渲染：带 children 的区（需特殊饲养）把子区折叠在自己卡内，默认收起 */
+  const renderZone = (z: BufferZone): React.ReactNode => (
+    <ZoneCard
+      key={z.key}
+      zone={z}
+      items={itemsByZone.get(z.key) ?? []}
+      selectedCount={selectedCount}
+      onAssignSelected={onAssignSelected}
+      onUnassignAll={onUnassignAll}
+      onRemoveZone={onRemoveZone}
+      cellOf={cellOf}
+      shelfNameOf={shelfNameOf}
+      cacheOf={cacheOf}
+      onOpen={onOpen}
+      childrenSlot={
+        z.children && z.children.length > 0 ? (
+          <details className="mt-1.5 border-t border-dashed border-[var(--twin-hairline)] pt-1">
+            <summary className="cursor-pointer list-none text-[10px] font-semibold text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">
+              {z.variant === "cancel" ? "撤销明细 ▾" : "明细 ▾"}
+            </summary>
+            <div className="mt-1.5 space-y-1.5">{z.children.map(renderZone)}</div>
+          </details>
+        ) : undefined
+      }
+    />
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {header}
@@ -182,12 +217,7 @@ export default function BufferTargetZones({
           grid ? "grid grid-cols-2 content-start items-start gap-2" : "space-y-2"
         }`}
       >
-        {zones.map((z) => (
-          <ZoneCard key={z.key} zone={z} items={itemsByZone.get(z.key) ?? []}
-            selectedCount={selectedCount} onAssignSelected={onAssignSelected} onUnassignAll={onUnassignAll}
-            onRemoveZone={onRemoveZone}
-            cellOf={cellOf} shelfNameOf={shelfNameOf} cacheOf={cacheOf} onOpen={onOpen} />
-        ))}
+        {zones.map(renderZone)}
         {zones.length === 0 && <div className="px-1 py-2 text-[10px] text-[var(--twin-mute)]">暂无可选目标</div>}
       </div>
     </div>

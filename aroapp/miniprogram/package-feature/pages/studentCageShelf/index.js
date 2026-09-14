@@ -270,7 +270,11 @@ function buildModeOptions(isStaffView, visibleModes) {
         { key: 'division', label: '划分' },
         // 学生侧状态模式：后端只放行部分动作（当前仅合笼），动作清单由 /api/cage-mode/visible
         // 的 modeActions.edit 下发，前端据此过滤渲染，不要在这里硬编码动作名。
-        { key: 'edit', label: '状态' }
+        { key: 'edit', label: '状态' },
+        // 归档：学生也能用，但**只能归档本人占用**的笼位（归属判定与门禁在后端
+        // /api/local/archive）。这里必须登记：下面对 visibleModes 过滤只认 base 里的 key，
+        // 漏一个就会把后端下发的能力位无声吃掉（划分那次就是这么踩的）。
+        { key: 'archive', label: '归档' }
       ];
   if (visibleModes && visibleModes.length > 0) {
     var byKey = {};
@@ -2290,6 +2294,8 @@ Page({
 
   openArchiveDialog: function(cell) {
     if (cageTypeOf(cell) !== 3) { wx.showToast({ title: '该笼位当前无笼盒/未占用，无需归档', icon: 'none' }); return; }
+    // 学生只能归档本人占用的笼位（mine 由后端判定并下发；教职工视角不下发该字段）
+    if (!this.data.isStaffView && !cell.mine) { wx.showToast({ title: '只能归档本人使用中的笼位', icon: 'none' }); return; }
     var detail = cell.detail || {};
     this.setData({
       archiveTarget: {
@@ -2334,7 +2340,11 @@ Page({
     var t = self.data.archiveTarget;
     if (!t || !t.animalCageId || self.data.archiveSubmitting) return;
     self.setData({ archiveSubmitting: true });
-    springAuth.springRequest({ url: '/api/admin/cage-info/occupancy/archive', method: 'POST', data: { animalCageId: t.animalCageId, reason: '' } }).then(function(res) {
+    // 学生走 /api/local/archive（后端按身份判「只能归档本人占用」），教职工走原来的管理端接口
+    var archiveUrl = self.data.isStaffView
+      ? '/api/admin/cage-info/occupancy/archive'
+      : '/api/local/archive';
+    springAuth.springRequest({ url: archiveUrl, method: 'POST', data: { animalCageId: t.animalCageId, reason: '' } }).then(function(res) {
       var p = unwrap(res);
       if (!p.ok) { self.setData({ archiveSubmitting: false }); wx.showToast({ title: p.message || '归档失败', icon: 'none' }); return; }
       self.setData({ archiveSubmitting: false, showArchiveDialog: false, archiveTarget: null });

@@ -1196,6 +1196,16 @@ export default function AdminLayout() {
               </h1>
               <ThemeSwitcher className="h-8 shrink-0 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 text-[11px] font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" />
               <FullscreenToggleButton className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" />
+              {/* 手机版：紧挨全屏按钮的一枚手机图标（全屏是「换个壳看」，手机版是「换个端看」，放一起） */}
+              <button
+                type="button"
+                onClick={() => navigate(authStorage.hasToken() ? "/m/home" : "/m/login", { state: { fromPortal: true } })}
+                title="手机版"
+                aria-label="切换到手机版"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+              >
+                <Smartphone className="h-4 w-4" />
+              </button>
               <PageHelpHost pagePath={pathname} variant="admin" suppressAutoIntro={pendingLockRedirect} />
               {hasMinRole(role, "SUPER_ADMIN") ? (
                 <button

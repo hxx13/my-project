@@ -1335,6 +1335,15 @@ export async function localEdit(animalCageId: number | string, toggle: string, e
 }
 
 /**
+ * 归档笼位（释放占用 → 空笼盒）。**学生只能归档本人占用的笼位** ——
+ * 归属判定在后端（活跃认领人 或 表单实验员是本人），前端只管调用并透出错误文案。
+ */
+export async function localArchiveCage(animalCageId: number | string, reason?: string) {
+  const res = await authHttp.post<Result<any>>("/local/archive", { animalCageId, reason: reason || "" });
+  if (!res.data?.success) throw new Error(res.data?.message || "归档失败");
+}
+
+/**
  * 写笼位「特殊饲养明细」子状态（多选，**整体覆盖**）。
  * itemCodes 传空数组 = 清空。id 转字符串再传 —— 雪花 id 超出 JS 安全整数，传数字会被抹位。
  */

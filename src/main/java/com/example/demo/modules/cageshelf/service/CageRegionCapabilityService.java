@@ -59,8 +59,13 @@ public class CageRegionCapabilityService {
     /** 学生**模式**能力码前缀：mode key ↔ 能力码一一对应，如 studentClaim → cage.student.mode.studentClaim。 */
     public static final String STUDENT_MODE_PREFIX = "cage.student.mode.";
 
-    /** 学生侧模式的展示顺序（与前端模式岛一致）。 */
-    public static final List<String> STUDENT_MODE_KEYS = List.of("studentClaim", "division", "confirm");
+    /**
+     * 学生侧模式的展示顺序（与前端模式岛一致）。
+     *
+     * <p>`archive` 也在其中：学生可用它**归档本人的笼位** —— 区域级照旧可逐区域关掉，
+     * 写入门禁另有一道「只能归档本人占用」（见 CageLocalController）。
+     */
+    public static final List<String> STUDENT_MODE_KEYS = List.of("studentClaim", "division", "confirm", "archive");
 
     public static String modeCapability(String modeKey) {
         return STUDENT_MODE_PREFIX + modeKey;

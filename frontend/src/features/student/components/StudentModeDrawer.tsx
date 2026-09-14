@@ -19,6 +19,11 @@ export interface StudentZone {
   color?: string;
   /** add=落到该区；cancel=从该区撤销。只影响观感：cancel 画成虚线空心，和 add 一眼分开。 */
   variant?: "add" | "cancel";
+  /**
+   * 折叠在卡内的子区 —— 「需特殊饲养」下面那四个明细色区走这条。
+   * 明细用量少，平铺会把右栏（只有 190px）撑得很长，所以默认收起，点卡内「明细」才展开。
+   */
+  children?: StudentZone[];
 }
 
 /**
@@ -36,7 +41,7 @@ export function StudentChipCell({ item, cell, cache }: { item: PendingItem; cell
           <CellButton cell={cell} editCacheEntry={cache} />
         </div>
       ) : (
-        <div className="grid h-[60px] w-[60px] place-items-center rounded-student-md border border-dashed border-[var(--app-color-border-default)] p-1 text-center text-[8px] leading-tight text-[var(--app-color-text-tertiary)]">
+        <div className="grid h-[60px] w-[60px] place-items-center rounded-student-md border border-dashed border-[var(--student-hairline)] p-1 text-center text-[8px] leading-tight text-[var(--app-color-text-tertiary)]">
           {item.label}
         </div>
       )}
@@ -131,8 +136,8 @@ function ChipTile({
       onClick={onToggle || onOpen ? handleTileClick : undefined}
       onDoubleClick={onToggle && onOpen ? () => onOpen(item.cageId) : undefined}
       title={onToggle && onOpen ? `${item.label} · 点击选中，双击继续编辑` : onToggle ? `${item.label} · 点击选中/取消` : item.label}
-      className={`relative w-fit cursor-grab select-none [touch-action:none] rounded-student-md border bg-[var(--app-color-surface-container)] p-0.5 ${
-        selected ? "border-[var(--app-color-accent-hover)] ring-1 ring-[var(--app-color-accent-hover)]" : "border-[var(--app-color-border-default)]"
+      className={`relative w-fit cursor-grab select-none [touch-action:none] rounded-student-md border bg-[var(--student-canvas)] p-0.5 ${
+        selected ? "border-[var(--app-color-accent-hover)] ring-1 ring-[var(--app-color-accent-hover)]" : "border-[var(--student-hairline)]"
       } ${isDragging ? "opacity-40" : ""}`}
     >
       {onToggle && (
@@ -161,7 +166,7 @@ function ChipTile({
 }
 
 function Zone({
-  zone, items, selectedCount, onAssignSelected, onUnassignAll, cellOf, shelfNameOf, cacheOf, onOpen,
+  zone, items, selectedCount, onAssignSelected, onUnassignAll, cellOf, shelfNameOf, cacheOf, onOpen, childrenSlot,
 }: {
   zone: StudentZone; items: PendingItem[]; selectedCount: number;
   onAssignSelected: (zoneKey: string) => void; onUnassignAll: (zoneKey: string) => void;
@@ -169,6 +174,8 @@ function Zone({
   shelfNameOf?: (item: PendingItem) => string | undefined;
   cacheOf?: (item: PendingItem) => EditCache | undefined;
   onOpen?: (cageId: string) => void;
+  /** 卡内折叠的子区（明细色区）；由容器递归渲染好传进来 */
+  childrenSlot?: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `s-zone:${zone.key}` });
   /* 不传色 = 沿用主题强调色：划分模式的人员区保持原样 */
@@ -179,10 +186,12 @@ function Zone({
       ref={setNodeRef}
       className={`rounded-student-md border-2 p-2 ${
         isOver
-          ? "border-[var(--app-color-accent-hover)] bg-[var(--app-color-surface-hover)]"
+          ? "border-[var(--app-color-accent-hover)] bg-[var(--student-canvas-soft)]"
           : isCancel
-            ? "border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)]"
-            : "border-[var(--app-color-border-default)]"
+            /* 撤销区 = 空心虚线框（与管理端 BufferTargetZones 同款）：
+               以前铺的是 --app-color-surface-hover，亮色主题下是一块暖米色，看着像「禁用」而不是「空的落点」 */
+            ? "border-dashed border-[var(--student-hairline-strong)] bg-[var(--student-canvas-soft)]"
+            : "border-[var(--student-hairline)] bg-[var(--student-canvas)]"
       }`}
     >
       <div className="flex items-start gap-1.5">
@@ -195,7 +204,7 @@ function Zone({
           <div className="truncate text-[11px] font-semibold text-[var(--app-color-text-primary)]" title={zone.title}>{zone.title}</div>
           {zone.subtitle && <div className="truncate text-[10px] text-[var(--app-color-text-tertiary)]" title={zone.subtitle}>{zone.subtitle}</div>}
         </div>
-        <span className="shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-1.5 text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">
+        <span className="shrink-0 rounded-full bg-[var(--student-canvas-soft)] px-1.5 text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">
           {items.length}
         </span>
       </div>
@@ -216,7 +225,7 @@ function Zone({
           type="button"
           onClick={() => onUnassignAll(zone.key)}
           disabled={items.length === 0}
-          className="rounded-student-sm border border-[var(--app-color-border-default)] px-1.5 py-1 text-[10px] text-[var(--app-color-text-tertiary)] disabled:opacity-40"
+          className="rounded-student-sm border border-[var(--student-hairline)] px-1.5 py-1 text-[10px] text-[var(--app-color-text-tertiary)] disabled:opacity-40"
           title="区内笼位全部退回缓冲区"
         >
           <Trash2 className="h-3 w-3" />
@@ -229,6 +238,7 @@ function Zone({
         ))}
         {items.length === 0 && <div className="px-1 text-[10px] text-[var(--app-color-text-tertiary)]">拖笼位到这里</div>}
       </div>
+      {childrenSlot}
     </div>
   );
 }
@@ -238,7 +248,7 @@ function Zone({
  * 与后台 CageModeDrawer 同构但另写一套皮：学生端令牌是 --app-color-*，不共用后台组件。
  */
 export default function StudentModeDrawer({
-  title, items, selected, zones, itemsByZone, onToggle, onToggleAll, onRemove, onAssignSelected, onUnassignAll, onDrop, onSubmit, submitting, onClose, targetNoun, needsTarget, targetKeyOf, zonesHeader, cellOf, shelfNameOf, cacheOf, onOpen,
+  title, items, selected, zones, itemsByZone, onToggle, onToggleAll, onRemove, onAssignSelected, onUnassignAll, onDrop, onSubmit, submitting, onClose, targetNoun, needsTarget, targetKeyOf, zonesHeader, cellOf, shelfNameOf, cacheOf, onOpen, zonesMain = false,
 }: {
   title: string;
   /** 左栏缓冲条目（划分模式下 = 未归属的；申请预约 = 全部） */
@@ -268,6 +278,11 @@ export default function StudentModeDrawer({
   cacheOf?: (item: PendingItem) => EditCache | undefined;
   /** 状态模式：点磁贴（单击无选中语义 / 双击有选中语义）打开该笼位的动作弹窗 */
   onOpen?: (cageId: string) => void;
+  /**
+   * true = 色区占主区、缓冲区让到最右一列（状态模式用，对齐管理端）；
+   * false = 默认版式，缓冲区主区 + 色区右侧窄栏（划分模式的人员区）。
+   */
+  zonesMain?: boolean;
 }) {
   const [localErr, setLocalErr] = useState("");
   const [dragItem, setDragItem] = useState<PendingItem | null>(null);
@@ -312,11 +327,82 @@ export default function StudentModeDrawer({
     : 0;
   const totalCount = items.length + assignedCount;
   const { setNodeRef: bufRef, isOver: bufOver } = useDroppable({ id: "s-buffer" });
+  /** 递归渲染：带 children 的区（需特殊饲养）把子区折叠在自己卡内，默认收起 */
+  const renderZone = (z: StudentZone): ReactNode => (
+    <Zone
+      key={z.key}
+      zone={z}
+      items={itemsByZone?.get(z.key) ?? []}
+      selectedCount={selected.size}
+      onAssignSelected={onAssignSelected}
+      onUnassignAll={onUnassignAll}
+      cellOf={cellOf}
+      shelfNameOf={shelfNameOf}
+      cacheOf={cacheOf}
+      onOpen={onOpen}
+      childrenSlot={
+        z.children && z.children.length > 0 ? (
+          <details className="mt-1.5 border-t border-dashed border-[var(--student-hairline)] pt-1">
+            <summary className="cursor-pointer list-none text-[10px] font-semibold text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]">
+              {z.variant === "cancel" ? "撤销明细 ▾" : "明细 ▾"}
+            </summary>
+            <div className="mt-1.5 space-y-1.5">{z.children.map(renderZone)}</div>
+          </details>
+        ) : undefined
+      }
+    />
+  );
+  /** 缓冲栏：默认占主区；`zonesMain` 时挪到最右一列（与管理端同宽 218px） */
+  const bufferPane = (
+    <div
+      ref={bufRef}
+      className={`flex min-h-0 flex-col border-2 border-dashed p-2 ${bufOver ? "border-[var(--app-color-accent-hover)]" : "border-transparent"} ${
+        zonesMain
+          ? "w-[218px] shrink-0 border-l border-l-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
+          : "flex-1"
+      }`}
+    >
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">缓冲区</span>
+        <button type="button" onClick={onToggleAll} disabled={items.length === 0} className="flex items-center gap-1 text-[10px] text-[var(--app-color-text-tertiary)] disabled:opacity-40">
+          <ListChecks className="h-3 w-3" />{selected.size > 0 && selected.size === items.length ? "取消全选" : "全选"}
+        </button>
+      </div>
+      {/* 折行排布：磁贴宽 60px 出头，缓冲栏宽就一行三四个 */}
+      <div className="flex min-h-0 flex-1 flex-wrap content-start items-start gap-1 overflow-y-auto">
+        {items.map((it) => (
+          <ChipTile key={it.cageId} item={it} selected={selected.has(it.cageId)} onToggle={onToggle} onRemove={onRemove} cell={cellOf?.(it)} shelfName={shelfNameOf?.(it)} cache={cacheOf?.(it)} onOpen={onOpen} />
+        ))}
+        {items.length === 0 && <div className="px-1 py-1 text-[10px] text-[var(--app-color-text-tertiary)]">点网格里的笼位加入</div>}
+      </div>
+    </div>
+  );
+  /**
+   * 色区栏：默认右侧 190px 窄栏（划分模式的人员区）；
+   * `zonesMain` 时占主区并排成两列 —— 状态模式的色区有 5 组 + 两张卡里各挂一叠明细子区，
+   * 挤在 190px 里一层套一层太窄，与管理端一致摊开更好扫。
+   */
+  const zonesPane = zones ? (
+    <div className={zonesMain
+      ? "flex min-h-0 flex-1 flex-col"
+      : "flex w-[190px] shrink-0 flex-col border-l border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"}>
+      {zonesHeader}
+      <div className={`min-h-0 flex-1 overflow-y-auto p-2 ${zonesMain ? "grid grid-cols-2 content-start items-start gap-2" : "space-y-2"}`}>
+        {zones.map(renderZone)}
+        {/* 空栏要给个说法，否则只有一条搜索框，看不出下一步做什么 */}
+        {zones.length === 0 && (
+          <div className="rounded-student-md border border-dashed border-[var(--student-hairline)] px-2 py-3 text-center text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">
+            还没有人员区域<br />用上面的搜索框选一个人，然后把笼位拖到他身上
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
   return createPortal(
     /* bottom 让开底部的模式悬浮岛（岛是 bottom:16 锚定、z-index 只有 3，抽屉一盖上去那颗按钮就点不到了，
        而抽屉一开又必须能切模式）。84 = 岛高 ~56 + 下边距 16 + 余量 */
-    <div style={{ position: "fixed", top: 72, right: 0, bottom: 84, zIndex: 60 }} className="flex w-[420px] flex-col rounded-l-student-lg border border-r-0 border-[var(--app-color-border-default)] bg-[var(--student-canvas)] shadow-2xl">
-      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--app-color-border-default)] px-4 py-3">
+    <div style={{ position: "fixed", top: 72, right: 0, bottom: 84, zIndex: 60 }} className={`flex flex-col rounded-l-student-lg border border-r-0 border-[var(--student-hairline)] bg-[var(--student-canvas)] shadow-2xl ${zonesMain ? "w-[618px]" : "w-[420px]"}`}>
+      <header className="flex shrink-0 items-center gap-2 border-b border-[var(--student-hairline)] px-4 py-3">
         <span className="text-[12px] font-semibold text-[var(--app-color-text-primary)]">{title}</span>
         <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{totalCount} 个笼位</span>
         <button type="button" onClick={onClose} className="ml-auto text-[var(--app-color-text-tertiary)]" title="关闭">
@@ -324,42 +410,10 @@ export default function StudentModeDrawer({
         </button>
       </header>
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-        {/* 左右两栏：左=缓冲区，右=人员区域（划分模式才有） */}
+        {/* 左右两栏。默认 左=缓冲区 / 右=人员区域（划分模式才有）；`zonesMain` 时对调：
+            左=色区（主区、两列）/ 右=缓冲区 —— 与管理端状态模式同一套排法 */}
         <div className="flex min-h-0 flex-1">
-          <div
-            ref={bufRef}
-            className={`flex min-h-0 flex-1 flex-col border-2 border-dashed p-2 ${bufOver ? "border-[var(--app-color-accent-hover)]" : "border-transparent"}`}
-          >
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">缓冲区</span>
-              <button type="button" onClick={onToggleAll} disabled={items.length === 0} className="flex items-center gap-1 text-[10px] text-[var(--app-color-text-tertiary)] disabled:opacity-40">
-                <ListChecks className="h-3 w-3" />{selected.size > 0 && selected.size === items.length ? "取消全选" : "全选"}
-              </button>
-            </div>
-            {/* 折行排布：磁贴宽 60px 出头，缓冲栏宽就一行三四个 */}
-            <div className="flex min-h-0 flex-1 flex-wrap content-start items-start gap-1 overflow-y-auto">
-              {items.map((it) => (
-                <ChipTile key={it.cageId} item={it} selected={selected.has(it.cageId)} onToggle={onToggle} onRemove={onRemove} cell={cellOf?.(it)} shelfName={shelfNameOf?.(it)} cache={cacheOf?.(it)} onOpen={onOpen} />
-              ))}
-              {items.length === 0 && <div className="px-1 py-1 text-[10px] text-[var(--app-color-text-tertiary)]">点网格里的笼位加入</div>}
-            </div>
-          </div>
-          {zones && (
-            <div className="flex w-[190px] shrink-0 flex-col border-l border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)]">
-              {zonesHeader}
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-                {zones.map((z) => (
-                  <Zone key={z.key} zone={z} items={itemsByZone?.get(z.key) ?? []} selectedCount={selected.size} onAssignSelected={onAssignSelected} onUnassignAll={onUnassignAll} cellOf={cellOf} shelfNameOf={shelfNameOf} cacheOf={cacheOf} onOpen={onOpen} />
-                ))}
-                {/* 空栏要给个说法，否则只有一条搜索框，看不出下一步做什么 */}
-                {zones.length === 0 && (
-                  <div className="rounded-student-md border border-dashed border-[var(--app-color-border-default)] px-2 py-3 text-center text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">
-                    还没有人员区域<br />用上面的搜索框选一个人，然后把笼位拖到他身上
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {zonesMain ? <>{zonesPane}{bufferPane}</> : <>{bufferPane}{zonesPane}</>}
         </div>
         {/*
           拖拽浮层自己 portal 到 body、层级给到 1000：
@@ -380,7 +434,7 @@ export default function StudentModeDrawer({
           document.body,
         )}
       </DndContext>
-      <footer className="shrink-0 border-t border-[var(--app-color-border-default)] px-4 py-3">
+      <footer className="shrink-0 border-t border-[var(--student-hairline)] px-4 py-3">
         {localErr && <div className="mb-1.5 text-[10px] text-red-500">{localErr}</div>}
         <button type="button" onClick={guardedSubmit} disabled={submitting || totalCount === 0} className="w-full rounded-student-md bg-[var(--app-color-accent-hover)] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-50">
           {submitting ? "提交中…" : `提交（${totalCount}）`}

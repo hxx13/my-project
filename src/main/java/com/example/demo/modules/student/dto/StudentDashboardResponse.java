@@ -14,14 +14,19 @@ public class StudentDashboardResponse {
     private List<PinnedRoom> pinnedRooms;
     private List<RecentRecord> recentRecords;
     private List<RecentNotice> recentNotices;
+    /** Web 学生首页指标卡片（课题组人员 / AUP / 笼位预约） */
+    private HomeSummary homeSummary;
 
     @Data
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ProfileSummary {
         private String name;
+        /** 工号（= 学号） */
+        private String jobNumber;
         private String departmentName;
         private String projectGroupName;
-        private String roleLabel;
+        /** 身份标识（本地身份标识系统 person_identity_tag.label，可多个） */
+        private List<String> identityLabels;
         private String authStatus;
         /** 头像 URL（来自 ARO 人员库） */
         private String head;
@@ -29,10 +34,31 @@ public class StudentDashboardResponse {
         private Integer gender;
         private String mobilePhone;
         private String email;
-        /** 总经验值 */
-        private Integer totalExp;
+        /** 是否校内 0/1 */
+        private Integer isSchool;
         /** 官方可进房间列表（中文展示） */
         private String allowedRoomsDisplayZh;
+    }
+
+    @Data
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class HomeSummary {
+        /** 本课题组人员数（含本人）。只出人数不出名单 —— 首页不提供成员名单查看入口 */
+        private int groupMemberCount;
+        /** 本课题组 AUP 计划书数（与 /student/aup 同口径） */
+        private int aupCount;
+        /** 本课题组剩余笼位 = Σ(预约数量 − 已使用)，跨房间跨 AUP 合并 */
+        private int cageRemaining;
+        private List<RoomRemaining> remainingByRoom;
+    }
+
+    @Data
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class RoomRemaining {
+        private String roomName;
+        private int rentNumber;
+        private int usedNumber;
+        private int remaining;
     }
 
     @Data

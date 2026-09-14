@@ -788,7 +788,13 @@ public class StudentCageShelfService {
         return s == null ? "" : s;
     }
 
-    private List<String> resolveUserGroupNames(String userId) {
+    /**
+     * 当前账号所属课题组名列表（aro_personnel 口径，STAFF_* 经 user_aro_binding 展开）。
+     *
+     * <p>首页汇总也走这一份：首页的「本课题组笼位状况」必须与笼架页同一判据，
+     * 各算各的会出现「笼架页看得到、首页却少几个」。
+     */
+    public List<String> resolveUserGroupNames(String userId) {
         try {
             // STAFF_* 账号须经 user_aro_binding 展开到 aro 人员编号，否则 aro_personnel 查不到课题组
             String personnelUserId = userId;

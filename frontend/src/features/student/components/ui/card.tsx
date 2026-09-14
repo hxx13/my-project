@@ -9,7 +9,7 @@ const studentCardVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-white shadow-[var(--student-card-shadow)] hover:shadow-md",
+          "bg-white shadow-student-card hover:shadow-student-card-hover",
         soft: "bg-[var(--student-card-soft-bg)]",
         bordered:
           "bg-white border border-[var(--student-border)]",

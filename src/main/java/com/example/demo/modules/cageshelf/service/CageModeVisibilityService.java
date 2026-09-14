@@ -100,6 +100,21 @@ public class CageModeVisibilityService {
         return permissionService.canUse(studentEditCapability(action), identityCodesOf(user.getId()));
     }
 
+    /**
+     * 该学生**能否用某个模式**（矩阵这层；区域级另由 {@code CageRegionCapabilityService} 判）。
+     *
+     * <p>⚠ 两个同名方法前缀不同、别拿错：学生模式是
+     * {@code CageRegionCapabilityService.modeCapability} = {@code cage.student.mode.}<mode>；
+     * 本类的 {@link #modeCapability} 是**教职工**的 {@code cage.mode.}<mode>。
+     * 也不能用 {@code canUseMode(u, mode)} 代替 —— 学生可能带 BREEDER/GROUP_LEADER 身份，
+     * 那样会把教职工模式一并放开，比学生该有的宽。
+     */
+    public boolean canStudentMode(User user, String modeKey) {
+        if (user == null || user.getId() == null || modeKey == null || modeKey.isBlank()) return false;
+        return permissionService.canUse(CageRegionCapabilityService.modeCapability(modeKey),
+                identityCodesOf(user.getId()));
+    }
+
     /** 模式 key → 对应的矩阵能力码。 */
     public static String modeCapability(String modeKey) {
         return "cage.mode." + modeKey;

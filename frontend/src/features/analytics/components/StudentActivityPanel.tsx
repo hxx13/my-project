@@ -57,6 +57,8 @@ interface Props {
   fetchers: StudentActivityFetchers;
   variant?: "student" | "mobile";
   className?: string;
+  /** 塞在标题栏右侧控件组末尾（如「弹窗展开」按钮），避免调用方在卡片外面另起一行 */
+  headerExtra?: ReactNode;
 }
 
 export function StudentActivityPanel({
@@ -65,6 +67,7 @@ export function StudentActivityPanel({
   fetchers,
   variant = "student",
   className,
+  headerExtra,
 }: Props) {
   const isMobile = variant === "mobile";
   const initialRange = presetToRange("month");
@@ -195,7 +198,7 @@ export function StudentActivityPanel({
               "font-semibold shrink-0",
               isMobile
                 ? "text-[15px] text-[#1e293b]"
-                : "text-[13px] text-[var(--student-foreground)]",
+                : "text-[15px] text-[var(--student-foreground)]",
             )}
           >
             课题组活跃度
@@ -253,6 +256,7 @@ export function StudentActivityPanel({
             <option value="浦东">浦东</option>
             <option value="浦西">浦西</option>
           </select>
+          {headerExtra}
         </div>
 
         {preset === "custom" && (

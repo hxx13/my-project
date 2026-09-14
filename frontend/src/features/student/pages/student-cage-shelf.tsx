@@ -11,11 +11,13 @@ import { useCageOpSelect, buildCageOpMarks, mergeReservationMarks, type CageOpLa
 import BatchTransferPanel from "@/features/cage-shelf/components/BatchTransferPanel";
 import { resolveCageType, groupKeyOf } from "@/features/cage-shelf/components/CageCellOverlays";
 import { CampusTree, buildTree } from "@/features/cage-shelf/components/CampusTree";
-import { displayPosition, CAGE_BOX_ACTIONS, cageBoxAction, actionsFromFormValues, parseStatusZone, statusZoneKey, SPECIAL_DETAIL_DICT, detailCodesOfValues } from "@/features/cage-shelf/constants";
+import { displayPosition, CAGE_BOX_ACTIONS, specialFeedingLast, cageBoxAction, actionsFromFormValues, parseStatusZone, statusZoneKey, detailZoneKey, parseDetailZone, detailPhotoKey, SPECIAL_DETAIL_DICT, detailCodesOfValues } from "@/features/cage-shelf/constants";
+import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, submitCageTransfer, localEdit, saveSpecialDetails, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, submitCageTransfer, localEdit, localArchiveCage, saveSpecialDetails, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
 import { fetchStudentMobileSpecialStatusOverview } from "@/api/domains/studentMobile.api";
+import { authHttp } from "@/api/core/authHttp";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import MobileSpecialStatusPanel from "@/pages/mobile/MobileSpecialStatusPanel";
@@ -141,11 +143,25 @@ export default function StudentCageShelfPage() {
   const [divisionSubmitting, setDivisionSubmitting] = useState(false);
   const [divisionBoxSelect, setDivisionBoxSelect] = useState(false);
   const divisionBoxAnchorRef = useRef<{ sid: string; x: number; y: number } | null>(null);
+  /** 归档模式：学生只能归档**本人占用**的笼位（UI 与后端双重把关，后端那道在 /local/archive） */
+  const [archiveMode, setArchiveMode] = useState(false);
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false);
+  const [archiveBoxSelect, setArchiveBoxSelect] = useState(false);
+  const archiveBoxAnchorRef = useRef<{ sid: string; x: number; y: number } | null>(null);
   const [claimReloadKey, setClaimReloadKey] = useState(0);
 
   // ── 状态模式（edit）：与管理端同一套机制 ──
   // 编辑缓存是状态模式的唯一真相源：网格配色、抽屉缩略图、待提交批次三者都由它派生。
   const [editMode, setEditMode] = useState(false);
+  /**
+   * 状态模式下的点子方式（对齐管理端的「直接改 / 拖色区」，但学生侧不即时写盘）：
+   * 两种方式**点格子都会把该格放进缓冲区**（拖色区那条批量路要人肉往里选），
+   * 区别只在弹不弹动作弹窗 —— 特殊饲养明细只存在于弹窗里，所以「弹窗编辑」这条必须有。
+   *  - 弹窗编辑（默认）：点格子 → 入缓冲区 + 打开动作弹窗（选动作与明细）；
+   *  - 拖色区：点格子 → 只进/出缓冲区（不弹窗），拖到色区批量标记。
+   * 改动一律进「状态待提交」，提交仍是抽屉里那个统一按钮。
+   */
+  const [editPointMode, setEditPointMode] = useState(true);
   const [scanCache, setScanCache] = useState<Map<string, { cell: CageShelfCell; code: string; initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction>;
     /** 特殊饲养明细：进缓存时的服务端选中集合 / 当前目标集合（item_code）。可选 = 本次不动明细。 */
     initialDetails?: Set<string>; currentDetails?: Set<string> }>>(new Map());
@@ -160,6 +176,67 @@ export default function StudentCageShelfPage() {
   /** 表单值(cage_info_value)：状态标记的唯一真相源，弹窗据此反向使能按钮 */
   const [editFormValues, setEditFormValues] = useState<CageInfoValueRow[] | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  /**
+   * 状态专属照片，**按归属的状态分桶**：key = 状态表单字段名（`needs_division` …）或明细的 `SF_<item_code>`。
+   * 与管理端同款：每个状态一枚上传按钮，各传各的，远端不会再把一份照片摊进每个状态。
+   */
+  const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
+  const [actionNote, setActionNote] = useState("");
+  /**
+   * 用户**真的动过**的 key / 备注 —— 写盘只写这些。
+   * 整份写回会把这段时间里别人改过的 key 一起盖成陈旧值（没动过的人也赢了）。
+   */
+  const [dirtyPhotoKeys, setDirtyPhotoKeys] = useState<Set<string>>(new Set());
+  const [noteDirty, setNoteDirty] = useState(false);
+  /** 照片条改一张 = 只把**那个 key** 标脏 */
+  const setPhotosFor = useCallback((key: string, urls: string[]) => {
+    setStatusPhotos((p) => ({ ...p, [key]: urls }));
+    setDirtyPhotoKeys((p) => { const n = new Set(p); n.add(key); return n; });
+  }, []);
+  const [annotateSubmitting, setAnnotateSubmitting] = useState(false);
+
+  // 打开动作弹窗时把该笼位已存的照片/备注捞回来（弹窗是唯一的照片入口）
+  useEffect(() => {
+    if (!editDialogCell) return;
+    setStatusPhotos({}); setActionNote("");
+    setDirtyPhotoKeys(new Set()); setNoteDirty(false);
+    const cageId = cageIdOfCell(editDialogCell);
+    if (!cageId) return;
+    authHttp.get(`/local/annotate/${cageId}`).then((r) => {
+      if (!r.data?.success) return;
+      const sp = r.data.data?.statusPhotos;
+      if (!sp) return;
+      try {
+        const parsed = typeof sp === "string" ? JSON.parse(sp) : sp;
+        if (typeof parsed?._note === "string") setActionNote(parsed._note);
+        const byKey: Record<string, string[]> = {};
+        for (const k of Object.keys(parsed ?? {})) if (k !== "_note" && Array.isArray(parsed[k])) byKey[k] = parsed[k];
+        setStatusPhotos(byKey);
+      } catch { setStatusPhotos({}); }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editDialogCell]);
+
+  /**
+   * 照片 + 备注写盘：只覆盖本次动过的 key，其余原样带回去。
+   * 备注清空即删键（否则用户改不掉已经写下的备注）。
+   */
+  const saveAnnotation = useCallback(async (cageId: string) => {
+    if (dirtyPhotoKeys.size === 0 && !noteDirty) return; // 没动过就不发请求
+    /* 服务端那份为底，只有动过的 key 才用当前值盖上去；读不到就退回打开时加载的快照兜底 */
+    let sp: Record<string, unknown> = { ...statusPhotos };
+    try {
+      const r = await authHttp.get(`/local/annotate/${cageId}`);
+      if (r.data?.success && r.data.data?.statusPhotos) {
+        const parsed = typeof r.data.data.statusPhotos === "string" ? JSON.parse(r.data.data.statusPhotos) : r.data.data.statusPhotos;
+        if (parsed && typeof parsed === "object") sp = { ...parsed };
+      }
+    } catch { /* 读不到就用打开时那份 */ }
+    for (const k of dirtyPhotoKeys) sp[k] = statusPhotos[k] ?? [];
+    if (noteDirty) { if (actionNote.trim()) sp._note = actionNote; else delete sp._note; }
+    await authHttp.post("/local/annotate", { animalCageId: cageId, statusPhotos: JSON.stringify(sp) });
+    setDirtyPhotoKeys(new Set()); setNoteDirty(false);
+  }, [statusPhotos, actionNote, dirtyPhotoKeys, noteDirty]);
 
   // ── 待提交缓冲：申请预约 / 划分按模式分开存，提交逐条汇总 ──
   const [pendingByMode, setPendingByMode] = useState<PendingByMode>({});
@@ -171,6 +248,7 @@ export default function StudentCageShelfPage() {
   const claimBatch = batchOf(pendingByMode, "studentClaim");
   const divisionBatch = batchOf(pendingByMode, "division");
   const editBatch = batchOf(pendingByMode, "edit");
+  const archiveBatch = batchOf(pendingByMode, "archive");
 
   // ── 扫码 / 特殊状态总览（对齐 H5、小程序）──
   const [scanOpen, setScanOpen] = useState(false);
@@ -216,15 +294,26 @@ export default function StudentCageShelfPage() {
   const canDivide = allowedModes == null || allowedModes.includes("division");
   /** 状态模式：动作按钮由后端白名单过滤（当前学生只放 COHABITATION，以后加动作只改后端） */
   const canEdit = allowedModes == null || allowedModes.includes("edit");
+  /** 归档模式：学生只能归档**本人占用**的笼位（区域组长可逐区关掉这个入口） */
+  const canArchive = allowedModes == null || allowedModes.includes("archive");
+  /**
+   * 学生侧**不开放**的两个动作：需分笼、动物转移（用户 2026-09-14 口径：这两个禁用学生侧）。
+   *
+   * 后端 `CageModeVisibilityService.STUDENT_EDIT_ACTIONS` 里本来就没有它们，但那条白名单**缺席时**
+   * 前端会回退成「全部动作」（fail-open），于是这两个也跟着露出来。这里再兜一道：
+   * 不管白名单来没来，学生页两个都不渲染。（教职工要用请走后台的笼架页。）
+   */
+  const STUDENT_HIDDEN_ACTIONS: CageBoxAction[] = ["DIVIDE", "TRANSFER"];
   const editActions = useMemo(
-    () => (editActionNames ? CAGE_BOX_ACTIONS.filter(a => editActionNames.includes(a.action)) : CAGE_BOX_ACTIONS),
+    () => (editActionNames ? CAGE_BOX_ACTIONS.filter(a => editActionNames.includes(a.action)) : CAGE_BOX_ACTIONS)
+      .filter(a => !STUDENT_HIDDEN_ACTIONS.includes(a.action)),
     [editActionNames],
   );
 
   /* ---- 模式悬浮岛：与管理端同一套组件、同一份模式元数据、同一个形态选择 ---- */
   const [islandVariant, toggleIslandVariant] = useIslandVariant();
   const rightPanelRef = useRef<HTMLDivElement | null>(null);
-  const currentMode: CageModeKey = confirmMode ? "confirm" : claimMode ? "studentClaim" : divisionMode ? "division" : editMode ? "edit" : "view";
+  const currentMode: CageModeKey = confirmMode ? "confirm" : claimMode ? "studentClaim" : divisionMode ? "division" : editMode ? "edit" : archiveMode ? "archive" : "view";
   /** 圈圈形态收缩时只占一个小圆钮，不需要留白；横向程序坞才需要 */
   const islandPadStyle = islandVariant === "dock" ? { paddingBottom: 88 } : undefined;
   const modeGlow = modeBorderColor(currentMode);
@@ -236,15 +325,19 @@ export default function StudentCageShelfPage() {
     if (canConfirm) list.push("confirm");
     if (canEdit) list.push("edit");
     if (canDivide) list.push("division");
+    if (canArchive) list.push("archive");
     return list;
-  }, [canClaim, canConfirm, canEdit, canDivide]);
+  }, [canClaim, canConfirm, canEdit, canDivide, canArchive]);
   const switchMode = (k: CageModeKey) => {
     setClaimMode(k === "studentClaim");
     setConfirmMode(k === "confirm");
     setDivisionMode(k === "division");
     setEditMode(k === "edit");
+    setArchiveMode(k === "archive");
     setDivisionBoxSelect(false);
     divisionBoxAnchorRef.current = null;
+    setArchiveBoxSelect(false);
+    archiveBoxAnchorRef.current = null;
     if (k !== "studentClaim" && k !== "division") {
       setPoolCells(new Map());
     }
@@ -254,7 +347,7 @@ export default function StudentCageShelfPage() {
       编辑缓存**不在这里清** —— 它同时是待提交那批改动的真相源（配色 + 每格初始快照），
       清了缓存留着批次，再切回状态模式颜色全丢。
     */
-    setDrawerOpen(k === "studentClaim" || k === "division" || k === "edit");
+    setDrawerOpen(k === "studentClaim" || k === "division" || k === "edit" || k === "archive");
   };
 
   // 进入申请模式时，加载当前房间所有架子的池数据
@@ -299,13 +392,16 @@ export default function StudentCageShelfPage() {
    * 两个批次混着查又会让「另一模式暂存的格子」在本模式里也亮着，串色。
    */
   const bufferedSelectedKeys = useMemo(() => {
-    const items = currentMode === "division" ? divisionBatch.items : currentMode === "studentClaim" ? claimBatch.items : [];
+    const items = currentMode === "division" ? divisionBatch.items
+      : currentMode === "studentClaim" ? claimBatch.items
+      : currentMode === "archive" ? archiveBatch.items
+      : [];
     const s = new Set<string>();
     for (const it of items) {
       if (it.x != null && it.y != null) s.add(`${it.shelveId}:${it.x}:${it.y}`);
     }
     return s;
-  }, [currentMode, claimBatch.items, divisionBatch.items]);
+  }, [currentMode, claimBatch.items, divisionBatch.items, archiveBatch.items]);
 
   const findCellByKey = (sid: string, x: number, y: number) => {
     for (const d of details) {
@@ -359,8 +455,60 @@ export default function StudentCageShelfPage() {
     patchPending("division", (b) => (already ? removeItem(b, aid) : upsertItem(b, { cageId: aid, label: `${sid} (${x},${y})`, shelveId: sid, x, y })));
   };
 
-  /** 划分的人员区域（accountId → 姓名），随批次参数持久化，关抽屉不丢 */
-  const divisionPersons = (divisionBatch.params.persons as Record<string, string> | undefined) ?? {};
+  /**
+   * 归档模式勾选：单击切换 / 框选按钮点两格成矩形。
+   *
+   * 只收**本人占用**的笼位（与后端 `/local/archive` 那道闸同口径，把拒绝提前到点击那一下），
+   * 且只有「饲养中」才谈得上归档（空笼盒无需归档 —— 与管理端同判据）。
+   */
+  const handleArchiveToggle = (sid: string, x: number, y: number, _shiftKey?: boolean) => {
+    const cellAt = (cx: number, cy: number) => findCellByKey(sid, cx, cy) as any;
+    const notMine = (c: any) => isStudentView && !c?.mine;
+    const eligible = (cx: number, cy: number) => {
+      const c = cellAt(cx, cy);
+      if (!c || c.empty) return false;
+      if (notMine(c)) return false;
+      return (c.cageTypeCode ?? c.animalCageType) === 3;
+    };
+    const hintOf = (cx: number, cy: number) => {
+      const c = cellAt(cx, cy);
+      if (c && notMine(c)) return "只能归档本人使用中的笼位";
+      return "该笼位当前无笼盒/未占用，无需归档";
+    };
+    const key = `${sid}:${x}:${y}`;
+    const aid = cellIdByKey.get(key);
+
+    if (archiveBoxSelect) {
+      const anchor = archiveBoxAnchorRef.current;
+      if (!anchor || anchor.sid !== sid) {
+        if (!eligible(x, y)) { void appAlert(hintOf(x, y)); return; }
+        archiveBoxAnchorRef.current = { sid, x, y };
+        if (aid) patchPending("archive", (b) => upsertItem(b, { cageId: aid, label: `${sid} (${x},${y})`, shelveId: sid, x, y }));
+        return;
+      }
+      const minX = Math.min(anchor.x, x), maxX = Math.max(anchor.x, x);
+      const minY = Math.min(anchor.y, y), maxY = Math.max(anchor.y, y);
+      patchPending("archive", (b) => {
+        let next = b;
+        for (let cx = minX; cx <= maxX; cx++)
+          for (let cy = minY; cy <= maxY; cy++)
+            if (eligible(cx, cy)) {
+              const id = cellIdByKey.get(`${sid}:${cx}:${cy}`);
+              if (id) next = upsertItem(next, { cageId: id, label: `${sid} (${cx},${cy})`, shelveId: sid, x: cx, y: cy });
+            }
+        return next;
+      });
+      archiveBoxAnchorRef.current = null;
+      setArchiveBoxSelect(false);
+      return;
+    }
+    if (!aid) return;
+    const already = archiveBatch.items.some((it) => it.cageId === aid);
+    if (!already && !eligible(x, y)) { void appAlert(hintOf(x, y)); return; }
+    patchPending("archive", (b) => (already ? removeItem(b, aid) : upsertItem(b, { cageId: aid, label: `${sid} (${x},${y})`, shelveId: sid, x, y })));
+  };
+
+  /** 划分的人员区域（accountId → 姓名），随批次参数持久化，关抽屉不丢 */  const divisionPersons = (divisionBatch.params.persons as Record<string, string> | undefined) ?? {};
   const divisionZones: StudentZone[] = useMemo(
     () => Object.entries(divisionPersons).map(([key, name]) => ({ key, title: name })),
     [divisionPersons],
@@ -456,6 +604,39 @@ export default function StudentCageShelfPage() {
     }
     if (failed.length > 0) await appAlert(`${okIds.length} 个成功、${failed.length} 个失败。${failed[0]?.reason ?? ""}`);
     else await appAlert(`申请已提交：${okIds.length} 个`);
+  };
+
+  /**
+   * 归档提交：逐个调 `/local/archive`（一次一个笼位）。
+   * **不在这里做归属校验** —— 后端那道闸才是权威（认领人/实验员是不是本人），
+   * 这里只负责把成功的移出批次、失败的留着重试。
+   */
+  const submitArchive = async () => {
+    const items = archiveBatch.items;
+    if (items.length === 0) return;
+    setArchiveSubmitting(true);
+    const okIds: string[] = [];
+    const failed: Array<{ cageId: string; reason: string }> = [];
+    for (const it of items) {
+      try { await localArchiveCage(it.cageId); okIds.push(it.cageId); }
+      catch (e: any) { failed.push({ cageId: it.cageId, reason: e?.message || "归档失败" }); }
+    }
+    setArchiveSubmitting(false);
+    patchPending("archive", (b) => {
+      let next = b;
+      for (const id of okIds) next = removeItem(next, id);
+      for (const f of failed) {
+        const it = next.items.find((x) => x.cageId === f.cageId);
+        if (it) next = { ...next, failed: [...next.failed.filter((x) => x.cageId !== f.cageId), { cageId: f.cageId, label: it.label, reason: f.reason }] };
+      }
+      return next;
+    });
+    if (okIds.length > 0) {
+      setClaimReloadKey((k) => k + 1);   // 归档后笼位变空笼盒，网格要重拉
+      setBufferSelected(new Set());
+    }
+    if (failed.length > 0) await appAlert(`${okIds.length} 个成功、${failed.length} 个失败。${failed[0]?.reason ?? ""}`);
+    else if (okIds.length > 0) await appAlert(`已归档 ${okIds.length} 个笼位`);
   };
 
   /**
@@ -759,16 +940,35 @@ export default function StudentCageShelfPage() {
     () => editBatch.items.filter(it => (it.actions?.length ?? 0) + (it.removedActions?.length ?? 0) === 0),
     [editBatch.items],
   );
+  /**
+   * 明细色区（折叠在「需特殊饲养」/「撤销需特殊饲养」两张卡里）：
+   * 标记区挂父状态那张卡、撤销区挂撤销那张卡，各管一个方向。配色沿用父状态。
+   */
+  const editDetailZones = useMemo(() => {
+    const color = (DEFAULT_COLORS.SPECIAL_FEEDING ?? DEFAULT_COLORS.NORMAL).border;
+    return {
+      marks: specialDetailOptions.map((o): StudentZone => (
+        { key: detailZoneKey(o.itemCode, true), title: o.itemLabel, subtitle: "标记该明细", color }
+      )),
+      cancels: specialDetailOptions.map((o): StudentZone => (
+        { key: detailZoneKey(o.itemCode, false), title: `撤销${o.itemLabel}`, subtitle: "取消该明细", color, variant: "cancel" as const }
+      )),
+    };
+  }, [specialDetailOptions]);
   /** 右栏色区 = 每个可用动作一枚「标记区」+ 一枚「撤销区」，颜色就是该状态在网格上的配色 */
   const editZones: StudentZone[] = useMemo(
-    () => editActions.flatMap(({ action, label, statusCode }) => {
+    () => specialFeedingLast(editActions).flatMap(({ action, label, statusCode }) => {
       const color = (DEFAULT_COLORS[statusCode] ?? DEFAULT_COLORS.NORMAL).border;
+      /* 明细挂在「需特殊饲养」名下（父状态没开放就整块不出现，与弹窗里的强绑定同口径） */
+      const isSf = action === "SPECIAL_BREEDING";
+      const marks = isSf && editDetailZones.marks.length > 0 ? editDetailZones.marks : undefined;
+      const cancels = isSf && editDetailZones.cancels.length > 0 ? editDetailZones.cancels : undefined;
       return [
-        { key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color },
-        { key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const },
+        { key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color, children: marks },
+        { key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const, children: cancels },
       ];
     }),
-    [editActions],
+    [editActions, editDetailZones],
   );
   /** zone.key → 条目（状态模式下一个笼位可同时挂在多个色区：改了 3 个状态就出现在 3 枚标记区里） */
   const editItemsByZone = useMemo(() => {
@@ -777,9 +977,15 @@ export default function StudentCageShelfPage() {
     for (const it of editBatch.items) {
       for (const a of it.actions ?? []) push(`add:${a}`, it);
       for (const a of it.removedActions ?? []) push(`del:${a}`, it);
+      /* 明细区按**缓存的差异**分流：批次里 `details` 是目标全集，只有对比初值才知道是加还是撤 */
+      const e = it.x != null && it.y != null ? scanCache.get(`${it.shelveId}:${it.x}:${it.y}`) : undefined;
+      if (e) {
+        for (const c of e.currentDetails ?? []) if (!(e.initialDetails ?? new Set<string>()).has(c)) push(detailZoneKey(c, true), it);
+        for (const c of e.initialDetails ?? []) if (!(e.currentDetails ?? new Set<string>()).has(c)) push(detailZoneKey(c, false), it);
+      }
     }
     return m;
-  }, [editBatch.items]);
+  }, [editBatch.items, scanCache]);
   /** 抽屉缩略图的缓存查表：色区与缓冲区共用这一份，两栏的实时配色不会再漂 */
   const editCacheOfItem = useCallback((it: PendingItem) => {
     if (it.x == null || it.y == null) return undefined;
@@ -823,6 +1029,41 @@ export default function StudentCageShelfPage() {
   }, [cageIdOfCell, scanCache]);
 
   /**
+   * 明细色区落点：把某个明细项按 on/off 写进编辑缓存（与 {@link applyEditAction} 同一套语义）。
+   *
+   * 落「标记」时**顺手把父状态「需特殊饲养」也标上** —— 服务端的门槛是父状态必须开着
+   * （CageInfoValueService 会拒「父关着还往明细上写」），不补这一步拖进明细区必然提交失败。
+   * 撤销明细**不动**父状态：可能还有别的明细项要留着。
+   */
+  const applyEditDetail = useCallback(async (cell: any, sid: string, itemCode: string, on: boolean) => {
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    const code = String(cell?.cageBoxCode ?? "");
+    let fallbackActions: Set<CageBoxAction> | null = null;
+    let fallbackDetails: Set<string> | null = null;
+    if (!scanCache.has(ck)) {
+      const cageId = cageIdOfCell(cell);
+      const rows = cageId ? await fetchCageInfoValues(cageId).catch(() => null) : null;
+      fallbackActions = actionsFromFormValues(rows);
+      fallbackDetails = detailCodesOfValues(rows);
+    }
+    setScanCache(prev => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const initA = e ? e.initialActions : (fallbackActions ?? new Set<CageBoxAction>());
+      const initD = e?.initialDetails ?? (fallbackDetails ?? new Set<string>());
+      const curA = new Set(e ? e.currentActions : initA);
+      const curD = new Set(e?.currentDetails ?? initD);
+      if (on) { curD.add(itemCode); curA.add("SPECIAL_BREEDING"); } else { curD.delete(itemCode); }
+      const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(x => b.has(x));
+      if (same(curA, initA) && same(curD, initD)) next.delete(ck);
+      else next.set(ck, e
+        ? { ...e, currentActions: curA, initialDetails: initD, currentDetails: curD }
+        : { cell, code, initialActions: initA, currentActions: curA, initialDetails: initD, currentDetails: curD });
+      return next;
+    });
+  }, [cageIdOfCell, scanCache]);
+
+  /**
    * 状态模式：条目连同它的编辑缓存一起摘掉。
    * 只摘批次的话，同步 effect 下一轮会按缓存把它加回来 —— 删了等于没删。
    */
@@ -832,23 +1073,40 @@ export default function StudentCageShelfPage() {
     if (key) setScanCache(prev => { if (!prev.has(key)) return prev; const n = new Map(prev); n.delete(key); return n; });
   }, [keyByCageId, patchPending]);
 
-  /** 点格子 / 扫码：把笼位加入待提交（已在缓冲里则移出）；闸门同一道 */
-  const addEditPending = useCallback((cell: any, metaHint?: { label: string; shelveId: string; x: number; y: number; roomId: string | null }) => {
+  /**
+   * 点格子 / 扫码：把笼位加入待提交（已在缓冲里则移出）；闸门同一道。
+   *
+   * @param keepIfPresent 已在缓冲里就**保持**、不要 toggle 掉。逐格编辑那条路要它 ——
+   *        点格子既入缓冲区又开弹窗，「点开看一眼」不该把刚选好的条目摘掉。
+   */
+  const addEditPending = useCallback((cell: any, metaHint?: { label: string; shelveId: string; x: number; y: number; roomId: string | null }, keepIfPresent = false) => {
     const reason = editGateReason(cell);
     if (reason) { toast.error(reason); return; }
     const cageId = cageIdOfCell(cell);
     if (!cageId) return;
-    if (editBatch.items.some(it => it.cageId === cageId)) { removeEditItem(cageId); return; }
+    if (editBatch.items.some(it => it.cageId === cageId)) {
+      if (keepIfPresent) return;
+      removeEditItem(cageId);
+      return;
+    }
     const meta = metaHint ?? itemMetaByCageId.get(cageId);
     if (!meta) { toast.error("该笼位缺少位置信息，无法加入待提交"); return; }
     patchPending("edit", (b) => upsertItem(b, { cageId, ...meta }));
     // 点格子只入缓冲、不自动弹抽屉 —— 唯一自动弹的时机是「切进这个模式」（见 switchMode）
   }, [editGateReason, cageIdOfCell, editBatch.items, itemMetaByCageId, removeEditItem, patchPending]);
 
-  /** 网格点格子（状态模式拖色区）：进/出待提交缓冲 */
-  const handleEditToggle = (sid: string, x: number, y: number) => {
+  /**
+   * 网格点格子（状态模式统一入口）—— **两种模式都先把格子放进缓冲区**，
+   * 否则「拖色区」那条批量路没法用鼠标把人肉选进缓冲区；
+   * 区别只在：弹窗编辑模式下额外打开动作弹窗（特殊饲养明细只在那儿能选）。
+   */
+  const handleEditCellClick = (sid: string, x: number, y: number) => {
     const c = findCellByKey(sid, x, y);
-    if (c) addEditPending(c);
+    if (!c) return;
+    const reason = editGateReason(c);
+    if (reason) { toast.error(reason); return; }
+    addEditPending(c, undefined, editPointMode);
+    if (editPointMode) openEditCell(c as CageShelfCell, sid);
   };
 
   /** 从 details / shelfDetail 反查某格所属笼架（动作弹窗要靠它拼缓存键） */
@@ -885,6 +1143,8 @@ export default function StudentCageShelfPage() {
   const handleEditZoneDrop = useCallback((cageIds: string[], zoneKey: string | null, fromZone: string | null): boolean => {
     const to = parseStatusZone(zoneKey);
     const from = parseStatusZone(fromZone);
+    const toD = parseDetailZone(zoneKey);
+    const fromD = parseDetailZone(fromZone);
     // 只对「待提交」里的笼位生效：勾选集可能留着早已移出批次的陈旧 id
     const staged = new Set(batchOf(pendingByMode, "edit").items.map(it => it.cageId));
     let applied = 0;
@@ -897,11 +1157,13 @@ export default function StudentCageShelfPage() {
       if (!cell) { toast.error("该笼位不在当前视图，先切到它所在的笼架再操作"); continue; }
       if (from) void applyEditAction(cell, sid, from.action, !from.on);
       if (to) void applyEditAction(cell, sid, to.action, to.on);
+      if (fromD) void applyEditDetail(cell, sid, fromD.itemCode, !fromD.on);
+      if (toD) void applyEditDetail(cell, sid, toD.itemCode, toD.on);
       applied += 1;
     }
     // 陈旧的勾选项不算「没放成」，真正落地的有东西就可以清掉勾选
     return applied > 0;
-  }, [pendingByMode, keyByCageId, applyEditAction]);
+  }, [pendingByMode, keyByCageId, applyEditAction, applyEditDetail]);
 
   /** 动作弹窗里点一个状态：has = 点之前是否已标记，决定这次是标记还是取消 */
   const toggleEditStatus = (cell: CageShelfCell, sid: string, action: CageBoxAction, has: boolean) => {
@@ -1029,7 +1291,7 @@ export default function StudentCageShelfPage() {
   const editGridProps = editMode ? {
     selectable: true,
     selectedCells: editSelectedCells,
-    onToggleCell: handleEditToggle,
+    onToggleCell: handleEditCellClick,
     allocMode: true,
     clickMode: "toggle" as const,
     scanCache,
@@ -1146,11 +1408,31 @@ export default function StudentCageShelfPage() {
                     {divisionBoxSelect ? "框选中 · 点击两格" : "⬜ 矩形框选"}
                   </button>
                 </>}
+                {editMode && <>
+                  <span className="text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">已选 {editBatch.items.length} 个笼位</span>
+                  {/* 特殊饲养明细只能在动作弹窗里选 —— 逐格编辑模式下点格子就开弹窗，所以这条入口必须有 */}
+                  <button
+                    onClick={() => setEditPointMode(v => !v)}
+                    title={editPointMode
+                      ? "点格子：入缓冲区并打开动作弹窗（明细在里面选）"
+                      : "点格子：只进/出缓冲区（不弹窗），拖到色区标记"}
+                    className={`rounded-student-sm px-2 py-1 text-[11px] font-semibold transition ${editPointMode ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "border border-dashed border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]"}`}
+                  >
+                    {editPointMode ? "弹窗编辑" : "拖色区"}
+                  </button>
+                </>}
+                {archiveMode && <>
+                  <span className="text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">已选 {archiveBatch.items.length} 个笼位</span>
+                  <button onClick={() => { setArchiveBoxSelect(v => !v); archiveBoxAnchorRef.current = null; }}
+                    className={`rounded-student-sm px-2 py-1 text-[11px] font-semibold transition ${archiveBoxSelect ? "bg-amber-500 text-white shadow-sm" : "border border-dashed border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]"}`}>
+                    {archiveBoxSelect ? "框选中 · 点击两格" : "⬜ 矩形框选"}
+                  </button>
+                </>}
               </div>
               <div className="flex items-center gap-1">
                 <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
-                <button onClick={() => setScanOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]" title="扫码定位"><Scan className="h-3 w-3" />扫码</button>
-                <button onClick={() => setSpecialOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]" title="特殊状态总览"><Activity className="h-3 w-3" />特殊状态</button>
+                <button onClick={() => setScanOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:bg-[var(--student-canvas-soft-2)] hover:text-[var(--app-color-text-primary)]" title="扫码定位"><Scan className="h-3 w-3" />扫码</button>
+                <button onClick={() => setSpecialOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] text-[var(--app-color-text-tertiary)] transition hover:bg-[var(--student-canvas-soft-2)] hover:text-[var(--app-color-text-primary)]" title="特殊状态总览"><Activity className="h-3 w-3" />特殊状态</button>
                 <button onClick={() => setLegend(v => !v)} className={`flex items-center gap-1 rounded-student-sm px-2 py-1 text-[10px] transition ${legend ? "bg-[var(--app-color-accent-hover)] text-white" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><Info className="h-3 w-3" />图例{legend ? " ▲" : " ▼"}</button>
                 </div>
               </div>
@@ -1168,7 +1450,7 @@ export default function StudentCageShelfPage() {
                 {!loading && aRid && details.length === 0 && <div className="rounded-student-lg border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
                 {details.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d, idx) => {
                   const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(sid);
-                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode||divisionMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : undefined} allocMode={claimMode||divisionMode} clickMode={claimMode || divisionMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
+                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode||divisionMode||archiveMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode||archiveMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : archiveMode ? handleArchiveToggle : undefined} allocMode={claimMode||divisionMode||archiveMode} clickMode={claimMode || divisionMode || archiveMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
                 })}</div>}
               </>}
 
@@ -1177,7 +1459,7 @@ export default function StudentCageShelfPage() {
                 <div className="w-1/2 flex flex-col min-w-0">
                   {shelfLoading && <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] grid place-items-center text-sm text-[var(--app-color-text-tertiary)]">加载笼架…</div>}
                   {!shelfLoading && !shelfDetail && <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] flex flex-col items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20" />点击左侧笼架<br /><span className="text-[11px]">选中后显示该笼架 8x10 笼位</span></div>}
-                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode||divisionMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} alertMap={new Map()} selectable={claimMode||divisionMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : undefined} allocMode={claimMode||divisionMode} clickMode={claimMode || divisionMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, String(shelfDetail.shelfMeta?.shelveId ?? ""))} {...opGridProps} {...modeGlowProps} {...editGridProps} />}
+                  {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" claimMode={claimMode||divisionMode||archiveMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} alertMap={new Map()} selectable={claimMode||divisionMode||archiveMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : archiveMode ? handleArchiveToggle : undefined} allocMode={claimMode||divisionMode||archiveMode} clickMode={claimMode || divisionMode || archiveMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, String(shelfDetail.shelfMeta?.shelveId ?? ""))} {...opGridProps} {...modeGlowProps} {...editGridProps} />}
                 </div>
                 <div className="w-1/2 flex flex-col min-w-0">
                   {cell ? <CellDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} gridMeta={shelfDetail?.shelfMeta ?? null} shelveId={shelfId ?? ""} onClose={() => setCell(null)} onStartOp={(k, s) => { setClaimMode(false); setConfirmMode(false); setCell(null); setShelfId(null); void opSel.start(k, s); }} onChanged={() => setClaimReloadKey(k => k + 1)} canDivide={canDivide} /> :
@@ -1190,7 +1472,7 @@ export default function StudentCageShelfPage() {
               {pinned.size === 0 && !bmLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无收藏的笼架<br /><span className="text-[11px]">在筛选页面将笼架加入收藏后在此处查看</span></div>}
               {!bmLoading && bmList.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b => {
                 const sid = b.shelfMeta.shelveId;
-                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode||divisionMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : undefined} allocMode={claimMode||divisionMode} clickMode={claimMode || divisionMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
+                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode||divisionMode||archiveMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode||archiveMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : archiveMode ? handleArchiveToggle : undefined} allocMode={claimMode||divisionMode||archiveMode} clickMode={claimMode || divisionMode || archiveMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
               })}</div>}
             </>}
 
@@ -1210,7 +1492,7 @@ export default function StudentCageShelfPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[12px] font-semibold truncate text-[var(--app-color-text-primary)]">{claimShort(c)}</span>
-                              <span className={`inline-flex items-center shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${CLAIM_STATUS_COLOR[c.claimStatus] || "text-[var(--app-color-text-tertiary)] bg-[var(--app-color-surface-hover)] border-[var(--app-color-border-default)]"}`}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
+                              <span className={`inline-flex items-center shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${CLAIM_STATUS_COLOR[c.claimStatus] || "text-[var(--app-color-text-tertiary)] bg-[var(--student-canvas-soft)] border-[var(--app-color-border-default)]"}`}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
                             </div>
                             <div className="text-[10px] truncate text-[var(--app-color-text-tertiary)]">
                               申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}
@@ -1262,22 +1544,29 @@ export default function StudentCageShelfPage() {
                 <button className="text-xs text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" onClick={() => setEditDialogCell(null)}>关闭</button>
               </div>
               <div className="flex flex-col gap-2">
-                {editActions.map(({ action: a, label, statusCode }) => {
+                {editActions.map(({ action: a, label, statusCode, statusField }) => {
                   const c = DEFAULT_COLORS[statusCode] ?? DEFAULT_COLORS.NORMAL;
                   const has = entry ? entry.currentActions.has(a) : serverActions.has(a);
                   const init = entry ? entry.initialActions.has(a) : serverActions.has(a);
                   const changed = has !== init;
+                  /* 照片挂在**这一档状态**自己身上（key=表单字段名）：各传各的、
+                     已标记但没拍过一眼看得出来，也不会一份照片摊进每个状态。 */
                   return (
-                    <button key={a} type="button" onClick={() => toggleEditStatus(editDialogCell, sid, a, has)}
-                      className="flex items-center gap-2 rounded-student-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95"
+                    <div key={a} className="rounded-student-md border-2 px-3 py-2"
                       style={{ borderColor: has ? c.border : "var(--app-color-border-default)", background: "var(--app-color-surface-container)" }}>
-                      {/* 色块预览：选中即用该状态的底色/描边，与网格上显示的色一致 */}
-                      <span className="h-5 w-8 shrink-0 rounded border-2" style={{ backgroundColor: has ? c.bg : "#f1f5f9", borderColor: has ? c.border : "#cbd5e1" }} />
-                      <span className="flex-1 text-left text-[var(--app-color-text-primary)]">{label}</span>
-                      <span className="text-[11px]" style={{ color: changed ? "var(--student-warning)" : has ? c.border : "var(--app-color-text-tertiary)" }}>
-                        {changed ? "已变更" : has ? "已标记" : "点击标记"}
-                      </span>
-                    </button>
+                      <button type="button" onClick={() => toggleEditStatus(editDialogCell, sid, a, has)}
+                        className="flex w-full items-center gap-2 text-sm font-semibold transition hover:brightness-95">
+                        {/* 色块预览：选中即用该状态的底色/描边，与网格上显示的色一致 */}
+                        <span className="h-5 w-8 shrink-0 rounded border-2" style={{ backgroundColor: has ? c.bg : "#f1f5f9", borderColor: has ? c.border : "#cbd5e1" }} />
+                        <span className="flex-1 text-left text-[var(--app-color-text-primary)]">{label}</span>
+                        <span className="text-[11px]" style={{ color: changed ? "var(--student-warning)" : has ? c.border : "var(--app-color-text-tertiary)" }}>
+                          {changed ? "已变更" : has ? "已标记" : "点击标记"}
+                        </span>
+                      </button>
+                      <StatusPhotoStrip variant="student" label={label}
+                        value={statusPhotos[statusField] ?? []}
+                        onChange={(urls) => setPhotosFor(statusField, urls)} />
+                    </div>
                   );
                 })}
                 {editActions.length === 0 && <div className="px-1 py-2 text-center text-[11px] text-[var(--app-color-text-tertiary)]">当前身份没有可标记的状态</div>}
@@ -1298,22 +1587,52 @@ export default function StudentCageShelfPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {specialDetailOptions.map((o) => {
                         const on = sel.has(o.itemCode);
+                        /* 明细也是独立的 statusCode（`SF_+item_code`），照片同样按它自己归档 */
+                        const pk = detailPhotoKey(o.itemCode);
                         return (
-                          <button key={o.itemCode} type="button" onClick={() => void toggleEditDetail(editDialogCell, sid, o.itemCode)}
-                            className="rounded-student-md border-2 px-2 py-1 text-[11px] font-semibold transition hover:brightness-95"
-                            style={{
-                              borderColor: on ? "var(--student-primary)" : "var(--app-color-border-default)",
-                              color: on ? "var(--student-primary)" : "var(--app-color-text-tertiary)",
-                              background: "var(--app-color-surface-container)",
-                            }}>
-                            {on ? "✓ " : ""}{o.itemLabel}
-                          </button>
+                          <div key={o.itemCode} className="rounded-student-md border-2 px-2 py-1.5"
+                            style={{ borderColor: on ? "var(--student-primary)" : "var(--app-color-border-default)", background: "var(--app-color-surface-container)" }}>
+                            <button type="button" onClick={() => void toggleEditDetail(editDialogCell, sid, o.itemCode)}
+                              className="text-[11px] font-semibold transition hover:brightness-95"
+                              style={{ color: on ? "var(--student-primary)" : "var(--app-color-text-tertiary)" }}>
+                              {on ? "✓ " : ""}{o.itemLabel}
+                            </button>
+                            <StatusPhotoStrip variant="student" label={o.itemLabel}
+                              value={statusPhotos[pk] ?? []}
+                              onChange={(urls) => setPhotosFor(pk, urls)} />
+                          </div>
                         );
                       })}
                     </div>
                   </div>
                 );
               })()}
+              {/* 备注 + 写盘：照片已按状态各归各位，这里只管收尾（与状态/明细的「待提交」互不影响） */}
+              <div className="mt-2 border-t border-[var(--app-color-border-default)] pt-2">
+                <textarea value={actionNote} onChange={(e) => { setActionNote(e.target.value); setNoteDirty(true); }}
+                  placeholder="备注（清空后保存即删除）..." rows={2}
+                  className="w-full rounded-student-sm border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] resize-y" />
+                <div className="mt-1.5 flex justify-end">
+                  <button type="button" disabled={annotateSubmitting}
+                    onClick={async () => {
+                      const cageId = cageIdOfCell(editDialogCell);
+                      if (!cageId) return;
+                      setAnnotateSubmitting(true);
+                      try {
+                        await saveAnnotation(cageId);
+                        toast.success("标注已保存");
+                      } catch (e: any) {
+                        toast.error("保存失败: " + (e?.message || ""));
+                      } finally {
+                        setAnnotateSubmitting(false);
+                      }
+                    }}
+                    className="rounded-student-sm px-3 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                    style={{ background: "var(--student-primary)" }}>
+                    {annotateSubmitting ? "保存中..." : "💾 保存照片与备注"}
+                  </button>
+                </div>
+              </div>
               <div className="mt-2 text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">改完在「状态待提交」抽屉里统一提交</div>
             </div>
           </div>, document.body);
@@ -1350,7 +1669,7 @@ export default function StudentCageShelfPage() {
       {!drawerOpen && (
         <StudentModeTabs
           allowed={islandModes}
-          counts={{ studentClaim: claimBatch.items.length, division: divisionBatch.items.length, edit: editBatch.items.length }}
+          counts={{ studentClaim: claimBatch.items.length, division: divisionBatch.items.length, edit: editBatch.items.length, archive: archiveBatch.items.length }}
           onPick={(k) => switchMode(k)}
         />
       )}
@@ -1370,6 +1689,25 @@ export default function StudentCageShelfPage() {
           shelfNameOf={(it) => (details.find((d) => String(d.shelfMeta?.shelveId) === it.shelveId)?.shelfMeta?.shelveName) ?? shelfDetail?.shelfMeta?.shelveName}
           onSubmit={() => void submitClaims()}
           submitting={claimSubmitting}
+          onClose={() => setDrawerOpen(false)}
+        />
+      )}
+      {/* 归档：缓冲抽屉（无目标区域）。学生只能归档本人占用的笼位，归属判定在后端 */}
+      {drawerOpen && currentMode === "archive" && (
+        <StudentModeDrawer
+          title="归档待提交"
+          items={archiveBatch.items}
+          selected={bufferSelected}
+          onToggle={(cageId) => setBufferSelected((p) => { const n = new Set(p); n.has(cageId) ? n.delete(cageId) : n.add(cageId); return n; })}
+          onToggleAll={() => setBufferSelected((p) => (p.size > 0 && archiveBatch.items.every((i) => p.has(i.cageId)) ? new Set() : new Set(archiveBatch.items.map((i) => i.cageId))))}
+          onRemove={(cageId) => patchPending("archive", (b) => removeItem(b, cageId))}
+          onAssignSelected={() => {}}
+          onUnassignAll={() => {}}
+          onDrop={() => {}}
+          cellOf={(it) => (it.x != null && it.y != null ? findCellByKey(it.shelveId, it.x, it.y) : undefined)}
+          shelfNameOf={(it) => (details.find((d) => String(d.shelfMeta?.shelveId) === it.shelveId)?.shelfMeta?.shelveName) ?? shelfDetail?.shelfMeta?.shelveName}
+          onSubmit={() => void submitArchive()}
+          submitting={archiveSubmitting}
           onClose={() => setDrawerOpen(false)}
         />
       )}
@@ -1414,6 +1752,9 @@ export default function StudentCageShelfPage() {
       {drawerOpen && currentMode === "edit" && (
         <StudentModeDrawer
           title="状态待提交"
+          /* 色区占主区、缓冲区让到右列 —— 与管理端状态模式同一套版式
+             （色区带明细子区，挤在 190px 窄栏里太紧） */
+          zonesMain
           items={editStagedItems}
           selected={bufferSelected}
           zones={editZones}
@@ -1430,7 +1771,7 @@ export default function StudentCageShelfPage() {
           onOpen={openEditItemById}
           zonesHeader={
             <div className="shrink-0 border-b border-[var(--app-color-border-default)] p-2 text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">
-              拖笼位到对应色区即标记，拖到虚线区即撤销
+              拖笼位到对应色区即标记，拖到虚线区即撤销；「需特殊饲养」与其撤销卡里可展开各自的明细区
             </div>
           }
           onSubmit={() => void submitEdit()}

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
+import { usePdfObjectUrl } from "./usePdfObjectUrl";
 
 /**
  * 内嵌 PDF 预览：用带 token 的请求取 blob 再交给 iframe，
@@ -15,30 +15,8 @@ export function PdfPreviewDialog({
   fetchPdf: () => Promise<Blob>;
   onClose: () => void;
 }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const fetchRef = useRef(fetchPdf);
-  fetchRef.current = fetchPdf;
-
-  useEffect(() => {
-    let revoke: string | null = null;
-    let cancelled = false;
-    fetchRef.current()
-      .then((blob) => {
-        if (cancelled) return;
-        const objectUrl = URL.createObjectURL(blob);
-        revoke = objectUrl;
-        setUrl(objectUrl);
-      })
-      .catch((e: any) => {
-        if (!cancelled) setError(e?.message || "加载失败");
-      });
-    return () => {
-      cancelled = true;
-      if (revoke) URL.revokeObjectURL(revoke);
-    };
-    // 只在挂载时拉一次；调用方传内联箭头不会触发重复请求
-  }, []);
+  // 不传 key：只在挂载时拉一次，调用方传内联箭头也不会触发重复请求
+  const { url, error } = usePdfObjectUrl(fetchPdf);
 
   return createPortal(
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
