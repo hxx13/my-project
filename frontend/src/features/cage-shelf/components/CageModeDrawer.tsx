@@ -153,6 +153,35 @@ export default function CageModeDrawer({
             {headerToggle}
           </div>
         }
+        /* 「清空 / 提交」走 footer（shrink-0），**不放进会滚的 children** ——
+           否则缓冲区一长，提交按钮就跟着滚出可视区，得先滚到底才能提交 */
+        footer={items.length > 0 ? (
+          <div>
+            {blockedCount !== null && (
+              <div className="mb-1.5 text-[10px] font-medium text-red-600">
+                还有 {blockedCount} 个未落到{targetNoun ?? "目标"}，已在缓冲区标出
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClear}
+                className="shrink-0 rounded-twin-md border border-[var(--twin-hairline)] px-3 py-1.5 text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+              >
+                清空
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={submitGuarded}
+                className="flex-1 rounded-twin-md px-3 py-1.5 text-[11px] font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
+                style={{ backgroundColor: modeColor || "var(--twin-primary)" }}
+              >
+                {submitting ? "提交中…" : `提交（${items.length}）`}
+              </button>
+            </div>
+          </div>
+        ) : undefined}
       >
         {failed.length > 0 && (
           <div className="mb-2 rounded-twin-md border border-red-200 bg-red-50/70 px-2.5 py-2">
@@ -245,34 +274,6 @@ export default function CageModeDrawer({
         )}
 
         {paramsSlot && <div className="mt-3 border-t border-[var(--twin-hairline)] pt-2">{paramsSlot}</div>}
-
-        {items.length > 0 && (
-          <div className="mt-3">
-            {blockedCount !== null && (
-              <div className="mb-1.5 text-[10px] font-medium text-red-600">
-                还有 {blockedCount} 个未落到{targetNoun ?? "目标"}，已在缓冲区标出
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClear}
-                className="shrink-0 rounded-twin-md border border-[var(--twin-hairline)] px-3 py-1.5 text-[11px] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-              >
-                清空
-              </button>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={submitGuarded}
-                className="flex-1 rounded-twin-md px-3 py-1.5 text-[11px] font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
-                style={{ backgroundColor: modeColor || "var(--twin-primary)" }}
-              >
-                {submitting ? "提交中…" : `提交（${items.length}）`}
-              </button>
-            </div>
-          </div>
-        )}
       </CageOpDrawer>
       {/*
         拖拽浮层必须自己 portal 到 body、并给一个高于抽屉的层级：

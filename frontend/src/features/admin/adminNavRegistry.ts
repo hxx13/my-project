@@ -636,6 +636,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/file-templates", "STAFF"),
       },
       {
+        id: "sop",
+        path: "/admin/sop",
+        label: "SOP 操作",
+        icon: ScrollText,
+        homeTone: "from-sky-400 to-blue-500",
+        fallbackMinRole: "STAFF",
+        alias: ["SOP", "操作规程", "标准操作", "作业指导", "sop"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/sop", "STAFF"),
+      },
+      {
         id: "report-form",
         path: "/admin/report-form",
         label: "填报报表管理",
@@ -893,6 +903,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
   if (
     p.startsWith("/admin/asset-") ||
     p === "/admin/file-templates" ||
+    p === "/admin/sop" ||
     p === "/admin/analytics" ||
     p === "/admin/facility-maintenance" ||
     p === "/admin/report-form" ||

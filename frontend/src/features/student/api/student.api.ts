@@ -184,9 +184,12 @@ export async function fetchStudentPermissions(): Promise<{ rooms: StudentPermiss
 export interface DashboardData {
   profile: {
     name: string;
+    /** 工号（= 学号），来自本地统一人员表 personnel */
+    jobNumber?: string;
     departmentName: string;
     projectGroupName: string;
-    roleLabel: string;
+    /** 身份标识（本地身份标识系统 person_identity_tag.label，可多个） */
+    identityLabels?: string[];
     authStatus: string;
     /** 头像 URL（来自 ARO 人员库） */
     head?: string;
@@ -194,8 +197,8 @@ export interface DashboardData {
     gender?: number;
     mobilePhone?: string;
     email?: string;
-    /** 总经验值 */
-    totalExp?: number;
+    /** 是否校内 0/1 */
+    isSchool?: number;
     /** 官方可进房间列表（中文展示） */
     allowedRoomsDisplayZh?: string;
   };
@@ -205,9 +208,92 @@ export interface DashboardData {
     unreadNoticeCount: number;
     accessibleRoomCount: number;
   };
+  /** Web 学生首页指标卡（本课题组口径） */
+  homeSummary?: HomeSummary;
   pinnedRooms: RoomData[];
   recentRecords: { time: string; type: string; roomName: string }[];
   recentNotices: { title: string; type: string; publishDate: string }[];
+}
+
+export interface HomeSummary {
+  groupMemberCount: number;
+  aupCount: number;
+  /** 本课题组剩余笼位：Σ(预约数量 − 已使用)，跨房间跨 AUP 合并 */
+  cageRemaining: number;
+  remainingByRoom?: {
+    roomName: string;
+    rentNumber: number;
+    usedNumber: number;
+    remaining: number;
+  }[];
+}
+
+// ======================== 本课题组笼位特殊状态（本地表单口径） ========================
+
+/**
+ * 笼位特殊状态汇总（通用接口，粒度靠参数切）。
+ * scope=me|mine|all，groupBy=status|campus|floor|room|pi，statusCode/keyword/page/size 可选。
+ */
+export interface CageStatusSummary {
+  scope: string;
+  groupBy: string;
+  groupNames: string[];
+  /** 范围内笼位总数 */
+  cagesTotal: number;
+  /** 带任一状态标记的笼位数（同一笼位可多标，不等于 statusCounts 相加） */
+  abnormalCages: number;
+  /** statusCode → 该状态笼位数 */
+  statusCounts: Record<string, number>;
+  /** 按 groupBy 聚合：key/label/count */
+  groups: { key: string; label: string; count: number }[];
+  items: GroupStatusCage[];
+  page: number;
+  size: number;
+  hasMore: boolean;
+}
+
+export interface GroupStatusCage {
+  campusName?: string;
+  floorName?: string;
+  roomName?: string;
+  shelveName?: string;
+  positionX?: number;
+  positionY?: number;
+  cageBoxCode?: string;
+  projectPiName?: string;
+  piName?: string;
+  experimenterName?: string;
+  animalStrainName?: string;
+  /** 特殊饲养名称（表单里选中的明细拼接） */
+  detailName?: string;
+  detailDescription?: string;
+  needsDivision?: number;
+  needsSpecialFeeding?: number;
+  hasHealthAbnormality?: number;
+  needsCohabitation?: number;
+  needsTransfer?: number;
+}
+
+export interface CageStatusSummaryParams {
+  scope?: "me" | "mine" | "all";
+  statusCode?: string;
+  groupBy?: "status" | "campus" | "floor" | "room" | "pi";
+  keyword?: string;
+  page?: number;
+  size?: number;
+}
+
+/** 笼位特殊状态汇总：GET /api/v1/cage-shelves/status-summary */
+export async function fetchCageStatusSummary(
+  params: CageStatusSummaryParams = {},
+): Promise<CageStatusSummary> {
+  const res = await authHttp.get<Result<CageStatusSummary>>("/v1/cage-shelves/status-summary", {
+    params,
+  });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取笼位状态汇总失败");
+  }
+  return res.data.data;
 }
 
 export interface RoomData {

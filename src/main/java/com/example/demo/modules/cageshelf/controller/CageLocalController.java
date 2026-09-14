@@ -17,6 +17,7 @@ import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.service.CageCellDetailService;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
+import com.example.demo.modules.cageshelf.service.CageOccupancyService;
 import com.example.demo.modules.cageshelf.service.CageOperationService;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.cageshelf.service.CageRegionCapabilityService;
@@ -58,6 +59,7 @@ public class CageLocalController {
     private final AupRecordMapper aupRecordMapper;
     private final CageOperationService cageOperationService;
     private final CageRegionCapabilityService regionCapabilityService;
+    private final CageOccupancyService occupancyService;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -73,7 +75,8 @@ public class CageLocalController {
                                CageClaimMapper claimMapper,
                                AupRecordMapper aupRecordMapper,
                                CageOperationService cageOperationService,
-                               CageRegionCapabilityService regionCapabilityService) {
+                               CageRegionCapabilityService regionCapabilityService,
+                               CageOccupancyService occupancyService) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -89,6 +92,7 @@ public class CageLocalController {
         this.aupRecordMapper = aupRecordMapper;
         this.cageOperationService = cageOperationService;
         this.regionCapabilityService = regionCapabilityService;
+        this.occupancyService = occupancyService;
     }
 
     private String operatorDisplayName(User u) {
@@ -310,10 +314,48 @@ public class CageLocalController {
         return Result.success(Map.of("ok", true, "local", true));
     }
 
+    /**
+     * 归档笼位：释放占用、回退为空笼盒（type2）。
+     *
+     * <p>**学生只能归档本人的笼位** —— 活跃认领人是本人 或 表单实验员是本人，与状态标记共用同一判据
+     * （{@code CageOperationService.isOccupantSelf}）；此外还要「矩阵给了归档模式」+「该笼位所在区域开着」，
+     * 与其它学生模式同口径：**入口可见性按区域算，动手时按笼位收口**。
+     * 教职工维持原判定（{@code cage.mode.archive}），管理员/额外操作身份的旁路不受影响。
+     */
+    @PostMapping("/archive")
+    @Operation(summary = "归档笼位（释放占用 → 空笼盒）→ 只写本地")
+    public Result<?> archive(@RequestBody(required = false) Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req.getHeader("Authorization"));
+        Result<?> denied = requireRole(u, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+
+        Long animalCageId = toLong(body == null ? null : body.get("animalCageId"));
+        if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
+
+        if (modeVisibilityService.isStudent(u)) {
+            if (!modeVisibilityService.canStudentMode(u, "archive")) {
+                return Result.fail(403, "学生当前可用的模式不含归档");
+            }
+            if (!cageOperationService.isOccupantSelf(u, animalCageId)) {
+                return Result.fail(403, "只能归档本人使用中的笼位");
+            }
+            if (!regionCapabilityService.cageRegionEnabled(u, animalCageId,
+                    CageRegionCapabilityService.modeCapability("archive"))) {
+                return Result.fail(403, "该笼位所在区域未开放归档，请联系该区域饲养组长");
+            }
+        } else if (!modeVisibilityService.canUseMode(u, "archive")) {
+            return Result.fail(403, "无归档权限（仅归档模式身份可操作）");
+        }
+
+        Map<String, Object> out = occupancyService.archive(animalCageId, u.getId(), str(body, "reason"));
+        log.info("[local/archive] {} 归档笼位 {} {}", operatorDisplayName(u), animalCageId,
+                buildPositionLabel(animalCageId));
+        return Result.success(out);
+    }
+
     // ═══════════════════════════════════════════
     // 实验记录 & 照片
     // ═══════════════════════════════════════════
-
     @GetMapping("/annotate/{animalCageId}")
     @Operation(summary = "读取笼位实验记录和照片")
     public Result<?> getAnnotate(@PathVariable Long animalCageId, HttpServletRequest req) {

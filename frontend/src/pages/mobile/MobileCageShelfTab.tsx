@@ -39,7 +39,7 @@ import MobileScanDialog from "./MobileScanDialog";
 import {
   fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, saveSpecialDetails, lookupCode, confirmClaim, adminConfirmClaim,
   fetchAllocationAups, type AupItem, localAllocate, localCancelAllocate, assignBatchCages,
-  archiveCage, fetchBookingRooms, type BookingRoom,
+  archiveCage, localArchiveCage, fetchBookingRooms, type BookingRoom,
   fetchPoolCells, type PoolCell, claimCage, fetchMyClaims, type CageClaimItem, cancelClaim,
   type CodeLookupResult, type CageBoxAction, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision,
 } from "@/api/domains/cageShelf.api";
@@ -51,14 +51,15 @@ import {
   cageBoxAction,
   actionsFromFormValues,
   actionsFromCageBoxInfo,
-  statusPhotoKeys,
   allocSelectVerdict,
   ALLOC_MIXED_KIND_HINT,
   type AllocSelectKind,
   SPECIAL_DETAIL_DICT,
   detailCodesOfValues,
+  detailPhotoKey,
   specialDetailItemsFor,
 } from "@/features/cage-shelf/constants";
+import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import SpecialDetailBadges from "@/features/cage-shelf/components/SpecialDetailBadges";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
 import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
@@ -1201,6 +1202,8 @@ const STUDENT_MODE_ITEMS: { key: ShelfMode; label: string }[] = [
   { key: "edit", label: "状态" },
   // 划分只对「课题组管家」可见：靠后端 /api/cage-mode/visible 过滤，这里登记一份键位
   { key: "division", label: "划分" },
+  // 归档：学生只能归档**本人占用**的笼位（归属判定在后端 /local/archive，这里只登记键位）
+  { key: "archive", label: "归档" },
 ];
 
 /**
@@ -1566,11 +1569,16 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   /**
    * 状态模式里**可渲染**的动作按钮。后端没下发（教职工）就是全量；
    * 学生视角只有 modeActions.edit 里那几个 —— 加动作只改后端一处，这里不用动。
+   *
+   * 另：**需分笼、动物转移在学生侧不开放**（用户 2026-09-14 口径）。白名单缺席时会回退成全量，
+   * 所以这里再兜一道，不管来没来都不渲染这两个（与学生网页同口径）。
    */
+  const STUDENT_HIDDEN_ACTIONS: CageBoxAction[] = ["DIVIDE", "TRANSFER"];
   const editActionOptions = useMemo(
     () => (modeActions?.edit?.length
       ? CAGE_BOX_ACTIONS.filter((a) => modeActions.edit!.includes(a.action))
-      : CAGE_BOX_ACTIONS),
+      : CAGE_BOX_ACTIONS
+    ).filter((a) => !STUDENT_HIDDEN_ACTIONS.includes(a.action)),
     [modeActions],
   );
 
@@ -1855,9 +1863,27 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     });
   }, [editFormValues]);
   const editViewportHeight = useViewportHeight();
-  const [actionPhotos, setActionPhotos] = useState<string[]>([]);
+  /**
+   * 状态专属照片，**按归属的状态分桶**（与后台/学生网页同一口径）：
+   * key = 状态的表单字段名（`needs_division` …）或明细的 `SF_<item_code>`。
+   * 以前这里是一份全局数组，保存时扇出写进每个已开启状态 —— 勾三个状态传一张照片就变三张。
+   */
+  const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
   const [actionNote, setActionNote] = useState("");
-  const [actionUploading, setActionUploading] = useState(false);
+  /**
+   * 用户**真的动过**的 key / 备注 —— 写盘只写这些。
+   *
+   * 关弹窗时无条件把内存里的整份状态写回，会把这段时间里别人改过的 key 一起盖成陈旧值
+   * （最后写者赢，而且是「没动过的人也赢了」）。按脏标记只提交动过的那几个，其余的
+   * 以服务端当时的值为底原样带回去。
+   */
+  const [dirtyPhotoKeys, setDirtyPhotoKeys] = useState<Set<string>>(new Set());
+  const [noteDirty, setNoteDirty] = useState(false);
+  /** 照片条改一张 = 只把**那个 key** 标脏 */
+  const setPhotosFor = useCallback((key: string, urls: string[]) => {
+    setStatusPhotos(p => ({ ...p, [key]: urls }));
+    setDirtyPhotoKeys(p => { const n = new Set(p); n.add(key); return n; });
+  }, []);
   const [editHistory, setEditHistory] = useState<any[]>([]);
   const [editHistoryLoading, setEditHistoryLoading] = useState(false);
 
@@ -2041,6 +2067,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const handleArchiveCell = useCallback((cell: CageShelfCell) => {
     const ct = (cell as any).cageTypeCode ?? cell.animalCageType;
     if (ct !== 3) { toast.error("该笼位当前无笼盒/未占用，无需归档"); return; }
+    // 学生只能归档本人占用的笼位（mine 由后端判定并下发；教职工视角不下发该字段）
+    if (!isStaffView && !(cell as any).mine) { toast.error("只能归档本人使用中的笼位"); return; }
     setArchiveTarget({
       animalCageId: String((cell as any).id ?? (cell as any).animalCageId ?? ""),
       positionLabel: displayPosition(cell.position),
@@ -2048,7 +2076,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       projectPiName: (cell as any).projectPiName ?? (cell as any).detail?.projectPiName,
       aupNumber: (cell as any).aupNumber ?? (cell as any).detail?.aupNumber,
     });
-  }, []);
+  }, [isStaffView]);
 
   // 记录：任意非空笼位 → 历史弹窗
   const handleRecordCell = useCallback((cell: CageShelfCell) => {
@@ -2080,10 +2108,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   };
 
   // ── 扫码结果处理 ──
-  // 编辑操作弹窗：打开时从 /local/annotate 加载备注和照片（非 cell.detail）
+  // 编辑操作弹窗：打开时从 /local/annotate 加载备注和**各状态自己的**照片（非 cell.detail）
   const openEditActionPopup = useCallback((cell: CageShelfCell) => {
-    setActionPhotos([]);
+    setStatusPhotos({});
     setActionNote("");
+    setDirtyPhotoKeys(new Set());
+    setNoteDirty(false);
     setEditActionCell(cell);
     setEditFormValues(null);
     const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
@@ -2091,68 +2121,55 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此反向使能按钮
       fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => setEditFormValues(null));
       authHttp.get(`/local/annotate/${cageId}`).then(r => {
-        if (r.data?.success) {
-          const d = r.data.data;
-          if (d.statusPhotos) {
-            try {
-              const sp = typeof d.statusPhotos === "string" ? JSON.parse(d.statusPhotos) : d.statusPhotos;
-              if (typeof sp._note === "string") setActionNote(sp._note); else setActionNote("");
-              const all: string[] = [];
-              for (const k of Object.keys(sp)) { if (k !== "_note" && Array.isArray(sp[k])) all.push(...sp[k]); }
-              if (all.length > 0) setActionPhotos(all); else setActionPhotos([]);
-            } catch { setActionNote(""); setActionPhotos([]); }
-          } else { setActionNote(""); setActionPhotos([]); }
-        }
+        if (!r.data?.success) return;
+        const sp = r.data.data?.statusPhotos;
+        if (!sp) return;
+        try {
+          const parsed = typeof sp === "string" ? JSON.parse(sp) : sp;
+          if (typeof parsed?._note === "string") setActionNote(parsed._note);
+          // 按 key 原样还原：摊平成一份就再也分不回去（哪张属于哪个状态）
+          const byKey: Record<string, string[]> = {};
+          for (const k of Object.keys(parsed ?? {})) { if (k !== "_note" && Array.isArray(parsed[k])) byKey[k] = parsed[k]; }
+          setStatusPhotos(byKey);
+        } catch { setStatusPhotos({}); }
       }).catch(() => {});
       loadEditHistory(cageId);
     }
   }, [loadEditHistory]);
 
+  /**
+   * 标注写盘：**只提交动过的 key**，其余以服务端当时的值为底原样带回去。
+   *
+   * 一个 key 都没动、备注也没改 → 直接不发请求（关弹窗是常态动作，不该产生写）。
+   * 读服务端那份失败时退回「打开时加载的快照」兜底 —— 宁可带上陈旧的未动 key，也不能把用户刚加的照片丢掉。
+   */
+  const saveAnnotate = useCallback(async (cageId: string) => {
+    if (dirtyPhotoKeys.size === 0 && !noteDirty) return;
+    let sp: Record<string, unknown> = { ...statusPhotos };
+    try {
+      const r = await authHttp.get(`/local/annotate/${cageId}`);
+      if (r.data?.success && r.data.data?.statusPhotos) {
+        const existing = typeof r.data.data.statusPhotos === "string" ? JSON.parse(r.data.data.statusPhotos) : r.data.data.statusPhotos;
+        // 服务端那份为底，只有动过的 key 才用当前值盖上去
+        if (existing && typeof existing === "object") sp = { ...existing };
+      }
+    } catch { /* 读不到就用打开时那份 */ }
+    for (const k of dirtyPhotoKeys) sp[k] = statusPhotos[k] ?? [];
+    if (noteDirty) { if (actionNote.trim()) sp._note = actionNote; else delete sp._note; }
+    await authHttp.post("/local/annotate", { animalCageId: cageId, statusPhotos: JSON.stringify(sp) });
+    setDirtyPhotoKeys(new Set()); setNoteDirty(false);
+  }, [statusPhotos, actionNote, dirtyPhotoKeys, noteDirty]);
+
   // 关闭编辑弹窗时自动保存照片和备注（不依赖提交）
   const saveAndCloseActionPopup = useCallback(async () => {
     const cell = editActionCell;
-    if (cell && (actionPhotos.length > 0 || actionNote.trim())) {
+    if (cell) {
       const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
-      if (cageId) {
-        // 合并后端的已有 statusPhotos，不覆盖其他 key 的照片
-        let sp: Record<string,string[]> = {};
-        try {
-          const r = await authHttp.get(`/local/annotate/${cageId}`);
-          if (r.data?.success && r.data.data?.statusPhotos) {
-            const existing = JSON.parse(r.data.data.statusPhotos);
-            if (typeof existing === "object") sp = existing;
-          }
-        } catch {}
-        // 激活的状态 → 写入对应 key；同时 _status 兜底
-        for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp[k] = actionPhotos;
-        if (actionPhotos.length > 0) sp._status = actionPhotos;
-        if (actionNote.trim()) (sp as any)._note = actionNote;
-        const body: Record<string,any> = { animalCageId: cageId, statusPhotos: JSON.stringify(sp) };
-        try { await authHttp.post("/local/annotate", body); } catch { /* 静默 */ }
-      }
+      if (cageId) { try { await saveAnnotate(cageId); } catch { /* 静默 */ } }
     }
-    setEditActionCell(null); setActionPhotos([]); setActionNote("");
-  }, [editActionCell, actionPhotos, actionNote]);
-
-  const handleActionPhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files; if (!files?.length) return;
-    setActionUploading(true);
-    try {
-      const urls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const fd = new FormData();
-        fd.append("file", files[i]);
-        const r = await authHttp.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-        if (r.data?.success && r.data.data?.url) urls.push(r.data.data.url);
-      }
-      if (urls.length) {
-        const np = [...actionPhotos, ...urls];
-        setActionPhotos(np);
-        // 不再自动保存，统一由「保存标注」按钮提交
-      }
-    } catch { toast.error("上传失败"); }
-    finally { setActionUploading(false); }
-  }, [actionPhotos, editActionCell]);
+    setEditActionCell(null); setStatusPhotos({}); setActionNote("");
+    setDirtyPhotoKeys(new Set()); setNoteDirty(false);
+  }, [editActionCell, saveAnnotate]);
 
   // ── 扫码定位：跳转到目标笼架并高亮闪烁 ──
   const locateLookup = useCallback((r: CodeLookupResult): boolean => {
@@ -2349,35 +2366,22 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       }
     }
     if (failCount === 0) {
-      // 保存当前编辑弹窗的照片和备注（合并已有 statusPhotos，不覆盖其他 key）
-      if (editActionCell && (actionPhotos.length > 0 || actionNote.trim())) {
+      // 保存当前编辑弹窗的照片和备注（照片按状态分桶，不扇出、不覆盖别的 key）
+      if (editActionCell) {
         const cageId = String((editActionCell as any).id ?? (editActionCell as any).animalCageId ?? "");
-        if (cageId) {
-          let sp2: Record<string,string[]> = {};
-          try {
-            const r = await authHttp.get(`/local/annotate/${cageId}`);
-            if (r.data?.success && r.data.data?.statusPhotos) {
-              const existing = JSON.parse(r.data.data.statusPhotos);
-              if (typeof existing === "object") sp2 = existing;
-            }
-          } catch {}
-          for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp2[k] = actionPhotos;
-          if (actionPhotos.length > 0) sp2._status = actionPhotos;
-          if (actionNote.trim()) (sp2 as any)._note = actionNote;
-          const body: Record<string,any> = { animalCageId: cageId, statusPhotos: JSON.stringify(sp2) };
-          try { await authHttp.post("/local/annotate", body); } catch { /* 非致命 */ }
-        }
+        if (cageId) { try { await saveAnnotate(cageId); } catch { /* 非致命 */ } }
       }
       toast.success(`已完成 ${okCount} 个操作（本地）`);
       setScanCache(new Map());
       setLastScannedKey(null);
-      setEditActionCell(null); setActionPhotos([]); setActionNote("");
+      setEditActionCell(null); setStatusPhotos({}); setActionNote("");
+      setDirtyPhotoKeys(new Set()); setNoteDirty(false);
       setDetailReloadKey((k) => k + 1);
     } else {
       toast(`${okCount} 成功 / ${failCount} 失败`, { icon: '⚠️' });
     }
     setActionSubmitting(false);
-  }, [selectedShelf, detail, scanCache, editActionCell, actionPhotos, actionNote]);
+  }, [selectedShelf, detail, scanCache, editActionCell, statusPhotos, actionNote, saveAnnotate]);
 
   // ── 分配/认领：进入对应模式时懒加载 AUP 列表 ──
   useEffect(() => {
@@ -2479,13 +2483,15 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     if (!archiveTarget?.animalCageId) return;
     setArchiveSubmitting(true);
     try {
-      await archiveCage(archiveTarget.animalCageId);
+      // 学生走 /local/archive（后端按身份判「只能归档本人的笼位」），教职工走原来的管理端接口
+      if (isStaffView) await archiveCage(archiveTarget.animalCageId);
+      else await localArchiveCage(archiveTarget.animalCageId);
       toast.success("已归档");
       setArchiveTarget(null);
       setDetailReloadKey((k) => k + 1);
     } catch (e: any) { toast.error(e?.message || "归档失败"); }
     finally { setArchiveSubmitting(false); }
-  }, [archiveTarget]);
+  }, [archiveTarget, isStaffView]);
 
   // ── 学生：提交申请 ──
   const submitClaims = useCallback(async () => {
@@ -2727,7 +2733,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
 
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
                 <div className="grid grid-cols-2 gap-1.5">
-                  {editActionOptions.map(({ action, label }) => {
+                  {editActionOptions.map(({ action, label, statusField }) => {
                     const ck = `${editActionCell.x}:${editActionCell.y}`;
                     const entry = scanCache.get(ck);
                     // 无缓存条目时回退到格子当前状态（打开即同步，而非首次点击才懒加载）
@@ -2745,30 +2751,35 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                     const accent = active ? (wasExisting ? "#10b981" : BRAND) : "#cbd5e1";
                     const bg = active ? (wasExisting ? "rgba(16,185,129,0.12)" : "rgba(172,23,54,0.08)") : "transparent";
                     return (
-                      <button
-                        key={action}
-                        type="button"
-                        onClick={() => {
-                          // 确保缓存条目存在
-                          const key = `${editActionCell.x}:${editActionCell.y}`;
-                          if (!scanCache.has(key)) {
-                            // 服务端当前状态（本地表单值 ∪ ARO 快照 ∪ 旁证字段）——与明细那条共用一份
-                            const initial = serverActionsOf(editActionCell, editFormValues);
-                            setScanCache(prev => {
-                              const next = new Map(prev);
-                              next.set(key, { cell: editActionCell, code: "", initialActions: initial, currentActions: new Set(initial) });
-                              return next;
-                            });
-                          }
-                          toggleScanAction(key, action);
-                        }}
-                        className="rounded-md px-2 py-1.5 text-[11px] font-semibold active:scale-[0.98] transition flex items-center justify-center gap-1 min-h-0"
-                        style={{ color: active ? (wasExisting ? "#059669" : BRAND) : "#94a3b8", background: bg, border: `1.5px solid ${accent}` }}
-                      >
-                        {active && <Check className="size-3" strokeWidth={3} />}
-                        {!active && wasExisting && <XIcon className="size-3" strokeWidth={2} />}
-                        <span className="truncate">{label}</span>
-                      </button>
+                      <div key={action} className="rounded-md px-1.5 py-1.5" style={{ border: `1.5px solid ${accent}` }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // 确保缓存条目存在
+                            const key = `${editActionCell.x}:${editActionCell.y}`;
+                            if (!scanCache.has(key)) {
+                              // 服务端当前状态（本地表单值 ∪ ARO 快照 ∪ 旁证字段）——与明细那条共用一份
+                              const initial = serverActionsOf(editActionCell, editFormValues);
+                              setScanCache(prev => {
+                                const next = new Map(prev);
+                                next.set(key, { cell: editActionCell, code: "", initialActions: initial, currentActions: new Set(initial) });
+                                return next;
+                              });
+                            }
+                            toggleScanAction(key, action);
+                          }}
+                          className="w-full rounded-md px-1 py-1 text-[11px] font-semibold active:scale-[0.98] transition flex items-center justify-center gap-1 min-h-0"
+                          style={{ color: active ? (wasExisting ? "#059669" : BRAND) : "#94a3b8", background: bg }}
+                        >
+                          {active && <Check className="size-3" strokeWidth={3} />}
+                          {!active && wasExisting && <XIcon className="size-3" strokeWidth={2} />}
+                          <span className="truncate">{label}</span>
+                        </button>
+                        {/* 照片挂在**这一档状态**自己身上（key=表单字段名）：各传各的，不扇出 */}
+                        <StatusPhotoStrip variant="mobile" label={label}
+                          value={statusPhotos[statusField] ?? []}
+                          onChange={(urls) => setPhotosFor(statusField, urls)} />
+                      </div>
                     );
                   })}
                 </div>
@@ -2795,18 +2806,24 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                       <div className="flex flex-wrap gap-1.5">
                         {specialDetailOptions.map((o) => {
                           const on = sel.has(o.itemCode);
+                          /* 明细也是独立的 statusCode（`SF_+item_code`），照片按它自己归档 */
+                          const pk = detailPhotoKey(o.itemCode);
                           return (
-                            <button key={o.itemCode} type="button"
-                              onClick={() => toggleMobileDetail(editActionCell, o.itemCode)}
-                              className="rounded-md px-2 py-1 text-[11px] font-semibold active:scale-[0.98] transition flex items-center gap-1"
-                              style={{
-                                color: on ? BRAND : '#94a3b8',
-                                background: on ? "rgba(172,23,54,0.08)" : "transparent",
-                                border: `1.5px solid ${on ? BRAND : "#cbd5e1"}`,
-                              }}>
-                              {on && <Check className="size-3" strokeWidth={3} />}
-                              <span className="truncate">{o.itemLabel}</span>
-                            </button>
+                            <div key={o.itemCode} className="rounded-md px-1.5 py-1" style={{ border: `1.5px solid ${on ? BRAND : "#cbd5e1"}` }}>
+                              <button type="button"
+                                onClick={() => toggleMobileDetail(editActionCell, o.itemCode)}
+                                className="w-full rounded-md px-1 py-0.5 text-[11px] font-semibold active:scale-[0.98] transition flex items-center justify-center gap-1"
+                                style={{
+                                  color: on ? BRAND : '#94a3b8',
+                                  background: on ? "rgba(172,23,54,0.08)" : "transparent",
+                                }}>
+                                {on && <Check className="size-3" strokeWidth={3} />}
+                                <span className="truncate">{o.itemLabel}</span>
+                              </button>
+                              <StatusPhotoStrip variant="mobile" label={o.itemLabel}
+                                value={statusPhotos[pk] ?? []}
+                                onChange={(urls) => setPhotosFor(pk, urls)} />
+                            </div>
                           );
                         })}
                       </div>
@@ -2815,47 +2832,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                 })()}
 
                 {/* 📷 照片上传 + 备注 */}
+                {/* 备注 + 写盘：照片已经在上面按状态各归各位，这里只管收尾 */}
                 <div className="space-y-2 pt-1 border-t" style={{ borderColor: "#ebedf0" }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold" style={{ color: "#646566" }}>📷 状态专属照片 ({actionPhotos.length})</span>
-                    <label className="cursor-pointer px-2 py-0.5 rounded text-[10px] font-semibold text-white" style={{ background: BRAND }}>
-                      {actionUploading ? "上传中..." : "+ 添加状态照片"}
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={handleActionPhotoUpload} disabled={actionUploading} />
-                    </label>
-                  </div>
-                  {actionPhotos.length > 0 && <div className="flex flex-wrap gap-1">
-                    {actionPhotos.map((url, i) =>
-                      <div key={i} className="relative group">
-                        <img src={url} className="h-10 w-10 object-cover rounded border" alt="" />
-                        <button onClick={() => {
-                          setActionPhotos(p => p.filter((_, j) => j !== i));
-                          // 同步从后端 statusPhotos 中移除对应 URL
-                          const c = editActionCell;
-                          if (c) {
-                            const cid = String((c as any).id ?? (c as any).animalCageId ?? "");
-                            if (cid) {
-                              authHttp.get('/local/annotate/' + cid).then(r => {
-                                if (r.data?.success && r.data.data?.statusPhotos) {
-                                  try {
-                                    const sp = typeof r.data.data.statusPhotos === 'string' ? JSON.parse(r.data.data.statusPhotos) : r.data.data.statusPhotos;
-                                    for (const k of Object.keys(sp)) {
-                                      if (Array.isArray(sp[k])) sp[k] = sp[k].filter((u: string) => u !== url);
-                                    }
-                                    authHttp.post('/local/annotate', { animalCageId: cid, statusPhotos: JSON.stringify(sp) }).catch(() => {});
-                                  } catch { }
-                                }
-                              }).catch(() => {});
-                            }
-                          }
-                        }}
-                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] items-center justify-center hidden group-hover:flex">✕</button>
-                      </div>
-                    )}
-                  </div>}
                   <textarea
                     value={actionNote}
-                    onChange={e => setActionNote(e.target.value)}
-                    placeholder="备注..."
+                    onChange={e => { setActionNote(e.target.value); setNoteDirty(true); }}
+                    placeholder="备注（清空后保存即删除）..."
                     rows={2}
                     className="w-full rounded border px-2 py-1 text-[11px]"
                     style={{ borderColor: "#ebedf0", resize: "vertical" }}
@@ -2866,23 +2848,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                       if (!editActionCell) return;
                       setActionSubmitting(true);
                       try {
-                        const cell = editActionCell;
-                        const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
-                        if (cageId) {
-                          let sp: Record<string,string[]> = {};
-                          try {
-                            const r = await authHttp.get('/local/annotate/' + cageId);
-                            if (r.data?.success && r.data.data?.statusPhotos) {
-                              const existing = JSON.parse(r.data.data.statusPhotos);
-                              if (typeof existing === "object") sp = existing;
-                            }
-                          } catch { }
-                          for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp[k] = actionPhotos;
-                          if (actionPhotos.length > 0) sp._status = actionPhotos;
-                          if (actionNote.trim()) (sp as any)._note = actionNote;
-                          const body: Record<string, any> = { animalCageId: cageId, statusPhotos: JSON.stringify(sp) };
-                          await authHttp.post("/local/annotate", body);
-                        }
+                        const cageId = String((editActionCell as any).id ?? (editActionCell as any).animalCageId ?? "");
+                        if (cageId) await saveAnnotate(cageId);
                         toast.success("标注已保存");
                       } catch (e: any) { toast.error("保存失败: " + (e?.message || "")); }
                       finally { setActionSubmitting(false); }
@@ -2899,25 +2866,14 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                       if (!editActionCell) return;
                       setActionSubmitting(true);
                       try {
-                        const cell = editActionCell;
-                        const cageId = String((cell as any).id ?? (cell as any).animalCageId ?? "");
+                        const cageId = String((editActionCell as any).id ?? (editActionCell as any).animalCageId ?? "");
                         if (cageId) {
-                          let sp: Record<string,string[]> = {};
-                          try {
-                            const r = await authHttp.get('/local/annotate/' + cageId);
-                            if (r.data?.success && r.data.data?.statusPhotos) {
-                              const existing = JSON.parse(r.data.data.statusPhotos);
-                              if (typeof existing === "object") sp = existing;
-                            }
-                          } catch { }
-                          for (const k of statusPhotoKeys(actionsFromFormValues(editFormValues))) sp[k] = actionPhotos;
-                          if (actionPhotos.length > 0) sp._status = actionPhotos;
-                          if (actionNote.trim()) (sp as any)._note = actionNote;
-                          await authHttp.post("/local/annotate", { animalCageId: cageId, statusPhotos: JSON.stringify(sp) });
+                          await saveAnnotate(cageId);
+                          loadEditHistory(cageId);
                         }
                         toast.success("已归档为新记录");
-                        setActionPhotos([]); setActionNote("");
-                        loadEditHistory(cageId);
+                        setStatusPhotos({}); setActionNote("");
+                        setDirtyPhotoKeys(new Set()); setNoteDirty(false);
                       } catch (e: any) { toast.error("保存失败: " + (e?.message || "")); }
                       finally { setActionSubmitting(false); }
                     }}
@@ -2975,7 +2931,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               <div className="flex gap-2 px-4 py-3 border-t" style={{ borderColor: "#ebedf0" }}>
                 <button
                   type="button"
-                  onClick={() => { setEditActionCell(null); setActionPhotos([]); setActionNote(""); }}
+                  onClick={saveAndCloseActionPopup}
                   className="flex-1 rounded-lg px-4 py-2 text-sm font-semibold border"
                   style={{ borderColor: "#ebedf0", color: "#323233" }}
                 >

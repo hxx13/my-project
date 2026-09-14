@@ -4,6 +4,11 @@ import {
   specialDetailItemsFor,
   regionWriteTargets,
   isNonViolationStatus,
+  detailZoneKey,
+  parseDetailZone,
+  parseStatusZone,
+  specialFeedingLast,
+  CAGE_BOX_ACTIONS,
   type CageBoxAction,
 } from "@/features/cage-shelf/constants";
 
@@ -84,5 +89,33 @@ describe("regionWriteTargets", () => {
   it("房间节点没有随行房间 → 就写自己", () => {
     expect(regionWriteTargets("ROOM", "101")).toEqual([{ regionType: "ROOM", regionId: "101" }]);
     expect(regionWriteTargets("ROOM", "101", [])).toEqual([{ regionType: "ROOM", regionId: "101" }]);
+  });
+});
+
+describe("明细色区键", () => {
+  it("往返：键 → 明细项 + 方向", () => {
+    expect(parseDetailZone(detailZoneKey("NEED_FEED", true))).toEqual({ itemCode: "NEED_FEED", on: true });
+    expect(parseDetailZone(detailZoneKey("NO_WATER", false))).toEqual({ itemCode: "NO_WATER", on: false });
+  });
+
+  it("两个解析器各认各的前缀，互不误吞（`add:` 不当明细、`sfadd:` 不当状态）", () => {
+    expect(parseDetailZone("add:DIVIDE")).toBeNull();
+    expect(parseDetailZone("zone:DIVIDE")).toBeNull();
+    expect(parseStatusZone("sfadd:NEED_FEED")).toBeNull();
+    expect(parseDetailZone(null)).toBeNull();
+    expect(parseDetailZone("sfadd:")).toBeNull();
+  });
+});
+
+describe("specialFeedingLast", () => {
+  it("「特殊饲养」挪到末尾，其余保持原序", () => {
+    expect(specialFeedingLast(CAGE_BOX_ACTIONS).map((a) => a.action)).toEqual([
+      "DIVIDE", "HEALTH_CHECK", "COHABITATION", "TRANSFER", "SPECIAL_BREEDING",
+    ]);
+  });
+
+  it("列表里没有它时原样返回（学生端按白名单过滤后可能没有）", () => {
+    const only = CAGE_BOX_ACTIONS.filter((a) => a.action === "COHABITATION");
+    expect(specialFeedingLast(only).map((a) => a.action)).toEqual(["COHABITATION"]);
   });
 });

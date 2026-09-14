@@ -190,6 +190,19 @@ export function regionWriteTargets(
 
 export const CAGE_BOX_ACTION_LIST = CAGE_BOX_ACTIONS.map(a => a.action) as readonly CageBoxAction[];
 
+/**
+ * 色区（拖色区）的展示顺序：**「特殊饲养」排到最后**。
+ *
+ * 它两张卡（标记 / 撤销）下面各自挂着可展开的明细子区，一展开会把后面的卡整片推下去；
+ * 排在最底就只影响自己，别的状态不会被挤走。两端都走这一份，顺序不会各排各的。
+ */
+export function specialFeedingLast<T extends { action: string }>(list: readonly T[]): T[] {
+  return [
+    ...list.filter((a) => a.action !== "SPECIAL_BREEDING"),
+    ...list.filter((a) => a.action === "SPECIAL_BREEDING"),
+  ];
+}
+
 export function cageBoxAction(action: CageBoxAction) {
   return CAGE_BOX_ACTIONS.find(a => a.action === action)!;
 }
@@ -359,6 +372,31 @@ export function parseStatusZone(key: string | null | undefined): { action: CageB
   if (dir !== "add" && dir !== "del") return null;
   if (!CAGE_BOX_ACTION_LIST.includes(action as CageBoxAction)) return null;
   return { action: action as CageBoxAction, on: dir === "add" };
+}
+
+/**
+ * 明细色区键：`sfadd:NEED_FEED` = 标记该明细，`sfdel:NEED_FEED` = 撤销该明细。
+ * 前缀刻意与状态色的 `add:`/`del:` 分开，两个解析器各认各的，不会互相误吞。
+ */
+export function detailZoneKey(itemCode: string, on: boolean): string {
+  return `${on ? "sfadd" : "sfdel"}:${itemCode}`;
+}
+
+/** 反解明细色区键；不是明细区 → null。 */
+export function parseDetailZone(key: string | null | undefined): { itemCode: string; on: boolean } | null {
+  const [dir, itemCode] = String(key ?? "").split(":");
+  if (dir !== "sfadd" && dir !== "sfdel") return null;
+  if (!itemCode) return null;
+  return { itemCode, on: dir === "sfadd" };
+}
+
+/**
+ * 照片归档用的状态码：状态色区用 statusCode，明细项用 `SF_ + item_code`。
+ * 和管理端 `statusPhotoKeys` 的 statusField 键并存 —— 那边按表单字段名存历史遗留的，
+ * 这里按 statusCode 存明细，互不覆盖。
+ */
+export function detailPhotoKey(itemCode: string): string {
+  return SPECIAL_DETAIL_STATUS_PREFIX + itemCode;
 }
 
 /**

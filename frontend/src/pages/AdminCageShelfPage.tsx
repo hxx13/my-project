@@ -143,7 +143,8 @@ import MyRegionDialog from "@/features/cage-shelf/components/MyRegionDialog";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { ShelfGrid, BookmarkShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
-import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, statusPhotoKeys, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone, SPECIAL_DETAIL_CANONICAL, SPECIAL_DETAIL_DICT, SPECIAL_DETAIL_STATUS_PREFIX, detailCodesOfValues } from "@/features/cage-shelf/constants";
+import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, specialFeedingLast, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone, detailZoneKey, parseDetailZone, detailPhotoKey, SPECIAL_DETAIL_DICT, detailCodesOfValues } from "@/features/cage-shelf/constants";
+import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import CageScanProgressBanner from "@/features/cage-shelf/components/CageScanProgressBanner";
@@ -279,9 +280,29 @@ function Inner(){
   const[editDialogCell,setEditDialogCell]=useState<CageShelfCell|null>(null);
   const[editDialogShelfId,setEditDialogShelfId]=useState<string>("");
   const[editFormValues,setEditFormValues]=useState<CageInfoValueRow[]|null>(null);
-  const[actionPhotos,setActionPhotos]=useState<string[]>([]);
+  /**
+   * 状态专属照片，**按归属的状态分桶**：key = 状态的表单字段名（`needs_division` …）
+   * 或明细项的 `SF_<item_code>`。
+   *
+   * 以前这里是一份全局数组，保存时用 `for (const k of statusPhotoKeys(...)) sp[k] = actionPhotos`
+   * 扇出写进每个状态 key —— 勾三个状态传一张照片，三个状态各存一张，看着像「每个状态拍了一张」。
+   * 改成每个状态自己一份、各自上传，扇出路径就没了。
+   */
+  const[statusPhotos,setStatusPhotos]=useState<Record<string,string[]>>({});
   const[actionNote,setActionNote]=useState("");
-  const[actionUploading,setActionUploading]=useState(false);
+  /**
+   * 用户**真的动过**的 key / 备注 —— 写盘只写这些。
+   *
+   * 整份写回会把这段时间里别人改过的 key 一起盖成陈旧值（最后写者赢，而且是「没动过的人也赢了」）。
+   * 只提交动过的那几个，其余以服务端当时的值为底原样带回去。
+   */
+  const[dirtyPhotoKeys,setDirtyPhotoKeys]=useState<Set<string>>(new Set());
+  const[noteDirty,setNoteDirty]=useState(false);
+  /** 照片条改一张 = 只把**那个 key** 标脏 */
+  const setPhotosFor=useCallback((key:string,urls:string[])=>{
+    setStatusPhotos(p=>({...p,[key]:urls}));
+    setDirtyPhotoKeys(p=>{const n=new Set(p);n.add(key);return n;});
+  },[]);
   const[editHistory,setEditHistory]=useState<any[]>([]);
   const[detailReloadKey,setDetailReloadKey]=useState(0);
   const[confirmLookup,setConfirmLookup]=useState<CodeLookupResult|null>(null);
@@ -307,30 +328,30 @@ function Inner(){
   const[isRegionLeader,setIsRegionLeader]=useState(false);
   useEffect(()=>{fetchMyRegion().then(r=>setIsRegionLeader(r.isLeader)).catch(()=>setIsRegionLeader(false));},[]);
 
-  // 弹窗A 打开时从 /local/annotate 加载备注和状态照片（不能用 onOpenChange，Radix 只在用户关闭时触发）
-  useEffect(()=>{
-    if(!editDialogCell) return;
-    setActionPhotos([]); setActionNote("");
-    const cageId=String((editDialogCell as any).id??(editDialogCell as any).animalCageId??"");
-    if(!cageId) return;
-    authHttp.get(`/local/annotate/${cageId}`).then(r=>{
-      if(r.data?.success){
-        const d=r.data.data;
-        if(d.statusPhotos){
-          try{const sp=typeof d.statusPhotos==="string"?JSON.parse(d.statusPhotos):d.statusPhotos;
-            // 加载标注文本（_note 非数组，单独提取）
-            if(typeof sp._note==="string") setActionNote(sp._note);
-            else setActionNote("");
-            // 加载所有 key 的照片（跳过 _note 字符串）
-            const all:string[]=[];
-            for(const k of Object.keys(sp)){if(k!=="_note" && Array.isArray(sp[k]))all.push(...sp[k]);}
-            if(all.length>0)setActionPhotos(all);else setActionPhotos([]);
-          }catch{setActionNote("");setActionPhotos([]);}
-        }else{setActionNote("");setActionPhotos([]);}
+
+  /**
+   * 把弹窗里的状态照片（按状态各一份）与备注写回 `/local/annotate`。
+   *
+   * 只覆盖**本次动过的 key**，其余原样带回去 —— 原先那版把所有照片扇出写进每个已开启状态的
+   * key，勾三个状态传一张照片就变成三个状态各一张，这就是要修的那个 bug。
+   * 备注清空时**删键**（不是留着旧值），否则用户改不掉已经写下的备注。
+   */
+  const saveAnnotation = useCallback(async (cageId: string) => {
+    if(dirtyPhotoKeys.size===0 && !noteDirty) return; // 没动过就不发请求
+    /* 服务端那份为底，只有动过的 key 才用当前值盖上去；读不到就退回打开时加载的快照兜底 */
+    let sp: Record<string, unknown> = { ...statusPhotos };
+    try {
+      const r = await authHttp.get(`/local/annotate/${cageId}`);
+      if (r.data?.success && r.data.data?.statusPhotos) {
+        const existing = typeof r.data.data.statusPhotos === "string" ? JSON.parse(r.data.data.statusPhotos) : r.data.data.statusPhotos;
+        if (existing && typeof existing === "object") sp = { ...existing };
       }
-    }).catch(()=>{});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[editDialogCell]);
+    } catch { /* 读不到就用打开时那份 */ }
+    for(const k of dirtyPhotoKeys) sp[k]=statusPhotos[k]??[];
+    if(noteDirty){ if(actionNote.trim()) sp._note=actionNote; else delete sp._note; }
+    await authHttp.post("/local/annotate", { animalCageId: cageId, statusPhotos: JSON.stringify(sp) });
+    setDirtyPhotoKeys(new Set()); setNoteDirty(false);
+  }, [statusPhotos, actionNote, dirtyPhotoKeys, noteDirty]);
 
   // 十字交叉高亮坐标（编辑模式 lastScannedKey + 扫码定位 scanLockTarget）
   const highlightCross=useMemo(()=>{
@@ -428,6 +449,39 @@ function Inner(){
   const[legend,setLegend]=useState(false);
   const[collapsed,setCollapsed]=useState(false);
   const[viewMode,setViewMode]=useState<"room"|"shelf">("room");
+
+  /**
+   * 标注（状态照片 + 备注）当前编辑的是哪个笼位：
+   * 全房间视图走「选择操作」弹窗（`editDialogCell`），单笼架视图走右侧编辑面板（`cell`）——
+   * 两处共用同一份表单状态与同一套写盘逻辑，所以先在这里归一。
+   */
+  const annotateCell = editDialogCell ?? (editMode && viewMode === "shelf" && cell && !cell.empty ? cell : null);
+
+  // 目标变化时从 /local/annotate 加载备注和状态照片（Radix 的 onOpenChange 只在用户关闭时触发，靠不住）
+  useEffect(()=>{
+    setStatusPhotos({}); setActionNote("");
+    setDirtyPhotoKeys(new Set()); setNoteDirty(false);
+    if(!annotateCell) return;
+    const cageId=String((annotateCell as any).id??(annotateCell as any).animalCageId??"");
+    if(!cageId) return;
+    authHttp.get(`/local/annotate/${cageId}`).then(r=>{
+      if(r.data?.success){
+        const d=r.data.data;
+        setActionNote("");
+        setStatusPhotos({});
+        if(!d.statusPhotos) return;
+        try{
+          const sp=typeof d.statusPhotos==="string"?JSON.parse(d.statusPhotos):d.statusPhotos;
+          if(typeof sp?._note==="string") setActionNote(sp._note);
+          // 原样按 key 还原每个状态自己的那份（不再摊平混在一起 —— 摊平后没法知道哪张属于谁）
+          const byKey:Record<string,string[]>={};
+          for(const k of Object.keys(sp)) if(k!=="_note" && Array.isArray(sp[k])) byKey[k]=sp[k];
+          setStatusPhotos(byKey);
+        }catch{ setStatusPhotos({}); }
+      }
+    }).catch(()=>{});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[annotateCell]);
   const[shelfDetail,setShelfDetail]=useState<CageShelfDetail|null>(null);
   const[shelfLoading,setShelfLoading]=useState(false);
   // 分配模式：只显示当前房间笼架里实际存在的 AUP（按 aup_number 过滤），避免满世界找
@@ -1809,13 +1863,20 @@ function Inner(){
       if (currentMode === "edit") {
         for (const a of it.actions ?? []) push(`add:${a}`, it);
         for (const a of it.removedActions ?? []) push(`del:${a}`, it);
+        /* 明细区按**缓存的差异**分流：批次里 `details` 是目标全集，看不出这一项是加的还是撤的，
+           只有 initialDetails/currentDetails 的对比能还原「用户刚把它丢进了哪个区」。 */
+        const e = it.x != null && it.y != null ? scanCache.get(`${it.shelveId}:${it.x}:${it.y}`) : undefined;
+        if (e) {
+          for (const c of e.currentDetails ?? []) if (!(e.initialDetails ?? new Set<string>()).has(c)) push(detailZoneKey(c, true), it);
+          for (const c of e.initialDetails ?? []) if (!(e.currentDetails ?? new Set<string>()).has(c)) push(detailZoneKey(c, false), it);
+        }
         continue;
       }
       const k = currentMode === "allocate" ? it.aupId : it.assigneeAccountId;
       if (k) push(String(k), it);
     }
     return m;
-  }, [pending.items, currentMode]);
+  }, [pending.items, currentMode, scanCache]);
   /**
    * 把若干缓冲条目落定到某目标；zoneKey=null 表示退回缓冲区。
    * 分配模式两个方向互斥（见 {@link allocZoneReject}）：放错区整条跳过并提示 ——
@@ -1877,15 +1938,40 @@ function Inner(){
    * 右侧区域 = 每个状态标记一枚「标记区」+ 一枚「撤销区」，颜色就是该状态在网格上的配色。
    * 撤销区用空心描边（同色），和标记区一眼能分开。
    */
+  /**
+   * 明细色区（折叠在「需特殊饲养」/「撤销需特殊饲养」两张卡里）：
+   * **标记区挂父状态那张卡，撤销区挂撤销那张卡** —— 拖进「需特殊饲养」记明细、拖进
+   * 「撤销需特殊饲养」撤明细，两边各管各的方向，不会出现「一张卡里又加又撤」。
+   * 配色沿用父状态「需特殊饲养」的描边色：明细是它的一族，不另开一套可调色。
+   */
+  const detailZones = useMemo(() => {
+    const color = (cageStatusColors.SPECIAL_FEEDING ?? DEFAULT_COLORS.SPECIAL_FEEDING)?.border || "#ef4444";
+    return {
+      marks: specialDetailOptions.map((o): BufferZone => (
+        { key: detailZoneKey(o.itemCode, true), title: o.itemLabel, subtitle: "标记该明细", color }
+      )),
+      cancels: specialDetailOptions.map((o): BufferZone => (
+        { key: detailZoneKey(o.itemCode, false), title: `撤销${o.itemLabel}`, subtitle: "取消该明细", color, variant: "cancel" as const }
+      )),
+    };
+  }, [cageStatusColors, specialDetailOptions]);
   const editZones = useMemo<BufferZone[]>(
-    () => CAGE_BOX_ACTIONS.flatMap(({ action, label, statusCode }) => {
+    () => specialFeedingLast(CAGE_BOX_ACTIONS).flatMap(({ action, label, statusCode }) => {
       const color = (cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode])?.border || "#64748b";
+      const isSf = action === "SPECIAL_BREEDING";
       return [
-        { key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color },
-        { key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const },
+        {
+          key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color,
+          /* 明细用量少，折叠在父状态卡里，不把右栏撑成 18 张卡 */
+          children: isSf ? detailZones.marks : undefined,
+        },
+        {
+          key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const,
+          children: isSf ? detailZones.cancels : undefined,
+        },
       ];
     }),
-    [cageStatusColors],
+    [cageStatusColors, detailZones],
   );
   /**
    * 把某个动作按 on/off 写进编辑缓存。**不 toggle** —— 落区语义要求显式方向，
@@ -1926,12 +2012,54 @@ function Inner(){
        改状态（拖色区/直接改/点按钮）不该挪它 —— 见同文件另外三处的说明。 */
   }, [dataSource, scanCache]);
   /**
+   * 明细色区落点：把某个明细项按 on/off 写进编辑缓存（与 {@link applyEditAction} 同一套语义）。
+   *
+   * 落「标记」时**顺手把父状态「需特殊饲养」也标上** —— 明细写盘的门槛是父状态必须开着
+   * （CageInfoValueService 会拒「父关着还往明细上写」），不补这一步拖进明细区必然提交失败。
+   * 撤销明细**不动**父状态：可能还有别的明细项要留着。
+   */
+  const applyEditDetail = useCallback(async (
+    cell: CageShelfCell, sid: string, itemCode: string, on: boolean,
+  ) => {
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
+    const cvo = (cbi?.cageBoxVo ?? cbi?.["cageBoxVo"] ?? {}) as Record<string, any>;
+    let code = (cell as any).cageBoxCode ?? cbi?.cageBoxCode;
+    if (!code) code = cvo.cageBoxCode ?? cvo["cageBoxCode"] ?? "";
+    let fallbackActions: Set<CageBoxAction> | null = null;
+    let fallbackDetails: Set<string> | null = null;
+    if (dataSource === "local" && !scanCache.has(ck)) {
+      const cageId = cageIdOfCell(cell);
+      const rows = cageId ? await fetchCageInfoValues(cageId).catch(() => null) : null;
+      fallbackActions = actionsFromFormValues(rows);
+      fallbackDetails = detailCodesOfValues(rows);
+    }
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const initA = e ? e.initialActions : (fallbackActions ?? actionsFromCageBoxInfo(cbi, cvo));
+      const initD = e?.initialDetails ?? (fallbackDetails ?? new Set<string>());
+      const curA = new Set(e ? e.currentActions : initA);
+      const curD = new Set(e?.currentDetails ?? initD);
+      if (on) { curD.add(itemCode); curA.add("SPECIAL_BREEDING"); } else { curD.delete(itemCode); }
+      if (sameActions(curA, initA) && sameDetailSets(curD, initD)) next.delete(ck);
+      else next.set(ck, e
+        ? { ...e, currentActions: curA, initialDetails: initD, currentDetails: curD }
+        : { cell, code, initialActions: initA, currentActions: curA, images: [], notes: "", initialDetails: initD, currentDetails: curD });
+      return next;
+    });
+  }, [dataSource, scanCache, cageIdOfCell, actionsFromCageBoxInfo]);
+
+  /**
    * 状态模式拖放：fromZone 决定「拖回缓冲区」时撤销哪一个动作，
    * 拖到另一个区则把动作搬过去（先撤销来源、再落到新位置，所以重复拖是幂等的）。
+   * 色区与明细区各认各的前缀（`add:`/`del:` vs `sfadd:`/`sfdel:`），一个笼位可以同时挂两边的差异。
    */
   const handleEditZoneDrop = useCallback((cageIds: string[], zoneKey: string | null, fromZone: string | null): boolean => {
     const to = parseStatusZone(zoneKey);
     const from = parseStatusZone(fromZone);
+    const toD = parseDetailZone(zoneKey);
+    const fromD = parseDetailZone(fromZone);
     // 只对「待提交」里的笼位生效：勾选集可能留着早已移出批次的陈旧 id，
     // 不挡的话会顺手给一个用户根本没打算动的笼位改状态（改完还会被同步 effect 拉进批次）。
     const staged = new Set(batchOf(pendingByMode, "edit").items.map((it) => it.cageId));
@@ -1944,11 +2072,13 @@ function Inner(){
       const sid = key.split(":")[0] || "";
       if (from) void applyEditAction(cell, sid, from.action, !from.on);
       if (to) void applyEditAction(cell, sid, to.action, to.on);
+      if (fromD) void applyEditDetail(cell, sid, fromD.itemCode, !fromD.on);
+      if (toD) void applyEditDetail(cell, sid, toD.itemCode, toD.on);
       applied += 1;
     }
     // 陈旧的勾选项不算「没放成」，真正落地的有东西就可以清掉勾选
     return applied > 0;
-  }, [applyEditAction, keyByCageId, cellAtKey, pendingByMode]);
+  }, [applyEditAction, applyEditDetail, keyByCageId, cellAtKey, pendingByMode]);
 
   /**
    * 状态模式：条目连同它的编辑缓存一起摘掉。
@@ -2077,7 +2207,7 @@ function Inner(){
       <div className={`absolute inset-0 z-10 grid place-items-center rounded-twin-lg bg-[var(--twin-canvas)]/60 px-2 text-center text-[10px] font-semibold leading-snug text-[var(--twin-mute)] ${
         passClicks ? "pointer-events-none" : "pointer-events-auto"
       }`}>
-        {label ? "直接改模式 · 已禁用" : null}
+        {label ? "逐格编辑模式 · 已禁用" : null}
       </div>
     </div>
   );
@@ -2242,14 +2372,17 @@ function Inner(){
   /**
    * 状态模式：把编辑缓存里的差异同步进 edit 批次（缓存的 currentActions 就是「目标状态全集」）。
    *
+   * 两种改法**共用这一份缓存**：拖色区（拖到色区）与逐格编辑（弹窗里点）都写缓存，
+   * 区别只在「条目怎么进批次」—— 前者点格子时收（handleEditToggle），后者由下面那条规则收。
+   *
    * 两条规则保证批次与缓存永不脱节：
    *   1) 缓存里**有**的笼位：按差异更新；改回原样只清差异，条目留在「待提交」（用户是显式暂存它的）；
    *   2) 缓存里**没有**的笼位：一律不许带差异 —— 缓存被删掉（拖出色区撤销）后，
    *      批次若还留着那份差异，就成了「磁贴挂在色区里、网格却没颜色」的幽灵条目。
    */
   useEffect(() => {
-    // 「直接改」模式不碰缓存：同步一关，切过去时已攒的那批也不会被误清
-    if (!editStaged) return;
+    // 只有状态模式才谈得上缓存；切到别的模式时缓存原样留着（切回来颜色还在），批次不动
+    if (!editMode) return;
     patchPending("edit", (b) => {
       let next = b;
       const cached = new Set<string>();
@@ -2258,7 +2391,14 @@ function Inner(){
         if (!cageId) continue;
         cached.add(cageId);
         const meta = itemMetaByCageId.get(cageId);
-        if (!meta || !next.items.some((x) => x.cageId === cageId)) continue;
+        if (!meta) continue;
+        /* 逐格编辑：改动只落在缓存里，条目得先收进「待提交」才有人搬。
+           拖色区那条路是点格子时由 handleEditToggle 收的，这里保持原来的「只更新已有条目」，
+           免得那条路也悄悄塞进用户没点过的笼位。 */
+        if (!next.items.some((x) => x.cageId === cageId)) {
+          if (!editDirect) continue;
+          next = upsertItem(next, { cageId, ...meta });
+        }
         const toAdd = [...e.currentActions].filter((a) => !e.initialActions.has(a));
         const toRemove = [...e.initialActions].filter((a) => !e.currentActions.has(a));
         /* 明细同理：只有**真的改了**才带上目标集合；没改就显式置 undefined —— upsertItem 是 {...old,...item} 合并，
@@ -2285,7 +2425,7 @@ function Inner(){
       }
       return next;
     });
-  }, [scanCache, editStaged, itemMetaByCageId, patchPending]);
+  }, [scanCache, editMode, editDirect, itemMetaByCageId, patchPending]);
 
   /**
    * 状态模式：逐笼位提交动作。
@@ -2328,75 +2468,19 @@ function Inner(){
   }, [dataSource, aRid]);
 
   /* ═══════════════════════════════════════════════════════════
-     状态模式「直接改」—— 点格子开原状态弹窗，点一下立刻写服务端
+     状态模式「逐格编辑」—— 点格子开状态弹窗，改的是编辑缓存，
+     与拖色区共用同一条「缓存 → 待提交 → 统一提交」的路
      （editDirect / editStaged 声明在组件顶部的状态区）
      ═══════════════════════════════════════════════════════════ */
-  const [editDirectBusy, setEditDirectBusy] = useState(false);
-
-  /**
-   * 直接改：把单个笼位的一个动作**立刻**写进服务端（复用提交用的 runEditPending，local/ARO 两条路都覆盖）。
-   *
-   * 刻意不写 scanCache —— 缓存一有差异，同步 effect 就会把这笼位拉进「待提交」，
-   * 那就又绕回缓存了。写完刷新网格与表单值，界面上的颜色直接来自服务端。
-   */
-  /**
-   * 「直接改」模式下点一个明细项：**立即写盘**（与状态动作的 applyEditActionNow 同一语义）。
-   *
-   * <p>为什么这条不能复用手势入缓存的 toggleEditDetail：缓存 → 待提交的同步 effect 只在
-   * `editStaged`（拖色区）下跑；直接改模式下它直接 return，暂存进去的东西没人搬，提交时是空的。
-   */
-  const writeDetailNow = useCallback(async (
-    cell: CageShelfCell, sid: string, itemCode: string, on: boolean,
-  ) => {
-    const cageId = cageIdOfCell(cell);
-    if (!cageId) { toast.error("该笼位缺少 ID"); return; }
-    const next = new Set(dataSource === "local" ? detailCodesOfValues(editFormValues) : []);
-    if (on) next.delete(itemCode); else next.add(itemCode);
-    setEditDirectBusy(true);
-    try {
-      await saveSpecialDetails(cageId, [...next]);
-      toast.success(on ? "已取消" : "已标记");
-      setDetailReloadKey((k) => k + 1);
-      if (dataSource === "local") fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => {});
-    } catch (e: any) {
-      toast.error(e?.message || "保存特殊饲养明细失败");
-    } finally {
-      setEditDirectBusy(false);
-    }
-  }, [cageIdOfCell, dataSource, editFormValues]);
-
-  const applyEditActionNow = useCallback(async (
-    cell: CageShelfCell, sid: string, action: CageBoxAction, on: boolean,
-  ) => {
-    const cageId = cageIdOfCell(cell);
-    const meta = cageId ? itemMetaByCageId.get(cageId) : undefined;
-    if (!cageId || !meta) { toast.error("该笼位缺少 ID 或位置信息，无法直接修改"); return; }
-    const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
-    const cvo = (cbi?.cageBoxVo ?? cbi?.["cageBoxVo"] ?? {}) as Record<string, any>;
-    let code = (cell as any).cageBoxCode ?? cbi?.cageBoxCode;
-    if (!code) code = cvo.cageBoxCode ?? cvo["cageBoxCode"] ?? "";
-    setEditDirectBusy(true);
-    try {
-      const [r] = await runEditPending([{
-        cageId, ...meta, shelveId: sid, cageBoxCode: code,
-        actions: on ? [action] : [],
-        removedActions: on ? [] : [action],
-      }]);
-      if (!r?.ok) { toast.error(r?.reason || "操作失败"); return; }
-      toast.success(on ? "已标记" : "已取消");
-      setDetailReloadKey((k) => k + 1);
-      if (dataSource === "local") fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => {});
-    } finally {
-      setEditDirectBusy(false);
-    }
-  }, [cageIdOfCell, itemMetaByCageId, runEditPending, dataSource]);
 
   /**
    * 状态弹窗 / 单笼架面板里点一个状态。
    * 两条入口共用这一份，行为不会再分叉；`has` 是点之前该状态是否已标记，决定这是标记还是取消。
+   *
+   * 只写编辑缓存，**不直接写盘** —— 与拖色区同一条路：缓存 → 同步 effect → 「待提交」→ 统一提交。
+   * （原「直接改」是点一下立刻打服务端，2026-09-14 用户改口径：逐格编辑也进待提交，提交前可反悔。）
    */
   const toggleEditStatus = useCallback((cell: CageShelfCell, sid: string, action: CageBoxAction, has: boolean) => {
-    if (editDirect) { void applyEditActionNow(cell, sid, action, !has); return; }
     const ck = `${sid}:${cell.x}:${cell.y}`;
     const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
     const cvo = (cbi?.cageBoxVo ?? cbi?.["cageBoxVo"] ?? {}) as Record<string, any>;
@@ -2419,7 +2503,7 @@ function Inner(){
       标记完 / 提交完格子上会留下一道没有来由的十字，用户看着莫名其妙。
       （原来那行是为了老的 toggleEditAction 顺手用的，那个函数已经没人调了。）
     */
-  }, [editDirect, applyEditActionNow, dataSource, editFormValues]);
+  }, [dataSource, editFormValues]);
 
   /**
    * 特殊饲养明细：勾/取消一个明细项（多选）。
@@ -2826,16 +2910,20 @@ function Inner(){
                 return<div className="flex-1 flex flex-col min-h-0 rounded-twin-xl border-2 overflow-hidden" style={{borderColor:"var(--twin-primary)"}}>
                   <div className="shrink-0 px-3 py-2 flex items-center justify-between" style={{background:"rgba(172,23,54,0.06)"}}><div className="text-sm font-semibold text-[var(--twin-ink)]">状态选择 · {cell.position}</div><button className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>清除</button></div>
                   <div className="flex-1 overflow-y-auto p-3 space-y-3" style={islandPadStyle}>
-                    <div className="flex flex-col gap-2">{CAGE_BOX_ACTIONS.map(({action:a,label,statusCode})=>{const c= cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode];const cbi2=cell.cageBoxInfo as Record<string,any>|undefined;const cvo2=cbi2?.cageBoxVo??cbi2?.["cageBoxVo"]??{};const ld=(cell as any).detail as Record<string,any>|undefined;const localActions=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cbi2,cvo2);const srvHas=!entry&&(localActions.has(a)||((a==="SPECIAL_BREEDING"&&!!cbi2?.specialBreedingName)||(a==="HEALTH_CHECK"&&!!cbi2?.animalHealthEntity)));const has=entry?entry.currentActions.has(a):srvHas;const init=entry?entry.initialActions.has(a):srvHas;const changed=has!==init;
-                      return<button key={a} onClick={()=>toggleEditStatus(cell,sid,a,has)}
-                        disabled={editDirect&&editDirectBusy}
-                        className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95 disabled:opacity-50"
-                        style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
-                        {/* 色块预览：选中即用该状态配置的背景/边框色（与图例说明一致） */}
-                        <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
-                        <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
-                        <span className="text-[11px]" style={{color:changed?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{editDirect?(has?"已标记 · 点击取消":"点击标记"):(changed?"已变更":has?"已标记":"点击标记")}</span>
-                      </button>;})}
+                    <div className="flex flex-col gap-2">{CAGE_BOX_ACTIONS.map(({action:a,label,statusCode,statusField})=>{const c= cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode];const cbi2=cell.cageBoxInfo as Record<string,any>|undefined;const cvo2=cbi2?.cageBoxVo??cbi2?.["cageBoxVo"]??{};const ld=(cell as any).detail as Record<string,any>|undefined;const localActions=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cbi2,cvo2);const srvHas=!entry&&(localActions.has(a)||((a==="SPECIAL_BREEDING"&&!!cbi2?.specialBreedingName)||(a==="HEALTH_CHECK"&&!!cbi2?.animalHealthEntity)));const has=entry?entry.currentActions.has(a):srvHas;const init=entry?entry.initialActions.has(a):srvHas;const changed=has!==init;
+                      return<div key={a} className="rounded-twin-md border-2 px-3 py-2" style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
+                        <button type="button" onClick={()=>toggleEditStatus(cell,sid,a,has)}
+                          className="flex w-full items-center gap-2 text-sm font-semibold transition hover:brightness-95 disabled:opacity-50">
+                          {/* 色块预览：选中即用该状态配置的背景/边框色（与图例说明一致） */}
+                          <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
+                          <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
+                          <span className="text-[11px]" style={{color:changed?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{changed?"已变更":has?"已标记":"点击标记"}</span>
+                        </button>
+                        {/* 单笼架面板也按状态独立存照片（与弹窗同一份 key 口径） */}
+                        <StatusPhotoStrip variant="twin" label={label}
+                          value={statusPhotos[statusField]??[]}
+                          onChange={(urls)=>setPhotosFor(statusField,urls)}/>
+                      </div>;})}
                     </div>
                     {/* 特殊饲养明细：**强绑定** —— 只在「需特殊饲养」开着时出现。
                         明细项与五个状态同款进「待提交」（提交时整体覆盖写入）。 */}
@@ -2852,18 +2940,43 @@ function Inner(){
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {specialDetailOptions.map(o=>{
                             const on=sel.has(o.itemCode);
-                            return <button key={o.itemCode} type="button" disabled={editDirect&&editDirectBusy}
-                              onClick={()=>editDirect?void writeDetailNow(cell,sid,o.itemCode,on):toggleEditDetail(cell,sid,o.itemCode)}
-                              className={`rounded-twin-md border-2 px-2 py-1 text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-50 ${
-                                on?"border-[var(--twin-primary)] text-[var(--twin-primary)]":"border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-                              }`}
-                              style={{background:"var(--twin-canvas)"}}>
-                              {on?"✓ ":""}{o.itemLabel}
-                            </button>;
+                            /* 明细也是独立的 statusCode（`SF_+item_code`），照片按它自己归档 */
+                            const pk=detailPhotoKey(o.itemCode);
+                            return <div key={o.itemCode} className="rounded-twin-md border-2 px-2 py-1.5" style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
+                              <button type="button"
+                                onClick={()=>toggleEditDetail(cell,sid,o.itemCode)}
+                                className={`text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-50 ${
+                                  on?"text-[var(--twin-primary)]":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                                }`}>
+                                {on?"✓ ":""}{o.itemLabel}
+                              </button>
+                              <StatusPhotoStrip variant="twin" label={o.itemLabel}
+                                value={statusPhotos[pk]??[]}
+                                onChange={(urls)=>setPhotosFor(pk,urls)}/>
+                            </div>;
                           })}
                         </div>
                       </div>;
                     })()}
+                    {/* 单笼架面板的备注 + 写盘（与弹窗同一套落盘逻辑） */}
+                    <div className="space-y-2 pt-2 border-t border-[var(--twin-hairline)]">
+                      <textarea value={actionNote} onChange={e=>{setActionNote(e.target.value);setNoteDirty(true);}} placeholder="备注（清空后保存即删除）..." rows={2}
+                        className="w-full rounded border border-[var(--twin-hairline)] px-2 py-1 text-[11px] resize-y"/>
+                      <div className="flex justify-end">
+                        <button type="button" disabled={actionSubmitting}
+                          onClick={async()=>{
+                            const cageId=String((cell as any).id??(cell as any).animalCageId??"");
+                            if(!cageId) return;
+                            setActionSubmitting(true);
+                            try{ await saveAnnotation(cageId); toast.success("标注已保存"); }
+                            catch(e:any){ toast.error("保存失败: "+(e?.message||"")); }
+                            finally{ setActionSubmitting(false); }
+                          }}
+                          className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition">
+                          {actionSubmitting?"保存中...":"💾 保存照片与备注"}
+                        </button>
+                      </div>
+                    </div>
                     <div className="pt-2 border-t border-[var(--twin-hairline)] text-[10px] text-[var(--twin-mute)]">笼位信息</div>
                   </div>
                 </div>;})()}
@@ -2938,18 +3051,18 @@ function Inner(){
         }}
         onSubmit={()=>void submitPending()}
         onEditItem={currentMode==="edit"?openEditItemById:undefined}
-        /* 状态模式两种改法的切换：拖色区（攒着统一提交） / 直接改（点笼位开弹窗，点一下即生效） */
+        /* 状态模式两种改法的切换：拖色区（点笼位攒进待提交，拖到色区标记） / 逐格编辑（点笼位开弹窗） */
         headerToggle={currentMode==="edit"?(
           <button type="button" onClick={()=>setEditDirect(v=>!v)}
             title={editDirect
-              ? "当前：点笼位开状态弹窗，点一下立刻生效。点这里改回「拖到色区攒着」"
-              : "当前：点笼位攒进待提交，拖到色区标记后统一提交。点这里改成「直接改」"}
+              ? "当前：点笼位直接开状态弹窗，在里面改状态/明细/拍照/备注。点这里改回「拖到色区」"
+              : "当前：点笼位攒进待提交，拖到色区标记后统一提交。点这里改成「逐格编辑」"}
             className={`rounded-twin-md border px-2 py-0.5 text-[11px] font-semibold transition ${
               editDirect
                 ? "border-[var(--twin-warning)] bg-amber-50 text-[var(--twin-warning)]"
                 : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
             }`}>
-            {editDirect?"直接改":"拖色区"}
+            {editDirect?"逐格编辑":"拖色区"}
           </button>
         ):undefined}
         onClose={()=>setPendingOpen(false)}
@@ -2996,7 +3109,7 @@ function Inner(){
             }}
             header={
               <div className="shrink-0 border-b border-[var(--twin-hairline)] px-2 py-1.5 text-[10px] text-[var(--twin-mute)]">
-                拖笼位到对应色区即标记，拖到虚线区即撤销
+                拖笼位到对应色区即标记，拖到虚线区即撤销；「需特殊饲养」与其撤销卡里可展开各自的明细区
               </div>
             }
           />
@@ -3107,30 +3220,36 @@ function Inner(){
     <MobileScanDialog open={scanLockOpen} onClose={()=>setScanLockOpen(false)} onResult={(code)=>{setScanLockOpen(false);handleResidentScan(code);}}/>
     {/* ---- 编辑模式状态选择弹窗 ---- */}
     <Dialog open={!!editDialogCell} onOpenChange={(o)=>{
-      if(!o){setEditDialogCell(null);setActionPhotos([]);setActionNote("");}
+      if(!o){setEditDialogCell(null);setStatusPhotos({});setActionNote("");}
     }}>
       <DialogContent className="max-w-xs">
         <DialogHeader><DialogTitle>选择操作 · {editDialogCell?.position}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-2">
-          {CAGE_BOX_ACTIONS.map(({action:a,label,statusCode})=>{
+          {CAGE_BOX_ACTIONS.map(({action:a,label,statusCode,statusField})=>{
             const c= cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode];
             const key=editDialogCell?(()=>{const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);return`${sid}:${editDialogCell.x}:${editDialogCell.y}`;})():null;
             const entry=key?scanCache.get(key):null;
             // 未缓存时回退到服务器当前状态
             const serverHas=!entry&&editDialogCell?(()=>{if(dataSource==="local"){const s=actionsFromFormValues(editFormValues);return s.has(a);}const cbi=editDialogCell.cageBoxInfo as Record<string,any>|undefined;const cvo=cbi?.cageBoxVo??cbi?.["cageBoxVo"]??{};const s=actionsFromCageBoxInfo(cbi,cvo);if(s.has(a))return true;return (a==="SPECIAL_BREEDING"&&!!cbi?.specialBreedingName)||(a==="HEALTH_CHECK"&&!!cbi?.animalHealthEntity);})():false;
             const has=entry?entry.currentActions.has(a):serverHas;
-            return <button key={a} onClick={async ()=>{
-              if(!editDialogCell)return;
-              const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);if(!sid)return;
-              toggleEditStatus(editDialogCell,sid,a,has);
-            }}
-              disabled={editDirect&&editDirectBusy}
-              className="flex items-center gap-2 rounded-twin-md border-2 px-3 py-2.5 text-sm font-semibold transition hover:brightness-95 disabled:opacity-50"
-              style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
-              <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
-              <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
-              <span className="text-[11px]" style={{color:has?c?.border:"var(--twin-mute)"}}>{has?"✓ 已选":"点击选择"}</span>
-            </button>;
+            const init=entry?entry.initialActions.has(a):serverHas;
+            /* 照片挂在**这一档状态**自己身上（key=表单字段名）：不上传就不写、传了也只归这一档，
+               顺带让「已标记但没拍过」和「拍过照片」一眼分得开。 */
+            return <div key={a} className="rounded-twin-md border-2 px-3 py-2" style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
+              <button type="button" onClick={()=>{
+                if(!editDialogCell)return;
+                const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);if(!sid)return;
+                toggleEditStatus(editDialogCell,sid,a,has);
+              }}
+                className="flex w-full items-center gap-2 text-sm font-semibold transition hover:brightness-95">
+                <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
+                <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
+                <span className="text-[11px]" style={{color:has!==init?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{has!==init?"已变更":has?"✓ 已选":"点击选择"}</span>
+              </button>
+              <StatusPhotoStrip variant="twin" label={label}
+                value={statusPhotos[statusField]??[]}
+                onChange={(urls)=>setPhotosFor(statusField,urls)}/>
+            </div>;
           })}
         </div>
         {/* 特殊饲养明细：强绑定（只在「需特殊饲养」开着时出现），与单笼架面板同一份语义 */}
@@ -3152,69 +3271,30 @@ function Inner(){
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {specialDetailOptions.map(o => {
                 const on = sel.has(o.itemCode);
-                return <button key={o.itemCode} type="button" disabled={editDirect&&editDirectBusy}
-                  onClick={()=>editDirect?void writeDetailNow(editDialogCell,sid,o.itemCode,on):toggleEditDetail(editDialogCell,sid,o.itemCode)}
-                  className={`rounded-twin-md border-2 px-2 py-1 text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-50 ${
-                    on?"border-[var(--twin-primary)] text-[var(--twin-primary)]":"border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-                  }`}
-                  style={{background:"var(--twin-canvas)"}}>
-                  {on?"✓ ":""}{o.itemLabel}
-                </button>;
+                /* 明细也是独立的 statusCode（`SF_+item_code`，各自算超时/告警），
+                   所以照片同样按它自己归档，不并进「需特殊饲养」那一档。 */
+                const pk = detailPhotoKey(o.itemCode);
+                return <div key={o.itemCode} className="rounded-twin-md border-2 px-2 py-1.5" style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
+                  <button type="button"
+                    onClick={()=>toggleEditDetail(editDialogCell,sid,o.itemCode)}
+                    className={`text-[11px] font-semibold transition hover:brightness-95 ${
+                      on?"text-[var(--twin-primary)]":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                    }`}>
+                    {on?"✓ ":""}{o.itemLabel}
+                  </button>
+                  <StatusPhotoStrip variant="twin" label={o.itemLabel}
+                    value={statusPhotos[pk]??[]}
+                    onChange={(urls)=>setPhotosFor(pk,urls)}/>
+                </div>;
               })}
             </div>
           </div>;
         })()}
-        {/* 📷 状态专属照片 */}
+        {/* 备注 + 写盘：照片已经在上面按状态各归各位，这里只管收尾 */}
         <div className="space-y-2 pt-1 border-t border-[var(--twin-hairline)]">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-[var(--twin-mute)]">📷 状态专属照片</span>
-            <label className="cursor-pointer px-2 py-0.5 rounded text-[10px] font-semibold bg-[var(--twin-primary)] text-white">
-              {actionUploading?"上传中...":"+ 添加状态照片"}
-              <input type="file" accept="image/*" multiple className="hidden" onChange={async(e)=>{
-                const files=e.target.files;if(!files?.length)return;
-                setActionUploading(true);
-                try{
-                  const urls:string[]=[];
-                  for(let i=0;i<files.length;i++){
-                    const fd=new FormData();fd.append("file",files[i]);
-                    const r=await authHttp.post("/upload",fd,{headers:{"Content-Type":"multipart/form-data"}});
-                    if(r.data?.success&&r.data.data?.url)urls.push(r.data.data.url);
-                  }
-                  if(urls.length){
-                    const np=[...actionPhotos,...urls];
-                    setActionPhotos(np);
-                    // 不再自动保存，统一由「保存标注」按钮提交
-                  }
-                }catch{toast.error("上传失败");}
-                finally{setActionUploading(false);}
-              }} disabled={actionUploading}/>
-            </label>
-          </div>
-          {actionPhotos.length>0&&<div className="flex flex-wrap gap-1">{actionPhotos.map((url,i)=>
-            <div key={i} className="relative group">
-              <img src={url} className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)]"/>
-              <button onClick={()=>{
-                setActionPhotos(p=>p.filter((_,j)=>j!==i));
-                const c=editDialogCell;
-                if(c){
-                  const cid=String((c as any).id??(c as any).animalCageId??"");
-                  if(cid){
-                    authHttp.get('/local/annotate/'+cid).then(r=>{
-                      if(r.data?.success&&r.data.data?.statusPhotos){
-                        try{const sp=typeof r.data.data.statusPhotos==='string'?JSON.parse(r.data.data.statusPhotos):r.data.data.statusPhotos;
-                          for(const k of Object.keys(sp)){if(Array.isArray(sp[k]))sp[k]=sp[k].filter((u:string)=>u!==url);}
-                          authHttp.post('/local/annotate',{animalCageId:cid,statusPhotos:JSON.stringify(sp)}).catch(()=>{});
-                        }catch{}
-                      }
-                    }).catch(()=>{});
-                  }
-                }
-              }}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] items-center justify-center hidden group-hover:flex">✕</button>
-            </div>
-          )}</div>}
-          <textarea value={actionNote} onChange={e=>setActionNote(e.target.value)} placeholder="备注..." rows={2}
+          <textarea value={actionNote} onChange={e=>{setActionNote(e.target.value);setNoteDirty(true);}} placeholder="备注（清空后保存即删除）..." rows={2}
             className="w-full rounded border border-[var(--twin-hairline)] px-2 py-1 text-[11px] resize-y"/>
+          <div className="flex gap-2 justify-end">
           <button onClick={async()=>{
             const cell=editDialogCell;
             if(!cell) return;
@@ -3222,23 +3302,13 @@ function Inner(){
             if(!cageId) return;
             setActionSubmitting(true);
             try{
-              let sp:Record<string,string[]>={};
-              try{const r=await authHttp.get(`/local/annotate/${cageId}`);
-                if(r.data?.success&&r.data.data?.statusPhotos){
-                  const existing=JSON.parse(r.data.data.statusPhotos);
-                  if(typeof existing==="object")sp=existing;
-                }
-              }catch{}
-              for(const k of statusPhotoKeys(actionsFromFormValues(editFormValues)))sp[k]=actionPhotos;
-              if(actionPhotos.length>0)sp._status=actionPhotos;
-              if(actionNote.trim())(sp as any)._note=actionNote; // 标注文本存入 statusPhotos，与实验记录分离
-              await authHttp.post("/local/annotate",{animalCageId:cageId,statusPhotos:JSON.stringify(sp)});
+              await saveAnnotation(cageId);
               toast.success("标注已保存");
             }catch(e:any){toast.error("保存失败: "+(e?.message||""));}
             finally{setActionSubmitting(false);}
           }}
             disabled={actionSubmitting}
-            className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition self-end">
+            className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition">
             {actionSubmitting?"保存中...":"💾 保存标注"}
           </button>
           <button onClick={async()=>{
@@ -3248,20 +3318,10 @@ function Inner(){
             if(!cageId) return;
             setActionSubmitting(true);
             try{
-              let sp:Record<string,string[]>={};
-              try{const r=await authHttp.get(`/local/annotate/${cageId}`);
-                if(r.data?.success&&r.data.data?.statusPhotos){
-                  const existing=JSON.parse(r.data.data.statusPhotos);
-                  if(typeof existing==="object")sp=existing;
-                }
-              }catch{}
-              for(const k of statusPhotoKeys(actionsFromFormValues(editFormValues)))sp[k]=actionPhotos;
-              if(actionPhotos.length>0)sp._status=actionPhotos;
-              if(actionNote.trim())(sp as any)._note=actionNote;
-              await authHttp.post("/local/annotate",{animalCageId:cageId,statusPhotos:JSON.stringify(sp)});
+              await saveAnnotation(cageId);
               toast.success("已归档为新记录");
               // 清空表单，开始新一版
-              setActionPhotos([]); setActionNote("");
+              setStatusPhotos({}); setActionNote("");
               // 刷新历史
               authHttp.get(`/local/history/${cageId}`).then(r=>{
                 if(r.data?.success) setEditHistory(r.data.data||[]);
@@ -3270,9 +3330,10 @@ function Inner(){
             finally{setActionSubmitting(false);}
           }}
             disabled={actionSubmitting}
-            className="rounded-twin-md px-3 py-1 text-[11px] font-semibold border border-[var(--twin-primary)] text-[var(--twin-primary)] hover:bg-[var(--twin-primary)] hover:text-white disabled:opacity-50 transition self-end">
+            className="rounded-twin-md px-3 py-1 text-[11px] font-semibold border border-[var(--twin-primary)] text-[var(--twin-primary)] hover:bg-[var(--twin-primary)] hover:text-white disabled:opacity-50 transition">
             📄 存为新记录
           </button>
+          </div>
         </div>
         {/* 📦 历史记录折叠区 */}
         <details className="border-t border-[var(--twin-hairline)] pt-2">
@@ -3307,7 +3368,7 @@ function Inner(){
           </div>
         </details>
         <DialogFooter>
-          <button onClick={()=>{setEditDialogCell(null);setActionPhotos([]);setActionNote("");}}
+          <button onClick={()=>{setEditDialogCell(null);setStatusPhotos({});setActionNote("");}}
             className="rounded-twin-md px-5 py-1.5 text-sm font-semibold text-[var(--twin-ink)] border border-[var(--twin-hairline)] hover:bg-[var(--twin-canvas-soft)] transition">关闭</button>
         </DialogFooter>
       </DialogContent>

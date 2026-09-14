@@ -60,6 +60,7 @@ import AdminInventoryPage from "@/pages/AdminInventoryPage";
 import ScanSessionPage from "@/features/inventory/ScanSessionPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
+import AdminSopPage from "@/pages/AdminSopPage";
 import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
 import AdminDahuaSwingTasksPage from "@/pages/AdminDahuaSwingTasksPage";
 import AdminDahuaSwingStatsDailyPage from "@/pages/AdminDahuaSwingStatsDailyPage";
@@ -199,6 +200,9 @@ import MobileStudentCenterPage from "@/pages/mobile/MobileStudentCenterPage";
 import MobileSettingsPage from "@/pages/mobile/MobileSettingsPage";
 import MobileSettingsIndexPage from "@/pages/mobile/MobileSettingsIndexPage";
 import MobileAccountSecurityPage from "@/pages/mobile/MobileAccountSecurityPage";
+import MobileSopListPage from "@/features/sop/mobile/MobileSopListPage";
+import MobileSopReaderPage from "@/features/sop/mobile/MobileSopReaderPage";
+import { MobileSopGuard } from "@/features/sop/mobile/MobileSopGuard";
 
 /**
  * 教职工路由统一命名空间。
@@ -260,6 +264,9 @@ export const router = createHashRouter([
   { path: "/m/settings/notifications", element: <AuthGuard><MobileSettingsPage /></AuthGuard> },
   { path: "/m/settings/account-security", element: <AuthGuard><MobileAccountSecurityPage /></AuthGuard> },
   { path: "/m/home", element: <AuthGuard><MobileStudentCenterPage /></AuthGuard> },
+  // SOP：入口在「我的」，但直接输 URL 也要拦 —— 账号闸门在 MobileSopGuard（仅教职工侧）
+  { path: "/m/sop", element: <AuthGuard><MobileSopGuard><MobileSopListPage /></MobileSopGuard></AuthGuard> },
+  { path: "/m/sop/:id", element: <AuthGuard><MobileSopGuard><MobileSopReaderPage /></MobileSopGuard></AuthGuard> },
   { path: "/login", element: <Navigate to="/" replace /> },
   { path: "/register", element: <RegisterStaffPage /> },
   { path: "/student/login", element: <StudentLoginPage /> },
@@ -363,6 +370,7 @@ export const router = createHashRouter([
               { path: "purchase-request", element: <PurchaseRequestPage /> },
               { path: "facility-maintenance", element: <AdminFacilityMaintenancePage /> },
               { path: "file-templates", element: <AdminFileTemplatesPage /> },
+              { path: "sop", element: <AdminSopPage /> },
               { path: "knowledge", element: <AdminKnowledgeHomePage /> },
               { path: "report-fill", element: <ReportFillHubPage /> },
               { path: "report-fill/:id", element: <ReportFillPage /> },

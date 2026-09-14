@@ -18,10 +18,12 @@ import {
   Settings,
   Smartphone,
   PawPrint,
+  ScrollText,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
 import { authStorage } from "@/features/auth/authStorage";
+import { isStudentAccount } from "@/features/auth/postLoginNavigation";
 import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { toast } from "react-hot-toast";
@@ -324,6 +326,12 @@ export default function MobileMineTab({
         {[
           ...(jwtMode
             ? [{ label: "动物订购", color: "#0ea5e9", icon: PawPrint, action: () => onNav?.("animalOrder") }]
+            : []),
+          /* SOP 只对教职工侧账号开放。判定走 isStudentAccount()（全站唯一口径：
+             accountSource > role > id 前缀）—— 账号分学生/教职工两套，同一个人两边都可能有，
+             别在这里按 role 自己判，否则教职工切学生视图时会误判。 */
+          ...(jwtMode && !isStudentAccount()
+            ? [{ label: "SOP 操作", color: "#0284c7", icon: ScrollText, path: "/m/sop" }]
             : []),
           { label: "我的房间", color: "#6366f1", icon: DoorOpen, action: undefined },
           { label: "出入记录", color: "#10b981", icon: FileText, action: undefined },

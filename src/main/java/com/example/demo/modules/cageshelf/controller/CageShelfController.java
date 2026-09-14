@@ -11,6 +11,7 @@ import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
 import com.example.demo.modules.cageshelf.service.CageAlertService;
 import com.example.demo.modules.cageshelf.service.CageScanProgressService;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
+import com.example.demo.modules.cageshelf.service.CageStatusSummaryService;
 import com.example.demo.modules.cageshelf.service.CageVisibilityPolicy;
 import com.example.demo.modules.cageshelf.service.CageQuotaService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
@@ -54,6 +55,7 @@ public class CageShelfController {
     private final com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService;
     private final com.example.demo.modules.cageshelf.service.CageOperationService cageOpService;
     private final CageVisibilityPolicy visibilityPolicy;
+    private final CageStatusSummaryService cageStatusSummaryService;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
@@ -69,7 +71,8 @@ public class CageShelfController {
                                CageQuotaService quotaService,
                                com.example.demo.modules.cageshelf.service.CageBookingLocalService bookingLocalService,
                                com.example.demo.modules.cageshelf.service.CageOperationService cageOpService,
-                               CageVisibilityPolicy visibilityPolicy) {
+                               CageVisibilityPolicy visibilityPolicy,
+                               CageStatusSummaryService cageStatusSummaryService) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
@@ -85,6 +88,7 @@ public class CageShelfController {
         this.bookingLocalService = bookingLocalService;
         this.cageOpService = cageOpService;
         this.visibilityPolicy = visibilityPolicy;
+        this.cageStatusSummaryService = cageStatusSummaryService;
     }
 
     @PostMapping("/import")
@@ -240,6 +244,29 @@ public class CageShelfController {
                 return Result.success(cageShelfService.getSpecialStatusOverview(batchId));
             }
             return Result.success(studentCageShelfService.getSpecialStatusOverview(user));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/status-summary")
+    @Operation(summary = "笼位特殊状态汇总（本地表单口径）：scope=me|mine|all，groupBy=status|campus|floor|room|pi")
+    public Result<?> statusSummary(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   @RequestParam(defaultValue = "mine") String scope,
+                                   @RequestParam(required = false) String statusCode,
+                                   @RequestParam(defaultValue = "status") String groupBy,
+                                   @RequestParam(required = false) String keyword,
+                                   @RequestParam(defaultValue = "1") int page,
+                                   @RequestParam(defaultValue = "50") int size) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            return Result.success(cageStatusSummaryService.summary(user, scope, statusCode, groupBy, keyword, page, size));
+        } catch (IllegalStateException e) {
+            return Result.fail(403, e.getMessage());
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

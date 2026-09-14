@@ -263,6 +263,17 @@ export function StudentHeader({ onMenuClick, onOpenCommand, sidebarCollapsed, on
 
         <FullscreenToggleButton className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] transition-colors hover:bg-[var(--student-canvas-soft)]" />
 
+        {/* 手机版：紧挨全屏按钮的一枚手机图标（全屏是「换个壳看」，手机版是「换个端看」，放一起） */}
+        <button
+          type="button"
+          onClick={() => navigate(authStorage.hasToken() ? "/m/home" : "/m/login", { state: { fromPortal: true } })}
+          title="手机版"
+          aria-label="切换到手机版"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] transition-colors hover:bg-[var(--student-canvas-soft)]"
+        >
+          <Smartphone className="h-4 w-4" />
+        </button>
+
         <PageHelpHost pagePath={pathname} variant="student" enableFullHelpDialog />
 
         {/* Notification bell */}
