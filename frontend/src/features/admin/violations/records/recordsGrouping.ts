@@ -10,10 +10,23 @@ export type ViolationGroupSegment = {
   startIndex: number;
 };
 
+/** 块内一段连续同人的行（合并格信息）。键用 targetUserId，不能用显示名（同名会串段）。 */
+export type ViolationPersonSegment = {
+  /** 稳定键：targetUserId */
+  key: string;
+  /** 显示名；targetUserDisplayName 缺失时兜底 targetUserId */
+  name: string;
+  /** 段行数（合并格 rowSpan） */
+  rowSpan: number;
+  /** 段首行在 `block.rows` 中的下标 */
+  startIndex: number;
+};
+
 export type ViolationBatchBlock = {
   batchId: string;
   rows: StudentViolationRow[];
   groups: ViolationGroupSegment[];
+  persons: ViolationPersonSegment[];
 };
 
 /** 后端已按 batch_id DESC, id ASC 排序——只做连续分段，绝不排序。 */
@@ -25,9 +38,12 @@ export function groupViolationRows(rows: StudentViolationRow[]): ViolationBatchB
     const batchId = rawBatchId ? rawBatchId : `SINGLE-${row.id}`;
     const last = blocks[blocks.length - 1];
     if (last && last.batchId === batchId) last.rows.push(row);
-    else blocks.push({ batchId, rows: [row], groups: [] });
+    else blocks.push({ batchId, rows: [row], groups: [], persons: [] });
   }
-  for (const block of blocks) block.groups = groupSegments(block.rows);
+  for (const block of blocks) {
+    block.groups = groupSegments(block.rows);
+    block.persons = groupPersonSegments(block.rows);
+  }
   return blocks;
 }
 
@@ -38,6 +54,26 @@ function groupSegments(rows: StudentViolationRow[]): ViolationGroupSegment[] {
     const last = segs[segs.length - 1];
     if (last && last.name === name) last.rowSpan += 1;
     else segs.push({ name, rowSpan: 1, startIndex: i });
+  }
+  return segs;
+}
+
+/** 人的连续分段：同一 targetUserId 相邻即合并。块内同人不连续时切成两段（与课题组同口径，不重排）。 */
+function groupPersonSegments(rows: StudentViolationRow[]): ViolationPersonSegment[] {
+  const segs: ViolationPersonSegment[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const key = row.targetUserId;
+    const last = segs[segs.length - 1];
+    if (last && last.key === key) last.rowSpan += 1;
+    else {
+      segs.push({
+        key,
+        name: (row.targetUserDisplayName ?? "").trim() || key,
+        rowSpan: 1,
+        startIndex: i,
+      });
+    }
   }
   return segs;
 }
