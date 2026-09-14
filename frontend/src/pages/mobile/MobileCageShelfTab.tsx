@@ -37,7 +37,7 @@ import { CageColorProvider } from "@/features/cage-shelf/components/CageColorCon
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileScanDialog from "./MobileScanDialog";
 import {
-  fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, lookupCode, confirmClaim, adminConfirmClaim,
+  fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, saveSpecialDetails, lookupCode, confirmClaim, adminConfirmClaim,
   fetchAllocationAups, type AupItem, localAllocate, localCancelAllocate, assignBatchCages,
   archiveCage, fetchBookingRooms, type BookingRoom,
   fetchPoolCells, type PoolCell, claimCage, fetchMyClaims, type CageClaimItem, cancelClaim,
@@ -55,8 +55,12 @@ import {
   allocSelectVerdict,
   ALLOC_MIXED_KIND_HINT,
   type AllocSelectKind,
+  SPECIAL_DETAIL_DICT,
+  detailCodesOfValues,
+  specialDetailItemsFor,
 } from "@/features/cage-shelf/constants";
-import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
+import SpecialDetailBadges from "@/features/cage-shelf/components/SpecialDetailBadges";
+import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
 import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
 import { useViewportHeight } from "./useViewportHeight";
 import {
@@ -231,6 +235,7 @@ const GridCellButton = memo(function GridCellButton({
   isCached,
   isLastScanned,
   cachedActions,
+  cachedDetails,
   selected,
   isPoolCell,
   isMyClaimCell,
@@ -244,6 +249,8 @@ const GridCellButton = memo(function GridCellButton({
   isCached?: boolean;
   isLastScanned?: boolean;
   cachedActions?: Set<CageBoxAction>;
+  /** 状态模式暂存的「特殊饲养明细」勾选（与 cachedActions 同源，一起进待提交） */
+  cachedDetails?: Set<string>;
   selected?: boolean;
   isPoolCell?: boolean;
   /** 本人待确认到位的认领笼位 */
@@ -272,6 +279,11 @@ const GridCellButton = memo(function GridCellButton({
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const computedStyle = useStatusStyle(dominant);
   const safeStyle = computedStyle ?? { backgroundColor: DEFAULT_COLORS.NORMAL.bg, borderColor: DEFAULT_COLORS.NORMAL.border, borderWidth: 2 } as React.CSSProperties;
+  /** 特殊饲养明细角标 —— 与底色同源：暂存的勾选覆盖服务端状态，父状态（需特殊饲养）关掉就不显示 */
+  const sfDetailItems = specialDetailItemsFor(
+    cell.specialStatuses,
+    cachedActions ? { currentActions: cachedActions, currentDetails: cachedDetails } : null,
+  );
 
   const allBgColors: string[] = [];
   (cell.specialStatuses ?? [])
@@ -370,6 +382,8 @@ const GridCellButton = memo(function GridCellButton({
     >
       {/* 待到位（locked）过渡态：左上角已有「未到位」徽标，右上角「空」图标会误导，隐藏 */}
       {!isEmpty && cell.claimStatus !== "locked" && cell.claimStatus !== "pending_approval" && <CageCellOverlays animalCageType={cell.animalCageType} compact />}
+      {/* 特殊饲养明细：右上角（该状态必是 type 3，不点类型指示灯，角落空着） */}
+      {!isEmpty && <SpecialDetailBadges items={sfDetailItems} />}
       {/* 认领状态徽标：语义与 CellButton.tsx 完全一致（琥珀=未到位 / 蓝=待审批 / 橙=待释放） */}
       {cell.claimStatus && (() => {
         const badge: Record<string, { txt: string; bg: string }> = {
@@ -1089,6 +1103,10 @@ type ScanCacheEntry = {
   initialActions: Set<CageBoxAction>;
   /** 用户当前修改后的状态 */
   currentActions: Set<CageBoxAction>;
+  /** 特殊饲养明细：进缓存时的服务端选中集合 / 当前目标集合（item_code）。
+   *  可选 —— 没动过明细的条目不带这两个键，undefined 即「本次不改明细」。 */
+  initialDetails?: Set<string>;
+  currentDetails?: Set<string>;
 };
 
 /** 是否有任何差异（新增或反选） */
@@ -1104,8 +1122,29 @@ function countTotalDiffs(cache: Map<string, ScanCacheEntry>): number {
   for (const e of cache.values()) {
     for (const a of e.currentActions) { if (!e.initialActions.has(a)) n++; }
     for (const a of e.initialActions) { if (!e.currentActions.has(a)) n++; }
+    // 特殊饲养明细按「项」计差异（与动作同一口径，提交按钮上的数字才诚实）
+    const before = e.initialDetails ?? new Set<string>();
+    const after = e.currentDetails ?? new Set<string>();
+    for (const c of after) { if (!before.has(c)) n++; }
+    for (const c of before) { if (!after.has(c)) n++; }
   }
   return n;
+}
+
+/** 该笼位**服务端**当前的状态动作集合 —— 缓存初始值取它（本地表单值 ∪ ARO 快照 ∪ 两个旁证字段）。 */
+function serverActionsOf(cell: CageShelfCell, formValues: CageInfoValueRow[] | null): Set<CageBoxAction> {
+  const cbi = cell.cageBoxInfo as Record<string, any> | undefined;
+  const cvo = cbi?.cageBoxVo ?? cbi?.['cageBoxVo'] ?? {};
+  const s = new Set<CageBoxAction>([...actionsFromFormValues(formValues), ...actionsFromCageBoxInfo(cbi, cvo)]);
+  if ((typeof cbi?.specialBreedingName === 'string' && cbi.specialBreedingName.trim())
+      || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) s.add("SPECIAL_BREEDING");
+  if (cbi?.animalHealthEntity != null || cvo.animalHealthEntity != null) s.add("HEALTH_CHECK");
+  return s;
+}
+
+/** 两个集合是否相同（顺序无关）。 */
+function sameSet<T>(a: Set<T>, b: Set<T>): boolean {
+  return a.size === b.size && [...a].every((v) => b.has(v));
 }
 
 /**
@@ -1434,6 +1473,7 @@ function CageShelfGridView({
                       isCached={cachedKeys.has(ck)}
                       isLastScanned={ck === lastScannedKey}
                       cachedActions={cacheEntry?.currentActions}
+                      cachedDetails={cacheEntry?.currentDetails}
                       selected={(isAlloc || isClaim || isDivision || !!opSelectActive) && selectedCells.has(`${sid}:${cell.x}:${cell.y}`)}
                       isPoolCell={isDivision
                         // 划分模式的可选高亮：非 type1（等待分配）的格子，复用认领池那套绿环
@@ -1533,6 +1573,16 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       : CAGE_BOX_ACTIONS),
     [modeActions],
   );
+
+  /** 特殊饲养明细的可选项（码表维护，可增长）—— 只在「需特殊饲养」开着时渲染。 */
+  const [specialDetailOptions, setSpecialDetailOptions] = useState<CageCodelistItem[]>([]);
+  useEffect(() => {
+    fetchCageInfoCodelist(SPECIAL_DETAIL_DICT).then((d) => setSpecialDetailOptions(d.items ?? [])).catch(() => {});
+  }, []);
+
+  /**
+   * 特殊饲养明细的可选项在下方（见 specialDetailOptions）；点选写入见 toggleMobileDetail。
+   */
   const [scanCache, setScanCache] = useState<Map<string, ScanCacheEntry>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);  // "x:y" 刚扫的
   const [actionSubmitting, setActionSubmitting] = useState(false);
@@ -1776,6 +1826,34 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   // ── 编辑模式：当前正在编辑的笼位（action popup 目标）──
   const [editActionCell, setEditActionCell] = useState<CageShelfCell | null>(null);
   const [editFormValues, setEditFormValues] = useState<CageInfoValueRow[] | null>(null);
+
+  /**
+   * 特殊饲养明细：勾/取消一项 —— **入缓存**，与状态动作同一套「暂存 → 提交」，
+   * 差异计入右下角「提交 N」，由 handleScanActionsSubmit 统一整体覆盖写盘。
+   * 改回原样（动作和明细都没差）就把缓存条目删掉。
+   */
+  const toggleMobileDetail = useCallback((cell: CageShelfCell, itemCode: string) => {
+    const key = `${cell.x}:${cell.y}`;
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      const e = next.get(key);
+      const initial = e?.initialDetails ?? detailCodesOfValues(editFormValues);
+      const cur = new Set(e?.currentDetails ?? initial);
+      if (cur.has(itemCode)) cur.delete(itemCode); else cur.add(itemCode);
+      if (e && sameSet(cur, initial) && sameSet(e.currentActions, e.initialActions)) {
+        next.delete(key);
+      } else if (e) {
+        next.set(key, { ...e, initialDetails: initial, currentDetails: cur });
+      } else {
+        const srv = serverActionsOf(cell, editFormValues);
+        next.set(key, {
+          cell, code: "", initialActions: srv, currentActions: new Set(srv),
+          initialDetails: initial, currentDetails: cur,
+        });
+      }
+      return next;
+    });
+  }, [editFormValues]);
   const editViewportHeight = useViewportHeight();
   const [actionPhotos, setActionPhotos] = useState<string[]>([]);
   const [actionNote, setActionNote] = useState("");
@@ -2225,7 +2303,15 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         if (!entry.currentActions.has(a)) toRemove.push({ entry, action: a });
       }
     }
-    if (toAdd.length === 0 && toRemove.length === 0) { setActionSubmitting(false); return; }
+
+    // 特殊饲养明细：同样逐条整体覆盖（undefined = 本次不动）
+    const detailWrites: { entry: ScanCacheEntry }[] = [];
+    for (const [, entry] of scanCache) {
+      const before = entry.initialDetails, after = entry.currentDetails;
+      if (before === undefined && after === undefined) continue;
+      if (!sameSet(before ?? new Set<string>(), after ?? new Set<string>())) detailWrites.push({ entry });
+    }
+    if (toAdd.length === 0 && toRemove.length === 0 && detailWrites.length === 0) { setActionSubmitting(false); return; }
 
     let okCount = 0, failCount = 0;
     // 本地+异步投递 — 逐条调用 localEdit
@@ -2248,6 +2334,17 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         okCount++;
       } catch (e: any) {
         toast.error(`${displayPosition(entry.cell.position)} 取消${action}: ${e?.message || "失败"}`);
+        failCount++;
+      }
+    }
+    for (const { entry } of detailWrites) {
+      const cageId = String((entry.cell as any).id ?? (entry.cell as any).animalCageId ?? "");
+      if (!cageId) { failCount++; continue; }
+      try {
+        await saveSpecialDetails(cageId, [...(entry.currentDetails ?? [])]);
+        okCount++;
+      } catch (e: any) {
+        toast.error(`${displayPosition(entry.cell.position)} 明细: ${e?.message || "失败"}`);
         failCount++;
       }
     }
@@ -2655,17 +2752,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                           // 确保缓存条目存在
                           const key = `${editActionCell.x}:${editActionCell.y}`;
                           if (!scanCache.has(key)) {
-                            const cbi = editActionCell.cageBoxInfo as Record<string, any> | undefined;
-                            const cvo = cbi?.cageBoxVo ?? cbi?.['cageBoxVo'] ?? {};
-                            // 本地状态字段与 ARO 快照都可能带信息，取并集
-                            const initial = new Set([
-                              ...actionsFromFormValues(editFormValues),
-                              ...actionsFromCageBoxInfo(cbi, cvo),
-                            ]);
-                            // ARO 侧的两个旁证字段：有特殊饲养名 / 有健康记录也视为已标记
-                            if ((typeof cbi?.specialBreedingName === 'string' && cbi.specialBreedingName.trim())
-                                || (typeof cvo.specialBreedingName === 'string' && cvo.specialBreedingName.trim())) initial.add("SPECIAL_BREEDING");
-                            if (cbi?.animalHealthEntity != null || cvo.animalHealthEntity != null) initial.add("HEALTH_CHECK");
+                            // 服务端当前状态（本地表单值 ∪ ARO 快照 ∪ 旁证字段）——与明细那条共用一份
+                            const initial = serverActionsOf(editActionCell, editFormValues);
                             setScanCache(prev => {
                               const next = new Map(prev);
                               next.set(key, { cell: editActionCell, code: "", initialActions: initial, currentActions: new Set(initial) });
@@ -2684,6 +2772,47 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                     );
                   })}
                 </div>
+
+                {/* 特殊饲养明细：强绑定 —— 只在「需特殊饲养」开着时出现；点了立即写盘（多选整体覆盖） */}
+                {(() => {
+                  const cbi = editActionCell.cageBoxInfo as Record<string, any> | undefined;
+                  const cvo = cbi?.cageBoxVo ?? cbi?.['cageBoxVo'] ?? {};
+                  const srvHas = new Set([...actionsFromFormValues(editFormValues), ...actionsFromCageBoxInfo(cbi, cvo)]);
+                  if (typeof cbi?.specialBreedingName === 'string' && cbi.specialBreedingName.trim()) srvHas.add("SPECIAL_BREEDING");
+                  const entry = scanCache.get(`${editActionCell.x}:${editActionCell.y}`);
+                  const sfOn = entry ? entry.currentActions.has("SPECIAL_BREEDING") : srvHas.has("SPECIAL_BREEDING");
+                  // 父状态的**开关**不在（本区/本身份没开放它）→ 细分状态也不出现：
+                  // 细分是父状态的一部分，开关都没有却冒出子项，只会让人以为它凭空出现。
+                  const sfAvailable = editActionOptions.some((a) => a.action === "SPECIAL_BREEDING");
+                  if (!sfAvailable || !sfOn || specialDetailOptions.length === 0) return null;
+                  const sel = entry?.currentDetails ?? detailCodesOfValues(editFormValues);
+                  return (
+                    <div className="rounded-md px-2.5 py-2" style={{ border: '1.5px solid #ebedf0' }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-semibold" style={{ color: '#323233' }}>特殊饲养明细</span>
+                        <span className="text-[10px]" style={{ color: '#969799' }}>可多选 · 随「需特殊饲养」开关</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {specialDetailOptions.map((o) => {
+                          const on = sel.has(o.itemCode);
+                          return (
+                            <button key={o.itemCode} type="button"
+                              onClick={() => toggleMobileDetail(editActionCell, o.itemCode)}
+                              className="rounded-md px-2 py-1 text-[11px] font-semibold active:scale-[0.98] transition flex items-center gap-1"
+                              style={{
+                                color: on ? BRAND : '#94a3b8',
+                                background: on ? "rgba(172,23,54,0.08)" : "transparent",
+                                border: `1.5px solid ${on ? BRAND : "#cbd5e1"}`,
+                              }}>
+                              {on && <Check className="size-3" strokeWidth={3} />}
+                              <span className="truncate">{o.itemLabel}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 📷 照片上传 + 备注 */}
                 <div className="space-y-2 pt-1 border-t" style={{ borderColor: "#ebedf0" }}>

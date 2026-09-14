@@ -43,6 +43,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -807,6 +808,41 @@ public class CageOperationService {
     /** 该笼位的活跃认领人是不是本人（双 id 安全）。「仅占用者本人可写」的入口统一复用这一个判定。 */
     public boolean isActiveClaimantSelf(User user, Long animalCageId) {
         return isClaimantSelf(user, claimMapper.selectActiveByAnimalCageId(animalCageId));
+    }
+
+    /**
+     * 该笼位**所属人**的账号 id 集合（通知收件人用）。
+     *
+     * <p>与 {@link #isOccupantSelf} 同两条腿、同解析口径 —— 判成「是你的笼位」的人，通知也该发给他：
+     * ① **活跃认领人**：认领记录里的 {@code claimantId} 本来就是账号 id，直接收；
+     * ② 没有认领时取**表单实验员**，那里存的是姓名 → 统一人员表 → 账号。
+     *
+     * <p>同一个人可能同时存在 {@code STAFF_} 与 ARO 两种账号形态（学生的登录入口常是 ARO 那个），
+     * 两种都带上：推送引擎会按 personnel 去重（{@code dedupRecipientsByPersonnel}），
+     * 只带一种反而会漏人。
+     */
+    public Set<String> occupantAccountIds(Long animalCageId) {
+        if (animalCageId == null) return Set.of();
+        Set<String> out = new LinkedHashSet<>();
+        CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
+        if (claim != null && claim.getClaimantId() != null && !claim.getClaimantId().isBlank()) {
+            out.add(claim.getClaimantId().trim());
+        }
+        String exp = experimenterOf(animalCageId);
+        if (exp != null) {
+            String personnelId = personnelService.resolveIdByName(exp);
+            if (personnelId != null) {
+                out.addAll(personnelService.resolveStaffIds(List.of(personnelId)));
+            }
+            try {
+                List<String> aroIds = aroPersonnelMapper.selectUserIdsByName(exp);
+                if (aroIds != null) out.addAll(aroIds);
+            } catch (Exception e) {
+                log.warn("[cage-op] 实验员账号解析失败 name={} err={}", exp, e.getMessage());
+            }
+        }
+        out.removeIf(id -> id == null || id.isBlank());
+        return out;
     }
 
     /**

@@ -267,6 +267,9 @@ public class CageCellIndexService {
         // 后续 specialStatuses / 前端读侧（详情 chips、编辑模式反向使能）都以此为准。
         Map<Long, Map<String, Boolean>> statusFlags = infoValueService.statusFlagsByCage(
                 new ArrayList<>(detailMap.keySet()));
+        // 特殊饲养明细（子状态）也是「状态」：批量取一次选中集合 + 码表中文名，挂进 specialStatuses。
+        Map<Long, List<String>> detailCodes = infoValueService.detailCodesByCage(new ArrayList<>(detailMap.keySet()));
+        Map<String, String> detailLabels = infoValueService.detailItemLabels();
         for (Map.Entry<Long, CageCellDetail> e : detailMap.entrySet()) {
             Map<String, Boolean> flags = statusFlags.get(e.getKey());
             if (flags == null) continue;
@@ -399,6 +402,14 @@ public class CageCellIndexService {
                     statuses.add(Map.of("code","HEALTH_ABNORMAL","label","健康异常","iconKey","health"));
                 if (Boolean.TRUE.equals(detail.getNeedsCohabitation()))
                     statuses.add(Map.of("code","COHABITATION","label","合笼","iconKey","cohabitation"));
+                // 特殊饲养明细：每个选中项都是一个**独立状态标签**（码 = SF_ + item_code、标签取码表中文名，
+                // 与上面五个不重名）。图标沿用 feeding —— 都是特殊饲养一族的细项，标签本身已说清「需/勿 × 食/水」。
+                for (String itemCode : detailCodes.getOrDefault(detail.getAnimalCageId(), List.of())) {
+                    statuses.add(Map.of(
+                            "code", CageStatusIntervalService.DETAIL_STATUS_PREFIX + itemCode,
+                            "label", detailLabels.getOrDefault(itemCode, itemCode),
+                            "iconKey", "feeding"));
+                }
                 gc.put("specialStatuses", statuses);
 
                 // pi_name 已退役（与 project_pi_name 同义，只保留后者）：固定表仍有存量旧值，

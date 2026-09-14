@@ -53,6 +53,8 @@ public class CageAlertViolationService {
     private final CageStatusAlertMapper alertMapper;
     private final CageCellIndexMapper cellIndexMapper;
     private final CageCellDetailMapper cellDetailMapper;
+    /** 状态码 → 中文名（含特殊饲养明细，名字在码表里）—— 与阈值配置/引擎标签同一出处 */
+    private final CageAlertRuleService alertRuleService;
 
     public CageAlertViolationService(TwinViolationRuleService ruleService,
                                      TwinCageStatusViolationMapper cageStatusViolationMapper,
@@ -60,7 +62,8 @@ public class CageAlertViolationService {
                                      AroService aroService,
                                      CageStatusAlertMapper alertMapper,
                                      CageCellIndexMapper cellIndexMapper,
-                                     CageCellDetailMapper cellDetailMapper) {
+                                     CageCellDetailMapper cellDetailMapper,
+                                     CageAlertRuleService alertRuleService) {
         this.ruleService = ruleService;
         this.cageStatusViolationMapper = cageStatusViolationMapper;
         this.violationService = violationService;
@@ -68,6 +71,7 @@ public class CageAlertViolationService {
         this.alertMapper = alertMapper;
         this.cellIndexMapper = cellIndexMapper;
         this.cellDetailMapper = cellDetailMapper;
+        this.alertRuleService = alertRuleService;
     }
 
     // ── 预填 ──
@@ -109,7 +113,7 @@ public class CageAlertViolationService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("animalCageId", String.valueOf(animalCageId));
         out.put("statusCode", code);
-        out.put("statusLabel", CageAlertRuleService.STATUS_LABELS.getOrDefault(code, code));
+        out.put("statusLabel", statusLabelOf(code));
         out.put("shelveId", str(index == null ? null : index.get("shelveId")));
         out.put("positionLabel", positionLabel);
         out.put("positionX", index == null ? null : index.get("positionX"));
@@ -129,10 +133,15 @@ public class CageAlertViolationService {
     /**
      * 告警升级成 ACTIVE 时挂的旁路：命中规则才发违规（父记录 + 展开成员），没规则返回 null。
      *
-     * <p>幂等靠 {@code cage_status_alert.violation_id IS NULL} 的条件回填：先建父记录、再认领，
+     * <p>幂等三道，按代价从便宜到贵：
+     * ① 该笼位该状态**还挂着未结（ACTIVE）的父违规** → 跳过。这是「同一个未处理的问题只记一次」，
+     * 覆盖上游把状态字段反复置开/置关那类重复（每次都是新区间，按起算点拦不住；实测有笼位因此攒了 16 条）；
+     * ② 同一段超时（同笼位 + 同状态 + **同起算时刻**）已经挂过违规 → 跳过。覆盖引擎「撤销 → 重建」：
+     * 重建的行是**新 id**，按行 id 的守卫拦不住；起算点相同才算同一段，真重开区间该再发一次；
+     * ③ {@code cage_status_alert.violation_id IS NULL} 的条件回填：先建父记录、再认领，
      * 认领失败说明他人已回填（极端并发），撤掉刚建的空父记录即不产生第二条违规。
      *
-     * @return 新建违规父记录 id；没命中规则 / 无课题组 / 认领失败均返回 null
+     * @return 新建违规父记录 id；没命中规则 / 无课题组 / 前两道跳过 / 认领失败均返回 null
      */
     public Long publishIfWanted(long alertId, long animalCageId, String statusCode) {
         Map<String, Object> index = cellIndexMapper.lookupByAnimalCageId(animalCageId);
@@ -146,6 +155,22 @@ public class CageAlertViolationService {
         }
         if (!hasText(projectPiName)) {
             // 没课题组 → 展开不出成员，建了父记录也是空壳，与判定引擎同口径：只有 projectPiName 非空才展开
+            return null;
+        }
+        if (alertMapper.countPriorViolationForInterval(alertId) > 0) {
+            log.info("[cage-alert-violation] 告警 {} 所属这段超时已发过违规，跳过重复发布", alertId);
+            return null;
+        }
+        // 同一个未处理的问题只记一次：该笼位该状态还挂着未结的父违规就不再发。
+        // 只有笼位能定位（架/坐标齐备）时才判，否则宁可照发也不误杀。
+        Long shelveId = index == null ? null : toLong(index.get("shelveId"));
+        Integer px = index == null ? null : toInt(index.get("positionX"));
+        Integer py = index == null ? null : toInt(index.get("positionY"));
+        if (shelveId != null && px != null && py != null
+                && cageStatusViolationMapper.selectActiveByRuleAndCage(
+                        rule.getId(), statusCode, shelveId, px, py) != null) {
+            log.info("[cage-alert-violation] 笼位 {} {} 的 {} 还有未结违规，跳过重复发布",
+                    index.get("shelveId"), positionLabel, statusCode);
             return null;
         }
 
@@ -262,10 +287,10 @@ public class CageAlertViolationService {
      * 必须原样留在文案里，等展示/扫码时由 TwinStudentViolationService#applyTemplateVariables 按当事人替换。
      * 渲染器没有「只替换 extras」的入口，把三个标准变量传成它们自己（原样占位）即等价于跳过。
      *
-     * <p>${status} 用中文名（复用 {@link CageAlertRuleService#STATUS_LABELS}），
+     * <p>${status} 用中文名（{@link CageAlertRuleService#labelOf}：五个固定状态 + 特殊饲养明细查码表），
      * ${cage} 用「架子名 + 映射坐标」（见 {@link #cageDisplay}）。
      */
-    private static String renderCageText(String tpl, String statusCode, Map<String, Object> index) {
+    private String renderCageText(String tpl, String statusCode, Map<String, Object> index) {
         if (tpl == null) return "";
         return ViolationTextTemplateRenderer.render(
                 tpl,
@@ -275,21 +300,25 @@ public class CageAlertViolationService {
     }
 
     /** 没命中规则时的保守兜底：状态中文名 + 笼位（架子 + 映射坐标）。 */
-    private static String fallbackText(String statusCode, Map<String, Object> index) {
+    private String fallbackText(String statusCode, Map<String, Object> index) {
         return statusLabelOf(statusCode) + "，笼位 " + cageDisplay(index);
     }
 
-    /** 状态码 → 中文名；未知 / 空回退成状态码本身，绝不 NPE。 */
-    private static String statusLabelOf(String statusCode) {
+    /** 状态码 → 中文名；未知 / 空回退成状态码本身，绝不 NPE、绝不回 null（调用方要塞进 Map.of）。 */
+    private String statusLabelOf(String statusCode) {
         if (statusCode == null) return "";
-        return CageAlertRuleService.STATUS_LABELS.getOrDefault(statusCode, statusCode);
+        String label = alertRuleService.labelOf(statusCode);
+        return label == null || label.isBlank() ? statusCode : label;
     }
 
     /**
      * 文案里的 ${cage}：架子名 + 映射坐标，形如 {@code 201A-1 A-9}；
      * 架子名缺失只给坐标，两者都没有给 "?"。架子名取 index map 的 {@code shelveName}。
+     *
+     * <p>包可见（非 private）：同包的 {@code CageStatusNotifyService} 拼通知变量时复用同一份口径，
+     * 免得「违规文案一套坐标、通知文案另一套」。业务代码勿在别处调用。
      */
-    private static String cageDisplay(Map<String, Object> index) {
+    static String cageDisplay(Map<String, Object> index) {
         String pos = mappedPositionLabel(index);
         String shelve = str(index == null ? null : index.get("shelveName"));
         if (!hasText(pos)) return hasText(shelve) ? shelve : "?";
@@ -353,7 +382,7 @@ public class CageAlertViolationService {
      * 按原始文本与 special-status 概览的 {@code position} 做等值对齐，也是人工建单路径写入的格式，
      * 故不在此翻转；展示映射走 {@link #mappedPositionLabel}。
      */
-    private static String positionLabelOf(Map<String, Object> index) {
+    static String positionLabelOf(Map<String, Object> index) {
         if (index == null) return null;
         Integer x = toInt(index.get("positionX"));
         Integer y = toInt(index.get("positionY"));
@@ -371,7 +400,7 @@ public class CageAlertViolationService {
      * <p>改动必须双端同步：本仓库有过「前端预览与后端出成品两条渲染路径各写各的、结果对不上」的教训。
      * 硬编码 10 行货架（{@code 11 = 行数 + 1}），与前端一致。
      */
-    private static String mappedPositionLabel(Map<String, Object> index) {
+    static String mappedPositionLabel(Map<String, Object> index) {
         if (index == null) return null;
         Integer x = toInt(index.get("positionX"));
         Integer y = toInt(index.get("positionY"));

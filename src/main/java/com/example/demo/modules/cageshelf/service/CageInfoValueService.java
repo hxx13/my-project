@@ -2,9 +2,13 @@ package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.cageshelf.entity.CageCellDetail;
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelist;
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelistItem;
 import com.example.demo.modules.cageshelf.entity.CageInfoField;
 import com.example.demo.modules.cageshelf.entity.CageInfoValue;
 import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistItemMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper;
 import com.alibaba.fastjson2.JSON;
@@ -50,22 +54,33 @@ public class CageInfoValueService {
     /** 本地扩展字段（实验记录/照片/本地扩展数据），不属于 ARO 映射，锚定 cage_info_value。 */
     private static final Set<String> LOCAL_FIELD_CANONICALS = Set.of("experiment_desc", "images_json", "extra_data");
 
+    /** 特殊饲养明细：字段 canonical 与码表 code。真身在 {@link CageStatusIntervalService}
+     *  （状态码词表那一处），这里只做别名，免得两个服务各写一份字符串。 */
+    public static final String SPECIAL_DETAIL_CANONICAL = CageStatusIntervalService.DETAIL_CANONICAL;
+    public static final String SPECIAL_DETAIL_DICT = CageStatusIntervalService.DETAIL_DICT_CODE;
+
     private final CageInfoFieldMapper fieldMapper;
     private final CageInfoValueMapper valueMapper;
     private final CageCellDetailMapper detailMapper;
     private final CageFormAuditService auditService;
     private final CageIntermediateStateService intermediateStateService;
+    private final CageInfoCodelistMapper codelistMapper;
+    private final CageInfoCodelistItemMapper codelistItemMapper;
 
     public CageInfoValueService(CageInfoFieldMapper fieldMapper,
                                 CageInfoValueMapper valueMapper,
                                 CageCellDetailMapper detailMapper,
                                 CageFormAuditService auditService,
-                                CageIntermediateStateService intermediateStateService) {
+                                CageIntermediateStateService intermediateStateService,
+                                CageInfoCodelistMapper codelistMapper,
+                                CageInfoCodelistItemMapper codelistItemMapper) {
         this.fieldMapper = fieldMapper;
         this.valueMapper = valueMapper;
         this.detailMapper = detailMapper;
         this.auditService = auditService;
         this.intermediateStateService = intermediateStateService;
+        this.codelistMapper = codelistMapper;
+        this.codelistItemMapper = codelistItemMapper;
     }
 
     /** 读某笼位的全部表单值（字段字典 + 实例值），未填写返回 null 值行。 */
@@ -180,6 +195,143 @@ public class CageInfoValueService {
                     field.getCanonical(), field.getLabel(),
                     stringify(before), stringify(enable), operatorId);
         }
+        // 强绑定：特殊饲养关掉 → 明细一并清空（明细的审计同步成对出现，见 writeSpecialDetails）
+        if ("needs_special_feeding".equals(field.getCanonical()) && !enable) {
+            writeSpecialDetails(animalCageId, List.of(), operatorId);
+        }
+    }
+
+    /**
+     * 覆盖式写入「特殊饲养明细」子状态（多选）。
+     *
+     * <p>明细项是**动态**的（码表可加项），所以是整体覆盖而不是逐项接口：一次提交带上目标集合，
+     * 内部 diff 出增/减项、各写一条审计。审计行用「明细码」当 field_code（{@code SF_} + item_code）、
+     * 码表中文名当 field_name —— 折叠引擎只认「逐字段布尔前后值」，于是折叠、阈值、超时、违规
+     * 四条链零改动地复用，每个明细项天然拿到自己的区间。
+     *
+     * <p>强绑定：打明细必须建立在「特殊饲养 = on」之上；特殊饲养关掉时由 {@link #setStatus}
+     * 调 {@link #writeSpecialDetails} 清空（那条路不做前置校验，否则关不掉）。
+     */
+    @Transactional
+    public void setSpecialDetails(Long animalCageId, Collection<String> itemCodes, String operatorId) {
+        if (animalCageId == null) return;
+        Set<String> target = normalizeDetailCodes(itemCodes);
+        if (!target.isEmpty()) {
+            // 与 setStatus 打标记同一口径：只拦「加上去」这个方向（清空不受限，否则退不回来）
+            String busy = intermediateStateService.busyReason(animalCageId);
+            if (busy != null) {
+                throw new TwinBusinessException(409, busy + "，不能标记饲养状态");
+            }
+            if (!isStatusOn(animalCageId, "needs_special_feeding")) {
+                throw new TwinBusinessException(409, "请先标记「需特殊饲养」，再细化它的明细");
+            }
+        }
+        writeSpecialDetails(animalCageId, target, operatorId);
+    }
+
+    /** 值 + 逐项审计，**不含**「特殊饲养必须开着」的前置校验（清空路径要用）。 */
+    private void writeSpecialDetails(Long animalCageId, Collection<String> itemCodes, String operatorId) {
+        CageInfoField field = fieldMapper.selectByCanonical(SPECIAL_DETAIL_CANONICAL);
+        if (field == null || field.getId() == null) return; // 字段未播种 → 什么都不做（与缺字段同口径）
+        Set<String> target = normalizeDetailCodes(itemCodes);
+        LinkedHashSet<String> current = new LinkedHashSet<>(currentDetailCodes(animalCageId, field));
+        if (current.equals(target)) return; // 幂等：没变就不写、也不留审计
+
+        CageInfoValue v = new CageInfoValue();
+        v.setAnimalCageId(animalCageId);
+        v.setFieldId(field.getId());
+        v.setValueJson(JSON.toJSONString(new ArrayList<>(target)));
+        v.setFillSource("MANUAL");
+        valueMapper.upsert(v);
+
+        Map<String, String> labels = detailItemLabels();
+        // 兼容：选中集合**同时镜像**进「特殊饲养名称」（人读拼接「需加食、勿加水」；清空写空串）。
+        // 那是 ARO 侧 specialBreedingName 的本地落点，下游只认它。这一笔不写审计 ——
+        // 明细项自己已有逐项审计行，再记一笔名称变更只是双份噪音。
+        writeDetailName(animalCageId, target, labels);
+
+        for (String code : target) {
+            if (!current.contains(code)) logDetailAudit(animalCageId, code, labels, false, true, operatorId);
+        }
+        for (String code : current) {
+            if (!target.contains(code)) logDetailAudit(animalCageId, code, labels, true, false, operatorId);
+        }
+    }
+
+    /** 把明细选中集合拼成人读串写进「特殊饲养名称」字段（空集合 → 空串）。 */
+    private void writeDetailName(Long animalCageId, Collection<String> target, Map<String, String> labels) {
+        CageInfoField nameField = fieldMapper.selectByCanonical(CageStatusIntervalService.DETAIL_NAME_CANONICAL);
+        if (nameField == null || nameField.getId() == null) return;
+        String joined = target.stream().map((c) -> labels.getOrDefault(c, c)).collect(java.util.stream.Collectors.joining("、"));
+        CageInfoValue nv = new CageInfoValue();
+        nv.setAnimalCageId(animalCageId);
+        nv.setFieldId(nameField.getId());
+        nv.setValueString(joined);
+        nv.setFillSource("MANUAL");
+        valueMapper.upsert(nv);
+    }
+
+    /** 明细审计行：field_code 用明细码（{@code SF_} + item_code），field_name 用码表中文名。 */
+    private void logDetailAudit(Long animalCageId, String itemCode, Map<String, String> labels,
+                                boolean before, boolean after, String operatorId) {
+        String statusCode = CageStatusIntervalService.DETAIL_STATUS_PREFIX + itemCode;
+        auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
+                "animal_cage", animalCageId, String.valueOf(animalCageId),
+                statusCode, labels.getOrDefault(itemCode, itemCode),
+                stringify(before), stringify(after), operatorId);
+    }
+
+    private static Set<String> normalizeDetailCodes(Collection<String> itemCodes) {
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (itemCodes != null) {
+            for (String c : itemCodes) if (c != null && !c.isBlank()) out.add(c.trim());
+        }
+        return out;
+    }
+
+    private List<String> currentDetailCodes(Long animalCageId, CageInfoField field) {
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
+            if (v != null && field.getId().equals(v.getFieldId())) return parseMulti(v.getValueJson());
+        }
+        return List.of();
+    }
+
+    /**
+     * 批量读「特殊饲养明细」选中集合 → cageId:item_code 列表（网格的状态标签要用）。
+     * 只回非空的，避免调用方到处判空。
+     */
+    public Map<Long, List<String>> detailCodesByCage(List<Long> cageIds) {
+        Map<Long, List<String>> out = new LinkedHashMap<>();
+        if (cageIds == null || cageIds.isEmpty()) return out;
+        CageInfoField field = fieldMapper.selectByCanonical(SPECIAL_DETAIL_CANONICAL);
+        if (field == null || field.getId() == null) return out;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageIds(cageIds)) {
+            if (v == null || v.getAnimalCageId() == null || !field.getId().equals(v.getFieldId())) continue;
+            List<String> codes = parseMulti(v.getValueJson());
+            if (!codes.isEmpty()) out.put(v.getAnimalCageId(), codes);
+        }
+        return out;
+    }
+
+    /** 明细项的 item_code → 中文名（审计留痕 / 网格状态标签共用）；码表没配到就退回用码本身。 */
+    public Map<String, String> detailItemLabels() {
+        Map<String, String> out = new HashMap<>();
+        CageInfoCodelist cl = codelistMapper.selectByCode(SPECIAL_DETAIL_DICT);
+        if (cl == null || cl.getId() == null) return out;
+        for (CageInfoCodelistItem it : codelistItemMapper.selectByCodelistId(cl.getId())) {
+            if (it != null && it.getItemCode() != null) out.put(it.getItemCode(), it.getItemLabel());
+        }
+        return out;
+    }
+
+    /** 该笼位某个状态标记当前是否 on。 */
+    private boolean isStatusOn(Long animalCageId, String canonical) {
+        CageInfoField f = fieldMapper.selectByCanonical(canonical);
+        if (f == null || f.getId() == null) return false;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
+            if (v != null && f.getId().equals(v.getFieldId())) return Boolean.TRUE.equals(v.getValueBool());
+        }
+        return false;
     }
 
     /** 批量读状态标记布尔（仅 5 个状态字段）→ cageId:{canonical:boolean}，供网格/详情从表单读侧切读。 */

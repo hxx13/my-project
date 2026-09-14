@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS cage_alert_default (
     threshold_days INT         NOT NULL COMMENT '持续多少天触发；0=状态一出现即触发',
     action         VARCHAR(16) NOT NULL COMMENT 'HIGHLIGHT | VIOLATION | BOTH',
     enabled        TINYINT     NOT NULL DEFAULT 1,
+    start_value    TINYINT     NOT NULL DEFAULT 1 COMMENT '计时起点：1=出现 1 开始(1→0 结束)；0=出现 0 开始(0→1 结束)',
     updated_at     DATETIME    NULL,
     PRIMARY KEY (status_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='笼位特殊状态告警全局默认阈值（超管配置）';
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS cage_region_alert_rule (
     threshold_days INT         NOT NULL COMMENT '持续多少天触发；0=状态一出现即触发',
     action         VARCHAR(16) NOT NULL COMMENT 'HIGHLIGHT | VIOLATION | BOTH',
     enabled        TINYINT     NOT NULL DEFAULT 1 COMMENT '1=启用；0=关闭',
+    start_value    TINYINT     NOT NULL DEFAULT 1 COMMENT '计时起点：1=出现 1 开始(1→0 结束)；0=出现 0 开始(0→1 结束)',
     configured_by  VARCHAR(64) NOT NULL COMMENT '配置人 sys_user.id（该区域的饲养组长或超管）',
     created_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     DATETIME    NULL,

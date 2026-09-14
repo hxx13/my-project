@@ -2,11 +2,13 @@ package com.example.demo.modules.cageshelf.scheduler;
 
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.component.SocketRoomAssigner;
+import com.example.demo.modules.cageshelf.entity.CageFormAuditLog;
 import com.example.demo.modules.cageshelf.entity.CageStatusAlert;
 import com.example.demo.modules.cageshelf.mapper.CageStatusAlertMapper;
 import com.example.demo.modules.cageshelf.service.CageAlertRuleService;
 import com.example.demo.modules.cageshelf.service.CageAlertRuleService.EffectiveAlertRule;
 import com.example.demo.modules.cageshelf.service.CageAlertViolationService;
+import com.example.demo.modules.cageshelf.service.CageStatusNotifyService;
 import com.example.demo.modules.cageshelf.service.CageStatusIntervalService;
 import com.example.demo.modules.cageshelf.service.CageStatusIntervalService.StatusInterval;
 import org.slf4j.Logger;
@@ -18,6 +20,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,18 +48,38 @@ public class CageStatusAlertScheduler {
     private final CageAlertRuleService ruleService;
     private final CageStatusAlertMapper mapper;
     private final CageAlertViolationService violationService;
+    private final CageStatusNotifyService notifyService;
     private final SocketIOServer socketServer;
+    private final org.springframework.scheduling.TaskScheduler taskScheduler;
 
     public CageStatusAlertScheduler(CageStatusIntervalService intervalService,
                                     CageAlertRuleService ruleService,
                                     CageStatusAlertMapper mapper,
                                     CageAlertViolationService violationService,
-                                    @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer) {
+                                    CageStatusNotifyService notifyService,
+                                    @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer,
+                                    @org.springframework.beans.factory.annotation.Qualifier("cageStatusAlertTaskScheduler") org.springframework.scheduling.TaskScheduler taskScheduler) {
         this.intervalService = intervalService;
         this.ruleService = ruleService;
         this.mapper = mapper;
         this.violationService = violationService;
+        this.notifyService = notifyService;
         this.socketServer = socketServer;
+        this.taskScheduler = taskScheduler;
+    }
+
+    /**
+     * 立刻触发一轮扫描。配置刚改完时用 —— 只靠 5 分钟的 tick，用户盯着屏幕会以为「关了没用」。
+     *
+     * <p>投到本引擎**自己的线程池**（不在调用线程里跑全量折叠，也不阻塞 HTTP 响应）。
+     * 重复触发是安全的：scan() 自带 GET_LOCK，线程池又只有 1 个线程，不会重入也不会并发跑两轮。
+     */
+    public void scanSoon() {
+        try {
+            taskScheduler.schedule(this::scan, java.time.Instant.now());
+        } catch (Exception e) {
+            log.warn("[cage-status-alert] 触发即时扫描失败: {}", e.getMessage());
+        }
     }
 
     @Scheduled(fixedDelayString = "${app.cage-status-alert.interval-ms:300000}",
@@ -84,13 +107,29 @@ public class CageStatusAlertScheduler {
     private void runOnce() {
         LocalDateTime now = LocalDateTime.now();
 
-        // 为什么 fold(null) 折全部历史而不是折近 N 天：若只折近 N 天，一个「窗口之前就开着、
+        // 为什么折全部历史而不是折近 N 天：若只折近 N 天，一个「窗口之前就开着、
         // 至今未关」的区间在窗口内一行都没有，会整条漏掉——它超时了却永远不触发。传 null 就没有这个盲区。
         // ponytail: 代价是每轮全量折叠全部审计流，随审计行数线性增长；告警是低频轮询（默认 5 分钟），
         // 审计表有 (category,target_type,field_code,created_at) 索引可走。若审计行数涨到全折叠明显拖慢轮询，
         // 升级路径是增量水位线折叠：引擎自记 last_seen 审计 id 水位，只折新行并增量维护 open 集合，
         // 新开区间的起算点仍回查首条（一次性），不再每轮全扫。
-        List<StatusInterval> intervals = intervalService.fold(null);
+        //
+        // 取数顺序（不能颠倒）：折叠要用每个 (笼位,状态) 的计时起点（区域级配置），而笼位集合由审计行给出，
+        // 所以必须「先取行 → 解析方向 → 再折叠」。规则对**审计流里出现过的全部笼位**一次解析完，
+        // 它是后面 decide 所需集合的超集，于是 decide 直接复用，不再解析第二遍。
+        // ponytail: 代价是 resolveForCages 的笼位集合从「有开区间的」变成「审计流出现过的全部」，
+        // regionsOfCages 那一次 IN 会变大（仍是 3 条批量查询）。若明显拖慢，按 2000 分批即可
+        // （对齐 /cage-status-alert/active 的 MAX_CAGE_IDS 分批）。
+        List<CageFormAuditLog> auditRows = intervalService.loadStatusFieldRows(null);
+        Set<Long> auditedCages = auditRows.stream()
+                .map(CageFormAuditLog::getTargetId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        Map<Long, List<EffectiveAlertRule>> rules =
+                auditedCages.isEmpty() ? Map.of() : ruleService.resolveForCages(auditedCages);
+
+        List<StatusInterval> intervals =
+                intervalService.foldRows(auditRows, null, startValuesOf(rules));
 
         List<StatusInterval> open = new ArrayList<>();
         List<StatusInterval> closed = new ArrayList<>();
@@ -98,10 +137,6 @@ public class CageStatusAlertScheduler {
             if (iv.removedAt() == null) open.add(iv);
             else closed.add(iv);
         }
-
-        Set<Long> cageIds = open.stream().map(StatusInterval::animalCageId).collect(Collectors.toSet());
-        Map<Long, List<EffectiveAlertRule>> rules =
-                cageIds.isEmpty() ? Map.of() : ruleService.resolveForCages(cageIds);
 
         Map<String, ExistingAlert> existing = loadExisting();
         List<Intent> intents = decide(open, closed, rules, existing, now);
@@ -116,7 +151,7 @@ public class CageStatusAlertScheduler {
                     CageStatusAlert row = insertRow(in, CageStatusAlert.STATE_ACTIVE);
                     mapper.insert(row);
                     createdActive++;
-                    maybePublishViolation(row.getId() == null ? 0L : row.getId(), in);
+                    maybeEscalate(row.getId() == null ? 0L : row.getId(), in);
                 }
                 case CREATE_PENDING -> {
                     mapper.insert(insertRow(in, CageStatusAlert.STATE_PENDING));
@@ -125,7 +160,7 @@ public class CageStatusAlertScheduler {
                 case PROMOTE_TO_ACTIVE -> {
                     mapper.promoteToActive(in.targetId(), in.firedAt(), in.thresholdDays(), in.action());
                     promoted++;
-                    maybePublishViolation(in.targetId(), in);
+                    maybeEscalate(in.targetId(), in);
                 }
                 case CLEAR -> {
                     mapper.clear(in.targetId(), in.clearedAt());
@@ -144,6 +179,19 @@ public class CageStatusAlertScheduler {
         }
     }
 
+    /** 把每笼位五条规则里的计时起点摊成 (笼位 → 状态 → 起点)，供折叠时按 (笼位,状态) 查。 */
+    private static Map<Long, Map<String, Boolean>> startValuesOf(Map<Long, List<EffectiveAlertRule>> rules) {
+        Map<Long, Map<String, Boolean>> out = new HashMap<>(rules.size());
+        for (Map.Entry<Long, List<EffectiveAlertRule>> e : rules.entrySet()) {
+            Map<String, Boolean> perCage = new HashMap<>();
+            for (EffectiveAlertRule r : e.getValue()) {
+                perCage.put(r.statusCode(), r.startValue());
+            }
+            out.put(e.getKey(), perCage);
+        }
+        return out;
+    }
+
     /** 告警真正变化时广播给管理端（console:live），只带变化计数让前端刷，不塞整份列表。 */
     private void broadcastChange(int changed) {
         if (socketServer == null) return;
@@ -158,11 +206,34 @@ public class CageStatusAlertScheduler {
     }
 
     /**
-     * 告警升级成 ACTIVE（或非 estimated 首触）时挂的旁路：动作含 VIOLATION 才发违规。
-     * 建违规失败只打 warn，绝不让它影响告警本体（告警已落库，这里不能抛）。
+     * 这两个状态**不是违规行为**（用户 2026-09-14 定的口径）：无论阈值里配成什么动作，都不新建违规，
+     * 改成走推送中心的统一源发通知（见 {@link CageStatusNotifyService}）。
+     *
+     * <p>判定放在 {@link #maybeEscalate} —— 引擎里唯一的「升级出口」，一个口子收住所有路径。
+     * 特殊饲养明细（{@code SF_} 前缀）跟着特殊饲养走同一口径。
      */
-    private void maybePublishViolation(long alertId, Intent in) {
+    private static final Set<String> NON_VIOLATION_STATUSES = Set.of("SPECIAL_FEEDING", "COHABITATION");
+
+    /** 该状态是否属于「非违规」（特殊饲养 / 合笼 / 特殊饲养明细）。包可见：单测直接钉这条口径。 */
+    static boolean isNonViolationStatus(String statusCode) {
+        if (statusCode == null) return false;
+        return NON_VIOLATION_STATUSES.contains(statusCode)
+                || statusCode.startsWith(CageStatusIntervalService.DETAIL_STATUS_PREFIX);
+    }
+
+    /**
+     * 告警升级成 ACTIVE（或非 estimated 首触）时挂的旁路：动作含「违规/通知」档才动手。
+     *
+     * <p>动作语义按状态分岔：一般状态 → 建违规（原有行为不变）；
+     * **特殊饲养 / 合笼 / 明细** → 同一时刻只发通知，不建违规。
+     * 建违规/发通知失败都只打 warn，绝不让它影响告警本体（告警已落库，这里不能抛）。
+     */
+    private void maybeEscalate(long alertId, Intent in) {
         if (!("VIOLATION".equals(in.action()) || "BOTH".equals(in.action()))) return;
+        if (isNonViolationStatus(in.statusCode())) {
+            notifyService.notifyFired(alertId);
+            return;
+        }
         try {
             violationService.publishIfWanted(alertId, in.animalCageId(), in.statusCode());
         } catch (Exception e) {
@@ -250,11 +321,28 @@ public class CageStatusAlertScheduler {
             if (!iv.estimated()) {
                 // 起算点可观测：直接按 addedAt 到 now 的整天数判。
                 long days = Duration.between(iv.addedAt(), now).toDays();
-                if (days >= rule.thresholdDays() && existing == null) {
-                    out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.addedAt(), now,
-                            rule.thresholdDays(), actionOf(rule), false));
+                boolean qualifies = days >= rule.thresholdDays();
+                if (existing != null && CageStatusAlert.STATE_ACTIVE.equals(existing.state())
+                        && !iv.addedAt().equals(existing.startedAt())) {
+                    // 存量行的起算点是**旧区间**的（标记 → 取消 → 再标记）：展示的「已持续 N 天」会偏大。
+                    // 同一轮里先撤销、再按当前区间重建 —— 不跨轮所以看不到空窗，重建后快照就与当前区间一致了。
+                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), now));
+                    if (qualifies) {
+                        out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.addedAt(), now,
+                                rule.thresholdDays(), actionOf(rule), false));
+                    }
+                } else if (qualifies) {
+                    if (existing == null) {
+                        out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.addedAt(), now,
+                                rule.thresholdDays(), actionOf(rule), false));
+                    }
+                    // 已有非 CLEARED 行则幂等不重复触发。
+                } else if (existing != null && CageStatusAlert.STATE_ACTIVE.equals(existing.state())) {
+                    // 阈值被调高到当前持续时间之上（7 调到 999）：存量告警已不成立，必须撤销。
+                    // 不撤的话「改阈值」对已触发的告警完全无效，弹窗还挂着建行时快照的旧阈值。
+                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), now));
                 }
-                // 未到阈值不落行；已有非 CLEARED 行则幂等不重复触发。
+                // 未到阈值且本来就没行 → 不落行。
             } else {
                 // estimated：起算点不可观测，见类注释。首次见到 → 建基线，绝不触发。
                 if (existing == null) {
@@ -272,8 +360,23 @@ public class CageStatusAlertScheduler {
             }
         }
 
+        /*
+          同一 (笼位,状态) 可能有多条区间：标记 → 取消 → 再标记，折叠出来就是「一条历史闭合 + 一条开着」。
+          active_key 是 cage:status（**每个笼位每个状态只有一行**），所以这里必须按 key 去重：
+          一条历史闭合区间绝不能清掉当前开着那条区间名下的告警行 ——
+          清了下一轮 existing 就是 null，又会 CREATE_ACTIVE，于是「清→建→清」每轮循环，
+          每轮发一条违规 + 一条通知。
+          真实踩过：特殊饲养标记→取消→再标记，之后每 5 分钟一条违规，一笼位连发 14 条，
+          cleared_at 全是那条历史区间的闭合时刻，就是这么来的。
+        */
+        Set<String> openKeys = new HashSet<>();
+        for (StatusInterval iv : open) {
+            openKeys.add(activeKeyOf(iv.animalCageId(), iv.statusCode()));
+        }
+
         for (StatusInterval iv : closed) {
             String key = activeKeyOf(iv.animalCageId(), iv.statusCode());
+            if (openKeys.contains(key)) continue; // 现在还开着 → 这条历史区间不负责清它
             ExistingAlert existing = existingByKey.get(key);
             if (existing != null) {
                 out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), iv.removedAt()));

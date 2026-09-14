@@ -581,27 +581,28 @@ public class CageOrderReservationService {
      *
      * <p>不同步的话订单与笼位会永久分叉：订单行取购物车数量，笼位表单还是加购那一刻的值，
      * 审核通过时又按旧快照重写一遍表单，两处永远对不上。
+     *
+     * <p>按 cart_id 取到的活跃预定**全部**处理，不只第一条：数据库没在 cart_id 上压唯一约束
+     * （只有普通索引），正常路径一行只挂一条，但少同步一条就是少一片笼位的分叉。
      */
     @Transactional(rollbackFor = Exception.class)
     public void syncQuantityForCart(Long cartId, Integer quantity) {
         if (cartId == null || quantity == null || quantity < 1) return;
-        List<CageOrderReservation> rows = reservationMapper.listActiveByCartIds(List.of(cartId));
-        if (rows.isEmpty()) return;
-        CageOrderReservation r = rows.get(0);
-        if (Objects.equals(r.getQuantity(), quantity)) return;
-
-        Map<String, Object> written = readWritten(r);
-        Map<String, Object> patch = new LinkedHashMap<>();
-        String countField = countFieldFor(r.getSex());
-        if (countField != null) {
-            written.put(countField, quantity);
-            patch.put(countField, quantity);
+        for (CageOrderReservation r : reservationMapper.listActiveByCartIds(List.of(cartId))) {
+            if (Objects.equals(r.getQuantity(), quantity)) continue;
+            Map<String, Object> written = readWritten(r);
+            Map<String, Object> patch = new LinkedHashMap<>();
+            String countField = countFieldFor(r.getSex());
+            if (countField != null) {
+                written.put(countField, quantity);
+                patch.put(countField, quantity);
+            }
+            r.setQuantity(quantity);
+            r.setWrittenJson(toJson(written));
+            reservationMapper.updateSpecQuantityWritten(
+                    r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), r.getStrainName(), r.getWrittenJson());
+            if (!patch.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), patch);
         }
-        r.setQuantity(quantity);
-        r.setWrittenJson(toJson(written));
-        reservationMapper.updateSpecQuantityWritten(
-                r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), r.getStrainName(), r.getWrittenJson());
-        if (!patch.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), patch);
     }
 
     /** 性别 → 笼位数量字段。性别识别不出就不猜男/女，数量账交给饲养端到货时点。 */

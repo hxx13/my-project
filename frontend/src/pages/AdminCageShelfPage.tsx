@@ -76,7 +76,7 @@ import {
   executeCageBoxAction, type CageBoxAction, type CageBoxActionRequest,
   cancelCageBoxColor, ACTION_CANCEL_COLOR, type CancelColor,
   updateAnimalCage, type AnimalCageUpdatePayload,
-  fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry, type PoolCell,
+  fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, saveSpecialDetails, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry, type PoolCell,
   syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds, fetchSyncLocks, saveCageDivision,
   searchPersonnelByKeyword,
   fetchCageModeVisible,
@@ -143,8 +143,8 @@ import MyRegionDialog from "@/features/cage-shelf/components/MyRegionDialog";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import { ShelfGrid, BookmarkShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
-import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, statusPhotoKeys, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone } from "@/features/cage-shelf/constants";
-import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
+import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, statusPhotoKeys, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone, SPECIAL_DETAIL_CANONICAL, SPECIAL_DETAIL_DICT, SPECIAL_DETAIL_STATUS_PREFIX, detailCodesOfValues } from "@/features/cage-shelf/constants";
+import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import CageScanProgressBanner from "@/features/cage-shelf/components/CageScanProgressBanner";
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
@@ -157,6 +157,36 @@ type ShelfTab="bookmarks"|"filter";
 
 /** 两个状态动作集是否相同（顺序无关）—— 判断「改回原样」用 */
 const sameActions=(a:Set<CageBoxAction>,b:Set<CageBoxAction>)=>a.size===b.size&&[...a].every(x=>b.has(x));
+
+/** 两个字符串集合是否相同（顺序无关）—— 特殊饲养明细的「改回原样」判定。undefined 按空集。 */
+const sameDetailSets=(a?:Set<string>,b?:Set<string>)=>{const x=a??new Set<string>(),y=b??new Set<string>();return x.size===y.size&&[...x].every(v=>y.has(v));};
+// detailCodesOfValues（表单值 → 明细集合）已挪到 constants，三端共用一份。
+
+/** 取格子的 cageBoxVo（ARO 侧嵌套两层，两种写法都可能出现）。 */
+const cvoOf=(cell:any):Record<string,any>=>{
+  const cbi=cell?.cageBoxInfo as Record<string,any>|undefined;
+  return (cbi?.cageBoxVo??cbi?.["cageBoxVo"]??{}) as Record<string,any>;
+};
+
+/** 取格子的笼盒编码（cageBoxVo 三层依次回落）。 */
+const cageBoxCodeOf=(cell:any):string=>{
+  const cbi=cell?.cageBoxInfo as Record<string,any>|undefined;
+  return String(cell?.cageBoxCode ?? cbi?.cageBoxCode ?? cvoOf(cell).cageBoxCode ?? cvoOf(cell)["cageBoxCode"] ?? "");
+};
+
+/**
+ * 该笼位**服务端**当前的状态动作集合（本地取表单值、ARO 取快照 + 两个旁证字段）。
+ * 新建编辑缓存条目时用它播种 —— 置空的话面板会把已标记的状态显示成未标记，
+ * 而明细块的强绑定判据读的正是「需特殊饲养」这一位（勾一下明细块就自己没了）。
+ */
+const serverActionsOfCell=(cell:any,formValues:CageInfoValueRow[]|null,dataSource:"aro"|"local"):Set<CageBoxAction>=>{
+  const cbi=cell?.cageBoxInfo as Record<string,any>|undefined;
+  const cvo=cvoOf(cell);
+  const s=new Set<CageBoxAction>(dataSource==="local"?actionsFromFormValues(formValues):actionsFromCageBoxInfo(cbi,cvo));
+  if((typeof cbi?.specialBreedingName==="string"&&cbi.specialBreedingName.trim())||(typeof cvo.specialBreedingName==="string"&&cvo.specialBreedingName.trim())) s.add("SPECIAL_BREEDING");
+  if(cbi?.animalHealthEntity!=null||cvo.animalHealthEntity!=null) s.add("HEALTH_CHECK");
+  return s;
+};
 
 /* ==================================================================
  * Inner — 核心业务组件
@@ -232,7 +262,10 @@ function Inner(){
   const addPendingRef = useRef<(cageId: string, extra?: Partial<PendingItem>) => void>(() => {});
   /** 矩形框选一次性入缓冲（与 addPendingRef 同理，供声明在前的 toggle 处理函数调用） */
   const addRangeRef = useRef<(mode: string, shelveId: string, ax: number, ay: number, bx: number, by: number, accept: (c: unknown) => boolean) => void>(() => {});
-  const[scanCache,setScanCache]=useState<Map<string,{cell:CageShelfCell;code:string;initialActions:Set<CageBoxAction>;currentActions:Set<CageBoxAction>;images:string[];notes:string}>>(new Map());
+  const[scanCache,setScanCache]=useState<Map<string,{cell:CageShelfCell;code:string;initialActions:Set<CageBoxAction>;currentActions:Set<CageBoxAction>;images:string[];notes:string;
+    /** 特殊饲养明细：进缓存时的服务端选中集合 / 当前目标集合（item_code）。
+     *  可选 —— 没动过明细的条目不带这两个键，undefined 即「本次不改明细」。 */
+    initialDetails?:Set<string>;currentDetails?:Set<string>}>>(new Map());
   const[lastScannedKey,setLastScannedKey]=useState<string|null>(null);
   const[actionSubmitting,setActionSubmitting]=useState(false);
   // ═══════════════════════════════════════════════════════════
@@ -352,6 +385,15 @@ function Inner(){
   // ═══════════════════════════════════════════════════════════
   /* ---- AUP 搜索（独立组件 AupSearchBar） ---- */
   const{data:aupList=[]}=useQuery({queryKey:["allocationAups"],queryFn:fetchAllocationAups,staleTime:30*60*1000,enabled:pageMode==="allocate"||reserveMode});
+  /**
+   * 特殊饲养明细的可选项：读码表（维护人可随时加项，所以不写死在前端）。
+   * 全页一份、10 分钟陈旧期即可 —— 改码表后刷一下页面就生效。
+   */
+  const{data:specialDetailOptions=[]}=useQuery({
+    queryKey:["specialDetailOptions"],
+    queryFn:async()=>{const d=await fetchCageInfoCodelist(SPECIAL_DETAIL_DICT);return d.items??[];},
+    staleTime:10*60*1000,
+  });
 
   // Static tree — fetched once, never refetched
   const emptyTree = useMemo(() => [] as CageShelfTreeNode[], []);
@@ -2219,6 +2261,11 @@ function Inner(){
         if (!meta || !next.items.some((x) => x.cageId === cageId)) continue;
         const toAdd = [...e.currentActions].filter((a) => !e.initialActions.has(a));
         const toRemove = [...e.initialActions].filter((a) => !e.currentActions.has(a));
+        /* 明细同理：只有**真的改了**才带上目标集合；没改就显式置 undefined —— upsertItem 是 {...old,...item} 合并，
+           不显式覆盖的话上一轮的 details 会一直粘着（actions 那边也是这个写法）。 */
+        const detailChanged = (e.initialDetails !== undefined || e.currentDetails !== undefined)
+          && !sameDetailSets(e.currentDetails, e.initialDetails);
+        const details = detailChanged ? [...(e.currentDetails ?? [])] : undefined;
         next = upsertItem(next, toAdd.length || toRemove.length
           ? {
               cageId, ...meta,
@@ -2226,13 +2273,14 @@ function Inner(){
               cageBoxCode: e.code,
               actions: toAdd,
               removedActions: toRemove,
+              details,
             }
-          : { cageId, ...meta, actions: [], removedActions: [] });
+          : { cageId, ...meta, actions: [], removedActions: [], details });
       }
       for (const it of next.items) {
         if (cached.has(it.cageId)) continue;
-        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0) {
-          next = upsertItem(next, { ...it, actions: [], removedActions: [] });
+        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0 || it.details !== undefined) {
+          next = upsertItem(next, { ...it, actions: [], removedActions: [], details: undefined });
         }
       }
       return next;
@@ -2251,6 +2299,12 @@ function Inner(){
       const removes = it.removedActions ?? [];
       const roomId = String(it.roomId ?? aRid ?? "");
       try {
+        /*
+          特殊饲养明细（多选，整体覆盖）：真相源是本地表单 cage_info_value，
+          两种数据源都走同一条本地写口（ARO 侧没有对应的多选概念）。
+          undefined = 本次不动明细；空数组 = 清空。
+        */
+        if (it.details !== undefined) await saveSpecialDetails(it.cageId, it.details);
         if (dataSource === "local") {
           for (const a of adds) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, true, it.cageBoxCode);
           for (const a of removes) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, false, it.cageBoxCode);
@@ -2285,6 +2339,32 @@ function Inner(){
    * 刻意不写 scanCache —— 缓存一有差异，同步 effect 就会把这笼位拉进「待提交」，
    * 那就又绕回缓存了。写完刷新网格与表单值，界面上的颜色直接来自服务端。
    */
+  /**
+   * 「直接改」模式下点一个明细项：**立即写盘**（与状态动作的 applyEditActionNow 同一语义）。
+   *
+   * <p>为什么这条不能复用手势入缓存的 toggleEditDetail：缓存 → 待提交的同步 effect 只在
+   * `editStaged`（拖色区）下跑；直接改模式下它直接 return，暂存进去的东西没人搬，提交时是空的。
+   */
+  const writeDetailNow = useCallback(async (
+    cell: CageShelfCell, sid: string, itemCode: string, on: boolean,
+  ) => {
+    const cageId = cageIdOfCell(cell);
+    if (!cageId) { toast.error("该笼位缺少 ID"); return; }
+    const next = new Set(dataSource === "local" ? detailCodesOfValues(editFormValues) : []);
+    if (on) next.delete(itemCode); else next.add(itemCode);
+    setEditDirectBusy(true);
+    try {
+      await saveSpecialDetails(cageId, [...next]);
+      toast.success(on ? "已取消" : "已标记");
+      setDetailReloadKey((k) => k + 1);
+      if (dataSource === "local") fetchCageInfoValues(cageId).then(setEditFormValues).catch(() => {});
+    } catch (e: any) {
+      toast.error(e?.message || "保存特殊饲养明细失败");
+    } finally {
+      setEditDirectBusy(false);
+    }
+  }, [cageIdOfCell, dataSource, editFormValues]);
+
   const applyEditActionNow = useCallback(async (
     cell: CageShelfCell, sid: string, action: CageBoxAction, on: boolean,
   ) => {
@@ -2340,6 +2420,37 @@ function Inner(){
       （原来那行是为了老的 toggleEditAction 顺手用的，那个函数已经没人调了。）
     */
   }, [editDirect, applyEditActionNow, dataSource, editFormValues]);
+
+  /**
+   * 特殊饲养明细：勾/取消一个明细项（多选）。
+   *
+   * <p>与状态动作同一套语义：改的是**编辑缓存**，批次由同步 effect 从这里派生进「待提交」，
+   * 提交时才整体覆盖式写盘（见 runEditPending）。「改回原样」同样删掉缓存条目。
+   *
+   * <p>起点（initialDetails）取服务端当前值 —— 本地源从 editFormValues 读，ARO 源拿不到就空集
+   * （ARO 侧本来没有明细概念，写了也是写本地表单）。
+   */
+  const toggleEditDetail = useCallback((cell: CageShelfCell, sid: string, itemCode: string) => {
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const initial = e?.initialDetails ?? (dataSource === "local" ? detailCodesOfValues(editFormValues) : new Set<string>());
+      const cur = new Set(e?.currentDetails ?? initial);
+      if (cur.has(itemCode)) cur.delete(itemCode); else cur.add(itemCode);
+      if (e && sameDetailSets(cur, initial) && sameActions(e.currentActions, e.initialActions)) next.delete(ck);
+      else if (e) next.set(ck, { ...e, initialDetails: initial, currentDetails: cur });
+      else {
+        // 新建条目：动作集合按**服务端状态**播种，别置空（否则面板把已标记的状态显示成未标记）
+        const srv = serverActionsOfCell(cell, editFormValues, dataSource);
+        next.set(ck, {
+          cell, code: cageBoxCodeOf(cell), initialActions: srv, currentActions: new Set(srv),
+          images: [], notes: "", initialDetails: initial, currentDetails: cur,
+        });
+      }
+      return next;
+    });
+  }, [dataSource, editFormValues]);
 
   /** 统一提交入口：逐条跑 → 成功的移出缓冲、失败的留在列表里并写明原因 */
   const submitPending = useCallback(async () => {
@@ -2726,8 +2837,34 @@ function Inner(){
                         <span className="text-[11px]" style={{color:changed?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{editDirect?(has?"已标记 · 点击取消":"点击标记"):(changed?"已变更":has?"已标记":"点击标记")}</span>
                       </button>;})}
                     </div>
+                    {/* 特殊饲养明细：**强绑定** —— 只在「需特殊饲养」开着时出现。
+                        明细项与五个状态同款进「待提交」（提交时整体覆盖写入）。 */}
+                    {(()=>{
+                      const localActions=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cell.cageBoxInfo as any,cvoOf(cell));
+                      const sfOn=entry?entry.currentActions.has("SPECIAL_BREEDING"):localActions.has("SPECIAL_BREEDING");
+                      if(!sfOn||specialDetailOptions.length===0) return null;
+                      const sel=entry?.currentDetails??(dataSource==="local"?detailCodesOfValues(editFormValues):new Set<string>());
+                      return <div className="rounded-twin-md border-2 px-3 py-2.5" style={{borderColor:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-[var(--twin-ink)]">特殊饲养明细</span>
+                          <span className="text-[10px] text-[var(--twin-mute)]">可多选 · 随「需特殊饲养」开关</span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {specialDetailOptions.map(o=>{
+                            const on=sel.has(o.itemCode);
+                            return <button key={o.itemCode} type="button" disabled={editDirect&&editDirectBusy}
+                              onClick={()=>editDirect?void writeDetailNow(cell,sid,o.itemCode,on):toggleEditDetail(cell,sid,o.itemCode)}
+                              className={`rounded-twin-md border-2 px-2 py-1 text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-50 ${
+                                on?"border-[var(--twin-primary)] text-[var(--twin-primary)]":"border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                              }`}
+                              style={{background:"var(--twin-canvas)"}}>
+                              {on?"✓ ":""}{o.itemLabel}
+                            </button>;
+                          })}
+                        </div>
+                      </div>;
+                    })()}
                     <div className="pt-2 border-t border-[var(--twin-hairline)] text-[10px] text-[var(--twin-mute)]">笼位信息</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">{["DepartmentName","ProjectPiName","AupNumber","StateName"].map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];return<div key={k} className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1"><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="text-[var(--twin-ink)]">{formatCageDetailValue(v,k)}</div></div>;})}</div>
                   </div>
                 </div>;})()}
               {/* 查看模式：笼盒详情 */}
@@ -2996,6 +3133,37 @@ function Inner(){
             </button>;
           })}
         </div>
+        {/* 特殊饲养明细：强绑定（只在「需特殊饲养」开着时出现），与单笼架面板同一份语义 */}
+        {editDialogCell && (() => {
+          const sid = editDialogShelfId || findShelfIdForCell(editDialogCell);
+          if (!sid) return null;
+          const entry = scanCache.get(`${sid}:${editDialogCell.x}:${editDialogCell.y}`);
+          const localActions = dataSource === "local"
+            ? actionsFromFormValues(editFormValues)
+            : actionsFromCageBoxInfo(editDialogCell.cageBoxInfo as any, cvoOf(editDialogCell));
+          const sfOn = entry ? entry.currentActions.has("SPECIAL_BREEDING") : localActions.has("SPECIAL_BREEDING");
+          if (!sfOn || specialDetailOptions.length === 0) return null;
+          const sel = entry?.currentDetails ?? (dataSource === "local" ? detailCodesOfValues(editFormValues) : new Set<string>());
+          return <div className="rounded-twin-md border-2 px-3 py-2.5" style={{borderColor:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-[var(--twin-ink)]">特殊饲养明细</span>
+              <span className="text-[10px] text-[var(--twin-mute)]">可多选 · 随「需特殊饲养」开关</span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {specialDetailOptions.map(o => {
+                const on = sel.has(o.itemCode);
+                return <button key={o.itemCode} type="button" disabled={editDirect&&editDirectBusy}
+                  onClick={()=>editDirect?void writeDetailNow(editDialogCell,sid,o.itemCode,on):toggleEditDetail(editDialogCell,sid,o.itemCode)}
+                  className={`rounded-twin-md border-2 px-2 py-1 text-[11px] font-semibold transition hover:brightness-95 disabled:opacity-50 ${
+                    on?"border-[var(--twin-primary)] text-[var(--twin-primary)]":"border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+                  }`}
+                  style={{background:"var(--twin-canvas)"}}>
+                  {on?"✓ ":""}{o.itemLabel}
+                </button>;
+              })}
+            </div>
+          </div>;
+        })()}
         {/* 📷 状态专属照片 */}
         <div className="space-y-2 pt-1 border-t border-[var(--twin-hairline)]">
           <div className="flex items-center justify-between">

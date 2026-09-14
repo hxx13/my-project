@@ -11,10 +11,10 @@ import { useCageOpSelect, buildCageOpMarks, mergeReservationMarks, type CageOpLa
 import BatchTransferPanel from "@/features/cage-shelf/components/BatchTransferPanel";
 import { resolveCageType, groupKeyOf } from "@/features/cage-shelf/components/CageCellOverlays";
 import { CampusTree, buildTree } from "@/features/cage-shelf/components/CampusTree";
-import { displayPosition, CAGE_BOX_ACTIONS, cageBoxAction, actionsFromFormValues, parseStatusZone, statusZoneKey } from "@/features/cage-shelf/constants";
+import { displayPosition, CAGE_BOX_ACTIONS, cageBoxAction, actionsFromFormValues, parseStatusZone, statusZoneKey, SPECIAL_DETAIL_DICT, detailCodesOfValues } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
-import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, submitCageTransfer, localEdit, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, submitCageTransfer, localEdit, saveSpecialDetails, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
 import { fetchStudentMobileSpecialStatusOverview } from "@/api/domains/studentMobile.api";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
@@ -146,8 +146,15 @@ export default function StudentCageShelfPage() {
   // ── 状态模式（edit）：与管理端同一套机制 ──
   // 编辑缓存是状态模式的唯一真相源：网格配色、抽屉缩略图、待提交批次三者都由它派生。
   const [editMode, setEditMode] = useState(false);
-  const [scanCache, setScanCache] = useState<Map<string, { cell: CageShelfCell; code: string; initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction> }>>(new Map());
+  const [scanCache, setScanCache] = useState<Map<string, { cell: CageShelfCell; code: string; initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction>;
+    /** 特殊饲养明细：进缓存时的服务端选中集合 / 当前目标集合（item_code）。可选 = 本次不动明细。 */
+    initialDetails?: Set<string>; currentDetails?: Set<string> }>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
+  /** 特殊饲养明细的可选项（码表维护、可增长）—— 只在「需特殊饲养」开着时渲染。 */
+  const [specialDetailOptions, setSpecialDetailOptions] = useState<CageCodelistItem[]>([]);
+  useEffect(() => {
+    fetchCageInfoCodelist(SPECIAL_DETAIL_DICT).then((d) => setSpecialDetailOptions(d.items ?? [])).catch(() => {});
+  }, []);
   const [editDialogCell, setEditDialogCell] = useState<CageShelfCell | null>(null);
   const [editDialogShelfId, setEditDialogShelfId] = useState("");
   /** 表单值(cage_info_value)：状态标记的唯一真相源，弹窗据此反向使能按钮 */
@@ -902,6 +909,42 @@ export default function StudentCageShelfPage() {
   };
 
   /**
+   * 特殊饲养明细：勾/取消一项 → 写编辑缓存，由同步 effect 派生进「待提交」，提交时整体覆盖写盘。
+   *
+   * 新建缓存条目时**先拉一次服务端表单值**播种动作集合：不拉的话动作集合是空的，
+   * 面板会把「已标记的需特殊饲养」显示成未标记，而明细块的强绑定判据读的就是它 → 勾一下块就消失。
+   */
+  const toggleEditDetail = useCallback(async (cell: CageShelfCell, sid: string, itemCode: string) => {
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    let serverRows: CageInfoValueRow[] | null | undefined;
+    if (!scanCache.has(ck)) {
+      const cageId = cageIdOfCell(cell);
+      serverRows = cageId ? await fetchCageInfoValues(cageId).catch(() => null) : null;
+    }
+    setScanCache((prev) => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const rows = serverRows ?? editFormValues;
+      const initial = e?.initialDetails ?? detailCodesOfValues(rows);
+      const cur = new Set(e?.currentDetails ?? initial);
+      if (cur.has(itemCode)) cur.delete(itemCode); else cur.add(itemCode);
+      const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((v) => b.has(v));
+      if (e && same(cur, initial) && same(e.currentActions, e.initialActions)) {
+        next.delete(ck);
+      } else if (e) {
+        next.set(ck, { ...e, initialDetails: initial, currentDetails: cur });
+      } else {
+        const srv = actionsFromFormValues(rows);
+        next.set(ck, {
+          cell, code: "", initialActions: new Set(srv), currentActions: new Set(srv),
+          initialDetails: initial, currentDetails: cur,
+        });
+      }
+      return next;
+    });
+  }, [cageIdOfCell, scanCache, editFormValues]);
+
+  /**
    * 状态模式：把编辑缓存里的差异同步进 edit 批次（缓存的 currentActions 就是「目标状态全集」）。
    * 两条规则保证批次与缓存永不脱节：
    *   1) 缓存里**有**的笼位：按差异更新；改回原样只清差异，条目留在待提交（用户是显式暂存它的）；
@@ -921,14 +964,20 @@ export default function StudentCageShelfPage() {
         if (!meta || !next.items.some(x => x.cageId === cageId)) continue;
         const toAdd = [...e.currentActions].filter(a => !e.initialActions.has(a));
         const toRemove = [...e.initialActions].filter(a => !e.currentActions.has(a));
+        /* 明细同理：只有真的改了才带目标集合；没改显式置 undefined（upsertItem 是合并，
+           不显式覆盖旧的 details 会一直粘着）。 */
+        const detailChanged = (e.initialDetails !== undefined || e.currentDetails !== undefined)
+          && !((e.currentDetails ?? new Set()).size === (e.initialDetails ?? new Set()).size
+            && [...(e.currentDetails ?? [])].every(v => (e.initialDetails ?? new Set<string>()).has(v)));
+        const details = detailChanged ? [...(e.currentDetails ?? [])] : undefined;
         next = upsertItem(next, toAdd.length || toRemove.length
-          ? { cageId, ...meta, shelveId: key.split(":")[0] || meta.shelveId, cageBoxCode: e.code, actions: toAdd, removedActions: toRemove }
-          : { cageId, ...meta, actions: [], removedActions: [] });
+          ? { cageId, ...meta, shelveId: key.split(":")[0] || meta.shelveId, cageBoxCode: e.code, actions: toAdd, removedActions: toRemove, details }
+          : { cageId, ...meta, actions: [], removedActions: [], details });
       }
       for (const it of next.items) {
         if (cached.has(it.cageId)) continue;
-        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0) {
-          next = upsertItem(next, { ...it, actions: [], removedActions: [] });
+        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0 || it.details !== undefined) {
+          next = upsertItem(next, { ...it, actions: [], removedActions: [], details: undefined });
         }
       }
       return next;
@@ -940,6 +989,8 @@ export default function StudentCageShelfPage() {
     const rows: SubmitResult[] = [];
     for (const it of items) {
       try {
+        // 特殊饲养明细：整体覆盖写本地表单（undefined = 本次不动）
+        if (it.details !== undefined) await saveSpecialDetails(it.cageId, it.details);
         for (const a of it.actions ?? []) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, true, it.cageBoxCode);
         for (const a of it.removedActions ?? []) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, false, it.cageBoxCode);
         rows.push({ cageId: it.cageId, ok: true });
@@ -1231,6 +1282,38 @@ export default function StudentCageShelfPage() {
                 })}
                 {editActions.length === 0 && <div className="px-1 py-2 text-center text-[11px] text-[var(--app-color-text-tertiary)]">当前身份没有可标记的状态</div>}
               </div>
+              {/* 特殊饲养明细：强绑定 —— 只在「需特殊饲养」开着时出现；与状态动作同款进「状态待提交」 */}
+              {(() => {
+                const sfOn = entry ? entry.currentActions.has("SPECIAL_BREEDING") : serverActions.has("SPECIAL_BREEDING");
+                // 父状态的开关不在（本区/本身份没开放它）→ 细分状态也不出现（与 H5 同口径）
+                const sfAvailable = editActions.some((a) => a.action === "SPECIAL_BREEDING");
+                if (!sfAvailable || !sfOn || specialDetailOptions.length === 0) return null;
+                const sel = entry?.currentDetails ?? detailCodesOfValues(editFormValues);
+                return (
+                  <div className="mt-2 rounded-student-md border-2 p-2.5" style={{ borderColor: "var(--app-color-border-default)", background: "var(--app-color-surface-container)" }}>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">特殊饲养明细</span>
+                      <span className="text-[10px] text-[var(--app-color-text-tertiary)]">可多选 · 随「需特殊饲养」开关</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {specialDetailOptions.map((o) => {
+                        const on = sel.has(o.itemCode);
+                        return (
+                          <button key={o.itemCode} type="button" onClick={() => void toggleEditDetail(editDialogCell, sid, o.itemCode)}
+                            className="rounded-student-md border-2 px-2 py-1 text-[11px] font-semibold transition hover:brightness-95"
+                            style={{
+                              borderColor: on ? "var(--student-primary)" : "var(--app-color-border-default)",
+                              color: on ? "var(--student-primary)" : "var(--app-color-text-tertiary)",
+                              background: "var(--app-color-surface-container)",
+                            }}>
+                            {on ? "✓ " : ""}{o.itemLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="mt-2 text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">改完在「状态待提交」抽屉里统一提交</div>
             </div>
           </div>, document.body);

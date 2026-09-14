@@ -626,6 +626,11 @@ export interface CageStatusAlertRule {
   thresholdDays: number;
   action: CageStatusAlertAction;
   enabled: boolean;
+  /**
+   * 计时起点：1 = 出现 1 开始记录（1→0 结束，默认）；0 = 出现 0 开始记录（0→1 结束）。
+   * 布尔只有两个值，所以起点定了，终点就是它的反向 —— 一个字段表达两个边。
+   */
+  startValue: 0 | 1;
 }
 
 /** 保存用的 wire 形状：statusLabel 不下发（后端自己算）。 */
@@ -1327,6 +1332,17 @@ export async function localCancelAllocate(animalCageIds: (number | string)[]) {
 export async function localEdit(animalCageId: number | string, toggle: string, enable: boolean, cageBoxCode?: string) {
   const res = await authHttp.post<Result<any>>("/local/edit", { animalCageId, toggle, enable, cageBoxCode: cageBoxCode || "" });
   if (!res.data?.success) throw new Error(res.data?.message || "编辑失败");
+}
+
+/**
+ * 写笼位「特殊饲养明细」子状态（多选，**整体覆盖**）。
+ * itemCodes 传空数组 = 清空。id 转字符串再传 —— 雪花 id 超出 JS 安全整数，传数字会被抹位。
+ */
+export async function saveSpecialDetails(animalCageId: number | string, itemCodes: string[]) {
+  const res = await authHttp.post<Result<any>>("/local/special-details", {
+    animalCageId: String(animalCageId), itemCodes,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存特殊饲养明细失败");
 }
 
 /** 补全详情字段 — 从 ARO /list 批量拉取 PI/课题组/动物品系等 */

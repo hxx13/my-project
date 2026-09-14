@@ -188,17 +188,31 @@ public class CageRegionCapabilityService {
     }
 
     /**
-     * 区域键 → 该区域**开着**的学生能力码。
-     * **键出现过就代表这个区域被配过**（值可能是空集 = 本区全关）—— 这正是「配过但全关」的表达。
+     * 区域键 → 该区域的配置。**键出现过就代表这个区域被配过**（值可能是空集 = 本区全关，
+     * 或只有几个能力被写行 = 只对这几个表过态）。
+     *
+     * @param recorded 表过态的能力码（含 enabled=0 的关闭行）
+     * @param enabled  其中开着的
      */
-    private Map<String, Set<String>> loadConfigByKey(List<Map<String, String>> regions) {
-        Map<String, Set<String>> out = new LinkedHashMap<>();
+    private record RegionConfig(Set<String> recorded, Set<String> enabled) {
+    }
+
+    private Map<String, RegionConfig> loadConfigByKey(List<Map<String, String>> regions) {
+        Map<String, RegionConfig> out = new LinkedHashMap<>();
         if (regions == null || regions.isEmpty()) return out;
+        Map<String, Set<String>> recorded = new LinkedHashMap<>();
+        Map<String, Set<String>> enabled = new LinkedHashMap<>();
         for (Map<String, Object> row : mapper.listRegionCapabilityRows(regions)) {
-            Set<String> caps = out.computeIfAbsent(
-                    str(row.get("regionType")) + ":" + str(row.get("regionId")),
-                    k -> new LinkedHashSet<>());
-            if ("1".equals(String.valueOf(row.get("enabled")))) caps.add(str(row.get("capabilityCode")));
+            String key = str(row.get("regionType")) + ":" + str(row.get("regionId"));
+            String cap = str(row.get("capabilityCode"));
+            if (cap == null) continue;
+            recorded.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(cap);
+            if ("1".equals(String.valueOf(row.get("enabled")))) {
+                enabled.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(cap);
+            }
+        }
+        for (Map.Entry<String, Set<String>> e : recorded.entrySet()) {
+            out.put(e.getKey(), new RegionConfig(e.getValue(), enabled.getOrDefault(e.getKey(), Set.of())));
         }
         return out;
     }
@@ -206,17 +220,31 @@ public class CageRegionCapabilityService {
     /**
      * 一组区域键的生效能力。
      *
-     * <p><b>有任一级被配过，就以「配过的那些级」的并集为准；一级都没配过才回落矩阵上限。</b>
-     * 所以「只关了某个房间」只影响那个房间 —— 同一架子上**没配过**的楼层/校区不会把它稀释回全开，
-     * 也不会因为同一学生名下别的房间没配过就缩不回去。
+     * <p><b>矩阵是总开关，区域只做「显式关闭」</b>：配过的级里**写过行的能力**才按它的 enabled 算，
+     * 没写行 = 本区没表态 = 跟随矩阵。多级之间取并集且只增不减：只要有一个配过的级把它配成 1 就开着，
+     * 全部配过的级都配成 0 才关闭（与多组长共管同向）。
+     *
+     * <p><b>为什么不是「配过就以配过的行为准」</b>：那样一份**保存那一刻的矩阵快照**会永久生效 ——
+     * 区域配过之后新注册的能力（如特殊饲养父状态/明细）在这里等于被默默关死，界面上既看不到也解释不清
+     * （2026-09-14 用户报「H5/小程序状态模式没有特殊饲养入口」就是这条）。
+     * 「配过且全关」仍然成立：那是把上限里每一项都写成 enabled=0，逐项都是显式关闭。
      */
     private Set<String> resolveGroup(List<Map<String, String>> keys,
-                                     Map<String, Set<String>> configByKey, Set<String> ceiling) {
+                                     Map<String, RegionConfig> configByKey, Set<String> ceiling) {
         boolean anyConfigured = keys.stream().anyMatch(k -> configByKey.containsKey(keyOf(k)));
         if (!anyConfigured) return ceiling;
-        Set<String> out = new LinkedHashSet<>();
-        for (Map<String, String> k : keys) out.addAll(configByKey.getOrDefault(keyOf(k), Set.of()));
-        out.retainAll(ceiling);
+        Set<String> recorded = new LinkedHashSet<>();
+        Set<String> enabled = new LinkedHashSet<>();
+        for (Map<String, String> k : keys) {
+            RegionConfig c = configByKey.get(keyOf(k));
+            if (c == null) continue;
+            recorded.addAll(c.recorded());
+            enabled.addAll(c.enabled());
+        }
+        Set<String> out = new LinkedHashSet<>(ceiling);
+        out.removeAll(recorded);   // 表过态的逐项结账
+        out.addAll(enabled);       // 开着的那几项加回来
+        out.retainAll(ceiling);    // 矩阵仍是上限
         return out;
     }
 
@@ -225,7 +253,7 @@ public class CageRegionCapabilityService {
         List<List<Map<String, String>>> groups = myRegionGroups(user);
         if (groups.isEmpty()) return Set.of();
         Set<String> ceiling = permissionService.identityCeiling(user.getId());
-        Map<String, Set<String>> config = loadConfigByKey(flatten(groups));
+        Map<String, RegionConfig> config = loadConfigByKey(flatten(groups));
         Set<String> out = new LinkedHashSet<>();
         for (List<Map<String, String>> g : groups) out.addAll(resolveGroup(g, config, ceiling));
         return out;

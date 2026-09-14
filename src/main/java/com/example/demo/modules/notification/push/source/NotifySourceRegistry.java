@@ -144,6 +144,21 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "doorLabel", "门禁名称", "exitTime", "离开时间",
                         "department", "部门/课题组", "targetUserId", "离开人员ID（自动索引）"));
 
+        // ========== 笼位特殊状态（非违规）==========
+        // 特殊饲养 / 合笼（含特殊饲养明细）共用这一个源：它们不是违规行为，不建违规记录，
+        // 到阈值只发这条通知。收件人默认 = 该笼位课题组成员（引擎侧动态带入），
+        // 也可以在通知配置页为这个源额外配「接收人」。
+        register("CAGE_SPECIAL_STATUS", "笼位状态提醒",
+                "特殊饲养 / 合笼等「非违规」笼位状态持续超时（与告警阈值同一判据，不产生违规记录）",
+                Map.of("statusLabel", "状态名称（需特殊饲养 / 合笼 / 需加食…）",
+                        "cageLabel", "笼位（笼架名 + 位号，如 201A-1 A-9）",
+                        "roomName", "房间名称",
+                        "projectPiName", "课题组（PI）",
+                        "experimenterName", "实验员",
+                        "persistedDays", "已持续天数",
+                        "thresholdDays", "触发阈值天数",
+                        "firedAt", "触发时间"));
+
         log.info("[Push] 通知源注册完成：共 {} 个，新增 {}，其余已存在", totalSources, newSources);
     }
 

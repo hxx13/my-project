@@ -436,6 +436,10 @@
             <view wx:if="{{ item._cageTypeDotColor }}" class="gcell-dot" style="background:{{ item._cageTypeDotColor }};">
               <text>{{ item._cageTypeAbbr }}</text>
             </view>
+            <!-- 特殊饲养明细角标（+食 / −水）：贴右上角。明细强绑定特殊饲养 → 该格必是「饲养中」→ 类型点不点，不抢角 -->
+            <view wx:if="{{ item._sfBadges.length }}" class="gcell-sf">
+              <text wx:for="{{ item._sfBadges }}" wx:for-item="sf" wx:key="code" class="gcell-sf-pill" style="background:{{ item._sfBadgeColor }};">{{ sf.text }}</text>
+            </view>
           </block>
           <text wx:if="{{ item.empty }}" class="gcell-empty-text">空</text>
           <text wx:elif="{{ item.visible === false }}" class="gcell-hidden-text">***</text>
@@ -719,6 +723,23 @@
               <view wx:if="{{ !editActionCurrent[a.action] && editActionInitial[a.action] }}" class="cs-stat-strike" />
             </view>
             <text class="cs-stat-t">{{ a.label }}</text>
+          </view>
+        </view>
+
+        <!-- 特殊饲养明细：强绑定 —— 「需特殊饲养」**开着**且它的开关在本区可选清单里，才出现；
+             与状态动作同款「暂存 → 提交」 -->
+        <view wx:if="{{ editActionSfOn && editActionSfParentAvailable && specialDetailOptions.length }}" class="cs-detail">
+          <view class="cs-detail-hd">
+            <text class="cs-detail-t">特殊饲养明细</text>
+            <text class="cs-detail-note">可多选 · 随「需特殊饲养」开关</text>
+          </view>
+          <view class="cs-detail-grid">
+            <view wx:for="{{ specialDetailOptions }}" wx:key="itemCode" wx:for-item="o"
+              class="cs-detail-chip {{ editDetailCurrent[o.itemCode] ? 'cs-detail-chip--on' : '' }} {{ editDetailCurrent[o.itemCode] && !editDetailInitial[o.itemCode] ? 'cs-detail-chip--add' : '' }} {{ !editDetailCurrent[o.itemCode] && editDetailInitial[o.itemCode] ? 'cs-detail-chip--rm' : '' }}"
+              hover-class="cs-stat--hover" hover-stay-time="60"
+              data-code="{{ o.itemCode }}" bindtap="onDetailToggle">
+              <text>{{ editDetailCurrent[o.itemCode] ? '✓ ' : '' }}{{ o.itemLabel }}</text>
+            </view>
           </view>
         </view>
       </view>

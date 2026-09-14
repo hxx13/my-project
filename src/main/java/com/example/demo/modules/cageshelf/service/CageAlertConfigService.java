@@ -20,8 +20,9 @@ import java.util.Set;
  *
  * <p>只做配置的读/写/校验，不碰告警实例、不读快照、不做解析。解析（生效规则怎么算）是
  * {@link CageAlertRuleService} 的事；这里保证的是「写进去的形状能被它正确读出来」：
- * 五个状态**每个都落一行**（勾的 enabled=1、没勾的 enabled=0），于是「配过但全关」天然有行，
- * 不会退化成「零行 = 从未配置 = 回落全局默认」，组长才关得掉一个被全局默认打开的告警。
+ * **每个可配置状态都落一行**（五个固定状态 + 特殊饲养明细的每个码表项；勾的 enabled=1、
+ * 没勾的 enabled=0），于是「配过但全关」天然有行，不会退化成「零行 = 从未配置 = 回落全局默认」，
+ * 组长才关得掉一个被全局默认打开的告警。
  *
  * <p><b>同一区域多个饲养组长 → 各自配各自的，生效并集</b>：写的时候只删 {@code configured_by = 操作人}
  * 的行，按区域整片删会把别人的配置一起抹掉（cage_region_capability 那边实测踩过）。
@@ -48,19 +49,27 @@ public class CageAlertConfigService {
     private final CageRegionGrantService regionGrantService;
     private final CagePermissionService permissionService;
     private final CageShelfMapper shelfMapper;
+    private final CageAlertRuleService alertRuleService;
 
     public CageAlertConfigService(CageAlertRuleMapper ruleMapper,
                                   CageRegionGrantService regionGrantService,
                                   CagePermissionService permissionService,
-                                  CageShelfMapper shelfMapper) {
+                                  CageShelfMapper shelfMapper,
+                                  CageAlertRuleService alertRuleService) {
         this.ruleMapper = ruleMapper;
         this.regionGrantService = regionGrantService;
         this.permissionService = permissionService;
         this.shelfMapper = shelfMapper;
+        this.alertRuleService = alertRuleService;
     }
 
-    /** 一条待落库的阈值规则（thresholdDays/action/enabled 可为 null，由 {@link #normalizeRules} 校验并报错）。 */
-    public record Rule(String statusCode, Integer thresholdDays, String action, Boolean enabled) {
+    /**
+     * 一条待落库的阈值规则（thresholdDays/action/enabled/startValue 可为 null，由 {@link #normalizeRules} 校验并报错）。
+     *
+     * @param startValue 计时起点：1 = 出现 1 开始（1→0 结束，默认）；0 = 出现 0 开始（0→1 结束）
+     */
+    public record Rule(String statusCode, Integer thresholdDays, String action, Boolean enabled,
+                       Integer startValue) {
     }
 
     /**
@@ -79,17 +88,24 @@ public class CageAlertConfigService {
 
     // ── 全局默认 ──
 
-    /** 五个状态的全局默认（statusCode 恒按 {@link CageAlertRuleService#STATUS_CODES} 顺序返回）。 */
+    /**
+     * 全局默认：五个固定状态 + 特殊饲养明细（码表项，各算一个独立状态）。
+     * statusCode 恒按 {@link CageAlertRuleService#configurableStatusCodes()} 顺序返回。
+     */
     public List<Map<String, Object>> globalView() {
         Map<String, Map<String, Object>> rows = defaultRows();
-        List<Map<String, Object>> out = new ArrayList<>(CageAlertRuleService.STATUS_CODES.size());
-        for (String code : CageAlertRuleService.STATUS_CODES) {
+        Map<String, String> labels = alertRuleService.configurableLabels();
+        List<String> codes = alertRuleService.configurableStatusCodes();
+        List<Map<String, Object>> out = new ArrayList<>(codes.size());
+        for (String code : codes) {
             Map<String, Object> r = rows.get(code);
-            // 缺行是近乎不可能的配置缺失（种子 + 全量替换都保证 5 行），回一个安全默认而非 NPE。
+            // 缺行（新加的码表项还没种默认行）回一个安全默认：阈值 0、仅高亮。总比 NPE 强。
             out.add(entry(code,
                     r == null ? 0 : toInt(r.get("thresholdDays"), 0),
                     r == null ? "HIGHLIGHT" : orDefaultAction(str(r.get("action"))),
-                    r == null || truthy(r.get("enabled"))));
+                    r == null || truthy(r.get("enabled")),
+                    r == null ? 1 : toInt(r.get("startValue"), 1),
+                    labels));
         }
         return out;
     }
@@ -98,7 +114,8 @@ public class CageAlertConfigService {
     @Transactional
     public void replaceGlobal(List<Rule> rules) {
         for (Rule r : normalizeRules(rules)) {
-            ruleMapper.upsertDefaultRule(r.statusCode(), r.thresholdDays(), r.action(), r.enabled() ? 1 : 0);
+            ruleMapper.upsertDefaultRule(r.statusCode(), r.thresholdDays(), r.action(),
+                    r.enabled() ? 1 : 0, r.startValue());
         }
     }
 
@@ -197,6 +214,44 @@ public class CageAlertConfigService {
         for (Node c : n.children) index(c, byKey);
     }
 
+    /** 授权区域键集合（"TYPE:id"）。 */
+    private static Set<String> grantedKeys(List<CageRegionGrant> grants) {
+        Set<String> out = new HashSet<>();
+        for (CageRegionGrant g : grants) {
+            if (g == null || g.getRegionType() == null || g.getRegionId() == null) continue;
+            out.add(g.getRegionType() + ":" + g.getRegionId());
+        }
+        return out;
+    }
+
+    /**
+     * 「这个区域整个归我」：直接授权的区域算；**非房间**层还额外允许「子树里的房间全在我名下」——
+     * 那种情况配一次整层生效，且不会碰到别人的房间（房间里有一间不是我的就不放行）。
+     *
+     * <p>可见性（{@link #pruneForLeader} 的 locationOnly）与访问权限（{@link #manageRegionAlertError}）
+     * **必须共用这一个判据** —— 两边不一致就会出现「看得到『配置』按钮、点下去 403」。
+     */
+    private static boolean ownsWholeRegion(Node node, Set<String> granted) {
+        if (node == null) return false;
+        if (granted.contains(node.key())) return true;
+        if ("ROOM".equals(node.type)) return false;   // 房间没直接授权就是别人的
+        List<Node> rooms = new ArrayList<>();
+        collectRooms(node, rooms);
+        if (rooms.isEmpty()) return false;
+        for (Node r : rooms) {
+            if (!granted.contains(r.key())) return false;   // 有一间不是我的 → 整层不给配
+        }
+        return true;
+    }
+
+    private static void collectRooms(Node n, List<Node> out) {
+        if ("ROOM".equals(n.type)) {
+            out.add(n);
+            return;
+        }
+        for (Node c : n.children) collectRooms(c, out);
+    }
+
     private RegionTreeNode toTreeNode(Node n, Set<String> configured) {
         List<RegionTreeNode> children = new ArrayList<>(n.children.size());
         for (Node c : n.children) children.add(toTreeNode(c, configured));
@@ -221,23 +276,24 @@ public class CageAlertConfigService {
         if (assignedNodes.isEmpty()) return List.of();
 
         Set<Node> include = new HashSet<>();
-        Set<String> ancestors = new HashSet<>();
-        Set<String> descendants = new HashSet<>();
         for (Node n : assignedNodes) {
             include.add(n);
-            for (Node a = n.parent; a != null; a = a.parent) {
-                ancestors.add(a.key());
-                include.add(a);
-            }
-            collectDescendants(n, include, descendants);
+            for (Node a = n.parent; a != null; a = a.parent) include.add(a);
+            addSubtree(n, include);
         }
 
         // 拷贝出只含 include 的新树（父子关系沿用原树）。
-        // locationOnly = 仅为补路径的祖先：既不是本人分配、也不是某分配区域的子树（房间后代仍带真实配置态，不算定位）。
+        /*
+          locationOnly（「仅定位」）在本路径下**一律 false**：按用户 2026-09-14 定的口径，
+          「整层」指的是**该层当前可见（归本人）的那些房间**，不是服务端意义上的真整层 ——
+          祖先节点下面只要还有本人负责的房间，就允许配置。
+          配置动作由前端**按可见房间逐条下发**（不写楼层键的行：楼层行会波及同层别人负责、
+          且自己没配规则的房间，那是越界）。字段保留只是为了不改接口形状，不再参与判定。
+        */
         Map<Node, Node> copies = new HashMap<>();
         for (Node n : include) {
             Node copy = new Node(n.type, n.id, n.name);
-            copy.locationOnly = ancestors.contains(n.key()) && !assigned.contains(n.key()) && !descendants.contains(n.key());
+            copy.locationOnly = false;
             copies.put(n, copy);
         }
         for (Node n : include) {
@@ -258,11 +314,11 @@ public class CageAlertConfigService {
         return roots.stream().map(n -> toTreeNode(n, configured)).toList();
     }
 
-    private static void collectDescendants(Node n, Set<Node> include, Set<String> keys) {
+    /** 把一棵子树的全部节点收进 include（授权区域下面的房间要一起给，才配得动整层）。 */
+    private static void addSubtree(Node n, Set<Node> include) {
         for (Node c : n.children) {
             include.add(c);
-            keys.add(c.key());
-            collectDescendants(c, include, keys);
+            addSubtree(c, include);
         }
     }
 
@@ -271,16 +327,21 @@ public class CageAlertConfigService {
     }
 
     /**
-     * 区域阈值访问门槛（读和写共用）：超管放行；否则必须是该区域 LEADER 行 AND 持有 cage.alert.config。
+     * 区域阈值访问门槛（读和写共用）：超管放行；否则必须是**本人负责的区域** AND 持有 cage.alert.config。
+     *
+     * <p>「本人负责」与区域树的 locationOnly 共用 {@link #ownsWholeRegion} 这一个判据：直接授权，
+     * 或（非房间层的）子树房间全归本人。两边判据不一致就会出现「看得到『配置』按钮、点下去被 403」。
      * 见类注释——带能力判断是为了让这个能力码真正被消费。
      *
      * @return null = 放行；否则为拒绝原因
      */
     public String manageRegionAlertError(String operatorId, boolean asAdmin, String regionType, String regionId) {
         if (asAdmin) return null;
-        boolean leader = regionGrantService.leaderRegions(operatorId).stream()
-                .anyMatch(g -> regionType.equals(g.getRegionType()) && regionId.equals(g.getRegionId()));
-        if (!leader) return "这块区域不由你负责，无法配置告警阈值";
+        Tree tree = buildTree(shelfMapper.listRoomTreeRows());
+        Node node = tree.byKey.get(regionType + ":" + regionId);
+        if (!ownsWholeRegion(node, grantedKeys(regionGrantService.leaderRegions(operatorId)))) {
+            return "这块区域不由你负责，无法配置告警阈值";
+        }
         if (!permissionService.hasCapability(operatorId, CAP_ALERT_CONFIG)) {
             return "你没有告警阈值配置权限";
         }
@@ -310,13 +371,15 @@ public class CageAlertConfigService {
             out.put("mine", rows.isEmpty() ? List.of() : adminUnion(regionType, regionId, rows));
             out.put("others", List.of());
         } else {
+            Map<String, String> labels = alertRuleService.configurableLabels();
             List<Map<String, Object>> mine = new ArrayList<>();
             List<Map<String, Object>> others = new ArrayList<>();
             for (Map<String, Object> r : rows) {
                 String code = str(r.get("statusCode"));
                 if (code == null) continue;
                 Map<String, Object> e = entry(code, toInt(r.get("thresholdDays"), 0),
-                        orDefaultAction(str(r.get("action"))), truthy(r.get("enabled")));
+                        orDefaultAction(str(r.get("action"))), truthy(r.get("enabled")),
+                        toInt(r.get("startValue"), 1), labels);
                 if (operatorId.equals(str(r.get("configuredBy")))) mine.add(e);
                 else others.add(e);
             }
@@ -340,6 +403,12 @@ public class CageAlertConfigService {
                 && !permissionService.hasCapability(operatorId, CAP_ALERT_VIOLATION)) {
             throw new IllegalArgumentException("你没有违规联动权限，无法将动作设为「发违规」");
         }
+        // 计时起点（方向）同级必须一致：阈值能取 min、动作能取并集，方向没有可合并的语义。
+        // 同样必须在删行之前判定 —— 先删后拒会把本区既有配置删光又没写回。
+        if (!asAdmin) {
+            String conflict = findStartValueConflict(regionType, regionId, operatorId, ordered);
+            if (conflict != null) throw new IllegalArgumentException(conflict);
+        }
         if (asAdmin) {
             ruleMapper.deleteAllRegionRules(regionType, regionId);
         } else {
@@ -347,7 +416,7 @@ public class CageAlertConfigService {
         }
         for (Rule r : ordered) {
             ruleMapper.insertRegionRule(regionType, regionId, r.statusCode(), r.thresholdDays(),
-                    r.action(), r.enabled() ? 1 : 0, operatorId);
+                    r.action(), r.enabled() ? 1 : 0, r.startValue(), operatorId);
         }
     }
 
@@ -359,12 +428,12 @@ public class CageAlertConfigService {
      * 实则丢了行）。
      */
     private List<Rule> normalizeRules(List<Rule> rules) {
+        List<String> codes = alertRuleService.configurableStatusCodes();
         Map<String, Rule> byCode = new LinkedHashMap<>();
         if (rules != null) {
             for (Rule r : rules) {
                 if (r == null) continue;
-                if (!StringUtils.hasText(r.statusCode())
-                        || !CageAlertRuleService.STATUS_CODES.contains(r.statusCode())) {
+                if (!StringUtils.hasText(r.statusCode()) || !codes.contains(r.statusCode())) {
                     throw new IllegalArgumentException("非法状态码：" + r.statusCode());
                 }
                 if (r.thresholdDays() == null || r.thresholdDays() < 0) {
@@ -376,13 +445,16 @@ public class CageAlertConfigService {
                 if (r.enabled() == null) {
                     throw new IllegalArgumentException("enabled 缺失（状态 " + r.statusCode() + "）");
                 }
+                if (r.startValue() == null || (r.startValue() != 0 && r.startValue() != 1)) {
+                    throw new IllegalArgumentException("startValue 必须是 0 或 1（状态 " + r.statusCode() + "）");
+                }
                 if (byCode.putIfAbsent(r.statusCode(), r) != null) {
                     throw new IllegalArgumentException("重复的状态码：" + r.statusCode());
                 }
             }
         }
-        List<Rule> ordered = new ArrayList<>(CageAlertRuleService.STATUS_CODES.size());
-        for (String code : CageAlertRuleService.STATUS_CODES) {
+        List<Rule> ordered = new ArrayList<>(codes.size());
+        for (String code : codes) {
             Rule r = byCode.get(code);
             if (r == null) throw new IllegalArgumentException("缺少状态：" + code);
             ordered.add(r);
@@ -394,12 +466,15 @@ public class CageAlertConfigService {
     private List<Map<String, Object>> adminUnion(String regionType, String regionId,
                                                  List<Map<String, Object>> rows) {
         Map<String, Map<String, Object>> defaultsByCode = defaultRows();
+        Map<String, String> labels = alertRuleService.configurableLabels();
         List<Map<String, String>> keys = List.of(Map.of("regionType", regionType, "regionId", regionId));
-        List<Map<String, Object>> out = new ArrayList<>(CageAlertRuleService.STATUS_CODES.size());
-        for (String code : CageAlertRuleService.STATUS_CODES) {
+        List<String> codes = alertRuleService.configurableStatusCodes();
+        List<Map<String, Object>> out = new ArrayList<>(codes.size());
+        for (String code : codes) {
             CageAlertRuleService.EffectiveAlertRule r =
                     CageAlertRuleService.resolveOne(keys, code, rows, defaultsByCode);
-            out.add(entry(code, r.thresholdDays(), actionOf(r.highlight(), r.violation()), r.enabled()));
+            out.add(entry(code, r.thresholdDays(), actionOf(r.highlight(), r.violation()), r.enabled(),
+                    r.startValue() ? 1 : 0, labels));
         }
         return out;
     }
@@ -413,20 +488,56 @@ public class CageAlertConfigService {
         return out;
     }
 
-    private Map<String, Object> entry(String code, int thresholdDays, String action, boolean enabled) {
+    private Map<String, Object> entry(String code, int thresholdDays, String action, boolean enabled,
+                                      int startValue, Map<String, String> labels) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("statusCode", code);
-        m.put("statusLabel", CageAlertRuleService.STATUS_LABELS.getOrDefault(code, code));
+        // 中文名走 tags 表：五个固定状态 + 特殊饲养明细（明细名在码表里，可随时改）
+        m.put("statusLabel", labels.getOrDefault(code, code));
         m.put("thresholdDays", thresholdDays);
         m.put("action", action);
         m.put("enabled", enabled);
+        m.put("startValue", startValue);
         return m;
     }
 
+    /** 计时起点的中文说明，用于拒绝保存时的报错（两个边都写清楚，省得用户去猜终点按哪边算）。 */
+    private static String startValueLabel(int startValue) {
+        return startValue == 1 ? "出现 1 开始（1→0 结束）" : "出现 0 开始（0→1 结束）";
+    }
+
+    /**
+     * 同区域**别人**已配的计时起点与本次提交是否冲突。返回 null = 不冲突（该状态别人还没配过，或方向一致）。
+     *
+     * <p>只比同区域其他人的行：区域与全局不一致是**允许**的（区域可覆盖全局，与阈值/动作同口径）。
+     * 阈值能取 min、动作能取并集，方向没有可合并的语义，所以同级分歧只能拒绝，不能并。
+     */
+    private String findStartValueConflict(String regionType, String regionId, String operatorId,
+                                          List<Rule> ordered) {
+        List<Map<String, Object>> rows = ruleMapper.listRegionRules(
+                List.of(Map.of("regionType", regionType, "regionId", regionId)));
+        Map<String, Integer> submitted = new LinkedHashMap<>();
+        for (Rule r : ordered) submitted.put(r.statusCode(), r.startValue());
+        for (Map<String, Object> row : rows) {
+            String code = str(row.get("statusCode"));
+            if (code == null || operatorId.equals(str(row.get("configuredBy")))) continue;
+            Integer mine = submitted.get(code);
+            if (mine == null) continue;
+            int theirs = toInt(row.get("startValue"), 1);
+            if (theirs != mine) {
+                return "「" + alertRuleService.labelOf(code)
+                        + "」的计时起点已被本区域其他饲养组长配为 " + startValueLabel(theirs)
+                        + "，同一区域必须一致，请与其保持一致后再保存";
+            }
+        }
+        return null;
+    }
+
     private List<Map<String, Object>> sortByStatus(List<Map<String, Object>> entries) {
+        List<String> order = alertRuleService.configurableStatusCodes();
         entries.sort((a, b) -> Integer.compare(
-                CageAlertRuleService.STATUS_CODES.indexOf(str(a.get("statusCode"))),
-                CageAlertRuleService.STATUS_CODES.indexOf(str(b.get("statusCode")))));
+                order.indexOf(str(a.get("statusCode"))),
+                order.indexOf(str(b.get("statusCode")))));
         return entries;
     }
 

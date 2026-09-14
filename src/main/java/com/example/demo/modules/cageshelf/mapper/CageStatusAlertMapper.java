@@ -35,8 +35,23 @@ public interface CageStatusAlertMapper {
     /** 全部非 CLEARED 行（PENDING + ACTIVE），引擎据此做幂等判定。 */
     List<CageStatusAlert> listNonCleared();
 
+    /**
+     * 按 id 取一行。**给通知用**：通知要精确的「起算时刻 / 触发时刻 / 阈值天数」，
+     * 而升级（PROMOTE）那条意图里没有起算时刻，只能回表读（行在 CREATE_PENDING 时就已落库）。
+     */
+    CageStatusAlert selectById(@Param("id") long id);
+
     /** 全部 ACTIVE 行；cageIds 非空时只取这些笼位（命中 idx_csa_state_fired）。读取端点用。 */
     List<CageStatusAlert> listActive(@Param("cageIds") List<Long> cageIds);
+
+    /**
+     * 同一段超时（同笼位 + 同状态 + 同起算时刻）是否已经挂过违规。
+     *
+     * <p>引擎「撤销 → 重建」同一段区间时，重建的行是**新 id**，{@link #claimViolationId} 那种按行 id 的
+     * 守卫拦不住重复发违规；按 started_at 判定才对 —— 起算点相同才算同一段超时，
+     * 「标记 → 取消 → 再标记」是新区间、该再发一次。
+     */
+    int countPriorViolationForInterval(@Param("alertId") long alertId);
 
     /** MySQL 命名锁：与当前连接绑定，跨实例互斥引擎扫描（多实例/上一轮未跑完时跳过本轮）。 */
     Integer tryAcquireLock(@Param("lockName") String lockName, @Param("timeoutSeconds") int timeoutSeconds);

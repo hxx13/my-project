@@ -212,6 +212,13 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-cage-review-capability.sql", ctx)) success++;
         // 笼位特殊状态超时告警：三张表 + 全局默认阈值 + 能力码（能力种子依赖上面的 matrix）
         total++; if (runScript("db/bootstrap-cage-status-alert.sql", ctx)) success++;
+        // 必须排在上一行（建表）之后：给两张阈值表加「计时起点」列。
+        // 一文件一条 DDL —— 撞「列已存在」会中止整份脚本，后面的语句永不执行。
+        total++; if (runScript("db/bootstrap-cage-alert-default-start-value.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-region-alert-rule-start-value.sql", ctx)) success++;
+        // 特殊饲养明细子状态：码表 + 明细字段 + 明细项默认阈值 + 学生侧能力注册。
+        // 必须排在 permission-matrix（建能力注册表）与 status-alert（建 cage_alert_default）之后。
+        total++; if (runScript("db/bootstrap-cage-special-detail.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-audit-assignment.sql", ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;

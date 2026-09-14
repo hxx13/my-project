@@ -146,10 +146,19 @@
         FROM cage_form_audit_log
         WHERE category = 'data'
           AND target_type = 'animal_cage'
-          AND field_code IN
-          <foreach collection="fieldCodes" item="fc" open="(" separator="," close=")">
-              #{fc}
-          </foreach>
+          AND (
+            field_code IN
+            <foreach collection="fieldCodes" item="fc" open="(" separator="," close=")">
+                #{fc}
+            </foreach>
+            <!-- 特殊饲养明细：码表项可增长，按前缀取。
+                 写成 LIKE CONCAT(前缀,'%') 而不是给下划线加转义 —— MySQL 只认 \n \t \\ \' 等有限几种转义，
+                 `\_` **不是**其一，反斜杠会被原样保留，模式串变成 `SF_\_%`（要求字面反斜杠）→ 一条也匹配不到。
+                 前缀 `SF_` 末尾那个下划线在这里当通配符用，没问题：码本身就是同一个常量拼出来的。 -->
+            <if test="fieldPrefix != null and fieldPrefix != ''">
+              OR field_code LIKE CONCAT(#{fieldPrefix}, '%')
+            </if>
+          )
         <if test="since != null">
           AND created_at &gt;= #{since}
         </if>

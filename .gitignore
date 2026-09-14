@@ -116,6 +116,9 @@ aup-live-form.json
 # Playwright 无障碍快照 dump（根目录 *.yml 都是误存的页面快照，只有 docker-compose 是真配置）
 /*.yml
 !/docker-compose.yml
+# 本地 DB 查询/排查脚本：含明文口令，只在本地跑。正规脚本一律放 scripts/
+/*.py
+/frontend/*.py
 
 # ===== 建库字段档案（本地权威文档，仅供 AI 建库参考，不进代码仓库） =====
 数据库字段档案/

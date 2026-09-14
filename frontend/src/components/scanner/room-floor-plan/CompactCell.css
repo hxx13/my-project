@@ -101,3 +101,20 @@
   height: 26cqw;
   font-size: 15cqw;
 }
+
+/* 特殊饲养明细角标（形如 +食 / −水）—— 与类型指示灯同处右上角：明细强绑定特殊饲养、
+   必是 type 3，而 type 3 不点灯，所以这个角是空的，两者不会同时出现。
+   字号压到 11cqw 是为了给居中的位号让位：位号 20cqw 时最长的「A-10」约到 72cqw，
+   角标两字宽约 19cqw、贴右 1.5cqw 起于 ~79cqw，正好不压字。改字号前先重算这两段。 */
+.scan-plan-cell [data-special-detail-badges] {
+  right: 1.5cqw;
+  top: 1.5cqw;
+  gap: 1cqw;
+}
+.scan-plan-cell [data-special-detail-badges] > span {
+  padding: 0 1.2cqw;
+  border-radius: 1.5cqw;
+  font-size: 11cqw;
+  line-height: 15cqw;
+  box-shadow: none;
+}

@@ -205,7 +205,15 @@ public class CageFormAuditService {
             addChange(current, r);
             String code = r.getFieldCode();
             if (StringUtils.hasText(code)) {
-                if (StringUtils.hasText(r.getFieldName())) fieldLabels.put(code, r.getFieldName());
+                String name = r.getFieldName();
+                // 明细项的 field_name 可能是「写入那一刻码表里已没有该项」留下的项码（英文，如 FEED）——
+                // 审计行是 append-only，不改历史，展示时跳过这种退化名：优先用此前出现过的中文名
+                // （同一项码改名前后的旧名就记在旁边），实在没有就用字段自己的中文名。
+                if (StringUtils.hasText(name) && !isDegenerateDetailName(code, name)) {
+                    fieldLabels.put(code, name);
+                } else {
+                    fieldLabels.putIfAbsent(code, fallbackDetailName(code));
+                }
                 if (r.getAfterValue() == null) state.remove(code);
                 else state.put(code, r.getAfterValue());
             }
@@ -230,6 +238,22 @@ public class CageFormAuditService {
         out.put("hasStructural", hasStructural);
         out.put("events", events);
         return out;
+    }
+
+    /**
+     * 字段名退化了吗：明细码 {@code SF_<item_code>} 的 field_name 恰好等于项码本身 —— 这正是
+     * 写入时码表查不到该项（被删/改名中）的回退结果（见 {@code CageInfoValueService#logDetailAudit}），
+     * 界面上会显示成英文项码。
+     */
+    private static boolean isDegenerateDetailName(String fieldCode, String fieldName) {
+        if (!fieldCode.startsWith(CageStatusIntervalService.DETAIL_STATUS_PREFIX)) return false;
+        String itemCode = fieldCode.substring(CageStatusIntervalService.DETAIL_STATUS_PREFIX.length());
+        return itemCode.equalsIgnoreCase(fieldName.trim());
+    }
+
+    /** 退化名的兜底：明细项用字段中文名（项已从码表删掉，中文名无从查起）。 */
+    private static String fallbackDetailName(String fieldCode) {
+        return fieldCode.startsWith(CageStatusIntervalService.DETAIL_STATUS_PREFIX) ? "特殊饲养明细" : fieldCode;
     }
 
     /** 笼位位置映射「校区/房间/笼架 A-10」——坐标口径与前端 displayPosition 一致（列转字母、行号取反）。 */
