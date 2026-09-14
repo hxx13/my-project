@@ -673,6 +673,8 @@ public class TwinStudentViolationService {
         }
 
         List<DashboardViolationBoardItemDTO> out = new ArrayList<>();
+        // 笼架联动条目先攒在这里，最后再拼到个人违规后面（首页公示把笼架相关往后排）
+        List<DashboardViolationBoardItemDTO> cageOut = new ArrayList<>();
 
         // 笼架联动：按课题组聚合，每组一条
         if (!cageRows.isEmpty() && cageStatusViolationMapper != null) {
@@ -713,7 +715,7 @@ public class TwinStudentViolationService {
                     dto.setSummary(prefix + buildSummary(text, maxLen));
                     dto.setImageUrls(mergeImages(extractBodyImageSrcs(text), parseImageUrls(single.getImageUrls())));
                     dto.setCreatedAt(single.getCreatedAt());
-                    out.add(dto);
+                    cageOut.add(dto);
                 } else {
                     DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
                     dto.setId(members.get(0).getId());
@@ -736,7 +738,7 @@ public class TwinStudentViolationService {
                     dto.setMembers(memberDtos);
                     dto.setImageUrls(mergeImages(extractBodyImageSrcs(groupText), parseImageUrls(first.getImageUrls())));
                     dto.setCreatedAt(latestCageTime);
-                    out.add(dto);
+                    cageOut.add(dto);
                 }
             }
         }
@@ -753,6 +755,8 @@ public class TwinStudentViolationService {
             dto.setCreatedAt(row.getCreatedAt());
             out.add(dto);
         }
+        // 个人违规在前、笼架联动在后（笼架条目整组下沉）
+        out.addAll(cageOut);
         return out;
     }
 
