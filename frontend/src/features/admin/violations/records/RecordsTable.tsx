@@ -28,7 +28,7 @@ import { richTextPlainPreview } from "@/utils/announcementHtml";
 import { formatBeijingDateTimeMedium } from "@/utils/beijingTime";
 import { cn } from "@/lib/utils";
 import { dueSecondaryLabel, summarizeDispositionForDetail } from "../slots/dispositionTypes";
-import { groupViolationRows, parseSignatureDataUrl, type ViolationGroupSegment } from "./recordsGrouping";
+import { groupViolationRows, parseSignatureDataUrl, type ViolationGroupSegment, type ViolationPersonSegment } from "./recordsGrouping";
 import type { RecordsFilters } from "./RecordsToolbar";
 
 import { appConfirm } from "@/lib/appDialog";
@@ -55,11 +55,18 @@ export function personDisplayName(r: StudentViolationRow): string {
 /** 违规记录每页条数：默认列表后端分页，避免全量渲染卡顿。 */
 const RECORDS_PAGE_SIZE = 20;
 
-/** 主表列数（人员·违规说明 / 课题组 / 状态 / 来源 / 禁入 / 到期 / 公告 / 处置情况 / 操作） */
-const COLS = 9;
+/** 主表列数（选择 / 课题组 / 人 / 违规说明·笼位 / 状态 / 来源 / 禁入 / 到期 / 公告 / 处置情况 / 操作） */
+const COLS = 11;
+
+/** 选择列复选框：逐行渲染、永不参与合并，与既有桩/合并逻辑解耦。 */
+const CHECKBOX = "size-3.5 shrink-0 cursor-pointer align-middle accent-[var(--app-color-accent)]";
 
 const th = "px-3 py-2 whitespace-nowrap";
 const td = "px-3 py-2 align-top";
+
+/** 笼位坐标 / 处置策略这类行内小标签：浅底描边 pill（与 sourceBadge 同源令牌）。 */
+const TAG_PILL =
+  "inline-flex items-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[11px] font-medium text-[var(--app-color-text-secondary)]";
 
 /** 块与块之间加粗上边线，避免两个下发批次连成一片。 */
 const batchSep = "border-t-2 border-t-[var(--twin-hairline)]";
@@ -208,8 +215,8 @@ type RecordsTableProps = {
 };
 
 /**
- * 单表：按下发批次成块，块内按课题组 rowSpan 合并；行级字段逐行。
- * 数据查询与解除/删除逻辑不变；展开详情行保留（点「详情」）。
+ * 单表：按下发批次成块，块内先按课题组合并格、再按「人」合并格（同一人可有多条不同笼位的违规）；
+ * 行级字段逐行。数据查询与解除/删除逻辑不变；展开详情行保留（点「详情」）。
  */
 export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Element {
   const qc = useQueryClient();
@@ -219,6 +226,9 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
   const [sigUrl, setSigUrl] = useState<string | null>(null);
   const [sigError, setSigError] = useState<string | null>(null);
   const [sigLoading, setSigLoading] = useState(false);
+  /** 批量操作的选中行 id。 */
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
   const keyword = filters.keyword.trim();
 
   // 关键词变化时回到第 1 页（关键词场景不后端分页，走全量前端收窄）
@@ -253,6 +263,9 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
 
   // 删除最后一条/筛选收窄后页码可能超界，回退到最后一页
   useEffect(() => { if (!keyword && page > totalPages) setPage(totalPages); }, [page, totalPages, keyword]);
+
+  // 列表数据一变（切筛选 / 翻页 / refetch 后）即清空选择，避免选到已不可见的行
+  useEffect(() => { setSelectedIds(new Set()); }, [data]);
 
   const filteredRows = useMemo(() => {
     let filtered = rows;
@@ -304,6 +317,45 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     }
   };
 
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /**
+   * 批量动作：串行 for...of（不并发轰后端），逐条收集成败。
+   * 部分失败时错误提示带上第一个失败原因，不吞异常。
+   */
+  const runBatch = async (verb: "解除" | "删除", ids: number[], action: (id: number) => Promise<void>) => {
+    if (!await appConfirm(
+      verb === "解除"
+        ? `将解除已选 ${ids.length} 条记录：不再在扫码弹窗展示，记录仍保留。确定？`
+        : `将物理删除已选 ${ids.length} 条记录，不可恢复。确定？`
+    )) return;
+    setBatchRunning(true);
+    let ok = 0;
+    const errors: string[] = [];
+    for (const id of ids) {
+      try {
+        await action(id);
+        ok += 1;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : "未知错误");
+      }
+    }
+    setBatchRunning(false);
+    setSelectedIds(new Set());
+    await qc.invalidateQueries({ queryKey: ["studentViolations"] });
+    if (errors.length) {
+      toast.error(`已${verb} ${ok} 条，${errors.length} 条失败：${errors[0]}`);
+    } else {
+      toast.success(`已${verb} ${ok} 条`);
+    }
+  };
+
   // 签名图只在点击后拉取，不预取
   const openSignature = async (id: number) => {
     setSigOpen(true);
@@ -342,24 +394,80 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     </td>
   );
 
+  const personCell = (seg: ViolationPersonSegment, allowMerge: boolean, dim: string) => (
+    <td rowSpan={allowMerge ? seg.rowSpan : undefined} className={cn(td, "min-w-[10rem]")}>
+      <div className="min-w-0">
+        <div className={cn("truncate text-sm font-semibold", dim)}>{seg.name}</div>
+        <div className="font-mono text-[11px] text-[var(--app-color-text-tertiary)]">{seg.key}</div>
+      </div>
+    </td>
+  );
+
+  const allSelected = filteredRows.length > 0 && filteredRows.every((r) => selectedIds.has(r.id));
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
+      {/* 批量操作条：仅在有选中时出现。shrink-0 保住外层高度链（整页不滚，只列表区滚）。 */}
+      {selectedIds.size > 0 ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2">
+          <span className="text-xs text-[var(--app-color-text-secondary)]">已选 {selectedIds.size} 条</span>
+          <div className="ml-auto flex items-center gap-2">
+            <AdminButton
+              type="button"
+              tone="secondary"
+              size="sm"
+              loading={batchRunning}
+              onClick={() => void runBatch("解除", [...selectedIds], clearStudentViolation)}
+            >
+              批量解除
+            </AdminButton>
+            <button
+              type="button"
+              disabled={batchRunning}
+              onClick={() => void runBatch("删除", [...selectedIds], deleteStudentViolation)}
+              className="inline-flex h-8 items-center rounded-[length:var(--admin-radius-md,0.375rem)] bg-[var(--app-color-feedback-danger)] px-3 text-sm font-medium text-white outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)] disabled:opacity-60"
+            >
+              批量删除
+            </button>
+            <AdminButton
+              type="button"
+              tone="ghost"
+              size="sm"
+              disabled={batchRunning}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              取消选择
+            </AdminButton>
+          </div>
+        </div>
+      ) : null}
       {/* 不要传 scrollable：它会再给内层封 max-h-[min(72vh,780px)]，与外层 flex-1 拉伸出的高度差
           会在表格下方留一大块空白。本页外层已由 h-[calc(100dvh-var(--admin-chrome-offset))] + flex 链
           给出确定高度，滚动交给 AdminTableShell 自带的外层 overflow-x-auto（y 轴随之计算为 auto）。 */}
       <AdminTableShell className="min-h-0 flex-1">
-        <table className="twin-table twin-table--merged-rows w-max min-w-full border-collapse text-left text-sm">
+        <table className="twin-table twin-table--merged-rows violation-records-table w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>
+              <th className={cn(th, "w-[2.5rem]")}>
+                <input
+                  type="checkbox"
+                  aria-label="全选当前列表"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
+                  onChange={() => setSelectedIds(allSelected ? new Set() : new Set(filteredRows.map((r) => r.id)))}
+                  className={CHECKBOX}
+                />
+              </th>
               <th className={cn(th, "min-w-[9rem]")}>课题组</th>
-              <th className={cn(th, "min-w-[16rem] border-l border-l-[var(--twin-hairline)]")}>人员 · 违规说明</th>
+              <th className={cn(th, "min-w-[10rem]")}>人</th>
+              <th className={cn(th, "min-w-[16rem] border-l border-l-[var(--twin-hairline)]")}>违规说明 · 笼位</th>
               <th className={cn(th, "min-w-[6rem]")}>状态</th>
               <th className={cn(th, "min-w-[6rem]")}>来源</th>
               <th className={cn(th, "min-w-[5.5rem]")}>禁入</th>
               <th className={cn(th, "min-w-[7rem]")}>到期</th>
               <th className={cn(th, "min-w-[5.5rem]")}>公告</th>
               <th className={cn(th, "min-w-[9rem]")}>处置情况</th>
-              <th className={cn(th, "min-w-[7.5rem] text-right")}>操作</th>
+              <th className={cn(th, "min-w-[7.5rem] text-right col-actions")}>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -377,6 +485,7 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     const disp = summarizeDispositionForDetail(r);
                     const bbadge = boardBadge(r);
                     const seg = block.groups.find((g) => g.startIndex === i);
+                    const pseg = block.persons.find((p) => p.startIndex === i);
                     // 已解除 / 已过期保留展示，仅文字色降级（primary→secondary、secondary→tertiary）
                     const historical = r.status === "CLEARED" || r.status === "EXPIRED";
                     const c1 = historical ? "text-[var(--app-color-text-secondary)]" : "text-[var(--app-color-text-primary)]";
@@ -384,6 +493,18 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     return (
                       <Fragment key={r.id}>
                         <tr className={cn("group", i === 0 && batchSep)}>
+                          {/* 选择列：逐行渲染，永不参与合并 —— 合并格段内的行也必须出这一格，
+                              否则这些行 td 数会比表头短。 */}
+                          <td className={cn(td, "w-[2.5rem]")}>
+                            <input
+                              type="checkbox"
+                              aria-label={`选择记录 #${r.id}`}
+                              checked={selectedIds.has(r.id)}
+                              onChange={() => toggleSelect(r.id)}
+                              className={CHECKBOX}
+                            />
+                          </td>
+
                           {/* 课题组：段首行出合并格。合并块放最左、与逐行字段用竖线分开
                               （对齐 animal-order-review 的整单级/行级分栏形态） */}
                           {seg
@@ -392,15 +513,18 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                               ? null
                               : <td className={cn(td, "min-w-[9rem]")} />}
 
-                          {/* 人员 · 违规说明 —— 左竖线即「合并块 | 逐行字段」的分界 */}
+                          {/* 人：同一人的多条违规（不同笼位/策略）合成一格 */}
+                          {pseg
+                            ? personCell(pseg, allowMerge, c1)
+                            : allowMerge
+                              ? null
+                              : <td className={cn(td, "min-w-[10rem]")} />}
+
+                          {/* 违规说明 · 笼位 —— 左竖线即「合并块 | 逐行字段」的分界 */}
                           <td className={cn(td, "min-w-[16rem] max-w-[24rem] border-l border-l-[var(--twin-hairline)]")}>
                             <div className="min-w-0">
-                              <div className="flex items-baseline gap-2">
-                                <span className={cn("truncate text-sm font-semibold", c1)}>{personDisplayName(r)}</span>
-                                <span className="shrink-0 font-mono text-[11px] text-[var(--app-color-text-tertiary)]">{r.targetUserId}</span>
-                              </div>
-                              {bbadge ? <div className="mt-0.5">{bbadge}</div> : null}
-                              <p className={cn("mt-0.5 line-clamp-2 text-xs leading-snug", c2)}>
+                              {bbadge ? <div className="mb-0.5">{bbadge}</div> : null}
+                              <p className={cn("line-clamp-2 text-xs leading-snug", c2)}>
                                 {richTextPlainPreview(r.violationText || "", 120) || "—"}
                               </p>
                               {imgs.length ? (
@@ -408,6 +532,13 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                                   {imgs.slice(0, 3).map((u) => (
                                     <img key={u} src={u} alt="" className="h-6 w-6 rounded border border-[var(--app-color-border-default)] object-cover" />
                                   ))}
+                                </div>
+                              ) : null}
+                              {/* 行内标签：笼位坐标（笼架联动才有）+ 处置策略 */}
+                              {r.cageParentPosition || r.disposition?.typeLabel ? (
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  {r.cageParentPosition ? <span className={TAG_PILL}>{r.cageParentPosition}</span> : null}
+                                  {r.disposition?.typeLabel ? <span className={TAG_PILL}>{r.disposition.typeLabel}</span> : null}
                                 </div>
                               ) : null}
                             </div>
@@ -436,9 +567,12 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                           {/* 处置情况 */}
                           <td className={td}>{dispositionCell(r.disposition, r.id, (id) => void openSignature(id))}</td>
 
-                          {/* 操作：详情 + 「更多操作」下拉并排，hover 显现 */}
-                          <td className={cn(td, "text-right")}>
-                            <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                          {/* 操作：详情 + 「更多操作」下拉并排。
+                              整列 col-actions 冻结在右端（见 index.css .violation-records-table）。
+                              **按钮常显、不做 hover 才显形**：冻结列本身就是常驻的一栏，
+                              不悬停时留一条空白白条比多两个按钮更扎眼。 */}
+                          <td className={cn(td, "text-right col-actions")}>
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 type="button"
                                 onClick={() => setExpandedId(open ? null : r.id)}

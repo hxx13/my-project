@@ -9,6 +9,7 @@ import java.util.List;
  * 主页大屏「提醒公示」单条 DTO。
  * summary 为纯文本摘要；imageUrls 为展示图片（正文 &lt;img&gt; 提取 + 旧记录 imageUrls 列合并，兼容历史）。
  * 笼架联动课题组违规：groupName/members 有值，前端渲染为「组卡 + 全员名字」。
+ * 笼架联动按人聚合：cageTags 有值，前端渲染为「人卡 + 笼位坐标/处置策略标签」。
  */
 @Data
 public class DashboardViolationBoardItemDTO {
@@ -24,9 +25,19 @@ public class DashboardViolationBoardItemDTO {
     /** 展示图片列表（正文图片 + 旧记录单独上传图片） */
     private List<String> imageUrls;
     private LocalDateTime createdAt;
+    /** 该人各条笼架违规的标签（笼位坐标 + 处置策略）；组卡/个人卡为 null */
+    private List<CageTagDTO> cageTags;
 
     @Data
     public static class MemberDTO {
         private String name;
+    }
+
+    @Data
+    public static class CageTagDTO {
+        /** 笼位坐标，如 A3-2 */
+        private String positionLabel;
+        /** 处置策略中文名，如「答题」；无策略时为 null */
+        private String dispositionLabel;
     }
 }

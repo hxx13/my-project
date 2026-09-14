@@ -207,7 +207,8 @@ export default function PendingBufferList({
   total: number;
   selected: Set<string>;
   onToggle: (cageId: string) => void;
-  onToggleAll: () => void;
+  /** 全选/取消全选**传入的这批**（多段时按段调，只影响该段） */
+  onToggleAll: (ids: string[]) => void;
   onRemove: (cageId: string) => void;
   /** 该缓冲笼位对应的真实格子（用于渲染缩略图）；无则回退纯文本 */
   cellOf?: (item: PendingItem) => CageShelfCell | undefined;
@@ -230,10 +231,15 @@ export default function PendingBufferList({
     >
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[11px] font-semibold text-[var(--twin-ink)]">缓冲区 · {total} 个笼位</span>
-        <button type="button" onClick={onToggleAll} disabled={total === 0}
-          className="flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] font-semibold text-[var(--twin-primary)] hover:border-[var(--twin-primary)] hover:bg-[var(--twin-primary)]/5 disabled:opacity-40">
-          <ListChecks className="h-3 w-3" />{selected.size > 0 && selected.size === total ? "取消全选" : "全选"}
-        </button>
+        {/* 多段（分配模式：待分配 / 撤销分配）时**不给**这个总开关 ——
+            两个段是两种动作，一个「全选」把两段一起选上没有意义；
+            全选下沉到各段标题行，各选各的。 */}
+        {sections.length <= 1 && (
+          <button type="button" onClick={() => onToggleAll(sections.flatMap((s) => s.items.map((i) => i.cageId)))} disabled={total === 0}
+            className="flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] px-2 py-0.5 text-[10px] font-semibold text-[var(--twin-primary)] hover:border-[var(--twin-primary)] hover:bg-[var(--twin-primary)]/5 disabled:opacity-40">
+            <ListChecks className="h-3 w-3" />{selected.size > 0 && selected.size === total ? "取消全选" : "全选"}
+          </button>
+        )}
       </div>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
         {sections.map((sec) => (
@@ -242,6 +248,12 @@ export default function PendingBufferList({
               {sec.key === "cancel" && <RotateCcw className="h-3 w-3" />}
               <span>{sec.title} · {sec.items.length}</span>
               {sec.hint && <span className="truncate">（{sec.hint}）</span>}
+              {sections.length > 1 && sec.items.length > 0 && (
+                <button type="button" onClick={() => onToggleAll(sec.items.map((i) => i.cageId))}
+                  className="ml-auto shrink-0 rounded border border-[var(--twin-hairline)] px-1 font-semibold text-[var(--twin-primary)] hover:border-[var(--twin-primary)] hover:bg-[var(--twin-primary)]/5">
+                  {sec.items.every((i) => selected.has(i.cageId)) ? "取消全选" : "全选本段"}
+                </button>
+              )}
             </div>
             {/* 折行排布：磁贴宽 60px 出头，缓冲栏宽就一行放三四个 */}
             <div className="flex flex-wrap content-start items-start gap-1">

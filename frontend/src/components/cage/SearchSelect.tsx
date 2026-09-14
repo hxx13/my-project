@@ -75,7 +75,7 @@ export default function SearchSelect({
             <button
               key={o.key}
               type="button"
-              onClick={() => { onPick(o); setKw(""); }}
+              onClick={() => { onPick(o); setKw(""); setOpen(false); }}
               className="block w-full px-2 py-1.5 text-left text-[11px] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)]"
             >
               {o.label}

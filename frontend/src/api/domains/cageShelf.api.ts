@@ -2001,8 +2001,14 @@ export async function fetchCageHistory(animalCageId: string | number): Promise<C
   };
 }
 
+/**
+ * 按关键字搜人员（姓名 / 工号 / 账号 / **课题组名**）。
+ *
+ * pageSize 取 100（服务端上限）：调用方常拿课题组名来「预出该组全员」当候选，
+ * 10 条会把大组截断（本库最大的一组 92 人），用户根本看不到要选的人。
+ */
 export async function searchPersonnelByKeyword(keyword: string): Promise<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>> {
-  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null; projectGroupName?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 10 } });
+  const res = await authHttp.get<Result<{ list?: Array<{ id: number; name: string; staffId?: string | null; aroUserId?: string | null; projectGroupName?: string | null }> }>>("/personnel", { params: { keyword, pageSize: 100 } });
   if (!res.data?.success) throw new Error(res.data?.message || "搜索人员失败");
   return (res.data.data?.list ?? []).map((p) => ({ id: p.id, name: p.name ?? String(p.id), accountId: p.staffId || p.aroUserId || "", projectGroupName: p.projectGroupName || "" }));
 }

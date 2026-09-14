@@ -52,11 +52,14 @@
         WHERE id = #{id}
     </update>
 
+    <!-- error_msg 列宽 varchar(255)、error_code varchar(64)。调用方会直接透传三方原始错误
+         （PushRetryScheduler 甚至不做任何截断），故在 SQL 侧按列宽硬截，一处覆盖全部写入方；
+         否则「记录失败」这步自己会先抛 Data too long，失败反而落不了库。 -->
     <update id="markDeliveryFailed">
         UPDATE sys_notify_delivery_log
         SET status = 'FAILED',
-            error_code = #{errorCode},
-            error_msg = #{errorMsg},
+            error_code = LEFT(#{errorCode}, 64),
+            error_msg = LEFT(#{errorMsg}, 255),
             retry_count = retry_count + 1,
             next_retry_time = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
             update_time = NOW()
@@ -79,12 +82,13 @@
           AND update_time >= DATE_SUB(NOW(), INTERVAL #{minutes} MINUTE)
     </select>
 
+    <!-- 同 markDeliveryFailed：重试失败也透传三方原始 error_msg，须按列宽截断 -->
     <update id="markRetryAttempt">
         UPDATE sys_notify_delivery_log
         SET retry_count = retry_count + 1,
             next_retry_time = #{nextRetryTime},
-            error_code = #{errorCode},
-            error_msg = #{errorMsg},
+            error_code = LEFT(#{errorCode}, 64),
+            error_msg = LEFT(#{errorMsg}, 255),
             update_time = NOW()
         WHERE id = #{id}
     </update>

@@ -7,6 +7,12 @@ export type DashboardViolationBoardMember = {
   name: string;
 };
 
+/** 笼架违规人卡的标签：笼位坐标 + 处置策略 */
+export type DashboardViolationBoardCageTag = {
+  positionLabel?: string | null;
+  dispositionLabel?: string | null;
+};
+
 export type DashboardViolationBoardItem = {
   id: number;
   displayName: string;
@@ -16,6 +22,8 @@ export type DashboardViolationBoardItem = {
   members?: DashboardViolationBoardMember[] | null;
   /** 状态标签（组卡彩色标签；个人违规为 null） */
   statusLabel?: string | null;
+  /** 笼架违规人卡标签（笼位坐标 + 处置策略）；组卡/个人卡为 null */
+  cageTags?: DashboardViolationBoardCageTag[] | null;
   summary: string;
   /** 展示图片列表（正文图片 + 旧记录单独上传图片，兼容历史） */
   imageUrls?: string[] | null;

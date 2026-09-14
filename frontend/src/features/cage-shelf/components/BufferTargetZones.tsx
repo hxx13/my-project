@@ -1,5 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
-import { ArrowDownToLine, Trash2 } from "lucide-react";
+import { ArrowDownToLine, Trash2, X } from "lucide-react";
 import type { CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 import type { PendingItem } from "../pendingBatch";
 import { BufferChipTile } from "./PendingBufferList";
@@ -16,6 +16,8 @@ export interface BufferZone {
    * 只影响观感：cancel 区画成虚线空心，和 add 区一眼能分开。
    */
   variant?: "add" | "cancel";
+  /** true = 用户手动加的目标区（AUP / 人员），整张卡可以删掉；固定区（撤销分配、状态色区）不给删 */
+  removable?: boolean;
 }
 
 /** 状态模式：格子当前的编辑缓存快照（喂给缩略图做实时配色） */
@@ -49,6 +51,7 @@ function ZoneCard({
   selectedCount,
   onAssignSelected,
   onUnassignAll,
+  onRemoveZone,
   cellOf,
   shelfNameOf,
   cacheOf,
@@ -59,6 +62,8 @@ function ZoneCard({
   selectedCount: number;
   onAssignSelected: (zoneKey: string) => void;
   onUnassignAll: (zoneKey: string) => void;
+  /** 只给手动加的区（`zone.removable`）：删掉整张卡，区里笼位一并退回缓冲区 */
+  onRemoveZone?: (zoneKey: string) => void;
   cellOf?: (item: PendingItem) => CageShelfCell | undefined;
   shelfNameOf?: (item: PendingItem) => string | undefined;
   cacheOf?: (item: PendingItem) => EditCacheEntry | undefined;
@@ -101,11 +106,20 @@ function ZoneCard({
           style={isCancel ? { borderColor: color, backgroundColor: "transparent" } : { backgroundColor: color }}>
           <ArrowDownToLine className="h-3 w-3" />{isCancel ? "撤销" : "放这里"}{selectedCount > 0 ? `（${selectedCount}）` : ""}
         </button>
+        {/* 垃圾桶只管清空：区里笼位退回缓冲区，卡留着继续拖。
+            删卡是另一枚按钮（只给手动加的区），两者别合成一个动作。 */}
         <button type="button" onClick={() => onUnassignAll(zone.key)} disabled={items.length === 0}
           className="rounded-twin-md border border-[var(--twin-hairline)] px-1.5 py-1 text-[10px] text-[var(--twin-mute)] hover:text-[var(--twin-ink)] disabled:opacity-40"
-          title="区内笼位全部退回缓冲区">
+          title="清空该区笼位（退回缓冲区，区保留）">
           <Trash2 className="h-3 w-3" />
         </button>
+        {zone.removable && onRemoveZone && (
+          <button type="button" onClick={() => onRemoveZone(zone.key)}
+            className="rounded-twin-md border border-[var(--twin-hairline)] px-1.5 py-1 text-[10px] text-[var(--twin-mute)] hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+            title="删除这个待选区（区里笼位退回缓冲区）">
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
       {/* 折行排布：与缓冲区同一套磁贴，区域窄就一行两个 */}
       <div className="mt-1.5 flex flex-wrap gap-2">
@@ -129,6 +143,7 @@ export default function BufferTargetZones({
   selectedCount,
   onAssignSelected,
   onUnassignAll,
+  onRemoveZone,
   header,
   cellOf,
   shelfNameOf,
@@ -142,7 +157,10 @@ export default function BufferTargetZones({
   /** 当前勾选的缓冲条目数（「放这里」按钮的可用性） */
   selectedCount: number;
   onAssignSelected: (zoneKey: string) => void;
+  /** 垃圾桶：清空该区（笼位退回缓冲区），区本身保留 */
   onUnassignAll: (zoneKey: string) => void;
+  /** 删掉整张区卡（只对 `zone.removable` 的区显示）；与上面的「清空」是两回事，别合并 */
+  onRemoveZone?: (zoneKey: string) => void;
   /** 区域列表上方的标题/操作区（如预定模式的「＋ 选择人员」） */
   header?: React.ReactNode;
   /** 区域条目对应的真实格子（用于渲染缩略图）；无则回退纯文本 */
@@ -167,6 +185,7 @@ export default function BufferTargetZones({
         {zones.map((z) => (
           <ZoneCard key={z.key} zone={z} items={itemsByZone.get(z.key) ?? []}
             selectedCount={selectedCount} onAssignSelected={onAssignSelected} onUnassignAll={onUnassignAll}
+            onRemoveZone={onRemoveZone}
             cellOf={cellOf} shelfNameOf={shelfNameOf} cacheOf={cacheOf} onOpen={onOpen} />
         ))}
         {zones.length === 0 && <div className="px-1 py-2 text-[10px] text-[var(--twin-mute)]">暂无可选目标</div>}
