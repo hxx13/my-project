@@ -12,6 +12,7 @@ type Props = {
 /**
  * 提醒公示单行：
  * - 课题组违规：组卡（状态标签 + 组名 + 人数 + 组级说明 + 全员名字 chips + 多图内联）
+ * - 笼架违规人卡：姓名 + 各条违规的「笼位坐标 · 处置策略」标签
  * - 个人违规：姓名 → 说明 → 多图内联（无图不占位）
  * 图片可点击放大预览，10 秒自动关闭；打开时通知父组件暂停自动滚动。
  */
@@ -59,6 +60,43 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
     </div>
   ) : null;
 
+  const cageTags = item.cageTags ?? [];
+  const isCagePerson = !isGroup && cageTags.length > 0;
+  const tagTone = dashTone(
+    visual,
+    "border border-fuchsia-500/25 bg-fuchsia-500/10 text-fuchsia-100/90",
+    DASH_NIGHT_CLASS.chip,
+    "border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]",
+  );
+
+  // 笼架违规人卡：姓名 + 各条违规的「笼位坐标 · 处置策略」标签
+  const cagePersonCard = (
+    <div className={`flex items-start gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}>
+      <span
+        className={`shrink-0 inline-flex justify-between text-xs font-bold md:text-sm ${nameTone}`}
+        style={{ width: "2.7em" }}
+      >
+        {[...(item.displayName || "—")].map((ch, i) => (
+          <span key={i}>{ch}</span>
+        ))}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap gap-1.5">
+          {cageTags.map((t, i) => (
+            <span
+              key={`${t.positionLabel}-${i}`}
+              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tagTone}`}
+            >
+              {t.positionLabel}
+              {t.dispositionLabel ? ` · ${t.dispositionLabel}` : ""}
+            </span>
+          ))}
+        </div>
+        {ImageStrip}
+      </div>
+    </div>
+  );
+
   const content = isGroup ? (
     <div
       className={`mb-2 rounded-[10px] border p-2.5 md:p-3 ${
@@ -99,6 +137,8 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
       ) : null}
       {ImageStrip}
     </div>
+  ) : isCagePerson ? (
+    cagePersonCard
   ) : (
     <div className={`flex items-start gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}>
       <span

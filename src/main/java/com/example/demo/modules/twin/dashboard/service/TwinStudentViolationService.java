@@ -634,7 +634,8 @@ public class TwinStudentViolationService {
 
     /**
      * 主页大屏「违规惩戒公示」：ACTIVE + 未过期，每人最新一条；
-     * 笼架联动违规按课题组聚合为一条，其余按个人展示。
+     * 笼架联动违规既按课题组聚合为一条（组卡），也按人聚合为一条（人卡，标签=笼位坐标+处置策略），二者并存。
+     * 最终顺序：个人违规 → 笼架组卡 → 笼架人卡。
      */
     public List<DashboardViolationBoardItemDTO> listDashboardBoard(int limit, int summaryMaxLen) {
         if (violationTableAbsent.get()) {
@@ -743,6 +744,52 @@ public class TwinStudentViolationService {
             }
         }
 
+        // 笼架联动：按人再聚合一份，每人一条，标签为「笼位坐标 + 处置策略」（与组卡并存）
+        List<DashboardViolationBoardItemDTO> cagePersonOut = new ArrayList<>();
+        if (!cageRows.isEmpty()) {
+            Map<String, List<TwinStudentViolation>> byPerson = new LinkedHashMap<>();
+            for (TwinStudentViolation row : cageRows) {
+                if (!StringUtils.hasText(row.getTargetUserId())) {
+                    continue;
+                }
+                byPerson.computeIfAbsent(row.getTargetUserId().trim(), k -> new ArrayList<>()).add(row);
+            }
+            // 父记录可能被同笼多人共享，局部缓存避免循环内重复查库
+            Map<Long, TwinCageStatusViolation> parentCache = new HashMap<>();
+            for (Map.Entry<String, List<TwinStudentViolation>> entry : byPerson.entrySet()) {
+                List<TwinStudentViolation> own = entry.getValue();
+                List<DashboardViolationBoardItemDTO.CageTagDTO> tags = new ArrayList<>();
+                for (TwinStudentViolation row : own) {
+                    String positionLabel = null;
+                    try {
+                        TwinCageStatusViolation parent = parentCache.computeIfAbsent(
+                                row.getCageViolationId(),
+                                id -> cageStatusViolationMapper != null ? cageStatusViolationMapper.selectById(id) : null);
+                        positionLabel = parent != null ? parent.getPositionLabel() : null;
+                    } catch (Exception e) {
+                        log.debug("[student-violation] 查父记录失败 cageViolationId={}", row.getCageViolationId());
+                    }
+                    if (!StringUtils.hasText(positionLabel)) {
+                        continue;
+                    }
+                    DashboardViolationBoardItemDTO.CageTagDTO tag = new DashboardViolationBoardItemDTO.CageTagDTO();
+                    tag.setPositionLabel(positionLabel.trim());
+                    tag.setDispositionLabel(resolveDispositionLabel(row.getId()));
+                    tags.add(tag);
+                }
+                if (tags.isEmpty()) {
+                    continue;
+                }
+                DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
+                dto.setId(own.get(0).getId());
+                String name = userDisplayNameService.resolveDisplayName(entry.getKey());
+                dto.setDisplayName(StringUtils.hasText(name) ? name : entry.getKey());
+                dto.setCageTags(tags);
+                dto.setCreatedAt(own.get(0).getCreatedAt());
+                cagePersonOut.add(dto);
+            }
+        }
+
         // 个人违规：每人一条
         for (TwinStudentViolation row : personalRows) {
             DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
@@ -755,8 +802,9 @@ public class TwinStudentViolationService {
             dto.setCreatedAt(row.getCreatedAt());
             out.add(dto);
         }
-        // 个人违规在前、笼架联动在后（笼架条目整组下沉）
+        // 个人违规在前、笼架联动在后（笼架条目整组下沉）；笼架人卡排在笼架组卡之后
         out.addAll(cageOut);
+        out.addAll(cagePersonOut);
         return out;
     }
 
@@ -787,6 +835,27 @@ public class TwinStudentViolationService {
             case "ANIMAL_TRANSFER" -> "动物转移";
             default -> statusCode;
         };
+    }
+
+    /** 该违规对应待办的处置策略中文名；无待办/未知策略返回 null。 */
+    private String resolveDispositionLabel(Long violationId) {
+        if (obligationService == null || violationId == null) {
+            return null;
+        }
+        try {
+            TwinObligation ob = obligationService.findByViolationId(violationId);
+            return ob == null ? null : dispositionTypeLabel(ob.getDispositionType());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 处置策略编码 → 中文（复用 DISPOSITION_TYPE_LABEL；未知编码返回 null） */
+    private static String dispositionTypeLabel(String dispositionType) {
+        if (!StringUtils.hasText(dispositionType)) {
+            return null;
+        }
+        return DISPOSITION_TYPE_LABEL.get(dispositionType.trim().toUpperCase());
     }
 
     private String resolveDepartmentName(String userId) {

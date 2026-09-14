@@ -121,8 +121,8 @@ export function CodexViolationBoardPanel({
         className="min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         {...scrollHandlers}
       >
-        {items.map((item) => (
-          <ViolationBoardRow key={item.id} item={item} onPreviewOpenChange={handleRowPreviewChange} />
+        {items.map((item, idx) => (
+          <ViolationBoardRow key={`${idx}-${item.id}`} item={item} onPreviewOpenChange={handleRowPreviewChange} />
         ))}
         <div className="h-2" />
       </div>

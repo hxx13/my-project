@@ -49,7 +49,7 @@ export function SceneRules({ runtimeConfig, violationItems, reducedMotion }: Sce
 
     for (const item of violationItems) {
       list.push({
-        key: `violation-${item.id ?? item.displayName ?? Math.random()}`,
+        key: `violation-${item.id ?? item.displayName ?? ""}`,
         title: item.displayName ?? "违规记录",
         body: item.summary ?? "",
       });
@@ -97,7 +97,7 @@ export function SceneRules({ runtimeConfig, violationItems, reducedMotion }: Sce
         <div ref={streamRef} className="ops-rules-stream">
           {blocks.map((block, idx) => (
             <article
-              key={block.key}
+              key={`${idx}-${block.key}`}
               data-rules-chapter
               className="ops-rules-chapter"
               style={{ "--ops-rules-offset": `${idx * 3}rem` } as CSSProperties}
