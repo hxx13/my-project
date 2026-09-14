@@ -330,6 +330,8 @@ public class ReferenceDataService {
                 if (req.getQuantity() > cap) {
                     return Result.error("单个笼位最多放 " + cap + " 只，请减少数量或增加笼位");
                 }
+                // 数量同步回笼位预定与表单：订单行取购物车数量，笼位不跟着走就会两处对不上
+                cageReservationService.syncQuantityForCart(id, req.getQuantity());
             }
             existing.setQuantity(req.getQuantity());
         }

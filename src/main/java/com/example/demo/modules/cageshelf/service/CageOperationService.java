@@ -310,8 +310,13 @@ public class CageOperationService {
      * <p>与网格脱敏同一套判据（{@code CageCellIndexController.applyGroupMask}）：区域命中 → 整架放开；
      * 否则按课题组过滤。所以「看得到这个笼位」与「能操作这个笼位」口径一致，不会出现
      * 「对他脱敏、他看不到，却还能分笼/转移/代认领」。
+     *
+     * <p>public 是因为**读侧**也要用同一份判据：笼位详情与详情表单弹窗的脱敏
+     * （{@code StudentCageShelfService.maskDetailForUser}）以前只按课题组判，
+     * 结果「被分配到饲养组长名下的区域」照样整片 *** —— 饲养组长与手下的饲养员本来就不在
+     * 笼位所属课题组里，只按课题组判等于把他们负责的区域也一起遮了。
      */
-    private boolean cageInScope(User user, Long animalCageId, CageCellDetail d) {
+    public boolean cageInScope(User user, Long animalCageId, CageCellDetail d) {
         // 全局查看者（SUPER_ADMIN+ / 平台管理者）不受作用域限制：他们本来就可见全部，
         // 这次收窄针对的是「矩阵给了操作资格、但笼位不在他负责范围内」的饲养组长/饲养员。
         if (visibilityPolicy.isGlobalViewer(user)) return true;
