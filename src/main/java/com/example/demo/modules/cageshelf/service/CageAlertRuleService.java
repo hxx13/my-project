@@ -1,6 +1,10 @@
 package com.example.demo.modules.cageshelf.service;
 
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelist;
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelistItem;
 import com.example.demo.modules.cageshelf.mapper.CageAlertRuleMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistItemMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeSet;
 
 /**
  * 阈值解析：回答「某笼位的某状态，现在生效的告警规则是什么（开不开、阈值多少天、高亮还是发违规）」。
@@ -60,11 +65,71 @@ public class CageAlertRuleService {
 
     private final CageAlertRuleMapper mapper;
     private final CageRegionCapabilityService regionCapabilityService;
+    private final CageInfoCodelistMapper codelistMapper;
+    private final CageInfoCodelistItemMapper codelistItemMapper;
 
     public CageAlertRuleService(CageAlertRuleMapper mapper,
-                                CageRegionCapabilityService regionCapabilityService) {
+                                CageRegionCapabilityService regionCapabilityService,
+                                CageInfoCodelistMapper codelistMapper,
+                                CageInfoCodelistItemMapper codelistItemMapper) {
         this.mapper = mapper;
         this.regionCapabilityService = regionCapabilityService;
+        this.codelistMapper = codelistMapper;
+        this.codelistItemMapper = codelistItemMapper;
+    }
+
+    /**
+     * 状态码 → 中文名。五个状态查静态表；**特殊饲养明细**（{@code SF_} + item_code）查码表。
+     * 查不到退回码本身 —— 不静默成空串，排查时要看得见是哪个码没配到名字。
+     */
+    public String labelOf(String statusCode) {
+        if (statusCode == null) return "";
+        String known = STATUS_LABELS.get(statusCode);
+        if (known != null) return known;
+        if (!CageStatusIntervalService.isDetailStatus(statusCode)) return statusCode;
+        String itemCode = statusCode.substring(CageStatusIntervalService.DETAIL_STATUS_PREFIX.length());
+        return detailItemLabels().getOrDefault(itemCode, statusCode);
+    }
+
+    /**
+     * 特殊饲养明细的码表项：{@code item_code → 中文名}，按码表 sort_order 返回（顺序即界面顺序）。
+     *
+     * <p>逐行 {@link #labelOf} 每次都要读一遍码表，批量场景（配置界面一次出全部行、批量打标签）
+     * 走这里只读一次。码表未配/查不到回空表，调用方据此出「只有五个固定状态」的清单。
+     */
+    public Map<String, String> detailItemLabels() {
+        Map<String, String> out = new LinkedHashMap<>();
+        CageInfoCodelist cl = codelistMapper.selectByCode(CageStatusIntervalService.DETAIL_DICT_CODE);
+        if (cl == null || cl.getId() == null) return out;
+        for (CageInfoCodelistItem it : codelistItemMapper.selectByCodelistId(cl.getId())) {
+            if (it != null && it.getItemCode() != null) out.put(it.getItemCode(), it.getItemLabel());
+        }
+        return out;
+    }
+
+    /**
+     * 可配置告警阈值的**全部**状态码 = 五个固定状态 + 特殊饲养明细（{@code SF_} + item_code）。
+     *
+     * <p>为什么明细要单列：需特殊饲养本身可能是**常驻**的，真正要盯的是每个细项自己的变化
+     * （需加食 / 勿加水 …）。每个明细项都是一个独立状态码，有各自的阈值、动作与违规联动，
+     * 所以配置界面按这份清单出行 —— 写死五个，明细就永远配不了、也就永远不告警。
+     * 码表项由维护人增删，这份清单跟着变，不在这里写死明细。
+     */
+    public List<String> configurableStatusCodes() {
+        List<String> out = new ArrayList<>(STATUS_CODES);
+        for (String itemCode : detailItemLabels().keySet()) {
+            out.add(CageStatusIntervalService.DETAIL_STATUS_PREFIX + itemCode);
+        }
+        return out;
+    }
+
+    /** 上面那份清单的中文名（五个固定 + 明细码表），一次读回供配置界面批量打标签。 */
+    public Map<String, String> configurableLabels() {
+        Map<String, String> out = new LinkedHashMap<>(STATUS_LABELS);
+        for (Map.Entry<String, String> e : detailItemLabels().entrySet()) {
+            out.put(CageStatusIntervalService.DETAIL_STATUS_PREFIX + e.getKey(), e.getValue());
+        }
+        return out;
     }
 
     /**
@@ -74,13 +139,15 @@ public class CageAlertRuleService {
      * @param thresholdDays 持续多少天触发；0 = 状态一出现就触发
      * @param highlight     触发后是否在网格/弹窗高亮
      * @param violation     触发后是否自动发违规
+     * @param startValue    计时起点：true = 出现 1 开始（1→0 结束，默认）；false = 出现 0 开始（0→1 结束）
      */
     public record EffectiveAlertRule(
             String statusCode,
             boolean enabled,
             int thresholdDays,
             boolean highlight,
-            boolean violation
+            boolean violation,
+            boolean startValue
     ) {
     }
 
@@ -103,11 +170,26 @@ public class CageAlertRuleService {
         // 一次读全局默认，按 status_code 建索引。
         Map<String, Map<String, Object>> defaults = indexDefaults(mapper.listDefaultRules());
 
+        /*
+          候选状态码 = 五个内置 ∪ **配置里实际出现过的其它码**。
+          后者就是特殊饲养明细（SF_ + item_code）：它的项由码表维护、可增长，写死五个会让明细
+          永远拿不到规则 —— 引擎按 fail-closed 视作「告警被关」，既不触发还会把存量清掉。
+          顺序：内置五个在前（输出稳定），其余按码排序。
+        */
+        List<String> statusCodes = new ArrayList<>(STATUS_CODES);
+        TreeSet<String> extra = new TreeSet<>();
+        for (String code : defaults.keySet()) if (!statusCodes.contains(code)) extra.add(code);
+        for (Map<String, Object> r : rules) {
+            Object c = r == null ? null : r.get("statusCode");
+            if (c != null && !statusCodes.contains(String.valueOf(c))) extra.add(String.valueOf(c));
+        }
+        statusCodes.addAll(extra);
+
         Map<Long, List<EffectiveAlertRule>> out = new LinkedHashMap<>();
         for (Long id : ids) {
             List<Map<String, String>> keys = keysByCage.getOrDefault(id, List.of());
-            List<EffectiveAlertRule> perCage = new ArrayList<>(STATUS_CODES.size());
-            for (String status : STATUS_CODES) {
+            List<EffectiveAlertRule> perCage = new ArrayList<>(statusCodes.size());
+            for (String status : statusCodes) {
                 perCage.add(resolveOne(keys, status, rules, defaults));
             }
             out.put(id, perCage);
@@ -153,7 +235,8 @@ public class CageAlertRuleService {
         Map<String, Object> def = defaultByStatus == null ? null : defaultByStatus.get(statusCode);
         if (def == null) {
             log.warn("[cage-alert-rule] 全局默认缺 status_code={}，fail-closed 不告警", statusCode);
-            return new EffectiveAlertRule(statusCode, false, 0, false, false);
+            // fail-closed 时方向给 true（= 现状语义）：缺行反而把方向翻成反向是最坏的结果。
+            return new EffectiveAlertRule(statusCode, false, 0, false, false, true);
         }
         return fromDefault(statusCode, def);
     }
@@ -165,6 +248,11 @@ public class CageAlertRuleService {
         int minThreshold = Integer.MAX_VALUE;
         boolean highlight = false;
         boolean violation = false;
+        // 计时起点（方向）**没有可并集的语义**：同区域多组长的方向由保存链保证一致（不一致直接拒绝保存）。
+        // 万一同级真出现分歧（历史数据 / 绕过保存链写进来的行），取先出现的那个并打 warn，
+        // 绝不做「取最小/取或」—— 那会得出一个谁都没配过的第三态。
+        boolean startValue = startValueOf(rows.isEmpty() ? null : rows.get(0));
+        boolean startValueTaken = false;
         for (Map<String, Object> row : rows) {
             if (!truthy(row.get("enabled"))) continue;
             enabled = true;
@@ -172,22 +260,39 @@ public class CageAlertRuleService {
             boolean[] flags = actionFlags(str(row.get("action")));
             highlight |= flags[0];
             violation |= flags[1];
+            boolean sv = startValueOf(row);
+            if (!startValueTaken) {
+                startValue = sv;
+                startValueTaken = true;
+            } else if (sv != startValue) {
+                log.warn("[cage-alert-rule] 同级 status_code={} 的计时起点不一致，取先出现的 {}（保存链本应拦住）",
+                        statusCode, startValue);
+            }
         }
         if (!enabled) {
             // 配过但全关：本区该状态不告警。阈值/动作给确定值（沿用全局默认阈值，动作取无）。
+            // 方向仍回显第一行配过的值（界面上要看得出组长当时配了什么）。
             Map<String, Object> def = defaultByStatus == null ? null : defaultByStatus.get(statusCode);
             int t = def == null ? 0 : toInt(def.get("thresholdDays"), 0);
-            return new EffectiveAlertRule(statusCode, false, t, false, false);
+            return new EffectiveAlertRule(statusCode, false, t, false, false, startValue);
         }
         return new EffectiveAlertRule(statusCode, true,
-                minThreshold == Integer.MAX_VALUE ? 0 : minThreshold, highlight, violation);
+                minThreshold == Integer.MAX_VALUE ? 0 : minThreshold, highlight, violation, startValue);
     }
 
     private static EffectiveAlertRule fromDefault(String statusCode, Map<String, Object> def) {
         boolean enabled = truthy(def.get("enabled"));
         boolean[] flags = actionFlags(str(def.get("action")));
         return new EffectiveAlertRule(statusCode, enabled, toInt(def.get("thresholdDays"), 0),
-                flags[0], flags[1]);
+                flags[0], flags[1], startValueOf(def));
+    }
+
+    /**
+     * 计时起点取值：`start_value = 1` → true（出现 1 开始）；`0` → false。
+     * 缺列/缺值/非法一律回落到 1（true = 现状语义）—— 缺值反而把方向翻成反向是最坏的结果。
+     */
+    private static boolean startValueOf(Map<String, Object> row) {
+        return row == null || toInt(row.get("startValue"), 1) != 0;
     }
 
     // ── 小工具 ──

@@ -32,7 +32,8 @@ public interface CageAlertRuleMapper {
     int upsertDefaultRule(@Param("statusCode") String statusCode,
                           @Param("thresholdDays") int thresholdDays,
                           @Param("action") String action,
-                          @Param("enabled") int enabled);
+                          @Param("enabled") int enabled,
+                          @Param("startValue") int startValue);
 
     /**
      * 只删**这个人**在该区域配的告警规则行。
@@ -52,5 +53,6 @@ public interface CageAlertRuleMapper {
                          @Param("thresholdDays") int thresholdDays,
                          @Param("action") String action,
                          @Param("enabled") int enabled,
+                         @Param("startValue") int startValue,
                          @Param("configuredBy") String configuredBy);
 }

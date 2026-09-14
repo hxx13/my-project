@@ -101,6 +101,11 @@ export function useRoomFloorPlan(
     },
     enabled: shelfIndexIds.length > 0,
     staleTime: 5 * 60 * 1000,
+    // 必须自己轮询：告警一变的刷新全靠引擎的 socket 广播（App.tsx 的 CAGE_STATUS_ALERT_CHANGED），
+    // 而广播是 best-effort（socketServer 是 @Autowired(required=false)，拿不到就整个不发）。
+    // 弹窗又没有别的刷新时机（不像管理端笼架页有 refetchInterval），于是「设置里关了告警、
+    // 弹窗还挂着旧标记」会一直显示到关窗重开 —— 实测踩过。这里与管理端同口径，一分钟兜一次。
+    refetchInterval: 60 * 1000,
   });
 
   // 待审分笼/转移（「分笼审核中」「转移审核中」）+ 活跃笼位预定（「已被 XX 预订」）：

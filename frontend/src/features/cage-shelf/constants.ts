@@ -87,6 +87,107 @@ export const CAGE_BOX_ACTIONS = [
 /** 编辑模式可切换的状态动作。合笼为本地自定义状态，ARO 侧无对应字段。 */
 export type CageBoxAction = (typeof CAGE_BOX_ACTIONS)[number]["action"];
 
+/* ═══════════════════════════════════════════════════════════
+   特殊饲养明细（特殊饲养下的可配置子状态）
+   —— 与后端 CageStatusIntervalService 的常量一一对应，改一处要改两处。
+   每个码表项以 `SF_ + item_code` 作为独立的 statusCode 参与阈值/超时/违规链。
+   ═══════════════════════════════════════════════════════════ */
+
+/** 明细字段的 canonical（单选之外的多选字段，值落 cage_info_value.value_json）。 */
+export const SPECIAL_DETAIL_CANONICAL = "special_feeding_details";
+/** 明细的码表 code（与字段的 dict_key 一致）—— 可选项从这份码表读。 */
+export const SPECIAL_DETAIL_DICT = "special_feeding_detail";
+/** 明细状态码前缀（与后端一致）：statusCode = 前缀 + item_code。 */
+export const SPECIAL_DETAIL_STATUS_PREFIX = "SF_";
+
+/**
+ * 从表单值行里取「特殊饲养明细」的当前选中集合。
+ * 多选字段（data_type=ENUM_MULTI）的值是 item_code 数组；读不到就是空集。
+ * 三端共用这一份 —— 判断「用户改了什么」的起点必须同源。
+ */
+export function detailCodesOfValues(
+  rows: { canonical?: string | null; value?: unknown }[] | null | undefined,
+): Set<string> {
+  const v = rows?.find((r) => r?.canonical === SPECIAL_DETAIL_CANONICAL)?.value;
+  return new Set(Array.isArray(v) ? v.map(String) : []);
+}
+
+/** 否定义的首字（「勿加食」「不禁食」都算否定）—— 决定角标记号的 + / −。 */
+const NEGATIVE_DETAIL_LABEL = /^[勿不禁无]/;
+
+/**
+ * 明细项中文名 → 格子右上角角标的紧凑记法。
+ *
+ * 码表名是「需加食」这种完整说法，格子（80×82px）塞不下全名，所以压成一枚两字记号：
+ * **首字定肯定/否定**（勿·不·禁·无 → `−`，其余 → `+`），**末字才是对象**（食/水）。
+ * 于是 需加食 → `+食`、勿加水 → `−水`；全名挂在 title 上。名字太短（<2 字）则原样返回。
+ */
+export function compactDetailBadgeText(label: string): string {
+  const t = (label ?? "").trim();
+  if (t.length < 2) return t;
+  return `${NEGATIVE_DETAIL_LABEL.test(t) ? "−" : "+"}${t.slice(-1)}`;
+}
+
+export interface SpecialDetailBadgeItem {
+  /** 码表 item_code（不含 SF_ 前缀） */
+  code: string;
+  /** 后端下发的中文名；暂存态没有，交给角标组件查码表补 */
+  label?: string | null;
+}
+
+/**
+ * 该状态**不是违规行为** —— 特殊饲养 / 合笼，以及特殊饲养明细（`SF_` 前缀）。
+ *
+ * 服务端口径：这两个状态到阈值只发通知（推送中心的「笼位状态提醒」源），**不建违规记录**。
+ * 阈值配置界面据此把「违规」那一档标成不可选，免得用户配了却发现什么都没发生
+ * （2026-09-14 用户明确：这两个状态不属于违规行为）。
+ */
+export function isNonViolationStatus(statusCode: string | null | undefined): boolean {
+  if (!statusCode) return false;
+  return statusCode === "SPECIAL_FEEDING"
+    || statusCode === "COHABITATION"
+    || statusCode.startsWith(SPECIAL_DETAIL_STATUS_PREFIX);
+}
+
+/**
+ * 该笼位**此刻**该显示的明细角标 —— 只认一个状态源，绝不把服务端与暂存拼在一起：
+ * 有状态模式的暂存（editCacheEntry）就以暂存为准（预览 = 实提交），否则读服务端 specialStatuses。
+ *
+ * 强绑定：明细只在「需特殊饲养」开着时有意义，父状态关掉就一律不显示。这条门控同时也是
+ * 脱敏门控 —— 后端对不可见笼位置空 specialStatuses，两条一起消失，不会单冒出角标。
+ */
+export function specialDetailItemsFor(
+  statuses: Array<{ code: string; label?: string | null }> | null | undefined,
+  cache?: { currentActions: ReadonlySet<CageBoxAction>; currentDetails?: ReadonlySet<string> } | null,
+): SpecialDetailBadgeItem[] {
+  const list = statuses ?? [];
+  const sfOn = cache
+    ? cache.currentActions.has("SPECIAL_BREEDING")
+    : list.some((s) => s.code === "SPECIAL_FEEDING");
+  if (!sfOn) return [];
+  // 暂存态：勾选集合就是全部真相（含「全部取消」→ 空集，网格上角标跟着消失）
+  if (cache?.currentDetails) return [...cache.currentDetails].map((code) => ({ code }));
+  return list
+    .filter((s) => typeof s.code === "string" && s.code.startsWith(SPECIAL_DETAIL_STATUS_PREFIX))
+    .map((s) => ({ code: s.code.slice(SPECIAL_DETAIL_STATUS_PREFIX.length), label: s.label }));
+}
+
+/**
+ * 「整层/整校区」批量配置的写入目标 —— **只写房间**。
+ *
+ * 楼层/校区只是批量入口（点它 = 把本层我可见的房间一次改完），**绝不写它自身的区域键**：
+ * ① 越界：楼层行会波及同层别人负责、且自己没配规则的房间；
+ * ② 服务端会拒：写入门槛要求「整层房间全归你」，只拿到部分房间时点整层必然 403。
+ * 房间节点没有 extra（它的可见房间就是空），于是退回写自己 —— 单个房间照旧按房间键落行。
+ */
+export function regionWriteTargets(
+  regionType: string,
+  regionId: string,
+  extraRegions?: Array<{ regionType: string; regionId: string; name?: string }> | null,
+): Array<{ regionType: string; regionId: string }> {
+  return extraRegions && extraRegions.length > 0 ? extraRegions : [{ regionType, regionId }];
+}
+
 export const CAGE_BOX_ACTION_LIST = CAGE_BOX_ACTIONS.map(a => a.action) as readonly CageBoxAction[];
 
 export function cageBoxAction(action: CageBoxAction) {

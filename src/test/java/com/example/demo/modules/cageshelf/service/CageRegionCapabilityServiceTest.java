@@ -29,7 +29,8 @@ import static org.mockito.Mockito.when;
 /**
  * 区域级学生能力的核心回归。
  *
- * ① **区域是矩阵的收窄层**：矩阵是总开关（上限），区域只能在其范围内关闭，且**可以全关**；
+ * ① **区域是矩阵的收窄层**：矩阵是总开关（上限），区域只能在其范围内**显式**关闭；
+ *    「本区没写过某能力的行」= 没表态 = 跟随矩阵（新注册的能力不会被历史配置默默关死）；
  * ② **关闭只影响被关的那一块**：解析逐架做 —— 关了 201A 不能把该学生在别的房间的功能一起关掉，
  *    未被配置的楼层/校区也不能把已关的房间稀释回全开；
  * ③ 单人保存只删自己的行，超管保存则重置整个区域。
@@ -101,14 +102,39 @@ class CageRegionCapabilityServiceTest {
                 "区域没被配过 → 回落矩阵上限（首日行为不变）");
     }
 
+    /**
+     * **只有写过的行才算表态**：某区域只写了 confirm 一行 → 它只对 confirm 表了态，
+     * 其余能力本区没意见 → 跟随矩阵上限。
+     *
+     * <p>曾经的规则是「配过就以配过的行为准」，等于把**保存那一刻的矩阵快照**永久固化：
+     * 之后新注册的能力（特殊饲养父状态/明细）在这里被默默关死，界面上看不到原因。
+     */
     @Test
-    void configuredRegionNarrowsToListedOnly() {
+    void configuredRegionOnlyAffectsCapabilitiesItHasRowsFor() {
         givenStudentCagesInRoom100();
         givenStudentCeiling(CLAIM, DIVISION, CONFIRM);
         when(mapper.listRegionCapabilityRows(any()))
                 .thenReturn(List.of(row("ROOM", "100", CONFIRM, 1)));
 
-        assertEquals(List.of("confirm"), service.studentModes(student()));
+        assertEquals(List.of("studentClaim", "division", "confirm"), service.studentModes(student()),
+                "只写了 confirm 一行 = 其余没表态 → 跟随矩阵");
+    }
+
+    /**
+     * **核心回归（2026-09-14 用户报的那条）**：区域在「特殊饲养」能力注册**之前**就配过 →
+     * 新能力在这里必须照常可见，不能被那份历史快照关死（H5/小程序「状态模式没有特殊饲养入口」的根因）。
+     */
+    @Test
+    void newlyRegisteredCapabilityIsNotSilentlyClosedByStaleRegionConfig() {
+        final String SF_PARENT = "cage.student.edit.special_breeding";
+        when(permissionService.identityCeiling("ARO_1")).thenReturn(Set.of(DIVISION, SF_PARENT));
+        when(mapper.listRegionCapabilityRows(any()))
+                .thenReturn(List.of(row("ROOM", "100", DIVISION, 0)));   // 旧配置：只关过「划分」
+
+        assertFalse(service.studentCapabilityVisible(student(), DIVISION, "100", "10", "1"),
+                "显式关过的（划分）仍然是关的");
+        assertTrue(service.studentCapabilityVisible(student(), SF_PARENT, "100", "10", "1"),
+                "没表态的新能力 → 跟随矩阵，必须可见");
     }
 
     /**
@@ -133,9 +159,11 @@ class CageRegionCapabilityServiceTest {
     void closingOneRoomDoesNotCloseAnother() {
         givenStudentCagesInTwoRooms();
         givenStudentCeiling(CLAIM, DIVISION, CONFIRM);
+        // 两个房间都按保存链的形态**整份写**（矩阵上限每一项都落行）；差别只在勾没勾。
+        // 只写部分行 = 其余能力没表态 = 跟随矩阵，那是另一条路径（见 configuredRegionOnlyAffectsCapabilitiesItHasRowsFor）。
         when(mapper.listRegionCapabilityRows(any())).thenReturn(List.of(
                 row("ROOM", "100", CLAIM, 0), row("ROOM", "100", DIVISION, 0), row("ROOM", "100", CONFIRM, 0),
-                row("ROOM", "200", DIVISION, 1), row("ROOM", "200", CONFIRM, 1)));
+                row("ROOM", "200", CLAIM, 0), row("ROOM", "200", DIVISION, 1), row("ROOM", "200", CONFIRM, 1)));
 
         assertEquals(List.of("division", "confirm"), service.studentModes(student()),
                 "100 关了不该影响 200");
@@ -163,8 +191,9 @@ class CageRegionCapabilityServiceTest {
                 row("ROOM", "100", DIVISION, 1),
                 row("ROOM", "100", CLAIM, 1)));
 
-        assertEquals(List.of("studentClaim"), service.studentModes(student()),
-                "教职工能力 cage.mode.allocate 不该从区域学生配置里漏出来");
+        assertEquals(List.of("studentClaim", "confirm"), service.studentModes(student()),
+                "教职工能力 cage.mode.allocate 不该从区域学生配置里漏出来；"
+                        + "confirm 没写过行 = 没表态 → 跟随矩阵（它在上限里，所以在）");
     }
 
     /** 移动端只带 roomId：必须补齐楼层/校区，否则配在楼层级的关闭会查不到、被当成没配过而误放行。 */
@@ -199,12 +228,12 @@ class CageRegionCapabilityServiceTest {
         when(cellIndexMapper.lookupByAnimalCageId(999L))
                 .thenReturn(Map.of("roomId", 100, "floorId", 10, "campusId", 1));
         when(mapper.listRegionCapabilityRows(any()))
-                .thenReturn(List.of(row("ROOM", "100", CONFIRM, 1)));
+                .thenReturn(List.of(row("ROOM", "100", CONFIRM, 1), row("ROOM", "100", DIVISION, 0)));
 
         User u = student();
         assertTrue(service.cageRegionEnabled(u, 999L, CONFIRM));
         assertFalse(service.cageRegionEnabled(u, 999L, DIVISION),
-                "该笼位所在区域只开了确认，划分必须按笼位收口拒掉");
+                "该笼位所在区域显式关了划分 → 按笼位收口拒掉");
     }
 
     /** 只关**房间**级、楼层/校区没配过时，该笼位仍要判成关闭（不能被未配置的上级稀释回全开）。 */

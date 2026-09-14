@@ -10,9 +10,9 @@ import {
 } from "@/api/domains/cageShelf.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
-import { SettingsSection } from "./SettingsPrimitives";
+import { isNonViolationStatus } from "@/features/cage-shelf/constants";
+import { ActionPicker, SettingsSection, SettingsSwitch, StartValuePicker } from "./SettingsPrimitives";
 import RegionAlertRuleDialog, {
-  AlertRuleEditCard,
   AlertRuleReadonlyRow,
   type RegionAlertInheritFrom,
 } from "./RegionAlertRuleDialog";
@@ -36,7 +36,22 @@ type Target = {
   regionId: string;
   name: string;
   inheritFrom: RegionAlertInheritFrom | null;
+  /** 「整层/整校区」：随主区域一起写的可见房间（批量下发，不写楼层键的行） */
+  extraRegions?: Array<{ regionType: string; regionId: string; name?: string }>;
 };
+
+/** 收集该节点下**可见的**房间（当前剪枝树里的叶子）—— 「整层配置」就是批量改这些房间。 */
+function visibleRoomsOf(node: CageStatusAlertRegionNode): Array<{ regionType: string; regionId: string; name?: string }> {
+  const out: Array<{ regionType: string; regionId: string; name?: string }> = [];
+  const walk = (n: CageStatusAlertRegionNode) => {
+    for (const c of n.children) {
+      if (c.regionType === "ROOM") out.push({ regionType: "ROOM", regionId: c.regionId, name: c.name });
+      else walk(c);
+    }
+  };
+  walk(node);
+  return out;
+}
 
 const nodeKey = (n: { regionType: string; regionId: string }) => `${n.regionType}:${n.regionId}`;
 
@@ -60,6 +75,45 @@ function countConfigurable(nodes: CageStatusAlertRegionNode[]): number {
   };
   nodes.forEach(walk);
   return n;
+}
+
+/**
+ * 全局默认的**紧凑行**：状态名 + 阈值 + 动作 + 计时起点 + 开关同排。
+ * 原先是五张大卡，把整页占满，下方「区域阈值」只剩一小块 —— 那里才是日常操作的地方。
+ */
+function GlobalRuleRow({
+  rule,
+  onChange,
+}: {
+  rule: CageStatusAlertRule;
+  onChange: (patch: Partial<CageStatusAlertRule>) => void;
+}) {
+  const threshold = (raw: string) => Math.max(0, parseInt(raw, 10) || 0);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5">
+      <span className="w-[5.5rem] shrink-0 text-[11px] font-semibold text-[var(--twin-ink)]">{rule.statusLabel}</span>
+      <label className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--twin-mute)]">
+        阈值
+        <input
+          type="number"
+          min={0}
+          value={rule.thresholdDays}
+          onChange={(e) => onChange({ thresholdDays: threshold(e.target.value) })}
+          className="w-14 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)] outline-none"
+        />
+        天
+      </label>
+      <div className="w-[12rem] shrink-0">
+        <ActionPicker value={rule.action} onChange={(a) => onChange({ action: a })}
+          nonViolation={isNonViolationStatus(rule.statusCode)} />
+      </div>
+      <div className="w-[6rem] shrink-0">
+        <StartValuePicker value={rule.startValue ?? 1} onChange={(v) => onChange({ startValue: v })} />
+      </div>
+      <span className="min-w-0 flex-1" />
+      <SettingsSwitch checked={rule.enabled} onChange={(v) => onChange({ enabled: v })} label={rule.statusLabel} />
+    </div>
+  );
 }
 
 export default function CageAlertSettings() {
@@ -124,7 +178,7 @@ export default function CageAlertSettings() {
     setGlobalSaving(true);
     try {
       await saveGlobalStatusAlertConfig(
-        globalRules.map(({ statusCode, thresholdDays, action, enabled }) => ({ statusCode, thresholdDays, action, enabled })),
+        globalRules.map(({ statusCode, thresholdDays, action, enabled, startValue }) => ({ statusCode, thresholdDays, action, enabled, startValue })),
       );
       setGlobalInitial(globalRules);
       toast.success("全局告警阈值已保存");
@@ -193,7 +247,10 @@ export default function CageAlertSettings() {
             <button
               type="button"
               onClick={() =>
-                setTarget({ regionType: node.regionType, regionId: node.regionId, name: node.name, inheritFrom })
+                setTarget({
+                  regionType: node.regionType, regionId: node.regionId, name: node.name, inheritFrom,
+                  extraRegions: visibleRoomsOf(node),
+                })
               }
               className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
             >
@@ -219,7 +276,7 @@ export default function CageAlertSettings() {
         title="全局默认阈值"
         description={
           canEditGlobal
-            ? "五个特殊状态持续超过阈值天数即告警（0 = 一出现就触发）。保存即全量替换五行。"
+            ? "五个特殊状态持续超过阈值天数即告警（0 = 一出现就触发）。各区域未单独配置时按此生效；保存即全量替换五行。"
             : "五个特殊状态的全局默认阈值，各区域未单独配置时按此生效。仅超级管理员可修改。"
         }
       >
@@ -233,9 +290,9 @@ export default function CageAlertSettings() {
           </div>
         ) : canEditGlobal ? (
           <>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {globalRules.map((r) => (
-                <AlertRuleEditCard
+                <GlobalRuleRow
                   key={r.statusCode}
                   rule={r}
                   onChange={(patch) =>
@@ -298,6 +355,7 @@ export default function CageAlertSettings() {
           regionId={target.regionId}
           regionName={target.name}
           inheritFrom={target.inheritFrom}
+          extraRegions={target.extraRegions}
           onSaved={() => void loadRegions()}
         />
       )}

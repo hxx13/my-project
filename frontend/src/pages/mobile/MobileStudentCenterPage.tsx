@@ -8,6 +8,7 @@ import {
   fetchMobileCenter,
   fetchMobileAlerts,
   markMobileAlertsReadAll,
+  isMobileTokenDead,
   type MobileCenterData,
   type MobileAlertItem,
 } from "@/api/domains/mobileStudent.api";
@@ -71,6 +72,26 @@ function PageError({ message, onRetry }: { message: string; onRetry: () => void 
   );
 }
 
+/** 直链（扫码）失效专用页：直链不可恢复，引导改用正式版登录 */
+function PageTokenDead({ code, message, onLogin }: { code: number; message: string; onLogin: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6" style={{ background: PAGE_BG }}>
+      <WifiOff className="size-12" style={{ color: "#c8c9cc" }} />
+      <h1 className="text-base font-semibold text-center" style={{ color: "#323233" }}>
+        {code === 1010002 ? "直链模式已过期" : "直链模式已失效"}
+      </h1>
+      <p className="text-sm text-center max-w-xs leading-relaxed" style={{ color: "#969799" }}>
+        {message}。扫码直链有效期有限，重新生成后旧链接会立即作废。
+      </p>
+      <p className="text-sm text-center max-w-xs leading-relaxed" style={{ color: "#969799" }}>
+        请使用正式版模式登录后查看学生中心。
+      </p>
+      <button onClick={onLogin} className="px-6 py-2.5 rounded-full text-white text-sm font-medium active:scale-95"
+        style={{ background: `linear-gradient(135deg, ${BRAND}, #8B1229)` }}>去登录</button>
+    </div>
+  );
+}
+
 /** JWT 模式下加载首页数据（profile + home 并行） */
 async function loadJwtHomeData(): Promise<{
   profile: import("@/api/domains/mobileStudent.api").MobileCenterProfile;
@@ -105,6 +126,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [data, setData] = useState<MobileCenterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tokenDead, setTokenDead] = useState<{ code: number; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<MobileShellTabKey>("home");
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const [announcements, setAnnouncements] = useState<MobileAlertItem[]>([]);
@@ -302,6 +324,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     // Token mode (original logic, unchanged)
     setLoading(true);
     setError(null);
+    setTokenDead(null);
     try {
       const [d, b] = await Promise.all([
         fetchMobileCenter(token),
@@ -310,7 +333,11 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       setData(d);
       setBranding(b);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "加载失败");
+      if (isMobileTokenDead(e)) {
+        setTokenDead({ code: e.code, message: e.message });
+      } else {
+        setError(e instanceof Error ? e.message : "加载失败");
+      }
     } finally {
       setLoading(false);
     }
@@ -376,6 +403,14 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   }, [activeTab]);
 
   if (loading) return <PageSkeleton />;
+  if (tokenDead)
+    return (
+      <PageTokenDead
+        code={tokenDead.code}
+        message={tokenDead.message}
+        onLogin={() => navigate("/m/login", { replace: true })}
+      />
+    );
   if (error) return <PageError message={error} onRetry={load} />;
   if (!data) return <PageError message="暂无数据" onRetry={load} />;
   const bannerKey = userNotifyBanner

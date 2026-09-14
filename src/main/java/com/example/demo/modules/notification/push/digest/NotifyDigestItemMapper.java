@@ -13,4 +13,10 @@ public interface NotifyDigestItemMapper {
     List<String> findDistinctPendingUsers();
     int markSent(@Param("ids") List<Long> ids, @Param("sendTime") LocalDateTime sendTime);
     int deletePendingBySource(@Param("sourceCode") String sourceCode);
+    /**
+     * 分批删「已发送且早于 before」的明细，返回本次删掉的行数（0 = 已清空）。
+     * 只删 SENT —— PENDING 是还没投出去的，删了就是丢通知。
+     * 分片删（LIMIT 一批）是为了首次清积压时不一刀锁死表，走 idx_status_time。
+     */
+    int deleteSentBefore(@Param("before") LocalDateTime before, @Param("limit") int limit);
 }

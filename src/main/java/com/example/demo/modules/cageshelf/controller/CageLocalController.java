@@ -267,6 +267,49 @@ public class CageLocalController {
         return Result.success(Map.of("ok", true, "local", true));
     }
 
+    /**
+     * 写入「特殊饲养明细」子状态（多选，**整体覆盖**）。
+     *
+     * <p>明细项由码表维护、可增长，逐项接口会让前端每次改动都要知道「另一头」的状态；
+     * 整体覆盖天然幂等，也能一次提交一批（走待提交的批量提交）。
+     * 权限与中间态判定跟 {@link #edit} 完全同口径，只是动作码换成明细那一项。
+     */
+    @PostMapping("/special-details")
+    @Operation(summary = "写入笼位「特殊饲养明细」子状态（多选覆盖）→ 只写本地")
+    public Result<?> specialDetails(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req.getHeader("Authorization"));
+        Result<?> denied = requireRole(u, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+
+        Long animalCageId = toLong(body.get("animalCageId"));
+        if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
+        List<String> itemCodes = new ArrayList<>();
+        if (body.get("itemCodes") instanceof List<?> list) {
+            for (Object o : list) if (o != null) itemCodes.add(String.valueOf(o));
+        }
+
+        String canonical = CageInfoValueService.SPECIAL_DETAIL_CANONICAL;
+        if (modeVisibilityService.isStudent(u)) {
+            if (!modeVisibilityService.canStudentEdit(u, canonical)) {
+                return Result.fail(403, "学生当前可标记的状态动作不含该项");
+            }
+            if (!cageOperationService.isOccupantSelf(u, animalCageId)) {
+                return Result.fail(403, "只能标记本人使用中的笼位");
+            }
+            if (!regionCapabilityService.studentEditEnabledOnCage(u, animalCageId, canonical)) {
+                return Result.fail(403, "该笼位所在区域未开放该状态标记，请联系该区域饲养组长");
+            }
+        } else if (!modeVisibilityService.canUseMode(u, "edit")) {
+            return Result.fail(403, "无状态编辑权限（仅状态模式身份可操作）");
+        }
+
+        // 与 /edit 同一口径：只写表单真相源，留痕走 setSpecialDetails 内部按明细项逐条写审计
+        infoValueService.setSpecialDetails(animalCageId, itemCodes, operatorDisplayName(u));
+        log.info("[local/special-details] {} 明细 {} → 笼位 {} {}",
+                operatorDisplayName(u), itemCodes, animalCageId, buildPositionLabel(animalCageId));
+        return Result.success(Map.of("ok", true, "local", true));
+    }
+
     // ═══════════════════════════════════════════
     // 实验记录 & 照片
     // ═══════════════════════════════════════════

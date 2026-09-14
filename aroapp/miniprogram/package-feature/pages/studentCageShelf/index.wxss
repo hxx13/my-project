@@ -1157,6 +1157,30 @@
   line-height: 1;
 }
 
+/* 特殊饲养明细角标（+食 / −水）—— 贴右上角，与类型指示灯同角：明细强绑定特殊饲养，
+   该格必是「饲养中」，而 type 3 不点灯，两者不会同时出现。
+   字号比认领徽标（16rpx）再小一档、只贴右边，给居中的位号（26rpx）让位。 */
+.gcell-sf {
+  position: absolute;
+  top: 2rpx;
+  right: 2rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  z-index: 2;
+}
+
+.gcell-sf-pill {
+  margin-bottom: 2rpx;
+  padding: 0 4rpx;
+  border-radius: 4rpx;
+  font-size: 14rpx;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .grid-pad-bottom {
   height: 48rpx;
 }
@@ -3536,3 +3560,32 @@
   color: var(--ink);
   word-break: break-all;
 }
+
+/* ── 特殊饲养明细（子状态）────────────────────────────────────────────
+   强绑定：只在「需特殊饲养」开着时渲染（见 editActionSfOn）；
+   配色沿用本页令牌（--brand / --ink / --soft），与状态动作那组磁贴同一套观感。 */
+.cs-detail {
+  margin-top: 20rpx;
+  padding: 16rpx 20rpx;
+  border: 2rpx solid #ebedf0;
+  border-radius: 12rpx;
+}
+.cs-detail-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.cs-detail-t { font-size: 24rpx; font-weight: 600; color: var(--ink); }
+.cs-detail-note { font-size: 20rpx; color: #969799; }
+.cs-detail-grid { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.cs-detail-chip {
+  padding: 8rpx 18rpx;
+  border: 2rpx solid #dcdee0;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  color: #646566;
+}
+.cs-detail-chip--on { border-color: var(--brand); color: var(--brand); background: var(--soft); font-weight: 600; }
+.cs-detail-chip--add { font-weight: 700; }
+.cs-detail-chip--rm { text-decoration: line-through; opacity: 0.6; }

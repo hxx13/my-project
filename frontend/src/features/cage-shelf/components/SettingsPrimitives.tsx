@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { CageStatusAlertAction } from "@/api/domains/cageShelf.api";
 
 /**
  * 设置项布尔开关 —— 令牌配色（亮/暗一致），尺寸对齐设置行右侧控件位。
@@ -80,5 +81,107 @@ export function SettingsRow({
       </div>
       <div className="shrink-0">{children}</div>
     </div>
+  );
+}
+
+/** 紧凑分段控件（动作 / 计时起点共用）：令牌配色，尺寸对齐设置行的右侧控件位。 */
+function Segmented<T extends string | number>({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ value: T; label: string; title?: string }>;
+  value: T;
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5">
+      {options.map((o) => (
+        <button
+          key={String(o.value)}
+          type="button"
+          onClick={() => onChange(o.value)}
+          aria-pressed={value === o.value}
+          title={o.title}
+          className={`flex-1 rounded-twin-md px-1.5 py-1 text-[10px] font-semibold transition ${
+            value === o.value ? "bg-[var(--twin-primary)] text-white" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export const ACTION_LABEL: Record<CageStatusAlertAction, string> = {
+  HIGHLIGHT: "仅高亮",
+  VIOLATION: "仅违规",
+  BOTH: "高亮+违规",
+};
+
+const ACTIONS: CageStatusAlertAction[] = ["HIGHLIGHT", "VIOLATION", "BOTH"];
+
+/** 非违规状态（特殊饲养/合笼/明细）的档位说明：它们的「违规」档实际只会发通知，不建违规记录。 */
+export const NON_VIOLATION_HINT =
+  "该状态不属于违规行为：选到「通知」档按推送中心「笼位状态提醒」发通知，不产生违规记录";
+
+/**
+ * 非违规状态的档位名 —— 同一套 action 值（服务端语义不变），只是把「违规」改说成「通知」：
+ * 这两个状态到阈值本就只发通知，界面还写「仅违规/高亮+违规」会让人以为在建违规记录。
+ */
+export const ACTION_LABEL_NON_VIOLATION: Record<CageStatusAlertAction, string> = {
+  HIGHLIGHT: "仅高亮",
+  VIOLATION: "仅通知",
+  BOTH: "高亮+通知",
+};
+
+/** 触发动作三选一。`nonViolation=true`：把违规档改名为通知档（特殊饲养/合笼/明细）。 */
+export function ActionPicker({
+  value,
+  onChange,
+  nonViolation = false,
+}: {
+  value: CageStatusAlertAction;
+  onChange: (a: CageStatusAlertAction) => void;
+  /** 该状态不属于违规行为（特殊饲养/合笼/明细）→ 档位文案显示为「通知」并给出说明。 */
+  nonViolation?: boolean;
+}) {
+  const labels = nonViolation ? ACTION_LABEL_NON_VIOLATION : ACTION_LABEL;
+  return (
+    <Segmented
+      options={ACTIONS.map((a) => ({
+        value: a,
+        label: labels[a],
+        title: nonViolation ? NON_VIOLATION_HINT : undefined,
+      }))}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+const START_VALUES: Array<0 | 1> = [1, 0];
+export const START_VALUE_LABEL: Record<0 | 1, string> = { 1: "1→0", 0: "0→1" };
+/** 一句小字把两个边都写出来，省得用户去猜「结束按哪边算」。 */
+export const START_VALUE_HINT: Record<0 | 1, string> = {
+  1: "出现 1 开始计时，1→0 结束",
+  0: "出现 0 开始计时，0→1 结束",
+};
+
+/** 计时起点二选一：标签就是区间的两个边。 */
+export function StartValuePicker({
+  value,
+  onChange,
+}: {
+  value: 0 | 1;
+  onChange: (v: 0 | 1) => void;
+}) {
+  return (
+    <Segmented
+      options={START_VALUES.map((v) => ({ value: v, label: START_VALUE_LABEL[v], title: START_VALUE_HINT[v] }))}
+      value={value}
+      onChange={onChange}
+    />
   );
 }

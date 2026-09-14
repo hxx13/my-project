@@ -90,6 +90,23 @@ export interface MobileTokenGenerateResult {
 
 // ======================== 公开 API ========================
 
+/** 直链失效业务码（同后端 ErrorCodeConstants）：1010001 无效 / 1010002 过期 / 1010003 多设备 */
+const TOKEN_DEAD_CODES = new Set([1010001, 1010002, 1010003]);
+
+class MobileTokenDeadError extends Error {
+  code: number;
+  constructor(code: number, message: string) {
+    super(message);
+    this.name = "MobileTokenDeadError";
+    this.code = code;
+  }
+}
+
+/** 直链已失效（过期 / 口令无效 / 多设备），调用方应引导去正式登录页 */
+export function isMobileTokenDead(e: unknown): e is MobileTokenDeadError {
+  return e instanceof MobileTokenDeadError && TOKEN_DEAD_CODES.has(e.code);
+}
+
 /** 通过 token 获取学生中心数据（公开接口，无需登录） */
 export async function fetchMobileCenter(token: string): Promise<MobileCenterData> {
   const resp = await publicHttp.get<{
@@ -100,7 +117,7 @@ export async function fetchMobileCenter(token: string): Promise<MobileCenterData
   }>(`/public/mobile-center/${encodeURIComponent(token)}`);
 
   if (!resp.data.success) {
-    throw new Error(resp.data.message || "加载失败");
+    throw new MobileTokenDeadError(resp.data.code, resp.data.message || "加载失败");
   }
   return resp.data.data;
 }

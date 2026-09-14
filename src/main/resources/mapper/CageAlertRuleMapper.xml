@@ -6,7 +6,7 @@
 
     <select id="listDefaultRules" resultType="map">
         SELECT status_code AS statusCode, threshold_days AS thresholdDays,
-               action AS action, enabled AS enabled
+               action AS action, enabled AS enabled, start_value AS startValue
         FROM cage_alert_default
     </select>
 
@@ -15,7 +15,8 @@
     <select id="listRegionRules" resultType="map">
         SELECT region_type AS regionType, region_id AS regionId,
                status_code AS statusCode, threshold_days AS thresholdDays,
-               action AS action, enabled AS enabled, configured_by AS configuredBy
+               action AS action, enabled AS enabled, start_value AS startValue,
+               configured_by AS configuredBy
         FROM cage_region_alert_rule
         WHERE (region_type, region_id) IN
         <foreach collection="regions" item="r" open="(" separator="," close=")">
@@ -32,10 +33,10 @@
     </select>
 
     <insert id="upsertDefaultRule">
-        INSERT INTO cage_alert_default (status_code, threshold_days, action, enabled, updated_at)
-        VALUES (#{statusCode}, #{thresholdDays}, #{action}, #{enabled}, NOW())
+        INSERT INTO cage_alert_default (status_code, threshold_days, action, enabled, start_value, updated_at)
+        VALUES (#{statusCode}, #{thresholdDays}, #{action}, #{enabled}, #{startValue}, NOW())
         ON DUPLICATE KEY UPDATE threshold_days = VALUES(threshold_days), action = VALUES(action),
-                                enabled = VALUES(enabled), updated_at = NOW()
+                                enabled = VALUES(enabled), start_value = VALUES(start_value), updated_at = NOW()
     </insert>
 
     <!-- 只删这个人配的：同一区域可能有多个组长，按区域整片删会抹掉别人的配置 -->
@@ -54,10 +55,10 @@
     <!-- 唯一键 (region_type, region_id, status_code, configured_by) 上的 upsert：
          正常路径先删后插不会撞键，ON DUPLICATE 只是兜底幂等（并发/重放不报错） -->
     <insert id="insertRegionRule">
-        INSERT INTO cage_region_alert_rule (region_type, region_id, status_code, threshold_days, action, enabled, configured_by, updated_at)
-        VALUES (#{regionType}, #{regionId}, #{statusCode}, #{thresholdDays}, #{action}, #{enabled}, #{configuredBy}, NOW())
+        INSERT INTO cage_region_alert_rule (region_type, region_id, status_code, threshold_days, action, enabled, start_value, configured_by, updated_at)
+        VALUES (#{regionType}, #{regionId}, #{statusCode}, #{thresholdDays}, #{action}, #{enabled}, #{startValue}, #{configuredBy}, NOW())
         ON DUPLICATE KEY UPDATE threshold_days = VALUES(threshold_days), action = VALUES(action),
-                                enabled = VALUES(enabled), updated_at = NOW()
+                                enabled = VALUES(enabled), start_value = VALUES(start_value), updated_at = NOW()
     </insert>
 
 </mapper>

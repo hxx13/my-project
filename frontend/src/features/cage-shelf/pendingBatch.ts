@@ -23,6 +23,11 @@ export interface PendingItem {
   actions?: string[];
   /** 状态模式：该笼位**取消**的动作 code（ARO 无取消色的会被跳过） */
   removedActions?: string[];
+  /**
+   * 状态模式：该笼位「特殊饲养明细」的**目标选中集合**（码表 item_code）。
+   * undefined = 本次不改明细；空数组 = 清空。整体覆盖式写入（明细项可增长，逐项接口没法表达「另一头」）。
+   */
+  details?: string[];
   /** 状态模式：笼盒编码（ARO 侧按码操作） */
   cageBoxCode?: string;
   /** 分配模式：该笼位归属到哪个 AUP（取消分配类不需要，留空） */

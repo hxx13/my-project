@@ -1,7 +1,11 @@
 package com.example.demo.modules.cageshelf.service;
 
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelist;
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelistItem;
 import com.example.demo.modules.cageshelf.entity.CageRegionGrant;
 import com.example.demo.modules.cageshelf.mapper.CageAlertRuleMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistItemMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -41,16 +46,30 @@ class CageAlertConfigServiceTest {
     @Mock private CageRegionGrantService regionGrantService;
     @Mock private CagePermissionService permissionService;
     @Mock private CageShelfMapper shelfMapper;
+    @Mock private CageRegionCapabilityService regionCapabilityService;
+    @Mock private CageInfoCodelistMapper codelistMapper;
+    @Mock private CageInfoCodelistItemMapper codelistItemMapper;
 
+    private CageAlertRuleService alertRuleService;
     private CageAlertConfigService service;
 
     @BeforeEach
     void setUp() {
-        service = new CageAlertConfigService(ruleMapper, regionGrantService, permissionService, shelfMapper);
+        // 真价实货的 CageAlertRuleService（只桩住码表，未桩时=没配明细）——配置侧的
+        // 「可配置清单」就该由它说了算，测的是两者口径一致，不是各测各的。
+        alertRuleService = new CageAlertRuleService(ruleMapper, regionCapabilityService,
+                codelistMapper, codelistItemMapper);
+        service = new CageAlertConfigService(ruleMapper, regionGrantService, permissionService, shelfMapper,
+                alertRuleService);
     }
 
     private static CageAlertConfigService.Rule rule(String code, int threshold, String action, boolean enabled) {
-        return new CageAlertConfigService.Rule(code, threshold, action, enabled);
+        return rule(code, threshold, action, enabled, 1);
+    }
+
+    private static CageAlertConfigService.Rule rule(String code, int threshold, String action, boolean enabled,
+                                                    int startValue) {
+        return new CageAlertConfigService.Rule(code, threshold, action, enabled, startValue);
     }
 
     private static List<CageAlertConfigService.Rule> fiveRules() {
@@ -78,7 +97,7 @@ class CageAlertConfigServiceTest {
         verify(ruleMapper).deleteRegionRules("ROOM", "100", "STAFF_A");
         verify(ruleMapper, never()).deleteAllRegionRules(anyString(), anyString());
         verify(ruleMapper, times(5)).insertRegionRule(anyString(), anyString(), anyString(),
-                anyInt(), anyString(), anyInt(), eq("STAFF_A"));
+                anyInt(), anyString(), anyInt(), anyInt(), eq("STAFF_A"));
     }
 
     /** 超管保存 = 清掉该区域所有人的行再写自己的。 */
@@ -88,7 +107,7 @@ class CageAlertConfigServiceTest {
         verify(ruleMapper).deleteAllRegionRules("ROOM", "100");
         verify(ruleMapper, never()).deleteRegionRules(anyString(), anyString(), anyString());
         verify(ruleMapper, times(5)).insertRegionRule(anyString(), anyString(), anyString(),
-                anyInt(), anyString(), anyInt(), eq("STAFF_ROOT"));
+                anyInt(), anyString(), anyInt(), anyInt(), eq("STAFF_ROOT"));
     }
 
     /** 关闭的行也要落（enabled=0），否则「配过但全关」变成零行 = 从未配置，组长永远关不掉。 */
@@ -96,8 +115,8 @@ class CageAlertConfigServiceTest {
     void replaceWritesClosedRowsToo() {
         when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_VIOLATION)).thenReturn(true);
         service.replaceRegion("ROOM", "100", fiveRules(), "STAFF_A", false);
-        verify(ruleMapper).insertRegionRule("ROOM", "100", "SPECIAL_FEEDING", 7, "HIGHLIGHT", 0, "STAFF_A");
-        verify(ruleMapper).insertRegionRule("ROOM", "100", "COHABITATION", 5, "HIGHLIGHT", 0, "STAFF_A");
+        verify(ruleMapper).insertRegionRule("ROOM", "100", "SPECIAL_FEEDING", 7, "HIGHLIGHT", 0, 1, "STAFF_A");
+        verify(ruleMapper).insertRegionRule("ROOM", "100", "COHABITATION", 5, "HIGHLIGHT", 0, 1, "STAFF_A");
     }
 
     /**
@@ -113,6 +132,70 @@ class CageAlertConfigServiceTest {
         verify(ruleMapper, never()).deleteAllRegionRules(anyString(), anyString());
     }
 
+    // ── 计时起点（方向）──
+
+    /**
+     * 核心回归：同区域**别人**已把该状态的计时起点配成另一个方向 → 拒绝保存，
+     * 且必须在删除之前拒（先删后拒会把本区既有配置删光又没写回）。
+     * 阈值能取 min、动作能取并集，方向没有可合并的语义，只能拒。
+     */
+    @Test
+    void regionStartValueConflictWithOtherLeaderIsRejectedBeforeDelete() {
+        when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_VIOLATION)).thenReturn(true);
+        when(ruleMapper.listRegionRules(anyList())).thenReturn(List.of(
+                otherRow("NEED_DIVIDE", 1)));
+
+        List<CageAlertConfigService.Rule> rules = List.of(
+                rule("NEED_DIVIDE", 7, "HIGHLIGHT", true, 0),   // 想配成反向，与别人冲突
+                rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", false),
+                rule("ANIMAL_TRANSFER", 3, "VIOLATION", true),
+                rule("HEALTH_ABNORMAL", 9, "BOTH", true),
+                rule("COHABITATION", 5, "HIGHLIGHT", false));
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.replaceRegion("ROOM", "100", rules, "STAFF_A", false));
+
+        assertTrue(e.getMessage().contains("计时起点"), e.getMessage());
+        assertTrue(e.getMessage().contains("需分笼"), e.getMessage());
+        verify(ruleMapper, never()).deleteRegionRules(anyString(), anyString(), anyString());
+        verify(ruleMapper, never()).deleteAllRegionRules(anyString(), anyString());
+        verify(ruleMapper, never()).insertRegionRule(anyString(), anyString(), anyString(),
+                anyInt(), anyString(), anyInt(), anyInt(), anyString());
+    }
+
+    /** 同区域别人配的是**同一个**方向 → 允许；而且区域与全局默认不一致是允许的（区域可覆盖全局）。 */
+    @Test
+    void regionStartValueMatchingOthersIsAllowedAndWritten() {
+        when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_VIOLATION)).thenReturn(true);
+        when(ruleMapper.listRegionRules(anyList())).thenReturn(List.of(
+                otherRow("NEED_DIVIDE", 0)));
+
+        service.replaceRegion("ROOM", "100",
+                List.of(rule("NEED_DIVIDE", 7, "HIGHLIGHT", true, 0),
+                        rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", false),
+                        rule("ANIMAL_TRANSFER", 3, "VIOLATION", true),
+                        rule("HEALTH_ABNORMAL", 9, "BOTH", true),
+                        rule("COHABITATION", 5, "HIGHLIGHT", false)),
+                "STAFF_A", false);
+
+        // 方向随行落库（这里是 0 = 出现 0 开始），没有被真值覆盖成默认 1
+        verify(ruleMapper).insertRegionRule("ROOM", "100", "NEED_DIVIDE", 7, "HIGHLIGHT", 1, 0, "STAFF_A");
+    }
+
+    /** 同区域另一人的一行（configuredBy=STAFF_B），用于方向冲突判定。 */
+    private static Map<String, Object> otherRow(String statusCode, int startValue) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("regionType", "ROOM");
+        m.put("regionId", "100");
+        m.put("statusCode", statusCode);
+        m.put("thresholdDays", 7);
+        m.put("action", "HIGHLIGHT");
+        m.put("enabled", 1);
+        m.put("startValue", startValue);
+        m.put("configuredBy", "STAFF_B");
+        return m;
+    }
+
     // ── 写入门槛 ──
 
     @Test
@@ -122,9 +205,10 @@ class CageAlertConfigServiceTest {
 
     @Test
     void leaderWithCapabilityPasses() {
-        when(regionGrantService.leaderRegions("STAFF_A")).thenReturn(List.of(grant("ROOM", "100")));
+        when(regionGrantService.leaderRegions("STAFF_A")).thenReturn(List.of(grant("ROOM", "101")));
         when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_CONFIG)).thenReturn(true);
-        assertNull(service.manageRegionAlertError("STAFF_A", false, "ROOM", "100"));
+        when(shelfMapper.listRoomTreeRows()).thenReturn(treeRows());
+        assertNull(service.manageRegionAlertError("STAFF_A", false, "ROOM", "101"));
     }
 
     /**
@@ -133,10 +217,68 @@ class CageAlertConfigServiceTest {
      */
     @Test
     void leaderWithoutCapabilityIsDenied() {
-        when(regionGrantService.leaderRegions("STAFF_A")).thenReturn(List.of(grant("ROOM", "100")));
+        when(regionGrantService.leaderRegions("STAFF_A")).thenReturn(List.of(grant("ROOM", "101")));
         when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_CONFIG)).thenReturn(false);
-        String denied = service.manageRegionAlertError("STAFF_A", false, "ROOM", "100");
+        when(shelfMapper.listRoomTreeRows()).thenReturn(treeRows());
+        String denied = service.manageRegionAlertError("STAFF_A", false, "ROOM", "101");
         assertTrue(denied != null && denied.contains("权限"));
+    }
+
+    /** 同层房间全归我 → 该层可配（配一次整层生效，且不会碰到别人的房间）。 */
+    @Test
+    void leaderOwningWholeFloorCanConfigureThatFloor() {
+        when(regionGrantService.leaderRegions("STAFF_A"))
+                .thenReturn(List.of(grant("ROOM", "101"), grant("ROOM", "102")));
+        when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_CONFIG)).thenReturn(true);
+        when(shelfMapper.listRoomTreeRows()).thenReturn(treeRows());
+
+        assertNull(service.manageRegionAlertError("STAFF_A", false, "FLOOR", "10"),
+                "楼层 10 的两间房全在我名下 → 整层可配");
+    }
+
+    /** 只占一层里的部分房间 → 该层仍不可配（否则会改到别人的房间）。 */
+    @Test
+    void leaderOwningPartOfFloorCannotConfigureTheFloor() {
+        when(regionGrantService.leaderRegions("STAFF_A")).thenReturn(List.of(grant("ROOM", "101")));
+        when(shelfMapper.listRoomTreeRows()).thenReturn(treeRows());
+
+        String denied = service.manageRegionAlertError("STAFF_A", false, "FLOOR", "10");
+        assertTrue(denied != null && denied.contains("不由你负责"));
+    }
+
+    /** 校区也一样：整个校区的房间全归我才放行。 */
+    @Test
+    void leaderOwningWholeCampusCanConfigureThatCampus() {
+        when(regionGrantService.leaderRegions("STAFF_A"))
+                .thenReturn(List.of(grant("ROOM", "101"), grant("ROOM", "102"), grant("ROOM", "201")));
+        when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_CONFIG)).thenReturn(true);
+        when(shelfMapper.listRoomTreeRows()).thenReturn(treeRows());
+
+        assertNull(service.manageRegionAlertError("STAFF_A", false, "CAMPUS", "1"));
+        assertTrue(service.manageRegionAlertError("STAFF_A", false, "CAMPUS", "2") != null,
+                "浦西一间都不归我 → 不可配");
+    }
+
+    /**
+     * 祖先节点（楼层/校区）在组长视角下也**可配** —— 它是「整层批量」入口，不是「仅定位」：
+     * 点它 = 把本层**可见（归本人）的房间**一次改完，前端按房间键逐条下发，不写楼层键的行。
+     * 这是 2026-09-14 定的口径（整层 = 当前可见的整层）；旧版要求「整层房间全归我」才放行，
+     * 结果只拿到部分房间的组长连批量入口都点不到。
+     */
+    @Test
+    void ancestorsAreBatchEntriesNotLocationOnly() {
+        when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_CONFIG)).thenReturn(true);
+        when(regionGrantService.leaderRegions("STAFF_A"))
+                .thenReturn(List.of(grant("ROOM", "101"), grant("ROOM", "102")));
+        when(shelfMapper.listRoomTreeRows()).thenReturn(treeRows());
+        when(ruleMapper.listConfiguredRegionKeys()).thenReturn(List.of());
+
+        List<CageAlertConfigService.RegionTreeNode> tree = service.configurableRegions("STAFF_A", false);
+
+        var campus = tree.get(0);
+        assertFalse(campus.locationOnly(), "校区是批量入口（改我可见的房间）");
+        var floor10 = campus.children().get(0);
+        assertFalse(floor10.locationOnly(), "楼层 10 两间全归我 → 可配");
     }
 
     /** 不是这块区域的组长：直接拒，且不该去查能力（先短路）。 */
@@ -150,10 +292,73 @@ class CageAlertConfigServiceTest {
 
     // ── 校验 ──
 
+    // ── 特殊饲养明细：明细项各算一个可配置状态 ──
+
+    private static CageInfoCodelistItem item(String code, String label) {
+        CageInfoCodelistItem it = new CageInfoCodelistItem();
+        it.setItemCode(code);
+        it.setItemLabel(label);
+        return it;
+    }
+
+    /** 码表里每多一项，可配置清单就多一个 SF_ 码；中文名走码表，不是状态码本身。 */
+    private void stubDetailCodelist() {
+        CageInfoCodelist cl = new CageInfoCodelist();
+        cl.setId(9L);
+        when(codelistMapper.selectByCode(CageStatusIntervalService.DETAIL_DICT_CODE)).thenReturn(cl);
+        when(codelistItemMapper.selectByCodelistId(9L))
+                .thenReturn(List.of(item("NEED_FEED", "需加食"), item("NO_WATER", "勿加水")));
+    }
+
+    /**
+     * 核心回归：需特殊饲养可能常驻，真正要盯的是每个细项各自的变化 ——
+     * 明细项必须是**独立可配状态**（能出配置行、能保存、带码表中文名），写死五个就等于明细永远配不了。
+     */
+    @Test
+    void detailItemsAreConfigurableRowsWithCodelistLabels() {
+        stubDetailCodelist();
+        when(ruleMapper.listDefaultRules()).thenReturn(List.of());
+
+        assertEquals(
+                List.of("NEED_DIVIDE", "SPECIAL_FEEDING", "ANIMAL_TRANSFER", "HEALTH_ABNORMAL", "COHABITATION",
+                        "SF_NEED_FEED", "SF_NO_WATER"),
+                alertRuleService.configurableStatusCodes());
+
+        List<Map<String, Object>> view = service.globalView();
+        assertEquals(7, view.size(), "五行固定 + 两个明细项");
+        Map<String, Object> sfRow = view.stream()
+                .filter(m -> "SF_NEED_FEED".equals(m.get("statusCode"))).findFirst().orElseThrow();
+        assertEquals("需加食", sfRow.get("statusLabel"));
+    }
+
+    /** 明细行要能真的写进去：归一化清单含它，全量替换就落一行（否则明细永远停在全局默认）。 */
+    @Test
+    void savingDetailRowIsAccepted() {
+        stubDetailCodelist();
+        service.replaceGlobal(List.of(
+                rule("NEED_DIVIDE", 7, "HIGHLIGHT", true),
+                rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", true),
+                rule("ANIMAL_TRANSFER", 7, "HIGHLIGHT", true),
+                rule("HEALTH_ABNORMAL", 7, "HIGHLIGHT", true),
+                rule("COHABITATION", 7, "HIGHLIGHT", true),
+                rule("SF_NEED_FEED", 2, "BOTH", true),
+                rule("SF_NO_WATER", 3, "HIGHLIGHT", false)));
+
+        verify(ruleMapper).upsertDefaultRule("SF_NEED_FEED", 2, "BOTH", 1, 1);
+        verify(ruleMapper).upsertDefaultRule("SF_NO_WATER", 3, "HIGHLIGHT", 0, 1);
+    }
+
     @Test
     void missingStatusIsRejected() {
         List<CageAlertConfigService.Rule> four = fiveRules().subList(0, 4);
         assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(four));
+    }
+
+    /** 明细项漏传同样算「缺少状态」——半套配置落库比报错糟得多。 */
+    @Test
+    void missingDetailRowIsRejected() {
+        stubDetailCodelist();
+        assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(fiveRules()));
     }
 
     @Test
@@ -235,7 +440,7 @@ class CageAlertConfigServiceTest {
         assertEquals(1, tree.size());
         var campus = tree.get(0);
         assertEquals("CAMPUS", campus.regionType());
-        assertTrue(campus.locationOnly());
+        assertFalse(campus.locationOnly(), "祖先=批量入口，不再是「仅定位」");
         assertEquals(1, campus.children().size());
 
         var floor = campus.children().get(0);
@@ -249,7 +454,7 @@ class CageAlertConfigServiceTest {
         assertFalse(floor.children().get(0).locationOnly()); // 房间后代不是「定位」，带真实配置态
     }
 
-    /** 组长被分到具体房间：只回该房间 + 两级祖先定位链，不带任何兄弟。 */
+    /** 组长被分到具体房间：只回该房间 + 两级祖先（批量入口），不带任何兄弟。 */
     @Test
     void leaderAssignedRoomShowsAncestorChainOnly() {
         when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_CONFIG)).thenReturn(true);
@@ -261,10 +466,10 @@ class CageAlertConfigServiceTest {
 
         assertEquals(1, tree.size());
         var campus = tree.get(0);
-        assertTrue(campus.locationOnly());
+        assertFalse(campus.locationOnly(), "祖先=批量入口（本层只我这一间房 → 批量也只改这一间）");
         assertEquals(1, campus.children().size());
         var floor = campus.children().get(0);
-        assertTrue(floor.locationOnly());
+        assertFalse(floor.locationOnly());
         assertEquals(1, floor.children().size());
         var room = floor.children().get(0);
         assertEquals("ROOM", room.regionType());

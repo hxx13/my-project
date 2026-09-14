@@ -136,6 +136,19 @@ public class DigestScheduler {
                     .toList();
             if (matchedItems.isEmpty()) continue;
 
+            /*
+              ALL_DIGEST 是遥测报警写「完整明细」用的哨兵，不是账号：它没有渠道绑定，
+              按人聚合这条路只会每轮走到「0 channels hit」刷一条 WARN，并把明细标成已发送。
+              遥测的投递走它自己的即时推送（TelemetryAlarmCheckScheduler Layer-3），
+              这里只把本轮明细收掉、不打投递日志。
+            */
+            if (PushConstants.ALL_DIGEST_USER.equals(userId)) {
+                digestItemMapper.markSent(matchedItems.stream().map(NotifyDigestItem::getId).toList(),
+                        LocalDateTime.now());
+                log.debug("[Digest] 跳过哨兵 {}：{} 条明细不参与按人投递", userId, matchedItems.size());
+                continue;
+            }
+
             // 按 source 分组，构建摘要
             String userName = displayNameService.resolveDisplayName(userId);
             Map<String, List<NotifyDigestItem>> grouped = matchedItems.stream()

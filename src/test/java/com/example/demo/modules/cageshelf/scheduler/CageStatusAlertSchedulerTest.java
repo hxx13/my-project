@@ -13,6 +13,7 @@ import java.util.Map;
 
 import static com.example.demo.modules.cageshelf.scheduler.CageStatusAlertScheduler.activeKeyOf;
 import static com.example.demo.modules.cageshelf.scheduler.CageStatusAlertScheduler.decide;
+import static com.example.demo.modules.cageshelf.scheduler.CageStatusAlertScheduler.isNonViolationStatus;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,7 +47,7 @@ class CageStatusAlertSchedulerTest {
     private static EffectiveAlertRule rule(String status, boolean enabled, int threshold, String action) {
         boolean h = "HIGHLIGHT".equals(action) || "BOTH".equals(action);
         boolean v = "VIOLATION".equals(action) || "BOTH".equals(action);
-        return new EffectiveAlertRule(status, enabled, threshold, h, v);
+        return new EffectiveAlertRule(status, enabled, threshold, h, v, true);
     }
 
     private static Map<Long, List<EffectiveAlertRule>> rulesFor(long cage, EffectiveAlertRule r) {
@@ -114,6 +115,58 @@ class CageStatusAlertSchedulerTest {
                 Map.of(activeKeyOf(CAGE, DIVIDE), existing(9, "ACTIVE", addedAt)), now);
 
         assertTrue(intents.isEmpty(), "已 ACTIVE 不重复触发");
+    }
+
+    @Test
+    void raisedThresholdAboveElapsedClearsExistingActive() {
+        LocalDateTime now = at(10, 0);
+        LocalDateTime addedAt = now.minusDays(8);   // 已持续 8 天
+
+        // 阈值从 7 调到 999：存量 ACTIVE 已不成立，必须撤销。
+        // 不撤的话「配置 999」对已触发的告警完全无效 —— 弹窗里仍旧挂着建行时快照的阈值 7 天。
+        List<Intent> intents = decide(
+                List.of(open(CAGE, DIVIDE, addedAt, false)), List.of(),
+                rulesFor(CAGE, rule(DIVIDE, true, 999, "HIGHLIGHT")),
+                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9, "ACTIVE", addedAt)), now);
+
+        assertEquals(1, intents.size());
+        Intent in = intents.get(0);
+        assertEquals(Kind.CLEAR, in.kind(), "阈值调高到持续时间之上 → 存量 ACTIVE 撤销");
+        assertEquals(9L, in.targetId());
+        assertEquals(now, in.clearedAt(), "区间仍开着，解除时刻用 now");
+    }
+
+    @Test
+    void staleStartedAtIsReplacedByTheCurrentInterval() {
+        LocalDateTime now = at(10, 0);
+        LocalDateTime oldStart = now.minusDays(20);   // 存量行里记的、**旧区间**的起算点
+        LocalDateTime newStart = now.minusDays(9);    // 标记 → 取消 → 再标记后，当前这条区间的起算点
+
+        // 展示用的是行里的 started_at，跨重开区间会偏大。期望同一轮里撤销旧行 + 按当前区间重建。
+        List<Intent> intents = decide(
+                List.of(open(CAGE, DIVIDE, newStart, false)), List.of(),
+                rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
+                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9L, "ACTIVE", oldStart)), now);
+
+        assertEquals(2, intents.size());
+        assertEquals(Kind.CLEAR, intents.get(0).kind(), "先撤销旧行");
+        assertEquals(9L, intents.get(0).targetId());
+        assertEquals(Kind.CREATE_ACTIVE, intents.get(1).kind(), "再按当前区间重建");
+        assertEquals(newStart, intents.get(1).startedAt(), "重建后的起算点 = 当前区间");
+    }
+
+    @Test
+    void staleStartedAtBelowThresholdOnlyClears() {
+        LocalDateTime now = at(10, 0);
+        LocalDateTime newStart = now.minusDays(2);    // 重开后的新区间还没到阈值
+
+        List<Intent> intents = decide(
+                List.of(open(CAGE, DIVIDE, newStart, false)), List.of(),
+                rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
+                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9L, "ACTIVE", now.minusDays(20))), now);
+
+        assertEquals(1, intents.size());
+        assertEquals(Kind.CLEAR, intents.get(0).kind(), "不够阈值就只撤销，不重建");
     }
 
     // ── estimated ──
@@ -235,5 +288,47 @@ class CageStatusAlertSchedulerTest {
                 Map.of(), Map.of(), now);
 
         assertTrue(intents.isEmpty());
+    }
+
+    @Test
+    void historicallyClosedIntervalMustNotClearTheCurrentlyOpenOne() {
+        LocalDateTime now = at(10, 0);
+
+        /*
+          标记 → 取消 → 再标记：折叠出「一条历史闭合 + 一条还开着」，两条的 key 都是 cage:status
+          （active_key 本来就只到 cage:status，一个笼位一个状态只有一行）。
+          历史那条闭合区间绝不能把当前开着这条名下的行清掉 ——
+          清了下一轮 existing 就是 null，又 CREATE_ACTIVE，于是「清→建→清」每轮循环，
+          每轮发一条违规 + 一条通知。真实事故：特殊饲养标记→取消→再标记之后，
+          每 5 分钟一条违规，一个笼位连发 14 条，cleared_at 全是那条历史区间的闭合时刻。
+
+          当前开着那条**故意取已满阈值的 9 天**（> 阈值 7）：否则它会先被「持续时间不足阈值 → 撤销存量」
+          那条规则清掉，本用例就测不到「历史闭合区间」这条路径了。
+        */
+        LocalDateTime openAt = now.minusDays(9);
+        List<Intent> intents = decide(
+                List.of(open(CAGE, DIVIDE, openAt, false)),
+                List.of(closed(CAGE, DIVIDE, now.minusDays(12), now.minusDays(11), false)),
+                rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
+                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9L, "ACTIVE", openAt)),
+                now);
+
+        assertTrue(intents.isEmpty(), "现在还开着 → 历史闭合区间不该产生清除意图");
+    }
+
+    /**
+     * 特殊饲养 / 合笼（含特殊饲养明细）**不是违规行为**：引擎到阈值只能发通知，不能建违规记录
+     * （用户 2026-09-14 口径）。这条谓词是 {@code maybeEscalate} 分岔的唯一判据，钉在这里。
+     */
+    @Test
+    void specialFeedingCohabitationAndDetailsAreNotViolations() {
+        assertTrue(isNonViolationStatus("SPECIAL_FEEDING"));
+        assertTrue(isNonViolationStatus("COHABITATION"));
+        assertTrue(isNonViolationStatus("SF_NEED_FEED"), "明细跟着特殊饲养走同一口径");
+
+        assertFalse(isNonViolationStatus("NEED_DIVIDE"));
+        assertFalse(isNonViolationStatus("HEALTH_ABNORMAL"));
+        assertFalse(isNonViolationStatus("ANIMAL_TRANSFER"));
+        assertFalse(isNonViolationStatus(null));
     }
 }

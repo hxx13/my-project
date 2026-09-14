@@ -57,7 +57,14 @@ public class CageModeVisibilityService {
      * 而学生也可能带 BREEDER/BREEDING_GROUP_LEADER，会连五个动作一起放开。
      */
     private static final Map<String, String> STUDENT_EDIT_ACTIONS = Map.of(
-            "COHABITATION", "needs_cohabitation");
+            "COHABITATION", "needs_cohabitation",
+            // 特殊饲养（父状态）：**必须先有它**，明细才有依附 —— 学生不能标父状态的话，
+            // 四个明细项就成了凭空出现的孤悬标签（明细强绑定它，见 CageInfoValueService#setStatus）。
+            // 授权机制与「合笼（学生）」逐字相同：能力码 cage.student.edit.special_breeding。
+            "SPECIAL_BREEDING", "needs_special_feeding",
+            // 特殊饲养明细：多选字段，学生侧按**这一个动作码**授权。明细项不逐个进矩阵 ——
+            // 码表项可增长，逐项注册会让矩阵行随码表膨胀；区域级仍可逐区域独立关闭。
+            "SPECIAL_FEEDING_DETAIL", "special_feeding_details");
 
     /** 学生状态动作对应的矩阵能力码。 */
     public static String studentEditCapability(String actionCode) {

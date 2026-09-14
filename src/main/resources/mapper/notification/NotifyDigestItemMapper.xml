@@ -35,4 +35,11 @@
   <delete id="deletePendingBySource">
     DELETE FROM notify_digest_item WHERE source_code = #{sourceCode} AND status = 'PENDING'
   </delete>
+  <!-- 定期清理（DigestCleanupTask）：只删已发送且过期的。PENDING 是还没投出去的，绝不能删。
+       分片删（LIMIT 一批），走 idx_status_time(status, create_time)。 -->
+  <delete id="deleteSentBefore">
+    DELETE FROM notify_digest_item
+    WHERE status = 'SENT' AND create_time &lt; #{before}
+    LIMIT #{limit}
+  </delete>
 </mapper>

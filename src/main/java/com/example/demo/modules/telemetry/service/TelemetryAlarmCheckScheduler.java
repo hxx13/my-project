@@ -1,5 +1,6 @@
 package com.example.demo.modules.telemetry.service;
 
+import com.example.demo.modules.notification.push.PushConstants;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItem;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItemMapper;
 import com.example.demo.modules.notification.push.dispatch.PushService;
@@ -253,7 +254,7 @@ public class TelemetryAlarmCheckScheduler {
         // ── Layer-2: 逐条写入 notify_digest_item（完整明细）──
         for (AlarmItem it : alarms) {
             NotifyDigestItem item = new NotifyDigestItem();
-            item.setUserId("ALL_DIGEST");
+            item.setUserId(PushConstants.ALL_DIGEST_USER);
             item.setSourceCode("TELEMETRY_ALARM");
             item.setChannelCode("ALL");
             item.setTitle(it.floorCode + " " + it.roomName + " " + it.metricKind + it.alarmDirection);
@@ -264,7 +265,7 @@ public class TelemetryAlarmCheckScheduler {
         }
         for (AlarmItem it : recoveries) {
             NotifyDigestItem item = new NotifyDigestItem();
-            item.setUserId("ALL_DIGEST");
+            item.setUserId(PushConstants.ALL_DIGEST_USER);
             item.setSourceCode("TELEMETRY_RECOVERY");
             item.setChannelCode("ALL");
             item.setTitle(it.floorCode + " " + it.roomName + " " + it.metricKind + " 已恢复正常");

@@ -1,10 +1,11 @@
 import { memo } from "react";
 import { SplitSquareHorizontal, MoveRight, Clock, Unlock, CalendarCheck } from "lucide-react";
 import { SelectCheck } from "./SelectCheck";
+import SpecialDetailBadges from "./SpecialDetailBadges";
 import type { LockState } from "./SyncLockContext";
 import { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL, resolveCageType, default as CageCellOverlays } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
-import { displayPosition, nonEmptyText, previewStatusCodes } from "../constants";
+import { displayPosition, nonEmptyText, previewStatusCodes, specialDetailItemsFor } from "../constants";
 import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 
 /**
@@ -33,7 +34,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
-  editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction> };
+  editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction>; currentDetails?: Set<string> };
   isLastScanned?: boolean; bindHighlight?: boolean; bindPending?: boolean; editMode?: boolean; bindMode?: boolean;
   isCrossCol?: boolean; isCrossRow?: boolean; flashOverlay?: boolean;
   claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
@@ -56,6 +57,8 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   const singleStyle = useStatusStyle(dominant);
   const { colors: ctxColors } = useCageColors();
   const resolvedCageType = resolveCageType(cell);
+  /** 特殊饲养明细角标 —— 与底色同源：同一份 specialStatuses / 同一份状态模式暂存，不多开真相源 */
+  const sfDetailItems = specialDetailItemsFor(cell.specialStatuses, editCacheEntry);
 
   /**
    * 有编辑缓存时，底色**完全由 currentActions（= 这批要提交的目标状态全集）决定**。
@@ -236,6 +239,9 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       if (!s) return null;
       return <div className={`absolute top-0.5 ${s.pos} z-20 px-1 py-px rounded text-[8px] font-bold leading-tight ${s.cls}`}>{s.txt}</div>;
     })()}
+    {/* 特殊饲养明细：右上角小药丸。该状态必是 type 3（不点类型指示灯），角落空着不打架；
+        与认领徽标（左上）、底部色条（中间态/划分）各占一角，互不遮挡。 */}
+    <SpecialDetailBadges items={sfDetailItems} />
     {isLastScanned && <div className="absolute inset-0 z-10 rounded-twin-md ring-[3px] ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)] pointer-events-none" />}
     {flashOverlay && <div className="absolute inset-0 z-10 rounded-twin-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />}
     {/* 同步保护：锁定的笼位盖一层淡红罩，提示同步时会跳过（点击整格切换 锁→白名单→清除） */}
@@ -244,6 +250,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
         左上角已有「未到位」徽标表意，右上角的「空」类型图标此时会误导，隐藏。 */}
     {!cell.empty && cell.claimStatus !== "locked" && cell.claimStatus !== "pending_approval" && <CageCellOverlays animalCageType={resolvedCageType} compact />}
     <div className="flex min-h-[76px] flex-col items-center justify-center gap-0 px-1 py-0.5 text-center">
+      {/* 明细角标是纯悬浮的（见 SpecialDetailBadges）：不给位号让位、不占内容位置 */}
       <div className="w-full font-bold text-[15px] leading-tight">{displayPosition(cell.position)}</div>
       {cell.empty
         ? <div className="text-[9px] text-[var(--twin-mute)]">空位</div>

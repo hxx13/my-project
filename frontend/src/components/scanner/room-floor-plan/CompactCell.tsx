@@ -7,7 +7,8 @@ import {
   default as CageCellOverlays,
 } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
-import { displayPosition } from "@/features/cage-shelf/constants";
+import SpecialDetailBadges from "@/features/cage-shelf/components/SpecialDetailBadges";
+import { displayPosition, specialDetailItemsFor } from "@/features/cage-shelf/constants";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import type { CageOpMark } from "@/features/cage-shelf/useCageOpSelect";
 import { resolveMultiStatusBackground } from "./cellPaint";
@@ -120,6 +121,8 @@ export const CompactCell = memo(function CompactCell({
    * 类型信息这时靠右上角类型点 + 状态条本身表达。
    */
   const hasBar = Boolean(opMark || divisionLabel);
+  /** 特殊饲养明细角标（右上角）。平面图只读，没有暂存态，读服务端状态即可。 */
+  const sfDetailItems = specialDetailItemsFor(cell.specialStatuses);
 
   return (
     <button
@@ -140,6 +143,8 @@ export const CompactCell = memo(function CompactCell({
       style={empty ? undefined : style}
     >
       {!empty && !hideTypeDot && <CageCellOverlays animalCageType={ct} compact />}
+      {/* 特殊饲养明细：右上角（尺寸由 CompactCell.css 按 cqw 覆盖，同类型指示灯那套手法） */}
+      {!empty && <SpecialDetailBadges items={sfDetailItems} />}
       {!empty && claimBadge ? (
         <span
           className={`scan-plan-badge pointer-events-none absolute z-10 font-bold leading-tight ${claimBadge.cls}`}

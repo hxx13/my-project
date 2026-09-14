@@ -337,5 +337,29 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "🕐 {exitTime}\n"
                         + "> ARO 系统自动推送"
         ));
+        // ========== 笼位特殊状态（非违规：特殊饲养 / 合笼 / 明细）==========
+        // 与告警阈值同一判据触发；文案要能一眼看出「哪个笼位、什么状态、拖了多久」。
+        TEMPLATES.put("CAGE_SPECIAL_STATUS", new Template(
+                "笼位提醒 — {statusLabel} {cageLabel}",
+                "<div style='border-left:4px solid #dc2626;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>笼位 {statusLabel}</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#dc2626;margin:0 0 4px'>已持续 {persistedDays} 天（阈值 {thresholdDays} 天）</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>笼位：<b>{cageLabel}</b>（{roomName}）</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>课题组：{projectPiName} · 实验员：{experimenterName}</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{firedAt}</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 笼位状态提醒</p>",
+                "## 🔔 笼位状态提醒\n\n"
+                        + "📍 **{cageLabel}**（{roomName}）\n\n"
+                        + "🐭 {statusLabel}：已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n\n"
+                        + "👤 课题组：{projectPiName}\n\n"
+                        + "🕐 {firedAt}\n\n"
+                        + "> ARO 笼位状态提醒",
+                "## 🔔 笼位状态提醒\n"
+                        + "📍 **{cageLabel}**（{roomName}）\n"
+                        + "🐭 {statusLabel}：已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n"
+                        + "👤 课题组：{projectPiName}\n"
+                        + "🕐 {firedAt}\n"
+                        + "> ARO 笼位状态提醒"
+        ));
     }
 }

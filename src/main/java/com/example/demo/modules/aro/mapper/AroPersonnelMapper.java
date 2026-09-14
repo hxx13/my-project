@@ -65,6 +65,13 @@ public interface AroPersonnelMapper {
     @Select("SELECT user_id FROM aro_personnel WHERE project_group_name LIKE CONCAT('%', #{projectGroupName}, '%')")
     List<String> selectUserIdsByProjectGroup(@Param("projectGroupName") String projectGroupName);
 
+    /**
+     * 按姓名**精确**匹配，返回该人员的 userId —— 笼位所属人（占用者）收件人解析用。
+     * 只按 name 匹配是刻意的：笼位表单里的「实验员」就是姓名，没有工号可对。
+     */
+    @Select("SELECT user_id FROM aro_personnel WHERE name = #{name}")
+    List<String> selectUserIdsByName(@Param("name") String name);
+
     @Select("SELECT * FROM aro_personnel WHERE name = #{name} AND job_number = #{jobNumber}")
     @Results({
             @Result(property = "id", column = "user_id")

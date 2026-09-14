@@ -72,6 +72,13 @@ public class AdminPushTestController {
                         "count", "5", "windowMin", "5",
                         "threshold", "3", "openTypeLabel", "非法刷卡开门",
                         "swingTime", now())));
+        // 非违规状态（特殊饲养/合笼/明细）的统一提醒源
+        sources.add(source("CAGE_SPECIAL_STATUS", "笼位状态提醒",
+                Map.of("statusLabel", "需特殊饲养", "cageLabel", "201A-1 A-9",
+                        "roomName", "201A", "projectPiName", "测试课题组",
+                        "experimenterName", "测试实验员",
+                        "persistedDays", "9", "thresholdDays", "7",
+                        "firedAt", now())));
         return Result.success(sources);
     }
 
@@ -133,6 +140,7 @@ public class AdminPushTestController {
             case "TELEMETRY_ALARM" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","alarmDirection","偏高","currentValue","28.5℃","limitValue","26.0℃","sentAt",now()));
             case "TELEMETRY_RECOVERY" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","currentValue","24.0℃","recoveryAt",now()));
             case "SWIPE_FAILURE_ALERT" -> new LinkedHashMap<>(Map.of("channelName","A区主门禁","personName","测试学生","deptName","测试课题组","phone","13800138000","count","5","windowMin","5","threshold","3","openTypeLabel","非法刷卡","enterOrExitLabel","进入","swingTime",now()));
+            case "CAGE_SPECIAL_STATUS" -> new LinkedHashMap<>(Map.of("statusLabel","需特殊饲养","cageLabel","201A-1 A-9","roomName","201A","projectPiName","测试课题组","experimenterName","测试实验员","persistedDays","9","thresholdDays","7","firedAt",now()));
             default -> null;
         };
     }

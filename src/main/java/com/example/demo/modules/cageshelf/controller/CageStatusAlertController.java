@@ -12,6 +12,7 @@ import com.example.demo.modules.cageshelf.service.CageAlertViolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
+import com.example.demo.modules.cageshelf.scheduler.CageStatusAlertScheduler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -42,15 +43,30 @@ public class CageStatusAlertController {
     private final CageStatusAlertMapper mapper;
     private final CageAlertConfigService configService;
     private final CageAlertViolationService violationService;
+    private final CageStatusAlertScheduler alertScheduler;
+    private final CageAlertRuleService ruleService;
 
     public CageStatusAlertController(AuthContextService authContextService,
                                      CageStatusAlertMapper mapper,
                                      CageAlertConfigService configService,
-                                     CageAlertViolationService violationService) {
+                                     CageAlertViolationService violationService,
+                                     CageStatusAlertScheduler alertScheduler,
+                                     CageAlertRuleService ruleService) {
         this.authContextService = authContextService;
         this.mapper = mapper;
         this.configService = configService;
         this.violationService = violationService;
+        this.alertScheduler = alertScheduler;
+        this.ruleService = ruleService;
+    }
+
+    /**
+     * 配置改完立刻重算一轮 —— 否则要等引擎下一个 5 分钟 tick，用户盯着屏幕只会看到「关了没用」。
+     * 必须在这里（服务方法返回之后）调：saveXxx 是 @Transactional，返回时事务**已提交**，
+     * 引擎另一条连接才看得到新配置；放在事务内触发会读到旧配置、白跑一轮。
+     */
+    private void triggerRescan() {
+        alertScheduler.scanSoon();
     }
 
     @GetMapping("/active")
@@ -75,11 +91,28 @@ public class CageStatusAlertController {
 
         List<CageStatusAlert> alerts = mapper.listActive(scoped ? ids : null);
         LocalDateTime now = LocalDateTime.now();
+        // 阈值取**当前生效规则**，不用行里建行时的快照：改完阈值后，行若还没到撤销条件，
+        // 展示的阈值也必须与设置中心一致 —— 否则界面读起来就是「我配的没生效」。
+        Map<Long, List<CageAlertRuleService.EffectiveAlertRule>> rules = alerts.isEmpty() ? Map.of()
+                : ruleService.resolveForCages(alerts.stream()
+                        .map(CageStatusAlert::getAnimalCageId).distinct().toList());
         List<CageStatusAlertView> views = new ArrayList<>(alerts.size());
         for (CageStatusAlert a : alerts) {
-            views.add(toView(a, now));
+            views.add(toView(a, now, currentThreshold(rules, a)));
         }
         return Result.success(views);
+    }
+
+    /** 当前生效阈值；解析不到（笼位已不在网格里 / 规则缺失）就回落到行里建行时的快照。 */
+    private static Integer currentThreshold(Map<Long, List<CageAlertRuleService.EffectiveAlertRule>> rules,
+                                            CageStatusAlert a) {
+        List<CageAlertRuleService.EffectiveAlertRule> perCage = rules.get(a.getAnimalCageId());
+        if (perCage != null) {
+            for (CageAlertRuleService.EffectiveAlertRule r : perCage) {
+                if (r.statusCode().equals(a.getStatusCode())) return r.thresholdDays();
+            }
+        }
+        return a.getThresholdDays();
     }
 
     /**
@@ -100,16 +133,16 @@ public class CageStatusAlertController {
         }
     }
 
-    private CageStatusAlertView toView(CageStatusAlert a, LocalDateTime now) {
+    private CageStatusAlertView toView(CageStatusAlert a, LocalDateTime now, Integer thresholdDays) {
         String code = a.getStatusCode();
         long span = a.getStartedAt() == null ? 0 : Duration.between(a.getStartedAt(), now).toDays();
         return new CageStatusAlertView(
                 a.getAnimalCageId() == null ? null : String.valueOf(a.getAnimalCageId()),
                 code,
-                CageAlertRuleService.STATUS_LABELS.getOrDefault(code, code),
+                ruleService.labelOf(code),
                 a.getStartedAt(),
                 a.getFiredAt(),
-                a.getThresholdDays(),
+                thresholdDays,
                 span,
                 a.getAction(),
                 a.getShelveId() == null ? null : String.valueOf(a.getShelveId()),
@@ -156,7 +189,7 @@ public class CageStatusAlertController {
         return Result.success(configService.globalView());
     }
 
-    /** body: {@code { "rules": [ {statusCode, thresholdDays, action, enabled} x5 ] }}，全量替换五行。仅超管。 */
+    /** body: {@code { "rules": [ {statusCode, thresholdDays, action, enabled, startValue} x5 ] }}，全量替换五行。仅超管。 */
     @PutMapping("/config/global")
     @Operation(summary = "保存全局默认告警阈值（仅超管）")
     public Result<?> saveGlobalConfig(@RequestBody Map<String, Object> body, HttpServletRequest request) {
@@ -164,6 +197,7 @@ public class CageStatusAlertController {
         if (denied != null) return Result.fail(403, denied.getMessage());
         try {
             configService.replaceGlobal(parseRules(body));
+            triggerRescan();
             return Result.success(Map.of("ok", true));
         } catch (IllegalArgumentException e) {
             return Result.fail(400, e.getMessage());
@@ -192,7 +226,7 @@ public class CageStatusAlertController {
         return Result.success(configService.regionView(regionType, regionId, u.getId(), isSuperAdmin(u)));
     }
 
-    /** body: {@code { regionType, regionId, rules: [ {statusCode, thresholdDays, action, enabled} x5 ] }}，全量替换。 */
+    /** body: {@code { regionType, regionId, rules: [ {statusCode, thresholdDays, action, enabled, startValue} x5 ] }}，全量替换。 */
     @PutMapping("/config/region")
     @Operation(summary = "保存某区域的告警阈值配置")
     public Result<?> saveRegionConfig(@RequestBody Map<String, Object> body, HttpServletRequest request) {
@@ -207,6 +241,7 @@ public class CageStatusAlertController {
         if (denied != null) return Result.fail(403, denied);
         try {
             configService.replaceRegion(regionType, regionId, parseRules(body), u.getId(), isSuperAdmin(u));
+            triggerRescan();
             return Result.success(Map.of("ok", true));
         } catch (IllegalArgumentException e) {
             return Result.fail(400, e.getMessage());
@@ -224,7 +259,8 @@ public class CageStatusAlertController {
                     str(m.get("statusCode")),
                     asInt(m.get("thresholdDays")),
                     str(m.get("action")),
-                    asBool(m.get("enabled"))));
+                    asBool(m.get("enabled")),
+                    asInt(m.get("startValue"))));
         }
         return out;
     }

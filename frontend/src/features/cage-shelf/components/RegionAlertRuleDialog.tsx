@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SettingsSwitch } from "./SettingsPrimitives";
+import { ACTION_LABEL, ActionPicker, NON_VIOLATION_HINT, START_VALUE_HINT, START_VALUE_LABEL, StartValuePicker } from "./SettingsPrimitives";
+import { isNonViolationStatus } from "@/features/cage-shelf/constants";
+import { regionWriteTargets } from "@/features/cage-shelf/constants";
 import {
   fetchRegionStatusAlertConfig,
   saveRegionStatusAlertConfig,
@@ -22,14 +25,6 @@ import {
  * 可编辑行用全局默认当骨架：defaults 恒为五行（statusCode+statusLabel），mine 空时（谁都没配
  * 或只有别人配过）就退回默认当初始值，保证永远有五行可勾、可改。
  */
-
-export const ACTION_LABEL: Record<CageStatusAlertAction, string> = {
-  HIGHLIGHT: "仅高亮",
-  VIOLATION: "仅违规",
-  BOTH: "高亮+违规",
-};
-
-const ACTIONS: CageStatusAlertAction[] = ["HIGHLIGHT", "VIOLATION", "BOTH"];
 
 const TYPE_LABEL: Record<string, string> = { CAMPUS: "校区", FLOOR: "楼层", ROOM: "房间" };
 
@@ -63,35 +58,11 @@ function unionRules(rows: CageStatusAlertRule[]): CageStatusAlertRule[] {
       thresholdDays: Math.min(...enabledRows.map((r) => r.thresholdDays)),
       action,
       enabled: true,
+      // 方向没有可合并的语义：同区域必须一致（不一致后端会拒绝保存），这里取先出现的那个展示。
+      // `?? 1`：部署窗口内可能出现「新前端 + 旧后端」（响应里还没这个字段），兜住别渲染成空态。
+      startValue: enabledRows[0].startValue ?? 1,
     };
   });
-}
-
-/** 动作三选一的紧凑分段控件（与数据源二选一同款样式）。 */
-function ActionPicker({
-  value,
-  onChange,
-}: {
-  value: CageStatusAlertAction;
-  onChange: (a: CageStatusAlertAction) => void;
-}) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5">
-      {ACTIONS.map((a) => (
-        <button
-          key={a}
-          type="button"
-          onClick={() => onChange(a)}
-          aria-pressed={value === a}
-          className={`flex-1 rounded-twin-md px-1.5 py-1 text-[10px] font-semibold transition ${
-            value === a ? "bg-[var(--twin-primary)] text-white" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-          }`}
-        >
-          {ACTION_LABEL[a]}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 /** 可编辑规则卡：状态名 + 启用开关，下面阈值天数 + 动作分段。关掉时阈值/动作降透明但仍可改。 */
@@ -127,22 +98,33 @@ export function AlertRuleEditCard({
           <span className="shrink-0">天</span>
           <span className="text-[10px]">（0 = 即时）</span>
         </div>
-        <ActionPicker value={rule.action} onChange={(a) => onChange({ action: a })} />
+        <ActionPicker value={rule.action} onChange={(a) => onChange({ action: a })}
+          nonViolation={isNonViolationStatus(rule.statusCode)} />
+        {isNonViolationStatus(rule.statusCode) && (
+          <span className="text-[10px] leading-relaxed text-[var(--twin-mute)]">{NON_VIOLATION_HINT}</span>
+        )}
+        <div className="flex items-center gap-2 text-[10px] text-[var(--twin-mute)]">
+          <span className="shrink-0">计时起点</span>
+          <div className="flex-1">
+            <StartValuePicker value={rule.startValue ?? 1} onChange={(v) => onChange({ startValue: v })} />
+          </div>
+        </div>
+        <span className="text-[10px] text-[var(--twin-mute)]">{START_VALUE_HINT[rule.startValue ?? 1]}</span>
       </div>
     </div>
   );
 }
 
-/** 只读规则行：阈值 + 动作摘要 + 启停徽标。用于「别人的配置」与全局默认的只读展示。 */
+/** 只读规则行：**单行**摘要（状态名 + 阈值 · 动作 · 方向 + 启停徽标）。用于「别人的配置」与全局默认的只读展示。 */
 export function AlertRuleReadonlyRow({ rule }: { rule: CageStatusAlertRule }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-twin-sm border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
-      <div className="min-w-0">
-        <div className="text-[11px] font-semibold text-[var(--twin-body)]">{rule.statusLabel}</div>
-        <div className="mt-0.5 text-[10px] text-[var(--twin-mute)]">
-          {rule.enabled ? `阈值 ${rule.thresholdDays} 天 · ${ACTION_LABEL[rule.action]}` : "已关闭（不告警）"}
-        </div>
-      </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-twin-sm border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5">
+      <span className="w-[5.5rem] shrink-0 text-[11px] font-semibold text-[var(--twin-body)]">{rule.statusLabel}</span>
+      <span className="min-w-0 flex-1 text-[10px] text-[var(--twin-mute)]">
+        {rule.enabled
+          ? `阈值 ${rule.thresholdDays} 天 · ${ACTION_LABEL[rule.action]} · ${START_VALUE_LABEL[rule.startValue ?? 1]}`
+          : "已关闭（不告警）"}
+      </span>
       <span
         className={`shrink-0 text-[10px] font-semibold ${
           rule.enabled ? "text-[var(--twin-primary)]" : "text-[var(--twin-mute)]"
@@ -161,6 +143,7 @@ export default function RegionAlertRuleDialog({
   regionId,
   regionName,
   inheritFrom,
+  extraRegions,
   onSaved,
 }: {
   open: boolean;
@@ -170,6 +153,12 @@ export default function RegionAlertRuleDialog({
   regionName: string;
   /** 未配置时「继承自哪一级」。对象=最近已配置祖先；null=无祖先、回落全局默认；undefined=未知（我的区域入口不传，措辞用通用阈值）。 */
   inheritFrom?: RegionAlertInheritFrom | null;
+  /**
+   * 「整层/整校区」批量：随主区域**一起写**的其它区域（同层当前可见的房间）。
+   * 只按房间键逐条下发、不写楼层键的行 —— 楼层行会波及同层别人负责、且自己没配规则的房间。
+   * 传了就按批量语义渲染（标题标注范围、保存逐条写）。
+   */
+  extraRegions?: Array<{ regionType: string; regionId: string; name?: string }>;
   onSaved?: () => void;
 }) {
   const [mine, setMine] = useState<CageStatusAlertRule[]>([]);
@@ -240,16 +229,15 @@ export default function RegionAlertRuleDialog({
 
   const save = async () => {
     setSaving(true);
+    const payload = mine.map(({ statusCode, thresholdDays, action, enabled, startValue }) => ({ statusCode, thresholdDays, action, enabled, startValue }));
+    // 批量：楼层/校区只是入口，实际**逐房间**写（不写楼层键的行，见 regionWriteTargets）
+    const targets = regionWriteTargets(regionType, regionId, extraRegions);
     try {
-      await saveRegionStatusAlertConfig(
-        regionType,
-        regionId,
-        mine.map(({ statusCode, thresholdDays, action, enabled }) => ({ statusCode, thresholdDays, action, enabled })),
-      );
+      for (const t of targets) await saveRegionStatusAlertConfig(t.regionType, t.regionId, payload);
       setInitial(mine);
       setRegionConfigured(true);
       setOwnConfigured(true);
-      toast.success("区域告警阈值已保存");
+      toast.success(targets.length > 1 ? `已保存（共 ${targets.length} 个区域）` : "区域告警阈值已保存");
       onSaved?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -262,7 +250,14 @@ export default function RegionAlertRuleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="z-[var(--z-modal)] flex max-h-[82vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="shrink-0 border-b border-[var(--twin-hairline)] px-5 py-3.5 text-left">
-          <DialogTitle className="text-[14px] text-[var(--twin-ink)]">{regionName} · 状态告警阈值</DialogTitle>
+          <DialogTitle className="text-[14px] text-[var(--twin-ink)]">
+            {regionName} · 状态告警阈值
+            {extraRegions && extraRegions.length > 0 && (
+              <span className="ml-1 text-[11px] font-normal text-[var(--twin-mute)]">
+                （连可见的 {extraRegions.length} 个房间一起改）
+              </span>
+            )}
+          </DialogTitle>
           <DialogDescription className="text-[11px] text-[var(--twin-mute)]">
             特殊状态<b className="text-[var(--twin-ink)]">持续</b>超过阈值天数即告警（0 = 一出现就触发）。同区域多个饲养组长各自配各自的，生效取
             <b className="text-[var(--twin-ink)]">并集</b>，你只能改自己的行。

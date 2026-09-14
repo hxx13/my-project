@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { fetchRegionCapabilities, saveRegionCapabilities } from "@/api/domains/cageShelf.api";
+import { regionWriteTargets } from "@/features/cage-shelf/constants";
 
 /**
  * 区域学生功能配置 —— 饲养组长决定**本区域**的学生能用哪些功能。
@@ -26,6 +27,7 @@ export default function RegionCapabilityDialog({
   regionType,
   regionId,
   regionName,
+  extraRegions,
   onSaved,
 }: {
   open: boolean;
@@ -33,6 +35,11 @@ export default function RegionCapabilityDialog({
   regionType: string;
   regionId: string;
   regionName: string;
+  /**
+   * 「整层/整校区」批量：随主区域**一起写**的其它区域（同层当前可见的房间）。
+   * 只按房间键逐条下发、不写楼层键的行（楼层行会波及同层别人负责的房间）。
+   */
+  extraRegions?: Array<{ regionType: string; regionId: string; name?: string }>;
   onSaved?: () => void;
 }) {
   const [ceiling, setCeiling] = useState<string[]>([]);
@@ -91,12 +98,14 @@ export default function RegionCapabilityDialog({
 
   const save = async () => {
     setSaving(true);
+    // 批量：楼层/校区只是入口，实际**逐房间**写（不写楼层键的行，见 regionWriteTargets）
+    const targets = regionWriteTargets(regionType, regionId, extraRegions);
     try {
-      await saveRegionCapabilities(regionType, regionId, [...picked]);
+      for (const t of targets) await saveRegionCapabilities(t.regionType, t.regionId, [...picked]);
       setInitial(new Set(picked));
       // 保存后本区一定是「配过」了 —— 没勾的项也会落成关闭行
       setUntouched(false);
-      toast.success("区域学生功能已保存");
+      toast.success(targets.length > 1 ? `已保存（共 ${targets.length} 个区域）` : "区域学生功能已保存");
       onSaved?.();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -109,7 +118,14 @@ export default function RegionCapabilityDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="z-[var(--z-modal)] flex max-h-[82vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="shrink-0 border-b border-[var(--twin-hairline)] px-5 py-3.5 text-left">
-          <DialogTitle className="text-[14px] text-[var(--twin-ink)]">{regionName} · 学生功能</DialogTitle>
+          <DialogTitle className="text-[14px] text-[var(--twin-ink)]">
+            {regionName} · 学生功能
+            {extraRegions && extraRegions.length > 0 && (
+              <span className="ml-1 text-[11px] font-normal text-[var(--twin-mute)]">
+                （连可见的 {extraRegions.length} 个房间一起改）
+              </span>
+            )}
+          </DialogTitle>
           <DialogDescription className="text-[11px] text-[var(--twin-mute)]">
             本区域的学生能用哪些功能，由本区域的饲养组长共同决定；多人共管时取
             <b className="text-[var(--twin-ink)]">并集</b>，你只能新增、不能取消别人开的。

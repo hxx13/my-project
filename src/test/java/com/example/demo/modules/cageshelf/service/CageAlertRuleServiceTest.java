@@ -1,6 +1,10 @@
 package com.example.demo.modules.cageshelf.service;
 
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelist;
+import com.example.demo.modules.cageshelf.entity.CageInfoCodelistItem;
 import com.example.demo.modules.cageshelf.mapper.CageAlertRuleMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistItemMapper;
+import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -30,12 +34,14 @@ class CageAlertRuleServiceTest {
 
     @Mock private CageAlertRuleMapper mapper;
     @Mock private CageRegionCapabilityService regionCapabilityService;
+    @Mock private CageInfoCodelistMapper codelistMapper;
+    @Mock private CageInfoCodelistItemMapper codelistItemMapper;
 
     private CageAlertRuleService service;
 
     @BeforeEach
     void setUp() {
-        service = new CageAlertRuleService(mapper, regionCapabilityService);
+        service = new CageAlertRuleService(mapper, regionCapabilityService, codelistMapper, codelistItemMapper);
     }
 
     /** 标准三级区域键（ROOM 100 / FLOOR 10 / CAMPUS 1）。 */
@@ -66,6 +72,65 @@ class CageAlertRuleServiceTest {
                                                             List<Map<String, Object>> regionRules,
                                                             Map<String, Map<String, Object>> defaults) {
         return CageAlertRuleService.resolveOne(keys, status, regionRules, defaults);
+    }
+
+    /** 带计时起点的区域行（不带方向的 rule(...) 走「缺项回落 1」那条，正好拿来验证默认）。 */
+    private static Map<String, Object> ruleWithDir(String type, String id, String status,
+                                                   int threshold, String action, int enabled, int startValue) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("regionType", type);
+        m.put("regionId", id);
+        m.put("statusCode", status);
+        m.put("thresholdDays", threshold);
+        m.put("action", action);
+        m.put("enabled", enabled);
+        m.put("startValue", startValue);
+        return m;
+    }
+
+    // ── 计时起点（方向）──
+
+    /** 区域行带 startValue=0 → 生效规则的方向就是反向（区域覆盖全局的一部分）。 */
+    @Test
+    void regionStartValueFlowsIntoEffectiveRule() {
+        CageAlertRuleService.EffectiveAlertRule r = resolve(trio(), "NEED_DIVIDE",
+                List.of(ruleWithDir("ROOM", "100", "NEED_DIVIDE", 7, "HIGHLIGHT", 1, 0)),
+                defaults(def("NEED_DIVIDE", 7, "HIGHLIGHT", 1)));
+
+        assertTrue(r.enabled());
+        assertFalse(r.startValue(), "区域配成 0 → 起点是出现 0");
+    }
+
+    /** 没配过任何一级 → 取全局默认的方向；行里**缺** startValue（老数据）也回落 1，绝不翻成反向。 */
+    @Test
+    void missingStartValueFallsBackToOne() {
+        CageAlertRuleService.EffectiveAlertRule r = resolve(trio(), "NEED_DIVIDE", List.of(),
+                defaults(def("NEED_DIVIDE", 7, "HIGHLIGHT", 1)));
+
+        assertTrue(r.startValue(), "缺 startValue 一律按 1（出现 1 开始 = 现状语义）");
+    }
+
+    /** 同级多行方向一致 → 取该值；阈值仍按并集取最小。 */
+    @Test
+    void multiLeaderSameStartValueIsUsed() {
+        CageAlertRuleService.EffectiveAlertRule r = resolve(trio(), "NEED_DIVIDE",
+                List.of(ruleWithDir("ROOM", "100", "NEED_DIVIDE", 7, "HIGHLIGHT", 1, 0),
+                        ruleWithDir("ROOM", "100", "NEED_DIVIDE", 9, "BOTH", 1, 0)),
+                defaults(def("NEED_DIVIDE", 7, "HIGHLIGHT", 1)));
+
+        assertFalse(r.startValue());
+        assertEquals(7, r.thresholdDays(), "阈值仍取最小");
+    }
+
+    /** 同级方向真出现分歧（保存链本应拦住）：取先出现的那个并打 warn，不做「取最小/取或」。 */
+    @Test
+    void multiLeaderConflictingStartValueTakesFirst() {
+        CageAlertRuleService.EffectiveAlertRule r = resolve(trio(), "NEED_DIVIDE",
+                List.of(ruleWithDir("ROOM", "100", "NEED_DIVIDE", 7, "HIGHLIGHT", 1, 0),
+                        ruleWithDir("ROOM", "100", "NEED_DIVIDE", 9, "BOTH", 1, 1)),
+                defaults(def("NEED_DIVIDE", 7, "HIGHLIGHT", 1)));
+
+        assertFalse(r.startValue(), "取先出现那行（0）");
     }
 
     // ── 层级就近 ──
@@ -206,5 +271,22 @@ class CageAlertRuleServiceTest {
         assertEquals(5, out.get(1L).size(), "每个笼位都必须回五个状态");
         assertEquals(5, out.get(2L).size());
         assertEquals(CageAlertRuleService.STATUS_CODES.size(), out.get(1L).size());
+    }
+
+    // ── 中文名 ──
+
+    @Test
+    void labelOfDetailStatusResolvesFromCodelist() {
+        CageInfoCodelist cl = new CageInfoCodelist();
+        cl.setId(9L);
+        CageInfoCodelistItem feed = new CageInfoCodelistItem();
+        feed.setItemCode("FEED");
+        feed.setItemLabel("需喂食");
+        when(codelistMapper.selectByCode(CageStatusIntervalService.DETAIL_DICT_CODE)).thenReturn(cl);
+        when(codelistItemMapper.selectByCodelistId(9L)).thenReturn(List.of(feed));
+
+        assertEquals("需分笼", service.labelOf("NEED_DIVIDE"), "五个状态仍走静态表");
+        assertEquals("需喂食", service.labelOf("SF_FEED"), "明细码查码表");
+        assertEquals("SF_NOPE", service.labelOf("SF_NOPE"), "码表里没有就退回码本身，不静默成空串");
     }
 }

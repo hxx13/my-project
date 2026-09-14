@@ -17,4 +17,10 @@ public final class PushConstants {
     public static final String STATUS_SKIPPED_QUIET = "SKIPPED_QUIET";
     public static final String STATUS_SKIPPED_RATE_LIMIT = "SKIPPED_RATE_LIMIT";
     public static final String CONFIG_MODULE = "push_channel";
+    /**
+     * 「全体聚合」哨兵 —— 遥测报警写 notify_digest_item 明细时用的**伪账号**，
+     * 不是真实账号、没有渠道绑定。它的实际投递走遥测那侧的即时推送，
+     * 按人聚合的那条路必须跳过它，否则每轮都会刷一条「0 channels hit」的 WARN。
+     */
+    public static final String ALL_DIGEST_USER = "ALL_DIGEST";
 }

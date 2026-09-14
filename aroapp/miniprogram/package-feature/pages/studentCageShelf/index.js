@@ -192,6 +192,19 @@ function parseBody(raw) {
   return { _raw: String(raw) };
 }
 
+/** 从表单值里取「特殊饲养明细」选中集合 → {item_code: true}（与动作那套同形）。 */
+function detailMapFromValues(rows) {
+  var out = {};
+  if (!rows || !rows.length) return out;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r && r.canonical === 'special_feeding_details' && Array.isArray(r.value)) {
+      for (var j = 0; j < r.value.length; j++) out[String(r.value[j])] = true;
+    }
+  }
+  return out;
+}
+
 function unwrap(res) {
   var statusCode = Number(res && res.statusCode);
   var body = parseBody(res ? res.data : null);
@@ -444,6 +457,10 @@ function enrichGridCell(cell) {
   // 饲养中(type 3)不显示指示灯，对齐 H5 CageCellOverlays
   enriched._cageTypeDotColor = (pendingArrival || ct === 3) ? '' : (CAGE_TYPE_DOT_COLOR[ct] || '');
   enriched._cageTypeLabel = CAGE_TYPE_LABEL[ct] || enriched.stateLabel || '—';
+  // 特殊饲养明细角标（右上角，形如 +食 / −水）。明细强绑定特殊饲养 → 该格必是 type 3 →
+  // 类型指示灯本就不点，两枚徽标不会抢同一个角；底色跟父状态走，不另开一套配色。
+  enriched._sfBadges = sfBadgesOf(normalizeStatuses(enriched.specialStatuses));
+  enriched._sfBadgeColor = colorFor('SPECIAL_FEEDING').border;
   enriched._hasStatusCodes = computeStatusCodesForDisplay(enriched);
   // 认领徽标：未到位/待审批/待释放（对齐 H5 CellButton 左上角徽标）
   var cs = enriched.claimStatus;
@@ -545,6 +562,37 @@ function getSpecialStatusList(cell) {
     if (list[i].code !== "NORMAL") out.push(list[i]);
   }
   return out;
+}
+
+/**
+ * 特殊饲养明细角标文案：需加食 → 「+食」、勿加水 → 「−水」。
+ * 记法与 Web/H5 同源（features/cage-shelf/constants.ts compactDetailBadgeText）：
+ * 首字「勿/不/禁/无」= 否定（−），其余为肯定（+），取末字为对象。改一处要同步三端。
+ */
+function sfBadgeText(label) {
+  var t = String(label == null ? '' : label).trim();
+  if (t.length < 2) return t;
+  return (/^[勿不禁无]/.test(t) ? '−' : '+') + t.charAt(t.length - 1);
+}
+
+/**
+ * 该格此刻的明细角标。强绑定「需特殊饲养」：父状态不在同一份状态列表里就一律不显示，
+ * 所以不会出现「明细角标孤零零挂着」的情况。脱敏笼位后端已把 specialStatuses 置空 → 自然为空。
+ */
+function sfBadgesOf(list) {
+  var sfOn = false;
+  var picked = [];
+  for (var i = 0; i < (list || []).length; i++) {
+    var s = list[i];
+    if (!s || !s.code) continue;
+    if (s.code === 'SPECIAL_FEEDING') sfOn = true;
+    else if (s.code.indexOf('SF_') === 0) picked.push(s);
+  }
+  if (!sfOn) return [];
+  return picked.map(function(s) {
+    var label = s.label || s.code.replace(/^SF_/, '');
+    return { code: s.code, text: sfBadgeText(label), label: label };
+  });
 }
 
 function parseImageUrlLines(text) {
@@ -805,6 +853,18 @@ Page({
     CAGE_STATUS_ACTIONS: cageStatus.CAGE_STATUS_ACTIONS,
     /** 状态模式里**可渲染**的动作按钮：默认全量（教职工），学生视角按后端 modeActions.edit 过滤 */
     editActionOptions: cageStatus.CAGE_STATUS_ACTIONS,
+    /** 「需特殊饲养」这个动作在不在上面的可选清单里（不在 = 本区/本身份没开放它，明细块整块不渲染） */
+    editActionSfParentAvailable: true,
+    /**
+     * 特殊饲养明细（子状态）：
+     *   specialDetailOptions —— 可选项，读码表（维护人可加项，所以不硬编码）
+     *   editDetailInitial/Current —— 当前笼位的明细选中集（{item_code: true}，与动作那套同形）
+     *   editActionSfOn —— 该笼位「需特殊饲养」当前是否开着（明细块强绑定判据）
+     */
+    specialDetailOptions: [],
+    editDetailInitial: {},
+    editDetailCurrent: {},
+    editActionSfOn: false,
     /** 后端下发的「模式 → 可用动作 code」矩阵（学生视角才有） */
     modeActions: {},
     actionSubmitting: false,
@@ -891,6 +951,12 @@ Page({
       if (up.ok && up.data && typeof up.data === 'object') setUserColors(up.data);
     }).catch(function() { /* 保持默认色 */ });
 
+    // 特殊饲养明细的可选项：读码表（维护人可加项，所以不硬编码）；失败就不显示明细块
+    springAuth.springRequest({ url: '/api/admin/cage-info/codelists/special_feeding_detail', method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      if (up.ok && up.data && up.data.items) self.setData({ specialDetailOptions: up.data.items });
+    }).catch(function() { /* 没配码表就不显示 */ });
+
     // 解析扫码跳转参数（微信可能不解码，手动 decodeURIComponent）
     var highlightTarget = null;
     console.log('[mp-jump] onLoad options:', JSON.stringify(options || {}));
@@ -946,11 +1012,14 @@ Page({
       var backendIsStudent = !!(up.ok && up.data && up.data.isStudent);
       if (modes.length > 0 && (self.data.isStaffView || backendIsStudent)) {
         var modeActions = (up.ok && up.data && up.data.modeActions) || {};
+        var editOptions = filterEditActions(modeActions.edit);
         self.setData({
           visibleModes: modes,
           modeActions: modeActions,
           modeOptions: buildModeOptions(self.data.isStaffView, modes),
-          editActionOptions: filterEditActions(modeActions.edit)
+          editActionOptions: editOptions,
+          // 明细块的父开关在不在本区可选清单里 —— 不在就整块不渲染（开关都没有，子项不该出现）
+          editActionSfParentAvailable: editOptions.some(function (a) { return a && a.action === 'SPECIAL_BREEDING'; })
         });
       }
     }).catch(function() { /* 保留默认硬编码 modeOptions */ });
@@ -2973,6 +3042,9 @@ Page({
       var initAct = cacheEntry ? cacheEntry.initialActions : cageStatus.newActionState();
       var currAct = cacheEntry ? cacheEntry.currentActions : Object.assign({}, initAct);
       var animalCageId = cell.id || cell.animalCageId || '';
+      // 特殊饲养明细：初值取缓存，没有就用空（表单值到达后覆盖）；强绑定判据看「需特殊饲养」这一位
+      var initDet = cacheEntry && cacheEntry.initialDetails ? cacheEntry.initialDetails : {};
+      var currDet = cacheEntry && cacheEntry.currentDetails ? cacheEntry.currentDetails : Object.assign({}, initDet);
       self.setData({
         editActionCell: cell,
         editActionPopup: true,
@@ -2982,7 +3054,10 @@ Page({
         editHistoryLoading: true,
         editFormValues: null,
         editActionInitial: Object.assign({}, initAct),
-        editActionCurrent: Object.assign({}, currAct)
+        editActionCurrent: Object.assign({}, currAct),
+        editDetailInitial: Object.assign({}, initDet),
+        editDetailCurrent: Object.assign({}, currDet),
+        editActionSfOn: !!currAct.SPECIAL_BREEDING
       });
       // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此反向使能按钮
       if (animalCageId && !cacheEntry) {
@@ -2993,7 +3068,14 @@ Page({
           // 弹窗仍开着且用户尚未手动勾选时，用表单值覆盖初始/当前态
           if (self.data.editActionPopup && self.data.editActionCell === cell && !(self.data.scanCache || {})[ck]) {
             var fAct = cageStatus.actionsFromFormValues(up.data || []);
-            self.setData({ editActionInitial: Object.assign({}, fAct), editActionCurrent: Object.assign({}, fAct) });
+            var fDet = detailMapFromValues(up.data || []);
+            self.setData({
+              editActionInitial: Object.assign({}, fAct),
+              editActionCurrent: Object.assign({}, fAct),
+              editDetailInitial: Object.assign({}, fDet),
+              editDetailCurrent: Object.assign({}, fDet),
+              editActionSfOn: !!fAct.SPECIAL_BREEDING
+            });
           }
         });
       }
@@ -4021,6 +4103,11 @@ getCellStyleWxs: function(cell) {
         var init = entry.initialActions || {};
         var curr = entry.currentActions || {};
         CAGE_STATUS_ACTIONS.forEach(function (a) { if (curr[a.action] !== init[a.action]) totalDiffs++; });
+        // 特殊饲养明细按项计差异（与动作同一口径，提交按钮上的数字才诚实）
+        var dInit = entry.initialDetails || {};
+        var dCurr = entry.currentDetails || {};
+        Object.keys(dCurr).forEach(function (c) { if (!!dCurr[c] !== !!dInit[c]) totalDiffs++; });
+        Object.keys(dInit).forEach(function (c) { if (!!dCurr[c] !== !!dInit[c]) totalDiffs++; });
       }
     }
     patch.scanTotalActions = totalDiffs;
@@ -4095,9 +4182,51 @@ getCellStyleWxs: function(cell) {
     if (!CAGE_STATUS_ACTIONS.some(function (x) { return cur[x.action] !== init[x.action]; })) {
       delete newCache[key];
     }
-    // 同步更新 editActionCurrent（弹窗内显示用）
+    // 同步更新 editActionCurrent（弹窗内显示用）；明细块的强绑定判据也跟着「需特殊饲养」这一位走
     var ec = newCache[key] ? Object.assign({}, newCache[key].currentActions) : cageStatus.newActionState();
-    this.setData({ scanCache: newCache, editActionCurrent: ec }, this.applyCacheToGrid.bind(this));
+    this.setData({ scanCache: newCache, editActionCurrent: ec, editActionSfOn: !!ec.SPECIAL_BREEDING }, this.applyCacheToGrid.bind(this));
+  },
+
+  /**
+   * 特殊饲养明细：勾/取消一项 → 入缓存，与状态动作同一套「暂存 → 提交」。
+   * 明细项的选中态用 {item_code: true/false} 存（与动作那套同形，false 也算一个键，方便数差异）。
+   */
+  onDetailToggle: function(e) {
+    var code = e.currentTarget.dataset.code;
+    var cell = this.data.editActionCell;
+    if (!cell || !code) return;
+    var key = cell.x + ':' + cell.y;
+    var cache = this.data.scanCache || {};
+    var newCache = {};
+    for (var k in cache) { if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k]; }
+    if (!newCache[key]) {
+      var initAct = this.data.editActionInitial || cageStatus.newActionState();
+      var currAct = this.data.editActionCurrent || Object.assign({}, initAct);
+      var initDet = this.data.editDetailInitial || {};
+      newCache[key] = {
+        cell: cell, code: '',
+        initialActions: Object.assign({}, initAct), currentActions: Object.assign({}, currAct),
+        initialDetails: Object.assign({}, initDet), currentDetails: Object.assign({}, initDet)
+      };
+    }
+    var entry = newCache[key];
+    if (!entry.initialDetails) entry.initialDetails = {};
+    if (!entry.currentDetails) entry.currentDetails = Object.assign({}, entry.initialDetails);
+    entry.currentDetails[code] = !entry.currentDetails[code];
+    // 动作与明细都没差 → 移除缓存条目（与 onEditActionToggle 同口径）
+    var sameDet = Object.keys(entry.initialDetails).every(function (c) {
+      return !!entry.currentDetails[c] === !!entry.initialDetails[c];
+    }) && Object.keys(entry.currentDetails).every(function (c) {
+      return !!entry.currentDetails[c] === !!entry.initialDetails[c];
+    });
+    var sameAct = CAGE_STATUS_ACTIONS.every(function (a) {
+      return !!entry.currentActions[a.action] === !!entry.initialActions[a.action];
+    });
+    if (sameDet && sameAct) delete newCache[key];
+    this.setData({
+      scanCache: newCache,
+      editDetailCurrent: Object.assign({}, entry.currentDetails)
+    }, this.applyCacheToGrid.bind(this));
   },
 
   onEditActionChoosePhoto: function() {
@@ -4305,6 +4434,7 @@ getCellStyleWxs: function(cell) {
     var cache = self.data.scanCache || {};
     var addEntries = [];
     var removeEntries = [];
+    var detailTasks = [];
     for (var key in cache) {
       if (Object.prototype.hasOwnProperty.call(cache, key)) {
         var e = cache[key];
@@ -4314,13 +4444,23 @@ getCellStyleWxs: function(cell) {
           if (curr[a.action] && !init[a.action]) addEntries.push({ key: key, code: e.code, action: a.action, cell: e.cell });
           if (!curr[a.action] && init[a.action]) removeEntries.push({ key: key, code: e.code, action: a.action, cell: e.cell });
         });
+        // 特殊饲养明细：有差异就整体覆盖写一次（只带「当前为真」的项）
+        var dInit = e.initialDetails || {};
+        var dCurr = e.currentDetails || {};
+        var changedDet = false, codes = [];
+        Object.keys(dCurr).forEach(function (c) {
+          if (!!dCurr[c]) codes.push(c);
+          if (!!dCurr[c] !== !!dInit[c]) changedDet = true;
+        });
+        Object.keys(dInit).forEach(function (c) { if (!!dInit[c] !== !!dCurr[c]) changedDet = true; });
+        if (changedDet) detailTasks.push({ kind: 'detail', cell: e.cell, itemCodes: codes });
       }
     }
-    if (addEntries.length === 0 && removeEntries.length === 0) return;
+    if (addEntries.length === 0 && removeEntries.length === 0 && detailTasks.length === 0) return;
 
     self.setData({ actionSubmitting: true });
     var okCount = 0, failCount = 0, lastErr = '';
-    var totalTasks = addEntries.concat(removeEntries.map(function(r) {
+    var totalTasks = detailTasks.concat(addEntries, removeEntries.map(function(r) {
       return { key: r.key, code: r.code, action: r.action, cancel: true, cell: r.cell };
     }));
 
@@ -4338,16 +4478,22 @@ getCellStyleWxs: function(cell) {
       }
       var entry = totalTasks[idx];
       var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
-      var toggle = cageStatus.statusField(entry.action);
-      var enable = !entry.cancel;
-      var data = {
-        animalCageId: cageId,
-        toggle: toggle,
-        enable: enable,
-        cageBoxCode: entry.code || ''
-      };
-      springAuth.springRequest({ url: '/api/local/edit', method: 'POST', data: data })
-        .then(function(res) {
+      var req;
+      if (entry.kind === 'detail') {
+        // 特殊饲养明细：整体覆盖（itemCodes 里只带当前为真的项；空数组 = 清空）
+        req = springAuth.springRequest({
+          url: '/api/local/special-details', method: 'POST',
+          data: { animalCageId: cageId, itemCodes: entry.itemCodes || [] }
+        });
+      } else {
+        var toggle = cageStatus.statusField(entry.action);
+        var enable = !entry.cancel;
+        req = springAuth.springRequest({
+          url: '/api/local/edit', method: 'POST',
+          data: { animalCageId: cageId, toggle: toggle, enable: enable, cageBoxCode: entry.code || '' }
+        });
+      }
+      req.then(function(res) {
           // 业务错误是 HTTP 200 + {success:false}（服务端拦中间态就是这种），解包后再计数并留原因
           var p = unwrap(res);
           if (p.ok) { okCount++; } else { failCount++; if (!lastErr) lastErr = p.message || ''; }

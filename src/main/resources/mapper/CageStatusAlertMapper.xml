@@ -37,6 +37,13 @@
         WHERE state != 'CLEARED'
     </select>
 
+    <select id="selectById" resultType="com.example.demo.modules.cageshelf.entity.CageStatusAlert">
+        SELECT id, animal_cage_id AS animalCageId, status_code AS statusCode, state AS state,
+               started_at AS startedAt, fired_at AS firedAt, threshold_days AS thresholdDays, action AS action
+        FROM cage_status_alert
+        WHERE id = #{id}
+    </select>
+
     <select id="listActive" resultType="com.example.demo.modules.cageshelf.entity.CageStatusAlert">
         SELECT csa.animal_cage_id AS animalCageId, csa.status_code AS statusCode,
                csa.started_at AS startedAt, csa.fired_at AS firedAt,
@@ -51,6 +58,22 @@
             <foreach collection="cageIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
         </if>
         ORDER BY csa.fired_at DESC
+    </select>
+
+    <!-- 同一段超时（同笼位 + 同状态 + 同起算时刻）是否已经挂过违规。
+         用途：引擎「撤销 → 重建」同一段区间时不要重复发违规 —— 重建的行是新 id，
+         claimViolationId 那种按行 id 的守卫拦不住。
+         为什么按 started_at 而不是按行 id：真的「标记 → 取消 → 再标记」是**新区间**（新起算点），
+         那属于新的一次超时，本来就该再发一次；只有起算点相同才算同一段。 -->
+    <select id="countPriorViolationForInterval" resultType="int">
+        SELECT COUNT(*)
+        FROM cage_status_alert a
+        JOIN cage_status_alert self ON self.id = #{alertId}
+        WHERE a.animal_cage_id = self.animal_cage_id
+          AND a.status_code = self.status_code
+          AND a.started_at = self.started_at
+          AND a.violation_id IS NOT NULL
+          AND a.id &lt;&gt; self.id
     </select>
 
     <select id="tryAcquireLock" resultType="java.lang.Integer">

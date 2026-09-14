@@ -56,6 +56,24 @@ export default function CageShelfLegend({ collapsed }: Props) {
           </div>
         </div>
 
+        {/* ============ 特殊饲养明细 → 右上角徽标 ============ */}
+        <div>
+          <div className="mb-1.5 text-[var(--twin-mute)] font-medium">特殊饲养明细 → 右上角徽标</div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[var(--twin-body)]">
+            <span className="flex items-center gap-1.5">
+              <span className="rounded-[2px] px-[1px] text-[7px] font-bold leading-[9px] text-white" style={{ backgroundColor: colors.SPECIAL_FEEDING?.border ?? "#ef4444" }}>+食</span>
+              需加食
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="rounded-[2px] px-[1px] text-[7px] font-bold leading-[9px] text-white" style={{ backgroundColor: colors.SPECIAL_FEEDING?.border ?? "#ef4444" }}>−水</span>
+              勿加水
+            </span>
+            <span className="text-[var(--twin-mute)]">
+              记法：码表名首字「勿/不/禁」= 否定（−），其余为肯定（+），取末字为对象
+            </span>
+          </div>
+        </div>
+
         {/* ============ 笼位状态 → 指示灯 ============ */}
         <div>
           <div className="mb-1.5 text-[var(--twin-mute)] font-medium">笼位状态 → 右上角指示灯</div>

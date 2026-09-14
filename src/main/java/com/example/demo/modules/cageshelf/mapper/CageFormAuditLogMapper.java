@@ -77,9 +77,14 @@ public interface CageFormAuditLogMapper {
                                           @Param("category") String category);
 
     /**
-     * 只取五个特殊状态字段的 data 审计行（created_at >= since），按 id 升序。
+     * 取特殊状态的 data 审计行（created_at >= since），按 id 升序。
      * id 序是折叠区间的正确性前提——同秒多次变更 created_at 相同，只有自增 id 能定序。
+     *
+     * @param fieldCodes  五个状态字段的 canonical
+     * @param fieldPrefix 特殊饲养明细的码前缀（{@code SF_}）；传 null 就只取 fieldCodes。
+     *                    明细项由码表维护、可增长，所以按前缀取而不是列名单。
      */
     List<CageFormAuditLog> listStatusFieldRows(@Param("fieldCodes") List<String> fieldCodes,
+                                               @Param("fieldPrefix") String fieldPrefix,
                                                @Param("since") LocalDateTime since);
 }

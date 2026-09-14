@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
 import MemberCapabilityDialog from "./MemberCapabilityDialog";
@@ -23,11 +23,63 @@ import {
  * 三件事：区域（超管分配，只读）→ 组员（组长纳管）→ 区域学生功能（点区域那行的按钮进子弹窗）。
  */
 
-const TYPE_LABEL: Record<string, string> = { CAMPUS: "校区", FLOOR: "楼层", ROOM: "房间" };
-const TYPE_ORDER = ["CAMPUS", "FLOOR", "ROOM"];
+/**
+ * 「我负责的区域」按 校区 → 楼层 → 房间 组织。
+ * 数据来自已有的 fetchFullTree（每行的 campus/floor/room 三级 id 与名字），不为它多开后端接口；
+ * 原来按层级平铺成三栏卡片，看不出某间房属于哪个楼层，长名字还被 truncate 截掉。
+ */
+interface RegionBranch {
+  type: "CAMPUS" | "FLOOR" | "ROOM";
+  id: string;
+  name: string;
+  children: RegionBranch[];
+}
+
+/** 点某一行进配置子弹窗的目标：`extraRegions` = 该行**可见的房间**（整层/整校区批量改这些）。 */
+interface RegionTargetSel {
+  regionType: string;
+  regionId: string;
+  name: string;
+  extraRegions?: Array<{ regionType: string; regionId: string; name?: string }>;
+}
+
+/** 把笼架树的扁平行拼成三层结构（同 id 去重）。 */
+function buildRegionTree(tree: CageShelfTreeNode[]): RegionBranch[] {
+  const byKey = new Map<string, RegionBranch>();
+  const roots: RegionBranch[] = [];
+  const ensure = (key: string, type: RegionBranch["type"], id: string, name: string | undefined,
+                  parent: RegionBranch | null): RegionBranch => {
+    let n = byKey.get(key);
+    if (!n) {
+      n = { type, id, name: name && name.trim() ? name : id, children: [] };
+      byKey.set(key, n);
+      if (parent) parent.children.push(n);
+      else roots.push(n);
+    }
+    return n;
+  };
+  for (const t of tree) {
+    if (!t.campusId) continue;
+    const campus = ensure(`CAMPUS:${t.campusId}`, "CAMPUS", t.campusId, t.campusName, null);
+    if (!t.floorId) continue;
+    const floor = ensure(`FLOOR:${t.floorId}`, "FLOOR", t.floorId, t.floorName, campus);
+    if (!t.roomId) continue;
+    ensure(`ROOM:${t.roomId}`, "ROOM", t.roomId, t.roomName, floor);
+  }
+  return roots;
+}
+
+/** 只留「我负责的区域」及其祖先链，别人的分支整枝剪掉。 */
+function pruneToGranted(nodes: RegionBranch[], granted: Set<string>): RegionBranch[] {
+  const keep = (n: RegionBranch): boolean => granted.has(`${n.type}:${n.id}`) || n.children.some(keep);
+  const prune = (n: RegionBranch): RegionBranch => ({ ...n, children: n.children.filter(keep).map(prune) });
+  return nodes.filter(keep).map(prune);
+}
 
 export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const [regions, setRegions] = useState<MyRegionEntry[]>([]);
+  /** 区域树里被折叠的分支（键 = type:id）。默认全展开 —— 组长要一眼看全自己负责的范围。 */
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // 组员是**可编辑的草稿**：加入/移除都改这里，点保存才整包 PUT（全量替换）。
   const [draft, setDraft] = useState<Array<{ accountId: string; name: string }>>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
@@ -36,10 +88,11 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
   // 正在配置权限的组员（null = 子弹窗关闭）。仅在保存过组员后才可配——没入组的人不在列表里。
   const [capTarget, setCapTarget] = useState<{ accountId: string; name: string } | null>(null);
   // 正在配「本区学生功能」的区域（null = 子弹窗关闭）
-  const [regionCapTarget, setRegionCapTarget] = useState<{ regionType: string; regionId: string; name: string } | null>(null);
+  const [regionCapTarget, setRegionCapTarget] = useState<RegionTargetSel | null>(null);
   // 正在配「本区告警阈值」的区域（null = 子弹窗关闭）
-  const [alertTarget, setAlertTarget] = useState<{ regionType: string; regionId: string; name: string } | null>(null);
+  const [alertTarget, setAlertTarget] = useState<RegionTargetSel | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [shelfTree, setShelfTree] = useState<CageShelfTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +114,7 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
           if (r.roomId) map[`ROOM:${r.roomId}`] = `${r.floorName} / ${r.roomName}`;
         }
         setNames(map);
+        setShelfTree(tree);
       })
       .catch(() => {
         if (!cancelled) {
@@ -94,16 +148,103 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
     }
   };
 
-  const grouped = useMemo(() => {
-    const byType = new Map<string, MyRegionEntry[]>();
-    for (const r of regions) {
-      if (!byType.has(r.regionType)) byType.set(r.regionType, []);
-      byType.get(r.regionType)!.push(r);
-    }
-    return TYPE_ORDER.filter((t) => byType.has(t)).map((t) => [t, byType.get(t)!] as const);
-  }, [regions]);
+  const grantedKeys = useMemo(
+    () => new Set(regions.map((r) => `${r.regionType}:${r.regionId}`)),
+    [regions],
+  );
+  const regionTree = useMemo(
+    () => pruneToGranted(buildRegionTree(shelfTree), grantedKeys),
+    [shelfTree, grantedKeys],
+  );
+  /** 授权里有、笼架树里却找不到的区域（脏授权 / 该房间还没建架子）—— 不能让它在界面上凭空消失。 */
+  const untouchedRegions = useMemo(() => {
+    const inTree = new Set<string>();
+    const walk = (ns: RegionBranch[]) => ns.forEach((n) => { inTree.add(`${n.type}:${n.id}`); walk(n.children); });
+    walk(regionTree);
+    return regions.filter((r) => !inTree.has(`${r.regionType}:${r.regionId}`));
+  }, [regionTree, regions]);
 
   const label = (r: MyRegionEntry) => names[`${r.regionType}:${r.regionId}`] || r.regionId;
+
+  /**
+   * 该分支下**可见的**房间（当前剪枝树里的房间叶子）。
+   * 「整层/整校区配置」= 批量改这些房间 —— 只写房间键的行，不写楼层键的行，
+   * 否则会波及同层别人负责、且自己没配规则的房间（越界）。
+   */
+  const visibleRooms = (n: RegionBranch): Array<{ regionType: string; regionId: string; name?: string }> => {
+    const out: Array<{ regionType: string; regionId: string; name?: string }> = [];
+    const walk = (x: RegionBranch) => {
+      for (const c of x.children) {
+        if (c.type === "ROOM") out.push({ regionType: "ROOM", regionId: c.id, name: c.name });
+        else walk(c);
+      }
+    };
+    walk(n);
+    return out;
+  };
+
+  /** 一行区域：名称可换行不截断（悬停看全）。直接授权的区域、以及**其下有可见房间**的祖先都能配（后者=整层批量）。 */
+  const regionRow = (
+    type: RegionBranch["type"], id: string, name: string, depth: number, hasChildren: boolean,
+    extraRooms: Array<{ regionType: string; regionId: string; name?: string }> = [],
+  ) => (
+    <div key={`${type}:${id}`} className="flex items-start justify-between gap-2" style={{ paddingLeft: depth * 14 }}>
+      {hasChildren ? (
+        <button
+          type="button"
+          onClick={() => setCollapsed((prev) => {
+            const n = new Set(prev);
+            const k = `${type}:${id}`;
+            if (n.has(k)) n.delete(k); else n.add(k);
+            return n;
+          })}
+          aria-label={collapsed.has(`${type}:${id}`) ? "展开" : "折叠"}
+          className="mt-px flex size-4 shrink-0 items-center justify-center rounded text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+        >
+          {collapsed.has(`${type}:${id}`) ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+        </button>
+      ) : (
+        <span className="mt-px size-4 shrink-0" />
+      )}
+      <span className="min-w-0 flex-1 break-words text-[11px] leading-snug text-[var(--twin-ink)]" title={name}>
+        {name}
+      </span>
+      {grantedKeys.has(`${type}:${id}`) || extraRooms.length > 0 ? (
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            title={extraRooms.length > 0
+              ? `配置本区域对学生开放的功能（连本区可见的 ${extraRooms.length} 个房间一起改）`
+              : "配置本区域对学生开放的功能"}
+            onClick={() => setRegionCapTarget({ regionType: type, regionId: id, name, extraRegions: extraRooms })}
+            className="rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
+          >
+            学生功能
+          </button>
+          <button
+            type="button"
+            title={extraRooms.length > 0
+              ? `配置本区域的告警阈值（连本区可见的 ${extraRooms.length} 个房间一起改）`
+              : "配置本区域的告警阈值（未单独配置时按上级或全局默认生效）"}
+            onClick={() => setAlertTarget({ regionType: type, regionId: id, name, extraRegions: extraRooms })}
+            className="rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
+          >
+            告警阈值
+          </button>
+        </div>
+      ) : (
+        <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">仅定位</span>
+      )}
+    </div>
+  );
+
+  const renderBranches = (nodes: RegionBranch[], depth: number): ReactNode =>
+    nodes.map((n) => (
+      <div key={`${n.type}:${n.id}`} className="space-y-1">
+        {regionRow(n.type, n.id, n.name, depth, n.children.length > 0, visibleRooms(n))}
+        {n.children.length > 0 && !collapsed.has(`${n.type}:${n.id}`) && renderBranches(n.children, depth + 1)}
+      </div>
+    ));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -129,46 +270,9 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
                     你还没有被分配任何区域
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                    {grouped.map(([type, list]) => (
-                      <div key={type} className="rounded-twin-sm border border-[var(--twin-hairline)] p-2.5">
-                        <div className="mb-1.5 text-[10px] font-semibold text-[var(--twin-mute)]">
-                          {TYPE_LABEL[type]}（{list.length}）
-                        </div>
-                        <ul className="space-y-0.5">
-                          {list.map((r) => {
-                            const name = label(r);
-                            return (
-                              <li key={r.regionId} className="flex items-center justify-between gap-2">
-                                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--twin-ink)]">{name}</span>
-                                <div className="flex shrink-0 items-center gap-1">
-                                  <button
-                                    type="button"
-                                    title="配置本区域对学生开放的功能"
-                                    onClick={() =>
-                                      setRegionCapTarget({ regionType: r.regionType, regionId: r.regionId, name })
-                                    }
-                                    className="rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
-                                  >
-                                    学生功能
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title="配置本区域的告警阈值（未单独配置时按上级或全局默认生效）"
-                                    onClick={() =>
-                                      setAlertTarget({ regionType: r.regionType, regionId: r.regionId, name })
-                                    }
-                                    className="rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-[10px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]"
-                                  >
-                                    告警阈值
-                                  </button>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    ))}
+                  <div className="space-y-1.5 rounded-twin-sm border border-[var(--twin-hairline)] p-2.5">
+                    {renderBranches(regionTree, 0)}
+                    {untouchedRegions.map((r) => regionRow(r.regionType, r.regionId, label(r), 0, false))}
                   </div>
                 )}
                 <p className="text-[10px] leading-relaxed text-[var(--twin-mute)]">
@@ -270,6 +374,7 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
           regionType={regionCapTarget.regionType}
           regionId={regionCapTarget.regionId}
           regionName={regionCapTarget.name}
+          extraRegions={regionCapTarget.extraRegions}
         />
       )}
 
@@ -282,6 +387,7 @@ export default function MyRegionDialog({ open, onOpenChange }: { open: boolean; 
           regionType={alertTarget.regionType}
           regionId={alertTarget.regionId}
           regionName={alertTarget.name}
+          extraRegions={alertTarget.extraRegions}
         />
       )}
 
