@@ -785,6 +785,11 @@ public class TwinStudentViolationService {
                 String name = userDisplayNameService.resolveDisplayName(entry.getKey());
                 dto.setDisplayName(StringUtils.hasText(name) ? name : entry.getKey());
                 dto.setCageTags(tags);
+                // 违规文案：同一人的各条通常同一模板，取首条（与组卡同口径）；不设的话大屏上人卡只有姓名没有正文
+                TwinStudentViolation firstOwn = own.get(0);
+                String ownText = applyTemplateVariables(firstOwn.getViolationText(), firstOwn.getTargetUserId());
+                dto.setSummary(buildSummary(ownText, maxLen));
+                dto.setImageUrls(mergeImages(extractBodyImageSrcs(ownText), parseImageUrls(firstOwn.getImageUrls())));
                 dto.setCreatedAt(own.get(0).getCreatedAt());
                 cagePersonOut.add(dto);
             }
