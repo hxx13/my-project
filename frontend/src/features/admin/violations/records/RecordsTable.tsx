@@ -55,8 +55,11 @@ export function personDisplayName(r: StudentViolationRow): string {
 /** 违规记录每页条数：默认列表后端分页，避免全量渲染卡顿。 */
 const RECORDS_PAGE_SIZE = 20;
 
-/** 主表列数（课题组 / 人 / 违规说明·笼位 / 状态 / 来源 / 禁入 / 到期 / 公告 / 处置情况 / 操作） */
-const COLS = 10;
+/** 主表列数（选择 / 课题组 / 人 / 违规说明·笼位 / 状态 / 来源 / 禁入 / 到期 / 公告 / 处置情况 / 操作） */
+const COLS = 11;
+
+/** 选择列复选框：逐行渲染、永不参与合并，与既有桩/合并逻辑解耦。 */
+const CHECKBOX = "size-3.5 shrink-0 cursor-pointer align-middle accent-[var(--app-color-accent)]";
 
 const th = "px-3 py-2 whitespace-nowrap";
 const td = "px-3 py-2 align-top";
@@ -223,6 +226,9 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
   const [sigUrl, setSigUrl] = useState<string | null>(null);
   const [sigError, setSigError] = useState<string | null>(null);
   const [sigLoading, setSigLoading] = useState(false);
+  /** 批量操作的选中行 id。 */
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchRunning, setBatchRunning] = useState(false);
   const keyword = filters.keyword.trim();
 
   // 关键词变化时回到第 1 页（关键词场景不后端分页，走全量前端收窄）
@@ -257,6 +263,9 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
 
   // 删除最后一条/筛选收窄后页码可能超界，回退到最后一页
   useEffect(() => { if (!keyword && page > totalPages) setPage(totalPages); }, [page, totalPages, keyword]);
+
+  // 列表数据一变（切筛选 / 翻页 / refetch 后）即清空选择，避免选到已不可见的行
+  useEffect(() => { setSelectedIds(new Set()); }, [data]);
 
   const filteredRows = useMemo(() => {
     let filtered = rows;
@@ -308,6 +317,45 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     }
   };
 
+  const toggleSelect = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /**
+   * 批量动作：串行 for...of（不并发轰后端），逐条收集成败。
+   * 部分失败时错误提示带上第一个失败原因，不吞异常。
+   */
+  const runBatch = async (verb: "解除" | "删除", ids: number[], action: (id: number) => Promise<void>) => {
+    if (!await appConfirm(
+      verb === "解除"
+        ? `将解除已选 ${ids.length} 条记录：不再在扫码弹窗展示，记录仍保留。确定？`
+        : `将物理删除已选 ${ids.length} 条记录，不可恢复。确定？`
+    )) return;
+    setBatchRunning(true);
+    let ok = 0;
+    const errors: string[] = [];
+    for (const id of ids) {
+      try {
+        await action(id);
+        ok += 1;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : "未知错误");
+      }
+    }
+    setBatchRunning(false);
+    setSelectedIds(new Set());
+    await qc.invalidateQueries({ queryKey: ["studentViolations"] });
+    if (errors.length) {
+      toast.error(`已${verb} ${ok} 条，${errors.length} 条失败：${errors[0]}`);
+    } else {
+      toast.success(`已${verb} ${ok} 条`);
+    }
+  };
+
   // 签名图只在点击后拉取，不预取
   const openSignature = async (id: number) => {
     setSigOpen(true);
@@ -355,8 +403,44 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
     </td>
   );
 
+  const allSelected = filteredRows.length > 0 && filteredRows.every((r) => selectedIds.has(r.id));
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
+      {/* 批量操作条：仅在有选中时出现。shrink-0 保住外层高度链（整页不滚，只列表区滚）。 */}
+      {selectedIds.size > 0 ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2">
+          <span className="text-xs text-[var(--app-color-text-secondary)]">已选 {selectedIds.size} 条</span>
+          <div className="ml-auto flex items-center gap-2">
+            <AdminButton
+              type="button"
+              tone="secondary"
+              size="sm"
+              loading={batchRunning}
+              onClick={() => void runBatch("解除", [...selectedIds], clearStudentViolation)}
+            >
+              批量解除
+            </AdminButton>
+            <button
+              type="button"
+              disabled={batchRunning}
+              onClick={() => void runBatch("删除", [...selectedIds], deleteStudentViolation)}
+              className="inline-flex h-8 items-center rounded-[length:var(--admin-radius-md,0.375rem)] bg-[var(--app-color-feedback-danger)] px-3 text-sm font-medium text-white outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)] disabled:opacity-60"
+            >
+              批量删除
+            </button>
+            <AdminButton
+              type="button"
+              tone="ghost"
+              size="sm"
+              disabled={batchRunning}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              取消选择
+            </AdminButton>
+          </div>
+        </div>
+      ) : null}
       {/* 不要传 scrollable：它会再给内层封 max-h-[min(72vh,780px)]，与外层 flex-1 拉伸出的高度差
           会在表格下方留一大块空白。本页外层已由 h-[calc(100dvh-var(--admin-chrome-offset))] + flex 链
           给出确定高度，滚动交给 AdminTableShell 自带的外层 overflow-x-auto（y 轴随之计算为 auto）。 */}
@@ -364,6 +448,16 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
         <table className="twin-table twin-table--merged-rows violation-records-table w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>
+              <th className={cn(th, "w-[2.5rem]")}>
+                <input
+                  type="checkbox"
+                  aria-label="全选当前列表"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
+                  onChange={() => setSelectedIds(allSelected ? new Set() : new Set(filteredRows.map((r) => r.id)))}
+                  className={CHECKBOX}
+                />
+              </th>
               <th className={cn(th, "min-w-[9rem]")}>课题组</th>
               <th className={cn(th, "min-w-[10rem]")}>人</th>
               <th className={cn(th, "min-w-[16rem] border-l border-l-[var(--twin-hairline)]")}>违规说明 · 笼位</th>
@@ -399,6 +493,18 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
                     return (
                       <Fragment key={r.id}>
                         <tr className={cn("group", i === 0 && batchSep)}>
+                          {/* 选择列：逐行渲染，永不参与合并 —— 合并格段内的行也必须出这一格，
+                              否则这些行 td 数会比表头短。 */}
+                          <td className={cn(td, "w-[2.5rem]")}>
+                            <input
+                              type="checkbox"
+                              aria-label={`选择记录 #${r.id}`}
+                              checked={selectedIds.has(r.id)}
+                              onChange={() => toggleSelect(r.id)}
+                              className={CHECKBOX}
+                            />
+                          </td>
+
                           {/* 课题组：段首行出合并格。合并块放最左、与逐行字段用竖线分开
                               （对齐 animal-order-review 的整单级/行级分栏形态） */}
                           {seg
