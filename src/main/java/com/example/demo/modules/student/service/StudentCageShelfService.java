@@ -351,6 +351,16 @@ public class StudentCageShelfService {
         if (detail == null || isAdminUser(user)) {
             return detail;
         }
+        /*
+          先看区域分配（可见范围补充）：命中就整笼放开。
+          饲养组长与手下的饲养员**不在**笼位所属课题组里，只按课题组判会把「他负责的区域」
+          也一起脱敏 —— 详情接口和详情表单弹窗（CageInfoValueController）都走这一支，
+          漏了它弹窗里整片都是 ***。判据与网格脱敏、可操作性判定同源，别另写一套。
+        */
+        if (detail.getAnimalCageId() != null
+                && cageOperationService.cageInScope(user, detail.getAnimalCageId(), detail)) {
+            return detail;
+        }
         List<String> groupNames = resolveUserGroupNames(user.getId());
         String pi = detail.getProjectPiName() != null && !detail.getProjectPiName().isBlank()
                 ? detail.getProjectPiName()

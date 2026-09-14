@@ -454,8 +454,7 @@ public class CageOrderReservationService {
                 r.setSex(parsed.sex());   // 先落性别，下面的数量列才能按新性别写对
             }
             if (qtyChanged) {
-                String countField = "雌性".equals(r.getSex()) ? "animal_female_number"
-                        : "雄性".equals(r.getSex()) ? "animal_male_number" : null;
+                String countField = countFieldFor(r.getSex());
                 if (countField != null) {
                     written.put(countField, qty);
                     patch.put(countField, qty);
@@ -575,6 +574,41 @@ public class CageOrderReservationService {
     public boolean hasActiveReservation(Long cartId) {
         if (cartId == null) return false;
         return !reservationMapper.listActiveByCartIds(List.of(cartId)).isEmpty();
+    }
+
+    /**
+     * 购物车内改数量：把新数量同步回该行锁着的笼位（预定数量 + written 快照 + 笼位表单）。
+     *
+     * <p>不同步的话订单与笼位会永久分叉：订单行取购物车数量，笼位表单还是加购那一刻的值，
+     * 审核通过时又按旧快照重写一遍表单，两处永远对不上。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void syncQuantityForCart(Long cartId, Integer quantity) {
+        if (cartId == null || quantity == null || quantity < 1) return;
+        List<CageOrderReservation> rows = reservationMapper.listActiveByCartIds(List.of(cartId));
+        if (rows.isEmpty()) return;
+        CageOrderReservation r = rows.get(0);
+        if (Objects.equals(r.getQuantity(), quantity)) return;
+
+        Map<String, Object> written = readWritten(r);
+        Map<String, Object> patch = new LinkedHashMap<>();
+        String countField = countFieldFor(r.getSex());
+        if (countField != null) {
+            written.put(countField, quantity);
+            patch.put(countField, quantity);
+        }
+        r.setQuantity(quantity);
+        r.setWrittenJson(toJson(written));
+        reservationMapper.updateSpecQuantityWritten(
+                r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), r.getStrainName(), r.getWrittenJson());
+        if (!patch.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), patch);
+    }
+
+    /** 性别 → 笼位数量字段。性别识别不出就不猜男/女，数量账交给饲养端到货时点。 */
+    private static String countFieldFor(String sex) {
+        if ("雌性".equals(sex)) return "animal_female_number";
+        if ("雄性".equals(sex)) return "animal_male_number";
+        return null;
     }
 
     /**
