@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import {
@@ -53,9 +53,21 @@ export function CardPrintConfirmDialog({
   const [err, setErr] = useState("");
   const [stationId, setStationId] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 已生成过的参数指纹。StrictMode 开发期会把 effect 跑两遍，没这个守卫就会白生成一份 PDF */
+  const genKeyRef = useRef("");
+
+  const genKey = open ? `${templateId}|${cageIds.join(",")}|${nameSuffix}` : "";
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      genKeyRef.current = "";
+      return;
+    }
+    // 同一批参数只生成一次。注意 cleanup 里不能清这个 ref ——
+    // StrictMode 正是靠「跑两遍」暴露问题，清了就等于没守卫。
+    if (genKeyRef.current === genKey) return;
+    genKeyRef.current = genKey;
+
     let cancelled = false;
     setStage("generating");
     setArchive(null);
@@ -83,8 +95,7 @@ export function CardPrintConfirmDialog({
     return () => {
       cancelled = true;
     };
-    // cageIds 由调用方 memo，避免每次渲染都重跑生成
-  }, [open, templateId, cageIds, nameSuffix, stations]);
+  }, [open, genKey, templateId, cageIds, nameSuffix, stations]);
 
   const confirm = async () => {
     if (!archive) return;
