@@ -13,7 +13,14 @@ import { useEffect, useRef, useState } from "react";
  * 渲染完成后才回调 onReady —— 调用方据此再调 window.print()。
  * 早调一步就会打出空白页，所以这个顺序不能省。
  */
-export function PdfPrintCanvas({ blob, onReady }: { blob: Blob; onReady?: () => void }) {
+export function PdfPrintCanvas({
+  blob,
+  onReady,
+}: {
+  blob: Blob;
+  /** 每页的 PNG dataURL，按页序。调用方拿它在独立 iframe 里打印 */
+  onReady?: (pageDataUrls: string[]) => void;
+}) {
   const [pages, setPages] = useState<{ dataUrl: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,7 +95,7 @@ export function PdfPrintCanvas({ blob, onReady }: { blob: Blob; onReady?: () => 
       if (readyFiredRef.current) return;
       readyFiredRef.current = true;
       // 再等一帧，确保布局落定
-      requestAnimationFrame(() => onReadyRef.current?.());
+      requestAnimationFrame(() => onReadyRef.current?.(pages.map((p) => p.dataUrl)));
     });
   }, [pages]);
 

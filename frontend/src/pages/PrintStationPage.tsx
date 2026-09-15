@@ -165,47 +165,94 @@ export default function PrintStationPage() {
   }, [current, lastPrinted, settle]);
 
   /**
-   * 调起一次打印，并等它**真正提交完**再返回。
+   * 在**独立的隐藏 iframe** 里打印，而不是直接 window.print() 当前页面。
    *
-   * 不能调完 window.print() 就往下走：kiosk 模式下它是立刻返回的，
-   * 光栅化在后面异步做。此时若把待打内容从 DOM 里摘掉（settle 会把 current 置空、
-   * #print-root 随之卸载），打印机取到的就是一张白纸 —— 实测踩过，
-   * 打出来是空白页，而任务状态照样是 PRINTED。
+   * 为什么绕这一圈：工位页挂在管理后台壳里，直接打当前页面就得靠 CSS 把侧栏顶栏
+   * 全隐藏掉，还得跟 `position:absolute` 的定位祖先把位置算对 —— 实测排版不可控，
+   * 并且打印内容一旦从 DOM 卸载就打出白纸。iframe 的文档**就是**全部输出，
+   * 与页面样式、后台壳、React 的挂载/卸载全都无关。
+   *
+   * 返回前等 afterprint；某些环境不派发该事件，用 PRINT_SETTLE_MS 兜底。
    */
-  const printOnce = () =>
-    new Promise<void>((resolve) => {
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        window.removeEventListener("afterprint", done);
-        resolve();
-      };
-      window.addEventListener("afterprint", done);
-      window.print();
-      setTimeout(done, PRINT_SETTLE_MS);
+  const printViaIframe = (images: string[], size: string | null) =>
+    new Promise<void>((resolve, reject) => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute("aria-hidden", "true");
+      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+      document.body.appendChild(frame);
+
+      const cleanup = () => frame.remove();
+
+      try {
+        const doc = frame.contentDocument;
+        if (!doc) throw new Error("无法创建打印文档");
+        const sizeCss = size ? `size:${size};` : "";
+        const imgs = images.map((src) => `<img src="${src}" alt="" />`).join("");
+        doc.open();
+        doc.write(
+          `<!doctype html><html><head><meta charset="utf-8"><style>` +
+            `@page{${sizeCss}margin:0}` +
+            `html,body{margin:0;padding:0}` +
+            `img{width:100%;display:block}` +
+            `img+img{break-before:page}` +
+            `</style></head><body>${imgs}</body></html>`,
+        );
+        doc.close();
+
+        // 图片没解码完就打印会出空白 —— iframe 里也要等
+        const list = Array.from(doc.images);
+        Promise.all(
+          list.map((im) => (im.complete ? Promise.resolve() : im.decode().catch(() => undefined))),
+        )
+          .then(() => {
+            const win = frame.contentWindow;
+            if (!win) throw new Error("打印窗口不可用");
+            let settled = false;
+            const done = () => {
+              if (settled) return;
+              settled = true;
+              win.removeEventListener("afterprint", done);
+              cleanup();
+              resolve();
+            };
+            win.addEventListener("afterprint", done);
+            win.focus();
+            win.print();
+            setTimeout(done, PRINT_SETTLE_MS);
+          })
+          .catch((e) => {
+            cleanup();
+            reject(e);
+          });
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
     });
 
   /**
    * 渲染完成 → 调起打印 → 回执。
    *
-   * 份数靠连打实现：kiosk 模式下每次 window.print() 出一份，
-   * 所以打 N 份就是连着调 N 次。中途某次失败会少打一份 ——
-   * 回执只能记整条任务的结果，这一层粒度报不出去。
+   * 份数靠连打实现：kiosk 模式下每次 print 出一份，所以打 N 份就是连着调 N 次。
+   * 中途某次失败会少打一份 —— 回执只能记整条任务的结果，这一层粒度报不出去。
    */
-  const onPrintableReady = useCallback(async () => {
-    if (!current) return;
-    const n = Math.max(1, Math.min(current.copies || 1, 99));
-    try {
-      for (let i = 0; i < n; i++) {
-        if (n > 1) setMessage(`正在打印 ${current.fileName}（第 ${i + 1} / ${n} 份）`);
-        await printOnce();
+  const onPrintableReady = useCallback(
+    async (images: string[]) => {
+      if (!current || images.length === 0) return;
+      const n = Math.max(1, Math.min(current.copies || 1, 99));
+      try {
+        for (let i = 0; i < n; i++) {
+          if (n > 1) setMessage(`正在打印 ${current.fileName}（第 ${i + 1} / ${n} 份）`);
+          await printViaIframe(images, pageSize);
+        }
+        await settle(current, true);
+      } catch (e) {
+        await settle(current, false, e instanceof Error ? e.message : "调起打印失败");
       }
-      await settle(current, true);
-    } catch (e) {
-      await settle(current, false, e instanceof Error ? e.message : "调起打印失败");
-    }
-  }, [current, settle]);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current, settle, pageSize],
+  );
 
   // 图片走 <img> 路径：转成 objectURL 等 onLoad 后再打
   useEffect(() => {
@@ -250,36 +297,24 @@ export default function PrintStationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 打印时只出 #print-root，后台壳（侧栏/顶栏）靠这个 body class 屏蔽掉，
-  // 见 index.css 的 @media print 段。离开本页必须摘干净，否则会影响别的页面打印。
-  useEffect(() => {
-    document.body.classList.add("print-station-active");
-    return () => document.body.classList.remove("print-station-active");
-  }, []);
-
   const printable = Boolean(current && (isPdf(current) ? file : imageUrl));
   const copies = current?.copies ?? 1;
 
   return (
     <AdminPageShell>
       <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[420px] flex-col gap-3">
-        {/* 纸张尺寸按工位配置注入：卡片机设成 CR80，桌面打印机留空走驱动默认 */}
-        <style>
-          {pageSize ? `@page { size: ${pageSize}; margin: 0; }` : "@page { margin: 0; }"}
-        </style>
-
-        {/* 待打印的内容。屏幕上就是预览 —— 现场的人该看得见要打的是什么。
-            打印时它是唯一可见的东西（见 index.css）。 */}
+        {/* 屏幕上给现场的人看的预览。真正的打印走独立 iframe（printViaIframe），
+            输出与这块 DOM 无关 —— 这里纯粹是给人看的，打不打得到它说了不算。 */}
         {printable && current ? (
-          <div id="print-root" className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3 print:border-0 print:p-0">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3">
             {isPdf(current) && file ? (
-              <PdfPrintCanvas blob={file} onReady={() => void onPrintableReady()} />
+              <PdfPrintCanvas blob={file} onReady={(urls) => void onPrintableReady(urls)} />
             ) : imageUrl ? (
               <img
                 src={imageUrl}
                 alt=""
                 style={{ width: "100%", display: "block" }}
-                onLoad={() => void onPrintableReady()}
+                onLoad={() => void onPrintableReady([imageUrl])}
               />
             ) : null}
           </div>
