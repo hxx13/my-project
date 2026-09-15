@@ -3,6 +3,7 @@ import { FileWarning, Loader2 } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { fetchSopPdfBlob, type SopDocument } from "@/api/domains/sop.api";
 import { usePdfObjectUrl } from "@/components/common/usePdfObjectUrl";
+import { PDFJS_STANDARD_FONT_DATA_URL } from "@/lib/pdfjs";
 import SopWatermark from "./SopWatermark";
 
 /**
@@ -81,7 +82,8 @@ function PdfScroller({ url, viewerName, at }: { url: string; viewerName: string;
           import("pdfjs-dist/build/pdf.worker.min.mjs?url").then((m) => m.default),
         ]);
         pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-        const t = pdfjs.getDocument({ url });
+        // standardFontDataUrl 不能省：不嵌字体的基础字体 PDF 少了它会渲染成空白页
+        const t = pdfjs.getDocument({ url, standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL });
         task = t;
         const loaded = await t.promise;
         if (cancelled) return;

@@ -159,6 +159,17 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "thresholdDays", "触发阈值天数",
                         "firedAt", "触发时间"));
 
+        // ========== 打印 ==========
+        // 收件人默认是「发起这次打印的人」（代码里传 createdBy），
+        // 也可以在通知配置页为这个源额外配「接收人」。
+        register("PRINT_JOB_FAILED", "打印任务失败",
+                "工位回报打印失败，或超时未回执被自动判失败",
+                Map.of("fileName", "文件名",
+                        "stationName", "打印工位名",
+                        "reason", "失败原因",
+                        "attempts", "已尝试次数",
+                        "failedAt", "失败时间"));
+
         log.info("[Push] 通知源注册完成：共 {} 个，新增 {}，其余已存在", totalSources, newSources);
     }
 

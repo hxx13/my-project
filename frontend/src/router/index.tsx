@@ -60,6 +60,7 @@ import AdminInventoryPage from "@/pages/AdminInventoryPage";
 import ScanSessionPage from "@/features/inventory/ScanSessionPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
+import AdminPrintStationsPage from "@/pages/AdminPrintStationsPage";
 import AdminSopPage from "@/pages/AdminSopPage";
 import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
 import AdminDahuaSwingTasksPage from "@/pages/AdminDahuaSwingTasksPage";
@@ -158,6 +159,7 @@ import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
 import ReportFillPage from "@/features/report-form/pages/ReportFillPage";
 import SubmissionManagePage from "@/features/report-form/pages/SubmissionManagePage";
 import AupFillPage from "@/features/aup/pages/AupFillPage";
+import PrintStationPage from "@/pages/PrintStationPage";
 import NhpFillPage from "@/features/nhp/pages/NhpFillPage";
 import AupListPage from "@/features/aup/pages/AupListPage";
 import AupReviewPage from "@/features/aup/pages/AupReviewPage";
@@ -232,6 +234,8 @@ const legacyRedirects = [
   { path: "/dashboard", to: `${STAFF_NS}/dashboard` },
   { path: "/profile-security", to: `${STAFF_NS}/admin/profile-security` },
   { path: "/messages", to: `${STAFF_NS}/admin/staff-messages` },
+  // 打印工位原先在顶层（裸地址），现已收进后台壳；老快捷方式仍要能进
+  { path: "/print-station", to: `${STAFF_NS}/admin/print-station` },
   { path: "/admin/*", to: `${STAFF_NS}/admin` },
   { path: "/debug/*", to: `${STAFF_NS}/debug` },
   { path: "/debug-personnel/*", to: `${STAFF_NS}/debug-personnel` },
@@ -370,6 +374,10 @@ export const router = createHashRouter([
               { path: "purchase-request", element: <PurchaseRequestPage /> },
               { path: "facility-maintenance", element: <AdminFacilityMaintenancePage /> },
               { path: "file-templates", element: <AdminFileTemplatesPage /> },
+              // 打印工位：工位电脑常开此页。放在后台壳下，为的是有个侧栏入口，
+              // 而不是让人记一个裸地址；打印时后台壳靠 index.css 的
+              // @media print + body.print-station-active 屏蔽掉。
+              { path: "print-station", element: <PrintStationPage /> },
               { path: "sop", element: <AdminSopPage /> },
               { path: "knowledge", element: <AdminKnowledgeHomePage /> },
               { path: "report-fill", element: <ReportFillHubPage /> },
@@ -458,6 +466,9 @@ export const router = createHashRouter([
               {
                 element: <SuperAdminGuard />,
                 children: [
+                  // 打印工位配置（绑哪个账号、哪台机器）要最高权限；
+                  // 而下发打印、工位机收任务只要 STAFF，别混在一起。
+                  { path: "print-stations", element: <AdminPrintStationsPage /> },
                   { path: "personnel", element: <AdminPersonnelPage /> },
                   { path: "logging-console", element: <AdminLoggingConsolePage /> },
                   { path: "api-docs", element: <AdminApiDocsPage /> },

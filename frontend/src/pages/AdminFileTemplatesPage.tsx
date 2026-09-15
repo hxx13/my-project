@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { Download, Trash2, Upload } from "lucide-react";
+import { Download, Loader2, Trash2, Upload } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { AdminSensitiveAction } from "@/features/admin/AdminSensitiveAction";
@@ -15,6 +15,9 @@ import {
 } from "@/api/domains/fileTemplates.api";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { PrintButton } from "@/features/print-station/PrintButton";
+import { TempPrintButton } from "@/features/print-station/TempPrintButton";
+import { PrintQueueButton } from "@/features/print-station/PrintQueueDialog";
 
 import { appConfirm } from "@/lib/appDialog";
 function fmtBytes(n: number) {
@@ -41,6 +44,11 @@ export default function AdminFileTemplatesPage() {
   const canUpload = hasMinRole(role, "STAFF");
   const canDelete = hasMinRole(role, "ADMIN");
   const [rows, setRows] = useState<AdminFileTemplateRow[]>([]);
+  /**
+   * 上传中。Word/Excel 会在服务端用 LibreOffice 转 PDF，要好几秒 ——
+   * 没有反馈的话用户会以为卡死，然后再点一次。
+   */
+  const [uploading, setUploading] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["adminFileTemplates"] as const,
@@ -59,12 +67,15 @@ export default function AdminFileTemplatesPage() {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
+    setUploading(true);
     try {
       const row = await uploadAdminFileTemplate(f);
       setRows((prev) => [row, ...prev]);
       toast.success("已上传");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -93,11 +104,30 @@ export default function AdminFileTemplatesPage() {
       {/* Page toolbar */}
       <div className="flex items-center justify-between mb-3">
         {canUpload ? (
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
-            <Upload className="h-4 w-4" />
-            上传模板
-            <input type="file" className="hidden" accept=".pdf,.xlsx,.xls,.docx,.doc,.zip,.csv,.txt,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              className={
+                "inline-flex items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)] " +
+                (uploading ? "cursor-wait opacity-70" : "cursor-pointer")
+              }
+            >
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              {uploading ? "正在转换文档…" : "上传模板"}
+              <input
+                type="file"
+                className="hidden"
+                disabled={uploading}
+                accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf"
+                onChange={(ev) => void onUpload(ev)}
+              />
+            </label>
+            <TempPrintButton />
+            <PrintQueueButton />
+          </div>
         ) : null}
       </div>
 
@@ -121,7 +151,12 @@ export default function AdminFileTemplatesPage() {
                   <td className="px-3 py-2 text-[var(--twin-body)]">{fmtBytes(r.sizeBytes)}</td>
                   <td className="px-3 py-2 text-xs text-[var(--twin-body)]">{fmtTime(r.createTime)}</td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PrintButton
+                        sourceType="ADMIN_FILE"
+                        sourceId={r.id}
+                        fileName={r.originalName}
+                      />
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 text-xs font-medium text-[var(--twin-link-deep)]"

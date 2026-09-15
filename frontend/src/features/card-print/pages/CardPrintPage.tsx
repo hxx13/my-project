@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { fetchCardFields, fetchCardTemplates } from "@/api/domains/cardPrint.api";
+import { fetchSelectableStations, type PrintStationOption } from "@/api/domains/print.api";
 import type { CardFieldOption, CardTemplate } from "../types";
 import { CardTemplateEditor } from "../components/CardTemplateEditor";
 import { CardPrintPanel, type CardPrintPanelHandle } from "../components/CardPrintPanel";
 import { CardArchivePanel } from "../components/CardArchivePanel";
 import { CardValueMapPanel } from "../components/CardValueMapPanel";
+import { PrintQueueButton } from "@/features/print-station/PrintQueueDialog";
 
 type Tab = "print" | "template" | "archive" | "valuemap";
 
@@ -29,8 +31,15 @@ export default function CardPrintPage() {
   const [selectedTotal, setSelectedTotal] = useState(0);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  /** 可选打印工位，供打印确认弹窗选择 */
+  const [stations, setStations] = useState<PrintStationOption[]>([]);
 
   const panelRef = useRef<CardPrintPanelHandle>(null);
+
+  // 工位列表加载失败不该挡住生成 PDF —— 那才是这个页面的主业
+  useEffect(() => {
+    void fetchSelectableStations().then(setStations).catch(() => setStations([]));
+  }, []);
 
   const reload = useCallback(async () => {
     try {
@@ -87,8 +96,12 @@ export default function CardPrintPage() {
             <span className="text-[12px] text-[var(--app-color-text-tertiary)]">已选 {selectedCount} / {selectedTotal}</span>
             <input value={nameSuffix} onChange={(e) => setNameSuffix(e.target.value)}
               placeholder="文件名备注（可选）" className={inputCls + " w-44"} />
-            <button type="button" className={BTN_PRIMARY} disabled={busy}
+            <button type="button" className={BTN_OUTLINE} disabled={busy}
               onClick={() => void panelRef.current?.generate()}>生成 PDF</button>
+            <button type="button" className={BTN_PRIMARY} disabled={busy}
+              title="先预览要打的内容，确认后再派给打印机"
+              onClick={() => panelRef.current?.print()}>打印…</button>
+            <PrintQueueButton />
             {msg ? <span className="min-w-0 truncate text-[12px] text-[var(--app-color-text-secondary)]">{msg}</span> : null}
           </>
         ) : null}
@@ -112,6 +125,7 @@ export default function CardPrintPage() {
             boxSelectMode={boxSelectMode}
             onBoxSelectModeChange={setBoxSelectMode}
             nameSuffix={nameSuffix}
+            stations={stations}
             onSelectionChange={handleSelectionChange}
             onMessage={handleMessage}
             onBusyChange={setBusy}

@@ -46,7 +46,9 @@ public class AdminFileTemplateController {
         if (auth != null) {
             return cast(auth);
         }
-        AdminFileTemplateListResult r = adminFileTemplateService.listMetadataForAdmin();
+        // 只看 TEMPLATE：这张表是全站共用的 blob 表，SOP 文档与学习资料也往里存，
+        // 不过滤的话它们会全部串到这个页面来。
+        AdminFileTemplateListResult r = adminFileTemplateService.listMetadataForAdmin("TEMPLATE");
         if (r.schemaHint() != null) {
             return Result.success(r.items(), r.schemaHint());
         }
@@ -98,6 +100,8 @@ public class AdminFileTemplateController {
     @Operation(summary = "上传模板（教职工及以上）")
     public Result<Map<String, Object>> upload(
             @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "purpose", required = false) String purpose,
+            @RequestParam(value = "ephemeral", required = false) Boolean ephemeral,
             HttpServletRequest request
     ) {
         Result<?> denied = requireStaff(request);
@@ -106,7 +110,8 @@ public class AdminFileTemplateController {
         }
         User admin = (User) request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         try {
-            Map<String, Object> row = adminFileTemplateService.saveUpload(file, admin.getId());
+            Map<String, Object> row = adminFileTemplateService.saveUpload(
+                    file, admin.getId(), purpose, Boolean.TRUE.equals(ephemeral));
             // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）：返回完整元数据供前端就地追加
             return Result.success(row);
         } catch (IllegalArgumentException e) {

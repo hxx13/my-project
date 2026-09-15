@@ -96,7 +96,7 @@ public class SocketRoomAssigner {
             assignRooms(client);
         });
 
-        log.info("[RoomAssigner] 已注册（@PostConstruct，早于 Socket.IO start），rooms: {}, {}, {}, {}",
+        log.info("[RoomAssigner] 已注册（@PostConstruct，早于 Socket.IO start），rooms: {}, {}, {}, {}，另有 channel=station 走个人房间",
                 ROOM_RELOAD_WEB, ROOM_CONSOLE_LIVE, ROOM_MOBILE_BROADCAST,
                 MobileUserSocketPushService.ROOM_PREFIX + "{userId}");
     }
@@ -143,6 +143,26 @@ public class SocketRoomAssigner {
             }
             sendRoomAck(client, joined);
             return; // ← student 不加入 reload:web / console:live
+        }
+
+        // ── 工位 channel（打印工位电脑）: 个人房间 + web 通用房间 ──
+        // 个人房间收打印任务（复用 mobile_user:{id}，不新增房间机制）；
+        // reload:web 是为了部署后工位页也跟着重载，否则它会一直跑旧前端。
+        if ("station".equals(channel)) {
+            String jwt = client.getHandshakeData().getSingleUrlParam("token");
+            if (jwt != null && !jwt.isBlank()) {
+                User user = jwtTokenService.validateTokenAndResolveUser(jwt.trim());
+                if (user != null && user.getId() != null && !user.getId().isBlank()) {
+                    String room = MobileUserSocketPushService.roomForUser(user.getId());
+                    client.joinRoom(room);
+                    joined.add(room);
+                    log.info("[RoomAssigner] 工位账号 {} 已加入个人 room", user.getId());
+                }
+            }
+            client.joinRoom(ROOM_RELOAD_WEB);
+            joined.add(ROOM_RELOAD_WEB);
+            sendRoomAck(client, joined);
+            return;
         }
 
         // ── web client (后台管理页面): 加入所有 web room ──

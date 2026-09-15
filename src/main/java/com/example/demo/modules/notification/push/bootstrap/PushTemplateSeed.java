@@ -361,5 +361,31 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "🕐 {firedAt}\n"
                         + "> ARO 笼位状态提醒"
         ));
+
+        // ========== 打印任务失败 ==========
+        // 收件人是发起人。文案先给「哪个文件、哪台机器」，再说原因 ——
+        // 这两条决定他要不要求人去现场看一眼。
+        TEMPLATES.put("PRINT_JOB_FAILED", new Template(
+                "打印未成功 — {fileName}",
+                "<div style='border-left:4px solid #dc2626;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>打印未成功</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#dc2626;margin:0 0 4px'>{fileName}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>工位：{stationName}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>原因：{reason}</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{failedAt}（已尝试 {attempts} 次）</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 打印工位</p>",
+                "## ⚠️ 打印未成功\n\n"
+                        + "📄 **{fileName}**\n\n"
+                        + "🖨 工位：{stationName}\n\n"
+                        + "❗ 原因：{reason}\n\n"
+                        + "🕐 {failedAt}（已尝试 {attempts} 次）\n\n"
+                        + "> ARO 打印工位",
+                "## ⚠️ 打印未成功\n"
+                        + "📄 **{fileName}**\n"
+                        + "🖨 工位：{stationName}\n"
+                        + "❗ 原因：{reason}\n"
+                        + "🕐 {failedAt}（已尝试 {attempts} 次）\n"
+                        + "> ARO 打印工位"
+        ));
     }
 }

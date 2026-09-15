@@ -82,12 +82,11 @@ public class StaffRegistrationService {
         user.setAccountSource("STAFF");
         userMapper.insertUser(user);
         userMapper.updatePasswordWithPlainById(id, hash, encryptedPlain, 0);
-        try {
-            // 真实姓名 → sys_user.name + personnel；绝不把姓名写成 username
-            personnelService.ensureStaffPersonnel(id, realName, RoleEnum.STAFF.getCode(), request.getJobNumber());
-        } catch (IllegalArgumentException e) {
-            return Result.error(e.getMessage());
-        }
+        // 真实姓名 → sys_user.name + personnel；绝不把姓名写成 username。
+        // 校验失败时 ensureStaffPersonnel 抛 IllegalArgumentException，由 GlobalExceptionHandler 统一转成
+        // Result.fail 返回给前端。这里千万不要 catch 后 return —— 那样事务已被内层标成 rollback-only，
+        // 外层提交时会抛 UnexpectedRollbackException，用户看到的是 500 而不是「姓名已被占用」。
+        personnelService.ensureStaffPersonnel(id, realName, RoleEnum.STAFF.getCode(), request.getJobNumber());
         user = userMapper.findById(user.getId());
         user.setRole(authService.normalizeRole(user.getRole()));
         return authService.generateAuthResult(user);

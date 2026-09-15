@@ -636,6 +636,29 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/file-templates", "STAFF"),
       },
       {
+        // 工位配置：绑哪个账号、哪台机器 —— 最高权限，别下放给 STAFF
+        id: "print-stations",
+        path: "/admin/print-stations",
+        label: "打印工位配置",
+        icon: Printer,
+        homeTone: "from-cyan-400 to-sky-500",
+        fallbackMinRole: "SUPER_ADMIN",
+        alias: ["打印机", "打印工位", "station", "printer"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/print-stations", "SUPER_ADMIN"),
+      },
+      {
+        // 打印工位：工位电脑常开此页收任务。它是「打印机那一端」，
+        // 和上面那个「发任务那一端」是两回事，所以单独一个入口。
+        id: "print-station",
+        path: "/admin/print-station",
+        label: "打印工位机",
+        icon: Monitor,
+        homeTone: "from-slate-400 to-slate-500",
+        fallbackMinRole: "STAFF",
+        alias: ["打印工位", "工位机", "打印机终端", "station"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/print-station", "STAFF"),
+      },
+      {
         id: "sop",
         path: "/admin/sop",
         label: "SOP 操作",
@@ -903,6 +926,8 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
   if (
     p.startsWith("/admin/asset-") ||
     p === "/admin/file-templates" ||
+    p === "/admin/print-stations" ||
+    p === "/admin/print-station" ||
     p === "/admin/sop" ||
     p === "/admin/analytics" ||
     p === "/admin/facility-maintenance" ||
