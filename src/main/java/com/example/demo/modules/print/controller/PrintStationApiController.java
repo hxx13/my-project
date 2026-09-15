@@ -137,4 +137,13 @@ public class PrintStationApiController {
         PrintStation station = requireStation(auth);
         return Result.success(jobService.listByStation(station.getId(), limit));
     }
+
+    /** 还排着几条。工位页靠它告诉现场的人「后面还有多少」。 */
+    @GetMapping("/pending-count")
+    @Operation(summary = "本工位排队中任务数")
+    public Result<Map<String, Object>> pendingCount(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
+        PrintStation station = requireStation(auth);
+        return Result.success(Map.of("pending", jobService.countPending(station.getId())));
+    }
 }

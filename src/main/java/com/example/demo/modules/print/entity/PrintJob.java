@@ -7,6 +7,13 @@ public class PrintJob {
     public static final String STATUS_SENT = "SENT";
     public static final String STATUS_PRINTED = "PRINTED";
     public static final String STATUS_FAILED = "FAILED";
+    /** 还没被工位领走时被撤回。领走之后就撤不回来了 —— 那由工位页上的机器决定 */
+    public static final String STATUS_CANCELLED = "CANCELLED";
+
+    /** 普通优先级 */
+    public static final int PRIORITY_NORMAL = 0;
+    /** 加急：数值大的先被领走 */
+    public static final int PRIORITY_URGENT = 10;
 
     public static final String SOURCE_CARD_ARCHIVE = "CARD_ARCHIVE";
     public static final String SOURCE_ADMIN_FILE = "ADMIN_FILE";
@@ -17,6 +24,10 @@ public class PrintJob {
     private String sourceId;
     private String fileName;
     private int copies;
+    /** 派发时写的一句备注，随任务带到工位页 */
+    private String note;
+    /** 越大越先被领取 */
+    private int priority;
     private String status;
     private int attempts;
     private String lastError;
@@ -42,6 +53,12 @@ public class PrintJob {
 
     public int getCopies() { return copies; }
     public void setCopies(int v) { this.copies = v; }
+
+    public String getNote() { return note; }
+    public void setNote(String v) { this.note = v; }
+
+    public int getPriority() { return priority; }
+    public void setPriority(int v) { this.priority = v; }
 
     public String getStatus() { return status; }
     public void setStatus(String v) { this.status = v; }

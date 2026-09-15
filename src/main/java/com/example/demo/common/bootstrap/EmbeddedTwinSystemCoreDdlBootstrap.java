@@ -93,6 +93,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         // --- 打印工位 ---
         total++; if (runScript("db/bootstrap-print-station.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-job.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-job-note.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-job-priority.sql", ctx)) success++;
 
         total++; if (runScript("db/bootstrap-twin-student-violation.sql", ctx)) {
             success++;

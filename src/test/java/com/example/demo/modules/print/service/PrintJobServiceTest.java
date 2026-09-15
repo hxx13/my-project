@@ -152,7 +152,7 @@ class PrintJobServiceTest {
 
         PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () ->
-                service.create("PS_NOPE", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1"));
+                service.create("PS_NOPE", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, 0));
         assertEquals("工位不存在", e.getMessage());
     }
 
@@ -164,7 +164,7 @@ class PrintJobServiceTest {
 
         PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
         assertThrows(IllegalArgumentException.class, () ->
-                service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1"));
+                service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, 0));
     }
 
     /** 建单：不认识的来源类型要拦。 */
@@ -175,7 +175,7 @@ class PrintJobServiceTest {
 
         PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
         assertThrows(IllegalArgumentException.class, () ->
-                service.create("PS_1", "SOMETHING_ELSE", "AFT_1", "t.pdf", 1, "u1"));
+                service.create("PS_1", "SOMETHING_ELSE", "AFT_1", "t.pdf", 1, "u1", null, 0));
     }
 
     /** 建单：份数夹到 1..99，状态从 PENDING 起步。 */
@@ -186,8 +186,8 @@ class PrintJobServiceTest {
         when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
         PrintJobService service = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
 
-        PrintJob a = service.create("PS_1", PrintJob.SOURCE_CARD_ARCHIVE, "77", "c.pdf", 0, "u1");
-        PrintJob b = service.create("PS_1", PrintJob.SOURCE_CARD_ARCHIVE, "77", "c.pdf", 500, "u1");
+        PrintJob a = service.create("PS_1", PrintJob.SOURCE_CARD_ARCHIVE, "77", "c.pdf", 0, "u1", null, 0);
+        PrintJob b = service.create("PS_1", PrintJob.SOURCE_CARD_ARCHIVE, "77", "c.pdf", 500, "u1", null, 0);
 
         assertEquals(1, a.getCopies());
         assertEquals(99, b.getCopies());
@@ -221,5 +221,55 @@ class PrintJobServiceTest {
         reset(cleaner);
         assertTrue(service.acknowledge("PJ_1", "PS_1", false, "卡纸"));
         verify(cleaner, never()).cleanupAfterPrinted(any());
+    }
+
+    /**
+     * 撤回只对还在排队（PENDING）的生效。
+     * 已经被工位领走的撤不回来 —— 活已经在那台机器上了，改数据库拦不住它。
+     */
+    @Test
+    void cancelOnlyWorksWhilePending() {
+        PrintJobMapper mapper = mock(PrintJobMapper.class);
+        when(mapper.cancel("PJ_PENDING")).thenReturn(1);
+        when(mapper.cancel("PJ_SENT")).thenReturn(0);
+
+        PrintJobService service = new PrintJobService(
+                mapper, mock(PrintStationService.class),
+                mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+
+        assertTrue(service.cancel("PJ_PENDING"));
+        assertFalse(service.cancel("PJ_SENT"));
+    }
+
+    /** 备注会被去掉首尾空白；全空白当没填。 */
+    @Test
+    void createTrimsNoteAndBlankBecomesNull() {
+        PrintJobMapper mapper = mock(PrintJobMapper.class);
+        PrintStationService stations = mock(PrintStationService.class);
+        when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
+        PrintJobService service = new PrintJobService(
+                mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+
+        PrintJob a = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", "  三月的卡  ", 0);
+        PrintJob b = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", "   ", 0);
+
+        assertEquals("三月的卡", a.getNote());
+        assertNull(b.getNote());
+    }
+
+    /** 加急靠 priority 表达，落库时原样带过去。 */
+    @Test
+    void createKeepsPriority() {
+        PrintJobMapper mapper = mock(PrintJobMapper.class);
+        PrintStationService stations = mock(PrintStationService.class);
+        when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
+        PrintJobService service = new PrintJobService(
+                mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+
+        PrintJob urgent = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, PrintJob.PRIORITY_URGENT);
+        PrintJob normal = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, PrintJob.PRIORITY_NORMAL);
+
+        assertEquals(PrintJob.PRIORITY_URGENT, urgent.getPriority());
+        assertEquals(PrintJob.PRIORITY_NORMAL, normal.getPriority());
     }
 }

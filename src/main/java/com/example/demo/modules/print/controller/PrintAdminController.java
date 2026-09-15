@@ -144,9 +144,46 @@ public class PrintAdminController {
         String sourceId = String.valueOf(body.get("sourceId"));
         String fileName = body.get("fileName") == null ? "" : String.valueOf(body.get("fileName"));
         int copies = body.get("copies") == null ? 1 : Integer.parseInt(String.valueOf(body.get("copies")));
-        PrintJob job = jobService.create(stationId, sourceType, sourceId, fileName, copies, u.getId());
+        String note = body.get("note") == null ? null : String.valueOf(body.get("note"));
+        int priority = Boolean.TRUE.equals(body.get("urgent"))
+                ? PrintJob.PRIORITY_URGENT : PrintJob.PRIORITY_NORMAL;
+        PrintJob job = jobService.create(stationId, sourceType, sourceId, fileName, copies,
+                u.getId(), note, priority);
         stationService.findById(stationId).ifPresent(st -> pushService.notifyNewJob(st, job.getId()));
         return Result.success(job);
+    }
+
+    @GetMapping("/jobs/queue")
+    @Operation(summary = "队列：还没结束的任务")
+    public Result<List<PrintJob>> queue(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @RequestParam(required = false) String stationId,
+            @RequestParam(defaultValue = "100") int limit) {
+        requireStaff(auth);
+        return Result.success(jobService.listQueue(stationId, limit));
+    }
+
+    @GetMapping("/jobs/history")
+    @Operation(summary = "历史：全部状态，可按工位与状态筛")
+    public Result<List<PrintJob>> history(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @RequestParam(required = false) String stationId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "200") int limit) {
+        requireStaff(auth);
+        return Result.success(jobService.listHistory(stationId, status, limit));
+    }
+
+    @PostMapping("/jobs/{id}/cancel")
+    @Operation(summary = "撤回排队中的任务")
+    public Result<Map<String, Object>> cancel(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @PathVariable String id) {
+        requireStaff(auth);
+        if (!jobService.cancel(id)) {
+            return Result.error("只有还在排队、没被打印机领走的任务才能撤回");
+        }
+        return Result.success(Map.of("ok", true));
     }
 
     @GetMapping("/jobs")

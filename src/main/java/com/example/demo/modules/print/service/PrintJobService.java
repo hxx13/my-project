@@ -43,9 +43,15 @@ public class PrintJobService {
         this.sourceCleaner = sourceCleaner;
     }
 
-    /** 建单。工位必须存在且启用 —— 否则任务建了也永远没人领。 */
+    /**
+     * 建单。工位必须存在且启用 —— 否则任务建了也永远没人领。
+     *
+     * @param note     派发备注。工位旁边站着的人靠它知道手上这叠纸是什么。
+     * @param priority 越大越先被领走，见 {@link PrintJob#PRIORITY_NORMAL} / {@link PrintJob#PRIORITY_URGENT}。
+     */
     public PrintJob create(String stationId, String sourceType, String sourceId,
-                           String fileName, int copies, String createdBy) {
+                           String fileName, int copies, String createdBy,
+                           String note, int priority) {
         PrintStation station = stationService.findById(stationId)
                 .orElseThrow(() -> new IllegalArgumentException("工位不存在"));
         if (!station.isEnabled()) {
@@ -64,6 +70,8 @@ public class PrintJobService {
         j.setSourceId(sourceId.trim());
         j.setFileName(fileName == null ? "" : fileName);
         j.setCopies(Math.max(1, Math.min(copies, 99)));
+        j.setNote(note == null || note.isBlank() ? null : note.trim());
+        j.setPriority(Math.max(0, priority));
         j.setStatus(PrintJob.STATUS_PENDING);
         j.setAttempts(0);
         j.setCreatedBy(createdBy);
@@ -108,6 +116,27 @@ public class PrintJobService {
 
     public boolean retry(String jobId) {
         return mapper.retry(jobId) == 1;
+    }
+
+    /**
+     * 撤回。只有还没被工位领走的能撤 —— 一旦 SENT，活已经在工位页和它那台机器上了，
+     * 我们改数据库也拦不住它。
+     */
+    public boolean cancel(String jobId) {
+        return mapper.cancel(jobId) == 1;
+    }
+
+    /** 该工位还排着几条，给工位页显示。 */
+    public int countPending(String stationId) {
+        return mapper.countPending(stationId);
+    }
+
+    public List<PrintJob> listQueue(String stationId, int limit) {
+        return mapper.listQueue(stationId, limit);
+    }
+
+    public List<PrintJob> listHistory(String stationId, String statusCsv, int limit) {
+        return mapper.listHistory(stationId, statusCsv, limit);
     }
 
     public Optional<PrintJob> findById(String id) {

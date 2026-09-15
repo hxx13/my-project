@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,8 +20,8 @@ import java.util.Optional;
 public class PrintJobMapper {
 
     private static final String COLS =
-            "id, station_id, source_type, source_id, file_name, copies, status, attempts,"
-          + " last_error, created_by, created_at, sent_at, printed_at";
+            "id, station_id, source_type, source_id, file_name, copies, note, priority,"
+          + " status, attempts, last_error, created_by, created_at, sent_at, printed_at";
 
     private final JdbcTemplate jdbc;
 
@@ -36,6 +37,8 @@ public class PrintJobMapper {
         j.setSourceId(rs.getString("source_id"));
         j.setFileName(rs.getString("file_name"));
         j.setCopies(rs.getInt("copies"));
+        j.setNote(rs.getString("note"));
+        j.setPriority(rs.getInt("priority"));
         j.setStatus(rs.getString("status"));
         j.setAttempts(rs.getInt("attempts"));
         j.setLastError(rs.getString("last_error"));
@@ -54,10 +57,10 @@ public class PrintJobMapper {
     }
 
     public void insert(PrintJob j) {
-        jdbc.update("INSERT INTO print_job(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?,NOW(),NULL,NULL)",
+        jdbc.update("INSERT INTO print_job(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL,NULL)",
                 j.getId(), j.getStationId(), j.getSourceType(), j.getSourceId(),
-                j.getFileName(), j.getCopies(), j.getStatus(), j.getAttempts(),
-                j.getLastError(), j.getCreatedBy());
+                j.getFileName(), j.getCopies(), j.getNote(), j.getPriority(),
+                j.getStatus(), j.getAttempts(), j.getLastError(), j.getCreatedBy());
     }
 
     public Optional<PrintJob> findById(String id) {
@@ -77,12 +80,33 @@ public class PrintJobMapper {
                 PrintJob.STATUS_SENT, jobId, stationId, PrintJob.STATUS_PENDING);
     }
 
-    /** 待领取的候选 id，先进先出。 */
+    /**
+     * 待领取的候选 id。加急的排在前面，同级按先进先出。
+     * 每个工位的待打队列通常只有个位数，priority 上不额外建索引 —— 排序成本可以忽略。
+     */
     public List<String> findPendingIds(String stationId, int limit) {
         return jdbc.queryForList(
                 "SELECT id FROM print_job WHERE station_id = ? AND status = ?"
-              + " ORDER BY created_at ASC" + limitClause(limit, 20),
+              + " ORDER BY priority DESC, created_at ASC" + limitClause(limit, 20),
                 String.class, stationId, PrintJob.STATUS_PENDING);
+    }
+
+    /** 该工位排队中（还没被领走）的条数，给工位页显示。 */
+    public int countPending(String stationId) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM print_job WHERE station_id = ? AND status = ?",
+                Integer.class, stationId, PrintJob.STATUS_PENDING);
+        return n == null ? 0 : n;
+    }
+
+    /**
+     * 撤回：只有还没被工位领走的才能撤。
+     * 领走之后（SENT）就撤不回来了 —— 那已经交给工位页和它那台机器了。
+     */
+    public int cancel(String jobId) {
+        return jdbc.update(
+                "UPDATE print_job SET status = ?, last_error = ? WHERE id = ? AND status = ?",
+                PrintJob.STATUS_CANCELLED, "已撤回", jobId, PrintJob.STATUS_PENDING);
     }
 
     /** 回执：只有 SENT 态的任务能落终态。返回 0 表示任务不在可回执状态。 */
@@ -135,6 +159,50 @@ public class PrintJobMapper {
                 "SELECT " + COLS + " FROM print_job WHERE created_by = ?"
               + " ORDER BY created_at DESC" + limitClause(limit, 200),
                 ROW, userId);
+    }
+
+    /**
+     * 队列：还没结束的任务（排队中 / 已派给工位 / 失败待处理）。
+     * 加急排前面，同级按派发时间倒序 —— 现场的人关心的是「接下来打什么」。
+     */
+    public List<PrintJob> listQueue(String stationId, int limit) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT " + COLS + " FROM print_job WHERE status IN (?,?,?)");
+        List<Object> args = new ArrayList<>();
+        args.add(PrintJob.STATUS_PENDING);
+        args.add(PrintJob.STATUS_SENT);
+        args.add(PrintJob.STATUS_FAILED);
+        if (stationId != null && !stationId.isBlank()) {
+            sql.append(" AND station_id = ?");
+            args.add(stationId.trim());
+        }
+        sql.append(" ORDER BY priority DESC, created_at DESC").append(limitClause(limit, 200));
+        return jdbc.query(sql.toString(), ROW, args.toArray());
+    }
+
+    /** 历史：全部状态，可按工位、按状态（逗号分隔多个）筛。 */
+    public List<PrintJob> listHistory(String stationId, String statusCsv, int limit) {
+        StringBuilder sql = new StringBuilder("SELECT " + COLS + " FROM print_job WHERE 1=1");
+        List<Object> args = new ArrayList<>();
+        if (stationId != null && !stationId.isBlank()) {
+            sql.append(" AND station_id = ?");
+            args.add(stationId.trim());
+        }
+        if (statusCsv != null && !statusCsv.isBlank()) {
+            List<String> wanted = new ArrayList<>();
+            for (String s : statusCsv.split(",")) {
+                String v = s.trim().toUpperCase();
+                if (!v.isEmpty()) wanted.add(v);
+            }
+            if (!wanted.isEmpty()) {
+                sql.append(" AND status IN (").append("?,".repeat(wanted.size()));
+                sql.setLength(sql.length() - 1);
+                sql.append(")");
+                args.addAll(wanted);
+            }
+        }
+        sql.append(" ORDER BY created_at DESC").append(limitClause(limit, 500));
+        return jdbc.query(sql.toString(), ROW, args.toArray());
     }
 
     public List<PrintJob> listAll(int limit) {
