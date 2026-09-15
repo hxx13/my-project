@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
+import { Printer } from "lucide-react";
 import { APP_BUILD_ID, resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD } from "@/config/socketEvents";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -359,24 +360,50 @@ export default function PrintStationPage() {
   return (
     <AdminPageShell>
       <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[420px] flex-col gap-3">
-        {/* 顶栏：连接状态、排队数、预览开关。常驻不滚 */}
-        <div className="flex shrink-0 flex-wrap items-center gap-3">
-          <span className={`inline-block size-3 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
-          <h1 className="text-lg font-semibold">打印工位{stationName ? `：${stationName}` : ""}</h1>
-          <span className="text-sm opacity-60">{connected ? "已连接" : "未连接（仍在轮询兜底）"}</span>
-          {pending > 0 ? (
-            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[13px]">
-              后面还排着 <b>{pending}</b> 件
-            </span>
-          ) : (
-            <span className="text-[13px] opacity-50">队列是空的</span>
-          )}
+        {/* 紧凑工具栏：工位名 + 状态徽标 + 预览开关。常驻不滚。
+            不放「大字标题」—— 工位机是常驻页面，不需要靠大标题告诉人这是什么 */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Printer className="size-4 shrink-0 text-[var(--app-color-text-tertiary)]" />
+          <span className="text-sm font-medium text-[var(--app-color-text-primary)]">
+            {stationName || "打印工位"}
+          </span>
+
+          <span
+            className={
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] " +
+              (connected
+                ? "bg-[color-mix(in_srgb,var(--app-color-feedback-success)_12%,transparent)] text-[var(--app-color-feedback-success)]"
+                : "bg-[color-mix(in_srgb,var(--app-color-feedback-error)_12%,transparent)] text-[var(--app-color-feedback-error)]")
+            }
+          >
+            <span
+              className={
+                "size-1.5 shrink-0 rounded-full " +
+                (connected
+                  ? "bg-[var(--app-color-feedback-success)]"
+                  : "bg-[var(--app-color-feedback-error)]")
+              }
+            />
+            {connected ? "已连接" : "未连接"}
+          </span>
+
+          <span
+            className={
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] " +
+              (pending > 0
+                ? "bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)]"
+                : "text-[var(--app-color-text-tertiary)]")
+            }
+          >
+            排队 {pending}
+          </span>
+
           {/* 开关只在真的能预览时才出现 —— 没东西可预览就没得收 */}
           {printable ? (
             <button
               type="button"
               onClick={() => setPreviewOpen((v) => !v)}
-              className="ml-auto rounded-md border border-[var(--app-color-border-default)] px-3 py-1.5 text-[13px] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
+              className="ml-auto rounded-md border border-[var(--app-color-border-default)] px-3 py-1 text-[12px] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
             >
               {previewOpen ? "收起预览" : "展开预览"}
             </button>
