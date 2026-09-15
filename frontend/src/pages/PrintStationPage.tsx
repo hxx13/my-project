@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { APP_BUILD_ID, resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
+import { SOCKET_CLIENT_FORCE_RELOAD } from "@/config/socketEvents";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { authStorage } from "@/features/auth/authStorage";
 import {
@@ -324,6 +325,12 @@ export default function PrintStationPage() {
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
     socket.on("PRINT_JOB", () => void drainOne());
+    // 远程刷新：部署或改配置后，管理员在后台点一下就重启这个页面，
+    // 不用跑到机器前按 F5。工位机通常是无人值守的，这一条很省事。
+    // 注意工位页用的是自己的 socket，共享 socket 上那套处理它收不到。
+    socket.on(SOCKET_CLIENT_FORCE_RELOAD, () => {
+      window.location.reload();
+    });
 
     const timer = setInterval(() => void drainOne(), POLL_MS);
     return () => {

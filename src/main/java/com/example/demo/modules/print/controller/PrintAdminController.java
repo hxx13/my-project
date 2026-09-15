@@ -132,6 +132,18 @@ public class PrintAdminController {
         return Result.success();
     }
 
+    @PostMapping("/stations/{id}/reload")
+    @Operation(summary = "让该工位的页面刷新")
+    public Result<Map<String, Object>> reloadStation(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @PathVariable String id) {
+        requireSuperAdmin(auth);
+        PrintStation s = stationService.findById(id)
+                .orElseThrow(() -> new TwinBusinessException(404, "工位不存在"));
+        pushService.reloadStation(s);
+        return Result.success(Map.of("ok", true));
+    }
+
     /* ────────────── 任务 ────────────── */
 
     @PostMapping("/jobs")

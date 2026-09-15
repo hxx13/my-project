@@ -8,6 +8,7 @@ import { AccountPicker, type AccountOption } from "@/features/print-station/Acco
 import {
   deletePrintStation,
   fetchPrintStations,
+  reloadPrintStation,
   savePrintStation,
   type AdminPrintStation,
 } from "@/api/domains/print.api";
@@ -86,8 +87,17 @@ export default function AdminPrintStationsPage() {
     }
   };
 
-  const onDelete = async (s: AdminPrintStation) => {
-    const tips = s.enabled
+  /** 远程让工位页刷新。工位机无人值守，部署或改配置后不用跑过去按 F5。 */
+  const onReload = async (s: AdminPrintStation) => {
+    try {
+      await reloadPrintStation(s.id);
+      toast.success(`已通知「${s.name}」的页面刷新`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "发送失败");
+    }
+  };
+
+  const onDelete = async (s: AdminPrintStation) => {    const tips = s.enabled
       ? `「${s.name}」正在启用中，删除后该工位将无法接收打印任务。确认删除？`
       : `确认删除工位「${s.name}」？`;
     if (!(await appConfirm(tips))) return;
@@ -168,6 +178,14 @@ export default function AdminPrintStationsPage() {
                           onClick={() => openEdit(s)}
                         >
                           编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[var(--app-color-text-primary)] hover:underline"
+                          title="让那台机器的页面重新加载（部署或改配置后用）"
+                          onClick={() => void onReload(s)}
+                        >
+                          刷新页面
                         </button>
                         <AdminSensitiveAction
                           label="删除打印工位"

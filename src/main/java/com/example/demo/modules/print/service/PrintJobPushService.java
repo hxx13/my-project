@@ -22,6 +22,8 @@ import java.util.Map;
 public class PrintJobPushService {
 
     public static final String EVENT_PRINT_JOB = "PRINT_JOB";
+    /** 与前端 config/socketEvents.ts 的 SOCKET_CLIENT_FORCE_RELOAD 一致 */
+    public static final String EVENT_CLIENT_FORCE_RELOAD = "CLIENT_FORCE_RELOAD";
 
     private static final Logger log = LoggerFactory.getLogger(PrintJobPushService.class);
 
@@ -41,6 +43,28 @@ public class PrintJobPushService {
                     .sendEvent(EVENT_PRINT_JOB, payload);
         } catch (Exception e) {
             log.warn("[print] 推送打印任务失败 jobId={}: {}", jobId, e.getMessage());
+        }
+    }
+
+    /**
+     * 让该工位的页面刷新。
+     *
+     * 工位机通常无人值守，部署或改完配置后不该让人跑到机器前按 F5。
+     * 定向发给**该工位账号个人的房间**，而不是广播给 reload:web —— 广播会把
+     * 所有开着的后台页面一起刷掉。
+     */
+    public void reloadStation(PrintStation station) {
+        if (station == null || station.getUserId() == null) return;
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("reason", "admin-command");
+            payload.put("stationId", station.getId());
+            payload.put("at", java.time.Instant.now().toString());
+            server.getRoomOperations(MobileUserSocketPushService.roomForUser(station.getUserId()))
+                    .sendEvent(EVENT_CLIENT_FORCE_RELOAD, payload);
+            log.info("[print] 已要求工位页刷新 stationId={}", station.getId());
+        } catch (Exception e) {
+            log.warn("[print] 刷新工位页失败 stationId={}: {}", station.getId(), e.getMessage());
         }
     }
 }

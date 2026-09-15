@@ -174,3 +174,11 @@ export async function savePrintStation(body: {
 export async function deletePrintStation(id: string): Promise<void> {
   await authHttp.delete(`/admin/print/stations/${id}`);
 }
+
+/**
+ * 让该工位的页面刷新。
+ * 部署或改完配置后远程重启工位页，不用跑到机器前按 F5 —— 工位机通常无人值守。
+ */
+export async function reloadPrintStation(id: string): Promise<void> {
+  await authHttp.post(`/admin/print/stations/${id}/reload`);
+}
