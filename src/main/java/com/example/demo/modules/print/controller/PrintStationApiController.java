@@ -73,7 +73,14 @@ public class PrintStationApiController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
         requireUser(auth);
         return Result.success(stationService.listEnabled().stream()
-                .map(s -> Map.<String, Object>of("id", s.getId(), "name", s.getName()))
+                .map(s -> {
+                    // Map.of 不收 null，而 supportedTypes 空值就是 null（= 全支持）
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", s.getId());
+                    m.put("name", s.getName());
+                    m.put("supportedTypes", s.getSupportedTypes());
+                    return m;
+                })
                 .toList());
     }
 

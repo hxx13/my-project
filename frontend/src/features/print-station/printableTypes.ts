@@ -39,3 +39,45 @@ export async function sniffBlobKind(blob: Blob): Promise<"pdf" | "image" | "unsu
 
 export const UNSUPPORTED_PRINT_HINT =
   "只支持 PDF、图片，以及能转成 PDF 的 Word / Excel / PPT。压缩包之类的请先转成 PDF。";
+
+/* ────────────── 工位级的「支持哪些类型」 ────────────── */
+
+/** 可配置的类型分组。与后端 PrintStationService.KNOWN_TYPES 一一对应，改一处要改两处。 */
+export type FileGroup = "pdf" | "image" | "word" | "excel" | "ppt";
+
+export const FILE_GROUPS: { key: FileGroup; label: string }[] = [
+  { key: "pdf", label: "PDF" },
+  { key: "image", label: "图片" },
+  { key: "word", label: "Word" },
+  { key: "excel", label: "Excel" },
+  { key: "ppt", label: "PPT" },
+];
+
+/** 文件属于哪个分组。认不出的返回 null（无分组 = 任何工位都不该收）。 */
+export function fileGroupOf(fileName: string): FileGroup | null {
+  const n = (fileName || "").toLowerCase();
+  if (n.endsWith(".pdf")) return "pdf";
+  if (/\.(png|jpe?g)$/.test(n)) return "image";
+  if (/\.(docx?|odt|rtf)$/.test(n)) return "word";
+  if (/\.(xlsx?|ods)$/.test(n)) return "excel";
+  if (/\.(pptx?|odp)$/.test(n)) return "ppt";
+  return null;
+}
+
+/**
+ * 该工位能不能打这类文件。
+ *
+ * `supportedTypes` 为空 = **全支持** —— 存量工位没配过这一项，
+ * 空值必须等同于"没限制"，否则一上线就把所有老工位配成打不了任何东西。
+ */
+export function stationSupports(
+  supportedTypes: string | null | undefined,
+  group: FileGroup | null,
+): boolean {
+  if (!supportedTypes || !supportedTypes.trim()) return true;
+  if (!group) return false;
+  return supportedTypes
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .includes(group);
+}

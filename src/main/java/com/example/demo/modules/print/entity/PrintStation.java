@@ -6,6 +6,8 @@ public class PrintStation {
     private String name;
     private String userId;
     private String pageSize;
+    /** 支持的文件类型分组，逗号分隔：pdf/image/word/excel/ppt。null 或空 = 全支持 */
+    private String supportedTypes;
     private boolean enabled;
     private String createdBy;
     private String createdAt;
@@ -21,6 +23,9 @@ public class PrintStation {
 
     public String getPageSize() { return pageSize; }
     public void setPageSize(String v) { this.pageSize = v; }
+
+    public String getSupportedTypes() { return supportedTypes; }
+    public void setSupportedTypes(String v) { this.supportedTypes = v; }
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }

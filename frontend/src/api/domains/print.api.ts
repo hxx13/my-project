@@ -11,6 +11,8 @@ interface Result<T> {
 export interface PrintStationOption {
   id: string;
   name: string;
+  /** 支持的文件类型分组，逗号分隔；null/空 = 全支持 */
+  supportedTypes: string | null;
 }
 
 export type PrintJobStatus = "PENDING" | "SENT" | "PRINTED" | "FAILED" | "CANCELLED";
@@ -146,6 +148,8 @@ export interface AdminPrintStation {
   userDisplayName?: string;
   /** 打印页 @page size，如 "85.6mm 54mm"；null = 用驱动默认 */
   pageSize: string | null;
+  /** 支持的文件类型分组，逗号分隔；null/空 = 全支持 */
+  supportedTypes: string | null;
   enabled: boolean;
   createdAt?: string;
 }
@@ -160,6 +164,8 @@ export async function savePrintStation(body: {
   name: string;
   userId: string;
   pageSize: string | null;
+  /** 逗号分隔的类型分组；null = 全支持 */
+  supportedTypes: string | null;
   enabled: boolean;
 }): Promise<AdminPrintStation | undefined> {
   if (body.id) {

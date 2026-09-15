@@ -6,6 +6,11 @@ import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShe
 import { AdminSensitiveAction } from "@/features/admin/AdminSensitiveAction";
 import { AccountPicker, type AccountOption } from "@/features/print-station/AccountPicker";
 import {
+  FILE_GROUPS,
+  stationSupports,
+  type FileGroup,
+} from "@/features/print-station/printableTypes";
+import {
   deletePrintStation,
   fetchPrintStations,
   reloadPrintStation,
@@ -27,10 +32,27 @@ interface FormState {
   name: string;
   account: AccountOption | null;
   pageSize: string;
+  /** 勾选的类型分组。**全选 = 不限制**（存 null），与后端口径一致 */
+  supportedTypes: FileGroup[];
   enabled: boolean;
 }
 
-const EMPTY_FORM: FormState = { name: "", account: null, pageSize: "", enabled: true };
+const ALL_GROUPS: FileGroup[] = FILE_GROUPS.map((g) => g.key);
+
+const EMPTY_FORM: FormState = {
+  name: "",
+  account: null,
+  pageSize: "",
+  supportedTypes: [...ALL_GROUPS],
+  enabled: true,
+};
+
+/** 存的是逗号分隔串；空串/NULL 都表示不限制 */
+function parseTypes(v: string | null | undefined): FileGroup[] {
+  if (!v || !v.trim()) return [...ALL_GROUPS];
+  const set = new Set(v.split(",").map((s) => s.trim().toLowerCase()));
+  return ALL_GROUPS.filter((g) => set.has(g));
+}
 
 const labelCls = "mb-1 block text-[12px] font-medium text-[var(--app-color-text-secondary)]";
 const inputCls =
@@ -55,6 +77,7 @@ export default function AdminPrintStationsPage() {
       // 编辑时只拿得到 userId，显示名由服务端补；补不到就退回 userId
       account: { id: s.userId, label: s.userDisplayName || s.userId },
       pageSize: s.pageSize ?? "",
+      supportedTypes: parseTypes(s.supportedTypes),
       enabled: s.enabled,
     });
 
@@ -68,6 +91,10 @@ export default function AdminPrintStationsPage() {
       toast.error("请选择打印者账号");
       return;
     }
+    if (editing.supportedTypes.length === 0) {
+      toast.error("至少要支持一种文件类型；想取消限制就把五种都勾上");
+      return;
+    }
     setSaving(true);
     try {
       await savePrintStation({
@@ -75,6 +102,11 @@ export default function AdminPrintStationsPage() {
         name: editing.name.trim(),
         userId: editing.account.id,
         pageSize: editing.pageSize.trim() || null,
+        // 全选 = 不限制，存 null（与后端一致）。否则存实际勾选的分组
+        supportedTypes:
+          editing.supportedTypes.length === ALL_GROUPS.length
+            ? null
+            : editing.supportedTypes.join(","),
         enabled: editing.enabled,
       });
       toast.success(editing.id ? "已保存" : "已新建");
@@ -144,6 +176,7 @@ export default function AdminPrintStationsPage() {
                   <th className="px-3 py-2">工位名</th>
                   <th className="px-3 py-2">打印者账号</th>
                   <th className="px-3 py-2">纸张尺寸</th>
+                  <th className="px-3 py-2">支持类型</th>
                   <th className="px-3 py-2">状态</th>
                   <th className="px-3 py-2 text-right">操作</th>
                 </tr>
@@ -164,6 +197,40 @@ export default function AdminPrintStationsPage() {
                       {s.pageSize || (
                         <span className="text-[var(--app-color-text-tertiary)]">驱动默认</span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {FILE_GROUPS.map((g) => {
+                          const on = stationSupports(s.supportedTypes, g.key);
+                          return (
+                            <span
+                              key={g.key}
+                              title={`${g.label}：${on ? "支持" : "不支持"}`}
+                              className={
+                                "inline-flex items-center gap-1 text-[11px] " +
+                                (on
+                                  ? "text-[var(--app-color-feedback-success)]"
+                                  : "text-[var(--app-color-text-tertiary)] opacity-60")
+                              }
+                            >
+                              <span
+                                className={
+                                  "size-2 shrink-0 rounded-full " +
+                                  (on
+                                    ? "bg-[var(--app-color-feedback-success)]"
+                                    : "bg-[var(--app-color-text-tertiary)] opacity-50")
+                                }
+                              />
+                              {g.label}
+                            </span>
+                          );
+                        })}
+                        {!s.supportedTypes?.trim() ? (
+                          <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
+                            （未限制）
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <span className="review-status" data-tone={s.enabled ? "ok" : "none"}>
@@ -252,6 +319,50 @@ export default function AdminPrintStationsPage() {
                   placeholder="留空 = 用驱动默认；卡片机填 85.6mm 54mm"
                   onChange={(e) => setEditing({ ...editing, pageSize: e.target.value })}
                 />
+              </div>
+
+              <div>
+                <label className={labelCls}>支持的文件类型</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {FILE_GROUPS.map((g) => {
+                    const on = editing.supportedTypes.includes(g.key);
+                    return (
+                      <button
+                        key={g.key}
+                        type="button"
+                        title={on ? "这台机器能打" : "这台机器不接"}
+                        onClick={() =>
+                          setEditing({
+                            ...editing,
+                            supportedTypes: on
+                              ? editing.supportedTypes.filter((k) => k !== g.key)
+                              : ALL_GROUPS.filter((k) => k === g.key || editing.supportedTypes.includes(k)),
+                          })
+                        }
+                        className={
+                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] transition " +
+                          (on
+                            ? "border-[color-mix(in_srgb,var(--app-color-feedback-success)_40%,transparent)] bg-[color-mix(in_srgb,var(--app-color-feedback-success)_12%,transparent)] font-medium text-[var(--app-color-feedback-success)]"
+                            : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-tertiary)]")
+                        }
+                      >
+                        <span
+                          className={
+                            "size-2 shrink-0 rounded-full " +
+                            (on
+                              ? "bg-[var(--app-color-feedback-success)]"
+                              : "bg-[var(--app-color-text-tertiary)] opacity-50")
+                          }
+                        />
+                        {g.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
+                  绿灯 = 这台机器能打。**五种全勾 = 不限制**；派发时会给用户红绿灯提示，
+                  免得打到一半卡住打印机。
+                </p>
               </div>
 
               <label className="flex items-center gap-2 text-[13px] text-[var(--app-color-text-primary)]">

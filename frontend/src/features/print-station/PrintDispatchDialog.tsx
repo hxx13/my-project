@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { createPrintJob, fetchSelectableStations, type PrintStationOption } from "@/api/domains/print.api";
 import { uploadAdminFileTemplate } from "@/api/domains/fileTemplates.api";
-import { printKindOf, UNSUPPORTED_PRINT_HINT } from "@/features/print-station/printableTypes";
+import {
+  FILE_GROUPS,
+  fileGroupOf,
+  printKindOf,
+  stationSupports,
+  UNSUPPORTED_PRINT_HINT,
+} from "@/features/print-station/printableTypes";
 import {
   Dialog,
   DialogContent,
@@ -55,6 +61,12 @@ export function PrintDispatchDialog({
   /** 文件模板库里还留着上传限制之前传的 .docx / .xlsx，点它们的「打印」要拦住并说明原因 */
   const unsupported = printKindOf(pendingFile ? pendingFile.name : fileName) === "unsupported";
 
+  // 这台机器认不认这类文件。工位可配（比如斑马卡牌机只吃 PDF），
+  // 不拦的话用户要等打到一半才发现卡住。
+  const group = fileGroupOf(pendingFile ? pendingFile.name : fileName);
+  const selectedStation = (stations ?? []).find((s) => s.id === stationId) ?? null;
+  const stationAccepts = selectedStation ? stationSupports(selectedStation.supportedTypes, group) : true;
+
   useEffect(() => {
     if (!open) return;
     setNote("");
@@ -72,6 +84,10 @@ export function PrintDispatchDialog({
 
   const confirm = async () => {
     if (unsupported) return;
+    if (!stationAccepts) {
+      toast.error("这台打印机不支持该文件类型，请换一台");
+      return;
+    }
     if (!stationId) {
       toast.error("请选择打印机");
       return;
@@ -135,6 +151,46 @@ export function PrintDispatchDialog({
                 </option>
               ))}
             </select>
+
+            {/* 红绿灯：这台机器认哪些类型。当前文件所属的那一类加一圈描边，
+                一眼看出"我要打的东西在这儿是不是绿的" */}
+            {selectedStation ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="text-[var(--app-color-text-tertiary)]">这台机器支持：</span>
+                {FILE_GROUPS.map((g) => {
+                  const on = stationSupports(selectedStation.supportedTypes, g.key);
+                  return (
+                    <span
+                      key={g.key}
+                      className={
+                        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 " +
+                        (on
+                          ? "text-[var(--app-color-feedback-success)]"
+                          : "text-[var(--app-color-text-tertiary)] opacity-70") +
+                        (g.key === group ? " ring-1 ring-current" : "")
+                      }
+                    >
+                      <span
+                        className={
+                          "size-1.5 shrink-0 rounded-full " +
+                          (on
+                            ? "bg-[var(--app-color-feedback-success)]"
+                            : "bg-[var(--app-color-text-tertiary)] opacity-50")
+                        }
+                      />
+                      {g.label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {!stationAccepts ? (
+              <p className="mt-1 text-[11px] text-[var(--app-color-feedback-error)]">
+                这台打印机不支持「{FILE_GROUPS.find((g) => g.key === group)?.label ?? "该类型"}」，
+                换一台，或先转成它支持的格式。
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -183,7 +239,7 @@ export function PrintDispatchDialog({
           </button>
           <button
             type="button"
-            disabled={busy || !stationId || unsupported}
+            disabled={busy || !stationId || unsupported || !stationAccepts}
             className="rounded-md bg-[var(--twin-primary)] px-3 py-1.5 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
             onClick={() => void confirm()}
           >
