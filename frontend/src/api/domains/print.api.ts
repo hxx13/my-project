@@ -13,7 +13,7 @@ export interface PrintStationOption {
   name: string;
 }
 
-export type PrintJobStatus = "PENDING" | "SENT" | "PRINTED" | "FAILED";
+export type PrintJobStatus = "PENDING" | "SENT" | "PRINTED" | "FAILED" | "CANCELLED";
 
 export interface PrintJob {
   id: string;
@@ -22,13 +22,22 @@ export interface PrintJob {
   sourceId: string;
   fileName: string;
   copies: number;
+  /** 派发时写的备注 */
+  note: string | null;
+  /** 越大越先被领走；10 = 加急 */
+  priority: number;
   status: PrintJobStatus;
   attempts: number;
   lastError: string | null;
+  /** 派发人的 user.id */
+  createdBy: string | null;
   createdAt: string;
   sentAt: string | null;
   printedAt: string | null;
 }
+
+/** 加急优先级，与后端 PrintJob.PRIORITY_URGENT 对齐 */
+export const PRINT_PRIORITY_URGENT = 10;
 
 export interface MyStation {
   id: string;
@@ -77,9 +86,51 @@ export async function createPrintJob(body: {
   sourceId: string;
   fileName: string;
   copies?: number;
+  /** 派发备注，随任务带到工位页 */
+  note?: string;
+  /** 加急：排到同级前面 */
+  urgent?: boolean;
 }): Promise<PrintJob | undefined> {
   const res = await authHttp.post<Result<PrintJob>>("/admin/print/jobs", body);
   return res.data.data;
+}
+
+/* ────────────── 队列与历史 ────────────── */
+
+/** 队列：还没结束的任务（排队中 / 已派给工位 / 失败待处理）。 */
+export async function fetchPrintQueue(stationId?: string, limit = 100): Promise<PrintJob[]> {
+  const res = await authHttp.get<Result<PrintJob[]>>("/admin/print/jobs/queue", {
+    params: { stationId: stationId || undefined, limit },
+  });
+  return res.data.data ?? [];
+}
+
+/** 历史：全部状态。status 传逗号分隔的多值（如 "PRINTED,FAILED"）。 */
+export async function fetchPrintHistory(
+  stationId?: string,
+  status?: string,
+  limit = 200,
+): Promise<PrintJob[]> {
+  const res = await authHttp.get<Result<PrintJob[]>>("/admin/print/jobs/history", {
+    params: { stationId: stationId || undefined, status: status || undefined, limit },
+  });
+  return res.data.data ?? [];
+}
+
+/** 撤回。只有还没被工位领走的能撤；已派出的会返回业务错误。 */
+export async function cancelPrintJob(id: string): Promise<void> {
+  await authHttp.post(`/admin/print/jobs/${id}/cancel`);
+}
+
+/** 重推失败任务。 */
+export async function retryPrintJob(id: string): Promise<void> {
+  await authHttp.post(`/admin/print/jobs/${id}/retry`);
+}
+
+/** 本工位还排着几条（工位页用）。 */
+export async function fetchPendingCount(): Promise<number> {
+  const res = await authHttp.get<Result<{ pending: number }>>("/print/pending-count");
+  return res.data.data?.pending ?? 0;
 }
 
 /* ────────────── 管理端：工位 ────────────── */

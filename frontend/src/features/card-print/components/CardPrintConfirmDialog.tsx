@@ -52,6 +52,9 @@ export function CardPrintConfirmDialog({
   const [blob, setBlob] = useState<Blob | null>(null);
   const [err, setErr] = useState("");
   const [stationId, setStationId] = useState("");
+  const [note, setNote] = useState("");
+  const [copies, setCopies] = useState(1);
+  const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
   /** 已生成过的参数指纹。StrictMode 开发期会把 effect 跑两遍，没这个守卫就会白生成一份 PDF */
   const genKeyRef = useRef("");
@@ -110,6 +113,9 @@ export function CardPrintConfirmDialog({
         sourceType: "CARD_ARCHIVE",
         sourceId: String(archive.id),
         fileName: archive.fileName,
+        copies,
+        note,
+        urgent,
       });
       const name = stations.find((s) => s.id === stationId)?.name ?? "打印工位";
       toast.success(`已派给「${name}」打印`);
@@ -169,6 +175,38 @@ export function CardPrintConfirmDialog({
               {archive.fileName}
             </span>
           ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            className="min-w-56 flex-1 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1.5 text-[13px] text-[var(--app-color-text-primary)] outline-none"
+            value={note}
+            maxLength={200}
+            placeholder="备注（工位旁的人看得到）"
+            disabled={stage !== "ready"}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <label className="flex items-center gap-1.5 text-[13px] text-[var(--app-color-text-secondary)]">
+            份数
+            <input
+              type="number"
+              min={1}
+              max={99}
+              disabled={stage !== "ready"}
+              className="w-16 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 text-[13px]"
+              value={copies}
+              onChange={(e) => setCopies(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-[13px] text-[var(--app-color-text-primary)]">
+            <input
+              type="checkbox"
+              disabled={stage !== "ready"}
+              checked={urgent}
+              onChange={(e) => setUrgent(e.target.checked)}
+            />
+            加急
+          </label>
         </div>
 
         <DialogFooter>

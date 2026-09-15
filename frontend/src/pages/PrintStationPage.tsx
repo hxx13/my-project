@@ -7,6 +7,7 @@ import {
   claimPrintJob,
   fetchMyPrintJobs,
   fetchMyStation,
+  fetchPendingCount,
   fetchPrintJobFile,
   type PrintJob,
 } from "@/api/domains/print.api";
@@ -18,10 +19,25 @@ import { PdfPrintCanvas } from "@/features/print-station/PdfPrintCanvas";
  */
 const POLL_MS = 15000;
 
+/** 连打多份时，两次 print() 之间留的间隔，让打印后台有时间把作业排上队 */
+const COPY_GAP_MS = 500;
+
 function isPdf(job: PrintJob): boolean {
   return job.fileName.toLowerCase().endsWith(".pdf");
 }
 
+function fmtTime(v: string | null | undefined) {
+  if (!v) return "";
+  return v.length > 19 ? v.slice(0, 19) : v;
+}
+
+/**
+ * 打印工位页。工位电脑常开此页，用专用账号登录。
+ *
+ * 这一页要回答现场的人三个问题：**现在在打什么**（文件名 + 备注 + 第几份）、
+ * **后面还排着几件**、**刚才有没有打砸**。所以除了任务本身，
+ * 还显示派发人写的备注、份数，以及排队计数。
+ */
 export default function PrintStationPage() {
   const [stationName, setStationName] = useState("");
   /** 本工位的纸张尺寸。为空则不打 @page size，用驱动默认 —— 桌面 A4 就该留空 */
@@ -30,6 +46,7 @@ export default function PrintStationPage() {
   const [file, setFile] = useState<Blob | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [recent, setRecent] = useState<PrintJob[]>([]);
+  const [pending, setPending] = useState(0);
   const [connected, setConnected] = useState(false);
   const [message, setMessage] = useState("");
   const busyRef = useRef(false);
@@ -37,7 +54,9 @@ export default function PrintStationPage() {
 
   const refreshRecent = useCallback(async () => {
     try {
-      setRecent(await fetchMyPrintJobs(20));
+      const [jobs, n] = await Promise.all([fetchMyPrintJobs(20), fetchPendingCount()]);
+      setRecent(jobs);
+      setPending(n);
     } catch {
       /* 列表刷新失败不该打断打印 */
     }
@@ -85,14 +104,25 @@ export default function PrintStationPage() {
     }
   }, [current, settle]);
 
-  /** 渲染完成 → 调起打印 → 回执。 */
-  const onPrintableReady = useCallback(() => {
+  /**
+   * 渲染完成 → 调起打印 → 回执。
+   *
+   * 份数靠连打实现：kiosk 模式下每次 window.print() 出一份，
+   * 所以打 N 份就是连着调 N 次。中途某次失败会少打一份 ——
+   * 回执只能记整条任务的结果，这一层粒度报不出去。
+   */
+  const onPrintableReady = useCallback(async () => {
     if (!current) return;
+    const n = Math.max(1, Math.min(current.copies || 1, 99));
     try {
-      window.print();
-      void settle(current, true);
+      for (let i = 0; i < n; i++) {
+        if (n > 1) setMessage(`正在打印 ${current.fileName}（第 ${i + 1} / ${n} 份）`);
+        window.print();
+        if (i < n - 1) await new Promise((r) => setTimeout(r, COPY_GAP_MS));
+      }
+      await settle(current, true);
     } catch (e) {
-      void settle(current, false, e instanceof Error ? e.message : "调起打印失败");
+      await settle(current, false, e instanceof Error ? e.message : "调起打印失败");
     }
   }, [current, settle]);
 
@@ -137,6 +167,7 @@ export default function PrintStationPage() {
   }, []);
 
   const printable = Boolean(current && (isPdf(current) ? file : imageUrl));
+  const copies = current?.copies ?? 1;
 
   return (
     <div className="min-h-screen bg-white p-6 text-[var(--app-color-text-primary,#111)]">
@@ -149,13 +180,13 @@ export default function PrintStationPage() {
       {printable && current ? (
         <div>
           {isPdf(current) && file ? (
-            <PdfPrintCanvas blob={file} onReady={onPrintableReady} />
+            <PdfPrintCanvas blob={file} onReady={() => void onPrintableReady()} />
           ) : imageUrl ? (
             <img
               src={imageUrl}
               alt=""
               style={{ width: "100%", display: "block" }}
-              onLoad={onPrintableReady}
+              onLoad={() => void onPrintableReady()}
             />
           ) : null}
         </div>
@@ -163,21 +194,46 @@ export default function PrintStationPage() {
 
       {/* 屏幕上显示的状态面板 */}
       <div className="print:hidden">
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <span className={`inline-block size-3 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
           <h1 className="text-lg font-semibold">打印工位{stationName ? `：${stationName}` : ""}</h1>
-          <span className="text-sm opacity-60">
-            {connected ? "已连接" : "未连接（仍在轮询兜底）"}
-          </span>
+          <span className="text-sm opacity-60">{connected ? "已连接" : "未连接（仍在轮询兜底）"}</span>
+          {pending > 0 ? (
+            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[13px]">
+              后面还排着 <b>{pending}</b> 件
+            </span>
+          ) : (
+            <span className="text-[13px] opacity-50">队列是空的</span>
+          )}
         </div>
 
         {message ? <div className="mb-4 rounded bg-gray-100 px-3 py-2 text-sm">{message}</div> : null}
+
+        {/* 当前任务：现场的人靠这块知道手上这叠纸是什么 */}
+        {current ? (
+          <div className="mb-5 rounded border-l-4 border-blue-500 bg-blue-50 px-4 py-3">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="font-semibold">{current.fileName}</span>
+              {copies > 1 ? (
+                <span className="rounded bg-white px-2 py-0.5 text-[12px]">共 {copies} 份</span>
+              ) : null}
+            </div>
+            {current.note ? (
+              <div className="mt-1 text-[13px] text-gray-700">备注：{current.note}</div>
+            ) : null}
+            <div className="mt-1 text-[12px] text-gray-500">
+              派发人 {current.createdBy ?? "—"} · {fmtTime(current.createdAt)}
+            </div>
+          </div>
+        ) : null}
 
         <h2 className="mb-2 text-sm font-semibold">最近任务</h2>
         <table className="w-full text-left text-sm">
           <thead className="text-xs opacity-60">
             <tr>
               <th className="py-1">文件</th>
+              <th className="py-1">份数</th>
+              <th className="py-1">备注</th>
               <th className="py-1">状态</th>
               <th className="py-1">时间</th>
               <th className="py-1">说明</th>
@@ -185,16 +241,27 @@ export default function PrintStationPage() {
           </thead>
           <tbody>
             {recent.map((j) => (
-              <tr key={j.id} className="border-t border-gray-200">
-                <td className="max-w-[20rem] truncate py-1">{j.fileName}</td>
+              <tr
+                key={j.id}
+                className={
+                  "border-t border-gray-200 " + (j.status === "FAILED" ? "bg-red-50" : "")
+                }
+              >
+                <td className="max-w-[18rem] truncate py-1">{j.fileName}</td>
+                <td className="py-1">{j.copies}</td>
+                <td className="max-w-[16rem] truncate py-1 text-gray-600" title={j.note ?? ""}>
+                  {j.note ?? ""}
+                </td>
                 <td className="py-1">{j.status}</td>
-                <td className="py-1 text-xs">{j.printedAt ?? j.createdAt ?? ""}</td>
-                <td className="py-1 text-xs text-red-600">{j.lastError ?? ""}</td>
+                <td className="py-1 text-xs">{fmtTime(j.printedAt ?? j.createdAt)}</td>
+                <td className="max-w-[18rem] truncate py-1 text-xs text-red-600" title={j.lastError ?? ""}>
+                  {j.lastError ?? ""}
+                </td>
               </tr>
             ))}
             {recent.length === 0 ? (
               <tr>
-                <td colSpan={4} className="py-3 text-xs opacity-50">
+                <td colSpan={6} className="py-3 text-xs opacity-50">
                   暂无任务
                 </td>
               </tr>
