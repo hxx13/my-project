@@ -60,6 +60,7 @@ import AdminInventoryPage from "@/pages/AdminInventoryPage";
 import ScanSessionPage from "@/features/inventory/ScanSessionPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
+import AdminPrintStationsPage from "@/pages/AdminPrintStationsPage";
 import AdminSopPage from "@/pages/AdminSopPage";
 import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
 import AdminDahuaSwingTasksPage from "@/pages/AdminDahuaSwingTasksPage";
@@ -377,6 +378,8 @@ export const router = createHashRouter([
               { path: "purchase-request", element: <PurchaseRequestPage /> },
               { path: "facility-maintenance", element: <AdminFacilityMaintenancePage /> },
               { path: "file-templates", element: <AdminFileTemplatesPage /> },
+              // 工位配置仅 ADMIN；普通人员没有入口，只在打印时选打印机
+              { path: "print-stations", element: <AdminPrintStationsPage /> },
               { path: "sop", element: <AdminSopPage /> },
               { path: "knowledge", element: <AdminKnowledgeHomePage /> },
               { path: "report-fill", element: <ReportFillHubPage /> },

@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.service.PrintJobPushService;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -33,15 +35,18 @@ public class PrintAdminController {
     private final PrintJobService jobService;
     private final PrintJobPushService pushService;
     private final AuthContextService authContextService;
+    private final UserDisplayNameService userDisplayNameService;
 
     public PrintAdminController(PrintStationService stationService,
                                 PrintJobService jobService,
                                 PrintJobPushService pushService,
-                                AuthContextService authContextService) {
+                                AuthContextService authContextService,
+                                UserDisplayNameService userDisplayNameService) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.pushService = pushService;
         this.authContextService = authContextService;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     private User requireAdmin(String authHeader) {
@@ -56,29 +61,55 @@ public class PrintAdminController {
 
     @GetMapping("/stations")
     @Operation(summary = "工位列表")
-    public Result<List<PrintStation>> listStations(
+    public Result<List<Map<String, Object>>> listStations(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
         requireAdmin(auth);
-        return Result.success(stationService.listAll());
+        return Result.success(stationService.listAll().stream().map(this::toStationView).toList());
     }
 
     @PostMapping("/stations")
     @Operation(summary = "新建工位（绑定打印者账号）")
-    public Result<PrintStation> createStation(
+    public Result<Map<String, Object>> createStation(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestBody PrintStation body) {
         User u = requireAdmin(auth);
-        return Result.success(stationService.create(body, u.getId()));
+        return Result.success(toStationView(stationService.create(body, u.getId())));
     }
 
     @PutMapping("/stations/{id}")
     @Operation(summary = "更新工位")
-    public Result<PrintStation> updateStation(
+    public Result<Map<String, Object>> updateStation(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @PathVariable String id,
             @RequestBody PrintStation body) {
         requireAdmin(auth);
-        return Result.success(stationService.update(id, body));
+        return Result.success(toStationView(stationService.update(id, body)));
+    }
+
+    /**
+     * 列表要回答「这个工位绑的是谁」。user_id 是 STAFF_xxx，摆给管理员看没有意义，
+     * 所以补一个显示名。解析失败退回 userId —— 一个人的名字取不到不该让整张列表挂掉。
+     */
+    private Map<String, Object> toStationView(PrintStation s) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", s.getId());
+        out.put("name", s.getName());
+        out.put("userId", s.getUserId());
+        out.put("userDisplayName", resolveDisplayName(s.getUserId()));
+        out.put("pageSize", s.getPageSize());
+        out.put("enabled", s.isEnabled());
+        out.put("createdAt", s.getCreatedAt());
+        return out;
+    }
+
+    private String resolveDisplayName(String userId) {
+        if (userId == null || userId.isBlank()) return "";
+        try {
+            String n = userDisplayNameService.resolveDisplayName(userId);
+            return n == null || n.isBlank() ? userId : n;
+        } catch (Exception e) {
+            return userId;
+        }
     }
 
     @DeleteMapping("/stations/{id}")

@@ -81,3 +81,45 @@ export async function createPrintJob(body: {
   const res = await authHttp.post<Result<PrintJob>>("/admin/print/jobs", body);
   return res.data.data;
 }
+
+/* ────────────── 管理端：工位 ────────────── */
+
+export interface AdminPrintStation {
+  id: string;
+  name: string;
+  /** 该工位绑定的「打印者账号」—— sys_user.id，形如 STAFF_xxx */
+  userId: string;
+  /** 服务端补的显示名。老版本接口没有这个字段，取不到时退回 userId */
+  userDisplayName?: string;
+  /** 打印页 @page size，如 "85.6mm 54mm"；null = 用驱动默认 */
+  pageSize: string | null;
+  enabled: boolean;
+  createdAt?: string;
+}
+
+export async function fetchPrintStations(): Promise<AdminPrintStation[]> {
+  const res = await authHttp.get<Result<AdminPrintStation[]>>("/admin/print/stations");
+  return res.data.data ?? [];
+}
+
+export async function savePrintStation(body: {
+  id?: string;
+  name: string;
+  userId: string;
+  pageSize: string | null;
+  enabled: boolean;
+}): Promise<AdminPrintStation | undefined> {
+  if (body.id) {
+    const res = await authHttp.put<Result<AdminPrintStation>>(
+      `/admin/print/stations/${body.id}`,
+      body,
+    );
+    return res.data.data;
+  }
+  const res = await authHttp.post<Result<AdminPrintStation>>("/admin/print/stations", body);
+  return res.data.data;
+}
+
+export async function deletePrintStation(id: string): Promise<void> {
+  await authHttp.delete(`/admin/print/stations/${id}`);
+}

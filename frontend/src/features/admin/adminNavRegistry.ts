@@ -636,6 +636,17 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/file-templates", "STAFF"),
       },
       {
+        // 工位配置（含绑定打印者账号）仅管理员可见，普通人员只在打印时选打印机
+        id: "print-stations",
+        path: "/admin/print-stations",
+        label: "打印工位",
+        icon: Printer,
+        homeTone: "from-cyan-400 to-sky-500",
+        fallbackMinRole: "ADMIN",
+        alias: ["打印机", "打印工位", "station", "printer"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/print-stations", "ADMIN"),
+      },
+      {
         id: "sop",
         path: "/admin/sop",
         label: "SOP 操作",
@@ -903,6 +914,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
   if (
     p.startsWith("/admin/asset-") ||
     p === "/admin/file-templates" ||
+    p === "/admin/print-stations" ||
     p === "/admin/sop" ||
     p === "/admin/analytics" ||
     p === "/admin/facility-maintenance" ||
