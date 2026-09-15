@@ -55,6 +55,9 @@ export const authStorage = {
   getUserInfo(): AuthUserInfo | null {
     return parseStoredUserInfo();
   },
+  getUserId(): string | null {
+    return this.getUserInfo()?.id?.trim() || null;
+  },
   /**
    * @param userInfo 传入则持久化；`null` 清空；`undefined` 不改写（仅换 token/role 时兼容）
    */

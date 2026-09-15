@@ -46,6 +46,15 @@
         >
           <van-icon name="scan" size="20px" color="#ffffff" />
         </view>
+        <view
+          wx:if="{{ canFileTemplates }}"
+          class="hero-scan-btn hero-nav-btn-next"
+          style="width: {{ navContentHeight }}px; height: {{ navContentHeight }}px;"
+          hover-class="hero-scan-btn--hover"
+          bindtap="onFileTemplatesTap"
+        >
+          <van-icon name="printer" size="20px" color="#ffffff" />
+        </view>
       </view>
     </view>
   </view>

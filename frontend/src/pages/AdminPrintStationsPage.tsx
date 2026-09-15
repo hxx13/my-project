@@ -71,6 +71,13 @@ const labelCls = "mb-1 block text-[12px] font-medium text-[var(--app-color-text-
 const inputCls =
   "w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1.5 text-[13px] text-[var(--app-color-text-primary)] outline-none";
 
+/** 连接三态 → .review-status 的 tone 与文案。UNKNOWN（从没连过）≠ OFFLINE（连过、断了）。 */
+const LIVE_STATUS_VIEW: Record<AdminPrintStation["liveStatus"], { tone: string; label: string }> = {
+  ONLINE: { tone: "ok", label: "在线" },
+  OFFLINE: { tone: "bad", label: "离线" },
+  UNKNOWN: { tone: "none", label: "未知" },
+};
+
 export default function AdminPrintStationsPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<FormState | null>(null);
@@ -201,6 +208,7 @@ export default function AdminPrintStationsPage() {
                   <th className="px-3 py-2">纸张尺寸</th>
                   <th className="px-3 py-2">支持类型</th>
                   <th className="px-3 py-2">状态</th>
+                  <th className="px-3 py-2">连接</th>
                   <th className="px-3 py-2 text-right">操作</th>
                 </tr>
               </thead>
@@ -269,6 +277,15 @@ export default function AdminPrintStationsPage() {
                     <td className="px-3 py-2">
                       <span className="review-status" data-tone={s.enabled ? "ok" : "none"}>
                         {s.enabled ? "启用中" : "已停用"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className="review-status"
+                        data-tone={LIVE_STATUS_VIEW[s.liveStatus]?.tone ?? "none"}
+                        title={s.liveStatusReason}
+                      >
+                        {LIVE_STATUS_VIEW[s.liveStatus]?.label ?? "未知"}
                       </span>
                     </td>
                     <td className="px-3 py-2">

@@ -3,13 +3,14 @@ package com.example.demo.modules.sop.service;
 import com.example.demo.modules.sop.entity.SopDocument;
 import com.example.demo.modules.sop.entity.SopNode;
 import com.example.demo.modules.sop.mapper.SopDocumentMapper;
+import com.example.demo.modules.sop.mapper.SopFavoriteMapper;
 import com.example.demo.modules.sop.mapper.SopNodeMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 /**
- * SOP 分类树与文档登记。
+ * SOP 分类树、文档登记与收藏。
  *
  * 两道结构性守卫是**非平凡逻辑**，放服务层而不是控制器：删除非空节点、把节点移进自己的子树
  * 都会把树打断成孤儿数据，必须在落库前拦住，且两条路径（改名接口与移动接口）共用同一个入口。
@@ -22,10 +23,12 @@ public class SopTreeService {
 
     private final SopNodeMapper nodeMapper;
     private final SopDocumentMapper documentMapper;
+    private final SopFavoriteMapper favoriteMapper;
 
-    public SopTreeService(SopNodeMapper nodeMapper, SopDocumentMapper documentMapper) {
+    public SopTreeService(SopNodeMapper nodeMapper, SopDocumentMapper documentMapper, SopFavoriteMapper favoriteMapper) {
         this.nodeMapper = nodeMapper;
         this.documentMapper = documentMapper;
+        this.favoriteMapper = favoriteMapper;
     }
 
     public List<SopNode> listNodes() {
@@ -148,11 +151,31 @@ public class SopTreeService {
             return null;
         }
         documentMapper.delete(id);
+        // 收藏跟着文档走：不清的话会留下永远点不开的孤儿行，越攒越多
+        favoriteMapper.deleteByDocumentId(id);
         String fileId = cur.getFileId();
         if (fileId != null && documentMapper.countByFileId(fileId) == 0) {
             return fileId;
         }
         return null;
+    }
+
+    /* ── 收藏（按人存，跨设备可见） ── */
+
+    public List<Long> listFavoriteDocumentIds(String userId) {
+        return favoriteMapper.listDocumentIds(userId);
+    }
+
+    /** 加收藏前确认文档存在，避免收藏到一个不存在的 id */
+    public void addFavorite(String userId, Long documentId) {
+        if (documentMapper.findById(documentId) == null) {
+            throw new IllegalArgumentException("文档不存在");
+        }
+        favoriteMapper.insert(userId, documentId);
+    }
+
+    public void removeFavorite(String userId, Long documentId) {
+        favoriteMapper.delete(userId, documentId);
     }
 
     /**

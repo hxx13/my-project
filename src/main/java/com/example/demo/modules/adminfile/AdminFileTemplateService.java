@@ -63,9 +63,9 @@ public class AdminFileTemplateService {
      * 按用途列列表：缺表时返回空列表 + schemaHint，避免管理端 GET 直接 500（不能替代执行 DDL）。
      * purpose 传 null 表示不过滤。
      */
-    public AdminFileTemplateListResult listMetadataForAdmin(String purpose) {
+    public AdminFileTemplateListResult listMetadataForAdmin(String purpose, Long folderId) {
         try {
-            return new AdminFileTemplateListResult(repo.listByPurpose(purpose), null);
+            return new AdminFileTemplateListResult(repo.listByPurpose(purpose, folderId), null);
         } catch (BadSqlGrammarException ex) {
             log.warn("[admin-file-template] admin_file_template 表不可用: {}", ex.getMessage());
             return new AdminFileTemplateListResult(List.of(), MISSING_TABLE_HINT);
@@ -90,7 +90,7 @@ public class AdminFileTemplateService {
      *                  用于「临时打印」——上传即打，不留记录。
      */
     public Map<String, Object> saveUpload(MultipartFile file, String uploadedByUserId,
-                                          String purpose, boolean ephemeral)
+                                          String purpose, boolean ephemeral, Long folderId)
             throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("文件为空");
@@ -135,7 +135,7 @@ public class AdminFileTemplateService {
         String mime = StringUtils.hasText(file.getContentType()) ? file.getContentType() : "application/octet-stream";
         String tag = normalizePurpose(purpose);
         try {
-            repo.insert(id, original, storageKey, mime, bytes.length, uploadedByUserId, tag, ephemeral, pdfStorageKey);
+            repo.insert(id, original, storageKey, mime, bytes.length, uploadedByUserId, tag, ephemeral, pdfStorageKey, folderId);
         } catch (BadSqlGrammarException ex) {
             storage.deleteIfExists(storageKey);
             storage.deleteIfExists(pdfStorageKey);
@@ -212,6 +212,18 @@ public class AdminFileTemplateService {
         if (purpose == null || purpose.isBlank()) return "TEMPLATE";
         String p = purpose.trim().toUpperCase();
         return "SOP".equals(p) ? "SOP" : "TEMPLATE";
+    }
+
+    public boolean isUploadedBy(String id, String userId) {
+        return repo.isUploadedBy(id, userId);
+    }
+
+    /** folderId 为 null = 移回未归类 */
+    public void moveToFolder(String id, Long folderId) {
+        if (repo.findById(id).isEmpty()) {
+            throw new IllegalArgumentException("文件不存在");
+        }
+        repo.updateFolder(id, folderId);
     }
 
     public void delete(String id) {

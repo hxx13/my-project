@@ -75,9 +75,13 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         return runAllScripts(ctx);
     }
 
+    /** 本轮启动中「判为幂等而跳过」的脚本数。逐条只记 debug，在结尾汇总一行，避免淹没真失败。 */
+    private int benignSkips;
+
     /** 执行全部 DDL 脚本，返回统计结果。传入 null 时跳过 progress tracing。 */
     private StartupResult runAllScripts(StartupContext ctx) {
         int success = 0, total = 0;
+        benignSkips = 0;
 
         // 先统一 collation：外部建表默认 utf8mb4_0900_ai_ci，join 项目内 unicode_ci 表会报
         // Illegal mix of collations；必须先于任何含 JOIN/UPDATE 的 bootstrap 脚本执行。
@@ -90,6 +94,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-admin-file-template-purpose.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-admin-file-template-ephemeral.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-admin-file-template-pdf-key.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-admin-file-template-folder.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-admin-file-template-folder-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-admin-file-template-folder-idx.sql", ctx)) success++;
 
         // --- 打印工位 ---
         total++; if (runScript("db/bootstrap-print-station.sql", ctx)) success++;
@@ -100,6 +107,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-print-job.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-job-note.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-job-priority.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-job-ephemeral.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-station-last-seen.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-station-printer-online.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-station-printer-checked-at.sql", ctx)) success++;
 
         total++; if (runScript("db/bootstrap-twin-student-violation.sql", ctx)) {
             success++;
@@ -162,6 +173,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-learning-material.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-node.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-document.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-sop-favorite.sql", ctx)) success++;
         // 回填要放在 sop_document 与 learning_material 建表之后，否则子查询找不到表
         total++; if (runScript("db/bootstrap-admin-file-template-purpose-backfill.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-health-survey.sql", ctx)) success++;
@@ -390,14 +402,17 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         // 订单行的笼位坐标快照（一个文件一条 DDL：挤在一起会被前一条的 benign 失败整段跳过）
         total++; if (runScript("db/bootstrap-ref-order-line-cage-location.sql", ctx)) success++;
 
+        String skipNote = benignSkips > 0
+                ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"
+                : "";
         if (ctx == null) {
-            return StartupResult.success(success + "/" + total + " (early pass)");
+            return StartupResult.success(success + "/" + total + " (early pass)" + skipNote);
         }
         if (success == total) {
-            return StartupResult.success(total + "/" + total + " 就绪");
+            return StartupResult.success(total + "/" + total + " 就绪" + skipNote);
         }
         return StartupResult.failed(success + "/" + total + " 就绪，"
-                + (total - success) + " 个失败 (权限不足或表已存在)", null);
+                + (total - success) + " 个失败 (权限不足或表已存在)" + skipNote, null);
     }
 
     /** AUP 演示示例种子；幂等，已存在演示记录时为空操作，失败不阻塞启动。 */
@@ -480,7 +495,18 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;
         } catch (Exception ex) {
-            return isBenignInChain(ex); // 幂等——表/列/索引已存在不算失败
+            // 幂等跳过是正常情况，逐条 WARN 每次启动几十条，会把真正的失败淹掉。
+            // 追溯能力不丢：真失败仍是 WARN，跳过的条数在 runAllScripts 结尾汇总一行
+            // （2026-09-15 曾需要区分权限/语法/真幂等，看汇总或把本类开到 debug 即可）。
+            boolean benign = isBenignInChain(ex);
+            String msg = truncate(ex.getMessage() == null ? ex.toString() : ex.getMessage(), 200);
+            if (benign) {
+                benignSkips++;
+                log.debug("[ddl] 跳过（判为幂等） {}: {}", classpath, msg);
+            } else {
+                log.warn("[ddl] 执行失败 {}: {}", classpath, msg);
+            }
+            return benign;
         }
     }
 
@@ -494,12 +520,14 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;
         } catch (Exception ex) {
+            String msg = truncate(ex.getMessage() == null ? ex.toString() : ex.getMessage(), 200);
             if (isBenignInChain(ex)) {
+                benignSkips++;
+                log.debug("[ddl] 跳过（判为幂等） {}: {}", classpath, msg);
                 return true; // 幂等：列/表/索引已存在
             }
-            String msg = ex.getMessage() != null ? ex.getMessage() : "";
-            log.debug("DDL script failed: {} — {}", classpath, msg);
-            ctx.warn(scriptLabel(classpath) + ": " + truncate(msg, 200));
+            log.warn("[ddl] 执行失败 {}: {}", classpath, msg);
+            ctx.warn(scriptLabel(classpath) + ": " + msg);
             return false;
         }
     }

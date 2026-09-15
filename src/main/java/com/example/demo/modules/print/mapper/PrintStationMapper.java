@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,6 +20,11 @@ import java.util.Optional;
 public class PrintStationMapper {
 
     private static final String COLS =
+            "id, name, user_id, page_size, supported_types, printer_ip, mode, enabled, created_by, created_at, "
+          + "last_seen_at, printer_online, printer_checked_at";
+
+    /** insert 用列 —— 不含健康三列，新建工位保持 NULL（= 从没连过）。 */
+    private static final String INSERT_COLS =
             "id, name, user_id, page_size, supported_types, printer_ip, mode, enabled, created_by, created_at";
 
     private final JdbcTemplate jdbc;
@@ -39,11 +45,17 @@ public class PrintStationMapper {
         s.setEnabled(rs.getBoolean("enabled"));
         s.setCreatedBy(rs.getString("created_by"));
         s.setCreatedAt(String.valueOf(rs.getTimestamp("created_at")));
+        Timestamp lastSeen = rs.getTimestamp("last_seen_at");
+        s.setLastSeenAt(lastSeen == null ? null : lastSeen.toLocalDateTime());
+        boolean online = rs.getBoolean("printer_online");
+        s.setPrinterOnline(rs.wasNull() ? null : online);
+        Timestamp checkedAt = rs.getTimestamp("printer_checked_at");
+        s.setPrinterCheckedAt(checkedAt == null ? null : checkedAt.toLocalDateTime());
         return s;
     };
 
     public void insert(PrintStation s) {
-        jdbc.update("INSERT INTO print_station(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,NOW())",
+        jdbc.update("INSERT INTO print_station(" + INSERT_COLS + ") VALUES(?,?,?,?,?,?,?,?,?,NOW())",
                 s.getId(), s.getName(), s.getUserId(), s.getPageSize(), s.getSupportedTypes(),
                 s.getPrinterIp(), s.getMode(), s.isEnabled() ? 1 : 0, s.getCreatedBy());
     }

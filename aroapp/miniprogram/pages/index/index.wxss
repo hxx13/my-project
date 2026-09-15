@@ -108,6 +108,11 @@ page {
   transform: scale(1.05);
 }
 
+/* 扫码按钮右侧的同款按钮（打印机 → 文件模板库）之间的间距 */
+.hero-nav-btn-next {
+  margin-left: 16rpx;
+}
+
 /* —— 登录条（瑞幸同款深色窄条） —— */
 .home-login-bar {
   position: relative;

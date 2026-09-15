@@ -66,6 +66,7 @@ Page({
     canPrimaryRoom: false,
     canPrimaryStudentReview: false,
     canPrimaryCageShelf: false,
+    canFileTemplates: false,
     badgeStudentReviewText: '',
     /** 登录页轮播同源：亮/暗图按 08:00—16:30 自动切换 */
     banners: [],
@@ -277,6 +278,11 @@ Page({
     }
   },
 
+  /** 左上角打印机：进文件模板库 */
+  onFileTemplatesTap() {
+    wx.navigateTo({ url: '/package-feature/pages/fileTemplates/index' });
+  },
+
   /** 左上角扫码：调用微信扫码工具 → 统一查询 → 路由跳转 */
   onScanTap() {
     var self = this;
@@ -453,6 +459,9 @@ Page({
       canPrimaryCageShelf:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('home', '/package-feature/pages/studentCageShelf/index', role, 'STAFF'),
+      canFileTemplates:
+        hasMinRole(role, 'STAFF') &&
+        pagePermission.canShowMiniEntry('home', '/package-feature/pages/fileTemplates/index', role, 'STAFF'),
     }, () => {
       this.applyPrimarySlots();
     });

@@ -2,6 +2,7 @@ const springAuth = require('../../../utils/springAuth.js');
 const { hasMinRole } = require('../../../utils/roleAccess.js');
 const pagePermission = require('../../../utils/pagePermission.js');
 const assetApi = require('../../utils/assetApi.js');
+const folderTree = require('../../utils/folderTree.js');
 
 function toTextTime(v) {
   if (!v) return '';
@@ -97,31 +98,6 @@ function decorateAssetRow(row, locationCol) {
     ...row,
     currentLocation: primaryLocationText(row, locationCol),
   };
-}
-
-/** 在节点树里按 id 找节点，找不到返回 null */
-function findNodeById(nodes, id) {
-  if (id == null) return null;
-  const list = nodes || [];
-  for (let i = 0; i < list.length; i += 1) {
-    if (list[i].id === id) return list[i];
-    const hit = findNodeById(list[i].children, id);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-/** 根到目标节点的路径（面包屑用），找不到返回空数组 */
-function findNodePath(nodes, id, trail) {
-  const acc = trail || [];
-  const list = nodes || [];
-  for (let i = 0; i < list.length; i += 1) {
-    const next = acc.concat([{ id: list[i].id, name: list[i].name }]);
-    if (list[i].id === id) return next;
-    const hit = findNodePath(list[i].children, id, next);
-    if (hit.length) return hit;
-  }
-  return [];
 }
 
 function parsePhotoUrlField(v) {
@@ -359,10 +335,10 @@ Page({
   rebuildFolderNav() {
     const id = this.data.currentNodeId;
     const tree = this._tree || [];
-    const node = id == null ? null : findNodeById(tree, id);
+    const node = id == null ? null : folderTree.findNodeById(tree, id);
     const children = node ? (node.children || []) : tree;
     this.setData({
-      breadcrumb: id == null ? [] : findNodePath(tree, id),
+      breadcrumb: id == null ? [] : folderTree.findNodePath(tree, id),
       childFolders: (children || []).map((c) => ({
         id: c.id,
         name: c.name,

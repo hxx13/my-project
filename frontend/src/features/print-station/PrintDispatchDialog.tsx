@@ -8,7 +8,9 @@ import {
   type PrintStationOption,
 } from "@/api/domains/print.api";
 import { uploadAdminFileTemplate } from "@/api/domains/fileTemplates.api";
+import { templateKeyOf, type CartOverride, type PrintItem, type LocalFileItem } from "./printCart";
 import { PdfPrintCanvas } from "./PdfPrintCanvas";
+import { StationPicker } from "./StationPicker";
 import {
   FILE_GROUPS,
   fileGroupOf,
@@ -26,6 +28,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+type PrintDispatchItem = PrintItem | LocalFileItem;
+
+interface BatchDoneResult {
+  succeededKeys: string[];
+  failed: { key: string; reason: string }[];
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -38,6 +47,18 @@ interface Props {
    */
   pendingFile?: File | null;
   onDispatched?: () => void;
+  /**
+   * 待打清单（批量模式）。有值就按数组逐条派发；没值维持单文件行为。
+   */
+  items?: PrintDispatchItem[];
+  /** 批量派发结束回调：调用方据此把成功的从清单摘掉、把失败的留下。 */
+  onBatchDone?: (result: BatchDoneResult) => void;
+  /**
+   * 逐条覆盖（待打清单里单独设的份数 / 加急），key 与清单项一致：
+   * 模板项 templateKeyOf，本地文件项 item.key。有值就盖过弹窗里的统一值；
+   * 不传 = 全部走统一值 = 单文件路径行为不变。
+   */
+  overrides?: Record<string, CartOverride>;
 }
 
 const labelCls = "mb-1 block text-[12px] font-medium text-[var(--app-color-text-secondary)]";
@@ -58,6 +79,9 @@ export function PrintDispatchDialog({
   fileName,
   pendingFile,
   onDispatched,
+  items,
+  onBatchDone,
+  overrides,
 }: Props) {
   const [stations, setStations] = useState<PrintStationOption[] | null>(null);
   const [stationId, setStationId] = useState("");
@@ -65,6 +89,7 @@ export function PrintDispatchDialog({
   const [copies, setCopies] = useState(1);
   const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
 
   /* ── 预览：给的是**实际会被打印的那份**（Word 是转换后的 PDF，不是原文件）── */
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
@@ -84,14 +109,18 @@ export function PrintDispatchDialog({
     return () => URL.revokeObjectURL(url);
   }, [previewBlob, previewKind]);
 
+  /** 待打清单：items 有值就是批量模式，逐条派发；没值维持单文件行为。 */
+  const batchItems = items ?? [];
+  const isBatch = batchItems.length > 0;
+
   /** 文件模板库里还留着上传限制之前传的 .docx / .xlsx，点它们的「打印」要拦住并说明原因 */
-  const unsupported = printKindOf(pendingFile ? pendingFile.name : fileName) === "unsupported";
+  const unsupported = !isBatch && printKindOf(pendingFile ? pendingFile.name : fileName) === "unsupported";
 
   // 这台机器认不认这类文件。工位可配（比如斑马卡牌机只吃 PDF），
   // 不拦的话用户要等打到一半才发现卡住。
   const group = fileGroupOf(pendingFile ? pendingFile.name : fileName);
   const selectedStation = (stations ?? []).find((s) => s.id === stationId) ?? null;
-  const stationAccepts = selectedStation ? stationSupports(selectedStation.supportedTypes, group) : true;
+  const stationAccepts = isBatch || (selectedStation ? stationSupports(selectedStation.supportedTypes, group) : true);
 
   useEffect(() => {
     if (!open) return;
@@ -99,6 +128,7 @@ export function PrintDispatchDialog({
     setCopies(1);
     setUrgent(false);
     setBusy(false);
+    setItemErrors({});
     void fetchSelectableStations()
       .then((list) => {
         setStations(list);
@@ -116,7 +146,7 @@ export function PrintDispatchDialog({
    * Office 只能等上传后才看得到。
    */
   useEffect(() => {
-    if (!open) {
+    if (!open || isBatch) {
       setPreviewBlob(null);
       setPreviewKind(null);
       setPreviewState("idle");
@@ -156,9 +186,100 @@ export function PrintDispatchDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, pendingFile, sourceType, sourceId]);
+  }, [open, pendingFile, sourceType, sourceId, isBatch]);
+
+  /** 条目 key：模板项现算，本地文件项用自带 key。与 succeededKeys / failed 同一套。 */
+  const keyOf = (item: PrintDispatchItem) => ("file" in item ? item.key : templateKeyOf(item));
+
+  /** 本次派发的条目里有没有单独设过份数/加急，有就在控件旁提示。 */
+  const hasOverrides = isBatch
+    ? batchItems.some((item) => {
+        const ov = overrides?.[keyOf(item)];
+        return ov !== undefined && (ov.copies !== undefined || ov.urgent !== undefined);
+      })
+    : false;
+
+  /** 逐条派发：模板库项直接发；本地文件先上传拿 id 再发（ephemeral 打完即删）。 */
+  const dispatchOne = async (item: PrintDispatchItem) => {
+    const key = keyOf(item);
+    const nCopies = overrides?.[key]?.copies ?? copies;
+    const isUrgent = overrides?.[key]?.urgent ?? urgent;
+    if ("file" in item) {
+      const row = await uploadAdminFileTemplate(item.file, "TEMPLATE", true);
+      await createPrintJob({
+        stationId,
+        sourceType: "ADMIN_FILE",
+        sourceId: row.id,
+        fileName: row.originalName,
+        copies: nCopies,
+        note,
+        urgent: isUrgent,
+      });
+    } else {
+      await createPrintJob({
+        stationId,
+        sourceType: item.sourceType as "CARD_ARCHIVE" | "ADMIN_FILE",
+        sourceId: item.sourceId,
+        fileName: item.fileName,
+        copies: nCopies,
+        note,
+        urgent: isUrgent,
+      });
+    }
+  };
+
+  /** 批量派发：串行 for...of，逐条收集成败，失败项留在清单并标原因。
+   *  逐条过跟单文件一样的两道类型门禁（渲染不了 / 这台工位不支持）——
+   *  命中的那一条本地判失败、不发请求，不拖累其余条目。 */
+  const dispatchBatch = async () => {
+    setBusy(true);
+    const succeededKeys: string[] = [];
+    const failed: { key: string; reason: string }[] = [];
+    const stationName = selectedStation?.name ?? "该打印机";
+    for (const item of batchItems) {
+      const key = keyOf(item);
+      const name = "file" in item ? item.name : item.fileName;
+      if (printKindOf(name) === "unsupported") {
+        failed.push({ key, reason: "这个文件类型打不了" });
+        continue;
+      }
+      const itemGroup = fileGroupOf(name);
+      if (!stationSupports(selectedStation?.supportedTypes, itemGroup)) {
+        const groupLabel = FILE_GROUPS.find((g) => g.key === itemGroup)?.label ?? "该类型";
+        failed.push({ key, reason: `这台打印机「${stationName}」不支持「${groupLabel}」` });
+        continue;
+      }
+      try {
+        await dispatchOne(item);
+        succeededKeys.push(key);
+      } catch (e) {
+        failed.push({ key, reason: e instanceof Error ? e.message : "派发失败" });
+      }
+    }
+    setBusy(false);
+
+    if (failed.length) {
+      const errMap: Record<string, string> = {};
+      for (const f of failed) errMap[f.key] = f.reason;
+      setItemErrors(errMap);
+      toast.error(`成功 ${succeededKeys.length} 条，失败 ${failed.length} 条`);
+    } else {
+      setItemErrors({});
+      toast.success(`已派发 ${succeededKeys.length} 份`);
+      onOpenChange(false);
+    }
+    onBatchDone?.({ succeededKeys, failed });
+  };
 
   const confirm = async () => {
+    if (isBatch) {
+      if (!stationId) {
+        toast.error("请选择打印机");
+        return;
+      }
+      await dispatchBatch();
+      return;
+    }
     if (unsupported) return;
     if (!stationAccepts) {
       toast.error("这台打印机不支持该文件类型，请换一台");
@@ -197,32 +318,53 @@ export function PrintDispatchDialog({
         <DialogHeader>
           <DialogTitle>派发打印</DialogTitle>
           <DialogDescription className="break-all">
-            {pendingFile ? pendingFile.name : fileName}
-            {pendingFile ? "（打完即删，不留档）" : ""}
+            {isBatch ? `共 ${batchItems.length} 份，逐条派发` : pendingFile ? pendingFile.name : fileName}
+            {isBatch ? null : pendingFile ? "（打完即删，不留档）" : ""}
           </DialogDescription>
         </DialogHeader>
 
-        {/* 预览：确认前先看一眼真实产物。Word 的话这里就是转换后的 PDF */}
-        <div className="max-h-[45vh] min-h-[150px] overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2">
-          {previewState === "loading" ? (
-            <div className="flex h-[130px] items-center justify-center gap-2 text-[13px] text-[var(--app-color-text-tertiary)]">
-              <Loader2 className="size-4 animate-spin" />
-              正在准备预览…
-            </div>
-          ) : previewState === "error" ? (
-            <div className="flex h-[130px] items-center justify-center px-4 text-center text-[13px] text-[var(--app-color-feedback-error)]">
-              {previewErr}
-            </div>
-          ) : previewBlob && previewKind === "pdf" ? (
-            <PdfPrintCanvas blob={previewBlob} />
-          ) : previewImgUrl ? (
-            <img src={previewImgUrl} alt="" className="mx-auto block max-w-full" />
-          ) : (
-            <div className="flex h-[130px] items-center justify-center px-4 text-center text-[13px] text-[var(--app-color-text-tertiary)]">
-              {pendingFile ? "这份文件上传后才能预览" : "没有可预览的内容"}
-            </div>
-          )}
-        </div>
+        {isBatch ? (
+          /* 批量：列出待打清单，失败的那几行在这里标出原因 */
+          <div className="max-h-[45vh] min-h-[150px] overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2">
+            <ul className="space-y-1">
+              {batchItems.map((item) => {
+                const key = keyOf(item);
+                const name = "file" in item ? item.name : item.fileName;
+                const err = itemErrors[key];
+                return (
+                  <li key={key} className="text-[13px] leading-relaxed text-[var(--app-color-text-primary)]">
+                    <span className="break-all">{name}</span>
+                    {err ? (
+                      <span className="mt-0.5 block text-[12px] text-[var(--app-color-feedback-error)]">{err}</span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : (
+          /* 预览：确认前先看一眼真实产物。Word 的话这里就是转换后的 PDF */
+          <div className="max-h-[45vh] min-h-[150px] overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2">
+            {previewState === "loading" ? (
+              <div className="flex h-[130px] items-center justify-center gap-2 text-[13px] text-[var(--app-color-text-tertiary)]">
+                <Loader2 className="size-4 animate-spin" />
+                正在准备预览…
+              </div>
+            ) : previewState === "error" ? (
+              <div className="flex h-[130px] items-center justify-center px-4 text-center text-[13px] text-[var(--app-color-feedback-error)]">
+                {previewErr}
+              </div>
+            ) : previewBlob && previewKind === "pdf" ? (
+              <PdfPrintCanvas blob={previewBlob} />
+            ) : previewImgUrl ? (
+              <img src={previewImgUrl} alt="" className="mx-auto block max-w-full" />
+            ) : (
+              <div className="flex h-[130px] items-center justify-center px-4 text-center text-[13px] text-[var(--app-color-text-tertiary)]">
+                {pendingFile ? "这份文件上传后才能预览" : "没有可预览的内容"}
+              </div>
+            )}
+          </div>
+        )}
 
         {unsupported ? (
           <div className="rounded-md border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800">
@@ -233,26 +375,11 @@ export function PrintDispatchDialog({
         <div className={unsupported ? "hidden" : "space-y-3"}>
           <div>
             <label className={labelCls}>打印机</label>
-            <select
-              className={inputCls}
-              value={stationId}
-              disabled={stations === null}
-              onChange={(e) => setStationId(e.target.value)}
-            >
-              {stations === null ? <option value="">加载中…</option> : null}
-              {stations !== null && stations.length === 0 ? (
-                <option value="">没有可用的打印机</option>
-              ) : null}
-              {(stations ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <StationPicker stations={stations} value={stationId} onChange={setStationId} />
 
             {/* 红绿灯：这台机器认哪些类型。当前文件所属的那一类加一圈描边，
-                一眼看出"我要打的东西在这儿是不是绿的" */}
-            {selectedStation ? (
+                一眼看出"我要打的东西在这儿是不是绿的"。批量模式无单文件，不显示。 */}
+            {!isBatch && selectedStation ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
                 <span className="text-[var(--app-color-text-tertiary)]">这台机器支持：</span>
                 {FILE_GROUPS.map((g) => {
@@ -323,6 +450,12 @@ export function PrintDispatchDialog({
           {copies > 1 ? (
             <p className="text-[11px] text-[var(--app-color-text-tertiary)]">
               工位会连打 {copies} 次。中途某一次失败会少打一份，工位页会标出来。
+            </p>
+          ) : null}
+
+          {hasOverrides ? (
+            <p className="rounded-md border-l-4 border-[color-mix(in_srgb,var(--app-color-feedback-warning)_50%,transparent)] bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_10%,transparent)] px-3 py-2 text-[12px] leading-relaxed text-[var(--app-color-text-secondary)]">
+              清单里有条目单独设过份数 / 加急，派发时会优先采用它们；这里填的份数和加急只对没单独设过的条目生效。
             </p>
           ) : null}
         </div>

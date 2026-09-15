@@ -9,9 +9,12 @@ import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.service.PrintJobService;
 import com.example.demo.modules.print.service.PrintJobViewAssembler;
 import com.example.demo.modules.print.service.PrintSourceResolver;
+import com.example.demo.modules.print.service.PrintStationHealthService;
 import com.example.demo.modules.print.service.PrintStationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,22 +36,27 @@ import java.util.Map;
 @Tag(name = "打印-工位侧")
 public class PrintStationApiController {
 
+    private static final Logger log = LoggerFactory.getLogger(PrintStationApiController.class);
+
     private final PrintStationService stationService;
     private final PrintJobService jobService;
     private final PrintSourceResolver sourceResolver;
     private final AuthContextService authContextService;
     private final PrintJobViewAssembler jobViewAssembler;
+    private final PrintStationHealthService healthService;
 
     public PrintStationApiController(PrintStationService stationService,
                                      PrintJobService jobService,
                                      PrintSourceResolver sourceResolver,
                                      AuthContextService authContextService,
-                                     PrintJobViewAssembler jobViewAssembler) {
+                                     PrintJobViewAssembler jobViewAssembler,
+                                     PrintStationHealthService healthService) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.sourceResolver = sourceResolver;
         this.authContextService = authContextService;
         this.jobViewAssembler = jobViewAssembler;
+        this.healthService = healthService;
     }
 
     private User requireUser(String authHeader) {
@@ -59,11 +67,18 @@ public class PrintStationApiController {
         return u;
     }
 
-    /** 登录账号 → 它绑定的工位。不是工位账号就 403。 */
+    /** 登录账号 → 它绑定的工位。不是工位账号就 403。鉴权过了才回写心跳。 */
     private PrintStation requireStation(String authHeader) {
         User u = requireUser(authHeader);
-        return stationService.findByUserId(u.getId())
+        PrintStation station = stationService.findByUserId(u.getId())
                 .orElseThrow(() -> new TwinBusinessException(403, "当前账号未绑定打印工位"));
+        // 心跳是副作用，失败不能影响接口本身。
+        try {
+            healthService.touch(station.getId());
+        } catch (Exception e) {
+            log.warn("[print] 工位 {} 心跳回写失败: {}", station.getId(), e.getMessage());
+        }
+        return station;
     }
 
     /** 给普通人员选打印机用：只暴露已启用的工位，不含绑定账号等敏感字段。 */
@@ -79,6 +94,9 @@ public class PrintStationApiController {
                     m.put("id", s.getId());
                     m.put("name", s.getName());
                     m.put("supportedTypes", s.getSupportedTypes());
+                    PrintStationHealthService.Health health = healthService.liveStatusOf(s);
+                    m.put("liveStatus", health.status().name());
+                    m.put("liveStatusReason", health.reason());
                     return m;
                 })
                 .toList());

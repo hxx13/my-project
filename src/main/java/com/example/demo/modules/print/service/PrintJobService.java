@@ -1,5 +1,6 @@
 package com.example.demo.modules.print.service;
 
+import com.example.demo.modules.adminfile.AdminFileTemplateService;
 import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.mapper.PrintJobMapper;
@@ -32,15 +33,18 @@ public class PrintJobService {
     private final PrintStationService stationService;
     private final PrintNotifyService notifyService;
     private final PrintSourceCleaner sourceCleaner;
+    private final AdminFileTemplateService adminFileTemplateService;
 
     public PrintJobService(PrintJobMapper mapper,
                            PrintStationService stationService,
                            PrintNotifyService notifyService,
-                           PrintSourceCleaner sourceCleaner) {
+                           PrintSourceCleaner sourceCleaner,
+                           AdminFileTemplateService adminFileTemplateService) {
         this.mapper = mapper;
         this.stationService = stationService;
         this.notifyService = notifyService;
         this.sourceCleaner = sourceCleaner;
+        this.adminFileTemplateService = adminFileTemplateService;
     }
 
     /**
@@ -72,6 +76,9 @@ public class PrintJobService {
         j.setCopies(Math.max(1, Math.min(copies, 99)));
         j.setNote(note == null || note.isBlank() ? null : note.trim());
         j.setPriority(Math.max(0, priority));
+        // 临时标记由服务端按 sourceType 推导，不听客户端传：客户端说「这任务私有」就能把共享任务藏起来。
+        j.setEphemeral(PrintJob.SOURCE_ADMIN_FILE.equals(sourceType)
+                && adminFileTemplateService.isEphemeral(sourceId.trim()));
         j.setStatus(PrintJob.STATUS_PENDING);
         j.setAttempts(0);
         j.setCreatedBy(createdBy);
@@ -143,12 +150,12 @@ public class PrintJobService {
         return mapper.countPending(stationId);
     }
 
-    public List<PrintJob> listQueue(String stationId, int limit) {
-        return mapper.listQueue(stationId, limit);
+    public List<PrintJob> listQueue(String stationId, String viewerId, int limit) {
+        return mapper.listQueue(stationId, viewerId, limit);
     }
 
-    public List<PrintJob> listHistory(String stationId, String statusCsv, int limit) {
-        return mapper.listHistory(stationId, statusCsv, limit);
+    public List<PrintJob> listHistory(String stationId, String statusCsv, String viewerId, int limit) {
+        return mapper.listHistory(stationId, statusCsv, viewerId, limit);
     }
 
     public Optional<PrintJob> findById(String id) {
@@ -163,7 +170,7 @@ public class PrintJobService {
         return mapper.listByCreator(userId, limit);
     }
 
-    public List<PrintJob> listAll(int limit) {
-        return mapper.listAll(limit);
+    public List<PrintJob> listAll(String viewerId, int limit) {
+        return mapper.listAll(viewerId, limit);
     }
 }

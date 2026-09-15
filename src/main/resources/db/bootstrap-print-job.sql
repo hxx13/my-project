@@ -18,4 +18,4 @@ CREATE TABLE IF NOT EXISTS print_job (
     KEY idx_print_job_station_status (station_id, status),
     KEY idx_print_job_status_sent (status, sent_at),
     KEY idx_print_job_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印任务'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印任务';

@@ -14,10 +14,13 @@ export type AdminFileTemplateRow = {
   sizeBytes: number;
   uploadedByUserId: string;
   createTime: string;
+  folderId?: number | null;
 };
 
-export async function fetchAdminFileTemplates(): Promise<{ rows: AdminFileTemplateRow[]; schemaHint?: string }> {
-  const res = await authHttp.get<Result<AdminFileTemplateRow[]>>("/admin/file-templates");
+export async function fetchAdminFileTemplates(folderId?: number | null): Promise<{ rows: AdminFileTemplateRow[]; schemaHint?: string }> {
+  const res = await authHttp.get<Result<AdminFileTemplateRow[]>>("/admin/file-templates", {
+    params: folderId == null ? {} : { folderId },
+  });
   if (!res.data?.success || !Array.isArray(res.data?.data)) throw new Error(res.data?.message || "读取失败");
   const msg = res.data.message || "";
   const schemaHint = msg && msg !== "操作成功" ? msg : undefined;
@@ -35,11 +38,13 @@ export async function uploadAdminFileTemplate(
   file: File,
   purpose?: "TEMPLATE" | "SOP",
   ephemeral?: boolean,
+  folderId?: number | null,
 ): Promise<AdminFileTemplateRow> {
   const fd = new FormData();
   fd.append("file", file);
   if (purpose) fd.append("purpose", purpose);
   if (ephemeral) fd.append("ephemeral", "true");
+  if (folderId != null) fd.append("folderId", String(folderId));
   const res = await authHttp.post<Result<AdminFileTemplateRow>>("/admin/file-templates", fd, {
     timeout: 120000,
   });
@@ -50,6 +55,12 @@ export async function uploadAdminFileTemplate(
 export async function deleteAdminFileTemplate(id: string): Promise<void> {
   const res = await authHttp.delete<Result<null>>(`/admin/file-templates/${encodeURIComponent(id)}`);
   if (!res.data?.success) throw new Error(res.data?.message || "删除失败");
+}
+
+/** 移动文件到文件夹。folderId 传 null = 移回未归类 */
+export async function moveAdminFileTemplate(id: string, folderId: number | null): Promise<void> {
+  const res = await authHttp.post<Result<null>>(`/admin/file-templates/${encodeURIComponent(id)}/folder`, { folderId });
+  if (!res.data?.success) throw new Error(res.data?.message || "移动失败");
 }
 
 /** 浏览器下载：须带 Bearer，故用 blob + 对象 URL */

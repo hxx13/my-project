@@ -17,7 +17,7 @@
  *    KnowledgeGraphView 而不经过 KnowledgeLayout。
  */
 import { type ReactNode, useState, useCallback } from "react";
-import { ResizeHandle } from "./ResizeHandle";
+import { ResizeHandle } from "@/components/shared/ResizeHandle";
 
 interface Props { sidebar: ReactNode; content: ReactNode; outline?: ReactNode }
 

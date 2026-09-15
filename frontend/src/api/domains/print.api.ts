@@ -13,6 +13,10 @@ export interface PrintStationOption {
   name: string;
   /** 支持的文件类型分组，逗号分隔；null/空 = 全支持 */
   supportedTypes: string | null;
+  /** 在线的三态。UNKNOWN 是「从没连过」，跟 OFFLINE 不是一回事 */
+  liveStatus: "ONLINE" | "OFFLINE" | "UNKNOWN";
+  /** 服务端生成好的可读原因，直接展示，不要在前端重算 */
+  liveStatusReason?: string;
 }
 
 export type PrintJobStatus = "PENDING" | "SENT" | "PRINTED" | "FAILED" | "CANCELLED";
@@ -183,6 +187,10 @@ export interface AdminPrintStation {
   printerIp: string | null;
   enabled: boolean;
   createdAt?: string;
+  /** 在线的三态。UNKNOWN 是「从没连过」，跟 OFFLINE 不是一回事 */
+  liveStatus: "ONLINE" | "OFFLINE" | "UNKNOWN";
+  /** 服务端生成好的可读原因，直接展示，不要在前端重算 */
+  liveStatusReason?: string;
 }
 
 export async function fetchPrintStations(): Promise<AdminPrintStation[]> {

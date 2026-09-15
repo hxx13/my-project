@@ -3,6 +3,7 @@ package com.example.demo.modules.sop.service;
 import com.example.demo.modules.sop.entity.SopDocument;
 import com.example.demo.modules.sop.entity.SopNode;
 import com.example.demo.modules.sop.mapper.SopDocumentMapper;
+import com.example.demo.modules.sop.mapper.SopFavoriteMapper;
 import com.example.demo.modules.sop.mapper.SopNodeMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,12 +32,13 @@ class SopTreeServiceTest {
 
     @Mock private SopNodeMapper nodeMapper;
     @Mock private SopDocumentMapper documentMapper;
+    @Mock private SopFavoriteMapper favoriteMapper;
 
     private SopTreeService service;
 
     @BeforeEach
     void setUp() {
-        service = new SopTreeService(nodeMapper, documentMapper);
+        service = new SopTreeService(nodeMapper, documentMapper, favoriteMapper);
     }
 
     private static SopNode node(long id, Long parentId, String name) {
@@ -155,5 +157,37 @@ class SopTreeServiceTest {
 
         assertEquals(null, service.deleteDocument(9L));
         verify(documentMapper, never()).delete(9L);
+    }
+
+    /* ── 收藏 ── */
+
+    @Test
+    void deletingADocumentAlsoDropsItsFavorites() {
+        when(documentMapper.findById(9L)).thenReturn(doc(9L, "FILE_A"));
+        when(documentMapper.countByFileId("FILE_A")).thenReturn(0);
+
+        service.deleteDocument(9L);
+
+        // 不清的话会留下永远点不开的孤儿收藏行
+        verify(favoriteMapper).deleteByDocumentId(9L);
+    }
+
+    @Test
+    void addingFavoriteRefusesUnknownDocument() {
+        when(documentMapper.findById(9L)).thenReturn(null);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> service.addFavorite("STAFF_1", 9L));
+        assertTrue(e.getMessage().contains("文档不存在"));
+        verify(favoriteMapper, never()).insert(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void addingFavoriteInsertsForCurrentUser() {
+        when(documentMapper.findById(9L)).thenReturn(doc(9L, "FILE_A"));
+
+        service.addFavorite("STAFF_1", 9L);
+
+        verify(favoriteMapper).insert("STAFF_1", 9L);
     }
 }

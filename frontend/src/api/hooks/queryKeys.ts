@@ -73,6 +73,11 @@ export const queryKeys = {
     detail: (id: string) => ["asset", "detail", id] as const,
   },
 
+  fileFolder: {
+    all: ["fileFolder"] as const,
+    tree: () => ["fileFolder", "tree"] as const,
+  },
+
   content: {
     all: ["content"] as const,
     list: (params?: Record<string, unknown>) =>

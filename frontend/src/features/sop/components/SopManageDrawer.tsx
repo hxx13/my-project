@@ -10,6 +10,7 @@ import {
   Upload,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tree } from "@/components/tree/Tree";
@@ -207,91 +208,90 @@ export function SopManageDrawer({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-        <DialogContent
-          variant="rightSheet"
-          className="border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)]"
+      {/* 用项目统一的「右侧收纳抽屉壳」CageOpDrawer（笼架页那个）。
+          它是**非模态**的浮动抽屉：没有遮罩、不锁焦点，开着也能点左边的文档，
+          管理 PDF 时正合适。样式/把手/头身脚三段都由壳提供，这里只管内容。 */}
+      {open ? (
+        <CageOpDrawer
+          title="SOP 管理"
+          hint="分类增删改移；文档上传、改名、转移分类"
+          collapseLabel="SOP 管理"
+          onClose={onClose}
+          width={420}
+          headerExtra={
+            busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--twin-mute)]" /> : null
+          }
         >
-          <DialogTitle className="sr-only">SOP 分类与文档管理</DialogTitle>
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--app-color-border-default)] px-4 py-3">
-              <span className="text-sm font-semibold">SOP 管理</span>
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--app-color-text-tertiary)]" /> : null}
-            </div>
-
-            {/* 上传：先选目标分类，再选文件 */}
-            <div className="shrink-0 space-y-2 border-b border-[var(--app-color-border-default)] px-4 py-3">
-              <div className="text-[11px] font-semibold text-[var(--app-color-text-tertiary)]">上传 PDF 到分类</div>
-              <SopNodePicker nodes={nodes} value={uploadNodeId} onChange={setUploadNodeId} />
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => fileRef.current?.click()}
-                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--app-color-accent-hover)] px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                选择 PDF 上传
-              </button>
-              <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(ev) => void handleFilePicked(ev)} />
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 py-2">
-              {/* 未分类文档没有节点可挂，单独列一块；否则它们只存在于库里、界面上永远看不到 */}
-              {unfiled.length > 0 ? (
-                <div className="mb-2 rounded-lg border border-dashed border-[var(--app-color-border-default)] pb-1">
-                  <div className="px-2 py-1.5 text-[11px] font-semibold text-[var(--app-color-text-tertiary)]">
-                    未分类（{unfiled.length}）
-                  </div>
-                  {unfiled.map((d) => renderDocRow(d, 0))}
-                </div>
-              ) : null}
-
-              <DndScope onDrop={handleDrop}>
-                <Tree<SopTreeNode>
-                  nodes={tree}
-                  getId={(n) => n.id}
-                  getName={(n) => n.name}
-                  getChildren={(n) => n.children}
-                  getCount={(n) => documentsOfNode(documents, n.id).length || null}
-                  selectedId={selectedId}
-                  expanded={expanded}
-                  onSelect={setSelectedId}
-                  onToggle={(id) => setExpanded((p) => (p.has(id) ? new Set([...p].filter((v) => v !== id)) : new Set([...p, id])))}
-                  createPlaceholder="分类名称"
-                  createRootLabel="新建顶层分类"
-                  onCreate={(parentId, name) => void run("新建失败", () => createSopNode(parentId, name))}
-                  emptyText="暂无分类"
-                  noMatchText="没有匹配的分类"
-                  draggable
-                  droppable
-                  renderExtras={(n, depth) => documentsOfNode(documents, n.id).map((d) => renderDocRow(d, depth))}
-                  renderMenu={(n, h) => (
-                    <>
-                      <DropdownMenuItem onSelect={h.startCreateChild}>
-                        <FolderPlus className="mr-2 h-3.5 w-3.5" />
-                        新建子分类
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => void doRenameNode(n)}>
-                        <Pencil className="mr-2 h-3.5 w-3.5" />
-                        改名
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => openMove({ kind: "node", id: n.id, title: n.name, from: n.parentId })}>
-                        <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
-                        移动到…
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => void doDeleteNode(n)} className="text-[var(--app-color-feedback-error)]">
-                        <Trash2 className="mr-2 h-3.5 w-3.5" />
-                        删除
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                />
-              </DndScope>
-            </div>
+          {/* 上传：先选目标分类，再选文件 */}
+          <div className="mb-4 space-y-2 rounded-twin-lg border border-[var(--twin-hairline)] px-3 py-3">
+            <div className="text-[11px] font-semibold text-[var(--twin-mute)]">上传 PDF 到分类</div>
+            <SopNodePicker nodes={nodes} value={uploadNodeId} onChange={setUploadNodeId} />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => fileRef.current?.click()}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-twin-md bg-[var(--twin-primary)] px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              选择 PDF 上传
+            </button>
+            <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(ev) => void handleFilePicked(ev)} />
           </div>
-        </DialogContent>
-      </Dialog>
+
+          {/* 未分类文档没有节点可挂，单独列一块；否则它们只存在于库里、界面上永远看不到 */}
+          {unfiled.length > 0 ? (
+            <div className="mb-2 rounded-twin-lg border border-dashed border-[var(--twin-hairline)] pb-1">
+              <div className="px-2 py-1.5 text-[11px] font-semibold text-[var(--twin-mute)]">
+                未分类（{unfiled.length}）
+              </div>
+              {unfiled.map((d) => renderDocRow(d, 0))}
+            </div>
+          ) : null}
+
+          <DndScope onDrop={handleDrop}>
+            <Tree<SopTreeNode>
+              nodes={tree}
+              getId={(n) => n.id}
+              getName={(n) => n.name}
+              getChildren={(n) => n.children}
+              getCount={(n) => documentsOfNode(documents, n.id).length || null}
+              selectedId={selectedId}
+              expanded={expanded}
+              onSelect={setSelectedId}
+              onToggle={(id) => setExpanded((p) => (p.has(id) ? new Set([...p].filter((v) => v !== id)) : new Set([...p, id])))}
+              createPlaceholder="分类名称"
+              createRootLabel="新建顶层分类"
+              onCreate={(parentId, name) => void run("新建失败", () => createSopNode(parentId, name))}
+              emptyText="暂无分类"
+              noMatchText="没有匹配的分类"
+              draggable
+              droppable
+              renderExtras={(n, depth) => documentsOfNode(documents, n.id).map((d) => renderDocRow(d, depth))}
+              renderMenu={(n, h) => (
+                <>
+                  <DropdownMenuItem onSelect={h.startCreateChild}>
+                    <FolderPlus className="mr-2 h-3.5 w-3.5" />
+                    新建子分类
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void doRenameNode(n)}>
+                    <Pencil className="mr-2 h-3.5 w-3.5" />
+                    改名
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openMove({ kind: "node", id: n.id, title: n.name, from: n.parentId })}>
+                    <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
+                    移动到…
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => void doDeleteNode(n)} className="text-[var(--app-color-feedback-error)]">
+                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                    删除
+                  </DropdownMenuItem>
+                </>
+              )}
+            />
+          </DndScope>
+        </CageOpDrawer>
+      ) : null}
 
       {/* 转移分类：节点与文档共用 */}
       <Dialog open={!!moving} onOpenChange={(v) => !v && setMoving(null)}>
