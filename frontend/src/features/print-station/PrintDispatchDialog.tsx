@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { createPrintJob, fetchSelectableStations, type PrintStationOption } from "@/api/domains/print.api";
 import { uploadAdminFileTemplate } from "@/api/domains/fileTemplates.api";
+import { printKindOf, UNSUPPORTED_PRINT_HINT } from "@/features/print-station/printableTypes";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,9 @@ export function PrintDispatchDialog({
   const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  /** 文件模板库里还留着上传限制之前传的 .docx / .xlsx，点它们的「打印」要拦住并说明原因 */
+  const unsupported = printKindOf(pendingFile ? pendingFile.name : fileName) === "unsupported";
+
   useEffect(() => {
     if (!open) return;
     setNote("");
@@ -67,6 +71,7 @@ export function PrintDispatchDialog({
   }, [open]);
 
   const confirm = async () => {
+    if (unsupported) return;
     if (!stationId) {
       toast.error("请选择打印机");
       return;
@@ -105,7 +110,13 @@ export function PrintDispatchDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        {unsupported ? (
+          <div className="rounded-md border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800">
+            {UNSUPPORTED_PRINT_HINT}
+          </div>
+        ) : null}
+
+        <div className={unsupported ? "hidden" : "space-y-3"}>
           <div>
             <label className={labelCls}>打印机</label>
             <select
@@ -172,7 +183,7 @@ export function PrintDispatchDialog({
           </button>
           <button
             type="button"
-            disabled={busy || !stationId}
+            disabled={busy || !stationId || unsupported}
             className="rounded-md bg-[var(--twin-primary)] px-3 py-1.5 text-sm font-medium text-[var(--twin-on-primary)] disabled:opacity-50"
             onClick={() => void confirm()}
           >

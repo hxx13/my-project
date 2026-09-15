@@ -14,6 +14,7 @@ import {
   type PrintJob,
 } from "@/api/domains/print.api";
 import { PdfPrintCanvas } from "@/features/print-station/PdfPrintCanvas";
+import { printKindOf, UNSUPPORTED_PRINT_HINT } from "@/features/print-station/printableTypes";
 
 /**
  * 兜底轮询间隔。socket 只降延迟，正确性靠它 ——
@@ -25,7 +26,7 @@ const POLL_MS = 15000;
 const PRINT_SETTLE_MS = 8000;
 
 function isPdf(job: PrintJob): boolean {
-  return job.fileName.toLowerCase().endsWith(".pdf");
+  return printKindOf(job.fileName) === "pdf";
 }
 
 function fmtTime(v: string | null | undefined) {
@@ -109,6 +110,9 @@ export default function PrintStationPage() {
   /** 收尾：回执 + 复位。PRINTED 的语义是「已交给打印队列」，不是「纸张已出」。 */
   const settle = useCallback(
     async (job: PrintJob, ok: boolean, err?: string) => {
+      // 先放开重入锁：从「领到任务」到这里的整段，是工位页不允许再领第二条的窗口。
+      // 放这里而不是最末尾，是为了兜住后面任何一步抛异常 —— 锁不释放工位就停摆了。
+      busyRef.current = false;
       try {
         await ackPrintJob(job.id, ok, err);
       } catch {
@@ -135,13 +139,17 @@ export default function PrintStationPage() {
 
   /** 领一条 → 取文件。一次只处理一条。 */
   const drainOne = useCallback(async () => {
-    // 上一件已打完（lastPrinted）就该继续领下一件；只有「正在处理中」才挡。
-    // 打完不清 DOM 之后，这个判据必须带上 lastPrinted，否则队列会彻底停摆。
-    if (busyRef.current || (current && !lastPrinted)) return;
+    // busyRef 从「领到任务」一直持到 settle，**不是**只锁住那一次网络请求。
+    // 只锁请求的话：领到任务后 setCurrent 是异步的，state 生效前若再来一次
+    // drainOne（socket 推送 + 15s 轮询 会同时触发），它看到 current 还是旧的 null，
+    // 就再领一条 —— 实测一次派 4 条时 4 条全被领走、卡在 SENT 谁也不打。
+    if (busyRef.current) return;
     busyRef.current = true;
+    let claimed = false;
     try {
       const job = await claimPrintJob();
       if (!job) return;
+      claimed = true;
       // 新任务来了才替换掉上一件残留的打印内容
       setLastPrinted(false);
       setCurrent(job);
@@ -151,6 +159,12 @@ export default function PrintStationPage() {
       });
       setFile(null);
       setMessage(`正在准备 ${job.fileName}`);
+      // 非 PDF/图片当场拒掉并回执。硬走下去只会卡在 SENT，后台什么都看不到
+      // —— 存量库里还有上传限制之前留下的 .docx/.xlsx。
+      if (printKindOf(job.fileName) === "unsupported") {
+        await settle(job, false, UNSUPPORTED_PRINT_HINT);
+        return;
+      }
       try {
         const blob = await fetchPrintJobFile(job.id);
         setFile(blob);
@@ -160,9 +174,10 @@ export default function PrintStationPage() {
     } catch {
       /* 领任务失败（断网等）下轮再试 */
     } finally {
-      busyRef.current = false;
+      // 领到了就交给 settle 放开；没领到（空队列 / 抛错）立刻放开，别把工位锁死
+      if (!claimed) busyRef.current = false;
     }
-  }, [current, lastPrinted, settle]);
+  }, [settle]);
 
   /**
    * 在**独立的隐藏 iframe** 里打印，而不是直接 window.print() 当前页面。
