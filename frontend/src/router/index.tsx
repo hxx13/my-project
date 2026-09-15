@@ -158,6 +158,7 @@ import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
 import ReportFillPage from "@/features/report-form/pages/ReportFillPage";
 import SubmissionManagePage from "@/features/report-form/pages/SubmissionManagePage";
 import AupFillPage from "@/features/aup/pages/AupFillPage";
+import PrintStationPage from "@/pages/PrintStationPage";
 import NhpFillPage from "@/features/nhp/pages/NhpFillPage";
 import AupListPage from "@/features/aup/pages/AupListPage";
 import AupReviewPage from "@/features/aup/pages/AupReviewPage";
@@ -314,6 +315,12 @@ export const router = createHashRouter([
   { path: "/nhp/overview", element: <AuthGuard><NhpOverviewPage /></AuthGuard> },
   { path: "/nhp/review-center", element: <AuthGuard><NhpReviewCenterPage /></AuthGuard> },
   { path: "/nhp/notifications", element: <AuthGuard><NhpNotificationCenterPage /></AuthGuard> },
+
+  // ═══════════════════════════════════════════════════════
+  //  打印工位：工位电脑常开此页，刻意不进后台壳
+  //  （进 AdminLayout 会触发 /console 重定向与高度链问题）
+  // ═══════════════════════════════════════════════════════
+  { path: "/print-station", element: <AuthGuard><PrintStationPage /></AuthGuard> },
 
   // ═══════════════════════════════════════════════════════
   //  教职工路由 — 统一在 /console 命名空间下
