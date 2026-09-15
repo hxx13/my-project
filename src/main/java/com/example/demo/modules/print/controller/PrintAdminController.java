@@ -57,6 +57,15 @@ public class PrintAdminController {
         return u;
     }
 
+    /** 发起打印只要教职工即可；配置工位才要管理员。 */
+    private User requireStaff(String authHeader) {
+        User u = authContextService.resolveUserFromBearer(authHeader);
+        if (u == null || u.getRole() == null || u.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            throw new TwinBusinessException(403, "需要教职工权限");
+        }
+        return u;
+    }
+
     /* ────────────── 工位 ────────────── */
 
     @GetMapping("/stations")
@@ -125,11 +134,11 @@ public class PrintAdminController {
     /* ────────────── 任务 ────────────── */
 
     @PostMapping("/jobs")
-    @Operation(summary = "建打印任务")
+    @Operation(summary = "建打印任务（教职工即可）")
     public Result<PrintJob> createJob(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestBody Map<String, Object> body) {
-        User u = requireAdmin(auth);
+        User u = requireStaff(auth);
         String stationId = String.valueOf(body.get("stationId"));
         String sourceType = String.valueOf(body.get("sourceType"));
         String sourceId = String.valueOf(body.get("sourceId"));

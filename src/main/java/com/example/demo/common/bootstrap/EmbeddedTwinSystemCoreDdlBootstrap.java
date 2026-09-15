@@ -87,6 +87,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-system-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-login-branding-invite-chat.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-admin-file-template.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-admin-file-template-purpose.sql", ctx)) success++;
 
         // --- 打印工位 ---
         total++; if (runScript("db/bootstrap-print-station.sql", ctx)) success++;
@@ -153,6 +154,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-learning-material.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-node.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-document.sql", ctx)) success++;
+        // 回填要放在 sop_document 与 learning_material 建表之后，否则子查询找不到表
+        total++; if (runScript("db/bootstrap-admin-file-template-purpose-backfill.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-health-survey.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-drop-aro-training.sql", ctx)) success++;

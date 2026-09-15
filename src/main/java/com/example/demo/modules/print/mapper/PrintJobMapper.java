@@ -93,6 +93,18 @@ public class PrintJobMapper {
                 status, error, jobId, stationId, PrintJob.STATUS_SENT);
     }
 
+    /**
+     * 超时未回执的候选 id。先查后改，是为了能逐个报「哪个任务失败了」——
+     * failTimedOut 只回条数，通知要的是人话。
+     * 与 failTimedOut 同一判据、同一索引（idx_print_job_status_sent）。
+     */
+    public List<String> findTimedOutIds(int minutes) {
+        return jdbc.queryForList(
+                "SELECT id FROM print_job WHERE status = ? AND sent_at IS NOT NULL"
+              + "   AND sent_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)",
+                String.class, PrintJob.STATUS_SENT, minutes);
+    }
+
     /** 超时未回执 → FAILED。走 idx_print_job_status_sent，不全表扫。 */
     public int failTimedOut(int minutes) {
         return jdbc.update(

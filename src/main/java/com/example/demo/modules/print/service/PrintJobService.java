@@ -30,10 +30,14 @@ public class PrintJobService {
 
     private final PrintJobMapper mapper;
     private final PrintStationService stationService;
+    private final PrintNotifyService notifyService;
 
-    public PrintJobService(PrintJobMapper mapper, PrintStationService stationService) {
+    public PrintJobService(PrintJobMapper mapper,
+                           PrintStationService stationService,
+                           PrintNotifyService notifyService) {
         this.mapper = mapper;
         this.stationService = stationService;
+        this.notifyService = notifyService;
     }
 
     /** 建单。工位必须存在且启用 —— 否则任务建了也永远没人领。 */
@@ -77,12 +81,20 @@ public class PrintJobService {
         return null;
     }
 
-    /** 回执。ok 为真落 PRINTED，为假落 FAILED 并记原因。 */
+    /** 回执。ok 为真落 PRINTED，为假落 FAILED 并记原因，并发一条失败提醒。 */
     public boolean acknowledge(String jobId, String stationId, boolean ok, String error) {
         String status = ok ? PrintJob.STATUS_PRINTED : PrintJob.STATUS_FAILED;
         String err = ok ? null
                 : (error == null || error.isBlank() ? "工位报告打印失败" : error.trim());
-        return mapper.acknowledge(jobId, stationId, status, err) == 1;
+        if (mapper.acknowledge(jobId, stationId, status, err) != 1) {
+            return false;
+        }
+        // 通知放在状态落库之后：PushService 是同步外部 IO，不该被包进状态迁移里。
+        // 重复回执在上面已经被挡掉，所以不会重复发。
+        if (!ok) {
+            mapper.findById(jobId).ifPresent(j -> notifyService.notifyFailed(j, err));
+        }
+        return true;
     }
 
     public boolean retry(String jobId) {

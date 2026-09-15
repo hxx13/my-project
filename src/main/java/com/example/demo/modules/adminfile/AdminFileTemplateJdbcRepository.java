@@ -26,18 +26,23 @@ public class AdminFileTemplateJdbcRepository {
             "createTime", rs.getTimestamp("create_time").toInstant().toString()
     );
 
-    public void insert(String id, String originalName, String storageKey, String mimeType, long sizeBytes, String uploadedByUserId) {
+    public void insert(String id, String originalName, String storageKey, String mimeType,
+                       long sizeBytes, String uploadedByUserId, String purpose) {
         jdbc.update(
-                "INSERT INTO admin_file_template(id, original_name, storage_key, mime_type, size_bytes, uploaded_by_user_id) VALUES(?,?,?,?,?,?)",
-                id, originalName, storageKey, mimeType == null ? "" : mimeType, sizeBytes, uploadedByUserId
+                "INSERT INTO admin_file_template(id, original_name, storage_key, mime_type, size_bytes, uploaded_by_user_id, purpose) VALUES(?,?,?,?,?,?,?)",
+                id, originalName, storageKey, mimeType == null ? "" : mimeType, sizeBytes,
+                uploadedByUserId, purpose == null ? "" : purpose
         );
     }
 
-    public List<Map<String, Object>> listAll() {
-        return jdbc.query(
-                "SELECT id, original_name, mime_type, size_bytes, uploaded_by_user_id, create_time FROM admin_file_template ORDER BY create_time DESC",
-                ROW
-        );
+    /** 按用途列出。purpose 为空表示不过滤（兼容未打标的存量行）。 */
+    public List<Map<String, Object>> listByPurpose(String purpose) {
+        String sql = "SELECT id, original_name, mime_type, size_bytes, uploaded_by_user_id, create_time"
+                + " FROM admin_file_template";
+        if (purpose == null || purpose.isBlank()) {
+            return jdbc.query(sql + " ORDER BY create_time DESC", ROW);
+        }
+        return jdbc.query(sql + " WHERE purpose = ? ORDER BY create_time DESC", ROW, purpose);
     }
 
     public Optional<Map<String, Object>> findById(String id) {
