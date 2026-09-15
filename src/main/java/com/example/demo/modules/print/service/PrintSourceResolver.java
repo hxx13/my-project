@@ -37,12 +37,24 @@ public class PrintSourceResolver {
             Optional<Map<String, Object>> row =
                     adminFileTemplateService.findForDownload(job.getSourceId());
             if (row.isEmpty()) return Optional.empty();
-            String storageKey = (String) row.get().get("storageKey");
+            // 优先取转换出来的 PDF：Word/Excel 走的就是这一条。
+            // 工位只会渲染 PDF 和图片，原样的 .docx 它打不了。
+            String storageKey = preferConvertedPdf(row.get());
             if (storageKey == null) return Optional.empty();
             try (InputStream in = adminFileTemplateService.openDownloadStream(storageKey)) {
                 return Optional.of(in.readAllBytes());
             }
         }
         return Optional.empty();
+    }
+
+    /** 有转换产物就用它，否则用原文件。 */
+    private static String preferConvertedPdf(Map<String, Object> row) {
+        Object pdfKey = row.get("pdfStorageKey");
+        if (pdfKey != null && !String.valueOf(pdfKey).isBlank()) {
+            return String.valueOf(pdfKey);
+        }
+        Object key = row.get("storageKey");
+        return key == null ? null : String.valueOf(key);
     }
 }

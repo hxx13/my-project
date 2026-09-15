@@ -100,7 +100,12 @@ export default function AdminFileTemplatesPage() {
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
               <Upload className="h-4 w-4" />
               上传模板
-              <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
+              <input
+              type="file"
+              className="hidden"
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf"
+              onChange={(ev) => void onUpload(ev)}
+            />
             </label>
             <TempPrintButton />
             <PrintQueueButton />

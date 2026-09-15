@@ -31,7 +31,7 @@ export function TempPrintButton() {
         ref={fileRef}
         type="file"
         className="hidden"
-        accept=".pdf,.png,.jpg,.jpeg"
+        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.rtf"
         onChange={onFile}
       />
       <button

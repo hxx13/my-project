@@ -15,7 +15,7 @@ import {
   type PrintJob,
 } from "@/api/domains/print.api";
 import { PdfPrintCanvas } from "@/features/print-station/PdfPrintCanvas";
-import { printKindOf, UNSUPPORTED_PRINT_HINT } from "@/features/print-station/printableTypes";
+import { sniffBlobKind } from "@/features/print-station/printableTypes";
 import { printStatusOf } from "@/features/print-station/printStatus";
 
 /**
@@ -26,10 +26,6 @@ const POLL_MS = 15000;
 
 /** 等 afterprint 的兜底上限：万一某些环境不派发该事件，也不能把工位卡死 */
 const PRINT_SETTLE_MS = 8000;
-
-function isPdf(job: PrintJob): boolean {
-  return printKindOf(job.fileName) === "pdf";
-}
 
 function fmtTime(v: string | null | undefined) {
   if (!v) return "";
@@ -62,6 +58,11 @@ export default function PrintStationPage() {
   const [current, setCurrent] = useState<PrintJob | null>(null);
   const [file, setFile] = useState<Blob | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  /**
+   * 收到的文件按**内容**判定的类型。
+   * 不能看扩展名：Word 在上传时已被服务端转成 PDF，但 file_name 还是 .docx。
+   */
+  const [blobKind, setBlobKind] = useState<"pdf" | "image" | null>(null);
   const [recent, setRecent] = useState<PrintJob[]>([]);
   const [pending, setPending] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -129,6 +130,7 @@ export default function PrintStationPage() {
       } else {
         setCurrent(null);
         setFile(null);
+        setBlobKind(null);
         setImageUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return null;
@@ -155,31 +157,34 @@ export default function PrintStationPage() {
       // 新任务来了才替换掉上一件残留的打印内容
       setLastPrinted(false);
       setCurrent(job);
+      setBlobKind(null);
       setImageUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
       setFile(null);
       setMessage(`正在准备 ${job.fileName}`);
-      // 非 PDF/图片当场拒掉并回执。硬走下去只会卡在 SENT，后台什么都看不到
-      // —— 存量库里还有上传限制之前留下的 .docx/.xlsx。
-      if (printKindOf(job.fileName) === "unsupported") {
-        await settle(job, false, UNSUPPORTED_PRINT_HINT);
-        return;
-      }
+      // 这里不按文件名判断 —— Word/Excel 在上传时已被服务端转成 PDF，
+      // 但 file_name 还是 .docx，看扩展名会把一个真 PDF 判成"不支持"。
       try {
         const blob = await fetchPrintJobFile(job.id);
-        // 服务端在文件已不存在时会回一段 JSON 业务错误（HTTP 200 + success:false），
-        // 而这里拿的是 blob，不校验就会把它喂给 pdf.js，报出个驴唇不对马嘴的
-        // 「Invalid PDF structure」。先看魔数，把真实原因说出来。
-        // （一次性打印的文件打完即删，重推必然走到这条路上。）
-        if (isPdf(job) && blob.size > 0) {
-          const head = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
-          if (String.fromCharCode(...head) !== "%PDF-") {
-            await settle(job, false, "源文件已不存在（一次性打印的文件打完即删，无法重推）");
-            return;
-          }
+        const kind = await sniffBlobKind(blob);
+        if (kind === "unsupported") {
+          // 服务端在文件已不存在时回的是 JSON 业务错误（HTTP 200 + success:false）。
+          // 不辨别就喂给 pdf.js，会报出驴唇不对马嘴的「Invalid PDF structure」。
+          // JSON 以 { 开头，据此把两种原因分开说。
+          const head = new Uint8Array(await blob.slice(0, 1).arrayBuffer());
+          const looksJson = head[0] === 0x7b;
+          await settle(
+            job,
+            false,
+            looksJson
+              ? "源文件已不存在（一次性打印的文件打完即删，无法重推）"
+              : "收到的内容既不是 PDF 也不是图片，无法打印",
+          );
+          return;
         }
+        setBlobKind(kind);
         setFile(blob);
       } catch (e) {
         await settle(job, false, e instanceof Error ? e.message : "取文件失败");
@@ -294,11 +299,11 @@ export default function PrintStationPage() {
 
   // 图片走 <img> 路径：转成 objectURL 等 onLoad 后再打
   useEffect(() => {
-    if (!current || !file || isPdf(current)) return;
+    if (!current || !file || blobKind !== "image") return;
     const url = URL.createObjectURL(file);
     setImageUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [current, file]);
+  }, [current, file, blobKind]);
 
   useEffect(() => {
     void refreshRecent();
@@ -341,7 +346,7 @@ export default function PrintStationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const printable = Boolean(current && (isPdf(current) ? file : imageUrl));
+  const printable = Boolean(current && file) && (blobKind === "pdf" || Boolean(imageUrl));
   const copies = current?.copies ?? 1;
 
   return (
@@ -351,7 +356,7 @@ export default function PrintStationPage() {
             输出与这块 DOM 无关 —— 这里纯粹是给人看的，打不打得到它说了不算。 */}
         {printable && current ? (
           <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3">
-            {isPdf(current) && file ? (
+            {blobKind === "pdf" && file ? (
               <PdfPrintCanvas
                 blob={file}
                 onReady={(urls) => void onPrintableReady(urls)}

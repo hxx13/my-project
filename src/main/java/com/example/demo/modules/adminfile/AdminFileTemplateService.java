@@ -29,27 +29,33 @@ public class AdminFileTemplateService {
                     + "（缺站点/推荐码/站内信表时一并执行 scripts/login_branding_invite_chat.ddl.sql）；说明见 scripts/DEPLOY_DDL.md。";
 
     /**
-     * 只收 PDF 和图片。
+     * 收 PDF、图片，以及**能被 LibreOffice 转成 PDF 的** Office 文档。
      *
-     * 浏览器渲染不了 Office 文档，工位页要把文件画成 canvas 才能静默打印，
-     * 所以 Word/Excel 一律不收 —— 让上传的人先另存为 PDF，比在服务端引一套
-     * 转换链（LibreOffice + 中文字体）划算得多。
+     * 浏览器渲染不了 Word/Excel，工位页必须拿到 PDF 或图片才能静默打印，
+     * 所以 Office 文档在上传时就转换掉、PDF 存一份在旁边（见 {@code pdf_storage_key}），
+     * 打印链路永远只吃 PDF。
+     *
+     * 不收的类型（zip / txt 等）**故意不转换** —— 它们转不出有意义的版面。
      */
     private static final Set<String> ALLOWED_EXT = new HashSet<>(Arrays.asList(
-            "pdf", "png", "jpg", "jpeg"
+            "pdf", "png", "jpg", "jpeg",
+            "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf"
     ));
 
     private final AdminFileTemplateJdbcRepository repo;
     private final AdminFileTemplateLocalStorage storage;
+    private final OfficeToPdfConverter officeConverter;
     private final long maxBytes;
 
     public AdminFileTemplateService(
             AdminFileTemplateJdbcRepository repo,
             AdminFileTemplateLocalStorage storage,
+            OfficeToPdfConverter officeConverter,
             @Value("${app.admin.template-max-bytes:26214400}") long maxBytes
     ) {
         this.repo = repo;
         this.storage = storage;
+        this.officeConverter = officeConverter;
         this.maxBytes = Math.max(1024, maxBytes);
     }
 
@@ -107,12 +113,32 @@ public class AdminFileTemplateService {
         String storageKey = id + "/" + innerName;
         byte[] bytes = file.getBytes();
         storage.put(storageKey, bytes);
+
+        // Office 文档在上传时就转一份 PDF 存在旁边：打印链路永远只吃 PDF，一行都不用改。
+        // 转换失败**直接拒掉这次上传** —— 不静默降级成「文件存下来了但打不了」，
+        // 那种情况用户要等到真去打印时才发现，而且会以为是打印机的锅。
+        String pdfStorageKey = null;
+        if (OfficeToPdfConverter.isOfficeExt(ext)) {
+            byte[] pdf;
+            try {
+                pdf = officeConverter.convert(bytes, ext);
+            } catch (IOException e) {
+                storage.deleteIfExists(storageKey);
+                log.warn("[admin-file-template] 文档转换失败 name={}: {}", original, e.getMessage());
+                throw new IllegalArgumentException("文档转换失败：" + e.getMessage()
+                        + "。服务端需要安装 LibreOffice 与中文字体。");
+            }
+            pdfStorageKey = id + "/" + UUID.randomUUID().toString().replace("-", "") + ".pdf";
+            storage.put(pdfStorageKey, pdf);
+        }
+
         String mime = StringUtils.hasText(file.getContentType()) ? file.getContentType() : "application/octet-stream";
         String tag = normalizePurpose(purpose);
         try {
-            repo.insert(id, original, storageKey, mime, bytes.length, uploadedByUserId, tag, ephemeral);
+            repo.insert(id, original, storageKey, mime, bytes.length, uploadedByUserId, tag, ephemeral, pdfStorageKey);
         } catch (BadSqlGrammarException ex) {
             storage.deleteIfExists(storageKey);
+            storage.deleteIfExists(pdfStorageKey);
             log.warn("[admin-file-template] 写入元数据失败: {}", ex.getMessage());
             throw new IllegalArgumentException(MISSING_TABLE_HINT);
         }
@@ -125,6 +151,7 @@ public class AdminFileTemplateService {
         row.put("uploadedByUserId", uploadedByUserId);
         row.put("purpose", tag);
         row.put("ephemeral", ephemeral);
+        row.put("converted", pdfStorageKey != null);
         row.put("createTime", now);
         return row;
     }
@@ -199,13 +226,18 @@ public class AdminFileTemplateService {
             return;
         }
         String storageKey = (String) row.get().get("storageKey");
+        Object pdfKey = row.get().get("pdfStorageKey");
         try {
             repo.deleteById(id);
         } catch (BadSqlGrammarException ex) {
             log.warn("[admin-file-template] 删除记录失败: {}", ex.getMessage());
             throw new IllegalArgumentException(MISSING_TABLE_HINT);
         }
+        // 原文件和转换出来的 PDF 都要清掉 —— 只删一个会留下孤儿文件
         storage.deleteIfExists(storageKey);
+        if (pdfKey != null && !String.valueOf(pdfKey).isBlank()) {
+            storage.deleteIfExists(String.valueOf(pdfKey));
+        }
     }
 
     public java.io.InputStream openDownloadStream(String storageKey) throws java.io.IOException {
