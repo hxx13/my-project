@@ -7,9 +7,19 @@ import { fetchSopTree, type SopDocument } from "@/api/domains/sop.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { cn } from "@/lib/utils";
-import { buildSopTree, documentsOfNode, formatBytes, sopNodePath, type SopTreeNode } from "./sopTree";
+import { buildSopTree, documentsOfNode, formatBytes, sopNodePath, subtreeDocCounts, type SopTreeNode } from "./sopTree";
 import SopViewer from "./components/SopViewer";
 import SopManageDrawer from "./components/SopManageDrawer";
+
+/**
+ * Tree 节点行在「缩进 d*8」之外还有一段固定前缀：
+ * `[展开箭头 24px] gap4 [计数槽 18px] gap4` = 50px，之后才是图标与名称。
+ * 文档行没有箭头和计数槽，得补上同样的前缀，图标才能和**同级子文件夹的图标**对齐；
+ * 不补的话文档会卡在「父文件夹箭头」和「同级文件夹图标」中间，看着哪一层都不像。
+ *
+ * 这个数值和 Tree.tsx 的节点行布局是耦合的 —— 那边改了宽度，这里要跟着改。
+ */
+const TREE_ROW_PREFIX_PX = 50;
 
 /**
  * SOP 操作：左「分类文档列表」+ 右「带水印的 PDF 阅读器」，右上角进管理抽屉。
@@ -55,6 +65,8 @@ export default function SopPage() {
   );
 
   const unfiled = useMemo(() => documentsOfNode(documents, null), [documents]);
+  /** 角标用「含子孙」的文档数：只数直接子项的话，一个只放了子分类的文件夹角标是空的，看着像没内容 */
+  const docCounts = useMemo(() => subtreeDocCounts(nodes, documents), [nodes, documents]);
 
   const role = authStorage.getRole() || "MEMBER";
   const canManage = hasMinRole(role, "ADMIN");
@@ -81,7 +93,7 @@ export default function SopPage() {
         type="button"
         onClick={() => setSelectedDocId(doc.id)}
         title={doc.title}
-        style={{ paddingLeft: indent * 8 + 24 }}
+        style={{ paddingLeft: (indent + 1) * 8 + TREE_ROW_PREFIX_PX }}
         className={cn(
           "flex w-full items-center gap-1 rounded-[var(--app-radius-element)] py-1 pr-1.5 text-left transition",
           active
@@ -140,11 +152,18 @@ export default function SopPage() {
                     getId={(n) => n.id}
                     getName={(n) => n.name}
                     getChildren={(n) => n.children}
-                    getCount={(n) => documentsOfNode(documents, n.id).length || null}
+                    getCount={(n) => docCounts.get(n.id) || null}
+                    /* Tree 默认只把「有子节点」的算作可展开。只挂文档、没有子分类的文件夹，
+                       按默认就不可展开 —— 行点击永远不会展开它，而 onSelect 又能把它收起，
+                       于是「收起来就再也打不开」。所以凡是有文档的分类都要声明成可展开。 */
+                    expandable={(n) => n.children.length > 0 || documentsOfNode(documents, n.id).length > 0}
                     selectedId={selectedDoc?.nodeId ?? null}
                     expanded={expanded}
-                    onSelect={() => {
-                      /* 分类行只是容器：点它不该改变右栏，展开/收起由 Tree 自己的箭头与热区处理 */
+                    onSelect={(id) => {
+                      /* 只处理「点已展开的分类行 → 收起」。
+                         收起态的行点击，Tree 内部已经先 expandAndReveal 展开过了；
+                         这里若无条件再 toggle 一次就会和它抵消，变成点了没反应。 */
+                      if (expanded.has(id)) toggleExpand(id);
                     }}
                     onToggle={toggleExpand}
                     keyword={keyword}

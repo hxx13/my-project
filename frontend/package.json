@@ -61,6 +61,7 @@
     "motion": "^12.38.0",
     "ogl": "^1.0.11",
     "papaparse": "^5.5.3",
+    "pdfjs-dist": "^6.3.289",
     "qrcode.react": "^4.2.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.4",

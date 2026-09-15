@@ -5,7 +5,7 @@ import { ArrowLeft, FileWarning, Loader2 } from "lucide-react";
 import { fetchSopTree } from "@/api/domains/sop.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { useViewportHeight } from "@/pages/mobile/useViewportHeight";
-import SopPdfPane from "../components/SopPdfPane";
+import SopPdfCanvas from "../components/SopPdfCanvas";
 import { sopNodePath } from "../sopTree";
 
 /**
@@ -59,7 +59,7 @@ export default function MobileSopReaderPage() {
           </div>
         ) : doc ? (
           /* key 跟文档走：水印时间戳与缩放档位都在挂载时初始化，换文档必须重挂载 */
-          <SopPdfPane key={doc.id} doc={doc} viewerName={viewerName} />
+          <SopPdfCanvas key={doc.id} doc={doc} viewerName={viewerName} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
             <FileWarning className="size-9 text-gray-200 dark:text-gray-800" />
