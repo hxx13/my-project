@@ -57,6 +57,7 @@ public class PrintStationService {
         s.setUserId(uid);
         s.setPageSize(blankToNull(body.getPageSize()));
         s.setSupportedTypes(normalizeTypes(body.getSupportedTypes()));
+        s.setPrinterIp(blankToNull(body.getPrinterIp()));
         s.setEnabled(true);
         s.setCreatedBy(operatorId);
         mapper.insert(s);
@@ -79,6 +80,7 @@ public class PrintStationService {
         }
         s.setPageSize(blankToNull(body.getPageSize()));
         s.setSupportedTypes(normalizeTypes(body.getSupportedTypes()));
+        s.setPrinterIp(blankToNull(body.getPrinterIp()));
         s.setEnabled(body.isEnabled());
         mapper.update(s);
         return s;

@@ -8,6 +8,8 @@ public class PrintStation {
     private String pageSize;
     /** 支持的文件类型分组，逗号分隔：pdf/image/word/excel/ppt。null 或空 = 全支持 */
     private String supportedTypes;
+    /** 打印机 IP，纯记录用，不参与打印逻辑 */
+    private String printerIp;
     private boolean enabled;
     private String createdBy;
     private String createdAt;
@@ -26,6 +28,9 @@ public class PrintStation {
 
     public String getSupportedTypes() { return supportedTypes; }
     public void setSupportedTypes(String v) { this.supportedTypes = v; }
+
+    public String getPrinterIp() { return printerIp; }
+    public void setPrinterIp(String v) { this.printerIp = v; }
 
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean v) { this.enabled = v; }

@@ -119,6 +119,7 @@ public class PrintAdminController {
         out.put("userDisplayName", resolveDisplayName(s.getUserId()));
         out.put("pageSize", s.getPageSize());
         out.put("supportedTypes", s.getSupportedTypes());
+        out.put("printerIp", s.getPrinterIp());
         out.put("enabled", s.isEnabled());
         out.put("createdAt", s.getCreatedAt());
         return out;

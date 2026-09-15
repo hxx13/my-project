@@ -168,6 +168,8 @@ export interface AdminPrintStation {
   pageSize: string | null;
   /** 支持的文件类型分组，逗号分隔；null/空 = 全支持 */
   supportedTypes: string | null;
+  /** 打印机 IP，纯记录用，不参与打印逻辑 */
+  printerIp: string | null;
   enabled: boolean;
   createdAt?: string;
 }
@@ -184,6 +186,8 @@ export async function savePrintStation(body: {
   pageSize: string | null;
   /** 逗号分隔的类型分组；null = 全支持 */
   supportedTypes: string | null;
+  /** 打印机 IP，纯记录用 */
+  printerIp: string | null;
   enabled: boolean;
 }): Promise<AdminPrintStation | undefined> {
   if (body.id) {

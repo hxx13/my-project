@@ -32,6 +32,8 @@ interface FormState {
   name: string;
   account: AccountOption | null;
   pageSize: string;
+  /** 打印机 IP，纯记录用（现场排查时知道这台工位连的是哪台机器） */
+  printerIp: string;
   /** 勾选的类型分组。**全选 = 不限制**（存 null），与后端口径一致 */
   supportedTypes: FileGroup[];
   enabled: boolean;
@@ -43,6 +45,7 @@ const EMPTY_FORM: FormState = {
   name: "",
   account: null,
   pageSize: "",
+  printerIp: "",
   supportedTypes: [...ALL_GROUPS],
   enabled: true,
 };
@@ -77,6 +80,7 @@ export default function AdminPrintStationsPage() {
       // 编辑时只拿得到 userId，显示名由服务端补；补不到就退回 userId
       account: { id: s.userId, label: s.userDisplayName || s.userId },
       pageSize: s.pageSize ?? "",
+      printerIp: s.printerIp ?? "",
       supportedTypes: parseTypes(s.supportedTypes),
       enabled: s.enabled,
     });
@@ -102,6 +106,7 @@ export default function AdminPrintStationsPage() {
         name: editing.name.trim(),
         userId: editing.account.id,
         pageSize: editing.pageSize.trim() || null,
+        printerIp: editing.printerIp.trim() || null,
         // 全选 = 不限制，存 null（与后端一致）。否则存实际勾选的分组
         supportedTypes:
           editing.supportedTypes.length === ALL_GROUPS.length
@@ -189,6 +194,11 @@ export default function AdminPrintStationsPage() {
                         <Printer className="size-3.5 text-[var(--app-color-text-tertiary)]" />
                         {s.name}
                       </span>
+                      {s.printerIp ? (
+                        <div className="mt-0.5 text-[11px] text-[var(--app-color-text-tertiary)]">
+                          {s.printerIp}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
                       {s.userDisplayName || s.userId}
@@ -319,6 +329,20 @@ export default function AdminPrintStationsPage() {
                   placeholder="留空 = 用驱动默认；卡片机填 85.6mm 54mm"
                   onChange={(e) => setEditing({ ...editing, pageSize: e.target.value })}
                 />
+              </div>
+
+              <div>
+                <label className={labelCls}>打印机 IP（可选）</label>
+                <input
+                  className={inputCls}
+                  value={editing.printerIp}
+                  placeholder="如 172.22.138.6；只作记录，不影响打印"
+                  onChange={(e) => setEditing({ ...editing, printerIp: e.target.value })}
+                />
+                <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
+                  纯记录用 —— 现场排查「这台打不出来」时，先看它连的是哪台机器。
+                  打印仍然走这台工位电脑的默认打印机，后端不会按这个 IP 直接发送数据。
+                </p>
               </div>
 
               <div>
