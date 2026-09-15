@@ -61,7 +61,6 @@ import ScanSessionPage from "@/features/inventory/ScanSessionPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
 import AdminPrintStationsPage from "@/pages/AdminPrintStationsPage";
-import AdminPrintJobsPage from "@/pages/AdminPrintJobsPage";
 import AdminSopPage from "@/pages/AdminSopPage";
 import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
 import AdminDahuaSwingTasksPage from "@/pages/AdminDahuaSwingTasksPage";
@@ -375,8 +374,6 @@ export const router = createHashRouter([
               { path: "purchase-request", element: <PurchaseRequestPage /> },
               { path: "facility-maintenance", element: <AdminFacilityMaintenancePage /> },
               { path: "file-templates", element: <AdminFileTemplatesPage /> },
-              // 队列与历史：教职工都能看（发起打印的人要能查自己发的东西）
-              { path: "print-jobs", element: <AdminPrintJobsPage /> },
               // 打印工位：工位电脑常开此页。放在后台壳下，为的是有个侧栏入口，
               // 而不是让人记一个裸地址；打印时后台壳靠 index.css 的
               // @media print + body.print-station-active 屏蔽掉。

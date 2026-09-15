@@ -188,13 +188,13 @@ public class PrintAdminController {
     }
 
     @PostMapping("/jobs/{id}/cancel")
-    @Operation(summary = "撤回排队中的任务")
+    @Operation(summary = "撤回排队中的任务，或收掉失败的任务")
     public Result<Map<String, Object>> cancel(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @PathVariable String id) {
         requireStaff(auth);
         if (!jobService.cancel(id)) {
-            return Result.error("只有还在排队、没被打印机领走的任务才能撤回");
+            return Result.error("只有排队中和失败的任务能撤回；已经被打印机领走的撤不回来");
         }
         return Result.success(Map.of("ok", true));
     }

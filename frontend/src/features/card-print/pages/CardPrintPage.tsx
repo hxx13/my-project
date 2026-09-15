@@ -7,6 +7,7 @@ import { CardTemplateEditor } from "../components/CardTemplateEditor";
 import { CardPrintPanel, type CardPrintPanelHandle } from "../components/CardPrintPanel";
 import { CardArchivePanel } from "../components/CardArchivePanel";
 import { CardValueMapPanel } from "../components/CardValueMapPanel";
+import { PrintQueueButton } from "@/features/print-station/PrintQueueDialog";
 
 type Tab = "print" | "template" | "archive" | "valuemap";
 
@@ -100,6 +101,7 @@ export default function CardPrintPage() {
             <button type="button" className={BTN_PRIMARY} disabled={busy}
               title="先预览要打的内容，确认后再派给打印机"
               onClick={() => panelRef.current?.print()}>打印…</button>
+            <PrintQueueButton />
             {msg ? <span className="min-w-0 truncate text-[12px] text-[var(--app-color-text-secondary)]">{msg}</span> : null}
           </>
         ) : null}

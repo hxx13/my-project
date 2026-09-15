@@ -643,8 +643,8 @@ public class PagePermissionService {
         if (path.startsWith("/admin/print-stations")) {
             return "SUPER_ADMIN"; // 配置工位（绑哪个账号、哪台机器）
         }
-        if (path.startsWith("/admin/print-jobs") || path.startsWith("/admin/print-station")) {
-            return "STAFF";       // 发打印、看队列历史、工位机收任务
+        if (path.startsWith("/admin/print-station")) {
+            return "STAFF";       // 发打印、工位机收任务（队列已改为弹窗，无独立页面）
         }
         // ── ADMIN ──
         if (path.startsWith("/admin/supplies/audit-export")) {

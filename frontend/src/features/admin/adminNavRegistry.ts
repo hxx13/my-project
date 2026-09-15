@@ -647,17 +647,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/print-stations", "SUPER_ADMIN"),
       },
       {
-        // 队列与历史：发起打印的人要能查自己发的东西，所以 STAFF 可见
-        id: "print-jobs",
-        path: "/admin/print-jobs",
-        label: "打印队列",
-        icon: ClipboardList,
-        homeTone: "from-teal-400 to-cyan-500",
-        fallbackMinRole: "STAFF",
-        alias: ["打印队列", "打印历史", "打印记录", "queue", "print jobs"],
-        sidebarVisible: (ctx) => show(ctx, "/admin/print-jobs", "STAFF"),
-      },
-      {
         // 打印工位：工位电脑常开此页收任务。它是「打印机那一端」，
         // 和上面那个「发任务那一端」是两回事，所以单独一个入口。
         id: "print-station",
@@ -938,7 +927,6 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p.startsWith("/admin/asset-") ||
     p === "/admin/file-templates" ||
     p === "/admin/print-stations" ||
-    p === "/admin/print-jobs" ||
     p === "/admin/print-station" ||
     p === "/admin/sop" ||
     p === "/admin/analytics" ||

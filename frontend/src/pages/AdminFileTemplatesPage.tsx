@@ -17,6 +17,7 @@ import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { PrintButton } from "@/features/print-station/PrintButton";
 import { TempPrintButton } from "@/features/print-station/TempPrintButton";
+import { PrintQueueButton } from "@/features/print-station/PrintQueueDialog";
 
 import { appConfirm } from "@/lib/appDialog";
 function fmtBytes(n: number) {
@@ -102,6 +103,7 @@ export default function AdminFileTemplatesPage() {
               <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
             </label>
             <TempPrintButton />
+            <PrintQueueButton />
           </div>
         ) : null}
       </div>

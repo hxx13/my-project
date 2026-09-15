@@ -100,13 +100,20 @@ public class PrintJobMapper {
     }
 
     /**
-     * 撤回：只有还没被工位领走的才能撤。
-     * 领走之后（SENT）就撤不回来了 —— 那已经交给工位页和它那台机器了。
+     * 撤回 / 收掉一条任务。可撤的状态只有两种：
+     * - `PENDING`：还没被工位领走，撤了就不会打
+     * - `FAILED`：打失败了，用户处理完想把它从队列里清掉
+     *
+     * `SENT` 撤不了 —— 活已经在那台机器上了，改数据库也拦不住。
+     *
+     * **刻意不动 last_error**：失败原因要留着，否则「为什么失败」这条信息
+     * 就被一次"收掉"操作抹掉了。
      */
     public int cancel(String jobId) {
         return jdbc.update(
-                "UPDATE print_job SET status = ?, last_error = ? WHERE id = ? AND status = ?",
-                PrintJob.STATUS_CANCELLED, "已撤回", jobId, PrintJob.STATUS_PENDING);
+                "UPDATE print_job SET status = ? WHERE id = ? AND status IN (?,?)",
+                PrintJob.STATUS_CANCELLED, jobId,
+                PrintJob.STATUS_PENDING, PrintJob.STATUS_FAILED);
     }
 
     /** 回执：只有 SENT 态的任务能落终态。返回 0 表示任务不在可回执状态。 */
