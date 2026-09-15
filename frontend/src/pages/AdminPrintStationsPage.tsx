@@ -101,83 +101,97 @@ export default function AdminPrintStationsPage() {
   };
 
   return (
-    <AdminPageShell
-      title="打印工位"
-      description="一个工位 = 一台电脑 + 一台打印机 + 一个专用账号。配好后，普通人员在发起打印时只需从下拉里选打印机。"
-      actions={
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]"
-        >
-          <Plus className="size-4" />
-          新建工位
-        </button>
-      }
-    >
-      <AdminTableShell
-        loading={isLoading}
-        error={error ? (error instanceof Error ? error.message : "加载失败") : null}
-        onRetry={() => void refetch()}
-        empty={rows.length === 0}
-        emptyMessage="还没有打印工位。点右上角「新建工位」添加第一台。"
-      >
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-[var(--app-color-surface-container)] text-xs text-[var(--app-color-text-secondary)]">
-            <tr>
-              <th className="px-3 py-2">工位名</th>
-              <th className="px-3 py-2">打印者账号</th>
-              <th className="px-3 py-2">纸张尺寸</th>
-              <th className="px-3 py-2">状态</th>
-              <th className="px-3 py-2 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.id} className="border-t border-[var(--app-color-border-default)]">
-                <td className="px-3 py-2">
-                  <span className="inline-flex items-center gap-1.5 font-medium text-[var(--app-color-text-primary)]">
-                    <Printer className="size-3.5 text-[var(--app-color-text-tertiary)]" />
-                    {s.name}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
-                  {s.userDisplayName || s.userId}
-                </td>
-                <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
-                  {s.pageSize || <span className="text-[var(--app-color-text-tertiary)]">驱动默认</span>}
-                </td>
-                <td className="px-3 py-2">
-                  <span className="review-status" data-tone={s.enabled ? "ok" : "none"}>
-                    {s.enabled ? "启用中" : "已停用"}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex flex-wrap justify-end gap-3">
-                    <button
-                      type="button"
-                      className="text-xs font-medium text-[var(--app-color-text-primary)] hover:underline"
-                      onClick={() => openEdit(s)}
-                    >
-                      编辑
-                    </button>
-                    <AdminSensitiveAction label="删除打印工位" visibilityMinRole="ADMIN" configureMinRole="SUPER_ADMIN">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-xs font-medium text-[var(--app-color-feedback-error)]"
-                        onClick={() => void onDelete(s)}
-                      >
-                        <Trash2 className="size-3.5" />
-                        删除
-                      </button>
-                    </AdminSensitiveAction>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </AdminTableShell>
+    <AdminPageShell>
+      {/*
+        高度链：外层用显式 calc 定死高度，工具栏固定、表格区内部滚动，整页不下滚。
+        不能用 AdminPageShell 的 fillHeight —— 它靠 h-full 吃父级高度，而后台布局
+        给的是 auto，h-full 会退化成内容高度，行一多整页就被撑开。
+        /console/admin/sop 与文件模板库都是显式 calc 这个写法。
+      */}
+      <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[320px] flex-col gap-3">
+        <div className="flex shrink-0 items-center justify-end">
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-1.5 rounded-md bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]"
+          >
+            <Plus className="size-4" />
+            新建工位
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+          <AdminTableShell
+            loading={isLoading}
+            error={error ? (error instanceof Error ? error.message : "加载失败") : null}
+            onRetry={() => void refetch()}
+            empty={rows.length === 0}
+            emptyMessage="还没有打印工位。点右上角「新建工位」添加第一台。"
+          >
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-[var(--app-color-surface-container)] text-xs text-[var(--app-color-text-secondary)]">
+                <tr>
+                  <th className="px-3 py-2">工位名</th>
+                  <th className="px-3 py-2">打印者账号</th>
+                  <th className="px-3 py-2">纸张尺寸</th>
+                  <th className="px-3 py-2">状态</th>
+                  <th className="px-3 py-2 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((s) => (
+                  <tr key={s.id} className="border-t border-[var(--app-color-border-default)]">
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-[var(--app-color-text-primary)]">
+                        <Printer className="size-3.5 text-[var(--app-color-text-tertiary)]" />
+                        {s.name}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
+                      {s.userDisplayName || s.userId}
+                    </td>
+                    <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
+                      {s.pageSize || (
+                        <span className="text-[var(--app-color-text-tertiary)]">驱动默认</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="review-status" data-tone={s.enabled ? "ok" : "none"}>
+                        {s.enabled ? "启用中" : "已停用"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap justify-end gap-3">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[var(--app-color-text-primary)] hover:underline"
+                          onClick={() => openEdit(s)}
+                        >
+                          编辑
+                        </button>
+                        <AdminSensitiveAction
+                          label="删除打印工位"
+                          visibilityMinRole="ADMIN"
+                          configureMinRole="SUPER_ADMIN"
+                        >
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--app-color-feedback-error)]"
+                            onClick={() => void onDelete(s)}
+                          >
+                            <Trash2 className="size-3.5" />
+                            删除
+                          </button>
+                        </AdminSensitiveAction>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </AdminTableShell>
+        </div>
+      </div>
 
       <Dialog open={editing !== null} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-md">
