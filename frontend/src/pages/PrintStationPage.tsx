@@ -76,6 +76,12 @@ export default function PrintStationPage() {
    */
   const [lastPrinted, setLastPrinted] = useState(false);
   /**
+   * 左侧预览是否展开。
+   * 新任务进来时自动展开（现场的人得看见要打的是什么），也可以收起，
+   * 把宽度让给右边的队列表格 —— 空闲时预览是纯占地方。
+   */
+  const [previewOpen, setPreviewOpen] = useState(true);
+  /**
    * 工位自身的配置拿不到时的原因。
    *
    * 这一条以前是静默的 —— 页面只显示一个红点，看不出到底是没登录、
@@ -156,6 +162,7 @@ export default function PrintStationPage() {
       claimed = true;
       // 新任务来了才替换掉上一件残留的打印内容
       setLastPrinted(false);
+      setPreviewOpen(true);
       setCurrent(job);
       setBlobKind(null);
       setImageUrl((prev) => {
@@ -352,34 +359,8 @@ export default function PrintStationPage() {
   return (
     <AdminPageShell>
       <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[420px] flex-col gap-3">
-        {/* 屏幕上给现场的人看的预览。真正的打印走独立 iframe（printViaIframe），
-            输出与这块 DOM 无关 —— 这里纯粹是给人看的，打不打得到它说了不算。 */}
-        {printable && current ? (
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3">
-            {blobKind === "pdf" && file ? (
-              <PdfPrintCanvas
-                blob={file}
-                onReady={(urls) => void onPrintableReady(urls)}
-                onError={(msg) => {
-                  // 渲染失败立刻回执 FAILED，而不是干等超时调度 ——
-                  // 否则后台只看到「超时未回执」，真正的原因留不下来。
-                  if (current) void settle(current, false, `PDF 渲染失败：${msg}`);
-                }}
-              />
-            ) : imageUrl ? (
-              <img
-                src={imageUrl}
-                alt=""
-                style={{ width: "100%", display: "block" }}
-                onLoad={() => void onPrintableReady([imageUrl])}
-              />
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* 屏幕上显示的状态面板 */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain print:hidden">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        {/* 顶栏：连接状态、排队数、预览开关。常驻不滚 */}
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
           <span className={`inline-block size-3 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
           <h1 className="text-lg font-semibold">打印工位{stationName ? `：${stationName}` : ""}</h1>
           <span className="text-sm opacity-60">{connected ? "已连接" : "未连接（仍在轮询兜底）"}</span>
@@ -390,10 +371,20 @@ export default function PrintStationPage() {
           ) : (
             <span className="text-[13px] opacity-50">队列是空的</span>
           )}
+          {/* 开关只在真的能预览时才出现 —— 没东西可预览就没得收 */}
+          {printable ? (
+            <button
+              type="button"
+              onClick={() => setPreviewOpen((v) => !v)}
+              className="ml-auto rounded-md border border-[var(--app-color-border-default)] px-3 py-1.5 text-[13px] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
+            >
+              {previewOpen ? "收起预览" : "展开预览"}
+            </button>
+          ) : null}
         </div>
 
         {stationError || !connected ? (
-          <div className="mb-4 rounded border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm">
+          <div className="shrink-0 rounded border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm">
             <div className="font-semibold text-red-700">这个页面现在不能收打印任务</div>
             {stationError ? <div className="mt-1 text-red-700">{stationError}</div> : null}
             <div className="mt-1 text-[12px] text-red-700">
@@ -413,8 +404,37 @@ export default function PrintStationPage() {
           </div>
         ) : null}
 
-        {message ? <div className="mb-4 rounded bg-gray-100 px-3 py-2 text-sm">{message}</div> : null}
+        {message ? <div className="shrink-0 rounded bg-gray-100 px-3 py-2 text-sm">{message}</div> : null}
 
+        {/* 左：预览（可收起）｜右：当前任务 + 队列。
+            预览收起时右栏自动占满整行 —— 空闲时预览纯占地方。
+            注意预览是纯给人看的：真正的打印走独立 iframe（printViaIframe），
+            输出与这块 DOM 无关，打不打得到它说了不算。 */}
+        <div className="flex min-h-0 flex-1 gap-3">
+          {printable && current && previewOpen ? (
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3">
+              {blobKind === "pdf" && file ? (
+                <PdfPrintCanvas
+                  blob={file}
+                  onReady={(urls) => void onPrintableReady(urls)}
+                  onError={(msg) => {
+                    // 渲染失败立刻回执 FAILED，而不是干等超时调度 ——
+                    // 否则后台只看到「超时未回执」，真正的原因留不下来。
+                    if (current) void settle(current, false, `PDF 渲染失败：${msg}`);
+                  }}
+                />
+              ) : imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  style={{ width: "100%", display: "block" }}
+                  onLoad={() => void onPrintableReady([imageUrl])}
+                />
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain">
         {/* 当前任务：现场的人靠这块知道手上这叠纸是什么 */}
         {current ? (
           <div
@@ -489,6 +509,7 @@ export default function PrintStationPage() {
             ) : null}
           </tbody>
         </table>
+          </div>
         </div>
       </div>
     </AdminPageShell>
