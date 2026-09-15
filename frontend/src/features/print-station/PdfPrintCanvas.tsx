@@ -60,13 +60,25 @@ export function PdfPrintCanvas({
         if (cancelled) return;
         setTotalPages(pdf.numPages);
 
-        // 固定 2 倍分辨率：打印不受屏幕尺寸影响
-        const SCALE = 2;
+        // 按 300 DPI 渲染 —— 打印标准。72pt = 1 英寸，所以 scale = 300/72 ≈ 4.17。
+        //
+        // 原先固定 2 倍，A4 只有 144 DPI，纸面上的小字明显发虚。
+        // 这条是打印出来才发现的：屏幕上看着"挺清楚"毫无参考价值 ——
+        // 我们送进打印机的是一张位图，位图分辨率就是画质的上限。
+        const TARGET_DPI = 300;
+        /** 单页像素上限：防大尺寸页面（A3 / 图纸）把内存吃爆 */
+        const MAX_PIXELS = 25_000_000;
+
         const out: { dataUrl: string }[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           if (cancelled) return;
           const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: SCALE });
+          const base = page.getViewport({ scale: 1 });
+          let scale = TARGET_DPI / 72;
+          if (base.width * scale * base.height * scale > MAX_PIXELS) {
+            scale = Math.sqrt(MAX_PIXELS / (base.width * base.height));
+          }
+          const viewport = page.getViewport({ scale });
           const canvas = document.createElement("canvas");
           canvas.width = Math.floor(viewport.width);
           canvas.height = Math.floor(viewport.height);
