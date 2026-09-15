@@ -10,6 +10,7 @@ import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.service.PrintJobPushService;
 import com.example.demo.modules.print.service.PrintJobService;
+import com.example.demo.modules.print.service.PrintJobViewAssembler;
 import com.example.demo.modules.print.service.PrintStationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,17 +37,20 @@ public class PrintAdminController {
     private final PrintJobPushService pushService;
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
+    private final PrintJobViewAssembler jobViewAssembler;
 
     public PrintAdminController(PrintStationService stationService,
                                 PrintJobService jobService,
                                 PrintJobPushService pushService,
                                 AuthContextService authContextService,
-                                UserDisplayNameService userDisplayNameService) {
+                                UserDisplayNameService userDisplayNameService,
+                                PrintJobViewAssembler jobViewAssembler) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.pushService = pushService;
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
+        this.jobViewAssembler = jobViewAssembler;
     }
 
     /** 配置打印工位（绑哪个账号、哪台机器）要最高权限。 */
@@ -148,7 +152,7 @@ public class PrintAdminController {
 
     @PostMapping("/jobs")
     @Operation(summary = "建打印任务（教职工即可）")
-    public Result<PrintJob> createJob(
+    public Result<Map<String, Object>> createJob(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestBody Map<String, Object> body) {
         User u = requireStaff(auth);
@@ -163,28 +167,28 @@ public class PrintAdminController {
         PrintJob job = jobService.create(stationId, sourceType, sourceId, fileName, copies,
                 u.getId(), note, priority);
         stationService.findById(stationId).ifPresent(st -> pushService.notifyNewJob(st, job.getId()));
-        return Result.success(job);
+        return Result.success(jobViewAssembler.toView(job));
     }
 
     @GetMapping("/jobs/queue")
     @Operation(summary = "队列：还没结束的任务")
-    public Result<List<PrintJob>> queue(
+    public Result<List<Map<String, Object>>> queue(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(required = false) String stationId,
             @RequestParam(defaultValue = "100") int limit) {
         requireStaff(auth);
-        return Result.success(jobService.listQueue(stationId, limit));
+        return Result.success(jobViewAssembler.toViews(jobService.listQueue(stationId, limit)));
     }
 
     @GetMapping("/jobs/history")
     @Operation(summary = "历史：全部状态，可按工位与状态筛")
-    public Result<List<PrintJob>> history(
+    public Result<List<Map<String, Object>>> history(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(required = false) String stationId,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "200") int limit) {
         requireStaff(auth);
-        return Result.success(jobService.listHistory(stationId, status, limit));
+        return Result.success(jobViewAssembler.toViews(jobService.listHistory(stationId, status, limit)));
     }
 
     @PostMapping("/jobs/{id}/cancel")
@@ -201,11 +205,11 @@ public class PrintAdminController {
 
     @GetMapping("/jobs")
     @Operation(summary = "任务列表")
-    public Result<List<PrintJob>> listJobs(
+    public Result<List<Map<String, Object>>> listJobs(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(defaultValue = "100") int limit) {
         requireStaff(auth);
-        return Result.success(jobService.listAll(limit));
+        return Result.success(jobViewAssembler.toViews(jobService.listAll(limit)));
     }
 
     @PostMapping("/jobs/{id}/retry")

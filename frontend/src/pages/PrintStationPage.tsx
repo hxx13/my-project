@@ -431,7 +431,7 @@ export default function PrintStationPage() {
               <div className="mt-1 text-[13px] text-gray-700">备注：{current.note}</div>
             ) : null}
             <div className="mt-1 text-[12px] text-gray-500">
-              派发人 {current.createdBy ?? "—"} · {fmtTime(current.createdAt)}
+              派发人 {current.createdByName || current.createdBy || "—"} · {fmtTime(current.createdAt)}
             </div>
           </div>
         ) : null}

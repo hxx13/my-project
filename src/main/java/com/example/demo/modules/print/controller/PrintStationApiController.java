@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.service.PrintJobService;
+import com.example.demo.modules.print.service.PrintJobViewAssembler;
 import com.example.demo.modules.print.service.PrintSourceResolver;
 import com.example.demo.modules.print.service.PrintStationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,15 +37,18 @@ public class PrintStationApiController {
     private final PrintJobService jobService;
     private final PrintSourceResolver sourceResolver;
     private final AuthContextService authContextService;
+    private final PrintJobViewAssembler jobViewAssembler;
 
     public PrintStationApiController(PrintStationService stationService,
                                      PrintJobService jobService,
                                      PrintSourceResolver sourceResolver,
-                                     AuthContextService authContextService) {
+                                     AuthContextService authContextService,
+                                     PrintJobViewAssembler jobViewAssembler) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.sourceResolver = sourceResolver;
         this.authContextService = authContextService;
+        this.jobViewAssembler = jobViewAssembler;
     }
 
     private User requireUser(String authHeader) {
@@ -89,10 +93,11 @@ public class PrintStationApiController {
     /** 原子领一条。无可领时 data 为 null。 */
     @PostMapping("/jobs/claim")
     @Operation(summary = "领取一条待打印任务")
-    public Result<PrintJob> claim(
+    public Result<Map<String, Object>> claim(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
         PrintStation station = requireStation(auth);
-        return Result.success(jobService.claimOne(station.getId()));
+        PrintJob job = jobService.claimOne(station.getId());
+        return Result.success(job == null ? null : jobViewAssembler.toView(job));
     }
 
     @PostMapping("/jobs/{id}/ack")
@@ -131,11 +136,11 @@ public class PrintStationApiController {
     /** 工位页展示用的历史记录。 */
     @GetMapping("/my-jobs")
     @Operation(summary = "本工位任务记录")
-    public Result<List<PrintJob>> myJobs(
+    public Result<List<Map<String, Object>>> myJobs(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(defaultValue = "20") int limit) {
         PrintStation station = requireStation(auth);
-        return Result.success(jobService.listByStation(station.getId(), limit));
+        return Result.success(jobViewAssembler.toViews(jobService.listByStation(station.getId(), limit)));
     }
 
     /** 还排着几条。工位页靠它告诉现场的人「后面还有多少」。 */

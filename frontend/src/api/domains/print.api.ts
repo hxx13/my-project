@@ -31,6 +31,8 @@ export interface PrintJob {
   lastError: string | null;
   /** 派发人的 user.id */
   createdBy: string | null;
+  /** 派发人显示名，**由服务端解析好**再返回（前端不碰裸 id） */
+  createdByName: string;
   createdAt: string;
   sentAt: string | null;
   printedAt: string | null;
