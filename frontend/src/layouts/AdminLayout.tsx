@@ -23,6 +23,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
+import { PrintEntryButton } from "@/features/print-station/PrintEntryButton";
 import { toast } from "react-hot-toast";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { isIamAuthProfile, redirectIamGlobalLogout } from "@/features/auth/iamOAuth";
@@ -1206,6 +1207,8 @@ export default function AdminLayout() {
               >
                 <Smartphone className="h-4 w-4" />
               </button>
+              {/* 打印：挨着手机版放，跟全屏/手机版同属「换一种用法」那一组 */}
+              <PrintEntryButton />
               <PageHelpHost pagePath={pathname} variant="admin" suppressAutoIntro={pendingLockRedirect} />
               {hasMinRole(role, "SUPER_ADMIN") ? (
                 <button
