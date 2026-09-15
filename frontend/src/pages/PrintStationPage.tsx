@@ -167,6 +167,17 @@ export default function PrintStationPage() {
       }
       try {
         const blob = await fetchPrintJobFile(job.id);
+        // 服务端在文件已不存在时会回一段 JSON 业务错误（HTTP 200 + success:false），
+        // 而这里拿的是 blob，不校验就会把它喂给 pdf.js，报出个驴唇不对马嘴的
+        // 「Invalid PDF structure」。先看魔数，把真实原因说出来。
+        // （一次性打印的文件打完即删，重推必然走到这条路上。）
+        if (isPdf(job) && blob.size > 0) {
+          const head = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+          if (String.fromCharCode(...head) !== "%PDF-") {
+            await settle(job, false, "源文件已不存在（一次性打印的文件打完即删，无法重推）");
+            return;
+          }
+        }
         setFile(blob);
       } catch (e) {
         await settle(job, false, e instanceof Error ? e.message : "取文件失败");
