@@ -57,6 +57,42 @@ export function documentsOfNode(documents: SopDocument[], nodeId: number | null)
   return documents.filter((d) => d.nodeId === nodeId);
 }
 
+/**
+ * 每个分类**含子孙**的文档数。
+ *
+ * 角标要用这个而不是「直接子项数」：一个只放了子分类的文件夹，直接子项数是 0，
+ * 角标就是空的，看着像里面没东西；实际点开可能有一堆文档。
+ */
+export function subtreeDocCounts(nodes: SopNode[], documents: SopDocument[]): Map<number, number> {
+  const direct = new Map<number, number>();
+  for (const d of documents) {
+    if (d.nodeId != null) direct.set(d.nodeId, (direct.get(d.nodeId) ?? 0) + 1);
+  }
+  const childrenOf = new Map<number, SopNode[]>();
+  for (const n of nodes) {
+    if (n.parentId == null) continue;
+    const arr = childrenOf.get(n.parentId);
+    if (arr) arr.push(n);
+    else childrenOf.set(n.parentId, [n]);
+  }
+  const memo = new Map<number, number>();
+  /** 栈上正在算的节点，用来断开脏数据里的成环（A→B→A 会无限递归） */
+  const onStack = new Set<number>();
+  const count = (n: SopNode): number => {
+    const hit = memo.get(n.id);
+    if (hit != null) return hit;
+    if (onStack.has(n.id)) return 0;
+    onStack.add(n.id);
+    const kids = childrenOf.get(n.id) ?? [];
+    const total = (direct.get(n.id) ?? 0) + kids.reduce((s, c) => s + count(c), 0);
+    onStack.delete(n.id);
+    memo.set(n.id, total);
+    return total;
+  };
+  for (const n of nodes) count(n);
+  return memo;
+}
+
 /** 节点自己 + 整棵子树 —— 移动选择器要排除掉，否则能把分类挪进自己的子孙里（后端也会拒，前端先挡一道） */
 export function collectSopSubtreeIds(nodes: SopNode[], rootId: number): Set<number> {
   const childrenOf = new Map<number | null, number[]>();

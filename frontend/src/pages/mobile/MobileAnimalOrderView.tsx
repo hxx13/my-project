@@ -733,20 +733,18 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
         </div>
       )}
 
-      {/* 列表：下钻 + 侧边栏 */}
-      <div className="min-h-0 flex-1">
-        {drillStack.length === 0 ? (
-          <div className="h-full overflow-y-auto overscroll-y-contain px-2 pb-24 pt-2">{cardContent}</div>
-        ) : (
-          <SplitSidebarScrollLayout
-            sidebarClassName="flex w-24 shrink-0 flex-col border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
-            contentClassName="px-2 pt-1.5 pb-24"
-            sidebar={sidebarRail}
-          >
-            {cardContent}
-          </SplitSidebarScrollLayout>
-        )}
-      </div>
+      {/* 列表：下钻 + 侧边栏。直接挂在根 flex-col 下——中间夹任何非 flex 层都会让 flex-1 高度失效、右侧滚不动 */}
+      {drillStack.length === 0 ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 pb-24 pt-2">{cardContent}</div>
+      ) : (
+        <SplitSidebarScrollLayout
+          sidebarClassName="flex w-24 shrink-0 flex-col border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
+          contentClassName="px-2 pt-1.5 pb-24"
+          sidebar={sidebarRail}
+        >
+          {cardContent}
+        </SplitSidebarScrollLayout>
+      )}
 
       {/* 底部操作条 */}
       <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-2 border-t border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-2.5" style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom, 0px))" }}>

@@ -35,7 +35,12 @@ type SplitSidebarScrollLayoutProps = {
   contentClassName?: string;
 };
 
-/** 左侧分类/筛选 + 右侧列表：两侧均可独立滚动 */
+/**
+ * 左侧分类/筛选 + 右侧列表：两侧均可独立滚动。
+ *
+ * 必须直接作为 flex-col 容器的子节点，中间不能夹非 flex 的 div：
+ * 那样 flex-1 的高度会静默失效，右侧内容溢出被祖先 overflow-hidden 裁掉，表现为「滚不动」。
+ */
 export function SplitSidebarScrollLayout({
   sidebar,
   children,

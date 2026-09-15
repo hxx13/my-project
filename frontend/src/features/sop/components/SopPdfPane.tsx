@@ -15,7 +15,10 @@ const FROM_FIT_UP = 125;
 const FROM_FIT_DOWN = 80;
 
 /**
- * SOP 的 PDF 面板：iframe + 水印 + 缩放，桌面与 H5 共用（两边只是外壳不同）。
+ * SOP 的 PDF 面板（**仅桌面**）：iframe + 水印 + 缩放。
+ *
+ * H5 不走这里 —— iOS Safari 不内嵌渲染 blob PDF，只显示第一页且不分页，
+ * 手机端改用 `SopPdfCanvas`（pdf.js 画到 canvas）。
  *
  * 占满父容器，自身不画卡片边框/圆角 —— 桌面套圆角卡片、H5 直接通栏。
  *

@@ -3,13 +3,28 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Loader2, Search } from "lucide-react";
 import { fetchSopTree, type SopDocument, type SopNode } from "@/api/domains/sop.api";
-import { buildSopTree, documentsOfNode, formatBytes, sopNodePath, type SopTreeNode } from "../sopTree";
+import { buildSopTree, documentsOfNode, formatBytes, sopNodePath, subtreeDocCounts, type SopTreeNode } from "../sopTree";
+
+/** 展开态与「上次从哪个分类点进去的」都放 sessionStorage：返回列表要接着上次看，但不能跨标签页串味 */
+const EXPANDED_KEY = "sop-mobile-expanded";
+const RETURN_NODE_KEY = "sop-mobile-return-node";
+
+function readExpanded(): Set<number> {
+  try {
+    const raw = sessionStorage.getItem(EXPANDED_KEY);
+    if (!raw) return new Set();
+    const arr: unknown = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.filter((n): n is number => typeof n === "number")) : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
 /**
  * H5「SOP 操作」列表：**按分类分级折叠**，点文档进阅读器。
  *
- * 早先这里是「把所有文档按全路径拍平成若干分组标题」，理由是手机上少点展开。那是错的 ——
- * 拍平之后分类的层级关系就没了，深一层的东西看着和顶层并列。现在按真实树渲染，可逐级展开。
+ * 默认**全部收起**（只露顶层分类），展开态与「上次点进去的分类」记在 sessionStorage：
+ * 进阅读器再返回时，列表接着上次的展开状态，并滚回那个分类，不用从头翻。
  *
  * 搜索时**不刻意维持树形**：有关键词就直接列命中的文档（每条带上所属路径），
  * 因为没有「自动展开全部命中链」的话，命中项可能藏在收起的文件夹里根本看不见。
@@ -17,42 +32,54 @@ import { buildSopTree, documentsOfNode, formatBytes, sopNodePath, type SopTreeNo
 export default function MobileSopListPage() {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState("");
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [expanded, setExpanded] = useState<Set<number>>(readExpanded);
   const { data, isLoading, error } = useQuery({ queryKey: ["sop", "tree"], queryFn: fetchSopTree, staleTime: 30_000 });
 
   const nodes = data?.nodes ?? [];
   const documents = data?.documents ?? [];
   const tree = useMemo(() => buildSopTree(nodes), [nodes]);
   const unfiled = useMemo(() => documentsOfNode(documents, null), [documents]);
+  const subtreeDocCount = useMemo(() => subtreeDocCounts(nodes, documents), [nodes, documents]);
 
-  /** 每个分类**含子孙**的文档数：收起时看得到这个文件夹里总共几份，比只数直接子项有用 */
-  const subtreeDocCount = useMemo(() => {
-    const direct = new Map<number, number>();
-    for (const d of documents) if (d.nodeId != null) direct.set(d.nodeId, (direct.get(d.nodeId) ?? 0) + 1);
-    const memo = new Map<number, number>();
-    const count = (n: SopTreeNode): number => {
-      const hit = memo.get(n.id);
-      if (hit != null) return hit;
-      const total = (direct.get(n.id) ?? 0) + n.children.reduce((s, c) => s + count(c), 0);
-      memo.set(n.id, total);
-      return total;
-    };
-    for (const n of tree) count(n);
-    return memo;
-  }, [documents, tree]);
-
-  /** 首次拿到数据时展开前两层：整棵收起的话页面看着是空的，用户以为没内容 */
-  const initedRef = useRef(false);
   useEffect(() => {
-    if (initedRef.current || tree.length === 0) return;
-    const s = new Set<number>();
-    for (const n of tree) {
-      s.add(n.id);
-      for (const c of n.children) s.add(c.id);
+    try {
+      sessionStorage.setItem(EXPANDED_KEY, JSON.stringify([...expanded]));
+    } catch {
+      /* 隐私模式下写不进去，忽略即可 */
     }
-    setExpanded(s);
-    initedRef.current = true;
-  }, [tree]);
+  }, [expanded]);
+
+  /**
+   * 从阅读器返回时把位置还回来：展开该分类的祖先链，并把这一行滚进视野。
+   * 只做一次（`returnedRef`），否则用户手动收起后会被这条 effect 又弹开。
+   */
+  const returnedRef = useRef(false);
+  useEffect(() => {
+    if (returnedRef.current || tree.length === 0) return;
+    returnedRef.current = true;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(RETURN_NODE_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return; // 空串 = 未分类，没有可展开的分类
+    const nodeId = Number(raw);
+    if (!Number.isFinite(nodeId)) return;
+
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const chain: number[] = [];
+    let cur: SopNode | undefined = byId.get(nodeId);
+    for (let i = 0; cur && i < 64; i++) {
+      chain.push(cur.id);
+      cur = cur.parentId != null ? byId.get(cur.parentId) : undefined;
+    }
+    if (chain.length === 0) return;
+    setExpanded((p) => new Set([...p, ...chain]));
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-sop-node="${nodeId}"]`)?.scrollIntoView({ block: "center" });
+    });
+  }, [tree, nodes]);
 
   const toggle = (id: number) =>
     setExpanded((p) => {
@@ -61,6 +88,16 @@ export default function MobileSopListPage() {
       else n.add(id);
       return n;
     });
+
+  /** 进阅读器前记下「从哪个分类点进去的」，返回时据此还原展开与滚动位置 */
+  const openDoc = (d: SopDocument) => {
+    try {
+      sessionStorage.setItem(RETURN_NODE_KEY, d.nodeId == null ? "" : String(d.nodeId));
+    } catch {
+      /* ignore */
+    }
+    navigate(`/m/sop/${d.id}`);
+  };
 
   const kw = keyword.trim().toLowerCase();
   const searchHits = useMemo(() => {
@@ -75,7 +112,7 @@ export default function MobileSopListPage() {
     <button
       key={`doc-${d.id}`}
       type="button"
-      onClick={() => navigate(`/m/sop/${d.id}`)}
+      onClick={() => openDoc(d)}
       className="flex w-full items-center gap-2.5 py-3 pr-3.5 text-left transition-colors active:bg-gray-50 dark:active:bg-gray-800"
       style={{ paddingLeft: 14 + depth * 16 }}
     >
@@ -92,7 +129,7 @@ export default function MobileSopListPage() {
     const open = expanded.has(n.id);
     const total = subtreeDocCount.get(n.id) ?? 0;
     return (
-      <div key={`node-${n.id}`}>
+      <div key={`node-${n.id}`} data-sop-node={n.id}>
         <button
           type="button"
           onClick={() => toggle(n.id)}
@@ -174,7 +211,7 @@ export default function MobileSopListPage() {
                 <button
                   key={d.id}
                   type="button"
-                  onClick={() => navigate(`/m/sop/${d.id}`)}
+                  onClick={() => openDoc(d)}
                   className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left transition-colors active:bg-gray-50 dark:active:bg-gray-800"
                   style={i ? { borderTop: "1px solid rgba(30,55,90,0.04)" } : undefined}
                 >

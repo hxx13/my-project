@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { SopDocument, SopNode } from "@/api/domains/sop.api";
-import { buildSopTree, collectSopSubtreeIds, documentsOfNode, sopNodePath } from "../sopTree";
+import { buildSopTree, collectSopSubtreeIds, documentsOfNode, sopNodePath, subtreeDocCounts } from "../sopTree";
 
 const node = (id: number, parentId: number | null, name: string): SopNode => ({
   id,
@@ -53,6 +53,37 @@ describe("collectSopSubtreeIds", () => {
   it("成环的脏数据不会死循环", () => {
     const loop = [node(1, 2, "A"), node(2, 1, "B")];
     expect([...collectSopSubtreeIds(loop, 1)].sort()).toEqual([1, 2]);
+  });
+});
+
+describe("subtreeDocCounts", () => {
+  const d = (id: number, nodeId: number | null): SopDocument =>
+    ({ id, nodeId, fileId: "f", title: `t${id}`, sortOrder: 0 }) as SopDocument;
+
+  it("按「含子孙」累加，不是只数直接子项", () => {
+    // 1 没有直接文档；2 挂两份；3 挂一份
+    const counts = subtreeDocCounts(NODES, [d(1, 3), d(2, 2), d(3, 2)]);
+    expect(counts.get(3)).toBe(1);
+    expect(counts.get(2)).toBe(3); // 自己的 2 份 + 子分类 3 的 1 份
+    expect(counts.get(1)).toBe(3); // 自己没有，全是子孙的
+    expect(counts.get(4)).toBe(0);
+  });
+
+  it("只有子分类、自己没有文档的文件夹也有数（否则角标空白，看着像没内容）", () => {
+    const counts = subtreeDocCounts(NODES, [d(1, 3)]);
+    expect(counts.get(1)).toBe(1);
+    expect(counts.get(2)).toBe(1);
+  });
+
+  it("未分类（nodeId=null）不计入任何文件夹", () => {
+    const counts = subtreeDocCounts(NODES, [d(1, null)]);
+    expect([...counts.values()].every((v) => v === 0)).toBe(true);
+  });
+
+  it("成环的脏数据不会把递归撑爆", () => {
+    const loop = [node(1, 2, "A"), node(2, 1, "B")];
+    const counts = subtreeDocCounts(loop, [d(1, 1)]);
+    expect(counts.get(1)).toBe(1);
   });
 });
 
