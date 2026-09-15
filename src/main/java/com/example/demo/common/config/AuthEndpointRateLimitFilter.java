@@ -98,11 +98,18 @@ public class AuthEndpointRateLimitFilter extends OncePerRequestFilter {
         response.getWriter().write("{\"code\":429,\"success\":false,\"message\":\"请求过于频繁，请稍后再试\"}");
     }
 
+    /**
+     * 生产 nginx 只在部分 location 设了 X-Forwarded-For，X-Real-IP 则是所有 location 都设（且用 $remote_addr
+     * 覆盖写入，客户端伪造不了）。少了 X-Real-IP 兜底就会一路回退到 getRemoteAddr() = 127.0.0.1，
+     * 导致全站共用一个限流桶。
+     */
     private static String clientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
         if (xff != null && !xff.isBlank()) {
             return xff.split(",")[0].trim();
         }
+        String xri = request.getHeader("X-Real-IP");
+        if (xri != null && !xri.isBlank()) return xri.trim();
         return request.getRemoteAddr();
     }
 }

@@ -25,7 +25,7 @@ export function SysBadge({ hasAccount }: { hasAccount: boolean }) {
       "rounded-full px-2 py-0.5 text-[10px] font-medium",
       hasAccount ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"
     )}>
-      {hasAccount ? "有系统账号" : "无系统账号"}
+      {hasAccount ? "有教职工账号" : "无教职工账号"}
     </span>
   );
 }
@@ -99,6 +99,7 @@ export function PersonnelRichList({
         ) : (
           <div ref={listRef}>
             {rows.map((row) => {
+              // 只看教职工账号（STAFF_）。学生账号挂在 aro_user_id 列，不算「有教职工账号」。
               const hasAccount = Boolean(row.staffId);
               const tags = identityMap.get(String(row.id)) ?? [];
               const rooms = (row.allowedRoomsDisplayZh || "").split(/[、，,;；]/).map((s) => s.trim()).filter(Boolean);

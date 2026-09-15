@@ -70,8 +70,10 @@ public interface PersonnelMapper {
             "allowed_rooms_display_zh=#{allowedRoomsDisplayZh}, has_official_room_permission=#{hasOfficialRoomPermission} WHERE id=#{id}")
     int update(Personnel p);
 
-    @Update("UPDATE personnel SET staff_id=#{staffId} WHERE id=#{id}")
-    int linkStaff(@Param("id") Long id, @Param("staffId") String staffId);
+    /** 挂上教职工账号；工号仅在传入非空时覆盖（ARO 侧同步来的工号是权威值，别用空值抹掉）。 */
+    @Update("UPDATE personnel SET staff_id = #{staffId}, "
+            + "job_number = COALESCE(NULLIF(#{jobNumber}, ''), job_number) WHERE id = #{id}")
+    int linkStaff(@Param("id") Long id, @Param("staffId") String staffId, @Param("jobNumber") String jobNumber);
 
     @Delete("DELETE FROM personnel")
     int deleteAll();

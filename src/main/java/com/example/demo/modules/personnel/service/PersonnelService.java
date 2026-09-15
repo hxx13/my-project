@@ -30,6 +30,7 @@ public class PersonnelService {
     private static final Logger log = LoggerFactory.getLogger(PersonnelService.class);
 
     private static final int NAME_MAX_LEN = 128;
+    private static final int JOB_NUMBER_MAX_LEN = 64;
 
     private static final ObjectMapper ROOM_JSON = new ObjectMapper();
 
@@ -468,9 +469,12 @@ public class PersonnelService {
      * 为新建/注册的教职工账号立刻挂上 personnel 行并写入真实姓名。
      * 解决：仅写 sys_user、不同步 personnel 时，统一人员页看不见、后续按姓名同步又被账号名盖回或「过几天对不上」。
      * 不改 username；name 冲突且已被其他 staff 占用时抛错。
+     *
+     * jobNumber（工号 = 学号）是强键：填了就优先按它认人，命中唯一未绑定行即合并；不填则退回按姓名精确匹配
+     * （历史行为）。姓名同音不同字、填成昵称/英文名都会漏合并，工号不会。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void ensureStaffPersonnel(String staffUserId, String rawName, String roleCode) {
+    public void ensureStaffPersonnel(String staffUserId, String rawName, String roleCode, String rawJobNumber) {
         if (!StringUtils.hasText(staffUserId)) {
             throw new IllegalArgumentException("staffUserId 不能为空");
         }
@@ -480,6 +484,10 @@ public class PersonnelService {
         }
         if (name.length() > NAME_MAX_LEN) {
             throw new IllegalArgumentException("真实姓名长度不能超过 " + NAME_MAX_LEN);
+        }
+        String jobNumber = rawJobNumber == null ? "" : rawJobNumber.trim();
+        if (jobNumber.length() > JOB_NUMBER_MAX_LEN) {
+            throw new IllegalArgumentException("工号长度不能超过 " + JOB_NUMBER_MAX_LEN);
         }
         String staffId = staffUserId.trim();
         userMapper.updateNameById(staffId, name);
@@ -493,18 +501,43 @@ public class PersonnelService {
                 }
                 jdbcTemplate.update("UPDATE personnel SET name = ? WHERE id = ?", name, byStaff.getId());
             }
+            // 只补空缺的工号，不覆盖 personnel 已有的值
+            if (!jobNumber.isEmpty() && !StringUtils.hasText(byStaff.getJobNumber())) {
+                personnelMapper.linkStaff(byStaff.getId(), staffId, jobNumber);
+            }
             if (StringUtils.hasText(roleCode) && !StringUtils.hasText(byStaff.getRole())) {
                 personnelMapper.updateRole(byStaff.getId(), roleCode.trim());
             }
             return;
         }
 
+        // 1) 工号优先：唯一命中且该行还没绑账号 → 合并
+        if (!jobNumber.isEmpty()) {
+            List<Personnel> byJob = personnelMapper.findByJobNumber(jobNumber);
+            List<Personnel> claimable = byJob.stream()
+                    .filter(x -> !StringUtils.hasText(x.getStaffId()))
+                    .toList();
+            if (claimable.size() == 1) {
+                Long id = claimable.get(0).getId();
+                personnelMapper.linkStaff(id, staffId, jobNumber);
+                if (StringUtils.hasText(roleCode)) {
+                    personnelMapper.updateRole(id, roleCode.trim());
+                }
+                return;
+            }
+            if (claimable.isEmpty() && !byJob.isEmpty()) {
+                throw new IllegalArgumentException("工号 " + jobNumber + " 已绑定其他系统账号，请勿重复注册");
+            }
+            // 命中多行且都没绑账号（工号本身重复）→ 认不出是谁，退回姓名匹配
+        }
+
+        // 2) 姓名精确匹配（历史行为）
         Personnel clash = personnelMapper.findByName(name);
         if (clash != null) {
             if (StringUtils.hasText(clash.getStaffId()) && !staffId.equals(clash.getStaffId().trim())) {
                 throw new IllegalArgumentException("姓名已被其他教职工账号占用");
             }
-            personnelMapper.linkStaff(clash.getId(), staffId);
+            personnelMapper.linkStaff(clash.getId(), staffId, jobNumber);
             if (StringUtils.hasText(roleCode)) {
                 personnelMapper.updateRole(clash.getId(), roleCode.trim());
             }
@@ -514,6 +547,9 @@ public class PersonnelService {
         Personnel p = new Personnel();
         p.setName(name);
         p.setStaffId(staffId);
+        if (!jobNumber.isEmpty()) {
+            p.setJobNumber(jobNumber);
+        }
         // 新建教职工账号尚无官方可进房间授权，默认 0（列为 NOT NULL DEFAULT 0，显式插入 null 会触发约束异常）
         p.setHasOfficialRoomPermission(0);
         personnelMapper.insert(p);

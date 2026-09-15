@@ -8,6 +8,8 @@ public class RegisterStaffRequest {
     private String password;
     /** 真实姓名（写入 sys_user.name + personnel.name，≠ 登录账号） */
     private String name;
+    /** 工号 = 学号，选填；填了就按它精确认人并合并到已有人员行，不填退回按姓名匹配 */
+    private String jobNumber;
     /** 管理端或自助生成的推荐码 */
     private String inviteCode;
 }

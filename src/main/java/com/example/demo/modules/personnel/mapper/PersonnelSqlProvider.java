@@ -48,6 +48,8 @@ public class PersonnelSqlProvider {
               .append("OR su_staff.username LIKE CONCAT('%', #{keyword}, '%') ")
               .append("OR su_student.username LIKE CONCAT('%', #{keyword}, '%')) ");
         }
+        // 判据只看教职工账号（staff_id = STAFF_*）。学生账号的 sys_user.id = aro_user_id 不在 staff_id 列，
+        // 所以「无教职工账号」自然覆盖纯学生 —— 这正是要看的那批人，别把学生账号并进来。
         if ("sys".equals(f.getAccountType())) {
             sb.append("AND p.staff_id IS NOT NULL AND p.staff_id <> '' ");
         } else if ("nosys".equals(f.getAccountType())) {

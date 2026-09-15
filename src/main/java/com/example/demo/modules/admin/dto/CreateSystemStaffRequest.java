@@ -15,6 +15,8 @@ public class CreateSystemStaffRequest {
     private String role;
     /** 真实姓名（写入 sys_user.name + personnel.name，≠ 登录账号） */
     private String name;
+    /** 工号 = 学号，选填；填了就按它精确认人并合并到已有人员行，不填退回按姓名匹配 */
+    private String jobNumber;
     /** 展示昵称，可空；与真实姓名分离，默认不自动等于账号 */
     private String displayNickname;
 }

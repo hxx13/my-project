@@ -129,7 +129,7 @@ public class AdminService {
         userMapper.insertUser(u);
         userMapper.updatePasswordWithPlainById(id, u.getPassword(), encryptedPlain, 1);
         // 立刻写入真实姓名并挂 personnel，避免仅系统账号、同步后「消失/对不上」
-        personnelService.ensureStaffPersonnel(id, realName, roleEnum.getCode());
+        personnelService.ensureStaffPersonnel(id, realName, roleEnum.getCode(), request.getJobNumber());
         Map<String, Object> out = new HashMap<>();
         out.put("id", id);
         out.put("username", username);
