@@ -15,6 +15,7 @@ import {
 } from "@/api/domains/fileTemplates.api";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { PrintButton } from "@/features/print-station/PrintButton";
 
 import { appConfirm } from "@/lib/appDialog";
 function fmtBytes(n: number) {
@@ -96,7 +97,7 @@ export default function AdminFileTemplatesPage() {
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
             <Upload className="h-4 w-4" />
             上传模板
-            <input type="file" className="hidden" accept=".pdf,.xlsx,.xls,.docx,.doc,.zip,.csv,.txt,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
+            <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
           </label>
         ) : null}
       </div>
@@ -121,7 +122,12 @@ export default function AdminFileTemplatesPage() {
                   <td className="px-3 py-2 text-[var(--twin-body)]">{fmtBytes(r.sizeBytes)}</td>
                   <td className="px-3 py-2 text-xs text-[var(--twin-body)]">{fmtTime(r.createTime)}</td>
                   <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PrintButton
+                        sourceType="ADMIN_FILE"
+                        sourceId={r.id}
+                        fileName={r.originalName}
+                      />
                       <button
                         type="button"
                         className="inline-flex items-center gap-1 text-xs font-medium text-[var(--twin-link-deep)]"

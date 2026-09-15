@@ -7,6 +7,8 @@ import {
   type PersistedAlert,
 } from "@/api/domains/cageShelf.api";
 import { downloadBlob, downloadCardArchive, fetchCardData, generateCardPdf } from "@/api/domains/cardPrint.api";
+import type { PrintStationOption } from "@/api/domains/print.api";
+import { CardPrintConfirmDialog } from "./CardPrintConfirmDialog";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
 import { ShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { CardPreview } from "./CardPreview";
@@ -20,6 +22,8 @@ interface Props {
   boxSelectMode: boolean;
   onBoxSelectModeChange: (v: boolean) => void;
   nameSuffix: string;
+  /** 可选打印工位，供确认弹窗里选择 */
+  stations: PrintStationOption[];
   onSelectionChange: (selected: number, total: number) => void;
   onMessage: (m: string) => void;
   onBusyChange: (b: boolean) => void;
@@ -27,6 +31,8 @@ interface Props {
 
 export interface CardPrintPanelHandle {
   generate: () => Promise<void>;
+  /** 打开「预览 → 确认 → 派发」弹窗 */
+  print: () => void;
 }
 
 const inputCls =
@@ -36,7 +42,7 @@ const EMPTY_MAP: Map<string, Set<string>> = new Map();
 const EMPTY_ALERTS: Map<string, PersistedAlert> = new Map();
 
 export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function CardPrintPanel(
-  { templates, templateId, onTemplateChange, boxSelectMode, onBoxSelectModeChange, nameSuffix, onSelectionChange, onMessage, onBusyChange },
+  { templates, templateId, onTemplateChange, boxSelectMode, onBoxSelectModeChange, nameSuffix, stations, onSelectionChange, onMessage, onBusyChange },
   ref,
 ) {
   const [exp, setExp] = useState<Set<string>>(new Set());
@@ -45,6 +51,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
   const [loading, setLoading] = useState(false);
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const anchorRef = useRef<{ shelveId: string; x: number; y: number } | null>(null);
 
   // 全量树数据 —— 与 AdminCageShelfPage 同 key，命中其缓存
@@ -197,7 +204,17 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
     }
   };
 
-  useImperativeHandle(ref, () => ({ generate }));
+  /** 打印走「先预览再确认」：弹窗自己负责生成 PDF 并把真实产物画出来给用户看。 */
+  const openPrint = () => {
+    if (!templateId || selectedCageIds.length === 0) {
+      onMessage("请先选择模板与至少一个笼位");
+      return;
+    }
+    onMessage("");
+    setConfirmOpen(true);
+  };
+
+  useImperativeHandle(ref, () => ({ generate, print: openPrint }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -257,6 +274,17 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
           )}
         </div>
       </div>
+
+      {templateId ? (
+        <CardPrintConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          templateId={templateId}
+          cageIds={selectedCageIds}
+          nameSuffix={nameSuffix}
+          stations={stations}
+        />
+      ) : null}
     </div>
   );
 });

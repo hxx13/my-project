@@ -24,9 +24,18 @@ export async function fetchAdminFileTemplates(): Promise<{ rows: AdminFileTempla
   return { rows: res.data.data, schemaHint };
 }
 
-export async function uploadAdminFileTemplate(file: File): Promise<AdminFileTemplateRow> {
+/**
+ * 上传文件本体。这张表是全站共用的 blob 表，`purpose` 决定它归谁用：
+ * 不传 = TEMPLATE（文件模板库），SOP 抽屉传 SOP。
+ * 不打标就会串到文件模板库列表里去。
+ */
+export async function uploadAdminFileTemplate(
+  file: File,
+  purpose?: "TEMPLATE" | "SOP",
+): Promise<AdminFileTemplateRow> {
   const fd = new FormData();
   fd.append("file", file);
+  if (purpose) fd.append("purpose", purpose);
   const res = await authHttp.post<Result<AdminFileTemplateRow>>("/admin/file-templates", fd, {
     timeout: 120000,
   });

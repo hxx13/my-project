@@ -156,7 +156,9 @@ export function SopManageDrawer({
       return;
     }
     await run("上传失败", async () => {
-      const uploaded = await uploadAdminFileTemplate(file);
+      // 必须带 purpose=SOP：这张表是全站共用的 blob 表，
+      // 不打标的话这些 PDF 会串到「文件模板库」列表里去
+      const uploaded = await uploadAdminFileTemplate(file, "SOP");
       const title = (uploaded.originalName || file.name).replace(/\.pdf$/i, "") || "未命名文档";
       await createSopDocument({ nodeId: uploadNodeId, fileId: uploaded.id, title });
       toast.success("上传成功");

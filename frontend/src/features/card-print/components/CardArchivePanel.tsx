@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AdminTableShell } from "@/components/admin/AdminPageShell";
 import { deleteCardArchive, downloadBlob, downloadCardArchive, fetchCardArchives } from "@/api/domains/cardPrint.api";
+import { PrintButton } from "@/features/print-station/PrintButton";
 import type { CardArchive } from "../types";
 
 const PAGE_SIZE = 20;
@@ -72,7 +73,13 @@ export function CardArchivePanel() {
                 <td>{a.createdBy ?? "-"}</td>
                 <td>{a.createdAt}</td>
                 <td>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
+                    <PrintButton
+                      sourceType="CARD_ARCHIVE"
+                      sourceId={String(a.id)}
+                      fileName={a.fileName}
+                      label="补打"
+                    />
                     <button type="button" className={BTN_OUTLINE}
                       onClick={async () => {
                         try {
