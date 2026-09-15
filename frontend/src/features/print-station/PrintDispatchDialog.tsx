@@ -1,11 +1,19 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { createPrintJob, fetchSelectableStations, type PrintStationOption } from "@/api/domains/print.api";
+import { Loader2 } from "lucide-react";
+import {
+  createPrintJob,
+  fetchPrintPreview,
+  fetchSelectableStations,
+  type PrintStationOption,
+} from "@/api/domains/print.api";
 import { uploadAdminFileTemplate } from "@/api/domains/fileTemplates.api";
+import { PdfPrintCanvas } from "./PdfPrintCanvas";
 import {
   FILE_GROUPS,
   fileGroupOf,
   printKindOf,
+  sniffBlobKind,
   stationSupports,
   UNSUPPORTED_PRINT_HINT,
 } from "@/features/print-station/printableTypes";
@@ -58,6 +66,24 @@ export function PrintDispatchDialog({
   const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  /* ── 预览：给的是**实际会被打印的那份**（Word 是转换后的 PDF，不是原文件）── */
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewKind, setPreviewKind] = useState<"pdf" | "image" | null>(null);
+  const [previewState, setPreviewState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [previewErr, setPreviewErr] = useState("");
+  const [previewImgUrl, setPreviewImgUrl] = useState<string | null>(null);
+
+  // 图片预览走 objectURL，生命周期跟着 blob 走，用完就撤
+  useEffect(() => {
+    if (!previewBlob || previewKind !== "image") {
+      setPreviewImgUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(previewBlob);
+    setPreviewImgUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [previewBlob, previewKind]);
+
   /** 文件模板库里还留着上传限制之前传的 .docx / .xlsx，点它们的「打印」要拦住并说明原因 */
   const unsupported = printKindOf(pendingFile ? pendingFile.name : fileName) === "unsupported";
 
@@ -81,6 +107,56 @@ export function PrintDispatchDialog({
       })
       .catch(() => setStations([]));
   }, [open]);
+
+  /**
+   * 预览：拉的是**实际会被打印的那份** —— Word 给的是转换后的 PDF，不是原文件。
+   * 用文件模板的下载接口会看到 .docx，跟出纸对不上（浏览器也渲染不了）。
+   *
+   * 临时打印的文件还没上传，服务端没有转换产物：PDF/图片直接看本地的，
+   * Office 只能等上传后才看得到。
+   */
+  useEffect(() => {
+    if (!open) {
+      setPreviewBlob(null);
+      setPreviewKind(null);
+      setPreviewState("idle");
+      return;
+    }
+    let cancelled = false;
+
+    const load = async () => {
+      if (pendingFile) {
+        const kind = printKindOf(pendingFile.name);
+        if (kind === "pdf" || kind === "image") {
+          setPreviewBlob(pendingFile);
+          setPreviewKind(kind);
+          setPreviewState("ready");
+        } else {
+          setPreviewBlob(null);
+          setPreviewState("idle");
+        }
+        return;
+      }
+      setPreviewState("loading");
+      try {
+        const blob = await fetchPrintPreview(sourceType, sourceId);
+        const k = await sniffBlobKind(blob);
+        if (cancelled) return;
+        setPreviewBlob(blob);
+        setPreviewKind(k === "image" ? "image" : "pdf");
+        setPreviewState("ready");
+      } catch (e) {
+        if (cancelled) return;
+        setPreviewErr(e instanceof Error ? e.message : "预览加载失败");
+        setPreviewState("error");
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, pendingFile, sourceType, sourceId]);
 
   const confirm = async () => {
     if (unsupported) return;
@@ -125,6 +201,28 @@ export function PrintDispatchDialog({
             {pendingFile ? "（打完即删，不留档）" : ""}
           </DialogDescription>
         </DialogHeader>
+
+        {/* 预览：确认前先看一眼真实产物。Word 的话这里就是转换后的 PDF */}
+        <div className="max-h-[45vh] min-h-[150px] overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2">
+          {previewState === "loading" ? (
+            <div className="flex h-[130px] items-center justify-center gap-2 text-[13px] text-[var(--app-color-text-tertiary)]">
+              <Loader2 className="size-4 animate-spin" />
+              正在准备预览…
+            </div>
+          ) : previewState === "error" ? (
+            <div className="flex h-[130px] items-center justify-center px-4 text-center text-[13px] text-[var(--app-color-feedback-error)]">
+              {previewErr}
+            </div>
+          ) : previewBlob && previewKind === "pdf" ? (
+            <PdfPrintCanvas blob={previewBlob} />
+          ) : previewImgUrl ? (
+            <img src={previewImgUrl} alt="" className="mx-auto block max-w-full" />
+          ) : (
+            <div className="flex h-[130px] items-center justify-center px-4 text-center text-[13px] text-[var(--app-color-text-tertiary)]">
+              {pendingFile ? "这份文件上传后才能预览" : "没有可预览的内容"}
+            </div>
+          )}
+        </div>
 
         {unsupported ? (
           <div className="rounded-md border-l-4 border-amber-500 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800">

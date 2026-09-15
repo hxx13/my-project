@@ -11,12 +11,16 @@ import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.service.PrintJobPushService;
 import com.example.demo.modules.print.service.PrintJobService;
 import com.example.demo.modules.print.service.PrintJobViewAssembler;
+import com.example.demo.modules.print.service.PrintSourceResolver;
 import com.example.demo.modules.print.service.PrintStationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,19 +42,22 @@ public class PrintAdminController {
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
     private final PrintJobViewAssembler jobViewAssembler;
+    private final PrintSourceResolver sourceResolver;
 
     public PrintAdminController(PrintStationService stationService,
                                 PrintJobService jobService,
                                 PrintJobPushService pushService,
                                 AuthContextService authContextService,
                                 UserDisplayNameService userDisplayNameService,
-                                PrintJobViewAssembler jobViewAssembler) {
+                                PrintJobViewAssembler jobViewAssembler,
+                                PrintSourceResolver sourceResolver) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.pushService = pushService;
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
         this.jobViewAssembler = jobViewAssembler;
+        this.sourceResolver = sourceResolver;
     }
 
     /** 配置打印工位（绑哪个账号、哪台机器）要最高权限。 */
@@ -150,6 +157,26 @@ public class PrintAdminController {
     }
 
     /* ────────────── 任务 ────────────── */
+
+    /**
+     * 派发前的预览：返回**实际会被打印的那份**。
+     *
+     * 跟「文件模板」的下载接口不是一回事 —— 那个给用户上传的原文件（.docx），
+     * 这个给转换后的 PDF。预览必须跟出纸一致，否则看了也白看。
+     */
+    @GetMapping("/preview")
+    @Operation(summary = "派发前预览（返回实际要打印的文件）")
+    public ResponseEntity<byte[]> preview(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @RequestParam String sourceType,
+            @RequestParam String sourceId) throws IOException {
+        requireStaff(auth);
+        byte[] bytes = sourceResolver.resolve(sourceType, sourceId)
+                .orElseThrow(() -> new TwinBusinessException(404, "文件不存在或已被清理"));
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE)
+                .body(bytes);
+    }
 
     @PostMapping("/jobs")
     @Operation(summary = "建打印任务（教职工即可）")

@@ -99,6 +99,24 @@ export async function createPrintJob(body: {
   return res.data.data;
 }
 
+/**
+ * 派发前的预览：返回**实际会被打印的那份**。
+ *
+ * 跟「文件模板」的下载不是一回事 —— 那个给用户上传的原文件（.docx），
+ * 这个给转换后的 PDF。预览必须跟出纸一致，否则看了也白看。
+ */
+export async function fetchPrintPreview(
+  sourceType: "CARD_ARCHIVE" | "ADMIN_FILE",
+  sourceId: string,
+): Promise<Blob> {
+  const res = await authHttp.get("/admin/print/preview", {
+    params: { sourceType, sourceId },
+    responseType: "blob",
+    timeout: 60000,
+  });
+  return res.data as Blob;
+}
+
 /* ────────────── 队列与历史 ────────────── */
 
 /** 队列：还没结束的任务（排队中 / 已派给工位 / 失败待处理）。 */

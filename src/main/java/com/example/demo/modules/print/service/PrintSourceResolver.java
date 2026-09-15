@@ -30,12 +30,23 @@ public class PrintSourceResolver {
 
     /** 文件不存在返回 empty —— 归档可能已被删，任务记录本身仍应留存。 */
     public Optional<byte[]> resolve(PrintJob job) throws IOException {
-        if (PrintJob.SOURCE_CARD_ARCHIVE.equals(job.getSourceType())) {
-            return Optional.of(cardPrintService.downloadArchive(Long.valueOf(job.getSourceId())));
+        return resolve(job.getSourceType(), job.getSourceId());
+    }
+
+    /**
+     * 按来源取要打印的字节，不依赖任务。
+     *
+     * 派发前的预览走这条 —— 预览必须给**实际会被打印的那份**
+     * （Word 是转换后的 PDF，不是用户上传的原文件），否则预览和出纸对不上。
+     */
+    public Optional<byte[]> resolve(String sourceType, String sourceId) throws IOException {
+        if (sourceId == null || sourceId.isBlank()) return Optional.empty();
+
+        if (PrintJob.SOURCE_CARD_ARCHIVE.equals(sourceType)) {
+            return Optional.of(cardPrintService.downloadArchive(Long.valueOf(sourceId.trim())));
         }
-        if (PrintJob.SOURCE_ADMIN_FILE.equals(job.getSourceType())) {
-            Optional<Map<String, Object>> row =
-                    adminFileTemplateService.findForDownload(job.getSourceId());
+        if (PrintJob.SOURCE_ADMIN_FILE.equals(sourceType)) {
+            Optional<Map<String, Object>> row = adminFileTemplateService.findForDownload(sourceId.trim());
             if (row.isEmpty()) return Optional.empty();
             // 优先取转换出来的 PDF：Word/Excel 走的就是这一条。
             // 工位只会渲染 PDF 和图片，原样的 .docx 它打不了。
