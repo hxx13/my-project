@@ -31,6 +31,18 @@ function fmtTime(v: string | null | undefined) {
   return v.length > 19 ? v.slice(0, 19) : v;
 }
 
+/** 当前登录的用户名。只在排障横幅里用 —— 出问题时第一件事就是「现在是谁在登录」。 */
+function currentUsername(): string {
+  try {
+    const raw = localStorage.getItem("auth_user_info");
+    if (!raw) return "（没有登录信息）";
+    const o = JSON.parse(raw) as { username?: string };
+    return o.username ?? "（未知）";
+  } catch {
+    return "（读不出）";
+  }
+}
+
 /**
  * 打印工位页。工位电脑常开此页，用专用账号登录。
  *
@@ -49,6 +61,14 @@ export default function PrintStationPage() {
   const [pending, setPending] = useState(0);
   const [connected, setConnected] = useState(false);
   const [message, setMessage] = useState("");
+  /**
+   * 工位自身的配置拿不到时的原因。
+   *
+   * 这一条以前是静默的 —— 页面只显示一个红点，看不出到底是没登录、
+   * 登录的不是工位账号、还是后端连不上。实测排查时为此白花过时间，
+   * 所以现在把服务端的原始报错直接摆出来。
+   */
+  const [stationError, setStationError] = useState("");
   const busyRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
 
@@ -141,8 +161,11 @@ export default function PrintStationPage() {
       .then((s) => {
         setStationName(s.name ?? "");
         setPageSize(s.pageSize ?? null);
+        setStationError("");
       })
-      .catch(() => undefined);
+      .catch((e: unknown) => {
+        setStationError(e instanceof Error ? e.message : "取工位配置失败");
+      });
 
     const token = authStorage.getToken();
     if (!token) return;
@@ -206,6 +229,22 @@ export default function PrintStationPage() {
             <span className="text-[13px] opacity-50">队列是空的</span>
           )}
         </div>
+
+        {stationError || !connected ? (
+          <div className="mb-4 rounded border-l-4 border-red-500 bg-red-50 px-4 py-3 text-sm">
+            <div className="font-semibold text-red-700">这个页面现在不能收打印任务</div>
+            {stationError ? <div className="mt-1 text-red-700">{stationError}</div> : null}
+            <div className="mt-1 text-[12px] text-red-700">
+              当前登录账号：<code className="rounded bg-white px-1">{currentUsername()}</code>
+              {!connected ? " · socket 没连上" : ""}
+            </div>
+            {stationError ? (
+              <div className="mt-1 text-[12px] text-red-600">
+                这个账号没有绑定打印工位。请退出登录，改用绑定了工位的账号登进来。
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {message ? <div className="mb-4 rounded bg-gray-100 px-3 py-2 text-sm">{message}</div> : null}
 

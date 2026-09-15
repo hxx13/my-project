@@ -60,7 +60,10 @@ export function AccountPicker({
             const id = r.id == null ? "" : String(r.id);
             const username = r.username == null ? "" : String(r.username);
             const nick = r.displayNickname == null ? "" : String(r.displayNickname);
-            return { id, label: nick || username || id };
+            // 必须带上用户名：同名账号真实存在（比如 lujiabao 与 lujiabao@student
+            // 昵称都是「卢家保」），只显示昵称根本选不对人。
+            const label = nick && username && nick !== username ? `${nick}（${username}）` : (nick || username || id);
+            return { id, label };
           })
           .filter((r) => r.id !== ""),
       );
