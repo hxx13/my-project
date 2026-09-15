@@ -16,6 +16,7 @@ import {
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { PrintButton } from "@/features/print-station/PrintButton";
+import { TempPrintButton } from "@/features/print-station/TempPrintButton";
 
 import { appConfirm } from "@/lib/appDialog";
 function fmtBytes(n: number) {
@@ -94,11 +95,14 @@ export default function AdminFileTemplatesPage() {
       {/* Page toolbar */}
       <div className="flex items-center justify-between mb-3">
         {canUpload ? (
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
-            <Upload className="h-4 w-4" />
-            上传模板
-            <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
+              <Upload className="h-4 w-4" />
+              上传模板
+              <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
+            </label>
+            <TempPrintButton />
+          </div>
         ) : null}
       </div>
 
