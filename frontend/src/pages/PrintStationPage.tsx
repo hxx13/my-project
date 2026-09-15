@@ -219,8 +219,9 @@ export default function PrintStationPage() {
           `<!doctype html><html><head><meta charset="utf-8"><style>` +
             `@page{${sizeCss}margin:0}` +
             `html,body{margin:0;padding:0}` +
-            `img{width:100%;display:block}` +
-            `img+img{break-before:page}` +
+            // 一个 iframe 只放一页，所以不需要任何分页规则 —— 那次踩过的坑就是
+            // 把多页塞进来靠 break-before 分页，结果只出第一张。
+            `img{width:100%;height:auto;display:block}` +
             `</style></head><body>${imgs}</body></html>`,
         );
         doc.close();
@@ -259,17 +260,27 @@ export default function PrintStationPage() {
   /**
    * 渲染完成 → 调起打印 → 回执。
    *
-   * 份数靠连打实现：kiosk 模式下每次 print 出一份，所以打 N 份就是连着调 N 次。
+   * **一页一个 iframe**：多页塞进同一个 iframe 靠 CSS `break-before: page` 分页，
+   * 实测只出第一张。改成逐页打印，每次调用只产生一张纸，不依赖浏览器怎么处理分页符。
+   * 份数在外层：打 3 份 2 页的 = 6 次打印调用 = 6 张纸。
+   *
    * 中途某次失败会少打一份 —— 回执只能记整条任务的结果，这一层粒度报不出去。
    */
   const onPrintableReady = useCallback(
     async (images: string[]) => {
       if (!current || images.length === 0) return;
-      const n = Math.max(1, Math.min(current.copies || 1, 99));
+      const copies = Math.max(1, Math.min(current.copies || 1, 99));
+      const total = copies * images.length;
+      let done = 0;
       try {
-        for (let i = 0; i < n; i++) {
-          if (n > 1) setMessage(`正在打印 ${current.fileName}（第 ${i + 1} / ${n} 份）`);
-          await printViaIframe(images, pageSize);
+        for (let c = 0; c < copies; c++) {
+          for (const page of images) {
+            done++;
+            if (total > 1) {
+              setMessage(`正在打印 ${current.fileName}（${done} / ${total} 张）`);
+            }
+            await printViaIframe([page], pageSize);
+          }
         }
         await settle(current, true);
       } catch (e) {
