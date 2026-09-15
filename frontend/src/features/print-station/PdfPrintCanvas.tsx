@@ -27,6 +27,8 @@ export function PdfPrintCanvas({
 }) {
   const [pages, setPages] = useState<{ dataUrl: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  /** 文档总页数。不到这个数就不算画完 —— 见下面 onReady 那段 */
+  const [totalPages, setTotalPages] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const readyFiredRef = useRef(false);
   const onReadyRef = useRef(onReady);
@@ -39,6 +41,7 @@ export function PdfPrintCanvas({
     let task: { destroy: () => Promise<void> } | null = null;
     readyFiredRef.current = false;
     setPages([]);
+    setTotalPages(0);
     setError(null);
 
     (async () => {
@@ -55,6 +58,7 @@ export function PdfPrintCanvas({
         task = t;
         const pdf = await t.promise;
         if (cancelled) return;
+        setTotalPages(pdf.numPages);
 
         // 固定 2 倍分辨率：打印不受屏幕尺寸影响
         const SCALE = 2;
@@ -98,7 +102,11 @@ export function PdfPrintCanvas({
   // 图片全部解码完才通知可以打印。dataUrl 解码虽快但不保证同步，
   // 抢在解码前 print() 会打出空白。
   useEffect(() => {
-    if (readyFiredRef.current || pages.length === 0) return;
+    // 必须等**全部**页都画完再通知。
+    // pages 是逐页长出来的，原先的判据「已有页数 === 页面上的 img 数」在第一页
+    // 画完时就成立 —— 于是打印只拿到第一页，而且 readyFiredRef 一置位就再也不通知。
+    // 实测表现：多页文档永远只出一张，且任务状态一切正常。
+    if (readyFiredRef.current || totalPages === 0 || pages.length !== totalPages) return;
     const imgs = Array.from(containerRef.current?.querySelectorAll("img") ?? []);
     if (imgs.length !== pages.length) return;
     Promise.all(
@@ -109,7 +117,7 @@ export function PdfPrintCanvas({
       // 再等一帧，确保布局落定
       requestAnimationFrame(() => onReadyRef.current?.(pages.map((p) => p.dataUrl)));
     });
-  }, [pages]);
+  }, [pages, totalPages]);
 
   if (error) return <div className="p-4 text-sm text-red-600">{error}</div>;
   if (pages.length === 0) return <div className="p-4 text-sm text-gray-500">正在渲染…</div>;

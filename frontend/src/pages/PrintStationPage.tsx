@@ -200,16 +200,16 @@ export default function PrintStationPage() {
    * 并且打印内容一旦从 DOM 卸载就打出白纸。iframe 的文档**就是**全部输出，
    * 与页面样式、后台壳、React 的挂载/卸载全都无关。
    *
-   * 返回前等 afterprint；某些环境不派发该事件，用 PRINT_SETTLE_MS 兜底。
+   * **返回 iframe 而不在这里移除它**：`afterprint` 触发 ≠ 浏览器已经光栅化完，
+   * 此时把 iframe 摘掉会把还没画完的那一页一起带走（实测表现就是"多页只出第一张"）。
+   * 由调用方在整批打完后统一清理。
    */
-  const printViaIframe = (images: string[], size: string | null) =>
-    new Promise<void>((resolve, reject) => {
+  const printViaIframe = (images: string[], size: string | null): Promise<HTMLIFrameElement> =>
+    new Promise((resolve, reject) => {
       const frame = document.createElement("iframe");
       frame.setAttribute("aria-hidden", "true");
       frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
       document.body.appendChild(frame);
-
-      const cleanup = () => frame.remove();
 
       try {
         const doc = frame.contentDocument;
@@ -241,20 +241,15 @@ export default function PrintStationPage() {
               if (settled) return;
               settled = true;
               win.removeEventListener("afterprint", done);
-              cleanup();
-              resolve();
+              resolve(frame); // ← 不移除，交给调用方
             };
             win.addEventListener("afterprint", done);
             win.focus();
             win.print();
             setTimeout(done, PRINT_SETTLE_MS);
           })
-          .catch((e) => {
-            cleanup();
-            reject(e);
-          });
+          .catch(reject);
       } catch (e) {
-        cleanup();
         reject(e);
       }
     });
@@ -273,6 +268,7 @@ export default function PrintStationPage() {
       if (!current || images.length === 0) return;
       const copies = Math.max(1, Math.min(current.copies || 1, 99));
       const total = copies * images.length;
+      const frames: HTMLIFrameElement[] = [];
       let done = 0;
       try {
         for (let c = 0; c < copies; c++) {
@@ -281,12 +277,15 @@ export default function PrintStationPage() {
             if (total > 1) {
               setMessage(`正在打印 ${current.fileName}（${done} / ${total} 张）`);
             }
-            await printViaIframe([page], pageSize);
+            frames.push(await printViaIframe([page], pageSize));
           }
         }
         await settle(current, true);
       } catch (e) {
         await settle(current, false, e instanceof Error ? e.message : "调起打印失败");
+      } finally {
+        // 整批打完再统一摘 iframe，且留一段宽限期：打印调用返回 ≠ 已经画完
+        setTimeout(() => frames.forEach((f) => f.remove()), 3000);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
