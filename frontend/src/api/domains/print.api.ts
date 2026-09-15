@@ -157,18 +157,29 @@ export async function fetchPendingCount(): Promise<number> {
 
 /* ────────────── 管理端：工位 ────────────── */
 
+/**
+ * 工位执行方式，与后端 PrintStation.MODE_* 对齐。
+ *
+ * KIOSK  = 工位电脑开着工位页，浏览器渲染后走那台机器的默认打印机。
+ * SERVER = 后端直发，把 PDF 交给后端所在机器的打印队列（生产上是 CUPS 的 lp）。
+ *          只给「所在网段没有常开电脑可挂工位页」的打印机用。
+ */
+export type PrintStationMode = "KIOSK" | "SERVER";
+
 export interface AdminPrintStation {
   id: string;
   name: string;
-  /** 该工位绑定的「打印者账号」—— sys_user.id，形如 STAFF_xxx */
-  userId: string;
+  /** 执行方式。 */
+  mode: PrintStationMode;
+  /** 该工位绑定的「打印者账号」—— sys_user.id，形如 STAFF_xxx。直发工位为 null */
+  userId: string | null;
   /** 服务端补的显示名。老版本接口没有这个字段，取不到时退回 userId */
   userDisplayName?: string;
   /** 打印页 @page size，如 "85.6mm 54mm"；null = 用驱动默认 */
   pageSize: string | null;
   /** 支持的文件类型分组，逗号分隔；null/空 = 全支持 */
   supportedTypes: string | null;
-  /** 打印机 IP，纯记录用，不参与打印逻辑 */
+  /** 打印机 IP。KIOSK 是纯记录；**SERVER 是投递目标**（生产上 CUPS 队列名就用它） */
   printerIp: string | null;
   enabled: boolean;
   createdAt?: string;
@@ -182,11 +193,13 @@ export async function fetchPrintStations(): Promise<AdminPrintStation[]> {
 export async function savePrintStation(body: {
   id?: string;
   name: string;
-  userId: string;
+  mode: PrintStationMode;
+  /** 直发工位没有账号，传 null */
+  userId: string | null;
   pageSize: string | null;
   /** 逗号分隔的类型分组；null = 全支持 */
   supportedTypes: string | null;
-  /** 打印机 IP，纯记录用 */
+  /** KIOSK 是纯记录；SERVER 是投递目标，必填 */
   printerIp: string | null;
   enabled: boolean;
 }): Promise<AdminPrintStation | undefined> {

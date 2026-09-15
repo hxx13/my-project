@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
+import com.example.demo.modules.print.service.DirectPrintService;
 import com.example.demo.modules.print.service.PrintJobPushService;
 import com.example.demo.modules.print.service.PrintJobService;
 import com.example.demo.modules.print.service.PrintJobViewAssembler;
@@ -43,6 +44,7 @@ public class PrintAdminController {
     private final UserDisplayNameService userDisplayNameService;
     private final PrintJobViewAssembler jobViewAssembler;
     private final PrintSourceResolver sourceResolver;
+    private final DirectPrintService directPrintService;
 
     public PrintAdminController(PrintStationService stationService,
                                 PrintJobService jobService,
@@ -50,7 +52,8 @@ public class PrintAdminController {
                                 AuthContextService authContextService,
                                 UserDisplayNameService userDisplayNameService,
                                 PrintJobViewAssembler jobViewAssembler,
-                                PrintSourceResolver sourceResolver) {
+                                PrintSourceResolver sourceResolver,
+                                DirectPrintService directPrintService) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.pushService = pushService;
@@ -58,6 +61,21 @@ public class PrintAdminController {
         this.userDisplayNameService = userDisplayNameService;
         this.jobViewAssembler = jobViewAssembler;
         this.sourceResolver = sourceResolver;
+        this.directPrintService = directPrintService;
+    }
+
+    /**
+     * 把任务交给它的工位去执行。**两条派发路径都必须走这里**（建单与重推），
+     * 否则直发工位的任务会停在 PENDING —— 而 PENDING 没有任何超时兜底，
+     * 就是永久卡住、还不出声。
+     */
+    private void dispatch(PrintJob job, PrintStation station) {
+        if (station == null) return;
+        if (PrintStation.MODE_SERVER.equals(station.getMode())) {
+            directPrintService.printNow(job, station);
+        } else {
+            pushService.notifyNewJob(station, job.getId());
+        }
     }
 
     /** 配置打印工位（绑哪个账号、哪台机器）要最高权限。 */
@@ -120,6 +138,7 @@ public class PrintAdminController {
         out.put("pageSize", s.getPageSize());
         out.put("supportedTypes", s.getSupportedTypes());
         out.put("printerIp", s.getPrinterIp());
+        out.put("mode", s.getMode());
         out.put("enabled", s.isEnabled());
         out.put("createdAt", s.getCreatedAt());
         return out;
@@ -195,8 +214,10 @@ public class PrintAdminController {
                 ? PrintJob.PRIORITY_URGENT : PrintJob.PRIORITY_NORMAL;
         PrintJob job = jobService.create(stationId, sourceType, sourceId, fileName, copies,
                 u.getId(), note, priority);
-        stationService.findById(stationId).ifPresent(st -> pushService.notifyNewJob(st, job.getId()));
-        return Result.success(jobViewAssembler.toView(job));
+        stationService.findById(stationId).ifPresent(st -> dispatch(job, st));
+        // 回给前端的状态要拿库里的：直发是同步打完的，用建单时的内存对象会显示成 PENDING
+        return Result.success(jobViewAssembler.toView(
+                jobService.findById(job.getId()).orElse(job)));
     }
 
     @GetMapping("/jobs/queue")
@@ -251,7 +272,7 @@ public class PrintAdminController {
             return Result.error("该任务当前状态不可重推");
         }
         jobService.findById(id).ifPresent(j -> stationService.findById(j.getStationId())
-                .ifPresent(st -> pushService.notifyNewJob(st, j.getId())));
+                .ifPresent(st -> dispatch(j, st)));
         return Result.success(Map.of("ok", true));
     }
 }

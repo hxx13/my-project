@@ -19,7 +19,7 @@ import java.util.Optional;
 public class PrintStationMapper {
 
     private static final String COLS =
-            "id, name, user_id, page_size, supported_types, printer_ip, enabled, created_by, created_at";
+            "id, name, user_id, page_size, supported_types, printer_ip, mode, enabled, created_by, created_at";
 
     private final JdbcTemplate jdbc;
 
@@ -35,6 +35,7 @@ public class PrintStationMapper {
         s.setPageSize(rs.getString("page_size"));
         s.setSupportedTypes(rs.getString("supported_types"));
         s.setPrinterIp(rs.getString("printer_ip"));
+        s.setMode(rs.getString("mode"));
         s.setEnabled(rs.getBoolean("enabled"));
         s.setCreatedBy(rs.getString("created_by"));
         s.setCreatedAt(String.valueOf(rs.getTimestamp("created_at")));
@@ -42,15 +43,15 @@ public class PrintStationMapper {
     };
 
     public void insert(PrintStation s) {
-        jdbc.update("INSERT INTO print_station(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,NOW())",
+        jdbc.update("INSERT INTO print_station(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,NOW())",
                 s.getId(), s.getName(), s.getUserId(), s.getPageSize(), s.getSupportedTypes(),
-                s.getPrinterIp(), s.isEnabled() ? 1 : 0, s.getCreatedBy());
+                s.getPrinterIp(), s.getMode(), s.isEnabled() ? 1 : 0, s.getCreatedBy());
     }
 
     public void update(PrintStation s) {
-        jdbc.update("UPDATE print_station SET name=?, user_id=?, page_size=?, supported_types=?, printer_ip=?, enabled=? WHERE id=?",
+        jdbc.update("UPDATE print_station SET name=?, user_id=?, page_size=?, supported_types=?, printer_ip=?, mode=?, enabled=? WHERE id=?",
                 s.getName(), s.getUserId(), s.getPageSize(), s.getSupportedTypes(),
-                s.getPrinterIp(), s.isEnabled() ? 1 : 0, s.getId());
+                s.getPrinterIp(), s.getMode(), s.isEnabled() ? 1 : 0, s.getId());
     }
 
     public int deleteById(String id) {

@@ -92,6 +92,18 @@ public class PrintJobService {
         return null;
     }
 
+    /**
+     * 定向领取一条已知的任务。直发工位用这条而不是 {@link #claimOne} ——
+     * 直发明知道要打的是哪一条，按"最早的待领"去捞会在并发建单时捞错人，
+     * 把本该这条的留成 PENDING（而 PENDING 没有任何超时兜底，就是永久卡住）。
+     */
+    public Optional<PrintJob> claim(String jobId, String stationId) {
+        if (mapper.claim(jobId, stationId) != 1) {
+            return Optional.empty();
+        }
+        return mapper.findById(jobId);
+    }
+
     /** 回执。ok 为真落 PRINTED，为假落 FAILED 并记原因，并发一条失败提醒。 */
     public boolean acknowledge(String jobId, String stationId, boolean ok, String error) {
         String status = ok ? PrintJob.STATUS_PRINTED : PrintJob.STATUS_FAILED;

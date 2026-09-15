@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Plus, Printer, Trash2 } from "lucide-react";
 import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminRadioGroup } from "@/components/admin/AdminFormPrimitives";
 import { AdminSensitiveAction } from "@/features/admin/AdminSensitiveAction";
 import { AccountPicker, type AccountOption } from "@/features/print-station/AccountPicker";
 import {
@@ -16,6 +17,7 @@ import {
   reloadPrintStation,
   savePrintStation,
   type AdminPrintStation,
+  type PrintStationMode,
 } from "@/api/domains/print.api";
 import {
   Dialog,
@@ -30,9 +32,10 @@ import { appConfirm } from "@/lib/appDialog";
 interface FormState {
   id?: string;
   name: string;
+  mode: PrintStationMode;
   account: AccountOption | null;
   pageSize: string;
-  /** 打印机 IP，纯记录用（现场排查时知道这台工位连的是哪台机器） */
+  /** KIOSK：纯记录，方便现场排查；SERVER：投递目标，必填 */
   printerIp: string;
   /** 勾选的类型分组。**全选 = 不限制**（存 null），与后端口径一致 */
   supportedTypes: FileGroup[];
@@ -41,8 +44,15 @@ interface FormState {
 
 const ALL_GROUPS: FileGroup[] = FILE_GROUPS.map((g) => g.key);
 
+/** 工位类型选项。文案要说清「有没有电脑」，这是两者唯一的实际差别。 */
+const MODE_OPTIONS: readonly { value: PrintStationMode; label: string }[] = [
+  { value: "KIOSK", label: "工位电脑执行" },
+  { value: "SERVER", label: "后端直发" },
+];
+
 const EMPTY_FORM: FormState = {
   name: "",
+  mode: "KIOSK",
   account: null,
   pageSize: "",
   printerIp: "",
@@ -77,8 +87,10 @@ export default function AdminPrintStationsPage() {
     setEditing({
       id: s.id,
       name: s.name,
-      // 编辑时只拿得到 userId，显示名由服务端补；补不到就退回 userId
-      account: { id: s.userId, label: s.userDisplayName || s.userId },
+      mode: s.mode ?? "KIOSK",
+      // 编辑时只拿得到 userId，显示名由服务端补；补不到就退回 userId。
+      // 直发工位没有账号，回填成 null —— 别塞个假账号进去。
+      account: s.userId ? { id: s.userId, label: s.userDisplayName || s.userId } : null,
       pageSize: s.pageSize ?? "",
       printerIp: s.printerIp ?? "",
       supportedTypes: parseTypes(s.supportedTypes),
@@ -91,7 +103,12 @@ export default function AdminPrintStationsPage() {
       toast.error("工位名不能为空");
       return;
     }
-    if (!editing.account) {
+    if (editing.mode === "SERVER") {
+      if (!editing.printerIp.trim()) {
+        toast.error("直发工位必须填打印机 IP —— 它就是投递目标");
+        return;
+      }
+    } else if (!editing.account) {
       toast.error("请选择打印者账号");
       return;
     }
@@ -104,7 +121,8 @@ export default function AdminPrintStationsPage() {
       await savePrintStation({
         id: editing.id,
         name: editing.name.trim(),
-        userId: editing.account.id,
+        mode: editing.mode,
+        userId: editing.mode === "SERVER" ? null : (editing.account?.id ?? null),
         pageSize: editing.pageSize.trim() || null,
         printerIp: editing.printerIp.trim() || null,
         // 全选 = 不限制，存 null（与后端一致）。否则存实际勾选的分组
@@ -201,7 +219,13 @@ export default function AdminPrintStationsPage() {
                       ) : null}
                     </td>
                     <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
-                      {s.userDisplayName || s.userId}
+                      {s.mode === "SERVER" ? (
+                        <span className="text-[var(--app-color-text-tertiary)]">
+                          直发（不绑账号）
+                        </span>
+                      ) : (
+                        s.userDisplayName || s.userId
+                      )}
                     </td>
                     <td className="px-3 py-2 text-[var(--app-color-text-secondary)]">
                       {s.pageSize || (
@@ -256,14 +280,17 @@ export default function AdminPrintStationsPage() {
                         >
                           编辑
                         </button>
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-[var(--app-color-text-primary)] hover:underline"
-                          title="让那台机器的页面重新加载（部署或改配置后用）"
-                          onClick={() => void onReload(s)}
-                        >
-                          刷新页面
-                        </button>
+                        {/* 直发工位没有工位页可刷 —— 按钮留着只会让人以为刷了有用 */}
+                        {s.mode === "SERVER" ? null : (
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-[var(--app-color-text-primary)] hover:underline"
+                            title="让那台机器的页面重新加载（部署或改配置后用）"
+                            onClick={() => void onReload(s)}
+                          >
+                            刷新页面
+                          </button>
+                        )}
                         <AdminSensitiveAction
                           label="删除打印工位"
                           visibilityMinRole="ADMIN"
@@ -293,7 +320,9 @@ export default function AdminPrintStationsPage() {
           <DialogHeader>
             <DialogTitle>{editing?.id ? "编辑工位" : "新建工位"}</DialogTitle>
             <DialogDescription>
-              绑定后，该账号所在电脑打开 /print-station 即可接收打印任务。
+              {editing?.mode === "SERVER"
+                ? "派给这个工位的任务由后端直接送到打印机，不需要工位电脑。"
+                : "绑定后，该账号所在电脑打开 /print-station 即可接收打印任务。"}
             </DialogDescription>
           </DialogHeader>
 
@@ -310,16 +339,32 @@ export default function AdminPrintStationsPage() {
               </div>
 
               <div>
-                <label className={labelCls}>打印者账号</label>
-                <AccountPicker
-                  value={editing.account}
-                  onChange={(v) => setEditing({ ...editing, account: v })}
-                  placeholder="搜用户名或昵称…"
+                <label className={labelCls}>工位类型</label>
+                <AdminRadioGroup
+                  name="printStationMode"
+                  options={MODE_OPTIONS}
+                  value={editing.mode}
+                  onChange={(m) => setEditing({ ...editing, mode: m })}
                 />
                 <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
-                  一个账号只能绑一个工位。工位电脑用这个账号登录。
+                  「工位电脑执行」要有一台常开的电脑开着工位页；「后端直发」由后端直接送给打印机，
+                  用于那台机器所在网段没有常开电脑可挂工位页的情况。
                 </p>
               </div>
+
+              {editing.mode === "SERVER" ? null : (
+                <div>
+                  <label className={labelCls}>打印者账号</label>
+                  <AccountPicker
+                    value={editing.account}
+                    onChange={(v) => setEditing({ ...editing, account: v })}
+                    placeholder="搜用户名或昵称…"
+                  />
+                  <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
+                    一个账号只能绑一个工位。工位电脑用这个账号登录。
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className={labelCls}>纸张尺寸</label>
@@ -332,16 +377,23 @@ export default function AdminPrintStationsPage() {
               </div>
 
               <div>
-                <label className={labelCls}>打印机 IP（可选）</label>
+                <label className={labelCls}>
+                  打印机 IP{editing.mode === "SERVER" ? "（必填）" : "（可选）"}
+                </label>
                 <input
                   className={inputCls}
                   value={editing.printerIp}
-                  placeholder="如 172.22.138.6；只作记录，不影响打印"
+                  placeholder={
+                    editing.mode === "SERVER"
+                      ? "如 172.22.138.6；后端就按这个地址投递"
+                      : "如 172.22.138.6；只作记录，不影响打印"
+                  }
                   onChange={(e) => setEditing({ ...editing, printerIp: e.target.value })}
                 />
                 <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
-                  纯记录用 —— 现场排查「这台打不出来」时，先看它连的是哪台机器。
-                  打印仍然走这台工位电脑的默认打印机，后端不会按这个 IP 直接发送数据。
+                  {editing.mode === "SERVER"
+                    ? "投递目标 —— 后端按这个地址把 PDF 交给打印机（生产上 CUPS 队列名就用它）。填错了这个工位就是个死工位。"
+                    : "纯记录用 —— 现场排查「这台打不出来」时，先看它连的是哪台机器。打印仍然走这台工位电脑的默认打印机。"}
                 </p>
               </div>
 

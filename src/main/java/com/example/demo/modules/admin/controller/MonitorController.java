@@ -204,18 +204,8 @@ public class MonitorController {
                     // 前 20 个客户端详情
                     if (idx < 20) {
                         Map<String, Object> ci = new LinkedHashMap<>();
-                        // IP
-                        String ip = "unknown";
-                        try {
-                            if (client.getRemoteAddress() != null) {
-                                ip = client.getRemoteAddress().toString();
-                                // 去掉开头的 /
-                                if (ip.startsWith("/")) {
-                                    ip = ip.substring(1);
-                                }
-                            }
-                        } catch (Exception ignored) { }
-                        ci.put("ip", ip);
+                        // IP（优先握手头里的 X-Real-IP，见 resolveClientIp）
+                        ci.put("ip", resolveClientIp(client));
 
                         // userId from JWT
                         String token = client.getHandshakeData().getSingleUrlParam("token");
@@ -360,18 +350,8 @@ public class MonitorController {
                         } catch (Exception ignored) { }
                     }
 
-                    String ip = "unknown";
-                    try {
-                        if (client.getRemoteAddress() != null) {
-                            ip = client.getRemoteAddress().toString();
-                            if (ip.startsWith("/")) {
-                                ip = ip.substring(1);
-                            }
-                        }
-                    } catch (Exception ignored) { }
-
                     Map<String, Object> ci = new LinkedHashMap<>();
-                    ci.put("ip", ip);
+                    ci.put("ip", resolveClientIp(client));
                     ci.put("userId", userId != null ? userId : "");
                     ci.put("channel", channel != null ? channel : "web");
                     rawClients.add(ci);
@@ -898,5 +878,31 @@ public class MonitorController {
     private static String trimMsg(String msg) {
         if (msg == null) return null;
         return msg.length() > 200 ? msg.substring(0, 200) + "…" : msg;
+    }
+
+    /**
+     * Socket.IO 客户端的真实 IP。
+     * 优先取握手时 nginx 写入的 X-Real-IP（需 nginx 的 /socket.io/ location 配 proxy_set_header X-Real-IP $remote_addr）；
+     * 拿不到才回退 TCP 地址 —— nginx 与后端同机时那恒为 127.0.0.1，监控页就会全是回环地址。
+     */
+    private static String resolveClientIp(SocketIOClient client) {
+        try {
+            io.netty.handler.codec.http.HttpHeaders headers = client.getHandshakeData().getHttpHeaders();
+            if (headers != null) {
+                String ip = headers.get("X-Real-IP");
+                if (ip == null || ip.isBlank()) {
+                    String xff = headers.get("X-Forwarded-For");
+                    if (xff != null && !xff.isBlank()) ip = xff.split(",")[0].trim();
+                }
+                if (ip != null && !ip.isBlank()) return ip.trim();
+            }
+        } catch (Exception ignored) { }
+        try {
+            if (client.getRemoteAddress() != null) {
+                String ip = client.getRemoteAddress().toString();
+                return ip.startsWith("/") ? ip.substring(1) : ip;
+            }
+        } catch (Exception ignored) { }
+        return "unknown";
     }
 }
