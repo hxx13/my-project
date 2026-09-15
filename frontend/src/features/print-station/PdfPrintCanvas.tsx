@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PDFJS_STANDARD_FONT_DATA_URL } from "@/lib/pdfjs";
 
 /**
  * 把 PDF 每一页画到一张 canvas 上，供 window.print() 打印。
@@ -16,10 +17,13 @@ import { useEffect, useRef, useState } from "react";
 export function PdfPrintCanvas({
   blob,
   onReady,
+  onError,
 }: {
   blob: Blob;
   /** 每页的 PNG dataURL，按页序。调用方拿它在独立 iframe 里打印 */
   onReady?: (pageDataUrls: string[]) => void;
+  /** 渲染失败。必须回报 —— 否则任务会一直挂在 SENT 直到超时，后台看不到任何原因 */
+  onError?: (message: string) => void;
 }) {
   const [pages, setPages] = useState<{ dataUrl: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +31,8 @@ export function PdfPrintCanvas({
   const readyFiredRef = useRef(false);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +50,8 @@ export function PdfPrintCanvas({
         pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
         const data = await blob.arrayBuffer();
-        const t = pdfjs.getDocument({ data });
+        // standardFontDataUrl 不能省：不嵌字体的基础字体 PDF 少了它会渲染成空白页
+        const t = pdfjs.getDocument({ data, standardFontDataUrl: PDFJS_STANDARD_FONT_DATA_URL });
         task = t;
         const pdf = await t.promise;
         if (cancelled) return;
@@ -73,7 +80,12 @@ export function PdfPrintCanvas({
           await new Promise((r) => setTimeout(r, 0));
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "PDF 解析失败");
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : "PDF 解析失败";
+        setError(msg);
+        // 必须往上抛：不然工位页不知道渲染失败了，任务会挂在 SENT 直到超时，
+        // 后台只看到「超时未回执」，真正的原因一个字都留不下。
+        onErrorRef.current?.(msg);
       }
     })();
 

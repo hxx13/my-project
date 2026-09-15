@@ -308,7 +308,15 @@ export default function PrintStationPage() {
         {printable && current ? (
           <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3">
             {isPdf(current) && file ? (
-              <PdfPrintCanvas blob={file} onReady={(urls) => void onPrintableReady(urls)} />
+              <PdfPrintCanvas
+                blob={file}
+                onReady={(urls) => void onPrintableReady(urls)}
+                onError={(msg) => {
+                  // 渲染失败立刻回执 FAILED，而不是干等超时调度 ——
+                  // 否则后台只看到「超时未回执」，真正的原因留不下来。
+                  if (current) void settle(current, false, `PDF 渲染失败：${msg}`);
+                }}
+              />
             ) : imageUrl ? (
               <img
                 src={imageUrl}
