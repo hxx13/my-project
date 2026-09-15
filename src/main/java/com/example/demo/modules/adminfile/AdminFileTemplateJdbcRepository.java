@@ -27,22 +27,53 @@ public class AdminFileTemplateJdbcRepository {
     );
 
     public void insert(String id, String originalName, String storageKey, String mimeType,
-                       long sizeBytes, String uploadedByUserId, String purpose) {
+                       long sizeBytes, String uploadedByUserId, String purpose, boolean ephemeral) {
         jdbc.update(
-                "INSERT INTO admin_file_template(id, original_name, storage_key, mime_type, size_bytes, uploaded_by_user_id, purpose) VALUES(?,?,?,?,?,?,?)",
+                "INSERT INTO admin_file_template(id, original_name, storage_key, mime_type, size_bytes, uploaded_by_user_id, purpose, ephemeral) VALUES(?,?,?,?,?,?,?,?)",
                 id, originalName, storageKey, mimeType == null ? "" : mimeType, sizeBytes,
-                uploadedByUserId, purpose == null ? "" : purpose
+                uploadedByUserId, purpose == null ? "" : purpose, ephemeral ? 1 : 0
         );
     }
 
-    /** 按用途列出。purpose 为空表示不过滤（兼容未打标的存量行）。 */
+    /**
+     * 按用途列出。一次性文件（ephemeral=1）一律不出现 —— 它就是来打完就走的，
+     * 摆在文件模板库里没有意义。
+     */
     public List<Map<String, Object>> listByPurpose(String purpose) {
         String sql = "SELECT id, original_name, mime_type, size_bytes, uploaded_by_user_id, create_time"
-                + " FROM admin_file_template";
+                + " FROM admin_file_template WHERE ephemeral = 0";
         if (purpose == null || purpose.isBlank()) {
             return jdbc.query(sql + " ORDER BY create_time DESC", ROW);
         }
-        return jdbc.query(sql + " WHERE purpose = ? ORDER BY create_time DESC", ROW, purpose);
+        return jdbc.query(sql + " AND purpose = ? ORDER BY create_time DESC", ROW, purpose);
+    }
+
+    public boolean isEphemeral(String id) {
+        List<Integer> r = jdbc.queryForList(
+                "SELECT ephemeral FROM admin_file_template WHERE id = ?", Integer.class, id);
+        return !r.isEmpty() && r.get(0) != null && r.get(0) == 1;
+    }
+
+    /**
+     * 过期的一次性文件 id（没有活跃打印任务的那些）。
+     *
+     * 为什么要排除活跃任务：文件是工位**领到任务之后**才来下载的。
+     * 任务还停在 PENDING/SENT，说明随时可能有人来取，这时删掉就是让它 404。
+     *
+     * COLLATE 必须写死：admin_file_template 是老表（unicode_ci 一拨），
+     * print_job 是新建的（0900 一拨），跨拨列对列比较会抛 1267。
+     */
+    public List<String> findExpiredEphemeralIds(int minutes) {
+        return jdbc.queryForList(
+                "SELECT f.id FROM admin_file_template f"
+              + " WHERE f.ephemeral = 1"
+              + "   AND f.create_time < DATE_SUB(NOW(), INTERVAL ? MINUTE)"
+              + "   AND NOT EXISTS ("
+              + "       SELECT 1 FROM print_job j"
+              + "        WHERE j.source_type = 'ADMIN_FILE'"
+              + "          AND j.source_id COLLATE utf8mb4_unicode_ci = f.id"
+              + "          AND j.status IN ('PENDING','SENT'))",
+                String.class, minutes);
     }
 
     public Optional<Map<String, Object>> findById(String id) {

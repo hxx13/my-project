@@ -31,13 +31,16 @@ public class PrintJobService {
     private final PrintJobMapper mapper;
     private final PrintStationService stationService;
     private final PrintNotifyService notifyService;
+    private final PrintSourceCleaner sourceCleaner;
 
     public PrintJobService(PrintJobMapper mapper,
                            PrintStationService stationService,
-                           PrintNotifyService notifyService) {
+                           PrintNotifyService notifyService,
+                           PrintSourceCleaner sourceCleaner) {
         this.mapper = mapper;
         this.stationService = stationService;
         this.notifyService = notifyService;
+        this.sourceCleaner = sourceCleaner;
     }
 
     /** 建单。工位必须存在且启用 —— 否则任务建了也永远没人领。 */
@@ -89,11 +92,17 @@ public class PrintJobService {
         if (mapper.acknowledge(jobId, stationId, status, err) != 1) {
             return false;
         }
-        // 通知放在状态落库之后：PushService 是同步外部 IO，不该被包进状态迁移里。
-        // 重复回执在上面已经被挡掉，所以不会重复发。
-        if (!ok) {
-            mapper.findById(jobId).ifPresent(j -> notifyService.notifyFailed(j, err));
-        }
+        // 通知与清理都放在状态落库之后：PushService 是同步外部 IO，不该被包进状态迁移里。
+        // 重复回执在上面已经被挡掉，所以两者都不会重复执行。
+        mapper.findById(jobId).ifPresent(j -> {
+            if (ok) {
+                // 一次性源文件打完即删。工位已经取走文件并渲染完了，服务端留拷没有意义。
+                sourceCleaner.cleanupAfterPrinted(j);
+            } else {
+                // 失败不删：管理员还能点重推，源文件没了就只能拿到「文件已不存在」
+                notifyService.notifyFailed(j, err);
+            }
+        });
         return true;
     }
 

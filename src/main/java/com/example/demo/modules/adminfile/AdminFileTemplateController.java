@@ -101,6 +101,7 @@ public class AdminFileTemplateController {
     public Result<Map<String, Object>> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "purpose", required = false) String purpose,
+            @RequestParam(value = "ephemeral", required = false) Boolean ephemeral,
             HttpServletRequest request
     ) {
         Result<?> denied = requireStaff(request);
@@ -109,7 +110,8 @@ public class AdminFileTemplateController {
         }
         User admin = (User) request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         try {
-            Map<String, Object> row = adminFileTemplateService.saveUpload(file, admin.getId(), purpose);
+            Map<String, Object> row = adminFileTemplateService.saveUpload(
+                    file, admin.getId(), purpose, Boolean.TRUE.equals(ephemeral));
             // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）：返回完整元数据供前端就地追加
             return Result.success(row);
         } catch (IllegalArgumentException e) {

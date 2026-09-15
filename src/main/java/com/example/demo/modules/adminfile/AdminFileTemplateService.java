@@ -78,10 +78,13 @@ public class AdminFileTemplateService {
     /**
      * 上传落盘。
      *
-     * @param purpose 用途标记（TEMPLATE / SOP / MATERIAL），决定它出现在哪个消费者的列表里。
-     *                这张表是全站共用的 blob 表，不打标就会串到「文件模板库」去。
+     * @param purpose   用途标记（TEMPLATE / SOP），决定它出现在哪个消费者的列表里。
+     *                  这张表是全站共用的 blob 表，不打标就会串到「文件模板库」去。
+     * @param ephemeral 一次性文件：打完即删，且不出现在文件模板库列表里。
+     *                  用于「临时打印」——上传即打，不留记录。
      */
-    public Map<String, Object> saveUpload(MultipartFile file, String uploadedByUserId, String purpose)
+    public Map<String, Object> saveUpload(MultipartFile file, String uploadedByUserId,
+                                          String purpose, boolean ephemeral)
             throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("文件为空");
@@ -107,7 +110,7 @@ public class AdminFileTemplateService {
         String mime = StringUtils.hasText(file.getContentType()) ? file.getContentType() : "application/octet-stream";
         String tag = normalizePurpose(purpose);
         try {
-            repo.insert(id, original, storageKey, mime, bytes.length, uploadedByUserId, tag);
+            repo.insert(id, original, storageKey, mime, bytes.length, uploadedByUserId, tag, ephemeral);
         } catch (BadSqlGrammarException ex) {
             storage.deleteIfExists(storageKey);
             log.warn("[admin-file-template] 写入元数据失败: {}", ex.getMessage());
@@ -121,8 +124,60 @@ public class AdminFileTemplateService {
         row.put("sizeBytes", (long) bytes.length);
         row.put("uploadedByUserId", uploadedByUserId);
         row.put("purpose", tag);
+        row.put("ephemeral", ephemeral);
         row.put("createTime", now);
         return row;
+    }
+
+    /** 这个文件是不是一次性的（打完即删）。 */
+    public boolean isEphemeral(String id) {
+        try {
+            return repo.isEphemeral(id);
+        } catch (BadSqlGrammarException ex) {
+            return false;
+        }
+    }
+
+    /**
+     * 打过就删：只删一次性文件，普通模板不受影响。
+     * 找不到 / 不是一次性的都返回 false，调用方据此决定要不要记日志。
+     */
+    public boolean deleteIfEphemeral(String id) {
+        try {
+            if (!repo.isEphemeral(id)) return false;
+            delete(id);
+            return true;
+        } catch (Exception e) {
+            log.warn("[admin-file-template] 清理一次性文件失败 id={}: {}", id, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 清理过期的一次性文件，返回清理条数。
+     *
+     * 这是「打完即删」的兜底：任务失败、或工位压根没来取，那条快路就不会走，
+     * 文件会一直躺着 —— 那就留痕了。所以必须有一条按时间的兜底。
+     * 查询排除了还停在 PENDING/SENT 的任务，免得把工位正要来取的文件删掉。
+     */
+    public int purgeExpiredEphemeral(int minutes) {
+        List<String> ids;
+        try {
+            ids = repo.findExpiredEphemeralIds(minutes);
+        } catch (BadSqlGrammarException ex) {
+            log.warn("[admin-file-template] 查询过期一次性文件失败（表或列可能未建）: {}", ex.getMessage());
+            return 0;
+        }
+        int n = 0;
+        for (String id : ids) {
+            try {
+                delete(id);
+                n++;
+            } catch (Exception e) {
+                log.warn("[admin-file-template] 清理过期一次性文件失败 id={}: {}", id, e.getMessage());
+            }
+        }
+        return n;
     }
 
     /** 认不出用途的一律当文件模板 —— 存量调用方不传 purpose 时行为与改动前一致。 */
