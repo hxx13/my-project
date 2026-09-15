@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { APP_BUILD_ID, resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { authStorage } from "@/features/auth/authStorage";
 import {
   ackPrintJob,
@@ -71,6 +73,20 @@ export default function PrintStationPage() {
   const [stationError, setStationError] = useState("");
   const busyRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
+  const navigate = useNavigate();
+
+  /**
+   * 清掉当前会话回到登录页，登完再跳回本页。
+   *
+   * 工位机是无人值守的，会话一坏（token 过期、登错账号）就得能在**这一个页面里**
+   * 自己救回来 —— 不然得让人知道去哪个别的地址登录。返回地址走 location.state.from，
+   * 这是登录页本来就认的字段（AuthGuard 也是这么传的）。
+   */
+  const relogin = useCallback(() => {
+    authStorage.clear();
+    socketRef.current?.disconnect();
+    navigate("/", { replace: true, state: { from: { pathname: "/console/admin/print-station" } } });
+  }, [navigate]);
 
   const refreshRecent = useCallback(async () => {
     try {
@@ -189,34 +205,43 @@ export default function PrintStationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 打印时只出 #print-root，后台壳（侧栏/顶栏）靠这个 body class 屏蔽掉，
+  // 见 index.css 的 @media print 段。离开本页必须摘干净，否则会影响别的页面打印。
+  useEffect(() => {
+    document.body.classList.add("print-station-active");
+    return () => document.body.classList.remove("print-station-active");
+  }, []);
+
   const printable = Boolean(current && (isPdf(current) ? file : imageUrl));
   const copies = current?.copies ?? 1;
 
   return (
-    <div className="min-h-screen bg-white p-6 text-[var(--app-color-text-primary,#111)]">
-      {/* 纸张尺寸按工位配置注入：卡片机设成 CR80，桌面打印机留空走驱动默认 */}
-      <style>
-        {pageSize ? `@page { size: ${pageSize}; margin: 0; }` : "@page { margin: 0; }"}
-      </style>
+    <AdminPageShell>
+      <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[420px] flex-col gap-3">
+        {/* 纸张尺寸按工位配置注入：卡片机设成 CR80，桌面打印机留空走驱动默认 */}
+        <style>
+          {pageSize ? `@page { size: ${pageSize}; margin: 0; }` : "@page { margin: 0; }"}
+        </style>
 
-      {/* 只在打印时出现的内容 */}
-      {printable && current ? (
-        <div>
-          {isPdf(current) && file ? (
-            <PdfPrintCanvas blob={file} onReady={() => void onPrintableReady()} />
-          ) : imageUrl ? (
-            <img
-              src={imageUrl}
-              alt=""
-              style={{ width: "100%", display: "block" }}
-              onLoad={() => void onPrintableReady()}
-            />
-          ) : null}
-        </div>
-      ) : null}
+        {/* 待打印的内容。屏幕上就是预览 —— 现场的人该看得见要打的是什么。
+            打印时它是唯一可见的东西（见 index.css）。 */}
+        {printable && current ? (
+          <div id="print-root" className="min-h-0 flex-1 overflow-y-auto rounded-md border border-[var(--app-color-border-default)] bg-white p-3 print:border-0 print:p-0">
+            {isPdf(current) && file ? (
+              <PdfPrintCanvas blob={file} onReady={() => void onPrintableReady()} />
+            ) : imageUrl ? (
+              <img
+                src={imageUrl}
+                alt=""
+                style={{ width: "100%", display: "block" }}
+                onLoad={() => void onPrintableReady()}
+              />
+            ) : null}
+          </div>
+        ) : null}
 
-      {/* 屏幕上显示的状态面板 */}
-      <div className="print:hidden">
+        {/* 屏幕上显示的状态面板 */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain print:hidden">
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <span className={`inline-block size-3 rounded-full ${connected ? "bg-green-500" : "bg-red-500"}`} />
           <h1 className="text-lg font-semibold">打印工位{stationName ? `：${stationName}` : ""}</h1>
@@ -236,13 +261,18 @@ export default function PrintStationPage() {
             {stationError ? <div className="mt-1 text-red-700">{stationError}</div> : null}
             <div className="mt-1 text-[12px] text-red-700">
               当前登录账号：<code className="rounded bg-white px-1">{currentUsername()}</code>
-              {!connected ? " · socket 没连上" : ""}
+              {!connected ? " · socket 没连上，多半是登录态失效了" : ""}
             </div>
-            {stationError ? (
-              <div className="mt-1 text-[12px] text-red-600">
-                这个账号没有绑定打印工位。请退出登录，改用绑定了工位的账号登进来。
-              </div>
-            ) : null}
+            <div className="mt-1 text-[12px] text-red-600">
+              换一个**绑定了打印工位**的账号登录即可。点下面的按钮，登录完会自动跳回本页。
+            </div>
+            <button
+              type="button"
+              onClick={relogin}
+              className="mt-2 rounded-md border border-red-600 bg-white px-3 py-1.5 text-[13px] font-medium text-red-700 transition hover:bg-red-600 hover:text-white"
+            >
+              退出并重新登录
+            </button>
           </div>
         ) : null}
 
@@ -307,7 +337,8 @@ export default function PrintStationPage() {
             ) : null}
           </tbody>
         </table>
+        </div>
       </div>
-    </div>
+    </AdminPageShell>
   );
 }

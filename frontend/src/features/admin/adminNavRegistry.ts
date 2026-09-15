@@ -636,15 +636,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/file-templates", "STAFF"),
       },
       {
-        // 工位配置（含绑定打印者账号）仅管理员可见，普通人员只在打印时选打印机
+        // 工位配置：绑哪个账号、哪台机器 —— 最高权限，别下放给 STAFF
         id: "print-stations",
         path: "/admin/print-stations",
-        label: "打印工位",
+        label: "打印工位配置",
         icon: Printer,
         homeTone: "from-cyan-400 to-sky-500",
-        fallbackMinRole: "ADMIN",
+        fallbackMinRole: "SUPER_ADMIN",
         alias: ["打印机", "打印工位", "station", "printer"],
-        sidebarVisible: (ctx) => show(ctx, "/admin/print-stations", "ADMIN"),
+        sidebarVisible: (ctx) => show(ctx, "/admin/print-stations", "SUPER_ADMIN"),
       },
       {
         // 队列与历史：发起打印的人要能查自己发的东西，所以 STAFF 可见
@@ -656,6 +656,18 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "STAFF",
         alias: ["打印队列", "打印历史", "打印记录", "queue", "print jobs"],
         sidebarVisible: (ctx) => show(ctx, "/admin/print-jobs", "STAFF"),
+      },
+      {
+        // 打印工位：工位电脑常开此页收任务。它是「打印机那一端」，
+        // 和上面那个「发任务那一端」是两回事，所以单独一个入口。
+        id: "print-station",
+        path: "/admin/print-station",
+        label: "打印工位机",
+        icon: Monitor,
+        homeTone: "from-slate-400 to-slate-500",
+        fallbackMinRole: "STAFF",
+        alias: ["打印工位", "工位机", "打印机终端", "station"],
+        sidebarVisible: (ctx) => show(ctx, "/admin/print-station", "STAFF"),
       },
       {
         id: "sop",
@@ -927,6 +939,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/file-templates" ||
     p === "/admin/print-stations" ||
     p === "/admin/print-jobs" ||
+    p === "/admin/print-station" ||
     p === "/admin/sop" ||
     p === "/admin/analytics" ||
     p === "/admin/facility-maintenance" ||

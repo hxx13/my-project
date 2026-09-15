@@ -637,6 +637,15 @@ public class PagePermissionService {
         if (path.startsWith("/admin/repair-process") || path.startsWith("/admin/purchase-process")) {
             return "SUPER_ADMIN";
         }
+        // ── 打印 ──
+        // 顺序要紧：/admin/print-stations 是 /admin/print-station 的前缀超集，
+        // 长的那条必须先判，否则「工位配置」会被前缀误吞成 STAFF。
+        if (path.startsWith("/admin/print-stations")) {
+            return "SUPER_ADMIN"; // 配置工位（绑哪个账号、哪台机器）
+        }
+        if (path.startsWith("/admin/print-jobs") || path.startsWith("/admin/print-station")) {
+            return "STAFF";       // 发打印、看队列历史、工位机收任务
+        }
         // ── ADMIN ──
         if (path.startsWith("/admin/supplies/audit-export")) {
             return "STAFF"; // supplies/audit-export stays STAFF per registry

@@ -49,15 +49,16 @@ public class PrintAdminController {
         this.userDisplayNameService = userDisplayNameService;
     }
 
-    private User requireAdmin(String authHeader) {
+    /** 配置打印工位（绑哪个账号、哪台机器）要最高权限。 */
+    private User requireSuperAdmin(String authHeader) {
         User u = authContextService.resolveUserFromBearer(authHeader);
-        if (u == null || u.getRole() == null || u.getRole().getLevel() < RoleEnum.ADMIN.getLevel()) {
-            throw new TwinBusinessException(403, "需要管理员权限");
+        if (u == null || u.getRole() == null || u.getRole().getLevel() < RoleEnum.SUPER_ADMIN.getLevel()) {
+            throw new TwinBusinessException(403, "需要超级管理员权限");
         }
         return u;
     }
 
-    /** 发起打印只要教职工即可；配置工位才要管理员。 */
+    /** 发起打印、看队列与历史只要教职工即可。 */
     private User requireStaff(String authHeader) {
         User u = authContextService.resolveUserFromBearer(authHeader);
         if (u == null || u.getRole() == null || u.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
@@ -66,13 +67,13 @@ public class PrintAdminController {
         return u;
     }
 
-    /* ────────────── 工位 ────────────── */
+    /* ────────────── 工位（配置：最高权限） ────────────── */
 
     @GetMapping("/stations")
     @Operation(summary = "工位列表")
     public Result<List<Map<String, Object>>> listStations(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
-        requireAdmin(auth);
+        requireSuperAdmin(auth);
         return Result.success(stationService.listAll().stream().map(this::toStationView).toList());
     }
 
@@ -81,7 +82,7 @@ public class PrintAdminController {
     public Result<Map<String, Object>> createStation(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestBody PrintStation body) {
-        User u = requireAdmin(auth);
+        User u = requireSuperAdmin(auth);
         return Result.success(toStationView(stationService.create(body, u.getId())));
     }
 
@@ -91,7 +92,7 @@ public class PrintAdminController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @PathVariable String id,
             @RequestBody PrintStation body) {
-        requireAdmin(auth);
+        requireSuperAdmin(auth);
         return Result.success(toStationView(stationService.update(id, body)));
     }
 
@@ -126,7 +127,7 @@ public class PrintAdminController {
     public Result<Void> deleteStation(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @PathVariable String id) {
-        requireAdmin(auth);
+        requireSuperAdmin(auth);
         stationService.delete(id);
         return Result.success();
     }
@@ -191,7 +192,7 @@ public class PrintAdminController {
     public Result<List<PrintJob>> listJobs(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(defaultValue = "100") int limit) {
-        requireAdmin(auth);
+        requireStaff(auth);
         return Result.success(jobService.listAll(limit));
     }
 
@@ -200,7 +201,7 @@ public class PrintAdminController {
     public Result<Map<String, Object>> retry(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @PathVariable String id) {
-        requireAdmin(auth);
+        requireStaff(auth);
         if (!jobService.retry(id)) {
             return Result.error("该任务当前状态不可重推");
         }

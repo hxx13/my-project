@@ -945,3 +945,21 @@ html.portal-landing-scroll-hidden::-webkit-scrollbar {
    必须放在 tailwind 指令之后，靠源码顺序覆盖同名工具类。 */
 .overscroll-y-contain { overscroll-behavior-y: auto; }
 .overscroll-contain { overscroll-behavior: auto; }
+
+/* ═══════ 打印工位：打印时只出 #print-root，屏蔽后台壳 ═══════
+   工位页挂在管理后台壳下（侧栏 + 顶栏）。不屏蔽的话 window.print() 会把
+   整个后台界面连同侧栏一起打出来。
+   用 visibility 而非 display:none —— 后者会让 #print-root 的祖先尺寸塌掉，
+   布局跟着变，打出来的位置就不对了。
+   body class 由工位页挂载时加、卸载时摘，只在那一页生效。 */
+@media print {
+  body.print-station-active * { visibility: hidden; }
+  body.print-station-active #print-root,
+  body.print-station-active #print-root * { visibility: visible; }
+  body.print-station-active #print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

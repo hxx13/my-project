@@ -235,6 +235,8 @@ const legacyRedirects = [
   { path: "/dashboard", to: `${STAFF_NS}/dashboard` },
   { path: "/profile-security", to: `${STAFF_NS}/admin/profile-security` },
   { path: "/messages", to: `${STAFF_NS}/admin/staff-messages` },
+  // 打印工位原先在顶层（裸地址），现已收进后台壳；老快捷方式仍要能进
+  { path: "/print-station", to: `${STAFF_NS}/admin/print-station` },
   { path: "/admin/*", to: `${STAFF_NS}/admin` },
   { path: "/debug/*", to: `${STAFF_NS}/debug` },
   { path: "/debug-personnel/*", to: `${STAFF_NS}/debug-personnel` },
@@ -319,12 +321,6 @@ export const router = createHashRouter([
   { path: "/nhp/notifications", element: <AuthGuard><NhpNotificationCenterPage /></AuthGuard> },
 
   // ═══════════════════════════════════════════════════════
-  //  打印工位：工位电脑常开此页，刻意不进后台壳
-  //  （进 AdminLayout 会触发 /console 重定向与高度链问题）
-  // ═══════════════════════════════════════════════════════
-  { path: "/print-station", element: <AuthGuard><PrintStationPage /></AuthGuard> },
-
-  // ═══════════════════════════════════════════════════════
   //  教职工路由 — 统一在 /console 命名空间下
   // ═══════════════════════════════════════════════════════
   {
@@ -379,10 +375,12 @@ export const router = createHashRouter([
               { path: "purchase-request", element: <PurchaseRequestPage /> },
               { path: "facility-maintenance", element: <AdminFacilityMaintenancePage /> },
               { path: "file-templates", element: <AdminFileTemplatesPage /> },
-              // 工位配置仅 ADMIN；普通人员没有入口，只在打印时选打印机
-              { path: "print-stations", element: <AdminPrintStationsPage /> },
               // 队列与历史：教职工都能看（发起打印的人要能查自己发的东西）
               { path: "print-jobs", element: <AdminPrintJobsPage /> },
+              // 打印工位：工位电脑常开此页。放在后台壳下，为的是有个侧栏入口，
+              // 而不是让人记一个裸地址；打印时后台壳靠 index.css 的
+              // @media print + body.print-station-active 屏蔽掉。
+              { path: "print-station", element: <PrintStationPage /> },
               { path: "sop", element: <AdminSopPage /> },
               { path: "knowledge", element: <AdminKnowledgeHomePage /> },
               { path: "report-fill", element: <ReportFillHubPage /> },
@@ -471,6 +469,9 @@ export const router = createHashRouter([
               {
                 element: <SuperAdminGuard />,
                 children: [
+                  // 打印工位配置（绑哪个账号、哪台机器）要最高权限；
+                  // 而下发打印、工位机收任务只要 STAFF，别混在一起。
+                  { path: "print-stations", element: <AdminPrintStationsPage /> },
                   { path: "personnel", element: <AdminPersonnelPage /> },
                   { path: "logging-console", element: <AdminLoggingConsolePage /> },
                   { path: "api-docs", element: <AdminApiDocsPage /> },
