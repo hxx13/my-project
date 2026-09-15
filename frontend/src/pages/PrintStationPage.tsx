@@ -21,8 +21,8 @@ import { PdfPrintCanvas } from "@/features/print-station/PdfPrintCanvas";
  */
 const POLL_MS = 15000;
 
-/** 连打多份时，两次 print() 之间留的间隔，让打印后台有时间把作业排上队 */
-const COPY_GAP_MS = 500;
+/** 等 afterprint 的兜底上限：万一某些环境不派发该事件，也不能把工位卡死 */
+const PRINT_SETTLE_MS = 8000;
 
 function isPdf(job: PrintJob): boolean {
   return job.fileName.toLowerCase().endsWith(".pdf");
@@ -63,6 +63,14 @@ export default function PrintStationPage() {
   const [pending, setPending] = useState(0);
   const [connected, setConnected] = useState(false);
   const [message, setMessage] = useState("");
+  /**
+   * 当前挂着的打印内容是否已经打完了。
+   *
+   * 打完**不清 DOM**：kiosk 模式下 window.print() 立刻返回，光栅化在后面异步做，
+   * 这时把内容摘掉打印机就取到一张白纸（实测踩过）。所以内容一直留到下一件任务领到才替换，
+   * 这个标记只用来表达「现在挂着的是上一件，不是进行中」。
+   */
+  const [lastPrinted, setLastPrinted] = useState(false);
   /**
    * 工位自身的配置拿不到时的原因。
    *
@@ -107,12 +115,19 @@ export default function PrintStationPage() {
         /* 回执失败交给超时调度兜底 */
       }
       setMessage(ok ? `已提交打印：${job.fileName}` : `打印失败：${err ?? job.fileName}`);
-      setCurrent(null);
-      setFile(null);
-      setImageUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      if (ok) {
+        // 成功时**刻意不清** current/file —— 打印内容必须留在 DOM 里，
+        // 直到浏览器把这一页光栅化完（见 lastPrinted 的说明）。
+        // 内容留到下一件任务领到时再替换。
+        setLastPrinted(true);
+      } else {
+        setCurrent(null);
+        setFile(null);
+        setImageUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
+      }
       await refreshRecent();
     },
     [refreshRecent],
@@ -120,12 +135,21 @@ export default function PrintStationPage() {
 
   /** 领一条 → 取文件。一次只处理一条。 */
   const drainOne = useCallback(async () => {
-    if (busyRef.current || current) return;
+    // 上一件已打完（lastPrinted）就该继续领下一件；只有「正在处理中」才挡。
+    // 打完不清 DOM 之后，这个判据必须带上 lastPrinted，否则队列会彻底停摆。
+    if (busyRef.current || (current && !lastPrinted)) return;
     busyRef.current = true;
     try {
       const job = await claimPrintJob();
       if (!job) return;
+      // 新任务来了才替换掉上一件残留的打印内容
+      setLastPrinted(false);
       setCurrent(job);
+      setImageUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setFile(null);
       setMessage(`正在准备 ${job.fileName}`);
       try {
         const blob = await fetchPrintJobFile(job.id);
@@ -138,7 +162,29 @@ export default function PrintStationPage() {
     } finally {
       busyRef.current = false;
     }
-  }, [current, settle]);
+  }, [current, lastPrinted, settle]);
+
+  /**
+   * 调起一次打印，并等它**真正提交完**再返回。
+   *
+   * 不能调完 window.print() 就往下走：kiosk 模式下它是立刻返回的，
+   * 光栅化在后面异步做。此时若把待打内容从 DOM 里摘掉（settle 会把 current 置空、
+   * #print-root 随之卸载），打印机取到的就是一张白纸 —— 实测踩过，
+   * 打出来是空白页，而任务状态照样是 PRINTED。
+   */
+  const printOnce = () =>
+    new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("afterprint", done);
+        resolve();
+      };
+      window.addEventListener("afterprint", done);
+      window.print();
+      setTimeout(done, PRINT_SETTLE_MS);
+    });
 
   /**
    * 渲染完成 → 调起打印 → 回执。
@@ -153,8 +199,7 @@ export default function PrintStationPage() {
     try {
       for (let i = 0; i < n; i++) {
         if (n > 1) setMessage(`正在打印 ${current.fileName}（第 ${i + 1} / ${n} 份）`);
-        window.print();
-        if (i < n - 1) await new Promise((r) => setTimeout(r, COPY_GAP_MS));
+        await printOnce();
       }
       await settle(current, true);
     } catch (e) {
@@ -280,11 +325,19 @@ export default function PrintStationPage() {
 
         {/* 当前任务：现场的人靠这块知道手上这叠纸是什么 */}
         {current ? (
-          <div className="mb-5 rounded border-l-4 border-blue-500 bg-blue-50 px-4 py-3">
+          <div
+            className={
+              "mb-5 rounded border-l-4 px-4 py-3 " +
+              (lastPrinted ? "border-gray-300 bg-gray-50" : "border-blue-500 bg-blue-50")
+            }
+          >
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="font-semibold">{current.fileName}</span>
               {copies > 1 ? (
                 <span className="rounded bg-white px-2 py-0.5 text-[12px]">共 {copies} 份</span>
+              ) : null}
+              {lastPrinted ? (
+                <span className="rounded bg-white px-2 py-0.5 text-[12px] text-gray-500">已提交打印</span>
               ) : null}
             </div>
             {current.note ? (
