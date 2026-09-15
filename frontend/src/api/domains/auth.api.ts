@@ -79,12 +79,14 @@ export async function registerStaff(
   password: string,
   inviteCode: string,
   name: string,
+  jobNumber?: string,
 ): Promise<AuthData> {
   const response = await axios.post<Result<AuthData>>("/api/auth/register/staff", {
     username,
     password,
     inviteCode,
     name,
+    jobNumber,
   });
 
   if (!response.data?.success || !response.data?.data?.token) {

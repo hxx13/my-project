@@ -800,6 +800,11 @@ public class AuthController {
         if (xff != null && !xff.isBlank()) {
             return xff.split(",")[0].trim();
         }
+        // nginx 对所有 location 都设了 X-Real-IP（$remote_addr 覆盖写），比 XFF 更可靠
+        String xri = request.getHeader("X-Real-IP");
+        if (xri != null && !xri.isBlank()) {
+            return xri.trim();
+        }
         return request.getRemoteAddr();
     }
 

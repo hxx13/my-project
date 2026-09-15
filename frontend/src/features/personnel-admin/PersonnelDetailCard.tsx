@@ -111,6 +111,7 @@ export function PersonnelDetailCard({
   const personId = String(row.id);
   const isBuiltin = uid === BUILTIN_SUPER_ADMIN_ID;
   const isStaff = hasMinRole(row.role || "MEMBER", "STAFF");
+  // 只看教职工账号（STAFF_）；学生账号挂在 aro_user_id 列，不算「有教职工账号」
   const hasAccount = Boolean(row.staffId);
   const tags = identityMap.get(personId) ?? [];
 
@@ -254,7 +255,11 @@ export function PersonnelDetailCard({
               className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${row.status === 0 ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
               {row.status === 0 ? "已禁用" : "启用中"}
             </button>
-          ) : <span className="text-[11px] text-[var(--twin-mute)]">无系统账号</span>}
+          ) : (
+            <span className="text-[11px] text-[var(--twin-mute)]">
+              {row.studentUsername ? "无教职工账号（学生账号见下方）" : "无教职工账号"}
+            </span>
+          )}
           {isSuperAdmin && !isBuiltin && hasAccount ? (
             <>
               <button type="button" className={inkBtn} onClick={() => onResetOpenId(uid)}>重置绑定</button>

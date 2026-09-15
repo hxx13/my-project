@@ -9,6 +9,7 @@ export default function RegisterStaffPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [realName, setRealName] = useState("");
+  const [jobNumber, setJobNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
@@ -34,7 +35,7 @@ export default function RegisterStaffPage() {
     }
     try {
       setSubmitting(true);
-      const data = await registerStaff(username.trim(), password, inviteCode.trim(), realName.trim());
+      const data = await registerStaff(username.trim(), password, inviteCode.trim(), realName.trim(), jobNumber.trim());
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("staff");
       toast.success("注册成功");
@@ -73,6 +74,16 @@ export default function RegisterStaffPage() {
               className="w-full rounded-xl border border-white/10 bg-slate-800/70 px-4 py-3 text-sm outline-none focus:border-blue-400"
               placeholder="人员库显示用，≠ 登录账号"
               autoComplete="name"
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm text-slate-300">工号 / 学号（选填）</label>
+            <input
+              value={jobNumber}
+              onChange={(e) => setJobNumber(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-slate-800/70 px-4 py-3 text-sm outline-none focus:border-blue-400"
+              placeholder="填了就按它认人，比姓名靠得住"
+              autoComplete="off"
             />
           </div>
           <div>

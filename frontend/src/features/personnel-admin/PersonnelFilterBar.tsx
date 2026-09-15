@@ -52,7 +52,7 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
                 : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
             )}
           >
-            {t === "all" ? `全部 ${total}` : t === "sys" ? "有系统账号" : "无系统账号"}
+            {t === "all" ? `全部 ${total}` : t === "sys" ? "有教职工账号" : "无教职工账号"}
           </button>
         ))}
       </div>

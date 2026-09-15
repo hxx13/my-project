@@ -84,7 +84,7 @@ public class StaffRegistrationService {
         userMapper.updatePasswordWithPlainById(id, hash, encryptedPlain, 0);
         try {
             // 真实姓名 → sys_user.name + personnel；绝不把姓名写成 username
-            personnelService.ensureStaffPersonnel(id, realName, RoleEnum.STAFF.getCode());
+            personnelService.ensureStaffPersonnel(id, realName, RoleEnum.STAFF.getCode(), request.getJobNumber());
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
