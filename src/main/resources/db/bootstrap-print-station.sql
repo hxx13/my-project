@@ -11,4 +11,4 @@ CREATE TABLE IF NOT EXISTS print_station (
     PRIMARY KEY (id),
     UNIQUE KEY uq_print_station_user (user_id),
     KEY idx_print_station_enabled (enabled)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印工位'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='打印工位';

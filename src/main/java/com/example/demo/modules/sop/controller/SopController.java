@@ -175,6 +175,41 @@ public class SopController {
         return Result.success(Map.of("ok", true));
     }
 
+    /* ────────────── 收藏 ────────────── */
+
+    /*
+     * 收藏是「个人数据」，只卡 STAFF（拦截器已统一卡过），不再收紧到 ADMIN ——
+     * 普通教职工当然可以收藏常用的 SOP。按人存，换设备/换浏览器都还在。
+     */
+
+    /** 当前用户的收藏文档 id，最近收藏的在前 */
+    @GetMapping("/favorites")
+    public Result<List<Long>> favorites(HttpServletRequest request) {
+        User u = currentUser(request);
+        if (u == null) return Result.fail(401, "当前登录信息无效");
+        return Result.success(sopTreeService.listFavoriteDocumentIds(u.getId()));
+    }
+
+    @PostMapping("/favorites/{documentId}")
+    public Result<?> addFavorite(@PathVariable Long documentId, HttpServletRequest request) {
+        User u = currentUser(request);
+        if (u == null) return Result.fail(401, "当前登录信息无效");
+        try {
+            sopTreeService.addFavorite(u.getId(), documentId);
+            return Result.success(Map.of("ok", true));
+        } catch (IllegalArgumentException e) {
+            return Result.fail(400, e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/favorites/{documentId}")
+    public Result<?> removeFavorite(@PathVariable Long documentId, HttpServletRequest request) {
+        User u = currentUser(request);
+        if (u == null) return Result.fail(401, "当前登录信息无效");
+        sopTreeService.removeFavorite(u.getId(), documentId);
+        return Result.success(Map.of("ok", true));
+    }
+
     /* ────────────── helpers ────────────── */
 
     private User currentUser(HttpServletRequest request) {

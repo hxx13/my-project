@@ -1,25 +1,326 @@
-<view class="page tpl-page">
-  <view class="tpl-toolbar">
-    <van-button type="primary" size="small" icon="plus" loading="{{ uploadLoading }}" disabled="{{ uploadLoading }}" bind:click="onChooseUpload">
-      上传文件
-    </van-button>
-    <text class="tpl-toolbar-tip">支持 pdf、xlsx、docx、zip 等（与 Web 一致）</text>
+<view class="page">
+  <!-- 顶部固定区：标题 + 常用操作 + 搜索 -->
+  <view class="card">
+    <view class="title-row">
+      <view class="title">文件模板库</view>
+      <view class="title-right">
+        <view class="ui-btn ui-btn-plain {{ cartCount === 0 ? 'ui-btn-disabled' : '' }}" bindtap="onOpenCart">待打清单 {{ cartCount }}</view>
+        <view class="ui-btn ui-btn-plain" bindtap="onTempPrint">临时打印</view>
+        <view class="ui-btn ui-btn-add {{ uploadLoading ? 'ui-btn-disabled' : '' }}" bindtap="onChooseUpload">
+          <van-icon name="plus" size="14" /> {{ uploadLoading ? '上传中' : '上传文件' }}
+        </view>
+      </view>
+    </view>
+
+    <view class="search-bar">
+      <view class="search-input-wrap">
+        <input
+          class="search-input"
+          value="{{ keyword }}"
+          bindinput="onKeywordChange"
+          placeholder="搜索文件名"
+          confirm-type="search"
+        />
+        <cover-view wx:if="{{ keyword }}" class="clear-btn" bindtap="onClearKeyword">✕</cover-view>
+      </view>
+      <view class="ui-btn ui-btn-plain ui-btn-search-sub" bindtap="onRefresh">刷新</view>
+    </view>
+
+    <!-- 文件夹面包屑（搜索是跨文件夹的，搜索时隐藏） -->
+    <view wx:if="{{ !keyword }}" class="folder-bar">
+      <view class="folder-crumb">
+        <text
+          class="folder-crumb-item {{ breadcrumb.length ? '' : 'folder-crumb-current' }}"
+          data-id=""
+          bindtap="onBreadcrumbTap"
+        >全部</text>
+        <block wx:for="{{ breadcrumb }}" wx:key="id">
+          <text class="folder-crumb-sep">/</text>
+          <text
+            class="folder-crumb-item {{ index === breadcrumb.length - 1 ? 'folder-crumb-current' : '' }}"
+            data-id="{{ item.id }}"
+            bindtap="onBreadcrumbTap"
+          >{{ item.name }}</text>
+        </block>
+      </view>
+      <view wx:if="{{ breadcrumb.length }}" class="folder-back" bindtap="onBackToParent">← 上层</view>
+      <view class="folder-back folder-new" bindtap="openCreateFolder">新建</view>
+    </view>
+
+    <view
+      wx:if="{{ queueRows.length > 0 || queueExpanded }}"
+      class="queue-strip"
+      hover-class="queue-strip-hover"
+      bindtap="onToggleQueue"
+    >
+      <view class="queue-dot queue-dot--{{ queueFailedCount > 0 ? 'bad' : (queueSummary.pending > 0 ? 'pending' : 'ok') }}"></view>
+      <text class="queue-strip-text">打印中 {{ queueSummary.sent }} · 排队 {{ queueSummary.pending }}<text wx:if="{{ queueFailedCount > 0 }}" class="queue-strip-fail"> · 失败 {{ queueFailedCount }}</text></text>
+      <text class="queue-strip-arrow">{{ queueExpanded ? '▴' : '▾' }}</text>
+    </view>
   </view>
-  <view wx:if="{{ schemaHint }}" class="tpl-hint">{{ schemaHint }}</view>
-  <view wx:if="{{ loading && rows.length === 0 }}" class="tpl-placeholder">加载中…</view>
-  <block wx:elif="{{ !loading && rows.length === 0 }}">
-    <van-empty description="暂无文件，可点击上方上传" />
-  </block>
-  <van-cell-group wx:if="{{ rows.length > 0 }}" border="{{ false }}" inset="{{ false }}">
-    <van-cell
-      wx:for="{{ rows }}"
-      wx:key="id"
-      title="{{ item.originalName }}"
-      label="{{ item.sizeText }} · {{ item.timeText }}"
-      is-link
-      data-id="{{ item.id }}"
-      data-name="{{ item.originalName }}"
-      bind:click="onDownloadRow"
-    />
-  </van-cell-group>
+
+  <!-- 列表区：独立滚动 -->
+  <view class="list-panel">
+    <scroll-view scroll-y class="list-scroll" enhanced show-scrollbar="{{ false }}">
+      <!-- 队列详情 -->
+      <view wx:if="{{ queueExpanded }}" class="queue-detail">
+        <view wx:if="{{ queueRows.length === 0 }}" class="queue-empty">当前没有进行中的打印任务</view>
+        <view wx:for="{{ queueRows }}" wx:key="id" wx:for-item="job" class="queue-item">
+          <view class="queue-item-top">
+            <view class="queue-dot queue-dot--{{ job.tone }}"></view>
+            <text class="queue-item-status">{{ job.statusText }}</text>
+            <text class="queue-item-file">{{ job.fileName }}</text>
+            <text class="queue-item-meta">×{{ job.copies }}<text wx:if="{{ job.timeText }}"> · {{ job.timeText }}</text></text>
+          </view>
+          <view wx:if="{{ job.errorText }}" class="queue-item-error">{{ job.errorText }}</view>
+          <view wx:if="{{ job.tone === 'pending' || job.tone === 'bad' }}" class="queue-item-actions">
+            <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ job.id }}" bindtap="onCancelJob">撤回</view>
+            <view wx:if="{{ job.tone === 'bad' }}" class="ui-btn ui-btn-primary ui-btn-mini" data-id="{{ job.id }}" bindtap="onRetryJob">重新排队</view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 子文件夹入口（搜索时隐藏） -->
+      <view wx:if="{{ !keyword && childFolders.length }}" class="folder-list">
+        <view
+          wx:for="{{ childFolders }}"
+          wx:key="id"
+          class="folder-item"
+          data-id="{{ item.id }}"
+          bindtap="onEnterFolder"
+        >
+          <text class="folder-item-icon">{{ item.icon || '📁' }}</text>
+          <text class="folder-item-name">{{ item.name }}</text>
+          <text class="folder-item-count">共 {{ item.totalCount }} 件</text>
+          <text class="folder-item-arrow">›</text>
+          <text class="folder-item-more" data-id="{{ item.id }}" data-name="{{ item.name }}" catchtap="onFolderMore">⋯</text>
+        </view>
+      </view>
+
+      <view wx:if="{{ loading && rows.length === 0 }}" class="meta">加载中…</view>
+      <van-empty wx:elif="{{ !loading && rows.length === 0 }}" description="暂无文件" />
+      <view wx:elif="{{ !loading && visibleRows.length === 0 }}" class="meta">没有匹配的文件</view>
+
+      <block wx:elif="{{ visibleRows.length > 0 }}">
+        <view class="check-row" bindtap="onSelectAll">
+          <text class="check-label">{{ allSelected ? '取消全选' : '全选' }}（{{ visibleRows.length }}）</text>
+          <view class="checkbox {{ allSelected ? 'checkbox--on' : '' }}">{{ allSelected ? '✓' : '' }}</view>
+        </view>
+        <view wx:if="{{ selectedCount > 0 }}" class="queue-strip">
+          <text class="queue-strip-text">已选 {{ selectedCount }} 项</text>
+          <view class="ui-btn ui-btn-primary ui-btn-mini" bindtap="onAddSelectedToCart">加入待打清单</view>
+        </view>
+        <view class="list-section-title">共 {{ visibleRows.length }} 个文件</view>
+        <van-swipe-cell
+          wx:for="{{ visibleRows }}"
+          wx:key="id"
+          wx:for-item="item"
+          id="file-swipe-{{ item.id }}"
+          right-width="{{ fileSwipeRightWidth }}"
+          custom-class="file-swipe-cell"
+        >
+          <view class="asset-item-card">
+            <view class="checkbox {{ item.checked ? 'checkbox--on' : '' }}" data-id="{{ item.id }}" bindtap="onToggleSelect">{{ item.checked ? '✓' : '' }}</view>
+            <view class="file-main">
+              <text
+                class="file-name"
+                data-id="{{ item.id }}"
+                data-name="{{ item.originalName }}"
+                bindtap="onDownloadRow"
+              >{{ item.originalName }}</text>
+              <text class="file-meta">{{ item.sizeText }} · {{ item.timeText }}</text>
+            </view>
+            <view class="file-actions">
+              <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ item.id }}" data-name="{{ item.originalName }}" bindtap="onDownloadRow">下载</view>
+              <view class="ui-btn ui-btn-accent ui-btn-mini" data-id="{{ item.id }}" data-name="{{ item.originalName }}" bindtap="onPrintRow">打印</view>
+            </view>
+          </view>
+          <view slot="right" class="file-swipe-right">
+            <view
+              class="file-swipe-btn file-swipe-btn--move"
+              data-id="{{ item.id }}"
+              data-name="{{ item.originalName }}"
+              catchtap="onFileSwipeMove"
+            >移动</view>
+            <view
+              wx:if="{{ isAdmin }}"
+              class="file-swipe-btn file-swipe-btn--del"
+              data-id="{{ item.id }}"
+              data-name="{{ item.originalName }}"
+              catchtap="onFileSwipeDelete"
+            >删除</view>
+          </view>
+        </van-swipe-cell>
+      </block>
+    </scroll-view>
+  </view>
+</view>
+
+<!-- 派发打印面板 -->
+<view wx:if="{{ dispatch }}" class="detail-mask" catchtouchmove="noop">
+  <view class="dispatch-panel" catchtap="noop">
+    <view class="panel-head">
+      <text class="panel-title">{{ dispatch.items ? '批量派发' : '打印文件' }}</text>
+      <text class="panel-close" bindtap="onCloseDispatch">关闭</text>
+    </view>
+
+    <scroll-view scroll-y class="dispatch-scroll">
+      <view wx:if="{{ dispatch.items }}">
+        <view class="section-label">共 {{ dispatch.items.length }} 项</view>
+        <view class="queue-detail">
+          <view wx:for="{{ dispatch.items }}" wx:key="key" wx:for-item="it" class="queue-item">
+            <view class="queue-item-top">
+              <text class="queue-item-file">{{ it.fileName }}</text>
+              <text class="queue-item-meta">{{ it.isLocal ? '本地' : '模板库' }}</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{ dispatch.results }}" class="queue-detail">
+          <view class="queue-item">
+            <view class="queue-item-top">
+              <text class="queue-item-file">成功 {{ dispatch.results.ok }} 条，失败 {{ dispatch.results.fail }} 条</text>
+            </view>
+          </view>
+          <view wx:for="{{ dispatch.results.failures }}" wx:key="key" wx:for-item="f" class="queue-item">
+            <view class="queue-item-top">
+              <text class="queue-item-file">{{ f.fileName }}</text>
+            </view>
+            <view class="queue-item-error">{{ f.reason }}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:else>
+        <view wx:if="{{ dispatch.fileName }}" class="dispatch-file">{{ dispatch.fileName }}</view>
+      </view>
+
+      <view class="section-label">打印机</view>
+      <view wx:if="{{ stations.length === 0 }}" class="dispatch-empty">暂无可用的打印工位</view>
+      <view
+        class="station-item {{ dispatch.stationId === item.id ? 'station-item--on' : '' }}"
+        wx:for="{{ stations }}"
+        wx:key="id"
+        wx:for-item="item"
+        data-id="{{ item.id }}"
+        bindtap="onSelectStation"
+      >
+        <view class="queue-dot queue-dot--{{ item.tone }}"></view>
+        <view class="station-main">
+          <text class="station-name">{{ item.name }}</text>
+          <text class="station-cap">{{ item.capText }}</text>
+          <text wx:if="{{ item.tone === 'bad' && item.reason }}" class="station-reason">{{ item.reason }}</text>
+        </view>
+        <text class="station-check" wx:if="{{ dispatch.stationId === item.id }}">✓</text>
+      </view>
+
+      <view class="section-label">份数</view>
+      <view class="stepper">
+        <view class="step-btn" hover-class="step-btn-hover" bindtap="onCopiesDec">−</view>
+        <input class="step-input" type="number" value="{{ dispatch.copies }}" bindinput="onCopiesInput" />
+        <view class="step-btn" hover-class="step-btn-hover" bindtap="onCopiesInc">+</view>
+      </view>
+
+      <view class="check-row" bindtap="onToggleUrgent">
+        <text class="check-label">加急</text>
+        <view class="checkbox {{ dispatch.urgent ? 'checkbox--on' : '' }}">{{ dispatch.urgent ? '✓' : '' }}</view>
+      </view>
+
+      <view class="section-label">备注</view>
+      <textarea
+        class="note-input"
+        maxlength="200"
+        placeholder="备注（选填）"
+        value="{{ dispatch.note }}"
+        bindinput="onNoteInput"
+      />
+    </scroll-view>
+
+    <view class="dispatch-foot">
+      <view class="ui-btn ui-btn-plain dispatch-foot-btn" bindtap="onCloseDispatch">取消</view>
+      <view class="ui-btn ui-btn-primary dispatch-foot-btn {{ dispatchLoading ? 'ui-btn-disabled' : '' }}" bindtap="onConfirmDispatch">确认派发</view>
+    </view>
+  </view>
+</view>
+
+<!-- 待打清单抽屉 -->
+<view wx:if="{{ cartOpen }}" class="detail-mask" catchtouchmove="noop">
+  <view class="dispatch-panel" catchtap="noop">
+    <view class="panel-head">
+      <text class="panel-title">待打清单</text>
+      <text class="panel-close" bindtap="onCloseCart">关闭</text>
+    </view>
+
+    <scroll-view scroll-y class="dispatch-scroll">
+      <view wx:if="{{ cartRows.length === 0 }}" class="dispatch-empty">清单为空</view>
+      <view wx:for="{{ cartRows }}" wx:key="key" wx:for-item="item" class="dispatch-cart-item">
+        <view class="dispatch-cart-top">
+          <text class="dispatch-cart-name">{{ item.fileName }}</text>
+          <view class="ui-btn ui-btn-plain ui-btn-mini" data-key="{{ item.key }}" bindtap="onCartRemove">移除</view>
+        </view>
+        <text class="file-meta">{{ item.sourceLabel }}</text>
+        <view wx:if="{{ item.isLocal }}" class="queue-item-error">离开或刷新本页会丢失，请尽快派发</view>
+        <view wx:if="{{ item.error }}" class="queue-item-error">派发失败：{{ item.error }}</view>
+        <view class="dispatch-cart-row">
+          <view class="stepper">
+            <view class="step-btn" hover-class="step-btn-hover" data-key="{{ item.key }}" bindtap="onCartCopiesDec">−</view>
+            <input class="step-input" type="number" value="{{ item.copies }}" data-key="{{ item.key }}" bindinput="onCartCopiesInput" />
+            <view class="step-btn" hover-class="step-btn-hover" data-key="{{ item.key }}" bindtap="onCartCopiesInc">+</view>
+          </view>
+          <view class="dispatch-cart-urgent" data-key="{{ item.key }}" bindtap="onCartToggleUrgent">
+            <text class="check-label">加急</text>
+            <view class="checkbox {{ item.urgent ? 'checkbox--on' : '' }}">{{ item.urgent ? '✓' : '' }}</view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="dispatch-foot">
+      <view class="ui-btn ui-btn-plain dispatch-foot-btn" bindtap="onClearCart">清空</view>
+      <view class="ui-btn ui-btn-primary dispatch-foot-btn {{ cartCount === 0 ? 'ui-btn-disabled' : '' }}" bindtap="onDispatchCart">派发 {{ cartCount }} 项</view>
+    </view>
+  </view>
+</view>
+
+<!-- 文件夹新建/改名弹窗 -->
+<view wx:if="{{ showFolderSheet }}" class="detail-mask" catchtouchmove="noop">
+  <view class="dispatch-panel" catchtap="noop">
+    <view class="panel-head">
+      <text class="panel-title">{{ folderSheetMode === 'rename' ? '重命名文件夹' : '新建文件夹' }}</text>
+      <text class="panel-close" bindtap="closeFolderSheet">关闭</text>
+    </view>
+    <scroll-view scroll-y class="dispatch-scroll">
+      <view class="section-label">文件夹名称</view>
+      <input class="folder-input" value="{{ folderFormName }}" bindinput="onFolderNameInput" placeholder="请输入文件夹名称" />
+    </scroll-view>
+    <view class="dispatch-foot">
+      <view class="ui-btn ui-btn-plain dispatch-foot-btn" bindtap="closeFolderSheet">取消</view>
+      <view class="ui-btn ui-btn-primary dispatch-foot-btn" bindtap="confirmFolderSheet">确定</view>
+    </view>
+  </view>
+</view>
+
+<!-- 文件移动弹窗 -->
+<view wx:if="{{ showMoveSheet }}" class="detail-mask" catchtouchmove="noop">
+  <view class="dispatch-panel" catchtap="noop">
+    <view class="panel-head">
+      <text class="panel-title">移动到文件夹</text>
+      <text class="panel-close" bindtap="closeMoveSheet">关闭</text>
+    </view>
+    <scroll-view scroll-y class="dispatch-scroll">
+      <view class="section-label">移动「{{ moveTargetFile.originalName }}」到：</view>
+      <view
+        wx:for="{{ moveFolderOptions }}"
+        wx:key="key"
+        class="move-folder-item {{ movePickFolderId === item.id ? 'move-folder-item--on' : '' }}"
+        data-id="{{ item.id }}"
+        bindtap="onPickMoveFolder"
+      >
+        <text class="move-folder-name" style="padding-left: {{ item.indent }}rpx;">{{ item.name }}</text>
+        <text wx:if="{{ movePickFolderId === item.id }}" class="move-folder-check">✓</text>
+      </view>
+    </scroll-view>
+    <view class="dispatch-foot">
+      <view class="ui-btn ui-btn-plain dispatch-foot-btn" bindtap="closeMoveSheet">取消</view>
+      <view class="ui-btn ui-btn-primary dispatch-foot-btn" bindtap="confirmMove">移动</view>
+    </view>
+  </view>
 </view>

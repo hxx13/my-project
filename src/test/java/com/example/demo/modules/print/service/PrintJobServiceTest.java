@@ -1,5 +1,6 @@
 package com.example.demo.modules.print.service;
 
+import com.example.demo.modules.adminfile.AdminFileTemplateService;
 import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
 import com.example.demo.modules.print.mapper.PrintJobMapper;
@@ -60,7 +61,7 @@ class PrintJobServiceTest {
         when(mapper.claim("PJ_1", "PS_1")).thenReturn(1);
         when(mapper.findById("PJ_1")).thenReturn(Optional.of(pending("PJ_1")));
 
-        PrintJob got = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class)).claimOne("PS_1");
+        PrintJob got = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class)).claimOne("PS_1");
 
         assertEquals("PJ_1", got.getId());
         verify(mapper, never()).claim(eq("PJ_2"), any());
@@ -76,7 +77,7 @@ class PrintJobServiceTest {
         when(mapper.claim("PJ_2", "PS_1")).thenReturn(1);
         when(mapper.findById("PJ_2")).thenReturn(Optional.of(pending("PJ_2")));
 
-        PrintJob got = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class)).claimOne("PS_1");
+        PrintJob got = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class)).claimOne("PS_1");
 
         assertEquals("PJ_2", got.getId());
     }
@@ -89,7 +90,7 @@ class PrintJobServiceTest {
         when(mapper.findPendingIds("PS_1", 5)).thenReturn(List.of("PJ_1"));
         when(mapper.claim("PJ_1", "PS_1")).thenReturn(0);
 
-        assertNull(new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class)).claimOne("PS_1"));
+        assertNull(new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class)).claimOne("PS_1"));
     }
 
     /** 成功回执落 PRINTED 且不写错误原因。 */
@@ -98,7 +99,7 @@ class PrintJobServiceTest {
         PrintJobMapper mapper = mock(PrintJobMapper.class);
         when(mapper.acknowledge("PJ_1", "PS_1", PrintJob.STATUS_PRINTED, null)).thenReturn(1);
 
-        assertTrue(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class))
+        assertTrue(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class))
                 .acknowledge("PJ_1", "PS_1", true, null));
     }
 
@@ -108,7 +109,7 @@ class PrintJobServiceTest {
         PrintJobMapper mapper = mock(PrintJobMapper.class);
         when(mapper.acknowledge("PJ_1", "PS_1", PrintJob.STATUS_FAILED, "卡纸")).thenReturn(1);
 
-        assertTrue(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class))
+        assertTrue(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class))
                 .acknowledge("PJ_1", "PS_1", false, "卡纸"));
     }
 
@@ -118,7 +119,7 @@ class PrintJobServiceTest {
         PrintJobMapper mapper = mock(PrintJobMapper.class);
         when(mapper.acknowledge("PJ_1", "PS_1", PrintJob.STATUS_FAILED, "工位报告打印失败")).thenReturn(1);
 
-        assertTrue(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class))
+        assertTrue(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class))
                 .acknowledge("PJ_1", "PS_1", false, "   "));
     }
 
@@ -128,7 +129,7 @@ class PrintJobServiceTest {
         PrintJobMapper mapper = mock(PrintJobMapper.class);
         when(mapper.acknowledge(any(), any(), any(), any())).thenReturn(0);
 
-        assertFalse(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class))
+        assertFalse(new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class))
                 .acknowledge("PJ_1", "PS_1", true, null));
     }
 
@@ -138,7 +139,7 @@ class PrintJobServiceTest {
         PrintJobMapper mapper = mock(PrintJobMapper.class);
         when(mapper.retry("PJ_1")).thenReturn(1);
         when(mapper.retry("PJ_2")).thenReturn(0);
-        PrintJobService service = new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+        PrintJobService service = new PrintJobService(mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
 
         assertTrue(service.retry("PJ_1"));
         assertFalse(service.retry("PJ_2"));
@@ -150,7 +151,7 @@ class PrintJobServiceTest {
         PrintStationService stations = mock(PrintStationService.class);
         when(stations.findById("PS_NOPE")).thenReturn(Optional.empty());
 
-        PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+        PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () ->
                 service.create("PS_NOPE", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, 0));
         assertEquals("工位不存在", e.getMessage());
@@ -162,7 +163,7 @@ class PrintJobServiceTest {
         PrintStationService stations = mock(PrintStationService.class);
         when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", false)));
 
-        PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+        PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
         assertThrows(IllegalArgumentException.class, () ->
                 service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, 0));
     }
@@ -173,7 +174,7 @@ class PrintJobServiceTest {
         PrintStationService stations = mock(PrintStationService.class);
         when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
 
-        PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+        PrintJobService service = new PrintJobService(mock(PrintJobMapper.class), stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
         assertThrows(IllegalArgumentException.class, () ->
                 service.create("PS_1", "SOMETHING_ELSE", "AFT_1", "t.pdf", 1, "u1", null, 0));
     }
@@ -184,7 +185,7 @@ class PrintJobServiceTest {
         PrintJobMapper mapper = mock(PrintJobMapper.class);
         PrintStationService stations = mock(PrintStationService.class);
         when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
-        PrintJobService service = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+        PrintJobService service = new PrintJobService(mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
 
         PrintJob a = service.create("PS_1", PrintJob.SOURCE_CARD_ARCHIVE, "77", "c.pdf", 0, "u1", null, 0);
         PrintJob b = service.create("PS_1", PrintJob.SOURCE_CARD_ARCHIVE, "77", "c.pdf", 500, "u1", null, 0);
@@ -213,7 +214,8 @@ class PrintJobServiceTest {
         when(mapper.findById("PJ_1")).thenReturn(Optional.of(job));
 
         PrintJobService service = new PrintJobService(
-                mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), cleaner);
+                mapper, mock(PrintStationService.class), mock(PrintNotifyService.class), cleaner,
+                mock(AdminFileTemplateService.class));
 
         assertTrue(service.acknowledge("PJ_1", "PS_1", true, null));
         verify(cleaner).cleanupAfterPrinted(job);
@@ -235,7 +237,7 @@ class PrintJobServiceTest {
 
         PrintJobService service = new PrintJobService(
                 mapper, mock(PrintStationService.class),
-                mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+                mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
 
         assertTrue(service.cancel("PJ_PENDING"));
         assertFalse(service.cancel("PJ_SENT"));
@@ -248,7 +250,7 @@ class PrintJobServiceTest {
         PrintStationService stations = mock(PrintStationService.class);
         when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
         PrintJobService service = new PrintJobService(
-                mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+                mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
 
         PrintJob a = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", "  三月的卡  ", 0);
         PrintJob b = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", "   ", 0);
@@ -264,7 +266,7 @@ class PrintJobServiceTest {
         PrintStationService stations = mock(PrintStationService.class);
         when(stations.findById("PS_1")).thenReturn(Optional.of(station("PS_1", true)));
         PrintJobService service = new PrintJobService(
-                mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class));
+                mapper, stations, mock(PrintNotifyService.class), mock(PrintSourceCleaner.class), mock(AdminFileTemplateService.class));
 
         PrintJob urgent = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, PrintJob.PRIORITY_URGENT);
         PrintJob normal = service.create("PS_1", PrintJob.SOURCE_ADMIN_FILE, "AFT_1", "t.pdf", 1, "u1", null, PrintJob.PRIORITY_NORMAL);

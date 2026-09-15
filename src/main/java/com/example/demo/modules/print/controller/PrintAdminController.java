@@ -13,6 +13,7 @@ import com.example.demo.modules.print.service.PrintJobPushService;
 import com.example.demo.modules.print.service.PrintJobService;
 import com.example.demo.modules.print.service.PrintJobViewAssembler;
 import com.example.demo.modules.print.service.PrintSourceResolver;
+import com.example.demo.modules.print.service.PrintStationHealthService;
 import com.example.demo.modules.print.service.PrintStationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -45,6 +46,7 @@ public class PrintAdminController {
     private final PrintJobViewAssembler jobViewAssembler;
     private final PrintSourceResolver sourceResolver;
     private final DirectPrintService directPrintService;
+    private final PrintStationHealthService healthService;
 
     public PrintAdminController(PrintStationService stationService,
                                 PrintJobService jobService,
@@ -53,7 +55,8 @@ public class PrintAdminController {
                                 UserDisplayNameService userDisplayNameService,
                                 PrintJobViewAssembler jobViewAssembler,
                                 PrintSourceResolver sourceResolver,
-                                DirectPrintService directPrintService) {
+                                DirectPrintService directPrintService,
+                                PrintStationHealthService healthService) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.pushService = pushService;
@@ -62,6 +65,7 @@ public class PrintAdminController {
         this.jobViewAssembler = jobViewAssembler;
         this.sourceResolver = sourceResolver;
         this.directPrintService = directPrintService;
+        this.healthService = healthService;
     }
 
     /**
@@ -140,6 +144,9 @@ public class PrintAdminController {
         out.put("printerIp", s.getPrinterIp());
         out.put("mode", s.getMode());
         out.put("enabled", s.isEnabled());
+        PrintStationHealthService.Health health = healthService.liveStatusOf(s);
+        out.put("liveStatus", health.status().name());
+        out.put("liveStatusReason", health.reason());
         out.put("createdAt", s.getCreatedAt());
         return out;
     }
@@ -226,8 +233,8 @@ public class PrintAdminController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(required = false) String stationId,
             @RequestParam(defaultValue = "100") int limit) {
-        requireStaff(auth);
-        return Result.success(jobViewAssembler.toViews(jobService.listQueue(stationId, limit)));
+        User u = requireStaff(auth);
+        return Result.success(jobViewAssembler.toViews(jobService.listQueue(stationId, u.getId(), limit)));
     }
 
     @GetMapping("/jobs/history")
@@ -237,8 +244,8 @@ public class PrintAdminController {
             @RequestParam(required = false) String stationId,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "200") int limit) {
-        requireStaff(auth);
-        return Result.success(jobViewAssembler.toViews(jobService.listHistory(stationId, status, limit)));
+        User u = requireStaff(auth);
+        return Result.success(jobViewAssembler.toViews(jobService.listHistory(stationId, status, u.getId(), limit)));
     }
 
     @PostMapping("/jobs/{id}/cancel")
@@ -258,8 +265,8 @@ public class PrintAdminController {
     public Result<List<Map<String, Object>>> listJobs(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
             @RequestParam(defaultValue = "100") int limit) {
-        requireStaff(auth);
-        return Result.success(jobViewAssembler.toViews(jobService.listAll(limit)));
+        User u = requireStaff(auth);
+        return Result.success(jobViewAssembler.toViews(jobService.listAll(u.getId(), limit)));
     }
 
     @PostMapping("/jobs/{id}/retry")

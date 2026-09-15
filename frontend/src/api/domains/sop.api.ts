@@ -97,3 +97,18 @@ export async function updateSopDocument(
 export async function deleteSopDocument(id: number): Promise<void> {
   await adminHttp.delete(`/sop/documents/${id}`);
 }
+
+/** 当前用户的收藏文档 id，最近收藏的在前 */
+export async function fetchSopFavorites(): Promise<number[]> {
+  const res = await adminHttp.get<Result<number[]>>("/sop/favorites");
+  const d = (res.data as Result<number[]> | undefined)?.data;
+  return Array.isArray(d) ? d : [];
+}
+
+export async function addSopFavorite(documentId: number): Promise<void> {
+  await adminHttp.post(`/sop/favorites/${documentId}`);
+}
+
+export async function removeSopFavorite(documentId: number): Promise<void> {
+  await adminHttp.delete(`/sop/favorites/${documentId}`);
+}

@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "postinstall": "node ../scripts/patch-vant-icon-font.mjs && node ../scripts/encode-vant-icon-font.mjs"
+    "postinstall": "node ../scripts/patch-vant-icon-font.mjs && node ../scripts/encode-vant-icon-font.mjs",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "@vant/weapp": "^1.11.7",

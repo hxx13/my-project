@@ -1,5 +1,7 @@
 package com.example.demo.modules.print.entity;
 
+import java.time.LocalDateTime;
+
 /** 打印工位 —— 一台电脑 + 一台打印机 + 一个专用账号。 */
 public class PrintStation {
 
@@ -21,6 +23,12 @@ public class PrintStation {
     private boolean enabled;
     private String createdBy;
     private String createdAt;
+    /** KIOSK 工位页最后一次心跳时间。null = 从没连过。 */
+    private LocalDateTime lastSeenAt;
+    /** 最近一次打印机探测是否连通。null = 从没探过，TRUE = 通，FALSE = 不通。 */
+    private Boolean printerOnline;
+    /** 打印机连通性上次探测时间。null = 从没探过。 */
+    private LocalDateTime printerCheckedAt;
 
     public String getId() { return id; }
     public void setId(String v) { this.id = v; }
@@ -51,4 +59,13 @@ public class PrintStation {
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String v) { this.createdAt = v; }
+
+    public LocalDateTime getLastSeenAt() { return lastSeenAt; }
+    public void setLastSeenAt(LocalDateTime v) { this.lastSeenAt = v; }
+
+    public Boolean getPrinterOnline() { return printerOnline; }
+    public void setPrinterOnline(Boolean v) { this.printerOnline = v; }
+
+    public LocalDateTime getPrinterCheckedAt() { return printerCheckedAt; }
+    public void setPrinterCheckedAt(LocalDateTime v) { this.printerCheckedAt = v; }
 }

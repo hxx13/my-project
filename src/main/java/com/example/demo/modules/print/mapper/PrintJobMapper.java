@@ -21,7 +21,7 @@ public class PrintJobMapper {
 
     private static final String COLS =
             "id, station_id, source_type, source_id, file_name, copies, note, priority,"
-          + " status, attempts, last_error, created_by, created_at, sent_at, printed_at";
+          + " status, attempts, last_error, created_by, created_at, sent_at, printed_at, ephemeral";
 
     private final JdbcTemplate jdbc;
 
@@ -48,6 +48,7 @@ public class PrintJobMapper {
         j.setSentAt(sent == null ? null : sent.toString());
         Timestamp printed = rs.getTimestamp("printed_at");
         j.setPrintedAt(printed == null ? null : printed.toString());
+        j.setEphemeral(rs.getBoolean("ephemeral"));
         return j;
     };
 
@@ -57,10 +58,11 @@ public class PrintJobMapper {
     }
 
     public void insert(PrintJob j) {
-        jdbc.update("INSERT INTO print_job(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL,NULL)",
+        jdbc.update("INSERT INTO print_job(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL,NULL,?)",
                 j.getId(), j.getStationId(), j.getSourceType(), j.getSourceId(),
                 j.getFileName(), j.getCopies(), j.getNote(), j.getPriority(),
-                j.getStatus(), j.getAttempts(), j.getLastError(), j.getCreatedBy());
+                j.getStatus(), j.getAttempts(), j.getLastError(), j.getCreatedBy(),
+                j.isEphemeral());
     }
 
     public Optional<PrintJob> findById(String id) {
@@ -172,7 +174,7 @@ public class PrintJobMapper {
      * 队列：还没结束的任务（排队中 / 已派给工位 / 失败待处理）。
      * 加急排前面，同级按派发时间倒序 —— 现场的人关心的是「接下来打什么」。
      */
-    public List<PrintJob> listQueue(String stationId, int limit) {
+    public List<PrintJob> listQueue(String stationId, String viewerId, int limit) {
         StringBuilder sql = new StringBuilder(
                 "SELECT " + COLS + " FROM print_job WHERE status IN (?,?,?)");
         List<Object> args = new ArrayList<>();
@@ -183,12 +185,14 @@ public class PrintJobMapper {
             sql.append(" AND station_id = ?");
             args.add(stationId.trim());
         }
+        sql.append(" AND (ephemeral = 0 OR created_by = ?)");
+        args.add(viewerId);
         sql.append(" ORDER BY priority DESC, created_at DESC").append(limitClause(limit, 200));
         return jdbc.query(sql.toString(), ROW, args.toArray());
     }
 
     /** 历史：全部状态，可按工位、按状态（逗号分隔多个）筛。 */
-    public List<PrintJob> listHistory(String stationId, String statusCsv, int limit) {
+    public List<PrintJob> listHistory(String stationId, String statusCsv, String viewerId, int limit) {
         StringBuilder sql = new StringBuilder("SELECT " + COLS + " FROM print_job WHERE 1=1");
         List<Object> args = new ArrayList<>();
         if (stationId != null && !stationId.isBlank()) {
@@ -208,13 +212,16 @@ public class PrintJobMapper {
                 args.addAll(wanted);
             }
         }
+        sql.append(" AND (ephemeral = 0 OR created_by = ?)");
+        args.add(viewerId);
         sql.append(" ORDER BY created_at DESC").append(limitClause(limit, 500));
         return jdbc.query(sql.toString(), ROW, args.toArray());
     }
 
-    public List<PrintJob> listAll(int limit) {
+    public List<PrintJob> listAll(String viewerId, int limit) {
         return jdbc.query(
-                "SELECT " + COLS + " FROM print_job ORDER BY created_at DESC" + limitClause(limit, 200),
-                ROW);
+                "SELECT " + COLS + " FROM print_job WHERE (ephemeral = 0 OR created_by = ?)"
+              + " ORDER BY created_at DESC" + limitClause(limit, 200),
+                ROW, viewerId);
     }
 }

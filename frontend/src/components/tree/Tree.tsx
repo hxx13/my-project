@@ -352,17 +352,20 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
               )}
             </span>
             {/* 计数槽：**固定宽度**（不是自适应），所以位数变化（9 → 10）或有无计数都不会推动名称。
-                只是把宽度从 w-6(24px) 收到 18px —— 9px 字号下三位数放得下，省下的给名称 */}
-            <span
-              className={cn(
-                "w-[18px] shrink-0 truncate rounded-full text-center text-[9px] leading-[15px]",
-                hasCount
-                  ? (isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]")
-                  : ""
-              )}
-            >
-              {hasCount ? count : ""}
-            </span>
+                只是把宽度从 w-6(24px) 收到 18px —— 9px 字号下三位数放得下，省下的给名称。
+                没传 getCount 就整块不渲染：只把数字留空的话，那个 18px 空槽还在，白占一截宽度。 */}
+            {getCount ? (
+              <span
+                className={cn(
+                  "w-[18px] shrink-0 truncate rounded-full text-center text-[9px] leading-[15px]",
+                  hasCount
+                    ? (isSelected ? "bg-[var(--twin-link-deep)] text-white" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]")
+                    : ""
+                )}
+              >
+                {hasCount ? count : ""}
+              </span>
+            ) : null}
             {customIcon ?? (children.length > 0 ? (
               open ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" /> : <Folder className="h-3.5 w-3.5 shrink-0 text-amber-400" />
             ) : (

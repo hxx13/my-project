@@ -28,6 +28,8 @@ public class PrintJob {
     private String note;
     /** 越大越先被领取 */
     private int priority;
+    /** 临时任务：只有发起人自己看得到 */
+    private boolean ephemeral;
     private String status;
     private int attempts;
     private String lastError;
@@ -59,6 +61,9 @@ public class PrintJob {
 
     public int getPriority() { return priority; }
     public void setPriority(int v) { this.priority = v; }
+
+    public boolean isEphemeral() { return ephemeral; }
+    public void setEphemeral(boolean v) { this.ephemeral = v; }
 
     public String getStatus() { return status; }
     public void setStatus(String v) { this.status = v; }
