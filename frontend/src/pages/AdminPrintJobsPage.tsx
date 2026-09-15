@@ -14,16 +14,9 @@ import {
 } from "@/api/domains/print.api";
 import { appConfirm } from "@/lib/appDialog";
 
-type Tab = "queue" | "history";
+import { printStatusOf } from "@/features/print-station/printStatus";
 
-/** 状态的中文名与色相，两处 tab 共用 */
-const STATUS_META: Record<PrintJobStatus, { label: string; tone: string }> = {
-  PENDING: { label: "排队中", tone: "info" },
-  SENT: { label: "打印中", tone: "pending" },
-  PRINTED: { label: "已打印", tone: "ok" },
-  FAILED: { label: "失败", tone: "bad" },
-  CANCELLED: { label: "已撤回", tone: "none" },
-};
+type Tab = "queue" | "history";
 
 const HISTORY_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "全部状态" },
@@ -167,7 +160,7 @@ export default function AdminPrintJobsPage() {
               </thead>
               <tbody>
                 {rows.map((j) => {
-                  const meta = STATUS_META[j.status] ?? { label: j.status, tone: "none" };
+                  const meta = printStatusOf(j.status);
                   return (
                     <tr key={j.id} className="border-t border-[var(--app-color-border-default)]">
                       <td className="max-w-[18rem] px-3 py-2">
@@ -197,7 +190,7 @@ export default function AdminPrintJobsPage() {
                       >
                         {j.note || <span className="text-[var(--app-color-text-tertiary)]">—</span>}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-2" title={meta.hint}>
                         <span className="review-status" data-tone={meta.tone}>
                           {meta.label}
                         </span>

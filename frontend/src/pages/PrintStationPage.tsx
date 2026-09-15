@@ -16,6 +16,7 @@ import {
 } from "@/api/domains/print.api";
 import { PdfPrintCanvas } from "@/features/print-station/PdfPrintCanvas";
 import { printKindOf, UNSUPPORTED_PRINT_HINT } from "@/features/print-station/printableTypes";
+import { printStatusOf } from "@/features/print-station/printStatus";
 
 /**
  * 兜底轮询间隔。socket 只降延迟，正确性靠它 ——
@@ -449,25 +450,32 @@ export default function PrintStationPage() {
             </tr>
           </thead>
           <tbody>
-            {recent.map((j) => (
-              <tr
-                key={j.id}
-                className={
-                  "border-t border-gray-200 " + (j.status === "FAILED" ? "bg-red-50" : "")
-                }
-              >
-                <td className="max-w-[18rem] truncate py-1">{j.fileName}</td>
-                <td className="py-1">{j.copies}</td>
-                <td className="max-w-[16rem] truncate py-1 text-gray-600" title={j.note ?? ""}>
-                  {j.note ?? ""}
-                </td>
-                <td className="py-1">{j.status}</td>
-                <td className="py-1 text-xs">{fmtTime(j.printedAt ?? j.createdAt)}</td>
-                <td className="max-w-[18rem] truncate py-1 text-xs text-red-600" title={j.lastError ?? ""}>
-                  {j.lastError ?? ""}
-                </td>
-              </tr>
-            ))}
+            {recent.map((j) => {
+              const st = printStatusOf(j.status);
+              return (
+                <tr
+                  key={j.id}
+                  className={
+                    "border-t border-gray-200 " + (j.status === "FAILED" ? "bg-red-50" : "")
+                  }
+                >
+                  <td className="max-w-[18rem] truncate py-1">{j.fileName}</td>
+                  <td className="py-1">{j.copies}</td>
+                  <td className="max-w-[16rem] truncate py-1 text-gray-600" title={j.note ?? ""}>
+                    {j.note ?? ""}
+                  </td>
+                  <td className="py-1" title={st.hint}>
+                    <span className="review-status" data-tone={st.tone}>
+                      {st.label}
+                    </span>
+                  </td>
+                  <td className="py-1 text-xs">{fmtTime(j.printedAt ?? j.createdAt)}</td>
+                  <td className="max-w-[18rem] truncate py-1 text-xs text-red-600" title={j.lastError ?? ""}>
+                    {j.lastError ?? ""}
+                  </td>
+                </tr>
+              );
+            })}
             {recent.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-3 text-xs opacity-50">
