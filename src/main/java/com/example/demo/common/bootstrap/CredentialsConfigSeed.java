@@ -136,6 +136,11 @@ public class CredentialsConfigSeed implements ApplicationRunner {
                 "aro=实时拉取 ARO 官方，local=本地状态机（不依赖 ARO）", "STRING",
                 "[\"aro\",\"local\"]",
                 "aro", 0, 0, 0);
+
+        // ---- 移动端房间自助进入（灰度） ----
+        def("integration", "scan.mobile_enter_enabled", "移动端房间自助进入入口",
+                "开启后 H5/小程序「房间详情」弹窗显示「进入」按钮；仍需该人员在灰度名单中", "BOOLEAN", boolOpts,
+                "false", 0, 0, 0);
     }
 
     private void def(String module, String configKey, String labelZh, String description,

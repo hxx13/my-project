@@ -4,7 +4,7 @@ import { fetchCardFields, fetchCardTemplates } from "@/api/domains/cardPrint.api
 import { fetchSelectableStations, type PrintStationOption } from "@/api/domains/print.api";
 import type { CardFieldOption, CardTemplate } from "../types";
 import { CardTemplateEditor } from "../components/CardTemplateEditor";
-import { CardPrintPanel, type CardPrintPanelHandle } from "../components/CardPrintPanel";
+import { CardPrintPanel, type CardPrintPanelHandle, type ViewMode } from "../components/CardPrintPanel";
 import { CardArchivePanel } from "../components/CardArchivePanel";
 import { CardValueMapPanel } from "../components/CardValueMapPanel";
 import { PrintQueueButton } from "@/features/print-station/PrintQueueDialog";
@@ -26,6 +26,8 @@ export default function CardPrintPage() {
   const [templateId, setTemplateId] = useState<number | null>(null);
 
   const [boxSelectMode, setBoxSelectMode] = useState(false);
+  /** 全房间=一个房间的所有笼架铺满主区、预览进右抽屉；单笼架=一个架子 + 右侧面板渲染预览 */
+  const [viewMode, setViewMode] = useState<ViewMode>("room");
   const [nameSuffix, setNameSuffix] = useState("");
   const [selectedCount, setSelectedCount] = useState(0);
   const [selectedTotal, setSelectedTotal] = useState(0);
@@ -86,6 +88,16 @@ export default function CardPrintPage() {
                 {templates.map((t) => <option key={t.id} value={t.id!}>{t.name}</option>)}
               </select>
             </div>
+            <div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
+              <button type="button" onClick={() => setViewMode("room")}
+                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "room" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+                全房间
+              </button>
+              <button type="button" onClick={() => setViewMode("shelf")}
+                className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "shelf" ? "bg-[var(--twin-link-deep)] text-white shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+                单笼架
+              </button>
+            </div>
             <button type="button" className={boxSelectMode ? BTN_PRIMARY : BTN_OUTLINE}
               onClick={() => setBoxSelectMode((v) => !v)}>
               ⬜ 矩形框选
@@ -124,6 +136,7 @@ export default function CardPrintPage() {
             onTemplateChange={setTemplateId}
             boxSelectMode={boxSelectMode}
             onBoxSelectModeChange={setBoxSelectMode}
+            viewMode={viewMode}
             nameSuffix={nameSuffix}
             stations={stations}
             onSelectionChange={handleSelectionChange}

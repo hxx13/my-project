@@ -36,7 +36,12 @@
       </view>
     </view>
 
-    <scroll-view class="list-scroll" scroll-y enhanced show-scrollbar="{{false}}" refresher-enabled refresher-triggered="{{ loading }}" bindrefresherrefresh="onScrollRefresh">
+    <view class="list-scroll-wrap">
+      <view class="refresh-pill" wx:if="{{ refreshing }}">
+        <view class="refresh-pill-icon"></view>
+        <text class="refresh-pill-text">正在刷新…</text>
+      </view>
+      <scroll-view class="list-scroll" scroll-y enhanced show-scrollbar="{{false}}" bindscroll="onListScroll">
       <view wx:if="{{ shelfGroups.length === 0 }}" class="no-match-box">
         <text class="no-match-text">没有匹配的房间</text>
         <view class="clear-filter-btn" bindtap="onClearFilter">清除筛选</view>
@@ -146,7 +151,8 @@
         </view>
       </view>
       <view class="list-pad-bottom" />
-    </scroll-view>
+      </scroll-view>
+    </view>
     <!-- ── 扫码定位 FAB（列表页常驻）── -->
     <view class="scan-float-btn" bindtap="onScanLock">
       <van-icon name="scan" size="44rpx" color="#fff" />
@@ -156,33 +162,18 @@
 
 <!-- Grid View -->
 <view wx:if="{{ screen === 'grid' }}" class="page grid-page">
-  <subpage-nav-bar title="{{ gridMeta.shelveName || selectedShelf.shelveName }}" customBack="{{ true }}" bind:back="onBackToList" />
-  <!-- 操作栏：图例 + 刷新 + 提交 -->
-  <view class="grid-actions-bar" style="top: {{ navBarHeight }}px;">
-    <view class="gt-left-btns">
-      <!-- 模式切换（横向滚动，8 项手机宽度放不下） -->
-      <scroll-view class="gt-mode-scroll" scroll-x enhanced show-scrollbar="{{ false }}">
-        <view class="gt-mode-seg">
-          <view wx:for="{{ modeOptions }}" wx:key="key" class="gt-mode-btn {{ pageMode === item.key ? 'gt-mode-btn--on' : '' }}" style="{{ pageMode === item.key && modeColor ? 'background:' + modeColor : '' }}" data-mode="{{ item.key }}" bindtap="onSwitchMode">{{ item.label }}</view>
-        </view>
-      </scroll-view>
-    </view>
-    <view class="grid-actions-btns">
-      <!-- 常驻扫码入口（顶栏）：全角色可见，结果按当前模式分派 -->
-      <view class="gt-scan-btn" bindtap="onScanLock">
-        <van-icon name="scan" size="34rpx" color="#fff" />
-      </view>
+  <!-- 模式切换改由左下角模式岛（mode-dock）承担；扫码入口右下角 FAB 已有；
+       图例与「我的申请」并进导航栏右侧 —— 于是整条顶部操作栏那一行省掉 -->
+  <subpage-nav-bar title="{{ gridMeta.shelveName || selectedShelf.shelveName }}" customBack="{{ true }}" bind:back="onBackToList">
+    <view slot="right" class="nav-right-acts">
       <view class="gt-legend-btn {{ legendOpen ? 'gt-legend-btn--on' : '' }}" bindtap="onToggleGridLegend">
         <van-icon name="warning-o" size="26rpx" color="{{ legendOpen ? '#fff' : '#ac1736' }}" />
       </view>
       <view wx:if="{{ !isStaffView }}" class="gt-my-claims-btn" bindtap="onOpenMyClaims">我的申请</view>
     </view>
-  </view>
+  </subpage-nav-bar>
 
-  <!-- 固定操作栏占位（actions bar 为 position:fixed，需在文档流中为其留出空间） -->
-  <view class="grid-actions-spacer"></view>
-
-  <!-- 预约模式：房间概览（内联，位于模式栏下方） -->
+  <!-- 预约模式：房间概览（内联，位于导航栏下方） -->
   <view wx:if="{{ pageMode === 'booking' }}" class="booking-inline">
     <view wx:if="{{ bookingLoading }}" class="rp-hint">加载中…</view>
     <view wx:elif="{{ bookingRoom }}" class="booking-card">
@@ -455,6 +446,9 @@
       <view class="grid-pad-bottom" />
     </view>
   </scroll-view>
+
+  <!-- ── 左下角模式坞（对齐 H5 CageModeIsland；与右下角扫码 FAB 同尺寸齐平）── -->
+  <mode-dock modes="{{ modeOptions }}" current="{{ pageMode }}" bind:change="onDockMode" />
 
   <!-- ── 扫码定位 FAB（右下悬浮圆形按钮，常驻）── -->
   <view class="scan-float-btn" bindtap="onScanLock">

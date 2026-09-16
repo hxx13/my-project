@@ -52,10 +52,27 @@ interface SpecSelectPanelProps {
   /** 把「当前在填哪个规格、多少只」报给页面级抽屉做上限与一笼一规格预判 */
   onCageContextChange?: (ctx: { specOptionLabel: string; quantity: number }) => void;
   /**
+   * 移动壳专用：把「加入购物车」这个动作交给页面。页面把按钮画在笼位那一行（照小程序），
+   * 规格面板收起时也点得到。传 null 表示卸载（页面侧应清掉）。
+   */
+  onProvideConfirm?: (fn: (() => void) | null) => void;
+  /**
    * 与笼位抽屉同处一个文档流时置 true：不再自己 fixed + 遮罩 + portal，
    * 而是当页面级浮层容器的子元素，与抽屉并排，互不遮盖。
    */
   embedded?: boolean;
+  /**
+   * 移动壳里作为底部面板的一段内联渲染（H5 `/m/home` 的动物订购）。
+   *
+   * 与 `embedded` 一样不 portal / 不加遮罩 / 不居中，但外壳不同：占满宽度、高度由父级 flex 决定
+   * （`shrink-0` + `max-h-[38vh]`，内部滚），不要 PC 那个居中小卡片的 `max-w-sm` + 绿描边 + 阴影
+   * —— 在本组件所在的 flex 列里，抽屉是它下面那段，规格面板收起时把空间让给抽屉。
+   *
+   * **业务体完全不改**：规格行构建、同模板互斥、价格合计、`onCageContextChange` 回报、
+   * `handleConfirm` 的全部校验（含笼位路径）两个变体共用。
+   * 移动壳靠 `.mobile-student-shell` 把 `--twin-*` 重映射到 `--student-*`，所以内部不必换令牌。
+   */
+  mobileShell?: boolean;
 }
 
 /** 金额展示：null / undefined 一律显示「待定」，不显示 0 以免误解为免费。 */
@@ -74,7 +91,7 @@ function extractOptions(raw: unknown): string[] {
   return [];
 }
 
-export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose, orderingBlocked, groupNames, selfUserId, selfUserName, aupRecordId, pickedCages = [], allocByCageId = {}, maxQuantityPerCage = 0, onCageContextChange, embedded = false }: SpecSelectPanelProps) {
+export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose, orderingBlocked, groupNames, selfUserId, selfUserName, aupRecordId, pickedCages = [], allocByCageId = {}, maxQuantityPerCage = 0, onCageContextChange, onProvideConfirm, embedded = false, mobileShell = false }: SpecSelectPanelProps) {
   const { data: templates = [] } = useSpecTemplates();
 
   /** 有 AUP 才谈得上「预定到笼位」，此时笼位必选 */
@@ -287,8 +304,76 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     [pickedCages],
   );
 
+  /** 无规格商品的校验 + 提交（移动壳的「加入购物车」画在页面上，所以得能从这里取到） */
+  const handleNoSpecConfirm = () => {
+    if (noSpecQty <= 0) return;
+    if (!cageRequired && roomMissing) { setRoomTouched(true); return; }
+    if (cageRequired) {
+      if (pickedCages.length === 0) {
+        toast.error("请先在右侧选择笼位");
+        return;
+      }
+      const allocated = pickedCages.reduce((s, c) => s + (allocByCageId[c.animalCageId] || 0), 0);
+      if (allocated !== noSpecQty) {
+        toast.error(`已分配到 ${allocated} 只，与总数 ${noSpecQty} 不一致，请在右侧调整`);
+        return;
+      }
+      const remark = noSpecRemark.trim();
+      const cageEntries = pickedCages
+        .map(c => ({ cage: c, qty: allocByCageId[c.animalCageId] || 0 }))
+        .filter(x => x.qty > 0)
+        .map(({ cage, qty }) => ({
+          optionLabel: "",
+          qty,
+          remark,
+          reservationId: cage.reservationId,
+          pickupRoomId: cage.roomId ?? undefined,
+          pickupRoomName: cage.roomName ?? undefined,
+        }));
+      onConfirm(cageEntries, pickup);
+      return;
+    }
+    onConfirm([{ optionLabel: "", qty: noSpecQty, remark: noSpecRemark.trim() }], pickup);
+  };
+
+  /**
+   * 移动壳：把「加入购物车」这个动作交给页面 —— 按钮画在笼位那一行右侧（照小程序），
+   * 规格面板收起时也点得到。页面侧用 ref 接（不 setState，避免每次渲染又反过来触发本效果）。
+   */
+  useEffect(() => {
+    if (!mobileShell || !onProvideConfirm) return;
+    onProvideConfirm(optionRows.length === 0 ? handleNoSpecConfirm : handleConfirm);
+    return () => onProvideConfirm(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileShell, onProvideConfirm, optionRows.length, noSpecQty, pickedCages, allocByCageId]);
+
   /** 领用方式/房间（必选）+ 领用人（默认本人）：两个分支共用 */
-  const pickupFields = (
+  const pickupFields = mobileShell ? (
+    /* 移动壳：两块并排、块内「标签 + 值」再横排 —— 整块只占一行高度（照小程序的 .pickup-row）。
+       标签和值上下叠会白吃一行；纵向空间优先留给网格 */
+    <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-[var(--twin-hairline)] px-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-1.5 rounded-twin-sm bg-[var(--twin-canvas-soft)] px-2 py-1">
+        <span className="shrink-0 text-[10px] leading-none text-[var(--twin-mute)]">领用房间</span>
+        <span className="min-w-0 truncate text-xs font-medium leading-none text-[var(--twin-ink)]">
+          {cageRequired
+            ? (cageRoomNames.length > 0 ? cageRoomNames.join("、") : "跟随笼位")
+            : (pickupRoomName || "请选择房间")}
+        </span>
+      </div>
+      <button
+        type="button"
+        disabled={!canPickCollector}
+        onClick={() => setCollectorPickerOpen(true)}
+        className="flex min-w-0 items-center gap-1.5 rounded-twin-sm bg-[var(--twin-canvas-soft)] px-2 py-1 text-left disabled:opacity-60"
+      >
+        <span className="shrink-0 text-[10px] leading-none text-[var(--twin-mute)]">领用人</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium leading-none text-[var(--twin-ink)]">
+          {collectorName || "本人"}
+        </span>
+        {canPickCollector && <span className="shrink-0 text-[10px] leading-none text-[var(--twin-link)]">选择</span>}
+      </button>
+    </div>
+  ) : (
     <div className="shrink-0 space-y-2 border-b border-[var(--twin-hairline)] px-4 pb-3">
       <div>
         <label className="mb-1 block text-[11px] text-[var(--twin-body)]">
@@ -368,25 +453,32 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     const lineTotal = priceEnabled && flatPrice != null ? flatPrice * noSpecQty : null;
     const panel = (
         <div
-          className="w-full max-w-sm rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-4 flex flex-col"
-          style={{ border: "2px solid #16a34a" }}
+          className={
+            mobileShell
+              ? "w-full shrink-0 max-h-[38vh] flex flex-col bg-[var(--student-surface-raised)]"
+              : "w-full max-w-sm rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-4 flex flex-col"
+          }
+          style={mobileShell ? undefined : { border: "2px solid #16a34a" }}
           onClick={e => e.stopPropagation()}
         >
+          {/* 移动壳的标题（品系 · 规格）画在页面上那一行，面板里不再重复一遍 */}
+          {!mobileShell && (
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <h3 className="text-sm font-bold text-[var(--twin-ink)]">{headerLine} — 选购</h3>
+            <h3 className="min-w-0 truncate text-sm font-bold text-[var(--twin-ink)]">{headerLine} — 选购</h3>
             <button onClick={onClose} className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]">关闭</button>
           </div>
+          )}
 
           {pickupFields}
 
-          <div className="px-4 pb-3">
-            <div className="rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 mr-2">
-                  <div className="text-xs font-medium text-[var(--twin-ink)] truncate">{itemLabel}</div>
-                  <div className="text-[10px] text-[var(--twin-mute)]">
-                    {priceEnabled ? `单价 ${money(flatPrice)}` : "该物品未配置规格选项"}
-                  </div>
+          <div className={mobileShell ? "px-3 pb-2" : "px-4 pb-3"}>
+            <div className={`rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] ${mobileShell ? "px-2.5 py-1.5" : "p-3"}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className={mobileShell ? "flex min-w-0 flex-1 items-center gap-2" : "min-w-0 mr-2"}>
+                  <span className={mobileShell ? "min-w-0 truncate text-xs font-medium text-[var(--twin-ink)]" : "block truncate text-xs font-medium text-[var(--twin-ink)]"}>{itemLabel}</span>
+                  <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">
+                    {priceEnabled && !mobileShell ? `单价 ${money(flatPrice)}` : "无规格"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button
@@ -416,7 +508,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                   >+</button>
                 </div>
               </div>
-              {lineTotal != null && (
+              {!mobileShell && lineTotal != null && (
                 <div className="mt-1 text-right text-[10px] font-semibold text-sky-700">小计 {money(lineTotal)}</div>
               )}
               <input
@@ -429,57 +521,34 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
             </div>
           </div>
 
-          {priceEnabled && (
-            <div className="shrink-0 border-t border-[var(--twin-hairline)] px-4 py-2 flex items-center justify-between">
-              <span className="text-xs text-[var(--twin-mute)]">合计</span>
-              <span className="text-sm font-bold text-sky-700">{money(lineTotal)}</span>
-            </div>
-          )}
-
+          {/* 合计金额只在购物车里看（用户口径），这里不再重复；两个动作画在笼位那一行 */}
+          {!mobileShell && (
+          <>
+            {priceEnabled && (
+              <div className="shrink-0 border-t border-[var(--twin-hairline)] px-4 py-2 flex items-center justify-between">
+                <span className="text-xs text-[var(--twin-mute)]">合计</span>
+                <span className="text-sm font-bold text-sky-700">{money(lineTotal)}</span>
+              </div>
+            )}
           <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--twin-hairline)] shrink-0">
-            <button onClick={onClose} className="rounded-lg border border-[var(--twin-hairline)] px-4 py-2 text-sm text-[var(--twin-body)]">取消</button>
+            <button onClick={onClose} className={mobileShell ? "rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)]" : "rounded-lg border border-[var(--twin-hairline)] px-4 py-2 text-sm text-[var(--twin-body)]"}>取消</button>
             <button
-              onClick={() => {
-                if (noSpecQty <= 0) return;
-                if (!cageRequired && roomMissing) { setRoomTouched(true); return; }
-                if (cageRequired) {
-                  if (pickedCages.length === 0) {
-                    toast.error("请先在右侧选择笼位");
-                    return;
-                  }
-                  const allocated = pickedCages.reduce((s, c) => s + (allocByCageId[c.animalCageId] || 0), 0);
-                  if (allocated !== noSpecQty) {
-                    toast.error(`已分配到 ${allocated} 只，与总数 ${noSpecQty} 不一致，请在右侧调整`);
-                    return;
-                  }
-                  const remark = noSpecRemark.trim();
-                  const cageEntries = pickedCages
-                    .map(c => ({ cage: c, qty: allocByCageId[c.animalCageId] || 0 }))
-                    .filter(x => x.qty > 0)
-                    .map(({ cage, qty }) => ({
-                      optionLabel: "",
-                      qty,
-                      remark,
-                      reservationId: cage.reservationId,
-                      pickupRoomId: cage.roomId ?? undefined,
-                      pickupRoomName: cage.roomName ?? undefined,
-                    }));
-                  onConfirm(cageEntries, pickup);
-                  return;
-                }
-                onConfirm([{ optionLabel: "", qty: noSpecQty, remark: noSpecRemark.trim() }], pickup);
-              }}
+              onClick={handleNoSpecConfirm}
               disabled={orderingBlocked || noSpecQty <= 0}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors"
-              style={{ backgroundColor: !orderingBlocked && noSpecQty > 0 ? "#16a34a" : "#9ca3af" }}
+              className={mobileShell ? "rounded-twin-sm bg-sky-600 px-3.5 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-50" : "rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors"}
+              style={mobileShell ? undefined : { backgroundColor: !orderingBlocked && noSpecQty > 0 ? "#16a34a" : "#9ca3af" }}
             >
               加入购物车
             </button>
           </div>
+          </>
+          )}
         </div>
     );
 
-    if (embedded) return <>{panel}{collectorPicker}</>;
+    /* 移动壳同理：不 portal（portal 到 body 会脱离 `.mobile-student-shell` 的令牌作用域），
+       由页面的底部面板 flex 列负责定位，规格面板与抽屉排在一起 */
+    if (mobileShell || embedded) return <>{panel}{collectorPicker}</>;
 
     return (
       <>
@@ -496,36 +565,48 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
 
   const panel = (
       <div
-        className="w-full max-w-sm rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-4 flex flex-col max-h-[85vh]"
-        style={{ border: "2px solid #16a34a" }}
+        className={
+          mobileShell
+            ? "w-full shrink-0 max-h-[38vh] flex flex-col bg-[var(--student-surface-raised)]"
+            : "w-full max-w-sm rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-4 flex flex-col max-h-[85vh]"
+        }
+        style={mobileShell ? undefined : { border: "2px solid #16a34a" }}
         onClick={e => e.stopPropagation()}
       >
+        {/* 移动壳的标题（品系 · 规格）画在页面上那一行，面板里不再重复一遍 */}
+        {!mobileShell && (
         <div className="flex items-center justify-between shrink-0 px-4 pt-4 pb-2">
-          <h3 className="text-sm font-bold text-[var(--twin-ink)]">{headerLine} — 选购</h3>
+          <h3 className="min-w-0 truncate text-sm font-bold text-[var(--twin-ink)]">{headerLine} — 选购</h3>
           <button onClick={onClose} className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]">关闭</button>
         </div>
+        )}
 
         {pickupFields}
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2">
+        <div className={mobileShell ? "grid min-h-0 flex-1 grid-cols-2 gap-1.5 overflow-y-auto px-3 pb-2" : "flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2"}>
           {optionRows.map(row => {
             const q = qtys[row.key] || 0;
             const activeSibling = activeKeyByTemplate.get(row.key.split(":")[0]);
             const blocked = !!activeSibling && activeSibling !== row.key;
             return (
-              <div key={row.key} className={`rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2${blocked ? " opacity-45" : ""}`}>
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0 mr-2">
-                    <div className="text-xs font-medium text-[var(--twin-ink)] truncate">{row.label}</div>
+              <div key={row.key} className={`${mobileShell ? "rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1.5" : "rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2"}${blocked ? " opacity-45" : ""}`}>
+                <div className="flex items-center justify-between gap-2">
+                  {/* 移动壳：名称 · 单价 · 小计 · 步进器全挤一行（照小程序）；PC 仍按原来的堆叠 */}
+                  <div className={mobileShell ? "flex min-w-0 flex-1 items-center gap-2" : "mr-2 min-w-0"}>
+                    <span className={mobileShell ? "min-w-0 truncate text-xs font-medium text-[var(--twin-ink)]" : "block truncate text-xs font-medium text-[var(--twin-ink)]"}>{row.label}</span>
                     {blocked && (
-                      <div className="text-[10px] text-[var(--twin-mute)]">
-                        同规格只能选一项，已选「{optionRows.find(r => r.key === activeSibling)?.label ?? ""}」
-                      </div>
+                      mobileShell ? (
+                        <span className="shrink-0 rounded bg-[var(--twin-hairline)] px-1 text-[10px] text-[var(--twin-mute)]">互斥</span>
+                      ) : (
+                        <div className="text-[10px] text-[var(--twin-mute)]">
+                          同规格只能选一项，已选「{optionRows.find(r => r.key === activeSibling)?.label ?? ""}」
+                        </div>
+                      )
                     )}
-                    {priceEnabled && (
-                      <div className="text-[10px] text-[var(--twin-mute)]">
+                    {priceEnabled && !mobileShell && (
+                      <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">
                         单价 {money(unitPriceOf(row.templateName, row.label))}
-                      </div>
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0">
@@ -563,7 +644,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                     >+</button>
                   </div>
                 </div>
-                {priceEnabled && q > 0 && (() => {
+                {!mobileShell && priceEnabled && q > 0 && (() => {
                   const p = unitPriceOf(row.templateName, row.label);
                   return (
                     <div className="mt-1 text-right text-[10px] font-semibold text-sky-700">
@@ -571,41 +652,51 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                     </div>
                   );
                 })()}
-                <input
-                  type="text"
-                  placeholder="备注…"
-                  disabled={blocked}
-                  value={remarks[row.key] || ""}
-                  onChange={e => setRemarks(prev => ({ ...prev, [row.key]: e.target.value }))}
-                  className="mt-1.5 w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-1 text-[11px] text-[var(--twin-ink)] outline-none ring-sky-500 focus:ring-1"
-                />
+                {/* 移动壳：备注只在填了数量时才展开 —— 空着也占一行正是"每行独立占一行"的来源 */}
+                {(!mobileShell || q > 0) && (
+                  <input
+                    type="text"
+                    placeholder="备注…"
+                    disabled={blocked}
+                    value={remarks[row.key] || ""}
+                    onChange={e => setRemarks(prev => ({ ...prev, [row.key]: e.target.value }))}
+                    className={`w-full rounded border border-[var(--twin-hairline)] bg-white px-2 text-[11px] text-[var(--twin-ink)] outline-none ring-sky-500 focus:ring-1 ${mobileShell ? "mt-1 py-1" : "mt-1.5 py-1"}`}
+                  />
+                )}
               </div>
             );
           })}
         </div>
 
-        {priceEnabled && (
-          <div className="shrink-0 border-t border-[var(--twin-hairline)] px-4 py-2 flex items-center justify-between">
-            <span className="text-xs text-[var(--twin-mute)]">合计</span>
-            <span className="text-sm font-bold text-sky-700">{money(totalAmount)}</span>
-          </div>
-        )}
+        {/* 移动壳：合计金额只在购物车里看（用户口径），选购面板不重复显示；
+            「取消 / 加入购物车」画在页面的笼位那一行 */}
+        {!mobileShell && (
+          <>
+            {priceEnabled && (
+              <div className="shrink-0 border-t border-[var(--twin-hairline)] px-4 py-2 flex items-center justify-between">
+                <span className="text-xs text-[var(--twin-mute)]">合计</span>
+                <span className="text-sm font-bold text-sky-700">{money(totalAmount)}</span>
+              </div>
+            )}
 
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--twin-hairline)] shrink-0">
-          <button onClick={onClose} className="rounded-lg border border-[var(--twin-hairline)] px-4 py-2 text-sm text-[var(--twin-body)]">取消</button>
-          <button
-            onClick={handleConfirm}
-            disabled={orderingBlocked}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors"
-            style={{ backgroundColor: !orderingBlocked && optionRows.some(r => (qtys[r.key] || 0) > 0) ? "#16a34a" : "#9ca3af" }}
-          >
-            加入购物车
-          </button>
-        </div>
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--twin-hairline)] shrink-0">
+              <button onClick={onClose} className="rounded-lg border border-[var(--twin-hairline)] px-4 py-2 text-sm text-[var(--twin-body)]">取消</button>
+              <button
+                onClick={handleConfirm}
+                disabled={orderingBlocked}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors"
+                style={{ backgroundColor: !orderingBlocked && optionRows.some(r => (qtys[r.key] || 0) > 0) ? "#16a34a" : "#9ca3af" }}
+              >
+                加入购物车
+              </button>
+            </div>
+          </>
+        )}
       </div>
   );
 
-  if (embedded) return <>{panel}{collectorPicker}</>;
+  /* 移动壳：不 portal、不加遮罩，交给页面的底部面板（见 mobileShell 的注释） */
+  if (mobileShell || embedded) return <>{panel}{collectorPicker}</>;
 
   return (
     <>

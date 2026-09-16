@@ -23,6 +23,15 @@
       mode="aspectFit"
       show-menu-by-longpress="{{ false }}"
     />
+    <!-- vant 选中态读 slot="icon-active"，只给 slot="icon" 会在切到该页时图标消失 -->
+    <image
+      wx:if="{{ item.iconSrc }}"
+      slot="icon-active"
+      class="aro-tabbar-icon-img"
+      src="{{ item.iconSrc }}"
+      mode="aspectFit"
+      show-menu-by-longpress="{{ false }}"
+    />
     {{ item.text }}
   </van-tabbar-item>
 </van-tabbar>

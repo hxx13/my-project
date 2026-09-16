@@ -81,19 +81,14 @@
             <!-- 价格与操作控件同一行：操作区不再绝对定位独占一列/一行 -->
             <view class="goods-foot">
               <text class="goods-price {{ item.priceText ? '' : 'goods-price-empty' }}">{{ item.priceText || '待定' }}</text>
-              <view wx:if="{{ item.purchasable && item.hasSpec }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
+              <view wx:if="{{ item.purchasable }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
                 <text>选择规格</text>
                 <view wx:if="{{ totalQtyByItem[item.id] > 0 }}" class="goods-spec-badge">{{ totalQtyByItem[item.id] }}</view>
               </view>
-              <view wx:elif="{{ item.purchasable }}" class="step-inline">
-                <view wx:if="{{ (plainQtyByItem[item.id] || 0) > 0 }}" class="si-btn" hover-class="si-btn-hover" data-id="{{ item.id }}" catchtap="onPlainDec">−</view>
-                <input wx:if="{{ (plainQtyByItem[item.id] || 0) > 0 }}" class="si-num-input" type="number" value="{{ plainQtyByItem[item.id] || 0 }}" data-id="{{ item.id }}" bindblur="onPlainQtyInput" confirm-type="done" />
-                <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-id="{{ item.id }}" catchtap="onPlainAdd">+</view>
-              </view>
               <text wx:elif="{{ item.childCount > 0 }}" class="goods-arrow">›</text>
             </view>
+            </view>
           </view>
-        </view>
       </block>
       <view class="list-pad" />
     </scroll-view>
@@ -109,42 +104,49 @@
   </view>
 
 <!-- 规格选购 -->
-<van-popup show="{{ specSheetOpen }}" position="bottom" round closeable bind:close="closeSpec" custom-style="max-height:85vh;">
+<van-popup show="{{ specSheetOpen }}" position="bottom" round closeable bind:close="closeSpec" custom-style="max-height:98vh;">
   <view class="sheet" wx:if="{{ specItem }}">
     <view class="sheet-head">
       <text class="sheet-title">{{ specItem.title }} — 选购</text>
     </view>
     <scroll-view scroll-y class="sheet-scroll">
-      <!-- 有规格：逐规格配数量 -->
+      <!-- 规格选项：一条一张卡；填了数量的那条高亮，备注也只在那条出现 -->
       <block wx:if="{{ specOptionRows.length > 0 }}">
-        <view class="spec-row {{ opt._blocked ? 'spec-row--blocked' : '' }}" wx:for="{{ specOptionRows }}" wx:key="key" wx:for-item="opt">
-          <view class="spec-main">
-            <text class="spec-label">{{ opt.label }}</text>
-            <text class="spec-price" wx:if="{{ opt.priceText }}">单价 {{ opt.priceText }}</text>
-            <text class="spec-blocked-hint" wx:if="{{ opt._blocked }}">同规格只能选一项</text>
+        <view class="spec-opts">
+        <view
+          wx:for="{{ specOptionRows }}"
+          wx:key="key"
+          wx:for-item="opt"
+          class="spec-opt {{ opt._on ? 'spec-opt--on' : '' }} {{ opt._blocked ? 'spec-opt--blocked' : '' }}"
+        >
+          <view class="spec-opt-row">
+            <text class="spec-opt-name">{{ opt.label }}</text>
+            <text wx:if="{{ opt._blocked }}" class="spec-opt-hint">互斥</text>
+            <view class="spec-step">
+              <view wx:if="{{ opt._on }}" class="spec-step-btn" hover-class="spec-step-btn--hover" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
+              <input
+                wx:if="{{ opt._on }}"
+                class="spec-step-input"
+                type="number"
+                value="{{ specQtys[opt.key] || 0 }}"
+                data-key="{{ opt.key }}"
+                bindblur="onSpecQtyInput"
+                confirm-type="done"
+              />
+              <view class="spec-step-btn spec-step-btn--plus" hover-class="spec-step-btn--hover" data-key="{{ opt.key }}" bindtap="onSpecInc">+</view>
+            </view>
           </view>
-          <view class="step-inline">
-            <view wx:if="{{ (specQtys[opt.key] || 0) > 0 }}" class="si-btn" hover-class="si-btn-hover" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
-            <input wx:if="{{ (specQtys[opt.key] || 0) > 0 }}" class="si-num-input" type="number" value="{{ specQtys[opt.key] || 0 }}" data-key="{{ opt.key }}" bindblur="onSpecQtyInput" confirm-type="done" />
-            <view class="si-btn si-btn-plus" hover-class="si-btn-hover" data-key="{{ opt.key }}" bindtap="onSpecInc">+</view>
-          </view>
-          <input class="spec-remark" placeholder="备注…" value="{{ specRemarks[opt.key] || '' }}" data-key="{{ opt.key }}" bindinput="onSpecRemarkInput" />
+          <input
+            wx:if="{{ opt._on }}"
+            class="spec-opt-remark"
+            placeholder="备注"
+            placeholder-class="spec-opt-remark-ph"
+            value="{{ specRemarks[opt.key] || '' }}"
+            data-key="{{ opt.key }}"
+            bindinput="onSpecRemarkInput"
+          />
         </view>
-      </block>
-      <!-- 无规格：直接按单品数量加购 -->
-      <block wx:else>
-        <view class="spec-row">
-          <view class="spec-main">
-            <text class="spec-label">{{ specItem.title }}</text>
-            <text class="spec-price" wx:if="{{ specFlatPriceText }}">单价 {{ specFlatPriceText }}</text>
-          </view>
-          <view class="step-inline">
-            <view wx:if="{{ specNoQty > 0 }}" class="si-btn" hover-class="si-btn-hover" bindtap="onNoSpecDec">−</view>
-            <input wx:if="{{ specNoQty > 0 }}" class="si-num-input" type="number" value="{{ specNoQty }}" bindblur="onNoSpecQtyInput" confirm-type="done" />
-            <view class="si-btn si-btn-plus" hover-class="si-btn-hover" bindtap="onNoSpecInc">+</view>
-          </view>
         </view>
-        <input class="spec-remark" placeholder="备注…" value="{{ specNoRemark }}" bindinput="onNoSpecRemarkInput" />
       </block>
 
       <!-- 合计（仅开启价格的物品显示） -->
@@ -153,54 +155,74 @@
         <text class="spec-total-value">{{ specTotalText }}</text>
       </view>
 
-      <!-- 领用方式/房间（必选）+ 领用人（默认本人） -->
-      <view class="pickup-block">
-        <view class="pickup-field" bindtap="openRoomSheet">
-          <text class="pickup-label">领用方式/房间 <text class="req">*</text></text>
-          <view class="pickup-value {{ pickupRoomName ? '' : 'pickup-value-empty' }}">
-            <text>{{ pickupRoomName || '请选择领用房间' }}</text>
-            <text class="pickup-arrow">›</text>
+      <!-- 领用房间（由所选笼位自动带出，不可手选）+ 领用人（默认本人） -->
+      <view class="pickup-block pickup-block--two">
+        <view class="pickup-row">
+          <text class="pickup-row-label">领用房间</text>
+          <view class="pickup-row-value {{ pickupRoomName ? '' : 'pickup-row-value--empty' }}">
+            <text>{{ pickupRoomName || '随笼位带出' }}</text>
           </view>
         </view>
-        <view class="pickup-field" bindtap="openCollectorSheet">
-          <text class="pickup-label">领用人</text>
-          <view class="pickup-value">
-            <text>{{ collectorName || '本人' }}<text class="pickup-hint">（默认为本人）</text></text>
-            <text class="pickup-arrow">›</text>
+        <view class="pickup-row" bindtap="openCollectorSheet">
+          <text class="pickup-row-label">领用人</text>
+          <view class="pickup-row-value">
+            <text>{{ collectorName || '本人' }}<text class="pickup-row-hint">默认为本人</text></text>
+            <text class="pickup-row-arrow">›</text>
           </view>
         </view>
       </view>
-    </scroll-view>
-    <view class="sheet-foot">
-      <view class="foot-btn ghost" bindtap="closeSpec">取消</view>
-      <view class="foot-btn primary {{ submitting ? 'foot-btn-off' : '' }}" bindtap="onSpecConfirm">{{ submitting ? '加入中…' : '加入购物车' }}</view>
-    </view>
-  </view>
-</van-popup>
 
-<!-- 领用房间树（默认收起，支持搜索） -->
-<van-popup show="{{ roomSheetOpen }}" position="bottom" round closeable bind:close="closeRoomSheet" custom-style="max-height:75vh;">
-  <view class="sheet">
-    <view class="sheet-head"><text class="sheet-title">选择领用房间</text></view>
-    <view class="room-search">
-      <input class="room-search-input" placeholder="搜索房间…" value="{{ roomKeyword }}" bindinput="onRoomSearch" />
-    </view>
-    <scroll-view scroll-y class="sheet-scroll">
-      <view wx:if="{{ roomTreeError }}" class="room-error" bindtap="loadRoomTree">房间树加载失败：{{ roomTreeError }}<text class="room-error-retry"> · 点此重试</text></view>
-      <view wx:elif="{{ roomTree.length === 0 }}" class="muted pad">暂无房间数据</view>
-      <block wx:else>
-        <view
-          class="room-row {{ item.isRoom ? 'room-row-leaf' : 'room-row-folder' }} {{ item.selected ? 'room-row-sel' : '' }}"
-          wx:for="{{ roomTree }}" wx:key="key" wx:for-item="item"
-          style="padding-left: {{ 10 + item.depth * 18 }}rpx;"
-          data-key="{{ item.key }}" data-label="{{ item.label }}" data-isroom="{{ item.isRoom }}"
-          bindtap="onRoomPick"
-        >
-          <text class="room-caret" wx:if="{{ item.hasChildren }}">{{ item.expanded ? '▾' : '▸' }}</text>
-          <text class="room-caret" wx:else></text>
-          <text class="room-name">{{ item.name }}</text>
+      <!-- 笼位：一笼一规格，点格子即占位；数量上限 = 已选笼位数 x 单笼上限 -->
+      <view class="pickup-block">
+        <view class="cage-head">
+          <text class="cage-title">笼位</text>
+          <text class="cage-hint">{{ cageReserving ? '锁定中…' : cageAllocText }}</text>
+          <view wx:if="{{ pickedCages.length > 0 }}" class="cage-clear" bindtap="onClearPickedCages">清空</view>
         </view>
-      </block>
+
+        <view wx:if="{{ cageError }}" class="cage-error">{{ cageError }}</view>
+        <block wx:else>
+          <view class="cage-tabs-row">
+            <scroll-view wx:if="{{ cageRooms.length > 1 }}" class="cage-tabs" scroll-x enhanced show-scrollbar="{{ false }}">
+              <view class="cage-tabs-inner">
+                <view
+                  wx:for="{{ cageRooms }}"
+                  wx:key="key"
+                  class="cage-tab {{ cageTabIdx === index ? 'cage-tab-on' : '' }}"
+                  data-index="{{ index }}"
+                  bindtap="onCageTab"
+                >{{ item.roomName }}</view>
+              </view>
+            </scroll-view>
+            <view wx:else class="cage-tabs-placeholder"></view>
+            <!-- 动作按钮挪到 tab 旁边：底部不再占一整行，空间让给网格 -->
+            <view class="cage-acts">
+              <view class="cage-act cage-act--ghost" bindtap="closeSpec">取消</view>
+              <view class="cage-act cage-act--primary {{ submitting ? 'cage-act--off' : '' }}" bindtap="onSpecConfirm">{{ submitting ? '提交中' : '加入购物车' }}</view>
+            </view>
+          </view>
+
+          <view wx:if="{{ cageLoading }}" class="cage-loading">加载笼位中…</view>
+          <view wx:elif="{{ cageShelves.length === 0 }}" class="cage-loading">本课题组暂无可选笼架</view>
+          <block wx:else>
+            <view wx:for="{{ cageShelves }}" wx:key="shelveId" wx:for-item="sh" class="cage-shelf">
+              <view class="cage-shelf-name">{{ sh.shelveName }}</view>
+              <cage-grid
+                grid="{{ sh.grid }}"
+                compact
+                data-si="{{ index }}"
+                data-sid="{{ sh.shelveId }}"
+                data-sname="{{ sh.shelveName }}"
+                data-rid="{{ sh.roomId }}"
+                data-rname="{{ sh.roomName }}"
+                bind:celltap="onCageCellTap"
+              />
+            </view>
+          </block>
+        </block>
+
+        <view wx:if="{{ cageWarnText }}" class="cage-warn">{{ cageWarnText }}</view>
+      </view>
     </scroll-view>
   </view>
 </van-popup>
@@ -229,14 +251,19 @@
 <!-- 购物车 -->
 <van-popup show="{{ cartSheetOpen }}" position="bottom" round closeable bind:close="closeCartSheet" custom-style="max-height:70vh;">
   <view class="sheet">
-    <view class="sheet-head"><text class="sheet-title">共享购物车 · {{ cartCount }} 件</text></view>
+    <view class="sheet-head sheet-head--cart">
+      <text class="sheet-title">购物车 · {{ cartCount }} 件</text>
+        <!-- 分组视角切换（镜像 CartTree.tsx 的两个模式）。放在标题行右侧，头部为此留出关闭按钮的位置。
+             原来还带 isPi 判断（照 web），但 /aup/my-roles 判不出组长 or 请求被 catch 吞掉时，
+             这个胶囊就永远不出现 —— 现在只要车里有行就给，分组只是看法，不涉及权限。 -->
+        <view wx:if="{{ cart.length > 0 }}" class="cart-tree-tabs">
+          <view class="ord-tabs">
+            <view class="ord-tab {{ cartTreeMode === 'aup-user-spec' ? 'ord-tab-on' : '' }}" data-mode="aup-user-spec" bindtap="onCartTreeMode">AUP→实验员</view>
+            <view class="ord-tab {{ cartTreeMode === 'spec-user' ? 'ord-tab-on' : '' }}" data-mode="spec-user" bindtap="onCartTreeMode">规格→实验员</view>
+          </view>
+        </view>
+    </view>
     <scroll-view scroll-y class="sheet-scroll">
-      <!-- PI 分组视角切换（镜像 CartTree.tsx，仅 PI 且车非空时显示） -->
-      <view wx:if="{{ isPi && cart.length > 0 }}" class="cart-tree-tabs">
-        <view class="ord-tab {{ cartTreeMode === 'aup-user-spec' ? 'ord-tab-on' : '' }}" data-mode="aup-user-spec" bindtap="onCartTreeMode">AUP→实验员</view>
-        <view class="ord-tab {{ cartTreeMode === 'spec-user' ? 'ord-tab-on' : '' }}" data-mode="spec-user" bindtap="onCartTreeMode">规格→实验员</view>
-      </view>
-
       <view wx:if="{{ cart.length === 0 }}" class="muted pad">共享购物车是空的</view>
       <block wx:else>
         <view class="ct-group" wx:for="{{ cartTree }}" wx:key="key" wx:for-item="grp">
@@ -245,16 +272,22 @@
             <view class="ct-sub-title">{{ sub.title }}</view>
             <view class="cart-line" wx:for="{{ sub.lines }}" wx:key="key" wx:for-item="line">
               <view class="cart-line-mid">
-                <text class="cart-line-name">{{ line.itemLabel }}</text>
-                <text class="cart-line-meta">{{ line.specLabel ? line.specLabel + ' · ' : '' }}{{ line.packageStatus }}</text>
-                <text class="cart-line-price" wx:if="{{ line.lineAmountText }}">
-                  <text wx:if="{{ line.unitPriceText }}">{{ line.unitPriceText }} × {{ line.qty }} = </text>{{ line.lineAmountText }}
-                </text>
-                <text class="cart-line-meta" wx:if="{{ line.pickupRoomName || line.collectorName }}">
-                  <text wx:if="{{ line.pickupRoomName }}">房间 {{ line.pickupRoomName }}</text><text wx:if="{{ line.pickupRoomName && line.collectorName }}"> · </text><text wx:if="{{ line.collectorName }}">领用人 {{ line.collectorName }}</text>
-                </text>
-                <text class="cart-line-remark" wx:if="{{ line.remark }}">备注：{{ line.remark }}</text>
-                <text class="cart-line-remark" wx:if="{{ line.packageRemark }}">包备注：{{ line.packageRemark }}</text>
+                <!-- 主行：品名 + 规格 + 状态徽标挤一行，右侧留给加减器 -->
+                <view class="cart-line-top">
+                  <text class="cart-line-name">{{ line.itemLabel }}</text>
+                  <text wx:if="{{ line.specLabel }}" class="cart-line-spec">{{ line.specLabel }}</text>
+                  <text class="cart-line-status {{ line.packageStatus === 'READY' ? 'cart-line-status--ready' : '' }}">{{ line.packageStatus }}</text>
+                </view>
+                <!-- 副行：房间 / 领用人 / 金额挤一行，金额靠右，放不下就省略号 -->
+                <view class="cart-line-sub" wx:if="{{ line.pickupRoomName || line.collectorName || line.lineAmountText }}">
+                  <text wx:if="{{ line.pickupRoomName }}" class="cart-line-tag">{{ line.pickupRoomName }}</text>
+                  <text wx:if="{{ line.collectorName }}" class="cart-line-tag">领用人 {{ line.collectorName }}</text>
+                  <text wx:if="{{ line.lineAmountText }}" class="cart-line-tag cart-line-tag--price"><text wx:if="{{ line.unitPriceText }}">{{ line.unitPriceText }} × {{ line.qty }} = </text>{{ line.lineAmountText }}</text>
+                </view>
+                <view class="cart-line-sub" wx:if="{{ line.remark || line.packageRemark }}">
+                  <text wx:if="{{ line.remark }}" class="cart-line-tag">备注：{{ line.remark }}</text>
+                  <text wx:if="{{ line.packageRemark }}" class="cart-line-tag">包备注：{{ line.packageRemark }}</text>
+                </view>
               </view>
               <view class="step-inline" wx:if="{{ line.canEdit }}">
                 <view wx:if="{{ line.qty > 0 }}" class="si-btn" hover-class="si-btn-hover" data-id="{{ line.id }}" bindtap="onCartDec">−</view>
@@ -285,10 +318,9 @@
     </view>
 
     <block wx:if="{{ !isPi }}">
-      <view class="sheet-remark">
-        <input class="remark-input" placeholder="订单包统一备注（提交给 PI）" value="{{ packageRemark }}" bindinput="onPackageRemarkInput" />
-      </view>
+      <!-- 打包备注与提交并排：备注吃剩余宽度，按钮不缩，省掉单独一整行 -->
       <view class="sheet-foot">
+        <input class="remark-input" placeholder="订单包统一备注" value="{{ packageRemark }}" bindinput="onPackageRemarkInput" />
         <view wx:if="{{ myReadyCount > 0 }}" class="foot-btn ghost" bindtap="onWithdraw">撤回 READY</view>
         <view class="foot-btn primary" bindtap="onMarkReady">提交给 PI</view>
       </view>

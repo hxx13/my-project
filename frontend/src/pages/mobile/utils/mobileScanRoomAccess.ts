@@ -20,6 +20,8 @@ export interface MobileRoomAccessMeta {
   dimmed: boolean;
   /** 卡片角标短文案 */
   reasonShort?: string;
+  /** 门牌状态色带用：可进 / 待激活 / 被拦 / 无权限 */
+  state: "allowed" | "pending" | "blocked" | "none";
 }
 
 export interface NormalizedMobileScanAnalyze {
@@ -36,6 +38,8 @@ export interface NormalizedMobileScanAnalyze {
   scanDelayEnabled: boolean;
   scanDelayButtonLabel: string;
   scanDelayOptionsByRoom: Record<string, Record<string, unknown>[]>;
+  /** 移动端房间自助进入：总开关 + 灰度名单判定结果 */
+  mobileEnterEnabled: boolean;
 }
 
 export interface RoomPreviewAccessBundle {
@@ -159,6 +163,10 @@ export function normalizeMobileScanAnalyze(
       safe.scanDelayOptionsByRoom && typeof safe.scanDelayOptionsByRoom === "object"
         ? (safe.scanDelayOptionsByRoom as Record<string, Record<string, unknown>[]>)
         : {},
+    mobileEnterEnabled:
+      asBool(safe.mobileEnterEnabled) ??
+      asBool(safe.mobile_enter_enabled) ??
+      false,
   };
 
 }
@@ -272,6 +280,19 @@ function mobileItemBindIds(
   return ids;
 }
 
+/** 房号后缀（A/B/C 之类 1~2 位）：本地房 3F-301 对应官方 301/301A/301B（room_config.capacity_bind_room_id）。 */
+const ROOM_CODE_SUFFIX = /^[a-z0-9]{1,2}$/;
+
+function codeTail(key: string): string {
+  const idx = key.lastIndexOf("-");
+  return idx >= 0 ? key.slice(idx + 1) : key;
+}
+
+/**
+ * 门禁授权房 vs 房间卡是否同一间（与 twinScanAnalyze.matchesScanRoom 同一套规则）：
+ * 先按 id 绑定，再校区一致 + 房号/尾段相等或「尾段 + 1~2 位后缀」。
+ * 不做裸 includes —— 那会把 301A 的权限算到 3010 这类别的房上。
+ */
 function scanRoomMatchesMobileItem(
   scanRoom: RoomInfo,
   item: MobileRoomItem,
@@ -282,18 +303,21 @@ function scanRoomMatchesMobileItem(
   if (oid && bindIds.has(oid)) return true;
 
   const roomName = normalizeRoomKey(item.roomName || "");
-  const dn = normalizeRoomKey(scanRoom.displayName || scanRoom.name || "");
-  if (roomName && dn && (dn === roomName || dn.includes(roomName) || roomName.includes(dn))) {
-    return true;
-  }
-  const campus = normalizeRoomKey(item.zone || overview?.campus || "");
-  if (campus && dn) {
-    const stripped = dn.replace(new RegExp(`^${campus}`), "");
-    if (
-      stripped &&
-      roomName &&
-      (stripped === roomName || stripped.includes(roomName) || roomName.includes(stripped))
-    ) {
+  if (!roomName) return false;
+  const itemCampus = normalizeRoomKey(item.zone || overview?.campus || "");
+  const scanCampus = normalizeRoomKey(scanRoom.campusTag || "");
+  // 浦东/浦西房号会重名（都有 301A），校区对不上就不是同一间
+  if (itemCampus && scanCampus && itemCampus !== scanCampus) return false;
+
+  const roomTail = codeTail(roomName);
+  const codes = [scanRoom.displayName, scanRoom.name];
+  for (const raw of codes) {
+    const code = normalizeRoomKey(raw || "");
+    if (!code) continue;
+    if (code === roomName) return true;
+    const tail = codeTail(code);
+    if (tail === roomName || tail === roomTail) return true;
+    if (tail.length > roomTail.length && tail.startsWith(roomTail) && ROOM_CODE_SUFFIX.test(tail.slice(roomTail.length))) {
       return true;
     }
   }
@@ -397,6 +421,7 @@ export function evaluateMobileRoomAccess(
       enterable: false,
       dimmed: true,
       reasonShort: "无权限",
+      state: "none",
     };
   }
 
@@ -413,8 +438,14 @@ export function evaluateMobileRoomAccess(
       enterable: false,
       dimmed: true,
       reasonShort: "无权限",
+      state: "none",
     };
   }
+
+  const scanId = String(scanRoom.officialRoomId || scanRoom.id || "").trim();
+  const isPending =
+    !!scanId &&
+    analyze.pendingRooms.some((r) => String(r.officialRoomId || r.id || "").trim() === scanId);
 
   const locked = isScanEnterLocked(scanRoom, analyze, overviewRows);
   if (locked) {
@@ -434,6 +465,7 @@ export function evaluateMobileRoomAccess(
       enterable: false,
       dimmed: true,
       reasonShort: reason,
+      state: "blocked",
     };
   }
 
@@ -441,5 +473,6 @@ export function evaluateMobileRoomAccess(
     canOpenDetail: true,
     enterable: true,
     dimmed: false,
+    state: isPending ? "pending" : "allowed",
   };
 }

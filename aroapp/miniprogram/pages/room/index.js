@@ -39,7 +39,37 @@ function occupancyLevel(used, total) {
   return 5;
 }
 
-function withRoomPreviewMeta(room, scanRoomMap) {
+/**
+ * 权限上下文：map=officialRoomId→授权标记（buildScanRoomMap），rooms=授权房列表（按房号兜底匹配），
+ * known=权限清单是否可信（analyze 成功才敢断言「无权限」，否则一律照旧不锁）。
+ */
+function buildPermissionContext(scanRoomMap, analyzeDto) {
+  const dto = analyzeDto && analyzeDto.success === true ? analyzeDto : null;
+  const rooms = [];
+  if (dto) {
+    (dto.allowedRooms || []).forEach((r) => rooms.push({ ...r, __flag: 'allowed' }));
+    (dto.pendingRooms || []).forEach((r) => rooms.push({ ...r, __flag: 'pending' }));
+  }
+  return { map: scanRoomMap || new Map(), rooms, known: !!dto };
+}
+
+/** 房间卡的授权标记：先按 officialRoomId / 房名精确查，再按房号规则兜底匹配。 */
+function findRoomPermission(room, ctx) {
+  if (!ctx || !ctx.known) return null;
+  const map = ctx.map;
+  const rid = String(room.roomId != null ? room.roomId : '').trim();
+  if (rid && map && map.size && map.get(rid)) return map.get(rid);
+  const name = String(room.roomName || '').trim();
+  if (name && map && map.size && map.get(name)) return map.get(name);
+  for (let i = 0; i < ctx.rooms.length; i += 1) {
+    if (twinScan.overviewMatchesScanRoom(room, ctx.rooms[i])) {
+      return ctx.rooms[i].__flag === 'pending' ? { pending: true } : { allowed: true };
+    }
+  }
+  return null;
+}
+
+function withRoomPreviewMeta(room, permCtx) {
   const total = Math.max(0, Number(room.totalCapacity || 0));
   const used = Math.max(0, Math.min(total, roomPersonCount(room)));
   const maxDots = 12;
@@ -72,21 +102,21 @@ function withRoomPreviewMeta(room, scanRoomMap) {
   // 单个房间卡的权限标记
   let permissionKey = '';
   let permissionBadge = '';
-  if (scanRoomMap && scanRoomMap.size > 0) {
-    const rid = String(room.roomId != null ? room.roomId : '');
-    const info = scanRoomMap.get(rid) || scanRoomMap.get(String(room.roomName || '').trim());
-    if (info) {
-      if (info.disabled) {
-        permissionKey = 'banned';
-        permissionBadge = '禁用';
-      } else if (info.pending) {
-        permissionKey = 'pending';
-        permissionBadge = '待激活';
-      } else if (info.allowed) {
-        permissionKey = 'allowed';
-        permissionBadge = '可进入';
-      }
+  const info = findRoomPermission(room, permCtx);
+  if (info) {
+    if (info.disabled) {
+      permissionKey = 'banned';
+      permissionBadge = '禁用';
+    } else if (info.pending) {
+      permissionKey = 'pending';
+      permissionBadge = '待激活';
+    } else if (info.allowed) {
+      permissionKey = 'allowed';
+      permissionBadge = '可进入';
     }
+  } else if (permCtx && permCtx.known) {
+    permissionKey = 'none';
+    permissionBadge = '无权限';
   }
 
   return {
@@ -100,6 +130,7 @@ function withRoomPreviewMeta(room, scanRoomMap) {
     capacityTotal: total,
     permissionKey,
     permissionBadge,
+    roomLocked: permissionKey === 'none' || permissionKey === 'banned',
   };
 }
 
@@ -196,6 +227,15 @@ Page({
     delayStatus: 'none',       // none | pending | approved
     delayApprovedLabel: '',
     subjectUserId: '',
+    // 移动端自助进入（只做进入，离开仍走自动签退链路）
+    mobileEnterEnabled: false,
+    alreadyInside: false,
+    showEnterConfirm: false,
+    enterSubmitting: false,
+    autoExitSeconds: 0,
+    autoExitMinutes: '0',
+    autoExitSecondsText: '00',
+    exemptExpireAt: '',
     showAuditEntry: false,
     showStudentReviewEntry: false,
     badgeStudentReviewText: '',
@@ -221,9 +261,12 @@ Page({
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     this.setData({
       showAuditEntry: hasMinRole(role, 'SENIOR'),
-      showStudentReviewEntry:
-        hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF'),
+      showStudentReviewEntry: pagePermission.canShowMiniEntry(
+        'mine',
+        '/package-feature/pages/studentReviewHub/index',
+        role,
+        'ADMIN'
+      ),
     });
     void this.refreshStudentReviewBadge();
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
@@ -304,8 +347,8 @@ Page({
       const dtoForMerge =
         parsedAnalyze.dto && parsedAnalyze.dto.success === true ? parsedAnalyze.dto : null;
       const scanRoomMap = buildScanRoomMap(dtoForMerge);
-      const myRaw = twinScan.mergeMyRooms(parsed.rows, dtoForMerge);
-      const myMeta = myRaw.map((r) => withRoomPreviewMeta(r, scanRoomMap));
+      const permCtx = buildPermissionContext(scanRoomMap, parsedAnalyze.dto);
+      const myMeta = twinScan.buildMyRooms(parsed.rows, dtoForMerge).map((r) => withRoomPreviewMeta(r, permCtx));
 
       const campusTree = buildCampusFloorTree(parsed.rows);
       const expandedMap = { ...this.data.expandedMap };
@@ -335,8 +378,12 @@ Page({
       }
 
       const campusDisplayList = buildCampusDisplayList(campusTree, expandedMap);
-      const campusRooms = pickRoomsByCampusFloor(parsed.rows, selCampus, selFloor).map((r) => withRoomPreviewMeta(r, scanRoomMap));
+      const campusRooms = pickRoomsByCampusFloor(parsed.rows, selCampus, selFloor).map((r) => withRoomPreviewMeta(r, permCtx));
       const listForView = selView === 'mine' ? myMeta : campusRooms;
+      const autoExitSec = Math.max(
+        0,
+        Number((parsedAnalyze.dto && parsedAnalyze.dto.autoSignoutSecondsRemaining) || 0) || 0
+      );
 
       const patch = {
         allRooms: parsed.rows,
@@ -352,18 +399,27 @@ Page({
         scanDelayEnabled: scanAnalyze.scanDelayEnabled,
         scanDelayButtonLabel: scanAnalyze.scanDelayButtonLabel,
         subjectUserId: userId || '',
+        mobileEnterEnabled: !!(scanAnalyze && scanAnalyze.mobileEnterEnabled),
+        // 已在场内不再展示「进入」（与 H5 MobileRoomDetailDialog 的 alreadyInside 同判据）
+        alreadyInside: scanAnalyze.currentState === 'INSIDE',
+        autoExitSeconds: autoExitSec,
+        autoExitMinutes: String(Math.floor(autoExitSec / 60)),
+        autoExitSecondsText: String(autoExitSec % 60).padStart(2, '0'),
       };
 
       if (this.data.showDetail && this.data.detailRoom && this.data.detailRoom.roomId != null) {
         const rid = this.data.detailRoom.roomId;
         const updated = listForView.find((r) => String(r.roomId) === String(rid));
         if (updated) {
-          patch.detailRoom = buildDetailRoom(updated);
+          patch.detailRoom = Object.assign(
+            buildDetailRoom(updated),
+            this.computeRoomAccess(updated.roomId, scanAnalyze, parsed.rows)
+          );
           patch.delayOptions = this.computeDelayOptionsForRoom(updated.roomId, parsed.rows, scanAnalyze);
         }
       }
 
-      this._scanRoomMap = scanRoomMap;
+      this._permCtx = permCtx;
       this._scanAnalyze = scanAnalyze;
       this._overviewRows = parsed.rows;
       this._loadedOnce = true;
@@ -395,8 +451,8 @@ Page({
   },
 
   onMineTap() {
-    const scanRoomMap = this._scanRoomMap || null;
-    const myRooms = (this.data.myRoomsMeta || []).map((r) => withRoomPreviewMeta(r, scanRoomMap));
+    const permCtx = this._permCtx || null;
+    const myRooms = (this.data.myRoomsMeta || []).map((r) => withRoomPreviewMeta(r, permCtx));
     this.setData({
       selectedView: 'mine',
       selectedCampus: '',
@@ -417,7 +473,9 @@ Page({
     const campus = e.currentTarget.dataset.campus;
     const floor = e.currentTarget.dataset.floor;
     if (!campus || !floor) return;
-    const rooms = pickRoomsByCampusFloor(this.data.allRooms, campus, floor).map(withRoomPreviewMeta);
+    const rooms = pickRoomsByCampusFloor(this.data.allRooms, campus, floor).map((r) =>
+      withRoomPreviewMeta(r, this._permCtx)
+    );
     this.setData({
       selectedView: 'campus',
       selectedCampus: campus,
@@ -446,20 +504,48 @@ Page({
     return scanId || String(overviewRoomId);
   },
 
+  /**
+   * 房间可进入判定（与 H5 evaluateMobileRoomAccess.enterable 同判据）。
+   * 复用 resolveDelayRoomId 同一条「overview → scanRoom」查找路径，不另造匹配规则。
+   */
+  computeRoomAccess(roomId, scanAnalyze, overviewRows) {
+    const analyze = scanAnalyze || this._scanAnalyze;
+    const rows = overviewRows || this._overviewRows || this.data.allRooms || [];
+    if (!analyze || !roomId) return { enterable: false, enterBlockReason: '无权限' };
+    const overviewIndex = mobileScanAccess.buildOverviewIndex(rows);
+    const scanId = mobileScanAccess.resolveScanOfficialRoomId(roomId, overviewIndex, analyze);
+    if (!scanId) return { enterable: false, enterBlockReason: '无权限' };
+    const scanRoom = mobileScanAccess.findScanRoomByOfficialId(analyze, scanId);
+    const overviewRow = rows.find((r) => String(r.roomId) === String(roomId)) || null;
+    const enterable = mobileScanAccess.isRoomEnterable(scanRoom, analyze, overviewRow);
+    return {
+      enterable,
+      enterBlockReason: enterable
+        ? ''
+        : mobileScanAccess.getRoomEnterBlockReason(scanRoom, analyze, overviewRow),
+    };
+  },
+
   onRoomTap(e) {
     const id = e.currentTarget.dataset.id;
     const room = this.data.currentRooms.find((r) => String(r.roomId) === String(id));
     if (!room) return;
+    if (room.roomLocked) {
+      wx.showToast({ title: '该房间无进入权限', icon: 'none' });
+      return;
+    }
     const delayOptions = this.computeDelayOptionsForRoom(room.roomId);
     this.setData({
       showDetail: true,
-      detailRoom: buildDetailRoom(room),
+      detailRoom: Object.assign(buildDetailRoom(room), this.computeRoomAccess(room.roomId)),
       showDelayPanel: false,
       activeDelayOptionId: null,
       delaySubmitting: false,
       delayOptions,
       delayStatus: 'none',
       delayApprovedLabel: '',
+      showEnterConfirm: false,
+      enterSubmitting: false,
     });
     this.refreshDelayStatus(room.roomId);
   },
@@ -476,11 +562,13 @@ Page({
         this.setData({
           delayStatus: 'approved',
           delayApprovedLabel: (approved && approved.optionLabel) || '',
+          exemptExpireAt:
+            approved && approved.expireAt ? String(approved.expireAt).slice(11, 16) : '',
         });
       } else if (data.hasPending) {
-        this.setData({ delayStatus: 'pending', delayApprovedLabel: '' });
+        this.setData({ delayStatus: 'pending', delayApprovedLabel: '', exemptExpireAt: '' });
       } else {
-        this.setData({ delayStatus: 'none', delayApprovedLabel: '' });
+        this.setData({ delayStatus: 'none', delayApprovedLabel: '', exemptExpireAt: '' });
       }
     } catch (_) {
       // 查询失败不改变状态
@@ -495,11 +583,81 @@ Page({
       activeDelayOptionId: null,
       delaySubmitting: false,
       delayOptions: [],
+      showEnterConfirm: false,
+      enterSubmitting: false,
+      exemptExpireAt: '',
     };
     if (this.data.selectedView === 'mine') {
       patch.currentRooms = this.data.myRoomsMeta || [];
     }
     this.setData(patch);
+  },
+
+  /* ─────────── 移动端自助进入（只做进入；离开仍由自动签退链路负责） ─────────── */
+
+  onEnterTap() {
+    const d = this.data.detailRoom || {};
+    if (!d.enterable) {
+      wx.showToast({
+        title: d.enterBlockReason ? '无法进入：' + d.enterBlockReason : '该房间当前不可进入',
+        icon: 'none',
+      });
+      return;
+    }
+    this.setData({ showEnterConfirm: true });
+  },
+
+  onEnterCancel() {
+    if (this.data.enterSubmitting) return;
+    this.setData({ showEnterConfirm: false });
+  },
+
+  /** 仅用于确认卡片的 catchtap：拦住冒泡，避免点卡片正文误关确认框 */
+  onEnterNoop() {},
+
+  async onEnterConfirm() {
+    const detail = this.data.detailRoom;
+    const userId = this.data.subjectUserId;
+    if (!detail || !userId || this.data.enterSubmitting) return;
+    this.setData({ enterSubmitting: true });
+    try {
+      const scanId = this.resolveDelayRoomId(String(detail.roomId)) || String(detail.roomId);
+      const res = await springAuth.springRequest({
+        url: '/api/v1/twin/scan/execute',
+        method: 'POST',
+        data: {
+          userId,
+          roomId: scanId,
+          action: 'ENTER',
+          isSharedCard: false,
+          isKeepCard: false,
+          isBorrowedCard: false,
+          clientKind: 'MOBILE_ROOM',
+        },
+      });
+      let body = res && res.data;
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch (e) {
+          body = null;
+        }
+      }
+      // 写请求必须查 success：HTTP 200 + success:false 是业务失败，不查会把「被拦」显示成「成功」
+      const inner = body && body.data && typeof body.data === 'object' ? body.data : null;
+      if (!body || body.success !== true || (inner && inner.success === false)) {
+        throw new Error(
+          (inner && (inner.message || inner.msg)) || (body && (body.message || body.msg)) || '进入失败'
+        );
+      }
+      wx.showToast({ title: '已进入', icon: 'success' });
+      this.setData({ showEnterConfirm: false });
+      await this.refreshRoomPage({ silent: true, preserveSelection: true });
+    } catch (e) {
+      wx.showToast({ title: (e && e.message) || '进入失败', icon: 'none' });
+    } finally {
+      this.setData({ enterSubmitting: false });
+    }
   },
 
   toggleDelayPanel() {
@@ -584,11 +742,11 @@ Page({
 
   onStudentReviewTap() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
-    if (!hasMinRole(role, 'STAFF')) {
+    if (!hasMinRole(role, 'ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }

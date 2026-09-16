@@ -27,16 +27,17 @@ function occupancyLevel(used: number, total: number): number {
   return 5;
 }
 
+/** 占用压力色阶：浅金 → 深赭（越满越深）。不用绿→红那套，白底 + 暖白壳层下太跳。 */
 const DOT_COLORS: Record<number, string> = {
-  1: "#07c160",
-  2: "#2fc27d",
-  3: "#ff976a",
-  4: "#ff6b35",
-  5: "#ee0a24",
+  1: "#e3c98f",
+  2: "#d8b367",
+  3: "#c99a45",
+  4: "#b87c2c",
+  5: "#a05f1c",
 };
 
 export function dotColor(level: number, used: boolean): string {
-  if (!used) return "#e1e3e6";
+  if (!used) return "#e8e2d6";
   return DOT_COLORS[level] ?? DOT_COLORS[1];
 }
 

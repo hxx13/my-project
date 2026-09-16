@@ -7,7 +7,6 @@ import {
   alertKindLabel,
   mobileNoticeItemKey,
 } from "./MobileNoticesPanel";
-import { MOBILE_OVERLAY_ABOVE_TAB_BOTTOM } from "./mobileShellLayout";
 
 interface MobileFeedbackPanelProps {
   open: boolean;
@@ -45,7 +44,9 @@ export default function MobileFeedbackPanel({
   return (
     <div
       className="fixed left-0 right-0 top-0 z-[100] flex flex-col"
-      style={{ background: "#eef0f6", bottom: MOBILE_OVERLAY_ABOVE_TAB_BOTTOM }}
+      /* 铺满到底：这个面板打开时外壳已经把底部 tabbar 藏了，再按「tabbar 高度」留白
+         会留出一条空带，页面从下面透出来（就是底部那截穿底） */
+      style={{ background: "#eef0f6", bottom: 0 }}
     >
       <div
         className="shrink-0 flex items-center px-2"
@@ -90,7 +91,10 @@ export default function MobileFeedbackPanel({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 pt-3 pb-8">
+      <div
+        className="flex-1 overflow-y-auto px-3 pt-3"
+        style={{ paddingBottom: "calc(32px + env(safe-area-inset-bottom, 0px))" }}
+      >
         {items.length > 0 ? (
           <div className="flex flex-col gap-2.5">
             {items.map((item) => {

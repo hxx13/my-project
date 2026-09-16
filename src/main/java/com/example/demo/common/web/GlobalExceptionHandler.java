@@ -107,6 +107,11 @@ public class GlobalExceptionHandler {
             return false;
         }
         String p = path.trim().replace('\\', '/');
+        // NoResourceFoundException.getResourcePath() 不带前导斜杠（"models/x.json"），
+        // 不补斜杠则下面的前缀判断永不命中，静态资源会拿到 JSON body 而不是空 404。
+        if (!p.startsWith("/")) {
+            p = "/" + p;
+        }
         if (p.startsWith("/assets/") || p.startsWith("/models/") || p.equals("/favicon.svg") || p.equals("/index.html")) {
             return true;
         }

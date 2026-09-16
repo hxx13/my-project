@@ -20,8 +20,12 @@ import {
   type ReservableCell,
 } from "@/api/domains/animalOrderCage.api";
 import { buildCageOpMarks } from "@/features/cage-shelf/useCageOpSelect";
+import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { allocatedTotal } from "./cageAllocation";
+/* 规格里的性别识别。移动抽屉与 PC 共用同一份 —— 原来这里有一份内联拷贝，
+   两处必须同口径（「一笼一规格」的预判靠它），已收敛到 cagePickerLogic */
+import { sexOf } from "@/pages/mobile/cagePickerLogic";
 
 /** 抽屉里的一个已锁定笼位 */
 export interface PickedCage {
@@ -33,6 +37,11 @@ export interface PickedCage {
   roomName?: string | null;
   /** 所属笼架名（分配列里显示在格子正下方） */
   shelveName?: string | null;
+  /**
+   * 所属笼架索引主键。移动端抽屉的「已选 N」徽标、按架定位与分配页格子还原都要它
+   * —— 光有 `animalCageId` 反查不到是哪一排架子。
+   */
+  shelfIndexId?: string | null;
 }
 
 interface Props {
@@ -65,15 +74,6 @@ const EMPTY_ALERTS = new Map();
 /** 已选笼位的醒目色环 */
 const PICKED_COLOR = "#0ea5e9";
 
-/** 「雌性」「雄性」这类词只认明确写法，认不出不猜，交给后端再判一次 */
-function sexOf(label?: string | null): string | null {
-  if (!label) return null;
-  const lower = label.toLowerCase();
-  if (label.includes("雌") || lower.includes("female")) return "雌性";
-  if (label.includes("雄") || lower.includes("male")) return "雄性";
-  return null;
-}
-
 /**
  * 订购时的笼位选择抽屉。
  *
@@ -97,6 +97,8 @@ export default function CagePickerPanel({
   embedded = false,
 }: Props) {
   const [busy, setBusy] = useState(false);
+  /** 网格「完整/简洁」：简洁档收起格子上的文字标签（底色/网纹/图标留着） */
+  const [compactGrid, setCompactGrid] = useState(false);
   const mySex = useMemo(() => sexOf(specOptionLabel), [specOptionLabel]);
 
   // 渲染范围：本课题组的笼架。**与 AUP 无关** —— AUP 只决定格子能不能点。
@@ -226,6 +228,33 @@ export default function CagePickerPanel({
     [reservations],
   );
 
+  /**
+   * 「不可选」网纹：本单里点不了的笼位盖上红斜线 + 底部短标签（对齐小程序订购选笼位那套）。
+   * 标签按 `cartState` 分档；完整原因仍由 `handleCellClick` 的 toast 给 —— 格子只有 70px 宽，
+   * 后端的 reason（「该笼位有分笼/转移在审，暂时不能预定」之类）整条塞不下。
+   * 没有 ID 的位置（空位）不参与，它们本来就不是笼位。
+   */
+  const disabledReasonByCageId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const detail of grids) {
+      for (const cell of detail.grid) {
+        const id = String((cell as { id?: string }).id ?? "");
+        if (!id || pickedIds.has(id) || selectableIds.has(id)) continue;
+        const meta = cellMetaByCageId.get(id);
+        /* 不在本单 AUP 名下的格子往往占了大半屏，写「不属本单」纯属噪音 —— 只盖网纹不写标签 */
+        if (!meta) m.set(id, "");
+        else if (!meta.selectable) {
+          m.set(id,
+            meta.cartState === "ORDERED" ? "已下单待审"
+              : meta.cartState === "IN_CART" ? "已在购物车"
+                : meta.cartState === "SELECTING" ? "已被预订"
+                  : "不可预定");
+        } else m.set(id, "性别不符");
+      }
+    }
+    return m;
+  }, [grids, pickedIds, selectableIds, cellMetaByCageId]);
+
   /** 已选格画成勾选态 + 醒目色环：ShelfGrid 按 shelveId:x:y 比对 */
   const selectedCells = useMemo(() => {
     const out = new Set<string>();
@@ -335,6 +364,7 @@ export default function CagePickerPanel({
         roomId: detail?.shelfMeta?.roomId != null ? String(detail.shelfMeta.roomId) : null,
         roomName: detail?.shelfMeta?.roomName ?? null,
         shelveName: detail?.shelfMeta?.shelveName ?? null,
+        shelfIndexId: detail?.shelfMeta?.shelfIndexId != null ? String(detail.shelfMeta.shelfIndexId) : null,
       });
     }
     if (add.length > 0) onReservationsChange([...reservations, ...add]);
@@ -412,6 +442,7 @@ export default function CagePickerPanel({
           roomId: detail?.shelfMeta?.roomId != null ? String(detail.shelfMeta.roomId) : null,
           roomName: detail?.shelfMeta?.roomName ?? null,
           shelveName: detail?.shelfMeta?.shelveName ?? null,
+          shelfIndexId: detail?.shelfMeta?.shelfIndexId != null ? String(detail.shelfMeta.shelfIndexId) : null,
         },
       ]);
     } catch (e) {
@@ -634,8 +665,22 @@ export default function CagePickerPanel({
 
   return (
     <CageOpDrawer
-      /* 头部不展示徽标/标题/计数/说明，只留房间 tab；关闭按钮由 headerExtra 同一行靠右 */
-      headerExtra={roomTabs}
+      /* 头部不展示徽标/标题/计数/说明，只留房间 tab 与「完整/简洁」；关闭按钮由 headerExtra 同一行靠右 */
+      headerExtra={<>
+        {roomTabs}
+        {/* 网格完整/简洁：只收起格子上的文字标签，底色/网纹/图标一律不动 */}
+        <AdminSegmentedControl
+          className="shrink-0"
+          size="sm"
+          aria-label="网格显示"
+          value={compactGrid ? "compact" : "full"}
+          onChange={(v) => setCompactGrid(v === "compact")}
+          options={[
+            { value: "full", label: "完整" },
+            { value: "compact", label: "简洁" },
+          ]}
+        />
+      </>}
       collapseLabel="选择笼位"
       onClose={onClose}
       /* 叠在规格弹窗（--z-modal:800）之上，否则抽屉被弹窗遮罩盖住点不到 */
@@ -671,6 +716,8 @@ export default function CagePickerPanel({
               claimMode
               restrictSelectToPool
               poolCells={poolCells}
+              disabledReasonByCageId={disabledReasonByCageId}
+              compact={compactGrid}
               selectedCells={selectedCells}
               pairColorByCageId={pickedHighlight}
               opMarkerByCageId={opMarkByCageId}

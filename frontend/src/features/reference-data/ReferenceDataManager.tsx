@@ -45,7 +45,7 @@ import BreadcrumbBar from "./BreadcrumbBar";
 import EditModal from "./EditModal";
 import SpecSelectPanel, { type OrderPickupInfo } from "./SpecSelectPanel";
 import CagePickerPanel, { type PickedCage } from "./CagePickerPanel";
-import { CagePickerTab } from "@/components/cage/CageOpDrawer";
+import { CagePickerTab, ALLOC_COLUMN_WIDTH } from "@/components/cage/CageOpDrawer";
 import { allocateInOrder } from "./cageAllocation";
 import SpecTemplateManager from "./SpecTemplateManager";
 import OrderTimeManager from "./OrderTimeManager";
@@ -76,6 +76,9 @@ function parseSpecLabel(ss?: Record<string, string> | string): string {
   }
   return obj.option || Object.values(obj).filter(Boolean)[0] || "";
 }
+
+/** 订购选笼位抽屉的宽度（= CagePickerPanel 自己 width 的默认值，它再透传给 CageOpDrawer） */
+const CAGE_PICKER_WIDTH = 620;
 
 export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps) {
   const [activeTypeKey, setActiveTypeKey] = useState("SUPPLIER");
@@ -1042,8 +1045,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       )}
 
       {/*
-        规格弹窗 + 笼位抽屉同处一个浮层：外层 flex 并排布局，两者在同一个文档流里，
-        不再各挂各的 fixed 互相遮盖（抽屉 620px 时原来的居中弹窗右侧会被压住）。
+        规格弹窗 + 笼位抽屉：两个绝对定位层，弹窗层按**整屏**居中（不是按抽屉左边剩下的空间居中），
+        抽屉叠在右侧。两者不再互相挤文档流，也就不会出现「抽屉一变宽弹窗就被整体推走」。
         弹窗关掉时抽屉留着，只是外层退掉遮罩、变成不吃点击的透明层。
       */}
       {(specSelectItem || (cagePickerOpen && selectedAupId)) && createPortal(
@@ -1052,44 +1055,57 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             只有抽屉开着时用透明层接点击：点空白处关闭抽屉（抽屉内部自己 stopPropagation）。
             弹窗开着时这层是遮罩，点它只关弹窗 —— 抽屉这时不许关。
           */
-          className={`fixed inset-0 z-[900] flex items-stretch justify-center gap-[2px] p-4 ${
-            specSelectItem ? "bg-black/40" : "bg-transparent"
-          }`}
+          className={`fixed inset-0 z-[900] ${specSelectItem ? "bg-black/40" : "bg-transparent"}`}
           onClick={() => {
             if (specSelectItem) setSpecSelectItem(null);
             else void closeCagePicker();
           }}
         >
           {/*
-            弹窗在自己这半区里的对齐：抽屉打开时贴住抽屉（justify-end），
-            否则弹窗会停在中间、和抽屉之间空出一大截；抽屉不开时居中。
+            规格弹窗层：整屏居中（`justify-center` 打满宽），位置上只受右侧抽屉一个约束 ——
+            右边缘会压到抽屉时，用 marginRight 把它整体左推，直到贴住抽屉左边。
+            推导：设层宽 L、层内边距 16、抽屉宽 W、间距 2、弹窗宽 d，
+              居中时 left = (L-d)/2；被挡时的目标是 left = L-18-W-d。
+              写成 marginRight 就是 max(0, d + 2W + 36 - L)，而 L = 100% + 32px，
+              所以 max(0, d + 2W + 4px - 100%)——下面那行就是这个式子，d 取 max-w-sm = 24rem。
           */}
-          <div className={`flex min-w-0 flex-1 items-center ${cagePickerOpen && selectedAupId ? "justify-end" : "justify-center"}`}>
+          <div className="absolute inset-0 flex items-center justify-center p-4">
             {specSelectItem && (
-              <SpecSelectPanel
-                embedded
-                item={specSelectItem}
-                parentLabel={drillStack.length > 0 ? drillStack[drillStack.length - 1].label : undefined}
-                onConfirm={handleSpecConfirm}
-                onClose={() => setSpecSelectItem(null)}
-                orderingBlocked={orderingBlocked}
-                groupNames={effectiveGroupNames}
-                selfUserId={currentUserId}
-                selfUserName={currentUserName}
-                aupRecordId={selectedAupId || undefined}
-                pickedCages={pickedCages}
-                allocByCageId={cageAlloc.alloc}
-                maxQuantityPerCage={maxQuantityPerCage}
-                onCageContextChange={handleCageContextChange}
-              />
+              <div
+                /* 宽度必须落在这一层：里面 SpecSelectPanel 是 w-full，外层不给宽度就塌成 min-content */
+                className="w-full max-w-sm"
+                style={{
+                  marginRight: cagePickerOpen && selectedAupId
+                    /* 抽屉宽 = min(620 + 分配列, 62vw)，与 CageOpDrawer 里那行 width 同口径 */
+                    ? `max(0px, 24rem + 2 * min(${CAGE_PICKER_WIDTH + (pickedCages.length >= 2 ? ALLOC_COLUMN_WIDTH : 0)}px, 62vw) + 4px - 100%)`
+                    : undefined,
+                }}
+              >
+                <SpecSelectPanel
+                  embedded
+                  item={specSelectItem}
+                  parentLabel={drillStack.length > 0 ? drillStack[drillStack.length - 1].label : undefined}
+                  onConfirm={handleSpecConfirm}
+                  onClose={() => setSpecSelectItem(null)}
+                  orderingBlocked={orderingBlocked}
+                  groupNames={effectiveGroupNames}
+                  selfUserId={currentUserId}
+                  selfUserName={currentUserName}
+                  aupRecordId={selectedAupId || undefined}
+                  pickedCages={pickedCages}
+                  allocByCageId={cageAlloc.alloc}
+                  maxQuantityPerCage={maxQuantityPerCage}
+                  onCageContextChange={handleCageContextChange}
+                />
+              </div>
             )}
           </div>
 
-          {/* 笼位抽屉：常驻，不随规格弹窗关闭而卸载。
+          {/* 笼位抽屉：常驻，不随规格弹窗关闭而卸载。绝对定位在右侧，不参与弹窗的居中计算。
               stopPropagation 必须有，否则点笼位会冒泡到外层遮罩、把弹窗一起关掉。 */}
           {cagePickerOpen && selectedAupId && (
             <div
-              className="pointer-events-auto flex min-h-0 shrink-0 items-stretch"
+              className="pointer-events-auto absolute bottom-4 right-4 top-4 flex min-h-0 items-stretch"
               onClick={(e) => e.stopPropagation()}
             >
               <CagePickerPanel

@@ -31,6 +31,8 @@ export function labelOperationSource(log: Record<string, unknown>): string {
     if (!src) return at === 1 || at === 2 ? "未标注" : "—";
     const map = (s: string): string => {
         if (s === "WEB_SCAN") return "Web 扫码";
+        if (s === "MOBILE_ROOM") return "移动端";
+        if (s === "LOCAL_SCAN") return "本地扫码";
         if (s === "TWIN_AUTO_SIGNOUT") return "孪生·自动签退";
         if (s.startsWith("TWIN_")) return "孪生系统";
         if (s === "ARO_OFFICIAL_UNMATCHED") return "官方登记";

@@ -5,8 +5,14 @@ import SpecialDetailBadges from "./SpecialDetailBadges";
 import type { LockState } from "./SyncLockContext";
 import { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL, resolveCageType, default as CageCellOverlays } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
-import { displayPosition, nonEmptyText, previewStatusCodes, specialDetailItemsFor } from "../constants";
+import { displayPosition, nonEmptyText, previewStatusCodes, specialDetailItemsFor, CAGE_HATCH_BG } from "../constants";
 import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
+
+/**
+ * 不可选网纹：红色细斜线、透明留空，盖在格子上但位号/课题人/底色透得出来。
+ * 底纹与 H5 网格共用 constants 里那一份，改一处两端同步。
+ */
+const HATCH_STYLE: React.CSSProperties = { backgroundImage: CAGE_HATCH_BG };
 
 /**
  * CellButton — 8×10 笼架网格中的单个笼位按钮
@@ -30,7 +36,7 @@ import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains
  *
  * Props 共 21 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor, disabledReason, compact }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
@@ -52,6 +58,21 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   lockState?: LockState;
   /** 笼位划分标签（仅该笼位有划分时传入）：本人=「已划分给你」，他人=「已划分」 */
   divisionLabel?: string;
+  /**
+   * 当前模式下该笼位**选不了**：传短标签（3~6 字，格子只有 70px 宽），整格盖红网纹 + 底部标签。
+   * 传空串 = 只盖网纹不出标签（原因对用户没有增量信息时用，比如「不属本单」那种满屏皆是的）。
+   * 完整原因由点击时的 toast 给。不传 = 该格可选/不参与选择，什么也不画。
+   */
+  disabledReason?: string;
+  /**
+   * 简洁档（抽屉上的「完整/简洁」开关）：只收起**另有替代物**的标签层，
+   * 尽量少干扰又不丢信息。收起的是这五条 ——
+   *   ① 「当前可选」绿条（没网纹就是可选）  ② 状态文字「(饲养中)/(空笼位)」（右上类型灯已在表达）
+   *   ③ 中间态底部文字条（色环已在表达）    ④ 中间态正中图标 + 蒙层（色环 / 左上角徽标已在表达）
+   *   ⑤ 划分底部文字条（淡玫底 + 描边已在表达）
+   * 保留：底色、网纹及其红色短标签、位号、PI、实验员、类型灯、认领徽标、特殊饲养角标。
+   */
+  compact?: boolean;
 }) {
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const singleStyle = useStatusStyle(dominant);
@@ -147,7 +168,11 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     : lockState === "unlocked" ? " ring-2 ring-emerald-500 ring-offset-1"
     : lockState === "inherited" ? " ring-2 ring-slate-300"
     : "";
-  const cls = `${baseCls}${selected ? " border-blue-500 bg-blue-100/20" : ""}${isInCross ? " ring-2 ring-red-500" : ""}${lockCls}`;
+  const cls = `${baseCls}${selected ? " border-blue-500 bg-blue-100/20" : ""}${isInCross ? " ring-2 ring-red-500" : ""}${lockCls}${
+    /* 鼠标手势：盖着网纹的格子给「禁止」，可选的给手型。查看模式两者都不沾，保持默认。
+       disabled 按钮浏览器默认给 arrow，所以 not-allowed 必须显式写。 */
+    disabledReason !== undefined ? " cursor-not-allowed" : isSelectable ? " cursor-pointer" : ""
+  }`;
 
   const handleCardClick = (e: React.MouseEvent) => {
     // 同步保护模式：点击整格即切换该笼位的锁（有 lockState 说明该格可上锁）
@@ -185,7 +210,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       claimMode 的语义就是「这格在当前池子里可选」，全 web 统一用这个标签表达。
       注意：扫码/购物车「定位」的红色十字高亮是另一套（flashOverlay / crossX·crossY），别动。
     */}
-    {claimMode && isPoolCell && (
+    {claimMode && isPoolCell && !compact && (
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md text-center text-[8px] font-bold leading-[13px] text-white"
         style={{ backgroundColor: poolColor || "#10b981" }}
@@ -199,14 +224,20 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     {opMarker && (
       <>
         <div className="absolute inset-0 z-10 rounded-twin-md pointer-events-none" style={{ boxShadow: `inset 0 0 0 3px ${opMarker.color}, 0 0 10px ${opMarker.color}66` }} />
-        <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
-          style={{ background: opMarker.color }} title={opMarker.kind === "reserve" ? opMarker.label : `${opMarker.label}（${opMarker.kind === "divide" ? "分笼" : "转移"}请求 #${opMarker.requestId}）`}>
-          {opMarker.label}
-        </div>
+        {!compact && (
+          <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
+            style={{ background: opMarker.color }} title={opMarker.kind === "reserve" ? opMarker.label : `${opMarker.label}（${opMarker.kind === "divide" ? "分笼" : "转移"}请求 #${opMarker.requestId}）`}>
+            {opMarker.label}
+          </div>
+        )}
       </>
     )}
-    {/* 中间审核态覆盖层：浅色蒙层 + 正中大图标，比角落小徽标醒目得多 */}
-    {pendingOverlay && (
+    {/*
+      中间审核态覆盖层：浅色蒙层 + 正中大图标，比角落小徽标醒目得多。
+      简洁档整块收掉 —— 它表达的每件事都另有替代物（opMarker 有底部色环、
+      认领待审批/待释放有左上角徽标），留着反而是格子上最响的一样东西。
+    */}
+    {pendingOverlay && !compact && (
       <>
         <div className="absolute inset-0 z-[19] rounded-twin-md bg-white/25 pointer-events-none" />
         <div className="absolute inset-0 z-20 grid place-items-center pointer-events-none">
@@ -225,8 +256,10 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       return <>
         <div className="absolute inset-0 z-10 rounded-twin-md bg-rose-500/10 pointer-events-none" />
         <div className={`absolute inset-0 z-10 rounded-twin-md pointer-events-none ring-inset ${mine ? "ring-2 ring-rose-500" : "ring-1 ring-rose-400/60"}`} />
-        <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md bg-rose-600 text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
-          title={divisionLabel}>{divisionLabel}</div>
+        {!compact && (
+          <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md bg-rose-600 text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
+            title={divisionLabel}>{divisionLabel}</div>
+        )}
       </>;
     })()}
     {cell.claimStatus && (() => {
@@ -253,16 +286,33 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       {/* 明细角标是纯悬浮的（见 SpecialDetailBadges）：不给位号让位、不占内容位置 */}
       <div className="w-full font-bold text-[15px] leading-tight">{displayPosition(cell.position)}</div>
       {cell.empty
-        ? <div className="text-[9px] text-[var(--twin-mute)]">空位</div>
+        ? !compact && <div className="text-[9px] text-[var(--twin-mute)]">空位</div>
         : cell.visible === false
+          /* *** 是权限信号，别处没有替代物，简洁档也留着 */
           ? <div className="text-[9px] text-[var(--twin-mute)]">***</div>
           : <>
               {/* 项目名称（cell.projectGroup = 后端 projectName）不在这里显示 —— 格子只有 82px 高，
                   塞项目名会把 PI / 实验员 / 状态挤掉，且它在详情面板里本来就有 */}
               {pi && <div className="w-full truncate text-[11px] leading-tight font-semibold text-[var(--twin-ink)]">{pi}</div>}
               {cell.experimenterName && <div className="w-full truncate text-[9px] leading-tight text-[var(--twin-ink)]">{cell.experimenterName}</div>}
-              <div className="w-full text-[9px] text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[resolvedCageType ?? 0] || cell.stateLabel}</div>
+              {!compact && <div className="w-full text-[9px] text-[var(--twin-mute)]">{CAGE_TYPE_LABEL[resolvedCageType ?? 0] || cell.stateLabel}</div>}
             </>}
     </div>
+    {/*
+      不可选：整格红色细线网纹 + 底部短标签（对齐小程序订购选笼位）。
+      放在最后 —— 底部那两条同层的 z-20 色条（中间态/划分）由 DOM 顺序决胜，标签要压得住它们。
+      网纹走 z-[5]：盖过格内容（仍在透明缝隙里透出来），但让开 z-10 的环和 z-20 的角标/勾选。
+      标签本身 pointer-events-none，所以挂了 title 也 hover 不到；完整原因由点下去的 toast 给。
+    */}
+    {disabledReason !== undefined && (
+      <>
+        <div className="pointer-events-none absolute inset-0 z-[5] rounded-twin-md" style={HATCH_STYLE} />
+        {disabledReason && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md bg-red-600 px-0.5 text-center text-[8px] font-bold leading-[13px] text-white">
+            {disabledReason}
+          </div>
+        )}
+      </>
+    )}
   </button>;
 });

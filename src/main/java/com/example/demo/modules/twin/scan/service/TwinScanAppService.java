@@ -91,6 +91,9 @@ public class TwinScanAppService {
     private ScanDelayConfigService scanDelayConfigService;
 
     @Autowired
+    private com.example.demo.modules.twin.scan.mobile.MobileEnterGrantService mobileEnterGrantService;
+
+    @Autowired
     private TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
 
     @Autowired
@@ -98,6 +101,9 @@ public class TwinScanAppService {
 
     @Autowired
     private TwinScanDelayOptionMapper scanDelayOptionMapper;
+
+    @Autowired
+    private com.example.demo.modules.auth.mapper.UserAroBindingMapper userAroBindingMapper;
 
     @Autowired
     private UserMapper userMapper;
@@ -160,16 +166,28 @@ public class TwinScanAppService {
                     }
                 }
             } else {
-                // 区分「已注册但无人员档案的系统/管理账号」与「完全未知的人员」
-                User sysUser = userMapper.findById(cleanInput);
-                if (sysUser != null) {
+                // 客户端「拿自己的账号 id 问自己有哪些房间」（小程序/H5 房间页把 userInfo.id 当 userId 传）：
+                // STAFF_* 账号不在 aro_personnel，须经 user_aro_binding 展开成 aro_user_id 再索引，
+                // 否则被误判成「系统账号」→ 房间权限恒为空。
+                // 刷卡入参是纯字母数字卡片号（不可能含 `_`），卡片映射里也没有指向 STAFF_ 的记录，故扫码链路不受影响。
+                String boundAroId = resolveBoundAroUserId(cleanInput);
+                List<Map<String, Object>> boundList = StringUtils.hasText(boundAroId)
+                        ? dashboardMapper.searchPersonnel(boundAroId, 1)
+                        : List.of();
+                if (boundList.isEmpty()) {
+                    // 区分「已注册但无人员档案的系统/管理账号」与「完全未知的人员」
+                    User sysUser = userMapper.findById(cleanInput);
+                    if (sysUser != null) {
+                        result.setSuccess(false);
+                        result.setMessage("系统账号不支持扫码进出: " + cleanInput);
+                        return result;
+                    }
                     result.setSuccess(false);
-                    result.setMessage("系统账号不支持扫码进出: " + cleanInput);
+                    result.setMessage("未找到人员档案: " + cleanInput);
                     return result;
                 }
-                result.setSuccess(false);
-                result.setMessage("未找到人员档案: " + cleanInput);
-                return result;
+                matchedUser = boundList.get(0);
+                realPhysicalId = boundAroId;
             }
 
             long tMapUser = System.currentTimeMillis();
@@ -337,6 +355,7 @@ public class TwinScanAppService {
                 }
             }
             annotateScanDelayOptions(result);
+            annotateMobileEnter(result, realPhysicalId);
             // H5 首页豁免状态
             result.setExemptStatus(buildExemptStatus(realPhysicalId));
             result.setSuccess(true);
@@ -367,6 +386,23 @@ public class TwinScanAppService {
                     result.getMessage());
         }
         return result;
+    }
+
+    /** STAFF_* 账号 → user_aro_binding.aro_user_id；非 STAFF id 或未绑定返回 null。 */
+    private String resolveBoundAroUserId(String rawId) {
+        if (!StringUtils.hasText(rawId) || !rawId.trim().startsWith("STAFF_")) {
+            return null;
+        }
+        try {
+            com.example.demo.modules.auth.entity.UserAroBinding binding =
+                    userAroBindingMapper.selectByUserId(rawId.trim());
+            if (binding != null && StringUtils.hasText(binding.getAroUserId())) {
+                return binding.getAroUserId().trim();
+            }
+        } catch (Exception e) {
+            log.debug("[scan] 展开 STAFF 账号 ARO 绑定失败 id={}: {}", rawId, e.getMessage());
+        }
+        return null;
     }
 
     /** 非开放时段：为已配置免冻结授权的房间打上 scanEntryTimeExempt，供扫码弹窗按房间解锁「进入」。 */
@@ -442,6 +478,14 @@ public class TwinScanAppService {
             out.put(e.getKey(), items);
         }
         result.setScanDelayOptionsByRoom(out);
+    }
+
+    /** 移动端房间自助进入：总开关 + 灰度名单决定前端是否显示「进入」按钮。 */
+    private void annotateMobileEnter(ScanAnalyzeResponseDTO result, String subjectUserId) {
+        boolean visible = subjectUserId != null
+                && !subjectUserId.isBlank()
+                && mobileEnterGrantService.isVisibleFor(subjectUserId);
+        result.setMobileEnterEnabled(visible);
     }
 
     private void collectScanRoomIds(List<Map<String, Object>> rooms, java.util.List<String> sink) {

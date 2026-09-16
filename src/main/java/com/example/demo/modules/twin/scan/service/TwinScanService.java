@@ -351,14 +351,19 @@ public class TwinScanService {
                 }
             }
             try {
+                boolean mobileOrigin = TwinAccessLogCorrelationService.SOURCE_MOBILE_ROOM.equalsIgnoreCase(sourceTag);
                 twinAccessLogCorrelationService.registerPending(
                         accessType,
                         userId,
                         officialRoomId,
                         sourceTag,
                         null,
-                        accessType == 1 ? "Web扫码进入（待官方流水对齐）" : "Web扫码离开（待官方流水对齐）",
-                        "由孪生 Web 扫码发起 ARO 登记；官方流水批量入库后将自动合并溯源。"
+                        mobileOrigin
+                                ? (accessType == 1 ? "移动端进入（待官方流水对齐）" : "移动端离开（待官方流水对齐）")
+                                : (accessType == 1 ? "Web扫码进入（待官方流水对齐）" : "Web扫码离开（待官方流水对齐）"),
+                        mobileOrigin
+                                ? "由孪生移动端发起 ARO 登记；官方流水批量入库后将自动合并溯源。"
+                                : "由孪生 Web 扫码发起 ARO 登记；官方流水批量入库后将自动合并溯源。"
                 );
             } catch (Exception e) {
                 log.debug("[scan] register correlation pending skip: {}", e.getMessage());
@@ -377,10 +382,14 @@ public class TwinScanService {
                         int keepVal = isKeep ? 1 : 0;
                         int borrowedVal = isBorrowedCard ? 1 : 0;
                         try {
+                            boolean mobileOrigin = TwinAccessLogCorrelationService.SOURCE_MOBILE_ROOM.equalsIgnoreCase(sourceTag);
                             dashboardMapper.updateAccessLogCardFlags(targetRecord.getId(), sharedVal, keepVal, borrowedVal);
-                            String summary = accessType == 1 ? "Web扫码进入" : accessType == 2 ? "Web扫码离开" : "Web扫码登记";
+                            String summary = mobileOrigin
+                                    ? (accessType == 1 ? "移动端进入" : accessType == 2 ? "移动端离开" : "移动端登记")
+                                    : (accessType == 1 ? "Web扫码进入" : accessType == 2 ? "Web扫码离开" : "Web扫码登记");
                             StringBuilder det = new StringBuilder();
-                            det.append("由 Web 扫码发起 ARO 登记，流水已同步；记录ID=").append(targetRecord.getId()).append("。");
+                            det.append(mobileOrigin ? "由移动端发起 ARO 登记，流水已同步；记录ID=" : "由 Web 扫码发起 ARO 登记，流水已同步；记录ID=")
+                                    .append(targetRecord.getId()).append("。");
                             if (isBorrowedCard) {
                                 det.append("领用卡；");
                             }
@@ -392,7 +401,9 @@ public class TwinScanService {
                             }
                             dashboardMapper.updateAccessLogFeedProvenance(
                                     String.valueOf(targetRecord.getId()),
-                                    "WEB_SCAN",
+                                    mobileOrigin
+                                            ? TwinAccessLogCorrelationService.FEED_SOURCE_MATCHED_MOBILE_ROOM
+                                            : "WEB_SCAN",
                                     summary,
                                     det.toString(),
                                     null
@@ -443,9 +454,18 @@ public class TwinScanService {
         } catch (Exception e) {
             // 人员信息查不到不影响直写
         }
-        rec.setFeedSource("LOCAL_SCAN");
-        rec.setFeedSummaryZh(accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）");
-        rec.setFeedDetailZh("本地数据源模式：由孪生 Web 扫码直写本地流水，切回官方后自动对齐溯源。");
+        boolean mobileOrigin = TwinAccessLogCorrelationService.SOURCE_MOBILE_ROOM.equalsIgnoreCase(sourceTag);
+        // 操作来源列读的就是 feed_source：本地模式下也必须按操作端分开，
+        // 否则「移动端」与「Web 扫码弹窗」都落 LOCAL_SCAN，流水里分辨不出来。
+        rec.setFeedSource(mobileOrigin
+                ? TwinAccessLogCorrelationService.FEED_SOURCE_MATCHED_MOBILE_ROOM
+                : "LOCAL_SCAN");
+        rec.setFeedSummaryZh(mobileOrigin
+                ? (accessType == 1 ? "移动端进入（本地直写）" : "移动端离开（本地直写）")
+                : (accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）"));
+        rec.setFeedDetailZh(mobileOrigin
+                ? "本地数据源模式：由孪生移动端直写本地流水，切回官方后自动对齐溯源。"
+                : "本地数据源模式：由孪生 Web 扫码直写本地流水，切回官方后自动对齐溯源。");
         try {
             aroDatabaseService.batchInsert(List.of(rec));
         } catch (Exception e) {
@@ -461,7 +481,9 @@ public class TwinScanService {
             twinAccessLogCorrelationService.registerPending(
                     accessType, userId, roomId,
                     sourceTag, null,
-                    accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）",
+                    mobileOrigin
+                            ? (accessType == 1 ? "移动端进入（本地直写）" : "移动端离开（本地直写）")
+                            : (accessType == 1 ? "Web扫码进入（本地直写）" : "Web扫码离开（本地直写）"),
                     "本地数据源模式：本地直写流水，切回官方后自动对齐溯源。");
         } catch (Exception e) {
             log.debug("[scan] local registerPending skip: {}", e.getMessage());

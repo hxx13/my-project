@@ -441,10 +441,13 @@ export function RecordsTable({ filters, onEdit }: RecordsTableProps): JSX.Elemen
           </div>
         </div>
       ) : null}
-      {/* 不要传 scrollable：它会再给内层封 max-h-[min(72vh,780px)]，与外层 flex-1 拉伸出的高度差
+      {/* 不要传 scrollable：它会再给内层封 max-h-[min(72vh,780px)]，与外层拉伸出的高度差
           会在表格下方留一大块空白。本页外层已由 h-[calc(100dvh-var(--admin-chrome-offset))] + flex 链
-          给出确定高度，滚动交给 AdminTableShell 自带的外层 overflow-x-auto（y 轴随之计算为 auto）。 */}
-      <AdminTableShell className="min-h-0 flex-1">
+          给出确定高度，滚动交给 AdminTableShell 自带的外层 overflow-x-auto（y 轴随之计算为 auto）。
+          同样**不能加 flex-1**：横向滚动条画在滚动容器（这张卡片）的底边上，卡片一旦被 flex-1
+          撑满整屏，列表短时表格只占顶部一两行，滚动条就悬在下方几百像素的空白里，看着像「跑到表格外面」。
+          只留 min-h-0（解除内容高度下限）：长表照样被压到可用高度内滚动，短表卡片贴合内容。 */}
+      <AdminTableShell className="min-h-0">
         <table className="twin-table twin-table--merged-rows violation-records-table w-max min-w-full border-collapse text-left text-sm">
           <thead>
             <tr>

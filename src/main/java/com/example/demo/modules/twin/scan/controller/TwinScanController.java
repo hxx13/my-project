@@ -7,25 +7,20 @@ import com.example.demo.modules.auth.entity.UserAroBinding;
 import com.example.demo.modules.auth.mapper.UserAroBindingMapper;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchHintHelper;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchResult;
-import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
 import com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO;
 import com.example.demo.modules.twin.scan.dto.ScanExecuteResponseDTO;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.twin.scan.service.TwinScanAppService;
+import com.example.demo.modules.twin.scan.service.TwinScanExecuteService;
 import com.example.demo.modules.twin.scan.service.TwinScanNoticeAutoSuppressService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
-import com.example.demo.modules.twin.rpg.service.RpgEngineService;
-import com.example.demo.modules.twin.rpg.service.TwinExpStatsService;
 import com.example.demo.modules.twin.scan.service.TwinScanService;
 import com.example.demo.modules.twin.scan.state.ScanDataSource;
 import com.example.demo.modules.twin.scan.state.ScanOccupancyState;
 import com.example.demo.modules.twin.scan.state.ScanOccupancyStateService;
-import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
-import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
-import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.obligation.service.ObligationService;
 import com.example.demo.modules.twin.scan.service.WebScanExitDahuaLinkageService;
 import com.example.demo.modules.twin.scan.service.TwinAccessRuleScanConfigService;
@@ -35,20 +30,14 @@ import com.example.demo.modules.twin.scan.dto.DahuaIssueAccessPrefillVO;
 import com.example.demo.modules.twin.scan.dto.DahuaIssueCardRequest;
 import com.example.demo.modules.twin.scan.service.DahuaIssueException;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
-import com.example.demo.modules.twin.card.support.ExemptChangeContext;
-import com.example.demo.modules.twin.scan.support.ScanPopupEntryWindowEvaluator;
-import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
 import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
-import com.example.demo.modules.student.service.MobilePresenceNotifyService;
 import com.example.demo.modules.twin.common.service.RoomDictionaryManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,22 +64,10 @@ public class TwinScanController {
     private TwinCardMappingService twinCardMappingService; // 🚨 注入我们的极速缓存字典
 
     @Autowired
-    private RpgEngineService rpgEngineService;
-
-    @Autowired
-    private TwinExpStatsService twinExpStatsService;
-
-    @Autowired
-    private AccessRuleDispatchService accessRuleDispatchService;
-
-    @Autowired
     private DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
 
     @Autowired
-    private TwinAutomationLogService twinAutomationLogService;
-
-    @Autowired
-    private DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
+    private TwinScanExecuteService twinScanExecuteService;
 
     @Autowired
     private WebScanExitDahuaLinkageService webScanExitDahuaLinkageService;
@@ -99,13 +76,7 @@ public class TwinScanController {
     private TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
 
     @Autowired
-    private MobilePresenceNotifyService mobilePresenceNotifyService;
-
-    @Autowired
     private TwinStudentViolationService twinStudentViolationService;
-
-    @Autowired
-    private TwinStudentViolationNoticeConfigService unboundNoticeConfigService;
 
     @Autowired
     private RoomDictionaryManager roomDictionaryManager;
@@ -136,9 +107,6 @@ public class TwinScanController {
 
     private static final long STUDENT_DAHUA_BIND_DEPT_ID = 26L;
     private static final java.util.List<Long> STUDENT_DAHUA_BIND_DOOR_GROUP_IDS = java.util.List.of(58L, 59L);
-
-    @Value("${app.business-timezone:Asia/Shanghai}")
-    private String businessTimeZone;
 
 
     /**
@@ -250,277 +218,11 @@ public class TwinScanController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Scan-Operator-Role", required = false) String operatorRoleHint
     ) {
-        ScanExecuteResponseDTO result = new ScanExecuteResponseDTO();
         User operator = authContextService.resolveUserFromBearer(authorization);
-        ScanPopupFlowLog.ExecuteSummary flowLog = new ScanPopupFlowLog.ExecuteSummary();
-        try {
-            String userId = (String) payload.get("userId");
-            String roomId = (String) payload.get("roomId");
-            String roomName = payload.get("roomName") != null ? String.valueOf(payload.get("roomName")) : "";
-            int accessType = "ENTER".equals(payload.get("action")) ? 1 : 2;
-
-            // 提取各种特殊标志
-            boolean isSharedCard = Boolean.TRUE.equals(payload.get("isSharedCard"));
-            boolean isKeepCard = Boolean.TRUE.equals(payload.get("isKeepCard"));
-
-            Object borrowedObj = payload.get("isBorrowedCard");
-            boolean isBorrowedCard = borrowedObj != null && Boolean.parseBoolean(borrowedObj.toString());
-
-            String userName = payload.containsKey("userName") ? (String) payload.get("userName") : "未知人员";
-
-            flowLog.userId = userId;
-            flowLog.userName = userName;
-            flowLog.accessType = accessType;
-            flowLog.borrowedCard = isBorrowedCard;
-
-            String dahuaSeq = null;
-            String physicalCardNo = null;
-            com.example.demo.modules.twin.card.entity.TwinCardMapping mapping = twinCardMappingService.getByAroUserId(userId);
-            if (mapping != null) {
-                dahuaSeq = mapping.getDahuaSeq();
-                physicalCardNo = mapping.getCardNo();
-            }
-            flowLog.hasPhysicalMapping = mapping != null;
-
-            String roomLabel;
-            if (roomName != null && !roomName.isBlank()) {
-                roomLabel = roomName;
-            } else if (roomId != null && !roomId.isBlank()) {
-                String resolved = resolveRoomName(roomId);
-                roomLabel = resolved != null ? resolved : "（房间名未传）";
-            } else {
-                roomLabel = "（房间名未传）";
-            }
-            flowLog.roomLabel = roomLabel;
-
-            Map<String, Object> swingCfg = dahuaSwingRuleConfigService.getConfig();
-            ZoneId winZone;
-            try {
-                winZone = ZoneId.of(businessTimeZone != null ? businessTimeZone : "Asia/Shanghai");
-            } catch (Exception e) {
-                winZone = ZoneId.systemDefault();
-            }
-            if (accessType == 1
-                    && !ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone)
-                    && !twinCardMappingService.isRoomExemptForScanEntry(userId, roomId)) {
-                result.setSuccess(false);
-                result.setMessage("当前不在允许扫码进入的时段内，请稍后再试");
-                flowLog.fail("非开放时段");
-                return Result.success(result);
-            }
-
-            if (accessType == 1 && twinStudentViolationService.isEnterBlocked(userId)) {
-                result.setSuccess(false);
-                result.setMessage("违规处理中：已被禁止进入或进入次数已达上限，请联系管理员在「学生违规管理」中解除。");
-                flowLog.fail("违规禁入");
-                return Result.success(result);
-            }
-
-            if (accessType == 1 && unboundNoticeConfigService.isUnboundEnterForbidden(mapping != null, operator, operatorRoleHint)) {
-                result.setSuccess(false);
-                result.setMessage("未绑定校园卡：当前策略禁止扫码进入，请先完成绑卡或在「学生违规管理」中调整未绑卡提示设置。");
-                flowLog.fail("未绑卡禁入");
-                return Result.success(result);
-            }
-
-            // 方向化重构后：签退倒计时期间允许手动强制离开（打断倒计时立即签退），移除原倒计时拦截
-
-            // 离开前先解析官方正确房间号：避免 roomId 为空/过期导致 ARO 误报「无房间需要离开」
-            String effectiveRoomId = roomId;
-            if (accessType == 2) {
-                String resolved = resolveOfficialRoomIdFromAro(userId, roomId, roomName);
-                if (resolved != null && !resolved.isBlank()) {
-                    effectiveRoomId = resolved;
-                }
-            }
-
-            // =================================================================
-            // 💥 第一关：ARO 官方登记 + 预同步本地流水 + 经验值计算（全部在 executeAccessAction 内完成）
-            // =================================================================
-            boolean aroSuccess = twinScanService.executeAccessAction(userId, effectiveRoomId, accessType, isSharedCard, isKeepCard, dahuaSeq, isBorrowedCard, TwinAccessLogCorrelationService.SOURCE_WEB_SCAN);
-            boolean healedNoLeaveConflict = (accessType == 2 && aroService.isNoLeaveRoomError());
-
-            if (!aroSuccess) {
-                result.setSuccess(false);
-                String aroMsg = aroService.getLastAroErrorMessage();
-                result.setMessage((aroMsg == null || aroMsg.isBlank()) ? "打卡被官方系统拒绝，请检查人员权限！" : aroMsg);
-                flowLog.fail("ARO拒绝");
-                return Result.success(result);
-            }
-
-            // 关键同步规则：
-            // 任何“离开(accessType=2)”在 ARO 官方登记成功后，都必须清理大华联动状态，
-            // 避免 twin_dahua_activation_state 残留导致定时器重复探测/重复签退。
-            if (accessType == 2) {
-                dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
-            }
-
-            // ENTER：取消尚未执行的「离开延迟冻结」+ 清理刷卡联动计时器，避免换房进入后被旧计时器再次签退
-            if (accessType == 1) {
-                webScanExitDahuaLinkageService.cancelPendingDeferredExitForUser(userId);
-                dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
-            }
-
-            // ENTER：按全局开关解冻；关闭时仍执行 ARO/待激活，但若开启下放则大华可能因「冻结人员不能授权」失败
-            if (accessType == 1 && physicalCardNo != null && twinAccessRuleScanConfigService.isEnterUnfreezeEnabled()) {
-                try {
-                    twinCardMappingService.updateCardStatus(physicalCardNo, "NORMAL");
-                } catch (Exception e) {
-                    log.error("[扫码·登记] 预解冻失败 id={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
-                    result.setSuccess(false);
-                    result.setMessage("登记成功，门禁权限下发已跳过（预解冻未完成）。如有疑问请联系管理员。");
-                    flowLog.fail("预解冻失败");
-                    return Result.success(result);
-                }
-            }
-
-            // 长期保管卡豁免必须先于门禁派发/待激活计时：否则先起算待激活再写豁免，会出现「库里有待激活行但人已是豁免」的短暂不一致
-            if (isKeepCard && physicalCardNo != null) {
-                twinCardMappingService.updateExemptFlagByUserId(userId, 1, ExemptChangeContext.keepCard());
-            }
-
-            int deferSec = 0;
-            AccessRuleDispatchResult dispatchResult = null;
-            try {
-                if (accessType == 1) {
-                    dispatchResult = accessRuleDispatchService.tryApplyAccessForScanEnter(effectiveRoomId, userId);
-                    // 待激活倒计时：对所有已发卡用户起算（免冻结增强：不再豁免激活规则）
-                    dahuaSwingRuleEngineService.startPendingActivationAfterAccessRuleGrant(userId);
-                    // 免冻结增强：递增 COUNT/BOTH 模式已使用次数，达到上限自动收回豁免
-                    twinCardMappingService.incrementExemptUsedCount(userId, effectiveRoomId);
-                } else if (accessType == 2) {
-                    deferSec = webScanExitDahuaLinkageService.resolveDeferSeconds();
-                    dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
-                            userId, effectiveRoomId, physicalCardNo, deferSec);
-                }
-                // 门禁联动结果仅写入自动化日志，不在弹窗展示
-                if (accessType == 2 && deferSec > 0) {
-                    result.setDeferredDahuaSeconds(deferSec);
-                }
-            } catch (Exception linkageEx) {
-                if (accessType == 2) {
-                    log.error("[扫码·登记] 离开联动失败 id={} err={}", userId, linkageEx.getMessage(), linkageEx);
-                    result.setSuccess(false);
-                    String detail = linkageEx.getMessage() != null ? linkageEx.getMessage() : linkageEx.getClass().getSimpleName();
-                    result.setMessage("离开登记成功，门禁联动（权限回收/冻结）未能完成。如有需要请联系管理员处理。详情：" + detail);
-                    flowLog.fail("离开联动失败");
-                    return Result.success(result);
-                }
-                throw linkageEx;
-            }
-
-            // =================================================================
-            // 🎯 第三关：读取经验增量用于前端展示 + 实时写入 twin_exp_record
-            // =================================================================
-            com.example.demo.modules.twin.rpg.service.PredictResult predictResult = rpgEngineService.predictActionReward(userId, accessType);
-            int expAdded = Math.max(0, predictResult.getExpAdded());
-            result.setExpAdded(expAdded);
-            result.setExpSource(predictResult.getExpSource());
-
-            // 实时写入经验流水（方案 A 快轨）：设计规格 §5.2 —— 扫码即写，不等待定时对账
-            if (expAdded > 0 && predictResult.getExpSource() != null) {
-                try {
-                    twinExpStatsService.recordExp(
-                            userId,
-                            userName,
-                            expAdded,
-                            predictResult.getExpSource(),
-                            accessType,
-                            effectiveRoomId,
-                            roomName,
-                            "WEB_SCAN",
-                            predictResult.getSessionDurationMinutes()
-                    );
-                } catch (Exception expWriteEx) {
-                    // XP 写入失败不阻断扫码成功
-                    log.error("[扫码·登记] 经验流水写入失败 userId={} exp={} source={}: {}",
-                            userId, expAdded, predictResult.getExpSource(), expWriteEx.getMessage());
-                }
-            }
-
-            // EXIT：大华回收 + 豁免关闭 + 冻结已由 WebScanExitDahuaLinkageService 处理（可配置延迟）；ENTER 无此处冻结
-
-            if (physicalCardNo != null) {
-                try {
-                    result.setSuccess(true);
-                    if (healedNoLeaveConflict) {
-                        result.setMessage("ARO 显示当前已无待离开房间，系统已完成状态自愈同步。");
-                    } else {
-                        String actMsg;
-                        if (accessType == 1) {
-                            actMsg = "打卡成功！物理门禁已解锁。";
-                        } else if (deferSec > 0) {
-                            actMsg = "离开登记成功！大华门禁回收与物理卡冻结将在 " + deferSec + " 秒后执行。";
-                        } else if (dispatchResult == AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED) {
-                            actMsg = "离开登记成功！（大华门禁权限回收已按全局开关跳过）";
-                        } else {
-                            actMsg = "离开登记成功！权限已回收。";
-                        }
-                        result.setMessage(actMsg + " 本次经验 +" + expAdded);
-                    }
-                } catch (Exception e) {
-                    log.error("[扫码·登记] 门禁收尾失败 id={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
-                    result.setSuccess(false);
-                    result.setMessage("登记成功，物理闸机响应超时。请稍后重试或联系管理员手动处理。");
-                    flowLog.fail("门禁收尾失败");
-                    return Result.success(result);
-                }
-            } else {
-                result.setSuccess(true);
-                if (healedNoLeaveConflict) {
-                    result.setMessage("ARO 显示当前已无待离开房间，系统已完成状态自愈同步。");
-                } else {
-                    String base = accessType == 1
-                            ? "纯数字打卡成功！(未绑定大华物理卡)"
-                            : (accessType == 2 && deferSec > 0
-                            ? "离开登记成功！大华门禁回收与物理卡冻结将在 " + deferSec + " 秒后执行。"
-                            : "离开登记成功！(未绑定大华物理卡)");
-                    result.setMessage(base + " 本次经验 +" + expAdded);
-                }
-            }
-
-            String extra = healedNoLeaveConflict ? "状态自愈" : null;
-            flowLog.ok("已登记", ScanPopupFlowLog.linkageShort(accessType, dispatchResult, deferSec, isKeepCard), expAdded, extra);
-
-            if (result.isSuccess() && accessType == 1 && userId != null && !userId.isBlank()) {
-                try {
-                    twinStudentViolationService.recordSuccessfulEnter(userId);
-                } catch (Exception ve) {
-                    log.debug("[扫码·登记] 违规计数失败 id={} err={}", userId, ve.getMessage());
-                }
-            }
-
-            if (result.isSuccess() && userId != null && !userId.isBlank()) {
-                com.example.demo.modules.twin.card.entity.TwinCardMapping traceMapping = twinCardMappingService.getByAroUserId(userId);
-                if (traceMapping != null) {
-                    String actLabel = accessType == 1 ? "进入" : "离开";
-                    String tr = accessType == 1 ? "SCAN_EXECUTE_ENTER" : "SCAN_EXECUTE_EXIT";
-                    String rid = (effectiveRoomId != null && !effectiveRoomId.isBlank()) ? effectiveRoomId : null;
-                    twinAutomationLogService.write(
-                            TwinAutomationLogService.TYPE_ACCESS_TRACE,
-                            "LINKAGE_STEP",
-                            "MANUAL",
-                            tr,
-                            userId,
-                            rid,
-                            true,
-                            "自助登记/远程预约：动作=" + actLabel + "，房间=" + roomLabel + "，人员=" + userName,
-                            "twin-scan-execute"
-                    );
-                }
-                mobilePresenceNotifyService.notifyPresenceChanged(
-                        userId, accessType == 1 ? "scan_enter" : "scan_exit");
-            }
-
-        } catch (Exception e) {
-            log.error("[扫码·登记] 异常 {} err={}", e.getClass().getSimpleName(), e.getMessage(), e);
-            result.setSuccess(false);
-            result.setMessage("系统执行异常: " + e.getMessage());
-            flowLog.fail(e.getMessage());
-        } finally {
-            ScanPopupFlowLog.logExecute(flowLog);
-        }
-        return Result.success(result);
+        Object kindRaw = payload.get("clientKind");
+        TwinScanExecuteService.ClientKind clientKind =
+                TwinScanExecuteService.ClientKind.resolve(kindRaw == null ? null : String.valueOf(kindRaw));
+        return Result.success(twinScanExecuteService.execute(payload, operator, operatorRoleHint, clientKind));
     }
 
     @Autowired

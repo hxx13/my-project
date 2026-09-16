@@ -428,7 +428,10 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     activeTab === "cage" && cageShelfNavTitle
       ? cageShelfNavTitle
       : MOBILE_TAB_TITLES[activeTab] ?? "";
-  const showTabBar = !MOBILE_SUBPAGE_TABS.includes(activeTab);
+  /** 笼架 / 学生申领 一进来（列表）就收起底部 tabbar —— 手机上那一行很占画面高度 */
+  const HIDE_TABBAR_TABS: MobileTabBarKey[] = ["cage", "material"];
+  const showTabBar =
+    !MOBILE_SUBPAGE_TABS.includes(activeTab) && !HIDE_TABBAR_TABS.includes(activeTab as MobileTabBarKey);
 
   return (
     <div

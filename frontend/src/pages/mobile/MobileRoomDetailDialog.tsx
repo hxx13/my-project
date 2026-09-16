@@ -29,6 +29,18 @@ interface MobileRoomDetailDialogProps {
   onDelaySuccess?: (status: string, optionLabel?: string) => void;
   /** 当前房间的扫码系统 officialRoomId（已由父组件解析），用于延迟状态查询 */
   scanRoomId?: string | null;
+  /** 移动端进入：总开关 + 灰度名单是否开放（后端 analyze 下发） */
+  mobileEnterEnabled?: boolean;
+  /** 该房间当前是否可进入（来自 evaluateMobileRoomAccess.enterable） */
+  roomEnterable?: boolean;
+  /** 不可进入的原因短文案（来自 evaluateMobileRoomAccess.reasonShort） */
+  enterBlockedReason?: string;
+  /** 当前是否已在场内 */
+  alreadyInside?: boolean;
+  /** 自动签退剩余秒数（analyze 下发）；null 不显示 */
+  autoExitSeconds?: number | null;
+  /** 执行进入；resolve 即成功，reject 则展示 message */
+  onEnter?: (roomId: string) => Promise<void>;
 }
 
 function formatDelayHint(option: ScanDelayOptionSummary): string {
@@ -49,12 +61,38 @@ export default function MobileRoomDetailDialog({
   onSubmitDelay,
   onDelaySuccess,
   scanRoomId,
+  mobileEnterEnabled = false,
+  roomEnterable = false,
+  enterBlockedReason,
+  alreadyInside = false,
+  autoExitSeconds = null,
+  onEnter,
 }: MobileRoomDetailDialogProps) {
   const [delayOpen, setDelayOpen] = useState(false);
   const [activeOptionId, setActiveOptionId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [delayStatus, setDelayStatus] = useState<"none" | "pending" | "approved">("none");
   const [approvedLabel, setApprovedLabel] = useState("");
+  // 免冻结到期时刻：数据源就是下面那次 fetchMyActiveDelayRequests，不额外加接口调用
+  const [exemptExpireAt, setExemptExpireAt] = useState("");
+  const [enterConfirmOpen, setEnterConfirmOpen] = useState(false);
+  const [entering, setEntering] = useState(false);
+
+  // 必须同时满足：后端灰度开放 + 该房间可进入（含违规/未绑卡/满员/时段/等级锁定）+ 尚未在场 + 有回调
+  const showEnter = Boolean(mobileEnterEnabled && roomEnterable && !alreadyInside && onEnter);
+
+  const handleEnterConfirm = async () => {
+    if (!onEnter || entering) return;
+    setEntering(true);
+    try {
+      await onEnter(scanRoomId || String(detail.roomId));
+      setEnterConfirmOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "进入失败");
+    } finally {
+      setEntering(false);
+    }
+  };
 
   const showDelay =
     scanDelayEnabled && delayOptions.length > 0 && Boolean(subjectUserId);
@@ -65,13 +103,17 @@ export default function MobileRoomDetailDialog({
     const rid = scanRoomId || (detail.roomId != null ? String(detail.roomId) : "");
     if (!rid) return;
     fetchMyActiveDelayRequests(rid, subjectUserId).then((data) => {
+      const approved = data.requests.find((r) => r.status === "APPROVED");
       if (data.hasApproved) {
         setDelayStatus("approved");
-        setApprovedLabel(data.requests.find((r) => r.status === "APPROVED")?.optionLabel || "");
+        setApprovedLabel(approved?.optionLabel || "");
+        setExemptExpireAt(approved?.expireAt || "");
       } else if (data.hasPending) {
         setDelayStatus("pending");
+        setExemptExpireAt("");
       } else {
         setDelayStatus("none");
+        setExemptExpireAt("");
       }
     }).catch(() => {});
   }, [subjectUserId, detail.roomId]);
@@ -216,6 +258,44 @@ export default function MobileRoomDetailDialog({
             </div>
           )}
 
+          {/* ──────── 移动端自助进入 ──────── */}
+          {showEnter ? (
+            <div className="mt-4 pt-3 border-t" style={{ borderColor: "#ebedf0" }}>
+              <button
+                type="button"
+                disabled={entering}
+                onClick={() => setEnterConfirmOpen(true)}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[14px] font-bold text-white active:scale-[0.98] transition-transform disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg, #1989fa 0%, #0a6fd6 100%)" }}
+              >
+                {entering ? <Loader2 className="size-[18px] animate-spin" /> : null}
+                进入 {detail.roomName}
+              </button>
+
+              {autoExitSeconds != null && autoExitSeconds > 0 ? (
+                <p className="mt-2 text-center text-[11px]" style={{ color: "#ed6a0c" }}>
+                  ⏱ 自动签退剩余 {Math.floor(autoExitSeconds / 60)}:{String(autoExitSeconds % 60).padStart(2, "0")}
+                </p>
+              ) : null}
+              {exemptExpireAt ? (
+                <p className="mt-1 text-center text-[11px]" style={{ color: "#065F46" }}>
+                  免冻结有效至 {exemptExpireAt.slice(11, 16)}
+                </p>
+              ) : null}
+            </div>
+          ) : mobileEnterEnabled && !alreadyInside && !roomEnterable && enterBlockedReason ? (
+            <div className="mt-4 pt-3 border-t" style={{ borderColor: "#ebedf0" }}>
+              <button
+                type="button"
+                disabled
+                className="w-full rounded-xl py-3 text-[13px] font-bold"
+                style={{ background: "#f7f8fa", color: "#969799", border: "1px solid #ebedf0" }}
+              >
+                无法进入：{enterBlockedReason}
+              </button>
+            </div>
+          ) : null}
+
           {/* ──────── 延迟免冻结 — 内联展开 ──────── */}
           {showDelay && (
             <div className="mt-4 pt-3 border-t" style={{ borderColor: "#ebedf0" }}>
@@ -319,6 +399,50 @@ export default function MobileRoomDetailDialog({
           )}
         </div>
       </div>
+
+      {enterConfirmOpen ? (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ zIndex: 900, background: "rgba(0,0,0,0.5)" }}
+          onClick={(e) => {
+            // 外层遮罩 onClick=onClose，不拦住冒泡会把整个详情弹窗一起关掉
+            e.stopPropagation();
+            setEnterConfirmOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-[260px] rounded-2xl p-5 text-center"
+            style={{ background: "#fff" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-[15px] font-bold mb-1" style={{ color: "#323233" }}>
+              确认进入 {detail.roomName}
+            </p>
+            <p className="text-[12px] mb-4" style={{ color: "#969799" }}>
+              当前 {detail.currentRoomCount}/{detail.totalCapacity} 人
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEnterConfirmOpen(false)}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-bold"
+                style={{ background: "#f2f3f5", color: "#646566" }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={entering}
+                onClick={() => void handleEnterConfirm()}
+                className="flex-1 rounded-xl py-2.5 text-[13px] font-bold text-white disabled:opacity-60"
+                style={{ background: "#1989fa" }}
+              >
+                {entering ? "处理中…" : "确认进入"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

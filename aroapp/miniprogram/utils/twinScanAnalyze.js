@@ -80,20 +80,78 @@ function normalizeRoomKey(s) {
     .toLowerCase();
 }
 
+/** 末段房号：5F-503 → 503；浦东 4F - 401 → 401 */
+function roomCodeTail(raw) {
+  const n = normalizeRoomKey(raw);
+  if (!n) return '';
+  const parts = n.split('-').filter((p) => p);
+  return parts.length ? parts[parts.length - 1] : n;
+}
+
+/** 房号后缀（A/B/C 之类 1~2 位）：本地房 3F-301 对应官方 301/301A/301B，见 room_config.capacity_bind_room_id。 */
+const ROOM_CODE_SUFFIX = /^[a-z0-9]{1,2}$/;
+
 function overviewMatchesScanRoom(overviewRoom, scanRoom) {
   const rn = normalizeRoomKey(overviewRoom.roomName);
   if (!rn) return false;
-  const dn = normalizeRoomKey(scanRoom.displayName);
-  const on = normalizeRoomKey(scanRoom.officialRoomName || scanRoom.name);
-  if (dn && (dn === rn || dn.includes(rn) || rn.includes(dn))) return true;
-  if (on && (on === rn || on.includes(rn) || rn.includes(on))) return true;
-  const campus = String(overviewRoom.campus || '').trim();
-  if (campus && dn) {
-    const cNorm = normalizeRoomKey(campus);
-    const stripped = dn.replace(new RegExp(`^${cNorm}`), '');
-    if (stripped && (stripped === rn || stripped.includes(rn) || rn.includes(stripped))) return true;
+  // 浦东/浦西房号会重名（都有 301A），校区对不上就不是同一间
+  const ovCampus = normalizeRoomKey(overviewRoom.campus);
+  const scanCampus = normalizeRoomKey(scanRoom.campusTag || scanRoom.campus);
+  if (ovCampus && scanCampus && ovCampus !== scanCampus) return false;
+  const tn = roomCodeTail(overviewRoom.roomName);
+  const codes = [scanRoom.officialRoomName, scanRoom.name, scanRoom.displayName];
+  for (let i = 0; i < codes.length; i += 1) {
+    const code = normalizeRoomKey(codes[i]);
+    if (!code) continue;
+    if (code === rn || code === tn) return true;
+    const ct = roomCodeTail(codes[i]);
+    if (ct && (ct === tn || ct === rn)) return true;
+    const cand = ct || code;
+    if (cand.length > tn.length && cand.indexOf(tn) === 0 && ROOM_CODE_SUFFIX.test(cand.slice(tn.length))) {
+      return true;
+    }
   }
   return false;
+}
+
+/**
+ * 「我的房间」以**门禁授权**为准：授权房全部出卡，命中 overview 的补容量/占用，
+ * 命中不上的（浦西房、本地没有房档的房间）也照常出卡，只是没有占用数据。
+ * roomId 直接用 officialRoomId —— 延迟选项就是按官方房 id 下发的，卡片带着它，不用再靠名字反查。
+ */
+function buildMyRooms(overviewRows, dto) {
+  const targets = pickScanTargetRooms(dto);
+  if (!targets.length) return [];
+  const rows = Array.isArray(overviewRows) ? overviewRows : [];
+  const seen = new Set();
+  const out = [];
+  targets.forEach((sr) => {
+    const oid = String(sr.officialRoomId || sr.id || '').trim();
+    const key = oid || String(sr.displayName || sr.officialRoomName || '').trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    let ov = null;
+    for (let i = 0; i < rows.length; i += 1) {
+      if (overviewMatchesScanRoom(rows[i], sr)) {
+        ov = rows[i];
+        break;
+      }
+    }
+    if (ov) {
+      out.push({ ...ov, roomId: oid || ov.roomId, scanOfficialRoomId: oid });
+      return;
+    }
+    out.push({
+      roomId: oid || key,
+      scanOfficialRoomId: oid,
+      roomName: String(sr.officialRoomName || sr.displayName || key).trim(),
+      campus: String(sr.campusTag || '').trim(),
+      totalCapacity: 0,
+      occupants: [],
+      permissionOnly: true,
+    });
+  });
+  return out;
 }
 
 function pickScanTargetRooms(dto) {
@@ -136,28 +194,12 @@ function pickAccessibleRooms(dto) {
   return raw.filter((r) => r && r.isDisabled !== true);
 }
 
-function mergeMyRooms(overviewRows, dto) {
-  const targets = pickScanTargetRooms(dto);
-  if (!targets.length || !Array.isArray(overviewRows)) return [];
-  const seen = new Set();
-  const out = [];
-  overviewRows.forEach((ov) => {
-    if (targets.some((sr) => overviewMatchesScanRoom(ov, sr))) {
-      const key = String(ov.roomId != null ? ov.roomId : ov.roomName);
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push(ov);
-      }
-    }
-  });
-  return out;
-}
-
 module.exports = {
   readSpringUserId,
   parseAnalyzeResult,
   computePermissionBadge,
-  mergeMyRooms,
+  buildMyRooms,
+  overviewMatchesScanRoom,
   pickAccessibleRooms,
   pickScanTargetRooms,
   scanTargetRoomsToCandidates,

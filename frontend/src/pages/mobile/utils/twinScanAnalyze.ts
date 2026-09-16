@@ -18,6 +18,8 @@ export interface ScanTargetRoom {
   officialRoomId?: string | number;
   id?: string | number;
   isDisabled?: boolean;
+  campusTag?: string;
+  campus?: string;
 }
 
 export interface ParsedAnalyze {
@@ -78,7 +80,13 @@ function hyphenTail(key: string): string {
   return idx >= 0 ? key.slice(idx + 1) : key;
 }
 
-/** 与小程序一致：先 officialRoomId 绑定，再名称精确/尾段匹配（禁止 includes 误伤） */
+/** 房号后缀（A/B/C 之类 1~2 位）：本地房 3F-301 对应官方 301/301A/301B，见 room_config.capacity_bind_room_id。 */
+const ROOM_CODE_SUFFIX = /^[a-z0-9]{1,2}$/;
+
+/**
+ * 与小程序一致：先 officialRoomId 绑定，再校区一致 + 名称/尾段匹配。
+ * 尾段允许「本地房号 + 1~2 位后缀」（301 ↔ 301A/301B），但不做裸 includes —— 那会误伤到别的房。
+ */
 function overviewMatchesScanRoom(overviewRoom: OverviewRoomRaw, scanRoom: ScanTargetRoom): boolean {
   const scanIds = scanRoomBindIds(scanRoom);
   const ovIds = overviewBindIds(overviewRoom);
@@ -88,20 +96,24 @@ function overviewMatchesScanRoom(overviewRoom: OverviewRoomRaw, scanRoom: ScanTa
 
   const rn = normalizeRoomKey(overviewRoom.roomName);
   if (!rn) return false;
-  const dn = normalizeRoomKey(scanRoom.displayName);
-  const on = normalizeRoomKey(scanRoom.officialRoomName || scanRoom.name);
-
-  if (dn && dn === rn) return true;
-  if (on && on === rn) return true;
+  // 浦东/浦西房号会重名（都有 301A），校区对不上就不是同一间
+  const ovCampus = normalizeRoomKey(overviewRoom.campus);
+  const scanCampus = normalizeRoomKey(scanRoom.campusTag || scanRoom.campus);
+  if (ovCampus && scanCampus && ovCampus !== scanCampus) return false;
 
   const rnTail = hyphenTail(rn);
-  if (dn && hyphenTail(dn) === rnTail) return true;
-  if (on && hyphenTail(on) === rnTail) return true;
-
-  const campus = normalizeRoomKey(overviewRoom.campus);
-  if (campus && dn.startsWith(campus)) {
-    const stripped = dn.slice(campus.length).replace(/^-+/, "");
-    if (stripped === rn || hyphenTail(stripped) === rnTail) return true;
+  const candidates = [scanRoom.officialRoomName, scanRoom.name, scanRoom.displayName, scanRoom.id];
+  for (const raw of candidates) {
+    const code = normalizeRoomKey(raw == null ? "" : String(raw));
+    if (!code) continue;
+    if (code === rn) return true;
+    const codeTail = hyphenTail(code);
+    if (codeTail === rn) return true;
+    if (codeTail === rnTail) return true;
+    const cand = hyphenTail(code);
+    if (cand.length > rnTail.length && cand.startsWith(rnTail) && ROOM_CODE_SUFFIX.test(cand.slice(rnTail.length))) {
+      return true;
+    }
   }
   return false;
 }
@@ -118,19 +130,34 @@ export function pickScanTargetRooms(dto: ScanAnalyzeDto | null | undefined): Sca
   return allowed;
 }
 
-export function mergeMyRooms(overviewRows: OverviewRoomRaw[], dto: ScanAnalyzeDto | null): OverviewRoomRaw[] {
+/**
+ * 「我的房间」以**门禁授权**为准（与小程序 buildMyRooms 同源）：授权房全部出卡，
+ * 命中 overview 的补容量/占用，命中不上的（浦西房、本地无房档的房间）也照常出卡，只是没有占用数据。
+ * roomId 直接用 officialRoomId —— 延迟选项就是按官方房 id 下发的，卡片带着它，不用再靠名字反查。
+ */
+export function buildMyRooms(overviewRows: OverviewRoomRaw[], dto: ScanAnalyzeDto | null): OverviewRoomRaw[] {
   const targets = pickScanTargetRooms(dto);
-  if (!targets.length || !Array.isArray(overviewRows)) return [];
+  if (!targets.length) return [];
+  const rows = Array.isArray(overviewRows) ? overviewRows : [];
   const seen = new Set<string>();
   const out: OverviewRoomRaw[] = [];
-  for (const ov of overviewRows) {
-    if (targets.some((sr) => overviewMatchesScanRoom(ov, sr))) {
-      const key = String(ov.roomId != null ? ov.roomId : ov.roomName);
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push(ov);
-      }
+  for (const sr of targets) {
+    const oid = sr.officialRoomId != null ? String(sr.officialRoomId).trim() : String(sr.id ?? "").trim();
+    const key = oid || String(sr.displayName || sr.officialRoomName || "").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const ov = rows.find((r) => overviewMatchesScanRoom(r, sr));
+    if (ov) {
+      out.push({ ...ov, roomId: oid || ov.roomId });
+      continue;
     }
+    out.push({
+      roomId: oid || key,
+      roomName: String(sr.officialRoomName || sr.displayName || key).trim(),
+      campus: String(sr.campusTag || "").trim(),
+      totalCapacity: 0,
+      occupants: [],
+    });
   }
   return out;
 }

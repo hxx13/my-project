@@ -1,0 +1,63 @@
+/**
+ * 动物订购链路（/m/home 的动物订购 Tab）局部配色 —— 只作用于挂 `animal-order-scope` 的子树。
+ *
+ * 为什么是局部覆盖而不是改主题令牌：整套 H5 学生端外壳（房间/申领/笼架/违规…）都用
+ * `.mobile-student-shell` 那套暖米黄令牌（--student-canvas #fffbf5、--student-hairline #f0e4d0），
+ * 改主题会牵动所有学生页面。这里只把这条链路的底色/描边换成中性灰、其余保持，
+ * 结构对齐小程序（卡片白底 + 中性描边 + 紧凑行），主色仍是学生端原本的琥珀色。
+ */
+.animal-order-scope {
+  /* 主色：保持学生端原本的琥珀色（不动色相，避免整条链路突然变冷） */
+  --student-primary: #d97706;
+  --student-primary-hover: #c26905;
+  --student-primary-pressed: #a84e04;
+  --student-primary-soft: #fef0e3;
+  --student-primary-muted: #fde8d5;
+  --student-on-primary: #ffffff;
+  --student-primary-foreground: #ffffff;
+
+  /* 底色/描边：去掉米黄，换中性灰（这是原来那套"看着脏"的主要来源） */
+  --student-canvas: #f7f7f9;
+  --student-surface: #ffffff;
+  --student-surface-raised: #ffffff;
+  --student-canvas-soft: #f4f5f7;
+  --student-canvas-soft-2: #eef0f3;
+
+  --student-ink: #1f2937;
+  --student-body: #374151;
+  --student-mute: #8a93a5;
+
+  --student-hairline: #e9eaee;
+  --student-hairline-strong: #d9dbe1;
+  --student-border: #e9eaee;
+  --student-card-soft-bg: #f4f5f7;
+  --student-foreground: #1f2937;
+
+  --student-success: #16a34a;
+  --student-success-soft: #dcfce7;
+  --student-danger: #dc2626;
+  --student-danger-soft: #fee2e2;
+
+  /* 复用组件（CartTree / CageLocationCell / 笼架格子）读的是 --twin-* 与 --app-color-*，
+     一并指过去，否则这一块还是暖米黄，跟周围对不上 */
+  --twin-ink: var(--student-ink);
+  --twin-body: var(--student-body);
+  --twin-mute: var(--student-mute);
+  --twin-canvas: var(--student-canvas);
+  --twin-canvas-soft: var(--student-canvas-soft);
+  --twin-surface: var(--student-surface);
+  --twin-hairline: var(--student-hairline);
+  --twin-link: var(--student-primary);
+  --app-color-accent: var(--student-primary);
+  --app-color-text-tertiary: var(--student-mute);
+}
+
+/**
+ * 侧栏选中项：实心主色 + 同色投影（照小程序的 .side-item-on）。
+ * 投影色用 color-mix 从主色派生，换主色时不用跟着改 —— 硬编码成蓝色影子会在暖色主色下变脏。
+ */
+.ao-side-item-on {
+  background: var(--student-primary);
+  color: var(--student-primary-foreground);
+  box-shadow: 0 3px 8px color-mix(in srgb, var(--student-primary) 28%, transparent);
+}

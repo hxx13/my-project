@@ -162,6 +162,8 @@ public final class TwinAutomationLogDisplayHelper {
             case "SWING_AUTO_LEAVE_DUE_EXIT_DELAY" -> "触发倒计时签退";
             case "SCAN_EXECUTE_ENTER" -> "自助登记/远程预约：进入登记成功";
             case "SCAN_EXECUTE_EXIT" -> "自助登记/远程预约：离开登记成功";
+            case "MOBILE_ROOM_ENTER" -> "移动端房间自助进入：进入登记成功";
+            case "MOBILE_ROOM_EXIT" -> "移动端房间自助进入：离开登记成功";
             case "REAPER_USER_FROZEN" -> "冻结跑批：单人已物理冻结";
             case "FACE_MATCH" -> "人脸比对通过";
             case "FACE_REJECT" -> "低于拒绝线";

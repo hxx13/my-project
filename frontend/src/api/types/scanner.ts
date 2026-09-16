@@ -80,6 +80,8 @@ export interface AnalyzeResponse {
     scanDelayButtonLabel?: string;
     /** 按房间分组的延迟二级菜单项 */
     scanDelayOptionsByRoom?: Record<string, ScanDelayOptionSummary[]>;
+    /** 移动端房间自助进入：总开关 + 灰度名单判定结果 */
+    mobileEnterEnabled?: boolean;
 }
 
 export type ScanDelayOptionSummary = {
@@ -164,6 +166,8 @@ export interface ExecutePayload {
     isKeepCard?: boolean;
     /** 与弹窗「领用公卡」一致 */
     isBorrowedCard?: boolean;
+    /** 调用端类型：扫码弹窗（缺省）/ 移动端房间页。决定后端留痕来源与灰度门控 */
+    clientKind?: "SCAN_POPUP" | "MOBILE_ROOM";
 }
 
 export interface UserStatusResponse {

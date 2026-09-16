@@ -5,7 +5,7 @@
       <view class="title">文件模板库</view>
       <view class="title-right">
         <view class="ui-btn ui-btn-plain {{ cartCount === 0 ? 'ui-btn-disabled' : '' }}" bindtap="onOpenCart">待打清单 {{ cartCount }}</view>
-        <view class="ui-btn ui-btn-plain" bindtap="onTempPrint">临时打印</view>
+        <view class="ui-btn ui-btn-plain" bindtap="onTempPrint"><van-icon name="printer" size="14" /> 临时打印</view>
         <view class="ui-btn ui-btn-add {{ uploadLoading ? 'ui-btn-disabled' : '' }}" bindtap="onChooseUpload">
           <van-icon name="plus" size="14" /> {{ uploadLoading ? '上传中' : '上传文件' }}
         </view>
@@ -24,10 +24,11 @@
         <cover-view wx:if="{{ keyword }}" class="clear-btn" bindtap="onClearKeyword">✕</cover-view>
       </view>
       <view class="ui-btn ui-btn-plain ui-btn-search-sub" bindtap="onRefresh">刷新</view>
+      <view class="ui-btn ui-btn-plain ui-btn-search-sub" bindtap="openCreateFolder">新建</view>
     </view>
 
-    <!-- 文件夹面包屑（搜索是跨文件夹的，搜索时隐藏） -->
-    <view wx:if="{{ !keyword }}" class="folder-bar">
+    <!-- 文件夹面包屑：只在钻进文件夹后出现（根目录不再空占一行），搜索时隐藏 -->
+    <view wx:if="{{ !keyword && breadcrumb.length }}" class="folder-bar">
       <view class="folder-crumb">
         <text
           class="folder-crumb-item {{ breadcrumb.length ? '' : 'folder-crumb-current' }}"
@@ -43,12 +44,11 @@
           >{{ item.name }}</text>
         </block>
       </view>
-      <view wx:if="{{ breadcrumb.length }}" class="folder-back" bindtap="onBackToParent">← 上层</view>
-      <view class="folder-back folder-new" bindtap="openCreateFolder">新建</view>
+      <view class="folder-back" bindtap="onBackToParent">← 上层</view>
     </view>
 
+    <!-- 打印队列常驻：计数始终可见，点开看各工位机的明细（含撤回/重推） -->
     <view
-      wx:if="{{ queueRows.length > 0 || queueExpanded }}"
       class="queue-strip"
       hover-class="queue-strip-hover"
       bindtap="onToggleQueue"
@@ -69,6 +69,7 @@
           <view class="queue-item-top">
             <view class="queue-dot queue-dot--{{ job.tone }}"></view>
             <text class="queue-item-status">{{ job.statusText }}</text>
+            <text wx:if="{{ job.stationName }}" class="queue-item-station">{{ job.stationName }}</text>
             <text class="queue-item-file">{{ job.fileName }}</text>
             <text class="queue-item-meta">×{{ job.copies }}<text wx:if="{{ job.timeText }}"> · {{ job.timeText }}</text></text>
           </view>
@@ -131,8 +132,8 @@
               <text class="file-meta">{{ item.sizeText }} · {{ item.timeText }}</text>
             </view>
             <view class="file-actions">
-              <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ item.id }}" data-name="{{ item.originalName }}" bindtap="onDownloadRow">下载</view>
-              <view class="ui-btn ui-btn-accent ui-btn-mini" data-id="{{ item.id }}" data-name="{{ item.originalName }}" bindtap="onPrintRow">打印</view>
+              <view class="ui-btn ui-btn-plain ui-btn-mini ui-btn-icon" data-id="{{ item.id }}" data-name="{{ item.originalName }}" bindtap="onDownloadRow"><van-icon name="down" size="13" /></view>
+              <view class="ui-btn ui-btn-accent ui-btn-mini" data-id="{{ item.id }}" data-name="{{ item.originalName }}" bindtap="onPrintRow"><van-icon name="printer" size="12" /> 打印</view>
             </view>
           </view>
           <view slot="right" class="file-swipe-right">
@@ -212,16 +213,20 @@
         <text class="station-check" wx:if="{{ dispatch.stationId === item.id }}">✓</text>
       </view>
 
-      <view class="section-label">份数</view>
-      <view class="stepper">
-        <view class="step-btn" hover-class="step-btn-hover" bindtap="onCopiesDec">−</view>
-        <input class="step-input" type="number" value="{{ dispatch.copies }}" bindinput="onCopiesInput" />
-        <view class="step-btn" hover-class="step-btn-hover" bindtap="onCopiesInc">+</view>
-      </view>
-
-      <view class="check-row" bindtap="onToggleUrgent">
-        <text class="check-label">加急</text>
-        <view class="checkbox {{ dispatch.urgent ? 'checkbox--on' : '' }}">{{ dispatch.urgent ? '✓' : '' }}</view>
+      <!-- 份数与加急同一行：加急只是个开关，不该独占一行（与卡牌打印页保持一致） -->
+      <view class="dispatch-row">
+        <view class="dispatch-copies">
+          <text class="section-label section-label--inline">份数</text>
+          <view class="stepper">
+            <view class="step-btn" hover-class="step-btn-hover" bindtap="onCopiesDec">−</view>
+            <input class="step-input" type="number" value="{{ dispatch.copies }}" bindinput="onCopiesInput" />
+            <view class="step-btn" hover-class="step-btn-hover" bindtap="onCopiesInc">+</view>
+          </view>
+        </view>
+        <view class="check-row check-row--inline" bindtap="onToggleUrgent">
+          <text class="check-label">加急</text>
+          <view class="checkbox {{ dispatch.urgent ? 'checkbox--on' : '' }}">{{ dispatch.urgent ? '✓' : '' }}</view>
+        </view>
       </view>
 
       <view class="section-label">备注</view>

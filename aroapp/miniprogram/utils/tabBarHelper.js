@@ -6,6 +6,9 @@ var ICON_OVERVIEW = '/pages/assets/images/icon-overview.png';
 var ICON_SUPPLIES = '/pages/assets/images/icon-supplies.png';
 var ICON_CAGE = '/pages/assets/images/icon-cage.png';
 var ICON_ROOM = '/pages/assets/images/icon-room.png';
+var ICON_HOME = '/pages/assets/images/icon-home.png';
+var ICON_TELEMETRY = '/pages/assets/images/icon-telemetry.png';
+var ICON_MINE = '/pages/assets/images/icon-mine.png';
 
 function buildTabList() {
   if (isStudentAccount()) {
@@ -17,7 +20,7 @@ function buildTabList() {
 function buildStaffTabList() {
   var role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
   var tabs = [
-    { path: '/pages/index/index', text: '首页', icon: 'home-o', minRole: 'STUDENT' },
+    { path: '/pages/index/index', text: '首页', icon: '', iconSrc: ICON_HOME, minRole: 'STUDENT' },
     {
       path: '/pages/room/index',
       text: '房间',
@@ -32,9 +35,15 @@ function buildStaffTabList() {
       iconSrc: ICON_OVERVIEW,
       minRole: 'ADMIN',
     },
-    { path: '/pages/telemetry/index', text: '温湿度', icon: 'description', minRole: 'ADMIN' },
+    {
+      path: '/pages/telemetry/index',
+      text: '温湿度',
+      icon: '',
+      iconSrc: ICON_TELEMETRY,
+      minRole: 'ADMIN',
+    },
   ];
-  tabs.push({ path: '/pages/mine/index', text: '我的', icon: 'manager-o', minRole: 'STUDENT' });
+  tabs.push({ path: '/pages/mine/index', text: '我的', icon: '', iconSrc: ICON_MINE, minRole: 'STUDENT' });
   return tabs.filter(function (tab) {
     return pagePermission.canShowMiniEntry('tabbar', tab.path, role, tab.minRole || 'STUDENT');
   });
@@ -43,7 +52,7 @@ function buildStaffTabList() {
 function buildStudentTabList() {
   var role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
   var tabs = [
-    { path: '/pages/index/index', text: '首页', icon: 'home-o', minRole: 'STUDENT' },
+    { path: '/pages/index/index', text: '首页', icon: '', iconSrc: ICON_HOME, minRole: 'STUDENT' },
     {
       path: '/pages/room/index',
       text: '房间',
@@ -67,7 +76,7 @@ function buildStudentTabList() {
       minRole: 'STUDENT',
       isNav: true,
     },
-    { path: '/pages/mine/index', text: '我的', icon: 'manager-o', minRole: 'STUDENT' },
+    { path: '/pages/mine/index', text: '我的', icon: '', iconSrc: ICON_MINE, minRole: 'STUDENT' },
   ];
   return tabs.filter(function (tab) {
     return pagePermission.canShowMiniEntry('tabbar', tab.path, role, tab.minRole || 'STUDENT');

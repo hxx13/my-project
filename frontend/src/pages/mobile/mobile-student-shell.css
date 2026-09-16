@@ -92,10 +92,38 @@
   -webkit-text-fill-color: currentColor;
 }
 
-@keyframes marquee-scroll {
-  0%   { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
+/* ── 格内角标按格子宽等比缩放（笼架页 / 订购抽屉共用，见 useGridCellWidth）──────────
+   类型指示灯、认领徽标、中间态色条、特殊饲养明细这几枚角标的尺寸都是给 82px 的
+   CellButton 定的固定值，塞进手机上 40px 的格子里就是 35% 那么大，会压住右上角的位号，
+   看上去像是格子被挤小了。这里统一用 --ao-cell-px 派生，跟格子正文同一套比例。
+   （刷卡弹窗平面图另有 CompactCell.css 的 cqw 覆盖，不在本作用域内，互不影响。） */
+.ao-cell-grid [data-cage-type-dot] > div {
+  width: calc(var(--ao-cell-px, 40px) * 0.22);
+  height: calc(var(--ao-cell-px, 40px) * 0.22);
+  font-size: calc(var(--ao-cell-px, 40px) * 0.13);
 }
-.animate-marquee {
-  animation: marquee-scroll 12s linear infinite;
+.ao-cell-grid .ao-cell-claimbadge {
+  font-size: calc(var(--ao-cell-px, 40px) * 0.19);
+  padding: calc(var(--ao-cell-px, 40px) * 0.03) calc(var(--ao-cell-px, 40px) * 0.08);
+}
+/* 这几条底部标签是 5 个汉字（转移审核中 / 已划分给你 / 已被X预订）：1 个汉字≈1em，
+   5 个字要 5em ≤ 格宽，字号必须 ≤ 0.18 格宽才不截断（0.19 时 40.5px 格里要 40px，可用只有 37px）。 */
+.ao-cell-grid .ao-cell-divbar,
+.ao-cell-grid .ao-cell-opbar,
+.ao-cell-grid .ao-cell-reason {
+  font-size: calc(var(--ao-cell-px, 40px) * 0.16);
+  line-height: calc(var(--ao-cell-px, 40px) * 0.26);
+}
+.ao-cell-grid .ao-cell-pending {
+  width: calc(var(--ao-cell-px, 40px) * 0.3);
+  height: calc(var(--ao-cell-px, 40px) * 0.3);
+}
+.ao-cell-grid .ao-cell-pending > svg {
+  width: calc(var(--ao-cell-px, 40px) * 0.18);
+  height: calc(var(--ao-cell-px, 40px) * 0.18);
+}
+.ao-cell-grid [data-special-detail-badges] > span {
+  font-size: calc(var(--ao-cell-px, 40px) * 0.19);
+  line-height: calc(var(--ao-cell-px, 40px) * 0.28);
+  padding: 0 calc(var(--ao-cell-px, 40px) * 0.05);
 }

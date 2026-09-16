@@ -1,0 +1,390 @@
+<view class="page">
+  <subpage-nav-bar title="卡牌打印" />
+
+  <!-- 顶部固定区：标题 + 操作 + 面包屑 + 打印队列（对齐「文件模板库」页） -->
+  <view class="cp-card">
+    <!-- 行1 标题行：模板名与已选计数都收成这里的按钮，不再是自创的「标签+▾」条 -->
+    <view class="cp-title-row">
+      <view class="cp-title">卡牌打印</view>
+      <view class="cp-title-right">
+        <view
+          class="cp-ui-btn {{ (templatesLoaded && templates.length) ? 'cp-ui-btn-add' : 'cp-ui-btn-plain' }} {{ (!templatesLoaded || !templates.length) ? 'cp-ui-btn-disabled' : '' }}"
+          bindtap="onBarLeftTap"
+        >模板：{{ templatesLoaded ? (templateName || '无可用模板') : '加载中…' }}</view>
+        <view
+          class="cp-ui-btn cp-ui-btn-plain {{ totalSelected === 0 ? 'cp-ui-btn-disabled' : '' }}"
+          bindtap="onPickedTap"
+        >已选 {{ totalSelected }}</view>
+      </view>
+    </view>
+
+    <!-- 行2 操作行：搜索（左，占满剩余宽）+ 刷新 + 预览/打印（右）。搜索不独占一行，省一行高度 -->
+    <view class="cp-act-row">
+      <view class="cp-search-wrap">
+        <input
+          class="cp-search-input"
+          value="{{ keyword }}"
+          bindinput="onKeywordChange"
+          placeholder="搜索房间或笼架名"
+          confirm-type="search"
+        />
+        <cover-view wx:if="{{ keyword }}" class="cp-search-clear" bindtap="onClearKeyword">✕</cover-view>
+      </view>
+      <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-search-sub" bindtap="onRefreshTree">刷新</view>
+      <view
+        class="cp-ui-btn cp-ui-btn-plain {{ totalSelected === 0 ? 'cp-ui-btn-disabled' : '' }} {{ generating ? 'cp-ui-btn-busy' : '' }}"
+        bindtap="onPreviewPdf"
+      ><van-icon name="eye-o" size="26rpx" /><text>预览</text></view>
+      <view
+        class="cp-ui-btn cp-ui-btn-primary {{ totalSelected === 0 ? 'cp-ui-btn-disabled' : '' }}"
+        bindtap="onOpenPrint"
+      ><van-icon name="printer" size="26rpx" /><text>打印</text></view>
+    </view>
+
+    <!-- 打印队列：常驻可见（没任务也能点开，否则功能等于藏起来），点开独立弹窗 -->
+    <view class="cp-queue-strip" hover-class="cp-queue-strip-hover" bindtap="onOpenQueue">
+      <view class="cp-queue-dot cp-queue-dot--{{ queueFailedCount > 0 ? 'bad' : (queueSummary.pending > 0 ? 'pending' : 'ok') }}"></view>
+      <text class="cp-queue-text">打印中 {{ queueSummary.sent }} · 排队 {{ queueSummary.pending }}<text wx:if="{{ queueFailedCount > 0 }}" class="cp-queue-fail"> · 失败 {{ queueFailedCount }}</text></text>
+      <text class="cp-queue-strip-go">查看 ›</text>
+    </view>
+  </view>
+
+  <!-- 内容区：区域内滚 -->
+  <view wx:if="{{ screen === 'list' }}" class="cp-body">
+    <scroll-view
+      class="cp-scroll"
+      scroll-y
+      enhanced
+      show-scrollbar="{{ false }}"
+      scroll-top="{{ listScrollTop }}"
+      bindscroll="onListScrollRemember"
+    >
+      <view wx:if="{{ treeLoading }}" class="cp-placeholder">加载中…</view>
+      <view wx:elif="{{ treeError }}" class="cp-empty">
+        <text class="cp-empty-text">{{ treeError }}</text>
+        <view class="cp-ui-btn cp-ui-btn-plain cp-retry" bindtap="onRetryTree">重试</view>
+      </view>
+      <block wx:else>
+        <!-- 搜索态：跨层级的命中列表 -->
+        <view wx:if="{{ searching }}" class="cp-hits">
+          <view wx:if="{{ listItems.length === 0 }}" class="cp-placeholder">没有匹配的笼架</view>
+          <view
+            wx:for="{{ listItems }}"
+            wx:key="key"
+            class="cp-hit"
+            data-shelf="{{ item.shelveId }}"
+            data-label="{{ item.label }}"
+            bindtap="onShelfCardTap"
+          >
+            <view class="cp-hit-main">
+              <text class="cp-hit-name">{{ item.label }}</text>
+              <text class="cp-hit-sub">{{ item.sub }}</text>
+            </view>
+            <text class="cp-hit-go">›</text>
+          </view>
+        </view>
+
+        <view wx:elif="{{ cageTree.length === 0 }}" class="cp-placeholder">暂无笼架数据</view>
+
+        <!-- 树形列表：排布照笼架页（校区卡片 → 房间头部行 → 笼架组左竖线 → 笼架卡片两列） -->
+        <view wx:else class="cp-campus-list">
+          <view wx:for="{{ cageTree }}" wx:key="campusName" wx:for-item="campus" wx:for-index="ci" class="cp-campus">
+            <view class="cp-campus-header" data-ci="{{ ci }}" bindtap="onToggleCampus">
+              <view class="cp-campus-arrow">
+                <van-icon name="{{ campus._open ? 'arrow-down' : 'arrow' }}" size="32rpx" color="#646566" />
+              </view>
+              <text class="cp-campus-name">{{ campus.campusName }}校区</text>
+              <text class="cp-campus-count">{{ campus.rooms.length }}个房间</text>
+            </view>
+
+            <view wx:if="{{ campus._open }}" class="cp-campus-body">
+              <view wx:for="{{ campus.rooms }}" wx:key="roomName" wx:for-item="room" wx:for-index="ri" class="cp-room">
+                <view class="cp-room-header" data-ci="{{ ci }}" data-ri="{{ ri }}" bindtap="onToggleRoom">
+                  <view class="cp-room-arrow">
+                    <van-icon name="{{ room._open ? 'arrow-down' : 'arrow' }}" size="28rpx" color="#969799" />
+                  </view>
+                  <text class="cp-room-name">{{ room.roomName }}房间</text>
+                  <text class="cp-room-count">{{ room.shelfCount }}架</text>
+                </view>
+
+                <view wx:if="{{ room._open }}" class="cp-room-body">
+                  <view wx:for="{{ room.shelfGroups }}" wx:key="key" wx:for-item="grp" wx:for-index="gi" class="cp-group">
+                    <view class="cp-group-hd" data-ci="{{ ci }}" data-ri="{{ ri }}" data-gi="{{ gi }}" bindtap="onToggleGroup">
+                      <view class="cp-group-arrow">
+                        <van-icon name="{{ grp._open ? 'arrow-down' : 'arrow' }}" size="24rpx" color="#969799" />
+                      </view>
+                      <text class="cp-group-name">{{ grp.name }}</text>
+                      <text class="cp-group-count">{{ grp.shelves.length }}架</text>
+                    </view>
+
+                    <view wx:if="{{ grp._open }}" class="cp-shelf-grid">
+                      <view
+                        wx:for="{{ grp.shelves }}"
+                        wx:key="shelveId"
+                        wx:for-item="shelf"
+                        class="cp-shelf-card"
+                        data-shelf="{{ shelf.shelveId }}"
+                        data-label="{{ shelf.shelveName }}"
+                        bindtap="onShelfCardTap"
+                      >
+                        <text class="cp-shelf-card-name">{{ shelf.shelveName || shelf.shelveId }}</text>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+
+  <view wx:else class="cp-body cp-body--grid">
+    <!-- 区头：左笼架名 / 中本架已选 / 右批量操作（本架口径；顶部标题行的「已选 N」才是跨架合计） -->
+    <view class="cp-grid-head">
+      <text class="cp-grid-back" bindtap="onBackToList">‹ 返回</text>
+      <text class="cp-grid-title">{{ currentShelveName || currentShelveId }}</text>
+      <text class="cp-grid-count">本架 {{ shelfSelected }}/{{ shelfSelectable }}</text>
+      <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini" bindtap="onSelectAllOnShelf">全选</view>
+      <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini" bindtap="onClearShelf">清空本架</view>
+    </view>
+    <scroll-view class="cp-scroll cp-scroll--grid" scroll-y enhanced show-scrollbar="{{ false }}">
+      <view wx:if="{{ gridLoading }}" class="cp-placeholder">加载中…</view>
+      <view wx:elif="{{ gridError }}" class="cp-empty">
+        <text class="cp-empty-text">{{ gridError }}</text>
+        <view class="cp-ui-btn cp-ui-btn-plain cp-retry" bindtap="onRetryGrid">重试</view>
+      </view>
+      <view wx:else class="cp-grid-wrap">
+        <cage-grid grid="{{ grid }}" bind:celltap="onCellTap" />
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 打印队列弹窗：状态 + 撤回 + 重新排队（动作与「文件模板库」页同源） -->
+  <view wx:if="{{ queueOpen }}" class="cp-mask" catchtouchmove="noop">
+    <view class="cp-panel" catchtap="noop">
+      <view class="cp-panel-head">
+        <text class="cp-panel-title">打印队列</text>
+        <view class="cp-panel-head-btns">
+          <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini" bindtap="onRefreshQueue">刷新</view>
+          <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini" bindtap="onCloseQueue">关闭</view>
+        </view>
+      </view>
+      <view class="cp-panel-sum">
+        打印中 {{ queueSummary.sent }} · 排队 {{ queueSummary.pending }}<text wx:if="{{ queueFailedCount > 0 }}" class="cp-queue-fail"> · 失败 {{ queueFailedCount }}</text>
+      </view>
+
+      <!-- 每台打印机一个 tab（照 web：工位清单为序，角标=进行中数量） -->
+      <scroll-view class="cp-panel-tabs" scroll-x enhanced show-scrollbar="{{ false }}">
+        <view class="cp-panel-tabs-inner">
+          <view
+            wx:for="{{ queueTabs }}"
+            wx:key="id"
+            class="cp-panel-tab {{ queueTabId === item.id ? 'cp-panel-tab--on' : '' }}"
+            data-id="{{ item.id }}"
+            bindtap="onPickQueueTab"
+          >{{ item.name }}<text wx:if="{{ item.count > 0 }}" class="cp-panel-tab-n">{{ item.count }}</text></view>
+        </view>
+      </scroll-view>
+
+      <view class="cp-panel-hint">排队中的可撤回，失败的可重新排队或收掉</view>
+
+      <scroll-view class="cp-panel-scroll" scroll-y enhanced show-scrollbar="{{ false }}">
+        <block wx:for="{{ queueTabs }}" wx:key="id" wx:for-item="tab">
+          <block wx:if="{{ tab.id === queueTabId }}">
+            <view wx:if="{{ tab.rows.length === 0 }}" class="cp-queue-empty">「{{ tab.name }}」还没有打印记录</view>
+            <view wx:for="{{ tab.rows }}" wx:key="id" wx:for-item="job" class="cp-queue-item">
+              <view class="cp-queue-item-top">
+                <view class="cp-queue-dot cp-queue-dot--{{ job.tone }}"></view>
+                <text class="cp-queue-item-status">{{ job.statusText }}</text>
+                <text class="cp-queue-item-time">{{ job.timeText }}</text>
+              </view>
+              <text class="cp-queue-item-file">{{ job.fileName }}</text>
+              <view wx:if="{{ job.note }}" class="cp-queue-item-note">备注：{{ job.note }}</view>
+              <view wx:if="{{ job.errorText }}" class="cp-queue-item-error">{{ job.errorText }}</view>
+              <view class="cp-queue-item-foot">
+                <text class="cp-queue-item-meta">×{{ job.copies }}</text>
+                <view class="cp-queue-item-actions">
+                  <view
+                    wx:if="{{ job.status === 'PENDING' }}"
+                    class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini"
+                    data-id="{{ job.id }}"
+                    bindtap="onCancelJob"
+                  >撤回</view>
+                  <block wx:if="{{ job.status === 'FAILED' }}">
+                    <view class="cp-ui-btn cp-ui-btn-primary cp-ui-btn-mini" data-id="{{ job.id }}" bindtap="onRetryJob">重新排队</view>
+                    <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini" data-id="{{ job.id }}" bindtap="onCancelJob">收掉</view>
+                  </block>
+                </view>
+              </view>
+            </view>
+          </block>
+        </block>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 模板选择弹窗 -->
+  <van-popup
+    show="{{ templatePickerShow }}"
+    position="bottom"
+    round
+    bind:close="onTemplatePickerClose"
+  >
+    <view class="cp-picker">
+      <view class="cp-picker-title">选择模板</view>
+      <scroll-view class="cp-picker-scroll" scroll-y enhanced show-scrollbar="{{ false }}">
+        <view
+          wx:for="{{ templates }}"
+          wx:key="id"
+          class="cp-picker-item {{ item._active ? 'cp-picker-item--active' : '' }}"
+          data-id="{{ item.id }}"
+          data-name="{{ item.name }}"
+          bindtap="onPickTemplate"
+        >
+          <text class="cp-picker-name">{{ item.name }}</text>
+          <view wx:if="{{ item._active }}" class="cp-picker-cur">
+            <van-icon name="success" size="28rpx" color="#ffffff" />
+            <text class="cp-picker-cur-text">当前</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <!-- 已选清单弹窗：跨架全貌，唯一的「清空全部」入口 -->
+  <van-popup
+    show="{{ pickedShow }}"
+    position="bottom"
+    round
+    bind:close="onPickedClose"
+  >
+    <view class="cp-picked">
+      <view class="cp-picked-title-row">
+        <text class="cp-picked-title">已选笼位 · {{ totalSelected }} 格 / {{ pickedRooms.length }} 个房间</text>
+        <view
+          wx:if="{{ totalSelected > 0 }}"
+          class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini"
+          bindtap="onClearAllPicked"
+        >清空全部</view>
+      </view>
+
+      <!-- 房间 tab：横滑，选中项蓝底 -->
+      <scroll-view wx:if="{{ pickedRooms.length }}" class="cp-picked-tabs" scroll-x enhanced show-scrollbar="{{ false }}">
+        <view class="cp-picked-tabs-inner">
+          <view
+            wx:for="{{ pickedRooms }}"
+            wx:key="key"
+            class="cp-picked-tab {{ pickedTab === index ? 'cp-picked-tab--on' : '' }}"
+            data-index="{{ index }}"
+            bindtap="onPickedTab"
+          >{{ item.roomName }}<text class="cp-picked-tab-n">{{ item.count }}</text></view>
+        </view>
+      </scroll-view>
+
+      <scroll-view class="cp-picked-scroll" scroll-y enhanced show-scrollbar="{{ false }}">
+        <view wx:if="{{ pickedRooms.length === 0 }}" class="cp-picked-empty">还没有选择笼位</view>
+        <block wx:for="{{ pickedRooms }}" wx:for-index="ri" wx:for-item="room" wx:key="key">
+          <block wx:if="{{ pickedTab === ri }}">
+            <view wx:if="{{ pickedGridLoading }}" class="cp-picked-empty">加载笼位中…</view>
+            <block wx:else>
+              <!-- 每架按 80 格渲染（与主网格同款样式）：已选格子带蓝环，点一下即取消/再选中 -->
+              <view wx:for="{{ pickedGrids }}" wx:for-index="gi" wx:for-item="pg" wx:key="shelveId" class="cp-picked-shelf">
+                <view class="cp-picked-shelfbar">
+                  <text class="cp-picked-shelfname">{{ pg.shelveName }}</text>
+                  <text class="cp-picked-shelfcount">{{ pg.count }} 格</text>
+                </view>
+                <!-- 紧凑架位图：10 行共享一段高度，80 格一眼看全（不滚动）。
+                     格子信息与主网格完全一致（状态色/位号/课题人/实验员/类型灯/特殊饲养），只把字号缩一档 -->
+                <cage-grid grid="{{ pg.grid }}" compact data-gi="{{ gi }}" bind:celltap="onPickedCellTap" />
+              </view>
+            </block>
+          </block>
+        </block>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <!-- 打印弹窗：选工位（健康态只标注不拦截）+ 份数 → 建单 -->
+  <van-popup
+    show="{{ printShow }}"
+    position="bottom"
+    round
+    bind:close="onClosePrint"
+  >
+    <view class="cp-print">
+      <view class="cp-print-title-row">
+        <text class="cp-print-title">打印卡牌</text>
+        <view
+          class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini {{ generating ? 'cp-ui-btn-busy' : '' }}"
+          bindtap="onPreviewInPrint"
+        >{{ generating ? '生成中…' : '预览' }}</view>
+      </view>
+
+      <view class="cp-print-label">打印工位</view>
+      <!-- 只有一个工位时不出单选列表，直接一行只读；份数步进器两种形态都显示 -->
+      <scroll-view wx:if="{{ stations.length > 1 }}" class="cp-print-stations" scroll-y enhanced show-scrollbar="{{ false }}">
+        <view
+          wx:for="{{ stations }}"
+          wx:key="id"
+          class="cp-print-station {{ printStationId === item.id ? 'cp-print-station--on' : '' }}"
+          data-id="{{ item.id }}"
+          bindtap="onPickStation"
+        >
+          <view class="cp-radio {{ printStationId === item.id ? 'cp-radio--on' : '' }}"></view>
+          <text class="cp-print-sname">{{ item.name }}</text>
+          <text class="cp-print-sstatus {{ item.online ? 'cp-print-sstatus--on' : '' }}">{{ item.statusText }}</text>
+        </view>
+      </scroll-view>
+      <view wx:else class="cp-print-station cp-print-station--only">
+        <view class="cp-radio cp-radio--on"></view>
+        <text class="cp-print-sname">{{ stations[0].name }}</text>
+        <text class="cp-print-sstatus {{ stations[0].online ? 'cp-print-sstatus--on' : '' }}">{{ stations[0].statusText }}</text>
+      </view>
+
+      <view class="cp-print-sep"></view>
+
+      <!-- 份数与加急同一行：加急只是个开关，不该独占一行 -->
+      <view class="cp-print-row">
+        <view class="cp-print-copies">
+          <text class="cp-print-label cp-print-label--inline">份数</text>
+          <view class="cp-stepper">
+            <view class="cp-step-btn" hover-class="cp-step-btn--hover" bindtap="onPrintCopiesDec">−</view>
+            <input class="cp-step-input" type="number" value="{{ printCopies }}" bindinput="onPrintCopiesInput" />
+            <view class="cp-step-btn" hover-class="cp-step-btn--hover" bindtap="onPrintCopiesInc">+</view>
+          </view>
+        </view>
+        <view class="cp-urgent" bindtap="onToggleUrgent">
+          <text class="cp-urgent-label">加急</text>
+          <view class="cp-checkbox {{ printUrgent ? 'cp-checkbox--on' : '' }}">{{ printUrgent ? '✓' : '' }}</view>
+        </view>
+      </view>
+
+      <view class="cp-print-sep"></view>
+
+      <input
+        class="cp-print-note"
+        value="{{ printNote }}"
+        bindinput="onPrintNoteInput"
+        placeholder="备注（工位旁的人看得到）"
+        placeholder-class="cp-print-note-ph"
+        maxlength="50"
+      />
+
+      <!-- 弹窗内预览：web 端弹窗里就带了 PDF 预览，小程序换成调微信阅读器看同一份归档 -->
+      <view class="cp-print-foot">
+        <view class="cp-ui-btn cp-ui-btn-plain" bindtap="onClosePrint">取消</view>
+        <view class="cp-ui-btn cp-ui-btn-primary {{ (!printStationId || printing) ? 'cp-ui-btn-disabled' : '' }}" bindtap="onConfirmPrint">{{ printing ? '提交中…' : '确认打印' }}</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- 生成中遮罩：fixed 盖全局，catchtouchmove 阻止穿透滚动，同时吃掉重复点击 -->
+  <view wx:if="{{ generating }}" class="cp-mask" catchtouchmove="noop">
+    <view class="cp-mask-box">
+      <van-loading size="44rpx" color="#2563eb" />
+      <text class="cp-mask-text">正在生成 PDF…</text>
+    </view>
+  </view>
+</view>

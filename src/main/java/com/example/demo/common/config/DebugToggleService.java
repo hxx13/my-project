@@ -51,6 +51,8 @@ public class DebugToggleService {
     private final AtomicBoolean accessRuleDahuaDebugEnabled = new AtomicBoolean(true);
     private final AtomicBoolean telemetryArchiveEnabled = new AtomicBoolean(true);
     private final AtomicReference<ScanDataSource> scanDataSource = new AtomicReference<>(ScanDataSource.ARO);
+    /** 移动端房间自助进入的总开关，默认关（灰度） */
+    private final AtomicBoolean mobileEnterEnabled = new AtomicBoolean(false);
 
     /** category key (e.g. "twin") → true=DEBUG, false=INFO */
     private final Map<String, Boolean> categoryEnabled = new LinkedHashMap<>();
@@ -93,6 +95,10 @@ public class DebugToggleService {
         return scanDataSource.get();
     }
 
+    public boolean isMobileEnterEnabled() {
+        return mobileEnterEnabled.get();
+    }
+
     public boolean isCategoryEnabled(String categoryKey) {
         return categoryEnabled.getOrDefault(categoryKey, true);
     }
@@ -133,6 +139,8 @@ public class DebugToggleService {
         telemetryArchiveEnabled.set(
                 toBool(settingsService.getEffectiveValue("integration", "telemetry.archive.enabled", "true")));
         scanDataSource.set(ScanDataSource.resolve(settingsService.getEffectiveValue("integration", "scan.data_source", "aro")));
+        mobileEnterEnabled.set(
+                toBool(settingsService.getEffectiveValue("integration", "scan.mobile_enter_enabled", "false")));
     }
 
     private void refreshLoggingCategories() {

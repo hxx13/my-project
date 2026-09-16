@@ -640,9 +640,13 @@ Page({
     // 队列接口已含 PENDING/SENT/FAILED（PrintJobMapper.listQueue 三态都返回），
     // 计数与展开列表都从它取即可；fetchHistory 会带出 PRINTED/CANCELLED，混进来反而把
     // 已打完/已撤回的堆进「队列」列表，还让进行中的任务被重复计数。
-    const q = await printApi.fetchQueue();
+    // 用 history（全部状态）而不是 queue：queue 只有 PENDING/SENT/FAILED，
+    // 别的工位「已打完」的记录压根不在里面（看不到其他工位的记录就是这个原因）。
+    // 与 web 的 PrintQueueDialog 同源；计数由 summarizeQueue 只数进行中的，不受影响。
+    const [q, st] = await Promise.all([printApi.fetchHistory(300), printApi.fetchStations()]);
+    const nameMap = printFormat.stationNameMap(st && st.stations);
     const jobs = q.ok ? q.jobs : [];
-    const queueRows = jobs.map((job) => printFormat.mapJobRow(job)).filter(Boolean);
+    const queueRows = jobs.map((job) => printFormat.mapJobRow(job, nameMap)).filter(Boolean);
     this.setData({
       queueSummary: printFormat.summarizeQueue(jobs),
       queueRows,

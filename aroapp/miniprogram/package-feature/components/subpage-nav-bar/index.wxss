@@ -90,3 +90,15 @@
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* 右侧操作区（命名插槽）：绝对定位贴右，标题已让出 42% 宽度，不会互相压 */
+.subnav-right {
+  position: absolute;
+  right: 20rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  z-index: 1;
+}

@@ -40,7 +40,7 @@
       </view>
       <view wx:if="{{ springBound && springUserId }}" class="mine-badge-actions">
         <view wx:if="{{ canGoAiPortrait }}" class="mine-archive-action mine-archive-action--ghost" bindtap="goAiPortrait">
-          <text class="mine-archive-action-text mine-archive-action-text--ghost">AI画像</text>
+          <text class="mine-archive-action-text mine-archive-action-text--ghost">预测</text>
         </view>
         <view class="mine-archive-action" bindtap="openProfileDetail">
           <text class="mine-archive-action-text">详情</text>
@@ -150,6 +150,12 @@
           <view slot="icon" class="mine-slot-ico"><van-icon name="orders-o" size="28rpx" color="#0ea5e9" /></view>
           <view slot="title" class="mine-cell-title-wrap">
             <text class="mine-cell-title-text">动物订购</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ !isStudentView && canGoCardPrint }}" is-link bind:click="goCardPrint">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="printer" size="28rpx" color="#0f766e" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">卡牌打印</text>
           </view>
         </van-cell>
       </van-cell-group>

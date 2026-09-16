@@ -92,15 +92,6 @@ function fetchMyRoles() {
   });
 }
 
-/** 领用房间树（校区 → 区域/楼 → 楼层 → 房间），只到房间级 */
-function fetchRoomTree() {
-  return springAuth.springRequest({ url: '/api/v1/cage-shelves/room-tree', method: 'GET', data: {} }).then(function (res) {
-    const p = parseResponse(res);
-    if (!p.ok) throw new Error(p.message);
-    return p.body.data || [];
-  });
-}
-
 /** 领用人候选：仅本人课题组（服务端不接受课题组参数） */
 function fetchGroupMembers() {
   return springAuth.springRequest({ url: '/api/reference-data/group-members', method: 'GET', data: {} }).then(function (res) {
@@ -262,6 +253,78 @@ function resolveGroupId(projectGroupId, projectGroupName) {
   return 'pg-name-' + name.replace(/\s+/g, '_');
 }
 
+/* ---- 订购选笼位（笼位预定）------------------------------------------
+   链路照 web：点格子即锁（POST 建 reservation）→ 加购时把 reservationId 带进购物车行。
+   竞态由后端 active_cage_id 唯一索引保证，前端不做「先查后插」。 */
+
+/** 本课题组占用的笼架：抽屉渲染哪些架子由它决定，与 AUP 无关 */
+function fetchGroupShelves() {
+  return springAuth.springRequest({ url: '/api/animal-order/cage-reservations/group-shelves', method: 'GET', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || [];
+    });
+}
+
+/** 该 AUP 名下可点的笼位 + 单笼数量上限（maxQuantityPerCage） */
+function fetchReservableCages(aupRecordId) {
+  const url = withQuery('/api/animal-order/cage-reservations/reservable', { aupRecordId: aupRecordId });
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || {};
+    });
+}
+
+/**
+ * 全部活跃预定（不分人）。网格上给「已被订购/预定」的格子打标记用 ——
+ * 笼架页与 H5 都读这份数据，抽屉要标同一套东西就不能只靠 reservable 的 reason 文字。
+ * 返回：{ reservationId, animalCageId, reserverName, quantity, orderId, cartId }
+ */
+function fetchActiveReservations() {
+  const url = '/api/animal-order/cage-reservations/active';
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || [];
+    });
+}
+
+/** 锁一个笼位：点格子即调用，quantity 先传 0（等规格数量定了再加购） */
+function reserveCage(body) {
+  return springAuth.springRequest({ url: '/api/animal-order/cage-reservations', method: 'POST', data: body || {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || {};
+    });
+}
+
+/** 某架的本地网格（每格带 animalCageId）：选笼位抽屉渲染用 */
+function fetchShelfLocalGrid(shelveId) {
+  const url = '/api/cage-cell-index/local-grid/by-shelve/' + encodeURIComponent(String(shelveId));
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || {};
+    });
+}
+
+/** 释放预定（取消选中该笼位 / 清空全部） */
+function releaseCage(id) {
+  const url = '/api/animal-order/cage-reservations/' + encodeURIComponent(String(id)) + '/release';
+  return springAuth.springRequest({ url: url, method: 'POST', data: {} })
+    .then(function (res) {
+      const p = parseResponse(res);
+      if (!p.ok) throw new Error(p.message);
+      return p.body.data || {};
+    });
+}
+
 module.exports = {
   TYPE_REGISTRY,
   getTypeConfig,
@@ -271,7 +334,6 @@ module.exports = {
   listSpecTemplates,
   fetchApprovedAups,
   fetchMyRoles,
-  fetchRoomTree,
   fetchGroupMembers,
   fetchCart,
   addToCart,
@@ -289,4 +351,10 @@ module.exports = {
   applyOrderEdit,
   fetchTimePolicy,
   resolveGroupId,
+  fetchGroupShelves,
+  fetchReservableCages,
+  fetchActiveReservations,
+  reserveCage,
+  releaseCage,
+  fetchShelfLocalGrid,
 };

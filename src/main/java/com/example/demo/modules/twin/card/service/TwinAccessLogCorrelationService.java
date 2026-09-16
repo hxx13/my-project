@@ -24,9 +24,12 @@ public class TwinAccessLogCorrelationService {
     public static final String SOURCE_AUTO_SIGNOUT = "AUTO_SIGNOUT";
     public static final String SOURCE_STRANDED_VIOLATION = "AUTO_SIGNOUT_VIOLATION";
     public static final String SOURCE_WEB_SCAN = "WEB_SCAN";
+    /** 移动端房间页自助进入（区别于刷卡弹窗的 WEB_SCAN） */
+    public static final String SOURCE_MOBILE_ROOM = "MOBILE_ROOM";
 
     public static final String FEED_SOURCE_MATCHED_AUTO = "TWIN_AUTO_SIGNOUT";
     public static final String FEED_SOURCE_MATCHED_WEB = "WEB_SCAN";
+    public static final String FEED_SOURCE_MATCHED_MOBILE_ROOM = "MOBILE_ROOM";
     public static final String FEED_SOURCE_DEFAULT = "ARO_OFFICIAL_UNMATCHED"; // 展示侧称「官方登记」
 
     private static final DateTimeFormatter DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -220,13 +223,17 @@ public class TwinAccessLogCorrelationService {
         if (tag == null) {
             return FEED_SOURCE_MATCHED_AUTO;
         }
-        if (SOURCE_WEB_SCAN.equalsIgnoreCase(tag.trim())) {
+        String t = tag.trim();
+        if (SOURCE_WEB_SCAN.equalsIgnoreCase(t)) {
             return FEED_SOURCE_MATCHED_WEB;
         }
-        if (SOURCE_AUTO_SIGNOUT.equalsIgnoreCase(tag.trim())) {
+        if (SOURCE_AUTO_SIGNOUT.equalsIgnoreCase(t)) {
             return FEED_SOURCE_MATCHED_AUTO;
         }
-        return "TWIN_" + tag.trim();
+        if (SOURCE_MOBILE_ROOM.equalsIgnoreCase(t)) {
+            return FEED_SOURCE_MATCHED_MOBILE_ROOM;
+        }
+        return "TWIN_" + t;
     }
 
     private static LocalDateTime parseOfficialTime(String createTime) {

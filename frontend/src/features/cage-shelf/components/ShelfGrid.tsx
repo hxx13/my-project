@@ -65,6 +65,8 @@ export function ShelfGrid({
   opMarkerByCageId,
   glowColor,
   highlightShelveIds,
+  disabledReasonByCageId,
+  compact,
 }: {
   title: string;
   detail: CageShelfDetail | null;
@@ -105,6 +107,10 @@ export function ShelfGrid({
   glowColor?: string;
   /** 有可选笼位的笼架 id 集合：命中时给整个笼架容器加一圈高亮，提示「这架里有能选的格子」 */
   highlightShelveIds?: Set<string>;
+  /** cageId → 不可选原因（对齐小程序订购选笼位那套红网纹）；不在表里 = 该格不参与「不可选」标记 */
+  disabledReasonByCageId?: Map<string, string>;
+  /** 简洁档：收起格子上的文字标签（底色/网纹/图标都留着），见 CellButton.compact */
+  compact?: boolean;
 }) {
   const sid = detail?.shelfMeta?.shelveId ?? "";
   const cells = detail?.grid ?? [];
@@ -151,6 +157,16 @@ export function ShelfGrid({
           const showCross = crossSid != null && crossSid === sid;
           const isBindCached = bindPairCache?.has(ck) ?? false;
           const isUnbindCached = unbindPairCache?.has(ck) ?? false;
+          const cageId = String((c as any).id ?? (c as any).animalCageId ?? "");
+          const opMark = opMarkerByCageId?.get(cageId);
+          /** undefined = 这格不盖网纹；空串 = 只盖网纹不出标签 */
+          const disabledReasonRaw = disabledReasonByCageId?.get(cageId);
+          /*
+            中间态那条色环**自带一条底部色条**在命名这个状态（转移审核中 / 已在购物车 / 已被 X 预订…）。
+            网纹照盖（它说的是「不能点」，是另一件事），但红标签不叠了 —— 两条色条摞在同一位置，
+            看到的是「不可预定」盖住「转移审核中」，DOM 里却两条都在，纯属重复。
+          */
+          const disabledReason = opMark && disabledReasonRaw ? "" : disabledReasonRaw;
           return (
             <CellButton
               key={c.position}
@@ -187,9 +203,11 @@ export function ShelfGrid({
               isMyClaimCell={myClaimCageIds ? myClaimCageIds.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}
               restrictSelectToPool={restrictSelectToPool}
               pairColor={pairColorByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? ""))}
+              disabledReason={disabledReason}
+              compact={compact}
               /* 告警只进刷卡弹窗（CompactCell），管理端/学生端网格（CellButton）不吃 alert；
                  这里的标记永远是 divide/transfer/reserve，收窄 kind 以满足 CellButton 的 opMarker 形状。 */
-              opMarker={opMarkerByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? "")) as
+              opMarker={opMark as
                 { requestId: string; kind: "divide" | "transfer" | "reserve"; color: string; label: string } | undefined}
             />
           );

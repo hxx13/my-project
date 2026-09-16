@@ -50,4 +50,6 @@ public class ScanAnalyzeResponseDTO {
     private Map<String, List<Map<String, Object>>> scanDelayOptionsByRoom;
     /** H5 首页豁免状态（综合 twin_card_mapping + 延迟申请推导） */
     private ExemptStatusDTO exemptStatus;
+    /** 移动端房间自助进入：当前被扫/登录人是否可用（总开关 + 名单） */
+    private Boolean mobileEnterEnabled;
 }

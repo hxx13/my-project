@@ -65,6 +65,8 @@ import {
 } from "@/constants/exemptDurationPresets";
 import { ExemptUntilTimePicker } from "@/components/admin/ExemptUntilTimePicker";
 import { ScanDelayConfigPanel } from "@/components/scanner/ScanDelayConfigPanel";
+import { MobileEnterConfigPanel } from "@/features/admin/mobile-enter/MobileEnterConfigPanel";
+import { fetchMobileEnterGrants } from "@/api/domains/mobileEnter.api";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 
 import { appAlert, appConfirm } from "@/lib/appDialog";
@@ -182,6 +184,20 @@ export default function DebugCardMappingPage() {
     const addCardScanResetTimer = useRef<number | null>(null);
     const addCardComposingRef = useRef(false);
     const addCardInputRef = useRef<HTMLInputElement | null>(null);
+
+    /** 移动端房间自助进入：开关与名单都在 MobileEnterConfigPanel 里管，这里只要个角标数字 */
+    const [mobileEnterModalOpen, setMobileEnterModalOpen] = useState(false);
+    const [mobileEnterGrantCount, setMobileEnterGrantCount] = useState(0);
+
+    useEffect(() => {
+        void (async () => {
+            try {
+                setMobileEnterGrantCount((await fetchMobileEnterGrants()).length);
+            } catch {
+                setMobileEnterGrantCount(0);
+            }
+        })();
+    }, []);
 
     const issuingPhaseLabels = [
         "正在生成人员全局ID...",
@@ -972,6 +988,14 @@ export default function DebugCardMappingPage() {
                                             扫码延迟免冻结
                                         </DropdownMenuItem>
                                     ) : null}
+                                    {canGrantExempt ? (
+                                        <DropdownMenuItem
+                                            onSelect={() => setMobileEnterModalOpen(true)}
+                                        >
+                                            移动端房间自助进入
+                                            {mobileEnterGrantCount > 0 ? `（${mobileEnterGrantCount}）` : ""}
+                                        </DropdownMenuItem>
+                                    ) : null}
                                     {canFreezeCfg ? (
                                         <>
                                             <DropdownMenuSeparator />
@@ -1263,6 +1287,35 @@ export default function DebugCardMappingPage() {
 
                 </div>{/* 表格阴影容器结束 */}
             </div>{/* 外层 max-h 容器结束 */}
+
+            {mobileEnterModalOpen && (
+                <Portal>
+                    <div
+                        className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                        onClick={() => setMobileEnterModalOpen(false)}
+                        role="presentation"
+                    >
+                        <div
+                            className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-3xl p-6 max-h-[85vh] overflow-hidden flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                            role="dialog"
+                            aria-modal="true"
+                        >
+                            <div className="flex justify-between items-start mb-4 shrink-0">
+                                <h3 className="text-lg font-black text-[var(--app-color-text-primary)]">移动端房间自助进入</h3>
+                                <button type="button" onClick={() => setMobileEnterModalOpen(false)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
+                                    <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
+                                </button>
+                            </div>
+
+                            {/* 开关与名单都由面板自管（含一键开关、白/黑名单） */}
+                            <div className="min-h-0 flex-1 overflow-hidden">
+                                <MobileEnterConfigPanel onCountChange={setMobileEnterGrantCount} />
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            )}
 
             {freezeSlotModal !== null && <Portal><div
                     className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"

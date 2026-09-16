@@ -22,6 +22,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -51,6 +52,9 @@ public class FaceCompareService {
     @Value("${app.face.inference.predictor-borrow-timeout-ms:60000}")
     private long predictorBorrowTimeoutMs;
 
+    @Value("${app.upload.base-dir:uploads}")
+    private String uploadBaseDir;
+
     private ZooModel<NDList, NDList> embedModel;
     private PredictorPool<NDList, NDList> embedderPool;
 
@@ -77,8 +81,14 @@ public class FaceCompareService {
         }
     }
 
-    /** 每次 verify 比对结果：中文逐行输出到控制台 */
-    public static void consoleVerifyResult(
+    /**
+     * 每次 verify 的比对结果，压成一行。
+     *
+     * 原来是 10 行 System.out.println：pip 监控按秒轮询，一次会话能把日志刷爆；
+     * 且 System.out 绕过 logback，级别配置关不掉它。改走 logger 后 source=pip（后台轮询）
+     * 降为 debug，只有真实交互（gate / 录入等）才进 info。
+     */
+    public static void logVerifyResult(
             String userId,
             String source,
             String challengeAction,
@@ -89,25 +99,32 @@ public class FaceCompareService {
             boolean rejected,
             int baselineCount,
             List<Double> topSims) {
-        System.out.println("[人脸比对] 人员ID: " + userId);
-        System.out.println("[人脸比对] 来源: " + (source != null && !source.isBlank() ? source : "gate"));
-        if (challengeAction != null && !challengeAction.isBlank()) {
-            System.out.println("[人脸比对] 活体动作: " + challengeAction);
-        }
-        System.out.println("[人脸比对] 相似度: " + String.format("%.1f%%", sim * 100));
-        System.out.println("[人脸比对] 通过线: ≥" + String.format("%.1f%%", matchThreshold * 100));
-        System.out.println("[人脸比对] 拒绝线: <" + String.format("%.1f%%", rejectThreshold * 100));
-        System.out.println("[人脸比对] 是否通过: " + (matched ? "是" : "否"));
-        System.out.println("[人脸比对] 是否拒绝: " + (rejected ? "是" : "否"));
-        System.out.println("[人脸比对] 底库张数: " + baselineCount);
-        if (topSims != null && !topSims.isEmpty()) {
-            StringBuilder tops = new StringBuilder();
-            for (int i = 0; i < topSims.size(); i++) {
-                if (i > 0) tops.append(", ");
-                tops.append(String.format("%.1f%%", topSims.get(i) * 100));
+        String src = (source == null || source.isBlank()) ? "gate" : source;
+        StringBuilder top = new StringBuilder();
+        if (topSims != null) {
+            for (Double s : topSims) {
+                if (top.length() > 0) top.append(',');
+                top.append(pct(s));
             }
-            System.out.println("[人脸比对] Top相似度: " + tops);
         }
+        String line = "[人脸比对] uid=" + userId
+                + " source=" + src
+                + (challengeAction == null || challengeAction.isBlank() ? "" : " action=" + challengeAction)
+                + " sim=" + pct(sim)
+                + " 线=" + pct(matchThreshold) + "/" + pct(rejectThreshold)
+                + " pass=" + (matched ? "Y" : "N")
+                + " reject=" + (rejected ? "Y" : "N")
+                + " 底库=" + baselineCount
+                + (top.length() == 0 ? "" : " top=" + top);
+        if ("pip".equalsIgnoreCase(src)) {
+            log.debug(line);
+        } else {
+            log.info(line);
+        }
+    }
+
+    private static String pct(double v) {
+        return String.format("%.1f%%", v * 100);
     }
 
     @PreDestroy
@@ -338,8 +355,31 @@ public class FaceCompareService {
                 return ImageFactory.getInstance().fromImage(bi);
             }
         }
-        java.io.File file = new java.io.File(url);
+        java.io.File file = resolveLocalFile(uploadBaseDir, url);
         return ImageFactory.getInstance().fromFile(file.toPath());
+    }
+
+    /**
+     * app.public-base-url 为空时（本地默认）底库落库的是相对路径 /api/upload/files/{storageKey}，
+     * 直接 new File(url) 会被当成本地相对路径解析到当前盘根目录下，文件不存在，
+     * DJL 于是只抛一句 "Can't read input file!"。
+     * 换算方式与 UploadController#readFileByUrl 第 2 段一致：摘前缀后拼 app.upload.base-dir。
+     */
+    static java.io.File resolveLocalFile(String uploadBaseDir, String url) throws IOException {
+        String prefix = "/api/upload/files/";
+        if (!url.startsWith(prefix)) {
+            return new java.io.File(url);
+        }
+        String relative = url.substring(prefix.length());
+        if (relative.contains("..")) {
+            throw new IOException("非法图片路径: " + url);
+        }
+        java.io.File file = Paths.get(uploadBaseDir, relative).toFile();
+        if (!file.isFile()) {
+            // 库里的底库记录来自别处（如拉生产库到本地）时文件常不存在，给条能定位的报错
+            throw new IOException("底库图片不存在: " + file);
+        }
+        return file;
     }
 
     static double cosineSimilarity(float[] a, float[] b) {

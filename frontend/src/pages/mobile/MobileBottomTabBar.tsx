@@ -1,5 +1,4 @@
 /** 手机版底栏 — 对齐小程序 custom-tab-bar / van-tabbar */
-import type { ComponentType } from "react";
 import {
   MOBILE_TAB_BAR_CONTENT_H,
   MOBILE_TAB_BAR_KEYS,
@@ -10,67 +9,30 @@ import {
 } from "./mobileShellLayout";
 import { MOBILE_STUDENT_ICON } from "./mobileStudentIcons";
 
-type SvgIcon = ComponentType<{ active: boolean }>;
-
-const stroke = (active: boolean) => ({
-  width: 22,
-  height: 22,
-  viewBox: "0 0 24 24",
-  fill: "none" as const,
-  stroke: active ? "#1989fa" : "#646566",
-  strokeWidth: active ? 2.2 : 1.6,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-});
-
-/** 小程序 van-icon home-o */
-const IconHome: SvgIcon = ({ active }) => (
-  <svg {...stroke(active)}>
-    <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
-    <path d="M9 21V12h6v9" />
-  </svg>
-);
-
-/** 小程序 van-icon manager-o */
-const IconMine: SvgIcon = ({ active }) => (
-  <svg {...stroke(active)}>
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 21v-1a6 6 0 0112 0v1" />
-  </svg>
-);
-
 const TAB_ICON_SRC: Partial<Record<MobileTabBarKey, string>> = {
+  home: MOBILE_STUDENT_ICON.home,
   rooms: MOBILE_STUDENT_ICON.room,
   material: MOBILE_STUDENT_ICON.supplies,
   cage: MOBILE_STUDENT_ICON.cage,
-};
-
-const TAB_SVG_ICONS: Partial<Record<MobileTabBarKey, SvgIcon>> = {
-  home: IconHome,
-  mine: IconMine,
+  mine: MOBILE_STUDENT_ICON.mine,
 };
 
 function TabIcon({ tabKey, active }: { tabKey: MobileTabBarKey; active: boolean }) {
   const iconSrc = TAB_ICON_SRC[tabKey];
-  if (iconSrc) {
-    return (
-      <img
-        src={iconSrc}
-        alt=""
-        draggable={false}
-        className="block object-contain select-none pointer-events-none"
-        style={{
-          width: 22,
-          height: 22,
-          opacity: active ? 1 : 0.72,
-        }}
-      />
-    );
-  }
-
-  const Svg = TAB_SVG_ICONS[tabKey];
-  if (!Svg) return null;
-  return <Svg active={active} />;
+  if (!iconSrc) return null;
+  return (
+    <img
+      src={iconSrc}
+      alt=""
+      draggable={false}
+      className="block object-contain select-none pointer-events-none"
+      style={{
+        width: 22,
+        height: 22,
+        opacity: active ? 1 : 0.72,
+      }}
+    />
+  );
 }
 
 interface MobileBottomTabBarProps {

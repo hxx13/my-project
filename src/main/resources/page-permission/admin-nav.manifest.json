@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-13T11:16:14.902Z",
+  "generatedAt": "2026-09-16T00:46:17.167Z",
   "pages": [
     {
       "path": "/about",
@@ -400,6 +400,13 @@
       "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "系统与安全",
       "registryId": "settings"
+    },
+    {
+      "path": "/admin/sop",
+      "label": "SOP 操作",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "资产与运维",
+      "registryId": "sop"
     },
     {
       "path": "/admin/staff-messages",

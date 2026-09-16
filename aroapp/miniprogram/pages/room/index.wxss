@@ -354,17 +354,62 @@ page {
   width: 100%;
   box-sizing: border-box;
   min-height: 132rpx;
-  padding: 22rpx 20rpx;
-  background: linear-gradient(145deg, #ffffff 0%, #f5f7fa 50%, #eef1f6 100%);
-  /* 四边等圆角，接近银行卡圆角矩形 */
-  border-radius: 22rpx;
-  border: 1rpx solid rgba(30, 55, 90, 0.1);
-  box-shadow: 0 6rpx 20rpx rgba(20, 40, 70, 0.07);
+  padding: 26rpx 28rpx 24rpx;
+  /* 铭牌：白卡 + 语义色内嵌描边（H5 RoomPlateCard 同款静态版，小程序无 hover） */
+  background: #ffffff;
+  border: 1rpx solid #f0e4d0;
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 16rpx rgba(20, 40, 70, 0.05);
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 16rpx;
+  gap: 12rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 内嵌圆角描边：常驻，收在卡片内侧（与 H5 RoomPlateCard 同款，无 hover） */
+.room-card-frame {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  bottom: 12rpx;
+  left: 12rpx;
+  border: 2rpx solid #b08d57;
+  border-radius: 12rpx;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.room-card-pending .room-card-frame {
+  border-color: #d97706;
+}
+
+.room-card-banned .room-card-frame {
+  border-color: #b3543a;
+}
+
+.room-card-none .room-card-frame {
+  border-color: #94a3b8;
+  opacity: 0.35;
+}
+
+/* 房内有人的呼吸点：跟状态描边同色 */
+.room-card-live {
+  position: absolute;
+  top: 18rpx;
+  right: 18rpx;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #b08d57;
+  animation: room-live-breath 2s ease-in-out infinite;
+}
+
+@keyframes room-live-breath {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
 }
 
 .room-card-line {
@@ -380,55 +425,59 @@ page {
 }
 
 .room-name {
-  font-weight: 600;
-  color: #1a2533;
-  line-height: 1.25;
+  font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+  color: #1e293b;
+  line-height: 1.15;
   white-space: nowrap;
   display: inline-block;
   text-align: center;
   transform-origin: center center;
 }
 
+.room-card-none .room-name {
+  color: #94a3b8;
+}
+
 .room-card-line-dots {
   overflow: hidden;
 }
 
-/* 房间卡片权限标签 */
+/* 铭牌：压在描边上，底色挖空；仅靠颜色区分状态 */
+/* 铭牌：卡内正常流的一行（不脱离文档流、不压描边） */
 .room-card-perm {
-  margin-top: 8rpx;
-  padding: 4rpx 0;
+  display: block;
+  width: 100%;
   text-align: center;
-  font-size: 20rpx;
+  font-size: 18rpx;
   font-weight: 600;
-  border-radius: 8rpx;
+  letter-spacing: 6rpx;
+  /* letter-spacing 会在末尾留一个字距，居中时字形偏左，用等量 text-indent 顶回来 */
+  text-indent: 6rpx;
   line-height: 1.3;
+  white-space: nowrap;
+  color: #b08d57;
 }
 
-.room-card-perm-allowed {
-  color: #166534;
-  background: #dcfce7;
+.room-card-pending .room-card-perm {
+  color: #d97706;
 }
 
-.room-card-perm-pending {
-  color: #92400e;
-  background: #fef3c7;
+.room-card-banned .room-card-perm {
+  color: #b3543a;
 }
 
-.room-card-perm-banned {
-  color: #991b1b;
-  background: #fee2e2;
+.room-card-none .room-card-perm {
+  color: #94a3b8;
 }
 
-/* 房间卡片权限边框 */
-.room-card-allowed {
-  border-color: rgba(22, 163, 74, 0.3);
-  box-shadow: 0 6rpx 20rpx rgba(22, 163, 74, 0.06);
+/* 无权限（非本人权限下的房间）：灰底板 + 灰字，不压 opacity */
+.room-card-none {
+  background: #f6f7f9;
+  box-shadow: none;
 }
 
-.room-card-banned {
-  border-color: rgba(220, 38, 38, 0.25);
-  box-shadow: 0 6rpx 20rpx rgba(220, 38, 38, 0.05);
-}
 
 .capacity-dots {
   display: flex;
@@ -449,27 +498,27 @@ page {
 }
 
 .dot-free {
-  background: #e1e3e6;
+  background: #e8e2d6;
 }
 
 .dot-l1 {
-  background: #07c160;
+  background: #e3c98f;
 }
 
 .dot-l2 {
-  background: #2fc27d;
+  background: #d8b367;
 }
 
 .dot-l3 {
-  background: #ff976a;
+  background: #c99a45;
 }
 
 .dot-l4 {
-  background: #ff6b35;
+  background: #b87c2c;
 }
 
 .dot-l5 {
-  background: #ee0a24;
+  background: #a05f1c;
 }
 
 .empty-text {
@@ -776,4 +825,118 @@ page {
 
 .delay-action-disabled {
   opacity: 0.5;
+}
+
+/* ─────────── 移动端自助进入 ─────────── */
+
+.enter-section {
+  margin-top: 32rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #ebedf0;
+}
+
+.enter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24rpx 28rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(135deg, #1989fa 0%, #0a6fd6 100%);
+  box-shadow: 0 4rpx 16rpx rgba(25, 137, 250, 0.2);
+}
+
+.enter-btn-label {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.enter-btn-disabled {
+  background: #f7f8fa;
+  border: 1rpx solid #ebedf0;
+  box-shadow: none;
+}
+
+.enter-btn-disabled .enter-btn-label {
+  color: #969799;
+}
+
+.enter-countdown {
+  margin-top: 12rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #ed6a0c;
+}
+
+.enter-exempt {
+  margin-top: 8rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #065f46;
+}
+
+.enter-confirm-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 80rpx;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.enter-confirm-card {
+  width: 100%;
+  padding: 40rpx 32rpx 28rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.enter-confirm-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #323233;
+  margin-bottom: 12rpx;
+}
+
+.enter-confirm-sub {
+  display: block;
+  font-size: 24rpx;
+  color: #969799;
+  margin-bottom: 32rpx;
+}
+
+.enter-confirm-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 16rpx;
+}
+
+.enter-confirm-btn {
+  flex: 1;
+  padding: 20rpx 0;
+  border-radius: 20rpx;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.enter-confirm-cancel {
+  background: #f2f3f5;
+  color: #646566;
+}
+
+.enter-confirm-ok {
+  background: #1989fa;
+  color: #ffffff;
+}
+
+.enter-confirm-disabled {
+  opacity: 0.6;
 }

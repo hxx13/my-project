@@ -256,6 +256,20 @@ export function statusPhotoKeys(activeActions: Set<CageBoxAction>): string[] {
 
 export function nonEmptyText(s?:string|null):boolean{return typeof s==="string"&&s.trim()!==""}
 
+/**
+ * 该格子的划分标签；没有划分返回 undefined（调用方据此不渲染）。
+ * 一处定义两处用（笼架页 + 订购抽屉）——分开写迟早一边说「已划分给你」、另一边只说「已划分」。
+ *
+ * 入参取 unknown：各处的「格子」来自两套同名 CageShelfCell 类型，其中一套没声明
+ * divisionAssignees（运行时有），写成结构类型反而会在调用点报「没有公共属性」。
+ */
+export function divisionLabelOf(cell: unknown, meId: string): string | undefined {
+  const list = (cell as { divisionAssignees?: Array<{ id?: string | null }> } | null | undefined)?.divisionAssignees;
+  if (!Array.isArray(list) || list.length === 0) return undefined;
+  const me = String(meId ?? "");
+  return me !== "" && list.some((a) => String(a?.id ?? "") === me) ? "已划分给你" : "已划分";
+}
+
 export function formatCageDetailValue(v:unknown,key?:string):string{
   if(v===null||v===undefined||v==="")return"-";
   if(typeof v==="boolean")return v?"是":"否";
@@ -337,6 +351,13 @@ export function allocSelectVerdict(cageTypeCode?: number | null, pendingOp?: boo
   }
   return { ok: false, reason: "该笼位状态未知，无法分配" };
 }
+
+/**
+ * 「不可选」网纹底纹（PC 网格 / H5 网格共用一份，改这里两端同步；小程序另有一份 cg-hatch）。
+ * 红色细斜线、透明留空，盖在格子上但位号/课题人/底色透得出来。线宽 2px / 周期 9px。
+ */
+export const CAGE_HATCH_BG =
+  "repeating-linear-gradient(45deg, rgba(220,38,38,0.28) 0, rgba(220,38,38,0.28) 2px, rgba(220,38,38,0) 2px, rgba(220,38,38,0) 9px)";
 
 /** 混选拦截文案（三端共用） */
 export const ALLOC_MIXED_KIND_HINT = "不能同时勾选「等待分配」与「空笼位」笼位，请分两批操作";
