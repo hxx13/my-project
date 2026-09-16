@@ -159,6 +159,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-cage-booking-roomid-bigint.sql", ctx)) success++;
         total++; if (runScript("db/student-room-pin.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-swipe-alert-rule.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-mobile-enter-grant.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-site.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-push.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-user-ids.sql", ctx)) success++;

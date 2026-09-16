@@ -8,6 +8,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { evaluateMobileRoomAccess, computeMobilePermissionBadge, getRoomDelayOptions, resolveScanOfficialRoomId } from "./utils/mobileScanRoomAccess";
 import { submitScanDelayRequest } from "@/api/domains/scanDelay.api";
+import { executeAccess } from "@/api/domains/scanner.api";
 import { submitMobileScanDelayRequest } from "@/api/domains/mobileStudent.api";
 import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 import { buildDetailRoom, type DetailRoom } from "./utils/roomPreviewMeta";
@@ -205,6 +206,37 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
     [detailRoom, bundle?.overviewIndex, bundle?.scanAnalyze, jwtMode, token],
   );
 
+  // 当前选中房间的进入权限（复用列表同一份评估，避免与卡片徽标口径漂移）
+  const detailRoomAccess = useMemo(() => {
+    if (!detailRoom) return null;
+    const hit = currentRooms.find((r) => String(r.room.roomId) === String(detailRoom.roomId));
+    return hit?.access ?? null;
+  }, [currentRooms, detailRoom]);
+
+  // 移动端自助进入：真实开闸，仅 jwtMode（token 直链任何人拿到链接即可进入，必须关闭）
+  const handleEnter = useCallback(
+    async (roomId: string) => {
+      if (!bundle?.userId) throw new Error("缺少人员标识");
+      const scanId =
+        resolveScanOfficialRoomId(
+          roomId,
+          bundle.overviewIndex ?? { byRoomId: new Map(), byRoomName: new Map() },
+          bundle.scanAnalyze ?? null,
+        ) || roomId;
+      await executeAccess({
+        userId: bundle.userId,
+        roomId: scanId,
+        action: "ENTER",
+        isSharedCard: false,
+        isKeepCard: false,
+        isBorrowedCard: false,
+        clientKind: "MOBILE_ROOM",
+      });
+      await refresh({ silent: true, preserveSelection: true });
+    },
+    [bundle, refresh],
+  );
+
   // 延迟申请成功后刷新房间数据
   const handleDelaySuccess = useCallback(() => {
     refresh({ silent: true, preserveSelection: true });
@@ -392,22 +424,6 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
             </span>
           </header>
 
-          {/* 滚动通知条幅 */}
-          <div
-            className="shrink-0 overflow-hidden whitespace-nowrap py-1.5 px-3"
-            style={{
-              background: "linear-gradient(90deg, #fef7ed 0%, #fdf0d5 50%, #fef7ed 100%)",
-              borderBottom: "1px solid #e8c47a",
-            }}
-          >
-            <span
-              className="inline-block text-[13px] font-bold animate-marquee"
-              style={{ color: "#1a1a1a" }}
-            >
-              如遇到无法申请延时，请刷新页面后尝试
-            </span>
-          </div>
-
           <div
             ref={roomScrollRef}
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pt-1 pb-4"
@@ -468,6 +484,12 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
           scanRoomId={currentRoomScanId}
           onSubmitDelay={handleDelaySubmit}
           onDelaySuccess={handleDelaySuccess}
+          mobileEnterEnabled={!!jwtMode && (bundle?.scanAnalyze?.mobileEnterEnabled ?? false)}
+          roomEnterable={detailRoomAccess?.enterable ?? false}
+          enterBlockedReason={detailRoomAccess?.reasonShort}
+          alreadyInside={bundle?.scanAnalyze?.currentState === "INSIDE"}
+          autoExitSeconds={bundle?.analyze?.autoSignoutSecondsRemaining ?? null}
+          onEnter={handleEnter}
         />
       )}
     </>

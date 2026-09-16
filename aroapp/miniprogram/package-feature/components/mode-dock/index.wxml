@@ -1,0 +1,35 @@
+<!-- 径向模式岛：锚点左下角，模式项沿 0°→-90° 的弧线旋转展开（照 H5 CageModeIsland 的 radial） -->
+<view class="md-island" style="left: {{ left }}rpx; bottom: {{ bottom }}rpx;">
+  <view class="md-ring {{ open ? '' : 'md-ring--closed' }}">
+    <view
+      wx:for="{{ items }}"
+      wx:key="key"
+      class="md-slot"
+      style="transform: rotate({{ open ? item.ang : 0 }}deg) translateX({{ open ? item.r : 0 }}rpx);"
+      data-mode="{{ item.key }}"
+      bindtap="onPick"
+    >
+      <!-- 内层反向自转：角度转过多少就转回多少，文字始终正立 -->
+      <view
+        class="md-item {{ item.key === current ? 'md-item--on' : '' }}"
+        style="transform: rotate({{ open ? -item.ang : 0 }}deg); background: {{ item.color || '#f1f3f7' }}; color: {{ item.color ? '#fff' : '#1f2937' }}; {{ item.key === current && item.color ? 'box-shadow: 0 0 0 4rpx #fff, 0 0 0 11rpx ' + item.color + ';' : '' }}"
+      >
+        <view class="md-ico md-ico--{{ item.key }}"></view>
+        <text class="md-item-label">{{ item.label }}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 圆钮：收起显示当前模式并用模式色点亮；展开显示「收起」 -->
+  <view
+    class="md-toggle {{ currentColor && !open ? 'md-toggle--tinted' : '' }}"
+    style="{{ currentColor && !open ? 'background:' + currentColor + ';' : '' }}"
+    bindtap="onToggle"
+  >
+    <!-- 展开态换成 shapes 图标：用 wx:if 两个节点，不用「类名拼接」——
+         小程序里 class 里塞三元 + 字符串拼接容易整段失效，图标就永远停在收起态那个 -->
+    <view wx:if="{{ open }}" class="md-ico md-ico--toggle-open"></view>
+    <view wx:else class="md-ico md-ico--{{ currentKey }}"></view>
+    <text class="md-toggle-label">{{ open ? '收起' : currentLabel }}</text>
+  </view>
+</view>

@@ -403,14 +403,69 @@ function parseContentDispositionFilename(cd) {
   return m2 && m2[1] ? m2[1].trim() : '';
 }
 
+/** 导出/预览落地的文件扩展名——配额满时只清这些，别碰别的功能写进去的东西。 */
+const LOCAL_DOC_EXT_RE = /\.(pdf|xlsx?|docx?|pptx?|csv|txt)$/i;
+
+function isFileQuotaError(err) {
+  const msg = String((err && (err.errMsg || err.message)) || '');
+  return msg.indexOf('maximum size') >= 0 || msg.indexOf('storage limit') >= 0;
+}
+
+function unlinkQuiet(filePath) {
+  if (!filePath) return;
+  try {
+    wx.getFileSystemManager().unlink({ filePath, fail() {} });
+  } catch (e) { /* 文件系统不可用就当没这回事 */ }
+}
+
+/**
+ * 本地文件配额（USER_DATA_PATH 共 10MB）满时清一轮历史导出。
+ *
+ * 为什么需要：导出/预览都往同一个目录写新文件，且有的调用方用带时间戳的文件名
+ * （如 `xxx-1699999999999.xlsx`），永不覆盖——写得多了必然撑满，报
+ * 「writeFile:fail the maximum size of the file storage limit is exceeded」。
+ * 这些文件都是可重新导出/重新下载的产物，清掉没有损失；keepPath（本次要写的那个）不删。
+ */
+function sweepLocalDocuments(keepPath) {
+  return new Promise((resolve) => {
+    let fs;
+    try {
+      fs = wx.getFileSystemManager();
+    } catch (e) {
+      return resolve();
+    }
+    fs.readdir({
+      dirPath: wx.env.USER_DATA_PATH,
+      success(files) {
+        (files || []).forEach((f) => {
+          const full = `${wx.env.USER_DATA_PATH}/${f}`;
+          if (full === keepPath) return;
+          if (!LOCAL_DOC_EXT_RE.test(String(f))) return;
+          unlinkQuiet(full);
+        });
+      },
+      fail() {},
+      complete() { resolve(); },
+    });
+  });
+}
+
 /** 写盘并打开（导出/下载共用收尾）：data 传 ArrayBuffer，无需 encoding。 */
 async function saveAndOpenDocument(arrayBuffer, fileName, fileType) {
   const fs = wx.getFileSystemManager();
   const safe = String(fileName || 'download').replace(/[^A-Za-z0-9_一-龥.-]/g, '_');
   const path = `${wx.env.USER_DATA_PATH}/${safe}`;
-  await new Promise((resolve, reject) => {
+  const write = () => new Promise((resolve, reject) => {
     fs.writeFile({ filePath: path, data: arrayBuffer, success: resolve, fail: reject });
   });
+  try {
+    await write();
+  } catch (err) {
+    if (!isFileQuotaError(err)) throw err;
+    // 配额满：清一轮历史导出再写一次。仍未成功就如实抛，调用方照常提示。
+    await sweepLocalDocuments(path);
+    await write();
+  }
   wx.openDocument({ filePath: path, fileType: fileType || 'xlsx', showMenu: true });
   return path;
 }

@@ -135,7 +135,7 @@ public class FaceVerifyService {
                 probeImageUrls, bestBaselineImageUrl, matched, sim, matchThreshold, rejectThreshold,
                 true, cmp.topSims(), cmp.bestBaselineId(), null);
 
-        FaceCompareService.consoleVerifyResult(
+        FaceCompareService.logVerifyResult(
                 uid, source, challengeAction, sim, matchThreshold, rejectThreshold,
                 matched, rejected, records.size(), cmp.topSims());
         log.info("[FaceVerify] userId={} sim={} matched={} rejected={} baselines={} model={}",

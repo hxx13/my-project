@@ -2,11 +2,15 @@ package com.example.demo.common.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.nio.file.Paths;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -14,6 +18,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
     private final AdminAuthInterceptor adminAuthInterceptor;
     private final ApiAuthInterceptor apiAuthInterceptor;
     private final RequestMetricsInterceptor requestMetricsInterceptor;
+
+    @Value("${app.upload.base-dir:uploads}")
+    private String uploadBaseDir;
 
     public WebMvcConfig(AdminAuthInterceptor adminAuthInterceptor,
                         ApiAuthInterceptor apiAuthInterceptor,
@@ -31,6 +38,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .allowedHeaders("*")
                 .allowCredentials(false)
                 .maxAge(3600);
+    }
+
+    /**
+     * 人脸模型（face-api 三个 net + MediaPipe wasm，约 43MB）不打进 JAR：
+     * dev 由 Vite 插件从 frontend/models 提供，生产放 ${app.upload.base-dir}/web-models/（磁盘同步，改模型不必重新构建）。
+     * classpath 兜底保留 public/models 里的 3D 楼层模型（1F-4F.glb）。
+     */
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String webModels = Paths.get(uploadBaseDir, "web-models").toAbsolutePath().normalize().toUri().toString();
+        registry.addResourceHandler("/models/**")
+                .addResourceLocations(webModels.endsWith("/") ? webModels : webModels + "/",
+                        "classpath:/static/models/");
     }
 
     @Override

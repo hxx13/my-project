@@ -2,6 +2,7 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Loader2, Search, WifiOff, Scan, AlertCircle, Check, ClipboardList, MapPin, X as XIcon, SplitSquareHorizontal, MoveRight, Clock, Unlock } from "lucide-react";
 import { useMobilePullToRefresh } from "./useMobilePullToRefresh";
+import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import { authHttp } from "@/api/core/authHttp";
 import { cn } from "@/lib/utils";
 import type { CageShelfCell, CageShelfDetail } from "@/api/domains/cageShelf.api";
@@ -53,11 +54,13 @@ import {
   actionsFromCageBoxInfo,
   allocSelectVerdict,
   ALLOC_MIXED_KIND_HINT,
+  CAGE_HATCH_BG,
   type AllocSelectKind,
   SPECIAL_DETAIL_DICT,
   detailCodesOfValues,
   detailPhotoKey,
   specialDetailItemsFor,
+  divisionLabelOf,
 } from "@/features/cage-shelf/constants";
 import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import SpecialDetailBadges from "@/features/cage-shelf/components/SpecialDetailBadges";
@@ -228,7 +231,65 @@ function cageCardTone(cell: CageShelfCell): string {
 const ACTION_BG: Record<string, string> = Object.fromEntries(CAGE_BOX_ACTIONS.map(a => [a.action, DEFAULT_COLORS[a.statusCode]?.bg ?? "#ccc"]));
 const ACTION_BORDER: Record<string, string> = Object.fromEntries(CAGE_BOX_ACTIONS.map(a => [a.action, DEFAULT_COLORS[a.statusCode]?.border ?? "#999"]));
 
-const GridCellButton = memo(function GridCellButton({
+/**
+ * 网格容器 → 单格宽度（8 列 + 3px 间隙），写成 CSS 变量 `--ao-cell-px`。
+ *
+ * 格子里的位号 / PI / 实验员原来是固定 px（12/9/8 + gap-0.5）：窄屏三行顶出格子外、
+ * 宽屏又显得行距空荡 —— 因为它跟格子尺寸没关系。现在按格子宽等比缩放（`0.3em` 基准）。
+ * 不用容器查询 `cqw`（老内核 XWEB86 上不保证支持），所以量一次宽度就够了。
+ */
+export function useGridCellWidth(): { ref: React.RefObject<HTMLDivElement | null>; style: React.CSSProperties } {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const observed = useRef<HTMLDivElement | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const [px, setPx] = useState(0);
+
+  const measure = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const w = el.clientWidth;
+    if (w > 0) setPx((w - 3 * 7) / 8);
+  }, []);
+
+  // 每次渲染同步量一次（一次 clientWidth 读取）：网格容器是**数据到位之后**才挂载的，
+  // 只在 mount 量会拿到 null，之后 --ao-cell-px 就永远停在默认值。
+  useEffect(() => { measure(ref.current); });
+
+  // 容器自身变宽（抽屉张开、分栏切换）→ ResizeObserver；节点换了才重挂。
+  // 注意这里**不能返回 cleanup**：无依赖 effect 的 cleanup 在每次渲染前都会跑一次，
+  // 那样等于挂上就断开（--ao-cell-px 会永远停在首次量到的值）。
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || el === observed.current) return;
+    observed.current = el;
+    if (typeof ResizeObserver === "undefined") return;
+    roRef.current?.disconnect();
+    const ro = new ResizeObserver(() => measure(el));
+    ro.observe(el);
+    roRef.current = ro;
+  });
+
+  // 卸载时统一断开
+  useEffect(() => () => { roRef.current?.disconnect(); }, []);
+
+  // 窗口尺寸变化（旋转屏/浏览器缩放）在内嵌浏览器里不一定让 RO 收到回调 —— 直接监听 window 兜底
+  useEffect(() => {
+    // 用 rAF 延到下一帧：resize 回调触发时布局可能还没提交，这一帧同步读会拿到旧宽度
+    const onResize = () => { requestAnimationFrame(() => measure(ref.current)); };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [measure]);
+
+  return {
+    ref,
+    style: (px > 0 ? { "--ao-cell-px": `${px}px` } : {}) as React.CSSProperties,
+  };
+}
+
+export const GridCellButton = memo(function GridCellButton({
   cell,
   onSelect,
   crossCol,
@@ -242,6 +303,8 @@ const GridCellButton = memo(function GridCellButton({
   isMyClaimCell,
   opMarker,
   divisionLabel,
+  disabledReason,
+  compact,
 }: {
   cell: CageShelfCell;
   onSelect: () => void;
@@ -260,6 +323,19 @@ const GridCellButton = memo(function GridCellButton({
   opMarker?: CageOpMark;
   /** 笼位划分标签（该笼位有划分时传入）：本人=「已划分给你」，他人=「已划分」 */
   divisionLabel?: string;
+  /**
+   * 当前模式下该笼位**选不了**：传短标签（3~6 字），整格盖红网纹 + 底部标签。
+   * 传空串 = 只盖网纹不出标签（原因对用户没有增量信息时用）。不传 = 这格不参与「不可选」标记。
+   * 与 PC 的 CellButton.disabledReason 同义。
+   */
+  disabledReason?: string;
+  /**
+   * 简洁档：只收起**另有替代物**的标签层 —— 中间态底部色条（色环还在）、
+   * 中间态正中图标+蒙层（色环 / 左上角徽标还在）、划分底部文字（淡玫底 + 描边还在）。
+   * 与 PC 的 CellButton.compact 同义。H5 没有「状态文字」和「当前可选标签」这两个层，
+   * 所以收的比 PC 少两条。
+   */
+  compact?: boolean;
 }) {
   const isCrossCol = crossCol != null && cell.x === crossCol;
   const isCrossRow = crossRow != null && cell.y === crossRow;
@@ -272,6 +348,12 @@ const GridCellButton = memo(function GridCellButton({
       : cell.claimStatus === "pending_release_approval"
         ? { color: "#f97316", label: "释放待审批", Icon: Unlock }
         : null;
+  /*
+    中间态那条色环**自带一条底部色条**在命名这个状态（转移审核中 / 已被 X 预订…）。
+    网纹照盖（它说的是「不能点」，另一件事），但红标签不叠 —— 两条色条摞在同一位置，
+    看到的是「不可选」盖住「转移审核中」，DOM 里却两条都在。与 PC ShelfGrid 同一规则。
+  */
+  const shownReason = opMarker && disabledReason ? "" : disabledReason;
 
   const hasCacheActions = cachedActions && cachedActions.size > 0;
   const ringColor = isLastScanned ? "#ac1736" : hasCacheActions ? "#d97706" : null;
@@ -365,19 +447,27 @@ const GridCellButton = memo(function GridCellButton({
         // 划分：淡玫瑰底 + 描边，让「哪些笼位被划分了」成片一眼可辨（本人看到的更实）
         divisionLabel && "bg-rose-500/10",
         divisionLabel && (divisionLabel.includes("你") ? "ring-2 ring-inset ring-rose-500" : "ring-1 ring-inset ring-rose-400/60"),
+        // 鼠标手势：不可选的格子给「禁止」（触屏无意义，桌面浏览器/模拟器下有用）
+        disabledReason !== undefined && "cursor-not-allowed",
       )}
-      style={isEmpty
-        ? (isInCross ? { backgroundColor: "rgba(172,23,54,0.1)" } : undefined)
-        : hit ? {
-            ...statusStyle,
-            boxShadow: `0 0 14px ${ringShadow}`,
-            outline: `3px solid ${ringColor}`,
-            outlineOffset: -1,
-          } : isInCross && !multiBg ? {
-            ...statusStyle,
-            backgroundColor: `color-mix(in srgb, ${statusStyle?.backgroundColor || '#f1f5f9'} 88%, #ac1736)`,
-          } : statusStyle
-      }
+      /* 基准字号跟着格子宽度走（见 useGridCellWidth）：内部位号/PI/实验员都用 em，等比缩放 */
+      style={{
+        fontSize: "calc(var(--ao-cell-px, 40px) * 0.27)",
+        ...(isEmpty
+          ? (isInCross ? { backgroundColor: "rgba(172,23,54,0.1)" } : {})
+          : hit ? {
+              ...statusStyle,
+              boxShadow: `0 0 14px ${ringShadow}`,
+              outline: `3px solid ${ringColor}`,
+              outlineOffset: -1,
+            } : isInCross && !multiBg ? {
+              ...statusStyle,
+              backgroundColor: `color-mix(in srgb, ${statusStyle?.backgroundColor || '#f1f5f9'} 88%, #ac1736)`,
+            } : statusStyle),
+        /* 状态色给的是固定 2px（按 PC 的 87px 格子定的）；40px 的小格子上显得很粗。
+           按格宽等比（2.4% —— 与小程序 1px/41px、PC 2px/87px 同一比例）。放展开之后覆盖它 */
+        borderWidth: "calc(var(--ao-cell-px, 40px) * 0.024)",
+      }}
       onClick={isEmpty ? undefined : onSelect}
       title={isEmpty ? displayPosition(cell.position) : tooltip}
     >
@@ -395,7 +485,7 @@ const GridCellButton = memo(function GridCellButton({
         const s = badge[cell.claimStatus];
         if (!s) return null;
         return (
-          <div className="absolute top-0.5 left-0.5 z-20 px-1 py-px rounded text-[8px] font-bold leading-tight text-white"
+          <div className="ao-cell-claimbadge absolute top-0.5 left-0.5 z-20 px-1 py-px rounded text-[8px] font-bold leading-tight text-white"
             style={{ background: s.bg }}>
             {s.txt}
           </div>
@@ -404,53 +494,73 @@ const GridCellButton = memo(function GridCellButton({
       {/* 选中不再画勾选圆点（与 Web 端不同）：移动端统一用「点击即高亮」表达选中，
           高亮由外层 button 的 ring 负责，右上角留给类型圆点，不再互相压盖 */}
       {/* 划分标签：底部色条（本人「已划分给你」比他人的「已划分」更醒目，描边已在外面加粗） */}
-      {divisionLabel && (
-        <span className="absolute inset-x-0 bottom-0 z-20 truncate bg-rose-600 text-center text-[8px] font-bold leading-[12px] text-white">
+      {divisionLabel && !compact && (
+        <span className="ao-cell-divbar absolute inset-x-0 bottom-0 z-20 truncate bg-rose-600 text-center text-[8px] font-bold leading-[12px] text-white">
           {divisionLabel}
         </span>
       )}
-      {/* 待审中间态：与 CellButton 同一套「色环 + 底部色条」，源/目标同色 */}
+      {/* 待审中间态：与 CellButton 同一套「色环 + 底部色条」，源/目标同色。简洁档只留色环 */}
       {opMarker && (
         <>
           <div className="absolute inset-0 z-10 rounded-md pointer-events-none"
             style={{ boxShadow: `inset 0 0 0 3px ${opMarker.color}, 0 0 10px ${opMarker.color}66` }} />
-          <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-md text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
-            style={{ background: opMarker.color }}>
-            {opMarker.label}
-          </div>
+          {!compact && (
+            <div className="ao-cell-opbar absolute inset-x-0 bottom-0 z-20 truncate rounded-b-md text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
+              style={{ background: opMarker.color }}>
+              {opMarker.label}
+            </div>
+          )}
         </>
       )}
-      {/* 中间审核态覆盖层：浅色蒙层 + 正中大图标 */}
-      {pendingOverlay && (
+      {/* 中间审核态覆盖层：浅色蒙层 + 正中大图标。简洁档整块收掉（色环 / 左上角徽标已是替代物） */}
+      {pendingOverlay && !compact && (
         <>
           <div className="absolute inset-0 z-[19] rounded-md bg-white/25 pointer-events-none" />
           <div className="absolute inset-0 z-20 grid place-items-center pointer-events-none">
-            <span className="grid size-5 place-items-center rounded-full text-white shadow-md ring-2 ring-white/80"
+            <span className="ao-cell-pending grid size-5 place-items-center rounded-full text-white shadow-md ring-2 ring-white/80"
               style={{ background: pendingOverlay.color }} title={pendingOverlay.label}>
               <pendingOverlay.Icon className="size-3" strokeWidth={2.6} />
             </span>
           </div>
         </>
       )}
-      <div className="flex flex-col items-center justify-center gap-0.5 px-0.5 py-0.5 text-center w-full h-full">
-        <div className="w-full font-bold text-[12px] leading-tight">{displayPosition(cell.position)}</div>
+      {/* 位号 / 课题人 / 实验员：有哪几行就渲染哪几行，**按实际行数自然垂直居中**（照小程序）。
+          不要用固定槽位补位 —— 两行内容会被第三行的占位顶高，看着不居中。
+          行距/内边距按格宽等比（--ao-cell-px），字号随格宽缩放。 */}
+      <div
+        className="flex h-full w-full flex-col items-center justify-center gap-[0.06em] overflow-hidden text-center"
+        style={{ padding: "0.03em", lineHeight: 1.1 }}
+      >
+        <div className="w-full truncate text-[1em] font-bold leading-[1.1]">{displayPosition(cell.position)}</div>
         {isEmpty ? (
-          <div className="text-[8px]">空位</div>
-        ) : cell.visible !== false ? (
+          <div className="text-[0.8em] leading-[1.1] text-[var(--student-mute)]">空位</div>
+        ) : cell.visible === false ? (
+          <div className="text-[0.8em] leading-[1.1] text-[var(--student-mute)]">***</div>
+        ) : (
           <>
             {nonEmptyText(piName) && (
-              <div className="w-full truncate text-[9px] leading-tight font-semibold"
+              <div className="w-full truncate text-[0.86em] font-semibold leading-[1.1]"
                 style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{piName}</div>
             )}
             {nonEmptyText(cell.experimenterName) && (
-              <div className="w-full truncate text-[8px] leading-tight"
+              <div className="w-full truncate text-[0.73em] leading-[1.1]"
                 style={{ color: "var(--app-color-text-primary, #1e293b)" }}>{cell.experimenterName}</div>
             )}
           </>
-        ) : (
-          <div className="text-[9px] text-[var(--student-mute)]">***</div>
         )}
       </div>
+      {/* 不可选：整格红色细线网纹 + 底部短标签（与 PC CellButton 同一套）。
+          放最后 —— 底部那几条同层的 z-20 色条由 DOM 顺序决胜，红标签要压得住它们。 */}
+      {shownReason !== undefined && (
+        <>
+          <div className="pointer-events-none absolute inset-0 z-[5] rounded-md" style={{ backgroundImage: CAGE_HATCH_BG }} />
+          {shownReason && (
+            <div className="ao-cell-reason pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate rounded-b-md bg-red-600 text-center text-[8px] font-bold leading-[12px] text-white">
+              {shownReason}
+            </div>
+          )}
+        </>
+      )}
     </button>
   );
 });
@@ -1229,6 +1339,9 @@ function CageShelfGridView({
   onOpenDivisionPicker, divisionSubmitting,
   opSelectActive,
   opMarks,
+  disabledReasonByCageId,
+  compactGrid,
+  onToggleCompactGrid,
 }: {
   shelf: MobileCageShelfSummary;
   detail: CageShelfDetail | null;
@@ -1270,6 +1383,11 @@ function CageShelfGridView({
   opSelectActive?: boolean;
   /** 待审分笼/转移：笼位 animalCageId → 中间态标识 */
   opMarks?: Map<string, CageOpMark>;
+  /** cageId → 当前模式下选不了的原因（短标签；空串 = 只盖网纹）。与 PC 的 ShelfGrid 同义 */
+  disabledReasonByCageId?: Map<string, string>;
+  /** 网格简洁档：收起另有替代物的标签层（见 GridCellButton.compact） */
+  compactGrid?: boolean;
+  onToggleCompactGrid?: (v: boolean) => void;
 }) {
   const cells = detail && detail.grid.length > 0 ? detail.grid : buildPlaceholderGridCells();
   const meta = detail?.shelfMeta;
@@ -1291,12 +1409,6 @@ function CageShelfGridView({
   const isDivision = mode === "division";
   /** 当前账号 id：把划分名单判成「划给我」还是「划给别人」 */
   const meId = String(authStorage.getUserInfo()?.id ?? "");
-  /** 该格子的划分标签；无划分时返回 undefined（不渲染） */
-  const divisionLabelOf = (cell: CageShelfCell): string | undefined => {
-    const list = (cell as any).divisionAssignees as Array<{ id: string; name: string }> | undefined;
-    if (!list || list.length === 0) return undefined;
-    return list.some((a) => String(a.id) === meId) ? "已划分给你" : "已划分";
-  };
   /** 当前模式的呼吸光晕色（空串 = 不高亮，与两端约定一致） */
   const glow = modeColorOf(mode);
 
@@ -1311,6 +1423,8 @@ function CageShelfGridView({
     [onSetMode],
   );
   const sid = String(detail?.shelfMeta?.shelveId ?? shelf.shelveId ?? "");
+  /** 本架网格的单格宽度 → 格子内文字等比缩放的 CSS 变量 */
+  const gridCell = useGridCellWidth();
 
   // 行/列交叉定位：仅编辑模式生效
   const lc = editMode ? lastScannedKey : null;
@@ -1350,6 +1464,20 @@ function CageShelfGridView({
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {/* 网格完整/简洁：只收起另有替代物的标签层。与 PC 一样只在这种「有可选格」的模式下出现 */}
+          {disabledReasonByCageId && (
+            <AdminSegmentedControl
+              className="mr-0.5 [--app-color-accent:var(--student-primary)] [--app-color-surface-hover:var(--student-canvas-soft)] [--app-color-surface-container:var(--student-canvas)]"
+              size="sm"
+              aria-label="网格显示"
+              value={compactGrid ? "compact" : "full"}
+              onChange={(v) => onToggleCompactGrid?.(v === "compact")}
+              options={[
+                { value: "full", label: "完整" },
+                { value: "compact", label: "简洁" },
+              ]}
+            />
+          )}
           {/* 常驻扫码入口（顶栏）：全角色可见，结果按当前模式分派 */}
           <button type="button" onClick={onOpenScan}
             className="flex items-center justify-center rounded-full w-7 h-7 active:scale-95 transition"
@@ -1458,7 +1586,7 @@ function CageShelfGridView({
           ? <CageBookingMobileView initialRoomId={(meta as any)?.roomId ?? shelf.roomId} />
           : <div className={`rounded-xl p-1.5${glow ? " cage-shelf-glow" : ""}`}
             style={{ background: "rgba(255,255,255,0.85)", border: "1px solid rgba(30,55,90,0.06)", boxShadow: "0 2px 8px rgba(15,23,42,0.04)", ...(glow ? { ["--mode-color" as string]: glow } : {}) }}>
-            <div className="grid grid-cols-8 gap-[3px]">
+            <div ref={gridCell.ref} style={gridCell.style} className="ao-cell-grid grid grid-cols-8 gap-[3px]">
               {cells.map((cell) => {
                 const ck = `${cell.x}:${cell.y}`;
                 const cacheEntry = scanCache.get(ck);
@@ -1484,7 +1612,9 @@ function CageShelfGridView({
                         : (isClaim || !!opSelectActive) && aid !== "" && claimPoolIds.has(aid)}
                       isMyClaimCell={aid !== "" && myClaimCageIds.has(aid)}
                       opMarker={aid !== "" ? opMarks?.get(aid) : undefined}
-                      divisionLabel={divisionLabelOf(cell)}
+                      divisionLabel={divisionLabelOf(cell, meId)}
+                      disabledReason={aid !== "" ? disabledReasonByCageId?.get(aid) : undefined}
+                      compact={compactGrid}
                     />
                     {isLockHighlight && (
                       <div className="absolute inset-0 z-10 rounded-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />
@@ -1563,6 +1693,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [mode, setMode] = useState<ShelfMode>("view");
   // 后端下发的可见模式 key 列表（null=尚未拉取/失败，网格页回退本地硬编码）
   const [visibleModes, setVisibleModes] = useState<string[] | null>(null);
+  /** 网格「完整/简洁」：简洁档收起另有替代物的标签层（开关在网格页顶栏） */
+  const [compactGrid, setCompactGrid] = useState(false);
   /** 后端下发的「模式 → 可用动作」矩阵（学生状态模式收窄用；null=不限制） */
   const [modeActions, setModeActions] = useState<Record<string, string[]> | null>(null);
   const editMode = mode === "edit";
@@ -1962,6 +2094,57 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
     }
     return s;
   }, [detail, opSel.selected]);
+
+  /**
+   * 「不可选」网纹的原因表：当前模式下**点不了**的笼位 → 短标签（空串 = 只盖网纹不出字）。
+   * 逐条对着下面那几个 handleXxxToggle 抄 —— 网纹说不能点、点下去却成功，是最伤信任的一类不一致。
+   * 理由与 PC 管理端同一套：只有「原因对用户没有增量信息」的那类（申请池外）才只盖网纹。
+   * 查看/记录/预约没有「可选格」，返回 undefined = 不画；分笼/转移选位自带池高亮，也不画。
+   */
+  const disabledReasonByCageId = useMemo(() => {
+    if (mode === "view" || mode === "record" || mode === "booking" || opActive) return undefined;
+    const labelOf = (c: CageShelfCell): string | null => {
+      const ct = (c as any).cageTypeCode ?? c.animalCageType;
+      const st = (c as any).claimStatus;
+      const id = String((c as any).id ?? (c as any).animalCageId ?? "");
+      const claimBusy = !!st && ["pending_approval", "locked", "confirmed", "pending_release_approval"].includes(st);
+      // 带中间态标记的格子自带色条在命名状态，标签由 GridCellButton 统一丢掉，这里不用特判
+      if (mode === "allocate") {
+        if (allocSelectVerdict(ct, opMarks.has(id)).ok) return null;
+        return ct === 3 || ct === 4 ? "需先归档" : "状态未知";
+      }
+      if (mode === "reserve") {
+        if (claimBusy) return "已有预定";
+        return ct === 2 ? null : "非空笼盒";
+      }
+      if (mode === "claim") return poolCells.has(id) ? null : "";
+      if (mode === "division") return ct === 1 ? "待分配" : null;
+      if (mode === "archive") {
+        if (ct !== 3) return "无需归档";
+        return !isStaffView && !(c as any).mine ? "非本人" : null;
+      }
+      if (mode === "edit") {
+        if (ct !== 3 && ct !== 4) return "不可标记";
+        return !isStaffView && !(c as any).mine ? "非本人" : null;
+      }
+      if (mode === "confirm") {
+        if (!st) return "未分配";
+        if (st === "confirmed") return "已到位";
+        if (st === "pending_approval") return "待审批";
+        if (st === "pending_release_approval") return "待释放";
+        return String(st);
+      }
+      return null;
+    };
+    const m = new Map<string, string>();
+    for (const c of detail?.grid ?? []) {
+      const id = String((c as any).id ?? (c as any).animalCageId ?? "");
+      if (!id) continue;
+      const label = labelOf(c);
+      if (label !== null) m.set(id, label);
+    }
+    return m;
+  }, [mode, opActive, detail, opMarks, poolCells, isStaffView]);
 
   /**
    * 分配模式当前批次的动作类型（与 Web 管理端同一套规则）：
@@ -2666,6 +2849,9 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               myClaimCageIds={myClaimCageIds}
               opSelectActive={opActive}
               opMarks={opMarks}
+              disabledReasonByCageId={disabledReasonByCageId}
+              compactGrid={compactGrid}
+              onToggleCompactGrid={setCompactGrid}
               onAllocateOpen={() => setAllocDialogOpen(true)}
               onAllocateCancel={handleCancelAlloc}
               allocBatchKind={allocBatchKind}

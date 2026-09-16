@@ -13,6 +13,9 @@
       <text class="subnav-switch-text">{{ switchLabel }}</text>
     </view>
     <text class="subnav-title">{{ title }}</text>
+    <view class="subnav-right">
+      <slot name="right" />
+    </view>
   </view>
 </view>
 <view class="subnav-placeholder" style="height: {{ navBarHeight }}px;"></view>

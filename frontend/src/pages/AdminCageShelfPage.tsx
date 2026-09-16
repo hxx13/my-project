@@ -56,6 +56,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { isStudentAccount } from "@/features/auth/postLoginNavigation";
 import { authStorage } from "@/features/auth/authStorage";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
+import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown, MapPin } from "lucide-react";
@@ -317,6 +318,8 @@ function Inner(){
   const [pendingByMode, setPendingByMode] = useState<PendingByMode>({});
   const [pendingBusy, setPendingBusy] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
+  /** 网格「完整/简洁」：简洁档收起格子上的文字标签（底色/网纹/图标留着）。开关在待提交抽屉头上 */
+  const [compactGrid, setCompactGrid] = useState(false);
   const patchPending = useCallback((m: string, fn: (b: PendingBatch) => PendingBatch) => {
     setPendingByMode((prev) => ({ ...prev, [m]: fn(batchOf(prev, m)) }));
   }, []);
@@ -1296,6 +1299,87 @@ function Inner(){
   const modePoolCells = pageMode === "allocate" || reserveMode ? allocReservePoolCells : divisionPoolCells;
   const modeClaimMode = pageMode === "allocate" || reserveMode || divisionMode;
 
+  /**
+   * 确认模式的可选判定。**单击与矩形框选共用这一份** —— 两条路各判一套就会出现
+   * 「矩形把待审批/已到位的格子也画进去，点下去才被后端拒」。
+   * 到位确认的对象只有「未到位（locked）」的认领。
+   *
+   * 放在这里（网格「不可选」网纹也要读它）而不是紧挨着它那几个 handler。
+   */
+  const confirmCellVerdict = useCallback((c: any): { ok: boolean; reason: string; level: "error" | "success"; claimId?: number } => {
+    const status = c?.claimStatus;
+    if (!status) return { ok: false, reason: "该笼位未分配", level: "error" };
+    if (status === "locked") {
+      const cageId = String(c?.id ?? c?.animalCageId ?? "");
+      if (!cageId) return { ok: false, reason: "该笼位缺少 ID", level: "error" };
+      return { ok: true, reason: "", level: "error", claimId: Number(c.activeClaimId) };
+    }
+    if (status === "confirmed") return { ok: false, reason: "该笼位已到位", level: "success" };
+    if (status === "pending_approval") return { ok: false, reason: "该笼位待审批", level: "error" };
+    if (status === "pending_release_approval") return { ok: false, reason: "该笼位待释放审批", level: "error" };
+    return { ok: false, reason: "该笼位状态：" + status, level: "error" };
+  }, []);
+
+  /**
+   * 「不可选」网纹：把当前模式下**选不了**的笼位整格盖上红色细斜线 + 底部原因条
+   * （对齐小程序订购选笼位那套）。只在有网格选择的模式画 —— 查看/记录/预约本来就没有
+   * 「可选的格子」，盖满屏红网纹只是吵。
+   *
+   * 每格原因与对应模式的 toggle 判定**同源**：网纹说不能点、点下去却成功，是最伤信任的一类不一致。
+   * 没有 ID 的位置（空位）不参与 —— 它们本来就不是笼位，格子上已有「空位」字样。
+   */
+  const modeDisabledReasons = useMemo(() => {
+    if (!gridMultiSelect) return undefined;
+    /**
+     * null = 该格可选；字符串 = 网纹上的短标签。
+     * 「能不能选」复用各模式现成的 verdict（只有一份判定），标签只是同一批条件的短说法
+     * —— 格子 70px 宽放不下完整 reason，完整版点下去照旧 toast。
+     */
+    const labelOf = (c: unknown): string | null => {
+      const cell = c as any;
+      const ct = cell?.cageTypeCode ?? cell?.animalCageType;
+      const claimBusy = ["pending_approval", "locked", "confirmed", "pending_release_approval"].includes(cell?.claimStatus);
+      if (editStaged) return ct === 3 || ct === 4 ? null : "不可编辑";
+      if (pageMode === "allocate") {
+        if (allocCellVerdict(c).ok) return null;
+        if (claimBusy) return "认领在办";
+        if (opMarkWithReservations.has(cageIdOfCell(c))) return "有待审请求";
+        return ct === 3 || ct === 4 ? "需先归档" : "状态未知";
+      }
+      if (reserveMode) {
+        if (reserveCellVerdict(c).ok) return null;
+        if (claimBusy) return "已有认领";
+        const mark = opMarkWithReservations.get(cageIdOfCell(c));
+        if (mark) return mark.label;
+        return ct === 2 ? "不可预定" : "非空笼盒";
+      }
+      if (divisionMode) return ct !== 1 ? null : "待分配";
+      if (archiveMode) return ct === 3 ? null : "无需归档";
+      if (confirmMode) {
+        if (confirmCellVerdict(c).ok) return null;
+        const st = cell?.claimStatus;
+        if (!st) return "未分配";
+        if (st === "confirmed") return "已到位";
+        if (st === "pending_approval") return "待审批";
+        if (st === "pending_release_approval") return "待释放";
+        return String(st);
+      }
+      return null;
+    };
+    const m = new Map<string, string>();
+    const add = (grid: unknown[] | undefined) => {
+      for (const c of grid ?? []) {
+        const id = cageIdOfCell(c);
+        if (!id) continue;
+        const label = labelOf(c);
+        if (label) m.set(id, label);
+      }
+    };
+    for (const d of details) add(d.grid as never);
+    add(shelfDetail?.grid as never);
+    return m;
+  }, [gridMultiSelect, editStaged, pageMode, reserveMode, divisionMode, archiveMode, confirmMode, opMarkWithReservations, allocCellVerdict, reserveCellVerdict, confirmCellVerdict, cageIdOfCell, details, shelfDetail]);
+
   /** 哪些笼架有可选笼位 —— 供左侧树与笼架边框高亮 */
   const selectableShelveIds = useMemo(() => {
     const s = new Set<string>();
@@ -1508,25 +1592,6 @@ function Inner(){
     }catch(e:any){toast.error(e?.message||"确认失败");}
     finally{setConfirmSubmitting(false);}
   },[confirmLookup]);
-
-  /**
-   * 确认模式的可选判定。**单击与矩形框选共用这一份** —— 两条路各判一套就会出现
-   * 「矩形把待审批/已到位的格子也画进去，点下去才被后端拒」。
-   * 到位确认的对象只有「未到位（locked）」的认领。
-   */
-  const confirmCellVerdict = useCallback((c: any): { ok: boolean; reason: string; level: "error" | "success"; claimId?: number } => {
-    const status = c?.claimStatus;
-    if (!status) return { ok: false, reason: "该笼位未分配", level: "error" };
-    if (status === "locked") {
-      const cageId = String(c?.id ?? c?.animalCageId ?? "");
-      if (!cageId) return { ok: false, reason: "该笼位缺少 ID", level: "error" };
-      return { ok: true, reason: "", level: "error", claimId: Number(c.activeClaimId) };
-    }
-    if (status === "confirmed") return { ok: false, reason: "该笼位已到位", level: "success" };
-    if (status === "pending_approval") return { ok: false, reason: "该笼位待审批", level: "error" };
-    if (status === "pending_release_approval") return { ok: false, reason: "该笼位待释放审批", level: "error" };
-    return { ok: false, reason: "该笼位状态：" + status, level: "error" };
-  }, []);
 
   // ── 确认模式点格子：进「待提交」，到抽屉里统一提交 ──
   const handleConfirmCell = useCallback((c: any, _sid?: string) => {
@@ -2891,7 +2956,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={gridMultiSelect} selectedCells={(gridMultiSelect)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined} allocMode={gridMultiSelect} clickMode={(gridMultiSelect)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={gridMultiSelect} selectedCells={(gridMultiSelect)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined} allocMode={gridMultiSelect} clickMode={(gridMultiSelect)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/></div>;
             })}</div>}
           </>}
 
@@ -2901,7 +2966,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={gridMultiSelect} selectedCells={(gridMultiSelect)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined} allocMode={gridMultiSelect} clickMode={(gridMultiSelect)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} {...opGridProps} {...modeGlowProps}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={gridMultiSelect} selectedCells={(gridMultiSelect)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined} allocMode={gridMultiSelect} clickMode={(gridMultiSelect)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -3052,19 +3117,32 @@ function Inner(){
         onSubmit={()=>void submitPending()}
         onEditItem={currentMode==="edit"?openEditItemById:undefined}
         /* 状态模式两种改法的切换：拖色区（点笼位攒进待提交，拖到色区标记） / 逐格编辑（点笼位开弹窗） */
-        headerToggle={currentMode==="edit"?(
-          <button type="button" onClick={()=>setEditDirect(v=>!v)}
-            title={editDirect
-              ? "当前：点笼位直接开状态弹窗，在里面改状态/明细/拍照/备注。点这里改回「拖到色区」"
-              : "当前：点笼位攒进待提交，拖到色区标记后统一提交。点这里改成「逐格编辑」"}
-            className={`rounded-twin-md border px-2 py-0.5 text-[11px] font-semibold transition ${
-              editDirect
-                ? "border-[var(--twin-warning)] bg-amber-50 text-[var(--twin-warning)]"
-                : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-            }`}>
-            {editDirect?"逐格编辑":"拖色区"}
-          </button>
-        ):undefined}
+        headerToggle={<>
+          {currentMode==="edit"&&(
+            <button type="button" onClick={()=>setEditDirect(v=>!v)}
+              title={editDirect
+                ? "当前：点笼位直接开状态弹窗，在里面改状态/明细/拍照/备注。点这里改回「拖到色区」"
+                : "当前：点笼位攒进待提交，拖到色区标记后统一提交。点这里改成「逐格编辑」"}
+              className={`rounded-twin-md border px-2 py-0.5 text-[11px] font-semibold transition ${
+                editDirect
+                  ? "border-[var(--twin-warning)] bg-amber-50 text-[var(--twin-warning)]"
+                  : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
+              }`}>
+              {editDirect?"逐格编辑":"拖色区"}
+            </button>
+          )}
+          {/* 网格完整/简洁：只收起格子上的文字标签，底色/网纹/图标一律不动 */}
+          <AdminSegmentedControl
+            size="sm"
+            aria-label="网格显示"
+            value={compactGrid ? "compact" : "full"}
+            onChange={(v) => setCompactGrid(v === "compact")}
+            options={[
+              { value: "full", label: "完整" },
+              { value: "compact", label: "简洁" },
+            ]}
+          />
+        </>}
         onClose={()=>setPendingOpen(false)}
         selectedIds={bufferSelected}
         onSelectedChange={setBufferSelected}

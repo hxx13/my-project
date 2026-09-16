@@ -339,6 +339,7 @@ Page({
     canGoDoorControl: false,
     canGoSuppliesAudit: false,
     canGoStudentReview: false,
+    canGoCardPrint: false,
     badgeStudentReviewText: '',
     canGoAiPortrait: false,
     springUserId: '',
@@ -634,6 +635,9 @@ Page({
       canGoStudentReview:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF'),
+      canGoCardPrint:
+        hasMinRole(role, 'STAFF') &&
+        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/cardPrint/index', role, 'STAFF'),
       canGoAiPortrait: springBound && springUserId && pagePermission.canShowMiniEntry('mine', '/package-feature/pages/aiPortrait/index', role, 'STUDENT'),
       springUserId,
       headerDisplayName,
@@ -1019,6 +1023,15 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-feature/pages/suppliesAudit/index' });
+  },
+
+  goCardPrint() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+    if (!hasMinRole(role, 'STAFF')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/cardPrint/index' });
   },
 
   goPurchaseProcess() {

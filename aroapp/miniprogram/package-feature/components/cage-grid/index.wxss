@@ -1,0 +1,337 @@
+/* 通用 80 格笼位网格：一行 8 格、只纵滚不横滚、随屏宽自适应。
+   值与本项目其它页一致；宿主只需往格子上写 _sel / _dis / _qty。 */
+.cg-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4rpx;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.cg-cell {
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6rpx;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* 认领徽章（左上角）与划分标签（左下角）：cls 由共享的 enrichGridCell 产出，
+   名字沿用笼架页那套（gcell-badge--locked/pending/release）——组件样式隔离，两边同名不冲突。 */
+.cg-badge {
+  position: absolute;
+  top: 2rpx;
+  left: 2rpx;
+  z-index: 3;
+  padding: 0 6rpx;
+  border-radius: 4rpx;
+  font-size: 16rpx;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.5;
+  max-width: calc(100% - 4rpx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cg-badge.gcell-badge--locked { background: #f59e0b; }
+.cg-badge.gcell-badge--pending { background: #3b82f6; }
+.cg-badge.gcell-badge--release { background: #f97316; }
+
+/* 划分名单贴左下角，避开左上的认领徽章 */
+.cg-badge--division {
+  top: auto;
+  bottom: 2rpx;
+  background: #e11d48;
+}
+
+/* 整格淡红叠加：用 background-image 而不是 background，格子自身的状态底色不被盖掉
+   （多状态是 inline 的 background 简写，优先级高于本类） */
+.cg-cell--division {
+  background-image: linear-gradient(rgba(225, 29, 72, 0.1), rgba(225, 29, 72, 0.1));
+}
+
+/* 已被订购/预定标记（对齐笼架页 .gcell-opmark*，去掉那层白色 veil） */
+.cg-opmark {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 12;
+  border-radius: 6rpx;
+  pointer-events: none;
+}
+
+.cg-opmark-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44rpx;
+  height: 44rpx;
+  margin: -22rpx 0 0 -22rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
+  border: 4rpx solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.25);
+}
+
+.cg-opmark-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  color: #fff;
+  font-size: 16rpx;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cg-grid--compact .cg-opmark-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin: -16rpx 0 0 -16rpx;
+  font-size: 18rpx;
+  border-width: 3rpx;
+}
+
+.cg-grid--compact .cg-opmark-bar {
+  font-size: 14rpx;
+}
+
+.cg-pos {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.1;
+  max-width: 100%;
+  padding: 0 2rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.cg-pi {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.1;
+  max-width: 92%;
+  margin-top: 2rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cg-exp {
+  font-size: 18rpx;
+  font-weight: 400;
+  color: #1e293b;
+  line-height: 1.1;
+  max-width: 92%;
+  margin-top: 2rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cg-empty-text {
+  font-size: 24rpx;
+  color: #94a3b8;
+  margin-top: 2rpx;
+}
+
+.cg-hidden-text {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-top: 2rpx;
+}
+
+.cg-cell--empty .cg-pos {
+  color: #94a3b8;
+}
+
+.cg-cell--filled:active {
+  transform: scale(0.94);
+}
+
+/* 类型灯（右上角）：饲养中(type3)不点，特殊饲养明细同样占此角但两者互斥 */
+.cg-dot {
+  position: absolute;
+  top: 2rpx;
+  right: 2rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.18);
+  border: 1rpx solid rgba(255, 255, 255, 0.65);
+  box-sizing: border-box;
+}
+
+.cg-dot text {
+  font-size: 18rpx;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+/* 特殊饲养明细角标（+食 / −水）：贴右上角 */
+.cg-sf {
+  position: absolute;
+  top: 2rpx;
+  right: 2rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  z-index: 2;
+}
+
+.cg-sf-pill {
+  margin-bottom: 2rpx;
+  padding: 0 4rpx;
+  border-radius: 4rpx;
+  font-size: 14rpx;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+/* 选中：蓝环压住格子 inline 的状态底边框（inline 优先，必须 !important） */
+.cg-cell--sel {
+  border-color: #2563eb !important;
+  border-width: 4rpx !important;
+  box-shadow: inset 0 0 0 3rpx #2563eb;
+}
+
+.cg-cell--sel .cg-pos {
+  color: #1d4ed8;
+}
+
+/* 不可点：整格盖一层半透明红色细线网纹（很多根细斜线），
+   格子原有的内容（位号/课题人/类型灯/状态底色）都能透出来，不被盖掉。
+   线用低透明度红，间隔留空，底部再挂一条原因标签（标签保持不透明）。 */
+.cg-hatch {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(220, 38, 38, 0.28) 0,
+    rgba(220, 38, 38, 0.28) 2rpx,
+    rgba(220, 38, 38, 0) 2rpx,
+    rgba(220, 38, 38, 0) 16rpx
+  );
+}
+
+.cg-tip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  padding: 0 2rpx;
+  background: #dc2626;
+  color: #fff;
+  font-size: 16rpx;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cg-grid--compact .cg-tip {
+  font-size: 14rpx;
+}
+
+/* 已分配数量角标（订购选笼位用） */
+.cg-qty {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 0 4rpx;
+  border-radius: 6rpx 0 0 0;
+  background: #2563eb;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* 紧凑档：字号整体缩一档，供抽屉/弹层里塞下整块 80 格 */
+.cg-grid--compact .cg-pos {
+  font-size: 22rpx;
+  padding: 0;
+}
+
+.cg-grid--compact .cg-badge {
+  font-size: 14rpx;
+}
+
+.cg-grid--compact .cg-pi {
+  font-size: 19rpx;
+  margin-top: 0;
+  max-width: 96%;
+}
+
+.cg-grid--compact .cg-exp {
+  font-size: 16rpx;
+  margin-top: 0;
+  max-width: 96%;
+}
+
+.cg-grid--compact .cg-empty-text,
+.cg-grid--compact .cg-hidden-text {
+  font-size: 18rpx;
+  margin-top: 0;
+}
+
+.cg-grid--compact .cg-dot {
+  top: 0;
+  right: 0;
+  width: 24rpx;
+  height: 24rpx;
+}
+
+.cg-grid--compact .cg-dot text {
+  font-size: 14rpx;
+}
+
+.cg-grid--compact .cg-sf {
+  top: 0;
+  right: 0;
+}
+
+.cg-grid--compact .cg-sf-pill {
+  margin-bottom: 1rpx;
+  padding: 0 3rpx;
+  font-size: 12rpx;
+}

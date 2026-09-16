@@ -8,15 +8,23 @@ const { isPresenceRefreshNotify } = require('./studentPresenceHelpers.js');
 var DEFAULT_SOCKET_PORT = 9092;
 var FALLBACK_POLL_MS = 25000;
 
+/**
+ * HTTPS 侧不能自己拼 9092：9092 是明文 Netty（无 TLS），TLS 只在 443 终止，
+ * nginx 按 /socket.io/ 路径代理到 9092 —— 与 H5 resolveSocketUrl 同一规则。
+ * 拼端口会得到「对着明文端口做 TLS 握手」的必然失败。
+ */
+function socketOriginFor(scheme, host) {
+  var secure = scheme === 'https';
+  return (secure ? 'wss' : 'ws') + '://' + host + (secure ? '' : ':' + DEFAULT_SOCKET_PORT);
+}
+
 function resolveSocketOrigin() {
   var apiBase = springAuth.getApiPublicBaseUrl();
   if (apiBase) {
     try {
       var matched = String(apiBase).trim().match(/^(https?):\/\/([^/:]+)(?::(\d+))?/i);
       if (matched) {
-        var scheme = matched[1] === 'https' ? 'wss' : 'ws';
-        var host = matched[2];
-        return scheme + '://' + host + ':' + DEFAULT_SOCKET_PORT;
+        return socketOriginFor(matched[1].toLowerCase(), matched[2]);
       }
     } catch (e) {
       /* ignore */
@@ -26,7 +34,7 @@ function resolveSocketOrigin() {
   if (uploadBase) {
     var m2 = String(uploadBase).trim().match(/^(https?):\/\/([^/:]+)/i);
     if (m2) {
-      return (m2[1] === 'https' ? 'wss' : 'ws') + '://' + m2[2] + ':' + DEFAULT_SOCKET_PORT;
+      return socketOriginFor(m2[1].toLowerCase(), m2[2]);
     }
   }
   return '';

@@ -31,7 +31,7 @@
       <text wx:if="{{ cacheUpdatedText }}" class="ai-cache-hint">{{ cacheUpdatedText }}</text>
     </view>
 
-    <view wx:if="{{ portraitLoading }}" class="ai-state">加载画像中…</view>
+    <view wx:if="{{ portraitLoading }}" class="ai-state">加载预测中…</view>
 
     <block wx:else>
       <view wx:if="{{ hasGlobalWeekly }}" class="ai-week-block ai-week-block--global">

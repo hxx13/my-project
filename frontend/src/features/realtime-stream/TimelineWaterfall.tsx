@@ -55,7 +55,9 @@ function feedProvenanceFromDbRow(item: Record<string, unknown>): FeedProvenance 
         return {
             channel: src || "ARO_OFFICIAL",
             feedSource: src || undefined,
-            summaryZh: sum || (src === "WEB_SCAN" ? "Web扫码通行" : "ARO同步"),
+            summaryZh:
+                sum ||
+                (src === "WEB_SCAN" ? "Web扫码通行" : src === "MOBILE_ROOM" ? "移动端进入" : "ARO同步"),
             detailZh: det || "进出登记说明（详见「i」溯源）。",
             doorName: door || undefined,
         };

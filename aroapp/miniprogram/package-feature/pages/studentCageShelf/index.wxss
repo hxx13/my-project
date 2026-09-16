@@ -497,11 +497,55 @@
 }
 
 /* Scroll area */
+.list-scroll-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 .list-scroll {
   flex: 1;
   min-height: 0;
   padding: 8rpx 24rpx 0;
   box-sizing: border-box;
+}
+
+/* 刷新提示：自定义导航栏下微信不画它自带的指示器，这里自己补一个 */
+.refresh-pill {
+  position: absolute;
+  left: 50%;
+  top: 20rpx;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  padding: 14rpx 28rpx;
+  background: #fff;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.refresh-pill-icon {
+  width: 24rpx;
+  height: 24rpx;
+  border: 4rpx solid #fecdd3;
+  border-top-color: #ac1736;
+  border-radius: 50%;
+  animation: refresh-pill-spin 0.7s linear infinite;
+}
+
+@keyframes refresh-pill-spin {
+  to { transform: rotate(360deg); }
+}
+
+.refresh-pill-text {
+  margin-left: 12rpx;
+  font-size: 24rpx;
+  color: #4b5563;
 }
 
 .list-pad-bottom {
@@ -1307,92 +1351,6 @@
   width: 160px;
   height: 160px;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 弹窗层提交按钮：absolute 定位在 popup 关闭图标左侧 */
-/* ── Grid 操作栏 ── */
-.gt-left-btns {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* 模式切换横向滚动（8 项手机宽度放不下） */
-.gt-mode-scroll {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-}
-.grid-actions-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  z-index: 99;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12rpx 20rpx;
-  background: #fff;
-  border-bottom: 1rpx solid #ebedf0;
-}
-/* 操作栏占位：补偿 position:fixed 脱离文档流的高度 */
-.grid-actions-spacer {
-  flex-shrink: 0;
-  width: 100%;
-  height: 80rpx;
-}
-.grid-actions-meta {
-  font-size: 22rpx;
-  color: #94a3b8;
-  flex: 1;
-}
-.grid-actions-btns {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  flex-shrink: 0;
-}
-/* ── 扫码模式 ── */
-.gt-actions {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  flex-shrink: 0;
-}
-.gt-scan-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56rpx;
-  height: 56rpx;
-  border-radius: 50%;
-  background: #ac1736;
-  flex-shrink: 0;
-}
-.gt-scan-btn:active {
-  opacity: 0.85;
-}
 .gt-legend-btn {
   display: flex;
   align-items: center;
@@ -1403,29 +1361,6 @@
   background: rgba(172, 23, 54, 0.08);
 }
 .gt-legend-btn--on {
-  background: #ac1736;
-}
-/* 模式分段切换（对齐 H5 顶部 pill；inline-flex 保证 scroll-x 内容可滚动） */
-.gt-mode-seg {
-  display: inline-flex;
-  align-items: center;
-  gap: 4rpx;
-  padding: 4rpx;
-  border-radius: 999rpx;
-  background: rgba(15, 23, 42, 0.05);
-  white-space: nowrap;
-}
-.gt-mode-btn {
-  padding: 6rpx 16rpx;
-  border-radius: 999rpx;
-  font-size: 20rpx;
-  font-weight: 600;
-  color: #64748b;
-  background: transparent;
-  white-space: nowrap;
-}
-.gt-mode-btn--on {
-  color: #fff;
   background: #ac1736;
 }
 .gt-submit-btn {
@@ -3589,3 +3524,11 @@
 .cs-detail-chip--on { border-color: var(--brand); color: var(--brand); background: var(--soft); font-weight: 600; }
 .cs-detail-chip--add { font-weight: 700; }
 .cs-detail-chip--rm { text-decoration: line-through; opacity: 0.6; }
+
+/* 导航栏右侧操作（图例 / 我的申请）：走 subpage-nav-bar 的命名插槽，
+   替代原来独占一行的顶部操作栏（模式切换已交给左下角模式岛、扫码入口右下角 FAB 已有） */
+.nav-right-acts {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}

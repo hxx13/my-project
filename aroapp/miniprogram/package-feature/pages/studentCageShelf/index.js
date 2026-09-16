@@ -12,6 +12,22 @@ var cageStatus = require('../../../utils/cageStatus.js');
 var CAGE_STATUS_ACTIONS = cageStatus.CAGE_STATUS_ACTIONS;
 var assetApi = require('../../utils/assetApi.js');
 var cageShelfApi = require('../../utils/cageShelfApi.js');
+var cageTreeGrouping = require('../../utils/cageTreeGrouping.js');
+var cageCellVisual = require('../../utils/cageCellVisual.js');
+
+/* 格子可视化统一走 util（与卡牌打印页共用同一套渲染口径，避免两页各留一份实现） */
+var setUserColors = cageCellVisual.setUserColors;
+var getCellStyle = cageCellVisual.getCellStyle;
+var getDominantCodeLabel = cageCellVisual.getDominantCodeLabel;
+var ynFlag = cageCellVisual.ynFlag;
+var getSpecialStatusList = cageCellVisual.getSpecialStatusList;
+var resolveAnimalCageType = cageCellVisual.resolveAnimalCageType;
+var buildGrid = cageCellVisual.buildGrid;
+var STATUS_LABEL_MAP = cageCellVisual.STATUS_LABEL_MAP;
+var COLUMNS = cageCellVisual.COLUMNS;
+var CAGE_TYPE_DOT_COLOR = cageCellVisual.CAGE_TYPE_DOT_COLOR;
+var CAGE_TYPE_ABBR = cageCellVisual.CAGE_TYPE_ABBR;
+var CAGE_TYPE_LABEL = cageCellVisual.CAGE_TYPE_LABEL;
 
 var CAGE_SHELF_PAGE = '/package-feature/pages/studentCageShelf/index';
 
@@ -40,32 +56,6 @@ function canAccessCageShelfPage(role) {
   );
 }
 
-/* ================================================================== */
-/*  Color System (from H5 CageCellOverlays.tsx / CageColorContext.tsx) */
-/* ================================================================== */
-
-var DEFAULT_COLORS = {
-  NORMAL:          { bg: "#f1f5f9", border: "#cbd5e1" },
-  COHABITATION:    { bg: "#a7f3d0", border: "#10b981" },
-  SPECIAL_FEEDING: { bg: "#fecaca", border: "#ef4444" },
-  NEED_DIVIDE:     { bg: "#fef08a", border: "#eab308" },
-  HEALTH_ABNORMAL: { bg: "#e9d5ff", border: "#a855f7" },
-  ANIMAL_TRANSFER: { bg: "#cffafe", border: "#06b6d4" },
-};
-
-// 用户自定义配色（共享 /v1/cage-shelves/user-colors），加载后覆盖默认色；未加载/失败回退 DEFAULT_COLORS
-var userColors = null;
-function setUserColors(colors) { userColors = colors || null; }
-function colorFor(code) {
-  return (userColors && userColors[code]) || DEFAULT_COLORS[code] || DEFAULT_COLORS.NORMAL;
-}
-
-var STATUS_BG_PRIORITY = [
-  "HEALTH_ABNORMAL", "NEED_DIVIDE", "ANIMAL_TRANSFER",
-  "SPECIAL_FEEDING", "COHABITATION", "NORMAL"
-];
-
-var CAGE_TYPE_LABEL = { 1: "(等待分配)", 2: "(空笼位)", 3: "(饲养中)", 4: "(异常)" };
 
 /** 每个「源→目标」配对一色（直接抄 Web useCageOpSelect.ts 的 PAIR_COLORS，两端观感一致） */
 var PAIR_COLORS = [
@@ -150,17 +140,7 @@ function allocVerdict(cageTypeCode, busyReason) {
 
 // 文案照抄共享常量 constants.ts:228，不做改写
 var ALLOC_MIXED_KIND_HINT = '不能同时勾选「等待分配」与「空笼位」笼位，请分两批操作';
-var CAGE_TYPE_DOT_COLOR = { 1: "#f59e0b", 2: "#10b981", 3: "#f43f5e", 4: "#3b82f6" };
-var CAGE_TYPE_ABBR = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
-var STATUS_LABEL_MAP = {
-  COHABITATION: "合笼",
-  SPECIAL_FEEDING: "需特殊饲养",
-  NEED_DIVIDE: "需分笼",
-  HEALTH_ABNORMAL: "健康异常",
-  ANIMAL_TRANSFER: "动物转移",
-  NORMAL: "正常"
-};
 
 var STATUS_ABBR = {
   COHABITATION: "合",
@@ -170,14 +150,10 @@ var STATUS_ABBR = {
   ANIMAL_TRANSFER: "迁"
 };
 
-var COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-var ROWS = 10;
 var BRAND = "#ac1736";
 var PAGE_BG = "#eef0f6";
 // shelveId → cage_shelf_index.id（shelfIndexId），学生申请池接口用（来自 full-tree，非 local-grid）
 var shelfIndexIdMap = {};
-// 当前登录账号 id（统一人员口径 accountId，与 divisionAssignees[].id 对齐），onLoad 时从 springUserInfo 读入
-var currentAccountId = '';
 
 /* ================================================================== */
 /*  Helpers                                                             */
@@ -283,9 +259,16 @@ function buildModeOptions(isStaffView, visibleModes) {
     for (var j = 0; j < visibleModes.length; j++) {
       if (byKey[visibleModes[j]]) out.push(byKey[visibleModes[j]]);
     }
-    return out;
+    return withModeColors(out);
   }
-  return base;
+  return withModeColors(base);
+}
+
+/** 给模式项补上高亮色（与 Web CAGE_MODE_META 同一套色）：顶栏与左下角模式坞共用一份 */
+function withModeColors(list) {
+  return (list || []).map(function (m) {
+    return Object.assign({}, m, { color: MODE_COLOR[m.key] || '' });
+  });
 }
 
 /** 认领状态中文标签（我的申请列表用） */
@@ -302,302 +285,6 @@ function claimStatusLabel(status) {
   return map[status] || status || '—';
 }
 
-/* ================================================================== */
-/*  getDominantStatusCode (ported from H5 CageCellOverlays.tsx)         */
-/* ================================================================== */
-
-function normalizeStatuses(raw) {
-  if (!raw) return [];
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw); } catch (e) { return []; }
-  }
-  if (Array.isArray(raw)) return raw;
-  return [];
-}
-
-function computeStatusesFromCageBoxInfo(cageBoxInfo) {
-  if (!cageBoxInfo) return [];
-  var results = [];
-  var yn = function(k) { return cageBoxInfo[k] === 1 || cageBoxInfo[k] === "1"; };
-  var hasText = function(k) {
-    return typeof cageBoxInfo[k] === "string" && (cageBoxInfo[k] || "").trim() !== "";
-  };
-  if (hasText("ClosingDate")) {
-    results.push({ code: "COHABITATION", label: "合笼" });
-  }
-  if (yn("NeedFeedingYn")) {
-    results.push({ code: "SPECIAL_FEEDING", label: "需特殊饲养" });
-  }
-  if (yn("NeedDivideYn")) {
-    results.push({ code: "NEED_DIVIDE", label: "需分笼" });
-  }
-  if (yn("AbnormalHealthYn")) {
-    results.push({ code: "HEALTH_ABNORMAL", label: "健康异常" });
-  }
-  if (yn("NeedTransferYn")) {
-    results.push({ code: "ANIMAL_TRANSFER", label: "动物转移" });
-  }
-  if (results.length === 0) {
-    results.push({ code: "NORMAL", label: "正常" });
-  }
-  return results;
-}
-
-function getDominantStatusCode(specialStatuses, cageBoxInfo) {
-  var list = normalizeStatuses(specialStatuses);
-  // Fallback: compute from cageBoxInfo if specialStatuses is empty or only NORMAL
-  if (list.length === 0 || (list.length === 1 && list[0].code === "NORMAL")) {
-    var fallback = computeStatusesFromCageBoxInfo(cageBoxInfo);
-    if (fallback.length > 0 && !(fallback.length === 1 && fallback[0].code === "NORMAL")) {
-      list = fallback;
-    }
-  }
-  var codes = {};
-  for (var i = 0; i < list.length; i++) {
-    codes[list[i].code] = true;
-  }
-  var codeKeys = Object.keys(codes);
-  // No status data at all → treat as NORMAL
-  if (codeKeys.length === 0) return "NORMAL";
-  // Only NORMAL flag → use NORMAL color
-  if (codes["NORMAL"] && codeKeys.length === 1) return "NORMAL";
-  for (var j = 0; j < STATUS_BG_PRIORITY.length; j++) {
-    if (codes[STATUS_BG_PRIORITY[j]]) return STATUS_BG_PRIORITY[j];
-  }
-  return "NORMAL"; // fallback: unrecognized codes → use normal color
-}
-
-function getCellStyle(cell) {
-  if (cell.empty) {
-    return "background-color: #f1f5f9; border: 1px solid #cbd5e1;";
-  }
-  // 非本组笼位（visible=false）不再用黄色高亮，改走特殊状态色，与 admin 视图/Web/H5 一致；
-  // 「受限」通过格子内的 *** 文本体现，颜色不再区分权限。
-  // 合并已有状态 + 缓存动作 → 统一分色
-  var bgColors = [];
-  (cell.specialStatuses || []).forEach(function(s) {
-    var sc = colorFor(s.code);
-    if (s.code !== "NORMAL" && sc) bgColors.push(sc.bg);
-  });
-  // 缓存动作色（逗号分隔 → 逐个加入分色）
-  if (cell._cachedBg) {
-    var cacheColors = cell._cachedBg.split(',');
-    for (var ci = 0; ci < cacheColors.length; ci++) {
-      if (cacheColors[ci]) bgColors.push(cacheColors[ci]);
-    }
-  }
-  if (bgColors.length >= 2) {
-    var n = bgColors.length;
-    var stops = [];
-    for (var i = 0; i < n; i++) {
-      var pct = Math.round((i / n) * 100);
-      var pctNext = Math.round(((i + 1) / n) * 100);
-      stops.push(bgColors[i] + " " + pct + "%, " + bgColors[i] + " " + pctNext + "%");
-    }
-    return "background: linear-gradient(to bottom, " + stops.join(", ") + "); border: 1px solid #cbd5e1;";
-  }
-  if (bgColors.length === 1) return "background-color: " + bgColors[0] + "; border: 1px solid #cbd5e1;";
-  var code = cell._dominantCode || getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
-  cell._dominantCode = code;
-  var c = colorFor(code);
-  return "background-color: " + c.bg + "; border: 1px solid " + c.border + ";";
-}
-
-function getDominantCodeLabel(code) {
-  return STATUS_LABEL_MAP[code] || code || "正常";
-}
-
-/* ================================================================== */
-/*  Grid Building（对齐 H5：后端 position 为 A-1…H-10，grid 已含 80 格） */
-/* ================================================================== */
-
-function toPositionLabel(x, y) {
-  var col = COLUMNS[Math.max(0, Math.min(7, Number(x) - 1))] || 'A';
-  return col + '-' + y;
-}
-
-function resolveAnimalCageType(cell) {
-  var ct = cell.animalCageType;
-  if (ct != null && ct !== '') ct = Number(ct);
-  if ((ct == null || isNaN(ct)) && cell.cageBoxInfo && cell.cageBoxInfo.AnimalCageType != null) {
-    ct = Number(cell.cageBoxInfo.AnimalCageType);
-  }
-  // 回退：从 stateLabel 推断 cageType（animalCageType 为 null 时）
-  if ((ct == null || isNaN(ct)) && cell.stateLabel) {
-    var sl = String(cell.stateLabel);
-    if (sl.indexOf('等待分配') >= 0) ct = 1;
-    else if (sl.indexOf('空笼盒') >= 0) ct = 2;
-    else if (sl.indexOf('饲养') >= 0) ct = 3;
-    else if (sl.indexOf('异常') >= 0) ct = 4;
-  }
-  // 完全无法推断且非空位 → 有 PI 或 cageBoxCode 则至少是饲养中（对齐 admin/student/H5 页面逻辑）
-  if ((ct == null || ct === 0 || isNaN(ct)) && !cell.empty) {
-    var cbi = cell.cageBoxInfo || {};
-    if (cell.projectPiName || cbi.cageBoxCode || cbi.CageBoxQrCode) ct = 3;
-    else ct = 1;
-  }
-  return (ct == null || ct === 0 || isNaN(ct)) ? null : ct;
-}
-
-function enrichGridCell(cell) {
-  if (!cell) return cell;
-  var enriched = {};
-  var key;
-  for (key in cell) {
-    if (Object.prototype.hasOwnProperty.call(cell, key)) {
-      enriched[key] = cell[key];
-    }
-  }
-  enriched._dominantCode = getDominantStatusCode(enriched.specialStatuses, enriched.cageBoxInfo);
-  enriched._cellStyle = getCellStyle(enriched);
-  enriched._piShort = truncateText(enriched.projectPiName, 4);
-  enriched._deptShort = truncateText(enriched.departmentName, 5);
-  enriched._experimenterShort = truncateText(enriched.experimenterName, 6);
-  var ct = resolveAnimalCageType(enriched);
-  // 待到位（locked）是「已预约(空笼盒)→已预约(饲养中)」之间的过渡态：
-  // 左上角已有「未到位」徽标表意，右上角的「空」类型图标此时会误导，整体隐藏。
-  var pendingArrival = enriched.claimStatus === 'locked' || enriched.claimStatus === 'pending_approval';
-  enriched._cageTypeAbbr = pendingArrival ? '' : (CAGE_TYPE_ABBR[ct] || '');
-  // 饲养中(type 3)不显示指示灯，对齐 H5 CageCellOverlays
-  enriched._cageTypeDotColor = (pendingArrival || ct === 3) ? '' : (CAGE_TYPE_DOT_COLOR[ct] || '');
-  enriched._cageTypeLabel = CAGE_TYPE_LABEL[ct] || enriched.stateLabel || '—';
-  // 特殊饲养明细角标（右上角，形如 +食 / −水）。明细强绑定特殊饲养 → 该格必是 type 3 →
-  // 类型指示灯本就不点，两枚徽标不会抢同一个角；底色跟父状态走，不另开一套配色。
-  enriched._sfBadges = sfBadgesOf(normalizeStatuses(enriched.specialStatuses));
-  enriched._sfBadgeColor = colorFor('SPECIAL_FEEDING').border;
-  enriched._hasStatusCodes = computeStatusCodesForDisplay(enriched);
-  // 认领徽标：未到位/待审批/待释放（对齐 H5 CellButton 左上角徽标）
-  var cs = enriched.claimStatus;
-  if (cs === 'locked') enriched._claimBadge = { text: '未到位', cls: 'gcell-badge--locked' };
-  else if (cs === 'pending_approval') enriched._claimBadge = { text: '待审批', cls: 'gcell-badge--pending' };
-  else if (cs === 'pending_release_approval') enriched._claimBadge = { text: '待释放', cls: 'gcell-badge--release' };
-  // 划分名单：本人命中 → 专属标签；管家视角显示名单（wxml 按 isStaffView 渲染）
-  var divs = enriched.divisionAssignees;
-  enriched._divisionMine = false;
-  enriched._divisionNames = '';
-  if (Array.isArray(divs) && divs.length > 0) {
-    var dNames = [];
-    for (var di = 0; di < divs.length; di++) {
-      var dRow = divs[di] || {};
-      if (dRow.name) dNames.push(dRow.name);
-      if (currentAccountId && String(dRow.id) === currentAccountId) enriched._divisionMine = true;
-    }
-    enriched._divisionNames = dNames.join('、');
-  }
-  // 显示坐标反转：A-1(顶)↔A-10(底)，内容不动仅编号反转
-  enriched._displayPosition = (function(p) {
-    var m = /^([A-H])-(\d+)$/.exec(p);
-    if (m) return m[1] + '-' + (11 - parseInt(m[2]));
-    var m2 = /^(\d+)-(\d+)$/.exec(p);
-    if (m2) { var col = COLUMNS[Math.max(0, Math.min(7, Number(m2[1]) - 1))] || 'A'; return col + '-' + (11 - parseInt(m2[2])); }
-    return p;
-  })(enriched.position || '');
-  return enriched;
-}
-
-function buildGrid(gridCells) {
-  var source = gridCells || [];
-  // 与 H5 / MobileCageShelfTab 一致：优先直接使用后端返回的 80 格序列
-  if (source.length > 0) {
-    return source.map(enrichGridCell);
-  }
-  // 兜底：无数据时生成 8×10 空位占位（position 必须为 A-1 格式）
-  var cells = [];
-  var y, x, position;
-  for (y = 1; y <= ROWS; y++) {
-    for (x = 1; x <= COLUMNS.length; x++) {
-      position = toPositionLabel(x, y);
-      cells.push({
-        x: x,
-        y: y,
-        position: position,
-        empty: true,
-        visible: true,
-        _cellStyle: 'background-color: #f1f5f9; border: 1px solid #cbd5e1;'
-      });
-    }
-  }
-  return cells;
-}
-
-function truncateText(text, maxLen) {
-  if (!text) return '';
-  var s = String(text).trim();
-  if (s.length > maxLen) return s.substring(0, maxLen) + '…';
-  return s;
-}
-
-function computeStatusCodesForDisplay(cell) {
-  var raw = cell.specialStatuses;
-  if (!raw || (Array.isArray(raw) && raw.length === 0)) {
-    var bi = cell.cageBoxInfo;
-    if (!bi) return '';
-    var parts = [];
-    if (bi["ClosingDate"]) parts.push("合笼");
-    if (bi["NeedFeedingYn"] === 1) parts.push("需特殊饲养");
-    if (bi["NeedDivideYn"] === 1) parts.push("需分笼");
-    if (bi["AbnormalHealthYn"] === 1) parts.push("健康异常");
-    if (bi["NeedTransferYn"] === 1) parts.push("动物转移");
-    return parts.length > 0 ? parts.join("+") : "";
-  }
-  if (Array.isArray(raw)) {
-    var codes = [];
-    for (var i = 0; i < raw.length; i++) {
-      if (raw[i].code !== "NORMAL") codes.push(raw[i].code);
-    }
-    return codes.join("+");
-  }
-  return "";
-}
-
-function ynFlag(cageBoxInfo, key) {
-  if (!cageBoxInfo) return false;
-  var v = cageBoxInfo[key];
-  return v === 1 || v === "1";
-}
-
-function getSpecialStatusList(cell) {
-  var list = normalizeStatuses(cell.specialStatuses);
-  if (list.length === 0 || (list.length === 1 && list[0].code === "NORMAL")) {
-    list = computeStatusesFromCageBoxInfo(cell.cageBoxInfo);
-  }
-  var out = [];
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].code !== "NORMAL") out.push(list[i]);
-  }
-  return out;
-}
-
-/**
- * 特殊饲养明细角标文案：需加食 → 「+食」、勿加水 → 「−水」。
- * 记法与 Web/H5 同源（features/cage-shelf/constants.ts compactDetailBadgeText）：
- * 首字「勿/不/禁/无」= 否定（−），其余为肯定（+），取末字为对象。改一处要同步三端。
- */
-function sfBadgeText(label) {
-  var t = String(label == null ? '' : label).trim();
-  if (t.length < 2) return t;
-  return (/^[勿不禁无]/.test(t) ? '−' : '+') + t.charAt(t.length - 1);
-}
-
-/**
- * 该格此刻的明细角标。强绑定「需特殊饲养」：父状态不在同一份状态列表里就一律不显示，
- * 所以不会出现「明细角标孤零零挂着」的情况。脱敏笼位后端已把 specialStatuses 置空 → 自然为空。
- */
-function sfBadgesOf(list) {
-  var sfOn = false;
-  var picked = [];
-  for (var i = 0; i < (list || []).length; i++) {
-    var s = list[i];
-    if (!s || !s.code) continue;
-    if (s.code === 'SPECIAL_FEEDING') sfOn = true;
-    else if (s.code.indexOf('SF_') === 0) picked.push(s);
-  }
-  if (!sfOn) return [];
-  return picked.map(function(s) {
-    var label = s.label || s.code.replace(/^SF_/, '');
-    return { code: s.code, text: sfBadgeText(label), label: label };
-  });
-}
 
 function parseImageUrlLines(text) {
   if (!text) return [];
@@ -678,46 +365,6 @@ function getActiveShelveId(pageData) {
   return "";
 }
 
-/** 从 roomName 提取父房间 key（例：201A → 201；210A → 210） */
-function extractParentRoomKey(roomName) {
-  var m = /^(\d+)/.exec(roomName || '');
-  return m ? m[1] : (roomName || '其他');
-}
-
-/** 校区 → 父房间 → 子房间(笼架组) → 笼架 三级分组 */
-function groupShelvesByCampus(shelves) {
-  var campusMap = {};
-  var campusOrder = [];
-  (shelves || []).forEach(function(s) {
-    var cn = s.campusName || "其他";
-    var rn = s.roomName || "其他";
-    var pr = extractParentRoomKey(rn);   // 父房间：201A → 201
-    if (!campusMap[cn]) {
-      campusMap[cn] = { campusName: cn, rooms: [], roomMap: {} };
-      campusOrder.push(cn);
-    }
-    var cm = campusMap[cn];
-    if (!cm.roomMap[pr]) {
-      var room = { roomName: pr, shelfGroups: [], groupMap: {}, hasHighlight: false };
-      cm.roomMap[pr] = room;
-      cm.rooms.push(room);
-    }
-    var rm = cm.roomMap[pr];
-    if (!rm.groupMap[rn]) {
-      var sg = { key: rn, name: rn, shelves: [], hasHighlight: false, expanded: false,
-                 c1: 0, c2: 0, c3: 0, c4: 0 };
-      rm.groupMap[rn] = sg;
-      rm.shelfGroups.push(sg);
-    }
-    rm.groupMap[rn].shelves.push(s);
-    if (s.highlight) {
-      rm.hasHighlight = true;
-      rm.groupMap[rn].hasHighlight = true;
-    }
-  });
-  return campusOrder.map(function(k) { return campusMap[k]; });
-}
-
 /* ================================================================== */
 /*  Page Definition                                                      */
 /* ================================================================== */
@@ -726,6 +373,7 @@ Page({
   data: {
     loading: true,
     error: '',
+    refreshing: false,        // 仅驱动「正在刷新」提示，不走 loading 以免卸载列表
     gridLoading: false,       // grid 独立加载态，不共用 list 的 loading（避免切 grid 时销毁列表 DOM 丢滚动）
     gridError: '',
     screen: 'list',           // 'list' | 'grid'
@@ -946,7 +594,7 @@ Page({
       var rawUi = wx.getStorageSync(springAuth.KEYS.USER_INFO);
       ui = rawUi ? (typeof rawUi === 'string' ? JSON.parse(rawUi) : rawUi) : null;
     } catch (e) { ui = null; }
-    currentAccountId = (ui && ui.id != null) ? String(ui.id) : '';
+    cageCellVisual.setAccountId(ui && ui.id != null ? ui.id : '');
     self._myGroupName = (ui && ui.projectGroupName) || '';
 
     // 拉取用户自定义配色（与 web/H5 共享 /v1/cage-shelves/user-colors），失败回退默认色
@@ -1033,9 +681,10 @@ Page({
   /*  Data Loading                                                        */
   /* ------------------------------------------------------------------ */
 
-  loadShelves: function() {
+  loadShelves: function(silent) {
     var self = this;
-    self.setData({ loading: true, error: '' });
+    // silent：下拉刷新走的静默路径，不碰 loading，列表不卸载、滚动位置不丢
+    if (!silent) self.setData({ loading: true, error: '' });
 
     var p1 = springAuth.springRequest({
       url: '/api/student/mobile/cage-shelves/all',
@@ -1048,9 +697,10 @@ Page({
       data: {}
     });
 
-    Promise.all([p1, p2]).then(function(results) {
+    return Promise.all([p1, p2]).then(function(results) {
       var p = unwrap(results[0]);
       if (!p.ok) {
+        if (silent) { wx.showToast({ title: p.message || '刷新失败', icon: 'none' }); return; }
         self.setData({ loading: false, error: p.message });
         return;
       }
@@ -1079,7 +729,7 @@ Page({
         }
       }
 
-      var campusGroups = groupShelvesByCampus(shelves);
+      var campusGroups = cageTreeGrouping.groupShelvesByCampus(shelves);
       // 计算房间 & 笼架组两级聚合计数
       for (var ci = 0; ci < campusGroups.length; ci++) {
         var cg = campusGroups[ci];
@@ -1149,6 +799,7 @@ Page({
         self._autoJumpToHighlightTarget(self.data.highlightTarget, shelves, campusGroups);
       }
     }).catch(function(e) {
+      if (silent) { wx.showToast({ title: (e && e.message) || '刷新失败', icon: 'none' }); return; }
       self.setData({ loading: false, error: (e && e.message) || '加载失败' });
     });
   },
@@ -1166,7 +817,7 @@ Page({
     var campusName = target.campusName || '';
     // 后端返回完整房间名如 210A，但列表 room 组用父键如 210
     var roomName = target.roomName || '';
-    var roomParentKey = extractParentRoomKey(roomName);
+    var roomParentKey = cageTreeGrouping.extractParentRoomKey(roomName);
     console.log('[mp-jump] searching campus="' + campusName + '" room="' + roomName + '" parentKey="' + roomParentKey + '"');
 
     // 打印 campusGroups 结构用于调试
@@ -1265,9 +916,30 @@ Page({
     self.loadShelves();
   },
 
-  onScrollRefresh: function() {
+  /* ── 整页下拉刷新（原生 enablePullDownRefresh）────────────────────
+     刷新挂在页面级：列表拖到顶后继续下拉，连带顶部搜索框一起被拽下来。
+     自定义导航栏下微信不渲染它自带的指示器，这里自己补一个「正在刷新」提示。
+     兜底：万一列表没在顶端也触发了，立刻收掉指示器、不重载数据。 */
+  onListScroll: function (e) {
+    this._listAtTop = ((e.detail && e.detail.scrollTop) || 0) <= 0;
+  },
+
+  onPullDownRefresh: function () {
     var self = this;
-    self.loadShelves();
+    if (self._listAtTop === false) {
+      wx.stopPullDownRefresh();
+      return;
+    }
+    self.setData({ refreshing: true });
+    var startedAt = Date.now();
+    self.loadShelves(true).then(function () {
+      // 接口太快时提示会一闪而过，兜一个最短显示时间，别做成闪屏
+      var wait = Math.max(0, 400 - (Date.now() - startedAt));
+      setTimeout(function () {
+        self.setData({ refreshing: false });
+        wx.stopPullDownRefresh();
+      }, wait);
+    });
   },
 
   /* ------------------------------------------------------------------ */
@@ -1817,6 +1489,13 @@ Page({
   /** 模式选择器点击 */
   onSwitchMode: function(e) {
     var mode = e.currentTarget.dataset.mode;
+    if (!mode) return;
+    this.switchMode(mode);
+  },
+
+  /** 左下角模式坞选模式（组件抛 detail.mode，复用同一套 switchMode） */
+  onDockMode: function(e) {
+    var mode = e.detail && e.detail.mode;
     if (!mode) return;
     this.switchMode(mode);
   },

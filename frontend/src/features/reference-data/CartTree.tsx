@@ -89,10 +89,47 @@ interface CartTreeProps {
   onLocateCage?: (cageId: string) => void;
   /** 只切样式：desktop 走 twin 卡片，mobile 走 student 细条；分组与判定完全同源 */
   layout?: "desktop" | "mobile";
+  /** 受控分组视角（移动端抽屉标题行持有切换器时传）；不传则组件内部自管，PC 不受影响 */
+  mode?: CartTreeMode;
+  onModeChange?: (m: CartTreeMode) => void;
+  /** 标题行已经有切换器时置 true，组件内不再重复画一份 */
+  hideModeToggle?: boolean;
 }
 
-export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop", maxQtyPerCage }: CartTreeProps) {
-  const [mode, setMode] = useState<CartTreeMode>("aup-user-spec");
+/**
+ * 分组视角切换器（AUP→实验员 / 规格→实验员）。PC 由 CartTree 内部渲染，
+ * 移动端由购物车抽屉的标题行渲染 —— 位置不同但必须是同一个控件，
+ * 复制一份按钮迟早两边样式和文案漂开。
+ */
+export function CartTreeModeToggle({
+  mode,
+  onChange,
+  mobile,
+}: {
+  mode: CartTreeMode;
+  onChange: (m: CartTreeMode) => void;
+  mobile?: boolean;
+}) {
+  const cls = (on: boolean) =>
+    mobile
+      ? `rounded-full px-2.5 py-0.5 text-[10px] ${on ? "bg-[var(--student-primary)] text-white" : "border border-[var(--student-hairline)] text-[var(--student-mute)]"}`
+      : `rounded-full px-2.5 py-0.5 text-[10px] ${on ? "bg-sky-600 text-white" : "border border-[var(--twin-hairline)] text-[var(--twin-mute)]"}`;
+  return (
+    <div className="flex shrink-0 gap-1">
+      <button type="button" className={cls(mode === "aup-user-spec")} onClick={() => onChange("aup-user-spec")}>
+        AUP→实验员
+      </button>
+      <button type="button" className={cls(mode === "spec-user")} onClick={() => onChange("spec-user")}>
+        规格→实验员
+      </button>
+    </div>
+  );
+}
+
+export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop", maxQtyPerCage, mode: modeProp, onModeChange, hideModeToggle }: CartTreeProps) {
+  const [innerMode, setInnerMode] = useState<CartTreeMode>("aup-user-spec");
+  const mode = modeProp ?? innerMode;
+  const setMode = onModeChange ?? setInnerMode;
   const groups = useMemo(() => buildCartTree(lines, mode), [lines, mode]);
   const mobile = layout === "mobile";
 
@@ -107,34 +144,75 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
         : null;
 
     if (mobile) {
+      // 紧凑三行：主行（品名 + 规格 + 状态徽标）/ 副行（笼位位置+定位 …… 金额靠右）/ 备注行（有才出现）。
+      // 原来一个字段一行（最多六行），一屏放不下两行车——小程序那边同款改法。
+      const ready = badge === "READY";
+      const hasCage = line.targetAnimalCageId != null && !!(line.targetCageLabel || line.targetCageLocation?.shelveId);
+      const showSub = hasCage || !!(line.pickupRoomName || line.collectorName || price);
       return (
-        <div key={line.key} className="flex items-center gap-2 border-b border-[var(--student-hairline)] py-2.5 last:border-b-0">
+        <div key={line.key} className="flex items-center gap-3 py-1.5">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-[var(--student-ink)]">{line.itemLabel}</p>
-            <p className="mt-0.5 text-[11px] text-[var(--student-mute)]">
-              {line.specLabel && <span>{line.specLabel} · </span>}
-              <span className="rounded bg-[var(--student-canvas-soft)] px-1 py-0.5 text-[10px]">{badge}</span>
-            </p>
-            {price && <p className="mt-0.5 text-[10px] font-semibold text-sky-700">{price}</p>}
-            {(line.pickupRoomName || line.collectorName) && (
-              <p className="mt-0.5 truncate text-[10px] text-[var(--student-mute)]">
-                {line.pickupRoomName ? `房间 ${line.pickupRoomName}` : ""}
-                {line.pickupRoomName && line.collectorName ? " · " : ""}
-                {line.collectorName ? `领用人 ${line.collectorName}` : ""}
-              </p>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm font-medium text-[var(--student-ink)]">{line.itemLabel}</span>
+              {line.specLabel && (
+                <span className="max-w-[45%] shrink-0 truncate rounded bg-[var(--student-canvas-soft)] px-1.5 py-0.5 text-[10px] text-[var(--student-body)]">
+                  {line.specLabel}
+                </span>
+              )}
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                  ready
+                    ? "bg-[var(--student-success-soft)] text-[var(--student-success)]"
+                    : "bg-[var(--student-canvas-soft)] text-[var(--student-mute)]"
+                }`}
+              >
+                {badge}
+              </span>
+            </div>
+            {showSub && (
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 overflow-hidden">
+                {/* 挂了笼位的行走「位置 + 定位」（定位 = 就地开笼位抽屉聚焦那一格）；
+                    房间领用行没有笼位，才退回落房间/领用人 */}
+                {hasCage ? (
+                  <CageLocationCell
+                    label={line.targetCageLabel}
+                    location={line.targetCageLocation}
+                    onLocate={
+                      onLocateCage && line.targetAnimalCageId != null
+                        ? () => onLocateCage(String(line.targetAnimalCageId))
+                        : undefined
+                    }
+                    className="text-[10px] text-[var(--student-body)]"
+                  />
+                ) : (
+                  <>
+                    {line.pickupRoomName && (
+                      <span className="shrink-0 truncate text-[10px] text-[var(--student-mute)]">{line.pickupRoomName}</span>
+                    )}
+                    {line.collectorName && (
+                      <span className="shrink-0 truncate text-[10px] text-[var(--student-mute)]">领用人 {line.collectorName}</span>
+                    )}
+                  </>
+                )}
+                {price && <span className="ml-auto shrink-0 text-[10px] font-semibold text-sky-700">{price}</span>}
+              </div>
             )}
-            {line.remark && (
-              <p className="mt-0.5 truncate text-[10px] text-[var(--student-ink)]">备注：{line.remark}</p>
-            )}
-            {line.packageRemark && (
-              <p className="mt-0.5 truncate text-[10px] text-[var(--student-mute)]">包备注：{line.packageRemark}</p>
+            {(line.remark || line.packageRemark) && (
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 overflow-hidden">
+                {line.remark && (
+                  <span className="truncate text-[10px] text-[var(--student-ink)]">备注：{line.remark}</span>
+                )}
+                {line.packageRemark && (
+                  <span className="truncate text-[10px] text-[var(--student-mute)]">包备注：{line.packageRemark}</span>
+                )}
+              </div>
             )}
           </div>
           {canEdit ? (
             <div className="flex shrink-0 items-center gap-1">
-              <button type="button" onClick={() => onQtyChange(line, line.qty - 1)} className="size-6 rounded border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-xs font-bold text-[var(--student-ink)]">−</button>
+              <button type="button" onClick={() => onQtyChange(line, line.qty - 1)} className="flex size-6 items-center justify-center rounded border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-xs font-bold text-[var(--student-ink)]">−</button>
               <span className="w-6 text-center text-xs font-semibold tabular-nums">{line.qty}</span>
-              <button type="button" disabled={atCap} title={atCap ? `单个笼位最多放 ${maxQtyPerCage} 只` : undefined} onClick={() => onQtyChange(line, line.qty + 1)} className="size-6 rounded bg-[var(--student-primary)] text-xs font-bold text-white disabled:bg-slate-300">+</button>
+              <button type="button" disabled={atCap} title={atCap ? `单个笼位最多放 ${maxQtyPerCage} 只` : undefined} onClick={() => onQtyChange(line, line.qty + 1)} className="flex size-6 items-center justify-center rounded bg-[var(--student-primary)] text-xs font-bold text-white disabled:bg-slate-300">+</button>
             </div>
           ) : (
             <span className="shrink-0 text-xs font-semibold tabular-nums">×{line.qty}</span>
@@ -195,11 +273,6 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
     );
   };
 
-  const toggleClass = (on: boolean) =>
-    mobile
-      ? `rounded-full px-2.5 py-0.5 text-[10px] ${on ? "bg-[var(--student-primary)] text-white" : "border border-[var(--student-hairline)] text-[var(--student-mute)]"}`
-      : `rounded-full px-2.5 py-0.5 text-[10px] ${on ? "bg-sky-600 text-white" : "border border-[var(--twin-hairline)] text-[var(--twin-mute)]"}`;
-
   const groupTitleClass = mobile
     ? "text-[11px] font-semibold text-[var(--student-ink)]"
     : "text-[11px] font-semibold text-sky-700";
@@ -208,14 +281,9 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
 
   return (
     <>
-      {isPi && (
-        <div className="mb-2 flex gap-1">
-          <button type="button" className={toggleClass(mode === "aup-user-spec")} onClick={() => setMode("aup-user-spec")}>
-            AUP→实验员
-          </button>
-          <button type="button" className={toggleClass(mode === "spec-user")} onClick={() => setMode("spec-user")}>
-            规格→实验员
-          </button>
+      {isPi && !hideModeToggle && (
+        <div className="mb-2">
+          <CartTreeModeToggle mode={mode} onChange={setMode} mobile={mobile} />
         </div>
       )}
 
@@ -226,7 +294,16 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
       ) : (
         <div className="space-y-3">
           {groups.map((g) => (
-            <div key={g.key} className="space-y-1.5">
+            /* 移动端：一个分组一张卡（白底 + 圆角 + 微投影），与物品列表/侧栏同一套立体语言；
+               行本身照小程序保持平铺紧凑（py-1.5、不加分隔线），不在行上再加卡片 */
+            <div
+              key={g.key}
+              className={
+                mobile
+                  ? "space-y-1.5 rounded-[var(--student-radius-md)] bg-[var(--student-surface)] p-3 shadow-[0_2px_7px_rgba(15,23,42,0.06)]"
+                  : "space-y-1.5"
+              }
+            >
               <div className={groupTitleClass}>{g.title}</div>
               {g.subGroups.map((sg) => (
                 <div key={sg.key} className="space-y-1 pl-2">

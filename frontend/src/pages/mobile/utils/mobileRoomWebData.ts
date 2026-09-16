@@ -11,7 +11,7 @@ import {
 } from "./roomDashboard";
 import { withRoomPreviewMeta, type RoomPreviewMeta } from "./roomPreviewMeta";
 import { normalizeRoom } from "./roomDashboard";
-import { mergeMyRooms, type ScanAnalyzeDto } from "./twinScanAnalyze";
+import { buildMyRooms, type ScanAnalyzeDto } from "./twinScanAnalyze";
 import {
   normalizeMobileScanAnalyze,
   type NormalizedMobileScanAnalyze,
@@ -77,7 +77,7 @@ export async function fetchMobileRoomsPageBundle(token: string): Promise<MobileR
 
   const dtoForMerge: ScanAnalyzeDto | null =
     analyze.success === true ? (analyze as ScanAnalyzeDto) : null;
-  const myRaw = mergeMyRooms(overviewRows, dtoForMerge);
+  const myRaw = buildMyRooms(overviewRows, dtoForMerge);
   const myRoomPreviews = myRaw.map((r) => overviewToPreviewMeta(r));
 
   return {
@@ -101,7 +101,7 @@ export async function fetchStudentMobileRoomsPageBundle(): Promise<MobileRoomsPa
 
   const dtoForMerge: ScanAnalyzeDto | null =
     analyze.success === true ? (analyze as ScanAnalyzeDto) : null;
-  const myRaw = mergeMyRooms(overviewRows, dtoForMerge);
+  const myRaw = buildMyRooms(overviewRows, dtoForMerge);
   const myRoomPreviews = myRaw.map((r) => overviewToPreviewMeta(r));
 
   return {

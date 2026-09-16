@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "AI 画像",
+  "navigationBarTitleText": "预测",
   "usingComponents": {
     "van-icon": "@vant/weapp/icon/index"
   }

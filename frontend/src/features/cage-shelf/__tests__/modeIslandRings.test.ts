@@ -62,26 +62,26 @@ describe("ringSlotOf", () => {
     expect(ringSlotOf(7, rings).r).toBe(144);
   });
 
-  it("每圈都在 180°→270° 这段可见弧内", () => {
+  it("每圈都在 165°→270° 这段可见弧内", () => {
     for (let i = 0; i < 8; i++) {
       const { ang } = ringSlotOf(i, rings);
-      expect(ang).toBeGreaterThanOrEqual(180);
+      expect(ang).toBeGreaterThanOrEqual(165);
       expect(ang).toBeLessThanOrEqual(270);
     }
   });
 
-  it("内圈第一个正好在最左（180°）", () => {
-    expect(ringSlotOf(0, rings).ang).toBe(180);
+  it("内圈第一个落在弧的起点（165°，比最左再多让 15°）", () => {
+    expect(ringSlotOf(0, rings).ang).toBe(165);
   });
 
   it("外圈按自身个数均分，不留下空隙", () => {
     const first = ringSlotOf(3, rings).ang;
     const last = ringSlotOf(7, rings).ang;
-    expect(first).toBe(180);
+    expect(first).toBe(165);
     expect(last).toBe(270);
   });
 
   it("越界索引有兜底，不会返回 undefined", () => {
-    expect(ringSlotOf(99, rings)).toEqual({ ang: 180, r: 82 });
+    expect(ringSlotOf(99, rings)).toEqual({ ang: 165, r: 82 });
   });
 });

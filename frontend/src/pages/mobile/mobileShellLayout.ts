@@ -7,7 +7,6 @@ export const MOBILE_NAV_BAR_H = 44;
 export const MOBILE_TAB_BAR_TOTAL_CSS = `calc(${MOBILE_TAB_BAR_CONTENT_H}px + env(safe-area-inset-bottom, 0px))`;
 
 /** 全屏浮层让出底部 Tab 栏（面板底边距） */
-export const MOBILE_OVERLAY_ABOVE_TAB_BOTTOM = MOBILE_TAB_BAR_TOTAL_CSS;
 
 /** 滚动内容末尾额外留白（main 已预留 Tab 高度时叠加） */
 export const MOBILE_SCROLL_END_EXTRA_PAD = "16px";

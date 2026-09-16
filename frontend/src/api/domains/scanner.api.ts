@@ -286,6 +286,10 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             asBooleanLike(safe.scanDelayEnabled) ??
             asBooleanLike(safe.scan_delay_enabled) ??
             false,
+        mobileEnterEnabled:
+            asBooleanLike(safe.mobileEnterEnabled) ??
+            asBooleanLike(safe.mobile_enter_enabled) ??
+            false,
         scanDelayButtonLabel:
             asString(safe.scanDelayButtonLabel ?? safe.scan_delay_button_label) ?? "延迟",
         scanDelayOptionsByRoom: (() => {

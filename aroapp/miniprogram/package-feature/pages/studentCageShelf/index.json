@@ -1,9 +1,12 @@
 {
   "navigationStyle": "custom",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#f7f8fa",
   "usingComponents": {
     "van-icon": "@vant/weapp/icon/index",
     "van-loading": "@vant/weapp/loading/index",
     "van-popup": "@vant/weapp/popup/index",
-    "subpage-nav-bar": "/package-feature/components/subpage-nav-bar/index"
+    "subpage-nav-bar": "/package-feature/components/subpage-nav-bar/index",
+    "mode-dock": "/package-feature/components/mode-dock/index"
   }
 }

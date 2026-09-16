@@ -7,6 +7,8 @@ const {
   filterTemplates,
   summarizeQueue,
   mapJobRow,
+  stationNameMap,
+  buildStationTabs,
   stationCapabilityText,
   stationStatusMeta,
 } = require('../miniprogram/package-feature/utils/printFormat.js');
@@ -129,8 +131,60 @@ test('mapJobRow: 完整字段映射', () => {
     statusText: '打印中',
     tone: 'info',
     timeText: '2026-09-15 14:19',
+    stationName: '',
     errorText: '打印机离线',
+    status: 'SENT',
+    stationId: '',
+    note: '',
   });
+});
+
+test('stationNameMap: 工位 id → 名称（队列要显示是哪台工位打）', () => {
+  assert.deepEqual(stationNameMap([{ id: 7, name: '一号打印机' }, { id: 9, name: '二号' }]), {
+    '7': '一号打印机',
+    '9': '二号',
+  });
+  assert.deepEqual(stationNameMap(null), {});
+  assert.deepEqual(stationNameMap([{ id: 1 }]), { '1': '1' });
+});
+
+test('mapJobRow: 传了工位映射就把 stationId 翻成工位名；拿不到则留空', () => {
+  const names = stationNameMap([{ id: 7, name: '一号打印机' }]);
+  assert.equal(mapJobRow({ id: 1, stationId: 7, status: 'PENDING' }, names).stationName, '一号打印机');
+  assert.equal(mapJobRow({ id: 2, stationId: 99, status: 'PENDING' }, names).stationName, '');
+  assert.equal(mapJobRow({ id: 3, status: 'PENDING' }, names).stationName, '');
+});
+
+test('mapJobRow: 时间取「打完 > 已发 > 创建」，备注与状态原样带出', () => {
+  const row = mapJobRow({
+    id: 1,
+    status: 'PRINTED',
+    stationId: 7,
+    note: '放到 302 桌上',
+    createdAt: '2026-09-15T09:00:00',
+    sentAt: '2026-09-15T09:05:00',
+    printedAt: '2026-09-15T09:06:00',
+  });
+  assert.equal(row.timeText, '2026-09-15 09:06');
+  assert.equal(row.note, '放到 302 桌上');
+  assert.equal(row.status, 'PRINTED');
+  assert.equal(row.stationId, '7');
+});
+
+test('buildStationTabs: 每台工位一组，进行中排前、角标只数进行中', () => {
+  const stations = [{ id: 7, name: '一号打印机' }, { id: 9, name: '二号' }];
+  const jobs = [
+    { id: 1, stationId: 7, status: 'PRINTED', createdAt: '2026-09-15T10:00:00' },
+    { id: 2, stationId: 7, status: 'PENDING', createdAt: '2026-09-15T11:00:00' },
+    { id: 3, stationId: 99, status: 'FAILED', createdAt: '2026-09-15T12:00:00' },
+  ];
+  const tabs = buildStationTabs(jobs, stations);
+  assert.deepEqual(tabs.map((t) => t.id), ['7', '9', '99'], '以工位清单为序，记录里多出来的工位补在后面');
+  assert.equal(tabs[0].name, '一号打印机');
+  assert.equal(tabs[0].count, 1, '角标=进行中数量');
+  assert.deepEqual(tabs[0].rows.map((r) => r.id), [2, 1], '进行中的排前面');
+  assert.equal(tabs[1].rows.length, 0, '没有记录的工位也给一个空 tab');
+  assert.equal(tabs[2].name, '99', '清单里没有的工位名退回 id');
 });
 
 test('mapJobRow: tone 与 statusText 映射固定', () => {

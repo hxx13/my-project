@@ -52,6 +52,7 @@
         "pages/studentMaterialRequests/index",
         "pages/studentGroupActivity/index",
         "pages/studentCageShelf/index",
+        "pages/cardPrint/index",
         "pages/studentAccessRecords/index",
         "pages/studentViolations/index",
         "pages/materialAdmin/index",

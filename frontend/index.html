@@ -3,6 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <script id="kernel-polyfills">
+      /* 微信安卓内置浏览器（XWEB，Chromium 86）缺少的运行期 API 垫片。
+         必须是经典内联脚本：打包器把依赖切成独立 chunk，而 chunk 的执行早于入口 chunk
+         的模块体，所以写在 main.tsx 里 import 一律太晚——framer-motion 在 ui-vendor 的
+         模块初始化期就调用 queueMicrotask。经典脚本在解析期执行，早于所有 module 脚本。
+         只垫 Chromium 86 真正没有、且本项目在用的 API；86 已有的不垫。 */
+      (function () {
+        if (!Object.hasOwn) {
+          Object.hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k) }
+        }
+        function atImpl(i) {
+          i = Math.trunc(i) || 0
+          return i < 0 ? this[this.length + i] : this[i]
+        }
+        if (!Array.prototype.at) Array.prototype.at = atImpl
+        if (!String.prototype.at) String.prototype.at = atImpl
+        if (!Array.prototype.findLast) {
+          Array.prototype.findLast = function (fn, thisArg) {
+            for (var i = this.length - 1; i >= 0; i--) {
+              if (fn.call(thisArg, this[i], i, this)) return this[i]
+            }
+          }
+        }
+        if (!Array.prototype.findLastIndex) {
+          Array.prototype.findLastIndex = function (fn, thisArg) {
+            for (var i = this.length - 1; i >= 0; i--) {
+              if (fn.call(thisArg, this[i], i, this)) return i
+            }
+            return -1
+          }
+        }
+        if (!globalThis.structuredClone) {
+          /* 本项目只拿它做 JSON 结构快照（表单布局的撤销/重做），JSON 往返语义等价 */
+          globalThis.structuredClone = function (v) { return JSON.parse(JSON.stringify(v)) }
+        }
+      })()
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

@@ -84,6 +84,14 @@ export default defineConfig(({ mode }) => ({
     build: {
         outDir: '../src/main/resources/static',
         emptyOutDir: true,
+        // 默认 target（baseline-widely-available ≈ Chromium 107）会让微信安卓内置浏览器白屏：
+        // XWEB 86 解析不了 ??= / ||= / &&=，X5（Chromium 53/57）连 ES module 都不认。
+        // 这里只解决“语法”层面，target 给到 chrome61 留足余量；实际可守的底线是 XWEB 86。
+        // 更低的内核需要 ResizeObserver / replaceAll / Promise.any / Intl.RelativeTimeFormat
+        // 这些没法垫片的东西，别把底线往下调。
+        // Chromium 86 缺少的运行期 API 垫片在 index.html 的内联脚本里（不能放 main.tsx，
+        // 见那里的注释）。
+        target: 'chrome61',
         cssMinify: 'esbuild',
         chunkSizeWarningLimit: 300,
         rollupOptions: {

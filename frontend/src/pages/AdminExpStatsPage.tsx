@@ -40,6 +40,8 @@ const REVIEW_OPTIONS = [
 const FEED_SOURCE_OPTIONS = [
   { value: "", label: "全部渠道" },
   { value: "WEB_SCAN", label: "Web 扫码" },
+  { value: "MOBILE_ROOM", label: "移动端" },
+  { value: "LOCAL_SCAN", label: "本地扫码" },
   { value: "TWIN_AUTO_SIGNOUT", label: "自动签退" },
   { value: "ARO_OFFICIAL_UNMATCHED", label: "官方登记" },
 ];
@@ -66,6 +68,8 @@ function reviewBadge(status: number): { label: string; cls: string } {
 function feedSourceLabel(fs: string | null): string {
   const map: Record<string, string> = {
     WEB_SCAN: "Web扫码",
+    MOBILE_ROOM: "移动端",
+    LOCAL_SCAN: "本地扫码",
     TWIN_AUTO_SIGNOUT: "自动签退",
     ARO_OFFICIAL_UNMATCHED: "官方登记",
   };

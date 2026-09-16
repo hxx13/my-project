@@ -251,11 +251,11 @@ function DockIsland({ current, modes, onPick, onHover, hovered, rect, onToggleVa
 
 /** 每圈半径递增。一圈能放几个不写死，由该圈弧长推算 */
 const RING_RADII = [82, 144, 206, 268];
-/** 按钮直径 36 + 间隙，用于把弧长换算成「能排下几个」 */
-const SLOT_PITCH = 42;
-/** 展开弧的跨度：180°→270°，即圆心在右下角时唯一可见的象限 */
-const ARC_SPAN_DEG = 90;
-const ARC_START_DEG = 180;
+/** 按钮直径 44 + 间隙，用于把弧长换算成「能排下几个」（按钮从 36 提到 44，手机上好点） */
+const SLOT_PITCH = 50;
+/** 展开弧的跨度：165°→270°，把起点再往前让 15°（底边还有余量，弧长够就不必把半径撑大） */
+const ARC_SPAN_DEG = 105;
+const ARC_START_DEG = 165;
 
 /** 该半径的弧上能排下几个（半径越大放得越多 —— 这就是递增的来源） */
 export function ringCapacity(radius: number): number {
@@ -380,7 +380,7 @@ function RadialIsland({ current, modes, onPick, onHover, hovered, rect, onToggle
                       : undefined,
                   }}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-5 w-5" />
                 </button>
               </li>
             );
@@ -456,12 +456,12 @@ const RadialRoot = styled.div<{ $open: boolean }>`
     left: 0;
     top: 0;
     /* 负 margin 把按钮中心压到转轴点，不占用 transform —— transform 只留给反向自转 */
-    margin-left: -18px;
-    margin-top: -18px;
+    margin-left: -22px;
+    margin-top: -22px;
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: none;
     cursor: pointer;

@@ -60,19 +60,79 @@ function summarizeQueue(jobs) {
 }
 
 /** 单条打印任务 -> 展示行；入参为空返回 null。 */
-function mapJobRow(job) {
+/**
+ * 工位 id → 名称。后端 job 只给 stationId，而队列要显示「哪台工位打的」，
+ * 于是拿可选工位列表拼一张映射表（调用方拉一次 /api/print/stations 即可）。
+ */
+function stationNameMap(stations) {
+  const out = {};
+  (Array.isArray(stations) ? stations : []).forEach((s) => {
+    if (s && s.id != null) out[String(s.id)] = s.name || String(s.id);
+  });
+  return out;
+}
+
+function mapJobRow(job, stationNames) {
   if (!job) return null;
   const meta = STATUS_META[job.status] || UNKNOWN_META;
   const createdAt = job.createdAt;
+  const sid = job.stationId == null ? '' : String(job.stationId);
+  // 时间取「最后有意义的那个」：打完 > 已发 > 创建（与 web 队列弹窗同口径）
+  const at = job.printedAt || job.sentAt || createdAt;
   return {
     id: job.id,
+    status: job.status,
+    stationId: sid,
     fileName: job.fileName,
     copies: job.copies,
+    note: job.note || '',
     statusText: meta.statusText,
     tone: meta.tone,
-    timeText: createdAt ? String(createdAt).replace('T', ' ').slice(0, 16) : '',
+    timeText: at ? String(at).replace('T', ' ').slice(0, 16) : '',
     errorText: job.lastError || '',
+    // 工位名（拿不到就空：列表里那一段自动不显示）
+    stationName: stationNames && stationNames[sid] ? stationNames[sid] : '',
   };
+}
+
+/** 排队中/已发（= 还在进行中）的状态；队列计数与 tab 角标都用它 */
+const ACTIVE_STATUSES = ['PENDING', 'SENT'];
+
+/**
+ * 按工位把打印记录分组，供「每台打印机一个队列」的 tab 展示（照 web PrintQueueDialog）。
+ * 工位清单以 stations 为准（顺序稳定），记录里出现过但清单里没有的工位也补上（名字退回 id）。
+ * 每组内：进行中的排前面，其余按时间倒序。
+ */
+function buildStationTabs(jobs, stations, stationNames) {
+  const nameMap = stationNames || stationNameMap(stations);
+  const order = [];
+  const map = {};
+  const ensure = (sid) => {
+    const key = String(sid == null ? '' : sid);
+    if (!map[key]) {
+      map[key] = { id: key, name: nameMap[key] || key, count: 0, rows: [] };
+      order.push(key);
+    }
+    return map[key];
+  };
+  (Array.isArray(stations) ? stations : []).forEach((s) => { if (s && s.id != null) ensure(s.id); });
+  (Array.isArray(jobs) ? jobs : []).forEach((j) => {
+    if (!j) return;
+    const tab = ensure(j.stationId);
+    const row = mapJobRow(j, nameMap);
+    if (row) tab.rows.push(row);
+  });
+  order.forEach((key) => {
+    const tab = map[key];
+    tab.rows.sort((a, b) => {
+      const ra = ACTIVE_STATUSES.indexOf(a.status) >= 0 ? 0 : 1;
+      const rb = ACTIVE_STATUSES.indexOf(b.status) >= 0 ? 0 : 1;
+      if (ra !== rb) return ra - rb;
+      return String(b.timeText).localeCompare(String(a.timeText));
+    });
+    tab.count = tab.rows.filter((r) => ACTIVE_STATUSES.indexOf(r.status) >= 0).length;
+  });
+  return order.map((key) => map[key]);
 }
 
 /** 工位支持类型 -> 一行中文说明；空或全认不出 = 不限制。 */
@@ -103,6 +163,9 @@ function stationStatusMeta(station) {
 }
 
 module.exports = {
+  stationNameMap,
+  buildStationTabs,
+  ACTIVE_STATUSES,
   filterTemplates,
   summarizeQueue,
   mapJobRow,

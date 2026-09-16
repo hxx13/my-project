@@ -78,7 +78,10 @@
           bindtap="onRoomTap"
           data-id="{{ item.roomId }}"
         >
-          <view class="room-card {{ item.permissionKey ? 'room-card-' + item.permissionKey : '' }}">
+          <view class="room-card room-card-{{ item.permissionKey || 'unknown' }}">
+            <!-- 铭牌：深色底板 + 金色内嵌描边（无权限压暗，状态靠描边与铭牌颜色区分） -->
+            <view class="room-card-frame"></view>
+            <view wx:if="{{ item.usedCount > 0 && !item.roomLocked }}" class="room-card-live"></view>
             <view class="room-card-line room-card-line-name">
               <text
                 class="room-name"
@@ -142,6 +145,25 @@
           </view>
         </view>
 
+        <!-- 移动端自助进入（只做进入；离开仍由自动签退链路负责，不提供任何解禁入口） -->
+        <view wx:if="{{ mobileEnterEnabled && !alreadyInside }}" class="enter-section">
+          <view
+            wx:if="{{ detailRoom.enterable }}"
+            class="enter-btn {{ enterSubmitting ? 'enter-btn-disabled' : '' }}"
+            bindtap="onEnterTap"
+          >
+            <text class="enter-btn-label">{{ enterSubmitting ? '处理中…' : '进入 ' + detailRoom.roomName }}</text>
+          </view>
+          <view wx:else class="enter-btn enter-btn-disabled">
+            <text class="enter-btn-label">无法进入：{{ detailRoom.enterBlockReason || '当前不可进入' }}</text>
+          </view>
+
+          <view wx:if="{{ autoExitSeconds > 0 }}" class="enter-countdown">
+            自动签退剩余 {{ autoExitMinutes }}:{{ autoExitSecondsText }}
+          </view>
+          <view wx:if="{{ exemptExpireAt }}" class="enter-exempt">免冻结有效至 {{ exemptExpireAt }}</view>
+        </view>
+
         <!-- 延迟免冻结（与 H5 MobileRoomDetailDialog 同源） -->
         <view
           wx:if="{{ scanDelayEnabled && delayOptions.length && subjectUserId }}"
@@ -187,4 +209,21 @@
       </view>
     </scroll-view>
   </van-popup>
+
+  <!-- 进入二次确认（catchtap 阻止冒泡到详情弹窗，避免误触关闭） -->
+  <view wx:if="{{ showEnterConfirm }}" class="enter-confirm-mask" catchtap="onEnterCancel">
+    <view class="enter-confirm-card" catchtap="onEnterNoop">
+      <text class="enter-confirm-title">确认进入 {{ detailRoom.roomName }}</text>
+      <text class="enter-confirm-sub">当前 {{ detailRoom.currentRoomCount }}/{{ detailRoom.totalCapacity }} 人</text>
+      <view class="enter-confirm-actions">
+        <view class="enter-confirm-btn enter-confirm-cancel" catchtap="onEnterCancel">取消</view>
+        <view
+          class="enter-confirm-btn enter-confirm-ok {{ enterSubmitting ? 'enter-confirm-disabled' : '' }}"
+          catchtap="onEnterConfirm"
+        >
+          {{ enterSubmitting ? '处理中…' : '确认进入' }}
+        </view>
+      </view>
+    </view>
+  </view>
 </view>
