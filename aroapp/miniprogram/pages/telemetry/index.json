@@ -1,9 +1,10 @@
 {
-  "navigationBarTitleText": "温湿度",
+  "navigationStyle": "custom",
   "enablePullDownRefresh": true,
   "disableScroll": false,
   "backgroundTextStyle": "dark",
   "usingComponents": {
+    "subpage-nav-bar": "/components/subpage-nav-bar/index",
     "animal-room-telemetry": "/components/animal-room-telemetry/animal-room-telemetry"
   }
 }

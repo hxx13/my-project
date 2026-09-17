@@ -1,4 +1,8 @@
 <view class="page">
+  <!-- tab 页也带返回箭头（点了回首页）：tab 页没有上一页可退，组件里 navigateBack 失败会
+       自动 fallback 到 switchTab('/pages/index/index')，行为就是「回首页」。
+       组件自带 64px 占位，而本页是固定高度链（page→.page→.layout 都是 100%），所以不用再补 min-height。 -->
+  <subpage-nav-bar title="房间" />
   <view class="layout">
     <view class="sidebar-col">
       <scroll-view class="campus-sidebar" scroll-y>
@@ -49,7 +53,14 @@
       </view>
     </view>
 
-    <scroll-view class="room-panel" scroll-y>
+    <scroll-view
+      class="room-panel"
+      scroll-y
+      refresher-enabled="{{ true }}"
+      refresher-triggered="{{ panelRefreshing }}"
+      refresher-background="#f7f8fa"
+      bindrefresherrefresh="onPanelRefresher"
+    >
       <view class="panel-head">
         <view class="panel-head-left">
           <text class="panel-title" wx:if="{{ selectedView === 'mine' }}">我的</text>

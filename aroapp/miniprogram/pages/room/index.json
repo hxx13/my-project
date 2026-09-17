@@ -1,7 +1,7 @@
 {
-  "navigationBarTitleText": "房间",
-  "enablePullDownRefresh": true,
+  "navigationStyle": "custom",
   "usingComponents": {
+    "subpage-nav-bar": "/components/subpage-nav-bar/index",
     "van-popup": "@vant/weapp/popup/index"
   }
 }

@@ -99,49 +99,55 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "激活成功 — {doorLabel}",
                 "<h3>激活成功</h3><p>门禁 <b>{doorLabel}</b> 于 {swingTime} 刷卡激活成功。</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 激活成功\n门禁 **{doorLabel}**\n时间：{swingTime}\n\n> ARO 系统自动推送"
+                "**激活成功**\n门禁 **{doorLabel}**\n时间：{swingTime}\n"
         ));
         TEMPLATES.put("SIGNOUT_COUNTDOWN", new Template(
                 "签退倒计时 — {doorLabel}",
                 "<h3>签退倒计时</h3><p><b>{doorLabel}</b> 已启动 <b>{countdownSeconds} 秒</b> 签退倒计时。</p>"
                         + "<p>计划签退时间：{scheduledExitAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 签退倒计时\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}\n> ARO 系统自动推送"
+                "**签退倒计时**\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}"
         ));
         TEMPLATES.put("MATERIAL_REQUESTED", new Template(
                 "物资申领 — {applicantName}",
                 "<h3>新物资申领</h3><p><b>{applicantName}</b>（{applicantGroup}）提交了物资申领：</p>"
-                        + "<p>{summary}</p>"
+                        + "<table style='border-collapse:collapse;font-size:13px;margin:8px 0'>"
+                        + "<tr><th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>物资</th>"
+                        + "<th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>数量</th></tr>"
+                        + "{itemsHtml}</table>"
                         + "<p style='color:#666;font-size:12px'>提交时间：{createdAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新物资申领\n**{applicantName}**（{applicantGroup}）\n\n{summary}\n\n提交时间：{createdAt}\n> ARO 系统自动推送"
+                "**新物资申领**\n**{applicantName}**（{applicantGroup}）\n\n| 物资 | 数量 |\n|:--|--:|\n{items}\n\n提交时间：{createdAt}"
         ));
         TEMPLATES.put("MATERIAL_REVIEWED", new Template(
                 "物资申领结果 — {auditResult}",
-                "<h3>物资申领{auditResult}</h3><p><b>{applicantName}</b>，你的物资申领已<b>{auditResult}</b>。</p>"
-                        + "<p>{summary}</p>"
+                "<h3>物资申领{auditResult}</h3><p><b>{applicantName}</b>，你的物资申领<b>{auditResult}</b>。</p>"
+                        + "<table style='border-collapse:collapse;font-size:13px;margin:8px 0'>"
+                        + "<tr><th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>物资</th>"
+                        + "<th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>数量</th></tr>"
+                        + "{itemsHtml}</table>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 物资申领{auditResult}\n**{applicantName}**，你的物资申领已**{auditResult}**\n{summary}\n> ARO 系统自动推送"
+                "**物资申领{auditResult}**\n**{applicantName}**，你的物资申领**{auditResult}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}"
         ));
         TEMPLATES.put("SCAN_DELAY_REQUESTED", new Template(
                 "延迟免冻结申请 — {subjectName}",
                 "<h3>新延迟免冻结申请</h3><p><b>{subjectName}</b>（{subjectGroup}）在 <b>{roomName}</b> 申请 <b>{optionLabel}</b>。</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新延迟免冻结申请\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}\n> ARO 系统自动推送"
+                "**新延迟免冻结申请**\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}"
         ));
         TEMPLATES.put("SCAN_DELAY_REVIEWED", new Template(
                 "延迟免冻结结果 — {auditResult}",
                 "<h3>延迟免冻结{auditResult}</h3><p><b>{roomName}</b> · {optionLabel}：<b>{auditResult}</b></p>"
                         + "{rejectReason}"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 延迟免冻结{auditResult}\n**{roomName}** · {optionLabel}\n审核结果：**{auditResult}**\n> ARO 系统自动推送"
+                "**延迟免冻结{auditResult}**\n**{roomName}** · {optionLabel}\n审核结果：**{auditResult}**"
         ));
         TEMPLATES.put("VIOLATION_CREATED", new Template(
-                "违规提醒 — {title}",
+                "{title}",
                 "<h3>{title}</h3><p>来源：{source}</p><p>{summary}</p>"
                         + "<p>门禁限制：{enterLocked}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## {title}\n来源：{source}\n{summary}\n门禁限制：{enterLocked}\n> ARO 系统自动推送"
+                "**{title}**\n来源：{source}\n{summary}\n门禁限制：{enterLocked}"
         ));
         TEMPLATES.put("SCAN_DELAY_MANUAL", new Template(
                 "免冻结授权 — {roomName}",
@@ -149,7 +155,7 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p>详情：{optionLabel}</p>"
                         + "<p>操作人：{operatorName}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 免冻结已授权\n房间：**{roomName}**\n详情：{optionLabel}\n操作人：{operatorName}\n> ARO 系统自动推送"
+                "**免冻结已授权**\n房间：**{roomName}**\n详情：{optionLabel}\n操作人：{operatorName}"
         ));
 
         // ========== 采购 ==========
@@ -160,14 +166,14 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p>采购内容：{content}</p>"
                         + "<p style='color:#666;font-size:12px'>提交时间：{createdAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新采购申请\n**{applicantName}**\n采购地点：{location}\n采购内容：{content}\n提交时间：{createdAt}\n> ARO 系统自动推送"
+                "**新采购申请**\n**{applicantName}**\n采购地点：{location}\n采购内容：{content}\n提交时间：{createdAt}"
         ));
         TEMPLATES.put("PURCHASE_COMPLETED", new Template(
                 "采购办结 — {location}",
                 "<h3>采购已办结</h3><p><b>{applicantName}</b>，你在 <b>{location}</b> 的采购申请已处理完毕。</p>"
                         + "<p>{summary}</p><p>处理人：{processorName}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 采购已办结\n**{applicantName}**，你在 **{location}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送"
+                "**采购已办结**\n**{applicantName}**，你在 **{location}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}"
         ));
 
         // ========== 报修 ==========
@@ -178,37 +184,43 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p>报修内容：{content}</p>"
                         + "<p style='color:#666;font-size:12px'>提交时间：{createdAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新报修申请\n**{applicantName}**\n报修地点：{location}\n报修内容：{content}\n提交时间：{createdAt}\n> ARO 系统自动推送"
+                "**新报修申请**\n**{applicantName}**\n报修地点：{location}\n报修内容：{content}\n提交时间：{createdAt}"
         ));
         TEMPLATES.put("REPAIR_COMPLETED", new Template(
                 "报修办结 — {location}",
                 "<h3>报修已办结</h3><p><b>{applicantName}</b>，你在 <b>{location}</b> 的报修申请已处理完毕。</p>"
                         + "<p>{summary}</p><p>处理人：{processorName}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 报修已办结\n**{applicantName}**，你在 **{location}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送"
+                "**报修已办结**\n**{applicantName}**，你在 **{location}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}"
         ));
 
         // ========== 物资领用 ==========
         TEMPLATES.put("SUPPLIES_REQUESTED", new Template(
                 "物资领用 — {applicantName}",
                 "<h3>新物资领用申请</h3><p><b>{applicantName}</b> 提交了物资领用申请：</p>"
-                        + "<p>{summary}</p>"
+                        + "<table style='border-collapse:collapse;font-size:13px;margin:8px 0'>"
+                        + "<tr><th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>物资</th>"
+                        + "<th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>数量</th></tr>"
+                        + "{itemsHtml}</table>"
                         + "<p style='color:#666;font-size:12px'>提交时间：{createdAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 新物资领用申请\n**{applicantName}**\n\n{summary}\n\n提交时间：{createdAt}\n> ARO 系统自动推送"
+                "**新物资领用申请**\n**{applicantName}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}\n\n提交时间：{createdAt}"
         ));
         TEMPLATES.put("DIGEST_TEST", new Template(
                 "聚合通知测试",
                 "<h3>聚合通知测试</h3><p>{content}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送（测试）。</p>",
-                "## {title}\n{content}\n\n> ARO 系统自动推送（测试）"
+                "**{title}**\n{content}\n"
         ));
         TEMPLATES.put("SUPPLIES_COMPLETED", new Template(
                 "物资已出库",
                 "<h3>物资已出库</h3><p><b>{applicantName}</b>，你的领用物资已出库：</p>"
-                        + "<p>{summary}</p>"
+                        + "<table style='border-collapse:collapse;font-size:13px;margin:8px 0'>"
+                        + "<tr><th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>物资</th>"
+                        + "<th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>数量</th></tr>"
+                        + "{itemsHtml}</table>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
-                "## 物资已出库\n**{applicantName}**，你的领用物资已出库：\n{summary}\n> ARO 系统自动推送"
+                "**物资已出库**\n**{applicantName}**，你的领用物资已出库：\n\n| 物资 | 数量 |\n|:--|--:|\n{items}"
         ));
 
         // ========== 动物房环境遥测 ==========
@@ -220,16 +232,16 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:14px;color:#475569;margin:0 0 2px'>当前 <b style='color:#dc2626'>{currentValue}</b> / 阈值 {limitValue}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{sentAt}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 动物房环境监测</p>",
-                "## ⚠️ ARO 环境报警\n\n"
+                "**⚠️ ARO 环境报警**\n\n"
                         + "📍 {floorCode} {roomName}\n\n"
                         + "🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n\n"
                         + "🕐 {sentAt}\n\n"
-                        + "> ARO 系统自动推送",
-                "## ⚠️ ARO 环境报警\n"
+,
+                "**⚠️ ARO 环境报警**\n"
                         + "📍 {floorCode} {roomName}\n"
                         + "🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n"
                         + "🕐 {sentAt}\n"
-                        + "> ARO 系统自动推送"
+
         ));
         TEMPLATES.put("TELEMETRY_RECOVERY", new Template(
                 "✓ {floorCode} {roomName} {metricKind}已恢复",
@@ -239,16 +251,16 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:14px;color:#475569;margin:0 0 2px'>当前 {currentValue}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{recoveryAt}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 动物房环境监测</p>",
-                "## ✅ ARO 环境恢复\n\n"
+                "**✅ ARO 环境恢复**\n\n"
                         + "📍 **{floorCode} {roomName}**\n\n"
                         + "🌡️ {metricKind}已恢复正常：**{currentValue}**\n\n"
                         + "🕐 {recoveryAt}\n\n"
-                        + "> ARO 系统自动推送",
-                "## ✅ ARO 环境恢复\n"
+,
+                "**✅ ARO 环境恢复**\n"
                         + "📍 **{floorCode} {roomName}**\n"
                         + "🌡️ {metricKind}已恢复正常：**{currentValue}**\n"
                         + "🕐 {recoveryAt}\n"
-                        + "> ARO 系统自动推送"
+
         ));
 
         // ========== 刷卡失败告警 ==========
@@ -266,14 +278,14 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "📞 {phone}\n\n"
                         + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n\n"
                         + "🕐 {swingTime}\n\n"
-                        + "> ARO 系统自动推送",
+,
                 "⚠️ ARO 刷卡告警\n"
                         + "🚪 {channelName}\n"
                         + "👤 {personName}\n"
                         + "📞 {phone}\n"
                         + "📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n"
                         + "🕐 {swingTime}\n"
-                        + "> ARO 系统自动推送"
+
         ));
 
         // ========== 培训审批待审核 ==========
@@ -282,16 +294,16 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "<h3>培训审批待审核</h3><p>培训 <b>{sessionTitle}</b> 有新学员待审批：</p>"
                         + "<p><b>{traineeName}</b>（{jobNumber} / {projectGroup}）</p>"
                         + "<hr><p style='color:#999;font-size:12px'>ARO 培训审批系统</p>",
-                "## 培训审批待审核\n培训 **{sessionTitle}** 有新学员待审批\n\n"
+                "**培训审批待审核**\n培训 **{sessionTitle}** 有新学员待审批\n\n"
                         + "👤 {traineeName}\n"
                         + "🔢 {jobNumber}\n"
                         + "🏫 {projectGroup}\n\n"
-                        + "> ARO 培训审批系统",
-                "## 培训审批待审核\n培训 **{sessionTitle}** 有新学员待审批\n"
+,
+                "**培训审批待审核**\n培训 **{sessionTitle}** 有新学员待审批\n"
                         + "👤 {traineeName}\n"
                         + "🔢 {jobNumber}\n"
                         + "🏫 {projectGroup}\n"
-                        + "> ARO 培训审批系统"
+
         ));
 
         // ========== 人员进出通知 ==========
@@ -303,18 +315,18 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>部门：{department}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{enterTime}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 门禁监测</p>",
-                "## 🟢 人员进入\n\n"
+                "**🟢 人员进入**\n\n"
                         + "📍 **{roomName}** · {doorLabel}\n\n"
                         + "👤 {personName} 进入\n\n"
                         + "🏫 {department}\n\n"
                         + "🕐 {enterTime}\n\n"
-                        + "> ARO 系统自动推送",
-                "## 🟢 人员进入\n"
+,
+                "**🟢 人员进入**\n"
                         + "📍 **{roomName}** · {doorLabel}\n"
                         + "👤 {personName} 进入\n"
                         + "🏫 {department}\n"
                         + "🕐 {enterTime}\n"
-                        + "> ARO 系统自动推送"
+
         ));
         TEMPLATES.put("ACCESS_EXIT", new Template(
                 "人员离开 — {personName}",
@@ -324,18 +336,18 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>部门：{department}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{exitTime}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 门禁监测</p>",
-                "## 🟡 人员离开\n\n"
+                "**🟡 人员离开**\n\n"
                         + "📍 **{roomName}** · {doorLabel}\n\n"
                         + "👤 {personName} 离开\n\n"
                         + "🏫 {department}\n\n"
                         + "🕐 {exitTime}\n\n"
-                        + "> ARO 系统自动推送",
-                "## 🟡 人员离开\n"
+,
+                "**🟡 人员离开**\n"
                         + "📍 **{roomName}** · {doorLabel}\n"
                         + "👤 {personName} 离开\n"
                         + "🏫 {department}\n"
                         + "🕐 {exitTime}\n"
-                        + "> ARO 系统自动推送"
+
         ));
         // ========== 笼位特殊状态（非违规：特殊饲养 / 合笼 / 明细）==========
         // 与告警阈值同一判据触发；文案要能一眼看出「哪个笼位、什么状态、拖了多久」。
@@ -348,18 +360,18 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>课题组：{projectPiName} · 实验员：{experimenterName}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{firedAt}</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 笼位状态提醒</p>",
-                "## 🔔 笼位状态提醒\n\n"
+                "**🔔 笼位状态提醒**\n\n"
                         + "📍 **{cageLabel}**（{roomName}）\n\n"
                         + "🐭 {statusLabel}：已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n\n"
                         + "👤 课题组：{projectPiName}\n\n"
                         + "🕐 {firedAt}\n\n"
-                        + "> ARO 笼位状态提醒",
-                "## 🔔 笼位状态提醒\n"
+,
+                "**🔔 笼位状态提醒**\n"
                         + "📍 **{cageLabel}**（{roomName}）\n"
                         + "🐭 {statusLabel}：已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n"
                         + "👤 课题组：{projectPiName}\n"
                         + "🕐 {firedAt}\n"
-                        + "> ARO 笼位状态提醒"
+
         ));
 
         // ========== 打印任务失败 ==========
@@ -374,18 +386,18 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>原因：{reason}</p>"
                         + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{failedAt}（已尝试 {attempts} 次）</p></div>"
                         + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 打印工位</p>",
-                "## ⚠️ 打印未成功\n\n"
+                "**⚠️ 打印未成功**\n\n"
                         + "📄 **{fileName}**\n\n"
                         + "🖨 工位：{stationName}\n\n"
                         + "❗ 原因：{reason}\n\n"
                         + "🕐 {failedAt}（已尝试 {attempts} 次）\n\n"
-                        + "> ARO 打印工位",
-                "## ⚠️ 打印未成功\n"
+,
+                "**⚠️ 打印未成功**\n"
                         + "📄 **{fileName}**\n"
                         + "🖨 工位：{stationName}\n"
                         + "❗ 原因：{reason}\n"
                         + "🕐 {failedAt}（已尝试 {attempts} 次）\n"
-                        + "> ARO 打印工位"
+
         ));
     }
 }

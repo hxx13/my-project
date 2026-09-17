@@ -117,7 +117,7 @@ public class DigestScheduler {
         }
         if (!nightEndSources.isEmpty()) {
             log.info("[Digest] night-end flush {} — sources: {}", nowStr, nightEndSources);
-            flushAllPendingForSources(nightEndSources);
+            flushSourcesNow(nightEndSources);
         }
 
         if (activeSources.isEmpty() && nightEndSources.isEmpty()) return;
@@ -136,19 +136,6 @@ public class DigestScheduler {
                     .toList();
             if (matchedItems.isEmpty()) continue;
 
-            /*
-              ALL_DIGEST 是遥测报警写「完整明细」用的哨兵，不是账号：它没有渠道绑定，
-              按人聚合这条路只会每轮走到「0 channels hit」刷一条 WARN，并把明细标成已发送。
-              遥测的投递走它自己的即时推送（TelemetryAlarmCheckScheduler Layer-3），
-              这里只把本轮明细收掉、不打投递日志。
-            */
-            if (PushConstants.ALL_DIGEST_USER.equals(userId)) {
-                digestItemMapper.markSent(matchedItems.stream().map(NotifyDigestItem::getId).toList(),
-                        LocalDateTime.now());
-                log.debug("[Digest] 跳过哨兵 {}：{} 条明细不参与按人投递", userId, matchedItems.size());
-                continue;
-            }
-
             // 按 source 分组，构建摘要
             String userName = displayNameService.resolveDisplayName(userId);
             Map<String, List<NotifyDigestItem>> grouped = matchedItems.stream()
@@ -156,35 +143,26 @@ public class DigestScheduler {
 
             StringBuilder body = new StringBuilder();
             List<String> sourceNames = new ArrayList<>();
-            for (var entry : grouped.entrySet()) {
-                String sc = entry.getKey();
+            for (String sc : grouped.keySet()) {
                 try {
-                    NotifySource src = sourceService.getByCode(sc);
-                    sourceNames.add(src.getSourceName());
+                    sourceNames.add(sourceService.getByCode(sc).getSourceName());
                 } catch (Exception e) {
                     sourceNames.add(sc);
                 }
-                // 按信息源分组，直接拼接该源已渲染好的渠道模板内容
-                String srcLabel = sourceNames.get(sourceNames.size() - 1);
-                body.append("## ").append(srcLabel).append("\n\n");
-                for (NotifyDigestItem it : entry.getValue()) {
-                    if (it.getContent() != null && !it.getContent().isBlank()) {
-                        body.append(stripItemForDigest(it.getContent())).append("\n\n");
-                    } else if (it.getTitle() != null && !it.getTitle().isBlank()) {
-                        body.append(stripItemForDigest(it.getTitle())).append("\n\n");
-                    }
-                }
-                body.append("---\n\n");
             }
+            List<String> groupedKeys = new ArrayList<>(grouped.keySet());
+            Map<String, String> nameByCode = new LinkedHashMap<>();
+            for (int gi = 0; gi < groupedKeys.size(); gi++) {
+                nameByCode.put(groupedKeys.get(gi), sourceNames.get(gi));
+            }
+            appendGroups(body, grouped, nameByCode);
 
             String templateTitle = null, templateContent = null;
-            try {
-                NotifyDigestDefaultConfig def = defaultConfigMapper.findBySourceCode(matchedItems.get(0).getSourceCode());
-                if (def != null && def.getDigestTitleTpl() != null && !def.getDigestTitleTpl().isBlank()) {
-                    templateTitle = def.getDigestTitleTpl();
-                    templateContent = def.getDigestContentTpl();
-                }
-            } catch (Exception ignored) {}
+            NotifyDigestDefaultConfig def = templateFor(matchedItems, grouped);
+            if (def != null && def.getDigestTitleTpl() != null && !def.getDigestTitleTpl().isBlank()) {
+                templateTitle = def.getDigestTitleTpl();
+                templateContent = def.getDigestContentTpl();
+            }
 
             // ── 超长拆分：每 ~2000 字符一批，标记序号 ──
             final int MAX_CHUNK = 2000;
@@ -193,17 +171,40 @@ public class DigestScheduler {
                 chunks.add(body.toString());
             } else {
                 StringBuilder buf = new StringBuilder();
-                String srcLabel = "";
                 for (var entry : grouped.entrySet()) {
-                    srcLabel = sourceNames.get(grouped.keySet().stream().toList().indexOf(entry.getKey()));
+                    String srcLabel = sourceNames.get(grouped.keySet().stream().toList().indexOf(entry.getKey()));
+                    // 表格型条目逐行相邻，分隔符用 \n；其他源保持 \n\n，与所有其它组装路径一致。
+                    boolean tableItems = entry.getValue().stream().anyMatch(DigestScheduler::looksLikeTableRow);
+                    String sep = tableItems ? "\n" : "\n\n";
+                    String tableHead = tableItems ? tableHeadBlock(entry.getValue()) : null;
+                    // 标签：组的第一片、以及每次拆片后都要交代"这是哪个分组"。
+                    // （首片漏标签是实测踩到的：只在一页里看不出问题，多源或翻页时分不清段落归属）
+                    boolean needLabel = true;
+                    // 表头：**只在续片补**。首片的表头由该组第一条明细自带（写入方拼进去的），
+                    // 两处都补就会重复出一个"没有数据行的空表头"——实测踩过。
+                    boolean needHead = false;
                     for (NotifyDigestItem it : entry.getValue()) {
                         String line = it.getContent() != null && !it.getContent().isBlank()
                                 ? it.getContent() : it.getTitle();
-                        String block = stripItemForDigest(line) + "\n";
+                        if (line == null || line.isBlank()) continue;
+                        String block = stripItemForDigest(line) + sep;
                         if (buf.length() + block.length() > MAX_CHUNK && buf.length() > 0) {
                             chunks.add(buf.toString().trim());
                             buf.setLength(0);
-                            buf.append("## ").append(srcLabel).append("\n\n");
+                            needLabel = true;
+                            needHead = true;
+                        }
+                        if (needLabel) {
+                            // 分组之间要空一行：上一段结尾是数据行或卡片尾，紧邻下一段时
+                            // 部分渲染器会把表格尾部吃掉。
+                            if (buf.length() > 0 && !buf.toString().endsWith("\n\n")) buf.append('\n');
+                            // 标签与表头之间也必须留空行：紧邻的普通文字会被当成表格的段落延续，
+                            // 整块退化成裸竖线文本（原因见 appendGroups）。
+                            // 标签一律普通文字行，不用 `## `（会渲染成超大号字，且与卡片自带标题重复）。
+                            buf.append(srcLabel).append("\n\n");
+                            if (needHead && tableHead != null) buf.append(tableHead);
+                            needLabel = false;
+                            needHead = false;
                         }
                         buf.append(block);
                     }
@@ -218,7 +219,12 @@ public class DigestScheduler {
             for (int pi = 0; pi < totalPages; pi++) {
                 String pageSuffix = totalPages > 1 ? "（" + (pi + 1) + "/" + totalPages + "）" : "";
                 String title = renderDigestTitle(templateTitle, userName, matchedItems.size(), dateTimeStr) + pageSuffix;
-                String content = renderDigestContent(templateContent, userName, matchedItems.size(), dateTimeStr, chunks.get(pi)) + pageSuffix;
+                // 页码后缀必须自成一段。表格正文的最后一行是数据行，直接拼上去会被当成多出来的
+                // 一个单元格，把表体结构破坏掉——实测症状是整张表渲染不出来、上方大片留白。
+                String baseContent = renderDigestContent(templateContent, userName, matchedItems.size(),
+                        dateTimeStr, chunks.get(pi));
+                String content = pageSuffix.isEmpty() ? baseContent
+                        : baseContent.stripTrailing() + "\n\n" + pageSuffix;
 
                 // 通过该用户绑定的渠道发送摘要
                 for (NotifyDigestItem sample : matchedItems) {
@@ -279,8 +285,11 @@ public class DigestScheduler {
         }
     }
 
-    /** 夜间结束时冲刷指定 sources 的所有 PENDING 缓冲 */
-    private void flushAllPendingForSources(Set<String> sources) {
+    /**
+     * 立刻冲刷指定源的待发明细。两条路径用：① 夜间结束冲刷；② 源未启用聚合时，
+     * 由写入方在写完明细后调用，让"内存缓冲攒下的一批"仍然只出一条消息（而不是逐条推送）。
+     */
+    public void flushSourcesNow(Set<String> sources) {
         List<String> allPendingUsers = digestItemMapper.findDistinctPendingUsers();
         if (allPendingUsers.isEmpty()) return;
         for (String userId : allPendingUsers) {
@@ -295,35 +304,100 @@ public class DigestScheduler {
         }
     }
 
+    /**
+     * 把当前用户的全部明细按源分组追加到正文。
+     *
+     * <p>两条投递路径（定时聚合 {@code tick} 与立刻冲刷 {@code flushSourcesForUsers}）**必须共用本方法**：
+     * 只修一条会让另一条把表格行按散文拼接、把表格打断。
+     *
+     * <p>分组标签一律用**普通文字行**，不用 Markdown 标题：`## xxx` 会被渲染成超大号字（实测观感
+     * 很差），而且卡片模板自己已经带标题，再加一个 Markdown 标题就重复成两行。
+     *
+     * <p>表格型分组（条目以 {@code |} 开头）的条目之间用单换行相邻，否则空行会截断 GFM 表体。
+     */
+    private void appendGroups(StringBuilder body, Map<String, List<NotifyDigestItem>> grouped,
+                              Map<String, String> sourceNameByCode) {
+        for (var entry : grouped.entrySet()) {
+            String srcLabel = sourceNameByCode.getOrDefault(entry.getKey(), entry.getKey());
+            boolean tableItems = entry.getValue().stream().anyMatch(DigestScheduler::looksLikeTableRow);
+            // 标签之后**必须是空行**再跟表头：Markdown 里紧邻的普通文字行会被当成表格的段落延续，
+            // 整块退化成裸竖线文本（实测踩过——标签和表头之间只隔一个换行，表格就不渲染了）。
+            // 标签一律用普通文字行，不用 `## `：Markdown 二级标题会被渲染成超大号字（实测观感很差），
+            // 而且卡片模板自己已经带标题了，再加一个 Markdown 标题就重复成两行。
+            body.append(srcLabel).append("\n\n");
+            for (NotifyDigestItem it : entry.getValue()) {
+                String line = it.getContent() != null && !it.getContent().isBlank()
+                        ? it.getContent() : it.getTitle();
+                if (line == null || line.isBlank()) continue;
+                body.append(stripItemForDigest(line)).append(tableItems ? "\n" : "\n\n");
+            }
+            // 表格组也要以空行收尾：下一组会以 `## 标题` 或标签开头，紧贴表格最后一行时
+            // 部分渲染器会把表格尾部吃掉。
+            body.append(tableItems ? "\n\n" : "---\n\n");
+        }
+    }
+
+    /**
+     * 从表格组的第一条明细里取出"表头块"（含分隔行）。
+     *
+     * <p>分片时新片要以它开头：只续数据行、没有表头与分隔行的续片不是表格，会被渲染成裸竖线文本。
+     * 表头由写入方并入该组第一条明细（见 {@code TelemetryAlarmLineFormatter#tableHeader}），
+     * 所以这里从第一条里切出"到分隔行为止"的这几行。
+     *
+     * @return 表头块；该组没带表头时返回 null（无从补起，只能保持原样）
+     */
+    private static String tableHeadBlock(List<NotifyDigestItem> group) {
+        if (group == null || group.isEmpty()) return null;
+        NotifyDigestItem first = group.get(0);
+        String c = first.getContent() != null && !first.getContent().isBlank()
+                ? first.getContent() : first.getTitle();
+        if (c == null) return null;
+        StringBuilder head = new StringBuilder();
+        for (String ln : stripItemForDigest(c).split("\n", -1)) {
+            head.append(ln).append('\n');
+            if (isSeparatorRow(ln)) return head.toString();
+        }
+        return null;
+    }
+
+    /**
+     * 选这份摘要用哪个模板。**只有明细全来自同一个源时**才用该源的模板——混了多个源时
+     * 任何一家的措辞都会借错（例如把物资领用算进"条环境动态"），退回默认通用模板。
+     */
+    private NotifyDigestDefaultConfig templateFor(List<NotifyDigestItem> items,
+                                                  Map<String, List<NotifyDigestItem>> grouped) {
+        if (grouped.size() > 1) {
+            log.info("[Digest] 明细跨 {} 个源，退回默认通用模板", grouped.size());
+            return null;
+        }
+        try {
+            return defaultConfigMapper.findBySourceCode(items.get(0).getSourceCode());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** 向用户发送一份摘要 */
     private void sendDigestToUser(String userId, List<NotifyDigestItem> items) {
         String userName = displayNameService.resolveDisplayName(userId);
         // 按 source 分组排版
         Map<String, List<NotifyDigestItem>> grouped = items.stream()
                 .collect(java.util.stream.Collectors.groupingBy(NotifyDigestItem::getSourceCode, LinkedHashMap::new, java.util.stream.Collectors.toList()));
-        StringBuilder body = new StringBuilder();
-        for (var entry : grouped.entrySet()) {
-            String sourceName = entry.getKey();
-            try { sourceName = sourceService.getByCode(entry.getKey()).getSourceName(); } catch (Exception ignored) {}
-            body.append("## ").append(sourceName).append("\n\n");
-            for (NotifyDigestItem it : entry.getValue()) {
-                if (it.getContent() != null && !it.getContent().isBlank()) {
-                    body.append(stripItemForDigest(it.getContent())).append("\n\n");
-                } else if (it.getTitle() != null && !it.getTitle().isBlank()) {
-                    body.append(stripItemForDigest(it.getTitle())).append("\n\n");
-                }
-            }
-            body.append("\n");
+        Map<String, String> nameByCode = new LinkedHashMap<>();
+        for (String sc : grouped.keySet()) {
+            String n = sc;
+            try { n = sourceService.getByCode(sc).getSourceName(); } catch (Exception ignored) {}
+            nameByCode.put(sc, n);
         }
+        StringBuilder body = new StringBuilder();
+        appendGroups(body, grouped, nameByCode);
         String dateTimeStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String tTitle = null, tContent = null;
-        try {
-            NotifyDigestDefaultConfig def = defaultConfigMapper.findBySourceCode(items.get(0).getSourceCode());
-            if (def != null && def.getDigestTitleTpl() != null && !def.getDigestTitleTpl().isBlank()) {
-                tTitle = def.getDigestTitleTpl();
-                tContent = def.getDigestContentTpl();
-            }
-        } catch (Exception ignored) {}
+        NotifyDigestDefaultConfig def = templateFor(items, grouped);
+        if (def != null && def.getDigestTitleTpl() != null && !def.getDigestTitleTpl().isBlank()) {
+            tTitle = def.getDigestTitleTpl();
+            tContent = def.getDigestContentTpl();
+        }
         String title = renderDigestTitle(tTitle, userName, items.size(), dateTimeStr);
         String content = renderDigestContent(tContent, userName, items.size(), dateTimeStr, body.toString());
 
@@ -401,7 +475,7 @@ public class DigestScheduler {
     /** 渲染摘要正文模板 */
     private String renderDigestContent(String tpl, String userName, int count, String time, String itemsText) {
         String def = (tpl != null && !tpl.isBlank()) ? tpl
-                : "{userName}，{count} 条新通知\n\n{items}\n> ARO 系统自动推送";
+                : "{userName}，{count} 条新通知\n\n{items}";
         return def.replace("{userName}", userName != null ? userName : "")
                 .replace("{count}", String.valueOf(count))
                 .replace("{time}", time != null ? time : "")
@@ -433,6 +507,13 @@ public class DigestScheduler {
         return s.strip();
     }
 
+    /** 条目是不是 Markdown 表格的一行（管道行）。表格型条目要求相邻拼接，判据必须来自内容本身。 */
+    private static boolean looksLikeTableRow(NotifyDigestItem item) {
+        String c = item.getContent() != null && !item.getContent().isBlank()
+                ? item.getContent() : item.getTitle();
+        return c != null && c.stripLeading().startsWith("|");
+    }
+
     /** 检查用户是否对特定信息源和渠道设置了静默。
      *  @return true = 应跳过发送 */
     private boolean isMuted(String userId, String sourceCode, String channelCode) {
@@ -462,6 +543,8 @@ public class DigestScheduler {
         s = s.replaceAll("(?m)^##\\s+(.+)$", "<h2 style='font-size:16px;margin:16px 0 8px'>$1</h2>");
         // 粗体 **xxx**
         s = s.replaceAll("\\*\\*(.+?)\\*\\*", "<b>$1</b>");
+        // GFM 管道表 → <table>。必须放在换行规则之前，否则行间会被塞进 <br> 破坏结构。
+        s = convertPipeTables(s);
         // 分隔线 ---
         s = s.replaceAll("(?m)^---\\s*$", "<hr style='border:none;border-top:1px solid #e2e8f0;margin:12px 0'>");
         // 引用 > xxx
@@ -470,6 +553,84 @@ public class DigestScheduler {
         s = s.replaceAll("\n\n", "<br><br>");
         s = s.replaceAll("\n", "<br>");
         return s;
+    }
+
+    /**
+     * 把连续的 GFM 管道表转成 HTML 表格。表体里的内联 HTML（例如 {@code <span style="color:…">}）
+     * 原样保留——邮件客户端是 HTML 渲染，颜色照样生效。
+     *
+     * <p>只处理"表头 + 分隔行 + 至少一行数据"的完整结构；分隔行（{@code |:--|--:|}）用
+     * 是否有 {@code -} 判断，因此不会把普通文本误判成表格。
+     */
+    private static String convertPipeTables(String md) {
+        String[] lines = md.split("\n", -1);
+        StringBuilder out = new StringBuilder();
+        int i = 0;
+        while (i < lines.length) {
+            int sep = i + 1;
+            if (lines[i].stripLeading().startsWith("|")
+                    && sep < lines.length
+                    && isSeparatorRow(lines[sep])) {
+                // 收集表头 + 分隔行 + 后续所有管道行
+                List<String> table = new ArrayList<>();
+                table.add(lines[i]);
+                table.add(lines[sep]);
+                int j = sep + 1;
+                while (j < lines.length && lines[j].stripLeading().startsWith("|")) {
+                    table.add(lines[j]);
+                    j++;
+                }
+                out.append(renderTable(table));
+                i = j;
+                continue;
+            }
+            out.append(lines[i]);
+            if (i < lines.length - 1) out.append('\n');
+            i++;
+        }
+        return out.toString();
+    }
+
+    /** 分隔行形如 |:--|--:|，每个格子只由 : 与 - 组成。 */
+    private static boolean isSeparatorRow(String line) {
+        if (line == null) return false;
+        String t = line.strip();
+        if (!t.startsWith("|")) return false;
+        for (String cell : t.split("\\|")) {
+            String c = cell.strip();
+            if (c.isEmpty()) continue;
+            if (!c.matches(":?-{2,}:?")) return false;
+        }
+        return true;
+    }
+
+    private static String renderTable(List<String> rows) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("<table style='border-collapse:collapse;font-size:13px;margin:8px 0'>");
+        for (int r = 0; r < rows.size(); r++) {
+            if (r == 1) continue; // 分隔行不渲染
+            boolean header = r == 0;
+            String tag = header ? "th" : "td";
+            sb.append("<tr>");
+            for (String cell : splitCells(rows.get(r))) {
+                String style = "border:1px solid #e2e8f0;padding:4px 8px;"
+                        + (header ? "font-weight:700;background:#f8fafc;text-align:left" : "");
+                sb.append("<").append(tag).append(" style='").append(style).append("'>")
+                        .append(cell).append("</").append(tag).append(">");
+            }
+            sb.append("</tr>");
+        }
+        return sb.append("</table>").toString();
+    }
+
+    /** 去掉首尾的竖线后按格切分。 */
+    private static List<String> splitCells(String row) {
+        String t = row.strip();
+        if (t.startsWith("|")) t = t.substring(1);
+        if (t.endsWith("|")) t = t.substring(0, t.length() - 1);
+        List<String> cells = new ArrayList<>();
+        for (String c : t.split("\\|", -1)) cells.add(c.strip());
+        return cells;
     }
 
     /** 去除 HTML + Markdown 标签，保留纯文本 */
@@ -481,8 +642,11 @@ public class DigestScheduler {
                 .trim();
     }
 
-    /** schedule_days 为空或包含 todayDow 则视为今日活跃 */
-    private static boolean isTodayActive(String scheduleDays, int todayDow) {
+    /**
+     * 今天是否落在该配置的可发送星期内。包级可见：{@link DigestResolutionService#isSourceAggregatedNow}
+     * 要用同一个判据，两边判据一旦不一致就会出现"写了明细却永远不投递"的静默积压。
+     */
+    static boolean isTodayActive(String scheduleDays, int todayDow) {
         if (scheduleDays == null || scheduleDays.isBlank()) return true;
         for (String s : scheduleDays.split(",")) {
             try {

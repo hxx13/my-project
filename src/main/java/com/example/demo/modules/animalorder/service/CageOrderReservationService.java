@@ -245,14 +245,19 @@ public class CageOrderReservationService {
      *
      * <p>复用 {@code StudentCageShelfService.resolveOwnGroupShelveIdsByUserId} 的课题组归属判定
      * （project_pi_name / department_name 比对），与刷卡弹窗的平面图同源，不再自造一套口径。
+     *
+     * @param campus 订购所选校区（浦东/浦西）。非空时只给本校区的架子 —— 本课题组的架子可能横跨两个校区，
+     *               不过滤的话会在浦东的单子里选到浦西的笼位。兼容「上海浦东校区」这类写法（与审核页同口径）。
      */
-    public List<Map<String, Object>> groupShelves(String userId) {
+    public List<Map<String, Object>> groupShelves(String userId, String campus) {
         if (isBlank(userId)) return List.of();
         Set<String> shelveIds = studentCageShelfService.resolveOwnGroupShelveIdsByUserId(userId);
         if (shelveIds.isEmpty()) return List.of();
+        boolean filterCampus = !isBlank(campus);
         Map<String, Map<String, Object>> byShelfIndex = new LinkedHashMap<>();
         for (CageShelfIndex idx : cageShelfMapper.listIndexesByShelveIds(new ArrayList<>(shelveIds))) {
             if (idx == null || idx.getId() == null) continue;
+            if (filterCampus && (idx.getCampusName() == null || !idx.getCampusName().contains(campus.trim()))) continue;
             String key = String.valueOf(idx.getId());
             if (byShelfIndex.containsKey(key)) continue;
             Map<String, Object> s = new LinkedHashMap<>();

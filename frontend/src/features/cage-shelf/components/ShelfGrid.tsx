@@ -66,6 +66,7 @@ export function ShelfGrid({
   glowColor,
   highlightShelveIds,
   disabledReasonByCageId,
+  qtyByCageId,
   compact,
 }: {
   title: string;
@@ -109,6 +110,8 @@ export function ShelfGrid({
   highlightShelveIds?: Set<string>;
   /** cageId → 不可选原因（对齐小程序订购选笼位那套红网纹）；不在表里 = 该格不参与「不可选」标记 */
   disabledReasonByCageId?: Map<string, string>;
+  /** cageId → 分到的数量（订购选笼位用）：格子右下角 ×N */
+  qtyByCageId?: Map<string, number>;
   /** 简洁档：收起格子上的文字标签（底色/网纹/图标都留着），见 CellButton.compact */
   compact?: boolean;
 }) {
@@ -204,6 +207,7 @@ export function ShelfGrid({
               restrictSelectToPool={restrictSelectToPool}
               pairColor={pairColorByCageId?.get(String((c as any).id ?? (c as any).animalCageId ?? ""))}
               disabledReason={disabledReason}
+              qty={qtyByCageId?.get(cageId)}
               compact={compact}
               /* 告警只进刷卡弹窗（CompactCell），管理端/学生端网格（CellButton）不吃 alert；
                  这里的标记永远是 divide/transfer/reserve，收窄 kind 以满足 CellButton 的 opMarker 形状。 */

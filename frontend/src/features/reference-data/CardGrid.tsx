@@ -10,6 +10,8 @@ interface CardGridProps {
   onEdit: (item: RefDataItem) => void;
   onDrillDown: (item: RefDataItem) => void;
   onAddToCart?: (item: RefDataItem) => void;
+  /** itemId → 该商品在购物车里的总数量（「选购」按钮角标，与 H5 同口径） */
+  cartQtyByItemId?: Map<number, number>;
   onDelete?: (item: RefDataItem) => void;
   onCreateNew?: () => void;
   isLoading?: boolean;
@@ -19,7 +21,7 @@ interface CardGridProps {
 }
 
 export default function CardGrid({
-  items, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, onCreateNew, isLoading, isError, errorMessage, orderingBlocked,
+  items, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, onCreateNew, isLoading, isError, errorMessage, orderingBlocked, cartQtyByItemId,
 }: CardGridProps) {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
@@ -43,6 +45,7 @@ export default function CardGrid({
               onAddToCart={onAddToCart}
               onDelete={onDelete}
               orderingBlocked={orderingBlocked}
+              cartQty={cartQtyByItemId?.get(item.id)}
             />
           ))}
           {isAdmin && onCreateNew && (

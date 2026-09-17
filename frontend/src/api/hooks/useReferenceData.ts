@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryKeys } from "./queryKeys";
 import {
   fetchRefDataList,
@@ -234,12 +234,25 @@ export function useDeleteSpecTemplate() {
   });
 }
 
+/**
+ * 购物车的任何一次变更都会动到笼位预定：加购把预定挂上车行、改数量同步数量、删行/清空则释放预定
+ * （后端 ReferenceDataService.clearCart → releaseByCartIds，连预填进笼位表单的性别/数量也一并撤销）。
+ *
+ * 只 invalidate 购物车本身的话，笼位那边停在旧快照（`/active` staleTime 15s、`/reservable` 5s），
+ * 表现就是「清空了购物车，那个笼位还显示已在购物车 / 还点不动」。
+ */
+function invalidateCartAndCages(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+  qc.invalidateQueries({ queryKey: ["cage-reservations", "active"] });
+  qc.invalidateQueries({ queryKey: ["animalOrderReservableCages"] });
+}
+
 export function useAddToCart() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ body, groupId }: { body: Parameters<typeof addToCart>[0]; groupId: string }) => addToCart(body, groupId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+      invalidateCartAndCages(qc);
     },
     onError: (e: Error) => toast.error(e.message || "加入购物车失败"),
   });
@@ -251,7 +264,7 @@ export function useUpdateCartItem() {
     mutationFn: ({ id, body }: { id: number; body: { quantity?: number; specSelections?: Record<string, string> } }) =>
       updateCartItem(id, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+      invalidateCartAndCages(qc);
     },
     onError: (e: Error) => toast.error(e.message || "更新失败"),
   });
@@ -262,7 +275,7 @@ export function useRemoveCartItem() {
   return useMutation({
     mutationFn: removeCartItem,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+      invalidateCartAndCages(qc);
       toast.success("已移除");
     },
     onError: (e: Error) => toast.error(e.message || "移除失败"),
@@ -274,7 +287,7 @@ export function useClearCart() {
   return useMutation({
     mutationFn: (groupId: string) => clearCart(groupId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
+      invalidateCartAndCages(qc);
       toast.success("购物车已清空");
     },
     onError: (e: Error) => toast.error(e.message || "清空失败"),

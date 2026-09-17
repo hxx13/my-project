@@ -15,6 +15,7 @@ import com.example.demo.modules.material.entity.*;
 import com.example.demo.modules.material.mapper.*;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
 import com.example.demo.modules.notification.service.NotificationService;
+import com.example.demo.modules.supplies.service.SuppliesLineFormatter;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -714,7 +715,21 @@ public class MaterialService {
             }
             if (shouldNotifyNow) {
                 publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
-                try { String itemDetail = groupLines.stream().map(lr -> { MaterialItem it = itemMapper.selectById(lr.getItemId()); return (it != null ? it.getName() : "物品") + " ×" + lr.getQty(); }).collect(Collectors.joining("、")); pushService.send("MATERIAL_REQUESTED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(user.getId()), "applicantGroup", resolveApplicantGroup(user.getId(), null), "summary", itemDetail, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))), resolveReviewerUserIdsForRequest(requestMapper.selectById(id))); } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
+                try {
+                    List<SuppliesLineFormatter.ItemLine> rows = groupLines.stream()
+                            .map(lr -> {
+                                MaterialItem it = itemMapper.selectById(lr.getItemId());
+                                String name = it != null && it.getName() != null ? it.getName() : "物品";
+                                return new SuppliesLineFormatter.ItemLine(name, lr.getQty());
+                            }).toList();
+                    pushService.send("MATERIAL_REQUESTED", Map.of(
+                            "applicantName", userDisplayNameService.resolveDisplayName(user.getId()),
+                            "applicantGroup", resolveApplicantGroup(user.getId(), null),
+                            "items", SuppliesLineFormatter.renderRowsMd(rows),
+                            "itemsHtml", SuppliesLineFormatter.renderRowsHtml(rows),
+                            "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))),
+                            resolveReviewerUserIdsForRequest(requestMapper.selectById(id)));
+                } catch (Exception e) { log.warn("[Push] MATERIAL_REQUESTED failed: {}", e.getMessage()); }
                 if (scheduledPickupTime != null) {
                     requestMapper.updateNotificationSent(id);
                 }
@@ -833,17 +848,22 @@ public class MaterialService {
         for (MaterialRequest request : pending) {
             try {
                 List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
-                String itemDetail = lines.stream()
-                        .map(lr -> {
-                            MaterialItem it = itemMapper.selectById(lr.getItemId());
-                            return (it != null ? it.getName() : "物品") + " ×" + lr.getQty();
-                        }).collect(Collectors.joining("、"));
+                List<SuppliesLineFormatter.ItemLine> rows = new ArrayList<>();
+                for (MaterialRequestLine lr : lines) {
+                    MaterialItem it = itemMapper.selectById(lr.getItemId());
+                    String name = it != null && it.getName() != null ? it.getName() : "物品";
+                    rows.add(new SuppliesLineFormatter.ItemLine(name, lr.getQty()));
+                }
+                String itemDetail = rows.stream()
+                        .map(r -> r.name() + " ×" + r.qty())
+                        .collect(Collectors.joining("、"));
                 publishMaterialEvent("CREATED", request.getId(), request.getUserId(), request.getUserId(), itemDetail);
                 try {
                     pushService.send("MATERIAL_REQUESTED", Map.of(
                             "applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()),
                             "applicantGroup", resolveApplicantGroup(request.getUserId(), null),
-                            "summary", itemDetail,
+                            "items", SuppliesLineFormatter.renderRowsMd(rows),
+                            "itemsHtml", SuppliesLineFormatter.renderRowsHtml(rows),
                             "createdAt", request.getCreatedAt() != null
                                     ? request.getCreatedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
                                     : ""
@@ -1211,14 +1231,18 @@ public class MaterialService {
         }
         int outboundLines = 0;
         List<String> itemNames = new ArrayList<>();
+        List<SuppliesLineFormatter.ItemLine> reviewedRows = new ArrayList<>();
         for (MaterialRequestLine line : lines) {
             int qty = line.getQty() != null ? line.getQty() : 0;
             if (qty <= 0) continue;
             requestLineMapper.updateFulfilledQty(line.getId(), qty);
             MaterialItem item = itemMapper.selectById(line.getItemId());
-            if (item != null && org.springframework.util.StringUtils.hasText(item.getName())) {
-                itemNames.add(item.getName().trim());
+            String itemName = "物品";
+            if (item != null && StringUtils.hasText(item.getName())) {
+                itemName = item.getName().trim();
+                itemNames.add(itemName);
             }
+            reviewedRows.add(new SuppliesLineFormatter.ItemLine(itemName, qty));
             int stockAfter = resolveOutboundMovementStockAfter(item, line.getItemId(), qty, batchRemainingByItem);
             MaterialStockMovement m = new MaterialStockMovement();
             m.setItemId(line.getItemId());
@@ -1240,7 +1264,7 @@ public class MaterialService {
         logOp("REQUEST", requestId, "FULFILL", detail);
         publishMaterialEvent("COMPLETED", requestId, operator != null ? operator.getId() : null, request.getUserId(),
                 buildFulfillSummary(itemNames));
-        try { pushService.send("MATERIAL_REVIEWED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()), "auditResult", "已通过", "summary", buildFulfillSummary(itemNames), "bizId", String.valueOf(requestId)), Set.of(request.getUserId())); } catch (Exception e) { log.warn("[Push] MATERIAL_REVIEWED failed: {}", e.getMessage()); }
+        try { pushService.send("MATERIAL_REVIEWED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()), "auditResult", "已通过", "items", SuppliesLineFormatter.renderRowsMd(reviewedRows), "itemsHtml", SuppliesLineFormatter.renderRowsHtml(reviewedRows), "bizId", String.valueOf(requestId)), Set.of(request.getUserId())); } catch (Exception e) { log.warn("[Push] MATERIAL_REVIEWED failed: {}", e.getMessage()); }
     }
 
     @Transactional
@@ -1251,15 +1275,20 @@ public class MaterialService {
         requestMapper.updateStatus(id, "REJECTED", LocalDateTime.now());
         // 回退锁定库存
         List<MaterialRequestLine> rejectLines = requestLineMapper.selectByRequestId(id);
+        List<SuppliesLineFormatter.ItemLine> reviewedRows = new ArrayList<>();
         for (MaterialRequestLine line : rejectLines) {
             MaterialItem item = itemMapper.selectById(line.getItemId());
             if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
                 itemMapper.releaseLock(line.getItemId(), line.getQty());
             }
+            int qty = line.getQty() != null ? line.getQty() : 0;
+            if (qty <= 0) continue;
+            String name = (item != null && StringUtils.hasText(item.getName())) ? item.getName().trim() : "物品";
+            reviewedRows.add(new SuppliesLineFormatter.ItemLine(name, qty));
         }
         logOp("REQUEST", id, "REJECT", Map.of("reviewer", reviewer.getId()));
         publishMaterialEvent("COMPLETED", id, reviewer.getId(), request.getUserId(), "审核已拒绝");
-        try { pushService.send("MATERIAL_REVIEWED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()), "auditResult", "已拒绝", "summary", "审核已拒绝", "bizId", String.valueOf(id)), Set.of(request.getUserId())); } catch (Exception e) { log.warn("[Push] MATERIAL_REVIEWED failed: {}", e.getMessage()); }
+        try { pushService.send("MATERIAL_REVIEWED", Map.of("applicantName", userDisplayNameService.resolveDisplayName(request.getUserId()), "auditResult", "已拒绝", "items", SuppliesLineFormatter.renderRowsMd(reviewedRows), "itemsHtml", SuppliesLineFormatter.renderRowsHtml(reviewedRows), "bizId", String.valueOf(id)), Set.of(request.getUserId())); } catch (Exception e) { log.warn("[Push] MATERIAL_REVIEWED failed: {}", e.getMessage()); }
         return Result.success(null);
     }
 

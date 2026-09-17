@@ -21,10 +21,16 @@
     SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} AND alarm_band = #{alarmBand} ORDER BY sent_at DESC LIMIT 1
   </select>
   <select id="findLastByVariable" resultMap="BaseResultMap">
-    SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} ORDER BY sent_at DESC LIMIT 1
+    SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} ORDER BY sent_at DESC, id DESC LIMIT 1
   </select>
-  <select id="findLastAlarmByVariable" resultMap="BaseResultMap">
-    SELECT * FROM telemetry_alarm_log WHERE variable_name = #{variableName} AND alarm_band != 'OK' ORDER BY sent_at DESC LIMIT 1
+  <select id="findStreakStart" resultType="java.time.LocalDateTime">
+    SELECT MIN(sent_at) FROM telemetry_alarm_log
+    WHERE variable_name = #{variableName}
+      AND alarm_band = #{alarmBand}
+      AND sent_at > COALESCE(
+        (SELECT MAX(sent_at) FROM telemetry_alarm_log
+         WHERE variable_name = #{variableName} AND alarm_band = 'OK'),
+        '1970-01-01 00:00:00')
   </select>
   <delete id="deleteOlderThan">DELETE FROM telemetry_alarm_log WHERE sent_at &lt; #{before}</delete>
 </mapper>

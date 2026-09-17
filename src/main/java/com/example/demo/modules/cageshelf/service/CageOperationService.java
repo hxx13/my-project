@@ -818,7 +818,7 @@ public class CageOperationService {
      * ② 没有认领时取**表单实验员**，那里存的是姓名 → 统一人员表 → 账号。
      *
      * <p>同一个人可能同时存在 {@code STAFF_} 与 ARO 两种账号形态（学生的登录入口常是 ARO 那个），
-     * 两种都带上：推送引擎会按 personnel 去重（{@code dedupRecipientsByPersonnel}），
+     * 两种都带上：接收人解析会按 personnel 去重（{@code PushRecipientResolver.dedupByPersonnel}），
      * 只带一种反而会漏人。
      */
     public Set<String> occupantAccountIds(Long animalCageId) {

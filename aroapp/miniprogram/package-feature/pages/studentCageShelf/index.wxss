@@ -137,7 +137,7 @@
 .list-count-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;   /* 计数与扫描时间读成一句，别一个贴左一个贴右 */
   margin-bottom: 16rpx;
 }
 
@@ -180,6 +180,8 @@
 .list-search-bar {
   flex: 1;
   min-width: 0;
+  min-height: 88rpx;          /* 44px：42px 略低于可点标准，且它旁边就是易误触的「展开全部」 */
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 12rpx;
@@ -234,22 +236,52 @@
   white-space: nowrap;
 }
 
-/* Special status button (top-right) */
-.list-special-status-btn {
-  margin-left: auto;
-  padding: 8rpx 18rpx;
-  border-radius: 999rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #fff;
-  background: #ac1736;
+/* 占比条图例（列表首行，随内容滚走，不占吸顶空间） */
+.list-ratio-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx 20rpx;
+  padding: 10rpx 0 14rpx;
+}
+
+.lrl-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.lrl-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
   flex-shrink: 0;
+}
+
+.lrl-text {
+  font-size: 22rpx;
+  /* #8a94a6 在 #f7f8fa 上只有 ~2.8:1，小字不达标；压到 ~5:1 */
+  color: #5b6473;
+}
+
+/* 列表首行原来放过「我的申请」胶囊，已按需求撤掉（功能在网格视图工具栏里另有入口）。
+   相关 .list-actions-row / .list-actions-pill 样式一并删除，不留死代码。 */
+
+/* 校区全收起时下方一大片空白的引导 */
+.list-collapsed-hint {
+  padding: 48rpx 0 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #9aa4b2;
 }
 
 /* Collapse/expand all button — 独立于搜索框右侧 */
 .list-collapse-all-btn {
   flex-shrink: 0;
-  padding: 16rpx 20rpx;
+  display: inline-flex;
+  align-items: center;
+  min-height: 88rpx;          /* 44px：原 32px，且紧贴搜索框，点它常误触输入框 */
+  padding: 0 24rpx;
   border-radius: 999rpx;
   font-size: 22rpx;
   color: #646566;
@@ -262,240 +294,6 @@
   min-width: 0;
 }
 
-/* ====== Special Status Popup（对齐 H5 MobileSpecialStatusPanel） ====== */
-.sp-status-popup {
-  display: flex;
-  flex-direction: column;
-  height: 80vh;
-  max-height: 80vh;
-}
-
-.sp-status-hd {
-  padding: 24rpx 32rpx 16rpx;
-  border-bottom: 1rpx solid #f0f1f2;
-  flex-shrink: 0;
-}
-
-.sp-status-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #1a1a1a;
-}
-
-.sp-status-meta {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: #969799;
-}
-
-.sp-status-scroll {
-  flex: 1;
-  min-height: 0;
-  padding: 16rpx 24rpx;
-  box-sizing: border-box;
-}
-
-.sp-status-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12rpx;
-  padding: 80rpx 0;
-  font-size: 26rpx;
-  color: #969799;
-}
-
-.sp-status-err-msg {
-  text-align: center;
-  padding: 80rpx 0;
-  font-size: 26rpx;
-  color: #dc2626;
-}
-
-.sp-status-empty {
-  text-align: center;
-  padding: 80rpx 0;
-  font-size: 26rpx;
-  color: #969799;
-}
-
-.sp-status-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16rpx;
-  padding-bottom: 8rpx;
-}
-
-/* ---- 第一层：状态类型卡片 ---- */
-.sp-group-card {
-  border-radius: 16rpx;
-  border: 1rpx solid #ebedf0;
-  background: #fff;
-  overflow: hidden;
-}
-
-.sp-group-hd {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  padding: 16rpx 20rpx;
-}
-
-.sp-group-hd:active {
-  background: #f7f8fa;
-}
-
-.sp-group-dot {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.sp-group-abbr {
-  font-size: 18rpx;
-  font-weight: 700;
-  color: #fff;
-  line-height: 1;
-}
-
-.sp-group-name {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #323233;
-  flex: 1;
-  min-width: 0;
-}
-
-.sp-group-badge {
-  font-size: 22rpx;
-  color: #646566;
-  background: #f2f3f5;
-  padding: 4rpx 16rpx;
-  border-radius: 999rpx;
-  flex-shrink: 0;
-}
-
-.sp-group-arrow {
-  font-size: 24rpx;
-  color: #969799;
-  flex-shrink: 0;
-}
-
-/* ---- 第二层：笼架分组 ---- */
-.sp-group-body {
-  border-top: 1rpx solid #ebedf0;
-  padding: 12rpx 16rpx 16rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-}
-
-.sp-shelf-card {
-  border-radius: 12rpx;
-  border: 1rpx solid #ebedf0;
-  background: #f7f8fa;
-  overflow: hidden;
-}
-
-.sp-shelf-hd {
-  display: flex;
-  align-items: flex-start;
-  gap: 12rpx;
-  padding: 16rpx;
-}
-
-.sp-shelf-hd:active {
-  background: #eeeff2;
-}
-
-.sp-shelf-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.sp-shelf-title {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: #323233;
-  display: block;
-}
-
-.sp-shelf-meta {
-  font-size: 20rpx;
-  color: #969799;
-  display: block;
-  margin-top: 4rpx;
-}
-
-.sp-shelf-count {
-  font-size: 20rpx;
-  color: #969799;
-  flex-shrink: 0;
-  padding-top: 4rpx;
-}
-
-.sp-shelf-arrow {
-  font-size: 22rpx;
-  color: #969799;
-  flex-shrink: 0;
-  padding-top: 4rpx;
-}
-
-/* ---- 第三层：笼位列表 ---- */
-.sp-shelf-body {
-  border-top: 1rpx solid #ebedf0;
-  max-height: 360rpx;
-  overflow-y: auto;
-}
-
-.sp-cage-row {
-  padding: 14rpx 20rpx;
-  border-bottom: 1rpx solid #ebedf0;
-}
-
-.sp-cage-row:last-child {
-  border-bottom: 0;
-}
-
-.sp-cage-main {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-
-.sp-cage-pos {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: #323233;
-  font-family: monospace;
-  flex-shrink: 0;
-}
-
-.sp-cage-pi {
-  font-size: 22rpx;
-  color: #323233;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sp-cage-detail {
-  display: block;
-  margin-top: 6rpx;
-  font-size: 20rpx;
-  color: #969799;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding-left: 0;
-}
-
 /* Scroll area */
 .list-scroll-wrap {
   flex: 1;
@@ -505,48 +303,21 @@
   flex-direction: column;
 }
 
+/* 列表区：固定高度的**面板**（无投影）。
+   三级明度做立体：页面 #eef0f6 → 面板 #f7f8fa → 卡片 #fff。
+   面板若也用纯白，白卡就沉进白底里，立体感全没了。 */
 .list-scroll {
   flex: 1;
   min-height: 0;
-  padding: 8rpx 24rpx 0;
+  margin: 0 12rpx 12rpx;
+  padding: 8rpx 16rpx 0;
   box-sizing: border-box;
+  background: #f7f8fa;
+  border-radius: 18rpx;
 }
 
-/* 刷新提示：自定义导航栏下微信不画它自带的指示器，这里自己补一个 */
-.refresh-pill {
-  position: absolute;
-  left: 50%;
-  top: 20rpx;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  padding: 14rpx 28rpx;
-  background: #fff;
-  border: 1rpx solid #e5e7eb;
-  border-radius: 999rpx;
-  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
-.refresh-pill-icon {
-  width: 24rpx;
-  height: 24rpx;
-  border: 4rpx solid #fecdd3;
-  border-top-color: #ac1736;
-  border-radius: 50%;
-  animation: refresh-pill-spin 0.7s linear infinite;
-}
-
-@keyframes refresh-pill-spin {
-  to { transform: rotate(360deg); }
-}
-
-.refresh-pill-text {
-  margin-left: 12rpx;
-  font-size: 24rpx;
-  color: #4b5563;
-}
+/* 下拉刷新改用 scroll-view 原生 refresher：指示器由列表自己画在列表顶部（会把内容推下去），
+   原来那套自绘 refresh-pill 是页面级下拉的补丁 —— 绝对定位盖在列表首行上，已删。 */
 
 .list-pad-bottom {
   height: 64rpx;
@@ -575,11 +346,13 @@
 }
 
 /* Campus group — 最外层容器 */
+/* 校区组 = 面板里唯一的**卡片层**：白底 + 圆角 + 投影（立体感靠投影和明度差，不靠灰底）。
+   再往里（房间行 / 笼架组）一律扁平 —— 卡片嵌套卡片是明确的坏味道。 */
 .campus-group {
-  margin-bottom: 24rpx;
-  border-radius: 18rpx;
-  border: 2rpx solid #dde1e8;
-  background: #fafbfc;
+  margin-bottom: 16rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.08);
   overflow: hidden;
 }
 
@@ -587,8 +360,10 @@
   display: flex;
   align-items: center;
   gap: 8rpx;
+  min-height: 88rpx;          /* 44px：原来是 34px，而这行是展开校区的唯一入口 */
+  box-sizing: border-box;
   padding: 14rpx 24rpx;
-  background: linear-gradient(135deg, #eef0f6 0%, #e2e5ed 100%);
+  background: #fff;
   font-size: 28rpx;
   font-weight: 700;
   color: #323233;
@@ -629,10 +404,9 @@
   width: 100%;
   max-width: 100%;
   padding: 14rpx 20rpx 12rpx;
-  border-radius: 14rpx;
   background: #fff;
-  border: 2rpx solid #dde1e8;
-  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+  /* 白面板里不再描边+投影：那两层叠起来就是「灰块 + 脏阴影」的来源，靠分隔线分层 */
+  border-bottom: 1rpx solid #f0f1f5;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -773,9 +547,9 @@
 .shelf-group {
   margin-bottom: 6rpx;
   margin-left: 8rpx;
-  border-radius: 10rpx;
-  border-left: 6rpx solid #dde1e8;
-  background: #f8f9fc;
+  /* 第三层：只用一条 1rpx 竖线 + 缩进表示层级，不再灰底 + 6rpx 粗竖条
+     （粗色条是明确的坏味道，灰底在白面板上又会读成阴影） */
+  border-left: 1rpx solid #eef0f6;
   overflow: hidden;
 }
 
@@ -1805,11 +1579,6 @@
   color: #9aa0a6;
 }
 
-/* 我的申请入口 */
-.list-my-claims-btn {
-  margin-left: 8rpx;
-  background: #3b82f6;
-}
 .gt-my-claims-btn {
   flex-shrink: 0;
   padding: 8rpx 16rpx;
@@ -1909,6 +1678,14 @@
   font-weight: 600;
   color: #323233;
   flex-shrink: 0;
+}
+/* 单列列表（课题组名可能很长）：铺满整行 + 省略号收尾，不像双列那样挤在左边 */
+.rp-name--flex {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rp-group {
   font-size: 22rpx;
@@ -2218,6 +1995,11 @@
   background: #fff;
 }
 .booking-picker-box--empty {
+  color: #c8c9cc;
+}
+/* 前置条件未满足（还没选课题组时的 AUP 编号框）：照原生 picker disabled 的观感做灰 */
+.booking-picker-box--disabled {
+  background: #f7f8fa;
   color: #c8c9cc;
 }
 .booking-edit-input {

@@ -439,8 +439,8 @@ Page({
     }
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const canQuickSuppliesMall =
-      hasMinRole(role, 'ADMIN') &&
-      pagePermission.canShowMiniEntry('home', '/package-feature/pages/supplies/index', role, 'ADMIN');
+      hasMinRole(role, 'STAFF') &&
+      pagePermission.canShowMiniEntry('home', '/package-feature/pages/supplies/index', role, 'STAFF');
     const canQuickSuppliesMine =
       hasMinRole(role, 'STAFF') &&
       pagePermission.canAccessMiniPage('/package-feature/pages/suppliesMine/index', role, 'STAFF');
@@ -713,8 +713,8 @@ Page({
   goSupplies() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const canMall =
-      hasMinRole(role, 'ADMIN') &&
-      pagePermission.canShowMiniEntry('home', '/package-feature/pages/supplies/index', role, 'ADMIN');
+      hasMinRole(role, 'STAFF') &&
+      pagePermission.canShowMiniEntry('home', '/package-feature/pages/supplies/index', role, 'STAFF');
     const canMine =
       hasMinRole(role, 'STAFF') &&
       pagePermission.canAccessMiniPage('/package-feature/pages/suppliesMine/index', role, 'STAFF');

@@ -1,4 +1,4 @@
-const { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
+const { readCustomNavMetrics } = require('../../utils/customNavMetrics.js');
 
 Component({
   // 右侧命名插槽（图例 / 我的申请等页级操作），不写死具体按钮

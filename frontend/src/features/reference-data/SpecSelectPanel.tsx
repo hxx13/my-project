@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
+import { appConfirm } from "@/lib/appDialog";
 import { useSpecTemplates } from "@/api/hooks/useReferenceData";
 import type { RefDataItem } from "@/api/domains/referenceData.api";
 import { specPriceKey } from "./typeRegistry";
@@ -204,7 +205,22 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     onCageContextChange?.({ specOptionLabel: cageSpecLabel, quantity: cageQty });
   }, [onCageContextChange, cageSpecLabel, cageQty]);
 
-  const handleConfirm = () => {
+  /**
+   * 一个数量都没分到的笼位：加购时会被释放（取消预定）。
+   * 以前只有一句 toast「已加入购物车 (1 项)」，用户以为选中的笼位都进去了 ——
+   * 结果别的笼位被静默清空。改成先弹确认，把「哪些会被清掉」说清楚。
+   */
+  const idleCages = pickedCages.filter(c => (allocByCageId[c.animalCageId] || 0) <= 0);
+  const confirmIdleDropped = async (): Promise<boolean> => {
+    if (idleCages.length === 0) return true;
+    const names = idleCages.map(c => c.label || c.animalCageId).join("、");
+    return appConfirm(
+      `这 ${idleCages.length} 个笼位没分配到老鼠，继续会取消它们的笼位预定：\n\n${names}\n\n要留着就点「返回调整」，回去给它们分几只。`,
+      { confirmText: "继续", cancelText: "返回调整" },
+    );
+  };
+
+  const handleConfirm = async () => {
     const rows = optionRows.filter(r => (qtys[r.key] || 0) > 0);
     if (rows.length === 0) return;
     // 领用房间必选：未选不提交，只给出提示。
@@ -230,6 +246,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
       }
       const optionLabel = `${rows[0].templateName}: ${rows[0].label}`;
       const remark = (remarks[rows[0].key] || "").trim();
+      if (!(await confirmIdleDropped())) return;
       // 一个笼位一条行：数量 = 该笼分到的量，领用房间取该笼所在的房间
       // （多房间时每一行各自带自己的房间，下单时后端按房间分单）
       const cageEntries = pickedCages
@@ -305,7 +322,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   );
 
   /** 无规格商品的校验 + 提交（移动壳的「加入购物车」画在页面上，所以得能从这里取到） */
-  const handleNoSpecConfirm = () => {
+  const handleNoSpecConfirm = async () => {
     if (noSpecQty <= 0) return;
     if (!cageRequired && roomMissing) { setRoomTouched(true); return; }
     if (cageRequired) {
@@ -318,6 +335,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
         toast.error(`已分配到 ${allocated} 只，与总数 ${noSpecQty} 不一致，请在右侧调整`);
         return;
       }
+      if (!(await confirmIdleDropped())) return;
       const remark = noSpecRemark.trim();
       const cageEntries = pickedCages
         .map(c => ({ cage: c, qty: allocByCageId[c.animalCageId] || 0 }))

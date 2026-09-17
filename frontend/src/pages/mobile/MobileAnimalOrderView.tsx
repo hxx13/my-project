@@ -1087,14 +1087,20 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                   .filter(Boolean)
                   .join(" · ")}
               </span>
-              <button
-                type="button"
-                onClick={() => setOpenAllocTick((n) => n + 1)}
-                title="按顺序分配"
-                className="shrink-0 text-[11px] opacity-80"
-              >
-                已选 {pickedCages.length} 笼 · 已分配 {allocatedTotal(cageAlloc.alloc)}/{cageSpecCtx.quantity} ›
-              </button>
+              <span className="shrink-0 text-[11px] tabular-nums opacity-80">
+                已选 {pickedCages.length} 笼 · 已分配 {allocatedTotal(cageAlloc.alloc)}/{cageSpecCtx.quantity}
+              </span>
+              {/* 「分配」= 开分配浮层（笼位网格不卸载）；分配不齐时整行已经变琥珀色。
+                  选了笼位又填了总数才有得调，否则进去是空列表 —— 与小程序同一个门槛 */}
+              {pickedCages.length > 0 && cageSpecCtx.quantity > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOpenAllocTick((n) => n + 1)}
+                  className="shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-2.5 py-1 text-xs font-medium text-[var(--student-ink)] active:opacity-70"
+                >
+                  分配
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void exitCageSession()}
@@ -1131,6 +1137,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             {cagePickerOpen && selectedAupId && (
               <MobileCagePickerSheet
                 aupRecordId={selectedAupId}
+                campus={campus}
                 specOptionLabel={cageSpecCtx.specOptionLabel}
                 quantity={cageSpecCtx.quantity}
                 pickedCages={pickedCages}

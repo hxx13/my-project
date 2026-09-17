@@ -1,4 +1,5 @@
 const telemetryApi = require('../../utils/animalRoomTelemetryApi.js');
+const { readCustomNavMetrics } = require('../../utils/customNavMetrics.js');
 const springAuth = require('../../utils/springAuth.js');
 const pagePermission = require('../../utils/pagePermission.js');
 const { hasMinRole } = require('../../utils/roleAccess.js');
@@ -13,6 +14,7 @@ Page({
   },
 
   onLoad() {
+    this.setData({ navBarHeight: readCustomNavMetrics().navBarHeight });
     this._telemetryPollTimer = null;
     this._telemetryActiveTabKey = '';
     this._lastTelemetryManualRefreshAt = 0;

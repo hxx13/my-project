@@ -146,6 +146,13 @@ Page({
     filterRoomIdx: 0,
     filterRole: '',
     filterRoleIdx: 0,
+    // 筛选项选择弹窗：4 个筛选项共用一张（课题组/房间都是长列表，原生 picker 滚不动）
+    apFilterPickerOpen: false,
+    apFilterPickerField: '',   // 'group' | 'identity' | 'room' | 'role'
+    apFilterPickerTitle: '',
+    apFilterPickerKeyword: '',
+    apFilterPickerRows: [],    // [{ idx, label }]，已按关键字过滤
+    apFilterPickerPicked: 0,
   },
 
   onShow() {
@@ -1041,6 +1048,59 @@ Page({
   },
   onOpenFilterSheet() { this.loadFilterOptions(); this.setData({ showFilterSheet: true }); },
   onCloseFilterSheet() { this.setData({ showFilterSheet: false }); },
+
+  /**
+   * 筛选项选择弹窗（4 个筛选项共用一张）：候选项本地过滤，不打接口。
+   * 选中后仍走原来的 onXxxFilterChange，用索引语义不变（各筛选项的派生字段不重写一遍）。
+   */
+  _apFilterPickerNames(field) {
+    const map = { group: 'groupNames', identity: 'identityTagNames', room: 'roomNames', role: 'roleNames' };
+    return (map[field] && this.data[map[field]]) || [];
+  },
+  _paintApFilterPicker() {
+    const names = this._apFilterPickerNames(this.data.apFilterPickerField);
+    const kw = String(this.data.apFilterPickerKeyword || '').trim().toLowerCase();
+    const rows = [];
+    for (let i = 0; i < names.length; i += 1) {
+      if (kw && String(names[i]).toLowerCase().indexOf(kw) < 0) continue;
+      rows.push({ idx: i, label: names[i] });
+    }
+    this.setData({ apFilterPickerRows: rows });
+  },
+  openApFilterPicker(e) {
+    const field = (e && e.currentTarget && e.currentTarget.dataset.field) || '';
+    const names = this._apFilterPickerNames(field);
+    if (!field || names.length === 0) return;
+    const labels = { group: '课题组', identity: '身份标识', room: '房间', role: '角色' };
+    const idxMap = { group: 'filterGroupIdx', identity: 'filterIdentityIdx', room: 'filterRoomIdx', role: 'filterRoleIdx' };
+    this.setData({
+      apFilterPickerOpen: true,
+      apFilterPickerField: field,
+      apFilterPickerTitle: (labels[field] || '选择') + ' · 共 ' + names.length + ' 项',
+      apFilterPickerKeyword: '',
+      apFilterPickerPicked: Number(this.data[idxMap[field]] || 0),
+    });
+    this._paintApFilterPicker();
+  },
+  closeApFilterPicker() {
+    this.setData({ apFilterPickerOpen: false, apFilterPickerField: '', apFilterPickerKeyword: '' });
+  },
+  onApFilterPickerInput(e) {
+    this.setData({ apFilterPickerKeyword: e.detail.value || '' });
+    this._paintApFilterPicker();
+  },
+  clearApFilterPickerKeyword() {
+    this.setData({ apFilterPickerKeyword: '' });
+    this._paintApFilterPicker();
+  },
+  onApFilterPickerPick(e) {
+    const field = this.data.apFilterPickerField;
+    const idx = Number(e.currentTarget.dataset.idx);
+    const handlers = { group: 'onGroupFilterChange', identity: 'onIdentityFilterChange', room: 'onRoomFilterChange', role: 'onRoleFilterChange' };
+    this.closeApFilterPicker();
+    const fn = handlers[field];
+    if (fn && typeof this[fn] === 'function') this[fn]({ detail: { value: idx } });
+  },
   onGroupFilterChange(e) {
     const idx = Number(e.detail.value);
     const g = idx > 0 ? this.data.groupOptions[idx - 1] : undefined;

@@ -49,11 +49,20 @@
       {
         "type": "file",
         "value": "miniprogram_npm/@vant/weapp/image/logohs.png"
+      },
+      {
+        "type": "folder",
+        "value": "cli-agent-run"
       }
     ],
     "include": []
   },
   "simulatorPluginLibVersion": {},
   "editorSetting": {},
-  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/"
+  "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
+  "watchOptions": {
+    "ignore": [
+      "cli-agent-run/**/*"
+    ]
+  }
 }

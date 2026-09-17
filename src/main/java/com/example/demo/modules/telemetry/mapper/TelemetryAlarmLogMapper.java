@@ -14,7 +14,11 @@ public interface TelemetryAlarmLogMapper {
             @Param("alarmBand") String alarmBand);
     /** 查询指定变量上一次的 alarmBand（无论方向），用于状态变化检测 */
     TelemetryAlarmLog findLastByVariable(@Param("variableName") String variableName);
-    /** 查询指定变量最近一次非OK报警记录，用于每变量重报警冷却 */
-    TelemetryAlarmLog findLastAlarmByVariable(@Param("variableName") String variableName);
+    /**
+     * 本轮同方向连续报警的起点时间：最后一条 OK 台账之后、该方向最早的一条。
+     * 用于重提醒文案里的"已持续 X 小时"。没有 OK 行时从最早一条算起。
+     */
+    LocalDateTime findStreakStart(@Param("variableName") String variableName,
+                                 @Param("alarmBand") String alarmBand);
     int deleteOlderThan(@Param("before") LocalDateTime before);
 }

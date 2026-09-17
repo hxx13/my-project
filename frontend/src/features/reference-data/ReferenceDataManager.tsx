@@ -373,6 +373,13 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
 
   const cartCount = useMemo(() => cartLines.reduce((s, l) => s + l.qty, 0), [cartLines]);
 
+  /** 每个商品在购物车里的总数量（含规格/无规格），商品卡「选购」按钮角标用（与 H5 qtyByRefDataId 同口径） */
+  const qtyByRefDataId = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const l of cartLines) m.set(l.itemId, (m.get(l.itemId) || 0) + l.qty);
+    return m;
+  }, [cartLines]);
+
   // 购物车实时总金额：只累加已定价的行；全车无定价时保持 null（显示「—」而非 0）
   const cartTotalAmount = useMemo(() => {
     let sum = 0;
@@ -875,6 +882,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             isError={isError}
             errorMessage={error?.message}
             orderingBlocked={orderingBlocked}
+            cartQtyByItemId={qtyByRefDataId}
           />
         </div>
       </div>
@@ -1112,6 +1120,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 embedded
                 aupRecordId={selectedAupId}
                 specOptionLabel={cageSpecCtx.specOptionLabel}
+                campus={campus}
                 quantity={cageSpecCtx.quantity}
                 reservations={pickedCages}
                 onReservationsChange={setPickedCages}

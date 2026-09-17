@@ -34,9 +34,9 @@ const HATCH_STYLE: React.CSSProperties = { backgroundImage: CAGE_HATCH_BG };
  *
  * 坐标显示: 使用 displayPosition() 将 A-1(顶行) 反转为显示 A-10(底行)
  *
- * Props 共 21 个 — 如需新增请评估是否该拆出子组件
+ * Props 共 22 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor, disabledReason, compact }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor, disabledReason, qty, compact }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
@@ -56,6 +56,11 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   opMarker?: { requestId: string; kind: "divide" | "transfer" | "reserve"; color: string; label: string };
   /** 同步保护锁三态（仅保护模式下传入）：整格描边标示，点击整格切换锁 */
   lockState?: LockState;
+  /**
+   * 该笼位分到的数量（订购选笼位用，0/不传不画）：右下角 `×N`。
+   * 与 H5 GridCellButton / 小程序 .cg-qty 同一个角标 —— 光有选中环看不出哪个笼放几只。
+   */
+  qty?: number;
   /** 笼位划分标签（仅该笼位有划分时传入）：本人=「已划分给你」，他人=「已划分」 */
   divisionLabel?: string;
   /**
@@ -162,7 +167,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
         ? { color: "#f97316", label: "释放待审批", Icon: Unlock }
         : null;  const isToggleMode = clickMode === "toggle"; // full-room = card toggle; single-shelf = checkbox only
   const isInCross = (isCrossCol || isCrossRow) && !isLastScanned;
-  const baseCls = cell.empty ? "relative min-h-[82px] rounded-twin-md text-[10px] leading-tight border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]" : "relative min-h-[82px] rounded-twin-md text-[10px] leading-tight border-2 text-slate-900 hover:brightness-95";
+  const baseCls = cell.empty ? "relative isolate min-h-[82px] rounded-twin-md text-[10px] leading-tight border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]" : "relative isolate min-h-[82px] rounded-twin-md text-[10px] leading-tight border-2 text-slate-900 hover:brightness-95";
   // 同步保护模式下的锁态描边：红=锁定，绿=白名单，灰=继承上级
   const lockCls = lockState === "locked" ? " ring-2 ring-red-500 ring-offset-1"
     : lockState === "unlocked" ? " ring-2 ring-emerald-500 ring-offset-1"
@@ -313,6 +318,13 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
           </div>
         )}
       </>
+    )}
+    {/* 分到几只（对齐 H5 GridCellButton / 小程序 .cg-qty）：右下角 ×N，压在底部色条之上。
+        圆角跟格子右下角一致，免得方角戳出格子描边外 */}
+    {qty != null && qty > 0 && (
+      <span className="pointer-events-none absolute bottom-0 right-0 z-30 rounded-tl-twin-md rounded-br-twin-md bg-blue-600 px-1 text-[8px] font-bold leading-[13px] text-white">
+        ×{qty}
+      </span>
     )}
   </button>;
 });

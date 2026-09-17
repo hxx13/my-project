@@ -24,8 +24,6 @@
       <view class="list-count-row">
         <text class="list-count-text">共 {{ totalCount }} 个笼架</text>
         <text wx:if="{{ scannedAt }}" class="list-scanned-at">{{ scannedAt }}</text>
-        <view class="list-special-status-btn" bindtap="onOpenSpecialStatus">特殊状态</view>
-        <view wx:if="{{ !isStaffView }}" class="list-special-status-btn list-my-claims-btn" bindtap="onOpenMyClaims">我的申请</view>
       </view>
       <view class="list-search-row">
         <view class="list-search-bar">
@@ -37,11 +35,26 @@
     </view>
 
     <view class="list-scroll-wrap">
-      <view class="refresh-pill" wx:if="{{ refreshing }}">
-        <view class="refresh-pill-icon"></view>
-        <text class="refresh-pill-text">正在刷新…</text>
+      <scroll-view
+        class="list-scroll"
+        scroll-y
+        enhanced
+        show-scrollbar="{{false}}"
+        refresher-enabled="{{ true }}"
+        refresher-triggered="{{ refreshing }}"
+        refresher-background="#f7f8fa"
+        bindrefresherrefresh="onListRefresher"
+      >
+      <!-- 占比条口径：四个缩写是黑话，列表里没有第二处解释（网格那个图例讲的是「特殊状态→格子背景」）。
+           顺序与条内从左到右一致：饲 → 待 → 异 → 空。第 4 种「异常」基本用不到，但条上真出现蓝色时得有处可查。 -->
+      <view class="list-ratio-legend">
+        <view class="lrl-item"><view class="lrl-dot" style="background:#f43f5e;"></view><text class="lrl-text">饲养中</text></view>
+        <view class="lrl-item"><view class="lrl-dot" style="background:#f59e0b;"></view><text class="lrl-text">等待分配</text></view>
+        <view class="lrl-item"><view class="lrl-dot" style="background:#3b82f6;"></view><text class="lrl-text">异常</text></view>
+        <view class="lrl-item"><view class="lrl-dot" style="background:#10b981;"></view><text class="lrl-text">空笼位</text></view>
       </view>
-      <scroll-view class="list-scroll" scroll-y enhanced show-scrollbar="{{false}}" bindscroll="onListScroll">
+      <!-- 列表视图不再放「我的申请」入口（用户口径：个头太大、挤在列表首行）。
+           该功能在**网格视图**工具栏里另有入口（gt-my-claims-btn），列表这里去掉不会失联。 -->
       <view wx:if="{{ shelfGroups.length === 0 }}" class="no-match-box">
         <text class="no-match-text">没有匹配的房间</text>
         <view class="clear-filter-btn" bindtap="onClearFilter">清除筛选</view>
@@ -150,6 +163,9 @@
         </view>
         </view>
       </view>
+      <!-- 校区默认全收起时下方是一大片空白：给一句引导。不依赖 anyExpanded 状态
+           （那个字段在跳转/筛选等 4 处 setData 都要同步，漏一处就显示错），静态一句话零维护 -->
+      <view wx:if="{{ shelfGroups.length > 0 }}" class="list-collapsed-hint">点开校区名可展开房间列表</view>
       <view class="list-pad-bottom" />
       </scroll-view>
     </view>
@@ -241,12 +257,13 @@
         <!-- 新增行 -->
         <view wx:if="{{ bookingEditingId === 'new' }}" class="booking-aup-row booking-aup-row--edit">
           <view class="booking-edit-grid">
-            <picker class="booking-picker" range="{{ bookingPiNames }}" value="{{ bookingEditPiIndex }}" bindchange="onBookingPiChange">
+            <!-- 课题组 / AUP 编号都是长列表，原生 picker 滚不动 → 统一的搜索式弹窗（见文件末尾 booking-picker） -->
+            <view class="booking-picker" data-target="pi" bindtap="openBookingPicker">
               <view class="booking-picker-box {{ bookingEdit.piName ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.piName || '选择课题组' }}</view>
-            </picker>
-            <picker class="booking-picker" range="{{ bookingEditAupOptions }}" range-key="registerNo" value="{{ bookingEditAupIndex }}" bindchange="onBookingAupChange" disabled="{{ !bookingEdit.piName }}">
-              <view class="booking-picker-box {{ bookingEdit.aupId ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.registerNumber || (bookingEdit.piName ? '选择 AUP 编号' : '先选课题组') }}</view>
-            </picker>
+            </view>
+            <view class="booking-picker" data-target="aup" bindtap="openBookingPicker">
+              <view class="booking-picker-box {{ bookingEdit.aupId ? '' : 'booking-picker-box--empty' }} {{ bookingEdit.piName ? '' : 'booking-picker-box--disabled' }}">{{ bookingEdit.registerNumber || (bookingEdit.piName ? '选择 AUP 编号' : '先选课题组') }}</view>
+            </view>
             <input class="booking-edit-input" type="number" value="{{ bookingEdit.rentNumber }}" bindinput="onBookingRentInput" placeholder="预约数量" />
             <input class="booking-edit-input" type="text" value="{{ bookingEdit.memo }}" bindinput="onBookingMemoInput" placeholder="备注" />
           </view>
@@ -260,12 +277,13 @@
         <view wx:for="{{ bookingAups }}" wx:key="id" wx:for-item="aup" class="booking-aup-row">
           <block wx:if="{{ bookingEditingId === aup.id }}">
             <view class="booking-edit-grid">
-              <picker class="booking-picker" range="{{ bookingPiNames }}" value="{{ bookingEditPiIndex }}" bindchange="onBookingPiChange">
+              <!-- 课题组 / AUP 编号都是长列表，原生 picker 滚不动 → 统一的搜索式弹窗（见文件末尾 booking-picker） -->
+              <view class="booking-picker" data-target="pi" bindtap="openBookingPicker">
                 <view class="booking-picker-box {{ bookingEdit.piName ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.piName || '选择课题组' }}</view>
-              </picker>
-              <picker class="booking-picker" range="{{ bookingEditAupOptions }}" range-key="registerNo" value="{{ bookingEditAupIndex }}" bindchange="onBookingAupChange" disabled="{{ !bookingEdit.piName }}">
-                <view class="booking-picker-box {{ bookingEdit.aupId ? '' : 'booking-picker-box--empty' }}">{{ bookingEdit.registerNumber || (bookingEdit.piName ? '选择 AUP 编号' : '先选课题组') }}</view>
-              </picker>
+              </view>
+              <view class="booking-picker" data-target="aup" bindtap="openBookingPicker">
+                <view class="booking-picker-box {{ bookingEdit.aupId ? '' : 'booking-picker-box--empty' }} {{ bookingEdit.piName ? '' : 'booking-picker-box--disabled' }}">{{ bookingEdit.registerNumber || (bookingEdit.piName ? '选择 AUP 编号' : '先选课题组') }}</view>
+              </view>
               <input class="booking-edit-input" type="number" value="{{ bookingEdit.rentNumber }}" bindinput="onBookingRentInput" placeholder="预约数量" />
               <input class="booking-edit-input" type="text" value="{{ bookingEdit.memo }}" bindinput="onBookingMemoInput" placeholder="备注" />
             </view>
@@ -812,73 +830,8 @@
   </view>
 </van-popup>
 
-<!-- 特殊状态总览弹窗（对齐 H5 MobileSpecialStatusPanel 三层折叠设计） -->
-<van-popup
-  show="{{ specialStatusOpen }}"
-  position="center"
-  round
-  closeable
-  close-icon-position="top-right"
-  root-portal="{{ true }}"
-  z-index="{{ 20000 }}"
-  custom-style="width:90vw;max-width:680rpx;height:80vh;box-sizing:border-box;overflow:hidden;"
-  bind:close="onCloseSpecialStatus"
->
-  <view class="sp-status-popup">
-    <view class="sp-status-hd">
-      <text class="sp-status-title">特殊状态总览</text>
-      <text wx:if="{{ specialStatusScannedAt }}" class="sp-status-meta">上次扫描 {{ specialStatusScannedAt }} · 共 {{ specialStatusGroups.length }} 类特殊状态</text>
-    </view>
-    <scroll-view scroll-y class="sp-status-scroll">
-      <view wx:if="{{ specialStatusLoading }}" class="sp-status-loading">
-        <van-loading size="20px" color="#ac1736" />
-        <text>加载中…</text>
-      </view>
-      <view wx:elif="{{ specialStatusError }}" class="sp-status-err-msg">{{ specialStatusError }}</view>
-      <view wx:elif="{{ specialStatusGroups.length === 0 }}" class="sp-status-empty">暂无特殊状态笼位</view>
-      <view wx:else class="sp-status-list">
-        <block wx:for="{{ specialStatusGroups }}" wx:key="code" wx:for-item="grp">
-          <!-- 第一层：状态类型 -->
-          <view class="sp-group-card">
-            <view class="sp-group-hd" data-code="{{ grp.code }}" bindtap="onToggleSpecialGroup">
-              <view class="sp-group-dot" style="background:{{ grp.dotColor }};">
-                <text class="sp-group-abbr">{{ grp.abbr }}</text>
-              </view>
-              <text class="sp-group-name">{{ grp.label }}</text>
-              <text class="sp-group-badge">{{ grp.count }}</text>
-              <text class="sp-group-arrow">{{ grp.expanded ? '▴' : '▾' }}</text>
-            </view>
-            <!-- 第二层：笼架分组 -->
-            <view wx:if="{{ grp.expanded && grp.shelfGroups.length }}" class="sp-group-body">
-              <block wx:for="{{ grp.shelfGroups }}" wx:key="key" wx:for-item="shf">
-                <view class="sp-shelf-card">
-                  <view class="sp-shelf-hd" data-code="{{ grp.code }}" data-key="{{ shf.key }}" bindtap="onToggleSpecialShelf">
-                    <view class="sp-shelf-info">
-                      <text class="sp-shelf-title">{{ shf.title }}</text>
-                      <text wx:if="{{ shf.meta }}" class="sp-shelf-meta">{{ shf.meta }}</text>
-                    </view>
-                    <text class="sp-shelf-count">{{ shf.cages.length }} 位</text>
-                    <text class="sp-shelf-arrow">{{ shf._expanded ? '▴' : '▾' }}</text>
-                  </view>
-                  <!-- 第三层：笼位列表 -->
-                  <view wx:if="{{ shf._expanded }}" class="sp-shelf-body">
-                    <view wx:for="{{ shf.cages }}" wx:key="position" wx:for-item="cage" class="sp-cage-row">
-                      <view class="sp-cage-main">
-                        <text class="sp-cage-pos">{{ cage._displayPosition || cage.position }}</text>
-                        <text class="sp-cage-pi">PI {{ cage.projectPiName || cage.piName || '—' }}</text>
-                      </view>
-                      <text wx:if="{{ cage.detailName || cage.detailDescription }}" class="sp-cage-detail">{{ cage.detailName || cage.detailDescription }}</text>
-                    </view>
-                  </view>
-                </view>
-              </block>
-            </view>
-          </view>
-        </block>
-      </view>
-    </scroll-view>
-  </view>
-</van-popup>
+<!-- 「特殊状态总览」弹窗（三层折叠）已随入口一并删除：需求确认不需要这个入口，
+     留着弹窗就是死代码。若将来要恢复，从 git 历史里取这一块即可。 -->
 
 <!-- 扫码确认核对弹窗 -->
 <van-popup
@@ -989,6 +942,52 @@
       <view class="cf-btn-cancel" bindtap="onCloseReservePerson">取消</view>
       <view class="cf-btn-confirm {{ (divisionPickedCount === 0 || divisionSubmitting) ? 'cf-btn-confirm--disabled' : '' }}" bindtap="{{ (divisionPickedCount === 0 || divisionSubmitting) ? '' : 'handleDivisionSubmit' }}">{{ divisionSubmitting ? '提交中...' : '确定划分 (' + divisionPickedCount + ')' }}</view>
     </view>
+  </view>
+</van-popup>
+
+<!-- 选择弹窗（课题组 / AUP 编号共用）：搜索式。
+     课题组上百个（本院 + 外院共用），AUP 也可能几十条，原生 picker 是长列表/滚轮，翻起来没法用；
+     这里本地过滤字典里已经带回来的数据，输入即筛，不额外打接口。 -->
+<van-popup
+  show="{{ bookingPickerOpen }}"
+  position="center"
+  round
+  closeable
+  close-icon-position="top-right"
+  root-portal="{{ true }}"
+  z-index="{{ 22000 }}"
+  custom-style="width:90vw;max-width:640rpx;padding:24rpx;box-sizing:border-box;"
+  bind:close="closeBookingPicker"
+>
+  <view class="cf-root">
+    <view class="cf-title">{{ bookingPickerTitle }}</view>
+    <view class="rp-search-row">
+      <input
+        class="rp-input"
+        type="text"
+        value="{{ bookingPickerKeyword }}"
+        placeholder="{{ bookingPickerTarget === 'aup' ? '输入 AUP 编号筛选' : '输入课题组名称筛选' }}"
+        placeholder-class="list-search-placeholder"
+        bindinput="onBookingPickerKeywordInput"
+        confirm-type="search"
+      />
+      <view wx:if="{{ bookingPickerKeyword }}" class="rp-search-btn" bindtap="clearBookingPickerKeyword">清空</view>
+    </view>
+    <scroll-view scroll-y class="rp-list">
+      <view wx:if="{{ bookingPickerRows.length === 0 }}" class="rp-hint">没有匹配的项</view>
+      <block wx:else>
+        <view
+          wx:for="{{ bookingPickerRows }}"
+          wx:key="key"
+          class="rp-row {{ item.key === bookingPickerPicked ? 'rp-row--on' : '' }}"
+          data-key="{{ item.key }}"
+          bindtap="onBookingPickerPick"
+        >
+          <text class="rp-name rp-name--flex">{{ item.label }}</text>
+          <text wx:if="{{ item.key === bookingPickerPicked }}" class="rp-check">✓</text>
+        </view>
+      </block>
+    </scroll-view>
   </view>
 </van-popup>
 

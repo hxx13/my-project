@@ -202,6 +202,7 @@ function buildScanRoomMap(dto) {
 Page({
   data: {
     loading: false,
+    panelRefreshing: false,   // 右侧房间列表的下拉刷新指示（scroll-view 原生 refresher 用）
     allRooms: [],
     campusTree: [],
     campusDisplayList: [],
@@ -299,8 +300,19 @@ Page({
     }
   },
 
-  onPullDownRefresh() {
-    this.refreshRoomPage({ silent: false, preserveSelection: true }).finally(() => wx.stopPullDownRefresh());
+  /**
+   * 房间列表下拉刷新：走 scroll-view 原生 refresher。
+   *
+   * 以前是页面级 onPullDownRefresh —— 它没有阈值可调，而本页自己也完全不滚
+   * （滚动分别发生在左侧校区树和右侧房间列表两个 scroll-view 里），
+   * 于是在页面任意位置稍微一拖就开始把整页往下拽，手感就是「太敏感」。
+   * 原生 refresher 只在右侧列表拉到顶再多拉一段时才触发，且只让列表动。
+   * silent: true —— 不弹全屏 mask（loading 字段只做重入守卫，不参与模板），列表不闪。
+   */
+  onPanelRefresher() {
+    this.setData({ panelRefreshing: true });
+    this.refreshRoomPage({ silent: true, preserveSelection: true })
+      .finally(() => this.setData({ panelRefreshing: false }));
   },
 
   loadRooms(options) {

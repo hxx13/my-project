@@ -11,6 +11,8 @@ public interface NotifyDigestItemMapper {
     int batchInsert(@Param("items") List<NotifyDigestItem> items);
     List<NotifyDigestItem> findPendingByUser(@Param("userId") String userId);
     List<String> findDistinctPendingUsers();
+    /** 该接收人该源当前是否还有未投递的明细。表格表头靠它判断"这一组要不要带表头"。 */
+    int countPending(@Param("userId") String userId, @Param("sourceCode") String sourceCode);
     int markSent(@Param("ids") List<Long> ids, @Param("sendTime") LocalDateTime sendTime);
     int deletePendingBySource(@Param("sourceCode") String sourceCode);
     /**

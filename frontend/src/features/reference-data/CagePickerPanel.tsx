@@ -48,6 +48,8 @@ interface Props {
   aupRecordId: number | string;
   /** 规格选项原文「模板名: 选项」；用于一笼一规格预判与表单回填 */
   specOptionLabel?: string | null;
+  /** 订购所选校区（浦东/浦西）：只渲染本校区的架子，否则本单能选到别的校区的笼位 */
+  campus?: string | null;
   /** 规格弹窗填的总数：多选时的分配总和必须等于它 */
   quantity: number;
   /** 已锁定的笼位，**顺序即分配顺序** */
@@ -83,6 +85,7 @@ const PICKED_COLOR = "#0ea5e9";
  */
 export default function CagePickerPanel({
   aupRecordId,
+  campus,
   specOptionLabel,
   quantity,
   reservations,
@@ -107,8 +110,8 @@ export default function CagePickerPanel({
     isLoading: shelvesLoading,
     error: shelvesError,
   } = useQuery({
-    queryKey: ["animalOrderGroupShelves"],
-    queryFn: fetchGroupShelves,
+    queryKey: ["animalOrderGroupShelves", campus ?? ""],
+    queryFn: () => fetchGroupShelves(campus),
     staleTime: 30_000,
     retry: false,
   });
@@ -273,6 +276,9 @@ export default function CagePickerPanel({
     for (const r of reservations) m.set(r.animalCageId, PICKED_COLOR);
     return m;
   }, [reservations]);
+
+  /** 格子右下角的 ×N（对齐 H5/小程序）：页面算好的分配量按 cageId 摊给 ShelfGrid */
+  const qtyByCageId = useMemo(() => new Map(Object.entries(alloc)), [alloc]);
 
   const maxQuantity = reservable?.maxQuantityPerCage ?? 0;
   useEffect(() => {
@@ -697,7 +703,7 @@ export default function CagePickerPanel({
       )}
       {!loading && !shelvesError && groupShelves.length === 0 && (
         <div className="py-6 text-center text-[11px] text-[var(--twin-mute)]">
-          本课题组名下暂无笼架。若确实有笼位，请联系管理员确认笼位的课题归属。
+          本课题组在{campus ? `${campus}校区` : "本校区"}暂无笼架。换校区看看，或联系管理员确认笼位的课题归属。
         </div>
       )}
       {!loading &&
@@ -721,6 +727,7 @@ export default function CagePickerPanel({
               selectedCells={selectedCells}
               pairColorByCageId={pickedHighlight}
               opMarkerByCageId={opMarkByCageId}
+              qtyByCageId={qtyByCageId}
               scanLockTarget={locateTarget}
               onToggleCell={(sid, x, y) => void handleToggle(sid, x, y)}
               onCellClick={handleCellClick}

@@ -207,7 +207,15 @@ public class TelemetryAlarmConfigService {
 
     /** ── 全量树 ── */
 
-    private static final Set<String> MONITORED_KINDS = Set.of("TEMP", "HUM", "RH", "PRESSURE");
+    /**
+     * 在配置树里按"报警指标"呈现的类型。与调度器 {@code TelemetryAlarmCheckScheduler.MONITORED_KINDS} 保持一致，
+     * 否则管理员在推送配置页看不到新纳入监控的类型、也没法逐点开关。
+     *
+     * <p>注意 `SWITCH` / `STATUS` 是布尔量、走"值变化"事件而非阈值判定（见调度器里的布尔分支），
+     * 因此树里给它们显示的阈值编辑器不起作用；逐点 `alarm_enabled` 开关仍然有效。
+     */
+    private static final Set<String> MONITORED_KINDS =
+            Set.of("TEMP", "HUM", "RH", "PRESSURE", "WIND", "SWITCH", "STATUS");
 
     private static boolean isAlarmMetricKind(String kind, String role) {
         if (kind == null) return false;
@@ -284,7 +292,7 @@ public class TelemetryAlarmConfigService {
             Map<String, Map<String, List<TelemetryWatchlistTagRow>>> suiteMap = grouped.get(fc);
             TelemetryFloorAlarmConfig floorCfg = floorMap.get(fc);
             boolean floorEnabled = floorCfg == null || floorCfg.getEnabled() == null || floorCfg.getEnabled() == 1;
-            int cooldown = floorCfg != null && floorCfg.getCooldownMinutes() != null ? floorCfg.getCooldownMinutes() : 30;
+            int cooldown = floorCfg != null && floorCfg.getCooldownMinutes() != null ? floorCfg.getCooldownMinutes() : 360;
             boolean floorRecovery = floorCfg != null && floorCfg.getNotifyOnRecovery() != null && floorCfg.getNotifyOnRecovery() == 1;
 
             List<String> sortedSuites = new ArrayList<>(suiteMap.keySet());
@@ -443,7 +451,7 @@ public class TelemetryAlarmConfigService {
     }
 
     public TelemetryFloorAlarmConfig saveFloor(TelemetryFloorAlarmConfig config) {
-        if (config.getCooldownMinutes() == null) config.setCooldownMinutes(30);
+        if (config.getCooldownMinutes() == null) config.setCooldownMinutes(360);
         if (config.getEnabled() == null) config.setEnabled(1);
         if (config.getNotifyOnRecovery() == null) config.setNotifyOnRecovery(0);
         floorMapper.insertOrUpdate(config);
@@ -461,7 +469,7 @@ public class TelemetryAlarmConfigService {
         TelemetryFloorAlarmConfig cfg = new TelemetryFloorAlarmConfig();
         cfg.setFloorCode(floorCode);
         cfg.setEnabled(1);
-        cfg.setCooldownMinutes(30);
+        cfg.setCooldownMinutes(360);
         cfg.setNotifyOnRecovery(0);
         floorMapper.insertOrUpdate(cfg);
         return floorMapper.findByFloorCode(floorCode);
