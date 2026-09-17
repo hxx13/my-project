@@ -34,12 +34,13 @@ public class CageOrderReservationController {
     }
 
     @GetMapping("/group-shelves")
-    @Operation(summary = "本课题组占用的笼架（抽屉渲染范围，与 AUP 无关）")
+    @Operation(summary = "本课题组占用的笼架（抽屉渲染范围，与 AUP 无关；campus 过滤校区）")
     public Result<java.util.List<Map<String, Object>>> groupShelves(
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String campus) {
         User user = resolveUser(authorization);
         if (user == null) return Result.fail(401, "未登录");
-        return Result.success(service.groupShelves(user.getId()));
+        return Result.success(service.groupShelves(user.getId(), campus));
     }
 
     @GetMapping("/reservable")

@@ -1,9 +1,10 @@
 package com.example.demo.modules.telemetry.service;
 
-import com.example.demo.modules.notification.push.PushConstants;
+import com.example.demo.modules.notification.push.digest.DigestResolutionService;
+import com.example.demo.modules.notification.push.digest.DigestScheduler;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItem;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItemMapper;
-import com.example.demo.modules.notification.push.dispatch.PushService;
+import com.example.demo.modules.notification.push.dispatch.PushRecipientResolver;
 import com.example.demo.modules.notification.push.source.NotifySource;
 import com.example.demo.modules.notification.push.source.NotifySourceService;
 import com.example.demo.modules.telemetry.dto.watchlist.TelemetryGlobalAlarmLimitsDto;
@@ -22,31 +23,25 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * 动物房环境报警 — 三层缓存架构：
- * <pre>
- *   Layer 1: pushService.send() 即时推送
- *     信息源自带渠道派发，汇总后仅调用一次
+ * 动物房环境报警调度。
  *
- *   Layer 2: 内存缓冲 + 5min 冷却（同向去重）
- *     alarmBuffer: 同变量同方向合并，5min 内只保留最新
- *     recoveryBuffer: 独立存储，防止恢复通知高频轰炸
- *     flush: 写 alarm_log + 调用 Layer-1 推送 + 写入 Layer-3 缓冲
+ * <p>每 60 秒扫一遍监控点，判定交给 {@link TelemetryAlarmBandEvaluator}（纯函数状态机）。
+ * 报警与恢复都在内存缓冲里按（变量 × 方向）去重，攒满 buffer_flush_minutes 后统一处理。
  *
- *   Layer 3: notify_digest_item → DigestScheduler 聚合通知
- *     轮询间隔 ≥ Layer-2 冷却 (5min)，防止轮询短于预缓存周期
- * </pre>
+ * <p>台账 telemetry_alarm_log 逐条写入，报警与恢复都写；它同时是下一轮判定"上次状态"的依据。
+ * 通知按接收人写 notify_digest_item 明细项，由 DigestScheduler 按源的聚合配置合并成一条发出；
+ * 聚合被关时整源回退即时推送。
  */
 @Service
 public class TelemetryAlarmCheckScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryAlarmCheckScheduler.class);
-    private static final Set<String> MONITORED_KINDS = Set.of("TEMP", "HUM", "RH", "PRESSURE");
+    private static final Set<String> MONITORED_KINDS = Set.of("TEMP", "HUM", "RH", "PRESSURE", "WIND", "SWITCH", "STATUS");
     private static String canonicalMetricKind(String kind) {
         if (kind == null) return null;
         String u = kind.trim().toUpperCase(Locale.ROOT);
@@ -61,29 +56,35 @@ public class TelemetryAlarmCheckScheduler {
     private final TelemetryAlarmConfigService alarmConfigService;
     private final TelemetryGlobalAlarmLimitsService globalLimitsService;
     private final TelemetrySnapshotService snapshotService;
-    private final PushService pushService;
     private final NotifyDigestItemMapper digestItemMapper;
     private final NotifySourceService sourceService;
+    private final PushRecipientResolver recipientResolver;
+    private final DigestResolutionService digestResolutionService;
+    private final DigestScheduler digestScheduler;
 
     public TelemetryAlarmCheckScheduler(TelemetryWatchlistTagMapper watchlistTagMapper,
                                         TelemetryAlarmLogMapper alarmLogMapper,
                                         TelemetryAlarmConfigService alarmConfigService,
                                         TelemetryGlobalAlarmLimitsService globalLimitsService,
                                         TelemetrySnapshotService snapshotService,
-                                        PushService pushService,
                                         NotifyDigestItemMapper digestItemMapper,
-                                        NotifySourceService sourceService) {
+                                        NotifySourceService sourceService,
+                                        PushRecipientResolver recipientResolver,
+                                        DigestResolutionService digestResolutionService,
+                                        DigestScheduler digestScheduler) {
         this.watchlistTagMapper = watchlistTagMapper;
         this.alarmLogMapper = alarmLogMapper;
         this.alarmConfigService = alarmConfigService;
         this.globalLimitsService = globalLimitsService;
         this.snapshotService = snapshotService;
-        this.pushService = pushService;
         this.digestItemMapper = digestItemMapper;
         this.sourceService = sourceService;
+        this.recipientResolver = recipientResolver;
+        this.digestResolutionService = digestResolutionService;
+        this.digestScheduler = digestScheduler;
     }
 
-    // ── Layer-1 内存缓冲 ──
+    // ── 内存缓冲 ──
 
     /** key = variableName|alarmBand，value = 最新报警项 */
     private final Map<String, AlarmItem> alarmBuffer = new ConcurrentHashMap<>();
@@ -109,7 +110,8 @@ public class TelemetryAlarmCheckScheduler {
 
     private record AlarmItem(String floorCode, String roomName, String variableName,
                              String metricKind, String alarmBand, String alarmDirection,
-                             String currentValue, String limitValue) {
+                             String currentValue, String limitValue, long sustainedMinutes,
+                             boolean recovery, boolean shouldNotify, String oldValue) {
         String dedupKey() { return variableName + "|" + alarmBand; }
     }
 
@@ -155,7 +157,8 @@ public class TelemetryAlarmCheckScheduler {
             }
             if (floorCfg == null) floorCfg = alarmConfigService.ensureFloor(floorCode);
 
-            int resetCooldownMin = floorCfg.getCooldownMinutes() != null ? floorCfg.getCooldownMinutes() : 60;
+            int renotifyIntervalMin = floorCfg.getCooldownMinutes() != null
+                    ? floorCfg.getCooldownMinutes() : 360;
             boolean notifyRecovery = floorCfg.getNotifyOnRecovery() != null && floorCfg.getNotifyOnRecovery() == 1;
 
             Map<String, List<TelemetryWatchlistTagRow>> bySuite = new LinkedHashMap<>();
@@ -176,23 +179,11 @@ public class TelemetryAlarmCheckScheduler {
                 for (TelemetryWatchlistTagRow row : suiteRows) {
                     if (row.getAlarmEnabled() != null && row.getAlarmEnabled() == 0) { skipped++; continue; }
 
-                    // ── 逐变量重报警冷却 ──
-                    Integer cooldown = row.getAlarmCooldownMinutes();
-                    if (cooldown != null && cooldown > 0) {
-                        TelemetryAlarmLog lastAlarm = alarmLogMapper.findLastAlarmByVariable(row.getWinccVariableName());
-                        if (lastAlarm != null && lastAlarm.getSentAt() != null) {
-                            long minutesSinceLastAlarm = Duration.between(lastAlarm.getSentAt(), LocalDateTime.now()).toMinutes();
-                            if (minutesSinceLastAlarm < cooldown) {
-                                skipped++; continue; // 冷却中，跳过本次检测
-                            }
-                        }
-                    }
-
                     AlarmItem item = evaluateVariable(row, floorCode, suiteNorm, suiteCfg, globalLimits,
-                            snapshotValues, resetCooldownMin, notifyRecovery);
+                            snapshotValues, renotifyIntervalMin, notifyRecovery);
                     if (item != null) {
-                        // ── Layer-1: 内存缓冲（按 dedupKey 覆盖，保留最新值）──
-                        if ("OK".equals(item.alarmBand)) {
+                        // 内存缓冲（按 dedupKey 覆盖，保留最新值）
+                        if (item.recovery()) {
                             recoveryBuffer.put(item.dedupKey(), item);
                         } else {
                             alarmBuffer.put(item.dedupKey(), item);
@@ -219,14 +210,14 @@ public class TelemetryAlarmCheckScheduler {
                 || Duration.between(lastFlushTime, LocalDateTime.now()).toMinutes() >= minBufferMinutes;
 
         if (!shouldFlush) {
-            log.info("[遥测报警] Layer-2 缓冲中（{} 报警 {} 恢复），距上次 flush {}s，{} 跳过",
+            log.info("[遥测报警] 内存缓冲中（{} 报警 {} 恢复），距上次 flush {}s，{} 跳过",
                     alarmBuffer.size(), recoveryBuffer.size(),
                     lastFlushTime != null ? Duration.between(lastFlushTime, LocalDateTime.now()).toSeconds() : 0,
                     skipped);
             return;
         }
 
-        // ── 3. Flush Layer-1 → Layer-2 ──
+        // ── 3. 到点冲刷 ──
         List<AlarmItem> alarms = List.copyOf(alarmBuffer.values());
         List<AlarmItem> recoveries = List.copyOf(recoveryBuffer.values());
         alarmBuffer.clear();
@@ -238,50 +229,15 @@ public class TelemetryAlarmCheckScheduler {
             return;
         }
 
-        // 批量写 alarm_log
-        for (AlarmItem it : alarms) {
-            TelemetryAlarmLog e = new TelemetryAlarmLog();
-            e.setVariableName(it.variableName); e.setFloorCode(it.floorCode); e.setRoomCanonical(it.roomName);
-            e.setMetricKind(it.metricKind); e.setAlarmBand(it.alarmBand);
-            e.setCurrentValue(it.currentValue); e.setLimitValue(it.limitValue); e.setSentAt(LocalDateTime.now());
-            alarmLogMapper.insert(e);
-        }
+        // ── 台账：报警与恢复都写 ──
+        // 恢复行是下一轮判定"上次状态"的依据；不写的话 lastBand 永远停在 HIGH，
+        // 下次越限会被当成"仍在持续"而漏报真实报警。
+        for (AlarmItem it : alarms) alarmLogMapper.insert(toLogEntry(it));
+        for (AlarmItem it : recoveries) alarmLogMapper.insert(toLogEntry(it));
 
-        // 清旧缓冲残留（旧格式 / 上次未发送的）
-        try { digestItemMapper.deletePendingBySource("TELEMETRY_ALARM"); } catch (Exception ignored) {}
-        try { digestItemMapper.deletePendingBySource("TELEMETRY_RECOVERY"); } catch (Exception ignored) {}
-
-        // ── Layer-2: 逐条写入 notify_digest_item（完整明细）──
-        for (AlarmItem it : alarms) {
-            NotifyDigestItem item = new NotifyDigestItem();
-            item.setUserId(PushConstants.ALL_DIGEST_USER);
-            item.setSourceCode("TELEMETRY_ALARM");
-            item.setChannelCode("ALL");
-            item.setTitle(it.floorCode + " " + it.roomName + " " + it.metricKind + it.alarmDirection);
-            item.setContent(it.floorCode + " · " + it.roomName + "  "
-                    + it.metricKind + it.alarmDirection + "  "
-                    + it.currentValue + "（阈值 " + it.limitValue + "）");
-            digestItemMapper.insert(item);
-        }
-        for (AlarmItem it : recoveries) {
-            NotifyDigestItem item = new NotifyDigestItem();
-            item.setUserId(PushConstants.ALL_DIGEST_USER);
-            item.setSourceCode("TELEMETRY_RECOVERY");
-            item.setChannelCode("ALL");
-            item.setTitle(it.floorCode + " " + it.roomName + " " + it.metricKind + " 已恢复正常");
-            item.setContent(it.floorCode + " · " + it.roomName + "  "
-                    + it.metricKind + " 已恢复正常  "
-                    + it.currentValue);
-            digestItemMapper.insert(item);
-        }
-
-        // ── Layer-3: 逐条即时推送（每条独立变量值，模板正常渲染）──
-        // 推送源若在通知源管理里被禁用，dispatch 会对每条报警打一次「已禁用」；
-        // 这里在 flush 前一次性判断，整批跳过并只打一条汇总，避免刷屏（检测与落库不受影响）。
-        DateTimeFormatter readableDt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-        String nowFmt = LocalDateTime.now().format(readableDt);
-        pushIfEnabled("TELEMETRY_ALARM", alarms, nowFmt);
-        pushIfEnabled("TELEMETRY_RECOVERY", recoveries, nowFmt);
+        // ── 通知：聚合或即时，按源决定；恢复是否外发由楼层开关决定 ──
+        emit("TELEMETRY_ALARM", alarms);
+        emit("TELEMETRY_RECOVERY", recoveries.stream().filter(AlarmItem::shouldNotify).toList());
 
         // 清理旧日志
         try { alarmLogMapper.deleteOlderThan(LocalDateTime.now().minusDays(7)); }
@@ -291,40 +247,101 @@ public class TelemetryAlarmCheckScheduler {
                 alarms.size(), recoveries.size(), skipped, byFloor.size());
     }
 
-    /** 推送源启用才逐条即时推送；禁用则整批跳过并汇总一条，避免每条报警都打「通知源已禁用」。 */
-    private void pushIfEnabled(String sourceCode, List<AlarmItem> items, String nowFmt) {
+    private TelemetryAlarmLog toLogEntry(AlarmItem it) {
+        TelemetryAlarmLog e = new TelemetryAlarmLog();
+        e.setVariableName(it.variableName());
+        e.setFloorCode(it.floorCode());
+        e.setRoomCanonical(it.roomName());
+        e.setMetricKind(it.metricKind());
+        e.setAlarmBand(it.alarmBand());
+        e.setCurrentValue(it.currentValue());
+        e.setLimitValue(it.limitValue());
+        e.setSentAt(LocalDateTime.now());
+        return e;
+    }
+
+    /**
+     * 把一批事件投出去。
+     *
+     * <p>组装方式只有一种：按接收人写聚合明细项。聚合开关从"要不要聚合"降级为"窗口多长"——
+     * 开启时由 DigestScheduler 按 minutely_interval 发，关闭时立刻冲刷该源。
+     * 两种模式都是**每个缓冲周期一条消息**，不会退化成逐条推送。
+     * （即时路径在结构上无法表达一批：它的入参是扁平的单个 map，没有"行"。）
+     */
+    private void emit(String sourceCode, List<AlarmItem> items) {
         if (items.isEmpty()) return;
-        if (!isPushSourceEnabled(sourceCode)) {
-            log.info("[遥测报警] 推送源已禁用 {}，跳过 {} 条即时推送（检测/落库照旧）", sourceCode, items.size());
+        // 一屏表里，同一房间的温/湿/压原本会随检测顺序散落在各处。按 楼层 → 房间 → 指标 排一遍，
+        // 同房间的行就相邻了，读的人一眼能看出"这个房间有几个指标不正常"。
+        items = items.stream()
+                .sorted(java.util.Comparator.comparing(AlarmItem::floorCode)
+                        .thenComparing(AlarmItem::roomName)
+                        .thenComparing(AlarmItem::metricKind))
+                .toList();
+        NotifySource src;
+        try {
+            src = sourceService.getByCode(sourceCode);
+        } catch (Exception e) {
+            log.warn("[遥测报警] 取通知源 {} 失败: {}", sourceCode, e.getMessage());
             return;
         }
-        for (AlarmItem it : items) {
-            try {
-                Map<String, String> vars;
-                if ("TELEMETRY_RECOVERY".equals(sourceCode)) {
-                    vars = Map.of("floorCode", it.floorCode, "roomName", it.roomName,
-                            "metricKind", it.metricKind, "currentValue", it.currentValue,
-                            "recoveryAt", nowFmt);
-                } else {
-                    vars = Map.of("floorCode", it.floorCode, "roomName", it.roomName,
-                            "metricKind", it.metricKind, "alarmDirection", it.alarmDirection,
-                            "currentValue", it.currentValue, "limitValue", it.limitValue,
-                            "sentAt", nowFmt);
+        if (src == null || src.getEnabled() == null || src.getEnabled() != 1) {
+            log.info("[遥测报警] 通知源 {} 未启用，跳过 {} 条（检测与台账不受影响）",
+                    sourceCode, items.size());
+            return;
+        }
+
+        Set<String> recipients = recipientResolver.resolve(src.getId(), null);
+        if (recipients.isEmpty()) {
+            log.info("[遥测报警] 通知源 {} 没有接收人，跳过 {} 条", sourceCode, items.size());
+            return;
+        }
+
+        for (String uid : recipients) {
+            // 表头只在本接收人本源的待发队列为空时并入第一行，保证一组表恰好一个表头。
+            // 若上一批还没被投递（待发队列非空），它已经带了表头，这批就不能再带。
+            boolean needHeader = digestItemMapper.countPending(uid, sourceCode) == 0;
+            for (AlarmItem it : items) {
+                String content = lineOf(it);
+                if (needHeader) {
+                    content = TelemetryAlarmLineFormatter.tableHeader() + "\n" + content;
+                    needHeader = false;
                 }
-                pushService.send(sourceCode, vars);
-            } catch (Exception e) {
-                log.warn("[遥测报警] 单条推送失败: {}", e.getMessage());
+                NotifyDigestItem item = new NotifyDigestItem();
+                item.setUserId(uid);
+                item.setSourceCode(sourceCode);
+                item.setChannelCode("ALL");
+                item.setTitle(content);
+                item.setContent(content);
+                digestItemMapper.insert(item);
             }
+        }
+
+        if (!digestResolutionService.isSourceAggregatedNow(sourceCode)) {
+            // 未启用聚合：立刻冲刷，让内存缓冲攒下的这一批仍然只出一条消息
+            log.info("[遥测报警] {} 未启用聚合，{} 条立刻冲刷（{} 个接收人）",
+                    sourceCode, items.size(), recipients.size());
+            digestScheduler.flushSourcesNow(Set.of(sourceCode));
+        } else {
+            log.info("[遥测报警] {} 共 {} 条进聚合队列，{} 个接收人",
+                    sourceCode, items.size(), recipients.size());
         }
     }
 
-    private boolean isPushSourceEnabled(String sourceCode) {
-        try {
-            NotifySource s = sourceService.getByCode(sourceCode);
-            return s.getEnabled() != null && s.getEnabled() == 1;
-        } catch (Exception e) {
-            return true; // 查询失败回退原 dispatch 路径，由 engine 自行判定
+    /** 聚合明细的单行文案（Markdown 表格的一行）。 */
+    private static String lineOf(AlarmItem it) {
+        if (it.recovery()) {
+            return TelemetryAlarmLineFormatter.recoveryRow(it.roomName(), it.metricKind(), it.currentValue());
         }
+        if ("CHANGE".equals(it.alarmBand())) {
+            return TelemetryAlarmLineFormatter.changeRow(it.roomName(), it.metricKind(),
+                    it.oldValue(), it.currentValue());
+        }
+        if (it.sustainedMinutes() > 0) {
+            return TelemetryAlarmLineFormatter.renotifyRow(it.roomName(), it.metricKind(), it.alarmBand(),
+                    it.sustainedMinutes(), it.currentValue(), it.limitValue());
+        }
+        return TelemetryAlarmLineFormatter.alarmRow(it.roomName(), it.metricKind(), it.alarmBand(),
+                it.currentValue(), it.limitValue());
     }
 
     // ── 单变量评估 ──
@@ -332,82 +349,116 @@ public class TelemetryAlarmCheckScheduler {
     private AlarmItem evaluateVariable(
             TelemetryWatchlistTagRow row, String floorCode, String suiteNorm,
             TelemetrySuiteAlarmConfig suiteCfg, TelemetryGlobalAlarmLimitsDto globalLimits,
-            Map<String, String> snapshotValues, int resetCooldownMin, boolean notifyRecovery) {
+            Map<String, String> snapshotValues, int renotifyIntervalMin, boolean notifyRecovery) {
 
         String variableName = row.getWinccVariableName().trim();
         String metricKind = canonicalMetricKind(row.getMetricKindCode());
         String roomName = TelemetryAlarmConfigService.localPartRoom(
                 row.getRoomCanonical() != null ? row.getRoomCanonical() : "");
 
-        var limits = alarmConfigService.resolveEffectiveLimits(suiteNorm, metricKind,
-                row.getAlarmOverrideMin(), row.getAlarmOverrideMax(), globalLimits, suiteCfg);
-
         String currentValue = snapshotValues.get(variableName);
         if (!StringUtils.hasText(currentValue)) return null;
+
+        // 布尔量（开关/状态）没有阈值，按"值变化"报警，走独立路径
+        if ("SWITCH".equals(metricKind) || "STATUS".equals(metricKind)) {
+            return evaluateBooleanVariable(floorCode, roomName, variableName, metricKind, currentValue);
+        }
+
+        var limits = alarmConfigService.resolveEffectiveLimits(suiteNorm, metricKind,
+                row.getAlarmOverrideMin(), row.getAlarmOverrideMax(), globalLimits, suiteCfg);
 
         Double current = parseNumeric(currentValue);
         if (current == null) return null;
         Double limitMin = parseNumeric(limits.minValue());
         Double limitMax = parseNumeric(limits.maxValue());
+        if (limitMin == null && limitMax == null) return null;
 
-        String newBand, limitDisplay, direction;
-
-        // 解析滞回值
         Double hysteresis = parseNumeric(limits.hysteresisValue());
         if (hysteresis == null || hysteresis < 0) hysteresis = 0.0;
 
-        // 查上次报警状态用于滞回判断
+        // 逐变量重提醒间隔覆盖楼层值；逐变量未配（0 或 null）时用楼层值
+        int effectiveRenotify = renotifyIntervalMin;
+        Integer tagInterval = row.getAlarmCooldownMinutes();
+        if (tagInterval != null && tagInterval > 0) effectiveRenotify = tagInterval;
+
         TelemetryAlarmLog lastAny = alarmLogMapper.findLastByVariable(variableName);
         String lastBand = lastAny != null ? lastAny.getAlarmBand() : null;
-        LocalDateTime lastSentAt = lastAny != null ? lastAny.getSentAt() : null;
+        LocalDateTime lastNotifiedAt = lastAny != null ? lastAny.getSentAt() : null;
 
-        // 超过 resetCooldownMin 自动重置为 OK，允许再次报警
-        // Bug fix: 当逐变量冷却周期 < 楼层重置周期时，取较小值，确保冷却到期后状态机不会错误阻塞
-        int effectiveResetMin = resetCooldownMin;
-        Integer tagCooldown = row.getAlarmCooldownMinutes();
-        if (tagCooldown != null && tagCooldown > 0 && tagCooldown < effectiveResetMin) {
-            effectiveResetMin = tagCooldown;
-        }
-        if (lastBand != null && !"OK".equals(lastBand) && lastSentAt != null
-                && Duration.between(lastSentAt, LocalDateTime.now()).toMinutes() >= effectiveResetMin) {
-            lastBand = "OK";
-        }
+        // 只有处在报警状态时才需要查本轮起点，避免每个点每轮都多查一次
+        LocalDateTime streakStart = ("HIGH".equals(lastBand) || "LOW".equals(lastBand))
+                ? alarmLogMapper.findStreakStart(variableName, lastBand)
+                : null;
 
-        if (limitMax != null && current > limitMax) {
-            // 超过上限 → HIGH
-            newBand = "HIGH"; limitDisplay = limits.maxValue(); direction = "偏高";
-        } else if (limitMin != null && current < limitMin) {
-            // 低于下限 → LOW
-            newBand = "LOW"; limitDisplay = limits.minValue(); direction = "偏低";
-        } else if ("HIGH".equals(lastBand) && limitMax != null && current >= limitMax - hysteresis) {
-            // 滞回区内：曾 HIGH 但未降到 limitMax - hysteresis 以下 → 保持 HIGH（不触发恢复）
-            return null;
-        } else if ("LOW".equals(lastBand) && limitMin != null && current <= limitMin + hysteresis) {
-            // 滞回区内：曾 LOW 但未升到 limitMin + hysteresis 以上 → 保持 LOW（不触发恢复）
-            return null;
-        } else {
-            // 正常范围（含滞回恢复）
-            newBand = "OK"; limitDisplay = null; direction = "";
-        }
+        var outcome = TelemetryAlarmBandEvaluator.evaluate(new TelemetryAlarmBandEvaluator.Input(
+                lastBand, lastNotifiedAt, streakStart, LocalDateTime.now(),
+                current, limitMin, limitMax, hysteresis, effectiveRenotify));
 
-        String metricKindDisplay = switch (metricKind) {
-            case "TEMP" -> "温度"; case "HUM" -> "湿度"; case "PRESSURE" -> "压强"; default -> metricKind;
+        if (outcome.eventType() == TelemetryAlarmBandEvaluator.EventType.NONE) return null;
+
+        String metricKindDisplay = metricKindDisplay(metricKind);
+        String valWithUnit = TelemetryAlarmLineFormatter.appendUnit(currentValue, metricKind);
+        boolean isRecovery = outcome.eventType() == TelemetryAlarmBandEvaluator.EventType.RECOVERY;
+        // 恢复行总要写台账（状态需要复位，否则下次越限会被当成"仍在持续"而漏报）；
+        // 是否对外发恢复通知由楼层开关决定。
+        boolean shouldNotify = !isRecovery || notifyRecovery;
+        String limitDisplay = isRecovery ? null
+                : ("HIGH".equals(outcome.band()) ? limits.maxValue() : limits.minValue());
+
+        return new AlarmItem(floorCode, roomName, variableName, metricKindDisplay,
+                outcome.band(), outcome.direction(), valWithUnit, limitDisplay,
+                outcome.sustainedMinutes(), isRecovery, shouldNotify, null);
+    }
+
+    /** 指标类型的显示名（类型格文字）。 */
+    private static String metricKindDisplay(String metricKind) {
+        return switch (metricKind) {
+            case "TEMP" -> "温度"; case "HUM" -> "湿度"; case "PRESSURE" -> "压强";
+            case "WIND" -> "风量"; case "SWITCH" -> "开关"; case "STATUS" -> "状态";
+            default -> metricKind;
         };
-        String valUnit = currentValue + (metricKind.contains("TEMP") ? "℃" : metricKind.contains("HUM") ? "%" : "Pa");
+    }
 
-        // 状态机（基于 alarm_log 历史，已在滞回判断中查询）
+    /**
+     * 布尔量（开关/状态）按"值变化"报警，与阈值/滞回/重提醒都无关。
+     *
+     * <p>首次观测只写台账做基准、不产生事件；有历史且归一化后不同才报变化。变化事件的
+     * {@code current_value} 写新值（作下次基准），行里读数格再拼 旧→新。
+     */
+    private AlarmItem evaluateBooleanVariable(String floorCode, String roomName, String variableName,
+                                              String metricKind, String currentValue) {
+        String display = metricKindDisplay(metricKind);
+        TelemetryAlarmLog lastAny = alarmLogMapper.findLastByVariable(variableName);
+        String lastValue = lastAny != null ? lastAny.getCurrentValue() : null;
+        var change = TelemetryAlarmLineFormatter.booleanChange(metricKind, currentValue, lastValue);
 
-        boolean isNewAlarm = "OK".equals(lastBand) || lastBand == null;
-        boolean isRecovery = ("HIGH".equals(lastBand) || "LOW".equals(lastBand)) && "OK".equals(newBand);
-
-        // 仅首次越限和恢复时触发；持续越限不重复报警，必须等恢复后重置
-        if (isNewAlarm && !"OK".equals(newBand)) {
-            return new AlarmItem(floorCode, roomName, variableName, metricKindDisplay, newBand, direction, valUnit, limitDisplay);
-        }
-        if (isRecovery && notifyRecovery) {
-            return new AlarmItem(floorCode, roomName, variableName, metricKindDisplay, "OK", "恢复", valUnit, null);
+        switch (change.kind()) {
+            case SKIP, NO_CHANGE -> { return null; }
+            case BASELINE -> {
+                // 首次观测：写台账记基准，否则永远没有可比对的"上次值"，这个点就永远不报变化
+                alarmLogMapper.insert(booleanLog(variableName, floorCode, roomName, display, change.normalized()));
+                return null;
+            }
+            case CHANGE -> {
+                return new AlarmItem(floorCode, roomName, variableName, display,
+                        "CHANGE", null, change.normalized(), null, 0L, false, true, lastValue);
+            }
         }
         return null;
+    }
+
+    /** 布尔量台账行：band=CHANGE，current_value=归一化显示值，limit_value 恒为空。 */
+    private TelemetryAlarmLog booleanLog(String variableName, String floorCode, String roomName,
+                                         String metricKindDisplay, String normalizedValue) {
+        TelemetryAlarmLog e = new TelemetryAlarmLog();
+        e.setVariableName(variableName);
+        e.setFloorCode(floorCode);
+        e.setRoomCanonical(roomName);
+        e.setMetricKind(metricKindDisplay);
+        e.setAlarmBand("CHANGE");
+        e.setCurrentValue(normalizedValue);
+        e.setSentAt(LocalDateTime.now());
+        return e;
     }
 
     // ── 快照 ──

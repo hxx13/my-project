@@ -257,9 +257,14 @@ function resolveGroupId(projectGroupId, projectGroupName) {
    链路照 web：点格子即锁（POST 建 reservation）→ 加购时把 reservationId 带进购物车行。
    竞态由后端 active_cage_id 唯一索引保证，前端不做「先查后插」。 */
 
-/** 本课题组占用的笼架：抽屉渲染哪些架子由它决定，与 AUP 无关 */
-function fetchGroupShelves() {
-  return springAuth.springRequest({ url: '/api/animal-order/cage-reservations/group-shelves', method: 'GET', data: {} })
+/**
+ * 本课题组占用的笼架：抽屉渲染哪些架子由它决定，与 AUP 无关。
+ * campus（浦东/浦西）非空时只给本校区的 —— 本课题组的架子可能横跨两个校区，
+ * 不过滤就会在浦东的单子里选到浦西的笼位。
+ */
+function fetchGroupShelves(campus) {
+  const url = withQuery('/api/animal-order/cage-reservations/group-shelves', { campus: campus || undefined });
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} })
     .then(function (res) {
       const p = parseResponse(res);
       if (!p.ok) throw new Error(p.message);

@@ -336,6 +336,13 @@
   font-weight: 700;
   color: #1f2937;
 }
+/* 标题下方的次要说明（分配浮层用来放「已选 N 笼 · 已分配 x/y」） */
+.sheet-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
 .sheet-scroll {
   /* flex:1 + min-height:0：固定住页脚，列表再长也在区域内滚；
      只用 max-height 的话内容一多会把底部按钮顶出弹层 */
@@ -993,6 +1000,19 @@
   color: #94a3b8;
 }
 
+/* 「分配」入口：笼位行右侧的药丸，点开分配浮层（不换抽屉内容） */
+.cage-assign {
+  flex-shrink: 0;
+  height: 48rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #e8f0ff;
+  color: #2563eb;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 48rpx;
+}
+
 .cage-clear {
   flex-shrink: 0;
   height: 48rpx;
@@ -1112,7 +1132,8 @@
   left: 24rpx;
   right: 24rpx;
   bottom: 24rpx;
-  z-index: 100;
+  /* 压过 van-popup（默认 z-index 100 起）：分配浮层开着时加数量照样看得见「超出 N 只」 */
+  z-index: 9999;
   margin: 0;
   padding: 10rpx 16rpx;
   border-radius: 12rpx;
@@ -1121,6 +1142,104 @@
   font-size: 22rpx;
   text-align: center;
   box-shadow: 0 6rpx 20rpx rgba(220, 38, 38, 0.32);
+}
+
+/* 按顺序分配（照 H5 抽屉第二页的列表形态）：一笼一行，右侧 −/+ 微调；
+   默认已按选中顺序自动分好，这里只处理「想多放/少放」的例外 */
+.cage-alloc-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+  padding: 12rpx 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  background: #fff;
+}
+
+.cage-alloc-no {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #0ea5e9;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.cage-alloc-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cage-alloc-pos {
+  font-size: 26rpx;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cage-alloc-where {
+  font-size: 20rpx;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cage-alloc-step {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.cage-alloc-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 62rpx;
+  text-align: center;
+}
+
+.cage-alloc-btn--plus {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.cage-alloc-btn--hover {
+  opacity: 0.75;
+}
+
+.cage-alloc-btn--off {
+  opacity: 0.35;
+}
+
+.cage-alloc-qty {
+  min-width: 48rpx;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.cage-alloc-hint {
+  padding: 8rpx 0 24rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #94a3b8;
 }
 
 /* ---- 规格选项：一条一张卡；填了数量的那条高亮（蓝底白字，与全站选中口径一致） ---- */

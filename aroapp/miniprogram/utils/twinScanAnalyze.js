@@ -3,6 +3,7 @@
  */
 
 const springAuth = require('./springAuth.js');
+const mobileScanRoomAccess = require('./mobileScanRoomAccess.js');
 
 function readSpringUserId() {
   try {
@@ -67,6 +68,17 @@ function computePermissionBadge({ userId, parsedAnalyze }) {
   }
   if (Number(dto.globalUserState) === 3) {
     return { key: 'banned', text: '禁用' };
+  }
+  /*
+    角标口径（2026-09-17 定）：不再表示「本人当前状态」，改为**当前时段能否进入** ——
+    能进 = 正常，不能进 = 非开放时间段。判据复用 H5 那套（scanAssistantSpeak）：
+    scanPopupEntryWindowEnabled && !scanPopupEntryAllowedNow。这里不看房间豁免名单，
+    那是逐房间的判定（mobileScanRoomAccess.isRoomEntryTimeBlocked）。
+    归一化走 mobileScanRoomAccess：它同时兜了 snake_case 与字段缺失（缺省视为开放）。
+  */
+  const access = mobileScanRoomAccess.normalizeMobileScanAnalyze(dto);
+  if (access.scanPopupEntryWindowEnabled && !access.scanPopupEntryAllowedNow) {
+    return { key: 'closed', text: '非开放时间段' };
   }
   return { key: 'ok', text: '正常' };
 }

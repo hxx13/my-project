@@ -47,17 +47,33 @@ test('totalCapacity: 笼位数 × 单笼上限', () => {
 });
 
 test('allocateInOrder: 按顺序铺满，最后一笼拿余数', () => {
-  assert.deepEqual(allocateInOrder(8, 2, 5), [5, 3]);
-  assert.deepEqual(allocateInOrder(5, 2, 5), [5, 0]);
-  assert.deepEqual(allocateInOrder(1, 3, 5), [1, 0, 0]);
-  assert.deepEqual(allocateInOrder(15, 3, 5), [5, 5, 5]);
-  assert.deepEqual(allocateInOrder(0, 2, 5), [0, 0], '数量 0：每笼 0');
+  const flat = (total, ids, cap, pinned) => Object.values(allocateInOrder(total, ids, cap, pinned).alloc);
+  assert.deepEqual(flat(8, ['a', 'b'], 5), [5, 3]);
+  assert.deepEqual(flat(5, ['a', 'b'], 5), [5, 0]);
+  assert.deepEqual(flat(1, ['a', 'b', 'c'], 5), [1, 0, 0]);
+  assert.deepEqual(flat(15, ['a', 'b', 'c'], 5), [5, 5, 5]);
+  assert.deepEqual(flat(0, ['a', 'b'], 5), [0, 0], '数量 0：每笼 0');
 });
 
-test('allocateInOrder: 没选笼位时数量必须为 0，否则报错（不静默截断）', () => {
-  assert.deepEqual(allocateInOrder(0, 0, 5), []);
-  assert.throws(() => allocateInOrder(3, 0, 5), /没有选笼位/);
-  assert.throws(() => allocateInOrder(11, 2, 5), /超过所选笼位的容量/);
+test('allocateInOrder: 没选笼位时数量全落 overflow；容量不足也走 overflow 不抛错', () => {
+  assert.deepEqual(allocateInOrder(0, [], 5), { alloc: {}, overflow: 0 });
+  assert.deepEqual(allocateInOrder(3, [], 5), { alloc: {}, overflow: 3 });
+  const over = allocateInOrder(11, ['a', 'b'], 5);
+  assert.deepEqual(over.alloc, { a: 5, b: 5 }, '能放的都放满');
+  assert.equal(over.overflow, 1, '多余的交给 UI 拦');
+});
+
+// 手改过的笼位当起点，其余按顺序吸收差额 —— 与 web cageAllocation.allocateInOrder 同一份算法，
+// 两端飘了就会出现「H5 微调完 5/5/2，小程序同一份选择分出来是别的数」
+test('allocateInOrder: 手动钉住的数量作为起点，容量够就一定让 Σ===总数', () => {
+  const r = allocateInOrder(12, ['a', 'b', 'c'], 5, { c: 5 });
+  assert.deepEqual(r, { alloc: { a: 5, b: 2, c: 5 }, overflow: 0 });
+  const zeroed = allocateInOrder(5, ['a', 'b'], 5, { a: 0 });
+  assert.deepEqual(zeroed.alloc, { a: 0, b: 5 }, '钉成 0 就真的不给它补');
+  const shrunk = allocateInOrder(3, ['a', 'b', 'c'], 5, { a: 5 });
+  assert.deepEqual(shrunk.alloc, { a: 3, b: 0, c: 0 }, '总数缩小时钉子跟着缩，不超总数');
+  const capped = allocateInOrder(12, ['a', 'b'], 5, { a: 5 });
+  assert.deepEqual(capped, { alloc: { a: 5, b: 5 }, overflow: 2 });
 });
 
 // ---------------------------------------------------------------- 房间分组

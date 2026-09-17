@@ -59,6 +59,8 @@ public class AdminDigestConfigController {
         if (denied != null) return Result.error(denied.getMessage());
         Result<?> iv = validateMinInterval(config);
         if (iv != null) return Result.error(iv.getMessage());
+        Result<?> sd = validateScheduleDays(config);
+        if (sd != null) return Result.error(sd.getMessage());
         defaultConfigMapper.insert(config);
         return Result.success(config);
     }
@@ -70,6 +72,8 @@ public class AdminDigestConfigController {
         if (denied != null) return Result.error(denied.getMessage());
         Result<?> iv = validateMinInterval(config);
         if (iv != null) return Result.error(iv.getMessage());
+        Result<?> sd = validateScheduleDays(config);
+        if (sd != null) return Result.error(sd.getMessage());
         config.setId(id);
         defaultConfigMapper.update(config);
         return Result.success();
@@ -84,6 +88,29 @@ public class AdminDigestConfigController {
         int interval = config.getMinutelyInterval() != null ? config.getMinutelyInterval() : 5;
         if (interval < 5) {
             return Result.error("遥测报警源的聚合轮询间隔不能低于 5 分钟（内置冷却时间），当前 " + interval + " 分钟");
+        }
+        return null;
+    }
+
+    /**
+     * 遥测报警源的 MINUTELY 聚合不能限制星期。
+     *
+     * <p>聚合调度器只在「今天是可发送星期」时才把该源计入本轮待发集合。遥测源的报警明细
+     * 是持续产生的，一旦被星期限制挡住，明细项会无限 PENDING 且无人知道。要么全集，要么不放。
+     */
+    private static Result<?> validateScheduleDays(NotifyDigestDefaultConfig config) {
+        if (config == null) return null;
+        String sc = config.getSourceCode();
+        if (!"TELEMETRY_ALARM".equals(sc) && !"TELEMETRY_RECOVERY".equals(sc)) return null;
+        if (!"MINUTELY".equalsIgnoreCase(config.getDigestMode())) return null;
+        String days = config.getScheduleDays();
+        if (days == null || days.isBlank()) return null;
+        java.util.Set<String> set = new java.util.HashSet<>();
+        for (String d : days.split(",")) {
+            if (!d.isBlank()) set.add(d.trim());
+        }
+        if (set.size() < 7) {
+            return Result.error("遥测报警源必须每天发送（星期不能限制），当前只勾了 " + days);
         }
         return null;
     }

@@ -1,7 +1,9 @@
 {
-  "navigationBarTitleText": "概览",
+  "navigationStyle": "custom",
   "enablePullDownRefresh": true,
   "disableScroll": false,
   "backgroundTextStyle": "dark",
-  "usingComponents": {}
+  "usingComponents": {
+    "subpage-nav-bar": "/components/subpage-nav-bar/index"
+  }
 }

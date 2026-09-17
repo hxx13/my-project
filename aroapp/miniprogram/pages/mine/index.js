@@ -8,6 +8,7 @@
  */
 
 const springAuth = require('../../utils/springAuth.js');
+const { readCustomNavMetrics } = require('../../utils/customNavMetrics.js');
 const { hasMinRole, isStudentAccount } = require('../../utils/roleAccess.js');
 const pagePermission = require('../../utils/pagePermission.js');
 const twinScan = require('../../utils/twinScanAnalyze.js');
@@ -426,7 +427,9 @@ Page({
     emailCodeCooldown: 0,
   },
 
-  onLoad() {},
+  onLoad() {
+    this.setData({ navBarHeight: readCustomNavMetrics().navBarHeight });
+  },
 
   onShow() {
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();

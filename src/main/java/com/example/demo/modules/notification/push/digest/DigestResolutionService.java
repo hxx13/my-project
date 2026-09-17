@@ -77,6 +77,21 @@ public class DigestResolutionService {
     }
 
     /**
+     * 该信息源此刻是否会走聚合投递。
+     *
+     * <p>判据与 {@link DigestScheduler#tick} 挑选 activeSources 时**完全一致**：只看平台默认配置
+     * 与当天星期，**不看个人偏好**。调用方若拿用户级的 {@link #resolve} 来探"这个源聚不聚合",
+     * 两边判据会在个人偏好不一致时分歧，反向的那个分歧会让明细项永久 PENDING。
+     */
+    public boolean isSourceAggregatedNow(String sourceCode) {
+        NotifyDigestDefaultConfig def = defaultConfigMapper.findBySourceCode(sourceCode);
+        if (def == null || def.getEnabled() == null || def.getEnabled() != 1) return false;
+        if (def.getDigestMode() == null || "INSTANT".equalsIgnoreCase(def.getDigestMode())) return false;
+        int todayDow = java.time.LocalDateTime.now().getDayOfWeek().getValue();
+        return DigestScheduler.isTodayActive(def.getScheduleDays(), todayDow);
+    }
+
+    /**
      * 溢出策略检查：仅 SCHEDULED 模式 + FALLBACK_INSTANT 策略生效。
      * 当前时间超过 overflow_cutoff_time（或自动取的最晚 schedule 时间点） → 返回 true（降级即时）。
      */

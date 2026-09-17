@@ -773,10 +773,10 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
             label: "领用物资",
             icon: Package,
             homeTone: "from-sky-400 to-blue-500",
-            fallbackMinRole: "ADMIN",
+            fallbackMinRole: "STAFF",
             navEnd: true,
             badgeTextKey: "suppliesText",
-            sidebarVisible: (ctx) => ctx.flags.canSuppliesMall && show(ctx, "/admin/supplies", "ADMIN"),
+            sidebarVisible: (ctx) => ctx.flags.canSuppliesMall && show(ctx, "/admin/supplies", "STAFF"),
           },
           {
             id: "supplies-audit-export",

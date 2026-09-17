@@ -23,10 +23,14 @@
     </foreach>
   </insert>
   <select id="findPendingByUser" resultMap="BaseResultMap">
-    SELECT * FROM notify_digest_item WHERE user_id = #{userId} AND status = 'PENDING' ORDER BY create_time ASC
+    SELECT * FROM notify_digest_item WHERE user_id = #{userId} AND status = 'PENDING' ORDER BY create_time ASC, id ASC
   </select>
   <select id="findDistinctPendingUsers" resultType="string">
     SELECT DISTINCT user_id FROM notify_digest_item WHERE status = 'PENDING'
+  </select>
+  <select id="countPending" resultType="int">
+    SELECT COUNT(*) FROM notify_digest_item
+    WHERE user_id = #{userId} AND source_code = #{sourceCode} AND status = 'PENDING'
   </select>
   <update id="markSent">
     UPDATE notify_digest_item SET status = 'SENT', send_time = #{sendTime}

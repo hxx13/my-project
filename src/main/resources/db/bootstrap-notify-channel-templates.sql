@@ -9,11 +9,11 @@ SELECT s.id, 'EMAIL', 1, '激活成功 — {doorLabel}', '<h3>激活成功</h3><
 FROM notify_source s WHERE s.source_code = 'ACTIVATION_SUCCESS'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '激活成功 — {doorLabel}', '## 激活成功\n门禁 **{doorLabel}**\n时间：{swingTime}\n\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '激活成功 — {doorLabel}', '**激活成功**\n门禁 **{doorLabel}**\n时间：{swingTime}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ACTIVATION_SUCCESS'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '激活成功 — {doorLabel}', '## 激活成功\n门禁 **{doorLabel}**\n时间：{swingTime}\n\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '激活成功 — {doorLabel}', '**激活成功**\n门禁 **{doorLabel}**\n时间：{swingTime}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ACTIVATION_SUCCESS'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -23,39 +23,39 @@ SELECT s.id, 'EMAIL', 1, '签退倒计时 — {doorLabel}', '<h3>签退倒计时
 FROM notify_source s WHERE s.source_code = 'SIGNOUT_COUNTDOWN'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '签退倒计时 — {doorLabel}', '## 签退倒计时\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '签退倒计时 — {doorLabel}', '**签退倒计时**\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SIGNOUT_COUNTDOWN'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '签退倒计时 — {doorLabel}', '## 签退倒计时\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '签退倒计时 — {doorLabel}', '**签退倒计时**\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SIGNOUT_COUNTDOWN'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
 -- MATERIAL_REQUESTED
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'EMAIL', 1, '物资申领 — {applicantName}', '<h3>新物资申领</h3><p><b>{applicantName}</b>（{applicantGroup}）提交了物资申领：</p><p>{summary}</p><p style=''color:#666;font-size:12px''>提交时间：{createdAt}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
+SELECT s.id, 'EMAIL', 1, '物资申领 — {applicantName}', '<h3>新物资申领</h3><p><b>{applicantName}</b>（{applicantGroup}）提交了物资申领：</p><table style=''border-collapse:collapse;font-size:13px;margin:8px 0''><tr><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:left''>物资</th><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:right''>数量</th></tr>{itemsHtml}</table><p style=''color:#666;font-size:12px''>提交时间：{createdAt}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'MATERIAL_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '物资申领 — {applicantName}', '## 新物资申领\n**{applicantName}**（{applicantGroup}）\n\n{summary}\n\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '物资申领 — {applicantName}', '**新物资申领**\n**{applicantName}**（{applicantGroup}）\n\n| 物资 | 数量 |\n|:--|--:|\n{items}\n\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'MATERIAL_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '物资申领 — {applicantName}', '## 新物资申领\n**{applicantName}**（{applicantGroup}）\n\n{summary}\n\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '物资申领 — {applicantName}', '**新物资申领**\n**{applicantName}**（{applicantGroup}）\n\n| 物资 | 数量 |\n|:--|--:|\n{items}\n\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'MATERIAL_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
 -- MATERIAL_REVIEWED
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'EMAIL', 1, '物资申领结果 — {auditResult}', '<h3>物资申领{auditResult}</h3><p><b>{applicantName}</b>，你的物资申领已<b>{auditResult}</b>。</p><p>{summary}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
+SELECT s.id, 'EMAIL', 1, '物资申领结果 — {auditResult}', '<h3>物资申领{auditResult}</h3><p><b>{applicantName}</b>，你的物资申领<b>{auditResult}</b>。</p><table style=''border-collapse:collapse;font-size:13px;margin:8px 0''><tr><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:left''>物资</th><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:right''>数量</th></tr>{itemsHtml}</table><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'MATERIAL_REVIEWED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '物资申领结果 — {auditResult}', '## 物资申领{auditResult}\n**{applicantName}**，你的物资申领已**{auditResult}**\n{summary}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '物资申领结果 — {auditResult}', '**物资申领{auditResult}**\n**{applicantName}**，你的物资申领**{auditResult}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'MATERIAL_REVIEWED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '物资申领结果 — {auditResult}', '## 物资申领{auditResult}\n**{applicantName}**，你的物资申领已**{auditResult}**\n{summary}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '物资申领结果 — {auditResult}', '**物资申领{auditResult}**\n**{applicantName}**，你的物资申领**{auditResult}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'MATERIAL_REVIEWED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -65,11 +65,11 @@ SELECT s.id, 'EMAIL', 1, '延迟免冻结申请 — {subjectName}', '<h3>新延�
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '延迟免冻结申请 — {subjectName}', '## 新延迟免冻结申请\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '延迟免冻结申请 — {subjectName}', '**新延迟免冻结申请**\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '延迟免冻结申请 — {subjectName}', '## 新延迟免冻结申请\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '延迟免冻结申请 — {subjectName}', '**新延迟免冻结申请**\n**{subjectName}**（{subjectGroup}）\n{roomName} · {optionLabel}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -79,25 +79,25 @@ SELECT s.id, 'EMAIL', 1, '延迟免冻结结果 — {auditResult}', '<h3>延迟�
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_REVIEWED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '延迟免冻结结果 — {auditResult}', '## 延迟免冻结{auditResult}\n**{roomName}** · {optionLabel}\n审核结果：**{auditResult}**\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '延迟免冻结结果 — {auditResult}', '**延迟免冻结{auditResult}**\n**{roomName}** · {optionLabel}\n审核结果：**{auditResult}**', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_REVIEWED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '延迟免冻结结果 — {auditResult}', '## 延迟免冻结{auditResult}\n**{roomName}** · {optionLabel}\n审核结果：**{auditResult}**\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '延迟免冻结结果 — {auditResult}', '**延迟免冻结{auditResult}**\n**{roomName}** · {optionLabel}\n审核结果：**{auditResult}**', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_REVIEWED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
 -- VIOLATION_CREATED
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'EMAIL', 1, '违规提醒 — {title}', '<h3>{title}</h3><p>来源：{source}</p><p>{summary}</p><p>门禁限制：{enterLocked}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
+SELECT s.id, 'EMAIL', 1, '{title}', '<h3>{title}</h3><p>来源：{source}</p><p>{summary}</p><p>门禁限制：{enterLocked}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'VIOLATION_CREATED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '违规提醒 — {title}', '## {title}\n来源：{source}\n{summary}\n门禁限制：{enterLocked}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '{title}', '**{title}**\n来源：{source}\n{summary}\n门禁限制：{enterLocked}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'VIOLATION_CREATED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '违规提醒 — {title}', '## {title}\n来源：{source}\n{summary}\n门禁限制：{enterLocked}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '{title}', '**{title}**\n来源：{source}\n{summary}\n门禁限制：{enterLocked}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'VIOLATION_CREATED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -107,11 +107,11 @@ SELECT s.id, 'EMAIL', 1, '免冻结授权 — {roomName}', '<h3>免冻结已授�
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_MANUAL'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '免冻结授权 — {roomName}', '## 免冻结已授权\n房间：**{roomName}**\n详情：{optionLabel}\n操作人：{operatorName}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '免冻结授权 — {roomName}', '**免冻结已授权**\n房间：**{roomName}**\n详情：{optionLabel}\n操作人：{operatorName}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_MANUAL'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '免冻结授权 — {roomName}', '## 免冻结已授权\n房间：**{roomName}**\n详情：{optionLabel}\n操作人：{operatorName}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '免冻结授权 — {roomName}', '**免冻结已授权**\n房间：**{roomName}**\n详情：{optionLabel}\n操作人：{operatorName}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SCAN_DELAY_MANUAL'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -121,11 +121,11 @@ SELECT s.id, 'EMAIL', 1, '采购申请 — {applicantName}', '<h3>新采购申�
 FROM notify_source s WHERE s.source_code = 'PURCHASE_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '采购申请 — {applicantName}', '## 新采购申请\n**{applicantName}**\n采购地点：{location}\n采购内容：{content}\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '采购申请 — {applicantName}', '**新采购申请**\n**{applicantName}**\n采购地点：{location}\n采购内容：{content}\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'PURCHASE_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '采购申请 — {applicantName}', '## 新采购申请\n**{applicantName}**\n采购地点：{location}\n采购内容：{content}\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '采购申请 — {applicantName}', '**新采购申请**\n**{applicantName}**\n采购地点：{location}\n采购内容：{content}\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'PURCHASE_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -135,11 +135,11 @@ SELECT s.id, 'EMAIL', 1, '采购办结 — {location}', '<h3>采购已办结</h3
 FROM notify_source s WHERE s.source_code = 'PURCHASE_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '采购办结 — {location}', '## 采购已办结\n**{applicantName}**，你在 **{location}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '采购办结 — {location}', '**采购已办结**\n**{applicantName}**，你在 **{location}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'PURCHASE_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '采购办结 — {location}', '## 采购已办结\n**{applicantName}**，你在 **{location}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '采购办结 — {location}', '**采购已办结**\n**{applicantName}**，你在 **{location}** 的采购申请已处理完毕\n{summary}\n处理人：{processorName}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'PURCHASE_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -149,11 +149,11 @@ SELECT s.id, 'EMAIL', 1, '报修申请 — {applicantName}', '<h3>新报修申�
 FROM notify_source s WHERE s.source_code = 'REPAIR_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '报修申请 — {applicantName}', '## 新报修申请\n**{applicantName}**\n报修地点：{location}\n报修内容：{content}\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '报修申请 — {applicantName}', '**新报修申请**\n**{applicantName}**\n报修地点：{location}\n报修内容：{content}\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'REPAIR_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '报修申请 — {applicantName}', '## 新报修申请\n**{applicantName}**\n报修地点：{location}\n报修内容：{content}\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '报修申请 — {applicantName}', '**新报修申请**\n**{applicantName}**\n报修地点：{location}\n报修内容：{content}\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'REPAIR_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -163,39 +163,39 @@ SELECT s.id, 'EMAIL', 1, '报修办结 — {location}', '<h3>报修已办结</h3
 FROM notify_source s WHERE s.source_code = 'REPAIR_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '报修办结 — {location}', '## 报修已办结\n**{applicantName}**，你在 **{location}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '报修办结 — {location}', '**报修已办结**\n**{applicantName}**，你在 **{location}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'REPAIR_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '报修办结 — {location}', '## 报修已办结\n**{applicantName}**，你在 **{location}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '报修办结 — {location}', '**报修已办结**\n**{applicantName}**，你在 **{location}** 的报修申请已处理完毕\n{summary}\n处理人：{processorName}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'REPAIR_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
 -- SUPPLIES_REQUESTED
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'EMAIL', 1, '物资领用 — {applicantName}', '<h3>新物资领用申请</h3><p><b>{applicantName}</b> 提交了物资领用申请：</p><p>{summary}</p><p style=''color:#666;font-size:12px''>提交时间：{createdAt}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
+SELECT s.id, 'EMAIL', 1, '物资领用 — {applicantName}', '<h3>新物资领用申请</h3><p><b>{applicantName}</b> 提交了物资领用申请：</p><table style=''border-collapse:collapse;font-size:13px;margin:8px 0''><tr><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:left''>物资</th><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:right''>数量</th></tr>{itemsHtml}</table><p style=''color:#666;font-size:12px''>提交时间：{createdAt}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SUPPLIES_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '物资领用 — {applicantName}', '## 新物资领用申请\n**{applicantName}**\n\n{summary}\n\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '物资领用 — {applicantName}', '**新物资领用申请**\n**{applicantName}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}\n\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SUPPLIES_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '物资领用 — {applicantName}', '## 新物资领用申请\n**{applicantName}**\n\n{summary}\n\n提交时间：{createdAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '物资领用 — {applicantName}', '**新物资领用申请**\n**{applicantName}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}\n\n提交时间：{createdAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SUPPLIES_REQUESTED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
 -- SUPPLIES_COMPLETED
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'EMAIL', 1, '物资已出库', '<h3>物资已出库</h3><p><b>{applicantName}</b>，你的领用物资已出库：</p><p>{summary}</p><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
+SELECT s.id, 'EMAIL', 1, '物资已出库', '<h3>物资已出库</h3><p><b>{applicantName}</b>，你的领用物资已出库：</p><table style=''border-collapse:collapse;font-size:13px;margin:8px 0''><tr><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:left''>物资</th><th style=''border:1px solid #e2e8f0;padding:4px 8px;text-align:right''>数量</th></tr>{itemsHtml}</table><hr><p style=''color:#999;font-size:12px''>此邮件由 ARO 系统自动发送。</p>', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SUPPLIES_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '物资已出库', '## 物资已出库\n**{applicantName}**，你的领用物资已出库：\n{summary}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '物资已出库', '**物资已出库**\n**{applicantName}**，你的领用物资已出库：\n\n| 物资 | 数量 |\n|:--|--:|\n{items}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SUPPLIES_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '物资已出库', '## 物资已出库\n**{applicantName}**，你的领用物资已出库：\n{summary}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '物资已出库', '**物资已出库**\n**{applicantName}**，你的领用物资已出库：\n\n| 物资 | 数量 |\n|:--|--:|\n{items}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SUPPLIES_COMPLETED'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -205,11 +205,11 @@ SELECT s.id, 'EMAIL', 1, '聚合通知测试', '<h3>聚合通知测试</h3><p>{c
 FROM notify_source s WHERE s.source_code = 'DIGEST_TEST'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '聚合通知测试', '## {title}\n{content}\n\n> ARO 系统自动推送（测试）', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '聚合通知测试', '**{title}**\n{content}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'DIGEST_TEST'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '聚合通知测试', '## {title}\n{content}\n\n> ARO 系统自动推送（测试）', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '聚合通知测试', '**{title}**\n{content}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'DIGEST_TEST'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -219,11 +219,11 @@ SELECT s.id, 'EMAIL', 1, '⚠ {floorCode} {roomName} {metricKind}{alarmDirection
 FROM notify_source s WHERE s.source_code = 'TELEMETRY_ALARM'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '⚠ {floorCode} {roomName} {metricKind}{alarmDirection}', '## ⚠️ ARO 环境报警\n\n📍 {floorCode} {roomName}\n\n🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n\n🕐 {sentAt}\n\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '⚠ {floorCode} {roomName} {metricKind}{alarmDirection}', '**⚠️ ARO 环境报警**\n\n📍 {floorCode} {roomName}\n\n🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n\n🕐 {sentAt}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'TELEMETRY_ALARM'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '⚠ {floorCode} {roomName} {metricKind}{alarmDirection}', '## ⚠️ ARO 环境报警\n📍 {floorCode} {roomName}\n🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n🕐 {sentAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '⚠ {floorCode} {roomName} {metricKind}{alarmDirection}', '**⚠️ ARO 环境报警**\n📍 {floorCode} {roomName}\n🌡️ {metricKind}{alarmDirection}：**{currentValue}** / 阈值 {limitValue}\n🕐 {sentAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'TELEMETRY_ALARM'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -233,11 +233,11 @@ SELECT s.id, 'EMAIL', 1, '✓ {floorCode} {roomName} {metricKind}已恢复', '<d
 FROM notify_source s WHERE s.source_code = 'TELEMETRY_RECOVERY'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '✓ {floorCode} {roomName} {metricKind}已恢复', '## ✅ ARO 环境恢复\n\n📍 **{floorCode} {roomName}**\n\n🌡️ {metricKind}已恢复正常：**{currentValue}**\n\n🕐 {recoveryAt}\n\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '✓ {floorCode} {roomName} {metricKind}已恢复', '**✅ ARO 环境恢复**\n\n📍 **{floorCode} {roomName}**\n\n🌡️ {metricKind}已恢复正常：**{currentValue}**\n\n🕐 {recoveryAt}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'TELEMETRY_RECOVERY'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '✓ {floorCode} {roomName} {metricKind}已恢复', '## ✅ ARO 环境恢复\n📍 **{floorCode} {roomName}**\n🌡️ {metricKind}已恢复正常：**{currentValue}**\n🕐 {recoveryAt}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '✓ {floorCode} {roomName} {metricKind}已恢复', '**✅ ARO 环境恢复**\n📍 **{floorCode} {roomName}**\n🌡️ {metricKind}已恢复正常：**{currentValue}**\n🕐 {recoveryAt}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'TELEMETRY_RECOVERY'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -247,11 +247,11 @@ SELECT s.id, 'EMAIL', 1, '⚠ 刷卡告警 — {channelName}', '<div style=''bor
 FROM notify_source s WHERE s.source_code = 'SWIPE_FAILURE_ALERT'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl), rate_limit_seconds = VALUES(rate_limit_seconds);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '⚠ 刷卡告警 — {channelName}', '⚠️ ARO 刷卡告警\n\n🚪 {channelName}\n\n👤 {personName}\n\n📞 {phone}\n\n📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n\n🕐 {swingTime}\n\n> ARO 系统自动推送', 0, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '⚠ 刷卡告警 — {channelName}', '⚠️ ARO 刷卡告警\n\n🚪 {channelName}\n\n👤 {personName}\n\n📞 {phone}\n\n📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n\n🕐 {swingTime}\n', 0, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SWIPE_FAILURE_ALERT'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl), rate_limit_seconds = VALUES(rate_limit_seconds);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '⚠ 刷卡告警 — {channelName}', '⚠️ ARO 刷卡告警\n🚪 {channelName}\n👤 {personName}\n📞 {phone}\n📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n🕐 {swingTime}\n> ARO 系统自动推送', 0, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '⚠ 刷卡告警 — {channelName}', '⚠️ ARO 刷卡告警\n🚪 {channelName}\n👤 {personName}\n📞 {phone}\n📊 {windowMin}分钟内 {count}/{threshold} 次{openTypeLabel} {enterOrExitLabel}\n🕐 {swingTime}', 0, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'SWIPE_FAILURE_ALERT'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl), rate_limit_seconds = VALUES(rate_limit_seconds);
 
@@ -261,11 +261,11 @@ SELECT s.id, 'EMAIL', 1, '培训审批 — {sessionTitle}', '<h3>培训审批待
 FROM notify_source s WHERE s.source_code = 'ARO_TRAINING_PENDING'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '培训审批 — {sessionTitle}', '## 培训审批待审核\n培训 **{sessionTitle}** 有新学员待审批\n\n👤 {traineeName}\n🔢 {jobNumber}\n🏫 {projectGroup}\n\n> ARO 培训审批系统', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '培训审批 — {sessionTitle}', '**培训审批待审核**\n培训 **{sessionTitle}** 有新学员待审批\n\n👤 {traineeName}\n🔢 {jobNumber}\n🏫 {projectGroup}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ARO_TRAINING_PENDING'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '培训审批 — {sessionTitle}', '## 培训审批待审核\n培训 **{sessionTitle}** 有新学员待审批\n\n👤 {traineeName}\n🔢 {jobNumber}\n🏫 {projectGroup}\n\n> ARO 培训审批系统', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '培训审批 — {sessionTitle}', '**培训审批待审核**\n培训 **{sessionTitle}** 有新学员待审批\n\n👤 {traineeName}\n🔢 {jobNumber}\n🏫 {projectGroup}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ARO_TRAINING_PENDING'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -275,11 +275,11 @@ SELECT s.id, 'EMAIL', 1, '人员进入 — {personName}', '<div style=''border-l
 FROM notify_source s WHERE s.source_code = 'ACCESS_ENTER'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '人员进入 — {personName}', '## 🟢 人员进入\n\n📍 **{roomName}** · {doorLabel}\n\n👤 {personName} 进入\n\n🏫 {department}\n\n🕐 {enterTime}\n\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '人员进入 — {personName}', '**🟢 人员进入**\n\n📍 **{roomName}** · {doorLabel}\n\n👤 {personName} 进入\n\n🏫 {department}\n\n🕐 {enterTime}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ACCESS_ENTER'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '人员进入 — {personName}', '## 🟢 人员进入\n📍 **{roomName}** · {doorLabel}\n👤 {personName} 进入\n🏫 {department}\n🕐 {enterTime}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '人员进入 — {personName}', '**🟢 人员进入**\n📍 **{roomName}** · {doorLabel}\n👤 {personName} 进入\n🏫 {department}\n🕐 {enterTime}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ACCESS_ENTER'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 
@@ -289,10 +289,10 @@ SELECT s.id, 'EMAIL', 1, '人员离开 — {personName}', '<div style=''border-l
 FROM notify_source s WHERE s.source_code = 'ACCESS_EXIT'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'SERVER_CHAN', 1, '人员离开 — {personName}', '## 🟡 人员离开\n\n📍 **{roomName}** · {doorLabel}\n\n👤 {personName} 离开\n\n🏫 {department}\n\n🕐 {exitTime}\n\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'SERVER_CHAN', 1, '人员离开 — {personName}', '**🟡 人员离开**\n\n📍 **{roomName}** · {doorLabel}\n\n👤 {personName} 离开\n\n🏫 {department}\n\n🕐 {exitTime}\n', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ACCESS_EXIT'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);
 INSERT INTO notify_source_channel (source_id, channel_code, enabled, title_tpl, content_tpl, rate_limit_seconds, digest_mode)
-SELECT s.id, 'WXPUSHER', 1, '人员离开 — {personName}', '## 🟡 人员离开\n📍 **{roomName}** · {doorLabel}\n👤 {personName} 离开\n🏫 {department}\n🕐 {exitTime}\n> ARO 系统自动推送', 300, 'INSTANT'
+SELECT s.id, 'WXPUSHER', 1, '人员离开 — {personName}', '**🟡 人员离开**\n📍 **{roomName}** · {doorLabel}\n👤 {personName} 离开\n🏫 {department}\n🕐 {exitTime}', 300, 'INSTANT'
 FROM notify_source s WHERE s.source_code = 'ACCESS_EXIT'
 ON DUPLICATE KEY UPDATE title_tpl = VALUES(title_tpl), content_tpl = VALUES(content_tpl);

@@ -92,34 +92,70 @@
   <!-- 筛选底部面板 -->
   <van-popup show="{{ showFilterSheet }}" position="bottom" round safe-area-inset-bottom custom-class="ap-filter-popup" bind:close="onCloseFilterSheet">
     <view class="ap-sheet-title">筛选</view>
+    <!-- 课题组 / 房间都是长列表，原生 picker 滚不动 → 统一走搜索式弹窗（见文件末尾 ap-filter-picker）。
+         4 个筛选项共用同一张，观感与操作一致 -->
     <view class="ap-sheet-group">
       <view class="ap-sheet-label">课题组</view>
-      <picker mode="selector" range="{{ groupNames }}" value="{{ filterGroupIdx }}" bindchange="onGroupFilterChange">
-        <view class="ap-sheet-picker"><text>{{ groupNames[filterGroupIdx] }}</text><text class="ap-chev">▾</text></view>
-      </picker>
+      <view class="ap-sheet-picker" data-field="group" bindtap="openApFilterPicker"><text>{{ groupNames[filterGroupIdx] }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-group">
       <view class="ap-sheet-label">身份标识</view>
-      <picker mode="selector" range="{{ identityTagNames }}" value="{{ filterIdentityIdx }}" bindchange="onIdentityFilterChange">
-        <view class="ap-sheet-picker"><text>{{ identityTagNames[filterIdentityIdx] }}</text><text class="ap-chev">▾</text></view>
-      </picker>
+      <view class="ap-sheet-picker" data-field="identity" bindtap="openApFilterPicker"><text>{{ identityTagNames[filterIdentityIdx] }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-group">
       <view class="ap-sheet-label">房间</view>
-      <picker mode="selector" range="{{ roomNames }}" value="{{ filterRoomIdx }}" bindchange="onRoomFilterChange">
-        <view class="ap-sheet-picker"><text>{{ roomNames[filterRoomIdx] }}</text><text class="ap-chev">▾</text></view>
-      </picker>
+      <view class="ap-sheet-picker" data-field="room" bindtap="openApFilterPicker"><text>{{ roomNames[filterRoomIdx] }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-group">
       <view class="ap-sheet-label">角色</view>
-      <picker mode="selector" range="{{ roleNames }}" value="{{ filterRoleIdx }}" bindchange="onRoleFilterChange">
-        <view class="ap-sheet-picker"><text>{{ roleNames[filterRoleIdx] }}</text><text class="ap-chev">▾</text></view>
-      </picker>
+      <view class="ap-sheet-picker" data-field="role" bindtap="openApFilterPicker"><text>{{ roleNames[filterRoleIdx] }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-actions">
       <van-button block round plain hairline type="primary" bind:click="onClearFilter">重置</van-button>
       <van-button block round type="primary" bind:click="onApplyFilter">确定</van-button>
     </view>
+  </van-popup>
+
+  <!-- 筛选项选择弹窗（4 个筛选项共用）：输入即筛，候选项本地过滤，不打接口 -->
+  <van-popup
+    show="{{ apFilterPickerOpen }}"
+    position="center"
+    round
+    closeable
+    close-icon-position="top-right"
+    root-portal="{{ true }}"
+    z-index="{{ 22000 }}"
+    custom-style="width:88vw;max-width:640rpx;padding:24px;box-sizing:border-box;"
+    bind:close="closeApFilterPicker"
+  >
+    <view class="ap-pick-title">{{ apFilterPickerTitle }}</view>
+    <view class="ap-pick-search">
+      <input
+        class="ap-pick-input"
+        type="text"
+        value="{{ apFilterPickerKeyword }}"
+        placeholder="输入关键字筛选"
+        placeholder-class="ap-pick-ph"
+        bindinput="onApFilterPickerInput"
+        confirm-type="search"
+      />
+      <view wx:if="{{ apFilterPickerKeyword }}" class="ap-pick-clear" bindtap="clearApFilterPickerKeyword">清空</view>
+    </view>
+    <scroll-view scroll-y class="ap-pick-list">
+      <view wx:if="{{ apFilterPickerRows.length === 0 }}" class="ap-pick-hint">没有匹配的项</view>
+      <block wx:else>
+        <view
+          wx:for="{{ apFilterPickerRows }}"
+          wx:key="idx"
+          class="ap-pick-row {{ item.idx === apFilterPickerPicked ? 'ap-pick-row--on' : '' }}"
+          data-idx="{{ item.idx }}"
+          bindtap="onApFilterPickerPick"
+        >
+          <text class="ap-pick-text">{{ item.label }}</text>
+          <text wx:if="{{ item.idx === apFilterPickerPicked }}" class="ap-pick-check">✓</text>
+        </view>
+      </block>
+    </scroll-view>
   </van-popup>
 
   <!-- 详情底部 sheet -->

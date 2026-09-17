@@ -425,7 +425,7 @@
     {
       "path": "/admin/supplies",
       "label": "领用物资",
-      "fallbackMinRole": "ADMIN",
+      "fallbackMinRole": "STAFF",
       "groupTitle": "报修与物资领用",
       "registryId": "supplies-mall"
     },

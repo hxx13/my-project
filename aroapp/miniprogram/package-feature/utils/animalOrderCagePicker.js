@@ -42,28 +42,59 @@ function totalCapacity(cageCount, maxPerCage) {
   return n * cap;
 }
 
+/** 取整并夹到 [lo, hi] */
+function clampInt(v, lo, hi) {
+  const n = Math.floor(Number.isFinite(Number(v)) ? Number(v) : 0);
+  return Math.max(lo, Math.min(hi, n));
+}
+
 /**
- * 按选中顺序分配数量：每笼尽量放满 maxPerCage，最后一笼拿余数。
- * 返回数组长度 = 笼位数；总数超过总容量时抛错（调用方应先校验，别静默截断）。
- * @returns {number[]} 每笼分配数
+ * 按选中顺序分配数量：每笼尽量放满 maxPerCage，末笼拿余数。
+ * 与 web `reference-data/cageAllocation.ts` 同一份算法（含 pinned 与 overflow 语义），改一边必须同步另一边。
+ *
+ * @param {number} total       本规格要买的总数（规格面板填的那个数）
+ * @param {string[]} cageIds   已选笼位，顺序即分配顺序
+ * @param {number} maxPerCage  单笼上限
+ * @param {Object} [pinned]    cageId → 手改过的数量，只作为起点，容量够时会被自动补回
+ * @returns {{alloc: Object<string, number>, overflow: number}}
  */
-function allocateInOrder(total, cageCount, maxPerCage) {
-  const n = Math.max(0, Number(cageCount) || 0);
-  const cap = Math.max(1, Number(maxPerCage) || 1);
-  const want = Math.max(0, Number(total) || 0);
-  if (n === 0) {
-    if (want > 0) throw new Error('没有选笼位，无法分配');
-    return [];
+function allocateInOrder(total, cageIds, maxPerCage, pinned) {
+  const cap = Math.max(0, Math.floor(Number(maxPerCage) || 0));
+  const want = Math.max(0, Math.floor(Number(total) || 0));
+  const ids = Array.isArray(cageIds) ? cageIds.map(String) : [];
+  const pins = pinned && typeof pinned === 'object' ? pinned : {};
+  const alloc = {};
+  ids.forEach(function (id) { alloc[id] = 0; });
+
+  if (ids.length === 0 || cap === 0) return { alloc, overflow: want };
+
+  let remaining = want;
+  // 1) 手动改过的先占位（不超过上限，也不超过总数）
+  ids.forEach(function (id) {
+    if (!(id in pins)) return;
+    const v = clampInt(pins[id], 0, Math.min(cap, remaining));
+    alloc[id] = v;
+    remaining -= v;
+  });
+  // 2) 其余按顺序铺满
+  ids.forEach(function (id) {
+    if (id in pins) return;
+    const v = Math.min(cap, remaining);
+    alloc[id] = v;
+    remaining -= v;
+  });
+  // 3) 还有剩就回头给尚有空位的笼位补上（容量够 ⇒ Σ 一定等于总数）
+  if (remaining > 0) {
+    ids.forEach(function (id) {
+      if (remaining <= 0) return;
+      const spare = cap - alloc[id];
+      if (spare <= 0) return;
+      const v = Math.min(spare, remaining);
+      alloc[id] += v;
+      remaining -= v;
+    });
   }
-  if (want > n * cap) throw new Error('数量超过所选笼位的容量');
-  const out = [];
-  let left = want;
-  for (let i = 0; i < n; i += 1) {
-    const take = Math.min(cap, left);
-    out.push(take);
-    left -= take;
-  }
-  return out;
+  return { alloc, overflow: remaining };
 }
 
 /** 把本课题组笼架按房间归并成 tab：[{ key, roomName, campusName, shelves: [] }]，保持后端顺序 */

@@ -50,9 +50,15 @@ export interface GroupShelf {
   roomId?: string | null;
 }
 
-/** 抽屉渲染范围：本课题组的笼架。 */
-export async function fetchGroupShelves(): Promise<GroupShelf[]> {
-  const res = await authHttp.get<Result<GroupShelf[]>>("/animal-order/cage-reservations/group-shelves");
+/**
+ * 抽屉渲染范围：本课题组的笼架。
+ * @param campus 订购所选校区（浦东/浦西）。不传 = 两个校区都渲染；本课题组的架子可能横跨校区，
+ *               传了就只给本校区的，避免在浦东的单子里选到浦西的笼位。
+ */
+export async function fetchGroupShelves(campus?: string | null): Promise<GroupShelf[]> {
+  const res = await authHttp.get<Result<GroupShelf[]>>("/animal-order/cage-reservations/group-shelves", {
+    params: campus ? { campus } : undefined,
+  });
   if (!res.data?.success) throw new Error(res.data?.message || "加载本课题组笼架失败");
   return res.data.data ?? [];
 }

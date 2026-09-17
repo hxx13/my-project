@@ -5,6 +5,6 @@
     "van-icon": "@vant/weapp/icon/index",
     "van-loading": "@vant/weapp/loading/index",
     "van-popup": "@vant/weapp/popup/index",
-    "subpage-nav-bar": "/package-feature/components/subpage-nav-bar/index"
+    "subpage-nav-bar": "/components/subpage-nav-bar/index"
   }
 }

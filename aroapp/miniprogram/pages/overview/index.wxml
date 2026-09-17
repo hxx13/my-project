@@ -1,4 +1,5 @@
-<view class="overview-page">
+<subpage-nav-bar title="概览" />
+<view class="overview-page" style="min-height: calc(100vh - {{ navBarHeight }}px);">
   <view class="overview-head">
     <text class="overview-title">概览</text>
     <text class="overview-sub" wx:if="{{ canOverviewAdmin }}">双区饼图 · 时段曲线 · 活跃榜单 · {{ updatedAtText || '--:--' }}</text>

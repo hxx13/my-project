@@ -1280,6 +1280,8 @@ public class TwinStudentViolationService {
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
         // 到期时间与「验证后解禁」可并存：到期后仅「已验证」者自动消弹窗（过期扫描撤回通知），
         // 未验证者超期仍保持 ACTIVE 并继续展示（见 expireActivePastDue / selectActiveByTargetUserId）
+        // 没填到期天数时写 NULL **不是「永不过期」**：有效到期时间 = COALESCE(expire_at, 验证时间)，
+        // 即由「验证记录」决定生命周期，验证完成即等效到期（口径见 TwinStudentViolationMapper 的 effectiveExpireAt）。
         if (expireAfterDays != null && expireAfterDays > 0) {
             row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));
         } else {

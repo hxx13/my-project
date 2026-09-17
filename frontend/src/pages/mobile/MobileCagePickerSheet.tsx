@@ -37,6 +37,8 @@ import { authStorage } from "@/features/auth/authStorage";
 
 interface Props {
   aupRecordId: string | number;
+  /** 订购所选校区（浦东/浦西）：只渲染本校区的架子，否则本单能选到别的校区的笼位 */
+  campus?: string | null;
   /** 规格原文（如「性别: 雌性」），用于一笼一规格与锁定时回填 */
   specOptionLabel: string | null;
   /** 规格面板填的总数 */
@@ -76,6 +78,7 @@ const EMPTY_ACTIVE: ActiveCageReservation[] = [];
  */
 export default function MobileCagePickerSheet({
   aupRecordId,
+  campus,
   specOptionLabel,
   quantity,
   pickedCages,
@@ -90,7 +93,8 @@ export default function MobileCagePickerSheet({
   submitDisabled,
   openAllocTick,
 }: Props) {
-  const [view, setView] = useState<"grid" | "alloc">("grid");
+  /** 分配浮层开合（不是内容切换：网格保持挂载，滚动位置不丢） */
+  const [allocOpen, setAllocOpen] = useState(false);
   /** 当前房间：与小程序一致，按房间切 tab、房间内所有架子纵向铺开（不再先进「架子列表」页） */
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,8 +112,8 @@ export default function MobileCagePickerSheet({
     error: shelvesError,
     refetch: refetchShelves,
   } = useQuery({
-    queryKey: ["animalOrderGroupShelves"],
-    queryFn: fetchGroupShelves,
+    queryKey: ["animalOrderGroupShelves", campus ?? ""],
+    queryFn: () => fetchGroupShelves(campus),
     staleTime: 30_000,
     retry: false,
   });
@@ -282,7 +286,7 @@ export default function MobileCagePickerSheet({
   }, [rooms, activeRoomKey, selectableCountByShelfId]);
 
   /**
-   * 购物车「定位」：切到目标笼位所在房间、回到网格、把那一格闪出来。
+   * 购物车「定位」：切到目标笼位所在房间、收起分配浮层、把那一格闪出来。
    * 与 PC CagePickerPanel 的 focusCageId 同一套语义（那边是并排面板切房间，这边是整页）。
    */
   useEffect(() => {
@@ -293,19 +297,16 @@ export default function MobileCagePickerSheet({
       const sid = String(d.shelfMeta.shelfIndexId);
       const room = rooms.find((r) => r.shelfIndexIds.includes(sid));
       if (room) setActiveRoomKey(room.roomKey);
-      setView("grid");
+      setAllocOpen(false);
       setFlashCell(`${cell.x}-${cell.y}`);
       const timer = window.setTimeout(() => setFlashCell(null), 1400);
       return () => window.clearTimeout(timer);
     }
   }, [focusCageId, grids, rooms]);
 
-  /** 分配页的「返回」只回网格；网格页就是首页，没有上级 */
-  const handleBack = () => setView("grid");
-
-  /** 页面标题行点进度 → 切到分配页（底栏那条已删，不再为它单占一行） */
+  /** 页面标题行的「分配」入口 → 打开分配浮层 */
   useEffect(() => {
-    if (openAllocTick && openAllocTick > 0) setView("alloc");
+    if (openAllocTick && openAllocTick > 0) setAllocOpen(true);
   }, [openAllocTick]);
 
   const handleCancel = async (cageId: string) => {
@@ -423,16 +424,20 @@ export default function MobileCagePickerSheet({
   /** 单个格子：与笼架信息页共用同一个组件（GridCellButton），抽屉里不另写一套渲染 */
   const renderCell = (cell: CageShelfCell) => {
     const cageId = String(cell.id ?? "");
+    const isPicked = cageId ? pickedIds.has(cageId) : false;
     return (
       <div key={cell.position} className="relative">
         <GridCellButton
           cell={cell}
           onSelect={() => void handleCellClick(cell)}
-          selected={cageId ? pickedIds.has(cageId) : false}
+          selected={isPicked}
           isPoolCell={cageId ? selectablePool.has(cageId) : false}
-          opMarker={cageId ? opMarks.get(cageId) : undefined}
+          /* 自己锁的格子不挂预定标记（与小程序一致）：选中环 + 数量角标已经说明，
+             再叠一条「已被我预订」的底部色条会跟 ×N 角标抢同一个角 */
+          opMarker={cageId && !isPicked ? opMarks.get(cageId) : undefined}
           divisionLabel={divisionLabelOf(cell, meId)}
           disabledReason={cageId ? disabledReasonByCageId.get(cageId) : undefined}
+          qty={cageId ? alloc[cageId] : undefined}
           compact={compactGrid}
         />
         {flashCell === `${cell.x}-${cell.y}` && (
@@ -467,7 +472,7 @@ export default function MobileCagePickerSheet({
       }
       return (
         <div className="px-4 py-10 text-center text-xs text-[var(--student-mute)]">
-          本课题组名下暂无笼架。若确实有笼位，请联系管理员确认笼位的课题归属。
+          本课题组在{campus ? `${campus}校区` : "本校区"}暂无笼架。换校区看看，或联系管理员确认笼位的课题归属。
         </div>
       );
     }
@@ -500,16 +505,26 @@ export default function MobileCagePickerSheet({
     );
   };
 
-  // ── 第 3 页：分配 ─────────────────────────────────────────────
+  /**
+   * 分配列表浮层（叠在网格上，不是换页）：点「分配」入口开，返回/点某一行关。
+   * 用浮层而不是切换内容，是因为切换会把整块网格卸载 —— 回来滚动位置、房间 tab 全重置。
+   */
   const renderAllocContent = () => (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-[var(--student-hairline)] px-3 py-2">
-        <div className="text-xs font-semibold text-[var(--student-ink)]">按顺序分配</div>
-        <div className="mt-0.5 text-[11px] leading-snug text-[var(--student-mute)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--student-hairline)] px-2 py-1.5">
+        <button
+          type="button"
+          onClick={() => setAllocOpen(false)}
+          className="flex min-h-[34px] shrink-0 items-center gap-0.5 text-sm font-semibold text-[var(--student-ink)]"
+        >
+          <ChevronLeft className="size-4 shrink-0 text-[var(--student-mute)]" />
+          按顺序分配
+        </button>
+        <span className="ml-auto min-w-0 truncate text-[11px] text-[var(--student-mute)]">
           总数 {quantity} ｜ 已分配 {allocated}
           {unallocated > 0 && <span className="text-amber-600"> ｜ 还差 {unallocated}</span>}
           {overflow > 0 && <span className="text-red-500"> ｜ 超了 {overflow}</span>}
-        </div>
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
@@ -530,7 +545,7 @@ export default function MobileCagePickerSheet({
                 }
                 const room = rooms.find((r) => r.shelfIndexIds.includes(sid));
                 if (room) setActiveRoomKey(room.roomKey);
-                setView("grid");
+                setAllocOpen(false);
               }}
               className="mb-1.5 flex items-center gap-2 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-white p-1.5"
             >
@@ -613,66 +628,64 @@ export default function MobileCagePickerSheet({
         也不能 createPortal：`--twin-*` → `--student-*` 的令牌重映射只在 `.mobile-student-shell`
         作用域内生效，portal 出去格子和面板都会丢令牌。
       */}
+      {/* 开合由页面的「分配」入口 / 外部的 openAllocTick 驱动（见下） */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]">
         {/* 一行头（照小程序）：房间 tab 横滚 + 完整/简洁 + 取消 + 加入购物车。
             之前「选择笼位」大字标题、房间行、动作行各占一行，三行全是边角内容 */}
-        {view === "alloc" ? (
-          <div className="flex shrink-0 items-center gap-2 border-b border-[var(--student-hairline)] px-2 py-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--student-hairline)] px-2 py-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+            {renderRoomTabs()}
+          </div>
+          {/* 网格完整/简洁：只收起另有替代物的标签层，底色/网纹/图标一律不动 */}
+          <AdminSegmentedControl
+            className="shrink-0 [--app-color-accent:var(--student-primary)] [--app-color-surface-hover:var(--student-canvas-soft)] [--app-color-surface-container:var(--student-canvas)]"
+            size="sm"
+            aria-label="网格显示"
+            value={compactGrid ? "compact" : "full"}
+            onChange={(v) => setCompactGrid(v === "compact")}
+            options={[
+              { value: "full", label: "完整" },
+              { value: "compact", label: "简洁" },
+            ]}
+          />
+          {onClose && (
             <button
               type="button"
-              onClick={handleBack}
-              className="flex min-h-[34px] shrink-0 items-center gap-0.5 text-sm font-semibold text-[var(--student-ink)]"
+              onClick={onClose}
+              className="shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-2.5 py-1 text-xs text-[var(--student-body)]"
             >
-              <ChevronLeft className="size-4 shrink-0 text-[var(--student-mute)]" />
-              按顺序分配
+              取消
             </button>
-            <span className="ml-auto min-w-0 truncate text-[11px] text-[var(--student-mute)]">
-              总数 {quantity} ｜ 已分配 {allocated}
-              {unallocated > 0 && <span className="text-amber-600"> ｜ 还差 {unallocated}</span>}
-              {overflow > 0 && <span className="text-red-500"> ｜ 超了 {overflow}</span>}
-            </span>
-          </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--student-hairline)] px-2 py-1.5">
-            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
-              {renderRoomTabs()}
-            </div>
-            {/* 网格完整/简洁：只收起另有替代物的标签层，底色/网纹/图标一律不动 */}
-            <AdminSegmentedControl
-              className="shrink-0 [--app-color-accent:var(--student-primary)] [--app-color-surface-hover:var(--student-canvas-soft)] [--app-color-surface-container:var(--student-canvas)]"
-              size="sm"
-              aria-label="网格显示"
-              value={compactGrid ? "compact" : "full"}
-              onChange={(v) => setCompactGrid(v === "compact")}
-              options={[
-                { value: "full", label: "完整" },
-                { value: "compact", label: "简洁" },
-              ]}
-            />
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-2.5 py-1 text-xs text-[var(--student-body)]"
-              >
-                取消
-              </button>
-            )}
-            <button
-              type="button"
-              disabled={submitDisabled}
-              onClick={() => onSubmit?.()}
-              className="shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-2.5 py-1 text-xs font-medium text-[var(--student-primary-foreground)] disabled:opacity-50"
-            >
-              加入购物车
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            disabled={submitDisabled}
+            onClick={() => onSubmit?.()}
+            className="shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-2.5 py-1 text-xs font-medium text-[var(--student-primary-foreground)] disabled:opacity-50"
+          >
+            加入购物车
+          </button>
+        </div>
 
-        {/* 内容区 */}
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {view === "grid" && <div className="h-full overflow-y-auto px-3 py-3">{renderGridContent()}</div>}
-          {view === "alloc" && renderAllocContent()}
+        {/* 内容区：网格**常驻**，分配列表作为弹窗叠上来（见下方 allocOpen）。
+            以前是 view 切换，切走时整块网格被卸载 —— 回来滚动位置和房间 tab 全丢。
+            样式上刻意做成「遮罩 + 从底部升起的圆角卡片」而不是铺满内容区 —— 铺满就成了换 tab，
+            看不出来底下那层网格还在。 */}
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div className="h-full overflow-y-auto px-3 py-3">{renderGridContent()}</div>
+          {allocOpen && (
+            /* z-40：格子内部的角标是 z-30，这层必须明确压过网格（格子已 isolate，这里是双保险） */
+            <div className="absolute inset-0 z-40">
+              <div
+                className="absolute inset-0 bg-black/25"
+                onClick={() => setAllocOpen(false)}
+                aria-hidden
+              />
+              <div className="absolute inset-x-0 bottom-0 flex max-h-[85%] min-h-0 flex-col overflow-hidden rounded-t-[var(--student-radius-lg)] bg-[var(--student-surface-raised)] shadow-[0_-6px_24px_rgba(0,0,0,0.18)]">
+                {renderAllocContent()}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </CageColorProvider>

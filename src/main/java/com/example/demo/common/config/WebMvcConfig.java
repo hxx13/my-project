@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.CacheControl;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -11,6 +12,7 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.nio.file.Paths;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -44,13 +46,21 @@ public class WebMvcConfig implements WebMvcConfigurer {
      * 人脸模型（face-api 三个 net + MediaPipe wasm，约 43MB）不打进 JAR：
      * dev 由 Vite 插件从 frontend/models 提供，生产放 ${app.upload.base-dir}/web-models/（磁盘同步，改模型不必重新构建）。
      * classpath 兜底保留 public/models 里的 3D 楼层模型（1F-4F.glb）。
+     *
+     * 缓存：只有内容 hash 命名的 /assets/** 能长缓存（改内容必然改名，旧文件不会被请求）；
+     * 其余静态资源走 application.properties 的全局 no-cache，入口 index.html 必须每次回源。
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry.addResourceHandler("/assets/**")
+                .addResourceLocations("classpath:/static/")
+                .setCacheControl(CacheControl.maxAge(7, TimeUnit.DAYS).cachePublic());
+
         String webModels = Paths.get(uploadBaseDir, "web-models").toAbsolutePath().normalize().toUri().toString();
         registry.addResourceHandler("/models/**")
                 .addResourceLocations(webModels.endsWith("/") ? webModels : webModels + "/",
-                        "classpath:/static/models/");
+                        "classpath:/static/models/")
+                .setCacheControl(CacheControl.maxAge(7, TimeUnit.DAYS).cachePublic());
     }
 
     @Override

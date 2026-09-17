@@ -304,6 +304,7 @@ export const GridCellButton = memo(function GridCellButton({
   opMarker,
   divisionLabel,
   disabledReason,
+  qty,
   compact,
 }: {
   cell: CageShelfCell;
@@ -329,6 +330,12 @@ export const GridCellButton = memo(function GridCellButton({
    * 与 PC 的 CellButton.disabledReason 同义。
    */
   disabledReason?: string;
+  /**
+   * 该笼位分到的数量（订购选笼位用，0/不传不画）。
+   * 与小程序 `.cg-qty` 同一个角标：右下角 `×N`，解决「选了 3 个笼位只看到 3 个环、
+   * 看不出哪个笼放几只」—— 分配结果原来只在分配页才看得见。
+   */
+  qty?: number;
   /**
    * 简洁档：只收起**另有替代物**的标签层 —— 中间态底部色条（色环还在）、
    * 中间态正中图标+蒙层（色环 / 左上角徽标还在）、划分底部文字（淡玫底 + 描边还在）。
@@ -429,6 +436,9 @@ export const GridCellButton = memo(function GridCellButton({
       className={cn(
         // 基础：w-full 撑满 grid 列宽 + aspect-square 保证 1:1 + overflow-hidden 防撑大
         "relative w-full aspect-square rounded-md text-[11px] leading-tight transition box-border overflow-hidden",
+        // isolate：把格子内部的层级（网纹/色条/×N 角标）关在格子里自比。
+        // 少了它，角标的 z-30 会跟抽屉整层的元素一起排 —— 表现就是「角标压过了抽屉自己的东西」
+        "isolate",
         // 空位外观
         isEmpty && "border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-[var(--student-mute)]",
         // 有内容格外观
@@ -560,6 +570,12 @@ export const GridCellButton = memo(function GridCellButton({
             </div>
           )}
         </>
+      )}
+      {/* 分到几只（照小程序 .cg-qty）：右下角 ×N，压在底部色条之上（z-30） */}
+      {qty != null && qty > 0 && (
+        <span className="ao-cell-qty pointer-events-none absolute bottom-0 right-0 z-30 rounded-tl-md bg-blue-600 px-1 text-[8px] font-bold leading-[12px] text-white">
+          ×{qty}
+        </span>
       )}
     </button>
   );

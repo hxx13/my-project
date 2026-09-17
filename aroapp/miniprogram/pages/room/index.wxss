@@ -19,13 +19,13 @@ page {
 .layout {
   display: flex;
   flex: 1;
-  height: 100%;
+  /* 不能写 height: 100%：它会把 flex 基准撑到整屏，把上面的自定义导航（basis 78）按比例压成 0 */
   min-height: 0;
   overflow: hidden;
 }
 
 .sidebar-col {
-  width: 180rpx;
+  width: 232rpx;              /* 原 180rpx(=90px)：4 字标题 + 计数徽标挤在一格里要截断/换行 */
   flex-shrink: 0;
   height: 100%;
   min-height: 0;
@@ -156,6 +156,8 @@ page {
 
 .floor-item {
   margin: 0 12rpx 10rpx;
+  min-height: 88rpx;          /* 44px：原 29px，是左栏的主操作，手指点它经常点偏 */
+  box-sizing: border-box;
   padding: 12rpx 14rpx;
   border-radius: 10rpx;
   font-size: 24rpx;
@@ -310,6 +312,12 @@ page {
 .permission-badge-ok {
   color: #07c160;
   background: #e8f8ef;
+}
+
+/* 当前不在准入时段（角标口径：能进=正常，不能进=非开放时间段） */
+.permission-badge-closed {
+  color: #b45309;
+  background: #fef3c7;
 }
 
 .permission-badge-banned {

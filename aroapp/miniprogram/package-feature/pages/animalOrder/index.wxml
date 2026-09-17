@@ -177,6 +177,8 @@
         <view class="cage-head">
           <text class="cage-title">笼位</text>
           <text class="cage-hint">{{ cageReserving ? '锁定中…' : cageAllocText }}</text>
+          <!-- 入口（照 H5 标题行）：点开「按顺序分配」浮层，不改动下面这块网格 -->
+          <view wx:if="{{ cageAllocEntry }}" class="cage-assign" bindtap="onOpenCageAlloc">分配</view>
           <view wx:if="{{ pickedCages.length > 0 }}" class="cage-clear" bindtap="onClearPickedCages">清空</view>
         </view>
 
@@ -203,7 +205,7 @@
           </view>
 
           <view wx:if="{{ cageLoading }}" class="cage-loading">加载笼位中…</view>
-          <view wx:elif="{{ cageShelves.length === 0 }}" class="cage-loading">本课题组暂无可选笼架</view>
+          <view wx:elif="{{ cageShelves.length === 0 }}" class="cage-loading">本课题组在{{ campus }}校区暂无笼架，换校区看看</view>
           <block wx:else>
             <view wx:for="{{ cageShelves }}" wx:key="shelveId" wx:for-item="sh" class="cage-shelf">
               <view class="cage-shelf-name">{{ sh.shelveName }}</view>
@@ -223,6 +225,52 @@
 
         <view wx:if="{{ cageWarnText }}" class="cage-warn">{{ cageWarnText }}</view>
       </view>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!--
+  按顺序分配：**独立浮层**，不是换掉抽屉内容。
+  换内容会把整块笼位网格（scroll-view）卸载重建，滚动位置与房间 tab 一起归零；
+  浮层叠在上面，网格一直挂着。默认已按选中顺序自动分好，这里只做微调。
+-->
+<van-popup
+  show="{{ cageAllocOpen }}"
+  position="bottom"
+  round
+  closeable
+  bind:close="onCageAllocBack"
+  custom-style="max-height:72vh;"
+>
+  <view class="sheet">
+    <view class="sheet-head">
+      <text class="sheet-title">按顺序分配</text>
+      <text class="sheet-sub">{{ cageAllocText }}</text>
+    </view>
+    <scroll-view scroll-y class="sheet-scroll">
+      <view class="cage-alloc-row" wx:for="{{ cageAllocRows }}" wx:key="animalCageId">
+        <view class="cage-alloc-no">{{ item.idx }}</view>
+        <view class="cage-alloc-info">
+          <text class="cage-alloc-pos">{{ item.pos }}</text>
+          <text class="cage-alloc-where">{{ item.where }}</text>
+        </view>
+        <view class="cage-alloc-step">
+          <view
+            class="cage-alloc-btn {{ item.qty <= 0 ? 'cage-alloc-btn--off' : '' }}"
+            hover-class="cage-alloc-btn--hover"
+            data-cid="{{ item.animalCageId }}"
+            bindtap="onAllocDec"
+          >−</view>
+          <text class="cage-alloc-qty">{{ item.qty }}</text>
+          <view
+            class="cage-alloc-btn cage-alloc-btn--plus {{ item.qty >= cageMaxPerCage ? 'cage-alloc-btn--off' : '' }}"
+            hover-class="cage-alloc-btn--hover"
+            data-cid="{{ item.animalCageId }}"
+            bindtap="onAllocInc"
+          >+</view>
+        </view>
+      </view>
+      <view class="cage-alloc-hint">改某笼的数量，其余笼位自动吸收差额；一只都没分到的笼位在加购时会被取消。</view>
     </scroll-view>
   </view>
 </van-popup>

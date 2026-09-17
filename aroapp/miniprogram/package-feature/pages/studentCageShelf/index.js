@@ -11,6 +11,7 @@ var {
 var cageStatus = require('../../../utils/cageStatus.js');
 var CAGE_STATUS_ACTIONS = cageStatus.CAGE_STATUS_ACTIONS;
 var assetApi = require('../../utils/assetApi.js');
+var beijingTime = require('../../../utils/beijingTime.js');
 var cageShelfApi = require('../../utils/cageShelfApi.js');
 var cageTreeGrouping = require('../../utils/cageTreeGrouping.js');
 var cageCellVisual = require('../../utils/cageCellVisual.js');
@@ -470,11 +471,16 @@ Page({
     bookingAups: [],            // 房间内 AUP 分配明细
     bookingAupLoading: false,
     bookingAupOptions: [],      // AUP 字典 [{id, registerNo, projectGroupName, piName}]
-    bookingPiNames: [],         // 去重后的课题组名（下拉用）
+    bookingPiNames: [],         // 去重后的课题组名（选择弹窗的数据源）
+    // 选择弹窗（课题组 / AUP 编号共用）：课题组上百个、AUP 也可能几十条，原生 picker 滚不动
+    bookingPickerOpen: false,
+    bookingPickerTarget: '',    // 'pi' 选课题组 / 'aup' 选 AUP 编号
+    bookingPickerTitle: '',
+    bookingPickerKeyword: '',
+    bookingPickerRows: [],      // [{ key, label }]，已按关键字过滤
+    bookingPickerPicked: '',    // 当前值（打勾用）
     bookingEditingId: null,     // null | 'new' | aupId
     bookingEdit: { piName: '', aupId: '', rentNumber: 0, memo: '', registerNumber: '' },
-    bookingEditPiIndex: -1,
-    bookingEditAupIndex: -1,
     bookingEditAupOptions: [],  // 按所选课题组过滤后的 AUP 编号 [{id, registerNo}]
     bookingSaving: false,
     editingCapacity: false,
@@ -565,11 +571,6 @@ Page({
     detailImageUploading: false,
 
     // 特殊状态弹窗
-    specialStatusOpen: false,
-    specialStatusLoading: false,
-    specialStatusError: '',
-    specialStatusScannedAt: '',
-    specialStatusGroups: [],
     allExpanded: false,
     anyExpanded: false,
     scannedAt: '',
@@ -706,7 +707,11 @@ Page({
       }
       var shelves = (p.data && p.data.shelves) || [];
       var totalCount = (p.data && p.data.totalCount) || shelves.length;
-      var scannedAt = (p.data && p.data.scannedAt) || '';
+      // 后端给的是 ISO（2026-09-11T15:00:01），直接怼在中文界面里很扎眼；这里统一成
+      // 「09-11 15:00 扫描」（省掉年份，头部空间紧），秒对用户没有意义
+      var scannedAtRaw = (p.data && p.data.scannedAt) || '';
+      var scannedAtText = beijingTime.formatBeijingDateTimeMinute(scannedAtRaw);
+      var scannedAt = scannedAtText ? (scannedAtText.slice(5) + ' 扫描') : '';
 
       // 合并 full-tree 的类型计数到每个 shelf
       var treeResult = unwrap(results[1]);
@@ -916,29 +921,20 @@ Page({
     self.loadShelves();
   },
 
-  /* ── 整页下拉刷新（原生 enablePullDownRefresh）────────────────────
-     刷新挂在页面级：列表拖到顶后继续下拉，连带顶部搜索框一起被拽下来。
-     自定义导航栏下微信不渲染它自带的指示器，这里自己补一个「正在刷新」提示。
-     兜底：万一列表没在顶端也触发了，立刻收掉指示器、不重载数据。 */
-  onListScroll: function (e) {
-    this._listAtTop = ((e.detail && e.detail.scrollTop) || 0) <= 0;
-  },
-
-  onPullDownRefresh: function () {
+  /* ── 列表下拉刷新（scroll-view 原生 refresher）────────────────────
+     为什么不在页面级 onPullDownRefresh 上做：页面本身不滚（滚动在内层 scroll-view），
+     页面级下拉**没有阈值可调**，于是在页面任意位置（连吸顶搜索框、导航栏上）稍微一拖
+     就开始把整页往下拽 —— 手感就是「太敏感」，还连带把导航栏和吸顶头一起拉走。
+     原生 refresher 只在列表自身拉到顶、再多拉一段时才触发，指示器也由列表自己画。 */
+  onListRefresher: function () {
     var self = this;
-    if (self._listAtTop === false) {
-      wx.stopPullDownRefresh();
-      return;
-    }
     self.setData({ refreshing: true });
-    var startedAt = Date.now();
+    // loadShelves(true) 是静默路径：不碰 loading、列表不卸载、滚动位置不丢；失败自己 toast
     self.loadShelves(true).then(function () {
-      // 接口太快时提示会一闪而过，兜一个最短显示时间，别做成闪屏
-      var wait = Math.max(0, 400 - (Date.now() - startedAt));
-      setTimeout(function () {
-        self.setData({ refreshing: false });
-        wx.stopPullDownRefresh();
-      }, wait);
+      self.setData({ refreshing: false });
+    }).catch(function () {
+      // 兜一层：请求异常时别把指示器挂死
+      self.setData({ refreshing: false });
     });
   },
 
@@ -1032,123 +1028,6 @@ Page({
     this.setData({ shelfGroups: groups, allExpanded: next, anyExpanded: next });
   },
 
-  onOpenSpecialStatus: function() {
-    var self = this;
-    self.setData({ specialStatusOpen: true, specialStatusLoading: true, specialStatusError: '' });
-    springAuth.springRequest({
-      url: '/api/student/cage-shelves/special-status-overview',
-      method: 'GET',
-      data: {},
-    }).then(function(res) {
-      var body = res && res.data;
-      if (!body || !body.success) {
-        self.setData({ specialStatusLoading: false, specialStatusError: (body && body.message) || '加载失败' });
-        return;
-      }
-      var data = body.data || {};
-      var colors = {
-        COHABITATION:    { bg: '#a7f3d0', border: '#10b981' },
-        SPECIAL_FEEDING: { bg: '#fecaca', border: '#ef4444' },
-        NEED_DIVIDE:     { bg: '#fef08a', border: '#eab308' },
-        HEALTH_ABNORMAL: { bg: '#e9d5ff', border: '#a855f7' },
-        ANIMAL_TRANSFER: { bg: '#cffafe', border: '#06b6d4' },
-      };
-      var groups = (data.groups || []).map(function(g) {
-        var cages = g.cages || [];
-        // 反转显示坐标（兼容数字格式 1-1 和字母格式 A-1）
-        cages.forEach(function(c) {
-          var p = c.position || '';
-          var m = /^([A-H])-(\d+)$/.exec(p);
-          if (m) { c._displayPosition = m[1] + '-' + (11 - parseInt(m[2])); }
-          else {
-            var m2 = /^(\d+)-(\d+)$/.exec(p);
-            if (m2) { var col = COLUMNS[Math.max(0, Math.min(7, Number(m2[1]) - 1))] || 'A'; c._displayPosition = col + '-' + (11 - parseInt(m2[2])); }
-            else { c._displayPosition = p; }
-          }
-        });
-        // 对齐 H5 groupCagesByShelf：按 shelveId 分组（Status → Shelf → Cage）
-        var shelfMap = {};
-        var shelfOrder = [];
-        cages.forEach(function(c) {
-          var key = String(c.shelveId || (c.roomName + '-' + c.campusName));
-          if (!shelfMap[key]) {
-            shelfMap[key] = {
-              key: key,
-              title: (c.roomName || '—') + ' · ' + (c.shelveName || c.shelveId || '—'),
-              meta: [c.campusName, c.floorName].filter(function(s) { return s && s.trim(); }).join(' '),
-              cages: [],
-            };
-            shelfOrder.push(key);
-          }
-          shelfMap[key].cages.push(c);
-        });
-        // 排序：先按 meta 再按 title
-        shelfOrder.sort(function(a, b) {
-          var sa = shelfMap[a], sb = shelfMap[b];
-          var mc = (sa.meta || '').localeCompare(sb.meta || '');
-          if (mc !== 0) return mc;
-          return (sa.title || '').localeCompare(sb.title || '');
-        });
-        var c = colors[g.statusCode] || { bg: '#f1f5f9', border: '#cbd5e1' };
-        return {
-          code: g.statusCode,
-          label: g.statusLabel || STATUS_LABEL_MAP[g.statusCode] || g.statusCode,
-          count: cages.length,
-          dotColor: c.bg,
-          borderColor: c.border,
-          abbr: STATUS_ABBR[g.statusCode] || '?',
-          expanded: false,
-          shelfGroups: shelfOrder.map(function(k) {
-            var sg = shelfMap[k];
-            sg._expanded = false;
-            return sg;
-          }),
-        };
-      });
-      self.setData({
-        specialStatusLoading: false,
-        specialStatusScannedAt: data.scannedAt || '',
-        specialStatusGroups: groups,
-      });
-    }).catch(function(err) {
-      self.setData({ specialStatusLoading: false, specialStatusError: (err && err.message) || '请求失败' });
-    });
-  },
-
-  onCloseSpecialStatus: function() {
-    this.setData({ specialStatusOpen: false });
-  },
-
-  onToggleSpecialGroup: function(e) {
-    var code = e.currentTarget.dataset.code;
-    var groups = this.data.specialStatusGroups;
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].code === code) {
-        groups[i].expanded = !groups[i].expanded;
-        break;
-      }
-    }
-    this.setData({ specialStatusGroups: groups });
-  },
-
-  onToggleSpecialShelf: function(e) {
-    var code = e.currentTarget.dataset.code;
-    var key = e.currentTarget.dataset.key;
-    var groups = this.data.specialStatusGroups;
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].code === code) {
-        var sgs = groups[i].shelfGroups;
-        for (var j = 0; j < sgs.length; j++) {
-          if (sgs[j].key === key) {
-            sgs[j]._expanded = !sgs[j]._expanded;
-            break;
-          }
-        }
-        break;
-      }
-    }
-    this.setData({ specialStatusGroups: groups });
-  },
 
   onClearFilter: function() {
     var self = this;
@@ -1530,9 +1409,11 @@ Page({
       actionSubmitting: false,
       bookingEditingId: null,
       bookingEdit: { piName: '', aupId: '', rentNumber: 0, memo: '', registerNumber: '' },
-      bookingEditPiIndex: -1,
-      bookingEditAupIndex: -1,
       bookingEditAupOptions: [],
+      bookingPickerOpen: false,
+      bookingPickerTarget: '',
+      bookingPickerKeyword: '',
+      bookingPickerRows: [],
       editingCapacity: false,
       capacityDraft: '',
       divisionPicked: {},
@@ -2223,8 +2104,6 @@ Page({
     self.setData({
       bookingEditingId: 'new',
       bookingEdit: { piName: '', aupId: '', rentNumber: 0, memo: '', registerNumber: '' },
-      bookingEditPiIndex: -1,
-      bookingEditAupIndex: -1,
       bookingEditAupOptions: []
     });
     if ((self.data.bookingAupOptions || []).length === 0) self.loadBookingAupDict();
@@ -2241,18 +2120,10 @@ Page({
     if (!aup) return;
     if ((self.data.bookingAupOptions || []).length === 0) self.loadBookingAupDict();
     var piName = aup.piName || '';
-    var names = self.data.bookingPiNames || [];
-    var piIndex = names.indexOf(piName);
     var options = self.filterBookingAupOptionsByPi(piName);
-    var aupIndex = -1;
-    for (var j = 0; j < options.length; j++) {
-      if (String(options[j].id) === String(aup.aupId || '')) { aupIndex = j; break; }
-    }
     self.setData({
       bookingEditingId: String(id),
       bookingEdit: { piName: piName, aupId: aup.aupId || '', rentNumber: Number(aup.rentNumber) || 0, memo: aup.memo || '', registerNumber: aup.registerNumber || '' },
-      bookingEditPiIndex: piIndex,
-      bookingEditAupIndex: aupIndex,
       bookingEditAupOptions: options
     });
   },
@@ -2261,34 +2132,101 @@ Page({
     this.setData({
       bookingEditingId: null,
       bookingEdit: { piName: '', aupId: '', rentNumber: 0, memo: '', registerNumber: '' },
-      bookingEditPiIndex: -1,
-      bookingEditAupIndex: -1,
       bookingEditAupOptions: []
     });
   },
 
-  onBookingPiChange: function(e) {
-    var idx = Number(e.detail.value);
-    var name = (this.data.bookingPiNames || [])[idx] || '';
+  /**
+   * 选择弹窗（课题组 / AUP 编号共用一张）：候选项本地过滤，不打接口。
+   * 课题组走 AUP 字典里去重后的课题组名，AUP 编号走当前课题组过滤后的选项。
+   */
+  _bookingPickerSource: function(target) {
+    var rows = [];
+    if (target === 'aup') {
+      var opts = this.data.bookingEditAupOptions || [];
+      for (var i = 0; i < opts.length; i++) {
+        rows.push({ key: String(opts[i].id), label: opts[i].registerNo || ('AUP ' + opts[i].id) });
+      }
+      return rows;
+    }
+    var names = this.data.bookingPiNames || [];
+    for (var j = 0; j < names.length; j++) rows.push({ key: names[j], label: names[j] });
+    return rows;
+  },
+
+  /** 重画弹窗列表：标题带全量个数，列表按关键字过滤 */
+  _paintBookingPicker: function() {
+    var target = this.data.bookingPickerTarget;
+    var kw = String(this.data.bookingPickerKeyword || '').trim().toLowerCase();
+    var all = this._bookingPickerSource(target);
+    var rows = kw ? all.filter(function(r) { return r.label.toLowerCase().indexOf(kw) >= 0; }) : all;
     this.setData({
-      bookingEditPiIndex: idx,
-      'bookingEdit.piName': name,
-      'bookingEdit.aupId': '',
-      'bookingEdit.registerNumber': '',
-      bookingEditAupIndex: -1,
-      bookingEditAupOptions: this.filterBookingAupOptionsByPi(name)
+      bookingPickerRows: rows,
+      bookingPickerTitle: (target === 'aup' ? '选择 AUP 编号 · 共 ' : '选择课题组 · 共 ') + all.length + ' 个',
     });
   },
 
-  onBookingAupChange: function(e) {
-    var idx = Number(e.detail.value);
-    var opt = (this.data.bookingEditAupOptions || [])[idx];
-    if (!opt) return;
-    this.setData({
-      bookingEditAupIndex: idx,
-      'bookingEdit.aupId': opt.id,
-      'bookingEdit.registerNumber': opt.registerNo
-    });
+  openBookingPicker: function(e) {
+    var self = this;
+    var target = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.target) || 'pi';
+    if (target === 'aup' && !this.data.bookingEdit.piName) {
+      wx.showToast({ title: '先选课题组', icon: 'none' });
+      return;
+    }
+    var open = function() {
+      self.setData({
+        bookingPickerOpen: true,
+        bookingPickerTarget: target,
+        bookingPickerKeyword: '',
+        bookingPickerPicked: target === 'aup'
+          ? String(self.data.bookingEdit.aupId || '')
+          : String(self.data.bookingEdit.piName || ''),
+      });
+      self._paintBookingPicker();
+    };
+    // 课题组字典还没取到时先补一次（进页面就点「新增分配」的路径）
+    if (target === 'pi' && (this.data.bookingPiNames || []).length === 0) this.loadBookingAupDict().then(open);
+    else open();
+  },
+
+  closeBookingPicker: function() {
+    this.setData({ bookingPickerOpen: false, bookingPickerTarget: '', bookingPickerKeyword: '' });
+  },
+
+  onBookingPickerKeywordInput: function(e) {
+    this.setData({ bookingPickerKeyword: e.detail.value || '' });
+    this._paintBookingPicker();
+  },
+
+  clearBookingPickerKeyword: function() {
+    this.setData({ bookingPickerKeyword: '' });
+    this._paintBookingPicker();
+  },
+
+  onBookingPickerPick: function(e) {
+    var key = e.currentTarget.dataset.key || '';
+    var target = this.data.bookingPickerTarget;
+    if (!target || !key) return;
+    var close = { bookingPickerOpen: false, bookingPickerTarget: '', bookingPickerKeyword: '' };
+    if (target === 'aup') {
+      var opts = this.data.bookingEditAupOptions || [];
+      var hit = null;
+      for (var i = 0; i < opts.length; i++) {
+        if (String(opts[i].id) === String(key)) { hit = opts[i]; break; }
+      }
+      this.setData(Object.assign({
+        'bookingEdit.aupId': String(key),
+        'bookingEdit.registerNumber': hit ? (hit.registerNo || '') : '',
+      }, close));
+      return;
+    }
+    // 换课题组：原来选的 AUP 作废，按新课题组重算候选
+    this.setData(Object.assign({
+      'bookingEdit.piName': key,
+      'bookingEdit.aupId': '',
+      'bookingEdit.registerNumber': '',
+      bookingEditAupOptions: this.filterBookingAupOptionsByPi(key),
+    }, close));
   },
 
   onBookingRentInput: function(e) {

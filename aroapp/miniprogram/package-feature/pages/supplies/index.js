@@ -432,8 +432,8 @@ Page({
     const rid = options && options.reviseClaimId ? String(options.reviseClaimId).trim() : '';
     const mallPath = '/package-feature/pages/supplies/index';
     const adminMallOk =
-      pagePermission.canAccessMiniPage(mallPath, role, 'ADMIN') ||
-      pagePermission.canShowMiniEntry('home', mallPath, role, 'ADMIN');
+      pagePermission.canAccessMiniPage(mallPath, role, 'STAFF') ||
+      pagePermission.canShowMiniEntry('home', mallPath, role, 'STAFF');
     const reviseDeepLinkOk =
       !!rid &&
       hasMinRole(role, 'STAFF') &&

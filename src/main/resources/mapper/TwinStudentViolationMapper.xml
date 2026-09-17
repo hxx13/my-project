@@ -39,12 +39,29 @@
         AND interactive_challenge_verified_at IS NULL
     </sql>
 
+    <!--
+      「有效到期时间」= 填了到期时间就用它；没填则回落到验证时间
+      （没填到期时间的违规由「验证记录」决定生命周期，验证完成即等效到期）。
+      两者都为空（未验证 / 无需验证）才是真的没有到期点，此时违规保持生效。
+      所有涉及 expire_at 的口径必须共用下面三个片段，禁止各自改写。
+    -->
+    <sql id="effectiveExpireAt">COALESCE(expire_at, interactive_challenge_verified_at)</sql>
+
+    <sql id="effectiveExpiredClause">
+        <include refid="effectiveExpireAt"/> IS NOT NULL
+        AND <include refid="effectiveExpireAt"/> &lt; NOW()
+    </sql>
+
+    <sql id="effectiveActiveClause">
+        (<include refid="effectiveExpireAt"/> IS NULL
+         OR <include refid="effectiveExpireAt"/> &gt; NOW())
+    </sql>
+
     <update id="expireActivePastDue">
         UPDATE twin_student_violation
         SET status = 'EXPIRED', updated_at = NOW()
         WHERE status = 'ACTIVE'
-          AND expire_at IS NOT NULL
-          AND expire_at &lt; NOW()
+          AND <include refid="effectiveExpiredClause"/>
           AND NOT (<include refid="pendingInteractivePastExpireClause"/>)
     </update>
 
@@ -52,8 +69,7 @@
         SELECT id
         FROM twin_student_violation
         WHERE status = 'ACTIVE'
-          AND expire_at IS NOT NULL
-          AND expire_at &lt; NOW()
+          AND <include refid="effectiveExpiredClause"/>
           AND NOT (<include refid="pendingInteractivePastExpireClause"/>)
     </select>
 
@@ -62,8 +78,7 @@
         SET status = 'EXPIRED', updated_at = NOW()
         WHERE id = #{id}
           AND status = 'ACTIVE'
-          AND expire_at IS NOT NULL
-          AND expire_at &lt; NOW()
+          AND <include refid="effectiveExpiredClause"/>
     </update>
 
     <select id="selectActiveIdsByTargetUserId" resultType="long">
@@ -90,8 +105,7 @@
         WHERE v.target_user_id = #{targetUserId}
           AND v.status = 'ACTIVE'
           AND (
-            v.expire_at IS NULL
-            OR v.expire_at &gt; NOW()
+            <include refid="effectiveActiveClause"/>
             OR (<include refid="pendingInteractivePastExpireClause"/>)
           )
         ORDER BY v.id DESC
@@ -207,7 +221,9 @@
     <!--
       大屏公告可见性口径（唯一来源，两处查询共用，禁止各自改写）：
       ACTIVE + 公告未被单独解除 + 仍在公告展示窗口内。
-      联动(notice_link_expire=1)展示到到期时间；否则展示到 created_at + notice_display_days 天。
+      联动(notice_link_expire=1)展示到「有效到期时间」；否则展示到 created_at + notice_display_days 天。
+      有效到期时间 = COALESCE(expire_at, interactive_challenge_verified_at)：
+      没填到期时间的违规由「验证记录」决定生命周期，验证完成即等效到期、随即下榜。
       历史行 notice_link_expire 默认 1，故行为与加此列前一致。
     -->
     <sql id="boardVisibleClause">
@@ -215,7 +231,7 @@
         AND notice_cleared_at IS NULL
         AND (
           CASE WHEN notice_link_expire = 1
-               THEN (expire_at IS NULL OR expire_at &gt; NOW())
+               THEN <include refid="effectiveActiveClause"/>
                ELSE (notice_display_days IS NULL
                      OR created_at &gt; DATE_SUB(NOW(), INTERVAL notice_display_days DAY))
           END
@@ -315,8 +331,7 @@
           AND source = 'AUTO_STRANDED'
           AND status = 'ACTIVE'
           AND (
-            expire_at IS NULL
-            OR expire_at &gt; NOW()
+            <include refid="effectiveActiveClause"/>
             OR (<include refid="pendingInteractivePastExpireClause"/>)
           )
     </select>

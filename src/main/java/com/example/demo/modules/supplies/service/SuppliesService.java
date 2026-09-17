@@ -1732,7 +1732,17 @@ public class SuppliesService {
         vars.put("summary", "共 " + lineCount + " 项物资");
         event.setVariables(vars);
         notificationService.publish(event);
-        try { String itemDetail = claimLineMapper.listByOrderId(orderId).stream().map(l -> (l.getSnapshotName() != null ? l.getSnapshotName() : "物品") + " ×" + l.getQty()).collect(Collectors.joining("、")); pushService.send("SUPPLIES_REQUESTED", Map.of("applicantName", resolveDisplayName(applicantUserId), "summary", itemDetail, "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))); } catch (Exception e) { log.warn("[Push] SUPPLIES_REQUESTED failed: {}", e.getMessage()); }
+        try {
+            List<SuppliesLineFormatter.ItemLine> rows = claimLineMapper.listByOrderId(orderId).stream()
+                    .map(l -> new SuppliesLineFormatter.ItemLine(
+                            l.getSnapshotName() != null ? l.getSnapshotName() : "物品", l.getQty()))
+                    .toList();
+            pushService.send("SUPPLIES_REQUESTED", Map.of(
+                    "applicantName", resolveDisplayName(applicantUserId),
+                    "items", SuppliesLineFormatter.renderRowsMd(rows),
+                    "itemsHtml", SuppliesLineFormatter.renderRowsHtml(rows),
+                    "createdAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))));
+        } catch (Exception e) { log.warn("[Push] SUPPLIES_REQUESTED failed: {}", e.getMessage()); }
     }
 
     /** 出库完成 → 申请人站内回执（与报修/采购办结同源：COMPLETED + SUPPLIES_CLAIM） */
@@ -1761,7 +1771,18 @@ public class SuppliesService {
         }
         event.setVariables(vars);
         notificationService.publish(event);
-        try { pushService.send("SUPPLIES_COMPLETED", Map.of("applicantName", resolveDisplayName(order.getUserId()), "summary", vars.get("summary"), "bizId", order.getId()), Set.of(order.getUserId())); } catch (Exception e) { log.warn("[Push] SUPPLIES_COMPLETED failed: {}", e.getMessage()); }
+        try {
+            List<SuppliesLineFormatter.ItemLine> rows = claimLineMapper.listByOrderId(order.getId()).stream()
+                    .filter(l -> l.getFulfilledQty() != null && l.getFulfilledQty() > 0)
+                    .map(l -> new SuppliesLineFormatter.ItemLine(
+                            l.getSnapshotName() != null ? l.getSnapshotName() : "物品", l.getFulfilledQty()))
+                    .toList();
+            pushService.send("SUPPLIES_COMPLETED", Map.of(
+                    "applicantName", resolveDisplayName(order.getUserId()),
+                    "items", SuppliesLineFormatter.renderRowsMd(rows),
+                    "itemsHtml", SuppliesLineFormatter.renderRowsHtml(rows),
+                    "bizId", order.getId()), Set.of(order.getUserId()));
+        } catch (Exception e) { log.warn("[Push] SUPPLIES_COMPLETED failed: {}", e.getMessage()); }
     }
 
     /**

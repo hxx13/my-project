@@ -1,4 +1,5 @@
 const springAuth = require('../../utils/springAuth.js');
+const { readCustomNavMetrics } = require('../../utils/customNavMetrics.js');
 const pagePermission = require('../../utils/pagePermission.js');
 const { hasMinRole } = require('../../utils/roleAccess.js');
 
@@ -37,6 +38,7 @@ Page({
   data: {
     /** 管理员及以上：双区饼图等区块 */
     canOverviewAdmin: false,
+    navBarHeight: 64,
     loading: false,
     rankingLoading: false,
     pudongTotal: 0,
@@ -52,6 +54,7 @@ Page({
   },
 
   onLoad() {
+    this.setData({ navBarHeight: readCustomNavMetrics().navBarHeight });
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const canOverviewAdmin = hasMinRole(role, 'ADMIN');
     this.setData({ canOverviewAdmin });

@@ -12,6 +12,8 @@ interface ReferenceCardProps {
   onAddToCart?: (item: RefDataItem) => void;
   onDelete?: (item: RefDataItem) => void;
   orderingBlocked?: boolean;
+  /** 该商品在购物车里的总数量（含规格/无规格）：>0 时在「选购」按钮右上角挂红角标，与 H5 同口径 */
+  cartQty?: number;
 }
 
 function getFieldVal(item: RefDataItem, key: string): string {
@@ -70,7 +72,7 @@ export function refCardPrice(item: RefDataItem): string | null {
 }
 
 export default function ReferenceCard({
-  item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, orderingBlocked,
+  item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, orderingBlocked, cartQty,
 }: ReferenceCardProps) {
   // SUPER_ADMIN can always drill; non-admin blocked when next level is empty or nonexistent
   const childCount = item.childCount ?? 0;
@@ -151,6 +153,12 @@ export default function ReferenceCard({
           title={orderingBlocked ? "当前不在可购时间窗口内" : undefined}
         >
           选购
+          {/* 已加购数量角标（照 H5 的「选择规格」角标）：这商品在车里几件，不进购物车也看得见 */}
+          {(cartQty ?? 0) > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold text-white">
+              {cartQty}
+            </span>
+          )}
         </button>
       )}
     </div>

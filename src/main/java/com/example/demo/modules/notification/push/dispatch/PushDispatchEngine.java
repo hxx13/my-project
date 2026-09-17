@@ -1,6 +1,5 @@
 package com.example.demo.modules.notification.push.dispatch;
 
-import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.notification.push.config.PushChannelMasterMapper;
@@ -16,8 +15,6 @@ import com.example.demo.modules.notification.push.channel.PushChannel;
 import com.example.demo.modules.notification.push.channel.PushResult;
 import com.example.demo.modules.notification.push.config.NotifySourceChannel;
 import com.example.demo.modules.notification.push.config.NotifySourceChannelService;
-import com.example.demo.modules.notification.push.recipient.NotifySourceRecipient;
-import com.example.demo.modules.notification.push.recipient.NotifySourceRecipientService;
 import com.example.demo.modules.notification.push.digest.DigestResolutionService;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItem;
 import com.example.demo.modules.notification.push.digest.NotifyDigestItemMapper;
@@ -39,7 +36,7 @@ public class PushDispatchEngine {
 
     private final NotifySourceService sourceService;
     private final NotifySourceChannelService channelConfigService;
-    private final NotifySourceRecipientService recipientService;
+    private final PushRecipientResolver recipientResolver;
     private final PersonnelService personnelService;
     private final NotifyBindingService notifyBindingService;
     private final UserMapper userMapper;
@@ -54,7 +51,7 @@ public class PushDispatchEngine {
 
     public PushDispatchEngine(NotifySourceService sourceService,
                               NotifySourceChannelService channelConfigService,
-                              NotifySourceRecipientService recipientService,
+                              PushRecipientResolver recipientResolver,
                               PersonnelService personnelService,
                               NotifyBindingService notifyBindingService,
                               UserMapper userMapper,
@@ -68,7 +65,7 @@ public class PushDispatchEngine {
                               PushChannelMasterMapper channelMasterMapper) {
         this.sourceService = sourceService;
         this.channelConfigService = channelConfigService;
-        this.recipientService = recipientService;
+        this.recipientResolver = recipientResolver;
         this.personnelService = personnelService;
         this.notifyBindingService = notifyBindingService;
         this.userMapper = userMapper;
@@ -110,7 +107,7 @@ public class PushDispatchEngine {
         }
         diag.add("channel configs: " + channelConfigs.stream().map(c -> c.getChannelCode() + "=" + (Boolean.TRUE.equals(c.getEnabled()) ? "on" : "off")).toList());
 
-        Set<String> allRecipientIds = resolveRecipients(source.getId(), dynamicUserIds);
+        Set<String> allRecipientIds = recipientResolver.resolve(source.getId(), dynamicUserIds);
         if (allRecipientIds.isEmpty()) {
             log.info("[Push] 无接收人: {}", sourceCode);
             report.put("error", "无接收人（notify_source_recipient 为空且未传 targetUserIds）");
@@ -118,8 +115,6 @@ public class PushDispatchEngine {
             report.put("diagnosis", diag);
             return report;
         }
-        // 收件人去重：同人命中 STAFF + STUDENT 两条规则（映射同一 personnel.id）只派发一次
-        allRecipientIds = dedupRecipientsByPersonnel(allRecipientIds);
         diag.add("recipient count: " + allRecipientIds.size());
 
         // 遥测报警源由 TelemetryAlarmCheckScheduler 自行管理缓冲队列，不经过 PushDispatchEngine 的 digest/夜间分支
@@ -397,83 +392,6 @@ public class PushDispatchEngine {
         log.info("[Push] dispatch 完成: {} sent={} failed={} skipped={} diag={}",
                 sourceCode, totalSent, totalFailed, totalSkipped, diag);
         return report;
-    }
-
-    private Set<String> resolveRecipients(Long sourceId, Set<String> dynamicUserIds) {
-        Set<String> result = new LinkedHashSet<>();
-        if (dynamicUserIds != null) {
-            result.addAll(dynamicUserIds);
-        }
-        for (NotifySourceRecipient rc : recipientService.listBySourceId(sourceId)) {
-            if (PushConstants.PERSPECTIVE_ALL.equals(rc.getPerspective())) {
-                if (PushConstants.SCOPE_ALL.equals(rc.getScopeType())) {
-                    userMapper.listEnabledUsersByMinRoleLevel(0).forEach(u -> result.add(u.getId()));
-                } else {
-                    addByScope(rc, result);
-                }
-            } else if (PushConstants.PERSPECTIVE_STUDENT.equals(rc.getPerspective())) {
-                // Only MEMBER role for student perspective
-                if (PushConstants.SCOPE_ALL.equals(rc.getScopeType())) {
-                    userMapper.findEnabledByRole(RoleEnum.MEMBER.getCode()).forEach(u -> result.add(u.getId()));
-                } else if (PushConstants.SCOPE_ROLE.equals(rc.getScopeType()) && rc.getScopeValue() != null) {
-                    try {
-                        RoleEnum role = RoleEnum.valueOf(rc.getScopeValue());
-                        userMapper.findEnabledByRole(role.getCode()).forEach(u -> result.add(u.getId()));
-                    } catch (IllegalArgumentException e) {
-                        log.warn("[Push] 未知角色: {}", rc.getScopeValue());
-                    }
-                } else if (PushConstants.SCOPE_USER.equals(rc.getScopeType()) && rc.getScopeValue() != null) {
-                    result.add(rc.getScopeValue().trim());
-                }
-            } else if (PushConstants.PERSPECTIVE_STAFF.equals(rc.getPerspective())) {
-                if (PushConstants.SCOPE_ALL.equals(rc.getScopeType())) {
-                    userMapper.listEnabledStaffUsers().forEach(u -> result.add(u.getId()));
-                } else {
-                    addByScope(rc, result);
-                }
-            }
-        }
-        return result;
-    }
-
-    /**
-     * 同人（staff 与 student 双账号映射同一 personnel.id）去重：每个 personnel 保留一个代表账号 id；
-     * 无 personnel 档案的落单账号原样保留（各自独立收件人）。
-     */
-    private Set<String> dedupRecipientsByPersonnel(Set<String> accountIds) {
-        if (accountIds == null || accountIds.isEmpty()) {
-            return accountIds;
-        }
-        Map<Long, String> representative = new LinkedHashMap<>();
-        List<String> orphans = new ArrayList<>();
-        for (String id : accountIds) {
-            String pidStr = personnelService.resolveIdByAccount(id);
-            if (pidStr != null) {
-                try {
-                    representative.putIfAbsent(Long.parseLong(pidStr), id);
-                    continue;
-                } catch (NumberFormatException ignore) {
-                    // 非数字 personnel.id 视为落单
-                }
-            }
-            orphans.add(id);
-        }
-        Set<String> result = new LinkedHashSet<>(representative.values());
-        result.addAll(orphans);
-        return result;
-    }
-
-    private void addByScope(NotifySourceRecipient rc, Set<String> result) {
-        if (PushConstants.SCOPE_ROLE.equals(rc.getScopeType()) && rc.getScopeValue() != null) {
-            try {
-                RoleEnum role = RoleEnum.valueOf(rc.getScopeValue());
-                userMapper.findEnabledByRole(role.getCode()).forEach(u -> result.add(u.getId()));
-            } catch (IllegalArgumentException e) {
-                log.warn("[Push] 未知角色: {}", rc.getScopeValue());
-            }
-        } else if (PushConstants.SCOPE_USER.equals(rc.getScopeType()) && rc.getScopeValue() != null) {
-            result.add(rc.getScopeValue().trim());
-        }
     }
 
     private PushChannel findChannel(String code) {

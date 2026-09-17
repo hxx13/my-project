@@ -42,10 +42,14 @@ public class AdminPushTestController {
                         "doorLabel", "B区出口", "triggerReason", "EXIT_DELAY")));
         sources.add(source("MATERIAL_REQUESTED", "物资申领-新申请",
                 Map.of("applicantName", "测试学生", "applicantGroup", "测试课题组",
-                        "summary", "共 3 项物资", "bizId", "MR-TEST-001", "createdAt", now())));
+                        "items", "| 手套 | 2 |\n| 离心管 | 1 |",
+                        "itemsHtml", "<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>",
+                        "bizId", "MR-TEST-001", "createdAt", now())));
         sources.add(source("MATERIAL_REVIEWED", "物资申领-审核结果",
                 Map.of("applicantName", "测试学生", "auditResult", "已通过",
-                        "summary", "已出库：测试物品A、测试物品B", "bizId", "MR-TEST-001")));
+                        "items", "| 手套 | 2 |\n| 离心管 | 1 |",
+                        "itemsHtml", "<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>",
+                        "bizId", "MR-TEST-001")));
         sources.add(source("SCAN_DELAY_REQUESTED", "延迟免冻结-新申请",
                 Map.of("subjectName", "测试学生", "subjectGroup", "测试课题组",
                         "roomName", "A203", "optionLabel", "延迟30分钟", "requestId", "999")));
@@ -79,6 +83,46 @@ public class AdminPushTestController {
                         "experimenterName", "测试实验员",
                         "persistedDays", "9", "thresholdDays", "7",
                         "firedAt", now())));
+
+        // ===== 物资领用 / 采购 / 报修（补齐清单显示）=====
+        sources.add(source("SUPPLIES_REQUESTED", "物资领用-新申请",
+                Map.of("applicantName", "测试用户",
+                        "items", "| 手套 | 2 |\n| 离心管 | 1 |",
+                        "itemsHtml", "<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>",
+                        "bizId", "SC-TEST", "createdAt", now())));
+        sources.add(source("SUPPLIES_COMPLETED", "物资领用-已出库",
+                Map.of("applicantName", "测试用户",
+                        "items", "| 手套 | 2 |\n| 离心管 | 1 |",
+                        "itemsHtml", "<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>",
+                        "bizId", "SC-TEST")));
+        sources.add(source("PURCHASE_REQUESTED", "采购-新申请",
+                Map.of("applicantName", "测试用户", "location", "实验室A",
+                        "content", "试剂耗材一批", "bizId", "PO-TEST", "createdAt", now())));
+        sources.add(source("PURCHASE_COMPLETED", "采购-已办结",
+                Map.of("applicantName", "测试用户", "location", "实验室A",
+                        "summary", "已采购完成", "bizId", "PO-TEST", "processorName", "测试管理员")));
+        sources.add(source("REPAIR_REQUESTED", "报修-新申请",
+                Map.of("applicantName", "测试用户", "location", "机房B",
+                        "content", "空调故障维修", "bizId", "RO-TEST", "createdAt", now())));
+        sources.add(source("REPAIR_COMPLETED", "报修-已办结",
+                Map.of("applicantName", "测试用户", "location", "机房B",
+                        "summary", "已修复", "bizId", "RO-TEST", "processorName", "测试管理员")));
+
+        // ===== 打印失败 / 人员进出 / 培训审批 / 聚合测试 =====
+        sources.add(source("PRINT_JOB_FAILED", "打印任务失败",
+                Map.of("fileName", "测试打印文件.pdf", "stationName", "1号打印工位",
+                        "reason", "缺纸", "failedAt", now(), "attempts", "3")));
+        sources.add(source("ACCESS_ENTER", "人员进入通知",
+                Map.of("roomName", "A203", "doorLabel", "A区主门禁",
+                        "personName", "测试学生", "department", "测试课题组", "enterTime", now())));
+        sources.add(source("ACCESS_EXIT", "人员离开通知",
+                Map.of("roomName", "A203", "doorLabel", "B区出口",
+                        "personName", "测试学生", "department", "测试课题组", "exitTime", now())));
+        sources.add(source("ARO_TRAINING_PENDING", "培训审批待审核",
+                Map.of("sessionTitle", "动物实验安全培训", "traineeName", "测试学生",
+                        "jobNumber", "S2026001", "projectGroup", "测试课题组")));
+        sources.add(source("DIGEST_TEST", "聚合通知测试",
+                Map.of("title", "聚合通知测试", "content", "这是一条测试聚合通知内容")));
         return Result.success(sources);
     }
 
@@ -125,8 +169,8 @@ public class AdminPushTestController {
         return switch (code) {
             case "ACTIVATION_SUCCESS" -> new LinkedHashMap<>(Map.of("doorLabel","A区主门禁","channelCode","CH01","swingTime",now()));
             case "SIGNOUT_COUNTDOWN" -> new LinkedHashMap<>(Map.of("countdownSeconds","120","scheduledExitAt",nowPlus(120),"doorLabel","B区出口","triggerReason","EXIT_DELAY"));
-            case "MATERIAL_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试学生","applicantGroup","测试课题组","summary","共 3 项物资","bizId","MR-TEST-001","createdAt",now()));
-            case "MATERIAL_REVIEWED" -> new LinkedHashMap<>(Map.of("applicantName","测试学生","auditResult","已通过","summary","已出库：测试物品A、测试物品B","bizId","MR-TEST-001"));
+            case "MATERIAL_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试学生","applicantGroup","测试课题组","items","| 手套 | 2 |\n| 离心管 | 1 |","itemsHtml","<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>","bizId","MR-TEST-001","createdAt",now()));
+            case "MATERIAL_REVIEWED" -> new LinkedHashMap<>(Map.of("applicantName","测试学生","auditResult","已通过","items","| 手套 | 2 |\n| 离心管 | 1 |","itemsHtml","<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>","bizId","MR-TEST-001"));
             case "SCAN_DELAY_REQUESTED" -> new LinkedHashMap<>(Map.of("subjectName","测试学生","subjectGroup","测试课题组","roomName","A203","optionLabel","延迟30分钟","requestId","999"));
             case "SCAN_DELAY_REVIEWED" -> new LinkedHashMap<>(Map.of("roomName","A203","optionLabel","延迟30分钟","auditResult","已通过","rejectReason",""));
             case "VIOLATION_CREATED" -> new LinkedHashMap<>(Map.of("title","违规提醒","source","MANUAL","summary","测试违规——请分笼/密度超标","enterLocked","false"));
@@ -135,12 +179,17 @@ public class AdminPushTestController {
             case "PURCHASE_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","实验室A","summary","已采购完成","bizId","PO-TEST","processorName","测试管理员"));
             case "REPAIR_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","机房B","content","空调故障维修","bizId","RO-TEST","createdAt",now()));
             case "REPAIR_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","location","机房B","summary","已修复","bizId","RO-TEST","processorName","测试管理员"));
-            case "SUPPLIES_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","共 3 项物资","bizId","SC-TEST","createdAt",now()));
-            case "SUPPLIES_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","summary","已出库：A4纸、记号笔、手套","bizId","SC-TEST"));
+            case "SUPPLIES_REQUESTED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","items","| 手套 | 2 |\n| 离心管 | 1 |","itemsHtml","<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>","bizId","SC-TEST","createdAt",now()));
+            case "SUPPLIES_COMPLETED" -> new LinkedHashMap<>(Map.of("applicantName","测试用户","items","| 手套 | 2 |\n| 离心管 | 1 |","itemsHtml","<tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>手套</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>2</td></tr><tr><td style='border:1px solid #e2e8f0;padding:4px 8px'>离心管</td><td style='border:1px solid #e2e8f0;padding:4px 8px;text-align:right'>1</td></tr>","bizId","SC-TEST"));
             case "TELEMETRY_ALARM" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","alarmDirection","偏高","currentValue","28.5℃","limitValue","26.0℃","sentAt",now()));
             case "TELEMETRY_RECOVERY" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","currentValue","24.0℃","recoveryAt",now()));
             case "SWIPE_FAILURE_ALERT" -> new LinkedHashMap<>(Map.of("channelName","A区主门禁","personName","测试学生","deptName","测试课题组","phone","13800138000","count","5","windowMin","5","threshold","3","openTypeLabel","非法刷卡","enterOrExitLabel","进入","swingTime",now()));
             case "CAGE_SPECIAL_STATUS" -> new LinkedHashMap<>(Map.of("statusLabel","需特殊饲养","cageLabel","201A-1 A-9","roomName","201A","projectPiName","测试课题组","experimenterName","测试实验员","persistedDays","9","thresholdDays","7","firedAt",now()));
+            case "PRINT_JOB_FAILED" -> new LinkedHashMap<>(Map.of("fileName","测试打印文件.pdf","stationName","1号打印工位","reason","缺纸","failedAt",now(),"attempts","3"));
+            case "ACCESS_ENTER" -> new LinkedHashMap<>(Map.of("roomName","A203","doorLabel","A区主门禁","personName","测试学生","department","测试课题组","enterTime",now()));
+            case "ACCESS_EXIT" -> new LinkedHashMap<>(Map.of("roomName","A203","doorLabel","B区出口","personName","测试学生","department","测试课题组","exitTime",now()));
+            case "ARO_TRAINING_PENDING" -> new LinkedHashMap<>(Map.of("sessionTitle","动物实验安全培训","traineeName","测试学生","jobNumber","S2026001","projectGroup","测试课题组"));
+            case "DIGEST_TEST" -> new LinkedHashMap<>(Map.of("title","聚合通知测试","content","这是一条测试聚合通知内容"));
             default -> null;
         };
     }
