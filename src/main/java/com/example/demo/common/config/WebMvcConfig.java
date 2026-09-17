@@ -52,8 +52,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // ⚠ 位置必须写到 assets/ 这一层：Spring 会先剥掉 pattern 前缀（/assets/**），
+        // 剩下 index-x.js 再拼到 location 上。写成 classpath:/static/ 会去找
+        // classpath:/static/index-x.js，全站 404（2026-09-17 踩过，web 端整站白屏）。
+        // 和下面 /models/** → classpath:/static/models/ 是同一个约定。
         registry.addResourceHandler("/assets/**")
-                .addResourceLocations("classpath:/static/")
+                .addResourceLocations("classpath:/static/assets/")
                 .setCacheControl(CacheControl.maxAge(7, TimeUnit.DAYS).cachePublic());
 
         String webModels = Paths.get(uploadBaseDir, "web-models").toAbsolutePath().normalize().toUri().toString();
