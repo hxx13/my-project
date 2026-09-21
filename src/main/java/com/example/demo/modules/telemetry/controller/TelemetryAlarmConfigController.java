@@ -148,6 +148,9 @@ public class TelemetryAlarmConfigController {
             if (body.getAlarmCooldownMinutes() != null) {
                 tagMapper.updateAlarmCooldown(body.getTagId(), body.getAlarmCooldownMinutes());
             }
+            if (body.getAlarmEnabled() != null) {
+                tagMapper.updateAlarmEnabled(body.getTagId(), body.getAlarmEnabled());
+            }
             count++;
         }
         return Result.success(count);

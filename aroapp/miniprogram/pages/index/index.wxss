@@ -390,31 +390,6 @@ page {
   padding: 0 8rpx;
 }
 
-.section-head--tabs {
-  align-items: flex-end;
-}
-
-.home-tabs {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.home-tab {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #9ca3af;
-  padding: 8rpx 20rpx;
-  border-radius: 999rpx;
-}
-
-.home-tab--on {
-  color: #1f2937;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4rpx 12rpx rgba(15, 23, 42, 0.08);
-}
-
 .home-bulletin-empty {
   text-align: center;
   color: #969799;
@@ -476,10 +451,24 @@ page {
 }
 
 /* ====== 学生视角：H5 同款公告通知列表 ====== */
+.section-title-wrap {
+  display: flex;
+  align-items: center;
+}
+
 .section-title-text {
   font-size: 30rpx;
   font-weight: 700;
   color: #1f2937;
+}
+
+/* 公告未读红点：与 .quick-badge 同色（#ee0a24），只作提示不加数字 */
+.section-title-dot {
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: 10rpx;
+  border-radius: 999rpx;
+  background: #ee0a24;
 }
 
 .announce-row {

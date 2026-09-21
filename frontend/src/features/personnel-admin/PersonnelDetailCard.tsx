@@ -8,11 +8,14 @@ import { toast } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import type { UnifiedPersonnelRecord } from "@/api/domains/admin.api";
-import { fetchPersonnelRoomAuthorization, updatePersonnelRoomAuthorization, type PersonnelRoomAuthorization } from "@/api/domains/admin.api";
+import { fetchPersonnelRoomAuthorization, updatePersonnelRoomAuthorization, fetchUnifiedPersonnel, mergePersonnel, updatePersonnelHead, resetPersonnelHead, syncPersonnel, fetchDepartments, fetchProjectGroups, updatePersonnelOrg, movePersonnelToTrash, restorePersonnel, purgePersonnel, type PersonnelRoomAuthorization } from "@/api/domains/admin.api";
+import { uploadSingleImage } from "@/api/domains/upload.api";
+import { fetchPersonnelSignature, resetPersonnelSignature, type MySignature } from "@/api/domains/signature.api";
 import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import type { IdentityTag } from "@/api/domains/personIdentity.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminButton } from "@/components/admin/AdminButton";
+import SearchSelect, { type SearchOption } from "@/components/cage/SearchSelect";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, SysBadge, StatusPill, ROLE_LABEL_MAP } from "./PersonnelRichList";
 
@@ -56,6 +59,19 @@ export function PersonnelDetailCard({
   const tlRef = useRef<gsap.core.Timeline | null>(null);
   const reducedMotion = usePrefersReducedMotion();
   const closingRef = useRef(false);
+  const qc = useQueryClient();
+  const headFileRef = useRef<HTMLInputElement>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [deptOptions, setDeptOptions] = useState<SearchOption[]>([]);
+  const [groupOptions, setGroupOptions] = useState<SearchOption[]>([]);
+
+  // 字典全量拉一次，搜索选择走内存过滤（部门 32 条、课题组 274 条，无需远程搜索）
+  useEffect(() => {
+    let on = true;
+    fetchDepartments().then((d) => { if (on) setDeptOptions(d.map((x) => ({ key: String(x.id), label: x.name }))); }).catch(() => {});
+    fetchProjectGroups().then((g) => { if (on) setGroupOptions(g.map((x) => ({ key: String(x.id), label: x.name, subtitle: x.departmentName ?? undefined }))); }).catch(() => {});
+    return () => { on = false; };
+  }, []);
 
   useGSAP(() => {
     if (!wrapRef.current || !innerRef.current) return;
@@ -107,6 +123,56 @@ export function PersonnelDetailCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.id]);
 
+  const onPickHeadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (row.headOverride && !window.confirm("该人员已有自定义头像，确定用新图替换？")) return;
+    try {
+      const { url } = await uploadSingleImage(file);
+      await updatePersonnelHead(row.id, url);
+      toast.success("头像已更新");
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const onResetHead = async () => {
+    if (!window.confirm("确定清除本地头像，恢复原始头像？")) return;
+    try {
+      await resetPersonnelHead(row.id);
+      toast.success("头像已重置");
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
+  const onSync = async () => {
+    setSyncLoading(true);
+    try {
+      const r = await syncPersonnel(row.id);
+      toast.success(`已同步：学生侧 ${r.aroMatched} 条、教职工侧 ${r.staffMatched} 条`);
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "同步失败");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  // 改部门/课题组：写字典 id + 文本快照（id 是权威，展示走字典当前名）
+  const onChangeOrg = async (kind: "department" | "group", opt: SearchOption) => {
+    try {
+      await updatePersonnelOrg(row.id, kind, Number(opt.key), opt.label);
+      toast.success("已保存");
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "保存失败");
+    }
+  };
+
   const uid = row.staffId || "";
   const personId = String(row.id);
   const isBuiltin = uid === BUILTIN_SUPER_ADMIN_ID;
@@ -126,7 +192,17 @@ export function PersonnelDetailCard({
       <div ref={innerRef} className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* 头部 */}
       <header className="flex items-start gap-4 border-b border-[var(--twin-hairline)] p-4">
-        <Avatar name={row.name} head={row.head} size="lg" />
+        <div className="flex shrink-0 flex-col items-center gap-2">
+          <Avatar name={row.name} head={row.head} size="lg" />
+          <div className="flex gap-1">
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => headFileRef.current?.click()}>上传头像</AdminButton>
+            {row.headOverride ? (
+              <AdminButton type="button" tone="secondary" size="sm" onClick={onResetHead}>重置头像</AdminButton>
+            ) : null}
+            <AdminButton type="button" tone="secondary" size="sm" loading={syncLoading} onClick={onSync}>同步此人</AdminButton>
+          </div>
+          <input ref={headFileRef} type="file" accept="image/*" className="hidden" onChange={onPickHeadFile} />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 text-lg font-bold text-[var(--twin-ink)]">
@@ -210,8 +286,8 @@ export function PersonnelDetailCard({
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-[var(--twin-hairline)] p-3">
             <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--twin-mute)]"><Building2 className="h-3.5 w-3.5" />组织信息</div>
-            <EditableText label="部门" value={row.departmentName || ""} onSave={(v) => onSaveField("department_name", v)} />
-            <EditableText label="课题组" value={row.projectGroupName || ""} onSave={(v) => onSaveField("project_group_name", v)} />
+            <DictSelect label="部门" value={row.departmentName || ""} options={deptOptions} onPick={(o) => onChangeOrg("department", o)} />
+            <DictSelect label="课题组" value={row.projectGroupName || ""} options={groupOptions} onPick={(o) => onChangeOrg("group", o)} />
             <div className="flex justify-between gap-2 py-0.5 text-[11px]"><span className="text-[var(--twin-mute)]">校内</span><span className="text-[var(--twin-body)]">{row.isSchool === 1 ? "是" : row.isSchool === 0 ? "否" : "—"}</span></div>
           </div>
           <div className="rounded-lg border border-[var(--twin-hairline)] p-3">
@@ -269,9 +345,181 @@ export function PersonnelDetailCard({
             </>
           ) : null}
         </section>
+
+        {/* 合并档案（不可逆，仅 SUPER_ADMIN） */}
+        {isSuperAdmin ? (
+          <section className="rounded-lg border border-[var(--twin-hairline)] p-3">
+            <div className="mb-2 text-[11px] font-semibold text-[var(--twin-mute)]">合并档案</div>
+            <MergePersonnelField row={row} onClose={onClose} />
+          </section>
+        ) : null}
+        {/* 电子签名：查看 + 重置。签名一经提交不可更改，重置是唯一的修改途径 */}
+        <SignatureSection row={row} isSuperAdmin={isSuperAdmin} />
+
+        {/* 回收站（仅 SUPER_ADMIN）：软删除可恢复；彻底删除不可逆 */}
+        {isSuperAdmin ? (
+          <section className="rounded-lg border border-[var(--twin-hairline)] p-3">
+            <div className="mb-2 text-[11px] font-semibold text-[var(--twin-mute)]">回收站</div>
+            <TrashActions row={row} onClose={onClose} />
+          </section>
+        ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+/** 电子签名：查看 + 重置（仅 SUPER_ADMIN 可重置）。签名不可更改，重置是唯一的修改途径。 */
+function SignatureSection({ row, isSuperAdmin }: { row: UnifiedPersonnelRecord; isSuperAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [sig, setSig] = useState<MySignature | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const s = await fetchPersonnelSignature(row.id);
+        if (!dead) setSig(s);
+      } catch {
+        if (!dead) setSig({ hasSignature: false });
+      }
+    })();
+    return () => { dead = true; };
+  }, [row.id]);
+
+  const handleReset = async () => {
+    if (!window.confirm("重置后该签名会被清空，本人可以重新签。确定重置？")) return;
+    setBusy(true);
+    try {
+      await resetPersonnelSignature(row.id);
+      toast.success("已重置签名");
+      setSig({ hasSignature: false });
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "重置失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-lg border border-[var(--twin-hairline)] p-3">
+      <div className="mb-2 text-[11px] font-semibold text-[var(--twin-mute)]">电子签名</div>
+      {sig === null ? (
+        <div className="text-xs text-[var(--twin-mute)]">加载中…</div>
+      ) : !sig.hasSignature ? (
+        <div className="text-xs text-[var(--twin-mute)]">未签名</div>
+      ) : (
+        <>
+          <img src={sig.imageData} alt="电子签名"
+            className="w-full max-w-[520px] rounded border border-[var(--twin-hairline)] bg-white" />
+          <p className="mt-1 text-[10px] text-[var(--twin-mute)]">
+            {sig.createdAt ? `签署于 ${sig.createdAt}` : "已签署"} · 签名不可更改
+          </p>
+          {isSuperAdmin ? (
+            <div className="mt-2">
+              <AdminButton type="button" tone="secondary" size="sm" disabled={busy} onClick={handleReset}>
+                重置签名
+              </AdminButton>
+            </div>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** 回收站操作：软删（可恢复）/ 恢复 / 彻底删除（不可逆）。仅 SUPER_ADMIN。 */
+function TrashActions({ row, onClose }: { row: UnifiedPersonnelRecord; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const run = async (label: string, fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await fn();
+      toast.success(label);
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (row.deletedAt) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <AdminButton type="button" tone="secondary" size="sm" disabled={busy}
+          onClick={() => void run("已恢复到人员列表", () => restorePersonnel(row.id))}>
+          恢复到人员列表
+        </AdminButton>
+        <AdminButton type="button" tone="secondary" size="sm" disabled={busy}
+          onClick={() => {
+            if (!window.confirm(
+              "彻底删除不可恢复：会同时删掉他在 ARO 侧的人员记录与登录账号。\n"
+              + "注意：若这个人来自 ARO 同步，下次同步可能还会把他加回来（ARO 才是权威源）。\n"
+              + "确定继续？")) return;
+            void run("已彻底删除", () => purgePersonnel(row.id)).then(onClose);
+          }}>
+          彻底删除
+        </AdminButton>
+      </div>
+    );
+  }
+
+  return (
+    <AdminButton type="button" tone="secondary" size="sm" disabled={busy}
+      onClick={() => {
+        if (!window.confirm("删除到回收站？之后可以在这里恢复。")) return;
+        void run("已移入回收站", () => movePersonnelToTrash(row.id));
+      }}>
+      删除到回收站
+    </AdminButton>
+  );
+}
+
+/** 把另一个人员并入本档案：本档案存活、对方被删除。不可逆，仅 SUPER_ADMIN。选中后二次确认再执行。 */
+function MergePersonnelField({ row, onClose }: { row: UnifiedPersonnelRecord; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const search = async (kw: string) => {
+    const { list } = await fetchUnifiedPersonnel(1, 20, { keyword: kw });
+    return list.map((p) => ({
+      key: String(p.id),
+      label: p.name ?? "",
+      subtitle: [p.departmentName, p.projectGroupName].filter(Boolean).join(" · "),
+    }));
+  };
+
+  const onPick = async (opt: { key: string; label: string }) => {
+    const targetId = Number(opt.key);
+    if (!Number.isFinite(targetId) || targetId === row.id) return;
+    if (!window.confirm(`把「${opt.label}」并入本档案「${row.name}」，「${opt.label}」的档案将被删除，此操作不可逆。确定继续？`)) return;
+    try {
+      await mergePersonnel(row.id, targetId);
+      toast.success("已合并");
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "合并失败");
+    }
+  };
+
+  return open ? (
+    <SearchSelect
+      search={search}
+      onPick={onPick}
+      excludeKeys={[String(row.id)]}
+      placeholder="搜索要并入此档案的人员"
+      emptyHint="没有匹配项"
+    />
+  ) : (
+    <button type="button"
+      className="inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)]"
+      onClick={() => setOpen(true)}>并入此档案…</button>
   );
 }
 
@@ -290,6 +538,51 @@ function PwdCell({ userId, onViewPassword }: { userId: string; onViewPassword: (
         className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 text-[10px] text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50">
         {loading ? "…" : plain === undefined ? "查看" : "隐藏"}
       </button>
+    </div>
+  );
+}
+
+/** 部门/课题组搜索选择：字典已在父级拉全量，这里内存过滤 */
+function DictSelect({
+  label,
+  value,
+  options,
+  onPick,
+}: {
+  label: string;
+  value: string;
+  options: SearchOption[];
+  onPick: (opt: SearchOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const search = async (kw: string) => {
+    const q = kw.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.label.toLowerCase().includes(q));
+  };
+
+  if (open) {
+    return (
+      <div className="py-0.5">
+        <SearchSelect
+          search={search}
+          onPick={(opt) => { onPick(opt); setOpen(false); }}
+          placeholder={`搜索${label}`}
+          emptyHint="没有匹配项"
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="flex justify-between gap-2 py-0.5 text-[11px]">
+      <span className="text-[var(--twin-mute)]">{label}</span>
+      <span
+        className="cursor-pointer border-b border-dashed border-[var(--twin-hairline)] text-[var(--twin-body)] hover:border-[var(--twin-link)] hover:text-[var(--twin-link)]"
+        onClick={() => setOpen(true)}
+      >
+        {value || "—"}
+      </span>
     </div>
   );
 }

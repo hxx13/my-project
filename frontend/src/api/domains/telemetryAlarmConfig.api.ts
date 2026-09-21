@@ -162,6 +162,8 @@ export interface TagAlarmOverridePatch {
   alarmOverrideMin: string | null;
   alarmOverrideMax: string | null;
   alarmCooldownMinutes?: number | null;
+  /** 逐测点报警开关：null=不改 / 0=禁用 / 1=启用 */
+  alarmEnabled?: number | null;
 }
 
 export async function setTagAlarmOverrides(tagId: number, body: TagAlarmOverridePatch): Promise<void> {

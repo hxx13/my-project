@@ -44,21 +44,30 @@ class CageStatusNotifyServiceTest {
     @Mock private AroService aroService;
     @Mock private CageAlertRuleService alertRuleService;
     @Mock private CageOperationService cageOperationService;
+    @Mock private CageRegionVetService regionVetService;
+    @Mock private CageInfoValueService infoValueService;
+    @Mock private CageVetService vetService;
 
     private CageStatusNotifyService service;
 
     @BeforeEach
     void setUp() {
         service = new CageStatusNotifyService(pushService, alertMapper, cellIndexMapper, cellDetailMapper,
-                aroService, alertRuleService, cageOperationService);
+                aroService, alertRuleService, cageOperationService, regionVetService, infoValueService, vetService);
     }
 
     private static CageStatusAlert alert(String statusCode, LocalDateTime startedAt, LocalDateTime firedAt,
                                          int thresholdDays) {
+        return alert(statusCode, "DEFAULT", startedAt, firedAt, thresholdDays);
+    }
+
+    private static CageStatusAlert alert(String statusCode, String notifyTarget,
+                                         LocalDateTime startedAt, LocalDateTime firedAt, int thresholdDays) {
         CageStatusAlert a = new CageStatusAlert();
         a.setId(9L);
         a.setAnimalCageId(123L);
         a.setStatusCode(statusCode);
+        a.setNotifyTarget(notifyTarget);
         a.setStartedAt(startedAt);
         a.setFiredAt(firedAt);
         a.setThresholdDays(thresholdDays);
@@ -87,7 +96,7 @@ class CageStatusNotifyServiceTest {
         ArgumentCaptor<Map<String, String>> vars = ArgumentCaptor.forClass(Map.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> ids = ArgumentCaptor.forClass(Set.class);
-        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_CODE), vars.capture(), ids.capture());
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_SPECIAL_STATUS), vars.capture(), ids.capture());
 
         assertEquals("需特殊饲养", vars.getValue().get("statusLabel"));
         // 位号走**映射**口径（列转字母、行翻转）：x=1,y=2 → A-9（与前端 displayPosition 同源）
@@ -118,7 +127,7 @@ class CageStatusNotifyServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> ids = ArgumentCaptor.forClass(Set.class);
-        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_CODE), org.mockito.ArgumentMatchers.any(), ids.capture());
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_SPECIAL_STATUS), org.mockito.ArgumentMatchers.any(), ids.capture());
         assertEquals(Set.of("ARO_1"), ids.getValue());
     }
 
@@ -137,7 +146,7 @@ class CageStatusNotifyServiceTest {
         ArgumentCaptor<Map<String, String>> vars = ArgumentCaptor.forClass(Map.class);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Set<String>> ids = ArgumentCaptor.forClass(Set.class);
-        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_CODE), vars.capture(), ids.capture());
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_SPECIAL_STATUS), vars.capture(), ids.capture());
         assertEquals("需加食", vars.getValue().get("statusLabel"));
         assertEquals("202A-1", vars.getValue().get("cageLabel"), "没坐标就只给架子名");
         assertEquals(Set.of(), ids.getValue(), "取不到课题组 → 交回引擎按配置的收件人发");
@@ -155,7 +164,7 @@ class CageStatusNotifyServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> vars = ArgumentCaptor.forClass(Map.class);
-        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_CODE), vars.capture(), org.mockito.ArgumentMatchers.any());
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_SPECIAL_STATUS), vars.capture(), org.mockito.ArgumentMatchers.any());
         assertEquals("5", vars.getValue().get("persistedDays"));
     }
 
@@ -167,5 +176,101 @@ class CageStatusNotifyServiceTest {
         assertDoesNotThrow(() -> service.notifyFired(1L));
         verify(pushService, never()).send(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    // ── 健康异常：按 (状态码, 通知对象) 分两个通道 ──
+
+    /**
+     * 核心回归（用户 2026-09-17 口径）：同一条健康异常告警，VET 走「通知兽医」源、
+     * 收件人是**该区域指定的兽医**（不是笼位所属人，也不夹带课题组）。
+     */
+    @Test
+    void healthVetAlertGoesToVetSourceWithRegionVets() {
+        LocalDateTime fired = LocalDateTime.now();
+        when(alertMapper.selectById(9L))
+                .thenReturn(alert("HEALTH_ABNORMAL", "VET", fired.minusDays(1), fired, 0));
+        when(cellIndexMapper.lookupByAnimalCageId(123L)).thenReturn(Map.of("shelveName", "201A-1"));
+        CageCellDetail detail = new CageCellDetail();
+        detail.setProjectPiName("徐楠杰");
+        detail.setExperimenterName("林安顺");
+        when(cellDetailMapper.selectByAnimalCageId(123L)).thenReturn(detail);
+        when(alertRuleService.labelOf("HEALTH_ABNORMAL")).thenReturn("健康异常");
+        when(regionVetService.resolveVetsForCage(123L)).thenReturn(Set.of("STAFF_VET"));
+        when(infoValueService.healthSeverityLabel(123L)).thenReturn("中度");
+
+        service.notifyFired(9L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> vars = ArgumentCaptor.forClass(Map.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<String>> ids = ArgumentCaptor.forClass(Set.class);
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_HEALTH_VET), vars.capture(), ids.capture());
+        assertEquals("健康异常", vars.getValue().get("statusLabel"));
+        assertEquals("中度", vars.getValue().get("severityLabel"));
+        assertEquals(Set.of("STAFF_VET"), ids.getValue(), "只发区域指定兽医，不夹带所属人");
+        verify(cageOperationService, never()).occupantAccountIds(anyLong());
+    }
+
+    /** 所有者通道：收件人仍是笼位所属人，源换成「通知笼位所有者」，与兽医通道互不夹带。 */
+    @Test
+    void healthOccupantAlertGoesToOwnerSourceWithOccupant() {
+        LocalDateTime fired = LocalDateTime.now();
+        when(alertMapper.selectById(9L))
+                .thenReturn(alert("HEALTH_ABNORMAL", "OCCUPANT", fired.minusDays(8), fired, 7));
+        when(cellIndexMapper.lookupByAnimalCageId(123L)).thenReturn(Map.of("shelveName", "201A-1"));
+        CageCellDetail detail = new CageCellDetail();
+        detail.setProjectPiName("徐楠杰");
+        when(cellDetailMapper.selectByAnimalCageId(123L)).thenReturn(detail);
+        when(alertRuleService.labelOf("HEALTH_ABNORMAL")).thenReturn("健康异常");
+        when(cageOperationService.occupantAccountIds(123L)).thenReturn(Set.of("STAFF_LIN"));
+        when(infoValueService.healthSeverityLabel(123L)).thenReturn("严重");
+
+        service.notifyFired(9L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> vars = ArgumentCaptor.forClass(Map.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<String>> ids = ArgumentCaptor.forClass(Set.class);
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_HEALTH_OWNER), vars.capture(), ids.capture());
+        assertEquals("严重", vars.getValue().get("severityLabel"));
+        assertEquals(Set.of("STAFF_LIN"), ids.getValue());
+        verify(regionVetService, never()).resolveVetsForCage(anyLong());
+    }
+
+    /** 没指定区域兽医 → 空集交回引擎（走 push-config 配的接收人），不是静默丢掉。 */
+    @Test
+    void healthVetWithoutConfiguredVetYieldsEmptySet() {
+        LocalDateTime fired = LocalDateTime.now();
+        when(alertMapper.selectById(9L))
+                .thenReturn(alert("HEALTH_ABNORMAL", "VET", fired, fired, 0));
+        when(cellIndexMapper.lookupByAnimalCageId(123L)).thenReturn(Map.of());
+        when(cellDetailMapper.selectByAnimalCageId(123L)).thenReturn(null);
+        when(alertRuleService.labelOf("HEALTH_ABNORMAL")).thenReturn("健康异常");
+        when(regionVetService.resolveVetsForCage(123L)).thenReturn(Set.of());
+        when(infoValueService.healthSeverityLabel(123L)).thenReturn("");
+
+        service.notifyFired(9L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<String>> ids = ArgumentCaptor.forClass(Set.class);
+        verify(pushService).send(eq(CageStatusNotifyService.SOURCE_HEALTH_VET),
+                org.mockito.ArgumentMatchers.any(), ids.capture());
+        assertEquals(Set.of(), ids.getValue());
+    }
+
+    /** 源选择是静态映射：非健康异常的状态（含特殊饲养明细）永远走默认源。 */
+    @Test
+    void sourceSelectionIsStaticMapping() {
+        assertEquals(CageStatusNotifyService.SOURCE_SPECIAL_STATUS,
+                CageStatusNotifyService.sourceOf("SPECIAL_FEEDING", "DEFAULT"));
+        assertEquals(CageStatusNotifyService.SOURCE_SPECIAL_STATUS,
+                CageStatusNotifyService.sourceOf("SF_NEED_FEED", "DEFAULT"));
+        assertEquals(CageStatusNotifyService.SOURCE_HEALTH_VET,
+                CageStatusNotifyService.sourceOf("HEALTH_ABNORMAL", "VET"));
+        assertEquals(CageStatusNotifyService.SOURCE_HEALTH_OWNER,
+                CageStatusNotifyService.sourceOf("HEALTH_ABNORMAL", "OCCUPANT"));
+        // 空/未知对象落在所有者那条，永不落到兽医那条 —— 宁可发宽也不漏
+        assertEquals(CageStatusNotifyService.SOURCE_HEALTH_OWNER,
+                CageStatusNotifyService.sourceOf("HEALTH_ABNORMAL", null));
     }
 }

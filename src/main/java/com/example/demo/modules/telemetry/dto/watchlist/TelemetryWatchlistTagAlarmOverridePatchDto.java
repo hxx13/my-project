@@ -10,4 +10,6 @@ public class TelemetryWatchlistTagAlarmOverridePatchDto {
     private String alarmOverrideMin;
     private String alarmOverrideMax;
     private Integer alarmCooldownMinutes;
+    /** 逐测点报警开关：null=不改 / 0=禁用 / 1=启用 */
+    private Integer alarmEnabled;
 }

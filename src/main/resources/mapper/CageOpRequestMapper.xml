@@ -12,6 +12,10 @@
         <result property="applicantName" column="applicant_name"/>
         <result property="applicantScope" column="applicant_scope"/>
         <result property="status" column="status"/>
+        <result property="signatures" column="signatures"/>
+        <result property="transferForm" column="transfer_form"/>
+        <result property="transferFormFileRef" column="transfer_form_file_ref"/>
+        <result property="pairs" column="pairs"/>
         <result property="reason" column="reason"/>
         <result property="reviewerId" column="reviewer_id"/>
         <result property="reviewerName" column="reviewer_name"/>
@@ -24,16 +28,22 @@
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO cage_op_request
         (op_type, source_animal_cage_id, target_animal_cage_ids, keep_source,
-         applicant_id, applicant_name, applicant_scope, status, reason, created_at, updated_at)
+         applicant_id, applicant_name, applicant_scope, status, signatures, reason, created_at, updated_at,
+         transfer_form, transfer_form_file_ref, pairs)
         VALUES
         (#{opType}, #{sourceAnimalCageId}, #{targetAnimalCageIds}, #{keepSource},
-         #{applicantId}, #{applicantName}, #{applicantScope}, #{status}, #{reason}, NOW(), NOW())
+         #{applicantId}, #{applicantName}, #{applicantScope}, #{status}, #{signatures}, #{reason}, NOW(), NOW(),
+         #{transferForm}, #{transferFormFileRef}, #{pairs})
     </insert>
 
     <update id="update">
         UPDATE cage_op_request
         <set>
             <if test="status != null">status = #{status},</if>
+            <if test="signatures != null">signatures = #{signatures},</if>
+            <if test="transferForm != null">transfer_form = #{transferForm},</if>
+            <if test="transferFormFileRef != null">transfer_form_file_ref = #{transferFormFileRef},</if>
+            <if test="pairs != null">pairs = #{pairs},</if>
             <if test="reviewerId != null">reviewer_id = #{reviewerId},</if>
             <if test="reviewerName != null">reviewer_name = #{reviewerName},</if>
             <if test="reviewedAt != null">reviewed_at = #{reviewedAt},</if>
@@ -51,13 +61,17 @@
         SELECT * FROM cage_op_request WHERE id = #{id} FOR UPDATE
     </select>
 
+    <!-- 待审队列按申请时间**从新到旧**：审核人要先看到刚提交的那几条。
+         从旧到新会让新单沉在列表底部，越积越多时最该看的反而最难找。
+         （同理 selectByReviewer 用 reviewed_at DESC —— 两端口径一致。）
+         其他调用方（预占计算、中间态、角标）只做集合归属判断，不受顺序影响。 -->
     <select id="selectByStatus" resultMap="CageOpRequestMap">
         SELECT * FROM cage_op_request
         WHERE status = #{status}
         <if test="opType != null and opType != ''">
             AND op_type = #{opType}
         </if>
-        ORDER BY created_at ASC, id ASC
+        ORDER BY created_at DESC, id DESC
     </select>
 
     <select id="selectByApplicant" resultMap="CageOpRequestMap">
@@ -71,10 +85,10 @@
 
     <select id="selectByReviewer" resultMap="CageOpRequestMap">
         SELECT * FROM cage_op_request
-        WHERE reviewer_id = #{reviewerId}
+        WHERE (reviewer_id = #{reviewerId}
+               OR JSON_SEARCH(signatures, 'one', #{reviewerId}) IS NOT NULL)
           AND status &lt;&gt; 'pending'
         ORDER BY reviewed_at DESC, id DESC
         LIMIT #{limit}
     </select>
-
 </mapper>

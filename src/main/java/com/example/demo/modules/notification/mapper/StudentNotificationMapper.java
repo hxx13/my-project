@@ -29,12 +29,6 @@ public interface StudentNotificationMapper {
 
     int countUnread(@Param("userId") String userId);
 
-    /** 缓存 ARO 新闻，避免重复拉取 */
-    int insertBatch(@Param("list") List<StudentNotification> list);
-
-    /** 清除过期的 ARO 新闻缓存 */
-    int deleteExpiredAroNews(@Param("beforeTime") String beforeTime);
-
     /** 按业务键撤回镜像通知（违规终态 / 硬删除） */
     int deleteByBiz(@Param("bizType") String bizType, @Param("bizId") String bizId);
 

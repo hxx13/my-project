@@ -146,7 +146,9 @@ Page({
     queueTabs: [],          // 每台工位一个队列（照 web）：[{ id, name, count, rows }]
     queueTabId: '',         // 当前工位 tab
     queueFailedCount: 0,
-    queueOpen: false      // 打印队列弹窗
+    queueOpen: false,     // 打印队列弹窗
+    canClearQueue: false,     // 当前账号能不能清队列（问服务端，拿不到当 false）
+    queueStationIsServer: false // 当前队列工位是不是「后端直发」——只有它才有服务端队列可清
   },
   onLoad: function () {
     // 选格集合挂页面实例：内部是带闭包的 Map，进 data 会被序列化丢掉。
@@ -214,21 +216,48 @@ Page({
       var tabs = printFormat.buildStationTabs(jobs, stations);
       var keep = self.data.queueTabId;
       var hasKeep = tabs.some(function (t) { return t.id === keep; });
+      var tabId = hasKeep ? keep : (tabs[0] ? tabs[0].id : '');
+
+      // 撤销按钮：给还卡在打印机队列里的任务（含 PRINTED 这种「看着像完事」的终态）。
+      // PENDING/FAILED 各自已有撤回/收掉按钮，别重复出一颗。
+      // queueState 由 printFormat.mapJobRow 带出来，这里只算这一个展示用布尔。
+      tabs.forEach(function (t) {
+        (t.rows || []).forEach(function (row) {
+          if (!row) return;
+          row.canCancelStuck =
+            row.queueState === 'QUEUED' && row.status !== 'PENDING' && row.status !== 'FAILED';
+        });
+      });
+
+      // 清空按钮只认「后端直发」工位；工位清单没这台（已停用等）就当不是，fail-closed
+      var cur = null;
+      for (var i = 0; i < stations.length; i++) {
+        if (String(stations[i] && stations[i].id) === String(tabId)) { cur = stations[i]; break; }
+      }
+
       self.setData({
         queueSummary: printFormat.summarizeQueue(jobs),
         queueFailedCount: jobs.filter(function (j) { return j && j.status === 'FAILED'; }).length,
         queueTabs: tabs,
-        queueTabId: hasKeep ? keep : (tabs[0] ? tabs[0].id : '')
+        queueTabId: tabId,
+        queueStationIsServer: String((cur && cur.mode) || '').toUpperCase() === 'SERVER'
       });
     });
   },
 
+  /** 换工位 tab 后重拉一次：queueStationIsServer（清空按钮的显隐条件）得跟着当前工位走 */
   onPickQueueTab: function (e) {
     this.setData({ queueTabId: String((e.currentTarget.dataset || {}).id || '') });
+    this.loadPrintQueue();
   },
 
   onOpenQueue: function () {
+    var self = this;
     this.setData({ queueOpen: true });
+    // 能力问服务端（fail-closed）：拿不到就不显示清空按钮
+    printApi.fetchCapabilities().then(function (r) {
+      self.setData({ canClearQueue: !!(r && r.ok && r.canClearQueue) });
+    });
     this.loadPrintQueue();
   },
 
@@ -238,6 +267,39 @@ Page({
 
   onRefreshQueue: function () {
     this.loadPrintQueue();
+  },
+
+  /**
+   * 清空当前队列工位的打印队列。
+   * 这是「连别人派的也一起撤」的动作，比撤回自己那一条重得多 —— 必须二次确认。
+   * 不做乐观更新：清没清干净以服务端回去重拉的结果为准。
+   */
+  onClearQueue: function () {
+    var self = this;
+    var stationId = self.data.queueTabId;
+    if (!stationId) {
+      wx.showToast({ title: '未选择工位', icon: 'none' });
+      return;
+    }
+    var tab = (self.data.queueTabs || []).filter(function (t) { return t.id === stationId; })[0];
+    var name = (tab && tab.name) || '这台打印机';
+    wx.showModal({
+      title: '清空打印队列',
+      content: '「' + name + '」上还在排队的任务会被全部撤掉，包括别人派的。已经打完的不受影响。',
+      confirmText: '清空',
+      success: function (res) {
+        if (!res.confirm) return;
+        return printApi.clearStationQueue(stationId).then(function (r) {
+          if (r && r.ok) {
+            wx.showToast({ title: '已清空 ' + (r.cleared || 0) + ' 条', icon: 'success' });
+          } else {
+            // 后端会把「这台工位是『工位电脑执行』…」这类真实原因带回来，原样显示，别盖成「操作失败」
+            wx.showToast({ title: (r && r.message) || '清空失败', icon: 'none' });
+          }
+          self.loadPrintQueue();
+        });
+      }
+    });
   },
 
   /** 撤回：与「文件模板库」页同一套做法——不二次确认，成功 toast 后刷新队列。 */
@@ -859,6 +921,9 @@ Page({
       .then(function (r) {
         // 后端 403/参数错也是 HTTP200 + success:false，只看 r.ok
         if (!r || !r.ok) throw new Error((r && r.message) || '打印失败');
+        // 直发工位是同步打完的，回来时 job.status 已是终态；FAILED 说明纸没出来，
+        // 不能照旧报「已提交打印任务」——抛出去走失败分支（那条不关弹窗，可改工位重试）
+        if (r.job && r.job.status === 'FAILED') throw new Error(r.job.lastError || '打印没成功');
         self.setData({ printShow: false });
         wx.showToast({ title: '已提交打印任务', icon: 'success', duration: 1200 });
         self.loadPrintQueue(); // 队列条就在本页顶部，建完单立刻刷一次（进度看这里，不再指去文件模板库页）

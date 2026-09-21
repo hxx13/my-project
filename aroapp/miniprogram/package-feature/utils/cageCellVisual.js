@@ -130,8 +130,12 @@ function getCellStyle(cell) {
   // 合并已有状态 + 缓存动作 → 统一分色
   var bgColors = [];
   (cell.specialStatuses || []).forEach(function(s) {
+    // 特殊饲养明细（SF_*）是「需特殊饲养」的子项，已经画成右上角角标了，不占底色。
+    // 让它也占一份的话，colorFor 查不到色会回退成 NORMAL 灰，把真正的状态色挤到格子顶上一条：
+    // E-10「需特殊饲养 + 健康异常 + 4 条明细」→ 6 等分里只有前 2 份是彩的，下面 4 份全灰。
+    if (!s || !s.code || s.code === "NORMAL" || s.code.indexOf("SF_") === 0) return;
     var sc = colorFor(s.code);
-    if (s.code !== "NORMAL" && sc) bgColors.push(sc.bg);
+    if (sc) bgColors.push(sc.bg);
   });
   // 缓存动作色（逗号分隔 → 逐个加入分色）
   if (cell._cachedBg) {
@@ -252,7 +256,6 @@ function enrichGridCell(cell) {
   // 类型指示灯本就不点，两枚徽标不会抢同一个角；底色跟父状态走，不另开一套配色。
   enriched._sfBadges = sfBadgesOf(normalizeStatuses(enriched.specialStatuses));
   enriched._sfBadgeColor = colorFor('SPECIAL_FEEDING').border;
-  enriched._hasStatusCodes = computeStatusCodesForDisplay(enriched);
   // 认领徽标：未到位/待审批/待释放（对齐 H5 CellButton 左上角徽标）
   var cs = enriched.claimStatus;
   if (cs === 'locked') enriched._claimBadge = { text: '未到位', cls: 'gcell-badge--locked' };
@@ -313,47 +316,6 @@ function truncateText(text, maxLen) {
   return s;
 }
 
-function computeStatusCodesForDisplay(cell) {
-  var raw = cell.specialStatuses;
-  if (!raw || (Array.isArray(raw) && raw.length === 0)) {
-    var bi = cell.cageBoxInfo;
-    if (!bi) return '';
-    var parts = [];
-    if (bi["ClosingDate"]) parts.push("合笼");
-    if (bi["NeedFeedingYn"] === 1) parts.push("需特殊饲养");
-    if (bi["NeedDivideYn"] === 1) parts.push("需分笼");
-    if (bi["AbnormalHealthYn"] === 1) parts.push("健康异常");
-    if (bi["NeedTransferYn"] === 1) parts.push("动物转移");
-    return parts.length > 0 ? parts.join("+") : "";
-  }
-  if (Array.isArray(raw)) {
-    var codes = [];
-    for (var i = 0; i < raw.length; i++) {
-      if (raw[i].code !== "NORMAL") codes.push(raw[i].code);
-    }
-    return codes.join("+");
-  }
-  return "";
-}
-
-function ynFlag(cageBoxInfo, key) {
-  if (!cageBoxInfo) return false;
-  var v = cageBoxInfo[key];
-  return v === 1 || v === "1";
-}
-
-function getSpecialStatusList(cell) {
-  var list = normalizeStatuses(cell.specialStatuses);
-  if (list.length === 0 || (list.length === 1 && list[0].code === "NORMAL")) {
-    list = computeStatusesFromCageBoxInfo(cell.cageBoxInfo);
-  }
-  var out = [];
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].code !== "NORMAL") out.push(list[i]);
-  }
-  return out;
-}
-
 /**
  * 特殊饲养明细角标文案：需加食 → 「+食」、勿加水 → 「−水」。
  * 记法与 Web/H5 同源（features/cage-shelf/constants.ts compactDetailBadgeText）：
@@ -394,14 +356,11 @@ module.exports = {
   getDominantCodeLabel: getDominantCodeLabel,
   normalizeStatuses: normalizeStatuses,
   computeStatusesFromCageBoxInfo: computeStatusesFromCageBoxInfo,
-  computeStatusCodesForDisplay: computeStatusCodesForDisplay,
-  ynFlag: ynFlag,
   sfBadgeText: sfBadgeText,
   sfBadgesOf: sfBadgesOf,
   truncateText: truncateText,
   toPositionLabel: toPositionLabel,
   resolveAnimalCageType: resolveAnimalCageType,
-  getSpecialStatusList: getSpecialStatusList,
   enrichGridCell: enrichGridCell,
   buildGrid: buildGrid,
   buildReserveMarks: buildReserveMarks,

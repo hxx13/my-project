@@ -28,6 +28,7 @@ import com.example.demo.modules.cageshelf.mapper.CageInfoCodelistMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
 import com.example.demo.modules.cageshelf.mapper.CageOpRequestMapper;
 import com.example.demo.modules.cageshelf.mapper.CageTransferLogMapper;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.personnel.entity.Personnel;
 import com.example.demo.modules.personnel.service.PersonnelService;
 import com.example.demo.modules.referencedata.entity.RefData;
@@ -91,6 +92,9 @@ public class CageOperationService {
     private final UserGroupNameResolver userGroupNameResolver;
     private final CageIntermediateStateService intermediateStateService;
     private final CageVisibilityPolicy visibilityPolicy;
+    private final CageReviewVetService reviewVetService;
+    private final TransferFormService transferFormService;
+    private final PushService pushService;
 
     public CageOperationService(CageOpRequestMapper opMapper,
                                 CageCellDetailMapper detailMapper,
@@ -116,7 +120,10 @@ public class CageOperationService {
                                 ReferenceDataMapper referenceDataMapper,
                                 UserGroupNameResolver userGroupNameResolver,
                                 CageIntermediateStateService intermediateStateService,
-                                CageVisibilityPolicy visibilityPolicy) {
+                                CageVisibilityPolicy visibilityPolicy,
+                                CageReviewVetService reviewVetService,
+                                TransferFormService transferFormService,
+                                PushService pushService) {
         this.opMapper = opMapper;
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
@@ -142,6 +149,9 @@ public class CageOperationService {
         this.userGroupNameResolver = userGroupNameResolver;
         this.intermediateStateService = intermediateStateService;
         this.visibilityPolicy = visibilityPolicy;
+        this.reviewVetService = reviewVetService;
+        this.transferFormService = transferFormService;
+        this.pushService = pushService;
     }
 
     // ═══════════════════════════════════════════
@@ -166,6 +176,8 @@ public class CageOperationService {
             if (excludeRequestId != null && excludeRequestId.equals(r.getId())) continue;
             if (r.getSourceAnimalCageId() != null) out.add(r.getSourceAnimalCageId());
             out.addAll(parseTargetIds(r));
+            // 多源批量单：老列只写了 pairs[0].source，其余源笼位也得占住，否则还能被别人再选成源/目标
+            out.addAll(r.pairCageIds());
         }
         return out;
     }
@@ -1107,25 +1119,115 @@ public class CageOperationService {
 
     @Transactional
     public Map<String, Object> submitTransfer(User user, Long fromAnimalCageId,
-                                              Long toAnimalCageId, String reason) {
-        if (fromAnimalCageId == null || toAnimalCageId == null) {
-            throw new TwinBusinessException(400, "fromAnimalCageId / toAnimalCageId 必填");
+                                              List<Long> toAnimalCageIds, String reason,
+                                              Object transferForm) {
+        List<Long> targets = toAnimalCageIds == null ? List.of()
+                : toAnimalCageIds.stream().filter(Objects::nonNull).toList();
+        if (targets.isEmpty()) {
+            throw new TwinBusinessException(400, "请选择转移目标笼位");
         }
-        if (fromAnimalCageId.equals(toAnimalCageId)) {
+        if (fromAnimalCageId == null || targets.contains(fromAnimalCageId)) {
             throw new TwinBusinessException(400, "源笼位与目标笼位不能相同");
         }
         CageCellDetail from = requireDetail(fromAnimalCageId);
         requireOperableSource(user, fromAnimalCageId, "转移");
         assertSourceNotPendingOccupied(fromAnimalCageId, null);
-        assertTargetsEligible(from, List.of(toAnimalCageId), false, null, user);
+        assertTargetsEligible(from, targets, false, null, user);
 
+        // 学生填的转移单值。可选：小程序与两个单目标快捷入口都不传，转了也是全自动值
+        // 单源 + N 个目标 = N 个 pair（源相同）；老列 source/target 由 buildTransferRequest 照写。
+        List<CageOpPair> pairs = targets.stream().map(t -> {
+            CageOpPair p = new CageOpPair();
+            p.setSource(fromAnimalCageId);
+            p.setTarget(t);
+            return p;
+        }).toList();
+        CageOpRequest req = buildTransferRequest(pairs, reason, transferFormJson(transferForm));
+        return submit(user, req, from);
+    }
+
+    /**
+     * 显式 pair 列表提交（批量转移 = 一次提交多对 = 一张单、一次三签）。
+     * 前端批量弹窗一次发整份 pairs + 一份 transferForm（rows[i] 对齐 pairs[i]），
+     * 这里只落**一笔**请求。pairs 顺序原样保留 —— 行号按下标对齐，不能排序/去重。
+     */
+    @Transactional
+    public Map<String, Object> submitTransferPairs(User user, List<CageOpPair> pairs,
+                                                   String reason, Object transferForm) {
+        List<CageOpPair> list = pairs == null ? List.of()
+                : pairs.stream().filter(p -> p != null && p.getSource() != null && p.getTarget() != null).toList();
+        if (list.isEmpty()) {
+            throw new TwinBusinessException(400, "请选择转移目标笼位");
+        }
+        if (list.stream().anyMatch(p -> p.getSource().equals(p.getTarget()))) {
+            throw new TwinBusinessException(400, "源笼位与目标笼位不能相同");
+        }
+        Long fromAnimalCageId = list.get(0).getSource();
+        // 每个不同的源各验一次可操作+未决；目标按源分组过准入（多源批次各源 AUP 不同，必须对着自己的源判）。
+        Map<Long, List<Long>> targetsBySource = new LinkedHashMap<>();
+        for (CageOpPair p : list) {
+            targetsBySource.computeIfAbsent(p.getSource(), id -> new ArrayList<>()).add(p.getTarget());
+        }
+        Map<Long, CageCellDetail> sources = new LinkedHashMap<>();
+        for (Long sourceId : targetsBySource.keySet()) {
+            CageCellDetail from = requireDetail(sourceId);
+            requireOperableSource(user, sourceId, "转移");
+            assertSourceNotPendingOccupied(sourceId, null);
+            sources.put(sourceId, from);
+        }
+        for (Map.Entry<Long, List<Long>> e : targetsBySource.entrySet()) {
+            assertTargetsEligible(sources.get(e.getKey()), e.getValue(), false, null, user);
+        }
+
+        CageOpRequest req = buildTransferRequest(list, reason, transferFormJson(transferForm));
+        return submit(user, req, sources.get(fromAnimalCageId));
+    }
+
+    /**
+     * 转移单值统一存 JSON 字符串：body 里给对象或 JSON 字符串都收，非法 JSON 一律当没填（存 null，
+     * 各项退回自动值）—— 单列存的是「学生实际填了什么」，留一坨解析不了的东西在库里没有意义。
+     */
+    private static String transferFormJson(Object v) {
+        if (v == null) return null;
+        if (v instanceof CharSequence cs) {
+            String s = cs.toString().trim();
+            return TransferFormService.parseForm(s) == null ? null : s;
+        }
+        try {
+            String s = JSON.toJSONString(v);
+            if (s == null || s.isBlank() || "null".equals(s)) return null;
+            return TransferFormService.parseForm(s) == null ? null : s;
+        } catch (Exception e) {
+            log.warn("[cage-op] 转移单值序列化失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 组装 transfer 请求行：老列 source=首个 pair 的源、targets=全部 pair 的目标（保序，不去重不排序），
+     * pairs 照存。抽成 static 纯函数便于单测 —— 提交两条路径（单源×多目标 / 显式 pairs）都走这里，
+     * 老列写法只有一份。调用方保证 pairs 非空。
+     */
+    static CageOpRequest buildTransferRequest(List<CageOpPair> pairs, String reason, String transferFormJson) {
         CageOpRequest req = new CageOpRequest();
         req.setOpType(CageOpRequest.TYPE_TRANSFER);
-        req.setSourceAnimalCageId(fromAnimalCageId);
-        req.setTargetAnimalCageIds(JSON.toJSONString(List.of(toAnimalCageId)));
+        req.setSourceAnimalCageId(pairs.get(0).getSource());
+        req.setTargetAnimalCageIds(JSON.toJSONString(pairs.stream().map(CageOpPair::getTarget).toList()));
         req.setKeepSource(false);
         req.setReason(reason);
-        return submit(user, req, from);
+        req.setTransferForm(transferFormJson);
+        req.setPairs(JSON.toJSONString(pairs));
+        return req;
+    }
+
+    /**
+     * 审核门槛的纯判据，抽成 static 便于单测（构造真实例要 27 个依赖）。
+     * 转移单（transfer）无论学生还是教职工提交都需审核（教职工不再豁免）；
+     * 分笼（divide）仍只拦学生提交的。{@code ownerRequires} 已叠加全局强制开关。
+     */
+    static boolean needApproval(boolean student, boolean ownerRequires, String opType) {
+        return ownerRequires
+                && (student || CageOpRequest.TYPE_TRANSFER.equals(opType));
     }
 
     /** 落请求行；需审核则留 pending，否则立即执行并置 approved。 */
@@ -1133,14 +1235,21 @@ public class CageOperationService {
         boolean student = modeVisibilityService.isStudent(user);
         // 是否需要审核由「目标所属人」（接收方）自己的持久化配置决定：分笼/转移的结果占用者
         // 就是源笼位的占用者，所以接收方即他。没配过 = 需要审核。
-        // 门槛不变：只拦学生提交的，教职工提交一律直接执行。
+        // 门槛：转移单无论学生还是教职工提交都要过三签（再叠加全局强制开关，见 needApproval）；
+        // 分笼仍只拦学生提交的，教职工提交直接执行。
         Occupant owner = resolveOccupant(req.getSourceAnimalCageId(), source);
-        boolean needApproval = student
-                && ownerApprovalConfigService.approvalRequiredFor(owner.accountId(), req.getOpType());
+        boolean needApproval = needApproval(student,
+                ownerApprovalConfigService.approvalRequiredFor(owner.accountId(), req.getOpType()),
+                req.getOpType());
         req.setApplicantId(user.getId());
         req.setApplicantName(displayNameOf(user));
         req.setApplicantScope(student ? "student" : "staff");
         req.setStatus(CageOpRequest.STATUS_PENDING);
+        if (CageOpRequest.TYPE_TRANSFER.equals(req.getOpType())) {
+            // 写空数组而不是留 NULL：与「改动前就存在的存量单」区分开。
+            // 存量单留 NULL → 按旧规则单签生效；新单走三签。
+            req.setSignatures(CageOpSignatures.render(List.of()));
+        }
         opMapper.insert(req);
 
         if (!needApproval) {
@@ -1149,7 +1258,16 @@ public class CageOperationService {
             req.setReviewerId(user.getId());
             req.setReviewerName(displayNameOf(user));
             req.setReviewedAt(DT_FMT.format(LocalDateTime.now()));
+            // 不审批直接执行的转移同样要归档：设计里「无需审批」≠「没有单据」，
+            // 少了这一句这批转移在归档目录里整批消失。必须在 update 之前 —— 文件名跟着这次 update 落库。
+            archiveTransferFormQuietly(req);
             opMapper.update(req);
+        }
+
+        // 需要审核的转移单，落库后提醒还没签的审核人（归属地/目的地覆盖者 + 全局兽医名单）。
+        // 通知失败绝不能让「提交成功」翻车 —— 与物资申领同口径，失败只记日志。
+        if (needApproval && CageOpRequest.TYPE_TRANSFER.equals(req.getOpType())) {
+            pushTransferReviewReminder(req);
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -1168,18 +1286,42 @@ public class CageOperationService {
     public List<Map<String, Object>> pending(User reviewer, String opType) {
         // 判定先算一次再逐行比：canReview 每次要查身份/矩阵/成员勾选/可见范围，逐行调会把查询数乘上行数
         CageRegionGrantService.ReviewAuthority auth = regionGrantService.reviewAuthority(reviewer);
+        boolean vet = reviewVetService.canSignAsVet(reviewer.getId());
+        boolean globalViewer = visibilityPolicy.isGlobalViewer(reviewer);
         List<Map<String, Object>> out = new ArrayList<>();
         for (CageOpRequest r : opMapper.selectByStatus(CageOpRequest.STATUS_PENDING, opType)) {
-            Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(r.getSourceAnimalCageId());
-            if (!auth.covers(
-                    loc == null ? null : str(loc.get("roomId")),
-                    loc == null ? null : str(loc.get("floorId")),
-                    loc == null ? null : str(loc.get("campusId")))) {
+            List<Map<String, Object>> locs = locationsOf(r);
+            boolean covers = coversAnyLocation(auth, locs);
+            if (!covers && !vetCanSeePending(vet, r)) {
                 continue;
             }
-            out.add(toView(r, loc));
+            Map<String, Object> row = toView(r, locs.isEmpty() ? null : locs.get(0));
+            // 当前审核人还能签哪些角色（按归属地→目的地→兽医顺序）。toView 不知道调用者，
+            // 所以在这里补上；前端据此按角色分组出按钮，用户点哪个就签哪个，不再靠服务端自动挑。
+            row.put("myRoles", signableRoles(globalViewer, covers, vet, r));
+            out.add(row);
         }
         return out;
+    }
+
+    /**
+     * 全局审核兽医该不该看到这条待审单 —— 可见性的第二条腿，与区域审权（{@link #coversAnyLocation}）取并集。
+     *
+     * <p><b>为什么必须有</b>：兽医名单是**全局**的（一份名单，不分区域），但可见性只按区域收口。
+     * 于是名单里的兽医只要不恰好覆盖源/目标房间，就永远看不到待签的转移单，
+     * 三签里「兽医」那一关直接变成死关（{@code roleOfReviewer} 的 VET 分支够不着）。
+     *
+     * <p>只放开 **transfer**：分笼与兽医无关，不能顺手把分笼也漏给他。已经同意过兽医关的也不再出现。
+     * 静态纯函数（不碰 IO）—— 判据只有一份，{@code TransferFormService.canView} 调的是同一份。
+     */
+    static boolean vetCanSeePending(boolean canSignAsVet, CageOpRequest req) {
+        return canSignAsVet
+                && req != null
+                // 判据与三签同源：存量转移单（signatures 为 NULL）走旧单签链，与兽医无关。
+                // 少了这一条，全局兽医会被拉进**存量待审单**的可见范围、能下载 PDF（含课题组/AUP/动物数据），
+                // 而他在那张单上一个角色都没有、无从操作。
+                && usesThreeSignatures(req)
+                && !CageOpSignatures.hasApproved(req.signatures(), CageOpSignature.ROLE_VET);
     }
 
     /**
@@ -1212,6 +1354,17 @@ public class CageOperationService {
             m.put("opType", r.getOpType());
             m.put("sourceAnimalCageId", String.valueOf(r.getSourceAnimalCageId()));
             m.put("targetAnimalCageIds", parseTargets(r).stream().map(String::valueOf).toList());
+            // 多源批量单必须带上 pairs：前端 buildCageOpMarks 是「有 pairs 就逐对打标记」，
+            // 不下发的话除第一个源以外的源笼位在网格上不显示「转移审核中」，
+            // 看着像空闲的（后端 pendingOccupiedCages 挡得住，但界面误导人）。
+            List<Map<String, Object>> pairs = new ArrayList<>();
+            for (CageOpPair p : r.pairs()) {
+                Map<String, Object> pm = new LinkedHashMap<>();
+                pm.put("source", String.valueOf(p.getSource()));
+                pm.put("target", String.valueOf(p.getTarget()));
+                pairs.add(pm);
+            }
+            m.put("pairs", pairs);
             m.put("applicantId", r.getApplicantId());
             m.put("applicantName", r.getApplicantName());
             m.put("reason", r.getReason());
@@ -1242,18 +1395,31 @@ public class CageOperationService {
 
     @Transactional
     public Map<String, Object> review(User reviewer, Long requestId, String decision, String reason) {
+        return review(reviewer, requestId, decision, reason, null);
+    }
+
+    @Transactional
+    public Map<String, Object> review(User reviewer, Long requestId, String decision, String reason, String role) {
         CageOpRequest req = opMapper.selectByIdForUpdate(requestId);
         if (req == null) throw new TwinBusinessException(404, "操作请求不存在");
         if (!CageOpRequest.STATUS_PENDING.equals(req.getStatus())) {
             throw new TwinBusinessException(400, "该请求已处理：" + req.getStatus());
         }
+        // 新转移单走三签：一次调用只记一关，三关齐了才执行。
+        //
+        // **必须在位置门之前分岔**：名单兽医是全局的、不分区域，先过位置门会把「兽医」那一关
+        // 判成「非该楼层/房间审核人」直接 403 —— 三签永远凑不齐、单子永久挂起（`vetCanSeePending`
+        // 当初就是为了消灭这个死关才放的可见性，只修了可见性那条腿）。
+        // 三签路径的鉴权由 reviewBySignature 按**角色**自己做，signableRoles 里已经含了
+        // 超管 / 覆盖位置 / 名单兽医三条腿，不需要也不该再过一次位置门。
+        if (usesThreeSignatures(req)) {
+            return reviewBySignature(reviewer, req, decision, reason, role);
+        }
+
+        // 旧单签链（分笼、存量转移单）：审批人必须覆盖该单涉及的位置
         boolean isAdmin = visibilityPolicy.isGlobalViewer(reviewer);
         if (!isAdmin) {
-            Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(req.getSourceAnimalCageId());
-            if (!regionGrantService.canReview(reviewer,
-                    loc == null ? null : str(loc.get("roomId")),
-                    loc == null ? null : str(loc.get("floorId")),
-                    loc == null ? null : str(loc.get("campusId")))) {
+            if (!coversAnyLocation(regionGrantService.reviewAuthority(reviewer), locationsOf(req))) {
                 throw new TwinBusinessException(403, "非该楼层/房间审核人，无法审批");
             }
         }
@@ -1272,22 +1438,380 @@ public class CageOperationService {
         req.setReviewerId(reviewer.getId());
         req.setReviewerName(displayNameOf(reviewer));
         req.setReviewedAt(DT_FMT.format(LocalDateTime.now()));
+        // 终局：归档一份转移单。必须在 update 之前 —— 文件名要跟着这一次 update 一起落库
+        archiveTransferFormQuietly(req);
         opMapper.update(req);
 
-        ApprovalRecord ar = new ApprovalRecord();
-        ar.setTargetType("cage_op_" + req.getOpType());
-        ar.setTargetId(req.getId());
-        ar.setApproverId(reviewer.getId());
-        ar.setApproverName(displayNameOf(reviewer));
-        ar.setApproverRole(reviewer.getRole() != null ? reviewer.getRole().name() : "UNKNOWN");
-        ar.setDecision(approved ? "approved" : "rejected");
-        ar.setRejectReason(approved ? null : reason);
-        approvalMapper.insert(ar);
+        writeApprovalRecord(reviewer, req, "cage_op_" + req.getOpType(),
+                approved ? "approved" : "rejected", reason);
+
+        // 存量转移单（signatures 为 NULL）走这条旧单签链；终局时通知申请人。分笼不通知。
+        if (CageOpRequest.TYPE_TRANSFER.equals(req.getOpType())) {
+            pushTransferReviewed(req);
+        }
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("requestId", String.valueOf(req.getId()));
         out.put("status", req.getStatus());
         return out;
+    }
+
+    // ═══════════════════════════════════════════
+    // 三签（新转移单）
+    // ═══════════════════════════════════════════
+
+    /** 该请求是否走三签。存量转移单（signatures 列为 NULL）按旧规则走完，不进三签。 */
+    private static boolean usesThreeSignatures(CageOpRequest req) {
+        return CageOpRequest.TYPE_TRANSFER.equals(req.getOpType()) && req.getSignatures() != null;
+    }
+
+    /** 本次操作人对这条请求**还能签**的全部角色，按界面展示顺序（归属地→目的地→兽医）。 */
+    private List<String> signableRoles(User reviewer, CageOpRequest req) {
+        return signableRoles(
+                visibilityPolicy.isGlobalViewer(reviewer),
+                coversAnyLocation(regionGrantService.reviewAuthority(reviewer), locationsOf(req)),
+                reviewVetService.canSignAsVet(reviewer.getId()),
+                req);
+    }
+
+    /** 本次操作人对这条请求有资格签的角色；null = 没资格或没有可签的了。 */
+    private String roleOfReviewer(User reviewer, CageOpRequest req) {
+        List<String> roles = signableRoles(reviewer, req);
+        return roles.isEmpty() ? null : roles.get(0);
+    }
+
+    /**
+     * {@link #signableRoles} 的纯判据，抽成 static 便于单测（构造真实例要 27 个依赖）。
+     *
+     * <p>返回「本次操作人现在能签的角色」，按 {@link CageOpSignatures#ROLES} 顺序，排除已同意的角色。
+     * 暂缓（held）不算同意 —— 签了暂缓的角色仍在列表里（签的人可以改判）。分笼单没有三签，恒空。
+     *
+     * <p><b>三关可以同一个人签完</b>：同一人既覆盖位置又在兽医名单里时，三个角色同时出现在列表里；
+     * 早先的 {@code roleOfReviewer} 只挑第一个，签完自动落到下一关 —— 但 UI 从不告诉用户「这次签的是哪一关」，
+     * 一次 通过 连按三次会签出三个不同角色，极易签错。所以现在把整份列表下发，让前端按角色分组出按钮。
+     */
+    static List<String> signableRoles(boolean globalViewer, boolean coversLocation, boolean canSignAsVet,
+                                      CageOpRequest req) {
+        // 分笼没有三签；存量转移单（signatures 列为 NULL）走的是旧的单签链，一次通过就执行。
+        // 这两种都不能下发角色 —— 否则界面会画出「归属地/目的地/兽医」三个按钮，
+        // 而点其中任意一个（哪怕点的是归属地）都会走旧链把整笔转移直接执行掉。
+        if (req == null || !usesThreeSignatures(req)) return List.of();
+        List<CageOpSignature> sigs = req.signatures();
+        if (globalViewer) {
+            // 超管代签逃生口：三签是硬关卡，任何一关找不到人都会让单子永久挂起。
+            // 优先补「还没同意」的角色，顺序与界面展示一致。
+            return CageOpSignatures.missingRoles(sigs);
+        }
+        List<String> out = new ArrayList<>();
+        if (coversLocation) {
+            // 源位置与目标位置都覆盖时，先签归属地那关，再签目的地
+            if (!CageOpSignatures.hasApproved(sigs, CageOpSignature.ROLE_ORIGIN)) {
+                out.add(CageOpSignature.ROLE_ORIGIN);
+            }
+            if (!CageOpSignatures.hasApproved(sigs, CageOpSignature.ROLE_DEST)) {
+                out.add(CageOpSignature.ROLE_DEST);
+            }
+            // 两关签完不返回：同一人若还是名单兽医，兽医那关还等着他
+        }
+        if (canSignAsVet
+                && !CageOpSignatures.hasApproved(sigs, CageOpSignature.ROLE_VET)) {
+            out.add(CageOpSignature.ROLE_VET);
+        }
+        return out;
+    }
+
+    /** {@link #roleOfReviewer} 的纯判据：签「还能签的角色」里第一个；null = 没有可签的了。 */
+    static String roleOfReviewer(boolean globalViewer, boolean coversLocation, boolean canSignAsVet,
+                                 CageOpRequest req) {
+        List<String> roles = signableRoles(globalViewer, coversLocation, canSignAsVet, req);
+        return roles.isEmpty() ? null : roles.get(0);
+    }
+
+    /** 三签：记一条签名，三关都同意才执行；不同意立即终局；暂缓保持待审、可改判。 */
+    private Map<String, Object> reviewBySignature(User reviewer, CageOpRequest req,
+                                                  String decision, String reason, String role) {
+        List<CageOpSignature> existing = req.signatures();
+        if (CageOpSignatures.statusOf(existing).equals(CageOpSignature.STATUS_REJECTED)) {
+            throw new TwinBusinessException(400, "该请求已终局驳回，无法再签");
+        }
+        String normalized = decision == null ? "" : decision.trim();
+        if (!CageOpSignature.DECISION_APPROVED.equals(normalized)
+                && !CageOpSignature.DECISION_HELD.equals(normalized)
+                && !CageOpSignature.DECISION_REJECTED.equals(normalized)) {
+            throw new TwinBusinessException(400, "decision 只能是 approved / held / rejected");
+        }
+        if (!CageOpSignature.DECISION_APPROVED.equals(normalized)
+                && (reason == null || reason.isBlank())) {
+            throw new TwinBusinessException(400, "暂缓或不同意时必须填写原因");
+        }
+        // 调用方显式指定要签哪一关：必须确实在「本次操作人能签的角色」里，否则 403。
+        // 不静默回落到别的角色 —— 自动挑别的角色去签正是这个 bug 的根源。
+        String requestedRole = (role == null || role.isBlank()) ? null : role.trim();
+        String chosenRole;
+        if (requestedRole != null) {
+            if (!signableRoles(reviewer, req).contains(requestedRole)) {
+                throw new TwinBusinessException(403, "你无权以「" + requestedRole + "」身份签署该请求");
+            }
+            chosenRole = requestedRole;
+        } else {
+            chosenRole = roleOfReviewer(reviewer, req);
+            if (chosenRole == null) {
+                throw new TwinBusinessException(403, "你没有该请求尚未签署的任一审核身份");
+            }
+        }
+
+        CageOpSignature s = new CageOpSignature();
+        s.setRole(chosenRole);
+        s.setReviewerId(reviewer.getId());
+        s.setReviewerName(displayNameOf(reviewer));
+        s.setAt(DT_FMT.format(LocalDateTime.now()));
+        s.setDecision(normalized);
+        s.setReason(CageOpSignature.DECISION_APPROVED.equals(normalized) ? null : reason);
+
+        List<CageOpSignature> merged = CageOpSignatures.withSignature(existing, s);
+        req.setSignatures(CageOpSignatures.render(merged));
+
+        String status = CageOpSignatures.statusOf(merged);
+        if (CageOpSignature.STATUS_APPROVED.equals(status)) {
+            execute(req, reviewer);
+            req.setStatus(CageOpRequest.STATUS_APPROVED);
+        } else if (CageOpSignature.STATUS_REJECTED.equals(status)) {
+            req.setStatus(CageOpRequest.STATUS_REJECTED);
+            req.setRejectReason(reason);
+        } else {
+            // 暂缓或还有人没签：单据留在待审，只更新最后经手人
+            req.setStatus(CageOpRequest.STATUS_PENDING);
+        }
+        req.setReviewerId(reviewer.getId());
+        req.setReviewerName(displayNameOf(reviewer));
+        req.setReviewedAt(s.getAt());
+        // 终局（通过/驳回）才归档；暂缓仍是待审，archive 自己会跳过
+        archiveTransferFormQuietly(req);
+        opMapper.update(req);
+        writeApprovalRecord(reviewer, req, "cage_op_" + req.getOpType(),
+                normalized, reason);
+
+        // 三签终局（通过/驳回）时通知申请人；暂缓仍待签，不通知。
+        if (!CageOpSignature.STATUS_PENDING.equals(status)) {
+            pushTransferReviewed(req);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("requestId", String.valueOf(req.getId()));
+        out.put("status", req.getStatus());
+        out.put("signedRole", chosenRole);
+        out.put("missingRoles", CageOpSignatures.missingRoles(merged));
+        return out;
+    }
+
+    /** 审批留痕。分笼/转移共用：targetType 由调用方给（cage_op_divide / cage_op_transfer）。 */
+    private void writeApprovalRecord(User reviewer, CageOpRequest req, String targetType,
+                                     String decision, String reason) {
+        ApprovalRecord ar = new ApprovalRecord();
+        ar.setTargetType(targetType);
+        ar.setTargetId(req.getId());
+        ar.setApproverId(reviewer.getId());
+        ar.setApproverName(displayNameOf(reviewer));
+        ar.setApproverRole(reviewer.getRole() != null ? reviewer.getRole().name() : "UNKNOWN");
+        ar.setDecision(decision);
+        ar.setRejectReason(CageOpSignature.DECISION_APPROVED.equals(decision) ? null : reason);
+        approvalMapper.insert(ar);
+    }
+
+    /**
+     * 终局归档转移单。**失败绝不能把审核拖下水**：模板缺失、LibreOffice 挂了、盘满，都只打一条 warn。
+     * 归档只是留痕，审核结果照常落库；归档文件缺了，审核页走即时渲染那条路，用户看不到差别。
+     *
+     * <p>{@link TransferFormService#archive} 自己保证「只做转移单、只在终局、只做一次」，
+     * 所以两条终局路径都无脑调它即可。
+     */
+    private void archiveTransferFormQuietly(CageOpRequest req) {
+        try {
+            transferFormService.archive(req);
+        } catch (Exception e) {
+            log.warn("[cage-op] 转移单归档失败 requestId={}: {}", req.getId(), e.getMessage(), e);
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    // 转移审核通知（推送）
+    // ═══════════════════════════════════════════
+
+    /**
+     * 转移待签提醒：通知「还没签」的审核人 —— 归属地未签就提醒覆盖源笼位的，目的地未签就提醒覆盖目标笼位的，
+     * 兽医未签就提醒全局兽医名单。终局（通过/驳回）一律空，单子已经定了不需要再催。
+     *
+     * <p>抽成 static 纯函数便于单测（构造真实例要 28 个依赖）。暂缓（held）不算同意，照常提醒。
+     */
+    static Set<String> reminderRecipients(Set<String> originLeaders,
+                                          Set<String> destLeaders,
+                                          Set<String> vetAccounts,
+                                          CageOpRequest req) {
+        if (req == null) return Set.of();
+        List<CageOpSignature> sigs = req.signatures();
+        String status = CageOpSignatures.statusOf(sigs);
+        if (CageOpSignature.STATUS_REJECTED.equals(status)
+                || CageOpSignature.STATUS_APPROVED.equals(status)) {
+            return Set.of();
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        if (!CageOpSignatures.hasApproved(sigs, CageOpSignature.ROLE_ORIGIN) && originLeaders != null) {
+            out.addAll(originLeaders);
+        }
+        if (!CageOpSignatures.hasApproved(sigs, CageOpSignature.ROLE_DEST) && destLeaders != null) {
+            out.addAll(destLeaders);
+        }
+        if (!CageOpSignatures.hasApproved(sigs, CageOpSignature.ROLE_VET) && vetAccounts != null) {
+            out.addAll(vetAccounts);
+        }
+        out.removeIf(id -> id == null || id.isBlank());
+        return out;
+    }
+
+    /** 提交时的待签提醒。失败只记日志 —— 通知绝不能把「提交成功」翻成报错（与物资申领同口径）。 */
+    private void pushTransferReviewReminder(CageOpRequest req) {
+        // 二级开关（笼架页设置中心）先判：关掉就根本不构造通知。与 push-config 上
+        // CAGE_TRANSFER_REVIEW 源的总控是两个独立的值，级联 —— 两级都开才真的推。
+        if (!ownerApprovalConfigService.transferReviewNotifyEnabled()) {
+            log.info("[Push] CAGE_TRANSFER_REVIEW 二级开关已关，跳过 requestId={}", req.getId());
+            return;
+        }
+        try {
+            List<Map<String, Object>> srcLocs = sourceLocations(req);
+            List<Map<String, Object>> tgtLocs = targetLocations(req);
+            Set<String> recipients = reminderRecipients(
+                    regionReviewerAccountIds(srcLocs),
+                    regionReviewerAccountIds(tgtLocs),
+                    new LinkedHashSet<>(reviewVetService.vetAccountIds()),
+                    req);
+            if (recipients.isEmpty()) return;
+            pushService.send("CAGE_TRANSFER_REVIEW", Map.of(
+                    "applicantName", nv(req.getApplicantName()),
+                    "targetCount", String.valueOf(req.targetIds().size()),
+                    "fromLocation", locationLabel(srcLocs),
+                    "toLocation", locationLabel(tgtLocs),
+                    "reason", nv(req.getReason())), recipients);
+        } catch (Exception e) {
+            log.warn("[Push] CAGE_TRANSFER_REVIEW failed: {}", e.getMessage());
+        }
+    }
+
+    /** 终局回执：通知申请人审核结果。失败只记日志。 */
+    private void pushTransferReviewed(CageOpRequest req) {
+        try {
+            String applicant = req.getApplicantId();
+            if (applicant == null || applicant.isBlank()) return;
+            String result = CageOpRequest.STATUS_APPROVED.equals(req.getStatus()) ? "已通过" : "已拒绝";
+            pushService.send("CAGE_TRANSFER_REVIEWED", Map.of(
+                    "applicantName", nv(req.getApplicantName()),
+                    "targetCount", String.valueOf(req.targetIds().size()),
+                    "fromLocation", locationLabel(sourceLocations(req)),
+                    "toLocation", locationLabel(targetLocations(req)),
+                    "reason", nv(req.getRejectReason()),
+                    "auditResult", result), Set.of(applicant));
+        } catch (Exception e) {
+            log.warn("[Push] CAGE_TRANSFER_REVIEWED failed: {}", e.getMessage());
+        }
+    }
+
+    /** 覆盖给定笼位位置的审核人账号 id（LEADER/REVIEWER）。收件人要账号 id，SQL 已折算。 */
+    private Set<String> regionReviewerAccountIds(List<Map<String, Object>> locs) {
+        Set<String> rooms = new LinkedHashSet<>();
+        Set<String> floors = new LinkedHashSet<>();
+        Set<String> campuses = new LinkedHashSet<>();
+        if (locs != null) {
+            for (Map<String, Object> loc : locs) {
+                if (loc == null) continue;
+                String room = str(loc.get("roomId"));
+                String floor = str(loc.get("floorId"));
+                String campus = str(loc.get("campusId"));
+                if (room != null) rooms.add(room);
+                if (floor != null) floors.add(floor);
+                if (campus != null) campuses.add(campus);
+            }
+        }
+        return regionGrantService.reviewerAccountIdsCovering(rooms, floors, campuses);
+    }
+
+    /**
+     * 转移通知里「源笼位」的 id 列表：pairs 存在则取每个 pair 的源（去重保序——单源多目标的 shape 会重复源，
+     * 仍只渲染一次），否则退回老列单源（存量单）。抽成 static 纯函数便于单测。
+     */
+    static List<Long> notificationSourceIds(CageOpRequest req) {
+        if (req == null) return List.of();
+        List<CageOpPair> pairs = req.pairs();
+        if (!pairs.isEmpty()) {
+            LinkedHashSet<Long> sources = new LinkedHashSet<>();
+            for (CageOpPair p : pairs) {
+                if (p != null && p.getSource() != null) sources.add(p.getSource());
+            }
+            return new ArrayList<>(sources);
+        }
+        Long src = req.getSourceAnimalCageId();
+        return src == null ? List.of() : List.of(src);
+    }
+
+    /**
+     * 转移通知里「目标笼位」的 id 列表：pairs 存在则按 pair 顺序取每个 target，否则退回老列数组
+     * （{@code targetIds()}）。两条路径都从这里走，避免新单/存量单各自漂移。
+     */
+    static List<Long> notificationTargetIds(CageOpRequest req) {
+        if (req == null) return List.of();
+        List<CageOpPair> pairs = req.pairs();
+        if (!pairs.isEmpty()) {
+            List<Long> out = new ArrayList<>();
+            for (CageOpPair p : pairs) {
+                if (p != null && p.getTarget() != null) out.add(p.getTarget());
+            }
+            return out;
+        }
+        return req.targetIds();
+    }
+
+    /** 源笼位位置（一个或多个源；查不到索引跳过，调用方不必防）。 */
+    private List<Map<String, Object>> sourceLocations(CageOpRequest req) {
+        return lookupLocations(notificationSourceIds(req));
+    }
+
+    /** 目标笼位位置（一个或多个目标；查不到索引跳过）。 */
+    private List<Map<String, Object>> targetLocations(CageOpRequest req) {
+        return lookupLocations(notificationTargetIds(req));
+    }
+
+    /**
+     * 按入参 id 顺序查位置：一次 IN 查询后回排到入参顺序，缺索引的笼位跳过。
+     * 通知渲染依赖这个顺序（源/目标行按 pair 顺序列出），个别笼位缺索引也不丢整条。
+     */
+    private List<Map<String, Object>> lookupLocations(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<Map<String, Object>> rows = cellIndexMapper.lookupByAnimalCageIds(ids);
+        if (rows == null || rows.isEmpty()) return List.of();
+        Map<Long, Map<String, Object>> byId = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            Long id = toLong(row.get("animalCageId"));
+            if (id != null) byId.put(id, row);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Long id : ids) {
+            Map<String, Object> row = byId.get(id);
+            if (row != null) out.add(row);
+        }
+        return out;
+    }
+
+    /** 一组位置里全部可渲染的位置标签，用「；」拼成一条；全空退回空串（模板上留白，别塞 "null" 进去）。 */
+    static String locationLabel(List<Map<String, Object>> locs) {
+        if (locs == null) return "";
+        List<String> labels = new ArrayList<>();
+        for (Map<String, Object> loc : locs) {
+            String label = TransferFormService.locationLabel(loc);
+            if (label != null && !label.isBlank()) labels.add(label);
+        }
+        return String.join("；", labels);
+    }
+
+    private static String nv(String s) {
+        return s == null ? "" : s;
     }
 
     /** 申请人撤销自己的待审请求。 */
@@ -1354,39 +1878,102 @@ public class CageOperationService {
                 motherId, targets, req.getKeepSource(), operator.getId());
     }
 
-    private void executeTransfer(CageOpRequest req, User operator) {
-        Long fromId = req.getSourceAnimalCageId();
-        List<Long> targets = parseTargets(req);
-        if (targets.isEmpty()) throw new TwinBusinessException(400, "缺少目标笼位");
-        Long toId = targets.get(0);
+    /**
+     * 转移的「源→目标」对。新单直接用 {@code pairs}；存量单（pairs 为 NULL）按老列反推：
+     * 一个源 + 它的全部目标（去重排序，坏数据抛 400，与 {@link #parseTargets} 同口径），逐个成对。
+     * 抽成 static 纯函数便于单测（构造真实例要 27 个依赖）。
+     */
+    static List<CageOpPair> transferPairs(CageOpRequest req) {
+        if (req == null) return List.of();
+        List<CageOpPair> pairs = req.pairs();
+        if (!pairs.isEmpty()) return pairs;
+        List<Long> raw = parseTargetIds(req);
+        if (raw.isEmpty() && req.getTargetAnimalCageIds() != null && !req.getTargetAnimalCageIds().isBlank()) {
+            throw new TwinBusinessException(400, "目标笼位数据损坏: " + req.getTargetAnimalCageIds());
+        }
+        Long src = req.getSourceAnimalCageId();
+        List<Long> targets = raw.stream().distinct().sorted().toList();
+        List<CageOpPair> out = new ArrayList<>(targets.size());
+        for (Long t : targets) {
+            CageOpPair p = new CageOpPair();
+            p.setSource(src);
+            p.setTarget(t);
+            out.add(p);
+        }
+        return out;
+    }
 
-        CageCellDetail from = detailMapper.selectByAnimalCageIdForUpdate(fromId);
-        if (from == null) throw new TwinBusinessException(404, "源笼位不存在");
-        requireOperableSource(operator, fromId, "转移");
-        assertSourceNotPendingOccupied(fromId, req.getId());
-        Occupant occ = resolveOccupant(fromId, from);
-        assertTargetsEligible(from, targets, false, req.getId(), operator);
-        CageCellDetail to = lockEmptyTarget(toId);
+    /** 转移涉及的源笼位集合（去重保序）。多源批次返回多个源，重复源只出现一次 —— 归档按这个集合各做一次。 */
+    static List<Long> transferSourceIds(CageOpRequest req) {
+        LinkedHashSet<Long> sources = new LinkedHashSet<>();
+        for (CageOpPair p : transferPairs(req)) {
+            if (p != null && p.getSource() != null) sources.add(p.getSource());
+        }
+        return new ArrayList<>(sources);
+    }
+
+    private void executeTransfer(CageOpRequest req, User operator) {
+        List<CageOpPair> pairs = transferPairs(req);
+        if (pairs.isEmpty()) throw new TwinBusinessException(400, "缺少目标笼位");
+
+        // 源去重保序：每个源只锁一次、验一次、取一次占用者、归档一次；重复源不重复处理
+        Map<Long, CageCellDetail> sources = new LinkedHashMap<>();
+        Map<Long, Occupant> occupants = new LinkedHashMap<>();
+        Map<Long, List<Long>> targetsBySource = new LinkedHashMap<>();
+        for (CageOpPair p : pairs) {
+            if (p == null || p.getSource() == null) throw new TwinBusinessException(400, "转移数据缺少源笼位");
+            if (p.getTarget() == null) throw new TwinBusinessException(400, "转移数据缺少目标笼位");
+            Long s = p.getSource();
+            sources.computeIfAbsent(s, id -> {
+                CageCellDetail from = detailMapper.selectByAnimalCageIdForUpdate(id);
+                if (from == null) throw new TwinBusinessException(404, "源笼位不存在");
+                requireOperableSource(operator, id, "转移");
+                assertSourceNotPendingOccupied(id, req.getId());
+                occupants.put(id, resolveOccupant(id, from));
+                return from;
+            });
+            targetsBySource.computeIfAbsent(s, id -> new ArrayList<>()).add(p.getTarget());
+        }
+
+        // 目标去重排序（与旧 parseTargets 同序，单源时逐字节一致），先逐源过准入
+        Map<Long, List<Long>> targets = new LinkedHashMap<>();
+        for (Map.Entry<Long, List<Long>> e : targetsBySource.entrySet()) {
+            List<Long> list = e.getValue().stream().distinct().sorted().toList();
+            targets.put(e.getKey(), list);
+            assertTargetsEligible(sources.get(e.getKey()), list, false, req.getId(), operator);
+        }
 
         String now = DT_FMT.format(LocalDateTime.now());
+        for (Map.Entry<Long, List<Long>> e : targets.entrySet()) {
+            Long fromId = e.getKey();
+            Occupant occ = occupants.get(fromId);
+            for (Long toId : e.getValue()) {
+                // 目标笼位：空笼盒 → 饲养中，占用者/AUP 继承源笼位
+                CageCellDetail to = lockEmptyTarget(toId);
+                CageClaim toClaim = buildChildClaim(to, occ, operator,
+                        "转移自笼位 " + fromId + suffix(req.getReason()), now);
+                claimMapper.insert(toClaim);
+                to.setCageTypeCode(3);
+                detailMapper.batchUpsert(List.of(to));
 
-        // 目标笼位：空笼盒 → 饲养中，占用者/AUP 继承源笼位
-        CageClaim toClaim = buildChildClaim(to, occ, operator,
-                "转移自笼位 " + fromId + suffix(req.getReason()), now);
-        claimMapper.insert(toClaim);
-        to.setCageTypeCode(3);
-        detailMapper.batchUpsert(List.of(to));
+                // 占用字段随动物走（目标与源同 AUP，课题组归属本就一致）
+                infoValueService.copyTransferableFields(fromId, toId, "TRANSFER", operator.getId());
+                // 实验员以占用者为准（源笼位实验员可能为空）
+                infoValueService.syncFromMapped(toId, Map.of("experimenter_name", toClaim.getClaimantName()));
 
-        // 占用字段随动物走（目标与源同 AUP，课题组归属本就一致）
-        infoValueService.copyTransferableFields(fromId, toId, "TRANSFER", operator.getId());
-        // 实验员以占用者为准（源笼位实验员可能为空）
-        infoValueService.syncFromMapped(toId, Map.of("experimenter_name", toClaim.getClaimantName()));
+                writeTransferLog("transfer", fromId, toId, occ, operator, req.getReason());
+            }
+        }
 
-        writeTransferLog("transfer", fromId, toId, occ, operator, req.getReason());
-        // 源笼位腾空 → 走系统既有的「归档」机制：释放认领 + 清占用/动物/状态 + 回空笼盒 + 落归档记录
-        occupancyService.archive(fromId, operator.getId(), "转移归档至笼位 " + toId + suffix(req.getReason()));
+        // 源笼位腾空 → 走系统既有的「归档」机制：释放认领 + 清占用/动物/状态 + 回空笼盒 + 落归档记录。
+        // 每个不同的源归档一次，重复源不重复归档。
+        for (Map.Entry<Long, List<Long>> e : targets.entrySet()) {
+            occupancyService.archive(e.getKey(), operator.getId(),
+                    "转移归档至笼位 " + String.join("、", e.getValue().stream().map(String::valueOf).toList())
+                            + suffix(req.getReason()));
+        }
 
-        log.info("[cage-op] transfer from={} to={} operator={}", fromId, toId, operator.getId());
+        log.info("[cage-op] transfer pairs={} operator={}", pairs, operator.getId());
     }
 
     /** 锁目标笼位并校验为空笼盒(type2) + 无活跃认领。 */
@@ -1500,6 +2087,43 @@ public class CageOperationService {
         return raw.stream().distinct().sorted().toList();
     }
 
+    /**
+     * 本条请求涉及的**全部**位置：跨 pair 的源笼位 + 目标笼位。
+     *
+     * <p>审核作用域要对着它们逐个判覆盖：转移会跨房间，只判源位置会让目的地审核人根本看不到单子；
+     * 批量转移还可能跨多个源，同样必须把每个 pair 的源与目标都算进来。
+     * 源位置恒放最前（供 {@code toView} 取 {@code locs.get(0)} 当主位置显示），其余去重后补上。
+     */
+    private List<Map<String, Object>> locationsOf(CageOpRequest r) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        Map<String, Object> src = cellIndexMapper.lookupByAnimalCageId(r.getSourceAnimalCageId());
+        if (src != null) out.add(src);
+        List<Long> otherIds = r.involvedCageIds().stream()
+                .filter(id -> !id.equals(r.getSourceAnimalCageId()))
+                .toList();
+        if (!otherIds.isEmpty()) {
+            List<Map<String, Object>> rows = cellIndexMapper.lookupByAnimalCageIds(otherIds);
+            if (rows != null) out.addAll(rows);
+        }
+        return out;
+    }
+
+    /** 这组位置里有没有一个被该审核权覆盖。全局可见者（超管）恒放行 —— 与旧行为一致。 */
+    private static boolean coversAnyLocation(CageRegionGrantService.ReviewAuthority auth,
+                                             List<Map<String, Object>> locations) {
+        // 旧实现直接调 auth.covers(null, null, null)，而 covers 对 global 短路成 true，
+        // 所以「源/目标笼位都查不到索引 → locations 为空」时超管的待审行仍可见。
+        // 少了这一句，超管的这类待审单会被空列表静默吞掉，别当成冗余删掉。
+        if (auth.global()) return true;
+        for (Map<String, Object> loc : locations) {
+            if (loc == null) continue;
+            if (auth.covers(str(loc.get("roomId")), str(loc.get("floorId")), str(loc.get("campusId")))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private Map<String, Object> toView(CageOpRequest r, Map<String, Object> loc) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", String.valueOf(r.getId()));
@@ -1511,6 +2135,11 @@ public class CageOperationService {
         m.put("applicantName", r.getApplicantName());
         m.put("applicantScope", r.getApplicantScope());
         m.put("status", r.getStatus());
+        m.put("signatures", r.signatures());
+        m.put("missingRoles", CageOpSignatures.missingRoles(r.signatures()));
+        // 是否走三签。客户端据此决定画「三个角色按钮」还是旧单签的「通过/驳回」——
+        // 存量转移单（signatures 为 NULL）一次通过即执行，不能给它画角色按钮。
+        m.put("threeSign", usesThreeSignatures(r));
         m.put("reason", r.getReason());
         m.put("reviewerName", r.getReviewerName());
         m.put("reviewedAt", r.getReviewedAt());
@@ -1551,6 +2180,16 @@ public class CageOperationService {
             }
         }
         m.put("targets", targets);
+        // 多源批量单：老列只写了 pairs[0].source，其余的源在界面上会「消失」——
+        // 网格标记漏挂、小程序列表的位置只显示第一个源。把整份 pairs 下发，前端才画得全。
+        List<Map<String, Object>> pairs = new ArrayList<>();
+        for (CageOpPair p : r.pairs()) {
+            Map<String, Object> pm = new LinkedHashMap<>();
+            pm.put("source", String.valueOf(p.getSource()));
+            pm.put("target", String.valueOf(p.getTarget()));
+            pairs.add(pm);
+        }
+        m.put("pairs", pairs);
         return m;
     }
 

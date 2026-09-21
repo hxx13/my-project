@@ -28,6 +28,17 @@ export interface PendingItem {
    * undefined = 本次不改明细；空数组 = 清空。整体覆盖式写入（明细项可增长，逐项接口没法表达「另一头」）。
    */
   details?: string[];
+  /**
+   * 状态模式：该笼位「健康异常严重程度」的目标值（码表 item_code，互斥单选）。
+   * undefined = 本次不改；null/"" = 清空。走与明细同一条覆盖式写口，但落在单选字段上。
+   * 它是**互斥单选**，所以不走明细那套拖色区/多选集合机制，单独一个字段表达。
+   */
+  severity?: string | null;
+  /**
+   * 状态模式：该笼位「健康异常瘙痒」的目标值（布尔子值）。
+   * undefined = 本次不改；false = 取消瘙痒。
+   */
+  itch?: boolean;
   /** 状态模式：笼盒编码（ARO 侧按码操作） */
   cageBoxCode?: string;
   /** 分配模式：该笼位归属到哪个 AUP（取消分配类不需要，留空） */

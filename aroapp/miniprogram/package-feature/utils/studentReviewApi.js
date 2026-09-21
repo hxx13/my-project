@@ -251,12 +251,18 @@ async function fetchCageOpsReviewed(limit = 100) {
   return unwrap(res.data) || [];
 }
 
-/** 审批分笼/转移 decision: 'approved' | 'rejected'（驳回必填 reason） */
-async function reviewCageOp(id, decision, reason) {
+/**
+ * 审批分笼/转移。
+ * decision: 'approved' | 'held'（暂缓）| 'rejected'；非同意必填 reason。
+ * role: 转移三签（ORIGIN 归属地 / DEST 目的地 / VET 兽医）。一个人可能同时有多个身份，
+ * 必须显式指定签哪一关 —— 不传的话后端会自己挑第一个可签的角色，连点三次就签错关。
+ * 分笼没有三签，传 role 也没用。
+ */
+async function reviewCageOp(id, decision, reason, role) {
   const res = await springAuth.springRequest({
     url: `/api/cage-op/${encodeURIComponent(id)}/approve`,
     method: 'POST',
-    data: { decision: decision, reason: reason || undefined },
+    data: { decision: decision, reason: reason || undefined, role: role || undefined },
   });
   return unwrap(res.data);
 }

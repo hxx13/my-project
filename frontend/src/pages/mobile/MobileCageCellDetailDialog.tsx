@@ -1,4 +1,11 @@
-/** 手机版笼位详情弹窗（v2 — icon+compact 布局，无折叠区块） */
+/**
+ * 手机版笼位详情弹窗（v3 — 对齐动物订购链路：白底 + 中性灰分层 + 实底按钮）。
+ *
+ * v2 的问题：品牌红主导（`#ac1736` 既做主色又做分区竖条）、上传按钮描边、
+ * 删除钮 `bg-black/50`、`disabled:opacity-50`、slate/Vant/微信三套灰混用。
+ * v3 把结构色收进 `cage-detail-scope.css` 的局部作用域，主色沿用学生端琥珀，
+ * 按钮一律实底，状态语义只留一颗圆点。
+ */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ImagePlus, Save, X } from "lucide-react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
@@ -7,18 +14,11 @@ import { fetchLocalAnnotate, localAnnotate } from "@/api/domains/cageShelf.api";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
 import type { CageOpKind, CageOpMark, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
-import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
+import { CAGE_BOX_ACTIONS, actionsFromFormValues, displayPosition } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 import { useViewportHeight } from "./useViewportHeight";
-
-const BRAND = "#ac1736";
-
-function displayPosition(pos: string): string {
-  const m = pos.match(/^([A-H])-(\d+)$/);
-  if (!m) return pos;
-  return `${m[1]}-${11 - parseInt(m[2])}`;
-}
+import "./cage-detail-scope.css";
 
 /** 从 cell.detail (camelCase) 或 cageBoxInfo 读字段值 */
 function dGet(
@@ -29,12 +29,6 @@ function dGet(
   if (detail?.[key] != null && String(detail[key]).trim() !== "") return String(detail[key]).trim();
   if (cbi?.[key] != null && String(cbi[key]).trim() !== "") return String(cbi[key]).trim();
   return "";
-}
-
-function dNum(detail: Record<string, unknown> | undefined | null, key: string): number | null {
-  const v = detail?.[key];
-  if (v == null || v === "") return null;
-  return Number(v);
 }
 
 function parseImagesJson(raw: unknown): string[] {
@@ -52,6 +46,20 @@ function parseImagesJson(raw: unknown): string[] {
   return [];
 }
 
+/** 分区小标题：不带竖条、不带色块，与小程序 `.cs-sec-title` 同一口径 */
+function SectionTitle({ children, count }: { children: React.ReactNode; count?: number }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span className="text-[13px] font-semibold text-[var(--student-ink)]">{children}</span>
+      {count != null && count > 0 && (
+        <span className="rounded-full bg-[var(--student-canvas-soft-2)] px-2 py-0.5 text-[10px] tabular-nums text-[var(--student-mute)]">
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function MobileCageCellDetailDialog({
   cell,
   onClose,
@@ -59,6 +67,7 @@ export default function MobileCageCellDetailDialog({
   onStartOp,
   onChanged,
   opMark,
+  onStartBatch,
 }: {
   cell: CageShelfCell;
   onClose: () => void;
@@ -69,12 +78,13 @@ export default function MobileCageCellDetailDialog({
   onChanged?: () => void;
   /** 该笼位待审的分笼/转移中间态 */
   opMark?: CageOpMark | null;
+  /** 转移入口：由页面打开批量缓冲抽屉（不传则退回原来的单笼选位流程） */
+  onStartBatch?: (source: CageOpSource) => void;
 }) {
   const detail = (cell.detail ?? {}) as Record<string, unknown>;
   const cbi = (cell.cageBoxInfo ?? {}) as Record<string, unknown> | undefined;
   const viewportHeight = useViewportHeight();
 
-  // ── 头部(表外固定字段,来自 cage_cell_detail) ──
   const position = displayPosition(cell.position);
   const animalCageId: string = String(
     (cell as any).id ?? (cell as any).animalCageId ?? detail.animalCageId ?? "",
@@ -83,7 +93,7 @@ export default function MobileCageCellDetailDialog({
   // ── 实验记录 & 照片 ──
   const [experimentDesc, setExperimentDesc] = useState("");
   const [images, setImages] = useState<string[]>([]);
-  const [statusPhotos, setStatusPhotos] = useState<Record<string,string[]>>({});
+  const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -108,21 +118,19 @@ export default function MobileCageCellDetailDialog({
     });
   }, [formValues]);
 
-  // 合并两个通道的所有照片 URL，供预览导航使用（必须在 statusPhotos 声明之后）
-  const allPreviewUrls = (() => {
+  // 合并两个通道的所有照片 URL，供预览导航使用
+  const allPreviewUrls = useMemo(() => {
     const urls: string[] = [];
     for (const k of Object.keys(statusPhotos)) {
       for (const u of (statusPhotos[k] || [])) urls.push(u);
     }
     for (const u of images) urls.push(u);
     return urls;
-  })();
+  }, [statusPhotos, images]);
 
   // 读取已有标注
   useEffect(() => {
-    const animalCageId = String((cell as any).id ?? (cell as any).animalCageId ?? detail.animalCageId ?? "");
     if (!animalCageId) {
-      // 从 detail 兜底
       setExperimentDesc(dGet(detail, cbi, "experimentDesc"));
       setImages(parseImagesJson(detail.imagesJson ?? "[]"));
       return;
@@ -149,7 +157,10 @@ export default function MobileCageCellDetailDialog({
     setSaving(true);
     setSaveMsg(null);
     try {
-      await localAnnotate(animalCageId, experimentDesc || undefined, JSON.stringify(images), JSON.stringify(statusPhotos));
+      // 只发这条通道真正会改的两个字段。statusPhotos 归「状态模式」管，本弹窗里是只读的，
+      // 回传它等于向服务端声明「我要写状态照片」——那道闸只开给饲养员/饲养组长，
+      // 会把「实验员本人存实验记录」一并拦死。
+      await localAnnotate(animalCageId, experimentDesc || undefined, JSON.stringify(images));
       setSaveMsg({ type: "ok", text: "保存成功" });
     } catch (e) {
       setSaveMsg({ type: "err", text: e instanceof Error ? e.message : "保存失败" });
@@ -189,7 +200,13 @@ export default function MobileCageCellDetailDialog({
 
   const isPermitted = cell.visible;
 
-  // 特殊状态 chips（与标题栏共享，见上方 specialChips）
+  // 通道一：状态标记照片（只读，仅编辑模式可管理）+ 兜底 _status
+  const statusPhotoBlocks = specialChips
+    .filter((ch) => ch.photoKey && (statusPhotos[ch.photoKey] || []).length > 0)
+    .map((ch) => ({ key: ch.code, label: ch.label, color: ch.color, urls: statusPhotos[ch.photoKey] || [] }));
+  const catchAllStatusPhotos = statusPhotos._status || [];
+  const statusNote = typeof (statusPhotos as any)._note === "string" ? ((statusPhotos as any)._note as string).trim() : "";
+  const hasStatusSection = statusPhotoBlocks.length > 0 || catchAllStatusPhotos.length > 0 || !!statusNote;
 
   return (
     <div
@@ -203,154 +220,131 @@ export default function MobileCageCellDetailDialog({
       onClick={onClose}
     >
       <div
-        className="w-full flex flex-col rounded-[22px] overflow-hidden"
+        className="cage-detail-sheet w-full flex flex-col rounded-[18px] overflow-hidden bg-[var(--student-surface)]"
         style={{
-          background: "#fff",
           maxWidth: 400,
           maxHeight: "100%",
           boxShadow: "0 24px 64px -16px rgba(15, 23, 42, 0.32)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Header ── */}
-        <div
-          className="flex items-center justify-between gap-3 px-4 py-3.5 shrink-0"
-          style={{ background: "#fafbfc", borderBottom: "1px solid #eef0f6" }}
-        >
-          <div className="min-w-0 flex items-center gap-2 flex-wrap">
-            <span className="text-[15px] font-bold tracking-tight" style={{ color: "#1e293b" }}>
+        {/* ── 身份条：位置 + 状态标签 + 关闭；笼位动作钉在它下面，不随正文滚 ── */}
+        <div className="shrink-0 border-b border-[var(--student-hairline)] px-4 pt-3.5 pb-3">
+          <div className="flex items-center gap-3">
+            <span className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-tight text-[var(--student-ink)]">
               {position}
             </span>
-            {/* 标题栏只展示特殊状态；无特殊状态则不展示任何笼型/状态徽标 */}
-            {specialChips.map((ch) => (
-              <span
-                key={ch.code}
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
-                style={{ color: "#334155", background: "#f1f5f9" }}
-              >
-                <span className="size-1.5 shrink-0 rounded-full" style={{ background: ch.color }} />
-                {ch.label}
-              </span>
-            ))}
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-full p-2 text-[var(--student-mute)] transition active:bg-[var(--student-canvas-soft-2)]"
+              aria-label="关闭"
+            >
+              <X className="size-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-full p-1.5 transition active:scale-90"
-            style={{ background: "#f1f5f9" }}
-            aria-label="关闭"
-          >
-            <X className="size-4" style={{ color: "#64748b" }} />
-          </button>
+          {/* 状态语义只落在一颗圆点上：不铺饱和底、不描边 */}
+          {specialChips.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {specialChips.map((ch) => (
+                <span
+                  key={ch.code}
+                  className="inline-flex items-center gap-2 rounded-full bg-[var(--student-canvas-soft-2)] px-3 py-1 text-[11px] font-medium text-[var(--student-body)]"
+                >
+                  <span className="size-1.5 shrink-0 rounded-full" style={{ background: ch.color }} />
+                  {ch.label}
+                </span>
+              ))}
+            </div>
+          )}
+          {isPermitted && onStartOp && (
+            <div className="mt-3">
+              <CageOperationActions
+                source={{
+                  animalCageId,
+                  position,
+                  occupantName: (cell as any).occupantName,
+                  cageTypeCode: (cell as any).cageTypeCode ?? cell.animalCageType,
+                }}
+                occupied={((cell as any).cageTypeCode ?? cell.animalCageType) === 3}
+                onStart={onStartOp}
+                onStartBatch={onStartBatch}
+                onChanged={onChanged}
+                opMark={opMark}
+              />
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-4 space-y-4">
           {isPermitted ? (
             <>
-              {/* ── 分笼 / 转移笼位（仅占用中笼位出现） ── */}
-              {onStartOp && (
-                <CageOperationActions
-                  source={{
-                    animalCageId,
-                    position,
-                    occupantName: (cell as any).occupantName,
-                    cageTypeCode: (cell as any).cageTypeCode ?? cell.animalCageType,
-                  }}
-                  occupied={((cell as any).cageTypeCode ?? cell.animalCageType) === 3}
-                  onStart={onStartOp}
-                  onChanged={onChanged}
-                  opMark={opMark}
-                />
-              )}
-
-              {/* ── 关键信息表单(直接读表单,与 web 端一致) ── */}
+              {/* ── 关键信息表单（本身已是双列网格，读 --twin-* 跟随本弹窗的中性令牌） ── */}
               <CageFormFill animalCageId={animalCageId || null} />
 
-              {/* 特殊状态 chips 已上移到标题栏，此处只保留其对应的照片 */}
-
-              {/* 通道一：状态标记照片（只读，仅编辑模式可管理） */}
-              {specialChips.filter(ch=>ch.photoKey&&(statusPhotos[ch.photoKey]||[]).length>0).map(ch=>{
-                const spImgs=statusPhotos[ch.photoKey]||[];
-                return <div key={ch.code} className="rounded-2xl px-3 py-2 mb-1" style={{background:"#f8fafc"}}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-[10px] font-semibold" style={{color:ch.color}}>{ch.label}照片 ({spImgs.length})</span>
+              {/* ── 状态与照片（通道一，只读） ── */}
+              {hasStatusSection && (
+                <div>
+                  <SectionTitle>状态与照片</SectionTitle>
+                  <div className="space-y-2">
+                    {statusPhotoBlocks.map((blk) => (
+                      <div key={blk.key} className="rounded-[14px] bg-[var(--student-canvas-soft)] px-3 py-2.5">
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="size-1.5 shrink-0 rounded-full" style={{ background: blk.color }} />
+                          <span className="text-[11px] font-medium text-[var(--student-body)]">{blk.label}</span>
+                          <span className="text-[10px] tabular-nums text-[var(--student-mute)]">{blk.urls.length}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {blk.urls.map((u, j) => (
+                            <img key={j} src={u} onClick={() => setPreviewUrl(u)} className="size-11 cursor-pointer rounded-[10px] object-cover" alt="" />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {catchAllStatusPhotos.length > 0 && (
+                      <div className="rounded-[14px] bg-[var(--student-canvas-soft)] px-3 py-2.5">
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="text-[11px] font-medium text-[var(--student-body)]">状态照片</span>
+                          <span className="text-[10px] tabular-nums text-[var(--student-mute)]">{catchAllStatusPhotos.length}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {catchAllStatusPhotos.map((u, j) => (
+                            <img key={j} src={u} onClick={() => setPreviewUrl(u)} className="size-11 cursor-pointer rounded-[10px] object-cover" alt="" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {statusNote && (
+                      <div className="rounded-[14px] bg-[var(--student-canvas-soft)] px-3 py-2.5">
+                        <div className="mb-1 text-[11px] font-medium text-[var(--student-mute)]">标注备注</div>
+                        <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--student-body)]">{statusNote}</div>
+                      </div>
+                    )}
                   </div>
-                  {spImgs.length>0&&<div className="flex flex-wrap gap-1">
-                    {spImgs.map((url:string,j:number)=><img key={j} src={url} onClick={()=>setPreviewUrl(url)} className="h-11 w-11 object-cover rounded-xl cursor-pointer" style={{border:"1px solid #eef0f6"}} alt="" />)}
-                  </div>}
-                  <div className="text-[9px] italic mt-1" style={{color:"#969799"}}>通过编辑模式管理</div>
-                </div>;
-              })}
-              {/* 兜底 _status key：弹窗A上传但未绑定到具体状态标记的照片 */}
-              {(()=>{const catchAll=(statusPhotos._status||[]);if(catchAll.length===0)return null;
-                return <div className="rounded-2xl px-3 py-2 mb-1" style={{background:"#f8fafc"}}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-[10px] font-semibold" style={{color:"#64748b"}}>状态照片 ({catchAll.length})</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {catchAll.map((url:string,j:number)=><img key={j} src={url} onClick={()=>setPreviewUrl(url)} className="h-11 w-11 object-cover rounded-xl cursor-pointer" style={{border:"1px solid #eef0f6"}} alt="" />)}
-                  </div>
-                  <div className="text-[9px] italic mt-1" style={{color:"#969799"}}>通过编辑模式管理</div>
-                </div>;
-              })()}
-              {/* 标注备注（通道一只读） */}
-              {typeof (statusPhotos as any)._note==="string"&&(statusPhotos as any)._note.trim()&&<div className="rounded-2xl px-3 py-2 mb-1" style={{background:"#f8fafc"}}>
-                <div className="text-[10px] font-semibold mb-1" style={{color:"#64748b"}}>📝 标注备注</div>
-                <div className="text-[11px] whitespace-pre-wrap" style={{color:"#323233"}}>{(statusPhotos as any)._note}</div>
-                <div className="text-[9px] italic mt-1" style={{color:"#969799"}}>通过编辑模式管理</div>
-              </div>}
-
-              <div
-                className="border-t"
-                style={{ borderColor: "#f1f5f9", margin: "6px 0 2px" }}
-              />
-
-              {/* ── 实验记录 ── */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="h-3.5 w-[3px] rounded-full" style={{ background: BRAND }} />
-                  <span className="text-[12px] font-semibold tracking-wide" style={{ color: "#1e293b" }}>
-                    实验记录
-                  </span>
                 </div>
+              )}
+
+              {/* ── 实验记录 + 照片 ── */}
+              <div>
+                <SectionTitle>实验记录</SectionTitle>
                 <textarea
                   value={experimentDesc}
                   onChange={(e) => setExperimentDesc(e.target.value)}
                   rows={4}
                   placeholder="输入实验记录…"
-                  className="w-full rounded-2xl border px-3.5 py-2.5 text-[13px] resize-y focus:outline-none"
-                  style={{
-                    borderColor: "#eef0f6",
-                    color: "#323233",
-                    background: "#fafbfc",
-                  }}
+                  className="w-full resize-y rounded-[14px] bg-[var(--student-canvas-soft)] px-3.5 py-3 text-[13px] leading-relaxed text-[var(--student-ink)] placeholder:text-[var(--student-mute-foreground)] focus:outline-none"
                 />
-              </div>
 
-              {/* ── 照片 ── */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
+                <div className="mt-3 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="h-3.5 w-[3px] rounded-full" style={{ background: BRAND }} />
-                    <span className="text-[12px] font-semibold tracking-wide" style={{ color: "#1e293b" }}>
-                      实验记录照片
-                    </span>
-                    {images.length > 0 && (
-                      <span className="text-[10px] tabular-nums" style={{ color: "#94a3b8" }}>
-                        {images.length}
-                      </span>
-                    )}
+                    <span className="text-[13px] font-semibold text-[var(--student-ink)]">照片</span>
+                    <span className="text-[10px] tabular-nums text-[var(--student-mute)]">{images.length}</span>
                   </div>
                   <button
                     type="button"
                     disabled={uploading}
                     onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium disabled:opacity-50 active:scale-95 transition"
-                    style={{
-                      color: BRAND,
-                      border: `1px solid ${BRAND}`,
-                      background: "#fff",
-                    }}
+                    className="cage-detail-btn-soft inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition active:scale-95"
                   >
                     <ImagePlus className="size-3.5" />
                     {uploading ? "上传中…" : "上传"}
@@ -365,15 +359,14 @@ export default function MobileCageCellDetailDialog({
                   />
                 </div>
 
-                {images.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2">
+                {images.length > 0 ? (
+                  <div className="mt-2 grid grid-cols-3 gap-2">
                     {images.map((url, i) => (
-                      <div key={`${i}-${url.slice(-20)}`} className="relative aspect-square rounded-2xl overflow-hidden"
-                        style={{ border: "1px solid #eef0f6" }}>
+                      <div key={`${i}-${url.slice(-20)}`} className="relative aspect-square overflow-hidden rounded-[14px] bg-[var(--student-canvas-soft)]">
                         <img
                           src={url}
                           alt={`photo-${i}`}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full cursor-pointer object-cover"
                           onClick={() => setPreviewUrl(url)}
                           onError={(e) => {
                             (e.target as HTMLImageElement).style.display = "none";
@@ -382,45 +375,48 @@ export default function MobileCageCellDetailDialog({
                         <button
                           type="button"
                           onClick={() => removeImage(i)}
-                          className="absolute top-1 right-1 size-5 rounded-full bg-black/50 flex items-center justify-center"
+                          className="cage-detail-photo-del absolute top-1 right-1 flex size-5 items-center justify-center rounded-full"
                           aria-label="删除图片"
                         >
-                          <X className="size-3 text-white" />
+                          <X className="size-3" />
                         </button>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-
-              {/* ── 保存按钮 ── */}
-              <div className="flex items-center gap-3 flex-wrap pt-0.5">
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full px-5 h-10 text-[13px] font-semibold text-white disabled:opacity-50 active:scale-[0.98] transition"
-                  style={{ background: BRAND, boxShadow: `0 8px 20px -8px ${BRAND}` }}
-                >
-                  <Save className="size-4" />
-                  {saving ? "保存中…" : "保存"}
-                </button>
-                {saveMsg && (
-                  <span
-                    className="text-[12px]"
-                    style={{ color: saveMsg.type === "ok" ? "#07c160" : "#ee0a24" }}
-                  >
-                    {saveMsg.text}
-                  </span>
+                ) : (
+                  <div className="mt-2 text-[12px] text-[var(--student-mute)]">暂无照片</div>
                 )}
               </div>
             </>
           ) : (
-            <div className="text-center py-4 text-[13px]" style={{ color: "#969799" }}>
+            <div className="py-4 text-center text-[13px] text-[var(--student-mute)]">
               仅限所属课题组及管理员查看详情
             </div>
           )}
         </div>
+
+        {/* ── 底栏：一个时刻只有一个保存目标 ── */}
+        {isPermitted && (
+          <div className="shrink-0 flex items-center gap-3 border-t border-[var(--student-hairline)] px-4 py-3">
+            {saveMsg && (
+              <span
+                className="text-[12px]"
+                style={{ color: saveMsg.type === "ok" ? "var(--student-success)" : "var(--student-error)" }}
+              >
+                {saveMsg.text}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="cage-detail-btn-primary ml-auto inline-flex h-10 items-center justify-center gap-1.5 rounded-[12px] px-5 text-[13px] font-semibold transition active:scale-[0.98]"
+            >
+              <Save className="size-4" />
+              {saving ? "保存中…" : "保存记录"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── 全屏照片预览（双通道共享，URL驱动）── */}
@@ -428,7 +424,7 @@ export default function MobileCageCellDetailDialog({
         const curIdx = allPreviewUrls.indexOf(previewUrl);
         return (
         <div
-          className="fixed inset-0 flex items-center justify-center"
+          className="cage-detail-viewer fixed inset-0 flex items-center justify-center"
           style={{
             zIndex: "var(--z-tooltip, 900)",
             background: "rgba(0,0,0,0.9)",
@@ -439,25 +435,28 @@ export default function MobileCageCellDetailDialog({
           <button
             type="button"
             onClick={() => setPreviewUrl(null)}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 active:bg-white/20"
+            className="cage-detail-viewer-btn absolute top-4 right-4 rounded-full p-2.5"
+            aria-label="关闭预览"
           >
-            <X className="size-6 text-white" />
+            <X className="size-5" />
           </button>
           {allPreviewUrls.length > 1 && (
             <>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); const prev = curIdx > 0 ? curIdx - 1 : allPreviewUrls.length - 1; setPreviewUrl(allPreviewUrls[prev]); }}
-                className="absolute left-4 p-2 rounded-full bg-white/10 active:bg-white/20"
+                className="cage-detail-viewer-btn absolute left-4 rounded-full px-3 py-2"
+                aria-label="上一张"
               >
-                <span className="text-white text-2xl leading-none">&lsaquo;</span>
+                <span className="text-xl leading-none">&lsaquo;</span>
               </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); const next = curIdx < allPreviewUrls.length - 1 ? curIdx + 1 : 0; setPreviewUrl(allPreviewUrls[next]); }}
-                className="absolute right-4 p-2 rounded-full bg-white/10 active:bg-white/20"
+                className="cage-detail-viewer-btn absolute right-4 rounded-full px-3 py-2"
+                aria-label="下一张"
               >
-                <span className="text-white text-2xl leading-none">&rsaquo;</span>
+                <span className="text-xl leading-none">&rsaquo;</span>
               </button>
             </>
           )}
@@ -468,7 +467,7 @@ export default function MobileCageCellDetailDialog({
             onClick={(e) => e.stopPropagation()}
           />
           {allPreviewUrls.length > 1 && (
-            <div className="absolute bottom-4 text-white text-sm">
+            <div className="absolute bottom-4 text-sm text-white">
               {curIdx + 1} / {allPreviewUrls.length}
             </div>
           )}

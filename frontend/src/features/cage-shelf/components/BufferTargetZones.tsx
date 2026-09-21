@@ -19,10 +19,26 @@ export interface BufferZone {
   /** true = 用户手动加的目标区（AUP / 人员），整张卡可以删掉；固定区（撤销分配、状态色区）不给删 */
   removable?: boolean;
   /**
-   * 折叠在卡内的子区 —— 「需特殊饲养」下面那四个明细色区走这条。
-   * 明细用量少，平铺会把右栏撑到 18 张卡，所以默认收起，点卡内的「明细」一行才展开。
+   * 折叠在卡内的子区 —— 「需特殊饲养」下的四枚明细色区、「健康异常」下的严重程度色区走这条。
+   * 子区用量少，平铺会把右栏撑到二十来张卡，所以默认收起，点卡内那一行才展开。
    */
   children?: BufferZone[];
+  /** 展开那一行的名词（默认「明细」）——「健康异常」那张卡要显示「严重程度」，别跟着叫明细。 */
+  childrenLabel?: string;
+  /**
+   * 卡右上角的一枚勾选框（如严重程度各档旁的「瘙痒」）。
+   * 勾上 = 「本卡标题」+ 该 label（例：轻微 + 瘙痒）。语义由调用方定，色区只管画与回传。
+   */
+  extraCheck?: { checked: boolean; label: string; onChange: (next: boolean) => void };
+  /**
+   * 这张卡本身是不是落点（默认 true）。
+   *
+   * <p>false = 只作**分组标题**用：健康异常的父状态不该单独落（必须带一档严重程度），
+   * 那张卡就不再接落、也不画「放这里 / 垃圾桶」两枚按钮，只有展开后的三个档位能落。
+   * 卡本身还接落的话，落点又小又贴着隔壁卡，拖一次很容易落到「需特殊饲养」上去
+   * （2026-09-18 用户报「拖细化经常被记成特殊饲养」）。
+   */
+  droppable?: boolean;
 }
 
 /** 状态模式：格子当前的编辑缓存快照（喂给缩略图做实时配色） */
@@ -77,9 +93,11 @@ function ZoneCard({
   /** 卡内折叠的子区（明细色区）；由容器递归渲染好传进来 */
   childrenSlot?: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `zone:${zone.key}` });
+  // droppable=false 的卡只作分组标题（见 BufferZone.droppable）：不接落，鼠标划过也不高亮
+  const { setNodeRef, isOver } = useDroppable({ id: `zone:${zone.key}`, disabled: zone.droppable === false });
   const color = zone.color || "var(--twin-primary)";
   const isCancel = zone.variant === "cancel";
+  const droppable = zone.droppable !== false;
   return (
     <div
       ref={setNodeRef}
@@ -101,10 +119,30 @@ function ZoneCard({
           <div className="truncate text-[11px] font-semibold text-[var(--twin-ink)]" title={zone.title}>{zone.title}</div>
           {zone.subtitle && <div className="truncate text-[10px] text-[var(--twin-mute)]" title={zone.subtitle}>{zone.subtitle}</div>}
         </div>
+        {/* 右上角勾选框（如「瘙痒」）：pointerdown 必须停住 —— 卡片本身是拖放节点，
+            不停的话点勾选框会被 dnd-kit 当成开始拖拽，卡里笼位跟着乱跑。 */}
+        {zone.extraCheck && (
+          <label
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex shrink-0 cursor-pointer items-center gap-0.5 text-[10px] font-semibold"
+            style={{ color: zone.extraCheck.checked ? color : "var(--twin-mute)" }}
+            title={`勾上 = 「${zone.title}」+ ${zone.extraCheck.label}`}
+          >
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              style={{ accentColor: color }}
+              checked={zone.extraCheck.checked}
+              onChange={(e) => zone.extraCheck!.onChange(e.target.checked)}
+            />
+            {zone.extraCheck.label}
+          </label>
+        )}
         <span className="shrink-0 rounded-full bg-[var(--twin-canvas-soft)] px-1.5 text-[10px] font-semibold text-[var(--twin-mute)]">
           {items.length}
         </span>
       </div>
+      {droppable && (
       <div className="mt-1.5 flex gap-1">
         <button type="button" onClick={() => onAssignSelected(zone.key)} disabled={selectedCount === 0}
           title={selectedCount === 0 ? "先勾选缓冲区里的笼位" : undefined}
@@ -129,6 +167,7 @@ function ZoneCard({
           </button>
         )}
       </div>
+      )}
       {/* 折行排布：与缓冲区同一套磁贴，区域窄就一行两个 */}
       <div className="mt-1.5 flex flex-wrap gap-2">
         {items.map((it) => (
@@ -201,7 +240,7 @@ export default function BufferTargetZones({
         z.children && z.children.length > 0 ? (
           <details className="mt-1.5 border-t border-dashed border-[var(--twin-hairline)] pt-1">
             <summary className="cursor-pointer list-none text-[10px] font-semibold text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">
-              {z.variant === "cancel" ? "撤销明细 ▾" : "明细 ▾"}
+              {z.variant === "cancel" ? "撤销" : ""}{z.childrenLabel ?? "明细"} ▾
             </summary>
             <div className="mt-1.5 space-y-1.5">{z.children.map(renderZone)}</div>
           </details>

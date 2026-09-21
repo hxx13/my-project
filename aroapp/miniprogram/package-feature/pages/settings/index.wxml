@@ -35,14 +35,7 @@
       />
     </van-cell-group>
 
-    <van-cell-group wx:if="{{ canAnnouncementAdmin || canReleaseAdmin }}" inset="{{ true }}" border="{{ false }}" custom-class="settings-admin-group">
-      <van-cell
-        wx:if="{{ canAnnouncementAdmin }}"
-        title="公告管理"
-        label="管理员及以上：小程序/Web 首页公告栏"
-        is-link
-        bind:click="goAnnouncementAdmin"
-      />
+    <van-cell-group wx:if="{{ canReleaseAdmin }}" inset="{{ true }}" border="{{ false }}" custom-class="settings-admin-group">
       <van-cell
         wx:if="{{ canReleaseAdmin }}"
         title="版本公告管理"

@@ -100,6 +100,47 @@ export const SPECIAL_DETAIL_DICT = "special_feeding_detail";
 /** 明细状态码前缀（与后端一致）：statusCode = 前缀 + item_code。 */
 export const SPECIAL_DETAIL_STATUS_PREFIX = "SF_";
 
+/* ═══════════════════════════════════════════════════════════
+   健康异常严重程度（健康异常下的**互斥单选**子值）
+   —— 与后端 CageInfoValueService.HEALTH_SEVERITY_CANONICAL 一一对应，改一处要改两处。
+   它**不产生状态码、不进折叠、没有阈值行**：只影响展示与「通知兽医/所有者」的文案。
+   ═══════════════════════════════════════════════════════════ */
+
+/** 严重程度字段的 canonical（单选 ENUM，值落 cage_info_value.value_text）。 */
+export const HEALTH_SEVERITY_CANONICAL = "health_abnormality_severity";
+/** 严重程度的码表 code（与字段的 dict_key 一致）—— 可选项从这份码表读，加项不用改代码。 */
+export const HEALTH_SEVERITY_DICT = "health_abnormality_severity";
+/**
+ * 健康异常「瘙痒」字段的 canonical —— **布尔**（落 value_bool）。
+ *
+ * 界面把勾选框画在每一档严重程度旁边（数据上它是一个布尔，不是「每档一个」）：
+ * 严重程度互斥，所以实际最多出现「某一档 + 瘙痒」一个组合。
+ * 写接口约定：`itemCodes` 传 `["1"]` = 打勾、`[]` = 取消（见后端 `BOOL_TRUE_CODE`）。
+ */
+export const HEALTH_ITCH_CANONICAL = "health_abnormality_itch";
+/** 瘙痒在学生侧的动作码（与后端 STUDENT_EDIT_ACTIONS 的键一致）。 */
+export const HEALTH_ITCH_ACTION = "HEALTH_ITCH";
+/** 瘙痒的中文名 —— 布尔字段没有码表可查，角标/勾选框都用这一个名字。 */
+export const HEALTH_ITCH_LABEL = "瘙痒";
+/** 布尔子值「打勾」的哨兵值（与后端 CageInfoValueService.BOOL_TRUE_CODE 一致）。 */
+export const HEALTH_ITCH_TRUE = "1";
+
+/**
+ * 「兽医未读」的紫色 —— 三端描边共用这一处。
+ *
+ * 它是**悬浮层**（内描边），不动笼位自己的状态底色：表达的是「这条消息看过没」，
+ * 不是笼位状态；与右上角角标、红框（最后扫码）等各占各的图层。
+ */
+export const VET_UNREAD_COLOR = "#a855f7";
+/**
+ * 严重程度在学生侧对应的**动作码** —— 与后端 `CageModeVisibilityService.STUDENT_EDIT_ACTIONS`
+ * 的键一致。它不在 {@link CAGE_BOX_ACTIONS} 里（那不是状态，是状态下的子值），
+ * 所以学生的可见性单独按它查下发的动作白名单。
+ */
+export const HEALTH_SEVERITY_ACTION = "HEALTH_SEVERITY";
+/** 健康异常父状态对应的动作码（学生侧同样按白名单查）。 */
+export const HEALTH_CHECK_ACTION = "HEALTH_CHECK";
+
 /**
  * 从表单值行里取「特殊饲养明细」的当前选中集合。
  * 多选字段（data_type=ENUM_MULTI）的值是 item_code 数组；读不到就是空集。
@@ -110,6 +151,27 @@ export function detailCodesOfValues(
 ): Set<string> {
   const v = rows?.find((r) => r?.canonical === SPECIAL_DETAIL_CANONICAL)?.value;
   return new Set(Array.isArray(v) ? v.map(String) : []);
+}
+
+/**
+ * 从表单值行里取「健康异常严重程度」的当前值（互斥单选的 item_code）。
+ * 空串/非字符串/字段不存在 → null（= 未选）。三端共用这一份 —— 与 {@link detailCodesOfValues} 同源。
+ */
+export function severityOfValues(
+  rows: { canonical?: string | null; value?: unknown }[] | null | undefined,
+): string | null {
+  const v = rows?.find((r) => r?.canonical === HEALTH_SEVERITY_CANONICAL)?.value;
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t === "" ? null : t;
+}
+
+/** 从表单值行里取「瘙痒」布尔值；缺字段/非真值 → false。 */
+export function itchOfValues(
+  rows: { canonical?: string | null; value?: unknown }[] | null | undefined,
+): boolean {
+  const v = rows?.find((r) => r?.canonical === HEALTH_ITCH_CANONICAL)?.value;
+  return v === true || v === 1 || v === "1";
 }
 
 /** 否定义的首字（「勿加食」「不禁食」都算否定）—— 决定角标记号的 + / −。 */
@@ -136,17 +198,54 @@ export interface SpecialDetailBadgeItem {
 }
 
 /**
- * 该状态**不是违规行为** —— 特殊饲养 / 合笼，以及特殊饲养明细（`SF_` 前缀）。
+ * 该状态**不是违规行为** —— 特殊饲养 / 合笼 / 特殊饲养明细（`SF_` 前缀）/ 健康异常。
  *
- * 服务端口径：这两个状态到阈值只发通知（推送中心的「笼位状态提醒」源），**不建违规记录**。
- * 阈值配置界面据此把「违规」那一档标成不可选，免得用户配了却发现什么都没发生
- * （2026-09-14 用户明确：这两个状态不属于违规行为）。
+ * 服务端口径：这些状态到阈值只发通知（推送中心的「笼位状态提醒」或健康异常的两个源），
+ * **不建违规记录**。阈值配置界面据此把动作下拉换成「仅高亮 / 仅通知 / 高亮+通知」，
+ * 免得用户配了「违规」却发现什么都没发生。
+ *
+ * ⚠ **两份实现必须同步**：这里（前端，决定下拉怎么显示）+ 后端
+ * `CageStatusAlertScheduler.NON_VIOLATION_STATUSES`（决定真的建不建违规）。
+ * 2026-09-17 就漏过一次：后端加了健康异常、前端没加，界面照旧显示「仅违规」。
  */
 export function isNonViolationStatus(statusCode: string | null | undefined): boolean {
   if (!statusCode) return false;
   return statusCode === "SPECIAL_FEEDING"
     || statusCode === "COHABITATION"
+    // 健康异常也是通知类型（2026-09-17 定）：到阈值只发通知兽医 / 笼位所有者，不建违规。
+    // ⚠ 这份谓词有两份实现 —— 这里是**前端**那份（决定动作下拉显示「仅通知」还是「仅违规」），
+    //   后端那份在 CageStatusAlertScheduler.NON_VIOLATION_STATUSES（决定真的建不建违规）。
+    //   加/删一个非违规状态，**两边都要改**，否则界面会撒谎（显示「仅违规」却不产生违规）。
+    || statusCode === "HEALTH_ABNORMAL"
     || statusCode.startsWith(SPECIAL_DETAIL_STATUS_PREFIX);
+}
+
+/**
+ * 健康异常那一族的角标（**最多两枚**：严重程度 + 瘙痒），纵排。
+ *
+ * 与明细角标并排但各占一列：这一族两个标签都点同一份「有健康异常」门控，
+ * 所以由一个函数一起算，别在调用方拼两个数组（拼错了就会出现「父状态关着还留着瘙痒」）。
+ *
+ * 取值口径同 {@link severityBadgeFor}：暂存**带了** 对应键就以暂存为准（显式 null/false = 清空）、
+ * **没带**（只改了别的状态）就回落服务端值、最后强绑定父状态开着。
+ */
+export function healthBadgesFor(
+  cellSeverity: string | null | undefined,
+  cellItch: boolean | null | undefined,
+  cache?: {
+    currentActions: ReadonlySet<CageBoxAction>;
+    currentSeverity?: string | null;
+    currentItch?: boolean;
+  } | null,
+): SpecialDetailBadgeItem[] {
+  const severity = cache && cache.currentSeverity !== undefined ? cache.currentSeverity : (cellSeverity ?? null);
+  const itch = cache && cache.currentItch !== undefined ? cache.currentItch : Boolean(cellItch);
+  if (!severity && !itch) return [];
+  if (cache && !cache.currentActions.has("HEALTH_CHECK")) return [];
+  const out: SpecialDetailBadgeItem[] = [];
+  if (severity) out.push({ code: severity });
+  if (itch) out.push({ code: "ITCH", label: HEALTH_ITCH_LABEL });
+  return out;
 }
 
 /**
@@ -196,10 +295,18 @@ export const CAGE_BOX_ACTION_LIST = CAGE_BOX_ACTIONS.map(a => a.action) as reado
  * 它两张卡（标记 / 撤销）下面各自挂着可展开的明细子区，一展开会把后面的卡整片推下去；
  * 排在最底就只影响自己，别的状态不会被挤走。两端都走这一份，顺序不会各排各的。
  */
-export function specialFeedingLast<T extends { action: string }>(list: readonly T[]): T[] {
+/**
+ * 带**子区**的父状态动作（特殊饲养明细 / 健康异常严重程度）。
+ * 它们的卡下面各自挂着可展开的子区，一展开会把后面的卡整片推下去，所以排到最底：
+ * 排在最底就只影响自己，别的状态不会被挤走。两端都走这一份，顺序不会各排各的。
+ */
+const DETAIL_PARENT_ACTIONS: ReadonlySet<string> = new Set(["SPECIAL_BREEDING", "HEALTH_CHECK"]);
+
+export function detailParentsLast<T extends { action: string }>(list: readonly T[]): T[] {
   return [
-    ...list.filter((a) => a.action !== "SPECIAL_BREEDING"),
+    ...list.filter((a) => !DETAIL_PARENT_ACTIONS.has(a.action)),
     ...list.filter((a) => a.action === "SPECIAL_BREEDING"),
+    ...list.filter((a) => a.action === "HEALTH_CHECK"),
   ];
 }
 
@@ -409,6 +516,26 @@ export function parseDetailZone(key: string | null | undefined): { itemCode: str
   if (dir !== "sfadd" && dir !== "sfdel") return null;
   if (!itemCode) return null;
   return { itemCode, on: dir === "sfadd" };
+}
+
+/**
+ * 严重程度色区键。**与明细不同：严重程度是互斥单选，所以标记区是「一档一个」，
+ * 但撤销区只有一个**（撤销「严重」而当前是「中度」本来就是空操作，逐档配撤销区只会多出无意义的三张卡）。
+ */
+export const SEVERITY_CLEAR_ZONE = "sevclear";
+
+/** 标记某一档的色区键（`sevadd:MILD`）。 */
+export function severityZoneKey(itemCode: string): string {
+  return `sevadd:${itemCode}`;
+}
+
+/** 反解严重程度色区键：`sevadd:X` → {itemCode:"X"}（标记）；`sevclear` → {itemCode:null}（清空）；其它 → null。 */
+export function parseSeverityZone(key: string | null | undefined): { itemCode: string | null } | null {
+  const s = String(key ?? "");
+  if (s === SEVERITY_CLEAR_ZONE) return { itemCode: null };
+  const [dir, itemCode] = s.split(":");
+  if (dir !== "sevadd" || !itemCode) return null;
+  return { itemCode };
 }
 
 /**

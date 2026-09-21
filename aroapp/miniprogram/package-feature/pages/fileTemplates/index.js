@@ -56,9 +56,14 @@ Page({
     cartRows: [],
     cartOpen: false,
     queueSummary: { sent: 0, pending: 0, hasActive: false },
-    queueRows: [],
+    queueTabs: [],
+    queueTabId: '',
     queueFailedCount: 0,
-    queueExpanded: false,
+    queueOpen: false,
+    // 能不能清打印机队列（问服务端，不在前端复制角色规则）；拿不到能力一律当没有
+    canClearQueue: false,
+    // 当前队列工位是不是「后端直发」——只有它才有服务端队列可清，清空按钮跟当前 tab 走
+    queueStationIsServer: false,
     dispatch: null,
     dispatchLoading: false,
     stations: [],
@@ -638,21 +643,86 @@ Page({
 
   async refreshQueue() {
     // 队列接口已含 PENDING/SENT/FAILED（PrintJobMapper.listQueue 三态都返回），
-    // 计数与展开列表都从它取即可；fetchHistory 会带出 PRINTED/CANCELLED，混进来反而把
-    // 已打完/已撤回的堆进「队列」列表，还让进行中的任务被重复计数。
-    // 用 history（全部状态）而不是 queue：queue 只有 PENDING/SENT/FAILED，
-    // 别的工位「已打完」的记录压根不在里面（看不到其他工位的记录就是这个原因）。
-    // 与 web 的 PrintQueueDialog 同源；计数由 summarizeQueue 只数进行中的，不受影响。
-    const [q, st] = await Promise.all([printApi.fetchHistory(300), printApi.fetchStations()]);
-    const nameMap = printFormat.stationNameMap(st && st.stations);
+    // 但这里仍用 history（全部状态）而不是 queue：queue 里没有别的工位「已打完」的记录，
+    // 而 tab 是按工位切的，缺了它们 tab 差点东西。与 web 的 PrintQueueDialog 同源；
+    // 计数由 summarizeQueue 只数进行中的，不受影响。
+    const [q, st, cap] = await Promise.all([
+      printApi.fetchHistory(300), printApi.fetchStations(), printApi.fetchCapabilities(),
+    ]);
+    const stations = (st && st.stations) || [];
+    // 工位 id → mode。清空只对后端直发的工位成立 —— 工位电脑执行的那种没有服务端队列可清。
+    const modeOf = {};
+    stations.forEach((s) => { if (s && s.id != null) modeOf[String(s.id)] = s.mode; });
+
     const jobs = q.ok ? q.jobs : [];
-    const queueRows = jobs.map((job) => printFormat.mapJobRow(job, nameMap)).filter(Boolean);
+    const tabs = printFormat.buildStationTabs(jobs, stations);
+
+    // 撤销按钮：给还卡在打印机队列里的任务（含 PRINTED 这种「看着像完事」的终态）。
+    // PENDING/FAILED 各自已有撤回/收掉按钮，别重复出一颗。
+    // queueState 由 printFormat.mapJobRow 带出来，这里只算这一个展示用布尔。
+    tabs.forEach((tab) => {
+      (tab.rows || []).forEach((row) => {
+        if (!row) return;
+        row.canCancelStuck =
+          row.queueState === 'QUEUED' && row.status !== 'PENDING' && row.status !== 'FAILED';
+      });
+    });
+
+    // 换队列后 tab 还在就留着，否则退回第一台
+    const keep = this.data.queueTabId;
+    const hasKeep = tabs.some((t) => t.id === keep);
+    const tabId = hasKeep ? keep : (tabs[0] ? tabs[0].id : '');
+
+    const canClear = !!(cap && cap.ok && cap.canClearQueue === true);
     this.setData({
       queueSummary: printFormat.summarizeQueue(jobs),
-      queueRows,
-      queueFailedCount: queueRows.filter((row) => row.tone === 'bad').length,
+      queueTabs: tabs,
+      queueTabId: tabId,
+      queueFailedCount: jobs.filter((j) => j && j.status === 'FAILED').length,
+      canClearQueue: canClear,
+      // 清空按钮的显隐跟着当前工位走：工位清单里没这台（已停用等）就当不是，fail-closed
+      queueStationIsServer: String(modeOf[String(tabId)] || '').toUpperCase() === 'SERVER',
     });
     this.syncQueuePolling();
+  },
+
+  /** 切工位 tab：明细跟着换，清空按钮的显隐也要重算（它只认当前这台） */
+  onPickQueueTab(e) {
+    const id = String(e.currentTarget.dataset.id || '');
+    if (!id || id === this.data.queueTabId) return;
+    this.setData({ queueTabId: id });
+    void this.refreshQueue();
+  },
+
+  /**
+   * 清空当前队列工位的打印队列。
+   *
+   * 这是「连别人派的也一起撤」的重动作，所以必须先弹确认说清影响范围；
+   * 失败时 toast 服务端给的原因原文 —— 后端会把「未配置 xxx」这类真实原因带回来，
+   * 盖成「清空失败」就等于把唯一定位线索丢了。
+   */
+  async onClearQueue() {
+    const id = this.data.queueTabId;
+    if (!id) return;
+    const tab = (this.data.queueTabs || []).find((t) => t.id === id);
+    const name = (tab && tab.name) || '这台打印机';
+    const confirmed = await new Promise((resolve) => {
+      wx.showModal({
+        title: '清空打印队列',
+        content: '「' + name + '」上还在排队的任务会被全部撤掉，包括别人派的。已经打完的不受影响。',
+        confirmText: '清空',
+        success: (r) => resolve(!!r.confirm),
+        fail: () => resolve(false),
+      });
+    });
+    if (!confirmed) return;
+    const r = await printApi.clearStationQueue(id);
+    if (r.ok) {
+      wx.showToast({ title: '已清空 ' + r.cleared + ' 条', icon: 'success' });
+      void this.refreshQueue();
+    } else {
+      wx.showToast({ title: r.message || '清空失败', icon: 'none' });
+    }
   },
 
   syncQueuePolling() {
@@ -673,10 +743,17 @@ Page({
     }
   },
 
-  onToggleQueue() {
-    const next = !this.data.queueExpanded;
-    this.setData({ queueExpanded: next });
-    if (next) void this.refreshQueue();
+  onOpenQueue() {
+    this.setData({ queueOpen: true });
+    void this.refreshQueue();
+  },
+
+  onCloseQueue() {
+    this.setData({ queueOpen: false });
+  },
+
+  onRefreshQueue() {
+    void this.refreshQueue();
   },
 
   async onCancelJob(e) {

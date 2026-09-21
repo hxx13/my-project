@@ -272,27 +272,35 @@ public class CageLocalController {
     }
 
     /**
-     * 写入「特殊饲养明细」子状态（多选，**整体覆盖**）。
+     * 写入某个「状态子值」字段（**整体覆盖**）：特殊饲养明细（多选）、健康异常严重程度（单选）。
      *
-     * <p>明细项由码表维护、可增长，逐项接口会让前端每次改动都要知道「另一头」的状态；
+     * <p>子值的项由码表维护、可增长，逐项接口会让前端每次改动都要知道「另一头」的状态；
      * 整体覆盖天然幂等，也能一次提交一批（走待提交的批量提交）。
-     * 权限与中间态判定跟 {@link #edit} 完全同口径，只是动作码换成明细那一项。
+     *
+     * <p>`canonical` 必须落在 {@link CageInfoValueService#isStatusDetailCanonical} 的白名单里 ——
+     * 否则请求体就能指定任意表单字段，绕过字段级写权限。多选传多个值，单选传 0 或 1 个值
+     * （单选取多个由服务端拒）。
+     *
+     * <p>权限与中间态判定跟 {@link #edit} 完全同口径，只是动作码换成该 canonical 对应的那一个。
      */
-    @PostMapping("/special-details")
-    @Operation(summary = "写入笼位「特殊饲养明细」子状态（多选覆盖）→ 只写本地")
-    public Result<?> specialDetails(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+    @PostMapping("/status-detail")
+    @Operation(summary = "写入笼位「状态子值」（特殊饲养明细 / 健康异常严重程度，整体覆盖）→ 只写本地")
+    public Result<?> statusDetail(@RequestBody Map<String, Object> body, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
         Result<?> denied = requireRole(u, RoleEnum.MEMBER);
         if (denied != null) return denied;
 
         Long animalCageId = toLong(body.get("animalCageId"));
         if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
+        String canonical = str(body, "canonical");
+        if (!CageInfoValueService.isStatusDetailCanonical(canonical)) {
+            return Result.fail(400, "不支持的状态子值字段: " + canonical);
+        }
         List<String> itemCodes = new ArrayList<>();
         if (body.get("itemCodes") instanceof List<?> list) {
             for (Object o : list) if (o != null) itemCodes.add(String.valueOf(o));
         }
 
-        String canonical = CageInfoValueService.SPECIAL_DETAIL_CANONICAL;
         if (modeVisibilityService.isStudent(u)) {
             if (!modeVisibilityService.canStudentEdit(u, canonical)) {
                 return Result.fail(403, "学生当前可标记的状态动作不含该项");
@@ -307,10 +315,10 @@ public class CageLocalController {
             return Result.fail(403, "无状态编辑权限（仅状态模式身份可操作）");
         }
 
-        // 与 /edit 同一口径：只写表单真相源，留痕走 setSpecialDetails 内部按明细项逐条写审计
-        infoValueService.setSpecialDetails(animalCageId, itemCodes, operatorDisplayName(u));
-        log.info("[local/special-details] {} 明细 {} → 笼位 {} {}",
-                operatorDisplayName(u), itemCodes, animalCageId, buildPositionLabel(animalCageId));
+        // 与 /edit 同一口径：只写表单真相源，留痕走 setStatusDetail 内部按子值项逐条写审计
+        infoValueService.setStatusDetail(animalCageId, canonical, itemCodes, operatorDisplayName(u));
+        log.info("[local/status-detail] {} {} = {} → 笼位 {} {}",
+                operatorDisplayName(u), canonical, itemCodes, animalCageId, buildPositionLabel(animalCageId));
         return Result.success(Map.of("ok", true, "local", true));
     }
 
@@ -388,12 +396,26 @@ public class CageLocalController {
         // 字段级拆权：
         //  - experimentDesc/imagesJson = 实验记录/图片，仅「该笼位占用者本人」可写；
         //  - statusPhotos = 状态照片，仅「能控制状态模式」的身份可写。
-        boolean wantsRecord = experimentDesc != null || imagesJson != null;
-        boolean wantsStatusPhoto = statusPhotos != null;
+        //
+        // 只统计**真的改了**的字段。客户端习惯把 GET 读到的整包原样回传（详情弹窗其实只改实验记录，
+        // 却把界面上只读的 statusPhotos 一起带上），按「key 在不在」判权限等于把没碰过的字段的闸也叠上
+        // —— 实验员存实验记录被「状态照片」权限拦死就是这么来的。
+        Map<String, Object> current = infoValueService.getLocalFields(animalCageId);
+        boolean wantsRecord =
+                changed(experimentDesc, current.get("experiment_desc"), "") ||
+                changed(imagesJson, current.get("images_json"), "[]");
+        boolean wantsStatusPhoto = changed(statusPhotos, current.get("extra_data"), "{}");
+
+        if (!wantsRecord && !wantsStatusPhoto) {
+            // 一个字段都没变：不写库、不留痕，直接当成功
+            return Result.success(Map.of("ok", true, "unchanged", true));
+        }
 
         if (wantsRecord) {
-            // 双 id 安全：claimantId 可能是 STAFF_ 前缀也可能是 ARO 编号，同一个人的两种形态
-            boolean isOwner = cageOperationService.isActiveClaimantSelf(u, animalCageId);
+            // 双 id 安全：claimantId 可能是 STAFF_ 前缀也可能是 ARO 编号，同一个人的两种形态。
+            // 占用者 = 活跃认领人 **或** 表单「实验员」（experimenter_name）—— 与归档、网格 mine、
+            // 通知收件人同一条口径；只认认领记录会把「表单里写着名字的实验员」判成外人。
+            boolean isOwner = cageOperationService.isOccupantSelf(u, animalCageId);
             if (!isOwner) return Result.fail(403, "仅笼位占用者本人可编辑实验记录与图片");
         }
         if (wantsStatusPhoto) {
@@ -522,6 +544,19 @@ public class CageLocalController {
     }
 
     private static String str(Map<String, Object> m, String k) { Object v = m.get(k); return v == null ? null : String.valueOf(v).trim(); }
+
+    /**
+     * 入参是不是**真的改了**这个字段。
+     *
+     * <p>null（请求体里没带这个 key）永远算「没改」；与库里的当前值相等也算没改，
+     * 当前值缺失时按该字段的「空值」（{@code emptyDefault}）比 —— 与 GET 的默认值口径一致。
+     * 客户端把整包原样回传是常态，按「key 存在」判会把只读字段的写权限也一并要求上。
+     */
+    private static boolean changed(String incoming, Object stored, String emptyDefault) {
+        if (incoming == null) return false;
+        String cur = stored == null ? emptyDefault : String.valueOf(stored);
+        return !incoming.trim().equals(cur.trim());
+    }
     private static Long toLong(Object v) {
         if (v == null) return null; if (v instanceof Number n) return n.longValue();
         try { return Long.parseLong(String.valueOf(v).trim()); } catch (Exception e) { return null; }

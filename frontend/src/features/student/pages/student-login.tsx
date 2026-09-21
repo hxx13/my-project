@@ -1,31 +1,40 @@
 import { useState, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { StudentButton, StudentInput, StudentCard, showToast } from "../components/ui";
-import { loginWeb } from "@/api/domains/auth.api";
+import { loginWeb, WebLoginError, type WebLoginCandidate } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
+import AccountChooser from "@/components/auth/AccountChooser";
 
 export default function StudentLoginPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  /** 手机号命中多个账号时的候选（历史数据有重号），让用户自己挑一个再重试 */
+  const [accountChoices, setAccountChoices] = useState<WebLoginCandidate[] | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  const doLogin = useCallback(async () => {
-    if (!username.trim() || !password.trim()) {
+  const doLogin = useCallback(async (overrideUsername?: string) => {
+    const loginName = (overrideUsername ?? username).trim();
+    if (!loginName || !password.trim()) {
       showToast("请输入账号和密码", "error");
       return;
     }
 
     try {
       setSubmitting(true);
-      const data = await loginWeb(username.trim(), password);
+      const data = await loginWeb(loginName, password);
 
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("student");
       showToast("登录成功", "success");
       navigate("/", { replace: true });
     } catch (err) {
+      // 手机号绑定了多个账号：列出候选让用户挑，挑完用账号名直接重试（不替他猜）
+      if (err instanceof WebLoginError && err.errorCode === "MULTIPLE_ACCOUNTS") {
+        setAccountChoices(err.candidates ?? []);
+        return;
+      }
       const message = err instanceof Error ? err.message : "登录失败";
       showToast(message, "error");
     } finally {
@@ -86,8 +95,19 @@ export default function StudentLoginPage() {
             />
           </div>
 
+          {accountChoices && accountChoices.length > 0 && (
+            <AccountChooser
+              candidates={accountChoices}
+              onPick={(u) => {
+                setAccountChoices(null);
+                setUsername(u);
+                void doLogin(u);
+              }}
+            />
+          )}
+
           <StudentButton
-            onClick={doLogin}
+            onClick={() => void doLogin()}
             disabled={submitting}
             className="w-full"
           >

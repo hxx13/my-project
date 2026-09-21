@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { loginWeb, WebLoginError, type WebLoginCandidate, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
 import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
+import AccountChooser from "@/components/auth/AccountChooser";
 
 export default function MobileLoginPage() {
   const navigate = useNavigate();
@@ -14,6 +15,8 @@ export default function MobileLoginPage() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 手机号命中多个账号时的候选（历史数据有重号），让用户自己挑一个再重试 */
+  const [accountChoices, setAccountChoices] = useState<WebLoginCandidate[] | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -50,8 +53,9 @@ export default function MobileLoginPage() {
     return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); };
   }, []);
 
-  const doLogin = useCallback(async () => {
-    if (!username.trim() || !password.trim()) {
+  const doLogin = useCallback(async (overrideUsername?: string) => {
+    const loginName = (overrideUsername ?? username).trim();
+    if (!loginName || !password.trim()) {
       setError("请输入账号和密码");
       return;
     }
@@ -59,11 +63,16 @@ export default function MobileLoginPage() {
       setSubmitting(true);
       setError(null);
       // H5 移动端跳过 Turnstile 人机验证（Cloudflare CDN 在移动网络下易超时卡住）
-      const data = await loginWeb(username.trim(), password, undefined, true);
+      const data = await loginWeb(loginName, password, undefined, true);
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("mobile");
       navigate("/m/home", { replace: true });
     } catch (err) {
+      // 手机号绑定了多个账号：列出候选让用户挑，挑完用账号名直接重试（不替他猜）
+      if (err instanceof WebLoginError && err.errorCode === "MULTIPLE_ACCOUNTS") {
+        setAccountChoices(err.candidates ?? []);
+        return;
+      }
       setError(err instanceof Error ? err.message : "登录失败");
     } finally {
       setSubmitting(false);
@@ -474,11 +483,21 @@ export default function MobileLoginPage() {
                   className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                   style={{ background: bg, borderColor: border, color: primary }} />
               </div>
+              {accountChoices && accountChoices.length > 0 && (
+                <AccountChooser
+                  candidates={accountChoices}
+                  onPick={(u) => {
+                    setAccountChoices(null);
+                    setUsername(u);
+                    void doLogin(u);
+                  }}
+                />
+              )}
               {error && (
                 <p className="text-sm text-center rounded-[var(--app-radius-element)] px-3 py-2"
                   style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{error}</p>
               )}
-              <button onClick={doLogin} disabled={submitting}
+              <button onClick={() => void doLogin()} disabled={submitting}
                 className="w-full rounded-[var(--app-radius-element)] py-3 text-base font-medium text-white transition active:scale-[0.98] disabled:opacity-60"
                 style={{ background: `linear-gradient(135deg, ${accent}, ${accent})` }}>
                 {submitting ? "登录中..." : "登 录"}

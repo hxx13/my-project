@@ -216,3 +216,20 @@ export function sortMobileAnnouncementsForDisplay(items: MobileAlertItem[]): Mob
     return String(tb).localeCompare(String(ta));
   });
 }
+
+/** 公告面板：按后端 section 分上下区。GENERAL = 通用公告，其余进我的提醒。 */
+export function splitMobileAnnouncementsBySection(items: MobileAlertItem[]): {
+  general: MobileAlertItem[];
+  personal: MobileAlertItem[];
+} {
+  const general: MobileAlertItem[] = [];
+  const personal: MobileAlertItem[] = [];
+  for (const item of items ?? []) {
+    if (item.section === "GENERAL") general.push(item);
+    else personal.push(item);
+  }
+  return {
+    general: sortMobileAnnouncementsForDisplay(general),
+    personal: sortMobileAnnouncementsForDisplay(personal),
+  };
+}

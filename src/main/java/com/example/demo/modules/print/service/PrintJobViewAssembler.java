@@ -60,6 +60,10 @@ public class PrintJobViewAssembler {
         out.put("note", j.getNote());
         out.put("priority", j.getPriority());
         out.put("status", j.getStatus());
+        // 「还排在打印机队列里」是独立于 status 的一维：直发任务的 status 早就是 PRINTED 了
+        // （lp 退出码 0），纸却可能还在 CUPS 里排着。前端要据此显示撤销入口。
+        // cups_job_id 不暴露 —— 那是实现细节，对使用者和排查都没帮助。
+        out.put("queueState", j.getQueueState());
         out.put("attempts", j.getAttempts());
         out.put("lastError", j.getLastError());
         out.put("createdBy", j.getCreatedBy());

@@ -38,6 +38,8 @@ public class PersonIdentityService {
     private static final String GROUP_STEWARD_CODE = "GROUP_STEWARD";
     /** 业务身份标识稳定码（种子标签 BUSINESS / 业务）——动物订购审核人。 */
     private static final String BUSINESS_CODE = "BUSINESS";
+    /** 兽医身份标识稳定码（种子标签 VETERINARIAN / 兽医，PersonIdentityTagSeedBootstrap 播种）——区域指定兽医的候选人。 */
+    public static final String VETERINARIAN_CODE = "VETERINARIAN";
 
     @Value("${aup.identity.pi-code:PI}")
     private String piCode;
@@ -191,6 +193,28 @@ public class PersonIdentityService {
     /** 鉴权侧：sys_user.id（staff_id 或 aro_user_id）→ personnel.id 字符串；personnel 不存在返回 null。 */
     public String resolveIdByAccount(String accountId) {
         return personnelService.resolveIdByAccount(accountId);
+    }
+
+    /**
+     * 该账号是不是持「兽医」标签的人 —— 区域指定兽医时校验用。
+     *
+     * <p>写在信任边界上的校验：前端候选列表只列兽医，但接口本身是敞开的，
+     * 不校验就能把任意账号指定成区域兽医，健康异常会推给他。
+     */
+    public boolean isVeterinarian(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        String pid = resolveIdByAccount(userId);
+        if (pid == null) {
+            return false;
+        }
+        for (IdentityTagVO tag : getByUser(pid)) {
+            if (tag != null && Objects.equals(tag.getCode(), VETERINARIAN_CODE)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -7,6 +7,7 @@ import {
   alertKindLabel,
   mobileNoticeItemKey,
 } from "./MobileNoticesPanel";
+import { formatNoticeTime } from "./mobileNoticePresentation";
 
 interface MobileFeedbackPanelProps {
   open: boolean;
@@ -138,7 +139,7 @@ export default function MobileFeedbackPanel({
                     />
                   )}
                   <p className="text-[10px] mt-2" style={{ color: "#94a3b8" }}>
-                    {item.createdAt?.slice(0, 16) ?? ""}
+                    {formatNoticeTime(item.createdAt)}
                   </p>
                 </div>
               );

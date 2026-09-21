@@ -12,8 +12,6 @@ const ICON_PURCHASE = '/pages/assets/images/icon-purchase.png';
 const ICON_NOTIFY = '/pages/assets/images/icon-notify.png';
 const ICON_SUPPLIES = '/pages/assets/images/icon-supplies.png';
 const springAuth = require('../../utils/springAuth.js');
-const aroNewsApi = require('../../utils/aroNewsApi.js');
-const mpBulletinApi = require('../../utils/mpBulletinApi.js');
 const pagePermission = require('../../utils/pagePermission.js');
 const { hasMinRole } = require('../../utils/roleAccess.js');
 const { peekPendingBadges, refreshPendingBadges } = require('../../utils/badgeSnapshotStore.js');
@@ -21,6 +19,7 @@ const {
   menuBadgePreferProcessThenApplicant,
   homeMessagesQuickBadgeText,
   studentReviewMenuBadgeText,
+  vetInboxBadgeText,
 } = require('../../utils/pendingBadgeCounts.js');
 const { readCustomNavMetrics } = require('../../utils/customNavMetrics.js');
 const loginBrandingHero = require('../../utils/loginBrandingHero.js');
@@ -68,17 +67,19 @@ Page({
     canPrimaryCageShelf: false,
     canFileTemplates: false,
     badgeStudentReviewText: '',
+    /** 兽医收件箱未读：挂在主入口「笼架」上（与底栏、笼架页顶栏那枚同源） */
+    badgeVetInboxText: '',
     /** 登录页轮播同源：亮/暗图按 08:00—16:30 自动切换 */
     banners: [],
     bannerInterval: 8000,
     heroCarouselEnabled: false,
     heroColorMode: 'light',
     recommendedRooms: RECOMMENDED_ROOMS,
-    newsList: [],
-    activeHomeTab: 'news',
-    newsLoading: false,
-    newsLoaded: false,
-    bulletinList: [],
+    /** 教职工首页「公告」：统一来源 /api/student/mobile/alerts，分两段 */
+    generalBulletins: [],
+    personalBulletins: [],
+    /** 最新公告未读 → 公告区标题红点（同一份 alerts 响应里的 announcementsUnread） */
+    announcementsUnread: false,
     bulletinLoading: false,
     bulletinLoaded: false,
     showPreview: false,
@@ -93,7 +94,6 @@ Page({
     iconNotify: ICON_NOTIFY,
     iconAnimalOrder: ICON_ANIMAL_ORDER,
     iconSupplies: ICON_SUPPLIES,
-    canCreateAnnouncement: false,
     badgeRepairText: '',
     badgePurchaseText: '',
     badgeSuppliesText: '',
@@ -162,8 +162,9 @@ Page({
       { id: 'violations', title: '违规记录', iconSrc: ICON_VIOLATION },
     ],
 
-    /** H5 同款公告通知列表 */
-    studentAnnouncements: [],
+    /** H5 同款「公告通知」列表：通用公告 / 我的提醒 两段 */
+    studentGeneral: [],
+    studentPersonal: [],
     studentAnnouncementsLoading: false,
 
   },
@@ -184,7 +185,6 @@ Page({
     },
   onLoad() {
     this.applyCustomNavMetrics();
-    this.getNewsList();
     void this.loadHeroBranding();
   },
 
@@ -360,26 +360,6 @@ Page({
     });
   },
 
-  async getNewsList() {
-    if (this.data.newsLoading) return;
-    this.setData({ newsLoading: true, newsLoaded: false });
-    try {
-      const list = await aroNewsApi.fetchNewsList();
-      const visible = (Array.isArray(list) ? list : []).filter(
-        (item) => item && (String(item.newsName || '').trim() || String(item.id || '').trim())
-      );
-      this.setData({
-        newsList: visible.slice(0, 5),
-        newsLoaded: true,
-      });
-    } catch (err) {
-      console.warn('[index] 新闻加载失败', err);
-      this.setData({ newsLoaded: true });
-    } finally {
-      this.setData({ newsLoading: false });
-    }
-  },
-
   refreshLoginBar() {
     const token = wx.getStorageSync(springAuth.KEYS.TOKEN);
     const springBound = !!token;
@@ -423,8 +403,8 @@ Page({
       }
     } else {
       this.stopPresenceRealtime();
-      // 教职工：每次回到首页刷新新闻列表
-      this.getNewsList();
+      // 教职工：每次回到首页刷新公告（首帧带 loading，之后静默刷新，避免闪「暂无公告」）
+      void this.loadBulletinList(!this.data.bulletinLoaded);
     }
     if (this._loginBranding) {
       this.applyHeroBannersFromBranding(this._loginBranding);
@@ -451,7 +431,6 @@ Page({
       canQuickSupplies: canQuickSuppliesMall || canQuickSuppliesMine,
       canQuickNotifications: pagePermission.canShowMiniEntry('home', '/package-feature/pages/notifications/index', role, 'STUDENT'),
       canQuickAnimalOrder: pagePermission.canShowMiniEntry('home', '/package-feature/pages/animalOrder/index', role, 'STUDENT'),
-      canCreateAnnouncement: hasMinRole(role, 'PLATFORM_OWNER'),
       canPrimaryRoom: pagePermission.canShowMiniEntry('tabbar', '/pages/room/index', role, 'STUDENT'),
       canPrimaryStudentReview:
         hasMinRole(role, 'STAFF') &&
@@ -470,51 +449,37 @@ Page({
       tabBar.refreshTabs();
     }
     void this.refreshQuickBadges();
-
-    let ui = null;
-    try {
-      const raw = wx.getStorageSync(springAuth.KEYS.USER_INFO);
-      if (raw) {
-        ui = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      }
-    } catch (e) {
-      ui = null;
-    }
-    if (!this._userPickedHomeTab) {
-      this.setData({ activeHomeTab: 'news' });
-    }
   },
 
-  async loadBulletinList() {
-    if (this.data.bulletinLoaded) return;
-    this.setData({ bulletinLoading: true });
+  /**
+   * 教职工「公告」列表。showLoading=true 展示「加载中…」（首次进首页）；
+   * 静默刷新（showLoading=false）保留旧列表，避免每次切回首页闪一次空态。
+   */
+  async loadBulletinList(showLoading) {
+    if (showLoading) {
+      this.setData({ bulletinLoading: true });
+    }
     try {
-      const list = await mpBulletinApi.fetchBulletinList();
-      // 预计算展示文本，避免 WXML 模板中拼接特殊字符
-      const decorated = list.map((item) => ({
-        ...item,
-        labelText: [
-          item.summary || '',
-          item.publishedAtText || '',
-          item.kindLabel || '',
-        ].filter(Boolean).join(' | '),
-      }));
-      this.setData({ bulletinList: decorated, bulletinLoaded: true });
+      // 与学生端同源：/api/student/mobile/alerts，按 section 分通用公告 / 我的提醒
+      const data = await studentAlerts.fetchStudentAlerts();
+      const sections = studentAlerts.splitAnnouncementSections(data);
+      const decorate = studentAlerts.decorateBulletinListItem;
+      this.setData({
+        generalBulletins: (sections.general || []).map(decorate),
+        personalBulletins: (sections.personal || []).map(decorate),
+        announcementsUnread: data.announcementsUnread === true,
+        bulletinLoaded: true,
+      });
     } catch (e) {
       console.warn('[index] bulletin list', e);
-      this.setData({ bulletinList: [], bulletinLoaded: true });
+      // 首次失败清空并复位 bulletinLoaded：切走再切回可重试；静默刷新失败保留旧列表
+      if (showLoading) {
+        this.setData({ generalBulletins: [], personalBulletins: [], bulletinLoaded: false });
+      }
     } finally {
-      this.setData({ bulletinLoading: false });
-    }
-  },
-
-  onHomeTabTap(e) {
-    const tab = e.currentTarget.dataset.tab;
-    if (!tab) return;
-    this._userPickedHomeTab = true;
-    this.setData({ activeHomeTab: tab });
-    if (tab === 'bulletin') {
-      void this.loadBulletinList();
+      if (showLoading) {
+        this.setData({ bulletinLoading: false });
+      }
     }
   },
 
@@ -522,13 +487,16 @@ Page({
     const id = e.currentTarget.dataset.id;
     const kind = e.currentTarget.dataset.kind;
     if (!id || !kind) return;
-    wx.navigateTo({
-      url: `/package-feature/pages/homeBulletinDetail/index?id=${encodeURIComponent(id)}&kind=${encodeURIComponent(kind)}`,
-    });
+    // 看到单条公告即视为已读：服务端确认推进游标后再清红点（与 H5 一致，失败不改本地）
+    studentAlerts.markAnnouncementsViewed()
+      .then(function () { studentAlerts.clearHomeAnnouncementDot(); })
+      .catch(function () {});
+    studentAlerts.navigateToAlertDetail(id, kind);
   },
 
-  goCreateAnnouncement() {
-    wx.navigateTo({ url: '/package-feature/pages/announcementEdit/index' });
+  /** 「公告」tab 更多 → 公告/系统公告聚合页 */
+  onOpenAllBulletins() {
+    wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
   },
 
   applyQuickBadgeTexts(c) {
@@ -561,13 +529,18 @@ Page({
       /** 私聊 + 系统通知；工单待办在报修/采购/物资入口单独计数，避免与消息重复 */
       badgeNotifyText: homeMessagesQuickBadgeText(c),
       badgeStudentReviewText: studentReviewMenuBadgeText(c),
+      badgeVetInboxText: vetInboxBadgeText(c),
+      /** 学生视角上排也有「笼架」入口，同一枚角标一并铺上（studentAlerts 只动 notices，不冲突） */
+      studentUpperRow: (this.data.studentUpperRow || []).map(function (item) {
+        return item.id === 'cage' ? Object.assign({}, item, { badge: vetInboxBadgeText(c) }) : item;
+      }),
     }, () => {
       this.applyPrimarySlots();
     });
   },
 
   applyPrimarySlots() {
-    const { canPrimaryRoom, canPrimaryStudentReview, canPrimaryCageShelf, badgeStudentReviewText } = this.data;
+    const { canPrimaryRoom, canPrimaryStudentReview, canPrimaryCageShelf, badgeStudentReviewText, badgeVetInboxText } = this.data;
     const slots = [];
     if (canPrimaryRoom) {
       slots.push({
@@ -593,6 +566,8 @@ Page({
         id: 'cage',
         title: '笼架',
         iconSrc: ICON_CAGE,
+        /** 兽医收件箱未读：有权限的账号才非 0，其他人不显示角标 */
+        badge: badgeVetInboxText,
       });
     } else {
       slots.push({ id: 'slot3', title: '预留位', placeholder: true });
@@ -658,6 +633,7 @@ Page({
         badgeSuppliesText: '',
         badgeNotifyText: '',
         badgeStudentReviewText: '',
+        badgeVetInboxText: '',
       }, () => {
         this.applyPrimarySlots();
       });
@@ -673,12 +649,6 @@ Page({
     }
   },
 
-  onNewsTap(e) {
-    const id = e.currentTarget.dataset.id;
-    wx.navigateTo({
-      url: `/package-feature/pages/newsDetail/newsDetail?id=${encodeURIComponent(String(id || ''))}`
-    });
-  },
   onRoomTap(e) {
     const id = e.currentTarget.dataset.id;
     const room = this.data.recommendedRooms.find((r) => r.id === id);
@@ -753,12 +723,6 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
-  },
-
-  onHelpTap() {
-    wx.navigateTo({
-      url: `/package-feature/pages/allnews/allnews`
-    });
   },
 
   startPresenceRealtime: function () {
@@ -901,8 +865,14 @@ Page({
     }
     studentAlerts.fetchStudentAlerts().then(function (data) {
       if (!self._indexAlive) return;
-      var list = studentAlerts.buildHomeBulletinPreviewList(data, 4);
-      var patch = { studentAnnouncements: list };
+      var sections = studentAlerts.splitAnnouncementSections(data);
+      var decorate = studentAlerts.decorateBulletinListItem;
+      // 每段最多 4 条，与学生端 H5 首页预览口径一致
+      var patch = {
+        studentGeneral: (sections.general || []).slice(0, 4).map(decorate),
+        studentPersonal: (sections.personal || []).slice(0, 4).map(decorate),
+        announcementsUnread: data.announcementsUnread === true,
+      };
       if (showLoading) {
         patch.studentAnnouncementsLoading = false;
       }
@@ -941,13 +911,15 @@ Page({
     var id = e.currentTarget.dataset.id;
     var kind = e.currentTarget.dataset.kind;
     if (!id || !kind) return;
-    wx.navigateTo({
-      url: '/package-feature/pages/homeBulletinDetail/index?id=' + encodeURIComponent(id) + '&kind=' + encodeURIComponent(kind),
-    });
+    // 看到单条公告即视为已读：服务端确认推进游标后再清红点（与 H5 一致，失败不改本地）
+    studentAlerts.markAnnouncementsViewed()
+      .then(function () { studentAlerts.clearHomeAnnouncementDot(); })
+      .catch(function () {});
+    studentAlerts.navigateToAlertDetail(id, kind);
   },
 
   onStudentOpenAllAnnouncements: function () {
-    wx.navigateTo({ url: '/package-feature/pages/notifications/index?view=bulletins' });
+    wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
   },
 
   /** 访客拦截：未登录时弹提示，返回 true 表示已拦截 */
@@ -979,7 +951,7 @@ Page({
       wx.navigateTo({ url: '/package-feature/pages/studentAccessRecords/index' });
     } else if (id === 'notices') {
       if (isStudentAccount()) {
-        wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
+        wx.navigateTo({ url: '/package-feature/pages/messages/index' });
       } else {
         wx.navigateTo({ url: '/package-feature/pages/staffChatHub/index' });
       }

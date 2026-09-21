@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 export interface NotificationItemProps {
   title: string
   summary: string
-  type: "ARO" | "PLATFORM" | "WORK_ORDER"
+  type: "PLATFORM" | "WORK_ORDER"
   publishDate: string
   isRead: boolean
   onClick: () => void
@@ -13,14 +13,9 @@ export interface NotificationItemProps {
 }
 
 const typeConfig: Record<
-  "ARO" | "PLATFORM" | "WORK_ORDER",
-  { label: string; textClass: string; bgClass: string }
+  string,
+  { label: string; textClass: string; bgClass: string } | undefined
 > = {
-  ARO: {
-    label: "ARO 官方",
-    textClass: "text-[#dc2626]",
-    bgClass: "bg-[#fee2e2]",
-  },
   PLATFORM: {
     label: "平台公告",
     textClass: "text-[#2563eb]",
@@ -33,6 +28,13 @@ const typeConfig: Record<
   },
 }
 
+/** 历史数据可能带已退役的 type（如 ARO），无兜底会读到 undefined 而崩 */
+const FALLBACK_BADGE = {
+  label: "",
+  textClass: "text-[#64748b]",
+  bgClass: "bg-[#f1f5f9]",
+}
+
 export function NotificationItem({
   title,
   summary,
@@ -42,7 +44,7 @@ export function NotificationItem({
   onClick,
   className,
 }: NotificationItemProps) {
-  const badgeConf = typeConfig[type]
+  const badgeConf = typeConfig[type] ?? { ...FALLBACK_BADGE, label: String(type) }
 
   return (
     <button

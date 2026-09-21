@@ -15,6 +15,6 @@ public final class IamOAuthErrorCodes {
     public static final String INVALID_REDIRECT_URI = "INVALID_REDIRECT_URI";
     public static final String INVALID_STATE = "INVALID_STATE";
     public static final String OAUTH_FAILED = "OAUTH_FAILED";
-    /** 仅当 registration.enabled=true 才可能返回；关闭时禁止进入注册分支 */
+    /** 仅当 app.registration.open=true（新人员注册总闸门开启）才可能返回；返回即引导去注册流程 */
     public static final String REGISTRATION_REQUIRED = "REGISTRATION_REQUIRED";
 }

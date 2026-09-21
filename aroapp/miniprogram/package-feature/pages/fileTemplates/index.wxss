@@ -315,6 +315,208 @@
   justify-content: flex-end;
 }
 
+/* ── 打印队列弹窗（逐字照「卡牌打印」页 .cp-panel*，类名换 qt- 前缀） ── */
+.qt-panel {
+  width: 92vw;
+  max-height: 72vh;   /* 按内容撑，别用固定高度——空队列会留一大片空白 */
+  background: #f6f7fb;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  box-shadow: 0 20rpx 40rpx rgba(15, 23, 42, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.qt-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 12rpx;
+  flex-shrink: 0;
+}
+
+.qt-panel-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex-shrink: 0;
+}
+
+.qt-panel-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.qt-panel-sum {
+  flex-shrink: 0;
+  margin-bottom: 12rpx;
+  font-size: 24rpx;
+  color: #334155;
+}
+
+.qt-panel-tabs {
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-bottom: 10rpx;
+}
+
+.qt-panel-tabs-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.qt-panel-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 56rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: #334155;
+  font-size: 25rpx;
+  box-sizing: border-box;
+}
+
+.qt-panel-tab--on {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 6rpx 16rpx rgba(37, 99, 235, 0.28);
+}
+
+.qt-panel-tab-n {
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+
+.qt-panel-tab--on .qt-panel-tab-n {
+  color: #dbeafe;
+}
+
+.qt-panel-hint {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 10rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.qt-panel-hint-txt {
+  flex: 1;
+  min-width: 0;
+}
+
+.qt-panel-scroll {
+  max-height: 56vh;   /* 任务多时才滚，少时面板就矮 */
+  border-radius: 12rpx;
+  background: #fff;
+  overflow: hidden;
+}
+
+.qt-queue-fail {
+  color: #b91c1c;
+}
+
+.qt-queue-empty {
+  padding: 32rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+
+.qt-queue-item {
+  padding: 18rpx 20rpx;
+  border-bottom: 1rpx solid #e8eaf0;
+}
+
+.qt-queue-item:last-child {
+  border-bottom: none;
+}
+
+.qt-queue-item-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.qt-queue-item-status {
+  font-size: 23rpx;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* 「仍卡在打印机队列」：软琥珀底（照 animalOrder .ctx-chip-warn）——这是待处置，不是报错，别用红 */
+.qt-queue-item-stuck {
+  flex-shrink: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 20rpx;
+  line-height: 1.7;
+}
+
+.qt-queue-item-file {
+  flex: 1;
+  min-width: 140rpx;
+  font-size: 25rpx;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qt-queue-item-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.qt-queue-item-note {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.qt-queue-item-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.qt-queue-item-meta {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.qt-queue-item-error {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #b91c1c;
+  line-height: 1.4;
+}
+
+.qt-queue-item-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+
 /* ── 文件卡片：单行主布局，按钮与文件名同行 ── */
 .asset-item-card {
   display: flex;

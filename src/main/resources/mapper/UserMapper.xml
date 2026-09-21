@@ -37,7 +37,7 @@
     </resultMap>
 
     <sql id="User_Column_List">
-        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time, login_fail_count, login_locked_until, contact_email, send_key, wx_pusher_uid, name
+        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time, login_fail_count, login_locked_until, contact_email, send_key, wx_pusher_uid, name, mobile_phone
     </sql>
 
     <select id="findByUsername" resultMap="UserResultMap">
@@ -45,6 +45,14 @@
         FROM sys_user
         WHERE username = #{username}
         LIMIT 1
+    </select>
+
+    <!-- 手机号也能当登录名：账号名仍是 username，这里只是并行的一条查找路径。
+         故意不加 LIMIT 1 —— 历史数据有手机号重号，调用方要拿全表来选账号 / 查重。 -->
+    <select id="findAllByMobilePhone" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE mobile_phone = #{mobilePhone} AND status = 1
     </select>
 
     <select id="findByOpenId" resultMap="UserResultMap">

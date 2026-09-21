@@ -129,8 +129,17 @@ export function PdfPrintCanvas({
     ).then(() => {
       if (readyFiredRef.current) return;
       readyFiredRef.current = true;
-      // 再等一帧，确保布局落定
-      requestAnimationFrame(() => onReadyRef.current?.(pages.map((p) => p.dataUrl)));
+      // 再等一帧，确保布局落定。
+      // rAF 在被遮挡 / 最小化的窗口里会被完全暂停 —— 工位机想挂后台就永远等不到这一帧，
+      // 任务卡在「正在渲染…」直到超时。同时排一个 setTimeout 兜底：可见时仍走原来那一帧。
+      let fired = false;
+      const fire = () => {
+        if (fired) return;
+        fired = true;
+        onReadyRef.current?.(pages.map((p) => p.dataUrl));
+      };
+      requestAnimationFrame(fire);
+      setTimeout(fire, 0);
     });
   }, [pages, totalPages]);
 

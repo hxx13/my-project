@@ -46,27 +46,98 @@ export async function loginWeb(username: string, password: string, turnstileToke
   });
 
   if (!response.data?.success || !response.data?.data?.token) {
-    throw new Error(response.data?.message || "登录失败");
+    const payload = response.data?.data as unknown as WebLoginErrorPayload | null;
+    throw new WebLoginError(response.data?.message || "登录失败", payload ?? undefined);
   }
 
   return response.data.data;
 }
 
+export interface WebLoginCandidate {
+  username: string;
+  name: string;
+}
+
+export interface WebLoginErrorPayload {
+  errorCode?: string;
+  candidates?: WebLoginCandidate[];
+}
+
+/**
+ * 携带结构化业务码的 Web 登录错误。
+ *
+ * 手机号当登录名时可能命中多个账号（历史数据有重号）——后端返回
+ * errorCode=MULTIPLE_ACCOUNTS + candidates，登录页据此让用户挑一个再重试，
+ * 而不是替用户猜（猜错了密码必然不匹配，用户只会看到莫名其妙的"密码错误"）。
+ */
+export class WebLoginError extends Error {
+  readonly errorCode?: string;
+  readonly candidates?: WebLoginCandidate[];
+  constructor(message: string, payload?: WebLoginErrorPayload) {
+    super(message);
+    this.name = "WebLoginError";
+    this.errorCode = payload?.errorCode;
+    this.candidates = payload?.candidates;
+  }
+}
+
 /** IAM OAuth2 授权码登录（替换原 CAS ticket 用户登录） */
+export interface OAuthLoginErrorPayload {
+  errorCode?: string;
+  idpUid?: string;
+  jobNumber?: string;
+}
+
+/** 携带结构化业务码/引导字段的 OAuth 登录错误，供回调页按 errorCode 分流 */
+export class OAuthLoginError extends Error {
+  readonly errorCode?: string;
+  readonly idpUid?: string;
+  readonly jobNumber?: string;
+  constructor(message: string, payload?: OAuthLoginErrorPayload) {
+    super(message);
+    this.name = "OAuthLoginError";
+    this.errorCode = payload?.errorCode;
+    this.idpUid = payload?.idpUid;
+    this.jobNumber = payload?.jobNumber;
+  }
+}
+
 export async function loginOAuth(code: string, state: string, redirectUri: string): Promise<AuthData> {
-  const response = await axios.post<Result<AuthData & { errorCode?: string }>>("/api/auth/login/oauth", {
+  const response = await axios.post<Result<AuthData & { errorCode?: string; idpUid?: string; jobNumber?: string }>>("/api/auth/login/oauth", {
     code,
     state,
     redirectUri,
   });
   if (!response.data?.success || !(response.data.data as AuthData | undefined)?.token) {
-    const errData = response.data?.data as { errorCode?: string } | undefined;
+    const errData = response.data?.data as { errorCode?: string; idpUid?: string; jobNumber?: string } | undefined;
     // errorCode 为业务码（如 PERSON_NOT_FOUND），不是授权码
     const codeHint = errData?.errorCode ? ` [${errData.errorCode}]` : "";
-    const msg = (response.data?.message || "统一认证登录失败") + codeHint;
-    throw new Error(redactOAuthSecretsInText(msg));
+    const msg = redactOAuthSecretsInText((response.data?.message || "统一认证登录失败") + codeHint);
+    throw new OAuthLoginError(msg, {
+      errorCode: errData?.errorCode,
+      idpUid: errData?.idpUid,
+      jobNumber: errData?.jobNumber,
+    });
   }
   return response.data.data as AuthData;
+}
+
+/** 全新用户注册（受 app.registration.open 总闸门控制；idpUid 用于统一认证绑定） */
+export async function registerNewUser(body: {
+  username: string;
+  name: string;
+  mobilePhone: string;
+  gender: number;
+  jobNumber?: string;
+  email?: string;
+  password: string;
+  idpUid?: string;
+}): Promise<AuthData> {
+  const response = await axios.post<Result<AuthData>>("/api/auth/register/new", body);
+  if (!response.data?.success || !response.data?.data?.token) {
+    throw new Error(response.data?.message || "注册失败");
+  }
+  return response.data.data;
 }
 
 /** @deprecated 用户侧 CAS 已下线；保留类型常量兼容旧引用时请改 loginOAuth */

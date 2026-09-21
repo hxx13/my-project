@@ -9,7 +9,7 @@ import MobileNoticeSuppressActions from "./MobileNoticeSuppressActions";
 import {
   MOBILE_NOTICE_LIST_CARD_STYLE,
 } from "./mobileNoticePresentation";
-import { resolveExemptAlertTitle, sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
+import { resolveExemptAlertTitle, sortMobileAnnouncementsForDisplay, splitMobileAnnouncementsBySection } from "./mobileExemptAlertHelpers";
 import "./mobile-notice-panel.css";
 
 export { alertKindLabel, alertKindColors } from "./mobileNoticePresentation";
@@ -69,6 +69,7 @@ export default function MobileNoticesPanel({
   if (!open) return null;
 
   const sortedAlerts = sortMobileAnnouncementsForDisplay(alerts);
+  const { general, personal } = splitMobileAnnouncementsBySection(alerts);
   const focusedItem = viewKey ? sortedAlerts.find((a) => itemKey(a) === viewKey) : null;
   const isDetailView = Boolean(focusedItem);
 
@@ -95,6 +96,31 @@ export default function MobileNoticesPanel({
         return t.length > 12 ? `${t.slice(0, 12)}…` : t;
       })()
     : "通知公告";
+
+  const renderListSection = (title: string, list: MobileAlertItem[]) => {
+    if (list.length === 0) return null;
+    return (
+      <div>
+        <p className="px-1 pb-1.5 text-[13px] font-semibold" style={{ color: "#646566" }}>
+          {title}
+        </p>
+        <div style={MOBILE_NOTICE_LIST_CARD_STYLE}>
+          {list.map((item, idx) => {
+            const key = itemKey(item);
+            return (
+              <MobileNoticeListRow
+                key={key}
+                item={item}
+                html5PrivilegeBypass={html5PrivilegeBypass}
+                bordered={idx > 0}
+                onSelect={() => openDetail(key)}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const panel = (
     <div
@@ -154,19 +180,9 @@ export default function MobileNoticesPanel({
             fullBleed
           />
         ) : sortedAlerts.length > 0 ? (
-          <div style={MOBILE_NOTICE_LIST_CARD_STYLE}>
-            {sortedAlerts.map((item, idx) => {
-              const key = itemKey(item);
-              return (
-                <MobileNoticeListRow
-                  key={key}
-                  item={item}
-                  html5PrivilegeBypass={html5PrivilegeBypass}
-                  bordered={idx > 0}
-                  onSelect={() => openDetail(key)}
-                />
-              );
-            })}
+          <div className="flex flex-col gap-2.5">
+            {renderListSection("通用公告", general)}
+            {renderListSection("我的提醒", personal)}
           </div>
         ) : (
           <div

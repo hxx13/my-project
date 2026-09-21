@@ -204,6 +204,7 @@ export default function StudentExamPage() {
       {previewMaterialId != null && (
         <PdfPreviewDialog
           title={materials.find((m) => m.id === previewMaterialId)?.title ?? "学习资料"}
+          fileName={`${materials.find((m) => m.id === previewMaterialId)?.title ?? "学习资料"}.pdf`}
           fetchPdf={() => fetchLearningMaterialFile(previewMaterialId)}
           onClose={() => setPreviewMaterialId(null)}
         />

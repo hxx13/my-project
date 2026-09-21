@@ -6,8 +6,11 @@ import com.example.demo.modules.personnel.dto.PersonnelFilter;
 public class PersonnelSqlProvider {
 
     private static final String COLUMNS = "SELECT p.id, p.name, p.staff_id AS staffId, p.aro_user_id AS aroUserId, " +
-            "p.job_number AS jobNumber, p.department_name AS departmentName, p.project_group_name AS projectGroupName, " +
-            "p.institution_id AS institutionId, p.user_type_names AS userTypeNames, p.head, p.gender, " +
+            "p.job_number AS jobNumber, " +
+            "COALESCE(d.name, p.department_name) AS departmentName, " +
+            "CASE WHEN p.project_group_name LIKE '%,%' THEN p.project_group_name ELSE COALESCE(g.name, p.project_group_name) END AS projectGroupName, " +
+            "p.institution_id AS institutionId, p.user_type_names AS userTypeNames, " +
+            "COALESCE(NULLIF(p.head_override, ''), p.head) AS head, p.head_override AS headOverride, p.gender, " +
             "p.mobile_phone AS mobilePhone, p.email, p.is_school AS isSchool, " +
             "p.allowed_rooms_display_zh AS allowedRoomsDisplayZh, p.has_official_room_permission AS hasOfficialRoomPermission, " +
             "p.role AS role, su_staff.status AS status, su_staff.username AS staffUsername, " +
@@ -16,7 +19,7 @@ public class PersonnelSqlProvider {
             "su_staff.create_time AS staffCreateTime, " +
             "nb_email.target_value AS contactEmail, " +
             "nb_sc.target_value AS sendKey, " +
-            "nb_wx.target_value AS wxPusherUid ";
+            "nb_wx.target_value AS wxPusherUid, p.deleted_at AS deletedAt ";
 
     private static final String FROM = "FROM personnel p " +
             "LEFT JOIN sys_user su_staff ON su_staff.id = p.staff_id " +
@@ -24,7 +27,9 @@ public class PersonnelSqlProvider {
             "LEFT JOIN sys_user su_student ON su_student.id = p.aro_user_id " +
             "LEFT JOIN personnel_notify_binding nb_email ON nb_email.personnel_id = p.id AND nb_email.channel_code = 'EMAIL' " +
             "LEFT JOIN personnel_notify_binding nb_sc    ON nb_sc.personnel_id    = p.id AND nb_sc.channel_code = 'SERVER_CHAN' " +
-            "LEFT JOIN personnel_notify_binding nb_wx    ON nb_wx.personnel_id    = p.id AND nb_wx.channel_code = 'WXPUSHER' ";
+            "LEFT JOIN personnel_notify_binding nb_wx    ON nb_wx.personnel_id    = p.id AND nb_wx.channel_code = 'WXPUSHER' " +
+            "LEFT JOIN department d ON d.id = p.department_id " +
+            "LEFT JOIN project_group g ON g.id = p.project_group_id ";
 
     public static String search(PersonnelFilter f) {
         return COLUMNS + FROM + where(f) + " ORDER BY p.id ASC LIMIT #{limit} OFFSET #{offset}";
@@ -55,10 +60,18 @@ public class PersonnelSqlProvider {
         } else if ("nosys".equals(f.getAccountType())) {
             sb.append("AND (p.staff_id IS NULL OR p.staff_id = '') ");
         }
-        if (hasText(f.getProjectGroupName())) {
+        // id 分支覆盖「字典已改名、人员文本还是旧名」（这时按名字对不上，只有 id 认得出）；
+        // 名字分支覆盖「多组人员」——实测 14 行 project_group_name 是逗号连接的多组串，project_group_id 为空。
+        // 两者互补，缺任一个都会静默筛丢人。
+        if (f.getProjectGroupId() != null) {
+            sb.append("AND (p.project_group_id = #{projectGroupId} ")
+              .append("OR FIND_IN_SET(#{projectGroupName}, REPLACE(p.project_group_name, ', ', ',')) > 0) ");
+        } else if (hasText(f.getProjectGroupName())) {
             sb.append("AND p.project_group_name = #{projectGroupName} ");
         }
-        if (hasText(f.getDepartmentName())) {
+        if (f.getDepartmentId() != null) {
+            sb.append("AND (p.department_id = #{departmentId} OR p.department_name = #{departmentName}) ");
+        } else if (hasText(f.getDepartmentName())) {
             sb.append("AND p.department_name = #{departmentName} ");
         }
         if (hasText(f.getRole())) {
@@ -75,6 +88,13 @@ public class PersonnelSqlProvider {
         }
         if (f.getIdentityTagId() != null) {
             sb.append("AND EXISTS (SELECT 1 FROM person_identity pi WHERE pi.user_id = CAST(p.id AS CHAR) AND pi.tag_id = #{identityTagId}) ");
+        }
+        // 回收站：默认只看未删除；trashOnly=true 时只看回收站里的。
+        // 这是"软删除"能成立的前提 —— 删掉的人不能还混在正常列表里。
+        if (Boolean.TRUE.equals(f.getTrashOnly())) {
+            sb.append("AND p.deleted_at IS NOT NULL ");
+        } else {
+            sb.append("AND p.deleted_at IS NULL ");
         }
         return sb.toString();
     }

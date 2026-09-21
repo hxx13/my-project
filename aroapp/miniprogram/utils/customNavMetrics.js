@@ -25,10 +25,19 @@ function readCustomNavMetrics() {
   // 之前错误地用 (menuTop - statusBarHeight)*2 + navContentHeight，
   // 漏掉了 statusBarHeight，导致 placeholder 比实际 nav bar 矮一整段状态栏高度
   var navBarHeight = statusBarHeight + navContentHeight;
+  /*
+    胶囊占位：右上角那颗胶囊是系统层，盖在页面之上。右侧插槽若只写 right: 20rpx，
+    按钮会正好落在胶囊底下被吃掉（2026-09-18 用户报「图例按钮被遮住」）。
+    这里把它左边缘到屏幕右侧的距离算出来，插槽按它让位。
+  */
+  var windowWidth = (sys && (sys.windowWidth || sys.screenWidth)) || 375;
+  var menuLeft = (menu && typeof menu.left === 'number' && menu.left > 0) ? menu.left : 0;
+  var menuRightInset = menuLeft > 0 ? Math.round(windowWidth - menuLeft) : 96;
   return {
     statusBarHeight: statusBarHeight,
     navBarHeight: navBarHeight,
     navContentHeight: navContentHeight,
+    menuRightInset: menuRightInset,
   };
 }
 

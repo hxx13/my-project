@@ -1,11 +1,12 @@
 const springAuth = require('../utils/springAuth.js');
 const { buildTabList, activeIndexForRoute } = require('../utils/tabBarHelper.js');
-const { aggregateTabBarPending } = require('../utils/pendingBadgeCounts.js');
+const { aggregateTabBarPending, vetInboxBadgeText } = require('../utils/pendingBadgeCounts.js');
 const { refreshPendingBadges, peekPendingBadges } = require('../utils/badgeSnapshotStore.js');
 const { fetchMiniPreferences } = require('../utils/miniPreferencesApi.js');
 const { parseTwinOverview, roomWatchHasPresence } = require('../utils/roomPresenceDot.js');
 
 const ROOM_PATH = '/pages/room/index';
+const CAGE_PATH = '/package-feature/pages/studentCageShelf/index';
 const DOT_PENDING_PATHS = ['/pages/index/index', '/pages/mine/index'];
 
 Component({
@@ -27,13 +28,15 @@ Component({
   },
 
   methods: {
-    mergeTabRow(tab, pendingDot, roomPresenceDot) {
+    mergeTabRow(tab, pendingDot, roomPresenceDot, vetInboxText) {
       const isRoom = tab.path === ROOM_PATH;
       const isPendingTab = DOT_PENDING_PATHS.indexOf(tab.path) >= 0;
       const tabDot = (isPendingTab && pendingDot) || (isRoom && roomPresenceDot);
       return {
         ...tab,
         tabDot: !!tabDot,
+        /** 兽医收件箱未读：挂在「笼架」这项上（数字角标走 van-tabbar-item 的 info） */
+        tabInfo: tab.path === CAGE_PATH ? vetInboxText || '' : '',
       };
     },
 
@@ -47,21 +50,24 @@ Component({
       if (!token) {
         this._lastPendingDot = false;
         this._lastRoomDot = false;
-        const tabList = buildTabList().map((t) => this.mergeTabRow(t, false, false));
+        this._lastVetInboxText = '';
+        const tabList = buildTabList().map((t) => this.mergeTabRow(t, false, false, ''));
         this.setData({ tabList, active });
         return;
       }
 
       const snap = peekPendingBadges();
       let pendingDot = false;
+      let vetInboxText = this._lastVetInboxText || '';
       if (snap) {
         pendingDot = aggregateTabBarPending(snap) > 0;
+        vetInboxText = vetInboxBadgeText(snap);
       } else if (this._lastPendingDot === true) {
         pendingDot = true;
       }
 
       const roomDot = this._lastRoomDot === true;
-      const tabList = buildTabList().map((t) => this.mergeTabRow(t, pendingDot, roomDot));
+      const tabList = buildTabList().map((t) => this.mergeTabRow(t, pendingDot, roomDot, vetInboxText));
       this.setData({ tabList, active });
 
       const seq = (this._tabBadgeSeq = (this._tabBadgeSeq || 0) + 1);
@@ -79,13 +85,17 @@ Component({
         .then(([counts, prefs, overviewRes]) => {
           if (seq !== this._tabBadgeSeq) return;
           const pendingDot2 = aggregateTabBarPending(counts) > 0;
+          const vetInboxText2 = vetInboxBadgeText(counts);
           const ov = parseTwinOverview(overviewRes);
           const selections = (prefs && prefs.roomWatch && prefs.roomWatch.selections) || [];
           const roomPresenceDot =
             selections.length > 0 && ov.ok && roomWatchHasPresence(ov.rows, selections);
           this._lastPendingDot = pendingDot2;
           this._lastRoomDot = roomPresenceDot;
-          const tabList2 = buildTabList().map((t) => this.mergeTabRow(t, pendingDot2, roomPresenceDot));
+          this._lastVetInboxText = vetInboxText2;
+          const tabList2 = buildTabList().map((t) =>
+            this.mergeTabRow(t, pendingDot2, roomPresenceDot, vetInboxText2),
+          );
           const active2 = route ? activeIndexForRoute(route) : 0;
           this.setData({ tabList: tabList2, active: active2 });
         })

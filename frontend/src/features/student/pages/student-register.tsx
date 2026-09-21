@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle } from "lucide-react";
 import { QrUploader } from "../components/qr";
-import { StudentButton, StudentInput, StudentCard, showToast } from "../components/ui";
+import { StudentButton, StudentInput, StudentCard, showToast, Tabs } from "../components/ui";
 import { authStorage } from "@/features/auth/authStorage";
 import { registerStudent, verifyUserId } from "../api";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
+import NewUserRegisterForm from "../components/NewUserRegisterForm";
 
 type RegisterStep = "qr" | "confirm" | "credentials" | "success";
 
@@ -18,6 +19,10 @@ interface VerifiedData {
 
 export default function StudentRegisterPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<"existing" | "new">(
+    searchParams.get("mode") === "new" ? "new" : "existing"
+  );
   const [step, setStep] = useState<RegisterStep>("qr");
   const [verifiedData, setVerifiedData] = useState<VerifiedData | null>(null);
 
@@ -140,6 +145,23 @@ export default function StudentRegisterPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--student-canvas-soft)] p-4">
       <StudentCard padding="lg" className="w-full max-w-md">
+        {/* 两条路：老用户用 19 位编号绑定；新用户填资料注册（受后端 app.registration.open 总闸门控制） */}
+        <Tabs
+          variant="pills"
+          tabs={[
+            { id: "existing", label: "已有人员编号" },
+            { id: "new", label: "我是新用户" },
+          ]}
+          activeTab={mode}
+          onTabChange={(id) => setMode(id as "existing" | "new")}
+        />
+
+        {mode === "new" ? (
+          <div className="mt-6">
+            <NewUserRegisterForm />
+          </div>
+        ) : (
+          <>
         {step === "qr" && (
           <div className="flex flex-col items-center text-center">
             <h1 className="text-2xl font-bold text-[var(--student-ink)]">学生注册</h1>
@@ -316,6 +338,8 @@ export default function StudentRegisterPage() {
             <h1 className="mt-6 text-2xl font-bold text-[var(--student-ink)]">注册成功！</h1>
             <p className="mt-2 text-sm text-[var(--student-mute)]">正在跳转...</p>
           </div>
+        )}
+          </>
         )}
       </StudentCard>
     </div>

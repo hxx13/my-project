@@ -5,6 +5,7 @@ import {
   fetchGlobalStatusAlertConfig,
   fetchStatusAlertConfigRegions,
   saveGlobalStatusAlertConfig,
+  statusAlertRuleKey,
   type CageStatusAlertRegionNode,
   type CageStatusAlertRule,
 } from "@/api/domains/cageShelf.api";
@@ -14,6 +15,7 @@ import { isNonViolationStatus } from "@/features/cage-shelf/constants";
 import { ActionPicker, SettingsSection, SettingsSwitch, StartValuePicker } from "./SettingsPrimitives";
 import RegionAlertRuleDialog, {
   AlertRuleReadonlyRow,
+  ruleDisplayLabel,
   type RegionAlertInheritFrom,
 } from "./RegionAlertRuleDialog";
 
@@ -91,7 +93,7 @@ function GlobalRuleRow({
   const threshold = (raw: string) => Math.max(0, parseInt(raw, 10) || 0);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5">
-      <span className="w-[5.5rem] shrink-0 text-[11px] font-semibold text-[var(--twin-ink)]">{rule.statusLabel}</span>
+      <span className="w-[5.5rem] shrink-0 text-[11px] font-semibold text-[var(--twin-ink)]">{ruleDisplayLabel(rule)}</span>
       <label className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--twin-mute)]">
         阈值
         <input
@@ -111,7 +113,7 @@ function GlobalRuleRow({
         <StartValuePicker value={rule.startValue ?? 1} onChange={(v) => onChange({ startValue: v })} />
       </div>
       <span className="min-w-0 flex-1" />
-      <SettingsSwitch checked={rule.enabled} onChange={(v) => onChange({ enabled: v })} label={rule.statusLabel} />
+      <SettingsSwitch checked={rule.enabled} onChange={(v) => onChange({ enabled: v })} label={ruleDisplayLabel(rule)} />
     </div>
   );
 }
@@ -178,7 +180,8 @@ export default function CageAlertSettings() {
     setGlobalSaving(true);
     try {
       await saveGlobalStatusAlertConfig(
-        globalRules.map(({ statusCode, thresholdDays, action, enabled, startValue }) => ({ statusCode, thresholdDays, action, enabled, startValue })),
+        globalRules.map(({ statusCode, notifyTarget, thresholdDays, action, enabled, startValue }) =>
+          ({ statusCode, notifyTarget, thresholdDays, action, enabled, startValue })),
       );
       setGlobalInitial(globalRules);
       toast.success("全局告警阈值已保存");
@@ -276,8 +279,8 @@ export default function CageAlertSettings() {
         title="全局默认阈值"
         description={
           canEditGlobal
-            ? "五个特殊状态持续超过阈值天数即告警（0 = 一出现就触发）。各区域未单独配置时按此生效；保存即全量替换五行。"
-            : "五个特殊状态的全局默认阈值，各区域未单独配置时按此生效。仅超级管理员可修改。"
+            ? "每个特殊状态持续超过阈值天数即告警（0 = 一出现就触发）。健康异常分「通知兽医」「通知笼位所有者」两行，各自阈值与计时起点；各区域未单独配置时按此生效，保存即全量替换。"
+            : "特殊状态的全局默认阈值，各区域未单独配置时按此生效。仅超级管理员可修改。"
         }
       >
         {globalLoading ? (
@@ -293,10 +296,10 @@ export default function CageAlertSettings() {
             <div className="space-y-1.5">
               {globalRules.map((r) => (
                 <GlobalRuleRow
-                  key={r.statusCode}
+                  key={statusAlertRuleKey(r)}
                   rule={r}
                   onChange={(patch) =>
-                    setGlobalRules((g) => g.map((x) => (x.statusCode === r.statusCode ? { ...x, ...patch } : x)))
+                    setGlobalRules((g) => g.map((x) => (statusAlertRuleKey(x) === statusAlertRuleKey(r) ? { ...x, ...patch } : x)))
                   }
                 />
               ))}
@@ -315,7 +318,7 @@ export default function CageAlertSettings() {
         ) : (
           <div className="space-y-2">
             {globalRules.map((r) => (
-              <AlertRuleReadonlyRow key={r.statusCode} rule={r} />
+              <AlertRuleReadonlyRow key={statusAlertRuleKey(r)} rule={r} />
             ))}
           </div>
         )}

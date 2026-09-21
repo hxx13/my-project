@@ -26,7 +26,6 @@ Page({
   data: {
     hasToken: false,
     isStudentView: false,
-    canAnnouncementAdmin: false,
     canReleaseAdmin: false,
     showEnvSwitcher: false,
     currentEnvLabel: '',
@@ -52,9 +51,6 @@ Page({
       hasToken: Boolean(token),
       isStudentView: studentView,
       // 管理员功能仅按角色判定（统一权限体系）
-      canAnnouncementAdmin:
-        hasMinRole(role, 'ADMIN') &&
-        pagePermission.canShowMiniEntry('settings', '/package-feature/pages/announcementAdmin/index', role, 'ADMIN'),
       canReleaseAdmin:
         hasMinRole(role, 'PLATFORM_OWNER') &&
         pagePermission.canShowMiniEntry('settings', '/package-feature/pages/releaseNotesAdmin/index', role, 'PLATFORM_OWNER'),
@@ -122,10 +118,6 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-feature/pages/settingsRoomWatch/index' });
-  },
-
-  goAnnouncementAdmin: function () {
-    wx.navigateTo({ url: '/package-feature/pages/announcementAdmin/index' });
   },
 
   goReleaseNotesAdmin: function () {

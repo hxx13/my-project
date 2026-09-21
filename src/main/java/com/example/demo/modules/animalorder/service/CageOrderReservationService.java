@@ -58,6 +58,12 @@ import java.util.Set;
 public class CageOrderReservationService {
 
     private static final Logger log = LoggerFactory.getLogger(CageOrderReservationService.class);
+
+    /**
+     * 规格映射里的「规格」键：值取**最后一级物品名**。
+     * 本部署的规格卡片名就是周龄（「7-8W」），所以它映射到 animal_week_age。
+     */
+    static final String SPEC_LEVEL_KEY = "规格";
     private static final String MODULE = AnimalOrderCageConfigSeed.MODULE;
     /** 使用时间是 STRING 字段，格式对齐 ARO cageBoxVo.createTime（如 2026-03-09 08:27:36）。 */
     private static final DateTimeFormatter USE_TIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -138,6 +144,31 @@ public class CageOrderReservationService {
             log.warn("[cage-reservation] 规格字段映射配置解析失败，按空处理: {}", e.getMessage());
             return Map.of();
         }
+    }
+
+    /**
+     * 规格 → 笼位字段映射的解析（纯函数，便于单测）。
+     *
+     * <p>键命中**规格模板名**时取该选项值（「性别: 雌性」→ animal_sex）；
+     * 键为 {@link #SPEC_LEVEL_KEY}「规格」时取**最后一级物品名**（卡片名「7-8W」→ animal_week_age）。
+     * 后者是周龄的载体：周龄不是规格模板，而是规格卡片本身的名字，之前只匹配模板名所以永远命中不了。
+     *
+     * <p>物品名取不到时 {@link #chainNodeName} 会退化成「ID:12」，那不是周龄，不写。
+     */
+    static Map<String, Object> resolveSpecFields(Map<String, String> mapping,
+                                                 String templateName, String label, String specNodeName) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (mapping == null || mapping.isEmpty()) return out;
+        for (Map.Entry<String, String> e : mapping.entrySet()) {
+            String canonical = e.getValue() == null ? "" : e.getValue().trim();
+            if (canonical.isEmpty()) continue;
+            if (SPEC_LEVEL_KEY.equals(e.getKey())) {
+                if (notBlank(specNodeName) && !specNodeName.startsWith("ID:")) out.put(canonical, specNodeName);
+            } else if (notBlank(label) && e.getKey().equals(templateName)) {
+                out.put(canonical, label);
+            }
+        }
+        return out;
     }
 
     // ==================== 候选池 ====================
@@ -347,12 +378,10 @@ public class CageOrderReservationService {
             // 性别识别不出来就不猜男/女，数量账交给饲养端到货时点
         }
         written.put("experimenter_name", reserverName);
-        // 规格模板 → 字段映射：命中哪个模板就把该规格选中的值写进对应笼位字段
-        for (Map.Entry<String, String> e : specFieldMapping().entrySet()) {
-            if (e.getKey().equals(spec.templateName()) && notBlank(e.getValue()) && notBlank(spec.label())) {
-                written.put(e.getValue(), spec.label());
-            }
-        }
+        // 规格模板 → 字段映射：命中哪个模板就把该规格选中的值写进对应笼位字段；
+        // 「规格」键取最后一级物品名（卡片名即周龄，如「7-8W」→ animal_week_age）
+        written.putAll(resolveSpecFields(specFieldMapping(), spec.templateName(), spec.label(),
+                chainNodeName(refDataId, "GENOTYPE")));
 
         CageOrderReservation row = new CageOrderReservation();
         row.setAnimalCageId(animalCageId);
@@ -441,20 +470,20 @@ public class CageOrderReservationService {
         // 规格补写 + 数量调整 + 品系/来源 合并成一次写入，只把**真正改动**的字段回写笼位表单
         String strain = chainNodeName(refDataId, "ANIMAL_STRAIN");
         String supplier = chainNodeName(refDataId, "SUPPLIER");
+        // 「规格」键那一维（本部署=周龄）：随物品确定性写入，不依赖规格是否被补写
+        Map<String, Object> specNodeFields = resolveSpecFields(specFieldMapping(), null, null,
+                chainNodeName(refDataId, "GENOTYPE"));
         boolean qtyChanged = !Objects.equals(r.getQuantity(), qty);
-        boolean hasRefInfo = notBlank(strain) || notBlank(supplier);
+        boolean hasRefInfo = notBlank(strain) || notBlank(supplier) || !specNodeFields.isEmpty();
         if (specAdopted || qtyChanged || hasRefInfo) {
             Map<String, Object> written = readWritten(r);
             Map<String, Object> patch = new LinkedHashMap<>();
             if (specAdopted) {
                 SpecParts parsed = SpecParts.parse(spec);
                 if (notBlank(parsed.sex())) { written.put("animal_sex", parsed.sex()); patch.put("animal_sex", parsed.sex()); }
-                for (Map.Entry<String, String> e : specFieldMapping().entrySet()) {
-                    if (e.getKey().equals(parsed.templateName()) && notBlank(e.getValue()) && notBlank(parsed.label())) {
-                        written.put(e.getValue(), parsed.label());
-                        patch.put(e.getValue(), parsed.label());
-                    }
-                }
+                Map<String, Object> parsedFields = resolveSpecFields(specFieldMapping(), parsed.templateName(), parsed.label(), null);
+                written.putAll(parsedFields);
+                patch.putAll(parsedFields);
                 r.setSpecKey(spec);
                 r.setSex(parsed.sex());   // 先落性别，下面的数量列才能按新性别写对
             }
@@ -468,6 +497,10 @@ public class CageOrderReservationService {
             }
             if (notBlank(strain)) { written.put("animal_strain_name", strain); patch.put("animal_strain_name", strain); }
             if (notBlank(supplier)) { written.put("animal_come_from", supplier); patch.put("animal_come_from", supplier); }
+            for (Map.Entry<String, Object> e : specNodeFields.entrySet()) {
+                written.put(e.getKey(), e.getValue());
+                patch.put(e.getKey(), e.getValue());
+            }
             r.setWrittenJson(toJson(written));
             reservationMapper.updateSpecQuantityWritten(
                     r.getId(), r.getSpecKey(), r.getSex(), r.getQuantity(), strain, r.getWrittenJson());
@@ -776,19 +809,29 @@ public class CageOrderReservationService {
         Set<Long> out = new LinkedHashSet<>();
         try {
             for (CageOpRequest req : opRequestMapper.selectByStatus("pending", null)) {
-                if (req.getSourceAnimalCageId() != null) out.add(req.getSourceAnimalCageId());
-                String json = req.getTargetAnimalCageIds();
-                if (json != null && !json.isBlank()) {
-                    for (Object v : objectMapper.readValue(json, List.class)) {
-                        Long id = toLong(v);
-                        if (id != null) out.add(id);
-                    }
-                }
+                addPendingOpCageIds(out, req, objectMapper);
             }
         } catch (Exception e) {
             log.warn("[cage-reservation] 读取分笼/转移待审失败（按无待审处理）: {}", e.getMessage());
         }
         return out;
+    }
+
+    /**
+     * 单条请求占住的笼位：老列源 + 老列目标 + 每对 pair 的源与目标。
+     * 多源批量单老列只写 pairs[0].source，其余源笼位也得锁住（否则还能被别人拿去预定）。
+     * pairs 为空（存量单）时 {@link CageOpRequest#pairCageIds()} 退空，退化成老列行为。
+     */
+    static void addPendingOpCageIds(Set<Long> out, CageOpRequest req, ObjectMapper objectMapper) throws Exception {
+        if (req.getSourceAnimalCageId() != null) out.add(req.getSourceAnimalCageId());
+        String json = req.getTargetAnimalCageIds();
+        if (json != null && !json.isBlank()) {
+            for (Object v : objectMapper.readValue(json, List.class)) {
+                Long id = toLong(v);
+                if (id != null) out.add(id);
+            }
+        }
+        out.addAll(req.pairCageIds());
     }
 
     private boolean sameAup(CageCellDetail cage, AupRecord aup) {        if (cage.getAupId() != null && Objects.equals(cage.getAupId(), aup.getId())) return true;

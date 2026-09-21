@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,10 +67,11 @@ public class CageAlertConfigService {
     /**
      * 一条待落库的阈值规则（thresholdDays/action/enabled/startValue 可为 null，由 {@link #normalizeRules} 校验并报错）。
      *
-     * @param startValue 计时起点：1 = 出现 1 开始（1→0 结束，默认）；0 = 出现 0 开始（0→1 结束）
+     * @param notifyTarget 通知对象：DEFAULT / VET / OCCUPANT —— 健康异常的两个对象各有自己的规则
+     * @param startValue   计时起点：1 = 出现 1 开始（1→0 结束，默认）；0 = 出现 0 开始（0→1 结束）
      */
-    public record Rule(String statusCode, Integer thresholdDays, String action, Boolean enabled,
-                       Integer startValue) {
+    public record Rule(String statusCode, String notifyTarget, Integer thresholdDays, String action,
+                       Boolean enabled, Integer startValue) {
     }
 
     /**
@@ -89,18 +91,19 @@ public class CageAlertConfigService {
     // ── 全局默认 ──
 
     /**
-     * 全局默认：五个固定状态 + 特殊饲养明细（码表项，各算一个独立状态）。
-     * statusCode 恒按 {@link CageAlertRuleService#configurableStatusCodes()} 顺序返回。
+     * 全局默认：每个可配置的 (状态, 通知对象) 组合一行 —— 五个固定状态 + 特殊饲养明细（码表项）
+     * 各一行默认对象，健康异常两行（兽医 / 笼位所有者）。
+     * 顺序恒按 {@link CageAlertRuleService#configurableRuleKeys()}。
      */
     public List<Map<String, Object>> globalView() {
         Map<String, Map<String, Object>> rows = defaultRows();
         Map<String, String> labels = alertRuleService.configurableLabels();
-        List<String> codes = alertRuleService.configurableStatusCodes();
-        List<Map<String, Object>> out = new ArrayList<>(codes.size());
-        for (String code : codes) {
-            Map<String, Object> r = rows.get(code);
+        List<CageAlertRuleService.StatusTarget> keys = alertRuleService.configurableRuleKeys();
+        List<Map<String, Object>> out = new ArrayList<>(keys.size());
+        for (CageAlertRuleService.StatusTarget k : keys) {
+            Map<String, Object> r = rows.get(CageStatusIntervalService.ruleKey(k.statusCode(), k.notifyTarget()));
             // 缺行（新加的码表项还没种默认行）回一个安全默认：阈值 0、仅高亮。总比 NPE 强。
-            out.add(entry(code,
+            out.add(entry(k.statusCode(), k.notifyTarget(),
                     r == null ? 0 : toInt(r.get("thresholdDays"), 0),
                     r == null ? "HIGHLIGHT" : orDefaultAction(str(r.get("action"))),
                     r == null || truthy(r.get("enabled")),
@@ -110,12 +113,12 @@ public class CageAlertConfigService {
         return out;
     }
 
-    /** 全量替换五行（校验 + 逐行 upsert，幂等）。 */
+    /** 全量替换全局默认（校验 + 逐行 upsert，幂等）。 */
     @Transactional
     public void replaceGlobal(List<Rule> rules) {
         for (Rule r : normalizeRules(rules)) {
-            ruleMapper.upsertDefaultRule(r.statusCode(), r.thresholdDays(), r.action(),
-                    r.enabled() ? 1 : 0, r.startValue());
+            ruleMapper.upsertDefaultRule(r.statusCode(), CageStatusIntervalService.normalizeTarget(r.notifyTarget()),
+                    r.thresholdDays(), r.action(), r.enabled() ? 1 : 0, r.startValue());
         }
     }
 
@@ -377,7 +380,8 @@ public class CageAlertConfigService {
             for (Map<String, Object> r : rows) {
                 String code = str(r.get("statusCode"));
                 if (code == null) continue;
-                Map<String, Object> e = entry(code, toInt(r.get("thresholdDays"), 0),
+                String target = CageStatusIntervalService.normalizeTarget(str(r.get("notifyTarget")));
+                Map<String, Object> e = entry(code, target, toInt(r.get("thresholdDays"), 0),
                         orDefaultAction(str(r.get("action"))), truthy(r.get("enabled")),
                         toInt(r.get("startValue"), 1), labels);
                 if (operatorId.equals(str(r.get("configuredBy")))) mine.add(e);
@@ -403,7 +407,7 @@ public class CageAlertConfigService {
                 && !permissionService.hasCapability(operatorId, CAP_ALERT_VIOLATION)) {
             throw new IllegalArgumentException("你没有违规联动权限，无法将动作设为「发违规」");
         }
-        // 计时起点（方向）同级必须一致：阈值能取 min、动作能取并集，方向没有可合并的语义。
+        // 计时起点（方向）同级同对象必须一致：阈值能取 min、动作能取并集，方向没有可合并的语义。
         // 同样必须在删行之前判定 —— 先删后拒会把本区既有配置删光又没写回。
         if (!asAdmin) {
             String conflict = findStartValueConflict(regionType, regionId, operatorId, ordered);
@@ -415,7 +419,8 @@ public class CageAlertConfigService {
             ruleMapper.deleteRegionRules(regionType, regionId, operatorId);
         }
         for (Rule r : ordered) {
-            ruleMapper.insertRegionRule(regionType, regionId, r.statusCode(), r.thresholdDays(),
+            ruleMapper.insertRegionRule(regionType, regionId, r.statusCode(),
+                    CageStatusIntervalService.normalizeTarget(r.notifyTarget()), r.thresholdDays(),
                     r.action(), r.enabled() ? 1 : 0, r.startValue(), operatorId);
         }
     }
@@ -423,77 +428,96 @@ public class CageAlertConfigService {
     // ── 内部 ──
 
     /**
-     * 校验并规整为「五个状态各一条、按 STATUS_CODES 顺序」：状态码必须∈五者、thresholdDays>=0、
-     * action∈三值、enabled 必填，且五者齐全。非法值抛错（别静默吞，否则前端只会看到「保存成功」
-     * 实则丢了行）。
+     * 校验并规整为「每个可配置的 (状态, 通知对象) 组合各一条、按 configurableRuleKeys 顺序」：
+     * 组合必须∈可配置清单、thresholdDays>=0、action∈三值、enabled 必填、startValue∈{0,1}，且一个不漏。
+     * 非法值抛错（别静默吞，否则前端只会看到「保存成功」实则丢了行）。
      */
     private List<Rule> normalizeRules(List<Rule> rules) {
-        List<String> codes = alertRuleService.configurableStatusCodes();
-        Map<String, Rule> byCode = new LinkedHashMap<>();
+        List<CageAlertRuleService.StatusTarget> keys = alertRuleService.configurableRuleKeys();
+        Set<String> allowed = new LinkedHashSet<>(keys.size());
+        for (CageAlertRuleService.StatusTarget k : keys) {
+            allowed.add(CageStatusIntervalService.ruleKey(k.statusCode(), k.notifyTarget()));
+        }
+
+        Map<String, Rule> byKey = new LinkedHashMap<>();
         if (rules != null) {
             for (Rule r : rules) {
                 if (r == null) continue;
-                if (!StringUtils.hasText(r.statusCode()) || !codes.contains(r.statusCode())) {
-                    throw new IllegalArgumentException("非法状态码：" + r.statusCode());
+                if (!StringUtils.hasText(r.statusCode()) || !StringUtils.hasText(r.notifyTarget())) {
+                    throw new IllegalArgumentException("状态码与通知对象必填");
+                }
+                String key = CageStatusIntervalService.ruleKey(r.statusCode(), r.notifyTarget());
+                if (!allowed.contains(key)) {
+                    throw new IllegalArgumentException("非法的状态/通知对象组合：" + key);
                 }
                 if (r.thresholdDays() == null || r.thresholdDays() < 0) {
-                    throw new IllegalArgumentException("thresholdDays 必须 >= 0（状态 " + r.statusCode() + "）");
+                    throw new IllegalArgumentException("thresholdDays 必须 >= 0（" + key + "）");
                 }
                 if (!ACTIONS.contains(r.action())) {
-                    throw new IllegalArgumentException("非法 action：" + r.action() + "（状态 " + r.statusCode() + "）");
+                    throw new IllegalArgumentException("非法 action：" + r.action() + "（" + key + "）");
                 }
                 if (r.enabled() == null) {
-                    throw new IllegalArgumentException("enabled 缺失（状态 " + r.statusCode() + "）");
+                    throw new IllegalArgumentException("enabled 缺失（" + key + "）");
                 }
                 if (r.startValue() == null || (r.startValue() != 0 && r.startValue() != 1)) {
-                    throw new IllegalArgumentException("startValue 必须是 0 或 1（状态 " + r.statusCode() + "）");
+                    throw new IllegalArgumentException("startValue 必须是 0 或 1（" + key + "）");
                 }
-                if (byCode.putIfAbsent(r.statusCode(), r) != null) {
-                    throw new IllegalArgumentException("重复的状态码：" + r.statusCode());
+                Rule normalized = new Rule(r.statusCode(), CageStatusIntervalService.normalizeTarget(r.notifyTarget()),
+                        r.thresholdDays(), r.action(), r.enabled(), r.startValue());
+                if (byKey.putIfAbsent(key, normalized) != null) {
+                    throw new IllegalArgumentException("重复的状态/通知对象组合：" + key);
                 }
             }
         }
-        List<Rule> ordered = new ArrayList<>(codes.size());
-        for (String code : codes) {
-            Rule r = byCode.get(code);
-            if (r == null) throw new IllegalArgumentException("缺少状态：" + code);
+        List<Rule> ordered = new ArrayList<>(keys.size());
+        for (CageAlertRuleService.StatusTarget k : keys) {
+            Rule r = byKey.get(CageStatusIntervalService.ruleKey(k.statusCode(), k.notifyTarget()));
+            if (r == null) {
+                throw new IllegalArgumentException("缺少「" + alertRuleService.labelOf(k.statusCode())
+                        + " · " + CageStatusIntervalService.targetLabel(k.notifyTarget()) + "」的配置项");
+            }
             ordered.add(r);
         }
         return ordered;
     }
 
-    /** 超管视角的「完整并集」：每个状态用 T3 的并集解析（enabled 任一开、阈值取最小、动作取并集）。 */
+    /** 超管视角的「完整并集」：每个 (状态, 对象) 用 T3 的并集解析（enabled 任一开、阈值取最小、动作取并集）。 */
     private List<Map<String, Object>> adminUnion(String regionType, String regionId,
                                                  List<Map<String, Object>> rows) {
         Map<String, Map<String, Object>> defaultsByCode = defaultRows();
         Map<String, String> labels = alertRuleService.configurableLabels();
         List<Map<String, String>> keys = List.of(Map.of("regionType", regionType, "regionId", regionId));
-        List<String> codes = alertRuleService.configurableStatusCodes();
-        List<Map<String, Object>> out = new ArrayList<>(codes.size());
-        for (String code : codes) {
-            CageAlertRuleService.EffectiveAlertRule r =
-                    CageAlertRuleService.resolveOne(keys, code, rows, defaultsByCode);
-            out.add(entry(code, r.thresholdDays(), actionOf(r.highlight(), r.violation()), r.enabled(),
+        List<CageAlertRuleService.StatusTarget> ruleKeys = alertRuleService.configurableRuleKeys();
+        List<Map<String, Object>> out = new ArrayList<>(ruleKeys.size());
+        for (CageAlertRuleService.StatusTarget k : ruleKeys) {
+            CageAlertRuleService.EffectiveAlertRule r = CageAlertRuleService.resolveOne(
+                    keys, k.statusCode(), k.notifyTarget(), rows, defaultsByCode);
+            out.add(entry(k.statusCode(), k.notifyTarget(),
+                    r.thresholdDays(), actionOf(r.highlight(), r.violation()), r.enabled(),
                     r.startValue() ? 1 : 0, labels));
         }
         return out;
     }
 
+    /** 全局默认按 (状态, 通知对象) 建索引 —— 键走 {@link CageStatusIntervalService#ruleKey}。 */
     private Map<String, Map<String, Object>> defaultRows() {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         for (Map<String, Object> r : ruleMapper.listDefaultRules()) {
             String code = str(r.get("statusCode"));
-            if (code != null) out.put(code, r);
+            if (code == null) continue;
+            out.put(CageStatusIntervalService.ruleKey(code, str(r.get("notifyTarget"))), r);
         }
         return out;
     }
 
-    private Map<String, Object> entry(String code, int thresholdDays, String action, boolean enabled,
-                                      int startValue, Map<String, String> labels) {
+    private Map<String, Object> entry(String code, String notifyTarget, int thresholdDays, String action,
+                                      boolean enabled, int startValue, Map<String, String> labels) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("statusCode", code);
         // 中文名走 tags 表：五个固定状态 + 特殊饲养明细（明细名在码表里，可随时改）
         m.put("statusLabel", labels.getOrDefault(code, code));
+        m.put("notifyTarget", CageStatusIntervalService.normalizeTarget(notifyTarget));
+        m.put("notifyTargetLabel", CageStatusIntervalService.targetLabel(notifyTarget));
         m.put("thresholdDays", thresholdDays);
         m.put("action", action);
         m.put("enabled", enabled);
@@ -507,38 +531,47 @@ public class CageAlertConfigService {
     }
 
     /**
-     * 同区域**别人**已配的计时起点与本次提交是否冲突。返回 null = 不冲突（该状态别人还没配过，或方向一致）。
+     * 同区域**别人**已配的计时起点与本次提交是否冲突。返回 null = 不冲突（该 (状态, 对象) 别人还没配过，或方向一致）。
      *
      * <p>只比同区域其他人的行：区域与全局不一致是**允许**的（区域可覆盖全局，与阈值/动作同口径）。
      * 阈值能取 min、动作能取并集，方向没有可合并的语义，所以同级分歧只能拒绝，不能并。
+     *
+     * <p>判据是 (状态码, 通知对象)：健康异常的两个对象本来就**应该**配成相反方向
+     * （兽医 1→0、笼位所有者 0→1），拿状态码单独比会把这条合法配置误判成冲突。
      */
     private String findStartValueConflict(String regionType, String regionId, String operatorId,
                                           List<Rule> ordered) {
         List<Map<String, Object>> rows = ruleMapper.listRegionRules(
                 List.of(Map.of("regionType", regionType, "regionId", regionId)));
         Map<String, Integer> submitted = new LinkedHashMap<>();
-        for (Rule r : ordered) submitted.put(r.statusCode(), r.startValue());
+        for (Rule r : ordered) {
+            submitted.put(CageStatusIntervalService.ruleKey(r.statusCode(), r.notifyTarget()), r.startValue());
+        }
         for (Map<String, Object> row : rows) {
             String code = str(row.get("statusCode"));
             if (code == null || operatorId.equals(str(row.get("configuredBy")))) continue;
-            Integer mine = submitted.get(code);
+            String target = str(row.get("notifyTarget"));
+            Integer mine = submitted.get(CageStatusIntervalService.ruleKey(code, target));
             if (mine == null) continue;
             int theirs = toInt(row.get("startValue"), 1);
             if (theirs != mine) {
-                return "「" + alertRuleService.labelOf(code)
+                return "「" + alertRuleService.labelOf(code) + " · " + CageStatusIntervalService.targetLabel(target)
                         + "」的计时起点已被本区域其他饲养组长配为 " + startValueLabel(theirs)
-                        + "，同一区域必须一致，请与其保持一致后再保存";
+                        + "，同一区域同一通知对象必须一致，请与其保持一致后再保存";
             }
         }
         return null;
     }
 
     private List<Map<String, Object>> sortByStatus(List<Map<String, Object>> entries) {
-        List<String> order = alertRuleService.configurableStatusCodes();
-        entries.sort((a, b) -> Integer.compare(
-                order.indexOf(str(a.get("statusCode"))),
-                order.indexOf(str(b.get("statusCode")))));
+        List<CageAlertRuleService.StatusTarget> order = alertRuleService.configurableRuleKeys();
+        entries.sort((a, b) -> Integer.compare(order.indexOf(statusTargetOf(a)), order.indexOf(statusTargetOf(b))));
         return entries;
+    }
+
+    private static CageAlertRuleService.StatusTarget statusTargetOf(Map<String, Object> e) {
+        return new CageAlertRuleService.StatusTarget(str(e.get("statusCode")),
+                CageStatusIntervalService.normalizeTarget(str(e.get("notifyTarget"))));
     }
 
     private static String actionOf(boolean highlight, boolean violation) {

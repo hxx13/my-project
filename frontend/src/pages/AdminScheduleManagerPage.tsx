@@ -744,7 +744,7 @@ export default function AdminScheduleManagerPage() {
               <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">冻结联动任务</div>
               <p className="mb-2 text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded-twin-sm px-2 py-1.5">
                 「每日豁免权回收」在本页单独配置开关与执行时间，不再随冻结总开关绑定。可勾选「回收后自动签离」：仅对<strong>今日曾豁免且流水仍判定在馆</strong>者签离；时效到期收回、未申请豁免的滞留者不签离（与 AI 雷达口径一致，跨日后不计入当日雷达）。
-                <strong className="ml-1">滞留检测</strong>分两道独立定时：<strong>一道</strong>创建违规公告（行为在「新建违规」页配置），<strong>二道</strong>仅签退（开关在同页第二卡片）。
+                <strong className="ml-1">滞留检测</strong>分两道独立定时：<strong>一道</strong>创建提醒公示（行为在「新建违规」页配置），<strong>二道</strong>仅签退（开关在同页第二卡片）。
               </p>
               <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                 <table className="min-w-full text-sm">

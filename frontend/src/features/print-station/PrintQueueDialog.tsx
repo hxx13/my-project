@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { ListChecks, RotateCcw, XCircle } from "lucide-react";
+import { ListChecks, RotateCcw, Trash2, XCircle } from "lucide-react";
 import {
   cancelPrintJob,
+  clearStationQueue,
+  fetchPrintCapabilities,
   fetchPrintHistory,
   fetchSelectableStations,
   retryPrintJob,
   type PrintJob,
   type PrintStationOption,
 } from "@/api/domains/print.api";
-import { printStatusOf } from "./printStatus";
+import { printStatusOf, queueHintOf } from "./printStatus";
 import { authStorage } from "@/features/auth/authStorage";
 import {
   Dialog,
@@ -50,15 +52,24 @@ export function PrintQueueDialog({
   const [activeStation, setActiveStation] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 当前账号能不能清队列。null = 还没问到 —— 没问到就不给按钮（fail-closed）。 */
+  const [caps, setCaps] = useState<{ canClearQueue: boolean } | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // 历史接口给的是全部状态，队列和记录一次拿齐
-      const [h, s] = await Promise.all([fetchPrintHistory(undefined, undefined, 300), fetchSelectableStations()]);
+      // 历史接口给的是全部状态，队列和记录一次拿齐。
+      // 能力跟历史同为 requireStaff 一级，一起拿不会多出一种失败模式。
+      const [h, s, c] = await Promise.all([
+        fetchPrintHistory(undefined, undefined, 300),
+        fetchSelectableStations(),
+        fetchPrintCapabilities(),
+      ]);
       setJobs(h);
       setStations(s);
+      setCaps(c);
       return h;
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载失败");
@@ -160,7 +171,40 @@ export function PrintQueueDialog({
     }
   };
 
+  /**
+   * 清空当前这台打印机**服务端队列里的全部任务**。
+   * 影响面不止自己那几条 —— 弹窗里必须说清，否则会把别人排的东西一起撤掉。
+   * 不做乐观更新：清空是「部分成功也不奇怪」的场景，权威在服务端，重新拉一遍最省心。
+   */
+  const onClearQueue = async () => {
+    // 工位 id 在弹确认框之前就定下来：确认是异步的，别拿一个可能已经变了的 activeStation
+    const stationId = activeStation;
+    const name = activeTab?.name ?? "这台打印机";
+    const ok = await appConfirm(
+      `清空「${name}」的打印队列？\n` +
+        `这台机器上所有还排在队列里的任务都会被撤掉，包括别人派发的。\n` +
+        `已经打出来的不受影响。`,
+      { danger: true, confirmText: "清空" },
+    );
+    if (!ok) return;
+    setClearing(true);
+    try {
+      const r = await clearStationQueue(stationId);
+      toast.success(`已清空 ${r.cleared} 条（库里收起 ${r.cancelled} 条）`);
+      await load();
+    } catch (e) {
+      // 服务端会带回真实原因（如「未配置 lpstat」），原样透出去，别盖成一句「操作失败」
+      toast.error(e instanceof Error ? e.message : "清空失败");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const activeTab = tabs.find((t) => t.id === activeStation);
+  /** 清空按钮的显隐：直发工位才有服务端队列，且当前账号得有权限（权限只在服务端判）。 */
+  const canClearQueue =
+    Boolean(caps?.canClearQueue) &&
+    stations.find((s) => s.id === activeStation)?.mode === "SERVER";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -168,7 +212,8 @@ export function PrintQueueDialog({
         <DialogHeader>
           <DialogTitle>打印队列</DialogTitle>
           <DialogDescription>
-            每台打印机一个队列。排队中的可以撤回，失败了的可以重新排队或收掉。
+            每台打印机一个队列。排队中的可以撤回，失败了的可以重新排队或收掉；
+            已经提交、却还卡在打印机队列里没打出来的，也能撤回。
           </DialogDescription>
         </DialogHeader>
 
@@ -178,23 +223,37 @@ export function PrintQueueDialog({
           </div>
         ) : (
           <>
-            <div className="review-tabs flex-wrap">
-              {tabs.map((t) => (
+            <div className="flex items-start justify-between gap-3">
+              <div className="review-tabs flex-wrap">
+                {tabs.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="review-tab"
+                    data-active={t.id === activeStation}
+                    onClick={() => setActiveStation(t.id)}
+                  >
+                    {t.name}
+                    {t.count > 0 ? (
+                      <span className="ml-1.5 rounded-full bg-[var(--app-color-feedback-info)] px-1.5 text-[11px] text-white">
+                        {t.count}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+
+              {canClearQueue ? (
                 <button
-                  key={t.id}
                   type="button"
-                  className="review-tab"
-                  data-active={t.id === activeStation}
-                  onClick={() => setActiveStation(t.id)}
+                  disabled={clearing}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--app-color-border-default)] px-3 py-1.5 text-[13px] font-medium text-[var(--app-color-feedback-error)] transition-colors hover:border-[var(--app-color-feedback-error)] disabled:opacity-50"
+                  onClick={() => void onClearQueue()}
                 >
-                  {t.name}
-                  {t.count > 0 ? (
-                    <span className="ml-1.5 rounded-full bg-[var(--app-color-feedback-info)] px-1.5 text-[11px] text-white">
-                      {t.count}
-                    </span>
-                  ) : null}
+                  <Trash2 className="size-3.5" />
+                  {clearing ? "清空中…" : "清空这台队列"}
                 </button>
-              ))}
+              ) : null}
             </div>
 
             <div className="max-h-[55vh] min-h-[200px] overflow-y-auto rounded-md border border-[var(--app-color-border-default)]">
@@ -212,6 +271,10 @@ export function PrintQueueDialog({
                 <tbody>
                   {rows.map((j) => {
                     const st = printStatusOf(j.status);
+                    // 只有核对确实看到「还排在打印机队列里」才说话；null / CLEARED 都不说话。
+                    // 这一维跟 status 无关 —— 卡在队列里的直发任务 status 早就是 PRINTED 了。
+                    const stuckInQueue = j.queueState === "QUEUED";
+                    const queueHint = queueHintOf(j.queueState);
                     return (
                       <tr key={j.id} className="border-t border-[var(--app-color-border-default)]">
                         <td className="max-w-[16rem] px-3 py-2">
@@ -239,8 +302,18 @@ export function PrintQueueDialog({
                           {j.note || <span className="text-[var(--app-color-text-tertiary)]">—</span>}
                         </td>
                         <td className="px-3 py-2" title={st.hint}>
-                          <span className="review-status" data-tone={st.tone}>
-                            {st.label}
+                          <span className="flex items-center gap-1.5">
+                            <span className="review-status" data-tone={st.tone}>
+                              {st.label}
+                            </span>
+                            {queueHint ? (
+                              <span
+                                className="shrink-0 rounded bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_18%,transparent)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-feedback-warning)]"
+                                title={queueHint}
+                              >
+                                仍卡在打印机队列
+                              </span>
+                            ) : null}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-xs text-[var(--app-color-text-tertiary)]">
@@ -277,6 +350,20 @@ export function PrintQueueDialog({
                                   收掉
                                 </button>
                               </>
+                            ) : null}
+                            {/* 终态也要给一颗：直发任务提交后 status 就是 PRINTED，
+                                可它可能还卡在打印机队列里没出来 —— 这正是原来一个能点的按钮都没有的场景。
+                                null（没核对过）和 CLEARED（早打完了）一律不给，撤不得。
+                                文案跟同屏那颗 PENDING 的统一叫「撤回」—— 同一个动作别用两个词。 */}
+                            {stuckInQueue ? (
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-[var(--app-color-feedback-error)]"
+                                onClick={() => void onCancel(j)}
+                              >
+                                <XCircle className="size-3.5" />
+                                撤回
+                              </button>
                             ) : null}
                           </div>
                         </td>

@@ -44,6 +44,15 @@
   margin-top: -4rpx;
 }
 
+/* 退回键右侧的窄操作区（收件箱等）。标题绝对居中，这里只放得下窄控件 */
+.subnav-left {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-left: 4rpx;
+  flex-shrink: 0;
+}
+
 .subnav-switch {
   flex-shrink: 0;
   margin-left: 4rpx;

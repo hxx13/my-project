@@ -1,7 +1,0 @@
-{
-  "navigationBarTitleText": "公告管理",
-  "enablePullDownRefresh": true,
-  "usingComponents": {
-    "van-loading": "@vant/weapp/loading/index"
-  }
-}

@@ -3,7 +3,63 @@
 /* TABLET_ADAPTER：回滚见 TABLET_ADAPTER_README.md */
 @import "./styles/tabletAdapter.wxss";
 
+/* 转移三签进度条：审核页卡片与「我的转移单」列表共用 */
+/* @import "./styles/cageOpSign.wxss"; */
+
 /* Vant Popup：关闭图标默认 z-index 为 1，易被弹层内容盖住导致点击无效 */
 .van-popup__close-icon {
   z-index: 300 !important;
 }
+
+/* ── 转移三签进度（归属地 / 目的地 / 兽医）────────────────────────────
+   视觉基准 = package-feature/pages/animalOrder：白底 + 中性灰分层，单一蓝主色 #2563eb，
+   状态语义只用一颗 10rpx 圆点，禁描边、禁半透明、禁大红大绿块。
+   槽位后缀 sg-ok / sg-no / sg-hold / sg-wait 由 package-feature/utils/cageOpSignatures.js 给。
+   注意：别挪去 styles/ 再用 @import 引 —— 试过，开发者工具编译 .wxss 直接报错。 */
+.sg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 12rpx 0 4rpx;
+}
+
+.sg-item {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 18rpx;
+  border-radius: 12rpx;
+  background: #f6f7fb;
+  font-size: 22rpx;
+}
+
+.sg-item::before {
+  content: '';
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.sg-role {
+  color: #94a3b8;
+}
+
+.sg-state {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.sg-who {
+  color: #94a3b8;
+}
+
+.sg-ok::before { background: #2563eb; }
+.sg-ok .sg-state { color: #1f2937; }
+
+.sg-no::before { background: #dc2626; }
+.sg-no .sg-state { color: #1f2937; }
+
+.sg-hold::before { background: #d97706; }
+.sg-hold .sg-state { color: #1f2937; }

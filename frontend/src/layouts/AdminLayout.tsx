@@ -22,6 +22,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
+import { PenLine } from "lucide-react";
+import MySignatureCard from "@/components/signature/MySignatureCard";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
 import { PrintEntryButton } from "@/features/print-station/PrintEntryButton";
 import { toast } from "react-hot-toast";
@@ -50,6 +52,7 @@ import {
 } from "@/features/admin/adminPendingBadgesEvents";
 import { handleScanDelayNotificationSse } from "@/store/useScanDelayReviewAlertStore";
 import { cn } from "@/lib/utils";
+import CountBadge from "@/components/common/CountBadge";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import {
   createAdminNavContext,
@@ -152,14 +155,9 @@ function sidebarGroupAllItems(g: AdminSidebarNavGroup): AdminSidebarNavItem[] {
   return [...g.items, ...(g.subgroups?.flatMap((sg) => sg.items) ?? [])];
 }
 
+/* 侧栏角标 = 通用角标 + 一点左边距，别再单独实现一枚 */
 function NavPendingBadge({ text }: { text?: string }) {
-  const t = (text || "").trim();
-  if (!t) return null;
-  return (
-    <span className="ml-1 min-w-[1.25rem] shrink-0 rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm tabular-nums">
-      {t}
-    </span>
-  );
+  return <CountBadge text={text} className="ml-1" />;
 }
 
 export default function AdminLayout() {
@@ -197,6 +195,8 @@ export default function AdminLayout() {
   const [currentSendKey, setCurrentSendKey] = useState<string | null>(null);
   /** WxPusher binding */
   const [wxPusherDialogOpen, setWxPusherDialogOpen] = useState(false);
+  /** 我的电子签名弹窗（头像菜单入口） */
+  const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
   const [currentWxPusher, setCurrentWxPusher] = useState<string | null>(null);
 
   /** Verification-code states for email binding */
@@ -1420,6 +1420,15 @@ export default function AdminLayout() {
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem
+                  onSelect={() => {
+                    setMobileNavOpen(false);
+                    setSignatureDialogOpen(true);
+                  }}
+                >
+                  <PenLine className="mr-2 h-4 w-4" />
+                  我的电子签名
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   className="text-red-700 focus:bg-red-50 focus:text-red-800"
                   onSelect={() => {
                     setLogoutDialogOpen(true);
@@ -1480,6 +1489,15 @@ export default function AdminLayout() {
         }}
         onOpenCommandPalette={() => setCommandOpen(true)}
       />
+
+      <Dialog open={signatureDialogOpen} onOpenChange={setSignatureDialogOpen}>
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>我的电子签名</DialogTitle>
+          </DialogHeader>
+          <MySignatureCard />
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
         <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">

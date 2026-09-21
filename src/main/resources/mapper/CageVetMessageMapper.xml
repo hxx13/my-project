@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageVetMessageMapper">
+
+    <!-- 幂等落一条：alert_id 上有唯一键，同一条告警重复触发不会堆行 -->
+    <insert id="insertIgnore">
+        INSERT IGNORE INTO cage_vet_message (alert_id, animal_cage_id, status_code, fired_at, created_at)
+        VALUES (#{alertId}, #{animalCageId}, #{statusCode}, #{firedAt}, NOW())
+    </insert>
+
+    <!-- 收件箱列表。三张索引表一次 join 出定位与课题组，避免前端逐行回查（N+1）。
+         校区/楼层/房间名一并带出来，前端直接按它们分组建树，不必再拉一遍完整区域树。 -->
+    <select id="listMessages" resultType="com.example.demo.modules.cageshelf.entity.CageVetMessage">
+        SELECT m.id, m.alert_id AS alertId, m.animal_cage_id AS animalCageId,
+               m.status_code AS statusCode, m.fired_at AS firedAt,
+               m.read_at AS readAt, m.read_by AS readBy,
+               cci.shelve_id AS shelveId, cci.position_x AS positionX, cci.position_y AS positionY,
+               si.room_id AS roomId, si.room_name AS roomName, si.shelve_name AS shelveName,
+               si.campus_name AS campusName, si.floor_name AS floorName,
+               d.project_pi_name AS projectPiName, d.experimenter_name AS experimenterName,
+               d.cage_type_code AS cageTypeCode, d.cage_box_code AS cageBoxCode, d.aup_number AS aupNumber
+        FROM cage_vet_message m
+        LEFT JOIN cage_cell_index cci ON cci.animal_cage_id = m.animal_cage_id
+        LEFT JOIN cage_shelf_index si ON si.id = cci.shelf_index_id
+        LEFT JOIN cage_cell_detail d ON d.animal_cage_id = m.animal_cage_id
+        <if test="cageIds != null and cageIds.size() > 0">
+            WHERE m.animal_cage_id IN
+            <foreach collection="cageIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+        </if>
+        ORDER BY m.fired_at DESC, m.id DESC
+    </select>
+
+    <!-- 已查看：read_at IS NULL 守卫 —— 重复点不覆盖首次查看时刻（谁先看的就是谁看的） -->
+    <update id="markRead">
+        UPDATE cage_vet_message
+        SET read_at = NOW(), read_by = #{readBy}, updated_at = NOW()
+        WHERE id = #{id} AND read_at IS NULL
+    </update>
+
+    <update id="markAllRead">
+        UPDATE cage_vet_message
+        SET read_at = NOW(), read_by = #{readBy}, updated_at = NOW()
+        WHERE read_at IS NULL
+    </update>
+
+    <!-- 网格紫色描边用：这些笼位里有未读消息 -->
+    <select id="listCageIdsWithUnread" resultType="java.lang.Long">
+        SELECT DISTINCT animal_cage_id FROM cage_vet_message
+        WHERE read_at IS NULL
+        <if test="cageIds != null and cageIds.size() > 0">
+            AND animal_cage_id IN
+            <foreach collection="cageIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+        </if>
+    </select>
+
+    <select id="countUnread" resultType="int">
+        SELECT COUNT(*) FROM cage_vet_message WHERE read_at IS NULL
+    </select>
+
+</mapper>

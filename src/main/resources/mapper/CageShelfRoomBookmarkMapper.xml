@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageShelfRoomBookmarkMapper">
+
+    <select id="selectRoomIdsByUserId" resultType="java.lang.Long">
+        SELECT room_id
+        FROM cage_shelf_room_bookmark
+        WHERE user_id = #{userId}
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <insert id="insert">
+        INSERT IGNORE INTO cage_shelf_room_bookmark (user_id, room_id)
+        VALUES (#{userId}, #{roomId})
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM cage_shelf_room_bookmark
+        WHERE user_id = #{userId} AND room_id = #{roomId}
+    </delete>
+</mapper>

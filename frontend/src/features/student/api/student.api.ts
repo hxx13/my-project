@@ -323,7 +323,7 @@ export interface NotificationData {
   summary: string;
   /** 完整通知正文（HTML，含图片） */
   content?: string;
-  type: 'ARO' | 'PLATFORM' | 'WORK_ORDER';
+  type: 'PLATFORM' | 'WORK_ORDER';
   bizType?: string;
   bizId?: string;
   /** 违规镜像关联的 Obligation id（消息中心深链） */
@@ -678,6 +678,10 @@ export interface CageShelfCell {
   aupNumber?: string;
   rawDataJson?: string | null; // ARO 原始数据 JSON
   specialStatuses?: SpecialStatusEntry[];
+  /** 健康异常严重程度（码表 item_code）；不是状态码，只喂右上角角标。 */
+  healthSeverity?: string | null;
+  /** 健康异常「瘙痒」（布尔子值），同样只喂角标。 */
+  healthItch?: boolean | null;
   cageBoxInfo?: Record<string, unknown>;
   detail?: Record<string, unknown>;
 }
@@ -996,4 +1000,109 @@ export async function fetchMyHealthSurvey(): Promise<MyHealthSurvey | null> {
 export async function submitHealthSurvey(data: Record<string, unknown>): Promise<void> {
   const res = await authHttp.put<Result<{ ok: boolean }>>("/student/training/health-survey", { data });
   if (!res.data?.success) throw new Error(res.data?.message || "提交失败");
+}
+
+// ======================== 课题组归属（子系统4） ========================
+
+/** 我的课题组信息（/api/student/group/my）。无组时只有 hasGroup=false / isPi=false */
+export interface MyGroupInfo {
+  hasGroup: boolean;
+  isPi: boolean;
+  projectGroupId?: number;
+  projectGroupName?: string;
+  memberCount?: number;
+}
+
+/** 可申请课题组选项（value 为课题组 id 的字符串形式） */
+export interface GroupOption {
+  value: string;
+  label: string;
+}
+
+export type GroupApplicationStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+
+export interface MyGroupApplication {
+  id: number;
+  projectGroupId: number;
+  projectGroupName?: string;
+  status: GroupApplicationStatus;
+  message?: string;
+  rejectReason?: string;
+  reviewedAt?: string;
+  createdAt?: string;
+}
+
+export interface GroupMember {
+  id: number;
+  name?: string;
+  jobNumber?: string;
+  staffId?: string;
+  aroUserId?: string;
+}
+
+export interface GroupJoinRequest {
+  id: number;
+  personnelId: number;
+  applicantName?: string;
+  message?: string;
+  createdAt?: string;
+}
+
+export async function fetchMyGroup(): Promise<MyGroupInfo> {
+  const res = await authHttp.get<Result<MyGroupInfo>>("/student/group/my");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取课题组信息失败");
+  return res.data.data;
+}
+
+export async function fetchGroupOptions(): Promise<GroupOption[]> {
+  const res = await authHttp.get<Result<GroupOption[]>>("/student/group/options");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取可申请课题组失败");
+  return res.data.data ?? [];
+}
+
+export async function applyGroup(projectGroupId: number, message?: string): Promise<unknown> {
+  const res = await authHttp.post<Result<unknown>>("/student/group/apply", {
+    projectGroupId,
+    message: message?.trim() ? message.trim() : undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "提交申请失败");
+  return res.data.data;
+}
+
+export async function fetchMyGroupApplications(): Promise<MyGroupApplication[]> {
+  const res = await authHttp.get<Result<MyGroupApplication[]>>("/student/group/applications");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取申请记录失败");
+  return res.data.data ?? [];
+}
+
+export async function fetchGroupMembers(): Promise<GroupMember[]> {
+  const res = await authHttp.get<Result<GroupMember[]>>("/student/group/members");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取成员名单失败");
+  return res.data.data ?? [];
+}
+
+export async function fetchGroupRequests(): Promise<GroupJoinRequest[]> {
+  const res = await authHttp.get<Result<GroupJoinRequest[]>>("/student/group/requests");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取待审申请失败");
+  return res.data.data ?? [];
+}
+
+export async function approveGroupRequest(id: number): Promise<unknown> {
+  const res = await authHttp.post<Result<unknown>>(`/student/group/requests/${id}/approve`);
+  if (!res.data?.success) throw new Error(res.data?.message || "批准失败");
+  return res.data.data;
+}
+
+export async function rejectGroupRequest(id: number, reason: string): Promise<unknown> {
+  const res = await authHttp.post<Result<unknown>>(`/student/group/requests/${id}/reject`, { reason });
+  if (!res.data?.success) throw new Error(res.data?.message || "拒绝失败");
+  return res.data.data;
+}
+
+export async function removeGroupMember(personnelId: number, reason?: string): Promise<unknown> {
+  const res = await authHttp.post<Result<unknown>>(`/student/group/members/${personnelId}/remove`, {
+    reason: reason?.trim() ? reason.trim() : undefined,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "移出成员失败");
+  return res.data.data;
 }

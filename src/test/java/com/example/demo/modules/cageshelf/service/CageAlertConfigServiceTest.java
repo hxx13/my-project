@@ -69,15 +69,26 @@ class CageAlertConfigServiceTest {
 
     private static CageAlertConfigService.Rule rule(String code, int threshold, String action, boolean enabled,
                                                     int startValue) {
-        return new CageAlertConfigService.Rule(code, threshold, action, enabled, startValue);
+        return rule(code, "DEFAULT", threshold, action, enabled, startValue);
     }
 
-    private static List<CageAlertConfigService.Rule> fiveRules() {
+    /** 带显式通知对象的规则（健康异常两行：通知兽医 / 通知笼位所有者，各自方向与阈值可不同）。 */
+    private static CageAlertConfigService.Rule rule(String code, String notifyTarget, int threshold, String action,
+                                                    boolean enabled, int startValue) {
+        return new CageAlertConfigService.Rule(code, notifyTarget, threshold, action, enabled, startValue);
+    }
+
+    /**
+     * 全部可配置组合各一条 —— 顺序必须与 {@code CageAlertRuleService.configurableRuleKeys()} 一致：
+     * 五个固定状态按 STATUS_CODES 序，健康异常展开成 VET / OCCUPANT 两行。
+     */
+    private static List<CageAlertConfigService.Rule> allRules() {
         return List.of(
                 rule("NEED_DIVIDE", 7, "HIGHLIGHT", true),
                 rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", false),
                 rule("ANIMAL_TRANSFER", 3, "VIOLATION", true),
-                rule("HEALTH_ABNORMAL", 9, "BOTH", true),
+                rule("HEALTH_ABNORMAL", "VET", 0, "BOTH", true, 1),
+                rule("HEALTH_ABNORMAL", "OCCUPANT", 9, "BOTH", true, 0),
                 rule("COHABITATION", 5, "HIGHLIGHT", false));
     }
 
@@ -93,20 +104,20 @@ class CageAlertConfigServiceTest {
     @Test
     void replaceOnlyTouchesOwnRows() {
         when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_VIOLATION)).thenReturn(true);
-        service.replaceRegion("ROOM", "100", fiveRules(), "STAFF_A", false);
+        service.replaceRegion("ROOM", "100", allRules(), "STAFF_A", false);
         verify(ruleMapper).deleteRegionRules("ROOM", "100", "STAFF_A");
         verify(ruleMapper, never()).deleteAllRegionRules(anyString(), anyString());
-        verify(ruleMapper, times(5)).insertRegionRule(anyString(), anyString(), anyString(),
+        verify(ruleMapper, times(6)).insertRegionRule(anyString(), anyString(), anyString(), anyString(),
                 anyInt(), anyString(), anyInt(), anyInt(), eq("STAFF_A"));
     }
 
     /** 超管保存 = 清掉该区域所有人的行再写自己的。 */
     @Test
     void adminSaveResetsWholeRegion() {
-        service.replaceRegion("ROOM", "100", fiveRules(), "STAFF_ROOT", true);
+        service.replaceRegion("ROOM", "100", allRules(), "STAFF_ROOT", true);
         verify(ruleMapper).deleteAllRegionRules("ROOM", "100");
         verify(ruleMapper, never()).deleteRegionRules(anyString(), anyString(), anyString());
-        verify(ruleMapper, times(5)).insertRegionRule(anyString(), anyString(), anyString(),
+        verify(ruleMapper, times(6)).insertRegionRule(anyString(), anyString(), anyString(), anyString(),
                 anyInt(), anyString(), anyInt(), anyInt(), eq("STAFF_ROOT"));
     }
 
@@ -114,9 +125,9 @@ class CageAlertConfigServiceTest {
     @Test
     void replaceWritesClosedRowsToo() {
         when(permissionService.hasCapability("STAFF_A", CageAlertConfigService.CAP_ALERT_VIOLATION)).thenReturn(true);
-        service.replaceRegion("ROOM", "100", fiveRules(), "STAFF_A", false);
-        verify(ruleMapper).insertRegionRule("ROOM", "100", "SPECIAL_FEEDING", 7, "HIGHLIGHT", 0, 1, "STAFF_A");
-        verify(ruleMapper).insertRegionRule("ROOM", "100", "COHABITATION", 5, "HIGHLIGHT", 0, 1, "STAFF_A");
+        service.replaceRegion("ROOM", "100", allRules(), "STAFF_A", false);
+        verify(ruleMapper).insertRegionRule("ROOM", "100", "SPECIAL_FEEDING", "DEFAULT", 7, "HIGHLIGHT", 0, 1, "STAFF_A");
+        verify(ruleMapper).insertRegionRule("ROOM", "100", "COHABITATION", "DEFAULT", 5, "HIGHLIGHT", 0, 1, "STAFF_A");
     }
 
     /**
@@ -126,7 +137,7 @@ class CageAlertConfigServiceTest {
     @Test
     void violationActionWithoutCapabilityIsDenied() {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-                () -> service.replaceRegion("ROOM", "100", fiveRules(), "STAFF_A", false));
+                () -> service.replaceRegion("ROOM", "100", allRules(), "STAFF_A", false));
         assertTrue(e.getMessage().contains("违规联动"));
         verify(ruleMapper, never()).deleteRegionRules(anyString(), anyString(), anyString());
         verify(ruleMapper, never()).deleteAllRegionRules(anyString(), anyString());
@@ -149,7 +160,8 @@ class CageAlertConfigServiceTest {
                 rule("NEED_DIVIDE", 7, "HIGHLIGHT", true, 0),   // 想配成反向，与别人冲突
                 rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", false),
                 rule("ANIMAL_TRANSFER", 3, "VIOLATION", true),
-                rule("HEALTH_ABNORMAL", 9, "BOTH", true),
+                rule("HEALTH_ABNORMAL", "VET", 0, "BOTH", true, 1),
+                rule("HEALTH_ABNORMAL", "OCCUPANT", 9, "BOTH", true, 0),
                 rule("COHABITATION", 5, "HIGHLIGHT", false));
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
@@ -159,7 +171,7 @@ class CageAlertConfigServiceTest {
         assertTrue(e.getMessage().contains("需分笼"), e.getMessage());
         verify(ruleMapper, never()).deleteRegionRules(anyString(), anyString(), anyString());
         verify(ruleMapper, never()).deleteAllRegionRules(anyString(), anyString());
-        verify(ruleMapper, never()).insertRegionRule(anyString(), anyString(), anyString(),
+        verify(ruleMapper, never()).insertRegionRule(anyString(), anyString(), anyString(), anyString(),
                 anyInt(), anyString(), anyInt(), anyInt(), anyString());
     }
 
@@ -174,12 +186,13 @@ class CageAlertConfigServiceTest {
                 List.of(rule("NEED_DIVIDE", 7, "HIGHLIGHT", true, 0),
                         rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", false),
                         rule("ANIMAL_TRANSFER", 3, "VIOLATION", true),
-                        rule("HEALTH_ABNORMAL", 9, "BOTH", true),
+                        rule("HEALTH_ABNORMAL", "VET", 0, "BOTH", true, 1),
+                rule("HEALTH_ABNORMAL", "OCCUPANT", 9, "BOTH", true, 0),
                         rule("COHABITATION", 5, "HIGHLIGHT", false)),
                 "STAFF_A", false);
 
         // 方向随行落库（这里是 0 = 出现 0 开始），没有被真值覆盖成默认 1
-        verify(ruleMapper).insertRegionRule("ROOM", "100", "NEED_DIVIDE", 7, "HIGHLIGHT", 1, 0, "STAFF_A");
+        verify(ruleMapper).insertRegionRule("ROOM", "100", "NEED_DIVIDE", "DEFAULT", 7, "HIGHLIGHT", 1, 0, "STAFF_A");
     }
 
     /** 同区域另一人的一行（configuredBy=STAFF_B），用于方向冲突判定。 */
@@ -325,7 +338,7 @@ class CageAlertConfigServiceTest {
                 alertRuleService.configurableStatusCodes());
 
         List<Map<String, Object>> view = service.globalView();
-        assertEquals(7, view.size(), "五行固定 + 两个明细项");
+        assertEquals(8, view.size(), "五行固定（健康异常占两行：兽医 / 笼位所有者）+ 两个明细项");
         Map<String, Object> sfRow = view.stream()
                 .filter(m -> "SF_NEED_FEED".equals(m.get("statusCode"))).findFirst().orElseThrow();
         assertEquals("需加食", sfRow.get("statusLabel"));
@@ -339,18 +352,19 @@ class CageAlertConfigServiceTest {
                 rule("NEED_DIVIDE", 7, "HIGHLIGHT", true),
                 rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", true),
                 rule("ANIMAL_TRANSFER", 7, "HIGHLIGHT", true),
-                rule("HEALTH_ABNORMAL", 7, "HIGHLIGHT", true),
+                rule("HEALTH_ABNORMAL", "VET", 0, "HIGHLIGHT", true, 1),
+                rule("HEALTH_ABNORMAL", "OCCUPANT", 7, "HIGHLIGHT", true, 0),
                 rule("COHABITATION", 7, "HIGHLIGHT", true),
                 rule("SF_NEED_FEED", 2, "BOTH", true),
                 rule("SF_NO_WATER", 3, "HIGHLIGHT", false)));
 
-        verify(ruleMapper).upsertDefaultRule("SF_NEED_FEED", 2, "BOTH", 1, 1);
-        verify(ruleMapper).upsertDefaultRule("SF_NO_WATER", 3, "HIGHLIGHT", 0, 1);
+        verify(ruleMapper).upsertDefaultRule("SF_NEED_FEED", "DEFAULT", 2, "BOTH", 1, 1);
+        verify(ruleMapper).upsertDefaultRule("SF_NO_WATER", "DEFAULT", 3, "HIGHLIGHT", 0, 1);
     }
 
     @Test
     void missingStatusIsRejected() {
-        List<CageAlertConfigService.Rule> four = fiveRules().subList(0, 4);
+        List<CageAlertConfigService.Rule> four = allRules().subList(0, 4);
         assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(four));
     }
 
@@ -358,7 +372,7 @@ class CageAlertConfigServiceTest {
     @Test
     void missingDetailRowIsRejected() {
         stubDetailCodelist();
-        assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(fiveRules()));
+        assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(allRules()));
     }
 
     @Test
@@ -367,7 +381,8 @@ class CageAlertConfigServiceTest {
                 rule("NEED_DIVIDE", 7, "HIGHLIGHT", true),
                 rule("SPECIAL_FEEDING", 7, "NOPE", true),
                 rule("ANIMAL_TRANSFER", 7, "HIGHLIGHT", true),
-                rule("HEALTH_ABNORMAL", 7, "HIGHLIGHT", true),
+                rule("HEALTH_ABNORMAL", "VET", 0, "HIGHLIGHT", true, 1),
+                rule("HEALTH_ABNORMAL", "OCCUPANT", 7, "HIGHLIGHT", true, 0),
                 rule("COHABITATION", 7, "HIGHLIGHT", true));
         assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(bad));
     }
@@ -378,7 +393,8 @@ class CageAlertConfigServiceTest {
                 rule("NEED_DIVIDE", -1, "HIGHLIGHT", true),
                 rule("SPECIAL_FEEDING", 7, "HIGHLIGHT", true),
                 rule("ANIMAL_TRANSFER", 7, "HIGHLIGHT", true),
-                rule("HEALTH_ABNORMAL", 7, "HIGHLIGHT", true),
+                rule("HEALTH_ABNORMAL", "VET", 0, "HIGHLIGHT", true, 1),
+                rule("HEALTH_ABNORMAL", "OCCUPANT", 7, "HIGHLIGHT", true, 0),
                 rule("COHABITATION", 7, "HIGHLIGHT", true));
         assertThrows(IllegalArgumentException.class, () -> service.replaceGlobal(bad));
     }

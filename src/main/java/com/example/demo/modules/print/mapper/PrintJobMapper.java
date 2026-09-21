@@ -9,6 +9,7 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 打印任务读写。
@@ -21,7 +22,8 @@ public class PrintJobMapper {
 
     private static final String COLS =
             "id, station_id, source_type, source_id, file_name, copies, note, priority,"
-          + " status, attempts, last_error, created_by, created_at, sent_at, printed_at, ephemeral";
+          + " status, attempts, last_error, created_by, created_at, sent_at, printed_at, ephemeral"
+          + ", cups_job_id, queue_state";
 
     private final JdbcTemplate jdbc;
 
@@ -49,6 +51,8 @@ public class PrintJobMapper {
         Timestamp printed = rs.getTimestamp("printed_at");
         j.setPrintedAt(printed == null ? null : printed.toString());
         j.setEphemeral(rs.getBoolean("ephemeral"));
+        j.setCupsJobId(rs.getString("cups_job_id"));
+        j.setQueueState(rs.getString("queue_state"));
         return j;
     };
 
@@ -58,11 +62,11 @@ public class PrintJobMapper {
     }
 
     public void insert(PrintJob j) {
-        jdbc.update("INSERT INTO print_job(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL,NULL,?)",
+        jdbc.update("INSERT INTO print_job(" + COLS + ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NULL,NULL,?,?,?)",
                 j.getId(), j.getStationId(), j.getSourceType(), j.getSourceId(),
                 j.getFileName(), j.getCopies(), j.getNote(), j.getPriority(),
                 j.getStatus(), j.getAttempts(), j.getLastError(), j.getCreatedBy(),
-                j.isEphemeral());
+                j.isEphemeral(), j.getCupsJobId(), j.getQueueState());
     }
 
     public Optional<PrintJob> findById(String id) {
@@ -108,6 +112,9 @@ public class PrintJobMapper {
      *
      * `SENT` 撤不了 —— 活已经在那台机器上了，改数据库也拦不住。
      *
+     * 直发（SERVER 工位）那条路不走这里：`lp` 返回退出码 0 就已经被标成 PRINTED，
+     * 但队列被停用时纸根本没出。那种任务要撤得先撤 CUPS 那侧，再用 cancelAny() 落库。
+     *
      * **刻意不动 last_error**：失败原因要留着，否则「为什么失败」这条信息
      * 就被一次"收掉"操作抹掉了。
      */
@@ -116,6 +123,80 @@ public class PrintJobMapper {
                 "UPDATE print_job SET status = ? WHERE id = ? AND status IN (?,?)",
                 PrintJob.STATUS_CANCELLED, jobId,
                 PrintJob.STATUS_PENDING, PrintJob.STATUS_FAILED);
+    }
+
+    /**
+     * 提交给 CUPS 成功后回填作业号。
+     * 只在还没拿到号时写 —— 重推会再跑一次 lp，别把新作业号盖在旧的上（旧的那条可能还在队列里）。
+     */
+    public int setCupsJobId(String jobId, String cupsJobId) {
+        return jdbc.update(
+                "UPDATE print_job SET cups_job_id = ? WHERE id = ? AND (cups_job_id IS NULL OR cups_job_id = '')",
+                cupsJobId, jobId);
+    }
+
+    /**
+     * 核对任务的唯一写入点：把这台工位有作业号的任务收敛一次。
+     *
+     * 两步：先把现在标着 QUEUED 的行降回 CLEARED，再把确实还在队列里的抬回 QUEUED。
+     * 状态是**推出来的**，所以不接收「要置成什么状态」的参数。
+     */
+    public int markQueueState(String stationId, Set<String> queuedJobIds, int withinHours) {
+        // 第一步**不能加时间窗**。加了就有一个洞：一行在窗口内被标成 QUEUED，24 小时之后
+        // 再没有任何一条路径会碰它，于是永远停在「还卡在队列里」—— 那是这次要消灭的那个谎
+        // 的镜像版（队列早清了、纸早打出来了，界面却一直挂着「仍卡在打印机队列」和一颗
+        // 点下去什么都不会发生的撤回按钮）。
+        //
+        // 代价可控：这里只碰 queue_state='QUEUED' 的行，条数就是「此刻真卡着的数量」，
+        // 天生很小，不存在随时间增长的问题。
+        int cleared = jdbc.update(
+                "UPDATE print_job SET queue_state = ?"
+              + " WHERE station_id = ? AND cups_job_id IS NOT NULL AND queue_state = ?",
+                PrintJob.QUEUE_CLEARED, stationId, PrintJob.QUEUE_QUEUED);
+
+        if (queuedJobIds == null || queuedJobIds.isEmpty()) {
+            return cleared;
+        }
+
+        // 第二步**要**时间窗，但作用完全不同：它只限制「哪些行有资格被判为还在队列里」。
+        // 超过窗口的任务不可能还排着，扫它是白做功。这里判错方向的代价也不对称 ——
+        // 漏判只会让该行停在 CLEARED（「已不在队列」），不会撒谎说它还卡着。
+        StringBuilder in = new StringBuilder("?,".repeat(queuedJobIds.size()));
+        in.setLength(in.length() - 1);
+        List<Object> args = new ArrayList<>();
+        args.add(PrintJob.QUEUE_QUEUED);
+        args.add(stationId);
+        args.add(withinHours);
+        args.addAll(queuedJobIds);
+        return cleared + jdbc.update(
+                "UPDATE print_job SET queue_state = ?"
+              + " WHERE station_id = ? AND cups_job_id IS NOT NULL"
+              + "   AND created_at > DATE_SUB(NOW(), INTERVAL ? HOUR)"
+              + "   AND cups_job_id IN (" + in + ")",
+                args.toArray());
+    }
+
+    /**
+     * 清空某台打印机队列时，把库里对应记录一起收起。
+     * 只收 queue_state='QUEUED' 的 —— 已经打完的不该被误伤。
+     */
+    public int cancelQueued(String stationId) {
+        return jdbc.update(
+                "UPDATE print_job SET status = ? WHERE station_id = ? AND queue_state = ?",
+                PrintJob.STATUS_CANCELLED, stationId, PrintJob.QUEUE_QUEUED);
+    }
+
+    /**
+     * 撤销一条已经被 CUPS 接收的任务。
+     *
+     * 为什么不复用 cancel()：cancel 只认 PENDING/FAILED，而直发卡住的任务是 PRINTED
+     * （lp 退出码 0，我们当时以为成功了）。库里那层判据不能放宽 —— 放宽会让「已打印」
+     * 这个历史事实被一次操作抹掉。所以 CUPS 那侧撤成功后，用这个方法单独落库。
+     */
+    public int cancelAny(String jobId) {
+        return jdbc.update(
+                "UPDATE print_job SET status = ? WHERE id = ? AND status <> ?",
+                PrintJob.STATUS_CANCELLED, jobId, PrintJob.STATUS_CANCELLED);
     }
 
     /** 回执：只有 SENT 态的任务能落终态。返回 0 表示任务不在可回执状态。 */

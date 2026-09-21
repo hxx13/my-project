@@ -77,7 +77,9 @@ function alertDisplayPriority(kind) {
 function formatTime(t) {
   if (!t) return '';
   var s = String(t);
-  return s.length > 16 ? s.substring(0, 16) : s;
+  var out = s.length > 16 ? s.substring(0, 16) : s;
+  // 后端 LocalDateTime.toString() 带 ISO 的 T，展示层换成空格
+  return out.replace('T', ' ');
 }
 
 function decodeHtmlEntitiesIfNeeded(raw) {
@@ -796,6 +798,25 @@ function mergeAlertItems(data) {
   return items;
 }
 
+/**
+ * 公告 tab：按后端 section 分上下区。
+ * GENERAL = 通用公告（门户通知公告）；其余一律进我的提醒。
+ */
+function splitAnnouncementSections(data) {
+  var announcements = Array.isArray(data && data.announcements) ? data.announcements : [];
+  var general = [];
+  var personal = [];
+  for (var i = 0; i < announcements.length; i += 1) {
+    var item = announcements[i];
+    if (item.section === 'GENERAL') general.push(item);
+    else personal.push(item);
+  }
+  return {
+    general: sortAlertsForDisplay(general),
+    personal: sortAlertsForDisplay(personal),
+  };
+}
+
 /** 首页公告区：仅扫码弹窗公告 */
 function extractScanPopupBulletins(data) {
   var announcements = Array.isArray(data && data.announcements) ? data.announcements : [];
@@ -804,15 +825,14 @@ function extractScanPopupBulletins(data) {
   });
 }
 
-/** 消息页：豁免/违规 + 审核反馈，不含扫码弹窗公告 */
+/**
+ * 消息页：个人提醒反馈（豁免 exempt、物资申领 material_feedback、延迟申请 scan_delay_feedback、违规/笼位处理提示 violation）。
+ * 提醒公示已移入公告 tab，不再从这里取。
+ */
 function extractPersonalAlerts(data) {
   if (!data || typeof data !== 'object') return [];
-  var announcements = Array.isArray(data.announcements) ? data.announcements : [];
   var feedbacks = Array.isArray(data.feedbacks) ? data.feedbacks : [];
-  var personal = announcements.filter(function (item) {
-    return item.kind === 'exempt' || item.kind === 'violation';
-  }).concat(feedbacks);
-  return sortAlertsForDisplay(personal);
+  return sortAlertsForDisplay(feedbacks);
 }
 
 function sortAlertsForDisplay(items) {
@@ -826,27 +846,20 @@ function sortAlertsForDisplay(items) {
   });
 }
 
+/** 公告行副标题：只保留时间戳（到分钟），不再拼正文摘要 */
 function formatBulletinSubtitle(item) {
-  var date = String(item.publishAt || item.createdAt || '').slice(0, 10);
-  var plain = stripHtmlPreview(item.contentHtml || '');
-  var title = String(item.title || '').trim();
-  var preview = '';
-  if (plain && plain !== title && title.indexOf(plain) < 0) {
-    preview = plain.length > 36 ? plain.slice(0, 36) + '…' : plain;
-  }
-  if (preview && date) return date + ' · ' + preview;
-  if (date) return date;
   return formatTime(item.publishAt || item.createdAt || '');
 }
 
 function decorateBulletinListItem(item) {
-  var colors = kindColors('announcement');
+  var k = item.kind || 'announcement';
+  var colors = kindColors(k);
   return {
     id: item.id,
-    kind: item.kind || 'announcement',
+    kind: k,
     title: item.title || '',
     subtitle: formatBulletinSubtitle(item),
-    badgeLabel: '公告',
+    badgeLabel: kindLabel(k),
     badgeBg: colors.bg,
     badgeColor: colors.color,
     isImportantReminder: false,
@@ -855,33 +868,7 @@ function decorateBulletinListItem(item) {
 
 function buildHomeBulletinPreviewList(data, limit) {
   var max = typeof limit === 'number' ? limit : 4;
-  var announcements = Array.isArray(data && data.announcements) ? data.announcements : [];
-  var merged = [];
-  var i;
-  for (i = 0; i < announcements.length; i += 1) {
-    var item = announcements[i];
-    if (item.kind === 'exempt' || item.kind === 'violation' || isScanPopupBulletinKind(item.kind)) {
-      merged.push(item);
-    }
-  }
-  return sortAlertsForDisplay(merged)
-    .slice(0, max)
-    .map(function (item) {
-      if (isScanPopupBulletinKind(item.kind)) {
-        return decorateBulletinListItem(item);
-      }
-      var decorated = decoratePersonalAlertItem(item);
-      return {
-        id: decorated.id,
-        kind: decorated.kind,
-        title: decorated.title,
-        subtitle: decorated.preview || decorated.summaryLine1 || decorated.time,
-        badgeLabel: decorated.badgeLabel,
-        badgeBg: decorated.badgeBg,
-        badgeColor: decorated.badgeColor,
-        isImportantReminder: decorated.isImportantReminder,
-      };
-    });
+  return splitAnnouncementSections(data).general.slice(0, max).map(decorateBulletinListItem);
 }
 
 function findStudentAlertByIdKind(items, id, kind) {
@@ -932,6 +919,43 @@ function fetchStudentAlerts() {
   });
 }
 
+/**
+ * 打开公告区即标记「已看到」：后端保存读游标，之后 announcementsUnread=false。
+ * springRequest 对 HTTP 200 + success:false 不 reject，须自行解包校验（同 fetchStudentAlerts），
+ * 调用方据此仅在服务端真的推进游标后才清红点。
+ */
+function markAnnouncementsViewed() {
+  return springAuth.springRequest({
+    url: '/api/student/mobile/announcements/viewed',
+    method: 'POST',
+    data: {},
+  }).then(function (res) {
+    if (res.statusCode !== 200) {
+      throw new Error('标记失败(' + (res.statusCode || 0) + ')');
+    }
+    var body = parseBody(res.data);
+    if (!body || !body.success) {
+      throw new Error((body && body.message) || '标记失败');
+    }
+    return body.data || {};
+  });
+}
+
+/** 公告已读后清掉首页公告区红点（本地 setData，不整表重拉）；取不到页面栈时忽略 */
+function clearHomeAnnouncementDot() {
+  try {
+    var pages = getCurrentPages();
+    for (var i = 0; i < pages.length; i += 1) {
+      var p = pages[i];
+      if (p && p.route === 'pages/index/index' && typeof p.setData === 'function') {
+        p.setData({ announcementsUnread: false });
+      }
+    }
+  } catch (e) {
+    // 取不到页面栈时忽略：下次首页 onShow 会按后端游标刷新
+  }
+}
+
 function fetchStudentAlertDetail(id, kind) {
   return fetchStudentAlerts().then(function (data) {
     var item = findStudentAlertByIdKind(mergeAlertItems(data), id, kind);
@@ -945,6 +969,14 @@ function fetchScanPopupBulletinDetail(id, kind) {
     var item = findStudentAlertByIdKind(extractScanPopupBulletins(data), id, kind || 'announcement');
     if (!item) throw new Error('公告不存在或已过期');
     return item;
+  });
+}
+
+/** 公告/提醒条目 → 详情页；两页共用，避免跳转 URL 漂移 */
+function navigateToAlertDetail(id, kind) {
+  if (!id || !kind) return;
+  wx.navigateTo({
+    url: '/package-feature/pages/homeBulletinDetail/index?id=' + encodeURIComponent(id) + '&kind=' + encodeURIComponent(kind),
   });
 }
 
@@ -965,15 +997,19 @@ module.exports = {
   prepareAlertBodyHtml: prepareAlertBodyHtml,
   decoratePersonalAlertItem: decoratePersonalAlertItem,
   mergeAlertItems: mergeAlertItems,
+  splitAnnouncementSections: splitAnnouncementSections,
   extractScanPopupBulletins: extractScanPopupBulletins,
   extractPersonalAlerts: extractPersonalAlerts,
   sortAlertsForDisplay: sortAlertsForDisplay,
   decorateBulletinListItem: decorateBulletinListItem,
   buildHomeBulletinPreviewList: buildHomeBulletinPreviewList,
+  navigateToAlertDetail: navigateToAlertDetail,
   findStudentAlertByIdKind: findStudentAlertByIdKind,
   countUnread: countUnread,
   unreadBadgeText: unreadBadgeText,
   fetchStudentAlerts: fetchStudentAlerts,
+  markAnnouncementsViewed: markAnnouncementsViewed,
+  clearHomeAnnouncementDot: clearHomeAnnouncementDot,
   fetchStudentAlertDetail: fetchStudentAlertDetail,
   fetchScanPopupBulletinDetail: fetchScanPopupBulletinDetail,
 };

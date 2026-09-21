@@ -2,7 +2,8 @@ import { useCallback, useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { X } from "lucide-react";
-import { loginWeb } from "@/api/domains/auth.api";
+import { loginWeb, WebLoginError, type WebLoginCandidate } from "@/api/domains/auth.api";
+import AccountChooser from "@/components/auth/AccountChooser";
 import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import ForgotPasswordPanel from "@/components/shared/ForgotPasswordPanel";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
@@ -18,6 +19,8 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  /** 手机号命中多个账号时的候选（历史数据有重号），让用户自己挑一个再重试 */
+  const [accountChoices, setAccountChoices] = useState<WebLoginCandidate[] | null>(null);
   const [forgotMode, setForgotMode] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
 
@@ -110,14 +113,15 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
     };
   }, [open, turnstileSiteKey, turnstileEnabled]);
 
-  const doLogin = useCallback(async () => {
-    if (!username.trim() || !password.trim()) {
+  const doLogin = useCallback(async (overrideUsername?: string) => {
+    const loginName = (overrideUsername ?? username).trim();
+    if (!loginName || !password.trim()) {
       toast.error("请输入账号和密码");
       return;
     }
     try {
       setSubmitting(true);
-      const data = await loginWeb(username.trim(), password, turnstileToken || undefined, turnstileLoadFailed);
+      const data = await loginWeb(loginName, password, turnstileToken || undefined, turnstileLoadFailed);
       authStorage.setAuth(data.token, data.role, data.userInfo);
 
       const isStudent = data.userInfo?.accountSource === "STUDENT"
@@ -130,6 +134,11 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
       }
       onClose();
     } catch (error) {
+      // 手机号绑定了多个账号：列出候选让用户挑，挑完用账号名直接重试（不替他猜）
+      if (error instanceof WebLoginError && error.errorCode === "MULTIPLE_ACCOUNTS") {
+        setAccountChoices(error.candidates ?? []);
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "登录失败");
     } finally {
       setSubmitting(false);
@@ -185,7 +194,7 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
                 onChange={(e) => setUsername(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); passwordRef.current?.focus(); } }}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-white/25 outline-none focus:border-white/25 focus:ring-1 focus:ring-white/20"
-                placeholder="账号/邮箱"
+                placeholder="账号/手机号/邮箱"
                 autoComplete="username"
                 spellCheck={false}
               />
@@ -207,6 +216,18 @@ export function PortalLoginModal({ open, onClose }: PortalLoginModalProps) {
                 autoComplete="current-password"
               />
             </div>
+
+            {accountChoices && accountChoices.length > 0 && (
+              <AccountChooser
+                tone="dark"
+                candidates={accountChoices}
+                onPick={(u) => {
+                  setAccountChoices(null);
+                  setUsername(u);
+                  void doLogin(u);
+                }}
+              />
+            )}
 
             {/* Turnstile */}
             {turnstileEnabled && turnstileSiteKey ? (

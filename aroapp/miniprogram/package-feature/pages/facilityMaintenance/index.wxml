@@ -14,7 +14,83 @@
     </view>
   </view>
 
-  <van-tabs active="{{ activeTab }}" bind:change="onTabChange" color="#ac1736" line-width="36rpx" lazy-render="{{ false }}">
+  <van-tabs active="{{ activeTab }}" bind:change="onTabChange" color="var(--accent)" line-width="36rpx" lazy-render="{{ false }}">
+    <van-tab title="耗材" name="cons">
+      <view class="ledger-head">
+        <view class="ledger-title-wrap">
+          <text class="ledger-title">耗材登记</text>
+          <text wx:if="{{ !loading }}" class="ledger-count">共 {{ total }} 条</text>
+        </view>
+        <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportConsExcel">导出</view>
+      </view>
+      <view class="list-pad">
+        <van-empty wx:if="{{ !loading && consRows.length === 0 }}" description="暂无耗材记录" />
+        <block wx:for="{{ consGroups }}" wx:key="name">
+          <view class="group-card">
+            <view class="group-head" data-name="{{ item.name }}" bindtap="toggleConsGroup">
+              <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
+              <text class="group-title-ellipsis">{{ item.name }}</text>
+              <text class="group-meta">× {{ item.count }} · {{ item.rangeText }}</text>
+            </view>
+            <view wx:if="{{ item.open }}" class="group-body">
+              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
+                <view class="card-head-row">
+                  <text class="card-title-ellipsis">{{ r.consumableName }} × {{ r.qty }} {{ r.unit || '' }}</text>
+                  <view class="card-inline-actions">
+                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editCons">编辑</view>
+                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteCons">删除</view>
+                  </view>
+                </view>
+                <view class="card-sub">{{ r.occurredAtText }} · {{ r.siteName || '' }}{{ r.note ? ' · ' + r.note : '' }}</view>
+              </view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
+    <van-tab title="更换" name="rep">
+      <view class="ledger-head">
+        <view class="ledger-title-wrap">
+          <text class="ledger-title">更换记录</text>
+          <text wx:if="{{ !loading }}" class="ledger-count">共 {{ total }} 条</text>
+        </view>
+        <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportRepExcel">导出</view>
+      </view>
+      <scroll-view scroll-x="true" class="preset-scroll" wx:if="{{ presetPickList.length }}">
+        <text class="preset-hint">快速类型：</text>
+        <text
+          wx:for="{{ presetPickList }}"
+          wx:key="id"
+          class="preset-chip {{ addPopup && item.selected ? 'preset-chip--on' : '' }}"
+          data-label="{{ item.label }}"
+          bindtap="tapPreset"
+        >{{ item.label }}</text>
+      </scroll-view>
+      <view class="list-pad">
+        <van-empty wx:if="{{ !loading && repRows.length === 0 }}" description="暂无更换记录" />
+        <block wx:for="{{ repGroups }}" wx:key="name">
+          <view class="group-card">
+            <view class="group-head" data-name="{{ item.name }}" bindtap="toggleRepGroup">
+              <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
+              <text class="group-title-ellipsis">{{ item.name }}</text>
+              <text class="group-meta">× {{ item.count }} · {{ item.rangeText }}</text>
+            </view>
+            <view wx:if="{{ item.open }}" class="group-body">
+              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
+                <view class="card-head-row">
+                  <text class="card-title-ellipsis">{{ r.filterType }} · {{ r.replacedAtText }}</text>
+                  <view class="card-inline-actions">
+                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editRep">编辑</view>
+                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteRep">删除</view>
+                  </view>
+                </view>
+                <view class="card-sub">{{ r.siteName || '' }} · 距上次 {{ r.daysSincePrevious != null ? r.daysSincePrevious : '-' }} 天</view>
+              </view>
+            </view>
+          </view>
+        </block>
+      </view>
+    </van-tab>
     <van-tab title="当日巡查表" name="daily">
       <view class="daily-pad">
         <view class="daily-toolbar">
@@ -67,76 +143,6 @@
         <view wx:if="{{ sheet.id && sheetItems.length === 0 }}" class="hint-amber">当前模板无巡查项，请在设置中编辑模板。</view>
         <view wx:if="{{ sheet.id && sheetItems.length && sheetMatrix.length === 0 }}" class="hint-amber">当前模板下没有可填写的机房行（可能全部停用，或未绑定启用机房）。请在设置中检查机房或模板适用机房。</view>
         <view wx:if="{{ !sheet.id }}" class="hint-muted">选择日期与模板后点击「打开当日巡查表」。若该日已有表，将直接加载协作内容。</view>
-      </view>
-    </van-tab>
-    <van-tab title="耗材" name="cons">
-      <view class="ledger-head">
-        <text class="ledger-title">耗材登记</text>
-        <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportConsExcel">导出</view>
-      </view>
-      <view class="list-pad">
-        <van-empty wx:if="{{ !loading && consRows.length === 0 }}" description="暂无耗材记录" />
-        <block wx:for="{{ consGroups }}" wx:key="name">
-          <view class="group-card">
-            <view class="group-head" data-name="{{ item.name }}" bindtap="toggleConsGroup">
-              <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
-              <text class="group-title-ellipsis">{{ item.name }}</text>
-              <text class="group-meta">× {{ item.count }} · 最近 {{ item.latestDate }}</text>
-            </view>
-            <view wx:if="{{ item.open }}" class="group-body">
-              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
-                <view class="card-head-row">
-                  <text class="card-title-ellipsis">{{ r.consumableName }} × {{ r.qty }} {{ r.unit || '' }}</text>
-                  <view class="card-inline-actions">
-                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editCons">编辑</view>
-                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteCons">删除</view>
-                  </view>
-                </view>
-                <view class="card-sub">{{ r.occurredAtText }} · {{ r.siteName || '' }}{{ r.note ? ' · ' + r.note : '' }}</view>
-              </view>
-            </view>
-          </view>
-        </block>
-      </view>
-    </van-tab>
-    <van-tab title="更换" name="rep">
-      <view class="ledger-head">
-        <text class="ledger-title">更换记录</text>
-        <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportRepExcel">导出</view>
-      </view>
-      <scroll-view scroll-x="true" class="preset-scroll" wx:if="{{ presetPickList.length }}">
-        <text class="preset-hint">快速类型：</text>
-        <text
-          wx:for="{{ presetPickList }}"
-          wx:key="id"
-          class="preset-chip {{ addPopup && item.selected ? 'preset-chip--on' : '' }}"
-          data-label="{{ item.label }}"
-          bindtap="tapPreset"
-        >{{ item.label }}</text>
-      </scroll-view>
-      <view class="list-pad">
-        <van-empty wx:if="{{ !loading && repRows.length === 0 }}" description="暂无更换记录" />
-        <block wx:for="{{ repGroups }}" wx:key="name">
-          <view class="group-card">
-            <view class="group-head" data-name="{{ item.name }}" bindtap="toggleRepGroup">
-              <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
-              <text class="group-title-ellipsis">{{ item.name }}</text>
-              <text class="group-meta">× {{ item.count }} · 最近 {{ item.latestDate }}</text>
-            </view>
-            <view wx:if="{{ item.open }}" class="group-body">
-              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
-                <view class="card-head-row">
-                  <text class="card-title-ellipsis">{{ r.filterType }} · {{ r.replacedAtText }}</text>
-                  <view class="card-inline-actions">
-                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editRep">编辑</view>
-                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteRep">删除</view>
-                  </view>
-                </view>
-                <view class="card-sub">{{ r.siteName || '' }} · 距上次 {{ r.daysSincePrevious != null ? r.daysSincePrevious : '-' }} 天</view>
-              </view>
-            </view>
-          </view>
-        </block>
       </view>
     </van-tab>
   </van-tabs>

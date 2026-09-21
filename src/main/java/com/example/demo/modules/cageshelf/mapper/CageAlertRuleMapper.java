@@ -11,7 +11,7 @@ import java.util.Map;
  */
 public interface CageAlertRuleMapper {
 
-    /** 全局默认阈值（status_code 主键，5 行）。 */
+    /** 全局默认阈值（(status_code, notify_target) 主键）。 */
     List<Map<String, Object>> listDefaultRules();
 
     /**
@@ -28,8 +28,9 @@ public interface CageAlertRuleMapper {
      */
     List<Map<String, Object>> listConfiguredRegionKeys();
 
-    /** 全局默认阈值 upsert（status_code 主键）：不存在则插、存在则更新。 */
+    /** 全局默认阈值 upsert（(status_code, notify_target) 主键）：不存在则插、存在则更新。 */
     int upsertDefaultRule(@Param("statusCode") String statusCode,
+                          @Param("notifyTarget") String notifyTarget,
                           @Param("thresholdDays") int thresholdDays,
                           @Param("action") String action,
                           @Param("enabled") int enabled,
@@ -50,6 +51,7 @@ public interface CageAlertRuleMapper {
     int insertRegionRule(@Param("regionType") String regionType,
                          @Param("regionId") String regionId,
                          @Param("statusCode") String statusCode,
+                         @Param("notifyTarget") String notifyTarget,
                          @Param("thresholdDays") int thresholdDays,
                          @Param("action") String action,
                          @Param("enabled") int enabled,

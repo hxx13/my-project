@@ -1,7 +1,5 @@
 package com.example.demo.modules.student.service;
 
-import com.example.demo.modules.aro.dto.AroNewsSummaryDto;
-import com.example.demo.modules.aro.service.AroNewsProxyService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.notification.entity.StudentNotification;
 import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
@@ -13,13 +11,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
  * 学生端独立通知服务 —— 查询 sys_student_notification 表（与教职工 sys_notification 物理隔离）
- * ARO 新闻从外部拉取后缓存到本地，与平台/工单通知统一分页。
+ * 承载平台公告与工单通知（违规镜像 bizType=STUDENT_VIOLATION）。
  */
 @Service
 public class StudentNotificationService {
@@ -27,26 +24,20 @@ public class StudentNotificationService {
     private static final Logger log = LoggerFactory.getLogger(StudentNotificationService.class);
 
     private final StudentNotificationMapper studentNotificationMapper;
-    private final AroNewsProxyService aroNewsProxyService;
     private final ObligationService obligationService;
 
     public StudentNotificationService(StudentNotificationMapper studentNotificationMapper,
-                                       AroNewsProxyService aroNewsProxyService,
                                        @org.springframework.beans.factory.annotation.Autowired(required = false)
                                        ObligationService obligationService) {
         this.studentNotificationMapper = studentNotificationMapper;
-        this.aroNewsProxyService = aroNewsProxyService;
         this.obligationService = obligationService;
     }
 
     /**
      * 获取学生通知列表。
-     * type 可为空（全部）、PLATFORM、ARO、WORK_ORDER。
+     * type 可为空（全部）、PLATFORM、WORK_ORDER。
      */
     public Map<String, Object> getNotifications(User user, String type, int page, int size) {
-        // 先同步 ARO 新闻缓存（幂等：INSERT IGNORE）
-        syncAroNewsCache(user.getId());
-
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 50);
         int offset = (safePage - 1) * safeSize;
@@ -120,52 +111,6 @@ public class StudentNotificationService {
             return ob != null ? ob.getId() : null;
         } catch (Exception e) {
             return null;
-        }
-    }
-
-    /**
-     * 从 ARO 外部系统拉取新闻并缓存到本地通知表。
-     * INSERT IGNORE 保证幂等，已存在的记录不会重复写入。
-     */
-    private void syncAroNewsCache(String userId) {
-        try {
-            var aroNews = aroNewsProxyService.fetchNewsList();
-            if (aroNews == null || aroNews.getList() == null || aroNews.getList().isEmpty()) {
-                return;
-            }
-            List<StudentNotification> batch = new ArrayList<>();
-            LocalDateTime now = LocalDateTime.now();
-            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-            for (AroNewsSummaryDto news : aroNews.getList()) {
-                StudentNotification sn = new StudentNotification();
-                sn.setId("SNF_ARO_" + (news.getId() != null ? news.getId() : UUID.randomUUID().toString().substring(0, 8)));
-                sn.setTitle(news.getNewsName() != null ? news.getNewsName() : "");
-                sn.setSummary("");
-                sn.setType("ARO");
-                sn.setRecipientUserId(userId);
-                sn.setSourceUrl(null); // ARO DTO 暂不提供详情链接
-                sn.setIsRead(0);
-                sn.setCreateTime(news.getCreateTime() != null
-                        ? parseAroTime(news.getCreateTime(), fmt)
-                        : now);
-                batch.add(sn);
-            }
-            if (!batch.isEmpty()) {
-                studentNotificationMapper.insertBatch(batch);
-            }
-            // 清除 30 天前的旧 ARO 缓存
-            String cutoff = now.minusDays(30).format(fmt);
-            studentNotificationMapper.deleteExpiredAroNews(cutoff);
-        } catch (Exception e) {
-            log.warn("Failed to sync ARO news cache for user {}", userId, e);
-        }
-    }
-
-    private LocalDateTime parseAroTime(String timeStr, DateTimeFormatter fmt) {
-        try {
-            return LocalDateTime.parse(timeStr, fmt);
-        } catch (Exception e) {
-            return LocalDateTime.now();
         }
     }
 }

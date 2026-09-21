@@ -3,13 +3,13 @@
 
 .page {
   min-height: 100vh;
-  background: #f7f8fa;
+  background: var(--fill);
   padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
 }
 .toolbar {
   padding: 20rpx 24rpx 16rpx;
   background: #fff;
-  border-bottom: 1rpx solid #ebedf0;
+  border-bottom: 1rpx solid var(--line);
 }
 .toolbar-row {
   display: flex;
@@ -27,22 +27,20 @@
 .toolbar-links {
   display: flex;
   flex-shrink: 0;
-  gap: 24rpx;
+  gap: 12rpx;
 }
-.text-link {
-  font-size: 28rpx;
-}
+/* .text-link 的按钮外观统一定义在 _fm-theme.wxss，这里不重复声明尺寸 */
 .picker-label {
   font-size: 24rpx;
-  color: #969799;
+  color: var(--faint);
   margin-bottom: 8rpx;
 }
 .picker-box {
   padding: 16rpx 20rpx;
-  background: #f7f8fa;
-  border-radius: 999rpx;
+  background: var(--fill);
+  border-radius: 12rpx;
   font-size: 28rpx;
-  color: #323233;
+  color: var(--ink);
 }
 .picker-box.sm {
   padding: 12rpx 16rpx;
@@ -70,7 +68,7 @@
 .daily-label {
   display: block;
   font-size: 22rpx;
-  color: #969799;
+  color: var(--faint);
   margin-bottom: 6rpx;
 }
 .daily-actions {
@@ -84,7 +82,7 @@
   padding: 16rpx;
   background: #fff;
   border-radius: 12rpx;
-  border: 1rpx solid #ebedf0;
+  border: 1rpx solid var(--line);
 }
 .sheet-meta-row {
   display: flex;
@@ -96,7 +94,7 @@
 }
 .meta-text {
   font-size: 26rpx;
-  color: #646566;
+  color: var(--mute);
   flex: 1;
   min-width: 0;
 }
@@ -111,7 +109,7 @@
   margin-top: 16rpx;
   background: #fff;
   border-radius: 12rpx;
-  border: 1rpx solid #ebedf0;
+  border: 1rpx solid var(--line);
   overflow: hidden;
 }
 .matrix-scroll {
@@ -127,10 +125,10 @@
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  border-bottom: 1rpx solid #f0f0f0;
+  border-bottom: 1rpx solid var(--line);
 }
 .matrix-row.matrix-head {
-  background: #f7f8fa;
+  background: var(--fill);
   font-weight: 600;
 }
 .matrix-cell {
@@ -138,7 +136,7 @@
   width: 200rpx;
   padding: 12rpx 8rpx;
   font-size: 24rpx;
-  color: #323233;
+  color: var(--ink);
   box-sizing: border-box;
   white-space: normal;
 }
@@ -148,14 +146,14 @@
   left: 0;
   z-index: 2;
   background: #fff;
-  border-right: 1rpx solid #ebedf0;
+  border-right: 1rpx solid var(--line);
 }
 .matrix-head .matrix-cell.sticky-col {
-  background: #f7f8fa;
+  background: var(--fill);
 }
 .matrix-cell.head-cell {
   font-size: 24rpx;
-  color: #646566;
+  color: var(--mute);
 }
 .site-name {
   font-weight: 500;
@@ -165,14 +163,14 @@
   min-height: 64rpx;
   padding: 8rpx 12rpx;
   font-size: 24rpx;
-  border: 1rpx solid #ebedf0;
+  border: 1rpx solid var(--line);
   border-radius: 8rpx;
   box-sizing: border-box;
 }
 .cell-input--picker {
   display: flex;
   align-items: center;
-  color: #323233;
+  color: var(--ink);
 }
 .fm-preset-scroll {
   max-width: 100%;
@@ -193,29 +191,40 @@
 .hint-muted {
   margin-top: 16rpx;
   font-size: 26rpx;
-  color: #969799;
+  color: var(--faint);
 }
 .ledger-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 16rpx 24rpx 0;
-  background: #f7f8fa;
+  background: var(--fill);
 }
 .ledger-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #323233;
+  color: var(--ink);
+}
+/* 标题右侧的总条数：台账现在一次拉全，条数是真实总数（原来是分页加载，写总数就是骗人的） */
+.ledger-title-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  min-width: 0;
+}
+.ledger-count {
+  font-size: 22rpx;
+  color: var(--faint);
 }
 .preset-scroll {
   white-space: nowrap;
   padding: 12rpx 24rpx;
   background: #fff;
-  border-bottom: 1rpx solid #ebedf0;
+  border-bottom: 1rpx solid var(--line);
 }
 .preset-hint {
   font-size: 24rpx;
-  color: #969799;
+  color: var(--faint);
   margin-right: 12rpx;
 }
 .preset-chip {
@@ -231,16 +240,16 @@
   padding: 20rpx 24rpx;
   margin-bottom: 16rpx;
   box-shadow: 0 6rpx 22rpx rgba(15, 23, 42, 0.06);
-  border: 1rpx solid #eef2f7;
+  border: 1rpx solid var(--line);
 }
 .card-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #323233;
+  color: var(--ink);
 }
 .card-sub {
   font-size: 24rpx;
-  color: #969799;
+  color: var(--faint);
   margin-top: 8rpx;
 }
 .card-actions {
@@ -266,13 +275,15 @@
   font-weight: 300;
   color: #fff;
 }
+/* 工具按钮：**圆角矩形，不用胶囊**（用户 2026-09-21 明确）—— 与订购页 .foot-btn / 笼架页
+   .mc-btn 同一档 12rpx。胶囊形状只留给状态标签，不给按钮。 */
 .fm-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0 28rpx;
   height: 64rpx;
-  border-radius: 999rpx;
+  border-radius: 12rpx;
   font-size: 26rpx;
   font-weight: 600;
   box-sizing: border-box;
@@ -297,18 +308,27 @@
 .fm-pill-info {
   color: #fff;
 }
+/* 次级 / 危险：中性实底 + 一道可见描边。
+   为什么必须带描边：这组 .fm-pill 会同时落在**灰底**（页面、ledger-head）和
+   **白底**（弹窗、确认框）上。只有 --fill-2 填充的话，压在灰底 #f6f7fb 上几乎同色，
+   按钮会「消失」成一片灰字（实测「刷新」就看不见了）；描边在灰底上托住轮廓，
+   填充在白底上托住轮廓，两个场景都立得住。
+   危险动作只给红字，不铺红底、不描红边。 */
 .fm-pill-ghost {
-  color: #475569;
-  background: #f1f5f9;
-  border: 1rpx solid #e2e8f0;
+  color: var(--body);
+  background: var(--fill-2);
+  border: 1rpx solid var(--line-strong);
 }
 .fm-pill-danger-ghost {
-  color: #e11d48;
-  background: #fff1f2;
-  border: 1rpx solid rgba(225, 29, 72, 0.25);
+  color: var(--danger);
+  background: var(--fill-2);
+  border: 1rpx solid var(--line-strong);
 }
+/* 禁用：实心中灰，不用 opacity（半透明在浅底上会糊成一片，看不出是禁用还是没渲染） */
 .fm-disabled {
-  opacity: 0.5;
+  color: var(--off);
+  background: var(--off-bg);
+  box-shadow: none;
   pointer-events: none;
 }
 .fm-mt {
@@ -339,13 +359,13 @@
   display: block;
   font-size: 32rpx;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--ink);
   margin-bottom: 12rpx;
 }
 .fm-confirm-body {
   display: block;
   font-size: 26rpx;
-  color: #64748b;
+  color: var(--mute);
   margin-bottom: 28rpx;
 }
 .fm-confirm-actions {
@@ -353,9 +373,11 @@
   justify-content: flex-end;
   gap: 20rpx;
 }
+/* 危险动作：中性实底 + 红字 + 可见描边。原先是玫红渐变 —— 明令禁止的红底按钮。 */
 .fm-pill-danger {
-  color: #fff;
-  background: linear-gradient(135deg, #f43f5e, #fb7185);
+  color: var(--danger);
+  background: var(--fill-2);
+  border: 1rpx solid var(--line-strong);
 }
 .popup-body {
   padding: 24rpx 32rpx 32rpx;
@@ -366,7 +388,7 @@
   font-size: 32rpx;
   font-weight: 600;
   margin-bottom: 16rpx;
-  color: #323233;
+  color: var(--ink);
 }
 .submit-btn {
   margin-top: 24rpx;
@@ -378,7 +400,7 @@
   background: #fff;
   border-radius: 22rpx;
   box-shadow: 0 6rpx 22rpx rgba(15, 23, 42, 0.06);
-  border: 1rpx solid #eef2f7;
+  border: 1rpx solid var(--line);
   overflow: hidden;
 }
 .group-head {
@@ -389,7 +411,7 @@
 }
 .group-arrow {
   font-size: 22rpx;
-  color: #969799;
+  color: var(--faint);
   flex-shrink: 0;
   width: 32rpx;
   text-align: center;
@@ -399,24 +421,24 @@
   min-width: 0;
   font-size: 28rpx;
   font-weight: 600;
-  color: #323233;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .group-meta {
   font-size: 22rpx;
-  color: #969799;
+  color: var(--faint);
   flex-shrink: 0;
 }
 .group-body {
-  border-top: 1rpx solid #f0f0f0;
+  border-top: 1rpx solid var(--line);
   padding: 8rpx 16rpx 16rpx;
 }
 .card--sub {
   margin-bottom: 12rpx;
   box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
-  border: 1rpx solid #f5f6f8;
+  border: 1rpx solid var(--fill);
 }
 .card--sub:last-child {
   margin-bottom: 0;
@@ -427,12 +449,12 @@
 }
 .preset-selected-label {
   font-size: 22rpx;
-  color: #969799;
+  color: var(--faint);
 }
 
 /* 更换分区弹窗内预设多选 toggle 行（纯 view，无 checkbox 组件） */
 .preset-toggle-list {
-  border: 1rpx solid #ebedf0;
+  border: 1rpx solid var(--line);
   border-radius: 12rpx;
   overflow: hidden;
 }
@@ -442,7 +464,7 @@
   align-items: center;
   gap: 16rpx;
   padding: 18rpx 24rpx;
-  border-bottom: 1rpx solid #f2f3f5;
+  border-bottom: 1rpx solid var(--fill-2);
   background: #fff;
 }
 
@@ -451,11 +473,11 @@
 }
 
 .preset-toggle-row--on {
-  background: rgba(172, 23, 54, 0.06);
+  background: var(--accent-bg);
 }
 
 .preset-toggle-row--hover {
-  background: #f7f8fa;
+  background: var(--fill);
 }
 
 .preset-toggle-checkmark {
@@ -464,26 +486,26 @@
   line-height: 36rpx;
   text-align: center;
   font-size: 28rpx;
-  color: #ac1736;
+  color: var(--accent);
   font-weight: 700;
   flex-shrink: 0;
-  border: 2rpx solid #dcdee0;
+  border: 2rpx solid var(--line-strong);
   border-radius: 6rpx;
   box-sizing: border-box;
 }
 
 .preset-toggle-row--on .preset-toggle-checkmark {
-  background: #ac1736;
+  background: var(--accent);
   color: #fff;
-  border-color: #ac1736;
+  border-color: var(--accent);
 }
 
 .preset-toggle-label {
   font-size: 28rpx;
-  color: #323233;
+  color: var(--ink);
 }
 
 .preset-toggle-row--on .preset-toggle-label {
   font-weight: 600;
-  color: #ac1736;
+  color: var(--accent);
 }

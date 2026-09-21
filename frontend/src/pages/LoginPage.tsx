@@ -8,7 +8,8 @@ import { PortalHero } from "@/features/portal/PortalHero";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
-import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import { loginWeb, WebLoginError, type WebLoginCandidate, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr, sendVerificationCode, forgotPasswordByEmailVerify, forgotPasswordByEmailReset } from "@/api/domains/auth.api";
+import AccountChooser from "@/components/auth/AccountChooser";
 import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 
 declare global {
@@ -59,6 +60,8 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  /** 手机号命中多个账号（历史数据有重号）时的候选：让用户挑一个，不替他猜 */
+  const [accountChoices, setAccountChoices] = useState<WebLoginCandidate[] | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [assetBroken, setAssetBroken] = useState<Record<string, boolean>>({});
   const [branding, setBranding] = useState<LoginBranding | null>(null);
@@ -296,15 +299,16 @@ export default function LoginPage() {
   const avatarLetter = (headerPrimaryLabel !== "—" ? headerPrimaryLabel : sessionUser?.username || "?").slice(0, 1).toUpperCase();
   const hasSession = Boolean(authStorage.hasToken());
 
-  const doLogin = useCallback(async () => {
-    if (!username.trim() || !password.trim()) {
+  const doLogin = useCallback(async (overrideUsername?: string) => {
+    const loginName = (overrideUsername ?? username).trim();
+    if (!loginName || !password.trim()) {
       toast.error("请输入账号和密码");
       return;
     }
     try {
       setSubmitting(true);
       // Turnstile 未配置时允许空 token 降级登录
-      const data = await loginWeb(username.trim(), password, turnstileToken || undefined, turnstileLoadFailed);
+      const data = await loginWeb(loginName, password, turnstileToken || undefined, turnstileLoadFailed);
       authStorage.setAuth(data.token, data.role, data.userInfo);
 
       // 学生库账号（或 MEMBER 角色）不能进入教职工视角 → 自动跳转学生中心
@@ -325,6 +329,11 @@ export default function LoginPage() {
       setPassword("");
       syncUserFromStorage();
     } catch (error) {
+      // 手机号绑定了多个账号：列出候选让用户挑，挑完用账号名直接重试（不替他猜）
+      if (error instanceof WebLoginError && error.errorCode === "MULTIPLE_ACCOUNTS") {
+        setAccountChoices(error.candidates ?? []);
+        return;
+      }
       const message = error instanceof Error ? error.message : "登录失败";
       toast.error(message);
     } finally {
@@ -694,6 +703,17 @@ export default function LoginPage() {
                         autoComplete="current-password"
                       />
                     </div>
+                    {accountChoices && accountChoices.length > 0 && (
+                      <AccountChooser
+                        tone="dark"
+                        candidates={accountChoices}
+                        onPick={(u) => {
+                          setAccountChoices(null);
+                          setUsername(u);
+                          void doLogin(u);
+                        }}
+                      />
+                    )}
                     <div ref={turnstileContainerRef} className="flex min-h-[65px] items-center justify-center">
                       {turnstileLoading && !turnstileLoadFailed && (
                         <div className="flex flex-col items-center gap-1">

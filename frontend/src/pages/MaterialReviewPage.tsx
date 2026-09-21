@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { usePendingMaterialRequests, useFinishedMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useRevokeMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
@@ -14,6 +14,7 @@ import {
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
 import { fetchPendingEnrollments, auditEnrollment, scoreEnrollment, type PendingEnrollment } from "@/api/domains/training.api";
 import { fetchPendingClaims, approveClaim, batchApproveClaims, fetchCageOpPending, reviewCageOp, fetchReviewedCageOps, type CageClaimItem, type CageOpRequestView } from "@/api/domains/cageShelf.api";
+import { CageOpReviewTab, CAGE_OP_SIGN_SLOTS } from "@/features/cage-shelf/components/CageOpReviewTab";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
 import { authStorage } from "@/features/auth/authStorage";
@@ -205,10 +206,17 @@ export default function MaterialReviewPage() {
     staleTime: 0,
   });
   const cageOpReviewMutation = useMutation({
-    mutationFn: ({ id, decision, reason }: { id: string; decision: "approved" | "rejected"; reason?: string }) =>
-      reviewCageOp(id, decision, reason),
-    onSuccess: (_r, v) => {
-      toast.success(v.decision === "approved" ? "已通过" : "已驳回");
+    mutationFn: ({ id, decision, reason, role }: { id: string; decision: "approved" | "rejected" | "held"; reason?: string; role?: string }) =>
+      reviewCageOp(id, decision, reason, role),
+    onSuccess: (r, v) => {
+      // 三签一次调用只记一关：单据仍是 pending 时**不能说「已通过」**，
+      // 否则审核人以为整笔完事了，实际只签了归属地那一关、单子还挂着。
+      const roleLabel = CAGE_OP_SIGN_SLOTS.find((s) => s.role === r.signedRole)?.label;
+      if (v.decision === "approved" && r.status === "pending" && roleLabel) {
+        toast.success(`已签署「${roleLabel}」，等待其余角色`);
+      } else {
+        toast.success(v.decision === "approved" ? "已通过" : v.decision === "held" ? "已暂缓" : "已驳回");
+      }
       // 前缀失效：待审列表、角标计数、以及笼架页的待审中间态标识一起刷
       void qc.invalidateQueries({ queryKey: ["cage-op"] });
     },
@@ -219,6 +227,16 @@ export default function MaterialReviewPage() {
     const reason = await appPrompt("驳回理由（必填）：");
     if (!reason) return;
     cageOpReviewMutation.mutate({ id: r.id, decision: "rejected", reason });
+  };
+  /** 转移三签：点哪个角色的哪个动作就签哪一关；暂缓/不同意都要理由（同意无理由）。 */
+  const handleCageOpSign = async (r: CageOpRequestView, role: string, decision: "approved" | "rejected" | "held") => {
+    if (decision !== "approved") {
+      const reason = await appPrompt(decision === "held" ? "暂缓理由（必填）：" : "驳回理由（必填）：");
+      if (!reason) return;
+      cageOpReviewMutation.mutate({ id: r.id, decision, reason, role });
+      return;
+    }
+    cageOpReviewMutation.mutate({ id: r.id, decision, role });
   };
 
 
@@ -971,33 +989,20 @@ export default function MaterialReviewPage() {
           )}
         </div>
       ) : tab === "cageDivide" || tab === "cageTransfer" ? (
-        <div className="space-y-4">
-          {cageOpActiveLoading ? <DataSkeleton variant="card" rows={5} /> : null}
-          {cageOpActiveItems.length === 0 && cageOpDoneItems.length === 0 && !cageOpActiveLoading ? (
-            <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无可审批的{tab === "cageDivide" ? "分笼" : "转移"}</p>
-          ) : (
-            <>
-              {/* 待审核默认展开，已审核默认折叠 —— 与该页物资审核的子分区约定一致 */}
-              <CageOpSection title="待审核" count={cageOpActiveItems.length} defaultOpen>
-                {cageOpActiveItems.map((r) => (
-                  <CageOpReviewCard
-                    key={r.id}
-                    req={r}
-                    onApprove={handleCageOpApprove}
-                    onReject={handleCageOpReject}
-                    actionPending={cageOpReviewMutation.isPending}
-                    onJump={handleCageOpJump}
-                  />
-                ))}
-              </CageOpSection>
-              <CageOpSection title="已审核" count={cageOpDoneItems.length}>
-                {cageOpDoneItems.map((r) => (
-                  <CageOpReviewCard key={r.id} req={r} readOnly onJump={handleCageOpJump} />
-                ))}
-              </CageOpSection>
-            </>
-          )}
-        </div>
+        <CageOpReviewTab
+          /* key 带上 tab：分笼与转移同位置同组件，不给 React 一个新 key 它会复用同一个实例，
+             关键词/状态筛选/勾选会跟着串到另一个 tab。 */
+          key={tab}
+          opType={tab === "cageDivide" ? "divide" : "transfer"}
+          pending={cageOpActiveItems}
+          done={cageOpDoneItems}
+          loading={cageOpActiveLoading}
+          actionPending={cageOpReviewMutation.isPending}
+          onApprove={handleCageOpApprove}
+          onReject={handleCageOpReject}
+          onSign={handleCageOpSign}
+          onJump={handleCageOpJump}
+        />
       ) : (
         <>
           {loading ? <DataSkeleton variant="card" rows={5} /> : null}
@@ -1291,113 +1296,6 @@ function CageClaimCard({
             <button type="button" onClick={() => onReject(claim)} disabled={actionPending} className="review-btn review-btn--reject disabled:opacity-50">驳回</button>
             <button type="button" onClick={() => onApprove(claim)} disabled={actionPending} className="review-btn review-btn--approve disabled:opacity-50">通过</button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 分笼 / 转移审核的分区（待审核默认展开、已审核默认折叠；与笼位申请的分区约定一致） */
-function CageOpSection({ title, count, defaultOpen, children }: {
-  title: string;
-  count: number;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen ?? false);
-  if (count === 0) return null;
-  return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 text-xs text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
-      >
-        <span className="transition-transform duration-200" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
-        <span>{title}</span>
-        <span className="text-[11px]">{count} 条</span>
-      </button>
-      {open && <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{children}</div>}
-    </div>
-  );
-}
-
-const CAGE_OP_STATUS_LABEL: Record<string, string> = {
-  pending: "待审核", approved: "已通过", rejected: "已驳回", cancelled: "已撤销",
-};
-
-/** 分笼 / 转移审核卡片；readOnly = 已审核区（只展示结果，不再给操作） */
-function CageOpReviewCard({
-  req,
-  onApprove,
-  onReject,
-  actionPending,
-  readOnly,
-  onJump,
-}: {
-  req: CageOpRequestView;
-  onApprove?: (r: CageOpRequestView) => void;
-  onReject?: (r: CageOpRequestView) => void;
-  actionPending?: boolean;
-  readOnly?: boolean;
-  onJump?: (loc: { shelveId?: string | number | null; positionX?: number | null; positionY?: number | null }) => void;
-}) {
-  const isDivide = req.opType === "divide";
-  const srcPos = cagePositionLabel(req.positionX, req.positionY);
-  const loc = [req.campusName, req.roomName, req.shelveName].filter(Boolean).join(" / ");
-  const targets = req.targets ?? [];
-  const jumpBtn = "text-[11px] text-[var(--app-color-accent)] hover:underline shrink-0";
-  const tone = readOnly ? (req.status === "approved" ? "ok" : req.status === "rejected" ? "bad" : "none") : "pending";
-  return (
-    <div className="review-card p-3" data-tone={tone}>
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">{req.applicantName || req.applicantId || "—"}</span>
-            <span className="review-status">{CAGE_OP_STATUS_LABEL[req.status] || req.status}</span>
-          </div>
-          {/* 只给坐标，不给笼位 id —— 审的人要判断的是「从哪搬到哪」，id 没有信息量 */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]">
-            <span className="font-medium text-[var(--app-color-text-secondary)]">{isDivide ? "分笼" : "转移"}</span>
-            <span>源：{loc}{loc && srcPos ? " · " : ""}{srcPos && `坐标 ${srcPos}`}</span>
-            {req.shelveId != null && srcPos && (
-              <button type="button" onClick={() => onJump?.({ shelveId: req.shelveId, positionX: req.positionX, positionY: req.positionY })} className={jumpBtn}>定位</button>
-            )}
-          </div>
-          <div className="space-y-0.5 text-[11px] text-[var(--app-color-text-secondary)]">
-            {targets.length === 0 ? (
-              <div className="text-[var(--app-color-text-tertiary)]">{isDivide ? `目标 ${req.targetAnimalCageIds.length} 个笼位（无定位信息）` : "目标笼位：—"}</div>
-            ) : targets.map((t) => {
-              const tWhere = [t.campusName, t.roomName, t.shelveName].filter(Boolean).join(" / ");
-              const tPos = cagePositionLabel(t.positionX, t.positionY);
-              return (
-                <div key={t.animalCageId} className="flex flex-wrap items-center gap-2">
-                  <span>→ {tWhere}{tWhere && tPos ? " · " : ""}{tPos && `坐标 ${tPos}`}</span>
-                  {t.shelveId != null && tPos && (
-                    <button type="button" onClick={() => onJump?.({ shelveId: t.shelveId, positionX: t.positionX, positionY: t.positionY })} className={jumpBtn}>定位</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {req.reason && <div className="text-[11px] text-[var(--app-color-text-tertiary)]">理由：{req.reason}</div>}
-          {readOnly && req.rejectReason && <div className="text-[11px] text-[var(--app-color-feedback-danger)]">驳回理由：{req.rejectReason}</div>}
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
-          {readOnly ? (
-            req.reviewedAt ? (
-              <span className="text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">
-                处理 {formatBeijingDateTimeFull(req.reviewedAt)}
-                {req.reviewerName && <span className="text-[var(--app-color-text-secondary)]"> · {req.reviewerName}</span>}
-              </span>
-            ) : null
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => onReject?.(req)} disabled={actionPending} className="review-btn review-btn--reject disabled:opacity-50">驳回</button>
-              <button type="button" onClick={() => onApprove?.(req)} disabled={actionPending} className="review-btn review-btn--approve disabled:opacity-50">通过</button>
-            </div>
-          )}
         </div>
       </div>
     </div>

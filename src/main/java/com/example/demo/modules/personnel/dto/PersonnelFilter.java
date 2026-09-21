@@ -11,8 +11,12 @@ public class PersonnelFilter {
     private String accountType;
     /** 课题组名称（controller 层由 groupId 解析后传入） */
     private String projectGroupName;
+    /** 课题组字典 id；与 projectGroupName 互为兜底 */
+    private Long projectGroupId;
     /** 部门名称（controller 层由 departmentId 解析后传入） */
     private String departmentName;
+    /** 部门字典 id；与 departmentName 互为兜底 */
+    private Long departmentId;
     /** 角色（人级唯一权威，p.role） */
     private String role;
     /** 账号状态（仅账号人，su_staff.status） */
@@ -23,6 +27,8 @@ public class PersonnelFilter {
     private String roomName;
     /** 身份标签 id（EXISTS join person_identity on CAST(p.id AS CHAR)） */
     private Long identityTagId;
+    /** 回收站视图：null/false=只看未删除（默认）；true=只看回收站里的 */
+    private Boolean trashOnly;
     /** 分页（Service 使用） */
     private Integer page = 1;
     private Integer pageSize = 20;

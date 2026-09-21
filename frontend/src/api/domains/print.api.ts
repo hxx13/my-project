@@ -11,6 +11,11 @@ interface Result<T> {
 export interface PrintStationOption {
   id: string;
   name: string;
+  /**
+   * 执行方式。SERVER 才有「服务端打印队列」可清。
+   * 老版本接口没有这个字段 —— 取不到时按「非直发」处理，宁可不给入口也别给错。
+   */
+  mode?: "KIOSK" | "SERVER";
   /** 支持的文件类型分组，逗号分隔；null/空 = 全支持 */
   supportedTypes: string | null;
   /** 在线的三态。UNKNOWN 是「从没连过」，跟 OFFLINE 不是一回事 */
@@ -42,6 +47,12 @@ export interface PrintJob {
   createdAt: string;
   sentAt: string | null;
   printedAt: string | null;
+  /**
+   * 「还排在打印机队列里吗」独立于 status 的一维：
+   * QUEUED = 此刻确实还排在队列里 / CLEARED = 已不在 / null = 没核对过、不适用。
+   * 直发任务可能 status 已是 PRINTED（lp 退出码 0）而纸还在队列里排着。
+   */
+  queueState: "QUEUED" | "CLEARED" | null;
 }
 
 /** 加急优先级，与后端 PrintJob.PRIORITY_URGENT 对齐 */
@@ -232,4 +243,25 @@ export async function deletePrintStation(id: string): Promise<void> {
  */
 export async function reloadPrintStation(id: string): Promise<void> {
   await authHttp.post(`/admin/print/stations/${id}/reload`);
+}
+
+/* ────────────── 直发队列：能力与清空 ────────────── */
+
+/**
+ * 当前账号能做什么。清队列要 ADMIN，但队列弹窗挂在教职工可见的页面上，
+ * 所以按钮显隐问服务端，不在前端复制一份角色规则。
+ */
+export async function fetchPrintCapabilities(): Promise<{ canClearQueue: boolean }> {
+  const res = await authHttp.get<Result<{ canClearQueue: boolean }>>("/admin/print/capabilities");
+  return res.data.data;
+}
+
+/** 清空这台打印机的队列。返回 CUPS 清掉几条 / 库里收起几条。 */
+export async function clearStationQueue(
+  stationId: string,
+): Promise<{ cleared: number; cancelled: number }> {
+  const res = await authHttp.post<Result<{ cleared: number; cancelled: number }>>(
+    `/admin/print/stations/${stationId}/queue/clear`,
+  );
+  return res.data.data;
 }

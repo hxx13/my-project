@@ -2,6 +2,7 @@ package com.example.demo.modules.print.service;
 
 import com.example.demo.modules.print.entity.PrintJob;
 import com.example.demo.modules.print.entity.PrintStation;
+import com.example.demo.modules.print.mapper.PrintJobMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,11 +11,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
 
 /**
  * 「直发工位」（{@code mode=SERVER}）的执行方：后端自己把 PDF 交给本机打印队列，
@@ -38,23 +35,27 @@ public class DirectPrintService {
 
     private static final Logger log = LoggerFactory.getLogger(DirectPrintService.class);
 
-    /** 双引号内整体算一段（打印机名常含空格），其余按空白切。 */
-    private static final Pattern TOKEN = Pattern.compile("\"([^\"]*)\"|(\\S+)");
-
     private final PrintJobService jobService;
     private final PrintSourceResolver sourceResolver;
-    private final List<String> commandTemplate;
+    private final PrintCommandRunner runner;
+    private final PrintJobMapper mapper;
+    /** 原始模板串（未切分）——切分交给 runner，这样占位符里的空格能被模板引号兜住。 */
+    private final String commandTemplate;
     private final long timeoutSeconds;
 
     public DirectPrintService(PrintJobService jobService,
                               PrintSourceResolver sourceResolver,
+                              PrintCommandRunner runner,
+                              PrintJobMapper mapper,
                               @Value("${app.print.direct-command:lp -d {target} -n {copies} {file}}") String command,
                               @Value("${app.print.direct-timeout-seconds:60}") long timeoutSeconds) {
         this.jobService = jobService;
         this.sourceResolver = sourceResolver;
-        this.commandTemplate = tokenize(command);
+        this.runner = runner;
+        this.mapper = mapper;
+        this.commandTemplate = command;
         this.timeoutSeconds = Math.max(5, timeoutSeconds);
-        if (this.commandTemplate.isEmpty()) {
+        if (command == null || command.isBlank()) {
             log.warn("[print] 未配置 app.print.direct-command，直发工位将全部失败");
         }
     }
@@ -90,7 +91,7 @@ public class DirectPrintService {
     }
 
     private void print(PrintJob job, PrintStation station) throws IOException, InterruptedException {
-        if (commandTemplate.isEmpty()) {
+        if (commandTemplate == null || commandTemplate.isBlank()) {
             throw new IOException("未配置 app.print.direct-command");
         }
         String target = station.getPrinterIp();
@@ -110,13 +111,22 @@ public class DirectPrintService {
         try {
             Files.write(file, bytes);
 
-            List<String> cmd = new ArrayList<>();
-            for (String part : commandTemplate) {
-                cmd.add(part.replace("{target}", target)
-                        .replace("{copies}", String.valueOf(job.getCopies()))
-                        .replace("{file}", file.toAbsolutePath().toString()));
+            // 替换与切分都在 runner 里做（先替换再切分），这里只给值。
+            String output = runner.run(commandTemplate,
+                    Map.of("target", target,
+                           "copies", String.valueOf(job.getCopies()),
+                           "file", file.toAbsolutePath().toString()),
+                    timeoutSeconds);
+
+            // 作业号只用于**撤销与核对**：抓不到只是功能降级，不影响成败判定
+            //（成败仍只看命令退出码）。回填失败同理吞掉 —— 任务已经交给 CUPS 了，
+            // 因为记不上号而把这个方法判成失败是错的。
+            try {
+                PrintCommandRunner.parseLpJobId(output)
+                        .ifPresent(id -> mapper.setCupsJobId(job.getId(), id));
+            } catch (Exception e) {
+                log.warn("[print] CUPS 作业号回填失败 jobId={}: {}", job.getId(), e.getMessage());
             }
-            exec(cmd);
         } finally {
             try {
                 Files.deleteIfExists(file);
@@ -141,36 +151,5 @@ public class DirectPrintService {
             return ".jpg";
         }
         throw new IOException("这个文件的内容不是 PDF / PNG / JPEG，直发打印机打不了");
-    }
-
-    /**
-     * 照 {@code OfficeToPdfConverter} 的范式：**先读掉输出再 waitFor**，
-     * 否则缓冲区满了子进程会卡住，超时了都等不到。
-     */
-    private void exec(List<String> cmd) throws IOException, InterruptedException {
-        log.info("[print] 直发命令: {}", cmd);
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectErrorStream(true);
-        Process proc = pb.start();
-        String output = new String(proc.getInputStream().readAllBytes());
-
-        if (!proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
-            proc.destroyForcibly();
-            throw new IOException("打印命令超时（" + timeoutSeconds + " 秒）");
-        }
-        if (proc.exitValue() != 0) {
-            throw new IOException("打印命令失败（退出码 " + proc.exitValue() + "）：" + output.trim());
-        }
-        log.debug("[print] 直发命令输出: {}", output.trim());
-    }
-
-    private static List<String> tokenize(String command) {
-        List<String> out = new ArrayList<>();
-        if (command == null || command.isBlank()) return out;
-        Matcher m = TOKEN.matcher(command);
-        while (m.find()) {
-            out.add(m.group(1) != null ? m.group(1) : m.group(2));
-        }
-        return out;
     }
 }

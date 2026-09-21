@@ -25,6 +25,7 @@ export default function CageOperationActions({
   onChanged,
   className,
   opMark,
+  onStartBatch,
 }: {
   source: CageOpSource;
   /** 是否占用中（非占用笼位不出现分笼/转移入口） */
@@ -35,6 +36,12 @@ export default function CageOperationActions({
   className?: string;
   /** 该笼位的待审分笼/转移中间态；有值时只展示状态条，不再给新入口 */
   opMark?: CageOpMark | null;
+  /**
+   * 转移入口改为打开批量缓冲抽屉。**传了它就替换掉原来的单笼「转移笼位」按钮**
+   * （不并列两个 —— 单个转移是批量抽屉的 N=1 特例，两个按钮做同一件事只会让人犹豫点哪个）。
+   * 标签仍是「转移笼位」，用户视角看不出区别。PC 不传 → 走原来的单笼选位流程。
+   */
+  onStartBatch?: (source: CageOpSource) => void;
 }) {
   const [checked, setChecked] = useState(false);
   const [operable, setOperable] = useState(false);
@@ -154,9 +161,16 @@ export default function CageOperationActions({
             <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStart("divide", source)}>
               分笼
             </AdminButton>
-            <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStart("transfer", source)}>
-              转移笼位
-            </AdminButton>
+            {onStartBatch ? (
+              /* 有批量入口就用它顶掉单笼入口：标签不变，行为换成打开缓冲抽屉 */
+              <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStartBatch(source)}>
+                转移笼位
+              </AdminButton>
+            ) : (
+              <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStart("transfer", source)}>
+                转移笼位
+              </AdminButton>
+            )}
           </>
         )}
         {showSelfClaim && (

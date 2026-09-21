@@ -2,10 +2,12 @@
   "navigationStyle": "custom",
   "backgroundColor": "#f7f8fa",
   "usingComponents": {
+    "cage-grid": "/package-feature/components/cage-grid/index",
     "van-icon": "@vant/weapp/icon/index",
     "van-loading": "@vant/weapp/loading/index",
     "van-popup": "@vant/weapp/popup/index",
     "subpage-nav-bar": "/components/subpage-nav-bar/index",
-    "mode-dock": "/package-feature/components/mode-dock/index"
+    "mode-dock": "/package-feature/components/mode-dock/index",
+    "vet-inbox-modal": "/package-feature/components/vet-inbox-modal/index"
   }
 }

@@ -53,8 +53,9 @@ public interface CageStatusAlertMapper {
      */
     int countPriorViolationForInterval(@Param("alertId") long alertId);
 
-    /** MySQL 命名锁：与当前连接绑定，跨实例互斥引擎扫描（多实例/上一轮未跑完时跳过本轮）。 */
-    Integer tryAcquireLock(@Param("lockName") String lockName, @Param("timeoutSeconds") int timeoutSeconds);
-
-    Integer releaseLock(@Param("lockName") String lockName);
+    /*
+      具名锁（GET_LOCK/RELEASE_LOCK）不放这里：MySQL 具名锁是**连接级**的，
+      拆成两次 mapper 调用会借到不同连接 → 放锁放空、锁永久泄漏（2026-09-18 踩过，引擎停摆）。
+      现在由 CageStatusAlertScheduler.scan() 用一条 JdbcTemplate 连接自己取放。
+    */
 }

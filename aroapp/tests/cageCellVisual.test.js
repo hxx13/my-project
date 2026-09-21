@@ -68,6 +68,23 @@ test('getCellStyle: 两个状态走渐变，两色都在', () => {
   assert.ok(s.includes('#fef08a'));
 });
 
+test('getCellStyle: 特殊饲养明细(SF_*)不占底色，两状态各分一半', () => {
+  // E-10 实况：2 个真状态 + 4 条明细。明细曾经也各占一份，colorFor 查不到色回退成
+  // NORMAL 灰(#f1f5f9)，把两个真状态挤到格子顶上 1/3。明细只画右上角角标，不参与分色。
+  const s = getCellStyle({
+    specialStatuses: [
+      { code: 'SPECIAL_FEEDING' }, { code: 'HEALTH_ABNORMAL' },
+      { code: 'SF_NEED_FEED' }, { code: 'SF_NO_FEED' },
+      { code: 'SF_NEED_WATER' }, { code: 'SF_NO_WATER' },
+    ],
+  });
+  assert.equal(
+    s,
+    'background: linear-gradient(to bottom, #fecaca 0%, #fecaca 50%, #e9d5ff 50%, #e9d5ff 100%); border: 1px solid #cbd5e1;'
+  );
+  assert.ok(!s.includes('#f1f5f9'), '不该混进 NORMAL 灰');
+});
+
 test('getCellStyle: 多状态优先级取 HEALTH_ABNORMAL（优先级表排最前）', () => {
   const s = getCellStyle({
     specialStatuses: [{ code: 'NORMAL' }, { code: 'HEALTH_ABNORMAL' }],

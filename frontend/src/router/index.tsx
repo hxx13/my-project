@@ -137,15 +137,18 @@ import ContactPageEditor from "@/features/portal/pages/editors/ContactPageEditor
 import ServiceGuidePageEditor from "@/features/portal/pages/editors/ServiceGuidePageEditor";
 import StudentQaEditor from "@/features/portal/pages/editors/StudentQaEditor";
 import StudentRegisterPage from "@/features/student/pages/student-register";
+import StudentRegisterNewPage from "@/features/student/pages/student-register-new";
 import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
+import StudentGroupPage from "@/features/student/pages/student-group";
 import StudentRoomsPage from "@/features/student/pages/student-rooms";
 import StudentAupPage from "@/features/student/pages/student-aup";
 import StudentNotificationsPage from "@/features/student/pages/student-notifications";
 import StudentObligationsPage from "@/features/student/pages/student-obligations";
 import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
+import StudentProfilePage from "@/features/student/pages/student-profile";
 import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
 import StudentMaterialPage from "@/features/student/pages/student-material";
 import StudentExamPage from "@/features/student/pages/student-exam";
@@ -196,6 +199,7 @@ import TeamDetailPage from "@/features/team/TeamDetailPage";
 import MobileStudentCenterRoute from "@/pages/mobile/MobileStudentCenterRoute";
 import MobileStudentCenterInvalidPage from "@/pages/mobile/MobileStudentCenterInvalidPage";
 import MobileLoginPage from "@/pages/mobile/auth/MobileLoginPage";
+import SignByLinkPage from "@/pages/mobile/SignByLinkPage";
 import MobileRegisterPage from "@/pages/mobile/auth/MobileRegisterPage";
 import MobileActivatePage from "@/pages/mobile/auth/MobileActivatePage";
 import MobileStudentCenterPage from "@/pages/mobile/MobileStudentCenterPage";
@@ -261,6 +265,8 @@ export const router = createHashRouter([
   { path: "/m/sc", element: <MobileStudentCenterInvalidPage /> },
   { path: "/m/sc/", element: <MobileStudentCenterInvalidPage /> },
   { path: "/m/sc/:token", element: <MobileStudentCenterRoute /> },
+  // 电子签名限时链接：公开、无登录态，靠 path 里的 token 自校验（同 /m/sc/:token 的范式）
+  { path: "/m/sign/:token", element: <SignByLinkPage /> },
   { path: "/m/login", element: <MobileLoginPage /> },
   { path: "/m/register", element: <MobileRegisterPage /> },
   { path: "/m/activate", element: <MobileActivatePage /> },
@@ -279,18 +285,21 @@ export const router = createHashRouter([
   //  学生端路由
   // ═══════════════════════════════════════════════════════
   { path: "/student/register", element: <StudentRegisterPage /> },
+  { path: "/student/register-new", element: <StudentRegisterNewPage /> },
   {
     path: "/student",
     element: <AuthGuard><StudentLayout /></AuthGuard>,
     children: [
       { index: true, element: <Navigate to="/student/home" replace /> },
       { path: "home", element: <StudentHomePage /> },
+      { path: "group", element: <StudentGroupPage /> },
       { path: "records", element: <Navigate to="/student/rooms?view=records" replace /> },
       { path: "rooms", element: <StudentRoomsPage /> },
       { path: "notifications", element: <StudentNotificationsPage /> },
       { path: "obligations", element: <StudentObligationsPage /> },
       { path: "feedback", element: <StudentFeedbackPage /> },
       { path: "settings", element: <StudentSettingsPage /> },
+      { path: "profile", element: <StudentProfilePage /> },
       { path: "cage-shelf", element: <StudentCageShelfPage /> },
       { path: "material", element: <StudentMaterialPage /> },
       { path: "material/requests", element: <Navigate to="/student/material?view=requests" replace /> },

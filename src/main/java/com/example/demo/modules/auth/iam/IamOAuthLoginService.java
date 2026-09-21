@@ -13,9 +13,11 @@ import com.example.demo.modules.personnel.entity.Personnel;
 import com.example.demo.modules.personnel.mapper.PersonnelMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -31,26 +33,26 @@ public class IamOAuthLoginService {
 
     private final IamOAuthProperties properties;
     private final IamOAuthClient iamOAuthClient;
-    private final IamRegistrationService iamRegistrationService;
     private final UserAuthBindingMapper userAuthBindingMapper;
     private final PersonnelMapper personnelMapper;
     private final UserMapper userMapper;
     private final AuthService authService;
+    private final boolean registrationOpen;
 
     public IamOAuthLoginService(IamOAuthProperties properties,
                                 IamOAuthClient iamOAuthClient,
-                                IamRegistrationService iamRegistrationService,
                                 UserAuthBindingMapper userAuthBindingMapper,
                                 PersonnelMapper personnelMapper,
                                 UserMapper userMapper,
-                                AuthService authService) {
+                                AuthService authService,
+                                @Value("${app.registration.open:false}") boolean registrationOpen) {
         this.properties = properties;
         this.iamOAuthClient = iamOAuthClient;
-        this.iamRegistrationService = iamRegistrationService;
         this.userAuthBindingMapper = userAuthBindingMapper;
         this.personnelMapper = personnelMapper;
         this.userMapper = userMapper;
         this.authService = authService;
+        this.registrationOpen = registrationOpen;
     }
 
     public Result<AuthData> login(OAuthLoginRequest request) {
@@ -96,15 +98,14 @@ public class IamOAuthLoginService {
         String jobNumber = iamUser.getJobNumber().trim();
         List<Personnel> matches = personnelMapper.findByJobNumber(jobNumber);
         if (matches == null || matches.isEmpty()) {
-            if (properties.getRegistration() != null && properties.getRegistration().isEnabled()) {
-                try {
-                    String newUserId = iamRegistrationService.registerFromIam(iamUser);
-                    bind(iamUser, newUserId);
-                    return loginExistingUser(newUserId, iamUser, true);
-                } catch (UnsupportedOperationException ex) {
-                    return fail(IamOAuthErrorCodes.REGISTRATION_REQUIRED,
-                            "人员库无匹配记录，需完成统一认证自助注册（尚未实现）");
-                }
+            // 不自动建号：由注册流程承接（那里有总开关）。这里只负责把人引导过去，
+            // 并把 idpUid / 工号带上 —— 注册成功后要写进 user_auth_binding，
+            // 否则下次统一认证登录还是匹配不上，会陷入循环。
+            if (registrationOpen) {
+                return failWith(
+                        IamOAuthErrorCodes.REGISTRATION_REQUIRED,
+                        "人员库中暂无你的记录，请先完成注册",
+                        Map.of("idpUid", iamUser.getIdpUid(), "jobNumber", iamUser.getJobNumber()));
             }
             return fail(IamOAuthErrorCodes.PERSON_NOT_FOUND,
                     "未在人员库中找到工号匹配记录（" + jobNumber + "）。请联系管理员录入人员库后再试。");
@@ -206,6 +207,19 @@ public class IamOAuthLoginService {
     private static Result<AuthData> fail(String errorCode, String message) {
         Result<Object> raw = Result.fail(403, message);
         raw.setData(Map.of("errorCode", errorCode));
+        return (Result<AuthData>) (Result<?>) raw;
+    }
+
+    /** 同 {@link #fail}，但额外携带引导字段（如 idpUid / jobNumber）。 */
+    @SuppressWarnings("unchecked")
+    private static Result<AuthData> failWith(String errorCode, String message, Map<String, String> extra) {
+        Result<Object> raw = Result.fail(403, message);
+        Map<String, String> data = new HashMap<>();
+        data.put("errorCode", errorCode);
+        if (extra != null) {
+            data.putAll(extra);
+        }
+        raw.setData(data);
         return (Result<AuthData>) (Result<?>) raw;
     }
 }

@@ -111,6 +111,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-print-station-last-seen.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-station-printer-online.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-station-printer-checked-at.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-job-cups-job-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-job-queue-state.sql", ctx)) success++;
 
         total++; if (runScript("db/bootstrap-twin-student-violation.sql", ctx)) {
             success++;
@@ -135,6 +137,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-violation-notice-cleared-by.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-violation-batch-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-violation-batch-id-index.sql", ctx)) success++;
+        // 移动端公告已读游标（一人一行）：手机端公告红点判定
+        total++; if (runScript("db/bootstrap-student-announcement-view.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-quiz-bank.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-quiz-question.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-quiz-bank-seed.sql", ctx)) success++;
@@ -229,6 +233,26 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-personnel-room-authorization.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-role.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity-migrate-to-personnel-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-normalize-empty-account-ids.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-drop-uk-name.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-uk-aro-user-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-uk-staff-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-idx-name.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-merge-log.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-head-override.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-project-group-dedupe.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-project-group-uk-name.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-deleted-at.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-deleted-by.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-signature.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-signature-link.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-project-group-join-request.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-project-group-member-log.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-department-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-department-id-idx.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-project-group-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-project-group-id-idx.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-personnel-org-id-backfill.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-scope.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-visibility-promote.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-region-grant.sql", ctx)) success++;
@@ -250,6 +274,16 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         // 特殊饲养明细子状态：码表 + 明细字段 + 明细项默认阈值 + 学生侧能力注册。
         // 必须排在 permission-matrix（建能力注册表）与 status-alert（建 cage_alert_default）之后。
         total++; if (runScript("db/bootstrap-cage-special-detail.sql", ctx)) success++;
+        // 健康异常细分 + 双通道通知（兽医 / 笼位所有者）。
+        // 顺序：先建「区域指定兽医」表 → 给三张告警表加 notify_target 列（一 DDL 一文件）→
+        // 再放种子 —— 种子里那两条 DELETE 要引用 notify_target 列，必须排在加列之后。
+        total++; if (runScript("db/bootstrap-cage-region-vet.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-alert-default-notify-target.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-region-alert-rule-notify-target.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-status-alert-notify-target.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-cage-health-abnormal.sql", ctx)) success++;
+        // 兽医收件箱 + 兽医指导意见字段：只依赖 permission-matrix（建能力注册表），排在它之后即可。
+        total++; if (runScript("db/bootstrap-cage-vet-message.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-cage-audit-assignment.sql", ctx)) success++;
         total++; if (seedAupDemo(ctx)) success++;
         total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
@@ -402,6 +436,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-ref-order-line-target-cage.sql", ctx)) success++;
         // 订单行的笼位坐标快照（一个文件一条 DDL：挤在一起会被前一条的 benign 失败整段跳过）
         total++; if (runScript("db/bootstrap-ref-order-line-cage-location.sql", ctx)) success++;
+        // 房间级收藏（笼架信息页左侧树；笼架级那张老表保留只读）
+        total++; if (runScript("db/bootstrap-cage-shelf-room-bookmark.sql", ctx)) success++;
 
         String skipNote = benignSkips > 0
                 ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"

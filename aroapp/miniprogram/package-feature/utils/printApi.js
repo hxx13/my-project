@@ -125,6 +125,33 @@ async function retryJob(id) {
   return jobAction(id, 'retry');
 }
 
+/** GET /api/admin/print/capabilities —— 当前账号能不能清队列（按钮显隐问服务端）。 */
+async function fetchCapabilities() {
+  const r = await call({ url: '/api/admin/print/capabilities', method: 'GET', data: {} });
+  // 学生账号问这个接口是 403，unwrap 已折成 ok:false —— 拿不到能力一律当没有
+  return { ok: r.ok, message: r.message, canClearQueue: r.ok && r.data && r.data.canClearQueue === true };
+}
+
+/** POST /api/admin/print/stations/{id}/queue/clear —— 清空这台打印机的队列。 */
+async function clearStationQueue(stationId) {
+  const raw = stationId == null ? '' : String(stationId).trim();
+  // 照 createJob 的先例先拦一道，别把空值当路径参数打给后端
+  if (!raw) return { ok: false, message: '未选择工位', cleared: 0, cancelled: 0 };
+  const r = await call({
+    url: `/api/admin/print/stations/${encodeURIComponent(raw)}/queue/clear`,
+    method: 'POST',
+    data: {},
+  });
+  const d = (r.ok && r.data) || {};
+  return {
+    ok: r.ok,
+    // 失败时后端带的是「这台工位是『工位电脑执行』，没有可清的服务端队列」这类能直接看的文案
+    message: r.ok ? r.message || '操作成功' : r.message || '操作失败',
+    cleared: Number(d.cleared) || 0,
+    cancelled: Number(d.cancelled) || 0,
+  };
+}
+
 module.exports = {
   fetchStations,
   createJob,
@@ -132,4 +159,6 @@ module.exports = {
   fetchHistory,
   cancelJob,
   retryJob,
+  fetchCapabilities,
+  clearStationQueue,
 };

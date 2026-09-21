@@ -1,9 +1,13 @@
 package com.example.demo.modules.cageshelf.service;
 
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.cageshelf.config.CageTransferApprovalConfigSeed;
 import com.example.demo.modules.cageshelf.entity.CageOpRequest;
 import com.example.demo.modules.cageshelf.entity.CageOwnerApprovalConfig;
 import com.example.demo.modules.cageshelf.mapper.CageOwnerApprovalConfigMapper;
+import com.example.demo.modules.notification.dto.UpdateSystemConfigRequest;
+import com.example.demo.modules.notification.entity.SystemConfigItem;
+import com.example.demo.modules.notification.service.NotificationSettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,10 +15,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -34,12 +45,19 @@ class CageOwnerApprovalConfigServiceTest {
     @Mock private CageOwnerApprovalConfigMapper mapper;
     @Mock private UserDisplayNameService displayNameService;
     @Mock private UserGroupNameResolver userGroupNameResolver;
+    @Mock private NotificationSettingsService settingsService;
 
     private CageOwnerApprovalConfigService service;
 
     @BeforeEach
     void setUp() {
-        service = new CageOwnerApprovalConfigService(mapper, displayNameService, userGroupNameResolver);
+        // 默认非强制：既有用例的语义都是「按所属人那一行取值」，不强制才成立。
+        // 用 lenient 是因为并非每个用例都会走到读配置那一行。
+        lenient().when(settingsService.getEffectiveValue(
+                CageTransferApprovalConfigSeed.MODULE,
+                CageTransferApprovalConfigSeed.KEY_TRANSFER_FORCED,
+                CageTransferApprovalConfigSeed.DEFAULT_TRANSFER_FORCED)).thenReturn("false");
+        service = new CageOwnerApprovalConfigService(mapper, displayNameService, userGroupNameResolver, settingsService);
     }
 
     private CageOwnerApprovalConfig row(boolean confirm, boolean divide, boolean transfer) {
@@ -104,5 +122,71 @@ class CageOwnerApprovalConfigServiceTest {
         assertTrue(service.effective("  ").getConfirmRequired());
         // 空白账号折算后为空 → 不该落库查询
         verifyNoInteractions(mapper);
+    }
+
+    @Test
+    void 全局强制开启时_所属人把转移审核关掉也仍然需要审核() {
+        when(userGroupNameResolver.canonicalUserId(ARO_ID)).thenReturn(ARO_ID);
+        when(mapper.selectByOwner(ARO_ID)).thenReturn(row(true, true, false));
+        when(settingsService.getEffectiveValue(
+                CageTransferApprovalConfigSeed.MODULE,
+                CageTransferApprovalConfigSeed.KEY_TRANSFER_FORCED,
+                CageTransferApprovalConfigSeed.DEFAULT_TRANSFER_FORCED)).thenReturn("true");
+
+        assertTrue(service.approvalRequiredFor(ARO_ID, CageOpRequest.TYPE_TRANSFER));
+        // 分笼不受强制影响
+        assertTrue(service.approvalRequiredFor(ARO_ID, CageOpRequest.TYPE_DIVIDE));
+    }
+
+    @Test
+    void 全局强制开启时_保存转移审核为false会被服务端改写为true() {
+        when(userGroupNameResolver.canonicalUserId(ARO_ID)).thenReturn(ARO_ID);
+        when(settingsService.getEffectiveValue(
+                CageTransferApprovalConfigSeed.MODULE,
+                CageTransferApprovalConfigSeed.KEY_TRANSFER_FORCED,
+                CageTransferApprovalConfigSeed.DEFAULT_TRANSFER_FORCED)).thenReturn("true");
+
+        service.save(ARO_ID, true, true, false, "op-1");
+
+        ArgumentCaptor<CageOwnerApprovalConfig> cap = ArgumentCaptor.forClass(CageOwnerApprovalConfig.class);
+        verify(mapper).upsert(cap.capture());
+        assertTrue(cap.getValue().getTransferApprovalRequired(), "强制开启时服务端必须把 false 改写为 true");
+    }
+
+    @Test
+    void 非强制时_保存false照旧落库() {
+        when(userGroupNameResolver.canonicalUserId(ARO_ID)).thenReturn(ARO_ID);
+
+        service.save(ARO_ID, true, true, false, "op-1");
+
+        ArgumentCaptor<CageOwnerApprovalConfig> cap = ArgumentCaptor.forClass(CageOwnerApprovalConfig.class);
+        verify(mapper).upsert(cap.capture());
+        assertFalse(cap.getValue().getTransferApprovalRequired());
+    }
+
+    @Test
+    void 强制开关的读写() {
+        when(settingsService.getEffectiveValue(
+                CageTransferApprovalConfigSeed.MODULE,
+                CageTransferApprovalConfigSeed.KEY_TRANSFER_FORCED,
+                CageTransferApprovalConfigSeed.DEFAULT_TRANSFER_FORCED)).thenReturn("true");
+        // 设置中心按运行值行的 id 更新，故先要有这一行（播种已保证）。
+        SystemConfigItem item = new SystemConfigItem();
+        item.setId(7L);
+        item.setConfigKey(CageTransferApprovalConfigSeed.KEY_TRANSFER_FORCED);
+        item.setConfigValue("true");
+        item.setRemark("强制开启转移审核");
+        when(settingsService.listConfigs(CageTransferApprovalConfigSeed.MODULE)).thenReturn(List.of(item));
+        when(settingsService.updateConfig(anyLong(), any(), eq("op-9"))).thenReturn(true);
+
+        assertTrue(service.transferForced());
+
+        service.setTransferForced(false, "op-9");
+
+        ArgumentCaptor<UpdateSystemConfigRequest> cap = ArgumentCaptor.forClass(UpdateSystemConfigRequest.class);
+        verify(settingsService).updateConfig(anyLong(), cap.capture(), eq("op-9"));
+        assertEquals("false", cap.getValue().getConfigValue());
+        // 覆盖目标行原有的说明不能被写没（updateConfig 无条件写 remark）
+        assertNotNull(cap.getValue().getRemark());
     }
 }

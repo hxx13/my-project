@@ -50,11 +50,35 @@ public interface PersonnelMapper {
     @Select("SELECT * FROM personnel WHERE id = #{id} LIMIT 1")
     Personnel findById(@Param("id") Long id);
 
-    @Select("SELECT * FROM personnel WHERE name = #{name} LIMIT 1")
-    Personnel findByName(@Param("name") String name);
+    /** 某课题组全部成员（project_group_id 命中）。 */
+    @Select("SELECT * FROM personnel WHERE project_group_id = #{projectGroupId}")
+    List<Personnel> listByProjectGroup(@Param("projectGroupId") Long projectGroupId);
+
+    /** 同名全部行。姓名已不是身份键，调用方必须自行处理「多条 = 歧义」。 */
+    @Select("SELECT * FROM personnel WHERE name = #{name}")
+    List<Personnel> findByNameAll(@Param("name") String name);
 
     @Update("UPDATE personnel SET role = #{role} WHERE id = #{id}")
     int updateRole(@Param("id") Long id, @Param("role") String role);
+
+    /** 只写覆盖层单列，避免全列覆盖把同步字段带坏。传 null 即重置为回落 ARO。 */
+    @Update("UPDATE personnel SET head_override = #{headOverride} WHERE id = #{id}")
+    int updateHeadOverride(@Param("id") Long id, @Param("headOverride") String headOverride);
+
+    /** 同时写归属 id 与文本快照（id 是权威，文本留给 ARO 回灌与兜底展示）。 */
+    @Update("UPDATE personnel SET department_id = #{departmentId}, department_name = #{departmentName} WHERE id = #{id}")
+    int updateDepartmentRef(@Param("id") Long id, @Param("departmentId") Long departmentId, @Param("departmentName") String departmentName);
+
+    @Update("UPDATE personnel SET project_group_id = #{projectGroupId}, project_group_name = #{projectGroupName} WHERE id = #{id}")
+    int updateProjectGroupRef(@Param("id") Long id, @Param("projectGroupId") Long projectGroupId, @Param("projectGroupName") String projectGroupName);
+
+    /** 条件清空归属：仅当该人当前确在此组时才置空，返回影响行数供并发防重复移出。 */
+    @Update("UPDATE personnel SET project_group_id = NULL, project_group_name = NULL WHERE id = #{id} AND project_group_id = #{expectedGroupId}")
+    int clearProjectGroupRefIfInGroup(@Param("id") Long id, @Param("expectedGroupId") Long expectedGroupId);
+
+    /** 按 ARO 认证 id 取本地头像覆盖层。空/NULL 表示无本地覆盖。 */
+    @Select("SELECT head_override FROM personnel WHERE aro_user_id = #{aroUserId} LIMIT 1")
+    String findHeadOverrideByAroUserId(@Param("aroUserId") String aroUserId);
 
     @Insert("INSERT INTO personnel(name, staff_id, aro_user_id, job_number, department_name, project_group_name, institution_id, " +
             "user_type_names, head, gender, mobile_phone, email, is_school, allowed_rooms_display_zh, has_official_room_permission) " +
@@ -77,4 +101,7 @@ public interface PersonnelMapper {
 
     @Delete("DELETE FROM personnel")
     int deleteAll();
+
+    @Delete("DELETE FROM personnel WHERE id = #{id}")
+    int deleteById(@Param("id") Long id);
 }

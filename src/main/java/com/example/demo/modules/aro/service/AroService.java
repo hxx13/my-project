@@ -151,7 +151,7 @@ public class AroService {
     }
 
     /**
-     * JTU 公开接口代理（如新闻）：确保已登录并返回 Token。
+     * JTU 公开接口代理（如培训数据同步）：确保已登录并返回 Token。
      */
     public String requireJtuApiToken() {
         if (cachedToken == null || cachedToken.isBlank()) {

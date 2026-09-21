@@ -3,6 +3,8 @@ const { hasMinRole } = require('../../../utils/roleAccess.js');
 const pagePermission = require('../../../utils/pagePermission.js');
 const { refreshPendingBadges, applyStudentReviewLiveCounts } = require('../../../utils/badgeSnapshotStore.js');
 const { formatBadgeText } = require('../../../utils/pendingBadgeCounts.js');
+// 坐标映射抽到 utils 了：『我的申请』那边原来自己印原生数字，两处各写一遍就走形了
+const { cagePositionLabel } = require('../../utils/cagePosition.js');
 const api = require('../../utils/studentReviewApi.js');
 const mat = require('../../utils/materialStudentApi.js');
 const { formatBeijingDateTimeFull, parseToTimestamp } = require('../../utils/beijingTime.js');
@@ -15,6 +17,7 @@ const TAB_LABELS = {
   scanDelay: '延迟免冻结',
   aroTraining: '培训审核',
   cage: '笼位审核',
+  cageTransfer: '转移审核',
 };
 
 const STATUS_ZH = {
@@ -446,7 +449,7 @@ function buildFilteredScanDelayLists(pendingRaw, historyRaw, optionReviewerMap, 
 
 function normalizeTab(raw) {
   const t = raw ? String(raw) : 'material';
-  if (t === 'scanDelay' || t === 'aroTraining' || t === 'cage') return t;
+  if (t === 'scanDelay' || t === 'aroTraining' || t === 'cage' || t === 'cageTransfer') return t;
   return 'material';
 }
 
@@ -458,10 +461,10 @@ function syncTabMeta(rawCounts) {
       material: formatBadgeText(c.filteredMaterialPending),
       scanDelay: formatBadgeText(c.filteredScanDelayPending),
       aroTraining: formatBadgeText(c.aroTrainingPending),
-      // 笼位审核角标 = 笼位申请 + 分笼 + 转移待审之和（与 Web 侧栏「学生审核」口径一致）
-      cage: formatBadgeText(
-        Number(c.cageClaimPending || 0) + Number(c.cageDividePending || 0) + Number(c.cageTransferPending || 0),
-      ),
+      // 笼位审核角标 = 笼位申请 + 分笼待审之和（转移已独立成 cageTransfer）
+      cage: formatBadgeText(Number(c.cageClaimPending || 0) + Number(c.cageDividePending || 0)),
+      // 转移审核角标 = 转移待审数
+      cageTransfer: formatBadgeText(c.cageTransferPending),
     },
   };
 }
@@ -590,16 +593,6 @@ var CAGE_CLAIM_STATUS_ZH = {
 };
 
 /** positionLabel 由 positionX/positionY 推导 (char)('A'+x-1)+'-'+y */
-function cagePositionLabel(item) {
-  if (!item) return '';
-  if (item.positionLabel) return item.positionLabel;
-  var x = Number(item.positionX);
-  var y = Number(item.positionY);
-  if (item.positionX != null && item.positionY != null && !isNaN(x) && !isNaN(y) && x >= 1 && x <= 26) {
-    return String.fromCharCode(64 + x) + '-' + y;
-  }
-  return '';
-}
 
 function mapCageClaimRow(item) {
   var pos = cagePositionLabel(item);
@@ -711,6 +704,9 @@ var CAGE_OP_STATUS_ZH = {
   cancelled: '已取消',
 };
 
+var cageOpSignatures = require('../../utils/cageOpSignatures.js');
+var CAGE_OP_ROLE_ZH = cageOpSignatures.ROLE_ZH;
+
 function mapCageOpRow(item) {
   var parts = [];
   if (item.campusName) parts.push(item.campusName);
@@ -729,6 +725,11 @@ function mapCageOpRow(item) {
     return '→ ' + (tp.join(' / ') || '—') + (tLabel ? ' · 坐标 ' + tLabel : '');
   });
   var status = String(item.status || '').toLowerCase();
+  // 分笼没有三签。存量转移单（后端 threeSign=false，signatures 列为 NULL）走的是旧的单签链 ——
+  // 给它画三个角色按钮会让「点归属地」也把整笔转移直接执行掉，所以照样只给 通过/驳回。
+  var isDivide = item.opType === 'divide';
+  var threeSign = !isDivide && item.threeSign !== false;
+  var myRoles = threeSign && Array.isArray(item.myRoles) ? item.myRoles : [];
   return Object.assign({}, item, {
     applicantText: item.applicantName || item.applicantId || '-',
     sourceLine: '源：' + (parts.join(' / ') || '—') + (srcLabel ? ' · 坐标 ' + srcLabel : ''),
@@ -740,6 +741,14 @@ function mapCageOpRow(item) {
     statusText: CAGE_OP_STATUS_ZH[status] || item.status || '-',
     statusTagClass: status === 'approved' ? 'tag-approved' : status === 'rejected' ? 'tag-rejected' : 'tag-muted',
     isRejected: status === 'rejected',
+    isDivide: isDivide,
+    showPlainOps: isDivide || !threeSign,
+    signSlots: threeSign ? cageOpSignatures.signSlots(item.signatures) : [],
+    roleActions: myRoles.map(function (r) {
+      return { role: r, label: CAGE_OP_ROLE_ZH[r] || r, isVet: r === 'VET' };
+    }),
+    // 三关都轮不到自己（例如归属地/目的地的两关都签完了、只等兽医）——卡片留在列表里看进度，但没有按钮
+    watchOnly: threeSign && status === 'pending' && myRoles.length === 0,
   });
 }
 
@@ -790,6 +799,7 @@ Page({
       scanDelay: '',
       aroTraining: '',
       cage: '',
+      cageTransfer: '',
     },
     autoApproveVisible: false,
     autoApproveKind: 'scanDelay',
@@ -816,7 +826,7 @@ Page({
     cageCollapseMap: {},
     cageSelectedIds: {},
     cageSelectedCount: 0,
-    /** 笼位审核二级切换：笼位申请 / 分笼 / 转移 */
+    /** 笼位审核二级切换：笼位申请 / 分笼（转移已独立为顶级 tab） */
     cageSubTab: 'claim',
     cageDividePending: [],
     cageDivideDone: [],
@@ -1150,6 +1160,7 @@ Page({
         ...syncTabMeta(counts),
       });
       // 菜单「学生审核」角标 = 本页各 tab 角标之和：用同一份实时数回写快照，silent 刷新也要盖（否则脱钩）
+      // processCageClaim(笼位申请) + processCageOp(分笼+转移) 与页面 cage/cageTransfer 两枚角标之和等价
       const liveBadgeCounts = {
         processMaterial: counts.filteredMaterialPending,
         processScanDelay: counts.filteredScanDelayPending,
@@ -1701,6 +1712,51 @@ Page({
     try {
       await api.reviewCageOp(id, 'approved');
       wx.showToast({ title: '已通过', icon: 'success' });
+      await this.loadDashboard();
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  /**
+   * 转移三签：按**角色**逐个签。同一人兼多角色时三个角色各出一个按钮，
+   * 点哪个签哪个 —— 不再让后端自动挑，避免一次「通过」连按三次签出三个不同角色。
+   * 暂缓/不同意（驳回）必须填原因，同意不问。
+   */
+  async onCageOpSign(e) {
+    var ds = e.currentTarget.dataset;
+    var id = ds.id;
+    var role = ds.role;
+    var decision = ds.decision;
+    if (id == null || !decision) return;
+    var title = decision === 'held' ? '暂缓' : (decision === 'rejected' ? (role === 'VET' ? '不同意' : '驳回') : '');
+    var reason = '';
+    if (title) {
+      var content = await new Promise(function (resolve) {
+        wx.showModal({
+          title: title,
+          editable: true,
+          placeholderText: '请填写' + title + '原因（必填）',
+          success: function (res) { resolve(res.confirm ? (res.content || '') : null); },
+          fail: function () { resolve(null); },
+        });
+      });
+      if (content == null) return;
+      reason = String(content).trim();
+      if (!reason) {
+        wx.showToast({ title: title + '必须填写原因', icon: 'none' });
+        return;
+      }
+    }
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      await api.reviewCageOp(id, decision, reason, role);
+      var done = decision === 'approved' ? '已同意'
+        : decision === 'held' ? '已暂缓'
+        : (role === 'VET' ? '已不同意' : '已驳回');
+      wx.showToast({ title: done, icon: 'success' });
       await this.loadDashboard();
     } catch (err) {
       wx.showToast({ title: err.message || '操作失败', icon: 'none' });

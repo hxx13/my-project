@@ -8,11 +8,12 @@ import {
   fetchMobileCenter,
   fetchMobileAlerts,
   markMobileAlertsReadAll,
+  markMobileAnnouncementsViewed,
   isMobileTokenDead,
   type MobileCenterData,
   type MobileAlertItem,
 } from "@/api/domains/mobileStudent.api";
-import { markStudentMobileAlertsReadAll } from "@/api/domains/studentMobile.api";
+import { markStudentMobileAlertsReadAll, markStudentMobileAnnouncementsViewed } from "@/api/domains/studentMobile.api";
 import { fetchLoginBranding, type LoginBranding } from "@/api/domains/publicSite.api";
 import * as studentMobileApi from "@/api/domains/studentMobile.api";
 import { hasMobileHtml5Privilege } from "@/features/auth/roleAccess";
@@ -130,6 +131,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [activeTab, setActiveTab] = useState<MobileShellTabKey>("home");
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const [announcements, setAnnouncements] = useState<MobileAlertItem[]>([]);
+  const [announcementsUnread, setAnnouncementsUnread] = useState(false);
   const [feedbacks, setFeedbacks] = useState<MobileAlertItem[]>([]);
   const [html5PrivilegeBypass, setHtml5PrivilegeBypass] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
@@ -239,6 +241,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         const fb = resp.feedbacks ?? [];
         setAnnouncements(ann);
         setFeedbacks(fb);
+        setAnnouncementsUnread(resp.announcementsUnread === true);
       } catch { /* silent */ }
       return;
     }
@@ -250,6 +253,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       setAnnouncements(ann);
       setFeedbacks(fb);
       setHtml5PrivilegeBypass(resp.html5PrivilegeBypass === true);
+      setAnnouncementsUnread(resp.announcementsUnread === true);
     } catch {
       /* 静默失败 */
     }
@@ -258,7 +262,12 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const openAnnouncements = useCallback((focusKey?: string) => {
     setAnnouncementFocusKey(focusKey ?? null);
     setShowAnnouncements(true);
-  }, []);
+    // 打开公告区即标记已读：只清本地红点，不整表重拉 — post-save-no-full-refresh.mdc
+    const markViewed = token
+      ? markMobileAnnouncementsViewed(token)
+      : markStudentMobileAnnouncementsViewed();
+    markViewed.then(() => setAnnouncementsUnread(false)).catch(() => {});
+  }, [token]);
 
   const openFeedback = useCallback(() => {
     setShowFeedback(true);
@@ -636,6 +645,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             presenceRefresh={presenceRefresh}
             homeActive={activeTab === "home"}
             announcements={announcements}
+            announcementsUnread={announcementsUnread}
             feedbackCount={feedbacks.filter(f => !f.isRead).length}
             html5PrivilegeBypass={
               data.html5PrivilegeBypass === true || html5PrivilegeBypass

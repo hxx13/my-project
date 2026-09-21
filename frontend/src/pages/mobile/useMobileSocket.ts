@@ -8,7 +8,7 @@ import { isFeedbackKind } from "./mobileAlertSplit";
 export interface MobileAlert {
   title: string;
   summary: string;
-  type: "PLATFORM" | "ARO" | "WORK_ORDER";
+  type: "PLATFORM" | "WORK_ORDER";
   at: string;
 }
 

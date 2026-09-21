@@ -103,6 +103,23 @@ export function useMultiSelectPopover({
     };
   }, [open, triggerRef, panelRef, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    /**
+     * 给浮层挂上「我是另一层弹层」的标记，**必须**。
+     *
+     * ui/dialog.tsx 的 blockOutsideDismiss 只认 `[data-modal-layer="true"]`：
+     * 带这个标记的层上的 pointerdown 不算「点了外面」。本浮层 Portal 挂到 body，
+     * 对 Radix 而言在弹窗内容树之外 —— 不挂标记的话，**点浮层里的选项会被判成外部交互，
+     * 整个外层弹窗跟着卸载**（用户填的份数/备注/临时文件全丢）。
+     *
+     * 放在这里而不是各调用点的 JSX：浮层的定位与「不被误关」是同一个契约，
+     * 本 hook 的 7 个消费者（SelectField / AdminSearchSelect / 工位选择器 / 空间树选择器 …）
+     * 都靠它，漏一个就漏一个坑。2026-09-15 工位选择器就是这么点不动的。
+     */
+    panelRef.current?.setAttribute("data-modal-layer", "true");
+  }, [open, panelRef]);
+
   return {
     panelStyle: {
       position: "fixed",
@@ -111,6 +128,16 @@ export function useMultiSelectPopover({
       minWidth: pos.minWidth,
       // 高于 ConfigModalShell（--z-modal: 800），否则浮层落在弹窗遮罩下「点不开」
       zIndex: 801,
+      /**
+       * **必须显式 auto**：本浮层 Portal 挂到 document.body，而 Radix 的模态 Dialog
+       * 会给 body 挂 `pointer-events: none`（它自己的内容再 auto 回来）。挂在 body 上的
+       * 浮层会原样继承那个 none —— 表现是**整块浮层收不到任何点击**，点哪都只是把它关掉，
+       * 选中项永远不变（看起来像「某些项选不中」）。
+       *
+       * 2026-09-15 实测：`getComputedStyle(panel).pointerEvents === 'none'`、
+       * `getComputedStyle(document.body).pointerEvents === 'none'`。
+       */
+      pointerEvents: "auto",
     },
   };
 }

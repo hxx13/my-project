@@ -50,14 +50,12 @@ function resolveObligationCta(n: NotificationData): { path: string; label: strin
 const PAGE_SIZE = 25;
 
 const NOTIFICATION_TYPE_CONFIG: Record<string, { label: string; textClass: string; bgClass: string }> = {
-  ARO: { label: "ARO 官方", textClass: "text-[var(--student-error)]", bgClass: "bg-[var(--student-error-soft)]" },
   PLATFORM: { label: "平台通知", textClass: "text-[var(--student-accent-telemetry)]", bgClass: "bg-[var(--student-accent-telemetry-soft)]" },
   WORK_ORDER: { label: "工单", textClass: "text-[var(--student-primary)]", bgClass: "bg-[var(--student-primary-soft)]" },
 };
 
 const TYPE_FILTERS: Array<{ id: string; label: string }> = [
   { id: "ALL", label: "全部" },
-  { id: "ARO", label: "ARO 官方" },
   { id: "PLATFORM", label: "平台公告" },
   { id: "WORK_ORDER", label: "工单通知" },
 ];

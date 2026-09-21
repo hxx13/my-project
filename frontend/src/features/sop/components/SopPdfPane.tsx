@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { FileWarning, Loader2, Minus, Plus } from "lucide-react";
+import { Download, FileWarning, Loader2, Minus, Plus } from "lucide-react";
 import { fetchSopPdfBlob, type SopDocument } from "@/api/domains/sop.api";
 import { usePdfObjectUrl } from "@/components/common/usePdfObjectUrl";
+import { sanitizeExportFilenamePart } from "@/features/report-form/utils/reportFormExportFilename";
 import SopWatermark from "./SopWatermark";
 
 /**
@@ -41,6 +42,7 @@ export function SopPdfPane({ doc, viewerName }: { doc: SopDocument; viewerName: 
   /** 本次查看的时间戳：挂载时固定，不在查看期间走字 */
   const [at] = useState(() => new Date());
   const [zoom, setZoom] = useState<Zoom>("fit");
+  const filename = `${sanitizeExportFilenamePart(doc.title) || `sop-${doc.id}`}.pdf`;
 
   const stepZoom = (dir: 1 | -1) =>
     setZoom((z) => {
@@ -107,6 +109,16 @@ export function SopPdfPane({ doc, viewerName }: { doc: SopDocument; viewerName: 
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
+            <span className="h-4 w-px bg-[var(--app-color-border-default)]" />
+            <a
+              href={url}
+              download={filename}
+              title="下载"
+              aria-label="下载"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[var(--app-color-text-primary)] transition active:bg-[var(--app-color-surface-hover)] hover:bg-[var(--app-color-surface-hover)]"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </a>
           </div>
         </>
       ) : (

@@ -93,27 +93,51 @@ public class ReportFormWordService {
         if (form == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
-        TemplateBundle bundle = resolveTemplateBundle(form, wtId);
+        TemplateBundle bundle = resolveTemplateBundle(form, wtId)
+                .orElseThrow(() -> new RuntimeException("Word模板不存在"));
         JsonNode fieldValues = objectMapper.createObjectNode();
         return fillWordDocument(form, bundle.templateBytes(), bundle.bookmarkMapping(), fieldValues, formId, null);
     }
 
-    private record TemplateBundle(byte[] templateBytes, Map<String, String> bookmarkMapping) {}
+    public record TemplateBundle(byte[] templateBytes, Map<String, String> bookmarkMapping) {}
 
-    private TemplateBundle resolveTemplateBundle(ReportFormDefinition form, String wtId) throws Exception {
+    /**
+     * 解析表单绑定的 Word 模板：wtId 有值按 id 精确匹配，wtId 为空则取第一条。
+     *
+     * <p>为什么允许 wtId 为空：PDF 导出/打印没有「选哪个模板」的入口，只能用第一条 ——
+     * 表单绑了多个模板时这是个已知取舍。
+     *
+     * <p>返回 empty（而不是抛错）表示这个表单压根没绑模板，调用方据此退回网格重画路径。
+     */
+    public Optional<TemplateBundle> resolveTemplateBundle(ReportFormDefinition form, String wtId) throws Exception {
+        if (form.getWordTemplateIdsJson() == null || form.getWordTemplateIdsJson().isBlank()) {
+            return Optional.empty();
+        }
         var templates = objectMapper.readTree(form.getWordTemplateIdsJson());
+        if (!templates.isArray() || templates.isEmpty()) {
+            return Optional.empty();
+        }
+        boolean explicit = wtId != null && !wtId.isBlank();
         com.fasterxml.jackson.databind.JsonNode target = null;
         for (var t : templates) {
-            if (t.get("id").asText().equals(wtId)) {
+            if (!explicit || t.get("id").asText().equals(wtId)) {
                 target = t;
                 break;
             }
         }
         if (target == null) {
-            throw new RuntimeException("Word模板不存在");
+            if (explicit) {
+                throw new RuntimeException("Word模板不存在");
+            }
+            return Optional.empty();
         }
         if (!target.has("data") || target.get("data").asText("").isBlank()) {
-            throw new RuntimeException("Word模板 data 为空，请重新绑定模板");
+            // 显式指定 wtId 是用户在导出 Word，模板坏了要报错；wtId 为空是 PDF 导出顺带尝试，
+            // 模板坏了就当没绑模板，退回调用方的网格重画，别把本来能导的表单弄成 500
+            if (explicit) {
+                throw new RuntimeException("Word模板 data 为空，请重新绑定模板");
+            }
+            return Optional.empty();
         }
         byte[] templateBytes = java.util.Base64.getDecoder().decode(target.get("data").asText());
         var bookmarkMapping = new LinkedHashMap<String, String>();
@@ -128,7 +152,7 @@ public class ReportFormWordService {
         var templateBookmarks = parseBookmarks(templateBytes);
         var suggested = suggestBookmarkMapping(form.getLayoutJson(), templateBookmarks);
         suggested.forEach(bookmarkMapping::putIfAbsent);
-        return new TemplateBundle(templateBytes, bookmarkMapping);
+        return Optional.of(new TemplateBundle(templateBytes, bookmarkMapping));
     }
 
     private byte[] fillWordDocument(ReportFormDefinition form,

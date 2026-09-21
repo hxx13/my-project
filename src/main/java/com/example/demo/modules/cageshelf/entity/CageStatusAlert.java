@@ -22,6 +22,11 @@ public class CageStatusAlert {
     /** 所属房间（join cage_shelf_index 反查，供管理端左侧树按房聚合；孤儿告警为 null） */
     private Long roomId;
     private String statusCode;
+    /**
+     * 通知对象：DEFAULT（原有单目标语义）/ VET（通知兽医）/ OCCUPANT（通知笼位所有者）。
+     * 与 status_code 一起构成实例身份 —— active_key 也是按 (笼位, 状态, 对象) 算的。
+     */
+    private String notifyTarget;
     private LocalDateTime startedAt;
     private LocalDateTime firedAt;
     private Integer thresholdDays;

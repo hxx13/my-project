@@ -1,11 +1,11 @@
 import { memo } from "react";
 import { SplitSquareHorizontal, MoveRight, Clock, Unlock, CalendarCheck } from "lucide-react";
 import { SelectCheck } from "./SelectCheck";
-import SpecialDetailBadges from "./SpecialDetailBadges";
+import CellStatusBadges from "./CellStatusBadges";
 import type { LockState } from "./SyncLockContext";
 import { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL, resolveCageType, default as CageCellOverlays } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors, DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
-import { displayPosition, nonEmptyText, previewStatusCodes, specialDetailItemsFor, CAGE_HATCH_BG } from "../constants";
+import { displayPosition, nonEmptyText, previewStatusCodes, specialDetailItemsFor, healthBadgesFor, VET_UNREAD_COLOR, CAGE_HATCH_BG } from "../constants";
 import type { PersistedAlert, CageShelfCell, CageBoxAction } from "@/api/domains/cageShelf.api";
 
 /**
@@ -40,7 +40,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
-  editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction>; currentDetails?: Set<string> };
+  editCacheEntry?: { initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction>; currentDetails?: Set<string>; currentSeverity?: string | null; currentItch?: boolean };
   isLastScanned?: boolean; bindHighlight?: boolean; bindPending?: boolean; editMode?: boolean; bindMode?: boolean;
   isCrossCol?: boolean; isCrossRow?: boolean; flashOverlay?: boolean;
   claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
@@ -85,6 +85,8 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   const resolvedCageType = resolveCageType(cell);
   /** 特殊饲养明细角标 —— 与底色同源：同一份 specialStatuses / 同一份状态模式暂存，不多开真相源 */
   const sfDetailItems = specialDetailItemsFor(cell.specialStatuses, editCacheEntry);
+  /** 健康异常那一族角标（严重程度 + 瘙痒，纵排）—— 同一套口径（暂存优先、强绑定父状态） */
+  const healthBadges = healthBadgesFor(cell.healthSeverity, cell.healthItch, editCacheEntry);
 
   /**
    * 有编辑缓存时，底色**完全由 currentActions（= 这批要提交的目标状态全集）决定**。
@@ -179,6 +181,7 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     disabledReason !== undefined ? " cursor-not-allowed" : isSelectable ? " cursor-pointer" : ""
   }`;
 
+  const isDisabled = cell.empty && !isSelectable && lockState === undefined;
   const handleCardClick = (e: React.MouseEvent) => {
     // 同步保护模式：点击整格即切换该笼位的锁（有 lockState 说明该格可上锁）
     if (lockState !== undefined) { onClick?.(cell); return; }
@@ -186,10 +189,22 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     if (isSelectable && !isToggleMode) { onClick?.(cell); return; }
     if (!cell.empty) onClick?.(cell);
   };
-  const handleCheckboxClick = (e: React.MouseEvent) => { e.stopPropagation(); if (onToggle) onToggle(e); };
   const handleCheckboxChange = () => { if (onToggle) onToggle({ stopPropagation: () => {} } as React.MouseEvent); };
-  return <button type="button" className={cls} style={selected ? { ...style, borderColor: "#3b82f6", borderWidth: "2px" } : style}
-    onClick={handleCardClick} disabled={cell.empty && !isSelectable && lockState === undefined}
+  /*
+    根元素**不能是 `<button>`**：格子里那颗勾选标记 SelectCheck 本身就是 `<button role="checkbox">`，
+    button 套 button 是非法 HTML（React 开发期直接报「cannot be a descendant of <button>」，SSR 还会 hydration 崩），
+    而且内层按钮在真实浏览器里点击行为不可靠。改成 role=button 的 div —— 键盘可达性自己补回来
+    （tabIndex + Enter/Space + focus-visible 焦点环），禁用态用 aria-disabled + 摘掉 onClick。
+  */
+  return <div role="button" tabIndex={isDisabled ? -1 : 0} aria-disabled={isDisabled || undefined}
+    className={`${cls} outline-none focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]`}
+    style={selected ? { ...style, borderColor: "#3b82f6", borderWidth: "2px" } : style}
+    onClick={isDisabled ? undefined : handleCardClick}
+    onKeyDown={(e) => {
+      if (isDisabled || (e.key !== "Enter" && e.key !== " ")) return;
+      e.preventDefault();
+      handleCardClick({ stopPropagation: () => {} } as React.MouseEvent);
+    }}
     data-x={cell.x} data-y={cell.y}>
     {/*
       勾选态：居中绿色圆形对勾（原来是左上角复选框）。标记本体走共用的 SelectCheck，
@@ -277,9 +292,15 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       if (!s) return null;
       return <div className={`absolute top-0.5 ${s.pos} z-20 px-1 py-px rounded text-[8px] font-bold leading-tight ${s.cls}`}>{s.txt}</div>;
     })()}
-    {/* 特殊饲养明细：右上角小药丸。该状态必是 type 3（不点类型指示灯），角落空着不打架；
-        与认领徽标（左上）、底部色条（中间态/划分）各占一角，互不遮挡。 */}
-    <SpecialDetailBadges items={sfDetailItems} />
+    {/* 兽医未读：紫色内描边悬浮层。**不占底色** —— 它表达「这条消息看过没」，不是笼位状态；
+        与红框（最后扫码/十字）、黄环（本人待到位）各占各的图层，互不覆盖。 */}
+    {cell.vetUnread && (
+      <div className="absolute inset-0 z-10 rounded-twin-md pointer-events-none"
+        style={{ boxShadow: `inset 0 0 0 3px ${VET_UNREAD_COLOR}` }} />
+    )}
+    {/* 严重程度 + 特殊饲养明细：右上角小药丸，两族并排。这两个子值只出现在 type 3/4、
+        而 type 3 不点类型指示灯，角落空着不打架；与认领徽标（左上）、底部色条各占一角。 */}
+    <CellStatusBadges items={sfDetailItems} health={healthBadges} />
     {isLastScanned && <div className="absolute inset-0 z-10 rounded-twin-md ring-[3px] ring-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)] pointer-events-none" />}
     {flashOverlay && <div className="absolute inset-0 z-10 rounded-twin-md ring-[4px] ring-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.5)] scan-flash-overlay" />}
     {/* 同步保护：锁定的笼位盖一层淡红罩，提示同步时会跳过（点击整格切换 锁→白名单→清除） */}
@@ -326,5 +347,5 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
         ×{qty}
       </span>
     )}
-  </button>;
+  </div>;
 });

@@ -6,6 +6,7 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
+import com.example.demo.modules.cageshelf.service.CageOpPair;
 import com.example.demo.modules.cageshelf.service.CageOperationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -180,9 +181,22 @@ public class CageOperationController {
         Result<?> denied = requireLogin(u);
         if (denied != null) return Result.fail(401, denied.getMessage());
         try {
+            // 批量转移：一次提交多组源→目标 = 一张单、一次三签。pairs 非空即走这条。
+            List<CageOpPair> pairs = parsePairs(body == null ? null : body.get("pairs"));
+            if (pairs != null && !pairs.isEmpty()) {
+                return Result.success(opService.submitTransferPairs(u, pairs, str(body, "reason"),
+                        body.get("transferForm")));
+            }
             Long from = toLong(body.get("fromAnimalCageId"));
-            Long to = toLong(body.get("toAnimalCageId"));
-            return Result.success(opService.submitTransfer(u, from, to, str(body, "reason")));
+            List<Long> targets = toLongList(body.get("targetAnimalCageIds"));
+            if (targets == null) {
+                // 小程序仍发单值字段，回退成单元素列表（本任务不改小程序）
+                Long to = toLong(body.get("toAnimalCageId"));
+                targets = to == null ? null : List.of(to);
+            }
+            // transferForm 可选：学生填的转移单值（对象或 JSON 字符串都收），不传则全走自动值
+            return Result.success(opService.submitTransfer(u, from, targets, str(body, "reason"),
+                    body.get("transferForm")));
         } catch (Exception e) {
             return handle(e);
         }
@@ -238,7 +252,7 @@ public class CageOperationController {
         try {
             String decision = str(body, "decision");
             if (decision == null || decision.isBlank()) return Result.fail(400, "decision 必填");
-            return Result.success(opService.review(u, id, decision, str(body, "reason")));
+            return Result.success(opService.review(u, id, decision, str(body, "reason"), str(body, "role")));
         } catch (Exception e) {
             return handle(e);
         }
@@ -292,6 +306,23 @@ public class CageOperationController {
         for (Object item : list) {
             Long l = toLong(item);
             if (l != null) out.add(l);
+        }
+        return out;
+    }
+
+    /** {@code [{source,target},...]} → 成对列表；非列表或全部非法返回空表（调用方据此回退老形状）。 */
+    private static List<CageOpPair> parsePairs(Object v) {
+        if (!(v instanceof List<?> list)) return null;
+        List<CageOpPair> out = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> m)) continue;
+            Long source = toLong(m.get("source"));
+            Long target = toLong(m.get("target"));
+            if (source == null || target == null) continue;
+            CageOpPair p = new CageOpPair();
+            p.setSource(source);
+            p.setTarget(target);
+            out.add(p);
         }
         return out;
     }

@@ -51,6 +51,11 @@ public class CageStatusAlertScheduler {
     private final CageStatusNotifyService notifyService;
     private final SocketIOServer socketServer;
     private final org.springframework.scheduling.TaskScheduler taskScheduler;
+    /** 取锁/放锁要压在同一条连接上（具名锁是连接级的，见 {@link #scan()}）。 */
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+    /** {@link #scanSoon()} 的合并标记：已排一轮即时扫描时不再重复排（批量写状态会连着触发很多次）。 */
+    private final java.util.concurrent.atomic.AtomicBoolean scanQueued =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public CageStatusAlertScheduler(CageStatusIntervalService intervalService,
                                     CageAlertRuleService ruleService,
@@ -58,7 +63,8 @@ public class CageStatusAlertScheduler {
                                     CageAlertViolationService violationService,
                                     CageStatusNotifyService notifyService,
                                     @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer,
-                                    @org.springframework.beans.factory.annotation.Qualifier("cageStatusAlertTaskScheduler") org.springframework.scheduling.TaskScheduler taskScheduler) {
+                                    @org.springframework.beans.factory.annotation.Qualifier("cageStatusAlertTaskScheduler") org.springframework.scheduling.TaskScheduler taskScheduler,
+                                    org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         this.intervalService = intervalService;
         this.ruleService = ruleService;
         this.mapper = mapper;
@@ -66,18 +72,29 @@ public class CageStatusAlertScheduler {
         this.notifyService = notifyService;
         this.socketServer = socketServer;
         this.taskScheduler = taskScheduler;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
-     * 立刻触发一轮扫描。配置刚改完时用 —— 只靠 5 分钟的 tick，用户盯着屏幕会以为「关了没用」。
+     * 立刻触发一轮扫描。配置刚改完、或状态刚被改动时用 —— 只靠 5 分钟的 tick，
+     * 用户盯着屏幕会以为「关了没用 / 改了没反应」。
      *
      * <p>投到本引擎**自己的线程池**（不在调用线程里跑全量折叠，也不阻塞 HTTP 响应）。
      * 重复触发是安全的：scan() 自带 GET_LOCK，线程池又只有 1 个线程，不会重入也不会并发跑两轮。
+     *
+     * <p><b>并且会合并</b>：批量写状态（一次 ARO 同步上千个笼位、一次分笼多个目标）会连着触发很多次，
+     * 不合并就会排出同样多轮**全量折叠**（每轮 10 万行量级）。合并成一轮。
      */
     public void scanSoon() {
+        // 已排队 → 这一跳合并掉。标记在任务**开头**置回：扫描期间到达的触发仍会排下一轮（那是真新变更）
+        if (!scanQueued.compareAndSet(false, true)) return;
         try {
-            taskScheduler.schedule(this::scan, java.time.Instant.now());
+            taskScheduler.schedule(() -> {
+                scanQueued.set(false);
+                scan();
+            }, java.time.Instant.now());
         } catch (Exception e) {
+            scanQueued.set(false);
             log.warn("[cage-status-alert] 触发即时扫描失败: {}", e.getMessage());
         }
     }
@@ -86,21 +103,54 @@ public class CageStatusAlertScheduler {
             initialDelayString = "${app.cage-status-alert.initial-delay-ms:60000}",
             scheduler = "cageStatusAlertTaskScheduler")
     public void scan() {
-        Integer locked = mapper.tryAcquireLock(LOCK_NAME, LOCK_TIMEOUT_SEC);
-        if (locked == null || locked != 1) {
-            log.info("[cage-status-alert] 上一轮未跑完或他实例持锁，跳过本轮");
-            return;
-        }
+        /*
+          MySQL 具名锁是**连接级**的：GET_LOCK 与 RELEASE_LOCK 必须落在同一条连接上。
+          原来拆成两次 mapper 调用（本方法无事务，两次各自借连接），池化下可能借到不同连接 ——
+          放锁放了个空，锁永远留在取锁那条连接上（Hikari 的 minimum-idle 让那条连接不死）。
+          此后每一轮都判「他实例持锁」直接跳过：巡检、即时重算、状态变更全都不再有反应，
+          引擎永久停摆。2026-09-18 实测踩到（锁持续持有十多分钟不自愈，期间零写入），
+          所以取锁 → 执行 → 放锁全部压在**一条** JdbcTemplate 借出的连接里。
+        */
         try {
-            runOnce();
+            jdbcTemplate.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) con -> {
+                if (!tryAcquireLock(con)) {
+                    log.info("[cage-status-alert] 上一轮未跑完或他实例持锁，跳过本轮");
+                    return null;
+                }
+                try {
+                    runOnce();
+                } catch (Exception e) {
+                    log.error("[cage-status-alert] 扫描异常: {}", e.getMessage(), e);
+                } finally {
+                    releaseLock(con);
+                }
+                return null;
+            });
         } catch (Exception e) {
-            log.error("[cage-status-alert] 扫描异常: {}", e.getMessage(), e);
-        } finally {
-            try {
-                mapper.releaseLock(LOCK_NAME);
-            } catch (Exception e) {
-                log.warn("[cage-status-alert] 释放锁失败: {}", e.getMessage());
+            log.error("[cage-status-alert] 取锁/扫描失败: {}", e.getMessage(), e);
+        }
+    }
+
+    /** 取锁。必须在调用方给的连接上取 —— 只有这样 finally 里的 RELEASE 才放得掉。 */
+    private boolean tryAcquireLock(java.sql.Connection con) {
+        try (java.sql.PreparedStatement ps = con.prepareStatement("SELECT GET_LOCK(?, ?)")) {
+            ps.setString(1, LOCK_NAME);
+            ps.setInt(2, LOCK_TIMEOUT_SEC);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                return rs.next() && rs.getObject(1) != null && rs.getInt(1) == 1;
             }
+        } catch (Exception e) {
+            log.warn("[cage-status-alert] 取锁失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private void releaseLock(java.sql.Connection con) {
+        try (java.sql.PreparedStatement ps = con.prepareStatement("SELECT RELEASE_LOCK(?)")) {
+            ps.setString(1, LOCK_NAME);
+            ps.execute();
+        } catch (Exception e) {
+            log.warn("[cage-status-alert] 释放锁失败: {}", e.getMessage());
         }
     }
 
@@ -179,13 +229,16 @@ public class CageStatusAlertScheduler {
         }
     }
 
-    /** 把每笼位五条规则里的计时起点摊成 (笼位 → 状态 → 起点)，供折叠时按 (笼位,状态) 查。 */
+    /**
+     * 把每笼位全部规则里的计时起点摊成 (笼位 → 规则键 → 起点)，供折叠时按 (笼位, 状态, 通知对象) 查。
+     * 规则键走 {@link CageStatusIntervalService#ruleKey}。
+     */
     private static Map<Long, Map<String, Boolean>> startValuesOf(Map<Long, List<EffectiveAlertRule>> rules) {
         Map<Long, Map<String, Boolean>> out = new HashMap<>(rules.size());
         for (Map.Entry<Long, List<EffectiveAlertRule>> e : rules.entrySet()) {
             Map<String, Boolean> perCage = new HashMap<>();
             for (EffectiveAlertRule r : e.getValue()) {
-                perCage.put(r.statusCode(), r.startValue());
+                perCage.put(CageStatusIntervalService.ruleKey(r.statusCode(), r.notifyTarget()), r.startValue());
             }
             out.put(e.getKey(), perCage);
         }
@@ -206,15 +259,16 @@ public class CageStatusAlertScheduler {
     }
 
     /**
-     * 这两个状态**不是违规行为**（用户 2026-09-14 定的口径）：无论阈值里配成什么动作，都不新建违规，
-     * 改成走推送中心的统一源发通知（见 {@link CageStatusNotifyService}）。
+     * 这些状态**不是违规行为**（用户 2026-09-14 定的口径；健康异常 2026-09-17 并入）：
+     * 无论阈值里配成什么动作，都不新建违规，改成走推送中心发通知（见 {@link CageStatusNotifyService}）。
      *
      * <p>判定放在 {@link #maybeEscalate} —— 引擎里唯一的「升级出口」，一个口子收住所有路径。
      * 特殊饲养明细（{@code SF_} 前缀）跟着特殊饲养走同一口径。
      */
-    private static final Set<String> NON_VIOLATION_STATUSES = Set.of("SPECIAL_FEEDING", "COHABITATION");
+    private static final Set<String> NON_VIOLATION_STATUSES =
+            Set.of("SPECIAL_FEEDING", "COHABITATION", CageStatusIntervalService.STATUS_HEALTH_ABNORMAL);
 
-    /** 该状态是否属于「非违规」（特殊饲养 / 合笼 / 特殊饲养明细）。包可见：单测直接钉这条口径。 */
+    /** 该状态是否属于「非违规」（特殊饲养 / 合笼 / 特殊饲养明细 / 健康异常）。包可见：单测直接钉这条口径。 */
     static boolean isNonViolationStatus(String statusCode) {
         if (statusCode == null) return false;
         return NON_VIOLATION_STATUSES.contains(statusCode)
@@ -225,7 +279,8 @@ public class CageStatusAlertScheduler {
      * 告警升级成 ACTIVE（或非 estimated 首触）时挂的旁路：动作含「违规/通知」档才动手。
      *
      * <p>动作语义按状态分岔：一般状态 → 建违规（原有行为不变）；
-     * **特殊饲养 / 合笼 / 明细** → 同一时刻只发通知，不建违规。
+     * **特殊饲养 / 合笼 / 明细 / 健康异常** → 同一时刻只发通知，不建违规
+     * （健康异常再按 notifyTarget 分流到「通知兽医」「通知笼位所有者」两个源，见通知服务）。
      * 建违规/发通知失败都只打 warn，绝不让它影响告警本体（告警已落库，这里不能抛）。
      */
     private void maybeEscalate(long alertId, Intent in) {
@@ -245,7 +300,7 @@ public class CageStatusAlertScheduler {
         Map<String, ExistingAlert> out = new HashMap<>();
         for (CageStatusAlert a : mapper.listNonCleared()) {
             if (a == null || a.getAnimalCageId() == null || a.getStatusCode() == null) continue;
-            out.put(activeKeyOf(a.getAnimalCageId(), a.getStatusCode()),
+            out.put(activeKeyOf(a.getAnimalCageId(), a.getStatusCode(), a.getNotifyTarget()),
                     new ExistingAlert(a.getId() == null ? 0L : a.getId(), a.getState(), a.getStartedAt()));
         }
         return out;
@@ -255,27 +310,39 @@ public class CageStatusAlertScheduler {
         CageStatusAlert a = new CageStatusAlert();
         a.setAnimalCageId(in.animalCageId());
         a.setStatusCode(in.statusCode());
+        a.setNotifyTarget(CageStatusIntervalService.normalizeTarget(in.notifyTarget()));
         a.setStartedAt(in.startedAt());
         a.setFiredAt(in.firedAt());
         a.setThresholdDays(in.thresholdDays());
         a.setAction(in.action());
         a.setState(state);
         a.setEstimated(in.estimated());
-        a.setActiveKey(activeKeyOf(in.animalCageId(), in.statusCode()));
+        a.setActiveKey(activeKeyOf(in.animalCageId(), in.statusCode(), in.notifyTarget()));
         return a;
     }
 
-    /** 笼位:状态 的活跃键，兼作 active_key 列与决策期 key。 */
-    public static String activeKeyOf(long cageId, String statusCode) {
-        return cageId + ":" + statusCode;
+    /**
+     * 活跃键，兼作 active_key 列与决策期 key。
+     *
+     * <p><b>默认对象不拼后缀</b>：notify_target = DEFAULT 时仍是 `笼位:状态`（与改造前逐字节相同，
+     * 存量活跃告警行不需要 UPDATE，唯一索引的约束力也不变）；只有 VET / OCCUPANT 才拼成
+     * `笼位:状态:对象`，于是同一笼位同一状态的两个通知对象各占一行。
+     */
+    public static String activeKeyOf(long cageId, String statusCode, String notifyTarget) {
+        String base = cageId + ":" + statusCode;
+        return CageStatusIntervalService.isDefaultTarget(notifyTarget)
+                ? base
+                : base + ":" + CageStatusIntervalService.normalizeTarget(notifyTarget);
     }
 
     private static EffectiveAlertRule ruleFor(Map<Long, List<EffectiveAlertRule>> rulesByCage,
-                                              long cageId, String statusCode) {
+                                              long cageId, String statusCode, String notifyTarget) {
+        String target = CageStatusIntervalService.normalizeTarget(notifyTarget);
         List<EffectiveAlertRule> list = rulesByCage == null ? null : rulesByCage.get(cageId);
         if (list == null) return null;
         for (EffectiveAlertRule r : list) {
-            if (statusCode.equals(r.statusCode())) return r;
+            if (statusCode.equals(r.statusCode())
+                    && target.equals(CageStatusIntervalService.normalizeTarget(r.notifyTarget()))) return r;
         }
         return null;
     }
@@ -306,14 +373,14 @@ public class CageStatusAlertScheduler {
         List<Intent> out = new ArrayList<>();
 
         for (StatusInterval iv : open) {
-            String key = activeKeyOf(iv.animalCageId(), iv.statusCode());
+            String key = activeKeyOf(iv.animalCageId(), iv.statusCode(), iv.notifyTarget());
             ExistingAlert existing = existingByKey.get(key);
-            EffectiveAlertRule rule = ruleFor(rulesByCage, iv.animalCageId(), iv.statusCode());
+            EffectiveAlertRule rule = ruleFor(rulesByCage, iv.animalCageId(), iv.statusCode(), iv.notifyTarget());
 
             if (rule == null || !rule.enabled()) {
                 // 组长把告警关掉（或规则缺失 fail-closed）：存量告警应当消失。
                 if (existing != null) {
-                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), now));
+                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(), existing.id(), now));
                 }
                 continue;
             }
@@ -326,33 +393,33 @@ public class CageStatusAlertScheduler {
                         && !iv.addedAt().equals(existing.startedAt())) {
                     // 存量行的起算点是**旧区间**的（标记 → 取消 → 再标记）：展示的「已持续 N 天」会偏大。
                     // 同一轮里先撤销、再按当前区间重建 —— 不跨轮所以看不到空窗，重建后快照就与当前区间一致了。
-                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), now));
+                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(), existing.id(), now));
                     if (qualifies) {
-                        out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.addedAt(), now,
-                                rule.thresholdDays(), actionOf(rule), false));
+                        out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(),
+                                iv.addedAt(), now, rule.thresholdDays(), actionOf(rule), false));
                     }
                 } else if (qualifies) {
                     if (existing == null) {
-                        out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.addedAt(), now,
-                                rule.thresholdDays(), actionOf(rule), false));
+                        out.add(Intent.createActive(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(),
+                                iv.addedAt(), now, rule.thresholdDays(), actionOf(rule), false));
                     }
                     // 已有非 CLEARED 行则幂等不重复触发。
                 } else if (existing != null && CageStatusAlert.STATE_ACTIVE.equals(existing.state())) {
                     // 阈值被调高到当前持续时间之上（7 调到 999）：存量告警已不成立，必须撤销。
                     // 不撤的话「改阈值」对已触发的告警完全无效，弹窗还挂着建行时快照的旧阈值。
-                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), now));
+                    out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(), existing.id(), now));
                 }
                 // 未到阈值且本来就没行 → 不落行。
             } else {
                 // estimated：起算点不可观测，见类注释。首次见到 → 建基线，绝不触发。
                 if (existing == null) {
-                    out.add(Intent.createPending(iv.animalCageId(), iv.statusCode(), now,
+                    out.add(Intent.createPending(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(), now,
                             rule.thresholdDays(), actionOf(rule)));
                 } else if (CageStatusAlert.STATE_PENDING.equals(existing.state())) {
                     long days = Duration.between(existing.startedAt(), now).toDays();
                     if (days >= rule.thresholdDays()) {
-                        out.add(Intent.promote(iv.animalCageId(), iv.statusCode(), existing.id(), now,
-                                rule.thresholdDays(), actionOf(rule)));
+                        out.add(Intent.promote(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(),
+                                existing.id(), now, rule.thresholdDays(), actionOf(rule)));
                     }
                     // 未到阈值不动作。
                 }
@@ -361,9 +428,9 @@ public class CageStatusAlertScheduler {
         }
 
         /*
-          同一 (笼位,状态) 可能有多条区间：标记 → 取消 → 再标记，折叠出来就是「一条历史闭合 + 一条开着」。
-          active_key 是 cage:status（**每个笼位每个状态只有一行**），所以这里必须按 key 去重：
-          一条历史闭合区间绝不能清掉当前开着那条区间名下的告警行 ——
+          同一 (笼位, 状态, 通知对象) 可能有多条区间：标记 → 取消 → 再标记，折叠出来就是
+          「一条历史闭合 + 一条开着」。active_key 是 (笼位:状态[:对象])（**每个三元组只有一行**），
+          所以这里必须按 key 去重：一条历史闭合区间绝不能清掉当前开着那条区间名下的告警行 ——
           清了下一轮 existing 就是 null，又会 CREATE_ACTIVE，于是「清→建→清」每轮循环，
           每轮发一条违规 + 一条通知。
           真实踩过：特殊饲养标记→取消→再标记，之后每 5 分钟一条违规，一笼位连发 14 条，
@@ -371,15 +438,16 @@ public class CageStatusAlertScheduler {
         */
         Set<String> openKeys = new HashSet<>();
         for (StatusInterval iv : open) {
-            openKeys.add(activeKeyOf(iv.animalCageId(), iv.statusCode()));
+            openKeys.add(activeKeyOf(iv.animalCageId(), iv.statusCode(), iv.notifyTarget()));
         }
 
         for (StatusInterval iv : closed) {
-            String key = activeKeyOf(iv.animalCageId(), iv.statusCode());
+            String key = activeKeyOf(iv.animalCageId(), iv.statusCode(), iv.notifyTarget());
             if (openKeys.contains(key)) continue; // 现在还开着 → 这条历史区间不负责清它
             ExistingAlert existing = existingByKey.get(key);
             if (existing != null) {
-                out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), existing.id(), iv.removedAt()));
+                out.add(Intent.clear(iv.animalCageId(), iv.statusCode(), iv.notifyTarget(),
+                        existing.id(), iv.removedAt()));
             }
             // 闭合但本来就没行 → 别建空清除。
         }
@@ -397,11 +465,13 @@ public class CageStatusAlertScheduler {
      * CREATE_PENDING 用 startedAt(=now)/firedAt(=now)/thresholdDays/action；
      * PROMOTE_TO_ACTIVE 用 targetId/firedAt/thresholdDays/action；
      * CLEAR 用 targetId/clearedAt。
+     * notifyTarget 四种 kind 都要带 —— 它是实例身份的一部分（见 {@link #activeKeyOf}）。
      */
     public record Intent(
             Kind kind,
             long animalCageId,
             String statusCode,
+            String notifyTarget,
             LocalDateTime startedAt,
             LocalDateTime firedAt,
             LocalDateTime clearedAt,
@@ -412,25 +482,29 @@ public class CageStatusAlertScheduler {
     ) {
         public enum Kind { CREATE_ACTIVE, CREATE_PENDING, PROMOTE_TO_ACTIVE, CLEAR }
 
-        static Intent createActive(long cage, String status, LocalDateTime startedAt, LocalDateTime firedAt,
+        static Intent createActive(long cage, String status, String notifyTarget,
+                                   LocalDateTime startedAt, LocalDateTime firedAt,
                                    int thresholdDays, String action, boolean estimated) {
-            return new Intent(Kind.CREATE_ACTIVE, cage, status, startedAt, firedAt, null,
+            return new Intent(Kind.CREATE_ACTIVE, cage, status, notifyTarget, startedAt, firedAt, null,
                     thresholdDays, action, estimated, 0);
         }
 
-        static Intent createPending(long cage, String status, LocalDateTime now,
+        static Intent createPending(long cage, String status, String notifyTarget, LocalDateTime now,
                                     int thresholdDays, String action) {
-            return new Intent(Kind.CREATE_PENDING, cage, status, now, now, null, thresholdDays, action, true, 0);
+            return new Intent(Kind.CREATE_PENDING, cage, status, notifyTarget, now, now, null,
+                    thresholdDays, action, true, 0);
         }
 
-        static Intent promote(long cage, String status, long targetId, LocalDateTime firedAt,
-                              int thresholdDays, String action) {
-            return new Intent(Kind.PROMOTE_TO_ACTIVE, cage, status, null, firedAt, null,
+        static Intent promote(long cage, String status, String notifyTarget, long targetId,
+                              LocalDateTime firedAt, int thresholdDays, String action) {
+            return new Intent(Kind.PROMOTE_TO_ACTIVE, cage, status, notifyTarget, null, firedAt, null,
                     thresholdDays, action, true, targetId);
         }
 
-        static Intent clear(long cage, String status, long targetId, LocalDateTime clearedAt) {
-            return new Intent(Kind.CLEAR, cage, status, null, null, clearedAt, 0, null, false, targetId);
+        static Intent clear(long cage, String status, String notifyTarget, long targetId,
+                            LocalDateTime clearedAt) {
+            return new Intent(Kind.CLEAR, cage, status, notifyTarget, null, null, clearedAt,
+                    0, null, false, targetId);
         }
     }
 }

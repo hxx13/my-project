@@ -94,30 +94,16 @@ function noticeDateOnly(item: MobileAlertItem): string {
   return item.publishAt?.slice(0, 10) || item.createdAt?.slice(0, 10) || "";
 }
 
-/** 列表副标题：日期 + 可选摘要（不含类型标签，类型由角标展示） */
+/** 时间戳显示：ISO 的 T 换成空格，截到分钟 */
+export function formatNoticeTime(raw?: string | null): string {
+  if (!raw) return "";
+  return raw.slice(0, 16).replace("T", " ");
+}
+
+/** 列表副标题：只保留时间戳（到分钟），不再拼正文摘要（类型由角标展示） */
 export function formatNoticeListSubtitle(item: MobileAlertItem): string {
-  const date = noticeDateOnly(item);
-  if (item.kind === "violation") {
-    const plain = stripSimpleHtml(
-      extractViolationBodyForDisplay(item.contentHtml || ""),
-    ).trim();
-    const title = (item.title || "").trim();
-    let preview = "";
-    if (plain && plain !== title && !title.includes(plain)) {
-      preview = plain.length > 36 ? `${plain.slice(0, 36)}…` : plain;
-    }
-    if (preview && date) return `${date} · ${preview}`;
-    return date || preview;
-  }
-  const plain = stripSimpleHtml(item.contentHtml || "").trim();
-  const title = (item.title || "").trim();
-  let preview = "";
-  if (plain && plain !== title && !title.includes(plain)) {
-    preview = plain.length > 36 ? `${plain.slice(0, 36)}…` : plain;
-  }
-  if (preview && date) return `${date} · ${preview}`;
-  if (date) return date;
-  return preview;
+  // 与公告详情 MobileNoticeDetailBody 同款取值，保证同一公告列表/详情时间一致
+  return formatNoticeTime(item.publishAt || item.createdAt || "");
 }
 
 /** @deprecated 使用 formatNoticeListSubtitle */
@@ -134,7 +120,7 @@ export function formatNoticeMeta(item: MobileAlertItem): string {
     return date;
   }
   const kind = alertKindLabel(item.kind, item.source);
-  const timePart = item.publishAt?.slice(0, 16) || item.createdAt?.slice(0, 16) || "";
+  const timePart = formatNoticeTime(item.publishAt || item.createdAt || "");
   return [timePart, kind].filter(Boolean).join(" · ");
 }
 

@@ -15,6 +15,8 @@ Component({
     statusBarHeight: 20,
     navContentHeight: 32,
     navBarHeight: 64,
+    /** 胶囊占位（px）。attached 前先用兜底值，别让右侧插槽在第一帧贴在胶囊底下 */
+    menuRightInset: 96,
   },
 
   lifetimes: {

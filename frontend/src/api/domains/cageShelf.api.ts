@@ -56,6 +56,18 @@ export interface CageShelfCell {
   cageBoxInfo?: Record<string, unknown>;
   detail?: Record<string, unknown>;
   specialStatuses?: SpecialStatusEntry[];
+  /**
+   * 健康异常严重程度（码表 item_code，如 SEVERE）。**不是状态码** —— 服务端刻意把它放在
+   * specialStatuses 之外，免得被底色/优先级当成第六个状态；只给右上角角标用，中文名按码表解析。
+   */
+  healthSeverity?: string | null;
+  /** 健康异常「瘙痒」（布尔子值）；不是状态码，同样只喂右上角角标。 */
+  healthItch?: boolean | null;
+  /**
+   * 该笼位有**兽医未读**消息 → 网格盖一层紫色描边（悬浮层）。
+   * 与笼位状态底色无关：它表达的是「这条消息看过没」，不是笼位状态。
+   */
+  vetUnread?: boolean | null;
   /** 该笼位 active claim 的状态（locked/confirmed/pending_approval/...，无 active claim 为 undefined） */
   claimStatus?: string;
   annotation?: {
@@ -527,12 +539,28 @@ export async function fetchBookmarks(): Promise<BookmarkEntry[]> {
   return dedupeBookmarks((res.data.data ?? []).map(normalizeBookmarkEntry));
 }
 
-/** PUT /api/cage-shelves/{roomId}/{shelveId}/bookmark */
+/** PUT /api/cage-shelves/{roomId}/{shelveId}/bookmark（笼架级，2026-09-19 起界面不再使用，保留兼容） */
 export async function toggleBookmarkApi(roomId: string, shelveId: string): Promise<{
   roomId: string; shelveId: string; bookmarked: boolean;
 }> {
   const res = await authHttp.put<Result<any>>(
     `/cage-shelves/${encodeURIComponent(roomId)}/${encodeURIComponent(shelveId)}/bookmark`
+  );
+  if (!res.data?.success) throw new Error(res.data?.message || "操作失败");
+  return res.data.data;
+}
+
+/** GET /api/cage-shelves/room-bookmarks — 收藏过的**房间** id（房间名前端从树上取） */
+export async function fetchRoomBookmarkIds(): Promise<string[]> {
+  const res = await authHttp.get<Result<{ roomIds?: string[] }>>(`/cage-shelves/room-bookmarks`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载收藏失败");
+  return (res.data.data?.roomIds ?? []).map(String);
+}
+
+/** PUT /api/cage-shelves/rooms/{roomId}/bookmark — 切换房间收藏 */
+export async function toggleRoomBookmarkApi(roomId: string): Promise<{ roomId: string; bookmarked: boolean }> {
+  const res = await authHttp.put<Result<{ roomId: string; bookmarked: boolean }>>(
+    `/cage-shelves/rooms/${encodeURIComponent(roomId)}/bookmark`
   );
   if (!res.data?.success) throw new Error(res.data?.message || "操作失败");
   return res.data.data;
@@ -623,6 +651,13 @@ export type CageStatusAlertAction = "HIGHLIGHT" | "VIOLATION" | "BOTH";
 export interface CageStatusAlertRule {
   statusCode: string;
   statusLabel: string;
+  /**
+   * 通知对象：DEFAULT（原有单目标语义）/ VET（通知兽医）/ OCCUPANT（通知笼位所有者）。
+   * 与 statusCode 一起构成规则身份 —— 健康异常同一状态有两行（兽医 / 所有者），各自阈值与方向。
+   */
+  notifyTarget: string;
+  /** 通知对象中文名（默认 / 通知兽医 / 通知笼位所有者）。 */
+  notifyTargetLabel: string;
   thresholdDays: number;
   action: CageStatusAlertAction;
   enabled: boolean;
@@ -633,8 +668,13 @@ export interface CageStatusAlertRule {
   startValue: 0 | 1;
 }
 
-/** 保存用的 wire 形状：statusLabel 不下发（后端自己算）。 */
-export type CageStatusAlertRuleInput = Omit<CageStatusAlertRule, "statusLabel">;
+/** 保存用的 wire 形状：statusLabel/notifyTargetLabel 不下发（后端自己算）。 */
+export type CageStatusAlertRuleInput = Omit<CageStatusAlertRule, "statusLabel" | "notifyTargetLabel">;
+
+/** 规则身份键（状态码 + 通知对象）—— 列表渲染、查重、回填都必须用它，别只用 statusCode。 */
+export function statusAlertRuleKey(r: { statusCode: string; notifyTarget?: string | null }): string {
+  return `${r.statusCode}:${r.notifyTarget ?? "DEFAULT"}`;
+}
 
 /** 可配告警阈值的区域树节点（GET /config/regions 下发，层级固定 CAMPUS→FLOOR→ROOM）。 */
 export interface CageStatusAlertRegionNode {
@@ -710,11 +750,141 @@ export async function saveRegionStatusAlertConfig(
   if (!res.data?.success) throw new Error(res.data?.message || "保存区域告警阈值失败");
 }
 
+/**
+ * 区域指定兽医（健康异常「通知兽医」那条通道的收件人来源）。
+ * 一个区域一般一位兽医，同一兽医可覆盖多个区域；房间优先于楼层、楼层优先于校区。
+ */
+export interface RegionVetConfig {
+  regionType: string;
+  regionId: string;
+  /** 超管视角下 = 该区域全部行；组长视角下 = 只有自己配的 */
+  mine: string[];
+  /** 别人的行（只读展示；同级取并集，所以别人的也会生效） */
+  others: string[];
+  /** 候选人：持「兽医」身份标签的人（accountId 直接就是保存时要提交的值） */
+  candidates?: Array<{
+    accountId: string;
+    name?: string;
+    jobNumber?: string;
+    identities?: Array<{ code: string; label: string }>;
+    /** 非空 = 该人已被某位饲养组长纳入组员（选兽医不受此限，仅作提示） */
+    boundLeaderName?: string;
+  }>;
+}
+
+export async function fetchRegionVets(regionType: string, regionId: string): Promise<RegionVetConfig> {
+  const res = await authHttp.get<Result<RegionVetConfig>>("/cage-status-alert/config/region/vets", {
+    params: { regionType, regionId },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载区域兽医失败");
+  return res.data.data!;
+}
+
+export async function saveRegionVets(
+  regionType: string,
+  regionId: string,
+  accountIds: string[],
+): Promise<void> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/cage-status-alert/config/region/vets", {
+    regionType,
+    regionId,
+    accountIds,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存区域兽医失败");
+}
+
+/* ═══════════════════════════════════════════════════════════
+   兽医收件箱：每次「通知兽医」触发形成一条消息，兽医点「已查看」才清未读
+   ═══════════════════════════════════════════════════════════ */
+
+export interface CageVetMessage {
+  id: number;
+  /** 雪花 id 字符串 */
+  animalCageId: string;
+  statusCode: string;
+  statusLabel: string;
+  firedAt: string;
+  readAt?: string | null;
+  /** false = 未读（网格上紫色描边） */
+  read: boolean;
+  roomId?: string | null;
+  roomName?: string | null;
+  /** 收件箱按 校区 → 楼层 → 房间 → 笼架 分组建树，名字由后端一并带出 */
+  campusName?: string | null;
+  floorName?: string | null;
+  shelveId?: string | null;
+  shelveName?: string | null;
+  /** 已按显示口径翻转的位号（货架第 1 行在物理最下面） */
+  positionLabel?: string | null;
+  projectPiName?: string | null;
+  experimenterName?: string | null;
+  /* ── 右侧「基本信息 + 当前状态」两块。用户 2026-09-18 明确：不要整张表单字段清单 ── */
+  /** 笼位类型码（1 等待分配 / 2 空笼位 / 3 饲养中），前端按 CAGE_TYPE_LABEL 出中文 */
+  cageTypeCode?: number | null;
+  /** 笼盒编号 */
+  cageBoxCode?: string | null;
+  /** AUP 注册号 */
+  aupNumber?: string | null;
+  /** **只含当前开启的**状态（与网格 specialStatuses 同源同构），没开启的就是空数组 */
+  statuses?: Array<{ code: string; label: string }>;
+  /** 健康异常严重程度：码 + 中文名（不是状态码，单独一项） */
+  healthSeverity?: string;
+  healthSeverityLabel?: string;
+  /** 健康异常「瘙痒」子值 */
+  healthItch?: boolean;
+  /** 该笼位当前的兽医指导意见（文字 + 图片），随表单归档 */
+  adviceText?: string;
+  adviceImages?: string[];
+}
+
+export interface CageVetInbox {
+  /** false = 当前账号没有兽医收件箱权限（入口不显示） */
+  canEnter: boolean;
+  unreadCount: number;
+  messages: CageVetMessage[];
+}
+
+export async function fetchCageVetInbox(): Promise<CageVetInbox> {
+  const res = await authHttp.get<Result<CageVetInbox>>("/cage-vet/inbox");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载兽医收件箱失败");
+  return res.data.data!;
+}
+
+export async function markCageVetRead(id: number): Promise<number> {
+  const res = await authHttp.post<Result<{ unreadCount: number }>>(`/cage-vet/messages/${id}/read`);
+  if (!res.data?.success) throw new Error(res.data?.message || "标记已查看失败");
+  return res.data.data?.unreadCount ?? 0;
+}
+
+export async function markCageVetReadAll(): Promise<number> {
+  const res = await authHttp.post<Result<{ unreadCount: number }>>("/cage-vet/messages/read-all");
+  if (!res.data?.success) throw new Error(res.data?.message || "一键查看失败");
+  return res.data.data?.unreadCount ?? 0;
+}
+
+/** 写兽医指导意见（文字 + 图片）：落到表单字段，随表单归档、详情表单里只读。 */
+export async function saveCageVetAdvice(
+  animalCageId: string | number,
+  text: string,
+  images: string[],
+): Promise<void> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/cage-vet/advice", {
+    animalCageId: String(animalCageId),
+    text,
+    images,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存指导意见失败");
+}
+
 /** 活跃告警（GET /cage-status-alert/active）。animalCageId/shelveId/roomId 均为字符串（雪花 ID 超 JS 精度）。 */
 export interface ActiveCageStatusAlert {
   animalCageId: string;
   statusCode: string;
   statusLabel: string;
+  /** 通知对象：DEFAULT / VET / OCCUPANT —— 健康异常同一状态会有两条（兽医、所有者各一条）。 */
+  notifyTarget: string;
+  /** 通知对象中文名。 */
+  notifyTargetLabel: string;
   startedAt: string;
   firedAt: string;
   thresholdDays: number;
@@ -1344,14 +1514,20 @@ export async function localArchiveCage(animalCageId: number | string, reason?: s
 }
 
 /**
- * 写笼位「特殊饲养明细」子状态（多选，**整体覆盖**）。
- * itemCodes 传空数组 = 清空。id 转字符串再传 —— 雪花 id 超出 JS 安全整数，传数字会被抹位。
+ * 写笼位「状态子值」字段（**整体覆盖**）：特殊饲养明细（多选）、健康异常严重程度（单选）。
+ * itemCodes 传空数组 = 清空；单选取多个会被服务端拒（400）。
+ * canonical 必须落在服务端的「状态子值」白名单里（`special_feeding_details` / `health_abnormality_severity`）。
+ * id 转字符串再传 —— 雪花 id 超出 JS 安全整数，传数字会被抹位。
  */
-export async function saveSpecialDetails(animalCageId: number | string, itemCodes: string[]) {
-  const res = await authHttp.post<Result<any>>("/local/special-details", {
-    animalCageId: String(animalCageId), itemCodes,
+export async function saveStatusDetail(
+  animalCageId: number | string,
+  canonical: string,
+  itemCodes: string[],
+) {
+  const res = await authHttp.post<Result<any>>("/local/status-detail", {
+    animalCageId: String(animalCageId), canonical, itemCodes,
   });
-  if (!res.data?.success) throw new Error(res.data?.message || "保存特殊饲养明细失败");
+  if (!res.data?.success) throw new Error(res.data?.message || "保存状态子值失败");
 }
 
 /** 补全详情字段 — 从 ARO /list 批量拉取 PI/课题组/动物品系等 */
@@ -1751,6 +1927,8 @@ export interface CageOpRequestView {
   opType: "divide" | "transfer";
   sourceAnimalCageId: string;
   targetAnimalCageIds: string[];
+  /** 批量转移：一次请求多组源→目标；缺省（存量旧单）时按单值 sourceAnimalCageId 处理 */
+  pairs?: Array<{ source: number | string; target: number | string }> | null;
   /** 源笼位所在笼架 id（审核卡片「定位」跳转用） */
   shelveId?: string | null;
   /** 目标笼位坐标（转移 1:1、分笼 1:多）：卡片要显示「转到哪里」 */
@@ -1760,6 +1938,26 @@ export interface CageOpRequestView {
   applicantName?: string | null;
   applicantScope?: string | null;
   status: string;
+  /** 三签记录（归属地 ORIGIN / 目的地 DEST / 兽医 VET）。存量旧单与分笼单为空数组。 */
+  signatures?: Array<{
+    role: "ORIGIN" | "DEST" | "VET";
+    reviewerId?: string;
+    reviewerName?: string;
+    at?: string;
+    decision?: "approved" | "held" | "rejected";
+    reason?: string;
+  }>;
+  /** 还没同意（或还没签）的角色；已终局驳回时为空数组。 */
+  missingRoles?: string[];
+  /**
+   * 是否走三签（后端 `usesThreeSignatures`：transfer 且 signatures 非 null）。
+   *
+   * <p>**分流判据必须用它，不能只看 opType**：存量转移单（`signatures` 为 NULL）走旧的单签链，
+   * 一次「通过」就执行整笔；给它画三个角色按钮会让点「归属地」把整笔转移执行掉。
+   */
+  threeSign?: boolean;
+  /** 本次操作人**现在还能签**的角色（归属地 ORIGIN / 目的地 DEST / 兽医 VET，按此顺序）；分笼单恒空。 */
+  myRoles?: Array<"ORIGIN" | "DEST" | "VET">;
   reason?: string | null;
   reviewerName?: string | null;
   reviewedAt?: string | null;
@@ -1910,13 +2108,64 @@ export async function submitCageDivide(body: {
 }
 
 export async function submitCageTransfer(body: {
-  fromAnimalCageId: number | string;
-  toAnimalCageId: number | string;
+  fromAnimalCageId?: number | string;
+  /** 多目标转移；后端仍兼容单值 toAnimalCageId 作回退（旧调用点未迁移时用） */
+  targetAnimalCageIds?: Array<number | string>;
+  toAnimalCageId?: number | string;
+  /** 批量转移：一次提交多组源→目标 = 一张单、一次三签（后端据此合并，多源允许） */
+  pairs?: Array<{ source: number | string; target: number | string }>;
   reason?: string;
+  /** 学生填/改的转移单值（与后端 TransferFormData 对齐）。不传=全自动值 */
+  transferForm?: CageTransferFormData;
 }): Promise<CageOpSubmitResult> {
   const res = await authHttp.post<Result<CageOpSubmitResult>>("/cage-op/transfer", body);
   if (!res.data?.success) throw new Error(res.data?.message || "转移失败");
   return res.data.data!;
+}
+
+// ── 转移单（《实验动物转移预约单》）──
+//
+// 自动值不落库、可重算，学生只填/改一部分。所以提交只带人工值，
+// 弹窗里显示的自动值一律来自 prefill —— 两边各拼一遍必然与打印出来的单子走偏。
+
+/** 学生填/改的转移单值（与后端 TransferFormData 对齐）；未改的字段不发。 */
+export interface CageTransferFormData {
+  /** 拟定转移日期 yyyy-MM-dd */
+  transferDate?: string;
+  /** 申请方单位名称；为空则用源笼位的部门/课题组 */
+  unitName?: string;
+  /** 电话；为空则用申请人账号的 mobile_phone */
+  phone?: string;
+  /** 每个目标笼位一行，序号与目标列表一致；某行没改就整行不发 */
+  rows?: Array<{ strain?: string; female?: number; male?: number }>;
+}
+
+/** 提交前预填的自动值（与后端 TransferFormRenderInput 对齐）。 */
+export interface CageTransferFormPrefill {
+  unitName?: string | null;
+  /** 负责人 / 负责人（PI签字）：同一个值，单上出现两次 */
+  piName?: string | null;
+  /** 实验人员 / 实验人员签字：同一个值，单上出现两次 */
+  experimenterName?: string | null;
+  phone?: string | null;
+  transferDate?: string | null;
+  fromLocation?: string | null;
+  toLocation?: string | null;
+  /** 每个目标笼位一行，与 targetAnimalCageIds 同序 */
+  rows: Array<{ strain?: string | null; female?: number | null; male?: number | null }>;
+}
+
+/** 转移单自动值预填：弹窗里看到的只读/预填值 = 单子上会打印的（同一套 buildInput） */
+export async function fetchTransferFormPrefill(
+  sourceAnimalCageId: number | string,
+  targetAnimalCageIds: Array<number | string>,
+): Promise<CageTransferFormPrefill> {
+  const res = await authHttp.get<Result<CageTransferFormPrefill>>("/cage-op/transfer-form/prefill", {
+    // 数组参数按本仓库惯例拼逗号（axios 默认的 `key[]=` 后端 List 收不到）
+    params: { sourceAnimalCageId, targetAnimalCageIds: targetAnimalCageIds.join(",") },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载转移单预填值失败");
+  return res.data.data ?? { rows: [] };
 }
 
 export async function fetchCageOpPending(opType?: "divide" | "transfer"): Promise<CageOpRequestView[]> {
@@ -1942,12 +2191,75 @@ export async function fetchReviewedCageOps(limit = 100): Promise<CageOpRequestVi
   return res.data.data ?? [];
 }
 
+/**
+ * 把「本该是 PDF」的 blob 校验一遍再交出去。
+ *
+ * <p>走 `responseType: "blob"` 时 axios 不解析响应体，**HTTP 200 + Result 信封的错误**也会被当成
+ * 正常结果返回。不校验的话弹窗会把 `{"code":405,...}` 整段 JSON 当成 PDF 内容渲染出来
+ * （实测：后端还没重启时点「合并打印」，预览框里就是那一串）。这里按 MIME 判断，
+ * 不是 PDF 就把信封里的 message 提出来抛成业务错误。
+ */
+async function assertPdfBlob(blob: Blob): Promise<Blob> {
+  if (blob.type && blob.type.toLowerCase().includes("pdf")) return blob;
+  let message: string | undefined;
+  try {
+    message = (JSON.parse(await blob.text()) as { message?: string })?.message;
+  } catch { /* 不是 JSON（可能是空体），退回通用文案 */ }
+  throw new Error(message || "服务端没有返回 PDF");
+}
+
+/**
+ * 转移单 PDF（即时渲染，inline）。审核卡片「查看转移单 / 打印」用。
+ *
+ * 这条接口回的是**裸字节流**，不是 Result 信封（见 TransferFormController#live），
+ * 所以走 responseType: "blob" —— 与培训资料文件下载同一套写法；出错时把 Blob 里的
+ * Result 信封读回来换成业务文案（见下面的 catch）。
+ */
+export async function fetchTransferFormPdf(requestId: number | string): Promise<Blob> {
+  try {
+    const res = await authHttp.get(`/cage-op/transfer-form/${requestId}`, { responseType: "blob" });
+    return await assertPdfBlob(res.data as Blob);
+  } catch (e) {
+    // blob 响应下错误体也是 Blob，axios 只会给出「Request failed with status code 403」。
+    // 把它读回来换成后端的业务文案（无权查看该转移单 / 该请求不是转移单 …），否则审核人看不懂。
+    const data = (e as { response?: { data?: unknown } })?.response?.data;
+    let message: string | undefined;
+    if (data instanceof Blob) {
+      try { message = (JSON.parse(await data.text()) as { message?: string })?.message; } catch { /* 不是 JSON 就退回原错误 */ }
+    }
+    throw new Error(message || (e instanceof Error ? e.message : "加载转移单失败"));
+  }
+}
+
+/**
+ * 批量转移单 PDF：把选中的单**合并成一份多页**，一次打印任务打完。
+ *
+ * <p>与单张那条同样回裸字节流（responseType: "blob"），错误体也是 Blob，所以 catch 里
+ * 要把信封读回来换成业务文案 —— 否则审核人只看到「Request failed with status code 403」。
+ * 顺序即入参顺序（前端按列表顺序传），后端按这个顺序合并。
+ */
+export async function fetchTransferFormsMerged(requestIds: Array<number | string>): Promise<Blob> {
+  try {
+    const res = await authHttp.post("/cage-op/transfer-form/batch", { ids: requestIds }, { responseType: "blob" });
+    return await assertPdfBlob(res.data as Blob);
+  } catch (e) {
+    const data = (e as { response?: { data?: unknown } })?.response?.data;
+    let message: string | undefined;
+    if (data instanceof Blob) {
+      try { message = (JSON.parse(await data.text()) as { message?: string })?.message; } catch { /* 不是 JSON 就退回原错误 */ }
+    }
+    throw new Error(message || (e instanceof Error ? e.message : "合并转移单失败"));
+  }
+}
+
 /** 待审中间态：学生只拿到自己提交的，教职工拿到全部（三端网格/详情据此画「分笼审核中/转移审核中」） */
 export interface CageOpMarker {
   id: string;
   opType: "divide" | "transfer";
   sourceAnimalCageId: string;
   targetAnimalCageIds: string[];
+  /** 批量转移：一次请求多组源→目标；缺省（存量旧单）时按单值 sourceAnimalCageId 处理 */
+  pairs?: Array<{ source: number | string; target: number | string }> | null;
   applicantId?: string | null;
   applicantName?: string | null;
   reason?: string | null;
@@ -1962,12 +2274,13 @@ export async function fetchCageOpMarkers(): Promise<CageOpMarker[]> {
 
 export async function reviewCageOp(
   id: number | string,
-  decision: "approved" | "rejected",
+  decision: "approved" | "rejected" | "held",
   reason?: string,
-): Promise<{ requestId: string; status: string }> {
-  const res = await authHttp.post<Result<{ requestId: string; status: string }>>(
+  role?: string,
+): Promise<{ requestId: string; status: string; signedRole?: string }> {
+  const res = await authHttp.post<Result<{ requestId: string; status: string; signedRole?: string }>>(
     `/cage-op/${id}/approve`,
-    { decision, reason },
+    { decision, reason, role },
   );
   if (!res.data?.success) throw new Error(res.data?.message || "审批失败");
   return res.data.data!;
@@ -2124,6 +2437,59 @@ export async function saveOwnerApprovalConfig(
   if (!res.data?.success) throw new Error(res.data?.message || "保存审核配置失败");
 }
 
+// ── 全局转移审核强制开关 + 审核兽医名单（均仅 SUPER_ADMIN 及以上）──
+
+/** 全局审核配置：强制开启转移审核 + 转移审核通知的二级开关。 */
+export interface TransferGlobalConfig {
+  /** 开 = 任何人都不能关闭自己的转移审核开关。 */
+  transferApprovalForced: boolean;
+  /**
+   * 转移待审提醒的二级开关。与 push-config 上 CAGE_TRANSFER_REVIEW 源的总控**不是同一个值**：
+   * 总控管这个通知存不存在、还能额外加谁，二级管眼下要不要发。两级都开才真的推。
+   */
+  transferReviewNotifyEnabled: boolean;
+}
+
+/** GET /api/cage-owner-approval-config/global — 全局审核配置 */
+export async function fetchTransferGlobal(): Promise<TransferGlobalConfig> {
+  const res = await authHttp.get<Result<Partial<TransferGlobalConfig>>>("/cage-owner-approval-config/global");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载全局审核配置失败");
+  return {
+    transferApprovalForced: res.data.data?.transferApprovalForced ?? false,
+    // 缺值按开显示，与后端 transferReviewNotifyEnabled() 的默认口径一致
+    transferReviewNotifyEnabled: res.data.data?.transferReviewNotifyEnabled ?? true,
+  };
+}
+
+/** PUT /api/cage-owner-approval-config/global — 局部更新，只提交要改的字段。 */
+export async function saveTransferGlobal(patch: Partial<TransferGlobalConfig>): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>("/cage-owner-approval-config/global", patch);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存全局审核配置失败");
+}
+
+/**
+ * 审核兽医名单 + 候选人。候选人与 {@link MemberCandidate} 同一个
+ * `CageRegionGrantService.memberCandidates` 出来的形状（后端只换了身份码 VETERINARIAN）。
+ * 这批兽医管**转移审核**签署资格，与「区域指定兽医」（健康异常通知收件人）互不影响。
+ */
+export interface ReviewVetConfig {
+  accountIds: string[];
+  candidates: MemberCandidate[];
+}
+
+/** GET /api/cage-owner-approval-config/review-vets — 审核兽医名单与候选人 */
+export async function fetchReviewVets(): Promise<ReviewVetConfig> {
+  const res = await authHttp.get<Result<ReviewVetConfig>>("/cage-owner-approval-config/review-vets");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载审核兽医名单失败");
+  return res.data.data ?? { accountIds: [], candidates: [] };
+}
+
+/** PUT /api/cage-owner-approval-config/review-vets — 全量替换审核兽医名单 */
+export async function saveReviewVets(accountIds: string[]): Promise<void> {
+  const res = await authHttp.put<Result<unknown>>("/cage-owner-approval-config/review-vets", { accountIds });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存审核兽医名单失败");
+}
+
 export interface AssignBatchResult { animalCageId: string; ok: boolean; claimId?: number; error?: string }export async function assignBatchCages(animalCageIds: (string | number)[], studentUserId: string): Promise<AssignBatchResult[]> {
   const res = await authHttp.post<Result<AssignBatchResult[]>>("/admin/cage-claims/assign-batch", { animalCageIds, studentUserId });
   if (!res.data?.success) throw new Error(res.data?.message || "认领失败");
@@ -2243,6 +2609,8 @@ export interface MemberCandidate {
   identities: Array<{ code: string; label: string }>;
   /** 已被哪位饲养组长纳入；null = 还没人占。有值时不可选（一人只能属于一个组） */
   boundLeaderName: string | null;
+  /** canonical 账号 id（STAFF_* 已折算成 ARO 编号）。审核兽医名单按这个比对。 */
+  canonicalAccountId?: string;
 }
 
 /** GET /api/cage-region/member-candidates — 组员候选人（只列饲养员，带身份标签与占用者） */

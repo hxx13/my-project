@@ -62,6 +62,8 @@ const EMPTY_BADGE_COUNTS = {
   chatUnread: 0,
   /** 与消息页「待处理」合并列表条数同源 */
   staffUnifiedWorkInboxPending: 0,
+  /** 兽医收件箱未读（后端 CageVetPendingBadgeContributor，badgeCounters.vetInbox；无权限恒 0） */
+  vetInbox: 0,
   /** 侧栏/首页「消息」单一汇总（后端 PendingBadgesService） */
   staffMessagesSidebarTotal: 0,
   repairText: '',
@@ -122,6 +124,7 @@ function mapBodyToCounts(body) {
     'staffMessagesSidebarTotal',
     'STAFF_MESSAGES_SIDEBAR_TOTAL',
   );
+  const vetInbox = pick('vetInbox', 'vetInbox', 'VET_INBOX');
   const chatUnreadText =
     d.chatUnreadText != null && String(d.chatUnreadText) !== '' ? String(d.chatUnreadText) : formatBadgeText(chatUnread);
   let staffMessagesSidebarTotalText =
@@ -155,6 +158,7 @@ function mapBodyToCounts(body) {
     chatUnread,
     staffUnifiedWorkInboxPending,
     staffMessagesSidebarTotal,
+    vetInbox,
     repairText: d.repairText != null && String(d.repairText) !== '' ? String(d.repairText) : formatBadgeText(repair),
     purchaseText:
       d.purchaseText != null && String(d.purchaseText) !== '' ? String(d.purchaseText) : formatBadgeText(purchase),
@@ -263,7 +267,7 @@ async function fetchPendingBadgeCounts(opts) {
 
 /** path → 待办角标字段（自定义 TabBar 等可使用） */
 const PATH_BADGE_MAP = {
-  '/pages/notifications/index': 'notify',
+  '/pages/messages/index': 'notify',
   '/pages/repairRequest/index': 'repair',
   '/pages/purchaseRequest/index': 'purchase',
   '/pages/supplies/index': 'supplies',
@@ -319,6 +323,16 @@ function studentMaterialMenuBadgeText(c) {
   return c.materialText || formatBadgeText(n);
 }
 
+/**
+ * 兽医收件箱未读：挂在「笼架」入口（首页主入口 + 底栏）与笼架页顶栏那枚兽医图标上。
+ * 后端只对拿得到 cage.vet.inbox 的账号计数，其他人恒 0 —— 这里不需要再判身份。
+ * @param {typeof EMPTY_BADGE_COUNTS} c
+ */
+function vetInboxBadgeText(c) {
+  if (!c) return '';
+  return formatBadgeText(Number(c.vetInbox || 0));
+}
+
 module.exports = {
   fetchPendingBadgeCounts,
   resetPendingBadgeInflight,
@@ -328,6 +342,7 @@ module.exports = {
   homeMessagesQuickBadgeText,
   studentReviewMenuBadgeText,
   studentMaterialMenuBadgeText,
+  vetInboxBadgeText,
   EMPTY_BADGE_COUNTS,
   PATH_BADGE_MAP,
   badgeForPath,

@@ -18,6 +18,21 @@ function shouldRouteMirrorToken(url: string): boolean {
 authHttp.interceptors.request.use((config) => {
   const url = config.url ?? "";
 
+  /*
+    FormData 的 Content-Type 必须让浏览器/axios 自己带 —— 它要在里面塞 `; boundary=...`。
+    手写成 `multipart/form-data`（没有 boundary）服务端就解析不出文件，返回 success:false
+    （`rejectIfBusinessFailed` 再把 200 抛成异常），表现是「上传失败 / 传完看不到缩略图」。
+
+    为什么放在这里而不是逐个改调用点：全仓有二十多处都手写了这个头（状态照片、资产转移、
+    报修、AHP 附件、报告表单…），以后新写的还会接着踩。客户端这一处收口，全部一起好。
+    2026-09-18 实测：同一个 FormData，手写这个头 → success:false；不写 → success:true。
+  */
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    delete (config.headers as unknown as Record<string, unknown>)["Content-Type"];
+    delete (config.headers as unknown as Record<string, unknown>)["content-type"];
+    (config.headers as { delete?: (k: string) => void }).delete?.("Content-Type");
+  }
+
   // Mirror mode: 学生中心与物资申领走 mirror token，避免误用教职工登录态
   if (authStorage.isMirrorMode() && shouldRouteMirrorToken(url)) {
     const mirrorToken = authStorage.getMirrorToken();

@@ -162,14 +162,18 @@ export function ActionPicker({
 }
 
 const START_VALUES: Array<0 | 1> = [1, 0];
-export const START_VALUE_LABEL: Record<0 | 1, string> = { 1: "1→0", 0: "0→1" };
+/** 计时起点：从哪一侧的变化开始量时长（另一侧就是结束）。标签写业务动作，不写 1/0。 */
+export const START_VALUE_LABEL: Record<0 | 1, string> = {
+  1: "置为后计时",
+  0: "取消后计时",
+};
 /** 一句小字把两个边都写出来，省得用户去猜「结束按哪边算」。 */
 export const START_VALUE_HINT: Record<0 | 1, string> = {
-  1: "出现 1 开始计时，1→0 结束",
-  0: "出现 0 开始计时，0→1 结束",
+  1: "置为这个状态后开始计时，满阈值天数就通知",
+  0: "取消这个状态后开始计时，满阈值天数就通知",
 };
 
-/** 计时起点二选一：标签就是区间的两个边。 */
+/** 计时起点二选一；默认取「置为后计时」（各调用方都是 `startValue ?? 1`）。 */
 export function StartValuePicker({
   value,
   onChange,

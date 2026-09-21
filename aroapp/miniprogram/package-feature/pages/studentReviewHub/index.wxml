@@ -1,23 +1,28 @@
 <view class="page">
-  <view class="intro">审核学生物资申领、延迟免冻结、培训签到与笼位申请</view>
+  <view class="intro">审核学生物资申领、延迟免冻结、培训签到与笼位申请、分笼与转移</view>
 
-  <scroll-view scroll-x class="tabs-scroll" enhanced show-scrollbar="{{ false }}">
+  <scroll-view scroll-x class="tabs-scroll" enhanced show-scrollbar="{{ false }}"
+    scroll-into-view="tab-{{ activeTab }}" scroll-with-animation>
     <view class="tabs">
-      <view class="tab tab-with-badge {{ activeTab === 'material' ? 'tab-on' : '' }}" data-tab="material" bindtap="onTabChange">
+      <view id="tab-material" class="tab tab-with-badge {{ activeTab === 'material' ? 'tab-on' : '' }}" data-tab="material" bindtap="onTabChange">
         <text>{{ tabLabels.material }}</text>
         <view wx:if="{{ tabBadges.material }}" class="tab-badge">{{ tabBadges.material }}</view>
       </view>
-      <view class="tab tab-with-badge {{ activeTab === 'scanDelay' ? 'tab-on' : '' }}" data-tab="scanDelay" bindtap="onTabChange">
+      <view id="tab-scanDelay" class="tab tab-with-badge {{ activeTab === 'scanDelay' ? 'tab-on' : '' }}" data-tab="scanDelay" bindtap="onTabChange">
         <text>{{ tabLabels.scanDelay }}</text>
         <view wx:if="{{ tabBadges.scanDelay }}" class="tab-badge">{{ tabBadges.scanDelay }}</view>
       </view>
-      <view class="tab tab-with-badge {{ activeTab === 'aroTraining' ? 'tab-on' : '' }}" data-tab="aroTraining" bindtap="onTabChange">
+      <view id="tab-aroTraining" class="tab tab-with-badge {{ activeTab === 'aroTraining' ? 'tab-on' : '' }}" data-tab="aroTraining" bindtap="onTabChange">
         <text>{{ tabLabels.aroTraining }}</text>
         <view wx:if="{{ tabBadges.aroTraining }}" class="tab-badge">{{ tabBadges.aroTraining }}</view>
       </view>
-      <view class="tab tab-with-badge {{ activeTab === 'cage' ? 'tab-on' : '' }}" data-tab="cage" bindtap="onTabChange">
+      <view id="tab-cage" class="tab tab-with-badge {{ activeTab === 'cage' ? 'tab-on' : '' }}" data-tab="cage" bindtap="onTabChange">
         <text>{{ tabLabels.cage }}</text>
         <view wx:if="{{ tabBadges.cage }}" class="tab-badge">{{ tabBadges.cage }}</view>
+      </view>
+      <view id="tab-cageTransfer" class="tab tab-with-badge {{ activeTab === 'cageTransfer' ? 'tab-on' : '' }}" data-tab="cageTransfer" bindtap="onTabChange">
+        <text>{{ tabLabels.cageTransfer }}</text>
+        <view wx:if="{{ tabBadges.cageTransfer }}" class="tab-badge">{{ tabBadges.cageTransfer }}</view>
       </view>
     </view>
   </scroll-view>
@@ -589,12 +594,11 @@
     </block>
   </block>
 
-  <!-- 笼位审核：二级切换（笼位申请 / 分笼 / 转移） -->
+  <!-- 笼位审核：二级切换（笼位申请 / 分笼） -->
   <block wx:if="{{ !loading && activeTab === 'cage' }}">
     <view class="sub-tabs">
       <view class="sub-tab {{ cageSubTab === 'claim' ? 'sub-tab-on' : '' }}" data-sub="claim" bindtap="onCageSubTabChange">笼位申请</view>
       <view class="sub-tab {{ cageSubTab === 'divide' ? 'sub-tab-on' : '' }}" data-sub="divide" bindtap="onCageSubTabChange">分笼</view>
-      <view class="sub-tab {{ cageSubTab === 'transfer' ? 'sub-tab-on' : '' }}" data-sub="transfer" bindtap="onCageSubTabChange">转移</view>
     </view>
 
     <!-- 笼位申请：分组维度（仅申请有意义）+ 待审/已审 -->
@@ -698,33 +702,45 @@
       </view>
     </block>
 
-    <!-- 转移：待审/已审 -->
-    <block wx:if="{{ cageSubTab === 'transfer' }}">
-      <view wx:if="{{ cageTransferPending.length === 0 && cageTransferDone.length === 0 }}" class="hint empty">暂无转移审核记录</view>
-      <view wx:if="{{ cageTransferPending.length > 0 }}" class="time-group">
-        <view class="time-group-head" bindtap="onCageToggleTransferPending">
-          <text class="time-group-arrow {{ cageTransferPendingOpen ? 'open' : '' }}">▶</text>
-          <text>待审核 ({{ cageTransferPending.length }})</text>
-        </view>
-        <block wx:if="{{ cageTransferPendingOpen }}">
-          <block wx:for="{{ cageTransferPending }}" wx:key="id" wx:for-item="item">
-            <template is="cageOpPendingCard" data="{{...item}}" />
-          </block>
-        </block>
-      </view>
-      <view wx:if="{{ cageTransferDone.length > 0 }}" class="time-group">
-        <view class="time-group-head" bindtap="onCageToggleTransferDone">
-          <text class="time-group-arrow {{ cageTransferDoneOpen ? 'open' : '' }}">▶</text>
-          <text>已审核 ({{ cageTransferDone.length }})</text>
-        </view>
-        <block wx:if="{{ cageTransferDoneOpen }}">
-          <block wx:for="{{ cageTransferDone }}" wx:key="id" wx:for-item="item">
-            <template is="cageOpDoneCard" data="{{...item}}" />
-          </block>
-        </block>
-      </view>
-    </block>
   </block>
+
+  <!-- 转移审核（顶级 tab）：待审/已审 -->
+  <block wx:if="{{ !loading && activeTab === 'cageTransfer' }}">
+    <view wx:if="{{ cageTransferPending.length === 0 && cageTransferDone.length === 0 }}" class="hint empty">暂无转移审核记录</view>
+    <view wx:if="{{ cageTransferPending.length > 0 }}" class="time-group">
+      <view class="time-group-head" bindtap="onCageToggleTransferPending">
+        <text class="time-group-arrow {{ cageTransferPendingOpen ? 'open' : '' }}">▶</text>
+        <text>待审核 ({{ cageTransferPending.length }})</text>
+      </view>
+      <block wx:if="{{ cageTransferPendingOpen }}">
+        <block wx:for="{{ cageTransferPending }}" wx:key="id" wx:for-item="item">
+          <template is="cageOpPendingCard" data="{{...item}}" />
+        </block>
+      </block>
+    </view>
+    <view wx:if="{{ cageTransferDone.length > 0 }}" class="time-group">
+      <view class="time-group-head" bindtap="onCageToggleTransferDone">
+        <text class="time-group-arrow {{ cageTransferDoneOpen ? 'open' : '' }}">▶</text>
+        <text>已审核 ({{ cageTransferDone.length }})</text>
+      </view>
+      <block wx:if="{{ cageTransferDoneOpen }}">
+        <block wx:for="{{ cageTransferDone }}" wx:key="id" wx:for-item="item">
+          <template is="cageOpDoneCard" data="{{...item}}" />
+        </block>
+      </block>
+    </view>
+  </block>
+
+  <!-- 转移三签进度条：三个固定槽位（归属地/目的地/兽医），分笼不渲染 -->
+  <template name="cageOpSignBar">
+    <view wx:if="{{ slots.length > 0 }}" class="sg-row">
+      <view wx:for="{{ slots }}" wx:key="role" wx:for-item="sg" class="sg-item {{ sg.cls }}">
+        <text class="sg-role">{{ sg.label }}</text>
+        <text class="sg-state">{{ sg.text }}</text>
+        <text wx:if="{{ sg.who }}" class="sg-who">{{ sg.who }}</text>
+      </view>
+    </view>
+  </template>
 
   <!-- 分笼/转移卡片模板 -->
   <template name="cageOpPendingCard">
@@ -736,13 +752,22 @@
       <text class="body">{{ sourceLine }}</text>
       <text class="body">{{ targetText }}</text>
       <text wx:if="{{ reason }}" class="body">原因：{{ reason }}</text>
+      <template is="cageOpSignBar" data="{{ slots: signSlots }}" />
       <view class="card-footer">
         <text wx:if="{{ createdAtText }}" class="meta">{{ createdAtText }}</text>
-        <view class="ops">
+        <view wx:if="{{ showPlainOps }}" class="ops">
           <view class="op op-primary" data-id="{{ id }}" catchtap="onCageOpApprove">通过</view>
           <view class="op op-danger" data-id="{{ id }}" catchtap="onCageOpReject">驳回</view>
         </view>
       </view>
+      <!-- 三签按角色逐个签：一个人兼多身份时每个角色各占一行，点哪行签哪关 -->
+      <view wx:for="{{ roleActions }}" wx:key="role" wx:for-item="ra" class="ops-role">
+        <text class="ops-role-name">{{ ra.label }}</text>
+        <view wx:if="{{ ra.isVet }}" class="sgn-btn" data-id="{{ id }}" data-role="{{ ra.role }}" data-decision="held" catchtap="onCageOpSign">暂缓</view>
+        <view class="sgn-btn sgn-btn--primary" data-id="{{ id }}" data-role="{{ ra.role }}" data-decision="approved" catchtap="onCageOpSign">{{ ra.isVet ? '同意' : '通过' }}</view>
+        <view class="sgn-btn" data-id="{{ id }}" data-role="{{ ra.role }}" data-decision="rejected" catchtap="onCageOpSign">{{ ra.isVet ? '不同意' : '驳回' }}</view>
+      </view>
+      <text wx:if="{{ watchOnly }}" class="watch-hint">等待其他审核人签署</text>
     </view>
   </template>
 
@@ -756,6 +781,7 @@
       <text class="body">{{ targetText }}</text>
       <text wx:if="{{ reason }}" class="body">原因：{{ reason }}</text>
       <text wx:if="{{ isRejected && rejectReason }}" class="body">驳回理由：{{ rejectReason }}</text>
+      <template is="cageOpSignBar" data="{{ slots: signSlots }}" />
       <view class="card-footer">
         <view class="card-footer-info">
           <text wx:if="{{ createdAtText }}" class="meta">{{ createdAtText }}</text>

@@ -17,24 +17,18 @@ import {
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import {
-  createMpAnnouncement,
   createMpRelease,
-  deleteMpAnnouncement,
   deleteMpRelease,
-  fetchMpAnnouncementsAdmin,
   fetchMpReleases,
-  updateMpAnnouncement,
   updateMpRelease,
   type MiniProgramReleaseView,
-  type MpAnnouncementAdminView,
 } from "@/api/domains/mpContentHub.api";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
 import { appConfirm } from "@/lib/appDialog";
-type TabKey = "announcements" | "releases";
+type TabKey = "releases";
 
-const ANN_QUERY_KEY = ["mpAnnouncements"] as const;
 const REL_QUERY_KEY = ["mpReleases"] as const;
 
 function sanitizeHtml(html: string): string {
@@ -46,26 +40,12 @@ export default function AdminContentHubPage() {
   const role = authStorage.getRole();
   const canOwnerRelease = hasMinRole(role, "PLATFORM_OWNER");
 
-  const [tab, setTab] = useState<TabKey>("announcements");
-
-  const { data: annRows = [], isLoading: loadingAnn } = useQuery({
-    queryKey: ANN_QUERY_KEY,
-    queryFn: fetchMpAnnouncementsAdmin,
-  });
+  const [tab, setTab] = useState<TabKey>("releases");
 
   const { data: relRows = [], isLoading: loadingRel } = useQuery({
     queryKey: REL_QUERY_KEY,
     queryFn: fetchMpReleases,
   });
-
-  const [annOpen, setAnnOpen] = useState(false);
-  const [annEditId, setAnnEditId] = useState<string | null>(null);
-  const [annTitle, setAnnTitle] = useState("");
-  const [annSummary, setAnnSummary] = useState("");
-  const [annBody, setAnnBody] = useState("");
-  const [annEnabled, setAnnEnabled] = useState(true);
-  const [annSort, setAnnSort] = useState(0);
-  const [annSaving, setAnnSaving] = useState(false);
 
   const [relOpen, setRelOpen] = useState(false);
   const [relEditId, setRelEditId] = useState<string | null>(null);
@@ -75,74 +55,6 @@ export default function AdminContentHubPage() {
   const [relBody, setRelBody] = useState("");
   const [relSplash, setRelSplash] = useState(false);
   const [relSaving, setRelSaving] = useState(false);
-
-  const openNewAnn = () => {
-    setAnnEditId(null);
-    setAnnTitle("");
-    setAnnSummary("");
-    setAnnBody("<p></p>");
-    setAnnEnabled(true);
-    setAnnSort(0);
-    setAnnOpen(true);
-  };
-
-  const openEditAnn = (r: MpAnnouncementAdminView) => {
-    setAnnEditId(r.id);
-    setAnnTitle(r.title || "");
-    setAnnSummary(r.summary || "");
-    setAnnBody(r.bodyHtml || "<p></p>");
-    setAnnEnabled(r.enabled !== 0);
-    setAnnSort(r.sortOrder ?? 0);
-    setAnnOpen(true);
-  };
-
-  const saveAnn = async () => {
-    if (!annTitle.trim()) {
-      toast.error("请填写标题");
-      return;
-    }
-    const bodyHtml = sanitizeHtml(annBody);
-    const summarySan = annSummary.trim() ? sanitizeHtml(annSummary) : null;
-    setAnnSaving(true);
-    try {
-      const payload = {
-        title: annTitle.trim(),
-        summary: summarySan,
-        bodyHtml,
-        enabled: annEnabled ? 1 : 0,
-        sortOrder: Number.isFinite(annSort) ? annSort : 0,
-      };
-      if (annEditId) {
-        const saved = await updateMpAnnouncement(annEditId, payload);
-        qc.setQueryData(ANN_QUERY_KEY, (prev: MpAnnouncementAdminView[] | undefined) =>
-          (prev || []).map((x) => (x.id === saved.id ? saved : x))
-        );
-        toast.success("已保存");
-      } else {
-        const saved = await createMpAnnouncement(payload);
-        qc.setQueryData(ANN_QUERY_KEY, (prev: MpAnnouncementAdminView[] | undefined) => [saved, ...(prev || [])]);
-        toast.success("已创建");
-      }
-      setAnnOpen(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败");
-    } finally {
-      setAnnSaving(false);
-    }
-  };
-
-  const removeAnn = async (id: string) => {
-    if (!await appConfirm("确认删除该公告？")) return;
-    try {
-      await deleteMpAnnouncement(id);
-      qc.setQueryData(ANN_QUERY_KEY, (prev: MpAnnouncementAdminView[] | undefined) =>
-        (prev || []).filter((x) => x.id !== id)
-      );
-      toast.success("已删除");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "删除失败");
-    }
-  };
 
   const openNewRel = () => {
     if (!canOwnerRelease) return;
@@ -220,7 +132,6 @@ export default function AdminContentHubPage() {
     () =>
       (
         [
-          { key: "announcements" as const, label: "公告" },
           { key: "releases" as const, label: "版本更新" },
         ] as const
       ).map((t) => (
@@ -247,51 +158,6 @@ export default function AdminContentHubPage() {
           <div className="mb-4 flex flex-wrap gap-2">{tabs}</div>
 
           <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
-
-        {tab === "announcements" && (
-          <div className="space-y-3">
-            <div className="flex justify-end">
-              <Button type="button" size="sm" onClick={openNewAnn}>
-                新建公告
-              </Button>
-            </div>
-            {loadingAnn ? (
-              <DataSkeleton variant="table" rows={4} />
-            ) : annRows.length === 0 ? (
-              <EmptyState title="暂无公告" />
-            ) : (
-              <AdminDataTableWrap scrollable>
-                <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
-                    <tr>
-                      <th className="px-3 py-2">标题</th>
-                      <th className="px-3 py-2">时间</th>
-                      <th className="px-3 py-2">状态</th>
-                      <th className="px-3 py-2 w-40">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {annRows.map((r) => (
-                      <tr key={r.id} className="border-t border-[var(--twin-hairline)]">
-                        <td className="px-3 py-2 font-medium text-[var(--twin-ink)]">{r.title}</td>
-                        <td className="px-3 py-2 text-[var(--twin-body)]">{r.publishedAtText || "—"}</td>
-                        <td className="px-3 py-2">{r.enabled === 0 ? "下线" : "上线"}</td>
-                        <td className="px-3 py-2 space-x-2">
-                          <Button type="button" variant="outline" size="sm" onClick={() => openEditAnn(r)}>
-                            编辑
-                          </Button>
-                          <Button type="button" variant="destructive" size="sm" onClick={() => void removeAnn(r.id)}>
-                            删除
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </AdminDataTableWrap>
-            )}
-          </div>
-        )}
 
         {tab === "releases" && (
           <div className="space-y-3">
@@ -351,58 +217,7 @@ export default function AdminContentHubPage() {
           </div>
         </AdminPageShell>
 
-        <Dialog open={annOpen} onOpenChange={setAnnOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{annEditId ? "编辑公告" : "新建公告"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <label className="block text-sm font-medium text-[var(--twin-body)]">
-              标题
-              <input
-                className="mt-1 w-full rounded-twin-md border border-[var(--twin-hairline)] px-3 py-2 text-sm"
-                value={annTitle}
-                onChange={(e) => setAnnTitle(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm font-medium text-[var(--twin-body)]">
-              摘要（列表）
-              <textarea
-                className="mt-1 w-full rounded-twin-md border border-[var(--twin-hairline)] px-3 py-2 text-sm min-h-[72px]"
-                value={annSummary}
-                onChange={(e) => setAnnSummary(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm font-medium text-[var(--twin-body)]">正文</label>
-            <RichTextEditor value={annBody} onChange={setAnnBody} disabled={annSaving} />
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--twin-body)]">
-                <AdminSwitchScaled size="sm" checked={annEnabled} onChange={setAnnEnabled} />
-                上线展示
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--twin-body)]">
-                排序权重
-                <input
-                  type="number"
-                  className="w-24 rounded-twin-md border border-[var(--twin-hairline)] px-2 py-1 text-sm"
-                  value={annSort}
-                  onChange={(e) => setAnnSort(Number(e.target.value))}
-                />
-              </label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setAnnOpen(false)}>
-              取消
-            </Button>
-            <Button type="button" onClick={() => void saveAnn()} disabled={annSaving}>
-              {annSaving ? "保存中…" : "保存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={relOpen} onOpenChange={setRelOpen}>
+        <Dialog open={relOpen} onOpenChange={setRelOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{relEditId ? "编辑版本记录" : "新建版本记录"}</DialogTitle>

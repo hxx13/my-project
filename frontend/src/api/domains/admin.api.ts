@@ -47,6 +47,10 @@ export interface UnifiedPersonnelRecord {
   institutionId: number | null;
   userTypeNames: string | null;
   head: string | null;
+  /** 本地头像覆盖层：非空表示有过本地设置（可控「重置」按钮） */
+  headOverride?: string | null;
+  /** 回收站：非空表示已删除到回收站 */
+  deletedAt?: string | null;
   gender: number | null;
   mobilePhone: string | null;
   email: string | null;
@@ -77,6 +81,8 @@ export interface UnifiedPersonnelFilter {
   isSchool?: number;
   roomName?: string;
   identityTagId?: number;
+  /** 回收站视图：true=只看回收站里的；不传=只看未删除的 */
+  trashOnly?: boolean;
 }
 
 interface Result<T> {
@@ -123,6 +129,7 @@ export async function fetchUnifiedPersonnel(
   if (filter.isSchool != null) params.isSchool = filter.isSchool;
   if (filter.roomName) params.roomName = filter.roomName;
   if (filter.identityTagId != null) params.identityTagId = filter.identityTagId;
+  if (filter.trashOnly) params.trashOnly = true;
   const res = await authHttp.get<Result<{ list: UnifiedPersonnelRecord[]; total: number }>>("/personnel", { params });
   return res.data.data ?? { list: [], total: 0 };
 }
@@ -134,6 +141,60 @@ export async function fetchPersonnelRooms(): Promise<string[]> {
 
 export async function syncUnifiedPersonnel() {
   const res = await authHttp.post<Result<{ students: number; staff: number; unified: number; bindings: number; departments: number; groups: number }>>("/personnel/sync");
+  return res.data.data;
+}
+
+export async function mergePersonnel(survivorId: number, mergedId: number): Promise<{ ok: boolean }> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>("/personnel/merge", { survivorId, mergedId });
+  return res.data.data;
+}
+
+export async function updatePersonnelHead(id: number, url: string): Promise<{ ok: boolean }> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>(`/personnel/${id}/head`, { url });
+  return res.data.data;
+}
+
+export async function resetPersonnelHead(id: number): Promise<{ ok: boolean }> {
+  const res = await authHttp.delete<Result<{ ok: boolean }>>(`/personnel/${id}/head`);
+  return res.data.data;
+}
+
+export async function syncPersonnel(id: number): Promise<{ aroMatched: number; staffMatched: number; hasLocalHead: boolean }> {
+  const res = await authHttp.post<Result<{ aroMatched: number; staffMatched: number; hasLocalHead: boolean }>>(`/personnel/${id}/sync`);
+  return res.data.data;
+}
+
+/** 删除人员到回收站（软删除，可恢复）。 */
+export async function movePersonnelToTrash(id: number): Promise<{ ok: boolean }> {
+  const res = await authHttp.delete<Result<{ ok: boolean }>>(`/personnel/${id}`);
+  return res.data.data;
+}
+
+/** 从回收站恢复人员。 */
+export async function restorePersonnel(id: number): Promise<{ ok: boolean }> {
+  const res = await authHttp.post<Result<{ ok: boolean }>>(`/personnel/${id}/restore`);
+  return res.data.data;
+}
+
+/** 彻底删除人员（连同 ARO 侧人员行与登录账号）。不可逆。 */
+export async function purgePersonnel(id: number): Promise<{ ok: boolean }> {
+  const res = await authHttp.delete<Result<{ ok: boolean }>>(`/personnel/${id}/purge`);
+  return res.data.data;
+}
+
+export async function updateMyHead(url: string): Promise<{ ok: boolean }> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/personnel/me/head", { url });
+  return res.data.data;
+}
+
+/** 完善本人资料（姓名/手机号/性别/部门，非空才更新；服务端同写 personnel + aro_personnel） */
+export async function updateMyProfile(body: {
+  name?: string;
+  mobilePhone?: string;
+  gender?: number;
+  departmentName?: string;
+}): Promise<{ ok: boolean }> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>("/personnel/me/profile", body);
   return res.data.data;
 }
 
@@ -173,8 +234,39 @@ export async function updateProjectGroup(id: number, body: { departmentId?: numb
   await authHttp.put(`/personnel-dict/project-groups/${id}`, body);
 }
 
+export async function createDepartment(name: string, isSchool?: number) {
+  await authHttp.post("/personnel-dict/departments", { name, isSchool: isSchool ?? 0 });
+}
+
+export async function renameDepartment(id: number, name: string) {
+  await authHttp.put(`/personnel-dict/departments/${id}/rename`, { name });
+}
+
+export async function deleteDepartment(id: number) {
+  await authHttp.delete(`/personnel-dict/departments/${id}`);
+}
+
+export async function createProjectGroup(name: string, departmentId?: number | null) {
+  await authHttp.post("/personnel-dict/project-groups", { name, departmentId: departmentId ?? null });
+}
+
+export async function renameProjectGroup(id: number, name: string) {
+  await authHttp.put(`/personnel-dict/project-groups/${id}/rename`, { name });
+}
+
+export async function deleteProjectGroup(id: number) {
+  await authHttp.delete(`/personnel-dict/project-groups/${id}`);
+}
+
 export async function updatePersonnelField(id: number, field: string, value: string) {
   await authHttp.put(`/personnel/${id}/field`, { field, value });
+}
+
+export async function updatePersonnelOrg(
+  id: number, kind: "department" | "group", refId: number | null, name: string | null,
+): Promise<{ ok: boolean }> {
+  const res = await authHttp.put<Result<{ ok: boolean }>>(`/personnel/${id}/org`, { kind, refId, name });
+  return res.data.data;
 }
 
 /** 房间授权有效态：managed=1 表示本地覆盖层生效，roomIds 为有效房间 id 列表 */
