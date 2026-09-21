@@ -335,6 +335,23 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位操作请求（分笼/转移）'
                     """);
             log.info("[cage-shelf-schema] cage_op_request 表已就绪");
+            // 转移三签：JSON 数组 [{role, reviewerId, reviewerName, at, decision, reason}]，role ∈ ORIGIN|DEST|VET。
+            // 加列非幂等，重复列错误直接吞掉（存量库重跑要秒过）。
+            try { jdbcTemplate.execute("ALTER TABLE cage_op_request ADD COLUMN signatures JSON NULL COMMENT '转移三签记录（ORIGIN/DEST/VET 各一条）' AFTER status"); }
+            catch (Exception ignored) { }
+            log.info("[cage-shelf-schema] cage_op_request.signatures 列已就绪");
+
+            // 转移单：学生填写的字段值（JSON）+ 终局归档 PDF 的相对文件名。
+            try { jdbcTemplate.execute("ALTER TABLE cage_op_request ADD COLUMN transfer_form JSON NULL COMMENT '转移单学生填写值'"); }
+            catch (Exception ignored) { }
+            try { jdbcTemplate.execute("ALTER TABLE cage_op_request ADD COLUMN transfer_form_file_ref VARCHAR(255) NULL COMMENT '终局归档转移单PDF文件名'"); }
+            catch (Exception ignored) { }
+            log.info("[cage-shelf-schema] cage_op_request.transfer_form / transfer_form_file_ref 列已就绪");
+
+            // 转移多组源→目标：一组 [{source,target},...] 一次审核。
+            try { jdbcTemplate.execute("ALTER TABLE cage_op_request ADD COLUMN pairs JSON NULL COMMENT '一组源→目标对，形如 [{\"source\":...,\"target\":...}]'"); }
+            catch (Exception ignored) { }
+            log.info("[cage-shelf-schema] cage_op_request.pairs 列已就绪");
 
             // ── 审批记录表 ──
             jdbcTemplate.execute("""

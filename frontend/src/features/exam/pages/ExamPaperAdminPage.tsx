@@ -802,6 +802,7 @@ export default function ExamPaperAdminPage() {
       {viewingMaterialId != null && (
         <PdfPreviewDialog
           title={materials.find((m) => m.id === viewingMaterialId)?.title ?? "学习资料"}
+          fileName={`${materials.find((m) => m.id === viewingMaterialId)?.title ?? "学习资料"}.pdf`}
           fetchPdf={() => fetchLearningMaterialFileAdmin(viewingMaterialId)}
           onClose={() => setViewingMaterialId(null)}
         />

@@ -20,12 +20,11 @@
         "pages/about/index",
         "pages/releaseNotesAdmin/index",
         "pages/releaseNotesEdit/index",
-        "pages/announcementAdmin/index",
-        "pages/announcementEdit/index",
         "pages/homeBulletinDetail/index",
         "pages/settings/index",
         "pages/settingsRoomWatch/index",
         "pages/notifySettings/index",
+        "pages/messages/index",
         "pages/notifications/index",
         "pages/staffChatHub/index",
         "pages/staffChatRoom/index",
@@ -57,9 +56,7 @@
         "pages/studentViolations/index",
         "pages/materialAdmin/index",
         "pages/animalOrder/index",
-        "pages/doorControl/index",
-        "pages/newsDetail/newsDetail",
-        "pages/allnews/allnews"
+        "pages/doorControl/index"
       ]
     }
   ],

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageRegionVetMapper">
+
+    <select id="listByRegions" resultType="map">
+        SELECT region_type AS regionType, region_id AS regionId,
+               vet_account_id AS vetAccountId, configured_by AS configuredBy
+        FROM cage_region_vet
+        WHERE (region_type, region_id) IN
+        <foreach collection="regions" item="r" open="(" separator="," close=")">
+            (#{r.regionType}, #{r.regionId})
+        </foreach>
+        ORDER BY region_type ASC
+    </select>
+
+    <select id="listByRegion" resultType="map">
+        SELECT region_type AS regionType, region_id AS regionId,
+               vet_account_id AS vetAccountId, configured_by AS configuredBy
+        FROM cage_region_vet
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+        ORDER BY vet_account_id ASC
+    </select>
+
+    <!-- 只删这个人配的：按区域整片删会抹掉别的饲养组长的配置 -->
+    <delete id="deleteRegionVets">
+        DELETE FROM cage_region_vet
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+          AND configured_by &lt;=&gt; #{configuredBy}
+    </delete>
+
+    <delete id="deleteAllRegionVets">
+        DELETE FROM cage_region_vet
+        WHERE region_type = #{regionType} AND region_id = #{regionId}
+    </delete>
+
+    <!-- 唯一键 (region_type, region_id, vet_account_id, configured_by) 上的幂等插入：
+         ON DUPLICATE 只是兜底（正常路径先删后插不会撞键），并发/重放不报错 -->
+    <insert id="insertRegionVet">
+        INSERT INTO cage_region_vet (region_type, region_id, vet_account_id, configured_by, updated_at)
+        VALUES (#{regionType}, #{regionId}, #{vetAccountId}, #{configuredBy}, NOW())
+        ON DUPLICATE KEY UPDATE updated_at = NOW()
+    </insert>
+
+</mapper>

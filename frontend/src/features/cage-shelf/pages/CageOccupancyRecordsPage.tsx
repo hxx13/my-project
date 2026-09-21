@@ -85,6 +85,61 @@ function targetPosition(r: CageOpRequestView): string {
   return `${String.fromCharCode(64 + r.positionX)}-${r.positionY}`;
 }
 
+/** 请求涉及的全部源笼位 id（多源转移取 pairs，存量旧单回退单值 sourceAnimalCageId） */
+function sourceAnimalCageIds(r: CageOpRequestView): string[] {
+  const pairs = r.pairs ?? [];
+  if (pairs.length > 0) {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const p of pairs) {
+      const s = String(p.source ?? "");
+      if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+    }
+    return out;
+  }
+  return r.sourceAnimalCageId ? [r.sourceAnimalCageId] : [];
+}
+
+/**
+ * 源列文案：单源给「房间/笼架/坐标」，多源给「首个源 等 N 处」。
+ *
+ * <p>**绝不列笼位 id** —— 那是 19 位雪花号，既读不懂又把列撑爆。多源时 `toView` 只随单带
+ * 一个源的位置（第一个），所以剩下的用数量交代，不硬凑。位置全缺就与表里其他空值一样给横杠。
+ */
+export function sourceColumnText(r: CageOpRequestView): string {
+  const pos = targetPosition(r);
+  // targetPosition 在缺坐标时给的是 "-" 占位，别把它当位置拼进 where（否则 where 恒非空，
+  // 底下的兜底永远走不到）
+  const where = [r.roomName, r.shelveName, pos === "-" ? "" : pos].filter(Boolean).join("/");
+  const n = sourceAnimalCageIds(r).length;
+  if (n > 1) return `${where || "-"} 等 ${n} 处`;
+  return where || "-";
+}
+
+/**
+ * 目标列文案：优先用可读位置（`r.targets`），**绝不列 19 位笼位 id**。
+ *
+ * <p>同一行本来就带 `targets`（后端 toView 给的全量位置），之前却打了 `#2005810834…`，
+ * 列被撑爆且读不懂。位置缺失才退回数量。
+ */
+function targetColumnText(r: CageOpRequestView): string {
+  const list = r.targets ?? [];
+  if (list.length > 0) {
+    return list
+      .map((t) => {
+        const pos =
+          t.positionX != null && t.positionY != null
+            ? `${String.fromCharCode(64 + t.positionX)}-${t.positionY}`
+            : "";
+        return [t.shelveName || t.roomName, pos].filter(Boolean).join(" ");
+      })
+      .filter(Boolean)
+      .join("、") || "-";
+  }
+  const n = r.targetAnimalCageIds?.length ?? 0;
+  return n > 0 ? `${n} 个笼位` : "-";
+}
+
 /** 聚合键：与后端 (target_id, change_type, created_at) 同构，用于行展开状态。 */
 const opKey = (o: { targetId?: number | null; changeType: string; createdAt?: string }) =>
   `${o.targetId ?? ""}|${o.changeType}|${o.createdAt ?? ""}`;
@@ -579,31 +634,37 @@ export default function CageOccupancyRecordsPage() {
                           {r.opType === "divide" && r.keepSource ? "（保留源笼位）" : ""}
                         </td>
                         <td className={tdCls}>
-                          {[r.roomName, r.shelveName, targetPosition(r)].filter(Boolean).join("/") ||
-                            (r.sourceAnimalCageId ? `笼位 ${r.sourceAnimalCageId}` : "-")}
+                          {sourceColumnText(r)}
                         </td>
                         <td className={tdCls}>
-                          {r.targetAnimalCageIds.map((id) => `#${id}`).join("、") || "-"}
+                          {targetColumnText(r)}
                         </td>
                         <td className={tdCls}>{r.applicantName || "-"}</td>
                         <td className={`${tdCls} max-w-[220px]`}>{r.reason || "-"}</td>
                         <td className={`${tdCls} whitespace-nowrap`}>
-                          <div className="flex gap-2">
-                            <AdminButton
-                              tone="primary"
-                              loading={reviewingId === r.id}
-                              onClick={() => void decide(r, "approved")}
-                            >
-                              通过
-                            </AdminButton>
-                            <AdminButton
-                              tone="destructive"
-                              disabled={reviewingId === r.id}
-                              onClick={() => void decide(r, "rejected")}
-                            >
-                              驳回
-                            </AdminButton>
-                          </div>
+                          {/* 三签转移不能在这里签：本页没有角色概念，调 reviewCageOp 不带 role 时后端会
+                              自挑第一关，界面上却报「已通过并执行」—— 单据实际还挂着，是假成功。
+                              按角色签署统一去「学生审核 → 转移审核」。 */}
+                          {r.threeSign ? (
+                            <span className={mutedCls}>按角色签署请到「学生审核 → 转移审核」</span>
+                          ) : (
+                            <div className="flex gap-2">
+                              <AdminButton
+                                tone="primary"
+                                loading={reviewingId === r.id}
+                                onClick={() => void decide(r, "approved")}
+                              >
+                                通过
+                              </AdminButton>
+                              <AdminButton
+                                tone="destructive"
+                                disabled={reviewingId === r.id}
+                                onClick={() => void decide(r, "rejected")}
+                              >
+                                驳回
+                              </AdminButton>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

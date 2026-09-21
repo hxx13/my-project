@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.mapper.CageShelfBookmarkMapper;
+import com.example.demo.modules.cageshelf.mapper.CageShelfRoomBookmarkMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfCellSnapshotMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
@@ -27,6 +28,7 @@ public class CageShelfDataController {
     private final AuthContextService auth;
     private final CageShelfCellSnapshotMapper cellMapper;
     private final CageShelfBookmarkMapper bookmarkMapper;
+    private final CageShelfRoomBookmarkMapper roomBookmarkMapper;
     private final CageShelfMapper shelfMapper;
     private final CageSpecialStatusSnapshotMapper snapshotMapper;
     private final CageShelfLocalAggCache localAggCache;
@@ -34,12 +36,14 @@ public class CageShelfDataController {
     public CageShelfDataController(AuthContextService auth,
                                     CageShelfCellSnapshotMapper cellMapper,
                                     CageShelfBookmarkMapper bookmarkMapper,
+                                    CageShelfRoomBookmarkMapper roomBookmarkMapper,
                                     CageShelfMapper shelfMapper,
                                     CageSpecialStatusSnapshotMapper snapshotMapper,
                                     CageShelfLocalAggCache localAggCache) {
         this.auth = auth;
         this.cellMapper = cellMapper;
         this.bookmarkMapper = bookmarkMapper;
+        this.roomBookmarkMapper = roomBookmarkMapper;
         this.shelfMapper = shelfMapper;
         this.snapshotMapper = snapshotMapper;
         this.localAggCache = localAggCache;
@@ -151,6 +155,50 @@ public class CageShelfDataController {
             result.add(item);
         }
         return Result.success(result);
+    }
+
+    // ── Room bookmark ──────────────────────────────────────────────
+    // 2026-09-19 起笼架信息页左侧树只收藏**房间**（笼架粒度实用性不强）：房间名后面那枚星标走这两个口。
+    // 上面那对笼架级接口与其表保留只读，不再由界面写入。
+
+    /** PUT /api/cage-shelves/rooms/{roomId}/bookmark — 切换房间收藏 */
+    @PutMapping("/rooms/{roomId}/bookmark")
+    @Transactional
+    public Result<?> toggleRoomBookmark(HttpServletRequest request, @PathVariable Long roomId) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+        boolean bookmarked;
+        int deleted = roomBookmarkMapper.delete(user.getId(), roomId);
+        if (deleted > 0) {
+            bookmarked = false;
+        } else {
+            roomBookmarkMapper.insert(user.getId(), roomId);
+            bookmarked = true;
+        }
+        log.info("[CageShelf] ROOM BOOKMARK toggle userId={} roomId={} bookmarked={}", user.getId(), roomId, bookmarked);
+        Map<String, Object> bm = new LinkedHashMap<>();
+        bm.put("roomId", String.valueOf(roomId));
+        bm.put("bookmarked", bookmarked);
+        return Result.success(bm);
+    }
+
+    /**
+     * GET /api/cage-shelves/room-bookmarks — 当前用户收藏过的房间 id 列表。
+     *
+     * <p>只给 id：房间名/校区/楼层前端从自己那棵全量树里取（那边本来就有，且能跟可见范围对齐），
+     * 后端再查一遍 cage_shelf_index 拼名字纯属重复。
+     */
+    @GetMapping("/room-bookmarks")
+    public Result<?> getRoomBookmarks(HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+        List<String> ids = new ArrayList<>();
+        for (Long id : roomBookmarkMapper.selectRoomIdsByUserId(user.getId())) {
+            if (id != null) ids.add(String.valueOf(id));
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("roomIds", ids);
+        return Result.success(data);
     }
 
     // ── Helpers ────────────────────────────────────────────────────

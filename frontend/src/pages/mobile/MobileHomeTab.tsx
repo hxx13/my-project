@@ -6,6 +6,7 @@ import type { LoginBranding } from "@/api/domains/publicSite.api";
 import HeroBanner from "./MobileHeroBanner";
 import { MobileHomeNoticeList } from "./MobileHomeNoticeList";
 import MobilePresenceStatusBar from "./MobilePresenceStatusBar";
+import CountBadge from "@/components/common/CountBadge";
 import { useMobilePresenceStatus } from "./useMobilePresenceStatus";
 import { MOBILE_HOME_NOTICE_SECTION_STYLE } from "./mobileNoticePresentation";
 import {
@@ -24,6 +25,8 @@ interface MobileHomeTabProps {
   jwtMode?: boolean;
   /** 公告区（公告 + 豁免 + 违规） */
   announcements: MobileAlertItem[];
+  /** 最新公告未读：公告通知标题右上角红点 */
+  announcementsUnread?: boolean;
   /** 审核反馈条数（快捷入口角标） */
   feedbackCount?: number;
   html5PrivilegeBypass?: boolean;
@@ -60,6 +63,7 @@ export default function MobileHomeTab({
   onSendKeyChip,
   onWxPusherChip,
   announcements,
+  announcementsUnread = false,
   feedbackCount = 0,
   html5PrivilegeBypass = false,
   onNav,
@@ -147,8 +151,8 @@ export default function MobileHomeTab({
         >
           <div className="flex justify-around gap-2 px-1">
             {[
-              { id: "rooms", label: "房间", iconSrc: MOBILE_STUDENT_ICON.room, onClick: () => onNav("rooms") },
-              { id: "material", label: "申领", iconSrc: MOBILE_STUDENT_ICON.supplies, onClick: () => onNav("material") },
+              { id: "rooms", label: "房间", iconSrc: MOBILE_STUDENT_ICON.room, onClick: () => onNav("rooms"), badge: 0 },
+              { id: "material", label: "申领", iconSrc: MOBILE_STUDENT_ICON.supplies, onClick: () => onNav("material"), badge: 0 },
               { id: "cage", label: "笼架", iconSrc: MOBILE_STUDENT_ICON.cage, onClick: () => onNav("cage") },
             ].map((item) => (
               <button
@@ -163,6 +167,7 @@ export default function MobileHomeTab({
                     draggable={false}
                     className="block w-full h-full object-contain select-none pointer-events-none"
                   />
+                  <CountBadge text={item.badge ?? 0} className="absolute -top-0.5 -right-1" />
                 </div>
                 <span className="text-sm font-bold" style={{ color: "#323233" }}>
                   {item.label}
@@ -222,7 +227,7 @@ export default function MobileHomeTab({
             className="flex items-center justify-between mb-2.5 px-1 w-full"
           >
             <span
-              className="text-[15px] font-bold rounded-full px-2.5 py-1"
+              className="relative text-[15px] font-bold rounded-full px-2.5 py-1"
               style={{
                 color: "#1f2937",
                 background: "rgba(255,255,255,0.85)",
@@ -230,6 +235,13 @@ export default function MobileHomeTab({
               }}
             >
               公告通知
+              {announcementsUnread && (
+                <span
+                  className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full"
+                  style={{ background: "#ee0a24" }}
+                  aria-label="有新公告"
+                />
+              )}
             </span>
             {announcements.length > 0 && (
               <span className="text-[11px] font-medium" style={{ color: "#ac1736" }}>

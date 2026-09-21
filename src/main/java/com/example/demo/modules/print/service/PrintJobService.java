@@ -145,6 +145,21 @@ public class PrintJobService {
         return mapper.cancel(jobId) == 1;
     }
 
+    /**
+     * 撤销一条任务，包含已经被 CUPS 接收过的（直发卡在队列里的那种）。
+     *
+     * <p>{@link #cancel} 只认 PENDING/FAILED；直发任务被「投递成功」标成了 PRINTED，
+     * 队列停用时就会卡在那里撤不掉。所以撤 CUPS 那侧成功后，由控制器调这个方法落库。
+     */
+    public boolean cancelAny(String jobId) {
+        return mapper.cancelAny(jobId) == 1;
+    }
+
+    /** 清空某台打印机队列时，把库里对应记录一起收起。返回置了几条。 */
+    public int cancelQueued(String stationId) {
+        return mapper.cancelQueued(stationId);
+    }
+
     /** 该工位还排着几条，给工位页显示。 */
     public int countPending(String stationId) {
         return mapper.countPending(stationId);

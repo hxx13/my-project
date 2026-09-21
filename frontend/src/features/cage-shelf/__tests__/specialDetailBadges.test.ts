@@ -2,12 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   compactDetailBadgeText,
   specialDetailItemsFor,
+  healthBadgesFor,
   regionWriteTargets,
   isNonViolationStatus,
   detailZoneKey,
   parseDetailZone,
   parseStatusZone,
-  specialFeedingLast,
+  detailParentsLast,
   CAGE_BOX_ACTIONS,
   type CageBoxAction,
 } from "@/features/cage-shelf/constants";
@@ -66,16 +67,61 @@ describe("specialDetailItemsFor", () => {
   });
 });
 
+describe("healthBadgesFor（严重程度 + 瘙痒，最多两枚）", () => {
+  /** 只带动作的暂存（抽屉里改了别的状态时就是这种形态，**没有** severity/itch 键） */
+  const actionsOnly = (actions: CageBoxAction[]) => ({ currentActions: new Set<CageBoxAction>(actions) });
+
+  it("没有暂存：直接读服务端带下来的值", () => {
+    expect(healthBadgesFor("SEVERE", false)).toEqual([{ code: "SEVERE" }]);
+    expect(healthBadgesFor("SEVERE", true)).toEqual([
+      { code: "SEVERE" },
+      { code: "ITCH", label: "瘙痒" },
+    ]);
+    expect(healthBadgesFor(null, false)).toEqual([]);
+    expect(healthBadgesFor(undefined, undefined)).toEqual([]);
+    expect(healthBadgesFor("", true)).toEqual([{ code: "ITCH", label: "瘙痒" }]);
+  });
+
+  it("核心回归：暂存里**没带**这两个键（改了别的状态）= 本次没动过 → 仍显示服务端的值", () => {
+    expect(healthBadgesFor("MILD", true, actionsOnly(["HEALTH_CHECK"]))).toEqual([
+      { code: "MILD" },
+      { code: "ITCH", label: "瘙痒" },
+    ]);
+  });
+
+  it("暂存里带了键 → 一律以暂存为准（覆盖服务端）", () => {
+    expect(healthBadgesFor("MILD", false, { ...actionsOnly(["HEALTH_CHECK"]), currentSeverity: "SEVERE", currentItch: true }))
+      .toEqual([{ code: "SEVERE" }, { code: "ITCH", label: "瘙痒" }]);
+  });
+
+  it("暂存里显式清空 → 不显示，哪怕服务端还挂着", () => {
+    expect(healthBadgesFor("MILD", true, { ...actionsOnly(["HEALTH_CHECK"]), currentSeverity: null, currentItch: false }))
+      .toEqual([]);
+  });
+
+  it("强绑定父状态：暂存里把「健康异常」关掉 → 两枚都不显示", () => {
+    expect(healthBadgesFor("MILD", true, actionsOnly([]))).toEqual([]);
+    expect(healthBadgesFor("MILD", true, actionsOnly(["DIVIDE"]))).toEqual([]);
+  });
+
+  it("父状态开着但还没选任何子值 → 不显示（没东西可标）", () => {
+    expect(healthBadgesFor(null, false, actionsOnly(["HEALTH_CHECK"]))).toEqual([]);
+  });
+});
+
 describe("isNonViolationStatus", () => {
-  it("特殊饲养 / 合笼 / 明细都不是违规行为（阈值界面据此把违规档改说成通知档）", () => {
+  it("特殊饲养 / 合笼 / 明细 / 健康异常都不是违规行为（阈值界面据此把违规档改说成通知档）", () => {
     expect(isNonViolationStatus("SPECIAL_FEEDING")).toBe(true);
     expect(isNonViolationStatus("COHABITATION")).toBe(true);
     expect(isNonViolationStatus("SF_NEED_FEED")).toBe(true);
+    // 2026-09-17 并入：健康异常到阈值只发兽医/所有者两条通知，不建违规。
+    // 这条曾漏掉过一次（后端加了、前端没加 → 配置界面照旧显示「仅违规」），钉在这里防复发。
+    expect(isNonViolationStatus("HEALTH_ABNORMAL")).toBe(true);
   });
 
   it("其余状态照旧可以配违规", () => {
     expect(isNonViolationStatus("NEED_DIVIDE")).toBe(false);
-    expect(isNonViolationStatus("HEALTH_ABNORMAL")).toBe(false);
+    expect(isNonViolationStatus("ANIMAL_TRANSFER")).toBe(false);
     expect(isNonViolationStatus(null)).toBe(false);
   });
 });
@@ -107,15 +153,20 @@ describe("明细色区键", () => {
   });
 });
 
-describe("specialFeedingLast", () => {
-  it("「特殊饲养」挪到末尾，其余保持原序", () => {
-    expect(specialFeedingLast(CAGE_BOX_ACTIONS).map((a) => a.action)).toEqual([
-      "DIVIDE", "HEALTH_CHECK", "COHABITATION", "TRANSFER", "SPECIAL_BREEDING",
+describe("detailParentsLast", () => {
+  it("带子区的两张卡（特殊饲养 / 健康异常）挪到末尾，其余保持原序且两张卡之间固定先后", () => {
+    expect(detailParentsLast(CAGE_BOX_ACTIONS).map((a) => a.action)).toEqual([
+      "DIVIDE", "COHABITATION", "TRANSFER", "SPECIAL_BREEDING", "HEALTH_CHECK",
     ]);
   });
 
-  it("列表里没有它时原样返回（学生端按白名单过滤后可能没有）", () => {
+  it("列表里没有它们时原样返回（学生端按白名单过滤后可能没有）", () => {
     const only = CAGE_BOX_ACTIONS.filter((a) => a.action === "COHABITATION");
-    expect(specialFeedingLast(only).map((a) => a.action)).toEqual(["COHABITATION"]);
+    expect(detailParentsLast(only).map((a) => a.action)).toEqual(["COHABITATION"]);
+  });
+
+  it("只有健康异常一个父状态时也排最后", () => {
+    const only = CAGE_BOX_ACTIONS.filter((a) => a.action === "HEALTH_CHECK" || a.action === "TRANSFER");
+    expect(detailParentsLast(only).map((a) => a.action)).toEqual(["TRANSFER", "HEALTH_CHECK"]);
   });
 });

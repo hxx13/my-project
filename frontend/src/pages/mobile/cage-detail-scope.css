@@ -1,0 +1,103 @@
+/**
+ * 笼位详情弹窗局部配色 —— 只作用于挂 `cage-detail-sheet` 的子树。
+ *
+ * 与 `animal-order-scope.css` 同一套做法、同一个理由：整套 H5 学生端外壳用
+ * `.mobile-student-shell` 的暖米黄令牌（--student-canvas #fffbf5 / --student-hairline #f0e4d0），
+ * 详情弹窗要的是「白底 + 中性灰分层」，直接改外壳会牵动笼架/申领/违规所有学生页面。
+ *
+ * 主色**不动色相**：沿用学生端的琥珀 `--student-primary`（#d97706），
+ * 只把底色/描边/文字换成中性灰 —— 这是「看着脏」的主要来源，和小程序侧把
+ * `.cs-sheet` 从暖白纸底拉回纯白的判断一致。
+ *
+ * 三处注意：
+ *   1. 弹窗不能 createPortal 到 body，否则脱离 `.mobile-student-shell` 的令牌作用域
+ *      （`MobileCagePickerSheet.tsx` 也踩过这个坑）。
+ *   2. `--twin-*` 必须一起重映射，`CageFormFill` 读的是 `--twin-*`，不跟就会露出暖米黄。
+ *   3. 输入框底色走 `--twin-canvas`（白）、字段格走 `--twin-canvas-soft`（浅灰），
+ *      这样形成「白格嵌灰卡」的层次。
+ */
+.cage-detail-sheet {
+  --student-canvas: #f7f7f9;
+  --student-surface: #ffffff;
+  --student-surface-raised: #ffffff;
+  --student-canvas-soft: #f6f7fb;
+  --student-canvas-soft-2: #f1f3f7;
+
+  --student-ink: #1f2937;
+  --student-body: #334155;
+  --student-mute: #64748b;
+  --student-foreground: #1f2937;
+  --student-mute-foreground: #94a3b8;
+
+  --student-hairline: #eef0f4;
+  --student-hairline-strong: #cbd5e1;
+  --student-border: #eef0f4;
+  --student-card-soft-bg: #f6f7fb;
+
+  /* 复用组件（CageFormFill）读的是 --twin-*，一起指过来 */
+  --twin-ink: var(--student-ink);
+  --twin-body: var(--student-body);
+  --twin-mute: var(--student-mute);
+  --twin-surface: var(--student-surface);
+  --twin-canvas: #ffffff;
+  --twin-canvas-soft: var(--student-canvas-soft);
+  --twin-canvas-soft-2: var(--student-canvas-soft-2);
+  --twin-hairline: var(--student-hairline);
+  --twin-hairline-strong: var(--student-hairline-strong);
+  --twin-link: var(--student-primary);
+}
+
+/** 次级动作：实底中性灰。禁用态压成实心中灰，不用半透明（底下会透出来）。 */
+.cage-detail-sheet .cage-detail-btn-soft {
+  background: var(--student-canvas-soft-2);
+  color: var(--student-body);
+}
+.cage-detail-sheet .cage-detail-btn-soft:disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+}
+
+/**
+ * `AdminButton` 的 secondary / ghost 是 `color-mix(...,35%,transparent)` 半透明底
+ * —— 那是为奶油色后台页调的浓度，放到这张白纸上既弱又"透"。在本弹窗作用域内
+ * 换成实底中性灰（分笼 / 转移笼位 / 认领 / CageFormFill 的编辑与取消都走这条）。
+ */
+.cage-detail-sheet .admin-btn--secondary,
+.cage-detail-sheet .admin-btn--ghost {
+  background: var(--student-canvas-soft-2);
+  color: var(--student-body);
+}
+.cage-detail-sheet .admin-btn--secondary:hover,
+.cage-detail-sheet .admin-btn--ghost:hover {
+  background: #e2e8f0;
+}
+.cage-detail-sheet .admin-btn--secondary:disabled,
+.cage-detail-sheet .admin-btn--ghost:disabled {
+  background: #e9edf3;
+  color: var(--student-mute-foreground);
+}
+
+/** 主操作：实底主色，不做圆角胶囊、不挂同色投影 */
+.cage-detail-sheet .cage-detail-btn-primary {
+  background: var(--student-primary);
+  color: var(--student-on-primary);
+}
+.cage-detail-sheet .cage-detail-btn-primary:disabled {
+  background: #cbd5e1;
+  color: #ffffff;
+}
+
+/** 照片上的删除钮：实心深灰圆点，不用半透明黑 */
+.cage-detail-sheet .cage-detail-photo-del {
+  background: #334155;
+  color: #ffffff;
+}
+
+/** 全屏预览是纯黑幕，导航钮也走实心深灰，避免再叠一层半透明白 */
+.cage-detail-viewer .cage-detail-viewer-btn {
+  background: #1f2937;
+  color: #ffffff;
+}
+.cage-detail-viewer .cage-detail-viewer-btn:active {
+  background: #334155;
+}

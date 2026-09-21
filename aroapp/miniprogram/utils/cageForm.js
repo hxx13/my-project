@@ -87,6 +87,7 @@ function buildRow(f, byCanonical, dict) {
       if (Object.prototype.hasOwnProperty.call(map, code)) options.push({ value: code, label: map[code] });
     }
   }
+  var value = formatFormValue(f, raw, dict);
   return {
     key: f.fieldId,
     fieldId: f.fieldId,
@@ -96,13 +97,30 @@ function buildRow(f, byCanonical, dict) {
     fieldType: ft,
     editable: !!f.editable,
     required: f.required === 'YES',
-    value: formatFormValue(f, raw, dict),
+    /* 与 web 同一判据（CageFormFill.isAutoAcquired）：role 非 VALUE = 系统自动获取，只影响角标 */
+    auto: !!(f.role && f.role !== 'VALUE'),
+    value: value,
     raw: initRaw,
     initRaw: initRaw,
     options: options,
+    _wide: displayWidth(value) > 20,
     _dirty: false,
     _error: ''
   };
+}
+
+/**
+ * 弹窗字段区是双列网格，半栏约放得下 20 个「半角单位」。
+ * 按 CJK 占 2 个单位估算，超了就整行跨两列 —— 否则项目名称/单位这类长值会在半栏里叠成三行。
+ */
+function displayWidth(v) {
+  var s = String(v == null ? '' : v);
+  var w = 0;
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    w += (c >= 0x2e80 && c <= 0x9fff) || (c >= 0xff00 && c <= 0xffef) ? 2 : 1;
+  }
+  return w;
 }
 
 function indexValues(valueRows) {
@@ -141,7 +159,6 @@ function buildFormTree(entries, valueRows, dict) {
         subs: [],
         count: 0,
         dirtyCount: 0,
-        collapsed: false,
         _subByKey: {}
       };
       byKey[skey] = g;
@@ -170,17 +187,6 @@ function buildFormTree(entries, valueRows, dict) {
   return { groups: groups, rows: rows };
 }
 
-/** 分区字段数超过这个值就默认收起 —— 打开弹窗时高度可控。调密度就调这一个常量。 */
-var SECTION_AUTO_EXPAND_MAX = 8;
-
-/**
- * 无条件默认收起的分区，按 section 的 code 或 label 匹配。
- * 用于「状态标记」「动物信息」这类查阅频率低、篇幅又占位的分区 —— 光靠字段数阈值区分不出来
- * （它俩字段数可能和主要分区一样多）。改这里即可，不需要动数据库。
- * 注意：按名字匹配，后台改了分区名就要同步改这里。
- */
-var DEFAULT_COLLAPSED_SECTIONS = ['状态标记', '动物信息'];
-
 /** 布尔字段的宽松真值：'' / '0' / 'false' / false 都算 false */
 function truthyScalar(v) {
   if (v === true || v === 1) return true;
@@ -199,7 +205,7 @@ function isRowDirty(row) {
   return a !== b;
 }
 
-/** 重算所有行的 _dirty 与分组的 dirtyCount（收起的分区靠它挂红色计数，否则会盲存） */
+/** 重算所有行的 _dirty 与分组的 dirtyCount（分区标题挂它，否则用户是在盲存） */
 function refreshDirty(groups) {
   (groups || []).forEach(function (g) {
     var n = 0;
@@ -210,20 +216,6 @@ function refreshDirty(groups) {
       });
     });
     g.dirtyCount = n;
-  });
-  return groups;
-}
-
-/**
- * 默认展开规则：字段数 > maxExpanded 的收起；命中 DEFAULT_COLLAPSED_SECTIONS 的也收起。
- * 有改动计数的分区强制展开，避免把待保存的改动藏起来。
- */
-function applyDefaultCollapse(groups, maxExpanded) {
-  var max = maxExpanded === undefined ? SECTION_AUTO_EXPAND_MAX : maxExpanded;
-  (groups || []).forEach(function (g) {
-    var forced = DEFAULT_COLLAPSED_SECTIONS.indexOf(g.key) >= 0 ||
-                 DEFAULT_COLLAPSED_SECTIONS.indexOf(g.title) >= 0;
-    g.collapsed = (g.dirtyCount > 0) ? false : (forced || (g.count || 0) > max);
   });
   return groups;
 }
@@ -276,28 +268,6 @@ function revertGroups(groups) {
   return groups;
 }
 
-/**
- * 收起态的行尾摘要：取分区内前 max 个「有值」的字段，拼成「标签 值 · 标签 值」。
- * 折叠最怕变成「藏起来」——有这条摘要，扫一眼就知道要不要展开。
- */
-function summarizeGroups(groups, max) {
-  var limit = max === undefined ? 2 : max;
-  (groups || []).forEach(function (g) {
-    var parts = [];
-    (g.subs || []).forEach(function (sub) {
-      (sub.rows || []).forEach(function (r) {
-        if (parts.length >= limit) return;
-        var v = r.value;
-        if (v === null || v === undefined || v === '' || v === '—') return;
-        parts.push({ label: r.label, value: String(v) });
-      });
-    });
-    g.summary = parts;
-    g.summaryText = parts.map(function (p) { return p.label + ' ' + p.value; }).join(' · ');
-  });
-  return groups;
-}
-
 /** 提交给后端的值：按 dataType 归一（整数/小数→数字，布尔→bool，其余→字符串，空→null） */
 function toApiValue(dataType, v) {
   var dt = String(dataType || '').toUpperCase();
@@ -312,8 +282,6 @@ function toApiValue(dataType, v) {
 
 module.exports = {
   CAGE_FORM_KEY: CAGE_FORM_KEY,
-  SECTION_AUTO_EXPAND_MAX: SECTION_AUTO_EXPAND_MAX,
-  DEFAULT_COLLAPSED_SECTIONS: DEFAULT_COLLAPSED_SECTIONS,
   flattenTemplateFields: flattenTemplateFields,
   formatFormValue: formatFormValue,
   buildCodelistDict: buildCodelistDict,
@@ -322,10 +290,8 @@ module.exports = {
   buildFormTree: buildFormTree,
   isRowDirty: isRowDirty,
   refreshDirty: refreshDirty,
-  applyDefaultCollapse: applyDefaultCollapse,
   validateGroups: validateGroups,
   changedValues: changedValues,
   revertGroups: revertGroups,
-  summarizeGroups: summarizeGroups,
   toApiValue: toApiValue
 };

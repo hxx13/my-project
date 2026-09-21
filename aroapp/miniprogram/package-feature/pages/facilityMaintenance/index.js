@@ -76,7 +76,7 @@ function selectedLabelsText(labels) {
   return (labels || []).join('、');
 }
 
-function groupByKey(rows, keyFn) {
+function groupByKey(rows, keyFn, prevOpen) {
   const map = new Map();
   (rows || []).forEach((r) => {
     const k = keyFn(r) || '（未分类）';
@@ -90,12 +90,37 @@ function groupByKey(rows, keyFn) {
       const tb = new Date(b.occurredAt || b.replacedAt || 0).getTime();
       return tb - ta;
     });
-    const latest = list[0];
-    const latestDate = (latest.occurredAtText || latest.replacedAtText || '').slice(0, 10);
-    groups.push({ name, count: list.length, latestDate, rows: list, open: false });
+    const day = (x) => ((x && (x.occurredAtText || x.replacedAtText)) || '').slice(0, 10);
+    const latestDate = day(list[0]);
+    const oldestDate = day(list[list.length - 1]);
+    groups.push({
+      name,
+      count: list.length,
+      latestDate,
+      oldestDate,
+      /* 标题显示**日期区间**而不是只有「最近 X」：只有一个日期时（同一天）就不写区间，
+         免得出现 "2026-07-21 ~ 2026-07-21"。区间能让人一眼看出这组跨了多久。 */
+      rangeText: oldestDate && oldestDate !== latestDate ? oldestDate + ' ~ ' + latestDate : latestDate,
+      rows: list,
+      /* 默认**折叠**（用户 2026-09-21 定）：历史不再靠「展开看明细」来发现 ——
+         分组标题上的「× N · 起 ~ 止」已经把这一组跨了多久说清楚了，点开才铺明细。
+         prevOpen 用来在重建（换机房 / 拉数）后保留用户自己展开的状态。 */
+      open: prevOpen && name in prevOpen ? prevOpen[name] : false,
+    });
   });
   return groups;
 }
+
+/** 把当前分组数组收成 { 名称: 是否展开 }，供重建时保留 */
+function openStateOf(groups) {
+  const m = {};
+  (groups || []).forEach((g) => { m[g.name] = g.open === true; });
+  return m;
+}
+
+/** 台账取数：后端 size 上限就是 200；页数上限纯粹是防失控的兜底（200 × 50 = 1 万条） */
+const LEDGER_PAGE_SIZE = 200;
+const LEDGER_MAX_PAGES = 50;
 
 function rebuildMatrixFromSheet(sheet) {
   if (!sheet) {
@@ -155,13 +180,11 @@ Page({
   data: {
     pageGateOk: false,
     loading: false,
-    loadingMore: false,
     sites: [],
     siteNames: ['全部'],
     sitePickerIndex: 0,
-    activeTab: 'daily',
-    page: 1,
-    size: 20,
+    // 当日巡查表排在最末（用户 2026-09-21 定），默认停第一个 tab —— 默认停在末尾那个会显得像坏了
+    activeTab: 'cons',
     total: 0,
     consRows: [],
     repRows: [],
@@ -248,19 +271,7 @@ Page({
         .finally(() => wx.stopPullDownRefresh());
       return;
     }
-    this.setData({ page: 1 }, () =>
-      this.loadActive(true).finally(() => wx.stopPullDownRefresh()),
-    );
-  },
-
-  onReachBottom() {
-    const tab = this.data.activeTab;
-    if (tab === 'daily') return;
-    const pages = Math.max(1, Math.ceil((this.data.total || 0) / this.data.size));
-    if (this.data.page >= pages || this.data.loadingMore || this.data.loading) return;
-    const next = this.data.page + 1;
-    this.setData({ loadingMore: true });
-    this.loadActive(false, next).finally(() => this.setData({ loadingMore: false }));
+    this.loadActive(true).finally(() => wx.stopPullDownRefresh());
   },
 
   goHistory() {
@@ -287,7 +298,6 @@ Page({
         {
           sites,
           siteNames,
-          page: 1,
           consumableCatalog: catalogList,
           catalogNames: ['手动输入'].concat(catalogList.map((c) => c.name || c.id)),
           replacementPresets: presetList,
@@ -338,7 +348,7 @@ Page({
   pickSiteFilter(e) {
     const idx = Number(e.currentTarget.dataset.idx);
     if (Number.isNaN(idx)) return;
-    this.setData({ sitePickerIndex: idx, siteFilterSheetShow: false, page: 1 }, () => this.loadActive(true));
+    this.setData({ sitePickerIndex: idx, siteFilterSheetShow: false }, () => this.loadActive(true));
   },
   openDateSheet() {
     this.setData({ dateSheetShow: true });
@@ -395,8 +405,8 @@ Page({
   },
 
   onTabChange(e) {
-    const name = (e.detail && e.detail.name) || 'daily';
-    this.setData({ activeTab: name, page: 1 }, () => {
+    const name = (e.detail && e.detail.name) || 'cons';
+    this.setData({ activeTab: name }, () => {
       if (name === 'daily') {
         this.startSheetPollIfNeeded();
       } else {
@@ -627,47 +637,52 @@ Page({
     this.exportLedger('replacements');
   },
 
-  async loadActive(reset, pageOverride) {
+  /**
+   * 台账**一次拉全**。
+   *
+   * 原来是 20 条一页 + 触底加载更多，但这两个 tab 的列表是**按名称/类型分组**的：
+   * 分组的条数和日期区间只能从「已加载的那部分」算 —— 刚进 tab 时「阻垢剂 ×6」，
+   * 滚到底才变成 ×72；完全没滚到底时，只存在于后续页的分组压根不出现。
+   * 用户看到的就是「只有最近几条，历史不见了」。
+   *
+   * 这几张台账天然是低量数据（机房 × 耗材种类，实测真实数据只有 40 / 32 条），
+   * 一次拉全最省事也最准，顺带省掉了每追加一页就重建整棵分组树的 O(n²)。
+   * 后端 size 上限 200，超了自动翻页；MAX_PAGES 只是防失控的兜底。
+   */
+  async loadActive(reset) {
     const tab = this.data.activeTab;
     if (tab === 'daily') return;
     const siteId = this.siteIdFilter();
-    const page = pageOverride != null ? pageOverride : reset ? 1 : this.data.page;
-    if (reset || pageOverride === 1) {
-      this.setData({ loading: true });
-    }
+    if (reset) this.setData({ loading: true });
     try {
-      let data;
-      if (tab === 'cons') {
-        data = await fmApi.listConsumables(siteId, page, this.data.size);
-      } else {
-        data = await fmApi.listReplacements(siteId, page, this.data.size);
+      let all = [];
+      let total = 0;
+      for (let page = 1; page <= LEDGER_MAX_PAGES; page += 1) {
+        const data = tab === 'cons'
+          ? await fmApi.listConsumables(siteId, page, LEDGER_PAGE_SIZE)
+          : await fmApi.listReplacements(siteId, page, LEDGER_PAGE_SIZE);
+        const rows = (data && data.rows) || [];
+        total = (data && data.total) || 0;
+        all = all.concat(rows);
+        if (rows.length < LEDGER_PAGE_SIZE || all.length >= total) break;
       }
-      const rows = (data && data.rows) || [];
-      const total = (data && data.total) || 0;
-      const decorated = rows.map((r) => {
+      const decorated = all.map((r) => {
         const copy = { ...r };
         if (copy.occurredAt) copy.occurredAtText = formatBackendDateOnly(copy.occurredAt);
         if (copy.replacedAt) copy.replacedAtText = formatBackendDateOnly(copy.replacedAt);
         return copy;
       });
-      const append = page > 1;
       if (tab === 'cons') {
-        const consList = append ? this.data.consRows.concat(decorated) : decorated;
-        const consGroups = groupByKey(consList, (r) => r.consumableName || '未命名');
         this.setData({
           total,
-          page,
-          consRows: consList,
-          consGroups,
+          consRows: decorated,
+          consGroups: groupByKey(decorated, (r) => r.consumableName || '未命名', openStateOf(this.data.consGroups)),
         });
       } else {
-        const repList = append ? this.data.repRows.concat(decorated) : decorated;
-        const repGroups = groupByKey(repList, (r) => r.filterType || '未分类');
         this.setData({
           total,
-          page,
-          repRows: repList,
-          repGroups,
+          repRows: decorated,
+          repGroups: groupByKey(decorated, (r) => r.filterType || '未分类', openStateOf(this.data.repGroups)),
         });
       }
     } catch (err) {

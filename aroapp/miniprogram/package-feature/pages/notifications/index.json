@@ -1,8 +1,7 @@
 {
-  "navigationBarTitleText": "消息通知",
+  "navigationBarTitleText": "公告",
   "enablePullDownRefresh": true,
   "usingComponents": {
-    "staff-work-inbox": "/package-feature/components/staff-work-inbox/staff-work-inbox",
     "van-loading": "@vant/weapp/loading/index"
   }
 }

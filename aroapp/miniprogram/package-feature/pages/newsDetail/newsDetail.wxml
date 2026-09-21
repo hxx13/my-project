@@ -1,5 +1,0 @@
-<view class="container">
-  <view class="title">{{news.newsName}}</view>
-  <view class="time">{{news.createTime}}</view>
-  <rich-text nodes="{{news.newsContent}}" class="content"></rich-text>
-</view>

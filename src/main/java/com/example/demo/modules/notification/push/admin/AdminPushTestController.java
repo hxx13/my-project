@@ -83,6 +83,19 @@ public class AdminPushTestController {
                         "experimenterName", "测试实验员",
                         "persistedDays", "9", "thresholdDays", "7",
                         "firedAt", now())));
+        // 健康异常的两个通道（兽医 / 笼位所有者），各自一份样例变量
+        sources.add(source("CAGE_HEALTH_VET", "健康异常-通知兽医",
+                Map.of("statusLabel", "健康异常", "severityLabel", "中度",
+                        "cageLabel", "201A-1 A-9", "roomName", "201A",
+                        "projectPiName", "测试课题组", "experimenterName", "测试实验员",
+                        "persistedDays", "0", "thresholdDays", "0",
+                        "firedAt", now())));
+        sources.add(source("CAGE_HEALTH_OWNER", "健康异常-通知笼位所有者",
+                Map.of("statusLabel", "健康异常", "severityLabel", "中度",
+                        "cageLabel", "201A-1 A-9", "roomName", "201A",
+                        "projectPiName", "测试课题组", "experimenterName", "测试实验员",
+                        "persistedDays", "7", "thresholdDays", "7",
+                        "firedAt", now())));
 
         // ===== 物资领用 / 采购 / 报修（补齐清单显示）=====
         sources.add(source("SUPPLIES_REQUESTED", "物资领用-新申请",
@@ -185,6 +198,8 @@ public class AdminPushTestController {
             case "TELEMETRY_RECOVERY" -> new LinkedHashMap<>(Map.of("floorCode","1F","roomName","201","metricKind","温度","currentValue","24.0℃","recoveryAt",now()));
             case "SWIPE_FAILURE_ALERT" -> new LinkedHashMap<>(Map.of("channelName","A区主门禁","personName","测试学生","deptName","测试课题组","phone","13800138000","count","5","windowMin","5","threshold","3","openTypeLabel","非法刷卡","enterOrExitLabel","进入","swingTime",now()));
             case "CAGE_SPECIAL_STATUS" -> new LinkedHashMap<>(Map.of("statusLabel","需特殊饲养","cageLabel","201A-1 A-9","roomName","201A","projectPiName","测试课题组","experimenterName","测试实验员","persistedDays","9","thresholdDays","7","firedAt",now()));
+            case "CAGE_HEALTH_VET" -> new LinkedHashMap<>(Map.of("statusLabel","健康异常","severityLabel","中度","cageLabel","201A-1 A-9","roomName","201A","projectPiName","测试课题组","experimenterName","测试实验员","persistedDays","0","thresholdDays","0","firedAt",now()));
+            case "CAGE_HEALTH_OWNER" -> new LinkedHashMap<>(Map.of("statusLabel","健康异常","severityLabel","中度","cageLabel","201A-1 A-9","roomName","201A","projectPiName","测试课题组","experimenterName","测试实验员","persistedDays","7","thresholdDays","7","firedAt",now()));
             case "PRINT_JOB_FAILED" -> new LinkedHashMap<>(Map.of("fileName","测试打印文件.pdf","stationName","1号打印工位","reason","缺纸","failedAt",now(),"attempts","3"));
             case "ACCESS_ENTER" -> new LinkedHashMap<>(Map.of("roomName","A203","doorLabel","A区主门禁","personName","测试学生","department","测试课题组","enterTime",now()));
             case "ACCESS_EXIT" -> new LinkedHashMap<>(Map.of("roomName","A203","doorLabel","B区出口","personName","测试学生","department","测试课题组","exitTime",now()));

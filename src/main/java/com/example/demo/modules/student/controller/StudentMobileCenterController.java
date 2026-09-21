@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.student.dto.StudentDashboardResponse;
 import com.example.demo.modules.student.entity.StudentMobileToken;
 import com.example.demo.modules.student.service.MobileCenterAlertService;
+import com.example.demo.modules.student.service.StudentAnnouncementViewService;
 import com.example.demo.modules.student.service.StudentDashboardService;
 import com.example.demo.modules.student.service.StudentMobileTokenService;
 import com.example.demo.modules.student.service.StudentViolationService;
@@ -67,6 +68,7 @@ public class StudentMobileCenterController {
     private final TwinScanAppService twinScanAppService;
     private final StudentViolationService studentViolationService;
     private final MobileCenterAlertService mobileCenterAlertService;
+    private final StudentAnnouncementViewService announcementViewService;
     private final StudentActivityService studentActivityService;
     private final StudentNotificationService studentNotificationService;
     private final ScanDelayRequestService scanDelayRequestService;
@@ -87,6 +89,7 @@ public class StudentMobileCenterController {
                                          TwinScanAppService twinScanAppService,
                                          StudentViolationService studentViolationService,
                                          MobileCenterAlertService mobileCenterAlertService,
+                                         StudentAnnouncementViewService announcementViewService,
                                          StudentActivityService studentActivityService,
                                          StudentNotificationService studentNotificationService,
                                          ScanDelayRequestService scanDelayRequestService) {
@@ -106,6 +109,7 @@ public class StudentMobileCenterController {
         this.twinScanAppService = twinScanAppService;
         this.studentViolationService = studentViolationService;
         this.mobileCenterAlertService = mobileCenterAlertService;
+        this.announcementViewService = announcementViewService;
         this.studentActivityService = studentActivityService;
         this.studentNotificationService = studentNotificationService;
         this.scanDelayRequestService = scanDelayRequestService;
@@ -590,6 +594,20 @@ public class StudentMobileCenterController {
             return Result.fail(404, "用户不存在");
         }
         studentNotificationService.markAllRead(user);
+        return Result.success(null);
+    }
+
+    @PostMapping("/api/public/mobile-center/{token}/announcements/viewed")
+    @Operation(summary = "标记公告已看到当前时间（手机版 token），返回后 announcementsUnread=false")
+    public Result<Void> markAnnouncementsViewed(@PathVariable String token,
+                                                HttpServletRequest request) {
+        String clientIp = getClientIp(request);
+        String userId = tokenService.validateToken(token, clientIp);
+        User user = userMapper.findById(userId);
+        if (user == null) {
+            return Result.fail(404, "用户不存在");
+        }
+        announcementViewService.markViewed(userId);
         return Result.success(null);
     }
 

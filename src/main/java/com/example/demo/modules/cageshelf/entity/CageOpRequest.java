@@ -1,5 +1,14 @@
 package com.example.demo.modules.cageshelf.entity;
 
+import com.alibaba.fastjson2.JSON;
+import com.example.demo.modules.cageshelf.service.CageOpPair;
+import com.example.demo.modules.cageshelf.service.CageOpSignature;
+import com.example.demo.modules.cageshelf.service.CageOpSignatures;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+
 /**
  * 笼位操作请求 — 分笼 / 转移笼位的待审队列与留痕。
  * 与 cage_claims（笼位认领状态机）解耦：本表描述「对笼位发起的操作请求」，
@@ -24,6 +33,10 @@ public class CageOpRequest {
     private String applicantName;          // 姓名快照
     private String applicantScope;         // student / staff
     private String status;                 // pending/approved/rejected/cancelled
+    private String signatures;             // 三签 JSON 数组字符串
+    private String transferForm;           // JSON：学生填写的转移单值
+    private String transferFormFileRef;    // 终局归档 PDF 的相对文件名
+    private String pairs;                  // JSON：[{source,target},...] 每组源→目标
     private String reason;                 // 申请原因
     private String reviewerId;             // 审核人 sys_user.id
     private String reviewerName;
@@ -59,6 +72,18 @@ public class CageOpRequest {
     public String getStatus() { return status; }
     public void setStatus(String v) { this.status = v; }
 
+    public String getSignatures() { return signatures; }
+    public void setSignatures(String v) { this.signatures = v; }
+
+    public String getTransferForm() { return transferForm; }
+    public void setTransferForm(String v) { this.transferForm = v; }
+
+    public String getTransferFormFileRef() { return transferFormFileRef; }
+    public void setTransferFormFileRef(String v) { this.transferFormFileRef = v; }
+
+    public String getPairs() { return pairs; }
+    public void setPairs(String v) { this.pairs = v; }
+
     public String getReason() { return reason; }
     public void setReason(String v) { this.reason = v; }
 
@@ -79,4 +104,55 @@ public class CageOpRequest {
 
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String v) { this.updatedAt = v; }
+
+    /** 目标笼位 id（转移恒为 1 个，分笼 1 到多个）。坏 JSON 退回空集，调用方不必防。 */
+    public List<Long> targetIds() {
+        if (targetAnimalCageIds == null || targetAnimalCageIds.isBlank()) return List.of();
+        try {
+            List<Long> ids = JSON.parseArray(targetAnimalCageIds, Long.class);
+            return ids == null ? List.of() : ids;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * 本条请求涉及的全部笼位（保序去重）。新单跨 pair 取每个 pair 的源与目标；pairs 为空（存量单）退回老列推导。
+     * 审核作用域要对着它们逐个判覆盖。
+     */
+    public List<Long> involvedCageIds() {
+        List<Long> pairIds = pairCageIds();
+        if (!pairIds.isEmpty()) return pairIds;
+        LinkedHashSet<Long> all = new LinkedHashSet<>();
+        if (sourceAnimalCageId != null) all.add(sourceAnimalCageId);
+        all.addAll(targetIds());
+        return new ArrayList<>(all);
+    }
+
+    /** 三签记录。空列 / 坏 JSON 都退回空集。 */
+    public List<CageOpSignature> signatures() {
+        return CageOpSignatures.parse(signatures);
+    }
+
+    /** 一组「源→目标」对。空列 / 坏 JSON 都退回空集，调用方不必防。 */
+    public List<CageOpPair> pairs() {
+        if (pairs == null || pairs.isBlank()) return List.of();
+        try {
+            List<CageOpPair> list = JSON.parseArray(pairs, CageOpPair.class);
+            return list == null ? List.of() : list;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /** 全部 pair 涉及的笼位 id（源 + 目标，保序去重）。 */
+    public List<Long> pairCageIds() {
+        LinkedHashSet<Long> all = new LinkedHashSet<>();
+        for (CageOpPair p : pairs()) {
+            if (p == null) continue;
+            if (p.getSource() != null) all.add(p.getSource());
+            if (p.getTarget() != null) all.add(p.getTarget());
+        }
+        return new ArrayList<>(all);
+    }
 }

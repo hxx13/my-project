@@ -11,18 +11,20 @@ import { useCageOpSelect, buildCageOpMarks, mergeReservationMarks, type CageOpLa
 import BatchTransferPanel from "@/features/cage-shelf/components/BatchTransferPanel";
 import { resolveCageType, groupKeyOf } from "@/features/cage-shelf/components/CageCellOverlays";
 import { CampusTree, buildTree } from "@/features/cage-shelf/components/CampusTree";
-import { displayPosition, CAGE_BOX_ACTIONS, specialFeedingLast, cageBoxAction, actionsFromFormValues, parseStatusZone, statusZoneKey, detailZoneKey, parseDetailZone, detailPhotoKey, SPECIAL_DETAIL_DICT, detailCodesOfValues } from "@/features/cage-shelf/constants";
+import { displayPosition, CAGE_BOX_ACTIONS, detailParentsLast, cageBoxAction, actionsFromFormValues, parseStatusZone, statusZoneKey, detailZoneKey, parseDetailZone, severityZoneKey, parseSeverityZone, SEVERITY_CLEAR_ZONE, detailPhotoKey, SPECIAL_DETAIL_DICT, SPECIAL_DETAIL_CANONICAL, HEALTH_SEVERITY_DICT, HEALTH_SEVERITY_CANONICAL, HEALTH_CHECK_ACTION, HEALTH_ITCH_CANONICAL, HEALTH_ITCH_LABEL, HEALTH_ITCH_TRUE, detailCodesOfValues, severityOfValues, itchOfValues } from "@/features/cage-shelf/constants";
 import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, submitCageTransfer, localEdit, localArchiveCage, saveSpecialDetails, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, localEdit, localArchiveCage, saveStatusDetail, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
 import { fetchStudentMobileSpecialStatusOverview } from "@/api/domains/studentMobile.api";
 import { authHttp } from "@/api/core/authHttp";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
 import MobileScanDialog from "@/pages/mobile/MobileScanDialog";
 import MobileSpecialStatusPanel from "@/pages/mobile/MobileSpecialStatusPanel";
 import toast from "react-hot-toast";
-import { fetchPinnedCageShelves, toggleCageShelfPin, type PinnedCageShelfDetail } from "../api/student.api";
+import { useTreeExpansion } from "@/features/cage-shelf/useTreeExpansion";
+import { useRoomBookmarks } from "@/features/cage-shelf/useRoomBookmarks";
+import { useShelfBookmarks } from "@/features/cage-shelf/useShelfBookmarks";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
 import { batchOf, removeItem, upsertItem, setParams, clearBatch, groupItems, applyResults, summarize, type PendingBatch, type PendingByMode, type PendingItem, type SubmitResult } from "@/features/cage-shelf/pendingBatch";
 import StudentModeDrawer, { type StudentZone } from "@/features/student/components/StudentModeDrawer";
@@ -95,15 +97,21 @@ export default function StudentCageShelfPage() {
   const emptyTree = useMemo(() => [] as CageShelfTreeNode[], []);
   const { data: fullTree = emptyTree } = useQuery({ queryKey: ["cageShelfFullTree"], queryFn: fetchFullTree, staleTime: 10 * 60 * 1000 });
   const tree = useMemo(() => buildTree(fullTree), [fullTree]);
-  const [exp, setExp] = useState<Set<string>>(new Set());
+  /**
+   * 左侧树展开态：**存后端**（跟账号走，换设备也记得）；房间级收藏：房间名后的星标 + 收藏视图过滤。
+   * 与管理端共用同一对 hook（2026-09-19 口径：收藏粒度从笼架改到房间）。
+   */
+  const { exp, toggleNode, expandKeys } = useTreeExpansion("cageShelfTreeExpanded");
+  const { rooms: bookmarkedRooms, toggleRoom } = useRoomBookmarks();
+  const { shelves: bookmarkedShelves, toggleShelf: toggleBookmarkShelf } = useShelfBookmarks();
   const expInited = useRef(false);
   useEffect(() => {
     if (expInited.current || tree.length === 0) return;
     const keys = new Set<string>();
     for (const c of tree) { keys.add(c.key); for (const n of c.children) { keys.add(n.key); } }
-    setExp(keys);
+    expandKeys(keys);
     expInited.current = true;
-  }, [tree]);
+  }, [tree, expandKeys]);
 
   // Room → shelves map
   const roomShelveMap = useMemo(() => {
@@ -164,12 +172,19 @@ export default function StudentCageShelfPage() {
   const [editPointMode, setEditPointMode] = useState(true);
   const [scanCache, setScanCache] = useState<Map<string, { cell: CageShelfCell; code: string; initialActions: Set<CageBoxAction>; currentActions: Set<CageBoxAction>;
     /** 特殊饲养明细：进缓存时的服务端选中集合 / 当前目标集合（item_code）。可选 = 本次不动明细。 */
-    initialDetails?: Set<string>; currentDetails?: Set<string> }>>(new Map());
+    initialDetails?: Set<string>; currentDetails?: Set<string>;
+    /** 健康异常严重程度：进缓存时的服务端值 / 当前值（互斥单选，null = 未选）。可选 = 本次不动。 */
+    initialSeverity?: string | null; currentSeverity?: string | null;
+    /** 健康异常「瘙痒」（布尔子值）：进缓存时的服务端值 / 当前值。可选 = 本次不改。 */
+    initialItch?: boolean; currentItch?: boolean }>>(new Map());
   const [lastScannedKey, setLastScannedKey] = useState<string | null>(null);
   /** 特殊饲养明细的可选项（码表维护、可增长）—— 只在「需特殊饲养」开着时渲染。 */
   const [specialDetailOptions, setSpecialDetailOptions] = useState<CageCodelistItem[]>([]);
+  /** 健康异常严重程度的可选项（同样走码表，互斥单选）。 */
+  const [severityOptions, setSeverityOptions] = useState<CageCodelistItem[]>([]);
   useEffect(() => {
     fetchCageInfoCodelist(SPECIAL_DETAIL_DICT).then((d) => setSpecialDetailOptions(d.items ?? [])).catch(() => {});
+    fetchCageInfoCodelist(HEALTH_SEVERITY_DICT).then((d) => setSeverityOptions(d.items ?? [])).catch(() => {});
   }, []);
   const [editDialogCell, setEditDialogCell] = useState<CageShelfCell | null>(null);
   const [editDialogShelfId, setEditDialogShelfId] = useState("");
@@ -237,6 +252,26 @@ export default function StudentCageShelfPage() {
     await authHttp.post("/local/annotate", { animalCageId: cageId, statusPhotos: JSON.stringify(sp) });
     setDirtyPhotoKeys(new Set()); setNoteDirty(false);
   }, [statusPhotos, actionNote, dirtyPhotoKeys, noteDirty]);
+
+  /**
+   * 弹窗编辑：备注与照片也**即时写盘**（与状态类改动同一口径，2026-09-18 用户定）。
+   * 防抖 600ms —— 备注每敲一个字发一次请求受不了；照片是一次性事件，搭同一趟车。
+   * saveAnnotation 成功后自己会清脏标记，这里不用管。
+   */
+  const directAnnotateTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!editMode || !editPointMode || !editDialogCell) return;
+    const cageId = cageIdOfCell(editDialogCell);
+    if (!cageId || (dirtyPhotoKeys.size === 0 && !noteDirty)) return;
+    directAnnotateTimer.current = window.setTimeout(() => {
+      /* 失败必须出声：学生身份写状态照片会被服务端 403（CageLocalController 显式排除学生），
+         静默吞掉就成了「备注看着像存上了、其实没有」。 */
+      void saveAnnotation(cageId).catch((e) => {
+        toast.error(`标注保存失败：${e instanceof Error ? e.message : "未知原因"}`);
+      });
+    }, 600);
+    return () => { if (directAnnotateTimer.current) window.clearTimeout(directAnnotateTimer.current); };
+  }, [dirtyPhotoKeys, noteDirty, statusPhotos, actionNote, editMode, editPointMode, editDialogCell, saveAnnotation]);
 
   // ── 待提交缓冲：申请预约 / 划分按模式分开存，提交逐条汇总 ──
   const [pendingByMode, setPendingByMode] = useState<PendingByMode>({});
@@ -349,6 +384,13 @@ export default function StudentCageShelfPage() {
     */
     setDrawerOpen(k === "studentClaim" || k === "division" || k === "edit" || k === "archive");
   };
+
+  /**
+   * 切到「弹窗编辑」就把抽屉收起来：弹窗是那时的主战场，抽屉横在右边挡视野（2026-09-19 用户口径）。
+   * 只认「模式变化」这一下 —— 之后用户自己点开就随他，不会每轮渲染又把它关掉；
+   * 切走再切回状态模式时这个 effect 会重新跑，所以「自动收起」在每次进入弹窗编辑时都成立。
+   */
+  useEffect(() => { if (currentMode === "edit" && editPointMode) setDrawerOpen(false); }, [currentMode, editPointMode]);
 
   // 进入申请模式时，加载当前房间所有架子的池数据
   useEffect(() => {
@@ -689,14 +731,28 @@ export default function StudentCageShelfPage() {
     return () => { cancelled = true; };
   }, [aRid, fullTree, claimReloadKey]);
 
-  // Bookmarks
-  const [pinned, setPinned] = useState<Set<string>>(new Set());
-  const [bmList, setBmList] = useState<PinnedCageShelfDetail[]>([]);
-  const [bmLoading, setBmLoading] = useState(false);
-
-  const toggleBm = async (sid: string) => { try { const r = await toggleCageShelfPin(sid); setPinned(p => { const n = new Set(p); if (r.isPinned) n.add(sid); else n.delete(sid); return n; }); if (r.isPinned) { if (tab === "bookmarks") await loadBm(); } else { setBmList(p => p.filter(b => b.shelfMeta.shelveId !== sid)); } } catch {/* ignore */} };
-  const loadBm = async () => { setBmLoading(true); try { const list = await fetchPinnedCageShelves(); setBmList(list); setPinned(new Set(list.map(b => b.shelfMeta.shelveId))); } catch { } finally { setBmLoading(false); } };
-  useEffect(() => { if (tab === "bookmarks") loadBm(); }, [tab]);
+  // 收藏已改房间级（顶部 useRoomBookmarks）：笼架级 pin 那套（pinned/bmList/loadBm）退役。
+  /**
+   * 进「收藏」视图：自动展开**收藏顺序里的第一个房间**（否则左侧只剩几个孤零零的房间节点）。
+   */
+  useEffect(() => {
+    if (leftView !== "bookmarks") return;
+    // 优先展开第一个收藏的房间；一个房间都没收藏（只收藏了笼架）就展开那架所属的房间
+    let targetRoom = [...bookmarkedRooms][0] ?? "";
+    if (!targetRoom) {
+      const firstShelf = [...bookmarkedShelves][0];
+      if (firstShelf) targetRoom = String(fullTree.find(r => String(r.shelveId) === firstShelf)?.roomId ?? "");
+    }
+    if (!targetRoom) return;
+    const row = fullTree.find(r => String(r.roomId) === targetRoom);
+    if (!row) return;
+    const keys = new Set<string>();
+    if (row.campusId) keys.add(`c:${row.campusId}`);
+    if (row.areaId) keys.add(`a:${row.areaId}`);
+    if (row.floorId) keys.add(`f:${row.floorId}`);
+    keys.add(`r:${targetRoom}`);
+    expandKeys(keys);
+  }, [leftView, bookmarkedRooms, bookmarkedShelves, fullTree, expandKeys]);
 
   // Shelf detail
   const [shelfDetail, setShelfDetail] = useState<any>(null);
@@ -819,28 +875,14 @@ export default function StudentCageShelfPage() {
     for (const id of ids) { const k = keyByCageId.get(id); if (k) s.add(k); }
     return s;
   }, [opSel.phase, opSel.sourceOrder, opSel.targetOrder, keyByCageId]);
-  const [batchSubmitting, setBatchSubmitting] = useState(false);
-  /** 按顺序逐条调单目标接口：每条独立校验，部分失败只影响它自己，结果汇总提示 */
-  const handleBatchSubmit = useCallback(async () => {
+  /* 批量转移：选位一次配多对，确认时弹 CageOperationDialog 批量模式（每对一张转移单，一次提交全部） */
+  const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
+  const handleBatchSubmit = useCallback(() => {
     const list = opSel.pairs.filter((p) => p.targetId);
     if (list.length === 0) return;
-    setBatchSubmitting(true);
-    const failed: string[] = [];
-    let done = 0, toReview = 0;
-    for (const p of list) {
-      try {
-        /* 后端逐条判定：学生提交且接收方配置要求审核 → 只落待审单，不立即生效。
-           必须分开计数，否则「转了待审」会被误报成「已完成」。 */
-        const res = await submitCageTransfer({ fromAnimalCageId: p.sourceId, toAnimalCageId: p.targetId! });
-        if (res?.needApproval) toReview++; else done++;
-      } catch (e: any) { failed.push(`${p.sourceLabel?.position ?? p.sourceId}：${e?.message || "失败"}`); }
-    }
-    setBatchSubmitting(false);
-    const okPart = `已完成 ${done} 个笼位`;
-    const reviewPart = toReview > 0 ? `${toReview} 个已提交待审核` : "";
-    const failPart = failed.length > 0 ? `${failed.length} 个失败：${failed.slice(0, 3).join("；")}${failed.length > 3 ? "…" : ""}` : "";
-    const msg = [okPart, reviewPart, failPart].filter(Boolean).join("，");
-    if (failed.length === 0) toast.success(msg); else toast.error(msg, { duration: 8000 });
+    setBatchConfirmOpen(true);
+  }, [opSel.pairs]);
+  const handleBatchConfirmDone = useCallback(() => {
     opSel.cancel();
     setClaimReloadKey((k) => k + 1);
     void qc.invalidateQueries({ queryKey: ["cage-op", "markers"] });
@@ -941,6 +983,86 @@ export default function StudentCageShelfPage() {
     [editBatch.items],
   );
   /**
+   * 严重程度色区落点：把某一档写进编辑缓存（**互斥单选**，value=null 表示清空），
+   * 同时落「瘙痒」这个布尔子值（itch）。
+   * 落某一档时**顺手把父状态「健康异常」也标上**（严重程度写盘要求父状态开着）。
+   *
+   * <p>定义位置刻意靠前：下面 `editSeverityZones` 的勾选框要引用它（useCallback 的依赖数组
+   * 在渲染期求值，引用后面才声明的 const 会直接报 TDZ）。
+   */
+  const applyEditSeverity = useCallback(async (cell: any, sid: string, value: string | null, itch: boolean) => {
+    const ck = `${sid}:${cell.x}:${cell.y}`;
+    const code = String(cell?.cageBoxCode ?? "");
+    let fallbackActions: Set<CageBoxAction> | null = null;
+    let fallbackSeverity: string | null = null;
+    let fallbackItch: boolean | null = null;
+    if (!scanCache.has(ck)) {
+      const cageId = cageIdOfCell(cell);
+      const rows = cageId ? await fetchCageInfoValues(cageId).catch(() => null) : null;
+      fallbackActions = actionsFromFormValues(rows);
+      fallbackSeverity = severityOfValues(rows);
+      fallbackItch = itchOfValues(rows);
+    }
+    setScanCache(prev => {
+      const next = new Map(prev);
+      const e = next.get(ck);
+      const initA = e ? e.initialActions : (fallbackActions ?? new Set<CageBoxAction>());
+      const initS = e ? (e.initialSeverity ?? null) : fallbackSeverity;
+      const initI = e ? (e.initialItch ?? false) : (fallbackItch ?? false);
+      const curA = new Set(e ? e.currentActions : initA);
+      if (value) curA.add("HEALTH_CHECK");
+      const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(x => b.has(x));
+      if (same(curA, initA) && same(e?.currentDetails ?? new Set<string>(), e?.initialDetails ?? new Set<string>())
+          && (value ?? null) === (initS ?? null) && itch === initI) {
+        next.delete(ck);
+      } else {
+        next.set(ck, e
+          ? { ...e, currentActions: curA, initialSeverity: initS, currentSeverity: value, initialItch: initI, currentItch: itch }
+          : { cell, code, initialActions: initA, currentActions: curA, initialSeverity: initS, currentSeverity: value,
+              initialItch: initI, currentItch: itch });
+      }
+      return next;
+    });
+  }, [cageIdOfCell, scanCache]);
+
+  /** 严重程度各档的「瘙痒」页面级偏好：区里空着时记住上次勾选，拖新笼位进来就按它落。 */
+  const [severityItchPref, setSeverityItchPref] = useState<Record<string, boolean>>({});
+
+  /** 某个 (笼位按需查) 的缓存条目 —— 色区勾选框要按它判断「这档的笼位是否都带瘙痒」 */
+  const cacheOfCageId = useCallback(
+    (cageId: string) => {
+      const key = keyByCageId.get(cageId);
+      return key ? scanCache.get(key) : undefined;
+    },
+    [keyByCageId, scanCache],
+  );
+
+  /** 某档此刻该不该显示勾上：该档**有笼位就以它们为准**（全部带瘙痒才算），空档回落到偏好。 */
+  const itchOnFor = useCallback((code: string): boolean => {
+    const cached = editBatch.items
+      .filter((it) => cacheOfCageId(it.cageId)?.currentSeverity === code);
+    if (cached.length > 0) return cached.every((it) => cacheOfCageId(it.cageId)?.currentItch === true);
+    return !!severityItchPref[code];
+  }, [editBatch.items, cacheOfCageId, severityItchPref]);
+
+  /**
+   * 勾/取消某档的「瘙痒」：记住偏好，并把**该档已有的笼位**一并改成同样状态 ——
+   * 只改偏好不动已有笼位的话，用户勾了却发现拖进去的那批没变，只能一枚枚重拖。
+   */
+  const toggleZoneItch = useCallback((code: string, next: boolean) => {
+    setSeverityItchPref((p) => ({ ...p, [code]: next }));
+    for (const it of editBatch.items) {
+      if (cacheOfCageId(it.cageId)?.currentSeverity !== code) continue;
+      const key = keyByCageId.get(it.cageId);
+      if (!key) continue;
+      const [sid2, sx, sy] = key.split(":");
+      const cell = findCellByKey(sid2, Number(sx), Number(sy));
+      if (!cell) continue;
+      void applyEditSeverity(cell, sid2, code, next);
+    }
+  }, [editBatch.items, cacheOfCageId, keyByCageId, applyEditSeverity]);
+
+  /**
    * 明细色区（折叠在「需特殊饲养」/「撤销需特殊饲养」两张卡里）：
    * 标记区挂父状态那张卡、撤销区挂撤销那张卡，各管一个方向。配色沿用父状态。
    */
@@ -955,20 +1077,52 @@ export default function StudentCageShelfPage() {
       )),
     };
   }, [specialDetailOptions]);
+  /**
+   * 严重程度色区（折叠在「健康异常」/「撤销健康异常」两张卡里）：标记区**一档一个**（互斥），
+   * 撤销区**只有一个**（清空）。配色沿用父状态「健康异常」。
+   */
+  const editSeverityZones = useMemo(() => {
+    const color = (DEFAULT_COLORS.HEALTH_ABNORMAL ?? DEFAULT_COLORS.NORMAL).border;
+    return {
+      marks: severityOptions.map((o): StudentZone => (
+        {
+          key: severityZoneKey(o.itemCode), title: o.itemLabel, subtitle: "标记该严重程度", color,
+          /* 每档右上角一枚「瘙痒」勾选框：勾上 = 该档 + 瘙痒 */
+          extraCheck: {
+            checked: itchOnFor(o.itemCode),
+            label: HEALTH_ITCH_LABEL,
+            onChange: (next: boolean) => toggleZoneItch(o.itemCode, next),
+          },
+        }
+      )),
+      cancels: [
+        { key: SEVERITY_CLEAR_ZONE, title: "撤销严重程度", subtitle: "清空严重程度", color, variant: "cancel" as const },
+      ] as StudentZone[],
+    };
+  }, [severityOptions, itchOnFor, toggleZoneItch]);
   /** 右栏色区 = 每个可用动作一枚「标记区」+ 一枚「撤销区」，颜色就是该状态在网格上的配色 */
   const editZones: StudentZone[] = useMemo(
-    () => specialFeedingLast(editActions).flatMap(({ action, label, statusCode }) => {
+    () => detailParentsLast(editActions).flatMap(({ action, label, statusCode }) => {
       const color = (DEFAULT_COLORS[statusCode] ?? DEFAULT_COLORS.NORMAL).border;
-      /* 明细挂在「需特殊饲养」名下（父状态没开放就整块不出现，与弹窗里的强绑定同口径） */
-      const isSf = action === "SPECIAL_BREEDING";
-      const marks = isSf && editDetailZones.marks.length > 0 ? editDetailZones.marks : undefined;
-      const cancels = isSf && editDetailZones.cancels.length > 0 ? editDetailZones.cancels : undefined;
+      /* 子区挂在对应父状态名下（父状态没开放就整块不出现，与弹窗里的强绑定同口径） */
+      const marks = action === "SPECIAL_BREEDING"
+        ? (editDetailZones.marks.length > 0 ? editDetailZones.marks : undefined)
+        : action === "HEALTH_CHECK"
+          ? (editSeverityZones.marks.length > 0 ? editSeverityZones.marks : undefined)
+          : undefined;
+      const cancels = action === "SPECIAL_BREEDING"
+        ? (editDetailZones.cancels.length > 0 ? editDetailZones.cancels : undefined)
+        : action === "HEALTH_CHECK"
+          ? editSeverityZones.cancels
+          : undefined;
+      /* 展开那一行的名词：明细归明细、严重程度归严重程度 */
+      const childrenLabel = action === "SPECIAL_BREEDING" ? "明细" : action === "HEALTH_CHECK" ? "严重程度" : undefined;
       return [
-        { key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color, children: marks },
-        { key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const, children: cancels },
+        { key: statusZoneKey(action, true), title: label, subtitle: "标记该状态", color, children: marks, childrenLabel },
+        { key: statusZoneKey(action, false), title: `撤销${label}`, subtitle: "取消该状态色", color, variant: "cancel" as const, children: cancels, childrenLabel },
       ];
     }),
-    [editActions, editDetailZones],
+    [editActions, editDetailZones, editSeverityZones],
   );
   /** zone.key → 条目（状态模式下一个笼位可同时挂在多个色区：改了 3 个状态就出现在 3 枚标记区里） */
   const editItemsByZone = useMemo(() => {
@@ -982,6 +1136,9 @@ export default function StudentCageShelfPage() {
       if (e) {
         for (const c of e.currentDetails ?? []) if (!(e.initialDetails ?? new Set<string>()).has(c)) push(detailZoneKey(c, true), it);
         for (const c of e.initialDetails ?? []) if (!(e.currentDetails ?? new Set<string>()).has(c)) push(detailZoneKey(c, false), it);
+        /* 严重程度区同理，但互斥单选：设了值落那一档的标记区；清空落唯一的撤销区 */
+        if (e.currentSeverity) push(severityZoneKey(e.currentSeverity), it);
+        else if (e.initialSeverity) push(SEVERITY_CLEAR_ZONE, it);
       }
     }
     return m;
@@ -1062,7 +1219,6 @@ export default function StudentCageShelfPage() {
       return next;
     });
   }, [cageIdOfCell, scanCache]);
-
   /**
    * 状态模式：条目连同它的编辑缓存一起摘掉。
    * 只摘批次的话，同步 effect 下一轮会按缓存把它加回来 —— 删了等于没删。
@@ -1096,17 +1252,18 @@ export default function StudentCageShelfPage() {
   }, [editGateReason, cageIdOfCell, editBatch.items, itemMetaByCageId, removeEditItem, patchPending]);
 
   /**
-   * 网格点格子（状态模式统一入口）—— **两种模式都先把格子放进缓冲区**，
-   * 否则「拖色区」那条批量路没法用鼠标把人肉选进缓冲区；
-   * 区别只在：弹窗编辑模式下额外打开动作弹窗（特殊饲养明细只在那儿能选）。
+   * 网格点格子（状态模式统一入口）—— 「拖色区」先把格子放进缓冲区，
+   * 否则那条批量路没法用鼠标把人肉选进缓冲区；
+   * **弹窗编辑不进缓冲区**：改动点一下就已经写盘了（2026-09-19 用户口径），
+   * 再挂一个没有差异的条目只会让抽屉显示「待提交 N 个笼位」，点提交还什么都不做。
    */
   const handleEditCellClick = (sid: string, x: number, y: number) => {
     const c = findCellByKey(sid, x, y);
     if (!c) return;
     const reason = editGateReason(c);
     if (reason) { toast.error(reason); return; }
+    if (editPointMode) { openEditCell(c as CageShelfCell, sid); return; }
     addEditPending(c, undefined, editPointMode);
-    if (editPointMode) openEditCell(c as CageShelfCell, sid);
   };
 
   /** 从 details / shelfDetail 反查某格所属笼架（动作弹窗要靠它拼缓存键） */
@@ -1139,12 +1296,15 @@ export default function StudentCageShelfPage() {
   /**
    * 状态模式拖放：fromZone 决定「拖回缓冲区」时撤销哪一个动作；
    * 拖到另一个区则先把来源撤销、再落到新位置，所以重复拖是幂等的。
+   * 色区 / 明细区 / 严重程度区各认各的前缀，一个笼位可以同时挂几边的差异。
    */
   const handleEditZoneDrop = useCallback((cageIds: string[], zoneKey: string | null, fromZone: string | null): boolean => {
     const to = parseStatusZone(zoneKey);
     const from = parseStatusZone(fromZone);
     const toD = parseDetailZone(zoneKey);
     const fromD = parseDetailZone(fromZone);
+    const toS = parseSeverityZone(zoneKey);
+    const fromS = parseSeverityZone(fromZone);
     // 只对「待提交」里的笼位生效：勾选集可能留着早已移出批次的陈旧 id
     const staged = new Set(batchOf(pendingByMode, "edit").items.map(it => it.cageId));
     let applied = 0;
@@ -1159,16 +1319,21 @@ export default function StudentCageShelfPage() {
       if (to) void applyEditAction(cell, sid, to.action, to.on);
       if (fromD) void applyEditDetail(cell, sid, fromD.itemCode, !fromD.on);
       if (toD) void applyEditDetail(cell, sid, toD.itemCode, toD.on);
+      /* 严重程度互斥：从标记区被拖走（含拖到别的档）= 清空，再按落点设新值；从撤销区拖走无事可做。
+         瘙痒按**落点那一档的勾选框**落（空档回落到页面偏好）。 */
+      if (fromS) void applyEditSeverity(cell, sid, null, false);
+      if (toS) void applyEditSeverity(cell, sid, toS.itemCode, toS.itemCode ? itchOnFor(toS.itemCode) : false);
       applied += 1;
     }
     // 陈旧的勾选项不算「没放成」，真正落地的有东西就可以清掉勾选
     return applied > 0;
-  }, [pendingByMode, keyByCageId, applyEditAction, applyEditDetail]);
+  }, [pendingByMode, keyByCageId, applyEditAction, applyEditDetail, applyEditSeverity, itchOnFor]);
 
   /** 动作弹窗里点一个状态：has = 点之前是否已标记，决定这次是标记还是取消 */
   const toggleEditStatus = (cell: CageShelfCell, sid: string, action: CageBoxAction, has: boolean) => {
     void applyEditAction(cell, sid, action, !has);
   };
+
 
   /**
    * 特殊饲养明细：勾/取消一项 → 写编辑缓存，由同步 effect 派生进「待提交」，提交时整体覆盖写盘。
@@ -1215,6 +1380,8 @@ export default function StudentCageShelfPage() {
    */
   useEffect(() => {
     if (!editMode) return;
+    // 弹窗编辑（点格子开弹窗）：改动即时写盘（见下面那条 effect），不进「待提交」
+    if (editPointMode) return;
     patchPending("edit", (b) => {
       let next = b;
       const cached = new Set<string>();
@@ -1232,14 +1399,21 @@ export default function StudentCageShelfPage() {
           && !((e.currentDetails ?? new Set()).size === (e.initialDetails ?? new Set()).size
             && [...(e.currentDetails ?? [])].every(v => (e.initialDetails ?? new Set<string>()).has(v)));
         const details = detailChanged ? [...(e.currentDetails ?? [])] : undefined;
+        /* 健康异常严重程度（互斥单选）：只有真的改了才带上目标值，null = 清空，undefined = 本次不动。 */
+        const severity = (e.currentSeverity ?? null) !== (e.initialSeverity ?? null)
+          ? (e.currentSeverity || null)
+          : undefined;
+        /* 瘙痒（布尔子值）同理：只有真的改了才带，没改显式 undefined。 */
+        const itch = Boolean(e.currentItch) !== Boolean(e.initialItch) ? Boolean(e.currentItch) : undefined;
         next = upsertItem(next, toAdd.length || toRemove.length
-          ? { cageId, ...meta, shelveId: key.split(":")[0] || meta.shelveId, cageBoxCode: e.code, actions: toAdd, removedActions: toRemove, details }
-          : { cageId, ...meta, actions: [], removedActions: [], details });
+          ? { cageId, ...meta, shelveId: key.split(":")[0] || meta.shelveId, cageBoxCode: e.code, actions: toAdd, removedActions: toRemove, details, severity, itch }
+          : { cageId, ...meta, actions: [], removedActions: [], details, severity, itch });
       }
       for (const it of next.items) {
         if (cached.has(it.cageId)) continue;
-        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0 || it.details !== undefined) {
-          next = upsertItem(next, { ...it, actions: [], removedActions: [], details: undefined });
+        if ((it.actions?.length ?? 0) > 0 || (it.removedActions?.length ?? 0) > 0
+            || it.details !== undefined || it.severity !== undefined || it.itch !== undefined) {
+          next = upsertItem(next, { ...it, actions: [], removedActions: [], details: undefined, severity: undefined, itch: undefined });
         }
       }
       return next;
@@ -1251,8 +1425,14 @@ export default function StudentCageShelfPage() {
     const rows: SubmitResult[] = [];
     for (const it of items) {
       try {
-        // 特殊饲养明细：整体覆盖写本地表单（undefined = 本次不动）
-        if (it.details !== undefined) await saveSpecialDetails(it.cageId, it.details);
+        // 特殊饲养明细（多选）与健康异常严重程度（单选）：整体覆盖写本地表单（undefined = 本次不动）
+        if (it.details !== undefined) await saveStatusDetail(it.cageId, SPECIAL_DETAIL_CANONICAL, it.details);
+        if (it.severity !== undefined) {
+          await saveStatusDetail(it.cageId, HEALTH_SEVERITY_CANONICAL, it.severity ? [it.severity] : []);
+        }
+        if (it.itch !== undefined) {
+          await saveStatusDetail(it.cageId, HEALTH_ITCH_CANONICAL, it.itch ? [HEALTH_ITCH_TRUE] : []);
+        }
         for (const a of it.actions ?? []) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, true, it.cageBoxCode);
         for (const a of it.removedActions ?? []) await localEdit(it.cageId, cageBoxAction(a as CageBoxAction).statusField, false, it.cageBoxCode);
         rows.push({ cageId: it.cageId, ok: true });
@@ -1262,6 +1442,73 @@ export default function StudentCageShelfPage() {
     }
     return rows;
   }, []);
+
+  /**
+   * 弹窗编辑：缓存里一出现差异就**立刻写盘**，成功后把基线推平（initial = current）。
+   *
+   * 推平而不是删条目：网格底色由 currentActions 算，推平不影响观感；差异一消失，
+   * 上面那条同步 effect 与抽屉的「待提交」就都不会再收它（弹窗模式下那两条路空转）。
+   * 失败则把 current 回滚成 initial —— 宁可让用户看到颜色弹回去，也不留假颜色。
+   */
+  const directWriteKeys = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!editMode || !editPointMode) return;
+    for (const [key, e] of scanCache) {
+      const cageId = cageIdOfCell(e.cell);
+      const meta = cageId ? itemMetaByCageId.get(cageId) : undefined;
+      if (!cageId || !meta || directWriteKeys.current.has(key)) continue;
+      const toAdd = [...e.currentActions].filter(a => !e.initialActions.has(a));
+      const toRemove = [...e.initialActions].filter(a => !e.currentActions.has(a));
+      const detailChanged = (e.initialDetails !== undefined || e.currentDetails !== undefined)
+        && !((e.currentDetails ?? new Set()).size === (e.initialDetails ?? new Set()).size
+          && [...(e.currentDetails ?? [])].every(v => (e.initialDetails ?? new Set<string>()).has(v)));
+      const details = detailChanged ? [...(e.currentDetails ?? [])] : undefined;
+      const severity = (e.currentSeverity ?? null) !== (e.initialSeverity ?? null)
+        ? (e.currentSeverity || null) : undefined;
+      const itch = Boolean(e.currentItch) !== Boolean(e.initialItch) ? Boolean(e.currentItch) : undefined;
+      if (!toAdd.length && !toRemove.length && details === undefined && severity === undefined && itch === undefined) continue;
+      directWriteKeys.current.add(key);
+      void runEditPending([{
+        cageId, ...meta,
+        shelveId: key.split(":")[0] || meta.shelveId,
+        cageBoxCode: e.code,
+        actions: toAdd, removedActions: toRemove, details, severity, itch,
+      }]).then((results) => {
+        const ok = !!results[0]?.ok;
+        setScanCache(prev => {
+          const n = new Map(prev);
+          const cur = n.get(key);
+          if (!cur) return prev;
+          if (ok) {
+            /* 只推平**这次真的写进去**的那部分，不是「推平到 current」：
+               写盘期间用户又点了别的状态时那份差异还没写，推平到 current 会把它悄悄抹掉。 */
+            const base = new Set(cur.initialActions);
+            for (const a of toAdd) base.add(a);
+            for (const a of toRemove) base.delete(a);
+            n.set(key, {
+              ...cur,
+              initialActions: base,
+              initialDetails: details === undefined ? cur.initialDetails : new Set(details),
+              initialSeverity: severity === undefined ? cur.initialSeverity : (severity ?? null),
+              initialItch: itch === undefined ? cur.initialItch : !!itch,
+            });
+          } else {
+            n.set(key, {
+              ...cur,
+              currentActions: new Set(cur.initialActions),
+              currentDetails: new Set(cur.initialDetails ?? []),
+              currentSeverity: cur.initialSeverity ?? null,
+              currentItch: !!cur.initialItch,
+            });
+          }
+          return n;
+        });
+        if (!ok) { toast.error(`保存失败：${results[0]?.reason ?? "未知原因"}`); return; }
+        // 与批量提交后同款收尾：让服务端派生的那部分界面（角标、抽屉计数）跟上
+        setClaimReloadKey(k => k + 1);
+      }).finally(() => { directWriteKeys.current.delete(key); });
+    }
+  }, [scanCache, editMode, editPointMode, itemMetaByCageId, runEditPending, cageIdOfCell]);
 
   const submitEdit = async () => {
     const items = editBatch.items;
@@ -1369,16 +1616,11 @@ export default function StudentCageShelfPage() {
           {!collapsed && <div className="shrink-0 flex items-center gap-1 rounded-student-sm border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1.5 py-1">
             <Search className="h-3.5 w-3.5 shrink-0 text-[var(--app-color-text-tertiary)]" /><input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)]" />
           </div>}
+          {/* 一棵树两种视图：只换 onlyBookmarked，不换组件 —— 切视图不卸载，展开与滚动位置都留着。
+              「收藏」视图只画收藏过的房间（房间名后的 ☆ 切换），进视图自动展开第一个。 */}
           {!collapsed && <div className="cage-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5">
-            {leftView === "filter" && <CampusTree tree={tree} exp={exp} search={search} onToggle={k => setExp(p => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; })} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={new Map()} alertStatusesByRoom={new Map()} />}
-            {leftView === "bookmarks" && <>
-              {bmLoading && <div className="text-[var(--app-color-text-tertiary)] py-4 text-center text-[11px]">加载中…</div>}
-              {!bmLoading && bmList.length === 0 && <div className="text-[var(--app-color-text-tertiary)] py-4 text-center text-[11px]">暂无收藏</div>}
-              {!bmLoading && bmList.map(b => <button key={b.shelfMeta.shelveId} onClick={() => { setTab("filter"); onOpenRoom(String(b.roomId ?? ""), b.shelfMeta.roomName); }} className="w-full text-left rounded-student-md border border-[var(--student-border)] bg-[var(--student-canvas)] px-2 py-1.5 mb-1 hover:border-[var(--student-primary)] transition">
-                <div className="flex items-center gap-1"><Star className="h-2.5 w-2.5 shrink-0 fill-amber-400 text-amber-400" /><span className="truncate text-[11px] font-medium text-[var(--student-ink)]">{b.shelfMeta.shelveName}</span></div>
-                <div className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">{b.shelfMeta.campusName} · {b.shelfMeta.roomName}</div>
-              </button>)}
-            </>}
+            <CampusTree tree={tree} exp={exp} search={search} onToggle={toggleNode} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={new Map()} alertStatusesByRoom={new Map()}
+              bookmark={{ bookmarkedRooms, bookmarkedShelves, onToggleBookmarkRoom: toggleRoom, onToggleBookmarkShelf: toggleBookmarkShelf, onlyBookmarked: leftView === "bookmarks" }} />
           </div>}
         </div>
 
@@ -1442,15 +1684,17 @@ export default function StudentCageShelfPage() {
           </div>
 
           <div className="cage-scroll flex-1 min-h-0 overflow-y-auto space-y-2" style={islandPadStyle}>
-            {tab === "filter" && <>
+            {/* 主区两个 tab（筛选 / 收藏）**共用**：收藏视图只是左侧树换了过滤，右侧照样要点得进笼架，
+                否则切到收藏右侧空白、点树没反应（2026-09-19 用户报）。 */}
+            <>
               {/* ROOM MODE */}
               {viewMode === "room" && <>
                 {!aRid && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><LayoutGrid className="h-10 w-10 mx-auto mb-3 opacity-20" />展开左侧目录，点击房间下的笼架<br /><span className="text-[11px]">点击笼架后加载该房间所有笼架详情</span></div>}
                 {loading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-4 text-center text-sm text-[var(--app-color-text-tertiary)]">正在加载房间笼架（{details.length}）…</div>}
                 {!loading && aRid && details.length === 0 && <div className="rounded-student-lg border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
                 {details.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d, idx) => {
-                  const sid = String(d.shelfMeta?.shelveId ?? ""), isBm = sid !== "" && pinned.has(sid);
-                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} alertMap={new Map()} onToggleBookmark={sid !== "" ? () => toggleBm(sid) : undefined} claimMode={claimMode||divisionMode||archiveMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode||archiveMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : archiveMode ? handleArchiveToggle : undefined} allocMode={claimMode||divisionMode||archiveMode} clickMode={claimMode || divisionMode || archiveMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
+                  const sid = String(d.shelfMeta?.shelveId ?? "");
+                  return <div key={sid || idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName ?? `笼架 ${idx + 1}`} detail={d} loading={false} emptyHint="暂无笼架数据" alertMap={new Map()} claimMode={claimMode||divisionMode||archiveMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode||archiveMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : archiveMode ? handleArchiveToggle : undefined} allocMode={claimMode||divisionMode||archiveMode} clickMode={claimMode || divisionMode || archiveMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
                 })}</div>}
               </>}
 
@@ -1466,15 +1710,9 @@ export default function StudentCageShelfPage() {
                     <div className="flex-1 rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] flex flex-col items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br /><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>}
                 </div>
               </div>}
-            </>}
+            </>
 
-            {tab === "bookmarks" && <>
-              {pinned.size === 0 && !bmLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无收藏的笼架<br /><span className="text-[11px]">在筛选页面将笼架加入收藏后在此处查看</span></div>}
-              {!bmLoading && bmList.length > 0 && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b => {
-                const sid = b.shelfMeta.shelveId;
-                return <div key={sid}><ShelfGrid title={b.shelfMeta.shelveName || sid} detail={b} loading={false} emptyHint="暂无数据" isBookmarked={true} alertMap={new Map()} onToggleBookmark={() => toggleBm(sid)} claimMode={claimMode||divisionMode||archiveMode} poolCells={divisionMode?divisionPoolCells:poolCells} myClaimCageIds={confirmMode ? myLockedCageIds : undefined} selectable={claimMode||divisionMode||archiveMode} selectedCells={bufferedSelectedKeys} onToggleCell={claimMode ? handleClaimToggle : divisionMode ? handleDivisionToggle : archiveMode ? handleArchiveToggle : undefined} allocMode={claimMode||divisionMode||archiveMode} clickMode={claimMode || divisionMode || archiveMode ? "toggle" : undefined} onCellClick={(c: any) => handleGridCellClick(c, sid)} {...opGridProps} {...modeGlowProps} {...editGridProps} /></div>;
-              })}</div>}
-            </>}
+            {/* 收藏视图不再单独占一块说明：左侧树只列收藏项，右侧与筛选模式共用（点房间展开、点笼架进网格） */}
 
             {tab === "claims" && <>
               {claimsLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>}
@@ -1607,6 +1845,53 @@ export default function StudentCageShelfPage() {
                   </div>
                 );
               })()}
+              {/* 健康异常严重程度 + 瘙痒：强绑定 —— 只在「健康异常」开着时出现；互斥单选，同样进「状态待提交」 */}
+              {(() => {
+                const haOn = entry ? entry.currentActions.has("HEALTH_CHECK") : serverActions.has("HEALTH_CHECK");
+                // 父状态的开关不在（本区/本身份没开放它）→ 细分也不出现（与明细同口径）
+                const haAvailable = editActions.some((a) => a.action === HEALTH_CHECK_ACTION);
+                if (!haAvailable || !haOn || severityOptions.length === 0) return null;
+                const cur = entry?.currentSeverity ?? severityOfValues(editFormValues);
+                const curItch = entry?.currentItch ?? itchOfValues(editFormValues);
+                return (
+                  <div className="mt-2 rounded-student-md border-2 p-2.5" style={{ borderColor: "var(--app-color-border-default)", background: "var(--app-color-surface-container)" }}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">健康异常严重程度</span>
+                      <span className="text-[10px] text-[var(--app-color-text-tertiary)]">单选 · 可勾瘙痒 · 随「健康异常」开关</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {severityOptions.map((o) => {
+                        const on = cur === o.itemCode;
+                        return (
+                          <div key={o.itemCode} className="relative rounded-student-md border-2 px-2.5 py-1"
+                            style={{ borderColor: on ? "var(--student-primary)" : "var(--app-color-border-default)" }}>
+                            <button type="button"
+                              onClick={() => void applyEditSeverity(editDialogCell, sid, on ? null : o.itemCode, on ? false : curItch)}
+                              className="text-[11px] font-semibold transition hover:brightness-95"
+                              style={{ color: on ? "var(--student-primary)" : "var(--app-color-text-tertiary)" }}>
+                              {on ? "✓ " : ""}{o.itemLabel}
+                            </button>
+                            {/* 勾选框贴在本档右上角：勾上 = 该档 + 瘙痒 */}
+                            <label className="absolute -right-1.5 -top-2 flex cursor-pointer items-center gap-0.5 rounded-full border px-1 text-[9px] font-semibold"
+                              style={{
+                                borderColor: "var(--app-color-border-default)",
+                                background: "var(--app-color-surface-container)",
+                                color: (on && curItch) ? "var(--student-primary)" : "var(--app-color-text-tertiary)",
+                              }}
+                              title={`勾上 = ${o.itemLabel} + ${HEALTH_ITCH_LABEL}`}>
+                              <input type="checkbox" className="h-2.5 w-2.5"
+                                style={{ accentColor: "var(--student-primary)" }}
+                                checked={on && curItch}
+                                onChange={() => void applyEditSeverity(editDialogCell, sid, o.itemCode, !(on && curItch))} />
+                              {HEALTH_ITCH_LABEL}
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               {/* 备注 + 写盘：照片已按状态各归各位，这里只管收尾（与状态/明细的「待提交」互不影响） */}
               <div className="mt-2 border-t border-[var(--app-color-border-default)] pt-2">
                 <textarea value={actionNote} onChange={(e) => { setActionNote(e.target.value); setNoteDirty(true); }}
@@ -1644,7 +1929,7 @@ export default function StudentCageShelfPage() {
           phase={opSel.phase}
           loading={opSel.loading}
           error={opSel.error}
-          submitting={batchSubmitting}
+          submitting={false}
           onReorder={(a, b) => (opSel.phase === "sources" ? opSel.swapSources(a, b) : opSel.swapTargets(a, b))}
           onNext={opSel.confirmSources}
           onBack={opSel.backToSources}
@@ -1662,6 +1947,16 @@ export default function StudentCageShelfPage() {
         picked={opSel.picked}
         onClose={opSel.closeConfirm}
         onDone={() => { opSel.cancel(); setClaimReloadKey(k => k + 1); void qc.invalidateQueries({ queryKey: ["cage-op", "markers"] }); }}
+      />
+      {/* 批量转移确认：CageOperationDialog 批量模式，一次列出全部配对、各收一张转移单 */}
+      <CageOperationDialog
+        open={batchConfirmOpen}
+        op="transfer"
+        source={null}
+        picked={[]}
+        pairs={opSel.pairs.filter((p) => p.targetId)}
+        onClose={() => setBatchConfirmOpen(false)}
+        onDone={handleBatchConfirmDone}
       />
       <MobileScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScanResult} />
       <MobileSpecialStatusPanel open={specialOpen} onClose={() => setSpecialOpen(false)} apiFn={fetchStudentMobileSpecialStatusOverview} />
@@ -1770,8 +2065,24 @@ export default function StudentCageShelfPage() {
           cacheOf={editCacheOfItem}
           onOpen={openEditItemById}
           zonesHeader={
-            <div className="shrink-0 border-b border-[var(--app-color-border-default)] p-2 text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">
-              拖笼位到对应色区即标记，拖到虚线区即撤销；「需特殊饲养」与其撤销卡里可展开各自的明细区
+            <div className="shrink-0 space-y-1.5 border-b border-[var(--app-color-border-default)] p-2">
+              {/* 子模式开关（弹窗编辑 / 拖色区）**放到抽屉顶部**：
+                  它是这个模式的核心开关（特殊饲养明细只在弹窗里能选），原先只挂在页面顶部工具栏，
+                  抽屉一打开就看不见了 —— 用户找不到「弹窗编辑」，等于找不到明细（2026-09-18 反馈）。 */}
+              <button
+                type="button"
+                onClick={() => setEditPointMode((v) => !v)}
+                title={editPointMode
+                  ? "当前：点格子会打开动作弹窗（可选出特殊饲养明细）。点这里切成拖色区批量标记"
+                  : "当前：点格子只进/出缓冲区。点这里切成弹窗编辑（可选出特殊饲养明细）"}
+                className="w-full rounded-student-sm px-2 py-1 text-[11px] font-semibold transition bg-[var(--app-color-accent-hover)] text-white shadow-sm"
+              >
+                当前：{editPointMode ? "弹窗编辑（点格子开弹窗）" : "拖色区（点格子只进缓冲区）"}
+                <span className="ml-1 opacity-80">· 点击切换</span>
+              </button>
+              <div className="text-[10px] leading-snug text-[var(--app-color-text-tertiary)]">
+                拖笼位到对应色区即标记，拖到虚线区即撤销；「需特殊饲养」与其撤销卡里可展开各自的明细区
+              </div>
             </div>
           }
           onSubmit={() => void submitEdit()}

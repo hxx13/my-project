@@ -1,5 +1,5 @@
 /**
- * 自有 Spring 后端请求（与 jtu 的 utils/request.js 完全独立）。
+ * 自有 Spring 后端请求。
  *
  * 【OpenID 与「注销」本机缓存】当前 Spring 若使用 AuthService 内基于 jsCode 的 Mock
  * exchangeJsCodeForOpenId（开发占位），则每次 wx.login 的 jsCode 不同，得到的待绑定

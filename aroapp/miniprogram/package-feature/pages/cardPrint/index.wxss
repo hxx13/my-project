@@ -268,9 +268,18 @@
 
 .cp-panel-hint {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
   margin-bottom: 10rpx;
   font-size: 22rpx;
   color: #94a3b8;
+}
+
+.cp-panel-hint-txt {
+  flex: 1;
+  min-width: 0;
 }
 
 .cp-panel-scroll {
@@ -321,6 +330,17 @@
   font-size: 23rpx;
   color: #64748b;
   flex-shrink: 0;
+}
+
+/* 「仍卡在打印机队列」：软琥珀底（照 animalOrder .ctx-chip-warn）——这是待处置，不是报错，别用红 */
+.cp-queue-item-stuck {
+  flex-shrink: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 20rpx;
+  line-height: 1.7;
 }
 
 .cp-queue-item-station {

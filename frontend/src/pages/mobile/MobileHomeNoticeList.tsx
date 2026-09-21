@@ -1,7 +1,7 @@
 /** 手机版 — 首页公告列表行（小程序 news-card + van-cell） */
 import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { MOBILE_NOTICE_LIST_CARD_STYLE } from "./mobileNoticePresentation";
-import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
+import { splitMobileAnnouncementsBySection } from "./mobileExemptAlertHelpers";
 import MobileNoticeListRow from "./MobileNoticeListRow";
 import { mobileNoticeItemKey } from "./MobileNoticesPanel";
 
@@ -24,19 +24,34 @@ export function MobileHomeNoticeList({
     );
   }
 
-  const sorted = sortMobileAnnouncementsForDisplay(items);
+  const { general, personal } = splitMobileAnnouncementsBySection(items);
+
+  const renderSection = (title: string, list: MobileAlertItem[]) => {
+    if (list.length === 0) return null;
+    return (
+      <div>
+        <p className="px-1 pb-1.5 text-[13px] font-semibold" style={{ color: "#646566" }}>
+          {title}
+        </p>
+        <div style={MOBILE_NOTICE_LIST_CARD_STYLE}>
+          {list.slice(0, 4).map((item, idx) => (
+            <MobileNoticeListRow
+              key={mobileNoticeItemKey(item)}
+              item={item}
+              html5PrivilegeBypass={html5PrivilegeBypass}
+              bordered={idx > 0}
+              onSelect={() => onSelect(mobileNoticeItemKey(item))}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div style={MOBILE_NOTICE_LIST_CARD_STYLE}>
-      {sorted.slice(0, 4).map((item, idx) => (
-        <MobileNoticeListRow
-          key={mobileNoticeItemKey(item)}
-          item={item}
-          html5PrivilegeBypass={html5PrivilegeBypass}
-          bordered={idx > 0}
-          onSelect={() => onSelect(mobileNoticeItemKey(item))}
-        />
-      ))}
+    <div className="flex flex-col gap-2.5">
+      {renderSection("通用公告", general)}
+      {renderSection("我的提醒", personal)}
     </div>
   );
 }

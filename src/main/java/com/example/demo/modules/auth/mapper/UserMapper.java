@@ -10,6 +10,12 @@ import java.util.List;
 public interface UserMapper {
     User findByUsername(@Param("username") String username);
 
+    /**
+     * 手机号也能当登录名用。返回**全部**匹配账号，不是 LIMIT 1：
+     * 历史数据里有手机号重号（实测 5 组），登录要拿这个列表让用户选账号；新注册用它查重（非空即拒）。
+     */
+    List<User> findAllByMobilePhone(@Param("mobilePhone") String mobilePhone);
+
     User findByOpenId(@Param("openId") String openId);
 
     User findById(@Param("id") String id);

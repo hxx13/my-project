@@ -7,8 +7,8 @@ import {
   default as CageCellOverlays,
 } from "@/features/cage-shelf/components/CageCellOverlays";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
-import SpecialDetailBadges from "@/features/cage-shelf/components/SpecialDetailBadges";
-import { displayPosition, specialDetailItemsFor } from "@/features/cage-shelf/constants";
+import CellStatusBadges from "@/features/cage-shelf/components/CellStatusBadges";
+import { displayPosition, specialDetailItemsFor, healthBadgesFor, VET_UNREAD_COLOR } from "@/features/cage-shelf/constants";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
 import type { CageOpMark } from "@/features/cage-shelf/useCageOpSelect";
 import { resolveMultiStatusBackground } from "./cellPaint";
@@ -123,6 +123,8 @@ export const CompactCell = memo(function CompactCell({
   const hasBar = Boolean(opMark || divisionLabel);
   /** 特殊饲养明细角标（右上角）。平面图只读，没有暂存态，读服务端状态即可。 */
   const sfDetailItems = specialDetailItemsFor(cell.specialStatuses);
+  /** 健康异常那一族角标 —— 平面图不在状态抽屉里，没有暂存可读，直接取服务端带下来的值 */
+  const healthBadges = healthBadgesFor(cell.healthSeverity, cell.healthItch, null);
 
   return (
     <button
@@ -143,8 +145,13 @@ export const CompactCell = memo(function CompactCell({
       style={empty ? undefined : style}
     >
       {!empty && !hideTypeDot && <CageCellOverlays animalCageType={ct} compact />}
-      {/* 特殊饲养明细：右上角（尺寸由 CompactCell.css 按 cqw 覆盖，同类型指示灯那套手法） */}
-      {!empty && <SpecialDetailBadges items={sfDetailItems} />}
+      {/* 严重程度 + 特殊饲养明细：右上角并排（尺寸由 CompactCell.css 按 cqw 覆盖，同类型指示灯那套手法） */}
+      {/* 兽医未读：紫色内描边悬浮层（不占底色） */}
+      {!empty && cell.vetUnread && (
+        <span className="pointer-events-none absolute inset-0 z-10 rounded-[inherit]"
+          style={{ boxShadow: `inset 0 0 0 3px ${VET_UNREAD_COLOR}` }} />
+      )}
+      {!empty && <CellStatusBadges items={sfDetailItems} health={healthBadges} />}
       {!empty && claimBadge ? (
         <span
           className={`scan-plan-badge pointer-events-none absolute z-10 font-bold leading-tight ${claimBadge.cls}`}

@@ -275,6 +275,10 @@ function isAnimalOrderReviewNavPath(path: string): boolean {
   return normalizeAdminPath(path) === normalizeAdminPath("/admin/animal-order-review");
 }
 
+function isCageShelfNavPath(path: string): boolean {
+  return normalizeAdminPath(path) === normalizeAdminPath("/admin/cage-shelves");
+}
+
 function resolveNavEntryBadgeText(
   path: string,
   itemBadgeKey: string | null | undefined,
@@ -288,6 +292,11 @@ function resolveNavEntryBadgeText(
   if (isAnimalOrderReviewNavPath(path)) {
     // 待审订单数：后端 badgeCounters.processAnimalOrder，与审核页「新订单」页签同一口径
     return formatBadgeCount(Math.max(0, pendingBadges?.badgeCounters?.processAnimalOrder ?? 0)) || undefined;
+  }
+  if (isCageShelfNavPath(path)) {
+    // 兽医收件箱未读：后端只给拿到 cage.vet.inbox 的账号计数，其余恒 0（于是不渲染角标）。
+    // 挂在笼架页侧栏项上，分组角标再由 injectGroupBadges 汇总上去 —— 这就是「穿透」。
+    return formatBadgeCount(Math.max(0, pendingBadges?.badgeCounters?.vetInbox ?? 0)) || undefined;
   }
   return badgeTextFromKey(
     pendingBadges,

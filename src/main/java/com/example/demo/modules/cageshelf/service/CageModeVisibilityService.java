@@ -64,7 +64,13 @@ public class CageModeVisibilityService {
             "SPECIAL_BREEDING", "needs_special_feeding",
             // 特殊饲养明细：多选字段，学生侧按**这一个动作码**授权。明细项不逐个进矩阵 ——
             // 码表项可增长，逐项注册会让矩阵行随码表膨胀；区域级仍可逐区域独立关闭。
-            "SPECIAL_FEEDING_DETAIL", "special_feeding_details");
+            "SPECIAL_FEEDING_DETAIL", "special_feeding_details",
+            // 健康异常（父状态）：同样先有父状态，严重程度才有依附。
+            "HEALTH_CHECK", "has_health_abnormality",
+            // 健康异常严重程度：单选字段（互斥）。项不逐个进矩阵，理由同特殊饲养明细。
+            "HEALTH_SEVERITY", "health_abnormality_severity",
+            // 健康异常「瘙痒」：布尔子值。界面上画在每一档严重程度旁边，但数据上是一个布尔。
+            "HEALTH_ITCH", "health_abnormality_itch");
 
     /** 学生状态动作对应的矩阵能力码。 */
     public static String studentEditCapability(String actionCode) {

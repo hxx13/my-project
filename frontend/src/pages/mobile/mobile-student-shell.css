@@ -122,7 +122,7 @@
   width: calc(var(--ao-cell-px, 40px) * 0.18);
   height: calc(var(--ao-cell-px, 40px) * 0.18);
 }
-.ao-cell-grid [data-special-detail-badges] > span {
+.ao-cell-grid [data-cell-status-badges] span {
   font-size: calc(var(--ao-cell-px, 40px) * 0.19);
   line-height: calc(var(--ao-cell-px, 40px) * 0.28);
   padding: 0 calc(var(--ao-cell-px, 40px) * 0.05);

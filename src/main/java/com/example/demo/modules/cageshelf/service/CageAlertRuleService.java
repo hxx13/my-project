@@ -133,8 +133,9 @@ public class CageAlertRuleService {
     }
 
     /**
-     * 某笼位某状态当前生效的告警规则。
+     * 某笼位某状态**某通知对象**当前生效的告警规则。
      *
+     * @param notifyTarget  通知对象：DEFAULT（原有单目标语义）/ VET / OCCUPANT
      * @param enabled       false = 该状态在此不告警
      * @param thresholdDays 持续多少天触发；0 = 状态一出现就触发
      * @param highlight     触发后是否在网格/弹窗高亮
@@ -143,6 +144,7 @@ public class CageAlertRuleService {
      */
     public record EffectiveAlertRule(
             String statusCode,
+            String notifyTarget,
             boolean enabled,
             int thresholdDays,
             boolean highlight,
@@ -152,8 +154,28 @@ public class CageAlertRuleService {
     }
 
     /**
+     * 可配置的 (状态, 通知对象) 组合，顺序固定供输出稳定：内置状态 + 特殊饲养明细（码表项），
+     * 每个再展开成它的 {@link CageStatusIntervalService#notifyTargetsOf 通知对象域}。
+     *
+     * <p>阈值配置页按这份清单出行 —— 健康异常因此天然出「兽医」「笼位所有者」两行。
+     */
+    public List<StatusTarget> configurableRuleKeys() {
+        List<StatusTarget> out = new ArrayList<>();
+        for (String code : configurableStatusCodes()) {
+            for (String target : CageStatusIntervalService.notifyTargetsOf(code)) {
+                out.add(new StatusTarget(code, target));
+            }
+        }
+        return out;
+    }
+
+    /** 一个可配置的规则身份：(状态码, 通知对象)。 */
+    public record StatusTarget(String statusCode, String notifyTarget) {
+    }
+
+    /**
      * 批量：一次取全部笼位的区域键、一次批量读规则行、一次读全局默认，然后内存解析。
-     * 返回每个 cageId → 它五个状态的生效规则（五个都要有，即使按全局默认）。
+     * 返回每个 cageId → 它每个 (状态, 通知对象) 的生效规则（全部都要有，即使按全局默认）。
      */
     public Map<Long, List<EffectiveAlertRule>> resolveForCages(Collection<Long> cageIds) {
         if (cageIds == null || cageIds.isEmpty()) return Map.of();
@@ -178,19 +200,31 @@ public class CageAlertRuleService {
         */
         List<String> statusCodes = new ArrayList<>(STATUS_CODES);
         TreeSet<String> extra = new TreeSet<>();
-        for (String code : defaults.keySet()) if (!statusCodes.contains(code)) extra.add(code);
+        // 注意取的是行里的 statusCode，**不是** defaults 的 map 键 —— 键是 (状态:对象)，拿它比会
+        // 把 "NEED_DIVIDE:DEFAULT" 当成一个新状态码塞进来。
+        for (Map<String, Object> r : defaults.values()) {
+            String code = str(r.get("statusCode"));
+            if (code != null && !statusCodes.contains(code)) extra.add(code);
+        }
         for (Map<String, Object> r : rules) {
             Object c = r == null ? null : r.get("statusCode");
             if (c != null && !statusCodes.contains(String.valueOf(c))) extra.add(String.valueOf(c));
         }
         statusCodes.addAll(extra);
 
+        List<StatusTarget> ruleKeys = new ArrayList<>();
+        for (String status : statusCodes) {
+            for (String target : CageStatusIntervalService.notifyTargetsOf(status)) {
+                ruleKeys.add(new StatusTarget(status, target));
+            }
+        }
+
         Map<Long, List<EffectiveAlertRule>> out = new LinkedHashMap<>();
         for (Long id : ids) {
             List<Map<String, String>> keys = keysByCage.getOrDefault(id, List.of());
-            List<EffectiveAlertRule> perCage = new ArrayList<>(statusCodes.size());
-            for (String status : statusCodes) {
-                perCage.add(resolveOne(keys, status, rules, defaults));
+            List<EffectiveAlertRule> perCage = new ArrayList<>(ruleKeys.size());
+            for (StatusTarget k : ruleKeys) {
+                perCage.add(resolveOne(keys, k.statusCode(), k.notifyTarget(), rules, defaults));
             }
             out.put(id, perCage);
         }
@@ -198,27 +232,43 @@ public class CageAlertRuleService {
     }
 
     /**
-     * 解析单个「笼位区域键 + 状态」的生效规则（纯函数，单测主入口）。
+     * 解析单个「笼位区域键 + 状态 + 通知对象」的生效规则（纯函数，单测主入口）。
      *
      * @param regionKeys      该笼位的区域键列表（ROOM/FLOOR/CAMPUS，可能缺级）
      * @param statusCode      状态码
-     * @param regionRules     预先取好的区域规则行（含该笼位涉及区域的全部行，可含别的状态）
-     * @param defaultByStatus 预先取好的全局默认，按 status_code 索引
+     * @param notifyTarget    通知对象（DEFAULT / VET / OCCUPANT）—— 健康异常两个对象各有各的阈值与方向
+     * @param regionRules     预先取好的区域规则行（含该笼位涉及区域的全部行，可含别的状态/对象）
+     * @param defaultByStatus 预先取好的全局默认，按 {@link CageStatusIntervalService#ruleKey} 索引
      */
     public static EffectiveAlertRule resolveOne(List<Map<String, String>> regionKeys,
                                                 String statusCode,
+                                                String notifyTarget,
                                                 List<Map<String, Object>> regionRules,
                                                 Map<String, Map<String, Object>> defaultByStatus) {
-        // 只留这个状态的行，按 (regionType:regionId) 分桶。
+        String target = CageStatusIntervalService.normalizeTarget(notifyTarget);
+        // 只留这个 (状态, 通知对象) 的行，按 (regionType:regionId) 分桶。
         Map<String, List<Map<String, Object>>> byRegion = new HashMap<>();
         if (regionRules != null) {
             for (Map<String, Object> row : regionRules) {
                 if (row == null || !statusCode.equals(str(row.get("statusCode")))) continue;
+                if (!target.equals(CageStatusIntervalService.normalizeTarget(str(row.get("notifyTarget"))))) continue;
                 String rt = str(row.get("regionType"));
                 String rid = str(row.get("regionId"));
                 if (rt == null || rid == null) continue;
                 byRegion.computeIfAbsent(rt + ":" + rid, k -> new ArrayList<>()).add(row);
             }
+        }
+        String ruleKey = CageStatusIntervalService.ruleKey(statusCode, target);
+
+        /*
+          **全局总闸**：全局默认行把这一项关了（enabled=0），就是全站停用 —— 区域规则不再有机会把它打开。
+          没有这一道，全局开关按「就近覆盖」根本关不住已配区域规则的房间：
+          用户把全局全关掉，区域规则照旧生效，看到的就是「关了没用」（2026-09-18 用户报）。
+          所以顺序是「先过总闸，再谈就近」；全局缺行仍然按原逻辑落到 fail-closed。
+        */
+        Map<String, Object> def = defaultByStatus == null ? null : defaultByStatus.get(ruleKey);
+        if (def != null && !truthy(def.get("enabled"))) {
+            return new EffectiveAlertRule(statusCode, target, false, 0, false, false, true);
         }
 
         // 层级就近：ROOM > FLOOR > CAMPUS。命中最近一级即用，不再往上看。
@@ -227,22 +277,22 @@ public class CageAlertRuleService {
             if (regionId == null) continue;
             List<Map<String, Object>> rows = byRegion.get(type + ":" + regionId);
             if (rows != null && !rows.isEmpty()) {
-                return unionOf(statusCode, rows, defaultByStatus);
+                return unionOf(statusCode, target, rows, defaultByStatus);
             }
         }
 
         // 未配过任何一级 → 全局默认；缺行则 fail-closed。
-        Map<String, Object> def = defaultByStatus == null ? null : defaultByStatus.get(statusCode);
         if (def == null) {
-            log.warn("[cage-alert-rule] 全局默认缺 status_code={}，fail-closed 不告警", statusCode);
+            log.warn("[cage-alert-rule] 全局默认缺 {}，fail-closed 不告警", ruleKey);
             // fail-closed 时方向给 true（= 现状语义）：缺行反而把方向翻成反向是最坏的结果。
-            return new EffectiveAlertRule(statusCode, false, 0, false, false, true);
+            return new EffectiveAlertRule(statusCode, target, false, 0, false, false, true);
         }
-        return fromDefault(statusCode, def);
+        return fromDefault(statusCode, target, def);
     }
 
     /** 某一级「配过」时的并集解析。关闭行（enabled=0）不参与并集。 */
-    private static EffectiveAlertRule unionOf(String statusCode, List<Map<String, Object>> rows,
+    private static EffectiveAlertRule unionOf(String statusCode, String notifyTarget,
+                                              List<Map<String, Object>> rows,
                                               Map<String, Map<String, Object>> defaultByStatus) {
         boolean enabled = false;
         int minThreshold = Integer.MAX_VALUE;
@@ -265,25 +315,27 @@ public class CageAlertRuleService {
                 startValue = sv;
                 startValueTaken = true;
             } else if (sv != startValue) {
-                log.warn("[cage-alert-rule] 同级 status_code={} 的计时起点不一致，取先出现的 {}（保存链本应拦住）",
-                        statusCode, startValue);
+                log.warn("[cage-alert-rule] 同级 {} 的计时起点不一致，取先出现的 {}（保存链本应拦住）",
+                        CageStatusIntervalService.ruleKey(statusCode, notifyTarget), startValue);
             }
         }
         if (!enabled) {
             // 配过但全关：本区该状态不告警。阈值/动作给确定值（沿用全局默认阈值，动作取无）。
             // 方向仍回显第一行配过的值（界面上要看得出组长当时配了什么）。
-            Map<String, Object> def = defaultByStatus == null ? null : defaultByStatus.get(statusCode);
+            Map<String, Object> def = defaultByStatus == null ? null
+                    : defaultByStatus.get(CageStatusIntervalService.ruleKey(statusCode, notifyTarget));
             int t = def == null ? 0 : toInt(def.get("thresholdDays"), 0);
-            return new EffectiveAlertRule(statusCode, false, t, false, false, startValue);
+            return new EffectiveAlertRule(statusCode, notifyTarget, false, t, false, false, startValue);
         }
-        return new EffectiveAlertRule(statusCode, true,
+        return new EffectiveAlertRule(statusCode, notifyTarget, true,
                 minThreshold == Integer.MAX_VALUE ? 0 : minThreshold, highlight, violation, startValue);
     }
 
-    private static EffectiveAlertRule fromDefault(String statusCode, Map<String, Object> def) {
+    private static EffectiveAlertRule fromDefault(String statusCode, String notifyTarget,
+                                                  Map<String, Object> def) {
         boolean enabled = truthy(def.get("enabled"));
         boolean[] flags = actionFlags(str(def.get("action")));
-        return new EffectiveAlertRule(statusCode, enabled, toInt(def.get("thresholdDays"), 0),
+        return new EffectiveAlertRule(statusCode, notifyTarget, enabled, toInt(def.get("thresholdDays"), 0),
                 flags[0], flags[1], startValueOf(def));
     }
 
@@ -308,12 +360,14 @@ public class CageAlertRuleService {
         return List.copyOf(out.values());
     }
 
+    /** 全局默认按 (状态, 通知对象) 建索引 —— 键走 {@link CageStatusIntervalService#ruleKey}。 */
     private static Map<String, Map<String, Object>> indexDefaults(List<Map<String, Object>> rows) {
         Map<String, Map<String, Object>> out = new LinkedHashMap<>();
         if (rows == null) return out;
         for (Map<String, Object> r : rows) {
             String code = str(r.get("statusCode"));
-            if (code != null) out.put(code, r);
+            if (code == null) continue;
+            out.put(CageStatusIntervalService.ruleKey(code, str(r.get("notifyTarget"))), r);
         }
         return out;
     }

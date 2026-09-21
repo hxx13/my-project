@@ -13,6 +13,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
+import com.example.demo.modules.cageshelf.mapper.CageVetMessageMapper;
 import com.example.demo.modules.cageshelf.support.CageFieldMappingService;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import org.slf4j.Logger;
@@ -41,6 +42,8 @@ public class CageCellIndexService {
     private final CageInfoValueService infoValueService;
     private final CageSyncLockService syncLockService;
     private final CageDivisionService divisionService;
+    /** 兽医收件箱：只用来查「这些笼位有没有未读」（网格紫色描边），不碰消息内容 */
+    private final CageVetMessageMapper vetMessageMapper;
 
     /** 一键本地同步（手动按钮）进度，进程内内存；与定时扫描的 CageScanProgressService 相互独立。 */
     private final AtomicReference<CageScanProgressDto> localPipelineProgress = new AtomicReference<>();
@@ -69,7 +72,8 @@ public class CageCellIndexService {
                                 UserDisplayNameService userDisplayNameService,
                                 CageInfoValueService infoValueService,
                                 CageSyncLockService syncLockService,
-                                CageDivisionService divisionService) {
+                                CageDivisionService divisionService,
+                                CageVetMessageMapper vetMessageMapper) {
         this.cellIndexMapper = cellIndexMapper;
         this.detailMapper = detailMapper;
         this.shelfMapper = shelfMapper;
@@ -80,6 +84,7 @@ public class CageCellIndexService {
         this.infoValueService = infoValueService;
         this.syncLockService = syncLockService;
         this.divisionService = divisionService;
+        this.vetMessageMapper = vetMessageMapper;
     }
 
     /**
@@ -270,6 +275,18 @@ public class CageCellIndexService {
         // 特殊饲养明细（子状态）也是「状态」：批量取一次选中集合 + 码表中文名，挂进 specialStatuses。
         Map<Long, List<String>> detailCodes = infoValueService.detailCodesByCage(new ArrayList<>(detailMap.keySet()));
         Map<String, String> detailLabels = infoValueService.detailItemLabels();
+        // 健康异常严重程度：同样是本地表单值，单独一个字段（它**不是状态码**，不进 specialStatuses）
+        Map<Long, String> severityCodes = infoValueService.severityByCage(new ArrayList<>(detailMap.keySet()));
+        // 瘙痒（布尔子值）：同样单独挂，不进 specialStatuses
+        Set<Long> itchCages = infoValueService.itchByCage(new ArrayList<>(detailMap.keySet()));
+        // 兽医未读：这些笼位有未读的兽医消息 → 网格上紫色描边（与状态底色无关）
+        Set<Long> vetUnreadCages = new java.util.LinkedHashSet<>();
+        try {
+            List<Long> unread = vetMessageMapper.listCageIdsWithUnread(new ArrayList<>(detailMap.keySet()));
+            if (unread != null) vetUnreadCages.addAll(unread);
+        } catch (Exception e) {
+            log.warn("[cage-cell-index] 查兽医未读笼位失败: {}", e.getMessage());
+        }
         for (Map.Entry<Long, CageCellDetail> e : detailMap.entrySet()) {
             Map<String, Boolean> flags = statusFlags.get(e.getKey());
             if (flags == null) continue;
@@ -411,6 +428,16 @@ public class CageCellIndexService {
                             "iconKey", "feeding"));
                 }
                 gc.put("specialStatuses", statuses);
+
+                /*
+                  健康异常严重程度：**刻意不进 specialStatuses** —— 它没有状态码，混进去会被
+                  底色/优先级（getDominantStatusCode、previewStatusCodes）当成第六个状态算。
+                  单独一个字段只喂右上角角标，中文名交给前端按码表解析（与明细角标同一套）。
+                */
+                String severity = severityCodes.get(detail.getAnimalCageId());
+                if (severity != null) gc.put("healthSeverity", severity);
+                if (itchCages.contains(detail.getAnimalCageId())) gc.put("healthItch", true);
+                if (vetUnreadCages.contains(detail.getAnimalCageId())) gc.put("vetUnread", true);
 
                 // pi_name 已退役（与 project_pi_name 同义，只保留后者）：固定表仍有存量旧值，
                 // 置空后再回传，避免前端「projectPiName || piName」回退链读到陈旧的课题组名。

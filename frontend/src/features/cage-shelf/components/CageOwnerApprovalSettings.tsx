@@ -4,9 +4,14 @@ import { Search } from "lucide-react";
 import {
   fetchOwnerApprovalConfig,
   fetchOwnerApprovalOverview,
+  fetchReviewVets,
+  fetchTransferGlobal,
   saveOwnerApprovalConfig,
+  saveReviewVets,
+  saveTransferGlobal,
   searchPersonnelByKeyword,
   type CageOwnerApprovalOverview,
+  type ReviewVetConfig,
 } from "@/api/domains/cageShelf.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
@@ -87,6 +92,93 @@ export default function CageOwnerApprovalSettings() {
     }
     void loadOverview();
   }, [canManageOthers, loadOverview]);
+
+  /* ══════════ 全局强制开关 + 审核兽医名单（仅 SUPER_ADMIN+，两个接口后端同样只放行超管） ══════════ */
+  const [forced, setForced] = useState(false);
+  const [forcedSaving, setForcedSaving] = useState(false);
+  // 转移审核通知的二级开关。与 push-config 上 CAGE_TRANSFER_REVIEW 源的总控是两个独立的值，
+  // 级联：两级都开才真的发。
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
+  const [notifySaving, setNotifySaving] = useState(false);
+
+  const [reviewVets, setReviewVets] = useState<ReviewVetConfig>({ accountIds: [], candidates: [] });
+  const [vetsLoading, setVetsLoading] = useState(true);
+  const [vetsSaving, setVetsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!canManageOthers) return;
+    let cancelled = false;
+    fetchTransferGlobal()
+      .then((v) => {
+        if (cancelled) return;
+        setForced(v.transferApprovalForced);
+        setNotifyEnabled(v.transferReviewNotifyEnabled);
+      })
+      .catch(() => { /* 读不到就按默认显示；非超管看不到这块 */ });
+    setVetsLoading(true);
+    fetchReviewVets()
+      .then((v) => {
+        if (!cancelled) setReviewVets(v);
+      })
+      .catch(() => { /* 读不到按空名单显示 */ })
+      .finally(() => {
+        if (!cancelled) setVetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canManageOthers]);
+
+  const toggleForced = async (next: boolean) => {
+    setForced(next);
+    setForcedSaving(true);
+    try {
+      await saveTransferGlobal({ transferApprovalForced: next });
+      toast.success(next ? "已强制开启转移审核" : "已取消强制开启");
+    } catch (e) {
+      setForced(!next);
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setForcedSaving(false);
+    }
+  };
+
+  const toggleNotify = async (next: boolean) => {
+    setNotifyEnabled(next);
+    setNotifySaving(true);
+    try {
+      await saveTransferGlobal({ transferReviewNotifyEnabled: next });
+      toast.success(next ? "已开启转移审核通知" : "已关闭转移审核通知");
+    } catch (e) {
+      setNotifyEnabled(!next);
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setNotifySaving(false);
+    }
+  };
+
+  const toggleReviewVet = (accountId: string) => {
+    setReviewVets((s) => ({
+      ...s,
+      accountIds: s.accountIds.includes(accountId)
+        ? s.accountIds.filter((id) => id !== accountId)
+        : [...s.accountIds, accountId],
+    }));
+  };
+
+  const saveVets = async () => {
+    setVetsSaving(true);
+    try {
+      await saveReviewVets(reviewVets.accountIds);
+      toast.success("审核兽医名单已保存");
+      // 回读：服务端会把 STAFF_* 折算成 canonical 再存，不重读本地就再也对不上
+      setReviewVets(await fetchReviewVets());
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setVetsSaving(false);
+    }
+  };
 
   const saveMine = async () => {
     if (!myAccountId) {
@@ -186,6 +278,34 @@ export default function CageOwnerApprovalSettings() {
 
   return (
     <div className="space-y-5">
+      {/* ── 全局审核配置（仅 SUPER_ADMIN 及以上） ── */}
+      {canManageOthers && (
+        <SettingsSection title="全局审核配置">
+          <SettingsRow
+            label="强制开启转移审核"
+            description="开启后所有人都不能关闭自己的「转移审核」开关；分笼与到位确认不受影响。"
+          >
+            <SettingsSwitch
+              checked={forced}
+              disabled={forcedSaving}
+              onChange={(next) => void toggleForced(next)}
+              label="强制开启转移审核"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="转移审核通知"
+            description="提交转移申请时给审核人推送待审提醒。这是二级开关，与「推送管理」里 CAGE_TRANSFER_REVIEW 源的总控各自独立，两级都开才会发；审核结果回执不受影响。"
+          >
+            <SettingsSwitch
+              checked={notifyEnabled}
+              disabled={notifySaving}
+              onChange={(next) => void toggleNotify(next)}
+              label="转移审核通知"
+            />
+          </SettingsRow>
+        </SettingsSection>
+      )}
+
       {/* ── 上区：我的审核开关（所有人） ── */}
       <SettingsSection
         title="我的审核开关"
@@ -203,8 +323,25 @@ export default function CageOwnerApprovalSettings() {
             <SettingsRow label="分笼审核" description="关闭后你名下笼位的分笼直接执行">
               <SettingsSwitch checked={myDivide} onChange={setMyDivide} label="分笼审核" />
             </SettingsRow>
-            <SettingsRow label="转移审核" description="关闭后你名下笼位的转移直接执行">
-              <SettingsSwitch checked={myTransfer} onChange={setMyTransfer} label="转移审核" />
+            <SettingsRow
+              label={
+                <>
+                  转移审核
+                  {forced && (
+                    <span className="ml-1 font-normal text-[10px] text-[var(--twin-mute)]">
+                      已由管理员强制开启，不可关闭
+                    </span>
+                  )}
+                </>
+              }
+              description="关闭后你名下笼位的转移直接执行"
+            >
+              <SettingsSwitch
+                checked={forced || myTransfer}
+                disabled={forced}
+                onChange={setMyTransfer}
+                label="转移审核"
+              />
             </SettingsRow>
             <div className="flex justify-end">
               <button
@@ -334,8 +471,25 @@ export default function CageOwnerApprovalSettings() {
               <SettingsRow label="分笼审核" description="关闭后该所属人的笼位分笼直接执行">
                 <SettingsSwitch checked={divideRequired} disabled={loadingCfg} onChange={setDivideRequired} label="分笼审核" />
               </SettingsRow>
-              <SettingsRow label="转移审核" description="关闭后该所属人的笼位转移直接执行">
-                <SettingsSwitch checked={transferRequired} disabled={loadingCfg} onChange={setTransferRequired} label="转移审核" />
+              <SettingsRow
+                label={
+                  <>
+                    转移审核
+                    {forced && (
+                      <span className="ml-1 font-normal text-[10px] text-[var(--twin-mute)]">
+                        已由管理员强制开启，不可关闭
+                      </span>
+                    )}
+                  </>
+                }
+                description="关闭后该所属人的笼位转移直接执行"
+              >
+                <SettingsSwitch
+                  checked={forced || transferRequired}
+                  disabled={loadingCfg || forced}
+                  onChange={setTransferRequired}
+                  label="转移审核"
+                />
               </SettingsRow>
               <div className="flex justify-end">
                 <button
@@ -350,6 +504,66 @@ export default function CageOwnerApprovalSettings() {
             </SettingsSection>
           )}
         </>
+      )}
+
+      {/* ── 审核兽医名单（仅 SUPER_ADMIN 及以上）——转移审核「兽医」那一关的签字资格来源 ── */}
+      {canManageOthers && (
+        <SettingsSection
+          title="转移审核兽医"
+          actions={
+            <span className="text-[10px] text-[var(--twin-mute)]">{reviewVets.accountIds.length} 位</span>
+          }
+        >
+          <p className="text-[10px] leading-relaxed text-[var(--twin-mute)]">
+            这里配的是<b className="text-[var(--twin-ink)]">转移审核</b>的兽医。告警阈值弹窗里的「指定兽医」是
+            <b className="text-[var(--twin-ink)]">健康异常通知</b>的收件人，两者互不影响。
+          </p>
+          {vetsLoading ? (
+            <div className="rounded-twin-sm border border-dashed border-[var(--twin-hairline)] px-3 py-4 text-center text-[10px] text-[var(--twin-mute)]">
+              加载中…
+            </div>
+          ) : reviewVets.candidates.length === 0 ? (
+            <div className="rounded-twin-sm border border-dashed border-[var(--twin-hairline)] px-3 py-4 text-center text-[10px] text-[var(--twin-mute)]">
+              没有持「兽医」身份的人 —— 先给人员打上兽医身份标签，才会出现在这里
+            </div>
+          ) : (
+            <>
+              <div className="max-h-48 overflow-y-auto rounded-twin-sm border border-[var(--twin-hairline)] p-1">
+                {reviewVets.candidates.map((c) => {
+                  // 名单存的是 canonical，候选回的是原始 STAFF_ 形态，必须折一口径再比，否则永远显示未勾选
+                  const vetId = c.canonicalAccountId ?? c.accountId;
+                  const on = reviewVets.accountIds.includes(vetId);
+                  return (
+                    <button
+                      key={vetId || c.name}
+                      type="button"
+                      onClick={() => toggleReviewVet(vetId)}
+                      className={`flex w-full items-center gap-2 rounded-twin-sm px-2 py-1.5 text-left text-[11px] transition ${
+                        on ? "bg-[color-mix(in_srgb,var(--twin-primary)_10%,transparent)]" : "hover:bg-[var(--twin-canvas-soft)]"
+                      }`}
+                    >
+                      <span className={`font-semibold ${on ? "text-[var(--twin-primary)]" : "text-[var(--twin-ink)]"}`}>
+                        {c.name || c.accountId}
+                      </span>
+                      {c.jobNumber && <span className="text-[10px] text-[var(--twin-mute)]">{c.jobNumber}</span>}
+                      {on && <span className="ml-auto text-[10px] text-[var(--twin-primary)]">已在名单</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void saveVets()}
+                  disabled={vetsSaving}
+                  className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1 text-[11px] font-semibold text-white transition hover:brightness-95 disabled:opacity-50"
+                >
+                  {vetsSaving ? "保存中…" : "保存兽医名单"}
+                </button>
+              </div>
+            </>
+          )}
+        </SettingsSection>
       )}
     </div>
   );

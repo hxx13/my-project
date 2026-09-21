@@ -90,6 +90,9 @@ function mapJobRow(job, stationNames) {
     tone: meta.tone,
     timeText: at ? String(at).replace('T', ' ').slice(0, 16) : '',
     errorText: job.lastError || '',
+    // QUEUED = 此刻确实还排在那台打印机队列里（只有直发工位会有这个结论，其余为空）。
+    // 「仍卡在打印机队列」标记与撤销按钮都靠它 —— 别让页面再回头按 id 去 job 上翻。
+    queueState: job.queueState || '',
     // 工位名（拿不到就空：列表里那一段自动不显示）
     stationName: stationNames && stationNames[sid] ? stationNames[sid] : '',
   };

@@ -36,18 +36,18 @@ class CageStatusAlertSchedulerTest {
     }
 
     private static StatusInterval open(long cage, String status, LocalDateTime addedAt, boolean estimated) {
-        return new StatusInterval(cage, status, addedAt, null, null, null, estimated);
+        return new StatusInterval(cage, status, "DEFAULT", addedAt, null, null, null, estimated);
     }
 
     private static StatusInterval closed(long cage, String status, LocalDateTime addedAt,
                                          LocalDateTime removedAt, boolean estimated) {
-        return new StatusInterval(cage, status, addedAt, removedAt, null, null, estimated);
+        return new StatusInterval(cage, status, "DEFAULT", addedAt, removedAt, null, null, estimated);
     }
 
     private static EffectiveAlertRule rule(String status, boolean enabled, int threshold, String action) {
         boolean h = "HIGHLIGHT".equals(action) || "BOTH".equals(action);
         boolean v = "VIOLATION".equals(action) || "BOTH".equals(action);
-        return new EffectiveAlertRule(status, enabled, threshold, h, v, true);
+        return new EffectiveAlertRule(status, "DEFAULT", enabled, threshold, h, v, true);
     }
 
     private static Map<Long, List<EffectiveAlertRule>> rulesFor(long cage, EffectiveAlertRule r) {
@@ -112,7 +112,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, addedAt, false)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9, "ACTIVE", addedAt)), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(9, "ACTIVE", addedAt)), now);
 
         assertTrue(intents.isEmpty(), "已 ACTIVE 不重复触发");
     }
@@ -127,7 +127,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, addedAt, false)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, true, 999, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9, "ACTIVE", addedAt)), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(9, "ACTIVE", addedAt)), now);
 
         assertEquals(1, intents.size());
         Intent in = intents.get(0);
@@ -146,7 +146,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, newStart, false)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9L, "ACTIVE", oldStart)), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(9L, "ACTIVE", oldStart)), now);
 
         assertEquals(2, intents.size());
         assertEquals(Kind.CLEAR, intents.get(0).kind(), "先撤销旧行");
@@ -163,7 +163,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, newStart, false)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9L, "ACTIVE", now.minusDays(20))), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(9L, "ACTIVE", now.minusDays(20))), now);
 
         assertEquals(1, intents.size());
         assertEquals(Kind.CLEAR, intents.get(0).kind(), "不够阈值就只撤销，不重建");
@@ -196,7 +196,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, now.minusYears(10), true)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(42, "PENDING", baseline)), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(42, "PENDING", baseline)), now);
 
         assertEquals(1, intents.size());
         Intent in = intents.get(0);
@@ -213,7 +213,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, now.minusYears(10), true)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(42, "PENDING", now.minusDays(6))), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(42, "PENDING", now.minusDays(6))), now);
 
         assertTrue(intents.isEmpty(), "基线起算未到阈值不动作");
     }
@@ -228,7 +228,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(
                 List.of(open(CAGE, DIVIDE, addedAt, false)), List.of(),
                 rulesFor(CAGE, rule(DIVIDE, false, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(7, "ACTIVE", addedAt)), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(7, "ACTIVE", addedAt)), now);
 
         assertEquals(1, intents.size());
         Intent in = intents.get(0);
@@ -258,7 +258,7 @@ class CageStatusAlertSchedulerTest {
         List<Intent> intents = decide(List.of(),
                 List.of(closed(CAGE, DIVIDE, at(1, 0), removedAt, false)),
                 Map.of(),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(5, "ACTIVE", at(1, 0))), now);
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(5, "ACTIVE", at(1, 0))), now);
 
         assertEquals(1, intents.size());
         Intent in = intents.get(0);
@@ -310,24 +310,25 @@ class CageStatusAlertSchedulerTest {
                 List.of(open(CAGE, DIVIDE, openAt, false)),
                 List.of(closed(CAGE, DIVIDE, now.minusDays(12), now.minusDays(11), false)),
                 rulesFor(CAGE, rule(DIVIDE, true, 7, "HIGHLIGHT")),
-                Map.of(activeKeyOf(CAGE, DIVIDE), existing(9L, "ACTIVE", openAt)),
+                Map.of(activeKeyOf(CAGE, DIVIDE, "DEFAULT"), existing(9L, "ACTIVE", openAt)),
                 now);
 
         assertTrue(intents.isEmpty(), "现在还开着 → 历史闭合区间不该产生清除意图");
     }
 
     /**
-     * 特殊饲养 / 合笼（含特殊饲养明细）**不是违规行为**：引擎到阈值只能发通知，不能建违规记录
-     * （用户 2026-09-14 口径）。这条谓词是 {@code maybeEscalate} 分岔的唯一判据，钉在这里。
+     * 特殊饲养 / 合笼 / 特殊饲养明细 / **健康异常**都**不是违规行为**：引擎到阈值只能发通知，
+     * 不能建违规记录（特殊饲养/合笼是用户 2026-09-14 口径，健康异常是 2026-09-17 并入）。
+     * 这条谓词是 {@code maybeEscalate} 分岔的唯一判据，钉在这里。
      */
     @Test
-    void specialFeedingCohabitationAndDetailsAreNotViolations() {
+    void nonViolationStatusesNeverCreateViolations() {
         assertTrue(isNonViolationStatus("SPECIAL_FEEDING"));
         assertTrue(isNonViolationStatus("COHABITATION"));
         assertTrue(isNonViolationStatus("SF_NEED_FEED"), "明细跟着特殊饲养走同一口径");
+        assertTrue(isNonViolationStatus("HEALTH_ABNORMAL"), "健康异常走通知兽医/所有者两个通道，不建违规");
 
         assertFalse(isNonViolationStatus("NEED_DIVIDE"));
-        assertFalse(isNonViolationStatus("HEALTH_ABNORMAL"));
         assertFalse(isNonViolationStatus("ANIMAL_TRANSFER"));
         assertFalse(isNonViolationStatus(null));
     }

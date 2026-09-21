@@ -7,6 +7,7 @@ import { AlertTriangle } from "lucide-react";
 import { alertKindColors, alertKindLabel } from "./MobileNoticesPanel";
 import {
   extractViolationBodyForDisplay,
+  formatNoticeTime,
   MOBILE_NOTICE_BODY_CLASS,
   prepareMobileNoticeHtml,
 } from "./mobileNoticePresentation";
@@ -135,8 +136,8 @@ export default function MobileNoticeDetailBody({
   const bodyHtml = isExempt ? bodySource : prepareMobileNoticeHtml(bodySource);
   const displayTitle = isExempt ? resolveExemptAlertTitle() : item.title;
   const metaTime =
-    item.publishAt?.slice(0, 16) ||
-    item.createdAt?.slice(0, 16) ||
+    formatNoticeTime(item.publishAt) ||
+    formatNoticeTime(item.createdAt) ||
     item.publishAt?.slice(0, 10) ||
     item.createdAt?.slice(0, 10) ||
     "";

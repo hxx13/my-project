@@ -56,6 +56,14 @@ export default function AdminPersonnelPage() {
   const deleteIdentityTagMut = useDeleteIdentityTag();
 
   const [selected, setSelected] = useState<UnifiedPersonnelRecord | null>(null);
+  // 列表刷新后把 selected 重新指到最新那一行，避免详情卡显示旧快照
+  useEffect(() => {
+    setSelected((prev) => {
+      if (!prev) return prev;
+      const fresh = unifiedData?.list?.find((r) => r.id === prev.id);
+      return fresh && fresh !== prev ? fresh : prev;
+    });
+  }, [unifiedData]);
   const [dictOpen, setDictOpen] = useState(false);
   const [personnelDictOpen, setPersonnelDictOpen] = useState(false);
   const [resetAccountOpen, setResetAccountOpen] = useState<string | null>(null);

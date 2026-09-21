@@ -22,18 +22,6 @@ public class IamOAuthProperties {
     /** 须与 IAM 侧注册一致；生产为 https://aroultra.shsmu.edu.cn/（无 #） */
     private String redirectUri = "https://aroultra.shsmu.edu.cn/";
 
-    /**
-     * 统一认证自助注册（人员库无命中时自动建号）。
-     * 当前关闭：enabled=false，禁止进入注册分支；仅预留架构。
-     */
-    private Registration registration = new Registration();
-
-    @Data
-    public static class Registration {
-        /** 统一认证自助注册当前关闭，勿接前端 */
-        private boolean enabled = false;
-    }
-
     public String normalizedAuthBase() {
         String base = authBase == null ? "" : authBase.trim();
         while (base.endsWith("/")) {

@@ -5,11 +5,28 @@ var personIdentity = require('../../../utils/personIdentity.js');
 var { readCustomNavMetrics } = require('../../../utils/customNavMetrics.js');
 var {
   CAGE_FORM_KEY, flattenTemplateFields, buildCodelistDict,
-  buildFormTree, refreshDirty, applyDefaultCollapse,
-  validateGroups, changedValues, revertGroups, summarizeGroups, toApiValue
+  buildFormTree, refreshDirty,
+  validateGroups, changedValues, revertGroups, toApiValue
 } = require('../../../utils/cageForm.js');
 var cageStatus = require('../../../utils/cageStatus.js');
+var cageOpSignatures = require('../../utils/cageOpSignatures.js');
+var cagePosition = require('../../utils/cagePosition.js');
+var cageTransferForm = require('../../utils/cageTransferForm.js');
+var btLogic = require('../../utils/batchTransferLogic.js');
 var CAGE_STATUS_ACTIONS = cageStatus.CAGE_STATUS_ACTIONS;
+
+/* 状态子值字段的 canonical / 码表 code —— 与后端 CageInfoValueService 及 Web/学生端 constants.ts 一一对应。
+   特殊饲养明细是多选；健康异常严重程度是互斥单选（挂在「健康异常」下，不产生状态码、不进告警折叠）。 */
+var SPECIAL_DETAIL_CANONICAL = 'special_feeding_details';
+var SPECIAL_DETAIL_DICT = 'special_feeding_detail';
+var HEALTH_SEVERITY_CANONICAL = 'health_abnormality_severity';
+var HEALTH_SEVERITY_DICT = 'health_abnormality_severity';
+/* 健康异常「瘙痒」：布尔子值（落 value_bool）。写接口约定 itemCodes=['1'] = 打勾、[] = 取消。 */
+var HEALTH_ITCH_CANONICAL = 'health_abnormality_itch';
+var HEALTH_ITCH_LABEL = '瘙痒';
+var HEALTH_ITCH_TRUE = '1';
+/* 学生侧动作码：与后端 CageModeVisibilityService.STUDENT_EDIT_ACTIONS 的键一致 */
+var HEALTH_CHECK_ACTION = 'HEALTH_CHECK';
 var assetApi = require('../../utils/assetApi.js');
 var beijingTime = require('../../../utils/beijingTime.js');
 var cageShelfApi = require('../../utils/cageShelfApi.js');
@@ -20,14 +37,9 @@ var cageCellVisual = require('../../utils/cageCellVisual.js');
 var setUserColors = cageCellVisual.setUserColors;
 var getCellStyle = cageCellVisual.getCellStyle;
 var getDominantCodeLabel = cageCellVisual.getDominantCodeLabel;
-var ynFlag = cageCellVisual.ynFlag;
-var getSpecialStatusList = cageCellVisual.getSpecialStatusList;
 var resolveAnimalCageType = cageCellVisual.resolveAnimalCageType;
 var buildGrid = cageCellVisual.buildGrid;
-var STATUS_LABEL_MAP = cageCellVisual.STATUS_LABEL_MAP;
 var COLUMNS = cageCellVisual.COLUMNS;
-var CAGE_TYPE_DOT_COLOR = cageCellVisual.CAGE_TYPE_DOT_COLOR;
-var CAGE_TYPE_ABBR = cageCellVisual.CAGE_TYPE_ABBR;
 var CAGE_TYPE_LABEL = cageCellVisual.CAGE_TYPE_LABEL;
 
 var CAGE_SHELF_PAGE = '/package-feature/pages/studentCageShelf/index';
@@ -143,15 +155,6 @@ function allocVerdict(cageTypeCode, busyReason) {
 var ALLOC_MIXED_KIND_HINT = '不能同时勾选「等待分配」与「空笼位」笼位，请分两批操作';
 
 
-var STATUS_ABBR = {
-  COHABITATION: "合",
-  SPECIAL_FEEDING: "饲",
-  NEED_DIVIDE: "分",
-  HEALTH_ABNORMAL: "疾",
-  ANIMAL_TRANSFER: "迁"
-};
-
-var BRAND = "#ac1736";
 var PAGE_BG = "#eef0f6";
 // shelveId → cage_shelf_index.id（shelfIndexId），学生申请池接口用（来自 full-tree，非 local-grid）
 var shelfIndexIdMap = {};
@@ -175,11 +178,36 @@ function detailMapFromValues(rows) {
   if (!rows || !rows.length) return out;
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
-    if (r && r.canonical === 'special_feeding_details' && Array.isArray(r.value)) {
+    if (r && r.canonical === SPECIAL_DETAIL_CANONICAL && Array.isArray(r.value)) {
       for (var j = 0; j < r.value.length; j++) out[String(r.value[j])] = true;
     }
   }
   return out;
+}
+
+/** 从表单值里取「健康异常严重程度」当前值（互斥单选的 item_code）；没标/空串 → ''。 */
+function severityFromValues(rows) {
+  if (!rows || !rows.length) return '';
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r && r.canonical === HEALTH_SEVERITY_CANONICAL) {
+      var v = r.value;
+      return typeof v === 'string' ? v.trim() : '';
+    }
+  }
+  return '';
+}
+
+/** 从表单值里取「瘙痒」布尔值；缺字段/非真值 → false。 */
+function itchFromValues(rows) {
+  if (!rows || !rows.length) return false;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r && r.canonical === HEALTH_ITCH_CANONICAL) {
+      return r.value === true || r.value === 1 || r.value === '1';
+    }
+  }
+  return false;
 }
 
 function unwrap(res) {
@@ -286,6 +314,79 @@ function claimStatusLabel(status) {
   return map[status] || status || '—';
 }
 
+/** 分笼/转移请求状态中文标签（我的转移单列表用） */
+function transferOpStatusLabel(status) {
+  var map = {
+    pending: '审核中',
+    approved: '已通过',
+    rejected: '已驳回',
+    cancelled: '已撤销'
+  };
+  return map[status] || status || '—';
+}
+
+/**
+ * 给「我的转移申请」一行挂上展示字段：状态文案、三签进度、源位置、所在房间。
+ *
+ * <p>两处共用 —— 「我的转移单」弹窗与「我的申请」里的转移段。同一条数据在两处各拼一遍必然走形。
+ */
+function decorateMyTransfer(it) {
+  if (!it) return it;
+  it._statusLabel = transferOpStatusLabel(it.status);
+  // 三签进度：归属地/目的地/兽医各自签了没有、谁签的。已通过的单也照留，方便回看是谁批的。
+  it._sign = cageOpSignatures.signSlots(it.signatures);
+  var pairs = it.pairs || [];
+  var srcs = [];
+  for (var pi = 0; pi < pairs.length; pi++) {
+    var s = String((pairs[pi] && pairs[pi].source) || '');
+    if (s && srcs.indexOf(s) === -1) srcs.push(s);
+  }
+  // 映射坐标（1-4 → A-4），不是原生数字 —— 后端给的是 positionX 数字，
+  // 审核页那边一直显示 D-4，只有这里印 4-4 就对不上了
+  var first = cagePosition.cagePositionLabel(it);
+  // 多源批量单：位置只随单下发一份（第一个源的），其余的用数量交代。
+  // 别把 source id 拼出来当标签 —— 那是 19 位雪花号，一行放不下也读不懂。
+  if (srcs.length > 1) {
+    it._posLabel = (first ? first + ' 等 ' : '') + srcs.length + ' 处';
+  } else {
+    // 位置查不到就给横杠。**别退回 sourceAnimalCageId** —— 那是 19 位雪花号，
+    // 塞进位置栏既读不懂又把整行撑变形。
+    it._posLabel = first || '—';
+  }
+  // 地点串：**笼架名自带房号时不再单列房号**（201B-1 属于 201B），与转移单的地点写法同一口径，
+  // 否则会印成「浦东 201B 201B-1」这种同一件事说两遍。
+  var place = [];
+  if (it.campusName) place.push(it.campusName);
+  var room = it.roomName ? String(it.roomName) : '';
+  var shelve = it.shelveName ? String(it.shelveName) : '';
+  if (shelve) {
+    if (!room || shelve.indexOf(room) !== 0) {
+      if (room) place.push(room);
+    }
+    place.push(shelve);
+  } else if (room) {
+    place.push(room);
+  }
+  it._place = place.join(' ');
+  // 标题在 JS 里拼成一个字段再交给 wxml —— 单纯是让模板里只剩一处插值，
+  // 不用在 wxml 里写相邻插值 + 条件空格的表达式。空坐标（'—'）时不拼，免得印出「浦东 201B-1 —」。
+  it._title = (it._place && it._posLabel && it._posLabel !== '—')
+    ? it._place + ' ' + it._posLabel
+    : (it._place || it._posLabel);
+  return it;
+}
+
+/** 本人转移请求：拉一次、滤出 transfer、逐行装饰。两个弹窗共用。 */
+function fetchMyTransfers() {
+  return springAuth.springRequest({ url: '/api/cage-op/my', method: 'GET', data: {} }).then(function(res) {
+    var p = unwrap(res);
+    if (!p.ok) throw new Error(p.message || '加载转移单列表失败');
+    return (p.data || [])
+      .filter(function(it) { return it && it.opType === 'transfer'; })
+      .map(decorateMyTransfer);
+  });
+}
+
 
 function parseImageUrlLines(text) {
   if (!text) return [];
@@ -295,11 +396,11 @@ function parseImageUrlLines(text) {
 /**
  * 从 cell.detail（本地笼位索引数据）构建详情卡片的「表外固定字段」。
  * PI / 部门 / AUP / 品系 / 性别 / 周龄 / 数量 / 来源等关键信息已由统一表单系统渲染
- * （见 loadCellFormValues），此处不再重复拼装。
+ * （见 loadCellFormValues），此处不再重复拼装 —— coords / cageBoxCode / cageTypeAbbr /
+ * cageTypeLabel / cageTypeDotColor 这几个遗留字段 wxml 一个都没读，2026-09-17 清掉。
  */
 function buildCellDetailData(cell) {
   var detail = cell.detail || {};
-  var ct = resolveAnimalCageType(cell);
 
   // 特殊状态标签：以表单(cage_info_value)为真相源，在 loadCellFormValues 里填 statusChips，此处先置空
   var chips = [];
@@ -319,44 +420,8 @@ function buildCellDetailData(cell) {
 
   return {
     position: cell._displayPosition || cell.position,
-    coords: '(' + cell.x + ',' + cell.y + ')',
-    cageBoxCode: ((cell.cageBoxInfo || {}).cageBoxCode || '').trim(),
-    cageTypeAbbr: CAGE_TYPE_ABBR[ct] || '',
-    cageTypeLabel: CAGE_TYPE_LABEL[ct] || cell.stateLabel || '—',
-    cageTypeDotColor: ct === 3 ? '' : (CAGE_TYPE_DOT_COLOR[ct] || ''),
     statusChips: chips,
     images: images
-  };
-}
-
-function buildCellDetailMeta(cell, gridMeta) {
-  var bi = cell.cageBoxInfo || {};
-  var chips = getSpecialStatusList(cell).map(function(s) {
-    return {
-      code: s.code,
-      label: s.label || STATUS_LABEL_MAP[s.code] || s.code,
-      abbr: STATUS_ABBR[s.code] || "?"
-    };
-  });
-  var locationParts = [];
-  if (gridMeta) {
-    if (gridMeta.campusName) locationParts.push(gridMeta.campusName);
-    if (gridMeta.areaName) locationParts.push(gridMeta.areaName);
-    if (gridMeta.floorName) locationParts.push(gridMeta.floorName);
-    if (gridMeta.roomName) locationParts.push(gridMeta.roomName);
-  }
-  var ct = resolveAnimalCageType(cell);
-  return {
-    permitted: cell.visible !== false,
-    cageTypeLabel: CAGE_TYPE_LABEL[ct] || cell.stateLabel || "—",
-    specialChips: chips,
-    showNeedDivide: ynFlag(bi, "NeedDivideYn"),
-    showNeedFeeding: ynFlag(bi, "NeedFeedingYn"),
-    showNeedTransfer: ynFlag(bi, "NeedTransferYn"),
-    showAbnormalHealth: ynFlag(bi, "AbnormalHealthYn"),
-    closingDate: bi.ClosingDate ? String(bi.ClosingDate) : "",
-    specialBreedingName: bi.SpecialBreedingName ? String(bi.SpecialBreedingName) : "",
-    locationText: locationParts.join(" / ")
   };
 }
 
@@ -380,6 +445,12 @@ Page({
     screen: 'list',           // 'list' | 'grid'
     shelves: [],
     shelfGroups: [],          // [{roomName, shelves:[], expanded:false}]
+    // 收藏（2026-09-19：房间级 + 笼架级并存；房间行是「按房号前缀聚合」的一行，收藏它=收藏它下面全部 roomId）
+    favOpen: false,
+    favItems: [],             // 弹层用：按收藏顺序平铺 [{kind,id,name,sub,roomName,campusName,shelveId}]
+    favRoomIds: [],           // 已收藏房间 id
+    favShelfIds: [],          // 已收藏笼架 id
+    scrollIntoViewId: '',     // 收藏里点房间 → 滚到它
     allShelfGroups: [],       // unfiltered, for filter dropdown
     totalCount: 0,
 
@@ -432,6 +503,7 @@ Page({
     // 分笼 / 转移（选位模式，对齐 Web 端 useCageOpSelect）
     opActive: false,
     opKind: '',                    // divide | transfer
+    opBatch: false,                // 批量转移：确认弹窗按「对」而非「个」，一次提交多组源→目标
     opSourceCageId: '',
     opSourceLabel: '',
     opTargetMap: {},               // animalCageId → 目标行（selectable/reason/坐标）
@@ -444,8 +516,38 @@ Page({
     opKeepSource: true,            // 分笼默认保留源笼位；不勾选才归档
     opReason: '',
     opSubmitting: false,
+    // 转移单（仅 transfer）：自动值来自 /cage-op/transfer-form/prefill，学生改动另记一份（只发动过的值）
+    opFormLoading: false,
+    opFormReady: false,            // prefill 取到了没有（取不到不拦提交，学生手填）
+    opFormAuto: {},                // 只读自动值 {piName, experimenterName, fromLocation, toLocation}
+    opFormDate: '',                // 显示值（顶层三项）
+    opFormUnit: '',
+    opFormPhone: '',
+    opFormRows: [],                // 显示值 [{strain,female,male}]，下标与 opPicked 对齐
+    opFormEdits: {},               // 学生动过的值 {transferDate?,unitName?,phone?,rows?[]}，只装改动
     // 待审分笼/转移中间态：animalCageId → { color, label, kind, abbr }（源与目标同色，仅作选位拦截与叠层）
     cageOpMarkers: {},
+    // ── 批量转移（跨房间缓冲抽屉）──
+    btOpen: false,
+    btPhase: 'source',        // source | target
+    btScreen: 'tree',         // tree | grid（「阶段」与「屏」是两件事，别混）
+    btTree: [],               // [{ campusName, collapsed, rooms:[{ roomKey, roomName, collapsed, shelves:[{shelveId,shelveName,roomId,roomName,count}] }] }]
+    btShelf: null,            // 屏 B 当前打开的那一个架 { shelveId, shelveName, roomId, roomName, loading, error, grid }
+    btEmptyText: '',
+    btAnchorId: '',           // 入口格（点「转移笼位」那一格）的 id：它被自动放进缓冲，提示文案要交代来历
+    btHint: '',               // 当前该做什么（分阶段算，_btRebuildChrome 维护）
+    btSources: [],            // [{ animalCageId, label, shelveId, shelveName, roomId, roomName }] 顺序即展示顺序
+    btCursor: 0,              // 目标阶段：当前配到第几个源
+    btPoolMap: {},            // sourceId -> { loading, error, pool: [], byCage: {}, rooms: [] }
+    btTargets: {},            // sourceId -> targetAnimalCageId
+    btPairTargetIds: [],       // 提交时按下标取的目标 id 列表（与 opPicked/opFormRows 对齐，不在提交时重算顺序）
+    btRows: [],               // 配对条展示行（见 _btRebuildChrome）
+    btHeadSub: '',
+    btCursorText: '',
+    btBufferTitle: '',
+    btConfirmOff: true,
+    btSubmitting: false,
+    btChecking: false,        // 逐格 operable 校验的重入保护
     // 详情弹窗内的操作入口（/cage-op/operable 结果）
     detailOperable: false,
     detailOperableCode: '',
@@ -491,10 +593,17 @@ Page({
     claimSubmitting: false,
     // 学生确认模式：本人待确认到位(locked)的 animalCageId 集合（网格琥珀高亮用）
     myClaimCageIds: {},
-    // 我的申请
+    // 我的申请（笼位认领）
     myClaimsOpen: false,
     myClaimsLoading: false,
     myClaims: [],
+    // 我的申请里并进来的「转移申请」段：与「我的转移单」弹窗同一份数据、同一张卡片模板
+    myTransfersLoading: false,
+    myTransfers: [],
+    // 我的转移单
+    transferFormsOpen: false,
+    transferFormsLoading: false,
+    transferForms: [],
     scannedCellX: -1,
     scannedCellY: -1,
     scannedPosition: '',
@@ -513,6 +622,8 @@ Page({
     editActionOptions: cageStatus.CAGE_STATUS_ACTIONS,
     /** 「需特殊饲养」这个动作在不在上面的可选清单里（不在 = 本区/本身份没开放它，明细块整块不渲染） */
     editActionSfParentAvailable: true,
+    /** 严重程度块的父开关（健康异常）是否在本区可选清单里 */
+    editActionHaParentAvailable: true,
     /**
      * 特殊饲养明细（子状态）：
      *   specialDetailOptions —— 可选项，读码表（维护人可加项，所以不硬编码）
@@ -522,6 +633,15 @@ Page({
     specialDetailOptions: [],
     editDetailInitial: {},
     editDetailCurrent: {},
+    /** 健康异常严重程度的可选项（码表维护，可增长）与当前值（互斥单选，'' = 未选） */
+    severityOptions: [],
+    editSeverityInitial: '',
+    editSeverityCurrent: '',
+    /** 健康异常「瘙痒」（布尔子值）：进弹窗时的服务端值 / 当前值 */
+    editItchInitial: false,
+    editItchCurrent: false,
+    /** 健康异常父状态当前是否为 on —— 严重程度块的强绑定判据（与明细的 editActionSfOn 同款） */
+    editActionHaOn: false,
     editActionSfOn: false,
     /** 后端下发的「模式 → 可用动作 code」矩阵（学生视角才有） */
     modeActions: {},
@@ -554,8 +674,6 @@ Page({
     // 关键信息表单（统一表单系统动态渲染，取代原先硬编码的 PI/部门/AUP/动物信息几行）
     formRows: [],        // 扁平副本：扫码确认弹窗按平铺渲染，用这一份
     formGroups: [],      // 按模板分区分组：查看弹窗渲染与编辑用这一份
-    statusSecNo: '',     // 「状态与照片」的编号，由 _refreshSectionNos 按需重算
-    expSecNo: '',        // 「实验记录」的编号
     formLoading: false,
     formError: '',
     formEditable: false,     // 服务端 /cage-op/editable 判定
@@ -576,10 +694,57 @@ Page({
     scannedAt: '',
     highlightTarget: null,  // { shelveId, x, y, campusName, roomName } 扫码跳转高亮
     scanLockHighlight: null, // { sid: shelveId, x, y } 扫码定位闪烁高亮
+    /** 顶栏收件箱入口：能不能进由后端 canEnter 说了算；未读数字跟在按钮文字后面 */
+    vetCanEnter: false,
+    vetUnreadText: '',
+    /** 收件箱弹窗（列表 + 笼位详情都收在组件内） */
+    vetInboxOpen: false,
+  },
+
+  /** 顶栏收件箱入口：每次回到本页都重探一次（弹窗里点了「已查看」回来，角标要跟着变） */
+  onShow: function() {
+    this.loadVetEntry();
+  },
+
+  loadVetEntry: function() {
+    var self = this;
+    springAuth.springRequest({ url: '/api/cage-vet/entry', method: 'GET', data: {} })
+      .then(function(res) {
+        var up = unwrap(res);
+        if (!up.ok || !up.data || up.data.canEnter !== true) {
+          self.setData({ vetCanEnter: false, vetUnreadText: '' });
+          return;
+        }
+        var n = Number(up.data.unreadCount || 0);
+        self.setData({
+          vetCanEnter: true,
+          vetUnreadText: n > 99 ? '99+' : (n > 0 ? String(n) : ''),
+        });
+      })
+      .catch(function() {
+        self.setData({ vetCanEnter: false, vetUnreadText: '' });
+      });
+  },
+
+  onOpenVetInbox: function() {
+    this.setData({ vetInboxOpen: true });
+  },
+
+  onCloseVetInbox: function() {
+    this.setData({ vetInboxOpen: false });
+    // 弹窗不是页面，关掉不会触发 onShow —— 这里补一次入口角标的重探
+    this.loadVetEntry();
+  },
+
+  /** 弹窗内未读数变了：立刻更新入口那枚数字，不等下次 onShow */
+  onVetUnreadChange: function(e) {
+    var n = Number((e.detail && e.detail.count) || 0);
+    this.setData({ vetUnreadText: n > 99 ? '99+' : (n > 0 ? String(n) : '') });
   },
 
   onLoad: function(options) {
     var self = this;
+    this._btShelfGridCache = {};  // 批量转移：shelveId → 已加载的网格，切回看过的架不重拉
     var role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     var token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
     if (!token || !canAccessCageShelfPage(role)) {
@@ -605,9 +770,15 @@ Page({
     }).catch(function() { /* 保持默认色 */ });
 
     // 特殊饲养明细的可选项：读码表（维护人可加项，所以不硬编码）；失败就不显示明细块
-    springAuth.springRequest({ url: '/api/admin/cage-info/codelists/special_feeding_detail', method: 'GET', data: {} }).then(function(res) {
+    springAuth.springRequest({ url: '/api/admin/cage-info/codelists/' + SPECIAL_DETAIL_DICT, method: 'GET', data: {} }).then(function(res) {
       var up = unwrap(res);
       if (up.ok && up.data && up.data.items) self.setData({ specialDetailOptions: up.data.items });
+    }).catch(function() { /* 没配码表就不显示 */ });
+
+    // 健康异常严重程度的可选项：同样读码表（加项不用改代码）；失败就不显示严重程度块
+    springAuth.springRequest({ url: '/api/admin/cage-info/codelists/' + HEALTH_SEVERITY_DICT, method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      if (up.ok && up.data && up.data.items) self.setData({ severityOptions: up.data.items });
     }).catch(function() { /* 没配码表就不显示 */ });
 
     // 解析扫码跳转参数（微信可能不解码，手动 decodeURIComponent）
@@ -672,7 +843,9 @@ Page({
           modeOptions: buildModeOptions(self.data.isStaffView, modes),
           editActionOptions: editOptions,
           // 明细块的父开关在不在本区可选清单里 —— 不在就整块不渲染（开关都没有，子项不该出现）
-          editActionSfParentAvailable: editOptions.some(function (a) { return a && a.action === 'SPECIAL_BREEDING'; })
+          editActionSfParentAvailable: editOptions.some(function (a) { return a && a.action === 'SPECIAL_BREEDING'; }),
+          // 严重程度块同理：健康异常这个父开关不在清单里就不渲染
+          editActionHaParentAvailable: editOptions.some(function (a) { return a && a.action === HEALTH_CHECK_ACTION; })
         });
       }
     }).catch(function() { /* 保留默认硬编码 modeOptions */ });
@@ -749,6 +922,15 @@ Page({
               grp.c1 += s.c1 || 0; grp.c2 += s.c2 || 0; grp.c3 += s.c3 || 0; grp.c4 += s.c4 || 0;
             }
             rm.c1 += grp.c1; rm.c2 += grp.c2; rm.c3 += grp.c3; rm.c4 += grp.c4;
+            /* 收藏星标的粒度 = **真实房间**：组名本来就是真实房号（201A/201B/201C），
+               行首那个 201 只是按房号前缀聚合出来的展示行。
+               一个组一个 roomId —— 与 Web 树「一个房间节点 = 一个 roomId」（roomIdOf）对齐。
+               原先星标挂在聚合行上、按「本行全部 roomId 全中才亮」算，那是聚合结构逼出来的补偿。 */
+            grp.roomId = '';
+            for (var sk = 0; sk < grp.shelves.length; sk += 1) {
+              if (grp.shelves[sk].roomId) { grp.roomId = String(grp.shelves[sk].roomId); break; }
+            }
+            grp._fav = false;
           }
           rm.shelfCount = 0;
           for (var gi2 = 0; gi2 < rm.shelfGroups.length; gi2++) {
@@ -797,6 +979,8 @@ Page({
         roomFilter: '',
         roomFilterIndex: 0
       });
+      // 列表就绪后拉一次收藏（房间级 + 笼架级），把 ☆ 状态贴上去
+      self.loadFavorites();
 
       // 扫码跳转：自动展开并导航到目标笼位
       if (self.data.highlightTarget) {
@@ -979,7 +1163,10 @@ Page({
           clonedGroups.push({
             key: src.key, name: src.name, shelves: src.shelves.slice(),
             hasHighlight: src.hasHighlight, expanded: false,
-            c1: src.c1, c2: src.c2, c3: src.c3, c4: src.c4
+            c1: src.c1, c2: src.c2, c3: src.c3, c4: src.c4,
+            /* 收藏要用：重建时把真实 roomId 与 ☆ 状态一起带上，否则过滤后星标就点不动了 */
+            roomId: src.roomId || '',
+            _fav: src._fav === true
           });
           roomShelfCount += src.shelves.length;
         }
@@ -997,7 +1184,8 @@ Page({
         filtered.push({ campusName: campus.campusName, rooms: matchedRooms });
       }
     }
-    this.setData({ shelfGroups: filtered, filteredShelfCount: totalShelfCount });
+    var self2 = this;
+    this.setData({ shelfGroups: filtered, filteredShelfCount: totalShelfCount }, function() { self2.applyFavFlags(); });
   },
 
   onToggleCampus: function(e) {
@@ -1028,6 +1216,199 @@ Page({
     this.setData({ shelfGroups: groups, allExpanded: next, anyExpanded: next });
   },
 
+  /* ═══════════════════════════════════════════════════════════
+     收藏（2026-09-19）：房间级走新接口 /cage-shelves/room-bookmarks，
+     笼架级走老接口 /cage-shelves/bookmarks；弹层平铺，点一条直达。
+     房间行是「按房号前缀聚合」的一行 → 收藏它 = 收藏它下面全部 roomId，
+     星标状态取「全中才亮」。
+     ═══════════════════════════════════════════════════════════ */
+
+  /** 拉两份收藏（失败就当空，不弹错）+ 把状态贴回列表 */
+  loadFavorites: function() {
+    var self = this;
+    var done = 0, rooms = [], shelves = [];
+    var finish = function() {
+      done++;
+      if (done < 2) return;
+      self.setData({ favRoomIds: rooms, favShelfIds: shelves }, function() {
+        self.applyFavFlags();
+        self.buildFavItems();
+      });
+    };
+    springAuth.springRequest({ url: '/api/cage-shelves/room-bookmarks', method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      if (up.ok && up.data && up.data.roomIds) rooms = up.data.roomIds.map(String);
+      finish();
+    }).catch(function() { finish(); });
+    springAuth.springRequest({ url: '/api/cage-shelves/bookmarks', method: 'GET', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      if (up.ok && up.data) shelves = up.data.map(function(b) { return String(b.shelveId); });
+      finish();
+    }).catch(function() { finish(); });
+  },
+
+  /** 收藏状态贴回列表：房间行「全中才亮」，笼架行看自己的 shelveId */
+  applyFavFlags: function() {
+    var favRooms = this.data.favRoomIds || [];
+    var favShelves = this.data.favShelfIds || [];
+    var groups = this.data.shelfGroups || [];
+    for (var ci = 0; ci < groups.length; ci++) {
+      var rooms = groups[ci].rooms || [];
+      for (var ri = 0; ri < rooms.length; ri++) {
+        var grps = rooms[ri].shelfGroups || [];
+        for (var gi = 0; gi < grps.length; gi++) {
+          /* 房间星标挂在**真实房间**（组）上，一个组一个 roomId —— 不再按聚合行算「全中才亮」 */
+          grps[gi]._fav = !!grps[gi].roomId && favRooms.indexOf(grps[gi].roomId) >= 0;
+          var shs = grps[gi].shelves || [];
+          for (var sj = 0; sj < shs.length; sj++) shs[sj]._fav = favShelves.indexOf(String(shs[sj].shelveId)) >= 0;
+        }
+      }
+    }
+    this.setData({ shelfGroups: groups });
+  },
+
+  /** 弹层数据：按收藏顺序平铺（房间一条、笼架一条），名字从当前列表里查。
+      房间条目自带它下面的笼架列表 —— 收藏夹里点房间是**原地展开**看笼架，不再跳回列表。 */
+  buildFavItems: function() {
+    var favRooms = this.data.favRoomIds || [], favShelves = this.data.favShelfIds || [];
+    var byRoomId = {}, byShelve = {};
+    var groups = this.data.shelfGroups || [];
+    for (var ci = 0; ci < groups.length; ci++) {
+      var cg = groups[ci], rooms = cg.rooms || [];
+      for (var ri = 0; ri < rooms.length; ri++) {
+        var rm = rooms[ri], grps = rm.shelfGroups || [];
+        for (var gi = 0; gi < grps.length; gi++) {
+          var grp = grps[gi];
+          // 房间显示名用**真实房号**（组的名字 201A）——聚合行名 201 不带后缀，点进去挑不准
+          var roomName = grp.name || rm.roomName;
+          var shs = grp.shelves || [];
+          if (grp.roomId && !byRoomId[grp.roomId]) {
+            byRoomId[grp.roomId] = {
+              roomName: roomName,
+              campusName: cg.campusName,
+              shelves: shs.map(function(x) {
+                return { shelveId: String(x.shelveId), shelveName: x.shelveName || String(x.shelveId) };
+              })
+            };
+          }
+          for (var sj = 0; sj < shs.length; sj++) {
+            var s = shs[sj];
+            byShelve[String(s.shelveId)] = {
+              shelveName: s.shelveName || s.shelveId, roomName: roomName,
+              campusName: cg.campusName, roomId: String(s.roomId || grp.roomId || '')
+            };
+          }
+        }
+      }
+    }
+    /* 展开状态跨重建保留：勾一个收藏 / 拉一次数据都会重建 favItems，
+       不带上就是把用户刚展开的房间又收回去 */
+    var prevOpen = {};
+    var prevItems = this.data.favItems || [];
+    for (var pi = 0; pi < prevItems.length; pi += 1) {
+      if (prevItems[pi]._open) prevOpen[prevItems[pi].key] = true;
+    }
+    var items = [];
+    for (var i = 0; i < favRooms.length; i++) {
+      var r = byRoomId[favRooms[i]] || {};
+      var roomKey = 'room:' + favRooms[i];
+      items.push({
+        key: roomKey,
+        kind: 'room', id: favRooms[i], name: r.roomName || favRooms[i],
+        sub: r.campusName || '', roomName: r.roomName || '', campusName: r.campusName || '',
+        shelves: r.shelves || [], _open: !!prevOpen[roomKey]
+      });
+    }
+    for (var j = 0; j < favShelves.length; j++) {
+      var sh = byShelve[favShelves[j]] || {};
+      items.push({
+        key: 'shelf:' + favShelves[j],
+        kind: 'shelf', id: favShelves[j], name: sh.shelveName || favShelves[j],
+        sub: sh.roomName || '', roomName: sh.roomName || '', campusName: sh.campusName || '',
+        roomId: sh.roomId || ''
+      });
+    }
+    this.setData({ favItems: items });
+  },
+
+  /** 点收藏夹里的**房间**条目：原地展开/收起它下面的笼架，不跳列表 */
+  onFavRoomTap: function(e) {
+    var idx = Number((e.currentTarget.dataset || {}).index);
+    var it = (this.data.favItems || [])[idx];
+    if (!it) return;
+    var patch = {};
+    patch['favItems[' + idx + ']._open'] = !it._open;
+    this.setData(patch);
+  },
+
+  onOpenFavorites: function() {
+    this.setData({ favOpen: true });
+    this.loadFavorites();
+  },
+  onCloseFavorites: function() { this.setData({ favOpen: false }); },
+
+  /** 点「真实房间」那一行的 ☆：一个房间一个 roomId，直接切换（与 Web 的 toggleRoom(roomId) 同语义） */
+  onToggleRoomFav: function(e) {
+    var self = this;
+    var id = String(e.currentTarget.dataset.roomId || '');
+    if (!id) return;
+    var next = (self.data.favRoomIds || []).slice();
+    var idx = next.indexOf(id);
+    if (idx >= 0) next.splice(idx, 1); else next.push(id);
+    self.setData({ favRoomIds: next }, function() { self.applyFavFlags(); self.buildFavItems(); });
+    self.putFavorite('/api/cage-shelves/rooms/' + encodeURIComponent(id) + '/bookmark');
+  },
+
+  /** 点「笼架卡」的 ☆ */
+  onToggleShelfFav: function(e) {
+    var self = this;
+    var sid = String(e.currentTarget.dataset.shelveId || '');
+    var rid = String(e.currentTarget.dataset.roomId || '');
+    if (!sid || !rid) return;
+    var favShelves = self.data.favShelfIds || [];
+    var idx = favShelves.indexOf(sid);
+    var next = favShelves.slice();
+    if (idx >= 0) next.splice(idx, 1); else next.push(sid);
+    self.setData({ favShelfIds: next }, function() { self.applyFavFlags(); self.buildFavItems(); });
+    self.putFavorite('/api/cage-shelves/' + encodeURIComponent(rid) + '/' + encodeURIComponent(sid) + '/bookmark');
+  },
+
+  /** 收藏写盘（两个接口都是「切换」语义）：失败就重拉一次把界面拉回真值 */
+  putFavorite: function(url) {
+    var self = this;
+    springAuth.springRequest({ url: url, method: 'PUT', data: {} }).then(function(res) {
+      var up = unwrap(res);
+      if (!up.ok) { wx.showToast({ title: up.message || '收藏失败', icon: 'none' }); self.loadFavorites(); }
+    }).catch(function() { wx.showToast({ title: '收藏失败', icon: 'none' }); self.loadFavorites(); });
+  },
+
+  /** 点收藏夹里的**笼架**条目（直接收藏的那条，或房间展开后列出的那条）：
+      关弹层、直接进那一架的网格。房间条目走 onFavRoomTap（原地展开），不再从这里跳列表。 */
+  onJumpFavorite: function(e) {
+    var self = this;
+    var ds = e.currentTarget.dataset || {};
+    self.setData({ favOpen: false });
+    if (ds.kind === 'shelf' && ds.shelveId) {
+      var groups = self.data.shelfGroups || [];
+      for (var ci = 0; ci < groups.length; ci++) {
+        var rooms = groups[ci].rooms || [];
+        for (var ri = 0; ri < rooms.length; ri++) {
+          var grps = rooms[ri].shelfGroups || [];
+          for (var gi = 0; gi < grps.length; gi++) {
+            var shs = grps[gi].shelves || [];
+            for (var sj = 0; sj < shs.length; sj++) {
+              if (String(shs[sj].shelveId) === String(ds.shelveId)) {
+                self.onShelfTap({ currentTarget: { dataset: { shelveId: shs[sj].shelveId } } });
+                return;
+              }
+            }
+          }
+        }
+      }
+      return;
+    }
+  },
+
 
   onClearFilter: function() {
     var self = this;
@@ -1037,7 +1418,7 @@ Page({
       roomFilterIndex: 0,
       shelfGroups: JSON.parse(JSON.stringify(self.data.allShelfGroups)),
       filteredShelfCount: self.data.totalCount
-    });
+    }, function() { self.applyFavFlags(); });
   },
 
   /* ------------------------------------------------------------------ */
@@ -1140,6 +1521,8 @@ Page({
       self.applyPoolToGrid();
       self.applySelectionToGrid();
       self.applyMyClaimToGrid();
+      // 选位模式下切架：不重投影 op 池高亮，绿色可选环会消失、要再点一次格子才回来
+      self.applyOpToGrid();
       self.loadCageOpMarkers();
       // 换了房间 → 模式入口重算（区域组长可能把某些模式在本房关掉了）
       self.loadVisibleModes();
@@ -2415,7 +2798,17 @@ Page({
           label: isDivide ? '分笼审核中' : '转移审核中',
           abbr: isDivide ? '分' : '移'
         };
-        var ids = [String(r.sourceAnimalCageId || '')].concat(r.targetAnimalCageIds || []);
+        var pairs = r.pairs || [];
+        var ids;
+        if (pairs.length > 0) {
+          ids = [];
+          for (var pi = 0; pi < pairs.length; pi++) {
+            ids.push((pairs[pi] && pairs[pi].source) || '');
+            ids.push((pairs[pi] && pairs[pi].target) || '');
+          }
+        } else {
+          ids = [String(r.sourceAnimalCageId || '')].concat(r.targetAnimalCageIds || []);
+        }
         for (var j = 0; j < ids.length; j++) {
           var cid = String(ids[j] || '');
           if (cid) map[cid] = m;
@@ -2501,9 +2894,15 @@ Page({
     step(0);
   },
 
+  /**
+   * 「我的申请」：笼位认领 + 转移申请两段。
+   *
+   * <p>合并的理由是入口 —— 列表视图那边原来只有一个口子，分两个弹窗要点两次。
+   * 两段的卡片各自复用现成模板（认领行内联、转移行走 transferAppCard），不另拼一套。
+   */
   onOpenMyClaims: function() {
     var self = this;
-    self.setData({ myClaimsOpen: true, myClaimsLoading: true, myClaims: [] });
+    self.setData({ myClaimsOpen: true, myClaimsLoading: true, myClaims: [], myTransfersLoading: true, myTransfers: [] });
     springAuth.springRequest({ url: '/api/student/cage-claims/my', method: 'GET', data: {} }).then(function(res) {
       var p = unwrap(res);
       var list = (p.ok && p.data) || [];
@@ -2513,10 +2912,37 @@ Page({
       self.setData({ myClaimsLoading: false });
       wx.showToast({ title: '加载申请列表失败', icon: 'none' });
     });
+    // 转移段独立成败：它挂了不该把认领那段也拖成空列表
+    fetchMyTransfers().then(function(list) {
+      self.setData({ myTransfersLoading: false, myTransfers: list });
+    }).catch(function() {
+      self.setData({ myTransfersLoading: false });
+    });
   },
 
   onCloseMyClaims: function() {
     this.setData({ myClaimsOpen: false });
+  },
+
+  /** 「我的转移单」列表：本人提交的转移请求（含已通过/已驳回，网格标记消失后仍可回看）。 */
+  onOpenTransferForms: function() {
+    var self = this;
+    self.setData({ transferFormsOpen: true, transferFormsLoading: true, transferForms: [] });
+    fetchMyTransfers().then(function(list) {
+      self.setData({ transferFormsLoading: false, transferForms: list });
+    }).catch(function(e) {
+      self.setData({ transferFormsLoading: false });
+      wx.showToast({ title: (e && e.message) || '加载转移单列表失败', icon: 'none' });
+    });
+  },
+
+  onCloseTransferForms: function() {
+    this.setData({ transferFormsOpen: false });
+  },
+
+  /** 「我的转移单」列表行点「查看转移单」 */
+  onViewTransferFormFromList: function(e) {
+    this._openTransferForm(e.currentTarget.dataset.id);
   },
 
   /** 取消申请：仅 claimStatus === 'pending_approval' 时由 wxml 显示入口 */
@@ -2611,8 +3037,6 @@ Page({
     detailStatusPhotos: {},
       formRows: [],
       formGroups: [],
-      statusSecNo: '',
-      expSecNo: '',
       formLoading: false,
       formError: '',
       detailQrImageSrc: "",
@@ -2672,6 +3096,12 @@ Page({
       // 特殊饲养明细：初值取缓存，没有就用空（表单值到达后覆盖）；强绑定判据看「需特殊饲养」这一位
       var initDet = cacheEntry && cacheEntry.initialDetails ? cacheEntry.initialDetails : {};
       var currDet = cacheEntry && cacheEntry.currentDetails ? cacheEntry.currentDetails : Object.assign({}, initDet);
+      // 健康异常严重程度：初值同样取缓存，没有就用空（表单值到达后覆盖）
+      var initSev = cacheEntry && cacheEntry.initialSeverity ? cacheEntry.initialSeverity : '';
+      var currSev = cacheEntry && cacheEntry.currentSeverity ? cacheEntry.currentSeverity : initSev;
+      // 瘙痒（布尔）：同样初值取缓存
+      var initItch = cacheEntry && cacheEntry.initialItch ? !!cacheEntry.initialItch : false;
+      var currItch = cacheEntry && cacheEntry.currentItch !== undefined ? !!cacheEntry.currentItch : initItch;
       self.setData({
         editActionCell: cell,
         editActionPopup: true,
@@ -2684,7 +3114,12 @@ Page({
         editActionCurrent: Object.assign({}, currAct),
         editDetailInitial: Object.assign({}, initDet),
         editDetailCurrent: Object.assign({}, currDet),
-        editActionSfOn: !!currAct.SPECIAL_BREEDING
+        editActionSfOn: !!currAct.SPECIAL_BREEDING,
+        editSeverityInitial: initSev,
+        editSeverityCurrent: currSev,
+        editItchInitial: initItch,
+        editItchCurrent: currItch,
+        editActionHaOn: !!currAct.HEALTH_CHECK
       });
       // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此反向使能按钮
       if (animalCageId && !cacheEntry) {
@@ -2696,12 +3131,19 @@ Page({
           if (self.data.editActionPopup && self.data.editActionCell === cell && !(self.data.scanCache || {})[ck]) {
             var fAct = cageStatus.actionsFromFormValues(up.data || []);
             var fDet = detailMapFromValues(up.data || []);
+            var fSev = severityFromValues(up.data || []);
+            var fItch = itchFromValues(up.data || []);
             self.setData({
               editActionInitial: Object.assign({}, fAct),
               editActionCurrent: Object.assign({}, fAct),
               editDetailInitial: Object.assign({}, fDet),
               editDetailCurrent: Object.assign({}, fDet),
-              editActionSfOn: !!fAct.SPECIAL_BREEDING
+              editActionSfOn: !!fAct.SPECIAL_BREEDING,
+              editSeverityInitial: fSev,
+              editSeverityCurrent: fSev,
+              editItchInitial: fItch,
+              editItchCurrent: fItch,
+              editActionHaOn: !!fAct.HEALTH_CHECK
             });
           }
         });
@@ -2738,7 +3180,9 @@ Page({
     }
 
     var cellDetail = buildCellDetailData(cell);
-    var detailMeta = buildCellDetailMeta(cell, self.data.gridMeta);
+    // 详情弹窗对外的唯一权限位。原先还有个 buildCellDetailMeta 挂了一堆「表外固定字段」，
+    // wxml 只读 permitted，2026-09-17 清掉。
+    var detailMeta = { permitted: cell.visible !== false };
 
     self.setData({
       selectedCell: cell,
@@ -2875,15 +3319,27 @@ Page({
       // 按模板分区建树：弹窗按分区渲染；formRows 是扁平副本，扫码确认弹窗仍按平铺渲染
       var tree = buildFormTree(tpl.entries, arr[1], tpl.dict);
       refreshDirty(tree.groups);
-      summarizeGroups(tree.groups);
-      applyDefaultCollapse(tree.groups);
       // 编辑权**只认服务端**（cageEditInfo，读矩阵能力 cage.edit.form）。
       // 原先客户端还有一道「角色≥ADMIN 或身份含饲养组长」并与服务端取或——那是旁路，
       // 会让被服务端拦住的账号在小程序里照样能编。2026-09-15 编辑权进矩阵后移除。
       var serverEditable = !!(arr[2] && arr[2].editable);
       var canEditForm = serverEditable;
+      /* 详情弹窗按「不分类别」的平铺两列卡网格渲染（对齐 web），所以走扁平副本；
+         但**编辑回写仍按分区树寻址**，这里给每行标上它在树里的 (g,s,r) 下标，行为不变。 */
+      var flatRows = [];
+      for (var fg = 0; fg < tree.groups.length; fg++) {
+        var fgrp = tree.groups[fg];
+        for (var fs = 0; fs < fgrp.subs.length; fs++) {
+          var fsub = fgrp.subs[fs];
+          for (var fr = 0; fr < fsub.rows.length; fr++) {
+            var frow = fsub.rows[fr];
+            frow._g = fg; frow._s = fs; frow._r = fr;
+            flatRows.push(frow);
+          }
+        }
+      }
       self.setData({
-        formRows: tree.rows,
+        formRows: flatRows,
         formGroups: tree.groups,
         formEditable: canEditForm,
         // 只在确实没有编辑权时展示服务端原因；被客户端授权放行时不该显示「无权限」
@@ -2918,16 +3374,6 @@ Page({
   },
 
   onFormSaveMsgClear: function() { this.setData({ formSaveMsg: '', formSaveMsgType: '' }); },
-
-  /** 折叠/展开某个模板分区 */
-  onToggleFormSection: function(e) {
-    var gi = Number(e.currentTarget.dataset.g);
-    var groups = this.data.formGroups || [];
-    if (isNaN(gi) || gi < 0 || gi >= groups.length) return;
-    var patch = {};
-    patch['formGroups[' + gi + '].collapsed'] = !groups[gi].collapsed;
-    this.setData(patch);
-  },
 
   /** 改一行的统一入口：写 raw → 重算脏值 → 清该行错误 */
   _patchFormRow: function(e, nextRaw, nextValue) {
@@ -2966,24 +3412,15 @@ Page({
   },
 
   /**
-   * 重算分区编号。模板分区占前几位，状态与照片、实验记录跟在其后，
-   * 所以「状态那节显不显示」会改变后面所有编号 —— 表单与标注是两条异步加载路径，
-   * 任一条落地后都要重算，否则编号会错位。
+   * 给模板分区编号（状态与照片、实验记录两节不编号，排在分区之后）。
+   * 表单与标注是两条异步加载路径，任一条落地后都要重算，否则编号会错位。
    */
   _refreshSectionNos: function() {
     var groups = this.data.formGroups || [];
     var patch = {};
-    var n = 0;
     for (var i = 0; i < groups.length; i++) {
-      n++;
-      patch['formGroups[' + i + ']._no'] = pad2(n);
+      patch['formGroups[' + i + ']._no'] = pad2(i + 1);
     }
-    if (this.data.detailHasStatusBlock) {
-      n++;
-      patch.statusSecNo = pad2(n);
-    }
-    n++;
-    patch.expSecNo = pad2(n);
     this.setData(patch);
   },
 
@@ -3015,8 +3452,7 @@ Page({
     var groups = self.data.formGroups || [];
     var errors = validateGroups(groups);
     if (errors.length) {
-      // 展开出错的分区让用户看得见；不弹 toast——错误已经挂在行上了
-      errors.forEach(function(er) { groups[er.gi].collapsed = false; });
+      // 不弹 toast——错误已经挂在行上了
       self.setData({
         formGroups: groups,
         formSaveMsg: errors.length + ' 处待修正',
@@ -3087,11 +3523,15 @@ loadCellAnnotation: function(cell) {
       if (a.statusPhotos) {
         try { var sp = typeof a.statusPhotos === 'string' ? JSON.parse(a.statusPhotos) : a.statusPhotos; if (typeof sp === 'object' && !Array.isArray(sp)) statusPhotos = sp; } catch (err3) {}
       }
+      // 有 key 不等于有内容：状态标了但没传图时 statusPhotos 是空数组，整节渲染出来就是一个空盒子
+      var hasStatusContent = !!statusPhotos._note || Object.keys(statusPhotos).some(function (k) {
+        return k !== '_note' && Array.isArray(statusPhotos[k]) && statusPhotos[k].length > 0;
+      });
       self.setData({
         experimentDesc: a.experimentDesc || '',
         detailImages: images,
         detailStatusPhotos: statusPhotos,
-        detailHasStatusBlock: Object.keys(statusPhotos).length > 0,
+        detailHasStatusBlock: hasStatusContent,
         detailAnnotationLoading: false
       });
       self._refreshSectionNos();
@@ -3200,11 +3640,13 @@ onSaveCellAnnotation: function() {
     if (!self.data.cellDetailMeta || !self.data.cellDetailMeta.permitted) return;
 
     var animalCageId = cell.id || cell.animalCageId || '';
+    // 只发这条通道真正会改的两个字段。statusPhotos 归「状态模式」管，本弹窗里是只读的，
+    // 回传它等于向服务端声明「我要写状态照片」——那道闸只开给饲养员/饲养组长，
+    // 会把「实验员本人存实验记录」一并拦死。
     var payload = {
       animalCageId: animalCageId,
       experimentDesc: self.data.experimentDesc || '',
-      imagesJson: JSON.stringify(self.data.detailImages || []),
-      statusPhotos: JSON.stringify(self.data.detailStatusPhotos || {})
+      imagesJson: JSON.stringify(self.data.detailImages || [])
     };
 
     self.setData({ detailSaving: true, detailSaveMsg: '', detailSaveMsgType: '' });
@@ -3256,8 +3698,6 @@ _closeDetail: function() {
       detailAnnotationLoading: false,
       formRows: [],
       formGroups: [],
-      statusSecNo: '',
-      expSecNo: '',
       formLoading: false,
       formError: '',
       detailSaving: false,
@@ -3347,21 +3787,139 @@ _closeDetail: function() {
     }, this.applyOpToGrid.bind(this));
   },
 
+  /**
+   * 打开确认弹窗。转移要顺带拉一次转移单预填（自动值只在弹窗里展示，落库只落学生动过的值），
+   * 分笼没有转移单，不拉。取不到不拦提交 —— 学生手填，后端本来就有「缺则用笼位值」的兜底。
+   */
   onOpOpenConfirm: function() {
+    var self = this;
     if (this.data.opSelectedCount === 0) { wx.showToast({ title: '请先选择目标笼位', icon: 'none' }); return; }
     var picked = [];
     var sel = this.data.opSelectedCageIds || {};
     var tmap = this.data.opTargetMap || {};
     for (var k in sel) { if (sel[k] && tmap[k]) picked.push(tmap[k]); }
-    this.setData({ opConfirmOpen: true, opPicked: picked });
+    picked = picked.map(function(t) {
+      return Object.assign({}, t, { _posLabel: cagePosition.cagePositionLabel(t) || '—' });
+    });
+    var ids = picked.map(function(t) { return String(t.animalCageId); });
+    var isTransfer = this.data.opKind === 'transfer';
+    this.setData({
+      opConfirmOpen: true, opPicked: picked,
+      opFormLoading: isTransfer, opFormReady: false, opFormAuto: {},
+      opFormDate: '', opFormUnit: '', opFormPhone: '',
+      opFormRows: picked.map(function() { return { strain: '', female: '', male: '' }; }),
+      opFormEdits: {}
+    });
+    if (!isTransfer) return;
+    // 数组参数按本仓库惯例拼逗号：`key[]=` 后端 List 收不到（同 Web 端 fetchTransferFormPrefill）
+    springAuth.springRequest({
+      url: '/api/cage-op/transfer-form/prefill', method: 'GET',
+      data: { sourceAnimalCageId: self.data.opSourceCageId, targetAnimalCageIds: ids.join(',') }
+    }).then(function(res) {
+      var p = unwrap(res);
+      if (!p.ok) { self.setData({ opFormLoading: false, opFormReady: false }); return; }
+      self._applyOpFormPrefill(p.data || {});
+    }).catch(function() {
+      self.setData({ opFormLoading: false, opFormReady: false });
+    });
   },
 
-  onOpCloseConfirm: function() { this.setData({ opConfirmOpen: false }); },
+  /** prefill → 自动值 + 显示初值（显示值 = 未改动时用自动值，与 Web 的 showTop/showRow 同口径） */
+  _applyOpFormPrefill: function(pf) {
+    var rows = (pf.rows || []);
+    var display = [];
+    for (var i = 0; i < this.data.opPicked.length; i++) {
+      var r = rows[i] || {};
+      display.push({
+        strain: r.strain == null ? '' : String(r.strain),
+        female: r.female == null ? '' : String(r.female),
+        male: r.male == null ? '' : String(r.male)
+      });
+    }
+    this.setData({
+      opFormLoading: false, opFormReady: true, opFormAuto: pf,
+      opFormDate: pf.transferDate == null ? '' : String(pf.transferDate),
+      opFormUnit: pf.unitName == null ? '' : String(pf.unitName),
+      opFormPhone: pf.phone == null ? '' : String(pf.phone),
+      opFormRows: display, opFormEdits: {}
+    });
+  },
+
+  _opFormAutoTop: function(field) {
+    var v = (this.data.opFormAuto || {})[field];
+    return v == null ? '' : String(v);
+  },
+
+  _opFormAutoRow: function(idx, field) {
+    var rows = (this.data.opFormAuto || {}).rows || [];
+    var v = (rows[idx] || {})[field];
+    return v == null ? '' : String(v);
+  },
+
+  /** 顶层三项：显示值与「学生动过的值」同时更新；改回自动值 = 没动过（不会把自动值冻进单子） */
+  _setOpFormTop: function(field, dataKey, value) {
+    var edits = Object.assign({}, this.data.opFormEdits || {});
+    if (value === this._opFormAutoTop(field)) delete edits[field]; else edits[field] = value;
+    var patch = { opFormEdits: edits };
+    patch[dataKey] = value;
+    this.setData(patch);
+  },
+
+  /** 日期选择器：e.detail.value 就是 yyyy-MM-dd，与手填同一个出口 */
+  onOpFormDateChange: function(e) { this._setOpFormTop('transferDate', 'opFormDate', (e.detail && e.detail.value) || ''); },
+  onOpFormUnitInput: function(e) { this._setOpFormTop('unitName', 'opFormUnit', e.detail.value || ''); },
+  onOpFormPhoneInput: function(e) { this._setOpFormTop('phone', 'opFormPhone', e.detail.value || ''); },
+
+  /** 目标行（下标与 opPicked 对齐，不拿雪花 id 当 setData 路径的键） */
+  onOpFormRowInput: function(e) {
+    var idx = parseInt(e.currentTarget.dataset.index, 10);
+    var field = e.currentTarget.dataset.field;
+    if (!(idx >= 0) || ['strain', 'female', 'male'].indexOf(field) < 0) return;
+    var value = e.detail.value || '';
+    var edits = Object.assign({}, this.data.opFormEdits || {});
+    var rows = Object.assign({}, edits.rows || {});
+    var row = Object.assign({}, rows[idx] || {});
+    if (value === this._opFormAutoRow(idx, field)) delete row[field]; else row[field] = value;
+    if (Object.keys(row).length === 0) delete rows[idx]; else rows[idx] = row;
+    edits.rows = rows;
+    var patch = { opFormEdits: edits };
+    patch['opFormRows[' + idx + '].' + field] = value;
+    this.setData(patch);
+  },
+
+  onOpCloseConfirm: function() { this.setData({ opConfirmOpen: false, opBatch: false }); },
   onOpKeepSourceChange: function(e) { this.setData({ opKeepSource: !!e.detail.value }); },
   onOpReasonInput: function(e) { this.setData({ opReason: e.detail.value || '' }); },
 
   onOpSubmit: function() {
     var self = this;
+    // 批量转移：一次请求多组源→目标 = 一张单、一次三签（放在下面那个空目标检查之前，
+    // 批量流程的 opSelectedCageIds 本来就是空的）
+    if (self.data.opBatch) {
+      var pairTargets = self.data.btPairTargetIds || [];
+      var picked = self.data.opPicked || [];
+      if (picked.length !== pairTargets.length) { wx.showToast({ title: '配对数据不一致，请重开抽屉', icon: 'none' }); return; }
+      var pairs = picked.map(function (row, i) { return { source: row.animalCageId, target: String(pairTargets[i]) }; });
+      var body = { pairs: pairs, reason: self.data.opReason || '' };
+      var form = cageTransferForm.buildTransferForm(self.data.opFormEdits, pairTargets);
+      if (form) body.transferForm = form;
+      self.setData({ opSubmitting: true, btSubmitting: true });
+      springAuth.springRequest({ url: '/api/cage-op/transfer', method: 'POST', data: body }).then(function (res) {
+        var p = unwrap(res);
+        self.setData({ opSubmitting: false, btSubmitting: false });
+        if (!p.ok) { wx.showToast({ title: p.message || '操作失败', icon: 'none' }); return; }
+        var r = p.data || {};
+        wx.showToast({ title: r.needApproval ? '已提交，等待审核' : '操作已完成', icon: 'success' });
+        self.setData({ opBatch: false, opConfirmOpen: false });
+        self.onOpCancel();
+        self.onBtClose();     // 抽屉还在确认弹窗后面开着，必须一起关（它没锁任何服务端占用，只清本地状态）
+        self.onRetry();
+      }).catch(function () {
+        self.setData({ opSubmitting: false, btSubmitting: false });
+        wx.showToast({ title: '操作失败', icon: 'none' });
+      });
+      return;
+    }
     var sel = self.data.opSelectedCageIds || {};
     var ids = [];
     for (var k in sel) { if (sel[k]) ids.push(k); }
@@ -3369,9 +3927,15 @@ _closeDetail: function() {
     self.setData({ opSubmitting: true });
     var isDivide = self.data.opKind === 'divide';
     var url = isDivide ? '/api/cage-op/divide' : '/api/cage-op/transfer';
-    var data = isDivide
-      ? { sourceAnimalCageId: self.data.opSourceCageId, targetAnimalCageIds: ids, keepSource: !!self.data.opKeepSource, reason: self.data.opReason }
-      : { fromAnimalCageId: self.data.opSourceCageId, toAnimalCageId: ids[0], reason: self.data.opReason };
+    var data;
+    if (isDivide) {
+      data = { sourceAnimalCageId: self.data.opSourceCageId, targetAnimalCageIds: ids, keepSource: !!self.data.opKeepSource, reason: self.data.opReason };
+    } else {
+      // 转移：全部目标都发（旧代码只取 ids[0]，多目标被丢掉）；转移单只发学生动过的值，没动过整份不发
+      data = { fromAnimalCageId: self.data.opSourceCageId, targetAnimalCageIds: ids, reason: self.data.opReason };
+      var form = cageTransferForm.buildTransferForm(self.data.opFormEdits, ids);
+      if (form) data.transferForm = form;
+    }
     springAuth.springRequest({ url: url, method: 'POST', data: data }).then(function(res) {
       var p = unwrap(res);
       self.setData({ opSubmitting: false });
@@ -3384,6 +3948,655 @@ _closeDetail: function() {
       self.setData({ opSubmitting: false });
       wx.showToast({ title: '操作失败', icon: 'none' });
     });
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  批量转移（跨房间缓冲抽屉）                                           */
+  /* ------------------------------------------------------------------ */
+
+  /** 目标阶段当前光标所指的源（btCursor 越界时兜 null，调用方自行判空） */
+  _btCurSource: function () {
+    var sources = this.data.btSources || [];
+    return sources[this.data.btCursor] || null;
+  },
+
+  /**
+   * 批量转移的源侧房间列表：直接把页面已有的 shelfGroups（校/父房间/真实房间/架）
+   * 拍平成「真实房号 → 架」，不新增接口。
+   * key 用 campus/真实房号，与 H5 groupPoolByRoom 的 roomKey 同构。
+   */
+  _btBuildRooms: function () {
+    var out = [];
+    var idx = {};
+    var groups = this.data.shelfGroups || [];
+    for (var c = 0; c < groups.length; c++) {
+      var campus = groups[c] || {};
+      var rooms = campus.rooms || [];
+      for (var r = 0; r < rooms.length; r++) {
+        var sgs = (rooms[r] || {}).shelfGroups || [];
+        for (var g = 0; g < sgs.length; g++) {
+          var sg = sgs[g] || {};
+          var roomName = sg.name || '其他';
+          var key = (campus.campusName || '') + '/' + roomName;
+          if (!idx[key]) {
+            idx[key] = { key: key, roomName: roomName, campusName: campus.campusName || '', shelves: [] };
+            out.push(idx[key]);
+          }
+          (sg.shelves || []).forEach(function (sh) {
+            if (sh && sh.shelveId != null) {
+              idx[key].shelves.push({ shelveId: String(sh.shelveId), shelveName: sh.shelveName || String(sh.shelveId) });
+            }
+          });
+        }
+      }
+    }
+    return out;
+  },
+
+  /**
+   * 源侧树：校区 → 房号 → 架（在 _btBuildRooms 的平铺结果上按 campusName 再归一层）。
+   * 架行不挂计数 —— 源阶段用户本就知道自己笼位在哪，要看的是房间与架名，不是「还剩几个空位」。
+   */
+  _btBuildTree: function () {
+    var rooms = this._btBuildRooms();
+    var out = [];
+    var byCampus = {};
+    rooms.forEach(function (r) {
+      var campusName = r.campusName || '';
+      var campus = byCampus[campusName];
+      if (!campus) {
+        campus = { campusName: campusName, collapsed: false, rooms: [] };
+        byCampus[campusName] = campus;
+        out.push(campus);
+      }
+      campus.rooms.push({
+        roomKey: r.key,
+        roomName: r.roomName,
+        collapsed: false,
+        shelves: (r.shelves || []).map(function (sh) {
+          return { shelveId: sh.shelveId, shelveName: sh.shelveName, roomId: '', roomName: r.roomName, count: 0 };
+        })
+      });
+    });
+    return out;
+  },
+
+  /**
+   * 详情弹窗点「批量转移」：把当前格作为第一个源带进抽屉。
+   * 与 onStartOp 的区别：不进主网格选位模式（批量全程在抽屉里完成，主网格不动）。
+   */
+  onStartBatchTransfer: function () {
+    var self = this;
+    var cell = self.data.selectedCell;
+    var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!cageId) return;
+    if (self._pendingOpOf(cell)) { wx.showToast({ title: self._busyReasonOf(cell), icon: 'none' }); return; }
+    var tree = self._btBuildTree();
+    if (!tree.length) { wx.showToast({ title: '没有可转移的笼架', icon: 'none' }); return; }
+    var meta = self.data.gridMeta || self.data.selectedShelf || {};
+    var anchor = {
+      animalCageId: cageId,
+      label: (cell && (cell._displayPosition || cell.position)) || '',
+      shelveId: String((meta && meta.shelveId) || ''),
+      shelveName: String((meta && meta.shelveName) || ''),
+      roomId: String((meta && meta.roomId) || ''),
+      roomName: String((meta && meta.roomName) || '')
+    };
+    self._closeDetail();
+    // 打开抽屉落到屏 A（树），不自动拉任何架 —— 一次只渲染一个架是本次改动的核心口径
+    self.setData({
+      btOpen: true, btPhase: 'source', btScreen: 'tree',
+      btTree: tree, btShelf: null,
+      // 入口格当第一个源带进来（「转移笼位」点的就是它），同时记下它的 id 好让提示文案交代来历
+      btAnchorId: cageId,
+      btSources: [anchor], btTargets: {}, btPoolMap: {}, btCursor: 0,
+      btSubmitting: false, btEmptyText: ''
+    }, function () {
+      self._btRebuildChrome();
+    });
+  },
+
+  onBtCampusTap: function (e) {
+    var name = String(e.currentTarget.dataset.campusName || '');
+    var tree = (this.data.btTree || []).map(function (c) {
+      if (c.campusName === name) return Object.assign({}, c, { collapsed: !c.collapsed });
+      return c;
+    });
+    this.setData({ btTree: tree });
+  },
+
+  onBtRoomTap: function (e) {
+    var key = String(e.currentTarget.dataset.roomKey || '');
+    var tree = (this.data.btTree || []).map(function (c) {
+      var rooms = (c.rooms || []).map(function (r) {
+        if (r.roomKey === key) return Object.assign({}, r, { collapsed: !r.collapsed });
+        return r;
+      });
+      return Object.assign({}, c, { rooms: rooms });
+    });
+    this.setData({ btTree: tree });
+  },
+
+  onBtShelfRowTap: function (e) {
+    var d = e.currentTarget.dataset;
+    this._btLoadShelf(String(d.shelveId || ''), String(d.shelveName || ''), String(d.roomId || ''), String(d.roomName || ''));
+  },
+
+  /** 屏 B → 屏 A：只翻屏、不拉不画；树与阶段都不变（切回已看过的架直接吃缓存） */
+  onBtBackToTree: function () {
+    this.setData({ btScreen: 'tree', btShelf: null });
+  },
+
+  /**
+   * 拉**一个**架的本地网格（一次只渲染一个架，屏高全给网格）。
+   * 失败只影响这一架，就地显示原因，不回屏 A、不关抽屉；失败的那一架不写缓存，重进仍会重试。
+   */
+  _btLoadShelf: function (shelveId, shelveName, roomId, roomName) {
+    var self = this;
+    self._btShelfGridCache = self._btShelfGridCache || {};
+    var cached = self._btShelfGridCache[shelveId];
+    self.setData({
+      btScreen: 'grid',
+      btShelf: {
+        shelveId: shelveId, shelveName: shelveName, roomId: roomId || '', roomName: roomName || '',
+        loading: !cached, error: '', grid: cached ? cached.grid : []
+      }
+    });
+    if (cached) { self._btPaintPhase(); return; }
+    springAuth.springRequest({
+      url: '/api/cage-cell-index/local-grid/by-shelve/' + String(shelveId), method: 'GET', data: {}
+    }).then(function (res) {
+      var p = unwrap(res);
+      if (!p.ok) throw new Error(p.message || '加载笼位失败');
+      var d = p.data || {};
+      var grid = buildGrid(d.grid || []);
+      self._btShelfGridCache[shelveId] = { grid: grid };
+      self.setData({ 'btShelf.loading': false, 'btShelf.error': '', 'btShelf.grid': grid }, function () { self._btPaintPhase(); });
+    }).catch(function (e) {
+      self.setData({ 'btShelf.loading': false, 'btShelf.error': (e && e.message) || '加载笼位失败' });
+    });
+  },
+
+  /**
+   * 给当前这一个架的格子打标。源阶段与目标阶段共用，只换判据：
+   *   源阶段：饲养中(type3) 且不在缓冲里 → 可点；已在缓冲 → _sel
+   *   目标阶段：池里 selectable → 可点（_sel 已选）；池里存在但不可选 → _dis + _tip=后端 reason
+   * 口径与主网格一致：只认后端下发的 selectable/reason，前端不再叠一层判定。
+   */
+  _btPaintPhase: function () {
+    var self = this;
+    var shelf = self.data.btShelf;
+    if (!shelf || !shelf.grid || !shelf.grid.length) return;
+    var isTarget = self.data.btPhase === 'target';
+    var cur = self._btCurSource();
+    var pool = {};
+    if (isTarget && cur) {
+      var cached = (self.data.btPoolMap || {})[cur.animalCageId] || {};
+      pool = cached.byCage || {};
+    }
+    var sources = self.data.btSources || [];
+    var picked = {};
+    sources.forEach(function (s) { if (s.animalCageId) picked[String(s.animalCageId)] = true; });
+    var chosen = self.data.btTargets || {};
+    var chosenTargetId = (isTarget && cur) ? String(chosen[cur.animalCageId] || '') : '';
+
+    var grid = (shelf.grid || []).map(function (c) {
+      var cid = c && c.animalCageId != null ? String(c.animalCageId) : '';
+      var next = Object.assign({}, c);
+      next._sel = false;
+      next._dis = false;
+      next._tip = '';
+      if (!cid) { return next; }
+      if (!isTarget) {
+        var isOccupied = resolveAnimalCageType(c) === 3;
+        if (picked[cid]) next._sel = true;
+        else if (!isOccupied) { /* 非饲养中不置灰也不给 tip：抽屉里还看不见的可点性靠点击时的 operable 校验兜 */ }
+      } else {
+        var t = pool[cid];
+        if (chosenTargetId && cid === chosenTargetId) next._sel = true;
+        else if (!t) { next._dis = true; next._tip = '不在可选范围'; }
+        else if (!t.selectable) { next._dis = true; next._tip = t.reason || '不可选'; }
+      }
+      return next;
+    });
+    self.setData({ 'btShelf.grid': grid });
+  },
+
+  /** 抽屉的状态文案与配对条：每处 setData 后调一次，避免散在各 handler 里各算一半 */
+  _btRebuildChrome: function () {
+    var self = this;
+    var sources = self.data.btSources || [];
+    var targets = self.data.btTargets || {};
+    var isTarget = self.data.btPhase === 'target';
+    var cur = self._btCurSource();
+    var poolByCage = {};
+    if (isTarget && cur) {
+      var cached = (self.data.btPoolMap || {})[cur.animalCageId] || {};
+      poolByCage = cached.byCage || {};
+    }
+    var rows = btLogic.pairRows(sources, targets, poolByCage).map(function (r) {
+      return Object.assign({}, r, { active: isTarget && cur && r.sourceId === cur.animalCageId });
+    });
+    var paired = rows.filter(function (r) { return r.paired; }).length;
+    var unpaired = sources.length - paired;
+    // 抽屉是「一步一步引导」的：每个阶段都留一句「下一步该做什么」，别让用户对着空网格猜。
+    // 源阶段还要交代锚点的来历 —— 否则用户会纳闷「我还没开始选，怎么已经有一个了」。
+    var hint = '';
+    if (isTarget) {
+      hint = (cur && targets[cur.animalCageId])
+        ? '这个源已配好目标，点配对条可换源'
+        : '请在下面点一个空笼位，作为它的目标';
+    } else if (sources.length === 0) {
+      hint = '请点格子选择要转移的源笼位';
+    } else {
+      var hasAnchor = false;
+      for (var i = 0; i < sources.length; i++) {
+        if (self.data.btAnchorId && sources[i].animalCageId === self.data.btAnchorId) { hasAnchor = true; break; }
+      }
+      hint = hasAnchor
+        ? '已把刚才那一格作为第一个源，请继续点格子添加；点 × 可移除'
+        : '请继续点格子添加源笼位；选完点「下一步」';
+    }
+    self.setData({
+      btRows: rows,
+      btHint: hint,
+      btHeadSub: isTarget ? ('共 ' + sources.length + ' 对 · 已配 ' + paired) : ('已选 ' + sources.length + ' 个源笼位'),
+      btCursorText: cur ? ('第 ' + (self.data.btCursor + 1) + '/' + sources.length + ' 个源 · ' + cur.label + ' · ' + cur.shelveName) : '',
+      btBufferTitle: isTarget ? ('配对 ' + paired + '/' + sources.length) : ('已选 ' + sources.length + ' 个源笼位'),
+      btConfirmOff: sources.length === 0 || unpaired > 0 || self.data.btSubmitting,
+    });
+  },
+
+  onBtCellTap: function (e) {
+    var self = this;
+    var idx = Number(e.detail && e.detail.index);
+    var shelf = self.data.btShelf;
+    if (!shelf || isNaN(idx) || !shelf.grid || !shelf.grid[idx]) return;
+    var cell = shelf.grid[idx];
+    var cageId = cell.animalCageId != null ? String(cell.animalCageId) : '';
+    if (!cageId) return;
+    if (self.data.btPhase === 'target') { self._btPickTarget(cageId, cell); return; }
+    self._btToggleSource(cageId, cell, shelf);
+  },
+
+  /**
+   * 源：已在缓冲则移出；否则先问后端能不能操作（/cage-op/operable 是**单笼位**接口，
+   * 没有批量版，所以这里逐格校验；后端提交时仍会复检）。
+   * ponytail: 逐格校验 operable，N 次请求；若源侧房间普遍十几架再考虑加批量 operable 接口。
+   */
+  _btToggleSource: function (cageId, cell, shelf) {
+    var self = this;
+    var sources = (self.data.btSources || []).slice();
+    var hit = -1;
+    for (var i = 0; i < sources.length; i++) if (sources[i].animalCageId === cageId) { hit = i; break; }
+    if (hit >= 0) {
+      // 已在缓冲 → 移出（配对挂在源 id 上，连带删它的目标）
+      var nextTargets = Object.assign({}, self.data.btTargets || {});
+      delete nextTargets[cageId];
+      sources.splice(hit, 1);
+      self.setData({ btSources: sources, btTargets: nextTargets }, function () {
+        self._btPaintPhase(); self._btRebuildChrome();
+      });
+      return;
+    }
+    if (self.data.btChecking) return;
+    self.setData({ btChecking: true });
+    springAuth.springRequest({ url: '/api/cage-op/operable', method: 'GET', data: { animalCageId: cageId } })
+      .then(function (res) {
+        var p = unwrap(res);
+        // 抽屉可能在请求在飞的时候被关了（或关了又重开）。此时既不该写缓冲，
+        // 也不该用**关抽屉前捕获的 sources 快照**去 concat —— 那会把重开后新选的源冲掉。
+        if (!self.data.btOpen) return;
+        self.setData({ btChecking: false });
+        var d = p.ok ? (p.data || {}) : {};
+        if (!d.operable) { wx.showToast({ title: d.reason || '该笼位不能转移', icon: 'none' }); return; }
+        // 用回包时的最新缓冲重算，且再查一次重（校验期间同一个格子可能已被点掉）
+        var fresh = (self.data.btSources || []).slice();
+        for (var i = 0; i < fresh.length; i++) if (fresh[i].animalCageId === cageId) return;
+        var add = {
+          animalCageId: cageId,
+          label: cell._displayPosition || cell.position || '',
+          shelveId: shelf.shelveId,
+          shelveName: shelf.shelveName,
+          roomId: String(shelf.roomId || ''),
+          roomName: shelf.roomName || ''
+        };
+        self.setData({ btSources: fresh.concat([add]) }, function () {
+          self._btPaintPhase(); self._btRebuildChrome();
+        });
+      })
+      .catch(function () {
+        if (!self.data.btOpen) return;
+        self.setData({ btChecking: false });
+        wx.showToast({ title: '校验失败，请重试', icon: 'none' });
+      });
+  },
+
+  /** 「下一步」：进目标阶段，光标落到第一个没配的源，并保证它的池子已拉 */
+  onBtToTarget: function () {
+    var self = this;
+    var sources = self.data.btSources || [];
+    if (!sources.length) { wx.showToast({ title: '请先选择源笼位', icon: 'none' }); return; }
+    var cursor = btLogic.nextUnpairedIdx(sources, self.data.btTargets || {}, 0);
+    if (cursor < 0) cursor = 0;
+    // 切阶段 → 回屏 A，并按新阶段重建树（见设计 §3 切换规则）
+    self.setData({ btPhase: 'target', btScreen: 'tree', btShelf: null, btCursor: cursor }, function () {
+      self._btEnsurePool(sources[cursor], function () {
+        self._btApplyTargetTree(); self._btRebuildChrome();
+      });
+    });
+  },
+
+  onBtBackToSource: function () {
+    var self = this;
+    // 目标阶段的树是「当前源的目标池」推出来的子集（_btApplyTargetTree）。
+    // 只翻 btPhase 的话源阶段会停留在那个子集上 —— 用户连自己房间的架子都找不到。
+    // 所以必须换回页面那棵完整树，并回屏 A。
+    var tree = self._btBuildTree();
+    self.setData({
+      btPhase: 'source', btScreen: 'tree', btShelf: null, btTree: tree, btEmptyText: ''
+    }, function () { self._btRebuildChrome(); });
+  },
+
+  /** 拉某个源的目标池（全库：不传 shelfIndexId）。按源缓存，来回跳不重拉。 */
+  _btEnsurePool: function (source, done) {
+    var self = this;
+    if (!source) { if (done) done(); return; }
+    var map = Object.assign({}, self.data.btPoolMap || {});
+    if (map[source.animalCageId] && !map[source.animalCageId].error) { if (done) done(); return; }
+    map[source.animalCageId] = { loading: true, error: '', pool: [], byCage: {}, rooms: [] };
+    self.setData({ btPoolMap: map });
+    springAuth.springRequest({ url: '/api/cage-op/targets', method: 'GET', data: { sourceAnimalCageId: source.animalCageId } })
+      .then(function (res) {
+        var p = unwrap(res);
+        if (!p.ok) throw new Error(p.message || '加载可选笼位失败');
+        var pool = p.data || [];
+        var byCage = {};
+        pool.forEach(function (t) { if (t && t.animalCageId != null) byCage[String(t.animalCageId)] = t; });
+        var next = Object.assign({}, self.data.btPoolMap || {});
+        next[source.animalCageId] = { loading: false, error: '', pool: pool, byCage: byCage, rooms: btLogic.groupPoolByRoom(pool) };
+        self.setData({ btPoolMap: next }, function () { if (done) done(); });
+      })
+      .catch(function (e) {
+        var next = Object.assign({}, self.data.btPoolMap || {});
+        next[source.animalCageId] = { loading: false, error: (e && e.message) || '加载可选笼位失败', pool: [], byCage: {}, rooms: [] };
+        self.setData({ btPoolMap: next }, function () { if (done) done(); });
+      });
+  },
+
+  /**
+   * 目标阶段的树：从当前源的池子推（池条目自带校/房/架），**只列有可选目标的架**，
+   * 架行右侧给「可选 N」（= 该架上 selectable 的格子数）。打开某一架仍拉真实网格（屏 B）。
+   */
+  _btApplyTargetTree: function () {
+    var self = this;
+    var cur = self._btCurSource();
+    if (!cur) { self.setData({ btTree: [], btEmptyText: '' }); return; }
+    var cached = (self.data.btPoolMap || {})[cur.animalCageId] || {};
+    var pool = cached.pool || [];
+    var out = [];
+    var byCampus = {};
+    (pool || []).forEach(function (t) {
+      if (!t || !t.selectable) return;   // 只有可选的进树，别的架不列
+      var shelveId = t.shelveId == null ? '' : String(t.shelveId);
+      if (!shelveId) return;
+      var campusName = t.campusName || '';
+      var roomName = t.roomName || '其他';
+      var campus = byCampus[campusName];
+      if (!campus) {
+        campus = { campusName: campusName, collapsed: false, rooms: [], _rooms: {} };
+        byCampus[campusName] = campus;
+        out.push(campus);
+      }
+      var room = campus._rooms[roomName];
+      if (!room) {
+        room = { roomKey: campusName + '/' + roomName, roomName: roomName, collapsed: false, shelves: [], _shelves: {} };
+        campus._rooms[roomName] = room;
+        campus.rooms.push(room);
+      }
+      var shelf = room._shelves[shelveId];
+      if (!shelf) {
+        shelf = { shelveId: shelveId, shelveName: t.shelveName || shelveId, roomId: '', roomName: roomName, count: 0 };
+        room._shelves[shelveId] = shelf;
+        room.shelves.push(shelf);
+      }
+      shelf.count += 1;
+    });
+    // 清掉内部索引（_rooms/_shelves），别把中间结构暴露进渲染数据
+    out.forEach(function (campus) {
+      delete campus._rooms;
+      campus.rooms.forEach(function (room) { delete room._shelves; });
+    });
+    self.setData({ btTree: out, btScreen: 'tree', btShelf: null, btEmptyText: out.length ? '' : '该源暂无可用目标笼位' });
+  },
+
+  /**
+   * 目标：只认后端 selectable。点中 → 记到 btTargets → 光标前进到下一个没配的源；
+   * 全配完 btConfirmOff 变 false，按钮变「提交转移（N）」。
+   */
+  _btPickTarget: function (cageId, cell) {
+    var self = this;
+    var cur = self._btCurSource();
+    if (!cur) return;
+    var cached = (self.data.btPoolMap || {})[cur.animalCageId] || {};
+    var t = (cached.byCage || {})[cageId];
+    if (!t || !t.selectable) { wx.showToast({ title: (t && t.reason) || '该笼位不在可选范围内', icon: 'none' }); return; }
+    var targets = Object.assign({}, self.data.btTargets || {});
+    if (targets[cur.animalCageId] === cageId) delete targets[cur.animalCageId];
+    else targets[cur.animalCageId] = cageId;
+    var sources = self.data.btSources || [];
+    var nextCursor = btLogic.nextUnpairedIdx(sources, targets, self.data.btCursor + 1);
+    if (nextCursor < 0) nextCursor = self.data.btCursor;
+    var nextSource = sources[nextCursor];
+    self.setData({ btTargets: targets, btCursor: nextCursor }, function () {
+      // 池子还没拉的源（删源后回跳可能遇到）先拉再画
+      if (nextSource && !(self.data.btPoolMap || {})[nextSource.animalCageId]) {
+        self._btEnsurePool(nextSource, function () { self._btApplyTargetTree(); self._btRebuildChrome(); });
+      } else {
+        self._btApplyTargetTree(); self._btRebuildChrome();
+      }
+    });
+  },
+
+  /** 配对条上点一条：光标跳到它（目标阶段）/ 无动作（源阶段，删除由 × 走 onBtRemoveSource） */
+  onBtChipTap: function (e) {
+    var self = this;
+    if (self.data.btPhase !== 'target') return;
+    var sid = String(e.currentTarget.dataset.sourceId || '');
+    var sources = self.data.btSources || [];
+    var idx = -1;
+    for (var i = 0; i < sources.length; i++) if (sources[i].animalCageId === sid) { idx = i; break; }
+    if (idx < 0) return;
+    self.setData({ btCursor: idx }, function () {
+      self._btEnsurePool(sources[idx], function () { self._btApplyTargetTree(); self._btRebuildChrome(); });
+    });
+  },
+
+  /** 源阶段 chip 上的 ×：移出这个源（连带删它的目标） */
+  onBtRemoveSource: function (e) {
+    var self = this;
+    var sid = String(e.currentTarget.dataset.sourceId || '');
+    var out = btLogic.removeSource(self.data.btSources || [], self.data.btTargets || {}, sid);
+    var cursor = self.data.btCursor;
+    if (self.data.btPhase === 'target') {
+      var next = btLogic.nextUnpairedIdx(out.sources, out.targets, cursor);
+      cursor = next < 0 ? 0 : next;
+    }
+    self.setData({ btSources: out.sources, btTargets: out.targets, btCursor: cursor }, function () {
+      self._btPaintPhase(); self._btRebuildChrome();
+    });
+  },
+
+  onBtClearSources: function () {
+    var self = this;
+    self.setData({ btSources: [], btTargets: {}, btCursor: 0 }, function () {
+      self._btPaintPhase(); self._btRebuildChrome();
+    });
+  },
+
+  onBtClose: function () {
+    var self = this;
+    // 抽屉里没有锁任何服务端占用（与订购抽屉不同），关掉只需清本地状态。
+    // btChecking 必须一起清：它是在飞的 /cage-op/operable 校验的重入保护，
+    // 留着 true 的话重开抽屉后点任何源格子都会被静默吃掉（连 toast 都没有）。
+    self.setData({
+      btOpen: false, btPhase: 'source', btScreen: 'tree', btTree: [], btShelf: null,
+      btSources: [], btTargets: {}, btPoolMap: {}, btCursor: 0,
+      btSubmitting: false, btChecking: false, btEmptyText: '', btRows: [], btConfirmOff: true,
+      // 锚点与提示都跟着这次会话走：不清的话重开抽屉会拿上一次的入口格去比对提示文案
+      btAnchorId: '', btHint: ''
+    });
+    self._btShelfGridCache = {};
+  },
+
+  onBtConfirm: function () {
+    var self = this;
+    var sources = self.data.btSources || [];
+    var targets = self.data.btTargets || {};
+    if (!sources.length) return;
+    var missing = sources.filter(function (s) { return !targets[s.animalCageId]; });
+    if (missing.length) { wx.showToast({ title: '还有 ' + missing.length + ' 个源没选目标', icon: 'none' }); return; }
+    self._btOpenConfirm();
+  },
+
+  /**
+   * 批量确认：复用既有「确认转移笼位」弹窗（连同它的 op-form 表单），
+   * 只把 opPicked 换成「pair 列表」、opFormRows 换成各对拼起来的一行。
+   * 转移单自动值 = 每对调一次既有 prefill（一源一目标），顶层取第 1 对 ——
+   * 后端 buildInput 的表外单位/负责人本来就取 pairs[0].source，两端天然一致。
+   */
+  _btOpenConfirm: function () {
+    var self = this;
+    var sources = self.data.btSources || [];
+    var targets = self.data.btTargets || {};
+    var btPoolMap = self.data.btPoolMap || {};
+
+    // 批次令牌：prefill 是并发拉的，回来时可能已经开了**另一次**批量确认
+    //（关掉 → 改源 → 再提交）。只有本次批次的回包才准写表单，
+    // 否则上一批的 rows/自动值会盖到新批次上（下标仍对齐，所以只会显示错值，不会错发 pair，
+    // 但那已经够让人以为「核对过了」）。
+    var token = (self._btConfirmToken || 0) + 1;
+    self._btConfirmToken = token;
+
+    // 逐源取目标条目：配对挂在源 id 上、与顺序解耦，这里按 sources 顺序铺平
+    var pairs = sources.map(function (s) {
+      var cached = btPoolMap[s.animalCageId] || {};
+      var t = (cached.byCage || {})[targets[s.animalCageId]] || {};
+      return { source: s, targetId: String(targets[s.animalCageId]), target: t };
+    });
+
+    self.setData({
+      opBatch: true, opKind: 'transfer', opConfirmOpen: true,
+      opSubmitting: false, btSubmitting: false,
+      // 每对一行：源 id 唯一可当 wx:key；目标坐标用 displayLabelOf 保证与网格位号一致（含顶↔底翻转）
+      opPicked: pairs.map(function (p) {
+        var tl = (p.target.positionX != null && p.target.positionY != null)
+          ? btLogic.displayLabelOf(p.target.positionX, p.target.positionY) : '—';
+        return {
+          animalCageId: p.source.animalCageId,
+          _posLabel: p.source.label + ' → ' + tl,
+          campusName: p.target.campusName || '',
+          roomName: p.target.roomName || '',
+          shelveName: p.target.shelveName || '',
+          aupNumber: p.target.aupNumber || ''
+        };
+      }),
+      // 提交时按下标取它对齐 opFormRows，别在提交时再从池里重算顺序
+      btPairTargetIds: pairs.map(function (p) { return p.targetId; }),
+      opFormLoading: true, opFormReady: false,
+      opFormAuto: {}, opFormRows: [], opFormEdits: { rows: [] },
+      opFormDate: '', opFormUnit: '', opFormPhone: '',
+      opReason: ''
+    });
+
+    // 每对一次 prefill，顶层取第 1 对，rows 按下标拼接（与后端 rows[i] ↔ pairs[i] 对齐同口径）
+    Promise.all(pairs.map(function (p) {
+      return springAuth.springRequest({
+        url: '/api/cage-op/transfer-form/prefill', method: 'GET',
+        data: { sourceAnimalCageId: p.source.animalCageId, targetAnimalCageIds: p.targetId }
+      }).then(function (res) {
+        var q = unwrap(res);
+        return q.ok ? (q.data || null) : null;
+      }).catch(function () { return null; });
+    })).then(function (list) {
+      // 弹窗已关、已经不是批量、或者期间又开了新的一次批量确认 → 早退，别写已经过期的表单
+      if (token !== self._btConfirmToken) return;
+      if (!self.data.opConfirmOpen || !self.data.opBatch) return;
+      var first = list[0] || {};
+      var rows = list.map(function (pf) {
+        var r = (pf && pf.rows && pf.rows[0]) || {};
+        return {
+          strain: r.strain == null ? '' : String(r.strain),
+          female: r.female == null ? '' : String(r.female),
+          male: r.male == null ? '' : String(r.male)
+        };
+      });
+      /**
+       * 汇总表外的「转出/接收地点」：
+       * 单个流程一次就把「源 + 全部目标」交给 prefill，所以它拿到的 fromLocation/toLocation 天然是全量。
+       * 批量是**每对一次** prefill，只看第 1 对就漏了后面几对被搬的笼位 —— 复核时看着像只搬一个。
+       * 所以这里按对拼起来。后端 `pairLocations` 排印时是一对一行的编号列表，弹窗这块是单行灰字，
+       * 换成「；」连接（内容一致、只是分隔符不同），避免这一段在弹窗里撑成多行。
+       */
+      var joinLocs = function (key) {
+        var seen = {}, out = [];
+        list.forEach(function (pf) {
+          var v = pf && pf[key];
+          if (!v || seen[v]) return;
+          seen[v] = true;
+          out.push(v);
+        });
+        return out.join('；');
+      };
+      var fromLocation = joinLocs('fromLocation');
+      var toLocation = joinLocs('toLocation');
+      self.setData({
+        opFormLoading: false, opFormReady: !!list[0],
+        // 与单个流程同口径：opFormAuto 装整份自动值 —— 弹窗读 piName/…，
+        // _opFormAutoTop 读 transferDate/unitName/phone，_opFormAutoRow 读 rows[idx][field]。
+        // rows 必须是**拼接后的全量**，否则第 2 对起「改了没有」比对不上，
+        // 学生填了跟自动值一样的数也会被当成改动发出去。
+        opFormAuto: Object.assign({}, first, {
+          rows: rows,
+          fromLocation: fromLocation || first.fromLocation || '',
+          toLocation: toLocation || first.toLocation || ''
+        }),
+        // 顶层三项的显示初值 = 自动值（与单个流程的 _applyOpFormPrefill 同口径）
+        opFormDate: first.transferDate == null ? '' : String(first.transferDate),
+        opFormUnit: first.unitName == null ? '' : String(first.unitName),
+        opFormPhone: first.phone == null ? '' : String(first.phone),
+        opFormRows: rows,
+        // 还没动过任何字段：与单个流程一致，空对象 = 整份走后端自动值
+        opFormEdits: {}
+      });
+    });
+  },
+
+  /**
+   * 查看本人转移单 PDF。两个入口共用：未决转移条（detailOpMark）与「我的转移单」列表。
+   * /api/cage-op/transfer-form/{id} 回的是**裸字节流**不是 Result 信封，
+   * 所以走 springRequestBinary（JSON 那条会把 PDF 当字符串解析坏）；
+   * 落盘 + wx.openDocument 复用 springAuth.saveAndOpenDocument，不自己写一份。
+   */
+  _openTransferForm: function(rid) {
+    rid = String(rid || '').trim();
+    if (!rid) return;
+    wx.showLoading({ title: '加载中…' });
+    springAuth.springRequestBinary('/api/cage-op/transfer-form/' + encodeURIComponent(rid), {
+      errorMessage: '转移单加载失败',
+      forbiddenMessage: '无权查看该转移单'
+    }).then(function(res) {
+      wx.hideLoading();
+      return springAuth.saveAndOpenDocument(res.data, '转移单-' + rid + '.pdf', 'pdf');
+    }).catch(function(err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '转移单加载失败', icon: 'none' });
+    });
+  },
+
+  onViewTransferForm: function() {
+    var mark = this.data.detailOpMark || {};
+    this._openTransferForm(mark.requestId);
   },
 
   /** 本人一键认领（实验员为空且无认领记录时可用） */
@@ -3803,15 +5016,27 @@ getCellStyleWxs: function(cell) {
     }
     // 切换动作
     newCache[key].currentActions[a] = !newCache[key].currentActions[a];
-    // 如果 currentActions 已恢复为初始状态，移除缓存条目
-    var init = newCache[key].initialActions;
-    var cur = newCache[key].currentActions;
-    if (!CAGE_STATUS_ACTIONS.some(function (x) { return cur[x.action] !== init[x.action]; })) {
-      delete newCache[key];
-    }
-    // 同步更新 editActionCurrent（弹窗内显示用）；明细块的强绑定判据也跟着「需特殊饲养」这一位走
+    /*
+      整条缓存只在「动作 + 明细 + 严重程度」都没差异时才移除 —— 只看动作会把
+      「只改了明细/严重程度」的条目整条丢掉，用户勾的子值就静默没了。
+    */
+    var e0 = newCache[key];
+    var init = e0.initialActions;
+    var cur = e0.currentActions;
+    var sameAct = !CAGE_STATUS_ACTIONS.some(function (x) { return cur[x.action] !== init[x.action]; });
+    var det0 = e0.initialDetails || {}, det1 = e0.currentDetails || {};
+    var sameDet = Object.keys(det0).every(function (c) { return !!det0[c] === !!det1[c]; })
+      && Object.keys(det1).every(function (c) { return !!det0[c] === !!det1[c]; });
+    var sameSev = (e0.initialSeverity || '') === (e0.currentSeverity || '');
+    if (sameAct && sameDet && sameSev) delete newCache[key];
+    // 同步更新 editActionCurrent（弹窗内显示用）；明细/严重程度块的强绑定判据各跟自己的父状态位走
     var ec = newCache[key] ? Object.assign({}, newCache[key].currentActions) : cageStatus.newActionState();
-    this.setData({ scanCache: newCache, editActionCurrent: ec, editActionSfOn: !!ec.SPECIAL_BREEDING }, this.applyCacheToGrid.bind(this));
+    this.setData({
+      scanCache: newCache,
+      editActionCurrent: ec,
+      editActionSfOn: !!ec.SPECIAL_BREEDING,
+      editActionHaOn: !!ec.HEALTH_CHECK
+    }, this.applyCacheToGrid.bind(this));
   },
 
   /**
@@ -3840,7 +5065,7 @@ getCellStyleWxs: function(cell) {
     if (!entry.initialDetails) entry.initialDetails = {};
     if (!entry.currentDetails) entry.currentDetails = Object.assign({}, entry.initialDetails);
     entry.currentDetails[code] = !entry.currentDetails[code];
-    // 动作与明细都没差 → 移除缓存条目（与 onEditActionToggle 同口径）
+    // 动作/明细/严重程度都没差 → 移除缓存条目（与 onEditActionToggle 同口径）
     var sameDet = Object.keys(entry.initialDetails).every(function (c) {
       return !!entry.currentDetails[c] === !!entry.initialDetails[c];
     }) && Object.keys(entry.currentDetails).every(function (c) {
@@ -3849,11 +5074,71 @@ getCellStyleWxs: function(cell) {
     var sameAct = CAGE_STATUS_ACTIONS.every(function (a) {
       return !!entry.currentActions[a.action] === !!entry.initialActions[a.action];
     });
-    if (sameDet && sameAct) delete newCache[key];
+    var sameSev = (entry.initialSeverity || '') === (entry.currentSeverity || '');
+    if (sameDet && sameAct && sameSev) delete newCache[key];
     this.setData({
       scanCache: newCache,
       editDetailCurrent: Object.assign({}, entry.currentDetails)
     }, this.applyCacheToGrid.bind(this));
+  },
+
+  /**
+   * 健康异常严重程度 + 瘙痒：一起落进缓存（严重程度**互斥单选**、瘙痒是布尔子值）。
+   * 界面上勾选框画在每一档旁边（勾上 = 该档 + 瘙痒），所以两者一起写；
+   * 三样（动作 / 明细 / 严重程度+瘙痒）都没差 → 移除缓存条目，别把子值差异丢了。
+   */
+  applySeverityValue: function(value, itchy) {
+    var cell = this.data.editActionCell;
+    if (!cell) return;
+    var key = cell.x + ':' + cell.y;
+    var cache = this.data.scanCache || {};
+    var newCache = {};
+    for (var k in cache) { if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k]; }
+    if (!newCache[key]) {
+      var initAct = this.data.editActionInitial || cageStatus.newActionState();
+      var currAct = this.data.editActionCurrent || Object.assign({}, initAct);
+      var initDet = this.data.editDetailInitial || {};
+      newCache[key] = {
+        cell: cell, code: '',
+        initialActions: Object.assign({}, initAct), currentActions: Object.assign({}, currAct),
+        initialDetails: Object.assign({}, initDet), currentDetails: Object.assign({}, initDet)
+      };
+    }
+    var entry = newCache[key];
+    if (entry.initialSeverity === undefined) entry.initialSeverity = this.data.editSeverityInitial || '';
+    if (entry.initialItch === undefined) entry.initialItch = !!this.data.editItchInitial;
+    entry.currentSeverity = value || '';
+    entry.currentItch = !!itchy;
+    var sameSev = (entry.currentSeverity || '') === (entry.initialSeverity || '');
+    var sameItch = !!entry.currentItch === !!entry.initialItch;
+    var d0 = entry.initialDetails || {}, d1 = entry.currentDetails || {};
+    var sameDet = Object.keys(d0).every(function (c) { return !!d0[c] === !!d1[c]; })
+      && Object.keys(d1).every(function (c) { return !!d0[c] === !!d1[c]; });
+    var sameAct = CAGE_STATUS_ACTIONS.every(function (a) {
+      return !!entry.currentActions[a.action] === !!entry.initialActions[a.action];
+    });
+    if (sameSev && sameItch && sameDet && sameAct) delete newCache[key];
+    this.setData({
+      scanCache: newCache,
+      editSeverityCurrent: entry.currentSeverity,
+      editItchCurrent: entry.currentItch
+    }, this.applyCacheToGrid.bind(this));
+  },
+
+  /** 点档位本体：选中该档；再点同一档 = 连瘙痒一起清掉。 */
+  onSeverityToggle: function(e) {
+    var code = e.currentTarget.dataset.code;
+    if (!code) return;
+    var on = (this.data.editSeverityCurrent || '') === code;
+    this.applySeverityValue(on ? '' : code, on ? false : !!this.data.editItchCurrent);
+  },
+
+  /** 点档位右上角的勾选框：勾上 = 该档 + 瘙痒；已是「该档 + 瘙痒」再点 = 只取消瘙痒。 */
+  onSeverityItchToggle: function(e) {
+    var code = e.currentTarget.dataset.code;
+    if (!code) return;
+    var on = (this.data.editSeverityCurrent || '') === code && !!this.data.editItchCurrent;
+    this.applySeverityValue(code, !on);
   },
 
   onEditActionChoosePhoto: function() {
@@ -3917,7 +5202,10 @@ getCellStyleWxs: function(cell) {
       if (note) sp._note = note; // 标注文本存入 statusPhotos，与实验记录分离
       var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
       return springAuth.springRequest({ url: '/api/local/annotate', method: 'POST', data: body });
-    }).then(function() {
+    }).then(function(res2) {
+      // 业务错误是 HTTP 200 + {success:false}，不解包会把「被服务端拦下」显示成「已保存」
+      var up2 = unwrap(res2);
+      if (!up2.ok) { wx.showToast({ title: up2.message || '保存失败', icon: 'none' }); return; }
       wx.showToast({ title: '标注已保存', icon: 'success' });
     }).catch(function(e) {
       wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
@@ -3944,12 +5232,15 @@ getCellStyleWxs: function(cell) {
       if (note) sp._note = note;
       var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
       return springAuth.springRequest({ url: '/api/local/annotate', method: 'POST', data: body });
-    }).then(function() {
+    }).then(function(res2) {
+      // 业务错误是 HTTP 200 + {success:false}，不解包会把「被服务端拦下」显示成「已归档」
+      var up2 = unwrap(res2);
+      if (!up2.ok) { wx.showToast({ title: up2.message || '保存失败', icon: 'none' }); return; }
       // 清空表单 + 刷新历史
       self.setData({ editActionPhotos: [], editActionNote: '' });
       if (animalCageId) {
-        springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(res2) {
-          var hp = unwrap(res2);
+        springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(hres) {
+          var hp = unwrap(hres);
           var list = (hp.ok ? hp.data : []) || [];
           self.setData({ editHistory: normalizeStatusHistory(list) });
         }).catch(function(){});
@@ -3982,80 +5273,6 @@ getCellStyleWxs: function(cell) {
     });
   },
 
-  onEditActionClose: function() {
-    var self = this;
-    var cell = self.data.editActionCell;
-    // 保存照片和备注到 statusPhotos
-    if (cell && (self.data.editActionPhotos.length > 0 || self.data.editActionNote.trim())) {
-      var animalCageId = cell.id || cell.animalCageId || '';
-      if (animalCageId) {
-        var sp = {};
-        cageStatus.statusPhotoKeys(cageStatus.actionsFromFormValues(self.data.editFormValues)).forEach(function (k) { sp[k] = self.data.editActionPhotos; });
-        sp._status = self.data.editActionPhotos;  // 兜底
-        springAuth.springRequest({
-          url: '/api/local/annotate', method: 'POST',
-          data: { animalCageId: animalCageId, experimentDesc: self.data.editActionNote, statusPhotos: JSON.stringify(sp) }
-        });
-      }
-    }
-    self.setData({ editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
-  },
-
-  onEditActionSubmit: function() {
-    var self = this;
-    var cell = self.data.editActionCell;
-    if (!cell) return;
-    // Save photos first
-    var animalCageId = cell.id || cell.animalCageId || '';
-    if (animalCageId && (self.data.editActionPhotos.length > 0 || self.data.editActionNote.trim())) {
-      var sp = {};
-      var cur = self.data.editActionCurrent || {};
-      CAGE_STATUS_ACTIONS.forEach(function (a) { if (cur[a.action]) sp[a.statusField] = self.data.editActionPhotos; });
-      sp._status = self.data.editActionPhotos;  // 兜底
-      springAuth.springRequest({
-        url: '/api/local/annotate', method: 'POST',
-        data: { animalCageId: animalCageId, experimentDesc: self.data.editActionNote, statusPhotos: JSON.stringify(sp) }
-      });
-    }
-    // Submit actions
-    var init = self.data.editActionInitial || {};
-    var cur2 = self.data.editActionCurrent || {};
-    var toAdd = [], toRemove = [];
-    CAGE_STATUS_ACTIONS.forEach(function (a) {
-      if (cur2[a.action] && !init[a.action]) toAdd.push(a.action);
-      if (!cur2[a.action] && init[a.action]) toRemove.push(a.action);
-    });
-    if (toAdd.length === 0 && toRemove.length === 0) {
-      self.onEditActionClose();
-      return;
-    }
-    self.setData({ actionSubmitting: true });
-    var ok=0, fail=0, total=toAdd.length+toRemove.length, lastErr='';
-    var tasks = [];
-    // 业务错误是 HTTP 200 + {success:false}（服务端拦中间态就是这种），
-    // 不看 success 就会把「被拦下」当成「提交成功」——必须解包后再计数。
-    var count = function(res){ var p = unwrap(res); if (p.ok) { ok++; } else { fail++; if (!lastErr) lastErr = p.message || ''; } };
-    for (var i=0;i<toAdd.length;i++) {
-      (function(action){
-        var toggle = cageStatus.statusField(action);
-        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:true,cageBoxCode:''}}).then(count).catch(function(){fail++;}));
-      })(toAdd[i]);
-    }
-    for (var j=0;j<toRemove.length;j++) {
-      (function(action){
-        var toggle = cageStatus.statusField(action);
-        tasks.push(springAuth.springRequest({url:'/api/local/edit',method:'POST',data:{animalCageId:animalCageId,toggle:toggle,enable:false,cageBoxCode:''}}).then(count).catch(function(){fail++;}));
-      })(toRemove[j]);
-    }
-    Promise.all(tasks).then(function(){
-      self.setData({ actionSubmitting: false, editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '' });
-      if(fail===0){wx.showToast({title:'已完成 '+ok+' 个操作（本地+异步投递）',icon:'success'});self.onRetry();}
-      // 失败时把服务端原因带出来（例如「该笼位已被预定（还在购物车里），不能标记饲养状态」），
-      // 否则用户只看到「失败」不知道为什么。
-      else{wx.showToast({title: lastErr || (ok+' 成功 / '+fail+' 失败'),icon:'none',duration:3000});}
-    });
-  },
-
   onSubmitScanActions: function() {
     var self = this;
     var cache = self.data.scanCache || {};
@@ -4080,7 +5297,21 @@ getCellStyleWxs: function(cell) {
           if (!!dCurr[c] !== !!dInit[c]) changedDet = true;
         });
         Object.keys(dInit).forEach(function (c) { if (!!dInit[c] !== !!dCurr[c]) changedDet = true; });
-        if (changedDet) detailTasks.push({ kind: 'detail', cell: e.cell, itemCodes: codes });
+        if (changedDet) {
+          detailTasks.push({ kind: 'detail', canonical: SPECIAL_DETAIL_CANONICAL, cell: e.cell, itemCodes: codes });
+        }
+        // 健康异常严重程度：互斥单选，有差异就整体覆盖写一次（空数组 = 清空）
+        var sInit = e.initialSeverity || '';
+        var sCurr = e.currentSeverity || '';
+        if (sCurr !== sInit) {
+          detailTasks.push({ kind: 'detail', canonical: HEALTH_SEVERITY_CANONICAL, cell: e.cell,
+            itemCodes: sCurr ? [sCurr] : [] });
+        }
+        // 瘙痒（布尔子值）：有差异就整体覆盖写一次（['1'] = 打勾、[] = 取消）
+        if (!!e.currentItch !== !!e.initialItch) {
+          detailTasks.push({ kind: 'detail', canonical: HEALTH_ITCH_CANONICAL, cell: e.cell,
+            itemCodes: e.currentItch ? [HEALTH_ITCH_TRUE] : [] });
+        }
       }
     }
     if (addEntries.length === 0 && removeEntries.length === 0 && detailTasks.length === 0) return;
@@ -4107,10 +5338,11 @@ getCellStyleWxs: function(cell) {
       var cageId = String(entry.cell.id || (entry.cell.animalCageId) || '');
       var req;
       if (entry.kind === 'detail') {
-        // 特殊饲养明细：整体覆盖（itemCodes 里只带当前为真的项；空数组 = 清空）
+        // 状态子值（特殊饲养明细多选 / 健康异常严重程度单选）：整体覆盖
+        // （itemCodes 里只带当前为真的项；空数组 = 清空；canonical 由任务带下来）
         req = springAuth.springRequest({
-          url: '/api/local/special-details', method: 'POST',
-          data: { animalCageId: cageId, itemCodes: entry.itemCodes || [] }
+          url: '/api/local/status-detail', method: 'POST',
+          data: { animalCageId: cageId, canonical: entry.canonical, itemCodes: entry.itemCodes || [] }
         });
       } else {
         var toggle = cageStatus.statusField(entry.action);

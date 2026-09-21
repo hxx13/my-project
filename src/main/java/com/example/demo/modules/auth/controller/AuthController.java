@@ -51,7 +51,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -117,6 +119,30 @@ public class AuthController {
 
         String username = request.getUsername().trim();
         User user = userMapper.findByUsername(username);
+
+        // 账号名找不到时，手机号也能当登录名（手机号是独立字段，只是也可用来登录）。
+        // 历史数据里有手机号重号：命中多个时**不能替用户猜**，返回候选让他选，再拿选中的账号名重试。
+        if (user == null) {
+            List<User> byPhone = userMapper.findAllByMobilePhone(username);
+            if (byPhone.size() > 1) {
+                List<Map<String, Object>> candidates = new ArrayList<>();
+                for (User u : byPhone) {
+                    Map<String, Object> c = new HashMap<>();
+                    c.put("username", u.getUsername() == null ? "" : u.getUsername());
+                    c.put("name", u.getName() == null ? "" : u.getName());
+                    candidates.add(c);
+                }
+                Result<Object> raw = Result.fail(409, "该手机号绑定了多个账号，请选择要登录的账号");
+                Map<String, Object> data = new HashMap<>();
+                data.put("errorCode", "MULTIPLE_ACCOUNTS");
+                data.put("candidates", candidates);
+                raw.setData(data);
+                return (Result<?>) raw;
+            }
+            if (byPhone.size() == 1) {
+                user = byPhone.get(0);
+            }
+        }
 
         // 账号不存在时，尝试按邮箱查找（支持邮箱+密码登录）
         if (user == null && username.contains("@")) {

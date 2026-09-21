@@ -53,6 +53,11 @@ public class NotifySourceRegistry implements ApplicationRunner {
         register("MATERIAL_REVIEWED", "物资申领-审核结果", "审核通过/拒绝",
                 Map.of("applicantName", "申请人姓名", "auditResult", "审核结果", "summary", "结果摘要", "bizId", "申请单号"));
 
+        register("CAGE_TRANSFER_REVIEW", "笼位转移-待审核", "转移单提交后通知待签的归属地/目的地审核人与兽医",
+                Map.of("applicantName", "申请人姓名", "fromLocation", "源笼位位置", "toLocation", "目标笼位位置", "reason", "申请原因"));
+        register("CAGE_TRANSFER_REVIEWED", "笼位转移-审核结果", "转移审核终局（通过/驳回）通知申请人",
+                Map.of("applicantName", "申请人姓名", "fromLocation", "源笼位位置", "toLocation", "目标笼位位置", "reason", "驳回原因", "auditResult", "审核结果"));
+
         register("SCAN_DELAY_REQUESTED", "延迟免冻结-新申请", "学生提交延迟免冻结申请",
                 Map.of("subjectName", "学生姓名", "subjectGroup", "课题组", "roomName", "房间名称", "optionLabel", "延迟选项", "requestId", "申请ID", "targetUserId", "申请人ID（自动索引）"));
         register("SCAN_DELAY_REVIEWED", "延迟免冻结-审核结果", "审核通过/拒绝",
@@ -151,6 +156,33 @@ public class NotifySourceRegistry implements ApplicationRunner {
         register("CAGE_SPECIAL_STATUS", "笼位状态提醒",
                 "特殊饲养 / 合笼等「非违规」笼位状态持续超时（与告警阈值同一判据，不产生违规记录）",
                 Map.of("statusLabel", "状态名称（需特殊饲养 / 合笼 / 需加食…）",
+                        "cageLabel", "笼位（笼架名 + 位号，如 201A-1 A-9）",
+                        "roomName", "房间名称",
+                        "projectPiName", "课题组（PI）",
+                        "experimenterName", "实验员",
+                        "persistedDays", "已持续天数",
+                        "thresholdDays", "触发阈值天数",
+                        "firedAt", "触发时间"));
+
+        // ========== 健康异常（非违规，但**分两个通道**）==========
+        // 用户 2026-09-17 口径：健康异常分开通知「兽医」与「笼位所有者」，两条通知各自独立配置
+        // （开关 / 渠道 / 模板 / 接收人 / 触发方向 / 阈值），所以是**两个源**而不是一个源两个接收人分组。
+        // 截断点是 CageStatusNotifyService.sourceOf —— 按 (状态码, 通知对象) 选源。
+        register("CAGE_HEALTH_VET", "健康异常-通知兽医",
+                "笼位标记健康异常到达阈值时通知**该区域指定的兽医**（非违规；收件人来源=区域指定兽医 ∪ 本页配的接收人）",
+                Map.of("statusLabel", "状态名称（健康异常）",
+                        "severityLabel", "严重程度（轻微 / 中度 / 严重，未选时为空）",
+                        "cageLabel", "笼位（笼架名 + 位号，如 201A-1 A-9）",
+                        "roomName", "房间名称",
+                        "projectPiName", "课题组（PI）",
+                        "experimenterName", "实验员",
+                        "persistedDays", "已持续天数",
+                        "thresholdDays", "触发阈值天数",
+                        "firedAt", "触发时间"));
+        register("CAGE_HEALTH_OWNER", "健康异常-通知笼位所有者",
+                "笼位标记健康异常到达阈值时通知**该笼位所属人**（非违规；收件人来源=所属人/课题组成员 ∪ 本页配的接收人）",
+                Map.of("statusLabel", "状态名称（健康异常）",
+                        "severityLabel", "严重程度（轻微 / 中度 / 严重，未选时为空）",
                         "cageLabel", "笼位（笼架名 + 位号，如 201A-1 A-9）",
                         "roomName", "房间名称",
                         "projectPiName", "课题组（PI）",

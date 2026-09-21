@@ -55,6 +55,7 @@ export function buildCageOpMarks(
   list: Array<{
     id: string; opType: CageOpKind; sourceAnimalCageId: string;
     targetAnimalCageIds?: string[] | null; applicantName?: string | null;
+    pairs?: Array<{ source: number | string; target: number | string }> | null;
   }>,
 ): Map<string, CageOpMark> {
   const out = new Map<string, CageOpMark>();
@@ -67,8 +68,16 @@ export function buildCageOpMarks(
       applicantName: r.applicantName ?? null,
       targetAnimalCageIds: r.targetAnimalCageIds ?? [],
     };
-    out.set(r.sourceAnimalCageId, mark);
-    for (const t of r.targetAnimalCageIds ?? []) out.set(t, mark);
+    const pairs = r.pairs ?? [];
+    if (pairs.length > 0) {
+      for (const p of pairs) {
+        if (p.source != null && p.source !== "") out.set(String(p.source), mark);
+        if (p.target != null && p.target !== "") out.set(String(p.target), mark);
+      }
+    } else {
+      out.set(r.sourceAnimalCageId, mark);
+      for (const t of r.targetAnimalCageIds ?? []) out.set(t, mark);
+    }
   });
   return out;
 }
@@ -487,6 +496,7 @@ export function useCageOpSelect() {
     sourceOrder,
     targetOrder,
     pairs,
+    batchTargets,
     batchGroup,
     pairColorByCageId,
     batchPoolForGrid,

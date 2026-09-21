@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { Loader2, X } from "lucide-react";
+import { Download, Loader2, X } from "lucide-react";
 import { usePdfObjectUrl } from "./usePdfObjectUrl";
 
 /**
@@ -10,13 +10,25 @@ export function PdfPreviewDialog({
   title,
   fetchPdf,
   onClose,
+  fileName,
 }: {
   title: string;
   fetchPdf: () => Promise<Blob>;
   onClose: () => void;
+  fileName?: string;
 }) {
   // 不传 key：只在挂载时拉一次，调用方传内联箭头也不会触发重复请求
   const { url, error } = usePdfObjectUrl(fetchPdf);
+
+  const download = () => {
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName ?? "document.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -26,9 +38,21 @@ export function PdfPreviewDialog({
       >
         <div className="flex items-center justify-between border-b px-4 py-2">
           <span className="text-sm font-medium">{title}</span>
-          <button type="button" onClick={onClose} aria-label="关闭">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={download}
+              disabled={!url}
+              aria-label="下载"
+              className="flex items-center gap-1 text-sm text-neutral-600 hover:text-neutral-900 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              下载
+            </button>
+            <button type="button" onClick={onClose} aria-label="关闭">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
         <div className="min-h-0 flex-1 bg-neutral-100">
           {error ? (

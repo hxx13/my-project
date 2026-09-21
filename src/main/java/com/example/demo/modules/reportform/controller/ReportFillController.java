@@ -346,29 +346,12 @@ public class ReportFillController {
         var form = definitionMapper.selectById(id);
         if (form == null) throw new RuntimeException("报表不存在");
 
-        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        var templates = mapper.readTree(form.getWordTemplateIdsJson());
-        com.fasterxml.jackson.databind.JsonNode target = null;
-        for (var t : templates) {
-            if (t.get("id").asText().equals(wtId)) { target = t; break; }
-        }
-        if (target == null) throw new RuntimeException("Word模板不存在");
+        // 模板解析与 PDF 导出共用同一份实现（ReportFormWordService.resolveTemplateBundle）
+        var bundle = wordService.resolveTemplateBundle(form, wtId)
+                .orElseThrow(() -> new RuntimeException("Word模板不存在"));
 
-        byte[] templateBytes = java.util.Base64.getDecoder().decode(target.get("data").asText());
-        var bookmarkMapping = new java.util.LinkedHashMap<String, String>();
-        var bmMap = target.get("bookmarkMapping");
-        if (bmMap != null) {
-            var iter = bmMap.fields();
-            while (iter.hasNext()) {
-                var e = iter.next();
-                bookmarkMapping.put(e.getKey(), e.getValue().asText());
-            }
-        }
-        var templateBookmarks = wordService.parseBookmarks(templateBytes);
-        var suggested = wordService.suggestBookmarkMapping(form.getLayoutJson(), templateBookmarks);
-        suggested.forEach(bookmarkMapping::putIfAbsent);
-
-        byte[] data = wordService.exportWord(id, submissionId, templateBytes, bookmarkMapping, fieldValuesOverrideJson);
+        byte[] data = wordService.exportWord(id, submissionId,
+                bundle.templateBytes(), bundle.bookmarkMapping(), fieldValuesOverrideJson);
         ReportFormSubmission submission = submissionMapper.selectById(submissionId);
         String filename = ReportFormExportFilename.build(form, submission, false, "docx");
         return ResponseEntity.ok()

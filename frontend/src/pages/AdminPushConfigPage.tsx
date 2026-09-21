@@ -31,9 +31,12 @@ import {
   type AlarmConfigTree,
   type FloorNode,
   type SuiteNode,
+  type TagNode,
+  type RoomNode,
   type TagAlarmOverridePatch,
   type AlarmPreset,
 } from "@/api/domains/telemetryAlarmConfig.api";
+import { fetchWinccTelemetrySnapshot, type TelemetryTagItem } from "@/api/telemetryApi";
 import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
@@ -75,6 +78,7 @@ import {
 } from "lucide-react";
 
 import { appConfirm } from "@/lib/appDialog";
+import { mergeChannelDrafts, toChannelDraft, type ChannelDraft } from "./pushConfigDrafts";
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -119,16 +123,6 @@ interface PushDashboardOverview {
   channelHealth: Array<{ channelCode: string; channelName: string; enabled: boolean }>;
 }
 
-/** Per-channel editable draft held in local state while the user edits. */
-interface ChannelDraft {
-  titleTpl: string;
-  contentTpl: string;
-  enabled: boolean;
-  quietStart: string;
-  quietEnd: string;
-  rateLimitSeconds: number;
-}
-
 /** Per-source recipients draft */
 interface RecipientDraft {
   perspective: string;
@@ -141,17 +135,6 @@ interface RecipientDraft {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-function toChannelDraft(ch: NotifyChannelConfig): ChannelDraft {
-  return {
-    titleTpl: ch.titleTpl ?? "",
-    contentTpl: ch.contentTpl ?? "",
-    enabled: ch.enabled,
-    quietStart: ch.quietStart ?? "",
-    quietEnd: ch.quietEnd ?? "",
-    rateLimitSeconds: ch.rateLimitSeconds ?? 300,
-  };
-}
 
 function toRecipientDraft(r: NotifyRecipient): RecipientDraft {
   return {
@@ -213,18 +196,15 @@ export default function AdminPushConfigPage() {
   const [testSource, setTestSource] = useState<string | null>(null);
 
   /* ---- initialise drafts from fetched data ---- */
+  // 渠道草稿「只补不覆盖」：保存/刷新都会重新拉列表，整体重建会把用户刚拨动、
+  // 还没保存的开关和模板一起打回服务端默认值（详见 pushConfigDrafts.ts）。
   const initDrafts = useCallback((list: NotifySourceConfig[]) => {
-    const cd: Record<number, Record<number, ChannelDraft>> = {};
     const rd: Record<number, RecipientDraft[]> = {};
     for (const s of list) {
-      cd[s.sourceId] = {};
-      for (const ch of s.channels) {
-        cd[s.sourceId][ch.id] = toChannelDraft(ch);
-      }
       rd[s.sourceId] = (s.recipients ?? []).map(toRecipientDraft);
     }
-    setChannelDrafts(cd);
     setRecipientDrafts(rd);
+    setChannelDrafts((prev) => mergeChannelDrafts(prev, list));
   }, []);
 
   useEffect(() => {
@@ -330,14 +310,6 @@ export default function AdminPushConfigPage() {
       enabled: sources.filter((s) => s.sourceEnabled).length,
       disabled: sources.filter((s) => !s.sourceEnabled).length,
     };
-  }, [sources]);
-
-  /* ---- telemetry-only sources for animal-room alarm tab ---- */
-  const telemetrySources = useMemo(() => {
-    if (!sources) return [];
-    return sources.filter((s) =>
-      s.sourceCode === "TELEMETRY_ALARM" || s.sourceCode === "TELEMETRY_RECOVERY"
-    );
   }, [sources]);
 
   /* ---- channel master switch state (local-only; persisted via existing settings API) ---- */
@@ -504,19 +476,19 @@ export default function AdminPushConfigPage() {
         {/*  Tab panels — scrollable content area                             */}
         {/* ================================================================ */}
         <div className="flex-1 min-h-0 flex flex-col rounded-b-xl border border-t-0 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-auto">
-            <AdminTabPanel tabId="sources" activeTab={pushTab} id="admin-tab-panel-sources">
+          <div className="flex flex-1 min-h-0 flex-col">
+            <AdminTabPanel tabId="sources" activeTab={pushTab} id="admin-tab-panel-sources" className="min-h-0 flex-1 overflow-auto">
               <div className="space-y-3 p-3">
                 {isSourcesLoading ? (
               <div
                 role="status"
                 aria-busy="true"
-                className="flex min-h-[200px] items-center justify-center rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-sm text-[var(--app-color-text-tertiary)]"
+                className="flex min-h-[200px] items-center justify-center rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-sm text-[var(--app-color-text-tertiary)]"
               >
                 加载中…
               </div>
             ) : sourcesError ? (
-              <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[color-mix(in_srgb,var(--app-color-feedback-error)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]">
+              <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-error)_30%,transparent)] bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]">
                 <p>{(sourcesError as Error)?.message ?? "加载失败"}</p>
                 <button
                   type="button"
@@ -527,7 +499,7 @@ export default function AdminPushConfigPage() {
                 </button>
               </div>
             ) : (sources ?? []).length === 0 ? (
-              <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]">
+              <div className="flex min-h-[160px] items-center justify-center rounded-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]">
                 暂无推送来源配置
               </div>
             ) : (
@@ -674,22 +646,19 @@ export default function AdminPushConfigPage() {
               </div>
             </AdminTabPanel>
 
-            <AdminTabPanel tabId="animal-alarm" activeTab={pushTab} id="admin-tab-panel-animal-alarm">
-              <div className="p-3">
-                <AnimalRoomAlarmTab
-                  telemetrySources={telemetrySources}
-                  sourcesLoading={sourcesLoading}
-                />
+            <AdminTabPanel tabId="animal-alarm" activeTab={pushTab} id="admin-tab-panel-animal-alarm" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex min-h-0 flex-1 flex-col p-3">
+                <AnimalRoomAlarmTab />
               </div>
             </AdminTabPanel>
 
-            <AdminTabPanel tabId="swipe-alarm" activeTab={pushTab} id="admin-tab-panel-swipe-alarm">
+            <AdminTabPanel tabId="swipe-alarm" activeTab={pushTab} id="admin-tab-panel-swipe-alarm" className="min-h-0 flex-1 overflow-auto">
               <div className="p-3">
                 <SwipeAlarmTab sourceEnabled={sources?.find(s => s.sourceCode === "SWIPE_FAILURE_ALERT")?.sourceEnabled} />
               </div>
             </AdminTabPanel>
 
-            <AdminTabPanel tabId="door-unlock" activeTab={pushTab} id="admin-tab-panel-door-unlock">
+            <AdminTabPanel tabId="door-unlock" activeTab={pushTab} id="admin-tab-panel-door-unlock" className="min-h-0 flex-1 overflow-auto">
               <div className="p-3">
                 <DoorUnlockTab />
               </div>
@@ -752,7 +721,7 @@ function TestSendModal({ sourceCode, onClose }: { sourceCode: string; onClose: (
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-[var(--app-color-text-primary)]">测试发送</h3>
           <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]">
@@ -856,7 +825,7 @@ function ChannelConfigSection({
                 onClick={() => setOpenChannel(def.code)}>
                 {def.icon}
                 {def.name}
-                {!hasTemplate && <span className="ml-0.5 text-[10px] text-amber-500" title={noTemplateHint}>⚠</span>}
+                {!hasTemplate && <span className="ml-0.5 text-[10px] text-[var(--app-color-feedback-warning)]" title={noTemplateHint}>⚠</span>}
               </AdminButton>
               <AdminSwitchScaled size="sm" checked={enabled}
                   onChange={(v) => { const c = source.channels.find(x => x.channelCode === def.code); if (c) onUpdate(source.sourceId, c.id, { enabled: v }); }} />
@@ -875,14 +844,14 @@ function ChannelConfigSection({
         }
         let draft = drafts[ch.id];
         if (!draft) {
-          draft = { titleTpl: ch.titleTpl ?? "", contentTpl: ch.contentTpl ?? "", enabled: ch.enabled ?? true, quietStart: ch.quietStart ?? "", quietEnd: ch.quietEnd ?? "", rateLimitSeconds: ch.rateLimitSeconds ?? 300 };
+          draft = toChannelDraft(ch);
         }
         const saveKey = `${source.sourceId}:${ch.channelCode}`;
         const isSaving = savingChannels.has(saveKey);
 
         return (
           <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={() => setOpenChannel(null)}>
-            <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] flex items-center gap-2">
                   {def.icon} {def.name} — {source.sourceName}
@@ -984,10 +953,12 @@ function RecipientSection({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Each draft holds ONE user ID; display name comes from server-resolved scopeLabel
+  // draftIdx 必须是 drafts 里的原始下标（先带下标过滤），否则删第 2 个人会删错行
   const selectedPeople = useMemo(() => {
     return drafts
-      .filter(r => r.scopeType === "USER" && r.scopeValue)
-      .map((r, idx) => ({
+      .map((r, idx) => ({ r, idx }))
+      .filter(({ r }) => r.scopeType === "USER" && r.scopeValue)
+      .map(({ r, idx }) => ({
         id: r.scopeValue,
         name: r.scopeLabel || r.scopeValue,
         draftIdx: idx,
@@ -1086,21 +1057,23 @@ function RecipientSection({
 /*  AnimalRoomAlarmTab — 动物房环境报警配置子页面                         */
 /* ------------------------------------------------------------------ */
 
-function AnimalRoomAlarmTab({
-  telemetrySources,
-  sourcesLoading,
-}: {
-  telemetrySources: NotifySourceConfig[];
-  sourcesLoading: boolean;
-}) {
+function AnimalRoomAlarmTab() {
+  return <FloorSuiteAlarmPanel />;
+}
+
+/* ------------------------------------------------------------------ */
+/*  GlobalLimitsModal — 全局环境报警限设置弹窗                           */
+/* ------------------------------------------------------------------ */
+
+function GlobalLimitsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [limitsDraft, setLimitsDraft] = useState<TelemetryGlobalAlarmLimits | null>(null);
   const [savingLimits, setSavingLimits] = useState(false);
-  const [expanded, setExpanded] = useState(false);
 
   const limitsQ = useQuery({
     queryKey: ["telemetry-global-alarm-limits"],
     queryFn: getTelemetryGlobalAlarmLimits,
     staleTime: 30_000,
+    enabled: open,
   });
 
   useEffect(() => {
@@ -1167,21 +1140,25 @@ function AnimalRoomAlarmTab({
     );
   };
 
+  if (!open) return null;
+
   return (
-    <div className="space-y-3">
-      {/* ── 全局报警限配置 ── */}
-      <AdminFormCard>
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] flex items-center gap-2">
-            <Thermometer className="h-4 w-4 text-[var(--app-color-accent)]" />
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-[var(--app-color-accent)]" />
             全局环境报警限
           </h3>
-          <AdminButton type="button" tone="primary" size="sm" loading={savingLimits} onClick={saveLimits}>
-            <Save className="h-3.5 w-3.5" /> 保存
-          </AdminButton>
+          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]">
+            <X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" />
+          </button>
         </div>
         <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-2">
-          各楼层套间无自定义阈值时使用此全局值。每个测点可在动物房温湿度监测页面逐点覆盖。
+          各楼层套间无自定义阈值时使用此全局值；每个测点可逐点覆盖。所有输入框留空表示不限。
+        </p>
+        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-3">
+          死区（滞回）：报警与恢复之间留的缓冲，防止值在阈值附近抖动时反复报警。
         </p>
         {limitsQ.isLoading ? (
           <p className="text-xs text-[var(--app-color-text-tertiary)] py-4">加载中…</p>
@@ -1191,13 +1168,13 @@ function AnimalRoomAlarmTab({
           </p>
         ) : (
           <div className="space-y-0.5">
-            {limitRow(<Thermometer className="h-3.5 w-3.5 text-orange-500" />, "温度", "tempMin", "tempMax", "℃")}
-            {limitRow(<Droplets className="h-3.5 w-3.5 text-blue-500" />, "湿度", "humMin", "humMax", "%")}
-            {limitRow(<Gauge className="h-3.5 w-3.5 text-emerald-500" />, "压强", "pressureMin", "pressureMax", "Pa")}
+            {limitRow(<Thermometer className="h-3.5 w-3.5 text-[var(--app-color-feedback-warning)]" />, "温度", "tempMin", "tempMax", "℃")}
+            {limitRow(<Droplets className="h-3.5 w-3.5 text-[var(--app-color-feedback-info)]" />, "湿度", "humMin", "humMax", "%")}
+            {limitRow(<Gauge className="h-3.5 w-3.5 text-[var(--app-color-feedback-success)]" />, "压强", "pressureMin", "pressureMax", "Pa")}
             {/* Hysteresis rows — single value per metric */}
             <div className="flex items-center gap-3 py-1.5">
               <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
-                <Thermometer className="h-3.5 w-3.5 text-orange-400" />温度死区
+                <Thermometer className="h-3.5 w-3.5 text-[var(--app-color-feedback-warning)]" />温度死区
               </span>
               <input type="text" inputMode="decimal"
                 className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
@@ -1208,7 +1185,7 @@ function AnimalRoomAlarmTab({
             </div>
             <div className="flex items-center gap-3 py-1.5">
               <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
-                <Droplets className="h-3.5 w-3.5 text-blue-400" />湿度死区
+                <Droplets className="h-3.5 w-3.5 text-[var(--app-color-feedback-info)]" />湿度死区
               </span>
               <input type="text" inputMode="decimal"
                 className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
@@ -1219,7 +1196,7 @@ function AnimalRoomAlarmTab({
             </div>
             <div className="flex items-center gap-3 py-1.5">
               <span className="inline-flex items-center gap-1.5 w-[80px] shrink-0 text-xs font-medium text-[var(--app-color-text-secondary)]">
-                <Gauge className="h-3.5 w-3.5 text-emerald-400" />压差死区
+                <Gauge className="h-3.5 w-3.5 text-[var(--app-color-feedback-success)]" />压差死区
               </span>
               <input type="text" inputMode="decimal"
                 className="w-[5.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
@@ -1230,96 +1207,24 @@ function AnimalRoomAlarmTab({
             </div>
           </div>
         )}
-      </AdminFormCard>
-
-      {/* ── 已注册推送源 ── */}
-      <AdminFormCard>
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-2 text-sm font-semibold text-[var(--app-color-text-primary)] hover:opacity-80 transition-opacity w-full text-left"
-        >
-          <Bell className="h-4 w-4 text-[var(--app-color-accent)]" />
-          推送源绑定
-          <span className="text-[11px] font-normal text-[var(--app-color-text-tertiary)]">
-            （{telemetrySources.length} 个已注册）
-          </span>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)] ml-auto" />
-          ) : (
-            <ChevronDown className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)] ml-auto" />
-          )}
-        </button>
-        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mt-1">
-          以下信息源在「信息源配置」Tab 中统一管理渠道和接收人。此处仅展示与动物房环境报警相关的源。
-        </p>
-
-        {expanded && (
-          <div className="mt-3 space-y-2 border-t border-[var(--app-color-border-default)] pt-3">
-            {sourcesLoading ? (
-              <p className="text-xs text-[var(--app-color-text-tertiary)]">加载中…</p>
-            ) : telemetrySources.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-4 text-center text-xs text-[var(--app-color-text-tertiary)]">
-                <p>尚未注册动物房环境报警信息源</p>
-                <p className="mt-1">请确保 NotifySourceRegistry 中已注册 TELEMETRY_ALARM 与 TELEMETRY_RECOVERY</p>
-              </div>
-            ) : (
-              telemetrySources.map((src) => {
-                const variables = src.variables ?? {};
-                return (
-                  <div
-                    key={src.sourceId}
-                    className="rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className={cn(
-                          "inline-block h-2 w-2 rounded-full shrink-0",
-                          src.sourceCode === "TELEMETRY_ALARM"
-                            ? "bg-[var(--app-color-feedback-error)]"
-                            : "bg-[var(--app-color-feedback-success)]",
-                        )}
-                      />
-                      <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">
-                        {src.sourceName}
-                      </span>
-                      <code className="text-[10px] bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 rounded font-mono text-[var(--app-color-text-tertiary)]">
-                        {src.sourceCode}
-                      </code>
-                      <span className="text-[11px] text-[var(--app-color-text-tertiary)] ml-auto">
-                        {src.sourceEnabled ? "已启用" : "已禁用"}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-1.5">
-                      {src.description}
-                    </p>
-                    {Object.keys(variables).length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {Object.entries(variables).map(([k, v]) => (
-                          <code
-                            key={k}
-                            className="inline-flex items-center gap-1 rounded bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] border border-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)]"
-                            title={`${k}: ${v}`}
-                          >
-                            {`{${k}}`}
-                            <span className="text-[var(--app-color-text-tertiary)]">— {v}</span>
-                          </code>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-      </AdminFormCard>
-
-      {/* ── 楼层/套间管控 ── */}
-      <FloorSuiteAlarmPanel />
+        <div className="flex items-center justify-end gap-2 border-t border-[var(--app-color-border-default)] pt-3 mt-3">
+          <AdminButton type="button" tone="primary" size="sm" loading={savingLimits} onClick={saveLimits}>
+            <Save className="h-3.5 w-3.5" /> 保存
+          </AdminButton>
+        </div>
+      </div>
     </div>
   );
 }
+
+/** 布尔量不显示 true/false：开关量 → 开/关，状态量 → 是/否；非布尔返回 null。 */
+const boolLabel = (raw: string | null | undefined, code: string | null | undefined): string | null => {
+  if (raw == null) return null;
+  const v = raw.trim().toLowerCase();
+  if (v !== "true" && v !== "false") return null;
+  const on = v === "true";
+  return (code ?? "").toUpperCase() === "SWITCH" ? (on ? "开" : "关") : (on ? "是" : "否");
+};
 
 /* ------------------------------------------------------------------ */
 /*  FloorSuiteAlarmPanel — 楼层→套间→房间→变量 四级管控树               */
@@ -1334,143 +1239,110 @@ function FloorSuiteAlarmPanel() {
     staleTime: 15_000,
   });
 
+  const snapQ = useQuery({
+    queryKey: ["telemetry-wincc-snapshot"],
+    queryFn: () => fetchWinccTelemetrySnapshot({ sync: false }),
+    staleTime: 30_000,
+  });
+
+  /* ---- selection & nav ---- */
+  const [search, setSearch] = useState("");
+  const [activeFloor, setActiveFloor] = useState<string | null>(null);
+  const [activeSuiteKey, setActiveSuiteKey] = useState<string | null>(null);
+  const [activeRoom, setActiveRoom] = useState<string | null>(null);
   const [expandedFloors, setExpandedFloors] = useState<Set<string>>(new Set());
   const [expandedSuites, setExpandedSuites] = useState<Set<string>>(new Set());
-  const [editingSuite, setEditingSuite] = useState<SuiteNode | null>(null);
-  const [savingFloor, setSavingFloor] = useState<string | null>(null);
-  const [savingSuite, setSavingSuite] = useState(false);
-  const [togglingTag, setTogglingTag] = useState<number | null>(null);
 
   /* ---- tag override drafts & batch selection ---- */
-  interface TagOverrideDraft { min: string; max: string; cooldown: number; }
+  interface TagOverrideDraft { min: string; max: string; cooldown: string; }
   const [tagDrafts, setTagDrafts] = useState<Record<number, TagOverrideDraft>>({});
   const [savingTags, setSavingTags] = useState<Set<number>>(new Set());
+  const [togglingTag, setTogglingTag] = useState<number | null>(null);
   const [selectedTags, setSelectedTags] = useState<Set<number>>(new Set());
-  const [presets, setPresets] = useState<AlarmPreset[]>([]);
-  const [presetsExpanded, setPresetsExpanded] = useState(false);
-  const [activePresetId, setActivePresetId] = useState<number | null>(null);
-  const [presetEditor, setPresetEditor] = useState<AlarmPreset | null | undefined>(undefined);
 
-  const [floorDrafts, setFloorDrafts] = useState<Record<string, { resetMin: number; notifyRecovery: boolean; bufferFlush: number }>>({});
+  /* ---- presets & suite editing ---- */
+  const [presets, setPresets] = useState<AlarmPreset[]>([]);
+  const [activePresetId, setActivePresetId] = useState<number | null>(null);
+  const [editingSuite, setEditingSuite] = useState<SuiteNode | null>(null);
+  const [savingSuite, setSavingSuite] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [applyCooldown, setApplyCooldown] = useState(false);
+  const [globalOpen, setGlobalOpen] = useState(false);
+  const [presetManagerOpen, setPresetManagerOpen] = useState(false);
+
+  /* ---- floor config (retained, corrected copy) ---- */
+  const [floorDrafts, setFloorDrafts] = useState<Record<string, { cooldown: number; notifyRecovery: boolean; bufferFlush: number }>>({});
+  const [savingFloor, setSavingFloor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!treeQ.data) return;
-    const d: Record<string, { resetMin: number; notifyRecovery: boolean; bufferFlush: number }> = {};
+    const d: Record<string, { cooldown: number; notifyRecovery: boolean; bufferFlush: number }> = {};
     for (const f of treeQ.data.floors) {
-      d[f.floorCode] = { resetMin: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery, bufferFlush: f.bufferFlushMinutes ?? 5 };
+      d[f.floorCode] = { cooldown: f.cooldownMinutes, notifyRecovery: f.notifyOnRecovery, bufferFlush: f.bufferFlushMinutes ?? 5 };
     }
-    setFloorDrafts((prev) => ({ ...d, ...prev }));
+    setFloorDrafts(prev => ({ ...d, ...prev }));
   }, [treeQ.data]);
 
-  /* ---- presets ---- */
   useEffect(() => { fetchAlarmPresets().then(setPresets).catch(() => {}); }, []);
 
-  /* ---- tag draft helpers ---- */
-  const updateTagDraft = (tagId: number, patch: Partial<TagOverrideDraft>) => {
-    setTagDrafts(prev => ({
-      ...prev,
-      [tagId]: { ...(prev[tagId] ?? { min: '', max: '', cooldown: 0 }), ...patch }
-    }));
+  /* ---- current value lookup ---- */
+  const valueByVar = useMemo(() => {
+    const m = new Map<string, TelemetryTagItem>();
+    for (const it of snapQ.data?.items ?? []) if (it.variableName) m.set(it.variableName, it);
+    return m;
+  }, [snapQ.data]);
+
+  /* ---- 类型分流 ---- */
+  const classify = (code?: string | null): "analog" | "switch" | "status" | "wind" | "reference" => {
+    const c = (code ?? "").toUpperCase();
+    if (c === "TEMP" || c === "HUM" || c === "RH" || c === "PRESSURE") return "analog";
+    if (c === "SWITCH") return "switch";
+    if (c === "STATUS") return "status";
+    if (c === "WIND") return "wind";
+    return "reference";
   };
 
-  const saveTagOverride = async (tagId: number) => {
-    const draft = tagDrafts[tagId];
-    if (!draft) return;
-    setSavingTags(prev => new Set(prev).add(tagId));
-    try {
-      await setTagAlarmOverrides(tagId, {
-        tagId, alarmOverrideMin: draft.min || null, alarmOverrideMax: draft.max || null,
-        alarmCooldownMinutes: draft.cooldown || null,
-      });
-      toast.success('已保存');
-      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
-    } catch (e: any) { toast.error(e?.message || '保存失败'); }
-    finally { setSavingTags(prev => { const n = new Set(prev); n.delete(tagId); return n; }); }
+  const kindBadge = (tag: TagNode) => {
+    const c = (tag.metricKindCode ?? "").toUpperCase();
+    const map: Record<string, { label: string; bg: string; fg: string }> = {
+      TEMP: { label: "温", bg: "var(--app-color-feedback-warning)", fg: "#fff" },
+      HUM: { label: "湿", bg: "var(--app-color-feedback-info)", fg: "#fff" },
+      RH: { label: "湿", bg: "var(--app-color-feedback-info)", fg: "#fff" },
+      PRESSURE: { label: "压", bg: "var(--app-color-feedback-success)", fg: "#fff" },
+      SWITCH: { label: "开关", bg: "var(--app-color-feedback-warning)", fg: "#fff" },
+      STATUS: { label: "状态", bg: "var(--app-color-feedback-info)", fg: "#fff" },
+      WIND: { label: "风", bg: "var(--app-color-border-strong)", fg: "#fff" },
+      SETPOINT: { label: "设定", bg: "var(--app-color-feedback-info)", fg: "#fff" },
+    };
+    const b = map[c] ?? { label: c || "参考", bg: "var(--app-color-surface-container)", fg: "var(--app-color-text-tertiary)" };
+    return <span className="inline-flex items-center rounded px-1 py-0 text-[9px] font-medium shrink-0" style={{ background: b.bg, color: b.fg }}>{b.label}</span>;
   };
 
-  const allAlarmTagsInSuite = (suite: SuiteNode) =>
-    suite.rooms.flatMap(r => r.tags).filter(t => t.isAlarmMetric);
-
-  const toggleSelectAll = (checked: boolean, suite: SuiteNode) => {
-    const alarmTags = allAlarmTagsInSuite(suite);
-    setSelectedTags(prev => {
-      const next = new Set(prev);
-      alarmTags.forEach(t => checked ? next.add(t.tagId) : next.delete(t.tagId));
-      return next;
-    });
-  };
-
-  const applyPresetToSelected = () => {
-    const preset = presets.find(p => p.id === activePresetId);
-    if (!preset || selectedTags.size === 0) return;
-    const newDrafts = { ...tagDrafts };
-    for (const tagId of selectedTags) {
-      newDrafts[tagId] = {
-        min: preset.tempMin ?? preset.humMin ?? preset.pressureMin ?? '',
-        max: preset.tempMax ?? preset.humMax ?? preset.pressureMax ?? '',
-        cooldown: preset.alarmCooldownMinutes ?? 0,
-      };
+  /* ---- flattened rows ---- */
+  type TagRow = { tag: TagNode; floor: FloorNode; suite: SuiteNode; room: RoomNode };
+  const rows = useMemo<TagRow[]>(() => {
+    if (!treeQ.data) return [];
+    const q = search.trim().toLowerCase();
+    const out: TagRow[] = [];
+    for (const f of treeQ.data.floors) {
+      if (activeFloor && f.floorCode !== activeFloor) continue;
+      for (const s of f.suites) {
+        const sk = `${f.floorCode}/${s.suiteNorm}`;
+        if (activeSuiteKey && sk !== activeSuiteKey) continue;
+        for (const r of s.rooms) {
+          if (activeRoom && r.roomCanonical !== activeRoom) continue;
+          for (const t of r.tags) {
+            if (q && !`${t.displayLabel} ${t.variableName} ${r.roomDisplay} ${s.suiteNorm} ${f.floorCode}`.toLowerCase().includes(q)) continue;
+            out.push({ tag: t, floor: f, suite: s, room: r });
+          }
+        }
+      }
     }
-    setTagDrafts(newDrafts);
-    toast.success(`已应用模板到 ${selectedTags.size} 个变量（请逐个保存或使用批量保存）`);
-  };
+    return out;
+  }, [treeQ.data, activeFloor, activeSuiteKey, activeRoom, search]);
 
-  const resetSelectedToInherit = async () => {
-    const batch: TagAlarmOverridePatch[] = [];
-    for (const tagId of selectedTags) {
-      batch.push({ tagId, alarmOverrideMin: null, alarmOverrideMax: null, alarmCooldownMinutes: null });
-    }
-    try {
-      await batchSetTagAlarmOverrides(batch);
-      toast.success(`已重置 ${selectedTags.size} 个变量为继承`);
-      setSelectedTags(new Set());
-      setTagDrafts(prev => {
-        const next = { ...prev };
-        for (const tagId of selectedTags) delete next[tagId];
-        return next;
-      });
-      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
-    } catch (e: any) { toast.error(e?.message || '重置失败'); }
-  };
-
-  const toggleFloor = (fc: string) => {
-    setExpandedFloors((prev) => {
-      const next = new Set(prev);
-      if (next.has(fc)) next.delete(fc); else next.add(fc);
-      return next;
-    });
-  };
-
-  const toggleSuite = (key: string) => {
-    setExpandedSuites((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
-
-  const handleSaveFloor = async (fc: string, enabled: boolean) => {
-    const d = floorDrafts[fc];
-    if (!d) return;
-    const floor = treeQ.data?.floors.find((f) => f.floorCode === fc);
-    setSavingFloor(fc);
-    try {
-      await saveFloorConfig({ id: floor?.configId ?? undefined, floorCode: fc, enabled, cooldownMinutes: d.resetMin, notifyOnRecovery: d.notifyRecovery, bufferFlushMinutes: d.bufferFlush });
-      toast.success(`${fc} 已保存`);
-      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
-    finally { setSavingFloor(null); }
-  };
-
-  const handleToggleTag = async (tagId: number, currentEnabled: boolean | null) => {
-    setTogglingTag(tagId);
-    const next = currentEnabled === false ? null : false; // cycle: false→null(inherit), null/true→false
-    try {
-      await setTagAlarmEnabled(tagId, next);
-      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
-    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "切换失败"); }
-    finally { setTogglingTag(null); }
-  };
+  const alarmRows = useMemo(() => rows.filter(r => r.tag.isAlarmMetric), [rows]);
+  const allSelected = alarmRows.length > 0 && alarmRows.every(r => selectedTags.has(r.tag.tagId));
 
   if (treeQ.isLoading) return <AdminFormCard><p className="text-xs text-[var(--app-color-text-tertiary)] py-4">加载楼层套间数据…</p></AdminFormCard>;
   if (treeQ.isError) return <AdminFormCard><p className="text-xs text-[var(--app-color-feedback-error)] py-2">加载失败：{(treeQ.error as Error)?.message}</p></AdminFormCard>;
@@ -1489,245 +1361,395 @@ function FloorSuiteAlarmPanel() {
     );
   }
 
-  const metricKindBadge = (code: string, label?: string | null) => {
-    const c = code.toUpperCase();
-    const colors: Record<string, string> = { TEMP: "bg-orange-100 text-orange-700", HUM: "bg-blue-100 text-blue-700", RH: "bg-blue-100 text-blue-700", PRESSURE: "bg-emerald-100 text-emerald-700" };
-    const names: Record<string, string> = { TEMP: "温", HUM: "湿", PRESSURE: "压" };
-    return (
-      <span className={cn("inline-flex items-center rounded px-1 py-0 text-[10px] font-medium shrink-0", colors[c] ?? "bg-zinc-100 text-zinc-600")}>
-        {names[c] ?? (label ?? c)}
-      </span>
-    );
+  /* ---- actions ---- */
+  const updateTagDraft = (tagId: number, patch: Partial<TagOverrideDraft>) => {
+    setTagDrafts(prev => ({ ...prev, [tagId]: { ...(prev[tagId] ?? { min: '', max: '', cooldown: '' }), ...patch } }));
   };
 
+  const saveTagOverride = async (row: TagRow) => {
+    const tag = row.tag;
+    if (classify(tag.metricKindCode) !== "analog") return;
+    const draft = tagDrafts[tag.tagId] ?? { min: '', max: '', cooldown: '' };
+    const min = draft.min.trim() || null;
+    const max = draft.max.trim() || null;
+    const cooldown = draft.cooldown.trim() ? Number(draft.cooldown) : null;
+    setSavingTags(prev => new Set(prev).add(tag.tagId));
+    try {
+      await setTagAlarmOverrides(tag.tagId, { tagId: tag.tagId, alarmOverrideMin: min, alarmOverrideMax: max, alarmCooldownMinutes: cooldown });
+      toast.success('已保存');
+      setTagDrafts(prev => { const n = { ...prev }; delete n[tag.tagId]; return n; });
+      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
+    } catch (e: any) { toast.error(e?.message || '保存失败'); }
+    finally { setSavingTags(prev => { const n = new Set(prev); n.delete(tag.tagId); return n; }); }
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedTags(prev => {
+      const next = new Set(prev);
+      if (allSelected) alarmRows.forEach(r => next.delete(r.tag.tagId));
+      else alarmRows.forEach(r => next.add(r.tag.tagId));
+      return next;
+    });
+  };
+
+  const applyPresetToSelected = async () => {
+    const preset = presets.find(p => p.id === activePresetId);
+    if (!preset) { toast.error('请先选择阈值模板'); return; }
+    if (selectedTags.size === 0) { toast.error('请先选择变量'); return; }
+    const batch: TagAlarmOverridePatch[] = [];
+    let applied = 0, skipped = 0;
+    for (const row of rows) {
+      if (!selectedTags.has(row.tag.tagId)) continue;
+      if (classify(row.tag.metricKindCode) !== "analog") { skipped++; continue; }
+      const c = (row.tag.metricKindCode ?? "").toUpperCase();
+      let min: string | null = null, max: string | null = null;
+      if (c === "TEMP") { min = preset.tempMin ?? null; max = preset.tempMax ?? null; }
+      else if (c === "HUM" || c === "RH") { min = preset.humMin ?? null; max = preset.humMax ?? null; }
+      else if (c === "PRESSURE") { min = preset.pressureMin ?? null; max = preset.pressureMax ?? null; }
+      const item: TagAlarmOverridePatch = { tagId: row.tag.tagId, alarmOverrideMin: min, alarmOverrideMax: max };
+      if (applyCooldown) item.alarmCooldownMinutes = preset.alarmCooldownMinutes ?? null;
+      batch.push(item);
+      applied++;
+    }
+    if (batch.length === 0) { toast.error('选中的变量中没有可设置阈值的模拟量'); return; }
+    setBatchBusy(true);
+    try {
+      await batchSetTagAlarmOverrides(batch);
+      toast.success(`已应用阈值到 ${applied} 个变量${skipped ? `，跳过 ${skipped} 个非模拟量` : ''}${applyCooldown ? `（含冷却 ${preset.alarmCooldownMinutes ?? 0} 分钟）` : '（未改动冷却）'}`);
+      setSelectedTags(new Set());
+      setTagDrafts({});
+      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
+    } catch (e: any) { toast.error(e?.message || '应用失败'); }
+    finally { setBatchBusy(false); }
+  };
+
+  const batchSetAlarmSwitch = async (value: boolean | null) => {
+    if (selectedTags.size === 0) { toast.error('请先选择变量'); return; }
+    setBatchBusy(true);
+    try {
+      if (value === null) {
+        for (const row of rows) if (selectedTags.has(row.tag.tagId)) await setTagAlarmEnabled(row.tag.tagId, null);
+      } else {
+        const batch: TagAlarmOverridePatch[] = [];
+        for (const row of rows) if (selectedTags.has(row.tag.tagId)) {
+          batch.push({
+            tagId: row.tag.tagId,
+            alarmOverrideMin: row.tag.alarmOverrideMin,
+            alarmOverrideMax: row.tag.alarmOverrideMax,
+            alarmCooldownMinutes: row.tag.alarmCooldownMinutes,
+            alarmEnabled: value ? 1 : 0,
+          });
+        }
+        await batchSetTagAlarmOverrides(batch);
+      }
+      toast.success(`已${value === null ? '继承' : value ? '启用' : '停用'} ${selectedTags.size} 个变量`);
+      setSelectedTags(new Set());
+      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
+    } catch (e: any) { toast.error(e?.message || '操作失败'); }
+    finally { setBatchBusy(false); }
+  };
+
+  const resetSelectedToInherit = async () => {
+    if (selectedTags.size === 0) { toast.error('请先选择变量'); return; }
+    const batch: TagAlarmOverridePatch[] = [];
+    for (const row of rows) if (selectedTags.has(row.tag.tagId)) {
+      batch.push({ tagId: row.tag.tagId, alarmOverrideMin: null, alarmOverrideMax: null, alarmCooldownMinutes: null });
+    }
+    setBatchBusy(true);
+    try {
+      await batchSetTagAlarmOverrides(batch);
+      toast.success(`已重置 ${selectedTags.size} 个变量为继承`);
+      setSelectedTags(new Set());
+      setTagDrafts({});
+      queryClient.invalidateQueries({ queryKey: ['telemetry-alarm-config-tree'] });
+    } catch (e: any) { toast.error(e?.message || '重置失败'); }
+    finally { setBatchBusy(false); }
+  };
+
+  const handleToggleTag = async (tagId: number, next: boolean | null) => {
+    setTogglingTag(tagId);
+    try {
+      await setTagAlarmEnabled(tagId, next);
+      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "切换失败"); }
+    finally { setTogglingTag(null); }
+  };
+
+  const handleSaveFloor = async (fc: string) => {
+    const d = floorDrafts[fc];
+    const floor = tree.floors.find(f => f.floorCode === fc);
+    if (!d || !floor) return;
+    setSavingFloor(fc);
+    try {
+      await saveFloorConfig({ id: floor.configId ?? undefined, floorCode: fc, enabled: floor.enabled, cooldownMinutes: d.cooldown, notifyOnRecovery: d.notifyRecovery, bufferFlushMinutes: d.bufferFlush });
+      toast.success(`${fc} 已保存`);
+      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
+    finally { setSavingFloor(null); }
+  };
+
+  const toggleFloorEnabled = async (fc: string) => {
+    const floor = tree.floors.find(f => f.floorCode === fc);
+    if (!floor) return;
+    try {
+      await saveFloorConfig({ id: floor.configId ?? undefined, floorCode: fc, enabled: !floor.enabled, cooldownMinutes: floor.cooldownMinutes, notifyOnRecovery: floor.notifyOnRecovery, bufferFlushMinutes: floor.bufferFlushMinutes ?? 5 });
+      queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "切换失败"); }
+  };
+
+  const bandDot = (band?: string | null) =>
+    band === "HIGH" ? "var(--app-color-feedback-danger)" : band === "LOW" ? "var(--app-color-feedback-info)" : "var(--app-color-feedback-success)";
+
+  const suiteKey = (f: FloorNode, s: SuiteNode) => `${f.floorCode}/${s.suiteNorm}`;
+
+  const activeFloorNode = activeFloor ? tree.floors.find(f => f.floorCode === activeFloor) : undefined;
+  const showFloorConfig = activeFloorNode && !activeSuiteKey && !activeRoom;
+
   return (
-    <>
-      <AdminFormCard>
-        <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] flex items-center gap-2 mb-3">
-          <Building2 className="h-4 w-4 text-[var(--app-color-accent)]" />
-          楼层与套间管控
-          <span className="text-[11px] font-normal text-[var(--app-color-text-tertiary)]">
-            （{tree.totalFloors} 层 · {tree.totalSuites} 套间 · {tree.totalRooms} 房间 · {tree.totalVariables} 变量）
-          </span>
-        </h3>
-
-        <div className="space-y-2">
-          {tree.floors.map((floor) => {
+    <div className="flex min-h-0 flex-1 gap-3">
+      {/* Left nav */}
+      <aside className="flex w-[260px] shrink-0 min-h-0 flex-col rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--app-color-border-default)] p-2">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--app-color-text-tertiary)]" />
+          <input className="min-w-0 flex-1 bg-transparent text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none"
+            placeholder="搜索楼层/套间/房间" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--app-color-border-default)] px-2.5 py-1.5">
+          <button type="button" onClick={() => { setActiveFloor(null); setActiveSuiteKey(null); setActiveRoom(null); }}
+            className={cn("rounded-md px-2 py-0.5 text-[11px] font-medium", !activeFloor ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]")}>全部</button>
+          <button type="button" className="text-[11px] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"
+            onClick={() => {
+              const allFloors = tree.floors.map(f => f.floorCode);
+              const allOpen = allFloors.length > 0 && allFloors.every(f => expandedFloors.has(f));
+              setExpandedFloors(new Set(allOpen ? [] : allFloors));
+              const allSuiteKeys = tree.floors.flatMap(f => f.suites.map(s => suiteKey(f, s)));
+              const allSOpen = allSuiteKeys.length > 0 && allSuiteKeys.every(k => expandedSuites.has(k));
+              setExpandedSuites(new Set(allSOpen ? [] : allSuiteKeys));
+            }}>
+            {tree.floors.length > 0 && tree.floors.every(f => expandedFloors.has(f.floorCode)) ? "全部收起" : "全部展开"}
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-1.5">
+          {tree.floors.map(floor => {
             const fexp = expandedFloors.has(floor.floorCode);
-            const draft = floorDrafts[floor.floorCode] ?? { resetMin: floor.cooldownMinutes, notifyRecovery: floor.notifyOnRecovery };
-            const isSaving = savingFloor === floor.floorCode;
-
+            const fActive = activeFloor === floor.floorCode;
             return (
-              <div key={floor.floorCode} className={cn("rounded-lg border transition-all",
-                fexp ? "border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[var(--app-color-surface-elevated)] ring-1 ring-[color-mix(in_srgb,var(--app-color-accent)_15%,transparent)]"
-                      : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]")}>
-                {/* Floor header */}
-                <div className="flex items-center justify-between gap-3 px-3 py-2.5">
-                  <button type="button" onClick={() => toggleFloor(floor.floorCode)}
-                    className="flex items-center gap-2 min-w-0 text-left hover:opacity-80">
-                    <Building2 className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" />
-                    <span className="text-sm font-semibold">{floor.floorCode}</span>
-                    <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{floor.suiteCount}套间 · {floor.variableCount}变量</span>
-                    {fexp ? <ChevronUp className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" /> : <ChevronDown className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" />}
-                  </button>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {fexp && (<>
-                      <label className="text-[11px] text-[var(--app-color-text-secondary)]">重置<input type="number" min={5} max={1440}
-                        className="w-[3.5rem] ml-1 rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center"
-                        value={draft.resetMin} onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, resetMin: Math.max(5, Number(e.target.value) || 60) } }))} />min</label>
-                      <label className="text-[11px] text-[var(--app-color-text-secondary)]">缓冲<input type="number" min={1} max={60}
-                        className="w-[3.5rem] ml-1 rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center"
-                        value={draft.bufferFlush}
-                        onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, bufferFlush: Math.max(1, Number(e.target.value) || 5) } }))} />min</label>
-                      <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
-                        <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]" checked={draft.notifyRecovery}
-                          onChange={(e) => setFloorDrafts((p) => ({ ...p, [floor.floorCode]: { ...draft, notifyRecovery: e.target.checked } }))} />恢复通知</label>
-                    </>)}
-                    <AdminSwitchScaled size="sm" checked={floor.enabled} onChange={() => handleSaveFloor(floor.floorCode, !floor.enabled)} />
-                    {fexp && <AdminButton type="button" tone="primary" size="sm" loading={isSaving} onClick={() => handleSaveFloor(floor.floorCode, floor.enabled)}><Save className="h-3.5 w-3.5" />保存</AdminButton>}
-                  </div>
+              <div key={floor.floorCode} className="mb-0.5">
+                <div className={cn("flex items-center gap-1 rounded-md px-1.5 py-1 cursor-pointer hover:bg-[var(--app-color-surface-hover)]", fActive && "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]")}
+                  onClick={() => { setActiveFloor(floor.floorCode); setActiveSuiteKey(null); setActiveRoom(null); setExpandedFloors(prev => new Set(prev).add(floor.floorCode)); }}>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedFloors(prev => { const n = new Set(prev); fexp ? n.delete(floor.floorCode) : n.add(floor.floorCode); return n; }); }}
+                    className="shrink-0 text-[var(--app-color-text-tertiary)]">{fexp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</button>
+                  <Building2 className="h-3.5 w-3.5 shrink-0 text-[var(--app-color-text-tertiary)]" />
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--app-color-text-primary)]">{floor.floorCode}</span>
+                  <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{floor.variableCount}</span>
                 </div>
-
-                {/* Suites (expanded) */}
-                {fexp && (
-                  <div className="border-t border-[var(--app-color-border-default)] px-3 py-2 space-y-1.5">
-                    {floor.suites.length === 0 ? (
-                      <p className="text-[11px] text-[var(--app-color-text-tertiary)] py-2 text-center">此楼层暂无套间</p>
-                    ) : floor.suites.map((suite) => {
-                      const seKey = `${floor.floorCode}/${suite.suiteNorm}`;
-                      const sexp = expandedSuites.has(seKey);
-                      const alarmVars = suite.rooms.flatMap(r => r.tags).filter(t => t.isAlarmMetric);
-                      const refVars = suite.rooms.flatMap(r => r.tags).filter(t => !t.isAlarmMetric);
-                      return (
-                        <div key={suite.suiteNorm} className="rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
-                          <div className="flex items-center gap-3 px-2.5 py-1.5">
-                            <button type="button" onClick={() => toggleSuite(seKey)}
-                              className="flex items-center gap-1.5 min-w-0 text-left hover:opacity-80">
-                              <span className="text-xs font-medium">{suite.suiteNorm}</span>
-                              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{suite.roomCount}间 · {suite.variableCount}变量</span>
-                              {alarmVars.length > 0 && <span className="text-[10px] text-[var(--app-color-text-tertiary)]">({alarmVars.length}报警{refVars.length > 0 ? `+${refVars.length}参考` : ""})</span>}
-                              {sexp ? <ChevronUp className="h-3 w-3 text-[var(--app-color-text-tertiary)]" /> : <ChevronDown className="h-3 w-3 text-[var(--app-color-text-tertiary)]" />}
-                            </button>
-                            {suite.hasCustomThresholds && <span className="inline-flex items-center gap-0.5 rounded-full bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-color-accent)]"><SlidersHorizontal className="h-3 w-3" />自定义</span>}
-                            <div className="flex-1" />
-                            <button type="button" className="inline-flex items-center gap-1 rounded-md border border-[var(--app-color-border-default)] px-2 py-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
-                              onClick={() => setEditingSuite({ ...suite })}><SlidersHorizontal className="h-3 w-3" />阈值</button>
-                            <AdminSwitchScaled size="sm" checked={suite.enabled !== false}
-                              onChange={async () => {
-                                const next = suite.enabled === false ? null : false;
-                                try {
-                                  await saveSuiteConfig({ id: suite.configId ?? undefined, floorCode: suite.floorCode, suiteNorm: suite.suiteNorm, enabled: next, tempMin: suite.tempMin, tempMax: suite.tempMax, humMin: suite.humMin, humMax: suite.humMax, pressureMin: suite.pressureMin, pressureMax: suite.pressureMax });
-                                  queryClient.invalidateQueries({ queryKey: ["telemetry-alarm-config-tree"] });
-                                } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "切换失败"); }
-                              }} />
-                          </div>
-
-                          {/* Rooms (expanded under suite) */}
-                          {sexp && (
-                            <div className="border-t border-[var(--app-color-border-default)] px-2.5 py-1.5 space-y-1">
-                              {/* Batch operations bar */}
-                              <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[color-mix(in_srgb,var(--app-color-border-default)_60%,transparent)] bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_30%,transparent)] rounded-t">
-                                <label className="inline-flex items-center gap-1 text-[10px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
-                                  <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]"
-                                    checked={allAlarmTagsInSuite(suite).length > 0 && allAlarmTagsInSuite(suite).every(t => selectedTags.has(t.tagId))}
-                                    onChange={(e) => toggleSelectAll(e.target.checked, suite)}
-                                  />
-                                  全选报警变量
-                                </label>
-                                <select className="rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1.5 py-0.5 text-[10px] text-[var(--app-color-text-primary)]"
-                                  value={activePresetId ?? ''}
-                                  onChange={(e) => setActivePresetId(e.target.value ? Number(e.target.value) : null)}>
-                                  <option value="">阈值模板...</option>
-                                  {(presets ?? []).map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                  ))}
-                                </select>
-                                <AdminButton type="button" tone="secondary" size="sm"
-                                  disabled={selectedTags.size === 0}
-                                  onClick={applyPresetToSelected}>
-                                  应用模板到选中 ({selectedTags.size})
-                                </AdminButton>
-                                <AdminButton type="button" tone="ghost" size="sm"
-                                  disabled={selectedTags.size === 0}
-                                  onClick={resetSelectedToInherit}>
-                                  重置为继承
-                                </AdminButton>
-                              </div>
-                              {suite.rooms.map((room) => (
-                                <div key={room.roomCanonical} className="rounded border border-[color-mix(in_srgb,var(--app-color-border-default)_60%,transparent)] bg-[color-mix(in_srgb,var(--app-color-surface-elevated)_50%,transparent)] px-2 py-1">
-                                  <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-[11px] font-medium text-[var(--app-color-text-primary)]">{room.roomDisplay}</span>
-                                    <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{room.variableCount}变量</span>
-                                    {room.hasAlarmMetrics && <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--app-color-feedback-error)]" title="含报警指标" />}
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    {room.tags.map((tag) => {
-                                      const isRef = !tag.isAlarmMetric;
-                                      const alarmOn = tag.alarmEnabled;
-                                      const isToggling = togglingTag === tag.tagId;
-                                      const statusColors: Record<string, string> = { SETPOINT: "bg-purple-100 text-purple-700", SWITCH: "bg-amber-100 text-amber-700" };
-                                      return (
-                                        <div key={tag.tagId ?? tag.variableName} className={cn("flex items-center gap-1.5 text-[10px] py-0.5", isRef && "opacity-70")}>
-                                          {metricKindBadge(tag.metricKindCode, tag.metricKindLabel)}
-                                          {tag.kindRole === "SETPOINT" && <span className={cn("rounded px-1 py-0 text-[9px] font-medium", statusColors.SETPOINT)}>设定值</span>}
-                                          {tag.kindRole === "SWITCH" && <span className={cn("rounded px-1 py-0 text-[9px] font-medium", statusColors.SWITCH)}>开关</span>}
-                                          <span className="font-medium text-[var(--app-color-text-primary)] truncate max-w-[200px]" title={tag.variableName}>{tag.displayLabel}</span>
-                                          {isRef && <span className="text-[var(--app-color-text-tertiary)] italic">参考</span>}
-                                          {!isRef && tag.effectiveMinValue && tag.effectiveMaxValue && (
-                                            <span className="text-[var(--app-color-text-tertiary)] ml-auto">{tag.effectiveMinValue}~{tag.effectiveMaxValue}</span>
-                                          )}
-                                          {tag.alarmOverrideMin || tag.alarmOverrideMax ? <span className="text-[var(--app-color-accent)] ml-auto text-[9px]">已覆盖</span> : null}
-                                          {tag.isAlarmMetric && (
-                                            <div className="flex items-center gap-1 ml-auto">
-                                              <input type="checkbox"
-                                                className="h-3 w-3 rounded accent-[var(--app-color-accent)] shrink-0"
-                                                checked={selectedTags.has(tag.tagId)}
-                                                onChange={(e) => {
-                                                  setSelectedTags(prev => {
-                                                    const next = new Set(prev);
-                                                    e.target.checked ? next.add(tag.tagId) : next.delete(tag.tagId);
-                                                    return next;
-                                                  });
-                                                }}
-                                                title="选择此变量" />
-                                              <input
-                                                className="w-[4rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0 text-[10px] font-mono text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none"
-                                                placeholder={tag.effectiveMinValue ?? "min"}
-                                                value={tagDrafts[tag.tagId]?.min ?? ''}
-                                                onChange={(e) => updateTagDraft(tag.tagId, { min: e.target.value })} />
-                                              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">~</span>
-                                              <input
-                                                className="w-[4rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0 text-[10px] font-mono text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none"
-                                                placeholder={tag.effectiveMaxValue ?? "max"}
-                                                value={tagDrafts[tag.tagId]?.max ?? ''}
-                                                onChange={(e) => updateTagDraft(tag.tagId, { max: e.target.value })} />
-                                              <input
-                                                className="w-[3rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0 text-[10px] font-mono text-[var(--app-color-text-primary)]"
-                                                placeholder="冷却"
-                                                value={tagDrafts[tag.tagId]?.cooldown || ''}
-                                                onChange={(e) => updateTagDraft(tag.tagId, { cooldown: Number(e.target.value) || 0 })}
-                                                title="重报警冷却(分钟)" />
-                                              <AdminButton type="button" tone="primary" size="sm"
-                                                loading={savingTags.has(tag.tagId)}
-                                                onClick={() => saveTagOverride(tag.tagId)}>
-                                                <Save className="h-3 w-3" />
-                                              </AdminButton>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                {fexp && floor.suites.map(suite => {
+                  const sk = suiteKey(floor, suite);
+                  const sexp = expandedSuites.has(sk);
+                  const sActive = activeSuiteKey === sk && !activeRoom;
+                  return (
+                    <div key={sk} className="ml-2">
+                      <div className={cn("flex items-center gap-1 rounded-md px-1.5 py-0.5 cursor-pointer hover:bg-[var(--app-color-surface-hover)]", sActive && "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]")}
+                        onClick={() => { setActiveSuiteKey(sk); setActiveRoom(null); setExpandedSuites(prev => new Set(prev).add(sk)); }}>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedSuites(prev => { const n = new Set(prev); sexp ? n.delete(sk) : n.add(sk); return n; }); }}
+                          className="shrink-0 text-[var(--app-color-text-tertiary)]">{sexp ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</button>
+                        <span className="min-w-0 flex-1 truncate text-xs text-[var(--app-color-text-secondary)]">{suite.suiteNorm}</span>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setEditingSuite({ ...suite }); }}
+                          className="shrink-0 rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)]" title="套间阈值">
+                          <SlidersHorizontal className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {sexp && suite.rooms.map(room => {
+                        const rActive = activeRoom === room.roomCanonical;
+                        return (
+                          <button key={room.roomCanonical} type="button"
+                            onClick={() => { setActiveRoom(room.roomCanonical); }}
+                            className={cn("flex w-full items-center gap-1 rounded-md py-0.5 pl-7 pr-1.5 text-left hover:bg-[var(--app-color-surface-hover)]", rActive && "bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)]")}>
+                            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--app-color-text-tertiary)]">{room.roomDisplay}</span>
+                            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{room.variableCount}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
         </div>
+      </aside>
 
-        {/* Preset management */}
-        <div className="border-t border-[var(--app-color-border-default)] pt-3 mt-3">
-          <button type="button" onClick={() => setPresetsExpanded(v => !v)}
-            className="flex items-center gap-2 text-xs font-semibold text-[var(--app-color-text-primary)] hover:opacity-80 w-full text-left">
+      {/* Right pane */}
+      <section className="flex min-w-0 min-h-0 flex-1 flex-col gap-2">
+        {showFloorConfig && (
+          <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5">
+            <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">{activeFloorNode!.floorCode}</span>
+            <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)]">冷却
+              <input type="number" min={5} max={1440} className="w-[3.5rem] rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center text-[var(--app-color-text-primary)]"
+                value={floorDrafts[activeFloorNode!.floorCode]?.cooldown ?? activeFloorNode!.cooldownMinutes}
+                onChange={e => setFloorDrafts(p => ({ ...p, [activeFloorNode!.floorCode]: { ...(p[activeFloorNode!.floorCode] ?? { cooldown: activeFloorNode!.cooldownMinutes, notifyRecovery: activeFloorNode!.notifyOnRecovery, bufferFlush: activeFloorNode!.bufferFlushMinutes ?? 5 }), cooldown: Math.max(5, Number(e.target.value) || 60) } }))} />min</label>
+            <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)]">缓冲刷新
+              <input type="number" min={1} max={60} className="w-[3.5rem] rounded border border-[var(--app-color-border-default)] px-1 py-0.5 text-xs font-mono text-center text-[var(--app-color-text-primary)]"
+                value={floorDrafts[activeFloorNode!.floorCode]?.bufferFlush ?? (activeFloorNode!.bufferFlushMinutes ?? 5)}
+                onChange={e => setFloorDrafts(p => ({ ...p, [activeFloorNode!.floorCode]: { ...(p[activeFloorNode!.floorCode] ?? { cooldown: activeFloorNode!.cooldownMinutes, notifyRecovery: activeFloorNode!.notifyOnRecovery, bufferFlush: activeFloorNode!.bufferFlushMinutes ?? 5 }), bufferFlush: Math.max(1, Number(e.target.value) || 5) } }))} />min</label>
+            <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
+              <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]"
+                checked={floorDrafts[activeFloorNode!.floorCode]?.notifyRecovery ?? activeFloorNode!.notifyOnRecovery}
+                onChange={e => setFloorDrafts(p => ({ ...p, [activeFloorNode!.floorCode]: { ...(p[activeFloorNode!.floorCode] ?? { cooldown: activeFloorNode!.cooldownMinutes, notifyRecovery: activeFloorNode!.notifyOnRecovery, bufferFlush: activeFloorNode!.bufferFlushMinutes ?? 5 }), notifyRecovery: e.target.checked } }))} />恢复通知</label>
+            <div className="flex-1" />
+            <AdminSwitchScaled size="sm" checked={activeFloorNode!.enabled} onChange={() => toggleFloorEnabled(activeFloorNode!.floorCode)} />
+            <AdminButton type="button" tone="primary" size="sm" loading={savingFloor === activeFloorNode!.floorCode} onClick={() => handleSaveFloor(activeFloorNode!.floorCode)}><Save className="h-3.5 w-3.5" />保存</AdminButton>
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5">
+          <button type="button" onClick={() => setGlobalOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--app-color-border-default)] px-3 py-1.5 text-xs text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]">
             <SlidersHorizontal className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />
-            阈值预设模板 ({presets.length})
-            {presetsExpanded ? <ChevronUp className="h-3.5 w-3.5 ml-auto text-[var(--app-color-text-tertiary)]" />
-                              : <ChevronDown className="h-3.5 w-3.5 ml-auto text-[var(--app-color-text-tertiary)]" />}
+            全局设置
           </button>
-          {presetsExpanded && (
-            <div className="mt-2 space-y-1.5">
-              {presets.map(p => (
-                <div key={p.id} className="flex items-center gap-2 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5">
-                  <span className="text-xs font-medium min-w-[80px] text-[var(--app-color-text-primary)]">{p.name}</span>
-                  <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
-                    温{p.tempMin ?? '-'}~{p.tempMax ?? '-'}℃ 湿{p.humMin ?? '-'}~{p.humMax ?? '-'}% 冷{p.alarmCooldownMinutes ?? 0}min
-                  </span>
-                  <div className="flex-1" />
-                  <AdminButton type="button" tone="ghost" size="sm" onClick={() => setPresetEditor(p)}>编辑</AdminButton>
-                  <AdminButton type="button" tone="ghost" size="sm" onClick={async () => {
-                    if (!p.id || !await appConfirm(`删除模板「${p.name}」？`)) return;
-                    try {
-                      await deleteAlarmPreset(p.id);
-                      setPresets(prev => prev.filter(x => x.id !== p.id));
-                      toast.success('已删除');
-                    } catch (e: any) { toast.error(e?.message || '删除失败'); }
-                  }}>删除</AdminButton>
-                </div>
-              ))}
-              <AdminButton type="button" tone="secondary" size="sm" onClick={() => setPresetEditor(null)}>
-                + 新建模板
-              </AdminButton>
-            </div>
-          )}
+          <span className="text-[var(--app-color-border-default)]">│</span>
+          <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">阈值模板</span>
+          <select className="rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1.5 py-0.5 text-[11px] text-[var(--app-color-text-primary)]"
+            value={activePresetId ?? ''}
+            onChange={e => setActivePresetId(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">选择模板...</option>
+            {presets.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <AdminButton type="button" tone="secondary" size="sm" disabled={selectedTags.size === 0} loading={batchBusy} onClick={applyPresetToSelected}>应用模板 ({selectedTags.size})</AdminButton>
+          <label className="inline-flex items-center gap-1 text-[11px] text-[var(--app-color-text-secondary)] cursor-pointer select-none">
+            <input type="checkbox" className="h-3 w-3 rounded accent-[var(--app-color-accent)]" checked={applyCooldown} onChange={e => setApplyCooldown(e.target.checked)} />
+            同时应用模板冷却
+          </label>
+          <button type="button" onClick={() => setPresetManagerOpen(true)}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--app-color-border-default)] px-3 py-1.5 text-xs text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]">
+            管理模板…
+          </button>
+          <span className="text-[var(--app-color-border-default)]">│</span>
+          <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">批量：</span>
+          <AdminButton type="button" tone="secondary" size="sm" disabled={selectedTags.size === 0} loading={batchBusy} onClick={() => batchSetAlarmSwitch(true)}>启用</AdminButton>
+          <AdminButton type="button" tone="secondary" size="sm" disabled={selectedTags.size === 0} loading={batchBusy} onClick={() => batchSetAlarmSwitch(false)}>停用</AdminButton>
+          <AdminButton type="button" tone="ghost" size="sm" disabled={selectedTags.size === 0} loading={batchBusy} onClick={() => batchSetAlarmSwitch(null)}>继承</AdminButton>
+          <AdminButton type="button" tone="ghost" size="sm" disabled={selectedTags.size === 0} loading={batchBusy} onClick={resetSelectedToInherit}>重置阈值</AdminButton>
         </div>
-      </AdminFormCard>
+
+        <p className="shrink-0 text-[11px] text-[var(--app-color-text-secondary)]">
+          输入框留空＝继承（灰色提示为当前生效值）；填写即逐点覆盖。
+        </p>
+
+        {/* Table */}
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
+          <table className="twin-table text-xs">
+            <thead>
+              <tr>
+                <th className="w-8"><input type="checkbox" className="h-3.5 w-3.5 accent-[var(--app-color-accent)]" checked={allSelected} onChange={toggleSelectAll} /></th>
+                <th>变量</th>
+                <th className="w-[88px]">当前值</th>
+                <th className="w-[130px]">生效阈值</th>
+                <th className="w-[96px]">报警开关</th>
+                <th>阈值覆盖</th>
+                <th className="w-[72px]" title="逐点覆盖的“持续未恢复时重提醒间隔”（分钟）；留空继承楼层配置">重提醒</th>
+                <th className="w-[56px]">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={8} className="py-6 text-center text-xs text-[var(--app-color-text-tertiary)]">无匹配变量</td></tr>
+              ) : rows.map(row => {
+                const { tag, room } = row;
+                const kind = classify(tag.metricKindCode);
+                const snap = valueByVar.get(tag.variableName);
+                const isRef = !tag.isAlarmMetric;
+                const overridden = tag.alarmOverrideMin != null || tag.alarmOverrideMax != null;
+                const draft = tagDrafts[tag.tagId] ?? { min: '', max: '', cooldown: '' };
+                const dirty =
+                  draft.min !== (tag.alarmOverrideMin ?? '') ||
+                  draft.max !== (tag.alarmOverrideMax ?? '') ||
+                  String(draft.cooldown || '') !== String(tag.alarmCooldownMinutes || '');
+                return (
+                  <tr key={tag.tagId ?? tag.variableName} className={cn(isRef && "opacity-60")}>
+                    <td>{tag.isAlarmMetric ? <input type="checkbox" className="h-3.5 w-3.5 accent-[var(--app-color-accent)]" checked={selectedTags.has(tag.tagId)} onChange={e => setSelectedTags(prev => { const n = new Set(prev); e.target.checked ? n.add(tag.tagId) : n.delete(tag.tagId); return n; })} /> : null}</td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        {kindBadge(tag)}
+                        <span className="truncate font-medium text-[var(--app-color-text-primary)]" title={tag.variableName}>{tag.displayLabel}</span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-[var(--app-color-text-tertiary)]">{room.roomDisplay}</div>
+                    </td>
+                    <td>
+                      {snap?.value != null ? (
+                        <span className="inline-flex items-center gap-1 font-mono text-[var(--app-color-text-primary)]">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: bandDot(snap.alarmBand) }} />
+                          {boolLabel(snap.value, tag.metricKindCode) ?? snap.value}
+                        </span>
+                      ) : <span className="text-[var(--app-color-text-tertiary)]">—</span>}
+                    </td>
+                    <td>
+                      {kind === "analog" ? (tag.effectiveMinValue || tag.effectiveMaxValue) ? (
+                        <div>
+                          <div className="font-mono text-[var(--app-color-text-primary)]">{tag.effectiveMinValue ?? '—'}~{tag.effectiveMaxValue ?? '—'}</div>
+                          <div className="text-[9px] text-[var(--app-color-accent)]">{overridden ? '逐点覆盖' : '继承楼层/套间'}</div>
+                        </div>
+                      ) : <span className="text-[var(--app-color-text-tertiary)]">未设置</span>
+                        : kind === "wind" ? <span className="text-[var(--app-color-text-tertiary)]">不支持</span>
+                        : kind === "switch" || kind === "status" ? <span className="text-[var(--app-color-text-tertiary)]">值变化即报警</span>
+                        : <span className="text-[var(--app-color-text-tertiary)]">参考，不报警</span>}
+                    </td>
+                    <td>
+                      {isRef ? <span className="text-[var(--app-color-text-tertiary)]">—</span> : (
+                        <select className="rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0.5 text-[11px] text-[var(--app-color-text-primary)]"
+                          disabled={togglingTag === tag.tagId || kind === "wind"}
+                          title={kind === "wind" ? "风量限值后端暂未支持，开关不生效" : undefined}
+                          value={tag.alarmEnabled === true ? '1' : tag.alarmEnabled === false ? '0' : 'inherit'}
+                          onChange={e => handleToggleTag(tag.tagId, e.target.value === '1' ? true : e.target.value === '0' ? false : null)}>
+                          <option value="inherit">继承</option>
+                          <option value="1">启用</option>
+                          <option value="0">禁用</option>
+                        </select>
+                      )}
+                    </td>
+                    <td>
+                      {kind === "analog" ? (
+                        <div className="flex items-center gap-1">
+                          <input className="w-[3.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0.5 font-mono text-[11px] text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-secondary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
+                            placeholder={tag.effectiveMinValue ?? "min"} value={draft.min}
+                            onChange={e => updateTagDraft(tag.tagId, { min: e.target.value })} />
+                          <span className="text-[var(--app-color-text-tertiary)]">~</span>
+                          <input className="w-[3.5rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0.5 font-mono text-[11px] text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-secondary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
+                            placeholder={tag.effectiveMaxValue ?? "max"} value={draft.max}
+                            onChange={e => updateTagDraft(tag.tagId, { max: e.target.value })} />
+                        </div>
+                      ) : kind === "switch" || kind === "status" ? (
+                        <div className="text-[11px] text-[var(--app-color-text-tertiary)]">
+                          <div>值变化即报警</div>
+                          <div className="text-[10px] text-[var(--app-color-text-tertiary)]">{kind === "switch" ? "true=开 / false=关" : "true=是 / false=否"}</div>
+                        </div>
+                      ) : kind === "wind" ? <span className="text-[11px] text-[var(--app-color-text-tertiary)]">不支持报警</span>
+                        : <span className="text-[11px] text-[var(--app-color-text-tertiary)]">参考，不报警</span>}
+                    </td>
+                    <td>
+                      {kind === "analog" ? (
+                        <input className="w-[3rem] rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-1 py-0.5 font-mono text-[11px] text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-secondary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
+                          placeholder={tag.alarmCooldownMinutes ? String(tag.alarmCooldownMinutes) : "继承"}
+                          value={draft.cooldown}
+                          onChange={e => updateTagDraft(tag.tagId, { cooldown: e.target.value })} />
+                      ) : <span className="text-[var(--app-color-text-tertiary)]">—</span>}
+                    </td>
+                    <td>
+                      {kind === "analog" ? (
+                        <AdminButton type="button" tone="primary" size="sm" loading={savingTags.has(tag.tagId)} disabled={!dirty} onClick={() => saveTagOverride(row)}>
+                          <Save className="h-3 w-3" /> 保存
+                        </AdminButton>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {editingSuite && (
         <SuiteThresholdModal suite={editingSuite} saving={savingSuite} onChange={setEditingSuite}
@@ -1750,14 +1772,10 @@ function FloorSuiteAlarmPanel() {
           onClose={() => setEditingSuite(null)} />
       )}
 
-      {presetEditor !== undefined && (
-        <PresetEditorModal preset={presetEditor} onClose={() => setPresetEditor(undefined)}
-          onSaved={() => {
-            setPresetEditor(undefined);
-            fetchAlarmPresets().then(setPresets).catch(() => {});
-          }} />
-      )}
-    </>
+      <GlobalLimitsModal open={globalOpen} onClose={() => setGlobalOpen(false)} />
+      <PresetManagerModal open={presetManagerOpen} presets={presets} onClose={() => setPresetManagerOpen(false)}
+        onChanged={() => { fetchAlarmPresets().then(setPresets).catch(() => {}); }} />
+    </div>
   );
 }
 
@@ -1768,44 +1786,46 @@ function FloorSuiteAlarmPanel() {
 function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
   suite: SuiteNode; saving: boolean; onChange: (s: SuiteNode) => void; onSave: () => void; onClose: () => void;
 }) {
-  const metrics: Array<{ key: string; label: string; icon: React.ReactNode; unit: string; minKey: keyof SuiteNode; maxKey: keyof SuiteNode }> = [
-    { key: "temp", label: "温度", icon: <Thermometer className="h-3.5 w-3.5 text-orange-500" />, unit: "℃", minKey: "tempMin", maxKey: "tempMax" },
-    { key: "hum", label: "湿度", icon: <Droplets className="h-3.5 w-3.5 text-blue-500" />, unit: "%", minKey: "humMin", maxKey: "humMax" },
-    { key: "pressure", label: "压强", icon: <Gauge className="h-3.5 w-3.5 text-emerald-500" />, unit: "Pa", minKey: "pressureMin", maxKey: "pressureMax" },
+  const metrics: Array<{ key: string; label: string; icon: React.ReactNode; unit: string; minKey: keyof SuiteNode; maxKey: keyof SuiteNode; accent: string }> = [
+    { key: "temp", label: "温度", icon: <Thermometer className="h-3.5 w-3.5" />, unit: "℃", minKey: "tempMin", maxKey: "tempMax", accent: "var(--app-color-feedback-warning)" },
+    { key: "hum", label: "湿度", icon: <Droplets className="h-3.5 w-3.5" />, unit: "%", minKey: "humMin", maxKey: "humMax", accent: "var(--app-color-feedback-info)" },
+    { key: "pressure", label: "压强", icon: <Gauge className="h-3.5 w-3.5" />, unit: "Pa", minKey: "pressureMin", maxKey: "pressureMax", accent: "var(--app-color-feedback-success)" },
   ];
+
+  const inputCls = "w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs text-[var(--app-color-text-primary)] focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]";
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-[var(--app-color-accent)]" />套间 · {suite.suiteNorm}</h3>
+          <h3 className="text-sm font-bold flex items-center gap-2"><SlidersHorizontal className="h-4 w-4 text-[var(--app-color-accent)]" />套间阈值 · {suite.suiteNorm}</h3>
           <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]"><X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" /></button>
         </div>
         <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-3">楼层：{suite.floorCode} · {suite.roomCount} 房间 · {suite.variableCount} 变量</p>
 
         {/* Suite enable */}
         <div className="flex items-center gap-3 mb-4 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2">
-          <span className="text-xs font-medium">套间报警</span>
+          <span className="text-xs font-medium text-[var(--app-color-text-primary)]">套间报警</span>
           <div className="flex-1" />
-          <select className="rounded border border-[var(--app-color-border-default)] px-2 py-1 text-xs"
+          <select className="rounded border border-[var(--app-color-border-default)] px-2 py-1 text-xs text-[var(--app-color-text-primary)]"
             value={suite.enabled === null ? "inherit" : suite.enabled ? "on" : "off"}
             onChange={(e) => onChange({ ...suite, enabled: e.target.value === "inherit" ? null : e.target.value === "on" })}>
             <option value="inherit">继承楼层</option>
-            <option value="on">强制启用</option>
-            <option value="off">强制禁用</option>
+            <option value="on">启用</option>
+            <option value="off">停用</option>
           </select>
         </div>
 
         {/* Thresholds */}
         <div className="space-y-2 mb-4">
-          <div className="flex items-center justify-between"><span className="text-xs font-semibold">自定义阈值</span><span className="text-[10px] text-[var(--app-color-text-tertiary)]">留空=继承全局</span></div>
+          <div className="flex items-center justify-between"><span className="text-xs font-semibold text-[var(--app-color-text-primary)]">自定义阈值</span><span className="text-[10px] text-[var(--app-color-text-tertiary)]">留空=继承楼层</span></div>
           {metrics.map((m) => (
             <div key={m.key} className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">{m.icon}{m.label}</span>
-              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]" placeholder="下限"
+              <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium" style={{ color: m.accent }}>{m.icon}{m.label}</span>
+              <input type="text" inputMode="decimal" className={inputCls} placeholder="下限"
                 value={(suite[m.minKey] as string) ?? ""} onChange={(e) => onChange({ ...suite, [m.minKey]: e.target.value || null })} />
               <span className="text-[11px] text-[var(--app-color-text-tertiary)]">~</span>
-              <input type="text" inputMode="decimal" className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]" placeholder="上限"
+              <input type="text" inputMode="decimal" className={inputCls} placeholder="上限"
                 value={(suite[m.maxKey] as string) ?? ""} onChange={(e) => onChange({ ...suite, [m.maxKey]: e.target.value || null })} />
               <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">{m.unit}</span>
             </div>
@@ -1815,38 +1835,32 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
         {/* Hysteresis section */}
         <div className="space-y-2 mb-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold">死区设置</span>
-            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">防止阈值边界振荡</span>
+            <span className="text-xs font-semibold text-[var(--app-color-text-primary)]">死区（滞回）</span>
+            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">报警与恢复之间留的缓冲，防止值在阈值附近抖动时反复报警</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">
-              <Thermometer className="h-3.5 w-3.5 text-orange-400" />温度
+            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium" style={{ color: "var(--app-color-feedback-warning)" }}>
+              <Thermometer className="h-3.5 w-3.5" />温度
             </span>
-            <input type="text" inputMode="decimal"
-              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
-              placeholder="0.3"
+            <input type="text" inputMode="decimal" className={inputCls} placeholder="0.3"
               value={(suite.hysteresisTemp as string) ?? ""}
               onChange={(e) => onChange({ ...suite, hysteresisTemp: e.target.value || null })} />
             <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">℃</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">
-              <Droplets className="h-3.5 w-3.5 text-blue-400" />湿度
+            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium" style={{ color: "var(--app-color-feedback-info)" }}>
+              <Droplets className="h-3.5 w-3.5" />湿度
             </span>
-            <input type="text" inputMode="decimal"
-              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
-              placeholder="2.0"
+            <input type="text" inputMode="decimal" className={inputCls} placeholder="2.0"
               value={(suite.hysteresisHum as string) ?? ""}
               onChange={(e) => onChange({ ...suite, hysteresisHum: e.target.value || null })} />
             <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">%</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium text-[var(--app-color-text-secondary)]">
-              <Gauge className="h-3.5 w-3.5 text-emerald-400" />压差
+            <span className="inline-flex items-center gap-1 w-[56px] shrink-0 text-[11px] font-medium" style={{ color: "var(--app-color-feedback-success)" }}>
+              <Gauge className="h-3.5 w-3.5" />压差
             </span>
-            <input type="text" inputMode="decimal"
-              className="w-[5rem] rounded border border-[var(--app-color-border-default)] px-2 py-1 font-mono text-xs focus:border-[var(--app-color-accent)] focus:outline-none focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)]"
-              placeholder="5.0"
+            <input type="text" inputMode="decimal" className={inputCls} placeholder="5.0"
               value={(suite.hysteresisPressure as string) ?? ""}
               onChange={(e) => onChange({ ...suite, hysteresisPressure: e.target.value || null })} />
             <span className="text-[10px] text-[var(--app-color-text-tertiary)] w-[1.25rem] text-right">Pa</span>
@@ -1862,8 +1876,8 @@ function SuiteThresholdModal({ suite, saving, onChange, onSave, onClose }: {
               <div className="ml-2 space-y-0.5">
                 {room.tags.map((tag) => (
                   <div key={tag.tagId ?? tag.variableName} className="flex items-center gap-1.5 text-[10px]">
-                    <span className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0",
-                      tag.metricKindCode === "TEMP" ? "bg-orange-500" : tag.metricKindCode === "HUM" ? "bg-blue-500" : tag.metricKindCode === "PRESSURE" ? "bg-emerald-500" : "bg-purple-400")} />
+                    <span className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ background: tag.metricKindCode === "TEMP" ? "var(--app-color-feedback-warning)" : tag.metricKindCode === "HUM" || tag.metricKindCode === "RH" ? "var(--app-color-feedback-info)" : tag.metricKindCode === "PRESSURE" ? "var(--app-color-feedback-success)" : "var(--app-color-border-strong)" }} />
                     <span className="font-medium truncate max-w-[160px]" title={tag.variableName}>{tag.displayLabel}</span>
                     {!tag.isAlarmMetric && <span className="text-[var(--app-color-text-tertiary)] italic text-[9px]">{tag.kindRole === "SETPOINT" ? "设定值" : tag.kindRole}</span>}
                     {tag.isAlarmMetric && tag.effectiveMinValue && <span className="text-[var(--app-color-text-tertiary)] ml-auto">{tag.effectiveMinValue}~{tag.effectiveMaxValue}</span>}
@@ -1919,9 +1933,9 @@ function PresetEditorModal({ preset, onClose, onSaved }: {
 
   return (
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="w-full max-w-md max-h-[85vh] overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-md max-h-[85vh] overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold">{form.id ? '编辑模板' : '新建模板'}</h3>
+          <h3 className="text-sm font-bold text-[var(--app-color-text-primary)]">{form.id ? '编辑模板' : '新建模板'}</h3>
           <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]"><X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" /></button>
         </div>
         <div className="space-y-3">
@@ -1938,8 +1952,11 @@ function PresetEditorModal({ preset, onClose, onSaved }: {
             <div><label className={adminLabelClass}>温度上限</label><input className={cn(inputCls, "mt-1")} placeholder="26.0" value={form.tempMax ?? ''} onChange={e => setForm({...form, tempMax: e.target.value || null})} /></div>
             <div><label className={adminLabelClass}>湿度下限</label><input className={cn(inputCls, "mt-1")} placeholder="40.0" value={form.humMin ?? ''} onChange={e => setForm({...form, humMin: e.target.value || null})} /></div>
             <div><label className={adminLabelClass}>湿度上限</label><input className={cn(inputCls, "mt-1")} placeholder="70.0" value={form.humMax ?? ''} onChange={e => setForm({...form, humMax: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>压差下限</label><input className={cn(inputCls, "mt-1")} placeholder="10.0" value={form.pressureMin ?? ''} onChange={e => setForm({...form, pressureMin: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>压差上限</label><input className={cn(inputCls, "mt-1")} placeholder="30.0" value={form.pressureMax ?? ''} onChange={e => setForm({...form, pressureMax: e.target.value || null})} /></div>
             <div><label className={adminLabelClass}>温度死区</label><input className={cn(inputCls, "mt-1")} placeholder="0.3" value={form.hysteresisTemp ?? ''} onChange={e => setForm({...form, hysteresisTemp: e.target.value || null})} /></div>
             <div><label className={adminLabelClass}>湿度死区</label><input className={cn(inputCls, "mt-1")} placeholder="2.0" value={form.hysteresisHum ?? ''} onChange={e => setForm({...form, hysteresisHum: e.target.value || null})} /></div>
+            <div><label className={adminLabelClass}>压差死区</label><input className={cn(inputCls, "mt-1")} placeholder="5.0" value={form.hysteresisPressure ?? ''} onChange={e => setForm({...form, hysteresisPressure: e.target.value || null})} /></div>
             <div><label className={adminLabelClass}>冷却(分钟)</label><input className={cn(inputCls, "mt-1")} placeholder="10" type="number" value={form.alarmCooldownMinutes ?? 0} onChange={e => setForm({...form, alarmCooldownMinutes: Number(e.target.value) || 0})} /></div>
           </div>
           <div className="flex items-center justify-end gap-2 pt-2">
@@ -1947,6 +1964,75 @@ function PresetEditorModal({ preset, onClose, onSaved }: {
             <AdminButton type="button" tone="primary" size="sm" loading={saving} onClick={save}><Save className="h-3.5 w-3.5" />保存</AdminButton>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PresetManagerModal — 阈值预设模板管理弹窗                             */
+/* ------------------------------------------------------------------ */
+
+function PresetManagerModal({ open, presets, onClose, onChanged }: {
+  open: boolean;
+  presets: AlarmPreset[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState<AlarmPreset | null | undefined>(undefined);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] flex items-center gap-2">
+            <SlidersHorizontal className="h-4 w-4 text-[var(--app-color-accent)]" />
+            阈值预设模板
+          </h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]">
+            <X className="h-4 w-4 text-[var(--app-color-text-tertiary)]" />
+          </button>
+        </div>
+
+        <div className="flex justify-end mb-3">
+          <AdminButton type="button" tone="primary" size="sm" onClick={() => setEditing(null)}>+ 新建模板</AdminButton>
+        </div>
+
+        {presets.length === 0 ? (
+          <p className="text-xs text-[var(--app-color-text-tertiary)] py-4 text-center">暂无阈值预设模板</p>
+        ) : (
+          <div className="space-y-1.5">
+            {presets.map(p => (
+              <div key={p.id} className="flex items-center gap-2 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium text-[var(--app-color-text-primary)]">{p.name}</span>
+                    {p.description ? <span className="truncate text-[10px] text-[var(--app-color-text-tertiary)]">{p.description}</span> : null}
+                  </div>
+                  <div className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                    温{p.tempMin ?? '-'}~{p.tempMax ?? '-'}℃ 湿{p.humMin ?? '-'}~{p.humMax ?? '-'}% 压{p.pressureMin ?? '-'}~{p.pressureMax ?? '-'}Pa 冷{p.alarmCooldownMinutes ?? 0}min
+                  </div>
+                </div>
+                <AdminButton type="button" tone="ghost" size="sm" onClick={() => setEditing(p)}>编辑</AdminButton>
+                <AdminButton type="button" tone="ghost" size="sm" onClick={async () => {
+                  if (!p.id || !await appConfirm(`删除模板「${p.name}」？`)) return;
+                  try {
+                    await deleteAlarmPreset(p.id);
+                    toast.success('已删除');
+                    onChanged();
+                  } catch (e: any) { toast.error(e?.message || '删除失败'); }
+                }}>删除</AdminButton>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {editing !== undefined && (
+          <PresetEditorModal preset={editing} onClose={() => setEditing(undefined)}
+            onSaved={() => { setEditing(undefined); onChanged(); }} />
+        )}
       </div>
     </div>
   );
@@ -1963,7 +2049,7 @@ function SwipeAlarmTab({ sourceEnabled }: { sourceEnabled?: boolean }) {
   return (
     <div className="space-y-3">
       {sourceEnabled === false && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-lg border border-[var(--app-color-feedback-warning)] bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_10%,transparent)] px-3 py-2 text-xs text-[var(--app-color-feedback-warning)]">
           ⚠️ SWIPE_FAILURE_ALERT 信息源已关闭。规则即使配置了站外推送也不会生效，请在「信息源配置」Tab 中启用该源。
         </div>
       )}

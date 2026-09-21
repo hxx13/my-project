@@ -10,6 +10,11 @@ public class PrintJob {
     /** 还没被工位领走时被撤回。领走之后就撤不回来了 —— 那由工位页上的机器决定 */
     public static final String STATUS_CANCELLED = "CANCELLED";
 
+    /** 还在打印机队列里排着（核对任务写） */
+    public static final String QUEUE_QUEUED = "QUEUED";
+    /** 已不在队列（核对任务写） */
+    public static final String QUEUE_CLEARED = "CLEARED";
+
     /** 普通优先级 */
     public static final int PRIORITY_NORMAL = 0;
     /** 加急：数值大的先被领走 */
@@ -37,6 +42,10 @@ public class PrintJob {
     private String createdAt;
     private String sentAt;
     private String printedAt;
+    /** 提交给 CUPS 时拿到的作业号；只有直发工位有 */
+    private String cupsJobId;
+    /** QUEUED / CLEARED / null=未核对。只有核对任务写它 */
+    private String queueState;
 
     public String getId() { return id; }
     public void setId(String v) { this.id = v; }
@@ -85,4 +94,10 @@ public class PrintJob {
 
     public String getPrintedAt() { return printedAt; }
     public void setPrintedAt(String v) { this.printedAt = v; }
+
+    public String getCupsJobId() { return cupsJobId; }
+    public void setCupsJobId(String v) { this.cupsJobId = v; }
+
+    public String getQueueState() { return queueState; }
+    public void setQueueState(String v) { this.queueState = v; }
 }

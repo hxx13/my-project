@@ -5,6 +5,7 @@ import {
   createPrintJob,
   fetchPrintPreview,
   fetchSelectableStations,
+  type PrintJob,
   type PrintStationOption,
 } from "@/api/domains/print.api";
 import { uploadAdminFileTemplate } from "@/api/domains/fileTemplates.api";
@@ -199,14 +200,17 @@ export function PrintDispatchDialog({
       })
     : false;
 
-  /** 逐条派发：模板库项直接发；本地文件先上传拿 id 再发（ephemeral 打完即删）。 */
-  const dispatchOne = async (item: PrintDispatchItem) => {
+  /** 逐条派发：模板库项直接发；本地文件先上传拿 id 再发（ephemeral 打完即删）。
+   *  直发工位是同步打完的，返回值里 status 已经是终态 —— FAILED 说明纸没出来，
+   *  在源头上抛出去，批量那边的 catch 收进去就是真实原因，不用为它改批量结构。 */
+  const dispatchOne = async (item: PrintDispatchItem): Promise<PrintJob | undefined> => {
     const key = keyOf(item);
     const nCopies = overrides?.[key]?.copies ?? copies;
     const isUrgent = overrides?.[key]?.urgent ?? urgent;
+    let job: PrintJob | undefined;
     if ("file" in item) {
       const row = await uploadAdminFileTemplate(item.file, "TEMPLATE", true);
-      await createPrintJob({
+      job = await createPrintJob({
         stationId,
         sourceType: "ADMIN_FILE",
         sourceId: row.id,
@@ -216,7 +220,7 @@ export function PrintDispatchDialog({
         urgent: isUrgent,
       });
     } else {
-      await createPrintJob({
+      job = await createPrintJob({
         stationId,
         sourceType: item.sourceType as "CARD_ARCHIVE" | "ADMIN_FILE",
         sourceId: item.sourceId,
@@ -226,6 +230,8 @@ export function PrintDispatchDialog({
         urgent: isUrgent,
       });
     }
+    if (job?.status === "FAILED") throw new Error(job.lastError || "打印没成功");
+    return job;
   };
 
   /** 批量派发：串行 for...of，逐条收集成败，失败项留在清单并标原因。
@@ -300,7 +306,13 @@ export function PrintDispatchDialog({
         sid = row.id;
         name = row.originalName;
       }
-      await createPrintJob({ stationId, sourceType, sourceId: sid, fileName: name, copies, note, urgent });
+      const job = await createPrintJob({ stationId, sourceType, sourceId: sid, fileName: name, copies, note, urgent });
+      // 直发工位是同步打完的：返回的 status 已经是终态，FAILED 就是真没打出来。
+      // 以前这里无条件报「已派给…打印」，CUPS 队列停用时纸一张没出也照样成功 —— 就是那次事故。
+      if (job?.status === "FAILED") {
+        toast.error(`派发失败：${job.lastError || "打印没成功"}`);
+        return; // 不关弹窗：让人看得见原因，能直接重试
+      }
       const stName = stations?.find((s) => s.id === stationId)?.name ?? "打印工位";
       toast.success(`已派给「${stName}」打印`);
       onDispatched?.();

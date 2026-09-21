@@ -12,6 +12,7 @@ import com.example.demo.modules.print.service.DirectPrintService;
 import com.example.demo.modules.print.service.PrintJobPushService;
 import com.example.demo.modules.print.service.PrintJobService;
 import com.example.demo.modules.print.service.PrintJobViewAssembler;
+import com.example.demo.modules.print.service.PrintQueueControlService;
 import com.example.demo.modules.print.service.PrintSourceResolver;
 import com.example.demo.modules.print.service.PrintStationHealthService;
 import com.example.demo.modules.print.service.PrintStationService;
@@ -47,6 +48,7 @@ public class PrintAdminController {
     private final PrintSourceResolver sourceResolver;
     private final DirectPrintService directPrintService;
     private final PrintStationHealthService healthService;
+    private final PrintQueueControlService queueControlService;
 
     public PrintAdminController(PrintStationService stationService,
                                 PrintJobService jobService,
@@ -56,7 +58,8 @@ public class PrintAdminController {
                                 PrintJobViewAssembler jobViewAssembler,
                                 PrintSourceResolver sourceResolver,
                                 DirectPrintService directPrintService,
-                                PrintStationHealthService healthService) {
+                                PrintStationHealthService healthService,
+                                PrintQueueControlService queueControlService) {
         this.stationService = stationService;
         this.jobService = jobService;
         this.pushService = pushService;
@@ -66,6 +69,7 @@ public class PrintAdminController {
         this.sourceResolver = sourceResolver;
         this.directPrintService = directPrintService;
         this.healthService = healthService;
+        this.queueControlService = queueControlService;
     }
 
     /**
@@ -98,6 +102,37 @@ public class PrintAdminController {
             throw new TwinBusinessException(403, "需要教职工权限");
         }
         return u;
+    }
+
+    /**
+     * 清队列是 ADMIN 起的动作：它会连别人正排着的任务一起打掉，
+     * 跟「撤回我自己那一条」不是一个当量。
+     */
+    private static boolean canClearQueue(User u) {
+        return u != null && u.getRole() != null
+                && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+    }
+
+    private User requireAdmin(String authHeader) {
+        User u = requireStaff(authHeader);
+        if (!canClearQueue(u)) {
+            throw new TwinBusinessException(403, "需要管理员权限");
+        }
+        return u;
+    }
+
+    /**
+     * 当前账号能做什么。队列弹窗挂在**教职工可见**的页面上，但清队列要 ADMIN ——
+     * 让 web 和小程序各自判断「当前角色够不够」就等于把同一条权限规则抄两份，
+     * 那正是《后台入口注册规范》里三层必须一致的坑换个地方犯。
+     * 判据只在服务端一处，客户端问它。
+     */
+    @GetMapping("/capabilities")
+    @Operation(summary = "当前账号能做什么（前端据此决定按钮出不出现）")
+    public Result<Map<String, Object>> capabilities(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
+        User u = requireStaff(auth);
+        return Result.success(Map.of("canClearQueue", canClearQueue(u)));
     }
 
     /* ────────────── 工位（配置：最高权限） ────────────── */
@@ -183,6 +218,36 @@ public class PrintAdminController {
         return Result.success(Map.of("ok", true));
     }
 
+    /**
+     * 清空这台打印机队列里的所有作业。
+     *
+     * <p><b>先 CUPS 清，再落库，顺序不能反。</b>反了的话 CUPS 那步失败时库里已经收起了记录，
+     * 界面说清掉了而纸照样会出来。同理 CUPS 那步抛异常就让整个请求失败 ——
+     * 用户点「清空」是明确要求「把这台机器上所有排队的都撤掉」，命令没跑成功却回一句
+     * 「已清空」，他以为队列空了、实际纸还会照常出来。
+     */
+    @PostMapping("/stations/{id}/queue/clear")
+    @Operation(summary = "清空这台打印机的队列（仅直发工位）")
+    public Result<Map<String, Object>> clearStationQueue(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
+            @PathVariable String id) throws InterruptedException {
+        requireAdmin(auth);
+        PrintStation station = stationService.findById(id)
+                .orElseThrow(() -> new TwinBusinessException(404, "工位不存在"));
+        if (!PrintStation.MODE_SERVER.equals(station.getMode())) {
+            return Result.error("这台工位是「工位电脑执行」，没有可清的服务端队列");
+        }
+        int cupsCount;
+        try {
+            cupsCount = queueControlService.clearQueue(station.getPrinterIp());
+        } catch (IOException e) {
+            // 不能只清库就回成功：那样队列里的纸还会照样打出来
+            throw new TwinBusinessException(500, "清空打印机队列失败：" + e.getMessage());
+        }
+        int dbCount = jobService.cancelQueued(station.getId());
+        return Result.success(Map.of("cleared", cupsCount, "cancelled", dbCount));
+    }
+
     /* ────────────── 任务 ────────────── */
 
     /**
@@ -249,13 +314,43 @@ public class PrintAdminController {
     }
 
     @PostMapping("/jobs/{id}/cancel")
-    @Operation(summary = "撤回排队中的任务，或收掉失败的任务")
+    @Operation(summary = "撤回排队中的任务、收掉失败的任务，或撤销还排在打印机队列里的直发任务")
     public Result<Map<String, Object>> cancel(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
-            @PathVariable String id) {
+            @PathVariable String id) throws InterruptedException {
         requireStaff(auth);
+        PrintJob job = jobService.findById(id)
+                .orElseThrow(() -> new TwinBusinessException(404, "任务不存在"));
+
+        // 直发任务被 CUPS 收下后库里就是 PRINTED（lp 退出码 0），cancel() 够不着它 ——
+        // 那种任务卡在队列里撤不掉，正是这次要补的能力。先撤 CUPS 那一条，再落库。
+        //
+        // 但**只有核对确实看到它还排在队列里**才走这条路。queue_state 为 CLEARED 时这条
+        // 早就打完了，纸已经在路上，撤不得；为 NULL 时（刚提交还没轮到核对、或这台机器
+        // 根本问不到队列）无从判断，同样不给撤 —— 宁可不给，也不能把「已完成」改成
+        // 「已撤回」，那是比原事故更坏的谎。
+        boolean stillQueued = PrintJob.QUEUE_QUEUED.equals(job.getQueueState());
+        boolean serverStation = stationService.findById(job.getStationId())
+                .map(s -> PrintStation.MODE_SERVER.equals(s.getMode()))
+                .orElse(false);
+        if (serverStation && stillQueued
+                && job.getCupsJobId() != null && !job.getCupsJobId().isBlank()) {
+            try {
+                queueControlService.cancelJob(job.getCupsJobId());
+            } catch (IOException e) {
+                // 命令没配才走到这（作业已不在队列时 cancelJob 自己吞掉）。
+                // 这时候不能说"撤了"——CUPS 那侧没动过，纸还会出来。
+                return Result.error("没能撤销打印机队列里的这条作业：" + e.getMessage());
+            }
+            if (!jobService.cancelAny(id)) {
+                return Result.error("这条任务已经撤过了");
+            }
+            return Result.success(Map.of("ok", true));
+        }
+
         if (!jobService.cancel(id)) {
-            return Result.error("只有排队中和失败的任务能撤回；已经被打印机领走的撤不回来");
+            return Result.error("这条任务撤不回来：它已经被打印机领走并开始打印了。"
+                    + "排队中的、失败的、以及还排在打印机队列里的都可以撤。");
         }
         return Result.success(Map.of("ok", true));
     }

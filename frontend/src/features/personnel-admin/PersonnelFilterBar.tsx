@@ -57,6 +57,22 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
         ))}
       </div>
 
+      {/* 回收站入口：软删除的人不混在正常列表里，单独一个视图 */}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onApply({ ...value, trashOnly: !value.trashOnly })}
+          className={cn(
+            "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+            value.trashOnly
+              ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm"
+              : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+          )}
+        >
+          {value.trashOnly ? "← 返回人员列表" : "回收站"}
+        </button>
+      </div>
+
       {/* 关键词 + 主筛选 */}
       <div className="flex flex-wrap items-center gap-2">
         <input

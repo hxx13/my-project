@@ -248,3 +248,20 @@
   border-radius: 999rpx;
   line-height: 1.2;
 }
+
+.sn-tabs {
+  display: flex;
+  gap: 8rpx;
+  padding: 16rpx 24rpx 0;
+}
+.sn-tab {
+  padding: 10rpx 28rpx;
+  font-size: 28rpx;
+  color: rgba(30, 55, 90, 0.6);
+  border-radius: 999rpx;
+}
+.sn-tab--on {
+  color: #ac1736;
+  font-weight: 600;
+  background: rgba(172, 23, 54, 0.08);
+}

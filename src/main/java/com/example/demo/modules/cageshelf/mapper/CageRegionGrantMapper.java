@@ -46,4 +46,13 @@ public interface CageRegionGrantMapper {
      * 超管配告警阈值/区域能力时列「全部可选区域」用。
      */
     List<Map<String, Object>> listDistinctRegions();
+
+    /**
+     * 覆盖给定区域（ROOM/FLOOR/CAMPUS 任一命中）的审核人**账号 id** —— 转移待签提醒的收件人来源。
+     * 只认 LEADER/REVIEWER：SCOPE 是二期「可见范围」遗留，不是审核授权，不发给它。
+     * 收件人要账号 id（pushService 收件人走 resolveIdByAccount），故取 staff_id / aro_user_id 而非 personnel.id。
+     */
+    List<String> listReviewerAccountIdsByRegions(@Param("roomIds") List<String> roomIds,
+                                                 @Param("floorIds") List<String> floorIds,
+                                                 @Param("campusIds") List<String> campusIds);
 }

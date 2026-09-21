@@ -22,7 +22,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * 统一人员表服务：聚合同步（aro_personnel 学生 + sys_user 教职工 → personnel，按姓名合并双 id）+ 统一查询。
+ * 统一人员表服务：聚合同步（aro_personnel 学生 + sys_user 教职工 → personnel，按账号 id 上下行）+ 统一查询。
+ * 教职工账号与学生账号的合并由人工通过 PersonnelMergeService 完成，不再按姓名自动推断。
  */
 @Service
 public class PersonnelService {
@@ -31,6 +32,7 @@ public class PersonnelService {
 
     private static final int NAME_MAX_LEN = 128;
     private static final int JOB_NUMBER_MAX_LEN = 64;
+    private static final int HEAD_URL_MAX_LEN = 512;
 
     private static final ObjectMapper ROOM_JSON = new ObjectMapper();
 
@@ -112,18 +114,20 @@ public class PersonnelService {
     }
 
     /**
-     * 姓名 → personnel.id 字符串;查不到返回 null。
+     * 姓名 → personnel.id 字符串。查不到返回 null。
      *
-     * <p>笼位表单里的「实验员」存的是**姓名**而不是账号 id,要和本人比对必须先落到 personnel.id ——
-     * 双 id(`staff_id` / `aro_user_id`)是同一个人的两个登录入口,直接比姓名或账号 id 都会误判。
-     * 同名取一条,与 {@code PersonnelMapper.findByName} 既有口径一致。
+     * <p>笼位表单里的「实验员」存的是**姓名**而不是账号 id，要和本人比对必须先落到 personnel.id。
+     * 姓名已不是身份键，同名会有多行 —— **歧义时返回 null，绝不猜**：静默挑一条会写错人且不报错。
      */
     public String resolveIdByName(String name) {
         if (name == null || name.isBlank()) {
             return null;
         }
-        Personnel p = personnelMapper.findByName(name.trim());
-        return p == null ? null : String.valueOf(p.getId());
+        List<Personnel> matches = personnelMapper.findByNameAll(name.trim());
+        if (matches == null || matches.size() != 1) {
+            return null;
+        }
+        return String.valueOf(matches.get(0).getId());
     }
 
     /** personnel.id 集合 → staff_id 列表(过滤空 staff_id;非数字 id 忽略)。 */
@@ -164,10 +168,82 @@ public class PersonnelService {
     }
 
     /**
+     * 改人员的部门或课题组归属。**id 是权威**（展示取字典当前名），文本快照一并写，
+     * 给 ARO 回灌与「字典查不到时」的兜底展示用。
+     *
+     * <p>传 id 为 null 表示清空归属（文本也清空）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateOrgRef(Long id, boolean department, Long refId, String name) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        if (personnelMapper.findById(id) == null) throw new IllegalArgumentException("人员不存在");
+        String n = (name == null || name.isBlank()) ? null : name.trim();
+        if (refId == null) n = null;
+        if (department) {
+            personnelMapper.updateDepartmentRef(id, refId, n);
+        } else {
+            personnelMapper.updateProjectGroupRef(id, refId, n);
+        }
+    }
+
+    /**
+     * 删除到回收站（软删除）。
+     *
+     * <p>为什么不直接 DELETE：personnel 是同步派生的 —— 删行之后，下一次同步按 aro_user_id
+     * 找不到行就会重新 INSERT 把他建回来。软删标记让同步「看得见但不复活」
+     * （见 {@link #syncUnified} 两个循环里的 deletedAt 判断）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void moveToTrash(Long id, String operatorId) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Personnel row = personnelMapper.findById(id);
+        if (row == null) throw new IllegalArgumentException("人员不存在");
+        if (row.getDeletedAt() != null) throw new IllegalArgumentException("该人员已在回收站中");
+        jdbcTemplate.update("UPDATE personnel SET deleted_at = NOW(), deleted_by = ? WHERE id = ?", operatorId, id);
+    }
+
+    /** 从回收站恢复（清掉软删标记，列表里重新可见）。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void restoreFromTrash(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Personnel row = personnelMapper.findById(id);
+        if (row == null) throw new IllegalArgumentException("人员不存在");
+        if (row.getDeletedAt() == null) throw new IllegalArgumentException("该人员不在回收站中");
+        jdbcTemplate.update("UPDATE personnel SET deleted_at = NULL, deleted_by = NULL WHERE id = ?", id);
+    }
+
+    /**
+     * 彻底删除：连同 ARO 侧人员行与登录账号一起删掉，切断「下次同步重建」的源头。
+     *
+     * <p>⚠️ 若此人来自 ARO 镜像同步，删掉 {@code aro_personnel} 行之后**下次镜像同步还会把他加回来**
+     * —— ARO 才是权威源。对这类人本操作只能算「删一段时间」，不是永久。
+     *
+     * <p>⚠️ 其它表里以账号 id / 人员 id 存的历史数据（通知、留痕、申请单等）**不会**被清理，
+     * 会变成孤儿行 —— 它们没有外键约束。所以这是不可逆操作，调用方必须二次确认。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void purge(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Personnel p = personnelMapper.findById(id);
+        if (p == null) throw new IllegalArgumentException("人员不存在");
+        String aroUid = p.getAroUserId() == null ? "" : p.getAroUserId().trim();
+        String staffId = p.getStaffId() == null ? "" : p.getStaffId().trim();
+        if (!aroUid.isEmpty()) {
+            jdbcTemplate.update("DELETE FROM aro_personnel WHERE user_id = ?", aroUid);
+            jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", aroUid);
+        }
+        if (!staffId.isEmpty()) {
+            jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", staffId);
+        }
+        personnelMapper.deleteById(id);
+        log.warn("[personnel-purge] 彻底删除人员 id={} name={} aro={} staff={}", id, p.getName(), aroUid, staffId);
+    }
+
+    /**
      * 修改真实姓名（personnel.name），绝不改登录账号 username / display_nickname。
      * 联动写 sys_user.name 与 aro_personnel.name，避免下次聚合同步用账号名盖回，
      * 以及业务展示（UserDisplayNameService 优先读 aro_personnel）仍显示旧名。
-     * 注意：personnel 以姓名唯一；ARO 全量回灌仍可能覆盖 aro_personnel.name。
+     * 姓名不再是唯一键：允许与其他人员同名；ARO 全量回灌仍可能覆盖 aro_personnel.name。
      */
     @Transactional(rollbackFor = Exception.class)
     public void updateName(Long id, String rawName) {
@@ -182,10 +258,6 @@ public class PersonnelService {
         if (name.equals(row.getName())) {
             return;
         }
-        Personnel clash = personnelMapper.findByName(name);
-        if (clash != null && !Objects.equals(clash.getId(), id)) {
-            throw new RuntimeException("姓名已被占用，请换一个或先处理同名人员");
-        }
         int updated = jdbcTemplate.update("UPDATE personnel SET name = ? WHERE id = ?", name, id);
         if (updated <= 0) throw new RuntimeException("更新姓名失败");
 
@@ -199,6 +271,33 @@ public class PersonnelService {
             jdbcTemplate.update("UPDATE aro_personnel SET name = ? WHERE user_id = ?", name, aroUid);
             userMapper.updateNameById(aroUid, name);
         }
+    }
+
+    /**
+     * 设置或清除头像本地覆盖层。url 传空即清除（展示回落到 ARO 的 head）。
+     *
+     * <p>只写 head_override 单列：同步的 mergeNonBlank 是「源非空即覆盖」，直接写 head 会被
+     * 下一次同步用 ARO 的旧 URL 冲掉，所以本地意图必须存在覆盖层里。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void updateHeadOverride(Long id, String url) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        if (personnelMapper.findById(id) == null) throw new IllegalArgumentException("人员不存在");
+        String normalized = null;
+        if (url != null && !url.isBlank()) {
+            String u = url.trim();
+            if (u.length() > HEAD_URL_MAX_LEN) {
+                throw new IllegalArgumentException("头像地址过长");
+            }
+            // 只接受站内相对路径或 http(s) 绝对地址，挡掉 javascript:/data: 与协议相对 //evil.com 等
+            boolean local = u.startsWith("/") && !u.startsWith("//");
+            boolean http = u.startsWith("https://") || u.startsWith("http://");
+            if (!local && !http) {
+                throw new IllegalArgumentException("头像地址格式不合法");
+            }
+            normalized = u;
+        }
+        personnelMapper.updateHeadOverride(id, normalized);
     }
 
     /**
@@ -300,60 +399,91 @@ public class PersonnelService {
 
     /**
      * 聚合同步：aro_personnel（学生，工号=学号）+ sys_user（教职工，staff_id）→ personnel。
-     * 以姓名为中心合并双 id（同名合并；同名不同人属已知风险，由复审评估）。
+     * 按账号 id 上下行：学生按 aro_user_id、教职工按 staff_id，**任何人之间不再按姓名合并**。
+     * 教职工账号与学生账号的合并由人工通过 PersonnelMergeService 完成。
      */
     @Transactional
     public Map<String, Object> syncUnified() {
-        Map<String, Personnel> byName = new LinkedHashMap<>();
-
-        // 学生：aro_personnel（排除占位行 name=user_id）
-        List<Map<String, Object>> students = jdbcTemplate.queryForList(
+        List<Personnel> students = new ArrayList<>();
+        List<Map<String, Object>> studentRows = jdbcTemplate.queryForList(
                 "SELECT user_id, name, job_number, department_name, project_group_name, user_type_names, head, gender, " +
                         "mobile_phone, email, is_school, allowed_rooms_display_zh, has_official_room_permission FROM aro_personnel " +
                         "WHERE name IS NOT NULL AND name != '' AND name != user_id");
-        for (Map<String, Object> r : students) {
-            String name = str(r.get("name"));
-            if (name.isBlank()) continue;
-            Personnel p = byName.computeIfAbsent(name, k -> newPersonnel(name));
-            p.setAroUserId(str(r.get("user_id")));
+        for (Map<String, Object> r : studentRows) {
+            String aroUserId = str(r.get("user_id"));
+            if (aroUserId.isEmpty()) continue;
+            Personnel p = new Personnel();
+            p.setAroUserId(aroUserId);
+            p.setName(str(r.get("name")));
             fillProfile(p, r);
+            students.add(p);
         }
 
-        // 教职工：sys_user 里 id 以 STAFF_ 开头（自注册教职工账号，登录后显示 staff）
-        // 姓名用 name 兜底 displayNickname / username（教职工账号 name 常为空）
-        List<Map<String, Object>> staff = jdbcTemplate.queryForList(
+        List<Personnel> staff = new ArrayList<>();
+        List<Map<String, Object>> staffRows = jdbcTemplate.queryForList(
                 "SELECT id, COALESCE(NULLIF(name,''), NULLIF(display_nickname,''), username) AS name, " +
                         "department_name, project_group_name, user_type_names, head, gender, " +
                         "mobile_phone, email, is_school FROM sys_user " +
                         "WHERE id LIKE 'STAFF_%'");
-        for (Map<String, Object> r : staff) {
-            String name = str(r.get("name"));
-            if (name.isBlank()) continue;
-            Personnel p = byName.computeIfAbsent(name, k -> newPersonnel(name));
-            p.setStaffId(str(r.get("id")));
+        for (Map<String, Object> r : staffRows) {
+            String staffId = str(r.get("id"));
+            if (staffId.isEmpty()) continue;
+            Personnel p = new Personnel();
+            p.setStaffId(staffId);
+            p.setName(str(r.get("name")));
             fillProfile(p, r);
+            staff.add(p);
         }
 
         int count = 0;
         int bindings = 0;
-        for (Personnel p : byName.values()) {
-            // upsert：按姓名（唯一）存在则合并（不空值覆盖），不存在则插入
-            Personnel existing = personnelMapper.findByName(p.getName());
+        java.util.Set<Long> touchedIds = new java.util.HashSet<>();
+        for (int i = 0; i < students.size(); i++) {
+            Personnel p = students.get(i);
+            Personnel existing = personnelMapper.findByAroUserId(p.getAroUserId());
+            if (existing != null && existing.getDeletedAt() != null) {
+                // 回收站里的人：同步看得见但不复活 —— 否则删了下次同步又把他建回来
+                continue;
+            }
             if (existing == null) {
+                if (p.getHasOfficialRoomPermission() == null) p.setHasOfficialRoomPermission(0);
                 personnelMapper.insert(p);
+                touchedIds.add(p.getId());
             } else {
                 mergeNonBlank(existing, p);
                 personnelMapper.update(existing);
+                students.set(i, existing);
+                touchedIds.add(existing.getId());
             }
-            count++;
-            // aro 绑定：教职工账号 → 其 ARO 认证 id（aro_user_id），供「切学生视角」索引
-            if (p.getAroUserId() != null && !p.getAroUserId().isBlank()
-                    && p.getStaffId() != null && !p.getStaffId().isBlank()) {
+        }
+        for (int i = 0; i < staff.size(); i++) {
+            Personnel p = staff.get(i);
+            Personnel existing = personnelMapper.findByStaffId(p.getStaffId());
+            if (existing != null && existing.getDeletedAt() != null) {
+                // 同上：回收站里的教职工行也不复活
+                continue;
+            }
+            if (existing == null) {
+                if (p.getHasOfficialRoomPermission() == null) p.setHasOfficialRoomPermission(0);
+                personnelMapper.insert(p);
+                touchedIds.add(p.getId());
+            } else {
+                mergeNonBlank(existing, p);
+                personnelMapper.update(existing);
+                touchedIds.add(existing.getId());
+            }
+        }
+        count = touchedIds.size();
+        // 已通过人工合并绑定过的行，维持其 user_aro_binding（不再由姓名推断）
+        for (Personnel p : students) {
+            if (p.getId() != null && p.getStaffId() != null && !p.getStaffId().isBlank()) {
                 bindings += bindAro(p.getStaffId(), p.getAroUserId());
             }
         }
+
         int depts = syncDepartments();
         int groups = syncProjectGroups();
+        linkOrgIds();
         // role 回填：运行期同步的新人员 role 为空时，从 sys_user 兜底补（教职工侧优先，学生侧 MEMBER），幂等只填空值
         int roleBackfill = jdbcTemplate.update(
                 "UPDATE personnel p " +
@@ -365,6 +495,62 @@ public class PersonnelService {
                 students.size(), staff.size(), count, bindings, depts, groups, roleBackfill);
         return Map.of("students", students.size(), "staff", staff.size(), "unified", count,
                 "bindings", bindings, "departments", depts, "groups", groups);
+    }
+
+    /**
+     * 只同步一个人的档案：按其 aro_user_id 从 aro_personnel 拉、按其 staff_id 从 sys_user 拉，
+     * 用 mergeNonBlank 合并进本行。不动其他人、不动 head_override。
+     *
+     * <p>头像保护：本人若有本地头像（head_override 非空），本次不同步 head —— 自传头像不允许被覆盖。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> syncOne(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Personnel p = personnelMapper.findById(id);
+        if (p == null) throw new IllegalArgumentException("人员不存在");
+
+        String headBefore = p.getHead();
+        int aroMatched = 0;
+        int staffMatched = 0;
+
+        if (StringUtils.hasText(p.getAroUserId())) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT user_id, name, job_number, department_name, project_group_name, user_type_names, head, gender, " +
+                            "mobile_phone, email, is_school, allowed_rooms_display_zh, has_official_room_permission " +
+                            "FROM aro_personnel WHERE user_id = ?", p.getAroUserId().trim());
+            for (Map<String, Object> r : rows) {
+                Personnel src = new Personnel();
+                src.setAroUserId(str(r.get("user_id")));
+                src.setName(str(r.get("name")));
+                fillProfile(src, r);
+                mergeNonBlank(p, src);
+                aroMatched++;
+            }
+        }
+
+        if (StringUtils.hasText(p.getStaffId())) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT id, COALESCE(NULLIF(name,''), NULLIF(display_nickname,''), username) AS name, " +
+                            "department_name, project_group_name, user_type_names, head, gender, " +
+                            "mobile_phone, email, is_school FROM sys_user WHERE id = ?", p.getStaffId().trim());
+            for (Map<String, Object> r : rows) {
+                Personnel src = new Personnel();
+                src.setStaffId(str(r.get("id")));
+                src.setName(str(r.get("name")));
+                fillProfile(src, r);
+                mergeNonBlank(p, src);
+                staffMatched++;
+            }
+        }
+
+        // 头像保护：有本地头像就不同步 head
+        if (StringUtils.hasText(p.getHeadOverride())) {
+            p.setHead(headBefore);
+        }
+
+        personnelMapper.update(p);
+        return Map.of("aroMatched", aroMatched, "staffMatched", staffMatched,
+                "hasLocalHead", StringUtils.hasText(p.getHeadOverride()));
     }
 
     /** 从 aro_personnel.department_name 聚合部门字典（含校内/校外多数归属），幂等。 */
@@ -426,6 +612,44 @@ public class PersonnelService {
         }
     }
 
+    /**
+     * 按名字把人员归属锚定到字典 id。
+     *
+     * <p>关键：**只在 id 为空时解析**（WHERE ... IS NULL）。字典改名后人员身上的文本快照仍是 ARO 的旧名、
+     * 按旧名查不到 → 若清空 id，显示会回落旧文本、改名等于没改。保留 id 才能让显示走字典当前名。
+     */
+    private void linkOrgIds() {
+        try {
+            int deptLinked = jdbcTemplate.update(
+                    "UPDATE personnel p JOIN department d ON d.name = p.department_name " +
+                    "SET p.department_id = d.id " +
+                    "WHERE p.department_id IS NULL AND p.department_name IS NOT NULL AND p.department_name <> ''");
+            int groupLinked = jdbcTemplate.update(
+                    "UPDATE personnel p JOIN project_group g ON g.name = p.project_group_name " +
+                    "SET p.project_group_id = g.id " +
+                    "WHERE p.project_group_id IS NULL AND p.project_group_name IS NOT NULL AND p.project_group_name <> ''");
+            // 兼容「一人两组」的历史逗号串（14 行）：优先锚定到「<本人姓名>的课题组」，取不到再取第一个 token。
+            // 都带 IS NULL：保留已有 id 是改名能活下来的关键。
+            int groupLinkedByName = jdbcTemplate.update(
+                    "UPDATE personnel p JOIN project_group g ON g.name = CONCAT(p.name, '的课题组') " +
+                    "SET p.project_group_id = g.id " +
+                    "WHERE p.project_group_id IS NULL AND p.project_group_name LIKE '%,%'");
+            int groupLinkedByFirst = jdbcTemplate.update(
+                    "UPDATE personnel p JOIN project_group g ON g.name = TRIM(SUBSTRING_INDEX(p.project_group_name, ',', 1)) " +
+                    "SET p.project_group_id = g.id " +
+                    "WHERE p.project_group_id IS NULL AND p.project_group_name LIKE '%,%'");
+            // 记录仍带逗号、已锚定主组的行数，供日后人工核对「一人两组」是否要拆
+            Integer commaAnchored = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM personnel WHERE project_group_name LIKE '%,%' AND project_group_id IS NOT NULL",
+                    Integer.class);
+            log.info("[personnel-sync] 归属锚定：部门 {} 行、课题组 {} 行、多组回填（本人名 {} 行 / 首 token {} 行），已锚定的多组行 {} 行",
+                    deptLinked, groupLinked, groupLinkedByName, groupLinkedByFirst,
+                    commaAnchored == null ? 0 : commaAnchored);
+        } catch (Exception e) {
+            log.warn("[personnel-sync] 归属锚定失败: {}", e.getMessage());
+        }
+    }
+
     /** 幂等写 user_aro_binding（sys_user.id ↔ aro_personnel.user_id）。 */
     private int bindAro(String userId, String aroUserId) {
         if (userId == null || userId.isBlank() || aroUserId == null || aroUserId.isBlank()) {
@@ -442,12 +666,6 @@ public class PersonnelService {
         }
     }
 
-    private Personnel newPersonnel(String name) {
-        Personnel p = new Personnel();
-        p.setName(name);
-        return p;
-    }
-
     private void fillProfile(Personnel p, Map<String, Object> r) {
         fillStr(p.getJobNumber(), p::setJobNumber, str(r.get("job_number")));
         fillStr(p.getDepartmentName(), p::setDepartmentName, str(r.get("department_name")));
@@ -459,7 +677,9 @@ public class PersonnelService {
         fillStr(p.getEmail(), p::setEmail, str(r.get("email")));
         if (p.getIsSchool() == null) p.setIsSchool(toInt(r.get("is_school")));
         fillStr(p.getAllowedRoomsDisplayZh(), p::setAllowedRoomsDisplayZh, str(r.get("allowed_rooms_display_zh")));
-        if (p.getHasOfficialRoomPermission() == null) {
+        // 仅当行里真带这一列时才赋值：教职工查询不含该列，留 null 让 mergeNonBlank 跳过，
+        // 否则每次同步都会把已合并行的官方房间授权静默清零
+        if (p.getHasOfficialRoomPermission() == null && r.containsKey("has_official_room_permission")) {
             Integer v = toInt(r.get("has_official_room_permission"));
             p.setHasOfficialRoomPermission(v == null ? 0 : v);
         }
@@ -468,10 +688,10 @@ public class PersonnelService {
     /**
      * 为新建/注册的教职工账号立刻挂上 personnel 行并写入真实姓名。
      * 解决：仅写 sys_user、不同步 personnel 时，统一人员页看不见、后续按姓名同步又被账号名盖回或「过几天对不上」。
-     * 不改 username；name 冲突且已被其他 staff 占用时抛错。
+     * 不改 username。姓名不再参与认人：只按 staff_id 与工号判定，同名不再冲突。
      *
-     * jobNumber（工号 = 学号）是强键：填了就优先按它认人，命中唯一未绑定行即合并；不填则退回按姓名精确匹配
-     * （历史行为）。姓名同音不同字、填成昵称/英文名都会漏合并，工号不会。
+     * jobNumber（工号 = 学号）是强键：填了就优先按它认人，命中唯一未绑定行即合并；
+     * 认不出来就在下面新建一行。姓名同音不同字、填成昵称/英文名都会漏合并，工号不会。
      */
     @Transactional(rollbackFor = Exception.class)
     public void ensureStaffPersonnel(String staffUserId, String rawName, String roleCode, String rawJobNumber) {
@@ -495,10 +715,6 @@ public class PersonnelService {
         Personnel byStaff = personnelMapper.findByStaffId(staffId);
         if (byStaff != null) {
             if (!name.equals(byStaff.getName())) {
-                Personnel clash = personnelMapper.findByName(name);
-                if (clash != null && !Objects.equals(clash.getId(), byStaff.getId())) {
-                    throw new IllegalArgumentException("姓名已被占用，请换一个或先处理同名人员");
-                }
                 jdbcTemplate.update("UPDATE personnel SET name = ? WHERE id = ?", name, byStaff.getId());
             }
             // 只补空缺的工号，不覆盖 personnel 已有的值
@@ -511,7 +727,7 @@ public class PersonnelService {
             return;
         }
 
-        // 1) 工号优先：唯一命中且该行还没绑账号 → 合并
+        // 工号优先：唯一命中且该行还没绑账号 → 合并。姓名不再参与认人，同名不再冲突。
         if (!jobNumber.isEmpty()) {
             List<Personnel> byJob = personnelMapper.findByJobNumber(jobNumber);
             List<Personnel> claimable = byJob.stream()
@@ -528,20 +744,7 @@ public class PersonnelService {
             if (claimable.isEmpty() && !byJob.isEmpty()) {
                 throw new IllegalArgumentException("工号 " + jobNumber + " 已绑定其他系统账号，请勿重复注册");
             }
-            // 命中多行且都没绑账号（工号本身重复）→ 认不出是谁，退回姓名匹配
-        }
-
-        // 2) 姓名精确匹配（历史行为）
-        Personnel clash = personnelMapper.findByName(name);
-        if (clash != null) {
-            if (StringUtils.hasText(clash.getStaffId()) && !staffId.equals(clash.getStaffId().trim())) {
-                throw new IllegalArgumentException("姓名已被其他教职工账号占用");
-            }
-            personnelMapper.linkStaff(clash.getId(), staffId, jobNumber);
-            if (StringUtils.hasText(roleCode)) {
-                personnelMapper.updateRole(clash.getId(), roleCode.trim());
-            }
-            return;
+            // 命中多行且都没绑账号（工号本身重复）→ 认不出是谁，落到下面新建一行
         }
 
         Personnel p = new Personnel();

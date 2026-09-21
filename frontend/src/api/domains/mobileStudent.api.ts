@@ -269,6 +269,8 @@ export interface MobileAlertItem {
     | "exempt"
     | "material_feedback"
     | "scan_delay_feedback";
+  /** 后端 sectionOf：GENERAL = 通用公告，PERSONAL = 我的提醒 */
+  section?: "GENERAL" | "PERSONAL";
   id: number | string;
   title: string;
   contentHtml: string;
@@ -309,6 +311,8 @@ export interface MobileAlertsData {
   items: MobileAlertItem[];
   totalCount: number;
   html5PrivilegeBypass?: boolean;
+  /** 最新一条公告晚于本人读游标 → 首页公告区显示红点 */
+  announcementsUnread?: boolean;
 }
 
 /** 通过 token 获取公告与违规提醒（扫码弹窗公告源） */
@@ -714,6 +718,11 @@ export async function generateMobileToken(
 /** 将所有反馈类通知标记为已读（公开 token 接口） */
 export async function markMobileAlertsReadAll(token: string): Promise<void> {
   await publicHttp.post(`/public/mobile-center/${encodeURIComponent(token)}/alerts/read-all`);
+}
+
+/** 打开公告区：标记已看到当前时间（公开 token 接口），之后 announcementsUnread=false */
+export async function markMobileAnnouncementsViewed(token: string): Promise<void> {
+  await publicHttp.post(`/public/mobile-center/${encodeURIComponent(token)}/announcements/viewed`);
 }
 
 // ======================== 延迟免冻结申请（token 模式） ========================

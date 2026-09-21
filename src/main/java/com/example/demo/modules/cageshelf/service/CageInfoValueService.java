@@ -42,11 +42,20 @@ public class CageInfoValueService {
     private static final String COL_DATETIME = "value_datetime";
     private static final String COL_JSON = "value_json";
 
-    /** 占用字段（随个人/课题转移，不随笼位物理资产）—— 区别于笼位固有字段（物理状态/笼盒/坐标/名称）。 */
-    private static final Set<String> OCCUPANCY_CANONICALS = Set.of(
+    /**
+     * 占用字段：随个人/课题转移、不随笼位物理资产（区别于笼位固有字段：物理状态/笼盒/坐标/名称）。
+     * 含占用者 / 动物 / 状态 / 课题组归属（复制与转笼是整笼占用搬移，归属一并走）。
+     * 与 {@link #ARCHIVE_CLEAR_CANONICALS} 同一口径：状态的子值必须跟着父状态一起走
+     * （否则复制/转笼带不走严重程度/瘙痒/明细，退出也清不掉 —— 2026-09-18 用户报的
+     * 「轻微/中度/重度没跟着转移」就是这两份集合都漏登记了子值）。
+     *
+     * <p>包内可见是为了让单测钉住这条，见 {@code CageInfoValueTransferCanonicalsTest}。
+     */
+    static final Set<String> OCCUPANCY_CANONICALS = Set.of(
             "project_pi_name", "project_name", "department_name", "aup_number",
             "experimenter_name", "lab_assistant_name",
             "needs_division", "needs_special_feeding", "needs_transfer", "has_health_abnormality", "needs_cohabitation",
+            "health_abnormality_severity", "health_abnormality_itch", "special_feeding_details",
             "special_breeding_name", "special_breeding_desc",
             "cage_use_time", "animal_strain_name", "animal_sex", "animal_week_age",
             "animal_male_number", "animal_female_number", "animal_come_from");
@@ -58,6 +67,34 @@ public class CageInfoValueService {
      *  （状态码词表那一处），这里只做别名，免得两个服务各写一份字符串。 */
     public static final String SPECIAL_DETAIL_CANONICAL = CageStatusIntervalService.DETAIL_CANONICAL;
     public static final String SPECIAL_DETAIL_DICT = CageStatusIntervalService.DETAIL_DICT_CODE;
+
+    /** 健康异常父状态字段的 canonical。 */
+    public static final String HEALTH_ABNORMAL_CANONICAL = "has_health_abnormality";
+    /** 特殊饲养父状态字段的 canonical（明细的父状态）。 */
+    public static final String SPECIAL_FEEDING_CANONICAL = "needs_special_feeding";
+    /**
+     * 健康异常严重程度：字段 canonical 与码表 code（同名）。
+     * 互斥单选，挂在父状态下面，**不参与判定** —— 只影响展示与通知文案。
+     */
+    public static final String HEALTH_SEVERITY_CANONICAL = "health_abnormality_severity";
+    public static final String HEALTH_SEVERITY_DICT = "health_abnormality_severity";
+    /**
+     * 健康异常「瘙痒」：布尔子值（落 value_bool），同样只影响展示与通知文案。
+     *
+     * <p>与严重程度**不是二选一**：数据上是一个布尔，界面上把勾选框画在每一档严重程度旁边
+     * （严重程度互斥，所以实际最多出现「某一档 + 瘙痒」一个组合）。
+     */
+    public static final String HEALTH_ITCH_CANONICAL = "health_abnormality_itch";
+
+    /**
+     * 兽医指导意见：文字 + 图片两个字段的 canonical。
+     *
+     * <p>它们在字段表里 **editable=0**，所以通用表单写口（{@link #updateInfo}）会按「只读字段不允许手动填写」拒改
+     * —— 这就是「详情表单里看得到、改不了」的服务端保证。**唯一能写它们的入口是 {@link #setVetAdvice}**，
+     * 只给兽医收件箱那条接口用。
+     */
+    public static final String VET_ADVICE_CANONICAL = "vet_advice";
+    public static final String VET_ADVICE_IMAGES_CANONICAL = "vet_advice_images";
 
     private final CageInfoFieldMapper fieldMapper;
     private final CageInfoValueMapper valueMapper;
@@ -195,67 +232,177 @@ public class CageInfoValueService {
                     field.getCanonical(), field.getLabel(),
                     stringify(before), stringify(enable), operatorId);
         }
-        // 强绑定：特殊饲养关掉 → 明细一并清空（明细的审计同步成对出现，见 writeSpecialDetails）
-        if ("needs_special_feeding".equals(field.getCanonical()) && !enable) {
-            writeSpecialDetails(animalCageId, List.of(), operatorId);
+        // 强绑定：父状态关掉 → 挂在它下面的「子值」（特殊饲养明细 / 健康异常严重程度）一并清空。
+        // 走同一张 DETAIL_PARENT 映射，以后再加子值字段不用回来改这里。
+        if (!enable) {
+            for (String childCanonical : childCanonicalsOf(field.getCanonical())) {
+                clearStatusDetail(animalCageId, childCanonical, operatorId);
+            }
         }
     }
 
     /**
-     * 覆盖式写入「特殊饲养明细」子状态（多选）。
+     * 「状态子值字段 canonical → 它的父状态字段 canonical」。
      *
-     * <p>明细项是**动态**的（码表可加项），所以是整体覆盖而不是逐项接口：一次提交带上目标集合，
-     * 内部 diff 出增/减项、各写一条审计。审计行用「明细码」当 field_code（{@code SF_} + item_code）、
-     * 码表中文名当 field_name —— 折叠引擎只认「逐字段布尔前后值」，于是折叠、阈值、超时、违规
-     * 四条链零改动地复用，每个明细项天然拿到自己的区间。
+     * <p>子值只有依附在父状态上才有意义：父状态关掉时由 {@link #setStatus} 清空子值，
+     * 打子值前要求父状态已开。**加一个新的子值字段 = 这里加一行**（外加码表 + 字段 + 能力注册）。
+     */
+    private static final Map<String, String> DETAIL_PARENT = Map.of(
+            SPECIAL_DETAIL_CANONICAL, SPECIAL_FEEDING_CANONICAL,
+            HEALTH_SEVERITY_CANONICAL, HEALTH_ABNORMAL_CANONICAL,
+            HEALTH_ITCH_CANONICAL, HEALTH_ABNORMAL_CANONICAL);
+
+    /** 挂在某父状态下面的全部子值字段 canonical。 */
+    private static List<String> childCanonicalsOf(String parentCanonical) {
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : DETAIL_PARENT.entrySet()) {
+            if (e.getValue().equals(parentCanonical)) out.add(e.getKey());
+        }
+        return out;
+    }
+
+    /**
+     * 布尔子值约定的「真」哨兵码 —— 写/读/审计三处共用一处定义，别再各写一个字面量。
+     * `itemCodes` 传 ["1"] = 打勾、[] = 取消。
+     */
+    public static final String BOOL_TRUE_CODE = "1";
+
+    /** 某个 canonical 是不是受支持的「状态子值」字段 —— 控制器写入端点用它收口（别让请求体指定任意字段）。 */
+    public static boolean isStatusDetailCanonical(String canonical) {
+        return canonical != null && DETAIL_PARENT.containsKey(canonical);
+    }
+
+    /**
+     * 覆盖式写入一个「状态子值」字段。字段形态决定两件事：
      *
-     * <p>强绑定：打明细必须建立在「特殊饲养 = on」之上；特殊饲养关掉时由 {@link #setStatus}
-     * 调 {@link #writeSpecialDetails} 清空（那条路不做前置校验，否则关不掉）。
+     * <ul>
+     *   <li><b>值落哪一列</b>：ENUM_MULTI → value_json（item_code 数组）；ENUM → value_text（单个 item_code）。</li>
+     *   <li><b>审计行的 field_code</b>：多选走「明细码」{@code SF_} + item_code —— 折叠引擎按前缀取，
+     *       于是每个明细项天然拿到自己的告警区间；单选取**字段 canonical** ——
+     *       {@link CageStatusIntervalService#statusCodeOf} 对它返回 null，不进折叠
+     *       （健康异常严重程度只影响展示与通知文案，不该有自己的阈值）。</li>
+     * </ul>
+     *
+     * <p>子值的项是**动态**的（码表可加项），所以是整体覆盖而不是逐项接口：一次提交带上目标集合，
+     * 内部 diff 出增/减项、各写一条审计 —— 折叠、阈值、超时、通知四条链零改动地复用。
+     *
+     * <p>强绑定：打子值必须建立在父状态已开之上（{@link #DETAIL_PARENT}）；父状态关掉时由
+     * {@link #setStatus} 反过来清空子值 —— 那条路不做前置校验，否则关不掉。
+     *
+     * <p>权限由控制器收口（学生走矩阵能力 + 本人笼位 + 区域开关；教职工走状态模式身份），
+     * 本方法只管数据一致性。
      */
     @Transactional
-    public void setSpecialDetails(Long animalCageId, Collection<String> itemCodes, String operatorId) {
-        if (animalCageId == null) return;
+    public void setStatusDetail(Long animalCageId, String canonical, Collection<String> itemCodes, String operatorId) {
+        if (animalCageId == null || canonical == null || canonical.isBlank()) return;
+        CageInfoField field = fieldMapper.selectByCanonical(canonical);
+        if (field == null || field.getId() == null) return; // 字段未播种 → 什么都不做（与缺字段同口径）
+
+        boolean multi = isMultiSelect(field);
+        boolean boolField = isBooleanField(field);
         Set<String> target = normalizeDetailCodes(itemCodes);
+        if ((!multi || boolField) && target.size() > 1) {
+            throw new TwinBusinessException(400, "「" + field.getLabel() + "」是单选，只能选一项");
+        }
         if (!target.isEmpty()) {
             // 与 setStatus 打标记同一口径：只拦「加上去」这个方向（清空不受限，否则退不回来）
             String busy = intermediateStateService.busyReason(animalCageId);
             if (busy != null) {
                 throw new TwinBusinessException(409, busy + "，不能标记饲养状态");
             }
-            if (!isStatusOn(animalCageId, "needs_special_feeding")) {
-                throw new TwinBusinessException(409, "请先标记「需特殊饲养」，再细化它的明细");
+            String parentCanonical = DETAIL_PARENT.get(canonical);
+            CageInfoField parentField = parentCanonical == null ? null : fieldMapper.selectByCanonical(parentCanonical);
+            if (parentField != null && !isStatusOn(animalCageId, parentCanonical)) {
+                /*
+                  子值**天然蕴含**父状态：细化「中度」就等于「这条是健康异常」。
+                  早先这里抛 409 要求调用方先手动开父状态 —— 抽屉里拖一次细化档就报错，
+                  流程整个倒挂（2026-09-18 用户报「选细化提交报错要先处理主状态」）。
+                  现在直接把父状态一并打开（走 setStatus，审计与子值强绑定口径都同一套）。
+                */
+                setStatus(animalCageId, parentCanonical, true, operatorId);
             }
         }
-        writeSpecialDetails(animalCageId, target, operatorId);
+        writeStatusDetail(animalCageId, field, multi, target, operatorId);
     }
 
-    /** 值 + 逐项审计，**不含**「特殊饲养必须开着」的前置校验（清空路径要用）。 */
-    private void writeSpecialDetails(Long animalCageId, Collection<String> itemCodes, String operatorId) {
-        CageInfoField field = fieldMapper.selectByCanonical(SPECIAL_DETAIL_CANONICAL);
-        if (field == null || field.getId() == null) return; // 字段未播种 → 什么都不做（与缺字段同口径）
-        Set<String> target = normalizeDetailCodes(itemCodes);
-        LinkedHashSet<String> current = new LinkedHashSet<>(currentDetailCodes(animalCageId, field));
-        if (current.equals(target)) return; // 幂等：没变就不写、也不留审计
+    /** 清空某子值字段（不带前置校验，供父状态关掉时调用，否则关不掉）。 */
+    private void clearStatusDetail(Long animalCageId, String canonical, String operatorId) {
+        CageInfoField field = fieldMapper.selectByCanonical(canonical);
+        if (field == null || field.getId() == null) return;
+        writeStatusDetail(animalCageId, field, isMultiSelect(field), Set.of(), operatorId);
+    }
+
+    /**
+     * 值 + 逐项审计（幂等：没变就不写、也不留审计）。三种字段形态：
+     * <ul>
+     *   <li>ENUM_MULTI → value_json，逐项审计（{@code SF_} + item_code）；</li>
+     *   <li>ENUM → value_string，逐项审计（field_code = canonical）；</li>
+     *   <li>BOOLEAN → value_bool，**一条**审计（field_code = canonical、field_name = 字段名，
+     *       前后值就是布尔本身）。布尔没有「项」可言，套逐项那套会把 field_name 记成哨兵码。</li>
+     * </ul>
+     * 布尔约定的「值」：`itemCodes` 传 <b>["1"]</b> = 打勾、<b>[]</b> = 取消（见控制器契约）。
+     */
+    private void writeStatusDetail(Long animalCageId, CageInfoField field, boolean multi,
+                                   Set<String> target, String operatorId) {
+        CageInfoValue existing = null;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
+            if (v != null && field.getId().equals(v.getFieldId())) { existing = v; break; }
+        }
+        boolean boolField = isBooleanField(field);
+        LinkedHashSet<String> current = new LinkedHashSet<>(detailCodesOf(existing, multi, boolField));
+        if (current.equals(target)) return; // 幂等
 
         CageInfoValue v = new CageInfoValue();
         v.setAnimalCageId(animalCageId);
         v.setFieldId(field.getId());
-        v.setValueJson(JSON.toJSONString(new ArrayList<>(target)));
+        if (boolField) {
+            v.setValueBool(!target.isEmpty());
+        } else if (multi) {
+            v.setValueJson(JSON.toJSONString(new ArrayList<>(target)));
+        } else {
+            // 单选：空集合 → 空串（清空）；否则写那一个 item_code
+            v.setValueString(target.isEmpty() ? "" : target.iterator().next());
+        }
         v.setFillSource("MANUAL");
         valueMapper.upsert(v);
 
-        Map<String, String> labels = detailItemLabels();
-        // 兼容：选中集合**同时镜像**进「特殊饲养名称」（人读拼接「需加食、勿加水」；清空写空串）。
+        if (boolField) {
+            auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
+                    "animal_cage", animalCageId, String.valueOf(animalCageId),
+                    field.getCanonical(), field.getLabel(),
+                    stringify(!current.isEmpty()), stringify(!target.isEmpty()), operatorId);
+            return;
+        }
+
+        Map<String, String> labels = itemLabels(field.getDictKey());
+        // 兼容：特殊饲养明细的选中集合**同时镜像**进「特殊饲养名称」（人读拼接「需加食、勿加水」）。
         // 那是 ARO 侧 specialBreedingName 的本地落点，下游只认它。这一笔不写审计 ——
         // 明细项自己已有逐项审计行，再记一笔名称变更只是双份噪音。
-        writeDetailName(animalCageId, target, labels);
+        if (SPECIAL_DETAIL_CANONICAL.equals(field.getCanonical())) {
+            writeDetailName(animalCageId, target, labels);
+        }
 
         for (String code : target) {
-            if (!current.contains(code)) logDetailAudit(animalCageId, code, labels, false, true, operatorId);
+            if (!current.contains(code)) logDetailAudit(field, multi, animalCageId, code, labels, false, true, operatorId);
         }
         for (String code : current) {
-            if (!target.contains(code)) logDetailAudit(animalCageId, code, labels, true, false, operatorId);
+            if (!target.contains(code)) logDetailAudit(field, multi, animalCageId, code, labels, true, false, operatorId);
         }
+    }
+
+    /**
+     * 子值审计行：多选的 field_code 用明细码（{@code SF_} + item_code，折叠引擎按前缀取），
+     * 单选用**字段 canonical**（statusCodeOf 返回 null → 不进折叠）；field_name 都用码表中文名。
+     */
+    private void logDetailAudit(CageInfoField field, boolean multi, Long animalCageId, String itemCode,
+                                Map<String, String> labels, boolean before, boolean after, String operatorId) {
+        String fieldCode = multi
+                ? CageStatusIntervalService.DETAIL_STATUS_PREFIX + itemCode
+                : field.getCanonical();
+        auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
+                "animal_cage", animalCageId, String.valueOf(animalCageId),
+                fieldCode, labels.getOrDefault(itemCode, itemCode),
+                stringify(before), stringify(after), operatorId);
     }
 
     /** 把明细选中集合拼成人读串写进「特殊饲养名称」字段（空集合 → 空串）。 */
@@ -271,14 +418,22 @@ public class CageInfoValueService {
         valueMapper.upsert(nv);
     }
 
-    /** 明细审计行：field_code 用明细码（{@code SF_} + item_code），field_name 用码表中文名。 */
-    private void logDetailAudit(Long animalCageId, String itemCode, Map<String, String> labels,
-                                boolean before, boolean after, String operatorId) {
-        String statusCode = CageStatusIntervalService.DETAIL_STATUS_PREFIX + itemCode;
-        auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
-                "animal_cage", animalCageId, String.valueOf(animalCageId),
-                statusCode, labels.getOrDefault(itemCode, itemCode),
-                stringify(before), stringify(after), operatorId);
+    private static boolean isMultiSelect(CageInfoField field) {
+        return field != null && "ENUM_MULTI".equalsIgnoreCase(field.getDataType());
+    }
+
+    /** 布尔子值：落 value_bool，值用哨兵码 "1" 表示「打勾」。 */
+    private static boolean isBooleanField(CageInfoField field) {
+        return field != null && "BOOLEAN".equalsIgnoreCase(field.getDataType());
+    }
+
+    /** 某笼位某子值字段当前选中的集合：布尔读 value_bool（真 → 哨兵 "1"），多选读 value_json，单选读 value_text。 */
+    private List<String> detailCodesOf(CageInfoValue v, boolean multi, boolean boolField) {
+        if (v == null) return List.of();
+        if (boolField) return Boolean.TRUE.equals(v.getValueBool()) ? List.of(BOOL_TRUE_CODE) : List.of();
+        if (multi) return parseMulti(v.getValueJson());
+        String s = v.getValueString();
+        return (s == null || s.isBlank()) ? List.of() : List.of(s.trim());
     }
 
     private static Set<String> normalizeDetailCodes(Collection<String> itemCodes) {
@@ -287,13 +442,6 @@ public class CageInfoValueService {
             for (String c : itemCodes) if (c != null && !c.isBlank()) out.add(c.trim());
         }
         return out;
-    }
-
-    private List<String> currentDetailCodes(Long animalCageId, CageInfoField field) {
-        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
-            if (v != null && field.getId().equals(v.getFieldId())) return parseMulti(v.getValueJson());
-        }
-        return List.of();
     }
 
     /**
@@ -315,13 +463,161 @@ public class CageInfoValueService {
 
     /** 明细项的 item_code → 中文名（审计留痕 / 网格状态标签共用）；码表没配到就退回用码本身。 */
     public Map<String, String> detailItemLabels() {
+        return itemLabels(SPECIAL_DETAIL_DICT);
+    }
+
+    /** 每笼位「瘙痒」布尔值（只回 true 的）—— 网格角标用，与 {@link #severityByCage} 同一套批量读。 */
+    public Set<Long> itchByCage(List<Long> cageIds) {
+        Set<Long> out = new LinkedHashSet<>();
+        if (cageIds == null || cageIds.isEmpty()) return out;
+        CageInfoField field = fieldMapper.selectByCanonical(HEALTH_ITCH_CANONICAL);
+        if (field == null || field.getId() == null) return out;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageIds(cageIds)) {
+            if (v == null || v.getAnimalCageId() == null || !field.getId().equals(v.getFieldId())) continue;
+            if (Boolean.TRUE.equals(v.getValueBool())) out.add(v.getAnimalCageId());
+        }
+        return out;
+    }
+
+    /**
+     * 兽医指导意见（文字 + 图片 URL 列表）—— **唯一写入口**。
+     *
+     * <p>为什么绕开通用表单写口：这两个字段 editable=0（详情表单只读），
+     * 而兽医必须能写 —— 差异就落在这个专用方法上，而不是把字段打开成可编辑。
+     * 写进 cage_info_value 之后，归档时自然随表单内容一起归档。
+     */
+    @Transactional
+    public void setVetAdvice(Long animalCageId, String text, Collection<String> imageUrls, String operatorId) {
+        if (animalCageId == null) return;
+        writeVetField(animalCageId, VET_ADVICE_CANONICAL, text == null ? "" : text.trim(), false, operatorId);
+        List<String> images = new ArrayList<>();
+        if (imageUrls != null) {
+            for (String u : imageUrls) if (u != null && !u.isBlank()) images.add(u.trim());
+        }
+        writeVetField(animalCageId, VET_ADVICE_IMAGES_CANONICAL, JSON.toJSONString(images), true, operatorId);
+    }
+
+    /** 批量读兽医指导意见：cageId → {text, images:[]}（没有的两项都给空，调用方不必判 null）。 */
+    public Map<Long, Map<String, Object>> vetAdviceByCage(List<Long> cageIds) {
+        Map<Long, Map<String, Object>> out = new LinkedHashMap<>();
+        if (cageIds == null || cageIds.isEmpty()) return out;
+        CageInfoField textField = fieldMapper.selectByCanonical(VET_ADVICE_CANONICAL);
+        CageInfoField imgField = fieldMapper.selectByCanonical(VET_ADVICE_IMAGES_CANONICAL);
+        for (CageInfoValue v : valueMapper.selectByAnimalCageIds(cageIds)) {
+            if (v == null || v.getAnimalCageId() == null) continue;
+            Map<String, Object> entry = out.computeIfAbsent(v.getAnimalCageId(), k -> {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("text", "");
+                m.put("images", new ArrayList<String>());
+                return m;
+            });
+            if (textField != null && textField.getId() != null && textField.getId().equals(v.getFieldId())) {
+                String s = stringColValue(v, textField);
+                entry.put("text", s == null ? "" : s);
+            } else if (imgField != null && imgField.getId() != null && imgField.getId().equals(v.getFieldId())) {
+                entry.put("images", parseMulti(v.getValueJson()));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 单字段写 + 一条审计（**不查 editable** —— 只有兽医那条专用接口会走到这里）。
+     *
+     * <p>落哪一列**由字段的 data_type 决定**（{@link #valueColumn}），不写死：
+     * 种子写的是 TEXT，而字段可能会被表单管理后台改成 STRING —— 写死 value_text 的话，
+     * 改成 STRING 之后值会写进没人读的列，读回来永远是空。
+     */
+    private void writeVetField(Long animalCageId, String canonical, String value, boolean isJson, String operatorId) {
+        CageInfoField field = fieldMapper.selectByCanonical(canonical);
+        if (field == null || field.getId() == null) return; // 字段未播种 → 什么都不做（与缺字段同口径）
+        String col = valueColumn(field.getDataType());
+        if (col == null) return;
+        CageInfoValue existing = null;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageId(animalCageId)) {
+            if (v != null && field.getId().equals(v.getFieldId())) { existing = v; break; }
+        }
+        String before = existing == null ? null : stringColValue(existing, field);
+        if (Objects.equals(before, value)) return; // 幂等：没变不写、也不留审计
+        CageInfoValue v = new CageInfoValue();
+        v.setAnimalCageId(animalCageId);
+        v.setFieldId(field.getId());
+        if (isJson || COL_JSON.equals(col)) {
+            v.setValueJson(value);
+        } else if (COL_TEXT.equals(col)) {
+            v.setValueText(value);
+        } else {
+            v.setValueString(value);
+        }
+        v.setFillSource("MANUAL");
+        valueMapper.upsert(v);
+        auditService.logDataChange("UPDATE", "cage_box", animalCageId, String.valueOf(animalCageId), null,
+                "animal_cage", animalCageId, String.valueOf(animalCageId),
+                field.getCanonical(), field.getLabel(),
+                stringify(before), stringify(value), operatorId);
+    }
+
+    /** 按字段类型从行里取字符串值 —— **复用 {@link #valueColumn}**，不另抄一份类型映射。 */
+    private String stringColValue(CageInfoValue v, CageInfoField field) {
+        if (v == null || field == null) return null;
+        String col = valueColumn(field.getDataType());
+        if (COL_TEXT.equals(col)) return v.getValueText();
+        if (COL_JSON.equals(col)) return v.getValueJson();
+        return v.getValueString();
+    }
+
+    /**
+     * 每笼位「健康异常严重程度」的当前值（item_code）——网格角标用，与 {@link #detailCodesByCage} 同一套批量读。
+     *
+     * <p>单选字段的值落在 value_text；空串/没写过的一律不进 map（调用方据此不渲染角标）。
+     * 它**不是状态码**，所以不走 specialStatuses（那条路会把它卷进底色/优先级计算）。
+     */
+    public Map<Long, String> severityByCage(List<Long> cageIds) {
+        Map<Long, String> out = new LinkedHashMap<>();
+        if (cageIds == null || cageIds.isEmpty()) return out;
+        CageInfoField field = fieldMapper.selectByCanonical(HEALTH_SEVERITY_CANONICAL);
+        if (field == null || field.getId() == null) return out;
+        for (CageInfoValue v : valueMapper.selectByAnimalCageIds(cageIds)) {
+            if (v == null || v.getAnimalCageId() == null || !field.getId().equals(v.getFieldId())) continue;
+            String s = v.getValueString();
+            if (s != null && !s.isBlank()) out.put(v.getAnimalCageId(), s.trim());
+        }
+        return out;
+    }
+
+    /**
+     * 任意码表的 item_code → 中文名。
+     * 特殊饲养明细与健康异常严重程度都要它 —— 码表 code 传进来，别在调用方各抄一份查询。
+     */
+    public Map<String, String> itemLabels(String dictCode) {
         Map<String, String> out = new HashMap<>();
-        CageInfoCodelist cl = codelistMapper.selectByCode(SPECIAL_DETAIL_DICT);
+        if (dictCode == null || dictCode.isBlank()) return out;
+        CageInfoCodelist cl = codelistMapper.selectByCode(dictCode);
         if (cl == null || cl.getId() == null) return out;
         for (CageInfoCodelistItem it : codelistItemMapper.selectByCodelistId(cl.getId())) {
             if (it != null && it.getItemCode() != null) out.put(it.getItemCode(), it.getItemLabel());
         }
         return out;
+    }
+
+    /**
+     * 某笼位当前「健康异常严重程度」的中文名（没标 / 码表查不到 → 空串）。
+     *
+     * <p>只给通知文案用：严重程度**不参与任何判定**（没有状态码、不折叠、没有阈值行），
+     * 它只是挂在健康异常下的一个普通单选字段。
+     */
+    public String healthSeverityLabel(Long animalCageId) {
+        if (animalCageId == null) return "";
+        String code = null;
+        for (Map<String, Object> row : getInfo(animalCageId)) {
+            if (row != null && HEALTH_SEVERITY_CANONICAL.equals(row.get("canonical"))) {
+                Object v = row.get("value");
+                code = v == null ? null : String.valueOf(v).trim();
+                break;
+            }
+        }
+        if (code == null || code.isEmpty()) return "";
+        return itemLabels(HEALTH_SEVERITY_DICT).getOrDefault(code, code);
     }
 
     /** 该笼位某个状态标记当前是否 on。 */
@@ -447,12 +743,14 @@ public class CageInfoValueService {
         auditDiff(before, targetAnimalCageId, "DIVIDE", operatorId);
     }
 
-    /**
-     * 随占用迁移的字段 = 占用者/动物/状态标记 + 实验记录照片。
+    /** 随占用迁移的字段 = 占用者/动物/状态标记 + 实验记录照片。
      * 不含课题组归属（project_pi_name、project_name、department_name、aup_number）——
      * 那些锚笼位分配，不随转移走，否则会把目标笼位的 AUP 归属覆盖成源笼位的，与 cage_cell_detail 的固定字段对不上。
+     *
+     * <p>包内可见（非 private）是为了让单测钉住「状态子值必须随父状态一起走」这条，
+     * 见 {@code CageInfoValueTransferCanonicalsTest}。
      */
-    private Set<String> transferableCanonicals() {
+    static Set<String> transferableCanonicals() {
         return java.util.stream.Stream.concat(ARCHIVE_CLEAR_CANONICALS.stream(), LOCAL_FIELD_CANONICALS.stream())
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
@@ -543,12 +841,26 @@ public class CageInfoValueService {
         auditDiff(before, animalCageId, changeType, operatorId);
     }
 
+    /**
+     * 归档要清的字段 = 占用者/动物/**状态**。它同时是 {@link #transferableCanonicals()} 的底：
+     * 「随占用迁移」与「归档清空」本就是同一批字段（状态标记、占用者、动物）。
+     *
+     * <p>状态的**子值必须跟父状态同进退**：父状态在这个集合里、子值不在，就会出现两种病
+     * （2026-09-18 用户报的「轻微/中度/重度没跟着转移」）：
+     * <ul>
+     *   <li>转移带不走子值 → 目标笼位只剩「健康异常」，严重程度/瘙痒/明细丢了；</li>
+     *   <li>归档清不掉子值 → 源笼位已成空笼盒，却还挂着「中度」。</li>
+     * </ul>
+     * 所以 {@code has_health_abnormality} 与 {@code needs_special_feeding} 的子值都在下面，
+     * <b>以后再加状态子值，这里必须同步补</b>。
+     */
     private static final Set<String> ARCHIVE_CLEAR_CANONICALS = Set.of(
             "experimenter_name", "lab_assistant_name",
             "animal_strain_name", "animal_sex", "animal_week_age",
             "animal_male_number", "animal_female_number", "animal_come_from",
             "needs_division", "needs_special_feeding", "needs_transfer",
             "has_health_abnormality", "needs_cohabitation",
+            "health_abnormality_severity", "health_abnormality_itch", "special_feeding_details",
             "special_breeding_name", "special_breeding_desc", "cage_use_time");
 
     /** 归档：清空占用者/动物/状态标记，保留课题组归属(pi/aup/dept/project)。 */

@@ -218,7 +218,7 @@ public class StudentDashboardService {
             profileSummary.setJobNumber(me.getJobNumber());
             profileSummary.setDepartmentName(me.getDepartmentName());
             profileSummary.setProjectGroupName(me.getProjectGroupName());
-            profileSummary.setHead(me.getHead());
+            profileSummary.setHead(me.effectiveHead());
             profileSummary.setGender(me.getGender());
             profileSummary.setMobilePhone(me.getMobilePhone());
             profileSummary.setEmail(me.getEmail());

@@ -7,7 +7,7 @@
     <view wx:if="{{ subTab === 'catalog' }}" class="fm-chip fm-chip-primary" bindtap="openNewCat">＋目录</view>
     <view wx:if="{{ subTab === 'presets' }}" class="fm-chip fm-chip-primary" bindtap="openNewPreset">＋预设</view>
   </view>
-  <van-tabs active="{{ subTab }}" bind:change="onSubTabChange" color="#ac1736" line-width="28rpx" lazy-render="{{ false }}">
+  <van-tabs active="{{ subTab }}" bind:change="onSubTabChange" color="var(--accent)" line-width="28rpx" lazy-render="{{ false }}">
     <van-tab title="机房" name="sites">
       <view class="pad">
         <block wx:for="{{ sites }}" wx:key="id">
@@ -137,7 +137,7 @@
         <view class="tpl-item">
           <view class="item-head">
             <text>字段 {{ idx + 1 }}</text>
-            <text class="item-del" data-i="{{ idx }}" bindtap="removeTplItemRow">删除</text>
+            <view class="fm-chip fm-chip-xs fm-chip-danger" data-i="{{ idx }}" bindtap="removeTplItemRow">删除</view>
           </view>
           <van-field label="标签" value="{{ item.label }}" data-i="{{ idx }}" bind:change="onTplItemLabel" />
           <view class="fm-select-row">

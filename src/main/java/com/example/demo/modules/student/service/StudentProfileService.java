@@ -3,6 +3,7 @@ package com.example.demo.modules.student.service;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.personnel.mapper.PersonnelMapper;
 import com.example.demo.modules.student.dto.StudentProfileAccountInfo;
 import com.example.demo.modules.student.dto.StudentProfilePersonnelInfo;
 import com.example.demo.modules.student.dto.StudentProfileResponse;
@@ -17,9 +18,11 @@ public class StudentProfileService {
     private static final Logger log = LoggerFactory.getLogger(StudentProfileService.class);
 
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final PersonnelMapper personnelMapper;
 
-    public StudentProfileService(AroPersonnelMapper aroPersonnelMapper) {
+    public StudentProfileService(AroPersonnelMapper aroPersonnelMapper, PersonnelMapper personnelMapper) {
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.personnelMapper = personnelMapper;
     }
 
     public StudentProfileResponse buildProfile(User user) {
@@ -41,7 +44,9 @@ public class StudentProfileService {
             info.setGender(personnel.getGender());
             info.setMobilePhone(personnel.getMobilePhone());
             info.setEmail(personnel.getEmail());
-            info.setHead(personnel.getHead());
+            // 本地覆盖层优先：学生自传的头像存在 personnel.head_override，aro_personnel 里没有
+            String localHead = personnelMapper.findHeadOverrideByAroUserId(personnel.getId());
+            info.setHead(localHead != null && !localHead.isBlank() ? localHead : personnel.getHead());
             info.setDepartmentName(personnel.getDepartmentName());
             info.setProjectGroupName(personnel.getResolvedProjectGroupNames());
             info.setUserTypeNames(personnel.getUserTypeNames());

@@ -129,6 +129,24 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
                 "**物资申领{auditResult}**\n**{applicantName}**，你的物资申领**{auditResult}**\n\n| 物资 | 数量 |\n|:--|--:|\n{items}"
         ));
+        TEMPLATES.put("CAGE_TRANSFER_REVIEW", new Template(
+                "笼位转移待审核 · {targetCount} 个目标笼位 — {applicantName}",
+                "<h3>笼位转移待审核</h3><p><b>{applicantName}</b> 提交了笼位转移申请（{targetCount} 个目标笼位）：</p>"
+                        + "<p>源笼位：{fromLocation}</p>"
+                        + "<p>目标笼位：{toLocation}</p>"
+                        + "<p>申请原因：{reason}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "**笼位转移待审核 · {targetCount} 个目标笼位**\n**{applicantName}** 提交了笼位转移申请\n\n源笼位：{fromLocation}\n目标笼位：{toLocation}\n申请原因：{reason}"
+        ));
+        TEMPLATES.put("CAGE_TRANSFER_REVIEWED", new Template(
+                "笼位转移审核结果 · {targetCount} 个目标笼位 — {auditResult}",
+                "<h3>笼位转移{auditResult}</h3><p><b>{applicantName}</b>，你的笼位转移申请（{targetCount} 个目标笼位）<b>{auditResult}</b>。</p>"
+                        + "<p>源笼位：{fromLocation}</p>"
+                        + "<p>目标笼位：{toLocation}</p>"
+                        + "<p>{reason}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "**笼位转移{auditResult} · {targetCount} 个目标笼位**\n**{applicantName}**，你的笼位转移申请**{auditResult}**\n\n源笼位：{fromLocation}\n目标笼位：{toLocation}\n{reason}"
+        ));
         TEMPLATES.put("SCAN_DELAY_REQUESTED", new Template(
                 "延迟免冻结申请 — {subjectName}",
                 "<h3>新延迟免冻结申请</h3><p><b>{subjectName}</b>（{subjectGroup}）在 <b>{roomName}</b> 申请 <b>{optionLabel}</b>。</p>"
@@ -369,6 +387,58 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "**🔔 笼位状态提醒**\n"
                         + "📍 **{cageLabel}**（{roomName}）\n"
                         + "🐭 {statusLabel}：已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n"
+                        + "👤 课题组：{projectPiName}\n"
+                        + "🕐 {firedAt}\n"
+
+        ));
+
+        // ========== 健康异常（两个通道：兽医 / 笼位所有者）==========
+        // 变量与 CAGE_SPECIAL_STATUS 同一套，多一个 {severityLabel}（没选严重程度时是空串）。
+        // 两条文案要各对各的收件人：兽医那条是「去看一眼」，所有者那条是「你的笼位标了异常」。
+        TEMPLATES.put("CAGE_HEALTH_VET", new Template(
+                "笼位健康异常 — {cageLabel} {severityLabel}",
+                "<div style='border-left:4px solid #dc2626;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>笼位健康异常，请前往检查</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#dc2626;margin:0 0 4px'>{severityLabel}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>笼位：<b>{cageLabel}</b>（{roomName}）</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>课题组：{projectPiName} · 实验员：{experimenterName}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>异常已持续 {persistedDays} 天（阈值 {thresholdDays} 天）</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{firedAt}</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 笼位健康异常提醒</p>",
+                "**🩺 笼位健康异常，请前往检查**\n\n"
+                        + "📋 **{severityLabel}**\n\n"
+                        + "📍 **{cageLabel}**（{roomName}）\n\n"
+                        + "⏱ 异常已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n\n"
+                        + "👤 课题组：{projectPiName}　实验员：{experimenterName}\n\n"
+                        + "🕐 {firedAt}\n",
+                "**🩺 笼位健康异常，请前往检查**\n"
+                        + "📋 **{severityLabel}**\n"
+                        + "📍 **{cageLabel}**（{roomName}）\n"
+                        + "⏱ 已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n"
+                        + "👤 课题组：{projectPiName}\n"
+                        + "🕐 {firedAt}\n"
+
+        ));
+        TEMPLATES.put("CAGE_HEALTH_OWNER", new Template(
+                "笼位健康异常 — {cageLabel}",
+                "<div style='border-left:4px solid #f59e0b;padding-left:14px;margin:8px 0'>"
+                        + "<p style='font-size:15px;font-weight:700;color:#1e293b;margin:0 0 6px'>笼位标记了健康异常</p>"
+                        + "<p style='font-size:17px;font-weight:700;color:#dc2626;margin:0 0 4px'>{severityLabel}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>笼位：<b>{cageLabel}</b>（{roomName}）</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>课题组：{projectPiName} · 实验员：{experimenterName}</p>"
+                        + "<p style='font-size:13px;color:#475569;margin:0 0 2px'>已持续 {persistedDays} 天（阈值 {thresholdDays} 天）</p>"
+                        + "<p style='font-size:12px;color:#94a3b8;margin:8px 0 0'>{firedAt}</p></div>"
+                        + "<hr><p style='color:#cbd5e1;font-size:11px'>ARO 笼位健康异常提醒</p>",
+                "**🔔 笼位标记了健康异常**\n\n"
+                        + "📋 **{severityLabel}**\n\n"
+                        + "📍 **{cageLabel}**（{roomName}）\n\n"
+                        + "⏱ 已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n\n"
+                        + "👤 课题组：{projectPiName}　实验员：{experimenterName}\n\n"
+                        + "🕐 {firedAt}\n",
+                "**🔔 笼位标记了健康异常**\n"
+                        + "📋 **{severityLabel}**\n"
+                        + "📍 **{cageLabel}**（{roomName}）\n"
+                        + "⏱ 已持续 **{persistedDays}** 天（阈值 {thresholdDays} 天）\n"
                         + "👤 课题组：{projectPiName}\n"
                         + "🕐 {firedAt}\n"
 

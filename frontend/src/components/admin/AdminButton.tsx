@@ -16,7 +16,7 @@ const toneToVariant: Record<AdminButtonTone, VariantProps<typeof buttonVariants>
 
 /** 管理端按钮统一：实色填充（禁止描边/线条+文字），一眼可辨为可点击。disabled 由 toneClassNames 自行控制透明度 */
 const adminButtonShell =
-  "rounded-[length:var(--admin-radius-md,0.375rem)] border-0 font-medium shadow-sm transition-colors hover:shadow disabled:opacity-100";
+  "admin-btn rounded-[length:var(--admin-radius-md,0.375rem)] border-0 font-medium shadow-sm transition-colors hover:shadow disabled:opacity-100";
 
 /**
  * 管理端按钮统一：实色填充（禁止描边/线条+文字），一眼可辨为可点击。
@@ -65,6 +65,7 @@ export const AdminButton = React.forwardRef<HTMLButtonElement, AdminButtonProps>
         aria-busy={loading || undefined}
         className={cn(
           adminButtonShell,
+          `admin-btn--${tone}`,
           toneClassNames[tone],
           active && "ring-2 ring-[color:color-mix(in_srgb,var(--admin-focus-ring)_50%,transparent)] ring-offset-1",
           className

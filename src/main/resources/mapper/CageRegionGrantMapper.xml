@@ -136,4 +136,31 @@
         ORDER BY region_type ASC, region_id ASC
     </select>
 
+    <!-- 覆盖给定区域的审核人账号 id（ROOM/FLOOR/CAMPUS 任一命中）。收件人要账号 id，故同
+         listAssignees 取 COALESCE(staff_id, aro_user_id, user_id) 而非 personnel.id。
+         只认 LEADER/REVIEWER：LEADER 是现任饲养组长，REVIEWER 是迁移遗留的显式审核授权；
+         SCOPE 是二期「可见范围」遗留，不是审核授权，不发给它。调用方保证三个列表至少一个非空。 -->
+    <select id="listReviewerAccountIdsByRegions" resultType="string">
+        SELECT DISTINCT COALESCE(NULLIF(p.staff_id, ''), NULLIF(p.aro_user_id, ''), g.user_id)
+        FROM cage_region_grant g
+        LEFT JOIN personnel p ON p.id = g.user_id
+        WHERE g.grant_role IN ('LEADER', 'REVIEWER')
+          AND (
+            <trim prefixOverrides="OR">
+              <if test="roomIds != null and roomIds.size() > 0">
+                OR (g.region_type = 'ROOM' AND g.region_id IN
+                <foreach collection="roomIds" item="r" open="(" separator="," close=")">#{r}</foreach>)
+              </if>
+              <if test="floorIds != null and floorIds.size() > 0">
+                OR (g.region_type = 'FLOOR' AND g.region_id IN
+                <foreach collection="floorIds" item="f" open="(" separator="," close=")">#{f}</foreach>)
+              </if>
+              <if test="campusIds != null and campusIds.size() > 0">
+                OR (g.region_type = 'CAMPUS' AND g.region_id IN
+                <foreach collection="campusIds" item="c" open="(" separator="," close=")">#{c}</foreach>)
+              </if>
+            </trim>
+          )
+    </select>
+
 </mapper>

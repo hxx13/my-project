@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Star } from "lucide-react";
 import {
   fetchShelfCells,
   fetchCageShelfDetail,
@@ -18,12 +17,11 @@ import type { CageOpMark } from "../useCageOpSelect";
  * ShelfGrid — 单个笼架的 8×10 网格视图
  *
  * 展示一个笼架的全部 80 个笼位（8列×10行），每个笼位由 CellButton 渲染。
- * 支持: 加载态 / 空态 / 收藏切换 / 多选(allocMode) / 编辑标记 / 绑定高亮 / 十字交叉
+ * 支持: 加载态 / 空态 / 多选(allocMode) / 编辑标记 / 绑定高亮 / 十字交叉
  *
  * Props:
  *   title, detail, loading, emptyHint    — 基础数据 + 状态
  *   onCellClick                          — 格子点击回调
- *   isBookmarked, onToggleBookmark       — 收藏控制
  *   alertMap                             — 告警数据 Map<shelveId:position, PersistedAlert>
  *   selectable, selectedCells, onToggleCell, allocMode, clickMode — 分配模式控制
  *   scanCache, lastScannedKey            — 编辑模式缓存
@@ -37,8 +35,6 @@ export function ShelfGrid({
   loading,
   emptyHint,
   onCellClick,
-  isBookmarked,
-  onToggleBookmark,
   alertMap,
   selectable,
   selectedCells,
@@ -74,8 +70,6 @@ export function ShelfGrid({
   loading: boolean;
   emptyHint?: string;
   onCellClick?: (c: CageShelfCell) => void;
-  isBookmarked?: boolean;
-  onToggleBookmark?: () => void;
   alertMap: Map<string, PersistedAlert>;
   selectable?: boolean;
   selectedCells?: Set<string>;
@@ -243,128 +237,11 @@ export function ShelfGrid({
               {detail.shelfMeta.shelveName || detail.shelfMeta.shelveId}
             </div>
           )}
-          {onToggleBookmark && (
-            <button
-              type="button"
-              className={`shrink-0 p-0.5 rounded transition ${
-                isBookmarked
-                  ? "text-amber-500 hover:text-amber-600"
-                  : "text-slate-300 hover:text-amber-400"
-              }`}
-              onClick={onToggleBookmark}
-              title={isBookmarked ? "取消收藏" : "收藏此笼架"}
-            >
-              <Star className={`h-4 w-4 ${isBookmarked ? "fill-amber-500" : ""}`} />
-            </button>
-          )}
+          {/* 收藏星标已下线：收藏粒度改到「房间」，星标搬进左侧树（CampusTree 的 bookmark 能力） */}
         </div>
       </div>
       {gridContent}
     </div>
-  );
-}
-
-/**
- * BookmarkShelfGrid — 收藏笼架网格（自取数据）
- *
- * 与 ShelfGrid 的区别:
- *   - 自己通过 useQuery 获取数据（先 snapshot cells，再 fallback detail）
- *   - 不依赖父组件传入的 details[]
- *   - 数据为空时提示"运行全量笼位数据同步"
- *
- * Props:
- *   roomId, shelveId                     — 定位笼架
- *   title, campusName, roomName          — 显示信息
- *   isBookmarked, onToggleBookmark       — 收藏控制
- *   onCellClick                          — 格子点击回调
- *   alertMap                             — 告警数据
- */
-export function BookmarkShelfGrid({
-  roomId,
-  shelveId,
-  title,
-  campusName,
-  roomName,
-  isBookmarked,
-  onToggleBookmark,
-  onCellClick,
-  alertMap,
-}: {
-  roomId: string;
-  shelveId: string;
-  title: string;
-  campusName?: string;
-  roomName?: string;
-  isBookmarked?: boolean;
-  onToggleBookmark?: () => void;
-  onCellClick: (c: CageShelfCell) => void;
-  alertMap: Map<string, PersistedAlert>;
-}) {
-  const snap = useQuery({
-    queryKey: ["shelfCells", roomId, shelveId],
-    queryFn: () => fetchShelfCells(roomId, shelveId),
-    staleTime: 5 * 60 * 1000,
-  });
-  const hasReal = Boolean(
-    snap.data?.cells?.some(
-      (c: any) =>
-        !c.empty && (c.animalCageType != null || c.cageBoxJson || c.specialStatusesJson),
-    ),
-  );
-  const cache = useQuery({
-    queryKey: ["cageShelfDetail", shelveId],
-    queryFn: () => fetchCageShelfDetail(shelveId),
-    staleTime: 5 * 60 * 1000,
-    enabled: snap.isSuccess && (snap.data?.isEmpty === true || !hasReal),
-  });
-  const loading = snap.isLoading || (cache.isEnabled && cache.isLoading);
-  const detail = useMemo((): CageShelfDetail | null => {
-    const meta = {
-      shelveId,
-      shelveName: title,
-      campusName: campusName || "",
-      areaName: "",
-      floorName: "",
-      roomName: roomName || "",
-    };
-    if (hasReal && snap.data) {
-      const cells = snap.data.cells.map(snapshotCellToShelfCell);
-      return {
-        shelfMeta: meta,
-        grid: cells,
-        totalCells: cells.length,
-        filledCells: cells.filter((c) => !c.empty).length,
-      };
-    }
-    if (cache.data) return cache.data;
-    if (snap.data?.cells?.length) {
-      const cells = snap.data.cells.map(snapshotCellToShelfCell);
-      return { shelfMeta: meta, grid: cells, totalCells: cells.length, filledCells: 0 };
-    }
-    return null;
-  }, [hasReal, snap.data, cache.data, title, campusName, roomName, shelveId]);
-
-  if (loading)
-    return <div className="text-xs text-[var(--twin-mute)] py-4 text-center">加载笼位…</div>;
-  if (!detail || detail.totalCells === 0)
-    return (
-      <div className="text-xs text-[var(--twin-mute)] py-4 text-center">
-        暂无数据 — 运行「全量笼位数据同步」或手动刷新后可见
-      </div>
-    );
-  return (
-    <ShelfGrid
-      title={title}
-      detail={detail}
-      loading={false}
-      emptyHint="暂无笼架数据"
-      isBookmarked={isBookmarked}
-      onToggleBookmark={onToggleBookmark}
-      onCellClick={onCellClick}
-      alertMap={alertMap}
-      selectable={false}
-      allocMode={false}
-    />
   );
 }
 

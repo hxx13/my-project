@@ -1,5 +1,7 @@
 /**
- * 首页「公告」合并列表：GET /api/public/mp-home/bulletins（经 springProxy，前缀已在默认白名单）。
+ * 门户公开公告明细：GET /api/public/mp-home/bulletins/{id}（经 springProxy，前缀已在默认白名单）。
+ * 现仅 fetchBulletinDetail 在用 —— homeBulletinDetail 的 release / bulletin 兜底取正文。
+ * fetchBulletinList（首页合并列表）已无调用方，保留备用。
  */
 const springAuth = require('./springAuth.js');
 

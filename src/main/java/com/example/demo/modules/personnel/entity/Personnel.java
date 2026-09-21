@@ -18,9 +18,17 @@ public class Personnel {
     private String jobNumber;
     private String departmentName;
     private String projectGroupName;
+    /** 归属课题组 project_group.id（按名字锚定；无课题组为 null） */
+    private Long projectGroupId;
     private Long institutionId;
     private String userTypeNames;
     private String head;
+    /** 本地头像覆盖层：非空时优先于 head 展示；同步永不写本列 */
+    private String headOverride;
+    /** 有效头像：本地覆盖层优先，否则回落 ARO 原值。仅供展示；不要用于同步写回。 */
+    public String effectiveHead() {
+        return (headOverride != null && !headOverride.isBlank()) ? headOverride : head;
+    }
     private Integer gender;
     private String mobilePhone;
     private String email;
@@ -30,6 +38,10 @@ public class Personnel {
     /** 1=有官方可进房间 0=无 */
     private Integer hasOfficialRoomPermission;
     private String createdAt;
+    /** 回收站：非空表示已软删除。同步会"看见但不复活"这类行 */
+    private String deletedAt;
+    /** 回收站：执行删除的账号 id */
+    private String deletedBy;
 
     // ── 账号字段（JOIN sys_user 补）──
     private String role;

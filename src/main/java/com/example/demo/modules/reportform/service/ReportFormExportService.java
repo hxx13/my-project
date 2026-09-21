@@ -1,5 +1,6 @@
 package com.example.demo.modules.reportform.service;
 
+import com.example.demo.modules.adminfile.OfficeToPdfConverter;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
@@ -46,15 +47,21 @@ public class ReportFormExportService {
 
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormSubmissionMapper submissionMapper;
+    private final ReportFormWordService wordService;
+    private final OfficeToPdfConverter officeToPdfConverter;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.pdf.font-path:}")
     private String appPdfFontPath;
 
     public ReportFormExportService(ReportFormDefinitionMapper definitionMapper,
-                                   ReportFormSubmissionMapper submissionMapper) {
+                                   ReportFormSubmissionMapper submissionMapper,
+                                   ReportFormWordService wordService,
+                                   OfficeToPdfConverter officeToPdfConverter) {
         this.definitionMapper = definitionMapper;
         this.submissionMapper = submissionMapper;
+        this.wordService = wordService;
+        this.officeToPdfConverter = officeToPdfConverter;
     }
 
     /** 单条提交：按 layout 网格逆向导出 Excel（保留合并格、样式、列宽） */
@@ -132,11 +139,32 @@ public class ReportFormExportService {
         ReportFormSubmission sub = submissionMapper.selectById(submissionId);
         if (sub == null) throw new RuntimeException("提交记录不存在");
 
+        Optional<byte[]> fromTemplate = pdfFromWordTemplate(form, submissionId);
+        if (fromTemplate.isPresent()) {
+            return fromTemplate.get();
+        }
+
         var layout = objectMapper.readTree(form.getLayoutJson());
         var fieldValues = objectMapper.readTree(sub.getFieldValuesJson() != null ? sub.getFieldValuesJson() : "{}");
         var theme = parseTheme(form.getThemeJson());
 
         return renderGridPdf(pdfExportTitle(form), layout, fieldValues, theme, pdfExportSubtitle(form, sub, false));
+    }
+
+    /**
+     * 表单绑了 Word 模板时走「原件回填 → 转 PDF」：页眉页脚（含 logo 图片）由 docx 原件保证，
+     * 网格重画永远带不出来。没绑模板返回 empty，调用方退回 {@link #renderGridPdf}。
+     *
+     * <p>PDF 导出/打印没有选择模板的入口，所以取第一条；表单绑了多个模板时这里是已知取舍。
+     */
+    private Optional<byte[]> pdfFromWordTemplate(ReportFormDefinition form, Long submissionId) throws Exception {
+        Optional<ReportFormWordService.TemplateBundle> bundle = wordService.resolveTemplateBundle(form, null);
+        if (bundle.isEmpty()) {
+            return Optional.empty();
+        }
+        byte[] docx = wordService.exportWord(form.getId(), submissionId,
+                bundle.get().templateBytes(), bundle.get().bookmarkMapping());
+        return Optional.of(officeToPdfConverter.convert(docx, "docx"));
     }
 
     public byte[] exportBatchPdf(Long formId) throws Exception {
@@ -145,21 +173,31 @@ public class ReportFormExportService {
 
         List<ReportFormSubmission> subs = submissionMapper.selectByFormId(formId);
         if (subs.isEmpty()) {
+            // 没有提交就无从回填（exportWord 不接受 null submissionId），保持原来的空网格路径
             var layout = objectMapper.readTree(form.getLayoutJson());
             var theme = parseTheme(form.getThemeJson());
             String subtitle = isWordSourceForm(form) ? "" : "暂无提交记录";
             return renderGridPdf(pdfExportTitle(form), layout, objectMapper.createObjectNode(), theme, subtitle);
         }
 
+        // ponytail: OfficeToPdfConverter.convert 每条提交都建全新 LibreOffice profile，冷启动约 4 秒，
+        // 批量 N 条就是 N 次冷启动。真嫌慢的话改成复用同一个 profile 串行转换 —— 但那样就不能并发，
+        // 收益要等批量确实变慢再说。
         ByteArrayOutputStream merged = new ByteArrayOutputStream();
         PDFMergerUtility merger = new PDFMergerUtility();
         merger.setDestinationStream(merged);
         var layout = objectMapper.readTree(form.getLayoutJson());
         var theme = parseTheme(form.getThemeJson());
         for (ReportFormSubmission sub : subs) {
-            var fieldValues = objectMapper.readTree(sub.getFieldValuesJson() != null ? sub.getFieldValuesJson() : "{}");
-            byte[] singlePdf = renderGridPdf(pdfExportTitle(form), layout, fieldValues, theme,
-                    pdfExportSubtitle(form, sub, true));
+            Optional<byte[]> fromTemplate = pdfFromWordTemplate(form, sub.getId());
+            byte[] singlePdf;
+            if (fromTemplate.isPresent()) {
+                singlePdf = fromTemplate.get();
+            } else {
+                var fieldValues = objectMapper.readTree(sub.getFieldValuesJson() != null ? sub.getFieldValuesJson() : "{}");
+                singlePdf = renderGridPdf(pdfExportTitle(form), layout, fieldValues, theme,
+                        pdfExportSubtitle(form, sub, true));
+            }
             merger.addSource(new RandomAccessReadBuffer(singlePdf));
         }
         merger.mergeDocuments(null);

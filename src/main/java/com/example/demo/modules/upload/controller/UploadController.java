@@ -93,10 +93,15 @@ public class UploadController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
-        if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
-            return Result.error("无权限上传文件");
-        }
+        /*
+          这里**不再卡角色**：门槛与「写笼位实验记录/照片」(`/api/local/annotate`) 对齐 = MEMBER，
+          而 RoleEnum 从 MEMBER 起步（学生就是 MEMBER），所以卡 STAFF 等于把所有学生挡在门外。
+
+          <p>原先是 STAFF：学生状态模式的照片条走的正是这个端点，一点「加照片」必然
+          「无权限上传文件」，表现就是「选了图没反应、也没预览」（2026-09-18 用户报）。
+          既然 annotate 已经信任学生写入，这里卡着只是把同一条链路拦成两半。
+          端点自身仍校验「内容必须是图片」（见下），放开角色 ≠ 放开任意文件。
+        */
         if (file == null || file.isEmpty()) {
             return Result.error("文件不能为空");
         }

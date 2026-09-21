@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -292,6 +293,30 @@ public class CageRegionGrantService {
     /** 分配里出现过的真实区域去重（超管配告警/能力时列全部可选区域）。 */
     public List<Map<String, Object>> listDistinctRegions() {
         return mapper.listDistinctRegions();
+    }
+
+    /**
+     * 覆盖给定区域（ROOM/FLOOR/CAMPUS 任一命中）的审核人**账号 id** 集合 —— 转移待签提醒的收件人来源。
+     * 只认 LEADER/REVIEWER：SCOPE 是二期「可见范围」遗留，不是审核授权，不发给它。
+     * 收件人要账号 id（pushService 收件人走 resolveIdByAccount），SQL 里已 COALESCE 折算。
+     */
+    public Set<String> reviewerAccountIdsCovering(Collection<String> roomIds,
+                                                  Collection<String> floorIds,
+                                                  Collection<String> campusIds) {
+        List<String> rooms = nonBlank(roomIds);
+        List<String> floors = nonBlank(floorIds);
+        List<String> campuses = nonBlank(campusIds);
+        if (rooms.isEmpty() && floors.isEmpty() && campuses.isEmpty()) return Set.of();
+        Set<String> out = new HashSet<>();
+        for (String id : mapper.listReviewerAccountIdsByRegions(rooms, floors, campuses)) {
+            if (StringUtils.hasText(id)) out.add(id.trim());
+        }
+        return out;
+    }
+
+    private static List<String> nonBlank(Collection<String> ids) {
+        if (ids == null) return List.of();
+        return ids.stream().filter(StringUtils::hasText).map(String::trim).distinct().toList();
     }
 
     /**

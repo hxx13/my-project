@@ -329,6 +329,7 @@ Page({
     canStaffOps: false,
     canSeniorOps: false,
     canGoNotifications: true,
+    canGoMessages: true,
     canGoRepairRequest: false,
     canGoPurchaseRequest: false,
     canGoFileTemplates: false,
@@ -615,7 +616,11 @@ Page({
       canManagePersonnel: hasMinRole(role, 'SUPER_ADMIN'),
       canStaffOps: hasMinRole(role, 'STAFF'),
       canSeniorOps: hasMinRole(role, 'SENIOR'),
-      canGoNotifications: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/notifications/index', role, 'STUDENT'),
+      canGoNotifications: pagePermission.canAccessMiniPage('/package-feature/pages/notifications/index', role, 'STUDENT'),
+      canGoMessages:
+        !isStudentAccount() && hasMinRole(role, 'STAFF')
+          ? pagePermission.canAccessMiniPage('/package-feature/pages/staffChatHub/index', role, 'STAFF')
+          : pagePermission.canAccessMiniPage('/package-feature/pages/messages/index', role, 'STUDENT'),
       canGoRepairRequest: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/repairRequest/index', role, 'STAFF'),
       canGoPurchaseRequest: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/purchaseRequest/index', role, 'STAFF'),
       canGoFileTemplates:
@@ -917,7 +922,7 @@ Page({
 
   goNotifications() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/notifications/index', role, 'STUDENT')) {
+    if (!this.data.canGoMessages) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
@@ -925,7 +930,7 @@ Page({
       wx.navigateTo({ url: '/package-feature/pages/staffChatHub/index' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
+    wx.navigateTo({ url: '/package-feature/pages/messages/index' });
   },
 
   goAnimalOrder() {
@@ -1210,10 +1215,12 @@ Page({
     });
   },
 
-  goNewsCenter() {
-    wx.navigateTo({
-      url: '/package-feature/pages/allnews/allnews',
-    });
+  goNotices() {
+    if (!this.data.canGoNotifications) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/notifications/index' });
   },
 
   onMenuSettings() {

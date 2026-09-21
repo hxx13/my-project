@@ -35,19 +35,26 @@ export default function StatusPhotoStrip({
       ? { line: "#ebedf0", mute: "#969799" }
       : { line: "var(--twin-hairline)", mute: "var(--twin-mute)" };
 
-  const upload = async (files: FileList) => {
+  const upload = async (files: File[]) => {
     setUploading(true);
     try {
       const urls: string[] = [];
+      let failed = 0;
       for (let i = 0; i < files.length; i++) {
         const fd = new FormData();
         fd.append("file", files[i]);
         const r = await authHttp.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
         if (r.data?.success && r.data.data?.url) urls.push(r.data.data.url);
+        else failed += 1;
       }
       if (urls.length) onChange([...value, ...urls]);
-    } catch {
-      toast.error("上传失败");
+      if (failed) toast.error(`${failed} 张上传失败，请重试`);
+    } catch (e) {
+      /* 把服务端那句话原样带出来（「服务繁忙」= multipart 没解析出来；「无权限上传文件」= 当前账号不是教职工；
+         「文件内容与扩展名不匹配」= 不是图片）。
+         早先这里只写死「上传失败」，白丢掉了唯一的线索 —— 表现就是「点了没反应、也没预览」，
+         用户和排查的人都无从下手（2026-09-18 用户报 H5 状态模式上传无效）。 */
+      toast.error(e instanceof Error ? e.message : "上传失败");
     } finally {
       setUploading(false);
     }
@@ -68,9 +75,14 @@ export default function StatusPhotoStrip({
           className="hidden"
           disabled={uploading}
           onChange={(e) => {
-            const f = e.target.files;
+            /*
+              先快照再清 value，顺序不能反。`input.files` 返回的是**活 FileList** ——
+              `e.target.value = ""` 会把已经拿到的那个引用一起清空，于是 files.length 变 0，
+              上传函数一次都不跑：表现是「选完图毫无反应」，既不报错也没有缩略图（2026-09-18 用户报）。
+            */
+            const files = Array.from(e.target.files ?? []);
             e.target.value = "";
-            if (f?.length) void upload(f);
+            if (files.length) void upload(files);
           }}
         />
       </label>

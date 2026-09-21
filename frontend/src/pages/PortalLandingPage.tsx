@@ -7,7 +7,7 @@ import { ModelResourceSection } from "@/features/portal/ModelResourceSection";
 import { NewsSection } from "@/features/portal/NewsSection";
 import { AboutSection } from "@/features/portal/AboutSection";
 import { FadeInSection } from "@/components/scroll-reveal";
-import { loginOAuth } from "@/api/domains/auth.api";
+import { loginOAuth, OAuthLoginError } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { isStudentAccount, resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
 import {
@@ -15,6 +15,7 @@ import {
   consumeIamOAuthCallback,
   consumeIamOAuthPortalIntent,
   getIamOAuthPublicConfig,
+  IAM_ERROR,
   redactOAuthSecretsInText,
   validateAndClearIamState,
 } from "@/features/auth/iamOAuth";
@@ -103,6 +104,14 @@ export default function PortalLandingPage() {
       } catch (error) {
         clearOAuthQueryFromUrl();
         oauthProcessedRef.current = false;
+        // 统一认证返回「需先注册」：带着 idpUid/工号跳到新用户注册页，注册成功写绑定避免循环
+        if (error instanceof OAuthLoginError && error.errorCode === IAM_ERROR.REGISTRATION_REQUIRED) {
+          const params = new URLSearchParams();
+          if (error.jobNumber) params.set("jobNumber", error.jobNumber);
+          if (error.idpUid) params.set("idpUid", error.idpUid);
+          navigate(`/student/register-new?${params.toString()}`, { replace: true });
+          return;
+        }
         const raw = error instanceof Error ? error.message : "统一认证登录失败，请重试";
         toast.error(redactOAuthSecretsInText(raw));
       }

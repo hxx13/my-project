@@ -188,7 +188,15 @@
         </view>
       </scroll-view>
 
-      <view class="cp-panel-hint">排队中的可撤回，失败的可重新排队或收掉</view>
+      <view class="cp-panel-hint">
+        <text class="cp-panel-hint-txt">排队中的可撤回，失败的可重新排队或收掉，卡在打印机队列里的也能撤回</text>
+        <!-- 清空是「连别人派的也一起撤」，比撤自己那一条重；能力问服务端、且只对后端直发工位给 -->
+        <view
+          wx:if="{{ canClearQueue && queueStationIsServer }}"
+          class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini"
+          bindtap="onClearQueue"
+        >清空本机队列</view>
+      </view>
 
       <scroll-view class="cp-panel-scroll" scroll-y enhanced show-scrollbar="{{ false }}">
         <block wx:for="{{ queueTabs }}" wx:key="id" wx:for-item="tab">
@@ -198,6 +206,8 @@
               <view class="cp-queue-item-top">
                 <view class="cp-queue-dot cp-queue-dot--{{ job.tone }}"></view>
                 <text class="cp-queue-item-status">{{ job.statusText }}</text>
+                <!-- 后端核对过「此刻还真排在那台打印机队列里」：看着像完事，其实纸没出来 -->
+                <text wx:if="{{ job.queueState === 'QUEUED' }}" class="cp-queue-item-stuck">仍卡在打印机队列</text>
                 <text class="cp-queue-item-time">{{ job.timeText }}</text>
               </view>
               <text class="cp-queue-item-file">{{ job.fileName }}</text>
@@ -216,6 +226,14 @@
                     <view class="cp-ui-btn cp-ui-btn-primary cp-ui-btn-mini" data-id="{{ job.id }}" bindtap="onRetryJob">重新排队</view>
                     <view class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini" data-id="{{ job.id }}" bindtap="onCancelJob">收掉</view>
                   </block>
+                  <!-- 还卡在打印机队列里的：PRINTED 这类终态也要给一颗，否则队列里那堆纸一张都撤不掉。
+                       文案跟同屏那颗 PENDING 的按钮统一叫「撤回」—— 同一个动作别用两个词。 -->
+                  <view
+                    wx:if="{{ job.canCancelStuck }}"
+                    class="cp-ui-btn cp-ui-btn-plain cp-ui-btn-mini"
+                    data-id="{{ job.id }}"
+                    bindtap="onCancelJob"
+                  >撤回</view>
                 </view>
               </view>
             </view>

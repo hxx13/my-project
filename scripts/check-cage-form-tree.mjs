@@ -14,8 +14,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const {
   flattenTemplateFields, buildFormTree, buildEditableFormRows,
-  isRowDirty, refreshDirty, applyDefaultCollapse, validateGroups,
-  changedValues, revertGroups, SECTION_AUTO_EXPAND_MAX,
+  isRowDirty, refreshDirty, validateGroups,
+  changedValues, revertGroups,
 } = require(join(here, '..', 'aroapp', 'miniprogram', 'utils', 'cageForm.js'));
 
 let passed = 0;
@@ -199,57 +199,9 @@ it('refreshDirty 汇总每个分区的 dirtyCount', () => {
   assert.equal(groups[1].dirtyCount, 1);
 });
 
-console.log('默认折叠');
-it('字段数 > 阈值收起，≤ 阈值展开', () => {
-  const many = Array.from({ length: SECTION_AUTO_EXPAND_MAX + 1 }, (_, i) => f('x' + i));
-  const few = Array.from({ length: SECTION_AUTO_EXPAND_MAX }, (_, i) => f('y' + i));
-  const tpl = { sections: [
-    { code: 'big', label: '大', fields: many },
-    { code: 'small', label: '小', fields: few },
-  ] };
-  const { groups } = buildFormTree(flattenTemplateFields(tpl), [], {});
-  applyDefaultCollapse(groups);
-  assert.equal(groups[0].collapsed, true);
-  assert.equal(groups[1].collapsed, false);
-});
-
-it('有改动的分区即使超阈值也强制展开（不藏待保存的改动）', () => {
-  const many = Array.from({ length: SECTION_AUTO_EXPAND_MAX + 3 }, (_, i) => f('x' + i));
-  const { groups } = buildFormTree(flattenTemplateFields({ sections: [{ code: 'big', label: '大', fields: many }] }), [], {});
-  groups[0].subs[0].rows[0].raw = 'changed';
-  refreshDirty(groups);
-  applyDefaultCollapse(groups);
-  assert.equal(groups[0].collapsed, false);
-});
-
-it('命中 DEFAULT_COLLAPSED_SECTIONS 的分区即使字段少也默认收起', () => {
-  const tpl = { sections: [
-    { code: 'cage_status', label: '状态标记', fields: [f('a'), f('b')] },
-    { code: 'animal', label: '动物信息', fields: [f('c'), f('d'), f('e')] },
-    { code: 'basic', label: '基本信息', fields: [f('g')] },
-  ] };
-  const { groups } = buildFormTree(flattenTemplateFields(tpl), [], {});
-  applyDefaultCollapse(groups);
-  assert.equal(groups[0].collapsed, true, '按 label 命中');
-  assert.equal(groups[1].collapsed, true, '按 label 命中');
-  assert.equal(groups[2].collapsed, false, '未命中且字段少 → 展开');
-});
-
-it('按 code 命中同样生效（不依赖后台把分区名写成中文）', () => {
-  const tpl = { sections: [{ code: '动物信息', label: 'Animal Info', fields: [f('a')] }] };
-  const { groups } = buildFormTree(flattenTemplateFields(tpl), [], {});
-  applyDefaultCollapse(groups);
-  assert.equal(groups[0].collapsed, true);
-});
-
-it('强制收起的分区一旦有改动，仍然展开（改动优先于配置）', () => {
-  const tpl = { sections: [{ code: 'x', label: '动物信息', fields: [f('a')] }] };
-  const { groups } = buildFormTree(flattenTemplateFields(tpl), [], {});
-  groups[0].subs[0].rows[0].raw = 'changed';
-  refreshDirty(groups);
-  applyDefaultCollapse(groups);
-  assert.equal(groups[0].collapsed, false);
-});
+// 「默认折叠」一节已删：2026-09-17 起查看弹窗的字段区改成双列网格 + 整表常展开，
+// 不再有 collapsed / summaryText，applyDefaultCollapse 与 SECTION_AUTO_EXPAND_MAX 一并移除。
+// 分区永远是展开的，这里也就没有可断言的收放规则了。
 
 console.log('校验');
 it('只校验「可编辑 + 必填 + 空」', () => {

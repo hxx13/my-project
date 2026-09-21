@@ -331,3 +331,8 @@ export async function fetchStudentMobileGroupActivityRoomUsage(
 export async function markStudentMobileAlertsReadAll(): Promise<void> {
   await authHttp.post(`/student/mobile/alerts/read-all`);
 }
+
+/** 打开公告区：标记已看到当前时间（JWT），之后 announcementsUnread=false */
+export async function markStudentMobileAnnouncementsViewed(): Promise<void> {
+  await authHttp.post(`/student/mobile/announcements/viewed`);
+}

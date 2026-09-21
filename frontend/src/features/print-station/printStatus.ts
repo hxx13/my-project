@@ -30,3 +30,14 @@ export const PRINT_STATUS_META: Record<PrintJobStatus, PrintStatusMeta> = {
 export function printStatusOf(status: string): PrintStatusMeta {
   return PRINT_STATUS_META[status as PrintJobStatus] ?? { label: status, tone: "none", hint: "" };
 }
+
+/**
+ * 「已打印」旁边那一句：这条现在还卡在打印机队列里吗？
+ *
+ * 单独一维，不塞进 PRINT_STATUS_META —— 那张表是按 status 查的，塞进去就变成两维。
+ * 没核对过（null / 老数据没这个字段）时不说任何话：不知道就闭嘴，
+ * 别替打印机下"打完了"的结论，也别吓唬人。
+ */
+export function queueHintOf(queueState: string | null | undefined): string {
+  return queueState === "QUEUED" ? "还排在打印机队列里，纸一直没出来。" : "";
+}

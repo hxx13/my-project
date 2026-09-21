@@ -1,4 +1,3 @@
-import { adminHttp } from "@/api/core/adminHttp";
 import { authHttp } from "@/api/core/authHttp";
 import { resolveApiMediaUrl } from "@/utils/mediaUrl";
 
@@ -19,25 +18,6 @@ function unwrap<T>(res: { data: SpringResult<T> }, fallback: string): T {
   return body.data;
 }
 
-export type MpAnnouncementAdminView = {
-  id: string;
-  title: string;
-  summary?: string | null;
-  bodyHtml?: string | null;
-  publishedAtText?: string | null;
-  enabled?: number | null;
-  sortOrder?: number | null;
-  createdBy?: string | null;
-};
-
-export type MpAnnouncementUpsertBody = {
-  title: string;
-  summary?: string | null;
-  bodyHtml?: string | null;
-  enabled?: number | null;
-  sortOrder?: number | null;
-};
-
 export type MiniProgramReleaseView = {
   id: string;
   versionCode: string;
@@ -55,40 +35,6 @@ export type MiniProgramReleaseUpsertBody = {
   bodyHtml?: string | null;
   showOnLaunch?: boolean | null;
 };
-
-export async function fetchMpAnnouncementsAdmin(): Promise<MpAnnouncementAdminView[]> {
-  const res = await adminHttp.get<SpringResult<MpAnnouncementAdminView[]>>("/mp-announcements");
-  return unwrap(res, "加载公告失败");
-}
-
-export async function fetchMpAnnouncementAdmin(id: string): Promise<MpAnnouncementAdminView> {
-  const res = await adminHttp.get<SpringResult<MpAnnouncementAdminView>>(`/mp-announcements/${encodeURIComponent(id)}`);
-  return unwrap(res, "加载公告失败");
-}
-
-export async function createMpAnnouncement(body: MpAnnouncementUpsertBody): Promise<MpAnnouncementAdminView> {
-  const res = await adminHttp.post<SpringResult<MpAnnouncementAdminView>>("/mp-announcements", body);
-  return unwrap(res, "创建失败");
-}
-
-export async function updateMpAnnouncement(
-  id: string,
-  body: MpAnnouncementUpsertBody
-): Promise<MpAnnouncementAdminView> {
-  const res = await adminHttp.put<SpringResult<MpAnnouncementAdminView>>(
-    `/mp-announcements/${encodeURIComponent(id)}`,
-    body
-  );
-  return unwrap(res, "保存失败");
-}
-
-export async function deleteMpAnnouncement(id: string): Promise<void> {
-  const res = await adminHttp.delete<SpringResult<unknown>>(`/mp-announcements/${encodeURIComponent(id)}`);
-  const body = res.data;
-  if (!body?.success) {
-    throw new Error(body?.message || "删除失败");
-  }
-}
 
 export async function fetchMpReleases(): Promise<MiniProgramReleaseView[]> {
   const res = await authHttp.get<SpringResult<MiniProgramReleaseView[]>>("/mp/releases");

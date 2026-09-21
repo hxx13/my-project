@@ -20,10 +20,11 @@
  */
 
 import React from "react";
-import { ChevronDown, ChevronRight, LayoutGrid } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutGrid, Star } from "lucide-react";
 import { CAMPUS_ORDER, cs, type TreeNode } from "../constants";
 import type { CageShelfTreeNode, BookingRoom } from "@/api/domains/cageShelf.api";
 import { LockBadge, type ScopeRef, type SyncLockScope } from "./SyncLockContext";
+import { roomIdOf, shelveIdOf, subtreeHasBookmarked, visibleShelfChildren, type RoomBookmarkOpts } from "./campusTreeBookmarkFilter";
 
 /** 由树节点 raw 拼同步保护锁链（自下而上：本层 → 上级 → 顶层），空 ID 段跳过。 */
 function lockChain(raw: any, depth: SyncLockScope): ScopeRef[] {
@@ -98,28 +99,36 @@ export function buildTree(rows: CageShelfTreeNode[]): TreeNode[] {
  *   pageMode                    — "view" | "allocate" | "booking"
  *   bookingRooms                — 预约模式下的房间数据
  */
-export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds }: {
+export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark }: {
   tree: TreeNode[]; exp: Set<string>; search: string; onToggle: (k: string) => void; onOpenRoom: (roomId: string, roomName: string) => void;
   viewMode: "room" | "shelf"; onOpenShelf: (shelveId: string, overrideRoomId?: string) => void;
   alertStatusesByShelf: Map<string, Set<string>>; alertStatusesByRoom: Map<string, Set<string>>;
   pageMode?: "view" | "allocate" | "booking"; bookingRooms?: BookingRoom[]; hideProgress?: boolean;
   /** 有可选笼位的笼架 id：命中时在树上高亮，提示「这架里有能选的格子」 */
   highlightShelveIds?: Set<string>;
+  /** 房间收藏：星标 + 「只看收藏」。不传 = 没有收藏能力（其它弹窗的树照旧） */
+  bookmark?: RoomBookmarkOpts;
 }) {
   const q = search.trim().toLowerCase();
   const searching = !!q;
   const tg = (k: string) => { const n = new Set(exp); n.has(k) ? n.delete(k) : n.add(k); onToggle(k); };
   return <div className="text-[11px] space-y-1.5">
-    {tree.map(c => { if (searching && !subtreeMatches(c, q)) return null; const open = searching || exp.has(c.key), sty = cs(c.label);
+    {tree.map(c => {
+      if (searching && !subtreeMatches(c, q)) return null;
+      // 收藏视图：整支都没有收藏项（房间或笼架）的校区不画
+      if (bookmark?.onlyBookmarked && !subtreeHasBookmarked(c, bookmark.bookmarkedRooms ?? new Set(), bookmark.bookmarkedShelves ?? new Set())) return null;
+      const open = searching || exp.has(c.key), sty = cs(c.label);
       return <div key={c.key}>
         <button onClick={() => tg(c.key)} className="w-full flex items-center gap-1.5 px-2.5 py-2 rounded-twin-lg text-left shadow-sm active:scale-[0.99] transition" style={{ background: sty.bg }}>
           {open ? <ChevronDown className="h-3.5 w-3.5 text-white/80" /> : <ChevronRight className="h-3.5 w-3.5 text-white/80" />}
           <span className="flex-1 truncate text-xs font-bold" style={{ color: sty.text }}>{c.label}校区</span>
         </button>
-        {open && <div className="mt-1 ml-1 space-y-0.5">{c.children.map(n => renderNode(n, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds))}</div>}
+        {open && <div className="mt-1 ml-1 space-y-0.5">{c.children.map(n => renderNode(n, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark))}</div>}
       </div>;
     })}
-    {tree.length === 0 && <div className="text-[var(--twin-mute)] py-6 text-center">暂无数据，请先导入 CSV</div>}
+    {bookmark?.onlyBookmarked && (bookmark.bookmarkedRooms?.size ?? 0) === 0 && (bookmark.bookmarkedShelves?.size ?? 0) === 0
+      ? <div className="text-[var(--twin-mute)] py-6 text-center leading-relaxed">还没有收藏的房间或笼架<br/><span className="text-[10px]">切到「筛选」，点房间名 / 笼架名后面的 ☆</span></div>
+      : tree.length === 0 && <div className="text-[var(--twin-mute)] py-6 text-center">暂无数据，请先导入 CSV</div>}
     {searching && tree.length > 0 && !tree.some(c => subtreeMatches(c, q)) && (
       <div className="text-[var(--twin-mute)] py-6 text-center">没有匹配的校区 / 房间 / 笼架</div>
     )}
@@ -147,10 +156,19 @@ function subtreeMatches(n: TreeNode, q: string): boolean {
   return (n.children || []).some(c => subtreeMatches(c, q));
 }
 
-export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: string) => void, onOpenRoom: (rid: string, rname: string) => void, viewMode?: "room" | "shelf", onOpenShelf?: (sid: string, overrideRoomId?: string) => void, alertStatusesByShelf?: Map<string, Set<string>>, alertStatusesByRoom?: Map<string, Set<string>>, pageMode?: "view" | "allocate" | "booking", bookingRooms?: BookingRoom[], hideProgress?: boolean, highlightShelveIds?: Set<string>): React.ReactNode {
+/**
+ * 房间收藏（笼架信息页左侧树）相关的可选能力。**不传 = 老行为**（其它用到这棵树的弹窗不受影响）。
+ * 口径与纯函数实现见 ./campusTreeBookmarkFilter（那边可单测）。
+ */
+export type { RoomBookmarkOpts } from "./campusTreeBookmarkFilter";
+
+export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: string) => void, onOpenRoom: (rid: string, rname: string) => void, viewMode?: "room" | "shelf", onOpenShelf?: (sid: string, overrideRoomId?: string) => void, alertStatusesByShelf?: Map<string, Set<string>>, alertStatusesByRoom?: Map<string, Set<string>>, pageMode?: "view" | "allocate" | "booking", bookingRooms?: BookingRoom[], hideProgress?: boolean, highlightShelveIds?: Set<string>, bookmark?: RoomBookmarkOpts): React.ReactNode {
   // 搜索态下自动展开命中路径，并剪掉整条都不命中的分支
   const searching = !!q;
   if (searching && !subtreeMatches(n, q)) return null;
+  // 收藏视图：非房间层若整支没有收藏项就不画（笼架自身的取舍交给它所属房间的 children 过滤）
+  if (bookmark?.onlyBookmarked && n.type !== "shelf"
+    && !subtreeHasBookmarked(n, bookmark.bookmarkedRooms ?? new Set(), bookmark.bookmarkedShelves ?? new Set())) return null;
   const open = searching || exp.has(n.key);
   if (n.type === "shelf") {
     const r = n.raw;
@@ -178,7 +196,20 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
           ? "border-red-500 ring-2 ring-red-500/50 bg-red-50/60"
           : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] hover:border-[var(--twin-hairline-strong)]"
       }`}>
-      <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]" /><span className="truncate text-[10px] font-medium text-[var(--twin-ink)]">{n.label}</span><LockBadge chain={lockChain(r, "SHELF")} label={n.label} />
+      <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]" /><span className="truncate text-[10px] font-medium text-[var(--twin-ink)]">{n.label}</span>
+      {/* 笼架名后面的收藏星标（同样不能是 <button>：整行就是 button） */}
+      {bookmark?.onToggleBookmarkShelf && (() => {
+        const sid = String(r.shelveId ?? n.key.replace(/^s:/, ""));
+        const on = bookmark.bookmarkedShelves?.has(sid) ?? false;
+        const flip = () => bookmark.onToggleBookmarkShelf?.(String(r.roomId ?? ""), sid);
+        return <span role="button" tabIndex={0}
+          title={on ? "取消收藏该笼架" : "收藏该笼架（在「收藏」里可直达）"}
+          onClick={(e) => { e.stopPropagation(); flip(); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); flip(); } }}
+          className="shrink-0 cursor-pointer rounded p-0.5 outline-none transition hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]">
+          <Star className={`h-2.5 w-2.5 ${on ? "fill-[var(--twin-link-deep)] text-[var(--twin-link-deep)]" : "text-[var(--twin-mute)]"}`} />
+        </span>;
+      })()}<LockBadge chain={lockChain(r, "SHELF")} label={n.label} />
       {shelfStatuses && shelfStatuses.size > 0 && <span className="ml-auto shrink-0 flex items-center gap-0.5">{[...shelfStatuses].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>}
       </div>
       {hideProgress ? null : (
@@ -199,6 +230,13 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
     const bkBookedPct = bkTotal > 0 ? Math.round(bkBooked / bkTotal * 100) : 0;
     const bkUsedPct = bkTotal > 0 ? Math.round(bkUsed / bkTotal * 100) : 0;
     const shelfChildren = n.children.filter(c => c.type === "shelf");
+    /**
+     * 收藏视图下这间房该显示哪些笼架：收藏了房间 → 整间照常；只收藏了某几架 → 只露那几架
+     * （「只收藏了一架」却把整间铺开，收藏视图就没意义了）。非收藏视图原样。
+     */
+    const kids = bookmark?.onlyBookmarked
+      ? visibleShelfChildren(n, bookmark.bookmarkedRooms ?? new Set(), bookmark.bookmarkedShelves ?? new Set())
+      : n.children;
     const aggCounts = shelfChildren.reduce((acc, s) => {
       const r = s.raw;
       acc[0] += (r.type3 || 0);
@@ -215,7 +253,25 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
       <button onClick={() => { tg(n.key); if (isBooking) onOpenRoom(n.key.replace("r:", ""), n.label); }} className="w-full text-left rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 hover:border-[var(--twin-hairline-strong)] transition">
         <div className="flex items-center gap-1.5">
           {open ? <ChevronDown className="h-3 w-3 text-[var(--twin-mute)]" /> : <ChevronRight className="h-3 w-3 text-[var(--twin-mute)]" />}
-          <span className="flex-1 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span><LockBadge chain={lockChain(n.raw, "ROOM")} label={n.label} />
+          {/* 名称**不占满**（去掉 flex-1）：星标要紧挨着名称，不能被推到行尾。
+              行尾那点空隙由一个 flex-1 占位撑开，右侧的锁/告警点/架数照旧贴右。 */}
+          <span className="min-w-0 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span>
+          {/* 房间名后面的收藏星标。**不能是 <button>** —— 它在房间卡片这个 <button> 里面，
+              button 套 button 是非法 HTML（CellButton 那边刚踩过）。用 span+role 补键盘可达性。 */}
+          {bookmark?.onToggleBookmarkRoom && (() => {
+            const rid = roomIdOf(n);
+            const on = bookmark.bookmarkedRooms?.has(rid) ?? false;
+            const flip = () => bookmark.onToggleBookmarkRoom?.(rid);
+            return <span role="button" tabIndex={0}
+              title={on ? "取消收藏该房间" : "收藏该房间（在「收藏」里只看这些）"}
+              onClick={(e) => { e.stopPropagation(); flip(); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); flip(); } }}
+              className="shrink-0 cursor-pointer rounded p-0.5 outline-none transition hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]">
+              <Star className={`h-3 w-3 ${on ? "fill-[var(--twin-link-deep)] text-[var(--twin-link-deep)]" : "text-[var(--twin-mute)]"}`} />
+            </span>;
+          })()}
+          <span className="flex-1" />
+          <LockBadge chain={lockChain(n.raw, "ROOM")} label={n.label} />
           {isBooking && bkRoom ? <span className="text-[9px] text-[var(--twin-mute)] shrink-0">约{bkBooked} 用{bkUsed}</span>
           : <>{(() => { const rs = alertStatusesByRoom?.get(n.key.replace("r:", "")); if (!rs || rs.size === 0) return null; const DOT: Record<string, string> = { NEED_DIVIDE: "bg-amber-500", HEALTH_ABNORMAL: "bg-purple-500", ANIMAL_TRANSFER: "bg-cyan-500", SPECIAL_FEEDING: "bg-red-500", COHABITATION: "bg-emerald-500" }; return <span className="shrink-0 flex items-center gap-0.5 ml-1">{[...rs].map(sc => <span key={sc} className={`inline-block w-2 h-2 rounded-full ${DOT[sc] || "bg-red-500"}`} />)}</span>; })()}
           <span className="text-[10px] text-[var(--twin-mute)]">{n.children.length}架</span></>}
@@ -232,7 +288,7 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
           {aggHasData ? aggBars.map((b: any, i: number) => <div key={i} className="h-full min-w-[2px]" style={{ width: `${b.pct}%`, background: b.color }} />) : <div className="h-full w-full bg-[var(--twin-canvas-soft)]" />}
         </div>)}
       </button>
-      {open && n.children.length > 0 && <div className="flex flex-col gap-0.5 mt-1 ml-2">{n.children.map(s => renderNode(s, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds))}</div>}
+      {open && kids.length > 0 && <div className="flex flex-col gap-0.5 mt-1 ml-2">{kids.map(s => renderNode(s, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark))}</div>}
     </div>;
   }
   return <div key={n.key}>
@@ -241,6 +297,6 @@ export function renderNode(n: TreeNode, exp: Set<string>, q: string, tg: (k: str
       <span className="truncate">{n.label}</span>
       {n.type === "floor" && <LockBadge chain={lockChain(n.raw, "FLOOR")} label={n.label} />}
     </button>
-    {open && <div className="ml-2 space-y-0.5">{n.children.map(c => renderNode(c, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds))}</div>}
+    {open && <div className="ml-2 space-y-0.5">{n.children.map(c => renderNode(c, exp, q, tg, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark))}</div>}
   </div>;
 }

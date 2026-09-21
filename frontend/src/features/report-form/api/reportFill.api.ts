@@ -105,6 +105,14 @@ async function downloadFile(path: string, options: DownloadOptions = {}) {
     || 'download';
 
   const blobUrl = URL.createObjectURL(blob);
+  const triggerDownload = () => {
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
   if (options.inline) {
     const win = window.open(blobUrl, '_blank');
     if (win) {
@@ -119,12 +127,7 @@ async function downloadFile(path: string, options: DownloadOptions = {}) {
       window.setTimeout(triggerPrint, 900);
     }
   } else {
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    triggerDownload();
   }
   setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
 }

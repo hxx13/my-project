@@ -21,7 +21,7 @@ import {
 } from "../utils/studentActivityTimePresets";
 import { MOBILE_SCROLL_END_EXTRA_PAD } from "@/pages/mobile/mobileShellLayout";
 
-const MOBILE_BRAND = "#ac1736";
+const ACCENT = "#ac1736";
 
 export type StudentActivityFetchers = {
   fetchSummary: (params: {
@@ -181,7 +181,7 @@ export function StudentActivityPanel({
 
   const presetBtnStyle = (active: boolean) =>
     isMobile && active
-      ? { background: `linear-gradient(135deg, ${MOBILE_BRAND}, #8B1229)` }
+      ? { background: `linear-gradient(135deg, ${ACCENT}, #8B1229)` }
       : undefined;
 
   const content = (
@@ -278,7 +278,7 @@ export function StudentActivityPanel({
               type="button"
               onClick={applyCustom}
               className="rounded-full px-3 py-1.5 text-[11px] font-semibold text-white"
-              style={{ background: MOBILE_BRAND }}
+              style={{ background: ACCENT }}
             >
               确定
             </button>

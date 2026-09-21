@@ -51,36 +51,17 @@
     <view
       class="queue-strip"
       hover-class="queue-strip-hover"
-      bindtap="onToggleQueue"
+      bindtap="onOpenQueue"
     >
       <view class="queue-dot queue-dot--{{ queueFailedCount > 0 ? 'bad' : (queueSummary.pending > 0 ? 'pending' : 'ok') }}"></view>
       <text class="queue-strip-text">打印中 {{ queueSummary.sent }} · 排队 {{ queueSummary.pending }}<text wx:if="{{ queueFailedCount > 0 }}" class="queue-strip-fail"> · 失败 {{ queueFailedCount }}</text></text>
-      <text class="queue-strip-arrow">{{ queueExpanded ? '▴' : '▾' }}</text>
+      <text class="queue-strip-arrow">查看 ›</text>
     </view>
   </view>
 
   <!-- 列表区：独立滚动 -->
   <view class="list-panel">
     <scroll-view scroll-y class="list-scroll" enhanced show-scrollbar="{{ false }}">
-      <!-- 队列详情 -->
-      <view wx:if="{{ queueExpanded }}" class="queue-detail">
-        <view wx:if="{{ queueRows.length === 0 }}" class="queue-empty">当前没有进行中的打印任务</view>
-        <view wx:for="{{ queueRows }}" wx:key="id" wx:for-item="job" class="queue-item">
-          <view class="queue-item-top">
-            <view class="queue-dot queue-dot--{{ job.tone }}"></view>
-            <text class="queue-item-status">{{ job.statusText }}</text>
-            <text wx:if="{{ job.stationName }}" class="queue-item-station">{{ job.stationName }}</text>
-            <text class="queue-item-file">{{ job.fileName }}</text>
-            <text class="queue-item-meta">×{{ job.copies }}<text wx:if="{{ job.timeText }}"> · {{ job.timeText }}</text></text>
-          </view>
-          <view wx:if="{{ job.errorText }}" class="queue-item-error">{{ job.errorText }}</view>
-          <view wx:if="{{ job.tone === 'pending' || job.tone === 'bad' }}" class="queue-item-actions">
-            <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ job.id }}" bindtap="onCancelJob">撤回</view>
-            <view wx:if="{{ job.tone === 'bad' }}" class="ui-btn ui-btn-primary ui-btn-mini" data-id="{{ job.id }}" bindtap="onRetryJob">重新排队</view>
-          </view>
-        </view>
-      </view>
-
       <!-- 子文件夹入口（搜索时隐藏） -->
       <view wx:if="{{ !keyword && childFolders.length }}" class="folder-list">
         <view
@@ -152,6 +133,88 @@
             >删除</view>
           </view>
         </van-swipe-cell>
+      </block>
+    </scroll-view>
+  </view>
+</view>
+
+<!-- 打印队列弹窗：状态 + 撤回 + 重新排队（与「卡牌打印」页同款浮层 + 按工位切 tab） -->
+<view wx:if="{{ queueOpen }}" class="detail-mask" catchtouchmove="noop">
+  <view class="qt-panel" catchtap="noop">
+    <view class="qt-panel-head">
+      <text class="qt-panel-title">打印队列</text>
+      <view class="qt-panel-head-btns">
+        <view class="ui-btn ui-btn-plain ui-btn-mini" bindtap="onRefreshQueue">刷新</view>
+        <view class="ui-btn ui-btn-plain ui-btn-mini" bindtap="onCloseQueue">关闭</view>
+      </view>
+    </view>
+    <view class="qt-panel-sum">
+      打印中 {{ queueSummary.sent }} · 排队 {{ queueSummary.pending }}<text wx:if="{{ queueFailedCount > 0 }}" class="qt-queue-fail"> · 失败 {{ queueFailedCount }}</text>
+    </view>
+
+    <!-- 每台打印机一个 tab（工位清单为序，角标=进行中数量） -->
+    <scroll-view class="qt-panel-tabs" scroll-x enhanced show-scrollbar="{{ false }}">
+      <view class="qt-panel-tabs-inner">
+        <view
+          wx:for="{{ queueTabs }}"
+          wx:key="id"
+          class="qt-panel-tab {{ queueTabId === item.id ? 'qt-panel-tab--on' : '' }}"
+          data-id="{{ item.id }}"
+          bindtap="onPickQueueTab"
+        >{{ item.name }}<text wx:if="{{ item.count > 0 }}" class="qt-panel-tab-n">{{ item.count }}</text></view>
+      </view>
+    </scroll-view>
+
+    <view class="qt-panel-hint">
+      <text class="qt-panel-hint-txt">排队中的可撤回，失败的可重新排队或收掉，卡在打印机队列里的也能撤回</text>
+      <!-- 清空是「连别人派的也一起撤」，比撤自己那一条重；能力问服务端、且只对后端直发工位给 -->
+      <view
+        wx:if="{{ canClearQueue && queueStationIsServer }}"
+        class="ui-btn ui-btn-plain ui-btn-mini"
+        bindtap="onClearQueue"
+      >清空本机队列</view>
+    </view>
+
+    <scroll-view class="qt-panel-scroll" scroll-y enhanced show-scrollbar="{{ false }}">
+      <block wx:for="{{ queueTabs }}" wx:key="id" wx:for-item="tab">
+        <block wx:if="{{ tab.id === queueTabId }}">
+          <view wx:if="{{ tab.rows.length === 0 }}" class="qt-queue-empty">「{{ tab.name }}」还没有打印记录</view>
+          <view wx:for="{{ tab.rows }}" wx:key="id" wx:for-item="job" class="qt-queue-item">
+            <view class="qt-queue-item-top">
+              <view class="queue-dot queue-dot--{{ job.tone }}"></view>
+              <text class="qt-queue-item-status">{{ job.statusText }}</text>
+              <!-- 后端核对过「此刻还真排在那台打印机队列里」：看着像完事，其实纸没出来 -->
+              <text wx:if="{{ job.queueState === 'QUEUED' }}" class="qt-queue-item-stuck">仍卡在打印机队列</text>
+              <text class="qt-queue-item-time">{{ job.timeText }}</text>
+            </view>
+            <text class="qt-queue-item-file">{{ job.fileName }}</text>
+            <view wx:if="{{ job.note }}" class="qt-queue-item-note">备注：{{ job.note }}</view>
+            <view wx:if="{{ job.errorText }}" class="qt-queue-item-error">{{ job.errorText }}</view>
+            <view class="qt-queue-item-foot">
+              <text class="qt-queue-item-meta">×{{ job.copies }}</text>
+              <view class="qt-queue-item-actions">
+                <view
+                  wx:if="{{ job.status === 'PENDING' }}"
+                  class="ui-btn ui-btn-plain ui-btn-mini"
+                  data-id="{{ job.id }}"
+                  bindtap="onCancelJob"
+                >撤回</view>
+                <block wx:if="{{ job.status === 'FAILED' }}">
+                  <view class="ui-btn ui-btn-primary ui-btn-mini" data-id="{{ job.id }}" bindtap="onRetryJob">重新排队</view>
+                  <view class="ui-btn ui-btn-plain ui-btn-mini" data-id="{{ job.id }}" bindtap="onCancelJob">收掉</view>
+                </block>
+                <!-- 还卡在打印机队列里的：PRINTED 这类终态也要给一颗，否则队列里那堆纸一张都撤不掉。
+                     文案跟同屏那颗 PENDING 的按钮统一叫「撤回」—— 同一个动作别用两个词。 -->
+                <view
+                  wx:if="{{ job.canCancelStuck }}"
+                  class="ui-btn ui-btn-plain ui-btn-mini"
+                  data-id="{{ job.id }}"
+                  bindtap="onCancelJob"
+                >撤回</view>
+              </view>
+            </view>
+          </view>
+        </block>
       </block>
     </scroll-view>
   </view>

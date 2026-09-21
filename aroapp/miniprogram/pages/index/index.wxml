@@ -259,15 +259,42 @@
     <!-- ====== 学生视角：H5 同款「公告通知」列表 ====== -->
     <view wx:if="{{ isStudentView }}" class="section">
       <view class="section-head">
-        <text class="section-title-text">公告通知</text>
-        <text wx:if="{{ studentAnnouncements.length }}" class="section-more" bindtap="onStudentOpenAllAnnouncements">查看全部 →</text>
+        <view class="section-title-wrap">
+          <text class="section-title-text">公告通知</text>
+          <view wx:if="{{ announcementsUnread }}" class="section-title-dot" />
+        </view>
+        <text wx:if="{{ studentGeneral.length || studentPersonal.length }}" class="section-more" bindtap="onStudentOpenAllAnnouncements">查看全部 →</text>
       </view>
       <view class="news-card">
         <view wx:if="{{ studentAnnouncementsLoading }}" class="home-bulletin-empty">加载中…</view>
-        <view wx:elif="{{ !studentAnnouncements.length }}" class="home-bulletin-empty">暂无公告</view>
+        <view wx:elif="{{ !studentGeneral.length && !studentPersonal.length }}" class="home-bulletin-empty">暂无公告</view>
         <block wx:else>
+          <view wx:if="{{ studentGeneral.length }}" class="announce-row">
+            <text class="section-title-text">通用公告</text>
+          </view>
           <view
-            wx:for="{{ studentAnnouncements }}"
+            wx:for="{{ studentGeneral }}"
+            wx:key="id"
+            class="announce-row {{ index > 0 ? 'announce-row--bordered' : '' }} {{ item.isImportantReminder ? 'announce-row--important' : '' }}"
+            hover-class="announce-row--hover"
+            catchtap="onStudentAnnouncementTap"
+            data-id="{{ item.id }}"
+            data-kind="{{ item.kind }}"
+          >
+            <view class="announce-body">
+              <view class="announce-head">
+                <text class="announce-badge" style="background:{{ item.badgeBg }};color:{{ item.badgeColor }};">{{ item.badgeLabel }}</text>
+                <text class="announce-title">{{ item.title }}</text>
+                <text wx:if="{{ item.subtitle }}" class="announce-time">{{ item.subtitle }}</text>
+              </view>
+            </view>
+            <van-icon name="arrow" size="28rpx" color="#c8c9cc" />
+          </view>
+          <view wx:if="{{ studentPersonal.length }}" class="announce-row announce-row--bordered">
+            <text class="section-title-text">我的提醒</text>
+          </view>
+          <view
+            wx:for="{{ studentPersonal }}"
             wx:key="id"
             class="announce-row {{ index > 0 ? 'announce-row--bordered' : '' }} {{ item.isImportantReminder ? 'announce-row--important' : '' }}"
             hover-class="announce-row--hover"
@@ -288,61 +315,62 @@
       </view>
     </view>
 
-    <!-- ====== 教职工视角：新闻/公告 ====== -->
+    <!-- ====== 教职工视角：公告 ====== -->
     <view wx:else class="section">
-      <view class="section-head section-head--tabs">
-        <view class="home-tabs">
-          <view
-            class="home-tab {{ activeHomeTab === 'news' ? 'home-tab--on' : '' }}"
-            bindtap="onHomeTabTap"
-            data-tab="news"
-          >新闻通知</view>
-          <view
-            class="home-tab {{ activeHomeTab === 'bulletin' ? 'home-tab--on' : '' }}"
-            bindtap="onHomeTabTap"
-            data-tab="bulletin"
-          >公告</view>
+      <view class="section-head">
+        <view class="section-title-wrap">
+          <text class="section-title-text">公告</text>
+          <view wx:if="{{ announcementsUnread }}" class="section-title-dot" />
         </view>
-        <text wx:if="{{ activeHomeTab === 'news' }}" class="section-more" bindtap="onHelpTap">更多</text>
-        <text wx:if="{{ activeHomeTab === 'bulletin' && canCreateAnnouncement }}" class="section-more" bindtap="goCreateAnnouncement">+ 新增</text>
+        <text class="section-more" bindtap="onOpenAllBulletins">更多</text>
       </view>
-      <!-- 新闻通知 Tab -->
-      <view wx:if="{{ activeHomeTab === 'news' }}" class="news-card">
-        <view wx:if="{{ newsLoading }}" class="home-bulletin-empty">加载中…</view>
-        <view wx:elif="{{ newsLoaded && newsList.length === 0 }}" class="home-bulletin-empty">暂无新闻</view>
-        <view wx:else>
-          <van-cell-group border="{{false}}">
-            <van-cell
-              custom-style="background-color: transparent;"
-              wx:for="{{ newsList }}"
-              wx:key="id"
-              title="{{ item.newsName }}"
-              label="{{ item.createTime }}"
-              is-link
-              bind:click="onNewsTap"
-              data-id="{{ item.id }}"
-              title-line-count="1"
-            />
-          </van-cell-group>
-        </view>
-      </view>
-      <view wx:elif="{{ activeHomeTab === 'bulletin' }}" class="news-card">
-        <van-cell-group border="{{false}}">
-          <van-cell
-            custom-style="background-color: transparent;"
-            wx:for="{{ bulletinList }}"
+      <view class="news-card">
+        <view wx:if="{{ bulletinLoading }}" class="home-bulletin-empty">加载中…</view>
+        <view wx:elif="{{ bulletinLoaded && !generalBulletins.length && !personalBulletins.length }}" class="home-bulletin-empty">暂无公告</view>
+        <block wx:else>
+          <view wx:if="{{ generalBulletins.length }}" class="announce-row">
+            <text class="section-title-text">通用公告</text>
+          </view>
+          <view
+            wx:for="{{ generalBulletins }}"
             wx:key="id"
-            title="{{ item.title }}"
-            label="{{ item.labelText }}"
-            is-link
-            bind:click="onBulletinTap"
+            class="announce-row {{ index > 0 ? 'announce-row--bordered' : '' }}"
+            hover-class="announce-row--hover"
+            catchtap="onBulletinTap"
             data-id="{{ item.id }}"
             data-kind="{{ item.kind }}"
-            title-line-count="2"
-          />
-        </van-cell-group>
-        <view wx:if="{{ bulletinLoading }}" class="home-bulletin-empty">加载中…</view>
-        <view wx:elif="{{ bulletinLoaded && !bulletinList.length }}" class="home-bulletin-empty">暂无公告</view>
+          >
+            <view class="announce-body">
+              <view class="announce-head">
+                <text class="announce-badge" style="background:{{ item.badgeBg }};color:{{ item.badgeColor }};">{{ item.badgeLabel }}</text>
+                <text class="announce-title">{{ item.title }}</text>
+                <text wx:if="{{ item.subtitle }}" class="announce-time">{{ item.subtitle }}</text>
+              </view>
+            </view>
+            <van-icon name="arrow" size="28rpx" color="#c8c9cc" />
+          </view>
+          <view wx:if="{{ personalBulletins.length }}" class="announce-row announce-row--bordered">
+            <text class="section-title-text">我的提醒</text>
+          </view>
+          <view
+            wx:for="{{ personalBulletins }}"
+            wx:key="id"
+            class="announce-row {{ index > 0 ? 'announce-row--bordered' : '' }}"
+            hover-class="announce-row--hover"
+            catchtap="onBulletinTap"
+            data-id="{{ item.id }}"
+            data-kind="{{ item.kind }}"
+          >
+            <view class="announce-body">
+              <view class="announce-head">
+                <text class="announce-badge" style="background:{{ item.badgeBg }};color:{{ item.badgeColor }};">{{ item.badgeLabel }}</text>
+                <text class="announce-title">{{ item.title }}</text>
+                <text wx:if="{{ item.subtitle }}" class="announce-time">{{ item.subtitle }}</text>
+              </view>
+            </view>
+            <van-icon name="arrow" size="28rpx" color="#c8c9cc" />
+          </view>
+        </block>
       </view>
     </view>
   </view>

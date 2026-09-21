@@ -3,6 +3,11 @@
     <view class="subnav-back" hover-class="subnav-back--hover" bindtap="onBack">
       <text class="subnav-back-icon">‹</text>
     </view>
+    <!-- left 插槽：退回键右侧，跟在 flex 流里（right 是绝对定位，这里不是）。
+         标题是绝对居中的，本插槽只适合放窄控件，放长条会压到标题。 -->
+    <view class="subnav-left">
+      <slot name="left" />
+    </view>
     <view
       wx:if="{{ showSwitch }}"
       class="subnav-switch"
@@ -13,7 +18,8 @@
       <text class="subnav-switch-text">{{ switchLabel }}</text>
     </view>
     <text class="subnav-title">{{ title }}</text>
-    <view class="subnav-right">
+    <!-- right 按胶囊占位宽度（px）让位：原来写死 right: 20rpx，按钮正好落在系统胶囊底下被吃掉 -->
+    <view class="subnav-right" style="right: {{ menuRightInset }}px;">
       <slot name="right" />
     </view>
   </view>

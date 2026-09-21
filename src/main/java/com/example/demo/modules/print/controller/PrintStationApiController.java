@@ -94,6 +94,9 @@ public class PrintStationApiController {
                     m.put("id", s.getId());
                     m.put("name", s.getName());
                     m.put("supportedTypes", s.getSupportedTypes());
+                    // web 和小程序共用这一个接口：两边靠它判断「这台工位有没有服务端队列」
+                    // （= 直发），从而决定「清空队列」按钮出不出现。不给就只能靠工位名瞎猜。
+                    m.put("mode", s.getMode());
                     PrintStationHealthService.Health health = healthService.liveStatusOf(s);
                     m.put("liveStatus", health.status().name());
                     m.put("liveStatusReason", health.reason());

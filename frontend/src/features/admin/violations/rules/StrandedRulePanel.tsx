@@ -116,7 +116,7 @@ export function StrandedRulePanel(): JSX.Element {
   const canvas = (
     <div className="space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-[var(--app-color-text-primary)]">每日自动滞留检测 · 违规公告</h2>
+        <h2 className="text-base font-semibold text-[var(--app-color-text-primary)]">每日自动滞留检测 · 提醒公示</h2>
         <p className="mt-1 text-xs text-[var(--app-color-text-secondary)]">
           每日定时检测未豁免且仍在楼内的滞留人员，自动创建违规记录并通过扫码公告。执行时刻请在「定时管理 → 冻结联动任务」配置；可用变量：{"${name}"}、{"${dept}"}、{"${date}"}。
         </p>
@@ -141,7 +141,7 @@ export function StrandedRulePanel(): JSX.Element {
   const inspector = (
     <>
       <InspectorGroup title="检测">
-        <InspectorRow stack label="执行动作" hint="一道固定开具违规公告；签退为可选动作">
+        <InspectorRow stack label="执行动作" hint="一道固定开具提醒公示；签退为可选动作">
           {(id) => <MultiSelectField id={id} options={EXECUTE_OPTIONS} value={executeValue} onChange={(next) => setConfig({ autoSignout: next.includes("signout") })} maxChips={1} disabled={loading} />}
         </InspectorRow>
         <InspectorRow stack label="白名单部门" hint="命中部门不触发自动违规">

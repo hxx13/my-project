@@ -6,8 +6,12 @@ import com.example.demo.modules.cageshelf.entity.CageFormTemplateVersion;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageFormAuditLogMapper;
 import com.example.demo.modules.cageshelf.mapper.CageFormTemplateVersionMapper;
+import com.example.demo.modules.cageshelf.scheduler.CageStatusAlertScheduler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -43,15 +47,24 @@ public class CageFormAuditService {
     private final CageFormTemplateVersionMapper versionMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final CageCellIndexMapper cellIndexMapper;
+    /**
+     * 状态字段一落审计就请它重算一轮（提交后），见 {@link #kickAlertEngineIfStatus}。
+     *
+     * <p>{@code @Lazy} 是为了**断开构造环**：审计服务 → 调度器 → 状态通知服务 → 笼位值服务 → 审计服务。
+     * 这个依赖只在调用时才用（启动期一次都不碰），所以延迟注入既安全又必要。
+     */
+    private final CageStatusAlertScheduler alertScheduler;
 
     public CageFormAuditService(CageFormAuditLogMapper auditLogMapper,
                                 CageFormTemplateVersionMapper versionMapper,
                                 UserDisplayNameService userDisplayNameService,
-                                CageCellIndexMapper cellIndexMapper) {
+                                CageCellIndexMapper cellIndexMapper,
+                                @Lazy CageStatusAlertScheduler alertScheduler) {
         this.auditLogMapper = auditLogMapper;
         this.versionMapper = versionMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.cellIndexMapper = cellIndexMapper;
+        this.alertScheduler = alertScheduler;
     }
 
     public void logDictChange(String changeType, String entity, Long entityId,
@@ -86,6 +99,32 @@ public class CageFormAuditService {
         row.setBeforeValue(truncate(beforeValue, 2000));
         row.setAfterValue(truncate(afterValue, 2000));
         auditLogMapper.insert(row);
+        kickAlertEngineIfStatus(fieldCode);
+    }
+
+    /**
+     * 状态字段的审计一落库，就请告警引擎**提交后**立刻重算一轮 —— 否则要等下一个 5 分钟 tick，
+     * 用户改完状态 / 转移完笼位盯着屏幕只会觉得「没反应」。
+     *
+     * <p><b>为什么卡在这一处</b>：`cage_form_audit_log` 的状态行只有这一个写口（状态保存、分笼、
+     * 转移、归档、ARO 同步全走它），挂一处就全覆盖；而且非状态字段（实验员、备注、照片…）
+     * 在这里就被 `statusCodeOf` 挡掉，不会白跑一轮全量折叠。
+     *
+     * <p><b>为什么必须提交后</b>：引擎另开一条连接读库，事务没提交时它读到的是旧值，
+     * 那一轮白跑（同一个坑在 {@code CageStatusAlertController.triggerRescan} 的注释里也记着）。
+     */
+    private void kickAlertEngineIfStatus(String fieldCode) {
+        if (CageStatusIntervalService.statusCodeOf(fieldCode) == null) return;
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    alertScheduler.scanSoon();
+                }
+            });
+        } else {
+            alertScheduler.scanSoon();
+        }
     }
 
     public void logDataJson(String changeType, String entity, Long entityId,

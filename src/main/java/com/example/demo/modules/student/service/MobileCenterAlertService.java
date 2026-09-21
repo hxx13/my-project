@@ -6,6 +6,8 @@ import com.example.demo.modules.material.mapper.MaterialRequestMapper;
 import com.example.demo.modules.material.mapper.MaterialRequestLineMapper;
 import com.example.demo.modules.notification.entity.StudentNotification;
 import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
+import com.example.demo.modules.portal.entity.PortalContent;
+import com.example.demo.modules.portal.mapper.PortalContentMapper;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
@@ -48,6 +50,31 @@ public class MobileCenterAlertService {
     private static final Logger log = LoggerFactory.getLogger(MobileCenterAlertService.class);
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /** 公告分区：通用公告｜我的提醒。非通用公告一律归入个人侧。 */
+    static String sectionOf(String kind) {
+        return "general_notice".equals(kind) ? "GENERAL" : "PERSONAL";
+    }
+
+    /** 通用公告在前、我的提醒在后；段内按时间倒序 */
+    static void sortAnnouncementsBySection(List<Map<String, Object>> items) {
+        items.sort((a, b) -> {
+            int sa = "GENERAL".equals(a.get("section")) ? 0 : 1;
+            int sb = "GENERAL".equals(b.get("section")) ? 0 : 1;
+            if (sa != sb) {
+                return sa - sb;
+            }
+            return timeOf(b).compareTo(timeOf(a));
+        });
+    }
+
+    private static String timeOf(Map<String, Object> item) {
+        Object t = item.get("publishAt");
+        if (t == null) {
+            t = item.get("createdAt");
+        }
+        return t != null ? String.valueOf(t) : "";
+    }
+
     private final TwinScanPopupAnnouncementMapper announcementMapper;
     private final TwinStudentViolationMapper violationMapper;
     private final TwinStudentViolationService twinStudentViolationService;
@@ -60,6 +87,8 @@ public class MobileCenterAlertService {
     private final MaterialRequestMapper materialRequestMapper;
     private final MaterialRequestLineMapper materialRequestLineMapper;
     private final TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
+    private final PortalContentMapper portalContentMapper;
+    private final StudentAnnouncementViewService announcementViewService;
     private final ObligationService obligationService;
 
     public MobileCenterAlertService(TwinScanPopupAnnouncementMapper announcementMapper,
@@ -74,6 +103,8 @@ public class MobileCenterAlertService {
                                     MaterialRequestMapper materialRequestMapper,
                                     MaterialRequestLineMapper materialRequestLineMapper,
                                     TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService,
+                                    PortalContentMapper portalContentMapper,
+                                    StudentAnnouncementViewService announcementViewService,
                                     @org.springframework.beans.factory.annotation.Autowired(required = false)
                                     ObligationService obligationService) {
         this.announcementMapper = announcementMapper;
@@ -88,17 +119,21 @@ public class MobileCenterAlertService {
         this.materialRequestMapper = materialRequestMapper;
         this.materialRequestLineMapper = materialRequestLineMapper;
         this.scanNoticeAutoSuppressService = scanNoticeAutoSuppressService;
+        this.portalContentMapper = portalContentMapper;
+        this.announcementViewService = announcementViewService;
         this.obligationService = obligationService;
     }
 
     public Map<String, Object> buildAlerts(String userId, boolean html5PrivilegeBypass) {
         Set<String> suppressKeys = scanNoticeAutoSuppressService.suppressKeysForUser(userId);
         List<Map<String, Object>> announcements = new ArrayList<>();
+        appendGeneralNotices(announcements);
         appendAnnouncements(announcements, suppressKeys);
-        appendExemptAlert(userId, announcements);
         appendViolationAlert(userId, html5PrivilegeBypass, announcements, suppressKeys);
+        sortAnnouncementsBySection(announcements);
 
         List<Map<String, Object>> feedbacks = new ArrayList<>();
+        appendExemptAlert(userId, feedbacks);
         appendStudentWorkOrderAlerts(userId, feedbacks);
         appendMaterialRequestAlerts(userId, feedbacks);
         appendScanDelayStatusAlerts(userId, feedbacks);
@@ -112,7 +147,56 @@ public class MobileCenterAlertService {
         resp.put("items", announcements);
         resp.put("totalCount", announcements.size() + feedbacks.size());
         resp.put("html5PrivilegeBypass", html5PrivilegeBypass);
+        resp.put("announcementsUnread", resolveAnnouncementsUnread(userId, announcements));
         return resp;
+    }
+
+    /** 最新一条公告是否晚于本人读游标；查询失败降级为 false（新表未建时不能把公告接口打挂）。 */
+    private boolean resolveAnnouncementsUnread(String userId, List<Map<String, Object>> announcements) {
+        try {
+            LocalDateTime newest = maxAnnouncementTime(announcements);
+            if (newest == null) {
+                return false;
+            }
+            LocalDateTime lastViewed = announcementViewService.lastViewedAt(userId);
+            return lastViewed == null || newest.isAfter(lastViewed);
+        } catch (Exception e) {
+            log.warn("[MobileAlerts] 公告已读游标查询失败 userId={}: {}", userId, e.getMessage());
+            return false;
+        }
+    }
+
+    /** announcements 中最新一条的时间（publishAt 优先、回落 createdAt，与 timeOf 同口径） */
+    private static LocalDateTime maxAnnouncementTime(List<Map<String, Object>> items) {
+        LocalDateTime max = null;
+        if (items == null) {
+            return null;
+        }
+        for (Map<String, Object> item : items) {
+            LocalDateTime t = parseAnnouncementTime(timeOf(item));
+            if (t != null && (max == null || t.isAfter(max))) {
+                max = t;
+            }
+        }
+        return max;
+    }
+
+    /** 解析公告时间字符串；兼容 ISO 与空格分隔两种写法，解析不了返回 null（跳过该条） */
+    private static LocalDateTime parseAnnouncementTime(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String s = raw.trim();
+        try {
+            return LocalDateTime.parse(s);
+        } catch (Exception ignored) {
+            // 兼容 'yyyy-MM-dd HH:mm[:ss]' 这类空格分隔写法
+        }
+        try {
+            return LocalDateTime.parse(s.replace(' ', 'T'));
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     /** 手机 H5：与扫码弹窗共用「下次不再自动弹出」持久化 */
@@ -133,6 +217,33 @@ public class MobileCenterAlertService {
             return null;
         }
         return buildExemptItem(mapping);
+    }
+
+    /** 通用公告条数上限，与扫码弹窗公告的 LIMIT 30 同量级 */
+    private static final int GENERAL_NOTICE_LIMIT = 20;
+
+    /** 门户「通知公告」→ 公告栏上区（通用公告） */
+    private void appendGeneralNotices(List<Map<String, Object>> items) {
+        try {
+            List<PortalContent> rows = portalContentMapper.listPublic(
+                    "NOTICE", null, null, "priority", GENERAL_NOTICE_LIMIT, 0);
+            if (rows == null) {
+                return;
+            }
+            for (PortalContent row : rows) {
+                Map<String, Object> item = baseItem("general_notice", row.getId(), row.getTitle(), false);
+                item.put("contentHtml", row.getContentHtml() != null ? row.getContentHtml() : "");
+                if (row.getExtensionJson() != null) {
+                    item.put("contentJson", row.getExtensionJson());
+                }
+                String publishedAt = row.getPublishedAt() != null ? row.getPublishedAt().toString() : null;
+                item.put("publishAt", publishedAt);
+                item.put("createdAt", publishedAt);
+                items.add(item);
+            }
+        } catch (Exception e) {
+            log.warn("[MobileAlerts] 通用公告查询失败: {}", e.getMessage());
+        }
     }
 
     private void appendAnnouncements(List<Map<String, Object>> items, Set<String> suppressKeys) {
@@ -198,6 +309,7 @@ public class MobileCenterAlertService {
 
         Map<String, Object> item = baseItem("exempt", 0L, "您当前享有免冻结豁免", false);
         item.put("contentHtml", html.toString());
+        item.put("isRead", true); // 豁免是状态卡，不是待读消息
         item.put("createdAt", mapping.getExemptGrantedAt() != null ? mapping.getExemptGrantedAt()
                 : mapping.getLastModifiedTime());
         return item;
@@ -395,6 +507,7 @@ public class MobileCenterAlertService {
     private Map<String, Object> baseItem(String kind, Object id, String title, boolean interactiveRequired, String source) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("kind", kind);
+        item.put("section", sectionOf(kind));
         item.put("id", id);
         item.put("title", title != null ? title : "");
         item.put("contentHtml", "");

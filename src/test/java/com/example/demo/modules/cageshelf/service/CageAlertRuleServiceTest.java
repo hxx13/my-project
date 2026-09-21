@@ -62,16 +62,31 @@ class CageAlertRuleServiceTest {
         return Map.of("statusCode", status, "thresholdDays", threshold, "action", action, "enabled", enabled);
     }
 
+    /** 带显式通知对象的全局默认行（健康异常两行：兽医 / 笼位所有者）。 */
+    private static Map<String, Object> def(String status, int threshold, String action, int enabled,
+                                           String notifyTarget) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>(def(status, threshold, action, enabled));
+        m.put("notifyTarget", notifyTarget);
+        return m;
+    }
+
     private static Map<String, Map<String, Object>> defaults(Map<String, Object>... rows) {
         Map<String, Map<String, Object>> out = new java.util.LinkedHashMap<>();
-        for (Map<String, Object> r : rows) out.put((String) r.get("statusCode"), r);
+        // 键是 (状态, 通知对象) 的规则键，不是裸状态码 —— 与 CageAlertRuleService.indexDefaults 同口径。
+        for (Map<String, Object> r : rows) out.put(ruleKeyOf(r), r);
         return out;
+    }
+
+    private static String ruleKeyOf(Map<String, Object> row) {
+        Object target = row.get("notifyTarget");
+        return CageStatusIntervalService.ruleKey((String) row.get("statusCode"),
+                target == null ? "DEFAULT" : String.valueOf(target));
     }
 
     private CageAlertRuleService.EffectiveAlertRule resolve(List<Map<String, String>> keys, String status,
                                                             List<Map<String, Object>> regionRules,
                                                             Map<String, Map<String, Object>> defaults) {
-        return CageAlertRuleService.resolveOne(keys, status, regionRules, defaults);
+        return CageAlertRuleService.resolveOne(keys, status, "DEFAULT", regionRules, defaults);
     }
 
     /** 带计时起点的区域行（不带方向的 rule(...) 走「缺项回落 1」那条，正好拿来验证默认）。 */
@@ -252,7 +267,7 @@ class CageAlertRuleServiceTest {
     // ── 批量入口 ──
 
     @Test
-    void resolveForCagesReturnsFiveStatusesPerCage() {
+    void resolveForCagesReturnsEveryStatusTargetPairPerCage() {
         when(regionCapabilityService.regionsOfCages(List.of(1L, 2L))).thenReturn(Map.of(
                 1L, trio(),
                 2L, trio()));
@@ -263,14 +278,20 @@ class CageAlertRuleServiceTest {
                 def("SPECIAL_FEEDING", 7, "HIGHLIGHT", 1),
                 def("ANIMAL_TRANSFER", 7, "HIGHLIGHT", 1),
                 def("HEALTH_ABNORMAL", 7, "HIGHLIGHT", 1),
+                def("HEALTH_ABNORMAL", 3, "HIGHLIGHT", 1, "VET"),
+                def("HEALTH_ABNORMAL", 7, "HIGHLIGHT", 1, "OCCUPANT"),
                 def("COHABITATION", 7, "HIGHLIGHT", 1)));
 
         Map<Long, List<CageAlertRuleService.EffectiveAlertRule>> out = service.resolveForCages(List.of(1L, 2L));
 
         assertEquals(2, out.size());
-        assertEquals(5, out.get(1L).size(), "每个笼位都必须回五个状态");
-        assertEquals(5, out.get(2L).size());
-        assertEquals(CageAlertRuleService.STATUS_CODES.size(), out.get(1L).size());
+        // 五个固定状态，其中健康异常展开成(兽医, 笼位所有者)两行 —— 共六个 (状态, 通知对象) 组合
+        assertEquals(6, out.get(1L).size(), "每个笼位都必须回全部 (状态, 通知对象) 组合");
+        assertEquals(6, out.get(2L).size());
+        assertEquals(service.configurableRuleKeys().size(), out.get(1L).size());
+        // 健康异常的两个对象方向独立：VET 走默认（出现 1 开始），OCCUPANT 反之
+        assertEquals(2, out.get(1L).stream()
+                .filter(r -> "HEALTH_ABNORMAL".equals(r.statusCode())).count());
     }
 
     // ── 中文名 ──
@@ -288,5 +309,36 @@ class CageAlertRuleServiceTest {
         assertEquals("需分笼", service.labelOf("NEED_DIVIDE"), "五个状态仍走静态表");
         assertEquals("需喂食", service.labelOf("SF_FEED"), "明细码查码表");
         assertEquals("SF_NOPE", service.labelOf("SF_NOPE"), "码表里没有就退回码本身，不静默成空串");
+    }
+
+    // ── 全局总闸 ──
+
+    /**
+     * 全局默认行 enabled=0 ⇒ 该状态全站停用，**区域规则不得把它重新打开**。
+     *
+     * <p>2026-09-18 用户报「全局总开关关了，告警照发」：规则解析是就近覆盖（ROOM > FLOOR > CAMPUS），
+     * 区域配过就整段盖掉全局默认 —— 于是在 2F 逐房间配过规则之后，全局那个开关等于失效。
+     * 现在全局先过一道总闸，再谈就近。
+     */
+    @Test
+    void globalDisabledIsATrueMasterGateOverRegionRules() {
+        var r = resolve(trio(),
+                DIVIDE,
+                List.of(rule("ROOM", "100", DIVIDE, 3, "VIOLATION", 1)),   // 区域把它打开了
+                defaults(def(DIVIDE, 7, "HIGHLIGHT", 0)));                  // 全局关了
+
+        assertFalse(r.enabled(), "全局关掉后，区域规则不能把它重新打开");
+    }
+
+    /** 全局开着时区域规则照旧生效（总闸只管「全关」，不做别的干预）。 */
+    @Test
+    void globalEnabledLeavesRegionRulesIntact() {
+        var r = resolve(trio(),
+                DIVIDE,
+                List.of(rule("ROOM", "100", DIVIDE, 3, "VIOLATION", 1)),
+                defaults(def(DIVIDE, 7, "HIGHLIGHT", 1)));
+
+        assertTrue(r.enabled(), "全局开着时区域规则照旧生效");
+        assertEquals(3, r.thresholdDays(), "阈值仍取区域那一级");
     }
 }

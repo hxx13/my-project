@@ -20,10 +20,14 @@ export interface StudentZone {
   /** add=落到该区；cancel=从该区撤销。只影响观感：cancel 画成虚线空心，和 add 一眼分开。 */
   variant?: "add" | "cancel";
   /**
-   * 折叠在卡内的子区 —— 「需特殊饲养」下面那四个明细色区走这条。
-   * 明细用量少，平铺会把右栏（只有 190px）撑得很长，所以默认收起，点卡内「明细」才展开。
+   * 折叠在卡内的子区 —— 「需特殊饲养」下的明细色区、「健康异常」下的严重程度色区走这条。
+   * 子区用量少，平铺会把右栏（只有 190px）撑得很长，所以默认收起，点卡内那一行才展开。
    */
   children?: StudentZone[];
+  /** 展开那一行的名词（默认「明细」）——「健康异常」那张卡要显示「严重程度」。 */
+  childrenLabel?: string;
+  /** 卡右上角的勾选框（如严重程度各档旁的「瘙痒」）：勾上 = 「本卡标题」+ 该 label。 */
+  extraCheck?: { checked: boolean; label: string; onChange: (next: boolean) => void };
 }
 
 /**
@@ -204,6 +208,24 @@ function Zone({
           <div className="truncate text-[11px] font-semibold text-[var(--app-color-text-primary)]" title={zone.title}>{zone.title}</div>
           {zone.subtitle && <div className="truncate text-[10px] text-[var(--app-color-text-tertiary)]" title={zone.subtitle}>{zone.subtitle}</div>}
         </div>
+        {/* 右上角勾选框（如「瘙痒」）：pointerdown 必须停住，否则点它会被 dnd-kit 当成开始拖拽 */}
+        {zone.extraCheck && (
+          <label
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex shrink-0 cursor-pointer items-center gap-0.5 text-[10px] font-semibold"
+            style={{ color: zone.extraCheck.checked ? color : "var(--app-color-text-tertiary)" }}
+            title={`勾上 = 「${zone.title}」+ ${zone.extraCheck.label}`}
+          >
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              style={{ accentColor: color }}
+              checked={zone.extraCheck.checked}
+              onChange={(e) => zone.extraCheck!.onChange(e.target.checked)}
+            />
+            {zone.extraCheck.label}
+          </label>
+        )}
         <span className="shrink-0 rounded-full bg-[var(--student-canvas-soft)] px-1.5 text-[10px] font-semibold text-[var(--app-color-text-tertiary)]">
           {items.length}
         </span>
@@ -344,7 +366,7 @@ export default function StudentModeDrawer({
         z.children && z.children.length > 0 ? (
           <details className="mt-1.5 border-t border-dashed border-[var(--student-hairline)] pt-1">
             <summary className="cursor-pointer list-none text-[10px] font-semibold text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]">
-              {z.variant === "cancel" ? "撤销明细 ▾" : "明细 ▾"}
+              {z.variant === "cancel" ? "撤销" : ""}{z.childrenLabel ?? "明细"} ▾
             </summary>
             <div className="mt-1.5 space-y-1.5">{z.children.map(renderZone)}</div>
           </details>

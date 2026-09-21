@@ -18,6 +18,7 @@ import com.example.demo.modules.student.dto.StudentDashboardResponse.PinnedRoom;
 import com.example.demo.modules.student.dto.StudentDashboardResponse.RecentRecord;
 import com.example.demo.modules.student.dto.StudentDashboardResponse.RecentNotice;
 import com.example.demo.modules.student.service.MobileCenterAlertService;
+import com.example.demo.modules.student.service.StudentAnnouncementViewService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import com.example.demo.modules.student.service.StudentDashboardService;
 import com.example.demo.modules.student.service.StudentNotificationService;
@@ -63,6 +64,7 @@ public class StudentMobileController {
     private final StudentCageShelfService cageShelfService;
     private final StudentViolationService studentViolationService;
     private final MobileCenterAlertService mobileCenterAlertService;
+    private final StudentAnnouncementViewService announcementViewService;
     private final StudentActivityService studentActivityService;
     private final StudentNotificationService studentNotificationService;
 
@@ -79,6 +81,7 @@ public class StudentMobileController {
                                    StudentCageShelfService cageShelfService,
                                    StudentViolationService studentViolationService,
                                    MobileCenterAlertService mobileCenterAlertService,
+                                   StudentAnnouncementViewService announcementViewService,
                                    StudentActivityService studentActivityService,
                                    StudentNotificationService studentNotificationService) {
         this.authContextService = authContextService;
@@ -94,6 +97,7 @@ public class StudentMobileController {
         this.cageShelfService = cageShelfService;
         this.studentViolationService = studentViolationService;
         this.mobileCenterAlertService = mobileCenterAlertService;
+        this.announcementViewService = announcementViewService;
         this.studentActivityService = studentActivityService;
         this.studentNotificationService = studentNotificationService;
     }
@@ -449,6 +453,14 @@ public class StudentMobileController {
     public Result<Void> markAlertsReadAll(HttpServletRequest request) {
         User user = requireCurrentUser(request);
         studentNotificationService.markAllRead(user);
+        return Result.success(null);
+    }
+
+    @PostMapping("/announcements/viewed")
+    @Operation(summary = "标记公告已看到当前时间（JWT），返回后 announcementsUnread=false")
+    public Result<Void> markAnnouncementsViewed(HttpServletRequest request) {
+        User user = requireCurrentUser(request);
+        announcementViewService.markViewed(user.getId());
         return Result.success(null);
     }
 

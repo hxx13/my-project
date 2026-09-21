@@ -9,6 +9,10 @@ import com.example.demo.modules.cageshelf.mapper.CageStatusAlertMapper;
 import com.example.demo.modules.cageshelf.service.CageAlertConfigService;
 import com.example.demo.modules.cageshelf.service.CageAlertRuleService;
 import com.example.demo.modules.cageshelf.service.CageAlertViolationService;
+import com.example.demo.modules.cageshelf.service.CageRegionGrantService;
+import com.example.demo.modules.cageshelf.service.CageRegionVetService;
+import com.example.demo.modules.cageshelf.service.CageStatusIntervalService;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
@@ -45,19 +49,25 @@ public class CageStatusAlertController {
     private final CageAlertViolationService violationService;
     private final CageStatusAlertScheduler alertScheduler;
     private final CageAlertRuleService ruleService;
+    private final CageRegionVetService regionVetService;
+    private final CageRegionGrantService regionGrantService;
 
     public CageStatusAlertController(AuthContextService authContextService,
                                      CageStatusAlertMapper mapper,
                                      CageAlertConfigService configService,
                                      CageAlertViolationService violationService,
                                      CageStatusAlertScheduler alertScheduler,
-                                     CageAlertRuleService ruleService) {
+                                     CageAlertRuleService ruleService,
+                                     CageRegionVetService regionVetService,
+                                     CageRegionGrantService regionGrantService) {
         this.authContextService = authContextService;
         this.mapper = mapper;
         this.configService = configService;
         this.violationService = violationService;
         this.alertScheduler = alertScheduler;
         this.ruleService = ruleService;
+        this.regionVetService = regionVetService;
+        this.regionGrantService = regionGrantService;
     }
 
     /**
@@ -103,13 +113,22 @@ public class CageStatusAlertController {
         return Result.success(views);
     }
 
-    /** 当前生效阈值；解析不到（笼位已不在网格里 / 规则缺失）就回落到行里建行时的快照。 */
+    /**
+     * 当前生效阈值；解析不到（笼位已不在网格里 / 规则缺失）就回落到行里建行时的快照。
+     *
+     * <p>规则要按 (状态码, 通知对象) 匹配 —— 健康异常同一状态有两行（兽医 / 笼位所有者），
+     * 只比状态码会永远命中的是兽医那一行，笼位所有者那条告警会显示出别人的阈值。
+     */
     private static Integer currentThreshold(Map<Long, List<CageAlertRuleService.EffectiveAlertRule>> rules,
                                             CageStatusAlert a) {
         List<CageAlertRuleService.EffectiveAlertRule> perCage = rules.get(a.getAnimalCageId());
         if (perCage != null) {
             for (CageAlertRuleService.EffectiveAlertRule r : perCage) {
-                if (r.statusCode().equals(a.getStatusCode())) return r.thresholdDays();
+                if (r.statusCode().equals(a.getStatusCode())
+                        && CageStatusIntervalService.normalizeTarget(r.notifyTarget())
+                            .equals(CageStatusIntervalService.normalizeTarget(a.getNotifyTarget()))) {
+                    return r.thresholdDays();
+                }
             }
         }
         return a.getThresholdDays();
@@ -136,10 +155,13 @@ public class CageStatusAlertController {
     private CageStatusAlertView toView(CageStatusAlert a, LocalDateTime now, Integer thresholdDays) {
         String code = a.getStatusCode();
         long span = a.getStartedAt() == null ? 0 : Duration.between(a.getStartedAt(), now).toDays();
+        String target = CageStatusIntervalService.normalizeTarget(a.getNotifyTarget());
         return new CageStatusAlertView(
                 a.getAnimalCageId() == null ? null : String.valueOf(a.getAnimalCageId()),
                 code,
                 ruleService.labelOf(code),
+                target,
+                CageStatusIntervalService.targetLabel(target),
                 a.getStartedAt(),
                 a.getFiredAt(),
                 thresholdDays,
@@ -248,6 +270,58 @@ public class CageStatusAlertController {
         }
     }
 
+    /**
+     * 健康异常「通知兽医」的收件人：该区域**指定**的兽医。
+     *
+     * <p>与阈值同页配置、同一个门槛（超管 OR 该区域饲养组长 + `cage.alert.config`）——
+     * 指定兽医与阈值同属「区域通知配置」，不另开权限码。
+     * candidates 只列持「兽医」身份标签的人（接口敞开，服务端保存时还会再校验一遍）。
+     */
+    @GetMapping("/config/region/vets")
+    @Operation(summary = "读某区域指定的兽医 + 兽医候选人")
+    public Result<Map<String, Object>> regionVets(@RequestParam String regionType,
+                                                  @RequestParam String regionId,
+                                                  HttpServletRequest request) {
+        User u = resolveUser(request.getHeader("Authorization"));
+        if (u == null) return Result.fail(401, "未登录");
+        if (!StringUtils.hasText(regionType) || !StringUtils.hasText(regionId)) {
+            return Result.fail(400, "区域类型与区域 id 必填");
+        }
+        String denied = configService.manageRegionAlertError(u.getId(), isSuperAdmin(u), regionType, regionId);
+        if (denied != null) return Result.fail(403, denied);
+        Map<String, Object> out = new LinkedHashMap<>(
+                regionVetService.regionVets(regionType, regionId, u.getId(), isSuperAdmin(u)));
+        out.put("candidates", regionGrantService.memberCandidates(PersonIdentityService.VETERINARIAN_CODE));
+        return Result.success(out);
+    }
+
+    /** body: {@code { regionType, regionId, accountIds: [...] }}，全量替换本人（超管=本区重置）。 */
+    @PutMapping("/config/region/vets")
+    @Operation(summary = "保存某区域指定的兽医")
+    public Result<?> saveRegionVets(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        User u = resolveUser(request.getHeader("Authorization"));
+        if (u == null) return Result.fail(401, "未登录");
+        String regionType = str(body == null ? null : body.get("regionType"));
+        String regionId = str(body == null ? null : body.get("regionId"));
+        if (!StringUtils.hasText(regionType) || !StringUtils.hasText(regionId)) {
+            return Result.fail(400, "区域类型与区域 id 必填");
+        }
+        String denied = configService.manageRegionAlertError(u.getId(), isSuperAdmin(u), regionType, regionId);
+        if (denied != null) return Result.fail(403, denied);
+        List<String> ids = new ArrayList<>();
+        if (body != null && body.get("accountIds") instanceof List<?> list) {
+            for (Object o : list) {
+                if (o != null && StringUtils.hasText(String.valueOf(o))) ids.add(String.valueOf(o));
+            }
+        }
+        try {
+            regionVetService.replaceRegionVets(regionType, regionId, ids, u.getId(), isSuperAdmin(u));
+            return Result.success(Map.of("ok", true));
+        } catch (IllegalArgumentException e) {
+            return Result.fail(400, e.getMessage());
+        }
+    }
+
     /** 从 body 里取 rules 数组，松散解析为 Rule 列表；字段缺失/非法的留给服务端校验报错（别在控制器里静默吞）。 */
     private List<CageAlertConfigService.Rule> parseRules(Map<String, Object> body) {
         List<CageAlertConfigService.Rule> out = new ArrayList<>();
@@ -257,6 +331,7 @@ public class CageStatusAlertController {
             if (!(o instanceof Map<?, ?> m)) continue;
             out.add(new CageAlertConfigService.Rule(
                     str(m.get("statusCode")),
+                    str(m.get("notifyTarget")),
                     asInt(m.get("thresholdDays")),
                     str(m.get("action")),
                     asBool(m.get("enabled")),
@@ -299,6 +374,10 @@ public class CageStatusAlertController {
             String animalCageId,
             String statusCode,
             String statusLabel,
+            /** 通知对象：DEFAULT / VET / OCCUPANT */
+            String notifyTarget,
+            /** 通知对象中文名（默认 / 通知兽医 / 通知笼位所有者） */
+            String notifyTargetLabel,
             LocalDateTime startedAt,
             LocalDateTime firedAt,
             Integer thresholdDays,

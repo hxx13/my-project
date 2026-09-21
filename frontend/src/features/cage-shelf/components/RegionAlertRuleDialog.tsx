@@ -7,9 +7,13 @@ import { isNonViolationStatus } from "@/features/cage-shelf/constants";
 import { regionWriteTargets } from "@/features/cage-shelf/constants";
 import {
   fetchRegionStatusAlertConfig,
+  fetchRegionVets,
   saveRegionStatusAlertConfig,
+  saveRegionVets,
+  statusAlertRuleKey,
   type CageStatusAlertAction,
   type CageStatusAlertRule,
+  type RegionVetConfig,
 } from "@/api/domains/cageShelf.api";
 
 /**
@@ -35,15 +39,19 @@ export interface RegionAlertInheritFrom {
   name: string;
 }
 
-/** 同一区域多份规则（mine+others）合并成并集生效行：enabled 任一开、阈值取最小、动作取并集（照后端 resolveOne）。 */
+/**
+ * 同一区域多份规则（mine+others）合并成并集生效行：enabled 任一开、阈值取最小、动作取并集（照后端 resolveOne）。
+ * 分组键是 **(状态码, 通知对象)** —— 健康异常同一状态有兽医 / 所有者两行，各配各的，合并会串味。
+ */
 function unionRules(rows: CageStatusAlertRule[]): CageStatusAlertRule[] {
-  const byCode = new Map<string, CageStatusAlertRule[]>();
+  const byKey = new Map<string, CageStatusAlertRule[]>();
   for (const r of rows) {
-    const list = byCode.get(r.statusCode) ?? [];
+    const key = statusAlertRuleKey(r);
+    const list = byKey.get(key) ?? [];
     list.push(r);
-    byCode.set(r.statusCode, list);
+    byKey.set(key, list);
   }
-  return [...byCode.entries()].map(([code, list]) => {
+  return [...byKey.entries()].map(([, list]) => {
     const enabledRows = list.filter((r) => r.enabled);
     if (enabledRows.length === 0) {
       // 全关：enabled=false，只读行显示「已关闭」，阈值/动作不再参与展示
@@ -53,8 +61,10 @@ function unionRules(rows: CageStatusAlertRule[]): CageStatusAlertRule[] {
     const violation = enabledRows.some((r) => r.action === "VIOLATION" || r.action === "BOTH");
     const action: CageStatusAlertAction = highlight && violation ? "BOTH" : violation ? "VIOLATION" : "HIGHLIGHT";
     return {
-      statusCode: code,
+      statusCode: list[0].statusCode,
       statusLabel: enabledRows[0].statusLabel,
+      notifyTarget: enabledRows[0].notifyTarget ?? "DEFAULT",
+      notifyTargetLabel: enabledRows[0].notifyTargetLabel ?? "默认",
       thresholdDays: Math.min(...enabledRows.map((r) => r.thresholdDays)),
       action,
       enabled: true,
@@ -63,6 +73,17 @@ function unionRules(rows: CageStatusAlertRule[]): CageStatusAlertRule[] {
       startValue: enabledRows[0].startValue ?? 1,
     };
   });
+}
+
+/**
+ * 规则行的显示名：默认对象只显示状态名（与改造前逐字相同）；
+ * 有具体通知对象（健康异常）时补上「· 通知兽医 / · 通知笼位所有者」，否则两行长得一模一样。
+ */
+export function ruleDisplayLabel(rule: CageStatusAlertRule): string {
+  const label = rule.statusLabel;
+  const target = rule.notifyTarget ?? "DEFAULT";
+  if (target === "DEFAULT") return label;
+  return `${label} · ${rule.notifyTargetLabel || target}`;
 }
 
 /** 可编辑规则卡：状态名 + 启用开关，下面阈值天数 + 动作分段。关掉时阈值/动作降透明但仍可改。 */
@@ -78,11 +99,11 @@ export function AlertRuleEditCard({
   return (
     <div className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold text-[var(--twin-ink)]">{rule.statusLabel}</span>
+        <span className="text-[11px] font-semibold text-[var(--twin-ink)]">{ruleDisplayLabel(rule)}</span>
         <SettingsSwitch
           checked={rule.enabled}
           onChange={(v) => onChange({ enabled: v })}
-          label={rule.statusLabel}
+          label={ruleDisplayLabel(rule)}
         />
       </div>
       <div className={`mt-2 flex flex-col gap-2 ${rule.enabled ? "" : "opacity-50"}`}>
@@ -119,7 +140,7 @@ export function AlertRuleEditCard({
 export function AlertRuleReadonlyRow({ rule }: { rule: CageStatusAlertRule }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-twin-sm border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5">
-      <span className="w-[5.5rem] shrink-0 text-[11px] font-semibold text-[var(--twin-body)]">{rule.statusLabel}</span>
+      <span className="w-[5.5rem] shrink-0 text-[11px] font-semibold text-[var(--twin-body)]">{ruleDisplayLabel(rule)}</span>
       <span className="min-w-0 flex-1 text-[10px] text-[var(--twin-mute)]">
         {rule.enabled
           ? `阈值 ${rule.thresholdDays} 天 · ${ACTION_LABEL[rule.action]} · ${START_VALUE_LABEL[rule.startValue ?? 1]}`
@@ -174,6 +195,43 @@ export default function RegionAlertRuleDialog({
   const [saving, setSaving] = useState(false);
   const levelName = TYPE_LABEL[regionType] ?? "区域";
 
+  /* ── 区域指定兽医：健康异常「通知兽医」那条通道的收件人来源，与阈值同页配置 ── */
+  const [vetConfig, setVetConfig] = useState<RegionVetConfig | null>(null);
+  /** 当前选中的兽医账号 id（"" = 不指定） */
+  const [vetPick, setVetPick] = useState("");
+  const [vetSaving, setVetSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || !regionId) return;
+    let cancelled = false;
+    // 兽医读失败（如祖先是 locationOnly，后端 403）不该影响阈值那一半，退化成「不显示」即可
+    fetchRegionVets(regionType, regionId)
+      .then((v) => {
+        if (cancelled) return;
+        setVetConfig(v);
+        setVetPick((v.mine ?? [])[0] ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) { setVetConfig(null); setVetPick(""); }
+      });
+    return () => { cancelled = true; };
+  }, [open, regionId, regionType]);
+
+  const saveVet = async () => {
+    setVetSaving(true);
+    try {
+      await saveRegionVets(regionType, regionId, vetPick ? [vetPick] : []);
+      const v = await fetchRegionVets(regionType, regionId);
+      setVetConfig(v);
+      setVetPick((v.mine ?? [])[0] ?? "");
+      toast.success("区域兽医已保存");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存兽医失败");
+    } finally {
+      setVetSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (!open || !regionId) return;
     let cancelled = false;
@@ -189,8 +247,8 @@ export default function RegionAlertRuleDialog({
         // 可编辑行用全局默认当骨架，再用我自己的行覆盖：mine 空时（谁都没配或只有别人配过）
         // 退回默认当初始值，保证永远有五行可改。
         const base = (v.defaults && v.defaults.length ? v.defaults : v.mine) ?? [];
-        const overlay = new Map((v.mine ?? []).map((r) => [r.statusCode, r]));
-        const eff = base.map((b) => overlay.get(b.statusCode) ?? b);
+        const overlay = new Map((v.mine ?? []).map((r) => [statusAlertRuleKey(r), r]));
+        const eff = base.map((b) => overlay.get(statusAlertRuleKey(b)) ?? b);
         setMine(eff);
         setInitial(eff);
         // 未配置且有可读的已配置祖先 → 拉它的实际值展示「我现在实际是多少天」。
@@ -224,12 +282,13 @@ export default function RegionAlertRuleDialog({
 
   const dirty = useMemo(() => JSON.stringify(mine) !== JSON.stringify(initial), [mine, initial]);
 
-  const update = (code: string, patch: Partial<CageStatusAlertRule>) =>
-    setMine((m) => m.map((r) => (r.statusCode === code ? { ...r, ...patch } : r)));
+  const update = (key: string, patch: Partial<CageStatusAlertRule>) =>
+    setMine((m) => m.map((r) => (statusAlertRuleKey(r) === key ? { ...r, ...patch } : r)));
 
   const save = async () => {
     setSaving(true);
-    const payload = mine.map(({ statusCode, thresholdDays, action, enabled, startValue }) => ({ statusCode, thresholdDays, action, enabled, startValue }));
+    const payload = mine.map(({ statusCode, notifyTarget, thresholdDays, action, enabled, startValue }) =>
+      ({ statusCode, notifyTarget, thresholdDays, action, enabled, startValue }));
     // 批量：楼层/校区只是入口，实际**逐房间**写（不写楼层键的行，见 regionWriteTargets）
     const targets = regionWriteTargets(regionType, regionId, extraRegions);
     try {
@@ -316,7 +375,7 @@ export default function RegionAlertRuleDialog({
                     「{inheritFrom.name}」当前生效的阈值（本{levelName}未配，实际按它执行）：
                   </div>
                   {inheritedRules.map((r) => (
-                    <AlertRuleReadonlyRow key={r.statusCode} rule={r} />
+                    <AlertRuleReadonlyRow key={statusAlertRuleKey(r)} rule={r} />
                   ))}
                 </div>
               )}
@@ -330,7 +389,8 @@ export default function RegionAlertRuleDialog({
 
               {others.length > 0 && <div className="pt-1 text-[10px] text-[var(--twin-mute)]">我的配置</div>}
               {mine.map((r) => (
-                <AlertRuleEditCard key={r.statusCode} rule={r} onChange={(patch) => update(r.statusCode, patch)} />
+                <AlertRuleEditCard key={statusAlertRuleKey(r)} rule={r}
+                  onChange={(patch) => update(statusAlertRuleKey(r), patch)} />
               ))}
 
               {others.length > 0 && (
@@ -345,6 +405,40 @@ export default function RegionAlertRuleDialog({
                   ))}
                 </>
               )}
+
+              {/* 区域指定兽医 —— 健康异常「通知兽医」的收件人来源。
+                  与阈值分开保存（各自接口、各自事务）：改兽医不该顺带把阈值行全量重写一遍。 */}
+              <div className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2">
+                <div className="text-[11px] font-semibold text-[var(--twin-ink)]">指定兽医</div>
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--twin-mute)]">
+                  健康异常到达阈值时通知这位兽医（房间优先于楼层、楼层优先于校区）。
+                  {vetConfig && vetConfig.others.length > 0
+                    ? ` 其他饲养组长也指定了 ${vetConfig.others.length} 位，本区域生效时取并集。`
+                    : ""}
+                </p>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <select
+                    value={vetPick}
+                    onChange={(e) => setVetPick(e.target.value)}
+                    className="min-w-0 flex-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[11px] text-[var(--twin-ink)] outline-none"
+                  >
+                    <option value="">（不指定，只发通知配置页里为该源配的接收人）</option>
+                    {(vetConfig?.candidates ?? []).map((c) => (
+                      <option key={c.accountId} value={c.accountId}>
+                        {c.name || c.accountId}{c.jobNumber ? `（${c.jobNumber}）` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void saveVet()}
+                    disabled={vetSaving}
+                    className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-[11px] text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)] disabled:opacity-40"
+                  >
+                    {vetSaving ? "保存中…" : "保存兽医"}
+                  </button>
+                </div>
+              </div>
 
               <p className="pt-1 text-[10px] leading-relaxed text-[var(--twin-mute)]">
                 「仅高亮」只在网格标色，「仅违规」只自动发违规记录，「高亮+违规」两者都做。0 天 = 一出现即触发。

@@ -1,6 +1,6 @@
 ﻿const mpBulletinApi = require('../../../utils/mpBulletinApi.js');
+const springAuth = require('../../../utils/springAuth.js');
 const studentAlerts = require('../../../utils/studentAlertHelpers.js');
-const { isStudentAccount } = require('../../../utils/roleAccess.js');
 const { applyRichTextTypography } = require('../../../utils/richTextTypography.js');
 
 function withBodyTypography(detail) {
@@ -27,10 +27,9 @@ Page({
     }
     this._id = id;
     this._kind = kind;
-    this._scanPopupBulletin = isStudentAccount() && studentAlerts.isScanPopupBulletinKind(kind);
-    this._studentAlert = isStudentAccount()
-      && studentAlerts.isStudentMobileAlertKind(kind)
-      && !this._scanPopupBulletin;
+    this._generalNotice = kind === 'general_notice';
+    this._scanPopupBulletin = studentAlerts.isScanPopupBulletinKind(kind);
+    this._studentAlert = studentAlerts.isStudentMobileAlertKind(kind) && !this._scanPopupBulletin;
     this.setData({
       kindLabel: studentAlerts.isImportantReminderKind(kind)
         ? '重要提醒'
@@ -40,6 +39,10 @@ Page({
   },
 
   load() {
+    if (this._generalNotice) {
+      this.loadGeneralNotice();
+      return;
+    }
     if (this._scanPopupBulletin) {
       this.loadScanPopupBulletin();
       return;
@@ -49,6 +52,42 @@ Page({
       return;
     }
     this.loadPublicBulletin();
+  },
+
+  loadGeneralNotice() {
+    var self = this;
+    self.setData({ loading: true, errorText: '' });
+    springAuth.springRequest({
+      url: '/api/public/portal/content/' + encodeURIComponent(self._id),
+      method: 'GET',
+      data: {},
+    }).then(function (res) {
+      var body = res && res.data;
+      if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch (e) { body = null; }
+      }
+      if (!body || body.success !== true || !body.data) {
+        throw new Error((body && body.message) || '加载失败');
+      }
+      var v = body.data;
+      self.setData({
+        detail: withBodyTypography({
+          title: v.title || '',
+          bodyHtml: v.contentHtml || '',
+          publishedAtText: studentAlerts.formatTime(v.publishedAt || v.createdAt || ''),
+        }),
+        loading: false,
+      });
+      if (v.title) {
+        wx.setNavigationBarTitle({ title: String(v.title).slice(0, 18) });
+      }
+    }).catch(function (e) {
+      self.setData({
+        loading: false,
+        detail: null,
+        errorText: (e && e.message) || '加载失败',
+      });
+    });
   },
 
   loadScanPopupBulletin() {

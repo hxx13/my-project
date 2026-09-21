@@ -1,7 +1,13 @@
 import { useNavigate } from "react-router-dom";
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, useState, useEffect, type CSSProperties, type ChangeEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "react-hot-toast";
+import { uploadSingleImage } from "@/api/domains/upload.api";
+import { updateMyHead } from "@/api/domains/admin.api";
+import MySignatureCard from "@/components/signature/MySignatureCard";
+import { fetchMySignature, type MySignature } from "@/api/domains/signature.api";
+import { PenLine, IdCard } from "lucide-react";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -32,6 +38,7 @@ import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
 import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
 import { useStudentStats } from "../hooks/use-student-stats";
+import { studentQueryKey } from "../utils/studentQueryScope";
 import { StudentActivityDashboard } from "../components/student-activity-dashboard";
 import type { StatsData } from "../api/student.api";
 import { fetchCageStatusSummary } from "../api/student.api";
@@ -43,6 +50,9 @@ import {
   Avatar,
   BarChart,
   StatPanel,
+  Dialog,
+  DialogHeader,
+  DialogTitle,
 } from "../components/ui";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { displayPosition } from "@/features/cage-shelf/constants";
@@ -350,12 +360,46 @@ function PersonnelBlock({
   onStats: () => void;
 }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const headFileRef = useRef<HTMLInputElement>(null);
+
+  /** 电子签名小窗：签名不可更改，这里只做小窗展示 + 点开弹窗（画 / 扫码直链）。 */
+  const [signOpen, setSignOpen] = useState(false);
+  const [sig, setSig] = useState<MySignature | null>(null);
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const s = await fetchMySignature();
+        if (!dead) setSig(s);
+      } catch {
+        if (!dead) setSig({ hasSignature: false });
+      }
+    })();
+    return () => { dead = true; };
+  }, [signOpen]);
+
+  const onPickHead = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const { url } = await uploadSingleImage(file);
+      await updateMyHead(url);
+      toast.success("头像已更新");
+      qc.invalidateQueries({ queryKey: studentQueryKey("dashboard") });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "操作失败");
+    }
+  };
+
   const quick: { key: string; icon: LucideIcon; label: string; onClick: () => void }[] = [
     { key: "rooms", icon: Key, label: "门禁", onClick: () => navigate("/student/rooms") },
     { key: "records", icon: History, label: "出入记录", onClick: () => navigate("/student/rooms?view=records") },
     { key: "stats", icon: BarChart3, label: "出入统计", onClick: onStats },
     { key: "violation", icon: AlertTriangle, label: "违规", onClick: () => navigate("/student/rooms?view=records") },
     { key: "material", icon: Package, label: "申领物品", onClick: () => navigate("/student/material") },
+    { key: "group", icon: Users, label: "我的课题组", onClick: () => navigate("/student/group") },
     { key: "ai", icon: Brain, label: "AI 画像", onClick: onAi },
   ];
 
@@ -374,8 +418,11 @@ function PersonnelBlock({
           src={profile.head ? resolvePersonnelAvatarUrl(profile.head) : undefined}
           name={profile.name || ""}
           size="md"
-          className="ring-2 ring-[var(--student-primary-soft)]"
+          onClick={() => headFileRef.current?.click()}
+          title="点击更换头像"
+          className="cursor-pointer ring-2 ring-[var(--student-primary-soft)] transition-shadow hover:ring-[var(--student-primary)]"
         />
+        <input ref={headFileRef} type="file" accept="image/*" className="hidden" onChange={onPickHead} />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <h2 className="truncate text-[15px] font-bold text-[var(--student-foreground)]">
@@ -386,25 +433,52 @@ function PersonnelBlock({
             ) : (
               <Badge variant="warning">{profile.authStatus || "待授权"}</Badge>
             )}
-            {identityLabels.length > 0 ? (
-              identityLabels.map((label) => (
-                <Badge key={label} variant="profile">
-                  {label}
-                </Badge>
-              ))
-            ) : (
-              <Badge variant="profile">未标识身份</Badge>
-            )}
           </div>
           <p className="mt-0.5 truncate text-[11px] text-[var(--student-mute-foreground)]">
             {[profile.jobNumber ? `工号 ${profile.jobNumber}` : "", meta].filter(Boolean).join(" · ") || "—"}
           </p>
         </div>
+        {/* 电子签名小窗：有签名展示缩略图，没有就是可点的上传入口。点开弹窗可画 / 扫码直链。 */}
+        <button
+          type="button"
+          onClick={() => setSignOpen(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--student-border)] px-2 py-1 text-left transition-colors hover:bg-[var(--student-canvas-soft)]"
+        >
+          {sig?.hasSignature ? (
+            <img src={sig.imageData} alt="电子签名"
+              className="h-7 w-auto max-w-[96px] rounded bg-white object-contain" />
+          ) : (
+            <PenLine className="h-4 w-4 text-[var(--student-mute-foreground)]" />
+          )}
+          <span className="text-[10px] text-[var(--student-mute-foreground)]">
+            {sig?.hasSignature ? "电子签名" : "点击上传签名"}
+          </span>
+        </button>
       </div>
 
+      <Dialog open={signOpen} onOpenChange={setSignOpen}>
+        <DialogHeader>
+          <DialogTitle>我的电子签名</DialogTitle>
+        </DialogHeader>
+        <MySignatureCard />
+      </Dialog>
+
       <div className="space-y-1.5 border-t border-[var(--student-border)] pt-2.5">
+        <InfoRow icon={IdCard}>
+          {identityLabels.length > 0 ? identityLabels.join(" · ") : "未标识身份"}
+        </InfoRow>
         {profile.departmentName && <InfoRow icon={MapPin}>{profile.departmentName}</InfoRow>}
         {profile.projectGroupName && <InfoRow icon={Users}>{profile.projectGroupName}</InfoRow>}
+        {!profile.projectGroupName && (
+          <button
+            type="button"
+            onClick={() => navigate("/student/group")}
+            className="flex w-full cursor-pointer items-start gap-1.5 text-left text-[12px] text-[var(--student-primary)] hover:underline"
+          >
+            <Users className="mt-0.5 size-3 shrink-0" strokeWidth={1.5} />
+            <span className="min-w-0 flex-1 break-words">申请加入课题组</span>
+          </button>
+        )}
         {profile.mobilePhone && <InfoRow icon={Phone}>{profile.mobilePhone}</InfoRow>}
         {profile.email && <InfoRow icon={Mail}>{profile.email}</InfoRow>}
         {profile.allowedRoomsDisplayZh ? (
@@ -622,6 +696,21 @@ export default function StudentHomePage() {
     <AdminFullWidthPage>
       {/* page-full-bleed 抵消了横向内边距，这里补回来：卡片描边+阴影需要离屏幕边缘有呼吸 */}
       <div className="flex min-h-0 flex-col gap-4 px-5 py-2 h-[calc(100dvh-var(--student-chrome-offset,64px))]">
+        {/* ── 资料未完善引导（仅缺手机号时出现，轻量提醒 + 链接，不整页拦截） ── */}
+        {!profile.mobilePhone && (
+          <div className="flex shrink-0 items-center gap-2 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-primary-soft)] px-4 py-2.5 text-[13px] text-[var(--student-ink)]">
+            <Phone className="size-4 shrink-0 text-[var(--student-primary)]" strokeWidth={1.6} />
+            <span className="min-w-0 flex-1">你的资料尚未完善（缺少手机号），补全后便于接收通知。</span>
+            <button
+              type="button"
+              onClick={() => navigate("/student/profile")}
+              className="shrink-0 cursor-pointer font-medium text-[var(--student-primary)] hover:underline"
+            >
+              去完善
+            </button>
+          </div>
+        )}
+
         {/* ── 上行：左上人员块 + 右侧方块入口（入口行高随人员块拉伸，不留空） ── */}
         <div className="flex shrink-0 flex-wrap items-stretch gap-4">
           <PersonnelBlock

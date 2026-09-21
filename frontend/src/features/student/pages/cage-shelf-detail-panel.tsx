@@ -6,7 +6,7 @@ import { clearCageDivision, type CageShelfCell } from "@/api/domains/cageShelf.a
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
 import type { CageOpKind, CageOpMark, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
-import { CAGE_BOX_ACTIONS, actionsFromFormValues } from "@/features/cage-shelf/constants";
+import { CAGE_BOX_ACTIONS, actionsFromFormValues, SPECIAL_DETAIL_STATUS_PREFIX } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 
@@ -100,11 +100,24 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
     return () => { cancelled = true; };
   }, [animalCageId]);
 
+  /**
+   * 状态照片是「按归属状态分桶」存的（key = 状态表单字段名，明细是 `SF_<code>`），
+   * 展示时**必须把 key 还原成人看的名字**再挂到对应状态上 ——
+   * 直接 `{key}` 打出来就是 `has_health_abnormality` 这种给用户看的东西（2026-09-19 用户报）。
+   */
+  const photoLabelOf = (key: string): string => {
+    const act = CAGE_BOX_ACTIONS.find(a => a.statusField === key);
+    if (act) return act.label;
+    if (key.startsWith(SPECIAL_DETAIL_STATUS_PREFIX)) return "特殊饲养明细";
+    return "状态照片";
+  };
+
   // 合并双通道照片用于 URL 驱动预览
   const allPreviewUrls: string[] = [];
   const allPreviewLabels: string[] = [];
   Object.entries(statusPhotos).forEach(([key, urls]) => {
-    urls.forEach(url => { allPreviewUrls.push(url); allPreviewLabels.push(`状态标记 · ${key}`); });
+    if (!Array.isArray(urls)) return;                 // `_note` 是字符串，别当照片
+    urls.forEach(url => { allPreviewUrls.push(url); allPreviewLabels.push(`状态标记 · ${photoLabelOf(key)}`); });
   });
   images.forEach(url => { allPreviewUrls.push(url); allPreviewLabels.push("实验记录照片"); });
   const curPreviewIdx = previewUrl ? allPreviewUrls.indexOf(previewUrl) : -1;
@@ -156,6 +169,20 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
   // 状态 chips：以表单为真相源，只列已开启的状态（无合笼日期指示）
   const activeActions = actionsFromFormValues(formValues);
   const statusChips = CAGE_BOX_ACTIONS.filter(a => activeActions.has(a.action));
+
+  /** 该状态自己那份照片（就地挂在它那枚 chip 下面） */
+  const photosOf = (statusField: string): string[] => {
+    const v = statusPhotos[statusField];
+    return Array.isArray(v) ? v : [];
+  };
+  /**
+   * 没有对应状态 chip 的桶：明细（`SF_`）与历史遗留的 `_status` 兜底。
+   * `_note` 是字符串不是数组，这里一并排除 —— 原来那个 Object.entries 循环会对字符串调 `.map`，有备注就白屏。
+   */
+  const orphanPhotoGroups = Object.entries(statusPhotos)
+    .filter(([k, v]) => Array.isArray(v) && (v as string[]).length > 0 && k !== "_note"
+      && !CAGE_BOX_ACTIONS.some(a => a.statusField === k))
+    .map(([k, v]) => ({ key: k, label: photoLabelOf(k), urls: v as string[] }));
 
   return (
     <div className="flex-1 flex flex-col rounded-xl border border-[var(--student-hairline)] bg-[var(--app-color-surface-container)] overflow-hidden min-h-0">
@@ -211,16 +238,27 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
 
         <CageFormFill animalCageId={animalCageId || null} />
 
-        {/* Status chips */}
+        {/* Status chips —— 每个状态自己的照片就挂在那枚 chip 下面（照片本就按归属状态分桶） */}
         {statusChips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-start gap-1.5">
             {statusChips.map(a => {
               const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
+              const imgs = photosOf(a.statusField);
               return (
-                <span key={a.action} className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                  style={{ background: `${c.bg}18`, color: c.border, border: `1px solid ${c.border}40` }}>
-                  {a.label}
-                </span>
+                <div key={a.action} className="flex flex-col gap-1">
+                  <span className="self-start px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                    style={{ background: `${c.bg}18`, color: c.border, border: `1px solid ${c.border}40` }}>
+                    {a.label}
+                  </span>
+                  {imgs.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {imgs.map((url, i) => (
+                        <img key={`${url}:${i}`} src={url} alt="" onClick={() => setPreviewUrl(url)}
+                          className="h-10 w-10 rounded border border-[var(--student-hairline)] object-cover cursor-pointer" />
+                      ))}
+                    </div>
+                  )}
+                </div>
               );
             })}
             {detail?.specialBreedingName && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--student-error-soft)] text-[var(--student-error)] border border-[var(--student-error-soft)]">{detail.specialBreedingName}</span>}
@@ -237,15 +275,16 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
 
         <div className="border-t border-[var(--student-hairline)]" />
 
-        {/* 状态标记照片（通道一：admin编辑模式上传，Student端只读） */}
-        {Object.keys(statusPhotos).length > 0 && (
+        {/* 没有对应状态 chip 的状态照片：明细（SF_）与历史遗留的 _status 兜底。
+            标题走可读名（不再把 `has_health_abnormality` 这种 key 打给用户看） */}
+        {orphanPhotoGroups.length > 0 && (
           <div className="rounded-lg bg-[var(--app-color-surface-hover)] p-3 space-y-2">
             <div className="text-[12px] font-semibold text-[var(--student-mute)]">📸 状态标记照片</div>
-            {Object.entries(statusPhotos).map(([key, urls]) => (
-              <div key={key}>
-                <div className="text-[10px] text-[var(--student-mute)] mb-1">{key}</div>
+            {orphanPhotoGroups.map(g => (
+              <div key={g.key}>
+                <div className="text-[10px] text-[var(--student-mute)] mb-1">{g.label}</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {urls.map((url, i) => (
+                  {g.urls.map((url, i) => (
                     <img key={i} src={url} alt="" onClick={() => setPreviewUrl(url)}
                       className="h-14 w-14 object-cover rounded border border-[var(--student-hairline)] cursor-pointer" />
                   ))}

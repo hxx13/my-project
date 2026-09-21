@@ -22,8 +22,16 @@ export type SignaturePadProps = {
   lineWidth?: number;
   /** 默认 600 */
   maxEdge?: number;
-  /** 默认 0.8 */
+  /** 默认 0.8（仅 jpeg 生效） */
   quality?: number;
+  /**
+   * 固定输出尺寸。给了就按「等比 contain + 居中」重绘到**恰好这个尺寸**的画布上 ——
+   * 这样不管容器多宽、笔迹画多大，每次产出的像素尺寸完全一致（贴进文档不用再逐张对齐）。
+   * 不传 = 保持原有行为（宽度跟随容器，最长边压到 maxEdge）。
+   */
+  outputSize?: { width: number; height: number };
+  /** 默认 "jpeg"（含既有调用方依赖的白底）。细笔画建议用 "png"：无损，放大不糊。 */
+  format?: "jpeg" | "png";
   disabled?: boolean;
   className?: string;
 };
@@ -40,6 +48,8 @@ export function SignaturePad({
   lineWidth = 2.5,
   maxEdge = 600,
   quality = 0.8,
+  outputSize,
+  format = "jpeg",
   disabled = false,
   className,
 }: SignaturePadProps): JSX.Element {
@@ -120,7 +130,10 @@ export function SignaturePad({
     render(value ?? null, true);
   }, [value, render]);
 
-  /** 抬笔落图：空画布回 null，否则先按最长边离屏缩放再导出 JPEG */
+  /**
+   * 抬笔落图：空画布回 null，否则离屏重绘后导出。
+   * 给了 outputSize 就重绘到固定尺寸（等比 contain + 居中），否则走原来的「最长边压 maxEdge」。
+   */
   const commit = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -129,19 +142,34 @@ export function SignaturePad({
       onChange(null);
       return;
     }
-    const { width, height: outH } = fitSize(canvas.width, canvas.height, maxEdge);
     const off = document.createElement("canvas");
-    off.width = Math.max(1, width);
-    off.height = Math.max(1, outH);
     const octx = off.getContext("2d");
     if (!octx) return;
-    octx.fillStyle = PAPER;
-    octx.fillRect(0, 0, off.width, off.height);
-    octx.drawImage(canvas, 0, 0, off.width, off.height);
-    const dataUrl = off.toDataURL("image/jpeg", quality);
+
+    if (outputSize) {
+      off.width = Math.max(1, outputSize.width);
+      off.height = Math.max(1, outputSize.height);
+      octx.fillStyle = PAPER;
+      octx.fillRect(0, 0, off.width, off.height);
+      const scale = Math.min(off.width / canvas.width, off.height / canvas.height);
+      const w = canvas.width * scale;
+      const h = canvas.height * scale;
+      octx.drawImage(canvas, (off.width - w) / 2, (off.height - h) / 2, w, h);
+    } else {
+      const { width, height: outH } = fitSize(canvas.width, canvas.height, maxEdge);
+      off.width = Math.max(1, width);
+      off.height = Math.max(1, outH);
+      octx.fillStyle = PAPER;
+      octx.fillRect(0, 0, off.width, off.height);
+      octx.drawImage(canvas, 0, 0, off.width, off.height);
+    }
+
+    const dataUrl = format === "png"
+      ? off.toDataURL("image/png")
+      : off.toDataURL("image/jpeg", quality);
     valueRef.current = dataUrl;
     onChange(dataUrl);
-  }, [maxEdge, quality, onChange]);
+  }, [maxEdge, quality, outputSize, format, onChange]);
 
   const pointOf = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

@@ -102,6 +102,12 @@ export interface MiniPreferences {
   studentNavStars?: string[];
   /** 学生端锁定入口 */
   studentNavLock?: string | null;
+  /**
+   * 笼架信息页左侧树的**展开节点 key**（buildTree 生成的 `s:<id>` / `r:<id>` / …）。
+   * 存后端是为了跟着账号走：换机器打开也记得展开到哪一层；管理端/学生端共用一份
+   * （各自的树可见范围不同，看不到的 key 留着无害）。
+   */
+  cageShelfTreeExpanded?: string[];
 }
 
 interface MiniPreferencesResultBody {

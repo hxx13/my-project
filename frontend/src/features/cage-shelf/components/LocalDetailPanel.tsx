@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { appConfirm } from "@/lib/appDialog";
 import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
 import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues } from "../constants";
@@ -145,6 +146,20 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     finally { setUploading(false); }
   };
 
+  /** 删除单条历史归档（后端 /local/history/{id} 只给教职工）。删完就地移出列表，不去重拉。 */
+  const handleDeleteHistory = async (id: unknown) => {
+    if (id == null) return;
+    if (!(await appConfirm("确定删除该条历史记录？"))) return;
+    try {
+      const r = await authHttp.delete(`/local/history/${id}`);
+      if (!r.data?.success) throw new Error(r.data?.message || "删除失败");
+      setHistory((prev: any[]) => prev.filter((x: any) => x.id !== id));
+      toast.success("已删除");
+    } catch (e: any) {
+      toast.error(e?.message || "删除失败");
+    }
+  };
+
   const ct = detail?.cageTypeCode;
   const typeInfo = CAGE_TYPE_COLORS[ct as number];
   const cageBoxCode = detail?.cageBoxCode;
@@ -154,9 +169,9 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
 
   if (!detail) return <div className="text-xs text-[var(--twin-mute)] py-8 text-center">无本地详情数据（请先同步）</div>;
 
-  return <div className="flex flex-col gap-3">
-    {/* 一级：笼位标识 */}
-    <div className="flex items-center justify-between">
+  return <div className="flex flex-col gap-3 p-3">
+    {/* 一级：笼位标识 —— **吸顶**：关闭按钮原来跟内容一起滚走，滚到底还得翻回顶部才能关（2026-09-19 用户报） */}
+    <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 flex items-center justify-between border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 pb-2 pt-3">
       <div className="flex items-center gap-2">
         {statusChips.length > 0
           ? statusChips.map((a) => {
@@ -171,17 +186,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       <button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={onClose}>✕</button>
     </div>
 
-    {/* 笼位二维码：payload = 纯数字 animal_cage_id */}
-    <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-2 flex items-center gap-3">
-      <div className="cursor-zoom-in shrink-0" title="点击放大" onClick={() => setQrZoom(true)}>
-        <QRCodeSVG value={animalCageId} size={160} level="M" includeMargin={true} />
-      </div>
-      <div className="text-[10px] text-[var(--twin-mute)] leading-relaxed min-w-0">
-        <div className="text-[11px] font-semibold text-[var(--twin-ink)]">笼位二维码</div>
-        <div className="font-mono break-all">笼位ID: {animalCageId}</div>
-        <div className="text-[var(--twin-mute)]">点击二维码可放大查看</div>
-      </div>
-    </div>
+    {/* 二维码挪到最底部（见文末的 details）——它是最不重要的信息，占着顶部把关键信息挤下去了 */}
 
     {/* 二维码放大预览 */}
     {qrZoom && (
@@ -311,22 +316,47 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       </div>}
     </div>
 
-    {/* 历史归档 */}
-    <div className="border-t border-[var(--twin-hairline)] pt-2">
-      <div className="text-[11px] font-semibold text-[var(--twin-mute)] mb-1.5">📦 历史记录 ({history.length})</div>
-      <div className="space-y-1.5 max-h-[160px] overflow-y-auto">
+    {/* 历史归档：默认折叠（省地方），展开后能真看能删 ——
+        照片可点开大图、备注给全文、每条带删除（触摸屏没有 hover，所以 ✕ 只在悬停设备上悬停才露） */}
+    <details className="border-t border-[var(--twin-hairline)] pt-2">
+      <summary className="cursor-pointer select-none text-[11px] font-semibold text-[var(--twin-mute)]">📦 历史记录 ({history.length})</summary>
+      <div className="mt-2 space-y-1.5 max-h-[240px] overflow-y-auto">
         {history.map((h: any, i: number) => {
           const label = h.statusField === "needs_division" ? "需分笼" : h.statusField === "needs_special_feeding" ? "特殊饲养" : h.statusField === "_annotation" ? "标注记录" : "健康异常";
           const imgs: string[] = (() => { try { const arr = JSON.parse(h.imagesJson || "[]"); return Array.isArray(arr) ? arr : []; } catch { return []; } })();
-          return <div key={i} className="flex items-center gap-2 text-[10px] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1">
-            <span className="text-[var(--twin-mute)] whitespace-nowrap">{h.createdAt?.substring(0, 16) || ""}</span>
-            <span className={h.action === "unmarked" ? "text-red-600" : h.action === "annotated" ? "text-blue-600" : "text-green-600"}>{h.action === "unmarked" ? "✕" : h.action === "annotated" ? "📝" : "✓"} {label}</span>
-            {imgs.length > 0 && <div className="flex gap-0.5">{imgs.slice(0, 4).map((url: string, j: number) => (<img key={j} src={url} className="h-6 w-6 object-cover rounded-twin-xs border border-[var(--twin-hairline)]" />))}{imgs.length > 4 && <span className="text-[var(--twin-mute)]">+{imgs.length - 4}</span>}</div>}
-            {h.toggledBy && <span className="text-[var(--twin-mute)] ml-auto">{h.toggledBy}</span>}
+          return <div key={h.id ?? i} className="group rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-[10px]">
+            <div className="flex items-center gap-2">
+              <span className="whitespace-nowrap text-[var(--twin-mute)]">{h.createdAt?.substring(0, 16) || ""}</span>
+              <span className={h.action === "unmarked" ? "text-red-600" : h.action === "annotated" ? "text-blue-600" : "text-green-600"}>{h.action === "unmarked" ? "✕" : h.action === "annotated" ? "📝" : "✓"} {label}</span>
+              {h.toggledBy && <span className="ml-auto text-[var(--twin-mute)]">{h.toggledBy}</span>}
+              {h.id != null && (
+                <button type="button" onClick={() => void handleDeleteHistory(h.id)} title="删除这条记录"
+                  className="shrink-0 rounded px-1 text-[9px] leading-none text-red-500 transition hover:bg-red-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">✕</button>
+              )}
+            </div>
+            {h.experimentDesc && <div className="mt-0.5 whitespace-pre-wrap break-words text-[var(--twin-mute)]">{String(h.experimentDesc)}</div>}
+            {imgs.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{imgs.map((url: string, j: number) => (
+              <img key={j} src={url} alt="" title="点开大图" onClick={() => setPreviewUrl(url)}
+                className="h-8 w-8 cursor-pointer rounded-twin-xs border border-[var(--twin-hairline)] object-cover hover:opacity-80" />
+            ))}</div>}
           </div>;
         })}
       </div>
-    </div>
+    </details>
+
+    {/* 笼位二维码（payload = 纯数字 animal_cage_id）：默认折叠 + 缩小，放到最后 —— 它是最后才需要的东西 */}
+    <details className="border-t border-[var(--twin-hairline)] pt-2">
+      <summary className="cursor-pointer select-none text-[11px] font-semibold text-[var(--twin-mute)]">🔳 笼位二维码</summary>
+      <div className="mt-2 flex items-center gap-3 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-2">
+        <div className="shrink-0 cursor-zoom-in" title="点击放大" onClick={() => setQrZoom(true)}>
+          <QRCodeSVG value={animalCageId} size={104} level="M" includeMargin={true} />
+        </div>
+        <div className="min-w-0 text-[10px] leading-relaxed text-[var(--twin-mute)]">
+          <div className="font-mono break-all">笼位ID: {animalCageId}</div>
+          <div>点击二维码可放大查看</div>
+        </div>
+      </div>
+    </details>
 
     {/* 保存 */}
     <button type="button" onClick={handleSave} disabled={saving}

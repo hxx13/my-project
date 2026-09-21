@@ -1,151 +1,109 @@
 var springAuth = require('../../../utils/springAuth.js');
 var pagePermission = require('../../../utils/pagePermission.js');
 var studentAlerts = require('../../../utils/studentAlertHelpers.js');
-var { isStudentAccount } = require('../../../utils/roleAccess.js');
 
 Page({
   data: {
     initialTab: '',
-    viewMode: 'messages',
-    isStaff: false,
+    activeTab: 'notice',
     loading: true,
     error: '',
-    notices: [],
-    bulletins: [],
-    pinnedNotices: [],
-    unreadCount: 0,
-    markingAll: false,
-    pageTitle: '消息通知',
-    emptyTitle: '暂无消息',
-    emptyText: '物资审核、延迟申请、违规提醒等会出现在这里',
+    generalNotices: [],
+    personalNotices: [],
+    systemNotices: [],
   },
 
   onLoad: function (options) {
     var tab = options && options.tab ? String(options.tab).trim() : '';
-    var view = options && options.view ? String(options.view).trim() : '';
-    var viewMode = view === 'bulletins' ? 'bulletins' : 'messages';
-    this.setData({
-      initialTab: tab,
-      viewMode: viewMode,
-      pageTitle: viewMode === 'bulletins' ? '公告通知' : '消息通知',
-      emptyTitle: viewMode === 'bulletins' ? '暂无公告' : '暂无消息',
-      emptyText: viewMode === 'bulletins'
-        ? '管理员发布的公告会显示在这里'
-        : '物资审核、延迟申请、违规提醒等会出现在这里',
-    });
-    wx.setNavigationBarTitle({ title: viewMode === 'bulletins' ? '公告通知' : '消息通知' });
+    // options.view === 'bulletins' 是老入口的兼容参数，公告与系统公告都在本页，无需再分流
+    this.setData({ initialTab: tab, activeTab: 'notice' });
+    wx.setNavigationBarTitle({ title: '公告' });
   },
 
   onShow: function () {
     var role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     if (!pagePermission.guardPageOnShow(this, '/package-feature/pages/notifications/index', role, 'STUDENT')) return;
-    var isStaffView = !isStudentAccount();
-    this.setData({ isStaff: isStaffView });
-    if (isStaffView) {
-      var self = this;
-      wx.nextTick(function () {
-        var c = self.selectComponent('#staffInbox');
-        if (c && c.runWorkInboxShow) void c.runWorkInboxShow();
-      });
-    } else {
-      this.loadStudentData();
-    }
+    this.loadStudentData();
+    // 打开公告区即标记「已看到」；服务端确认推进游标后再清首页红点，不整表重拉 — post-save-no-full-refresh.mdc
+    studentAlerts.markAnnouncementsViewed()
+      .then(function () { studentAlerts.clearHomeAnnouncementDot(); })
+      .catch(function () {});
   },
 
   loadStudentData: function () {
     var self = this;
     self.setData({ loading: true, error: '' });
     studentAlerts.fetchStudentAlerts().then(function (data) {
-      if (self.data.viewMode === 'bulletins') {
-        var bulletins = studentAlerts.extractScanPopupBulletins(data)
-          .slice()
-          .sort(function (a, b) {
-            var ta = a.publishAt || a.createdAt || '';
-            var tb = b.publishAt || b.createdAt || '';
-            return String(tb).localeCompare(String(ta));
-          })
-          .map(buildBulletinItem);
-        self.setData({
-          loading: false,
-          bulletins: bulletins,
-          notices: [],
-          pinnedNotices: [],
-          unreadCount: 0,
-        });
+      if (self.data.activeTab === 'system') {
+        self.loadSystemNotices();
         return;
       }
-
-      var raw = studentAlerts.extractPersonalAlerts(data);
-      var notices = raw.map(studentAlerts.decoratePersonalAlertItem);
-      var pinnedNotices = notices.filter(function (n) { return n.isImportantReminder; });
-      var regularNotices = notices.filter(function (n) { return !n.isImportantReminder; });
+      var sections = studentAlerts.splitAnnouncementSections(data);
       self.setData({
         loading: false,
-        notices: regularNotices,
-        pinnedNotices: pinnedNotices,
-        bulletins: [],
-        unreadCount: countUnread(notices),
+        generalNotices: sections.general.map(buildBulletinItem),
+        personalNotices: sections.personal.map(buildBulletinItem),
+        systemNotices: [],
       });
     }).catch(function (err) {
       self.setData({ loading: false, error: (err && err.message) || '网络错误' });
     });
   },
 
-  onMarkAllRead: function () {
+  loadSystemNotices: function () {
     var self = this;
-    if (self.data.viewMode !== 'messages' || self.data.markingAll) return;
-    self.setData({ markingAll: true });
-    springAuth.springRequest({ url: '/api/student/mobile/alerts/read-all', method: 'POST', data: {} }).then(function () {
-      var mark = function (arr) { return arr.map(function (n) { n.isRead = true; return n; }); };
-      // 保存后仅合并已读状态，禁止整表 load — post-save-no-full-refresh.mdc
+    springAuth.springRequest({ url: '/api/mp/releases', method: 'GET', data: {} }).then(function (res) {
+      // 真实形态 {success:true, data:[MiniProgramReleaseView]}，res.data 可能是字符串
+      var body = res && res.data;
+      if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch (e) { body = null; }
+      }
+      if (!body || body.success !== true) {
+        throw new Error((body && body.message) || '加载失败');
+      }
+      var rows = Array.isArray(body.data) ? body.data : [];
       self.setData({
-        markingAll: false,
-        notices: mark(self.data.notices),
-        pinnedNotices: mark(self.data.pinnedNotices),
-        unreadCount: 0,
+        loading: false,
+        systemNotices: rows.map(function (r) {
+          return {
+            id: r.id,
+            kind: 'release',
+            title: r.title || '',
+            preview: r.versionCode ? ('版本 ' + r.versionCode) : (r.summary || ''),
+            time: studentAlerts.formatTime(r.publishedAtText || ''),
+          };
+        }),
       });
-      wx.showToast({ title: '已全部标记为已读', icon: 'success' });
-    }).catch(function () {
-      self.setData({ markingAll: false });
-      wx.showToast({ title: '操作失败', icon: 'none' });
+    }).catch(function (err) {
+      self.setData({ loading: false, error: (err && err.message) || '网络错误' });
     });
   },
 
-  onAlertTap: function (e) {
-    var id = e.currentTarget.dataset.id;
-    var kind = e.currentTarget.dataset.kind;
-    if (id && kind) {
-      wx.navigateTo({
-        url: '/package-feature/pages/homeBulletinDetail/index?id=' + encodeURIComponent(id) + '&kind=' + encodeURIComponent(kind),
-      });
+  onSwitchTab: function (e) {
+    var tab = e.currentTarget.dataset.tab;
+    if (tab === this.data.activeTab) return;
+    this.setData({ activeTab: tab, error: '' });
+    if (tab === 'system' && this.data.systemNotices.length) return;
+    if (tab === 'system') {
+      this.setData({ loading: true });
+      this.loadSystemNotices();
+      return;
     }
+    this.loadStudentData();
+  },
+
+  onAlertTap: function (e) {
+    studentAlerts.navigateToAlertDetail(e.currentTarget.dataset.id, e.currentTarget.dataset.kind);
   },
 
   onPullDownRefresh: function () {
-    if (this.data.isStaff) {
-      var c = this.selectComponent('#staffInbox');
-      if (c && c.onPullDownRefresh) c.onPullDownRefresh();
-    } else {
-      this.loadStudentData();
-    }
+    this.loadStudentData();
     wx.stopPullDownRefresh();
   },
 
-  onReachBottom: function () {
-    if (this.data.isStaff) {
-      var c = this.selectComponent('#staffInbox');
-      if (c && c.onReachBottom) c.onReachBottom();
-    }
-  },
-});
+  onReachBottom: function () {},
 
-function countUnread(arr) {
-  var n = 0;
-  for (var i = 0; i < arr.length; i += 1) {
-    if (!arr[i].isRead) n += 1;
-  }
-  return n;
-}
+});
 
 function buildBulletinItem(item) {
   var decorated = studentAlerts.decorateBulletinListItem(item);
@@ -153,7 +111,8 @@ function buildBulletinItem(item) {
     id: decorated.id,
     kind: decorated.kind,
     title: decorated.title,
-    preview: decorated.subtitle,
+    // 表头已展示时间戳（time），副标题不再重复渲染，卡片只留「表头 + 标题」
+    preview: '',
     time: studentAlerts.formatTime(item.publishAt || item.createdAt || ''),
     badgeLabel: decorated.badgeLabel,
     badgeBg: decorated.badgeBg,

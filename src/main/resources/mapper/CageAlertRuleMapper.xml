@@ -5,7 +5,7 @@
 <mapper namespace="com.example.demo.modules.cageshelf.mapper.CageAlertRuleMapper">
 
     <select id="listDefaultRules" resultType="map">
-        SELECT status_code AS statusCode, threshold_days AS thresholdDays,
+        SELECT status_code AS statusCode, notify_target AS notifyTarget, threshold_days AS thresholdDays,
                action AS action, enabled AS enabled, start_value AS startValue
         FROM cage_alert_default
     </select>
@@ -14,7 +14,7 @@
          行构造器 IN 走 idx_cra_region(region_type, region_id) 索引；regions 为空时调用方须提前返回。 -->
     <select id="listRegionRules" resultType="map">
         SELECT region_type AS regionType, region_id AS regionId,
-               status_code AS statusCode, threshold_days AS thresholdDays,
+               status_code AS statusCode, notify_target AS notifyTarget, threshold_days AS thresholdDays,
                action AS action, enabled AS enabled, start_value AS startValue,
                configured_by AS configuredBy
         FROM cage_region_alert_rule
@@ -22,7 +22,7 @@
         <foreach collection="regions" item="r" open="(" separator="," close=")">
             (#{r.regionType}, #{r.regionId})
         </foreach>
-        ORDER BY status_code ASC
+        ORDER BY status_code ASC, notify_target ASC
     </select>
 
     <!-- 区域树配置态聚合：哪些 (region_type, region_id) 被配过（有任意行，含 enabled=0 的关闭行）。
@@ -33,8 +33,8 @@
     </select>
 
     <insert id="upsertDefaultRule">
-        INSERT INTO cage_alert_default (status_code, threshold_days, action, enabled, start_value, updated_at)
-        VALUES (#{statusCode}, #{thresholdDays}, #{action}, #{enabled}, #{startValue}, NOW())
+        INSERT INTO cage_alert_default (status_code, notify_target, threshold_days, action, enabled, start_value, updated_at)
+        VALUES (#{statusCode}, #{notifyTarget}, #{thresholdDays}, #{action}, #{enabled}, #{startValue}, NOW())
         ON DUPLICATE KEY UPDATE threshold_days = VALUES(threshold_days), action = VALUES(action),
                                 enabled = VALUES(enabled), start_value = VALUES(start_value), updated_at = NOW()
     </insert>
@@ -52,11 +52,11 @@
         WHERE region_type = #{regionType} AND region_id = #{regionId}
     </delete>
 
-    <!-- 唯一键 (region_type, region_id, status_code, configured_by) 上的 upsert：
+    <!-- 唯一键 (region_type, region_id, status_code, notify_target, configured_by) 上的 upsert：
          正常路径先删后插不会撞键，ON DUPLICATE 只是兜底幂等（并发/重放不报错） -->
     <insert id="insertRegionRule">
-        INSERT INTO cage_region_alert_rule (region_type, region_id, status_code, threshold_days, action, enabled, start_value, configured_by, updated_at)
-        VALUES (#{regionType}, #{regionId}, #{statusCode}, #{thresholdDays}, #{action}, #{enabled}, #{startValue}, #{configuredBy}, NOW())
+        INSERT INTO cage_region_alert_rule (region_type, region_id, status_code, notify_target, threshold_days, action, enabled, start_value, configured_by, updated_at)
+        VALUES (#{regionType}, #{regionId}, #{statusCode}, #{notifyTarget}, #{thresholdDays}, #{action}, #{enabled}, #{startValue}, #{configuredBy}, NOW())
         ON DUPLICATE KEY UPDATE threshold_days = VALUES(threshold_days), action = VALUES(action),
                                 enabled = VALUES(enabled), start_value = VALUES(start_value), updated_at = NOW()
     </insert>
