@@ -264,6 +264,7 @@ export async function fetchMobileRooms(token: string, mode: "all" | "mine" = "al
 
 export interface MobileAlertItem {
   kind:
+    | "general_notice"
     | "announcement"
     | "violation"
     | "exempt"
@@ -277,6 +278,8 @@ export interface MobileAlertItem {
   publishAt?: string | null;
   expireAt?: string | null;
   createdAt?: string | null;
+  /** 门户公告优先级：important / notice / routine（仅 general_notice 带） */
+  priority?: string | null;
   /** CAGE_STATUS / MANUAL 等来源标识，用于区分笼位处理提示 vs 违规提醒 */
   source?: string;
   interactiveRequired: boolean;

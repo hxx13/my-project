@@ -284,10 +284,8 @@ public class CageOperationService {
             if (!cageInScope(user, animalCageId, d)) {
                 return notOperable("NO_PERMISSION", "该笼位不在你负责的区域或课题组内");
             }
-            Map<String, Object> out = operable();
+            Map<String, Object> out = operableWithReassign(d);
             // 额外身份（饲养员/饲养组长/超管）还能代绑定：弹窗检索本课题组人员
-            out.put("canClaimOnBehalf", true);
-            out.put("groupNames", cageGroupNames(d));
             return out;
         }
         // 仅被组长授权「代认领」的人（组员级勾选 cage.op.claim_on_behalf）：
@@ -306,15 +304,53 @@ public class CageOperationService {
 
         CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
         if (claim != null) {
-            return isClaimantSelf(user, claim)
-                    ? operable()
-                    : notOperable("NO_PERMISSION", "该笼位已被认领，无分笼/转移权限");
+            if (!isClaimantSelf(user, claim)) {
+                return notOperable("NO_PERMISSION", "该笼位已被认领，无分笼/转移权限");
+            }
+            // 占用者本人也能把笼位转给同课题组的人；但**审批中/释放审批中**的认领不算占用者 ——
+            // 那条还在原有「申请/预定/确认」手里，此时给转认领入口等于绕过审批
+            // （claimOnBehalf 会免审核直接建 locked 认领）。
+            return isOccupiedClaim(claim) ? operableWithReassign(d) : operable();
         }
         String exp = experimenterOf(animalCageId);
         if (exp == null) return notOperable("NOT_CLAIMED", "该笼位尚未认领，认领成本人后才能分笼/转移");
         return isExperimenterSelf(user, exp)
-                ? operable()
+                ? operableWithReassign(d)
                 : notOperable("NO_PERMISSION", "该笼位由「" + exp + "」占用，无分笼/转移权限");
+    }
+
+    /** 占用已生效的认领（`locked`/`confirmed`）。审批中与释放审批中都不算。 */
+    static boolean isOccupiedClaim(CageClaim claim) {
+        if (claim == null) return false;
+        String s = claim.getClaimStatus();
+        return "locked".equals(s) || "confirmed".equals(s);
+    }
+
+    /**
+     * 本人能否把**自己名下**的笼位转认领给同课题组的人 —— 读侧给入口、写侧
+     * {@link #claimOnBehalf} 同样放行。
+     *
+     * <p>与 {@code modeVisibilityService.canClaimOnBehalf} 是**或**关系：后者是「有资格代别人认领」，
+     * 这里是「本人就是这笼位的主人」。两条都还要过写路径里的目标人课题组校验，越不了权。
+     *
+     * <p>与公开的 {@link #isOccupantSelf} **不能合并**：那个回答「这格是不是我的」（状态标记用，
+     * 认领还在审批中也算我的）；这里多一道「认领已生效」，因为入口后面是免审核直接建 locked 认领，
+     * 审批中给入口 = 绕过原有「申请/预定/确认」的审批。
+     */
+    private boolean isReassignableOwner(User user, Long animalCageId) {
+        CageClaim claim = claimMapper.selectActiveByAnimalCageId(animalCageId);
+        if (claim != null) {
+            return isOccupiedClaim(claim) && isClaimantSelf(user, claim);
+        }
+        return isExperimenterSelf(user, experimenterOf(animalCageId));
+    }
+
+    /** `operable` 再挂上转认领入口（占用者本人 / 额外操作身份共用同一套 groupNames） */
+    private Map<String, Object> operableWithReassign(CageCellDetail d) {
+        Map<String, Object> out = operable();
+        out.put("canClaimOnBehalf", true);
+        out.put("groupNames", cageGroupNames(d));
+        return out;
     }
 
     /**
@@ -658,8 +694,8 @@ public class CageOperationService {
      */
     @Transactional
     public CageClaim claimOnBehalf(User operator, Long animalCageId, String targetAccountId) {
-        if (!modeVisibilityService.canClaimOnBehalf(operator)) {
-            throw new TwinBusinessException(403, "无代认领权限（饲养员/饲养组长/管理员，或被组长授权的组员）");
+        if (!modeVisibilityService.canClaimOnBehalf(operator) && !isReassignableOwner(operator, animalCageId)) {
+            throw new TwinBusinessException(403, "无代认领权限（饲养员/饲养组长/管理员、被组长授权的组员，或该笼位的占用者本人）");
         }
         if (targetAccountId == null || targetAccountId.isBlank()) {
             throw new TwinBusinessException(400, "请选择要认领的人员");

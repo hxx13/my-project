@@ -27,6 +27,8 @@ import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest;
 import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRequestMapper;
 import com.example.demo.modules.twin.scan.delay.service.ScanDelayConfigService;
 import com.example.demo.modules.twin.scan.service.TwinScanNoticeAutoSuppressService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -49,13 +51,14 @@ public class MobileCenterAlertService {
 
     private static final Logger log = LoggerFactory.getLogger(MobileCenterAlertService.class);
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     /** 公告分区：通用公告｜我的提醒。非通用公告一律归入个人侧。 */
     static String sectionOf(String kind) {
         return "general_notice".equals(kind) ? "GENERAL" : "PERSONAL";
     }
 
-    /** 通用公告在前、我的提醒在后；段内按时间倒序 */
+    /** 通用公告在前、我的提醒在后；段内先按公告优先级（重要=2/通知=1/常规=0），再按时间倒序 */
     static void sortAnnouncementsBySection(List<Map<String, Object>> items) {
         items.sort((a, b) -> {
             int sa = "GENERAL".equals(a.get("section")) ? 0 : 1;
@@ -63,8 +66,25 @@ public class MobileCenterAlertService {
             if (sa != sb) {
                 return sa - sb;
             }
+            int pa = priorityRank(a.get("priority"));
+            int pb = priorityRank(b.get("priority"));
+            if (pa != pb) {
+                return pb - pa;
+            }
             return timeOf(b).compareTo(timeOf(a));
         });
+    }
+
+    /** 门户公告优先级 → 排序权重；缺字段/未知值一律当常规 */
+    static int priorityRank(Object priority) {
+        String p = priority != null ? String.valueOf(priority) : "";
+        if ("important".equals(p)) {
+            return 2;
+        }
+        if ("notice".equals(p)) {
+            return 1;
+        }
+        return 0;
     }
 
     private static String timeOf(Map<String, Object> item) {
@@ -235,6 +255,10 @@ public class MobileCenterAlertService {
                 item.put("contentHtml", row.getContentHtml() != null ? row.getContentHtml() : "");
                 if (row.getExtensionJson() != null) {
                     item.put("contentJson", row.getExtensionJson());
+                    String priority = extensionPriority(row.getExtensionJson());
+                    if (priority != null) {
+                        item.put("priority", priority);
+                    }
                 }
                 String publishedAt = row.getPublishedAt() != null ? row.getPublishedAt().toString() : null;
                 item.put("publishAt", publishedAt);
@@ -243,6 +267,19 @@ public class MobileCenterAlertService {
             }
         } catch (Exception e) {
             log.warn("[MobileAlerts] 通用公告查询失败: {}", e.getMessage());
+        }
+    }
+
+    /** 取门户内容 extension_json 里的公告优先级（important/notice/routine）；解析不了返回 null */
+    static String extensionPriority(String extensionJson) {
+        if (!StringUtils.hasText(extensionJson)) {
+            return null;
+        }
+        try {
+            JsonNode priority = JSON.readTree(extensionJson).get("priority");
+            return priority != null && priority.isTextual() ? priority.asText() : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

@@ -1,5 +1,6 @@
 import { Building2, Users, Globe, BookOpen } from "lucide-react";
 import { usePublicContents } from "@/api/hooks/usePortalContent";
+import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
 
 const FALLBACK_STATS = [
   { value: "17,602", unit: "m²", label: "建筑面积", icon: Building2 },
@@ -72,7 +73,7 @@ export default function AboutPage() {
             ))}
           </div>
         ) : page?.contentHtml ? (
-          <div className="prose prose-neutral max-w-none space-y-6 text-neutral-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: page.contentHtml }} />
+          <RichTextHtmlBody html={page.contentHtml} className="prose prose-neutral max-w-none space-y-6 text-neutral-600 leading-relaxed" />
         ) : (
           <div className="prose prose-neutral max-w-none space-y-6 text-neutral-600 leading-relaxed">
             <h2 className="text-xl font-bold text-neutral-900">依托平台</h2>

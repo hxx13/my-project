@@ -43,3 +43,10 @@
   padding: 48rpx 0;
   text-align: center;
 }
+
+/* 正文图片：宽度由 segment 的 style 给（作者在编辑器里拖过的宽度优先，否则满宽），这里只管排版 */
+.hbd-body-img {
+  display: block;
+  margin: 16rpx auto;
+  border-radius: 8rpx;
+}

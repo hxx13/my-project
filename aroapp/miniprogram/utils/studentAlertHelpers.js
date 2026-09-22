@@ -42,7 +42,18 @@ function isImportantReminderKind(kind) {
   return String(kind || '') === 'exempt';
 }
 
-function kindLabel(kind) {
+/** 门户通用公告优先级 → 角标。与 H5 alertKindLabel 同口径，别只改一边。 */
+var NOTICE_PRIORITY_LABEL = { important: '重要', notice: '通知', routine: '公告' };
+var NOTICE_PRIORITY_COLORS = {
+  important: { bg: '#fee2e2', color: '#dc2626' },
+  notice: { bg: '#dcfce7', color: '#16a34a' },
+  routine: { bg: '#dbeafe', color: '#2563eb' },
+};
+
+function kindLabel(kind, priority) {
+  if (kind === 'general_notice') {
+    return NOTICE_PRIORITY_LABEL[priority] || '公告';
+  }
   var map = {
     violation: '违规提醒',
     exempt: '豁免',
@@ -53,7 +64,10 @@ function kindLabel(kind) {
   return map[kind] || '公告';
 }
 
-function kindColors(kind) {
+function kindColors(kind, priority) {
+  if (kind === 'general_notice') {
+    return NOTICE_PRIORITY_COLORS[priority] || NOTICE_PRIORITY_COLORS.routine;
+  }
   var map = {
     violation: { bg: '#fee2e2', color: '#dc2626' },
     exempt: { bg: '#dcfce7', color: '#16a34a' },
@@ -72,6 +86,15 @@ function alertDisplayPriority(kind) {
   if (kind === 'exempt') return 0;
   if (kind === 'violation') return 1;
   return 2;
+}
+
+/** 通用公告按门户优先级上浮：重要置顶(-1)、通知(0)，其余仍走 kind 档位 */
+function alertRankOf(item) {
+  if (item && item.kind === 'general_notice') {
+    if (item.priority === 'important') return -1;
+    if (item.priority === 'notice') return 0;
+  }
+  return alertDisplayPriority(item && item.kind);
 }
 
 function formatTime(t) {
@@ -730,7 +753,7 @@ function prepareAlertBodyHtml(item) {
 /** 消息通知列表/置顶卡片视图模型 */
 function decoratePersonalAlertItem(item) {
   var kind = String(item && item.kind || 'announcement');
-  var colors = kindColors(kind);
+  var colors = kindColors(kind, item && item.priority);
   var important = isImportantReminderKind(kind);
   var badge = important ? importantReminderColors() : colors;
   var status = resolveAlertStatus(item);
@@ -774,7 +797,7 @@ function decoratePersonalAlertItem(item) {
     preview: preview,
     summaryLine1: summaryLine1,
     summaryLine2: summaryLine2,
-    badgeLabel: important ? '重要提醒' : kindLabel(kind),
+    badgeLabel: important ? '重要提醒' : kindLabel(kind, item && item.priority),
     badgeBg: badge.bg,
     badgeColor: badge.color,
     time: formatTime(item.publishAt || item.createdAt || ''),
@@ -837,8 +860,8 @@ function extractPersonalAlerts(data) {
 
 function sortAlertsForDisplay(items) {
   return (items || []).slice().sort(function (a, b) {
-    var pa = alertDisplayPriority(a.kind);
-    var pb = alertDisplayPriority(b.kind);
+    var pa = alertRankOf(a);
+    var pb = alertRankOf(b);
     if (pa !== pb) return pa - pb;
     var ta = a.publishAt || a.createdAt || '';
     var tb = b.publishAt || b.createdAt || '';
@@ -853,13 +876,13 @@ function formatBulletinSubtitle(item) {
 
 function decorateBulletinListItem(item) {
   var k = item.kind || 'announcement';
-  var colors = kindColors(k);
+  var colors = kindColors(k, item.priority);
   return {
     id: item.id,
     kind: k,
     title: item.title || '',
     subtitle: formatBulletinSubtitle(item),
-    badgeLabel: kindLabel(k),
+    badgeLabel: kindLabel(k, item.priority),
     badgeBg: colors.bg,
     badgeColor: colors.color,
     isImportantReminder: false,
@@ -980,6 +1003,12 @@ function navigateToAlertDetail(id, kind) {
   });
 }
 
+/** 取门户内容 extension_json 里的 priority（重要/通知/常规）；对象或 JSON 串都吃，取不到返回 null */
+function extensionPriority(extensionJson) {
+  var ext = parseBody(extensionJson);
+  return ext && ext.priority ? ext.priority : null;
+}
+
 module.exports = {
   isScanPopupBulletinKind: isScanPopupBulletinKind,
   isPersonalAlertKind: isPersonalAlertKind,
@@ -987,6 +1016,7 @@ module.exports = {
   isImportantReminderKind: isImportantReminderKind,
   kindLabel: kindLabel,
   kindColors: kindColors,
+  extensionPriority: extensionPriority,
   importantReminderColors: importantReminderColors,
   formatTime: formatTime,
   decodeHtmlEntitiesIfNeeded: decodeHtmlEntitiesIfNeeded,

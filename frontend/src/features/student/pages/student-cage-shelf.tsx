@@ -15,7 +15,7 @@ import { displayPosition, CAGE_BOX_ACTIONS, detailParentsLast, cageBoxAction, ac
 import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, cancelClaim, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, localEdit, localArchiveCage, saveStatusDetail, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, localEdit, localArchiveCage, saveStatusDetail, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
 import { fetchStudentMobileSpecialStatusOverview } from "@/api/domains/studentMobile.api";
 import { authHttp } from "@/api/core/authHttp";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
@@ -26,6 +26,7 @@ import { useTreeExpansion } from "@/features/cage-shelf/useTreeExpansion";
 import { useRoomBookmarks } from "@/features/cage-shelf/useRoomBookmarks";
 import { useShelfBookmarks } from "@/features/cage-shelf/useShelfBookmarks";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
+import MyCageRequestsDialog from "@/features/student/components/MyCageRequestsDialog";
 import { batchOf, removeItem, upsertItem, setParams, clearBatch, groupItems, applyResults, summarize, type PendingBatch, type PendingByMode, type PendingItem, type SubmitResult } from "@/features/cage-shelf/pendingBatch";
 import StudentModeDrawer, { type StudentZone } from "@/features/student/components/StudentModeDrawer";
 import StudentSearchSelect, { type SearchOption } from "@/features/student/components/StudentSearchSelect";
@@ -40,58 +41,25 @@ import { appAlert } from "@/lib/appDialog";
 /* ================================================================== */
 
 export default function StudentCageShelfPage() {
-  const [tab, setTab] = useState<"filter" | "bookmarks" | "claims">("filter");
+  const [tab, setTab] = useState<"filter" | "bookmarks">("filter");
   const [myClaims, setMyClaims] = useState<CageClaimItem[]>([]);
   const [claimsLoading, setClaimsLoading] = useState(false);
+  /** 「我的申请」是弹窗（不是 tab）：它跟主区网格无关，塞进 grid 主区会被撑满高度的空占位顶下去 */
+  const [requestsOpen, setRequestsOpen] = useState(false);
 
   const loadMyClaims = async () => { setClaimsLoading(true); try { setMyClaims(await fetchMyClaims()); } catch { setMyClaims([]); } finally { setClaimsLoading(false); } };
   useEffect(() => { loadMyClaims(); }, []);
 
-  const CLAIM_STATUS_LABEL: Record<string, string> = {
-    pending_approval: "审批中", locked: "已锁定", confirmed: "已确认",
-    pending_release_approval: "释放审批中", rejected: "已驳回", cancelled: "已取消", released: "已释放",
-  };
-  const CLAIM_STATUS_COLOR: Record<string, string> = {
-    pending_approval: "text-[var(--student-warning)] bg-[var(--student-warning-soft)] border-[var(--student-warning-soft)]",
-    locked: "text-[var(--student-accent-telemetry)] bg-[var(--student-accent-telemetry-soft)] border-[var(--student-accent-telemetry-soft)]",
-    confirmed: "text-[var(--student-success)] bg-[var(--student-success-soft)] border-[var(--student-success-soft)]",
-    pending_release_approval: "text-[var(--student-accent-alert)] bg-[var(--student-accent-alert-soft)] border-[var(--student-accent-alert-soft)]",
-    rejected: "text-[var(--student-error)] bg-[var(--student-error-soft)] border-[var(--student-error-soft)]",
-    cancelled: "text-[var(--student-mute)] bg-[var(--student-canvas-soft)] border-[var(--student-hairline)]",
-    released: "text-[var(--student-mute)] bg-[var(--student-canvas-soft)] border-[var(--student-hairline)]",
-  };
-  const claimLocation = (c: CageClaimItem) => {
-    const parts = [c.campusName, c.roomName, c.shelveName].filter(Boolean);
-    const pos = c.positionX != null && c.positionY != null ? displayPosition(`${c.positionX}-${c.positionY}`) : "";
-    const base = parts.length ? parts.join(" / ") : `笼位 #${c.animalCageId}`;
-    return pos ? `${base} · ${pos}` : base;
-  };
-  // 我的申请按 校区/房间 分组（条目内不再重复房间名，只留笼架·格位）
-  const claimShort = (c: CageClaimItem) => {
-    const pos = c.positionX != null && c.positionY != null ? displayPosition(`${c.positionX}-${c.positionY}`) : "";
-    return [c.shelveName, pos].filter(Boolean).join(" · ") || `笼位 #${c.animalCageId}`;
-  };
-  const claimGroups = useMemo(() => {
-    const m = new Map<string, CageClaimItem[]>();
-    for (const c of myClaims) {
-      const key = [c.campusName, c.roomName].filter(Boolean).join(" / ") || "未指定房间";
-      if (!m.has(key)) m.set(key, []);
-      m.get(key)!.push(c);
-    }
-    return Array.from(m.entries());
-  }, [myClaims]);
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"room" | "shelf">("room");
   const [search, setSearch] = useState("");
   const [legend, setLegend] = useState(false);
 
   /**
-   * 左栏视图与 tab 解耦：「我的申请」只是右栏的一个视图，左栏没有对应列表。
-   * 若直接跟 tab 走，切到 claims 时两个分支都不成立 → CampusTree 被卸载、列表清空、滚动位置丢失。
-   * 所以记住最后一个非 claims 的视图，切到 claims 时左栏保持不变。
+   * 左栏视图跟随 tab（收藏只换过滤、不换组件 —— 切视图不卸载，展开与滚动位置都留着）。
    */
   const [leftView, setLeftView] = useState<"filter" | "bookmarks">("filter");
-  useEffect(() => { if (tab !== "claims") setLeftView(tab); }, [tab]);
+  useEffect(() => { setLeftView(tab); }, [tab]);
 
   // Tree
   const emptyTree = useMemo(() => [] as CageShelfTreeNode[], []);
@@ -1635,7 +1603,7 @@ export default function StudentCageShelfPage() {
                 <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
                   <button onClick={() => setTab("bookmarks")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "bookmarks" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><Star className="h-3 w-3" />收藏</button>
                   <button onClick={() => setTab("filter")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "filter" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><LayoutGrid className="h-3 w-3" />筛选</button>
-                  <button onClick={() => { setTab("claims"); loadMyClaims(); }} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "claims" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><ClipboardList className="h-3 w-3" />我的申请</button>
+                  <button onClick={() => { setRequestsOpen(true); loadMyClaims(); }} className="flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" title="认领 / 分笼 / 转移 / 审核申请"><ClipboardList className="h-3 w-3" />我的申请</button>
                 </div>
                 {tab === "filter" && <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
                   <button onClick={() => setViewMode("room")} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "room" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>全房间</button>
@@ -1713,48 +1681,6 @@ export default function StudentCageShelfPage() {
             </>
 
             {/* 收藏视图不再单独占一块说明：左侧树只列收藏项，右侧与筛选模式共用（点房间展开、点笼架进网格） */}
-
-            {tab === "claims" && <>
-              {claimsLoading && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>}
-              {!claimsLoading && myClaims.length === 0 && <div className="rounded-student-lg border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--app-color-text-tertiary)]"><ClipboardList className="h-10 w-10 mx-auto mb-3 opacity-20" />暂无申请记录<br /><span className="text-[11px]">在筛选页面选择笼位后点击申请</span></div>}
-              {!claimsLoading && myClaims.length > 0 && <div className="space-y-3">
-                {claimGroups.map(([room, items]) => (
-                  <div key={room}>
-                    <div className="flex items-center gap-1.5 px-1 pb-1.5">
-                      <span className="text-[11px] font-semibold text-[var(--app-color-text-tertiary)]">{room}</span>
-                      <span className="text-[10px] text-[color-mix(in_srgb,var(--app-color-text-tertiary)_60%,transparent)]">{items.length}</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {items.map(c => (
-                        <div key={c.id} className="flex items-center gap-2 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[12px] font-semibold truncate text-[var(--app-color-text-primary)]">{claimShort(c)}</span>
-                              <span className={`inline-flex items-center shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${CLAIM_STATUS_COLOR[c.claimStatus] || "text-[var(--app-color-text-tertiary)] bg-[var(--student-canvas-soft)] border-[var(--app-color-border-default)]"}`}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
-                            </div>
-                            <div className="text-[10px] truncate text-[var(--app-color-text-tertiary)]">
-                              申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}
-                              {c.claimStatus === "rejected" && c.latestRejectReason ? <span className="text-[var(--student-error)]"> · 驳回：{c.latestRejectReason}</span> : null}
-                            </div>
-                          </div>
-                          <div className="shrink-0 flex items-center gap-1">
-                            {/* 学生仅在审核完毕前可取消；审核通过后不再提供取消/释放，释放由教职工发起 */}
-                            {c.claimStatus === "pending_approval" && (
-                              <button onClick={async () => { try { await cancelClaim(c.id); loadMyClaims(); } catch (e: any) { await appAlert(e.message); } }}
-                                className="rounded-student-sm px-2 py-1 text-[10px] font-semibold border border-red-300 text-red-600 hover:bg-red-50">取消</button>
-                            )}
-                            {c.claimStatus === "locked" && (
-                              <button onClick={async () => { try { await confirmClaim(c.id); loadMyClaims(); setClaimReloadKey(k => k + 1); } catch (e: any) { await appAlert(e.message); } }}
-                                className="rounded-student-sm px-2 py-1 text-[10px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700">确认到位</button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>}
-            </>}
           </div>
         </div>
       </div>
@@ -1960,6 +1886,14 @@ export default function StudentCageShelfPage() {
       />
       <MobileScanDialog open={scanOpen} onClose={() => setScanOpen(false)} onResult={handleScanResult} />
       <MobileSpecialStatusPanel open={specialOpen} onClose={() => setSpecialOpen(false)} apiFn={fetchStudentMobileSpecialStatusOverview} />
+      <MyCageRequestsDialog
+        open={requestsOpen}
+        onClose={() => setRequestsOpen(false)}
+        claims={myClaims}
+        claimsLoading={claimsLoading}
+        onReloadClaims={() => { void loadMyClaims(); setClaimReloadKey(k => k + 1); }}
+        onCageDataChanged={() => { setClaimReloadKey(k => k + 1); void qc.invalidateQueries({ queryKey: ["cage-op", "markers"] }); }}
+      />
       {/* 抽屉关着时，右边缘留一排书签标签（每个带缓冲的模式一枚），点谁切到谁并展开抽屉 */}
       {!drawerOpen && (
         <StudentModeTabs

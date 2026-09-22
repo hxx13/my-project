@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAdminContents, useDeleteContent } from "@/api/hooks/usePortalContent";
 import type { ContentType, ContentStatus, PortalContentView } from "@/api/domains/portalContent.api";
 
 import { appConfirm } from "@/lib/appDialog";
 export default function AdminPortalContentPage() {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState<ContentType | "">("");
+  // tab 落 URL：编辑页保存/取消后跳回来能回到原来那一档（`?type=`），不必再点一次
+  const [searchParams] = useSearchParams();
+  const [typeFilter, setTypeFilter] = useState<ContentType | "">((searchParams.get("type") as ContentType) || "");
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   const { data: pageData, isFetching } = useAdminContents({
@@ -57,7 +59,7 @@ export default function AdminPortalContentPage() {
         <Link to="/content-manager/content/recycle" style={{ padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", background: "white", color: "#666", border: "1px solid #d4c9b8", textDecoration: "none" }}>
           🗑 回收站
         </Link>
-        <Link to="/content-manager/content/new" style={{ padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: "#d97706", color: "white", marginLeft: "auto", textDecoration: "none" }}>
+        <Link to={`/content-manager/content/new?type=${typeFilter}`} style={{ padding: "7px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: "#d97706", color: "white", marginLeft: "auto", textDecoration: "none" }}>
           + 新建内容
         </Link>
       </div>

@@ -47,7 +47,13 @@
         <choose>
             <when test="sort == 'published'">published_at DESC</when>
             <when test="sort == 'title'">title ASC</when>
-            <when test="sort == 'priority'">sort_order DESC, published_at DESC</when>
+            <!-- 「重要」置顶；「通知」次之；「常规」殿后。同档内按发布时间倒序。
+                 优先级存在 extension_json 里（不是列），只能走 JSON 提取；非 JSON/缺字段回落常规。 -->
+            <when test="sort == 'priority'">
+                CASE JSON_UNQUOTE(JSON_EXTRACT(extension_json, '$.priority'))
+                    WHEN 'important' THEN 2 WHEN 'notice' THEN 1 ELSE 0 END DESC,
+                published_at DESC
+            </when>
             <otherwise>sort_order ASC, published_at DESC</otherwise>
         </choose>
         LIMIT #{limit} OFFSET #{offset}

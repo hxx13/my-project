@@ -46,8 +46,8 @@ export function resolveRichTextImageConfig(
 ): RichTextImageConfig {
   return {
     maxWidth: overrides?.maxWidth?.trim()
-      ? parsePercentWidth(overrides.maxWidth, 50)
-      : parsePercentWidth(ENV_MAX_WIDTH, 50),
+      ? parsePercentWidth(overrides.maxWidth, 100)
+      : parsePercentWidth(ENV_MAX_WIDTH, 100),
     rowMax: overrides?.rowMax != null && overrides.rowMax > 0
       ? Math.min(overrides.rowMax, 8)
       : parseRowMax(ENV_ROW_MAX, 1),
@@ -85,10 +85,10 @@ export function applyRichTextImageCssVarsToRoot(config: RichTextImageConfig = ri
   }
 }
 
-/** 从 "50%" 解析出数字 50 */
+/** 从 "50%" 解析出数字 50（解析不出时按满宽，与默认口径一致） */
 export function parseMaxWidthPercent(maxWidth: string): number {
   const n = Number.parseFloat(maxWidth.replace("%", "").trim());
-  if (!Number.isFinite(n) || n <= 0) return 50;
+  if (!Number.isFinite(n) || n <= 0) return 100;
   return Math.min(100, Math.max(10, Math.round(n)));
 }
 
@@ -115,5 +115,5 @@ export function richTextImageHelpText(config: RichTextImageConfig): string {
     config.rowMax >= 2
       ? `同行设为 ${config.rowMax} 张时，多选/Ctrl+V 多图会插入同一行。`
       : "默认每张图片单独一行居中；需同行横排请将「同行」设为 2 以上。";
-  return `图宽 ${config.maxWidth} 居中；${rowHint} 支持粘贴 Markdown、截图/Ctrl+V、导入 .md。`;
+  return `图宽 ${config.maxWidth} 居中；单击选中图片，Alt/⌘ 单击或双击看大图。${rowHint} 支持粘贴 Markdown、截图/Ctrl+V、导入 .md。`;
 }

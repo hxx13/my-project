@@ -5,7 +5,22 @@
     <text class="hbd-meta">{{ detail.publishedAtText }} · {{ kindLabel }}</text>
     <view wx:if="{{ detail.versionCode }}" class="hbd-ver">版本 {{ detail.versionCode }}</view>
     <scroll-view scroll-y class="hbd-scroll">
-      <rich-text wx:if="{{ detail.bodyHtml }}" nodes="{{ detail.bodyHtml }}" type="html" />
+      <!-- 正文按「HTML 段 / 图片段」依次渲染：<rich-text> 里的图片收不到点击、点不开大图，
+           只能把图片抠出来用 <image> 渲染，顺序不变 -->
+      <block wx:if="{{ detail.bodySegments.length }}">
+        <block wx:for="{{ detail.bodySegments }}" wx:key="key">
+          <rich-text wx:if="{{ item.type === 'html' }}" nodes="{{ item.html }}" type="html" />
+          <image
+            wx:else
+            class="hbd-body-img"
+            style="width:{{ item.width }}%;"
+            src="{{ item.src }}"
+            mode="widthFix"
+            bindtap="onPreviewBodyImage"
+            data-src="{{ item.src }}"
+          />
+        </block>
+      </block>
       <text wx:else class="hbd-muted">暂无正文</text>
     </scroll-view>
   </block>
