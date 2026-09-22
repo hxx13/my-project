@@ -255,8 +255,8 @@ export default function AdminPersonnelPage() {
                 resetOpenIdMut.mutate(userId);
               }}
               onDelete={async (userId) => {
-                if (!await appConfirm("确定永久删除该账号吗？此操作不可恢复。")) return;
-                if (!await appConfirm("请再次确认：删除后无法恢复，是否继续？")) return;
+                if (!await appConfirm("删除该账号后他将无法登录，人员档案会保留。此操作不可恢复。")) return;
+                if (!await appConfirm("请再次确认：该登录账号删除后无法恢复，是否继续？")) return;
                 deleteUserMut.mutate(userId);
               }}
               onSaveField={handleSaveField}

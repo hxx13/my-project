@@ -6,6 +6,7 @@ const {
   canShowStudentMaterialSwitch,
   goStudentMaterial,
 } = require('../../utils/suppliesStudentSwitch.js');
+const suppliesExportApi = require('../../utils/suppliesExportApi.js');
 
 function parseResponse(res) {
   const { statusCode, data } = res;
@@ -51,22 +52,35 @@ function formatSpecLabel(specJson) {
   return keys.map(function (k) { return k + ':' + obj[k]; }).join(' ');
 }
 
-function decorateClaimLines(lines) {
-  return (lines || []).map((l) => {
-    const name = l.snapshotName != null ? String(l.snapshotName) : '';
-    const ch = name.trim().charAt(0) || '?';
-    return {
-      ...l,
-      coverAbsUrl: springAuth.toAbsoluteMediaUrl(l.coverUrl),
-      nameInitial: ch,
-      specLabel: l.specSnapshot ? formatSpecLabel(l.specSnapshot) : '',
-    };
+/** 同规格行归组，展开时按规格分段显示 */
+function buildSpecGroups(lines) {
+  if (!lines || lines.length === 0) return [];
+  var groups = [];
+  var seen = {};
+  lines.forEach(function (line) {
+    var key = line.specSnapshot ? JSON.stringify(line.specSnapshot) : '__no_spec__';
+    if (!seen[key]) {
+      seen[key] = {
+        specKey: key,
+        specLabel: key === '__no_spec__' ? '' : formatSpecLabel(line.specSnapshot),
+        lines: [],
+      };
+      groups.push(seen[key]);
+    }
+    seen[key].lines.push(line);
   });
+  return groups;
 }
 
-/** @deprecated Cloud URL resolution no longer needed; all images go through direct HTTP */
-async function resolveLineCloudUrls(_lines) {
-  /* no-op: cloud:// resolution removed in Phase 2C */
+function decorateLines(lines) {
+  return (lines || []).map(function (line) {
+    var name = line.snapshotName != null ? String(line.snapshotName) : '';
+    return {
+      ...line,
+      _coverAbsUrl: springAuth.toAbsoluteMediaUrl(line.coverUrl),
+      _nameInitial: (name.trim().charAt(0) || '?'),
+    };
+  });
 }
 
 Page({
@@ -78,12 +92,15 @@ Page({
     recycleRows: [],
     page: 1,
     total: 0,
+    totalPages: 1,
     recyclePage: 1,
     recycleTotal: 0,
+    recycleTotalPages: 1,
     size: 10,
     loading: false,
-    detailShow: false,
-    detail: null,
+    expandedIds: {},
+    detailCache: {},
+    menuOpenId: null,
     confirmDeleteShow: false,
     pendingDeleteId: '',
     pageGateOk: false,
@@ -137,29 +154,7 @@ Page({
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
     if (!tab || tab === this.data.activeTab) return;
-    this.setData({ activeTab: tab });
-  },
-
-  cancelDetailTimer() {
-    if (this._detailClearTimer) {
-      clearTimeout(this._detailClearTimer);
-      this._detailClearTimer = null;
-    }
-  },
-
-  scheduleClearDetail() {
-    this.cancelDetailTimer();
-    this._detailClearTimer = setTimeout(() => {
-      this._detailClearTimer = null;
-      if (!this.data.detailShow) {
-        this.setData({ detail: null });
-      }
-    }, 320);
-  },
-
-  onDetailPopupClose() {
-    this.setData({ detailShow: false });
-    this.scheduleClearDetail();
+    this.setData({ activeTab: tab, menuOpenId: null });
   },
 
   async load() {
@@ -171,7 +166,7 @@ Page({
         springAuth.springRequest({
           url: '/api/supplies/claims/mine',
           method: 'GET',
-          data: { page, size },
+          data: { page, size, withLines: true },
         }),
         springAuth.springRequest({
           url: '/api/supplies/claims/recycle/mine',
@@ -185,13 +180,17 @@ Page({
       if (!recycleParsed.ok) throw new Error(recycleParsed.message);
       const minePayload = mineParsed.body.data || {};
       const recyclePayload = recycleParsed.body.data || {};
-      const rows = (minePayload.data || []).map((r) => ({
-        ...r,
-        createdAtText: toTime(r.createdAt),
-        fulfilledAtText: toTime(r.fulfilledAt),
-        statusText: statusText(r.status),
-        displayTitle: '领用',
-      }));
+      const rows = (minePayload.data || []).map((r) => {
+        const lines = decorateLines(r.lines || []);
+        return {
+          ...r,
+          lines,
+          createdAtText: toTime(r.createdAt),
+          fulfilledAtText: r.fulfilledAt ? toTime(r.fulfilledAt) : '',
+          statusText: statusText(r.status),
+          _headerNames: lines.map((l) => l.snapshotName).filter((n) => !!n).join('、'),
+        };
+      });
       const recycleRows = (recyclePayload.data || []).map((r) => ({
         ...r,
         createdAtText: toTime(r.createdAt),
@@ -199,11 +198,18 @@ Page({
         purgeAfterText: toTime(r.purgeAfterTime),
         statusText: statusText(r.status),
       }));
+      const total = Number(minePayload.total || 0);
+      const recycleTotal = Number(recyclePayload.total || 0);
       this.setData({
         rows,
-        total: Number(minePayload.total || 0),
+        total,
+        totalPages: Math.max(1, Math.ceil(total / size)),
         recycleRows,
-        recycleTotal: Number(recyclePayload.total || 0),
+        recycleTotal,
+        recycleTotalPages: Math.max(1, Math.ceil(recycleTotal / size)),
+        expandedIds: {},
+        detailCache: {},
+        menuOpenId: null,
       });
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '加载失败', icon: 'none' });
@@ -212,51 +218,50 @@ Page({
     }
   },
 
-  openDetail(e) {
+  /* ---- 卡片展开/收起 ---- */
+  onCardTap(e) {
     const id = e.currentTarget.dataset.id;
     if (!id) return;
-    this.cancelDetailTimer();
-    wx.showLoading({ title: '加载…', mask: true });
-    springAuth
-      .springRequest({
-        url: `/api/supplies/claims/${encodeURIComponent(id)}`,
-        method: 'GET',
-        data: {},
-      })
-      .then(async (res) => {
-        const p = parseResponse(res);
-        if (!p.ok) throw new Error(p.message);
-        const d = p.body.data;
-        const lines = decorateClaimLines(d.lines || []);
-        await resolveLineCloudUrls(lines);
-        const detail = {
-          ...d,
-          lines,
-          createdAtText: toTime(d.createdAt),
-          fulfilledAtText: toTime(d.fulfilledAt),
-          statusText: statusText(d.status),
-        };
-        this.setData({ detail, detailShow: true });
-      })
-      .catch((err) => {
-        wx.showToast({ title: (err && err.message) || '加载失败', icon: 'none' });
-      })
-      .finally(() => wx.hideLoading());
+    if (this.data.expandedIds[id]) {
+      this.setData({ ['expandedIds.' + id]: false });
+      return;
+    }
+    const row = (this.data.rows || []).find((r) => r.id === id);
+    const lines = (row && row.lines) || [];
+    this.setData({
+      ['expandedIds.' + id]: true,
+      menuOpenId: null,
+      ['detailCache.' + id]: {
+        status: row ? row.status : '',
+        _specGroups: buildSpecGroups(lines),
+      },
+    });
   },
 
-  closeDetail() {
-    this.setData({ detailShow: false });
-    this.scheduleClearDetail();
+  onCollapseCard(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    this.setData({ ['expandedIds.' + id]: false });
+  },
+
+  /* ---- ⋮ 菜单 ---- */
+  onMenuToggle(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    this.setData({ menuOpenId: this.data.menuOpenId === id ? null : id });
+  },
+
+  onMenuClose() {
+    this.setData({ menuOpenId: null });
   },
 
   previewLineImage(e) {
     const current = String((e.currentTarget.dataset && e.currentTarget.dataset.url) || '').trim();
     if (!current) return;
     this._previewActive = true;
-    const lines = (this.data.detail && this.data.detail.lines) || [];
-    const urls = lines
-      .map((l) => String(l.coverAbsUrl || '').trim())
-      .filter((u) => !!u);
+    const row = (this.data.rows || []).find((r) => r.id === e.currentTarget.dataset.claimId);
+    const lines = (row && row.lines) || [];
+    const urls = lines.map((l) => String(l._coverAbsUrl || '').trim()).filter((u) => !!u);
     wx.previewImage({ current, urls: urls.length ? Array.from(new Set(urls)) : [current] });
   },
 
@@ -264,17 +269,56 @@ Page({
   goReviseInMall(e) {
     const id = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || '';
     if (!id) return;
-    if (this.data.detailShow) {
-      this.setData({ detailShow: false });
-      this.scheduleClearDetail();
-    }
+    this.setData({ menuOpenId: null });
     wx.navigateTo({ url: `/package-feature/pages/supplies/index?reviseClaimId=${encodeURIComponent(id)}` });
   },
 
-  goClaimExport(e) {
-    const id = e.currentTarget.dataset.id;
+  /**
+   * 直接导出 Excel：**不再跳「预览/导出页」**。那个页面只剩这一个动作，
+   * 多一跳没意义（领用单已经改成菜单里直接打开，见 openClaimForm）。
+   */
+  async exportClaimExcel(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || '';
     if (!id) return;
-    wx.navigateTo({ url: `/package-feature/pages/suppliesClaimExport/index?claimId=${encodeURIComponent(id)}` });
+    this.setData({ menuOpenId: null });
+    wx.showLoading({ title: '导出中…', mask: true });
+    try {
+      const { data } = await suppliesExportApi.exportPersonalClaimExcel(id);
+      await springAuth.saveAndOpenDocument(
+        data,
+        `supply-claim-${id.replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx`,
+        'xlsx'
+      );
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  /**
+   * 打开本次《实验动物科学部内部物品领用单》。
+   *
+   * 两步：先要一个分享令牌（后端顺带生成/复用归档件），再凭令牌把 PDF 字节拉回来落盘打开。
+   * springRequestBinary + saveAndOpenDocument 是项目现成的下载套路（与转移单同款）。
+   */
+  async openClaimForm(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || '';
+    if (!id) return;
+    this.setData({ menuOpenId: null });
+    wx.showLoading({ title: '正在生成领用单', mask: true });
+    try {
+      const link = await suppliesExportApi.createClaimPdfLink(id);
+      const token = link && link.downloadToken;
+      if (!token) throw new Error('领用单生成失败');
+      const res = await suppliesExportApi.fetchClaimFormPdf(token);
+      // 文件名用后端给的（就是单号，如 20260923-位亚磊-1.pdf），与纸面印的一致
+      await springAuth.saveAndOpenDocument(res.data, (link && link.fileName) || `领用单-${id}.pdf`, 'pdf');
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '打开领用单失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
   },
 
   noop() {},
@@ -282,7 +326,7 @@ Page({
   onDeleteRecord(e) {
     const id = e.currentTarget.dataset.id;
     if (!id) return;
-    this.setData({ confirmDeleteShow: true, pendingDeleteId: id });
+    this.setData({ confirmDeleteShow: true, pendingDeleteId: id, menuOpenId: null });
   },
 
   cancelDelete() {

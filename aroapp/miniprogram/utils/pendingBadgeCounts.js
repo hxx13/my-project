@@ -271,8 +271,6 @@ const PATH_BADGE_MAP = {
   '/pages/repairRequest/index': 'repair',
   '/pages/purchaseRequest/index': 'purchase',
   '/pages/supplies/index': 'supplies',
-  '/pages/repairProcess/index': 'processRepair',
-  '/pages/purchaseProcess/index': 'processPurchase',
   '/pages/suppliesProcess/index': 'processSupplies',
 };
 

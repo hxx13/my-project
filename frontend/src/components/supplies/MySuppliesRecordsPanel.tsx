@@ -23,6 +23,8 @@ import {
 } from "@/api/hooks/useSupplies";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { Portal } from "@/components/Portal";
+import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
+import { PrintDispatchDialog } from "@/features/print-station/PrintDispatchDialog";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { formatDateTimeAsiaShanghai, formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
@@ -71,6 +73,11 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
 
   // PDF link modal
   const [linkModalRow, setLinkModalRow] = useState<SupplyClaimOrder | null>(null);
+  /** 正在预览《内部物品领用单》的那条记录（连同取回的字节与单号文件名） */
+  const [formPreview, setFormPreview] = useState<{ row: SupplyClaimOrder; blob: Blob; fileName: string } | null>(null);
+  /** 要派发到打印工位的领用单（临时文件，确认时才上传；取消则服务端不留东西） */
+  const [printFile, setPrintFile] = useState<File | null>(null);
+  const [printRowId, setPrintRowId] = useState<string | null>(null);
   const [linkRows, setLinkRows] = useState<SupplyClaimPdfLinkItem[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -135,6 +142,41 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
       setLinkRows([]);
     } finally {
       setLinkLoading(false);
+    }
+  };
+
+  /**
+   * 取领用单 PDF：先让后端生成/复用分享链接（出库后是出库那一刻归档的那一份，带出库人签名），
+   * 再用链接里的 token 把字节拉回来 —— 归档在私有目录，静态地址拉不到。
+   * **文件名用链接里带的**（就是单号，如 20260923-位亚磊-1.pdf），与纸面印的一致。
+   */
+  const resolveClaimForm = async (row: SupplyClaimOrder) => {
+    const created = await createOrReuseSupplyClaimPdfLink(row.id);
+    const url = created?.downloadUrl;
+    if (!url) throw new Error("领用单生成失败");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("领用单打开失败");
+    return { blob: await res.blob(), fileName: created?.fileName || `领用单-${row.id}.pdf` };
+  };
+
+  /** 预览：取一次字节，弹窗与「打印」共用同一份。 */
+  const openClaimForm = async (row: SupplyClaimOrder) => {
+    try {
+      const resolved = await resolveClaimForm(row);
+      setFormPreview({ row, ...resolved });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载领用单失败");
+    }
+  };
+
+  /** 打印领用单：取同一份字节落成 File，再交给派发弹窗选打印机（工位/份数在弹窗里选）。 */
+  const printClaimForm = async (row: SupplyClaimOrder) => {
+    try {
+      const resolved = await resolveClaimForm(row);
+      setPrintRowId(row.id);
+      setPrintFile(new File([resolved.blob], resolved.fileName, { type: "application/pdf" }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载领用单失败");
     }
   };
 
@@ -259,6 +301,20 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
                   <button
                     type="button"
                     className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800"
+                    onClick={() => void openClaimForm(detailClaim)}
+                  >
+                    预览领用单
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)]"
+                    onClick={() => void printClaimForm(detailClaim)}
+                  >
+                    打印
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800"
                     onClick={() => void openLinkModal(detailClaim)}
                   >
                     PDF 链接
@@ -367,6 +423,20 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
                         onClick={(e) => { e.stopPropagation(); void onExportClaim(row.id); }}
                       >
                         导出 Excel
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800"
+                        onClick={(e) => { e.stopPropagation(); void openClaimForm(row); }}
+                      >
+                        预览领用单
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]"
+                        onClick={(e) => { e.stopPropagation(); void printClaimForm(row); }}
+                      >
+                        打印
                       </button>
                       <button
                         type="button"
@@ -483,6 +553,32 @@ export default function MySuppliesRecordsPanel({ onClose }: { onClose: () => voi
       ) : null}
 
       {/* PDF Link modal */}
+      {formPreview ? (
+        <PdfPreviewDialog
+          title="内部物品领用单"
+          fileName={formPreview.fileName}
+          fetchPdf={async () => formPreview.blob}
+          onClose={() => setFormPreview(null)}
+        />
+      ) : null}
+
+      {/* 打印领用单：选打印机/份数交给派发弹窗 */}
+      {printFile && printRowId ? (
+        <PrintDispatchDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) {
+              setPrintFile(null);
+              setPrintRowId(null);
+            }
+          }}
+          sourceType="ADMIN_FILE"
+          sourceId={printRowId}
+          fileName={printFile.name}
+          pendingFile={printFile}
+        />
+      ) : null}
+
       {linkModalRow ? (
         <Portal>
           <div className="fixed inset-0 z-[calc(var(--z-modal)+10)] flex items-center justify-center bg-black/40 p-4" onClick={() => setLinkModalRow(null)}>

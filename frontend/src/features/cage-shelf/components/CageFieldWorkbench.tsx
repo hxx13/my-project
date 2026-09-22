@@ -614,13 +614,15 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
           placeholder="如 AUP_ANIMAL_STRAIN；留空 = 无动态源"
         />,
       )}
-      {form.optionsSource.trim() ? row("受AUP限制", yesNo(form.restrictToAup, (v) => setForm({ ...form, restrictToAup: v }))) : null}
+      {/* 「受AUP限制」开关已撤：它的旧含义是「候选不并入字段码表」，而表单里的「新增预设」
+          正是写进字段码表 —— 再排除掉它，用户刚加的候选当场看不见。候选永远是
+          「AUP 白名单（只读）∪ 字段码表」两条腿，没有可切换的余地。 */}
       {form.fieldType === "combo"
         ? row("允许自由输入", yesNo(form.allowManualInput, (v) => setForm({ ...form, allowManualInput: v })))
         : null}
       {row("允许新增预设", yesNo(form.allowAddOption, (v) => setForm({ ...form, allowAddOption: v })))}
       <div style={hintStyle}>
-        候选来源取自该笼位所属 AUP 白名单；「受AUP限制」开启候选仅取白名单，关闭则并入该字段码表。
+        候选 = 该笼位所属 AUP 的品系白名单（只读，由 AUP 模块维护）∪ 该字段自己的码表。表单里「新增预设」写的是后者，不回写 AUP。
       </div>
     </>
   ) : (
@@ -846,9 +848,7 @@ const CageFieldWorkbench = forwardRef<CageFieldWorkbenchHandle, CageFieldWorkben
             {metaCell("允许修改", editableLabel(selected.editable, selected.role))}
             {metaCell(
               "候选来源",
-              selectedConfig.optionsSource
-                ? selectedConfig.optionsSource + (selectedConfig.restrictToAup === "NO" ? "（不限AUP）" : "")
-                : "—",
+              selectedConfig.optionsSource ? selectedConfig.optionsSource : "—",
               { mono: true },
             )}
             {metaCell("排序", selected.sort != null ? String(selected.sort) : "—", { mono: true })}

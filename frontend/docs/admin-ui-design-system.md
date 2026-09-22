@@ -29,12 +29,16 @@
 
 | 语义 | `tone` | 说明 |
 |------|--------|------|
-| 主 | `primary` | 主色填充 + **2px 主色描边** |
-| 次 | `secondary` | 白底 + **2px 灰色描边** |
+| 主 | `primary` | 主色实色填充 + **1px 主色描边** |
+| 次 | `secondary` | 白底 + **1px 灰色描边** |
 | 幽灵 | `ghost` | 同 secondary（管理端不用无边框 ghost） |
-| 危险 | `destructive` | 浅红底 + **2px 红色描边** |
+| 危险 | `destructive` | 浅红底 + **1px 红色描边** |
 
-**所有 `AdminButton` 均带 `border-2` 与 `shadow-sm`**，避免主按钮（保存/提交/发布）看起来像纯文字。
+**所有 `AdminButton` 均带 `border`（1px）与 `shadow-sm`**，避免主按钮（保存/提交/发布）看起来像纯文字。描边取 **1px 不是 2px**——实色填充上 2px 显得笨重（实测后定的）。
+
+底色**一律实色**：禁止用 `color-mix(...,transparent)` 之类的半透明填充——在浅色页面上它会灰掉、发虚，浓度低了根本看不出是个按钮（15% 实测与底色只差 16-20 个通道值，肉眼近乎无差）。2026-08 有一版把它改成 `border-0` + 半透明底，与本文档相左，现已收回。
+
+危险态的字与描边用 `--app-color-feedback-danger-ink`，**不是** `--app-color-feedback-danger`：后者（红-500）压在 `danger-soft`（红-50）上实测只有 **4.36:1**，11px 标签过不了 WCAG AA；`danger-ink`（浅色主题=红-700）是 **7.63:1**。深色主题反过来，`danger-ink` 指向亮色。
 
 高度与工具栏一致时使用 `size="default"`（`h-9` 与 `--admin-control-height` 接近）。**禁用**时 `disabled` + 降低透明度；**loading** 时传 `loading` 显示旋转图标并自动 `disabled`；**active** 用于分段/列表「当前项」描边高亮（勿用 `ghost` 代替可点击操作）。
 

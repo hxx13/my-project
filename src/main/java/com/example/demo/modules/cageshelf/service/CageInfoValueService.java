@@ -142,11 +142,33 @@ public class CageInfoValueService {
             row.put("editable", Boolean.TRUE.equals(f.getEditable()));
             row.put("required", f.getRequired());
             row.put("sort", f.getSort());
-            row.put("value", readValue(f, v));
+            row.put("value", displayValue(f, readValue(f, v)));
             row.put("fillSource", v == null ? null : v.getFillSource());
             result.add(row);
         }
         return result;
+    }
+
+    /** 「使用时间」这个字段的 canonical（值来自 ARO 笼盒 createTime）。 */
+    private static final String USE_TIME_CANONICAL = "cage_use_time";
+
+    /**
+     * 读表单时的显示加工。目前只有「使用时间」一项：它的值是 ARO 笼盒的 {@code createTime}，
+     * 完整到秒（{@code 2026-09-18 15:18:27}），但笼位详情表单上只需要「哪天开始用的」。
+     *
+     * <p>裁在**读的这一处**：库里照旧存完整时间戳（追溯有用），而所有读表单的入口
+     * （管理端、学生认领确认页、小程序）都汇到 {@link #getInfo}，一处改完不会剩一条腿。
+     */
+    private static Object displayValue(CageInfoField f, Object value) {
+        if (f == null || !USE_TIME_CANONICAL.equals(f.getCanonical()) || value == null) return value;
+        return dateOnly(String.valueOf(value));
+    }
+
+    /** {@code 2026-09-18 15:18:27} → {@code 2026-09-18}；本来就只有日期、或认不出，原样返回。 */
+    static String dateOnly(String value) {
+        if (value == null) return null;
+        return value.length() >= 10 && value.charAt(4) == '-' && value.charAt(7) == '-'
+                ? value.substring(0, 10) : value;
     }
 
     /** 写某笼位的表单值。entry: { fieldId, value }。 */

@@ -33,6 +33,9 @@
     /* ── 反馈色 ── */
     --app-color-feedback-danger:        var(--color-red-500);
     --app-color-feedback-danger-soft:   var(--color-red-50);
+    /* 淡红底上的文字/描边色。红-500 压在红-50 上实测只有 4.36:1，11px 标签过不了
+       WCAG AA（4.5:1），所以淡底上的红字要再深一档 —— 红-700 实测 7.63:1。 */
+    --app-color-feedback-danger-ink:    var(--color-red-700);
     --app-color-feedback-warning:       var(--color-amber-500);
     --app-color-feedback-warning-soft:  var(--color-amber-50);
     --app-color-feedback-success:       var(--color-green-500);
@@ -187,6 +190,8 @@
     /* Feedback */
     --app-color-feedback-danger:        var(--color-red-400);
     --app-color-feedback-danger-soft:   var(--color-red-950);
+    /* 深色主题的淡红底是红-950（很暗），文字反而要用亮色，用红-400 得约 5.6:1 */
+    --app-color-feedback-danger-ink:    var(--app-color-feedback-danger);
     --app-color-feedback-warning:       var(--color-amber-400);
     --app-color-feedback-warning-soft:  var(--color-amber-950);
     --app-color-feedback-success:       var(--color-green-400);
@@ -308,6 +313,8 @@
     /* Feedback */
     --app-color-feedback-danger:        var(--color-red-400);
     --app-color-feedback-danger-soft:   var(--color-red-950);
+    /* 同上一块：深色主题淡红底很暗，文字用亮色 */
+    --app-color-feedback-danger-ink:    var(--app-color-feedback-danger);
     --app-color-feedback-warning:       var(--color-amber-400);
     --app-color-feedback-warning-soft:  var(--color-amber-950);
     --app-color-feedback-success:       var(--color-green-400);

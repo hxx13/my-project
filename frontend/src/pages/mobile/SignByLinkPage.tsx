@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { SignaturePad } from "@/components/signature/SignaturePad";
-import { SIGNATURE_CANVAS } from "@/components/signature/MySignatureCard";
+import { toast } from "react-hot-toast";
+import { SignatureFullscreenPad } from "@/components/signature/SignatureFullscreenPad";
 import {
   fetchSignatureLinkInfo,
   submitSignatureByLink,
@@ -9,10 +9,13 @@ import {
 } from "@/api/domains/signature.api";
 
 /**
- * 手机扫码打开的签名页（**公开、无登录态**）。
+ * 手机扫码 / 小程序网页模式打开的签名页（**公开、无登录态**）。
  *
- * <p>用途：电脑上没法手写 —— 在电脑上生成限时链接、手机扫码打开这里手写自己的签名。
+ * <p>用途：电脑上没法手写 —— 在电脑上生成限时链接、手机扫码打开这里手写自己的签名；
+ * 小程序「我的 → 电子签名」也走这里，不在小程序里另做手绘区。
  * 链接一次性，提交成功即失效。
+ *
+ * <p>签名区与手机端「我的」里的入口**共用** {@link SignatureFullscreenPad}：整屏横向、只有三个按钮。
  */
 export default function SignByLinkPage() {
   const { token = "" } = useParams<{ token: string }>();
@@ -33,21 +36,34 @@ export default function SignByLinkPage() {
   }, [token]);
 
   const handleSubmit = async () => {
-    if (!draft) {
-      setError("请先手写签名");
-      return;
-    }
+    if (!draft) return;
     setBusy(true);
-    setError(null);
     try {
       await submitSignatureByLink(token, draft);
       setDone(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "提交失败");
+      toast.error(e instanceof Error ? e.message : "提交失败");
     } finally {
       setBusy(false);
     }
   };
+
+  // 能签就整屏横着签（与手机端「我的」入口同一套）；加载中/出错/已提交才回到居中卡片
+  if (info && !done) {
+    return (
+      <SignatureFullscreenPad
+        value={draft}
+        onChange={setDraft}
+        onBack={() => {
+          if (window.history.length > 1) window.history.back();
+          else toast("可以关闭本页返回", { icon: "ℹ️" });
+        }}
+        onSubmit={() => void handleSubmit()}
+        busy={busy}
+        title={`为「${info.name || "本人"}」签署`}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-[var(--student-canvas-soft)] p-4">
@@ -55,7 +71,7 @@ export default function SignByLinkPage() {
         {done ? (
           <div className="py-10 text-center">
             <h1 className="text-xl font-bold text-[var(--twin-ink)]">签名已提交</h1>
-            <p className="mt-2 text-sm text-[var(--twin-mute)]">链接已失效，可以关闭此页面。</p>
+            <p className="mt-2 text-sm text-[var(--twin-mute)]">链接已失效，返回上一页即可 —— 签名已经记到你名下。</p>
           </div>
         ) : error && !info ? (
           <div className="py-10 text-center">
@@ -64,35 +80,7 @@ export default function SignByLinkPage() {
           </div>
         ) : !info ? (
           <div className="py-10 text-center text-sm text-[var(--twin-mute)]">加载中…</div>
-        ) : (
-          <>
-            <h1 className="text-lg font-bold text-[var(--twin-ink)]">手写签名</h1>
-            <p className="mt-1 text-sm text-[var(--twin-mute)]">
-              为「{info.name || "本人"}」签署。提交后不可更改。
-            </p>
-            <div className="mt-4">
-              <SignaturePad
-                value={draft}
-                onChange={setDraft}
-                outputSize={SIGNATURE_CANVAS}
-                format="png"
-                height={200}
-              />
-            </div>
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={busy || !draft}
-              className="mt-4 w-full rounded-lg bg-[var(--student-primary)] py-3 text-base font-medium text-white disabled:opacity-50"
-            >
-              {busy ? "提交中…" : "提交签名"}
-            </button>
-            <p className="mt-3 text-center text-xs text-[var(--twin-mute)]">
-              提交成功后此链接立即失效
-            </p>
-          </>
-        )}
+        ) : null}
       </div>
     </div>
   );

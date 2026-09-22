@@ -13,13 +13,18 @@ export interface SearchOption {
  * `search` 由调用方注入：选 AUP 传内存过滤（包成 Promise），选人传各自的接口。
  */
 export default function SearchSelect({
-  search, onPick, excludeKeys, placeholder = "搜索", emptyHint = "没有匹配项",
+  search, onPick, excludeKeys, placeholder = "搜索", emptyHint = "没有匹配项", onDismiss,
 }: {
   search: (keyword: string) => Promise<SearchOption[]>;
   onPick: (opt: SearchOption) => void;
   excludeKeys?: string[];
   placeholder?: string;
   emptyHint?: string;
+  /**
+   * 点组件外部或按 Esc 时触发。调用方借此**退出编辑态** —— 不传的话只有「选中一项」才能
+   * 离开，打开后改了主意就无路可退（人员档案的部门/课题组字段踩过这个）。
+   */
+  onDismiss?: () => void;
 }) {
   const [kw, setKw] = useState("");
   const [rows, setRows] = useState<SearchOption[]>([]);
@@ -29,13 +34,26 @@ export default function SearchSelect({
   /** search 走 ref：调用方常传内联箭头函数，进依赖数组会每渲染重查 → 死循环 */
   const searchRef = useRef(search);
   searchRef.current = search;
+  /** onDismiss 同理走 ref：否则调用方传内联箭头 → 每次渲染重挂 document 监听 */
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        dismissRef.current?.();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); dismissRef.current?.(); }
     };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   /** 空串也查一次：划分模式要一进来就看到本课题组名单，不是非得先打字 */

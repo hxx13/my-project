@@ -61,4 +61,7 @@ public interface CageOrderReservationMapper {
 
     /** 清理孤儿预定：购物车行没了也没挂订单的 LOCKED 行（进程崩溃等残留）。 */
     int releaseOrphans(@Param("reason") String reason);
+
+    /** 同上判据的待释放行：释放前要先按 written_json 撤掉预填进笼位表单的值。 */
+    List<CageOrderReservation> listOrphans();
 }

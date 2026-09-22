@@ -63,6 +63,7 @@ public class CageClaimService {
     private final CageIntermediateStateService intermediateStateService;
     private final CageVisibilityPolicy visibilityPolicy;
     private final CageRegionCapabilityService regionCapabilityService;
+    private final CageOccupancyService occupancyService;
 
     public CageClaimService(CageClaimMapper claimMapper,
                             CageCellDetailMapper detailMapper,
@@ -85,7 +86,8 @@ public class CageClaimService {
                             CageDivisionService divisionService,
                             CageIntermediateStateService intermediateStateService,
                             CageVisibilityPolicy visibilityPolicy,
-                            CageRegionCapabilityService regionCapabilityService) {
+                            CageRegionCapabilityService regionCapabilityService,
+                            CageOccupancyService occupancyService) {
         this.claimMapper = claimMapper;
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
@@ -108,6 +110,7 @@ public class CageClaimService {
         this.intermediateStateService = intermediateStateService;
         this.visibilityPolicy = visibilityPolicy;
         this.regionCapabilityService = regionCapabilityService;
+        this.occupancyService = occupancyService;
     }
 
     private String displayNameOf(User user) {
@@ -621,6 +624,16 @@ public class CageClaimService {
         }
         claimMapper.update(claim);
 
+        // 释放审批通过 = 笼位真的腾空了，必须把占用字段一起撤掉。
+        // 只翻 claim 状态的话，实验员/动物字段会永远留在笼位上（与订购预定释放漏撤字段同一类病，
+        // 见 CageOrderReservationService.releaseOrphans 的注释）。走统一归档出口清占用/动物/状态 +
+        // 回空笼盒，AUP 与课题组归属照旧保留。放在 update 之后：此时认领已不是活跃态，
+        // archive 只做清理、不会再释放一次认领、也不会重复写一条审批记录。
+        if (isReleaseApproval && "approved".equals(decision)) {
+            occupancyService.archive(claim.getAnimalCageId(), approver.getId(),
+                    "释放审批通过" + (reason != null && !reason.isBlank() ? "：" + reason : ""));
+        }
+
         // 写审批记录
         ApprovalRecord ar = new ApprovalRecord();
         ar.setTargetType(isClaimApproval ? "cage_claim" : "cage_release");
@@ -783,10 +796,10 @@ public class CageClaimService {
                 claim.setNote("管理员认领");
                 if (!confirmReq) claim.setConfirmedAt(DT_FMT.format(LocalDateTime.now()));
                 claimMapper.insert(claim);
-                if (claim.getClaimantName() != null && !claim.getClaimantName().isBlank()) {
-                    infoValueService.syncFromMapped(cageId, Map.of("experimenter_name", claim.getClaimantName()));
-                }
                 infoValueService.seedFromDetail(cageId);
+                // 实验员不在这里写：它只该在占用真正生效时落（applyOccupancy / 学生到场确认）。
+                // 原先这行落在 confirmReq 判断之外，发给「需到场确认」的学生时笼位还没被占用就先挂了实验员，
+                // 学生不确认或超时驳回就留下一个「空着却挂着人」的笼位；单个 assign 没这毛病，两条路曾经不一致。
                 if (!confirmReq) applyOccupancy(claim);
                 out.add(Map.of("animalCageId", cageId, "ok", true, "claimId", claim.getId()));
             } catch (Exception e) {

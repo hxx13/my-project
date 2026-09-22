@@ -27,7 +27,6 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
-import com.example.demo.modules.upload.service.UploadFileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -75,7 +74,7 @@ public class SuppliesService {
     private final SupplyOperationLogMapper operationLogMapper;
     private final SupplyUserViewStateMapper supplyUserViewStateMapper;
     private final SupplyUserCartMapper supplyUserCartMapper;
-    private final UploadFileService uploadFileService;
+    private final SupplyClaimFormService claimFormService;
     private final NotificationService notificationService;
     private final NotificationSettingsMapper notificationSettingsMapper;
     private final UserMapper userMapper;
@@ -87,6 +86,20 @@ public class SuppliesService {
     private String appPublicBaseUrl;
     @Value("${app.pdf.font-path:}")
     private String appPdfFontPath;
+    /**
+     * 领用单归档目录。**私有目录**：领用单上有姓名、楼层、逐条物品与数量，
+     * 不放免鉴权的 {@code /api/upload/files/}（那里知道路径就能拉）。转移单当初也是这么定的。
+     */
+    @Value("${app.supplies.claim-form-dir:./data/supply-claim-forms}")
+    private String claimFormDir;
+
+    /**
+     * 批量导出领用单一次最多几张。
+     *
+     * <p>收得比转移单的 50 紧：物资这边每张要过一遍 LibreOffice（没有归档件时），
+     * 20 张首渲就要一分钟上下，再多容易撞上网关超时。
+     */
+    private static final int MAX_BATCH_FORMS = 20;
 
     public SuppliesService(SupplyCategoryMapper categoryMapper,
                            SupplyItemMapper itemMapper,
@@ -98,7 +111,7 @@ public class SuppliesService {
                            SupplyOperationLogMapper operationLogMapper,
                            SupplyUserViewStateMapper supplyUserViewStateMapper,
                            SupplyUserCartMapper supplyUserCartMapper,
-                           UploadFileService uploadFileService,
+                           SupplyClaimFormService claimFormService,
                            NotificationService notificationService,
                            NotificationSettingsMapper notificationSettingsMapper,
                            UserMapper userMapper,
@@ -116,7 +129,7 @@ public class SuppliesService {
         this.operationLogMapper = operationLogMapper;
         this.supplyUserViewStateMapper = supplyUserViewStateMapper;
         this.supplyUserCartMapper = supplyUserCartMapper;
-        this.uploadFileService = uploadFileService;
+        this.claimFormService = claimFormService;
         this.notificationService = notificationService;
         this.notificationSettingsMapper = notificationSettingsMapper;
         this.userMapper = userMapper;
@@ -1160,12 +1173,19 @@ public class SuppliesService {
     /**
      * 工作台「已处理」：最近出库/撤回的领用单；管理员看全量，非管理员仅本人。
      */
-    public List<SupplyClaimOrderView> listRecentClosedClaims(User user, int limit) {
-        int lim = Math.min(Math.max(limit, 1), 100);
+    /**
+     * @param status 只看某种终局状态（如 {@code FULFILLED} 只看已完成）；null/空 = 已完成 + 已撤回都算。
+     *               **过滤下沉到 SQL** —— 先 LIMIT 再在 Java 里筛会漏掉被截断掉的那些单。
+     */
+    public List<SupplyClaimOrderView> listRecentClosedClaims(User user, int limit, String status) {
+        // 上限 500：管理端「已处理」tab 要能看到**所有**已完成的领用单（好按单查、补打领用单），
+        // 原来夹在 100 会把历史单截掉一半（2026-09-22 实测已有 124 张已完成）。
+        int lim = Math.min(Math.max(limit, 1), 500);
+        String st = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
         if (canProcessClaims(user)) {
-            return toOrderViews(claimOrderMapper.listRecentClosedAll(lim), true);
+            return toOrderViews(claimOrderMapper.listRecentClosedAll(lim, st), true);
         }
-        return toOrderViews(claimOrderMapper.listRecentClosedByUser(user.getId(), lim), true);
+        return toOrderViews(claimOrderMapper.listRecentClosedByUser(user.getId(), lim, st), true);
     }
 
     public Map<String, Object> listMine(User user, String status, int page, int size) {
@@ -1314,13 +1334,21 @@ public class SuppliesService {
             return Result.error("无权限查看");
         }
         LocalDateTime now = LocalDateTime.now();
-        claimExportFileMapper.markExpired(now);
+        // 2026-09-22：这里原来有一句「全表 markExpired」——**别再放回来**。
+        // 它对存量行做无条件 UPDATE，与并发 INSERT 新归档件抢锁，实测死锁
+        // （Deadlock found ... UPDATE supply_claim_export_file SET status='EXPIRED'）。
+        // 而且它本来就是多余的：到期判定处处是懒算的（selectLatestValid 用 expire_at > now、
+        // 展示层 toClaimExportLinkView 现算 EXPIRED、取字节前也校验 expire_at）。
         SupplyClaimExportFile reusable = claimExportFileMapper.selectLatestValid(cid, now);
-        if (reusable != null) {
+        // 出库前预览留下的那份没有出库人签名；迁移前的老归档落在公开目录、新的私有目录端点读不到
+        // —— 两种都当不可复用，重新渲染一份新的
+        if (reusable != null && isReusable(reusable, order)) {
             return Result.success(toClaimExportLinkView(reusable, true));
         }
         byte[] pdf = buildClaimPdfBytes(order);
-        String fileName = "SC_" + cid.replaceAll("[^A-Za-z0-9_-]", "") + "_" + now.format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmm")) + ".pdf";
+        // 导出/归档名 = **单号**（日期-姓名-序号），与纸面上印的一模一样 ——
+        // 对着一份纸找文件才找得着（原来叫 SC_<uuid>，与纸面对不上）。
+        String fileName = claimFormService.docNo(order) + ".pdf";
         String storageKey = saveClaimPdfToLocal(fileName, pdf);
         SupplyClaimExportFile row = new SupplyClaimExportFile();
         row.setId("SCEF_" + UUID.randomUUID().toString().replace("-", ""));
@@ -1346,7 +1374,7 @@ public class SuppliesService {
         if (!canProcessClaims(user) && !user.getId().equals(order.getUserId())) {
             return Result.error("无权限查看");
         }
-        claimExportFileMapper.markExpired(LocalDateTime.now());
+        // 不给过期的置 EXPIRED：状态由展示层懒算（见 createOrReuseClaimPdfLink 里的说明）
         List<Map<String, Object>> links = claimExportFileMapper.listByClaimId(cid, 20).stream()
                 .map(row -> toClaimExportLinkView(row, false))
                 .toList();
@@ -1376,7 +1404,75 @@ public class SuppliesService {
         if (updated <= 0) {
             return Result.error("链接删除失败");
         }
+        // 归档件在私有目录里，删链接时把文件一并删掉，免得目录里堆孤儿文件
+        deleteClaimFormFileQuietly(target.getStorageKey());
         return Result.success();
+    }
+
+    /** 删归档文件（存的是文件名）。老记录的 storage_key 是旧的公开路径，越出目录一律跳过。 */
+    private void deleteClaimFormFileQuietly(String storageKey) {
+        if (!StringUtils.hasText(storageKey)) return;
+        try {
+            Path base = claimFormDir();
+            Path file = base.resolve(storageKey).normalize();
+            if (file.startsWith(base)) Files.deleteIfExists(file);
+        } catch (Exception e) {
+            log.warn("[supplies] 删除归档文件失败 {}: {}", storageKey, e.getMessage());
+        }
+    }
+
+    /**
+     * 归档件是不是「早于出库那一刻」的旧版。
+     *
+     * <p>单子上的实际出库量、实际领用日期、出库人签名都是出库时才有；出库前谁预览过一次、
+     * 那份 PDF 就被缓存成「最新有效」了，出库后再拿它给用户看就是一张缺了签名与实发量的单子。
+     */
+    private static boolean isStaleForOrder(SupplyClaimExportFile row, SupplyClaimOrder order) {
+        if (order == null || order.getFulfilledAt() == null) return false;
+        return row.getCreatedTime() == null || row.getCreatedTime().isBefore(order.getFulfilledAt());
+    }
+
+    /**
+     * 归档件能不能直接复用：必须是出库之后生成的，且**在私有目录里读得到**。
+     *
+     * <p>后半条是为迁移前的存量记录：那些 {@code storage_key} 是 {@code /api/upload/files/…} 的公开路径，
+     * 文件不在私有目录里，新的下载端点读不到。当成不可复用重新渲染一份，老单子照样能出单。
+     */
+    private boolean isReusable(SupplyClaimExportFile row, SupplyClaimOrder order) {
+        if (isStaleForOrder(row, order)) return false;
+        if (!StringUtils.hasText(row.getStorageKey())) return false;
+        Path base = claimFormDir();
+        Path file = base.resolve(row.getStorageKey()).normalize();
+        return file.startsWith(base) && Files.isRegularFile(file);
+    }
+
+    /** 归档件：字节 + 对外文件名（单号.pdf），给下载端点同时设置响应头。 */
+    public record ClaimFormFile(byte[] bytes, String fileName) {
+    }
+
+    /**
+     * 按 token 读归档 PDF 字节（给带令牌的下载端点直出）。
+     *
+     * <p>从前那个端点是 302 跳到 {@code /api/upload/files/…} 静态文件；归档改到私有目录后静态地址
+     * 拿不到，改由后端读盘输出 —— **令牌就是能力**，不再依赖目录可公开访问。
+     */
+    public ClaimFormFile readClaimPdfByToken(String token) {
+        if (!StringUtils.hasText(token)) return null;
+        SupplyClaimExportFile row = claimExportFileMapper.findByToken(token.trim());
+        LocalDateTime now = LocalDateTime.now();
+        if (row == null || !"READY".equalsIgnoreCase(str(row.getStatus()))) return null;
+        if (row.getExpireAt() == null || !row.getExpireAt().isAfter(now)) return null;
+        if (!StringUtils.hasText(row.getStorageKey())) return null;
+        try {
+            Path base = claimFormDir();
+            Path file = base.resolve(row.getStorageKey()).normalize();
+            // storage_key 是我们自己生成的文件名，但仍然守一道：不许越出归档目录
+            if (!file.startsWith(base) || !Files.isRegularFile(file)) return null;
+            return new ClaimFormFile(Files.readAllBytes(file), row.getFileName());
+        } catch (Exception e) {
+            log.warn("[supplies] 读取归档 PDF 失败 token={}: {}", token, e.getMessage());
+            return null;
+        }
     }
 
     public Result<Map<String, Object>> resolveClaimPdfDownload(String token) {
@@ -1386,11 +1482,11 @@ public class SuppliesService {
         if (row == null) return Result.error("下载链接不存在");
         if (!"READY".equalsIgnoreCase(str(row.getStatus()))) return Result.error("下载链接不可用，请重新生成");
         if (row.getExpireAt() == null || !row.getExpireAt().isAfter(now)) {
-            claimExportFileMapper.markExpired(now);
             return Result.error("链接已过期，请重新生成");
         }
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("downloadUrl", resolvePublicUrl(row.getStorageKey()));
+        // 归档件在私有目录，storage_key 只是文件名 —— 对外只给带令牌的端点
+        data.put("downloadUrl", resolvePublicUrl("/api/supplies/claims/download/" + row.getDownloadToken()));
         data.put("fileName", row.getFileName());
         data.put("expireAt", row.getExpireAt());
         data.put("claimId", row.getClaimId());
@@ -1464,7 +1560,9 @@ public class SuppliesService {
             recordInventoryMovement("OUTBOUND", dl.getItemId(), out, stockAfter, orderId, dl.getId(),
                     admin.getId(), locked.getUserId(), remark);
         }
-        int uo = claimOrderMapper.updateFulfilled(orderId, admin.getId(), LocalDateTime.now());
+        // 领用楼层：空白存 NULL 而不是空串，免得单子上印出一段空白又被当成「填过」
+        String claimFloor = StringUtils.hasText(req.getClaimFloor()) ? req.getClaimFloor().trim() : null;
+        int uo = claimOrderMapper.updateFulfilled(orderId, admin.getId(), LocalDateTime.now(), claimFloor);
         if (uo == 0) {
             throw new IllegalStateException("更新订单状态失败");
         }
@@ -1477,8 +1575,62 @@ public class SuppliesService {
         logOp("ORDER_FULFILL", "CLAIM_ORDER", orderId, admin.getId(), detail);
         logOp("OUTBOUND", "CLAIM_ORDER", orderId, admin.getId(), detail);
         SupplyClaimOrder done = claimOrderMapper.findById(orderId);
+        // 出库终局就把这张带签名的领用单落档（失败只记日志，见方法注释）
+        archiveClaimFormQuietly(done, admin);
         publishClaimFulfilled(admin, done, grantedItemNames);
         return Result.success(toOrderView(done, true));
+    }
+
+    /**
+     * 出库终局时把领用单归档（生成/复用那条分享链路里的 PDF）。
+     *
+     * <p>**失败只记日志**：归档是留痕，库存与订单状态此时已经落库，不能因为 LibreOffice 挂了
+     * 或模板缺失就把整次出库回滚掉 —— 与转移单 {@code archiveTransferFormQuietly} 同口径。
+     *
+     * <p>这里是自己调自己（同一个 bean 内），不走事务代理，所以即使抛也不会把外层事务标记成
+     * rollback-only；异常在本方法里吞掉。
+     */
+    private void archiveClaimFormQuietly(SupplyClaimOrder order, User operator) {
+        if (order == null || operator == null) return;
+        try {
+            createOrReuseClaimPdfLink(operator, order.getId());
+        } catch (Exception e) {
+            log.warn("[supplies] 领用单归档失败 order={}: {}", order.getId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 批量导出领用单：逐条取 PDF（已有可用归档件就复用，没有才现渲），合并成一份多页。
+     *
+     * <p>顺序即入参顺序，前端按列表顺序传。任一条取不到就整批失败并点名 —— 悄悄跳过会让出库的人
+     * 以为全都打出来了，而纸上少一张是不会有人回头核的（与转移单批量打印同口径）。
+     */
+    public byte[] batchClaimFormPdfs(User user, List<String> claimIds) {
+        List<String> ids = claimIds == null ? List.of()
+                : claimIds.stream().filter(StringUtils::hasText).map(String::trim).distinct().toList();
+        if (ids.isEmpty()) throw new TwinBusinessException(400, "请先选择要导出的领用单");
+        if (ids.size() > MAX_BATCH_FORMS) {
+            throw new TwinBusinessException(400, "一次最多导出 " + MAX_BATCH_FORMS + " 张，当前选了 " + ids.size() + " 张");
+        }
+        List<byte[]> parts = new ArrayList<>(ids.size());
+        for (String id : ids) {
+            SupplyClaimOrder order = claimOrderMapper.findById(id);
+            if (order == null) throw new TwinBusinessException(404, "领用单不存在：" + id);
+            Result<Map<String, Object>> link = createOrReuseClaimPdfLink(user, id);
+            Map<String, Object> data = link == null ? null : link.getData();
+            String token = data == null || data.get("downloadToken") == null
+                    ? null : String.valueOf(data.get("downloadToken"));
+            ClaimFormFile pdf = readClaimPdfByToken(token);
+            if (pdf == null || pdf.bytes() == null || pdf.bytes().length == 0) {
+                throw new TwinBusinessException(500, "领用单生成失败：" + id);
+            }
+            parts.add(pdf.bytes());
+        }
+        try {
+            return SupplyClaimFormService.mergePdfs(parts);
+        } catch (IOException e) {
+            throw new TwinBusinessException(500, "合并领用单失败：" + e.getMessage());
+        }
     }
 
     public Map<String, Object> listOperationLogs(String opType, int page, int size) {
@@ -1494,41 +1646,15 @@ public class SuppliesService {
         return data;
     }
 
+    /**
+     * 领用单 PDF：**拿校方原件当模板回填**，不是自己画的版式。
+     *
+     * <p>2026-09-22 之前这里是 PDFBox 逐行画的纯文字版（标题「物资领用记录PDF」），只够当内部记录；
+     * 现在改成《实验动物科学部内部物品领用单》模板渲染 —— 取数、单号、两个电子签名都在
+     * {@link SupplyClaimFormService} 里，本方法只剩转发，好让下面的分享链接链路一行都不用动。
+     */
     private byte[] buildClaimPdfBytes(SupplyClaimOrder order) {
-        List<SupplyClaimLine> lines = claimLineMapper.listByOrderId(order.getId());
-        try (PDDocument document = new PDDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            PDFont font = loadPreferredFont(document);
-            PDPage page = new PDPage(PDRectangle.A4);
-            document.addPage(page);
-            PDPageContentStream stream = new PDPageContentStream(document, page);
-            float y = 800f;
-            y = writePdfLine(stream, font, 16f, 50f, y, "物资领用记录PDF");
-            y -= 4f;
-            y = writePdfLine(stream, font, 10f, 50f, y, "导出时间: " + LocalDateTime.now().format(PDF_TIME));
-            y = writePdfLine(stream, font, 11f, 50f, y, "领用单号: " + str(order.getId()));
-            y = writePdfLine(stream, font, 11f, 50f, y, "申请人: " + resolveDisplayName(order.getUserId()));
-            y = writePdfLine(stream, font, 11f, 50f, y, "状态: " + str(order.getStatus()));
-            y = writePdfLine(stream, font, 11f, 50f, y, "申请时间: " + formatTime(order.getCreatedAt()));
-            if (order.getFulfilledAt() != null) {
-                y = writePdfLine(stream, font, 11f, 50f, y, "完成时间: " + formatTime(order.getFulfilledAt()));
-            }
-            if (StringUtils.hasText(order.getFulfilledBy())) {
-                y = writePdfLine(stream, font, 11f, 50f, y, "处理人: " + resolveDisplayName(order.getFulfilledBy()));
-            }
-            y -= 3f;
-            y = writePdfLine(stream, font, 12f, 50f, y, "领用清单");
-            for (SupplyClaimLine line : lines) {
-                String text = "- " + str(line.getSnapshotName())
-                        + " / 申请 " + (line.getQty() == null ? 0 : line.getQty())
-                        + " / 实发 " + (line.getFulfilledQty() == null ? 0 : line.getFulfilledQty());
-                y = writePdfLine(stream, font, 10f, 50f, y, text);
-            }
-            stream.close();
-            document.save(output);
-            return output.toByteArray();
-        } catch (Exception e) {
-            throw new IllegalStateException("生成PDF失败: " + e.getMessage(), e);
-        }
+        return claimFormService.renderPdf(order);
     }
 
     private Map<String, Object> toClaimExportLinkView(SupplyClaimExportFile row, boolean reused) {
@@ -1553,20 +1679,28 @@ public class SuppliesService {
         return out;
     }
 
+    /**
+     * 把 PDF 写进**私有**归档目录，返回文件名（存进 {@code supply_claim_export_file.storage_key}）。
+     *
+     * <p>从前写进 {@code /api/upload/files/} 那个免鉴权公开目录、storage_key 存的是可公开访问的路径；
+     * 领用单上有姓名、楼层与逐条物品数量，改到私有目录，下载一律经带令牌的后端端点直出。
+     */
     private String saveClaimPdfToLocal(String fileName, byte[] content) {
-        String dateDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String unique = UUID.randomUUID().toString().replace("-", "");
         String safeName = (StringUtils.hasText(fileName) ? fileName : "claim.pdf").replaceAll("[^A-Za-z0-9._-]", "_");
         String finalName = unique + "_" + safeName;
         try {
-            Path dir = uploadFileService.resolveBaseDir().resolve(dateDir).normalize();
+            Path dir = claimFormDir();
             Files.createDirectories(dir);
-            Path target = dir.resolve(finalName).normalize();
-            Files.write(target, content);
-            return "/api/upload/files/" + dateDir + "/" + finalName;
+            Files.write(dir.resolve(finalName).normalize(), content);
+            return finalName;
         } catch (Exception e) {
             throw new IllegalStateException("保存PDF失败: " + e.getMessage(), e);
         }
+    }
+
+    private Path claimFormDir() {
+        return Path.of(claimFormDir).toAbsolutePath().normalize();
     }
 
     private String resolvePublicUrl(String path) {
@@ -1623,48 +1757,6 @@ public class SuppliesService {
     private String formatTime(LocalDateTime time) {
         if (time == null) return "";
         return time.format(PDF_TIME);
-    }
-
-    private PDFont loadPreferredFont(PDDocument document) throws IOException {
-        String configured = trimOrNull(appPdfFontPath);
-        if (configured != null) {
-            PDFont loaded = loadCjkFontFromFile(document, new File(configured));
-            if (loaded != null) return loaded;
-        }
-        try (InputStream in = getClass().getResourceAsStream("/fonts/NotoSansSC-Regular.ttf")) {
-            if (in != null) return PDType0Font.load(document, in, true);
-        }
-        for (String p : List.of(
-                "C:/Windows/Fonts/msyh.ttc",
-                "C:/Windows/Fonts/msyh.ttf",
-                "C:/Windows/Fonts/simsun.ttc",
-                "C:/Windows/Fonts/simsun.ttf"
-        )) {
-            PDFont loaded = loadCjkFontFromFile(document, new File(p));
-            if (loaded != null) return loaded;
-        }
-        throw new IOException("未找到可用中文字体，请配置 app.pdf.font-path");
-    }
-
-    private PDFont loadCjkFontFromFile(PDDocument document, File file) throws IOException {
-        if (file == null || !file.isFile()) return null;
-        String name = file.getName().toLowerCase(Locale.ROOT);
-        if (name.endsWith(".ttc")) {
-            try (TrueTypeCollection collection = new TrueTypeCollection(file)) {
-                List<TrueTypeFont> fonts = new ArrayList<>();
-                collection.processAllFonts(fonts::add);
-                if (!fonts.isEmpty()) {
-                    return PDType0Font.load(document, fonts.get(0), true);
-                }
-            }
-            return null;
-        }
-        if (name.endsWith(".ttf") || name.endsWith(".otf")) {
-            try (FileInputStream in = new FileInputStream(file)) {
-                return PDType0Font.load(document, in, true);
-            }
-        }
-        return null;
     }
 
     private float writePdfLine(PDPageContentStream stream, PDFont font, float fontSize, float x, float y, String text) throws Exception {
@@ -2087,6 +2179,7 @@ public class SuppliesService {
         v.setCreatedAt(o.getCreatedAt());
         v.setFulfilledAt(o.getFulfilledAt());
         v.setFulfilledBy(o.getFulfilledBy());
+        v.setClaimFloor(o.getClaimFloor());
         v.setDeleted(o.getDeleted());
         v.setDeletedTime(o.getDeletedTime());
         v.setDeletedBy(o.getDeletedBy());

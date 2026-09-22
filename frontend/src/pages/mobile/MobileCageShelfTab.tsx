@@ -599,6 +599,13 @@ export const GridCellButton = memo(function GridCellButton({
           )}
         </>
       )}
+      {/* 已选：蓝环之上再加一枚居中绿勾（与小程序 cage-grid 的 .cg-selcheck 同口径，
+          公用件——任何宿主传 selected 都该看到它，不加开关）。 */}
+      {selected && (
+        <span className="pointer-events-none absolute left-1/2 top-1/2 z-40 grid size-4 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white shadow-[0_0_0_2px_rgba(22,163,74,0.55)]">
+          <Check className="size-2.5 text-[#16a34a]" strokeWidth={4} />
+        </span>
+      )}
       {/* 分到几只（照小程序 .cg-qty）：右下角 ×N，压在底部色条之上（z-30） */}
       {qty != null && qty > 0 && (
         <span className="ao-cell-qty pointer-events-none absolute bottom-0 right-0 z-30 rounded-tl-md bg-blue-600 px-1 text-[8px] font-bold leading-[12px] text-white">
@@ -1850,6 +1857,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   // ── 批量转移缓冲抽屉（跨房间选多源 → 逐源配目标 → 一次提交成一张转移单） ──
   const [batchAnchor, setBatchAnchor] = useState<BatchSource | null>(null);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [batchMode, setBatchMode] = useState<"transfer" | "divide">("transfer");
 
   // ── 扫码缓存（支持连续扫码，统一提交） ──
   const [scanOpen, setScanOpen] = useState(false);
@@ -3110,6 +3118,20 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
                 roomId: String(selectedShelf?.roomId ?? ""),
                 roomName: String(selectedShelf?.roomName ?? ""),
               });
+              setBatchMode("transfer");
+              setBatchOpen(true);
+            }}
+            onStartDivide={(s) => {
+              setSelectedCell(null);
+              setBatchAnchor({
+                animalCageId: String(s.animalCageId),
+                label: String(s.position ?? ""),
+                shelveId: String(selectedShelf?.shelveId ?? ""),
+                shelveName: String(selectedShelf?.shelveName ?? ""),
+                roomId: String(selectedShelf?.roomId ?? ""),
+                roomName: String(selectedShelf?.roomName ?? ""),
+              });
+              setBatchMode("divide");
               setBatchOpen(true);
             }}
             onChanged={() => setDetailReloadKey((k) => k + 1)}
@@ -3130,6 +3152,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
           <MobileBatchTransferSheet
             open={batchOpen}
             anchor={batchAnchor}
+            mode={batchMode}
             shelves={shelves}
             onClose={() => { setBatchOpen(false); setBatchAnchor(null); }}
             onDone={() => {

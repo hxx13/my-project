@@ -1177,13 +1177,6 @@ page,
 
 
 
-.detail-qr-canvas-offscreen {
-  position: fixed;
-  left: -9999px;
-  top: -9999px;
-  width: 160px;
-  height: 160px;
-}
 .gt-legend-btn {
   display: flex;
   align-items: center;
@@ -3792,11 +3785,40 @@ page,
 /* ── 批量转移缓冲抽屉专属 ─────────────────────────────────────── */
 .bt-sheet { max-height: 94vh; }
 
-/* 动作行：右对齐（树与网格两屏共用） */
-.bt-acts-row {
+/* 动作条：屏 B 时「返回 + 架名/房号」在左、动作按钮在右，**同一行**；
+   屏 A 左侧留空、按钮右对齐（用户 2026-09-21 口径：按钮不要再单独占一整行）。
+   按钮缩到 52rpx 档 —— 抄来的 .cage-act 是 64rpx，那是按订购抽屉「与房间 tab 同行」定的，
+   这里和文字挤在一行会显得过大。只收紧高度/内距/字号，颜色与「实底」规则不动。 */
+.bt-bar {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10rpx;
+  align-items: center;
+  gap: 12rpx;
+  padding: 10rpx 32rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+.bt-bar-ctx { flex: 1; min-width: 0; }
+.bt-bar-back {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 6rpx 0;
+}
+.bt-bar-name {
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.bt-bar-room {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.bt-bar .cage-act {
+  height: 52rpx;
+  padding: 0 20rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
 }
 
 /* 树状列表：校区（可折叠）→ 房间（可折叠）→ 架行 */
@@ -3858,38 +3880,6 @@ page,
 }
 
 /* 屏 B · 单架网格顶栏 */
-.bt-grid-bar {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-bottom: 10rpx;
-}
-.bt-grid-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4rpx;
-  height: 52rpx;
-  padding: 0 10rpx;
-  font-size: 24rpx;
-  color: #334155;
-}
-.bt-grid-titles {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.bt-grid-name {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #1f2937;
-}
-.bt-grid-sub {
-  margin-top: 2rpx;
-  font-size: 21rpx;
-  color: #94a3b8;
-}
-
 .bt-empty {
   padding: 40rpx 0;
   text-align: center;
@@ -3932,11 +3922,54 @@ page,
   color: #2563eb;
 }
 
+/* 分笼的「源笼位」行：源固定（入口那一格）+「保留/归档源笼位」开关。
+   开关放这一行常驻，而不是埋进确认弹窗 —— 它决定源笼位会不会被归档清空，
+   是这个操作里唯一的关键分岔，选目标时就得看得见。 */
+.bt-srcrow {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 10rpx 32rpx 2rpx;
+}
+.bt-srcrow-label {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.bt-srcrow-pos {
+  flex: 1;
+  min-width: 0;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bt-srcrow-keep {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.bt-srcrow-keep-txt {
+  font-size: 22rpx;
+  color: #334155;
+}
+/* 切到「归档源笼位」= 会清空源笼位（不可逆），用琥珀提醒一句。
+   只是文字色，不铺色块 —— 基线禁成片大红大绿；琥珀在本项目已是既有的警示色。 */
+.bt-srcrow-keep-txt--warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
 /* 底部缓冲/配对条：常驻在网格下方，不参与滚动 */
+/* 缓冲 / 配对条：放在渲染区**上方**（用户 2026-09-21 口径），不再钉在抽屉底部。
+   因此没有 safe-area 内距，分隔线也从 border-top 改成 border-bottom（它下面是动作条）。 */
 .bt-buffer {
   flex-shrink: 0;
-  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
-  border-top: 1rpx solid #eef0f4;
+  padding: 8rpx 32rpx 10rpx;
 }
 .bt-buffer-hd {
   display: flex;

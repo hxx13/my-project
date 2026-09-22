@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.reportform.util.ReportFormExportFilename;
 import com.example.demo.modules.supplies.dto.CreateSupplyClaimRequest;
 import com.example.demo.modules.supplies.dto.SupplyClaimApplicantOption;
 import com.example.demo.modules.supplies.dto.SupplyClaimOrderView;
@@ -20,7 +21,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -174,13 +174,14 @@ public class SuppliesController {
     }
 
     @GetMapping("/claims/recent-closed")
-    @Operation(summary = "最近已关闭领用单（出库完成/撤回；管理员全量，非管理员仅本人）")
+    @Operation(summary = "最近已关闭领用单（出库完成/撤回；管理员全量，非管理员仅本人）；status 可选只看某一种终局状态")
     public Result<List<SupplyClaimOrderView>> recentClosedClaims(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                                                 @RequestParam(defaultValue = "30") int limit) {
+                                                                 @RequestParam(defaultValue = "30") int limit,
+                                                                 @RequestParam(required = false) String status) {
         User user = resolveUser(authorization);
         Result<?> denied = capabilityPolicyService.requireSubmit(user, BizDomains.SUPPLIES_CLAIM);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(suppliesService.listRecentClosedClaims(user, limit));
+        return Result.success(suppliesService.listRecentClosedClaims(user, limit, status));
     }
 
     @GetMapping("/claims/mine")
@@ -346,19 +347,21 @@ public class SuppliesController {
     }
 
     @GetMapping("/claims/download/{token}")
-    @Operation(summary = "根据下载令牌跳转领取用记录PDF")
+    @Operation(summary = "根据下载令牌直接输出领用单 PDF")
     public ResponseEntity<?> downloadClaimPdfByToken(@PathVariable String token) {
-        Result<Map<String, Object>> result = suppliesService.resolveClaimPdfDownload(token);
-        if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-            String msg = result == null ? "下载失败" : result.getMessage();
-            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN).body(msg.getBytes(StandardCharsets.UTF_8));
+        // 从前这里是 302 跳到 /api/upload/files/ 的静态文件；领用单改存私有目录后
+        // 静态地址拿不到，改成后端读盘直出 —— 令牌就是能力，不再依赖目录可公开访问。
+        SuppliesService.ClaimFormFile file = suppliesService.readClaimPdfByToken(token);
+        if (file == null || file.bytes() == null || file.bytes().length == 0) {
+            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
+                    .body("下载链接无效或已过期，请重新生成".getBytes(StandardCharsets.UTF_8));
         }
-        Map<String, Object> data = result.getData();
-        String downloadUrl = data == null || data.get("downloadUrl") == null ? "" : String.valueOf(data.get("downloadUrl"));
-        if (downloadUrl.isBlank()) {
-            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN).body("下载链接无效".getBytes(StandardCharsets.UTF_8));
-        }
-        return ResponseEntity.status(302).location(URI.create(downloadUrl)).build();
+        // 文件名用归档名（就是单号），与纸面一致
+        String name = file.fileName() == null || file.fileName().isBlank() ? "领用单.pdf" : file.fileName();
+        return ResponseEntity.ok()
+                .headers(ReportFormExportFilename.inlineHeaders(name))
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(file.bytes());
     }
 
     private User resolveUser(String authorization) {

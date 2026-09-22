@@ -731,7 +731,7 @@ export default function AdminFileTemplatesPage() {
             <DialogTitle>
               {batchPhase === "choose" ? "拖入了文件" : batchPhase === "running" ? "正在上传" : "上传完成"}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="break-all">
               {dropBatch?.files.length === 1 ? dropBatch.files[0].name : `共 ${dropBatch?.files.length} 个文件`}
             </DialogDescription>
           </DialogHeader>
@@ -743,7 +743,7 @@ export default function AdminFileTemplatesPage() {
           ) : null}
 
           {batchPhase === "running" ? (
-            <p className="text-[13px] text-[var(--app-color-text-secondary)]">
+            <p className="break-all text-[13px] text-[var(--app-color-text-secondary)]">
               第 {batchProgress.done + 1}/{dropBatch?.files.length} 个：{dropBatch?.files[batchProgress.done]?.name} 上传中…
             </p>
           ) : null}
@@ -787,7 +787,8 @@ export default function AdminFileTemplatesPage() {
           ) : null}
 
           {batchPhase !== "running" ? (
-            <DialogFooter>
+            /* 三个按钮，长文件名把内容撑宽时允许换行 —— 否则「上传到模板库」会被挤出弹窗 */
+            <DialogFooter className="flex-wrap gap-2">
               {batchPhase === "choose" ? (
                 <>
                   <button

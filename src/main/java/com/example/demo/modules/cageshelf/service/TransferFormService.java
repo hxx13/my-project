@@ -15,6 +15,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageOpRequestMapper;
 import com.example.demo.modules.personnel.entity.Personnel;
 import com.example.demo.modules.personnel.service.PersonnelService;
+import com.example.demo.modules.personnel.service.PersonnelSignatureService;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.slf4j.Logger;
@@ -62,6 +63,7 @@ public class TransferFormService {
     private final CageVisibilityPolicy visibilityPolicy;
     private final CageReviewVetService reviewVetService;
     private final PersonnelService personnelService;
+    private final PersonnelSignatureService signatureService;
     private final CageInfoValueService cageInfoValueService;
     private final Path storageDir;
 
@@ -75,6 +77,7 @@ public class TransferFormService {
                                CageVisibilityPolicy visibilityPolicy,
                                CageReviewVetService reviewVetService,
                                PersonnelService personnelService,
+                               PersonnelSignatureService signatureService,
                                CageInfoValueService cageInfoValueService,
                                @Value("${app.cage.transfer-form-dir:./data/cage-transfer-forms}") String dir) {
         this.detailMapper = detailMapper;
@@ -87,6 +90,7 @@ public class TransferFormService {
         this.visibilityPolicy = visibilityPolicy;
         this.reviewVetService = reviewVetService;
         this.personnelService = personnelService;
+        this.signatureService = signatureService;
         this.cageInfoValueService = cageInfoValueService;
         this.storageDir = Path.of(dir);
     }
@@ -104,7 +108,7 @@ public class TransferFormService {
      *   <li>负责人 / 电话：负责人取源笼位 PI（表单优先）；电话学生填的优先，否则申请人 mobile_phone</li>
      *   <li>实验人员：申请人姓名（快照为空时按 applicant_id 解析）</li>
      *   <li>转出/接收地点：位置标签，多目标按行拼</li>
-     *   <li>地点负责人签字：**只有 approved 才填**（没通过的单子上不该出现签字）</li>
+     *   <li>转出/接收地点负责人签字：**三方并联三签里谁签了谁的就填**，不等整单通过</li>
      *   <li>兽医复核：签过就填，没签三项都空</li>
      * </ul>
      */
@@ -129,19 +133,27 @@ public class TransferFormService {
         in.setExperimenterName(firstNonBlank(req.getApplicantName(), applicantName(req.getApplicantId())));
         in.setPhone(firstNonBlank(data == null ? null : data.getPhone(), applicantPhone(req.getApplicantId())));
         in.setTransferDate(data == null ? null : data.getTransferDate());
+        in.setSubmitDate(submitDate(req));
         Map<Long, Map<String, Object>> locById = resolveLocations(pairs);
         in.setFromLocation(pairLocations(pairs, true, locById));
         in.setToLocation(pairLocations(pairs, false, locById));
         in.setRows(buildRows(data, pairs, resolveDetails(pairs), resolveForms(pairs)));
 
         List<CageOpSignature> sigs = req.signatures();
-        boolean approved = CageOpRequest.STATUS_APPROVED.equals(req.getStatus());
-        in.setOriginReviewerName(approved ? reviewerOf(sigs, CageOpSignature.ROLE_ORIGIN) : null);
-        in.setDestReviewerName(approved ? reviewerOf(sigs, CageOpSignature.ROLE_DEST) : null);
+        // 各签各显：谁签了谁那一栏就出现，不等整单通过（用户 2026-09-22 定）。
+        // 原来卡在 approved 之后，于是三方并联三签时前两签的人在单子上看不见自己签过。
+        in.setOriginReviewerName(reviewerOf(sigs, CageOpSignature.ROLE_ORIGIN));
+        in.setDestReviewerName(reviewerOf(sigs, CageOpSignature.ROLE_DEST));
         CageOpSignature vet = signatureOf(sigs, CageOpSignature.ROLE_VET);
         in.setVetOutcome(vet == null ? null : TransferFormRenderer.outcomeLabel(vet.getDecision()));
         in.setVetReason(vet == null ? null : vet.getReason());
         in.setVetReviewerName(vet == null ? null : vet.getReviewerName());
+
+        // 电子签名：签位有签名图就打印图、没有则打印姓名。签名是自愿提交的，查不到是常态。
+        in.setOriginReviewerSignature(signatureImageOf(sigs, CageOpSignature.ROLE_ORIGIN));
+        in.setDestReviewerSignature(signatureImageOf(sigs, CageOpSignature.ROLE_DEST));
+        in.setVetReviewerSignature(signatureImageOf(sigs, CageOpSignature.ROLE_VET));
+        in.setExperimenterSignature(signatureImage(req.getApplicantId()));
         return in;
     }
 
@@ -507,6 +519,25 @@ public class TransferFormService {
         return d != null ? d : todayKey();
     }
 
+    /**
+     * 提交日期（印在单子上的形态，{@code 2026-09-22}）。
+     *
+     * <p>走 {@link #normalizeDate} 先把数字抠出来再拼 ISO —— 驱动把 DATETIME 交给 String 属性时
+     * 给的是 {@code yyyy-MM-dd HH:mm:ss}，但格式不是我们能保证的，抠数字比切字符串稳。
+     *
+     * <p>认不出就返回 null（那一行只留标签）。**不退回今天** —— 单号可以靠今天兜底，
+     * 但「提交日期」写个今天的假日期，等于在正式单据上写错事实。
+     */
+    static String submitDate(String createdAt) {
+        String d = normalizeDate(createdAt);
+        if (d == null) return null;
+        return d.substring(0, 4) + "-" + d.substring(4, 6) + "-" + d.substring(6, 8);
+    }
+
+    private static String submitDate(CageOpRequest req) {
+        return req == null ? null : submitDate(req.getCreatedAt());
+    }
+
     private static String todayKey() {
         return java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
     }
@@ -660,6 +691,31 @@ public class TransferFormService {
             if (s != null && role.equals(s.getRole())) return s;
         }
         return null;
+    }
+
+    /** 某个角色签下的电子签名图；该角色没签、或本人没提交过电子签名，都返回 null。 */
+    private String signatureImageOf(List<CageOpSignature> sigs, String role) {
+        CageOpSignature s = signatureOf(sigs, role);
+        return s == null ? null : signatureImage(s.getReviewerId());
+    }
+
+    /**
+     * 账号 id → 电子签名图（PNG dataUrl）。
+     *
+     * <p>签名按 {@code personnel_id} 存，而这里拿到的是**账号 id**，中间隔一次
+     * {@link PersonnelService#resolveIdByAccount}。两步任一查不到都返回 null —— 渲染器收到 null
+     * 就退回打印姓名文字，单据不会开天窗。
+     */
+    private String signatureImage(String accountId) {
+        if (accountId == null || accountId.isBlank()) return null;
+        try {
+            String pid = personnelService.resolveIdByAccount(accountId);
+            if (pid == null || pid.isBlank()) return null;
+            Object img = signatureService.signatureByPersonnel(Long.parseLong(pid.trim())).get("imageData");
+            return img == null ? null : String.valueOf(img);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String firstNonBlank(String... values) {

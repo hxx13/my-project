@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import {
   createOrReuseSupplyClaimPdfLink,
+  downloadPersonalClaimExcel,
   fetchSupplyClaimDetail,
   listSupplyClaimPdfLinks,
   type SupplyClaimOrder,
@@ -20,11 +21,23 @@ import {
   useRestoreMySupplyClaimRecycle,
 } from "@/api/hooks/useSupplies";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
+import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
+import { PrintDispatchDialog } from "@/features/print-station/PrintDispatchDialog";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import { Portal } from "@/components/Portal";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { formatDateTimeAsiaShanghai, formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
+
+/** 触发浏览器下载（本仓多个导出入口各自留了一份，见 MySuppliesRecordsPanel 同名函数） */
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "待出库",
@@ -53,6 +66,11 @@ export default function AdminSuppliesMinePage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [linkModalRow, setLinkModalRow] = useState<SupplyClaimOrder | null>(null);
+  /** 正在预览《内部物品领用单》的那条记录（连同取回的字节与单号文件名） */
+  const [formPreview, setFormPreview] = useState<{ row: SupplyClaimOrder; blob: Blob; fileName: string } | null>(null);
+  /** 要派发到打印工位的领用单（临时文件，确认时才上传；取消则服务端不留东西） */
+  const [printFile, setPrintFile] = useState<File | null>(null);
+  const [printRowId, setPrintRowId] = useState<string | null>(null);
   const [linkRows, setLinkRows] = useState<SupplyClaimPdfLinkItem[]>([]);
   const [linkLoading, setLinkLoading] = useState(false);
 
@@ -85,10 +103,52 @@ export default function AdminSuppliesMinePage() {
     });
   };
 
-  const goExport = (id: string) => {
-    navigate(`${toAdminRoutePath("/admin/supplies/claim-export")}?claimId=${encodeURIComponent(id)}`, {
-      state: { returnTo: `${location.pathname}${location.search}` },
-    });
+  /**
+   * 直接下载 Excel（不再跳「预览/导出页」——那条路由早就改成重定向回物资页了，
+   * 点「导出/预览」其实只是弹回来，什么都不发生）。
+   */
+  const goExport = async (id: string) => {
+    try {
+      const blob = await downloadPersonalClaimExcel(id);
+      downloadBlob(blob, `supply-claim-${id.replace(/[^A-Za-z0-9_-]/g, "_")}.xlsx`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "导出失败");
+    }
+  };
+
+  /**
+   * 取领用单 PDF：先让后端生成/复用分享链接（出库后是那一刻归档的、带出库人签名的那一份），
+   * 再用链接里的 token 拉字节 —— 归档在私有目录，静态地址拉不到。
+   * **文件名用链接里带的**（就是单号，如 20260923-位亚磊-1.pdf），与纸面印的一致。
+   */
+  const resolveClaimForm = async (row: SupplyClaimOrder) => {
+    const created = await createOrReuseSupplyClaimPdfLink(row.id);
+    const url = created?.downloadUrl;
+    if (!url) throw new Error("领用单生成失败");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("领用单打开失败");
+    return { blob: await res.blob(), fileName: created?.fileName || `领用单-${row.id}.pdf` };
+  };
+
+  /** 预览：取一次字节，弹窗与「打印」共用同一份。 */
+  const openClaimForm = async (row: SupplyClaimOrder) => {
+    try {
+      const resolved = await resolveClaimForm(row);
+      setFormPreview({ row, ...resolved });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载领用单失败");
+    }
+  };
+
+  /** 打印领用单：取同一份字节落成 File，再交给派发弹窗选打印机（工位/份数在弹窗里选）。 */
+  const printClaimForm = async (row: SupplyClaimOrder) => {
+    try {
+      const resolved = await resolveClaimForm(row);
+      setPrintRowId(row.id);
+      setPrintFile(new File([resolved.blob], resolved.fileName, { type: "application/pdf" }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载领用单失败");
+    }
   };
 
   const openLinkModal = async (row: SupplyClaimOrder) => {
@@ -206,7 +266,21 @@ export default function AdminSuppliesMinePage() {
                   className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]"
                   onClick={() => goExport(row.id)}
                 >
-                  导出/预览
+                  导出 Excel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800"
+                  onClick={() => void openClaimForm(row)}
+                >
+                  预览领用单
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]"
+                  onClick={() => void printClaimForm(row)}
+                >
+                  打印
                 </button>
                 <button
                   type="button"
@@ -340,6 +414,20 @@ export default function AdminSuppliesMinePage() {
                     修改
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800"
+                  onClick={() => void openClaimForm(detail)}
+                >
+                  预览领用单
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)]"
+                  onClick={() => void printClaimForm(detail)}
+                >
+                  打印
+                </button>
                 <button type="button" className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)]" onClick={() => setDetailOpen(false)}>
                   关闭
                 </button>
@@ -366,6 +454,32 @@ export default function AdminSuppliesMinePage() {
             </div>
           </div>
         </Portal>
+      ) : null}
+
+      {formPreview ? (
+        <PdfPreviewDialog
+          title="内部物品领用单"
+          fileName={formPreview.fileName}
+          fetchPdf={async () => formPreview.blob}
+          onClose={() => setFormPreview(null)}
+        />
+      ) : null}
+
+      {/* 打印领用单：选打印机/份数交给派发弹窗 */}
+      {printFile && printRowId ? (
+        <PrintDispatchDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) {
+              setPrintFile(null);
+              setPrintRowId(null);
+            }
+          }}
+          sourceType="ADMIN_FILE"
+          sourceId={printRowId}
+          fileName={printFile.name}
+          pendingFile={printFile}
+        />
       ) : null}
 
       {linkModalRow ? (

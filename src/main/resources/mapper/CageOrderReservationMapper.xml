@@ -117,14 +117,25 @@
         <foreach collection="cartIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
     </update>
 
-    <!-- 孤儿预定：购物车行已被删（或从未挂上）且没进订单的 LOCKED 行。启动时清一次。 -->
+    <!-- 孤儿预定：购物车行已被删（或从未挂上）且没进订单的 LOCKED 行。启动时清一次。
+         判据被 listOrphans（先捞出来撤预填）与 releaseOrphans 共用：两边判据漂移过一次的代价
+         见 service 里 releaseOrphans 的注释。 -->
+    <sql id="orphanConds">
+        cage_order_reservation.status = 'LOCKED'
+        AND cage_order_reservation.order_id IS NULL
+        AND (cage_order_reservation.cart_id IS NULL
+             OR NOT EXISTS (SELECT 1 FROM ref_cart c WHERE c.id = cage_order_reservation.cart_id))
+    </sql>
+
+    <select id="listOrphans" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE <include refid="orphanConds"/>
+    </select>
+
     <update id="releaseOrphans">
-        UPDATE cage_order_reservation r
-        LEFT JOIN ref_cart c ON c.id = r.cart_id
-        SET r.status = 'RELEASED', r.active_cage_id = NULL, r.release_reason = #{reason}
-        WHERE r.status = 'LOCKED'
-          AND r.order_id IS NULL
-          AND (r.cart_id IS NULL OR c.id IS NULL)
+        UPDATE cage_order_reservation
+        SET status = 'RELEASED', active_cage_id = NULL, release_reason = #{reason}
+        WHERE <include refid="orphanConds"/>
     </update>
 
 </mapper>

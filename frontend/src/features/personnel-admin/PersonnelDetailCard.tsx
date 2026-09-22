@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { usePrefersReducedMotion } from "@/hooks/useTypewriterText";
-import { Briefcase, GraduationCap, Mail, Send, Smartphone, Building2, IdCard, ShieldCheck } from "lucide-react";
+import { Briefcase, GraduationCap, Mail, Send, Smartphone, Building2, IdCard, ShieldCheck, Camera, RotateCcw, RefreshCw, Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/api/hooks/queryKeys";
@@ -14,10 +14,12 @@ import { fetchPersonnelSignature, resetPersonnelSignature, type MySignature } fr
 import { fetchRoomMappingRooms, type RoomMappingRoomRow } from "@/api/twinApi";
 import type { IdentityTag } from "@/api/domains/personIdentity.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { appConfirm } from "@/lib/appDialog";
 import { AdminButton } from "@/components/admin/AdminButton";
 import SearchSelect, { type SearchOption } from "@/components/cage/SearchSelect";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, SysBadge, StatusPill, ROLE_LABEL_MAP } from "./PersonnelRichList";
+import { inkBtn, inkBtnDanger, inkBtnIcon } from "./personnelChipStyles";
 
 // 直接进入本页（不经 AUP 页面）也能保证 useGSAP 生效；registerPlugin 幂等
 gsap.registerPlugin(useGSAP);
@@ -181,8 +183,6 @@ export function PersonnelDetailCard({
   const hasAccount = Boolean(row.staffId);
   const tags = identityMap.get(personId) ?? [];
 
-  const inkBtn =
-    "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-40";
   return (
     <div
       ref={wrapRef}
@@ -193,14 +193,24 @@ export function PersonnelDetailCard({
       {/* 头部 */}
       <header className="flex items-start gap-4 border-b border-[var(--twin-hairline)] p-4">
         <div className="flex shrink-0 flex-col items-center gap-2">
-          <Avatar name={row.name} head={row.head} size="lg" />
-          <div className="flex gap-1">
-            <AdminButton type="button" tone="secondary" size="sm" onClick={() => headFileRef.current?.click()}>上传头像</AdminButton>
-            {row.headOverride ? (
-              <AdminButton type="button" tone="secondary" size="sm" onClick={onResetHead}>重置头像</AdminButton>
-            ) : null}
-            <AdminButton type="button" tone="secondary" size="sm" loading={syncLoading} onClick={onSync}>同步此人</AdminButton>
-          </div>
+          {/* 换头像就点头像：摄像头收成右下角徽标，不再占独立按钮。「同步此人」不属头像，在右上角。
+              徽标必须是 Avatar 的**兄弟**元素而不是子元素 —— Avatar 自带 overflow-hidden，塞进去会被裁掉。
+              外层 `inline-flex` 不能少：Avatar 是 <span>（display:inline），而 h-16/w-16 对非替换 inline
+              元素不生效；只有作为 flex 子项被 blockify 才会是 64×64，否则整块塌成一条细边。 */}
+          <button type="button" onClick={() => headFileRef.current?.click()}
+            title="上传头像" aria-label="上传头像"
+            className="group relative inline-flex shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-focus-ring)] focus-visible:ring-offset-2">
+            <Avatar name={row.name} head={row.head} size="lg" />
+            <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] shadow-sm group-hover:border-[var(--twin-link)] group-hover:text-[var(--twin-link)]">
+              <Camera className="h-3 w-3" aria-hidden />
+            </span>
+          </button>
+          {/* 「重置头像」只在本地覆盖过时才出现，那时它就是唯一的头像动作 */}
+          {row.headOverride ? (
+            <IconAction label="重置头像" onClick={onResetHead}>
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            </IconAction>
+          ) : null}
           <input ref={headFileRef} type="file" accept="image/*" className="hidden" onChange={onPickHeadFile} />
         </div>
         <div className="min-w-0 flex-1">
@@ -215,8 +225,14 @@ export function PersonnelDetailCard({
             {[row.userTypeNames, row.departmentName, row.projectGroupName].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
-        <button type="button" onClick={handleClose}
-          className="shrink-0 rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">✕</button>
+        {/* 记录级动作（重新从 ARO 拉这个人）+ 关闭，都收在右上角 */}
+        <div className="flex shrink-0 items-center gap-1">
+          <IconAction label="从 ARO 同步此人" loading={syncLoading} onClick={onSync}>
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          </IconAction>
+          <button type="button" onClick={handleClose}
+            className="shrink-0 rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">✕</button>
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -337,30 +353,29 @@ export function PersonnelDetailCard({
             </span>
           )}
           {isSuperAdmin && !isBuiltin && hasAccount ? (
-            <>
-              <button type="button" className={inkBtn} onClick={() => onResetOpenId(uid)}>重置绑定</button>
-              {isStaff ? (
-                <button type="button" className={`${inkBtn} border-rose-200 text-rose-700 hover:bg-rose-50`} onClick={() => onDelete(uid)}>删除</button>
-              ) : null}
-            </>
+            <button type="button" className={inkBtn} onClick={() => onResetOpenId(uid)}>重置绑定</button>
           ) : null}
         </section>
 
-        {/* 合并档案（不可逆，仅 SUPER_ADMIN） */}
-        {isSuperAdmin ? (
-          <section className="rounded-lg border border-[var(--twin-hairline)] p-3">
-            <div className="mb-2 text-[11px] font-semibold text-[var(--twin-mute)]">合并档案</div>
-            <MergePersonnelField row={row} onClose={onClose} />
-          </section>
-        ) : null}
         {/* 电子签名：查看 + 重置。签名一经提交不可更改，重置是唯一的修改途径 */}
         <SignatureSection row={row} isSuperAdmin={isSuperAdmin} />
 
-        {/* 回收站（仅 SUPER_ADMIN）：软删除可恢复；彻底删除不可逆 */}
+        {/* 危险操作：破坏性动作集中一处、放卡片最底。按钮按「是否可逆」配色 —— 可恢复的保持
+            中性描边，不可逆的常显淡红，视觉直接对应后果。名字也必须分开：原先账号层和档案层
+            两个操作都只叫「删除」，确认框里又都写着「不可恢复」，根本无从分辨删的是哪个。 */}
         {isSuperAdmin ? (
           <section className="rounded-lg border border-[var(--twin-hairline)] p-3">
-            <div className="mb-2 text-[11px] font-semibold text-[var(--twin-mute)]">回收站</div>
-            <TrashActions row={row} onClose={onClose} />
+            <div className="mb-2 text-[11px] font-semibold text-[var(--twin-mute)]">危险操作</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {hasAccount && isStaff ? (
+                <button type="button" disabled={isBuiltin} className={inkBtnDanger} onClick={() => onDelete(uid)}>删除账号</button>
+              ) : null}
+              <MergePersonnelField row={row} onClose={onClose} dangerClass={inkBtnDanger} />
+              <TrashActions row={row} onClose={onClose} neutralClass={inkBtn} dangerClass={inkBtnDanger} />
+            </div>
+            <p className="mt-2 text-[10px] leading-relaxed text-[var(--twin-mute)]">
+              删除账号只注销登录、档案保留；移入回收站可随时恢复；彻底删除会把 ARO 人员记录与登录账号一并清除。
+            </p>
           </section>
         ) : null}
         </div>
@@ -430,8 +445,10 @@ function SignatureSection({ row, isSuperAdmin }: { row: UnifiedPersonnelRecord; 
   );
 }
 
-/** 回收站操作：软删（可恢复）/ 恢复 / 彻底删除（不可逆）。仅 SUPER_ADMIN。 */
-function TrashActions({ row, onClose }: { row: UnifiedPersonnelRecord; onClose: () => void }) {
+/** 危险操作区里的「档案层」按钮：移入回收站可恢复（中性）/ 恢复（中性）/ 彻底删除（不可逆，淡红）。 */
+function TrashActions({ row, onClose, neutralClass, dangerClass }: {
+  row: UnifiedPersonnelRecord; onClose: () => void; neutralClass: string; dangerClass: string;
+}) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
 
@@ -450,38 +467,39 @@ function TrashActions({ row, onClose }: { row: UnifiedPersonnelRecord; onClose: 
 
   if (row.deletedAt) {
     return (
-      <div className="flex flex-wrap gap-2">
-        <AdminButton type="button" tone="secondary" size="sm" disabled={busy}
+      <>
+        <button type="button" disabled={busy} className={neutralClass}
           onClick={() => void run("已恢复到人员列表", () => restorePersonnel(row.id))}>
           恢复到人员列表
-        </AdminButton>
-        <AdminButton type="button" tone="secondary" size="sm" disabled={busy}
-          onClick={() => {
-            if (!window.confirm(
+        </button>
+        <button type="button" disabled={busy} className={dangerClass}
+          onClick={async () => {
+            const ok = await appConfirm(
               "彻底删除不可恢复：会同时删掉他在 ARO 侧的人员记录与登录账号。\n"
               + "注意：若这个人来自 ARO 同步，下次同步可能还会把他加回来（ARO 才是权威源）。\n"
-              + "确定继续？")) return;
-            void run("已彻底删除", () => purgePersonnel(row.id)).then(onClose);
+              + "确定继续？");
+            if (ok) void run("已彻底删除", () => purgePersonnel(row.id)).then(onClose);
           }}>
           彻底删除
-        </AdminButton>
-      </div>
+        </button>
+      </>
     );
   }
 
   return (
-    <AdminButton type="button" tone="secondary" size="sm" disabled={busy}
-      onClick={() => {
-        if (!window.confirm("删除到回收站？之后可以在这里恢复。")) return;
-        void run("已移入回收站", () => movePersonnelToTrash(row.id));
+    <button type="button" disabled={busy} className={neutralClass}
+      onClick={async () => {
+        if (await appConfirm("移入回收站？之后可以在回收站里恢复。")) {
+          void run("已移入回收站", () => movePersonnelToTrash(row.id));
+        }
       }}>
-      删除到回收站
-    </AdminButton>
+      移入回收站
+    </button>
   );
 }
 
 /** 把另一个人员并入本档案：本档案存活、对方被删除。不可逆，仅 SUPER_ADMIN。选中后二次确认再执行。 */
-function MergePersonnelField({ row, onClose }: { row: UnifiedPersonnelRecord; onClose: () => void }) {
+function MergePersonnelField({ row, onClose, dangerClass }: { row: UnifiedPersonnelRecord; onClose: () => void; dangerClass: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
 
@@ -497,7 +515,7 @@ function MergePersonnelField({ row, onClose }: { row: UnifiedPersonnelRecord; on
   const onPick = async (opt: { key: string; label: string }) => {
     const targetId = Number(opt.key);
     if (!Number.isFinite(targetId) || targetId === row.id) return;
-    if (!window.confirm(`把「${opt.label}」并入本档案「${row.name}」，「${opt.label}」的档案将被删除，此操作不可逆。确定继续？`)) return;
+    if (!await appConfirm(`把「${opt.label}」并入本档案「${row.name}」，「${opt.label}」的档案将被删除，此操作不可逆。确定继续？`)) return;
     try {
       await mergePersonnel(row.id, targetId);
       toast.success("已合并");
@@ -512,14 +530,13 @@ function MergePersonnelField({ row, onClose }: { row: UnifiedPersonnelRecord; on
     <SearchSelect
       search={search}
       onPick={onPick}
+      onDismiss={() => setOpen(false)}
       excludeKeys={[String(row.id)]}
       placeholder="搜索要并入此档案的人员"
       emptyHint="没有匹配项"
     />
   ) : (
-    <button type="button"
-      className="inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)]"
-      onClick={() => setOpen(true)}>并入此档案…</button>
+    <button type="button" className={dangerClass} onClick={() => setOpen(true)}>并入此档案…</button>
   );
 }
 
@@ -568,6 +585,7 @@ function DictSelect({
         <SearchSelect
           search={search}
           onPick={(opt) => { onPick(opt); setOpen(false); }}
+          onDismiss={() => setOpen(false)}
           placeholder={`搜索${label}`}
           emptyHint="没有匹配项"
         />
@@ -584,6 +602,21 @@ function DictSelect({
         {value || "—"}
       </span>
     </div>
+  );
+}
+
+/** 图标小动作：无可见文字，语义只靠 `title` + `aria-label`（样式见 personnelChipStyles 的 inkBtnIcon）。 */
+function IconAction({ label, onClick, children, loading }: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+  loading?: boolean;
+}) {
+  return (
+    <button type="button" title={label} aria-label={label} disabled={loading} onClick={onClick}
+      className={inkBtnIcon}>
+      {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : children}
+    </button>
   );
 }
 
@@ -621,7 +654,7 @@ function EditableText({
     <div className={`flex justify-between gap-2 py-0.5 ${emphasize ? "" : "text-[11px]"}`}>
       {!emphasize ? <span className="text-[var(--twin-mute)]">{label}</span> : null}
       <span onClick={() => { setDraft(value); setEditing(true); }}
-        className={valueCls} title="点击编辑姓名（不等于账号名）">
+        className={valueCls} title={emphasize ? "点击编辑姓名（不等于账号名）" : `点击编辑${label}`}>
         {value || "—"}
       </span>
     </div>

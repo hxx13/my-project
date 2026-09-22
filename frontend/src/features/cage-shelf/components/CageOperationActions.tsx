@@ -26,6 +26,7 @@ export default function CageOperationActions({
   className,
   opMark,
   onStartBatch,
+  onStartDivide,
 }: {
   source: CageOpSource;
   /** 是否占用中（非占用笼位不出现分笼/转移入口） */
@@ -42,6 +43,11 @@ export default function CageOperationActions({
    * 标签仍是「转移笼位」，用户视角看不出区别。PC 不传 → 走原来的单笼选位流程。
    */
   onStartBatch?: (source: CageOpSource) => void;
+  /**
+   * 分笼入口改为打开批量缓冲抽屉（与转移的 onStartBatch 同构）。**传了它就替换掉原来的
+   * 单笼「分笼」按钮**（标签仍是「分笼」）。PC 不传 → 走原来的单笼选位流程。
+   */
+  onStartDivide?: (source: CageOpSource) => void;
 }) {
   const [checked, setChecked] = useState(false);
   const [operable, setOperable] = useState(false);
@@ -158,7 +164,7 @@ export default function CageOperationActions({
         )}
         {operable && (
           <>
-            <AdminButton type="button" tone="secondary" size="xs" onClick={() => onStart("divide", source)}>
+            <AdminButton type="button" tone="secondary" size="xs" onClick={() => (onStartDivide ? onStartDivide(source) : onStart("divide", source))}>
               分笼
             </AdminButton>
             {onStartBatch ? (

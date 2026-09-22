@@ -231,6 +231,31 @@
   color: #1d4ed8;
 }
 
+/* 已选绿勾：**正中心**（用户 2026-09-22 口径：对勾要在格子正中，不放角上）。
+   底下垫一圈白不透明圆盘 —— 格子的状态底色是各种颜色，纯绿勾压在深色底上会看不清。
+   z-index 给到最高，盖住位号与类型灯：已选的格子就是要一眼看出「这个被选中了」。 */
+.cg-selcheck {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2rpx rgba(22, 163, 74, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+/* 紧凑档（抽屉/弹层）：跟着格子一起缩一档 */
+.cg-grid--compact .cg-selcheck {
+  width: 32rpx;
+  height: 32rpx;
+}
+
 /* 不可点：整格盖一层半透明红色细线网纹（很多根细斜线），
    格子原有的内容（位号/课题人/类型灯/状态底色）都能透出来，不被盖掉。
    线用低透明度红，间隔留空，底部再挂一条原因标签（标签保持不透明）。 */

@@ -527,8 +527,18 @@ Page({
     opFormEdits: {},               // 学生动过的值 {transferDate?,unitName?,phone?,rows?[]}，只装改动
     // 待审分笼/转移中间态：animalCageId → { color, label, kind, abbr }（源与目标同色，仅作选位拦截与叠层）
     cageOpMarkers: {},
-    // ── 批量转移（跨房间缓冲抽屉）──
+    // ── 批量转移 / 分笼（跨房间缓冲抽屉）──
     btOpen: false,
+    /**
+     * transfer | divide。两者共用这套抽屉（树 / 单架网格 / 两屏 / 缓冲条全复用），差别在：
+     *  - transfer：N 源 → 逐源配 1 个目标（`btTargets` 那张 1:1 配对表）+ 转移单表单
+     *  - divide  ：**固定 1 源**（入口格）→ N 目标多选（`btDivTargets` 有序数组）、无转移单、有 keepSource
+     * 两个模式的目标集合字段是分开的，别把转移那套改坏。
+     */
+    btMode: 'transfer',
+    btKeepSource: true,       // 分笼：保留源笼位（后端默认也是保留；不保留则源笼位归档为空笼盒且不可逆）
+    btDivTargets: [],         // 分笼：已选目标 animalCageId 有序数组
+    btSourceLabel: '',        // 分笼：「源笼位」那一行显示的坐标
     btPhase: 'source',        // source | target
     btScreen: 'tree',         // tree | grid（「阶段」与「屏」是两件事，别混）
     btTree: [],               // [{ campusName, collapsed, rooms:[{ roomKey, roomName, collapsed, shelves:[{shelveId,shelveName,roomId,roomName,count}] }] }]
@@ -542,10 +552,15 @@ Page({
     btTargets: {},            // sourceId -> targetAnimalCageId
     btPairTargetIds: [],       // 提交时按下标取的目标 id 列表（与 opPicked/opFormRows 对齐，不在提交时重算顺序）
     btRows: [],               // 配对条展示行（见 _btRebuildChrome）
-    btHeadSub: '',
     btCursorText: '',
     btBufferTitle: '',
     btConfirmOff: true,
+    // 动作条/缓冲条的显隐与文案都由 _btRebuildChrome 算好，wxml 里不再塞三元表达式
+    btShowNext: false,          // 「下一步」（仅转移的源阶段）
+    btShowBackToSource: false,  // 「返回选源」（仅转移的目标阶段）
+    btCanClear: false,          // 「清空」可见
+    btChipRemovable: false,     // chip 上的 × 可见
+    btSubmitLabel: '',          // 主按钮文案（不含「提交中…」那一档）
     btSubmitting: false,
     btChecking: false,        // 逐格 operable 校验的重入保护
     // 详情弹窗内的操作入口（/cage-op/operable 结果）
@@ -685,7 +700,6 @@ Page({
     detailSaving: false,
     detailSaveMsg: "",
     detailSaveMsgType: "",
-    detailQrImageSrc: "",
     detailImageUploading: false,
 
     // 特殊状态弹窗
@@ -745,6 +759,7 @@ Page({
   onLoad: function(options) {
     var self = this;
     this._btShelfGridCache = {};  // 批量转移：shelveId → 已加载的网格，切回看过的架不重拉
+    this._btNotOperable = {};     // 批量转移：点过后端说不能操作的笼位 id → 原因，用来把格子预先打上网纹
     var role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     var token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
     if (!token || !canAccessCageShelfPage(role)) {
@@ -3039,7 +3054,6 @@ Page({
       formGroups: [],
       formLoading: false,
       formError: '',
-      detailQrImageSrc: "",
       scanLockHighlight: null
     });
   },
@@ -3198,7 +3212,6 @@ Page({
       detailSaving: false,
       detailSaveMsg: '',
       detailSaveMsgType: '',
-      detailQrImageSrc: '',
       detailOpMark: self._pendingOpOf(cell)   // 未决分笼/转移 → 详情一句话提示
     });
 
@@ -3686,6 +3699,11 @@ onSaveCellAnnotation: function() {
 
 onCloseCellDetail: function() { this._closeDetail(); },
 _closeDetail: function() {
+    // 注意：这里**不能**清 formRows / formGroups。
+    // van-popup 的离场动画有 ~300ms，而 setData 是和「隐藏」在同一次里生效的 ——
+    // 清掉之后那 300ms 里弹窗还挂在屏幕上，表单区会渲染成「表单无字段」闪一下
+    //（用户 2026-09-22 报的就是这个）。打开路径（onCellTap → :3283）本来就会重置这两个字段，
+    // 所以关着的时候留着旧值不会串到下一个人。
     this.setData({
       showCellDetail: false,
       selectedCell: null,
@@ -3696,14 +3714,11 @@ _closeDetail: function() {
       detailStatusPhotos: {},
       detailHasStatusBlock: false,
       detailAnnotationLoading: false,
-      formRows: [],
-      formGroups: [],
       formLoading: false,
       formError: '',
       detailSaving: false,
       detailSaveMsg: '',
       detailSaveMsgType: '',
-      detailQrImageSrc: '',
       detailOpMark: null,
       detailImageUploading: false,
       formEditable: false, formEditableReason: '', formEditing: false, formSaving: false, formSaveMsg: '', formSaveMsgType: '',
@@ -3893,6 +3908,9 @@ _closeDetail: function() {
 
   onOpSubmit: function() {
     var self = this;
+    // 重入闸：确认弹窗那个「提交」按钮没有 pointer-events 拦截，只把文案换成「提交中…」。
+    // 快速连点会发两次请求 —— 转移那条是**两张转移单**（各自一次三签），代价很大。
+    if (self.data.opSubmitting) return;
     // 批量转移：一次请求多组源→目标 = 一张单、一次三签（放在下面那个空目标检查之前，
     // 批量流程的 opSelectedCageIds 本来就是空的）
     if (self.data.opBatch) {
@@ -4045,14 +4063,65 @@ _closeDetail: function() {
     self._closeDetail();
     // 打开抽屉落到屏 A（树），不自动拉任何架 —— 一次只渲染一个架是本次改动的核心口径
     self.setData({
-      btOpen: true, btPhase: 'source', btScreen: 'tree',
+      btOpen: true, btMode: 'transfer', btPhase: 'source', btScreen: 'tree',
       btTree: tree, btShelf: null,
       // 入口格当第一个源带进来（「转移笼位」点的就是它），同时记下它的 id 好让提示文案交代来历
       btAnchorId: cageId,
       btSources: [anchor], btTargets: {}, btPoolMap: {}, btCursor: 0,
-      btSubmitting: false, btEmptyText: ''
+      btSubmitting: false, btEmptyText: '',
+      // 分笼那两个字段一起复位，免得切模式时带过来
+      btDivTargets: [], btKeepSource: true, btSourceLabel: ''
     }, function () {
       self._btRebuildChrome();
+    });
+  },
+
+  /**
+   * 详情弹窗点「分笼」：同一个抽屉、divide 模式。
+   *
+   * 分笼是**一对多**，与转移的差别（也是这里少做什么的原因）：
+   *  - 源固定 = 入口格，不再选源、没有配对、没有 cursor → 直接进目标阶段
+   *  - 目标**多选**（`btDivTargets` 有序数组），点一下加到集合、再点一下移除
+   *  - **没有转移单**：不拉 prefill、不弹表单；只在「不保留源笼位」时给一个纯摘要确认
+   *  - `keepSource` 是唯一的关键分岔（保留=净增占用要卡配额；归档=清空源笼位且不可逆），
+   *    所以把它提到抽屉里常驻可见（见 wxml 的「源笼位」那一行），不再埋进确认弹窗
+   */
+  onStartDivide: function () {
+    var self = this;
+    var cell = self.data.selectedCell;
+    var cageId = cell ? String(cell.id || cell.animalCageId || '') : '';
+    if (!cageId) return;
+    if (self._pendingOpOf(cell)) { wx.showToast({ title: self._busyReasonOf(cell), icon: 'none' }); return; }
+    var tree = self._btBuildTree();
+    if (!tree.length) { wx.showToast({ title: '没有可分笼的笼架', icon: 'none' }); return; }
+    var meta = self.data.gridMeta || self.data.selectedShelf || {};
+    var anchor = {
+      animalCageId: cageId,
+      label: (cell && (cell._displayPosition || cell.position)) || '',
+      shelveId: String((meta && meta.shelveId) || ''),
+      shelveName: String((meta && meta.shelveName) || ''),
+      roomId: String((meta && meta.roomId) || ''),
+      roomName: String((meta && meta.roomName) || '')
+    };
+    self._closeDetail();
+    self._btNotOperable = {};
+    self.setData({
+      btOpen: true, btMode: 'divide', btPhase: 'target', btScreen: 'tree',
+      btAnchorId: cageId, btSourceLabel: anchor.label + (anchor.shelveName ? ' · ' + anchor.shelveName : ''),
+      // 源就这一个（`_btCurSource()` 取 sources[cursor]，所以正常走目标阶段那套池子/打标逻辑）
+      btSources: [anchor], btTargets: {}, btDivTargets: [], btKeepSource: true,
+      btPoolMap: {}, btCursor: 0, btSubmitting: false, btEmptyText: '',
+      btTree: [], btShelf: null, btRows: []
+    }, function () {
+      // 先**立刻**算一遍文案/按钮态再拉池：`_btRebuildChromeDivide` 不依赖池子（空目标集合也能算出
+      // 正确文案），而池子是网络请求 —— 不先算的话，池子返回前抽屉会顶着**上一个模式**残留的
+      // 提示与按钮文案（比如上次转移留下的「请继续点格子添加源笼位」/「提交转移（2）」）。
+      self._btRebuildChrome();
+      // 分笼只有当前源一个池子，进抽屉就把它的目标池拉好并建树
+      self._btEnsurePool(anchor, function () {
+        self._btApplyTargetTree();
+        self._btRebuildChrome();
+      });
     });
   },
 
@@ -4130,15 +4199,25 @@ _closeDetail: function() {
     var isTarget = self.data.btPhase === 'target';
     var cur = self._btCurSource();
     var pool = {};
+    /** 池子是否已就绪（拿到过数据且没失败）。没就绪时**不要**按池子判「不在可选范围」，
+        否则整屏都会被打上网纹、看着像「一个都不能选」—— 树那边的空态/错误文案已经说明了情况。 */
+    var poolUsable = false;
     if (isTarget && cur) {
       var cached = (self.data.btPoolMap || {})[cur.animalCageId] || {};
       pool = cached.byCage || {};
+      poolUsable = !cached.loading && !cached.error;
     }
     var sources = self.data.btSources || [];
     var picked = {};
     sources.forEach(function (s) { if (s.animalCageId) picked[String(s.animalCageId)] = true; });
     var chosen = self.data.btTargets || {};
     var chosenTargetId = (isTarget && cur) ? String(chosen[cur.animalCageId] || '') : '';
+    /** 分笼模式：目标多选（有序数组）→ 建个查表用；与转移的 1:1 配对表 `btTargets` 分开 */
+    var isDivide = self.data.btMode === 'divide';
+    var divSet = {};
+    (self.data.btDivTargets || []).forEach(function (id) { divSet[String(id)] = true; });
+    /** 点过、后端说不能操作的笼位（id → 原因）：记住它，下次进抽屉就直接打网纹，不用再点一次 */
+    var notOperable = self._btNotOperable || {};
 
     var grid = (shelf.grid || []).map(function (c) {
       var cid = c && c.animalCageId != null ? String(c.animalCageId) : '';
@@ -4148,12 +4227,26 @@ _closeDetail: function() {
       next._tip = '';
       if (!cid) { return next; }
       if (!isTarget) {
+        // 源阶段：非饲养中的格子永远不能作为源 → 网纹禁用（_dis 就是网纹 + 底部原因标签）。
+        // 「饲养中但我不能操作」只有点过才知道，所以靠 notOperable 记住后回填。
         var isOccupied = resolveAnimalCageType(c) === 3;
         if (picked[cid]) next._sel = true;
-        else if (!isOccupied) { /* 非饲养中不置灰也不给 tip：抽屉里还看不见的可点性靠点击时的 operable 校验兜 */ }
+        else if (!isOccupied) { next._dis = true; next._tip = '非饲养中'; }
+        else if (notOperable[cid]) { next._dis = true; next._tip = notOperable[cid]; }
+      } else if (isDivide) {
+        // 分笼：一对多，只判「在不在池子里 + 后端 selectable」——没有「配给哪个源」这回事
+        if (divSet[cid]) next._sel = true;
+        else if (!poolUsable) { /* 池子还在拉/拉失败：不按池子判，别把整屏都打成「不在可选范围」 */ }
+        else if (!pool[cid]) { next._dis = true; next._tip = '不在可选范围'; }
+        else if (!pool[cid].selectable) { next._dis = true; next._tip = pool[cid].reason || '不可选'; }
       } else {
         var t = pool[cid];
+        // 已被**别的源**配走的格子：置灰。一个目标只能接收一次转移，后端要到执行时
+        //（三签都签完之后）才会撞上并整批回滚 —— 所以必须在这里就拦住。
+        var owner = btLogic.targetOwnerExcept(chosen, cid, cur ? cur.animalCageId : null);
         if (chosenTargetId && cid === chosenTargetId) next._sel = true;
+        else if (owner) { next._dis = true; next._tip = '已配给别的源'; }
+        else if (!poolUsable) { /* 池子还在拉/拉失败：不按池子判，别把整屏都打成「不在可选范围」 */ }
         else if (!t) { next._dis = true; next._tip = '不在可选范围'; }
         else if (!t.selectable) { next._dis = true; next._tip = t.reason || '不可选'; }
       }
@@ -4165,6 +4258,7 @@ _closeDetail: function() {
   /** 抽屉的状态文案与配对条：每处 setData 后调一次，避免散在各 handler 里各算一半 */
   _btRebuildChrome: function () {
     var self = this;
+    if (self.data.btMode === 'divide') { self._btRebuildChromeDivide(); return; }
     var sources = self.data.btSources || [];
     var targets = self.data.btTargets || {};
     var isTarget = self.data.btPhase === 'target';
@@ -4184,7 +4278,7 @@ _closeDetail: function() {
     var hint = '';
     if (isTarget) {
       hint = (cur && targets[cur.animalCageId])
-        ? '这个源已配好目标，点配对条可换源'
+        ? '这个源已配好，点上面的配对条可换下一个源'
         : '请在下面点一个空笼位，作为它的目标';
     } else if (sources.length === 0) {
       hint = '请点格子选择要转移的源笼位';
@@ -4200,10 +4294,47 @@ _closeDetail: function() {
     self.setData({
       btRows: rows,
       btHint: hint,
-      btHeadSub: isTarget ? ('共 ' + sources.length + ' 对 · 已配 ' + paired) : ('已选 ' + sources.length + ' 个源笼位'),
       btCursorText: cur ? ('第 ' + (self.data.btCursor + 1) + '/' + sources.length + ' 个源 · ' + cur.label + ' · ' + cur.shelveName) : '',
       btBufferTitle: isTarget ? ('配对 ' + paired + '/' + sources.length) : ('已选 ' + sources.length + ' 个源笼位'),
       btConfirmOff: sources.length === 0 || unpaired > 0 || self.data.btSubmitting,
+      btShowNext: !isTarget && sources.length > 0,
+      btShowBackToSource: isTarget,
+      btCanClear: !isTarget && sources.length > 0,
+      btChipRemovable: !isTarget,
+      btSubmitLabel: '提交转移（' + sources.length + '）',
+    });
+  },
+
+  /**
+   * 分笼模式的文案/缓冲条：一对多，所以没有配对、没有 cursor、没有「已配几个」。
+   *
+   * 目标 chip **复用转移那套行结构**，注意这里是**借字段当键**：`sourceId` 装的是目标 id
+   *（它只当行的唯一键用，`wx:key` 与 `data-source-id` 都靠它），这样 wxml 一个字都不用改。
+   */
+  _btRebuildChromeDivide: function () {
+    var self = this;
+    var src = (self.data.btSources || [])[0] || null;
+    var ids = self.data.btDivTargets || [];
+    var byCage = src ? (((self.data.btPoolMap || {})[src.animalCageId] || {}).byCage || {}) : {};
+    var rows = ids.map(function (id) {
+      var t = byCage[String(id)];
+      var label = (t && t.positionX != null && t.positionY != null)
+        ? btLogic.displayLabelOf(t.positionX, t.positionY) : '—';
+      return { sourceId: String(id), text: label, paired: true, active: false };
+    });
+    self.setData({
+      btRows: rows,
+      btHint: ids.length
+        ? '继续点空笼位加目标；选完点「确认分笼」'
+        : '请点空笼位选择分笼目标（可多选、可跨房间）',
+      btCursorText: '',
+      btBufferTitle: '已选 ' + ids.length + ' 个目标笼位',
+      btConfirmOff: ids.length === 0 || self.data.btSubmitting,
+      btShowNext: false,
+      btShowBackToSource: false,
+      btCanClear: ids.length > 0,
+      btChipRemovable: true,
+      btSubmitLabel: '确认分笼（' + ids.length + '）',
     });
   },
 
@@ -4249,7 +4380,14 @@ _closeDetail: function() {
         if (!self.data.btOpen) return;
         self.setData({ btChecking: false });
         var d = p.ok ? (p.data || {}) : {};
-        if (!d.operable) { wx.showToast({ title: d.reason || '该笼位不能转移', icon: 'none' }); return; }
+        if (!d.operable) {
+          // 记住它：这一格这次就打成网纹禁用，下次再进抽屉也不用重新点一次才知道
+          self._btNotOperable = self._btNotOperable || {};
+          self._btNotOperable[cageId] = d.reason || '该笼位不能转移';
+          wx.showToast({ title: d.reason || '该笼位不能转移', icon: 'none' });
+          self._btPaintPhase();
+          return;
+        }
         // 用回包时的最新缓冲重算，且再查一次重（校验期间同一个格子可能已被点掉）
         var fresh = (self.data.btSources || []).slice();
         for (var i = 0; i < fresh.length; i++) if (fresh[i].animalCageId === cageId) return;
@@ -4371,8 +4509,12 @@ _closeDetail: function() {
   },
 
   /**
-   * 目标：只认后端 selectable。点中 → 记到 btTargets → 光标前进到下一个没配的源；
-   * 全配完 btConfirmOff 变 false，按钮变「提交转移（N）」。
+   * 目标：只认后端 selectable。点中 → 记到 btTargets，**就地重画**。
+   *
+   * 刻意**不**自动换源、**不**回屏 A（用户 2026-09-22 口径：由用户自行操作）。
+   * 以前这里是「配对 + nextUnpairedIdx 前进 + _btApplyTargetTree 回树屏」，
+   * 表现就是「点一下就退出」—— 想接着看这一架还得重新进。
+   * 换源改为用户主动点配对条上的 chip（那时才回屏 A，因为不同源的池子可能落在不同的架）。
    */
   _btPickTarget: function (cageId, cell) {
     var self = this;
@@ -4381,26 +4523,37 @@ _closeDetail: function() {
     var cached = (self.data.btPoolMap || {})[cur.animalCageId] || {};
     var t = (cached.byCage || {})[cageId];
     if (!t || !t.selectable) { wx.showToast({ title: (t && t.reason) || '该笼位不在可选范围内', icon: 'none' }); return; }
+    if (self.data.btMode === 'divide') {
+      // 分笼是一对多：同一个源多选目标，再点一下取消；没有「配给别的源」的问题
+      var arr = (self.data.btDivTargets || []).slice();
+      var at = arr.indexOf(cageId);
+      if (at >= 0) arr.splice(at, 1); else arr.push(cageId);
+      self.setData({ btDivTargets: arr }, function () {
+        self._btPaintPhase();
+        self._btRebuildChrome();
+      });
+      return;
+    }
+    // 一个目标笼位只能接收一次转移。格子已置灰，这里再挡一道（防止别的入口/路径绕过来）
+    if (btLogic.targetOwnerExcept(self.data.btTargets || {}, cageId, cur.animalCageId)) {
+      wx.showToast({ title: '该笼位已配给别的源，一个笼位只能接收一次转移', icon: 'none' });
+      return;
+    }
     var targets = Object.assign({}, self.data.btTargets || {});
     if (targets[cur.animalCageId] === cageId) delete targets[cur.animalCageId];
     else targets[cur.animalCageId] = cageId;
-    var sources = self.data.btSources || [];
-    var nextCursor = btLogic.nextUnpairedIdx(sources, targets, self.data.btCursor + 1);
-    if (nextCursor < 0) nextCursor = self.data.btCursor;
-    var nextSource = sources[nextCursor];
-    self.setData({ btTargets: targets, btCursor: nextCursor }, function () {
-      // 池子还没拉的源（删源后回跳可能遇到）先拉再画
-      if (nextSource && !(self.data.btPoolMap || {})[nextSource.animalCageId]) {
-        self._btEnsurePool(nextSource, function () { self._btApplyTargetTree(); self._btRebuildChrome(); });
-      } else {
-        self._btApplyTargetTree(); self._btRebuildChrome();
-      }
+    self.setData({ btTargets: targets }, function () {
+      // 就地重画：本格变/取消选中，别的格可能从「已配给别的源」解开
+      self._btPaintPhase();
+      self._btRebuildChrome();
     });
   },
 
   /** 配对条上点一条：光标跳到它（目标阶段）/ 无动作（源阶段，删除由 × 走 onBtRemoveSource） */
   onBtChipTap: function (e) {
     var self = this;
+    // 分笼：chip 就是已选目标，没有「跳到哪个源」这回事（只有一个源）
+    if (self.data.btMode === 'divide') return;
     if (self.data.btPhase !== 'target') return;
     var sid = String(e.currentTarget.dataset.sourceId || '');
     var sources = self.data.btSources || [];
@@ -4412,10 +4565,17 @@ _closeDetail: function() {
     });
   },
 
-  /** 源阶段 chip 上的 ×：移出这个源（连带删它的目标） */
+  /** chip 上的 ×：转移=移出这个源（连带删它的目标）；分笼=移除这个已选目标 */
   onBtRemoveSource: function (e) {
     var self = this;
     var sid = String(e.currentTarget.dataset.sourceId || '');
+    if (self.data.btMode === 'divide') {
+      var arr = (self.data.btDivTargets || []).filter(function (id) { return String(id) !== sid; });
+      self.setData({ btDivTargets: arr }, function () {
+        self._btPaintPhase(); self._btRebuildChrome();
+      });
+      return;
+    }
     var out = btLogic.removeSource(self.data.btSources || [], self.data.btTargets || {}, sid);
     var cursor = self.data.btCursor;
     if (self.data.btPhase === 'target') {
@@ -4427,8 +4587,20 @@ _closeDetail: function() {
     });
   },
 
+  /** 分笼：切换「保留源笼位」。true=源笼位原样保留（净增占用，会卡配额）；false=源笼位归档为空笼盒 */
+  onBtKeepSourceChange: function (e) {
+    this.setData({ btKeepSource: !!(e.detail && e.detail.value) });
+  },
+
   onBtClearSources: function () {
     var self = this;
+    // 分笼：清的是已选目标集合；**源笼位不清**（它就是入口那一格，清了这个操作就没意义了）
+    if (self.data.btMode === 'divide') {
+      self.setData({ btDivTargets: [] }, function () {
+        self._btPaintPhase(); self._btRebuildChrome();
+      });
+      return;
+    }
     self.setData({ btSources: [], btTargets: {}, btCursor: 0 }, function () {
       self._btPaintPhase(); self._btRebuildChrome();
     });
@@ -4440,23 +4612,75 @@ _closeDetail: function() {
     // btChecking 必须一起清：它是在飞的 /cage-op/operable 校验的重入保护，
     // 留着 true 的话重开抽屉后点任何源格子都会被静默吃掉（连 toast 都没有）。
     self.setData({
-      btOpen: false, btPhase: 'source', btScreen: 'tree', btTree: [], btShelf: null,
+      btOpen: false, btMode: 'transfer', btPhase: 'source', btScreen: 'tree', btTree: [], btShelf: null,
       btSources: [], btTargets: {}, btPoolMap: {}, btCursor: 0,
       btSubmitting: false, btChecking: false, btEmptyText: '', btRows: [], btConfirmOff: true,
       // 锚点与提示都跟着这次会话走：不清的话重开抽屉会拿上一次的入口格去比对提示文案
-      btAnchorId: '', btHint: ''
+      btAnchorId: '', btHint: '',
+      // 分笼那两个字段：不清的话下次开转移抽屉会带着上一次的目标集合
+      btDivTargets: [], btKeepSource: true, btSourceLabel: ''
     });
     self._btShelfGridCache = {};
+    self._btNotOperable = {};
   },
 
   onBtConfirm: function () {
     var self = this;
+    if (self.data.btMode === 'divide') { self._btSubmitDivide(); return; }
     var sources = self.data.btSources || [];
     var targets = self.data.btTargets || {};
     if (!sources.length) return;
     var missing = sources.filter(function (s) { return !targets[s.animalCageId]; });
     if (missing.length) { wx.showToast({ title: '还有 ' + missing.length + ' 个源没选目标', icon: 'none' }); return; }
     self._btOpenConfirm();
+  },
+
+  /**
+   * 分笼提交：**没有转移单、没有表单**，直接把「源 + 目标集 + keepSource」发出去。
+   *
+   * 「不保留源笼位」要拦一下：那是把源笼位**归档** —— 释放认领 + 清占用/动物/状态 + 回空笼盒，
+   * 不可撤销。保留时是净增占用（后端会按「房间 + AUP 配额」校验），不打扰。
+   */
+  _btSubmitDivide: function () {
+    var self = this;
+    var src = (self.data.btSources || [])[0] || null;
+    var targets = (self.data.btDivTargets || []).slice();
+    if (!src || !targets.length) { wx.showToast({ title: '请先选择分笼目标笼位', icon: 'none' }); return; }
+    var keep = !!self.data.btKeepSource;
+    var doSubmit = function () {
+      // 重入闸：主按钮的「禁用态」只是灰色类，没有 pointer-events 拦截，快速连点会发两次请求
+      //（分笼是两次 POST /divide；转移那条更贵 —— 两张转移单）。所以每个提交入口都得自己挡一道。
+      if (self.data.btSubmitting) return;
+      // 一并置 btConfirmOff：让按钮立刻变灰，别只靠「提交中…」文案
+      self.setData({ btSubmitting: true, btConfirmOff: true });
+      springAuth.springRequest({
+        url: '/api/cage-op/divide', method: 'POST',
+        data: {
+          sourceAnimalCageId: src.animalCageId,
+          targetAnimalCageIds: targets,
+          keepSource: keep,
+          reason: ''
+        }
+      }).then(function (res) {
+        var p = unwrap(res);
+        self.setData({ btSubmitting: false });
+        if (!p.ok) { wx.showToast({ title: p.message || '分笼失败', icon: 'none' }); return; }
+        var r = p.data || {};
+        wx.showToast({ title: r.needApproval ? '已提交，等待审核' : '分笼已完成', icon: 'success' });
+        self.onBtClose();
+        self.onRetry();
+      }).catch(function () {
+        self.setData({ btSubmitting: false });
+        wx.showToast({ title: '分笼失败', icon: 'none' });
+      });
+    };
+    if (keep) { doSubmit(); return; }
+    wx.showModal({
+      title: '源笼位将被归档',
+      content: '不保留源笼位时，' + (src.label || '源笼位') + ' 上的动物、占用与状态信息会被清空并回空笼盒，不可撤销。确认分笼到 ' + targets.length + ' 个目标笼位？',
+      confirmText: '确认分笼',
+      success: function (r) { if (r.confirm) doSubmit(); }
+    });
   },
 
   /**

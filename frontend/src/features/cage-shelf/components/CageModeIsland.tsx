@@ -110,8 +110,11 @@ type Props = {
   onToggleVariant?: () => void;
 };
 
-/** 量锚点元素的视口矩形（右侧内容区）；窗口/容器尺寸变化时跟手 */
-function useAnchorRect(ref?: RefObject<HTMLElement | null>) {
+/**
+ * 量锚点元素的视口矩形（右侧内容区）；窗口/容器尺寸变化时跟手。
+ * 导出给页面里其它贴底常驻条用 —— 同一个锚点，几条浮层才不会各居各的。
+ */
+export function useAnchorRect(ref?: RefObject<HTMLElement | null>) {
   const [rect, setRect] = useState<{ left: number; width: number } | null>(null);
   useEffect(() => {
     const el = ref?.current;

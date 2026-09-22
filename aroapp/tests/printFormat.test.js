@@ -123,6 +123,9 @@ test('mapJobRow: 完整字段映射', () => {
     status: 'SENT',
     lastError: '打印机离线',
     createdAt: '2026-09-15T14:19:31',
+    // queueState：后端 PrintJob.queueState（PrintJobViewAssembler 下发），
+    // 「仍卡在打印机队列」标记与撤销按钮靠它判断，所以必须**原样透传**
+    queueState: 'QUEUED',
   });
   assert.deepEqual(row, {
     id: 42,
@@ -136,7 +139,13 @@ test('mapJobRow: 完整字段映射', () => {
     status: 'SENT',
     stationId: '',
     note: '',
+    queueState: 'QUEUED',
   });
+});
+
+test('mapJobRow: queueState 缺省为空串（非直发工位没有这个结论）', () => {
+  const row = mapJobRow({ id: 1, fileName: 'a.pdf', copies: 1, status: 'PENDING' });
+  assert.equal(row.queueState, '');
 });
 
 test('stationNameMap: 工位 id → 名称（队列要显示是哪台工位打）', () => {

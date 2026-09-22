@@ -109,6 +109,10 @@ public class SuppliesSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE supply_item ADD COLUMN independent_order TINYINT NOT NULL DEFAULT 0 COMMENT '是否独立成单:1是,0否'");
             ensureColumnExists("supply_category", "cover_url",
                     "ALTER TABLE supply_category ADD COLUMN cover_url VARCHAR(500) NULL COMMENT '分类封面图URL'");
+            // 领用单（《实验动物科学部内部物品领用单》）表头要印「领用楼层」，系统里原本没有这个字段：
+            // 出库处理时由管理员手填，不填就留白手写。2026-09-22 用户定。
+            ensureColumnExists("supply_claim_order", "claim_floor",
+                    "ALTER TABLE supply_claim_order ADD COLUMN claim_floor VARCHAR(64) NULL COMMENT '领用楼层（领用单表头，出库时手填）'");
             boolean lockedQtyCreated = ensureColumnExists("supply_item", "locked_qty",
                     "ALTER TABLE supply_item ADD COLUMN locked_qty INT NOT NULL DEFAULT 0 COMMENT '待处理领用锁定数量'");
             // 权威回填/校准：未删除 PENDING 领用行 SUM → locked_qty。

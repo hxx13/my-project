@@ -12,6 +12,15 @@ type AdminSearchSelectProps = {
   options: readonly string[];
   /** 空值时的占位，默认「全部」 */
   placeholder?: string;
+  /**
+   * 候选浮层第一行（清空动作）的文案，默认取 placeholder。
+   *
+   * 分开的理由：筛选场景的 placeholder 是「全部」，拿来当清空行文案正合适；
+   * 但表单场景的 placeholder 常是一句提示（「可直接输入，或从候选中选」），
+   * 用户会把它当说明去点，一点就把已填的值清空 —— 保存后字段变空，看着像没存上。
+   * 表单调用方显式传动作词（如「清除该字段的值」）即可。
+   */
+  clearRowLabel?: string;
   className?: string;
   id?: string;
   /**
@@ -39,6 +48,7 @@ export function AdminSearchSelect({
   onChange,
   options,
   placeholder = "全部",
+  clearRowLabel,
   className,
   id,
   onAddOption,
@@ -117,7 +127,7 @@ export function AdminSearchSelect({
             className="max-h-60 overflow-auto rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-1 shadow-lg"
           >
             <button type="button" className={cn(rowCls, "text-[var(--app-color-text-tertiary)]")} onClick={() => { onChange(""); setOpen(false); }}>
-              {placeholder}
+              {clearRowLabel ?? placeholder}
             </button>
             {filtered.map((o) => (
               <button

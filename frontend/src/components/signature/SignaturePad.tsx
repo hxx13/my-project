@@ -34,6 +34,19 @@ export type SignaturePadProps = {
   format?: "jpeg" | "png";
   disabled?: boolean;
   className?: string;
+  /**
+   * 画布所在坐标系被 CSS 旋转了 90° 摆放时（竖屏手机上把整屏转过来当横屏用）传 90。
+   *
+   * <p>{@code getBoundingClientRect} 给的是**变换后的外接矩形**（宽高已互换），
+   * 直接 {@code clientX - rect.left} 会把落笔坐标算歪 —— 屏幕上往右划，笔跑到画布下方，
+   * 看着像「鼠标失灵」。所以要按旋转反算回画布本地坐标。
+   */
+  rotate?: 0 | 90;
+  /**
+   * 是否带上自带的「重新签名」按钮行。默认带；整屏那套自己有按钮条，传 false
+   * —— 不然高度会多出一行（调用方按 height 算的位置就会被顶出屏幕）。
+   */
+  showFooter?: boolean;
 };
 
 /**
@@ -52,6 +65,8 @@ export function SignaturePad({
   format = "jpeg",
   disabled = false,
   className,
+  rotate = 0,
+  showFooter = true,
 }: SignaturePadProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   /** 空画布判据：本轮是否真的落过笔 */
@@ -173,6 +188,9 @@ export function SignaturePad({
 
   const pointOf = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    // 顺时针转 90° 摆放时：本地 +x 轴指向屏幕 +y、本地 +y 轴指向屏幕 -x。
+    // rect 是变换后的外接矩形，其宽度即画布的本地高度，所以用 rect.right 反推。
+    if (rotate === 90) return { x: e.clientY - rect.top, y: rect.right - e.clientX };
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
@@ -235,11 +253,13 @@ export function SignaturePad({
           disabled ? "pointer-events-none opacity-50" : ""
         }`}
       />
-      <div className="flex justify-end">
-        <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={clear}>
-          重新签名
-        </Button>
-      </div>
+      {showFooter ? (
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={clear}>
+            重新签名
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

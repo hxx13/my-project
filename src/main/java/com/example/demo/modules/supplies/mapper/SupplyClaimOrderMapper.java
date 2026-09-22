@@ -21,7 +21,8 @@ public interface SupplyClaimOrderMapper {
 
     int updateFulfilled(@Param("id") String id,
                          @Param("fulfilledBy") String fulfilledBy,
-                         @Param("fulfilledAt") java.time.LocalDateTime fulfilledAt);
+                         @Param("fulfilledAt") java.time.LocalDateTime fulfilledAt,
+                         @Param("claimFloor") String claimFloor);
 
     List<SupplyClaimOrder> listPendingAll();
 
@@ -49,9 +50,10 @@ public interface SupplyClaimOrderMapper {
                                   @Param("from") LocalDateTime from,
                                   @Param("toExclusive") LocalDateTime toExclusive);
 
-    List<SupplyClaimOrder> listRecentClosedAll(@Param("limit") int limit);
+    List<SupplyClaimOrder> listRecentClosedAll(@Param("limit") int limit, @Param("status") String status);
 
-    List<SupplyClaimOrder> listRecentClosedByUser(@Param("userId") String userId, @Param("limit") int limit);
+    List<SupplyClaimOrder> listRecentClosedByUser(@Param("userId") String userId, @Param("limit") int limit,
+                                                  @Param("status") String status);
 
     int deleteById(@Param("id") String id, @Param("operatorId") String operatorId, @Param("purgeAfter") LocalDateTime purgeAfter);
 

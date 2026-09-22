@@ -10,8 +10,7 @@ import {
   createProjectGroup, renameProjectGroup, deleteProjectGroup,
   type DepartmentDict, type ProjectGroupDict,
 } from "@/api/domains/admin.api";
-
-const inkBtn = "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)]";
+import { inkBtn, inkBtnDanger } from "./personnelChipStyles";
 
 /** 人员字典配置弹窗：部门（=院校，含校内/校外归属）+ 课题组（归部门）。仅 SUPER_ADMIN 打开。 */
 export function PersonnelDictModal({ onClose }: { onClose: () => void }) {
@@ -152,7 +151,7 @@ export function PersonnelDictModal({ onClose }: { onClose: () => void }) {
                         ) : (
                           <button type="button" className={inkBtn} onClick={() => { setDeptEditId(d.id); setDeptEditName(d.name); }}>改名</button>
                         )}
-                        <button type="button" className={`${inkBtn} border-rose-200 text-rose-700 hover:bg-rose-50`} onClick={() => doDeleteDept(d)}>删除</button>
+                        <button type="button" className={inkBtnDanger} onClick={() => doDeleteDept(d)}>删除</button>
                       </div>
                     </td>
                   </tr>
@@ -202,7 +201,7 @@ export function PersonnelDictModal({ onClose }: { onClose: () => void }) {
                         ) : (
                           <button type="button" className={inkBtn} onClick={() => { setGroupEditId(g.id); setGroupEditName(g.name); }}>改名</button>
                         )}
-                        <button type="button" className={`${inkBtn} border-rose-200 text-rose-700 hover:bg-rose-50`} onClick={() => doDeleteGroup(g)}>删除</button>
+                        <button type="button" className={inkBtnDanger} onClick={() => doDeleteGroup(g)}>删除</button>
                       </div>
                     </td>
                   </tr>

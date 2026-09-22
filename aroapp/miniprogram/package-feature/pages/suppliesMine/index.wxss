@@ -1,331 +1,402 @@
 .page {
-  padding: 16px 14px 24px;
   min-height: 100vh;
+  background: #f5f6f7;
+  padding: 24rpx;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #eef5ff 0%, #f7f8fa 120px);
+  padding-bottom: calc(36rpx + env(safe-area-inset-bottom));
 }
+
 .tabs {
   display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 10rpx;
+  margin-bottom: 14rpx;
 }
+
 .tab {
-  flex: 1;
-  text-align: center;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid #e3e8ef;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid #dcdee0;
+  font-size: 24rpx;
   color: #646566;
-  background: rgba(255, 255, 255, 0.85);
-  font-size: 13px;
-  box-shadow: 0 2px 8px rgba(31, 56, 88, 0.06);
+  background: #fff;
 }
+
 .tab-on {
   color: #1989fa;
-  border-color: rgba(25, 137, 250, 0.35);
-  background: rgba(255, 255, 255, 0.98);
-  font-weight: 600;
-  box-shadow: 0 4px 14px rgba(25, 137, 250, 0.12);
+  border-color: #1989fa;
+  background: rgba(25, 137, 250, 0.08);
 }
+
 .tab-with-badge {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  justify-content: center;
   gap: 8rpx;
 }
+
 .tab-badge {
   min-width: 28rpx;
-  padding: 2px 10px;
-  border-radius: 999px;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
   font-size: 20rpx;
   line-height: 1.25;
   font-weight: 600;
-  color: #fff;
-  background: linear-gradient(135deg, #ff7875 0%, #ee0a24 100%);
-  box-shadow: 0 2px 8px rgba(238, 10, 36, 0.25);
-}
-.muted {
-  font-size: 13px;
-  color: #969799;
   text-align: center;
-  padding: 24px 0;
-}
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.row-card {
-  background: #fff;
-  border-radius: 18px;
-  padding: 16px 18px;
-  border: 1px solid rgba(235, 238, 239, 0.9);
-  box-shadow: 0 4px 18px rgba(31, 56, 88, 0.07);
-}
-.row-card-muted {
-  opacity: 0.96;
-  border-style: dashed;
-}
-.row-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #323233;
-}
-.row-sub {
-  font-size: 12px;
-  color: #646566;
-  margin-top: 6px;
-}
-.row-extra {
-  font-size: 12px;
-  color: #07c160;
-  margin-top: 6px;
-}
-.row-hint {
-  font-size: 11px;
-  color: #c8c9cc;
-  margin-top: 8px;
-}
-.row-hint-link {
-  color: #1989fa;
-}
-.row-hint-danger {
-  color: #ee0a24;
-}
-.row-ops {
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-}
-.btn-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 18px;
-  border-radius: 999px;
-  font-size: 13px;
-  line-height: 1.2;
-  border: 1px solid transparent;
-}
-.btn-pill-primary {
   color: #fff;
-  background: linear-gradient(135deg, #3d9eff 0%, #1989fa 100%);
-  border-color: rgba(25, 137, 250, 0.2);
-  box-shadow: 0 4px 12px rgba(25, 137, 250, 0.28);
-}
-.btn-pill-ghost {
-  color: #1989fa;
-  background: rgba(25, 137, 250, 0.08);
-  border-color: rgba(25, 137, 250, 0.22);
-}
-.btn-pill-danger {
-  color: #ee0a24;
-  background: rgba(238, 10, 36, 0.06);
-  border-color: rgba(238, 10, 36, 0.2);
-}
-.pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  font-size: 13px;
-  color: #646566;
-  margin: 20px 0 10px;
-}
-.pager-rounded .pager-btn {
-  padding: 8px 20px;
-  border-radius: 999px;
-  background: #fff;
-  border: 1px solid #e3e8ef;
-  color: #1989fa;
-  box-shadow: 0 2px 8px rgba(31, 56, 88, 0.06);
-}
-.pager-num {
-  color: #323233;
-  font-weight: 600;
-  min-width: 28px;
-  text-align: center;
+  background: #ee0a24;
 }
 
-.detail-root {
+.hint {
+  color: #969799;
+  font-size: 24rpx;
+  padding: 18rpx 6rpx;
+}
+
+.hint-bar {
+  margin-bottom: 8rpx;
+  padding: 10rpx 6rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* ---- 卡片 ---- */
+.card {
+  background: #fff;
+  border-radius: 14rpx;
+  border: 1rpx solid #ebedf0;
+  margin-bottom: 12rpx;
+}
+
+.card-head {
+  padding: 18rpx;
+}
+
+/*
+ * ⋮ 菜单展开时把这张卡抬到同层卡片之上。
+ * 菜单是卡内的绝对定位子节点，而卡片本身没定位 —— 后面的卡片按 DOM 顺序会**盖在菜单上**，
+ * 看起来就像菜单被这张卡裁掉了（未展开时只有这一行离得近，最明显）。
+ * 注意别用 overflow:hidden 去「修」，那是另一回事，而且会真的把菜单裁没。
+ */
+.card-menu-open {
+  position: relative;
+  z-index: 30;
+}
+
+.row-head {
   display: flex;
-  flex-direction: column;
-  max-height: 78vh;
-  padding: 20rpx 24rpx 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.title {
+  font-size: 28rpx;
+  color: #323233;
+  font-weight: 600;
+}
+
+.truncate {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-sub {
+  font-size: 22rpx;
+  color: #969799;
+  font-weight: 400;
+}
+
+.tag {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #1989fa;
+  border: 1rpx solid #b3d4ff;
+  border-radius: 20rpx;
+  padding: 2rpx 10rpx;
+}
+
+.meta {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
+  margin-top: 6rpx;
+}
+
+/* 多段时间戳：整体换行而不是把某段时间从中间折断 */
+.meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4rpx 18rpx;
+  margin-top: 6rpx;
+}
+
+.meta-chips .meta {
+  white-space: nowrap;
+}
+
+/* ---- ⋮ 菜单 ---- */
+.bar-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bar-menu-btn {
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #969799;
+  border-radius: 999rpx;
+  letter-spacing: 2rpx;
+}
+
+.menu-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+}
+
+.menu-drop {
+  position: absolute;
+  right: 0;
+  top: 50rpx;
+  z-index: 20;
+  min-width: 200rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  padding: 6rpx 0;
+}
+
+.menu-item {
+  padding: 16rpx 28rpx;
+  font-size: 26rpx;
+  color: #323233;
+  white-space: nowrap;
+}
+
+.menu-item:active {
+  background: #f5f6f7;
+}
+
+.menu-item-danger {
+  color: #ee0a24;
+}
+
+/* ---- 展开区域 ---- */
+/* 卡片不设 overflow:hidden（会裁掉 ⋮ 菜单），改由底部条自己收圆角 */
+.card-expand {
+  border-top: 1rpx solid #ebedf0;
+}
+
+.expand-scroll {
+  max-height: 520rpx;
+  padding: 0 18rpx;
   box-sizing: border-box;
 }
 
-.detail-meta {
+.expand-info {
+  padding: 14rpx 0;
+  font-size: 22rpx;
+  color: #646566;
+}
+
+.expand-spec-header {
+  padding: 10rpx 0 4rpx;
+  font-size: 22rpx;
+  color: #1989fa;
+  font-weight: 600;
+  border-bottom: 1rpx solid #e6f0fd;
+  margin-top: 6rpx;
+}
+
+.expand-line {
+  padding: 14rpx 0;
+  border-bottom: 1rpx dashed #eceef0;
+}
+
+.expand-line:last-child {
+  border-bottom: none;
+}
+
+.expand-line-row {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10rpx;
-  margin-bottom: 8rpx;
-  flex-shrink: 0;
+  gap: 12rpx;
 }
 
-.detail-status-tag {
-  flex-shrink: 0;
-  font-size: 20rpx;
-  line-height: 1.3;
-  padding: 4rpx 12rpx;
-  border-radius: 999px;
-  border: 1px solid #e3e8ef;
-}
-
-.detail-status-warn {
-  color: #d97706;
-  background: #fffbeb;
-  border-color: #fcd34d;
-}
-
-.detail-status-ok {
-  color: #059669;
-  background: #ecfdf5;
-  border-color: #6ee7b7;
-}
-
-.detail-status-muted {
-  color: #646566;
-  background: #f7f8fa;
-  border-color: #ebedf0;
-}
-
-.detail-meta-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 22rpx;
-  color: #969799;
-  line-height: 1.4;
-}
-
-.detail-meta-extra {
-  display: block;
-  font-size: 20rpx;
-  color: #b0b3b8;
-  line-height: 1.35;
-  margin-bottom: 12rpx;
-  flex-shrink: 0;
-}
-
-.detail-scroll {
-  flex: 1;
-  min-height: 240rpx;
-  max-height: 58vh;
-}
-
-.detail-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 20rpx;
-  padding: 16rpx 14rpx;
-  margin-bottom: 12rpx;
-  background: #fff;
-  border-radius: 14rpx;
-  border: 1px solid #eceef0;
-  box-shadow: 0 2rpx 10rpx rgba(31, 56, 88, 0.04);
-}
-
-.detail-thumb {
-  width: 104rpx;
-  height: 104rpx;
-  border-radius: 12rpx;
-  border: 1px solid #ebedf0;
+.expand-thumb {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 10rpx;
+  border: 1rpx solid #ebedf0;
   flex-shrink: 0;
   background: #f5f6f7;
 }
 
-.detail-thumb-ph {
+.expand-thumb-ph {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: #f5f6f7;
   color: #969799;
-  font-size: 36rpx;
-  font-weight: 600;
+  font-size: 28rpx;
 }
 
-.detail-mid {
+.expand-line-main {
   flex: 1;
   min-width: 0;
-  padding-top: 4rpx;
 }
 
-.detail-name {
-  font-size: 30rpx;
-  font-weight: 600;
+.expand-name {
+  display: block;
+  font-size: 25rpx;
   color: #323233;
-  line-height: 1.35;
-  display: block;
 }
 
-.detail-spec {
-  display: block;
-  font-size: 22rpx;
-  color: #1989fa;
-  margin-top: 4rpx;
-  line-height: 1.3;
-}
-
-.detail-qty-row {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 10rpx;
+.expand-qty-row {
   margin-top: 8rpx;
-}
-
-.detail-qty-main {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #1989fa;
-  line-height: 1.2;
-}
-
-.detail-qty-sub {
-  font-size: 22rpx;
-  color: #969799;
-}
-
-.detail-remark {
-  display: block;
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: #969799;
-  line-height: 1.4;
-}
-
-.detail-foot {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12rpx;
-  padding: 16rpx 0 calc(16rpx + env(safe-area-inset-bottom));
-  border-top: 1px solid #f2f3f5;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.expand-qty-label {
+  font-size: 20rpx;
+  color: #969799;
   flex-shrink: 0;
 }
 
-.detail-foot-btn {
-  padding: 10rpx 28rpx;
-  border-radius: 999px;
-  font-size: 26rpx;
-  line-height: 1.3;
+.expand-qty-value {
+  font-size: 24rpx;
+  color: #323233;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-.detail-foot-btn-primary {
-  color: #fff;
-  background: linear-gradient(135deg, #3d9eff 0%, #1989fa 100%);
-  box-shadow: 0 4rpx 12rpx rgba(25, 137, 250, 0.22);
+.expand-qty-cap {
+  font-size: 20rpx;
+  color: #969799;
+  flex-shrink: 0;
 }
 
-.detail-foot-btn-ghost {
+.expand-remark-readonly {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  background: #f5f6f7;
+  border-radius: 8rpx;
+}
+
+.expand-remark-lbl {
+  font-size: 22rpx;
+  color: #969799;
+  flex-shrink: 0;
+}
+
+.expand-remark-text {
+  font-size: 24rpx;
   color: #646566;
-  background: #f7f8fa;
+  line-height: 1.5;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
 }
 
+/* ---- 底部操作栏 ---- */
+.expand-foot {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 14rpx 18rpx;
+  border-top: 1rpx solid #f2f3f5;
+  background: #fafafa;
+  border-radius: 0 0 13rpx 13rpx;
+}
+
+.expand-foot-one {
+  justify-content: flex-end;
+}
+
+.expand-foot-one .expand-btn {
+  flex: 1;
+  max-width: 300rpx;
+}
+
+.expand-foot-two .expand-btn,
+.expand-foot-three .expand-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.expand-btn {
+  text-align: center;
+  font-size: 26rpx;
+  border-radius: 10rpx;
+  padding: 12rpx 10rpx;
+}
+
+.expand-btn.ghost {
+  color: #646566;
+  border: 1rpx solid #dcdee0;
+  background: #fff;
+}
+
+.expand-btn.primary {
+  color: #fff;
+  background: #1989fa;
+}
+
+/* ---- 分页 ---- */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  margin: 20rpx 0 6rpx;
+}
+
+.pager-btn {
+  font-size: 24rpx;
+  color: #646566;
+  border: 1rpx solid #dcdee0;
+  border-radius: 999rpx;
+  padding: 10rpx 24rpx;
+  background: #fff;
+}
+
+.pager-btn-off {
+  color: #c8c9cc;
+  border-color: #ebedf0;
+}
+
+.pager-num {
+  font-size: 24rpx;
+  color: #969799;
+  min-width: 120rpx;
+  text-align: center;
+}
+
+/* ---- 删除确认 ---- */
 .confirm-mask {
   position: fixed;
   left: 0;
@@ -338,48 +409,57 @@
   align-items: center;
   justify-content: center;
   padding: 32rpx;
+  box-sizing: border-box;
 }
+
 .confirm-box {
   width: 100%;
   max-width: 560rpx;
   background: #fff;
-  border-radius: 24rpx;
+  border-radius: 16rpx;
   padding: 36rpx 28rpx 28rpx;
-  box-shadow: 0 16rpx 48rpx rgba(15, 23, 42, 0.12);
+  box-sizing: border-box;
 }
+
 .confirm-title {
   display: block;
-  font-size: 32rpx;
-  font-weight: 700;
-  color: #0f172a;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
   margin-bottom: 16rpx;
 }
+
 .confirm-body {
   display: block;
   font-size: 26rpx;
-  color: #64748b;
+  color: #646566;
   line-height: 1.5;
   margin-bottom: 32rpx;
 }
+
 .confirm-actions {
   display: flex;
-  gap: 20rpx;
+  gap: 16rpx;
   justify-content: flex-end;
 }
+
 .confirm-btn {
-  min-width: 160rpx;
+  flex: 1;
+  max-width: 220rpx;
   height: 72rpx;
   line-height: 72rpx;
   text-align: center;
-  border-radius: 999rpx;
+  border-radius: 10rpx;
   font-size: 28rpx;
-  font-weight: 600;
 }
+
 .confirm-btn.ghost {
-  background: #f1f5f9;
-  color: #475569;
+  color: #646566;
+  border: 1rpx solid #dcdee0;
+  background: #fff;
 }
+
 .confirm-btn.danger {
-  background: linear-gradient(135deg, #f43f5e, #fb7185);
   color: #fff;
+  background: #ee0a24;
 }

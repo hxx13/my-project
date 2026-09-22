@@ -396,6 +396,10 @@ Page({
     currentWxPusher: false,
     showWxPusherEditor: false,
     wxPusherDraft: '',
+    /** 电子签名：一次性链接的二维码弹窗 */
+    signatureLinkShow: false,
+    signatureLinkUrl: '',
+    signatureLinkQrSrc: '',
     wxPusherSaving: false,
 
     // Password Change
@@ -951,14 +955,6 @@ Page({
     wx.navigateTo({ url: '/package-feature/pages/repairRequest/index' });
   },
 
-  goRepairProcess() {
-    if (!hasMinRole(wx.getStorageSync(springAuth.KEYS.ROLE), 'SUPER_ADMIN')) {
-      wx.showToast({ title: '无权限', icon: 'none' });
-      return;
-    }
-    wx.navigateTo({ url: '/package-feature/pages/repairProcess/index' });
-  },
-
   goPurchaseRequest() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
     if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/purchaseRequest/index', role, 'STAFF')) {
@@ -978,6 +974,92 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-feature/pages/fileTemplates/index' });
+  },
+
+  /**
+   * 电子签名：生成**一次性链接**后弹二维码。
+   *
+   * <p>为什么不做小程序内手绘、也不走 web-view：小程序里手写区域太小；web-view 又要求把网页域名
+   * 加进微信后台的业务域名白名单（仓库里那个 webview 壳一直没有调用方，白名单不一定配过）。
+   * 弹二维码最稳：长按识别 / 截图扫一扫 / 复制链接到浏览器，三条路都能到 H5 那张整屏横向签名页。
+   *
+   * <p>链接一次性，签完即失效；已经签过的会被后端直接拒掉（签名不可更改）。
+   */
+  async goSignature() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE);
+    if (!hasMinRole(role, 'MEMBER')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.showLoading({ title: '正在生成签名链接', mask: true });
+    try {
+      const r = await springAuth.springRequest({ url: '/api/student/signature/link', method: 'POST', data: {} });
+      const body = (r && r.data) || {};
+      // 写请求必须看 success：HTTP 200 + success:false 也是失败（不看会把「被拦」当成功）
+      if (!body.success) throw new Error(body.message || '生成签名链接失败');
+      const token = body.data && body.data.token;
+      if (!token) throw new Error('生成签名链接失败');
+      // 网页基址取 runtime-config 里的公开地址；万一带 /api 后缀先摘掉（SPA 在根路径）
+      const base = String(springAuth.getApiPublicBaseUrl() || springAuth.getUploadPublicBaseUrl() || '')
+        .replace(/\/api\/?$/, '');
+      if (!base) throw new Error('还没拿到网页地址，请稍后重试');
+      wx.hideLoading();
+      const url = `${base}/#/m/sign/${token}`;
+      this.setData({ signatureLinkShow: true, signatureLinkUrl: url, signatureLinkQrSrc: '' }, () => {
+        this.drawSignatureLinkQr(url);
+      });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '生成签名链接失败', icon: 'none' });
+    }
+  },
+
+  /** 把签名链接画成二维码图（离屏画布 → 临时文件），图带 show-menu-by-longpress，可长按识别。 */
+  drawSignatureLinkQr(url) {
+    if (!url) return;
+    try {
+      const drawQrcode = require('../../libs/weapp-qrcode.js');
+      const self = this;
+      const dpr = Math.min(3, Math.max(1, (wx.getSystemInfoSync() && wx.getSystemInfoSync().pixelRatio) || 2));
+      drawQrcode({
+        width: 200,
+        height: 200,
+        canvasId: 'signatureLinkQrCanvas',
+        text: String(url),
+        _this: this,
+        callback() {
+          wx.canvasToTempFilePath(
+            {
+              canvasId: 'signatureLinkQrCanvas',
+              width: 200,
+              height: 200,
+              destWidth: Math.floor(200 * dpr),
+              destHeight: Math.floor(200 * dpr),
+              success(res) {
+                const p = res && res.tempFilePath;
+                if (p) self.setData({ signatureLinkQrSrc: p });
+              },
+            },
+            self
+          );
+        },
+      });
+    } catch (e) {
+      console.warn('[mine] signature link qrcode', e);
+    }
+  },
+
+  onCopySignatureLink() {
+    const url = this.data.signatureLinkUrl || '';
+    if (!url) return;
+    wx.setClipboardData({
+      data: url,
+      success: () => wx.showToast({ title: '链接已复制，粘到浏览器打开', icon: 'none' }),
+    });
+  },
+
+  onCloseSignatureLink() {
+    this.setData({ signatureLinkShow: false });
   },
 
   goAssetRecord() {
@@ -1040,14 +1122,6 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-feature/pages/cardPrint/index' });
-  },
-
-  goPurchaseProcess() {
-    if (!hasMinRole(wx.getStorageSync(springAuth.KEYS.ROLE), 'SUPER_ADMIN')) {
-      wx.showToast({ title: '无权限', icon: 'none' });
-      return;
-    }
-    wx.navigateTo({ url: '/package-feature/pages/purchaseProcess/index' });
   },
 
   openBindFlow() {

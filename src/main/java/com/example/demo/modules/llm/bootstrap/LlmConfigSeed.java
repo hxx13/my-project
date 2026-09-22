@@ -22,9 +22,6 @@ public class LlmConfigSeed implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(LlmConfigSeed.class);
 
-    private static final String DEEPSEEK_MODEL_OPTIONS =
-            "[\"deepseek-v4-pro\",\"deepseek-v4-flash\"]";
-
     private final JdbcTemplate jdbcTemplate;
 
     public LlmConfigSeed(JdbcTemplate jdbcTemplate) {
@@ -72,9 +69,9 @@ public class LlmConfigSeed implements ApplicationRunner {
                     "llm",
                     "llm.model",
                     "主模型",
-                    "优先使用；失败时按备用列表自动切换",
+                    "优先使用；失败时按备用列表自动切换。填供应商当前的模型 ID（如 deepseek-chat）",
                     "STRING",
-                    DEEPSEEK_MODEL_OPTIONS,
+                    null,
                     "deepseek-v4-pro",
                     0,
                     0,
@@ -410,6 +407,15 @@ public class LlmConfigSeed implements ApplicationRunner {
         }
     }
 
+    /**
+     * 写入/更新一条配置定义。
+     *
+     * <p>{@code optionsJson} 必须直接覆盖、不能 COALESCE 保留旧值：传 null 的语义是
+     * 「这项是自由文本，不要下拉框」。原先的 {@code COALESCE(?, options_json)} 会让
+     * 一旦写过的枚举值永远清不掉 —— {@code llm.model} 就因此被钉死在
+     * ["deepseek-v4-pro","deepseek-v4-flash"] 两个早已过期的模型名上，
+     * 供应商改名后后台根本改不动。本类只操作 module='llm'，且是 options 的唯一写入方。
+     */
     private void ensureDef(
             String module,
             String configKey,
@@ -430,7 +436,7 @@ public class LlmConfigSeed implements ApplicationRunner {
             jdbcTemplate.update(
                     """
                             UPDATE sys_system_config_def
-                            SET label_zh = ?, description = ?, value_type = ?, options_json = COALESCE(?, options_json), default_value = ?
+                            SET label_zh = ?, description = ?, value_type = ?, options_json = ?, default_value = ?
                             WHERE module = ? AND config_key = ?
                             """,
                     labelZh,

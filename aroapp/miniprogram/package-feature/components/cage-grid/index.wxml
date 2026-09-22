@@ -8,6 +8,11 @@
     bindtap="onCellTap"
   >
     <text class="cg-pos">{{ item._displayPosition || item.position }}</text>
+    <!-- 已选：蓝环之上再加一枚居中绿勾（用户 2026-09-22 口径：选中要有明确的对勾，不只靠描边）。
+         是**公用件**——任何宿主写 `_sel` 都该看到它，不加开关（用户 2026-09-22 明确：别处用到没问题）。 -->
+    <view wx:if="{{ item._sel }}" class="cg-selcheck">
+      <van-icon name="checked" size="26rpx" color="#16a34a" />
+    </view>
     <!-- 认领徽章 / 划分标签：与状态底色同源（共享 enrichGridCell 产出），笼架页画什么这里就画什么，
          少了这两块就是「同一个组件、同一份数据，标签对不上」的来源。 -->
     <view wx:if="{{ item._claimBadge }}" class="cg-badge {{ item._claimBadge.cls }}">{{ item._claimBadge.text }}</view>

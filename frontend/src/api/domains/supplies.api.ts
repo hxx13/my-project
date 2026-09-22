@@ -204,11 +204,18 @@ export async function fetchSupplyPendingTasks() {
   return res.data.data;
 }
 
-export async function fetchSupplyRecentClosedClaims(limit = 40) {
+/** @param status 只看某种终局状态（如 FULFILLED 只看已完成）；不传 = 已完成 + 已撤回都算 */
+export async function fetchSupplyRecentClosedClaims(limit = 40, status?: string) {
   const res = await authHttp.get<Result<SupplyClaimOrder[]>>("/supplies/claims/recent-closed", {
-    params: { limit },
+    params: { limit, status },
   });
   return res.data.data;
+}
+
+/** 批量领用单：把选中的几张合并成一份多页 PDF（管理端，上限 20 张）。 */
+export async function fetchSupplyClaimFormsMerged(ids: string[]): Promise<Blob> {
+  const res = await authHttp.post("/supplies/admin/claims/forms/batch", { ids }, { responseType: "blob" });
+  return res.data as Blob;
 }
 
 export async function fetchSupplyMine(params: { page: number; size: number; status?: string; withLines?: boolean }) {
@@ -272,8 +279,13 @@ export async function deleteSupplyClaimPdfLink(claimId: string, linkId: string) 
   await authHttp.delete(`/supplies/claims/${encodeURIComponent(claimId)}/pdf-links/${encodeURIComponent(linkId)}`);
 }
 
-export async function fulfillSupplyClaim(id: string, lines: { lineId: number; grant: boolean; fulfillQty?: number; remark?: string }[]) {
-  const res = await authHttp.post<Result<SupplyClaimOrder>>(`/supplies/admin/claims/${id}/fulfill`, { lines });
+/** 出库。claimFloor 是订单级的「领用楼层」，印在领用单表头，不填就留白手写。 */
+export async function fulfillSupplyClaim(
+  id: string,
+  lines: { lineId: number; grant: boolean; fulfillQty?: number; remark?: string }[],
+  claimFloor?: string,
+) {
+  const res = await authHttp.post<Result<SupplyClaimOrder>>(`/supplies/admin/claims/${id}/fulfill`, { lines, claimFloor });
   return res.data.data;
 }
 

@@ -53,6 +53,26 @@ class TransferFormFileNameTest {
         assertEquals(today, TransferFormService.dayOf("不是日期"));
     }
 
+    /** 印在单子上的「申请方提交实验动物转移单日期」，形态是 ISO（{@code 2026-09-22}），与拟定日期同一风格。 */
+    @Test
+    void submitDate_提交时间取日期_不印时分秒() {
+        assertEquals("2026-09-22", TransferFormService.submitDate("2026-09-22 13:49:45"));
+        assertEquals("2026-09-22", TransferFormService.submitDate("2026-09-22"));
+        assertEquals("2026-09-22", TransferFormService.submitDate("2026/09/22 13:49:45"));
+    }
+
+    /**
+     * 认不出返回 null（那一行只留标签）——**不退回今天**。
+     * 单号可以拿今天兜底，但「提交日期」在正式单据上写个今天的假日期就是写错事实。
+     */
+    @Test
+    void submitDate_认不出返回null不编日期() {
+        assertNull(TransferFormService.submitDate(null));
+        assertNull(TransferFormService.submitDate(""));
+        assertNull(TransferFormService.submitDate("不是日期"));
+        assertNull(TransferFormService.submitDate("2026-9-2"));
+    }
+
     @Test
     void 单号剔掉路径分隔符与控制字符() {
         String n = TransferFormService.composeDocNo("20260920", "a/b\\c:d*e?f\"g<h>i|j", 1);

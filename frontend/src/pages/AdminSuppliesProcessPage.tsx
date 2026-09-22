@@ -3,11 +3,15 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import {
+  createOrReuseSupplyClaimPdfLink,
   downloadPersonalClaimExcel,
   fetchSupplyClaimDetail,
+  fetchSupplyClaimFormsMerged,
   type SupplyClaimOrder,
   type SupplyClaimLine,
 } from "@/api/domains/supplies.api";
+import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
+import { PrintDispatchDialog } from "@/features/print-station/PrintDispatchDialog";
 import {
   useSupplyPendingTasks,
   useSupplyRecentClosed,
@@ -61,8 +65,10 @@ function formatSpecLabel(specJson: string | undefined | null): string {
   catch { return ''; }
 }
 
-export default function AdminSuppliesProcessPage() {
-  const navigate = useNavigate();
+/** 批量导出领用单的单次上限（与后端 MAX_BATCH_FORMS 对齐，前端先拦，免得白跑一次几分钟的请求） */
+const MAX_BATCH_FORMS = 20;
+
+export default function AdminSuppliesProcessPage() {  const navigate = useNavigate();
   const location = useLocation();
   const role = authStorage.getRole() || "MEMBER";
   const canProcess = hasMinRole(role, "SENIOR");
@@ -74,11 +80,26 @@ export default function AdminSuppliesProcessPage() {
   const [grantMapCache, setGrantMapCache] = useState<Record<string, Record<number, boolean>>>({});
   const [remarkMapCache, setRemarkMapCache] = useState<Record<string, Record<number, string>>>({});
   const [fulfillQtyCache, setFulfillQtyCache] = useState<Record<string, Record<number, number>>>({});
+  /** 领用楼层（订单级，领用单表头那一栏）：出库时手填 */
+  const [floorCache, setFloorCache] = useState<Record<string, string>>({});
   const [fulfillingIds, setFulfillingIds] = useState<Record<string, boolean>>({});
   const [selectedRecycleIds, setSelectedRecycleIds] = useState<string[]>([]);
+  /** 正在预览《内部物品领用单》的那条记录（连同取回的字节与单号文件名） */
+  const [formPreview, setFormPreview] = useState<{ row: SupplyClaimOrder; blob: Blob; fileName: string } | null>(null);
+  /** 批量导出领用单时勾选的已完成单 */
+  const [selectedDoneIds, setSelectedDoneIds] = useState<string[]>([]);
+  const [batchExporting, setBatchExporting] = useState(false);
+  /**
+   * 要派发到打印工位的领用单（临时文件）。
+   * 走 pendingFile：确认打到哪台机器时才上传，取消则服务端不留东西（与转移单同款）。
+   */
+  const [printFile, setPrintFile] = useState<File | null>(null);
+  const [printRowId, setPrintRowId] = useState<string | null>(null);
 
   const { data: pendingRows = [], isLoading: pendingLoading } = useSupplyPendingTasks();
-  const { data: doneRows = [], isLoading: doneLoading } = useSupplyRecentClosed(60);
+  // 上限 500：管理端要能翻到**所有**已完成的领用单（后端也放到了 500），好按单补打领用单。
+  // 只看 FULFILLED —— 「已撤回」不是「已完成」，混在一起会把撤回单也当成能补打的单子。
+  const { data: doneRows = [], isLoading: doneLoading } = useSupplyRecentClosed(500, "FULFILLED");
   const { data: recycleData, isLoading: recycleLoading } = useAdminClaimRecycle({ page: 1, size: 200 });
   const recycleRows = recycleData?.data ?? [];
 
@@ -173,19 +194,13 @@ export default function AdminSuppliesProcessPage() {
     }));
     setFulfillingIds(prev => ({ ...prev, [claimId]: true }));
     try {
-      await fulfillMut.mutateAsync({ id: claimId, lines });
+      await fulfillMut.mutateAsync({ id: claimId, lines, claimFloor: floorCache[claimId]?.trim() || undefined });
       collapseOne(claimId);
     } catch {
       // error handled by mutation
     } finally {
       setFulfillingIds(prev => { const n = { ...prev }; delete n[claimId]; return n; });
     }
-  };
-
-  const goAuditExport = (claimId: string) => {
-    navigate(`${toAdminRoutePath("/admin/supplies/audit-export")}?tab=personal&claimId=${encodeURIComponent(claimId)}`, {
-      state: { returnTo: `${location.pathname}${location.search}` },
-    });
   };
 
   const exportClaimExcel = async (claimId: string) => {
@@ -200,8 +215,60 @@ export default function AdminSuppliesProcessPage() {
 
   const loading = pendingLoading || doneLoading || recycleLoading;
 
-  const renderClaimCard = (row: SupplyClaimOrder, tab: TabKey) => {
-    const expanded = !!expandedIds[row.id];
+  /**
+   * 取领用单 PDF：先让后端生成/复用分享链接（已出库的是那一刻归档的、带出库人签名的那一份），
+   * 再凭链接里的 token 拉字节。**文件名用链接里带的**（就是单号，如 20260923-位亚磊-1.pdf），
+   * 与纸面印的一致，不用 claimId 那种 SC_<uuid>。
+   */
+  const resolveClaimForm = async (row: SupplyClaimOrder) => {
+    const created = await createOrReuseSupplyClaimPdfLink(row.id);
+    const url = created?.downloadUrl;
+    if (!url) throw new Error("领用单生成失败");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("领用单打开失败");
+    return { blob: await res.blob(), fileName: created?.fileName || `领用单-${row.id}.pdf` };
+  };
+
+  /** 预览：取一次字节，预览弹窗与后面的「打印」共用同一份（不再各拉一遍）。 */
+  const openClaimForm = async (row: SupplyClaimOrder) => {
+    try {
+      const resolved = await resolveClaimForm(row);
+      setFormPreview({ row, ...resolved });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载领用单失败");
+    }
+  };
+
+  /** 打印领用单：取同一份字节落成 File，再交给派发弹窗选打印机（份数/工位在弹窗里选）。 */
+  const printClaimForm = async (row: SupplyClaimOrder) => {
+    try {
+      const resolved = await resolveClaimForm(row);
+      setPrintRowId(row.id);
+      setPrintFile(new File([resolved.blob], resolved.fileName, { type: "application/pdf" }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载领用单失败");
+    }
+  };
+
+  /** 批量导出领用单：后端把选中的几张合并成一份多页 PDF 回传（顺序即勾选顺序）。 */
+  const batchExportForms = async () => {
+    if (!selectedDoneIds.length) {
+      toast.error("请先勾选要领用单");
+      return;
+    }
+    setBatchExporting(true);
+    try {
+      const blob = await fetchSupplyClaimFormsMerged(selectedDoneIds);
+      downloadBlob(blob, `领用单合并-${selectedDoneIds.length}张.pdf`);
+      toast.success(`已导出 ${selectedDoneIds.length} 张领用单`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "批量导出失败");
+    } finally {
+      setBatchExporting(false);
+    }
+  };
+
+  const renderClaimCard = (row: SupplyClaimOrder, tab: TabKey) => {    const expanded = !!expandedIds[row.id];
     const detail = detailCache[row.id];
     const grantMap = grantMapCache[row.id] || {};
     const remarkMap = remarkMapCache[row.id] || {};
@@ -262,10 +329,20 @@ export default function AdminSuppliesProcessPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         setMenuOpenId(null);
-                        goAuditExport(row.id);
+                        void openClaimForm(row);
                       }}
                     >
-                      预览/导出页
+                      预览领用单
+                    </span>
+                    <span
+                      className="block w-full px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId(null);
+                        void printClaimForm(row);
+                      }}
+                    >
+                      打印领用单
                     </span>
                     {!isRecycle && (
                       <span
@@ -448,6 +525,16 @@ export default function AdminSuppliesProcessPage() {
                     >
                       修改领用单
                     </button>
+                    <label className="flex items-center gap-1.5 text-sm text-[var(--twin-body)] whitespace-nowrap">
+                      领用楼层
+                      <input
+                        type="text"
+                        value={floorCache[row.id] ?? ""}
+                        onChange={(e) => setFloorCache((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                        placeholder="如 3楼 301（可留空）"
+                        className="w-40 rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm"
+                      />
+                    </label>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -563,8 +650,46 @@ export default function AdminSuppliesProcessPage() {
 
         {!loading && activeTab === "done" ? (
           <div className="space-y-2">
-            {doneRows.map((row) => renderClaimCard(row, "done"))}
-            {doneRows.length === 0 ? <EmptyState title="暂无已处理物资单" /> : null}
+            {doneRows.length > 0 ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-xs text-[var(--twin-body)]">
+                <span>
+                  已选 {selectedDoneIds.length} / {doneRows.length} 张（一次最多 {MAX_BATCH_FORMS} 张）
+                </span>
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]"
+                    onClick={() => setSelectedDoneIds(
+                      selectedDoneIds.length ? [] : doneRows.slice(0, MAX_BATCH_FORMS).map((r) => r.id)
+                    )}
+                  >
+                    {selectedDoneIds.length ? "清空选择" : `选前 ${MAX_BATCH_FORMS} 张`}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedDoneIds.length || batchExporting}
+                    className="rounded-full bg-sky-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                    onClick={() => void batchExportForms()}
+                  >
+                    {batchExporting ? "导出中…" : "导出领用单 PDF"}
+                  </button>
+                </span>
+              </div>
+            ) : null}
+            {doneRows.map((row) => (
+              <div key={row.id} className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-4 shrink-0"
+                  checked={selectedDoneIds.includes(row.id)}
+                  onChange={(e) => setSelectedDoneIds((prev) =>
+                    e.target.checked ? [...prev, row.id] : prev.filter((id) => id !== row.id)
+                  )}
+                />
+                <div className="flex-1 min-w-0">{renderClaimCard(row, "done")}</div>
+              </div>
+            ))}
+            {doneRows.length === 0 ? <EmptyState title="暂无已完成的物资单" /> : null}
           </div>
         ) : null}
 
@@ -620,6 +745,32 @@ export default function AdminSuppliesProcessPage() {
           </>
         ) : null}
       </section>
+
+      {formPreview ? (
+        <PdfPreviewDialog
+          title="内部物品领用单"
+          fileName={formPreview.fileName}
+          fetchPdf={async () => formPreview.blob}
+          onClose={() => setFormPreview(null)}
+        />
+      ) : null}
+
+      {/* 打印领用单：选打印机/份数都交给派发弹窗（临时文件，确认时才上传） */}
+      {printFile && printRowId ? (
+        <PrintDispatchDialog
+          open
+          onOpenChange={(v) => {
+            if (!v) {
+              setPrintFile(null);
+              setPrintRowId(null);
+            }
+          }}
+          sourceType="ADMIN_FILE"
+          sourceId={printRowId}
+          fileName={printFile.name}
+          pendingFile={printFile}
+        />
+      ) : null}
     </div>
   );
 }

@@ -52,6 +52,15 @@ const KEY_ALIAS: Record<string, string[]> = {
   cage_use_time: ["createTime"],
 };
 
+/**
+ * 展示时要加工的字段。目前只有「使用时间」：ARO 的 createTime 完整到秒
+ * （`2026-09-18 15:18:27`），但这张面板上只需要「哪天开始用的」——
+ * 后端读表单那侧（CageInfoValueService.getInfo）同样只到日，两处口径要一致。
+ */
+const DISPLAY_FMT: Record<string, (v: string) => string> = {
+  cage_use_time: (v) => (/^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v),
+};
+
 function pick(cell: CageShelfCell, key: string): string {
   const sources = [
     (cell as unknown as { detail?: Record<string, unknown> }).detail,
@@ -63,7 +72,11 @@ function pick(cell: CageShelfCell, key: string): string {
     if (!src) continue;
     for (const k of candidates) {
       const v = src[k];
-      if (v !== null && v !== undefined && String(v).trim() !== "") return String(v);
+      if (v !== null && v !== undefined && String(v).trim() !== "") {
+        const s = String(v);
+        const fmt = DISPLAY_FMT[key];
+        return fmt ? fmt(s) : s;
+      }
     }
   }
   return "-";

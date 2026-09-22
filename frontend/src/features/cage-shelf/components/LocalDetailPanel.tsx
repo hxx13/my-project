@@ -34,7 +34,7 @@ import toast from "react-hot-toast";
  *
  * ⚠️ 本组件只用于本地数据源。ARO 数据源走 AdminCageShelfPage 内联的 CAGE_BOX_INFO_FIELD_ORDER 渲染。
  */
-export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, opMarkByCageId, canDivide }: {
+export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, opMarkByCageId, canDivide, onBatchEdit }: {
   cell: CageShelfCell;
   onClose: () => void;
   /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
@@ -45,6 +45,8 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
   opMarkByCageId?: Map<string, CageOpMark>;
   /** 是否显示「清空划分」入口（管家身份） */
   canDivide?: boolean;
+  /** 表单编辑态里的「批量编辑」入口（由页面实现网格选择模式），不传则不显示 */
+  onBatchEdit?: (cageId: string) => void;
 }) {
   const detail = (cell as any).detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any).id ?? detail?.animalCageId ?? (cell as any).animalCageId ?? "");
@@ -241,7 +243,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
         />
       )}
     </div>
-    <CageFormFill animalCageId={animalCageId || null} claimed={claimed} />
+    <CageFormFill animalCageId={animalCageId || null} claimed={claimed} onBatchEdit={onBatchEdit} />
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
     {(statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) && <div className="space-y-2">
@@ -314,6 +316,15 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
               className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] items-center justify-center hidden group-hover:flex">✕</button>
           </div>))}
       </div>}
+      {/* 这一块（实验记录 + 照片）自己的保存入口就放在块尾 ——
+          原来挂在面板最底端、文案只写「保存」，进编辑态的人会把它当关键信息表单的保存去点：
+          点了提示保存成功，可表单字段一个都没写。按钮跟着它真正保存的内容走。 */}
+      <div className="mt-2 flex justify-end">
+        <button type="button" onClick={handleSave} disabled={saving}
+          className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition">
+          {saving ? "保存中..." : "保存实验记录与照片"}
+        </button>
+      </div>
     </div>
 
     {/* 历史归档：默认折叠（省地方），展开后能真看能删 ——
@@ -357,12 +368,6 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
         </div>
       </div>
     </details>
-
-    {/* 保存 */}
-    <button type="button" onClick={handleSave} disabled={saving}
-      className="rounded-twin-md px-4 py-1.5 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition self-end">
-      {saving ? "保存中..." : "保存"}
-    </button>
 
     {/* 照片预览放大（双通道共享） */}
     {previewUrl !== null && (() => { const curIdx = allPreviewUrls.indexOf(previewUrl); return <div className="fixed inset-0 z-[var(--z-modal)] bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewUrl(null)}>

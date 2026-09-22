@@ -10,6 +10,7 @@
         <result property="createdAt" column="created_at"/>
         <result property="fulfilledAt" column="fulfilled_at"/>
         <result property="fulfilledBy" column="fulfilled_by"/>
+        <result property="claimFloor" column="claim_floor"/>
         <result property="deleted" column="deleted"/>
         <result property="deletedTime" column="deleted_time"/>
         <result property="deletedBy" column="deleted_by"/>
@@ -46,7 +47,8 @@
         UPDATE supply_claim_order
         SET status = 'FULFILLED',
             fulfilled_at = #{fulfilledAt},
-            fulfilled_by = #{fulfilledBy}
+            fulfilled_by = #{fulfilledBy},
+            claim_floor = #{claimFloor}
         WHERE id = #{id}
           AND status = 'PENDING'
           AND deleted = 0
@@ -118,6 +120,9 @@
         FROM supply_claim_order
         WHERE status IN ('FULFILLED', 'WITHDRAWN')
           AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
         ORDER BY COALESCE(fulfilled_at, created_at) DESC, created_at DESC
         LIMIT #{limit}
     </select>
@@ -128,6 +133,9 @@
         WHERE user_id = #{userId}
           AND status IN ('FULFILLED', 'WITHDRAWN')
           AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
         ORDER BY COALESCE(fulfilled_at, created_at) DESC, created_at DESC
         LIMIT #{limit}
     </select>

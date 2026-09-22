@@ -415,9 +415,8 @@ public class CageOperationService {
         FieldCfg cfg = parseFieldConfig(field.getConfig());
         MergedOptions merged = mergeOptions(
                 aupItems(aupOfCage(animalCageId), cfg.refType()),
-                tableItems(field.getDictKey()),
-                () -> globalItems(cfg.refType()),
-                cfg);
+                tableItems(codelistKeyOf(field)),
+                () -> globalItems(cfg.refType()));
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("options", merged.options());
@@ -438,29 +437,26 @@ public class CageOperationService {
 
     /**
      * 候选合并（计划 §3）：
-     *   - restrictToAup=true 且 AUP 白名单非空 → 只取白名单
-     *   - 否则 → 白名单 ∪ 码表
+     *   - AUP 白名单 ∪ **本字段自己的码表**（两条腿始终都在，同名去重）
      *   - 两者都空 → 全局兜底（参考数据里该 refType 的可购项）
-     * 抽成静态纯函数是为了可测：不碰 IO，三个来源由调用方备好。
+     *
+     * <p><b>码表这一腿不再被 {@code restrictToAup} 排除</b>：新增预设只写本字段码表、
+     * 绝不回写 AUP（AUP 数据由 AUP 模块自己维护），这里若还把它排除，
+     * 用户刚加进去的候选当场看不见 —— 「新增预设」就成了一句空话。
+     *
+     * <p>抽成静态纯函数是为了可测：不碰 IO，三个来源由调用方备好。
      */
     static MergedOptions mergeOptions(LinkedHashMap<String, String> aupItems,
                                       LinkedHashMap<String, String> tableItems,
-                                      GlobalSupplier globalSupplier,
-                                      FieldCfg cfg) {
-        LinkedHashMap<String, String> dedup = new LinkedHashMap<>();
+                                      GlobalSupplier globalSupplier) {
+        LinkedHashMap<String, String> dedup = new LinkedHashMap<>(aupItems);
+        for (Map.Entry<String, String> e : tableItems.entrySet()) dedup.putIfAbsent(e.getKey(), e.getValue());
         String source;
-        if (cfg.restrictToAup() && !aupItems.isEmpty()) {
-            dedup.putAll(aupItems);
-            source = "AUP_ALLOWLIST";
-        } else {
-            dedup.putAll(aupItems);
-            for (Map.Entry<String, String> e : tableItems.entrySet()) dedup.putIfAbsent(e.getKey(), e.getValue());
-            if (!aupItems.isEmpty() && !tableItems.isEmpty()) source = "MERGED";
-            else if (!tableItems.isEmpty()) source = "CODELIST";
-            else if (!aupItems.isEmpty()) source = "AUP_ALLOWLIST";
-            else source = "NONE";
-        }
-        // 全局兜底：白名单与码表都空时退回参考数据，避免候选整体变空
+        if (!aupItems.isEmpty() && !tableItems.isEmpty()) source = "MERGED";
+        else if (!tableItems.isEmpty()) source = "CODELIST";
+        else if (!aupItems.isEmpty()) source = "AUP_ALLOWLIST";
+        else source = "NONE";
+        // 全局兜底：两条腿都空时退回参考数据，避免候选整体变空
         if (dedup.isEmpty()) {
             dedup.putAll(globalSupplier.get());
             if (!dedup.isEmpty()) source = "GLOBAL";
@@ -473,17 +469,26 @@ public class CageOperationService {
     }
 
     /**
-     * 新增预设落到哪：候选确实受 AUP 限制时写该 AUP 的白名单，否则写字段自己的码表（计划 §4）。
+     * 字段候选落哪张码表：绑了 dict_key 就用它，没绑就退回 canonical。
+     *
+     * <p>为什么要退回：动物品系这类字段的候选**原先只来自 AUP 白名单**，dict_key 一直是空的。
+     * 用户在这种字段上点「新增」，总得有个地方落 —— 落 canonical 同名码表，读侧（{@link #tableItems}）
+     * 用同一个键找回来，读写对称，也不用去改字段字典里的绑定。
      */
-    static boolean writesToAup(FieldCfg cfg, boolean aupItemsPresent) {
-        return cfg.restrictToAup() && aupItemsPresent;
+    static String codelistKeyOf(CageInfoField field) {
+        if (field == null) return null;
+        String k = field.getDictKey();
+        return (k == null || k.isBlank()) ? field.getCanonical() : k.trim();
     }
 
     /**
-     * 新增字段预设（填写时「＋」）。落点见计划 §4：restrictToAup=true 且该笼位 AUP 白名单项非空
-     * （即候选确实受 AUP 限制）→ 追加到该 AUP 的 animal_allowlist；其余 → 追加到该字段 dict_key
-     * 的笼位域码表项（码表不存在则按需创建）。权限复用 {@link #cageEditInfo} 的可编辑判定。
+     * 新增字段预设（填写时「＋」）。**只写本字段自己的码表**（{@link #codelistKeyOf}；
+     * 码表不存在则按需创建），权限复用 {@link #cageEditInfo} 的可编辑判定。
      * 返回刷新后的选项体，前端直接替换。
+     *
+     * <p><b>绝不回写 AUP。</b>AUP 的 animal_allowlist 是 AUP 自己的数据，由 AUP 模块（含 ARO 同步）
+     * 负责维护；表单侧对它是**只读**的。早先这里会把新增项追加进该笼位 AUP 的白名单，
+     * 等于在笼位表单里悄悄改 AUP —— 用户 2026-09-22 明确否掉：「不允许改 aup 的数据」。
      */
     @Transactional
     public Map<String, Object> addFieldOption(User user, Long animalCageId, String canonical, String label) {
@@ -502,12 +507,7 @@ public class CageOperationService {
         if (!cfg.allowAddOption()) {
             throw new TwinBusinessException(403, "该字段未开放新增预设：" + canonical);
         }
-        AupRecord aup = aupOfCage(animalCageId);
-        if (writesToAup(cfg, !aupItems(aup, cfg.refType()).isEmpty())) {
-            appendAupAllowlist(aup, cfg.refType(), name);
-        } else {
-            appendCodelistItem(field, name);
-        }
+        appendCodelistItem(field, name);
         return fieldOptions(user, animalCageId, canonical);
     }
 
@@ -610,31 +610,15 @@ public class CageOperationService {
         }
     }
 
-    /** 追加到 AUP 的 animal_allowlist（JSON 数组，保留既有项与其它 refType；status 不动）。 */
-    private void appendAupAllowlist(AupRecord aup, String refType, String label) {
-        List<Object> list = new ArrayList<>();
-        if (aup.getAnimalAllowlist() != null && !aup.getAnimalAllowlist().isBlank()) {
-            try {
-                list.addAll(JSON.parseArray(aup.getAnimalAllowlist()));
-            } catch (Exception e) {
-                log.warn("[cage-op] 解析 AUP 白名单失败 aup={}: {}", aup.getRegisterNo(), e.getMessage());
-            }
-        }
-        JSONObject item = new JSONObject();
-        item.put("refType", refType);
-        item.put("label", label);
-        list.add(item);
-        aupRecordMapper.updateRegistryMeta(aup.getId(), JSON.toJSONString(list), null);
-        log.info("[cage-op] AUP 白名单新增预设 aup={} refType={} label={}", aup.getRegisterNo(), refType, label);
-    }
-
-    /** 追加到字段 dict_key 的笼位域码表项；码表不存在则按需创建。 */
+    /**
+     * 追加到本字段候选码表的项（键见 {@link #codelistKeyOf}）；码表不存在则按需创建。
+     * 这是「新增预设」唯一的落点 —— 不碰 AUP 的任何数据。
+     */
     private void appendCodelistItem(CageInfoField field, String label) {
-        String dictKey = field.getDictKey();
+        String dictKey = codelistKeyOf(field);
         if (dictKey == null || dictKey.isBlank()) {
-            throw new TwinBusinessException(400, "该字段未绑定码表，无法新增预设");
+            throw new TwinBusinessException(400, "该字段没有可用于新增候选的键：" + field.getCanonical());
         }
-        dictKey = dictKey.trim();
         CageInfoCodelist cl = cageInfoCodelistMapper.selectByCode(dictKey);
         if (cl == null) {
             cl = new CageInfoCodelist();
@@ -651,7 +635,7 @@ public class CageOperationService {
         item.setItemLabel(label);
         item.setSortOrder((maxSort == null ? 0 : maxSort) + 10);
         cageInfoCodelistItemMapper.insert(item);
-        log.info("[cage-op] 码表新增预设 codelist={} label={}", dictKey, label);
+        log.info("[cage-op] 码表新增候选 codelist={} label={}", dictKey, label);
     }
 
     /** 该笼位所属课题组名（供代绑定的人员检索弹窗按课题组过滤）：优先 AUP 的课题组，退回笼位 PI/部门。 */
@@ -1162,6 +1146,19 @@ public class CageOperationService {
         if (list.stream().anyMatch(p -> p.getSource().equals(p.getTarget()))) {
             throw new TwinBusinessException(400, "源笼位与目标笼位不能相同");
         }
+        // 一个目标笼位只能接收一次转移。
+        // 这里必须在**提交时**拦：下面按源分组过准入时，同一个 X 出现在两个源的 pairs 里会双双通过
+        //（校验都在执行前跑，那时 X 还是空笼盒）。等到执行时逐对跑，第一对已把 X 变成饲养中，
+        // 第二对 lockEmptyTarget 才抛「目标笼位不可用（需为空笼盒）」—— 那时三签都签完了，
+        // 整批 @Transactional 回滚，用户拿到的是一个「审批通过但什么也没发生」的死局。
+        // 同源重复（同一源+同一目标出现两次）也一并拒掉：执行处虽会 distinct 收敛，但那是脏输入。
+        Set<Long> seenTargets = new HashSet<>();
+        for (CageOpPair p : list) {
+            if (!seenTargets.add(p.getTarget())) {
+                throw new TwinBusinessException(400,
+                        "目标笼位不能重复：同一个笼位只能接收一次转移（笼位 " + p.getTarget() + "）");
+            }
+        }
         Long fromAnimalCageId = list.get(0).getSource();
         // 每个不同的源各验一次可操作+未决；目标按源分组过准入（多源批次各源 AUP 不同，必须对着自己的源判）。
         Map<Long, List<Long>> targetsBySource = new LinkedHashMap<>();
@@ -1253,14 +1250,15 @@ public class CageOperationService {
         opMapper.insert(req);
 
         if (!needApproval) {
-            execute(req, user);
             req.setStatus(CageOpRequest.STATUS_APPROVED);
             req.setReviewerId(user.getId());
             req.setReviewerName(displayNameOf(user));
             req.setReviewedAt(DT_FMT.format(LocalDateTime.now()));
-            // 不审批直接执行的转移同样要归档：设计里「无需审批」≠「没有单据」，
-            // 少了这一句这批转移在归档目录里整批消失。必须在 update 之前 —— 文件名跟着这次 update 落库。
+            // 归档：不审批直接执行的转移也要有单据（少了这句这批转移在归档目录里整批消失）。
+            // 顺序两处都不能动：必须在 execute 之前（execute 腾空源笼位），也必须在 update 之前
+            // （文件名跟着这次 update 落库）。理由见 archiveTransferFormQuietly 的注释。
             archiveTransferFormQuietly(req);
+            execute(req, user);
             opMapper.update(req);
         }
 
@@ -1429,7 +1427,6 @@ public class CageOperationService {
             throw new TwinBusinessException(400, "驳回时必须填写理由");
         }
         if (approved) {
-            execute(req, reviewer);
             req.setStatus(CageOpRequest.STATUS_APPROVED);
         } else {
             req.setStatus(CageOpRequest.STATUS_REJECTED);
@@ -1438,8 +1435,12 @@ public class CageOperationService {
         req.setReviewerId(reviewer.getId());
         req.setReviewerName(displayNameOf(reviewer));
         req.setReviewedAt(DT_FMT.format(LocalDateTime.now()));
-        // 终局：归档一份转移单。必须在 update 之前 —— 文件名要跟着这一次 update 一起落库
+        // 终局：先归档、再执行。execute 会把源笼位腾空，反过来就渲染出一张空单。
+        // 也必须在 update 之前 —— 文件名要跟着这一次 update 一起落库。
         archiveTransferFormQuietly(req);
+        if (approved) {
+            execute(req, reviewer);
+        }
         opMapper.update(req);
 
         writeApprovalRecord(reviewer, req, "cage_op_" + req.getOpType(),
@@ -1573,7 +1574,6 @@ public class CageOperationService {
 
         String status = CageOpSignatures.statusOf(merged);
         if (CageOpSignature.STATUS_APPROVED.equals(status)) {
-            execute(req, reviewer);
             req.setStatus(CageOpRequest.STATUS_APPROVED);
         } else if (CageOpSignature.STATUS_REJECTED.equals(status)) {
             req.setStatus(CageOpRequest.STATUS_REJECTED);
@@ -1585,8 +1585,12 @@ public class CageOperationService {
         req.setReviewerId(reviewer.getId());
         req.setReviewerName(displayNameOf(reviewer));
         req.setReviewedAt(s.getAt());
-        // 终局（通过/驳回）才归档；暂缓仍是待审，archive 自己会跳过
+        // 终局（通过/驳回）先归档、再执行 —— execute 会把源笼位腾空，反过来就渲染出一张空单。
+        // 暂缓仍是待审，archive 自己会跳过。同样必须在 update 之前，文件名才能跟着落库。
         archiveTransferFormQuietly(req);
+        if (CageOpSignature.STATUS_APPROVED.equals(status)) {
+            execute(req, reviewer);
+        }
         opMapper.update(req);
         writeApprovalRecord(reviewer, req, "cage_op_" + req.getOpType(),
                 normalized, reason);
@@ -1622,8 +1626,21 @@ public class CageOperationService {
      * 终局归档转移单。**失败绝不能把审核拖下水**：模板缺失、LibreOffice 挂了、盘满，都只打一条 warn。
      * 归档只是留痕，审核结果照常落库；归档文件缺了，审核页走即时渲染那条路，用户看不到差别。
      *
+     * <p><b>调用顺序是硬要求：先归档、再 {@code execute}、最后 {@code opMapper.update}。</b>
+     * 三条终局路径都是这个次序，别调换：
+     * <ul>
+     *   <li><b>必须在 execute 之前</b>：{@code executeTransfer} 结束时会把**源笼位腾空**
+     *       （释放认领、清占用与动物字段、状态回空笼盒）。而归档是**实时读源笼位**再渲染的，
+     *       排在它后面就渲染出一张空单 —— 单位、负责人、实验人员、品系、数量全没了
+     *       （用户 2026-09-22 报的正是这个：兽医签完，单子变成空的）。</li>
+     *   <li><b>必须在 update 之前</b>：归档写回 {@code transfer_form_file_ref}，文件名要跟着这一次
+     *       update 一起落库；排在 update 后面这次文件名就丢了，下次还得重渲染。</li>
+     *   <li>状态得**先落**成 approved/rejected：{@link TransferFormService#archive} 只认终局，
+     *       待审状态它直接跳过。</li>
+     * </ul>
+     *
      * <p>{@link TransferFormService#archive} 自己保证「只做转移单、只在终局、只做一次」，
-     * 所以两条终局路径都无脑调它即可。
+     * 所以三条路径都无脑调它即可。
      */
     private void archiveTransferFormQuietly(CageOpRequest req) {
         try {
@@ -1913,6 +1930,12 @@ public class CageOperationService {
     }
 
     private void executeTransfer(CageOpRequest req, User operator) {
+        // 哨兵：归档必须已经跑过。这一段之后源笼位就被腾空了，那之后再渲染就是一张空单
+        // （用户 2026-09-22 报过：兽医签完单子内容全空）。调用方漏了归档，这里当场喊出来。
+        if (req.getTransferFormFileRef() == null || req.getTransferFormFileRef().isBlank()) {
+            log.warn("[cage-op] 转移执行前没有归档 requestId={} —— 单据会渲染成空单，检查调用顺序"
+                    + "（归档要在 execute 之前）", req.getId());
+        }
         List<CageOpPair> pairs = transferPairs(req);
         if (pairs.isEmpty()) throw new TwinBusinessException(400, "缺少目标笼位");
 

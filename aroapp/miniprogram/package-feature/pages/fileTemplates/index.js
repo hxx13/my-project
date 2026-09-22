@@ -6,6 +6,7 @@ const folderTree = require('../../utils/folderTree.js');
 const printFormat = require('../../utils/printFormat.js');
 const printApi = require('../../utils/printApi.js');
 const printCart = require('../../utils/printCart.js');
+const suppliesExportApi = require('../../utils/suppliesExportApi.js');
 const roleAccess = require('../../../utils/roleAccess.js');
 
 const STATION_STORAGE_KEY = 'tpl_print_station_id';
@@ -80,6 +81,37 @@ Page({
     moveTargetFile: null,
     movePickFolderId: null,
     moveFolderOptions: [],
+  },
+
+  /**
+   * 从别处（物资处理页的「打印领用单」）带着 claimId 过来：把领用单 PDF 落到本地文件、
+   * 进待打清单，再直接弹派发面板选工位 —— **复用本页现成的临时打印链路**，不另造一套弹窗。
+   *
+   * <p>为什么绕这一道：待打清单里的本地文件是**内存态**（不落盘），车实例也只属于本页，
+   * 所以在别的页面 addLocalFiles 加不进这里来，只能由本页自己加。
+   */
+  async onLoad(options) {
+    const claimId = options && options.tempPrintClaimId ? decodeURIComponent(options.tempPrintClaimId) : '';
+    if (!claimId) return;
+    wx.showLoading({ title: '正在准备领用单', mask: true });
+    try {
+      const link = await suppliesExportApi.createClaimPdfLink(claimId);
+      const token = link && link.downloadToken;
+      if (!token) throw new Error('领用单生成失败');
+      const res = await suppliesExportApi.fetchClaimFormPdf(token);
+      const fileName = (link && link.fileName) || `领用单-${claimId}.pdf`;
+      const path = `${wx.env.USER_DATA_PATH}/${String(fileName).replace(/[^A-Za-z0-9_一-龥.-]/g, '_')}`;
+      await new Promise((resolve, reject) => {
+        wx.getFileSystemManager().writeFile({ filePath: path, data: res.data, success: resolve, fail: reject });
+      });
+      cart.addLocalFiles([{ path: path, name: fileName }]);
+      this.syncCart();
+      wx.hideLoading();
+      this.onDispatchCart();
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '准备领用单失败', icon: 'none' });
+    }
   },
 
   onShow() {

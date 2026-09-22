@@ -699,12 +699,9 @@ public class PagePermissionService {
         if (!StringUtils.hasText(path)) return "MEMBER";
         if (path.startsWith("/pages/adminPersonnel")) return "SUPER_ADMIN";
         if (path.startsWith("/pages/suppliesAdmin")) return "SUPER_ADMIN";
-        if (path.startsWith("/pages/repairProcess")
-                || path.startsWith("/pages/purchaseProcess")
-                || path.startsWith("/pages/suppliesProcess")) {
+        if (path.startsWith("/pages/suppliesProcess")) {
             return "SUPER_ADMIN";
-        }
-        if (path.startsWith("/pages/suppliesMine")) return "STAFF";
+        }        if (path.startsWith("/pages/suppliesMine")) return "STAFF";
         if (path.startsWith("/pages/suppliesClaimExport")) return "STAFF";
         if (path.startsWith("/pages/materialAdmin")) return "STAFF";
         if (path.startsWith("/pages/studentMaterial")) return "MEMBER";

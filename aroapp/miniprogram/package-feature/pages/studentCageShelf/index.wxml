@@ -532,7 +532,7 @@
     <!-- 笼位级动作：分笼 / 转移 / 认领 / 清空划分。贴着身份放在固定区，不埋进正文里 -->
     <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted && (detailOperable || detailOperableCode === 'NOT_CLAIMED' || detailCanClaimOnBehalf || selectedCell._divisionNames) }}" class="cs-ops">
       <block wx:if="{{ detailOperable }}">
-        <view class="cs-op-btn" data-kind="divide" bindtap="onStartOp">分笼</view>
+        <view class="cs-op-btn" data-kind="divide" bindtap="onStartDivide">分笼</view>
         <!-- 转移只有这一个入口（2026-09-21 用户口径）：抽屉支持跨房间多选，N=1 就是原来的单笼转移，
              所以不再并列一个「单笼转移」按钮 —— 两个按钮做同一件事只会让人犹豫点哪个。
              data-kind 留着标语义，分流由 bindtap 的 handler 决定。 -->
@@ -731,13 +731,14 @@
   z-index="{{ 21000 }}"
   round
   closeable
-  custom-style="max-height:94vh;"
+  custom-style="max-height:88vh;"
   bind:close="onBtClose"
 >
   <view class="sheet bt-sheet" wx:if="{{ btOpen }}">
     <view class="sheet-head">
-      <text class="sheet-title">{{ btPhase === 'source' ? '批量转移 · 选源笼位' : '批量转移 · 选目标笼位' }}</text>
-      <text class="sheet-sub">{{ btHeadSub }}</text>
+      <text class="sheet-title">{{ btMode === 'divide' ? '分笼 · 选目标笼位' : (btPhase === 'source' ? '批量转移 · 选源笼位' : '批量转移 · 选目标笼位') }}</text>
+      <!-- 这里原本还有一行 sheet-sub 复述「已选 N 个源笼位」，与下面缓冲条那行**完全重复**，
+           各占一行把抽屉顶得太高（X 会被右上角的系统胶囊压住）。用户 2026-09-22 口径：删掉重复的这行。 -->
       <!-- 一步一步引导：每个阶段都留一句「下一步该做什么」。源阶段还要交代锚点的来历，
            否则用户会纳闷「我还没开始选，怎么已经有一个了」。 -->
       <view wx:if="{{ btHint }}" class="bt-hint">
@@ -745,21 +746,72 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="sheet-scroll">
-      <!-- 目标阶段：当前配到哪个源 -->
-      <view wx:if="{{ btPhase === 'target' }}" class="bt-progress">
-        <text class="bt-progress-txt">{{ btCursorText }}</text>
+    <!-- 分笼：源笼位固定就是入口那一格，不选源。把「是否保留源笼位」放在这一行常驻可见 ——
+         它决定源笼位会不会被归档清空（释放认领+清占用/动物/状态+回空笼盒，不可逆），
+         是这个操作里唯一的关键分岔，比藏在确认弹窗里强。 -->
+    <view wx:if="{{ btMode === 'divide' }}" class="bt-srcrow">
+      <text class="bt-srcrow-label">源笼位</text>
+      <text class="bt-srcrow-pos">{{ btSourceLabel }}</text>
+      <view class="bt-srcrow-keep">
+        <text class="bt-srcrow-keep-txt {{ btKeepSource ? '' : 'bt-srcrow-keep-txt--warn' }}">{{ btKeepSource ? '保留源笼位' : '归档源笼位' }}</text>
+        <switch checked="{{ btKeepSource }}" bindchange="onBtKeepSourceChange" color="#2563eb" />
       </view>
+    </view>
 
-      <!-- 动作：下一步 / 返回选源 / 提交（树与网格两屏共用，右对齐） -->
-      <view class="bt-acts-row">
-        <view class="cage-acts">
-          <view wx:if="{{ btPhase === 'source' && btSources.length > 0 }}" class="cage-act cage-act--ghost" bindtap="onBtToTarget">下一步</view>
-          <view wx:if="{{ btPhase === 'target' }}" class="cage-act cage-act--ghost" bindtap="onBtBackToSource">返回选源</view>
-          <view class="cage-act cage-act--primary {{ btConfirmOff ? 'cage-act--off' : '' }}" bindtap="onBtConfirm">
-            {{ btSubmitting ? '提交中' : '提交转移（' + btSources.length + '）' }}
+    <!-- 缓冲 / 配对条：放在**渲染区上方**（用户 2026-09-21 口径），不再钉在底部占高度 -->
+    <view class="bt-buffer">
+      <view class="bt-buffer-hd">
+        <text class="bt-buffer-title">{{ btBufferTitle }}</text>
+        <view wx:if="{{ btCanClear }}" class="cage-clear" bindtap="onBtClearSources">清空</view>
+      </view>
+      <scroll-view scroll-x enhanced show-scrollbar="{{ false }}" class="bt-pairs">
+        <view class="bt-pairs-inner">
+          <view
+            wx:for="{{ btRows }}"
+            wx:key="sourceId"
+            class="bt-chip {{ item.paired ? 'bt-chip--ok' : '' }} {{ item.active ? 'bt-chip--on' : '' }}"
+            data-source-id="{{ item.sourceId }}"
+            bindtap="onBtChipTap"
+          >
+            <text class="bt-chip-txt">{{ item.text }}</text>
+            <van-icon
+              wx:if="{{ btChipRemovable }}"
+              name="cross"
+              size="22rpx"
+              color="{{ item.active ? '#fff' : '#94a3b8' }}"
+              data-source-id="{{ item.sourceId }}"
+              catchtap="onBtRemoveSource"
+            />
           </view>
         </view>
+      </scroll-view>
+    </view>
+
+    <!--
+      动作条：屏 B 时与「返回上一页 + 架名/房号」**同一行**，不再单独占一整行
+      （用户 2026-09-21 口径）。原本屏 B 是「动作行」+「返回栏」两条堆在一起。
+      按钮也随之缩到 52rpx 档（见 wxss 的 .bt-bar 覆盖），原来 64rpx 是按订购抽屉的 tab 行定的，这里偏大。
+    -->
+    <view class="bt-bar">
+      <view wx:if="{{ btScreen === 'grid' }}" class="bt-bar-back" bindtap="onBtBackToTree">
+        <van-icon name="arrow-left" size="26rpx" color="#334155" />
+        <text class="bt-bar-name">{{ btShelf.shelveName }}</text>
+        <text wx:if="{{ btShelf.roomName }}" class="bt-bar-room">{{ btShelf.roomName }}</text>
+      </view>
+      <view wx:else class="bt-bar-ctx"></view>
+      <view class="cage-acts">
+        <view wx:if="{{ btShowNext }}" class="cage-act cage-act--ghost" bindtap="onBtToTarget">下一步</view>
+        <view wx:if="{{ btShowBackToSource }}" class="cage-act cage-act--ghost" bindtap="onBtBackToSource">返回选源</view>
+        <view class="cage-act cage-act--primary {{ btConfirmOff ? 'cage-act--off' : '' }}" bindtap="onBtConfirm">
+          {{ btSubmitting ? '提交中…' : btSubmitLabel }}
+        </view>
+      </view>
+    </view>
+
+    <scroll-view scroll-y class="sheet-scroll">
+      <!-- 目标阶段：当前配到哪个源（分笼没有「第几个源」，btCursorText 为空即不渲染） -->
+      <view wx:if="{{ btCursorText }}" class="bt-progress">
+        <text class="bt-progress-txt">{{ btCursorText }}</text>
       </view>
 
       <!-- 屏 A · 树状列表：校区（可折叠）→ 房间（可折叠）→ 架行 -->
@@ -799,52 +851,13 @@
         </view>
       </block>
 
-      <!-- 屏 B · 单架网格 -->
+      <!-- 屏 B · 单架网格（顶栏已并入上面的动作条） -->
       <block wx:elif="{{ btScreen === 'grid' }}">
-        <view class="bt-grid-bar">
-          <view class="bt-grid-back" bindtap="onBtBackToTree">
-            <van-icon name="arrow-left" size="30rpx" color="#334155" />
-            <text>返回</text>
-          </view>
-          <view class="bt-grid-titles">
-            <text class="bt-grid-name">{{ btShelf.shelveName }}</text>
-            <text class="bt-grid-sub">{{ btShelf.roomName }}</text>
-          </view>
-        </view>
         <view wx:if="{{ btShelf.loading }}" class="cage-loading">加载笼位中…</view>
         <view wx:elif="{{ btShelf.error }}" class="cage-error">{{ btShelf.error }}</view>
         <cage-grid wx:else grid="{{ btShelf.grid }}" compact bind:celltap="onBtCellTap" />
       </block>
     </scroll-view>
-
-    <!-- 缓冲 / 配对条：常驻底部 -->
-    <view class="bt-buffer">
-      <view class="bt-buffer-hd">
-        <text class="bt-buffer-title">{{ btBufferTitle }}</text>
-        <view wx:if="{{ btPhase === 'source' && btSources.length > 0 }}" class="cage-clear" bindtap="onBtClearSources">清空</view>
-      </view>
-      <scroll-view scroll-x enhanced show-scrollbar="{{ false }}" class="bt-pairs">
-        <view class="bt-pairs-inner">
-          <view
-            wx:for="{{ btRows }}"
-            wx:key="sourceId"
-            class="bt-chip {{ item.paired ? 'bt-chip--ok' : '' }} {{ item.active ? 'bt-chip--on' : '' }}"
-            data-source-id="{{ item.sourceId }}"
-            bindtap="onBtChipTap"
-          >
-            <text class="bt-chip-txt">{{ item.text }}</text>
-            <van-icon
-              wx:if="{{ btPhase === 'source' }}"
-              name="cross"
-              size="22rpx"
-              color="{{ item.active ? '#fff' : '#94a3b8' }}"
-              data-source-id="{{ item.sourceId }}"
-              catchtap="onBtRemoveSource"
-            />
-          </view>
-        </view>
-      </scroll-view>
-    </view>
   </view>
 </van-popup>
 
@@ -1408,8 +1421,6 @@
   bind:close="onCloseVetInbox"
   bind:unreadchange="onVetUnreadChange"
 />
-
-<canvas canvas-id="cageQrCanvasOffscreen" class="detail-qr-canvas-offscreen" />
 
 <!-- 收藏弹层（2026-09-19）：不分楼层，按收藏先后平铺 —— 房间一条（可点进去展开）、笼架一条（直接进网格） -->
 <van-popup

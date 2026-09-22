@@ -109,7 +109,9 @@ public class PrintCommandRunner {
         if (cmd.isEmpty()) {
             throw new IOException("命令为空（模板没配或切分后没有 token）");
         }
-        log.info("[print] 执行命令: {}", cmd);
+        // 别用 INFO：命令是配置项、不会变，而这行会被探测任务每 60 秒打一次。
+        // 真出问题时失败路径本来就带输出抛出来（调用方记 WARN），不缺这条。
+        log.debug("[print] 执行命令: {}", cmd);
         Path outFile = Files.createTempFile("print-cmd-", ".out");
         try {
             ProcessBuilder pb = new ProcessBuilder(cmd);

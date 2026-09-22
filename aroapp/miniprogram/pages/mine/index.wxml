@@ -143,6 +143,21 @@
     </view>
   </view>
 
+  <!-- 电子签名：不分学生/教职工，人人要签（会印在转移单、领用单的签字栏上） -->
+  <view class="mine-menu-group">
+    <text class="mine-menu-group-title">我的资料</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell is-link bind:click="goSignature">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="upgrade" size="28rpx" color="#7c3aed" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">电子签名</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
   <view wx:if="{{ springBound }}" class="mine-menu-group">
     <text class="mine-menu-group-title">实验动物</text>
     <view class="mine-list-card">
@@ -713,4 +728,30 @@
       <van-button block type="primary" round custom-class="bind-submit" bindtap="submitForgotReset" loading="{{ forgotSubmitting }}" disabled="{{ forgotSubmitting }}">重置密码</van-button>
     </view>
   </view>
+</van-popup>
+
+<!-- ====== 电子签名链接（扫码 / 复制到浏览器打开） ====== -->
+<van-popup
+  show="{{ signatureLinkShow }}"
+  position="center"
+  round
+  closeable
+  bind:close="onCloseSignatureLink"
+  custom-style="width: 84%; max-width: 640rpx;"
+>
+  <view class="sig-link-card">
+    <text class="sig-link-title">扫码签名</text>
+    <text class="sig-link-note">长按二维码识别，或截图后用「扫一扫」；也可以复制链接到浏览器打开。链接一次性，签完即失效。</text>
+    <image
+      wx:if="{{ signatureLinkQrSrc }}"
+      class="sig-link-qr"
+      src="{{ signatureLinkQrSrc }}"
+      mode="widthFix"
+      show-menu-by-longpress="{{ true }}"
+    />
+    <text class="sig-link-url" user-select="{{ true }}">{{ signatureLinkUrl }}</text>
+    <van-button block type="primary" round custom-class="bind-submit" bindtap="onCopySignatureLink">复制链接</van-button>
+  </view>
+  <!-- 离屏画布：只用来生成上面那张二维码图 -->
+  <canvas canvas-id="signatureLinkQrCanvas" class="sig-link-qr-offscreen" />
 </van-popup>
