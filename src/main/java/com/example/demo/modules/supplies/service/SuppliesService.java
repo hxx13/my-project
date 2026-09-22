@@ -1433,14 +1433,21 @@ public class SuppliesService {
     }
 
     /**
-     * 归档件能不能直接复用：必须是出库之后生成的，且**在私有目录里读得到**。
+     * 归档件能不能直接复用：必须是出库之后生成的，**文件名就是当前单号**，且**在私有目录里读得到**。
      *
-     * <p>后半条是为迁移前的存量记录：那些 {@code storage_key} 是 {@code /api/upload/files/…} 的公开路径，
+     * <p>私有目录那条是为迁移前的存量记录：那些 {@code storage_key} 是 {@code /api/upload/files/…} 的公开路径，
      * 文件不在私有目录里，新的下载端点读不到。当成不可复用重新渲染一份，老单子照样能出单。
+     *
+     * <p>单号那条是为改名前（{@code SC_<uuid>_<时间>.pdf}）的存量归档件：名字写在行里，
+     * 复用它就等于把旧名带到界面与下载头上，纸面印单号、文件叫 SC_xxx，对不上。同样重渲染一份。
      */
     private boolean isReusable(SupplyClaimExportFile row, SupplyClaimOrder order) {
         if (isStaleForOrder(row, order)) return false;
         if (!StringUtils.hasText(row.getStorageKey())) return false;
+        if (!StringUtils.hasText(row.getFileName())
+                || !row.getFileName().equals(claimFormService.docNo(order) + ".pdf")) {
+            return false;
+        }
         Path base = claimFormDir();
         Path file = base.resolve(row.getStorageKey()).normalize();
         return file.startsWith(base) && Files.isRegularFile(file);
