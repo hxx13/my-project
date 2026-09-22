@@ -39,6 +39,7 @@
               <view wx:if="{{ item.status === 'PENDING' }}" class="menu-item" data-id="{{ item.id }}" catchtap="goReviseInMall">修改</view>
               <view class="menu-item" data-id="{{ item.id }}" catchtap="exportClaimExcel">导出 Excel</view>
               <view class="menu-item" data-id="{{ item.id }}" catchtap="openClaimForm">预览领用单</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="printClaimForm">打印领用单</view>
               <view class="menu-item menu-item-danger" data-id="{{ item.id }}" catchtap="onDeleteRecord">删除工单</view>
             </view>
             <view wx:if="{{ menuOpenId === item.id }}" class="menu-mask" catchtap="onMenuClose"></view>

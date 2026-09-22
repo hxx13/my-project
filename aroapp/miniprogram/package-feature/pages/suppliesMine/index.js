@@ -321,6 +321,16 @@ Page({
     }
   },
 
+  /** 临时打印：跳「文件模板库」页，由它按 tempPrintClaimId 取单直接建打印任务（与物资处理页同一条通道） */
+  printClaimForm(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || '';
+    if (!id) return;
+    this.setData({ menuOpenId: null });
+    wx.navigateTo({
+      url: `/package-feature/pages/fileTemplates/index?tempPrintClaimId=${encodeURIComponent(id)}`,
+    });
+  },
+
   noop() {},
 
   onDeleteRecord(e) {
