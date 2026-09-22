@@ -98,11 +98,33 @@ function displayLabelOf(x, y) {
   return cellVisual.enrichGridCell({ x: x, y: y, position: x + '-' + y })._displayPosition;
 }
 
+/**
+ * 这个目标笼位已被哪个**别的**源占用？没人占用返回 null。
+ *
+ * 不变量：**一个目标笼位只能接收一次转移**。同一个 X 若配给两个源，后端提交时并不拦
+ *（按源分组校验时两对都通过，那时 X 还是空笼盒），要等**执行时**才在第二对上撞到
+ *「目标笼位不可用（需为空笼盒）」—— 那时三签都签完了，整批回滚，
+ * 用户拿到的是「审批通过但什么也没发生」。所以 UI 必须提前把这种格子置灰。
+ * 与 H5 `frontend/src/pages/mobile/batchTransferLogic.ts` 的同名函数是同一份算法。
+ *
+ * 例外：`exceptSourceId` 是要**再配一次**的那个源（重选/取消自己的目标，不该被自己挡住）。
+ */
+function targetOwnerExcept(targets, cageId, exceptSourceId) {
+  if (!cageId) return null;
+  var ids = Object.keys(targets || {});
+  for (var i = 0; i < ids.length; i++) {
+    var sid = ids[i];
+    if (sid !== exceptSourceId && (targets || {})[sid] === cageId) return sid;
+  }
+  return null;
+}
+
 module.exports = {
   groupPoolByRoom: groupPoolByRoom,
   indexPool: indexPool,
   nextUnpairedIdx: nextUnpairedIdx,
   removeSource: removeSource,
   pairRows: pairRows,
-  displayLabelOf: displayLabelOf
+  displayLabelOf: displayLabelOf,
+  targetOwnerExcept: targetOwnerExcept
 };

@@ -3,6 +3,8 @@ package com.example.demo.modules.cageshelf.service;
 import com.example.demo.modules.adminfile.OfficeToPdfConverter;
 import com.example.demo.modules.cageshelf.dto.TransferFormData;
 import com.example.demo.modules.cageshelf.dto.TransferFormRenderInput;
+import org.apache.poi.util.Units;
+import org.apache.poi.xwpf.usermodel.Document;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFRun;
@@ -10,6 +12,13 @@ import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.apache.xmlbeans.impl.xb.xmlschema.SpaceAttribute;
+import org.openxmlformats.schemas.drawingml.x2006.wordprocessingDrawing.CTAnchor;
+import org.openxmlformats.schemas.drawingml.x2006.wordprocessingDrawing.CTInline;
+import org.openxmlformats.schemas.drawingml.x2006.wordprocessingDrawing.CTPosH;
+import org.openxmlformats.schemas.drawingml.x2006.wordprocessingDrawing.CTPosV;
+import org.openxmlformats.schemas.drawingml.x2006.wordprocessingDrawing.STRelFromH;
+import org.openxmlformats.schemas.drawingml.x2006.wordprocessingDrawing.STRelFromV;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTDrawing;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTP;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTR;
@@ -22,11 +31,15 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTText;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTrPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STMerge;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,8 +51,9 @@ import java.util.regex.Pattern;
  * 放在 {@code src/main/resources/templates/transfer-form.docx}。正文只有一张 9 行表，
  * 数据行是第 4 行（0 基），全表无 vMerge。模板改版时字段行号会移，必须重新核对。
  *
- * <p>渲染时会在表首**插一行「单号」**（模板里没有，克隆单位名称行而来），插入后表是 10 行、
- * 其上所有行号 +1 —— 本类里的 ROW_* 常量写的都是**插入后**的行号，别对着模板数。
+ * <p>渲染时会在模板里**插两行**：表首一行「单号」（克隆单位名称行），拟定转移日期下面一行
+ * 「申请方提交实验动物转移单日期」（克隆日期行）。插入后表是 11 行、其上所有行号 +2 ——
+ * 本类里的 ROW_* 常量写的都是**插入后**的行号，别对着模板数。
  *
  * <p>本类的静态方法都是纯函数：不查库、不读文件，因此能脱离数据库单测。
  *
@@ -59,19 +73,23 @@ public final class TransferFormRenderer {
     /** 模板正文中文字体；新建 run 不带 rPr，必须自己带上才不会串字体。 */
     private static final String FONT = "新宋体";
 
-    /** 表格行号（0 基）。第 0 行「单号」是渲染时插进去的，模板里没有 —— 见 {@link #insertDocNoRow}。 */
+    /** 表格行号（0 基）。第 0 行「单号」与第 4 行「提交日期」都是渲染时插进去的，模板里没有。 */
     private static final int ROW_NO = 0;
     private static final int ROW_UNIT = 1;
     private static final int ROW_PI = 2;
     private static final int ROW_DATE = 3;
-    private static final int ROW_DATA = 5;
-    private static final int ROW_LOCATION = 6;
-    private static final int ROW_SIGN = 7;
-    private static final int ROW_VET = 9;
+    /** 提交日期行：克隆日期行插在它下面（见 {@link #insertSubmitDateRow}）。 */
+    private static final int ROW_SUBMIT = 4;
+    private static final int ROW_DATA = 6;
+    private static final int ROW_LOCATION = 7;
+    private static final int ROW_SIGN = 8;
+    private static final int ROW_VET = 10;
 
     /** 插单号行时克隆哪一行：模板的「申请方单位名称」行，同为整行 gridSpan=4，版式直接复用。 */
     private static final int ROW_NO_TEMPLATE = 0;
     private static final String DOC_NO_LABEL = "单号：";
+    /** 提交日期行的标签（克隆来的那行原本写的是拟定转移日期，整支换掉）。 */
+    private static final String SUBMIT_LABEL = "申请方提交实验动物转移单日期:";
 
     /** 数据行（ROW_DATA）里各逻辑列：0=品系 1=数量 2=转移方式。 */
     private static final int DATA_COL_STRAIN = 0;
@@ -155,8 +173,20 @@ public final class TransferFormRenderer {
      * @throws IllegalStateException 模板资源缺失时（说明没打进 jar）
      */
     public static byte[] renderToPdf(TransferFormRenderInput in, OfficeToPdfConverter converter) {
+        byte[] docx = renderToDocx(in);
+        try {
+            return converter.convert(docx, "docx");
+        } catch (IOException e) {
+            throw new IllegalStateException("转移单转 PDF 失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 只出 docx 字节、不转 PDF。转 PDF 要本机装 LibreOffice（每次冷启动 3.5s），
+     * 所以单测走这条路 —— 填了哪些值、插没插签名图，解包 docx 就能查。
+     */
+    public static byte[] renderToDocx(TransferFormRenderInput in) {
         if (in == null) throw new IllegalArgumentException("转移单渲染入参不能为空");
-        byte[] docx;
         try (InputStream is = TransferFormRenderer.class.getResourceAsStream(TEMPLATE_PATH)) {
             if (is == null) {
                 throw new IllegalStateException("转移单模板资源缺失：" + TEMPLATE_PATH + "（没打进 jar？）");
@@ -169,23 +199,24 @@ public final class TransferFormRenderer {
                 CTTbl ctTbl = doc.getTables().get(0).getCTTbl();
                 // 先插单号行：其后每一行都下移一格，expandDataRows 用的是位移后的 ROW_DATA
                 insertDocNoRow(ctTbl);
+                // 再插提交日期行：它在数据行**上面**，所以必须在 expandDataRows 之前插，
+                // 否则数据行下标对不上（插完 ROW_DATA 也跟着下移一格）。
+                insertSubmitDateRow(ctTbl);
                 expandDataRows(ctTbl, ROW_DATA, n);
                 // 重新包一层：XWPFTable 构造时把行缓存下来了，直接改 CTTbl 后
                 // 旧包装器看不见新行，写进去的值不会出现在产物里。
                 XWPFTable table = new XWPFTable(ctTbl, doc);
                 fill(table, in, n);
+                // 行前留白放在 fill **之后**：adaptVetSpacing 会把复核意见那格的 before 清零，
+                // 先加就会被它抹掉。有余量才给，见 rowPadPt。
+                applyRowPadding(table, rowPadPt(n, in.getFromLocation(), in.getToLocation()));
 
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 doc.write(out);
-                docx = out.toByteArray();
+                return out.toByteArray();
             }
         } catch (IOException e) {
             throw new IllegalStateException("转移单模板读写失败：" + e.getMessage(), e);
-        }
-        try {
-            return converter.convert(docx, "docx");
-        } catch (IOException e) {
-            throw new IllegalStateException("转移单转 PDF 失败：" + e.getMessage(), e);
         }
     }
 
@@ -200,6 +231,21 @@ public final class TransferFormRenderer {
         CTRow copy = (CTRow) ctTbl.getTrArray(ROW_NO_TEMPLATE).copy();
         ctTbl.insertNewTr(ROW_NO_TEMPLATE);
         ctTbl.setTrArray(ROW_NO_TEMPLATE, copy);
+    }
+
+    /**
+     * 在拟定转移日期行下面插一行「申请方提交实验动物转移单日期」。
+     *
+     * <p>克隆**拟定日期行**（同为整行 gridSpan=4 的单格），版式不必另做；克隆下来的文字此刻还是
+     * 拟定日期的标签，在 {@link #fill} 里整支换掉。
+     *
+     * <p>必须在 {@link #expandDataRows} 之前插：插完它下面每一行都再下移一格，数据行也就从
+     * 模板的第 4 行变成 {@link #ROW_DATA}。
+     */
+    private static void insertSubmitDateRow(CTTbl ctTbl) {
+        CTRow copy = (CTRow) ctTbl.getTrArray(ROW_DATE).copy();
+        ctTbl.insertNewTr(ROW_SUBMIT);
+        ctTbl.setTrArray(ROW_SUBMIT, copy);
     }
 
     /**
@@ -266,11 +312,16 @@ public final class TransferFormRenderer {
      * 「1 行比 n 行的每行高一倍」的不一致。
      */
     private static void zeroSpacingAfter(CTTc tc) {
+        if (tc == null) return;
         for (CTP p : tc.getPArray()) {
             CTPPr pPr = p.getPPr() != null ? p.getPPr() : p.addNewPPr();
             CTSpacing sp = pPr.getSpacing() != null ? pPr.getSpacing() : pPr.addNewSpacing();
             sp.setAfter(BigInteger.ZERO);
         }
+    }
+
+    private static void zeroSpacingAfter(XWPFTableCell cell) {
+        if (cell != null) zeroSpacingAfter(cell.getCTTc());
     }
 
     /** 删掉格子里没有 run 的空段；至少留一段（品系格是空的，值靠这段回填）。 */
@@ -304,7 +355,15 @@ public final class TransferFormRenderer {
         appendToRun(cellAt(t, ROW_PI, 0), 0, in.getPiName());
         appendToRun(cellAt(t, ROW_PI, 1), 1, in.getExperimenterName());
         appendToRun(cellAt(t, ROW_PI, 2), 0, in.getPhone());
+        // 拟定日期与提交日期挨着，两行都清段后距才像一对紧挨的字段；不清各白空一行
+        // （模板的段落只写了 before，after 落在样式默认值上）。
+        zeroSpacingAfter(cellAt(t, ROW_DATE, 0));
+        zeroSpacingAfter(cellAt(t, ROW_SUBMIT, 0));
         appendToRun(cellAt(t, ROW_DATE, 0), 0, in.getTransferDate());
+        // 提交日期行是克隆日期行来的，文字仍是拟定日期的标签 —— 整支换成「提交日期:<值>」。
+        // 值取不到就只留标签（setCellRun 只拒整串空白，标签本身不是空白）。
+        setCellRun(cellAt(t, ROW_SUBMIT, 0), 0,
+                SUBMIT_LABEL + (in.getSubmitDate() == null ? "" : in.getSubmitDate()));
 
         for (int i = 0; i < n; i++) {
             int r = ROW_DATA + i;
@@ -333,22 +392,180 @@ public final class TransferFormRenderer {
         // 数据行下面几行的下标随数据行数下移：插了 n-1 行，r5/r6/r8 各往后挪 n-1
         int shift = Math.max(0, n - 1);
         XWPFTableCell from = cellAt(t, ROW_LOCATION + shift, 0);
-        appendToRun(from, 0, in.getFromLocation());
-        appendToRun(from, 1, in.getOriginReviewerName());
         XWPFTableCell dest = cellAt(t, ROW_LOCATION + shift, 1);
-        appendToRun(dest, 0, in.getToLocation());
-        appendToRun(dest, 1, in.getDestReviewerName());
+        // 段后距清零：模板这两格只写了 before 没写 after，落在样式的默认 after 上，段落边界
+        // 白吃 ~16.5pt —— 地点那格是多笼位换行 + 签字两段，不清就会在地点与签字行之间空一整行。
+        zeroSpacingAfter(from);
+        zeroSpacingAfter(dest);
+        // 「实验动物转出地点：」自己占一行，值从下一行起。接在标题后面的话，第一项会被标题挤掉
+        // 大半格宽、被迫断行，看着比换行更乱（用户 2026-09-22 定）。
+        appendLocation(from, 0, in.getFromLocation());
+        fillSignatureOrName(from, 1, in.getOriginReviewerName(), in.getOriginReviewerSignature());
+        appendLocation(dest, 0, in.getToLocation());
+        fillSignatureOrName(dest, 1, in.getDestReviewerName(), in.getDestReviewerSignature());
 
+        // 「负责人（PI签字）」那格没有账号（值只是笼位表单里填的名字串），永远只有姓名文字。
         appendToRun(cellAt(t, ROW_SIGN + shift, 0), 0, in.getPiName());
-        appendToRun(cellAt(t, ROW_SIGN + shift, 1), 0, in.getExperimenterName());
+        fillSignatureOrName(cellAt(t, ROW_SIGN + shift, 1), 0,
+                in.getExperimenterName(), in.getExperimenterSignature());
 
         fillVetOutcome(cellAt(t, ROW_VET + shift, 0), in.getVetOutcome(), in.getVetReason(),
-                in.getVetReviewerName());
+                in.getVetReviewerName(), in.getVetReviewerSignature());
+        adaptVetSpacing(cellAt(t, ROW_VET + shift, 0), n, in.getFromLocation(), in.getToLocation());
     }
 
-    /** 复核意见：打勾 + 把原因写在对应下划线上 + 补复核人姓名；未签则整块不动。 */
+    /**
+     * 复核意见块「同意 / 暂缓 / 不同意」之间的段间距，按本次笼位数自适应。
+     *
+     * <p>这几处空档是模板用来**占满一页**的（顺带给兽医留写原因的地方），但模板给的是死值：
+     * 笼位少时整张表缩在页面上半截，笼位多时直接顶到第 2 页。这里反算 —— 先算「段间距全清掉」
+     * 时这张表会停在哪，再把到页底的距离平分给 4 处段间距。于是 1~5 笼位都落在同一条底边上，
+     * 笼位再多就自然顶到第 2 页（那时本来也放不下）。
+     */
+    private static void adaptVetSpacing(XWPFTableCell cell, int cageCount,
+                                        String fromLocation, String toLocation) {
+        if (cell == null) return;
+        int gap = vetGapPt(cageCount, fromLocation, toLocation);
+        List<XWPFParagraph> ps = cell.getParagraphs();
+        // 最后一段是「复核人（签字）」，它后面不留间距；模板自带的段后距也别动，那已算进标定量里。
+        for (int i = 0; i < ps.size() - 1; i++) {
+            CTP ctp = ps.get(i).getCTP();
+            CTPPr pPr = ctp.isSetPPr() ? ctp.getPPr() : ctp.addNewPPr();
+            CTSpacing sp = pPr.isSetSpacing() ? pPr.getSpacing() : pPr.addNewSpacing();
+            sp.setBefore(BigInteger.ZERO);
+            sp.setAfter(BigInteger.valueOf(gap * 20L));   // w:spacing 的单位是二十分之一磅
+        }
+    }
+
+    /**
+     * 三个标定量都是**照着渲染出来的 PDF 量出来的**，字体或模板一改就得重量（量法：
+     * 渲染 n=1..5 的单子，取每张正文最后一行的 y）。
+     *
+     * <p>{@link #PAGE_TARGET_PT} 内容底边想落到的位置。取 686 而不是贴着页脚：地点名长的时候
+     * 会多折行，每多一行整张表往下 {@link #LINE_PT}；留出约两行余量才不会偶发顶到第 2 页。
+     * {@link #NATURAL_BOTTOM_PT} 1 个笼位、地点各占一行、且把 4 处段间距全清空时的底边
+     * （2026-09-22 插入「提交日期」行后重量的，那次净增高约 13pt）；
+     * {@link #PER_CAGE_PT} 每多一个笼位往下推多少（数据行 + 地点行各一行）。
+     */
+    private static final double PAGE_TARGET_PT = 686;
+    private static final double NATURAL_BOTTOM_PT = 580;
+    private static final double PER_CAGE_PT = 31.7;
+    /** 一行正文的高度（pt）。 */
+    private static final double LINE_PT = 15.6;
+    /** 复核意见块里的段间距处数（5 段之间 4 处）。 */
+    private static final int VET_GAP_COUNT = 4;
+    /** 单处段间距的上限（pt）——再多字就要被推开了，1 个笼位时也用不到这么宽。 */
+    private static final int VET_GAP_MAX_PT = 40;
+    /**
+     * 每行上方留的空（pt）。模板 {@code w:tblCellMar} 的 top/bottom 是 0，正文紧贴表格横线，
+     * 行与行之间看着挤（用户 2026-09-22 要求「适当留一点间距」）。
+     *
+     * <p>走**段落的 {@code w:before}** 而不是表格单元格边距：{@code tblCellMar} 的 top/bottom
+     * 在 LibreOffice 里几乎不生效（实测 11 行上下各设 2pt 只长了约 3pt，而不是 44pt），
+     * 而段前距一定吃行高。加在模板已有值**之上**，原有留白不会被冲掉。
+     */
+    private static final int ROW_PAD_MAX_PT = 2;
+
+    static int vetGapPt(int cageCount, String fromLocation, String toLocation) {
+        double natural = baseBottom(cageCount, fromLocation, toLocation)
+                + rowPadTotalPt(cageCount, fromLocation, toLocation);
+        double fill = (PAGE_TARGET_PT - natural) / VET_GAP_COUNT;
+        return (int) Math.max(0, Math.min(VET_GAP_MAX_PT, fill));
+    }
+
+    /** 不留任何行内空、也不留段间距时，这张表正文的底边。 */
+    private static double baseBottom(int cageCount, String fromLocation, String toLocation) {
+        return NATURAL_BOTTOM_PT + (Math.max(1, cageCount) - 1) * PER_CAGE_PT
+                + extraLocationLines(cageCount, fromLocation, toLocation) * LINE_PT;
+    }
+
+    /** 表格行数：模板 9 行 + 渲染时插的 2 行（单号、提交日期）+ 多出来的数据行。 */
+    static int tableRows(int cageCount) {
+        return 11 + (Math.max(1, cageCount) - 1);
+    }
+
+    /**
+     * 每个格子里第一段之前留的空（pt，单侧）。**有余量才给**：拿「到目标底边还剩多少」摊到每一行，
+     * 笼位多到本来就要两页时收到 0 —— 不为了好看把单子顶到第 2 页。
+     */
+    static int rowPadPt(int cageCount, String fromLocation, String toLocation) {
+        double slack = PAGE_TARGET_PT - baseBottom(cageCount, fromLocation, toLocation);
+        if (slack <= 0) return 0;
+        return (int) Math.min(ROW_PAD_MAX_PT, slack / tableRows(cageCount));
+    }
+
+    /** 行前留白吃掉的总高度。 */
+    private static double rowPadTotalPt(int cageCount, String fromLocation, String toLocation) {
+        return rowPadPt(cageCount, fromLocation, toLocation) * (double) tableRows(cageCount);
+    }
+
+    /**
+     * 给每一行的**每个格子的第一段**加段前距 —— 行高取格子里最高的那格，所以一行就长这么多。
+     * 加在已有值之上：模板里 {@code ROW_SIGN} 那行本来就有 8.4pt 的段前距，不能被冲掉。
+     */
+    private static void applyRowPadding(XWPFTable t, int padPt) {
+        if (t == null || padPt <= 0) return;
+        BigInteger tw = BigInteger.valueOf(padPt * 20L);   // w:spacing 的单位是二十分之一磅
+        for (XWPFTableRow row : t.getRows()) {
+            for (XWPFTableCell cell : row.getTableCells()) {
+                List<XWPFParagraph> ps = cell.getParagraphs();
+                if (ps.isEmpty()) continue;
+                CTP ctp = ps.get(0).getCTP();
+                CTPPr pPr = ctp.isSetPPr() ? ctp.getPPr() : ctp.addNewPPr();
+                CTSpacing sp = pPr.isSetSpacing() ? pPr.getSpacing() : pPr.addNewSpacing();
+                sp.setBefore(existingBefore(sp).add(tw));
+            }
+        }
+    }
+
+    /** 读现有的 {@code w:before}（XMLBeans 给的是 union，取回来是 Object，按文本解析）。 */
+    private static BigInteger existingBefore(CTSpacing sp) {
+        if (!sp.isSetBefore()) return BigInteger.ZERO;
+        try {
+            return new BigInteger(String.valueOf(sp.getBefore()).trim());
+        } catch (NumberFormatException e) {
+            return BigInteger.ZERO;
+        }
+    }
+
+    /** 地点格的内宽（pt）——模板 tcW 4168 二十分之一磅。 */
+    private static final double LOC_WIDTH_PT = 208;
+    /** 正文全角 / 半角字符的宽度（pt）。按字宽估折行，比数字符准得多（同一格里英文数字只占半宽）。 */
+    private static final double LOC_FULL_PT = 10.5;
+    private static final double LOC_HALF_PT = 5.25;
+
+    /**
+     * 地点格比「一个笼位一行」多占了几个折行 —— 地点名长的时候每项都会折成两行，
+     * 那部分高度是表格自己长的，段间距再怎么算也补不回来，只能先把余量扣掉。
+     */
+    private static int extraLocationLines(int cageCount, String fromLocation, String toLocation) {
+        int onePerCage = Math.max(1, cageCount);
+        return Math.max(0, wrappedLines(fromLocation) - onePerCage)
+                + Math.max(0, wrappedLines(toLocation) - onePerCage);
+    }
+
+    /** 地点串折行后占几行：按 {@code \n} 分段，每段再按字宽除以格宽向上取整。 */
+    private static int wrappedLines(String location) {
+        if (location == null || location.isBlank()) return 0;
+        int lines = 0;
+        for (String part : location.split("\n")) {
+            lines += Math.max(1, (int) Math.ceil(textWidthPt(part) / LOC_WIDTH_PT));
+        }
+        return lines;
+    }
+
+    /** 全角（中日韩标点也算）按 {@link #LOC_FULL_PT}，其余按半宽计。 */
+    private static double textWidthPt(String text) {
+        double width = 0;
+        for (int i = 0; i < text.length(); i++) {
+            width += text.charAt(i) >= 0x2E80 ? LOC_FULL_PT : LOC_HALF_PT;
+        }
+        return width;
+    }
+
+    /** 复核意见：打勾 + 把原因写在对应下划线上 + 补复核人签字；未签则整块不动。 */
     private static void fillVetOutcome(XWPFTableCell cell, String outcome, String reason,
-                                       String reviewerName) {
+                                       String reviewerName, String reviewerSignature) {
         if (cell != null && outcome != null && !outcome.isBlank()) {
             int boxRun;
             int reasonRun;
@@ -374,7 +591,145 @@ public final class TransferFormRenderer {
                 replaceBlank(runs.get(reasonRun), reason);
             }
         }
-        appendToRun(cell, VET_RUN_REVIEWER, reviewerName);
+        fillSignatureOrName(cell, VET_RUN_REVIEWER, reviewerName, reviewerSignature);
+    }
+
+    // ------------------------------------------------------------ 电子签名
+
+    /**
+     * 签位落地规则：**有电子签名就打签名图（纯图，旁边不再印姓名），没有就退回姓名文字。**
+     *
+     * <p>签名是自愿提交的、不是人人都有，所以「没有」是常态而不是异常 —— 退回姓名文字即可，
+     * 单据不会因此开天窗。图坏了（dataUrl 解不开、不是图）也走同一条退路，不让一张坏图把整单卡死。
+     */
+    private static void fillSignatureOrName(XWPFTableCell cell, int runIndex, String name,
+                                            String signatureDataUrl) {
+        if (cell == null) return;
+        if (addPictureToRun(cell, runIndex, signatureDataUrl)) return;
+        appendToRun(cell, runIndex, name);
+    }
+
+    /** 签名图的最大边长（pt）—— 浮动图不占行高，所以能比签位那一行本身大。 */
+    private static final double SIGN_MAX_W_PT = 64;
+    private static final double SIGN_MAX_H_PT = 22;
+    /** 锚定以「行」为纵向参照，再往上抬这么多 pt，签名才压在签字线上而不是悬在字顶。 */
+    private static final double SIGN_LIFT_PT = 4;
+    /** 裁白边时四周留的呼吸空间（像素）；贴边裁出来像被切了一刀。 */
+    private static final int SIGN_PAD_PX = 6;
+
+    /** 把签名图插到第 runIndex 支 run 上。返回 false = 没插（调用方退回姓名文字）。 */
+    private static boolean addPictureToRun(XWPFTableCell cell, int runIndex, String dataUrl) {
+        XWPFRun run = runAt(cell, runIndex);
+        if (run == null) return false;
+        byte[] bytes = decodeDataUrl(dataUrl);
+        if (bytes == null) return false;
+        BufferedImage trimmed;
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+            trimmed = img == null ? null : trimWhitespace(img);
+        } catch (IOException e) {
+            return false;
+        }
+        if (trimmed == null) return false;
+        // 按比例缩到框内：签名是横向长条，给死宽高会拉变形。
+        double scale = Math.min(SIGN_MAX_W_PT / trimmed.getWidth(), SIGN_MAX_H_PT / trimmed.getHeight());
+        int w = Math.max(1, (int) Math.round(trimmed.getWidth() * scale));
+        int h = Math.max(1, (int) Math.round(trimmed.getHeight() * scale));
+        try {
+            // 必须传**裁过之后**的字节：传原图而给裁剪后的宽高，等于把整张画布压进墨迹的框里。
+            ByteArrayOutputStream png = new ByteArrayOutputStream();
+            ImageIO.write(trimmed, "png", png);
+            try (InputStream in = new ByteArrayInputStream(png.toByteArray())) {
+                run.addPicture(in, Document.PICTURE_TYPE_PNG, "signature", Units.toEMU(w), Units.toEMU(h));
+            }
+            floatThePicture(run);
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 把 POI 生成的**内联**图改成**浮动锚定**图 —— 这是签名放得下的关键。
+     *
+     * <p>内联图要占一行：只要比那一行高，整行就被撑高。实测每多一个内联签位，整张表往下顶
+     * 15.6pt，四个签位足以把「复核人（签字）」挤到第 2 页去。锚定图不参与排版，签位那一行的
+     * 高度纹丝不动，于是签名才能放到比行高更大、看着像真的签名（量法见
+     * {@code TransferFormSignatureTest} 旁边的渲染实测）。
+     *
+     * <p>横向落在**锚点所在的字符位置**（就是标签之后），不必去量标签有多宽；纵向按「行」对齐，
+     * 再抬 {@link #SIGN_LIFT_PT}。压在文字下面（behindDoc）—— 签名盖住签字线可以，盖住标签不行。
+     */
+    private static void floatThePicture(XWPFRun run) {
+        CTR ctr = run.getCTR();
+        if (ctr.sizeOfDrawingArray() == 0) return;
+        CTDrawing drawing = ctr.getDrawingArray(ctr.sizeOfDrawingArray() - 1);
+        if (drawing.sizeOfInlineArray() == 0) return;
+        CTInline inline = drawing.getInlineArray(0);
+
+        CTAnchor anchor = drawing.addNewAnchor();
+        anchor.setSimplePos2(false);
+        anchor.addNewSimplePos();
+        anchor.setRelativeHeight(2);
+        anchor.setBehindDoc(true);
+        anchor.setLocked(false);
+        anchor.setLayoutInCell(true);
+        anchor.setAllowOverlap(true);
+        CTPosH posH = anchor.addNewPositionH();
+        posH.setRelativeFrom(STRelFromH.CHARACTER);
+        posH.setPosOffset(0);
+        CTPosV posV = anchor.addNewPositionV();
+        posV.setRelativeFrom(STRelFromV.LINE);
+        posV.setPosOffset(-Units.toEMU(SIGN_LIFT_PT));
+        anchor.setExtent(inline.getExtent());
+        anchor.addNewWrapNone();
+        anchor.setDocPr(inline.getDocPr());
+        anchor.setGraphic(inline.getGraphic());
+        drawing.removeInline(0);
+    }
+
+    /**
+     * 裁掉画布四周的白边，返回墨迹的包围盒（外扩 {@link #SIGN_PAD_PX} 像素留呼吸空间）。
+     *
+     * <p>前端给的画布是固定 800×300，真人笔下往往只占其中一角；不裁的话整块白底按比例一缩，
+     * 签字就缩成一个小墨点，还浮在签名线上方。整张全白 = 没签，返回 null 让调用方退回姓名文字。
+     */
+    private static BufferedImage trimWhitespace(BufferedImage img) {
+        int minX = img.getWidth(), minY = img.getHeight(), maxX = -1, maxY = -1;
+        for (int y = 0; y < img.getHeight(); y++) {
+            for (int x = 0; x < img.getWidth(); x++) {
+                if (isInk(img.getRGB(x, y))) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (maxX < minX || maxY < minY) return null;
+        int x = Math.max(0, minX - SIGN_PAD_PX);
+        int y = Math.max(0, minY - SIGN_PAD_PX);
+        int w = Math.min(img.getWidth() - x, maxX - minX + 1 + SIGN_PAD_PX * 2);
+        int h = Math.min(img.getHeight() - y, maxY - minY + 1 + SIGN_PAD_PX * 2);
+        return img.getSubimage(x, y, w, h);
+    }
+
+    /** 笔迹的抗锯齿边缘不算白，阈值放宽一点，否则签名会被裁得缺边；透明像素一律不算墨。 */
+    private static boolean isInk(int argb) {
+        if ((argb >>> 24) < 0x80) return false;
+        return ((argb >> 16) & 0xFF) < 200 || ((argb >> 8) & 0xFF) < 200 || (argb & 0xFF) < 200;
+    }
+
+    /** {@code data:image/png;base64,....} → 图片字节。不是 dataUrl、或 base64 坏了，返回 null。 */
+    private static byte[] decodeDataUrl(String dataUrl) {
+        if (dataUrl == null) return null;
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0 || !dataUrl.substring(0, comma).contains("base64")) return null;
+        try {
+            return Base64.getDecoder().decode(dataUrl.substring(comma + 1).trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     // ------------------------------------------------------------ run 级写入
@@ -398,25 +753,51 @@ public final class TransferFormRenderer {
     }
 
     /**
-     * 整支替换 run 的文字。
+     * 整支替换 run 的文字；{@code \n} 落成真正的换行（{@code <w:br/>}）。
      *
      * <p>{@code XWPFRun.setText} 是「写第 pos 个 w:t」的语义，多支 w:t 的 run 换不干净，
      * 所以先把多余的 w:t 删掉、只留一支再写值 —— 留下原本那支能保住模板的
      * {@code xml:space="preserve"}（`_ ♀ ` 这类首尾带空格的 run 全靠它），
      * rPr（字体/下划线）一概不碰。
+     *
+     * <p><b>{@code \n} 必须换成 {@code <w:br/>}</b>：塞进 {@code w:t} 里的换行符 Word/LibreOffice
+     * 只当普通空白，多笼位的地点串会挤成一坨（用户 2026-09-22 报「没换行、中间空格太多」）。
      */
     private static void setRunText(XWPFRun run, String text) {
         CTR ctr = run.getCTR();
+        for (int i = ctr.sizeOfBrArray() - 1; i >= 0; i--) {
+            ctr.removeBr(i);
+        }
         while (ctr.sizeOfTArray() > 1) {
             ctr.removeT(ctr.sizeOfTArray() - 1);
         }
-        CTText t = ctr.sizeOfTArray() == 0 ? ctr.addNewT() : ctr.getTArray(0);
-        String safe = text == null ? "" : text;
-        t.setStringValue(safe);
-        if (!safe.isEmpty() && (Character.isWhitespace(safe.charAt(0))
-                || Character.isWhitespace(safe.charAt(safe.length() - 1)))) {
+        String[] parts = (text == null ? "" : text).split("\n", -1);
+        CTText first = ctr.sizeOfTArray() == 0 ? ctr.addNewT() : ctr.getTArray(0);
+        setText(first, parts[0]);
+        for (int i = 1; i < parts.length; i++) {
+            ctr.addNewBr();
+            setText(ctr.addNewT(), parts[i]);
+        }
+    }
+
+    /** 写一支 {@code w:t}；首尾带空格要补 {@code xml:space="preserve"}，否则会被吞掉。 */
+    private static void setText(CTText t, String value) {
+        t.setStringValue(value);
+        if (!value.isEmpty() && (Character.isWhitespace(value.charAt(0))
+                || Character.isWhitespace(value.charAt(value.length() - 1)))) {
             t.setSpace(SpaceAttribute.Space.PRESERVE);
         }
+    }
+
+    /**
+     * 写地点格：标题自己占一行、值从下一行起。
+     *
+     * <p>先判空再拼 {@code \n} —— {@code "\n" + null} 在 Java 里会拼成 {@code "\nnull"}，
+     * 既不 blank 也判不出空，单子上就真的印出「null」（测试抓到的）。地点解析不到时整格不动。
+     */
+    private static void appendLocation(XWPFTableCell cell, int runIndex, String value) {
+        if (value == null || value.isBlank()) return;
+        appendToRun(cell, runIndex, "\n" + value);
     }
 
     /** 把 value 接到第 runIndex 支 run 的文字后面；空白值不写。 */

@@ -32,8 +32,31 @@ function exportAuditItemExcel(itemId) {
   return springAuth.springRequestBinary(p, { forbiddenMessage: '无权限导出' });
 }
 
+/**
+ * 生成/复用《实验动物科学部内部物品领用单》的分享链接。
+ *
+ * 返回 data.downloadToken —— 领用单归档在私有目录，静态地址拉不到，只能凭令牌走后端端点。
+ * 出库后拿到的是出库那一刻归档的那一份（带出库人签名）；出库前预览会重新渲染。
+ */
+async function createClaimPdfLink(claimId) {
+  const p = `/api/supplies/claims/${encodeURIComponent(String(claimId))}/pdf-link`;
+  const res = await springAuth.springRequest({ url: p, method: 'POST', data: {} });
+  const body = res && res.data ? res.data : {};
+  // 写请求必须看 success：HTTP 200 + success:false 也是失败（不看就会把「被拦」当成功）
+  if (!body.success) throw new Error(body.message || '生成领用单失败');
+  return body.data || {};
+}
+
+/** 按令牌取领用单 PDF 字节（ArrayBuffer），交给 saveAndOpenDocument 落盘打开。 */
+function fetchClaimFormPdf(downloadToken) {
+  const p = `/api/supplies/claims/download/${encodeURIComponent(String(downloadToken))}`;
+  return springAuth.springRequestBinary(p, { errorMessage: '打开领用单失败' });
+}
+
 module.exports = {
   exportPersonalClaimExcel,
   exportPersonalClaimsRangeExcel,
   exportAuditItemExcel,
+  createClaimPdfLink,
+  fetchClaimFormPdf,
 };

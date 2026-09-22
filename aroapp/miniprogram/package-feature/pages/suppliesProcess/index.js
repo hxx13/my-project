@@ -309,6 +309,43 @@ Page({
     });
   },
 
+  /**
+   * 打开本次《实验动物科学部内部物品领用单》（与 suppliesMine 同款）：
+   * 先要一个分享令牌（后端顺带生成/复用归档件），再凭令牌把 PDF 字节拉回来落盘打开。
+   * openDocument 带 showMenu，用户在里面可以直接转发/另存 —— 也就是「导出」。
+   */
+  async openClaimForm(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || '';
+    if (!id) return;
+    this.setData({ menuOpenId: null });
+    wx.showLoading({ title: '正在生成领用单', mask: true });
+    try {
+      const link = await suppliesExportApi.createClaimPdfLink(id);
+      const token = link && link.downloadToken;
+      if (!token) throw new Error('领用单生成失败');
+      const res = await suppliesExportApi.fetchClaimFormPdf(token);
+      // 文件名用后端给的（就是单号，如 20260923-位亚磊-1.pdf），与纸面印的一致
+      await springAuth.saveAndOpenDocument(res.data, (link && link.fileName) || `领用单-${id}.pdf`, 'pdf');
+    } catch (err) {
+      wx.showToast({ title: (err && err.message) || '打开领用单失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  /**
+   * 打印领用单：把这张单子交给**文件模板库页的临时打印链路**（落成本地文件 → 进待打清单 →
+   * 弹派发面板选工位/份数）。不在这里另造一套选打印机的弹窗 —— 那边已经有现成的。
+   */
+  printClaimForm(e) {
+    const id = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.id) || '';
+    if (!id) return;
+    this.setData({ menuOpenId: null });
+    wx.navigateTo({
+      url: `/package-feature/pages/fileTemplates/index?tempPrintClaimId=${encodeURIComponent(id)}`,
+    });
+  },
+
   /* ---- 明细行操作 ---- */
   toggleAllLines(e) {
     const id = e.currentTarget.dataset.id;
@@ -422,13 +459,6 @@ Page({
   noop() {},
 
   /* ---- 导出弹窗 ---- */
-  openClaimExportMini() {
-    const claim = this.data.linkClaim;
-    if (!claim || !claim.id) return;
-    this.closeLinkPopup();
-    wx.navigateTo({ url: `/package-feature/pages/suppliesClaimExport/index?claimId=${encodeURIComponent(claim.id)}` });
-  },
-
   async onExportClaimExcelFromPopup() {
     const claim = this.data.linkClaim;
     if (!claim || !claim.id || this.data.exportClaimBusy) return;

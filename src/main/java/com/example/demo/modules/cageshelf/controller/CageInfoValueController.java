@@ -17,6 +17,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -129,5 +131,83 @@ public class CageInfoValueController {
         }
         log.warn("[cage-info-value] 操作失败: {}", e.getMessage(), e);
         return (Result<T>) Result.error(e.getMessage());
+    }
+
+    /** 批量一次最多覆盖的笼位数：拦住误传整库 id 的那种请求。 */
+    private static final int BATCH_MAX_CAGES = 500;
+
+    /**
+     * 批量把同一组字段值覆盖到多个笼位（管理端「批量编辑」）。
+     *
+     * <p>权限**逐笼位判**（与单笼位写同源 {@link CageOperationService#cageEditInfo}）：
+     * 不允许的笼位不进结果里的 updatedCount，逐条带回来给前端汇总 —— 一个笼位被拦不该把
+     * 整批 200 个笼位一起回滚，用户要的是「哪些成了、哪些没成」。
+     */
+    @PutMapping("/batch")
+    @Operation(summary = "批量写多个笼位的表单值（逐笼位校验编辑权，逐条回报失败）")
+    public Result<Map<String, Object>> updateInfoBatch(@RequestBody Map<String, Object> body,
+                                                       HttpServletRequest req) {
+        User u = resolveUser(req);
+        Result<?> denied = requireMember(u);
+        if (denied != null) return Result.fail(403, denied.getMessage());
+
+        List<Long> cageIds = new ArrayList<>();
+        Object rawIds = body == null ? null : body.get("animalCageIds");
+        if (rawIds instanceof List<?> list) {
+            for (Object o : list) {
+                Long id = toLong(o);
+                if (id != null && !cageIds.contains(id)) cageIds.add(id);
+            }
+        }
+        if (cageIds.isEmpty()) return Result.fail(400, "animalCageIds 必填");
+        if (cageIds.size() > BATCH_MAX_CAGES) {
+            return Result.fail(400, "一次最多批量编辑 " + BATCH_MAX_CAGES + " 个笼位（本次 " + cageIds.size() + " 个）");
+        }
+
+        Object raw = body.get("values");
+        List<Map<String, Object>> entries = raw instanceof List<?> list
+            ? list.stream().filter(e -> e instanceof Map).map(e -> (Map<String, Object>) e).toList()
+            : List.of();
+        if (entries.isEmpty()) return Result.fail(400, "values 必填");
+
+        int updated = 0;
+        List<Map<String, Object>> failed = new ArrayList<>();
+        for (Long cageId : cageIds) {
+            try {
+                Map<String, Object> editInfo = operationService.cageEditInfo(u, cageId);
+                if (!Boolean.TRUE.equals(editInfo.get("editable"))) {
+                    failed.add(failure(cageId, String.valueOf(editInfo.get("reason"))));
+                    continue;
+                }
+                infoValueService.updateInfo(cageId, entries, u.getId());
+                updated++;
+            } catch (Exception e) {
+                // 单个笼位写失败（字段只读、类型不符…）只记这一条，继续写后面的
+                failed.add(failure(cageId, e.getMessage()));
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("updatedCount", updated);
+        out.put("failed", failed);
+        return Result.success(out);
+    }
+
+    private static Map<String, Object> failure(Long cageId, String reason) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("animalCageId", cageId);
+        m.put("reason", reason == null || reason.isBlank() ? "写入失败" : reason);
+        return m;
+    }
+
+    private static Long toLong(Object o) {
+        if (o instanceof Number n) return n.longValue();
+        if (o instanceof String s && !s.isBlank()) {
+            try {
+                return Long.valueOf(s.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
     }
 }

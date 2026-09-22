@@ -19,6 +19,7 @@ import {
   Smartphone,
   PawPrint,
   ScrollText,
+  PenLine,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
@@ -30,6 +31,7 @@ import { toast } from "react-hot-toast";
 import RingAvatar from "./MobileRingAvatar";
 import { type MobileShellTabKey } from "./mobileShellLayout";
 import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
+import MySignatureCard from "@/components/signature/MySignatureCard";
 
 import { appConfirm } from "@/lib/appDialog";
 /* ================================================================== */
@@ -68,6 +70,7 @@ export default function MobileMineTab({
   const [sendKeySaving, setSendKeySaving] = useState(false);
   const [currentSendKey, setCurrentSendKey] = useState(false);
   const [wxPusherOpen, setWxPusherOpen] = useState(false);
+  const [signatureOpen, setSignatureOpen] = useState(false);
   const [currentWxPusher, setCurrentWxPusher] = useState(false);
   const personnelId = data.userId || "";
 
@@ -337,6 +340,9 @@ export default function MobileMineTab({
           { label: "出入记录", color: "#10b981", icon: FileText, action: undefined },
           { label: "数据统计", color: "#f59e0b", icon: BarChart3, action: undefined },
           { label: "通知公告", color: "#ef4444", icon: Bell, action: onOpenAnnouncements },
+          /* 电子签名：学生与教职工都要签（会印在转移单、领用单上），所以不按身份收口。
+             手机上直接手写；要换设备时卡片里还能出二维码。 */
+          { label: "电子签名", color: "#7c3aed", icon: PenLine, action: () => setSignatureOpen(true) },
           { label: "设置", color: "#8b5cf6", icon: Settings, path: "/m/settings" },
         ].map((item, idx) => (
           <button
@@ -405,6 +411,21 @@ export default function MobileMineTab({
           上海交通大学医学院·实验动物科学部
         </a>
       </div>
+
+      {/* 电子签名：与小程序同一份数据、同一个接口（/api/student/signature） */}
+      {signatureOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" role="dialog">
+          <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">电子签名</h3>
+              <button type="button" className="text-xs text-gray-500 dark:text-gray-400" onClick={() => setSignatureOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <MySignatureCard mobileFullscreen onClose={() => setSignatureOpen(false)} />
+          </div>
+        </div>
+      )}
 
       {/* Email edit dialog */}
       {emailOpen && (

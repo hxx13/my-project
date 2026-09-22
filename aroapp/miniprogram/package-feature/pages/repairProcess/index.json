@@ -1,8 +1,0 @@
-{
-  "navigationBarTitleText": "报修处理",
-  "enablePullDownRefresh": true,
-  "usingComponents": {
-    "van-popup": "@vant/weapp/popup/index",
-    "van-empty": "@vant/weapp/empty/index"
-  }
-}

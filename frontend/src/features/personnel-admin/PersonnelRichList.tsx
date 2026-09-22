@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
+import { KeyRound, Stethoscope } from "lucide-react";
 import { usePrefersReducedMotion } from "@/hooks/useTypewriterText";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
@@ -130,19 +131,22 @@ export function PersonnelRichList({
                   {(() => {
                     const accountId = row.staffId || row.aroUserId;
                     return (
-                      <AdminButton type="button" tone="ghost" size="sm" disabled={!accountId}
-                        title={accountId ? "查看该人员的健康调查表" : "该人员还没有账号"}
+                      <AdminButton type="button" tone="secondary" size="sm" className="gap-1.5" disabled={!accountId}
+                        title={accountId ? "查看该人员的健康调查表" : "该人员还没有账号，无法查看健康调查表"}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (accountId) navigate(`/console/admin/health-survey/${accountId}`);
                         }}>
-                        健康报告
+                        <Stethoscope className="h-3.5 w-3.5" aria-hidden />
+                        健康调查表
                       </AdminButton>
                     );
                   })()}
-                  <AdminButton type="button" tone="ghost" size="sm"
+                  <AdminButton type="button" tone="secondary" size="sm" className="gap-1.5"
+                    title="把该人员的登录密码重置为默认密码"
                     onClick={(e) => { e.stopPropagation(); onQuickResetPassword(row); }}>
-                    重置
+                    <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                    重置密码
                   </AdminButton>
                 </div>
               );

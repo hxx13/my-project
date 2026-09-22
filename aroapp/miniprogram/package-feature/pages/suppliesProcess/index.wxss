@@ -41,12 +41,22 @@
 }
 
 /* ---- 卡片 ---- */
+/* 卡片不设 overflow:hidden（会裁掉 ⋮ 菜单），改由底部条自己收圆角 —— 与 suppliesMine 同款 */
 .card {
   background: #fff;
   border-radius: 14rpx;
   border: 1rpx solid #ebedf0;
   margin-bottom: 12rpx;
-  overflow: hidden;
+}
+
+/*
+ * ⋮ 菜单展开时把这张卡抬到同层卡片之上。
+ * 菜单是卡内的绝对定位子节点，而卡片本身没定位 —— 后面的卡片按 DOM 顺序会**盖在菜单上**，
+ * 看起来就像菜单被这张卡裁掉了。
+ */
+.card-menu-open {
+  position: relative;
+  z-index: 30;
 }
 
 .card-head {
@@ -414,6 +424,8 @@
   padding: 14rpx 18rpx;
   border-top: 1rpx solid #f2f3f5;
   background: #fafafa;
+  /* 卡片不再 overflow:hidden，底部条得自己收下圆角，否则方角会戳出卡外 */
+  border-radius: 0 0 13rpx 13rpx;
 }
 
 .expand-foot-four .expand-btn {

@@ -191,10 +191,10 @@ export function useSupplyPendingTasks() {
   });
 }
 
-export function useSupplyRecentClosed(limit = 40) {
+export function useSupplyRecentClosed(limit = 40, status?: string) {
   return useQuery({
-    queryKey: [...queryKeys.supplies.all, "recentClosed", limit] as const,
-    queryFn: () => fetchSupplyRecentClosedClaims(limit),
+    queryKey: [...queryKeys.supplies.all, "recentClosed", limit, status ?? ""] as const,
+    queryFn: () => fetchSupplyRecentClosedClaims(limit, status),
   });
 }
 
@@ -204,10 +204,13 @@ export function useFulfillSupplyClaim() {
     mutationFn: ({
       id,
       lines,
+      claimFloor,
     }: {
       id: string;
-      lines: { lineId: number; grant: boolean; fulfillQty?: number }[];
-    }) => fulfillSupplyClaim(id, lines),
+      // remark / claimFloor 后端一直收，之前这里的类型漏了 remark —— 顺手补齐
+      lines: { lineId: number; grant: boolean; fulfillQty?: number; remark?: string }[];
+      claimFloor?: string;
+    }) => fulfillSupplyClaim(id, lines, claimFloor),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.supplies.all });
       toast.success("出库完成");

@@ -11,17 +11,23 @@ import {
   fetchCageOpTargets,
   fetchCageOpOperable,
   fetchLocalShelfGridByShelveId,
+  submitCageDivide,
   type CageOpTarget,
   type CageShelfCell,
   type CageShelfDetail,
 } from "@/api/domains/cageShelf.api";
 import type { MobileCageShelfSummary } from "@/api/domains/mobileStudent.api";
+import { resolveAnimalCageType } from "@/pages/mobile/mobileCageShelfGrid";
+// 仓库里有两个同名 CageShelfCell（cageShelf.api / student.api），只在 visible 的可空性上不同。
+// resolveAnimalCageType 是页面与两端**共用**的那一个「格子是什么类型」派生口径，值得为它转一次类型。
+import type { CageShelfCell as StudentCageShelfCell } from "@/features/student/api/student.api";
 import {
   groupPoolByRoom,
   indexPool,
   nextUnpairedIdx,
   removeSource,
   pairRows,
+  targetOwnerExcept,
   type BatchSource,
 } from "@/pages/mobile/batchTransferLogic";
 
@@ -81,6 +87,8 @@ export interface MobileBatchTransferSheetProps {
   open: boolean;
   /** 入口格：打开即作为第一个源放进缓冲（去重）。null = 无锚点，纯空抽屉。 */
   anchor: BatchSource | null;
+  /** 模式：transfer=批量转移（默认，现有调用点不传即不变）；divide=分笼（源固定为 anchor，目标多选）。 */
+  mode?: "transfer" | "divide";
   /** 源侧房间/架列表（学生端本人可见的笼架摘要）。 */
   shelves: MobileCageShelfSummary[];
   onClose: () => void;
@@ -117,7 +125,9 @@ export default function MobileBatchTransferSheet({
   shelves,
   onClose,
   onDone,
+  mode = "transfer",
 }: MobileBatchTransferSheetProps) {
+  const isDivide = mode === "divide";
   const [sources, setSources] = useState<BatchSource[]>([]);
   const [targets, setTargets] = useState<Map<string, string>>(new Map());
   /** 阶段：决定树从哪来、格子按什么判据打标。与「屏」是两件事。 */
@@ -136,9 +146,22 @@ export default function MobileBatchTransferSheet({
    */
   const gridInFlight = useRef<Set<string>>(new Set());
   const [activeShelf, setActiveShelf] = useState<ActiveShelf | null>(null);
+  /**
+   * 点过后端说「不能操作」的笼位：cageId → 原因。
+   * 用来把该格预先打上网纹（`disabledReason` 就是网纹 + 底部红标签），
+   * 免得同一个格子每次都要点一下才知道不行。
+   */
+  const [notOperable, setNotOperable] = useState<Map<string, string>>(new Map());
   const [collapsedCampuses, setCollapsedCampuses] = useState<Set<string>>(new Set());
   const [collapsedRooms, setCollapsedRooms] = useState<Set<string>>(new Set());
   const [confirmOpen, setConfirmOpen] = useState(false);
+  /** 分笼：已选目标笼位（有序，可跨房间多选） */
+  const [divTargets, setDivTargets] = useState<string[]>([]);
+  /** 分笼：保留源笼位（true=原样保留/净增占用；false=归档源笼位，不可逆） */
+  const [keepSource, setKeepSource] = useState(true);
+  /** 分笼：归档前的摘要确认（内联覆盖层） */
+  const [divConfirmOpen, setDivConfirmOpen] = useState(false);
+  const [divideSubmitting, setDivideSubmitting] = useState(false);
 
   const gridCell = useGridCellWidth();
 
@@ -147,17 +170,22 @@ export default function MobileBatchTransferSheet({
     if (!open) return;
     setSources([]);
     setTargets(new Map());
+    setDivTargets([]);
+    setKeepSource(true);
+    setDivConfirmOpen(false);
+    setDivideSubmitting(false);
     setPoolCache(new Map());
     setGridCache(new Map());
-    setPhase("source");
+    setPhase(isDivide ? "target" : "source");
     setScreen("tree");
     setCursor(0);
     setActiveShelf(null);
     setCollapsedCampuses(new Set());
     setCollapsedRooms(new Set());
+    setNotOperable(new Map());
     setConfirmOpen(false);
     gridInFlight.current.clear();
-  }, [open]);
+  }, [open, isDivide]);
 
   /* ── 锚点：把入口格放进缓冲（去重） ── */
   useEffect(() => {
@@ -207,10 +235,13 @@ export default function MobileBatchTransferSheet({
    * 「我还没开始选，怎么已经有一个了」。
    */
   const anchorInBuffer = !!anchor && sources.some((s) => s.animalCageId === anchor.animalCageId);
-  const hint =
-    phase === "target"
+  const hint = isDivide
+    ? divTargets.length === 0
+      ? "请点空笼位选择分笼目标（可多选、可跨房间）"
+      : "继续点空笼位加目标；选完点「确认分笼」"
+    : phase === "target"
       ? curSource && targets.get(curSource.animalCageId)
-        ? "这个源已配好目标，点配对条可换源"
+        ? "这个源已配好，点上面的配对条可换下一个源"
         : "请在下面点一个空笼位，作为它的目标"
       : sources.length === 0
         ? "请点格子选择要转移的源笼位"
@@ -272,8 +303,11 @@ export default function MobileBatchTransferSheet({
     if (phase === "target" && curSource && !poolCache.has(curSource.animalCageId)) {
       loadPool(curSource.animalCageId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在切源时触发，池本身进 deps 会每轮重拉
-  }, [phase, curSource?.animalCageId]);
+    // `open` 也放进来是防御：复位 effect 每次开抽屉会清空 poolCache，万一将来这个组件被改成常驻挂载，
+    // 「同一格再开一次」时 deps 不变就会永不重拉、卡在「加载目标笼位中…」。带上 open 必然重跑一次，
+    // 而下面的条件（phase/curSource/poolCache.has）保证已缓存时是 no-op。
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在切源/重开时触发，池本身进 deps 会每轮重拉
+  }, [phase, curSource?.animalCageId, open]);
 
   /* ── 网格加载：一次只拉一个架（失败只影响这一架） ── */
   const loadShelfGrid = (shelveId: string) => {
@@ -368,6 +402,8 @@ export default function MobileBatchTransferSheet({
     try {
       const op = await fetchCageOpOperable(cageId);
       if (!op.operable) {
+        // 记住它：这一格立刻就打成网纹禁用，不用下次再点一遍才知道
+        setNotOperable((prev) => new Map(prev).set(cageId, op.reason || "该笼位当前不能转移"));
         toast.error(op.reason || "该笼位当前不能转移");
         return;
       }
@@ -404,14 +440,35 @@ export default function MobileBatchTransferSheet({
       toast.error(entry.reason || "该笼位不可选");
       return;
     }
+    // 一个目标笼位只能接收一次转移。UI 已置灰，这里再挡一道（键盘/自动化路径也走得到）
+    if (targetOwnerExcept(targets, cageId, curSource.animalCageId)) {
+      toast.error("该笼位已配给别的源，一个笼位只能接收一次转移");
+      return;
+    }
+    // 点一下就配对，**就地重画**。刻意不自动换源、不回屏 A（用户 2026-09-22 口径：由用户自行操作）。
+    // 以前这里 setCursor(next) + setScreen("tree") 会把人踢回树屏 —— 表现就是「点一下就退出」。
+    // 换源改为用户主动点配对条上的 chip（那时才回屏 A，因为不同源的池子可能落在不同的架）。
     const nextTargets = new Map(targets);
-    nextTargets.set(curSource.animalCageId, cageId);
+    if (nextTargets.get(curSource.animalCageId) === cageId) nextTargets.delete(curSource.animalCageId);
+    else nextTargets.set(curSource.animalCageId, cageId);
     setTargets(nextTargets);
-    const next = nextUnpairedIdx(sources, nextTargets, cursor + 1);
-    if (next >= 0) setCursor(next);
-    // 配对后光标前进 → 树是下一个源自己的池子，必须回屏 A
-    setScreen("tree");
-    setActiveShelf(null);
+  };
+
+  /** 分笼目标点击：多选切换（点空格 push、再点移除），不碰转移的 1:1 配对表。 */
+  const handleDivideCellClick = (cell: CageShelfCell) => {
+    if (!curSource) return;
+    const cageId = String(cell.id ?? "");
+    if (!cageId) return;
+    const entry = curPoolById.get(cageId);
+    if (!entry) {
+      toast.error("该笼位不在可选范围");
+      return;
+    }
+    if (!entry.selectable) {
+      toast.error(entry.reason || "该笼位不可选");
+      return;
+    }
+    setDivTargets((prev) => (prev.includes(cageId) ? prev.filter((x) => x !== cageId) : [...prev, cageId]));
   };
 
   const removeSourceFrom = (sourceId: string) => {
@@ -483,6 +540,44 @@ export default function MobileBatchTransferSheet({
     onDone();
   };
 
+  /** 分笼目标坐标（缓冲条 chip 用），与转移 batchPairs 同一套 displayPosition 口径。 */
+  const divTargetLabel = (id: string) => {
+    const t = allPoolById.get(id);
+    return t && t.positionX != null && t.positionY != null ? displayPosition(`${t.positionX}-${t.positionY}`) : "—";
+  };
+
+  const doSubmitDivide = async () => {
+    if (!anchor) return;
+    setDivideSubmitting(true);
+    try {
+      const res = await submitCageDivide({
+        sourceAnimalCageId: anchor.animalCageId,
+        targetAnimalCageIds: divTargets,
+        keepSource,
+      });
+      toast.success(res.needApproval ? "已提交，等待审核" : "分笼已完成");
+      onClose();
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "分笼失败");
+    } finally {
+      setDivideSubmitting(false);
+      setDivConfirmOpen(false);
+    }
+  };
+
+  const handleDivideSubmit = () => {
+    if (!anchor || divTargets.length === 0) {
+      toast.error("请先选择分笼目标");
+      return;
+    }
+    if (!keepSource) {
+      setDivConfirmOpen(true);
+      return;
+    }
+    void doSubmitDivide();
+  };
+
   /* ── 渲染 ── */
   const toggleCampus = (name: string) => {
     setCollapsedCampuses((prev) => {
@@ -524,7 +619,9 @@ export default function MobileBatchTransferSheet({
       if (tree.length === 0) {
         return (
           <div className="px-4 py-10 text-center text-xs text-[var(--student-mute)]">
-            该源暂无可用目标笼位，可在下方配对条点 × 移出这个源
+            {isDivide
+              ? "该源暂无可用目标笼位"
+              : "该源暂无可用目标笼位，可在下方配对条点 × 移出这个源"}
           </div>
         );
       }
@@ -601,12 +698,21 @@ export default function MobileBatchTransferSheet({
 
   const renderSourceCell = (cell: CageShelfCell) => {
     const cageId = String(cell.id ?? "");
+    const picked = cageId !== "" && sourceIds.has(cageId);
+    // 源阶段：非饲养中的格子永远不能作为源 → 打网纹禁用（disabledReason 就是网纹 + 底部红标签）。
+    // 「饲养中但我不能操作」只有点过才知道，所以靠 notOperable 记住后回填。
+    const isOccupied = resolveAnimalCageType(cell as unknown as StudentCageShelfCell) === 3;
+    const disabledReason = picked
+      ? undefined
+      : (cageId ? notOperable.get(cageId) : undefined) ??
+        (isOccupied || !cageId ? undefined : "非饲养中");
     return (
       <div key={cell.position} className="relative">
         <GridCellButton
           cell={cell}
           onSelect={() => void handleSourceCellClick(cell)}
-          selected={cageId !== "" && sourceIds.has(cageId)}
+          selected={picked}
+          disabledReason={disabledReason}
         />
       </div>
     );
@@ -615,20 +721,34 @@ export default function MobileBatchTransferSheet({
   const renderTargetCell = (cell: CageShelfCell) => {
     const cageId = String(cell.id ?? "");
     const entry = cageId ? curPoolById.get(cageId) : undefined;
+    // 已被**别的源**配走的目标：置灰。一个目标只能接收一次转移，后端要到执行时（三签之后）
+    // 才会撞上，那时整批回滚 —— 所以必须在这里就拦住，别让用户选出来。
+    const owner = cageId ? targetOwnerExcept(targets, cageId, curSource?.animalCageId ?? null) : null;
+    /** 池子是否已就绪。没就绪（还在拉 / 拉失败）时**不要**按池子判「不在可选范围」，
+        否则整屏都被打上网纹、看着像「一个都不能选」。 */
+    const poolUsable = !!curPoolEntry && !curPoolEntry.loading && !curPoolEntry.error;
     // 只认后端 selectable，前端不叠判定：池内有但不可选 → 后端 reason；池内没有 → 灰掉写「不在可选范围」
-    const disabledReason = entry
-      ? entry.selectable
+    const disabledReason = owner
+      ? "已配给别的源"
+      : !poolUsable
         ? undefined
-        : entry.reason || "不可选"
-      : cageId
-        ? "不在可选范围"
-        : undefined;
+        : entry
+          ? entry.selectable
+            ? undefined
+            : entry.reason || "不可选"
+          : cageId
+            ? "不在可选范围"
+            : undefined;
     return (
       <div key={cell.position} className="relative">
         <GridCellButton
           cell={cell}
-          onSelect={() => handleTargetCellClick(cell)}
-          selected={!!curSource && targets.get(curSource.animalCageId) === cageId}
+          onSelect={() => (isDivide ? handleDivideCellClick(cell) : handleTargetCellClick(cell))}
+          selected={
+            isDivide
+              ? divTargets.includes(cageId)
+              : !!curSource && targets.get(curSource.animalCageId) === cageId
+          }
           isPoolCell={!!entry && entry.selectable}
           disabledReason={disabledReason}
         />
@@ -703,7 +823,9 @@ export default function MobileBatchTransferSheet({
             {/* 头部 */}
             <div className="flex shrink-0 flex-col border-b border-[var(--student-hairline)]">
               <div className="flex items-center gap-2 px-3 py-2">
-                {phase === "target" ? (
+                {isDivide ? (
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--student-ink)]">分笼</span>
+                ) : phase === "target" ? (
                   <>
                     <button
                       type="button"
@@ -738,6 +860,24 @@ export default function MobileBatchTransferSheet({
                   <X className="size-4" />
                 </button>
               </div>
+              {/* 分笼：源笼位一行（常驻）+ keepSource 开关。选目标时就该知道源会不会被清空。 */}
+              {isDivide && anchor && (
+                <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                  <span className="min-w-0 flex-1 truncate text-xs text-[var(--student-body)]">
+                    源笼位 {anchor.label} · {anchor.shelveName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setKeepSource((v) => !v)}
+                    className={cn(
+                      "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                      keepSource ? "bg-[#f1f3f7] text-[#334155]" : "bg-[#fef3c7] text-[#b45309]",
+                    )}
+                  >
+                    {keepSource ? "保留源笼位" : "归档源笼位"}
+                  </button>
+                </div>
+              )}
               {/* 阶段引导：一句「下一步该做什么」（源阶段还要交代锚点的来历） */}
               {hint && (
                 <div className="mt-2 rounded-[var(--student-radius-sm)] bg-[#f1f3f7] px-3 py-1.5 text-[11px] text-[#334155]">
@@ -753,8 +893,39 @@ export default function MobileBatchTransferSheet({
               </div>
             </div>
 
+            {/* 分笼缓冲条：已选目标坐标 chips + 清空（源不清） */}
+            {isDivide && divTargets.length > 0 && (
+              <div className="shrink-0 border-t border-[var(--student-hairline)] px-3 py-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto">
+                  {divTargets.map((id) => (
+                    <div
+                      key={id}
+                      className="flex shrink-0 items-center gap-1 rounded-full bg-[#f1f3f7] px-2 py-1 text-xs text-[#334155]"
+                    >
+                      <span className="shrink-0">{divTargetLabel(id)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDivTargets((prev) => prev.filter((x) => x !== id))}
+                        className="shrink-0 text-[var(--student-mute)]"
+                        aria-label="移除"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDivTargets([])}
+                    className="shrink-0 rounded-full px-2 py-1 text-xs font-medium text-[var(--student-primary)]"
+                  >
+                    清空
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* 配对条（两屏常驻） */}
-            {sources.length > 0 && (
+            {!isDivide && sources.length > 0 && (
               <div className="shrink-0 border-t border-[var(--student-hairline)] px-3 py-2">
                 <div className="flex items-center gap-1.5 overflow-x-auto">
                   {rows.map((row, i) => {
@@ -798,7 +969,16 @@ export default function MobileBatchTransferSheet({
 
             {/* 提交 / 下一步 */}
             <div className="shrink-0 border-t border-[var(--student-hairline)] px-3 py-2">
-              {phase === "source" ? (
+              {isDivide ? (
+                <button
+                  type="button"
+                  disabled={divTargets.length === 0 || divideSubmitting}
+                  onClick={handleDivideSubmit}
+                  className="min-h-[44px] w-full rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-2 text-sm font-medium text-[var(--student-primary-foreground)] disabled:bg-[#e5e7eb] disabled:text-[#9aa0a6]"
+                >
+                  确认分笼（{divTargets.length}）
+                </button>
+              ) : phase === "source" ? (
                 <button
                   type="button"
                   disabled={sources.length === 0}
@@ -818,19 +998,50 @@ export default function MobileBatchTransferSheet({
                 </button>
               )}
             </div>
+            {/* 分笼归档摘要确认（内联覆盖层，复用抽屉自己的壳） */}
+            {divConfirmOpen && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 p-4">
+                <div className="w-full max-w-[320px] rounded-[var(--student-radius-lg)] bg-[var(--student-surface-raised)] p-4">
+                  <div className="text-sm font-semibold text-[var(--student-ink)]">源笼位将被归档</div>
+                  <div className="mt-2 text-xs leading-relaxed text-[var(--student-body)]">
+                    不保留源笼位时，{anchor?.label ?? ""} 上的动物、占用与状态信息会被清空并回空笼盒，不可撤销。
+                    本次将分笼到 {divTargets.length} 个目标笼位。
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDivConfirmOpen(false)}
+                      className="min-h-[40px] flex-1 rounded-[var(--student-radius-sm)] bg-[#f1f3f7] text-sm font-medium text-[#334155]"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      disabled={divideSubmitting}
+                      onClick={() => void doSubmitDivide()}
+                      className="min-h-[40px] flex-1 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-sm font-medium text-[var(--student-primary-foreground)] disabled:bg-[#e5e7eb] disabled:text-[#9aa0a6]"
+                    >
+                      确认分笼
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </CageColorProvider>
         </div>
       </div>
 
-      <CageOperationDialog
-        open={confirmOpen}
-        op="transfer"
-        source={null}
-        picked={[]}
-        pairs={batchPairs}
-        onClose={() => setConfirmOpen(false)}
-        onDone={handleConfirmDone}
-      />
+      {!isDivide && (
+        <CageOperationDialog
+          open={confirmOpen}
+          op="transfer"
+          source={null}
+          picked={[]}
+          pairs={batchPairs}
+          onClose={() => setConfirmOpen(false)}
+          onDone={handleConfirmDone}
+        />
+      )}
     </>
   );
 }

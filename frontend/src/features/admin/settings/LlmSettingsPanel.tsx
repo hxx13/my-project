@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Check, Eye, EyeOff, Key, Loader2, Zap, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, Cpu, Eye, EyeOff, Key, Loader2, Zap, ChevronDown, ChevronRight } from "lucide-react";
 import type { SettingDefinitionRecord, SystemConfigRecord } from "@/api/domains/notification.api";
 import { testLlmConnection, updateSystemConfig } from "@/api/domains/notification.api";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminFormField, AdminFormGrid, AdminFormInput } from "@/components/admin/AdminFormPrimitives";
 import { SystemConfigsPanel } from "@/features/admin/settings/SystemConfigsPanel";
 import {
-  DEEPSEEK_BASE_URL,
   LLM_ENV_HINT,
-  LLM_MODEL_PRESETS,
-  type LlmModelPreset,
+  LLM_PARAMS_PRESETS,
+  type LlmParamsPreset,
 } from "@/features/admin/settings/llmProfiles";
 import { adminHintClass } from "@/features/admin/adminFormUi";
 
@@ -37,19 +37,37 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
   const [testing, setTesting] = useState(false);
   const [applyingPresetId, setApplyingPresetId] = useState<string | null>(null);
   const [savingApiKey, setSavingApiKey] = useState(false);
+  const [savingModels, setSavingModels] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState<string | null>(null);
+  const [modelDraft, setModelDraft] = useState<string | null>(null);
+  const [fallbackDraft, setFallbackDraft] = useState<string | null>(null);
 
   const currentModel = useMemo(() => configValue(configs, "llm.model"), [configs]);
+  const currentModelFallback = useMemo(() => configValue(configs, "llm.model_fallback"), [configs]);
   const savedApiKey = useMemo(() => configValue(configs, "llm.api_key"), [configs]);
 
+  /** 当前数值参数落在哪个档位上（模型名不参与匹配） */
   const activePresetId = useMemo(() => {
-    const match = LLM_MODEL_PRESETS.find((p) => p.model === currentModel);
+    const num = (key: string, fallback: number) => {
+      const raw = configValue(configs, key);
+      const parsed = Number(raw);
+      return raw === "" || Number.isNaN(parsed) ? fallback : parsed;
+    };
+    const match = LLM_PARAMS_PRESETS.find(
+      (p) =>
+        p.maxTokens === num("llm.max_tokens", 2048) &&
+        p.temperature === num("llm.temperature", 0.3) &&
+        p.assistantMaxTokens === num("llm.assistant.max_tokens", 120) &&
+        p.assistantTemperature === num("llm.assistant.temperature", 0.7),
+    );
     return match?.id ?? null;
-  }, [currentModel]);
+  }, [configs]);
 
   const displayApiKey = apiKeyDraft !== null ? apiKeyDraft : savedApiKey;
+  const displayModel = modelDraft !== null ? modelDraft : currentModel;
+  const displayModelFallback = fallbackDraft !== null ? fallbackDraft : currentModelFallback;
 
   const runTest = async () => {
     setTesting(true);
@@ -80,14 +98,45 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
     }
   };
 
-  const applyPreset = async (preset: LlmModelPreset) => {
+  const saveModels = async () => {
+    const entries = [
+      { key: "llm.model", value: displayModel.trim() },
+      { key: "llm.model_fallback", value: displayModelFallback.trim() },
+    ];
+    setSavingModels(true);
+    try {
+      const failedKeys: string[] = [];
+      for (const { key, value } of entries) {
+        const row = configs.find((c) => c.configKey === key);
+        if (!row?.id) {
+          failedKeys.push(key);
+          continue;
+        }
+        try {
+          await updateSystemConfig(row.id, { configValue: value });
+          patchLocalConfig(onConfigsChange, key, value);
+        } catch (e) {
+          failedKeys.push(key);
+        }
+      }
+      if (failedKeys.length > 0) {
+        toast.error(`模型名称保存失败: ${failedKeys.join(", ")}`);
+      } else {
+        setModelDraft(null);
+        setFallbackDraft(null);
+        toast.success("模型名称已保存");
+      }
+    } finally {
+      setSavingModels(false);
+    }
+  };
+
+  const applyPreset = async (preset: LlmParamsPreset) => {
     setApplyingPresetId(preset.id);
     try {
+      // 只写数值参数。模型名/Base URL 不在这里改 —— 供应商改名或换代理后，
+      // 点一下档位就把模型名顶回旧值是个陷阱。
       const keysToSave: Array<{ key: string; value: string }> = [
-        { key: "llm.provider", value: "deepseek" },
-        { key: "llm.base_url", value: DEEPSEEK_BASE_URL },
-        { key: "llm.model", value: preset.model },
-        { key: "llm.model_fallback", value: preset.modelFallback },
         { key: "llm.max_tokens", value: String(preset.maxTokens) },
         { key: "llm.temperature", value: String(preset.temperature) },
         { key: "llm.assistant.max_tokens", value: String(preset.assistantMaxTokens) },
@@ -166,20 +215,65 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
         <p className={`${adminHintClass} mt-2`}>{LLM_ENV_HINT}</p>
       </div>
 
-      {/* ── 模型预设 ── */}
+      {/* ── 模型名称 ── */}
+      <div className={sectionCardClass}>
+        <div className="flex items-center gap-2 mb-3">
+          <Cpu className="size-4 text-[var(--app-color-text-tertiary)]" aria-hidden />
+          <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+            模型名称
+          </span>
+          <span className="text-xs text-[var(--app-color-text-tertiary)]">
+            供应商改名后在这里直接填；下面的参数档位不会覆盖它
+          </span>
+        </div>
+        <AdminFormGrid className="grid-cols-1 sm:grid-cols-2">
+          <AdminFormField label="主模型" hint="供应商当前的模型 ID">
+            <AdminFormInput
+              value={displayModel}
+              onChange={(e) => setModelDraft(e.target.value)}
+              placeholder="deepseek-chat"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </AdminFormField>
+          <AdminFormField label="备用模型" hint="逗号分隔；主模型失败或限流时依次尝试">
+            <AdminFormInput
+              value={displayModelFallback}
+              onChange={(e) => setFallbackDraft(e.target.value)}
+              placeholder="deepseek-reasoner"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </AdminFormField>
+        </AdminFormGrid>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <AdminButton
+            type="button"
+            tone="primary"
+            loading={savingModels}
+            disabled={modelDraft === null && fallbackDraft === null}
+            onClick={() => void saveModels()}
+          >
+            保存模型名称
+          </AdminButton>
+          <p className={adminHintClass}>保存后可用下方「测试 API 连接」验证模型 ID 有效</p>
+        </div>
+      </div>
+
+      {/* ── 参数档位 ── */}
       <div className={sectionCardClass}>
         <div className="flex items-center gap-2 mb-3">
           <Zap className="size-4 text-[var(--app-color-text-tertiary)]" aria-hidden />
           <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">
-            模型预设
+            输出参数档位
           </span>
           <span className="text-xs text-[var(--app-color-text-tertiary)]">
-            点击卡片一键切换全部关联参数
+            点卡片一键改 token 与温度，不动模型名
           </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[var(--app-space-inline-md)]">
-          {LLM_MODEL_PRESETS.map((preset) => {
+          {LLM_PARAMS_PRESETS.map((preset) => {
             const isActive = activePresetId === preset.id;
             const isLoading = applyingPresetId === preset.id;
 

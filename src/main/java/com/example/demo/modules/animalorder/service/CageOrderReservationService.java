@@ -700,9 +700,19 @@ public class CageOrderReservationService {
         reservationMapper.releaseByCartIds(ids, reason);
     }
 
-    /** 启动清孤儿：购物车行没了、也没挂订单的 LOCKED 行（进程崩溃等残留），否则笼位会被永久占住。 */
+    /**
+     * 启动清孤儿：购物车行没了、也没挂订单的 LOCKED 行（进程崩溃等残留），否则笼位会被永久占住。
+     *
+     * <p>释放前必须按 written_json 撤掉预填：预定会把「实验员 = 预定人」以及品系/来源/性别/数量
+     * 写进笼位表单。这里只翻状态不撤预填，那些值就永远留在笼位上——空笼位挂着上一个预定人的名字，
+     * 看着像「人没跟着动物转移走」（2026-09-17 起 201A-1 (1,1)、(2,3) 残留实验员就是这么来的）。
+     * 其余三条释放路径（releaseById / releaseByCartIds / releaseHeldNotUsed）都撤，唯独这里漏了。
+     */
     @Transactional(rollbackFor = Exception.class)
     public int releaseOrphans() {
+        for (CageOrderReservation r : reservationMapper.listOrphans()) {
+            clearWrittenFields(r);
+        }
         return reservationMapper.releaseOrphans("购物车行已不存在，自动释放");
     }
 

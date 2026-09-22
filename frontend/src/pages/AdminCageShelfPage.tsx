@@ -113,7 +113,7 @@ import LocalDetailPanel from "@/features/cage-shelf/components/LocalDetailPanel"
 import CageOperationDialog from "@/features/cage-shelf/components/CageOperationDialog";
 import CageOpSelectBanner from "@/features/cage-shelf/components/CageOpSelectBanner";
 import BatchTransferPanel from "@/features/cage-shelf/components/BatchTransferPanel";
-import CageModeIsland, { modeBorderColor, useIslandVariant, type CageModeKey } from "@/features/cage-shelf/components/CageModeIsland";
+import CageModeIsland, { modeBorderColor, useIslandVariant, useAnchorRect, type CageModeKey } from "@/features/cage-shelf/components/CageModeIsland";
 import { resolveCageType, groupKeyOf } from "@/features/cage-shelf/components/CageCellOverlays";
 import { scopeAupsByRoom } from "@/features/cage-shelf/allocationAupScope";
 import { useCageOpSelect, buildCageOpMarks, mergeReservationMarks, type CageOpLabel } from "@/features/cage-shelf/useCageOpSelect";
@@ -146,6 +146,8 @@ import VetInboxModal from "@/features/cage-shelf/components/VetInboxModal";
 import CountBadge from "@/components/common/CountBadge";
 import MyRegionDialog from "@/features/cage-shelf/components/MyRegionDialog";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
+import CageBatchEditDialog from "@/features/cage-shelf/components/CageBatchEditDialog";
+import BoxSelectToggle from "@/features/cage-shelf/components/BoxSelectToggle";
 import { ShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
 import { buildTree, CampusTree } from "@/features/cage-shelf/components/CampusTree";
 import { displayPosition, formatCageDetailValue, CAGE_BOX_INFO_LABEL, CAGE_BOX_INFO_FIELD_ORDER, CAGE_BOX_ACTIONS, CAGE_BOX_ACTION_LIST, detailParentsLast, cageBoxAction, actionsFromFormValues, actionsFromCageBoxInfo, allocSelectVerdict, ALLOC_CANCEL_ZONE, allocZoneReject, statusZoneKey, parseStatusZone, detailZoneKey, parseDetailZone, detailPhotoKey, SPECIAL_DETAIL_DICT, SPECIAL_DETAIL_CANONICAL, HEALTH_SEVERITY_DICT, HEALTH_SEVERITY_CANONICAL, HEALTH_CHECK_ACTION, HEALTH_ITCH_CANONICAL, HEALTH_ITCH_LABEL, HEALTH_ITCH_TRUE, severityZoneKey, parseSeverityZone, SEVERITY_CLEAR_ZONE, detailCodesOfValues, severityOfValues, itchOfValues, VET_UNREAD_COLOR } from "@/features/cage-shelf/constants";
@@ -276,6 +278,14 @@ function Inner(){
   const[editDirect,setEditDirect]=useState(false);
   /** 只有「拖色区」才谈得上攒着提交 */
   const editStaged = editMode && !editDirect;
+  /**
+   * 批量编辑（**与状态模式无关**）：详情弹窗里点「编辑」→「批量编辑」进入的选择模式。
+   * 弹窗让位回网格，点选一批笼位，再统一覆盖表单字段。
+   * ids 用 cageId（不是网格 key），跨房间/跨笼架点选也不会错位。
+   */
+  const[batchPick,setBatchPick]=useState<{on:boolean;ids:Set<string>}>(()=>({on:false,ids:new Set()}));
+  /** 批量编辑弹窗（填字段那个） */
+  const[batchEditOpen,setBatchEditOpen]=useState(false);
   /**
    * 「加入待提交」的转发 ref：确认/归档的点击处理函数声明在待提交状态之前，
    * 直接引用会 TDZ 报错；用 ref 转发，避免把一大块状态搬来搬去。
@@ -1538,6 +1548,84 @@ function Inner(){
   },[editMode,recordMode,openEditCell,dataSource]);
 
   // ═══════════════════════════════════════════════════════════
+  //  HANDLERS — 批量编辑（详情弹窗「编辑」态里的入口，与状态模式无关）
+  // ═══════════════════════════════════════════════════════════
+  /** 弹窗里点了「批量编辑」：收起弹窗让出网格，把当前这个笼位作为第一个选中项 */
+  const enterBatchPick=useCallback((cageId:string)=>{
+    opSel.cancel(); // 分笼/转移的选位模式也占着网格选择，先把那条收掉，别两套选择态叠着
+    setCell(null);setShelfId("");
+    setBatchPick({on:true,ids:new Set(cageId?[cageId]:[])});
+  },[opSel]);
+  const exitBatchPick=useCallback(()=>{
+    setBatchPick({on:false,ids:new Set()});
+    setBoxSelectMode(false);boxSelectAnchorRef.current=null;anchorCellRef.current=null;
+  },[]);
+  /** 矩形范围内的笼位一次性并入批选择（框选两点 / Shift 矩形用），与其它模式的矩形交互同一套 */
+  const addRangeToBatchPick=useCallback((shelveId:string,ax:number,ay:number,bx:number,by:number,accept:(c:unknown)=>boolean)=>{
+    const minX=Math.min(ax,bx),maxX=Math.max(ax,bx);
+    const minY=Math.min(ay,by),maxY=Math.max(ay,by);
+    setBatchPick(p=>{
+      const ids=new Set(p.ids);
+      for(let cx=minX;cx<=maxX;cx++){
+        for(let cy=minY;cy<=maxY;cy++){
+          const c=cellAtKey.get(`${shelveId}:${cx}:${cy}`);
+          if(!c||!accept(c))continue;
+          const id=cageIdOfCell(c);
+          if(id)ids.add(id);
+        }
+      }
+      return {...p,ids};
+    });
+  },[cellAtKey,cageIdOfCell]);
+  /**
+   * 批选择沿用其它模式那三种点选方式：单击切换 / Shift+点击矩形 / 框选模式点两格。
+   * 判据只要求「格子有笼位 ID」（空格子 CellButton 本身就点不动）；能不能写由后端逐笼位判，
+   * 所以这里不像状态模式那样预筛 ct=3/4 —— 批量编辑表单不要求笼位处于饲养中。
+   */
+  const toggleBatchPick=useCallback((sid:string,x:number,y:number,shiftKey?:boolean)=>{
+    const cell=cellAtKey.get(`${sid}:${x}:${y}`);
+    if(!cell)return;
+    const id=cageIdOfCell(cell);
+    if(!id)return;
+    const accept=(c:unknown)=>!!cageIdOfCell(c);
+    const addOne=()=>setBatchPick(p=>{const ids=new Set(p.ids);ids.add(id);return {...p,ids};});
+    if(boxSelectMode){
+      const anchor=boxSelectAnchorRef.current;
+      if(!anchor||anchor.shelveId!==sid){
+        boxSelectAnchorRef.current={shelveId:sid,x,y};
+        anchorCellRef.current={shelveId:sid,x,y};
+        addOne();
+        return;
+      }
+      addRangeToBatchPick(sid,anchor.x,anchor.y,x,y,accept);
+      boxSelectAnchorRef.current=null;
+      setBoxSelectMode(false);
+      anchorCellRef.current={shelveId:sid,x,y};
+      return;
+    }
+    if(shiftKey){
+      const anchor=anchorCellRef.current;
+      if(anchor&&anchor.shelveId===sid){
+        addRangeToBatchPick(sid,anchor.x,anchor.y,x,y,accept);
+        anchorCellRef.current={shelveId:sid,x,y};
+        return;
+      }
+    }
+    setBatchPick(p=>{
+      const ids=new Set(p.ids);
+      if(ids.has(id))ids.delete(id);else ids.add(id);
+      return {...p,ids};
+    });
+    anchorCellRef.current={shelveId:sid,x,y};
+  },[boxSelectMode,cellAtKey,cageIdOfCell,addRangeToBatchPick]);
+  /** 选中的笼位映射回网格高亮（与分配/预定同一套 selectedCells 口径） */
+  const batchPickSelectedCells=useMemo(()=>{
+    const s=new Set<string>();
+    for(const id of batchPick.ids){const k=keyByCageId.get(id);if(k)s.add(k);}
+    return s;
+  },[batchPick.ids,keyByCageId]);
+
+  // ═══════════════════════════════════════════════════════════
   //  HANDLERS — 编辑模式
   // ═══════════════════════════════════════════════════════════
   // ── 编辑模式：扫码 → 匹配 grid → 加入缓存 ──
@@ -1811,6 +1899,8 @@ function Inner(){
        用户会以为是自己刚改状态才冒出来的。定位标记只属于扫码那一下。 */
     setScanLockTarget(null);
     setEditMode(false);setConfirmMode(false);setConfirmLookup(null);setArchiveMode(false);setReserveMode(false);setRecordMode(false);setRecordTarget(null);setDivisionMode(false);
+    // 换模式就退出批量编辑的选择态：它占着网格的点击行为，留着会让新模式点不动格子
+    setBatchPick({on:false,ids:new Set()});setBatchEditOpen(false);
     /*
       编辑缓存**不能在这里清**：它就是「待提交」那批状态改动的真相源（配色 + 每格的初始快照），
       而批次是跨模式留着的。清了缓存、留着批次 → 再回到状态模式颜色全丢（抽屉开合会走这里，
@@ -3034,6 +3124,20 @@ function Inner(){
   }, [syncLocks, fullTree]);
 
   // ═══════════════════════════════════════════════════════════
+  //  批量编辑：网格属性收敛到一处（批选择优先），不再各处重算一遍三元链
+  //  必须放在所有 toggle 处理函数声明之后 —— 提前引用会 TDZ 报错
+  // ═══════════════════════════════════════════════════════════
+  const gridSelectable=batchPick.on||gridMultiSelect;
+  const gridSelectedCells=batchPick.on?batchPickSelectedCells:(gridMultiSelect?pendingSelectedCells:selectedCells);
+  const gridToggleCell=batchPick.on?toggleBatchPick:(editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined);
+  const gridClickMode:"toggle"|"checkbox"=gridSelectable?"toggle":"checkbox";
+  /* 勾选标记（居中绿色对勾）由 allocMode 渲染，与分配/预定模式同一枚 —— 批选择也要它。
+     副作用与那几个模式一致：allocMode 下不画左上角的状态告警点。 */
+  const gridAllocMode=gridMultiSelect||batchPick.on;
+  /* 底部动作条与模式悬浮岛**共用同一个锚点**（右侧内容区居中），否则两条各居各的 */
+  const islandAnchor=useAnchorRect(rightPanelRef);
+
+  // ═══════════════════════════════════════════════════════════
   //  RENDER
   // ═══════════════════════════════════════════════════════════
   return<SyncLockProvider roomFloor={roomFloorMap}><AdminPageShell>
@@ -3103,45 +3207,27 @@ function Inner(){
                 className="flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition">
                 {bookingSyncing?<Loader2 className="h-3 w-3 animate-spin"/>:null}🔄 同步 ARO
               </button>}
-              {pageMode==="allocate"&&<button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
-                className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
-                {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-              </button>}
+              {pageMode==="allocate"&&<BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />}
               {archiveMode&&<>
                 <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">待提交 {batchOf(pendingByMode,"archive").items.length} 个笼位</span>
-                <button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
-                  className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
-                  {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-                </button>
+                <BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />
               </>}
               {divisionMode&&<>
                 <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">待提交 {batchOf(pendingByMode,"division").items.length} 个笼位</span>
-                <button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
-                  className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
-                  {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-                </button>
+                <BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />
               </>}
               {/* 预定 / 状态（拖色区）：同款三种选择方式，按钮与分配/划分一致 */}
               {reserveMode&&<>
                 <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">待提交 {batchOf(pendingByMode,"reserve").items.length} 个笼位</span>
-                <button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
-                  className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
-                  {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-                </button>
+                <BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />
               </>}
               {editStaged&&<>
                 <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">待提交 {batchOf(pendingByMode,"edit").items.length} 个笼位</span>
-                <button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
-                  className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
-                  {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-                </button>
+                <BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />
               </>}
               {confirmMode&&<>
                 <span className="ml-1 text-[10px] font-semibold text-[var(--twin-mute)]">待提交 {batchOf(pendingByMode,"confirm").items.length} 个笼位</span>
-                <button type="button" onClick={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}}
-                  className={`rounded-twin-md px-2 py-1 text-[11px] font-semibold transition ${boxSelectMode?"bg-amber-500 text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)] border border-dashed border-[var(--twin-hairline)]"}`}>
-                  {boxSelectMode?"框选中 · 点击两格":"⬜ 矩形框选"}
-                </button>
+                <BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />
               </>}
           </div>
           <div className="flex items-center gap-1">
@@ -3264,7 +3350,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??"");
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={gridMultiSelect} selectedCells={(gridMultiSelect)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined} allocMode={gridMultiSelect} clickMode={(gridMultiSelect)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={gridSelectable} selectedCells={gridSelectedCells} onToggleCell={gridToggleCell} allocMode={gridAllocMode} clickMode={gridClickMode} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/></div>;
             })}</div>}
           </>}
 
@@ -3274,7 +3360,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={gridMultiSelect} selectedCells={(gridMultiSelect)?pendingSelectedCells:selectedCells} onToggleCell={editStaged?handleEditToggle:pageMode==="allocate"?handleAllocateToggle:reserveMode?handleReserveToggle:divisionMode?handleDivisionToggle:archiveMode?handleArchiveToggle:confirmMode?handleConfirmToggle:undefined} allocMode={gridMultiSelect} clickMode={(gridMultiSelect)?"toggle":"checkbox"} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={gridSelectable} selectedCells={gridSelectedCells} onToggleCell={gridToggleCell} allocMode={gridAllocMode} clickMode={gridClickMode} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -3399,7 +3485,7 @@ function Inner(){
                 {/* 面板自己的吸顶条就是「笼盒详情 · 位号 + 关闭」，外面这条标题行是重复的，
                     而且它会把吸顶条顶下去（滚动后吸顶条盖住它）—— 去掉，只留面板那一行。 */}
                 {dataSource==="local"
-                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")}/>
+                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} onBatchEdit={enterBatchPick}/>
                   : <div className="grid grid-cols-2 gap-2 p-3 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
                   return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
                 })}</div>
@@ -3419,7 +3505,7 @@ function Inner(){
     {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
-          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")}/>
+          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} onBatchEdit={enterBatchPick}/>
           : <>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
@@ -4029,6 +4115,34 @@ function Inner(){
     </Dialog>
     </div>
     {/* 模式悬浮岛：8 个模式常驻可见，悬停出说明；当前模式高亮并给笼架容器呼吸灯 */}
+      {/* 批量编辑：详情弹窗「编辑」态触发，跟状态模式无关。弹窗已收起，这里给一条
+          常驻动作条收口 —— 选够了点「编辑字段」，随时可取消。
+          锚点与模式悬浮岛同一个（右侧内容区居中、bottom 一致），排在它正上方。 */}
+      {batchPick.on&&(
+        <div style={{left:islandAnchor?.left??0,width:islandAnchor?.width??"100%",position:"fixed",bottom:84}}
+          className="pointer-events-none z-40 flex flex-col items-center">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 shadow-[0_10px_40px_-10px_rgba(15,23,42,0.35)]">
+            <span className="text-[12px] font-semibold text-[var(--twin-ink)]">批量编辑 · 已选 {batchPick.ids.size} 个笼位</span>
+            <span className="text-[10px] text-[var(--twin-mute)]">
+              {boxSelectMode ? "点第一个笼位设起点，再点对角格完成框选" : "点笼位加入 / 移出，Shift+点击 矩形多选"}
+            </span>
+            {/* 矩形框选：与分配/预定那几个模式是同一个开关、同一套交互 */}
+            <BoxSelectToggle on={boxSelectMode} onToggle={()=>{setBoxSelectMode(v=>!v);boxSelectAnchorRef.current=null;}} />
+            <AdminButton type="button" size="xs" disabled={batchPick.ids.size===0} onClick={()=>setBatchEditOpen(true)}>
+              编辑字段
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" size="xs" onClick={exitBatchPick}>
+              取消
+            </AdminButton>
+          </div>
+        </div>
+      )}
+      <CageBatchEditDialog
+        open={batchEditOpen}
+        cageIds={Array.from(batchPick.ids)}
+        onClose={()=>setBatchEditOpen(false)}
+        onDone={()=>{exitBatchPick();setDetailReloadKey((k)=>k+1);}}
+      />
     {canEdit && (
       <CageModeIsland
         current={currentMode as CageModeKey}

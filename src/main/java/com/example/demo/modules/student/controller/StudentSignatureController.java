@@ -52,8 +52,11 @@ public class StudentSignatureController {
         User u = resolveUser(authorization);
         if (u == null) return Result.fail(401, "未登录或令牌无效");
         try {
+            // 来源只认这几种：小程序 / 扫码链接 / 网页（默认）。存下来是为了排查「这份签名哪来的」
+            String raw = body.get("source") == null ? "" : String.valueOf(body.get("source")).trim().toUpperCase();
+            String source = "MINI".equals(raw) || "MOBILE_LINK".equals(raw) ? raw : "WEB";
             signatureService.submitMine(u.getId(),
-                    body.get("imageData") == null ? null : String.valueOf(body.get("imageData")), "WEB");
+                    body.get("imageData") == null ? null : String.valueOf(body.get("imageData")), source);
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }

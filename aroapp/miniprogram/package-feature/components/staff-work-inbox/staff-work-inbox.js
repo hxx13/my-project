@@ -627,11 +627,11 @@ Component({
     const oid = String(item.timelineProcessOrderId || '').trim();
     if (!oid) return;
     if (kind === 'repair') {
-      wx.navigateTo({ url: `/package-feature/pages/repairProcess/index?focusId=${encodeURIComponent(oid)}` });
+      wx.navigateTo({ url: `/package-feature/pages/repairRequest/index?focusId=${encodeURIComponent(oid)}` });
       return;
     }
     if (kind === 'purchase') {
-      wx.navigateTo({ url: `/package-feature/pages/purchaseProcess/index?focusId=${encodeURIComponent(oid)}` });
+      wx.navigateTo({ url: `/package-feature/pages/purchaseRequest/index?focusId=${encodeURIComponent(oid)}` });
     }
   },
 

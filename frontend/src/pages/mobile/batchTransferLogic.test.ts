@@ -6,6 +6,7 @@ import {
   nextUnpairedIdx,
   pairRows,
   removeSource,
+  targetOwnerExcept,
   type BatchSource,
 } from "./batchTransferLogic";
 
@@ -127,5 +128,28 @@ describe("fetchCageOpTargets 的调用形状（防回归：批量必须传 null 
   it("shelfIndexId 省略 = 全库", async () => {
     // 这条只断言签名，不断言网络：真跑会给 authHttp 抛未登录
     expect(typeof fetchCageOpTargets).toBe("function");
+  });
+});
+
+describe("targetOwnerExcept（一个目标只能接收一次转移）", () => {
+  it("目标配给了别的源 → 返回那个源的 id", () => {
+    const targets = new Map([["s1", "X"], ["s2", "Y"]]);
+    expect(targetOwnerExcept(targets, "X", "s2")).toBe("s1");
+    expect(targetOwnerExcept(targets, "Y", "s1")).toBe("s2");
+  });
+
+  it("目标就是自己配的 → 不算被占（要能重选/取消自己的目标）", () => {
+    const targets = new Map([["s1", "X"]]);
+    expect(targetOwnerExcept(targets, "X", "s1")).toBeNull();
+  });
+
+  it("没人配过 → null；空 cageId → null", () => {
+    expect(targetOwnerExcept(new Map([["s1", "X"]]), "Z", "s1")).toBeNull();
+    expect(targetOwnerExcept(new Map(), "X", "s1")).toBeNull();
+    expect(targetOwnerExcept(new Map([["s1", "X"]]), "", "s1")).toBeNull();
+  });
+
+  it("没传 exceptSourceId 时，任何占用都算 → 置灰（源阶段/预览用）", () => {
+    expect(targetOwnerExcept(new Map([["s1", "X"]]), "X", null)).toBe("s1");
   });
 });

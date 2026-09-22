@@ -68,6 +68,7 @@ export default function MobileCageCellDetailDialog({
   onChanged,
   opMark,
   onStartBatch,
+  onStartDivide,
 }: {
   cell: CageShelfCell;
   onClose: () => void;
@@ -80,6 +81,8 @@ export default function MobileCageCellDetailDialog({
   opMark?: CageOpMark | null;
   /** 转移入口：由页面打开批量缓冲抽屉（不传则退回原来的单笼选位流程） */
   onStartBatch?: (source: CageOpSource) => void;
+  /** 分笼入口：由页面以 divide 模式打开批量缓冲抽屉（不传则退回原来的单笼选位流程） */
+  onStartDivide?: (source: CageOpSource) => void;
 }) {
   const detail = (cell.detail ?? {}) as Record<string, unknown>;
   const cbi = (cell.cageBoxInfo ?? {}) as Record<string, unknown> | undefined;
@@ -269,6 +272,7 @@ export default function MobileCageCellDetailDialog({
                 occupied={((cell as any).cageTypeCode ?? cell.animalCageType) === 3}
                 onStart={onStartOp}
                 onStartBatch={onStartBatch}
+                onStartDivide={onStartDivide}
                 onChanged={onChanged}
                 opMark={opMark}
               />

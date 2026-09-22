@@ -1,36 +1,34 @@
-export type LlmProviderId = "deepseek"; // Only DeepSeek now
-
-export type LlmModelPreset = {
+/**
+ * 输出参数档位（token / 温度）。
+ *
+ * 这里**不含模型名**：模型 ID 由供应商决定且会随版本改名，钉死在预设里会导致
+ * 「后台只能在这几个早就过期的名字里选」。模型名请在「模型名称」输入框里直接填，
+ * 档位只负责数值参数，不会覆盖它。
+ */
+export type LlmParamsPreset = {
   id: string;
   label: string;
   description: string;
-  model: string;
-  modelFallback: string;
   maxTokens: number;
   temperature: number;
   assistantMaxTokens: number;
   assistantTemperature: number;
 };
 
-/** Preset cards that users can click to switch ALL settings at once */
-export const LLM_MODEL_PRESETS: LlmModelPreset[] = [
+export const LLM_PARAMS_PRESETS: LlmParamsPreset[] = [
   {
-    id: "deepseek-v4-pro",
-    label: "DeepSeek V4 Pro",
-    description: "最强推理能力，适合复杂分析和洞察生成",
-    model: "deepseek-v4-pro",
-    modelFallback: "deepseek-v4-flash",
+    id: "deep-analysis",
+    label: "深度分析档",
+    description: "长输出、低温，适合审计解读这类需要完整推理的生成",
     maxTokens: 2048,
     temperature: 0.3,
     assistantMaxTokens: 120,
     assistantTemperature: 0.7,
   },
   {
-    id: "deepseek-v4-flash",
-    label: "DeepSeek V4 Flash",
-    description: "极速响应，适合实时对话和扫码播报",
-    model: "deepseek-v4-flash",
-    modelFallback: "deepseek-v4-pro",
+    id: "realtime-brief",
+    label: "实时播报档",
+    description: "短输出、高温，适合扫码助手的即时口语播报",
     maxTokens: 1024,
     temperature: 0.7,
     assistantMaxTokens: 80,
@@ -38,5 +36,4 @@ export const LLM_MODEL_PRESETS: LlmModelPreset[] = [
   },
 ];
 
-export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 export const LLM_ENV_HINT = "API Key 可在 DB 配置或设置环境变量 DEEPSEEK_API_KEY。";

@@ -16,6 +16,8 @@ public class SupplyClaimOrderView {
     private String fulfilledBy;
     /** 出库操作人展示名（用户名，无则 id） */
     private String fulfilledByName;
+    /** 领用楼层：领用单表头那一栏，出库时管理员手填。 */
+    private String claimFloor;
     private Integer deleted;
     private LocalDateTime deletedTime;
     private String deletedBy;

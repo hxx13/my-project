@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "react-hot-toast";
 import { SignaturePad } from "./SignaturePad";
+import { SignatureFullscreenPad } from "./SignatureFullscreenPad";
+import { SIGNATURE_CANVAS } from "./signatureData";
 import {
   createSignatureLink,
   fetchMySignature,
@@ -9,16 +11,26 @@ import {
   type MySignature,
 } from "@/api/domains/signature.api";
 
-/** 签名画布规范：固定 800×300、白底、PNG。尺寸统一才好贴进文档。 */
-export const SIGNATURE_CANVAS = { width: 800, height: 300 };
-
 /**
  * 我的电子签名（学生端与教职工端共用）。
  *
  * <p>签名**一经提交不可更改** —— 提交后这里只读展示；修改的唯一途径是管理员在人员授权页重置。
  * 电脑上没法手写，所以另给一条「生成手机签名链接」：扫码后在手机上画。
+ *
+ * <p>{@code mobileFullscreen}：手机上那一小块画布根本写不开，改成**整屏横屏**签
+ * —— 竖屏时先提示把手机横过来（并提供一键全屏+锁横屏，浏览器支持才生效），横过来后画布铺满整屏。
  */
-export default function MySignatureCard({ className }: { className?: string }) {
+export default function MySignatureCard({
+  className,
+  mobileFullscreen = false,
+  onClose,
+}: {
+  className?: string;
+  /** 手机端：签名区域整屏横屏（画布铺满、只留一条工具条） */
+  mobileFullscreen?: boolean;
+  /** 整屏模式下的「取消」回调 */
+  onClose?: () => void;
+}) {
   const [sig, setSig] = useState<MySignature | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,6 +79,19 @@ export default function MySignatureCard({ className }: { className?: string }) {
 
   if (sig === null) {
     return <div className={className}>加载中…</div>;
+  }
+
+  // 手机端未签：整屏横向签 —— 与扫码链接页共用 SignatureFullscreenPad，只有 返回/重试/提交
+  if (mobileFullscreen && !sig.hasSignature) {
+    return (
+      <SignatureFullscreenPad
+        value={draft}
+        onChange={setDraft}
+        onBack={() => onClose?.()}
+        onSubmit={() => void handleSubmit()}
+        busy={busy}
+      />
+    );
   }
 
   if (sig.hasSignature) {

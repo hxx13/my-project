@@ -49,14 +49,6 @@
         LIMIT 1
     </select>
 
-    <update id="markExpired">
-        UPDATE supply_claim_export_file
-        SET status = 'EXPIRED'
-        WHERE status = 'READY'
-          AND expire_at IS NOT NULL
-          AND expire_at &lt;= #{now}
-    </update>
-
     <delete id="deleteById">
         DELETE FROM supply_claim_export_file
         WHERE id = #{id}

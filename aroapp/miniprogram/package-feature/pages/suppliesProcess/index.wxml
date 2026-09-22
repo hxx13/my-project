@@ -10,7 +10,7 @@
   <!-- 待处理 -->
   <block wx:if="{{ !loading && activeTab === 'pending' }}">
     <view wx:if="{{ pendingRows.length === 0 }}" class="hint">暂无待处理物资单</view>
-    <view wx:for="{{ pendingRows }}" wx:key="id" class="card">
+    <view wx:for="{{ pendingRows }}" wx:key="id" class="card {{ menuOpenId === item.id ? 'card-menu-open' : '' }}">
       <view class="card-head" data-id="{{ item.id }}" bindtap="onCardTap">
         <view class="row-head">
           <text class="title truncate"><text>{{ item.applicantDisplay }}</text><text wx:if="{{ item._headerNames }}" class="title-sub">（{{ item._headerNames }}）</text></text>
@@ -21,8 +21,9 @@
           <view class="bar-menu-wrap" catchtap="noop">
             <view class="bar-menu-btn" data-id="{{ item.id }}" catchtap="onMenuToggle">⋮</view>
             <view wx:if="{{ menuOpenId === item.id }}" class="menu-drop">
-              <view class="menu-item" data-id="{{ item.id }}" catchtap="onOpenClaimExport">预览/导出页</view>
               <view class="menu-item" data-id="{{ item.id }}" catchtap="onExportExcel">导出 Excel</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="openClaimForm">预览领用单</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="printClaimForm">打印领用单</view>
               <view class="menu-item menu-item-danger" data-id="{{ item.id }}" catchtap="onDeleteClaim">删除工单</view>
             </view>
             <view wx:if="{{ menuOpenId === item.id }}" class="menu-mask" catchtap="onMenuClose"></view>
@@ -84,7 +85,7 @@
   <!-- 已处理 -->
   <block wx:if="{{ !loading && activeTab === 'done' }}">
     <view wx:if="{{ doneRows.length === 0 }}" class="hint">暂无已处理物资单</view>
-    <view wx:for="{{ doneRows }}" wx:key="id" class="card">
+    <view wx:for="{{ doneRows }}" wx:key="id" class="card {{ menuOpenId === item.id ? 'card-menu-open' : '' }}">
       <view class="card-head" data-id="{{ item.id }}" bindtap="onCardTap">
         <view class="row-head">
           <text class="title truncate"><text>{{ item.applicantDisplay }}</text><text wx:if="{{ item._headerNames }}" class="title-sub">（{{ item._headerNames }}）</text></text>
@@ -95,8 +96,9 @@
           <view class="bar-menu-wrap" catchtap="noop">
             <view class="bar-menu-btn" data-id="{{ item.id }}" catchtap="onMenuToggle">⋮</view>
             <view wx:if="{{ menuOpenId === item.id }}" class="menu-drop">
-              <view class="menu-item" data-id="{{ item.id }}" catchtap="onOpenClaimExport">预览/导出页</view>
               <view class="menu-item" data-id="{{ item.id }}" catchtap="onExportExcel">导出 Excel</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="openClaimForm">预览领用单</view>
+              <view class="menu-item" data-id="{{ item.id }}" catchtap="printClaimForm">打印领用单</view>
               <view class="menu-item menu-item-danger" data-id="{{ item.id }}" catchtap="onDeleteClaim">删除工单</view>
             </view>
             <view wx:if="{{ menuOpenId === item.id }}" class="menu-mask" catchtap="onMenuClose"></view>
@@ -209,12 +211,11 @@
       <text class="pop-sub">{{ linkClaim ? linkClaim.applicantDisplay : '-' }} · {{ linkClaim ? linkClaim.id : '' }}</text>
     </view>
     <view class="pop-scroll export-menu-body">
-      <view class="hint">导出为 Excel，或通过预览页查看该单全部物品行。</view>
+      <view class="hint">导出为 Excel。查看领用单原件请在列表行菜单里点「预览领用单」。</view>
       <view class="export-menu-actions">
         <view class="expand-btn primary {{ exportClaimBusy ? 'expand-btn-disabled' : '' }}" bindtap="onExportClaimExcelFromPopup">
           {{ exportClaimBusy ? '导出中…' : '导出 Excel' }}
         </view>
-        <view class="expand-btn ghost" bindtap="openClaimExportMini">打开预览页</view>
       </view>
     </view>
     <view class="pop-foot pop-foot-known">

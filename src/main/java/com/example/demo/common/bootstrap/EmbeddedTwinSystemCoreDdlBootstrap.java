@@ -242,6 +242,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-personnel-head-override.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-project-group-dedupe.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-project-group-uk-name.sql", ctx)) success++;
+        // 上面的 project_group 建表语句带 KEY idx_pg_department，但表已存在时整条 CREATE 被跳过，
+        // 索引永远建不上 —— 必须单独补一刀（同 uk_name 的处理）
+        total++; if (runScript("db/bootstrap-project-group-idx-department.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-deleted-at.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-deleted-by.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-personnel-signature.sql", ctx)) success++;

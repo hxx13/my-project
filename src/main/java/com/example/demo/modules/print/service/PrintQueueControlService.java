@@ -69,7 +69,8 @@ public class PrintQueueControlService {
         }
         String output = runner.run(listCommand, Map.of("target", target), timeoutSeconds);
         Set<String> ids = PrintCommandRunner.parseQueueJobIds(output);
-        log.info("[print] 队列 {} 现有作业 {} 条", target, ids.size());
+        // DEBUG：这条会被探测任务每 60 秒打一次，INFO 会把日志淹掉
+        log.debug("[print] 队列 {} 现有作业 {} 条", target, ids.size());
         return ids;
     }
 

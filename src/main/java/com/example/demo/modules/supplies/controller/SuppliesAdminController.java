@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
+import com.example.demo.modules.reportform.util.ReportFormExportFilename;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.supplies.dto.*;
 import com.example.demo.modules.supplies.service.SuppliesService;
@@ -212,6 +213,39 @@ public class SuppliesAdminController {
         } catch (IllegalStateException ex) {
             return Result.error(ex.getMessage());
         }
+    }
+
+    /**
+     * 批量导出领用单：body {@code { "ids": ["SC_...","SC_..."] }}，合并成一份多页 PDF。
+     *
+     * <p>管理端用 —— 「已处理」里挑几张一起打，顺序即入参顺序。权限与出库同级（requireProcess）。
+     */
+    @PostMapping("/claims/forms/batch")
+    @Operation(summary = "批量导出领用单 PDF（合并成一份多页）")
+    public ResponseEntity<byte[]> batchClaimForms(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                  @RequestBody(required = false) Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.SUPPLIES_CLAIM);
+        if (denied != null) {
+            return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN)
+                    .body((denied.getMessage() != null ? denied.getMessage() : "无权限").getBytes(StandardCharsets.UTF_8));
+        }
+        List<String> ids = body != null && body.get("ids") instanceof List<?> raw
+                ? raw.stream()
+                    .filter(o -> o != null)
+                    .map(o -> String.valueOf(o).trim())
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .toList()
+                : List.<String>of();
+        byte[] merged = suppliesService.batchClaimFormPdfs(user, ids);
+        String fileName = "领用单合并-" + ids.stream().distinct().count() + "张-"
+                + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmm"))
+                + ".pdf";
+        return ResponseEntity.ok()
+                .headers(ReportFormExportFilename.inlineHeaders(fileName))
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(merged);
     }
 
     @DeleteMapping("/claims/{id}")

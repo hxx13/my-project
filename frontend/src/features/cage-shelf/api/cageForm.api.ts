@@ -274,6 +274,25 @@ export async function updateCageInfoValues(
   return res.data.data ?? [];
 }
 
+/** 批量覆盖结果：成功的条数 + 逐条失败原因（权限不足、字段只读…都按笼位回报）。 */
+export interface CageInfoBatchResult {
+  updatedCount: number;
+  failed: Array<{ animalCageId: number; reason: string }>;
+}
+
+/** 把同一组字段值覆盖到多个笼位（管理端「批量编辑」）。 */
+export async function updateCageInfoValuesBatch(
+  animalCageIds: Array<number | string>,
+  values: CageClaimInfoValue[],
+): Promise<CageInfoBatchResult> {
+  const res = await authHttp.put<Result<CageInfoBatchResult>>("/admin/cage-info/values/batch", {
+    animalCageIds,
+    values,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "批量保存表单值失败");
+  return res.data.data ?? { updatedCount: 0, failed: [] };
+}
+
 // ═══════════════════════════════════════════
 // 字段字典套 + 域/子模块结构（新建文件夹）
 // ═══════════════════════════════════════════
