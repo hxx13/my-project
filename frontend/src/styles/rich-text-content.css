@@ -2,7 +2,8 @@
 
 @layer components {
   :root {
-    --rich-text-image-max-width: 50%;
+    /* 默认满宽（2026-09-22 用户口径：图片默认太小）。作者用工具栏滑块写的 inline width % 仍优先 */
+    --rich-text-image-max-width: 100%;
     --rich-text-image-row-max: 1;
     --rich-text-image-row-gap: 0.5rem;
     --rich-text-image-max-height: none;
@@ -14,6 +15,14 @@
   .page-help-prose :where(p:has(> img)) {
     margin: 0.75rem 0;
     text-align: center;
+  }
+
+  /* 编辑器专属：含图段落给自己留一条内边距。
+     图占满整行时整行都是图，鼠标没有落点（点图是选中图片，不是放光标）；
+     这一条既属于该段落、又不是图片，点它能把光标放进这一行。
+     ⚠ 只在编辑器里 —— 发布出去的页面没有这 6px（读者不需要落点，别让排版走形） */
+  .page-help-rich-editor .ProseMirror :where(p:has(> img)) {
+    padding: 6px 0;
   }
 
   /* 段内 ≥2 张图：同行横排（仅 RichTextEditor 在「同行 ≥2」时加 .rich-text-multi-row） */

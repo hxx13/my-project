@@ -153,4 +153,43 @@ class MobileCenterAlertServiceTest {
         assertEquals("GENERAL", items.get(1).get("section"));
         assertEquals("PERSONAL", items.get(2).get("section"));
     }
+
+    @Test
+    void sortAnnouncementsBySection_pinsImportantNoticeAboveNewerRoutineOne() {
+        String older = java.time.LocalDateTime.of(2026, 9, 10, 9, 0).toString();
+        String newer = java.time.LocalDateTime.of(2026, 9, 18, 9, 0).toString();
+        java.util.Map<String, Object> routineNewer = new java.util.LinkedHashMap<>();
+        routineNewer.put("section", "GENERAL");
+        routineNewer.put("publishAt", newer);
+        routineNewer.put("priority", "routine");
+        java.util.Map<String, Object> importantOlder = new java.util.LinkedHashMap<>();
+        importantOlder.put("section", "GENERAL");
+        importantOlder.put("publishAt", older);
+        importantOlder.put("priority", "important");
+        java.util.Map<String, Object> noticeOldest = new java.util.LinkedHashMap<>();
+        noticeOldest.put("section", "GENERAL");
+        noticeOldest.put("publishAt", java.time.LocalDateTime.of(2026, 9, 1, 9, 0).toString());
+        noticeOldest.put("priority", "notice");
+
+        java.util.List<java.util.Map<String, Object>> items =
+                new java.util.ArrayList<>(java.util.List.of(routineNewer, noticeOldest, importantOlder));
+        MobileCenterAlertService.sortAnnouncementsBySection(items);
+
+        assertEquals("important", items.get(0).get("priority"));
+        assertEquals("notice", items.get(1).get("priority"));
+        assertEquals("routine", items.get(2).get("priority"));
+        assertEquals(2, MobileCenterAlertService.priorityRank("important"));
+        assertEquals(1, MobileCenterAlertService.priorityRank("notice"));
+        assertEquals(0, MobileCenterAlertService.priorityRank(null));
+    }
+
+    @Test
+    void extensionPriority_readsOnlyTextualPriorityAndSurvivesBrokenJson() {
+        assertEquals("important", MobileCenterAlertService.extensionPriority("{\"priority\":\"important\",\"pinned\":true}"));
+        assertEquals("routine", MobileCenterAlertService.extensionPriority("{\"priority\":\"routine\"}"));
+        assertEquals(null, MobileCenterAlertService.extensionPriority("{\"pinned\":true}"));
+        assertEquals(null, MobileCenterAlertService.extensionPriority("not json"));
+        assertEquals(null, MobileCenterAlertService.extensionPriority("{\"priority\":7}"));
+        assertEquals(null, MobileCenterAlertService.extensionPriority(null));
+    }
 }

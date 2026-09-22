@@ -1,5 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { usePublicContent } from "@/api/hooks/usePortalContent";
+import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
 
 export default function ModelResourceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -89,7 +90,7 @@ export default function ModelResourceDetailPage() {
           {/* 正文 */}
           <div style={{ flex: 1, minWidth: 0 }}>
             {item.contentHtml ? (
-              <div style={{ fontSize: 14, lineHeight: 1.8, color: "#444" }} dangerouslySetInnerHTML={{ __html: item.contentHtml }} />
+              <RichTextHtmlBody html={item.contentHtml} className="text-[14px] leading-[1.8] text-[#444]" />
             ) : (
               <div style={{ fontSize: 14, lineHeight: 1.8, color: "#444" }}>
                 <h2 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 12px" }}>品系描述</h2>

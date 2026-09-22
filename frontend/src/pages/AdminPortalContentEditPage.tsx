@@ -1,16 +1,25 @@
 import { useState, useRef, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { useCreateContent, useUpdateContent, useAdminContent } from "@/api/hooks/usePortalContent";
 import { fetchPublicCategories, type PortalCategory, type ContentType, type ContentStatus } from "@/api/domains/portalContent.api";
 import toast from "react-hot-toast";
 
+/** 表单里的中文档位 ↔ 接口枚举（下拉框沿用中文值，列表页 tab 走枚举） */
+const TYPE_LABEL: Record<string, string> = { NEWS: "科研文章", NOTICE: "通知公告", MODEL_RESOURCE: "模型资源", PAGE: "页面" };
+const TYPE_CODE: Record<string, ContentType> = { 科研文章: "NEWS", 通知公告: "NOTICE", 模型资源: "MODEL_RESOURCE", 页面: "PAGE" };
+/** 分类作用域：页面类型没有自己的分类，借用模型资源那套 */
+const TYPE_SCOPE: Record<ContentType, string> = { NEWS: "NEWS", NOTICE: "NOTICE", MODEL_RESOURCE: "MODEL_RESOURCE", PAGE: "MODEL_RESOURCE" };
+
 export default function AdminPortalContentEditPage() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === "new";
+  // 从列表页的 tab 带过来（`?type=NOTICE`）：新建时直接落在那一档，不用再选一遍内容类型
+  const [searchParams] = useSearchParams();
+  const initialType = TYPE_LABEL[searchParams.get("type") ?? ""] ?? "科研文章";
 
-  const [contentType, setContentType] = useState("科研文章");
+  const [contentType, setContentType] = useState(initialType);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState("草稿");
@@ -32,12 +41,15 @@ export default function AdminPortalContentEditPage() {
 
   const showExt = contentType === "模型资源";
   const titleLabel = isNew ? "新建内容" : `编辑${contentType} #${id}`;
+  const typeCode = TYPE_CODE[contentType] ?? "NEWS";
+  /** 保存/取消回到列表页时带上当前档位，落地就是原来那个 tab */
+  const backToList = `/content-manager/content?type=${typeCode}`;
   const navigate = useNavigate();
 
   // 从 API 加载分类
   const [allCategories, setAllCategories] = useState<PortalCategory[]>([]);
   useEffect(() => { fetchPublicCategories().then(setAllCategories).catch(() => {}); }, []);
-  const scopeFilter = contentType === "科研文章" ? "NEWS" : contentType === "通知公告" ? "NOTICE" : "MODEL_RESOURCE";
+  const scopeFilter = TYPE_SCOPE[typeCode];
   const catOptions = allCategories.filter((c) => c.scope === scopeFilter || c.scope === "ALL");
 
   // 加载已有数据
@@ -45,7 +57,7 @@ export default function AdminPortalContentEditPage() {
   const { data: existing } = useAdminContent(editId ?? 0);
   useEffect(() => {
     if (!existing) return;
-    setContentType(existing.contentType === "NEWS" ? "科研文章" : existing.contentType === "NOTICE" ? "通知公告" : existing.contentType === "MODEL_RESOURCE" ? "模型资源" : "页面");
+    setContentType(TYPE_LABEL[existing.contentType] ?? "页面");
     setTitle(existing.title);
     setCategory(existing.categoryId ? String(existing.categoryId) : "");
     setStatus(existing.status === "PUBLISHED" ? "已发布" : existing.status === "DRAFT" ? "草稿" : "已归档");
@@ -77,7 +89,7 @@ export default function AdminPortalContentEditPage() {
   const updateMut = useUpdateContent();
 
   const buildBody = (targetStatus: string) => ({
-    contentType: (contentType === "科研文章" ? "NEWS" : contentType === "通知公告" ? "NOTICE" : contentType === "模型资源" ? "MODEL_RESOURCE" : "PAGE") as ContentType,
+    contentType: typeCode,
     categoryId: category ? Number(category) : null,
     title,
     summary: summary || null,
@@ -97,11 +109,11 @@ export default function AdminPortalContentEditPage() {
     const body = buildBody(targetStatus);
     if (isNew) {
       createMut.mutate(body as Parameters<typeof createMut.mutate>[0], {
-        onSuccess: () => navigate("/content-manager/content"),
+        onSuccess: () => navigate(backToList),
       });
     } else {
       updateMut.mutate({ id: editId!, body }, {
-        onSuccess: () => navigate("/content-manager/content"),
+        onSuccess: () => navigate(backToList),
       });
     }
   };
@@ -149,7 +161,7 @@ export default function AdminPortalContentEditPage() {
 
         {/* 面包屑 */}
         <div style={{ fontSize: 12, color: "#b0a89a", marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
-          <Link to="/content-manager/content" style={{ color: "#8b7355", textDecoration: "none" }}>门户内容管理</Link>
+          <Link to={backToList} style={{ color: "#8b7355", textDecoration: "none" }}>门户内容管理</Link>
           <span>›</span>
           <span>{titleLabel}</span>
         </div>
@@ -311,7 +323,7 @@ export default function AdminPortalContentEditPage() {
 
         {/* ===== 操作栏 ===== */}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 4 }}>
-          <Link to="/content-manager/content" style={{ padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: "white", color: "#666", border: "1px solid #d4c9b8", textDecoration: "none" }}>取消</Link>
+          <Link to={backToList} style={{ padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: "white", color: "#666", border: "1px solid #d4c9b8", textDecoration: "none" }}>取消</Link>
           <button onClick={() => save("草稿")} disabled={createMut.isPending || updateMut.isPending}
             style={{ padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: "white", color: "#d97706", border: "1px solid #d97706", opacity: (createMut.isPending || updateMut.isPending) ? 0.5 : 1 }}>
             {createMut.isPending || updateMut.isPending ? "保存中…" : "保存草稿"}

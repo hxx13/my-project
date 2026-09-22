@@ -1,4 +1,5 @@
 import { usePublicContents } from "@/api/hooks/usePortalContent";
+import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
 
 export default function ServiceGuidePage() {
   const { data } = usePublicContents({ type: "PAGE", search: "服务指南", size: 1 });
@@ -15,7 +16,7 @@ export default function ServiceGuidePage() {
           </p>
         </div>
         {page?.contentHtml ? (
-          <div className="prose prose-neutral max-w-none text-neutral-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: page.contentHtml }} />
+          <RichTextHtmlBody html={page.contentHtml} className="prose prose-neutral max-w-none text-neutral-600 leading-relaxed" />
         ) : (
           <p className="text-neutral-400 text-center py-8">暂无内容</p>
         )}

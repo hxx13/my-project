@@ -403,7 +403,12 @@ export function RichTextEditor({ value, onChange, onChangeJson, disabled, classN
     }
   }, [value, editor]);
 
-  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([value, editor?.getHTML()]);
+  // requireModifier：编辑器里图片上的单击归 ProseMirror（选中图片 / 定位光标），
+  // 看图改用 Alt/⌘ 单击或双击 —— 否则图占满整行时单击必被放大吃掉，图片选不中。
+  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox(
+    [value, editor?.getHTML()],
+    { requireModifier: true },
+  );
 
   const insertImage = useCallback(() => {
     if (!editor || disabled) return;

@@ -97,6 +97,46 @@ function applyRichTextTypography(html) {
   return s;
 }
 
+/**
+ * 图片单独占一个段落（`<p><img></p>`，编辑器插图就是这种）时，切完会剩 `<p>` 和 `</p>`
+ * 两个空壳 —— 各自渲染成一段空行，图上下就多一块空白。只认「纯 p/div 标签 + 空白」的块，
+ * `<br>`/`<hr>`/`<ul>` 这些有版面意义的照旧保留。
+ */
+function isWrapperOnly(chunk) {
+  return /^(?:\s|<\/?(?:p|div)>)*$/i.test(chunk);
+}
+
+/**
+ * 正文按 <img> 切成「HTML 段 / 图片段」。
+ *
+ * 为什么必须切：`<rich-text>` 里的图片收不到点击事件、点不开大图，只能把 img 抠出来
+ * 用 `<image bindtap>` 单独渲染。切段而不是「把所有图抽出来堆到底部」，是为了不重排正文顺序。
+ *
+ * 图片宽度：作者在编辑器里拖过宽度就沿用（inline `width: N%`），没拖过给满宽 ——
+ * 与 web / H5 同口径（frontend/src/styles/rich-text-content.css）。
+ */
+function splitBodySegments(html) {
+  if (!html) return [];
+  var re = /<img\b[^>]*\/?>/gi;
+  var out = [];
+  var last = 0;
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    var before = html.slice(last, m.index);
+    if (before && !isWrapperOnly(before)) out.push({ type: 'html', html: before });
+    var src = /src\s*=\s*["']([^"']+)["']/i.exec(m[0]);
+    if (src && src[1]) {
+      var w = /width\s*:\s*(\d+(?:\.\d+)?)\s*%/i.exec(m[0]);
+      out.push({ type: 'img', src: src[1], width: w ? Math.min(100, parseFloat(w[1])) : 100 });
+    }
+    last = m.index + m[0].length;
+  }
+  var tail = html.slice(last);
+  if (tail && !isWrapperOnly(tail)) out.push({ type: 'html', html: tail });
+  // wx:for 需要稳定 key：切出来的段本身没有 id，用下标
+  return out.map(function (seg, i) { return Object.assign({ key: i }, seg); });
+}
+
 module.exports = {
   SIZES_RPX: SIZES_RPX,
   SIZES_PX: SIZES_PX,
@@ -106,4 +146,5 @@ module.exports = {
   styledTag: styledTag,
   styledOpenTag: styledOpenTag,
   applyRichTextTypography: applyRichTextTypography,
+  splitBodySegments: splitBodySegments,
 };

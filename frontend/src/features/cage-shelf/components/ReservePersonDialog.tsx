@@ -10,12 +10,32 @@ import {
 } from "@/components/ui/dialog";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { searchPersonnelByKeyword } from "@/api/domains/cageShelf.api";
+import { fetchMyGroupMembers } from "@/api/domains/referenceData.api";
+
+/** 候选人统一形状：教职工库给课题组名，本课题组成员给工号，都塞进 subtitle */
+interface PersonOption {
+  key: string;
+  name: string;
+  accountId: string;
+  subtitle?: string;
+}
+
+const toOption = (p: { id?: number; name: string; accountId: string; projectGroupName?: string; jobNumber?: string }): PersonOption => ({
+  key: String(p.id ?? p.accountId),
+  name: p.name,
+  accountId: p.accountId,
+  subtitle: p.projectGroupName || p.jobNumber || undefined,
+});
 
 /**
- * 认领模式：占用者选择弹窗（教职工侧，免审核直接锁定）。
+ * 认领模式：占用者选择弹窗（免审核直接锁定）。
  *
- * 打开时自动按笼位 AUP 的课题组预览成员；也可手动搜索姓名/账号。
- * Web 管理端与 H5 共用同一个弹窗——移动端视口下 shadcn Dialog 自适应，不另写一套。
+ * 打开时自动预览该笼位课题组的成员；也可手动搜索姓名/账号。Web 管理端、H5、学生端共用。
+ *
+ * **候选人来源两套**：教职工走 `/personnel` 人员库（能按课题组搜全库）；
+ * 学生**没有人员库读权限**（`/personnel` 直接返回「无权限」），所以退回
+ * `/reference-data/group-members`（本就是「我的课题组成员」）—— 见 [[cage-occupancy-identity-model]]。
+ * 少了这条兜底，学生点开「认领给他人」看到的是空列表，等于这个入口白给。
  */
 export default function ReservePersonDialog({ open, submitting, groupNames, onClose, onConfirm, title, description, confirmText }: {
   open: boolean;
@@ -29,17 +49,28 @@ export default function ReservePersonDialog({ open, submitting, groupNames, onCl
   confirmText?: string;
 }) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<{ id: number; name: string; accountId: string; projectGroupName: string }>>([]);
+  const [results, setResults] = useState<PersonOption[]>([]);
+  /** 「我的课题组成员」：学生侧唯一的候选人来源，打开时取一次供预览与本地搜索兜底 */
+  const [groupMembers, setGroupMembers] = useState<PersonOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<{ name: string; accountId: string } | null>(null);
 
+  const localMatch = (kw: string) =>
+    groupMembers.filter((p) => p.name.includes(kw) || (p.subtitle ?? "").includes(kw));
+
   const search = async (kw: string) => {
     setQuery(kw);
-    if (!kw.trim()) { setResults([]); return; }
+    const t = kw.trim();
+    if (!t) { setResults(groupMembers); return; }
     setSearching(true);
-    try { setResults(await searchPersonnelByKeyword(kw.trim())); }
-    catch { setResults([]); }
-    finally { setSearching(false); }
+    try {
+      const hits = await searchPersonnelByKeyword(t);
+      setResults(hits.length ? hits.map(toOption) : localMatch(t));
+    } catch {
+      setResults(localMatch(t));
+    } finally {
+      setSearching(false);
+    }
   };
 
   // 打开弹窗时自动预览该笼位 AUP 的课题组及其成员
@@ -47,19 +78,26 @@ export default function ReservePersonDialog({ open, submitting, groupNames, onCl
     if (!open) return;
     setSelected(null);
     setQuery("");
-    if (groupNames.length === 0) { setResults([]); return; }
+    let cancelled = false;
     setSearching(true);
     (async () => {
-      const all: Array<{ id: number; name: string; accountId: string; projectGroupName: string }> = [];
+      let mine: PersonOption[] = [];
+      try { mine = (await fetchMyGroupMembers()).map(toOption); } catch { mine = []; }
+      if (cancelled) return;
+      setGroupMembers(mine);
+      const fromDirectory: PersonOption[] = [];
       for (const g of groupNames) {
         try {
           const list = await searchPersonnelByKeyword(g);
-          all.push(...list.filter((p) => p.projectGroupName === g));
+          fromDirectory.push(...list.filter((p) => p.projectGroupName === g).map(toOption));
         } catch {}
       }
-      setResults(all);
+      if (cancelled) return;
+      // 人员库有结果就以它为准（教职工能搜全库）；空（学生无权限）就落到本课题组成员
+      setResults(fromDirectory.length ? fromDirectory : mine);
       setSearching(false);
     })();
+    return () => { cancelled = true; };
   }, [open, groupNames]);
 
   return (
@@ -92,10 +130,10 @@ export default function ReservePersonDialog({ open, submitting, groupNames, onCl
                   {searching && <div className="px-3 py-2 text-center text-xs text-[var(--twin-mute)]">搜索中…</div>}
                   {!searching && results.length === 0 && <div className="px-3 py-2 text-center text-xs text-[var(--twin-mute)]">无匹配结果</div>}
                   {!searching && results.map((p) => (
-                    <button key={p.id} onClick={() => setSelected({ name: p.name, accountId: p.accountId })}
+                    <button key={p.key} onClick={() => setSelected({ name: p.name, accountId: p.accountId })}
                       className="w-full text-left px-3 py-2 text-xs border-b border-[var(--twin-hairline)] last:border-b-0 hover:bg-[var(--app-color-surface-hover)] text-[var(--twin-ink)]">
                       <span className="font-medium">{p.name}</span>
-                      {p.projectGroupName && <span className="ml-1 text-[10px] text-[var(--twin-mute)]">{p.projectGroupName}</span>}
+                      {p.subtitle && <span className="ml-1 text-[10px] text-[var(--twin-mute)]">{p.subtitle}</span>}
                     </button>
                   ))}
                 </div>

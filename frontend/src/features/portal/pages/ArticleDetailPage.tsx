@@ -1,5 +1,6 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { usePublicContent } from "@/api/hooks/usePortalContent";
+import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
 
 export default function ArticleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -55,10 +56,10 @@ export default function ArticleDetailPage() {
           <img src={item.coverUrl} alt={item.title} style={{ width: "100%", height: 360, borderRadius: 16, marginBottom: 40, objectFit: "cover" }} />
         )}
 
-        {/* 正文 */}
+        {/* 正文：走 RichTextHtmlBody，图片可点开放大 */}
         <div style={{ fontSize: 15, color: "#333", lineHeight: 1.85 }}>
           {item.contentHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: item.contentHtml }} />
+            <RichTextHtmlBody html={item.contentHtml} />
           ) : (
             <p style={{ color: "#666" }}>{item.summary || "暂无正文内容"}</p>
           )}

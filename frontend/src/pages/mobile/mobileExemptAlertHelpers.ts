@@ -205,11 +205,23 @@ export function alertDisplayPriority(kind?: string): number {
   return 2;
 }
 
-/** 首页/公告列表：豁免置顶，其余按时间倒序 */
+/**
+ * 门户通用公告按优先级上浮：重要 = -1（置顶）、通知 = 0，其余公告沿用 kind 档位。
+ * 与后端 PortalContentMapper.listPublic(sort='priority') 同口径，别只改一边。
+ */
+function alertRankOf(item: MobileAlertItem): number {
+  if (item.kind === "general_notice") {
+    if (item.priority === "important") return -1;
+    if (item.priority === "notice") return 0;
+  }
+  return alertDisplayPriority(item.kind);
+}
+
+/** 首页/公告列表：重要公告置顶，其次豁免，再违规，其余按时间倒序 */
 export function sortMobileAnnouncementsForDisplay(items: MobileAlertItem[]): MobileAlertItem[] {
   return [...items].sort((a, b) => {
-    const pa = alertDisplayPriority(a.kind);
-    const pb = alertDisplayPriority(b.kind);
+    const pa = alertRankOf(a);
+    const pb = alertRankOf(b);
     if (pa !== pb) return pa - pb;
     const ta = a.publishAt || a.createdAt || "";
     const tb = b.publishAt || b.createdAt || "";

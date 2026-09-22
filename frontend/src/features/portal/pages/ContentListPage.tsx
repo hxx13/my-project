@@ -1,22 +1,35 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, AlertTriangle, Bell, FileText, Pin, Megaphone } from "lucide-react";
+import { ArrowRight, Pin } from "lucide-react";
 import { usePublicContents } from "@/api/hooks/usePortalContent";
 import type { PortalContentView } from "@/api/domains/portalContent.api";
-
-const PRIORITY_ICONS: Record<string, typeof AlertTriangle> = {
-  important: AlertTriangle,
-  notice: Bell,
-  routine: FileText,
-};
+import { NOTICE_PRIORITY_CONFIG, noticePriorityOf } from "../noticePriority";
 
 export default function ContentListPage() {
   const { data: articles } = usePublicContents({ type: "NEWS", size: 5, sort: "published" });
-  const { data: notices } = usePublicContents({ type: "NOTICE", size: 5, sort: "published" });
+  // 公告按优先级取：重要置顶，其余按发布时间倒序（后端 SQL 排序，不是前端再排）
+  const { data: notices } = usePublicContents({ type: "NOTICE", size: 5, sort: "priority" });
 
   const articleList = articles?.data ?? [];
   const noticeList = notices?.data ?? [];
   const featured = articleList[0];
   const sideArticles = articleList.slice(1, 5);
+  const priorityOf = (item: PortalContentView) => noticePriorityOf(item);
+  const importantNotices = noticeList.filter((i) => priorityOf(i) === "important");
+  const latestNotices = noticeList.filter((i) => priorityOf(i) !== "important");
+  const cardOf = (item: PortalContentView) => {
+    const cfg = NOTICE_PRIORITY_CONFIG[priorityOf(item)];
+    const isImportant = priorityOf(item) === "important";
+    return (
+      <div key={item.id} className={`bg-white border rounded-xl p-4 shadow-sm ${isImportant ? "border-red-200" : "border-neutral-200"}`}>
+        <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider mb-2 ${isImportant ? "text-red-600" : "text-neutral-400"}`}>
+          {isImportant ? <Pin className="size-3" /> : null}
+          {cfg.badge}
+        </div>
+        <h4 className="text-[13px] font-bold text-neutral-900 leading-snug">{item.title}</h4>
+        <div className="text-[10px] text-neutral-400 mt-1">{item.publishedAt?.split("T")[0] || ""}</div>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen">
@@ -79,38 +92,18 @@ export default function ContentListPage() {
             <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
               <div className="flex-1 flex flex-col">
                 {noticeList.map((item, i) => {
-                  const ext = (item.extensionJson as Record<string, unknown>) || {};
-                  const priority = (ext.priority as string) || "routine";
-                  const Icon = PRIORITY_ICONS[priority] || FileText;
-                  const badgeColors: Record<string, string> = {
-                    important: "bg-red-50 text-red-600",
-                    notice: "bg-emerald-50 text-emerald-600",
-                    routine: "bg-neutral-100 text-neutral-500",
-                  };
-                  const iconBgs: Record<string, string> = {
-                    important: "bg-red-50",
-                    notice: "bg-emerald-50",
-                    routine: "bg-neutral-100",
-                  };
-                  const iconColors: Record<string, string> = {
-                    important: "text-red-500",
-                    notice: "text-emerald-500",
-                    routine: "text-neutral-400",
-                  };
-                  const labels: Record<string, string> = {
-                    important: "重要",
-                    notice: "通知",
-                    routine: "常规",
-                  };
+                  const priority = priorityOf(item);
+                  const cfg = NOTICE_PRIORITY_CONFIG[priority];
+                  const Icon = cfg.icon;
                   return (
                     <Link key={item.id} to={`/news/notice/${item.id}`}
-                      className={`flex items-start gap-4 py-3.5 border-b border-neutral-200 hover:pl-1.5 transition-all group/item text-left no-underline ${i === noticeList.length - 1 ? "border-b-0" : ""}`}>
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBgs[priority]}`}>
-                        <Icon className={`size-4 ${iconColors[priority]}`} />
+                      className={`flex items-start gap-4 py-3.5 border-b border-neutral-200 hover:pl-1.5 transition-all group/item text-left no-underline ${priority === "important" ? "border-l-2 border-l-red-400 pl-2.5" : ""} ${i === noticeList.length - 1 ? "border-b-0" : ""}`}>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${cfg.iconBg}`}>
+                        <Icon className={`size-4 ${cfg.iconColor}`} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2.5 mb-1">
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColors[priority]}`}>{labels[priority]}</span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.badgeClass}`}>{cfg.badge}</span>
                         </div>
                         <h4 className="text-sm font-bold text-neutral-900 group-hover/item:text-amber-600 transition-colors">{item.title}</h4>
                         <p className="text-xs text-neutral-400 line-clamp-1 mt-0.5">{item.summary || ""}</p>
@@ -121,23 +114,22 @@ export default function ContentListPage() {
                 })}
               </div>
 
-              {/* 置顶侧栏 */}
+              {/* 右栏：重要通知 / 最新通知 分两档，标题按实际档位走，不再写死 */}
               <div className="w-full lg:w-[260px] flex-shrink-0 flex flex-col gap-3">
-                {noticeList.slice(0, 3).map((item, i) => {
-                  const ext = (item.extensionJson as Record<string, unknown>) || {};
-                  const pinned = ext.pinned as boolean;
-                  if (!pinned && i !== 0) return null;
-                  return (
-                    <div key={item.id} className={`bg-white border rounded-xl p-4 shadow-sm ${i === 0 ? "border-amber-200 bg-amber-50/30" : "border-neutral-200"}`}>
-                      <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider mb-2 ${i === 0 ? "text-amber-700" : "text-red-500"}`}>
-                        <Pin className="size-3" />
-                        {i === 0 ? "最新公告" : "通知"}
-                      </div>
-                      <h4 className="text-[13px] font-bold text-neutral-900 leading-snug">{item.title}</h4>
-                      <div className="text-[10px] text-neutral-400 mt-1">{item.publishedAt?.split("T")[0] || ""}</div>
+                {importantNotices.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                      <Pin className="size-3" />重要通知
                     </div>
-                  );
-                })}
+                    {importantNotices.slice(0, 3).map(cardOf)}
+                  </div>
+                )}
+                {latestNotices.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">最新通知</div>
+                    {latestNotices.slice(0, 3).map(cardOf)}
+                  </div>
+                )}
               </div>
             </div>
           )}

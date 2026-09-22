@@ -1,5 +1,7 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { usePublicContent } from "@/api/hooks/usePortalContent";
+import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
+import { noticePriorityOf, portalExtension } from "../noticePriority";
 
 export default function NoticeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,14 +26,14 @@ export default function NoticeDetailPage() {
     );
   }
 
-  const ext = (item.extensionJson as Record<string, string>) || {};
-  const priority = (ext.priority as string) || "notice";
-  const priorityConfig: Record<string, { badge: string; color: string }> = {
-    important: { badge: "重要", color: "#dc2626" },
-    notice: { badge: "通知", color: "#065f46" },
-    update: { badge: "更新", color: "#6d28d9" },
+  const ext = portalExtension(item);
+  const publisher = typeof ext.publisher === "string" ? ext.publisher : "";
+  const priorityConfig: Record<string, { badge: string; color: string; bg: string }> = {
+    important: { badge: "重要", color: "#dc2626", bg: "#fef2f2" },
+    notice: { badge: "通知", color: "#065f46", bg: "#ecfdf5" },
+    routine: { badge: "常规", color: "#737373", bg: "#f5f5f5" },
   };
-  const pc = priorityConfig[priority] || priorityConfig.notice;
+  const pc = priorityConfig[noticePriorityOf(item)];
 
   return (
     <div className="min-h-screen bg-[#f7f5f2]">
@@ -49,7 +51,7 @@ export default function NoticeDetailPage() {
         {/* 标题 */}
         <div style={{ padding: "36px 0 24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 12px", borderRadius: 99, background: "#fef2f2", color: pc.color }}>
+            <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 12px", borderRadius: 99, background: pc.bg, color: pc.color }}>
               {pc.badge}
             </span>
             <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 12px", borderRadius: 99, background: "#faf7f2", color: "#8b7355" }}>
@@ -61,12 +63,12 @@ export default function NoticeDetailPage() {
         </div>
 
         {/* 信息摘要卡 */}
-        {(item.summary || ext.publisher) && (
+        {(item.summary || publisher) && (
           <div style={{ background: "white", border: "1px solid #e8e4df", borderRadius: 14, padding: "18px 22px", marginBottom: 32, display: "flex", gap: 32, flexWrap: "wrap" }}>
-            {ext.publisher && (
+            {publisher && (
               <div>
                 <div style={{ fontSize: 10, color: "#b0a89a", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 3 }}>发布单位</div>
-                <div style={{ fontSize: 13, color: "#333", fontWeight: 500 }}>{ext.publisher as string}</div>
+                <div style={{ fontSize: 13, color: "#333", fontWeight: 500 }}>{publisher}</div>
               </div>
             )}
             {item.summary && (
@@ -78,10 +80,10 @@ export default function NoticeDetailPage() {
           </div>
         )}
 
-        {/* 正文 */}
+        {/* 正文：走 RichTextHtmlBody，正文里的图片才能点开放大（原来裸 dangerouslySetInnerHTML，图点不动） */}
         <div style={{ fontSize: 15, color: "#333", lineHeight: 1.85 }}>
           {item.contentHtml ? (
-            <div dangerouslySetInnerHTML={{ __html: item.contentHtml }} />
+            <RichTextHtmlBody html={item.contentHtml} />
           ) : (
             <p style={{ color: "#666" }}>暂无正文内容</p>
           )}

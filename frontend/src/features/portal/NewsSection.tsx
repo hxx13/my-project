@@ -1,22 +1,36 @@
-import { ArrowRight, Pin, Bell, FileText, AlertTriangle } from "lucide-react";
+import { ArrowRight, Pin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StaggerCards } from "@/components/scroll-reveal";
 import { usePublicContents } from "@/api/hooks/usePortalContent";
-
-const PRIORITY_CONFIG = {
-  important: { icon: AlertTriangle, badge: "重要", badgeClass: "bg-red-50 text-red-600", iconBg: "bg-red-50", iconColor: "text-red-500" },
-  notice: { icon: Bell, badge: "通知", badgeClass: "bg-emerald-50 text-emerald-600", iconBg: "bg-emerald-50", iconColor: "text-emerald-500" },
-  routine: { icon: FileText, badge: "常规", badgeClass: "bg-neutral-100 text-neutral-500", iconBg: "bg-neutral-100", iconColor: "text-neutral-400" },
-} as const;
+import type { PortalContentView } from "@/api/domains/portalContent.api";
+import { NOTICE_PRIORITY_CONFIG, noticePriorityOf } from "./noticePriority";
 
 export function NewsSection() {
   const { data: articlesData } = usePublicContents({ type: "NEWS", size: 5, sort: "published" });
-  const { data: noticesData } = usePublicContents({ type: "NOTICE", size: 5, sort: "published" });
+  // 公告按优先级取：重要置顶，其余按发布时间倒序（后端 SQL 排序）
+  const { data: noticesData } = usePublicContents({ type: "NOTICE", size: 5, sort: "priority" });
 
   const articleList = articlesData?.data ?? [];
   const noticeList = noticesData?.data ?? [];
   const featured = articleList[0];
   const sideArticles = articleList.slice(1, 5);
+  const importantNotices = noticeList.filter((i) => noticePriorityOf(i) === "important");
+  const latestNotices = noticeList.filter((i) => noticePriorityOf(i) !== "important");
+  const noticeCard = (item: PortalContentView) => {
+    const cfg = NOTICE_PRIORITY_CONFIG[noticePriorityOf(item)];
+    const isImportant = noticePriorityOf(item) === "important";
+    return (
+      <Link key={item.id} to={`/news/notice/${item.id}`}
+        className={`bg-white border rounded-xl p-4 shadow-sm text-left no-underline ${isImportant ? "border-red-200" : "border-neutral-200"}`}>
+        <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider mb-2 ${isImportant ? "text-red-600" : "text-neutral-400"}`}>
+          {isImportant ? <Pin className="size-3" /> : null}
+          {cfg.badge}
+        </div>
+        <h4 className="text-[13px] font-bold text-neutral-900 leading-snug">{item.title}</h4>
+        <div className="text-[10px] text-neutral-400 mt-1">{item.publishedAt?.split("T")[0] || ""}</div>
+      </Link>
+    );
+  };
 
   return (
     <section id="news" className="py-16 md:py-24">
@@ -79,13 +93,12 @@ export function NewsSection() {
             <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
               <StaggerCards className="flex-1 flex flex-col">
                 {noticeList.map((item, i) => {
-                  const ext = (item.extensionJson as Record<string, unknown>) || {};
-                  const priority = (ext.priority as string) || "routine";
-                  const cfg = PRIORITY_CONFIG[priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.routine;
+                  const priority = noticePriorityOf(item);
+                  const cfg = NOTICE_PRIORITY_CONFIG[priority];
                   const Icon = cfg.icon;
                   return (
                     <Link key={item.id} to={`/news/notice/${item.id}`}
-                      className={`flex items-start gap-4 py-3.5 border-b border-neutral-200 hover:pl-1.5 transition-all group/item text-left no-underline ${i === noticeList.length - 1 ? "border-b-0" : ""}`}>
+                      className={`flex items-start gap-4 py-3.5 border-b border-neutral-200 hover:pl-1.5 transition-all group/item text-left no-underline ${priority === "important" ? "border-l-2 border-l-red-400 pl-2.5" : ""} ${i === noticeList.length - 1 ? "border-b-0" : ""}`}>
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${cfg.iconBg}`}>
                         <Icon className={`size-4 ${cfg.iconColor}`} />
                       </div>
@@ -102,18 +115,22 @@ export function NewsSection() {
                 })}
               </StaggerCards>
 
+              {/* 右栏：重要通知 / 最新通知 分两档 */}
               <StaggerCards className="w-full lg:w-[260px] flex-shrink-0 flex flex-col gap-3">
-                {noticeList.slice(0, 3).map((item, i) => (
-                  <Link key={item.id} to={`/news/notice/${item.id}`}
-                    className={`bg-white border rounded-xl p-4 shadow-sm text-left no-underline ${i === 0 ? "border-amber-200 bg-amber-50/30" : "border-neutral-200"}`}>
-                    <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider mb-2 ${i === 0 ? "text-amber-700" : "text-red-500"}`}>
-                      <Pin className="size-3" />
-                      {i === 0 ? "最新公告" : i === 1 ? "最近更新" : "通知"}
+                {importantNotices.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-600">
+                      <Pin className="size-3" />重要通知
                     </div>
-                    <h4 className="text-[13px] font-bold text-neutral-900 leading-snug">{item.title}</h4>
-                    <div className="text-[10px] text-neutral-400 mt-1">{item.publishedAt?.split("T")[0] || ""}</div>
-                  </Link>
-                ))}
+                    {importantNotices.slice(0, 3).map(noticeCard)}
+                  </>
+                )}
+                {latestNotices.length > 0 && (
+                  <>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">最新通知</div>
+                    {latestNotices.slice(0, 3).map(noticeCard)}
+                  </>
+                )}
               </StaggerCards>
             </div>
           ) : (

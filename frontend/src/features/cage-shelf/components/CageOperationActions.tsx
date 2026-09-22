@@ -200,7 +200,9 @@ export default function CageOperationActions({
           open={pickerOpen}
           submitting={claiming}
           groupNames={groupNames}
-          title="代认领笼位"
+          /* operable = 本人就是这笼位的主人（占用者/认领人），此时是「把自己的笼位交给同组的人」；
+             不可操作但能代认领 = 额外身份/被授权的组员替别人认领，口径不同，标题分开写 */
+          title={operable ? "认领给他人" : "代认领笼位"}
           description="选择本课题组人员，其将成为该笼位的实验员（已有认领会被覆盖）"
           confirmText="确认认领"
           onClose={() => setPickerOpen(false)}

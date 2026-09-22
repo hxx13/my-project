@@ -8,8 +8,13 @@ import {
 } from "@/utils/markdownHtml";
 import { sanitizeRichTextHtml } from "@/utils/richTextHtmlSanitize";
 
-export function alertKindLabel(kind: MobileAlertItem["kind"], source?: string): string {
+export function alertKindLabel(kind: MobileAlertItem["kind"], source?: string, priority?: string | null): string {
   switch (kind) {
+    case "general_notice":
+      // 门户公告的优先级直接当角标：重要 / 通知，其余仍叫「公告」
+      if (priority === "important") return "重要";
+      if (priority === "notice") return "通知";
+      return "公告";
     case "violation":
       return source === "CAGE_STATUS" ? "笼位处理提示" : "违规提醒";
     case "exempt":
@@ -23,8 +28,12 @@ export function alertKindLabel(kind: MobileAlertItem["kind"], source?: string): 
   }
 }
 
-export function alertKindColors(kind: MobileAlertItem["kind"]): { bg: string; color: string } {
+export function alertKindColors(kind: MobileAlertItem["kind"], priority?: string | null): { bg: string; color: string } {
   switch (kind) {
+    case "general_notice":
+      if (priority === "important") return { bg: "#fee2e2", color: "#dc2626" };
+      if (priority === "notice") return { bg: "#dcfce7", color: "#16a34a" };
+      return { bg: "#dbeafe", color: "#2563eb" };
     case "violation":
       return { bg: "#fee2e2", color: "#dc2626" };
     case "exempt":
@@ -119,7 +128,7 @@ export function formatNoticeMeta(item: MobileAlertItem): string {
   if (item.kind === "violation") {
     return date;
   }
-  const kind = alertKindLabel(item.kind, item.source);
+  const kind = alertKindLabel(item.kind, item.source, item.priority);
   const timePart = formatNoticeTime(item.publishAt || item.createdAt || "");
   return [timePart, kind].filter(Boolean).join(" · ");
 }

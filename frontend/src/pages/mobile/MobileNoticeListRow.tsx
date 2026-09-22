@@ -23,7 +23,7 @@ export default function MobileNoticeListRow({
   bordered?: boolean;
   onSelect: () => void;
 }) {
-  const colors = alertKindColors(item.kind);
+  const colors = alertKindColors(item.kind, item.priority);
   const pendingConfirm =
     item.kind === "violation" &&
     !html5PrivilegeBypass &&
@@ -51,7 +51,7 @@ export default function MobileNoticeListRow({
             className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none"
             style={{ background: colors.bg, color: colors.color }}
           >
-            {alertKindLabel(item.kind, item.source)}
+            {alertKindLabel(item.kind, item.source, item.priority)}
           </span>
           <span
             className="flex-1 min-w-0 text-[14px] font-medium truncate leading-snug"

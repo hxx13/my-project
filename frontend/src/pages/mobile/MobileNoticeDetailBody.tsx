@@ -5,6 +5,8 @@ import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { markObligationDelivered } from "@/features/student/api/student.api";
 import { AlertTriangle } from "lucide-react";
 import { alertKindColors, alertKindLabel } from "./MobileNoticesPanel";
+import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
+import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
 import {
   extractViolationBodyForDisplay,
   formatNoticeTime,
@@ -118,7 +120,7 @@ export default function MobileNoticeDetailBody({
   fullBleed = false,
 }: MobileNoticeDetailBodyProps) {
   const navigate = useNavigate();
-  const colors = alertKindColors(item.kind);
+  const colors = alertKindColors(item.kind, item.priority);
   const isViolation = item.kind === "violation";
   const isExempt = item.kind === "exempt";
   const pendingConfirm =
@@ -134,6 +136,8 @@ export default function MobileNoticeDetailBody({
       ? prepareExemptAlertBodyHtml(item)
       : String(item.contentHtml || "");
   const bodyHtml = isExempt ? bodySource : prepareMobileNoticeHtml(bodySource);
+  // 正文图片点击放大（富文本里的 img 没有点击事件，靠容器上的事件委托接）
+  const { containerRef: bodyRef, lightbox, closeLightbox } = useRichTextImageLightbox([bodyHtml]);
   const displayTitle = isExempt ? resolveExemptAlertTitle() : item.title;
   const metaTime =
     formatNoticeTime(item.publishAt) ||
@@ -156,7 +160,7 @@ export default function MobileNoticeDetailBody({
           className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none"
           style={{ background: colors.bg, color: colors.color }}
         >
-          {alertKindLabel(item.kind, item.source)}
+          {alertKindLabel(item.kind, item.source, item.priority)}
         </span>
         {metaTime ? (
           <>
@@ -227,6 +231,7 @@ export default function MobileNoticeDetailBody({
       >
         {bodyHtml ? (
           <div
+            ref={bodyRef}
             className={`${MOBILE_NOTICE_BODY_CLASS}${fullBleed ? " mobile-notice-detail-body" : ""}`}
             style={{ color: "#323233" }}
             dangerouslySetInnerHTML={{ __html: bodyHtml }}
@@ -237,6 +242,8 @@ export default function MobileNoticeDetailBody({
           </p>
         )}
       </div>
+
+      {lightbox && <PageHelpImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />}
 
       {pendingConfirm && (
         <button
