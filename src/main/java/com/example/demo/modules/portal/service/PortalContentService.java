@@ -1,6 +1,7 @@
 package com.example.demo.modules.portal.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.portal.dto.PortalCategoryView;
 import com.example.demo.modules.portal.dto.PortalContentView;
@@ -13,12 +14,44 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class PortalContentService {
+
+    /**
+     * publishedAt 入参可能三种形态：ISO（带 `T`）、墙上钟（空格）、纯日期。
+     *
+     * <p>**判据不能只看有没有 `T`**：出参本身就是空格形态（{@code JacksonTimeConfig} 统一输出
+     * 北京墙钟 `yyyy-MM-dd HH:mm:ss`），前端编辑器原样回传时既没有 `T`、也不是纯日期 ——
+     * 旧写法会把它当纯日期拼成 `2026-09-22 21:17T00:00:00`，然后在第 10 位（那个空格）炸。
+     */
+    private static final DateTimeFormatter[] PUBLISHED_AT_FORMATS = {
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm[:ss]"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm[:ss]"),
+    };
+
+    /** 解析发布时间入参；认不出就抛 400（别静默当今天，写错时间比报错更难查） */
+    static LocalDateTime parsePublishedAt(String raw) {
+        String s = raw.trim();
+        for (DateTimeFormatter f : PUBLISHED_AT_FORMATS) {
+            try {
+                return LocalDateTime.parse(s, f);
+            } catch (DateTimeParseException ignored) {
+                // 换下一种形态
+            }
+        }
+        try {
+            return LocalDate.parse(s).atStartOfDay();
+        } catch (DateTimeParseException e) {
+            throw new TwinBusinessException(400, "发布时间格式不正确：" + raw);
+        }
+    }
 
     private final PortalContentMapper contentMapper;
     private final PortalCategoryMapper categoryMapper;
@@ -232,12 +265,7 @@ public class PortalContentService {
         c.setStatus(req.getStatus() != null ? req.getStatus() : "DRAFT");
         c.setSortOrder(0);
         if (req.getPublishedAt() != null && !req.getPublishedAt().isBlank()) {
-            String raw = req.getPublishedAt();
-            if (raw.contains("T")) {
-                c.setPublishedAt(LocalDateTime.parse(raw));
-            } else {
-                c.setPublishedAt(LocalDateTime.parse(raw + "T00:00:00"));
-            }
+            c.setPublishedAt(parsePublishedAt(req.getPublishedAt()));
         }
         return c;
     }

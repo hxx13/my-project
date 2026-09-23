@@ -311,7 +311,7 @@ Page({
 
           if (result.type === 'CAGE_BOX' && result.cageBox) {
             var cb = result.cageBox;
-            var url = '/package-feature/pages/studentCageShelf/index' +
+            var url = '/package-student/pages/studentCageShelf/index' +
               '?highlightX=' + cb.positionX +
               '&highlightY=' + cb.positionY +
               '&campusName=' + (cb.campusName || '') +
@@ -320,7 +320,7 @@ Page({
             wx.navigateTo({ url: url });
           } else if (result.type === 'CAGE_CELL' && result.cageCell) {
             var cc = result.cageCell;
-            var cageCellUrl = '/package-feature/pages/studentCageShelf/index' +
+            var cageCellUrl = '/package-student/pages/studentCageShelf/index' +
               '?highlightX=' + cc.positionX +
               '&highlightY=' + cc.positionY +
               '&campusName=' + (cc.campusName || '') +
@@ -330,7 +330,7 @@ Page({
           } else if (result.type === 'LEGACY_CAGE_BOX') {
             wx.showToast({ title: '旧盒码已废弃，请扫笼位码', icon: 'none' });
             if (result.positionX != null && result.positionY != null) {
-              var legacyUrl = '/package-feature/pages/studentCageShelf/index' +
+              var legacyUrl = '/package-student/pages/studentCageShelf/index' +
                 '?highlightX=' + result.positionX +
                 '&highlightY=' + result.positionY +
                 '&campusName=' + (result.campusName || '') +
@@ -341,7 +341,7 @@ Page({
           } else if (result.type === 'ASSET' && result.asset) {
             var assetCode = result.asset.assetCode || code;
             wx.navigateTo({
-              url: '/package-feature/pages/assetRecord/index?searchCode=' + encodeURIComponent(assetCode)
+              url: '/package-ops/pages/assetRecord/index?searchCode=' + encodeURIComponent(assetCode)
             });
           } else {
             wx.showToast({ title: result.message || '未识别到有效内容', icon: 'none' });
@@ -420,13 +420,13 @@ Page({
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const canQuickSuppliesMall =
       hasMinRole(role, 'STAFF') &&
-      pagePermission.canShowMiniEntry('home', '/package-feature/pages/supplies/index', role, 'STAFF');
+      pagePermission.canShowMiniEntry('home', '/package-supplies/pages/supplies/index', role, 'STAFF');
     const canQuickSuppliesMine =
       hasMinRole(role, 'STAFF') &&
-      pagePermission.canAccessMiniPage('/package-feature/pages/suppliesMine/index', role, 'STAFF');
+      pagePermission.canAccessMiniPage('/package-supplies/pages/suppliesMine/index', role, 'STAFF');
     this.setData({
       canQuickRepairRequest: pagePermission.canShowMiniEntry('home', '/package-feature/pages/repairRequest/index', role, 'STAFF'),
-      canQuickPurchaseRequest: pagePermission.canShowMiniEntry('home', '/package-feature/pages/purchaseRequest/index', role, 'STAFF'),
+      canQuickPurchaseRequest: pagePermission.canShowMiniEntry('home', '/package-supplies/pages/purchaseRequest/index', role, 'STAFF'),
       /** 管理端进物资页；非处理教职工进「我的领用记录」，角标均为 pending-badges（处理者优先队列，否则本人待出库） */
       canQuickSupplies: canQuickSuppliesMall || canQuickSuppliesMine,
       canQuickNotifications: pagePermission.canShowMiniEntry('home', '/package-feature/pages/notifications/index', role, 'STUDENT'),
@@ -434,10 +434,10 @@ Page({
       canPrimaryRoom: pagePermission.canShowMiniEntry('tabbar', '/pages/room/index', role, 'STUDENT'),
       canPrimaryStudentReview:
         hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF'),
+        pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF'),
       canPrimaryCageShelf:
         hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('home', '/package-feature/pages/studentCageShelf/index', role, 'STAFF'),
+        pagePermission.canShowMiniEntry('home', '/package-student/pages/studentCageShelf/index', role, 'STAFF'),
       canFileTemplates:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('home', '/package-feature/pages/fileTemplates/index', role, 'STAFF'),
@@ -605,11 +605,11 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/studentReviewHub/index' });
+    wx.navigateTo({ url: '/package-student/pages/studentReviewHub/index' });
   },
 
   goCageShelf() {
@@ -618,11 +618,11 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('home', '/package-feature/pages/studentCageShelf/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('home', '/package-student/pages/studentCageShelf/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/studentCageShelf/index' });
+    wx.navigateTo({ url: '/package-student/pages/studentCageShelf/index' });
   },
 
   async refreshQuickBadges() {
@@ -673,27 +673,27 @@ Page({
 
   goPurchaseRequest() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('home', '/package-feature/pages/purchaseRequest/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('home', '/package-supplies/pages/purchaseRequest/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/purchaseRequest/index' });
+    wx.navigateTo({ url: '/package-supplies/pages/purchaseRequest/index' });
   },
 
   goSupplies() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const canMall =
       hasMinRole(role, 'STAFF') &&
-      pagePermission.canShowMiniEntry('home', '/package-feature/pages/supplies/index', role, 'STAFF');
+      pagePermission.canShowMiniEntry('home', '/package-supplies/pages/supplies/index', role, 'STAFF');
     const canMine =
       hasMinRole(role, 'STAFF') &&
-      pagePermission.canAccessMiniPage('/package-feature/pages/suppliesMine/index', role, 'STAFF');
+      pagePermission.canAccessMiniPage('/package-supplies/pages/suppliesMine/index', role, 'STAFF');
     if (canMall) {
-      wx.navigateTo({ url: '/package-feature/pages/supplies/index' });
+      wx.navigateTo({ url: '/package-supplies/pages/supplies/index' });
       return;
     }
     if (canMine) {
-      wx.navigateTo({ url: '/package-feature/pages/suppliesMine/index' });
+      wx.navigateTo({ url: '/package-supplies/pages/suppliesMine/index' });
       return;
     }
     wx.showToast({ title: '无权限', icon: 'none' });
@@ -938,9 +938,9 @@ Page({
     if (id === 'room') {
       wx.switchTab({ url: '/pages/room/index' });
     } else if (id === 'material') {
-      wx.navigateTo({ url: '/package-feature/pages/studentMaterial/index' });
+      wx.navigateTo({ url: '/package-student/pages/studentMaterial/index' });
     } else if (id === 'cage') {
-      wx.navigateTo({ url: '/package-feature/pages/studentCageShelf/index' });
+      wx.navigateTo({ url: '/package-student/pages/studentCageShelf/index' });
     }
   },
 
@@ -948,7 +948,7 @@ Page({
     if (this._guardLogin()) return;
     var id = e.currentTarget.dataset.id;
     if (id === 'records') {
-      wx.navigateTo({ url: '/package-feature/pages/studentAccessRecords/index' });
+      wx.navigateTo({ url: '/package-student/pages/studentAccessRecords/index' });
     } else if (id === 'notices') {
       if (isStudentAccount()) {
         wx.navigateTo({ url: '/package-feature/pages/messages/index' });
@@ -958,7 +958,7 @@ Page({
     } else if (id === 'animalOrder') {
       wx.navigateTo({ url: '/package-feature/pages/animalOrder/index' });
     } else if (id === 'violations') {
-      wx.navigateTo({ url: '/package-feature/pages/studentViolations/index' });
+      wx.navigateTo({ url: '/package-student/pages/studentViolations/index' });
     }
   },
 });

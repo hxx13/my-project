@@ -1,0 +1,6 @@
+<view class="ms-wrap">
+  <text wx:if="{{ label }}" class="ms-label {{ checked ? 'ms-label--on' : '' }}">{{ label }}</text>
+  <view class="ms {{ checked ? 'ms--on' : '' }}" bindtap="onTap">
+    <view class="ms-knob"></view>
+  </view>
+</view>

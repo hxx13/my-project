@@ -1042,6 +1042,7 @@
 .cage-tabs-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12rpx;
   margin-bottom: 10rpx;
 }
@@ -1432,4 +1433,32 @@
   flex-shrink: 0;
   font-size: 28rpx;
   color: #cbd5e1;
+}
+
+/* ── 领用方式切换：饲养=预定笼位（默认），取走=不占笼位不选房间。
+   实色底 + 1px 描边（全站选中口径），复用本文件的蓝 #2563eb / 描边 #e5e7eb / 分隔 #eef0f4。 ── */
+.pickup-mode {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #eef0f4;
+}
+.pickup-mode-btn {
+  padding: 8rpx 28rpx;
+  border-radius: 8rpx;
+  font-size: 26rpx;
+  border: 1rpx solid #e5e7eb;
+  color: #334155;
+  background: #fff;
+}
+.pickup-mode-btn--on {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.pickup-mode-hint {
+  margin-left: auto;
+  font-size: 22rpx;
+  color: #94a3b8;
 }

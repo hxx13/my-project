@@ -42,6 +42,18 @@ public class PersonnelService {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final PersonnelRoomAuthorizationMapper roomAuthorizationMapper;
 
+    /**
+     * 头像落地器（把 ARO 远程头像存成本地文件）。用 setter 注入、允许缺失：
+     * 这个类有两个构造器（含一个给单测用的兜底），不想为了它再动构造器签名。
+     */
+    @Autowired(required = false)
+    private PersonnelHeadLocalizer headLocalizer;
+
+    /** 同步入口统一走这里：容器里没装落地器时原样放行 */
+    private String localizeHead(String head) {
+        return headLocalizer == null ? head : headLocalizer.localize(head);
+    }
+
     public PersonnelService(PersonnelMapper personnelMapper, UserMapper userMapper, JdbcTemplate jdbcTemplate) {
         this(personnelMapper, userMapper, jdbcTemplate, null, null);
     }
@@ -416,6 +428,8 @@ public class PersonnelService {
             p.setAroUserId(aroUserId);
             p.setName(str(r.get("name")));
             fillProfile(p, r);
+            // ARO 头像是远程地址，落成本地文件再入库，前端不必再走代理
+            p.setHead(localizeHead(p.getHead()));
             students.add(p);
         }
 
@@ -432,6 +446,7 @@ public class PersonnelService {
             p.setStaffId(staffId);
             p.setName(str(r.get("name")));
             fillProfile(p, r);
+            p.setHead(localizeHead(p.getHead()));
             staff.add(p);
         }
 
@@ -547,6 +562,8 @@ public class PersonnelService {
         if (StringUtils.hasText(p.getHeadOverride())) {
             p.setHead(headBefore);
         }
+        // 远程头像落成本地文件（已是本地路径时是空操作，重跑不重复下载）
+        p.setHead(localizeHead(p.getHead()));
 
         personnelMapper.update(p);
         return Map.of("aroMatched", aroMatched, "staffMatched", staffMatched,

@@ -150,8 +150,7 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody RefSpecTemplateUpsertRequest body) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return Result.error(denied.getMessage());
+        if (!refOrderAccessPolicy.canManageOrderConfig(user)) return Result.error("无权限访问");
         return referenceDataService.createSpecTemplate(body);
     }
 
@@ -162,8 +161,7 @@ public class ReferenceDataController {
             @PathVariable Long id,
             @RequestBody RefSpecTemplateUpsertRequest body) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return Result.error(denied.getMessage());
+        if (!refOrderAccessPolicy.canManageOrderConfig(user)) return Result.error("无权限访问");
         return referenceDataService.updateSpecTemplate(id, body);
     }
 
@@ -173,8 +171,7 @@ public class ReferenceDataController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable Long id) {
         User user = resolveUser(authorization);
-        Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.REFERENCE_DATA_ADMIN);
-        if (denied != null) return denied;
+        if (!refOrderAccessPolicy.canManageOrderConfig(user)) return Result.error("无权限访问");
         return referenceDataService.deleteSpecTemplate(id);
     }
 

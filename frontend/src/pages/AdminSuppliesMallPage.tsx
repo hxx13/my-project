@@ -1,5 +1,5 @@
 /**
- * 领用物资：布局与交互对齐小程序 package-feature/pages/supplies（左侧分类、右侧列表、底部购物车、持久化购物车）。
+ * 领用物资：布局与交互对齐小程序 package-supplies/pages/supplies（左侧分类、右侧列表、底部购物车、持久化购物车）。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useNavigate, useSearchParams, useLocation } from "react-router-dom";

@@ -1,4 +1,4 @@
-﻿const mpBulletinApi = require('../../../utils/mpBulletinApi.js');
+﻿const mpBulletinApi = require('../../utils/mpBulletinApi.js');
 const springAuth = require('../../../utils/springAuth.js');
 const studentAlerts = require('../../../utils/studentAlertHelpers.js');
 const { applyRichTextTypography, splitBodySegments } = require('../../../utils/richTextTypography.js');

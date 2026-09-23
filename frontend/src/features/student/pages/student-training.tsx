@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
+  cancelMyEnrollment,
   enrollOccurrence,
   fetchMyTrainings,
   type StudentTraining,
   type StudentTrainingOccurrence,
 } from "../api/student.api";
 import { useStudentQuery } from "../hooks/use-student-query";
+import { enrollStatus, isFullyPassed, isRejected } from "../utils/trainingEnrollStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { ShrinkText } from "../components/shrink-text";
 import "./student-list.css";
@@ -17,8 +19,9 @@ type Filter = "all" | "passed" | "unpassed";
 
 function trainingStatus(t: StudentTraining): Status {
   const occs = t.occurrences ?? [];
-  if (occs.some((o) => o.enrolled && o.testYn === 1)) return "已通过";
-  if (occs.some((o) => o.enrolled && o.testYn === 2)) return "已拒绝";
+  const st = (o: StudentTrainingOccurrence) => enrollStatus(!!o.enrolled, o.testYn, o.testFraction);
+  if (occs.some((o) => st(o) === "已通过")) return "已通过";
+  if (occs.some((o) => st(o) === "已拒绝")) return "已拒绝";
   if (occs.some((o) => o.enrolled)) return "待审核";
   return "未报名";
 }
@@ -40,14 +43,37 @@ function firstOcc(t: StudentTraining): StudentTrainingOccurrence | undefined {
   return (t.occurrences ?? [])[0];
 }
 
-function TrainingCard({ t, onEnroll }: { t: StudentTraining; onEnroll: (t: StudentTraining, o: StudentTrainingOccurrence) => void }) {
+type Act = "enroll" | "reapply" | "cancel" | "none";
+
+/** 单个场次上「我」能做什么：未报名→报名；已驳回→重新报名（先退再报）；双通过→锁定无操作。 */
+function enrollAction(o?: StudentTrainingOccurrence): Act {
+  if (!o) return "none";
+  if (!o.enrolled || !o.enrollmentId) return "enroll";
+  if (isFullyPassed(o.testYn, o.testFraction)) return "none";
+  return isRejected(o.testYn, o.testFraction) ? "reapply" : "cancel";
+}
+
+function TrainingCard({
+  t,
+  busy,
+  onEnroll,
+  onCancel,
+  onReapply,
+}: {
+  t: StudentTraining;
+  busy: boolean;
+  onEnroll: (t: StudentTraining, o: StudentTrainingOccurrence) => void;
+  onCancel: (o: StudentTrainingOccurrence) => void;
+  onReapply: (o: StudentTrainingOccurrence) => void;
+}) {
   const o = firstOcc(t);
   const status = trainingStatus(t);
   const seal = STATUS_SEAL[status];
+  const act = enrollAction(o);
   return (
     <div className="aup-card-cell">
       <div className="aup-doc-stack">
-        <div className="aup-doc">
+        <div className={`aup-doc${status === "已通过" ? " is-passed" : ""}`}>
           <div className="aup-doc-hd">
             <div style={{ flex: 1, minWidth: 0 }}>
               <ShrinkText text={t.name} lines={1} baseFontPx={14} className="aup-doc-title" />
@@ -70,8 +96,14 @@ function TrainingCard({ t, onEnroll }: { t: StudentTraining; onEnroll: (t: Stude
           </div>
           <div className="aup-doc-foot">
             <div className="aup-doc-acts">
-              {status === "未报名" && o ? (
+              {act === "enroll" && o ? (
                 <button className="btn primary small" onClick={() => onEnroll(t, o)}>报名</button>
+              ) : null}
+              {act === "reapply" && o ? (
+                <button className="btn primary small" disabled={busy} onClick={() => onReapply(o)}>重新报名</button>
+              ) : null}
+              {(act === "cancel" || act === "reapply") && o ? (
+                <button className="btn ghost small" disabled={busy} onClick={() => onCancel(o)}>取消报名</button>
               ) : null}
             </div>
             <div className="aup-doc-foot-right">
@@ -97,6 +129,7 @@ export default function StudentTrainingPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [target, setTarget] = useState<{ training: StudentTraining; occ: StudentTrainingOccurrence } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [acting, setActing] = useState(false);
 
   const filtered = useMemo(() => {
     return data.filter((t) => {
@@ -107,19 +140,117 @@ export default function StudentTrainingPage() {
     });
   }, [data, filter]);
 
+  /** 后端已按「校区 → 配置序号」排好序，这里只按顺序切开分组。 */
+  const groups = useMemo(() => {
+    const map = new Map<string, StudentTraining[]>();
+    for (const t of filtered) {
+      const k = (t.campus ?? "").trim();
+      const arr = map.get(k);
+      if (arr) arr.push(t);
+      else map.set(k, [t]);
+    }
+    return [...map.entries()].map(([key, items]) => ({ key, label: key || "其他", items }));
+  }, [filtered]);
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["student"] });
+
   const doEnroll = async () => {
     if (!target) return;
     setSubmitting(true);
     try {
       await enrollOccurrence(target.occ.id);
       setTarget(null);
-      qc.invalidateQueries({ queryKey: ["student"] });
+      refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "报名失败");
     } finally {
       setSubmitting(false);
     }
   };
+
+  const doCancel = async (o: StudentTrainingOccurrence) => {
+    if (!o.enrollmentId) return;
+    setActing(true);
+    try {
+      await cancelMyEnrollment(o.enrollmentId);
+      toast.success("已取消报名");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "取消失败");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  /** 重新报名：被驳回的报名还占着场次，先退掉再报一次。 */
+  const doReapply = async (o: StudentTrainingOccurrence) => {
+    if (!o.enrollmentId) return;
+    setActing(true);
+    try {
+      await cancelMyEnrollment(o.enrollmentId);
+      await enrollOccurrence(o.id);
+      toast.success("已重新报名");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "重新报名失败");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const actions = (t: StudentTraining, o?: StudentTrainingOccurrence) => {
+    const act = enrollAction(o);
+    if (!o) return null;
+    return (
+      <>
+        {act === "enroll" && (
+          <button className="btn primary small" onClick={() => setTarget({ training: t, occ: o })}>报名</button>
+        )}
+        {act === "reapply" && (
+          <button className="btn primary small" disabled={acting} onClick={() => doReapply(o)}>重新报名</button>
+        )}
+        {(act === "cancel" || act === "reapply") && (
+          <button className="btn ghost small" disabled={acting} onClick={() => doCancel(o)}>取消报名</button>
+        )}
+      </>
+    );
+  };
+
+  /** 列表视图的一张表；按校区分组时每组各渲染一张。 */
+  const trainingTable = (items: StudentTraining[]) => (
+    <table className="list-table">
+      <thead>
+        <tr>
+          <th>培训名称</th>
+          <th>类型</th>
+          <th>校区</th>
+          <th>地点</th>
+          <th>时间</th>
+          <th>所属人</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((t) => {
+          const o = firstOcc(t);
+          const status = trainingStatus(t);
+          return (
+            <tr key={t.id} className={`row${status === "已通过" ? " is-passed" : ""}`}>
+              <td><span className="proj-name">{t.name}</span></td>
+              <td>{t.typeName || "—"}</td>
+              <td>{t.campus || "—"}</td>
+              <td>{o?.address || "—"}</td>
+              <td>{o?.startTime || "—"}</td>
+              <td>{(t.ownerNames ?? t.ownerIds ?? []).join("、") || "—"}</td>
+              <td><span className={`status-badge ${STATUS_SEAL[status].cls}`}>{status}</span></td>
+              <td>{actions(t, o)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 
   return (
     <>
@@ -136,12 +267,12 @@ export default function StudentTrainingPage() {
               ))}
             </div>
             <button className="btn ghost small" onClick={() => navigate("/student/training/my")}>我的报名</button>
-            <span style={{ fontSize: 12, color: "var(--muted)" }}>共 {filtered.length} 条</span>
           </div>
         </div>
 
         <div className="list-card list-card-body">
           <div className="list-card-scroll">
+            <div className="list-count">共 {filtered.length} 条培训</div>
             {isLoading ? (
               <div className="aup-empty">加载中…</div>
             ) : isError ? (
@@ -149,46 +280,36 @@ export default function StudentTrainingPage() {
             ) : filtered.length === 0 ? (
               <div className="aup-empty">暂无培训</div>
             ) : view === "card" ? (
-              <div className="aup-card-grid">
-                {filtered.map((t) => (
-                  <TrainingCard key={t.id} t={t} onEnroll={(t, o) => setTarget({ training: t, occ: o })} />
-                ))}
-              </div>
+              groups.map((g) => (
+                <div key={g.key || "__none__"}>
+                  <div className="campus-head">
+                    <span>{g.label}</span>
+                    <span className="campus-count">{g.items.length} 条</span>
+                  </div>
+                  <div className="aup-card-grid">
+                    {g.items.map((t) => (
+                      <TrainingCard
+                        key={t.id}
+                        t={t}
+                        busy={acting}
+                        onEnroll={(tt, o) => setTarget({ training: tt, occ: o })}
+                        onCancel={doCancel}
+                        onReapply={doReapply}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
             ) : (
-              <table className="list-table">
-                <thead>
-                  <tr>
-                    <th>培训名称</th>
-                    <th>类型</th>
-                    <th>地点</th>
-                    <th>时间</th>
-                    <th>所属人</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((t) => {
-                    const o = firstOcc(t);
-                    const status = trainingStatus(t);
-                    return (
-                      <tr key={t.id} className="row">
-                        <td><span className="proj-name">{t.name}</span></td>
-                        <td>{t.typeName || "—"}</td>
-                        <td>{o?.address || "—"}</td>
-                        <td>{o?.startTime || "—"}</td>
-                        <td>{(t.ownerNames ?? t.ownerIds ?? []).join("、") || "—"}</td>
-                        <td><span className={`status-badge ${STATUS_SEAL[status].cls}`}>{status}</span></td>
-                        <td>
-                          {status === "未报名" && o ? (
-                            <button className="btn primary small" onClick={() => setTarget({ training: t, occ: o })}>报名</button>
-                          ) : null}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              groups.map((g) => (
+                <div key={g.key || "__none__"}>
+                  <div className="campus-head">
+                    <span>{g.label}</span>
+                    <span className="campus-count">{g.items.length} 条</span>
+                  </div>
+                  <div className="campus-list">{trainingTable(g.items)}</div>
+                </div>
+              ))
             )}
           </div>
         </div>
@@ -211,9 +332,13 @@ export default function StudentTrainingPage() {
               )}
               <div className="flex items-center justify-between">
                 <span>健康调查表</span>
-                <span className={target.training.healthOk ? "text-emerald-600" : "text-neutral-500"}>
-                  {target.training.healthOk ? "已提交" : "未提交"}
-                </span>
+                <button
+                  type="button"
+                  className={target.training.healthOk ? "text-emerald-600" : "text-amber-600 hover:underline"}
+                  onClick={() => { setTarget(null); navigate("/student/health-survey"); }}
+                >
+                  {target.training.healthOk ? "已提交" : "未提交 · 去填写"}
+                </button>
               </div>
             </div>
 

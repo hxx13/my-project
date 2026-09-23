@@ -487,14 +487,14 @@ public class CageOrderReservationService {
                 r.setSpecKey(spec);
                 r.setSex(parsed.sex());   // 先落性别，下面的数量列才能按新性别写对
             }
-            if (qtyChanged) {
-                String countField = countFieldFor(r.getSex());
-                if (countField != null) {
-                    written.put(countField, qty);
-                    patch.put(countField, qty);
-                }
-                r.setQuantity(qty);
+            // 数量列与性别同源：性别是 specAdopted 这一刻才知道的，而这时数量往往与锁定时相同
+            // （默认都是 1）。只按 qtyChanged 写，就会出现笼位表单里性别有、数量空的空洞。
+            String countField = countFieldFor(r.getSex());
+            if (countField != null) {
+                written.put(countField, qty);
+                patch.put(countField, qty);
             }
+            if (qtyChanged) r.setQuantity(qty);
             if (notBlank(strain)) { written.put("animal_strain_name", strain); patch.put("animal_strain_name", strain); }
             if (notBlank(supplier)) { written.put("animal_come_from", supplier); patch.put("animal_come_from", supplier); }
             for (Map.Entry<String, Object> e : specNodeFields.entrySet()) {

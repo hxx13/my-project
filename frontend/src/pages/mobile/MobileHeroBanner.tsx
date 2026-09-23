@@ -13,8 +13,6 @@ interface HeroBannerProps {
   wsConnected?: boolean;
   /** true = 通用模式（JWT 登录），false = 直链模式（token 直达） */
   jwtMode?: boolean;
-  currentEmail?: string;
-  currentSendKey?: boolean;
 }
 
 function buildLoginUrl() {
@@ -26,8 +24,6 @@ export default function HeroBanner({
   expiresAt,
   wsConnected = false,
   jwtMode = true,
-  currentEmail = "",
-  currentSendKey = false,
 }: HeroBannerProps) {
   const urls = pickLoginHeroUrls(branding, "light");
   const enabled = branding?.heroCarouselEnabled !== false && urls.length > 0;

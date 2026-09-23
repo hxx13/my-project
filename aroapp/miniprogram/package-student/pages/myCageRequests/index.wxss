@@ -1,0 +1,116 @@
+/* 我的申请（整页）
+   令牌与笼架页同一套：页面底浅灰 / 白卡 + 1rpx 描边 / 单一蓝主色。
+   按钮一律实底、小圆角（不用 999rpx 胶囊），与用户口径一致。 */
+
+page {
+  background: var(--bg, #f5f6f7);
+}
+
+.mr-page {
+  min-height: 100vh;
+  padding: 20rpx 24rpx calc(32rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+/* ── 四个分类 tab ── */
+.mr-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.mr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 22rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+.mr-tab--on {
+  color: #fff;
+  font-weight: 600;
+  background: var(--accent, #2563eb);
+}
+
+.mr-tab-label {
+  flex-shrink: 0;
+}
+
+.mr-tab-count {
+  font-size: 20rpx;
+  opacity: 0.85;
+}
+
+.mr-hint {
+  padding: 80rpx 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #94a3b8;
+}
+
+/* ── 申请卡片 ── */
+.mr-item {
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  margin-bottom: 12rpx;
+}
+
+.mr-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.mr-item-pos {
+  flex: 1;
+  min-width: 0;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.mr-item-status {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+.mr-sign {
+  margin-top: 12rpx;
+}
+
+.mr-item-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.mr-item-sub {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.mr-item-reject {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #b91c1c;
+}
+
+/* 次要动作走文字链，不做实心按钮（在卡里会显得巨大又抢眼） */
+.mr-link {
+  flex: none;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: var(--accent, #2563eb);
+}

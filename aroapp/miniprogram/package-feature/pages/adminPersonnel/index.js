@@ -8,11 +8,14 @@ const ROLE_LABELS = ['学生', '普通员工', '高级员工', '管理员', '超
 /** 新建员工账号可选角色（后端禁止直接创建 MEMBER） */
 const STAFF_ROLE_CODES = ['STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN'];
 const STAFF_ROLE_LABELS = ['普通员工', '高级员工', '管理员', '超级管理员'];
-/** 员工视窗内修改角色：含学生，权限与视窗分类解耦 */
-const STAFF_EDIT_ROLE_CODES = ['MEMBER', ...STAFF_ROLE_CODES];
-const STAFF_EDIT_ROLE_LABELS = ['学生', ...STAFF_ROLE_LABELS];
 const BUILTIN_SUPER_ID = 'SYS_SUPER_ROOT';
 const PAGE_SIZE = 20;
+/** 通知绑定三渠道：本地字段名 / 弹窗标题 / 提交体键 / 接口路径  一一对应 */
+const BIND_KINDS = {
+  email: { field: 'contactEmail', bodyKey: 'email', path: 'contact-email', title: '联系邮箱', placeholder: '请输入邮箱地址', empty: '未绑定' },
+  sendkey: { field: 'sendKey', bodyKey: 'sendKey', path: 'send-key', title: '微信通知（Server酱）SendKey', placeholder: '请输入 SendKey', empty: '未绑定' },
+  wxpusher: { field: 'wxPusherUid', bodyKey: 'wxPusherUid', path: 'wx-pusher-uid', title: 'WxPusher UID', placeholder: '请输入 WxPusher UID', empty: '未绑定' },
+};
 
 function pickRow(r) {
   if (!r || typeof r !== 'object') return {};
@@ -34,7 +37,48 @@ function pickRow(r) {
     contactEmail: r.contactEmail != null ? String(r.contactEmail) : (r.contact_email != null ? String(r.contact_email) : ''),
     sendKey: r.sendKey != null ? String(r.sendKey) : (r.send_key != null ? String(r.send_key) : ''),
     wxPusherUid: r.wxPusherUid != null ? String(r.wxPusherUid) : (r.wx_pusher_uid != null ? String(r.wx_pusher_uid) : ''),
+    // 详情要用、列表不显示的字段：软删标记决定危险操作是「移入回收站」还是「恢复/彻底删除」，
+    // 校内标记决定「组织与资料」那一格。pickRow 是白名单，漏了这两个 _patchDetail 回填后会丢。
+    deletedAt: r.deletedAt != null ? r.deletedAt : (r.deleted_at != null ? r.deleted_at : null),
+    isSchool: r.isSchool != null ? r.isSchool : (r.is_school != null ? r.is_school : null),
+    head: r.head != null ? String(r.head) : '',
   };
+}
+
+/** 编辑字段名 → 行对象上的驼峰键（job_number -> jobNumber） */
+function camelField(key) {
+  return String(key || '').replace(/_([a-z])/g, (m, c) => c.toUpperCase());
+}
+
+/**
+ * 头像地址 → 小程序能加载的绝对地址。
+ * 不走 ARO 代理：同步时应把 ARO 头像落成本地文件、head 直接存本地地址，
+ * 这里只负责把相对地址拼成绝对地址。
+ */
+function resolveHeadUrl(raw) {
+  const u = String(raw == null ? '' : raw).trim();
+  if (!u) return '';
+  if (u.startsWith('data:')) return u;
+  if (/^https?:\/\//i.test(u)) return u;
+  if (u.startsWith('cloud://')) return '';
+  return absUrl(u) || u;
+}
+
+/** 优先按 /api 拼，再退回按 upload 静态目录拼；拼不出绝对地址就返回空串 */
+function absUrl(path) {
+  try {
+    if (typeof springAuth.toAbsoluteApiUrl === 'function') {
+      const a = springAuth.toAbsoluteApiUrl(path);
+      if (a && /^https?:\/\//i.test(a)) return a;
+    }
+  } catch (e) { /* 继续尝试 */ }
+  try {
+    if (typeof springAuth.toAbsoluteMediaUrl === 'function') {
+      const b = springAuth.toAbsoluteMediaUrl(path);
+      if (b && /^https?:\/\//i.test(b)) return b;
+    }
+  } catch (e) { /* 放弃 */ }
+  return '';
 }
 
 function shortenDisplay(raw, maxLen) {
@@ -92,67 +136,92 @@ Page({
     loading: false,
     loadingMore: false,
     hasMore: true,
-    rolePickerLabels: ROLE_LABELS,
+    /** 回收站视图：列表只出已软删记录，「恢复 / 彻底删除」才有点得到的入口 */
+    trashOnly: false,
+    roleLabels: ROLE_LABELS,
+    roleIdxMap: { MEMBER: 0, STAFF: 1, SENIOR: 2, ADMIN: 3, SUPER_ADMIN: 4, PLATFORM_OWNER: 5 },
     staffRolePickerLabels: STAFF_ROLE_LABELS,
-    staffEditRolePickerLabels: STAFF_EDIT_ROLE_LABELS,
     builtinSuperId: BUILTIN_SUPER_ID,
     myUserId: '',
-    showDetailPopup: false,
-    detailTitle: '',
-    detailLines: [],
+
+    // ── 详情 sheet ──
+    showDetail: false,
+    detail: null,
+    staffPwd: { visible: false, value: '', loading: false },
+    studentPwd: { visible: false, value: '', loading: false },
+    sig: { loading: false, hasSignature: false, imageData: '', createdAt: '' },
+    identityTags: [],
+    identityPicked: [],
+    /** 身份标签的渲染态 [{id,label,on}]：WXML 里调不了 indexOf，选中与否必须预先算好 */
+    identityRows: [],
+    detailTags: [],
+    showIdentitySheet: false,
+    identityPickCount: 0,
+    aroSyncing: false,
+
+    // ── 单字段编辑（姓名 / 工号 / 类型） ──
+    showFieldPopup: false,
+    fieldKey: '',
+    fieldLabel: '',
+    fieldValue: '',
+    fieldSubmitting: false,
+
+    // ── 通知绑定（邮箱 / Server酱 / WxPusher 共用一个输入弹窗） ──
+    showBindPopup: false,
+    bindKind: '',
+    bindTitle: '',
+    bindPlaceholder: '',
+    bindValue: '',
+    bindSubmitting: false,
+
+    // ── 房间授权 sheet ──
+    showRoomSheet: false,
+    roomRows: [],
+    roomLoading: false,
+    roomSaving: false,
+
+    // ── 通用搜索式选择器（筛选四项 / 部门 / 课题组 / 并入档案共用） ──
+    pickOpen: false,
+    pickTitle: '',
+    pickKeyword: '',
+    pickRows: [],
+    pickPickedKey: '',
+    pickEmptyHint: '没有匹配的项',
+
+    // ── 删除账号 ──
+    showDeleteSheet: false,
+    deleteTargetId: '',
+    deleteTargetUsername: '',
+    deleteConfirmInput: '',
+    deleteSubmitting: false,
+
+    // ── 新建账号 ──
     showCreateSheet: false,
     createUsername: '',
     createPassword: '',
     createNickname: '',
     createRoleIdx: 0,
     createSubmitting: false,
-    showDeleteSheet: false,
-    deleteTargetId: '',
-    deleteTargetUsername: '',
-    deleteConfirmInput: '',
-    deleteSubmitting: false,
+
+    // ── 修改展示昵称 ──
     showNickPopup: false,
     nickEditId: '',
     nickEditValue: '',
     nickSubmitting: false,
-    // ARO 绑定映射（SUPER_ADMIN 可见，key = userId, value = binding object）
-    aroBindings: {},
-    // 详情弹窗密码明文加载
-    detailPwdLoading: false,
-    detailPwdPlaintext: null,
-    detailRowId: '',
-    // 弹窗状态
-    showEmailPopup: false,
-    emailEditId: '',
-    emailEditValue: '',
-    emailSubmitting: false,
-    // 筛选面板
+
+    // ── 筛选（选中即生效，没有草稿态） ──
     showFilterSheet: false,
-    groupOptions: [],
-    groupNames: ['全部'],
-    identityTagOptions: [],
-    identityTagNames: ['全部'],
-    roomOptions: [],
-    roomNames: ['全部'],
-    roleOptions: ['MEMBER', 'STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN', 'PLATFORM_OWNER'],
-    roleLabels: ['学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'],
-    roleNames: ['全部', '学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'],
-    roleIdxMap: { MEMBER: 0, STAFF: 1, SENIOR: 2, ADMIN: 3, SUPER_ADMIN: 4, PLATFORM_OWNER: 5 },
+    deptDict: [],
+    groupDict: [],
+    identityDict: [],
+    roomDict: [],
     filterGroupId: 0,
-    filterGroupIdx: 0,
+    filterGroupName: '',
     filterIdentityTagId: 0,
-    filterIdentityIdx: 0,
+    filterIdentityTagName: '',
     filterRoomName: '',
-    filterRoomIdx: 0,
     filterRole: '',
-    filterRoleIdx: 0,
-    // 筛选项选择弹窗：4 个筛选项共用一张（课题组/房间都是长列表，原生 picker 滚不动）
-    apFilterPickerOpen: false,
-    apFilterPickerField: '',   // 'group' | 'identity' | 'room' | 'role'
-    apFilterPickerTitle: '',
-    apFilterPickerKeyword: '',
-    apFilterPickerRows: [],    // [{ idx, label }]，已按关键字过滤
-    apFilterPickerPicked: 0,
+    filterRoleName: '',
   },
 
   onShow() {
@@ -167,9 +236,36 @@ Page({
     if (myUserId !== this.data.myUserId) this.setData({ myUserId });
     // 加载 ARO 绑定映射
     if (hasMinRole(role, 'SUPER_ADMIN')) this.loadAroBindings();
+    // 身份标识映射：卡面要展示它，列表渲染前先备好
+    if (!this._identityMapLoaded) this.loadIdentityMap();
     const sceneKey = [role || '', this.data.activeTab || '', (this.data.keyword || '').trim()].join('|');
     if (!shouldRefreshOnShow(this, { sceneKey, ttlMs: 15000 })) return;
     this.loadData({ reset: true, showLoading: true });
+  },
+
+  /**
+   * 全量身份归属（GET /api/person-identity 不带 userIds = 有身份的全部人）。
+   * key 是 personnel.id —— person_identity.user_id 的口径就是它。
+   */
+  loadIdentityMap() {
+    this._identityMapLoaded = true;
+    springAuth
+      .springRequest({ url: '/api/person-identity', method: 'GET', data: {} })
+      .then((res) => {
+        const parsed = parseResponse(res);
+        if (!parsed.ok) return;
+        const map = {};
+        (parsed.body.data || []).forEach((p) => {
+          if (!p || !p.userId) return;
+          const labels = (p.tags || []).map((t) => t.label).filter(Boolean);
+          if (labels.length) map[String(p.userId)] = labels;
+        });
+        this._identityMap = map;
+        // 映射到得比列表晚时，重铺一遍卡面标签
+        const rows = (this.data.rows || []).map((r) => this.decorateRow(pickRow(r)));
+        if (rows.length) this.setData({ rows });
+      })
+      .catch(() => {});
   },
 
   async loadAroBindings() {
@@ -209,75 +305,726 @@ Page({
       roleLabel,
       displayName,
       _avatarLetter: letter,
-      _pwdVisible: false,
+      // 身份标识（person_identity_tag）：卡面展示的就是它，不再是角色名
+      tags: (this._identityMap || {})[String(base.id)] || [],
+      headUrl: resolveHeadUrl(base.head),
       roomsText: rooms.join(' / '),
       emailText: base.contactEmail || '',
       sendKeyText: base.sendKey ? '已绑定' : '未绑定',
     };
   },
 
+  // ══════════════════════ 详情 ══════════════════════
+
   onOpenDetail(e) {
     const id = e.currentTarget.dataset.id;
     const row = (this.data.rows || []).find((x) => x.id === id);
     if (!row) return;
-    const lines = [];
-    lines.push({ k: '姓名', v: row.displayName || '—' });
-    lines.push({ k: '账号情况', v: row.hasAccount ? '有系统账号' : '无系统账号' });
-    if (row.hasAccount) {
-      lines.push({ k: '教职工ID', v: row.staffId || '—' });
-      lines.push({ k: '账号名', v: row.staffUsername || row.staffId || '—' });
-      lines.push({ k: '状态', v: row.status === 0 ? '禁用' : '启用' });
-    }
-    if (row.aroUserId) {
-      lines.push({ k: '认证ID', v: row.aroUserId || '—' });
-    }
-    lines.push({ k: '部门', v: row.departmentName || '—' });
-    lines.push({ k: '课题组', v: row.projectGroupName || '—' });
-    lines.push({ k: '工号', v: row.jobNumber || '—' });
-    lines.push({ k: '手机', v: row.mobilePhone || '—' });
-    lines.push({ k: '房间授权', v: row.roomsText || '—' });
-    lines.push({ k: '角色', v: row.roleLabel || '—' });
-    lines.push({ k: '邮箱', v: row.contactEmail || '未绑定' });
-    lines.push({ k: '微信通知', v: row.sendKeyText || '未绑定' });
-    if (row.hasAccount && row.staffId !== BUILTIN_SUPER_ID) {
-      lines.push({ k: '密码', v: '加载中…' });
-    }
     this.setData({
-      showDetailPopup: true,
-      detailTitle: row.displayName || '人员详情',
-      detailLines: lines,
-      detailRowId: row.staffId || row.aroUserId || '',
-      detailPwdLoading: row.hasAccount && row.staffId !== BUILTIN_SUPER_ID,
-      detailPwdPlaintext: null,
+      showDetail: true,
+      detail: row,
+      staffPwd: { visible: false, value: '', loading: false },
+      studentPwd: { visible: false, value: '', loading: false },
+      sig: { loading: true, hasSignature: false, imageData: '', createdAt: '' },
+      identityPicked: [],
+      detailTags: [],
+      aroSyncing: false,
     });
-    if (row.hasAccount && row.staffId !== BUILTIN_SUPER_ID) {
-      this.loadDetailPassword(row.staffId);
+    if (!this._dictLoaded) this.loadDicts();
+    this._paintIdentityRows();
+    this.loadIdentity(row);
+    this.loadSignature(row);
+  },
+
+  onCloseDetail() {
+    this.setData({ showDetail: false, detail: null });
+  },
+
+  /**
+   * 档案改完只回填当前行，不整表重载（post-save-no-full-refresh）。
+   * 统一过 pickRow→decorateRow，保证 roleLabel / displayName / roomsText 这些派生字段跟着重算。
+   */
+  _patchDetail(patch) {
+    const cur = this.data.detail;
+    if (!cur) return;
+    const merged = this.decorateRow(Object.assign(pickRow(cur), patch));
+    const rows = (this.data.rows || []).map((r) => (r.id === cur.id ? merged : r));
+    this.setData({ rows, detail: merged });
+  },
+
+  loadIdentity(row) {
+    springAuth
+      .springRequest({ url: `/api/person-identity/${encodeURIComponent(row.id)}`, method: 'GET', data: {} })
+      .then((res) => {
+        const parsed = parseResponse(res);
+        const d = parsed.ok && parsed.body ? parsed.body.data : null;
+        const tags = d && Array.isArray(d.tags) ? d.tags : [];
+        this.setData({
+          identityPicked: tags.map((t) => Number(t.id)).filter((n) => n > 0),
+          detailTags: tags.map((t) => t.label).filter(Boolean),
+        });
+        this._paintIdentityRows();
+      })
+      .catch(() => {});
+  },
+
+  /** 弹窗里的勾选态走草稿（this._idPicked），确定才落库 */
+  _paintIdentityRows() {
+    const picked = this._idPicked || {};
+    this.setData({
+      identityRows: (this.data.identityDict || []).map((t) => ({
+        id: t.id,
+        label: t.label,
+        selected: !!picked[Number(t.id)],
+      })),
+    });
+  },
+
+  loadSignature(row) {
+    springAuth
+      .springRequest({ url: `/api/personnel/${row.id}/signature`, method: 'GET', data: {} })
+      .then((res) => {
+        const parsed = parseResponse(res);
+        const d = (parsed.ok && parsed.body && parsed.body.data) || {};
+        this.setData({
+          sig: {
+            loading: false,
+            hasSignature: !!d.hasSignature,
+            imageData: d.imageData || '',
+            createdAt: d.createdAt || '',
+          },
+        });
+      })
+      .catch(() => this.setData({ sig: { loading: false, hasSignature: false, imageData: '', createdAt: '' } }));
+  },
+
+  /** 从 ARO 重新拉这一个人（记录级动作，不是整表同步） */
+  async onDetailSync() {
+    const row = this.data.detail;
+    if (!row || this.data.aroSyncing) return;
+    this.setData({ aroSyncing: true });
+    wx.showLoading({ title: '同步中…', mask: true });
+    try {
+      const res = await springAuth.springRequest({ url: `/api/personnel/${row.id}/sync`, method: 'POST', data: {} });
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      const d = parsed.body.data || {};
+      wx.showToast({ title: `学生 ${d.aroMatched || 0} / 教职工 ${d.staffMatched || 0}`, icon: 'none', duration: 2200 });
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '同步失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+      this.setData({ aroSyncing: false });
     }
   },
 
-  async loadDetailPassword(id) {
+  // ── 账号密码明文 ──
+
+  async _togglePwd(accountId, key) {
+    if (!accountId) return;
+    const cur = this.data[key];
+    if (cur.visible) {
+      this.setData({ [key]: { visible: false, value: cur.value, loading: false } });
+      return;
+    }
+    if (cur.value) {
+      this.setData({ [key]: { visible: true, value: cur.value, loading: false } });
+      return;
+    }
+    this.setData({ [key]: { visible: false, value: '', loading: true } });
     try {
       const res = await springAuth.springRequest({
-        url: `/api/admin/users/${encodeURIComponent(id)}/view-password`,
+        url: `/api/admin/users/${encodeURIComponent(accountId)}/view-password`,
         method: 'GET',
         data: {},
       });
       const parsed = parseResponse(res);
-      const plaintext = parsed.ok && parsed.body && parsed.body.data ? (parsed.body.data.password || '（暂不可查看）') : '（暂不可查看）';
-      const lines = (this.data.detailLines || []).map((l) =>
-        l.k === '密码' ? { ...l, v: plaintext } : l
-      );
-      this.setData({ detailLines: lines, detailPwdLoading: false, detailPwdPlaintext: plaintext });
+      const plain = parsed.ok && parsed.body && parsed.body.data ? parsed.body.data.password || '（暂不可查看）' : '（暂不可查看）';
+      this.setData({ [key]: { visible: true, value: plain, loading: false } });
     } catch (e) {
-      const lines = (this.data.detailLines || []).map((l) =>
-        l.k === '密码' ? { ...l, v: '******' } : l
-      );
-      this.setData({ detailLines: lines, detailPwdLoading: false, detailPwdPlaintext: '******' });
+      this.setData({ [key]: { visible: true, value: '（暂不可查看）', loading: false } });
     }
   },
 
-  onCloseDetailPopup() {
-    this.setData({ showDetailPopup: false, detailTitle: '', detailLines: [] });
+  onToggleStaffPwd(e) {
+    this._togglePwd(e.currentTarget.dataset.id, 'staffPwd');
+  },
+
+  onToggleStudentPwd(e) {
+    this._togglePwd(e.currentTarget.dataset.id, 'studentPwd');
+  },
+
+  // ── 账号层动作 ──
+
+  onDetailResetAccount(e) {
+    const id = e.currentTarget.dataset.id;
+    const detail = this.data.detail;
+    if (!id || !detail) return;
+    wx.showModal({
+      title: '重置登录账号',
+      content: `将修改「${detail.displayName || id}」的登录账号。人员库学号不变。`,
+      editable: true,
+      placeholderText: detail.staffUsername || '新登录账号',
+      success: async (r) => {
+        if (!r.confirm || this._adminMutating) return;
+        const newUsername = (r.content || '').trim();
+        if (!newUsername) {
+          wx.showToast({ title: '账号不能为空', icon: 'none' });
+          return;
+        }
+        this._adminMutating = true;
+        wx.showLoading({ title: '处理中…', mask: true });
+        try {
+          const res = await springAuth.springRequest({
+            url: `/api/admin/personnel/${encodeURIComponent(id)}/reset-account`,
+            method: 'POST',
+            data: { newUsername },
+          });
+          const parsed = parseResponse(res);
+          if (!parsed.ok) throw new Error(parsed.message);
+          wx.showToast({ title: '账号已重置', icon: 'success' });
+          this._patchDetail({ staffUsername: newUsername, studentUsername: newUsername });
+        } catch (err) {
+          wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
+        } finally {
+          wx.hideLoading();
+          this._adminMutating = false;
+        }
+      },
+    });
+  },
+
+  onDetailResetPin(e) {
+    this.onResetPin(e);
+  },
+
+  onDetailResetOpenId(e) {
+    this.onResetOpenId(e);
+  },
+
+  onDetailToggleStatus(e) {
+    this.onStatusChipTap(e);
+  },
+
+  onDetailDeleteAccount(e) {
+    this.onDeleteStaffStep1(e);
+  },
+
+  // ── 单字段编辑（姓名 / 工号 / 类型） ──
+
+  onOpenFieldPopup(e) {
+    const detail = this.data.detail;
+    if (!detail) return;
+    const key = e.currentTarget.dataset.field;
+    const labels = { name: '姓名', job_number: '工号', user_type_names: '类型' };
+    const values = { name: detail.name || '', job_number: detail.jobNumber || '', user_type_names: detail.userTypeNames || '' };
+    this.setData({
+      showFieldPopup: true,
+      fieldKey: key,
+      fieldLabel: labels[key] || '字段',
+      fieldValue: values[key] || '',
+      fieldSubmitting: false,
+    });
+  },
+
+  onCloseFieldPopup() {
+    if (this.data.fieldSubmitting) return;
+    this.setData({ showFieldPopup: false, fieldKey: '', fieldLabel: '', fieldValue: '' });
+  },
+
+  onFieldInput(e) {
+    this.setData({ fieldValue: e.detail && e.detail.value != null ? String(e.detail.value) : '' });
+  },
+
+  async onSubmitField() {
+    const detail = this.data.detail;
+    const key = this.data.fieldKey;
+    const value = (this.data.fieldValue || '').trim();
+    if (!detail || !key || this.data.fieldSubmitting) return;
+    if (!value) {
+      wx.showToast({ title: '不能为空', icon: 'none' });
+      return;
+    }
+    this.setData({ fieldSubmitting: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const isName = key === 'name';
+      const res = await springAuth.springRequest({
+        url: isName ? `/api/personnel/${detail.id}/name` : `/api/personnel/${detail.id}/field`,
+        method: 'PUT',
+        data: isName ? { name: value } : { field: key, value },
+      });
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      wx.showToast({ title: '已保存', icon: 'success' });
+      this._patchDetail(isName ? { name: value } : { [camelField(key)]: value });
+      this.setData({ showFieldPopup: false, fieldKey: '', fieldLabel: '', fieldValue: '', fieldSubmitting: false });
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '保存失败', icon: 'none' });
+      this.setData({ fieldSubmitting: false });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  // ── 组织信息：部门 / 课题组（搜索式选择） ──
+
+  onPickOrg(e) {
+    const kind = e.currentTarget.dataset.kind;
+    const detail = this.data.detail;
+    if (!detail || !kind) return;
+    if (kind === 'department') {
+      const options = [{ key: '', label: '未归属' }].concat(
+        (this.data.deptDict || []).map((d) => ({ key: String(d.id), label: d.name }))
+      );
+      this.openPicker({
+        title: '选择部门',
+        options,
+        picked: this._orgRefId(detail, 'department'),
+        onPick: (it) => this._saveOrg('department', it),
+      });
+    } else {
+      const options = [{ key: '', label: '未归属' }].concat(
+        (this.data.groupDict || []).map((g) => ({ key: String(g.id), label: g.name, sub: g.departmentName || '' }))
+      );
+      this.openPicker({
+        title: '选择课题组',
+        options,
+        picked: this._orgRefId(detail, 'group'),
+        onPick: (it) => this._saveOrg('group', it),
+      });
+    }
+  },
+
+  /** 当前组织在字典里的 id；字典还没加载出来时回退空串，不阻塞打开选择器 */
+  _orgRefId(detail, kind) {
+    const dict = kind === 'department' ? this.data.deptDict : this.data.groupDict;
+    const name = kind === 'department' ? detail.departmentName : detail.projectGroupName;
+    const hit = (dict || []).find((d) => d.name === name);
+    return hit ? String(hit.id) : '';
+  },
+
+  async _saveOrg(kind, option) {
+    const detail = this.data.detail;
+    if (!detail) return;
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const res = await springAuth.springRequest({
+        url: `/api/personnel/${detail.id}/org`,
+        method: 'PUT',
+        data: { kind, refId: option.key ? Number(option.key) : null, name: option.key ? option.label : null },
+      });
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      wx.showToast({ title: '已保存', icon: 'success' });
+      this._patchDetail(kind === 'department' ? { departmentName: option.key ? option.label : '' } : { projectGroupName: option.key ? option.label : '' });
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '保存失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  // ── 通知绑定（邮箱 / Server酱 / WxPusher） ──
+
+  onOpenBind(e) {
+    const kind = e.currentTarget.dataset.kind;
+    const cfg = BIND_KINDS[kind];
+    const detail = this.data.detail;
+    if (!cfg || !detail) return;
+    this.setData({
+      showBindPopup: true,
+      bindKind: kind,
+      bindTitle: cfg.title,
+      bindPlaceholder: cfg.placeholder,
+      bindValue: detail[cfg.field] || '',
+      bindSubmitting: false,
+    });
+  },
+
+  onCloseBindPopup() {
+    if (this.data.bindSubmitting) return;
+    this.setData({ showBindPopup: false, bindKind: '', bindValue: '' });
+  },
+
+  onBindInput(e) {
+    this.setData({ bindValue: e.detail && e.detail.value != null ? String(e.detail.value) : '' });
+  },
+
+  /** 清空 = 解绑（后端把空串当解绑） */
+  async onSubmitBind() {
+    const cfg = BIND_KINDS[this.data.bindKind];
+    const detail = this.data.detail;
+    const accountId = detail ? detail.staffId || detail.aroUserId : '';
+    if (!cfg || !detail || !accountId || this.data.bindSubmitting) return;
+    const value = (this.data.bindValue || '').trim();
+    this.setData({ bindSubmitting: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const body = {};
+      body[cfg.bodyKey] = value;
+      const res = await springAuth.springRequest({
+        url: `/api/admin/personnel/${encodeURIComponent(accountId)}/${cfg.path}`,
+        method: 'PUT',
+        data: body,
+      });
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      wx.showToast({ title: value ? '已绑定' : '已解绑', icon: 'success' });
+      this._patchDetail({ [cfg.field]: value });
+      this.setData({ showBindPopup: false, bindKind: '', bindValue: '', bindSubmitting: false });
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '保存失败', icon: 'none' });
+      this.setData({ bindSubmitting: false });
+    } finally {
+      wx.hideLoading();
+    }
+  },
+
+  // ── 身份标识：勾选弹窗，确定才落库 ──
+
+  onOpenIdentitySheet() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    const picked = {};
+    (this.data.identityPicked || []).forEach((id) => {
+      picked[Number(id)] = true;
+    });
+    this._idPicked = picked;
+    if (!this._dictLoaded) this.loadDicts();
+    this.setData({ showIdentitySheet: true, identityPickCount: Object.keys(picked).length });
+    this._paintIdentityRows();
+  },
+
+  onCloseIdentitySheet() {
+    if (this._identitySaving) return;
+    this.setData({ showIdentitySheet: false });
+  },
+
+  onToggleIdentityPick(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
+    const row = (this.data.identityRows || [])[idx];
+    if (!row) return;
+    const on = !row.selected;
+    if (on) this._idPicked[row.id] = true;
+    else delete this._idPicked[row.id];
+    this.setData({
+      [`identityRows[${idx}].selected`]: on,
+      identityPickCount: Object.keys(this._idPicked || {}).length,
+    });
+  },
+
+  async onConfirmIdentity() {
+    const detail = this.data.detail;
+    if (!detail || this._identitySaving) return;
+    const tagIds = Object.keys(this._idPicked || {})
+      .map(Number)
+      .filter((n) => n > 0);
+    this._identitySaving = true;
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const res = await springAuth.springRequest({
+        url: `/api/person-identity/${encodeURIComponent(detail.id)}`,
+        method: 'PUT',
+        data: { tagIds },
+      });
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      const labels = (this.data.identityRows || [])
+        .filter((r) => this._idPicked[r.id])
+        .map((r) => r.label);
+      wx.showToast({ title: '已保存', icon: 'success' });
+      this.setData({ identityPicked: tagIds, detailTags: labels, showIdentitySheet: false });
+      // 卡面标签也跟着刷新
+      this._identityMapLoaded = false;
+      this.loadIdentityMap();
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '保存失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+      this._identitySaving = false;
+    }
+  },
+
+  // ── 电子签名 ──
+
+  onResetSignature() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    wx.showModal({
+      title: '重置电子签名',
+      content: '重置后该签名会被清空，本人可以重新签。确定重置？',
+      success: async (r) => {
+        if (!r.confirm || this._adminMutating) return;
+        this._adminMutating = true;
+        wx.showLoading({ title: '处理中…', mask: true });
+        try {
+          const res = await springAuth.springRequest({
+            url: `/api/personnel/${detail.id}/signature`,
+            method: 'DELETE',
+            data: {},
+          });
+          const parsed = parseResponse(res);
+          if (!parsed.ok) throw new Error(parsed.message);
+          wx.showToast({ title: '已重置签名', icon: 'success' });
+          this.setData({ sig: { loading: false, hasSignature: false, imageData: '', createdAt: '' } });
+        } catch (err) {
+          wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '重置失败', icon: 'none' });
+        } finally {
+          wx.hideLoading();
+          this._adminMutating = false;
+        }
+      },
+    });
+  },
+
+  // ── 房间授权 ──
+
+  async onOpenRoomSheet() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    this.setData({ showRoomSheet: true, roomSaving: false });
+    if (!this._roomCatalog) {
+      this.setData({ roomLoading: true });
+      try {
+        const res = await springAuth.springRequest({
+          url: '/api/v1/room-mapping/rooms',
+          method: 'GET',
+          data: { page: 1, pageSize: 10000, includeChannels: false },
+        });
+        const parsed = parseResponse(res);
+        const list = parsed.ok && parsed.body && parsed.body.data && Array.isArray(parsed.body.data.list) ? parsed.body.data.list : [];
+        this._roomCatalog = list.slice().sort((a, b) => {
+          const k = (x) => `${x.regionName || ''}|${x.floorName || ''}|${x.roomName || ''}`;
+          return k(a).localeCompare(k(b), 'zh-Hans-CN');
+        });
+      } catch (e) {
+        this._roomCatalog = [];
+      }
+      this.setData({ roomLoading: false });
+    }
+    this._roomPicked = {};
+    try {
+      const res = await springAuth.springRequest({
+        url: `/api/personnel/${detail.id}/room-authorization`,
+        method: 'GET',
+        data: {},
+      });
+      const parsed = parseResponse(res);
+      const ids = parsed.ok && parsed.body && parsed.body.data ? parsed.body.data.roomIds || [] : [];
+      ids.forEach((rid) => {
+        this._roomPicked[String(rid)] = true;
+      });
+    } catch (e) {
+      /* 读不到就按「无授权」起步 */
+    }
+    this._paintRoomRows();
+  },
+
+  /** 铺平成一行一房间 + 区域/楼层小标题标记，勾选走路径 setData，不重铺整棵树 */
+  _paintRoomRows() {
+    const rows = [];
+    let lastRegion = null;
+    let lastFloor = null;
+    (this._roomCatalog || []).forEach((r) => {
+      const region = r.regionName || '其他';
+      const floor = r.floorName || '其他';
+      const showRegion = region !== lastRegion;
+      const showFloor = showRegion || floor !== lastFloor;
+      lastRegion = region;
+      lastFloor = floor;
+      rows.push({
+        region,
+        floor,
+        showRegion,
+        showFloor,
+        roomId: r.roomId,
+        roomName: r.roomName || r.roomId,
+        on: !!this._roomPicked[String(r.roomId)],
+      });
+    });
+    this.setData({ roomRows: rows });
+  },
+
+  onCloseRoomSheet() {
+    if (this.data.roomSaving) return;
+    this.setData({ showRoomSheet: false, roomRows: [] });
+  },
+
+  onToggleRoom(e) {
+    const idx = Number(e.currentTarget.dataset.idx);
+    const row = (this.data.roomRows || [])[idx];
+    if (!row) return;
+    const on = !row.on;
+    if (on) this._roomPicked[row.roomId] = true;
+    else delete this._roomPicked[row.roomId];
+    this.setData({ [`roomRows[${idx}].on`]: on });
+  },
+
+  async onSaveRooms() {
+    const detail = this.data.detail;
+    if (!detail || this.data.roomSaving) return;
+    this.setData({ roomSaving: true });
+    wx.showLoading({ title: '保存中…', mask: true });
+    try {
+      const res = await springAuth.springRequest({
+        url: `/api/personnel/${detail.id}/room-authorization`,
+        method: 'PUT',
+        data: { roomIds: Object.keys(this._roomPicked || {}) },
+      });
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      const names = (this._roomCatalog || [])
+        .filter((r) => this._roomPicked[String(r.roomId)])
+        .map((r) => r.roomName || r.roomId);
+      wx.showToast({ title: '房间授权已更新', icon: 'success' });
+      this._patchDetail({ allowedRoomsDisplayZh: names.join('、') });
+      this.setData({ showRoomSheet: false, roomRows: [] });
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '保存失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+      this.setData({ roomSaving: false });
+    }
+  },
+
+  // ── 危险操作 ──
+
+  /** 列表在「回收站」视图时同一张卡片的动作完全不同，切换后必须重拉 */
+  onToggleTrash() {
+    this.setData({ trashOnly: !this.data.trashOnly, page: 1, hasMore: true });
+    this.loadData({ reset: true, showLoading: true });
+  },
+
+  onMoveToTrash() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    wx.showModal({
+      title: '移入回收站',
+      content: '移入回收站？之后可以在回收站里恢复。',
+      success: async (r) => {
+        if (!r.confirm || this._adminMutating) return;
+        const ok = await this._runPersonnelAction(
+          () => springAuth.springRequest({ url: `/api/personnel/${detail.id}`, method: 'DELETE', data: {} }),
+          '已移入回收站'
+        );
+        // 人已经不在当前列表里了，详情留着会指向一行不存在的记录
+        if (ok) this.onCloseDetail();
+      },
+    });
+  },
+
+  onRestorePersonnel() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    void this._runPersonnelAction(
+      () => springAuth.springRequest({ url: `/api/personnel/${detail.id}/restore`, method: 'POST', data: {} }),
+      '已恢复到人员列表'
+    );
+  },
+
+  onPurgePersonnel() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    wx.showModal({
+      title: '彻底删除',
+      content:
+        '彻底删除不可恢复：会同时删掉他在 ARO 侧的人员记录与登录账号。\n' +
+        '注意：若这个人来自 ARO 同步，下次同步可能还会把他加回来（ARO 才是权威源）。确定继续？',
+      confirmText: '彻底删除',
+      confirmColor: '#b91c1c',
+      success: async (r) => {
+        if (!r.confirm || this._adminMutating) return;
+        const ok = await this._runPersonnelAction(
+          () => springAuth.springRequest({ url: `/api/personnel/${detail.id}/purge`, method: 'DELETE', data: {} }),
+          '已彻底删除'
+        );
+        if (ok) this.onCloseDetail();
+      },
+    });
+  },
+
+  /** 把另一个人员并入本档案：本档案存活、对方被删除，不可逆 */
+  onMergePerson() {
+    const detail = this.data.detail;
+    if (!detail) return;
+    this.openPicker({
+      title: '并入此档案 · 搜索人员',
+      mode: 'remote',
+      emptyHint: '输入姓名 / 工号搜索',
+      search: (kw) => this.searchPersonForMerge(kw),
+      onPick: (it) => this._confirmMerge(it),
+    });
+  },
+
+  searchPersonForMerge(keyword) {
+    const detail = this.data.detail;
+    return springAuth
+      .springRequest({ url: '/api/personnel', method: 'GET', data: { page: 1, pageSize: 20, keyword: keyword || '' } })
+      .then((res) => {
+        const parsed = parseResponse(res);
+        const list = parsed.ok && parsed.body && parsed.body.data && Array.isArray(parsed.body.data.list) ? parsed.body.data.list : [];
+        return list
+          .filter((r) => !detail || r.id !== detail.id)
+          .map((r) => ({
+            key: String(r.id),
+            label: r.name || r.staffUsername || r.aroUserId || '—',
+            sub: [r.departmentName, r.projectGroupName].filter(Boolean).join(' · '),
+          }));
+      })
+      .catch(() => []);
+  },
+
+  _confirmMerge(picked) {
+    const detail = this.data.detail;
+    const targetId = Number(picked && picked.key);
+    if (!detail || !Number.isFinite(targetId) || targetId === detail.id) return;
+    wx.showModal({
+      title: '确认并入',
+      content: `把「${picked.label}」并入本档案「${detail.displayName}」，「${picked.label}」的档案将被删除，此操作不可逆。确定继续？`,
+      confirmText: '确定并入',
+      confirmColor: '#b91c1c',
+      success: async (r) => {
+        if (!r.confirm || this._adminMutating) return;
+        const ok = await this._runPersonnelAction(
+          () =>
+            springAuth.springRequest({
+              url: '/api/personnel/merge',
+              method: 'POST',
+              data: { survivorId: detail.id, mergedId: targetId },
+            }),
+          '已合并'
+        );
+        if (ok) this.onCloseDetail();
+      },
+    });
+  },
+
+  /** 档案层动作统一收口：加锁 → 调用 → 提示 → 从列表移除当前行（分页数据以服务端为准） */
+  async _runPersonnelAction(request, successTitle) {
+    if (this._adminMutating) return false;
+    this._adminMutating = true;
+    wx.showLoading({ title: '处理中…', mask: true });
+    try {
+      const res = await request();
+      const parsed = parseResponse(res);
+      if (!parsed.ok) throw new Error(parsed.message);
+      wx.showToast({ title: successTitle, icon: 'success' });
+      const detail = this.data.detail;
+      if (detail) {
+        this.setData({
+          rows: (this.data.rows || []).filter((r) => r.id !== detail.id),
+          total: Math.max(0, (this.data.total || 0) - 1),
+        });
+      }
+      return true;
+    } catch (err) {
+      wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '操作失败', icon: 'none' });
+      return false;
+    } finally {
+      wx.hideLoading();
+      this._adminMutating = false;
+    }
   },
 
   onTabChange(e) {
@@ -500,10 +1247,12 @@ Page({
     const id = e.currentTarget.dataset.id;
     const row = (this.data.rows || []).find((x) => x.staffId === id || x.aroUserId === id);
     if (!row || row.staffId === BUILTIN_SUPER_ID) return;
-    const name = row.username || row.id;
+    // 登录名是账号名（staffUsername），不是 personnel 行 id —— 原先取 row.username 恒空，
+    // 导致下面「输登录名确认」那一步永远过不去
+    const accountName = row.staffUsername || row.staffId || '';
     wx.showModal({
       title: '删除账号',
-      content: `将永久删除「${name}」，不可恢复。是否继续？`,
+      content: `将永久删除「${accountName}」，不可恢复。是否继续？`,
       confirmText: '继续',
       confirmColor: '#b91c1c',
       success: (r) => {
@@ -518,7 +1267,7 @@ Page({
             this.setData({
               showDeleteSheet: true,
               deleteTargetId: id,
-              deleteTargetUsername: row.username ? String(row.username) : '',
+              deleteTargetUsername: accountName,
               deleteConfirmInput: '',
               deleteSubmitting: false,
             });
@@ -606,6 +1355,7 @@ Page({
       const kw = (this.data.keyword || '').trim();
       if (kw) reqData.keyword = kw;
       if (this.data.activeTab !== 'all') reqData.accountType = this.data.activeTab;
+      if (this.data.trashOnly) reqData.trashOnly = true;
       if (this.data.filterGroupId) reqData.groupId = this.data.filterGroupId;
       if (this.data.filterIdentityTagId) reqData.identityTagId = this.data.filterIdentityTagId;
       if (this.data.filterRoomName) reqData.roomName = this.data.filterRoomName;
@@ -645,43 +1395,6 @@ Page({
     }
   },
 
-  async onTogglePwd(e) {
-    const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
-    if (!row || row.staffId === BUILTIN_SUPER_ID) return;
-    // 已显示则隐藏
-    if (row._pwdVisible) {
-      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: false } : r));
-      this.setData({ rows });
-      return;
-    }
-    // 已有缓存的明文则直接显示
-    if (row._pwdPlaintext !== undefined) {
-      const rows = this.data.rows.map((r) => ((r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: true } : r));
-      this.setData({ rows });
-      return;
-    }
-    // 调 API 获取明文
-    wx.showLoading({ title: '加载中…', mask: true });
-    try {
-      const res = await springAuth.springRequest({
-        url: `/api/admin/users/${encodeURIComponent(id)}/view-password`,
-        method: 'GET',
-        data: {},
-      });
-      const parsed = parseResponse(res);
-      const plaintext = parsed.ok && parsed.body && parsed.body.data ? (parsed.body.data.password || '（暂不可查看）') : '（暂不可查看）';
-      const rows = this.data.rows.map((r) =>
-        (r.staffId === id || r.aroUserId === id) ? { ...r, _pwdVisible: true, _pwdPlaintext: plaintext, password: plaintext } : r
-      );
-      this.setData({ rows });
-    } catch (e) {
-      wx.showToast({ title: '获取失败', icon: 'none' });
-    } finally {
-      wx.hideLoading();
-    }
-  },
-
   async onRoleChange(e) {
     if (this._adminMutating) return;
     const id = e.currentTarget.dataset.id;
@@ -706,6 +1419,9 @@ Page({
         return this.decorateRow({ ...pickRow(r), ...merged });
       });
       this.setData({ rows });
+      // 详情 sheet 里的角色单元格是另一份引用，不跟着回填就会停在旧值
+      const d = this.data.detail;
+      if (d && (d.staffId === id || d.aroUserId === id)) this._patchDetail({ role });
     } catch (err) {
       wx.showToast({
         title: err && err.message ? String(err.message).slice(0, 18) : '更新失败',
@@ -744,6 +1460,8 @@ Page({
             (it.staffId === id || it.aroUserId === id) ? { ...it, status: enabled ? 1 : 0 } : it
           );
           this.setData({ rows });
+          const d = this.data.detail;
+          if (d && (d.staffId === id || d.aroUserId === id)) this._patchDetail({ status: enabled ? 1 : 0 });
         } catch (err) {
           wx.showToast({
             title: err && err.message ? String(err.message).slice(0, 18) : '失败',
@@ -790,8 +1508,16 @@ Page({
     });
   },
 
+  /**
+   * 重置登录密码。账号 id 前缀决定打哪条通道：
+   * STAFF_* / SYS_SUPER_ROOT 是 sys_user 账号 → /api/admin/users/{id}/reset-password；
+   * 其余（ARO 人员库学号）→ /api/admin/personnel/{id}/reset-password。
+   * 原先走死一条 users 通道，学生账号点「改密」必失败。
+   */
   onResetPassword(e) {
     const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    const isStaffAccount = String(id).startsWith('STAFF_') || String(id).toUpperCase().startsWith('USR_') || String(id) === BUILTIN_SUPER_ID;
     wx.showModal({
       title: '确认重置密码',
       content: '将重置为默认密码，用户需到个人中心完成改密。',
@@ -801,7 +1527,9 @@ Page({
         wx.showLoading({ title: '处理中…', mask: true });
         try {
           const res = await springAuth.springRequest({
-            url: `/api/admin/users/${encodeURIComponent(id)}/reset-password`,
+            url: isStaffAccount
+              ? `/api/admin/users/${encodeURIComponent(id)}/reset-password`
+              : `/api/admin/personnel/${encodeURIComponent(id)}/reset-password`,
             method: 'POST',
             data: {},
           });
@@ -813,93 +1541,16 @@ Page({
             content: defPwd ? `默认密码：${defPwd}` : '密码已重置',
             showCancel: false,
           });
-          const rows = this.data.rows.map((it) =>
-            (it.staffId === id || it.aroUserId === id) ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd } : it
-          );
-          this.setData({ rows });
+          // 详情里已展开的明文作废，下次点「查看」重新拉
+          this.setData({
+            staffPwd: { visible: false, value: '', loading: false },
+            studentPwd: { visible: false, value: '', loading: false },
+          });
         } catch (err) {
           wx.showToast({
             title: err && err.message ? String(err.message).slice(0, 18) : '失败',
             icon: 'none',
           });
-        } finally {
-          wx.hideLoading();
-          this._adminMutating = false;
-        }
-      },
-    });
-  },
-
-  // ═══ 人员库操作：重置登录账号 ═══
-  onResetPersonnelAccount(e) {
-    const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
-    if (!row) return;
-    const currentUsername = row.username || '';
-    wx.showModal({
-      title: '重置登录账号',
-      content: `将修改「${row.displayName || id}」的登录账号。人员库学号不变。`,
-      editable: true,
-      placeholderText: currentUsername || '新登录账号',
-      success: async (r) => {
-        if (!r.confirm || this._adminMutating) return;
-        const newUsername = (r.content || '').trim();
-        if (!newUsername) { wx.showToast({ title: '账号不能为空', icon: 'none' }); return; }
-        this._adminMutating = true;
-        wx.showLoading({ title: '处理中…', mask: true });
-        try {
-          const res = await springAuth.springRequest({
-            url: `/api/admin/personnel/${encodeURIComponent(id)}/reset-account`,
-            method: 'POST',
-            data: { newUsername },
-          });
-          const parsed = parseResponse(res);
-          if (!parsed.ok) throw new Error(parsed.message);
-          wx.showToast({ title: '账号已重置', icon: 'success' });
-          const rows = this.data.rows.map((it) => ((it.staffId === id || it.aroUserId === id) ? { ...it, username: newUsername } : it));
-          this.setData({ rows });
-        } catch (err) {
-          wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
-        } finally {
-          wx.hideLoading();
-          this._adminMutating = false;
-        }
-      },
-    });
-  },
-
-  // ═══ 人员库操作：重置登录密码（学生） ═══
-  onResetPersonnelPassword(e) {
-    const id = e.currentTarget.dataset.id;
-    const row = (this.data.rows || []).find((r) => r.staffId === id || r.aroUserId === id);
-    if (!row) return;
-    wx.showModal({
-      title: '重置登录密码',
-      content: '确认重置该学生的登录密码吗？将生成随机密码。',
-      success: async (r) => {
-        if (!r.confirm || this._adminMutating) return;
-        this._adminMutating = true;
-        wx.showLoading({ title: '处理中…', mask: true });
-        try {
-          const res = await springAuth.springRequest({
-            url: `/api/admin/personnel/${encodeURIComponent(id)}/reset-password`,
-            method: 'POST',
-            data: {},
-          });
-          const parsed = parseResponse(res);
-          if (!parsed.ok) throw new Error(parsed.message);
-          const defPwd = parsed.body.data && parsed.body.data.defaultPassword;
-          wx.showModal({
-            title: '重置成功',
-            content: defPwd ? `新密码：${defPwd}` : '密码已重置',
-            showCancel: false,
-          });
-          const rows = this.data.rows.map((it) =>
-            (it.staffId === id || it.aroUserId === id) ? { ...it, password: defPwd || it.password, _pwdVisible: !!defPwd, _pwdPlaintext: defPwd } : it
-          );
-          this.setData({ rows });
-        } catch (err) {
-          wx.showToast({ title: err && err.message ? String(err.message).slice(0, 18) : '失败', icon: 'none' });
         } finally {
           wx.hideLoading();
           this._adminMutating = false;
@@ -1031,106 +1682,193 @@ Page({
     }
   },
 
-  // ═══ 筛选面板 ═══
-  loadFilterOptions() {
-    const that = this;
-    if (this._filterOptionsLoaded) return;
-    this._filterOptionsLoaded = true;
-    springAuth.springRequest({ url: '/api/personnel-dict/project-groups', method: 'GET', data: {} })
-      .then((res) => { const p = parseResponse(res); if (p.ok) { const gs = (p.body.data || []).filter((g) => g.active !== 0); that.setData({ groupOptions: gs, groupNames: ['全部'].concat(gs.map((g) => g.name)) }); } })
-      .catch(() => {});
-    springAuth.springRequest({ url: '/api/person-identity/tags', method: 'GET', data: {} })
-      .then((res) => { const p = parseResponse(res); if (p.ok) { const ts = p.body.data || []; that.setData({ identityTagOptions: ts, identityTagNames: ['全部'].concat(ts.map((t) => t.label)) }); } })
-      .catch(() => {});
-    springAuth.springRequest({ url: '/api/personnel/rooms', method: 'GET', data: {} })
-      .then((res) => { const p = parseResponse(res); if (p.ok) { const rs = p.body.data || []; that.setData({ roomOptions: rs, roomNames: ['全部'].concat(rs) }); } })
-      .catch(() => {});
-  },
-  onOpenFilterSheet() { this.loadFilterOptions(); this.setData({ showFilterSheet: true }); },
-  onCloseFilterSheet() { this.setData({ showFilterSheet: false }); },
+  // ══════════════════════ 通用搜索式选择器 ══════════════════════
 
   /**
-   * 筛选项选择弹窗（4 个筛选项共用一张）：候选项本地过滤，不打接口。
-   * 选中后仍走原来的 onXxxFilterChange，用索引语义不变（各筛选项的派生字段不重写一遍）。
+   * options 为 [{key,label,sub}]，默认本地按关键字过滤（先匹配主标题再匹配副标题）；
+   * mode:'remote' 时改用 search(keyword) -> Promise<items>，输入防抖后打接口。
+   * 选中回调挂实例上（data 放不了函数），选完即关。
    */
-  _apFilterPickerNames(field) {
-    const map = { group: 'groupNames', identity: 'identityTagNames', room: 'roomNames', role: 'roleNames' };
-    return (map[field] && this.data[map[field]]) || [];
-  },
-  _paintApFilterPicker() {
-    const names = this._apFilterPickerNames(this.data.apFilterPickerField);
-    const kw = String(this.data.apFilterPickerKeyword || '').trim().toLowerCase();
-    const rows = [];
-    for (let i = 0; i < names.length; i += 1) {
-      if (kw && String(names[i]).toLowerCase().indexOf(kw) < 0) continue;
-      rows.push({ idx: i, label: names[i] });
-    }
-    this.setData({ apFilterPickerRows: rows });
-  },
-  openApFilterPicker(e) {
-    const field = (e && e.currentTarget && e.currentTarget.dataset.field) || '';
-    const names = this._apFilterPickerNames(field);
-    if (!field || names.length === 0) return;
-    const labels = { group: '课题组', identity: '身份标识', room: '房间', role: '角色' };
-    const idxMap = { group: 'filterGroupIdx', identity: 'filterIdentityIdx', room: 'filterRoomIdx', role: 'filterRoleIdx' };
+  openPicker(options) {
+    const opts = options || {};
+    this._pickerOnPick = typeof opts.onPick === 'function' ? opts.onPick : null;
+    this._pickerRemote = opts.mode === 'remote' && typeof opts.search === 'function' ? opts.search : null;
+    this._pickerLocal = opts.options || [];
+    this._pickerSeq = (this._pickerSeq || 0) + 1;
     this.setData({
-      apFilterPickerOpen: true,
-      apFilterPickerField: field,
-      apFilterPickerTitle: (labels[field] || '选择') + ' · 共 ' + names.length + ' 项',
-      apFilterPickerKeyword: '',
-      apFilterPickerPicked: Number(this.data[idxMap[field]] || 0),
+      pickOpen: true,
+      pickTitle: opts.title || '选择',
+      pickKeyword: '',
+      pickPickedKey: opts.picked != null ? String(opts.picked) : '',
+      pickEmptyHint: opts.emptyHint || '没有匹配的项',
+      pickRows: [],
     });
-    this._paintApFilterPicker();
+    this._paintPicker();
   },
-  closeApFilterPicker() {
-    this.setData({ apFilterPickerOpen: false, apFilterPickerField: '', apFilterPickerKeyword: '' });
+
+  _paintPicker() {
+    const kw = String(this.data.pickKeyword || '').trim();
+    if (this._pickerRemote) {
+      const seq = ++this._pickerSeq;
+      if (this._pickerTimer) clearTimeout(this._pickerTimer);
+      // 空关键字立即出第一屏；有输入才防抖，避免每敲一个字打一次接口
+      this._pickerTimer = setTimeout(() => {
+        Promise.resolve(this._pickerRemote(kw))
+          .then((items) => {
+            if (seq !== this._pickerSeq || !this.data.pickOpen) return;
+            this.setData({ pickRows: items || [] });
+          })
+          .catch(() => {
+            if (seq === this._pickerSeq) this.setData({ pickRows: [] });
+          });
+      }, kw ? 220 : 0);
+      return;
+    }
+    const q = kw.toLowerCase();
+    const rows = (this._pickerLocal || []).filter(
+      (it) =>
+        !q ||
+        String(it.label || '').toLowerCase().indexOf(q) >= 0 ||
+        String(it.sub || '').toLowerCase().indexOf(q) >= 0
+    );
+    this.setData({ pickRows: rows });
   },
-  onApFilterPickerInput(e) {
-    this.setData({ apFilterPickerKeyword: e.detail.value || '' });
-    this._paintApFilterPicker();
+
+  onPickerInput(e) {
+    this.setData({ pickKeyword: e.detail && e.detail.value != null ? String(e.detail.value) : '' });
+    this._paintPicker();
   },
-  clearApFilterPickerKeyword() {
-    this.setData({ apFilterPickerKeyword: '' });
-    this._paintApFilterPicker();
+
+  clearPickerKeyword() {
+    this.setData({ pickKeyword: '' });
+    this._paintPicker();
   },
-  onApFilterPickerPick(e) {
-    const field = this.data.apFilterPickerField;
-    const idx = Number(e.currentTarget.dataset.idx);
-    const handlers = { group: 'onGroupFilterChange', identity: 'onIdentityFilterChange', room: 'onRoomFilterChange', role: 'onRoleFilterChange' };
-    this.closeApFilterPicker();
-    const fn = handlers[field];
-    if (fn && typeof this[fn] === 'function') this[fn]({ detail: { value: idx } });
+
+  closePicker() {
+    if (this._pickerTimer) clearTimeout(this._pickerTimer);
+    this._pickerSeq = (this._pickerSeq || 0) + 1;
+    this.setData({ pickOpen: false, pickKeyword: '', pickRows: [] });
   },
-  onGroupFilterChange(e) {
-    const idx = Number(e.detail.value);
-    const g = idx > 0 ? this.data.groupOptions[idx - 1] : undefined;
-    this.setData({ filterGroupIdx: idx, filterGroupId: g ? g.id : 0 });
+
+  onPickerPick(e) {
+    const key = e.currentTarget.dataset.key;
+    const picked = (this.data.pickRows || []).find((r) => String(r.key) === String(key));
+    const cb = this._pickerOnPick;
+    this.closePicker();
+    if (picked && cb) cb(picked);
   },
-  onIdentityFilterChange(e) {
-    const idx = Number(e.detail.value);
-    const t = idx > 0 ? this.data.identityTagOptions[idx - 1] : undefined;
-    this.setData({ filterIdentityIdx: idx, filterIdentityTagId: t ? t.id : 0 });
+
+  // ══════════════════════ 筛选（选中即生效） ══════════════════════
+
+  /** 部门 / 课题组 / 身份标签 / 房间 四份字典：详情与筛选共用，一个会话拉一次 */
+  loadDicts() {
+    if (this._dictLoaded) return;
+    this._dictLoaded = true;
+    springAuth
+      .springRequest({ url: '/api/personnel-dict/project-groups', method: 'GET', data: {} })
+      .then((res) => {
+        const p = parseResponse(res);
+        if (p.ok) this.setData({ groupDict: (p.body.data || []).filter((g) => g.active !== 0) });
+      })
+      .catch(() => {});
+    springAuth
+      .springRequest({ url: '/api/personnel-dict/departments', method: 'GET', data: {} })
+      .then((res) => {
+        const p = parseResponse(res);
+        if (p.ok) this.setData({ deptDict: (p.body.data || []).filter((d) => d.active !== 0) });
+      })
+      .catch(() => {});
+    springAuth
+      .springRequest({ url: '/api/person-identity/tags', method: 'GET', data: {} })
+      .then((res) => {
+        const p = parseResponse(res);
+        if (!p.ok) return;
+        this.setData({ identityDict: p.body.data || [] });
+        this._paintIdentityRows();
+      })
+      .catch(() => {});
+    springAuth
+      .springRequest({ url: '/api/personnel/rooms', method: 'GET', data: {} })
+      .then((res) => {
+        const p = parseResponse(res);
+        if (p.ok) this.setData({ roomDict: p.body.data || [] });
+      })
+      .catch(() => {});
   },
-  onRoomFilterChange(e) {
-    const idx = Number(e.detail.value);
-    this.setData({ filterRoomIdx: idx, filterRoomName: idx === 0 ? '' : (this.data.roomOptions[idx - 1] || '') });
+
+  onOpenFilterSheet() {
+    this.loadDicts();
+    this.setData({ showFilterSheet: true });
   },
-  onRoleFilterChange(e) {
-    const idx = Number(e.detail.value);
-    this.setData({ filterRoleIdx: idx, filterRole: idx === 0 ? '' : this.data.roleOptions[idx - 1] });
+
+  onCloseFilterSheet() {
+    this.setData({ showFilterSheet: false });
   },
-  onApplyFilter() {
-    this.setData({ showFilterSheet: false, page: 1, hasMore: true });
+
+  onPickFilter(e) {
+    const field = e.currentTarget.dataset.field;
+    const all = { key: '', label: '全部' };
+    if (field === 'group') {
+      this.openPicker({
+        title: '课题组',
+        options: [all].concat(
+          (this.data.groupDict || []).map((g) => ({ key: String(g.id), label: g.name, sub: g.departmentName || '' }))
+        ),
+        picked: this.data.filterGroupId || '',
+        onPick: (it) => {
+          this.setData({ filterGroupId: it.key ? Number(it.key) : 0, filterGroupName: it.key ? it.label : '' });
+          this._reloadList();
+        },
+      });
+    } else if (field === 'identity') {
+      this.openPicker({
+        title: '身份标识',
+        options: [all].concat((this.data.identityDict || []).map((t) => ({ key: String(t.id), label: t.label }))),
+        picked: this.data.filterIdentityTagId || '',
+        onPick: (it) => {
+          this.setData({ filterIdentityTagId: it.key ? Number(it.key) : 0, filterIdentityTagName: it.key ? it.label : '' });
+          this._reloadList();
+        },
+      });
+    } else if (field === 'room') {
+      const rooms = this.data.roomDict || [];
+      this.openPicker({
+        title: `房间 · 共 ${rooms.length} 项`,
+        options: [all].concat(rooms.map((r) => ({ key: r, label: r }))),
+        picked: this.data.filterRoomName || '',
+        onPick: (it) => {
+          this.setData({ filterRoomName: it.key || '' });
+          this._reloadList();
+        },
+      });
+    } else if (field === 'role') {
+      this.openPicker({
+        title: '角色',
+        options: [all].concat(ROLE_CODES.map((c, i) => ({ key: c, label: ROLE_LABELS[i] }))),
+        picked: this.data.filterRole || '',
+        onPick: (it) => {
+          this.setData({ filterRole: it.key || '', filterRoleName: it.key ? it.label : '' });
+          this._reloadList();
+        },
+      });
+    }
+  },
+
+  _reloadList() {
+    this.setData({ page: 1, hasMore: true });
     this.loadData({ reset: true, showLoading: true });
   },
+
   onClearFilter() {
     this.setData({
-      filterGroupIdx: 0, filterGroupId: 0,
-      filterIdentityIdx: 0, filterIdentityTagId: 0,
-      filterRoomIdx: 0, filterRoomName: '',
-      filterRoleIdx: 0, filterRole: '',
-      page: 1, hasMore: true,
+      filterGroupId: 0,
+      filterGroupName: '',
+      filterIdentityTagId: 0,
+      filterIdentityTagName: '',
+      filterRoomName: '',
+      filterRole: '',
+      filterRoleName: '',
     });
-    this.loadData({ reset: true, showLoading: true });
+    this._reloadList();
   },
 });

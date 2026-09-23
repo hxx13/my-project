@@ -81,12 +81,14 @@ export interface PagedResult<T> {
 
 export interface DoorSwipeRecordQuery {
   channelCode?: string;
-  personName?: string;
+  /** 后端 @RequestParam 名是 person（原先发 personName 会被 Spring 静默忽略，姓名筛选形同不存在） */
+  person?: string;
   openType?: number;
   startTime?: string;
   endTime?: string;
   page?: number;
-  size?: number;
+  /** 后端 @RequestParam 名是 pageSize（原先发 size 同样被忽略，页大小恒为默认 20） */
+  pageSize?: number;
 }
 
 export async function listDoorSwipeRules(): Promise<DoorSwipeRuleRow[]> {
@@ -143,7 +145,7 @@ export async function listDoorSwipeRecords(
 }
 
 export async function listDoorSwipeOperationLogs(
-  params: { page?: number; size?: number } = {},
+  params: { page?: number; pageSize?: number } = {},
 ): Promise<PagedResult<DoorSwipeRuleOperationLogRow>> {
   const res = await adminHttp.get<Result<PagedResult<DoorSwipeRuleOperationLogRow>>>(
     "/door-swipe-rule/operation-logs",

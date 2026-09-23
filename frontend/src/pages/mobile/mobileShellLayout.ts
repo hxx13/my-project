@@ -26,7 +26,11 @@ export type MobileShellTabKey =
   | "group"
   | "cage"
   | "mine"
-  | "animalOrder";
+  | "animalOrder"
+  | "training"
+  | "exam"
+  | "certificates"
+  | "health";
 
 export type MobileTabBarKey = "home" | "rooms" | "material" | "cage" | "mine";
 
@@ -48,9 +52,22 @@ export const MOBILE_TAB_TITLES: Record<MobileShellTabKey, string> = {
   group: "课题组",
   mine: "我的",
   animalOrder: "动物订购",
+  training: "培训报名",
+  exam: "答题",
+  certificates: "我的证书",
+  health: "健康调查表",
 };
 
-export const MOBILE_SUBPAGE_TABS: MobileShellTabKey[] = ["records", "violations", "group", "animalOrder"];
+export const MOBILE_SUBPAGE_TABS: MobileShellTabKey[] = [
+  "records",
+  "violations",
+  "group",
+  "animalOrder",
+  "training",
+  "exam",
+  "certificates",
+  "health",
+];
 
 export function isMobileTabBarKey(tab: MobileShellTabKey): tab is MobileTabBarKey {
   return MOBILE_TAB_BAR_KEYS.includes(tab as MobileTabBarKey);

@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Save } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
 import { authHttp } from "@/api/core/authHttp";
 import { clearCageDivision, type CageShelfCell } from "@/api/domains/cageShelf.api";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
+import CageExperimentRecordPanel from "@/features/cage-shelf/components/CageExperimentRecordPanel";
 import type { CageOpKind, CageOpMark, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
 import { CAGE_BOX_ACTIONS, actionsFromFormValues, SPECIAL_DETAIL_STATUS_PREFIX } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
@@ -37,10 +36,7 @@ interface CellDetailPanelProps {
 export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, onChanged, opMarkByCageId, canDivide }: CellDetailPanelProps) {
   const detail = (cell as any)?.detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any)?.id ?? detail?.animalCageId ?? (cell as any)?.animalCageId ?? "");
-  const [notes, setNotes] = useState("");
-  const [images, setImages] = useState<string[]>([]);
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
-  const [saving, setSaving] = useState(false);
   const [clearingDivision, setClearingDivision] = useState(false);
 
   /** 局部清空：只清当前这一个笼位的划分，不动其他笼位 */
@@ -58,11 +54,9 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
       setClearingDivision(false);
     }
   };
-  const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [formValues, setFormValues] = useState<CageInfoValueRow[] | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此渲染状态 chips
   useEffect(() => {
@@ -72,21 +66,14 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
     return () => { cancelled = true; };
   }, [animalCageId]);
 
-  // 加载已有笔记和照片（通道一: statusPhotos, 通道二: imagesJson）
+  // 状态标记照片（按归属状态分桶，只读；实验记录本身走台账接口，不走这里）
   useEffect(() => {
-    if (!animalCageId) { setNotes(""); setImages([]); setStatusPhotos({}); return; }
+    if (!animalCageId) { setStatusPhotos({}); return; }
     let cancelled = false;
     authHttp.get(`/local/annotate/${animalCageId}`).then(r => {
       if (cancelled) return;
       if (r.data?.success) {
         const d = r.data.data;
-        setNotes(d?.experimentDesc ?? "");
-        try {
-          const raw = d?.imagesJson;
-          if (typeof raw === "string") { const arr = JSON.parse(raw); if (Array.isArray(arr)) setImages(arr); }
-          else setImages([]);
-        } catch { setImages([]); }
-        // 通道一：状态标记照片（只读，admin编辑模式上传）
         if (d?.statusPhotos) {
           try {
             const sp = typeof d.statusPhotos === "string" ? JSON.parse(d.statusPhotos) : d.statusPhotos;
@@ -112,49 +99,17 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
     return "状态照片";
   };
 
-  // 合并双通道照片用于 URL 驱动预览
+  // 合并状态标记照片用于 URL 驱动预览（实验记录的照片由台账面板自己管）
   const allPreviewUrls: string[] = [];
   const allPreviewLabels: string[] = [];
   Object.entries(statusPhotos).forEach(([key, urls]) => {
     if (!Array.isArray(urls)) return;                 // `_note` 是字符串，别当照片
     urls.forEach(url => { allPreviewUrls.push(url); allPreviewLabels.push(`状态标记 · ${photoLabelOf(key)}`); });
   });
-  images.forEach(url => { allPreviewUrls.push(url); allPreviewLabels.push("实验记录照片"); });
   const curPreviewIdx = previewUrl ? allPreviewUrls.indexOf(previewUrl) : -1;
   const previewLabel = curPreviewIdx >= 0 ? allPreviewLabels[curPreviewIdx] : "";
   const hasPrev = curPreviewIdx > 0;
   const hasNext = curPreviewIdx >= 0 && curPreviewIdx < allPreviewUrls.length - 1;
-
-  const handleSave = useCallback(async () => {
-    if (!animalCageId) return;
-    setSaving(true); setSaveMsg(null);
-    try {
-      await authHttp.post("/local/annotate", { animalCageId, experimentDesc: notes, imagesJson: JSON.stringify(images) });
-      setSaveMsg({ type: "ok", text: "保存成功" });
-    } catch (e: any) {
-      setSaveMsg({ type: "err", text: e?.message || "保存失败" });
-    } finally {
-      setSaving(false);
-      setTimeout(() => setSaveMsg(null), 2000);
-    }
-  }, [animalCageId, notes, images]);
-
-  const handleUpload = useCallback(async (files: FileList | null) => {
-    if (!files?.length) return;
-    setUploading(true);
-    try {
-      const urls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        if (!files[i].type.startsWith("image/")) continue;
-        const fd = new FormData();
-        fd.append("file", files[i]);
-        const r = await authHttp.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-        if (r.data?.success && r.data.data?.url) urls.push(r.data.data.url);
-      }
-      if (urls.length) setImages(prev => [...prev, ...urls]);
-    } catch { setSaveMsg({ type: "err", text: "图片上传失败" }); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
-  }, []);
 
   if (!cell) {
     return (
@@ -295,49 +250,9 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose, onStartOp, 
           </div>
         )}
 
-        {/* Notes */}
-        <div>
-          <div className="text-[12px] font-semibold text-[var(--student-mute)] mb-1.5">📝 实验记录</div>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
-            placeholder="输入备注..."
-            className="w-full rounded-lg border border-[var(--student-hairline)] px-3 py-2 text-[12px] resize-y bg-[var(--student-canvas-soft)]" />
-        </div>
+        {/* 实验记录台账：一条记录一个时间戳，提交后只读；不是实验员本人只看到 *** 占位 */}
+        <CageExperimentRecordPanel animalCageId={animalCageId || null} />
 
-        {/* 实验记录照片（通道二：Student端可增删） */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[12px] font-semibold text-[var(--student-mute)]">🧪 实验记录照片 ({images.length})</span>
-            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-              className="rounded-full border border-[var(--student-primary)] px-3 py-1 text-[11px] font-medium text-[var(--student-primary)] disabled:opacity-50">
-              {uploading ? "上传中…" : "+ 添加照片"}
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" multiple className="sr-only"
-              onChange={e => void handleUpload(e.target.files)} />
-          </div>
-          {images.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {images.map((url, i) => (
-                <div key={i} className="relative group">
-                  <img src={url} alt="" onClick={() => setPreviewUrl(url)}
-                    className="h-14 w-14 object-cover rounded border border-[var(--student-hairline)] cursor-pointer" />
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setImages(prev => prev.filter((_, j) => j !== i)); }}
-                    className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-[var(--student-error)] text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity leading-none"
-                  >&times;</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Save */}
-        <div className="flex items-center gap-3 pt-1">
-          <button onClick={handleSave} disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--student-primary)] px-4 py-2 text-[13px] font-medium text-white hover:opacity-90 disabled:opacity-50">
-            <Save className="size-4" /> {saving ? "保存中…" : "保存"}
-          </button>
-          {saveMsg && <span className={cn("text-[12px]", saveMsg.type === "ok" ? "text-[var(--student-success)]" : "text-[var(--student-error)]")}>{saveMsg.text}</span>}
-        </div>
       </div>
 
       {/* Photo preview (URL驱动，合并双通道) */}

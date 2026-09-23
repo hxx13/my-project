@@ -239,6 +239,7 @@ Page({
     exemptExpireAt: '',
     showAuditEntry: false,
     showStudentReviewEntry: false,
+    showStaffEntries: false,
     badgeStudentReviewText: '',
     // 进出状态指示灯
     presencePhase: '',
@@ -262,9 +263,10 @@ Page({
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     this.setData({
       showAuditEntry: hasMinRole(role, 'SENIOR'),
+      showStaffEntries: hasMinRole(role, 'STAFF'),
       showStudentReviewEntry: pagePermission.canShowMiniEntry(
         'mine',
-        '/package-feature/pages/studentReviewHub/index',
+        '/package-student/pages/studentReviewHub/index',
         role,
         'ADMIN'
       ),
@@ -740,7 +742,7 @@ Page({
       wx.showToast({ title: '需要高级员工及以上', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/dahuaIssue/index' });
+    wx.navigateTo({ url: '/package-door/pages/dahuaIssue/index' });
   },
 
   onAuditTap() {
@@ -758,11 +760,21 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'ADMIN')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/studentReviewHub/index' });
+    wx.navigateTo({ url: '/package-student/pages/studentReviewHub/index' });
+  },
+
+  /** 顶部「历史记录」：进出流水（原 /#/console/debug） */
+  onAccessRecordsTap() {
+    wx.navigateTo({ url: '/package-door/pages/roomAccessRecords/index' });
+  },
+
+  /** 顶部「管理」：房卡管理（原 /#/console/debug-cards） */
+  onCardAdminTap() {
+    wx.navigateTo({ url: '/package-door/pages/roomCardAdmin/index' });
   },
 
   /** 学生视角：加载进出状态指示灯（与首页 presence 逻辑一致） */

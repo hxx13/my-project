@@ -12,6 +12,29 @@ export const BEIJING_INSTANT_Z_EXTRA_OFFSET_MS = 0;
 const NAIVE_LOCAL_SQL = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;
 
 /**
+ * 取日期部分 `yyyy-MM-dd`。
+ *
+ * ⚠ 后端时间是墙钟 `yyyy-MM-dd HH:mm:ss`（**空格**分隔），不是 ISO —— 所以**不能**用
+ * `split("T")[0]`：空格形态下它返回整串，页面就把日期显示成带时分秒的样子。
+ * 前 10 位对「空格形态」和「ISO 形态」都对。
+ */
+export function dateOnly(v: string | undefined | null): string {
+  if (v == null || v === "") return "";
+  return String(v).trim().slice(0, 10);
+}
+
+/**
+ * 转成 `<input type="datetime-local">` 认的值（`yyyy-MM-ddTHH:mm`）。
+ *
+ * ⚠ 后端给的是空格形态，直接塞进去是**非法值**：浏览器按规范把它清成空串，输入框看起来是空的，
+ * 而表单状态里还留着那串空格形态 —— 保存回去后端就在解析上炸（PortalContentService.parsePublishedAt）。
+ */
+export function toDateTimeLocalValue(v: string | undefined | null): string {
+  if (v == null || v === "") return "";
+  return String(v).trim().replace(" ", "T").slice(0, 16);
+}
+
+/**
  * 解析为绝对时刻：带 Z/±offset 的按标准解析；无时区后缀的 `yyyy-MM-dd HH:mm:ss` 视为 Asia/Shanghai 墙钟。
  * 以 `Z` 结尾的 ISO 会叠加 {@link BEIJING_INSTANT_Z_EXTRA_OFFSET_MS}（默认 +8h）。
  */

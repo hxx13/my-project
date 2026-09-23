@@ -1,0 +1,78 @@
+/* ================================================================== */
+/*  检查维护模块 · 设计令牌与主色                                        */
+/*                                                                      */
+/*  主色由「小程序首页中国红 #ac1736」改为**动物订购页那套单一蓝**：       */
+/*  用户 2026-09-18 明令禁止红色主按钮（原话「不要使用这个红色的按钮」），  */
+/*  且全站按钮基准就是订购页 —— 蓝底白字主操作 + #f1f3f7 中性实底次级。    */
+/*                                                                      */
+/*  规矩（与 .cs-sheet / 订购页同一套）：                                 */
+/*   - 按钮一律**实底**：禁渐变、禁半透明 rgba 底、禁描边当身份、禁红底。   */
+/*   - 危险动作（删除）走中性实底 + 红色**文字**，不是红底按钮。            */
+/*   - 令牌挂 page：本模块三个页面都没有 root-portal 弹窗，page 覆盖全部。  */
+/* ================================================================== */
+page {
+  --paper: #ffffff;
+  --canvas: #eef0f6;
+  --ink: #1f2937;
+  --body: #334155;
+  --mute: #64748b;
+  --faint: #94a3b8;
+  --off: #9aa0a6;
+  --off-bg: #e5e7eb;
+  --line: #eef0f4;
+  --line-strong: #dcdee0;
+  --accent: #2563eb;
+  --accent-bg: #eff6ff;
+  --fill: #f6f7fb;
+  --fill-2: #f1f3f7;
+  --danger: #dc2626;
+  --ok: #15803d;
+}
+
+/* 工具条上的页跳转（历史巡查 / 设置）：**必须是一枚按钮，不是一行文字**。
+   用户 2026-09-21 明确拒绝纯文字按钮 —— 纯文字在工具条里既不像能点、也没有可点面积。
+   做成中性实底 + 可见描边（与 .fm-pill-ghost 同族），圆角矩形不用胶囊。 */
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60rpx;
+  padding: 0 24rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--body);
+  background: var(--fill-2);
+  border: 1rpx solid var(--line-strong);
+}
+
+/* 快速类型胶囊：默认中性实底，选中转主色实底 */
+.preset-chip {
+  color: var(--body);
+  background: var(--fill-2);
+}
+
+.preset-chip--on {
+  color: #fff;
+  background: var(--accent);
+}
+
+/* 主操作 / 登记：同一个蓝。两者从不同屏出现（一个是巡查表工具条、一个是登记页脚），
+   没必要为「同一件事的两种叫法」开两个色。 */
+.fm-pill-primary,
+.fm-pill-info {
+  color: #fff;
+  background: var(--accent);
+}
+
+/* 次级：中性实底（禁描边、禁半透明） */
+.fm-pill-outline {
+  color: var(--body);
+  background: var(--fill-2);
+}
+
+/* 悬浮新增：实底主色，投影收窄 —— 原来是红色渐变 + 红色光晕 */
+.fm-fab {
+  background: var(--accent);
+  box-shadow: 0 8rpx 20rpx rgba(37, 99, 235, 0.28);
+}

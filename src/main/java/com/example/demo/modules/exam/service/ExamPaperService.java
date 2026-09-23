@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +27,8 @@ import java.util.Map;
  */
 @Service
 public class ExamPaperService {
+
+    private static final DateTimeFormatter SPACE_DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ExamPaperMapper paperMapper;
     private final ExamPaperFolderMapper folderMapper;
@@ -62,6 +66,8 @@ public class ExamPaperService {
             m.put("title", p.getTitle());
             m.put("status", p.getStatus());
             m.put("folderId", p.getFolderId());
+            m.put("validFrom", p.getValidFrom());
+            m.put("validTo", p.getValidTo());
             m.put("createdAt", p.getCreatedAt());
             m.put("updatedAt", p.getUpdatedAt());
             out.add(m);
@@ -79,6 +85,8 @@ public class ExamPaperService {
         out.put("status", paper.getStatus());
         out.put("qualifyScore", paper.getQualifyScore());
         out.put("totalTime", paper.getTotalTime());
+        out.put("validFrom", paper.getValidFrom());
+        out.put("validTo", paper.getValidTo());
 
         List<ExamPaperSection> sections = sectionMapper.listByPaperId(id);
         List<ExamPaperQuestion> questions = questionMapper.listByPaperId(id);
@@ -125,6 +133,12 @@ public class ExamPaperService {
         }
         if (body.containsKey("totalTime")) {
             paper.setTotalTime(toInt(body.get("totalTime")));
+        }
+        if (body.containsKey("validFrom")) {
+            paper.setValidFrom(toDateTime(body.get("validFrom")));
+        }
+        if (body.containsKey("validTo")) {
+            paper.setValidTo(toDateTime(body.get("validTo")));
         }
         paperMapper.update(paper);
 
@@ -228,6 +242,8 @@ public class ExamPaperService {
             m.put("title", p.getTitle());
             m.put("qualifyScore", p.getQualifyScore());
             m.put("totalTime", p.getTotalTime());
+            m.put("validFrom", p.getValidFrom());
+            m.put("validTo", p.getValidTo());
             ExamSubmission s = submissionMapper.findByPaperAndPerson(p.getId(), personId);
             m.put("submitted", s != null);
             m.put("totalScore", s != null ? s.getTotalScore() : null);
@@ -316,5 +332,23 @@ public class ExamPaperService {
 
     private Integer toInt(Object v) {
         return v instanceof Number n ? n.intValue() : null;
+    }
+
+    /** "yyyy-MM-ddTHH:mm"（datetime-local）/ "yyyy-MM-dd HH:mm:ss" / ISO → LocalDateTime，失败返回 null。 */
+    private static LocalDateTime toDateTime(Object v) {
+        if (v == null) return null;
+        if (v instanceof LocalDateTime ldt) return ldt;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        try {
+            return LocalDateTime.parse(s);
+        } catch (Exception ignore) {
+            // 继续尝试其它格式
+        }
+        try {
+            return LocalDateTime.parse(s.replace('T', ' ').substring(0, Math.min(s.length(), 19)), SPACE_DT);
+        } catch (Exception ignore) {
+            return null;
+        }
     }
 }

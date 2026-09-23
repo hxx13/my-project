@@ -20,6 +20,10 @@ import {
   PawPrint,
   ScrollText,
   PenLine,
+  GraduationCap,
+  SquarePen,
+  Award,
+  HeartPulse,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
@@ -328,7 +332,13 @@ export default function MobileMineTab({
       >
         {[
           ...(jwtMode
-            ? [{ label: "动物订购", color: "#0ea5e9", icon: PawPrint, action: () => onNav?.("animalOrder") }]
+            ? [
+                { label: "动物订购", color: "#0ea5e9", icon: PawPrint, action: () => onNav?.("animalOrder") },
+                { label: "培训报名", color: "#0891b2", icon: GraduationCap, action: () => onNav?.("training") },
+                { label: "答题", color: "#16a34a", icon: SquarePen, action: () => onNav?.("exam") },
+                { label: "我的证书", color: "#ca8a04", icon: Award, action: () => onNav?.("certificates") },
+                { label: "健康调查表", color: "#e11d48", icon: HeartPulse, action: () => onNav?.("health") },
+              ]
             : []),
           /* SOP 只对教职工侧账号开放。判定走 isStudentAccount()（全站唯一口径：
              accountSource > role > id 前缀）—— 账号分学生/教职工两套，同一个人两边都可能有，
@@ -414,7 +424,7 @@ export default function MobileMineTab({
 
       {/* 电子签名：与小程序同一份数据、同一个接口（/api/student/signature） */}
       {signatureOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center" role="dialog">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
           <div className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-xl">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">电子签名</h3>

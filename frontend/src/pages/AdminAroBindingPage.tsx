@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
-import { ChevronDown, ChevronLeft, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, Star, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, X, Inbox } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, Clock, MapPin, Loader2, Check, Search, Plus, RefreshCw, Star, ShieldCheck, ShieldX, CheckCircle2, XCircle, UserPlus, UserMinus, X, Inbox, ArrowUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -21,11 +21,13 @@ import {
   publishTraining,
   unpublishTraining,
   addEnrollments,
+  deleteEnrollment,
   auditEnrollment,
   scoreEnrollment,
   setEnrollmentRooms,
   syncTrainings,
   fetchQualifications,
+  updateTrainingStudentOrder,
   type TrainingSeries,
   type TrainingOccurrence,
   type TrainingEnrollment,
@@ -83,7 +85,8 @@ function SeriesStats({ id }: { id: number }) {
   occs.forEach((o) => (o.enrollments ?? []).forEach((e) => {
     const k = personKey(e);
     total.add(k);
-    if (e.testYn === 1) passed.add(k);
+    // 通过 = 审批与评分双通过（与报名/我的报名同口径）
+    if (e.testYn === 1 && e.testFraction === 1) passed.add(k);
   }));
   const pct = total.size > 0 ? Math.round((passed.size / total.size) * 100) : 0;
   return (
@@ -128,6 +131,58 @@ export default function AdminAroBindingPage() {
   const [matchText, setMatchText] = useState("");
   const [matchNames, setMatchNames] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const [orderRows, setOrderRows] = useState<{ id: number; name: string; campus: string }[]>([]);
+  const [orderSaving, setOrderSaving] = useState(false);
+
+  const canConfigOrder = isPlatformOwner || authStorage.getRole() === "SUPER_ADMIN";
+
+  const openOrder = async () => {
+    try {
+      const r = await fetchTrainings({ page: 1, pageSize: 1000 });
+      const list = [...(r.list ?? [])].sort(
+        (a, b) => (a.studentSort ?? 0) - (b.studentSort ?? 0) || a.id - b.id,
+      );
+      setOrderRows(list.map((s) => ({ id: s.id, name: s.name, campus: s.campus ?? "" })));
+      setOrderOpen(true);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "加载失败");
+    }
+  };
+
+  /** 组内上/下移：在原始数组里对调同组相邻两项，保证组内相对次序有意义。 */
+  const moveOrderRow = (campus: string, idx: number, dir: -1 | 1) => {
+    setOrderRows((prev) => {
+      const inGroup = prev.map((r, i) => ({ r, i })).filter((x) => x.r.campus === campus);
+      const a = inGroup[idx];
+      const b = inGroup[idx + dir];
+      if (!a || !b) return prev;
+      const next = [...prev];
+      next[a.i] = prev[b.i];
+      next[b.i] = prev[a.i];
+      return next;
+    });
+  };
+
+  const saveOrder = async () => {
+    setOrderSaving(true);
+    try {
+      const counter: Record<string, number> = {};
+      const items = orderRows.map((r) => {
+        const n = counter[r.campus] ?? 0;
+        counter[r.campus] = n + 1;
+        return { id: r.id, campus: r.campus || null, sortOrder: n };
+      });
+      await updateTrainingStudentOrder(items);
+      toast.success("排序已保存");
+      setOrderOpen(false);
+      qc.invalidateQueries({ queryKey: ["training-list"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || "保存失败");
+    } finally {
+      setOrderSaving(false);
+    }
+  };
 
   const handleSync = async () => {
     if (syncing) return;
@@ -253,9 +308,29 @@ export default function AdminAroBindingPage() {
     if (!(await appConfirm(yn === 1 ? "评分合格？" : "评分不合格？"))) return;
     run(() => scoreEnrollment(id, yn), yn === 1 ? "合格" : "不合格");
   };
+  /** 踢出：删除报名记录，学生端回到未报名，需从头报名（房间授权不在此处回收）。 */
+  const handleKick = async (e: TrainingEnrollment) => {
+    if (!(await appConfirm(`把「${e.name ?? ""}」踢出该培训？报名记录将删除，学生需重新报名。`, { danger: true }))) return;
+    run(() => deleteEnrollment(e.id), "已踢出");
+  };
 
   // ── 房间选择器 ──
   const ddAnchorRef = useRef<DOMRect | null>(null);
+  /** 审批/评分下拉的锚点：滚动容器 overflow 会把 absolute 菜单裁掉，必须走 Portal + fixed */
+  const menuAnchorRef = useRef<DOMRect | null>(null);
+  const menuStyle = (rect: DOMRect | null): React.CSSProperties => {
+    if (!rect) return { position: "fixed", top: 0, left: 0 };
+    const w = 112;
+    return {
+      position: "fixed",
+      top: Math.min(rect.bottom + 4, window.innerHeight - 120),
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)),
+    };
+  };
+  const openActionMenu = (key: string, ev: React.MouseEvent) => {
+    menuAnchorRef.current = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    setExpanded(expanded === key ? null : key);
+  };
   const roomGroups = useMemo(() => {
     const groups: Record<string, Record<string, { id: string; name: string }[]>> = {};
     (allRooms ?? []).forEach((r) => {
@@ -392,6 +467,9 @@ export default function AdminAroBindingPage() {
               <input value={kwInput} onChange={(e) => { setKwInput(e.target.value); setSPage(1); }} placeholder="搜索名称/编号..." className="flex-1 min-w-[60px] bg-transparent border-none outline-none text-sm" />
               {kwInput && <button onClick={() => setKwInput("")} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"><X className="h-3.5 w-3.5" /></button>}
             </div>
+            {canConfigOrder && (
+              <AdminButton type="button" tone="secondary" size="default" onClick={openOrder}><ArrowUpDown className="h-4 w-4 mr-1" />排序配置</AdminButton>
+            )}
             <AdminButton type="button" tone="secondary" size="default" disabled={syncing} onClick={handleSync}>{syncing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}同步培训</AdminButton>
             <AdminButton type="button" tone="primary" size="default" onClick={() => navigate("/console/admin/training/new")}><Plus className="h-4 w-4 mr-1" />发布培训</AdminButton>
           </div>
@@ -525,8 +603,15 @@ export default function AdminAroBindingPage() {
           <div className="relative inline-block">
             {canWrite ? (
               <>
-                <button data-dt onClick={() => setExpanded(expanded === ak ? null : ak)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? <ShieldCheck className="h-3.5 w-3.5" /> : e.testYn === 2 ? <ShieldX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</button>
-                {expanded === ak && <div data-dd className="absolute left-0 top-full mt-1 z-50 w-24 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5">{e.testYn !== 1 && <button onClick={() => { handleAudit(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-3.5 w-3.5" />通过</button>}{e.testYn !== 2 && <button onClick={() => { handleAudit(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><ShieldX className="h-3.5 w-3.5" />拒绝</button>}</div>}
+                <button data-dt onClick={(ev) => openActionMenu(ak, ev)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? <ShieldCheck className="h-3.5 w-3.5" /> : e.testYn === 2 ? <ShieldX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</button>
+                {expanded === ak && (
+                  <Portal>
+                    <div data-dd className="z-[1100] w-28 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5" style={menuStyle(menuAnchorRef.current)}>
+                      {e.testYn !== 1 && <button onClick={() => { handleAudit(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-3.5 w-3.5" />通过</button>}
+                      {e.testYn !== 2 && <button onClick={() => { handleAudit(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><ShieldX className="h-3.5 w-3.5" />拒绝</button>}
+                    </div>
+                  </Portal>
+                )}
               </>
             ) : (
               <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded", e.testYn === 1 ? "text-emerald-600 bg-emerald-50" : e.testYn === 2 ? "text-rose-600 bg-rose-50" : "text-amber-600 bg-amber-50")}>{e.testYn === 1 ? "已通过" : e.testYn === 2 ? "已拒绝" : "待审核"}</span>
@@ -537,8 +622,15 @@ export default function AdminAroBindingPage() {
           <div className="relative inline-block">
             {canWrite ? (
               <>
-                <button data-dt onClick={() => setExpanded(expanded === sk ? null : sk)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? <CheckCircle2 className="h-3.5 w-3.5" /> : e.testFraction === 2 ? <XCircle className="h-3.5 w-3.5" /> : null}{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</button>
-                {expanded === sk && <div data-dd className="absolute left-0 top-full mt-1 z-50 w-24 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5"><button onClick={() => { handleScore(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />合格</button><button onClick={() => { handleScore(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><XCircle className="h-3.5 w-3.5" />不合格</button></div>}
+                <button data-dt onClick={(ev) => openActionMenu(sk, ev)} className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded cursor-pointer transition-colors", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? <CheckCircle2 className="h-3.5 w-3.5" /> : e.testFraction === 2 ? <XCircle className="h-3.5 w-3.5" /> : null}{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</button>
+                {expanded === sk && (
+                  <Portal>
+                    <div data-dd className="z-[1100] w-28 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-0.5" style={menuStyle(menuAnchorRef.current)}>
+                      <button onClick={() => { handleScore(e.id, 1); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />合格</button>
+                      <button onClick={() => { handleScore(e.id, 2); setExpanded(null); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)] flex items-center gap-2 text-rose-600"><XCircle className="h-3.5 w-3.5" />不合格</button>
+                    </div>
+                  </Portal>
+                )}
               </>
             ) : (
               <span className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded", e.testFraction === 1 ? "text-emerald-600 bg-emerald-50" : e.testFraction === 2 ? "text-rose-600 bg-rose-50" : "text-[var(--twin-mute)] bg-[var(--app-color-surface-hover)]")}>{e.testFraction === 1 ? "合格" : e.testFraction === 2 ? "不合格" : "待评分"}</span>
@@ -558,6 +650,23 @@ export default function AdminAroBindingPage() {
             <span className="text-xs text-[var(--twin-mute)]">未上传</span>
           )}
         </td>
+        <td className="px-3 py-2.5">
+          {e.testYn === 1 && e.testFraction === 1 ? (
+            canWrite ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-rose-600 hover:underline"
+                onClick={() => handleKick(e)}
+              >
+                <UserMinus className="h-3.5 w-3.5" />踢出
+              </button>
+            ) : (
+              <span className="text-xs text-[var(--twin-mute)]">已通过</span>
+            )
+          ) : (
+            <span className="text-xs text-[var(--twin-mute)]">—</span>
+          )}
+        </td>
       </tr>
     );
   };
@@ -569,10 +678,10 @@ export default function AdminAroBindingPage() {
       <table className="w-full min-w-max text-left text-sm border-collapse twin-table">
         <thead className="border-b-2 border-[var(--app-color-border-strong)]"><tr className={cn("bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold", sticky && "sticky top-0 z-[2]")}>
           {hasLead && <th className="px-3 py-2">场次</th>}
-          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th>{showExam && <th className="px-3 py-2">考试</th>}<th className="px-3 py-2 min-w-[160px] max-w-[260px]">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th><th className="px-3 py-2">报告</th>
+          <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th><th className="px-3 py-2">课题组</th>{showExam && <th className="px-3 py-2">考试</th>}<th className="px-3 py-2 min-w-[160px] max-w-[260px]">允许房间</th><th className="px-3 py-2">审批</th><th className="px-3 py-2">评分</th><th className="px-3 py-2">报告</th><th className="px-3 py-2">操作</th>
         </tr></thead>
         <tbody>
-          {list.length === 0 ? <tr><td colSpan={hasLead ? (showExam ? 9 : 8) : (showExam ? 8 : 7)} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
+          {list.length === 0 ? <tr><td colSpan={hasLead ? (showExam ? 10 : 9) : (showExam ? 9 : 8)} className="text-center py-8 text-sm text-[var(--app-color-text-tertiary)]">暂无学员</td></tr>
             : list.map((e) => renderEnrollmentRow(e, opts?.leadOf?.(e)))}
         </tbody>
       </table>
@@ -737,9 +846,67 @@ export default function AdminAroBindingPage() {
     </div>
   );
 
+  const CAMPUS_GROUPS: { key: string; label: string }[] = [
+    { key: "浦东", label: "浦东" },
+    { key: "浦西", label: "浦西" },
+    { key: "", label: "未分组" },
+  ];
+
+  const orderDialog = orderOpen ? (
+    <Portal>
+      <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setOrderOpen(false)}>
+        <div className="relative w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-5 text-slate-900 shadow-lg" onClick={(e) => e.stopPropagation()}>
+          <button type="button" className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100" onClick={() => setOrderOpen(false)} aria-label="关闭"><X className="h-4 w-4" /></button>
+          <h2 className="text-base font-semibold">学生端培训排序</h2>
+          <p className="mt-1 text-xs text-slate-500">按校区分组，组内用 ↑↓ 调整先后；学生端「培训报名」按此顺序展示。改校区后需重新保存。</p>
+          <div className="mt-3 max-h-[60vh] space-y-4 overflow-auto pr-1">
+            {CAMPUS_GROUPS.map((g) => {
+              const rows = orderRows.filter((r) => r.campus === g.key);
+              return (
+                <div key={g.key || "none"}>
+                  <div className="mb-1.5 flex items-center gap-2 border-b border-slate-100 pb-1 text-xs font-semibold text-slate-600">
+                    <span>{g.label}</span>
+                    <span className="font-normal text-slate-400">{rows.length} 个培训</span>
+                  </div>
+                  {rows.length === 0 ? (
+                    <div className="py-2 text-xs text-slate-400">暂无</div>
+                  ) : (
+                    <div className="space-y-1">
+                      {rows.map((r, i) => (
+                        <div key={r.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5">
+                          <select
+                            value={r.campus}
+                            onChange={(e) => setOrderRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, campus: e.target.value } : x)))}
+                            className="h-7 shrink-0 rounded border border-slate-300 bg-white px-1 text-xs"
+                          >
+                            <option value="">未分组</option>
+                            <option value="浦东">浦东</option>
+                            <option value="浦西">浦西</option>
+                          </select>
+                          <span className="min-w-0 flex-1 truncate text-sm text-slate-800">{r.name}</span>
+                          <button type="button" disabled={i === 0} onClick={() => moveOrderRow(g.key, i, -1)} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="上移"><ChevronUp className="h-3.5 w-3.5" /></button>
+                          <button type="button" disabled={i === rows.length - 1} onClick={() => moveOrderRow(g.key, i, 1)} className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30" aria-label="下移"><ChevronDown className="h-3.5 w-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <AdminButton type="button" tone="secondary" size="default" onClick={() => setOrderOpen(false)}>取消</AdminButton>
+            <AdminButton type="button" tone="primary" size="default" disabled={orderSaving} onClick={saveOrder}>{orderSaving ? "保存中…" : "保存排序"}</AdminButton>
+          </div>
+        </div>
+      </div>
+    </Portal>
+  ) : null;
+
   return (
     <AdminPageShell>
       <div key={selected ? "detail" : "list"}>{selected ? tdetail : slist}</div>
+      {orderDialog}
     </AdminPageShell>
   );
 }

@@ -1,0 +1,182 @@
+<view class="page">
+  <view class="head">
+    <view class="tabs-row">
+      <view class="seg">
+        <view
+          wx:for="{{ sources }}"
+          wx:key="key"
+          class="seg-item {{ source === item.key ? 'seg-item--on' : '' }}"
+          data-key="{{ item.key }}"
+          bindtap="onSourceTap"
+        >{{ item.label }}</view>
+      </view>
+      <text class="tabs-sum">{{ loading ? '加载中…' : '共 ' + total + ' 条' }}</text>
+    </view>
+
+    <view class="toolbar-row">
+      <view class="search-box">
+        <van-icon name="search" size="28rpx" color="#969799" />
+        <input
+          class="search-input"
+          value="{{ searchDraft }}"
+          confirm-type="search"
+          placeholder="{{ source === 'swing' ? '搜姓名' : '搜用户ID / 姓名 / 原因' }}"
+          bindinput="onSearchInput"
+          bindconfirm="onSearchConfirm"
+        />
+        <view wx:if="{{ searchDraft }}" class="search-clear" bindtap="onSearchClear">✕</view>
+      </view>
+      <view class="chip-btn chip-btn--primary" bindtap="onSearchConfirm">搜索</view>
+      <view class="chip-btn {{ filterCount ? 'chip-btn--primary' : 'chip-btn--ghost' }}" bindtap="openFilterSheet">筛选{{ filterCount ? ' ' + filterCount : '' }}</view>
+    </view>
+
+    <scroll-view wx:if="{{ chips.length }}" class="chip-scroll" scroll-x enable-flex show-scrollbar="{{ false }}">
+      <view class="chip-row">
+        <view wx:for="{{ chips }}" wx:key="k" class="chip" data-k="{{ item.k }}" bindtap="onRemoveChip">
+          <text class="chip-t">{{ item.t }}</text>
+          <text class="chip-x">✕</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="state-box">
+    <van-loading size="36rpx" color="#1989fa" />
+    <text class="state-txt">加载中…</text>
+  </view>
+
+  <view wx:elif="{{ error }}" class="state-box">
+    <text class="state-txt">{{ error }}</text>
+    <view class="chip-btn chip-btn--primary" bindtap="onRetry">重试</view>
+  </view>
+
+  <scroll-view
+    wx:else
+    class="list-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{ false }}"
+    lower-threshold="150"
+    bindscrolltolower="onReachBottom"
+  >
+    <van-empty wx:if="{{ rows.length === 0 }}" description="暂无记录" />
+    <view wx:else class="list-pad">
+      <!-- 刷卡记录 -->
+      <block wx:if="{{ source === 'swing' }}">
+        <view class="card" wx:for="{{ rows }}" wx:key="__key">
+          <view class="c-head">
+            <text class="c-name">{{ item.personName || '未知' }}</text>
+            <text class="tag {{ item.__resultOk ? 'tag-ok' : 'tag-bad' }}">{{ item.__resultText }}</text>
+            <text wx:if="{{ item.__mappingText }}" class="tag">{{ item.__mappingText }}</text>
+            <text class="c-time">{{ item.swingTime || '-' }}</text>
+          </view>
+          <view class="c-line">{{ item.__idText || '—' }}</view>
+          <view class="c-line c-line--sub">
+            {{ item.__deptText }}{{ item.__deptText ? ' · ' : '' }}{{ item.__channelText }} · {{ item.__openTypeText }}{{ item.__enterText ? ' · ' + item.__enterText : '' }}{{ item.__audienceText ? ' · ' + item.__audienceText : '' }}{{ item.__pullText ? ' · ' + item.__pullText : '' }}
+          </view>
+          <view wx:if="{{ item.__tagRows.length }}" class="c-tags">
+            <text wx:for="{{ item.__tagRows }}" wx:for-item="tg" wx:key="*this" class="tag">{{ tg }}</text>
+          </view>
+        </view>
+      </block>
+
+      <!-- 自动化日志 -->
+      <block wx:else>
+        <view class="card" wx:for="{{ rows }}" wx:key="__key">
+          <view class="c-head">
+            <text class="c-name c-name--ellipsis">{{ item.__eventText }}</text>
+            <text class="tag {{ item.__resultOk ? 'tag-ok' : 'tag-bad' }}">{{ item.__resultText }}</text>
+            <text class="c-time">{{ item.eventTime || '-' }}</text>
+          </view>
+          <view class="c-line">{{ item.__typeText }}{{ item.__triggerText ? ' · ' + item.__triggerText : '' }}{{ item.userName || item.userId ? ' · ' + (item.userName || item.userId) : '' }}</view>
+          <view wx:if="{{ item.__reasonText }}" class="c-line c-line--sub">触发原因：{{ item.__reasonText }}</view>
+          <view wx:if="{{ item.__detailText }}" class="c-line c-line--sub c-line--clamp">详情：{{ item.__detailText }}</view>
+          <view wx:if="{{ item.probeImageUrls.length }}" class="c-imgs">
+            <image
+              wx:for="{{ item.probeImageUrls }}"
+              wx:for-item="imgUrl"
+              wx:key="*this"
+              class="c-img"
+              mode="aspectFill"
+              lazy-load
+              src="{{ imgUrl }}"
+              data-url="{{ imgUrl }}"
+              bindtap="onPreviewImage"
+            />
+          </view>
+        </view>
+      </block>
+      <view class="load-more">
+        <text wx:if="{{ loadingMore }}">加载中…</text>
+        <text wx:elif="{{ hasMore }}">上拉加载更多</text>
+        <text wx:else>没有更多了</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- ═══ 筛选抽屉 ═══ -->
+  <van-popup
+    show="{{ filterSheetOpen }}"
+    position="bottom"
+    round
+    custom-class="filter-popup"
+    bind:close="closeFilterSheet"
+  >
+    <view class="fs-root">
+      <view class="fs-head">
+        <text class="fs-title">筛选</text>
+        <view class="fs-reset" hover-class="fs-reset--hover" bindtap="onResetFilters">重置</view>
+      </view>
+
+      <scroll-view class="fs-body" scroll-y show-scrollbar="{{ false }}">
+        <block wx:if="{{ source === 'swing' }}">
+          <filter-row label="进出" options="{{ options.enterOrExit }}" value="{{ d.enterOrExit }}" data-field="enterOrExit" bindchange="onSheetPick" />
+          <filter-row label="结果" options="{{ options.openResult }}" value="{{ d.openResult }}" data-field="openResult" bindchange="onSheetPick" />
+          <filter-row label="开门类型" options="{{ options.openType }}" value="{{ d.openType }}" data-field="openType" bindchange="onSheetPick" />
+          <filter-row label="受众" options="{{ options.audienceType }}" value="{{ d.audienceType }}" data-field="audienceType" bindchange="onSheetPick" />
+          <view class="fs-input-row">
+            <text class="fs-label">通道名称</text>
+            <input class="fs-input" value="{{ d.channelName }}" placeholder="名称或编码" data-field="channelName" bindinput="onSheetInput" />
+          </view>
+          <view class="fs-input-row">
+            <text class="fs-label">部门名称</text>
+            <input class="fs-input" value="{{ d.departmentName }}" placeholder="部门名称或 ID" data-field="departmentName" bindinput="onSheetInput" />
+          </view>
+          <view class="fs-input-row">
+            <text class="fs-label">工号</text>
+            <input class="fs-input" value="{{ d.personCode }}" placeholder="工号" data-field="personCode" bindinput="onSheetInput" />
+          </view>
+          <view class="fs-input-row">
+            <text class="fs-label">卡号</text>
+            <input class="fs-input" value="{{ d.cardNumber }}" placeholder="卡号" data-field="cardNumber" bindinput="onSheetInput" />
+          </view>
+        </block>
+
+        <block wx:else>
+          <filter-row label="类型" options="{{ options.autoType }}" value="{{ d.autoType }}" data-field="autoType" bindchange="onSheetPick" />
+          <filter-row label="触发方式" options="{{ options.autoTrigger }}" value="{{ d.autoTrigger }}" data-field="autoTrigger" bindchange="onSheetPick" />
+          <view class="fs-input-row fs-input-row--switch">
+            <text class="fs-label">隐藏定时轮询</text>
+            <mini-switch checked="{{ d.excludePenetrationPoll }}" bindchange="onSheetPollSwitch" />
+          </view>
+        </block>
+
+        <view class="fs-date-row">
+          <text class="fs-label">日期</text>
+          <picker mode="date" value="{{ d.startDate }}" end="{{ d.endDate }}" data-field="startDate" bindchange="onSheetDate">
+            <view class="fs-date">{{ d.startDate || '开始' }}</view>
+          </picker>
+          <text class="fs-sep">至</text>
+          <picker mode="date" value="{{ d.endDate }}" start="{{ d.startDate }}" data-field="endDate" bindchange="onSheetDate">
+            <view class="fs-date">{{ d.endDate || '结束' }}</view>
+          </picker>
+          <view class="chip-btn chip-btn--ghost chip-btn--xs" bindtap="onSheetToday">今日</view>
+        </view>
+      </scroll-view>
+
+      <view class="fs-foot">
+        <view class="chip-btn chip-btn--primary" bindtap="applyFilters">查看结果</view>
+      </view>
+    </view>
+  </van-popup>
+</view>

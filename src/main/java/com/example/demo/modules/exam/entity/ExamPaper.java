@@ -13,6 +13,10 @@ public class ExamPaper {
     private Long folderId;
     private Integer qualifyScore;
     private Integer totalTime;
+    /** 有效期起（空 = 不限） */
+    private LocalDateTime validFrom;
+    /** 有效期止（空 = 不限） */
+    private LocalDateTime validTo;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

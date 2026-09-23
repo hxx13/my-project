@@ -1,0 +1,27 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无证书" />
+  <view wx:else class="list">
+    <view wx:for="{{ rows }}" wx:key="id" class="row-card">
+      <view class="row-head">
+        <text class="row-title">{{ item.title }}</text>
+        <text class="status-tag status-ok">已发放</text>
+      </view>
+      <view class="meta-line"><text class="meta-k">姓名</text><text class="meta-v">{{ item.personName }}</text></view>
+      <view class="meta-line"><text class="meta-k">培训日期</text><text class="meta-v">{{ item.trainingDate }}</text></view>
+      <view class="meta-line meta-line-action">
+        <text class="meta-k">培训者签字</text>
+        <text class="meta-v">{{ item.trainerName }}</text>
+        <view
+          class="chip-btn chip-btn--xs chip-btn--primary action-btn {{ downloadingId === item.id ? 'chip-btn--off' : '' }}"
+          data-id="{{ item.id }}"
+          bindtap="onPreview"
+        >{{ downloadingId === item.id ? '打开中…' : '预览' }}</view>
+      </view>
+      <view wx:if="{{ item.trainingName }}" class="meta-line"><text class="meta-k">来源培训</text><text class="meta-v">{{ item.trainingName }}</text></view>
+    </view>
+    <view class="hint">预览会用系统 PDF 阅读器打开，右上角可转发或保存</view>
+  </view>
+</view>
+</block>

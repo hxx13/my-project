@@ -828,6 +828,8 @@ export interface StudentPaperSummary {
   title: string;
   qualifyScore?: number;
   totalTime?: number;
+  validFrom?: string | null;
+  validTo?: string | null;
   submitted?: boolean;
   totalScore?: number | null;
   qualifyYn?: number | null;
@@ -869,6 +871,8 @@ export interface StudentTrainingOccurrence {
   enrolled?: boolean;
   enrollmentId?: number | null;
   testYn?: number | null;
+  /** 评分：0待评分 / 1合格 / 2不合格。与 testYn 双通过才算已通过 */
+  testFraction?: number | null;
 }
 
 export interface StudentTraining {
@@ -879,6 +883,10 @@ export interface StudentTraining {
   ownerIds?: string[];
   /** 所属人展示名，与 ownerIds 同序 */
   ownerNames?: string[];
+  /** 学生端校区分组（浦东/浦西），空 = 未分组 */
+  campus?: string | null;
+  /** 学生端手动排序序号（同校区内升序） */
+  studentSort?: number | null;
   eligible?: boolean;
   examPassed?: boolean;
   healthOk?: boolean;
@@ -1000,6 +1008,49 @@ export async function fetchMyHealthSurvey(): Promise<MyHealthSurvey | null> {
 export async function submitHealthSurvey(data: Record<string, unknown>): Promise<void> {
   const res = await authHttp.put<Result<{ ok: boolean }>>("/student/training/health-survey", { data });
   if (!res.data?.success) throw new Error(res.data?.message || "提交失败");
+}
+
+/** 培训证书（发证即快照，与培训/试卷后续存续无关） */
+export interface MyCertificate {
+  id: number;
+  templateKey: string;
+  templateVersion?: string | null;
+  personName?: string | null;
+  trainingId?: number | null;
+  trainingName?: string | null;
+  enrollmentId?: number | null;
+  trainingDate?: string | null;
+  trainerName?: string | null;
+  issuedAt?: string | null;
+}
+
+/** 证书模板：正文的唯一来源在后端（H5 与小程序共用，别在客户端各存一份） */
+export interface CertificateTemplate {
+  key: string;
+  titleZh: string;
+  titleEn: string;
+  version: string;
+  templateDate: string;
+  intro: string;
+  items: string[];
+  outro: string;
+}
+
+export interface MyCertificatesPayload {
+  list: MyCertificate[];
+  templates: CertificateTemplate[];
+}
+
+export async function fetchMyCertificates(): Promise<MyCertificatesPayload> {
+  const res = await authHttp.get<Result<MyCertificatesPayload>>("/student/training/certificates");
+  if (!res.data?.success) throw new Error(res.data?.message || "获取证书失败");
+  return res.data.data ?? { list: [], templates: [] };
+}
+
+/** 证书 PDF（后端出件），拿到 blob 交给预览弹窗 */
+export async function fetchCertificatePdf(id: number): Promise<Blob> {
+  const res = await authHttp.get(`/student/training/certificates/${id}/pdf`, { responseType: "blob" });
+  return res.data as Blob;
 }
 
 // ======================== 课题组归属（子系统4） ========================

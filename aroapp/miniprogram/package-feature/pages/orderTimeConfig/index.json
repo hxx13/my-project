@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "订购时间管理",
+  "usingComponents": {
+    "van-tabs": "@vant/weapp/tabs/index",
+    "van-tab": "@vant/weapp/tab/index",
+    "van-field": "@vant/weapp/field/index",
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

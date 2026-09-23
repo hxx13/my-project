@@ -168,10 +168,42 @@
             <text class="mine-cell-title-text">动物订购</text>
           </view>
         </van-cell>
+        <van-cell wx:if="{{ canGoOrderTimeConfig }}" is-link bind:click="goOrderTimeConfig">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="clock-o" size="28rpx" color="#7c3aed" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">订购时间管理</text>
+          </view>
+        </van-cell>
         <van-cell wx:if="{{ !isStudentView && canGoCardPrint }}" is-link bind:click="goCardPrint">
           <view slot="icon" class="mine-slot-ico"><van-icon name="printer" size="28rpx" color="#0f766e" /></view>
           <view slot="title" class="mine-cell-title-wrap">
             <text class="mine-cell-title-text">卡牌打印</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
+  <view wx:if="{{ springBound && (canGoStudentTraining || canGoStudentExam || canGoTrainingAdmin) }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">培训与考核</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell wx:if="{{ canGoStudentTraining }}" is-link bind:click="goStudentTraining">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="notes-o" size="28rpx" color="#1989fa" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">培训报名</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoStudentExam }}" is-link bind:click="goStudentExam">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="edit" size="28rpx" color="#16a34a" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">答题</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoTrainingAdmin }}" is-link bind:click="goTrainingAdmin">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="setting-o" size="28rpx" color="#2563eb" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">培训管理</text>
           </view>
         </van-cell>
       </van-cell-group>
@@ -259,6 +291,32 @@
           <view slot="icon" class="mine-slot-ico"><van-icon name="wap-home-o" size="28rpx" color="#334155" /></view>
           <view slot="title" class="mine-cell-title-wrap">
             <text class="mine-cell-title-text">门禁应用</text>
+          </view>
+        </van-cell>
+      </van-cell-group>
+    </view>
+  </view>
+
+  <view wx:if="{{ !isStudentView && (canGoDoorSwipeRules || canGoAccessRecordLibrary || canGoViolationAdmin) }}" class="mine-menu-group">
+    <text class="mine-menu-group-title">门禁与违规</text>
+    <view class="mine-list-card">
+      <van-cell-group inset="{{ false }}" border="{{ false }}">
+        <van-cell wx:if="{{ canGoDoorSwipeRules }}" is-link bind:click="goDoorSwipeRules">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="passed" size="28rpx" color="#7c3aed" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">刷卡规则</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoAccessRecordLibrary }}" is-link bind:click="goAccessRecordLibrary">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="records" size="28rpx" color="#0f766e" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">门禁记录库</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canGoViolationAdmin }}" is-link bind:click="goViolationAdmin">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="warn-o" size="28rpx" color="#b45309" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">违规管理</text>
           </view>
         </van-cell>
       </van-cell-group>
@@ -754,4 +812,26 @@
   </view>
   <!-- 离屏画布：只用来生成上面那张二维码图 -->
   <canvas canvas-id="signatureLinkQrCanvas" class="sig-link-qr-offscreen" />
+</van-popup>
+
+<!-- ====== 电子签名：已签过只看不改（签名不可更改，重签要找管理员重置） ====== -->
+<van-popup
+  show="{{ signatureViewShow }}"
+  position="center"
+  round
+  closeable
+  bind:close="onCloseSignatureView"
+  custom-style="width: 84%; max-width: 640rpx;"
+>
+  <view class="sig-view-card">
+    <text class="sig-view-title">我的电子签名</text>
+    <image
+      wx:if="{{ signatureImageData }}"
+      class="sig-view-img"
+      src="{{ signatureImageData }}"
+      mode="widthFix"
+      show-menu-by-longpress="{{ true }}"
+    />
+    <text class="sig-view-note">已提交，不可更改。如需重签，请联系管理员重置。</text>
+  </view>
 </van-popup>

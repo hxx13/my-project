@@ -23,13 +23,44 @@ const EXAM_FILTERS: { id: "all" | "unpassed" | "passed"; label: string }[] = [
   { id: "passed", label: "通过" },
 ];
 
+/** 后端墙钟时间（"yyyy-MM-dd HH:mm:ss"）→ "yyyy-MM-dd HH:mm" */
+function fmt(s?: string | null): string {
+  return s ? s.replace("T", " ").slice(0, 16) : "";
+}
+
+function toMs(s?: string | null): number | null {
+  if (!s) return null;
+  const t = new Date(s.replace(" ", "T")).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function validityText(p: StudentPaperSummary): string {
+  const f = fmt(p.validFrom);
+  const t = fmt(p.validTo);
+  if (!f && !t) return "不限";
+  return `${f || "不限"} ~ ${t || "不限"}`;
+}
+
+/** 有效期状态：未到开始 / 已过截止 / 开放中。 */
+function validityState(p: StudentPaperSummary): "before" | "after" | "open" {
+  const now = Date.now();
+  const from = toMs(p.validFrom);
+  const to = toMs(p.validTo);
+  if (from != null && now < from) return "before";
+  if (to != null && now > to) return "after";
+  return "open";
+}
+
 function PaperCard({ p, onOpen }: { p: StudentPaperSummary; onOpen: () => void }) {
   const status = paperStatus(p);
   const seal = STATUS_SEAL[status];
+  const vs = validityState(p);
+  const passed = status === "合格";
+  const canAnswer = vs === "open" && !passed;
   return (
     <div className="aup-card-cell">
       <div className="aup-doc-stack">
-        <div className="aup-doc" onClick={onOpen}>
+        <div className={`aup-doc${passed ? " is-passed" : ""}`} onClick={canAnswer ? onOpen : undefined}>
           <div className="aup-doc-hd">
             <div style={{ flex: 1, minWidth: 0 }}>
               <ShrinkText text={p.title} lines={1} baseFontPx={14} className="aup-doc-title" />
@@ -42,15 +73,21 @@ function PaperCard({ p, onOpen }: { p: StudentPaperSummary; onOpen: () => void }
               <ShrinkText text={p.totalTime ? `${p.totalTime} 分钟` : "不限"} lines={2} className="aup-f-v" />
             </div>
             <div className="aup-f">
-              <div className="aup-f-k">得分</div>
-              <ShrinkText text={p.submitted ? String(p.totalScore ?? "—") : "—"} lines={2} className="aup-f-v" />
+              <div className="aup-f-k">有效期</div>
+              <ShrinkText text={validityText(p)} lines={2} className="aup-f-v" />
             </div>
           </div>
           <div className="aup-doc-foot">
             <div className="aup-doc-acts">
-              <button className="btn primary small" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
-                {p.submitted ? "查看 / 重考" : "去答题"}
-              </button>
+              {passed ? (
+                <span className="text-xs font-medium text-[var(--success)]">已合格，不可查看答卷</span>
+              ) : vs !== "open" ? (
+                <span className="text-xs font-medium text-[var(--warn)]">{vs === "before" ? "未到开放时间" : "已过有效期"}</span>
+              ) : (
+                <button className="btn primary small" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
+                  {p.submitted ? "重新作答" : "去答题"}
+                </button>
+              )}
             </div>
             <div className="aup-doc-foot-right">
               <div className={`aup-seal ${seal.cls}`}>
@@ -116,12 +153,20 @@ export default function StudentExamPage() {
           >
             学习PDF
           </button>
-          <span style={{ fontSize: 12, color: "var(--muted)" }}>共 {filtered.length} 套</span>
+          <button
+            type="button"
+            className="btn ghost small"
+            title="查看我已获得的培训证书"
+            onClick={() => navigate("/student/certificates")}
+          >
+            我的证书
+          </button>
         </div>
       </div>
 
       <div className="list-card list-card-body">
         <div className="list-card-scroll">
+          <div className="list-count">共 {filtered.length} 套试卷</div>
           {isLoading ? (
             <div className="aup-empty">加载中…</div>
           ) : isError ? (
@@ -141,7 +186,7 @@ export default function StudentExamPage() {
                   <th>试卷标题</th>
                   <th>及格分</th>
                   <th>时限</th>
-                  <th>得分</th>
+                  <th>有效期</th>
                   <th>状态</th>
                   <th>操作</th>
                 </tr>
@@ -149,17 +194,25 @@ export default function StudentExamPage() {
               <tbody>
                 {filtered.map((p) => {
                   const status = paperStatus(p);
+                  const vs = validityState(p);
+                  const passed = status === "合格";
                   return (
-                    <tr key={p.id} className="row">
+                    <tr key={p.id} className={`row${passed ? " is-passed" : ""}`}>
                       <td><span className="proj-name">{p.title}</span></td>
                       <td>{p.qualifyScore ?? 80}</td>
                       <td>{p.totalTime ? `${p.totalTime} 分钟` : "不限"}</td>
-                      <td>{p.submitted ? (p.totalScore ?? "—") : "—"}</td>
+                      <td>{validityText(p)}</td>
                       <td><span className={`status-badge ${STATUS_SEAL[status].cls}`}>{status}</span></td>
                       <td>
-                        <button className="btn primary small" onClick={() => navigate(`/student/exam/${p.id}`)}>
-                          {p.submitted ? "查看 / 重考" : "去答题"}
-                        </button>
+                        {passed ? (
+                          <span className="text-xs font-medium text-[var(--success)]">已合格</span>
+                        ) : vs !== "open" ? (
+                          <span className="text-xs font-medium text-[var(--warn)]">{vs === "before" ? "未到开放时间" : "已过有效期"}</span>
+                        ) : (
+                          <button className="btn primary small" onClick={() => navigate(`/student/exam/${p.id}`)}>
+                            {p.submitted ? "重新作答" : "去答题"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

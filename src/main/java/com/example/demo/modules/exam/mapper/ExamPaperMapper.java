@@ -9,8 +9,8 @@ import java.util.List;
 public interface ExamPaperMapper {
 
     @Insert("""
-            INSERT INTO exam_paper (code, title, status, created_by, folder_id, qualify_score, total_time, created_at, updated_at)
-            VALUES (#{code}, #{title}, #{status}, #{createdBy}, #{folderId}, #{qualifyScore}, #{totalTime}, NOW(), NOW())
+            INSERT INTO exam_paper (code, title, status, created_by, folder_id, qualify_score, total_time, valid_from, valid_to, created_at, updated_at)
+            VALUES (#{code}, #{title}, #{status}, #{createdBy}, #{folderId}, #{qualifyScore}, #{totalTime}, #{validFrom}, #{validTo}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ExamPaper paper);
@@ -21,6 +21,8 @@ public interface ExamPaperMapper {
                    folder_id AS folderId,
                    qualify_score AS qualifyScore,
                    total_time AS totalTime,
+                   valid_from AS validFrom,
+                   valid_to AS validTo,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM exam_paper WHERE id = #{id}
@@ -33,6 +35,8 @@ public interface ExamPaperMapper {
                    folder_id AS folderId,
                    qualify_score AS qualifyScore,
                    total_time AS totalTime,
+                   valid_from AS validFrom,
+                   valid_to AS validTo,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM exam_paper WHERE code = #{code}
@@ -45,6 +49,8 @@ public interface ExamPaperMapper {
                    folder_id AS folderId,
                    qualify_score AS qualifyScore,
                    total_time AS totalTime,
+                   valid_from AS validFrom,
+                   valid_to AS validTo,
                    created_at AS createdAt,
                    updated_at AS updatedAt
             FROM exam_paper ORDER BY id DESC
@@ -58,6 +64,8 @@ public interface ExamPaperMapper {
                 folder_id = #{folderId},
                 qualify_score = #{qualifyScore},
                 total_time = #{totalTime},
+                valid_from = #{validFrom},
+                valid_to = #{validTo},
                 updated_at = NOW()
             WHERE id = #{id}
             """)

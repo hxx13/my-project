@@ -12,7 +12,7 @@ import { join } from 'node:path';
 const ROOT = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const JAVA_ROOT = join(ROOT, 'src', 'main', 'java');
 const MAP_FILE = join(
-  ROOT, 'aroapp', 'miniprogram', 'package-feature', 'pages', 'studentCageShelf', 'index.js',
+  ROOT, 'aroapp', 'miniprogram', 'package-student', 'pages', 'studentCageShelf', 'index.js',
 );
 
 /** 递归收集 .java 文件 */

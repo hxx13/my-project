@@ -3,7 +3,6 @@ import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Loader2, WifiOff, X, Scan, Home } from "lucide-react";
-import { WxPusherBindModal } from "@/components/shared/WxPusherBindModal";
 import {
   fetchMobileCenter,
   fetchMobileAlerts,
@@ -18,7 +17,6 @@ import { fetchLoginBranding, type LoginBranding } from "@/api/domains/publicSite
 import * as studentMobileApi from "@/api/domains/studentMobile.api";
 import { hasMobileHtml5Privilege } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
-import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import { useMobileSocket, mergeMobileUserNotify } from "./useMobileSocket";
 import { isFeedbackKind } from "./mobileAlertSplit";
 import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
@@ -29,6 +27,10 @@ import MobileAnimalOrderView from "./MobileAnimalOrderView";
 import MobileRecordsTab from "./MobileRecordsTab";
 import MobileViolationsTab from "./MobileViolationsTab";
 import MobileMineTab from "./MobileMineTab";
+import MobileTrainingTab from "./MobileTrainingTab";
+import MobileExamTab, { type ExamBarState, type MobileExamTabHandle } from "./MobileExamTab";
+import MobileCertificatesTab from "./MobileCertificatesTab";
+import MobileHealthTab from "./MobileHealthTab";
 import MobileCageShelfTab, { type MobileCageShelfTabHandle } from "./MobileCageShelfTab";
 import { lookupCode } from "@/api/domains/cageShelf.api";
 import MobileGroupTab from "./MobileGroupTab";
@@ -47,7 +49,7 @@ import {
   type MobileTabBarKey,
 } from "./mobileShellLayout";
 
-import { appAlert, appConfirm } from "@/lib/appDialog";
+import { appAlert } from "@/lib/appDialog";
 /* ================================================================== */
 const PAGE_BG = "#eef0f6";
 const BRAND = "#ac1736";
@@ -129,30 +131,30 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [error, setError] = useState<string | null>(null);
   const [tokenDead, setTokenDead] = useState<{ code: number; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<MobileShellTabKey>("home");
+  /**
+   * 子页返回锚点：从哪个「底栏主 Tab」进的子页，返回就回那儿。
+   * 原先写死回首页 —— 从「我的」点进健康调查表/证书再返回会被甩到首页。
+   * 子页之间互相跳转不改锚点（否则 training→certificates 返回会落到 training）。
+   */
+  const returnTabRef = useRef<MobileShellTabKey>("home");
+  const goTab = useCallback(
+    (next: MobileShellTabKey) => {
+      if (MOBILE_SUBPAGE_TABS.includes(next) && !MOBILE_SUBPAGE_TABS.includes(activeTab)) {
+        returnTabRef.current = activeTab;
+      }
+      setActiveTab(next);
+    },
+    [activeTab],
+  );
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const [announcements, setAnnouncements] = useState<MobileAlertItem[]>([]);
   const [announcementsUnread, setAnnouncementsUnread] = useState(false);
   const [feedbacks, setFeedbacks] = useState<MobileAlertItem[]>([]);
   const [html5PrivilegeBypass, setHtml5PrivilegeBypass] = useState(false);
   const [showAnnouncements, setShowAnnouncements] = useState(false);
-  const [currentEmail, setCurrentEmail] = useState("");
-  const [currentSendKey, setCurrentSendKey] = useState(false);
-  const [currentWxPusher, setCurrentWxPusher] = useState(false);
 
-  // Fetch email & SendKey & WxPusher binding status for header chips
-  const userIdForBind = authStorage.getUserInfo()?.id || data?.userId || "";
   const navigate = useNavigate();
 
-  const [showEmailDialog, setShowEmailDialog] = useState(false);
-  const [showSendKeyDialog, setShowSendKeyDialog] = useState(false);
-  const [emailDraft, setEmailDraft] = useState("");
-  const [emailCode, setEmailCode] = useState("");
-  const [emailCodeSending, setEmailCodeSending] = useState(false);
-  const [emailCodeCooldown, setEmailCodeCooldown] = useState(0);
-  const [emailSaving, setEmailSaving] = useState(false);
-  const [sendKeyDraft, setSendKeyDraft] = useState("");
-  const [sendKeySaving, setSendKeySaving] = useState(false);
-  const [showWxPusherDialog, setShowWxPusherDialog] = useState(false);
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [cageJumpTarget, setCageJumpTarget] = useState<{
@@ -160,67 +162,6 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   } | null>(null);
   const [scanLookupLoading, setScanLookupLoading] = useState(false);
 
-  const handleEmailChip = async () => {
-    if (!userIdForBind) return;
-    if (currentEmail) {
-      if (!await appConfirm(`已绑定 ${currentEmail}，是否取消绑定？`)) return;
-      const t = authStorage.getToken();
-      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
-        body: JSON.stringify({ email: "" }),
-      }).then((r) => { if (r.ok) setCurrentEmail(""); });
-    } else {
-      setEmailDraft(""); setEmailCode(""); setEmailCodeCooldown(0);
-      setShowEmailDialog(true);
-    }
-  };
-
-  const handleSendKeyChip = async () => {
-    if (!userIdForBind) return;
-    if (currentSendKey) {
-      if (!await appConfirm("已绑定微信通知，是否取消绑定？")) return;
-      const t = authStorage.getToken();
-      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
-        body: JSON.stringify({ sendKey: "" }),
-      }).then((r) => { if (r.ok) setCurrentSendKey(false); });
-    } else {
-      setSendKeyDraft("");
-      setShowSendKeyDialog(true);
-    }
-  };
-
-  const handleWxPusherChip = async () => {
-    if (!userIdForBind) return;
-    if (currentWxPusher) {
-      if (!await appConfirm("已绑定 WxPusher 推送，是否取消绑定？")) return;
-      const t = authStorage.getToken();
-      fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/wx-pusher-uid`, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
-        body: JSON.stringify({ wxPusherUid: "" }),
-      }).then((r) => { if (r.ok) setCurrentWxPusher(false); });
-    } else {
-      setShowWxPusherDialog(true);
-    }
-  };
-  useEffect(() => {
-    if (!userIdForBind) return;
-    const t = authStorage.getToken();
-    if (!t) return;
-    const h = { Authorization: "Bearer " + t };
-    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/contact-email`, { headers: h })
-      .then((r) => r.json().catch(() => ({})))
-      .then((b) => setCurrentEmail(b?.data?.email || ""))
-      .catch(() => {});
-    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, { headers: h })
-      .then((r) => r.json().catch(() => ({})))
-      .then((b) => setCurrentSendKey(!!b?.data?.sendKey))
-      .catch(() => {});
-    fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/wx-pusher-uid`, { headers: h })
-      .then((r) => r.json().catch(() => ({})))
-      .then((b) => setCurrentWxPusher(!!b?.data?.hasWxPusherUid))
-      .catch(() => {});
-  }, [userIdForBind]);
   const [showFeedback, setShowFeedback] = useState(false);
   const [announcementFocusKey, setAnnouncementFocusKey] = useState<string | null>(null);
   const jwtMode = !token;
@@ -230,6 +171,9 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [presenceRefresh, setPresenceRefresh] = useState(0);
   const cageShelfRef = useRef<MobileCageShelfTabHandle>(null);
   const [cageShelfNavTitle, setCageShelfNavTitle] = useState<string | undefined>();
+  /** 答题：答题中把顶栏换成「试卷名 + 已答/提交」，返回键先退回试卷列表 */
+  const examRef = useRef<MobileExamTabHandle>(null);
+  const [examBar, setExamBar] = useState<ExamBarState | null>(null);
   const prevTabRef = useRef<MobileShellTabKey>("home");
 
   const loadAlerts = useCallback(async () => {
@@ -405,9 +349,12 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     if (activeTab === "cage" && cageShelfRef.current?.pop()) {
       return;
     }
+    if (activeTab === "exam" && examRef.current?.pop()) {
+      return;
+    }
     void (async () => {
       if (editExitGuardRef.current && !(await editExitGuardRef.current())) return;
-      setActiveTab("home");
+      setActiveTab(returnTabRef.current);
     })();
   }, [activeTab]);
 
@@ -436,7 +383,9 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const navTitle =
     activeTab === "cage" && cageShelfNavTitle
       ? cageShelfNavTitle
-      : MOBILE_TAB_TITLES[activeTab] ?? "";
+      : activeTab === "exam" && examBar
+        ? examBar.title
+        : MOBILE_TAB_TITLES[activeTab] ?? "";
   /** 笼架 / 学生申领 一进来（列表）就收起底部 tabbar —— 手机上那一行很占画面高度 */
   const HIDE_TABBAR_TABS: MobileTabBarKey[] = ["cage", "material"];
   const showTabBar =
@@ -487,103 +436,21 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
               <Scan className="size-5 text-white" strokeWidth={1.5} />
             </button>
           </div>
-        ) : null}
-      />
-      {/* Email bind dialog */}
-      {showEmailDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowEmailDialog(false)}>
-          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-gray-900">绑定邮箱</h3>
-            <p className="mt-1 text-xs text-gray-500">设置用于接收通知的联系邮箱</p>
-            <input type="email" value={emailDraft} onChange={(e) => setEmailDraft(e.target.value)} placeholder="请输入邮箱地址"
-              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
-            <div className="flex items-center gap-2 mt-2">
-              <input type="text" inputMode="numeric" maxLength={6} value={emailCode}
-                onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="验证码" className="flex-1 rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-center tracking-[0.3em] outline-none" />
-              <button type="button" disabled={!emailDraft.trim() || emailCodeSending || emailCodeCooldown > 0}
-                onClick={async () => {
-                  if (!emailDraft.trim()) return;
-                  setEmailCodeSending(true);
-                  try {
-                    const r = await sendVerificationCode(emailDraft.trim(), "BIND_EMAIL");
-                    setEmailCodeCooldown(r.cooldownSeconds || 60);
-                    const timer = setInterval(() => setEmailCodeCooldown((p: number) => { if (p <= 1) { clearInterval(timer); return 0; } return p - 1; }), 1000);
-                  } catch { /* ignore */ }
-                  finally { setEmailCodeSending(false); }
-                }}
-                className="shrink-0 rounded-lg border border-[#ac1736] px-3 py-2.5 text-xs font-medium text-[#ac1736] disabled:opacity-50">
-                {emailCodeCooldown > 0 ? `${emailCodeCooldown}s` : emailCodeSending ? "发送中" : "发送验证码"}
-              </button>
-            </div>
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowEmailDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
-              <button type="button" disabled={!emailDraft.trim() || emailCode.length !== 6 || emailSaving}
-                onClick={async () => {
-                  setEmailSaving(true);
-                  try {
-                    await bindEmailWithCode(emailDraft.trim(), emailCode.trim());
-                    setCurrentEmail(emailDraft.trim());
-                    setShowEmailDialog(false);
-                  } catch (e: any) { await appAlert(e?.message || "绑定失败"); }
-                  finally { setEmailSaving(false); }
-                }}
-                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
-                {emailSaving ? "绑定中…" : "确认绑定"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SendKey bind dialog */}
-      {showSendKeyDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowSendKeyDialog(false)}>
-          <div className="bg-white rounded-2xl w-[85%] max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-gray-900">绑定微信通知</h3>
-            <p className="mt-1 text-xs text-gray-500">通过 Server酱 SendKey 接收微信推送通知</p>
-            <a
-              href={`https://sct.ftqq.com/appkey/create/forward?name=ARO&url=${encodeURIComponent(`${window.location.origin}/#/m/home?sendkey={key}&bindUserId=${encodeURIComponent(userIdForBind)}`)}`}
-              target="_blank" rel="noopener noreferrer"
-              className="mt-1 inline-block text-[11px] text-[#d97706] underline"
+        ) : activeTab === "exam" && examBar ? (
+          <div className="flex items-center gap-2 pr-1">
+            <span className="text-[12px] tabular-nums" style={{ color: "#94a3b8" }}>
+              已答 {examBar.answered}/{examBar.total}
+            </span>
+            <button
+              type="button"
+              disabled={examBar.submitting}
+              onClick={() => examRef.current?.submit()}
+              className="rounded-[length:var(--admin-radius-md,0.375rem)] border border-[var(--app-color-accent)] bg-[var(--app-color-accent)] px-2.5 py-1 text-[13px] font-medium text-white shadow disabled:opacity-50"
             >
-              还没有 SendKey？点此前往 Server酱 创建 →
-            </a>
-            <input value={sendKeyDraft} onChange={(e) => setSendKeyDraft(e.target.value)} placeholder="粘贴 SendKey"
-              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-[#ac1736]" />
-            <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowSendKeyDialog(false)} className="flex-1 rounded-full py-2.5 text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">取消</button>
-              <button type="button" disabled={!sendKeyDraft.trim() || sendKeySaving}
-                onClick={async () => {
-                  setSendKeySaving(true);
-                  try {
-                    const t = authStorage.getToken();
-                    const r = await fetch(`/api/admin/personnel/${encodeURIComponent(userIdForBind)}/send-key`, {
-                      method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + t },
-                      body: JSON.stringify({ sendKey: sendKeyDraft.trim() }),
-                    });
-                    if (!r.ok) throw new Error("保存失败");
-                    setCurrentSendKey(true); setShowSendKeyDialog(false);
-                  } catch (e: any) { await appAlert(e?.message || "保存失败"); }
-                  finally { setSendKeySaving(false); }
-                }}
-                className="flex-1 rounded-full py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                style={{ background: "linear-gradient(135deg, #ac1736, #8B1229)" }}>
-                {sendKeySaving ? "保存中…" : "保存"}
-              </button>
-            </div>
+              {examBar.submitting ? "提交中…" : "提交"}
+            </button>
           </div>
-        </div>
-      )}
-
-      {/* WxPusher bind dialog */}
-      <WxPusherBindModal
-        open={showWxPusherDialog}
-        onClose={() => setShowWxPusherDialog(false)}
-        personnelId={userIdForBind}
-        authToken={authStorage.getToken()}
-        onSaved={() => setCurrentWxPusher(true)}
+        ) : null}
       />
 
       <WatermarkLogo />
@@ -650,13 +517,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             html5PrivilegeBypass={
               data.html5PrivilegeBypass === true || html5PrivilegeBypass
             }
-            currentEmail={currentEmail}
-            currentSendKey={currentSendKey}
-            currentWxPusher={currentWxPusher}
-            onEmailChip={userIdForBind ? handleEmailChip : undefined}
-            onSendKeyChip={userIdForBind ? handleSendKeyChip : undefined}
-            onWxPusherChip={userIdForBind ? handleWxPusherChip : undefined}
-            onNav={setActiveTab}
+            onNav={goTab}
             onOpenAnnouncements={openAnnouncements}
             onOpenFeedback={openFeedback}
           />
@@ -690,11 +551,16 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             data={data}
             expiresAt={data.expiresAt}
             jwtMode={jwtMode}
-            onNav={setActiveTab}
+            onNav={goTab}
             onOpenAnnouncements={() => openAnnouncements()}
           />
         )}
         {activeTab === "animalOrder" && <MobileAnimalOrderView jwtMode={jwtMode} onRegisterExitGuard={registerEditExitGuard} />}
+        {/* 培训报名 / 答题：只做登录态（/m/home），扫码特殊通道不走这两个接口 */}
+        {activeTab === "training" && jwtMode && <MobileTrainingTab />}
+        {activeTab === "exam" && jwtMode && <MobileExamTab ref={examRef} onBarChange={setExamBar} />}
+        {activeTab === "certificates" && jwtMode && <MobileCertificatesTab />}
+        {activeTab === "health" && jwtMode && <MobileHealthTab />}
       </main>
       <MobileNoticesPanel
         open={showAnnouncements}
@@ -728,7 +594,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
       {showTabBar && !showAnnouncements && !showFeedback && (
         <MobileBottomTabBar
           active={activeTab}
-          onChange={(k: MobileTabBarKey) => setActiveTab(k)}
+          onChange={(k: MobileTabBarKey) => goTab(k)}
         />
       )}
 

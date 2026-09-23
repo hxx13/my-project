@@ -2,6 +2,7 @@ import { ArrowRight, Pin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StaggerCards } from "@/components/scroll-reveal";
 import { usePublicContents } from "@/api/hooks/usePortalContent";
+import { dateOnly } from "@/utils/beijingTime";
 import type { PortalContentView } from "@/api/domains/portalContent.api";
 import { NOTICE_PRIORITY_CONFIG, noticePriorityOf } from "./noticePriority";
 
@@ -27,7 +28,7 @@ export function NewsSection() {
           {cfg.badge}
         </div>
         <h4 className="text-[13px] font-bold text-neutral-900 leading-snug">{item.title}</h4>
-        <div className="text-[10px] text-neutral-400 mt-1">{item.publishedAt?.split("T")[0] || ""}</div>
+        <div className="text-[10px] text-neutral-400 mt-1">{dateOnly(item.publishedAt)}</div>
       </Link>
     );
   };
@@ -52,7 +53,7 @@ export function NewsSection() {
                     <span className="text-6xl opacity-20">📰</span>
                   </div>
                   <div className="p-6">
-                    <div className="text-[11px] text-neutral-400 mb-2">{featured.publishedAt?.split("T")[0] || ""}</div>
+                    <div className="text-[11px] text-neutral-400 mb-2">{dateOnly(featured.publishedAt)}</div>
                     <h3 className="text-lg font-bold text-neutral-900 leading-snug group-hover:text-amber-600 transition-colors">{featured.title}</h3>
                     <p className="mt-3 text-sm text-neutral-500 line-clamp-2">{featured.summary || ""}</p>
                     <span className="inline-block mt-4 text-[12px] font-semibold text-amber-600">阅读全文 →</span>
@@ -64,7 +65,7 @@ export function NewsSection() {
                 {sideArticles.map((item) => (
                   <Link key={item.id} to={`/news/article/${item.id}`}
                     className="bg-white rounded-xl border border-neutral-200 p-4 hover:shadow-sm hover:border-amber-200 transition-all group/item text-left no-underline">
-                    <div className="text-[10px] text-neutral-400 mb-1">{item.publishedAt?.split("T")[0] || ""}</div>
+                    <div className="text-[10px] text-neutral-400 mb-1">{dateOnly(item.publishedAt)}</div>
                     <h4 className="text-[13px] font-bold text-neutral-800 leading-snug line-clamp-2 group-hover/item:text-amber-600 transition-colors">{item.title}</h4>
                   </Link>
                 ))}
@@ -109,7 +110,7 @@ export function NewsSection() {
                         <h4 className="text-sm font-bold text-neutral-900 group-hover/item:text-amber-600 transition-colors">{item.title}</h4>
                         <p className="text-xs text-neutral-400 line-clamp-1 mt-0.5">{item.summary || ""}</p>
                       </div>
-                      <span className="text-[11px] text-neutral-400 whitespace-nowrap pt-3">{item.publishedAt?.split("T")[0] || ""}</span>
+                      <span className="text-[11px] text-neutral-400 whitespace-nowrap pt-3">{dateOnly(item.publishedAt)}</span>
                     </Link>
                   );
                 })}

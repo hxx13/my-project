@@ -1,0 +1,87 @@
+<van-popup
+  show="{{ show }}"
+  position="bottom"
+  round
+  closeable
+  bind:close="onClose"
+  custom-style="padding:24rpx 24rpx 48rpx;max-height:82vh;"
+>
+  <view class="esp-title">设置豁免</view>
+  <view class="esp-sub">
+    卡号 <text class="esp-mono">{{ cardNo }}</text>
+    <text wx:if="{{ userName }}"> · {{ userName }}</text>
+  </view>
+
+  <view class="esp-section">
+    <view class="esp-label">豁免模式</view>
+    <view class="esp-mode-row">
+      <view
+        wx:for="{{ modeOptions }}"
+        wx:key="value"
+        class="esp-mode-chip {{ mode === item.value ? 'esp-mode-active' : '' }}"
+        data-value="{{ item.value }}"
+        bindtap="onModeTap"
+      >{{ item.label }}</view>
+    </view>
+  </view>
+
+  <view wx:if="{{ mode === 'TIME' || mode === 'BOTH' }}" class="esp-section">
+    <view class="esp-label">延长至（当日）</view>
+    <view class="esp-until-grid">
+      <view
+        wx:for="{{ untilPresets }}"
+        wx:key="untilTime"
+        class="esp-until-chip {{ untilTime === item.untilTime ? 'esp-until-active' : '' }}"
+        data-until="{{ item.untilTime }}"
+        bindtap="onUntilTap"
+      >
+        <text class="esp-until-time">{{ item.untilTime }}</text>
+        <text wx:if="{{ item.untilTime === defaultUntilTime }}" class="esp-until-tag">默认</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{ mode === 'COUNT' || mode === 'BOTH' }}" class="esp-section">
+    <van-field
+      label="可用次数"
+      type="number"
+      value="{{ maxCount }}"
+      placeholder="请填写次数"
+      border="{{ true }}"
+      bind:change="onMaxCountInput"
+    />
+  </view>
+
+  <view class="esp-section">
+    <view class="esp-label-row">
+      <text class="esp-label">授权房间（免时段限制）</text>
+      <text class="esp-link" bindtap="onRefreshRooms">{{ roomsLoading ? '加载中...' : '刷新房间列表' }}</text>
+    </view>
+    <view wx:if="{{ !rooms.length }}" class="esp-hint">点击「刷新房间列表」获取人员房间权限</view>
+    <scroll-view wx:else scroll-y class="esp-room-scroll">
+      <view
+        wx:for="{{ rooms }}"
+        wx:key="roomId"
+        class="esp-room-item {{ item.selected ? 'esp-room-item-active' : '' }}"
+        data-id="{{ item.roomId }}"
+        bindtap="onRoomToggle"
+      >
+        <text class="esp-room-name">{{ item.roomName }}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{ mode === 'TIME' }}" class="esp-hint esp-hint-bottom">
+    选择延长至时点与授权房间后，点击下方「确认设置」生效
+  </view>
+
+  <van-button
+    block
+    type="primary"
+    round
+    loading="{{ submitting }}"
+    disabled="{{ !canSubmit || submitting }}"
+    custom-class="esp-submit"
+    bindtap="onConfirm"
+  >确认设置</van-button>
+</van-popup>

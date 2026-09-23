@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { cancelMyEnrollment, fetchMyEnrollments, type MyEnrollment } from "../api/student.api";
 import { useStudentQuery } from "../hooks/use-student-query";
+import { enrollStatus, isFullyPassed } from "../utils/trainingEnrollStatus";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function StudentTrainingMyPage() {
@@ -29,8 +30,9 @@ export default function StudentTrainingMyPage() {
   };
 
   const statusBadge = (e: MyEnrollment) => {
-    if (e.testYn === 1) return <span className="text-xs text-emerald-600 font-medium">已通过</span>;
-    if (e.testYn === 2) return <span className="text-xs text-rose-600 font-medium">已拒绝</span>;
+    const s = enrollStatus(true, e.testYn, e.testFraction);
+    if (s === "已通过") return <span className="text-xs text-emerald-600 font-medium">已通过</span>;
+    if (s === "已拒绝") return <span className="text-xs text-rose-600 font-medium">已拒绝</span>;
     return <span className="text-xs text-amber-600 font-medium">待审核</span>;
   };
 
@@ -68,7 +70,7 @@ export default function StudentTrainingMyPage() {
                   </div>
                 </div>
                 {statusBadge(e)}
-                {e.testYn !== 1 && (
+                {!isFullyPassed(e.testYn, e.testFraction) && (
                   <button
                     className="text-xs text-[var(--student-mute)] hover:text-[var(--student-error)] disabled:opacity-50"
                     disabled={canceling === e.id}

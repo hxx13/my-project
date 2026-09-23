@@ -50,33 +50,27 @@ export default function StudentExamAnswerPage() {
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [initialized, setInitialized] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{ totalScore: number; maxScore: number; qualifyYn: number; perQuestion?: Record<string, { correct: boolean; earned: number }> } | null>(null);
-  const [reviewing, setReviewing] = useState(false);
   const qc = useQueryClient();
 
   const sections = useMemo(() => (paper ? toSections(paper) : []), [paper]);
   const draftKey = `exam-draft-${id}`;
 
+  // 已合格卷不允许再查看/重看答案，只有本地的未提交草稿会回填
+  const passed = paper?.myQualifyYn === 1;
+
   useEffect(() => {
-    if (!paper || initialized) return;
-    const submitted = (paper.myAnswers as Record<string, unknown>) ?? null;
-    if (submitted && Object.keys(submitted).length > 0) {
-      setAnswers(submitted);
-    } else {
-      try {
-        const draft = localStorage.getItem(draftKey);
-        if (draft) setAnswers(JSON.parse(draft));
-      } catch { /* ignore */ }
-    }
+    if (!paper || initialized || passed) return;
+    try {
+      const draft = localStorage.getItem(draftKey);
+      if (draft) setAnswers(JSON.parse(draft));
+    } catch { /* ignore */ }
     setInitialized(true);
-  }, [paper, initialized, draftKey]);
+  }, [paper, initialized, draftKey, passed]);
 
   const isAnswered = (key: string) => {
     const v = answers[key];
     return v != null && (Array.isArray(v) ? v.length > 0 : String(v) !== "");
   };
-
-  const isCorrect = (key: string) => result?.perQuestion?.[key]?.correct === true;
 
   const answeredCount = useMemo(
     () => sections.reduce((n, s) => n + s.questions.filter((q) => isAnswered(q.key)).length, 0),
@@ -91,14 +85,16 @@ export default function StudentExamAnswerPage() {
     } catch { /* ignore */ }
   };
 
+  /** 提交即退出：不回显得分、不给看正确答案，只提示本次是否合格。 */
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
       const r = await submitExamPaper(id, answers);
-      setResult(r);
-      setReviewing(true);
       localStorage.removeItem(draftKey);
       qc.invalidateQueries({ queryKey: ["student"] });
+      if (r.qualifyYn === 1) toast.success("提交成功：本次合格");
+      else toast.error("提交成功：本次未合格，可重新作答");
+      navigate("/student/exam");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
     } finally {
@@ -121,6 +117,14 @@ export default function StudentExamAnswerPage() {
       </div>
     );
   }
+  if (passed) {
+    return (
+      <div className="p-6 text-sm text-[var(--student-mute)]">
+        该试卷已合格，答卷与答案不予展示。
+        <button className="ml-3 underline" onClick={() => navigate("/student/exam")}>返回</button>
+      </div>
+    );
+  }
 
   return (
     <div className="aup-app nhp-fill-portal" style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -130,21 +134,10 @@ export default function StudentExamAnswerPage() {
           <h1 className="nhp-fill-toolbar-title" style={{ margin: 0 }}>{paper.title}</h1>
           <span className="spacer" />
           <span className="autosave">已答 {answeredCount} 题</span>
-          {reviewing ? (
-            <>
-              <span className={cn("autosave", result?.qualifyYn === 1 ? "" : "err")}>
-                {result?.qualifyYn === 1 ? "合格" : "不合格"} · {result?.totalScore} / {result?.maxScore}
-              </span>
-              <button type="button" className="btn ghost" onClick={() => setReviewing(false)}>重新作答</button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="btn ghost" onClick={handleSave}>保存</button>
-              <button type="button" className="btn primary" disabled={submitting} onClick={handleSubmit}>
-                {submitting ? "提交中…" : "提交"}
-              </button>
-            </>
-          )}
+          <button type="button" className="btn ghost" onClick={handleSave}>保存</button>
+          <button type="button" className="btn primary" disabled={submitting} onClick={handleSubmit}>
+            {submitting ? "提交中…" : "提交"}
+          </button>
         </div>
 
         <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 16, padding: "12px 16px" }}>
@@ -164,11 +157,9 @@ export default function StudentExamAnswerPage() {
                   {sec.questions.map((q) => (
                     <div key={q.key} className="nav-item nav-sub" onClick={() => scrollTo(q.key)}>
                       <span
-                        className={cn("mark", result ? (isCorrect(q.key) ? "done" : "bad") : "todo")}
-                        style={!result && isAnswered(q.key) ? { background: "var(--primary)" } : undefined}
-                      >
-                        {result ? (isCorrect(q.key) ? "✓" : "✗") : ""}
-                      </span>
+                        className={cn("mark", "todo")}
+                        style={isAnswered(q.key) ? { background: "var(--primary)" } : undefined}
+                      />
                       <span className="nav-label">{q.label}</span>
                     </div>
                   ))}
@@ -187,17 +178,11 @@ export default function StudentExamAnswerPage() {
                     <label>
                       {q.label}
                       {q.required && <span className="req">*</span>}
-                      {result && (
-                        <span style={{ marginLeft: 8, fontSize: 12, color: isCorrect(q.key) ? "var(--success)" : "var(--danger)" }}>
-                          {isCorrect(q.key) ? "✓ 答对" : "✗ 答错"}
-                        </span>
-                      )}
                     </label>
                     <NhpFormField
                       field={q.field}
                       value={answers[q.key]}
                       onChange={(v) => setAnswers((p) => ({ ...p, [q.key]: v }))}
-                      readOnly={reviewing}
                     />
                   </div>
                 ))}
@@ -210,7 +195,7 @@ export default function StudentExamAnswerPage() {
             <div className="hd">提示与注意事项</div>
             <div className="sidebar-body" style={{ padding: 12 }}>
               <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.7 }}>
-                （占位）可在此放置答题提示、注意事项，或上传参考图片进行适配说明，后续接入。
+                提交后不展示得分与正确答案。本次未合格可重新作答，合格后答卷不再开放。
               </p>
             </div>
           </aside>

@@ -1,0 +1,52 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+
+  <view wx:elif="{{ passed }}" class="blocked">
+    <text class="blocked-title">该试卷已合格</text>
+    <text class="blocked-sub">答卷与正确答案不予展示</text>
+  </view>
+
+  <block wx:else>
+    <view class="paper-title">{{ paperTitle }}</view>
+    <view wx:if="{{ unsupported > 0 }}" class="unsupported-tip">
+      本卷含 {{ unsupported }} 道非选择题，手机端暂不支持，请到网页端作答
+    </view>
+
+    <view wx:for="{{ sections }}" wx:key="code" wx:for-item="sec" class="sec">
+      <view class="sec-head">{{ sec.label }}</view>
+      <view wx:for="{{ sec.questions }}" wx:key="key" wx:for-item="q" class="q-card">
+        <view class="q-head">
+          <text class="q-index">{{ q.index }}</text>
+          <text class="q-text">{{ q.label }}</text>
+          <text wx:if="{{ q.multiple }}" class="q-badge">多选</text>
+        </view>
+        <view class="opt-list">
+          <view
+            wx:for="{{ q.options }}"
+            wx:key="value"
+            wx:for-item="opt"
+            class="opt-row {{ opt.picked ? 'opt-on' : '' }}"
+            data-qkey="{{ q.key }}"
+            data-value="{{ opt.value }}"
+            data-multiple="{{ q.multiple }}"
+            bindtap="onPickOption"
+          >
+            <view class="opt-dot {{ opt.picked ? 'opt-dot-on' : '' }}">
+              <text wx:if="{{ opt.picked }}" class="opt-tick">✓</text>
+            </view>
+            <text class="opt-label">{{ opt.label }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{ !loading && !passed }}" class="bottombar">
+  <text class="bar-count">已答 {{ answered }} / {{ total }} 题</text>
+  <view class="chip-btn chip-btn--primary enroll-btn {{ submitting ? 'chip-btn--off' : '' }}" bindtap="onSubmitTap">
+    {{ submitting ? '提交中…' : '提交' }}
+  </view>
+</view>
+</block>

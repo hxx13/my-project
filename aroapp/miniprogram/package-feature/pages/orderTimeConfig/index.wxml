@@ -1,0 +1,194 @@
+<view class="page" wx:if="{{ pageGateOk }}">
+  <!-- 校区切换：策略按校区 -->
+  <view class="ot-campus-row">
+    <view
+      wx:for="{{ campuses }}"
+      wx:key="*this"
+      class="ot-campus-btn {{ campus === item ? 'ot-campus-btn--on' : '' }}"
+      data-campus="{{ item }}"
+      bindtap="onCampusTap"
+    >{{ item }}</view>
+  </view>
+
+  <van-tabs active="{{ subTab }}" bind:change="onSubTabChange" color="var(--accent)" line-width="28rpx" lazy-render="{{ false }}">
+    <van-tab title="可购窗口" name="window">
+      <view class="pad">
+        <view class="card">
+          <view class="card-title">没有规则命中时</view>
+          <view class="ot-seg">
+            <view class="ot-seg-btn {{ defaultMode === 'OPEN' ? 'ot-seg-btn--on' : '' }}" data-mode="OPEN" bindtap="onDefaultMode">默认可购</view>
+            <view class="ot-seg-btn {{ defaultMode === 'CLOSED' ? 'ot-seg-btn--on' : '' }}" data-mode="CLOSED" bindtap="onDefaultMode">默认不可购</view>
+          </view>
+        </view>
+
+        <view class="ot-hint">从上到下优先级递减，命中即止；特殊时段恒在最顶且不可移动。</view>
+
+        <block wx:for="{{ rules }}" wx:key="_k">
+          <view class="card">
+            <view class="card-head-row">
+              <text class="card-title-ellipsis">{{ item.scopeText }}{{ item.expired ? '（已失效）' : '' }}{{ item.activeFlag ? '' : '（已停用）' }}</text>
+              <view class="card-inline-actions">
+                <view wx:if="{{ !item.isRange }}" class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" data-key="{{ item._k }}" data-dir="-1" catchtap="moveRule">上移</view>
+                <view wx:if="{{ !item.isRange }}" class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ item.id }}" data-key="{{ item._k }}" data-dir="1" catchtap="moveRule">下移</view>
+              </view>
+            </view>
+            <view class="card-sub">{{ item.summaryText }}</view>
+            <view class="row-actions">
+              <view class="fm-chip fm-chip-xs fm-chip-ghost" data-key="{{ item._k }}" catchtap="toggleRuleActive">{{ item.activeFlag ? '停用' : '启用' }}</view>
+              <view wx:if="{{ item.isRange }}" class="fm-chip fm-chip-xs fm-chip-ghost" data-key="{{ item._k }}" catchtap="editRange">编辑</view>
+              <view wx:else class="fm-chip fm-chip-xs fm-chip-ghost" data-key="{{ item._k }}" catchtap="editRule">编辑</view>
+              <view class="fm-chip fm-chip-xs fm-chip-danger" data-key="{{ item._k }}" catchtap="deleteRule">删除</view>
+            </view>
+          </view>
+        </block>
+
+        <view class="ot-actions">
+          <view class="fm-chip fm-chip-ghost" bindtap="openNewRule">＋ 新建时段</view>
+          <view class="fm-chip fm-chip-ghost" bindtap="openNewRange">＋ 特殊时段</view>
+        </view>
+        <view class="ot-actions">
+          <view class="fm-chip fm-chip-primary" bindtap="saveWindow">保存可购窗口策略</view>
+        </view>
+      </view>
+    </van-tab>
+    <van-tab title="预计送达" name="eta">
+      <view class="pad">
+        <view class="card">
+          <view class="card-title">预计送达策略</view>
+          <view class="ot-seg">
+            <view class="ot-seg-btn {{ etaMode === 'RELATIVE' ? 'ot-seg-btn--on' : '' }}" data-mode="RELATIVE" bindtap="onEtaMode">相对工作日</view>
+            <view class="ot-seg-btn {{ etaMode === 'FIXED' ? 'ot-seg-btn--on' : '' }}" data-mode="FIXED" bindtap="onEtaMode">固定星期</view>
+          </view>
+        </view>
+
+        <view class="card" wx:if="{{ etaMode === 'RELATIVE' }}">
+          <van-field label="锚点后第 N 个工作日" type="number" value="{{ etaWorkdayOffset }}" bind:change="onEtaOffset" />
+          <view class="card-sub">0 = 锚点当日或下一工作日</view>
+        </view>
+
+        <view class="card" wx:else>
+          <view class="card-title">每周固定送达日</view>
+          <picker mode="selector" range="{{ weekdayPickerRange }}" value="{{ etaWeekday - 1 }}" bindchange="onEtaWeekday">
+            <view class="picker-box">{{ etaWeekdayLabel }}</view>
+          </picker>
+          <view class="card-sub">锚点后严格大于锚点日的下一个该星期几；同星期顺延一周；非工作日再顺延</view>
+        </view>
+
+        <view class="card" wx:if="{{ summary }}">
+          <view class="card-title">当前生效</view>
+          <view class="card-sub" wx:if="{{ summary.estimatedDeliveryDate }}">预计送达：{{ summary.estimatedDeliveryDate }}</view>
+          <view class="card-sub" wx:if="{{ !summary.canOrderNow }}">当前不可购：{{ summary.closedReason }}</view>
+        </view>
+
+        <view class="ot-actions">
+          <view class="fm-chip fm-chip-primary" bindtap="saveEta">保存预计送达策略</view>
+        </view>
+      </view>
+    </van-tab>
+  </van-tabs>
+
+  <van-popup show="{{ rulePopup }}" position="bottom" round bind:close="closeRulePopup" custom-style="max-height:88vh;">
+    <view class="popup-body">
+      <view class="popup-title">{{ ruleEditId ? '编辑时段' : '新建时段' }}</view>
+
+      <view class="ot-field-label">循环形式</view>
+      <view class="ot-seg">
+        <view class="ot-seg-btn {{ ruleShape === 'WEEKLY' ? 'ot-seg-btn--on' : '' }}" data-shape="WEEKLY" bindtap="onRuleShape">每日固定时段</view>
+        <view class="ot-seg-btn {{ ruleShape === 'WEEKLY_SPAN' ? 'ot-seg-btn--on' : '' }}" data-shape="WEEKLY_SPAN" bindtap="onRuleShape">跨星期连续区间</view>
+      </view>
+
+      <view class="ot-field-label">作用范围</view>
+      <view class="ot-seg">
+        <view class="ot-seg-btn {{ ruleScope === 'GLOBAL' ? 'ot-seg-btn--on' : '' }}" data-scope="GLOBAL" bindtap="onRuleScope">全局</view>
+        <view class="ot-seg-btn {{ ruleScope === 'CATEGORY' ? 'ot-seg-btn--on' : '' }}" data-scope="CATEGORY" bindtap="onRuleScope">指定品种</view>
+      </view>
+      <van-field wx:if="{{ ruleScope === 'CATEGORY' }}" label="品种" value="{{ ruleCategoryLabel }}" readonly is-link bind:click="openBreedPicker" />
+
+      <view class="ot-field-label">效果</view>
+      <view class="ot-seg">
+        <view class="ot-seg-btn {{ ruleEffect === 'OPEN' ? 'ot-seg-btn--on' : '' }}" data-effect="OPEN" bindtap="onRuleEffect">开放</view>
+        <view class="ot-seg-btn {{ ruleEffect === 'DISABLE' ? 'ot-seg-btn--on' : '' }}" data-effect="DISABLE" bindtap="onRuleEffect">禁用</view>
+      </view>
+
+      <block wx:if="{{ ruleShape === 'WEEKLY' }}">
+        <view class="ot-field-label">循环星期</view>
+        <view class="ot-chips">
+          <view
+            wx:for="{{ weekdayLabels }}"
+            wx:key="*this"
+            class="ot-chip {{ ruleWeekdayFlags[index] ? 'ot-chip--on' : '' }}"
+            data-wd="{{ index + 1 }}"
+            bindtap="toggleRuleWeekday"
+          >{{ item }}</view>
+        </view>
+        <view class="ot-chips">
+          <view class="fm-chip fm-chip-xs fm-chip-ghost" data-preset="1,2,3,4,5" bindtap="onRuleWeekdayPreset">工作日</view>
+          <view class="fm-chip fm-chip-xs fm-chip-ghost" data-preset="1,2,3,4,5,6,7" bindtap="onRuleWeekdayPreset">全周</view>
+        </view>
+        <view class="ot-two">
+          <picker mode="time" value="{{ ruleDayStart }}" bindchange="onRuleDayStart"><view class="picker-box">开始 {{ ruleDayStart }}</view></picker>
+          <picker mode="time" value="{{ ruleDayEnd }}" bindchange="onRuleDayEnd"><view class="picker-box">结束 {{ ruleDayEnd }}</view></picker>
+        </view>
+      </block>
+
+      <block wx:else>
+        <view class="ot-field-label">起点 / 终点</view>
+        <view class="ot-two">
+          <picker mode="selector" range="{{ weekdayPickerRange }}" value="{{ ruleStartWeekday - 1 }}" bindchange="onRuleStartWeekday"><view class="picker-box">{{ weekdayPickerRange[ruleStartWeekday - 1] }}</view></picker>
+          <picker mode="time" value="{{ ruleSpanStart }}" bindchange="onRuleSpanStart"><view class="picker-box">{{ ruleSpanStart }}</view></picker>
+        </view>
+        <view class="ot-two">
+          <picker mode="selector" range="{{ weekdayPickerRange }}" value="{{ ruleEndWeekday - 1 }}" bindchange="onRuleEndWeekday"><view class="picker-box">{{ weekdayPickerRange[ruleEndWeekday - 1] }}</view></picker>
+          <picker mode="time" value="{{ ruleSpanEnd }}" bindchange="onRuleSpanEnd"><view class="picker-box">{{ ruleSpanEnd }}</view></picker>
+        </view>
+      </block>
+
+      <van-field label="备注标签" value="{{ ruleLabel }}" placeholder="可选" bind:change="onRuleLabel" />
+
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeRulePopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="saveRule">{{ ruleEditId ? '更新时段' : '添加时段' }}</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ rangePopup }}" position="bottom" round bind:close="closeRangePopup" custom-style="max-height:88vh;">
+    <view class="popup-body">
+      <view class="popup-title">{{ rangeEditId ? '编辑特殊时段' : '新建特殊时段' }}</view>
+
+      <view class="ot-field-label">开始时间</view>
+      <view class="ot-two">
+        <picker mode="date" value="{{ rangeStartDate }}" bindchange="onRangeStartDate"><view class="picker-box">{{ rangeStartDate || '选择日期' }}</view></picker>
+        <picker mode="time" value="{{ rangeStartTime }}" bindchange="onRangeStartTime"><view class="picker-box">{{ rangeStartTime }}</view></picker>
+      </view>
+
+      <view class="ot-field-label">结束时间</view>
+      <view class="ot-two">
+        <picker mode="date" value="{{ rangeEndDate }}" bindchange="onRangeEndDate"><view class="picker-box">{{ rangeEndDate || '选择日期' }}</view></picker>
+        <picker mode="time" value="{{ rangeEndTime }}" bindchange="onRangeEndTime"><view class="picker-box">{{ rangeEndTime }}</view></picker>
+      </view>
+
+      <van-field label="备注标签" value="{{ rangeLabel }}" placeholder="可选" bind:change="onRangeLabel" />
+
+      <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" bindtap="closeRangePopup">取消</view>
+        <view class="fm-chip fm-chip-primary" bindtap="saveRange">{{ rangeEditId ? '更新时段' : '保存' }}</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <van-popup show="{{ breedPopup }}" position="bottom" round bind:close="closeBreedPicker">
+    <view class="fm-sheet">
+      <view class="fm-sheet-title">选择品种</view>
+      <scroll-view scroll-y style="max-height:55vh">
+        <view
+          wx:for="{{ breedOptions }}"
+          wx:key="value"
+          class="fm-sheet-row {{ breedIndex === index ? 'fm-sheet-row--on' : '' }}"
+          data-index="{{ index }}"
+          bindtap="onBreedPick"
+        >{{ item.label }}</view>
+      </scroll-view>
+    </view>
+  </van-popup>
+</view>

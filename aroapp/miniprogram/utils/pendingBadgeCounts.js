@@ -3,6 +3,7 @@
  * 报修/采购/物资：按待处理工单条数；消息快捷入口用 homeMessagesQuickBadgeText（私聊+系统通知，不含工单重复计数）。
  */
 const springAuth = require('./springAuth.js');
+const pagePermission = require('./pagePermission.js');
 
 function parseResponse(res) {
   const { statusCode, data } = res;
@@ -275,10 +276,8 @@ const PATH_BADGE_MAP = {
 };
 
 function badgeForPath(path, counts) {
-  let p = String(path || '').trim();
-  if (p.startsWith('/package-feature/pages/')) {
-    p = `/pages/${p.slice('/package-feature/pages/'.length)}`;
-  }
+  // 分包前缀表只在 pagePermission 里维护一份，别在这里再抄一遍（漏一个分包就静默不显示角标）
+  const p = pagePermission.normalizePath(path);
   const key = PATH_BADGE_MAP[p];
   if (!key || !counts) return { n: 0, text: '' };
   const n = Number(counts[key] || 0);

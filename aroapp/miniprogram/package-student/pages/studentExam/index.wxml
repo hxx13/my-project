@@ -1,0 +1,27 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无可作答的试卷" />
+  <view wx:else class="list">
+    <view wx:for="{{ rows }}" wx:key="id" class="row-card {{ item.passed ? 'row-card-ok' : '' }}">
+      <view class="row-head">
+        <text class="row-title">{{ item.title }}</text>
+        <text class="status-tag status-{{ item.tone }}">{{ item.statusText }}</text>
+      </view>
+      <view class="meta-line"><text class="meta-k">及格分</text><text class="meta-v">{{ item.qualifyText }}</text></view>
+      <view class="meta-line"><text class="meta-k">时限</text><text class="meta-v">{{ item.timeLimitText }}</text></view>
+      <view class="meta-line meta-line-action">
+        <text class="meta-k">有效期</text>
+        <text class="meta-v">{{ item.validityText }}</text>
+        <view
+          wx:if="{{ item.canAnswer }}"
+          class="chip-btn chip-btn--xs chip-btn--primary action-btn"
+          data-id="{{ item.id }}"
+          bindtap="onStartTap"
+        >{{ item.actionText }}</view>
+        <text wx:else class="action-muted">{{ item.hint }}</text>
+      </view>
+    </view>
+  </view>
+</view>
+</block>

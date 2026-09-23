@@ -143,12 +143,12 @@ function RecordsTab() {
     try {
       const res = await listDoorSwipeRecords({
         channelCode: f.channelCode.trim() || undefined,
-        personName: f.personName.trim() || undefined,
+        person: f.personName.trim() || undefined,
         openType: f.openType === "" ? undefined : Number(f.openType),
         startTime: f.startTime || undefined,
         endTime: f.endTime || undefined,
         page: p,
-        size: PAGE_SIZE,
+        pageSize: PAGE_SIZE,
       });
       setRows(res.list);
       setTotal(res.total);
@@ -724,7 +724,7 @@ function OperationLogsTab() {
   const load = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const res = await listDoorSwipeOperationLogs({ page: p, size: PAGE_SIZE });
+      const res = await listDoorSwipeOperationLogs({ page: p, pageSize: PAGE_SIZE });
       setRows(res.list);
       setTotal(res.total);
     } catch (e) {

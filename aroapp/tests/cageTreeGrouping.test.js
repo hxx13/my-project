@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { groupShelvesByCampus, extractParentRoomKey } = require('../miniprogram/package-feature/utils/cageTreeGrouping.js');
+const { groupShelvesByCampus, extractParentRoomKey } = require('../miniprogram/package-door/utils/cageTreeGrouping.js');
 
 test('extractParentRoomKey：201A → 201，210A → 210', () => {
   assert.equal(extractParentRoomKey('201A'), '201');

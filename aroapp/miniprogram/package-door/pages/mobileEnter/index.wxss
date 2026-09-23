@@ -1,0 +1,284 @@
+/* 移动端进入配置
+   令牌与 animalOrder / adminPersonnel 同一套：
+   页面底 #eef0f6 / 白卡 / 分隔线 #eef0f4 / 浅底 #f6f7fb / 次级底 #f1f3f7
+   单一主色 #2563eb；按钮一律实底，禁渐变、禁半透明、禁描边 */
+
+page {
+  background: #eef0f6;
+}
+
+.me-root {
+  min-height: 100vh;
+  padding: 20rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.me-card {
+  background: #fff;
+  border-radius: 14rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+}
+
+/* ── 一键开关 ── */
+.me-master-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.me-master-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.me-master-title {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.me-master-desc {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+/* ── 名单切换胶囊 ── */
+.me-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  padding: 6rpx;
+  background: #fff;
+  border-radius: 999rpx;
+  margin-bottom: 16rpx;
+}
+
+.me-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 12rpx 8rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #64748b;
+  border-radius: 999rpx;
+  white-space: nowrap;
+}
+
+.me-tab--on {
+  color: #fff;
+  font-weight: 600;
+  background: #2563eb;
+}
+
+/* ── 工具条 ── */
+.me-tool-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.me-input {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  padding: 0 20rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  color: #1f2937;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+}
+
+.me-ph {
+  color: #a3adbb;
+}
+
+.me-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 64rpx;
+  padding: 0 20rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+.me-btn--pri {
+  color: #fff;
+  background: #2563eb;
+}
+
+.me-btn--danger {
+  color: #b91c1c;
+  background: #fbe9e9;
+}
+
+.me-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.me-hint {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+/* ── 名单 ── */
+.me-list-head {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding-bottom: 14rpx;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.me-list-head-t {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.me-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.me-row:last-child {
+  border-bottom: none;
+}
+
+.me-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.me-row-id {
+  display: block;
+  font-size: 24rpx;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.me-row-meta {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #a3adbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* 勾选框：自绘，选中实心蓝 */
+.me-check {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #f1f3f7;
+  color: transparent;
+  font-size: 22rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.me-check--on {
+  background: #2563eb;
+  color: #fff;
+}
+
+.me-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #a3adbb;
+}
+
+/* ── 选人弹层 ── */
+.me-pick-popup {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.me-pick-sheet {
+  display: flex;
+  flex-direction: column;
+  /* 确定高度（不是 max-height）：否则滚动区会被内容撑高、画到容器外面 */
+  height: 86vh;
+}
+
+/* 顶栏：动作收在两端，标题居中 */
+.me-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 26rpx 28rpx 10rpx;
+}
+
+.me-bar-act {
+  flex-shrink: 0;
+  font-size: 28rpx;
+  color: #334155;
+}
+
+.me-bar-act--pri {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.me-bar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.me-bar-sub {
+  flex-shrink: 0;
+  display: block;
+  text-align: center;
+  font-size: 20rpx;
+  color: #94a3b8;
+  padding-bottom: 14rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.me-pick-search {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 28rpx;
+}
+
+.me-pick-list {
+  /* 抽屉是确定高度，这里 flex 分到的就是确切高度，scroll-view 才会自己裁剪+滚动 */
+  flex: 1;
+  min-height: 0;
+  padding: 0 28rpx;
+  box-sizing: border-box;
+}

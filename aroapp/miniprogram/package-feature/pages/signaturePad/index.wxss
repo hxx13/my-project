@@ -1,0 +1,96 @@
+/* 电子签名手写页：操作条转 90°，写区不转（canvas 不跟祖先的 transform）。
+   按钮走全局 .chip-btn 口径，这里只管版式与写区 */
+
+/* 外层只负责裁掉旋转后撑到屏幕外的部分 */
+.sig-page {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  background: #f2f4f8;
+}
+
+/*
+ * 操作条那一层：转 90° 贴到屏幕左边缘，手机横过来看就是正常的横屏按钮条。
+ * 本地 (lx,ly) → 屏幕 (rotorH - ly, lx)。安全区跟着坐标系一起转：
+ * 刘海在屏幕顶边 = 本层左边，home 条在屏幕底边 = 本层右边。
+ * pointer-events 关掉，免得这一层盖住写区；只把条本身放开。
+ */
+.sig-rotor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  transform-origin: 0 0;
+  pointer-events: none;
+  padding-left: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-bottom, 0px);
+  padding-top: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-left, 0px);
+}
+
+.sig-rotor-spacer {
+  flex: 1;
+  min-height: 0;
+}
+
+.sig-bar {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  /* 本层转了 90°，flex-end（本地右端）落到的就是手机屏幕的底边 */
+  justify-content: flex-end;
+  gap: 16rpx;
+  padding: 0 24rpx;
+  pointer-events: auto;
+  /* 不要自己的底板：铺一块白会跟写区那片白糊在一起。直接透出页面底色 */
+  background: transparent;
+}
+
+/* 这一页是整屏灰底不是白底，.chip-btn--ghost 的 #f1f3f7 压上来等于看不见，
+   所以次级动作在这页翻成白实底（仍是实色、无描边、非胶囊） */
+.sig-bar .chip-btn--ghost {
+  background: #ffffff;
+}
+
+.sig-bar-side {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+/* 整屏页的主/次动作比列表里的 chip 略大一圈，好按 */
+.sig-bar-btn {
+  min-height: 68rpx;
+  padding: 12rpx 34rpx;
+  font-size: 26rpx;
+}
+
+.sig-btn-hover {
+  opacity: 0.86;
+}
+
+/* 写区：不转，按 8:3 横过来看的尺寸铺在手机长边上。不裁溢出，否则写区的投影会被切掉 */
+.sig-stage {
+  position: absolute;
+}
+
+.sig-pad {
+  display: block;
+  background: #fff;
+  border-radius: 16rpx;
+  /* 写区和操作条都是白的，靠投影把写区拎成一张卡，别糊成一片 */
+  box-shadow: 0 4rpx 16rpx rgba(31, 56, 88, 0.10);
+}
+
+/* 出件画布：放屏幕外，不参与视觉（不能 display:none，那样画不出来） */
+.sig-out {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+}

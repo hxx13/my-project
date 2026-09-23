@@ -17,6 +17,10 @@ export interface TrainingSeries {
   recurrenceTime?: string | null;
   recurrenceStart?: string | null;
   recurrenceEnd?: string | null;
+  /** 学生端校区分组（浦东/浦西），空 = 未分组 */
+  campus?: string | null;
+  /** 学生端手动排序序号（同校区内升序） */
+  studentSort?: number | null;
   status?: string | null;
   createdBy?: string | null;
   createdAt?: string | null;
@@ -84,6 +88,10 @@ export interface PendingEnrollment {
   startTime?: string | null;
   endTime?: string | null;
   examinerName?: string | null;
+  /** 该培训的校区分组（浦东/浦西），空 = 未分组 */
+  campus?: string | null;
+  /** 是否为我收藏（订阅）的培训；订阅的行置顶 */
+  subscribed?: number | boolean | null;
 }
 
 // ---- series ----
@@ -124,6 +132,14 @@ export async function unpublishTraining(id: number | string): Promise<TrainingDe
 
 export async function deleteTraining(id: number | string): Promise<void> {
   await adminHttp.delete(`/training/${id}`);
+}
+
+/** 学生端培训排序配置（整套保存，仅超级管理员）。 */
+export async function updateTrainingStudentOrder(
+  items: { id: number; campus: string | null; sortOrder: number }[],
+): Promise<void> {
+  const r = await adminHttp.put("/training/student-order", { items });
+  if (!r.data?.success) throw new Error(r.data?.message || "保存失败");
 }
 
 // ---- type presets ----

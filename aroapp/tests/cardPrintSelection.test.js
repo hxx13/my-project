@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSelection } = require('../miniprogram/package-feature/utils/cardPrintSelection.js');
+const { createSelection } = require('../miniprogram/package-door/utils/cardPrintSelection.js');
 
 const cell = (id, x, y) => ({ id, x, y });
 

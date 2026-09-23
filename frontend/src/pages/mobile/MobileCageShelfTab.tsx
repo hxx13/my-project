@@ -1,5 +1,6 @@
 /** 手机版 — 笼架 Tab（列表 → 8×10 网格页 → 笼盒详情弹窗） */
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { MobileMyCageRequestsView } from "./MobileMyCageRequestsView";
 import { AlertTriangle, ChevronDown, ChevronRight, LayoutGrid, Loader2, Search, WifiOff, Scan, AlertCircle, Check, ClipboardList, MapPin, X as XIcon, SplitSquareHorizontal, MoveRight, Clock, Unlock, Star } from "lucide-react";
 import { useMobilePullToRefresh } from "./useMobilePullToRefresh";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
@@ -41,6 +42,7 @@ import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
 import MobileBatchTransferSheet from "./MobileBatchTransferSheet";
 import type { BatchSource } from "./batchTransferLogic";
 import MobileScanDialog from "./MobileScanDialog";
+import MyExperimentRecordsDialog from "@/features/cage-shelf/components/MyExperimentRecordsDialog";
 import {
   fetchFullTree, fetchLocalShelfGridByShelveId, localEdit, saveStatusDetail, lookupCode, confirmClaim, adminConfirmClaim,
   fetchAllocationAups, type AupItem, localAllocate, localCancelAllocate, assignBatchCages,
@@ -630,6 +632,8 @@ function CageShelfListView({
   autoExpandCampusName,
   onOpenMyClaims,
   showMyClaimsEntry,
+  onOpenMyRecords,
+  showMyRecordsEntry,
 }: {
   loading: boolean;
   error: string | null;
@@ -644,6 +648,9 @@ function CageShelfListView({
   autoExpandCampusName?: string;
   onOpenMyClaims?: () => void;
   showMyClaimsEntry?: boolean;
+  /** 学生端「我的实验记录」：按房间看本人所有笼位的记录（含已归档的历史笼位） */
+  onOpenMyRecords?: () => void;
+  showMyRecordsEntry?: boolean;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCampuses, setExpandedCampuses] = useState<Record<string, boolean>>({});
@@ -865,6 +872,23 @@ function CageShelfListView({
               >
                 <ClipboardList className="size-3.5" />
                 <span className="text-[10px] font-medium whitespace-nowrap">我的申请</span>
+              </button>
+            )}
+            {showMyRecordsEntry && (
+              <button
+                type="button"
+                onClick={onOpenMyRecords}
+                className="flex items-center gap-0.5 px-2 py-1.5 rounded-xl active:bg-black/5 shrink-0"
+                style={{
+                  color: ACCENT,
+                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(30,55,90,0.08)",
+                  boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+                }}
+                aria-label="我的实验记录"
+              >
+                <Clock className="size-3.5" />
+                <span className="text-[10px] font-medium whitespace-nowrap">实验记录</span>
               </button>
             )}
           </div>
@@ -1270,91 +1294,6 @@ const CLAIM_STATUS_COLOR: Record<string, string> = {
   pending_approval: "#d97706", locked: "#0284c7", confirmed: "#16a34a",
   pending_release_approval: "#ea580c", rejected: "#dc2626", cancelled: "#969799", released: "#969799",
 };
-
-/** 学生「我的申请」列表：无释放入口，仅 pending_approval 可取消、locked 可确认到位 */
-function MyClaimsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [list, setList] = useState<CageClaimItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const viewportHeight = useViewportHeight();
-
-  const load = useCallback(() => {
-    setLoading(true);
-    fetchMyClaims().then(setList).catch(() => setList([])).finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { if (open) load(); }, [open, load]);
-
-  if (!open) return null;
-
-  // 申请项短位置：房间已在分组标题里，条目只显示笼架 + 格位
-  const claimShort = (c: CageClaimItem) => {
-    const pos = c.positionX != null && c.positionY != null ? displayPosition(`${c.positionX}-${c.positionY}`) : "";
-    return [c.shelveName, pos].filter(Boolean).join(" · ") || `笼位 #${c.animalCageId}`;
-  };
-
-  // 按 校区/房间 分组，避免平铺
-  const groups = useMemo(() => {
-    const m = new Map<string, CageClaimItem[]>();
-    for (const c of list) {
-      const key = [c.campusName, c.roomName].filter(Boolean).join(" / ") || "未指定房间";
-      if (!m.has(key)) m.set(key, []);
-      m.get(key)!.push(c);
-    }
-    return Array.from(m.entries());
-  }, [list]);
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center" style={{ zIndex: "var(--z-modal, 800)", background: "rgba(0,0,0,0.45)", height: viewportHeight > 0 ? viewportHeight : "100dvh", padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px calc(env(safe-area-inset-bottom, 0px) + 12px)" }} onClick={onClose}>
-      <div className="w-full flex flex-col rounded-2xl overflow-hidden shadow-2xl" style={{ background: "#fff", maxWidth: 400, maxHeight: "100%" }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: "#ebedf0" }}>
-          <span className="text-sm font-bold" style={{ color: "#323233" }}>我的申请</span>
-          <button type="button" onClick={onClose} className="p-1 rounded-lg"><XIcon className="size-5" style={{ color: "#94a3b8" }} /></button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3">
-          {loading ? (
-            <div className="flex items-center justify-center py-16"><Loader2 className="size-6 animate-spin" style={{ color: "#94a3b8" }} /></div>
-          ) : list.length === 0 ? (
-            <div className="py-16 text-center"><p className="text-xs" style={{ color: "#969799" }}>暂无申请记录</p></div>
-          ) : groups.map(([room, items]) => (
-            <div key={room} className="mb-3">
-              <div className="flex items-center gap-1.5 px-1 pb-1.5">
-                <MapPin className="size-3" style={{ color: "#94a3b8" }} />
-                <span className="text-[11px] font-semibold" style={{ color: "#64748b" }}>{room}</span>
-                <span className="text-[10px]" style={{ color: "#c0c4cc" }}>{items.length}</span>
-              </div>
-              <div className="space-y-1.5">
-                {items.map((c) => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg border px-2.5 py-2" style={{ borderColor: "#eef0f6", background: "#fafbfc" }}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[12px] font-semibold truncate" style={{ color: "#1e293b" }}>{claimShort(c)}</span>
-                        <span className="inline-flex items-center shrink-0 px-1.5 py-0.5 rounded-full text-[9px] font-semibold text-white" style={{ background: CLAIM_STATUS_COLOR[c.claimStatus] || "#969799" }}>{CLAIM_STATUS_LABEL[c.claimStatus] || c.claimStatus}</span>
-                      </div>
-                      <div className="text-[10px] truncate" style={{ color: "#969799" }}>
-                        申请时间：{c.createdAt?.substring(0, 16)?.replace("T", " ")}
-                        {c.claimStatus === "rejected" && c.latestRejectReason ? <span style={{ color: "#dc2626" }}> · 驳回：{c.latestRejectReason}</span> : null}
-                      </div>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-1">
-                      {c.claimStatus === "pending_approval" && (
-                        <button type="button" onClick={async () => { try { await cancelClaim(c.id); load(); toast.success("已取消"); } catch (e: any) { toast.error(e?.message || "取消失败"); } }}
-                          className="rounded-md px-2 py-1 text-[10px] font-semibold border border-red-300 active:scale-95 transition" style={{ color: "#dc2626" }}>取消</button>
-                      )}
-                      {c.claimStatus === "locked" && (
-                        <button type="button" onClick={async () => { try { await confirmClaim(c.id); load(); toast.success("已确认到位"); } catch (e: any) { toast.error(e?.message || "确认失败"); } }}
-                          className="rounded-md px-2 py-1 text-[10px] font-semibold text-white active:scale-95 transition" style={{ background: ACCENT }}>确认到位</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 type ScanCacheEntry = {
   cell: CageShelfCell;
@@ -1925,6 +1864,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [poolCells, setPoolCells] = useState<Map<string, PoolCell>>(new Map());
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [myClaimsOpen, setMyClaimsOpen] = useState(false);
+  /** 学生端「我的实验记录」弹窗 */
+  const [myRecordsOpen, setMyRecordsOpen] = useState(false);
   /**
    * 本人待确认到位（locked）的笼位 id 集合 —— 供确认模式高亮。
    * 教职工看到的 locked 是全院的，不属于「自己的」，故仅学生视角加载。
@@ -3035,6 +2976,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             autoExpandRoomName={jumpTarget?.roomName}
             onOpenMyClaims={() => setMyClaimsOpen(true)}
             showMyClaimsEntry={!isStaffView}
+            onOpenMyRecords={() => setMyRecordsOpen(true)}
+            showMyRecordsEntry={!isStaffView}
           />
           {/* ── 扫码定位 FAB（列表页常驻，全角色可见）── */}
           <button
@@ -3519,8 +3462,9 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
         <ReservePersonDialog open={reserveOpen} submitting={reserveSubmitting} groupNames={reserveAupGroupNames} onClose={() => setReserveOpen(false)} onConfirm={handleReserveConfirm} />
         {/* ── 记录模式历史弹窗 ── */}
         <CageHistoryModal animalCageId={recordTarget} onClose={() => setRecordTarget(null)} />
-        {/* ── 学生「我的申请」 ── */}
-        <MyClaimsModal open={myClaimsOpen} onClose={() => setMyClaimsOpen(false)} />
+        {/* ── 学生「我的申请」：四分类整页（认领 / 分笼 / 转移 / 审核），与 Web 和小程序同口径 ── */}
+        <MobileMyCageRequestsView open={myClaimsOpen} onClose={() => setMyClaimsOpen(false)} />
+        {myRecordsOpen && <MyExperimentRecordsDialog onClose={() => setMyRecordsOpen(false)} />}
 
         {/* 划分：选人（限定本课题组，多选）→ 全量覆盖所选笼位的名单 */}
         {divisionPickerOpen && (

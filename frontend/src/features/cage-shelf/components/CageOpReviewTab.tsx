@@ -336,15 +336,15 @@ function CageOpTable({
                   {r.applicantName || r.applicantId || "—"}
                 </td>
                 <td className={cn(td, "max-w-[280px] whitespace-normal break-words")}>
-                  {srcLoc || "—"}{srcLoc && srcPos ? " · " : ""}{srcPos && `坐标 ${srcPos}`}
+                  {/* 只给「校区 / 房间 / 架子」：shelveName 自带位号，再缀一串「坐标 X-Y」是重复信息 */}
+                  {srcLoc || "—"}
                 </td>
                 <td className={cn(td, "max-w-[280px] whitespace-normal break-words")}>
                   {targets.length === 0
                     ? (isTransfer ? "—" : `共 ${r.targetAnimalCageIds.length} 个笼位`)
                     : targets.map((t) => {
-                        const where = [t.campusName, t.roomName, t.shelveName].filter(Boolean).join(" / ");
-                        const pos = cagePositionLabel(t.positionX, t.positionY);
-                        return `${where}${where && pos ? " · " : ""}${pos ? `坐标 ${pos}` : ""}`;
+                        // 同源笼位：只给「校区 / 房间 / 架子」，不再缀「坐标 X-Y」
+                        return [t.campusName, t.roomName, t.shelveName].filter(Boolean).join(" / ");
                       }).join("；")}
                 </td>
                 {isTransfer && (

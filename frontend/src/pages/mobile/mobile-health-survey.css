@@ -1,0 +1,114 @@
+/* 手机版健康调查表：把 A4 定宽版式在 .mhs-page 作用域内改回随屏宽流式。
+   只覆盖尺寸，不动 health-survey.css 里的内容与打印规则（那份仍是 web/打印的唯一真相）。 */
+
+.mhs-page .hs-doc {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 14px 12px 20px;
+  border-radius: 12px;
+  font-size: 13px;
+  box-shadow: 0 2px 10px rgba(31, 56, 88, 0.06);
+}
+
+.mhs-page .hs-header {
+  gap: 12px;
+  padding-bottom: 10px;
+}
+.mhs-page .hs-logo-shsmu {
+  height: 34px;
+}
+.mhs-page .hs-logo-aaalac {
+  height: 28px;
+}
+
+.mhs-page .hs-title {
+  margin: 12px 0 10px;
+}
+.mhs-page .hs-title-org {
+  font-size: 15px;
+}
+.mhs-page .hs-title-name {
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.mhs-page .hs-section {
+  margin-bottom: 16px;
+}
+.mhs-page .hs-section-title {
+  font-size: 13px;
+  margin: 12px 0 8px;
+  padding-left: 6px;
+  border-left-width: 3px;
+}
+
+.mhs-page .hs-field {
+  margin-bottom: 12px;
+}
+/* 行内字段在窄屏一律竖排：左标签 + 右输入的横排会把输入框挤到没法点 */
+.mhs-page .hs-field-inline {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  max-width: none;
+}
+.mhs-page .hs-field-inline .hs-label {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.mhs-page .hs-input,
+.mhs-page .hs-inline-input {
+  min-width: 0;
+  max-width: none;
+  width: 100%;
+}
+
+.mhs-page .hs-options {
+  gap: 8px 14px;
+}
+/* 多选一列到底，网格在多列时会把中文选项压到换行 */
+.mhs-page .hs-options-grid {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.mhs-page .hs-opt {
+  gap: 6px;
+}
+.mhs-page .hs-opt input,
+.mhs-page .hs-grid-cell input {
+  width: 16px;
+  height: 16px;
+}
+.mhs-page .hs-opt:has(input:checked) {
+  padding: 2px 6px;
+  margin: -2px -6px;
+}
+
+.mhs-page .hs-grid th,
+.mhs-page .hs-grid td {
+  padding: 5px 6px;
+  font-size: 11px;
+}
+.mhs-page .hs-grid-cell {
+  width: 30px;
+}
+.mhs-page .hs-add-row {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.mhs-page .hs-declaration {
+  margin-top: 16px;
+}
+.mhs-page .hs-footer {
+  margin-top: 14px;
+  padding-top: 8px;
+  font-size: 10px;
+}
+
+/* 手机上不需要“每页重复页眉页脚”的表格分组行为，但也无害；
+   这里只保证只读态下不出现横向滚动条 */
+.mhs-page .hs-readonly {
+  overflow-x: auto;
+}

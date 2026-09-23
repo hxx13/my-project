@@ -162,4 +162,34 @@ class CardDataAssemblerTest {
         assertEquals("自繁", rows.get(0).get("animal_come_from"), "配了映射的字段应替换为简称");
         assertEquals("郭滨", rows.get(0).get("project_pi_name"), "未配映射的字段不受影响");
     }
+
+    @Test
+    void cageUseTimeIsTrimmedToDateOnCard() {
+        CageInfoFieldMapper fieldMapper = mock(CageInfoFieldMapper.class);
+        CageInfoValueMapper valueMapper = mock(CageInfoValueMapper.class);
+        CageCellDetailMapper detailMapper = mock(CageCellDetailMapper.class);
+        CageCellIndexMapper indexMapper = mock(CageCellIndexMapper.class);
+
+        CageInfoField f = new CageInfoField();
+        f.setId(11L);
+        f.setCanonical("cage_use_time");
+        f.setLabel("使用时间");
+        f.setDataType("STRING");
+        when(fieldMapper.selectPublished()).thenReturn(List.of(f));
+
+        CageInfoValue v = new CageInfoValue();
+        v.setAnimalCageId(500L);
+        v.setFieldId(11L);
+        v.setValueString("2026-01-21 16:05:58");
+        when(valueMapper.selectByAnimalCageIds(anyList())).thenReturn(List.of(v));
+        when(detailMapper.selectByAnimalCageIds(anyList())).thenReturn(List.of());
+        when(indexMapper.lookupByAnimalCageIds(anyList())).thenReturn(List.of());
+
+        List<Map<String, Object>> rows = new CardDataAssembler(
+                fieldMapper, valueMapper, detailMapper, indexMapper,
+                mock(CardPrintValueMapMapper.class)).assemble(List.of(500L));
+
+        assertEquals("2026-01-21", rows.get(0).get("cage_use_time"),
+                "卡牌上的使用时间只能有日期，不能带时分秒");
+    }
 }

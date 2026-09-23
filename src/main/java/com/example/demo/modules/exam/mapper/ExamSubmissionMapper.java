@@ -69,6 +69,9 @@ public interface ExamSubmissionMapper {
             """)
     List<ExamSubmission> listByPaperId(@Param("paperId") Long paperId);
 
+    @Delete("DELETE FROM exam_submission WHERE person_id = #{personId}")
+    int deleteByPersonId(@Param("personId") String personId);
+
     @Select("""
             SELECT s.id, s.paper_id AS paperId, s.person_id AS personId, s.total_score AS totalScore,
                    s.qualify_score_snapshot AS qualifyScoreSnapshot, s.qualify_yn AS qualifyYn,

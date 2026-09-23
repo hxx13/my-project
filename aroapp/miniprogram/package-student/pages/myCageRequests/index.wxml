@@ -1,0 +1,76 @@
+<view class="mr-page">
+  <!-- 四个分类：与 Web 端「我的申请」同一套（认领 / 分笼 / 转移 / 审核） -->
+  <view class="mr-tabs">
+    <view
+      wx:for="{{ tabs }}"
+      wx:key="key"
+      class="mr-tab {{ tab === item.key ? 'mr-tab--on' : '' }}"
+      data-key="{{ item.key }}"
+      bindtap="onTabChange"
+    >
+      <text class="mr-tab-label">{{ item.label }}</text>
+      <text wx:if="{{ item.count }}" class="mr-tab-count">{{ item.count }}</text>
+    </view>
+  </view>
+
+  <!-- ① 认领申请 -->
+  <block wx:if="{{ tab === 'claims' }}">
+    <view wx:if="{{ claimsLoading }}" class="mr-hint">加载中…</view>
+    <view wx:elif="{{ claims.length === 0 }}" class="mr-hint">暂无认领申请</view>
+    <block wx:else>
+      <view wx:for="{{ claims }}" wx:key="id" class="mr-item">
+        <view class="mr-item-top">
+          <text class="mr-item-pos">{{ item.positionLabel || item.animalCageId }}</text>
+          <text class="mr-item-status">{{ item._statusLabel }}</text>
+        </view>
+        <view wx:if="{{ item.roomName || item.shelveName }}" class="mr-item-sub">{{ item.campusName }} {{ item.roomName }} {{ item.shelveName }}</view>
+        <view wx:if="{{ item.latestRejectReason }}" class="mr-item-reject">驳回原因：{{ item.latestRejectReason }}</view>
+        <view wx:if="{{ item.claimStatus === 'pending_approval' }}" class="mr-item-foot">
+          <text class="mr-link" data-id="{{ item.id }}" bindtap="onCancelClaim">取消申请</text>
+        </view>
+      </view>
+    </block>
+  </block>
+
+  <!-- ② 分笼申请 / ③ 转移申请：同一份数据按 opType 拆开（列表在 JS 里按当前 tab 选好） -->
+  <block wx:elif="{{ tab === 'divide' || tab === 'transfer' }}">
+    <view wx:if="{{ opsLoading }}" class="mr-hint">加载中…</view>
+    <view wx:elif="{{ opList.length === 0 }}" class="mr-hint">{{ tab === 'divide' ? '暂无分笼申请' : '暂无转移申请' }}</view>
+    <block wx:else>
+      <block wx:for="{{ opList }}" wx:key="id" wx:for-item="op">
+        <template is="opCard" data="{{ ...op }}" />
+      </block>
+    </block>
+  </block>
+
+  <!-- ④ 审核申请：待我签的 + 我已审过的 -->
+  <block wx:else>
+    <view wx:if="{{ reviewLoading }}" class="mr-hint">加载中…</view>
+    <view wx:elif="{{ reviewOps.length === 0 }}" class="mr-hint">暂无需要你审核的申请</view>
+    <block wx:else>
+      <block wx:for="{{ reviewOps }}" wx:key="id" wx:for-item="op">
+        <template is="opCard" data="{{ ...op }}" />
+      </block>
+    </block>
+  </block>
+</view>
+
+<!-- 分笼/转移一条申请：位置 + 状态、三签进度、时间 + 查看转移单 -->
+<template name="opCard">
+  <view class="mr-item">
+    <view class="mr-item-top">
+      <text class="mr-item-pos">{{ _title }}</text>
+      <text class="mr-item-status">{{ _statusLabel }}</text>
+    </view>
+    <view class="sg-row mr-sign">
+      <view wx:for="{{ _sign }}" wx:key="role" wx:for-item="sg" class="sg-item {{ sg.cls }}">
+        <text class="sg-role">{{ sg.label }}</text>
+        <text class="sg-state">{{ sg.text }}</text>
+      </view>
+    </view>
+    <view class="mr-item-foot">
+      <text wx:if="{{ createdAt }}" class="mr-item-sub">{{ createdAt }}</text>
+      <text class="mr-link" data-id="{{ id }}" bindtap="onViewTransferForm">查看转移单</text>
+    </view>
+  </view>
+</template>

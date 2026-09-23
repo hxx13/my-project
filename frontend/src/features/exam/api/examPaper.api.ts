@@ -7,6 +7,8 @@ export interface ExamPaperSummary {
   title: string;
   status: string;
   folderId?: number | null;
+  validFrom?: string | null;
+  validTo?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -23,6 +25,8 @@ export interface ExamPaperDetail {
   status: string;
   qualifyScore?: number | null;
   totalTime?: number | null;
+  validFrom?: string | null;
+  validTo?: string | null;
   sections: FormSection[];
 }
 
@@ -105,12 +109,21 @@ export async function createExamPaper(body: { code: string; title: string }): Pr
 
 export async function saveExamPaper(
   id: number,
-  body: { title: string; sections: FormSection[]; qualifyScore?: number | null; totalTime?: number | null },
+  body: {
+    title: string;
+    sections: FormSection[];
+    qualifyScore?: number | null;
+    totalTime?: number | null;
+    validFrom?: string | null;
+    validTo?: string | null;
+  },
 ): Promise<ExamPaperDetail> {
   const r = await adminHttp.put(`/exam-papers/${id}`, {
     title: body.title,
     qualifyScore: body.qualifyScore,
     totalTime: body.totalTime,
+    validFrom: body.validFrom,
+    validTo: body.validTo,
     sections: mapToPaperSections(body.sections),
   });
   const d = r.data?.data as ExamPaperSummary & { sections?: PaperSectionJson[] };

@@ -1,5 +1,6 @@
 /** 手机版顶栏 — 对齐小程序 navigationBar / subpage-nav-bar */
 import { ChevronLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { MOBILE_NAV_BAR_H } from "./mobileShellLayout";
 
 export type MobileTopNavMode = "transparent" | "solid";
@@ -61,7 +62,11 @@ export default function MobileTopNavBar({
         {/* 标题居中 */}
         {isSolid && title ? (
           <h1
-            className="flex-1 text-center text-[16px] font-semibold truncate px-12"
+            className={cn(
+              "flex-1 text-center text-[16px] font-semibold truncate",
+              // 右侧带操作（已答/提交）时多留位置，避免标题钻到按钮底下
+              rightAction ? "px-32" : "px-12",
+            )}
             style={{ color: "#323233" }}
           >
             {title}

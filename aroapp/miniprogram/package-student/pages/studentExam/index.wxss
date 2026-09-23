@@ -1,0 +1,97 @@
+/* 答题：试卷卡片。卡片语言与培训报名一致（白卡 + 胶囊按钮） */
+.page {
+  padding: 16px 14px 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #eef5ff 0%, #f7f8fa 120px);
+}
+.muted {
+  font-size: 13px;
+  color: #969799;
+  text-align: center;
+  padding: 24px 0;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.row-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(235, 238, 239, 0.9);
+  box-shadow: 0 4px 18px rgba(31, 56, 88, 0.07);
+}
+/* 已合格：绿色描边 + 淡绿底 */
+.row-card-ok {
+  border-color: #6ee7b7;
+  background: #f4fff8;
+}
+.row-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+.row-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #323233;
+}
+/* 状态标签：配色对齐 studentMaterialRequests 的 .row-status-* */
+.status-tag {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid #e3e8ef;
+}
+.status-ok {
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+}
+.status-danger {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.status-muted {
+  color: #64748b;
+  background: #f1f3f7;
+  border-color: #dcdee0;
+}
+.meta-line {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 8rpx;
+  font-size: 12px;
+}
+.meta-k {
+  width: 96rpx;
+  flex-shrink: 0;
+  color: #969799;
+}
+.meta-v {
+  flex: 1;
+  color: #646566;
+  word-break: break-all;
+}
+.meta-line-action {
+  align-items: center;
+}
+/* 行内动作：vant 通用按钮（非胶囊），与有效期同行 */
+.action-btn {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+.action-muted {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+  font-size: 24rpx;
+  color: #969799;
+}

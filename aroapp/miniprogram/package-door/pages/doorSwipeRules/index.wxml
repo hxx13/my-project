@@ -1,0 +1,241 @@
+<view class="ds-root">
+  <view class="ds-tabs">
+    <view wx:for="{{ tabs }}" wx:key="key" class="ds-tab {{ tab === item.key ? 'ds-tab--on' : '' }}"
+      data-key="{{ item.key }}" bindtap="onTabChange">{{ item.label }}</view>
+  </view>
+
+  <!-- ══════════ Tab1 门禁记录 ══════════ -->
+  <block wx:if="{{ tab === 'records' }}">
+    <view class="ds-card">
+      <view class="ds-grid2">
+        <view class="ds-field">
+          <text class="ds-field-k">通道编码</text>
+          <input class="ds-input" value="{{ recChannelCode }}" data-field="recChannelCode" bindinput="onRecInput"
+            placeholder="通道编码" placeholder-class="ds-ph" />
+        </view>
+        <view class="ds-field">
+          <text class="ds-field-k">人员姓名</text>
+          <input class="ds-input" value="{{ recPersonName }}" data-field="recPersonName" bindinput="onRecInput"
+            placeholder="姓名" placeholder-class="ds-ph" />
+        </view>
+        <view class="ds-field">
+          <text class="ds-field-k">开门类型</text>
+          <picker mode="selector" range="{{ openTypeOptions }}" value="{{ recOpenTypeIdx }}" bindchange="onRecOpenTypeChange">
+            <view class="ds-picker"><text>{{ openTypeOptions[recOpenTypeIdx] }}</text><text class="ds-chev">▾</text></view>
+          </picker>
+        </view>
+        <view class="ds-field">
+          <text class="ds-field-k">开始日期</text>
+          <picker mode="date" value="{{ recStartDate }}" data-field="recStartDate" bindchange="onRecDateChange">
+            <view class="ds-picker"><text>{{ recStartDate || '不限' }}</text><text class="ds-chev">▾</text></view>
+          </picker>
+        </view>
+        <view class="ds-field">
+          <text class="ds-field-k">结束日期</text>
+          <picker mode="date" value="{{ recEndDate }}" data-field="recEndDate" bindchange="onRecDateChange">
+            <view class="ds-picker"><text>{{ recEndDate || '不限' }}</text><text class="ds-chev">▾</text></view>
+          </picker>
+        </view>
+      </view>
+      <view class="ds-btn-row">
+        <view class="ds-btn ds-btn--pri" bindtap="onRecSearch">查询</view>
+        <view class="ds-btn" bindtap="onRecReset">重置</view>
+      </view>
+    </view>
+
+    <view class="ds-card">
+      <view class="ds-card-title">门禁记录<text class="ds-hint">仅受控通道内成功刷卡（openType=51）触发的明细</text></view>
+      <view wx:if="{{ recLoading }}" class="ds-empty">加载中…</view>
+      <view wx:elif="{{ recRows.length === 0 }}" class="ds-empty">暂无记录</view>
+      <block wx:else>
+        <view wx:for="{{ recRows }}" wx:key="id" class="ds-item">
+          <view class="ds-item-head">
+            <text class="ds-item-title">{{ item._time }}</text>
+            <view class="ds-tag">{{ item._openTypeLabel }}</view>
+          </view>
+          <view class="ds-grid2">
+            <view class="ds-field"><text class="ds-field-k">通道</text><text class="ds-field-v">{{ item._channel }}</text></view>
+            <view class="ds-field"><text class="ds-field-k">卡号</text><text class="ds-field-v">{{ item.cardNumber || '-' }}</text></view>
+            <view class="ds-field"><text class="ds-field-k">人员</text><text class="ds-field-v">{{ item._person }}</text></view>
+            <view class="ds-field"><text class="ds-field-k">进 / 出</text><text class="ds-field-v">{{ item._dirLabel }}</text></view>
+            <view class="ds-field ds-field--wide"><text class="ds-field-k">结果</text><text class="ds-field-v">{{ item.openResult || '-' }}</text></view>
+          </view>
+        </view>
+        <view class="ds-more">{{ recMore ? '加载中…' : (recHasMore ? '上拉加载更多' : '没有更多了') }}</view>
+      </block>
+    </view>
+  </block>
+
+  <!-- ══════════ Tab2 规则配置 ══════════ -->
+  <block wx:elif="{{ tab === 'rules' }}">
+    <view class="ds-card">
+      <view class="ds-card-title-row">
+        <text class="ds-card-title">成功刷卡规则</text>
+        <view class="ds-btn ds-btn--pri" bindtap="onOpenRuleForm">＋ 新增规则</view>
+      </view>
+      <view wx:if="{{ rulesLoading }}" class="ds-empty">加载中…</view>
+      <view wx:elif="{{ rules.length === 0 }}" class="ds-empty">暂无规则</view>
+      <block wx:else>
+        <view wx:for="{{ rules }}" wx:key="id" class="ds-item">
+          <view class="ds-item-head">
+            <text class="ds-item-title">{{ item.name }}</text>
+            <view class="ds-chip {{ item.enabled ? 'ds-chip--on' : 'ds-chip--off' }}"
+              data-id="{{ item.id }}" catchtap="onToggleRule">{{ item.enabled ? '启用' : '停用' }}</view>
+          </view>
+          <view class="ds-grid2">
+            <view class="ds-field"><text class="ds-field-k">监控通道</text><text class="ds-field-v">{{ item._channelCount }} 个</text></view>
+            <view class="ds-field"><text class="ds-field-k">人员范围</text><text class="ds-field-v">{{ item._scopeLabel }}（{{ item._scopeCount }}）</text></view>
+            <view class="ds-field"><text class="ds-field-k">阈值</text><text class="ds-field-v">{{ item.thresholdCount }} 次 / {{ item.thresholdWindowSec }} 秒</text></view>
+            <view class="ds-field"><text class="ds-field-k">常开时长</text><text class="ds-field-v">{{ item.stayOpenDurationSec }} 秒</text></view>
+            <view class="ds-field"><text class="ds-field-k">冷却</text><text class="ds-field-v">{{ item.cooldownSec }} 秒</text></view>
+          </view>
+          <view class="ds-item-acts">
+            <view class="ds-btn" data-id="{{ item.id }}" catchtap="onOpenRuleForm">编辑</view>
+            <view class="ds-btn ds-btn--danger" data-id="{{ item.id }}" catchtap="onDeleteRule">删除</view>
+          </view>
+        </view>
+      </block>
+    </view>
+  </block>
+
+  <!-- ══════════ Tab3 通道受控 ══════════ -->
+  <block wx:elif="{{ tab === 'channels' }}">
+    <view class="ds-card">
+      <view class="ds-card-title">受控通道（总闸）<text class="ds-hint">只有存在于本列表且已启用的通道，才会被写入成功刷卡记录库并参与规则触发</text></view>
+      <view class="ds-line-row">
+        <text class="ds-line-name">{{ channelPickedText }}</text>
+        <view class="ds-btn" bindtap="onOpenChannelScopePicker">选择通道</view>
+      </view>
+      <view class="ds-btn-row">
+        <view class="ds-btn ds-btn--pri" bindtap="onReplaceChannels">{{ channelsSaving ? '保存中…' : '批量替换' }}</view>
+      </view>
+    </view>
+
+    <view class="ds-card">
+      <view class="ds-card-title">通道启停</view>
+      <view wx:if="{{ channelsLoading }}" class="ds-empty">加载中…</view>
+      <view wx:elif="{{ channelRows.length === 0 }}" class="ds-empty">暂无受控通道</view>
+      <block wx:else>
+        <view wx:for="{{ channelRows }}" wx:key="channelCode" class="ds-line-row">
+          <view class="ds-line-main">
+            <text class="ds-line-name">{{ item.channelName || item.channelCode }}</text>
+            <text class="ds-line-sub">{{ item.channelCode }}</text>
+          </view>
+          <switch checked="{{ item.enabled }}" color="#2563eb" data-code="{{ item.channelCode }}" catchchange="onToggleChannel" />
+        </view>
+      </block>
+    </view>
+  </block>
+
+  <!-- ══════════ Tab4 操作记录 ══════════ -->
+  <block wx:else>
+    <view class="ds-card">
+      <view class="ds-card-title">操作记录<text class="ds-hint">规则触发（常开 / 恢复）与规则、通道配置的增删改审计</text></view>
+      <view wx:if="{{ logLoading }}" class="ds-empty">加载中…</view>
+      <view wx:elif="{{ logRows.length === 0 }}" class="ds-empty">暂无操作记录</view>
+      <block wx:else>
+        <view wx:for="{{ logRows }}" wx:key="id" class="ds-item">
+          <view class="ds-item-head">
+            <text class="ds-item-title">{{ item._time }}</text>
+            <view class="ds-chip {{ item._ok ? 'ds-chip--on' : 'ds-chip--off' }}">{{ item._ok ? '成功' : '失败' }}</view>
+          </view>
+          <view class="ds-grid2">
+            <view class="ds-field"><text class="ds-field-k">事件</text><text class="ds-field-v">{{ item._event }}</text></view>
+            <view class="ds-field"><text class="ds-field-k">触发</text><text class="ds-field-v">{{ item._trigger }}</text></view>
+          </view>
+          <text wx:if="{{ item._detail !== '-' }}" class="ds-item-detail">{{ item._detail }}</text>
+        </view>
+        <view class="ds-more">{{ logMore ? '加载中…' : (logHasMore ? '上拉加载更多' : '没有更多了') }}</view>
+      </block>
+    </view>
+  </block>
+
+  <!-- ══════════ 规则表单 ══════════ -->
+  <van-popup show="{{ showRuleForm }}" position="bottom" round closeable safe-area-inset-bottom
+    custom-class="ds-sheet-popup" bind:close="onCloseRuleForm">
+    <view class="ds-sheet">
+      <view class="ds-sheet-head">
+        <text class="ds-sheet-title">{{ ruleFormTitle }}</text>
+      </view>
+      <scroll-view scroll-y class="ds-sheet-scroll">
+        <view class="ds-field">
+          <text class="ds-field-k">规则名称</text>
+          <input class="ds-input" value="{{ ruleName }}" data-field="ruleName" bindinput="onRuleInput"
+            placeholder="如：北门连刷常开" placeholder-class="ds-ph" />
+        </view>
+        <view class="ds-line-row">
+          <text class="ds-line-name">监控通道（多选）</text>
+          <view class="ds-btn" bindtap="onRulePickChannels">{{ ruleChannelText }}</view>
+        </view>
+        <view class="ds-field">
+          <text class="ds-field-k">人员范围</text>
+          <picker mode="selector" range="{{ scopeTypeOptions }}" value="{{ scopeTypeIdx }}" bindchange="onRuleScopeChange">
+            <view class="ds-picker"><text>{{ scopeTypeOptions[scopeTypeIdx] }}</text><text class="ds-chev">▾</text></view>
+          </picker>
+        </view>
+        <view wx:if="{{ scopeTypeIdx > 0 }}" class="ds-field">
+          <text class="ds-field-k">{{ scopeTypeIdx === 1 ? '大华人员编码' : (scopeTypeIdx === 2 ? '大华部门 ID' : '卡号') }}</text>
+          <textarea class="ds-textarea" value="{{ ruleScopeText }}" data-field="ruleScopeText" bindinput="onRuleInput"
+            placeholder="每行一个，或用逗号分隔" placeholder-class="ds-ph" auto-height />
+        </view>
+        <text class="ds-hint">{{ scopeHint }}</text>
+
+        <view class="ds-grid2">
+          <view class="ds-field">
+            <text class="ds-field-k">成功次数阈值</text>
+            <input class="ds-input" type="number" value="{{ ruleThresholdCount }}" data-field="ruleThresholdCount" bindinput="onRuleInput" />
+          </view>
+          <view class="ds-field">
+            <text class="ds-field-k">时间窗口（秒）</text>
+            <input class="ds-input" type="number" value="{{ ruleThresholdWindowSec }}" data-field="ruleThresholdWindowSec" bindinput="onRuleInput" />
+          </view>
+          <view class="ds-field">
+            <text class="ds-field-k">常开持续时长（秒）</text>
+            <input class="ds-input" type="number" value="{{ ruleStayOpenDurationSec }}" data-field="ruleStayOpenDurationSec" bindinput="onRuleInput" />
+          </view>
+          <view class="ds-field">
+            <text class="ds-field-k">冷却时间（秒）</text>
+            <input class="ds-input" type="number" value="{{ ruleCooldownSec }}" data-field="ruleCooldownSec" bindinput="onRuleInput" />
+          </view>
+        </view>
+        <text class="ds-hint">冷却按「人 + 门」维度计时。</text>
+      </scroll-view>
+      <view class="ds-sheet-foot">
+        <view class="ds-foot-btn" catchtap="onCloseRuleForm">取消</view>
+        <view class="ds-foot-btn ds-foot-btn--pri" catchtap="onSaveRule">{{ ruleSaving ? '保存中…' : '保存' }}</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- ══════════ 通道多选（规则表单 / 通道受控共用） ══════════ -->
+  <van-popup show="{{ chPickOpen }}" position="bottom" round safe-area-inset-bottom
+    custom-class="ds-sheet-popup" bind:close="onCloseChPicker">
+    <view class="ds-sheet">
+      <!-- 动作收进标题栏，不再压一个大页脚在列表上 -->
+      <view class="ds-bar">
+        <text class="ds-bar-act" catchtap="onCloseChPicker">取消</text>
+        <text class="ds-bar-title">选择监控通道</text>
+        <text class="ds-bar-act ds-bar-act--pri" catchtap="onConfirmChPicker">确定</text>
+      </view>
+      <text class="ds-bar-sub">已选 {{ chPickCount }} 个 · 搜通道名或编码</text>
+      <view class="ds-pick-search">
+        <input class="ds-input" value="{{ chPickKeyword }}" placeholder="搜通道名 / 编码" placeholder-class="ds-ph"
+          bindinput="onChPickInput" confirm-type="search" />
+        <view wx:if="{{ chPickKeyword }}" class="ds-btn" bindtap="clearChPickKeyword">清空</view>
+      </view>
+      <scroll-view scroll-y class="ds-sheet-scroll">
+        <view wx:if="{{ chPickLoading }}" class="ds-empty">加载中…</view>
+        <view wx:elif="{{ chPickRows.length === 0 }}" class="ds-empty">没有匹配的通道</view>
+        <block wx:else>
+          <view wx:for="{{ chPickRows }}" wx:key="code" class="ds-line-row" data-idx="{{ index }}" bindtap="onChPickToggle">
+            <view class="ds-check {{ item.selected ? 'ds-check--on' : '' }}">✓</view>
+            <view class="ds-line-main">
+              <text class="ds-line-name">{{ item.label }}</text>
+              <text class="ds-line-sub">{{ item.code }}</text>
+            </view>
+          </view>
+        </block>
+      </scroll-view>
+    </view>
+  </van-popup>
+</view>

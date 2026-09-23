@@ -1,0 +1,382 @@
+<view class="page">
+  <view class="head">
+    <view class="toolbar-row">
+      <view class="search-box">
+        <van-icon name="search" size="28rpx" color="#969799" />
+        <input
+          class="search-input"
+          value="{{ searchDraft }}"
+          confirm-type="search"
+          placeholder="搜姓名 / 工号 / 规则"
+          bindinput="onSearchInput"
+          bindconfirm="onSearchConfirm"
+        />
+        <view wx:if="{{ searchDraft }}" class="search-clear" bindtap="onSearchClear">✕</view>
+      </view>
+      <view class="chip-btn chip-btn--primary" bindtap="onSearchConfirm">搜索</view>
+      <view class="chip-btn {{ filterCount ? 'chip-btn--primary' : 'chip-btn--ghost' }}" bindtap="openFilterSheet">筛选{{ filterCount ? ' ' + filterCount : '' }}</view>
+    </view>
+
+    <view class="toolbar-row toolbar-row--acts">
+      <text class="tabs-sum">{{ loading ? '加载中…' : '共 ' + total + ' 条' }}</text>
+      <view class="chip-btn chip-btn--ghost" bindtap="toggleSelectMode">{{ selectMode ? '取消批量' : '批量' }}</view>
+      <view class="chip-btn chip-btn--primary" bindtap="onCreateTap">＋新建违规</view>
+    </view>
+
+    <scroll-view wx:if="{{ chips.length }}" class="chip-scroll" scroll-x enable-flex show-scrollbar="{{ false }}">
+      <view class="chip-row">
+        <view wx:for="{{ chips }}" wx:key="k" class="chip" data-k="{{ item.k }}" bindtap="onRemoveChip">
+          <text class="chip-t">{{ item.t }}</text>
+          <text class="chip-x">✕</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="state-box">
+    <van-loading size="36rpx" color="#1989fa" />
+    <text class="state-txt">加载中…</text>
+  </view>
+
+  <view wx:elif="{{ error }}" class="state-box">
+    <text class="state-txt">{{ error }}</text>
+    <view class="chip-btn chip-btn--primary" bindtap="onRetry">重试</view>
+  </view>
+
+  <scroll-view
+    wx:else
+    class="list-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{ false }}"
+    lower-threshold="150"
+    bindscrolltolower="onReachBottom"
+  >
+    <van-empty wx:if="{{ rows.length === 0 }}" description="暂无违规记录" />
+    <view wx:else class="list-pad">
+      <block wx:for="{{ blocks }}" wx:key="batchId">
+        <view wx:if="{{ item.rows.length > 1 }}" class="batch-head">批次 {{ item.batchId }} · {{ item.rows.length }} 条</view>
+        <view
+          wx:for="{{ item.rows }}"
+          wx:for-item="row"
+          wx:key="id"
+          class="card {{ selectedMap[row.id] ? 'card--on' : '' }}"
+          data-id="{{ row.id }}"
+          bindtap="onCardTap"
+        >
+          <view class="c-head">
+            <text class="c-name">{{ row.targetUserDisplayName || row.targetUserId }}</text>
+            <text class="tag">{{ row.__statusLabel }}</text>
+            <text class="tag {{ row.__locked ? 'tag-bad' : 'tag-ok' }}">{{ row.__locked ? '已禁入' : '可进入' }}</text>
+            <text class="c-time">{{ row.__createdText }}</text>
+          </view>
+          <view class="c-line c-line--sub">
+            {{ row.targetUserId }}{{ row.projectGroupName ? ' · ' + row.projectGroupName : '' }}{{ row.cageParentPosition ? ' · 笼位 ' + row.cageParentPosition : '' }}
+          </view>
+          <view class="c-body">
+            <rich-text class="rich-text-line" nodes="{{ row.violationText || '—' }}"></rich-text>
+          </view>
+          <view class="c-line c-line--sub">
+            {{ row.__sourceLabel }}{{ row.ruleName ? ' · ' + row.ruleName : '' }} · 到期 {{ row.__dueText }} · 公告 {{ row.__noticeText }}
+          </view>
+          <view wx:if="{{ row.__dispText !== '—' }}" class="c-line c-line--sub">处置 {{ row.__dispText }}{{ row.__dispDetail ? ' · ' + row.__dispDetail : '' }}</view>
+          <view wx:if="{{ row.__imageCount }}" class="c-imgs">
+            <image
+              wx:for="{{ row.__images }}"
+              wx:for-item="imgUrl"
+              wx:key="*this"
+              class="c-img"
+              mode="aspectFill"
+              lazy-load
+              src="{{ imgUrl }}"
+              data-row="{{ row.id }}"
+              data-url="{{ imgUrl }}"
+              catchtap="onPreviewImage"
+            />
+          </view>
+
+          <view class="act-row">
+            <view class="chip-btn chip-btn--ghost chip-btn--xs" data-id="{{ row.id }}" catchtap="onToggleDetail">{{ expandedId === row.id ? '收起' : '详情' }}</view>
+            <view class="chip-btn chip-btn--ghost chip-btn--xs" data-id="{{ row.id }}" catchtap="onOpenModal">更多操作</view>
+          </view>
+
+          <view wx:if="{{ expandedId === row.id }}" class="detail">
+            <view wx:if="{{ detailLoading === row.id }}" class="detail-loading">处置明细加载中…</view>
+            <block wx:else>
+              <view wx:for="{{ detailMap[row.id].__base }}" wx:for-item="dr" wx:key="k" class="detail-row">
+                <text class="detail-k">{{ dr.k }}</text>
+                <text class="detail-v">{{ dr.v }}</text>
+              </view>
+              <view wx:if="{{ detailMap[row.id].__error }}" class="detail-loading">{{ detailMap[row.id].__error }}</view>
+              <view wx:if="{{ detailMap[row.id].answerPayload }}" class="detail-row">
+                <text class="detail-k">回执</text>
+                <text class="detail-v detail-v--mono">{{ detailMap[row.id].answerPayload }}</text>
+              </view>
+            </block>
+          </view>
+        </view>
+      </block>
+      <view class="load-more">
+        <text wx:if="{{ loadingMore }}">加载中…</text>
+        <text wx:elif="{{ hasMore }}">上拉加载更多</text>
+        <text wx:else>没有更多了</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{ selectMode }}" class="batch-bar">
+    <text class="batch-count">已选 {{ selectedIds.length }} 条</text>
+    <view class="chip-btn chip-btn--primary {{ batchRunning ? 'chip-btn--off' : '' }}" bindtap="onBatchClear">批量解除</view>
+    <view class="chip-btn chip-btn--danger {{ batchRunning ? 'chip-btn--off' : '' }}" bindtap="onBatchDelete">批量删除</view>
+  </view>
+
+  <!-- ═══ 筛选抽屉 ═══ -->
+  <van-popup
+    show="{{ filterSheetOpen }}"
+    position="bottom"
+    round
+    custom-class="filter-popup"
+    bind:close="closeFilterSheet"
+  >
+    <view class="fs-root">
+      <view class="fs-head">
+        <text class="fs-title">筛选</text>
+        <view class="fs-reset" hover-class="fs-reset--hover" bindtap="onResetFilters">重置</view>
+      </view>
+      <scroll-view class="fs-body" scroll-y show-scrollbar="{{ false }}">
+        <filter-row label="状态" options="{{ options.status }}" value="{{ d.status }}" data-field="status" bindchange="onSheetPick" />
+        <filter-row label="来源" options="{{ options.source }}" value="{{ d.source }}" data-field="source" bindchange="onSheetPick" />
+        <filter-row label="是否禁入" options="{{ options.enterLock }}" value="{{ d.enterLock }}" data-field="enterLock" bindchange="onSheetPick" />
+      </scroll-view>
+      <view class="fs-foot">
+        <view class="chip-btn chip-btn--primary" bindtap="applyFilters">查看结果</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- ═══ 文案模板快选（从编辑弹窗里打开，必须盖在编辑弹窗之上） ═══ -->
+  <van-popup show="{{ templateOpen }}" position="bottom" round z-index="{{ 1100 }}" custom-class="filter-popup" bind:close="closeTemplateSheet">
+    <view class="fs-root">
+      <view class="fs-head">
+        <text class="fs-title">选择文案模板</text>
+        <view class="fs-reset" hover-class="fs-reset--hover" bindtap="closeTemplateSheet">关闭</view>
+      </view>
+      <scroll-view class="fs-body" scroll-y show-scrollbar="{{ false }}">
+        <view wx:if="{{ templateLoading }}" class="fs-empty">加载中…</view>
+        <view wx:elif="{{ !templates.length }}" class="fs-empty">暂无模板（可在后台「违规配置 → 文案模板」维护）</view>
+        <block wx:else>
+          <view
+            wx:for="{{ templates }}"
+            wx:key="id"
+            class="tpl-item"
+            data-id="{{ item.id }}"
+            bindtap="onPickTemplate"
+          >
+            <text class="tpl-name">{{ item.name || '未命名' }}</text>
+            <text class="tpl-text">{{ item.violationText }}</text>
+          </view>
+        </block>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <!-- ═══ 选择笼架违规父记录（从编辑弹窗里打开，必须盖在编辑弹窗之上） ═══ -->
+  <van-popup show="{{ cageOpen }}" position="bottom" round z-index="{{ 1100 }}" custom-class="filter-popup" bind:close="closeCageSheet">
+    <view class="fs-root">
+      <view class="fs-head">
+        <text class="fs-title">选择笼架违规记录</text>
+        <view class="fs-reset" hover-class="fs-reset--hover" bindtap="closeCageSheet">关闭</view>
+      </view>
+      <scroll-view class="fs-body" scroll-y show-scrollbar="{{ false }}">
+        <view wx:if="{{ cageLoading }}" class="fs-empty">加载中…</view>
+        <view wx:elif="{{ !cageList.length }}" class="fs-empty">暂无生效中的笼架违规记录</view>
+        <block wx:else>
+          <view
+            wx:for="{{ cageList }}"
+            wx:key="id"
+            class="cage-item"
+            data-id="{{ item.id }}"
+            bindtap="onPickCage"
+          >
+            <view class="cage-line1">
+              <text class="cage-pos">{{ item.positionLabel || item.roomName || '—' }}</text>
+              <text class="cage-code">{{ item.statusCode }}</text>
+            </view>
+            <view class="cage-line2">
+              {{ item.projectGroupName || '—' }}{{ item.departmentName ? ' · ' + item.departmentName : '' }} · {{ item.roomName || '' }}
+            </view>
+          </view>
+        </block>
+      </scroll-view>
+    </view>
+  </van-popup>
+
+  <!-- ═══ 新建 / 编辑 ═══ -->
+  <van-popup show="{{ editorOpen }}" position="bottom" round custom-class="editor-popup" bind:close="closeEditor">
+    <view class="editor">
+      <view class="editor-head">
+        <text class="editor-title">{{ editorMode === 'create' ? '新建违规' : '编辑违规' }}</text>
+        <text wx:if="{{ editorMode === 'edit' }}" class="editor-sub">{{ editorTargetName }}</text>
+      </view>
+
+      <scroll-view class="editor-body" scroll-y>
+        <!-- 开单：来源 / 锁定方式 / 选人 -->
+        <block wx:if="{{ editorMode === 'create' }}">
+          <view class="field-label">违规来源</view>
+          <view class="seg">
+            <view class="seg-item {{ editorSource === 'MANUAL' ? 'seg-item--on' : '' }}" data-v="MANUAL" bindtap="onSourceModeTap">手动新建</view>
+            <view class="seg-item {{ editorSource === 'CAGE' ? 'seg-item--on' : '' }}" data-v="CAGE" bindtap="onSourceModeTap">笼架联动</view>
+          </view>
+
+          <view class="field-label">锁定方式</view>
+          <view class="seg">
+            <view class="seg-item {{ editorLockMode === 'single' ? 'seg-item--on' : '' }}" data-v="single" bindtap="onLockModeTap">单人</view>
+            <view class="seg-item {{ editorLockMode === 'group' ? 'seg-item--on' : '' }}" data-v="group" bindtap="onLockModeTap">课题组批量</view>
+          </view>
+
+          <block wx:if="{{ editorSource === 'CAGE' }}">
+            <view class="field-label">关联笼架违规</view>
+            <view class="pick-line">
+              <text class="pick-value {{ cagePicked ? '' : 'pick-value--empty' }}">{{ cagePicked ? cagePicked.label : '未选择' }}</text>
+              <view class="chip-btn chip-btn--ghost chip-btn--sm" bindtap="loadCageList">选择</view>
+            </view>
+          </block>
+
+          <block wx:else>
+            <view class="field-label">违规人员（按课题组选）</view>
+            <view class="group-search">
+              <input
+                class="group-input"
+                value="{{ groupKeywordDraft }}"
+                placeholder="输入课题组关键词"
+                bindinput="onGroupKeywordInput"
+                bindconfirm="onGroupSearch"
+              />
+              <view class="chip-btn chip-btn--ghost chip-btn--sm" bindtap="onGroupSearch">{{ groupSearching ? '搜索中…' : '搜索' }}</view>
+            </view>
+            <view wx:if="{{ groupOptions.length }}" class="group-list">
+              <view
+                wx:for="{{ groupOptions }}"
+                wx:key="*this"
+                class="group-item"
+                data-name="{{ item }}"
+                bindtap="onPickGroup"
+              >{{ item }}</view>
+            </view>
+          </block>
+
+          <view wx:if="{{ membersLoading }}" class="field-hint">成员加载中…</view>
+          <view wx:elif="{{ members.length }}" class="member-list">
+            <view
+              wx:for="{{ members }}"
+              wx:key="userId"
+              class="member-item"
+              data-userid="{{ item.userId }}"
+              bindtap="onToggleMember"
+            >
+              <view class="member-tick {{ memberMap[item.userId] ? 'member-tick--on' : '' }}">{{ memberMap[item.userId] ? '✓' : '' }}</view>
+              <text class="member-name">{{ item.name }}</text>
+              <text class="member-id">{{ item.userId }}</text>
+            </view>
+          </view>
+          <text class="field-hint">已选 {{ memberChecked.length }} 人{{ editorLockMode === 'single' ? '（单人：只能选一个）' : '' }}</text>
+        </block>
+
+        <view class="field-label field-label--row">
+          <text>违规说明</text>
+          <view class="chip-btn chip-btn--ghost chip-btn--xs" bindtap="openTemplateSheet">选模板</view>
+        </view>
+        <textarea
+          class="field-textarea"
+          value="{{ form.violationText }}"
+          auto-height
+          maxlength="4000"
+          placeholder="填写违规事实与依据"
+          data-field="violationText"
+          bindinput="onFormInput"
+        />
+
+        <view class="field-label">处置动作</view>
+        <view class="switch-row">
+          <text class="switch-label">立即禁入</text>
+          <mini-switch checked="{{ form.forbid }}" data-field="forbid" bindchange="onFormToggle" />
+        </view>
+        <view class="switch-row">
+          <text class="switch-label">每次扫码提示</text>
+          <mini-switch checked="{{ form.every }}" data-field="every" bindchange="onFormToggle" />
+        </view>
+        <view class="switch-row">
+          <text class="switch-label">验证后解禁</text>
+          <mini-switch checked="{{ form.unlock }}" data-field="unlock" bindchange="onFormToggle" />
+        </view>
+
+        <view class="field-label">处置策略</view>
+        <option-picker
+          placeholder="请选择处置策略"
+          title="处置策略"
+          options="{{ strategyOptions }}"
+          value="{{ form.strategy }}"
+          bindchange="onStrategyChange"
+        />
+        <input
+          wx:if="{{ form.strategy === 'ACK_PUZZLE' }}"
+          class="field-input field-input--gap"
+          value="{{ form.phrase }}"
+          placeholder="拼图短语（必填）"
+          data-field="phrase"
+          bindinput="onFormInput"
+        />
+
+        <view class="field-label">最大进入次数</view>
+        <input
+          class="field-input"
+          type="number"
+          value="{{ form.maxEnterSuccess }}"
+          placeholder="留空 = 不限"
+          data-field="maxEnterSuccess"
+          bindinput="onFormInput"
+        />
+
+        <view class="field-label">到期</view>
+        <option-picker
+          wx:if="{{ editorMode === 'edit' }}"
+          placeholder="请选择到期方式"
+          title="到期方式"
+          options="{{ expiryOptions }}"
+          value="{{ form.expireMode }}"
+          bindchange="onExpiryChange"
+        />
+        <input
+          wx:if="{{ editorMode === 'create' || form.expireMode === 'RELATIVE' }}"
+          class="field-input {{ editorMode === 'edit' ? 'field-input--gap' : '' }}"
+          type="number"
+          value="{{ form.expireAfterDays }}"
+          placeholder="多少天后到期（留空 = 不到期）"
+          data-field="expireAfterDays"
+          bindinput="onFormInput"
+        />
+
+        <view class="field-label">公告</view>
+        <view class="switch-row">
+          <text class="switch-label">公告展示跟随到期时间</text>
+          <mini-switch checked="{{ form.noticeLinkExpire }}" data-field="noticeLinkExpire" bindchange="onFormToggle" />
+        </view>
+        <input
+          wx:if="{{ !form.noticeLinkExpire }}"
+          class="field-input"
+          type="number"
+          value="{{ form.noticeDisplayDays }}"
+          placeholder="公告展示天数（必填）"
+          data-field="noticeDisplayDays"
+          bindinput="onFormInput"
+        />
+        <view class="field-hint">未绑定图片上传：编辑时保留原有图片，新建不带图。</view>
+      </scroll-view>
+
+      <view class="editor-foot">
+        <view class="chip-btn chip-btn--ghost" bindtap="closeEditor">取消</view>
+        <view class="chip-btn chip-btn--primary {{ editorSaving ? 'chip-btn--off' : '' }}" bindtap="onSave">{{ editorSaving ? '保存中…' : '保存' }}</view>
+      </view>
+    </view>
+  </van-popup>
+</view>

@@ -40,6 +40,7 @@ public class CageOccupancyService {
     private final CageCellDetailMapper detailMapper;
     private final ApprovalRecordMapper approvalMapper;
     private final CageCellIndexMapper cellIndexMapper;
+    private final CageExperimentRecordService experimentRecordService;
 
     public CageOccupancyService(CageInfoValueService infoValueService,
                                 CageTransferLogMapper transferLogMapper,
@@ -47,7 +48,8 @@ public class CageOccupancyService {
                                 PersonnelService personnelService,
                                 CageCellDetailMapper detailMapper,
                                 ApprovalRecordMapper approvalMapper,
-                                CageCellIndexMapper cellIndexMapper) {
+                                CageCellIndexMapper cellIndexMapper,
+                                CageExperimentRecordService experimentRecordService) {
         this.infoValueService = infoValueService;
         this.transferLogMapper = transferLogMapper;
         this.claimMapper = claimMapper;
@@ -55,6 +57,7 @@ public class CageOccupancyService {
         this.detailMapper = detailMapper;
         this.approvalMapper = approvalMapper;
         this.cellIndexMapper = cellIndexMapper;
+        this.experimentRecordService = experimentRecordService;
     }
 
     /** 复制：占用字段从 from 复制到 to，from 保留；覆盖前给 to 打旧数据快照。 */
@@ -122,6 +125,8 @@ public class CageOccupancyService {
         }
 
         infoValueService.clearArchiveFields(animalCageId, "ARCHIVE", operatorAccountId);
+        // 笼位腾空 = 这批实验记录失去归属：整体归档，退出台账、只留记录模式留痕
+        experimentRecordService.archiveForCage(animalCageId, operatorAccountId);
         writeLog("archive", animalCageId, null, occupant, operator, snapshot, reason);
 
         CageCellDetail d = detailMapper.selectByAnimalCageId(animalCageId);

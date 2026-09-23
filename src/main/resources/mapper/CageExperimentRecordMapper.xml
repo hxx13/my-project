@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageExperimentRecordMapper">
+
+    <resultMap id="CageExperimentRecordMap" type="com.example.demo.modules.cageshelf.entity.CageExperimentRecord">
+        <id property="id" column="id"/>
+        <result property="animalCageId" column="animal_cage_id"/>
+        <result property="authorId" column="author_id"/>
+        <result property="authorName" column="author_name"/>
+        <result property="content" column="content"/>
+        <result property="imagesJson" column="images_json"/>
+        <result property="status" column="status"/>
+        <result property="submittedAt" column="submitted_at"/>
+        <result property="archivedAt" column="archived_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO cage_experiment_record
+            (animal_cage_id, author_id, author_name, content, images_json, status, submitted_at)
+        VALUES
+            (#{animalCageId}, #{authorId}, #{authorName}, #{content}, #{imagesJson}, #{status}, #{submittedAt})
+    </insert>
+
+    <select id="selectSubmitted" resultMap="CageExperimentRecordMap">
+        SELECT * FROM cage_experiment_record
+        WHERE animal_cage_id = #{animalCageId} AND status = 'SUBMITTED'
+        ORDER BY submitted_at DESC, id DESC
+    </select>
+
+    <select id="selectAll" resultMap="CageExperimentRecordMap">
+        SELECT * FROM cage_experiment_record
+        WHERE animal_cage_id = #{animalCageId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="selectByAuthors" resultMap="CageExperimentRecordMap">
+        SELECT * FROM cage_experiment_record
+        WHERE author_id IN
+        <foreach collection="authorIds" item="aid" open="(" separator="," close=")">#{aid}</foreach>
+        ORDER BY animal_cage_id, submitted_at DESC, id DESC
+    </select>
+
+    <select id="selectDraft" resultMap="CageExperimentRecordMap">
+        SELECT * FROM cage_experiment_record
+        WHERE animal_cage_id = #{animalCageId} AND status = 'DRAFT'
+          AND author_id IN
+          <foreach collection="authorIds" item="aid" open="(" separator="," close=")">#{aid}</foreach>
+        ORDER BY id DESC LIMIT 1
+    </select>
+
+    <update id="updateDraftContent">
+        UPDATE cage_experiment_record
+        SET content = #{content}, images_json = #{imagesJson}
+        WHERE id = #{id} AND status = 'DRAFT'
+    </update>
+
+    <update id="submitDraft">
+        UPDATE cage_experiment_record
+        SET content = #{content}, images_json = #{imagesJson},
+            status = 'SUBMITTED', submitted_at = NOW()
+        WHERE id = #{id} AND status = 'DRAFT'
+    </update>
+
+    <update id="archiveByAnimalCageId">
+        UPDATE cage_experiment_record
+        SET status = 'ARCHIVED', archived_at = NOW()
+        WHERE animal_cage_id = #{animalCageId} AND status != 'ARCHIVED'
+    </update>
+
+</mapper>

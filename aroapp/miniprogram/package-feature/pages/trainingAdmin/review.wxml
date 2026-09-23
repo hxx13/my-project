@@ -1,0 +1,90 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view class="hd">
+    <view class="hd-main">
+      <text class="hd-title">{{ trainingName }}</text>
+      <text class="hd-sub">{{ campusText }} · 共 {{ total }} 人 · 待处理 {{ pending }} 人</text>
+    </view>
+    <view class="chip-btn chip-btn--xs {{ onlyPending ? 'chip-btn--primary' : 'chip-btn--ghost' }}" bindtap="onToggleOnly">
+      {{ onlyPending ? '只看待处理' : '全部学员' }}
+    </view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ groups.length === 0 }}" description="暂无学员" />
+  <view wx:else>
+    <view wx:for="{{ groups }}" wx:key="id" wx:for-item="grp" class="occ-card">
+      <view class="occ-head">
+        <text class="occ-time">{{ grp.timeText }}</text>
+        <text class="occ-addr">{{ grp.address }}</text>
+      </view>
+      <view wx:for="{{ grp.rows }}" wx:key="id" class="stu-row">
+        <view class="stu-head">
+          <text class="stu-name">{{ item.name }}</text>
+          <text class="stu-job">{{ item.jobNumber }}</text>
+          <text wx:if="{{ item.projectGroup }}" class="stu-group">{{ item.projectGroup }}</text>
+        </view>
+        <view class="stu-tags">
+          <text class="tag {{ item.testYn === 1 ? 'tag-ok' : item.testYn === 2 ? 'tag-bad' : 'tag-warn' }}">{{ item.auditText }}</text>
+          <text class="tag {{ item.testFraction === 1 ? 'tag-ok' : item.testFraction === 2 ? 'tag-bad' : 'tag-mute' }}">{{ item.scoreText }}</text>
+          <text class="tag tag-mute">房间 {{ item.roomText }}</text>
+        </view>
+        <view class="stu-ops">
+          <block wx:if="{{ item.testYn === 0 }}">
+            <view class="chip-btn chip-btn--xs chip-btn--primary" data-id="{{ item.id }}" data-state="1" bindtap="onAudit">通过</view>
+            <view class="chip-btn chip-btn--xs chip-btn--danger" data-id="{{ item.id }}" data-state="2" bindtap="onAudit">拒绝</view>
+          </block>
+          <block wx:if="{{ item.testFraction === 0 }}">
+            <view class="chip-btn chip-btn--xs chip-btn--primary" data-id="{{ item.id }}" data-state="1" bindtap="onScore">合格</view>
+            <view class="chip-btn chip-btn--xs chip-btn--danger" data-id="{{ item.id }}" data-state="2" bindtap="onScore">不合格</view>
+          </block>
+          <view class="chip-btn chip-btn--xs chip-btn--ghost" data-id="{{ item.id }}" data-name="{{ item.name }}" bindtap="onOpenRooms">下放房间</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<van-popup show="{{ roomShow }}" position="bottom" round custom-style="height:78vh;" bind:close="onRoomClose">
+  <view class="sheet">
+    <view class="sheet-head">
+      <text class="sheet-title">下放房间权限 · {{ roomTargetName }}</text>
+      <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="onRoomSave">保存（{{ roomPicked.length }}）</view>
+    </view>
+    <scroll-view scroll-x class="region-tabs" enhanced show-scrollbar="{{ false }}">
+      <view class="region-tabs-inner">
+        <view
+          wx:for="{{ roomRegions }}"
+          wx:key="*this"
+          class="region-tab {{ activeRegion === item ? 'region-tab-on' : '' }}"
+          data-name="{{ item }}"
+          bindtap="onRoomRegion"
+        >{{ item }}</view>
+      </view>
+    </scroll-view>
+    <scroll-view scroll-x class="region-tabs" enhanced show-scrollbar="{{ false }}">
+      <view class="region-tabs-inner">
+        <view
+          wx:for="{{ floors }}"
+          wx:key="*this"
+          class="floor-tab {{ activeFloor === item ? 'floor-tab-on' : '' }}"
+          data-name="{{ item }}"
+          bindtap="onRoomFloor"
+        >{{ item }}</view>
+      </view>
+    </scroll-view>
+    <scroll-view scroll-y class="sheet-body">
+      <view
+        wx:for="{{ rooms }}"
+        wx:key="roomId"
+        class="room-row {{ item.picked ? 'room-row-on' : '' }}"
+        data-id="{{ item.roomId }}"
+        bindtap="onToggleRoom"
+      >
+        <view class="staff-dot {{ item.picked ? 'staff-dot-on' : '' }}"><text wx:if="{{ item.picked }}">✓</text></view>
+        <text class="room-name">{{ item.name }}</text>
+      </view>
+    </scroll-view>
+  </view>
+</van-popup>
+</block>

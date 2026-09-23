@@ -228,7 +228,11 @@ export function PersonnelPicker({
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent
         aria-describedby={undefined}
-        className="z-[var(--z-modal)] w-[calc(100vw-2rem)] max-w-lg gap-0 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 text-[var(--app-color-text-primary)]"
+        /* 内容与遮罩一起抬到 --z-modal-nested：本组件常从**手写遮罩的弹窗**（订购页规格弹窗，
+           --z-modal-above）里唤起，而 Radix 把内容 portal 到 body，两者是同级兄弟、分不出祖孙。
+           只抬内容不抬遮罩的话，点弹窗外面会落到下面那层遮罩上，把父弹窗一起关掉。 */
+        overlayClassName="z-[var(--z-modal-nested)]"
+        className="z-[var(--z-modal-nested)] w-[calc(100vw-2rem)] max-w-lg gap-0 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 text-[var(--app-color-text-primary)]"
       >
         <DialogTitle className="mb-3 text-sm font-bold text-[var(--app-color-text-primary)]">从人员库选择</DialogTitle>
 

@@ -37,7 +37,7 @@ import MobileOrderRecordsView from "./MobileOrderRecordsView";
 import "./animal-order-scope.css";
 import CartTree, { CartTreeModeToggle, type CartTreeMode } from "@/features/reference-data/CartTree";
 import { refCardLines, refCardPrice } from "@/features/reference-data/ReferenceCard";
-import SpecSelectPanel, { type OrderPickupInfo } from "@/features/reference-data/SpecSelectPanel";
+import SpecSelectPanel, { type OrderPickupInfo, type PickupMode } from "@/features/reference-data/SpecSelectPanel";
 import MobileCagePickerSheet from "@/pages/mobile/MobileCagePickerSheet";
 import type { PickedCage } from "@/pages/mobile/cagePickerLogic";
 import { allocateInOrder, allocatedTotal } from "@/features/reference-data/cageAllocation";
@@ -84,6 +84,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     quantity: 0,
   });
   const [cagePickerOpen, setCagePickerOpen] = useState(false);
+  /** 领用方式：饲养=预定笼位（默认），取走=不占笼位不选房间 */
+  const [pickupMode, setPickupMode] = useState<PickupMode>("FARM");
   /** 购物车「定位」的目标笼位：非空时抽屉以「只定位」形态打开，不经过规格面板 */
   const [locateCageId, setLocateCageId] = useState<string | null>(null);
   /** +1 = 让笼位抽屉切到「按顺序分配」页（点标题行的进度） */
@@ -142,6 +144,22 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     setLocateCageId(null);
     for (const r of pickedCages) {
       try { await releaseCageReservation(r.reservationId); } catch { /* 启动清理兜底 */ }
+    }
+  }, [pickedCages]);
+
+  /** 领用方式切换：取走关掉笼位抽屉并放掉已选笼位，饲养再打开 */
+  const handlePickupModeChange = useCallback((mode: PickupMode) => {
+    setPickupMode(mode);
+    if (mode === "TAKE") {
+      setCagePickerOpen(false);
+      const cur = pickedCages;
+      setPickedCages([]);
+      setAllocPinned({});
+      for (const r of cur) {
+        void releaseCageReservation(r.reservationId).catch(() => {});
+      }
+    } else {
+      setCagePickerOpen(true);
     }
   }, [pickedCages]);
 
@@ -337,10 +355,12 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     if (!groupId) { toast.error("无法确定课题组共享购物车，请确认已加入课题组"); return; }
     const title = fieldVal(item, "title") || `ID ${item.id}`;
     setItemLabelMap((prev) => ({ ...prev, [item.id]: title }));
+    toast(`当前使用 AUP：${activeAup ? `${activeAup.registerNo || `AUP#${activeAup.id}`}${activeAup.projectGroupName ? ` · ${activeAup.projectGroupName}` : ""}` : selectedAupId}`);
     setSpecSelectItem(item);
+    setPickupMode("FARM");
     // 开选购 = 展开底部面板的笼位抽屉
     setCagePickerOpen(true);
-  }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId]);
+  }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId, activeAup]);
 
   /**
    * 购物车「定位」：关掉购物车、就地打开笼位抽屉并聚焦那一格。
@@ -387,7 +407,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
       // 笼位路径下房间来自该行自己的笼位；非笼位路径用弹窗里选的那个房间
       const roomId = entry.pickupRoomId || pickup.pickupRoomId;
       const roomName = entry.pickupRoomName || pickup.pickupRoomName;
-      if (!roomId) {
+      // 取走没有房间，不是漏填
+      if (!roomId && pickup.pickupMode !== "TAKE") {
         toast.error("请选择领用方式/房间");
         continue;
       }
@@ -400,8 +421,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             quantity: entry.qty,
             // 无规格物品不写 spec_selections，服务端据此回退到物品自身的 price
             ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
-            pickupRoomId: roomId,
-            pickupRoomName: roomName,
+            pickupRoomId: roomId || undefined,
+            pickupRoomName: roomName || undefined,
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
             ...(entry.remark ? { remark: entry.remark } : {}),
@@ -867,12 +888,11 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
               </div>
             )}
 
-            {/* 实验员：提交包给 PI。备注与两个按钮同行——备注吃剩余宽度，按钮保持正常尺寸 */}
-            {!isPi && (
-              <div className="flex shrink-0 items-center gap-2 border-t border-[var(--student-hairline)] px-3 py-2.5">
+            {/* 包备注对所有人开放；PI 的备注在下单时快照成订单行备注 */}
+            <div className="flex shrink-0 items-center gap-2 border-t border-[var(--student-hairline)] px-3 py-2.5">
                 <input
                   type="text"
-                  placeholder="订单包统一备注"
+                  placeholder={isPi ? "备注（写给你自己加购的行）" : "订单包统一备注"}
                   value={packageRemark}
                   onChange={(e) => setPackageRemark(e.target.value)}
                   className="min-w-0 flex-1 rounded border border-[var(--student-hairline)] bg-white px-2.5 py-1.5 text-xs outline-none"
@@ -893,10 +913,9 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                   onClick={handleMarkPackageReady}
                   className="shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-success)] px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                 >
-                  {markReadyMut.isPending ? "提交中…" : "提交给 PI"}
+                  {markReadyMut.isPending ? "提交中…" : isPi ? `保存备注 (${myDraftLines.length})` : "提交给 PI"}
                 </button>
               </div>
-            )}
 
             {/* 编辑模式横幅：保存/放弃统一在这里，且禁掉另开新单，避免留下中间态 */}
             {editOrderId != null && (
@@ -1130,7 +1149,30 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                 maxQuantityPerCage={maxQuantityPerCage}
                 onCageContextChange={handleCageContextChange}
                 onProvideConfirm={provideSpecConfirm}
+                pickupMode={pickupMode}
+                onPickupModeChange={handlePickupModeChange}
               />
+            )}
+
+            {/* 取走没有笼位抽屉，提交按钮画在规格面板下面 */}
+            {pickupMode === "TAKE" && specSelectItem && (
+              <div className="flex shrink-0 items-center justify-end gap-2 border-t border-[var(--student-hairline)] px-3 py-2">
+                <button
+                  type="button"
+                  className="rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--student-body)]"
+                  onClick={() => void exitCageSession()}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={orderingBlocked}
+                  className="rounded-[var(--student-radius-sm)] bg-[var(--student-success)] px-3.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  onClick={() => specConfirmRef.current?.()}
+                >
+                  加入购物车
+                </button>
+              </div>
             )}
 
             {/* 3. 笼位抽屉 */}

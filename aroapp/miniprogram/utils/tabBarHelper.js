@@ -61,7 +61,7 @@ function buildStudentTabList() {
       minRole: 'STUDENT',
     },
     {
-      path: '/package-feature/pages/studentMaterial/index',
+      path: '/package-student/pages/studentMaterial/index',
       text: '申领',
       icon: '',
       iconSrc: ICON_SUPPLIES,
@@ -69,7 +69,7 @@ function buildStudentTabList() {
       isNav: true,
     },
     {
-      path: '/package-feature/pages/studentCageShelf/index',
+      path: '/package-student/pages/studentCageShelf/index',
       text: '笼架',
       icon: '',
       iconSrc: ICON_CAGE,
@@ -85,7 +85,7 @@ function buildStudentTabList() {
 
 var ROOM_CONTEXT_PATHS = [
   '/package-feature/pages/roomAudit/index',
-  '/package-feature/pages/dahuaIssue/index',
+  '/package-door/pages/dahuaIssue/index',
 ];
 
 function activeIndexForRoute(route) {

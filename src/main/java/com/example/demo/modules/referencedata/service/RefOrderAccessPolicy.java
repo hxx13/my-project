@@ -36,4 +36,15 @@ public class RefOrderAccessPolicy {
     public boolean canReview(User user) {
         return canSeeAll(user);
     }
+
+    /**
+     * 订购域**后台配置**的准入（时间管理、规格模板）。现与 {@link #canSeeAll} 同条件，
+     * 独立命名以便日后分叉 —— 与 {@link #canReview} 是同一个先例。
+     *
+     * <p>「业务」是人员标签不是角色，所以这里必须显式读标签：{@code RoleEnum} 的等级比较
+     * 表达不了它（规格模板原先是 capability 的角色等级 5 阈值，业务必被拒）。
+     */
+    public boolean canManageOrderConfig(User user) {
+        return canSeeAll(user);
+    }
 }

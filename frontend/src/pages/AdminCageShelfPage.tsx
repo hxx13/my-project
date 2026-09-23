@@ -3485,7 +3485,7 @@ function Inner(){
                 {/* 面板自己的吸顶条就是「笼盒详情 · 位号 + 关闭」，外面这条标题行是重复的，
                     而且它会把吸顶条顶下去（滚动后吸顶条盖住它）—— 去掉，只留面板那一行。 */}
                 {dataSource==="local"
-                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} onBatchEdit={enterBatchPick}/>
+                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={allowedModeKeys.includes("edit")} onBatchEdit={enterBatchPick}/>
                   : <div className="grid grid-cols-2 gap-2 p-3 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
                   return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
                 })}</div>
@@ -3505,7 +3505,7 @@ function Inner(){
     {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
-          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} onBatchEdit={enterBatchPick}/>
+          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={allowedModeKeys.includes("edit")} onBatchEdit={enterBatchPick}/>
           : <>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";

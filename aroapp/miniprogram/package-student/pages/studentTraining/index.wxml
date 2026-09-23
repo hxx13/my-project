@@ -1,0 +1,131 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view class="tabs">
+    <view class="tab {{ tab === 'list' ? 'tab-on' : '' }}" data-tab="list" bindtap="onSwitchTab">培训列表</view>
+    <view class="tab {{ tab === 'mine' ? 'tab-on' : '' }}" data-tab="mine" bindtap="onSwitchTab">我的报名</view>
+  </view>
+
+  <!-- 培训列表：校区分区走 tab 切换（对齐房间页），不把各区堆成一列 -->
+  <block wx:if="{{ tab === 'list' }}">
+    <scroll-view
+      wx:if="{{ campusTabs.length > 1 }}"
+      scroll-x
+      class="campus-tabs"
+      enhanced
+      show-scrollbar="{{ false }}"
+    >
+      <view class="campus-tabs-inner">
+        <view
+          wx:for="{{ campusTabs }}"
+          wx:key="name"
+          class="campus-tab {{ activeCampus === item.name ? 'campus-tab-on' : '' }}"
+          data-name="{{ item.name }}"
+          bindtap="onCampusTab"
+        >
+          <text>{{ item.name }}</text>
+          <text class="campus-tab-count">{{ item.count }}</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view wx:if="{{ loading }}" class="muted">加载中…</view>
+    <van-empty wx:elif="{{ total === 0 }}" description="暂无可报名的培训" />
+    <view wx:else class="list">
+      <view
+        wx:for="{{ visible }}"
+        wx:key="id"
+        class="row-card {{ item.statusText === '已通过' ? 'row-card-ok' : '' }}"
+      >
+        <view class="row-head">
+          <text class="row-title">{{ item.name }}</text>
+          <text class="status-tag status-{{ item.tone }}">{{ item.statusText }}</text>
+        </view>
+        <view class="meta-line"><text class="meta-k">类型</text><text class="meta-v">{{ item.typeName || '—' }}</text></view>
+        <view class="meta-line"><text class="meta-k">时间</text><text class="meta-v">{{ item.timeText }}</text></view>
+        <view class="meta-line"><text class="meta-k">地点</text><text class="meta-v">{{ item.addressText }}</text></view>
+        <view class="meta-line meta-line-action">
+          <text class="meta-k">所属人</text>
+          <text class="meta-v">{{ item.ownerText }}</text>
+          <view wx:if="{{ item.act === 'enroll' }}" class="chip-btn chip-btn--xs chip-btn--primary action-btn" data-id="{{ item.id }}" bindtap="onEnrollTap">报名</view>
+          <view wx:if="{{ item.act === 'reapply' }}" class="chip-btn chip-btn--xs chip-btn--primary action-btn" data-id="{{ item.id }}" bindtap="onReapplyTap">重新报名</view>
+          <view
+            wx:if="{{ item.act === 'cancel' || item.act === 'reapply' }}"
+            class="chip-btn chip-btn--xs chip-btn--ghost action-btn"
+            data-eid="{{ item.enrollmentId }}"
+            bindtap="onCancelTap"
+          >取消报名</view>
+          <view
+            wx:if="{{ item.statusText === '已通过' }}"
+            class="chip-btn chip-btn--xs chip-btn--ghost action-btn"
+            data-eid="{{ item.enrollmentId }}"
+            bindtap="onViewCert"
+          >查看证书</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 我的报名 -->
+  <block wx:else>
+    <view wx:if="{{ myLoading }}" class="muted">加载中…</view>
+    <van-empty wx:elif="{{ myRows.length === 0 }}" description="暂无报名记录" />
+    <view wx:else class="list">
+      <view wx:for="{{ myRows }}" wx:key="id" class="row-card {{ item.statusText === '已通过' ? 'row-card-ok' : '' }}">
+        <view class="row-head">
+          <text class="row-title">{{ item.trainingName }}</text>
+          <text class="status-tag status-{{ item.tone }}">{{ item.statusText }}</text>
+        </view>
+        <view class="meta-line"><text class="meta-k">时间</text><text class="meta-v">{{ item.timeText }}</text></view>
+        <view class="meta-line meta-line-action">
+          <text class="meta-k">地点</text>
+          <text class="meta-v">{{ item.addressText }}</text>
+          <view
+            wx:if="{{ item.cancellable }}"
+            class="chip-btn chip-btn--xs chip-btn--ghost action-btn"
+            data-eid="{{ item.id }}"
+            bindtap="onCancelTap"
+          >取消报名</view>
+          <view
+            wx:if="{{ item.statusText === '已通过' }}"
+            class="chip-btn chip-btn--xs chip-btn--ghost action-btn"
+            data-eid="{{ item.id }}"
+            bindtap="onViewCert"
+          >查看证书</view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <van-popup
+    show="{{ enrollShow }}"
+    position="center"
+    round
+    bind:close="onEnrollClose"
+    custom-style="width:86%;padding:36rpx 32rpx 28rpx;"
+  >
+    <view wx:if="{{ target }}" class="enroll-root">
+      <text class="enroll-title">{{ target.name }}</text>
+      <text class="enroll-sub">{{ target.timeText }} · {{ target.addressText }}</text>
+      <view class="gate-box">
+        <view wx:if="{{ target.paperCount > 0 }}" class="gate-line">
+          <text class="gate-k">门槛试卷</text>
+          <text class="gate-v {{ target.examPassed ? 'gate-ok' : 'gate-bad' }}">{{ target.examPassed ? '已合格' : '未合格' }}</text>
+        </view>
+        <view class="gate-line">
+          <text class="gate-k">健康调查表</text>
+          <text class="gate-v {{ target.healthOk ? 'gate-ok' : 'gate-muted' }}">{{ target.healthOk ? '已提交' : '未提交' }}</text>
+        </view>
+      </view>
+      <text wx:if="{{ !target.eligible }}" class="gate-tip">需先通过门槛试卷并提交健康调查表；这两项请在学生中心网页端完成后回来报名。</text>
+      <view class="enroll-ops">
+        <view class="chip-btn chip-btn--ghost enroll-btn" bindtap="onEnrollClose">关闭</view>
+        <view
+          wx:if="{{ target.eligible }}"
+          class="chip-btn chip-btn--primary enroll-btn {{ submitting ? 'chip-btn--off' : '' }}"
+          bindtap="onConfirmEnroll"
+        >{{ submitting ? '报名中…' : '确定报名' }}</view>
+      </view>
+    </view>
+  </van-popup>
+</view>
+</block>

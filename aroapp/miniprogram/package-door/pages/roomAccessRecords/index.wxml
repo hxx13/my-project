@@ -1,0 +1,127 @@
+<view class="page">
+  <view class="head">
+    <view class="toolbar-row">
+      <view class="search-box">
+        <van-icon name="search" size="28rpx" color="#969799" />
+        <input
+          class="search-input"
+          value="{{ searchDraft }}"
+          confirm-type="search"
+          placeholder="搜姓名 / 学工号 / 课题组"
+          bindinput="onSearchInput"
+          bindconfirm="onSearchConfirm"
+        />
+        <view wx:if="{{ searchDraft }}" class="search-clear" bindtap="onSearchClear">✕</view>
+      </view>
+      <view class="chip-btn chip-btn--primary" bindtap="onSearchConfirm">搜索</view>
+      <view class="chip-btn {{ filterCount ? 'chip-btn--primary' : 'chip-btn--ghost' }}" bindtap="openFilterSheet">筛选{{ filterCount ? ' ' + filterCount : '' }}</view>
+    </view>
+
+    <scroll-view wx:if="{{ chips.length }}" class="chip-scroll" scroll-x enable-flex show-scrollbar="{{ false }}">
+      <view class="chip-row">
+        <view wx:for="{{ chips }}" wx:key="k" class="chip" data-k="{{ item.k }}" bindtap="onRemoveChip">
+          <text class="chip-t">{{ item.t }}</text>
+          <text class="chip-x">✕</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="tabs-sum" wx:if="{{ !loading && !error }}">共 {{ total }} 条 · 进入 {{ statEnter }}</view>
+  </view>
+
+  <view wx:if="{{ loading }}" class="state-box">
+    <van-loading size="36rpx" color="#1989fa" />
+    <text class="state-txt">加载中…</text>
+  </view>
+
+  <view wx:elif="{{ error }}" class="state-box">
+    <text class="state-txt">{{ error }}</text>
+    <view class="chip-btn chip-btn--primary" bindtap="onRetry">重试</view>
+  </view>
+
+  <scroll-view
+    wx:else
+    class="list-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{ false }}"
+    lower-threshold="150"
+    bindscrolltolower="onReachBottom"
+  >
+    <van-empty wx:if="{{ records.length === 0 }}" description="未找到符合当前条件的流水" />
+    <view wx:else class="list-pad">
+      <view class="card card--{{ item.accessType === 1 ? 'enter' : item.accessType === 2 ? 'exit' : 'unknown' }}" wx:for="{{ records }}" wx:key="id">
+        <view class="c-head">
+          <text class="c-name">{{ item.name || '未知' }}</text>
+          <text class="tag {{ item.accessType === 1 ? 'tag-enter' : item.accessType === 2 ? 'tag-exit' : '' }}">{{ item.__actionLabel }}</text>
+          <text wx:if="{{ item.__keepForExit }}" class="tag tag-bad">延迟还卡</text>
+          <text class="c-time">{{ item.create_time }}</text>
+        </view>
+        <view wx:if="{{ item.__idPart }}" class="c-line c-line--sub">{{ item.__idPart }}</view>
+        <view class="c-line c-line--meta">
+          <text class="tag tag-room">{{ item.__locPart }}</text>
+          <text class="c-meta-txt">{{ item.__sourceLabel }} · {{ item.__ownCardLabel }}</text>
+        </view>
+        <view wx:if="{{ item.accessType === 2 }}" class="c-exit">
+          <text class="c-exit-txt">离开原因：{{ expandedKeys[item.id] ? item.__exitFull : item.__exitPreview }}</text>
+          <text
+            wx:if="{{ item.__exitNeedsMore }}"
+            class="c-more"
+            data-key="{{ item.id }}"
+            bindtap="toggleExitReason"
+          >{{ expandedKeys[item.id] ? '收起' : '更多' }}</text>
+        </view>
+      </view>
+      <view class="load-more">
+        <text wx:if="{{ loadingMore }}">加载中…</text>
+        <text wx:elif="{{ hasMore }}">上拉加载更多</text>
+        <text wx:else>没有更多了</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- ═══ 筛选抽屉 ═══ -->
+  <van-popup
+    show="{{ filterSheetOpen }}"
+    position="bottom"
+    round
+    custom-class="filter-popup"
+    bind:close="closeFilterSheet"
+  >
+    <view class="fs-root">
+      <view class="fs-head">
+        <text class="fs-title">筛选</text>
+        <view class="fs-reset" hover-class="fs-reset--hover" bindtap="onResetFilters">重置</view>
+      </view>
+
+      <scroll-view class="fs-body" scroll-y show-scrollbar="{{ false }}">
+        <filter-row label="动作" options="{{ options.actionType }}" value="{{ d.actionType }}" data-field="actionType" bindchange="onSheetPick" />
+        <filter-row label="校区" options="{{ options.campus }}" value="{{ d.campus }}" data-field="campus" bindchange="onSheetPick" />
+        <filter-row wx:if="{{ d.campus === '浦东' }}" label="楼层" options="{{ options.floor }}" value="{{ d.floor }}" data-field="floor" bindchange="onSheetPick" />
+        <view class="fs-input-row">
+          <text class="fs-label">房号尾数</text>
+          <input class="fs-input" value="{{ d.roomName }}" placeholder="如 01A" data-field="roomName" bindinput="onSheetInput" />
+        </view>
+        <view class="fs-input-row fs-input-row--switch">
+          <text class="fs-label">排除黑名单</text>
+          <mini-switch checked="{{ d.excludeBlacklist }}" bindchange="onSheetBlacklistSwitch" />
+        </view>
+        <view class="fs-date-row">
+          <text class="fs-label">日期</text>
+          <picker mode="date" value="{{ d.startDate }}" end="{{ d.endDate }}" data-field="startDate" bindchange="onSheetDate">
+            <view class="fs-date">{{ d.startDate || '开始' }}</view>
+          </picker>
+          <text class="fs-sep">至</text>
+          <picker mode="date" value="{{ d.endDate }}" start="{{ d.startDate }}" data-field="endDate" bindchange="onSheetDate">
+            <view class="fs-date">{{ d.endDate || '结束' }}</view>
+          </picker>
+          <view class="chip-btn chip-btn--ghost chip-btn--xs" bindtap="onSheetToday">今日</view>
+        </view>
+      </scroll-view>
+
+      <view class="fs-foot">
+        <view class="chip-btn chip-btn--primary" bindtap="applyFilters">查看结果</view>
+      </view>
+    </view>
+  </van-popup>
+</view>

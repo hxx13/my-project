@@ -2,6 +2,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { usePublicContent } from "@/api/hooks/usePortalContent";
 import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
 import { noticePriorityOf, portalExtension } from "../noticePriority";
+import { dateOnly } from "@/utils/beijingTime";
 
 export default function NoticeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -57,7 +58,7 @@ export default function NoticeDetailPage() {
             <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 12px", borderRadius: 99, background: "#faf7f2", color: "#8b7355" }}>
               通知公告
             </span>
-            <span style={{ fontSize: 11, color: "#b0a89a" }}>{item.publishedAt?.split("T")[0] || ""}</span>
+            <span style={{ fontSize: 11, color: "#b0a89a" }}>{dateOnly(item.publishedAt)}</span>
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.35, marginBottom: 14 }}>{item.title}</h1>
         </div>

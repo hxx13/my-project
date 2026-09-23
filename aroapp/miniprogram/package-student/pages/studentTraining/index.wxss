@@ -1,0 +1,219 @@
+/* 培训报名：沿用 studentMaterialRequests 的卡片/胶囊语言 + 校区分区色带 */
+.page {
+  padding: 16px 14px 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #eef5ff 0%, #f7f8fa 120px);
+}
+
+/* ---- 顶部切换：浅灰轨道 + 白色选中块（同 web 端 aup-view-toggle，不铺主色块）---- */
+.tabs {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 2rpx;
+  padding: 4rpx;
+  margin-bottom: 4px;
+  border-radius: 12rpx;
+  background: #f1f3f7;
+}
+.tab {
+  padding: 8px 18px;
+  border-radius: 10rpx;
+  font-size: 13px;
+  color: #64748b;
+}
+.tab-on {
+  color: #2563eb;
+  background: #fff;
+  font-weight: 600;
+  box-shadow: 0 1rpx 3rpx rgba(15, 23, 42, 0.12);
+}
+
+.muted {
+  font-size: 13px;
+  color: #969799;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ---- 校区切换：纯文字，选中只看主色 + 加粗 ---- */
+.campus-tabs {
+  width: 100%;
+  white-space: nowrap;
+  margin-bottom: 12px;
+}
+.campus-tabs-inner {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 32rpx;
+  padding-bottom: 2px;
+}
+.campus-tab {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+.campus-tab-on {
+  color: #2563eb;
+  font-weight: 600;
+}
+.campus-tab-count {
+  margin-left: 6rpx;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* ---- 卡片 ---- */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.row-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(235, 238, 239, 0.9);
+  box-shadow: 0 4px 18px rgba(31, 56, 88, 0.07);
+}
+/* 已通过：绿色描边 + 淡绿底，一眼能挑出来 */
+.row-card-ok {
+  border-color: #6ee7b7;
+  background: #f4fff8;
+}
+.row-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+.row-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #323233;
+}
+
+/* ---- 状态标签（配色对齐 studentMaterialRequests 的 .row-status-*）---- */
+.status-tag {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid #e3e8ef;
+}
+.status-ok {
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+}
+.status-warn {
+  color: #d97706;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.status-danger {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.status-muted {
+  color: #64748b;
+  background: #f1f3f7;
+  border-color: #dcdee0;
+}
+
+/* ---- 字段行 ---- */
+.meta-line {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 8rpx;
+  font-size: 12px;
+}
+.meta-k {
+  width: 96rpx;
+  flex-shrink: 0;
+  color: #969799;
+}
+.meta-v {
+  flex: 1;
+  color: #646566;
+  word-break: break-all;
+}
+
+/* ---- 行内动作（按钮统一走 app.wxss 的 .chip-btn）：跟在最后一行字段右侧 ---- */
+.meta-line-action {
+  align-items: center;
+}
+.meta-line-action .meta-v {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.action-btn {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+
+/* ---- 报名弹窗 ---- */
+.enroll-root {
+  display: flex;
+  flex-direction: column;
+}
+.enroll-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #323233;
+}
+.enroll-sub {
+  margin-top: 6rpx;
+  font-size: 12px;
+  color: #969799;
+}
+.gate-box {
+  margin-top: 20rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 14px;
+  background: #f7f8fa;
+}
+.gate-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0;
+  font-size: 13px;
+}
+.gate-k {
+  color: #646566;
+}
+.gate-v {
+  font-weight: 600;
+}
+.gate-ok {
+  color: #059669;
+}
+.gate-bad {
+  color: #dc2626;
+}
+.gate-muted {
+  color: #969799;
+}
+.gate-tip {
+  margin-top: 14rpx;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #d97706;
+}
+.enroll-ops {
+  margin-top: 24rpx;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 12rpx;
+}
+.enroll-btn {
+  min-width: 160rpx;
+}

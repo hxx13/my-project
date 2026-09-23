@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAdminContents, useDeleteContent } from "@/api/hooks/usePortalContent";
 import type { ContentType, ContentStatus, PortalContentView } from "@/api/domains/portalContent.api";
+import { dateOnly } from "@/utils/beijingTime";
 
 import { appConfirm } from "@/lib/appDialog";
 export default function AdminPortalContentPage() {
@@ -100,7 +101,7 @@ export default function AdminPortalContentPage() {
                   <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12, verticalAlign: "middle" }}>
                     <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", marginRight: 6, background: dotColor }} />{statusLabel}
                   </td>
-                  <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12, verticalAlign: "middle" }}>{row.updatedAt?.split("T")[0] || ""}</td>
+                  <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12, verticalAlign: "middle" }}>{dateOnly(row.updatedAt)}</td>
                   <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12, verticalAlign: "middle" }}>
                     <div style={{ display: "flex", gap: 4 }}>
                       <Link to={`/content-manager/content/${row.id}/edit`} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer", border: "1px solid #d4c9b8", background: "white", color: "#666", whiteSpace: "nowrap", textDecoration: "none" }}>编辑</Link>

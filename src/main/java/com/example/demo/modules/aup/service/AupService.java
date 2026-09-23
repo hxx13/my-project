@@ -872,10 +872,10 @@ public class AupService {
         accessPolicy.assertViewable(record, user);
         AupDetailVO vo = new AupDetailVO();
         vo.setRecord(record);
-        if (STAGE_DRAFT.equals(record.getCurrentStage())) {
-            AupData d = dataMapper.selectByAupId(aupId);
-            vo.setDraftData(d == null ? null : d.getData());
-        }
+        // 内容对所有阶段一律返回：前端「查看」也走 AupFillPage，只在 draft 阶段返回会让
+        // 已提交/已批准的计划书整页空白（快照里有同样的内容，printData 本来也不设这道闸）。
+        AupData d = dataMapper.selectByAupId(aupId);
+        vo.setDraftData(d == null ? null : d.getData());
         vo.setSnapshotCount(snapshotService.count(aupId));
         vo.setSnapshots(listSnapshots(aupId, user));
         vo.setTraces(listTraces(aupId, user));
