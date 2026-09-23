@@ -29,6 +29,12 @@ public class RefOrderView {
     private String submitRemark;
     private LocalDateTime submittedAt;
     private LocalDate estimatedDeliveryDate;
+    /**
+     * 预约单标记（永久保留，含已完成）：下单时目标周期晚于当时的当前周期。
+     * 审核页据此打「预约单」标签与筛选 —— 不能靠 estimatedDeliveryDate 推断，
+     * 那只是「哪天到货」，看不出「下单当时是不是提前订的」。
+     */
+    private Integer isPreorder;
     private LocalDateTime createdAt;
     /** 订单总金额（元）= 各行单价 × 数量求和；无任何定价行时为 null */
     private BigDecimal totalAmount;

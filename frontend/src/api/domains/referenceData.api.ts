@@ -60,6 +60,10 @@ export interface RefCartItem {
   pickupRoomId?: string | null;
   /** 领用方式/房间：房间全路径名 */
   pickupRoomName?: string | null;
+  /** 领用方式：FARM 饲养 | TAKE 取走。取走没有房间也没有笼位，只能靠它分辨，不能只看房间是否为空 */
+  pickupMode?: string | null;
+  /** 目标到货周期（预计到货日，ISO 日期）。空 = 未选，按当前周期处理 */
+  deliveryCycle?: string | null;
   /** 领用人账号 id；空=下单人本人 */
   collectorId?: string | null;
   /** 领用人显示名 */
@@ -115,8 +119,14 @@ export interface RefOrder {
   status: string;
   submitRemark?: string;
   submittedAt?: string;
-  /** 下单时计算的预计送达日（工作日） */
+  /** 下单时计算的预计送达日（工作日）；预约单 = 用户选的那个到货周期 */
   estimatedDeliveryDate?: string | null;
+  /**
+   * 预约单标记（永久，含已完成）：下单时目标周期晚于当时的当前周期。
+   * 不能用 estimatedDeliveryDate 推断 —— 那只是「哪天到货」，看不出下单当时是不是提前订的。
+   * 服务端 0/1，不要当 boolean 用。
+   */
+  isPreorder?: number | null;
   createdAt?: string;
   /** 订单总金额（元）；整单无定价行时为 null */
   totalAmount?: number | null;
@@ -150,6 +160,10 @@ export interface RefOrderLine {
   pickupRoomId?: string | null;
   /** 领用方式/房间：房间全路径名 */
   pickupRoomName?: string | null;
+  /** 领用方式：FARM 饲养 | TAKE 取走。取走没有房间也没有笼位，只能靠它分辨，不能只看房间是否为空 */
+  pickupMode?: string | null;
+  /** 目标到货周期（预计到货日，ISO 日期）。空 = 未选，按当前周期处理 */
+  deliveryCycle?: string | null;
   /** 领用人账号 id；空=下单人本人 */
   collectorId?: string | null;
   /** 领用人显示名 */
@@ -271,6 +285,10 @@ export async function addToCart(
     /** 领用方式/房间（必选） */
     pickupRoomId?: string;
     pickupRoomName?: string;
+    /** 领用方式：FARM 饲养（默认）| TAKE 取走（不占笼位也不选房间） */
+    pickupMode?: string;
+    /** 目标到货周期（预计到货日，ISO 日期）。不传 = 本周期，服务端解析后落库 */
+    deliveryCycle?: string;
     /** 领用人；不传表示本人 */
     collectorId?: string;
     collectorName?: string;
@@ -299,6 +317,111 @@ export async function removeCartItem(id: number) {
 
 export async function clearCart(groupId: string) {
   await authHttp.delete("/reference-data/cart", { params: { groupId } });
+}
+
+/** 清空本人「加购了但还没提交」的草稿行（READY 的不动）——任何身份可用，只作用于本人的行 */
+export async function clearMyDraftCart(groupId: string) {
+  await authHttp.delete("/reference-data/cart/my-draft", { params: { groupId } });
+}
+
+// ── 到货周期与每周期库存上限 ──
+//
+// 周期 = 一个预计到货日（不是实体，由 ETA 策略算出来）。下列契约是 Block 3 三端 UI 的唯一入口，
+// 服务端字段若有出入只改这里，不必动 UI。
+
+export interface OrderCycle {
+  /** 预计到货日，ISO `yyyy-MM-dd` */
+  cycle: string;
+  /** 是不是「当前周期」——购物车分 tab 与预约判定都用它 */
+  current: boolean;
+}
+
+/**
+ * 从此刻起算的后续 K 个到货周期（含当前周期，且第一个就是它）。
+ *
+ * 服务端返回的是 `{ current: "yyyy-MM-dd", cycles: ["yyyy-MM-dd", ...] }`（对象，不是数组）；
+ * 这里归一成 `OrderCycle[]`，好让 UI 只认一种形状 —— 契约对不上时只改这一处。
+ */
+export async function fetchOrderCycles(campus: string, categoryKey?: string): Promise<OrderCycle[]> {
+  const res = await authHttp.get<Result<{ current?: string; cycles?: string[] } | string[]>>(
+    "/reference-data/cycles",
+    { params: { campus, categoryKey } },
+  );
+  const d = res.data.data;
+  const list = Array.isArray(d) ? d : Array.isArray(d?.cycles) ? d.cycles : [];
+  const current = (Array.isArray(d) ? "" : d?.current) || list[0] || "";
+  return list.map((c) => ({ cycle: c, current: c === current }));
+}
+
+export interface SpecQuota {
+  /** false = 这个规格没配每周期上限 —— 按口径「未配即不可订」 */
+  configured: boolean;
+  /** 每周期上限；未配置时为 null */
+  cap?: number | null;
+  used: number;
+  /** 还可订多少。**未配置时为 null（不是 0）** —— 界面据此区分「没配」与「配了 0」，提示语不同 */
+  available?: number | null;
+}
+
+/** 查某规格在某周期的可用量，用于置灰与提示 */
+export async function fetchSpecQuota(params: {
+  refDataId: number;
+  spec?: string;
+  cycle?: string;
+  campus?: string;
+}) {
+  const res = await authHttp.get<Result<SpecQuota>>("/reference-data/quota", { params });
+  return res.data.data;
+}
+
+/**
+ * 批量配额：卡片上逐规格显示剩余量。
+ *
+ * 为什么批量：一张卡 1..k 个规格、一屏若干张卡，逐规格发请求会变成「一屏几十个请求 × 轮询」。
+ * 规格由调用方枚举（它本来就知道自己渲染了哪些行），所以这里传精确的 (refDataId, spec) 对。
+ *
+ * 返回值按键取，键见 {@link specQuotaKey}。
+ */
+export async function fetchSpecQuotaBatch(
+  items: Array<{ refDataId: number; spec?: string }>,
+  opts: { campus?: string; cycle?: string } = {},
+): Promise<Record<string, SpecQuota>> {
+  const res = await authHttp.post<Result<Record<string, SpecQuota>>>("/reference-data/quota/batch", {
+    items,
+    campus: opts.campus,
+    cycle: opts.cycle,
+  });
+  return res.data.data ?? {};
+}
+
+/** 批量结果的键：与服务端同一口径（spec 为空 = 无规格物品） */
+export function specQuotaKey(refDataId: number, spec?: string | null) {
+  return `${refDataId}|${spec ?? ""}`;
+}
+
+// ── 到货周期清单（管理端） ──
+//
+// 周期本来是「ETA 策略 + 节假日」推算出来的。管理员可以把推算结果「采纳」成一份**显式清单**，
+// 之后增删改；清单为空则该校区仍走推算。列表里的日期是「预计到货日」，与预约、额度同源。
+
+export interface OrderCycleAdminView {
+  campus: string;
+  /** 显式清单（含已过期的）。空 = 没采纳过，走推算 */
+  stored: string[];
+  /** 按 ETA 策略 + 节假日推算的结果，供「采纳」 */
+  predicted: string[];
+}
+
+export async function fetchOrderCyclesAdmin(campus: string, categoryKey?: string) {
+  const res = await authHttp.get<Result<OrderCycleAdminView>>("/reference-data/cycles/admin", {
+    params: { campus, categoryKey },
+  });
+  return res.data.data;
+}
+
+/** 整份替换清单（整份替换，不做增量）；传空数组 = 清空该校区清单，回到推算。 */
+export async function saveOrderCyclesAdmin(campus: string, cycles: string[]) {
+  await authHttp.put("/reference-data/cycles/admin", { campus, cycles });
 }
 
 /** 实验员提交订单包：本人行 → READY + packageRemark */
@@ -440,6 +563,13 @@ export interface OrderReviewFilter {
   remark?: string;
   from?: string;
   to?: string;
+  /**
+   * 预约单筛选：不传=全部 / "1"=仅预约单 / "0"=排除预约单（服务端 RefOrderQuery.isPreorder）。
+   * 与列表、导出共用同一个查询对象。
+   */
+  isPreorder?: string;
+  /** 导出专用（列表忽略）："true" = 只导本周期订单，不含预约单 */
+  currentCycleOnly?: string;
 }
 
 function compactFilter(filter?: OrderReviewFilter): Record<string, string> {

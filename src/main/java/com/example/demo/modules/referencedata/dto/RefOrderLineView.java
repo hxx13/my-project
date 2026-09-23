@@ -3,6 +3,7 @@ package com.example.demo.modules.referencedata.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Data
 public class RefOrderLineView {
@@ -45,4 +46,11 @@ public class RefOrderLineView {
     private Object targetCageLocation;
     /** 笼位坐标的人读串，如「浦东 / A101 / 架3 (4,5)」 */
     private String targetCageLabel;
+    /**
+     * 领用方式快照：FARM 饲养 | TAKE 取走。
+     * 取走的房间与笼位都是空，只凭「房间为空」区分不了它与「快照丢了」，所以必须带上这一列。
+     */
+    private String pickupMode;
+    /** 目标到货周期（预计到货日）。下单时自购物车快照；空 = 未选（旧单） */
+    private LocalDate deliveryCycle;
 }

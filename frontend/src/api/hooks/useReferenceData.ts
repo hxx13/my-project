@@ -11,11 +11,13 @@ import {
   createSpecTemplate,
   updateSpecTemplate,
   deleteSpecTemplate,
+  fetchOrderCycles,
   fetchCart,
   addToCart,
   updateCartItem,
   removeCartItem,
   clearCart,
+  clearMyDraftCart,
   markCartPackageReady,
   withdrawCartPackage,
   fetchOrders,
@@ -66,6 +68,17 @@ export function useSpecTemplates() {
     queryKey: queryKeys.referenceData.specTemplates,
     queryFn: fetchSpecTemplates,
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+/** 到货周期列表（含当前周期）。后端未就绪时静默返回空，界面退回「本周期」默认。 */
+export function useOrderCycles(campus?: string, categoryKey?: string) {
+  return useQuery({
+    queryKey: queryKeys.referenceData.orderCycles(campus, categoryKey),
+    queryFn: () => fetchOrderCycles(campus ?? "", categoryKey),
+    enabled: !!campus,
+    retry: false,
+    staleTime: 60_000,
   });
 }
 
@@ -289,6 +302,19 @@ export function useClearCart() {
     onSuccess: () => {
       invalidateCartAndCages(qc);
       toast.success("购物车已清空");
+    },
+    onError: (e: Error) => toast.error(e.message || "清空失败"),
+  });
+}
+
+/** 清空本人未提交的草稿行（任何身份可用；组长清全组是另一个 useClearCart） */
+export function useClearMyDraftCart() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (groupId: string) => clearMyDraftCart(groupId),
+    onSuccess: () => {
+      invalidateCartAndCages(qc);
+      toast.success("已清空本人草稿");
     },
     onError: (e: Error) => toast.error(e.message || "清空失败"),
   });

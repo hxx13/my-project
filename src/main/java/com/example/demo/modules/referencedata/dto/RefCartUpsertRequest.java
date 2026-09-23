@@ -2,6 +2,7 @@ package com.example.demo.modules.referencedata.dto;
 
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 @Data
@@ -15,6 +16,8 @@ public class RefCartUpsertRequest {
     private String pickupRoomId;
     /** 领用方式/房间：房间全路径名快照 */
     private String pickupRoomName;
+    /** 领用方式：FARM 饲养（默认，走房间/笼位）| TAKE 取走（不占笼位也不选房间）。传空按 FARM */
+    private String pickupMode;
     /** 领用人账号 id；为空表示下单人本人 */
     private String collectorId;
     /** 领用人显示名快照 */
@@ -39,4 +42,6 @@ public class RefCartUpsertRequest {
      * 服务端会先校验该单确实由本人的提交人身份在编辑，才落这个标记。
      */
     private Long editingOrderId;
+    /** 目标到货周期（预计到货日）。为空 = 本周期（服务端解析为当前周期后落库） */
+    private LocalDate deliveryCycle;
 }

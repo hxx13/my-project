@@ -296,7 +296,7 @@ function OrderTable({ displays, linesByKey }: { displays: OrderDisplay[]; linesB
                   {merge(d.totalQty, "tabular-nums font-semibold")}
                   {merge(d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—", "text-right tabular-nums font-semibold text-sky-700")}
                   {merge(<span className="block max-w-[180px] whitespace-normal break-words">{d.orderRemark}</span>)}
-                  {merge(d.statusLabel)}
+                  {merge(<span className="flex items-center gap-1.5">{d.statusLabel}{d.isPreorder && <span className="rounded bg-[color-mix(in_srgb,var(--student-primary)_14%,transparent)] px-1 py-0.5 text-[10px] text-[var(--student-primary)]">预约单</span>}</span>)}
                   {merge(d.time, "text-[10px] text-[var(--student-mute)]")}
 
                   {/* ── 行级 ── */}
@@ -312,9 +312,9 @@ function OrderTable({ displays, linesByKey }: { displays: OrderDisplay[]; linesB
                   <td className={cn(td, "tabular-nums")}>{line ? (line.quantity ?? 0) : "—"}</td>
                   <td className={cn(td, "text-right tabular-nums")}>{line?.lineAmount != null ? `¥${Number(line.lineAmount).toFixed(2)}` : "—"}</td>
                   <td className={td}>{line?.collectorName?.trim() || "—"}</td>
-                  <td className={cn(td, "max-w-[150px]")}>{line?.pickupRoomName?.trim() || "—"}</td>
+                  <td className={cn(td, "max-w-[150px]")}>{line?.pickupMode === "TAKE" ? "取走" : (line?.pickupRoomName?.trim() || "—")}</td>
                   <td className={cn(td, "max-w-[150px]")}>{line?.targetCageLabel?.trim() || "—"}</td>
-                  <td className={td}>{line?.arrivalDate?.trim() || d.arrivalDate}</td>
+                  <td className={td}>{d.isPreorder && line?.deliveryCycle ? `预约到货 ${line.deliveryCycle}` : (line?.arrivalDate?.trim() || d.arrivalDate)}</td>
                   <td className={cn(td, "max-w-[160px]")}>{line?.lineRemark?.trim() || "—"}</td>
                 </tr>
               );
@@ -341,6 +341,7 @@ function OrderCard({ d, lines, onEdit }: { d: OrderDisplay; lines: RefOrderLine[
           <span className="shrink-0 font-mono text-[11px] text-[var(--student-mute)]">{d.no}</span>
           <span className="rounded bg-[var(--student-canvas-soft)] px-1.5 py-0.5 text-[10px] text-[var(--student-body)]">{d.source === "ARO" ? "ARO" : "本地"}</span>
           <span className="text-[11px] font-medium text-[var(--student-ink)]">{d.statusLabel}</span>
+          {d.isPreorder && <span className="rounded bg-[color-mix(in_srgb,var(--student-primary)_14%,transparent)] px-1.5 py-0.5 text-[10px] text-[var(--student-primary)]">预约单</span>}
           {d.aup !== "—" && <span className="rounded bg-[var(--student-canvas-soft)] px-1.5 py-0.5 text-[10px] text-[var(--student-body)]">{d.aup}</span>}
         </div>
         <button type="button" onClick={() => setExpanded((v) => !v)} className="shrink-0 text-[10px] text-[var(--student-mute)]">
@@ -411,9 +412,14 @@ function OrderCard({ d, lines, onEdit }: { d: OrderDisplay; lines: RefOrderLine[
                           {opt && <span>{opt}</span>}
                           {supplier && <span>供应商 {supplier}</span>}
                           {line.collectorName && <span>领用人 {line.collectorName}</span>}
-                          {line.pickupRoomName && <span>房间 {line.pickupRoomName}</span>}
+                          {line.pickupMode === "TAKE" ? (
+                            <span>取走</span>
+                          ) : (
+                            line.pickupRoomName && <span>房间 {line.pickupRoomName}</span>
+                          )}
                           {line.targetCageLabel && <span>笼位 {line.targetCageLabel}</span>}
                           {line.arrivalDate && <span>到货 {line.arrivalDate}</span>}
+                          {d.isPreorder && line.deliveryCycle && <span>预约到货 {line.deliveryCycle}</span>}
                         </div>
                         {line.lineRemark && <div className="truncate text-[10px] text-amber-700">行备注：{line.lineRemark}</div>}
                       </div>

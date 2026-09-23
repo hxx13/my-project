@@ -3,6 +3,7 @@ package com.example.demo.modules.referencedata.dto;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -48,5 +49,7 @@ public class RefCartView {
     private Object targetCageLocation;
     /** 笼位坐标人读串，如「浦东 / A101 / 架3 (4,5)」 */
     private String targetCageLabel;
+    /** 目标到货周期（预计到货日）。购物车据此分「本周期 / 预约」两个 tab；空 = 未选，按当前周期 */
+    private LocalDate deliveryCycle;
     private LocalDateTime addedAt;
 }

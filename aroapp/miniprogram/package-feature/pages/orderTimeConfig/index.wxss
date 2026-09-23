@@ -66,3 +66,9 @@
   border: 1rpx solid var(--line-strong); color: var(--body); background: #fff;
 }
 .ot-chip--on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* 到货周期清单：行内日期 picker + 删除，紧凑一行 */
+.ot-cycle-list { display: flex; flex-direction: column; gap: 12rpx; margin-top: 12rpx; }
+.ot-cycle-row { display: flex; align-items: center; gap: 12rpx; }
+.ot-cycle-picker { flex: 1; min-width: 0; }
+.picker-box--expired { color: var(--danger); }

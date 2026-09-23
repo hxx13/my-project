@@ -270,6 +270,19 @@
   color: #cbd5e1;
   font-weight: 500;
 }
+/* 行内「剩余可订量」：价格与「选择规格」之间挤一行，超出省略号，不撑高行 */
+.goods-quota {
+  flex: 1;
+  min-width: 0;
+  font-size: 20rpx;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.goods-quota--grey {
+  color: #94a3b8;
+}
 
 /* 底部栏 */
 .cart-bar {
@@ -364,6 +377,18 @@
 .foot-btn.primary {
   background: #2563eb;
   color: #fff;
+}
+/* 小号文字动作：「清空草稿」「撤回 READY」用，与实底按钮同排但不占按钮宽度
+   —— 否则四个控件挤一行会把备注输入框压没。文字动作不是按钮，不适用实底/描边那套规范。 */
+.foot-link {
+  flex-shrink: 0;
+  padding: 0 10rpx;
+  font-size: 24rpx;
+  line-height: 1;
+  color: #64748b;
+}
+.foot-link--danger {
+  color: #dc2626;
 }
 /* 抽屉页脚：按钮并排、按内容宽度靠右（原先 .sheet-foot 根本没定义 → view 是块级，按钮各占一整行） */
 .sheet-foot {
@@ -877,6 +902,14 @@
   color: #334155;
 }
 .ord-card-status { font-size: 24rpx; font-weight: 600; color: #1f2937; }
+.ord-chip--pre {
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  background: #fef3c7;
+  font-size: 20rpx;
+  color: #b45309;
+  font-weight: 600;
+}
 .ord-card-toggle { margin-left: auto; font-size: 20rpx; color: #94a3b8; }
 .ord-card-line { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 12rpx; font-size: 24rpx; }
 .ord-k { color: #94a3b8; margin-right: 6rpx; }
@@ -1461,4 +1494,61 @@
   margin-left: auto;
   font-size: 22rpx;
   color: #94a3b8;
+}
+
+/* ── 到货周期：与领用方式同排的紧凑 picker（不排按钮，否则周期一多就换行、把网格挤没） ── */
+.pickup-cycle-pick {
+  margin-left: auto;
+  min-width: 0;
+}
+.pickup-cycle {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #e5e7eb;
+  background: #fff;
+}
+.pickup-cycle-key {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.pickup-cycle-val {
+  font-size: 24rpx;
+  color: #334155;
+}
+/* 选了未来周期 = 预约：标成主色实底，与「本周期」一眼可分 */
+.pickup-cycle-val--on {
+  color: #2563eb;
+  font-weight: 600;
+}
+.pickup-cycle-arrow {
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+
+/* ── 未配上限的规格：置灰 + 说明文字（不静默，明确「未配置订购上限」） ── */
+.spec-opt--noquota {
+  background: #f1f3f7;
+}
+.spec-opt--noquota .spec-opt-name {
+  color: #9aa0a6;
+}
+.spec-opt-noquota {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: #b45309;
+}
+
+/* ── 购物车周期 tab（本周期 / 预约，复用 pickup-mode-btn 分段选中态） ── */
+.cart-cycle-tabs {
+  display: flex;
+  gap: 12rpx;
+  padding: 0 32rpx 12rpx;
+}
+.cart-line-tag--pre {
+  color: #b45309;
+  font-weight: 600;
 }

@@ -44,7 +44,7 @@ public class AnimalOrderExportService {
     private static final String[] REVIEW_COLS = {
             "单号", "来源", "课题组", "负责人", "AUP", "校区", "总数", "总额", "整单备注",
             "物品 / 规格", "供应商", "雄数", "雌数", "数量", "小计",
-            "领用人", "领用房间", "笼位", "到货日期", "行备注",
+            "领用人", "领用方式/房间", "笼位", "到货日期", "行备注",
             "状态", "提交时间",
     };
     private static final int COL_NO = 0;
@@ -118,7 +118,7 @@ public class AnimalOrderExportService {
                     data.createCell(COL_QTY).setCellValue(qty(ln));
                     amountCell(data.createCell(COL_LINE_AMT), ln == null ? null : ln.getLineAmount());
                     data.createCell(COL_COLLECTOR).setCellValue(safe(ln == null ? null : ln.getCollectorName()));
-                    data.createCell(COL_ROOM).setCellValue(safe(ln == null ? null : ln.getPickupRoomName()));
+                    data.createCell(COL_ROOM).setCellValue(pickupText(ln));
                     data.createCell(COL_CAGE).setCellValue(safe(ln == null ? null : ln.getTargetCageLabel()));
                     data.createCell(COL_ARRIVAL).setCellValue(arrivalText(o, ln));
                     data.createCell(COL_LINE_REMARK).setCellValue(safe(ln == null ? null : ln.getLineRemark()));
@@ -223,6 +223,17 @@ public class AnimalOrderExportService {
 
     private static String safe(String v) {
         return v != null ? v : "";
+    }
+
+    /**
+     * 「领用方式/房间」列：取走（TAKE）既没有房间也没有笼位，只凭「房间为空」区分不了它与
+     * 「快照丢了」，所以靠 pickup_mode 如实印出「取走」；饲养行照旧印房间全路径，没快照就留空。
+     */
+    /** 包可见纯函数，便于单测。 */
+    static String pickupText(RefOrderLineView ln) {
+        if (ln == null) return "";
+        if ("TAKE".equalsIgnoreCase(ln.getPickupMode())) return "取走";
+        return safe(ln.getPickupRoomName());
     }
 
     /** 订单总数量：各行数量之和（与页面表格的「总数」同口径）。 */

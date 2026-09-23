@@ -2,6 +2,7 @@ package com.example.demo.common.config;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.identity.service.PersonIdentityService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -15,9 +16,12 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     /** AUP config 三页写门禁所需最低角色：ADMIN 起（而非普通员工 STAFF）。 */
     private static final int AUP_CONFIG_MIN_LEVEL = RoleEnum.ADMIN.getLevel();
     private final JwtTokenService jwtTokenService;
+    private final PersonIdentityService personIdentityService;
 
-    public AdminAuthInterceptor(JwtTokenService jwtTokenService) {
+    public AdminAuthInterceptor(JwtTokenService jwtTokenService,
+                                PersonIdentityService personIdentityService) {
         this.jwtTokenService = jwtTokenService;
+        this.personIdentityService = personIdentityService;
     }
 
     @Override
@@ -63,6 +67,35 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             return false;
         }
         if (!isStaffBase(user)) {
+            writeForbidden(response);
+            return false;
+        }
+        request.setAttribute(CURRENT_ADMIN_USER_ATTR, user);
+        return true;
+    }
+
+    /**
+     * 培训管理门禁：与小程序端「我的 → 培训管理」入口同口径 ——
+     * ① 非学生视角；② 超级管理员（SUPER_ADMIN 及以上）放行，或身份码含
+     * BREEDING_GROUP_LEADER（饲养组长）。
+     *
+     * <p>学生视角在服务端有两个来源：真实学生库账号（accountSource=STUDENT），以及
+     * 「模拟学生视角」——后者的 token subject 也是学生 id，{@code resolveUnifiedRole}
+     * 会把角色抬到教职工档（所以 {@link #preHandle} 拦不住），唯独 accountSource 仍是 STUDENT。
+     * 最高权限也**越不过**这一条：模拟学生视角就按学生视角算。
+     *
+     * <p>角色档（≥STAFF）仍由 {@link #preHandle} 兜底，这里只额外管上面两条。注意这比
+     * preHandle 的「两视角合并、只判角色」更严，是培训管理**特有**的收紧。
+     */
+    public boolean preHandleTrainingAdmin(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        User user = resolveUser(request);
+        if (user == null) {
+            writeUnauthorized(response, "未登录或 Token 缺失");
+            return false;
+        }
+        boolean studentView = "STUDENT".equalsIgnoreCase(String.valueOf(user.getAccountSource()));
+        boolean superAdmin = roleLevel(user) >= RoleEnum.SUPER_ADMIN.getLevel();
+        if (studentView || !(superAdmin || personIdentityService.isBreedingGroupLeader(user.getId()))) {
             writeForbidden(response);
             return false;
         }

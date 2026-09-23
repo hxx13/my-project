@@ -20,8 +20,10 @@ import com.example.demo.modules.identity.service.PersonIdentityService;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.example.demo.modules.referencedata.entity.CageOrderReservation;
 import com.example.demo.modules.referencedata.entity.RefData;
+import com.example.demo.modules.referencedata.entity.RefOrder;
 import com.example.demo.modules.referencedata.mapper.CageOrderReservationMapper;
 import com.example.demo.modules.referencedata.mapper.ReferenceDataMapper;
+import com.example.demo.modules.referencedata.mapper.RefOrderMapper;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,6 +81,7 @@ public class CageOrderReservationService {
     private final CageInfoValueService infoValueService;
     private final CageFormAuditService auditService;
     private final CageOrderReservationMapper reservationMapper;
+    private final RefOrderMapper orderMapper;
     private final AupRecordMapper aupRecordMapper;
     private final ReferenceDataMapper referenceDataMapper;
     private final UserDisplayNameService userDisplayNameService;
@@ -96,6 +99,7 @@ public class CageOrderReservationService {
                                        CageInfoValueService infoValueService,
                                        CageFormAuditService auditService,
                                        CageOrderReservationMapper reservationMapper,
+                                       RefOrderMapper orderMapper,
                                        AupRecordMapper aupRecordMapper,
                                        ReferenceDataMapper referenceDataMapper,
                                        UserDisplayNameService userDisplayNameService,
@@ -112,6 +116,7 @@ public class CageOrderReservationService {
         this.infoValueService = infoValueService;
         this.auditService = auditService;
         this.reservationMapper = reservationMapper;
+        this.orderMapper = orderMapper;
         this.aupRecordMapper = aupRecordMapper;
         this.referenceDataMapper = referenceDataMapper;
         this.userDisplayNameService = userDisplayNameService;
@@ -546,11 +551,14 @@ public class CageOrderReservationService {
 
         String s = status.trim().toUpperCase();
         if ("APPROVED".equals(s)) {
+            // 预约单（is_preorder=1）：动物还没到，不能立刻 2→3 进饲养中。预定保持 LOCKED、
+            // 笼位维持 2（已预约空笼盒），等「周期推进」定时任务在该单的到货周期到来时再执行 promote。
+            if (isPreorder(orderId)) {
+                log.info("[cage-reservation] 预约单 {} 通过，笼位保持已预约空笼盒，待到货周期推进", orderId);
+                return rows.size();
+            }
             for (CageOrderReservation r : rows) {
-                // 以预定时的快照为准重写一遍：预定到现在笼位可能被人动过
-                Map<String, Object> written = readWritten(r);
-                if (!written.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), written);
-                occupyCage(r.getAnimalCageId(), r.getId(), operatorId);
+                promote(r, operatorId);
             }
             log.info("[cage-reservation] 订单 {} 通过，{} 个笼位转入饲养中", orderId, rows.size());
             return rows.size();
@@ -562,6 +570,25 @@ public class CageOrderReservationService {
             return rows.size();
         }
         return 0;
+    }
+
+    /**
+     * 把一条预定正式转「饲养中」：以预定快照重写笼位表单 + 笼位 2→3 + 写使用时间 + 预定转 CONSUMED。
+     *
+     * <p>普通单审核通过与预约单周期推进都走这里 —— **同一段代码**，两条路径永不分叉。
+     * 独立事务：定时任务逐条推进，一条失败不拖垮其余（普通单路径在外层事务里调用，同样生效）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void promote(CageOrderReservation r, String operatorId) {
+        // 以预定时的快照为准重写一遍：预定到现在笼位可能被人动过
+        Map<String, Object> written = readWritten(r);
+        if (!written.isEmpty()) infoValueService.syncFromMapped(r.getAnimalCageId(), written);
+        occupyCage(r.getAnimalCageId(), r.getId(), operatorId);
+    }
+
+    private boolean isPreorder(Long orderId) {
+        RefOrder order = orderMapper.findById(orderId);
+        return order != null && Integer.valueOf(1).equals(order.getIsPreorder());
     }
 
     /** 笼位 2→3：整行取回改一个字段再 upsert，避免把 state/rent_type 等写成 null。 */

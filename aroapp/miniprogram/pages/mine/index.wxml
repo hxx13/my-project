@@ -154,6 +154,12 @@
             <text class="mine-cell-title-text">电子签名</text>
           </view>
         </van-cell>
+        <van-cell is-link bind:click="goHealthSurvey">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="records" size="28rpx" color="#e11d48" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">健康调查表</text>
+          </view>
+        </van-cell>
       </van-cell-group>
     </view>
   </view>

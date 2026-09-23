@@ -75,6 +75,23 @@ export function canEditCartLine(line: CartLine, opts: { isPi: boolean; currentUs
   return opts.isPi || line.mine === true || line.addedBy === opts.currentUserId;
 }
 
+/**
+ * 行是否落在「预约」tab：deliveryCycle 晚于当前周期才算；缺失/null/无当前周期都归本周期。
+ *
+ * <p><b>已知简化</b>：这里的 currentCycle 是**不带 categoryKey** 的当前周期，而行的
+ * deliveryCycle 是加购时用**该行自己品种**的 categoryKey 算的。ETA 锚点来自可购窗口规则，
+ * 规则可按品种配（CATEGORY 作用域）—— 一旦配了，两个品种的「当前周期」可能不同，这一行
+ * 就可能被分错 tab。目前没配 CATEGORY 规则所以不会发生；真配了就按行品种分别取周期。
+ *
+ * <p>之所以可接受：**这只是展示分区**。权威的预约标记是服务端提交时判定并永久落库的
+ * ref_order.is_preorder（审核页看的就是它），购物车里分错 tab 不会让单子变成非预约单。
+ */
+function isPreorderLine(line: CartLine, currentCycle?: string | null): boolean {
+  const dc = line.deliveryCycle;
+  if (!dc || !currentCycle) return false;
+  return dc > currentCycle;
+}
+
 interface CartTreeProps {
   lines: CartLine[];
   isPi: boolean;
@@ -94,6 +111,8 @@ interface CartTreeProps {
   onModeChange?: (m: CartTreeMode) => void;
   /** 标题行已经有切换器时置 true，组件内不再重复画一份 */
   hideModeToggle?: boolean;
+  /** 当前周期（预计到货日 ISO 日期）：行 deliveryCycle 晚于它才进「预约」tab；缺失时全落本周期 */
+  currentCycle?: string | null;
 }
 
 /**
@@ -126,12 +145,17 @@ export function CartTreeModeToggle({
   );
 }
 
-export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop", maxQtyPerCage, mode: modeProp, onModeChange, hideModeToggle }: CartTreeProps) {
+export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLocateCage, layout = "desktop", maxQtyPerCage, mode: modeProp, onModeChange, hideModeToggle, currentCycle }: CartTreeProps) {
   const [innerMode, setInnerMode] = useState<CartTreeMode>("aup-user-spec");
   const mode = modeProp ?? innerMode;
   const setMode = onModeChange ?? setInnerMode;
-  const groups = useMemo(() => buildCartTree(lines, mode), [lines, mode]);
+  const [tab, setTab] = useState<"current" | "preorder">("current");
   const mobile = layout === "mobile";
+
+  const currentLines = useMemo(() => lines.filter((l) => !isPreorderLine(l, currentCycle)), [lines, currentCycle]);
+  const preorderLines = useMemo(() => lines.filter((l) => isPreorderLine(l, currentCycle)), [lines, currentCycle]);
+  const visibleLines = tab === "preorder" ? preorderLines : currentLines;
+  const groups = useMemo(() => buildCartTree(visibleLines, mode), [visibleLines, mode]);
 
   const renderLine = (line: CartLine) => {
     const canEdit = canEditCartLine(line, { isPi, currentUserId });
@@ -168,6 +192,11 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
               >
                 {badge}
               </span>
+              {line.deliveryCycle && (
+                <span className="shrink-0 rounded bg-[var(--student-canvas-soft)] px-1.5 py-0.5 text-[10px] text-[var(--student-primary)]">
+                  到货 {line.deliveryCycle}
+                </span>
+              )}
             </div>
             {showSub && (
               <div className="mt-0.5 flex min-w-0 items-center gap-2 overflow-hidden">
@@ -228,6 +257,7 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
             <div className="truncate text-sm font-medium text-[var(--twin-ink)]">{line.itemLabel}</div>
             <div className="mt-0.5 text-[11px] text-[var(--twin-mute)]">
               {line.specLabel && <span>{line.specLabel}</span>}
+              {line.deliveryCycle && <span className="ml-1 text-sky-700">到货 {line.deliveryCycle}</span>}
               <span className="ml-1 rounded bg-slate-200/80 px-1 py-0.5 text-[10px]">{badge}</span>
             </div>
             {price && <div className="mt-0.5 text-[10px] font-semibold text-sky-700">{price}</div>}
@@ -279,8 +309,24 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
 
   const subTitleClass = mobile ? "text-[10px] text-[var(--student-mute)]" : "text-[10px] text-[var(--twin-mute)]";
 
+  const tabCls = (on: boolean) =>
+    mobile
+      ? `rounded-[var(--student-radius-sm)] px-3 py-1 text-xs font-medium ${on ? "bg-[var(--student-primary)] text-[var(--student-primary-foreground)]" : "border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-[var(--student-body)]"}`
+      : `rounded-twin-sm px-3 py-1 text-xs font-medium ${on ? "bg-sky-600 text-white" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)]"}`;
+
   return (
     <>
+      {lines.length > 0 && (
+        <div className="mb-2 flex gap-1">
+          <button type="button" className={tabCls(tab === "current")} onClick={() => setTab("current")}>
+            本周期 ({currentLines.length})
+          </button>
+          <button type="button" className={tabCls(tab === "preorder")} onClick={() => setTab("preorder")}>
+            预约 ({preorderLines.length})
+          </button>
+        </div>
+      )}
+
       {isPi && !hideModeToggle && (
         <div className="mb-2">
           <CartTreeModeToggle mode={mode} onChange={setMode} mobile={mobile} />
@@ -290,6 +336,10 @@ export default function CartTree({ lines, isPi, currentUserId, onQtyChange, onLo
       {lines.length === 0 ? (
         <div className={`text-center text-xs ${mobile ? "py-8 text-[var(--student-mute)]" : "py-6 text-[var(--twin-mute)]"}`}>
           共享购物车是空的
+        </div>
+      ) : visibleLines.length === 0 ? (
+        <div className={`text-center text-xs ${mobile ? "py-8 text-[var(--student-mute)]" : "py-6 text-[var(--twin-mute)]"}`}>
+          {tab === "preorder" ? "暂无预约行" : "暂无本周期行"}
         </div>
       ) : (
         <div className="space-y-3">

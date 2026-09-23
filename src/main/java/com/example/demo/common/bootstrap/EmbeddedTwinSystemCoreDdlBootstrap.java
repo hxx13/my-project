@@ -446,6 +446,15 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-ref-order-line-target-cage.sql", ctx)) success++;
         // 订单行的笼位坐标快照（一个文件一条 DDL：挤在一起会被前一条的 benign 失败整段跳过）
         total++; if (runScript("db/bootstrap-ref-order-line-cage-location.sql", ctx)) success++;
+        // 领用方式标记（FARM 饲养 / TAKE 取走）：取走没有房间也没有笼位，靠这列才能在审核页/导出里如实显示
+        total++; if (runScript("db/bootstrap-ref-cart-pickup-mode.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ref-order-line-pickup-mode.sql", ctx)) success++;
+        // 预约下单 + 每周期库存上限：目标到货周期（行上）+ 预约单标记（整单）
+        total++; if (runScript("db/bootstrap-ref-cart-delivery-cycle.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ref-order-line-delivery-cycle.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ref-order-preorder.sql", ctx)) success++;
+        // 到货周期显式清单（空表 = 该校区仍按 ETA 策略推算）
+        total++; if (runScript("db/bootstrap-ref-order-cycle.sql", ctx)) success++;
         // 房间级收藏（笼架信息页左侧树；笼架级那张老表保留只读）
         total++; if (runScript("db/bootstrap-cage-shelf-room-bookmark.sql", ctx)) success++;
 

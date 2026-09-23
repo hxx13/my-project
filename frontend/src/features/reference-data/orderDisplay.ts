@@ -115,6 +115,8 @@ export interface OrderDisplay {
   statusLabel: string;
   /** 服务端判定：当前人是不是该单提交人（PI）且订单待处理 —— 只有他能进编辑 */
   editable: boolean;
+  /** 预约单标记（永久，含已完成）：下单时目标周期晚于当时的当前周期 */
+  isPreorder: boolean;
   time: string;
 }
 
@@ -142,7 +144,9 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
     else if (g === "female") female += l.quantity ?? 0;
     total += l.quantity ?? 0;
     if (l.collectorName?.trim()) collectors.add(l.collectorName.trim());
-    if (l.pickupRoomName?.trim()) rooms.add(l.pickupRoomName.trim());
+    // 取走既没有房间也没有笼位，显示成「取走」而不是空 —— 只判房间是否为空会与「快照丢了」混淆
+    if (l.pickupMode === "TAKE") rooms.add("取走");
+    else if (l.pickupRoomName?.trim()) rooms.add(l.pickupRoomName.trim());
     // 笼位快照串可能为空但已锁位（老数据/坐标缺失），退化成「已选笼位」而不是漏掉
     if (l.targetCageLabel?.trim()) cages.add(l.targetCageLabel.trim());
     else if (l.targetAnimalCageId != null) cages.add("已选笼位");
@@ -186,6 +190,8 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
     status: order.status,
     statusLabel: STATUS_LABELS[order.status] || order.status,
     editable: Boolean(order.editable),
+    // 预约单是永久标记，不能靠 estimatedDeliveryDate 推断（那只是「哪天到货」）
+    isPreorder: order.isPreorder === 1,
     time: formatBeijingDateTimeFull(order.submittedAt || order.createdAt),
   };
 }

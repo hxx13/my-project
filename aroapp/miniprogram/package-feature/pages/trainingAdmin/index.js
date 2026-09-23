@@ -1,5 +1,7 @@
 const springAuth = require('../../../utils/springAuth.js');
 const pagePermission = require('../../../utils/pagePermission.js');
+const { hasMinRole, isStudentAccount } = require('../../../utils/roleAccess.js');
+const personIdentity = require('../../../utils/personIdentity.js');
 const api = require('../../utils/trainingAdminApi.js');
 
 const PAGE_PATH = '/package-feature/pages/trainingAdmin/index';
@@ -36,18 +38,41 @@ Page({
   onLoad() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
-    if (!token || !pagePermission.canAccessMiniPage(PAGE_PATH, role, 'STAFF')) {
-      wx.showToast({ title: '无权限', icon: 'none' });
-      this._accessDenied = true;
-      wx.navigateBack({ delta: 1 });
+    if (!token) {
+      this._denyAccess();
       return;
     }
-    this._role = role;
-    this._uid = currentUserId();
-    this.setData({ pageGateOk: true });
+    // 与「我的」入口同口径：① 教职工视角（学生账号的角色档可能到 STAFF，只判角色会放学生进来）
+    // ② 「饲养组长」身份，**最高权限（SUPER_ADMIN 及以上）免身份**。身份码走接口，失败按空集 = 拒绝
+    personIdentity.fetchMyIdentityCodes().then((codes) => {
+      if (isStudentAccount()) {
+        this._denyAccess();
+        return;
+      }
+      if (!hasMinRole(role, 'SUPER_ADMIN') && !codes[personIdentity.CODE_BREEDING_GROUP_LEADER]) {
+        this._denyAccess();
+        return;
+      }
+      if (!pagePermission.canAccessMiniPage(PAGE_PATH, role, 'STAFF')) {
+        this._denyAccess();
+        return;
+      }
+      this._role = role;
+      this._uid = currentUserId();
+      this.setData({ pageGateOk: true });
+      // 门是异步开的，onShow 可能已经跑过（那时 pageGateOk 还是 false 直接 return 了），补一次首屏加载
+      if (this._shown) this.load();
+    });
+  },
+
+  _denyAccess() {
+    wx.showToast({ title: '无权限', icon: 'none' });
+    this._accessDenied = true;
+    wx.navigateBack({ delta: 1 });
   },
 
   onShow() {
+    this._shown = true;
     if (this._accessDenied || !this.data.pageGateOk) return;
     this.load();
   },

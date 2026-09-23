@@ -78,6 +78,7 @@
         "pages/studentExam/index",
         "pages/studentExamAnswer/index",
         "pages/studentGroupActivity/index",
+        "pages/studentHealthSurvey/index",
         "pages/studentMaterial/index",
         "pages/studentMaterialRequests/index",
         "pages/studentReviewHub/index",

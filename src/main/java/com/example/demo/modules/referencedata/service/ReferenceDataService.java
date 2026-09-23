@@ -4,6 +4,8 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.animalorder.AnimalOrderCampus;
+import com.example.demo.modules.animalorder.entity.AnimalOrderCycle;
+import com.example.demo.modules.animalorder.mapper.AnimalOrderCycleMapper;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
 import com.example.demo.modules.animalorder.service.CageOrderReservationService;
 import com.example.demo.modules.aro.dto.AroPersonnel;
@@ -65,6 +67,8 @@ public class ReferenceDataService {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final UserAroBindingMapper userAroBindingMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final SpecQuotaService specQuotaService;
+    private final AnimalOrderCycleMapper cycleMapper;
 
     public ReferenceDataService(ReferenceDataMapper referenceDataMapper,
                                 RefSpecTemplateMapper specTemplateMapper,
@@ -83,7 +87,9 @@ public class ReferenceDataService {
                                 AupAnimalAllowlistCompat allowlistCompat,
                                 AroPersonnelMapper aroPersonnelMapper,
                                 UserAroBindingMapper userAroBindingMapper,
-                                JdbcTemplate jdbcTemplate) {
+                                JdbcTemplate jdbcTemplate,
+                                SpecQuotaService specQuotaService,
+                                AnimalOrderCycleMapper cycleMapper) {
         this.referenceDataMapper = referenceDataMapper;
         this.specTemplateMapper = specTemplateMapper;
         this.cartMapper = cartMapper;
@@ -102,6 +108,8 @@ public class ReferenceDataService {
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.userAroBindingMapper = userAroBindingMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.specQuotaService = specQuotaService;
+        this.cycleMapper = cycleMapper;
     }
 
     // ==================== RefData CRUD ====================
@@ -282,6 +290,8 @@ public class ReferenceDataService {
         entity.setQuantity(req.getQuantity() != null ? req.getQuantity() : 1);
         entity.setPickupRoomId(trimToNull(req.getPickupRoomId()));
         entity.setPickupRoomName(trimToNull(req.getPickupRoomName()));
+        // 领用方式：只有显式 TAKE 才算取走，其余（含旧客户端不传）一律 FARM
+        entity.setPickupMode(normalizePickupMode(req.getPickupMode()));
         entity.setCollectorId(trimToNull(req.getCollectorId()));
         entity.setCollectorName(trimToNull(req.getCollectorName()));
         // 每规格行备注：随加购落库，下单时快照到 ref_order_line.line_remark
@@ -289,6 +299,11 @@ public class ReferenceDataService {
         entity.setPackageStatus("DRAFT");
         entity.setPackageRemark(null);
         entity.setAddedBy(userId);
+        // 到货周期：未传（旧客户端/本周期默认）→ 解析为当前周期落库，保证存储行始终带具体日期。
+        // 加购时无校区参数，与系统其它无校区口径一致回退默认校区。
+        entity.setDeliveryCycle(req.getDeliveryCycle() != null
+                ? req.getDeliveryCycle()
+                : currentCycle(AnimalOrderCampus.DEFAULT, req.getRefDataId()));
         // 编辑中加购：归入那场编辑会话，放弃时一并清、保存时一并写回原单。
         // 校验放在服务端——否则编辑期新加的行永远没有标记，成为清不掉的残行。
         if (req.getEditingOrderId() != null) {
@@ -374,6 +389,35 @@ public class ReferenceDataService {
         List<Long> cartIds = cartMapper.listByGroupId(groupId).stream().map(RefCart::getId).toList();
         cartMapper.deleteByGroupId(groupId);
         cageReservationService.releaseByCartIds(cartIds, "购物车已清空");
+        return Result.success();
+    }
+
+    /**
+     * 清空**本人**「加购了但还没提交给组长」的草稿行（package_status != READY）。
+     *
+     * <p>与 {@link #clearCart} 是两件事：那个是组长清空整个共享购物车，不区分是谁的行；
+     * 这个是任何身份都能用、且只作用于本人的草稿。**已提交给组长的行（READY）不动** ——
+     * 那批已经进了组长的待办，要撤销走「撤回 READY」，不该被一条「清空」顺手删掉。
+     *
+     * <p>行的归属用 {@link #resolveOwnCartLines} 判（同一人可能持有 STAFF_xxx 与 aro_user_id
+     * 两个账号，直接比账号 id 会把本人的行判成别人的）。删行必须同时放掉它锁着的笼位，
+     * 否则那个笼位对所有人永久不可选 —— 与 {@link #removeFromCart} 同一口径。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<?> clearMyDraft(String groupId, String userId) {
+        if (!StringUtils.hasText(groupId)) {
+            return Result.error("缺少 groupId");
+        }
+        List<Long> ids = resolveOwnCartLines(groupId, userId, null).stream()
+                .filter(c -> !"READY".equalsIgnoreCase(c.getPackageStatus()))
+                .map(RefCart::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return Result.error("没有可清空的草稿行");
+        }
+        cartMapper.deleteByIds(ids);
+        cageReservationService.releaseByCartIds(ids, "本人草稿已清空");
         return Result.success();
     }
 
@@ -531,23 +575,31 @@ public class ReferenceDataService {
             }
         }
 
-        // ── 按投递房间分单：一个房间一张单 ──
+        String campus = AnimalOrderCampus.normalize(req.getCampus());
+
+        // 周期库存上限：服务端权威校验（前端软校验不作数）。必须在分单/建单之前拦下。
+        boolean fromLines = req.getLines() != null && !req.getLines().isEmpty();
+        validateCycleQuotas(itemsToProcess, campus, fromLines);
+
+        // ── 按（投递房间, 到货周期）分单 ──
         // 笼位路径下每行的领用房间来自它自己那个笼位，跨房间时自然落到不同组；
         // 非笼位行用弹窗选的那个房间，同样按房间归组（没填房间的归到同一组）。
+        // 周期追加进分单键：同一批混了本周期与预约，自然拆成多张单，各自落各自周期。
         Map<String, List<RefCart>> byRoom = new LinkedHashMap<>();
         for (RefCart it : itemsToProcess) {
             String roomKey = StringUtils.hasText(it.getPickupRoomId()) ? it.getPickupRoomId().trim() : "";
-            byRoom.computeIfAbsent(roomKey, k -> new ArrayList<>()).add(it);
+            LocalDate cycle = resolveDeliveryCycle(it, campus);
+            it.setDeliveryCycle(cycle);
+            byRoom.computeIfAbsent(roomKey + "|" + cycle, k -> new ArrayList<>()).add(it);
         }
         List<RefOrder> createdOrders = new ArrayList<>();
         for (List<RefCart> roomItems : byRoom.values()) {
-        // 每个房间独立成单：表头/ETA/明细/通知都按本组算，下面这段逻辑对每一组各跑一次。
+        // 每个（房间, 周期）独立成单：表头/ETA/明细/通知都按本组算，下面这段逻辑对每一组各跑一次。
         itemsToProcess = roomItems;
         List<Long> roomCartIds = roomItems.stream().map(RefCart::getId).filter(Objects::nonNull).toList();
 
         RefOrder order = new RefOrder();
         order.setGroupId(req.getGroupId());
-        String campus = AnimalOrderCampus.normalize(req.getCampus());
         order.setCampus(campus);
         order.setSubmitterId(userId);
         // 展示名以后端统一解析为准（兼容 staffId / 19 位 id），不依赖前端传入
@@ -595,7 +647,6 @@ public class ReferenceDataService {
         order.setSubmittedAt(LocalDateTime.now());
 
         ZonedDateTime orderAt = ZonedDateTime.now(ORDER_ZONE);
-        LocalDate maxEta = null;
         for (RefCart item : itemsToProcess) {
             String categoryKey = resolveBreedCategoryKey(item.getRefDataId());
             if (!animalOrderTimePolicyService.canOrderAt(campus, orderAt, categoryKey)) {
@@ -603,12 +654,13 @@ public class ReferenceDataService {
                         ErrorCodeConstants.ANIMAL_ORDER_WINDOW_CLOSED,
                         "当前不在可购时间窗口内");
             }
-            LocalDate lineEta = animalOrderTimePolicyService.estimateDeliveryAt(campus, orderAt, categoryKey);
-            if (maxEta == null || lineEta.isAfter(maxEta)) {
-                maxEta = lineEta;
-            }
         }
-        order.setEstimatedDeliveryDate(maxEta);
+        // 到货日 = 本组周期（预约单落它选的周期，不再按「现在 + N 工作日」算）。
+        LocalDate groupCycle = roomItems.get(0).getDeliveryCycle();
+        order.setEstimatedDeliveryDate(groupCycle);
+        // 预约单标记：周期晚于当前周期（同物品口径「今天 → 下一到货日」）。
+        order.setIsPreorder(groupCycle != null
+                && groupCycle.isAfter(currentCycle(campus, roomItems.get(0).getRefDataId())) ? 1 : 0);
 
         orderMapper.insert(order);
         // 笼位预定挂到订单上：此后不再算孤儿，动物到货再转 CONSUMED + 笼位 2→3
@@ -636,6 +688,10 @@ public class ReferenceDataService {
             line.setAupRecordId(item.getAupRecordId());
             // 订购 → 笼位：快照锁定到的笼位 + 坐标，购物车清空后仍可追溯这单下到了哪个笼位的哪个位置
             line.setTargetAnimalCageId(item.getTargetAnimalCageId());
+            // 领用方式随行快照：取走没有房间也没有笼位，审核页/导出只能靠它分辨
+            line.setPickupMode(normalizePickupMode(item.getPickupMode()));
+            // 到货周期随行快照（提交时已归一为具体日期）
+            line.setDeliveryCycle(item.getDeliveryCycle());
             if (item.getTargetAnimalCageId() != null) {
                 Map<String, Object> loc = cageLocById.get(item.getTargetAnimalCageId());
                 if (loc != null) line.setTargetCageLocation(toJson(loc));
@@ -937,6 +993,10 @@ public class ReferenceDataService {
     @Value("${reference-data.animal-allowlist.enforce:false}")
     private boolean animalAllowlistEnforce;
 
+    /** 可预约的到货周期个数（含当前周期为第 1 个）。 */
+    @Value("${reference-data.cycle-count:3}")
+    private int cycleCount;
+
     private Long toLong(Object v) {
         if (v == null) {
             return null;
@@ -1092,6 +1152,8 @@ public class ReferenceDataService {
             c.setPackageStatus("DRAFT");
             c.setPackageRemark(null);
             c.setTargetAnimalCageId(l.getTargetAnimalCageId());
+            c.setPickupMode(l.getPickupMode());
+            c.setDeliveryCycle(l.getDeliveryCycle());
             // 归属固定落提交人：回填内容只算 PI 的，不会挂到当初加购的组员名下
             c.setAddedBy(o.getSubmitterId());
             cartMapper.insert(c);
@@ -1198,6 +1260,8 @@ public class ReferenceDataService {
             l.setCollectorId(c.getCollectorId());
             l.setCollectorName(c.getCollectorName());
             l.setTargetAnimalCageId(c.getTargetAnimalCageId());
+            l.setPickupMode(c.getPickupMode());
+            l.setDeliveryCycle(c.getDeliveryCycle());
             if (c.getTargetAnimalCageId() != null) {
                 Map<String, Object> loc = cageReservationService
                         .cageLocationSnapshots(List.of(c.getTargetAnimalCageId())).get(c.getTargetAnimalCageId());
@@ -1253,6 +1317,7 @@ public class ReferenceDataService {
         if (q == null) {
             return List.of();
         }
+        applyExportCycleFilter(q);
         return orderMapper.listAll(q, EXPORT_MAX_ROWS, 0).stream().map(this::toOrderView).toList();
     }
 
@@ -1279,8 +1344,48 @@ public class ReferenceDataService {
 
     /** 导出用：区间内全部订单（不分页，同样走全字段筛选）。 */
     public List<RefOrderView> listOrdersForExport(RefOrderQuery query) {
-        return orderMapper.listAll(normalizeQuery(query), EXPORT_MAX_ROWS, 0)
+        RefOrderQuery q = normalizeQuery(query);
+        applyExportCycleFilter(q);
+        return orderMapper.listAll(q, EXPORT_MAX_ROWS, 0)
                 .stream().map(this::toOrderView).toList();
+    }
+
+    /**
+     * 「只导本周期」：解析当前周期日期并强制排除预约单。
+     * 与 {@link #listOrdersForExport}/{@link #listMyGroupOrdersForExport} 共用，
+     * 保证两个导出入口（管理端全量 / 学生端本组）口径一致。
+     */
+    private void applyExportCycleFilter(RefOrderQuery q) {
+        if (q == null || !Boolean.TRUE.equals(q.getCurrentCycleOnly())) {
+            return;
+        }
+        applyCurrentCycleOnly(q, resolveCurrentCycleDates(q.getCampus()));
+    }
+
+    /**
+     * 把「只导本周期」折算成具体筛选条件（纯函数，便于单测）：
+     * 排除预约单（is_preorder 是永久标记，不能靠日期推断），并把本周期日期写进 cycles。
+     */
+    static void applyCurrentCycleOnly(RefOrderQuery q, List<LocalDate> currentCycles) {
+        q.setIsPreorder(0);
+        q.setCycles(currentCycles);
+    }
+
+    /**
+     * 当前周期日期（每校区一个）：未指定校区时按全部校区各取一个，
+     * 交给 EXISTS ... delivery_cycle IN (cycles) 过滤。
+     * <p>ponytail: 导出跨品系，用 null 品类 = 全局窗口规则取当前周期；
+     * 品系级窗口差异不影响「本周期」这一笼统筛分，够用即可。</p>
+     */
+    private List<LocalDate> resolveCurrentCycleDates(String campus) {
+        List<String> campuses = StringUtils.hasText(campus)
+                ? List.of(AnimalOrderCampus.normalize(campus))
+                : AnimalOrderCampus.ALL;
+        List<LocalDate> out = new ArrayList<>();
+        for (String c : campuses) {
+            out.add(animalOrderTimePolicyService.estimateDeliveryAt(c, ZonedDateTime.now(ORDER_ZONE), null));
+        }
+        return out;
     }
 
     /** 筛选条件归一：空串统一成 null，校区走枚举归一，避免把 "" 当条件传下去。 */
@@ -1388,6 +1493,16 @@ public class ReferenceDataService {
             log.warn("JSON序列化失败: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 领用方式归一：只有显式 TAKE 才算「取走」，其余（含 null、空白、旧客户端不传）一律 FARM。
+     *
+     * <p>不直接把客户端字符串落库 —— 那列是给审核页与导出读的，混进未知值会让「是取走还是饲养」
+     * 这个判断失去意义。
+     */
+    private static String normalizePickupMode(String raw) {
+        return raw != null && "TAKE".equalsIgnoreCase(raw.trim()) ? "TAKE" : "FARM";
     }
 
     /** 去空白后为空则归一为 null，避免把 "" 写进可空列。 */
@@ -1513,6 +1628,8 @@ public class ReferenceDataService {
         v.setCollectorName(row.getCollectorName());
         v.setRemark(row.getRemark());
         v.setPackageStatus(row.getPackageStatus() != null ? row.getPackageStatus() : "DRAFT");
+        // 目标到货周期：购物车据此分「本周期 / 预约」两个 tab
+        v.setDeliveryCycle(row.getDeliveryCycle());
         v.setPackageRemark(row.getPackageRemark());
         v.setTargetAnimalCageId(row.getTargetAnimalCageId());
         if (row.getTargetAnimalCageId() != null && locByCage != null) {
@@ -1587,6 +1704,8 @@ public class ReferenceDataService {
         v.setSubmitRemark(row.getSubmitRemark());
         v.setSubmittedAt(row.getSubmittedAt());
         v.setEstimatedDeliveryDate(row.getEstimatedDeliveryDate());
+        // 预约单标记：审核页据此打标签与筛选，永久保留（含已完成）
+        v.setIsPreorder(row.getIsPreorder());
         v.setCreatedAt(row.getCreatedAt());
 
         List<RefOrderLine> lines = orderLineMapper.listByOrderId(row.getId());
@@ -1689,6 +1808,8 @@ public class ReferenceDataService {
         }
         // 订购 → 笼位：把锁定的笼位与坐标快照透出，审核页/导出据此知道这单下到哪
         v.setTargetAnimalCageId(row.getTargetAnimalCageId());
+        v.setPickupMode(row.getPickupMode());
+        v.setDeliveryCycle(row.getDeliveryCycle());
         if (StringUtils.hasText(row.getTargetCageLocation())) {
             try {
                 Object loc = objectMapper.readValue(row.getTargetCageLocation(), Object.class);
@@ -1729,6 +1850,217 @@ public class ReferenceDataService {
             }
         }
         return null;
+    }
+
+    // ==================== 到货周期 / 周期库存上限 ====================
+    // 一个周期 = 一个 DATE（预计到货日），由现有 ETA 引擎推出；不新增实体。
+
+    /** 当前周期 = 从今天起、下一个 >= 今天的预计到货日（按物品的品系类别口径）。 */
+    private LocalDate currentCycle(String campus, Long refDataId) {
+        // 显式清单优先：额度的「当前周期」必须与下拉里显示的那份清单一致，否则判定与展示会分叉
+        List<LocalDate> stored = storedFutureCycles(campus);
+        if (!stored.isEmpty()) return stored.get(0);
+        return animalOrderTimePolicyService.estimateDeliveryAt(
+                campus, ZonedDateTime.now(ORDER_ZONE), resolveBreedCategoryKey(refDataId));
+    }
+
+    /** 行到货周期：已填用它；NULL = 本周期，解析为当前周期（此后行上恒带具体日期）。 */
+    private LocalDate resolveDeliveryCycle(RefCart item, String campus) {
+        if (item.getDeliveryCycle() != null) {
+            return item.getDeliveryCycle();
+        }
+        return currentCycle(campus, item.getRefDataId());
+    }
+
+    /**
+     * 周期库存上限的权威校验：逐个 (物品, 规格, 周期) 校验「占用 + 本次 ≤ 上限」。
+     * <ul>
+     *   <li>未配上限 → 拒绝并点名规格；超了 → 拒绝并说明规格、上限与本次数量。</li>
+     *   <li>购物车路径下本批行已在「占用」里（提交与删除同行同事务），不重复加；显式 lines 路径才累加本次。</li>
+     * </ul>
+     */
+    private void validateCycleQuotas(List<RefCart> items, String campus, boolean fromLines) {
+        record Key(Long refDataId, String specLabel, LocalDate cycle) {}
+        Map<Key, Integer> batchQty = new LinkedHashMap<>();
+        for (RefCart it : items) {
+            Key k = new Key(it.getRefDataId(), extractSpecOption(it.getSpecSelections()), resolveDeliveryCycle(it, campus));
+            batchQty.merge(k, it.getQuantity() == null ? 0 : it.getQuantity(), Integer::sum);
+        }
+        for (Map.Entry<Key, Integer> e : batchQty.entrySet()) {
+            Key k = e.getKey();
+            int thisBatch = e.getValue();
+            String name = extractDisplayName(referenceDataMapper.findById(k.refDataId()));
+            String itemDesc = StringUtils.hasText(k.specLabel())
+                    ? "物品「" + name + "」规格「" + k.specLabel() + "」"
+                    : "物品「" + name + "」";
+            Integer cap = specQuotaService.resolveCap(k.refDataId(), k.specLabel());
+            if (cap == null) {
+                throw new TwinBusinessException(ErrorCodeConstants.BAD_REQUEST,
+                        itemDesc + "未配置订购上限，无法提交");
+            }
+            boolean isCurrentCycle = k.cycle() != null && k.cycle().equals(currentCycle(campus, k.refDataId()));
+            int used = specQuotaService.usedQty(k.refDataId(), k.specLabel(), k.cycle(), isCurrentCycle);
+            int total = fromLines ? used + thisBatch : used;
+            if (total > cap) {
+                throw new TwinBusinessException(ErrorCodeConstants.BAD_REQUEST,
+                        itemDesc + "在 " + k.cycle() + " 周期已超订购上限：上限 " + cap
+                                + "，本次 " + thisBatch + "，已用 " + used);
+            }
+        }
+    }
+
+    /**
+     * 该校区从今天起的后续周期 —— **始终来自清单**。
+     *
+     * <p>清单为空时先把推算结果**自动落库**（只此一次），再读。用户口径：周期要自动生成好、
+     * 之后针对性调整，**而不是每次请求现场算** —— 现场算的话，管理员的调整会被下一次重算直接盖掉。
+     *
+     * <p>也正因为清单是校区级的，之前「不同品种的当前周期可能不同」那个隐患随之消失。
+     */
+    private List<LocalDate> storedFutureCycles(String campus) {
+        String c = AnimalOrderCampus.normalize(campus);
+        LocalDate today = LocalDate.now(ORDER_ZONE);
+        List<LocalDate> list = cycleMapper.listDatesFrom(c, today);
+        if (!list.isEmpty()) return list;
+        seedIfEmpty(c);
+        List<LocalDate> after = cycleMapper.listDatesFrom(c, today);
+        return after == null ? List.of() : after;
+    }
+
+    /**
+     * 清单为空时按推算结果落库（幂等：只在空表时写）。
+     *
+     * <p>并发首访由 (campus, cycle_date) 唯一键兜底：撞键说明别人刚播过，重读即可，不算失败。
+     * 即便播种失败也不抛 —— 调用方会退回现场推算，订购不会因此没有周期可用。
+     */
+    public void seedIfEmpty(String campus) {
+        String c = AnimalOrderCampus.normalize(campus);
+        try {
+            if (!cycleMapper.listByCampus(c).isEmpty()) return;
+            // 用全局（categoryKey=null）规则推算：清单是校区级的，不能按某一个品种的口径生成
+            saveCyclesAdmin(c, enumerateCycles(animalOrderTimePolicyService, c, null, Math.max(1, cycleCount)));
+        } catch (Exception e) {
+            log.warn("[order-cycle] 自动生成周期清单失败 campus={}，本次退回现场推算: {}", c, e.getMessage());
+        }
+    }
+
+    /**
+     * 下 K 个到货周期（含当前周期为第 1 个）。前端用它选「本周期 / 预约第 N 周期」。
+     *
+     * <p>读的是**已生成好的清单**（空则自动生成一份，见 {@link #seedIfEmpty}）。
+     * 清单全过期时会退回现场推算 —— 只是兜底，正常路径不会走到（清单总有未来日期）。
+     */
+    public Map<String, Object> listUpcomingCycles(String campus, String categoryKey) {
+        List<LocalDate> stored = storedFutureCycles(campus);
+        boolean usedStored = !stored.isEmpty();
+        List<LocalDate> cycles = usedStored
+                ? stored.stream().limit(Math.max(1, cycleCount)).toList()
+                : enumerateCycles(animalOrderTimePolicyService, campus, categoryKey, cycleCount);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("current", cycles.get(0).toString());
+        out.put("cycles", cycles.stream().map(LocalDate::toString).toList());
+        // 前端不看这个字段；管理端据此提示「在用清单 / 在用推算」
+        out.put("source", usedStored ? "stored" : "predicted");
+        return out;
+    }
+
+    /**
+     * 管理端：**已生成好的**周期清单 + 推算结果（供「重新生成」对照）。
+     *
+     * <p>先确保清单已生成（空则自动播种），所以管理员打开弹窗看到的永远是一份具体清单，
+     * 而不是空表 —— 空表意味着「还没生成」，那是系统的事，不该丢给管理员。
+     *
+     * <p>返回**全部**清单行（含过期的）：管理员要看得见自己配过什么、哪些已过期，
+     * 才能决定重新生成还是补几天。
+     */
+    public Map<String, Object> cycleAdminView(String campus, String categoryKey) {
+        String c = AnimalOrderCampus.normalize(campus);
+        seedIfEmpty(c);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("campus", c);
+        out.put("stored", cycleMapper.listByCampus(c).stream().map(x -> x.getCycleDate().toString()).toList());
+        out.put("predicted", enumerateCycles(animalOrderTimePolicyService, c, categoryKey, Math.max(1, cycleCount))
+                .stream().map(LocalDate::toString).toList());
+        return out;
+    }
+
+    /**
+     * 整份替换该校区清单（与时间策略 PUT 同口径：整份替换，不做增量）。
+     * 传空 = 清空该校区清单，回到「按 ETA 策略推算」。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveCyclesAdmin(String campus, List<LocalDate> dates) {
+        String c = AnimalOrderCampus.normalize(campus);
+        cycleMapper.deleteByCampus(c);
+        if (dates == null || dates.isEmpty()) return;
+        int order = 0;
+        for (LocalDate d : dates.stream().filter(Objects::nonNull).distinct().sorted().toList()) {
+            AnimalOrderCycle row = new AnimalOrderCycle();
+            row.setCampus(c);
+            row.setCycleDate(d);
+            row.setSortOrder(order++);
+            cycleMapper.insert(row);
+        }
+    }
+
+    /**
+     * 迭代现有 ETA 引擎推出下 K 个周期：下一锚点 = 上一周期日 + 1 天。纯函数便于单测；
+     * 严格递增由引擎「下一送达日严格晚于锚点」保证。
+     */
+    static List<LocalDate> enumerateCycles(AnimalOrderTimePolicyService policy, String campus, String categoryKey, int k) {
+        String c = AnimalOrderCampus.normalize(campus);
+        List<LocalDate> out = new ArrayList<>();
+        ZonedDateTime at = ZonedDateTime.now(ORDER_ZONE);
+        for (int i = 0; i < Math.max(1, k); i++) {
+            LocalDate d = policy.estimateDeliveryAt(c, at, categoryKey);
+            out.add(d);
+            at = d.plusDays(1).atStartOfDay(ORDER_ZONE);
+        }
+        return out;
+    }
+
+    /**
+     * 某物品某规格在某周期的配额视图（供选购弹窗置灰与卡片显示剩余量）。
+     *
+     * <p>{@code cycle} 为空 = **本周期**，与购物车行 {@code delivery_cycle} 为 NULL 时同一口径；
+     * 不解析的话调用方少传一个参数就整条腿失效（曾经就是这样：客户端取周期失败 → 不传 cycle
+     * → 接口报错 → 被当成「未知」吞掉 → 未配上限的规格不再置灰）。
+     */
+    public Map<String, Object> quotaView(Long refDataId, String spec, LocalDate cycle, String campus) {
+        String c = AnimalOrderCampus.normalize(campus);
+        LocalDate local = currentCycle(c, refDataId);
+        LocalDate cyc = cycle != null ? cycle : local;
+        Integer cap = specQuotaService.resolveCap(refDataId, spec);
+        boolean isCurrent = cyc.equals(local);
+        int used = specQuotaService.usedQty(refDataId, spec, cyc, isCurrent);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("configured", cap != null);
+        out.put("cap", cap);
+        out.put("used", used);
+        out.put("available", cap != null ? cap - used : null);
+        return out;
+    }
+
+    /**
+     * 批量配额：卡片一屏要显示若干张卡、每卡若干规格的剩余量。
+     *
+     * <p>逐对调用 {@link #quotaView} —— 一屏只有几十对，先按可读实现。真要优化，把两侧求和
+     * 合成一次 IN 查询即可（现状是每对 1 次规格映射 + 2 次计数）。
+     */
+    public Map<String, Map<String, Object>> quotaViewBatch(RefQuotaBatchRequest req) {
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        if (req == null || req.getItems() == null) return out;
+        for (RefQuotaBatchRequest.Row r : req.getItems()) {
+            if (r == null || r.getRefDataId() == null) continue;
+            out.put(quotaKey(r.getRefDataId(), r.getSpec()),
+                    quotaView(r.getRefDataId(), r.getSpec(), req.getCycle(), req.getCampus()));
+        }
+        return out;
+    }
+
+    /** 批量结果的键：调用方按 "refDataId|spec" 取（spec 为空表示无规格物品）。 */
+    public static String quotaKey(Long refDataId, String spec) {
+        return refDataId + "|" + (spec == null ? "" : spec);
     }
 
     private String resolveHierarchyChain(Long leafId) {

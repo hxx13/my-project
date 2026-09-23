@@ -1,0 +1,165 @@
+<!-- 学生端「健康调查表」：题面与网页端同一份，六种控件都在这。
+     自带页眉页脚，整屏可滚，底部固定提交条。 -->
+<view class="hs-page">
+  <scroll-view class="hs-scroll" scroll-y enable-flex>
+    <view class="hs-doc">
+      <!-- 页眉：两个 logo（与网页端表头同一组图，从 frontend/public/brand 取） -->
+      <view class="hs-header">
+        <image class="hs-logo-shsmu" src="/package-student/assets/logo-shsmu.png" mode="heightFix" />
+        <image class="hs-logo-aaalac" src="/package-student/assets/logo-aaalac.png" mode="heightFix" />
+      </view>
+
+      <view class="hs-title">
+        <view class="hs-title-org">{{ title.org }}</view>
+        <view class="hs-title-name">{{ title.name }}</view>
+      </view>
+
+      <view class="hs-body">
+        <view wx:for="{{ model }}" wx:key="title" wx:for-item="sec" class="hs-section">
+          <view class="hs-section-title">{{ sec.title }}</view>
+
+          <view wx:for="{{ sec.fields }}" wx:key="key" wx:for-item="f" class="hs-field">
+            <!-- 题干 -->
+            <view class="hs-label">{{ f.label }}</view>
+
+            <!-- 多选 -->
+            <view wx:if="{{ f.kind === 'checkboxes' }}" class="hs-options">
+              <view
+                wx:for="{{ f.opts }}" wx:key="label" wx:for-item="o"
+                class="hs-opt {{ o.on ? 'is-on' : '' }}"
+                data-k="{{ f.key }}" data-o="{{ o.label }}"
+                bindtap="onToggleCheck"
+              >
+                <view class="hs-box {{ o.on ? 'is-on' : '' }}"></view>
+                <text class="hs-opt-text">{{ o.label }}</text>
+              </view>
+            </view>
+
+            <!-- 单选（含 yes/no 的「是/否」） -->
+            <view wx:if="{{ f.kind === 'radios' }}" class="hs-options">
+              <view
+                wx:for="{{ f.opts }}" wx:key="label" wx:for-item="o"
+                class="hs-opt {{ o.on ? 'is-on' : '' }}"
+                data-k="{{ f.key }}" data-o="{{ o.label }}"
+                bindtap="onPickRadio"
+              >
+                <view class="hs-radio {{ o.on ? 'is-on' : '' }}"></view>
+                <text class="hs-opt-text">{{ o.label }}</text>
+              </view>
+            </view>
+
+            <!-- 是 / 否（选「是」且有补充说明时，下面多一个输入框） -->
+            <block wx:if="{{ f.kind === 'yesno' }}">
+              <view class="hs-options">
+                <view
+                  class="hs-opt {{ f.yesOn ? 'is-on' : '' }}"
+                  data-k="{{ f.key }}" data-a="是" bindtap="onPickYesNo"
+                >
+                  <view class="hs-radio {{ f.yesOn ? 'is-on' : '' }}"></view>
+                  <text class="hs-opt-text">是</text>
+                </view>
+                <view
+                  class="hs-opt {{ f.noOn ? 'is-on' : '' }}"
+                  data-k="{{ f.key }}" data-a="否" bindtap="onPickYesNo"
+                >
+                  <view class="hs-radio {{ f.noOn ? 'is-on' : '' }}"></view>
+                  <text class="hs-opt-text">否</text>
+                </view>
+              </view>
+              <input
+                wx:if="{{ f.showDetail }}"
+                class="hs-input hs-detail"
+                type="text"
+                value="{{ f.detail }}"
+                placeholder="{{ f.detailHint }}"
+                data-k="{{ f.key }}"
+                bindinput="onDetail"
+              />
+            </block>
+
+            <!-- 单行文本 -->
+            <input
+              wx:if="{{ f.kind === 'text' }}"
+              class="hs-input"
+              type="text"
+              value="{{ f.text }}"
+              placeholder="{{ f.placeholder }}"
+              data-k="{{ f.key }}"
+              bindinput="onText"
+            />
+
+            <!-- 多行文本 -->
+            <textarea
+              wx:if="{{ f.kind === 'textarea' }}"
+              class="hs-textarea"
+              value="{{ f.text }}"
+              auto-height
+              data-k="{{ f.key }}"
+              bindinput="onText"
+            />
+
+            <!-- 勾选矩阵：行 × 列，每格一个勾 -->
+            <scroll-view wx:if="{{ f.kind === 'grid' }}" class="hs-grid-wrap" scroll-x>
+              <view class="hs-grid">
+                <view class="hs-grid-row hs-grid-head">
+                  <view
+                    class="{{ index === 0 ? 'hs-grid-label' : 'hs-grid-cell-a' }}"
+                    wx:for="{{ f.head }}" wx:key="*this" wx:for-item="h" wx:for-index="index"
+                  >{{ h }}</view>
+                </view>
+                <view class="hs-grid-row" wx:for="{{ f.rows }}" wx:key="label" wx:for-item="r">
+                  <view class="hs-grid-label hs-grid-rowhead">{{ r.label }}</view>
+                  <view
+                    class="hs-grid-cell"
+                    wx:for="{{ r.cells }}" wx:key="label" wx:for-item="c"
+                    data-k="{{ f.key }}" data-r="{{ r.label }}" data-c="{{ c.label }}"
+                    bindtap="onGridCell"
+                  >
+                    <view class="hs-box {{ c.on ? 'is-on' : '' }}"></view>
+                  </view>
+                </view>
+              </view>
+            </scroll-view>
+
+            <!-- 可增删行的表格 -->
+            <block wx:if="{{ f.kind === 'list' }}">
+              <scroll-view class="hs-grid-wrap" scroll-x>
+                <view class="hs-grid">
+                  <view class="hs-grid-row hs-grid-head">
+                    <view class="hs-list-head" wx:for="{{ f.cols }}" wx:key="*this" wx:for-item="c">{{ c }}</view>
+                    <view class="hs-list-delhead">操作</view>
+                  </view>
+                  <view class="hs-grid-row" wx:for="{{ f.rows }}" wx:key="ri" wx:for-item="r">
+                    <view class="hs-list-cell" wx:for="{{ r.cells }}" wx:key="label" wx:for-item="c">
+                      <input
+                        class="hs-cell-input"
+                        type="text"
+                        value="{{ c.value }}"
+                        data-k="{{ f.key }}" data-i="{{ r.ri }}" data-c="{{ c.label }}"
+                        bindinput="onListInput"
+                      />
+                    </view>
+                    <view class="hs-list-delcell">
+                      <text class="hs-del" data-k="{{ f.key }}" data-i="{{ r.ri }}" bindtap="onListDel">删除</text>
+                    </view>
+                  </view>
+                </view>
+              </scroll-view>
+              <view class="hs-add-row" data-k="{{ f.key }}" bindtap="onListAdd">新增行</view>
+            </block>
+          </view>
+        </view>
+
+        <view class="hs-declaration">{{ declaration }}</view>
+        <view class="hs-footer">{{ footer }}</view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="hs-bar">
+    <text class="hs-bar-hint">{{ submittedAt ? '上次提交：' + submittedAt : '尚未提交' }}</text>
+    <view class="chip-btn chip-btn--primary hs-bar-btn {{ (saving || loading) ? 'chip-btn--off' : '' }}" bindtap="onSubmit">
+      {{ saving ? '提交中…' : '提交' }}
+    </view>
+  </view>
+</view>

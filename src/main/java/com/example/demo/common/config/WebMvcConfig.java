@@ -115,6 +115,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(aupReviewerConfigGuard())
                 .addPathPatterns("/api/aup/reviewer-config");
 
+        // 培训管理：小程序「我的 → 培训管理」入口的口径（非学生视角 + 饲养组长身份）同步落到接口，
+        // 免得绕过入口直连接口。同前缀下的学习资料 / 资质是另一批功能，排除在外不跟着收紧。
+        registry.addInterceptor(trainingAdminGuard())
+                .addPathPatterns("/api/admin/training/**")
+                .excludePathPatterns(
+                        "/api/admin/training/learning-materials/**",
+                        "/api/admin/training/qualifications/**");
+
         registry.addInterceptor(requestMetricsInterceptor)
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
@@ -226,6 +234,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     return adminAuthInterceptor.preHandleAupConfigAdmin(request, response, handler);
                 }
                 return adminAuthInterceptor.preHandleStaffBase(request, response, handler);
+            }
+        };
+    }
+
+    /** 培训管理（读+写）：非学生视角 + 饲养组长身份，与小程序端入口同口径。 */
+    private HandlerInterceptor trainingAdminGuard() {
+        return new HandlerInterceptor() {
+            @Override
+            public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+                if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                    return true;
+                }
+                return adminAuthInterceptor.preHandleTrainingAdmin(request, response, handler);
             }
         };
     }

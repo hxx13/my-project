@@ -61,6 +61,8 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draft, setDraft] = useState<OrderReviewFilter>(() => defaultDateRange());
   const [applied, setApplied] = useState<OrderReviewFilter>(() => defaultDateRange());
+  // 导出「只导本周期」开关：只作用于导出，不进列表筛选
+  const [cycleOnly, setCycleOnly] = useState(false);
   // exporting 只服务学生端的直接下载；管理端导出中态由 ExportConfigDialog 自持
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -147,7 +149,8 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
   };
   const handleOrderExport = async (state: SubtotalConfigState) => {
     try {
-      const blob = await exportOrderReviewExcel(filter, toQuery(state, summaryLevelsRef.current));
+      const exportFilter: OrderReviewFilter = { ...filter, currentCycleOnly: cycleOnly ? "true" : undefined };
+      const blob = await exportOrderReviewExcel(exportFilter, toQuery(state, summaryLevelsRef.current));
       saveBlob(blob, orderExportName("animal-order-review"));
       toast.success("已导出");
     } catch { toast.error("导出失败"); }
@@ -290,6 +293,12 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
           storageKey="fm-export-subtotal:order-review"
           fetchSummary={fetchOrderSummary}
           onExport={handleOrderExport}
+          extraFilter={
+            <label className="flex items-center gap-2 rounded-twin-sm px-1 py-1 text-sm text-[var(--twin-body)]">
+              <input type="checkbox" checked={cycleOnly} onChange={(e) => setCycleOnly(e.target.checked)} />
+              只导本周期订单（不含预约单）
+            </label>
+          }
         />
       )}
     </div>
@@ -354,6 +363,12 @@ function OrderFilterBar({
           <select className={input} value={draft.status ?? ""} onChange={(e) => onChange("status", e.target.value)}>
             <option value="">全部</option>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>)}
+        {cell("w-[7rem]", "预约",
+          <select className={input} value={draft.isPreorder ?? ""} onChange={(e) => onChange("isPreorder", e.target.value)}>
+            <option value="">全部</option>
+            <option value="1">仅预约单</option>
+            <option value="0">排除预约单</option>
           </select>)}
         {cell("w-[7rem]", "来源",
           <select className={input} value={draft.source ?? ""} onChange={(e) => onChange("source", e.target.value)}>
@@ -469,7 +484,7 @@ function OrderTable({
                   {merge(d.totalQty, "tabular-nums font-semibold")}
                   {merge(d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—", "text-right tabular-nums font-semibold text-sky-700")}
                   {merge(<span className="block max-w-[260px] whitespace-normal break-words">{d.orderRemark}</span>)}
-                  {merge(<span className="review-status">{d.statusLabel}</span>)}
+                  {merge(<span className="flex items-center gap-1.5"><span className="review-status">{d.statusLabel}</span>{d.isPreorder && <span className="rounded-md bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_15%,transparent)] px-1.5 py-0.5 text-[10px] text-[var(--app-color-feedback-warning)]">预约单</span>}</span>)}
                   {merge(d.time, "text-xs text-[var(--app-color-text-tertiary)]")}
                   {merge(
                     <div className="flex items-center justify-end gap-1.5">
@@ -506,7 +521,7 @@ function OrderTable({
                     {line?.lineAmount != null ? `¥${Number(line.lineAmount).toFixed(2)}` : "—"}
                   </td>
                   <td className={cn(td, "whitespace-normal break-words")}>{line?.collectorName?.trim() || "—"}</td>
-                  <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{line?.pickupRoomName?.trim() || "—"}</td>
+                  <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{line?.pickupMode === "TAKE" ? "取走" : (line?.pickupRoomName?.trim() || "—")}</td>
                   <td className={cn(td, "max-w-[200px] whitespace-normal break-words")}>{line?.targetCageLabel?.trim() || "—"}</td>
                   <td className={cn(td, "text-xs")}>{line?.arrivalDate?.trim() || d.arrivalDate}</td>
                   <td className={cn(td, "max-w-[220px] whitespace-normal break-words")}>{line?.lineRemark?.trim() || "—"}</td>
@@ -567,6 +582,7 @@ function OrderCard({
             {d.source === "ARO" ? "ARO" : "本地"}
           </span>
           <span className="review-status">{d.statusLabel}</span>
+          {d.isPreorder && <span className="rounded-md bg-[color-mix(in_srgb,var(--app-color-feedback-warning)_15%,transparent)] px-1.5 py-0.5 text-[10px] text-[var(--app-color-feedback-warning)]">预约单</span>}
           {d.aup !== "—" && <span className={chip}>{d.aup}</span>}
           <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{d.items.length} 项</span>
         </div>
@@ -650,7 +666,11 @@ function OrderCard({
                             {supplier && <span>供应商 {supplier}</span>}
                             {specOptionText(line) && <span>{specOptionText(line)}</span>}
                             {line.collectorName && <span>领用人 {line.collectorName}</span>}
-                            {line.pickupRoomName && <span>房间 {line.pickupRoomName}</span>}
+                            {line.pickupMode === "TAKE" ? (
+                              <span>取走</span>
+                            ) : (
+                              line.pickupRoomName && <span>房间 {line.pickupRoomName}</span>
+                            )}
                             {(line.targetCageLabel || line.targetCageLocation?.shelveId) && (
                               <CageLocationCell label={line.targetCageLabel} location={line.targetCageLocation} />
                             )}

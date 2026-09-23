@@ -59,6 +59,7 @@ class CageOrderReservationCartAdoptTest {
                 infoValueService,
                 mock(CageFormAuditService.class),
                 reservationMapper,
+                null,
                 mock(AupRecordMapper.class),
                 mock(ReferenceDataMapper.class),
                 mock(UserDisplayNameService.class),

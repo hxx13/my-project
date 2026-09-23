@@ -31,7 +31,7 @@ class CageOrderReservationOrphanReleaseTest {
         // 只用得到 mapper / infoValue / objectMapper，其余协作者给 null 即可
         return new CageOrderReservationService(
                 null, null, null, null, null, null, null, null,
-                infoValue, null, mapper, null, null, null, null, new ObjectMapper());
+                infoValue, null, mapper, null, null, null, null, null, new ObjectMapper());
     }
 
     @Test
