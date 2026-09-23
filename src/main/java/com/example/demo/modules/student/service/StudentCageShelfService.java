@@ -252,6 +252,20 @@ public class StudentCageShelfService {
         // 学生视角额外给每格打「是否归本人使用」标记（状态模式据此决定哪些格子可标）；
         // markMine 内部对非学生直接 return，教职工这条路径不受影响。
         cageOperationService.markMine(user, filteredGrid);
+        // 网格载荷里的实验记录内容也只给「本人」。逐格判「是不是我的」会退化成 2N 次查询，
+        // 直接复用 markMine 刚批量算好的 mine（它对非学生不打标记，所以这里显式判一次身份）。
+        if (cageOperationService.isStudentViewer(user)) {
+            for (Map<String, Object> cell : filteredGrid) {
+                if (Boolean.TRUE.equals(cell.get("mine"))) continue;
+                cell.put("experimentDesc", "");
+                cell.put("imagesJson", "[]");
+                Object detailObj = cell.get("detail");
+                if (detailObj instanceof CageCellDetail d) {
+                    d.setExperimentDesc("");
+                    d.setImagesJson("[]");
+                }
+            }
+        }
         out.remove("fromCache");
         out.remove("cachedAt");
         return out;
@@ -359,6 +373,7 @@ public class StudentCageShelfService {
         */
         if (detail.getAnimalCageId() != null
                 && cageOperationService.cageInScope(user, detail.getAnimalCageId(), detail)) {
+            stripExperimentRecordIfNotOwner(user, detail);
             return detail;
         }
         List<String> groupNames = resolveUserGroupNames(user.getId());
@@ -367,10 +382,23 @@ public class StudentCageShelfService {
                 : detail.getPiName();
         boolean visible = PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groupNames, pi, detail.getDepartmentName());
         if (visible) {
+            stripExperimentRecordIfNotOwner(user, detail);
             return detail;
         }
         blankSensitiveFields(detail);
         return detail;
+    }
+
+    /**
+     * 实验记录（文本 + 照片）只给「实验员本人」等够格的人看 —— 见
+     * {@code CageOperationService.canViewExperimentRecords}。笼位本身的课题组可见性不变，
+     * 只清掉实验记录这两列：同组学生仍看得到笼位是谁的，但看不到别人每天记了什么。
+     */
+    private void stripExperimentRecordIfNotOwner(User user, CageCellDetail detail) {
+        if (detail.getAnimalCageId() == null) return;
+        if (cageOperationService.canViewExperimentRecords(user, detail.getAnimalCageId())) return;
+        detail.setExperimentDesc("");
+        detail.setImagesJson("[]");
     }
 
     /**

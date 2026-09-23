@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { ChevronLeft, ChevronDown, Plus, Search, Trash2, Loader2, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -179,6 +179,7 @@ function PaperPicker({
 
 export default function AdminTrainingPublishPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { id } = useParams();
   const editingId = id ? Number(id) : null;
   const editing = editingId != null;
@@ -192,6 +193,7 @@ export default function AdminTrainingPublishPage() {
   const [recurrenceEnd, setRecurrenceEnd] = useState("");
   const [ownerIds, setOwnerIds] = useState<string[]>([]);
   const [ownerNames, setOwnerNames] = useState<string[]>([]);
+  const [campus, setCampus] = useState("");
   const [paperIds, setPaperIds] = useState<number[]>([]);
   const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([]);
   const [form, setForm] = useState<OccurrenceRow>(emptyOccurrence());
@@ -245,6 +247,7 @@ export default function AdminTrainingPublishPage() {
     setRecurrenceEnd(editDetail.recurrenceEnd ?? "");
     setOwnerIds(editDetail.ownerIds ?? []);
     setOwnerNames(editDetail.ownerNames ?? editDetail.ownerIds ?? []);
+    setCampus(editDetail.campus ?? "");
     setPaperIds((editDetail.paperIds ?? []).map((id) => Number(id)));
     const occs = (editDetail.occurrences ?? []).map((o) => ({
       id: o.id,
@@ -308,6 +311,7 @@ export default function AdminTrainingPublishPage() {
         typeName: typeName || undefined,
         paperIds,
         ownerIds,
+        campus: campus || null,
         recurrence: recurrence.trim() || null,
         recurrenceDay: recurrence ? recurrenceDay : null,
         recurrenceTime: recurrence ? recurrenceTime || null : null,
@@ -337,6 +341,9 @@ export default function AdminTrainingPublishPage() {
         }
       }
       toast.success(editing ? "已保存" : "已创建");
+      // 同一份详情被 aro-binding 详情/统计共用；不失效会留下改了试卷却看着没变的假象
+      qc.invalidateQueries({ queryKey: ["training"] });
+      qc.invalidateQueries({ queryKey: ["training-list"] });
       navigate("/console/admin/aro-binding");
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || "保存失败");
@@ -429,6 +436,18 @@ export default function AdminTrainingPublishPage() {
                     <Plus className="h-3.5 w-3.5" />
                   </AdminButton>
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className={adminLabelClass}>校区（学生端分组）</label>
+                <select
+                  className={adminInputClass}
+                  value={campus}
+                  onChange={(e) => setCampus(e.target.value)}
+                >
+                  <option value="">未分组</option>
+                  <option value="浦东">浦东</option>
+                  <option value="浦西">浦西</option>
+                </select>
               </div>
               <div className="space-y-1.5">
                 <label className={adminLabelClass}>所属人</label>

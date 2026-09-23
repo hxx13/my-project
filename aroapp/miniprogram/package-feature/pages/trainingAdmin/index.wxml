@@ -1,0 +1,56 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view class="search-row">
+    <input
+      class="search-input"
+      value="{{ keyword }}"
+      placeholder="搜索培训名称 / 编号"
+      confirm-type="search"
+      bindinput="onKeyword"
+      bindconfirm="doSearch"
+    />
+    <view class="chip-btn chip-btn--ghost" bindtap="doSearch">搜索</view>
+  </view>
+
+  <scroll-view wx:if="{{ campusTabs.length > 1 }}" scroll-x class="campus-tabs" enhanced show-scrollbar="{{ false }}">
+    <view class="campus-tabs-inner">
+      <view
+        wx:for="{{ campusTabs }}"
+        wx:key="*this"
+        class="campus-tab {{ activeCampus === item ? 'campus-tab-on' : '' }}"
+        data-name="{{ item }}"
+        bindtap="onCampusTab"
+      >{{ item }}</view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ visible.length === 0 }}" description="暂无培训" />
+  <view wx:else class="list">
+    <view wx:for="{{ visible }}" wx:key="id" class="row-card">
+      <view class="row-head">
+        <text class="row-title">{{ item.name }}</text>
+        <text class="status-tag {{ item.published ? 'status-ok' : 'status-muted' }}">{{ item.statusText }}</text>
+      </view>
+      <view class="meta-line"><text class="meta-k">类型</text><text class="meta-v">{{ item.typeName || '—' }}</text></view>
+      <view class="meta-line"><text class="meta-k">所属人</text><text class="meta-v">{{ item.ownersText }}</text></view>
+      <view class="meta-line"><text class="meta-k">编号</text><text class="meta-v">{{ item.code || '—' }}</text></view>
+      <view class="row-ops">
+        <view wx:if="{{ item.canWrite }}" class="chip-btn chip-btn--xs chip-btn--ghost" data-id="{{ item.id }}" bindtap="goEdit">编辑</view>
+        <view class="chip-btn chip-btn--xs chip-btn--ghost" data-id="{{ item.id }}" bindtap="goReview">审核</view>
+        <view
+          wx:if="{{ item.canWrite }}"
+          class="chip-btn chip-btn--xs {{ item.published ? 'chip-btn--ghost' : 'chip-btn--primary' }}"
+          data-id="{{ item.id }}"
+          data-published="{{ item.published }}"
+          bindtap="onTogglePublish"
+        >{{ item.published ? '取消发布' : '发布' }}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="bottombar">
+    <view class="chip-btn chip-btn--primary chip-btn--block" bindtap="goEdit">＋ 发布培训</view>
+  </view>
+</view>
+</block>

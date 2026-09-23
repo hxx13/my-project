@@ -1,5 +1,6 @@
 import { useRecycleContents, useRestoreContent, usePurgeContent } from "@/api/hooks/usePortalContent";
 import { RotateCcw, Trash2 } from "lucide-react";
+import { dateOnly } from "@/utils/beijingTime";
 
 import { appConfirm } from "@/lib/appDialog";
 export default function AdminPortalRecyclePage() {
@@ -29,7 +30,7 @@ export default function AdminPortalRecyclePage() {
               <tr key={row.id}>
                 <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 10, fontFamily: "monospace", color: "#b0a89a" }}>#{row.id}</td>
                 <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12, fontWeight: 600, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.title}</td>
-                <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12 }}>{row.updatedAt?.split("T")[0] || ""}</td>
+                <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 12 }}>{dateOnly(row.updatedAt)}</td>
                 <td style={{ padding: "12px 14px", borderBottom: "1px solid #f0ece6" }}>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button onClick={() => restoreMut.mutate(row.id)}

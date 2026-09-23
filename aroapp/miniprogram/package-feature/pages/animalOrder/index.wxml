@@ -110,6 +110,12 @@
       <text class="sheet-title">{{ specItem.title }} — 选购</text>
     </view>
     <scroll-view scroll-y class="sheet-scroll">
+      <!-- 领用方式：饲养=预定笼位（默认），取走=不占笼位不选房间 -->
+      <view class="pickup-mode">
+        <view class="pickup-mode-btn {{ pickupMode === 'FARM' ? 'pickup-mode-btn--on' : '' }}" data-mode="FARM" bindtap="onPickupMode">饲养</view>
+        <view class="pickup-mode-btn {{ pickupMode === 'TAKE' ? 'pickup-mode-btn--on' : '' }}" data-mode="TAKE" bindtap="onPickupMode">取走</view>
+        <text class="pickup-mode-hint">{{ pickupMode === 'FARM' ? '预定笼位，房间随笼位带出' : '不占笼位，直接取走' }}</text>
+      </view>
       <!-- 规格选项：一条一张卡；填了数量的那条高亮，备注也只在那条出现 -->
       <block wx:if="{{ specOptionRows.length > 0 }}">
         <view class="spec-opts">
@@ -157,7 +163,7 @@
 
       <!-- 领用房间（由所选笼位自动带出，不可手选）+ 领用人（默认本人） -->
       <view class="pickup-block pickup-block--two">
-        <view class="pickup-row">
+        <view class="pickup-row" wx:if="{{ pickupMode === 'FARM' }}">
           <text class="pickup-row-label">领用房间</text>
           <view class="pickup-row-value {{ pickupRoomName ? '' : 'pickup-row-value--empty' }}">
             <text>{{ pickupRoomName || '随笼位带出' }}</text>
@@ -174,7 +180,7 @@
 
       <!-- 笼位：一笼一规格，点格子即占位；数量上限 = 已选笼位数 x 单笼上限 -->
       <view class="pickup-block">
-        <view class="cage-head">
+        <view class="cage-head" wx:if="{{ pickupMode === 'FARM' }}">
           <text class="cage-title">笼位</text>
           <text class="cage-hint">{{ cageReserving ? '锁定中…' : cageAllocText }}</text>
           <!-- 入口（照 H5 标题行）：点开「按顺序分配」浮层，不改动下面这块网格 -->
@@ -182,9 +188,9 @@
           <view wx:if="{{ pickedCages.length > 0 }}" class="cage-clear" bindtap="onClearPickedCages">清空</view>
         </view>
 
-        <view wx:if="{{ cageError }}" class="cage-error">{{ cageError }}</view>
-        <block wx:else>
-          <view class="cage-tabs-row">
+        <!-- 取消 / 加入购物车 + 房间 tab：饲养时同排，取走时只剩按钮 -->
+        <view class="cage-tabs-row">
+          <block wx:if="{{ pickupMode === 'FARM' }}">
             <scroll-view wx:if="{{ cageRooms.length > 1 }}" class="cage-tabs" scroll-x enhanced show-scrollbar="{{ false }}">
               <view class="cage-tabs-inner">
                 <view
@@ -197,33 +203,38 @@
               </view>
             </scroll-view>
             <view wx:else class="cage-tabs-placeholder"></view>
-            <!-- 动作按钮挪到 tab 旁边：底部不再占一整行，空间让给网格 -->
-            <view class="cage-acts">
-              <view class="cage-act cage-act--ghost" bindtap="closeSpec">取消</view>
-              <view class="cage-act cage-act--primary {{ submitting ? 'cage-act--off' : '' }}" bindtap="onSpecConfirm">{{ submitting ? '提交中' : '加入购物车' }}</view>
-            </view>
+          </block>
+          <view class="cage-acts">
+            <view class="cage-act cage-act--ghost" bindtap="closeSpec">取消</view>
+            <view class="cage-act cage-act--primary {{ submitting ? 'cage-act--off' : '' }}" bindtap="onSpecConfirm">{{ submitting ? '提交中' : '加入购物车' }}</view>
           </view>
+        </view>
 
-          <view wx:if="{{ cageLoading }}" class="cage-loading">加载笼位中…</view>
-          <view wx:elif="{{ cageShelves.length === 0 }}" class="cage-loading">本课题组在{{ campus }}校区暂无笼架，换校区看看</view>
+        <!-- 错误 / 加载 / 网格：仅饲养模式 -->
+        <block wx:if="{{ pickupMode === 'FARM' }}">
+          <view wx:if="{{ cageError }}" class="cage-error">{{ cageError }}</view>
           <block wx:else>
-            <view wx:for="{{ cageShelves }}" wx:key="shelveId" wx:for-item="sh" class="cage-shelf">
-              <view class="cage-shelf-name">{{ sh.shelveName }}</view>
-              <cage-grid
-                grid="{{ sh.grid }}"
-                compact
-                data-si="{{ index }}"
-                data-sid="{{ sh.shelveId }}"
-                data-sname="{{ sh.shelveName }}"
-                data-rid="{{ sh.roomId }}"
-                data-rname="{{ sh.roomName }}"
-                bind:celltap="onCageCellTap"
-              />
-            </view>
+            <view wx:if="{{ cageLoading }}" class="cage-loading">加载笼位中…</view>
+            <view wx:elif="{{ cageShelves.length === 0 }}" class="cage-loading">本课题组在{{ campus }}校区暂无笼架，换校区看看</view>
+            <block wx:else>
+              <view wx:for="{{ cageShelves }}" wx:key="shelveId" wx:for-item="sh" class="cage-shelf">
+                <view class="cage-shelf-name">{{ sh.shelveName }}</view>
+                <cage-grid
+                  grid="{{ sh.grid }}"
+                  compact
+                  data-si="{{ index }}"
+                  data-sid="{{ sh.shelveId }}"
+                  data-sname="{{ sh.shelveName }}"
+                  data-rid="{{ sh.roomId }}"
+                  data-rname="{{ sh.roomName }}"
+                  bind:celltap="onCageCellTap"
+                />
+              </view>
+            </block>
           </block>
         </block>
 
-        <view wx:if="{{ cageWarnText }}" class="cage-warn">{{ cageWarnText }}</view>
+        <view wx:if="{{ pickupMode === 'FARM' && cageWarnText }}" class="cage-warn">{{ cageWarnText }}</view>
       </view>
     </scroll-view>
   </view>
@@ -365,15 +376,15 @@
       </view>
     </view>
 
-    <block wx:if="{{ !isPi }}">
+    <block>
       <!-- 打包备注与提交并排：备注吃剩余宽度，按钮不缩，省掉单独一整行 -->
       <view class="sheet-foot">
-        <input class="remark-input" placeholder="订单包统一备注" value="{{ packageRemark }}" bindinput="onPackageRemarkInput" />
+        <input class="remark-input" placeholder="{{ isPi ? '备注（写给你自己加购的行）' : '订单包统一备注' }}" value="{{ packageRemark }}" bindinput="onPackageRemarkInput" />
         <view wx:if="{{ myReadyCount > 0 }}" class="foot-btn ghost" bindtap="onWithdraw">撤回 READY</view>
-        <view class="foot-btn primary" bindtap="onMarkReady">提交给 PI</view>
+        <view class="foot-btn primary" bindtap="onMarkReady">{{ isPi ? '保存备注' : '提交给 PI' }}</view>
       </view>
     </block>
-    <block wx:else>
+    <block wx:if="{{ isPi }}">
       <view class="sheet-foot">
         <view class="foot-btn ghost {{ editOrderId ? 'foot-btn-off' : '' }}" bindtap="onClearCart">清空</view>
         <view class="foot-btn primary {{ editOrderId ? 'foot-btn-off' : '' }}" bindtap="openSubmitConfirm">{{ editOrderId ? '编辑中（用上方保存）' : '正式提交 (' + readyCount + ')' }}</view>

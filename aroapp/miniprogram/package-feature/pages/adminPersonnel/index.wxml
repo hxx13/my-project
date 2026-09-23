@@ -2,8 +2,8 @@
   <view class="ap-header">
     <view class="ap-tabs">
       <view class="ap-tab {{ activeTab === 'all' ? 'ap-tab--on' : '' }}" data-tab="all" bindtap="onTabChange">全部</view>
-      <view class="ap-tab {{ activeTab === 'sys' ? 'ap-tab--on' : '' }}" data-tab="sys" bindtap="onTabChange">有系统账号</view>
-      <view class="ap-tab {{ activeTab === 'nosys' ? 'ap-tab--on' : '' }}" data-tab="nosys" bindtap="onTabChange">无系统账号</view>
+      <view class="ap-tab {{ activeTab === 'sys' ? 'ap-tab--on' : '' }}" data-tab="sys" bindtap="onTabChange">有账号</view>
+      <view class="ap-tab {{ activeTab === 'nosys' ? 'ap-tab--on' : '' }}" data-tab="nosys" bindtap="onTabChange">无账号</view>
     </view>
   </view>
 
@@ -11,21 +11,26 @@
     <view class="ap-toolbar-card">
       <view class="ap-toolbar-row">
         <view class="ap-toolbar-input-wrap">
-          <input class="ap-toolbar-input" value="{{ keyword }}" placeholder="姓名 / 工号 / 账号 / 手机号" placeholder-class="ap-toolbar-ph"
+          <input class="ap-toolbar-input" value="{{ keyword }}" placeholder="姓名 / 工号 / 账号 / 手机号 / 邮箱" placeholder-class="ap-toolbar-ph"
             confirm-type="search" bindinput="onKeywordInput" bindconfirm="onSearch" />
         </view>
         <view class="ap-toolbar-btns">
-          <view class="ap-tool-btn ap-tool-btn--ghost" hover-class="ap-tool-btn--hover" bindtap="onOpenCreateSheet">新建</view>
-          <view class="ap-tool-btn ap-tool-btn--ghost" hover-class="ap-tool-btn--hover" bindtap="onOpenFilterSheet">筛选</view>
+          <!-- 回收站视图：不切过去的话「恢复 / 彻底删除」永远点不到。与其他按钮同一行 -->
+          <view class="ap-tool-btn {{ trashOnly ? 'ap-tool-btn--primary' : '' }}" hover-class="ap-tool-btn--hover" bindtap="onToggleTrash">
+            {{ trashOnly ? '返回' : '回收站' }}
+          </view>
+          <view class="ap-tool-btn" hover-class="ap-tool-btn--hover" bindtap="onOpenCreateSheet">新建</view>
+          <view class="ap-tool-btn" hover-class="ap-tool-btn--hover" bindtap="onOpenFilterSheet">筛选</view>
           <view class="ap-tool-btn ap-tool-btn--primary" hover-class="ap-tool-btn--hover" bindtap="onSearch">查询</view>
         </view>
       </view>
+
       <view wx:if="{{ filterGroupId || filterIdentityTagId || filterRoomName || filterRole }}" class="ap-filter-active">
         已筛选：
-        <text wx:if="{{ filterGroupId }}" class="ap-filter-chip">{{ groupOptions[filterGroupIdx - 1].name }}</text>
-        <text wx:if="{{ filterIdentityTagId }}" class="ap-filter-chip">{{ identityTagOptions[filterIdentityIdx - 1].label }}</text>
+        <text wx:if="{{ filterGroupId }}" class="ap-filter-chip">{{ filterGroupName }}</text>
+        <text wx:if="{{ filterIdentityTagId }}" class="ap-filter-chip">{{ filterIdentityTagName }}</text>
         <text wx:if="{{ filterRoomName }}" class="ap-filter-chip">{{ filterRoomName }}</text>
-        <text wx:if="{{ filterRole }}" class="ap-filter-chip">{{ roleLabels[filterRoleIdx - 1] }}</text>
+        <text wx:if="{{ filterRole }}" class="ap-filter-chip">{{ filterRoleName }}</text>
         <text class="ap-filter-clear" catchtap="onClearFilter">清除</text>
       </view>
     </view>
@@ -34,50 +39,41 @@
       <view class="ap-empty">加载中…</view>
     </block>
     <block wx:elif="{{ rows.length === 0 }}">
-      <view class="ap-empty">暂无数据</view>
+      <view class="ap-empty">{{ trashOnly ? '回收站是空的' : '暂无数据' }}</view>
     </block>
     <block wx:else>
       <view wx:for="{{ rows }}" wx:key="id" class="ap-card">
         <view class="ap-card-head">
-          <view class="ap-avatar">{{ item._avatarLetter }}</view>
+          <view class="ap-avatar">
+            <image wx:if="{{ item.headUrl }}" class="ap-avatar-img" src="{{ item.headUrl }}" mode="aspectFill" />
+            <text wx:else>{{ item._avatarLetter }}</text>
+          </view>
           <view class="ap-card-head-main">
+            <!-- 行1：姓名 + 账号/身份标签 -->
             <view class="ap-name-row">
               <text class="ap-title">{{ item.displayName }}</text>
-              <view class="ap-badges">
-                <view class="ap-badge {{ item.hasAccount ? 'ap-badge--sys' : 'ap-badge--nosys' }}">{{ item.hasAccount ? '有系统账号' : '无系统账号' }}</view>
-                <view wx:if="{{ item.hasAccount }}" class="ap-chip ap-chip--tap {{ item.status === 0 ? 'ap-chip--off' : 'ap-chip--on' }}"
-                  data-id="{{ item.staffId }}" data-status="{{ item.status }}" catchtap="onStatusChipTap">{{ item.status === 0 ? '已禁用' : '启用中' }}</view>
-                <view wx:if="{{ item.hasAccount && item.staffId === builtinSuperId }}" class="ap-chip ap-chip--static">受保护</view>
-              </view>
+              <view class="ap-badge">{{ item.hasAccount ? '有账号' : '无账号' }}</view>
+              <view class="ap-badge">{{ item.roleLabel }}</view>
+              <view wx:if="{{ item.hasAccount && item.staffId === builtinSuperId }}" class="ap-badge">受保护</view>
             </view>
-            <view class="ap-sub-line">{{ item.departmentName || '—' }} · {{ item.projectGroupName || '—' }}</view>
-            <view class="ap-sub-line ap-sub-line--rooms" wx:if="{{ item.roomsText }}">🏷 {{ item.roomsText }}</view>
+            <!-- 行2：身份标识 + 权限（账号状态） -->
+            <view class="ap-line">
+              <text class="ap-line-k">身份</text>
+              <block wx:if="{{ item.tags.length === 0 }}">
+                <view class="ap-line-v">实验员（默认）</view>
+              </block>
+              <block wx:else>
+                <view wx:for="{{ item.tags }}" wx:for-item="tag" wx:key="*this" class="ap-badge">{{ tag }}</view>
+              </block>
+              <view wx:if="{{ item.hasAccount }}" class="ap-chip ap-chip--tap {{ item.status === 0 ? 'ap-chip--off' : 'ap-chip--on' }}"
+                data-id="{{ item.staffId }}" data-status="{{ item.status }}" catchtap="onStatusChipTap">{{ item.status === 0 ? '已禁用' : '启用中' }}</view>
+            </view>
+            <!-- 行3：部门 + 课题组 -->
+            <view class="ap-line">
+              <text class="ap-line-v">{{ item.departmentName || '—' }} · {{ item.projectGroupName || '—' }}</text>
+            </view>
           </view>
-        </view>
-
-        <view class="ap-kv-row">
-          <text class="ap-kv-label">角色</text>
-          <picker wx:if="{{ item.hasAccount && item.staffId !== builtinSuperId }}" mode="selector" range="{{ roleLabels }}" value="{{ roleIdxMap[item.role] || 0 }}"
-            data-id="{{ item.staffId }}" bindchange="onRoleChange">
-            <view class="ap-mini-pill"><text class="ap-mini-pill-t">{{ item.roleLabel }}</text><text class="ap-chev">▾</text></view>
-          </picker>
-          <view wx:else class="ap-mini-pill ap-mini-pill--static"><text class="ap-mini-pill-t">{{ item.roleLabel }}</text></view>
-        </view>
-
-        <view class="ap-kv-row">
-          <text class="ap-kv-label">密码</text>
-          <view class="ap-pwd-inline">
-            <text class="mono ap-pwd-mask">{{ item._pwdVisible ? (item._pwdPlaintext || '—') : '••••••' }}</text>
-            <text wx:if="{{ item.hasAccount && item.staffId !== builtinSuperId }}" class="ap-ic" data-id="{{ item.staffId }}" catchtap="onTogglePwd">{{ item._pwdVisible ? '隐' : '显' }}</text>
-            <text wx:else class="ap-muted">—</text>
-          </view>
-        </view>
-
-        <view class="ap-card-actions">
-          <text class="ap-ic" data-id="{{ item.id }}" catchtap="onOpenDetail">详情</text>
-          <text wx:if="{{ item.hasAccount && item.staffId !== builtinSuperId }}" class="ap-ic" data-id="{{ item.staffId }}" catchtap="onResetPassword">改密</text>
-          <text wx:if="{{ item.aroUserId }}" class="ap-ic" data-id="{{ item.aroUserId }}" catchtap="onResetPersonnelAccount">重置账号</text>
-          <text wx:if="{{ item.hasAccount && item.staffId !== builtinSuperId }}" class="ap-ic" data-id="{{ item.staffId }}" catchtap="onResetOpenId">重置绑定</text>
+          <view class="ap-ic ap-card-detail" data-id="{{ item.id }}" catchtap="onOpenDetail">详情</view>
         </view>
       </view>
 
@@ -89,36 +85,35 @@
     </block>
   </view>
 
-  <!-- 筛选底部面板 -->
+  <!-- ══════════ 筛选（选中即生效，无确定步骤） ══════════ -->
   <van-popup show="{{ showFilterSheet }}" position="bottom" round safe-area-inset-bottom custom-class="ap-filter-popup" bind:close="onCloseFilterSheet">
-    <view class="ap-sheet-title">筛选</view>
-    <!-- 课题组 / 房间都是长列表，原生 picker 滚不动 → 统一走搜索式弹窗（见文件末尾 ap-filter-picker）。
-         4 个筛选项共用同一张，观感与操作一致 -->
+    <view class="ap-pick-title">筛选</view>
+    <!-- 课题组 / 房间是长列表，都用搜索式选择器，不用裸输入框 -->
     <view class="ap-sheet-group">
-      <view class="ap-sheet-label">课题组</view>
-      <view class="ap-sheet-picker" data-field="group" bindtap="openApFilterPicker"><text>{{ groupNames[filterGroupIdx] }}</text><text class="ap-chev">▾</text></view>
+      <text class="ap-sheet-label">课题组</text>
+      <view class="ap-sheet-picker" data-field="group" bindtap="onPickFilter"><text>{{ filterGroupName || '全部' }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-group">
-      <view class="ap-sheet-label">身份标识</view>
-      <view class="ap-sheet-picker" data-field="identity" bindtap="openApFilterPicker"><text>{{ identityTagNames[filterIdentityIdx] }}</text><text class="ap-chev">▾</text></view>
+      <text class="ap-sheet-label">身份标识</text>
+      <view class="ap-sheet-picker" data-field="identity" bindtap="onPickFilter"><text>{{ filterIdentityTagName || '全部' }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-group">
-      <view class="ap-sheet-label">房间</view>
-      <view class="ap-sheet-picker" data-field="room" bindtap="openApFilterPicker"><text>{{ roomNames[filterRoomIdx] }}</text><text class="ap-chev">▾</text></view>
+      <text class="ap-sheet-label">房间</text>
+      <view class="ap-sheet-picker" data-field="room" bindtap="onPickFilter"><text>{{ filterRoomName || '全部' }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-group">
-      <view class="ap-sheet-label">角色</view>
-      <view class="ap-sheet-picker" data-field="role" bindtap="openApFilterPicker"><text>{{ roleNames[filterRoleIdx] }}</text><text class="ap-chev">▾</text></view>
+      <text class="ap-sheet-label">角色</text>
+      <view class="ap-sheet-picker" data-field="role" bindtap="onPickFilter"><text>{{ filterRoleName || '全部' }}</text><text class="ap-chev">▾</text></view>
     </view>
     <view class="ap-sheet-actions">
-      <van-button block round plain hairline type="primary" bind:click="onClearFilter">重置</van-button>
-      <van-button block round type="primary" bind:click="onApplyFilter">确定</van-button>
+      <view class="ap-modal-btn" catchtap="onClearFilter">重置全部</view>
+      <view class="ap-modal-btn ap-modal-btn--primary" catchtap="onCloseFilterSheet">完成</view>
     </view>
   </van-popup>
 
-  <!-- 筛选项选择弹窗（4 个筛选项共用）：输入即筛，候选项本地过滤，不打接口 -->
+  <!-- ══════════ 通用搜索式选择器（筛选 / 部门 / 课题组 / 并入档案共用） ══════════ -->
   <van-popup
-    show="{{ apFilterPickerOpen }}"
+    show="{{ pickOpen }}"
     position="center"
     round
     closeable
@@ -126,218 +121,382 @@
     root-portal="{{ true }}"
     z-index="{{ 22000 }}"
     custom-style="width:88vw;max-width:640rpx;padding:24px;box-sizing:border-box;"
-    bind:close="closeApFilterPicker"
+    bind:close="closePicker"
   >
-    <view class="ap-pick-title">{{ apFilterPickerTitle }}</view>
+    <view class="ap-pick-title">{{ pickTitle }}</view>
     <view class="ap-pick-search">
       <input
         class="ap-pick-input"
         type="text"
-        value="{{ apFilterPickerKeyword }}"
+        value="{{ pickKeyword }}"
         placeholder="输入关键字筛选"
         placeholder-class="ap-pick-ph"
-        bindinput="onApFilterPickerInput"
+        bindinput="onPickerInput"
         confirm-type="search"
       />
-      <view wx:if="{{ apFilterPickerKeyword }}" class="ap-pick-clear" bindtap="clearApFilterPickerKeyword">清空</view>
+      <view wx:if="{{ pickKeyword }}" class="ap-pick-clear" bindtap="clearPickerKeyword">清空</view>
     </view>
     <scroll-view scroll-y class="ap-pick-list">
-      <view wx:if="{{ apFilterPickerRows.length === 0 }}" class="ap-pick-hint">没有匹配的项</view>
+      <view wx:if="{{ pickRows.length === 0 }}" class="ap-pick-hint">{{ pickEmptyHint }}</view>
       <block wx:else>
         <view
-          wx:for="{{ apFilterPickerRows }}"
-          wx:key="idx"
-          class="ap-pick-row {{ item.idx === apFilterPickerPicked ? 'ap-pick-row--on' : '' }}"
-          data-idx="{{ item.idx }}"
-          bindtap="onApFilterPickerPick"
+          wx:for="{{ pickRows }}"
+          wx:key="key"
+          class="ap-pick-row {{ item.key === pickPickedKey ? 'ap-pick-row--on' : '' }}"
+          data-key="{{ item.key }}"
+          bindtap="onPickerPick"
         >
-          <text class="ap-pick-text">{{ item.label }}</text>
-          <text wx:if="{{ item.idx === apFilterPickerPicked }}" class="ap-pick-check">✓</text>
+          <view class="ap-pick-main">
+            <text class="ap-pick-text">{{ item.label }}</text>
+            <text wx:if="{{ item.sub }}" class="ap-pick-sub">{{ item.sub }}</text>
+          </view>
+          <text wx:if="{{ item.key === pickPickedKey }}" class="ap-pick-check">✓</text>
         </view>
       </block>
     </scroll-view>
   </van-popup>
 
-  <!-- 详情底部 sheet -->
-  <van-popup show="{{ showDetailPopup }}" position="bottom" round closeable safe-area-inset-bottom custom-class="ap-detail-popup" bind:close="onCloseDetailPopup">
-    <view class="ap-detail-title">{{ detailTitle }}</view>
-    <scroll-view scroll-y class="ap-detail-scroll" enable-flex>
-      <view wx:for="{{ detailLines }}" wx:for-index="didx" wx:key="didx" class="ap-detail-line">
-        <text class="ap-detail-k">{{ item.k }}</text>
-        <text class="ap-detail-v {{ item.k === '密码' ? 'mono' : '' }}" selectable="true">{{ item.k === '密码' ? (detailPwdPlaintext || '加载中…') : item.v }}</text>
+  <!-- ══════════ 人员详情 ══════════ -->
+  <van-popup show="{{ showDetail }}" position="bottom" round closeable safe-area-inset-bottom custom-class="ap-sheet-popup" bind:close="onCloseDetail">
+    <view class="ap-sheet">
+      <view class="ap-sheet-head">
+        <view class="ap-head-row">
+          <text class="ap-sheet-title">{{ detail.displayName }}</text>
+          <view wx:if="{{ detail.hasAccount }}" class="ap-chip {{ detail.status === 0 ? 'ap-chip--off' : 'ap-chip--on' }}">{{ detail.status === 0 ? '已禁用' : '启用中' }}</view>
+          <view wx:else class="ap-chip ap-chip--static">无教职工账号</view>
+        </view>
+        <text class="ap-sheet-sub">{{ detail.userTypeNames || '—' }} · {{ detail.departmentName || '—' }} · {{ detail.projectGroupName || '—' }}</text>
+        <view class="ap-badges">
+          <view class="ap-badge">{{ detail.roleLabel }}</view>
+          <view wx:for="{{ detailTags }}" wx:key="*this" class="ap-badge">{{ item }}</view>
+        </view>
       </view>
-    </scroll-view>
+
+      <scroll-view scroll-y class="ap-sheet-scroll">
+        <!-- ① 账号：教职工 / 学生左右并排，各自单列紧凑 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">账号</view>
+          <view wx:if="{{ !detail.staffId && !detail.aroUserId }}" class="ap-field-v ap-field-v--muted" style="padding: 14rpx 0">该人员还没有任何账号</view>
+          <view wx:else class="ap-acct-pair">
+            <view wx:if="{{ detail.staffId }}" class="ap-acct">
+              <view class="ap-acct-title">教职工账号</view>
+              <view class="ap-kv">
+                <text class="ap-kv-k">登录 ID</text>
+                <text class="ap-kv-v mono">{{ detail.staffId }}</text>
+              </view>
+              <view class="ap-kv">
+                <text class="ap-kv-k">账号名</text>
+                <text class="ap-kv-v mono">{{ detail.staffUsername || detail.staffId }}</text>
+              </view>
+              <view class="ap-kv ap-kv--stack">
+                <text class="ap-kv-k">密码</text>
+                <view class="ap-pwd-line">
+                  <text class="ap-kv-v mono">{{ detail.staffId === builtinSuperId ? '受保护' : (staffPwd.visible ? (staffPwd.loading ? '加载中…' : staffPwd.value) : '••••••') }}</text>
+                  <view wx:if="{{ detail.staffId !== builtinSuperId }}" class="ap-ic" data-id="{{ detail.staffId }}" catchtap="onToggleStaffPwd">{{ staffPwd.visible ? '隐藏' : '查看' }}</view>
+                </view>
+              </view>
+              <view wx:if="{{ detail.staffId !== builtinSuperId }}" class="ap-acct-acts">
+                <view class="ap-btn" data-id="{{ detail.staffId }}" catchtap="onDetailResetAccount">改账号</view>
+                <view class="ap-btn" data-id="{{ detail.staffId }}" catchtap="onResetPassword">改密码</view>
+              </view>
+            </view>
+
+            <view wx:if="{{ detail.aroUserId }}" class="ap-acct ap-acct--student">
+              <view class="ap-acct-title">学生账号（人员库）</view>
+              <view class="ap-kv">
+                <text class="ap-kv-k">认证 ID</text>
+                <text class="ap-kv-v mono">{{ detail.aroUserId }}</text>
+              </view>
+              <view class="ap-kv">
+                <text class="ap-kv-k">账号名</text>
+                <text class="ap-kv-v mono">{{ detail.studentUsername || '未注册' }}</text>
+              </view>
+              <view class="ap-kv ap-kv--stack">
+                <text class="ap-kv-k">密码</text>
+                <view class="ap-pwd-line">
+                  <text class="ap-kv-v mono">{{ studentPwd.visible ? (studentPwd.loading ? '加载中…' : studentPwd.value) : '••••••' }}</text>
+                  <view class="ap-ic" data-id="{{ detail.aroUserId }}" catchtap="onToggleStudentPwd">{{ studentPwd.visible ? '隐藏' : '查看' }}</view>
+                </view>
+              </view>
+              <view class="ap-acct-acts">
+                <view class="ap-btn ap-btn--warn" data-id="{{ detail.aroUserId }}" catchtap="onDetailResetPin">改 PIN</view>
+                <view class="ap-btn" data-id="{{ detail.aroUserId }}" catchtap="onDetailResetAccount">改账号</view>
+                <view class="ap-btn" data-id="{{ detail.aroUserId }}" catchtap="onResetPassword">改密码</view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- ③ 通知绑定 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">通知绑定<text class="ap-sec-hint">留空保存 = 解绑</text></view>
+          <view class="ap-line-row">
+            <text class="ap-line-name">{{ detail.contactEmail || '邮箱未绑定' }}</text>
+            <view class="ap-btn" data-kind="email" catchtap="onOpenBind">{{ detail.contactEmail ? '修改' : '设置' }}</view>
+          </view>
+          <view class="ap-line-row">
+            <text class="ap-line-name">{{ detail.sendKey ? 'Server酱 已绑定' : 'Server酱 未绑定' }}</text>
+            <view class="ap-btn" data-kind="sendkey" catchtap="onOpenBind">{{ detail.sendKey ? '修改' : '设置' }}</view>
+          </view>
+          <view class="ap-line-row">
+            <text class="ap-line-name">{{ detail.wxPusherUid ? 'WxPusher 已绑定' : 'WxPusher 未绑定' }}</text>
+            <view class="ap-btn" data-kind="wxpusher" catchtap="onOpenBind">{{ detail.wxPusherUid ? '修改' : '设置' }}</view>
+          </view>
+        </view>
+
+        <!-- ④ 组织与资料 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">组织与资料<text class="ap-sec-hint">蓝色字段可点改</text></view>
+          <view class="ap-grid2">
+            <view class="ap-field" data-kind="department" catchtap="onPickOrg">
+              <text class="ap-field-k">部门</text>
+              <text class="ap-field-tap">{{ detail.departmentName || '未设置' }}</text>
+            </view>
+            <view class="ap-field" data-kind="group" catchtap="onPickOrg">
+              <text class="ap-field-k">课题组</text>
+              <text class="ap-field-tap">{{ detail.projectGroupName || '未设置' }}</text>
+            </view>
+            <view class="ap-field">
+              <text class="ap-field-k">校内 / 校外</text>
+              <text class="ap-field-v">{{ detail.isSchool === 1 ? '校内' : (detail.isSchool === 0 ? '校外' : '—') }}</text>
+            </view>
+            <view class="ap-field">
+              <text class="ap-field-k">手机</text>
+              <text class="ap-field-v">{{ detail.mobilePhone || '—' }}</text>
+            </view>
+            <view class="ap-field" data-field="job_number" catchtap="onOpenFieldPopup">
+              <text class="ap-field-k">工号</text>
+              <text class="ap-field-tap">{{ detail.jobNumber || '未设置' }}</text>
+            </view>
+            <view class="ap-field" data-field="user_type_names" catchtap="onOpenFieldPopup">
+              <text class="ap-field-k">类型</text>
+              <text class="ap-field-tap">{{ detail.userTypeNames || '未设置' }}</text>
+            </view>
+          </view>
+          <view class="ap-line-row">
+            <text class="ap-line-name">房间授权：{{ detail.allowedRoomsDisplayZh || '无' }}</text>
+            <view class="ap-btn" catchtap="onOpenRoomSheet">修改</view>
+          </view>
+        </view>
+
+        <!-- ⑤ 身份标识：默认只显示本人已有的，改在弹窗里勾 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">身份标识</view>
+          <view class="ap-line-row">
+            <view class="ap-id-show">
+              <block wx:if="{{ detailTags.length === 0 }}">
+                <text class="ap-id-none">实验员（默认）</text>
+              </block>
+              <block wx:else>
+                <view wx:for="{{ detailTags }}" wx:key="*this" class="ap-tag">{{ item }}</view>
+              </block>
+            </view>
+            <view class="ap-btn" catchtap="onOpenIdentitySheet">设置</view>
+          </view>
+        </view>
+
+        <!-- ⑥ 操作 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">操作</view>
+          <view class="ap-line-row">
+            <text class="ap-line-name">角色</text>
+            <picker wx:if="{{ detail.hasAccount && detail.staffId !== builtinSuperId }}" mode="selector" range="{{ roleLabels }}"
+              value="{{ roleIdxMap[detail.role] || 0 }}" data-id="{{ detail.staffId }}" bindchange="onRoleChange">
+              <view class="ap-mini-pill"><text class="ap-mini-pill-t">{{ detail.roleLabel }}</text><text class="ap-chev">▾</text></view>
+            </picker>
+            <text wx:else class="ap-muted">{{ detail.roleLabel }}</text>
+          </view>
+          <view class="ap-line-row">
+            <text class="ap-line-name">账号状态</text>
+            <view wx:if="{{ detail.hasAccount && detail.staffId !== builtinSuperId }}"
+              class="ap-chip ap-chip--tap {{ detail.status === 0 ? 'ap-chip--off' : 'ap-chip--on' }}"
+              data-id="{{ detail.staffId }}" data-status="{{ detail.status }}" catchtap="onDetailToggleStatus">{{ detail.status === 0 ? '已禁用' : '启用中' }}</view>
+            <text wx:else class="ap-muted">{{ detail.hasAccount ? '受保护' : '无教职工账号' }}</text>
+          </view>
+          <view wx:if="{{ detail.hasAccount && detail.staffId !== builtinSuperId }}" class="ap-line-row">
+            <text class="ap-line-name">微信 openId 绑定</text>
+            <view class="ap-btn" data-id="{{ detail.staffId }}" catchtap="onDetailResetOpenId">重置绑定</view>
+          </view>
+          <!-- 记录级动作并入操作区，不再单独占一条底部页脚 -->
+          <view class="ap-line-row">
+            <text class="ap-line-name">从 ARO 重新拉取此人资料</text>
+            <view class="ap-btn" catchtap="onDetailSync">{{ aroSyncing ? '同步中…' : '同步' }}</view>
+          </view>
+        </view>
+
+        <!-- ⑦ 电子签名 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">电子签名</view>
+          <view wx:if="{{ sig.loading }}" class="ap-field-v ap-field-v--muted">加载中…</view>
+          <view wx:elif="{{ !sig.hasSignature }}" class="ap-field-v ap-field-v--muted">未签名</view>
+          <block wx:else>
+            <image class="ap-sig-img" src="{{ sig.imageData }}" mode="widthFix" />
+            <text class="ap-sig-meta">{{ sig.createdAt ? '签署于 ' + sig.createdAt : '已签署' }} · 签名不可更改</text>
+            <view class="ap-btn" style="margin-top: 14rpx" catchtap="onResetSignature">重置签名</view>
+          </block>
+        </view>
+
+        <!-- ⑧ 危险操作 -->
+        <view class="ap-sec">
+          <view class="ap-sec-title">危险操作</view>
+          <view class="ap-danger-row">
+            <view wx:if="{{ detail.hasAccount && detail.staffId !== builtinSuperId }}" class="ap-btn ap-btn--danger"
+              data-id="{{ detail.staffId }}" catchtap="onDetailDeleteAccount">删除账号</view>
+            <block wx:if="{{ !detail.deletedAt }}">
+              <view class="ap-btn ap-btn--danger" catchtap="onMoveToTrash">移入回收站</view>
+            </block>
+            <block wx:else>
+              <view class="ap-btn" catchtap="onRestorePersonnel">恢复到人员列表</view>
+              <view class="ap-btn ap-btn--danger" catchtap="onPurgePersonnel">彻底删除</view>
+            </block>
+            <view class="ap-btn ap-btn--danger" catchtap="onMergePerson">并入此档案…</view>
+          </view>
+          <text class="ap-danger-note">删除账号只注销登录、档案保留；移入回收站可随时恢复；彻底删除会把 ARO 人员记录与登录账号一并清除。</text>
+        </view>
+      </scroll-view>
+    </view>
   </van-popup>
 
-  <!-- 其余弹窗（创建/删除/昵称/邮箱）原样保留 -->
-  <van-popup
-    show="{{ showNickPopup }}"
-    position="center"
-    round
-    closeable
-    custom-class="ap-modal-shell"
-    bind:close="onNickPopupCloseIfIdle"
-  >
-    <view class="ap-modal-title">修改展示昵称</view>
-    <view class="ap-modal-body">
-      <view class="ap-modal-field">
-        <text class="ap-modal-label">展示昵称</text>
-        <input
-          class="ap-modal-input"
-          value="{{ nickEditValue }}"
-          maxlength="{{ 32 }}"
-          placeholder="最多 32 字"
-          placeholder-class="ap-toolbar-ph"
-          bindinput="onNickPopupInput"
-        />
+  <!-- ══════════ 房间授权 ══════════ -->
+  <van-popup show="{{ showRoomSheet }}" position="bottom" round closeable safe-area-inset-bottom custom-class="ap-sheet-popup" bind:close="onCloseRoomSheet">
+    <view class="ap-sheet">
+      <view class="ap-sheet-head">
+        <view class="ap-sheet-title">房间授权</view>
+        <text class="ap-sheet-sub">{{ detail.displayName }} · 勾选后点保存生效，全不勾 = 撤销全部</text>
       </view>
+      <scroll-view scroll-y class="ap-sheet-scroll ap-sheet-scroll--plain">
+        <view wx:if="{{ roomLoading }}" class="ap-empty">房间目录加载中…</view>
+        <view wx:elif="{{ roomRows.length === 0 }}" class="ap-empty">房间目录为空</view>
+        <block wx:else>
+          <block wx:for="{{ roomRows }}" wx:key="roomId" wx:for-index="ridx">
+            <view wx:if="{{ item.showRegion }}" class="ap-room-region">{{ item.region }}</view>
+            <view wx:if="{{ item.showFloor }}" class="ap-room-floor">{{ item.floor }}</view>
+            <view class="ap-room-row" data-idx="{{ ridx }}" bindtap="onToggleRoom">
+              <view class="ap-check {{ item.on ? 'ap-check--on' : '' }}">✓</view>
+              <text class="ap-room-name">{{ item.roomName }}</text>
+            </view>
+          </block>
+        </block>
+      </scroll-view>
+      <view class="ap-sheet-foot">
+        <view class="ap-foot-btn" catchtap="onCloseRoomSheet">取消</view>
+        <view class="ap-foot-btn ap-foot-btn--pri" catchtap="onSaveRooms">{{ roomSaving ? '保存中…' : '保存' }}</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- ══════════ 单字段编辑（姓名 / 工号 / 类型） ══════════ -->
+  <van-popup show="{{ showFieldPopup }}" position="center" round closeable custom-class="ap-modal-shell" bind:close="onCloseFieldPopup">
+    <view class="ap-modal-title">修改{{ fieldLabel }}</view>
+    <view class="ap-modal-field" style="margin-top: 20rpx">
+      <input class="ap-modal-input" value="{{ fieldValue }}" maxlength="{{ 64 }}" placeholder="请输入{{ fieldLabel }}"
+        placeholder-class="ap-toolbar-ph" bindinput="onFieldInput" />
     </view>
     <view class="ap-modal-footer">
-      <view
-        class="ap-modal-btn ap-modal-btn--ghost {{ nickSubmitting ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onNickCancelTap"
-      >取消</view>
-      <view
-        class="ap-modal-btn ap-modal-btn--primary {{ nickSubmitting ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onNickConfirmTap"
-      >{{ nickSubmitting ? '保存中…' : '确认' }}</view>
+      <view class="ap-modal-btn" catchtap="onCloseFieldPopup">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ fieldSubmitting ? 'ap-modal-btn--disabled' : '' }}" catchtap="onSubmitField">{{ fieldSubmitting ? '保存中…' : '保存' }}</view>
     </view>
   </van-popup>
 
-  <van-popup
-    show="{{ showCreateSheet }}"
-    position="center"
-    round
-    closeable
-    custom-class="ap-modal-shell"
-    bind:close="onCreatePopupCloseIfIdle"
-  >
+  <!-- ══════════ 通知绑定（邮箱 / Server酱 / WxPusher 共用） ══════════ -->
+  <van-popup show="{{ showBindPopup }}" position="center" round closeable custom-class="ap-modal-shell" bind:close="onCloseBindPopup">
+    <view class="ap-modal-title">{{ bindTitle }}</view>
+    <view class="ap-modal-hint">留空并保存 = 解绑</view>
+    <view class="ap-modal-field">
+      <input class="ap-modal-input" value="{{ bindValue }}" maxlength="{{ 256 }}" placeholder="{{ bindPlaceholder }}"
+        placeholder-class="ap-toolbar-ph" bindinput="onBindInput" />
+    </view>
+    <view class="ap-modal-footer">
+      <view class="ap-modal-btn" catchtap="onCloseBindPopup">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ bindSubmitting ? 'ap-modal-btn--disabled' : '' }}" catchtap="onSubmitBind">{{ bindSubmitting ? '保存中…' : '保存' }}</view>
+    </view>
+  </van-popup>
+
+  <!-- ══════════ 新建员工账号 ══════════ -->
+  <van-popup show="{{ showCreateSheet }}" position="center" round closeable custom-class="ap-modal-shell" bind:close="onCreatePopupCloseIfIdle">
     <view class="ap-modal-title">新建员工账号</view>
     <view class="ap-modal-hint">密码至少 6 位；不可新建平台所有者。已有账号可在列表中改为学生角色。</view>
 
-    <view class="ap-modal-body">
-      <view class="ap-modal-field">
-        <text class="ap-modal-label">登录名</text>
-        <input
-          class="ap-modal-input"
-          value="{{ createUsername }}"
-          maxlength="{{ 64 }}"
-          placeholder="2～64 字符"
-          placeholder-class="ap-toolbar-ph"
-          bindinput="onCreateUsernameInput"
-        />
+    <view class="ap-modal-field">
+      <text class="ap-modal-label">登录名</text>
+      <input class="ap-modal-input" value="{{ createUsername }}" maxlength="{{ 64 }}" placeholder="2～64 字符"
+        placeholder-class="ap-toolbar-ph" bindinput="onCreateUsernameInput" />
+    </view>
+    <view class="ap-modal-field">
+      <text class="ap-modal-label">密码</text>
+      <input class="ap-modal-input" password value="{{ createPassword }}" placeholder="至少 6 位"
+        placeholder-class="ap-toolbar-ph" bindinput="onCreatePasswordInput" />
+    </view>
+    <view class="ap-modal-field">
+      <text class="ap-modal-label">展示昵称</text>
+      <input class="ap-modal-input" value="{{ createNickname }}" maxlength="{{ 32 }}" placeholder="可选，默认同登录名"
+        placeholder-class="ap-toolbar-ph" bindinput="onCreateNicknameInput" />
+    </view>
+    <view class="ap-modal-field ap-modal-field--row">
+      <text class="ap-modal-label">角色</text>
+      <view class="ap-modal-picker-wrap">
+        <picker mode="selector" range="{{ staffRolePickerLabels }}" value="{{ createRoleIdx }}" bindchange="onCreateRolePicker">
+          <view class="ap-modal-picker">
+            <text class="ap-modal-picker-text">{{ staffRolePickerLabels[createRoleIdx] }}</text>
+            <text class="ap-chev">▾</text>
+          </view>
+        </picker>
       </view>
-      <view class="ap-modal-field">
-        <text class="ap-modal-label">密码</text>
-        <input
-          class="ap-modal-input"
-          password
-          value="{{ createPassword }}"
-          placeholder="至少 6 位"
-          placeholder-class="ap-toolbar-ph"
-          bindinput="onCreatePasswordInput"
-        />
+    </view>
+
+    <view class="ap-modal-footer">
+      <view class="ap-modal-btn {{ createSubmitting ? 'ap-modal-btn--disabled' : '' }}" catchtap="onCreateCancelTap">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ createSubmitting ? 'ap-modal-btn--disabled' : '' }}" catchtap="onCreateSubmitTap">{{ createSubmitting ? '创建中…' : '创建' }}</view>
+    </view>
+  </van-popup>
+
+  <!-- ══════════ 删除账号（需输入完整登录名） ══════════ -->
+  <van-popup show="{{ showDeleteSheet }}" position="bottom" round closeable safe-area-inset-bottom custom-class="ap-sheet-popup" bind:close="onCloseDeleteSheet">
+    <view class="ap-sheet">
+      <view class="ap-sheet-head">
+        <view class="ap-sheet-title">删除账号</view>
+        <text class="ap-sheet-sub">将永久删除「{{ deleteTargetUsername }}」，请输入完整登录名以确认。</text>
       </view>
-      <view class="ap-modal-field">
-        <text class="ap-modal-label">展示昵称</text>
-        <input
-          class="ap-modal-input"
-          value="{{ createNickname }}"
-          maxlength="{{ 32 }}"
-          placeholder="可选，默认同登录名"
-          placeholder-class="ap-toolbar-ph"
-          bindinput="onCreateNicknameInput"
-        />
+      <view class="ap-sheet-scroll ap-sheet-scroll--plain">
+        <input class="ap-modal-input" value="{{ deleteConfirmInput }}" placeholder="输入登录名"
+          placeholder-class="ap-toolbar-ph" bindinput="onDeleteConfirmInputChange" />
       </view>
-      <view class="ap-modal-field ap-modal-field--row">
-        <text class="ap-modal-label">角色</text>
-        <view class="ap-modal-picker-wrap">
-          <picker mode="selector" range="{{ staffRolePickerLabels }}" value="{{ createRoleIdx }}" bindchange="onCreateRolePicker">
-            <view class="ap-modal-picker">
-              <text class="ap-modal-picker-text">{{ staffRolePickerLabels[createRoleIdx] }}</text>
-              <text class="ap-chev">▾</text>
-            </view>
-          </picker>
+      <view class="ap-sheet-foot">
+        <view class="ap-foot-btn" catchtap="onCloseDeleteSheet">取消</view>
+        <view class="ap-foot-btn ap-foot-btn--pri" catchtap="onSubmitDeleteStaff">{{ deleteSubmitting ? '删除中…' : '确认删除' }}</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- ══════════ 修改展示昵称 ══════════ -->
+  <van-popup show="{{ showNickPopup }}" position="center" round closeable custom-class="ap-modal-shell" bind:close="onNickPopupCloseIfIdle">
+    <view class="ap-modal-title">修改展示昵称</view>
+    <view class="ap-modal-field" style="margin-top: 20rpx">
+      <input class="ap-modal-input" value="{{ nickEditValue }}" maxlength="{{ 32 }}" placeholder="最多 32 字"
+        placeholder-class="ap-toolbar-ph" bindinput="onNickPopupInput" />
+    </view>
+    <view class="ap-modal-footer">
+      <view class="ap-modal-btn {{ nickSubmitting ? 'ap-modal-btn--disabled' : '' }}" catchtap="onNickCancelTap">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary {{ nickSubmitting ? 'ap-modal-btn--disabled' : '' }}" catchtap="onNickConfirmTap">{{ nickSubmitting ? '保存中…' : '确认' }}</view>
+    </view>
+  </van-popup>
+
+  <!-- ══════════ 身份标识（勾选弹窗，不再平铺在详情里） ══════════ -->
+  <van-popup show="{{ showIdentitySheet }}" position="center" round closeable custom-class="ap-id-shell" bind:close="onCloseIdentitySheet">
+    <view class="ap-id-title">身份标识</view>
+    <text class="ap-id-sub">已选 {{ identityPickCount }} 项 · 不勾即「实验员（默认）」</text>
+    <scroll-view scroll-y class="ap-id-scroll">
+      <view wx:if="{{ identityRows.length === 0 }}" class="ap-field-v ap-field-v--muted" style="padding: 20rpx 0">暂无可配置的身份标签</view>
+      <block wx:else>
+        <view wx:for="{{ identityRows }}" wx:key="id" class="ap-id-row" data-idx="{{ index }}" bindtap="onToggleIdentityPick">
+          <view class="ap-ck {{ item.selected ? 'ap-ck--on' : '' }}">✓</view>
+          <text class="ap-id-label">{{ item.label }}</text>
         </view>
-      </view>
-    </view>
-
+      </block>
+    </scroll-view>
     <view class="ap-modal-footer">
-      <view
-        class="ap-modal-btn ap-modal-btn--ghost {{ createSubmitting ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onCreateCancelTap"
-      >取消</view>
-      <view
-        class="ap-modal-btn ap-modal-btn--primary {{ createSubmitting ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onCreateSubmitTap"
-      >{{ createSubmitting ? '创建中…' : '创建' }}</view>
-    </view>
-  </van-popup>
-
-  <van-popup
-    show="{{ showDeleteSheet }}"
-    position="bottom"
-    round
-    closeable
-    safe-area-inset-bottom
-    custom-class="ap-sheet-popup"
-    bind:close="onCloseDeleteSheet"
-  >
-    <view class="ap-sheet-head ap-sheet-head--danger">删除账号</view>
-    <view class="ap-sheet-hint">将永久删除「{{ deleteTargetUsername }}」。请输入完整登录名以确认。</view>
-    <van-cell-group inset border="{{ false }}">
-      <van-field
-        placeholder="输入登录名"
-        value="{{ deleteConfirmInput }}"
-        border="{{ false }}"
-        bind:change="onDeleteConfirmInputChange"
-      />
-    </van-cell-group>
-    <view class="ap-sheet-actions">
-      <van-button block round plain hairline type="primary" bind:click="onCloseDeleteSheet">取消</van-button>
-      <van-button block round type="danger" loading="{{ deleteSubmitting }}" bind:click="onSubmitDeleteStaff">确认删除</van-button>
-    </view>
-  </van-popup>
-
-  <!-- 邮箱编辑弹窗 -->
-  <van-popup
-    show="{{ showEmailPopup }}"
-    position="center"
-    round
-    closeable
-    custom-class="ap-modal-shell"
-    bind:close="onCloseEmailPopup"
-  >
-    <view class="ap-modal-title">修改联系邮箱</view>
-    <view class="ap-modal-body">
-      <view class="ap-modal-field">
-        <text class="ap-modal-label">邮箱地址</text>
-        <input
-          class="ap-modal-input"
-          type="text"
-          value="{{ emailEditValue }}"
-          maxlength="{{ 128 }}"
-          placeholder="请输入邮箱地址"
-          placeholder-class="ap-toolbar-ph"
-          bindinput="onEmailInput"
-        />
-      </view>
-    </view>
-    <view class="ap-modal-footer">
-      <view
-        class="ap-modal-btn ap-modal-btn--ghost {{ emailSubmitting ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onCloseEmailPopup"
-      >取消</view>
-      <view
-        class="ap-modal-btn ap-modal-btn--primary {{ emailSubmitting ? 'ap-modal-btn--disabled' : '' }}"
-        hover-class="ap-tool-btn--hover"
-        catchtap="onSubmitEmail"
-      >{{ emailSubmitting ? '保存中…' : '保存' }}</view>
+      <view class="ap-modal-btn" catchtap="onCloseIdentitySheet">取消</view>
+      <view class="ap-modal-btn ap-modal-btn--primary" catchtap="onConfirmIdentity">确定</view>
     </view>
   </van-popup>
 </view>

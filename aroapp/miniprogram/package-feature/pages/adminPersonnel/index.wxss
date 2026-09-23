@@ -1,70 +1,76 @@
+/* 人员授权页
+   令牌与 package-feature/pages/animalOrder 对齐：
+   页面底 #eef0f6 / 白卡 / 分隔线 #eef0f4 / 浅底 #f6f7fb / 次级底 #f1f3f7
+   单一主色 #2563eb；文字 #1f2937 / #334155 / #94a3b8
+   按钮一律实底，禁渐变、禁半透明、禁描边。状态只用圆点或左侧色条。 */
+
+page {
+  background: #eef0f6;
+}
+
 .ap-root {
   min-height: 100vh;
-  background: linear-gradient(180deg, #0f172a 0%, #0f172a 96rpx, #e8eef7 96rpx, #eef2f9 100%);
-  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
 }
 
 .ap-header {
-  padding: 12rpx 20rpx 16rpx;
+  padding: 20rpx 24rpx 0;
 }
 
+/* ── 顶部分类胶囊 ── */
 .ap-tabs {
   display: flex;
   flex-wrap: nowrap;
-  padding: 4rpx;
-  background: #1e293b;
+  padding: 6rpx;
+  background: #fff;
+  border: 1rpx solid #eef0f4;
   border-radius: 999rpx;
-  border: 1rpx solid rgba(148, 163, 184, 0.25);
 }
 
 .ap-tab {
   flex: 1;
   min-width: 0;
-  padding: 10rpx 8rpx;
+  padding: 12rpx 8rpx;
   text-align: center;
   font-size: 24rpx;
   line-height: 1.4;
-  color: #cbd5e1;
+  color: #64748b;
   border-radius: 999rpx;
   white-space: nowrap;
 }
 
 .ap-tab--on {
-  color: #0f172a;
+  color: #fff;
   font-weight: 600;
-  background: #f8fafc;
-  box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
+  background: #2563eb;
 }
 
 .ap-body {
-  padding: 0 20rpx;
-  margin-top: 0;
+  padding: 0 24rpx;
 }
 
+/* ── 工具栏 ── */
 .ap-toolbar-card {
   background: #fff;
-  border-radius: 20rpx;
-  padding: 10rpx 12rpx;
-  margin-bottom: 16rpx;
-  box-shadow: 0 8rpx 28rpx rgba(15, 23, 42, 0.06);
-  border: 1rpx solid rgba(226, 232, 240, 0.95);
+  border-radius: 14rpx;
+  padding: 16rpx;
+  margin: 16rpx 0;
+  border: 1rpx solid #eef0f4;
 }
 
 .ap-toolbar-row {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
-  align-items: stretch;
+  align-items: center;
   gap: 12rpx;
 }
 
-/* 原生 input 占满剩余宽度，避免 van-field 在 flex 下被压成细条 */
 .ap-toolbar-input-wrap {
   flex: 1 1 0%;
   width: 0;
   min-width: 160rpx;
-  align-self: center;
 }
 
 .ap-toolbar-input {
@@ -73,15 +79,14 @@
   line-height: 64rpx;
   padding: 0 20rpx;
   box-sizing: border-box;
-  font-size: 26rpx;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
-  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #1f2937;
+  background: #f6f7fb;
+  border-radius: 10rpx;
 }
 
 .ap-toolbar-ph {
-  color: #94a3b8;
+  color: #a3adbb;
   font-size: 24rpx;
 }
 
@@ -94,71 +99,119 @@
   gap: 10rpx;
 }
 
-/* 自绘按钮，尺寸与样式完全由 WXSS 控制（非 van-button） */
 .ap-tool-btn {
   flex-shrink: 0;
   box-sizing: border-box;
-  min-width: 80rpx;
+  /* 回收站并进这一排后有 4 个按钮，收窄一点把宽度让给输入框 */
+  min-width: 84rpx;
   height: 64rpx;
-  padding: 0 14rpx;
+  padding: 0 12rpx;
   line-height: 64rpx;
   text-align: center;
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 500;
-  border-radius: 12rpx;
+  border-radius: 10rpx;
+  color: #334155;
+  background: #f1f3f7;
 }
 
 .ap-tool-btn--primary {
   color: #fff;
-  background: linear-gradient(135deg, #4f46e5, #4338ca);
-  border: 1rpx solid #3730a3;
-}
-
-.ap-tool-btn--ghost {
-  color: #334155;
-  background: #fff;
-  border: 1rpx solid #e2e8f0;
+  background: #2563eb;
 }
 
 .ap-tool-btn--hover {
-  opacity: 0.88;
+  opacity: 0.85;
+}
+
+/* ── 已生效筛选 ── */
+.ap-filter-active {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex-wrap: wrap;
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.ap-filter-chip {
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: #f1f3f7;
+  color: #334155;
+}
+
+.ap-filter-clear {
+  color: #2563eb;
 }
 
 .ap-empty {
   text-align: center;
-  color: #64748b;
-  font-size: 28rpx;
+  color: #94a3b8;
+  font-size: 26rpx;
   padding: 80rpx 24rpx;
 }
 
+/* ── 人员卡 ── */
 .ap-card {
   background: #fff;
-  border-radius: 24rpx;
-  padding: 20rpx 22rpx;
+  border-radius: 14rpx;
+  padding: 20rpx;
   margin-bottom: 16rpx;
-  border: 1rpx solid #e2e8f0;
-  box-shadow: 0 8rpx 28rpx rgba(15, 23, 42, 0.06);
+  border: 1rpx solid #eef0f4;
 }
 
 .ap-card-head {
   display: flex;
   align-items: flex-start;
-  gap: 14rpx;
-  margin-bottom: 12rpx;
+  gap: 16rpx;
 }
 
 .ap-avatar {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 16rpx;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  color: #fff;
-  font-size: 28rpx;
+  position: relative;
+  overflow: hidden;
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 999rpx;
+  background: #e8eefb;
+  color: #2563eb;
+  font-size: 30rpx;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.ap-avatar-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 卡面紧凑三行：姓名行 / 身份+权限行 / 部门·课题组行 */
+.ap-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 6rpx;
+}
+
+.ap-line-k {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+
+.ap-line-v {
+  min-width: 0;
+  font-size: 22rpx;
+  color: #64748b;
+  word-break: break-all;
 }
 
 .ap-card-head-main {
@@ -168,186 +221,91 @@
 
 .ap-name-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8rpx;
-  margin-bottom: 4rpx;
-  overflow: hidden;
 }
 
 .ap-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #0f172a;
-  flex: 0 1 auto;
-  min-width: 0;
+  color: #1f2937;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ap-actions {
+.ap-badges {
   display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.ap-badge {
+  font-size: 20rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f1f3f7;
+  color: #334155;
+}
+
+/* 状态胶囊：圆点 + 中性底，不铺饱和色 */
+.ap-chip {
+  display: inline-flex;
   align-items: center;
   gap: 8rpx;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.ap-sub {
-  font-size: 22rpx;
-  color: #64748b;
-}
-
-.ap-chip {
-  flex-shrink: 0;
   font-size: 20rpx;
-  padding: 4rpx 12rpx;
+  padding: 4rpx 14rpx;
   border-radius: 999rpx;
   font-weight: 500;
-  border: 1rpx solid transparent;
+  background: #f1f3f7;
+  color: #334155;
 }
 
-.ap-chip--on {
-  color: #047857;
-  background: #ecfdf5;
-  border-color: #a7f3d0;
+.ap-chip::before {
+  content: '';
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 999rpx;
+  background: #94a3b8;
+  flex-shrink: 0;
 }
 
-.ap-chip--off {
-  color: #b91c1c;
-  background: #fef2f2;
-  border-color: #fecaca;
+.ap-chip--on::before {
+  background: #15803d;
+}
+
+.ap-chip--off::before {
+  background: #dc2626;
+}
+
+.ap-chip--static::before {
+  background: #a3adbb;
 }
 
 .ap-chip--tap:active {
   opacity: 0.85;
 }
 
-.ap-chip--static {
-  color: #64748b;
-  background: #f1f5f9;
-  border-color: #e2e8f0;
-}
-
-.ap-ic {
-  flex-shrink: 0;
-  font-size: 20rpx;
-  color: #4f46e5;
-  padding: 2rpx 6rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid #e0e7ff;
-  background: #eef2ff;
-}
-
-.ap-ic--danger {
-  color: #b91c1c;
-  border-color: #fecdd3;
-  background: #fff1f2;
-}
-
-.ap-cell-group {
-  margin-top: 6rpx !important;
-  border-radius: 12rpx !important;
-  overflow: hidden;
-}
-
-.ap-cell-title {
-  color: #64748b !important;
-  font-size: 22rpx !important;
-}
-
-.ap-cell-value {
-  color: #334155 !important;
-  font-size: 22rpx !important;
-}
-
-.ap-nick-line {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-top: 8rpx;
-  padding-top: 8rpx;
-  border-top: 1rpx solid #f1f5f9;
-}
-
-.ap-nick-tap {
-  flex: 1;
-  min-width: 0;
-  font-size: 24rpx;
-  color: #4f46e5;
-  text-decoration: underline;
-  text-underline-offset: 4rpx;
-}
-
-.ap-muted {
-  color: #94a3b8;
-  font-size: 24rpx;
-}
-
-.ap-kv-row {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-top: 10rpx;
-  min-height: 44rpx;
-}
-
-.ap-kv-label {
-  flex: 0 0 72rpx;
-  width: 72rpx;
-  font-size: 22rpx;
-  color: #64748b;
+.ap-chev {
+  font-size: 18rpx;
+  color: #a3adbb;
 }
 
 .ap-mini-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4rpx;
-  padding: 4rpx 12rpx;
-  min-height: 36rpx;
-  box-sizing: border-box;
+  gap: 6rpx;
+  padding: 8rpx 18rpx;
   border-radius: 10rpx;
-  background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
-}
-
-.ap-mini-pill--wide {
-  min-width: 160rpx;
-}
-
-.ap-mini-pill--static {
-  opacity: 0.85;
+  background: #f6f7fb;
 }
 
 .ap-mini-pill-t {
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: #334155;
-  max-width: 200rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ap-chev {
-  font-size: 18rpx;
-  color: #94a3b8;
-}
-
-.ap-pwd-inline {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  min-width: 0;
-}
-
-.ap-pwd-mask {
-  font-size: 22rpx;
-  color: #334155;
-  max-width: 280rpx;
+  max-width: 260rpx;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -357,6 +315,28 @@
   font-family: ui-monospace, SFMono-Regular, monospace;
 }
 
+.ap-muted {
+  color: #a3adbb;
+  font-size: 24rpx;
+}
+
+/* 卡内快捷动作：次级实底 */
+.ap-card-detail {
+  flex-shrink: 0;
+  align-self: flex-start;
+  color: #2563eb;
+  background: #e8eefb;
+}
+
+.ap-ic {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #2563eb;
+  padding: 8rpx 18rpx;
+  border-radius: 10rpx;
+  background: #e8eefb;
+}
+
 .ap-footer {
   text-align: center;
   font-size: 22rpx;
@@ -364,48 +344,478 @@
   padding: 8rpx 0 24rpx;
 }
 
-.ap-detail-popup {
-  max-height: 78vh;
+/* ══════════════════════════════════════════
+   详情 / 房间授权 底部 sheet（结构照 animalOrder .sheet 家族）
+   ══════════════════════════════════════════ */
+.ap-sheet {
+  display: flex;
+  flex-direction: column;
+  /* 用确定高度而不是 max-height：只有 max-height 时容器高度由内容撑，
+     滚动区跟着长到内容那么高，既滚不动、又会画到页脚外面盖住按钮 */
+  height: 88vh;
 }
 
-.ap-detail-title {
-  padding: 28rpx 88rpx 16rpx 32rpx;
+.ap-sheet-head {
+  flex-shrink: 0;
+  padding: 24rpx 72rpx 16rpx 24rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.ap-head-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 0;
+}
+
+.ap-sheet-title {
   font-size: 32rpx;
-  font-weight: 600;
-  color: #0f172a;
-  border-bottom: 1rpx solid #f1f5f9;
+  font-weight: 700;
+  color: #1f2937;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.ap-detail-scroll {
-  max-height: 58vh;
-  padding: 20rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
+.ap-sheet-sub {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-sheet-scroll {
+  /* 抽屉是确定高度（见 .ap-sheet），这里 flex 分到的就是确切高度，
+     scroll-view 才会自己裁剪+滚动。别再叠 max-height，累加超上限又会漏出来。 */
+  flex: 1;
+  min-height: 0;
+  padding: 14rpx 20rpx;
+  box-sizing: border-box;
+  background: #f6f7fb;
+}
+
+/* 无分区的 sheet（房间授权 / 删除确认）保持白底，用不到浅底白卡那套层次 */
+.ap-sheet-scroll--plain {
+  background: #fff;
+  padding: 16rpx 24rpx;
+}
+
+.ap-sheet-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16rpx;
+  padding: 14rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1rpx solid #eef0f4;
+}
+
+/* ── 详情分区：白卡 + 顶栏式标题，顶栏带左侧色条与下分隔线 ── */
+.ap-sec {
+  background: #fff;
+  border-radius: 14rpx;
+  padding: 0 18rpx 6rpx;
+  margin-bottom: 14rpx;
+}
+
+.ap-sec-title {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  /* 不能用 space-between：::before 也是 flex 项，而标题文字是「匿名 flex 项」，
+     没法给它 flex:1，space-between 会把标题甩到右边去。改成默认左对齐 + 右侧 hint 自动顶开 */
+  justify-content: flex-start;
+  margin: 0 -18rpx;
+  padding: 16rpx 18rpx 14rpx;
+  border-bottom: 1rpx solid #f1f3f7;
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ap-sec-title::before {
+  content: '';
+  flex-shrink: 0;
+  width: 6rpx;
+  height: 24rpx;
+  border-radius: 999rpx;
+  background: #2563eb;
+  margin-right: -4rpx;
+}
+
+.ap-sec-hint {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 20rpx;
+  font-weight: 400;
+  color: #a3adbb;
+}
+
+/* 双列字段网格：标签在上灰字、值在下深字（照订购页口径） */
+.ap-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20rpx;
+}
+
+.ap-field {
+  padding: 10rpx 0;
+  min-width: 0;
+}
+
+.ap-field-k {
+  display: block;
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+
+.ap-field-v {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.ap-field-v--muted {
+  color: #a3adbb;
+}
+
+/* 可点改的字段：虚线下划线（不是描边按钮） */
+.ap-field-tap {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #2563eb;
+  border-bottom: 1rpx dashed #cdd7e5;
+  word-break: break-all;
+}
+
+/* ── 账号区：教职工 / 学生左右并排，卡内单列紧凑 ── */
+.ap-acct-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  padding: 12rpx 0 4rpx;
+}
+
+.ap-acct {
+  position: relative;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+  padding: 10rpx 12rpx 10rpx 16rpx;
+  min-width: 0;
+}
+
+.ap-acct::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10rpx;
+  bottom: 10rpx;
+  width: 5rpx;
+  border-radius: 999rpx;
+  background: #2563eb;
+}
+
+.ap-acct--student::before {
+  background: #b45309;
+}
+
+.ap-acct-title {
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 4rpx;
+}
+
+/* 卡内「标签 + 值」同一行：标签固定宽，值吃剩余宽度、超长省略 */
+.ap-kv {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+  margin-top: 8rpx;
+  min-width: 0;
+}
+
+.ap-kv-k {
+  flex-shrink: 0;
+  font-size: 18rpx;
+  color: #94a3b8;
+}
+
+.ap-kv-v {
+  flex: 1;
+  min-width: 0;
+  font-size: 21rpx;
+  line-height: 1.35;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 密码单独成行且允许折行：点「查看」后要能读到完整明文，不能被省略号截掉 */
+.ap-kv--stack {
+  display: block;
+}
+
+.ap-kv--stack .ap-kv-v {
+  display: block;
+  margin-top: 2rpx;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: break-all;
+}
+
+.ap-pwd-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  margin-top: 2rpx;
+  min-width: 0;
+}
+
+.ap-pwd-line .ap-ic {
+  flex-shrink: 0;
+  padding: 4rpx 12rpx;
+  font-size: 20rpx;
+  color: #2563eb;
+  background: #e8eefb;
+}
+
+.ap-acct-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 10rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid #e8ebf1;
+}
+
+/* 账号区动作：短文案 + 上色（不铺灰），PIN 单独用琥珀区分它是扫码凭证 */
+.ap-acct-acts .ap-btn {
+  height: 44rpx;
+  padding: 0 12rpx;
+  font-size: 20rpx;
+  color: #2563eb;
+  background: #e8eefb;
+}
+
+.ap-acct-acts .ap-btn--warn {
+  color: #b45309;
+  background: #fdf0e3;
+}
+
+/* ── 通用小按钮：统一次级蓝（原先铺灰，页内所有动作按钮都太闷） ── */
+.ap-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 56rpx;
+  padding: 0 22rpx;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: #2563eb;
+  background: #e8eefb;
+}
+
+.ap-foot-btn {
+  padding: 16rpx 32rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+.ap-foot-btn--pri {
+  color: #fff;
+  background: #2563eb;
+}
+
+/* ── 标签 ── */
+/* 详情里只读展示本人已有的身份标签，改在弹窗里勾 */
+.ap-id-show {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.ap-id-none {
+  font-size: 24rpx;
+  color: #a3adbb;
+}
+
+/* ── 身份标识勾选弹窗 ── */
+.ap-id-shell {
+  width: 84vw !important;
+  max-width: 600rpx !important;
+  padding: 28rpx 28rpx 24rpx !important;
   box-sizing: border-box;
 }
 
-.ap-detail-line {
-  margin-bottom: 24rpx;
+.ap-id-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2937;
+  text-align: center;
 }
 
-.ap-detail-k {
+.ap-id-sub {
   display: block;
-  font-size: 22rpx;
+  margin: 8rpx 0 16rpx;
+  font-size: 20rpx;
   color: #94a3b8;
-  margin-bottom: 6rpx;
+  text-align: center;
 }
 
-.ap-detail-v {
-  display: block;
+.ap-id-scroll {
+  /* 给滚动区一个高度上限，组件自己的滚动才生效 */
+  max-height: 600rpx;
+}
+
+.ap-id-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 18rpx 6rpx;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.ap-id-row:last-child {
+  border-bottom: none;
+}
+
+.ap-id-label {
   font-size: 26rpx;
   color: #334155;
-  word-break: break-all;
-  white-space: pre-wrap;
-  line-height: 1.5;
 }
 
-/* 居中弹窗外壳（新建账号、修改昵称等共用） */
+.ap-ck {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #f1f3f7;
+  color: transparent;
+  font-size: 22rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.ap-ck--on {
+  background: #2563eb;
+  color: #fff;
+}
+
+.ap-tag {
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  background: #f1f3f7;
+  color: #334155;
+}
+
+/* ── 签名 ── */
+.ap-sig-img {
+  display: block;
+  width: 100%;
+  margin-top: 10rpx;
+  border-radius: 10rpx;
+  background: #fff;
+}
+
+.ap-sig-meta {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: #a3adbb;
+}
+
+/* ── 危险操作 ── */
+.ap-danger-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 6rpx;
+}
+
+.ap-danger-note {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 20rpx;
+  line-height: 1.5;
+  color: #a3adbb;
+}
+
+/* ── 房间授权 ── */
+.ap-room-region {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 16rpx 0 4rpx;
+}
+
+.ap-room-floor {
+  font-size: 20rpx;
+  color: #94a3b8;
+  margin: 10rpx 0 4rpx;
+}
+
+.ap-room-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 14rpx 8rpx;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.ap-room-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 勾选框：自绘，选中实心蓝 */
+.ap-check {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #f1f3f7;
+  color: transparent;
+  font-size: 22rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.ap-check--on {
+  background: #2563eb;
+  color: #fff;
+}
+
+/* ══════════════════════════════════════════
+   居中弹窗外壳（新建账号 / 单字段编辑 / 通知绑定）
+   ══════════════════════════════════════════ */
 .ap-modal-shell {
   width: 86vw !important;
-  max-width: 600rpx !important;
+  max-width: 620rpx !important;
   padding: 28rpx 28rpx 24rpx !important;
   box-sizing: border-box;
 }
@@ -413,22 +823,17 @@
 .ap-modal-title {
   font-size: 30rpx;
   font-weight: 600;
-  color: #0f172a;
+  color: #1f2937;
   text-align: center;
   margin-bottom: 10rpx;
 }
 
 .ap-modal-hint {
   font-size: 22rpx;
-  color: #64748b;
-  line-height: 1.45;
+  color: #94a3b8;
+  line-height: 1.5;
   text-align: center;
   margin-bottom: 24rpx;
-  padding: 0 8rpx;
-}
-
-.ap-modal-body {
-  margin-bottom: 4rpx;
 }
 
 .ap-modal-field {
@@ -445,7 +850,7 @@
 .ap-modal-label {
   display: block;
   font-size: 22rpx;
-  color: #64748b;
+  color: #94a3b8;
   margin-bottom: 8rpx;
 }
 
@@ -461,9 +866,8 @@
   padding: 0 20rpx;
   box-sizing: border-box;
   font-size: 26rpx;
-  color: #0f172a;
-  background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
+  color: #1f2937;
+  background: #f6f7fb;
   border-radius: 12rpx;
 }
 
@@ -481,8 +885,7 @@
   height: 72rpx;
   padding: 0 20rpx;
   box-sizing: border-box;
-  background: #f8fafc;
-  border: 1rpx solid #e2e8f0;
+  background: #f6f7fb;
   border-radius: 12rpx;
 }
 
@@ -499,181 +902,201 @@
 .ap-modal-footer {
   display: flex;
   flex-direction: row;
-  justify-content: center;
-  align-items: center;
   gap: 24rpx;
   margin-top: 8rpx;
   padding-top: 20rpx;
-  border-top: 1rpx solid #f1f5f9;
+  border-top: 1rpx solid #f1f3f7;
 }
 
 .ap-modal-btn {
   flex: 1;
-  max-width: 260rpx;
   height: 72rpx;
   line-height: 72rpx;
   text-align: center;
   font-size: 26rpx;
   font-weight: 500;
   border-radius: 12rpx;
-  box-sizing: border-box;
+  color: #334155;
+  background: #f1f3f7;
 }
 
 .ap-modal-btn--primary {
   color: #fff;
-  background: linear-gradient(135deg, #4f46e5, #4338ca);
-  border: 1rpx solid #3730a3;
-}
-
-.ap-modal-btn--ghost {
-  color: #334155;
-  background: #fff;
-  border: 1rpx solid #e2e8f0;
+  background: #2563eb;
 }
 
 .ap-modal-btn--disabled {
-  opacity: 0.55;
-  pointer-events: none;
+  color: #a3adbb;
+  background: #e9ecf1;
+}
+
+/* ══════════════════════════════════════════
+   搜索式选择弹窗（筛选 / 部门 / 课题组 / 并入档案 共用）
+   ══════════════════════════════════════════ */
+.ap-pick-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 16rpx;
+}
+
+.ap-pick-search {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.ap-pick-input {
+  flex: 1;
+  min-width: 0;
+  height: 68rpx;
+  padding: 0 20rpx;
+  box-sizing: border-box;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+
+.ap-pick-ph {
+  color: #a3adbb;
+}
+
+.ap-pick-clear {
+  flex-shrink: 0;
+  height: 68rpx;
+  line-height: 68rpx;
+  padding: 0 22rpx;
+  border-radius: 10rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 24rpx;
+}
+
+.ap-pick-list {
+  max-height: 620rpx;
+}
+
+.ap-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 20rpx 18rpx;
+  margin-bottom: 12rpx;
+  border-radius: 12rpx;
+  background: #f6f7fb;
+}
+
+.ap-pick-row--on {
+  background: #e8eefb;
+}
+
+.ap-pick-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ap-pick-text {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-pick-sub {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-pick-check {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  color: #2563eb;
+}
+
+.ap-pick-hint {
+  padding: 48rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #a3adbb;
+}
+
+/* ── 弹层外壳补齐 ── */
+.ap-filter-popup {
+  padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
 }
 
 .ap-sheet-popup {
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-.ap-sheet-head {
-  padding: 28rpx 32rpx 12rpx;
-  font-size: 32rpx;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.ap-sheet-head--danger {
-  color: #b91c1c;
-}
-
-.ap-sheet-hint {
-  padding: 0 32rpx 16rpx;
-  font-size: 24rpx;
-  color: #64748b;
-  line-height: 1.45;
-}
-
-.ap-form-row {
+.ap-sheet-group {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16rpx;
-  padding: 12rpx 32rpx 8rpx;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.ap-sheet-label {
+  font-size: 26rpx;
+  color: #334155;
+}
+
+.ap-sheet-picker {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  font-size: 26rpx;
+  color: #2563eb;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ap-sheet-actions {
   display: flex;
-  flex-direction: column;
   gap: 16rpx;
-  padding: 16rpx 32rpx 8rpx;
+  margin-top: 28rpx;
 }
 
-/* 已绑定账号/通知状态徽章 */
-.ap-bind-chip {
-  flex-shrink: 0;
-  font-size: 20rpx;
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  font-weight: 500;
-  border: 1rpx solid #a7f3d0;
-  color: #047857;
-  background: #ecfdf5;
-}
-
-.ap-bind-chip--on {
-  color: #047857;
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-}
-
-/* 可点击链接文字 */
-.ap-link {
-  font-size: 24rpx;
-  color: #4f46e5;
-  text-decoration: underline;
-  text-underline-offset: 4rpx;
-}
-
-/* PIN 已设置文字 */
-.ap-pin-on {
-  font-size: 24rpx;
-  color: #047857;
-  font-weight: 500;
-}
-
-/* 操作按钮 - 警告/琥珀色 */
-.ap-ic--warn {
-  color: #b45309;
-  border-color: #fde68a;
-  background: #fffbeb;
-}
-
-/* ── 统一模型：徽章/分区/筛选 ── */
-.ap-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.ap-badge { font-size: 10px; padding: 2px 8px; border-radius: 999px; }
-.ap-badge--sys { background: #eff6ff; color: #1d4ed8; }
-.ap-badge--nosys { background: #fffbeb; color: #b45309; }
-.ap-sub-line { font-size: 10px; color: #94a3b8; margin-top: 3px; }
-.ap-sub-line--rooms { color: #6366f1; }
-.ap-card-actions { display: flex; gap: 14px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; flex-wrap: wrap; }
-.ap-filter-active { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748b; margin-top: 8px; flex-wrap: wrap; }
-.ap-filter-chip { background: #eef2ff; color: #4338ca; border-radius: 6px; padding: 2px 8px; }
-.ap-filter-clear { color: #4f46e5; text-decoration: underline; }
-.ap-filter-popup { padding: 20px 24px; }
-.ap-sheet-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
-.ap-sheet-group { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
-.ap-sheet-label { font-size: 13px; color: #475569; }
-.ap-sheet-picker { font-size: 13px; color: #1d4ed8; display: flex; align-items: center; gap: 6px; }
-.ap-sheet-actions { display: flex; flex-direction: row; gap: 12px; margin-top: 16px; }
-.ap-sheet-actions van-button { flex: 1; }
-
-/* ---- 筛选项选择弹窗（课题组/房间都是长列表，原生 picker 滚不动）---- */
-.ap-pick-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1f2937; }
-.ap-pick-search { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.ap-pick-input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid #ebedf0;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #323233;
-  background: #f7f8fa;
-}
-.ap-pick-ph { color: #c8c9cc; }
-.ap-pick-clear {
-  flex-shrink: 0;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: #f1f5f9;
-  color: #475569;
-  font-size: 13px;
-}
-.ap-pick-list { max-height: 420rpx; }
-.ap-pick-row {
+/* ── 通用「标签 + 右侧动作」行（通知绑定、操作、房间授权共用） ── */
+.ap-line-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  border: 1px solid #ebedf0;
-  border-radius: 8px;
-  background: #fff;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #f1f3f7;
 }
-.ap-pick-row--on { border-color: #e11d48; background: #fff1f2; }
-.ap-pick-text {
+
+.ap-line-row:last-child {
+  border-bottom: none;
+}
+
+.ap-line-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-  color: #323233;
+  font-size: 24rpx;
+  color: #334155;
+  word-break: break-all;
 }
-.ap-pick-check { flex-shrink: 0; font-size: 13px; color: #e11d48; }
-.ap-pick-hint { padding: 24px 0; text-align: center; font-size: 13px; color: #94a3b8; }
+
+/* 危险动作：淡红实底（区别于主操作的蓝，也不是描边） */
+.ap-btn--danger {
+  color: #b91c1c;
+  background: #fbe9e9;
+}
+

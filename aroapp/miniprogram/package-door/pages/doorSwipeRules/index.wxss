@@ -1,0 +1,443 @@
+/* 门禁成功刷卡规则
+   令牌与 animalOrder / adminPersonnel 同一套：
+   页面底 #eef0f6 / 白卡 / 分隔线 #eef0f4 / 浅底 #f6f7fb / 次级底 #f1f3f7
+   单一主色 #2563eb；按钮一律实底，禁渐变、禁半透明、禁描边 */
+
+page {
+  background: #eef0f6;
+}
+
+.ds-root {
+  min-height: 100vh;
+  padding: 20rpx 24rpx;
+  box-sizing: border-box;
+}
+
+/* ── 四个 tab ── */
+.ds-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  padding: 6rpx;
+  background: #fff;
+  border-radius: 999rpx;
+  margin-bottom: 16rpx;
+}
+
+.ds-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 12rpx 4rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #64748b;
+  border-radius: 999rpx;
+  white-space: nowrap;
+}
+
+.ds-tab--on {
+  color: #fff;
+  font-weight: 600;
+  background: #2563eb;
+}
+
+/* ── 卡片与标题 ── */
+.ds-card {
+  background: #fff;
+  border-radius: 14rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+}
+
+.ds-card-title {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 10rpx;
+}
+
+.ds-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 10rpx;
+}
+
+.ds-hint {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #a3adbb;
+}
+
+/* ── 字段 ── */
+.ds-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 20rpx;
+}
+
+.ds-field {
+  padding: 10rpx 0;
+  min-width: 0;
+}
+
+.ds-field--wide {
+  grid-column: 1 / -1;
+}
+
+.ds-field-k {
+  display: block;
+  font-size: 20rpx;
+  color: #94a3b8;
+  margin-bottom: 6rpx;
+}
+
+.ds-field-v {
+  display: block;
+  font-size: 24rpx;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.ds-input {
+  width: 100%;
+  height: 64rpx;
+  padding: 0 18rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  color: #1f2937;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+}
+
+.ds-textarea {
+  width: 100%;
+  min-height: 120rpx;
+  padding: 14rpx 18rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #1f2937;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+}
+
+.ds-ph {
+  color: #a3adbb;
+}
+
+.ds-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
+  width: 100%;
+  height: 64rpx;
+  padding: 0 18rpx;
+  box-sizing: border-box;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  color: #334155;
+}
+
+.ds-chev {
+  flex-shrink: 0;
+  font-size: 18rpx;
+  color: #a3adbb;
+}
+
+/* ── 按钮（一律实底） ── */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 60rpx;
+  padding: 0 22rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+.ds-btn--pri {
+  color: #fff;
+  background: #2563eb;
+}
+
+.ds-btn--danger {
+  color: #b91c1c;
+  background: #fbe9e9;
+}
+
+.ds-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+/* ── 「标签 + 右侧」行 ── */
+.ds-line-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.ds-line-row:last-child {
+  border-bottom: none;
+}
+
+.ds-line-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-line-name {
+  display: block;
+  font-size: 24rpx;
+  color: #334155;
+  word-break: break-all;
+}
+
+.ds-line-sub {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #a3adbb;
+  word-break: break-all;
+}
+
+/* ── 列表项 ── */
+.ds-item {
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f1f3f7;
+}
+
+.ds-item:last-child {
+  border-bottom: none;
+}
+
+.ds-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  margin-bottom: 6rpx;
+}
+
+.ds-item-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+.ds-item-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 14rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx solid #f1f3f7;
+}
+
+.ds-item-detail {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  line-height: 1.5;
+  color: #94a3b8;
+  word-break: break-all;
+}
+
+/* ── 状态胶囊：圆点 + 中性底，不铺饱和色 ── */
+.ds-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 500;
+  background: #f1f3f7;
+  color: #334155;
+}
+
+.ds-chip::before {
+  content: '';
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 999rpx;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.ds-chip--on::before {
+  background: #15803d;
+}
+
+.ds-chip--off::before {
+  background: #dc2626;
+}
+
+/* 开门类型标记：纯标签，不带状态色 */
+.ds-tag {
+  flex-shrink: 0;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+.ds-check {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 8rpx;
+  background: #f1f3f7;
+  color: transparent;
+  font-size: 22rpx;
+  line-height: 36rpx;
+  text-align: center;
+}
+
+.ds-check--on {
+  background: #2563eb;
+  color: #fff;
+}
+
+.ds-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #a3adbb;
+}
+
+.ds-more {
+  padding: 20rpx 0 4rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #a3adbb;
+}
+
+/* ── 底部 sheet（规则表单 / 通道多选） ── */
+.ds-sheet-popup {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.ds-sheet {
+  display: flex;
+  flex-direction: column;
+  /* 用确定高度而不是 max-height：只有 max-height 时容器高度由内容撑，
+     滚动区跟着长到内容那么高，既滚不动、又会画到页脚外面盖住按钮 */
+  height: 88vh;
+}
+
+/* 抽屉顶栏：动作收在两端，标题居中（比底部压一排大按钮省地方） */
+.ds-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 26rpx 28rpx 10rpx;
+}
+
+.ds-bar-act {
+  flex-shrink: 0;
+  font-size: 28rpx;
+  color: #334155;
+}
+
+.ds-bar-act--pri {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.ds-bar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ds-bar-sub {
+  flex-shrink: 0;
+  display: block;
+  text-align: center;
+  font-size: 20rpx;
+  color: #94a3b8;
+  padding-bottom: 14rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.ds-sheet-head {
+  flex-shrink: 0;
+  padding: 26rpx 72rpx 16rpx 28rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+
+.ds-sheet-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ds-sheet-scroll {
+  /* 抽屉是确定高度（见 .ds-sheet），这里 flex 分到的就是确切高度，
+     scroll-view 才会自己裁剪+滚动。别再叠 max-height，累加超上限又会漏出来。 */
+  flex: 1;
+  min-height: 0;
+  padding: 16rpx 28rpx;
+  box-sizing: border-box;
+}
+
+.ds-pick-search {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 28rpx;
+}
+
+.ds-sheet-foot {
+  flex-shrink: 0;
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eef0f4;
+  /* 必须是不透明白底：页脚压在滚动区上面，没有底色时滚动内容会从按钮底下透出来 */
+  background: #fff;
+}
+
+.ds-foot-btn {
+  flex: 1;
+  height: 76rpx;
+  line-height: 76rpx;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 500;
+  border-radius: 12rpx;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+.ds-foot-btn--pri {
+  color: #fff;
+  background: #2563eb;
+}

@@ -16,7 +16,7 @@ const {
   flattenTemplateFields, buildFormTree, buildEditableFormRows,
   isRowDirty, refreshDirty, validateGroups,
   changedValues, revertGroups,
-} = require(join(here, '..', 'aroapp', 'miniprogram', 'utils', 'cageForm.js'));
+} = require(join(here, '..', 'aroapp', 'miniprogram', 'package-student', 'utils', 'cageForm.js'));
 
 let passed = 0;
 const it = (name, fn) => {

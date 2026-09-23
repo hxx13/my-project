@@ -1687,6 +1687,84 @@ export async function localAnnotate(animalCageId: number | string, experimentDes
   if (!res.data?.success) throw new Error(res.data?.message || "保存标注失败");
 }
 
+// ── 实验记录台账（追加式：一条记录一个时间戳，提交后不可编辑不可删除）─
+
+export type CageExperimentRecordStatus = "DRAFT" | "SUBMITTED" | "ARCHIVED";
+
+export interface CageExperimentRecordRow {
+  id: number;
+  animalCageId: number | string;
+  authorId: string;
+  authorName: string;
+  content: string | null;
+  imagesJson: string | null;
+  status: CageExperimentRecordStatus;
+  submittedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string | null;
+}
+
+export interface CageExperimentRecordState {
+  /** 能否查看台账；false 时 records 为空、draft 为 null（脱敏在服务端做完） */
+  canView: boolean;
+  /** 能否写（仅实验员本人）；false 时没有草稿也不出编辑入口 */
+  canWrite: boolean;
+  records: CageExperimentRecordRow[];
+  /** 本人的当前草稿（同人同笼位最多一条） */
+  draft: CageExperimentRecordRow | null;
+}
+
+const EMPTY_RECORD_STATE: CageExperimentRecordState = { canView: false, canWrite: false, records: [], draft: null };
+
+export async function fetchCageExperimentRecords(animalCageId: number | string): Promise<CageExperimentRecordState> {
+  const res = await authHttp.get<Result<CageExperimentRecordState>>(`/local/experiment-record/${animalCageId}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "加载实验记录失败");
+  return res.data.data ?? EMPTY_RECORD_STATE;
+}
+
+/** action=draft 存草稿（有则覆盖）；action=submit 提交成一条新记录。返回刷新后的台账状态。 */
+export async function saveCageExperimentRecord(
+  animalCageId: number | string,
+  action: "draft" | "submit",
+  content: string,
+  imagesJson: string,
+): Promise<CageExperimentRecordState> {
+  const res = await authHttp.post<Result<CageExperimentRecordState>>("/local/experiment-record", {
+    animalCageId,
+    action,
+    content,
+    imagesJson,
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存实验记录失败");
+  return res.data.data ?? EMPTY_RECORD_STATE;
+}
+
+/** 「我的实验记录」：按房间分组，含已失去权限/已归档的历史笼位 */
+export interface MyExperimentRecordCage {
+  animalCageId: number | string;
+  shelveName: string;
+  positionX: number | null;
+  positionY: number | null;
+  /** 该笼位的记录全部已归档 = 我已失去这个笼位（转让/归档） */
+  archived: boolean;
+  records: CageExperimentRecordRow[];
+}
+
+export interface MyExperimentRecordRoom {
+  roomId: string;
+  roomName: string;
+  campusName: string;
+  areaName: string;
+  floorName: string;
+  cages: MyExperimentRecordCage[];
+}
+
+export async function fetchMyExperimentRecords(): Promise<MyExperimentRecordRoom[]> {
+  const res = await authHttp.get<Result<MyExperimentRecordRoom[]>>("/local/experiment-record/mine");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载我的实验记录失败");
+  return res.data.data ?? [];
+}
+
 // ═══════════════════════════════════════════
 // 笼位申请系统 (/api/student/cage-claims + /api/admin/cage-claims)
 // ═══════════════════════════════════════════

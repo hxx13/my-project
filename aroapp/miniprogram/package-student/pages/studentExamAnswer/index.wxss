@@ -1,0 +1,170 @@
+/* 作答页：题干 + 选项行（圆点选中态），底部固定提交条 */
+.page {
+  padding: 16px 14px 96px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #eef5ff 0%, #f7f8fa 120px);
+}
+.muted {
+  font-size: 13px;
+  color: #969799;
+  text-align: center;
+  padding: 24px 0;
+}
+
+/* ---- 已合格：不展示题目 ---- */
+.blocked {
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.blocked-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #323233;
+}
+.blocked-sub {
+  margin-top: 10rpx;
+  font-size: 13px;
+  color: #969799;
+}
+
+/* ---- 卷头 ---- */
+.paper-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #323233;
+  margin-bottom: 12px;
+}
+.unsupported-tip {
+  padding: 14rpx 20rpx;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: rgba(217, 119, 6, 0.08);
+  color: #d97706;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ---- 大题 ---- */
+.sec {
+  margin-bottom: 8px;
+}
+.sec-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2563eb;
+  margin: 8px 0 10px;
+  padding-left: 12rpx;
+  border-left: 6rpx solid #2563eb;
+}
+
+/* ---- 题目卡片 ---- */
+.q-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(235, 238, 239, 0.9);
+  box-shadow: 0 4px 18px rgba(31, 56, 88, 0.07);
+}
+.q-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+.q-index {
+  flex-shrink: 0;
+  min-width: 40rpx;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2563eb;
+}
+.q-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #323233;
+}
+.q-badge {
+  flex-shrink: 0;
+  margin-left: 10rpx;
+  padding: 2rpx 12rpx;
+  border-radius: 999px;
+  font-size: 20rpx;
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px solid rgba(217, 119, 6, 0.22);
+}
+
+/* ---- 选项：未选无框（避免整宽空盒子），选中给主色淡底 + 描边 ---- */
+.opt-list {
+  margin-top: 10rpx;
+}
+.opt-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 12rpx 14rpx;
+  margin-bottom: 2rpx;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+.opt-on {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+.opt-dot {
+  flex-shrink: 0;
+  width: 34rpx;
+  height: 34rpx;
+  margin-right: 14rpx;
+  margin-top: 4rpx;
+  border-radius: 50%;
+  border: 2rpx solid #c8c9cc;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.opt-dot-on {
+  border-color: #2563eb;
+  background: #2563eb;
+}
+.opt-tick {
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 1;
+}
+.opt-label {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #323233;
+}
+
+/* ---- 底部提交条 ---- */
+.bottombar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14rpx 28rpx calc(14rpx + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.98);
+  border-top: 1px solid #ebedf0;
+  box-shadow: 0 -4px 18px rgba(31, 56, 88, 0.06);
+}
+.bar-count {
+  font-size: 13px;
+  color: #646566;
+}
+/* 提交按钮走 app.wxss 的 .chip-btn（实底、圆角矩形），这里只管尺寸 */
+.enroll-btn {
+  min-width: 180rpx;
+}

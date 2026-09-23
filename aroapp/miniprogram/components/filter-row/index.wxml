@@ -1,0 +1,12 @@
+<view class="fr">
+  <text class="fr-label">{{ label }}</text>
+  <view class="fr-opts">
+    <view
+      wx:for="{{ options }}"
+      wx:key="value"
+      class="fr-opt {{ value === item.value ? 'fr-opt--on' : '' }}"
+      data-v="{{ item.value }}"
+      bindtap="onPick"
+    >{{ item.label }}</view>
+  </view>
+</view>

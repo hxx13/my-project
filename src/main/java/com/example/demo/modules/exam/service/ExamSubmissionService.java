@@ -102,6 +102,13 @@ public class ExamSubmissionService {
         return submissionMapper.listAll();
     }
 
+    /** 重置某人的全部答题：清空所有试卷的分数/合格标记，学生端回到「未作答」。返回删除条数。 */
+    @Transactional
+    public int revokeAllByPerson(String personId) {
+        if (personId == null || personId.isBlank()) return 0;
+        return submissionMapper.deleteByPersonId(personId);
+    }
+
     /** 单份答卷详情（含 answers/score json） */
     public ExamSubmission get(Long id) {
         ExamSubmission s = submissionMapper.findById(id);

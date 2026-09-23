@@ -68,6 +68,7 @@ public class TrainingService {
     private final UserDisplayNameService displayNameService;
     private final PersonKeyResolver personKeyResolver;
     private final ObjectMapper objectMapper;
+    private final TrainingCertificateService certificateService;
 
     public TrainingService(TrainingMapper trainingMapper,
                            TrainingOccurrenceMapper occurrenceMapper,
@@ -81,7 +82,8 @@ public class TrainingService {
                            PersonQualificationMapper qualificationMapper,
                            UserDisplayNameService displayNameService,
                            PersonKeyResolver personKeyResolver,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           TrainingCertificateService certificateService) {
         this.trainingMapper = trainingMapper;
         this.occurrenceMapper = occurrenceMapper;
         this.enrollmentMapper = enrollmentMapper;
@@ -95,6 +97,7 @@ public class TrainingService {
         this.displayNameService = displayNameService;
         this.personKeyResolver = personKeyResolver;
         this.objectMapper = objectMapper;
+        this.certificateService = certificateService;
     }
 
     // ========================================================================
@@ -147,6 +150,7 @@ public class TrainingService {
         t.setRecurrenceTime(str(body.get("recurrenceTime")));
         t.setRecurrenceStart(parseDate(body.get("recurrenceStart")));
         t.setRecurrenceEnd(parseDate(body.get("recurrenceEnd")));
+        t.setCampus(str(body.get("campus")));
         t.setStatus("DRAFT");
         t.setCreatedBy(operatorId);
         trainingMapper.insert(t);
@@ -168,8 +172,28 @@ public class TrainingService {
         if (body.containsKey("recurrenceTime")) t.setRecurrenceTime(str(body.get("recurrenceTime")));
         if (body.containsKey("recurrenceStart")) t.setRecurrenceStart(parseDate(body.get("recurrenceStart")));
         if (body.containsKey("recurrenceEnd")) t.setRecurrenceEnd(parseDate(body.get("recurrenceEnd")));
+        if (body.containsKey("campus")) t.setCampus(str(body.get("campus")));
         trainingMapper.update(t);
         return get(id);
+    }
+
+    /**
+     * 学生端培训排序配置（整套保存）：{@code items = [{id, campus, sortOrder}]}。
+     * 逐条覆盖 campus + student_sort，不动其它字段，避免与编辑页互相覆盖。
+     */
+    @Transactional
+    public int updateStudentOrder(List<Map<String, Object>> items, User user) {
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.SUPER_ADMIN.getLevel()) {
+            throw TwinBusinessException.of(403, "仅超级管理员可配置学生端培训排序");
+        }
+        int n = 0;
+        for (Map<String, Object> it : items) {
+            Long id = parseLong(it.get("id"));
+            if (id == null) continue;
+            Integer sort = toInt(it.get("sortOrder"));
+            n += trainingMapper.updateStudentOrder(id, str(it.get("campus")), sort == null ? 0 : sort);
+        }
+        return n;
     }
 
     @Transactional
@@ -399,9 +423,9 @@ public class TrainingService {
         return out;
     }
 
-    /** 待审核/待评分学员（仅当前用户作为所属人的培训，含培训/场次信息） */
+    /** 待审核/待评分学员：我是所属人的 + 我收藏（订阅）过的培训，收藏的置顶 */
     public List<Map<String, Object>> listPending(String userId) {
-        return enrollmentMapper.listPendingByOwner(userId);
+        return enrollmentMapper.listPendingForUser(userId);
     }
 
     // ========================================================================
@@ -455,14 +479,19 @@ public class TrainingService {
     public int audit(Long enrollmentId, int state, User user) {
         requireEnrollment(enrollmentId);
         checkOwner(user, trainingOfEnrollment(enrollmentId));
-        return enrollmentMapper.updateTestYn(enrollmentId, state);
+        int rows = enrollmentMapper.updateTestYn(enrollmentId, state);
+        // 审批 + 评分双通过即发证（不满足条件时内部安静返回）
+        certificateService.issueForEnrollment(enrollmentId);
+        return rows;
     }
 
     @Transactional
     public int score(Long enrollmentId, int state, User user) {
         requireEnrollment(enrollmentId);
         checkOwner(user, trainingOfEnrollment(enrollmentId));
-        return enrollmentMapper.updateTestFraction(enrollmentId, state);
+        int rows = enrollmentMapper.updateTestFraction(enrollmentId, state);
+        certificateService.issueForEnrollment(enrollmentId);
+        return rows;
     }
 
     @Transactional
@@ -530,12 +559,36 @@ public class TrainingService {
                 oj.put("enrolled", mine != null);
                 oj.put("enrollmentId", mine != null ? mine.getId() : null);
                 oj.put("testYn", mine != null ? mine.getTestYn() : null);
+                oj.put("testFraction", mine != null ? mine.getTestFraction() : null);
                 occs.add(oj);
             }
             m.put("occurrences", occs);
             out.add(m);
         }
+        // 学生端口径：先按校区分组（未分组排最后），组内按管理员配置的序号升序
+        out.sort((a, b) -> {
+            String ca = str(a.get("campus"));
+            String cb = str(b.get("campus"));
+            int c = Integer.compare(campusRank(ca), campusRank(cb));
+            if (c != 0) return c;
+            if (campusRank(ca) == 0) {
+                int cn = ca.compareTo(cb);
+                if (cn != 0) return cn;
+            }
+            int s = Integer.compare(sortOf(a.get("studentSort")), sortOf(b.get("studentSort")));
+            if (s != 0) return s;
+            return Long.compare(((Number) a.get("id")).longValue(), ((Number) b.get("id")).longValue());
+        });
         return out;
+    }
+
+    /** 未分组（空）排在有校区的后面。 */
+    private static int campusRank(String campus) {
+        return campus == null || campus.isBlank() ? 1 : 0;
+    }
+
+    private static int sortOf(Object v) {
+        return v instanceof Number n ? n.intValue() : 0;
     }
 
     /** 报名资格：门槛试卷全部合格（exam_submission）+ 健康报告（占位，仅不合格时阻断） */
@@ -581,7 +634,9 @@ public class TrainingService {
         TrainingEnrollment e = new TrainingEnrollment();
         e.setOccurrenceId(occurrenceId);
         e.setTraineeId(personId);
-        e.setName(p != null ? p.getName() : personId);
+        // 姓名走统一人员表解析：拿 sys_user/STAFF_ id 直接查 aro_personnel 常常查不到，
+        // 旧写法会退化成把原始 id 当姓名存下来（管理端学员表里那串 STAFF_xxx 就是这么来的）
+        e.setName(displayNameService.resolveDisplayName(personId));
         e.setJobNumber(p != null ? p.getJobNumber() : null);
         e.setProjectGroup(p != null ? p.getResolvedProjectGroupNames() : null);
         e.setTestYn(0);
@@ -609,12 +664,15 @@ public class TrainingService {
         return out;
     }
 
-    /** 取消报名（仅本人、未审核通过前） */
+    /** 取消报名（仅本人；审批与评分双通过后锁定） */
     @Transactional
     public int cancelEnrollment(Long enrollmentId, String personId) {
         TrainingEnrollment e = requireEnrollment(enrollmentId);
         if (!personId.equals(e.getTraineeId())) throw TwinBusinessException.of(403, "只能取消自己的报名");
-        if (e.getTestYn() != null && e.getTestYn() == 1) throw TwinBusinessException.of(409, "已审核通过，无法取消");
+        // 「通过」= 审批 + 评分双通过；只过其中一道不算通过，仍可取消后重新报名
+        boolean fullyPassed = e.getTestYn() != null && e.getTestYn() == 1
+                && e.getTestFraction() != null && e.getTestFraction() == 1;
+        if (fullyPassed) throw TwinBusinessException.of(409, "已通过（审批+评分），无法取消");
         return enrollmentMapper.delete(enrollmentId);
     }
 
@@ -683,6 +741,8 @@ public class TrainingService {
         m.put("recurrenceTime", t.getRecurrenceTime());
         m.put("recurrenceStart", t.getRecurrenceStart());
         m.put("recurrenceEnd", t.getRecurrenceEnd());
+        m.put("campus", t.getCampus());
+        m.put("studentSort", t.getStudentSort());
         m.put("status", t.getStatus());
         m.put("createdBy", t.getCreatedBy());
         m.put("createdAt", t.getCreatedAt());
@@ -755,6 +815,12 @@ public class TrainingService {
 
     private Integer toInt(Object v) {
         return v instanceof Number n ? n.intValue() : null;
+    }
+
+    private static Long parseLong(Object v) {
+        if (v instanceof Number n) return n.longValue();
+        if (v == null) return null;
+        try { return Long.parseLong(String.valueOf(v).trim()); } catch (Exception e) { return null; }
     }
 
     private static LocalDate parseDate(Object v) {

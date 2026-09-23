@@ -22,6 +22,12 @@ application-local.properties
 data/
 uploads/
 *.log
+
+# ===== 打印工位代理（deploy/print-agent.ps1）的运行时产物 =====
+# .secret 是 DPAPI 加密的口令（只对那台机器那个用户可解，进库毫无价值）、
+# .config.ps1 是本机站点/账号/打印机名。两者都由脚本在运行时生成，不该进仓库。
+print-agent.secret
+print-agent.config.ps1
 *.db
 frontend/public/knowledge-images/
 

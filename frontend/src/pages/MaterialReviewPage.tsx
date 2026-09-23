@@ -296,6 +296,24 @@ export default function MaterialReviewPage() {
     [pendingEnrollments],
   );
 
+  /** 培训审批：校区分区筛选（后端已按「订阅置顶 → 校区 → 序号」排好） */
+  const [trainCampus, setTrainCampus] = useState("");
+  const trainCampuses = useMemo(() => {
+    const out: string[] = [];
+    for (const e of pendingEnrollments) {
+      const c = (e.campus ?? "").trim() || "其他";
+      if (!out.includes(c)) out.push(c);
+    }
+    return out;
+  }, [pendingEnrollments]);
+  const visiblePendingEnrollments = useMemo(
+    () =>
+      trainCampus
+        ? pendingEnrollments.filter((e) => ((e.campus ?? "").trim() || "其他") === trainCampus)
+        : pendingEnrollments,
+    [pendingEnrollments, trainCampus],
+  );
+
   const { data: allItems = [] } = useQuery<MaterialItem[]>({
     queryKey: ["material", "admin", "items"],
     queryFn: () => fetchAdminMaterialItems(),
@@ -971,13 +989,36 @@ export default function MaterialReviewPage() {
           )}
         </div>
       ) : tab === "aroTraining" ? (
-        <div className="space-y-4">
+        <div className="space-y-3">
+          {trainCampuses.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {["", ...trainCampuses].map((c) => (
+                <button
+                  key={c || "__all__"}
+                  type="button"
+                  onClick={() => setTrainCampus(c)}
+                  className={`rounded-[var(--admin-radius-md,0.375rem)] border px-3 py-1 text-xs transition-colors ${
+                    trainCampus === c
+                      ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)] font-semibold text-white"
+                      : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)]"
+                  }`}
+                >
+                  {c || "全部"}
+                  <span className="ml-1 tabular-nums opacity-70">
+                    {c
+                      ? pendingEnrollments.filter((e) => ((e.campus ?? "").trim() || "其他") === c).length
+                      : pendingEnrollments.length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {trainingLoading ? <DataSkeleton variant="card" rows={5} /> : null}
-          {pendingEnrollments.length === 0 && !trainingLoading ? (
+          {visiblePendingEnrollments.length === 0 && !trainingLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无待审批培训</p>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {pendingEnrollments.map((e) => (
+              {visiblePendingEnrollments.map((e) => (
                 <PendingEnrollmentCard
                   key={e.enrollmentId}
                   enrollment={e}
@@ -1668,7 +1709,15 @@ function PendingEnrollmentCard({
     <div className="review-card flex flex-col gap-2 p-3" data-tone={tone}>
       {/* 顶行：培训名称 + 场次时间 */}
       <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 truncate text-sm font-semibold text-[var(--app-color-text-primary)]">{enrollment.trainingName || "—"}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          {enrollment.subscribed ? (
+            <span className="shrink-0 rounded bg-[var(--app-color-accent)] px-1.5 py-0.5 text-[10px] font-semibold text-white">已订阅</span>
+          ) : null}
+          {enrollment.campus ? (
+            <span className="shrink-0 rounded border border-[var(--app-color-border-default)] px-1.5 py-0.5 text-[10px] text-[var(--app-color-text-tertiary)]">{enrollment.campus}</span>
+          ) : null}
+          <span className="min-w-0 truncate text-sm font-semibold text-[var(--app-color-text-primary)]">{enrollment.trainingName || "—"}</span>
+        </span>
         <span className="shrink-0 text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{occurrenceLabel}</span>
       </div>
       {enrollment.address ? <div className="text-[11px] text-[var(--app-color-text-tertiary)]">地点：{enrollment.address}</div> : null}

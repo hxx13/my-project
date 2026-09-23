@@ -1,0 +1,37 @@
+<view class="op">
+  <view class="op-trigger {{ disabled ? 'op-trigger--off' : '' }}" hover-class="op-trigger--hover" bindtap="onOpen">
+    <text class="op-value {{ currentLabel ? '' : 'op-value--ph' }}">{{ currentLabel || placeholder }}</text>
+    <text class="op-arrow">▾</text>
+  </view>
+
+  <van-popup
+    show="{{ open }}"
+    position="bottom"
+    round
+    z-index="{{ 1200 }}"
+    custom-class="op-popup"
+    bind:close="onClose"
+  >
+    <view class="op-panel">
+      <view class="op-head">
+        <text class="op-title">{{ title || placeholder }}</text>
+        <text class="op-close" bindtap="onClose">关闭</text>
+      </view>
+      <scroll-view class="op-list" scroll-y enhanced show-scrollbar="{{ false }}">
+        <view
+          wx:for="{{ options }}"
+          wx:key="value"
+          class="op-row {{ item.value === value ? 'op-row--on' : '' }}"
+          data-i="{{ index }}"
+          bindtap="onPick"
+        >
+          <view class="op-row-main">
+            <text class="op-row-label">{{ item.label }}</text>
+            <text wx:if="{{ item.desc }}" class="op-row-desc">{{ item.desc }}</text>
+          </view>
+          <text class="op-row-check">{{ item.value === value ? '✓' : '' }}</text>
+        </view>
+      </scroll-view>
+    </view>
+  </van-popup>
+</view>

@@ -7,6 +7,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellDetailMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoFieldMapper;
 import com.example.demo.modules.cageshelf.mapper.CageInfoValueMapper;
+import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cardprint.entity.CardPrintValueMap;
 import com.example.demo.modules.cardprint.mapper.CardPrintValueMapMapper;
 import com.alibaba.fastjson2.JSON;
@@ -60,6 +61,8 @@ public class CardDataAssembler {
             if (f == null || f.getCanonical() == null) continue;
             Object val = readValue(f, v);
             if (val == null) continue;
+            // 与笼位表单同一个显示加工（使用时间只留日期），别让卡上出现时分秒
+            val = CageInfoValueService.displayValue(f, val);
             valuesByCage.computeIfAbsent(v.getAnimalCageId(), k -> new LinkedHashMap<>())
                     .put(f.getCanonical(), val);
         }

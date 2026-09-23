@@ -6,7 +6,7 @@ const { fetchMiniPreferences } = require('../utils/miniPreferencesApi.js');
 const { parseTwinOverview, roomWatchHasPresence } = require('../utils/roomPresenceDot.js');
 
 const ROOM_PATH = '/pages/room/index';
-const CAGE_PATH = '/package-feature/pages/studentCageShelf/index';
+const CAGE_PATH = '/package-student/pages/studentCageShelf/index';
 const DOT_PENDING_PATHS = ['/pages/index/index', '/pages/mine/index'];
 
 Component({

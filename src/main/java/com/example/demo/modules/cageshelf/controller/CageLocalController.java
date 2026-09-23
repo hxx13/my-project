@@ -15,6 +15,7 @@ import com.example.demo.modules.cageshelf.mapper.CageCellHistoryMapper;
 import com.example.demo.modules.cageshelf.mapper.CageCellIndexMapper;
 import com.example.demo.modules.cageshelf.mapper.CageClaimMapper;
 import com.example.demo.modules.cageshelf.service.CageCellDetailService;
+import com.example.demo.modules.cageshelf.service.CageExperimentRecordService;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
 import com.example.demo.modules.cageshelf.service.CageOccupancyService;
@@ -60,6 +61,7 @@ public class CageLocalController {
     private final CageOperationService cageOperationService;
     private final CageRegionCapabilityService regionCapabilityService;
     private final CageOccupancyService occupancyService;
+    private final CageExperimentRecordService experimentRecordService;
 
     public CageLocalController(AuthContextService authContextService,
                                CageCellDetailService detailService,
@@ -76,7 +78,8 @@ public class CageLocalController {
                                AupRecordMapper aupRecordMapper,
                                CageOperationService cageOperationService,
                                CageRegionCapabilityService regionCapabilityService,
-                               CageOccupancyService occupancyService) {
+                               CageOccupancyService occupancyService,
+                               CageExperimentRecordService experimentRecordService) {
         this.authContextService = authContextService;
         this.detailService = detailService;
         this.detailMapper = detailMapper;
@@ -93,6 +96,7 @@ public class CageLocalController {
         this.cageOperationService = cageOperationService;
         this.regionCapabilityService = regionCapabilityService;
         this.occupancyService = occupancyService;
+        this.experimentRecordService = experimentRecordService;
     }
 
     private String operatorDisplayName(User u) {
@@ -367,14 +371,18 @@ public class CageLocalController {
     @GetMapping("/annotate/{animalCageId}")
     @Operation(summary = "读取笼位实验记录和照片")
     public Result<?> getAnnotate(@PathVariable Long animalCageId, HttpServletRequest req) {
-        if (resolveUser(req.getHeader("Authorization")) == null) return Result.fail(401, "未登录");
+        User u = resolveUser(req.getHeader("Authorization"));
+        if (u == null) return Result.fail(401, "未登录");
         Map<String, Object> local = infoValueService.getLocalFields(animalCageId);
         Object ed = local.get("experiment_desc");
         Object img = local.get("images_json");
         Object sp = local.get("extra_data");
+        // 实验记录内容按台账同一条判据脱敏：这个接口兼着状态照片的读口（各端都读），
+        // 不能一边收严台账、一边从这里照样把别人的 experiment_desc 发出去。
+        boolean canViewRecords = cageOperationService.canViewExperimentRecords(u, animalCageId);
         return Result.success(Map.of(
-            "experimentDesc", ed == null ? "" : String.valueOf(ed),
-            "imagesJson", img == null ? "[]" : String.valueOf(img),
+            "experimentDesc", (!canViewRecords || ed == null) ? "" : String.valueOf(ed),
+            "imagesJson", (!canViewRecords || img == null) ? "[]" : String.valueOf(img),
             "statusPhotos", sp == null ? "{}" : String.valueOf(sp)
         ));
     }
@@ -444,6 +452,90 @@ public class CageLocalController {
 
         log.info("[local/annotate] user={} animalCageId={}", operatorDisplayName(u), animalCageId);
         return Result.success(Map.of("ok", true));
+    }
+
+    // ═══════════════════════════════════════════
+    // 实验记录台账（追加式，时间戳留痕）
+    // ═══════════════════════════════════════════
+
+    @GetMapping("/experiment-record/mine")
+    @Operation(summary = "我的实验记录：按房间分组，含已失去权限/已归档的历史笼位")
+    public Result<?> getMyExperimentRecords(HttpServletRequest req) {
+        User u = resolveUser(req.getHeader("Authorization"));
+        if (u == null) return Result.fail(401, "未登录");
+        return Result.success(experimentRecordService.groupMineByRoom(u));
+    }
+
+    @GetMapping("/experiment-record/{animalCageId}")
+    @Operation(summary = "读取笼位实验记录台账（含本人草稿）")
+    public Result<?> getExperimentRecords(@PathVariable Long animalCageId, HttpServletRequest req) {
+        User u = resolveUser(req.getHeader("Authorization"));
+        if (u == null) return Result.fail(401, "未登录");
+        return Result.success(experimentRecordState(u, animalCageId));
+    }
+
+    /**
+     * 写台账：{@code action=draft} 存草稿（有则覆盖），{@code action=submit} 提交成一条新记录。
+     *
+     * <p>**没有**改/删已提交记录的入口 —— 不可编辑不可删除是设计约束，不是权限门。
+     * 写权限只有实验员本人（与旧的实验记录分支同口径）。
+     */
+    @PostMapping("/experiment-record")
+    @Operation(summary = "存草稿 / 提交一条实验记录")
+    public Result<?> saveExperimentRecord(@RequestBody Map<String, Object> body, HttpServletRequest req) {
+        User u = resolveUser(req.getHeader("Authorization"));
+        Result<?> denied = requireRole(u, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+
+        Long animalCageId = toLong(body.get("animalCageId"));
+        if (animalCageId == null) return Result.fail(400, "animalCageId 必填");
+        if (!cageOperationService.canWriteExperimentRecords(u, animalCageId)) {
+            return Result.fail(403, "仅笼位占用者本人可记录实验记录");
+        }
+
+        boolean submit = "submit".equals(str(body, "action"));
+        String content = body.containsKey("content") ? str(body, "content") : null;
+        String imagesJson = body.containsKey("imagesJson") ? str(body, "imagesJson") : null;
+        if (submit && !hasRecordBody(content, imagesJson)) {
+            return Result.fail(400, "记录内容不能为空，请填写文字或添加照片");
+        }
+
+        if (submit) {
+            experimentRecordService.submit(animalCageId, u, content, imagesJson);
+        } else {
+            experimentRecordService.saveDraft(animalCageId, u, content, imagesJson);
+        }
+        log.info("[local/experiment-record] {} 笼位 {} {}", operatorDisplayName(u),
+                submit ? "提交" : "存草稿", animalCageId);
+        return Result.success(experimentRecordState(u, animalCageId));
+    }
+
+    /**
+     * 台账状态：能不能看、能不能写、已提交记录、本人当前草稿。
+     *
+     * <p>看不到时**记录与草稿一律不下发**（前端只渲染 *** 占位）—— 脱敏在服务端做完，
+     * 不靠前端自觉，否则同一个接口换个客户端就是漏的。
+     */
+    private Map<String, Object> experimentRecordState(User u, Long animalCageId) {
+        boolean canView = cageOperationService.canViewExperimentRecords(u, animalCageId);
+        boolean canWrite = cageOperationService.canWriteExperimentRecords(u, animalCageId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("canView", canView);
+        out.put("canWrite", canWrite);
+        if (!canView) {
+            out.put("records", List.of());
+            out.put("draft", null);
+            return out;
+        }
+        out.put("records", experimentRecordService.listSubmitted(animalCageId));
+        out.put("draft", canWrite ? experimentRecordService.myDraft(animalCageId, u) : null);
+        return out;
+    }
+
+    /** 一条记录正文或照片至少有一项 */
+    private static boolean hasRecordBody(String content, String imagesJson) {
+        return (content != null && !content.isBlank())
+                || (imagesJson != null && !imagesJson.isBlank() && !"[]".equals(imagesJson.trim()));
     }
 
     // ═══════════════════════════════════════════

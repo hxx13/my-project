@@ -1,0 +1,692 @@
+/* 视觉基准：物资处理页（suppliesProcess）—— #f5f6f7 底 + 白卡 + 1rpx 描边，无投影无渐变 */
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f5f6f7;
+  box-sizing: border-box;
+}
+
+/* ---- 顶部：搜索/筛选 + 操作 + 已选条件 ---- */
+.head {
+  flex-shrink: 0;
+  padding: 16rpx 24rpx 12rpx;
+  background: #f5f6f7;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.toolbar-row--acts {
+  margin-top: 12rpx;
+}
+
+.tabs-sum {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  font-size: 26rpx;
+  color: #323233;
+}
+
+.search-clear {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* 动作按钮统一用 app.wxss 的全局 .chip-btn（实底 / 12rpx 圆角 / 禁胶囊禁描边），此处不再自建 */
+
+.chip-scroll {
+  margin-top: 12rpx;
+  white-space: nowrap;
+}
+
+.chip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  background: #eaf4ff;
+}
+
+.chip-t {
+  font-size: 22rpx;
+  color: #1989fa;
+  line-height: 1.5;
+}
+
+.chip-x {
+  font-size: 20rpx;
+  color: #1989fa;
+  opacity: 0.7;
+}
+
+/* ---- 列表 ---- */
+.list-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+
+.list-pad {
+  padding: 12rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+}
+
+.batch-head {
+  margin: 4rpx 0 10rpx;
+  padding: 6rpx 16rpx;
+  font-size: 22rpx;
+  color: #1989fa;
+  background: #eaf4ff;
+  border-radius: 8rpx;
+  display: inline-block;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12rpx;
+  border: 1rpx solid #ebedf0;
+  padding: 16rpx 18rpx;
+  margin-bottom: 10rpx;
+}
+
+.card--on {
+  border-color: #1989fa;
+  background: #f4f9ff;
+}
+
+/* 姓名 / 状态标签 / 时间 同一行：必须 center 对齐，baseline 会因字号差把标签顶高 */
+.c-head {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.c-name {
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #323233;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 21rpx;
+  color: #969799;
+  font-variant-numeric: tabular-nums;
+}
+
+.c-line {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #646566;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.c-line--sub {
+  color: #969799;
+}
+
+/* 违规正文是富文本 HTML（与 web ContentBodySlot 同源），只能用 rich-text 渲染。
+   rich-text 不继承外层 wxss，字号/行高挂在本节点上才生效。 */
+.c-body {
+  margin-top: 6rpx;
+}
+
+.rich-text-line {
+  display: block;
+  font-size: 24rpx;
+  color: #323233;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.c-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 8rpx;
+}
+
+.c-img {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid #ebedf0;
+  background: #f5f6f7;
+}
+
+.tag {
+  flex-shrink: 0;
+  font-size: 19rpx;
+  border-radius: 6rpx;
+  padding: 1rpx 10rpx;
+  line-height: 1.5;
+  color: #1989fa;
+  background: #eaf4ff;
+}
+
+.tag-ok {
+  color: #15803d;
+  background: #e8f8ef;
+}
+
+.tag-bad {
+  color: #dc2626;
+  background: #fde8ea;
+}
+
+.act-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12rpx;
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #f4f5f7;
+}
+
+.detail {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  background: #fafbfc;
+  border-radius: 10rpx;
+}
+
+.detail-loading {
+  font-size: 22rpx;
+  color: #969799;
+  padding: 8rpx 0;
+}
+
+.detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 7rpx 0;
+  border-bottom: 1rpx dashed #eceef0;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-k {
+  flex-shrink: 0;
+  width: 150rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.detail-v {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #323233;
+  word-break: break-all;
+}
+
+.detail-v--mono {
+  font-family: Menlo, Consolas, monospace;
+  font-size: 20rpx;
+  color: #646566;
+}
+
+/* ---- 批量栏 / 分页 / 状态 ---- */
+.batch-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1rpx solid #ebedf0;
+}
+
+.batch-count {
+  flex: 1;
+  font-size: 24rpx;
+  color: #646566;
+}
+
+/* 触底加载提示（不用上下页按钮） */
+.load-more {
+  padding: 20rpx 0 8rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.state-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+}
+
+.state-txt {
+  font-size: 26rpx;
+  color: #969799;
+}
+
+/* ---- 底部抽屉（筛选 / 模板 / 笼架） ---- */
+.filter-popup {
+  max-height: 78vh;
+  border-radius: 24rpx 24rpx 0 0;
+  overflow: hidden;
+}
+
+.fs-root {
+  display: flex;
+  flex-direction: column;
+  max-height: 78vh;
+}
+
+.fs-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26rpx 28rpx 16rpx;
+  border-bottom: 1rpx solid #f4f5f7;
+}
+
+.fs-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.fs-reset {
+  font-size: 24rpx;
+  color: #1989fa;
+  padding: 6rpx 12rpx;
+}
+
+.fs-reset--hover {
+  opacity: 0.7;
+}
+
+.fs-body {
+  flex: 1;
+  min-height: 0;
+  max-height: 56vh;
+  padding: 0 28rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.fs-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.tpl-item {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f4f5f7;
+}
+
+.tpl-item:last-child {
+  border-bottom: none;
+}
+
+.tpl-name {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.tpl-text {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #969799;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.cage-item {
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f4f5f7;
+}
+
+.cage-item:last-child {
+  border-bottom: none;
+}
+
+.cage-line1 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.cage-pos {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.cage-code {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #1989fa;
+  background: #eaf4ff;
+  border-radius: 6rpx;
+  padding: 1rpx 10rpx;
+}
+
+.cage-line2 {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* ---- 编辑器弹窗 ---- */
+.editor-popup {
+  max-height: 88vh;
+  border-radius: 24rpx 24rpx 0 0;
+  overflow: hidden;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+}
+
+.editor-head {
+  flex-shrink: 0;
+  padding: 28rpx 28rpx 16rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.editor-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.editor-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.editor-body {
+  flex: 1;
+  min-height: 0;
+  max-height: 62vh;
+  padding: 8rpx 28rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.field-label {
+  margin: 30rpx 0 14rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #646566;
+}
+
+.field-label:first-child {
+  margin-top: 12rpx;
+}
+
+.field-label--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.field-hint {
+  margin-top: 10rpx;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+/* 输入框：白底 + 1rpx 发丝边 + 极轻投影，做出「可输入的字段」质感；
+   纯灰底无边界会跟白弹窗糊成一片（用户反馈「连在一起、一点质感都没有」） */
+.field-input {
+  width: 100%;
+  height: 76rpx;
+  padding: 0 22rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #fbfcfd;
+  border: 1rpx solid #e6e8ec;
+  border-radius: 12rpx;
+  box-shadow: 0 1rpx 3rpx rgba(15, 23, 42, 0.04);
+  box-sizing: border-box;
+}
+
+.field-input--gap {
+  margin-top: 12rpx;
+}
+
+.field-textarea {
+  width: 100%;
+  min-height: 150rpx;
+  padding: 18rpx 22rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #fbfcfd;
+  border: 1rpx solid #e6e8ec;
+  border-radius: 12rpx;
+  box-shadow: 0 1rpx 3rpx rgba(15, 23, 42, 0.04);
+  box-sizing: border-box;
+}
+
+/* 分段控件（2 选 1）——同报修申请页口径 */
+.seg {
+  display: flex;
+  align-items: center;
+  padding: 4rpx;
+  background: #f2f3f5;
+  border-radius: 12rpx;
+}
+
+.seg-item {
+  flex: 1;
+  padding: 14rpx 10rpx;
+  text-align: center;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #646566;
+  border-radius: 10rpx;
+  white-space: nowrap;
+}
+
+.seg-item--on {
+  color: #323233;
+  font-weight: 600;
+  background: #fff;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 0;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.switch-label {
+  font-size: 26rpx;
+  color: #323233;
+}
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.pick-line {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.pick-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pick-value--empty {
+  color: #c8c9cc;
+}
+
+.group-search {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.group-input {
+  flex: 1;
+  min-width: 0;
+  height: 76rpx;
+  padding: 0 22rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #fbfcfd;
+  border: 1rpx solid #e6e8ec;
+  border-radius: 12rpx;
+  box-shadow: 0 1rpx 3rpx rgba(15, 23, 42, 0.04);
+  box-sizing: border-box;
+}
+
+.group-list {
+  margin-top: 12rpx;
+  border-radius: 12rpx;
+  background: #f7f8fa;
+  overflow: hidden;
+}
+
+.group-item {
+  padding: 20rpx 22rpx;
+  font-size: 26rpx;
+  color: #323233;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.group-item:last-child {
+  border-bottom: none;
+}
+
+.group-item:active {
+  background: #f5f6f7;
+}
+
+.member-list {
+  margin-top: 12rpx;
+  max-height: 420rpx;
+  overflow-y: auto;
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 16rpx 6rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.member-tick {
+  flex-shrink: 0;
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 40rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #fff;
+  background: #e5e6eb;
+  border-radius: 8rpx;
+}
+
+.member-tick--on {
+  background: #1989fa;
+}
+
+.member-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-id {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* 底部动作：小而精的圆角矩形按钮，靠右排，不做整条大按钮 */
+.editor-foot {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  padding: 14rpx 28rpx calc(18rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #f2f3f5;
+}

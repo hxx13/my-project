@@ -167,3 +167,30 @@
 
 /* ---- 空态 ---- */
 .stu-list .aup-empty { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---- 校区分区标题 / 条目计数 ---- */
+.stu-list .campus-head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 16px 16px 0; padding: 8px 12px;
+  border-left: 4px solid var(--primary);
+  border-radius: 0 8px 8px 0;
+  background: linear-gradient(90deg, var(--primary-weak) 0%, rgba(200, 120, 90, 0) 82%);
+  font-size: 14px; font-weight: 700; letter-spacing: 2px; color: var(--text);
+}
+.stu-list .campus-head .campus-count {
+  font-weight: 500; font-size: 11px; letter-spacing: 0; color: var(--slate);
+  background: var(--student-surface); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 9px;
+}
+/* 列表模式也按校区分组：表格与分区标题左右对齐 */
+.stu-list .campus-list { padding: 10px 16px 4px; }
+.stu-list .list-count { padding: 10px 16px 0; font-size: 12px; color: var(--muted); }
+
+/* ---- 已通过高亮（卡牌 + 表格行）---- */
+.stu-list .aup-doc.is-passed {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1.5px var(--success), 0 1px 2px rgba(0, 0, 0, .10), 0 6px 14px rgba(0, 0, 0, .08);
+}
+.stu-list .aup-doc.is-passed .aup-doc-hd { background: linear-gradient(180deg, #6E9B6E 0%, #4C714C 100%); }
+.stu-list .list-table tr.is-passed td { background: var(--success-weak); }
+.stu-list .list-table tr.is-passed .proj-name { color: var(--success); }

@@ -5,7 +5,8 @@ import { ChevronRight, ChevronLeft, X } from "lucide-react";
 
 /** 抽屉顶距与层级：常驻标签要和抽屉把手落在同一条线上 */
 export const CAGE_DRAWER_TOP = 72;
-/** 高于 --z-modal(800)，否则被规格弹窗遮罩盖住点不到 */
+/** 高于 --z-modal(800)，否则被规格弹窗遮罩盖住点不到。
+ *  与 tokens.css 的 --z-modal-above 同档，改一处要连 CagePickerPanel 的 zIndex 一起看。 */
 export const CAGE_DRAWER_Z = 900;
 /** 最右「笼位分配」列宽度：出现时抽屉向左撑开这么多（够放格子+数量即可，不放空） */
 export const ALLOC_COLUMN_WIDTH = 218;

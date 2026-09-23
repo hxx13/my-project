@@ -1,5 +1,4 @@
 /** 手机版 — 首页 Tab */
-import { Mail, MessageCircle, Smartphone } from "lucide-react";
 import type { MobileCenterData, MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { MOBILE_STUDENT_ICON } from "./mobileStudentIcons";
 import type { LoginBranding } from "@/api/domains/publicSite.api";
@@ -34,12 +33,6 @@ interface MobileHomeTabProps {
   presenceRefresh?: number;
   /** 首页 Tab 是否当前可见（切走时暂停本地 tick） */
   homeActive?: boolean;
-  currentEmail?: string;
-  currentSendKey?: boolean;
-  currentWxPusher?: boolean;
-  onEmailChip?: () => void;
-  onSendKeyChip?: () => void;
-  onWxPusherChip?: () => void;
   onNav: (tab: TabKey) => void;
   /** 首页下方「公告通知」、具体公告条目 */
   onOpenAnnouncements: (highlightKey?: string) => void;
@@ -56,12 +49,6 @@ export default function MobileHomeTab({
   jwtMode,
   presenceRefresh = 0,
   homeActive = true,
-  currentEmail = "",
-  currentSendKey = false,
-  currentWxPusher = false,
-  onEmailChip,
-  onSendKeyChip,
-  onWxPusherChip,
   announcements,
   announcementsUnread = false,
   feedbackCount = 0,
@@ -77,36 +64,7 @@ export default function MobileHomeTab({
     <div className="h-full min-h-0 overflow-y-auto flex flex-col" style={{ background: "transparent" }}>
       {/* Hero 固定高度，禁止 flex 压缩 */}
       <div className="shrink-0 relative z-[1]">
-        <HeroBanner branding={branding} expiresAt={!jwtMode ? expiresAt : undefined} wsConnected={wsConnected} jwtMode={jwtMode} currentEmail={currentEmail} currentSendKey={currentSendKey} />
-        {/* 绑定状态指示 — 位于 hero 内，跟随页面滚动 */}
-        {(onEmailChip || onSendKeyChip || onWxPusherChip) && (
-          <div
-            className="absolute left-4 z-20 flex flex-col items-start gap-1.5"
-            style={{ top: "calc(env(safe-area-inset-top, 0px) + 52px)" }}
-          >
-            {onEmailChip && (
-              <button type="button" onClick={onEmailChip}
-                className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
-                style={{ background: currentEmail ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                <Mail className="size-3 mr-1 inline" />{currentEmail ? "邮箱已绑定" : "邮箱未绑定"}
-              </button>
-            )}
-            {onSendKeyChip && (
-              <button type="button" onClick={onSendKeyChip}
-                className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
-                style={{ background: currentSendKey ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                <MessageCircle className="size-3 mr-1 inline" />{currentSendKey ? "微信已绑定" : "微信未绑定"}
-              </button>
-            )}
-            {onWxPusherChip && (
-              <button type="button" onClick={onWxPusherChip}
-                className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white active:scale-95 transition-transform"
-                style={{ background: currentWxPusher ? "rgba(16,185,129,0.65)" : "rgba(249,115,22,0.65)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.2)" }}>
-                <Smartphone className="size-3 mr-1 inline" />{currentWxPusher ? "WxPusher已绑定" : "WxPusher未绑定"}
-              </button>
-            )}
-          </div>
-        )}
+        <HeroBanner branding={branding} expiresAt={!jwtMode ? expiresAt : undefined} wsConnected={wsConnected} jwtMode={jwtMode} />
       </div>
 
       <div className="relative z-10 -mt-6 mx-4 shrink-0">

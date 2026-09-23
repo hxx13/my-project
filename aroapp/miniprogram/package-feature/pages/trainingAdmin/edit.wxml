@@ -1,0 +1,117 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view class="card">
+    <view class="card-title">基本信息</view>
+    <view class="field">
+      <text class="field-k">名称</text>
+      <input class="field-input" value="{{ name }}" placeholder="培训名称" bindinput="onName" />
+    </view>
+    <view class="field">
+      <text class="field-k">类型</text>
+      <picker mode="selector" range="{{ typeNames }}" value="{{ typeIndex }}" bindchange="onTypeChange">
+        <view class="field-picker">{{ typeIndex >= 0 ? typeNames[typeIndex] : '选择类型' }}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="field-k">校区</text>
+      <picker mode="selector" range="{{ campusOptions }}" value="{{ campusIndex }}" bindchange="onCampusChange">
+        <view class="field-picker">{{ campusOptions[campusIndex] }}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="field-k">所属人</text>
+      <view class="field-owners" bindtap="openOwnerPicker">
+        <text wx:if="{{ owners.length === 0 }}" class="field-ph">未选择</text>
+        <text wx:for="{{ owners }}" wx:key="id" class="owner-tag">{{ item.name }}</text>
+        <text class="field-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title-row">
+      <text class="card-title">场次</text>
+      <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="openOcc">＋ 添加场次</view>
+    </view>
+    <view wx:if="{{ occurrences.length === 0 }}" class="empty-tip">暂无场次</view>
+    <view wx:for="{{ occurrences }}" wx:key="id" class="occ-row">
+      <view class="occ-main">
+        <text class="occ-time">{{ item.startText || '—' }} ~ {{ item.endText || '—' }}</text>
+        <text class="occ-sub">{{ item.address || '未指定地点' }}{{ item.timeLimit ? ' · 限时 ' + item.timeLimit + ' 分钟' : '' }}</text>
+      </view>
+      <view class="chip-btn chip-btn--xs chip-btn--ghost" data-idx="{{ index }}" bindtap="openOcc">编辑</view>
+      <view class="chip-btn chip-btn--xs chip-btn--danger" data-idx="{{ index }}" bindtap="onOccDelete">删除</view>
+    </view>
+  </view>
+
+  <view class="bottombar">
+    <view class="chip-btn chip-btn--primary chip-btn--block {{ saving ? 'chip-btn--off' : '' }}" bindtap="onSave">
+      {{ saving ? '保存中…' : '保存' }}
+    </view>
+  </view>
+</view>
+
+<!-- 所属人选择 -->
+<van-popup show="{{ ownerPickerShow }}" position="bottom" round custom-style="height:72vh;" bind:close="onOwnerClose">
+  <view class="sheet">
+    <view class="sheet-head">
+      <text class="sheet-title">选择所属人</text>
+      <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="onOwnerConfirm">确定（{{ pickedIds.length }}）</view>
+    </view>
+    <input class="search-input" value="{{ staffKeyword }}" placeholder="搜索姓名 / 工号" bindinput="onStaffKeyword" />
+    <scroll-view scroll-y class="sheet-body">
+      <view
+        wx:for="{{ staffRows }}"
+        wx:key="id"
+        class="staff-row {{ item.picked ? 'staff-row-on' : '' }}"
+        data-id="{{ item.id }}"
+        data-name="{{ item.name }}"
+        bindtap="onToggleStaff"
+      >
+        <view class="staff-dot {{ item.picked ? 'staff-dot-on' : '' }}"><text wx:if="{{ item.picked }}">✓</text></view>
+        <text class="staff-name">{{ item.name }}</text>
+        <text class="staff-job">{{ item.jobNumber }}</text>
+      </view>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 场次表单 -->
+<van-popup show="{{ occShow }}" position="center" round custom-style="width:88%;" bind:close="onOccClose">
+  <view class="occ-form">
+    <view class="sheet-title">{{ occIndex >= 0 ? '编辑场次' : '添加场次' }}</view>
+    <view class="field">
+      <text class="field-k">开始时间</text>
+      <view class="field-picker" bindtap="pickStart">{{ occStartText || '选择时间' }}</view>
+    </view>
+    <view class="field">
+      <text class="field-k">结束时间</text>
+      <view class="field-picker" bindtap="pickEnd">{{ occEndText || '选择时间' }}</view>
+    </view>
+    <view class="field">
+      <text class="field-k">地点</text>
+      <picker mode="selector" range="{{ locNames }}" value="{{ locIndex }}" bindchange="onLocChange">
+        <view class="field-picker">{{ locIndex >= 0 ? locNames[locIndex] : '选择地点' }}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="field-k">限时(分)</text>
+      <input class="field-input" type="number" value="{{ occTimeLimit }}" placeholder="不限" data-field="occTimeLimit" bindinput="onOccField" />
+    </view>
+    <view class="occ-form-ops">
+      <view class="chip-btn chip-btn--ghost" bindtap="onOccClose">取消</view>
+      <view class="chip-btn chip-btn--primary" bindtap="onOccConfirm">确定</view>
+    </view>
+  </view>
+</van-popup>
+
+<van-popup show="{{ pickerShow }}" position="bottom" round bind:close="closePicker">
+  <van-datetime-picker
+    type="datetime"
+    value="{{ occStartMs }}"
+    bind:input="onPickerInput"
+    bind:confirm="onPickerConfirm"
+    bind:cancel="closePicker"
+  />
+</van-popup>
+</block>

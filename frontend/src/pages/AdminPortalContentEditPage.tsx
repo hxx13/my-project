@@ -4,6 +4,7 @@ import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { useCreateContent, useUpdateContent, useAdminContent } from "@/api/hooks/usePortalContent";
 import { fetchPublicCategories, type PortalCategory, type ContentType, type ContentStatus } from "@/api/domains/portalContent.api";
+import { toDateTimeLocalValue } from "@/utils/beijingTime";
 import toast from "react-hot-toast";
 
 /** 表单里的中文档位 ↔ 接口枚举（下拉框沿用中文值，列表页 tab 走枚举） */
@@ -61,7 +62,7 @@ export default function AdminPortalContentEditPage() {
     setTitle(existing.title);
     setCategory(existing.categoryId ? String(existing.categoryId) : "");
     setStatus(existing.status === "PUBLISHED" ? "已发布" : existing.status === "DRAFT" ? "草稿" : "已归档");
-    setPublishedAt(existing.publishedAt?.substring(0, 16) || "");
+    setPublishedAt(toDateTimeLocalValue(existing.publishedAt));
     setSummary(existing.summary || "");
     setBodyHtml(existing.contentHtml || "");
     setCoverUrl(existing.coverUrl || "");

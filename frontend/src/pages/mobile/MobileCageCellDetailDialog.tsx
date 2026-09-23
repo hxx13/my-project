@@ -6,45 +6,19 @@
  * v3 把结构色收进 `cage-detail-scope.css` 的局部作用域，主色沿用学生端琥珀，
  * 按钮一律实底，状态语义只留一颗圆点。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus, Save, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import type { CageShelfCell } from "@/api/domains/cageShelf.api";
-import { uploadSingleImage } from "@/api/domains/upload.api";
-import { fetchLocalAnnotate, localAnnotate } from "@/api/domains/cageShelf.api";
+import { fetchLocalAnnotate } from "@/api/domains/cageShelf.api";
 import CageFormFill from "@/features/cage-shelf/components/CageFormFill";
 import CageOperationActions from "@/features/cage-shelf/components/CageOperationActions";
+import CageExperimentRecordPanel from "@/features/cage-shelf/components/CageExperimentRecordPanel";
 import type { CageOpKind, CageOpMark, CageOpSource } from "@/features/cage-shelf/useCageOpSelect";
 import { CAGE_BOX_ACTIONS, actionsFromFormValues, displayPosition } from "@/features/cage-shelf/constants";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "@/features/cage-shelf/api/cageForm.api";
 import { useViewportHeight } from "./useViewportHeight";
 import "./cage-detail-scope.css";
-
-/** 从 cell.detail (camelCase) 或 cageBoxInfo 读字段值 */
-function dGet(
-  detail: Record<string, unknown> | undefined | null,
-  cbi: Record<string, unknown> | undefined,
-  key: string,
-): string {
-  if (detail?.[key] != null && String(detail[key]).trim() !== "") return String(detail[key]).trim();
-  if (cbi?.[key] != null && String(cbi[key]).trim() !== "") return String(cbi[key]).trim();
-  return "";
-}
-
-function parseImagesJson(raw: unknown): string[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
-  if (typeof raw === "string") {
-    try {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr.map(String).filter(Boolean);
-    } catch {
-      // fallback: split by newline
-      return raw.split("\n").map((s) => s.trim()).filter(Boolean);
-    }
-  }
-  return [];
-}
 
 /** 分区小标题：不带竖条、不带色块，与小程序 `.cs-sec-title` 同一口径 */
 function SectionTitle({ children, count }: { children: React.ReactNode; count?: number }) {
@@ -85,7 +59,6 @@ export default function MobileCageCellDetailDialog({
   onStartDivide?: (source: CageOpSource) => void;
 }) {
   const detail = (cell.detail ?? {}) as Record<string, unknown>;
-  const cbi = (cell.cageBoxInfo ?? {}) as Record<string, unknown> | undefined;
   const viewportHeight = useViewportHeight();
 
   const position = displayPosition(cell.position);
@@ -93,16 +66,10 @@ export default function MobileCageCellDetailDialog({
     (cell as any).id ?? (cell as any).animalCageId ?? detail.animalCageId ?? "",
   );
 
-  // ── 实验记录 & 照片 ──
-  const [experimentDesc, setExperimentDesc] = useState("");
-  const [images, setImages] = useState<string[]>([]);
+  // ── 状态标记照片（只读；实验记录走台账接口 CageExperimentRecordPanel）──
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<CageInfoValueRow[] | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 拉取表单值(cage_info_value)：状态标记唯一真相源，据此渲染状态 chips
   useEffect(() => {
@@ -121,85 +88,27 @@ export default function MobileCageCellDetailDialog({
     });
   }, [formValues]);
 
-  // 合并两个通道的所有照片 URL，供预览导航使用
+  // 状态标记照片的 URL 集合，供预览导航使用
   const allPreviewUrls = useMemo(() => {
     const urls: string[] = [];
     for (const k of Object.keys(statusPhotos)) {
       for (const u of (statusPhotos[k] || [])) urls.push(u);
     }
-    for (const u of images) urls.push(u);
     return urls;
-  }, [statusPhotos, images]);
+  }, [statusPhotos]);
 
-  // 读取已有标注
+  // 读取状态标记照片（实验记录不在这里读）
   useEffect(() => {
-    if (!animalCageId) {
-      setExperimentDesc(dGet(detail, cbi, "experimentDesc"));
-      setImages(parseImagesJson(detail.imagesJson ?? "[]"));
-      return;
-    }
+    if (!animalCageId) return;
     let cancelled = false;
     fetchLocalAnnotate(String(animalCageId))
       .then((a) => {
         if (cancelled) return;
-        setExperimentDesc(a.experimentDesc ?? "");
-        setImages(parseImagesJson(a.imagesJson ?? "[]"));
         if (a.statusPhotos) { try { const sp = JSON.parse(a.statusPhotos); if (typeof sp === "object") setStatusPhotos(sp); } catch {} }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setExperimentDesc(dGet(detail, cbi, "experimentDesc"));
-          setImages(parseImagesJson(detail.imagesJson ?? "[]"));
-        }
-      });
+      .catch(() => {});
     return () => { cancelled = true; };
-  }, [cell]);
-
-  const handleSave = useCallback(async () => {
-    if (!animalCageId) return;
-    setSaving(true);
-    setSaveMsg(null);
-    try {
-      // 只发这条通道真正会改的两个字段。statusPhotos 归「状态模式」管，本弹窗里是只读的，
-      // 回传它等于向服务端声明「我要写状态照片」——那道闸只开给饲养员/饲养组长，
-      // 会把「实验员本人存实验记录」一并拦死。
-      await localAnnotate(animalCageId, experimentDesc || undefined, JSON.stringify(images));
-      setSaveMsg({ type: "ok", text: "保存成功" });
-    } catch (e) {
-      setSaveMsg({ type: "err", text: e instanceof Error ? e.message : "保存失败" });
-    } finally {
-      setSaving(false);
-      setTimeout(() => setSaveMsg(null), 2000);
-    }
-  }, [animalCageId, experimentDesc, images]);
-
-  const handleUpload = useCallback(async (files: FileList | null) => {
-    if (!files?.length) return;
-    setUploading(true);
-    setSaveMsg(null);
-    try {
-      const uploaded: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!file.type.startsWith("image/")) continue;
-        const result = await uploadSingleImage(file);
-        uploaded.push(result.publicUrl);
-      }
-      if (uploaded.length) {
-        setImages((prev) => [...prev, ...uploaded]);
-      }
-    } catch (e) {
-      setSaveMsg({ type: "err", text: e instanceof Error ? e.message : "图片上传失败" });
-      setTimeout(() => setSaveMsg(null), 2500);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }, []);
-
-  const removeImage = (idx: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== idx));
-  };
+  }, [cell, animalCageId]);
 
   const isPermitted = cell.visible;
 
@@ -328,68 +237,12 @@ export default function MobileCageCellDetailDialog({
                 </div>
               )}
 
-              {/* ── 实验记录 + 照片 ── */}
+              {/* ── 实验记录台账（一条一个时间戳，提交后只读，自带存草稿/提交）── */}
               <div>
                 <SectionTitle>实验记录</SectionTitle>
-                <textarea
-                  value={experimentDesc}
-                  onChange={(e) => setExperimentDesc(e.target.value)}
-                  rows={4}
-                  placeholder="输入实验记录…"
-                  className="w-full resize-y rounded-[14px] bg-[var(--student-canvas-soft)] px-3.5 py-3 text-[13px] leading-relaxed text-[var(--student-ink)] placeholder:text-[var(--student-mute-foreground)] focus:outline-none"
-                />
-
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-semibold text-[var(--student-ink)]">照片</span>
-                    <span className="text-[10px] tabular-nums text-[var(--student-mute)]">{images.length}</span>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={uploading}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="cage-detail-btn-soft inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition active:scale-95"
-                  >
-                    <ImagePlus className="size-3.5" />
-                    {uploading ? "上传中…" : "上传"}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="sr-only"
-                    onChange={(e) => void handleUpload(e.target.files)}
-                  />
+                <div className="mt-2">
+                  <CageExperimentRecordPanel animalCageId={animalCageId} />
                 </div>
-
-                {images.length > 0 ? (
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {images.map((url, i) => (
-                      <div key={`${i}-${url.slice(-20)}`} className="relative aspect-square overflow-hidden rounded-[14px] bg-[var(--student-canvas-soft)]">
-                        <img
-                          src={url}
-                          alt={`photo-${i}`}
-                          className="h-full w-full cursor-pointer object-cover"
-                          onClick={() => setPreviewUrl(url)}
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(i)}
-                          className="cage-detail-photo-del absolute top-1 right-1 flex size-5 items-center justify-center rounded-full"
-                          aria-label="删除图片"
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-2 text-[12px] text-[var(--student-mute)]">暂无照片</div>
-                )}
               </div>
             </>
           ) : (
@@ -399,28 +252,6 @@ export default function MobileCageCellDetailDialog({
           )}
         </div>
 
-        {/* ── 底栏：一个时刻只有一个保存目标 ── */}
-        {isPermitted && (
-          <div className="shrink-0 flex items-center gap-3 border-t border-[var(--student-hairline)] px-4 py-3">
-            {saveMsg && (
-              <span
-                className="text-[12px]"
-                style={{ color: saveMsg.type === "ok" ? "var(--student-success)" : "var(--student-error)" }}
-              >
-                {saveMsg.text}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="cage-detail-btn-primary ml-auto inline-flex h-10 items-center justify-center gap-1.5 rounded-[12px] px-5 text-[13px] font-semibold transition active:scale-[0.98]"
-            >
-              <Save className="size-4" />
-              {saving ? "保存中…" : "保存记录"}
-            </button>
-          </div>
-        )}
       </div>
 
       {/* ── 全屏照片预览（双通道共享，URL驱动）── */}

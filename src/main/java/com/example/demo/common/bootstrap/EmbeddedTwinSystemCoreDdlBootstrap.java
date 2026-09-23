@@ -173,6 +173,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-exam-paper.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper-folder.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper-scoring.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-paper-valid-from.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-exam-paper-valid-to.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-submission.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-qualification.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-learning-material.sql", ctx)) success++;
@@ -193,6 +195,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-training-type-name.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-type-preset.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-occurrence-time-limit.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-campus.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-student-sort.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-certificate.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-push-channel-master.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-violation-text-template.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-upload-file-record.sql", ctx)) success++;
@@ -425,6 +430,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-card-print.sql", ctx)) success++;
         // 笼位同步保护锁（楼层/房间/笼架/笼位）
         total++; if (runScript("db/bootstrap-cage-sync-lock.sql", ctx)) success++;
+        // 笼位实验记录台账（追加式，学生端时间戳记录）
+        total++; if (runScript("db/bootstrap-cage-experiment-record.sql", ctx)) success++;
         // 笼位划分（预分给本课题组某人）
         total++; if (runScript("db/bootstrap-cage-division.sql", ctx)) success++;
         // 管家字段支持多人（扩到 VARCHAR(255)）

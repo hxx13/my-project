@@ -42,7 +42,7 @@ import TypeMenu from "../editor/TypeMenu";
 import FieldEditorPanel from "../editor/FieldEditorPanel";
 import ExamFormField from "../components/ExamFormField";
 import FolderTreeManager, { type FolderAction, type FolderTreeGroup } from "@/features/form-shared/FolderTreeManager";
-import { fetchExamSubmissions } from "../api/examSubmission.api";
+import { fetchExamSubmissions, resetPersonSubmissions } from "../api/examSubmission.api";
 import "@/features/aup/aup.css";
 
 function statusBadge(status: string) {
@@ -55,6 +55,11 @@ function statusBadge(status: string) {
 }
 
 const UNGROUPED_KEY = "__ungrouped__";
+
+/** 后端日期时间 → datetime-local 的 "yyyy-MM-ddTHH:mm" */
+function toDatetimeLocal(s?: string | null): string {
+  return s ? s.replace(" ", "T").slice(0, 16) : "";
+}
 
 const FOLDER_LABELS = {
   createFolder: "＋ 新建文件夹",
@@ -79,6 +84,8 @@ export default function ExamPaperAdminPage() {
   const [title, setTitle] = useState("");
   const [qualifyScore, setQualifyScore] = useState<number>(80);
   const [totalTime, setTotalTime] = useState<number | null>(null);
+  const [validFrom, setValidFrom] = useState("");
+  const [validTo, setValidTo] = useState("");
   const [loadingPaper, setLoadingPaper] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
 
@@ -87,6 +94,7 @@ export default function ExamPaperAdminPage() {
   const [seedsLoading, setSeedsLoading] = useState(false);
   const [seedSelected, setSeedSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [resettingPerson, setResettingPerson] = useState<string | null>(null);
 
   const {
     sections,
@@ -153,6 +161,8 @@ export default function ExamPaperAdminPage() {
       setTitle(d.title);
       setQualifyScore(d.qualifyScore ?? 80);
       setTotalTime(d.totalTime ?? null);
+      setValidFrom(toDatetimeLocal(d.validFrom));
+      setValidTo(toDatetimeLocal(d.validTo));
     } catch (e: any) {
       toast.error(e?.message || "加载失败");
     } finally {
@@ -175,6 +185,8 @@ export default function ExamPaperAdminPage() {
       setTitle(d.title);
       setQualifyScore(80);
       setTotalTime(null);
+      setValidFrom("");
+      setValidTo("");
     } catch (e: any) {
       toast.error(e?.message || "创建失败");
     }
@@ -250,6 +262,8 @@ export default function ExamPaperAdminPage() {
       setTitle(d.title);
       setQualifyScore(80);
       setTotalTime(null);
+      setValidFrom("");
+      setValidTo("");
     } catch (e: any) {
       toast.error(e?.message || "创建失败");
     }
@@ -279,7 +293,7 @@ export default function ExamPaperAdminPage() {
   const handleSave = async () => {
     if (currentId == null) return;
     try {
-      await saveExamPaper(currentId, { title, sections, qualifyScore, totalTime });
+      await saveExamPaper(currentId, { title, sections, qualifyScore, totalTime, validFrom: validFrom || null, validTo: validTo || null });
       toast.success("已保存");
       qc.invalidateQueries({ queryKey: ["exam-papers"] });
     } catch (e: any) {
@@ -357,6 +371,21 @@ export default function ExamPaperAdminPage() {
 
   const importableSeeds = seeds.filter((s) => !s.imported);
   const selectedImportable = importableSeeds.filter((s) => seedSelected.has(s.code));
+
+  /** 重置某人全部试卷的答题：清空分数与合格标记，学生端回到未作答 */
+  const handleResetPerson = async (personId: string, name: string) => {
+    if (!(await appConfirm(`重置「${name}」的全部答题？其所有试卷的分数与合格标记都会清空，学生端回到未作答。`, { danger: true }))) return;
+    setResettingPerson(personId);
+    try {
+      const rows = await resetPersonSubmissions(personId);
+      toast.success(`已重置 ${rows} 份答卷`);
+      qc.invalidateQueries({ queryKey: ["exam-submissions"] });
+    } catch (e: any) {
+      toast.error(e?.message || "重置失败");
+    } finally {
+      setResettingPerson(null);
+    }
+  };
 
   const openSeedDialog = async () => {
     setSeedOpen(true);
@@ -546,6 +575,26 @@ export default function ExamPaperAdminPage() {
                   onChange={(e) => setTotalTime(e.target.value ? Number(e.target.value) : null)}
                 />
               </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 8, fontSize: 12, color: "var(--mu)", whiteSpace: "nowrap" }}>
+                有效期
+                <input
+                  className="aup-input"
+                  type="datetime-local"
+                  style={{ width: 190 }}
+                  value={validFrom}
+                  onChange={(e) => setValidFrom(e.target.value)}
+                  title="开始可用时间，留空表示不限"
+                />
+                <span style={{ color: "var(--mu)" }}>~</span>
+                <input
+                  className="aup-input"
+                  type="datetime-local"
+                  style={{ width: 190 }}
+                  value={validTo}
+                  onChange={(e) => setValidTo(e.target.value)}
+                  title="截止可用时间，留空表示不限"
+                />
+              </label>
               <span style={{ marginLeft: 12, fontSize: 12, color: "var(--mu)", whiteSpace: "nowrap" }}>总分 {totalScore}</span>
               <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                 <button
@@ -664,6 +713,7 @@ export default function ExamPaperAdminPage() {
               <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold">
                 <th className="px-3 py-2">姓名</th><th className="px-3 py-2">编号</th>
                 {allPapers.map((p) => <th key={p.id} className="px-3 py-2 whitespace-nowrap">{p.title}</th>)}
+                <th className="px-3 py-2 text-right">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -680,6 +730,15 @@ export default function ExamPaperAdminPage() {
                       )}
                     </td>
                   ))}
+                  <td className="px-3 py-2.5 text-right">
+                    {r.cells.some((c) => c.score != null) ? (
+                      <AdminButton type="button" tone="secondary" size="sm" disabled={resettingPerson === r.personId} onClick={() => void handleResetPerson(r.personId, r.name)}>
+                        {resettingPerson === r.personId ? "重置中…" : "重置答题"}
+                      </AdminButton>
+                    ) : (
+                      <span className="text-xs text-[var(--app-color-text-tertiary)]">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

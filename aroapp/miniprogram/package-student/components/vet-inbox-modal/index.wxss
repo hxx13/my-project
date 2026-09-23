@@ -1,0 +1,464 @@
+/* 收件箱弹窗。令牌照小程序弹窗视觉基准（animalOrder 的 .sheet 那一套）：
+   白底 + 中性灰分层 #f6f7fb / #f1f3f7 / #eef0f4，单一蓝主色 #2563eb，
+   按钮一律实底（主蓝底白字 / 次 #f1f3f7+#334155 / 禁用 #e5e7eb+#9aa0a6），
+   状态语义只用一颗圆点或左侧色条 —— 不铺饱和色底、不做描边按钮。
+   未读那抹紫 #a855f7 与 Web/H5 网格描边同色，是全仓统一的「未读」语义。 */
+
+/* 必须给死高度：scroll-view 的 flex:1 只在父级有确定高度时才被约束，
+   父级只写 max-height 的话内容会把页脚顶出弹层（实测踩过） */
+.vim-sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 头部：只有标题那行要避开 vant 关闭图标，下面的搜索/筛选吃满宽度 */
+.vim-head {
+  flex-shrink: 0;
+  padding: 28rpx 32rpx 20rpx;
+  border-bottom: 1rpx solid #eef0f4;
+}
+.vim-title {
+  display: block;
+  padding-right: 64rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+.vim-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 12rpx;
+}
+.vim-meta-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.vim-meta-num {
+  font-weight: 700;
+  color: #a855f7;
+}
+/* 次级按钮：实底 #f1f3f7 + #334155，按内容宽度，不拉满整行 */
+.vim-allbtn {
+  flex-shrink: 0;
+  padding: 10rpx 24rpx;
+  border-radius: 999rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.vim-allbtn--off {
+  background: #e5e7eb;
+  color: #9aa0a6;
+}
+
+/* 搜索框 / 筛选胶囊：中性实底，选中态走蓝主色，不做描边 */
+.vim-search {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  padding: 10rpx 18rpx;
+  border-radius: 12rpx;
+  background: #f6f7fb;
+}
+.vim-search-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: #1f2937;
+}
+.vim-search-ph {
+  color: #94a3b8;
+}
+.vim-search-x {
+  flex-shrink: 0;
+  padding: 0 8rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+.vim-filters {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 14rpx;
+}
+.vim-chipbtn {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+.vim-chipbtn--on {
+  background: #2563eb;
+  color: #fff;
+}
+.vim-chipbtn-n {
+  font-size: 21rpx;
+  color: #64748b;
+}
+.vim-chipbtn--on .vim-chipbtn-n {
+  color: #dbeafe;
+}
+
+/* flex:1 + min-height:0：列表再长也在区域内滚，页脚不被顶出去 */
+.vim-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 8rpx 32rpx;
+  box-sizing: border-box;
+}
+
+.vim-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  padding: 120rpx 0;
+  font-size: 26rpx;
+  color: #94a3b8;
+}
+.vim-clear-btn {
+  padding: 10rpx 28rpx;
+  border-radius: 999rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.vim-hint-line {
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+.vim-pad {
+  height: 40rpx;
+}
+/* 展开箭头一律贴最右：靠计数自己吃满剩余宽度顶过去（比给图标加 margin-left:auto 稳，
+   自定义组件根节点的盒模型不保证） */
+.vim-chev {
+  flex-shrink: 0;
+}
+
+/* ── 段（待查看 / 已查看）── */
+.vim-sec {
+  margin-top: 20rpx;
+}
+.vim-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 10rpx 4rpx;
+}
+.vim-sec-bar {
+  width: 6rpx;
+  height: 26rpx;
+  border-radius: 3rpx;
+  flex-shrink: 0;
+}
+.vim-sec-title {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+.vim-sec-count {
+  margin-right: auto;
+  font-size: 22rpx;
+  color: #64748b;
+}
+
+/* ── 组（一个笼架）── */
+.vim-grp {
+  margin-top: 8rpx;
+}
+.vim-grp-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 4rpx;
+  background: #f6f7fb;
+  border-radius: 12rpx;
+  padding-left: 16rpx;
+  padding-right: 16rpx;
+}
+.vim-grp-name {
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #334155;
+}
+.vim-grp-count {
+  margin-right: auto;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.vim-grp-loc {
+  display: block;
+  padding: 8rpx 4rpx 0;
+  font-size: 21rpx;
+  color: #94a3b8;
+}
+
+/* ── 消息行 ── */
+.vim-row {
+  padding: 16rpx 4rpx 16rpx 18rpx;
+  border-left: 6rpx solid transparent;
+  border-bottom: 1rpx solid #eef0f4;
+}
+/* 未读 = 左侧色条（与网格那圈紫描边同色）。不铺紫底：饱和色底在大列表里会糊成一片 */
+.vim-row--unread {
+  border-left-color: #a855f7;
+}
+.vim-row--hover {
+  background: #f6f7fb;
+}
+.vim-row-top {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.vim-pos {
+  flex-shrink: 0;
+  font-size: 27rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+.vim-st {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 0;
+  flex: 1;
+}
+.vim-st-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.vim-st-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 24rpx;
+  color: #334155;
+}
+.vim-time {
+  flex-shrink: 0;
+  font-size: 21rpx;
+  color: #94a3b8;
+}
+.vim-row-sub {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 4rpx;
+  padding-left: 0;
+}
+.vim-who {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 22rpx;
+  color: #64748b;
+}
+.vim-tag {
+  flex-shrink: 0;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 20rpx;
+}
+
+/* ── 详情 ── */
+.vim-d-title {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-width: 0;
+}
+.vim-d-pos {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+.vim-flag {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+.vim-flag-text {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #a855f7;
+}
+.vim-d-sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.vim-card {
+  margin-top: 16rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 14rpx;
+  background: #f6f7fb;
+}
+.vim-card-title {
+  display: block;
+  margin-bottom: 14rpx;
+  font-size: 25rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+/* 字段双列，标签在上灰字、值在下深字；长值跨满两列 */
+.vim-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx 24rpx;
+}
+.vim-cell {
+  min-width: 0;
+}
+.vim-cell--wide {
+  grid-column: span 2;
+}
+.vim-cell-label {
+  display: block;
+  font-size: 21rpx;
+  color: #94a3b8;
+}
+.vim-cell-value {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 25rpx;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+/* 当前状态：中性浅底 + 一颗状态色圆点。禁用饱和色药丸 */
+.vim-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.vim-chip {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  background: #fff;
+}
+.vim-chip-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.vim-chip-text {
+  font-size: 24rpx;
+  color: #334155;
+}
+
+.vim-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+.vim-photo-wrap {
+  position: relative;
+  width: 140rpx;
+  height: 140rpx;
+}
+.vim-photo {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 12rpx;
+  background: #eef0f4;
+}
+.vim-photo-x {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 22rpx;
+}
+.vim-photo-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 12rpx;
+  background: #f1f3f7;
+}
+
+.vim-advice {
+  width: 100%;
+  min-height: 140rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
+  border-radius: 12rpx;
+  background: #fff;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+
+/* 页脚：按钮按内容宽度靠右并排，不各占一行 */
+.vim-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16rpx;
+  padding: 16rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eef0f4;
+}
+.vim-btn {
+  flex-shrink: 0;
+  padding: 16rpx 32rpx;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+.vim-btn--ghost {
+  background: #f1f3f7;
+  color: #334155;
+}
+.vim-btn--primary {
+  background: #2563eb;
+  color: #fff;
+}
+.vim-btn--off {
+  background: #e5e7eb;
+  color: #9aa0a6;
+}

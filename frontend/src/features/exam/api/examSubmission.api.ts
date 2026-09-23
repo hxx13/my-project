@@ -30,3 +30,10 @@ export async function fetchExamSubmission(id: number): Promise<ExamSubmissionDet
   const r = await adminHttp.get(`/exam-submissions/${id}`);
   return r.data?.data as ExamSubmissionDetail;
 }
+
+/** 重置某人全部试卷的答题（清空分数与合格标记），学生端回到未作答。 */
+export async function resetPersonSubmissions(personId: string): Promise<number> {
+  const r = await adminHttp.delete("/exam-submissions", { params: { personId } });
+  if (!r.data?.success) throw new Error(r.data?.message || "重置失败");
+  return (r.data?.data?.rows ?? 0) as number;
+}

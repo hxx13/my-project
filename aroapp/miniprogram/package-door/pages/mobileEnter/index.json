@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "移动端进入",
+  "usingComponents": {
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

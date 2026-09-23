@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { LayoutGrid, Star, Search, PanelLeft, PanelLeftClose, Info, ClipboardList, Scan, Activity } from "lucide-react";
+import { LayoutGrid, Star, Search, PanelLeft, PanelLeftClose, Info, ClipboardList, Scan, Activity, History } from "lucide-react";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
@@ -27,6 +27,7 @@ import { useRoomBookmarks } from "@/features/cage-shelf/useRoomBookmarks";
 import { useShelfBookmarks } from "@/features/cage-shelf/useShelfBookmarks";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
 import MyCageRequestsDialog from "@/features/student/components/MyCageRequestsDialog";
+import MyExperimentRecordsDialog from "@/features/cage-shelf/components/MyExperimentRecordsDialog";
 import { batchOf, removeItem, upsertItem, setParams, clearBatch, groupItems, applyResults, summarize, type PendingBatch, type PendingByMode, type PendingItem, type SubmitResult } from "@/features/cage-shelf/pendingBatch";
 import StudentModeDrawer, { type StudentZone } from "@/features/student/components/StudentModeDrawer";
 import StudentSearchSelect, { type SearchOption } from "@/features/student/components/StudentSearchSelect";
@@ -46,6 +47,8 @@ export default function StudentCageShelfPage() {
   const [claimsLoading, setClaimsLoading] = useState(false);
   /** 「我的申请」是弹窗（不是 tab）：它跟主区网格无关，塞进 grid 主区会被撑满高度的空占位顶下去 */
   const [requestsOpen, setRequestsOpen] = useState(false);
+  /** 「我的实验记录」弹窗：按房间树看自己所有笼位的记录（含已失去权限/归档的历史笼位） */
+  const [myRecordsOpen, setMyRecordsOpen] = useState(false);
 
   const loadMyClaims = async () => { setClaimsLoading(true); try { setMyClaims(await fetchMyClaims()); } catch { setMyClaims([]); } finally { setClaimsLoading(false); } };
   useEffect(() => { loadMyClaims(); }, []);
@@ -1604,6 +1607,7 @@ export default function StudentCageShelfPage() {
                   <button onClick={() => setTab("bookmarks")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "bookmarks" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><Star className="h-3 w-3" />收藏</button>
                   <button onClick={() => setTab("filter")} className={`flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${tab === "filter" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}><LayoutGrid className="h-3 w-3" />筛选</button>
                   <button onClick={() => { setRequestsOpen(true); loadMyClaims(); }} className="flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" title="认领 / 分笼 / 转移 / 审核申请"><ClipboardList className="h-3 w-3" />我的申请</button>
+                  <button onClick={() => setMyRecordsOpen(true)} className="flex items-center gap-1 rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]" title="按房间查看我写过的全部实验记录（含已归档的历史笼位）"><History className="h-3 w-3" />我的实验记录</button>
                 </div>
                 {tab === "filter" && <div className="flex items-center gap-1 rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
                   <button onClick={() => setViewMode("room")} className={`rounded-student-sm px-2.5 py-1 text-[11px] font-semibold transition ${viewMode === "room" ? "bg-[var(--app-color-accent-hover)] text-white shadow-sm" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"}`}>全房间</button>
@@ -1894,6 +1898,7 @@ export default function StudentCageShelfPage() {
         onReloadClaims={() => { void loadMyClaims(); setClaimReloadKey(k => k + 1); }}
         onCageDataChanged={() => { setClaimReloadKey(k => k + 1); void qc.invalidateQueries({ queryKey: ["cage-op", "markers"] }); }}
       />
+      {myRecordsOpen && <MyExperimentRecordsDialog onClose={() => setMyRecordsOpen(false)} />}
       {/* 抽屉关着时，右边缘留一排书签标签（每个带缓冲的模式一枚），点谁切到谁并展开抽屉 */}
       {!drawerOpen && (
         <StudentModeTabs

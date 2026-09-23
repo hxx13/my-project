@@ -1,0 +1,44 @@
+<!-- 电子签名手写页。
+     不动设备朝向：不声明 pageOrientation、也不判断横竖屏。
+     操作条整层转 90°（文字/按钮转得动），写区**不转**——顺着手机长边铺，
+     用户把手机横过来，它就是一块 8:3 的横条。
+     （canvas 不跟随祖先的 CSS transform，实测过，所以写区必须放在没被转的那一层。） -->
+<view class="sig-page">
+  <!-- 操作条：转到屏幕的一条边上，手机横过来看就是正常的横屏按钮条。
+       pointer-events 只放给条本身，别盖住写区。 -->
+  <view
+    class="sig-rotor"
+    style="width:{{rotorW}}px;height:{{rotorH}}px;transform:translateX({{shift}}px) rotate(90deg);"
+  >
+    <view class="sig-rotor-spacer"></view>
+    <view class="sig-bar" style="height:{{chrome}}px;">
+      <view class="sig-bar-side">
+        <view class="chip-btn chip-btn--ghost sig-bar-btn" hover-class="sig-btn-hover" bindtap="onBack">返回</view>
+        <view class="chip-btn chip-btn--ghost sig-bar-btn" hover-class="sig-btn-hover" bindtap="onRetry">重试</view>
+        <view
+          class="chip-btn chip-btn--primary sig-bar-btn {{ (dirty && !submitting) ? '' : 'chip-btn--off' }}"
+          hover-class="sig-btn-hover"
+          bindtap="onSubmit"
+        >{{ submitting ? '提交中…' : '提交' }}</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 写区：不转，按 8:3 横过来看的尺寸铺在手机长边上。
+       「在这里签名」是画进画布的（浮层会被 canvas 盖住，实测） -->
+  <view class="sig-stage" style="left:{{padLeft}}px;top:{{padTop}}px;width:{{boxW}}px;height:{{boxH}}px;">
+    <canvas
+      type="2d"
+      id="sigPad"
+      class="sig-pad"
+      style="width:{{boxW}}px;height:{{boxH}}px;"
+      bindtouchstart="onTouchStart"
+      bindtouchmove="onTouchMove"
+      bindtouchend="onTouchEnd"
+      bindtouchcancel="onTouchEnd"
+    ></canvas>
+  </view>
+
+  <!-- 出件用：把竖着的写区转 90° 放进 800×300（放屏幕外，不参与视觉） -->
+  <canvas type="2d" id="sigOut" class="sig-out" style="width:{{outW}}px;height:{{outH}}px;"></canvas>
+</view>

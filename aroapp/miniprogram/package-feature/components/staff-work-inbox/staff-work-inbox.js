@@ -631,7 +631,7 @@ Component({
       return;
     }
     if (kind === 'purchase') {
-      wx.navigateTo({ url: `/package-feature/pages/purchaseRequest/index?focusId=${encodeURIComponent(oid)}` });
+      wx.navigateTo({ url: `/package-supplies/pages/purchaseRequest/index?focusId=${encodeURIComponent(oid)}` });
     }
   },
 

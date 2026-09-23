@@ -156,6 +156,7 @@ import StudentExamAnswerPage from "@/features/student/pages/student-exam-answer"
 import StudentTrainingPage from "@/features/student/pages/student-training";
 import StudentTrainingMyPage from "@/features/student/pages/student-training-my";
 import StudentHealthSurveyPage from "@/features/student/pages/student-health-survey";
+import StudentCertificatesPage from "@/features/student/pages/student-certificates";
 import ReportFormListPage from "@/features/report-form/pages/ReportFormListPage";
 import ReportFormDesignPage from "@/features/report-form/pages/ReportFormDesignPage";
 import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
@@ -312,6 +313,7 @@ export const router = createHashRouter([
       { path: "training", element: <StudentTrainingPage /> },
       { path: "training/my", element: <StudentTrainingMyPage /> },
       { path: "health-survey", element: <StudentHealthSurveyPage /> },
+      { path: "certificates", element: <StudentCertificatesPage /> },
     ],
   },
 

@@ -1,0 +1,224 @@
+/* 培训审核 + 房间权限下放 */
+.page {
+  padding: 16px 14px 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #eef5ff 0%, #f7f8fa 120px);
+}
+.muted {
+  font-size: 13px;
+  color: #969799;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.hd {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 12px;
+}
+.hd-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hd-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2937;
+}
+.hd-sub {
+  margin-top: 4rpx;
+  font-size: 12px;
+  color: #969799;
+}
+
+.occ-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(235, 238, 239, 0.9);
+  box-shadow: 0 4px 18px rgba(31, 56, 88, 0.07);
+}
+.occ-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12rpx;
+  padding-bottom: 10rpx;
+  border-bottom: 1px solid #f4f5f7;
+}
+.occ-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.occ-addr {
+  font-size: 12px;
+  color: #969799;
+}
+
+.stu-row {
+  padding: 14rpx 0;
+  border-bottom: 1px solid #f7f8fa;
+}
+.stu-row:last-child {
+  border-bottom: none;
+}
+.stu-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+.stu-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.stu-job {
+  font-size: 12px;
+  color: #969799;
+}
+.stu-group {
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  background: #f1f3f7;
+  font-size: 11px;
+  color: #64748b;
+}
+.stu-tags {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 8rpx;
+}
+.tag {
+  padding: 2rpx 12rpx;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+.tag-ok {
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+}
+.tag-warn {
+  color: #d97706;
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+.tag-bad {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.tag-mute {
+  color: #64748b;
+  background: #f1f3f7;
+  border-color: #dcdee0;
+}
+.stu-ops {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10rpx;
+  margin-top: 12rpx;
+}
+
+/* 房间下放弹层 */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 20rpx 24rpx;
+  box-sizing: border-box;
+}
+.sheet-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+}
+.region-tabs {
+  width: 100%;
+  white-space: nowrap;
+  margin-bottom: 8rpx;
+}
+.region-tabs-inner {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 20rpx;
+  padding-bottom: 2px;
+}
+.region-tab {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+.region-tab-on {
+  color: #2563eb;
+  font-weight: 600;
+}
+.floor-tab {
+  flex-shrink: 0;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 12px;
+  color: #64748b;
+  background: #f1f3f7;
+}
+.floor-tab-on {
+  color: #fff;
+  background: #2563eb;
+}
+.room-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 8rpx;
+  border-bottom: 1px solid #f4f5f7;
+}
+.room-row-on {
+  background: #eff6ff;
+}
+.staff-dot {
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 8rpx;
+  border: 2rpx solid #c8c9cc;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18rpx;
+  color: #fff;
+}
+.staff-dot-on {
+  border-color: #2563eb;
+  background: #2563eb;
+}
+.room-name {
+  flex: 1;
+  font-size: 13px;
+  color: #1f2937;
+}

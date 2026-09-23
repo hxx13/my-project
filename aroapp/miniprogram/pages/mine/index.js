@@ -24,6 +24,7 @@ const {
   studentReviewMenuBadgeText,
 } = require('../../utils/pendingBadgeCounts.js');
 const studentAlerts = require('../../utils/studentAlertHelpers.js');
+const personIdentity = require('../../utils/personIdentity.js');
 
 function readSpringUserInfoObject() {
   try {
@@ -339,9 +340,13 @@ Page({
     canGoAdminPersonnel: false,
     canGoDahuaIssue: false,
     canGoDoorControl: false,
+    canGoDoorSwipeRules: false,
+    canGoAccessRecordLibrary: false,
+    canGoViolationAdmin: false,
     canGoSuppliesAudit: false,
     canGoStudentReview: false,
     canGoCardPrint: false,
+    canGoOrderTimeConfig: false,
     badgeStudentReviewText: '',
     canGoAiPortrait: false,
     springUserId: '',
@@ -400,6 +405,11 @@ Page({
     signatureLinkShow: false,
     signatureLinkUrl: '',
     signatureLinkQrSrc: '',
+    /** 电子签名：已签过时改为直接看签名（签名不可更改，再出链接后端也会拒） */
+    signatureViewShow: false,
+    signatureImageData: '',
+    /** 手写页点了「改用浏览器签」后返回本页，由 onShow 接力弹二维码 */
+    _autoOpenSignLink: false,
     wxPusherSaving: false,
 
     // Password Change
@@ -440,6 +450,11 @@ Page({
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar && typeof tabBar.refreshTabs === 'function') {
       tabBar.refreshTabs();
+    }
+    // 手写页点了「改用浏览器签」→ 回来接力弹二维码
+    if (this.data._autoOpenSignLink) {
+      this.setData({ _autoOpenSignLink: false });
+      this.openSignatureLink();
     }
     const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
     const pending = wx.getStorageSync(springAuth.KEYS.PENDING_OPENID) || '';
@@ -609,6 +624,14 @@ Page({
       ? authDisplay || (roleLabel !== '—' ? roleLabel : '校内用户')
       : '访客';
     const springRoleLabelZh = springBound ? roleCodeToZh(role) : '';
+    // 「业务」授予记在**账号**上：页面实例跨登出/登录常驻，只记一个裸布尔会让业务账号登出后
+    // 普通账号仍短暂看到订购时间管理入口（后续的边界复查拦得住进入，但入口不该亮）。
+    // 必须在下面的 setData 之前重置，否则换号后的第一次 refresh 仍会渲染旧授予。
+    if (this._orderTimeBusinessFor !== springUserId) {
+      this._orderTimeBusinessGranted = false;
+      this._orderTimeBusinessFor = springUserId;
+      this._orderTimeBusinessProbed = false;
+    }
     this.setData({
       springBound,
       springPending,
@@ -626,30 +649,58 @@ Page({
           ? pagePermission.canAccessMiniPage('/package-feature/pages/staffChatHub/index', role, 'STAFF')
           : pagePermission.canAccessMiniPage('/package-feature/pages/messages/index', role, 'STUDENT'),
       canGoRepairRequest: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/repairRequest/index', role, 'STAFF'),
-      canGoPurchaseRequest: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/purchaseRequest/index', role, 'STAFF'),
+      canGoPurchaseRequest: pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/purchaseRequest/index', role, 'STAFF'),
       canGoFileTemplates:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canAccessMiniPage('/package-feature/pages/fileTemplates/index', role, 'STAFF'),
-      canGoAssetRecord: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/assetRecord/index', role, 'STAFF'),
+      canGoAssetRecord: pagePermission.canShowMiniEntry('mine', '/package-ops/pages/assetRecord/index', role, 'STAFF'),
       canGoFacilityMaintenance: pagePermission.canShowMiniEntry(
         'mine',
-        '/package-feature/pages/facilityMaintenance/index',
+        '/package-ops/pages/facilityMaintenance/index',
         role,
         'STAFF',
       ),
-      canGoAssetTransferRecord: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/assetTransferRecord/index', role, 'STAFF'),
+      canGoAssetTransferRecord: pagePermission.canShowMiniEntry('mine', '/package-ops/pages/assetTransferRecord/index', role, 'STAFF'),
       canGoAdminPersonnel: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/adminPersonnel/index', role, 'SUPER_ADMIN'),
-      canGoDahuaIssue: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/dahuaIssue/index', role, 'ADMIN'),
-      canGoDoorControl: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/doorControl/index', role, 'SUPER_ADMIN'),
+      canGoDahuaIssue: pagePermission.canShowMiniEntry('mine', '/package-door/pages/dahuaIssue/index', role, 'ADMIN'),
+      canGoDoorControl: pagePermission.canShowMiniEntry('mine', '/package-door/pages/doorControl/index', role, 'SUPER_ADMIN'),
+      // 后端整页要求 PLATFORM_OWNER（DoorSwipeRuleController.requireAdmin），门控同一档
+      canGoDoorSwipeRules: pagePermission.canShowMiniEntry(
+        'mine',
+        '/package-door/pages/doorSwipeRules/index',
+        role,
+        'PLATFORM_OWNER',
+      ),
+      canGoAccessRecordLibrary: pagePermission.canShowMiniEntry(
+        'mine',
+        '/package-door/pages/accessRecordLibrary/index',
+        role,
+        'ADMIN',
+      ),
+      canGoViolationAdmin: pagePermission.canShowMiniEntry(
+        'mine',
+        '/package-feature/pages/violationAdmin/index',
+        role,
+        'ADMIN',
+      ),
       canGoSuppliesAudit:
         hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/suppliesAudit/index', role, 'STAFF'),
+        pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/suppliesAudit/index', role, 'STAFF'),
       canGoStudentReview:
         hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF'),
+        pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF'),
       canGoCardPrint:
         hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/cardPrint/index', role, 'STAFF'),
+        pagePermission.canShowMiniEntry('mine', '/package-door/pages/cardPrint/index', role, 'STAFF'),
+      canGoOrderTimeConfig:
+        hasMinRole(role, 'SUPER_ADMIN') || this._orderTimeBusinessGranted === true,
+      // 培训与考核：受训人既可能是学生也可能是教职工，默认学生级别即可见
+      canGoStudentTraining: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentTraining/index', role, 'STUDENT'),
+      canGoStudentExam: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentExam/index', role, 'STUDENT'),
+      // 培训管理（教职工端）：审核/房间下放/发布编辑培训，教职工起步
+      canGoTrainingAdmin:
+        hasMinRole(role, 'STAFF') &&
+        pagePermission.canShowMiniEntry('mine', '/package-feature/pages/trainingAdmin/index', role, 'STAFF'),
       canGoAiPortrait: springBound && springUserId && pagePermission.canShowMiniEntry('mine', '/package-feature/pages/aiPortrait/index', role, 'STUDENT'),
       springUserId,
       headerDisplayName,
@@ -684,6 +735,20 @@ Page({
       this.refreshAroBinding();
     } else {
       this.setData({ hasAroBinding: false, isImpersonating: false });
+    }
+    // 业务标签要打接口，不能卡在同步的 refresh 里；拿到后只补这一个标志位
+    if (!hasMinRole(role, 'SUPER_ADMIN') && this._orderTimeBusinessProbed !== true) {
+      this._orderTimeBusinessProbed = true;
+      personIdentity
+        .fetchMyIdentityCodes()
+        .then((codes) => {
+          // 请求回来时可能已经换号，认准发起时的账号
+          if (codes && codes.BUSINESS && this._orderTimeBusinessFor === springUserId) {
+            this._orderTimeBusinessGranted = true;
+            this.setData({ canGoOrderTimeConfig: true });
+          }
+        })
+        .catch(() => {});
     }
   },
 
@@ -893,20 +958,47 @@ Page({
 
   goDahuaIssue() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/dahuaIssue/index', role, 'ADMIN')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-door/pages/dahuaIssue/index', role, 'ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/dahuaIssue/index' });
+    wx.navigateTo({ url: '/package-door/pages/dahuaIssue/index' });
   },
 
   goDoorControl() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/doorControl/index', role, 'SUPER_ADMIN')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-door/pages/doorControl/index', role, 'SUPER_ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/doorControl/index' });
+    wx.navigateTo({ url: '/package-door/pages/doorControl/index' });
+  },
+
+  /** 门禁成功刷卡规则（原 /#/console/admin/door-swipe-rules 四个 tab） */
+  goDoorSwipeRules() {
+    if (!this.data.canGoDoorSwipeRules) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-door/pages/doorSwipeRules/index' });
+  },
+
+  /** 门禁记录库（原 /#/console/admin/dahua-swing-tasks?tab=records + /#/console/admin/automation-logs） */
+  goAccessRecordLibrary() {
+    if (!this.data.canGoAccessRecordLibrary) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-door/pages/accessRecordLibrary/index' });
+  },
+
+  /** 违规管理（原 /#/console/admin/student-violations 的违规记录表） */
+  goViolationAdmin() {
+    if (!this.data.canGoViolationAdmin) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/violationAdmin/index' });
   },
 
   goAiPortrait() {
@@ -957,11 +1049,11 @@ Page({
 
   goPurchaseRequest() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/purchaseRequest/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/purchaseRequest/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/purchaseRequest/index' });
+    wx.navigateTo({ url: '/package-supplies/pages/purchaseRequest/index' });
   },
 
   goFileTemplates() {
@@ -977,13 +1069,13 @@ Page({
   },
 
   /**
-   * 电子签名：生成**一次性链接**后弹二维码。
+   * 电子签名入口：**已签过看签名，没签过进手写页**。
    *
-   * <p>为什么不做小程序内手绘、也不走 web-view：小程序里手写区域太小；web-view 又要求把网页域名
-   * 加进微信后台的业务域名白名单（仓库里那个 webview 壳一直没有调用方，白名单不一定配过）。
-   * 弹二维码最稳：长按识别 / 截图扫一扫 / 复制链接到浏览器，三条路都能到 H5 那张整屏横向签名页。
+   * <p>没签时进小程序内的整屏横屏手写页（package-feature/pages/signaturePad），
+   * 那条路写区大、不用跳浏览器；手写页上还留了「改用浏览器签」的退路，走 {@link openSignatureLink}。
    *
-   * <p>链接一次性，签完即失效；已经签过的会被后端直接拒掉（签名不可更改）。
+   * <p>这里先查一次是因为签名**不可更改**：签过的人再进手写页写完也会被后端拒，
+   * 不如直接给他看已签的样式。
    */
   async goSignature() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
@@ -991,6 +1083,35 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
+    wx.showLoading({ title: '加载中', mask: true });
+    try {
+      const cur = await springAuth.springRequest({ url: '/api/student/signature', method: 'GET', data: {} });
+      const curBody = (cur && cur.data) || {};
+      if (!curBody.success) throw new Error(curBody.message || '读取签名失败');
+      const sig = curBody.data || {};
+      wx.hideLoading();
+      if (sig.hasSignature) {
+        this.setData({ signatureViewShow: true, signatureImageData: sig.imageData || '' });
+        return;
+      }
+      wx.navigateTo({ url: '/package-feature/pages/signaturePad/index' });
+      return;
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '读取签名失败', icon: 'none' });
+    }
+  },
+
+  /**
+   * 退路：生成**一次性链接**后弹二维码。
+   *
+   * <p>为什么还留着：web-view 要求把网页域名加进微信后台的业务域名白名单（仓库里那个 webview
+   * 壳一直没有调用方，白名单不一定配过）。弹二维码最稳：长按识别 / 截图扫一扫 / 复制链接到浏览器，
+   * 三条路都能到 H5 那张整屏横向签名页。
+   *
+   * <p>链接一次性，签完即失效；已经签过的会被后端直接拒掉（签名不可更改）。
+   */
+  async openSignatureLink() {
     wx.showLoading({ title: '正在生成签名链接', mask: true });
     try {
       const r = await springAuth.springRequest({ url: '/api/student/signature/link', method: 'POST', data: {} });
@@ -1062,31 +1183,54 @@ Page({
     this.setData({ signatureLinkShow: false });
   },
 
+  onCloseSignatureView() {
+    this.setData({ signatureViewShow: false });
+  },
+
   goAssetRecord() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/assetRecord/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-ops/pages/assetRecord/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/assetRecord/index' });
+    wx.navigateTo({ url: '/package-ops/pages/assetRecord/index' });
   },
 
   goFacilityMaintenance() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/facilityMaintenance/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-ops/pages/facilityMaintenance/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/facilityMaintenance/index' });
+    wx.navigateTo({ url: '/package-ops/pages/facilityMaintenance/index' });
+  },
+
+  goOrderTimeConfig() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+    if (hasMinRole(role, 'SUPER_ADMIN')) {
+      wx.navigateTo({ url: '/package-feature/pages/orderTimeConfig/index' });
+      return;
+    }
+    // 非超管：边界再验一次业务标签，别只信列表渲染时的标志位
+    personIdentity
+      .fetchMyIdentityCodes()
+      .then((codes) => {
+        if (codes && codes.BUSINESS) {
+          wx.navigateTo({ url: '/package-feature/pages/orderTimeConfig/index' });
+        } else {
+          wx.showToast({ title: '无权限', icon: 'none' });
+        }
+      })
+      .catch(() => wx.showToast({ title: '无权限', icon: 'none' }));
   },
 
   goAssetTransferRecord() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/assetTransferRecord/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-ops/pages/assetTransferRecord/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/assetTransferRecord/index' });
+    wx.navigateTo({ url: '/package-ops/pages/assetTransferRecord/index' });
   },
 
   goStudentReview() {
@@ -1095,11 +1239,11 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/studentReviewHub/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/studentReviewHub/index' });
+    wx.navigateTo({ url: '/package-student/pages/studentReviewHub/index' });
   },
 
   goSuppliesAudit() {
@@ -1108,11 +1252,11 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/suppliesAudit/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/suppliesAudit/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/suppliesAudit/index' });
+    wx.navigateTo({ url: '/package-supplies/pages/suppliesAudit/index' });
   },
 
   goCardPrint() {
@@ -1121,7 +1265,24 @@ Page({
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: '/package-feature/pages/cardPrint/index' });
+    wx.navigateTo({ url: '/package-door/pages/cardPrint/index' });
+  },
+
+  goStudentTraining() {
+    wx.navigateTo({ url: '/package-student/pages/studentTraining/index' });
+  },
+
+  goStudentExam() {
+    wx.navigateTo({ url: '/package-student/pages/studentExam/index' });
+  },
+
+  goTrainingAdmin() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+    if (!hasMinRole(role, 'STAFF')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/trainingAdmin/index' });
   },
 
   openBindFlow() {

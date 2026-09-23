@@ -30,45 +30,89 @@
         "pages/staffChatRoom/index",
         "pages/fileTemplates/index",
         "pages/repairRequest/index",
-        "pages/purchaseRequest/index",
+        "pages/adminPersonnel/index",
+        "pages/signaturePad/index",
+        "pages/trainingAdmin/index",
+        "pages/trainingAdmin/edit",
+        "pages/trainingAdmin/review",
+        "pages/animalOrder/index",
+        "pages/orderTimeConfig/index",
+        "pages/violationAdmin/index"
+      ]
+    },
+    {
+      "root": "package-supplies",
+      "name": "supplies",
+      "pages": [
         "pages/supplies/index",
         "pages/suppliesMine/index",
         "pages/suppliesAudit/index",
         "pages/suppliesProcess/index",
         "pages/suppliesAdmin/index",
-        "pages/adminPersonnel/index",
-        "pages/assetRecord/index",
-        "pages/facilityMaintenance/index",
-        "pages/facilityMaintenance/historyInsp",
-        "pages/facilityMaintenance/settings",
-        "pages/assetTransferRecord/index",
+        "pages/materialAdmin/index",
+        "pages/purchaseRequest/index"
+      ]
+    },
+    {
+      "root": "package-door",
+      "name": "door",
+      "pages": [
+        "pages/doorControl/index",
+        "pages/doorSwipeRules/index",
+        "pages/mobileEnter/index",
+        "pages/roomCardAdmin/index",
+        "pages/roomAccessRecords/index",
+        "pages/accessRecordLibrary/index",
         "pages/dahuaIssue/index",
-        "pages/studentReviewHub/index",
+        "pages/cardPrint/index"
+      ]
+    },
+    {
+      "root": "package-student",
+      "name": "student",
+      "pages": [
+        "pages/myCageRequests/index",
+        "pages/studentAccessRecords/index",
+        "pages/studentCageShelf/index",
+        "pages/studentCertificate/index",
+        "pages/studentExam/index",
+        "pages/studentExamAnswer/index",
+        "pages/studentGroupActivity/index",
         "pages/studentMaterial/index",
         "pages/studentMaterialRequests/index",
-        "pages/studentGroupActivity/index",
-        "pages/studentCageShelf/index",
-        "pages/cardPrint/index",
-        "pages/studentAccessRecords/index",
-        "pages/studentViolations/index",
-        "pages/materialAdmin/index",
-        "pages/animalOrder/index",
-        "pages/doorControl/index"
+        "pages/studentReviewHub/index",
+        "pages/studentTraining/index",
+        "pages/studentViolations/index"
+      ]
+    },
+    {
+      "root": "package-ops",
+      "name": "ops",
+      "pages": [
+        "pages/assetRecord/index",
+        "pages/assetTransferRecord/index",
+        "pages/facilityMaintenance/historyInsp",
+        "pages/facilityMaintenance/index",
+        "pages/facilityMaintenance/settings"
       ]
     }
   ],
   "preloadRule": {
     "pages/index/index": {
       "network": "all",
-      "packages": ["feature"]
+      "packages": [
+        "feature"
+      ]
     },
     "pages/mine/index": {
       "network": "all",
-      "packages": ["feature"]
+      "packages": [
+        "feature"
+      ]
     }
   },
   "window": {
-    "navigationBarTitleText": "aroapp",
+    "navigationBarTitleText": "实验动物科学部",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
     "backgroundColor": "#f7f8fa",

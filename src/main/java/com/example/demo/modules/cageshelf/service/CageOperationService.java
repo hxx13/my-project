@@ -95,6 +95,7 @@ public class CageOperationService {
     private final CageReviewVetService reviewVetService;
     private final TransferFormService transferFormService;
     private final PushService pushService;
+    private final CageExperimentRecordService experimentRecordService;
 
     public CageOperationService(CageOpRequestMapper opMapper,
                                 CageCellDetailMapper detailMapper,
@@ -123,7 +124,8 @@ public class CageOperationService {
                                 CageVisibilityPolicy visibilityPolicy,
                                 CageReviewVetService reviewVetService,
                                 TransferFormService transferFormService,
-                                PushService pushService) {
+                                PushService pushService,
+                                CageExperimentRecordService experimentRecordService) {
         this.opMapper = opMapper;
         this.detailMapper = detailMapper;
         this.claimMapper = claimMapper;
@@ -152,6 +154,7 @@ public class CageOperationService {
         this.reviewVetService = reviewVetService;
         this.transferFormService = transferFormService;
         this.pushService = pushService;
+        this.experimentRecordService = experimentRecordService;
     }
 
     // ═══════════════════════════════════════════
@@ -369,18 +372,7 @@ public class CageOperationService {
         // 全局查看者（SUPER_ADMIN+ / 平台管理者）不受作用域限制：他们本来就可见全部，
         // 这次收窄针对的是「矩阵给了操作资格、但笼位不在他负责范围内」的饲养组长/饲养员。
         if (visibilityPolicy.isGlobalViewer(user)) return true;
-        Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
-        if (loc != null) {
-            Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
-            String roomId = str(loc.get("roomId"));
-            String floorId = str(loc.get("floorId"));
-            String campusId = str(loc.get("campusId"));
-            if ((roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId))
-                    || (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId))
-                    || (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId))) {
-                return true;
-            }
-        }
+        if (regionScopeHit(user, animalCageId)) return true;
         return cageInUserGroup(user, d);
     }
 
@@ -724,6 +716,9 @@ public class CageOperationService {
         assertSourceNotPendingOccupied(animalCageId, null);
 
         String now = DT_FMT.format(LocalDateTime.now());
+        // 换人判定：改之前这笼位算不算目标人的（活跃认领人 **或** 表单实验员，与 isOccupantSelf 同口径）。
+        // 同一人重复代认领不该把人家自己的实验记录归档掉。
+        boolean occupantChanged = !isOccupantSelf(target, animalCageId);
         // 覆盖：先把该笼位已有的活跃认领释放掉
         for (CageClaim c : claimMapper.selectByAnimalCageIdForUpdate(animalCageId)) {
             if (c.isActive()) {
@@ -753,6 +748,8 @@ public class CageOperationService {
         claimMapper.insert(claim);
 
         infoValueService.syncFromMapped(animalCageId, Map.of("experimenter_name", claim.getClaimantName()));
+        // 占用者换人 = 前任的实验记录失去归属：整体归档、退出台账，新占用者看不到别人的实验内容
+        if (occupantChanged) experimentRecordService.archiveForCage(animalCageId, operator.getId());
         writeTransferLog("start", null, animalCageId,
                 new Occupant(claim.getClaimantId(), claim.getClaimantName(), claim.getAupId()), operator, "代认领");
         log.info("[cage-op] claimOnBehalf operator={} target={} animalCageId={}",
@@ -887,6 +884,72 @@ public class CageOperationService {
         if (user == null || animalCageId == null) return false;
         if (isClaimantSelf(user, claimMapper.selectActiveByAnimalCageId(animalCageId))) return true;
         return isExperimenterSelf(user, experimenterOf(animalCageId));
+    }
+
+    /**
+     * 能否查看该笼位的**实验记录台账**。
+     *
+     * <p>比「能不能看到这个笼位」更严：课题组只回答「笼位是谁的」，台账里是别人的实验内容，
+     * 光按课题组判 = 同组学生互相看得见对方每天记了什么。口径：
+     * <ul>
+     *   <li>教职工/管理员等**非学生账号** → 一律放行（保持原权限不变）；</li>
+     *   <li>{@link #isOccupantSelf 实验员本人} → 自己的记录；</li>
+     *   <li>{@link #regionScopeHit 区域分配命中} → 分管这片区的管家/饲养组长（他们本来就不在笼位课题组里）；</li>
+     *   <li>该笼位 AUP 的**课题组长** → 组长可以是学生账号（组长 PI），不能只靠 isStudent 判。</li>
+     * </ul>
+     */
+    public boolean canViewExperimentRecords(User user, Long animalCageId) {
+        if (user == null || user.getId() == null || animalCageId == null) return false;
+        if (!modeVisibilityService.isStudent(user)) return true;
+        if (isOccupantSelf(user, animalCageId)) return true;
+        if (regionScopeHit(user, animalCageId)) return true;
+        return isCageProjectPi(user, animalCageId);
+    }
+
+    /**
+     * 能否写台账（新增/改草稿/提交）—— **仅实验员本人**。
+     *
+     * <p>与旧的 {@code POST /local/annotate} 实验记录分支同口径（那里也是判 {@code isOccupantSelf}）：
+     * 「PI/管家/教职工保持原权限不变」指的是**看**，不是替学生写实验记录。
+     */
+    public boolean canWriteExperimentRecords(User user, Long animalCageId) {
+        if (user == null || user.getId() == null || animalCageId == null) return false;
+        return isOccupantSelf(user, animalCageId);
+    }
+
+    /** 调用方要按「学生 / 教职工」分流时的唯一判据出口（判据只在 modeVisibilityService 一处）。 */
+    public boolean isStudentViewer(User user) {
+        return user != null && modeVisibilityService.isStudent(user);
+    }
+
+    /** 该笼位登记的 AUP 的课题组长是不是本人（组长可能是学生账号，故不能只按身份类别判）。 */
+    private boolean isCageProjectPi(User user, Long animalCageId) {
+        try {
+            CageCellDetail d = detailMapper.selectByAnimalCageId(animalCageId);
+            if (d == null || d.getAupId() == null) return false;
+            AupRecord rec = aupRecordMapper.selectById(d.getAupId());
+            return rec != null && rec.getPiUserId() != null && rec.getPiUserId().equals(user.getId());
+        } catch (Exception e) {
+            log.warn("[cage-op] 实验记录组长判定失败 animalCageId={} err={}", animalCageId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 区域分配是否命中该笼位（可见范围补充的 ROOM/FLOOR/CAMPUS 取并集）。
+     * 从 {@link #cageInScope} 里抽出来，让实验记录判权复用同一份判据 ——
+     * 但**不含**课题组兜底那一条，实验记录要的就是比课题组更严。
+     */
+    private boolean regionScopeHit(User user, Long animalCageId) {
+        Map<String, Object> loc = cellIndexMapper.lookupByAnimalCageId(animalCageId);
+        if (loc == null) return false;
+        Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
+        String roomId = str(loc.get("roomId"));
+        String floorId = str(loc.get("floorId"));
+        String campusId = str(loc.get("campusId"));
+        return (roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId))
+                || (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId))
+                || (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId));
     }
 
     /**
@@ -1916,6 +1979,8 @@ public class CageOperationService {
             claimMapper.insert(child);
             // 表单整表复制作为基础信息，具体数量/性别等由用户在新笼位表单上改
             infoValueService.copyFrom(motherId, targetId, operator.getId());
+            // 实验记录台账一起分给每个新笼位（分笼 = 同一批动物，记录跟着走）
+            experimentRecordService.copyForCage(motherId, targetId);
             // 实验员以认领人为准（源笼位实验员可能为空，不能靠复制带过去）
             infoValueService.syncFromMapped(targetId, Map.of("experimenter_name", child.getClaimantName()));
             target.setCageTypeCode(3);
@@ -2017,6 +2082,8 @@ public class CageOperationService {
 
                 // 占用字段随动物走（目标与源同 AUP，课题组归属本就一致）
                 infoValueService.copyTransferableFields(fromId, toId, "TRANSFER", operator.getId());
+                // 实验记录台账同样随动物走 —— 旧字段是靠上一行的复制「跟着笼位」的，台账要自己搬
+                experimentRecordService.copyForCage(fromId, toId);
                 // 实验员以占用者为准（源笼位实验员可能为空）
                 infoValueService.syncFromMapped(toId, Map.of("experimenter_name", toClaim.getClaimantName()));
 

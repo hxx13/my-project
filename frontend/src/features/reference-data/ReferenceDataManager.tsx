@@ -34,6 +34,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { releaseCageReservation } from "@/api/domains/animalOrderCage.api";
 import { formatDateTimeAsiaShanghaiMinute } from "@/lib/formatDateTimeAsiaShanghai";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { useIsBusiness } from "@/features/auth/useIsBusiness";
 import { useAupMyRoles } from "@/features/aup/hooks/useAup";
 import {
   getTypeConfig,
@@ -43,7 +44,7 @@ import {
 import CardGrid from "./CardGrid";
 import BreadcrumbBar from "./BreadcrumbBar";
 import EditModal from "./EditModal";
-import SpecSelectPanel, { type OrderPickupInfo } from "./SpecSelectPanel";
+import SpecSelectPanel, { type OrderPickupInfo, type PickupMode } from "./SpecSelectPanel";
 import CagePickerPanel, { type PickedCage } from "./CagePickerPanel";
 import { CagePickerTab, ALLOC_COLUMN_WIDTH } from "@/components/cage/CageOpDrawer";
 import { allocateInOrder } from "./cageAllocation";
@@ -127,6 +128,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     try { return localStorage.getItem("ref_active_aup") || ""; } catch { return ""; }
   });
   const [packageRemark, setPackageRemark] = useState("");
+  /** 领用方式：饲养=预定笼位（默认），取走=不占笼位不选房间 */
+  const [pickupMode, setPickupMode] = useState<PickupMode>("FARM");
   const [submitRemark, setSubmitRemark] = useState("");
   const [itemLabelMap, setItemLabelMap] = useState<Record<number, string>>({});
   // 校区：首次进入强制选择，之后记住并可在顶栏切换
@@ -143,6 +146,9 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const { data: myRoles } = useAupMyRoles();
   const isPi = !!myRoles?.isPi;
   const isAdmin = mode === "admin" && hasMinRole(role, "SUPER_ADMIN");
+  const isBusiness = useIsBusiness();
+  /** 订购域后台配置（时间管理、规格模板）：超管 或 业务。服务端是同一条件的 canManageOrderConfig。 */
+  const canManageOrderConfig = mode === "admin" && (isAdmin || isBusiness);
   const currentParentId = drillStack.length > 0 ? drillStack[drillStack.length - 1].id : undefined;
 
   const breedCategoryKey = useMemo(() => {
@@ -520,10 +526,12 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     }
     const title = String((item.fieldData as Record<string, unknown>)?.title || `ID ${item.id}`);
     setItemLabelMap((prev) => ({ ...prev, [item.id]: title }));
+    toast(`当前使用 AUP：${activeAup ? `${activeAup.registerNo || `AUP#${activeAup.id}`}${activeAup.projectGroupName ? ` · ${activeAup.projectGroupName}` : ""}` : selectedAupId}`);
     setSpecSelectItem(item);
+    setPickupMode("FARM");
     // 开选购弹窗 = 展开右侧笼位抽屉；反过来收弹窗不动抽屉（抽屉可常驻查看）
     setCagePickerOpen(true);
-  }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId]);
+  }, [orderingBlocked, timePolicy?.closedReason, selectedAupId, groupId, activeAup]);
 
   /** 关抽屉才放掉笼位：弹窗关闭不在这里，两者生命周期已经拆开 */
   const closeCagePicker = useCallback(async () => {
@@ -537,6 +545,13 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       } catch { /* 启动清理兜底 */ }
     }
   }, [pickedCages]);
+
+  /** 领用方式切换：取走要放掉已选笼位并关抽屉，饲养再把抽屉打开 */
+  const handlePickupModeChange = useCallback((mode: PickupMode) => {
+    setPickupMode(mode);
+    if (mode === "TAKE") void closeCagePicker();
+    else setCagePickerOpen(true);
+  }, [closeCagePicker]);
 
   /** 弹窗每次填数量都回报；值没变就不 set，避免 effect 来回触发 */
   const handleCageContextChange = useCallback(
@@ -570,7 +585,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       // 笼位路径下房间来自该行自己的笼位；非笼位路径用弹窗里选的那个房间
       const roomId = entry.pickupRoomId || pickup.pickupRoomId;
       const roomName = entry.pickupRoomName || pickup.pickupRoomName;
-      if (!roomId) {
+      // 取走没有房间，不是漏填
+      if (!roomId && pickup.pickupMode !== "TAKE") {
         toast.error("请选择领用方式/房间");
         continue;
       }
@@ -583,8 +599,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             quantity: entry.qty,
             // 无规格物品不写 spec_selections，服务端据此回退到物品自身的 price
             ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
-            pickupRoomId: roomId,
-            pickupRoomName: roomName,
+            pickupRoomId: roomId || undefined,
+            pickupRoomName: roomName || undefined,
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
             ...(entry.remark ? { remark: entry.remark } : {}),
@@ -789,7 +805,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             className="h-8 w-full max-w-[12rem] shrink-0 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
           />
           <div className="flex shrink-0 items-center gap-1">
-            {isAdmin && (
+            {canManageOrderConfig && (
               <>
                 <button type="button" className="rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors whitespace-nowrap" onClick={() => setTemplateManagerOpen(true)}>
                   规格模板
@@ -971,32 +987,32 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
               </div>
             )}
 
-            {!isPi && (
-              <div className="border-t border-[var(--twin-hairline)] px-3 py-2 space-y-2">
-                <input
-                  type="text"
-                  placeholder="订单包统一备注（提交到共享购物车）"
-                  value={packageRemark}
-                  onChange={(e) => setPackageRemark(e.target.value)}
-                  className="w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-1 text-[11px] outline-none"
-                />
-                <div className="flex gap-2 justify-end">
-                  {myReadyLines.length > 0 && (
-                    <button type="button" className="text-xs text-[var(--twin-mute)]" onClick={handleWithdrawPackage} disabled={withdrawMut.isPending}>
-                      撤回 READY
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
-                    disabled={orderingBlocked || myDraftLines.length === 0 || markReadyMut.isPending}
-                    onClick={handleMarkPackageReady}
-                  >
-                    {markReadyMut.isPending ? "提交中…" : "提交到共享购物车"}
+            {/* 包备注对所有人开放：PI 自己的行也会在下单时把 package_remark 快照成订单行备注。
+                非 PI 顺带在这里把本人行提交成订单包给 PI；PI 点它只是给本人行写备注。 */}
+            <div className="border-t border-[var(--twin-hairline)] px-3 py-2 space-y-2">
+              <input
+                type="text"
+                placeholder={isPi ? "备注（写给你自己加购的行）" : "订单包统一备注（提交到共享购物车）"}
+                value={packageRemark}
+                onChange={(e) => setPackageRemark(e.target.value)}
+                className="w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-1 text-[11px] outline-none"
+              />
+              <div className="flex gap-2 justify-end">
+                {myReadyLines.length > 0 && (
+                  <button type="button" className="text-xs text-[var(--twin-mute)]" onClick={handleWithdrawPackage} disabled={withdrawMut.isPending}>
+                    撤回 READY
                   </button>
-                </div>
+                )}
+                <button
+                  type="button"
+                  className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  disabled={orderingBlocked || myDraftLines.length === 0 || markReadyMut.isPending}
+                  onClick={handleMarkPackageReady}
+                >
+                  {markReadyMut.isPending ? "提交中…" : isPi ? `保存备注 (${myDraftLines.length})` : "提交到共享购物车"}
+                </button>
               </div>
-            )}
+            </div>
 
             {isPi && (
               <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
@@ -1063,7 +1079,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             只有抽屉开着时用透明层接点击：点空白处关闭抽屉（抽屉内部自己 stopPropagation）。
             弹窗开着时这层是遮罩，点它只关弹窗 —— 抽屉这时不许关。
           */
-          className={`fixed inset-0 z-[900] ${specSelectItem ? "bg-black/40" : "bg-transparent"}`}
+          className={`fixed inset-0 z-[var(--z-modal-above)] ${specSelectItem ? "bg-black/40" : "bg-transparent"}`}
           onClick={() => {
             if (specSelectItem) setSpecSelectItem(null);
             else void closeCagePicker();
@@ -1104,6 +1120,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                   allocByCageId={cageAlloc.alloc}
                   maxQuantityPerCage={maxQuantityPerCage}
                   onCageContextChange={handleCageContextChange}
+                  pickupMode={pickupMode}
+                  onPickupModeChange={handlePickupModeChange}
                 />
               </div>
             )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { ChevronLeft, Loader2, Printer, Save } from "lucide-react";
 import { useStudentQuery } from "../hooks/use-student-query";
@@ -9,6 +10,7 @@ import "./health-survey-page.css";
 
 export default function StudentHealthSurveyPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data, isLoading, refetch } = useStudentQuery(["health-survey"], fetchMyHealthSurvey);
   const [value, setValue] = useState<SurveyValue>({});
   const [saving, setSaving] = useState(false);
@@ -25,6 +27,9 @@ export default function StudentHealthSurveyPage() {
       await submitHealthSurvey(value);
       toast.success("已提交");
       refetch();
+      qc.invalidateQueries({ queryKey: ["student"] });
+      // 提交即离开：回调用它的页面（答题页 / 培训报名 / 首页信息卡）
+      navigate(-1);
     } catch (e: any) {
       toast.error(e?.message || "提交失败");
     } finally {

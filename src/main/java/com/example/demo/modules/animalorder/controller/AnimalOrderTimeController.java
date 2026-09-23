@@ -11,6 +11,7 @@ import com.example.demo.modules.animalorder.dto.HolidayImportResultDto;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
 import com.example.demo.modules.animalorder.service.HolidaySyncService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.referencedata.service.RefOrderAccessPolicy;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -49,13 +50,16 @@ public class AnimalOrderTimeController {
     private final AuthContextService authContextService;
     private final AnimalOrderTimePolicyService policyService;
     private final HolidaySyncService holidaySyncService;
+    private final RefOrderAccessPolicy refOrderAccessPolicy;
 
     public AnimalOrderTimeController(AuthContextService authContextService,
                                      AnimalOrderTimePolicyService policyService,
-                                     HolidaySyncService holidaySyncService) {
+                                     HolidaySyncService holidaySyncService,
+                                     RefOrderAccessPolicy refOrderAccessPolicy) {
         this.authContextService = authContextService;
         this.policyService = policyService;
         this.holidaySyncService = holidaySyncService;
+        this.refOrderAccessPolicy = refOrderAccessPolicy;
     }
 
     @GetMapping("/time-policy")
@@ -72,60 +76,66 @@ public class AnimalOrderTimeController {
     }
 
     @GetMapping("/time-policy/admin")
-    @Operation(summary = "管理端策略与规则（SUPER_ADMIN，按校区）")
+    @Operation(summary = "管理端策略与规则（超管或业务，按校区）")
     public Result<AnimalOrderTimePolicyAdminDto> getAdmin(
             @RequestParam(required = false) String campus,
             HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         return Result.success(policyService.getAdminView(campus));
     }
 
     @PutMapping("/time-policy/admin")
-    @Operation(summary = "保存管理端策略与规则（SUPER_ADMIN，按校区）")
+    @Operation(summary = "保存管理端策略与规则（超管或业务，按校区）")
     public Result<Void> saveAdmin(@RequestBody AnimalOrderTimePolicyAdminDto body,
                                   HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         policyService.saveAdmin(body != null ? body.getCampus() : null, body);
         return Result.success(null);
     }
 
     @GetMapping("/holidays")
-    @Operation(summary = "按年列出节假日（SUPER_ADMIN）")
+    @Operation(summary = "按年列出节假日（超管或业务）")
     public Result<List<AnimalOrderHolidayDto>> listHolidays(
             @RequestParam int year,
             HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         return Result.success(policyService.listHolidays(year));
     }
 
     @PostMapping("/holidays")
-    @Operation(summary = "新增或更新节假日（SUPER_ADMIN）")
+    @Operation(summary = "新增或更新节假日（超管或业务）")
     public Result<AnimalOrderHolidayDto> createHoliday(
             @RequestBody AnimalOrderHolidayDto body,
             HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         return Result.success(policyService.upsertHoliday(body));
     }
 
     @DeleteMapping("/holidays/{id}")
-    @Operation(summary = "删除节假日（SUPER_ADMIN）")
+    @Operation(summary = "删除节假日（超管或业务）")
     public Result<Void> deleteHoliday(@PathVariable long id, HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         policyService.deleteHoliday(id);
         return Result.success(null);
     }
 
     @PostMapping(value = "/holidays/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "上传节假日 JSON 导入（SUPER_ADMIN）")
+    @Operation(summary = "上传节假日 JSON 导入（超管或业务）")
     public Result<HolidayImportResultDto> importHolidays(
             @RequestParam("file") MultipartFile file,
             HttpServletRequest request) throws IOException {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         if (file == null || file.isEmpty()) {
             return Result.error("请选择 JSON 文件");
@@ -135,11 +145,12 @@ public class AnimalOrderTimeController {
     }
 
     @PostMapping("/holidays/sync-cdn")
-    @Operation(summary = "从 holiday-cn CDN 同步节假日（SUPER_ADMIN）")
+    @Operation(summary = "从 holiday-cn CDN 同步节假日（超管或业务）")
     public Result<HolidayImportResultDto> syncCdn(
             @RequestBody(required = false) Map<String, Integer> body,
             HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.SUPER_ADMIN);
+        User user = resolveUser(request);
+        Result<?> denied = requireOrderConfigAdmin(user);
         if (denied != null) return Result.error(denied.getMessage());
         int year = body != null && body.get("year") != null
                 ? body.get("year")
@@ -171,18 +182,16 @@ public class AnimalOrderTimeController {
         return null;
     }
 
-    private Result<?> requireMinRole(HttpServletRequest request, RoleEnum minRole) {
-        User user = resolveUser(request);
-        if (user == null) {
-            return Result.error("未登录或 Token 无效");
-        }
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            return Result.error("账号已禁用");
-        }
-        RoleEnum currentRole = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
-        if (currentRole.getLevel() < minRole.getLevel()) {
-            return Result.error("无权限访问");
-        }
+    /**
+     * 时间管理的准入：超管 或 持「业务」标签。
+     *
+     * <p>策略集中在 {@link RefOrderAccessPolicy#canManageOrderConfig}，本方法只做
+     * 「未登录 / 账号禁用」的前置判断并把它包成 {@code Result}。
+     */
+    private Result<?> requireOrderConfigAdmin(User user) {
+        if (user == null) return Result.error("未登录或 Token 无效");
+        if (user.getStatus() != null && user.getStatus() == 0) return Result.error("账号已禁用");
+        if (!refOrderAccessPolicy.canManageOrderConfig(user)) return Result.error("无权限访问");
         return null;
     }
 

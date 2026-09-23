@@ -153,13 +153,15 @@ public class CageInfoValueService {
     private static final String USE_TIME_CANONICAL = "cage_use_time";
 
     /**
-     * 读表单时的显示加工。目前只有「使用时间」一项：它的值是 ARO 笼盒的 {@code createTime}，
-     * 完整到秒（{@code 2026-09-18 15:18:27}），但笼位详情表单上只需要「哪天开始用的」。
+     * 读表单**与卡牌打印**共用的显示加工。目前只有「使用时间」一项：它的值是 ARO 笼盒的 {@code createTime}，
+     * 完整到秒（{@code 2026-09-18 15:18:27}），但给人看的输出只需要「哪天开始用的」。
      *
      * <p>裁在**读的这一处**：库里照旧存完整时间戳（追溯有用），而所有读表单的入口
      * （管理端、学生认领确认页、小程序）都汇到 {@link #getInfo}，一处改完不会剩一条腿。
+     * 卡牌打印不走 {@code getInfo}，由 {@code CardDataAssembler} 显式调用本方法 —— 2026-09-23
+     * 就是因为漏了这条腿，笼位表单已经是对的了、卡上还带时间。
      */
-    private static Object displayValue(CageInfoField f, Object value) {
+    public static Object displayValue(CageInfoField f, Object value) {
         if (f == null || !USE_TIME_CANONICAL.equals(f.getCanonical()) || value == null) return value;
         return dateOnly(String.valueOf(value));
     }

@@ -31,17 +31,19 @@ import {
   TrendingUp,
   Users,
   X,
+  HeartPulse,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
+import { useStudentQuery } from "../hooks/use-student-query";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
 import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
 import { useStudentStats } from "../hooks/use-student-stats";
 import { studentQueryKey } from "../utils/studentQueryScope";
 import { StudentActivityDashboard } from "../components/student-activity-dashboard";
 import type { StatsData } from "../api/student.api";
-import { fetchCageStatusSummary } from "../api/student.api";
+import { fetchCageStatusSummary, fetchMyQualifications } from "../api/student.api";
 import {
   StudentCard,
   Badge,
@@ -363,6 +365,10 @@ function PersonnelBlock({
   const qc = useQueryClient();
   const headFileRef = useRef<HTMLInputElement>(null);
 
+  // 健康报告状态：与「培训报名」同一份资格数据（fileRef 有值即已提交）
+  const { data: quals = [] } = useStudentQuery(["my-qualifications"], fetchMyQualifications);
+  const healthOk = !!(quals.find((q) => q.itemKey === "health_report")?.fileRef);
+
   /** 电子签名小窗：签名不可更改，这里只做小窗展示 + 点开弹窗（画 / 扫码直链）。 */
   const [signOpen, setSignOpen] = useState(false);
   const [sig, setSig] = useState<MySignature | null>(null);
@@ -467,6 +473,18 @@ function PersonnelBlock({
         <InfoRow icon={IdCard}>
           {identityLabels.length > 0 ? identityLabels.join(" · ") : "未标识身份"}
         </InfoRow>
+        {healthOk ? (
+          <InfoRow icon={HeartPulse} iconClass="text-green-500">健康报告 已提交</InfoRow>
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate("/student/health-survey")}
+            className="flex w-full cursor-pointer items-start gap-1.5 text-left text-[12px] text-[var(--student-primary)] hover:underline"
+          >
+            <HeartPulse className="mt-0.5 size-3 shrink-0 text-amber-500" strokeWidth={1.5} />
+            <span className="min-w-0 flex-1 break-words">健康报告 未提交 · 去提交</span>
+          </button>
+        )}
         {profile.departmentName && <InfoRow icon={MapPin}>{profile.departmentName}</InfoRow>}
         {profile.projectGroupName && <InfoRow icon={Users}>{profile.projectGroupName}</InfoRow>}
         {!profile.projectGroupName && (

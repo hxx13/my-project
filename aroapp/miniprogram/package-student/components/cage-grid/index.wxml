@@ -1,0 +1,48 @@
+<view class="cg-grid {{ compact ? 'cg-grid--compact' : '' }}">
+  <view
+    wx:for="{{ grid }}"
+    wx:key="position"
+    class="cg-cell {{ item.empty ? 'cg-cell--empty' : (item.visible === false ? 'cg-cell--hidden' : 'cg-cell--filled') }} {{ item._sel ? 'cg-cell--sel' : '' }} {{ item._dis ? 'cg-cell--dis' : '' }} {{ item._divisionNames ? 'cg-cell--division' : '' }}"
+    style="{{ item._cellStyle }}"
+    data-index="{{ index }}"
+    bindtap="onCellTap"
+  >
+    <text class="cg-pos">{{ item._displayPosition || item.position }}</text>
+    <!-- 已选：蓝环之上再加一枚居中绿勾（用户 2026-09-22 口径：选中要有明确的对勾，不只靠描边）。
+         是**公用件**——任何宿主写 `_sel` 都该看到它，不加开关（用户 2026-09-22 明确：别处用到没问题）。 -->
+    <view wx:if="{{ item._sel }}" class="cg-selcheck">
+      <van-icon name="checked" size="26rpx" color="#16a34a" />
+    </view>
+    <!-- 认领徽章 / 划分标签：与状态底色同源（共享 enrichGridCell 产出），笼架页画什么这里就画什么，
+         少了这两块就是「同一个组件、同一份数据，标签对不上」的来源。 -->
+    <view wx:if="{{ item._claimBadge }}" class="cg-badge {{ item._claimBadge.cls }}">{{ item._claimBadge.text }}</view>
+    <view wx:if="{{ item._divisionMine }}" class="cg-badge cg-badge--division">已划分给你</view>
+    <view wx:elif="{{ staffView && item._divisionNames }}" class="cg-badge cg-badge--division">已划分：{{ item._divisionNames }}</view>
+    <block wx:if="{{ !item.empty && item.visible !== false }}">
+      <text class="cg-pi">{{ item._piShort || '' }}</text>
+      <text wx:if="{{ item._experimenterShort }}" class="cg-exp">{{ item._experimenterShort }}</text>
+      <view wx:if="{{ item._cageTypeDotColor }}" class="cg-dot" style="background:{{ item._cageTypeDotColor }};">
+        <text>{{ item._cageTypeAbbr }}</text>
+      </view>
+      <view wx:if="{{ item._sfBadges && item._sfBadges.length }}" class="cg-sf">
+        <text wx:for="{{ item._sfBadges }}" wx:for-item="sf" wx:key="code" class="cg-sf-pill" style="background:{{ item._sfBadgeColor }};">{{ sf.text }}</text>
+      </view>
+    </block>
+    <text wx:if="{{ item.empty }}" class="cg-empty-text">空</text>
+    <text wx:elif="{{ item.visible === false }}" class="cg-hidden-text">***</text>
+    <!-- 已被订购/预定（色环 + 居中图标 + 底部色条）：与笼架页同一套，数据由宿主打 _opMark。
+         不叠笼架页那层白色 veil —— 抽屉里这些格子本来就盖着「不可点」网纹，再蒙一层状态底色就看不见了。 -->
+    <view
+      wx:if="{{ item._opMark }}"
+      class="cg-opmark"
+      style="box-shadow: inset 0 0 0 3rpx {{ item._opMark.color }}, 0 0 10rpx {{ item._opMark.color }}66;"
+    >
+      <view class="cg-opmark-icon" style="background:{{ item._opMark.color }};">{{ item._opMark.abbr }}</view>
+      <view class="cg-opmark-bar" style="background:{{ item._opMark.color }};">{{ item._opMark.label }}</view>
+    </view>
+    <!-- 不可点：整格红色细线网纹（很多根细斜线），位号压在网纹之上 + 底部原因标签 -->
+    <view wx:if="{{ item._dis }}" class="cg-hatch"></view>
+    <text wx:if="{{ item._dis && item._tip }}" class="cg-tip">{{ item._tip }}</text>
+    <text wx:if="{{ item._qty > 0 }}" class="cg-qty">×{{ item._qty }}</text>
+  </view>
+</view>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { appConfirm } from "@/lib/appDialog";
 import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
@@ -7,6 +7,7 @@ import { DEFAULT_COLORS } from "./CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "../api/cageForm.api";
 import { type CageShelfCell, clearCageDivision } from "@/api/domains/cageShelf.api";
 import CageFormFill from "./CageFormFill";
+import CageExperimentRecordPanel from "./CageExperimentRecordPanel";
 import CageOperationActions from "./CageOperationActions";
 import type { CageOpKind, CageOpMark, CageOpSource } from "../useCageOpSelect";
 import toast from "react-hot-toast";
@@ -34,7 +35,7 @@ import toast from "react-hot-toast";
  *
  * ⚠️ 本组件只用于本地数据源。ARO 数据源走 AdminCageShelfPage 内联的 CAGE_BOX_INFO_FIELD_ORDER 渲染。
  */
-export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, opMarkByCageId, canDivide, onBatchEdit }: {
+export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, opMarkByCageId, canDivide, onBatchEdit, canEditStatusPhotos }: {
   cell: CageShelfCell;
   onClose: () => void;
   /** 分笼/转移：由页面进入选位模式（主网格选目标），不传则不显示入口 */
@@ -47,17 +48,61 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
   canDivide?: boolean;
   /** 表单编辑态里的「批量编辑」入口（由页面实现网格选择模式），不传则不显示 */
   onBatchEdit?: (cageId: string) => void;
+  /**
+   * 能否在详情面板里直接删状态照片 —— 由页面按 `/cage-mode/visible` 是否含「状态(edit)」传入，
+   * 与后端 `/local/annotate` 状态照片分支的闸同口径。不传就不出删除入口。
+   */
+  canEditStatusPhotos?: boolean;
 }) {
   const detail = (cell as any).detail as Record<string, any> | undefined;
   const animalCageId = String((cell as any).id ?? detail?.animalCageId ?? (cell as any).animalCageId ?? "");
-  console.log("[cage-detail] 二维码ID animalCageId=", animalCageId, "| cell.id=", (cell as any).id, "| detail.animalCageId=", detail?.animalCageId, "| cell.animalCageId=", (cell as any).animalCageId, "| detail=", detail);
-  const [notes, setNotes] = useState(detail?.experimentDesc ?? "");
-  const [images, setImages] = useState<string[]>(() => {
-    try { const raw = detail?.imagesJson; if (typeof raw === "string") { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; } } catch { }
-    return [];
-  });
-  const [saving, setSaving] = useState(false);
   const [clearingDivision, setClearingDivision] = useState(false);
+  const [statusPhotoSaving, setStatusPhotoSaving] = useState(false);
+
+  /**
+   * 直接删一张状态照片：**立即回写** `/local/annotate`（与「状态模式」上传同一道闸），
+   * 失败回滚本地 —— 详情面板没有保存按钮，只改内存等于白删。
+   * 桶空了删键不留空数组，否则那个状态的照片区会永远留一个空盒子。
+   */
+  const removeStatusPhoto = async (field: string, index: number) => {
+    if (!animalCageId || !canEditStatusPhotos || statusPhotoSaving) return;
+    const arr = (statusPhotos[field] || []).slice();
+    if (index < 0 || index >= arr.length) return;
+    arr.splice(index, 1);
+    const next: Record<string, unknown> = { ...statusPhotos };
+    if (arr.length) next[field] = arr; else delete next[field];
+    const prev = statusPhotos;
+    setStatusPhotos(next as Record<string, string[]>);
+    setStatusPhotoSaving(true);
+    try {
+      await authHttp.post("/local/annotate", { animalCageId, statusPhotos: JSON.stringify(next) });
+      toast.success("已删除");
+    } catch (e: any) {
+      setStatusPhotos(prev);
+      toast.error(e?.message || "删除失败");
+    } finally {
+      setStatusPhotoSaving(false);
+    }
+  };
+
+  /** 一张状态照片 + （有权限时）右上角删除 */
+  const statusPhotoThumb = (field: string, url: string, index: number) => (
+    <div key={`${field}:${index}`} className="relative group">
+      <img src={url} alt="" onClick={() => setPreviewUrl(url)}
+        className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)] cursor-pointer hover:opacity-80 transition" />
+      {canEditStatusPhotos && (
+        <button
+          type="button"
+          disabled={statusPhotoSaving}
+          onClick={(e) => { e.stopPropagation(); void removeStatusPhoto(field, index); }}
+          title="删除这张照片"
+          className="absolute -top-1.5 -right-1.5 hidden size-4 items-center justify-center rounded-full bg-[var(--twin-danger,#dc2626)] text-[10px] leading-none text-white group-hover:flex disabled:opacity-50"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
 
   /** 局部清空：只清当前这一个笼位的划分，不动其他笼位 */
   const handleClearDivision = async () => {
@@ -74,7 +119,6 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       setClearingDivision(false);
     }
   };
-  const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [qrZoom, setQrZoom] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
@@ -104,11 +148,10 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     return () => { cancelled = true; };
   }, [animalCageId]);
 
-  // 合并两个通道的所有照片 URL，供预览导航使用（必须在 statusPhotos 声明之后）
+  // 状态标记照片的 URL 集合，供预览导航使用（必须在 statusPhotos 声明之后）
   const allPreviewUrls = (() => {
     const urls: string[] = [];
     for (const k of Object.keys(statusPhotos)) { for (const u of (statusPhotos[k] || [])) urls.push(u); }
-    for (const u of images) urls.push(u);
     return urls;
   })();
   useEffect(() => {
@@ -116,37 +159,10 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     authHttp.get(`/local/annotate/${animalCageId}`).then(r => {
       if (r.data?.success) {
         const d = r.data.data;
-        if (d.experimentDesc) setNotes(d.experimentDesc);
-        if (d.imagesJson) { try { const arr = JSON.parse(d.imagesJson); if (Array.isArray(arr)) setImages(arr); } catch { } }
         if (d.statusPhotos) { try { const sp = JSON.parse(d.statusPhotos); if (typeof sp === "object") setStatusPhotos(sp); } catch { } }
       }
     }).catch(() => { });
   }, [animalCageId]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await authHttp.post("/local/annotate", { animalCageId, experimentDesc: notes, imagesJson: JSON.stringify(images) });
-      toast.success("保存成功");
-    } catch (e: any) { toast.error(e?.message || "保存失败"); }
-    finally { setSaving(false); }
-  };
-
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files; if (!files?.length) return;
-    setUploading(true);
-    try {
-      const urls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const fd = new FormData();
-        fd.append("file", files[i]);
-        const r = await authHttp.post("/upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
-        if (r.data?.success && r.data.data?.url) urls.push(r.data.data.url);
-      }
-      if (urls.length) setImages(prev => [...prev, ...urls]);
-    } catch (e: any) { toast.error("上传失败"); }
-    finally { setUploading(false); }
-  };
 
   /** 删除单条历史归档（后端 /local/history/{id} 只给教职工）。删完就地移出列表，不去重拉。 */
   const handleDeleteHistory = async (id: unknown) => {
@@ -256,12 +272,11 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
             <span className="text-[9px] text-[var(--twin-mute)]">📷 {sImgs.length}张</span>
           </div>
           {sImgs.length > 0 && <div className="flex flex-wrap gap-1">
-            {sImgs.map((url: string, j: number) => (
-              <img key={j} src={url} onClick={() => setPreviewUrl(url)}
-                className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)] cursor-pointer hover:opacity-80 transition" />
-            ))}
+            {sImgs.map((url: string, j: number) => statusPhotoThumb(a.statusField, url, j))}
           </div>}
-          {sImgs.length > 0 && <div className="text-[9px] text-[var(--twin-mute)] mt-1 italic">通过编辑模式管理</div>}
+          {sImgs.length > 0 && <div className="text-[9px] text-[var(--twin-mute)] mt-1 italic">
+            {canEditStatusPhotos ? "悬停照片右上角可删除" : "通过编辑模式管理"}
+          </div>}
         </div>;
       })}
       {/* 兜底 _status key：弹窗A上传但未绑定到具体状态标记的照片 */}
@@ -273,12 +288,11 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
             <span className="text-[9px] text-[var(--twin-mute)]">📷 {catchAll.length}张</span>
           </div>
           <div className="flex flex-wrap gap-1">
-            {catchAll.map((url: string, j: number) => (
-              <img key={j} src={url} onClick={() => setPreviewUrl(url)}
-                className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)] cursor-pointer hover:opacity-80 transition" />
-            ))}
+            {catchAll.map((url: string, j: number) => statusPhotoThumb("_status", url, j))}
           </div>
-          <div className="text-[9px] text-[var(--twin-mute)] mt-1 italic">通过编辑模式管理</div>
+          <div className="text-[9px] text-[var(--twin-mute)] mt-1 italic">
+            {canEditStatusPhotos ? "悬停照片右上角可删除" : "通过编辑模式管理"}
+          </div>
         </div>;
       })()}
       {detail?.specialBreedingName && <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">{detail.specialBreedingName}</span>}
@@ -290,41 +304,9 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       </div>}
     </div>}
 
-    {/* 四级A：实验记录（通道二可编辑） */}
+    {/* 实验记录台账：一条一个时间戳，提交后只读 —— 取代原来的「一格一份文本 + 照片」通道 */}
     <div className="border-t border-[var(--twin-hairline)] pt-2">
-      <div className="text-[11px] font-semibold text-[var(--twin-ink)] mb-1.5">📝 实验记录</div>
-      <textarea value={notes} onChange={e => setNotes(e.target.value)}
-        className="w-full rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] text-[var(--twin-ink)] resize-y min-h-[60px]"
-        placeholder="输入实验记录、备注..." />
-    </div>
-
-    {/* 四级B：通道二：实验记录照片（详情面板直接增删） */}
-    <div className="border-t border-[var(--twin-hairline)] pt-2">
-      <div className="flex items-center justify-between mb-1.5">
-        <div className="text-[11px] font-semibold text-[var(--twin-ink)]">🧪 实验记录照片 ({images.length})</div>
-        <label className="cursor-pointer px-2 py-0.5 rounded-twin-md text-[10px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 transition">
-          {uploading ? "上传中..." : "+ 添加"}
-          <input type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} disabled={uploading} />
-        </label>
-      </div>
-      {images.length > 0 && <div className="flex flex-wrap gap-1.5">
-        {images.map((url, i) => (
-          <div key={i} className="relative group">
-            <img src={url} alt="" onClick={() => setPreviewUrl(url)}
-              className="h-14 w-14 object-cover rounded-twin-sm border border-[var(--twin-hairline)] cursor-pointer hover:opacity-80 transition" />
-            <button onClick={(e) => { e.stopPropagation(); setImages(p => p.filter(x => x !== url)); }}
-              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] items-center justify-center hidden group-hover:flex">✕</button>
-          </div>))}
-      </div>}
-      {/* 这一块（实验记录 + 照片）自己的保存入口就放在块尾 ——
-          原来挂在面板最底端、文案只写「保存」，进编辑态的人会把它当关键信息表单的保存去点：
-          点了提示保存成功，可表单字段一个都没写。按钮跟着它真正保存的内容走。 */}
-      <div className="mt-2 flex justify-end">
-        <button type="button" onClick={handleSave} disabled={saving}
-          className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition">
-          {saving ? "保存中..." : "保存实验记录与照片"}
-        </button>
-      </div>
+      <CageExperimentRecordPanel animalCageId={animalCageId} />
     </div>
 
     {/* 历史归档：默认折叠（省地方），展开后能真看能删 ——

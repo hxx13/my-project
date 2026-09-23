@@ -11,11 +11,15 @@ import type { PickedCage } from "./CagePickerPanel";
 
 /** 选购时确定的「领用方式/房间」与「领用人」，随加购提交 */
 export interface OrderPickupInfo {
+  pickupMode: PickupMode;
   pickupRoomId: string;
   pickupRoomName: string;
   collectorId?: string;
   collectorName?: string;
 }
+
+/** 饲养 = 预定笼位（现状）；取走 = 不占笼位、不选房间 */
+export type PickupMode = "FARM" | "TAKE";
 
 interface SpecSelectPanelProps {
   item: RefDataItem;
@@ -62,6 +66,10 @@ interface SpecSelectPanelProps {
    * 而是当页面级浮层容器的子元素，与抽屉并排，互不遮盖。
    */
   embedded?: boolean;
+  /** 当前领用方式，由页面级持有（页面要靠它决定抽屉开不开） */
+  pickupMode?: PickupMode;
+  /** 切换领用方式：页面据此开/关笼位抽屉 */
+  onPickupModeChange?: (mode: PickupMode) => void;
   /**
    * 移动壳里作为底部面板的一段内联渲染（H5 `/m/home` 的动物订购）。
    *
@@ -92,11 +100,14 @@ function extractOptions(raw: unknown): string[] {
   return [];
 }
 
-export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose, orderingBlocked, groupNames, selfUserId, selfUserName, aupRecordId, pickedCages = [], allocByCageId = {}, maxQuantityPerCage = 0, onCageContextChange, onProvideConfirm, embedded = false, mobileShell = false }: SpecSelectPanelProps) {
+export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose, orderingBlocked, groupNames, selfUserId, selfUserName, aupRecordId, pickedCages = [], allocByCageId = {}, maxQuantityPerCage = 0, onCageContextChange, onProvideConfirm, pickupMode = "FARM", onPickupModeChange, embedded = false, mobileShell = false }: SpecSelectPanelProps) {
   const { data: templates = [] } = useSpecTemplates();
 
-  /** 有 AUP 才谈得上「预定到笼位」，此时笼位必选 */
-  const cageRequired = aupRecordId != null && String(aupRecordId) !== "";
+  /** 只有「饲养」才谈得上预定到笼位；「取走」走非笼位路径 */
+  const farming = pickupMode === "FARM";
+  const cageRequired = farming && aupRecordId != null && String(aupRecordId) !== "";
+  /** 房间只在「非笼位 + 饲养」时才要求手选（笼位路径房间随笼位带出，取走不需要房间） */
+  const roomRequired = farming && !cageRequired;
 
   /**
    * 总数上限 = 已选笼位数 × 单笼上限（`null` 表示不设限，非笼位路径）。
@@ -120,7 +131,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     return false;
   };
 
-  // 领用方式/房间（必选）与领用人（默认本人）
+  // 领用方式在上面的切换条里；房间只在「饲养 + 非笼位」时必选，领用人默认本人
   const [pickupRoomId, setPickupRoomId] = useState("");
   const [pickupRoomName, setPickupRoomName] = useState("");
   const [collectorId, setCollectorId] = useState(selfUserId ?? "");
@@ -132,8 +143,9 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   /** 有课题组才能检索候选领用人；缺失时只保留「本人」 */
   const canPickCollector = !!groupNames && groupNames.length > 0;
   const pickup: OrderPickupInfo = {
-    pickupRoomId,
-    pickupRoomName,
+    pickupMode,
+    pickupRoomId: roomRequired ? pickupRoomId : "",
+    pickupRoomName: roomRequired ? pickupRoomName : "",
     collectorId: collectorId || undefined,
     collectorName: collectorName || undefined,
   };
@@ -226,7 +238,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     // 领用房间必选：未选不提交，只给出提示。
     // 笼位路径下**不看这里** —— 房间由每个笼位自带（一个笼位一条行），
     // 这里的 pickupRoomId 永远是空的，先判它会把整条路静默堵死。
-    if (!cageRequired && roomMissing) { setRoomTouched(true); return; }
+    if (roomRequired && roomMissing) { setRoomTouched(true); return; }
 
     if (cageRequired) {
       // 一个笼位只放一种规格 → 一次加购只能带一个规格行
@@ -324,7 +336,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   /** 无规格商品的校验 + 提交（移动壳的「加入购物车」画在页面上，所以得能从这里取到） */
   const handleNoSpecConfirm = async () => {
     if (noSpecQty <= 0) return;
-    if (!cageRequired && roomMissing) { setRoomTouched(true); return; }
+    if (roomRequired && roomMissing) { setRoomTouched(true); return; }
     if (cageRequired) {
       if (pickedCages.length === 0) {
         toast.error("请先在右侧选择笼位");
@@ -365,11 +377,35 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileShell, onProvideConfirm, optionRows.length, noSpecQty, pickedCages, allocByCageId]);
 
-  /** 领用方式/房间（必选）+ 领用人（默认本人）：两个分支共用 */
+  /** 领用方式切换：饲养=预定笼位（默认），取走=不占笼位也不选房间 */
+  const pickupModeSwitch = (
+    <div className={mobileShell ? "flex shrink-0 gap-1 border-b border-[var(--twin-hairline)] px-3 py-1.5" : "flex shrink-0 gap-2 border-b border-[var(--twin-hairline)] px-4 py-2"}>
+      {(["FARM", "TAKE"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => { if (m !== pickupMode) onPickupModeChange?.(m); }}
+          className={`rounded-twin-sm px-2.5 py-1 text-xs font-medium transition-colors ${
+            pickupMode === m
+              ? "bg-sky-600 text-white"
+              : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)]"
+          }`}
+        >
+          {m === "FARM" ? "饲养" : "取走"}
+        </button>
+      ))}
+      <span className="self-center text-[10px] text-[var(--twin-mute)]">
+        {farming ? "预定笼位，房间随笼位带出" : "不占笼位，直接取走"}
+      </span>
+    </div>
+  );
+
+  /** 领用房间（仅「饲养 + 非笼位」必选）+ 领用人（默认本人）：两个分支共用 */
   const pickupFields = mobileShell ? (
     /* 移动壳：两块并排、块内「标签 + 值」再横排 —— 整块只占一行高度（照小程序的 .pickup-row）。
        标签和值上下叠会白吃一行；纵向空间优先留给网格 */
     <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-[var(--twin-hairline)] px-3 py-1.5">
+      {farming && (
       <div className="flex min-w-0 items-center gap-1.5 rounded-twin-sm bg-[var(--twin-canvas-soft)] px-2 py-1">
         <span className="shrink-0 text-[10px] leading-none text-[var(--twin-mute)]">领用房间</span>
         <span className="min-w-0 truncate text-xs font-medium leading-none text-[var(--twin-ink)]">
@@ -378,6 +414,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
             : (pickupRoomName || "请选择房间")}
         </span>
       </div>
+      )}
       <button
         type="button"
         disabled={!canPickCollector}
@@ -393,6 +430,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     </div>
   ) : (
     <div className="shrink-0 space-y-2 border-b border-[var(--twin-hairline)] px-4 pb-3">
+      {farming && (
       <div>
         <label className="mb-1 block text-[11px] text-[var(--twin-body)]">
           领用方式/房间 <span className="text-[var(--app-color-feedback-danger)]">*</span>
@@ -429,6 +467,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
           </>
         )}
       </div>
+      )}
       <div>
         <label className="mb-1 block text-[11px] text-[var(--twin-body)]">领用人</label>
         {canPickCollector ? (
@@ -487,6 +526,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
           </div>
           )}
 
+          {pickupModeSwitch}
           {pickupFields}
 
           <div className={mobileShell ? "px-3 pb-2" : "px-4 pb-3"}>
@@ -599,6 +639,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
         </div>
         )}
 
+        {pickupModeSwitch}
         {pickupFields}
 
         <div className={mobileShell ? "grid min-h-0 flex-1 grid-cols-2 gap-1.5 overflow-y-auto px-3 pb-2" : "flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2"}>

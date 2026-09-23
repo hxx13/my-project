@@ -117,18 +117,26 @@ public interface TrainingEnrollmentMapper {
             """)
     List<Map<String, Object>> listPending();
 
+    /**
+     * 待审批学员：**我是所属人** 或 **我收藏（订阅）了这个培训** 都要出。
+     * 收藏 = 订阅，所以订阅的行置顶；其余按「校区 → 学生端序号 → 场次时间」排。
+     */
     @Select("""
             SELECT e.id AS enrollmentId, e.name, e.job_number AS jobNumber, e.project_group AS projectGroup,
                    e.test_yn AS testYn, e.test_fraction AS testFraction,
-                   t.id AS trainingId, t.name AS trainingName,
+                   t.id AS trainingId, t.name AS trainingName, t.campus AS campus,
+                   (f.training_id IS NOT NULL) AS subscribed,
                    o.id AS occurrenceId, o.address, o.start_time AS startTime, o.end_time AS endTime,
                    o.examiner_name AS examinerName
             FROM training_enrollment e
             JOIN training_occurrence o ON e.occurrence_id = o.id
             JOIN training t ON o.training_id = t.id
-            WHERE t.owner_ids_json LIKE CONCAT('%\"', #{userId}, '\"%')
+            LEFT JOIN training_favorite f ON f.training_id = t.id AND f.user_id = #{userId}
+            WHERE (t.owner_ids_json LIKE CONCAT('%\"', #{userId}, '\"%') OR f.training_id IS NOT NULL)
               AND (e.test_yn = 0 OR (e.test_yn = 1 AND (e.test_fraction IS NULL OR e.test_fraction = 0)))
-            ORDER BY o.start_time DESC, e.id ASC
+            ORDER BY (f.training_id IS NOT NULL) DESC,
+                     (t.campus IS NULL) ASC, t.campus ASC, t.student_sort ASC,
+                     o.start_time DESC, e.id ASC
             """)
-    List<Map<String, Object>> listPendingByOwner(@Param("userId") String userId);
+    List<Map<String, Object>> listPendingForUser(@Param("userId") String userId);
 }

@@ -1,0 +1,207 @@
+<!-- 收件箱列表：待查看（默认展开）/ 已查看（默认折叠）两段，段内按笼架分组 -->
+<van-popup
+  show="{{ show }}"
+  position="bottom"
+  round
+  closeable
+  close-icon-position="top-right"
+  z-index="23000"
+  custom-style="height:88vh;box-sizing:border-box;"
+  bind:close="onClose"
+>
+  <view class="vim-sheet">
+    <view class="vim-head">
+      <text class="vim-title">收件箱</text>
+      <view class="vim-meta">
+        <text class="vim-meta-text">共 {{ total }} 条 · 待查看 <text class="vim-meta-num">{{ unreadCount }}</text> 条</text>
+        <view class="vim-allbtn {{ unreadCount > 0 ? '' : 'vim-allbtn--off' }}" bindtap="{{ unreadCount > 0 ? 'onMarkAll' : '' }}">一键查看</view>
+      </view>
+
+      <!-- 搜索：命中位号 / 笼架 / 房间 / 课题组 / 实验员 / AUP / 笼盒编号 / 状态 -->
+      <view class="vim-search">
+        <van-icon name="search" size="28rpx" color="#94a3b8" />
+        <input
+          class="vim-search-input"
+          type="text"
+          value="{{ keyword }}"
+          placeholder="搜索位号 / 笼架 / 课题组…"
+          placeholder-class="vim-search-ph"
+          confirm-type="search"
+          bindinput="onKeywordInput"
+        />
+        <view wx:if="{{ keyword }}" class="vim-search-x" bindtap="onClearFilter">✕</view>
+      </view>
+
+      <!-- 筛选轴与「段」的已读未读相互独立：看完还没回 = 待回意见，没点已查看先回了 = 已回意见 -->
+      <view class="vim-filters">
+        <view
+          wx:for="{{ filterChips }}"
+          wx:key="key"
+          class="vim-chipbtn {{ filterKey === item.key ? 'vim-chipbtn--on' : '' }}"
+          data-key="{{ item.key }}"
+          bindtap="onFilterTap"
+        >
+          <text>{{ item.label }}</text>
+          <text class="vim-chipbtn-n">{{ item.count }}</text>
+        </view>
+      </view>
+    </view>
+
+    <scroll-view scroll-y class="vim-scroll">
+      <view wx:if="{{ loading }}" class="vim-state">
+        <van-loading size="22px" color="#2563eb" />
+      </view>
+      <view wx:elif="{{ !canEnter }}" class="vim-state">当前账号没有兽医收件箱权限</view>
+      <view wx:elif="{{ total === 0 }}" class="vim-state">暂无兽医通知</view>
+      <view wx:elif="{{ sections.length === 0 }}" class="vim-state">
+        <text>没有匹配的通知</text>
+        <view class="vim-clear-btn" bindtap="onClearFilter">清除筛选</view>
+      </view>
+
+      <block wx:else>
+        <view wx:for="{{ sections }}" wx:key="key" wx:for-item="sec" class="vim-sec">
+          <view class="vim-sec-head" data-key="{{ sec.key }}" bindtap="onToggleSection">
+            <view class="vim-sec-bar" style="background:{{ sec.bar }};"></view>
+            <text class="vim-sec-title">{{ sec.title }}</text>
+            <text class="vim-sec-count">{{ sec.count }}</text>
+            <van-icon custom-class="vim-chev" name="{{ sec.open ? 'arrow-down' : 'arrow' }}" size="26rpx" color="#94a3b8" />
+          </view>
+
+          <block wx:if="{{ sec.open }}">
+            <view wx:for="{{ sec.groups }}" wx:key="key" wx:for-item="grp" class="vim-grp">
+              <view class="vim-grp-head" data-key="{{ grp.key }}" data-sec="{{ sec.key }}" bindtap="onToggleGroup">
+                <text class="vim-grp-name">{{ grp.name }}</text>
+                <text class="vim-grp-count">{{ grp.count }}</text>
+                <van-icon custom-class="vim-chev" name="{{ grp.open ? 'arrow-down' : 'arrow' }}" size="24rpx" color="#cbd5e1" />
+              </view>
+
+              <block wx:if="{{ grp.open }}">
+                <text class="vim-grp-loc">{{ grp.loc }}</text>
+                <view
+                  wx:for="{{ grp.items }}"
+                  wx:key="_rid"
+                  wx:for-item="it"
+                  class="vim-row {{ it.read ? '' : 'vim-row--unread' }}"
+                  hover-class="vim-row--hover"
+                  hover-stay-time="60"
+                  data-rid="{{ it._rid }}"
+                  bindtap="onPick"
+                >
+                  <!-- 每行两行封顶：位号 + 状态 + 时间 / 归属 + 已回意见。字段各自成行会被判定为一段一行 -->
+                  <view class="vim-row-top">
+                    <text class="vim-pos">{{ it.posText }}</text>
+                    <view class="vim-st">
+                      <view class="vim-st-dot" style="background:{{ it.statusDot }};"></view>
+                      <text class="vim-st-text">{{ it.statusText }}</text>
+                    </view>
+                    <text class="vim-time">{{ it.timeText }}</text>
+                  </view>
+                  <view class="vim-row-sub">
+                    <text wx:if="{{ it.whoText }}" class="vim-who">{{ it.whoText }}</text>
+                    <text wx:if="{{ it.hasAdvice }}" class="vim-tag">已回意见</text>
+                  </view>
+                </view>
+              </block>
+            </view>
+          </block>
+        </view>
+        <view class="vim-pad" />
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 笼位详情：基本信息 / 当前状态 / 状态照片 / 指导意见。口径与 Web 弹窗右侧那块一致 -->
+<van-popup
+  show="{{ detailOpen }}"
+  position="bottom"
+  round
+  closeable
+  close-icon-position="top-right"
+  z-index="24000"
+  custom-style="height:88vh;box-sizing:border-box;"
+  bind:close="onCloseDetail"
+>
+  <view class="vim-sheet" wx:if="{{ sel }}">
+    <view class="vim-head">
+      <view class="vim-d-title">
+        <text class="vim-d-pos">{{ sel.shelveName }} {{ sel.posText }}</text>
+        <view wx:if="{{ !sel.read }}" class="vim-flag">
+          <view class="vim-st-dot" style="background:#a855f7;"></view>
+          <text class="vim-flag-text">未读</text>
+        </view>
+      </view>
+      <text class="vim-d-sub">{{ sel.statusText }} · {{ sel.timeText }}</text>
+      <text class="vim-d-sub">{{ sel.campusName }} · {{ sel.floorName }} · {{ sel.roomName }}</text>
+    </view>
+
+    <scroll-view scroll-y class="vim-scroll">
+      <!-- 字段区双列网格、标签在上，长值跨满两列（小程序弹窗视觉基准） -->
+      <view class="vim-card">
+        <text class="vim-card-title">基本信息</text>
+        <view wx:if="{{ sel.basicRows.length === 0 }}" class="vim-hint-line">无</view>
+        <view wx:else class="vim-grid">
+          <view wx:for="{{ sel.basicRows }}" wx:key="label" class="vim-cell {{ item.wide ? 'vim-cell--wide' : '' }}">
+            <text class="vim-cell-label">{{ item.label }}</text>
+            <text class="vim-cell-value">{{ item.value }}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 只列开启的；状态语义只用一颗圆点 + 文字，不铺饱和色底 -->
+      <view class="vim-card">
+        <text class="vim-card-title">当前状态</text>
+        <view wx:if="{{ sel.chips.length === 0 }}" class="vim-hint-line">无特殊状态</view>
+        <view wx:else class="vim-chips">
+          <view wx:for="{{ sel.chips }}" wx:key="code" class="vim-chip">
+            <view class="vim-chip-dot" style="background:{{ item.color }};"></view>
+            <text class="vim-chip-text">{{ item.text }}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="vim-card">
+        <text class="vim-card-title">状态照片</text>
+        <view wx:if="{{ photos.length === 0 }}" class="vim-hint-line">无</view>
+        <view wx:else class="vim-photos">
+          <image
+            wx:for="{{ photos }}"
+            wx:key="*this"
+            class="vim-photo"
+            src="{{ item }}"
+            mode="aspectFill"
+            data-src="{{ item }}"
+            bindtap="onPreviewImage"
+          />
+        </view>
+      </view>
+
+      <!-- 指导意见写回笼位表单字段：归档随表单，详情表单里只读 -->
+      <view class="vim-card">
+        <text class="vim-card-title">指导意见</text>
+        <textarea
+          class="vim-advice"
+          value="{{ adviceText }}"
+          placeholder="写检查结论与处理建议…"
+          maxlength="500"
+          bindinput="onAdviceInput"
+        />
+        <view class="vim-photos">
+          <view wx:for="{{ adviceImages }}" wx:key="*this" class="vim-photo-wrap">
+            <image class="vim-photo" src="{{ item }}" mode="aspectFill" data-src="{{ item }}" bindtap="onPreviewImage" />
+            <view class="vim-photo-x" data-index="{{ index }}" catchtap="onRemoveAdviceImage">✕</view>
+          </view>
+          <view class="vim-photo-add" bindtap="onAddAdviceImages">
+            <van-icon name="plus" size="34rpx" color="#94a3b8" />
+          </view>
+        </view>
+      </view>
+      <view class="vim-pad" />
+    </scroll-view>
+
+    <view class="vim-foot">
+      <view class="vim-btn vim-btn--ghost {{ sel.read ? 'vim-btn--off' : '' }}" bindtap="{{ sel.read ? '' : 'onMarkRead' }}">{{ sel.read ? '已查看' : '标为已查看' }}</view>
+      <view class="vim-btn vim-btn--primary {{ saving ? 'vim-btn--off' : '' }}" bindtap="{{ saving ? '' : 'onSaveAdvice' }}">{{ saving ? '保存中…' : '保存指导意见' }}</view>
+    </view>
+  </view>
+</van-popup>

@@ -1,6 +1,7 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { usePublicContent } from "@/api/hooks/usePortalContent";
 import { RichTextHtmlBody } from "@/components/rich-text/RichTextHtmlBody";
+import { dateOnly } from "@/utils/beijingTime";
 
 export default function ArticleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -45,7 +46,7 @@ export default function ArticleDetailPage() {
           </span>
           <h1 style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.35, marginBottom: 14 }}>{item.title}</h1>
           <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, color: "#b0a89a" }}>
-            <span>{item.publishedAt?.split("T")[0] || ""}</span>
+            <span>{dateOnly(item.publishedAt)}</span>
             <span style={{ width: 3, height: 3, borderRadius: "50%", background: "#d4c9b8" }} />
             <span>实验动物科学部</span>
           </div>

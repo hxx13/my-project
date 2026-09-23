@@ -1,0 +1,142 @@
+/* 左下角径向模式岛（照 H5 CageModeIsland 的 radial 形态）。
+   锚点 = 圆钮中心；模式项 position:absolute + transform-origin:0 0，靠 rotate+translateX 摆到弧上，
+   内层再做一次反向 rotate（角度由 wxml 内联传入）让文字始终正立。 */
+
+.md-island {
+  position: fixed;
+  z-index: 41;
+  width: 112rpx;
+  height: 112rpx;
+}
+
+/* 必须撑满整个岛：模式项的 left/top:50% 是相对这个容器算的 ——
+   只写 left/top:0 时容器尺寸为 0，转轴跑到岛的左上角，所有项整体偏半个岛 */
+.md-ring {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
+/* 收起：所有点位叠在圆钮下面，不接事件（否则会隔着圆钮误触）并淡出 ——
+   项自带投影，只靠圆钮盖会从边缘透出一圈灰影 */
+.md-ring--closed {
+  pointer-events: none;
+}
+
+.md-ring--closed .md-item {
+  opacity: 0;
+}
+
+.md-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.md-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* 负 margin 把圆心压到转轴点；transform 只留给反向自转 */
+  margin: -44rpx 0 0 -44rpx;
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rpx;
+  box-shadow: 0 6rpx 18rpx rgba(15, 23, 42, 0.2);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s, opacity 0.25s;
+}
+
+.md-item--on {
+  color: #fff;
+  font-weight: 700;
+}
+
+.md-item .md-ico {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+/* 文字颜色跟随颗的底色（wxml 内联的 color）：实心模式色 → 白字，中性底 → 深字。
+   图标走 background-color: currentColor，同一份 color 同时管图标和文字，不会一半白一半黑 */
+.md-item-label {
+  font-size: 18rpx;
+  font-weight: 600;
+  line-height: 1.1;
+  color: inherit;
+  text-align: center;
+}
+
+.md-toggle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 56rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.28), 0 0 0 1rpx rgba(15, 23, 42, 0.06);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s;
+}
+
+.md-toggle:active {
+  transform: scale(0.92);
+}
+
+.md-toggle .md-ico {
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.md-toggle-label {
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #1f2937;
+}
+
+/* 当前模式有高亮色时圆钮上色、字反白 */
+.md-toggle--tinted .md-toggle-label {
+  color: #fff;
+}
+
+/* ── 模式图标（lucide 矢量路径内联成 mask）──────────────────────────────
+   小程序没有 React，用不了 H5 那边的 lucide-react 组件，所以把图标标记内联进 WXSS。
+   mask 只取 alpha，描边色统一 black；实际颜色由 background-color: currentColor 决定 ——
+   激活态文字变白，图标跟着变白，不需要两套图标。
+   生成方式：react-dom/server 渲染 lucide-react@0.577 的同名图标（与 H5 同源）。 */
+.md-ico {
+  display: block;
+  width: 40rpx;
+  height: 40rpx;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain;
+}
+.md-ico--view { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-eye%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0%22%3E%3C%2Fpath%3E%3Ccircle cx%3D%2212%22 cy%3D%2212%22 r%3D%223%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-eye%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0%22%3E%3C%2Fpath%3E%3Ccircle cx%3D%2212%22 cy%3D%2212%22 r%3D%223%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); }
+.md-ico--allocate { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-layout-grid%22 aria-hidden%3D%22true%22%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%223%22 y%3D%223%22 rx%3D%221%22%3E%3C%2Frect%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%2214%22 y%3D%223%22 rx%3D%221%22%3E%3C%2Frect%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%2214%22 y%3D%2214%22 rx%3D%221%22%3E%3C%2Frect%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%223%22 y%3D%2214%22 rx%3D%221%22%3E%3C%2Frect%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-layout-grid%22 aria-hidden%3D%22true%22%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%223%22 y%3D%223%22 rx%3D%221%22%3E%3C%2Frect%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%2214%22 y%3D%223%22 rx%3D%221%22%3E%3C%2Frect%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%2214%22 y%3D%2214%22 rx%3D%221%22%3E%3C%2Frect%3E%3Crect width%3D%227%22 height%3D%227%22 x%3D%223%22 y%3D%2214%22 rx%3D%221%22%3E%3C%2Frect%3E%3C%2Fsvg%3E"); }
+.md-ico--booking { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-calendar-clock%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M16 14v2.2l1.6 1%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M16 2v4%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M3 10h5%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M8 2v4%22%3E%3C%2Fpath%3E%3Ccircle cx%3D%2216%22 cy%3D%2216%22 r%3D%226%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-calendar-clock%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M16 14v2.2l1.6 1%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M16 2v4%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M3 10h5%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M8 2v4%22%3E%3C%2Fpath%3E%3Ccircle cx%3D%2216%22 cy%3D%2216%22 r%3D%226%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); }
+.md-ico--edit { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-pencil-line%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M13 21h8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22m15 5 4 4%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-pencil-line%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M13 21h8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22m15 5 4 4%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); }
+.md-ico--confirm { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-circle-check-big%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M21.801 10A10 10 0 1 1 17 3.335%22%3E%3C%2Fpath%3E%3Cpath d%3D%22m9 11 3 3L22 4%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-circle-check-big%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M21.801 10A10 10 0 1 1 17 3.335%22%3E%3C%2Fpath%3E%3Cpath d%3D%22m9 11 3 3L22 4%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); }
+.md-ico--archive { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-archive%22 aria-hidden%3D%22true%22%3E%3Crect width%3D%2220%22 height%3D%225%22 x%3D%222%22 y%3D%223%22 rx%3D%221%22%3E%3C%2Frect%3E%3Cpath d%3D%22M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M10 12h4%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-archive%22 aria-hidden%3D%22true%22%3E%3Crect width%3D%2220%22 height%3D%225%22 x%3D%222%22 y%3D%223%22 rx%3D%221%22%3E%3C%2Frect%3E%3Cpath d%3D%22M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M10 12h4%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); }
+.md-ico--reserve { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-bookmark-plus%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M12 7v6%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M15 10H9%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-bookmark-plus%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M12 7v6%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M15 10H9%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); }
+.md-ico--record { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-history%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M3 3v5h5%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M12 7v5l4 2%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-history%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M3 3v5h5%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M12 7v5l4 2%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); }
+.md-ico--division { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-user-check%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22m16 11 2 2 4-4%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2%22%3E%3C%2Fpath%3E%3Ccircle cx%3D%229%22 cy%3D%227%22 r%3D%224%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-user-check%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22m16 11 2 2 4-4%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2%22%3E%3C%2Fpath%3E%3Ccircle cx%3D%229%22 cy%3D%227%22 r%3D%224%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); }
+.md-ico--studentClaim { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-hand%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-hand%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8%22%3E%3C%2Fpath%3E%3Cpath d%3D%22M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15%22%3E%3C%2Fpath%3E%3C%2Fsvg%3E"); }
+.md-ico--toggle-open { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-shapes%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z%22%3E%3C%2Fpath%3E%3Crect x%3D%223%22 y%3D%2214%22 width%3D%227%22 height%3D%227%22 rx%3D%221%22%3E%3C%2Frect%3E%3Ccircle cx%3D%2217.5%22 cy%3D%2217.5%22 r%3D%223.5%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2224%22 height%3D%2224%22 viewBox%3D%220 0 24 24%22 fill%3D%22none%22 stroke%3D%22black%22 stroke-width%3D%222%22 stroke-linecap%3D%22round%22 stroke-linejoin%3D%22round%22 class%3D%22lucide lucide-shapes%22 aria-hidden%3D%22true%22%3E%3Cpath d%3D%22M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z%22%3E%3C%2Fpath%3E%3Crect x%3D%223%22 y%3D%2214%22 width%3D%227%22 height%3D%227%22 rx%3D%221%22%3E%3C%2Frect%3E%3Ccircle cx%3D%2217.5%22 cy%3D%2217.5%22 r%3D%223.5%22%3E%3C%2Fcircle%3E%3C%2Fsvg%3E"); }

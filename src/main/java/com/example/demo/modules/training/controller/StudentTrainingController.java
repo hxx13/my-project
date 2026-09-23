@@ -7,16 +7,21 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.training.entity.HealthSurveyResponse;
 import com.example.demo.modules.training.entity.LearningMaterial;
 import com.example.demo.modules.training.entity.PersonQualification;
+import com.example.demo.modules.training.entity.TrainingCertificate;
 import com.example.demo.modules.training.mapper.HealthSurveyResponseMapper;
 import com.example.demo.modules.training.mapper.LearningMaterialMapper;
 import com.example.demo.modules.training.mapper.PersonQualificationMapper;
 import com.example.demo.modules.personnel.service.PersonKeyResolver;
+import com.example.demo.modules.training.service.CertificateTemplates;
 import com.example.demo.modules.training.service.TrainingService;
+import com.example.demo.modules.training.service.TrainingCertificatePdfService;
+import com.example.demo.modules.training.service.TrainingCertificateService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +39,8 @@ public class StudentTrainingController {
     private final HealthSurveyResponseMapper healthSurveyMapper;
     private final PersonKeyResolver personKeyResolver;
     private final ObjectMapper objectMapper;
+    private final TrainingCertificateService certificateService;
+    private final TrainingCertificatePdfService certificatePdfService;
 
     public StudentTrainingController(TrainingService service,
                                      AuthContextService authContextService,
@@ -43,7 +50,9 @@ public class StudentTrainingController {
                                      AdminFileTemplateService adminFileTemplateService,
                                      HealthSurveyResponseMapper healthSurveyMapper,
                                      PersonKeyResolver personKeyResolver,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     TrainingCertificateService certificateService,
+                                     TrainingCertificatePdfService certificatePdfService) {
         this.service = service;
         this.authContextService = authContextService;
         this.request = request;
@@ -53,6 +62,8 @@ public class StudentTrainingController {
         this.healthSurveyMapper = healthSurveyMapper;
         this.personKeyResolver = personKeyResolver;
         this.objectMapper = objectMapper;
+        this.certificateService = certificateService;
+        this.certificatePdfService = certificatePdfService;
     }
 
     @GetMapping
@@ -96,6 +107,45 @@ public class StudentTrainingController {
         User user = resolveUser();
         if (user == null) return Result.fail(401, "未登录");
         return Result.success(qualificationMapper.listByItem("health_report", personKeyResolver.lookupKeys(user.getId())));
+    }
+
+    /**
+     * 我的培训证书。读取时顺带补发历史证书（幂等）：已双通过但当时还没证书的报名会自动补上。
+     * 证书是发证即快照，之后培训/试卷删改都不影响。templates 是证书正文的唯一来源，两端共用。
+     */
+    @GetMapping("/certificates")
+    public Result<?> myCertificates() {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        try {
+            certificateService.backfillForPerson(user.getId());
+        } catch (Exception ignore) {
+            // 补发失败不影响已发证书的查看
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("list", certificateService.listByPerson(user.getId()));
+        out.put("templates", CertificateTemplates.all());
+        return Result.success(out);
+    }
+
+    /** 证书 PDF（后端出件，前端/小程序下载后打开预览）。只能取自己的。 */
+    @GetMapping("/certificates/{id}/pdf")
+    public ResponseEntity<byte[]> certificatePdf(@PathVariable Long id) {
+        User user = resolveUser();
+        if (user == null) return ResponseEntity.status(401).build();
+        TrainingCertificate c = certificateService.findById(id);
+        if (c == null || !user.getId().equals(c.getPersonId())) {
+            return ResponseEntity.status(404).build();
+        }
+        try {
+            byte[] pdf = certificatePdfService.render(c);
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/pdf")
+                    .header("Content-Disposition", "inline; filename=\"certificate.pdf\"")
+                    .body(pdf);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
     }
 
     /** 已上架的学习资料。 */

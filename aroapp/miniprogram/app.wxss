@@ -6,6 +6,53 @@
 /* 转移三签进度条：审核页卡片与「我的转移单」列表共用 */
 /* @import "./styles/cageOpSign.wxss"; */
 
+/* ── 通用按钮（小程序基准 = 订购页那套）──────────────────────────────
+   规矩（2026-09-18 起）：按钮一律**实底** —— 禁渐变、禁半透明 rgba 底、
+   禁描边当身份、禁红底；圆角矩形 12rpx，**不用胶囊**。
+   主操作 蓝底白字(#2563eb) / 次级 中性实底(#f1f3f7) / 危险 中性实底 + 红字。
+   与 facilityMaintenance/fm-controls.wxss 的 .fm-chip 同族（那边是页面私有副本，
+   跨包 @import 会被开发者工具编译报错，所以这里再落一份全局的）。 */
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56rpx;
+  padding: 10rpx 22rpx;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+.chip-btn--xs {
+  min-height: 48rpx;
+  padding: 6rpx 18rpx;
+  font-size: 22rpx;
+}
+.chip-btn--sm {
+  min-height: 52rpx;
+  padding: 8rpx 20rpx;
+  font-size: 23rpx;
+}
+.chip-btn--primary {
+  color: #fff;
+  background: #2563eb;
+}
+.chip-btn--ghost {
+  color: #334155;
+  background: #f1f3f7;
+}
+/* 危险动作走中性实底 + 红字，不铺红底 */
+.chip-btn--danger {
+  color: #dc2626;
+  background: #f1f3f7;
+}
+.chip-btn--block {
+  width: 100%;
+}
+.chip-btn--off {
+  opacity: 0.5;
+}
+
 /* Vant Popup：关闭图标默认 z-index 为 1，易被弹层内容盖住导致点击无效 */
 .van-popup__close-icon {
   z-index: 300 !important;

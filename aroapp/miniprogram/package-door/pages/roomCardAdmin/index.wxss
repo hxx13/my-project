@@ -1,0 +1,493 @@
+/* 视觉基准：房间系统铭牌卡（pages/room）+ 物资处理页的扁平描边底 */
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f5f6f7;
+}
+
+.head {
+  flex-shrink: 0;
+  padding: 20rpx 24rpx 14rpx;
+  background: #f5f6f7;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+/* 分段控件（用户指定基准：报修申请页的切换 tab）——灰底槽 + 白底选中，无描边非胶囊 */
+.seg {
+  display: flex;
+  align-items: center;
+  padding: 4rpx;
+  background: #f2f3f5;
+  border-radius: 12rpx;
+}
+
+.seg-item {
+  flex: 1;
+  padding: 12rpx 20rpx;
+  text-align: center;
+  font-size: 24rpx;
+  line-height: 1.4;
+  color: #646566;
+  border-radius: 10rpx;
+  white-space: nowrap;
+}
+
+.seg-item--on {
+  color: #323233;
+  font-weight: 600;
+  background: #fff;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
+}
+
+.hint {
+  display: block;
+  margin-top: 14rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* ---- 房间卡网格（与房间系统同款两列） ---- */
+.grid-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 16rpx 14rpx calc(24rpx + env(safe-area-inset-bottom));
+  margin: 0 -10rpx;
+  box-sizing: border-box;
+}
+
+.cell {
+  width: 50%;
+  box-sizing: border-box;
+  padding: 0 10rpx 20rpx;
+}
+
+.rcard {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1rpx solid #f0e4d0;
+  border-radius: 20rpx;
+  box-shadow: 0 4rpx 16rpx rgba(20, 40, 70, 0.05);
+  overflow: hidden;
+}
+
+/* 铭牌区：与 pages/room 的 .room-card 同几何 */
+.rcard-plate {
+  position: relative;
+  padding: 26rpx 28rpx 18rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12rpx;
+  min-height: 132rpx;
+  box-sizing: border-box;
+}
+
+.rcard-frame {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  bottom: 12rpx;
+  left: 12rpx;
+  border: 2rpx solid #b08d57;
+  border-radius: 12rpx;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* 右上角小铅笔：改该房间的可进入人数 */
+.rcard-pencil {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  z-index: 2;
+  width: 48rpx;
+  height: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #faf6ef;
+}
+
+.rcard-pencil:active {
+  background: #f0e8da;
+}
+
+.rcard-line {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rcard-line-name {
+  overflow: hidden;
+}
+
+.rcard-name {
+  font-family: 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: 1rpx;
+  color: #1e293b;
+  line-height: 1.15;
+  white-space: nowrap;
+  display: inline-block;
+  text-align: center;
+  transform-origin: center center;
+}
+
+.rc-dots {
+  display: flex;
+  flex-wrap: nowrap;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.rc-dot {
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.rc-dot-free { background: #e8e2d6; }
+.rc-dot-l1 { background: #e3c98f; }
+.rc-dot-l2 { background: #d8b367; }
+.rc-dot-l3 { background: #c99a45; }
+.rc-dot-l4 { background: #b87c2c; }
+.rc-dot-l5 { background: #a05f1c; }
+
+.rcard-cap {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 18rpx;
+  font-weight: 600;
+  letter-spacing: 4rpx;
+  text-indent: 4rpx;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: #b08d57;
+}
+
+/* 数字区：卡面下方，与铭牌同一张白卡 */
+.rcard-stats {
+  display: flex;
+  align-items: stretch;
+  border-top: 1rpx solid #f2f3f5;
+  background: #fafafa;
+}
+
+.rc-stat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rpx;
+  padding: 12rpx 0;
+}
+
+.rc-stat + .rc-stat {
+  border-left: 1rpx solid #f2f3f5;
+}
+
+.rc-stat-num {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #323233;
+  line-height: 1.2;
+}
+
+.rc-stat-num--full {
+  color: #dc2626;
+}
+
+.rc-stat-lbl {
+  font-size: 18rpx;
+  color: #969799;
+}
+
+/* ---- 状态 ---- */
+.state-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+}
+
+.state-txt {
+  font-size: 26rpx;
+  color: #969799;
+}
+
+.retry-btn {
+  padding: 0 32rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  font-size: 26rpx;
+  color: #fff;
+  background: #1989fa;
+  border-radius: 10rpx;
+}
+
+/* ---- 详情弹窗 ---- */
+.rc-detail-popup {
+  width: 86vw !important;
+  max-width: 640rpx;
+  max-height: 74vh;
+  overflow: hidden;
+}
+
+.detail-scroll {
+  max-height: 74vh;
+  box-sizing: border-box;
+}
+
+.detail-wrap {
+  padding: 40rpx 32rpx 36rpx;
+  text-align: center;
+}
+
+.detail-title-wrap {
+  margin-bottom: 26rpx;
+}
+
+.detail-title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #323233;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.detail-sub {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16rpx;
+  margin-bottom: 26rpx;
+}
+
+.stat-chip {
+  min-width: 210rpx;
+  padding: 18rpx 24rpx;
+  border-radius: 16rpx;
+  background: #f7f8fa;
+  border: 1rpx solid #ebedf0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.stat-chip-primary {
+  background: #eef4ff;
+  border-color: rgba(25, 137, 250, 0.25);
+}
+
+.stat-label {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.stat-value {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.stat-chip-primary .stat-value {
+  color: #1989fa;
+}
+
+.detail-section-title {
+  margin-bottom: 16rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.detail-empty {
+  font-size: 24rpx;
+  color: #969799;
+  padding: 16rpx 0;
+}
+
+.occupant-card {
+  margin-bottom: 14rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 14rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  text-align: left;
+}
+
+.occupant-card:last-child {
+  margin-bottom: 0;
+}
+
+.occupant-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+}
+
+.occupant-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.occupant-badge {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #1989fa;
+  background: #eaf4ff;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+}
+
+.occupant-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding-top: 6rpx;
+}
+
+.occupant-time-label {
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.occupant-time-value {
+  font-size: 26rpx;
+  color: #646566;
+}
+
+/* ---- 限载编辑弹窗 ---- */
+.cap-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 80rpx;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.cap-card {
+  width: 100%;
+  padding: 40rpx 36rpx 28rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.cap-title {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #323233;
+  margin-bottom: 8rpx;
+}
+
+.cap-sub {
+  display: block;
+  font-size: 24rpx;
+  color: #969799;
+  margin-bottom: 28rpx;
+}
+
+.cap-input {
+  width: 100%;
+  height: 88rpx;
+  padding: 0 24rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #323233;
+  text-align: center;
+  background: #f7f8fa;
+  border: 1rpx solid #ebedf0;
+  border-radius: 16rpx;
+  box-sizing: border-box;
+}
+
+/* 取消 / 保存：小而精的圆角矩形，靠右排，不做整条大按钮 */
+.cap-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 28rpx;
+}
+
+.cap-btn {
+  min-width: 172rpx;
+  padding: 0 32rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  text-align: center;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.cap-btn-cancel {
+  background: #f1f3f7;
+  color: #334155;
+  box-shadow: 0 2rpx 6rpx rgba(15, 23, 42, 0.08);
+}
+
+.cap-btn-ok {
+  background: #1989fa;
+  color: #fff;
+  box-shadow: 0 4rpx 12rpx rgba(25, 137, 250, 0.32);
+}
+
+.cap-btn--press {
+  transform: translateY(1rpx);
+  box-shadow: none;
+}
+
+.cap-btn-disabled {
+  background: #94a3b8;
+  box-shadow: none;
+}

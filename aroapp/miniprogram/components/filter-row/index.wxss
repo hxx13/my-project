@@ -1,0 +1,43 @@
+.fr {
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f4f5f7;
+}
+
+.fr:last-child {
+  border-bottom: none;
+}
+
+.fr-label {
+  flex-shrink: 0;
+  width: 132rpx;
+  padding-top: 8rpx;
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.fr-opts {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+/* 选项 chip：实底无描边、非胶囊（用户禁描边按钮与胶囊按钮） */
+.fr-opt {
+  padding: 8rpx 20rpx;
+  border-radius: 8rpx;
+  background: #f2f3f5;
+  color: #646566;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.fr-opt--on {
+  background: #1989fa;
+  color: #fff;
+  font-weight: 600;
+}

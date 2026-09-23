@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "门禁成功刷卡规则",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

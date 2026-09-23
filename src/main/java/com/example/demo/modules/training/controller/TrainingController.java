@@ -110,6 +110,15 @@ public class TrainingController {
         return Result.success(service.update(id, body, user));
     }
 
+    /** 学生端培训排序配置（整套保存，仅超级管理员）。body = { items: [{id, campus, sortOrder}] } */
+    @PutMapping("/student-order")
+    public Result<?> updateStudentOrder(@RequestBody Map<String, Object> body) {
+        User user = resolveUser();
+        if (user == null) return Result.fail(401, "未登录");
+        int rows = service.updateStudentOrder(listOf(body.get("items")), user);
+        return Result.success(Map.of("ok", true, "rows", rows));
+    }
+
     @PostMapping("/{id}/publish")
     public Result<?> publish(@PathVariable Long id) {
         User user = resolveUser();

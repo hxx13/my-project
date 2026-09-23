@@ -1,0 +1,141 @@
+<view class="page">
+  <view class="head">
+    <view class="seg">
+      <view
+        wx:for="{{ campi }}"
+        wx:key="*this"
+        class="seg-item {{ activeTab === item ? 'seg-item--on' : '' }}"
+        data-campus="{{ item }}"
+        bindtap="onTabTap"
+      >{{ item }}校区</view>
+    </view>
+    <text class="hint">卡面右上角铅笔：设置该房间的可进入人数</text>
+  </view>
+
+  <view wx:if="{{ loading }}" class="state-box">
+    <van-loading size="36rpx" color="#1989fa" />
+    <text class="state-txt">加载中…</text>
+  </view>
+
+  <view wx:elif="{{ error }}" class="state-box">
+    <text class="state-txt">{{ error }}</text>
+    <view class="retry-btn" bindtap="onRetry">重试</view>
+  </view>
+
+  <scroll-view wx:else class="grid-scroll" scroll-y enhanced show-scrollbar="{{ false }}">
+    <van-empty wx:if="{{ cards.length === 0 }}" description="该校区尚未配置房间坐标" />
+    <view wx:else class="grid">
+      <view class="cell" wx:for="{{ cards }}" wx:key="configId">
+        <view class="rcard" data-id="{{ item.configId }}" bindtap="onCardTap">
+          <view class="rcard-plate">
+            <view class="rcard-frame"></view>
+            <view class="rcard-pencil" data-id="{{ item.configId }}" catchtap="onPencilTap">
+              <van-icon name="edit" size="24rpx" color="#b08d57" />
+            </view>
+            <view class="rcard-line rcard-line-name">
+              <text
+                class="rcard-name"
+                style="font-size: {{ item.nameFontRpx }}rpx; transform: scale({{ item.nameScale }});"
+              >{{ item.shortName }}</text>
+            </view>
+            <view class="rcard-line">
+              <view class="rc-dots" style="gap: {{ item.dotGapRpx }}rpx;">
+                <view
+                  wx:for="{{ item.dotList }}"
+                  wx:for-item="dot"
+                  wx:key="index"
+                  class="rc-dot {{ dot.colorClass }}"
+                />
+              </view>
+            </view>
+            <view class="rcard-cap">限载 {{ item.capacity }}</view>
+          </view>
+          <view class="rcard-stats">
+            <view class="rc-stat">
+              <text class="rc-stat-num {{ item.remaining <= 0 ? 'rc-stat-num--full' : '' }}">{{ item.remaining }}</text>
+              <text class="rc-stat-lbl">剩余</text>
+            </view>
+            <view class="rc-stat">
+              <text class="rc-stat-num">{{ item.campusUserCount }}</text>
+              <text class="rc-stat-lbl">自有</text>
+            </view>
+            <view class="rc-stat">
+              <text class="rc-stat-num">{{ item.borrowedCardCount }}</text>
+              <text class="rc-stat-lbl">领卡</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 房间详情：在场人员名册 -->
+  <van-popup
+    show="{{ showDetail }}"
+    position="center"
+    round
+    closeable
+    custom-class="rc-detail-popup"
+    bind:close="closeDetail"
+  >
+    <scroll-view scroll-y class="detail-scroll" wx:if="{{ detailCard }}">
+      <view class="detail-wrap">
+        <view class="detail-title-wrap">
+          <text class="detail-title">{{ detailCard.roomName }}</text>
+          <text wx:if="{{ detailCard.aliasText }}" class="detail-sub">别名：{{ detailCard.aliasText }}</text>
+        </view>
+
+        <view class="detail-stats">
+          <view class="stat-chip">
+            <text class="stat-label">可进入人数</text>
+            <text class="stat-value">{{ detailCard.capacity }}</text>
+          </view>
+          <view class="stat-chip stat-chip-primary">
+            <text class="stat-label">当前在场</text>
+            <text class="stat-value">{{ detailCard.totalCount }}</text>
+          </view>
+        </view>
+
+        <view class="detail-section-title">在场人员</view>
+        <view wx:if="{{ detailCard.occupantRows.length === 0 }}" class="detail-empty">当前空间空闲</view>
+        <view wx:for="{{ detailCard.occupantRows }}" wx:key="index" class="occupant-card">
+          <view class="occupant-card-head">
+            <text class="occupant-name">{{ item.userName }}</text>
+            <text class="occupant-badge">{{ item.entryTypeLabel }}</text>
+          </view>
+          <view wx:if="{{ item.projectGroup }}" class="occupant-time-row">
+            <text class="occupant-time-label">课题组</text>
+            <text class="occupant-time-value">{{ item.projectGroup }}</text>
+          </view>
+          <view class="occupant-time-row">
+            <text class="occupant-time-label">进入时间</text>
+            <text class="occupant-time-value">{{ item.entryTime }}</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </van-popup>
+
+  <!-- 限载（可进入人数）编辑 -->
+  <view wx:if="{{ showCapEdit }}" class="cap-mask" catchtap="closeCapEdit">
+    <view class="cap-card" catchtap="onCapNoop">
+      <text class="cap-title">{{ capTargetName }}</text>
+      <text class="cap-sub">可进入人数（限载）</text>
+      <input
+        class="cap-input"
+        type="number"
+        value="{{ capDraft }}"
+        placeholder="请输入人数"
+        bindinput="onCapInput"
+      />
+      <view class="cap-actions">
+        <view class="cap-btn cap-btn-cancel" hover-class="cap-btn--press" catchtap="closeCapEdit">取消</view>
+        <view
+          class="cap-btn cap-btn-ok {{ capSaving ? 'cap-btn-disabled' : '' }}"
+          hover-class="cap-btn--press"
+          catchtap="onCapSave"
+        >{{ capSaving ? '保存中…' : '保存' }}</view>
+      </view>
+    </view>
+  </view>
+</view>

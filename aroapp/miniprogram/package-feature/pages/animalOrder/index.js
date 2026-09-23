@@ -4,7 +4,7 @@
  * 学生/教职工视角通用；isPi 决定「谁可正式提交订单」。
  */
 const springAuth = require('../../../utils/springAuth.js');
-const beijingTime = require('../../../utils/beijingTime.js');
+const beijingTime = require('../../utils/beijingTime.js');
 const api = require('../../utils/animalOrderApi.js');
 const orderExportApi = require('../../utils/orderExportApi.js');
 const cageCellVisual = require('../../utils/cageCellVisual.js');
@@ -182,6 +182,7 @@ Page({
     cageCells: {},          // animalCageId → { selectable, reason, sex }（后端可点性）
     cageMaxPerCage: 5,      // 单笼数量上限（reservable 带回，缺省 5）
     pickedCages: [],        // [{ reservationId, animalCageId, label, shelveId, shelveName }]，顺序=分配顺序
+    pickupMode: 'FARM',     // 领用方式：饲养=预定笼位（默认），取走=不占笼位不选房间
     cageAllocPinned: {},    // 手改过的笼位：animalCageId → 数量（其余笼位自动吸收差额）
     cageAllocOpen: false,   // 分配浮层开合（浮层叠在网格上，网格不卸载）
     cageAllocRows: [],      // 分配浮层的行：[{ animalCageId, idx, pos, where, qty }]
@@ -562,6 +563,15 @@ Page({
     const u = readUserInfo() || {};
     const selfId = u.id != null ? String(u.id) : (u.userId != null ? String(u.userId) : '');
     const selfName = (u.displayName || u.name || '').trim();
+    // 进规格弹窗前确认这一单挂在哪个 AUP 下（登记号 · 课题组，与 web 口径一致）
+    const curAup = (this.data.aups || []).find(function (a) {
+      return String(a.id) === String(this.data.selectedAupId);
+    }) || null;
+    wx.showToast({
+      title: '当前AUP：' + (this.data.selectedAupNo || this.data.selectedAupId || '')
+        + (curAup && curAup.projectGroupName ? ' · ' + curAup.projectGroupName : ''),
+      icon: 'none',
+    });
     this.setData({
       specItem: item,
       specOptionRows: rows,
@@ -576,6 +586,7 @@ Page({
       // 每次选购重新选房间；领用人保留上次选择，未选过则默认本人
       pickupRoomId: '',
       pickupRoomName: '',
+      pickupMode: 'FARM',
       collectorId: this.data.collectorId || selfId,
       collectorName: this.data.collectorName || selfName,
     });
@@ -689,8 +700,9 @@ Page({
     return opt ? (Number(this.data.specQtys[opt.key]) || 0) : 0;
   },
 
-  /** 容量上限 = 已选笼位数 x 单笼上限 */
+  /** 容量上限 = 已选笼位数 x 单笼上限；取走不占笼位，无容量上限（对齐 web 的 cageCap=null → capMax 999） */
   _specCap() {
+    if (this.data.pickupMode === 'TAKE') return 999;
     return picker.totalCapacity((this.data.pickedCages || []).length, this.data.cageMaxPerCage);
   },
 
@@ -1165,6 +1177,90 @@ Page({
   // 关购物车只是收起来继续选购，编辑态保留；退出拦截在返回/离开页面那一层
   closeCartSheet() { this.setData({ cartSheetOpen: false }); },
 
+  /** 领用方式切换：取走=不占笼位不选房间（放掉已锁笼位），饲养=回笼位路径重新选 */
+  onPickupMode(e) {
+    const mode = e.currentTarget.dataset.mode;
+    if (mode === this.data.pickupMode) return;
+    if (mode === 'TAKE') {
+      const picked = this.data.pickedCages || [];
+      picked.forEach(function (c) {
+        if (c && c.reservationId != null) api.releaseCage(c.reservationId).catch(function () {});
+      });
+      this.setData({
+        pickupMode: 'TAKE',
+        pickedCages: [],
+        cageAllocPinned: {},
+        cageAllocOpen: false,
+        cageAllocRows: [],
+        cageAllocEntry: false,
+        cageAllocText: '',
+        cageWarnText: '',
+        cageError: '',
+      });
+      return;
+    }
+    this.setData({ pickupMode: 'FARM' });
+    this.loadCagePicker();
+  },
+
+  /**
+   * 取走：不锁笼位，按规格逐行加购。
+   * 镜像 frontend/src/features/reference-data/SpecSelectPanel.tsx 的 handleConfirm 非笼位分支
+   * （optionLabel 合成、无规格不写 specSelections、带 collector/remark/editingOrderId、无房间无预定）。
+   * 小程序无打包通道只能内联，改那边必须同步这里。
+   */
+  _confirmTakeAway(item) {
+    const self = this;
+    const rows = (this.data.specOptionRows || []).filter(function (r) {
+      return (self.data.specQtys[r.key] || 0) > 0;
+    });
+    if (!rows.length) {
+      wx.showToast({ title: '请先选择规格并填数量', icon: 'none' });
+      return;
+    }
+    const aupRecordId = Number(this.data.selectedAupId);
+    this.setData({ submitting: true });
+    let chain = Promise.resolve();
+    let ok = 0;
+    rows.forEach(function (r) {
+      const qty = self.data.specQtys[r.key] || 0;
+      chain = chain.then(function () {
+        // specOptionRows 的真实结构是 { key, templateName, label, priceText }；optionLabel 这个键
+        // 只有「无规格」那一行有、值为空串。与 web 同口径：无规格不写 specSelections，
+        // 后端据此回退到物品自身的 price。
+        const optLabel = (r.optionLabel !== undefined) ? r.optionLabel : (r.templateName + ': ' + r.label);
+        const body = {
+          refDataId: item.id,
+          aupRecordId: aupRecordId,
+          quantity: qty,
+        };
+        if (optLabel) body.specSelections = { option: optLabel };
+        const remark = (self.data.specRemarks[r.key] || '').trim();
+        if (remark) body.remark = remark;
+        if (self.data.collectorId) body.collectorId = self.data.collectorId;
+        if (self.data.collectorName) body.collectorName = self.data.collectorName;
+        if (self.data.editOrderId) body.editingOrderId = self.data.editOrderId;
+        return api.addToCart(body, self.data.groupId).then(function () { ok += 1; });
+      });
+    });
+    chain
+      .then(function () {
+        self.setData({
+          submitting: false, specSheetOpen: false, specItem: null, specOptionRows: [],
+          specQtys: {}, specRemarks: {}, pickupRoomId: '', pickupRoomName: '',
+          pickedCages: [], cageShelves: [], cageRooms: [], cageCells: {},
+          cageAllocPinned: {}, cageAllocOpen: false, cageAllocRows: [], cageAllocEntry: false,
+          cageAllocText: '', cageWarnText: '', cageError: '', pickupMode: 'FARM',
+        });
+        wx.showToast({ title: '已加入清单（' + ok + ' 项）', icon: 'success' });
+        self.loadCart();
+      })
+      .catch(function (e) {
+        self.setData({ submitting: false });
+        wx.showToast({ title: (e && e.message) || '加入失败', icon: 'none' });
+      });
+  },
+
   // PI 才显示的分组切换；非 PI 固定 AUP→实验员
   /** 加入清单：按笼位逐条（一条购物车行 = 一个笼位），数量按选中顺序铺满 */
   onSpecConfirm(e) {
@@ -1172,6 +1268,8 @@ Page({
     const confirmed = !!(e && e.confirmed);   // 二次进入：上面那条确认弹窗已经点过「继续」
     const item = this.data.specItem;
     if (!item || !this.data.selectedAupId || !this.data.groupId) return;
+    // 取走：不占笼位、不选房间，一个规格一行
+    if (this.data.pickupMode === 'TAKE') return this._confirmTakeAway(item);
     const picked = this.data.pickedCages || [];
     if (!picked.length) {
       wx.showToast({ title: '请先在下面选笼位（一笼一规格）', icon: 'none' });
@@ -1348,7 +1446,7 @@ Page({
     api.markPackageReady(this.data.groupId, { packageRemark: (this.data.packageRemark || '').trim() || undefined })
       .then(function () {
         self.setData({ submitting: false, packageRemark: '' });
-        wx.showToast({ title: '已提交给 PI', icon: 'success' });
+        wx.showToast({ title: self.data.isPi ? '备注已保存' : '已提交给 PI', icon: 'success' });
         self.loadCart();
       })
       .catch(function (e) { self.setData({ submitting: false }); wx.showToast({ title: (e && e.message) || '提交失败', icon: 'none' }); });

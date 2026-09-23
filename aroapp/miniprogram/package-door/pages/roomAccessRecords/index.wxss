@@ -1,0 +1,376 @@
+/* 视觉基准：物资处理页（suppliesProcess）—— #f5f6f7 底 + 白卡 + 1rpx 描边，无投影无渐变 */
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f5f6f7;
+  box-sizing: border-box;
+}
+
+/* ---- 顶部：搜索/筛选 + 已选条件 + 汇总 ---- */
+.head {
+  flex-shrink: 0;
+  padding: 16rpx 24rpx 12rpx;
+  background: #f5f6f7;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  font-size: 26rpx;
+  color: #323233;
+}
+
+.search-clear {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* 动作按钮统一用 app.wxss 的全局 .chip-btn（实底 / 12rpx 圆角 / 禁胶囊禁描边），此处不再自建 */
+
+.chip-scroll {
+  margin-top: 12rpx;
+  white-space: nowrap;
+}
+
+.chip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 4rpx 14rpx;
+  border-radius: 8rpx;
+  background: #eaf4ff;
+}
+
+.chip-t {
+  font-size: 22rpx;
+  color: #1989fa;
+  line-height: 1.5;
+}
+
+.chip-x {
+  font-size: 20rpx;
+  color: #1989fa;
+  opacity: 0.7;
+}
+
+.tabs-sum {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* ---- 列表 ---- */
+.list-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+
+.list-pad {
+  padding: 12rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+}
+
+.card {
+  background: #fff;
+  border-radius: 12rpx;
+  border: 1rpx solid #ebedf0;
+  padding: 16rpx 18rpx;
+  margin-bottom: 10rpx;
+}
+
+/* 整张卡按进/出分色：浅色底 + 左侧色条（照报修申请页的左侧状态条口径）。
+   底色只做极浅的色温区分，饱和度全交给左侧色条，避免整屏大红大绿。 */
+.card--enter {
+  background: #f6fcf8;
+  border-color: #d8efdf;
+  border-left: 8rpx solid #16a34a;
+}
+
+.card--exit {
+  background: #fffaf5;
+  border-color: #f6e0ca;
+  border-left: 8rpx solid #ea7500;
+}
+
+/* 姓名 / 状态标签 / 时间 同一行：必须 center 对齐。
+   用 baseline 时标签 19rpx 与姓名 27rpx 的字面基线不同，标签会明显偏高。 */
+.c-head {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.c-name {
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #323233;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 21rpx;
+  color: #969799;
+  font-variant-numeric: tabular-nums;
+}
+
+.c-line {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #646566;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.c-line--sub {
+  color: #969799;
+}
+
+/* 房间名做成标签，跟「来源 · 领卡」这类纯文字区分开；
+   房间名可能很长（「浦东 地下E11C」），留出省略号不要顶掉右边的文字 */
+.c-line--meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.tag-room {
+  max-width: 100%;
+  color: #475569;
+  background: #eef2f7;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.c-meta-txt {
+  font-size: 22rpx;
+  color: #969799;
+  line-height: 1.45;
+}
+
+.c-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6rpx;
+  margin-top: 8rpx;
+}
+
+.tag {
+  flex-shrink: 0;
+  font-size: 19rpx;
+  border-radius: 6rpx;
+  padding: 1rpx 10rpx;
+  line-height: 1.5;
+  color: #646566;
+  background: #f2f3f5;
+}
+
+/* 进 / 出 两色必须一眼分开：绿=进入，橙=离开（不做饱和实底，沿用浅底+浓字） */
+.tag-enter {
+  color: #15803d;
+  background: #dcf5e6;
+  font-weight: 600;
+}
+
+.tag-exit {
+  color: #c2410c;
+  background: #ffe3cc;
+  font-weight: 600;
+}
+
+.tag-bad {
+  color: #dc2626;
+  background: #fde8ea;
+}
+
+.c-exit {
+  display: flex;
+  align-items: flex-start;
+  gap: 8rpx;
+  margin-top: 6rpx;
+}
+
+.c-exit-txt {
+  flex: 1;
+  min-width: 0;
+  font-size: 21rpx;
+  color: #b88230;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.c-more {
+  flex-shrink: 0;
+  font-size: 21rpx;
+  color: #1989fa;
+}
+
+/* ---- 状态 / 分页 ---- */
+.state-box {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+}
+
+.state-txt {
+  font-size: 26rpx;
+  color: #969799;
+}
+
+/* 触底加载提示（不用上下页按钮） */
+.load-more {
+  padding: 20rpx 0 8rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* ---- 筛选抽屉 ---- */
+.filter-popup {
+  max-height: 78vh;
+  border-radius: 24rpx 24rpx 0 0;
+  overflow: hidden;
+}
+
+.fs-root {
+  display: flex;
+  flex-direction: column;
+  max-height: 78vh;
+}
+
+.fs-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26rpx 28rpx 16rpx;
+  border-bottom: 1rpx solid #f4f5f7;
+}
+
+.fs-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #323233;
+}
+
+.fs-reset {
+  font-size: 24rpx;
+  color: #1989fa;
+  padding: 6rpx 12rpx;
+}
+
+.fs-reset--hover {
+  opacity: 0.7;
+}
+
+.fs-body {
+  flex: 1;
+  min-height: 0;
+  max-height: 56vh;
+  padding: 0 28rpx 20rpx;
+  box-sizing: border-box;
+}
+
+.fs-label {
+  flex-shrink: 0;
+  width: 132rpx;
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.fs-input-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #f4f5f7;
+}
+
+.fs-input {
+  flex: 1;
+  min-width: 0;
+  height: 60rpx;
+  padding: 0 16rpx;
+  font-size: 24rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border-radius: 10rpx;
+  box-sizing: border-box;
+}
+
+.fs-input-row--switch {
+  justify-content: space-between;
+}
+
+.fs-date-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 18rpx 0;
+}
+
+.fs-date {
+  padding: 10rpx 18rpx;
+  font-size: 24rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border-radius: 10rpx;
+}
+
+.fs-sep {
+  font-size: 24rpx;
+  color: #969799;
+}
+
+/* 抽屉底部：按钮走全局 .chip-btn，只负责排版 */
+.fs-foot {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 14rpx 28rpx calc(18rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #f4f5f7;
+}

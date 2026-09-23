@@ -1,0 +1,68 @@
+/* 跨包 @import 会被开发者工具编译报错，本页需要的两份令牌/控件就近落一份副本 */
+@import './_fm-theme.wxss';
+@import './fm-controls.wxss';
+
+.page {
+  min-height: 100vh;
+  background: var(--fill);
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+}
+.pad { padding: 16rpx 24rpx 32rpx; }
+.card {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 16rpx;
+  border: 1rpx solid var(--line);
+}
+.card-title { font-size: 30rpx; font-weight: 600; color: var(--ink); }
+.card-sub { font-size: 24rpx; color: var(--faint); margin-top: 8rpx; }
+.row-actions { display: flex; justify-content: flex-end; gap: 12rpx; margin-top: 12rpx; }
+
+.ot-campus-row {
+  display: flex; gap: 12rpx; padding: 16rpx 24rpx;
+  background: var(--paper); border-bottom: 1rpx solid var(--line);
+}
+.ot-campus-btn {
+  padding: 8rpx 28rpx; border-radius: 8rpx; font-size: 26rpx;
+  border: 1rpx solid var(--line-strong); color: var(--body); background: #fff;
+}
+.ot-campus-btn--on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* 分段按钮：全站选中口径 = 实色底 + 同色 1px 描边 */
+.ot-seg { display: flex; gap: 12rpx; margin-top: 12rpx; }
+.ot-seg-btn {
+  flex: 1; text-align: center; padding: 14rpx 0; border-radius: 10rpx; font-size: 26rpx;
+  border: 1rpx solid var(--line-strong); color: var(--body); background: #fff;
+}
+.ot-seg-btn--on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.ot-hint { font-size: 22rpx; color: var(--mute); padding: 0 8rpx 16rpx; }
+.ot-actions { display: flex; gap: 12rpx; margin-top: 16rpx; }
+
+/* ── 弹窗（.popup-body/.popup-title 不随共享 wxss 引入，需本页自带）── */
+.popup-body {
+  padding: 24rpx 32rpx 32rpx;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+.popup-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 16rpx;
+}
+
+/* ── 时段编辑弹窗字段 ── */
+.ot-field-label { font-size: 24rpx; color: var(--mute); margin: 20rpx 0 8rpx; }
+.ot-two { display: flex; gap: 12rpx; }
+.ot-two > picker { flex: 1; }
+.picker-box {
+  padding: 16rpx; border: 1rpx solid var(--line-strong); border-radius: 8rpx;
+  font-size: 26rpx; color: var(--ink); text-align: center; background: #fff;
+}
+.ot-chips { display: flex; flex-wrap: wrap; gap: 12rpx; margin-bottom: 12rpx; }
+.ot-chip {
+  padding: 8rpx 24rpx; border-radius: 8rpx; font-size: 24rpx;
+  border: 1rpx solid var(--line-strong); color: var(--body); background: #fff;
+}
+.ot-chip--on { background: var(--accent); border-color: var(--accent); color: #fff; }

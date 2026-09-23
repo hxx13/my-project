@@ -1,0 +1,85 @@
+/* 我的证书：卡片语言与其它页一致；按钮走全局 .chip-btn */
+.page {
+  padding: 16px 14px 24px;
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #eef5ff 0%, #f7f8fa 120px);
+}
+.muted {
+  font-size: 13px;
+  color: #969799;
+  text-align: center;
+  padding: 24px 0;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.row-card {
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(235, 238, 239, 0.9);
+  box-shadow: 0 4px 18px rgba(31, 56, 88, 0.07);
+}
+.row-head {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+.row-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: #323233;
+}
+.status-tag {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid #e3e8ef;
+}
+.status-ok {
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+}
+.meta-line {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 8rpx;
+  font-size: 12px;
+}
+.meta-k {
+  width: 150rpx;
+  flex-shrink: 0;
+  color: #969799;
+}
+.meta-v {
+  flex: 1;
+  color: #646566;
+  word-break: break-all;
+}
+.meta-line-action {
+  align-items: center;
+}
+.meta-line-action .meta-v {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.action-btn {
+  flex-shrink: 0;
+  margin-left: 12rpx;
+}
+.hint {
+  margin-top: 18rpx;
+  font-size: 12px;
+  color: #969799;
+  text-align: center;
+}

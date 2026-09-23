@@ -18,6 +18,10 @@ public class Training {
     private String recurrenceTime;
     private LocalDate recurrenceStart;
     private LocalDate recurrenceEnd;
+    /** 学生端校区分组（浦东/浦西），空 = 未分组 */
+    private String campus;
+    /** 学生端手动排序序号（同校区内升序） */
+    private Integer studentSort;
     private String status;
     private LocalDateTime publishAt;
     private String createdBy;

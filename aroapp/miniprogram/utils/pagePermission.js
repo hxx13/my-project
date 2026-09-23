@@ -6,15 +6,28 @@ const CACHE = {
   loadedAt: 0,
 };
 
-const SUBPKG_PAGES_PREFIX = '/package-feature/pages/';
+/** 分包页面与后台「页面权限」仍按主包 /pages/... 配置；导航可用任一分包的路径。
+ *  每新增一个分包都要把前缀补进来 —— 漏一个，该分包页面的权限就会查不到配置、
+ *  静默退化到 fallback 角色判定（页面照常进，权限口径却变了）。 */
+const SUBPKG_PAGE_PREFIXES = [
+  '/package-feature/pages/',
+  '/package-supplies/pages/',
+  '/package-door/pages/',
+  '/package-student/pages/',
+  '/package-ops/pages/',
+];
 
 function normalizePath(path) {
   const raw = String(path || '').trim();
   if (!raw) return '';
   let p = (raw.startsWith('/') ? raw : `/${raw}`).replace(/\/+/g, '/');
   /** 分包页面与后台「页面权限」仍按主包 /pages/... 配置；导航可用分包路径 */
-  if (p.startsWith(SUBPKG_PAGES_PREFIX)) {
-    p = `/pages/${p.slice(SUBPKG_PAGES_PREFIX.length)}`;
+  for (let i = 0; i < SUBPKG_PAGE_PREFIXES.length; i += 1) {
+    const pre = SUBPKG_PAGE_PREFIXES[i];
+    if (p.startsWith(pre)) {
+      p = `/pages/${p.slice(pre.length)}`;
+      break;
+    }
   }
   return p;
 }
@@ -80,6 +93,7 @@ function guardPageOnShow(pageCtx, pagePath, role, fallbackMinRole) {
 }
 
 module.exports = {
+  normalizePath,
   refreshMiniPermissions,
   getMiniPermissions,
   canAccessMiniPage,

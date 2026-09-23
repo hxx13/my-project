@@ -2,7 +2,31 @@
   <!-- tab 页也带返回箭头（点了回首页）：tab 页没有上一页可退，组件里 navigateBack 失败会
        自动 fallback 到 switchTab('/pages/index/index')，行为就是「回首页」。
        组件自带 64px 占位，而本页是固定高度链（page→.page→.layout 都是 100%），所以不用再补 min-height。 -->
-  <subpage-nav-bar title="房间" />
+  <subpage-nav-bar title="房间">
+    <!-- 返回键右侧：进出流水 / 房卡管理（均需 STAFF 及以上；无权限整枚不渲染） -->
+    <view slot="left" class="nav-left-acts">
+      <view
+        wx:if="{{ showStaffEntries }}"
+        class="nav-act-btn nav-act-btn--history"
+        hover-class="nav-act-btn--history-hover"
+        hover-stay-time="60"
+        bindtap="onAccessRecordsTap"
+      >
+        <van-icon name="clock-o" size="26rpx" color="#1989fa" />
+        <text class="nav-act-text">历史</text>
+      </view>
+      <view
+        wx:if="{{ showStaffEntries }}"
+        class="nav-act-btn"
+        hover-class="nav-act-btn--hover"
+        hover-stay-time="60"
+        bindtap="onCardAdminTap"
+      >
+        <van-icon name="setting-o" size="26rpx" color="#334155" />
+        <text class="nav-act-text">管理</text>
+      </view>
+    </view>
+  </subpage-nav-bar>
   <view class="layout">
     <view class="sidebar-col">
       <scroll-view class="campus-sidebar" scroll-y>

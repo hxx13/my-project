@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "培训审核",
+  "usingComponents": {
+    "van-empty": "@vant/weapp/empty/index",
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}
