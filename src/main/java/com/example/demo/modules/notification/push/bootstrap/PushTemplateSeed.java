@@ -469,5 +469,13 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "🕐 {failedAt}（已尝试 {attempts} 次）\n"
 
         ));
+
+        // ========== 动物订购：预约单周期推进 ==========
+        TEMPLATES.put("REF_ORDER_PREORDER_CYCLE", new Template(
+                "预约单已进入本周期 — {projectGroupName}",
+                "<h3>预约单已进入本周期</h3><p>课题组 <b>{projectGroupName}</b> 的预约单（订单号 {orderId}）已进入到货周期（{deliveryDate}），锁定的笼位已转入饲养中。</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "**预约单已进入本周期**\n课题组 **{projectGroupName}**\n订单号：{orderId}\n到货周期：{deliveryDate}\n锁定的笼位已转入饲养中"
+        ));
     }
 }

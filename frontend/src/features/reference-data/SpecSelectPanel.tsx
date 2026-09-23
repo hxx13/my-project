@@ -2,8 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { appConfirm } from "@/lib/appDialog";
-import { useSpecTemplates } from "@/api/hooks/useReferenceData";
-import type { RefDataItem } from "@/api/domains/referenceData.api";
+import { useSpecTemplates, useOrderCycles } from "@/api/hooks/useReferenceData";
+import { fetchSpecQuota, type RefDataItem, type SpecQuota } from "@/api/domains/referenceData.api";
 import { specPriceKey } from "./typeRegistry";
 import { OrderRoomTreeSelect } from "./OrderRoomTreeSelect";
 import { PersonnelPicker } from "@/components/admin/PersonnelPicker";
@@ -16,6 +16,8 @@ export interface OrderPickupInfo {
   pickupRoomName: string;
   collectorId?: string;
   collectorName?: string;
+  /** 目标到货周期（预计到货日 ISO 日期）；空 = 本周期 */
+  deliveryCycle?: string;
 }
 
 /** 饲养 = 预定笼位（现状）；取走 = 不占笼位、不选房间 */
@@ -82,6 +84,10 @@ interface SpecSelectPanelProps {
    * 移动壳靠 `.mobile-student-shell` 把 `--twin-*` 重映射到 `--student-*`，所以内部不必换令牌。
    */
   mobileShell?: boolean;
+  /** 当前校区（浦东/浦西）：查可选到货周期与每周期上限用 */
+  campus?: string;
+  /** 品类键（ANIMAL_BREED id）：查可选到货周期用 */
+  categoryKey?: string;
 }
 
 /** 金额展示：null / undefined 一律显示「待定」，不显示 0 以免误解为免费。 */
@@ -100,8 +106,9 @@ function extractOptions(raw: unknown): string[] {
   return [];
 }
 
-export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose, orderingBlocked, groupNames, selfUserId, selfUserName, aupRecordId, pickedCages = [], allocByCageId = {}, maxQuantityPerCage = 0, onCageContextChange, onProvideConfirm, pickupMode = "FARM", onPickupModeChange, embedded = false, mobileShell = false }: SpecSelectPanelProps) {
+export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose, orderingBlocked, groupNames, selfUserId, selfUserName, aupRecordId, pickedCages = [], allocByCageId = {}, maxQuantityPerCage = 0, onCageContextChange, onProvideConfirm, pickupMode = "FARM", onPickupModeChange, embedded = false, mobileShell = false, campus, categoryKey }: SpecSelectPanelProps) {
   const { data: templates = [] } = useSpecTemplates();
+  const { data: cycles = [] } = useOrderCycles(campus, categoryKey);
 
   /** 只有「饲养」才谈得上预定到笼位；「取走」走非笼位路径 */
   const farming = pickupMode === "FARM";
@@ -138,6 +145,10 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   const [collectorName, setCollectorName] = useState(selfUserName ?? "");
   const [collectorPickerOpen, setCollectorPickerOpen] = useState(false);
   const [roomTouched, setRoomTouched] = useState(false);
+  /** 目标到货周期：null = 本周期（默认）；否则是一个后续周期日（预约） */
+  const [cycle, setCycle] = useState<string | null>(null);
+  /** 各规格/无规格物品在该周期的配额快照（键 = "模板名: 选项" 或 "__nospec__"） */
+  const [quotas, setQuotas] = useState<Record<string, SpecQuota | undefined>>({});
 
   const roomMissing = !pickupRoomId;
   /** 有课题组才能检索候选领用人；缺失时只保留「本人」 */
@@ -148,6 +159,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     pickupRoomName: roomRequired ? pickupRoomName : "",
     collectorId: collectorId || undefined,
     collectorName: collectorName || undefined,
+    deliveryCycle: cycle ?? undefined,
   };
 
   const templateIds: number[] = useMemo(() => {
@@ -177,6 +189,37 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
     }
     return rows;
   }, [templates, templateIds]);
+
+  /** 可选预约周期（当前周期之外的后继周期）；端点未就绪时为空，只有「本周期」可点 */
+  const futureCycles = useMemo(() => cycles.filter((c) => !c.current), [cycles]);
+
+  // 配额：一次把该物品所有规格 + 无规格都查齐（debounce），切周期再查。失败当作「未知」，不拦。
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const next: Record<string, SpecQuota | undefined> = {};
+      const load = async (key: string, spec?: string) => {
+        try {
+          const q = await fetchSpecQuota({ refDataId: item.id, spec, cycle: cycle ?? undefined, campus });
+          if (!cancelled) next[key] = q;
+        } catch { /* 端点未就绪或失败：当未知 */ }
+      };
+      if (optionRows.length === 0) await load("__nospec__");
+      else await Promise.all(optionRows.map((r) => load(specPriceKey(r.templateName, r.label), specPriceKey(r.templateName, r.label))));
+      if (!cancelled) setQuotas(next);
+    }, 200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [item.id, optionRows, cycle, campus]);
+
+  /** 规格是否未配订购上限（未配 = 不可订） */
+  const unconfigured = (key: string) => quotas[key]?.configured === false;
+  /** 还可订多少；未配或「配了但未知」都返回 null（null ≠ 0） */
+  const availableOf = (key: string): number | null => {
+    const q = quotas[key];
+    if (!q || q.configured !== true || q.available == null) return null;
+    const n = Number(q.available);
+    return Number.isFinite(n) ? n : null;
+  };
 
   const [qtys, setQtys] = useState<Record<string, number>>({});
   /** 每个规格选项各一行备注，随加购写到该车行 */
@@ -235,6 +278,13 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   const handleConfirm = async () => {
     const rows = optionRows.filter(r => (qtys[r.key] || 0) > 0);
     if (rows.length === 0) return;
+    // 未配上限 = 不可订：即便数量已填过（切周期后规格变未配），也要拦下
+    for (const r of rows) {
+      if (unconfigured(specPriceKey(r.templateName, r.label))) {
+        toast.error(`「${r.label}」未配置订购上限，无法加购`);
+        return;
+      }
+    }
     // 领用房间必选：未选不提交，只给出提示。
     // 笼位路径下**不看这里** —— 房间由每个笼位自带（一个笼位一条行），
     // 这里的 pickupRoomId 永远是空的，先判它会把整条路静默堵死。
@@ -336,6 +386,10 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   /** 无规格商品的校验 + 提交（移动壳的「加入购物车」画在页面上，所以得能从这里取到） */
   const handleNoSpecConfirm = async () => {
     if (noSpecQty <= 0) return;
+    if (unconfigured("__nospec__")) {
+      toast.error("该物品未配置订购上限，无法加购");
+      return;
+    }
     if (roomRequired && roomMissing) { setRoomTouched(true); return; }
     if (cageRequired) {
       if (pickedCages.length === 0) {
@@ -397,6 +451,29 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
       <span className="self-center text-[10px] text-[var(--twin-mute)]">
         {farming ? "预定笼位，房间随笼位带出" : "不占笼位，直接取走"}
       </span>
+    </div>
+  );
+
+  /**
+   * 到货周期：本周期（默认）+ 各后续周期（预约）。
+   *
+   * 用**下拉**而不是平铺按钮：周期数可配（K 个未来周期），平铺会换行、把面板撑高，
+   * 而面板里笼位网格要占地方。PC 与 H5 共用这一个。
+   */
+  const cycleSelector = (
+    <div className={mobileShell ? "flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] px-3 py-1.5" : "flex shrink-0 items-center gap-2 border-b border-[var(--twin-hairline)] px-4 py-2"}>
+      <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">到货周期</span>
+      <select
+        value={cycle ?? ""}
+        onChange={(e) => setCycle(e.target.value || null)}
+        className="min-w-0 flex-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-white px-2 py-1 text-xs text-[var(--twin-ink)] outline-none"
+      >
+        <option value="">本周期</option>
+        {futureCycles.map((c, i) => (
+          <option key={c.cycle} value={c.cycle}>预约 · 第{i + 1}周期 {c.cycle}</option>
+        ))}
+      </select>
+      {cycle != null && <span className="shrink-0 text-[10px] font-medium text-sky-600">预约下单</span>}
     </div>
   );
 
@@ -508,6 +585,9 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
   // 无规格模板：不再拦截，直接按数量加购（单价取物品自身的 price）
   if (optionRows.length === 0) {
     const lineTotal = priceEnabled && flatPrice != null ? flatPrice * noSpecQty : null;
+    const noSpecUnconfigured = unconfigured("__nospec__");
+    const noSpecAvail = availableOf("__nospec__");
+    const noSpecMax = noSpecAvail != null ? Math.min(capMax, noSpecAvail) : capMax;
     const panel = (
         <div
           className={
@@ -527,10 +607,11 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
           )}
 
           {pickupModeSwitch}
+          {cycleSelector}
           {pickupFields}
 
           <div className={mobileShell ? "px-3 pb-2" : "px-4 pb-3"}>
-            <div className={`rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] ${mobileShell ? "px-2.5 py-1.5" : "p-3"}`}>
+            <div className={`rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] ${mobileShell ? "px-2.5 py-1.5" : "p-3"}${noSpecUnconfigured ? " opacity-45" : ""}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className={mobileShell ? "flex min-w-0 flex-1 items-center gap-2" : "min-w-0 mr-2"}>
                   <span className={mobileShell ? "min-w-0 truncate text-xs font-medium text-[var(--twin-ink)]" : "block truncate text-xs font-medium text-[var(--twin-ink)]"}>{itemLabel}</span>
@@ -542,30 +623,43 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                   <button
                     type="button"
                     className="h-6 w-6 rounded border border-[var(--twin-hairline)] bg-white text-xs font-bold text-[var(--twin-body)] disabled:opacity-30"
-                    disabled={noSpecQty <= 1}
+                    disabled={noSpecQty <= 1 || noSpecUnconfigured}
                     onClick={() => setNoSpecQty(q => Math.max(1, q - 1))}
                   >−</button>
                   <input
-                    type="number" min={1} max={capMax}
+                    type="number" min={1} max={noSpecMax}
                     value={noSpecQty}
+                    disabled={noSpecUnconfigured}
                     onChange={e => {
                       const n = parseInt(e.target.value || "1", 10);
-                      const cap = capMax;
-                      setNoSpecQty(Number.isFinite(n) ? Math.min(cap, Math.max(1, n)) : 1);
+                      if (noSpecAvail != null && n > noSpecAvail) {
+                        toast.error(`该物品本周期最多可订 ${noSpecAvail} 只`);
+                        setNoSpecQty(noSpecAvail);
+                      } else {
+                        setNoSpecQty(Number.isFinite(n) ? Math.min(noSpecMax, Math.max(1, n)) : 1);
+                      }
                     }}
                     className="h-6 w-12 rounded border border-[var(--twin-hairline)] text-center text-xs"
                   />
                   <button
                     type="button"
-                    className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white"
+                    className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white disabled:opacity-30 disabled:bg-slate-400"
+                    disabled={noSpecUnconfigured}
                     onClick={() => {
                       const next = noSpecQty + 1;
                       if (bumpOverCap(next)) return;
+                      if (noSpecAvail != null && next > noSpecAvail) {
+                        toast.error(`该物品本周期最多可订 ${noSpecAvail} 只`);
+                        return;
+                      }
                       setNoSpecQty(next);
                     }}
                   >+</button>
                 </div>
               </div>
+              {noSpecUnconfigured && (
+                <div className="mt-1 text-[10px] text-[var(--app-color-feedback-danger)]">该物品未配置订购上限</div>
+              )}
               {!mobileShell && lineTotal != null && (
                 <div className="mt-1 text-right text-[10px] font-semibold text-sky-700">小计 {money(lineTotal)}</div>
               )}
@@ -640,6 +734,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
         )}
 
         {pickupModeSwitch}
+        {cycleSelector}
         {pickupFields}
 
         <div className={mobileShell ? "grid min-h-0 flex-1 grid-cols-2 gap-1.5 overflow-y-auto px-3 pb-2" : "flex-1 min-h-0 overflow-y-auto px-4 pb-3 space-y-2"}>
@@ -647,8 +742,13 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
             const q = qtys[row.key] || 0;
             const activeSibling = activeKeyByTemplate.get(row.key.split(":")[0]);
             const blocked = !!activeSibling && activeSibling !== row.key;
+            const specKey = specPriceKey(row.templateName, row.label);
+            const rowUnconfigured = unconfigured(specKey);
+            const rowAvail = availableOf(specKey);
+            const rowMax = rowAvail != null ? Math.min(capMax, rowAvail) : capMax;
+            const rowDisabled = blocked || rowUnconfigured;
             return (
-              <div key={row.key} className={`${mobileShell ? "rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1.5" : "rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2"}${blocked ? " opacity-45" : ""}`}>
+              <div key={row.key} className={`${mobileShell ? "rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1.5" : "rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2"}${rowDisabled ? " opacity-45" : ""}`}>
                 <div className="flex items-center justify-between gap-2">
                   {/* 移动壳：名称 · 单价 · 小计 · 步进器全挤一行（照小程序）；PC 仍按原来的堆叠 */}
                   <div className={mobileShell ? "flex min-w-0 flex-1 items-center gap-2" : "mr-2 min-w-0"}>
@@ -672,7 +772,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                     <button
                       type="button"
                       className="h-6 w-6 rounded border border-[var(--twin-hairline)] bg-white text-xs font-bold text-[var(--twin-body)] disabled:opacity-30"
-                      disabled={q <= 0 || blocked}
+                      disabled={q <= 0 || rowDisabled}
                       onClick={() => setQtys(prev => {
                         const cur = prev[row.key] || 0;
                         if (cur <= 1) { const n = { ...prev }; delete n[row.key]; return n; }
@@ -680,29 +780,40 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                       })}
                     >−</button>
                     <input
-                      type="number" min={0} max={capMax}
+                      type="number" min={0} max={rowMax}
                       value={q || ""}
                       placeholder="0"
-                      disabled={blocked}
+                      disabled={rowDisabled}
                       onChange={e => {
                         const n = parseInt(e.target.value || "0", 10);
                         if (n <= 0) { setQtys(prev => { const nxt = { ...prev }; delete nxt[row.key]; return nxt; }); }
-                        else setQtys(prev => ({ ...prev, [row.key]: Math.min(capMax, n) }));
+                        else if (rowAvail != null && n > rowAvail) {
+                          toast.error(`该规格本周期最多可订 ${rowAvail} 只`);
+                          setQtys(prev => ({ ...prev, [row.key]: rowAvail }));
+                        }
+                        else setQtys(prev => ({ ...prev, [row.key]: Math.min(rowMax, n) }));
                       }}
                       className="h-6 w-12 rounded border border-[var(--twin-hairline)] text-center text-xs"
                     />
                     <button
                       type="button"
                       className="h-6 w-6 rounded bg-sky-600 text-xs font-bold text-white disabled:opacity-30 disabled:bg-slate-400"
-                      disabled={blocked}
+                      disabled={rowDisabled}
                       onClick={() => {
                         const next = (qtys[row.key] || 0) + 1;
                         if (bumpOverCap(next)) return;
+                        if (rowAvail != null && next > rowAvail) {
+                          toast.error(`该规格本周期最多可订 ${rowAvail} 只`);
+                          return;
+                        }
                         setQtys(prev => ({ ...prev, [row.key]: next }));
                       }}
                     >+</button>
                   </div>
                 </div>
+                {rowUnconfigured && (
+                  <div className="mt-1 text-[10px] text-[var(--app-color-feedback-danger)]">该规格未配置订购上限</div>
+                )}
                 {!mobileShell && priceEnabled && q > 0 && (() => {
                   const p = unitPriceOf(row.templateName, row.label);
                   return (

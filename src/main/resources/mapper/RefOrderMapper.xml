@@ -19,12 +19,13 @@
         <result property="submitRemark" column="submit_remark"/>
         <result property="submittedAt" column="submitted_at"/>
         <result property="estimatedDeliveryDate" column="estimated_delivery_date"/>
+        <result property="isPreorder" column="is_preorder"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ref_order(sn, source, group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, campus, aro_area_name, status, submit_remark, submitted_at, estimated_delivery_date)
-        VALUES (#{sn}, COALESCE(#{source}, 'LOCAL'), #{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{campus}, #{aroAreaName}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate})
+        INSERT INTO ref_order(sn, source, group_id, submitter_id, submitter_name, project_group_name, project_group_id, aup_record_id, register_no, campus, aro_area_name, status, submit_remark, submitted_at, estimated_delivery_date, is_preorder)
+        VALUES (#{sn}, COALESCE(#{source}, 'LOCAL'), #{groupId}, #{submitterId}, #{submitterName}, #{projectGroupName}, #{projectGroupId}, #{aupRecordId}, #{registerNo}, #{campus}, #{aroAreaName}, #{status}, #{submitRemark}, #{submittedAt}, #{estimatedDeliveryDate}, COALESCE(#{isPreorder}, 0))
     </insert>
 
     <!-- ARO 导入：按 (source, sn) upsert，重跑不产生重复单 -->
@@ -134,6 +135,15 @@
         <if test="q.room != null and q.room != ''">
             AND EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
                         AND rl.pickup_room_name LIKE CONCAT('%', #{q.room}, '%'))
+        </if>
+        <!-- 预约单筛选：is_preorder 是永久标记（含已完成），不能靠日期推断 -->
+        <if test="q.isPreorder != null">AND o.is_preorder = #{q.isPreorder}</if>
+        <!-- 只导本周期：行级 delivery_cycle 命中任一当前周期；NULL = 旧单未选周期，按本周期处理 -->
+        <if test="q.cycles != null and q.cycles.size() > 0">
+            AND EXISTS (SELECT 1 FROM ref_order_line rl WHERE rl.order_id = o.id
+                        AND (rl.delivery_cycle IS NULL
+                             OR rl.delivery_cycle IN
+                             <foreach collection="q.cycles" item="c" open="(" separator="," close=")">#{c}</foreach>))
         </if>
     </sql>
 

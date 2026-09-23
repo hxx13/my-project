@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { AdminCenteredPanelShell } from "@/components/admin/AdminCenteredPanelShell";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
@@ -25,6 +26,8 @@ type Props = {
   storageKey: string;
   fetchSummary: () => Promise<SubtotalSummary>;
   onExport: (config: SubtotalConfigState) => Promise<void> | void;
+  /** 可选：导出前的额外筛选控件（如「只导本周期」），渲染在层级/板块开关之上 */
+  extraFilter?: ReactNode;
 };
 
 /** lv1+lv2+lv3 的小计条数（不含总计行）。 */
@@ -48,6 +51,7 @@ export default function ExportConfigDialog({
   storageKey,
   fetchSummary,
   onExport,
+  extraFilter,
 }: Props) {
   const [state, setState] = useState<SubtotalConfigState>(() => loadConfig(storageKey));
   const [summary, setSummary] = useState<SubtotalSummary | null>(null);
@@ -119,6 +123,9 @@ export default function ExportConfigDialog({
                 {summary.totals.blocks} 个板块 · {summary.totals.detailRows} 行明细 · 各级小计{" "}
                 {levelTotal} 条
               </p>
+
+              {/* 1.5 额外导出筛选（可选） */}
+              {extraFilter && <section>{extraFilter}</section>}
 
               {/* 2. 层级开关（只渲染摘要实际存在的层级） */}
               {summary.levels.length > 0 && (

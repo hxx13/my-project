@@ -2,6 +2,7 @@ package com.example.demo.modules.referencedata.entity;
 
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -33,6 +34,15 @@ public class RefCart {
     private String packageRemark;
     /** 本行锁定的笼位 ID（订购 → 笼位预定，见 cage_order_reservation） */
     private Long targetAnimalCageId;
+    /**
+     * 领用方式：FARM 饲养（预定笼位，房间随笼位带出）| TAKE 取走（不占笼位也不选房间）。
+     *
+     * <p>取走的 pickupRoomId / targetAnimalCageId 都是空，光看「房间为空」区分不了它与
+     * 「快照丢了」，所以领用方式必须显式落一列，审核页与导出才能如实显示。
+     */
+    private String pickupMode;
+    /** 目标到货周期（预计到货日）。NULL = 未选（旧客户端），按当前周期处理 */
+    private LocalDate deliveryCycle;
     private String addedBy;
     private LocalDateTime addedAt;
 }

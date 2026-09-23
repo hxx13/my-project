@@ -27,5 +27,7 @@ public class RefOrder {
     private String submitRemark;
     private LocalDateTime submittedAt;
     private LocalDate estimatedDeliveryDate;
+    /** 预约单标记：1 = 预约（到货周期晚于当前周期），永久保留（含已完成单） */
+    private Integer isPreorder;
     private LocalDateTime createdAt;
 }

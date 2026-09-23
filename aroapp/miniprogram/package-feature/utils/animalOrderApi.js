@@ -101,6 +101,53 @@ function fetchGroupMembers() {
   });
 }
 
+/** 到货周期：返回 [{ cycle: "yyyy-MM-dd", current }]，首项为当前周期。categoryKey 可空（跨品种默认周期） */
+/**
+ * 到货周期列表 → [{ cycle: 'yyyy-MM-dd', current: bool }]，第 1 个是当前周期。
+ *
+ * **必须在这里归一**：后端回的是 `{ current, cycles: [...] }`（对象，不是数组），
+ * 早先原样返回，页面拿到后调 `.filter` 直接抛 —— 而异常被 catch 吞成「无未来周期」，
+ * 表现是 picker 里只剩「本周期」、预约功能静默失效。契约不符只改这一处。
+ */
+function fetchCycles(campus, categoryKey) {
+  const url = withQuery('/api/reference-data/cycles', { campus: campus, categoryKey: categoryKey });
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    const d = p.body.data;
+    if (Array.isArray(d)) return d;
+    const list = (d && Array.isArray(d.cycles)) ? d.cycles : [];
+    const current = (d && d.current) || list[0] || '';
+    return list.map(function (c) { return { cycle: c, current: c === current }; });
+  });
+}
+
+/** 某规格在某周期的可用量：{ configured, cap, used, available }。configured=false=未配上限，available=null=尚未算出 */
+function fetchQuota(params) {
+  const url = withQuery('/api/reference-data/quota', {
+    refDataId: (params && params.refDataId),
+    spec: (params && params.spec),
+    cycle: (params && params.cycle),
+    campus: (params && params.campus),
+  });
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data || null;
+  });
+}
+
+/** 批量查各规格在当前周期的可用量（一次请求带全列表，不逐项/逐规格）。
+ *  POST body { items:[{refDataId,spec}], campus, cycle } → { "refDataId|spec": { configured, cap, used, available } }。
+ *  spec 空 = 无规格行；configured=false=未配上限；available=null=尚未算出（别当 0 或未配置）。 */
+function fetchQuotaBatch(body) {
+  return springAuth.springRequest({ url: '/api/reference-data/quota/batch', method: 'POST', data: body || {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data || {};
+  });
+}
+
 // ── 购物车（服务端共享，非本地 storage）──
 function fetchCart(groupId) {  const url = withQuery('/api/reference-data/cart', { groupId: groupId });
   return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
@@ -137,6 +184,16 @@ function removeCartItem(id) {
 
 function clearCart(groupId) {
   const url = withQuery('/api/reference-data/cart', { groupId: groupId });
+  return springAuth.springRequest({ url: url, method: 'DELETE', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data;
+  });
+}
+
+/** 清空本人「加购了但还没提交」的草稿行（READY 的不动）——任何身份可用，只作用于本人的行 */
+function clearMyDraftCart(groupId) {
+  const url = withQuery('/api/reference-data/cart/my-draft', { groupId: groupId });
   return springAuth.springRequest({ url: url, method: 'DELETE', data: {} }).then(function (res) {
     const p = parseResponse(res);
     if (!p.ok) throw new Error(p.message);
@@ -340,11 +397,15 @@ module.exports = {
   fetchApprovedAups,
   fetchMyRoles,
   fetchGroupMembers,
+  fetchCycles,
+  fetchQuota,
+  fetchQuotaBatch,
   fetchCart,
   addToCart,
   updateCartItem,
   removeCartItem,
   clearCart,
+  clearMyDraftCart,
   markPackageReady,
   withdrawPackage,
   submitOrder,

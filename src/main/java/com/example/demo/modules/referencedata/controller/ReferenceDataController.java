@@ -22,6 +22,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -229,13 +231,30 @@ public class ReferenceDataController {
     }
 
     @DeleteMapping("/cart")
-    @Operation(summary = "清空购物车")
+    @Operation(summary = "清空购物车（组长清整个共享购物车）")
     public Result<?> clearCart(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam String groupId) {
         User user = resolveUser(authorization);
         if (user == null) return Result.error("请先登录");
         return referenceDataService.clearCart(groupId, user.getId());
+    }
+
+    /**
+     * 清空本人「加购了但还没提交给组长」的草稿行（package_status != READY）。
+     *
+     * <p>任何登录用户都能用，只作用于本人的行；组长那条「清空整个共享购物车」是另一个接口。
+     * 路径用字面量段 {@code /cart/my-draft}：它比 {@code /cart/{id}} 更具体，
+     * Spring 的 PathPattern 优先命中字面量，不会把它当 id 去转 Long。
+     */
+    @DeleteMapping("/cart/my-draft")
+    @Operation(summary = "清空本人未提交的购物车草稿")
+    public Result<?> clearMyDraftCart(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String groupId) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return referenceDataService.clearMyDraft(groupId, user.getId());
     }
 
     @PostMapping("/cart/package-ready")
@@ -258,6 +277,86 @@ public class ReferenceDataController {
         User user = resolveUser(authorization);
         if (user == null) return Result.error("请先登录");
         return referenceDataService.withdrawPackage(groupId, user.getId(), body);
+    }
+
+    // ==================== 到货周期 / 周期库存 ====================
+
+    @GetMapping("/cycles")
+    @Operation(summary = "下 K 个到货周期（含当前周期为第 1 个）")
+    public Result<Map<String, Object>> listCycles(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String campus,
+            @RequestParam(required = false) String categoryKey) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return Result.success(referenceDataService.listUpcomingCycles(campus, categoryKey));
+    }
+
+    /**
+     * 管理端：到货周期显式清单 + 推算结果（供「采纳」预览）。
+     * 与时间管理同一条门 —— 超管 或 持「业务」标签。
+     */
+    @GetMapping("/cycles/admin")
+    @Operation(summary = "到货周期清单与推算（管理端）")
+    public Result<Map<String, Object>> cycleAdmin(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String campus,
+            @RequestParam(required = false) String categoryKey) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        if (!refOrderAccessPolicy.canManageOrderConfig(user)) return Result.error("无权限访问");
+        return Result.success(referenceDataService.cycleAdminView(campus, categoryKey));
+    }
+
+    /** 整份替换该校区清单；传空数组 = 清空，回到「按 ETA 策略推算」。 */
+    @PutMapping("/cycles/admin")
+    @Operation(summary = "保存到货周期清单（管理端）")
+    public Result<?> saveCyclesAdmin(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        if (!refOrderAccessPolicy.canManageOrderConfig(user)) return Result.error("无权限访问");
+        List<LocalDate> dates = new ArrayList<>();
+        Object raw = body == null ? null : body.get("cycles");
+        if (raw instanceof List<?> list) {
+            for (Object o : list) {
+                if (o == null) continue;
+                try {
+                    dates.add(LocalDate.parse(String.valueOf(o).trim()));
+                } catch (Exception ignored) {
+                    // 单个日期解析不了就跳过，不整份失败
+                }
+            }
+        }
+        referenceDataService.saveCyclesAdmin(body == null ? null : String.valueOf(body.get("campus")), dates);
+        return Result.success();
+    }
+
+    @GetMapping("/quota")
+    @Operation(summary = "某规格在某到货周期的配额（configured/cap/used/available）")
+    public Result<Map<String, Object>> quota(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam Long refDataId,
+            @RequestParam(required = false) String spec,
+            /* cycle 可选：不传 = 本周期。原先标成必填，而客户端一旦取周期失败就不传，
+               接口抛缺参 → 被全局处理器压成「服务繁忙」→ 前端当「未知」吞掉 →
+               未配上限的规格不再置灰，等于静默关掉了「未配 = 不可订」。 */
+            @RequestParam(required = false) LocalDate cycle,
+            @RequestParam String campus) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return Result.success(referenceDataService.quotaView(refDataId, spec, cycle, campus));
+    }
+
+    @PostMapping("/quota/batch")
+    @Operation(summary = "批量配额：订购卡片上逐规格显示剩余量")
+    public Result<Map<String, Map<String, Object>>> quotaBatch(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody RefQuotaBatchRequest body) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("请先登录");
+        return Result.success(referenceDataService.quotaViewBatch(body));
     }
 
     // ==================== Orders ====================

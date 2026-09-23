@@ -1,6 +1,7 @@
 import toast from "react-hot-toast";
 import { useSaveAnimalOrderTimePolicyAdmin, useAnimalOrderTimePolicy } from "@/api/hooks/useAnimalOrderTime";
 import type { AnimalOrderTimePolicyAdmin } from "@/api/domains/animalOrderTime.api";
+import OrderCycleListEditor from "./OrderCycleListEditor";
 
 interface EtaPolicyEditorProps {
   draft: AnimalOrderTimePolicyAdmin;
@@ -145,6 +146,9 @@ export default function EtaPolicyEditor({ draft, onChange }: EtaPolicyEditorProp
           {saveMut.isPending ? "保存中…" : "保存预计送达策略"}
         </button>
       </div>
+
+      {/* 策略管「怎么算」，这份清单管「实际是哪几天」——是两个对象，各存各的 */}
+      <OrderCycleListEditor campus={draft.campus} />
     </div>
   );
 }

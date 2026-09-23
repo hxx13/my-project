@@ -6,10 +6,13 @@ import { queryKeys } from "@/api/hooks/queryKeys";
 import {
   useRefDataList,
   useRefCart,
+  useOrderCycles,
+  useSpecTemplates,
   useAddToCart,
   useUpdateCartItem,
   useRemoveCartItem,
   useClearCart,
+  useClearMyDraftCart,
   useSubmitOrder,
   useApprovedAups,
   useMarkCartPackageReady,
@@ -36,7 +39,9 @@ import { webImageSrc } from "@/utils/mediaUrl";
 import MobileOrderRecordsView from "./MobileOrderRecordsView";
 import "./animal-order-scope.css";
 import CartTree, { CartTreeModeToggle, type CartTreeMode } from "@/features/reference-data/CartTree";
-import { refCardLines, refCardPrice } from "@/features/reference-data/ReferenceCard";
+import { useCartQuotaConvergence } from "@/features/reference-data/useCartQuotaConvergence";
+import { refCardLines, refCardPrice, specRowsOf, specQuotaLine } from "@/features/reference-data/ReferenceCard";
+import { useSpecQuotaBatch } from "@/features/reference-data/useSpecQuotaBatch";
 import SpecSelectPanel, { type OrderPickupInfo, type PickupMode } from "@/features/reference-data/SpecSelectPanel";
 import MobileCagePickerSheet from "@/pages/mobile/MobileCagePickerSheet";
 import type { PickedCage } from "@/pages/mobile/cagePickerLogic";
@@ -221,8 +226,16 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
   }, [selectedAupId]);
 
   const { data: items = [], isLoading, isError, error } = useRefDataList(activeTypeKey, currentParentId);
+  const { data: templates = [] } = useSpecTemplates();
   const { data: serverCartItems = [], refetch: refetchCart } = useRefCart(groupId);
   const { data: orders = [] } = useOrders(groupId);
+
+  /** 到货周期：当前周期 = 第一个 current 项；端点未就绪时为空 → 购物车全落「本周期」 */
+  const { data: cycles = [] } = useOrderCycles(campus ?? undefined, breedCategoryKey);
+  const currentCycle = useMemo(() => cycles.find((c) => c.current)?.cycle ?? null, [cycles]);
+
+  // 一屏卡片逐规格剩余量：一次批量请求 + 15s 轮询
+  const specQuotaByKey = useSpecQuotaBatch(items, templates, campus ?? undefined, currentCycle);
 
   // 侧边栏：当前层级父类型的兄弟项（下钻后切换父级用）
   const sidebarParentType = typeConfig?.parentType;
@@ -233,6 +246,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
   const updateCartMut = useUpdateCartItem();
   const removeCartMut = useRemoveCartItem();
   const clearCartMut = useClearCart();
+  const clearMyDraftMut = useClearMyDraftCart();
   const submitOrderMut = useSubmitOrder();
   const markReadyMut = useMarkCartPackageReady();
   const withdrawMut = useWithdrawCartPackage();
@@ -262,6 +276,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
         lineAmount: ci.lineAmount ?? null,
         pickupRoomName: ci.pickupRoomName ?? null,
         collectorName: ci.collectorName ?? null,
+        deliveryCycle: ci.deliveryCycle ?? null,
         aupRecordId: ci.aupRecordId,
         aupLabel: aupLabelById.get(String(ci.aupRecordId)) || "未归属",
         packageStatus: ci.packageStatus || "DRAFT",
@@ -423,6 +438,10 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
             pickupRoomId: roomId || undefined,
             pickupRoomName: roomName || undefined,
+            // 领用方式随行落库：取走的房间/笼位都是空，审核页与导出只能靠它分辨
+            pickupMode: pickup.pickupMode,
+            // 到货周期：本周期不传，预约传具体日期
+            ...(pickup.deliveryCycle ? { deliveryCycle: pickup.deliveryCycle } : {}),
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
             ...(entry.remark ? { remark: entry.remark } : {}),
@@ -539,11 +558,33 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     updateCartMut.mutate({ id: line.id, body: { quantity: qty } }, { onSuccess: () => void refetchCart() });
   }, [isPi, currentUserId, removeCartMut, updateCartMut, refetchCart]);
 
+  // 被挤占收敛：他人提交吃掉了某 (规格, 周期) 的可用量，本车数量超过时收敛到可用量并提示（不静默）
+  useCartQuotaConvergence({
+    lines: cartLines,
+    campus,
+    isPi,
+    currentUserId,
+    onConverge: (line, newQty) => {
+      updateCartMut.mutate({ id: line.id, body: { quantity: newQty } }, { onSuccess: () => void refetchCart() });
+    },
+  });
+
   const handleClearCart = useCallback(async () => {
     if (!isPi) { toast.error("仅组长可清空共享购物车"); return; }
     if (!await appConfirm("确认清空课题组共享购物车？此操作不可撤销。")) return;
     clearCartMut.mutate(groupId, { onSuccess: () => { setCartSheetOpen(false); void refetchCart(); } });
   }, [isPi, clearCartMut, groupId, refetchCart]);
+
+  /**
+   * 清空本人「加购了但还没提交给组长」的草稿行。任何身份可用，只作用于本人的行。
+   * 与 handleClearCart 是两件事：那个是组长清整个共享购物车。
+   * 已提交的行（READY）不动 —— 那批已进组长待办，要撤销走「撤回 READY」。
+   */
+  const handleClearMyDraft = useCallback(async () => {
+    if (myDraftLines.length === 0) { toast.error("没有可清空的草稿行"); return; }
+    if (!await appConfirm(`确认清空本人 ${myDraftLines.length} 行未提交的草稿？此操作不可撤销。\n\n已提交给组长的订单包不受影响。`)) return;
+    clearMyDraftMut.mutate(groupId, { onSuccess: () => void refetchCart() });
+  }, [myDraftLines.length, clearMyDraftMut, groupId, refetchCart]);
 
   const handleMarkPackageReady = useCallback(() => {
     if (orderingBlocked) { toast.error(timePolicy?.closedReason ?? "当前不可购"); return; }
@@ -608,6 +649,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
             const canDrill = !!typeConfig?.childType && hasChildren;
             const lines = refCardLines(item);
             const priceText = refCardPrice(item);
+            const quotaSegments = specQuotaLine(item, specRowsOf(item, templates), specQuotaByKey);
             const imageUrl = fieldVal(item, "imageUrl");
             const cover = imageUrl ? webImageSrc(imageUrl) : null;
             return (
@@ -662,6 +704,16 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                       {canDrill && <ChevronRight className="size-4 text-[var(--student-mute)]" />}
                     </div>
                   </div>
+                  {quotaSegments.length > 0 && (
+                    <div className="mt-0.5 truncate text-[11px] tabular-nums">
+                      {quotaSegments.map((s, i) => (
+                        <span key={i}>
+                          {i > 0 && <span className="text-[var(--student-mute)]"> · </span>}
+                          <span className={s.unconfigured ? "text-[var(--student-mute)]" : "text-[var(--student-body)]"}>{s.text}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </li>
             );
@@ -875,6 +927,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                 mode={cartTreeMode}
                 onModeChange={setCartTreeMode}
                 hideModeToggle
+                currentCycle={currentCycle}
                 /* 购物车定位 = 就地打开笼位抽屉并聚焦那一格；跳笼架页那种是审核页面的定位 */
                 onLocateCage={handleLocateCage}
               />
@@ -897,6 +950,17 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                   onChange={(e) => setPackageRemark(e.target.value)}
                   className="min-w-0 flex-1 rounded border border-[var(--student-hairline)] bg-white px-2.5 py-1.5 text-xs outline-none"
                 />
+                {myDraftLines.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearMyDraft}
+                    disabled={orderingBlocked || clearMyDraftMut.isPending}
+                    title="只删本人加购、还没提交给组长的行；已提交的不动"
+                    className="shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--student-error)] disabled:opacity-50"
+                  >
+                    清空草稿
+                  </button>
+                )}
                 {myReadyLines.length > 0 && (
                   <button
                     type="button"
@@ -940,7 +1004,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                   onClick={handleClearCart}
                   className="shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--student-body)] disabled:opacity-50"
                 >
-                  清空
+                  清空全组
                 </button>
                 <button
                   type="button"
@@ -1151,6 +1215,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                 onProvideConfirm={provideSpecConfirm}
                 pickupMode={pickupMode}
                 onPickupModeChange={handlePickupModeChange}
+                campus={campus ?? undefined}
+                categoryKey={breedCategoryKey}
               />
             )}
 

@@ -11,6 +11,8 @@ export interface CartLine {
   lineAmount?: number | null;
   /** 领用方式/房间（房间全路径） */
   pickupRoomName?: string | null;
+  /** 目标到货周期（预计到货日，ISO 日期）。空 = 本周期 */
+  deliveryCycle?: string | null;
   /** 领用人显示名；空=本人 */
   collectorName?: string | null;
   aupRecordId?: number | null;

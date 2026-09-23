@@ -61,9 +61,24 @@ async function listBreeds() {
   return p.body.data || [];
 }
 
+/** 到货周期（管理端）：{ campus, stored, predicted }。stored 含过期日、空 = 该校区仍按策略推算 */
+async function fetchCyclesAdmin(campus) {
+  const p = await otRequest(withQuery('/api/reference-data/cycles/admin', { campus: campus }), 'GET', {});
+  if (!p.ok) throw new Error(p.message);
+  return p.body.data || null;
+}
+
+/** 保存到货周期清单：整份替换；传空数组 = 清空，回到「按 ETA 策略推算」 */
+async function saveCyclesAdmin(campus, cycles) {
+  const p = await otRequest('/api/reference-data/cycles/admin', 'PUT', { campus: campus, cycles: cycles || [] });
+  if (!p.ok) throw new Error(p.message);
+}
+
 module.exports = {
   fetchAdminPolicy,
   saveAdminPolicy,
   fetchPolicySummary,
   listBreeds,
+  fetchCyclesAdmin,
+  saveCyclesAdmin,
 };

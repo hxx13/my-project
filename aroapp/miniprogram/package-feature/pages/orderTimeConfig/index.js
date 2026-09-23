@@ -82,6 +82,27 @@ function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 function fmtDate(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
 function fmtTime(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
 
+/** 到货周期行：date 为 YYYY-MM-DD；expired 用墙钟当天串比较（日期串字典序 = 时间序） */
+function cycleRows(dates) {
+  const today = fmtDate(new Date());
+  return (dates || []).map(function (d) {
+    return { date: d, expired: d < today, _k: 'c' + d + '_' + Math.random().toString(36).slice(2) };
+  });
+}
+
+function sortCycles(list) {
+  return (list || []).slice().sort(function (a, b) {
+    return a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+  });
+}
+
+/** YYYY-MM-DD 的后一天；用 / 分隔避免 JSCore 把纯日期当 UTC 解析成前一日 */
+function nextDayStr(dateStr) {
+  const d = new Date(String(dateStr).replace(/-/g, '/') + ' 00:00:00');
+  d.setDate(d.getDate() + 1);
+  return fmtDate(d);
+}
+
 /** "09:00:00" / "09:00" → "09:00"；空值原样返回 */
 function timeToHM(s) {
   if (!s) return '';
@@ -161,6 +182,9 @@ Page({
     rangeEndTime: '17:00',
     rangeLabel: '',
     weekdayPickerRange: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+    // 到货周期清单（预计送达 tab 内）
+    cyclesDraft: [],
+    cyclesPredicted: [],
   },
 
   onShow() {
@@ -218,9 +242,10 @@ Page({
   async reloadAll() {
     wx.showLoading({ title: '加载中', mask: true });
     try {
-      const [admin, summary] = await Promise.all([
+      const [admin, summary, cycles] = await Promise.all([
         otApi.fetchAdminPolicy(this.data.campus),
         otApi.fetchPolicySummary(this.data.campus),
+        otApi.fetchCyclesAdmin(this.data.campus),
       ]);
       // 品种名称反查表：后端规则里只有 categoryKey，列表要显示名字就得先在本地建表
       await this.ensureBreeds();
@@ -228,6 +253,7 @@ Page({
       const rules = ((admin && admin.rules) || []).map(function (r) {
         return decorateRule(r, labelByKey);
       });
+      const stored = ((cycles && cycles.stored) || []);
       this.setData({
         defaultMode: (admin && admin.defaultMode) || 'OPEN',
         etaMode: (admin && admin.etaMode) || 'RELATIVE',
@@ -236,6 +262,9 @@ Page({
         etaWeekdayLabel: WEEKDAY_LABELS[(((admin && admin.etaWeekday) != null ? admin.etaWeekday : 1) - 1 + 7) % 7],
         rules: sortRules(rules),
         summary: summary || null,
+        // 到货周期：清单草稿初始 = 服务端清单（空时服务端会自动按策略播种）
+        cyclesDraft: cycleRows(stored),
+        cyclesPredicted: ((cycles && cycles.predicted) || []),
         // 重新加载 = 换一份草稿：deletedRuleIds 必须清空，否则「在浦东删一条 → 切到浦西 →
         // 保存」会把浦东那条 id 一并提交成删除，跨校区误删（策略是按校区存的）。
         deletedRuleIds: [],
@@ -605,5 +634,75 @@ Page({
     } finally {
       wx.hideLoading();
     }
+  },
+
+  // ── 到货周期清单 ──
+  /** 改某天的日期：picker 直接落在行内，选中即回写草稿（不落库，随「保存」提交） */
+  onCycleDateChange(e) {
+    const key = e.currentTarget.dataset.key;
+    const date = e.detail.value;
+    const today = fmtDate(new Date());
+    const list = (this.data.cyclesDraft || []).map(function (c) {
+      if (c._k !== key) return c;
+      return { date: date, expired: date < today, _k: c._k };
+    });
+    this.setData({ cyclesDraft: sortCycles(list) });
+  },
+
+  deleteCycleDay(e) {
+    const key = e.currentTarget.dataset.key;
+    this.setData({
+      cyclesDraft: (this.data.cyclesDraft || []).filter(function (c) { return c._k !== key; }),
+    });
+  },
+
+  /** 新增一天：默认 = 现有最晚日期 + 1 天（空则今天），日期仍可在行内 picker 改 */
+  addCycleDay() {
+    const list = (this.data.cyclesDraft || []).slice();
+    let latest = '';
+    list.forEach(function (c) { if (!latest || c.date > latest) latest = c.date; });
+    const date = latest ? nextDayStr(latest) : fmtDate(new Date());
+    const today = fmtDate(new Date());
+    list.push({ date: date, expired: date < today, _k: 'c' + date + '_' + Math.random().toString(36).slice(2) });
+    this.setData({ cyclesDraft: sortCycles(list) });
+  },
+
+  /** 按策略重新生成：把编辑器填成 predicted（不立即保存，让管理员核对后再点保存） */
+  adoptCycles() {
+    const predicted = this.data.cyclesPredicted || [];
+    if (!predicted.length) {
+      wx.showToast({ title: '暂无推算结果', icon: 'none' });
+      return;
+    }
+    this.setData({ cyclesDraft: cycleRows(predicted) });
+    wx.showToast({ title: '已按当前策略填入，确认后请点保存', icon: 'none' });
+  },
+
+  /** 保存清单 = PUT 整份数组；清空（空数组）会让该校区静默回到按策略推算，故先确认 */
+  async saveCycles() {
+    const cycles = (this.data.cyclesDraft || []).map(function (c) { return c.date; });
+    const self = this;
+    const doSave = async function () {
+      wx.showLoading({ title: '保存中', mask: true });
+      try {
+        await otApi.saveCyclesAdmin(self.data.campus, cycles);
+        wx.showToast({ title: '已保存', icon: 'success' });
+        await self.reloadAll();
+      } catch (e) {
+        wx.showToast({ title: (e && e.message) || '保存失败', icon: 'none' });
+      } finally {
+        wx.hideLoading();
+      }
+    };
+    if (!cycles.length) {
+      wx.showModal({
+        title: '清空到货周期清单',
+        content: '确认清空？保存后该校区回到「按策略推算」（下次打开会自动重新生成）。',
+        confirmColor: '#dc2626',
+        success: function (res) { if (res.confirm) doSave(); },
+      });
+      return;
+    }
+    await doSave();
   },
 });

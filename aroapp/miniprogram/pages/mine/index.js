@@ -632,6 +632,12 @@ Page({
       this._orderTimeBusinessFor = springUserId;
       this._orderTimeBusinessProbed = false;
     }
+    // 同上：「饲养组长」身份码也要走接口，换号后必须连同授予一起作废
+    if (this._trainingLeaderFor !== springUserId) {
+      this._trainingLeaderGranted = false;
+      this._trainingLeaderFor = springUserId;
+      this._trainingLeaderProbed = false;
+    }
     this.setData({
       springBound,
       springPending,
@@ -697,8 +703,13 @@ Page({
       // 培训与考核：受训人既可能是学生也可能是教职工，默认学生级别即可见
       canGoStudentTraining: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentTraining/index', role, 'STUDENT'),
       canGoStudentExam: pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentExam/index', role, 'STUDENT'),
-      // 培训管理（教职工端）：审核/房间下放/发布编辑培训，教职工起步
+      // 培训管理（教职工端）：审核/房间下放/发布编辑培训。两道门——① 按视角挡（学生账号的
+      // 角色档可能到 STAFF，只判角色会让入口漏进学生视角）；② 仅「饲养组长」身份可见。
+      // **最高权限（SUPER_ADMIN 及以上）直接放行**，身份码都不必探。身份码要走接口，
+      // 先置 false，由 refreshSpringUiState 末尾的异步探针补齐
       canGoTrainingAdmin:
+        !isStudentAccount() &&
+        (hasMinRole(role, 'SUPER_ADMIN') || this._trainingLeaderGranted === true) &&
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('mine', '/package-feature/pages/trainingAdmin/index', role, 'STAFF'),
       canGoAiPortrait: springBound && springUserId && pagePermission.canShowMiniEntry('mine', '/package-feature/pages/aiPortrait/index', role, 'STUDENT'),
@@ -746,6 +757,19 @@ Page({
           if (codes && codes.BUSINESS && this._orderTimeBusinessFor === springUserId) {
             this._orderTimeBusinessGranted = true;
             this.setData({ canGoOrderTimeConfig: true });
+          }
+        })
+        .catch(() => {});
+    }
+    // 培训管理：只有「饲养组长」身份才亮；最高权限免探，学生视角/角色不够探了也不亮
+    if (!hasMinRole(role, 'SUPER_ADMIN') && !isStudentAccount() && hasMinRole(role, 'STAFF') && this._trainingLeaderProbed !== true) {
+      this._trainingLeaderProbed = true;
+      personIdentity
+        .fetchMyIdentityCodes()
+        .then((codes) => {
+          if (codes && codes[personIdentity.CODE_BREEDING_GROUP_LEADER] && this._trainingLeaderFor === springUserId) {
+            this._trainingLeaderGranted = true;
+            this.setData({ canGoTrainingAdmin: true });
           }
         })
         .catch(() => {});
@@ -1100,6 +1124,16 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: (err && err.message) || '读取签名失败', icon: 'none' });
     }
+  },
+
+  /** 健康调查表：培训报名的两道门槛之一（另一道是门槛试卷），与网页端同一份题面 */
+  goHealthSurvey() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE);
+    if (!hasMinRole(role, 'MEMBER')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-student/pages/studentHealthSurvey/index' });
   },
 
   /**

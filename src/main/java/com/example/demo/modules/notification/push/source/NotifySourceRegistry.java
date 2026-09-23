@@ -202,6 +202,15 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "attempts", "已尝试次数",
                         "failedAt", "失败时间"));
 
+        // ========== 动物订购：预约单周期推进 ==========
+        // 预约单审核通过后笼位不立刻转饲养中，等到货周期到了由定时任务推进。收件人默认 = 下单人
+        // （代码里传 submitter_id），也可以在通知配置页为该源额外配「接收人」。
+        register("REF_ORDER_PREORDER_CYCLE", "动物订购-预约单进入本周期",
+                "预约单的到货周期到来，其名下锁定的笼位转入饲养中",
+                Map.of("orderId", "订单ID",
+                        "projectGroupName", "课题组",
+                        "deliveryDate", "到货周期"));
+
         log.info("[Push] 通知源注册完成：共 {} 个，新增 {}，其余已存在", totalSources, newSources);
     }
 

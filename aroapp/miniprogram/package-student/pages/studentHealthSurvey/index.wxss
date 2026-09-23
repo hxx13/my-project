@@ -1,0 +1,277 @@
+/* 健康调查表（小程序）：版式对齐网页端 health-survey.css，单位换 rpx。
+   颜色不依赖 CSS 变量 —— 小程序侧没有那套 app-color，写死更稳。 */
+
+.hs-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #f2f4f8;
+  box-sizing: border-box;
+}
+
+.hs-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 正文卡片 */
+.hs-doc {
+  margin: 16rpx 16rpx 24rpx;
+  padding: 28rpx 24rpx 32rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #111827;
+}
+
+/* ── 页眉 ── */
+.hs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #333;
+}
+.hs-logo-shsmu { height: 56rpx; }
+.hs-logo-aaalac { height: 46rpx; }
+
+/* ── 标题 ── */
+.hs-title {
+  text-align: center;
+  margin: 24rpx 0 16rpx;
+}
+.hs-title-org {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.hs-title-name {
+  font-size: 28rpx;
+  font-weight: 700;
+  margin-top: 4rpx;
+}
+
+/* ── 分节 ── */
+.hs-section { margin-bottom: 28rpx; }
+.hs-section-title {
+  font-size: 27rpx;
+  font-weight: 700;
+  margin: 20rpx 0 12rpx;
+  padding-left: 12rpx;
+  border-left: 6rpx solid #1e3a8a;
+}
+
+.hs-field { margin-bottom: 26rpx; }
+.hs-label {
+  font-weight: 600;
+  margin-bottom: 10rpx;
+}
+
+/* ── 选项行 ── */
+.hs-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx 12rpx;
+}
+.hs-opt {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 12rpx;
+  border-radius: 8rpx;
+}
+/* 选中态整项变色加粗 + 淡底，一眼能看出勾了什么 */
+.hs-opt.is-on {
+  color: #1d4ed8;
+  font-weight: 600;
+  background: #eff6ff;
+}
+.hs-opt-text { margin-left: 8rpx; }
+
+.hs-box,
+.hs-radio {
+  width: 30rpx;
+  height: 30rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border: 2rpx solid #9ca3af;
+  background: #fff;
+  position: relative;
+}
+.hs-box { border-radius: 6rpx; }
+.hs-radio { border-radius: 50%; }
+
+.hs-box.is-on,
+.hs-radio.is-on {
+  border-color: #2563eb;
+  background: #2563eb;
+}
+/* 勾 */
+.hs-box.is-on::after {
+  content: '';
+  position: absolute;
+  left: 9rpx;
+  top: 4rpx;
+  width: 8rpx;
+  height: 14rpx;
+  border: solid #fff;
+  border-width: 0 3rpx 3rpx 0;
+  transform: rotate(45deg);
+}
+/* 圆点 */
+.hs-radio.is-on::after {
+  content: '';
+  position: absolute;
+  left: 8rpx;
+  top: 8rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* ── 输入 ── */
+.hs-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8rpx 4rpx;
+  font-size: 26rpx;
+  color: #111827;
+  border-bottom: 1rpx solid #9ca3af;
+}
+.hs-detail { margin-top: 10rpx; }
+
+.hs-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 120rpx;
+  padding: 12rpx;
+  font-size: 26rpx;
+  color: #111827;
+  border: 1rpx solid #9ca3af;
+  border-radius: 8rpx;
+}
+
+/* ── 勾选矩阵 / 可增删表格 ── */
+.hs-grid-wrap { width: 100%; }
+.hs-grid {
+  display: inline-block;
+  min-width: 100%;
+  border-top: 1rpx solid #9ca3af;
+  border-left: 1rpx solid #9ca3af;
+}
+.hs-grid-row { display: flex; }
+
+.hs-grid-head .hs-grid-label,
+.hs-grid-head .hs-grid-cell-a,
+.hs-grid-head .hs-list-head,
+.hs-grid-head .hs-list-delhead {
+  background: #f1f5f9;
+  font-weight: 600;
+  font-size: 24rpx;
+  padding: 8rpx 6rpx;
+  text-align: center;
+  box-sizing: border-box;
+  border-right: 1rpx solid #9ca3af;
+  border-bottom: 1rpx solid #9ca3af;
+}
+
+.hs-grid-label {
+  width: 170rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 8rpx 6rpx;
+  font-size: 24rpx;
+  border-right: 1rpx solid #9ca3af;
+  border-bottom: 1rpx solid #9ca3af;
+}
+.hs-grid-rowhead { background: #f8fafc; }
+
+.hs-grid-cell,
+.hs-grid-cell-a {
+  width: 96rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8rpx 0;
+  border-right: 1rpx solid #9ca3af;
+  border-bottom: 1rpx solid #9ca3af;
+}
+
+.hs-list-head,
+.hs-list-cell {
+  width: 160rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-right: 1rpx solid #9ca3af;
+  border-bottom: 1rpx solid #9ca3af;
+}
+.hs-list-cell { padding: 4rpx 6rpx; }
+.hs-list-delhead,
+.hs-list-delcell {
+  width: 96rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1rpx solid #9ca3af;
+  border-bottom: 1rpx solid #9ca3af;
+}
+.hs-del { color: #dc2626; font-size: 24rpx; padding: 8rpx 0; }
+
+.hs-cell-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  padding: 6rpx 4rpx;
+  color: #111827;
+}
+
+.hs-add-row {
+  display: inline-block;
+  margin-top: 12rpx;
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-radius: 8rpx;
+}
+
+/* ── 声明 / 页脚 ── */
+.hs-declaration {
+  margin-top: 28rpx;
+  font-weight: 600;
+}
+.hs-footer {
+  margin-top: 24rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #333;
+  text-align: center;
+  font-size: 20rpx;
+  color: #4b5563;
+}
+
+/* ── 底部提交条 ── */
+.hs-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 16rpx 24rpx;
+  padding-bottom: calc(16rpx + env(safe-area-inset-bottom, 0px));
+  background: #fff;
+  border-top: 1rpx solid #e6e8ee;
+}
+.hs-bar-hint {
+  font-size: 22rpx;
+  color: #969799;
+}
+.hs-bar-btn {
+  min-height: 64rpx;
+  padding: 12rpx 44rpx;
+  font-size: 26rpx;
+}

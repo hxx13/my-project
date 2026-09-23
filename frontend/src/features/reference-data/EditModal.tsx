@@ -42,6 +42,8 @@ export default function EditModal({
   const [priceEnabled, setPriceEnabled] = useState(false);
   const [price, setPrice] = useState("");
   const [specPrices, setSpecPrices] = useState<Record<string, string>>({});
+  const [specQuotas, setSpecQuotas] = useState<Record<string, string>>({});
+  const [quota, setQuota] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
 
@@ -80,6 +82,16 @@ export default function EditModal({
         }
       }
       setSpecPrices(priceMap);
+
+      const rawSpecQuotas = item.fieldData?.specQuotas;
+      const quotaMap: Record<string, string> = {};
+      if (rawSpecQuotas && typeof rawSpecQuotas === "object") {
+        for (const [k, v] of Object.entries(rawSpecQuotas as Record<string, unknown>)) {
+          quotaMap[k] = v == null ? "" : String(v);
+        }
+      }
+      setSpecQuotas(quotaMap);
+      setQuota(item.fieldData?.quota != null ? String(item.fieldData.quota) : "");
     } else {
       const values: Record<string, string> = {};
       for (const field of typeConfig.fields) {
@@ -92,6 +104,8 @@ export default function EditModal({
       setPriceEnabled(false);
       setPrice("");
       setSpecPrices({});
+      setSpecQuotas({});
+      setQuota("");
     }
   }, [modalMode, item, typeConfig]);
 
@@ -177,6 +191,23 @@ export default function EditModal({
           const n = Number(price);
           if (Number.isFinite(n) && n >= 0) fieldData.price = n;
         }
+      }
+    }
+
+    // 每周期订购上限：留空=该规格本周期不可订（留空即缺失，不落 0）。独立于价格开关。
+    if (typeConfig.hasPurchasable && purchasable) {
+      if (specOptionRows.length > 0) {
+        const cleaned: Record<string, number> = {};
+        for (const row of specOptionRows) {
+          const raw = specQuotas[row.key];
+          if (raw === undefined || raw === "") continue;
+          const n = Number(raw);
+          if (Number.isFinite(n) && n >= 0) cleaned[row.key] = n;
+        }
+        fieldData.specQuotas = cleaned;
+      } else if (quota.trim() !== "") {
+        const n = Number(quota);
+        if (Number.isFinite(n) && n >= 0) fieldData.quota = n;
       }
     }
 
@@ -446,42 +477,76 @@ export default function EditModal({
                 </div>
               </div>
 
-              {priceEnabled && (specOptionRows.length > 0 ? (
+              {specOptionRows.length > 0 ? (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] text-[var(--twin-mute)]">该物品有规格，请为每个规格配置单价（元）</div>
+                  <div className="text-[11px] text-[var(--twin-mute)]">
+                    {priceEnabled
+                      ? "该物品有规格，请为每个规格配置单价（元）与每周期订购上限"
+                      : "该物品有规格，请为每个规格配置每周期订购上限"}
+                  </div>
+                  <div className="text-[11px] text-amber-600">每周期上限留空 = 该规格本周期不可订</div>
                   <div className="grid grid-cols-2 gap-1.5">
                     {specOptionRows.map((row) => (
                       <label key={row.key} className="flex items-center gap-1.5 rounded border border-[var(--twin-hairline)] bg-white px-2 py-1">
                         <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--twin-body)]" title={row.key}>
                           {row.templateName} · {row.label}
                         </span>
+                        {priceEnabled && (
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            placeholder="未定价"
+                            title="单价（元）"
+                            value={specPrices[row.key] ?? ""}
+                            onChange={(e) => setSpecPrices((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                            className="w-16 shrink-0 rounded border border-[var(--twin-hairline)] px-1 py-0.5 text-right text-[11px] outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                        )}
                         <input
                           type="number"
                           min={0}
-                          step="0.01"
-                          placeholder="未定价"
-                          value={specPrices[row.key] ?? ""}
-                          onChange={(e) => setSpecPrices((prev) => ({ ...prev, [row.key]: e.target.value }))}
-                          className="w-20 shrink-0 rounded border border-[var(--twin-hairline)] px-1 py-0.5 text-right text-[11px] outline-none focus:ring-2 focus:ring-sky-500"
+                          step="1"
+                          placeholder="每周期上限"
+                          title="每周期订购上限（留空 = 该规格本周期不可订）"
+                          value={specQuotas[row.key] ?? ""}
+                          onChange={(e) => setSpecQuotas((prev) => ({ ...prev, [row.key]: e.target.value }))}
+                          className="w-16 shrink-0 rounded border border-[var(--twin-hairline)] px-1 py-0.5 text-right text-[11px] outline-none focus:ring-2 focus:ring-sky-500"
                         />
                       </label>
                     ))}
                   </div>
                 </div>
               ) : (
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] text-[var(--twin-mute)]">该物品无规格，单价（元）</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    placeholder="如 85"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="w-32 rounded border border-[var(--twin-hairline)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </label>
-              ))}
+                <div className="flex items-end gap-3">
+                  {priceEnabled && (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] text-[var(--twin-mute)]">该物品无规格，单价（元）</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="如 85"
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="w-32 rounded border border-[var(--twin-hairline)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                      />
+                    </label>
+                  )}
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-[var(--twin-mute)]">每周期上限（留空 = 不可订）</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      placeholder="每周期上限"
+                      value={quota}
+                      onChange={(e) => setQuota(e.target.value)}
+                      className="w-32 rounded border border-[var(--twin-hairline)] px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </div>

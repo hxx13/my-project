@@ -1,5 +1,5 @@
-import type { RefDataItem } from "@/api/domains/referenceData.api";
-import type { ReferenceTypeConfig } from "./typeRegistry";
+import { specQuotaKey, type RefDataItem, type RefSpecTemplate, type SpecQuota } from "@/api/domains/referenceData.api";
+import { extractSpecOptions, specPriceKey, type ReferenceTypeConfig } from "./typeRegistry";
 import { webImageSrc } from "@/utils/mediaUrl";
 
 interface ReferenceCardProps {
@@ -14,6 +14,10 @@ interface ReferenceCardProps {
   orderingBlocked?: boolean;
   /** 该商品在购物车里的总数量（含规格/无规格）：>0 时在「选购」按钮右上角挂红角标，与 H5 同口径 */
   cartQty?: number;
+  /** 本卡各规格当前周期的配额（键见 specQuotaKey）；未就绪时 undefined → 不显示剩余行 */
+  specQuotaByKey?: Record<string, SpecQuota>;
+  /** 规格模板列表（枚举本卡规格行用，与查询配额同一份） */
+  templates: RefSpecTemplate[];
 }
 
 function getFieldVal(item: RefDataItem, key: string): string {
@@ -71,8 +75,66 @@ export function refCardPrice(item: RefDataItem): string | null {
   return min === max ? `¥${min.toFixed(2)}` : `¥${min.toFixed(2)} ~ ¥${max.toFixed(2)}`;
 }
 
+export interface SpecQuotaRow {
+  /** 规格串（"模板名: 选项"）；无规格物品为 undefined */
+  spec?: string;
+  /** 展示用的选项标签（无规格为 undefined） */
+  optionLabel?: string;
+}
+
+/** 枚举一张卡的规格行：按 specTemplateIds 展开模板选项；无模板退化成单个「无规格」行。 */
+export function specRowsOf(item: RefDataItem, templates: RefSpecTemplate[]): SpecQuotaRow[] {
+  const fd = item.fieldData as Record<string, unknown> | undefined;
+  const raw = fd?.specTemplateIds;
+  let ids: number[] = [];
+  if (Array.isArray(raw)) ids = raw.map((n) => Number(n));
+  else if (typeof raw === "string") {
+    try { const p = JSON.parse(raw); if (Array.isArray(p)) ids = p.map((n) => Number(n)); } catch { /* ignore */ }
+  }
+  const rows: SpecQuotaRow[] = [];
+  for (const tpl of templates) {
+    if (!ids.includes(tpl.id)) continue;
+    for (const opt of extractSpecOptions(tpl.options)) {
+      rows.push({ spec: specPriceKey(tpl.name, opt), optionLabel: opt });
+    }
+  }
+  if (rows.length === 0) rows.push({});
+  return rows;
+}
+
+export interface SpecQuotaSegment {
+  text: string;
+  unconfigured: boolean;
+}
+
+/**
+ * 把一张卡的各规格配额拼成一行展示段。没有可用数据（加载中/失败/「配了但未知」）时返回空数组 → 不渲染该行。
+ * 口径：未配置 → 「未配置」灰显；available===0 → 「已订满」；available>0 → 「剩余 N」。
+ */
+export function specQuotaLine(
+  item: RefDataItem,
+  rows: SpecQuotaRow[],
+  quotaByKey: Record<string, SpecQuota> | undefined,
+): SpecQuotaSegment[] {
+  if (!quotaByKey) return [];
+  const segs: SpecQuotaSegment[] = [];
+  for (const r of rows) {
+    const q = quotaByKey[specQuotaKey(item.id, r.spec)];
+    if (!q) continue;
+    if (q.configured === false) {
+      segs.push({ text: r.optionLabel ? `${r.optionLabel} 未配置` : "未配置", unconfigured: true });
+    } else if (q.available != null && Number.isFinite(Number(q.available))) {
+      const n = Number(q.available);
+      const status = n <= 0 ? "已订满" : `剩余 ${n}`;
+      segs.push({ text: r.optionLabel ? `${r.optionLabel} ${status}` : status, unconfigured: false });
+    }
+    // configured true + available null → 未知，跳过
+  }
+  return segs;
+}
+
 export default function ReferenceCard({
-  item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, orderingBlocked, cartQty,
+  item, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, orderingBlocked, cartQty, specQuotaByKey, templates,
 }: ReferenceCardProps) {
   // SUPER_ADMIN can always drill; non-admin blocked when next level is empty or nonexistent
   const childCount = item.childCount ?? 0;
@@ -89,6 +151,7 @@ export default function ReferenceCard({
   const lines = refCardLines(item);
   const isEmpty = lines.every(l => !l);
   const priceText = refCardPrice(item);
+  const quotaSegments = specQuotaLine(item, specRowsOf(item, templates), specQuotaByKey);
 
   return (
     <div
@@ -119,6 +182,17 @@ export default function ReferenceCard({
 
         {priceText && (
           <div className="mt-0.5 truncate text-xs font-bold tabular-nums text-[var(--twin-link)]">{priceText}</div>
+        )}
+
+        {quotaSegments.length > 0 && (
+          <div className="mt-0.5 truncate text-xs tabular-nums">
+            {quotaSegments.map((s, i) => (
+              <span key={i}>
+                {i > 0 && <span className="text-[var(--twin-mute)]"> · </span>}
+                <span className={s.unconfigured ? "text-[var(--twin-mute)]" : "text-[var(--twin-body)]"}>{s.text}</span>
+              </span>
+            ))}
+          </div>
         )}
 
       </div>

@@ -7,6 +7,7 @@ import { queryKeys } from "@/api/hooks/queryKeys";
 import {
   useRefDataList,
   useSpecTemplates,
+  useOrderCycles,
   useRefCart,
   useCreateRefData,
   useUpdateRefData,
@@ -15,6 +16,7 @@ import {
   useUpdateCartItem,
   useRemoveCartItem,
   useClearCart,
+  useClearMyDraftCart,
   useSubmitOrder,
   useApprovedAups,
   useMarkCartPackageReady,
@@ -42,6 +44,7 @@ import {
   type ReferenceTypeConfig,
 } from "./typeRegistry";
 import CardGrid from "./CardGrid";
+import { useSpecQuotaBatch } from "./useSpecQuotaBatch";
 import BreadcrumbBar from "./BreadcrumbBar";
 import EditModal from "./EditModal";
 import SpecSelectPanel, { type OrderPickupInfo, type PickupMode } from "./SpecSelectPanel";
@@ -50,11 +53,13 @@ import { CagePickerTab, ALLOC_COLUMN_WIDTH } from "@/components/cage/CageOpDrawe
 import { allocateInOrder } from "./cageAllocation";
 import SpecTemplateManager from "./SpecTemplateManager";
 import OrderTimeManager from "./OrderTimeManager";
+import QuotaCoveragePanel from "./QuotaCoveragePanel";
 import OrderHistoryPanel from "./OrderHistoryPanel";
 import CampusGate from "./CampusGate";
 import { ANIMAL_ORDER_CAMPUSES, readStoredCampus, storeCampus, type AnimalOrderCampus } from "./campus";
 import type { CartLine } from "./CartDrawer";
 import CartTree from "./CartTree";
+import { useCartQuotaConvergence } from "./useCartQuotaConvergence";
 
 import { appConfirm } from "@/lib/appDialog";
 interface DrillSegment {
@@ -121,6 +126,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [timeManagerOpen, setTimeManagerOpen] = useState(false);
+  const [quotaCoverageOpen, setQuotaCoverageOpen] = useState(false);
   const [orderHistoryOpen, setOrderHistoryOpen] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
   const [aupPickerOpen, setAupPickerOpen] = useState(false);
@@ -215,6 +221,10 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const { data: templates = [] } = useSpecTemplates();
   const { data: serverCartItems = [], refetch: refetchCart } = useRefCart(groupId);
 
+  /** 到货周期：当前周期 = 第一个 current 项；端点未就绪时为空 → 购物车全落「本周期」 */
+  const { data: cycles = [] } = useOrderCycles(campus ?? undefined, breedCategoryKey);
+  const currentCycle = useMemo(() => cycles.find((c) => c.current)?.cycle ?? null, [cycles]);
+
   // ── 编辑模式：由订单记录页带 ?editOrder={id} 跳进来 ──
   // 编辑期间原单不动，回填行带 editing_order_id 标记；保存才写回原单，放弃只清回填行。
   const editingOrderId = useMemo(() => {
@@ -307,6 +317,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   const updateCartMut = useUpdateCartItem();
   const removeCartMut = useRemoveCartItem();
   const clearCartMut = useClearCart();
+  const clearMyDraftMut = useClearMyDraftCart();
   const submitOrderMut = useSubmitOrder();
   const markReadyMut = useMarkCartPackageReady();
   const withdrawMut = useWithdrawCartPackage();
@@ -335,6 +346,9 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     });
   }, [items, searchKeyword]);
 
+  // 一屏卡片逐规格剩余量：一次批量请求 + 15s 轮询，切校区/品类/周期时重查
+  const specQuotaByKey = useSpecQuotaBatch(filteredItems, templates, campus ?? undefined, currentCycle);
+
   const cartLines = useMemo((): CartLine[] => {
     return (serverCartItems || []).map((ci: RefCartItem) => {
       const specLabel = parseSpecLabel(ci.specSelections);
@@ -350,6 +364,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         lineAmount: ci.lineAmount ?? null,
         pickupRoomName: ci.pickupRoomName ?? null,
         collectorName: ci.collectorName ?? null,
+        deliveryCycle: ci.deliveryCycle ?? null,
         aupRecordId: ci.aupRecordId,
         aupLabel: ci.aupRecordId != null ? (aupLabelById.get(String(ci.aupRecordId)) || `AUP#${ci.aupRecordId}`) : "未归属",
         packageStatus: ci.packageStatus || "DRAFT",
@@ -601,6 +616,10 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             ...(entry.optionLabel ? { specSelections: { option: entry.optionLabel } } : {}),
             pickupRoomId: roomId || undefined,
             pickupRoomName: roomName || undefined,
+            // 领用方式随行落库：取走的房间/笼位都是空，审核页与导出只能靠它分辨
+            pickupMode: pickup.pickupMode,
+            // 到货周期：本周期不传，预约传具体日期
+            ...(pickup.deliveryCycle ? { deliveryCycle: pickup.deliveryCycle } : {}),
             ...(pickup.collectorId ? { collectorId: pickup.collectorId } : {}),
             ...(pickup.collectorName ? { collectorName: pickup.collectorName } : {}),
             ...(entry.remark ? { remark: entry.remark } : {}),
@@ -647,6 +666,17 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     updateCartMut.mutate({ id: line.id, body: { quantity: qty } }, { onSuccess: () => void refetchCart() });
   }, [isPi, currentUserId, removeCartMut, updateCartMut, refetchCart]);
 
+  // 被挤占收敛：他人提交吃掉了某 (规格, 周期) 的可用量，本车数量超过时收敛到可用量并提示（不静默）
+  useCartQuotaConvergence({
+    lines: cartLines,
+    campus,
+    isPi,
+    currentUserId,
+    onConverge: (line, newQty) => {
+      updateCartMut.mutate({ id: line.id, body: { quantity: newQty } }, { onSuccess: () => void refetchCart() });
+    },
+  });
+
   const handleClearCart = useCallback(async () => {
     if (!isPi) {
       toast.error("仅组长可清空共享购物车");
@@ -660,6 +690,20 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       },
     });
   }, [isPi, clearCartMut, groupId, refetchCart]);
+
+  /**
+   * 清空本人「加购了但还没提交给组长」的草稿行。任何身份可用，只作用于本人的行。
+   * 与上面的 handleClearCart 是两件事：那个是组长清整个共享购物车。
+   * 已提交的行（READY）不动 —— 那批已进组长待办，要撤销走「撤回 READY」。
+   */
+  const handleClearMyDraft = useCallback(async () => {
+    if (myDraftLines.length === 0) {
+      toast.error("没有可清空的草稿行");
+      return;
+    }
+    if (!await appConfirm(`确认清空本人 ${myDraftLines.length} 行未提交的草稿？此操作不可撤销。\n\n已提交给组长的订单包不受影响。`)) return;
+    clearMyDraftMut.mutate(groupId, { onSuccess: () => void refetchCart() });
+  }, [myDraftLines.length, clearMyDraftMut, groupId, refetchCart]);
 
   const handleMarkPackageReady = useCallback(() => {
     if (orderingBlocked) {
@@ -813,6 +857,9 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 <button type="button" className="rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors whitespace-nowrap" onClick={() => setTimeManagerOpen(true)}>
                   时间管理
                 </button>
+                <button type="button" className="rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors whitespace-nowrap" onClick={() => setQuotaCoverageOpen(true)}>
+                  订购上限
+                </button>
               </>
             )}
             <button
@@ -899,6 +946,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
             errorMessage={error?.message}
             orderingBlocked={orderingBlocked}
             cartQtyByItemId={qtyByRefDataId}
+            templates={templates}
+            specQuotaByKey={specQuotaByKey}
           />
         </div>
       </div>
@@ -970,6 +1019,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 currentUserId={currentUserId}
                 onQtyChange={handleCartQtyChange}
                 maxQtyPerCage={maxQuantityPerCage}
+                currentCycle={currentCycle}
                 /* 购物车定位 = 就地打开笼位抽屉并聚焦；跳笼架页那种是审核页面的定位 */
                 onLocateCage={(cageId) => {
                   setFocusCageId(cageId);
@@ -998,6 +1048,17 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 className="w-full rounded border border-[var(--twin-hairline)] bg-white px-2 py-1 text-[11px] outline-none"
               />
               <div className="flex gap-2 justify-end">
+                {myDraftLines.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-red-500 disabled:opacity-50"
+                    disabled={orderingBlocked || clearMyDraftMut.isPending}
+                    onClick={handleClearMyDraft}
+                    title="只删本人加购、还没提交给组长的行；已提交的不动"
+                  >
+                    清空我的草稿
+                  </button>
+                )}
                 {myReadyLines.length > 0 && (
                   <button type="button" className="text-xs text-[var(--twin-mute)]" onClick={handleWithdrawPackage} disabled={withdrawMut.isPending}>
                     撤回 READY
@@ -1016,7 +1077,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
 
             {isPi && (
               <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
-                <button type="button" className="text-xs text-red-500 disabled:opacity-50" disabled={cartCount === 0 || editActive} onClick={handleClearCart}>清空</button>
+                <button type="button" className="text-xs text-red-500 disabled:opacity-50" disabled={cartCount === 0 || editActive} onClick={handleClearCart} title="清空整个课题组共享购物车（含组员已提交的行）">清空全组</button>
                 <button
                   type="button"
                   disabled={orderingBlocked || submitOrderMut.isPending || readyLines.length === 0 || editActive}
@@ -1122,6 +1183,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                   onCageContextChange={handleCageContextChange}
                   pickupMode={pickupMode}
                   onPickupModeChange={handlePickupModeChange}
+                  campus={campus ?? undefined}
+                  categoryKey={breedCategoryKey}
                 />
               </div>
             )}
@@ -1173,6 +1236,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
 
       {templateManagerOpen && <SpecTemplateManager onClose={() => setTemplateManagerOpen(false)} />}
       {timeManagerOpen && <OrderTimeManager campus={campus} onClose={() => setTimeManagerOpen(false)} />}
+      {quotaCoverageOpen && <QuotaCoveragePanel onClose={() => setQuotaCoverageOpen(false)} />}
       {orderHistoryOpen && <OrderHistoryPanel groupId={groupId} onClose={() => setOrderHistoryOpen(false)} />}
 
       {/* AUP 切换：portal 到 body，避开 AdminLayout 内容区 stacking context */}

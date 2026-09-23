@@ -29,6 +29,12 @@ public interface RefCartMapper {
 
     List<RefCart> listByIds(@Param("ids") List<Long> ids);
 
+    /** 某物品某规格在某到货周期的已加购数量之和（未作废的购物车行；specOption 空=无规格物品） */
+    int sumQtyByCycle(@Param("refDataId") Long refDataId,
+                      @Param("specOption") String specOption,
+                      @Param("cycle") java.time.LocalDate cycle,
+                      @Param("includeNullCycle") boolean includeNullCycle);
+
     /** 编辑在途：回填自该订单的购物车行 */
     List<RefCart> listByEditingOrderId(@Param("orderId") Long orderId);
 

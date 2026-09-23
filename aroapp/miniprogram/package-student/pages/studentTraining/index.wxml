@@ -111,12 +111,12 @@
           <text class="gate-k">门槛试卷</text>
           <text class="gate-v {{ target.examPassed ? 'gate-ok' : 'gate-bad' }}">{{ target.examPassed ? '已合格' : '未合格' }}</text>
         </view>
-        <view class="gate-line">
+        <view class="gate-line" bindtap="onGateHealth">
           <text class="gate-k">健康调查表</text>
-          <text class="gate-v {{ target.healthOk ? 'gate-ok' : 'gate-muted' }}">{{ target.healthOk ? '已提交' : '未提交' }}</text>
+          <text class="gate-v {{ target.healthOk ? 'gate-ok' : 'gate-bad' }}">{{ target.healthOk ? '已提交' : '未提交，点此填写' }}</text>
         </view>
       </view>
-      <text wx:if="{{ !target.eligible }}" class="gate-tip">需先通过门槛试卷并提交健康调查表；这两项请在学生中心网页端完成后回来报名。</text>
+      <text wx:if="{{ !target.eligible }}" class="gate-tip">需先通过门槛试卷并提交健康调查表：健康调查表点上面那一行即可填写（也可以从「我的」进），门槛试卷在「答题」里。</text>
       <view class="enroll-ops">
         <view class="chip-btn chip-btn--ghost enroll-btn" bindtap="onEnrollClose">关闭</view>
         <view

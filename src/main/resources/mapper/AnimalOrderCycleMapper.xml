@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.animalorder.mapper.AnimalOrderCycleMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.animalorder.entity.AnimalOrderCycle">
+        <id property="id" column="id"/>
+        <result property="campus" column="campus"/>
+        <result property="cycleDate" column="cycle_date"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="listByCampus" resultMap="Base">
+        SELECT * FROM animal_order_cycle
+        WHERE campus = #{campus}
+        ORDER BY cycle_date ASC
+    </select>
+
+    <select id="listDatesFrom" resultType="java.time.LocalDate">
+        SELECT cycle_date FROM animal_order_cycle
+        WHERE campus = #{campus} AND cycle_date &gt;= #{from}
+        ORDER BY cycle_date ASC
+    </select>
+
+    <delete id="deleteByCampus">
+        DELETE FROM animal_order_cycle WHERE campus = #{campus}
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO animal_order_cycle(campus, cycle_date, sort_order)
+        VALUES (#{campus}, #{cycleDate}, #{sortOrder})
+    </insert>
+
+</mapper>

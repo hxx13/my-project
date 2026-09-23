@@ -80,6 +80,32 @@
           <view class="card-sub" wx:if="{{ !summary.canOrderNow }}">当前不可购：{{ summary.closedReason }}</view>
         </view>
 
+        <view class="card">
+          <view class="card-head-row">
+            <text class="card-title-ellipsis">到货周期清单</text>
+            <view class="card-inline-actions">
+              <view class="fm-chip fm-chip-xs fm-chip-ghost" bindtap="adoptCycles">按策略重新生成</view>
+            </view>
+          </view>
+          <!-- 清单由服务端自动生成好（清单为空时按策略播种），这里只做针对性调整 -->
+          <view class="card-sub">系统已按「预计送达策略 + 节假日」自动生成，可在此针对性调整</view>
+
+          <view wx:if="{{ cyclesDraft.length }}" class="ot-cycle-list">
+            <view wx:for="{{ cyclesDraft }}" wx:key="_k" class="ot-cycle-row">
+              <picker mode="date" value="{{ item.date }}" data-key="{{ item._k }}" bindchange="onCycleDateChange" class="ot-cycle-picker">
+                <view class="picker-box {{ item.expired ? 'picker-box--expired' : '' }}">{{ item.date }}{{ item.expired ? '（已过期）' : '' }}</view>
+              </picker>
+              <view class="fm-chip fm-chip-xs fm-chip-danger" data-key="{{ item._k }}" catchtap="deleteCycleDay">删除</view>
+            </view>
+          </view>
+          <view wx:else class="card-sub">清单为空（保存空清单会回到「按策略推算」）</view>
+
+          <view class="ot-actions">
+            <view class="fm-chip fm-chip-ghost" bindtap="addCycleDay">＋ 新增一天</view>
+            <view class="fm-chip fm-chip-primary" bindtap="saveCycles">保存到货周期清单</view>
+          </view>
+        </view>
+
         <view class="ot-actions">
           <view class="fm-chip fm-chip-primary" bindtap="saveEta">保存预计送达策略</view>
         </view>

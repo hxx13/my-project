@@ -1,4 +1,4 @@
-import type { RefDataItem } from "@/api/domains/referenceData.api";
+import type { RefDataItem, RefSpecTemplate, SpecQuota } from "@/api/domains/referenceData.api";
 import type { ReferenceTypeConfig } from "./typeRegistry";
 import ReferenceCard from "./ReferenceCard";
 
@@ -18,10 +18,14 @@ interface CardGridProps {
   isError?: boolean;
   errorMessage?: string;
   orderingBlocked?: boolean;
+  /** 规格模板（枚举卡上规格行） */
+  templates: RefSpecTemplate[];
+  /** 本屏各规格当前周期配额（键见 specQuotaKey） */
+  specQuotaByKey?: Record<string, SpecQuota>;
 }
 
 export default function CardGrid({
-  items, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, onCreateNew, isLoading, isError, errorMessage, orderingBlocked, cartQtyByItemId,
+  items, typeConfig, isAdmin, mode, onEdit, onDrillDown, onAddToCart, onDelete, onCreateNew, isLoading, isError, errorMessage, orderingBlocked, cartQtyByItemId, templates, specQuotaByKey,
 }: CardGridProps) {
   return (
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
@@ -46,6 +50,8 @@ export default function CardGrid({
               onDelete={onDelete}
               orderingBlocked={orderingBlocked}
               cartQty={cartQtyByItemId?.get(item.id)}
+              templates={templates}
+              specQuotaByKey={specQuotaByKey}
             />
           ))}
           {isAdmin && onCreateNew && (

@@ -233,6 +233,13 @@ Page({
     });
   },
 
+  /** 门槛里的「健康调查表」：没提交就点进去填（题面与网页端同一份） */
+  onGateHealth() {
+    const t = this.data.target;
+    if (t && t.healthOk) return;
+    wx.navigateTo({ url: '/package-student/pages/studentHealthSurvey/index' });
+  },
+
   /** 重新报名：被驳回的报名仍占着场次，先退再报 */
   onReapplyTap(e) {
     const target = this.findTraining(e.currentTarget.dataset.id);

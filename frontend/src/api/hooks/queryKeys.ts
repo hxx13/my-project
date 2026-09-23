@@ -157,6 +157,8 @@ export const queryKeys = {
     options: (typeKey: string) =>
       ["referenceData", "options", typeKey] as const,
     specTemplates: ["referenceData", "specTemplates"] as const,
+    orderCycles: (campus?: string, categoryKey?: string) =>
+      ["referenceData", "orderCycles", campus ?? "none", categoryKey ?? "global"] as const,
     cart: (groupId?: string) =>
       ["referenceData", "cart", groupId ?? ""] as const,
     orders: (params?: Record<string, unknown>) =>

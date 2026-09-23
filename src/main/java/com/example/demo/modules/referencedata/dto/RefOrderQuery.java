@@ -2,6 +2,7 @@ package com.example.demo.modules.referencedata.dto;
 
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -55,4 +56,14 @@ public class RefOrderQuery {
     private String levels;
     /** 仅导出用：排除小计的板块 key（课题组名，逗号分隔） */
     private String excludeBlocks;
+    /**
+     * 预约单筛选：1 = 只看预约单，0 = 排除预约单。
+     * is_preorder 是**永久标记**（含已完成单），记录「下单当时是提前订的」，
+     * 不能靠 estimated_delivery_date 推断——那只是「哪天到货」。
+     */
+    private Integer isPreorder;
+    /** 仅导出用：只导本周期订单（delivery_cycle = 当前周期 且排除预约单）。服务端据此解析 {@link #cycles}。 */
+    private Boolean currentCycleOnly;
+    /** 服务端解析出的「当前周期」日期们（按校区各一个）；客户端不传，交给 EXISTS 过滤行级 delivery_cycle。 */
+    private List<LocalDate> cycles;
 }

@@ -163,6 +163,14 @@ Page({
     cartTreeMode: 'aup-user-spec',  // PI 分组视角；镜像 CartTree.tsx 的两种 mode
     cartTree: [],                   // buildCartTree 结果，购物车分组渲染用
     totalQtyByItem: {},   // refDataId → 总数量（「选择规格」按钮角标）
+    cartTab: 'current',   // 购物车周期 tab：current=本周期 / preorder=预约
+    cartCurrentCount: 0,  // 本周期 tab 数量（按 qty 合计）
+    cartPreorderCount: 0, // 预约 tab 数量（按 qty 合计）
+    currentCycle: '',     // 当前到货周期日（yyyy-MM-dd），购物车分区 + 规格弹窗默认
+    futureCycles: [],     // 预约可选周期 [{ cycle }]，规格弹窗用（非当前周期）
+    selectedCycle: '',    // 规格弹窗选的周期：'' = 本周期，否则为 ISO 日期
+    cyclePickerLabels: ['本周期'],  // 到货周期 picker 文案（index 0 = 本周期）
+    cyclePickerIndex: 0,
 
     specTemplates: [],
     specSheetOpen: false,
@@ -234,6 +242,16 @@ Page({
     editBusy: false,
   },
 
+  _startQuotaTimer() {
+    const self = this;
+    if (this._quotaTimer) return;
+    this._quotaTimer = setInterval(function () { self.loadQuota(); }, 30000);
+  },
+
+  _stopQuotaTimer() {
+    if (this._quotaTimer) { clearInterval(this._quotaTimer); this._quotaTimer = null; }
+  },
+
   onLoad() {
     const token = wx.getStorageSync(springAuth.KEYS.TOKEN) || '';
     if (!token) {
@@ -255,7 +273,7 @@ Page({
     try { wx.setStorageSync('animal_order_campus', campus); } catch (err) { /* ignore */ }
     this.setData({ campus: campus, campusSheetOpen: false }, function () {
       if (first) this.loadAll();
-      else this.loadTimePolicy();
+      else { this.loadTimePolicy(); this.loadQuota(); }
     });
   },
 
@@ -263,13 +281,20 @@ Page({
   closeCampusSheet() { this.setData({ campusSheetOpen: false }); },
 
   onShow() {
+    this._startQuotaTimer();
     // 从 AUP 选择等返回后刷新购物车
     if (this.data.pageGateOk && this.data.groupId) {
       this.loadCart();
     }
+    if (this.data.pageGateOk) this.loadQuota();
+  },
+
+  onHide() {
+    this._stopQuotaTimer();
   },
 
   onUnload() {
+    this._stopQuotaTimer();
     // 编辑态离开页面：不保存退出 = 自动回退（清空回填行，原单不动）
     const id = this.data.editOrderId;
     if (id) api.discardOrderEdit(id).catch(function () { /* 页面已销毁，静默 */ });
@@ -281,11 +306,14 @@ Page({
     const p1 = api.fetchApprovedAups().catch(function () { return []; });
     const p2 = api.fetchMyRoles().catch(function () { return { isPi: false }; });
     const p3 = api.listSpecTemplates().catch(function () { return []; });
+    const p4 = api.fetchCycles(this.data.campus).catch(function () { return []; });
 
-    Promise.all([p1, p2, p3]).then(function (rs) {
+    Promise.all([p1, p2, p3, p4]).then(function (rs) {
       const aups = rs[0];
       const roles = rs[1];
       const templates = rs[2];
+      const cycleArr = rs[3] || [];
+      const currentCycle = cycleArr.length ? String(cycleArr[0].cycle) : '';
       // AUP 选择要记住（与校区同样的缓存惯例）：只在它仍在已批准名单里时才认，避免脏缓存
       let cachedAupId = '';
       try { cachedAupId = String(wx.getStorageSync('animal_order_aup_id') || ''); } catch (e) { cachedAupId = ''; }
@@ -307,6 +335,7 @@ Page({
         isPi: !!(roles && roles.isPi),
         specTemplates: templates,
         groupId: groupId,
+        currentCycle: currentCycle,
       }, function () {
         self.loadItems();
         self.loadCart();
@@ -348,9 +377,80 @@ Page({
         errorMsg: '',
       });
       self.loadSidebar();
+      self.loadQuota();
     }).catch(function (e) {
       self.setData({ loading: false, errorMsg: (e && e.message) || '加载失败' });
     });
+  },
+
+  /**
+   * 物品的规格键与展示名（与 openSpec 的 specKey 同口径：模板名 + ': ' + 选项）。
+   * 无规格模板（或模板全未命中）→ 单条 { key: '', label: '' }，对应后端的「无规格」行。
+   */
+  _specKeyLabels(item, templates) {
+    const idList = Array.isArray(item.specTemplateIds) ? item.specTemplateIds.map(Number) : [];
+    const out = [];
+    (templates || []).forEach(function (tpl) {
+      if (idList.indexOf(Number(tpl.id)) < 0) return;
+      extractOptions(tpl.options).forEach(function (opt) {
+        out.push({ key: tpl.name + ': ' + opt, label: opt });
+      });
+    });
+    if (!out.length) out.push({ key: '', label: '' });
+    return out;
+  },
+
+  /**
+   * 列表行「剩余可订量」：一次批量查（非逐项/逐规格）。currentCycle 用 breed 级 categoryKey，
+   * 与规格弹窗 loadCycles 同口径，保证数字与弹窗一致。失败/尚未算出静默，不显示「剩余 —」。
+   */
+  loadQuota() {
+    const self = this;
+    const items = this.data.items || [];
+    const campus = this.data.campus;
+    if (!campus || !items.length) return;
+    const stack = this.data.drillStack;
+    const breedSeg = stack.find(function (s) { return s.typeKey === 'ANIMAL_BREED'; });
+    const categoryKey = breedSeg ? String(breedSeg.id) : undefined;
+    api.fetchCycles(campus, categoryKey).then(function (arr) {
+      const cycle = arr && arr.length ? String(arr[0].cycle) : '';
+      if (!cycle) return;
+      const templates = self.data.specTemplates || [];
+      const batchItems = [];
+      const rows = [];
+      items.forEach(function (it, idx) {
+        if (!it.purchasable) return;
+        const specs = self._specKeyLabels(it, templates);
+        rows.push({ idx: idx, id: it.id, specs: specs });
+        specs.forEach(function (s) { batchItems.push({ refDataId: it.id, spec: s.key }); });
+      });
+      if (!batchItems.length) return;
+      return api.fetchQuotaBatch({ items: batchItems, campus: campus, cycle: cycle }).then(function (map) {
+        const patch = {};
+        rows.forEach(function (r) {
+          const segs = [];
+          let grey = false;
+          r.specs.forEach(function (s) {
+            const q = map[String(r.id) + '|' + s.key];
+            if (!q) return;   // 后端没回这个规格：跳过
+            const label = s.label;
+            const avail = q.available == null ? null : Number(q.available);
+            if (q.configured === false) {
+              grey = true;
+              segs.push(label ? label + ' 未配置' : '未配置');
+            } else if (avail === 0) {
+              segs.push(label ? label + ' 已订满' : '已订满');
+            } else if (avail != null && avail > 0) {
+              segs.push(label ? label + ' 剩余 ' + avail : '剩余 ' + avail);
+            }
+            // configured=true 且 available=null = 尚未算出：跳过
+          });
+          patch['items[' + r.idx + '].quotaText'] = segs.join(' · ');
+          patch['items[' + r.idx + '].quotaGrey'] = grey;
+        });
+        self.setData(patch);
+      });
+    }).catch(function () { /* 静默：失败不显示，不打断列表 */ });
   },
 
   loadSidebar() {
@@ -415,6 +515,7 @@ Page({
           packageStatus: ci.packageStatus || 'DRAFT',
           packageRemark: ci.packageRemark || '',
           remark: ci.remark || '',
+          deliveryCycle: ci.deliveryCycle || '',
           addedBy: ci.addedBy,
           addedByLabel: addedByName || (ci.addedBy === currentUserId ? displayName : '') || ci.addedBy || '',
         };
@@ -428,6 +529,16 @@ Page({
         return s + (isFinite(v) ? v : 0);
       }, 0);
       const cartHasPrice = cart.some(function (l) { return !!l.lineAmountText; });
+      // 周期分区：deliveryCycle 晚于当前周期 = 预约；缺失/为空 = 本周期
+      const currentCycle = self.data.currentCycle || '';
+      const preLines = [];
+      const curLines = [];
+      cart.forEach(function (l) {
+        l.isPreorder = !!(l.deliveryCycle && currentCycle && String(l.deliveryCycle) > currentCycle);
+        if (l.isPreorder) preLines.push(l); else curLines.push(l);
+      });
+      const preQty = preLines.reduce(function (s, l) { return s + l.qty; }, 0);
+      const curQty = curLines.reduce(function (s, l) { return s + l.qty; }, 0);
       // PI 是最终提交人，本人加购的行不必再走「提交给 PI」确认，直接纳入提交范围
       const ready = picker.submittableLines(cart, self.data.isPi, currentUserId);
       const myDraft = cart.filter(function (l) { return l.addedBy === currentUserId && l.packageStatus !== 'READY'; });
@@ -440,14 +551,18 @@ Page({
       });
       self.setData({
         cart: cart,
-        cartTree: buildCartTree(cart, self.data.cartTreeMode),
+        cartTree: buildCartTree(self.data.cartTab === 'preorder' ? preLines : curLines, self.data.cartTreeMode),
         cartCount: cartCount,
+        cartCurrentCount: curQty,
+        cartPreorderCount: preQty,
         cartTotalText: cartHasPrice ? '¥' + cartTotal.toFixed(2) : '',
         readyCount: ready.length,
         myDraftCount: myDraft.length,
         myReadyCount: myReady.length,
         totalQtyByItem: totalQtyByItem,
       });
+      // 他人提交挤占周期上限后，收敛超额行（点名规格 + 弹窗提示，不静默改数）
+      self._reconcileQuota(cart);
     }).catch(function () { /* 静默 */ });
   },
 
@@ -541,6 +656,7 @@ Page({
           key: tpl.id + ':' + opt,
           templateName: tpl.name,
           label: opt,
+          specKey: priceKey,   // 周期库存上限的键（与 specPrices 同构）
           priceText: (priceEnabled && p != null && isFinite(Number(p))) ? '¥' + Number(p).toFixed(2) : (priceEnabled ? '待定' : ''),
         });
       });
@@ -554,6 +670,7 @@ Page({
         templateName: '',
         label: '数量',
         optionLabel: '',
+        specKey: '',
         priceText: (priceEnabled && flatPrice != null) ? '¥' + flatPrice.toFixed(2) : (priceEnabled ? '待定' : ''),
       });
     }
@@ -563,9 +680,13 @@ Page({
     const u = readUserInfo() || {};
     const selfId = u.id != null ? String(u.id) : (u.userId != null ? String(u.userId) : '');
     const selfName = (u.displayName || u.name || '').trim();
-    // 进规格弹窗前确认这一单挂在哪个 AUP 下（登记号 · 课题组，与 web 口径一致）
+    // 进规格弹窗前确认这一单挂在哪个 AUP 下（登记号 · 课题组，与 web 口径一致）。
+    // 回调用普通 function，里面没有 this —— 在回调里写 this.data 会抛 TypeError，
+    // 而这里一抛，下面那句 setData({ specSheetOpen: true }) 就永远走不到，
+    // 表现是「点选择规格毫无反应」（2026-09-23 踩过）。
+    const aupId = String(this.data.selectedAupId || '');
     const curAup = (this.data.aups || []).find(function (a) {
-      return String(a.id) === String(this.data.selectedAupId);
+      return String(a.id) === aupId;
     }) || null;
     wx.showToast({
       title: '当前AUP：' + (this.data.selectedAupNo || this.data.selectedAupId || '')
@@ -587,11 +708,15 @@ Page({
       pickupRoomId: '',
       pickupRoomName: '',
       pickupMode: 'FARM',
+      selectedCycle: '',
+      futureCycles: [],
       collectorId: this.data.collectorId || selfId,
       collectorName: this.data.collectorName || selfName,
     });
     // 抽屉里接着选笼位（一笼一规格）：并发拉本课题组笼架 + 可点集
     this.loadCagePicker();
+    // 到货周期（本周期/预约）+ 每规格可用量：失败不阻塞选购
+    this.loadCycles();
   },
 
   /** 选购面板合计：有规格按各行单价×数量，无规格按单品价×数量；全无定价显示「待定」。 */
@@ -634,6 +759,97 @@ Page({
       cageAllocPinned: {}, cageAllocOpen: false, cageAllocRows: [], cageAllocEntry: false,
       cageAllocText: '', cageWarnText: '', cageError: '',
     });
+  },
+
+  /** 到货周期（本周期/预约到后续周期）：breed 级 categoryKey 与 loadTimePolicy 同口径；失败不阻塞 */
+  loadCycles() {
+    const self = this;
+    const stack = this.data.drillStack;
+    const breedSeg = stack.find(function (s) { return s.typeKey === 'ANIMAL_BREED'; });
+    const categoryKey = breedSeg ? String(breedSeg.id) : undefined;
+    api.fetchCycles(this.data.campus, categoryKey).then(function (list) {
+      const arr = list || [];
+      const currentCycle = arr.length ? String(arr[0].cycle) : '';
+      const futureCycles = arr.filter(function (c) { return !c.current; }).map(function (c) {
+        return { cycle: String(c.cycle || '') };
+      });
+      self.setData(Object.assign({
+        currentCycle: currentCycle, futureCycles: futureCycles, selectedCycle: '',
+      }, self._cyclePickerData('', futureCycles)), function () {
+        self.loadSpecQuota();
+      });
+    }).catch(function () {
+      // 失败默认本周期，不置灰不设上限（后端提交时权威校验）
+      self.setData(Object.assign({ futureCycles: [], selectedCycle: '' }, self._cyclePickerData('', [])));
+    });
+  },
+
+  /** 每个规格选项在当前周期的可用量：未配上限→置灰禁订；available 有限→步进上限 */
+  loadSpecQuota() {
+    const self = this;
+    const item = this.data.specItem;
+    const rows = this.data.specOptionRows || [];
+    const cycle = this.data.selectedCycle || this.data.currentCycle || '';
+    if (!item || !rows.length || !cycle) return;
+    const campus = this.data.campus;
+    Promise.all(rows.map(function (r, i) {
+      const spec = r.specKey != null ? r.specKey : '';
+      return api.fetchQuota({ refDataId: item.id, spec: spec, cycle: cycle, campus: campus })
+        .then(function (q) {
+          const qi = q || {};
+          const configured = qi.configured === true;
+          const availNum = Number(qi.available);
+          const available = (configured && qi.available != null && isFinite(availNum)) ? availNum : null;
+          return { i: i, key: r.key, noQuota: configured === false, available: available };
+        })
+        .catch(function () {
+          return { i: i, key: r.key, noQuota: false, available: null };
+        });
+    })).then(function (rs) {
+      const patch = {};
+      const qs = Object.assign({}, self.data.specQtys);
+      let dirty = false;
+      rs.forEach(function (r) {
+        patch['specOptionRows[' + r.i + ']._noQuota'] = r.noQuota;
+        patch['specOptionRows[' + r.i + ']._quotaAvail'] = r.available;
+        if (r.noQuota && (qs[r.key] || 0) > 0) { delete qs[r.key]; dirty = true; }
+      });
+      if (dirty) patch.specQtys = qs;
+      self.setData(patch);
+      if (dirty) self._recalcSpecTotal();
+    });
+  },
+
+  /**
+   * 到货周期 picker 的选项文案：index 0 = 本周期，其后是未来各周期日期。
+   *
+   * 用 picker 而不是排一排按钮：周期数可配（K 个未来周期），按钮行必然换行、高度不定，
+   * 而规格面板里笼位网格要占地方 —— 用户反馈过「抽屉被新增的按钮顶得过高」。
+   */
+  _cyclePickerData(selected, futureCycles) {
+    const labels = ['本周期'].concat((futureCycles || []).map(function (c) { return String(c.cycle || ''); }));
+    const idx = labels.indexOf(selected || '本周期');
+    return { cyclePickerLabels: labels, cyclePickerIndex: idx < 0 ? 0 : idx };
+  },
+
+  _setCycle(cycle) {
+    const p = this._cyclePickerData(cycle, this.data.futureCycles);
+    this.setData(Object.assign({ selectedCycle: cycle || '' }, p), function () { this.loadSpecQuota(); });
+  },
+
+  onCyclePick(e) {
+    const i = Number(e.detail.value) || 0;
+    const cycle = i === 0 ? '' : String((this.data.cyclePickerLabels || [])[i] || '');
+    if (cycle === this.data.selectedCycle) return;
+    this._setCycle(cycle);
+  },
+
+  _specRowByKey(key) {
+    const rows = this.data.specOptionRows || [];
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].key === key) return rows[i];
+    }
+    return null;
   },
 
   /** 数量变化后刷新合计（setData 回调里调，保证读到最新值） */
@@ -1076,9 +1292,13 @@ Page({
   onSpecInc(e) {
     const key = e.currentTarget.dataset.key;
     if (this._specBlocked(key)) return;
+    const row = this._specRowByKey(key);
+    if (row && row._noQuota) { wx.showToast({ title: '该规格未配置订购上限，本周期不可订', icon: 'none' }); return; }
     const cap = this._specCap();
     if (cap <= 0) { wx.showToast({ title: '请先在下面选笼位', icon: 'none' }); return; }
     const cur = this.data.specQtys[key] || 0;
+    const avail = row ? row._quotaAvail : null;
+    if (avail != null && cur >= avail) { wx.showToast({ title: '本周期该规格仅剩 ' + avail + ' 只可订', icon: 'none' }); return; }
     if (cur >= cap) { wx.showToast({ title: '已到容量上限 ' + cap + '：加笼位或减数量', icon: 'none' }); return; }
     // 一笼一规格：填了另一个选项就把之前那个清掉
     const cleared = this._keepOnlySpecOption(key);
@@ -1113,6 +1333,14 @@ Page({
   onSpecQtyInput(e) {
     const key = e.currentTarget.dataset.key;
     if (this._specBlocked(key)) return;
+    const row = this._specRowByKey(key);
+    if (row && row._noQuota) {
+      const specQtys = Object.assign({}, this.data.specQtys);
+      delete specQtys[key];
+      this.setData({ specQtys: specQtys }, this._recalcSpecTotal);
+      wx.showToast({ title: '该规格未配置订购上限，本周期不可订', icon: 'none' });
+      return;
+    }
     const raw = String((e.detail && e.detail.value) || '').trim();
     const num = Number(raw);
     if (!raw || !isFinite(num) || num <= 0) {
@@ -1130,6 +1358,11 @@ Page({
       return;
     }
     let v = Math.floor(num);
+    const avail = row ? row._quotaAvail : null;
+    if (avail != null && v > avail) {
+      wx.showToast({ title: '本周期该规格仅剩 ' + avail + ' 只可订', icon: 'none' });
+      v = avail;
+    }
     if (v > cap) {
       wx.showToast({ title: '已到容量上限 ' + cap + '：加笼位或减数量', icon: 'none' });
       v = cap;
@@ -1233,7 +1466,10 @@ Page({
           refDataId: item.id,
           aupRecordId: aupRecordId,
           quantity: qty,
+          // 取走：不占笼位也不选房间，靠这一列让审核页与导出能分辨
+          pickupMode: 'TAKE',
         };
+        if (self.data.selectedCycle) body.deliveryCycle = self.data.selectedCycle;
         if (optLabel) body.specSelections = { option: optLabel };
         const remark = (self.data.specRemarks[r.key] || '').trim();
         if (remark) body.remark = remark;
@@ -1356,7 +1592,10 @@ Page({
           reservationId: c.reservationId,
           pickupRoomId: c.roomId || self.data.pickupRoomId,
           pickupRoomName: c.roomName || self.data.pickupRoomName,
+          // 饲养：房间随笼位带出；显式落一列，审核页与导出据此与取走区分
+          pickupMode: 'FARM',
         };
+        if (self.data.selectedCycle) body.deliveryCycle = self.data.selectedCycle;
         // 无规格（合成行 optionLabel 为空）不带 specSelections：后端据此回退到物品自身的 price
         if (opt && opt.optionLabel) body.specSelections = { option: opt.optionLabel };
         if (self.data.collectorId) body.collectorId = self.data.collectorId;
@@ -1394,7 +1633,70 @@ Page({
   onCartTreeMode(e) {
     const mode = e.currentTarget.dataset.mode;
     if (mode !== 'aup-user-spec' && mode !== 'spec-user') return;
-    this.setData({ cartTreeMode: mode, cartTree: buildCartTree(this.data.cart, mode) });
+    this.setData({ cartTreeMode: mode, cartTree: buildCartTree(this._cartTabLines(), mode) });
+  },
+
+  onCartTab(e) {
+    const tab = e.currentTarget.dataset.tab;
+    if (tab !== 'current' && tab !== 'preorder') return;
+    this.setData({ cartTab: tab, cartTree: buildCartTree(this._cartTabLines(), this.data.cartTreeMode) });
+  },
+
+  /** 当前 tab 下的购物车行（预约 = deliveryCycle 晚于当前周期） */
+  _cartTabLines() {
+    const currentCycle = this.data.currentCycle || '';
+    const tab = this.data.cartTab || 'current';
+    return (this.data.cart || []).filter(function (l) {
+      const isPre = !!(l.deliveryCycle && currentCycle && String(l.deliveryCycle) > currentCycle);
+      return tab === 'preorder' ? isPre : !isPre;
+    });
+  },
+
+  /**
+   * 他人提交挤占周期上限：把超额行收敛到剩余可用量并弹窗点名。
+   * 只对有 deliveryCycle 或当前周期的行查配额；不静默改数——收敛前一定弹窗。
+   * seen 兜底防止同一行在异步窗口内反复弹。
+   */
+  _reconcileQuota(lines) {
+    const self = this;
+    const currentCycle = this.data.currentCycle || '';
+    const campus = this.data.campus;
+    const seen = this._quotaToastSeen || (this._quotaToastSeen = {});
+    const checks = (lines || []).filter(function (l) {
+      return l.qty > 0 && (l.deliveryCycle || currentCycle);
+    }).map(function (l) {
+      const cycle = l.deliveryCycle || currentCycle;
+      return api.fetchQuota({ refDataId: l.refDataId, spec: l.specLabel || '', cycle: cycle, campus: campus })
+        .then(function (q) {
+          if (!q || q.configured !== true || q.available == null) return null;
+          const avail = Number(q.available);
+          if (!isFinite(avail)) return null;
+          const key = String(l.id);
+          if (l.qty <= avail) { delete seen[key]; return null; }
+          if (seen[key]) return null;  // 本事件已收敛过一次，不重复改/弹（提交时后端权威校验）
+          seen[key] = true;
+          const label = (l.itemLabel || '') + (l.specLabel ? ' · ' + l.specLabel : '');
+          return { id: l.id, qty: avail, label: label };
+        })
+        .catch(function () { return null; });
+    });
+    Promise.all(checks).then(function (results) {
+      const clamps = results.filter(Boolean);
+      if (!clamps.length) return;
+      const msgs = clamps.map(function (c) {
+        return c.label + ' → ' + c.qty + ' 只';
+      });
+      wx.showModal({
+        title: '数量超出周期可用量，已收敛',
+        content: msgs.join('\n'),
+        showCancel: false,
+      });
+      Promise.all(clamps.map(function (c) {
+        return api.updateCartItem(c.id, { quantity: c.qty }).catch(function () {});
+      })).then(function () {
+        self.loadCart();
+      });
+    });
   },
 
   /** 非 PI 只能改本人加购的行（与 PC/H5 的 canEditCartLine 同判定） */
@@ -1472,6 +1774,29 @@ Page({
           self.setData({ cartSheetOpen: false });
           self.loadCart();
           self.syncCageAfterCartChange();
+        }).catch(function (e) { wx.showToast({ title: (e && e.message) || '清空失败', icon: 'none' }); });
+      },
+    });
+  },
+
+  /**
+   * 清空本人「加购了但还没提交」的草稿行。任何身份都能用，只删本人的行。
+   * 与 onClearCart（组长清整个共享购物车）是两件事：已提交给组长的行（READY）这里不动，
+   * 那批已经进了组长的待办，撤销要走「撤回 READY」。
+   */
+  onClearMyDraft() {
+    const self = this;
+    if (this.data.editOrderId) { wx.showToast({ title: '编辑模式下不能清空，请先保存或放弃编辑', icon: 'none' }); return; }
+    if (!this.data.myDraftCount) { wx.showToast({ title: '没有可清空的草稿行', icon: 'none' }); return; }
+    wx.showModal({
+      title: '清空我的草稿',
+      content: '确认清空本人 ' + this.data.myDraftCount + ' 行未提交的草稿？此操作不可撤销。\n\n已提交给组长的订单包不受影响。',
+      success: function (res) {
+        if (!res.confirm) return;
+        api.clearMyDraftCart(self.data.groupId).then(function () {
+          self.loadCart();
+          self.syncCageAfterCartChange();
+          wx.showToast({ title: '已清空本人草稿', icon: 'success' });
         }).catch(function (e) { wx.showToast({ title: (e && e.message) || '清空失败', icon: 'none' }); });
       },
     });
@@ -1595,7 +1920,8 @@ Page({
       else if (opt.indexOf('雌性') >= 0) female += qty;
       total += qty;
       if (l.collectorName && collectors.indexOf(l.collectorName) < 0) collectors.push(l.collectorName);
-      if (l.pickupRoomName && rooms.indexOf(l.pickupRoomName) < 0) rooms.push(l.pickupRoomName);
+      if (l.pickupMode === 'TAKE') { if (rooms.indexOf('取走') < 0) rooms.push('取走'); }
+      else if (l.pickupRoomName && rooms.indexOf(l.pickupRoomName) < 0) rooms.push(l.pickupRoomName);
       // 笼位快照串可能为空但已锁位，退化成「已选笼位」而不是漏掉
       if (l.targetCageLabel) { const c = String(l.targetCageLabel).trim(); if (c && cages.indexOf(c) < 0) cages.push(c); }
       else if (l.targetAnimalCageId != null && cages.indexOf('已选笼位') < 0) cages.push('已选笼位');
@@ -1617,9 +1943,10 @@ Page({
         qty: qty,
         amountText: l.lineAmount != null ? '¥' + Number(l.lineAmount).toFixed(2) : '—',
         collector: (l.collectorName || '').trim() || '—',
-        room: (l.pickupRoomName || '').trim() || '—',
+        room: l.pickupMode === 'TAKE' ? '取走' : ((l.pickupRoomName || '').trim() || '—'),
         cage: (l.targetCageLabel || '').trim() || '—',
         arrival: (l.arrivalDate || '').trim(),
+        deliveryCycle: (l.deliveryCycle || '').trim() || '',
         lineRemark: (l.lineRemark || '').trim() || '—',
       });
     });
@@ -1665,6 +1992,8 @@ Page({
       orderRemark: orderRemark || '—',
       status: o.status,
       statusLabel: ORDER_STATUS_LABELS[o.status] || o.status,
+      // 预约单是永久标记（含已完成），不能靠 estimatedDeliveryDate 推断
+      isPreorder: !!o.isPreorder,
       // 服务端判定：本人是不是该单提交人（PI）且订单待处理 —— 只有他能进编辑
       editable: !!o.editable,
       time: o.submittedAt || o.createdAt || '',
