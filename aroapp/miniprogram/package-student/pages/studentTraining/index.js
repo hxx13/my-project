@@ -1,8 +1,12 @@
 const springAuth = require('../../../utils/springAuth.js');
 const pagePermission = require('../../../utils/pagePermission.js');
+const { hasMinRole, isStudentAccount } = require('../../../utils/roleAccess.js');
+const personIdentity = require('../../../utils/personIdentity.js');
 const api = require('../../utils/studentTrainingApi.js');
 
 const PAGE_PATH = '/package-student/pages/studentTraining/index';
+/** 培训计划管理（审核 / 评分 / 下放房间）——只有这场培训的所属人能进 */
+const REVIEW_PAGE = '/package-feature/pages/trainingAdmin/review';
 
 /** "yyyy-MM-dd HH:mm:ss" → "MM-dd HH:mm" */
 function shortTime(s) {
@@ -11,7 +15,18 @@ function shortTime(s) {
   return `${raw.slice(5, 10)} ${raw.slice(11, 16)}`;
 }
 
-function mapTraining(t) {
+/** 当前登录账号 id（与 trainingAdmin 同口径） */
+function currentUserId() {
+  try {
+    const raw = wx.getStorageSync(springAuth.KEYS.USER_INFO);
+    const u = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return (u && u.id != null ? String(u.id) : '') || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function mapTraining(t, opts) {
   const occs = t.occurrences || [];
   const first = occs[0] || null;
   const statusText = occs.reduce(function (acc, o) {
@@ -23,6 +38,9 @@ function mapTraining(t) {
   }, '未报名');
   const act = api.enrollAction(first);
   const owners = t.ownerNames || t.ownerIds || [];
+  const o = opts || {};
+  // 能进管理页的两个条件都要：① 我是这场培训的所属人 ② 我有管理权（教职工视角 + 最高权限或饲养组长）
+  const isOwner = !!o.uid && (t.ownerIds || []).indexOf(o.uid) >= 0;
   return {
     id: t.id,
     name: t.name || '未命名培训',
@@ -40,6 +58,7 @@ function mapTraining(t) {
     examPassed: !!t.examPassed,
     healthOk: !!t.healthOk,
     paperCount: (t.papers || []).length,
+    mine: isOwner && !!o.canManage,
   };
 }
 
@@ -96,10 +115,23 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
+    this._uid = currentUserId();
+    // 「管理」按钮的门与 trainingAdmin 同口径：教职工视角 +（最高权限 或 饲养组长）。
+    // 身份码走接口、异步回来；列表若已经加载过就重拉一次，把 mine 标上
+    personIdentity
+      .fetchMyIdentityCodes()
+      .then((codes) => {
+        const r = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+        this._canManage = !isStudentAccount() &&
+          (hasMinRole(r, 'SUPER_ADMIN') || !!codes[personIdentity.CODE_BREEDING_GROUP_LEADER]);
+        if (this._shown) this.loadList();
+      })
+      .catch(function () {});
     this.setData({ pageGateOk: true });
   },
 
   onShow() {
+    this._shown = true;
     if (this._accessDenied || !this.data.pageGateOk) return;
     this.loadList();
   },
@@ -120,10 +152,14 @@ Page({
 
   loadList() {
     this.setData({ loading: true });
+    const uid = this._uid;
+    const canManage = !!this._canManage;
     return api
       .fetchMyTrainings()
       .then((list) => {
-        const mapped = (list || []).map(mapTraining);
+        const mapped = (list || []).map(function (t) {
+          return mapTraining(t, { uid: uid, canManage: canManage });
+        });
         const groups = groupByCampus(mapped);
         this._groups = groups;
         const tabs = groups.map(function (g) {
@@ -231,6 +267,16 @@ Page({
     wx.navigateTo({
       url: '/package-student/pages/studentCertificate/index' + (eid ? '?enrollmentId=' + eid : ''),
     });
+  },
+
+  /**
+   * 我是这场培训的所属人 → 进培训计划管理：学员审核/评分 + 给报名的学员下放房间权限。
+   * 同一个 review 页也管这场培训的其它入口（培训计划列表里点进来的就是它）。
+   */
+  onManage(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.navigateTo({ url: REVIEW_PAGE + '?id=' + id });
   },
 
   /** 门槛里的「健康调查表」：没提交就点进去填（题面与网页端同一份） */

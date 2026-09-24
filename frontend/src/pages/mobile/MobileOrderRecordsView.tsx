@@ -364,17 +364,14 @@ function OrderCard({ d, lines, onEdit }: { d: OrderDisplay; lines: RefOrderLine[
         <span><span className={fieldLabel}>金额 </span><span className={cn(fieldValue, "font-semibold text-sky-700")}>{d.amount != null ? `¥${Number(d.amount).toFixed(2)}` : "—"}</span></span>
       </div>
       {!expanded && d.items.length > 0 && (
-        <div className="mt-1 text-[11px] text-[var(--student-body)]">
-          {d.items.slice(0, 2).map((it, i) => (
-            <div key={i} className="truncate">{it.label}{it.spec ? ` · ${it.spec}` : ""} × {it.qty}</div>
-          ))}
-          {d.items.length > 2 && <div className="text-[10px] text-[var(--student-mute)]">另有 {d.items.length - 2} 项…</div>}
+        <div className="mt-1 min-w-0 truncate text-[11px] text-[var(--student-body)]" title={d.itemSummary}>
+          {d.itemSummary}
         </div>
       )}
 
       {expanded && (
         <>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
             {([
               ["课题组", d.projectGroup], ["负责人", d.submitter],
               ["供应商", d.suppliers], ["品系", d.strains],

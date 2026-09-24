@@ -552,14 +552,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     return () => window.removeEventListener("beforeunload", handler);
   }, [editOrderId]);
 
-  const handleCartQtyChange = useCallback((line: { id: number; addedBy: string }, qty: number) => {
-    if (!isPi && line.addedBy !== currentUserId) { toast.error("只能修改本人加购的行"); return; }
-    if (qty <= 0) { removeCartMut.mutate(line.id, { onSuccess: () => void refetchCart() }); return; }
-    updateCartMut.mutate({ id: line.id, body: { quantity: qty } }, { onSuccess: () => void refetchCart() });
-  }, [isPi, currentUserId, removeCartMut, updateCartMut, refetchCart]);
-
-  // 被挤占收敛：他人提交吃掉了某 (规格, 周期) 的可用量，本车数量超过时收敛到可用量并提示（不静默）
-  useCartQuotaConvergence({
+  // 每行周期上限 + 被挤占收敛：他人提交吃掉了某 (规格, 周期) 的可用量时，本车才收敛并提示（不静默）
+  const cartQuotaMax = useCartQuotaConvergence({
     lines: cartLines,
     campus,
     isPi,
@@ -568,6 +562,19 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
       updateCartMut.mutate({ id: line.id, body: { quantity: newQty } }, { onSuccess: () => void refetchCart() });
     },
   });
+
+  const handleCartQtyChange = useCallback((line: { id: number; addedBy: string; itemLabel?: string; specLabel?: string }, qty: number) => {
+    if (!isPi && line.addedBy !== currentUserId) { toast.error("只能修改本人加购的行"); return; }
+    if (qty <= 0) { removeCartMut.mutate(line.id, { onSuccess: () => void refetchCart() }); return; }
+    // 周期上限闸门。天花板已扣掉他人占用、且不把本行算进去（见 useCartQuotaConvergence）；
+    // 没取到（未配上限 / 端点失败）时不拦，提交时后端仍是权威校验。
+    const max = cartQuotaMax.get(line.id);
+    if (max != null && qty > max) {
+      toast.error(`${line.specLabel || line.itemLabel} 本周期最多可订 ${max} 只`);
+      return;
+    }
+    updateCartMut.mutate({ id: line.id, body: { quantity: qty } }, { onSuccess: () => void refetchCart() });
+  }, [isPi, currentUserId, removeCartMut, updateCartMut, refetchCart, cartQuotaMax]);
 
   const handleClearCart = useCallback(async () => {
     if (!isPi) { toast.error("仅组长可清空共享购物车"); return; }

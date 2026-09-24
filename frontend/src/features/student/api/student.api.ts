@@ -1013,6 +1013,8 @@ export async function submitHealthSurvey(data: Record<string, unknown>): Promise
 /** 培训证书（发证即快照，与培训/试卷后续存续无关） */
 export interface MyCertificate {
   id: number;
+  /** 证书编号（后端按 id 派生，与 PDF 上印的是同一个号） */
+  certNo?: string | null;
   templateKey: string;
   templateVersion?: string | null;
   personName?: string | null;

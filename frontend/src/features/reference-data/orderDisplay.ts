@@ -111,6 +111,11 @@ export interface OrderDisplay {
   remark: string;
   /** 只含整单备注：表格拆成明细行后「整单备注」与「行备注」分列，不能再回退拼接 */
   orderRemark: string;
+  /**
+   * 收起态卡片的一行明细摘要：`品系 · 规格 × 2、品系 · 规格 × 3 等 5 项`。
+   * 以前是「每条明细一个 div + 另有 N 项再一个 div」，卡片中段一大片空白。
+   */
+  itemSummary: string;
   status: string;
   statusLabel: string;
   /** 服务端判定：当前人是不是该单提交人（PI）且订单待处理 —— 只有他能进编辑 */
@@ -118,6 +123,30 @@ export interface OrderDisplay {
   /** 预约单标记（永久，含已完成）：下单时目标周期晚于当时的当前周期 */
   isPreorder: boolean;
   time: string;
+}
+
+/**
+ * 笼位短串（给屏幕看）。
+ *
+ * <p>后端那串是「校区 / 房间 / 架 / (x,y)」，例如 `浦东 / 201A / 201A-1 / (3,4)` —— 校区和房间
+ * 在相邻列/字段里已经有了，在卡片与表格里重复它们纯属占宽。优先用**结构化坐标**拼「架 (x,y)」
+ * （不用解析字符串），没有再砍掉串的前两段；两者都没有返回空串。
+ */
+function shortCageLabel(line: RefOrderLine): string {
+  const loc = (line.targetCageLocation ?? null) as {
+    shelveName?: string | null;
+    positionX?: number | string | null;
+    positionY?: number | string | null;
+  } | null;
+  if (loc?.shelveName) {
+    const x = loc.positionX ?? "";
+    const y = loc.positionY ?? "";
+    return `${loc.shelveName} (${x},${y})`;
+  }
+  const raw = (line.targetCageLabel || "").trim();
+  if (!raw) return "";
+  const parts = raw.split("/").map((s) => s.trim()).filter(Boolean);
+  return parts.length >= 2 ? parts.slice(-2).join(" ") : raw;
 }
 
 export function buildOrderDisplay(order: RefOrder): OrderDisplay {
@@ -147,8 +176,9 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
     // 取走既没有房间也没有笼位，显示成「取走」而不是空 —— 只判房间是否为空会与「快照丢了」混淆
     if (l.pickupMode === "TAKE") rooms.add("取走");
     else if (l.pickupRoomName?.trim()) rooms.add(l.pickupRoomName.trim());
-    // 笼位快照串可能为空但已锁位（老数据/坐标缺失），退化成「已选笼位」而不是漏掉
-    if (l.targetCageLabel?.trim()) cages.add(l.targetCageLabel.trim());
+    // 笼位短串可能为空但已锁位（老数据/坐标缺失），退化成「已选笼位」而不是漏掉
+    const cageShort = shortCageLabel(l);
+    if (cageShort) cages.add(cageShort);
     else if (l.targetAnimalCageId != null) cages.add("已选笼位");
     if (l.arrivalDate?.trim()) arrivals.add(l.arrivalDate.trim());
     if (l.lineRemark?.trim()) lineRemarks.push(l.lineRemark.trim());
@@ -187,6 +217,10 @@ export function buildOrderDisplay(order: RefOrder): OrderDisplay {
     campus: order.campus?.trim() || order.aroAreaName?.trim() || "—",
     remark: remark || "—",
     orderRemark: orderRemark || "—",
+    itemSummary: items.length
+      ? items.slice(0, 2).map((it) => `${it.label}${it.spec ? ` · ${it.spec}` : ""} × ${it.qty}`).join("、")
+        + (items.length > 2 ? ` 等 ${items.length} 项` : "")
+      : "",
     status: order.status,
     statusLabel: STATUS_LABELS[order.status] || order.status,
     editable: Boolean(order.editable),

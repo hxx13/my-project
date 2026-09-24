@@ -192,6 +192,8 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
 
   /** 可选预约周期（当前周期之外的后继周期）；端点未就绪时为空，只有「本周期」可点 */
   const futureCycles = useMemo(() => cycles.filter((c) => !c.current), [cycles]);
+  /** 本周期也要带出日期：光写「本周期」，用户对不上卡片/订单里的具体那天 */
+  const currentCycleDate = useMemo(() => cycles.find((c) => c.current)?.cycle, [cycles]);
 
   // 配额：一次把该物品所有规格 + 无规格都查齐（debounce），切周期再查。失败当作「未知」，不拦。
   useEffect(() => {
@@ -468,7 +470,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
         onChange={(e) => setCycle(e.target.value || null)}
         className="min-w-0 flex-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-white px-2 py-1 text-xs text-[var(--twin-ink)] outline-none"
       >
-        <option value="">本周期</option>
+        <option value="">{currentCycleDate ? `${currentCycleDate}（本周期）` : "本周期"}</option>
         {futureCycles.map((c, i) => (
           <option key={c.cycle} value={c.cycle}>预约 · 第{i + 1}周期 {c.cycle}</option>
         ))}
@@ -753,6 +755,12 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                   {/* 移动壳：名称 · 单价 · 小计 · 步进器全挤一行（照小程序）；PC 仍按原来的堆叠 */}
                   <div className={mobileShell ? "flex min-w-0 flex-1 items-center gap-2" : "mr-2 min-w-0"}>
                     <span className={mobileShell ? "min-w-0 truncate text-xs font-medium text-[var(--twin-ink)]" : "block truncate text-xs font-medium text-[var(--twin-ink)]"}>{row.label}</span>
+                    {/* 每周期上限也摆到规格名旁边：卡片上已有「剩余 N」，选规格时同样要能看见 */}
+                    {rowAvail != null && (
+                      <span className={`shrink-0 text-[10px] text-[var(--twin-mute)]${rowAvail > 0 ? "" : " opacity-70"}${mobileShell ? "" : " ml-1.5"}`}>
+                        {rowAvail > 0 ? `剩余 ${rowAvail}` : "已订满"}
+                      </span>
+                    )}
                     {blocked && (
                       mobileShell ? (
                         <span className="shrink-0 rounded bg-[var(--twin-hairline)] px-1 text-[10px] text-[var(--twin-mute)]">互斥</span>
@@ -763,7 +771,7 @@ export default function SpecSelectPanel({ item, parentLabel, onConfirm, onClose,
                       )
                     )}
                     {priceEnabled && !mobileShell && (
-                      <span className="shrink-0 text-[10px] text-[var(--twin-mute)]">
+                      <span className="ml-1.5 shrink-0 text-[10px] text-[var(--twin-mute)]">
                         单价 {money(unitPriceOf(row.templateName, row.label))}
                       </span>
                     )}

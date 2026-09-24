@@ -186,7 +186,7 @@ public class TrainingCertificatePdfService {
         return y - 22.7f; // 8mm
     }
 
-    /** 页脚：一条细线 + 版本与模板日期。 */
+    /** 页脚：一条细线 + 证书编号 + 版本与模板日期。 */
     private void drawFooter(PDPageContentStream cs, PDFont font, TrainingCertificate cert,
                             Map<String, Object> tpl, float y) throws IOException {
         y -= 10f;
@@ -196,6 +196,8 @@ public class TrainingCertificatePdfService {
         cs.lineTo(A4_W - M_R, y);
         cs.stroke();
         cs.setStrokingColor(0f, 0f, 0f);
+        y -= 13f;
+        drawText(cs, font, 9.5f, M_L, y, "证书编号（Certificate No.）:" + cert.certNo(), false);
         y -= 13f;
         String version = cert.getTemplateVersion() != null
                 ? cert.getTemplateVersion()

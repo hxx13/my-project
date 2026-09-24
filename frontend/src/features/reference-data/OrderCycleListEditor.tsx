@@ -72,7 +72,7 @@ export default function OrderCycleListEditor({ campus }: { campus: string }) {
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-xs font-semibold text-[var(--twin-ink)]">到货周期清单</span>
         <span className="text-[10px] text-[var(--twin-mute)]">
-          系统已按「预计送达策略 + 节假日」自动生成，可在此针对性调整
+          这份清单才是实际生效的到货周期；策略只负责首次生成与兜底
         </span>
       </div>
 

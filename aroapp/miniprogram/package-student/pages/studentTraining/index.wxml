@@ -60,6 +60,13 @@
             data-eid="{{ item.enrollmentId }}"
             bindtap="onViewCert"
           >查看证书</view>
+          <!-- 我是所属人：进这场培训的管理（学员审核/评分 + 下放房间权限） -->
+          <view
+            wx:if="{{ item.mine }}"
+            class="chip-btn chip-btn--xs chip-btn--primary action-btn"
+            data-id="{{ item.id }}"
+            bindtap="onManage"
+          >管理</view>
         </view>
       </view>
     </view>

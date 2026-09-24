@@ -7,6 +7,8 @@ import type { RefOrder, RefOrderLine } from "@/api/domains/referenceData.api";
  *
  * 回归点：订购→笼位预定上线后，卡片明细加了目标笼位，三端表格没跟上。
  * 表格列吃的是 `OrderDisplay.cage`，所以聚合规则必须在这里锁死。
+ *
+ * 串本身是**给屏幕看的短串**：校区/房间在相邻列里已经有了，重复它们纯占宽。
  */
 
 const line = (over: Partial<RefOrderLine> = {}): RefOrderLine =>
@@ -16,13 +18,20 @@ const order = (lines: RefOrderLine[]): RefOrder =>
   ({ id: 1, groupId: "g", submitterId: "u", status: "PENDING", lines }) as RefOrder;
 
 describe("buildOrderDisplay 笼位聚合", () => {
-  it("多行笼位去重后按「、」连接", () => {
+  it("多行笼位去重后按「、」连接，并砍掉校区/房间前缀", () => {
     const d = buildOrderDisplay(order([
       line({ id: 1, targetCageLabel: "浦东 / A101 / 架3 (4,5)" }),
       line({ id: 2, targetCageLabel: "浦东 / A101 / 架3 (4,5)" }),
       line({ id: 3, targetCageLabel: "浦西 / B201 / 架1 (1,2)" }),
     ]));
-    expect(d.cage).toBe("浦东 / A101 / 架3 (4,5)、浦西 / B201 / 架1 (1,2)");
+    expect(d.cage).toBe("A101 架3 (4,5)、B201 架1 (1,2)");
+  });
+
+  it("有结构化坐标时优先用它拼「架名 (x,y)」，不解析字符串", () => {
+    const d = buildOrderDisplay(order([
+      line({ id: 1, targetCageLabel: "浦东 / A101 / 架3 (4,5)", targetCageLocation: { shelveName: "架3", positionX: 4, positionY: 5 } }),
+    ]));
+    expect(d.cage).toBe("架3 (4,5)");
   });
 
   it("已锁位但坐标串为空时退化成「已选笼位」，不漏掉", () => {
