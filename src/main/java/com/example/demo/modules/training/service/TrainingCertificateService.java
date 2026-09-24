@@ -144,6 +144,7 @@ public class TrainingCertificateService {
         for (TrainingCertificate c : certMapper.listByPerson(personId)) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", c.getId());
+            m.put("certNo", c.certNo());
             m.put("templateKey", c.getTemplateKey());
             m.put("templateVersion", c.getTemplateVersion());
             m.put("personName", c.getPersonName());

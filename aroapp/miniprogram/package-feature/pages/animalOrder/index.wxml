@@ -81,13 +81,14 @@
             <!-- 价格与操作控件同一行：操作区不再绝对定位独占一列/一行 -->
             <view class="goods-foot">
               <text class="goods-price {{ item.priceText ? '' : 'goods-price-empty' }}">{{ item.priceText || '待定' }}</text>
-              <text wx:if="{{ item.quotaText }}" class="goods-quota {{ item.quotaGrey ? 'goods-quota--grey' : '' }}">{{ item.quotaText }}</text>
               <view wx:if="{{ item.purchasable }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
                 <text>选择规格</text>
                 <view wx:if="{{ totalQtyByItem[item.id] > 0 }}" class="goods-spec-badge">{{ totalQtyByItem[item.id] }}</view>
               </view>
               <text wx:elif="{{ item.childCount > 0 }}" class="goods-arrow">›</text>
             </view>
+            <!-- 每周期上限独立成行：夹在价格与「选择规格」之间时会被省略成「雌性 …」，等于没显示 -->
+            <text wx:if="{{ item.quotaText }}" class="goods-quota {{ item.quotaGrey ? 'goods-quota--grey' : '' }}">{{ item.quotaText }}</text>
             </view>
           </view>
       </block>
@@ -135,7 +136,10 @@
           class="spec-opt {{ opt._on ? 'spec-opt--on' : '' }} {{ opt._blocked ? 'spec-opt--blocked' : '' }} {{ opt._noQuota ? 'spec-opt--noquota' : '' }}"
         >
           <view class="spec-opt-row">
-            <text class="spec-opt-name">{{ opt.label }}</text>
+            <view class="spec-opt-main">
+              <text class="spec-opt-name">{{ opt.label }}</text>
+              <text wx:if="{{ opt._quotaText }}" class="spec-opt-quota {{ opt._quotaOut ? 'spec-opt-quota--out' : '' }}">{{ opt._quotaText }}</text>
+            </view>
             <text wx:if="{{ opt._blocked }}" class="spec-opt-hint">互斥</text>
             <view class="spec-step" wx:if="{{ !opt._noQuota }}">
               <view wx:if="{{ opt._on }}" class="spec-step-btn" hover-class="spec-step-btn--hover" data-key="{{ opt.key }}" bindtap="onSpecDec">−</view>
@@ -469,7 +473,7 @@
         <view class="ord-tab {{ orderView === 'card' ? 'ord-tab-on' : '' }}" data-view="card" bindtap="onOrderView">卡片</view>
         <view class="ord-tab {{ orderView === 'table' ? 'ord-tab-on' : '' }}" data-view="table" bindtap="onOrderView">表格</view>
       </view>
-      <text class="ord-count">共 {{ orderTotal }} 单</text>
+      <text class="ord-count">{{ orderScopeAll ? '全部课题组' : '本课题组' }} · 共 {{ orderTotal }} 单</text>
     </view>
 
     <view class="ord-bar">
@@ -499,15 +503,21 @@
       </view>
       <view class="ord-field">
         <text class="ord-flabel">AUP 编号</text>
-        <input class="ord-finput" placeholder="可直接输入" value="{{ orderAup }}" data-key="orderAup" bindinput="onOrderFilterInput" />
+        <picker mode="selector" range="{{ orderFilterRanges.aup }}" value="{{ orderFilterPicks.aup }}" data-key="aup" bindchange="onOrderFilterSelect">
+          <view class="ord-finput">{{ orderAup || '全部' }}</view>
+        </picker>
       </view>
       <view class="ord-field">
         <text class="ord-flabel">供应商</text>
-        <input class="ord-finput" placeholder="可直接输入" value="{{ orderSupplier }}" data-key="orderSupplier" bindinput="onOrderFilterInput" />
+        <picker mode="selector" range="{{ orderFilterRanges.supplier }}" value="{{ orderFilterPicks.supplier }}" data-key="supplier" bindchange="onOrderFilterSelect">
+          <view class="ord-finput">{{ orderSupplier || '全部' }}</view>
+        </picker>
       </view>
       <view class="ord-field">
         <text class="ord-flabel">领用人</text>
-        <input class="ord-finput" placeholder="可直接输入" value="{{ orderCollector }}" data-key="orderCollector" bindinput="onOrderFilterInput" />
+        <picker mode="selector" range="{{ orderFilterRanges.collector }}" value="{{ orderFilterPicks.collector }}" data-key="collector" bindchange="onOrderFilterSelect">
+          <view class="ord-finput">{{ orderCollector || '全部' }}</view>
+        </picker>
       </view>
       <view class="ord-field ord-field-wide">
         <text class="ord-flabel">备注</text>
@@ -519,11 +529,13 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="orders-scroll">
+    <scroll-view scroll-y class="orders-scroll" bindscrolltolower="onOrdersScrollToLower" lower-threshold="80">
       <view wx:if="{{ orderRows.length === 0 }}" class="muted pad">{{ orderLoading ? '加载中…' : '暂无订单' }}</view>
 
-      <!-- 表格视图：横向滚动 + 纵向滚动（外层 scroll-view） -->
-      <scroll-view wx:elif="{{ orderView === 'table' }}" scroll-x class="ord-table-wrap">
+      <!-- 表格视图：横向滚动交给 CSS。这里**不能用内嵌 scroll-view** ——
+           外层竖滚区里只要再套一个 scroll-view，追加数据时微信会重算并把外层 scrollTop 重置成 0
+           （表现为一触底就跳回顶部；卡片视图没有这层嵌套所以不受影响）。 -->
+      <view wx:elif="{{ orderView === 'table' }}" class="ord-table-wrap">
         <view class="ord-table">
           <view class="ord-tr ord-tr-head">
             <view class="ord-td w-no">单号</view>
@@ -601,7 +613,7 @@
             </view>
           </block>
         </view>
-      </scroll-view>
+      </view>
 
       <!-- 卡片视图 -->
       <block wx:else>
@@ -622,12 +634,7 @@
             <text class="ord-k">总数</text><text class="ord-v strong">{{ r.totalQty }}</text>
             <text class="ord-k">金额</text><text class="ord-v price">{{ r.amountText }}</text>
           </view>
-          <view wx:if="{{ !orderExpanded[r.key] }}">
-            <view class="ord-item-line" wx:for="{{ r.items }}" wx:key="index" wx:for-item="it" wx:if="{{ index < 2 }}">
-              {{ it.label }}{{ it.spec ? ' · ' + it.spec : '' }} × {{ it.qty }}
-            </view>
-            <view class="muted" wx:if="{{ r.items.length > 2 }}">另有 {{ r.items.length - 2 }} 项…</view>
-          </view>
+          <view wx:if="{{ !orderExpanded[r.key] }}" class="ord-item-line">{{ r.itemSummary }}</view>
           <view wx:else class="ord-card-detail">
             <view class="ord-kv"><text class="ord-k">课题组</text><text class="ord-v">{{ r.projectGroup }}</text></view>
             <view class="ord-kv"><text class="ord-k">负责人</text><text class="ord-v">{{ r.submitter }}</text></view>
@@ -647,14 +654,14 @@
           </view>
         </view>
       </block>
-    </scroll-view>
 
-    <!-- 分页 -->
-    <view wx:if="{{ orderTotalPages > 1 }}" class="ord-pager">
-      <view class="ord-btn {{ orderPage <= 1 ? 'ord-btn-off' : '' }}" bindtap="prevOrderPage">上一页</view>
-      <text class="ord-page-text">第 {{ orderPage }} / {{ orderTotalPages }} 页</text>
-      <view class="ord-btn {{ orderPage >= orderTotalPages ? 'ord-btn-off' : '' }}" bindtap="nextOrderPage">下一页</view>
-    </view>
+      <!-- 触底上拉加载：列表不设翻页条（仓库口径）。到底了给一句收尾，免得用户一直往下拽。
+           必须留在滚动区**内部末尾**：放到 scroll-view 外面会让它的高度在加载时变化，微信会重置 scrollTop，表现为「一触底就跳回顶部」。 -->
+      <view class="ord-foot">
+        <text wx:if="{{ orderLoadingMore }}">加载中…</text>
+        <text wx:elif="{{ orderRows.length >= orderTotal && orderRows.length > 0 }}">没有更多了</text>
+      </view>
+    </scroll-view>
   </view>
 
   </block>

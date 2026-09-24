@@ -237,9 +237,17 @@ function fetchOrders(groupId) {
   });
 }
 
-/** 学生端订单记录：本课题组（同组互见）。支持 page/pageSize + 全字段筛选（status/statusNot/from/to/…） */
-function fetchMyGroupOrders(params) {
-  const url = withQuery('/api/reference-data/orders/my-group', params || {});
+/**
+ * 订单记录列表。走 `/orders/all` —— 它是**服务端自适应**的（ReferenceDataController.listAllOrders）：
+ * 业务标签/超管拿到**全量订单**，其余身份由服务端强制收窄到本人课题组（客户端传的课题组一律被覆盖）。
+ *
+ * <p>所以这里**不需要前端判身份**，也不存在「传了别人的课题组就能看到别人单子」的口子；
+ * 与 Web 审核页管理端走的是同一个接口。别改回 `/orders/my-group` —— 那条路会把超管也锁在本组。
+ *
+ * <p>支持 page/pageSize + 全字段筛选（status/statusNot/from/to/…），返回 { list, total }。
+ */
+function fetchAllOrders(params) {
+  const url = withQuery('/api/reference-data/orders/all', params || {});
   return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
     const p = parseResponse(res);
     if (!p.ok) throw new Error(p.message);
@@ -248,7 +256,18 @@ function fetchMyGroupOrders(params) {
   });
 }
 
-/** 学生端筛选下拉候选（范围由服务端限定在本课题组） */
+/** 全量筛选候选（供应商/品系/领用人/房间）。**只有超管/业务该用**：它不按身份收窄，
+ *  普通身份用它会看到别组的候选值。普通身份请用 fetchMyGroupOrderFilterOptions。 */
+function fetchOrderFilterOptions(column) {
+  const url = withQuery('/api/reference-data/orders/filter-options', { column: column });
+  return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
+    const p = parseResponse(res);
+    if (!p.ok) throw new Error(p.message);
+    return p.body.data || [];
+  });
+}
+
+/** 筛选下拉候选，范围由服务端限定在本课题组（不给全量候选，避免泄露别组信息） */
 function fetchMyGroupOrderFilterOptions(column) {
   const url = withQuery('/api/reference-data/orders/my-group/filter-options', { column: column });
   return springAuth.springRequest({ url: url, method: 'GET', data: {} }).then(function (res) {
@@ -410,7 +429,8 @@ module.exports = {
   withdrawPackage,
   submitOrder,
   fetchOrders,
-  fetchMyGroupOrders,
+  fetchAllOrders,
+  fetchOrderFilterOptions,
   fetchMyGroupOrderFilterOptions,
   loadOrderToCart,
   discardOrderEdit,

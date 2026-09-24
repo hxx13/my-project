@@ -76,7 +76,8 @@
 
         <view class="card" wx:if="{{ summary }}">
           <view class="card-title">当前生效</view>
-          <view class="card-sub" wx:if="{{ summary.estimatedDeliveryDate }}">预计送达：{{ summary.estimatedDeliveryDate }}</view>
+          <!-- 本周期 = 下方清单里今天起的第一个日期（策略只在清单为空时兜底），所以这里显示的就是它 -->
+          <view class="card-sub" wx:if="{{ summary.estimatedDeliveryDate }}">本周期（预计送达）：{{ summary.estimatedDeliveryDate }}</view>
           <view class="card-sub" wx:if="{{ !summary.canOrderNow }}">当前不可购：{{ summary.closedReason }}</view>
         </view>
 
@@ -88,7 +89,7 @@
             </view>
           </view>
           <!-- 清单由服务端自动生成好（清单为空时按策略播种），这里只做针对性调整 -->
-          <view class="card-sub">系统已按「预计送达策略 + 节假日」自动生成，可在此针对性调整</view>
+          <view class="card-sub">这份清单才是实际生效的到货周期（本周期 = 今天起的第一个）；策略只负责首次生成与兜底，改了上面的策略要点「按策略重新生成」才会套用</view>
 
           <view wx:if="{{ cyclesDraft.length }}" class="ot-cycle-list">
             <view wx:for="{{ cyclesDraft }}" wx:key="_k" class="ot-cycle-row">

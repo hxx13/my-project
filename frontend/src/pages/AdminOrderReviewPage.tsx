@@ -611,20 +611,15 @@ function OrderCard({
         <span><span className={fieldLabel}>提交 </span><span className={fieldValue}>{d.time}</span></span>
       </div>
       {!expanded && d.items.length > 0 && (
-        <div className="min-w-0 text-[11px] text-[var(--app-color-text-secondary)]">
-          {d.items.slice(0, 2).map((it, i) => (
-            <div key={i} className="truncate" title={`${it.label} ${it.spec}`}>
-              {it.label}{it.spec ? ` · ${it.spec}` : ""} × {it.qty}
-            </div>
-          ))}
-          {d.items.length > 2 && <div className="text-[10px] text-[var(--app-color-text-tertiary)]">另有 {d.items.length - 2} 项…</div>}
+        <div className="min-w-0 truncate text-[11px] text-[var(--app-color-text-secondary)]" title={d.itemSummary}>
+          {d.itemSummary}
         </div>
       )}
 
       {expanded && (
         <>
-          {/* 完整字段（与表格逐项对齐） */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3 lg:grid-cols-4">
+          {/* 完整字段（与表格逐项对齐）。保持等宽网格的整齐感，只把列间距从 gap-x-4 收到 gap-x-3 */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
             <Field label="课题组" value={d.projectGroup} labelCls={fieldLabel} valueCls={fieldValue} />
             <Field label="负责人" value={d.submitter} labelCls={fieldLabel} valueCls={fieldValue} />
             <Field label="供应商" value={d.suppliers} labelCls={fieldLabel} valueCls={fieldValue} />

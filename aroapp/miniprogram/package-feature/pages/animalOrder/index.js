@@ -4,6 +4,8 @@
  * 学生/教职工视角通用；isPi 决定「谁可正式提交订单」。
  */
 const springAuth = require('../../../utils/springAuth.js');
+const { hasMinRole } = require('../../../utils/roleAccess.js');
+const personIdentity = require('../../../utils/personIdentity.js');
 const beijingTime = require('../../utils/beijingTime.js');
 const api = require('../../utils/animalOrderApi.js');
 const orderExportApi = require('../../utils/orderExportApi.js');
@@ -220,10 +222,12 @@ Page({
     // 订单记录（页签 / 双视图 / 筛选 / 导出）
     orderTab: 'pending',
     orderView: 'card',
+    /** 订单记录的数据范围是否全量（超管/业务）。**只用来决定筛选候选走哪条接口** ——
+     *  列表与导出都走 /orders/all 与 /orders/export，由服务端按身份自适应，前端不参与判定。 */
+    orderScopeAll: false,
     orderFiltersOpen: false,
     orderPage: 1,
     orderTotal: 0,
-    orderTotalPages: 1,
     orderRows: [],
     orderLoading: false,
     orderExporting: false,
@@ -237,6 +241,11 @@ Page({
     orderCollector: '',
     orderRemark: '',
     orderFilterOptions: { supplier: [], aup: [], collector: [] },
+    /** 筛选下拉的可选值：第 0 项恒为「全部」= 不按该条件筛 */
+    orderFilterRanges: { supplier: ['全部'], aup: ['全部'], collector: ['全部'] },
+    orderFilterPicks: { supplier: 0, aup: 0, collector: 0 },
+    /** 触底加载中（与首屏的 orderLoading 分开：首屏要盖住列表，追加只在底部提示） */
+    orderLoadingMore: false,
     // 编辑模式
     editOrderId: null,
     editBusy: false,
@@ -307,8 +316,9 @@ Page({
     const p2 = api.fetchMyRoles().catch(function () { return { isPi: false }; });
     const p3 = api.listSpecTemplates().catch(function () { return []; });
     const p4 = api.fetchCycles(this.data.campus).catch(function () { return []; });
+    const p5 = this._resolveOrderScope();
 
-    Promise.all([p1, p2, p3, p4]).then(function (rs) {
+    Promise.all([p1, p2, p3, p4, p5]).then(function (rs) {
       const aups = rs[0];
       const roles = rs[1];
       const templates = rs[2];
@@ -812,6 +822,11 @@ Page({
       rs.forEach(function (r) {
         patch['specOptionRows[' + r.i + ']._noQuota'] = r.noQuota;
         patch['specOptionRows[' + r.i + ']._quotaAvail'] = r.available;
+        // 上限文案在这里拼好，wxml 只做展示：未配置走另一行提示，取不到（端点失败）不显示
+        patch['specOptionRows[' + r.i + ']._quotaText'] = (r.noQuota || r.available == null)
+          ? ''
+          : (r.available > 0 ? '剩余 ' + r.available : '已订满');
+        patch['specOptionRows[' + r.i + ']._quotaOut'] = !r.noQuota && r.available != null && r.available <= 0;
         if (r.noQuota && (qs[r.key] || 0) > 0) { delete qs[r.key]; dirty = true; }
       });
       if (dirty) patch.specQtys = qs;
@@ -823,13 +838,24 @@ Page({
   /**
    * 到货周期 picker 的选项文案：index 0 = 本周期，其后是未来各周期日期。
    *
+   * 本周期也要把日期带出来（`2026-09-24（本周期）`）：光写「本周期」的话，用户没法把它和
+   * 卡片上、订单里的具体日期对上，也不知道自己实际订的是哪天。
+   *
    * 用 picker 而不是排一排按钮：周期数可配（K 个未来周期），按钮行必然换行、高度不定，
    * 而规格面板里笼位网格要占地方 —— 用户反馈过「抽屉被新增的按钮顶得过高」。
    */
   _cyclePickerData(selected, futureCycles) {
-    const labels = ['本周期'].concat((futureCycles || []).map(function (c) { return String(c.cycle || ''); }));
-    const idx = labels.indexOf(selected || '本周期');
-    return { cyclePickerLabels: labels, cyclePickerIndex: idx < 0 ? 0 : idx };
+    const cur = this.data.currentCycle || '';
+    const labels = [cur ? cur + '（本周期）' : '本周期']
+      .concat((futureCycles || []).map(function (c) { return String(c.cycle || ''); }));
+    // index 0 恒为「本周期」（selected 为空/'本周期' 都归它），其余按日期找
+    let idx = 0;
+    const want = selected && selected !== '本周期' ? String(selected) : '';
+    if (want) {
+      const hit = labels.indexOf(want);
+      idx = hit < 0 ? 0 : hit;
+    }
+    return { cyclePickerLabels: labels, cyclePickerIndex: idx };
   },
 
   _setCycle(cycle) {
@@ -1322,6 +1348,7 @@ Page({
     }
     const next = Math.min(999, Math.floor(num));
     if (next === line.qty) return;
+    if (!this._checkCartQuota(line, next)) { self.loadCart(); return; }
     api.updateCartItem(id, { quantity: next }).then(function () { self.loadCart(); })
       .catch(function (err) {
         wx.showToast({ title: (err && err.message) || '更新失败', icon: 'none' });
@@ -1653,38 +1680,81 @@ Page({
   },
 
   /**
-   * 他人提交挤占周期上限：把超额行收敛到剩余可用量并弹窗点名。
-   * 只对有 deliveryCycle 或当前周期的行查配额；不静默改数——收敛前一定弹窗。
-   * seen 兜底防止同一行在异步窗口内反复弹。
+   * 购物车行的周期上限：一次算清两件事，口径与 web 的 `useCartQuotaConvergence` 完全一致。
+   *
+   * 1. 把「本行最多可订多少」写回行上（`_quotaMax`），购物车的 + 与手输拿它当闸门 ——
+   *    以前购物车只受「单笼上限」约束，周期上限形同虚设，上限 3 也能加到 5。
+   * 2. 全组确实超了才收敛，且只削超出部分（点名规格 + 弹窗，不静默改数）。
+   *
+   * **关键是 `available` 已经把本行算进「已用」了**（`SpecQuotaService.usedQty` 累加的是
+   * 全部购物车行 + 未作废订单行）。所以：
+   * - 本行天花板 = 本行数量 + 本组余量。直接拿 `available` 当上限就是自己减自己 ——
+   *   上限 3 加满 3 会被判「超了」清零、加到 5 会写入 `3 - 5 = -2`，都是这么来的。
+   * - 全组可保留总量 = `available + 全组数量`，且**下限取 0**：可用量本身可以是负的
+   *   （别人把配额吃到超），负值一旦写回购物车就是负数行。
    */
   _reconcileQuota(lines) {
     const self = this;
     const currentCycle = this.data.currentCycle || '';
     const campus = this.data.campus;
     const seen = this._quotaToastSeen || (this._quotaToastSeen = {});
-    const checks = (lines || []).filter(function (l) {
-      return l.qty > 0 && (l.deliveryCycle || currentCycle);
-    }).map(function (l) {
+    const groups = [];
+    const byKey = {};
+    (lines || []).forEach(function (l, i) {
       const cycle = l.deliveryCycle || currentCycle;
-      return api.fetchQuota({ refDataId: l.refDataId, spec: l.specLabel || '', cycle: cycle, campus: campus })
+      if (!(l.qty > 0) || !cycle) return;
+      const key = [l.refDataId, l.specLabel || '', cycle].join('|');
+      if (!byKey[key]) {
+        byKey[key] = { refDataId: l.refDataId, spec: l.specLabel || '', cycle: cycle, rows: [] };
+        groups.push(byKey[key]);
+      }
+      byKey[key].rows.push({ index: i, line: l });
+    });
+    if (!groups.length) return;
+
+    // 同一 (物品, 规格, 周期) 只查一次；全组共用这一次查询算出来的可用量
+    Promise.all(groups.map(function (g) {
+      return api.fetchQuota({ refDataId: g.refDataId, spec: g.spec, cycle: g.cycle, campus: campus })
         .then(function (q) {
           if (!q || q.configured !== true || q.available == null) return null;
           const avail = Number(q.available);
           if (!isFinite(avail)) return null;
-          const key = String(l.id);
-          if (l.qty <= avail) { delete seen[key]; return null; }
-          if (seen[key]) return null;  // 本事件已收敛过一次，不重复改/弹（提交时后端权威校验）
-          seen[key] = true;
-          const label = (l.itemLabel || '') + (l.specLabel ? ' · ' + l.specLabel : '');
-          return { id: l.id, qty: avail, label: label };
+          return { group: g, avail: avail };
         })
         .catch(function () { return null; });
-    });
-    Promise.all(checks).then(function (results) {
-      const clamps = results.filter(Boolean);
+    })).then(function (rs) {
+      const patch = {};
+      const clamps = [];
+      rs.filter(Boolean).forEach(function (r) {
+        const g = r.group;
+        const groupTotal = g.rows.reduce(function (s, row) { return s + row.line.qty; }, 0);
+        const allowedTotal = Math.max(0, r.avail + groupTotal);  // 全组可保留的总量，不为负
+        const headroom = Math.max(0, allowedTotal - groupTotal); // 还能再加多少（本行天花板 = 本行数量 + 它）
+        let remaining = allowedTotal;
+        g.rows.forEach(function (row) {
+          const l = row.line;
+          const keep = Math.min(l.qty, Math.max(0, remaining));  // 前面的行先占，后面的削
+          remaining -= keep;
+          // 不能改的行照占配额（上面 groupTotal 已算进去），但**不改写它**——
+          // 改了会被服务端「只能修改本人加购的行」挡回来，弹窗还点了别人的名
+          if (!self._canEditLine(l)) return;
+          patch['cart[' + row.index + ']._quotaMax'] = l.qty + headroom;
+          const key = String(l.id);
+          if (keep >= l.qty) { delete seen[key]; return; }
+          if (seen[key]) return;  // 本事件已收敛过一次，不重复改/弹（提交时后端权威校验）
+          seen[key] = true;
+          clamps.push({
+            id: l.id,
+            qty: keep,
+            from: l.qty,
+            label: (l.itemLabel || '') + (l.specLabel ? ' · ' + l.specLabel : ''),
+          });
+        });
+      });
+      self.setData(patch);
       if (!clamps.length) return;
       const msgs = clamps.map(function (c) {
-        return c.label + ' → ' + c.qty + ' 只';
+        return c.label + '：' + c.from + ' → ' + c.qty + ' 只';
       });
       wx.showModal({
         title: '数量超出周期可用量，已收敛',
@@ -1697,6 +1767,18 @@ Page({
         self.loadCart();
       });
     });
+  },
+
+  /**
+   * 购物车行加数量前的周期上限闸门。`_quotaMax` 由 {@link _reconcileQuota} 写入；
+   * 还没取到（配额端点失败/未配上限）时不拦 —— 提交时后端仍是权威校验。
+   */
+  _checkCartQuota(line, nextQty) {
+    const max = line._quotaMax;
+    if (max == null || nextQty <= max) return true;
+    const label = (line.itemLabel || '') + (line.specLabel ? ' · ' + line.specLabel : '');
+    wx.showToast({ title: label + ' 本周期最多可订 ' + max + ' 只', icon: 'none' });
+    return false;
   },
 
   /** 非 PI 只能改本人加购的行（与 PC/H5 的 canEditCartLine 同判定） */
@@ -1721,6 +1803,7 @@ Page({
     const id = Number(e.currentTarget.dataset.id);
     const line = this.data.cart.find(function (l) { return l.id === id; });
     if (!line || !this._canEditLine(line)) return;
+    if (!this._checkCartQuota(line, line.qty + 1)) return;
     this.updateCartQty(id, line.qty + 1);
   },
 
@@ -1900,6 +1983,26 @@ Page({
   },
 
   /** 头+行两级 → 扁平展示行，字段与 Web/H5 完全一致 */
+  /**
+   * 笼位短串（给屏幕看）。
+   *
+   * <p>后端那串是「校区 / 房间 / 架 / (x,y)」，例如 `浦东 / 201A / 201A-1 / (3,4)` —— 校区和房间
+   * 在相邻列/相邻字段里已经有了，在窄卡片上重复它们纯属占宽。这里优先用**结构化坐标**直接拼
+   * 「架 (x,y)」，没有结构化坐标再从串里砍掉前两段；两者都没有返回空串（调用方决定退化显示）。
+   */
+  _cageShort(l) {
+    const loc = l && l.targetCageLocation;
+    if (loc && loc.shelveName) {
+      const x = loc.positionX != null ? loc.positionX : '';
+      const y = loc.positionY != null ? loc.positionY : '';
+      return String(loc.shelveName) + ' (' + x + ',' + y + ')';
+    }
+    const raw = (l && l.targetCageLabel) ? String(l.targetCageLabel).trim() : '';
+    if (!raw) return '';
+    const parts = raw.split('/').map(function (s) { return s.trim(); }).filter(Boolean);
+    return parts.length >= 2 ? parts.slice(-2).join(' ') : raw;
+  },
+
   buildOrderRow(o) {
     const self = this;
     const lines = Array.isArray(o.lines) ? o.lines : [];
@@ -1922,9 +2025,10 @@ Page({
       if (l.collectorName && collectors.indexOf(l.collectorName) < 0) collectors.push(l.collectorName);
       if (l.pickupMode === 'TAKE') { if (rooms.indexOf('取走') < 0) rooms.push('取走'); }
       else if (l.pickupRoomName && rooms.indexOf(l.pickupRoomName) < 0) rooms.push(l.pickupRoomName);
-      // 笼位快照串可能为空但已锁位，退化成「已选笼位」而不是漏掉
-      if (l.targetCageLabel) { const c = String(l.targetCageLabel).trim(); if (c && cages.indexOf(c) < 0) cages.push(c); }
-      else if (l.targetAnimalCageId != null && cages.indexOf('已选笼位') < 0) cages.push('已选笼位');
+      // 笼位短串可能为空但已锁位，退化成「已选笼位」而不是漏掉
+      const cageShort = self._cageShort(l);
+      if (cageShort && cages.indexOf(cageShort) < 0) cages.push(cageShort);
+      else if (!cageShort && l.targetAnimalCageId != null && cages.indexOf('已选笼位') < 0) cages.push('已选笼位');
       if (l.arrivalDate && arrivals.indexOf(l.arrivalDate) < 0) arrivals.push(l.arrivalDate);
       if (l.lineRemark) remarks.push(String(l.lineRemark).trim());
 
@@ -1944,7 +2048,7 @@ Page({
         amountText: l.lineAmount != null ? '¥' + Number(l.lineAmount).toFixed(2) : '—',
         collector: (l.collectorName || '').trim() || '—',
         room: l.pickupMode === 'TAKE' ? '取走' : ((l.pickupRoomName || '').trim() || '—'),
-        cage: (l.targetCageLabel || '').trim() || '—',
+        cage: self._cageShort(l) || '—',
         arrival: (l.arrivalDate || '').trim(),
         deliveryCycle: (l.deliveryCycle || '').trim() || '',
         lineRemark: (l.lineRemark || '').trim() || '—',
@@ -1972,6 +2076,13 @@ Page({
       // ARO 单的 submitterId 是合成键，没有真名宁可显示「—」
       submitter: String(o.submitterName || '').trim() || (source === 'ARO' ? '' : String(o.submitterId || '').trim()) || '—',
       items: itemRows,
+      // 卡片收起态：明细压成**一行**。以前每条明细各占一个块，只有 2 条也要两行，
+      // 再加「另有 N 项」又是一行 —— 卡片中段一大片空白，读起来也散。
+      itemSummary: itemRows.length
+        ? itemRows.slice(0, 2).map(function (it) {
+            return it.label + (it.spec ? ' · ' + it.spec : '') + ' × ' + it.qty;
+          }).join('、') + (itemRows.length > 2 ? ' 等 ' + itemRows.length + ' 项' : '')
+        : '—',
       // 表格明细行（订单级字段在首行渲染）：flex 表没有 rowspan，只能首行填、后续留空
       lineRows: lineRows,
       suppliers: dash(suppliers),
@@ -2011,11 +2122,10 @@ Page({
     this.loadOrderFilterOptions();
   },
 
-  loadOrders() {
-    const self = this;
-    if (this.data.orderLoading) return;
-    const filter = {
-      page: this.data.orderPage,
+  /** 订单筛选参数：首屏与上拉加载共用一份，否则翻页会翻出不同的结果集 */
+  _orderFilter(page) {
+    const f = {
+      page: page || 1,
       pageSize: ORDER_PAGE_SIZE,
       from: this.data.orderFrom || undefined,
       to: this.data.orderTo || undefined,
@@ -2025,16 +2135,21 @@ Page({
       collector: (this.data.orderCollector || '').trim() || undefined,
       remark: (this.data.orderRemark || '').trim() || undefined,
     };
-    if (this.data.orderTab === 'pending') filter.status = 'PENDING';
-    else filter.statusNot = 'PENDING';
+    if (this.data.orderTab === 'pending') f.status = 'PENDING';
+    else f.statusNot = 'PENDING';
+    return f;
+  },
 
+  loadOrders() {
+    const self = this;
+    if (this.data.orderLoading) return;
     this.setData({ orderLoading: true });
-    api.fetchMyGroupOrders(filter).then(function (d) {
+    api.fetchAllOrders(this._orderFilter(1)).then(function (d) {
       const rows = (d.list || []).map(function (o) { return self.buildOrderRow(o); });
       self.setData({
         orderRows: rows,
+        orderPage: 1,
         orderTotal: d.total || 0,
-        orderTotalPages: Math.max(1, Math.ceil((d.total || 0) / ORDER_PAGE_SIZE)),
         orderLoading: false,
       });
     }).catch(function (e) {
@@ -2043,17 +2158,76 @@ Page({
     });
   },
 
+  /**
+   * 触底上拉加载。列表**不设翻页条**（仓库口径：一律 scroll-view 触底加载）。
+   * 追加时不动 `orderExpanded`，否则用户展开的卡片会被翻页重置。
+   */
+  onOrdersScrollToLower() {
+    const self = this;
+    if (this.data.orderLoading || this.data.orderLoadingMore) return;
+    if (this.data.orderRows.length >= this.data.orderTotal) return;
+    const next = this.data.orderPage + 1;
+    this.setData({ orderLoadingMore: true });
+    api.fetchAllOrders(this._orderFilter(next)).then(function (d) {
+      const rows = (d.list || []).map(function (o) { return self.buildOrderRow(o); });
+      self.setData({
+        orderRows: self.data.orderRows.concat(rows),
+        orderPage: next,
+        orderTotal: d.total || self.data.orderTotal,
+        orderLoadingMore: false,
+      });
+    }).catch(function () { self.setData({ orderLoadingMore: false }); });
+  },
+
+  /**
+   * 订单记录的数据范围：**列表与导出不用它**（那两个接口服务端自适应），
+   * 只有**筛选候选值**需要 —— `/orders/filter-options` 不按身份收窄，普通身份用它就会看到别组的候选值，
+   * 所以按身份在「全量候选」与「本课题组候选」之间挑一条。
+   *
+   * <p>判据与后端 {@code RefOrderAccessPolicy.canSeeAll} 同口径：超管 或 持「业务」标签。
+   */
+  _resolveOrderScope() {
+    const self = this;
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+    if (hasMinRole(role, 'SUPER_ADMIN')) {
+      self.setData({ orderScopeAll: true });
+      return Promise.resolve(true);
+    }
+    return personIdentity.fetchMyIdentityCodes().then(function (codes) {
+      const all = !!(codes && codes.BUSINESS);
+      self.setData({ orderScopeAll: all });
+      return all;
+    }).catch(function () { return false; });
+  },
+
   loadOrderFilterOptions() {
     const self = this;
     const want = [['supplier', 'supplier_name'], ['aup', 'register_no'], ['collector', 'collector_name']];
+    const fetchOptions = self.data.orderScopeAll ? api.fetchOrderFilterOptions : api.fetchMyGroupOrderFilterOptions;
     want.forEach(function (pair) {
       if (self.data.orderFilterOptions[pair[0]]) return;
-      api.fetchMyGroupOrderFilterOptions(pair[1]).then(function (list) {
+      fetchOptions(pair[1]).then(function (list) {
+        const opts = Array.isArray(list) ? list.filter(Boolean) : [];
         const patch = {};
-        patch['orderFilterOptions.' + pair[0]] = list || [];
+        patch['orderFilterOptions.' + pair[0]] = opts;
+        patch['orderFilterRanges.' + pair[0]] = ['全部'].concat(opts);
         self.setData(patch);
       }).catch(function () { /* 候选失败不影响手输筛选 */ });
     });
+  },
+
+  /** 筛选下拉选中：index 0 = 全部（清空该条件） */
+  onOrderFilterSelect(e) {
+    const key = e.currentTarget.dataset.key;
+    const idx = Number(e.detail.value) || 0;
+    const range = (this.data.orderFilterRanges && this.data.orderFilterRanges[key]) || [];
+    const val = idx > 0 ? String(range[idx] || '') : '';
+    const field = { aup: 'orderAup', supplier: 'orderSupplier', collector: 'orderCollector' }[key];
+    if (!field) return;
+    const patch = {};
+    patch[field] = val;
+    patch['orderFilterPicks.' + key] = idx;
+    this.setData(patch);
   },
 
   onOrderTab(e) {
@@ -2085,16 +2259,8 @@ Page({
     this.setData({
       orderFrom: r.from, orderTo: r.to, orderPage: 1,
       orderCampus: '', orderAup: '', orderSupplier: '', orderCollector: '', orderRemark: '',
+      orderFilterPicks: { supplier: 0, aup: 0, collector: 0 },
     }, this.loadOrders);
-  },
-  prevOrderPage() {
-    if (this.data.orderPage <= 1) return;
-    this.setData({ orderPage: this.data.orderPage - 1 }, this.loadOrders);
-  },
-  nextOrderPage() {
-    const max = Math.max(1, Math.ceil(this.data.orderTotal / ORDER_PAGE_SIZE));
-    if (this.data.orderPage >= max) return;
-    this.setData({ orderPage: this.data.orderPage + 1 }, this.loadOrders);
   },
   toggleOrderExpand(e) {
     const key = e.currentTarget.dataset.key;
@@ -2121,8 +2287,9 @@ Page({
     this.setData({ orderExporting: true });
     wx.showLoading({ title: '导出中…', mask: true });
     try {
-      const buf = await orderExportApi.exportMyGroupOrdersExcel(params);
-      await springAuth.saveAndOpenDocument(buf, '我的课题组订单-' + (params.from || 'all') + '_' + (params.to || 'now') + '.xlsx', 'xlsx');
+      const buf = await orderExportApi.exportOrdersExcel(params);
+      const prefix = this.data.orderScopeAll ? '全部课题组订单-' : '我的课题组订单-';
+      await springAuth.saveAndOpenDocument(buf, prefix + (params.from || 'all') + '_' + (params.to || 'now') + '.xlsx', 'xlsx');
     } catch (e) {
       wx.showToast({ title: (e && e.message) || '导出失败', icon: 'none' });
     } finally {

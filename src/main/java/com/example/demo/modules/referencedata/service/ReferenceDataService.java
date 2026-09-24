@@ -338,6 +338,11 @@ public class ReferenceDataService {
         }
         if (req.getSpecSelections() != null) existing.setSpecSelections(toJson(req.getSpecSelections()));
         if (req.getQuantity() != null) {
+            // 下界兜底：周期可用量本身可以是负数（cap - 已用），前端把「收敛到可用量」的
+            // 结果直传过来就会落库成 -2 只这样的行。要移除请走 DELETE，不走这里。
+            if (req.getQuantity() < 1) {
+                return Result.error("数量至少为 1");
+            }
             // 挂了笼位预定的行才受「单笼上限」约束：加购时校验过一次，但之后在购物车里
             // 反复点 + 会绕过它，把数量加到笼位放不下。房间领用路径没有笼位，不受此限。
             if (cageReservationService.hasActiveReservation(id)) {
@@ -1374,6 +1379,8 @@ public class ReferenceDataService {
     /**
      * 当前周期日期（每校区一个）：未指定校区时按全部校区各取一个，
      * 交给 EXISTS ... delivery_cycle IN (cycles) 过滤。
+     * <p>口径与 {@link #currentCycle} 一致：**清单优先**，清单为空才回落到 ETA 策略推算。
+     * 以前这里只读策略，于是清单被手工调过之后，「只导本周期」筛出来的和用户实际订的那批对不上。
      * <p>ponytail: 导出跨品系，用 null 品类 = 全局窗口规则取当前周期；
      * 品系级窗口差异不影响「本周期」这一笼统筛分，够用即可。</p>
      */
@@ -1383,7 +1390,10 @@ public class ReferenceDataService {
                 : AnimalOrderCampus.ALL;
         List<LocalDate> out = new ArrayList<>();
         for (String c : campuses) {
-            out.add(animalOrderTimePolicyService.estimateDeliveryAt(c, ZonedDateTime.now(ORDER_ZONE), null));
+            List<LocalDate> stored = storedFutureCycles(c);
+            out.add(stored.isEmpty()
+                    ? animalOrderTimePolicyService.estimateDeliveryAt(c, ZonedDateTime.now(ORDER_ZONE), null)
+                    : stored.get(0));
         }
         return out;
     }

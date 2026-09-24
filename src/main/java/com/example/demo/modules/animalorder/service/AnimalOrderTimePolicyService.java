@@ -12,6 +12,7 @@ import com.example.demo.modules.animalorder.engine.AnimalOrderTimeModels;
 import com.example.demo.modules.animalorder.entity.AnimalOrderHoliday;
 import com.example.demo.modules.animalorder.entity.AnimalOrderTimePolicy;
 import com.example.demo.modules.animalorder.entity.AnimalOrderWindowRule;
+import com.example.demo.modules.animalorder.mapper.AnimalOrderCycleMapper;
 import com.example.demo.modules.animalorder.mapper.AnimalOrderHolidayMapper;
 import com.example.demo.modules.animalorder.mapper.AnimalOrderTimePolicyMapper;
 import com.example.demo.modules.animalorder.mapper.AnimalOrderWindowRuleMapper;
@@ -49,6 +50,10 @@ public class AnimalOrderTimePolicyService {
     @Autowired
     private AnimalOrderHolidayMapper holidayMapper;
 
+    /** 到货周期清单：本周期以它为准（策略只是它的生成器/兜底），见 {@link #resolveCurrentCycle}。 */
+    @Autowired
+    private AnimalOrderCycleMapper cycleMapper;
+
     public AnimalOrderTimePolicySummaryDto getSummary(String campus, String categoryKey, ZonedDateTime at) {
         String c = AnimalOrderCampus.normalize(campus);
         ZonedDateTime when = at != null ? at : ZonedDateTime.now(ZONE);
@@ -67,9 +72,25 @@ public class AnimalOrderTimePolicyService {
             dto.setClosedReason(CLOSED_REASON);
             dto.setNextOpenAt(engine.findNextOpenAt(when, categoryKey));
         }
-        dto.setEstimatedDeliveryDate(engine.estimateDelivery(when, categoryKey));
+        dto.setEstimatedDeliveryDate(resolveCurrentCycle(c, engine, when, categoryKey));
         dto.setWarnings(buildHolidayWarnings(when.getYear()));
         return dto;
+    }
+
+    /**
+     * 「本周期」的唯一口径 = **清单**里今天起的第一个日期，清单为空才回落到 ETA 策略推算。
+     *
+     * <p>清单（时间管理页可手工增删改的那份）是权威，策略只是它的生成器与兜底。这里以前直接读
+     * 策略，于是手工调过清单后，订购页顶部「预计送达」与选购弹窗的「本周期」会显示两个不同的
+     * 日期 —— 用户看到的就是「策略和清单互相打架」。
+     */
+    private LocalDate resolveCurrentCycle(String campus, AnimalOrderTimeEngine engine,
+                                          ZonedDateTime when, String categoryKey) {
+        List<LocalDate> stored = cycleMapper.listDatesFrom(campus, LocalDate.now(ZONE));
+        if (!stored.isEmpty()) {
+            return stored.get(0);
+        }
+        return engine.estimateDelivery(when, categoryKey);
     }
 
     public boolean canOrderAt(String campus, ZonedDateTime at, String categoryKey) {

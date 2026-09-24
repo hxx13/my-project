@@ -20,4 +20,16 @@ public class TrainingCertificate {
     private LocalDate trainingDate;
     private String trainerName;
     private LocalDateTime issuedAt;
+
+    /**
+     * 证书编号：由 id 派生（唯一且永久稳定），列表与 PDF 都调这一处。
+     * 别在客户端另算一份，否则网页显示与实物会不同号。
+     */
+    public String certNo() {
+        if (id == null) return "";
+        int year = issuedAt != null ? issuedAt.getYear()
+                : trainingDate != null ? trainingDate.getYear()
+                : LocalDate.now().getYear();
+        return String.format("SHSMU-%d-%06d", year, id);
+    }
 }
