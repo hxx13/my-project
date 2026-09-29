@@ -694,8 +694,9 @@ Page({
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/suppliesAudit/index', role, 'STAFF'),
       canGoMaterialAudit:
-        hasMinRole(role, 'STAFF') &&
-        pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/materialAudit/index', role, 'STAFF'),
+        // 权限与网页版「申领审计导出」(/admin/material/audit-export) 同口径：ADMIN
+        hasMinRole(role, 'ADMIN') &&
+        pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/materialAudit/index', role, 'ADMIN'),
       canGoStudentReview:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF'),
@@ -1299,11 +1300,11 @@ Page({
 
   goMaterialAudit() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
-    if (!hasMinRole(role, 'STAFF')) {
+    if (!hasMinRole(role, 'ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/materialAudit/index', role, 'STAFF')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/materialAudit/index', role, 'ADMIN')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }

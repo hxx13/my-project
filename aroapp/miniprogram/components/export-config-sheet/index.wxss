@@ -1,0 +1,27 @@
+/* 导出设置弹层（小计层级 / 板块，排除法开关）——与页面内那套 .ord-* 观感一致 */
+.cfg-panel { padding-bottom: calc(20rpx + env(safe-area-inset-bottom)); }
+.cfg-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 28rpx 32rpx 16rpx;
+}
+.cfg-title { font-size: 30rpx; font-weight: 600; color: #1f2937; }
+.cfg-close { font-size: 26rpx; color: #94a3b8; }
+.cfg-loading, .cfg-meta { padding: 20rpx 32rpx 8rpx; font-size: 24rpx; color: #94a3b8; }
+.cfg-scroll { max-height: 56vh; }
+.cfg-sec { padding: 8rpx 32rpx 4rpx; }
+.cfg-sec-title { display: block; margin: 12rpx 0 4rpx; font-size: 24rpx; color: #94a3b8; }
+.cfg-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16rpx; padding: 16rpx 0; border-bottom: 1rpx solid #f2f3f5;
+}
+.cfg-row:last-child { border-bottom: none; }
+.cfg-row-main { flex: 1; min-width: 0; }
+.cfg-row-label { font-size: 28rpx; color: #1f2937; }
+.cfg-row-sub { display: block; margin-top: 4rpx; font-size: 22rpx; color: #94a3b8; }
+.cfg-foot { display: flex; justify-content: flex-end; gap: 16rpx; padding: 20rpx 32rpx 8rpx; }
+.cfg-btn {
+  padding: 12rpx 32rpx; border-radius: 999rpx; font-size: 26rpx;
+  background: #f1f3f7; color: #1f2937;
+}
+.cfg-btn-primary { background: #2563eb; color: #fff; font-weight: 600; }
+.cfg-btn-off { background: #e5e7eb; color: #9aa0a6; }

@@ -662,6 +662,16 @@
         <text wx:elif="{{ orderRows.length >= orderTotal && orderRows.length > 0 }}">没有更多了</text>
       </view>
     </scroll-view>
+    <export-config-sheet
+      class="exp-cfg"
+      show="{{ orderCfgShow }}"
+      summary-url="/api/reference-data/orders/export/summary"
+      export-url="/api/reference-data/orders/export"
+      params="{{ orderCfgParams }}"
+      fallback-name="{{ orderCfgName }}"
+      bind:close="onOrderCfgClose"
+      bind:done="onOrderCfgDone"
+    />
   </view>
 
   </block>

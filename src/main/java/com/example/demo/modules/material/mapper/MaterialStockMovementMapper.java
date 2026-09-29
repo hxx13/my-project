@@ -24,6 +24,9 @@ public interface MaterialStockMovementMapper {
                            @Param("from") String from, @Param("to") String to);
     int deleteByItemId(@Param("itemId") Long itemId);
     int deleteOrphan();
+    /** 重复出库流水（同单+同明细+同数量+同一秒）中应当删掉的 id（保留最早那条） */
+    List<Long> selectDuplicateOutboundIds(@Param("limit") int limit);
+    int deleteByIds(@Param("ids") List<Long> ids);
 
     List<java.util.Map<String, Object>> statsDailyMovements(@Param("from") String from, @Param("to") String to,
                                                              @Param("groupId") String groupId);
