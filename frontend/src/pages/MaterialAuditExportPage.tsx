@@ -138,7 +138,8 @@ function movementQtyDisplay(t: string, qty: number): string {
 }
 
 /** 物品来去流水：入库/出库/调整 + 无流水时从已出库申领补录
- *  @param movementWindowTruncated 流水窗口被截断（条数超上限）时不能断言「这单没有流水」——
+ *  @param suppressBackfill 流水窗口不可用（还在加载 / 取数失败 / 被上限截断）时不能断言「这单没有流水」：
+ *         加载中或失败就补录，会把所有已出库申领先算成一片假补录行（库存恒 [无]），截断时则是真缺数据。
  *         宁可少一行补录，也不要凭空造一行库存 [无] 的假数据。 */
 function buildItemFlowRows(
   claims: MaterialItemClaimRow[],
@@ -146,7 +147,7 @@ function buildItemFlowRows(
   from: string,
   to: string,
   currentStockByItemId?: ReadonlyMap<number, number>,
-  movementWindowTruncated = false,
+  suppressBackfill = false,
 ): ItemFlowRow[] {
   const stockAfterByMovementId = currentStockByItemId
     ? recomputeMovementStockAfter(movements, currentStockByItemId)
@@ -176,7 +177,7 @@ function buildItemFlowRows(
     });
   }
 
-  for (const c of movementWindowTruncated ? [] : claims) {
+  for (const [idx, c] of (suppressBackfill ? [] : claims).entries()) {
     const fulfilled = c.fulfilledQty ?? 0;
     if (fulfilled <= 0 || outboundRequestIds.has(c.requestId)) continue;
     const outboundTime = c.fulfilledAt || c.createdAt;
@@ -184,7 +185,10 @@ function buildItemFlowRows(
     const status = String(c.status || "").toUpperCase();
     if (status !== "FULFILLED" && status !== "RECEIVED") continue;
     rows.push({
-      key: `claim-out-${c.requestId}`,
+      // key 必须逐行唯一：一张单可能有多条明细，连「单号+物品名」都可能重复（同一物品两条不同规格）。
+      // 只用单号做 key 时 React 会报 duplicate children，并且这些节点在列表更新时清不掉 —— 表现为
+      // 表格里一直挂着几行旧补录行，改筛选、翻页都不消失。
+      key: `claim-out-${idx}-${c.requestId}-${c.itemName ?? ""}`,
       time: outboundTime || "",
       eventType: "出库",
       itemName: cellZh(c.itemName),
@@ -232,6 +236,9 @@ function SearchableSelect({
   }, [open]);
 
   const selected = options.find((o) => o.value === value);
+  // 候选列表被其它筛选收窄后，已选项可能不在其中 —— 退化成占位符会让「明明筛着却显示全部」，
+  // 所以兜底显示原值本身。
+  const triggerLabel = selected?.label ?? (value ? value : placeholder);
   const filtered = useMemo(() => {
     const k = kw.trim().toLowerCase();
     return !k ? options : options.filter((o) => o.label.toLowerCase().includes(k));
@@ -246,7 +253,7 @@ function SearchableSelect({
         className={`${className ?? ""} flex items-center justify-between gap-2 text-left`}
         onClick={() => { setOpen((o) => !o); if (!open) setKw(""); }}
       >
-        <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder}</span>
+        <span className="min-w-0 flex-1 truncate">{triggerLabel}</span>
         <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
       </button>
       {open && (
@@ -389,7 +396,7 @@ export default function MaterialAuditExportPage() {
     queryFn: () => fetchAdminMaterialCategories(itemApplicantGroup),
     enabled: isStaff && isItemTab,
   });
-  const { data: items = [] } = useQuery({
+  const { data: items = [], isLoading: itemsLoading } = useQuery({
     // 不带 categoryId：分类在客户端收窄下拉，这样 currentStockByItemId（库存倒推锚点）始终是全量物品，
     // 否则选了分类之后，非该分类物品的流水行库存列会整列退化成 [无]。
     queryKey: ["material", "admin", "items", itemApplicantGroup],
@@ -437,9 +444,11 @@ export default function MaterialAuditExportPage() {
       from,
       to,
       currentStockByItemId,
-      (movementData?.total ?? 0) > (movementData?.data?.length ?? 0),
+      // 拿不到/拿不全流水时一律不做补录：加载中、请求失败（此时 movementData 为 undefined）、窗口被截断
+      // 这三种情况都不能断言「这单没有流水」，否则后端一抖就会凭空冒出一批库存 [无] 的补录行。
+      !movementData || movementsLoading || (movementData.total ?? 0) > (movementData.data?.length ?? 0),
     ),
-    [claimData, movementData, from, to, currentStockByItemId],
+    [claimData, movementData, movementsLoading, from, to, currentStockByItemId],
   );
   const itemFlowTotalPages = Math.max(1, Math.ceil(itemFlowRows.length / PAGE_SIZE));
   const itemFlowPageRows = useMemo(() => {
@@ -462,11 +471,14 @@ export default function MaterialAuditExportPage() {
 
   useEffect(() => {
     if (selectedItemId === "") return;
+    // 物品列表还在加载时（filteredItems 为空）不要判断「已选项不在列表里」，否则改一次课题组就会把
+    // 已经选好的物品清掉，用户得反复重选。
+    if (itemsLoading) return;
     if (!filteredItems.some((it) => it.id === selectedItemId)) {
       setSelectedItemId("");
       setFlowPage(1);
     }
-  }, [filteredItems, selectedItemId]);
+  }, [filteredItems, selectedItemId, itemsLoading]);
 
   const applicantLabel = (userId: string) => {
     const hit = applicantList.find((a) => a.userId === userId);
