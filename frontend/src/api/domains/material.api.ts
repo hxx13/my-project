@@ -91,7 +91,19 @@ export interface MaterialStockMovementRow {
   specSnapshot?: string;
 }
 
-export async function fetchItemStockMovements(itemId: number | null | undefined, params: { page: number; size: number; applicantGroup?: string }) {
+/**
+ * 「按物品审计 / 物品+课题组」页的筛选参数 —— 与后端 /material/admin/audit/item/** 同口径：
+ * 物品/分类/关键词/课题组/日期一律取交集（日期单边也生效，不要自己补另一端）。
+ */
+export interface ItemAuditFilters {
+  from?: string;
+  to?: string;
+  applicantGroup?: string;
+  categoryId?: number;
+  keyword?: string;
+}
+
+export async function fetchItemStockMovements(itemId: number | null | undefined, params: ItemAuditFilters & { page: number; size: number }) {
   const id = itemId && itemId > 0 ? itemId : 0;
   const res = await authHttp.get<Result<{ data: MaterialStockMovementRow[]; total: number }>>(`/material/admin/audit/item/${id}/movements`, { params });
   return res.data.data;
@@ -133,7 +145,7 @@ export async function fetchGroupsWithRecords(params?: { from?: string; to?: stri
   return res.data.data ?? [];
 }
 
-export async function fetchItemClaimLines(itemId: number | null | undefined, params: { from?: string; to?: string; applicantGroup?: string; page: number; size: number }) {
+export async function fetchItemClaimLines(itemId: number | null | undefined, params: ItemAuditFilters & { page: number; size: number }) {
   const id = itemId && itemId > 0 ? itemId : 0;
   const res = await authHttp.get<Result<{ data: MaterialItemClaimRow[]; total: number }>>(`/material/admin/audit/item/${id}/claims`, { params });
   return res.data.data;
@@ -433,9 +445,7 @@ export async function exportMaterialAuditSummary(params: {
 }
 
 export async function exportMaterialItemFlow(
-  params: {
-    itemId?: number | null; from?: string; to?: string; applicantGroup?: string; exportLabel?: string;
-  },
+  params: ItemAuditFilters & { itemId?: number | null; exportLabel?: string },
   config?: { levels?: string; excludeBlocks?: string },
 ): Promise<Blob> {
   const id = params.itemId && params.itemId > 0 ? params.itemId : 0;
@@ -448,13 +458,13 @@ export async function exportMaterialItemFlow(
 }
 
 /** 物品来去流水导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）。 */
-export async function exportMaterialItemFlowSummary(params: {
-  itemId?: number | null; from?: string; to?: string; applicantGroup?: string;
+export async function exportMaterialItemFlowSummary(params: ItemAuditFilters & {
+  itemId?: number | null;
 }): Promise<SubtotalSummary> {
   const id = params.itemId && params.itemId > 0 ? params.itemId : 0;
-  const { from, to, applicantGroup } = params;
+  const { itemId: _omit, ...rest } = params;
   const res = await authHttp.get<Result<SubtotalSummary>>(`/material/admin/audit/item/${id}/export/summary`, {
-    params: { from, to, applicantGroup },
+    params: rest,
   });
   return res.data.data;
 }

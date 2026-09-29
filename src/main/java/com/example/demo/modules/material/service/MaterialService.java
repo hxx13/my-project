@@ -37,6 +37,14 @@ public class MaterialService {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     /** 独立成单：一次提交中最多允许拆出的独立申领单数量（防滥用） */
     private static final int MAX_INDEPENDENT_SPLITS = 10;
+    /**
+     * 申领审计导出页一次取多少行（流水/申领两侧同值）。
+     * ponytail: 上限 2000 行；单窗口超过这个量两侧都会被截断，被截断的老单会误标成
+     * 「无流水补录」并让库存列退化成 [无]。升级路径＝服务端把两侧合并成一个游标分页查询。
+     */
+    static final int AUDIT_ROW_LIMIT = 2000;
+    /** 候选单池（Java 侧还要按行级审核人过滤，故池子比一页大） —— 与前端请求的 size 对齐 */
+    static final int AUDIT_CANDIDATE_LIMIT = 2000;
 
     private final MaterialCategoryMapper categoryMapper;
     private final MaterialItemMapper itemMapper;
@@ -1466,10 +1474,13 @@ public class MaterialService {
         }
     }
 
-    public Result<Map<String, Object>> listItemStockMovements(Long itemId, String applicantGroup, int page, int size) {
+    public Result<Map<String, Object>> listItemStockMovements(Long itemId, String applicantGroup,
+                                                              Long categoryId, String keyword,
+                                                              String from, String to, int page, int size) {
         Long queryItemId = (itemId != null && itemId > 0) ? itemId : null;
         int offset = (page - 1) * size;
-        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(queryItemId, offset, size, applicantGroup);
+        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(
+                queryItemId, offset, size, applicantGroup, categoryId, keyword, trimDay(from), trimDay(to));
         for (MaterialStockMovementView v : views) {
             if (v.getCreatedAt() != null) {
                 v.setCreatedAt(com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v.getCreatedAt()));
@@ -1484,7 +1495,8 @@ public class MaterialService {
             itemIds.add(queryItemId);
         }
         recomputeMovementStockAfter(views, loadCurrentStockByItemIds(itemIds));
-        int total = stockMovementMapper.countViewsByItemId(queryItemId, applicantGroup);
+        int total = stockMovementMapper.countViewsByItemId(
+                queryItemId, applicantGroup, categoryId, keyword, trimDay(from), trimDay(to));
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
         result.put("total", total);
@@ -1551,9 +1563,10 @@ public class MaterialService {
 
         List<MaterialRequest> candidates;
         if (!staff) {
-            candidates = requestMapper.selectByUserId(viewer.getId(), null, 0, 500);
+            candidates = requestMapper.selectByUserId(viewer.getId(), null, 0, AUDIT_CANDIDATE_LIMIT);
         } else {
-            candidates = requestMapper.selectAll(null, applicantUserId, applicantGroup, 0, 500);
+            candidates = requestMapper.selectAuditCandidates(
+                    applicantUserId, applicantGroup, fromDay, toDay, 0, AUDIT_CANDIDATE_LIMIT);
         }
 
         List<MaterialRequestView> out = new ArrayList<>();
@@ -1647,12 +1660,15 @@ public class MaterialService {
     /**
      * 按物品来去流水导出数据：与 Web 预览 buildItemFlowRows 逻辑一致。
      */
-    public List<MaterialItemFlowExportRow> collectItemFlowExportRows(Long itemId, String from, String to, String applicantGroup) {
+    public List<MaterialItemFlowExportRow> collectItemFlowExportRows(Long itemId, String from, String to,
+                                                                     String applicantGroup,
+                                                                     Long categoryId, String keyword) {
         Long queryItemId = (itemId != null && itemId > 0) ? itemId : null;
         String fromDay = trimDay(from);
         String toDay = trimDay(to);
 
-        List<MaterialStockMovementView> movements = stockMovementMapper.selectViewsByItemId(queryItemId, 0, 500, applicantGroup);
+        List<MaterialStockMovementView> movements = stockMovementMapper.selectViewsByItemId(
+                queryItemId, 0, AUDIT_ROW_LIMIT, applicantGroup, categoryId, keyword, fromDay, toDay);
         for (MaterialStockMovementView v : movements) {
             if (v.getCreatedAt() != null) {
                 v.setCreatedAt(com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v.getCreatedAt()));
@@ -1668,7 +1684,11 @@ public class MaterialService {
         }
         recomputeMovementStockAfter(movements, loadCurrentStockByItemIds(stockItemIds));
 
-        List<Map<String, Object>> claimMaps = requestMapper.selectClaimLinesByItemId(queryItemId, fromDay, toDay, applicantGroup, 0, 500);
+        List<Map<String, Object>> claimMaps = requestMapper.selectClaimLinesByItemId(
+                queryItemId, fromDay, toDay, applicantGroup, categoryId, keyword, 0, AUDIT_ROW_LIMIT);
+        // 与前端 buildItemFlowRows 同判据：流水窗口被截断时不能断言「这单没有流水」，故不做补录
+        boolean movementWindowTruncated = stockMovementMapper.countViewsByItemId(
+                queryItemId, applicantGroup, categoryId, keyword, fromDay, toDay) > movements.size();
         for (Map<String, Object> row : claimMaps) {
             com.example.demo.common.time.WallClockDisplayFormat.normalizeMapDateTimeKeys(row, "createdAt", "fulfilledAt");
             String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
@@ -1704,7 +1724,7 @@ public class MaterialService {
             rows.add(row);
         }
 
-        for (Map<String, Object> c : claimMaps) {
+        for (Map<String, Object> c : movementWindowTruncated ? List.<Map<String, Object>>of() : claimMaps) {
             int fulfilled = toInt(c.get("fulfilledQty"));
             String requestId = c.get("requestId") != null ? String.valueOf(c.get("requestId")) : "";
             if (fulfilled <= 0 || outboundRequestIds.contains(requestId)) continue;
@@ -1885,10 +1905,14 @@ public class MaterialService {
     }
 
     public Result<Map<String, Object>> listItemClaimLines(Long itemId, String from, String to,
-                                                          String applicantGroup, int page, int size) {
+                                                          String applicantGroup,
+                                                          Long categoryId, String keyword, int page, int size) {
         Long queryItemId = (itemId != null && itemId > 0) ? itemId : null;
         int offset = (page - 1) * size;
-        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(queryItemId, from, to, applicantGroup, offset, size);
+        String fromDay = trimDay(from);
+        String toDay = trimDay(to);
+        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(
+                queryItemId, fromDay, toDay, applicantGroup, categoryId, keyword, offset, size);
         for (Map<String, Object> row : rows) {
             com.example.demo.common.time.WallClockDisplayFormat.normalizeMapDateTimeKeys(
                     row, "createdAt", "fulfilledAt");
@@ -1900,7 +1924,8 @@ public class MaterialService {
                 row.put("applicantGroup", resolveApplicantGroup(userId, null));
             }
         }
-        int total = requestMapper.countClaimLinesByItemId(queryItemId, from, to, applicantGroup);
+        int total = requestMapper.countClaimLinesByItemId(
+                queryItemId, fromDay, toDay, applicantGroup, categoryId, keyword);
         Map<String, Object> result = new HashMap<>();
         result.put("data", rows);
         result.put("total", total);
@@ -1923,6 +1948,71 @@ public class MaterialService {
             }
         }
         return updated;
+    }
+
+    /**
+     * 补写缺失的出库流水 —— 「无流水补录」这个兜底路径的根因修法。
+     *
+     * <p>已出库（fulfilled_qty&gt;0 且状态 FULFILLED/RECEIVED）却没写出库流水的单，历史成因为：
+     * ①老数据在「出库写流水」这段逻辑上线之前就出库了；②出库事务里流水写入失败。
+     * 这类单原先只能被审计页反推成一行「申领出库（无流水补录）」，而补出来的行不在库存倒推链里，
+     * 库存列必然显示 [无]。把流水按业务发生时间补写回表，这笔出库才真正进入账。</p>
+     *
+     * <p>幂等：补完再探测即为空，可反复执行（启动时跑一次 + 后台维护接口可手动再跑）。
+     * stockAfter 故意留空 —— 历史当时的库存无法还原，读取侧统一从当前库存倒推，凭空写一个数只会更错。</p>
+     *
+     * @param limit 单次最多补多少条，防止一次拉爆（缺口条数正常为 0）
+     */
+    public int backfillMissingOutboundMovements(int limit) {
+        List<Map<String, Object>> gaps;
+        try {
+            gaps = requestMapper.selectFulfilledLinesMissingOutbound(Math.max(1, limit));
+        } catch (Exception e) {
+            log.warn("[material] 出库流水缺口探测失败: {}", e.getMessage());
+            return 0;
+        }
+        int written = 0;
+        for (Map<String, Object> gap : gaps) {
+            Long itemId = gap.get("itemId") instanceof Number n ? n.longValue() : null;
+            int qty = toInt(gap.get("fulfilledQty"));
+            if (itemId == null || qty <= 0) continue;
+            try {
+                MaterialStockMovement m = new MaterialStockMovement();
+                m.setItemId(itemId);
+                m.setMovementType("OUTBOUND");
+                m.setQty(-qty);
+                m.setRequestId(gap.get("requestId") != null ? String.valueOf(gap.get("requestId")) : null);
+                m.setRequestLineId(gap.get("lineId") instanceof Number n ? n.longValue() : null);
+                m.setOperatorUserId(gap.get("fulfilledBy") != null ? String.valueOf(gap.get("fulfilledBy")) : null);
+                m.setApplicantUserId(gap.get("userId") != null ? String.valueOf(gap.get("userId")) : null);
+                m.setRemark("申领出库（历史补录）");
+                m.setCreatedAt(jdbcTimeToLocalDateTime(gap.get("outboundAt")));
+                stockMovementMapper.insert(m);
+                written++;
+            } catch (Exception e) {
+                log.warn("[material] 补写出库流水失败 request={}: {}", gap.get("requestId"), e.getMessage());
+            }
+        }
+        if (written > 0) {
+            log.info("[material] 已补写 {} 条缺失的出库流水", written);
+        }
+        return written;
+    }
+
+    /** Map 结果集里的 DATETIME 可能是 Timestamp / LocalDateTime / 字符串，统一兜一遍。 */
+    private static LocalDateTime jdbcTimeToLocalDateTime(Object v) {
+        if (v == null) return null;
+        if (v instanceof LocalDateTime ldt) return ldt;
+        if (v instanceof java.sql.Timestamp ts) return ts.toLocalDateTime();
+        if (v instanceof java.util.Date d) return LocalDateTime.ofInstant(d.toInstant(), java.time.ZoneId.systemDefault());
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        if (s.length() >= 19) s = s.substring(0, 19);
+        try {
+            return LocalDateTime.parse(s.replace(' ', 'T'));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // ==================== 统计审计 ====================

@@ -11,4 +11,6 @@ public class PortalCategoryView {
     private Integer sortOrder;
     private Integer status;
     private String coverUrl;
+    /** 该分类下未删除的内容条数。只有管理端接口会填，公开分类接口留 null */
+    private Long contentCount;
 }

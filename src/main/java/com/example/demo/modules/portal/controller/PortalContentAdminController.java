@@ -43,9 +43,12 @@ public class PortalContentAdminController {
             @RequestParam(value = "type", required = false) String type,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "search", required = false) String search,
+            @RequestParam(value = "priority", required = false) String priority,
+            @RequestParam(value = "categoryId", required = false) Long categoryId,
+            @RequestParam(value = "sort", required = false) String sort,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
-        return Result.success(service.listAdmin(type, status, search, page, size));
+        return Result.success(service.listAdmin(type, status, search, priority, categoryId, sort, page, size));
     }
 
     @GetMapping("/{id}")

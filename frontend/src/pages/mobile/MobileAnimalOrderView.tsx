@@ -235,7 +235,9 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
   const currentCycle = useMemo(() => cycles.find((c) => c.current)?.cycle ?? null, [cycles]);
 
   // 一屏卡片逐规格剩余量：一次批量请求 + 15s 轮询
-  const specQuotaByKey = useSpecQuotaBatch(items, templates, campus ?? undefined, currentCycle);
+  // quotaToken：下单会扣额度，自增一次让剩余量立刻重查，不等下一轮轮询
+  const [quotaToken, setQuotaToken] = useState(0);
+  const specQuotaByKey = useSpecQuotaBatch(items, templates, campus ?? undefined, currentCycle, quotaToken);
 
   // 侧边栏：当前层级父类型的兄弟项（下钻后切换父级用）
   const sidebarParentType = typeConfig?.parentType;
@@ -628,6 +630,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
           setSubmitRemark("");
           void qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
           void refetchCart();
+          setQuotaToken((t) => t + 1); // 下单即扣额度：卡片剩余量立刻重查
         },
       },
     );
@@ -712,12 +715,12 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                     </div>
                   </div>
                   {quotaSegments.length > 0 && (
-                    <div className="mt-0.5 truncate text-[11px] tabular-nums">
+                    // 一个规格一行，和 PC 卡片同口径（挤成一行会被省略号吃掉规格名）
+                    <div className="mt-0.5 text-[11px] tabular-nums">
                       {quotaSegments.map((s, i) => (
-                        <span key={i}>
-                          {i > 0 && <span className="text-[var(--student-mute)]"> · </span>}
-                          <span className={s.unconfigured ? "text-[var(--student-mute)]" : "text-[var(--student-body)]"}>{s.text}</span>
-                        </span>
+                        <div key={i} title={s.text} className={`truncate ${s.unconfigured ? "text-[var(--student-mute)]" : "text-[var(--student-body)]"}`}>
+                          {s.text}
+                        </div>
                       ))}
                     </div>
                   )}

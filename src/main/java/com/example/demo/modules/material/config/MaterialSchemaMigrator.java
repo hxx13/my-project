@@ -200,6 +200,13 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
                 log.info("[material-schema] 已回填 {} 条申领单的申领人/课题组元数据", backfilled);
             }
 
+            // 补写历史缺失的出库流水：不补的话审计页会把这些单反推成「无流水补录」行（库存恒 [无]）。
+            // 幂等，缺口为 0 时这个查询是空集，启动开销只有一次反连接。
+            int movementsWritten = materialService.backfillMissingOutboundMovements(2000);
+            if (movementsWritten > 0) {
+                log.info("[material-schema] 已补写 {} 条缺失的出库流水", movementsWritten);
+            }
+
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {
             log.error("[material-schema] 表结构迁移失败: {}", e.getMessage());

@@ -1431,7 +1431,7 @@ function modeColorOf(m: ShelfMode): string {
 
 function CageShelfGridView({
   shelf, detail, loading, error, onRetry, onCellClick,
-  isStaffView, mode, onSetMode, visibleModes,
+  isStaffView, mode, onSetMode, visibleModes, backendIsStudent,
   scanOpen, onOpenScan, onCloseScan, onScanResult,
   scanCache, lastScannedKey, onActionSubmit, actionSubmitting,
   scanLockHighlight,
@@ -1457,6 +1457,8 @@ function CageShelfGridView({
   onSetMode: (m: ShelfMode) => void;
   /** 后端下发的可见模式 key 列表（null=尚未拉取或失败，回退本地硬编码） */
   visibleModes?: string[] | null;
+  /** 后端认定的视角（accountSource=STUDENT）—— 与本地 isStaffView 分头判，见 modeItems */
+  backendIsStudent?: boolean;
   /** 单一常驻扫码入口，全角色可见，结果按 mode 分派 */
   scanOpen: boolean; onOpenScan: () => void; onCloseScan: () => void;
   onScanResult: (text: string) => void;
@@ -1501,8 +1503,12 @@ function CageShelfGridView({
   const showLegend = legendOpen;
   const editMode = mode === "edit";
   const baseModeItems = isStaffView ? STAFF_MODE_ITEMS : STUDENT_MODE_ITEMS;
-  // 后端下发的可见模式过滤本地常量（保留后端顺序、用常量 label）；拉取失败/未返回时回退硬编码
-  const modeItems = visibleModes && visibleModes.length > 0
+  // 后端下发的可见模式过滤本地常量（保留后端顺序、用常量 label）；拉取失败/未返回时回退硬编码。
+  // 与 Web 学生端（student-cage-shelf.tsx `isStudent ? modes : null`）、小程序
+  // （studentCageShelf/index.js `isStaffView || backendIsStudent`）同一条规则：
+  // **后端确认是学生**时才用它的名单过滤；否之不过滤——双视角账号切到学生视角后服务端仍按
+  // 教职工角色解析、下发的是教职工名单，取交集会把「申请预约/状态/划分/归档」一起滤没。
+  const modeItems = visibleModes && visibleModes.length > 0 && (isStaffView || backendIsStudent)
     ? visibleModes
         .map((k) => baseModeItems.find((m) => m.key === k || (k === "studentClaim" && m.key === "claim")))
         .filter((m): m is { key: ShelfMode; label: string } => m != null)
@@ -1803,6 +1809,12 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [mode, setMode] = useState<ShelfMode>("view");
   // 后端下发的可见模式 key 列表（null=尚未拉取/失败，网格页回退本地硬编码）
   const [visibleModes, setVisibleModes] = useState<string[] | null>(null);
+  /**
+   * 后端认定的视角（accountSource=STUDENT）。与本地 isStudentAccount() 分头判：
+   * 双视角账号切到学生视图后，服务端仍按教职工角色解析 → 下发的是**教职工**模式名单，
+   * 拿它去过滤学生会把「申请预约」等一并滤掉。规则见 modeItems。
+   */
+  const [backendIsStudent, setBackendIsStudent] = useState(false);
   /** 网格「完整/简洁」：简洁档收起另有替代物的标签层（开关在网格页顶栏） */
   const [compactGrid, setCompactGrid] = useState(false);
   /** 后端下发的「模式 → 可用动作」矩阵（学生状态模式收窄用；null=不限制） */
@@ -1889,6 +1901,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       .then((r) => {
         if (cancelled) return;
         if (r.modes?.length) setVisibleModes(r.modes);
+        setBackendIsStudent(r.isStudent === true);
         // 「模式 → 可用动作」矩阵：后端收窄了动作范围才下发（当前只有学生 edit → 合笼）
         setModeActions(r.modeActions ?? null);
       })
@@ -3013,6 +3026,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
               mode={mode}
               onSetMode={switchMode}
               visibleModes={visibleModes}
+              backendIsStudent={backendIsStudent}
               scanOpen={scanOpen}
               onOpenScan={() => setScanOpen(true)}
               onCloseScan={() => setScanOpen(false)}

@@ -1,16 +1,24 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { HelpCircle, Plus, Trash2 } from "lucide-react";
 import { useAdminContents, useCreateContent, useUpdateContent } from "@/api/hooks/usePortalContent";
+import { portalExtension } from "@/features/portal/noticePriority";
 import type { PortalContentView } from "@/api/domains/portalContent.api";
+import { AdminButton } from "@/components/admin/AdminButton";
+import EmptyState from "@/components/ui/EmptyState";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface QaItem { question: string; answer: string }
 interface QaGroup { category: string; items: QaItem[] }
 
 function parseExt(row: PortalContentView): Record<string, unknown> {
-  try {
-    return typeof row.extensionJson === "string"
-      ? JSON.parse(row.extensionJson)
-      : (row.extensionJson as Record<string, unknown>) || {};
-  } catch { return {}; }
+  return portalExtension(row);
 }
 
 function toGroups(ext: Record<string, unknown>): QaGroup[] {
@@ -29,22 +37,21 @@ function toGroups(ext: Record<string, unknown>): QaGroup[] {
   return [];
 }
 
-function cloneGroup(g: QaGroup): QaGroup {
-  return { category: g.category, items: g.items.map((it) => ({ ...it })) };
-}
+const cloneGroup = (g: QaGroup): QaGroup => ({
+  category: g.category,
+  items: g.items.map((it) => ({ ...it })),
+});
+
+const fieldInput =
+  "w-full rounded-[var(--admin-radius-md)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 text-sm text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)] focus-visible:border-ring";
 
 export default function StudentQaEditor() {
-  const { data, isFetching } = useAdminContents({ type: "PAGE", size: 100 });
+  const { data, isFetching } = useAdminContents({ type: "PAGE", size: 50 });
   const createMut = useCreateContent();
   const updateMut = useUpdateContent();
 
   const row = useMemo(() => {
-    const list = (data?.data ?? []).filter((r) => {
-      try {
-        const ext = typeof r.extensionJson === "string" ? JSON.parse(r.extensionJson) : (r.extensionJson as Record<string, unknown> ?? {});
-        return (ext as Record<string, unknown>)?.page_key === "student_faq";
-      } catch { return false; }
-    });
+    const list = (data?.data ?? []).filter((r) => parseExt(r).page_key === "student_faq");
     list.sort((a, b) => {
       if (a.status === "PUBLISHED" && b.status !== "PUBLISHED") return -1;
       if (b.status === "PUBLISHED" && a.status !== "PUBLISHED") return 1;
@@ -54,19 +61,13 @@ export default function StudentQaEditor() {
   }, [data]);
 
   const [groups, setGroups] = useState<QaGroup[]>([]);
-
-  /* 编辑弹窗状态 */
   const [modalOpen, setModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftGroup, setDraftGroup] = useState<QaGroup>({ category: "", items: [] });
 
   useEffect(() => {
-    if (row) {
-      const g = toGroups(parseExt(row));
-      setGroups(g);
-    } else if (!isFetching) {
-      setGroups([]);
-    }
+    if (row) setGroups(toGroups(parseExt(row)));
+    else if (!isFetching) setGroups([]);
   }, [row?.id, isFetching]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openNew = () => {
@@ -82,9 +83,8 @@ export default function StudentQaEditor() {
   };
 
   const confirmModal = () => {
-    if (editingIndex === null) {
-      setGroups([...groups, draftGroup]);
-    } else {
+    if (editingIndex === null) setGroups([...groups, draftGroup]);
+    else {
       const n = [...groups];
       n[editingIndex] = draftGroup;
       setGroups(n);
@@ -94,7 +94,6 @@ export default function StudentQaEditor() {
 
   const removeGroup = (i: number) => setGroups(groups.filter((_, j) => j !== i));
 
-  /* 弹窗内 draftGroup 编辑辅助 */
   const setDraftCategory = (v: string) => setDraftGroup({ ...draftGroup, category: v });
   const setDraftItem = (ii: number, patch: Partial<QaItem>) => {
     const items = draftGroup.items.map((it, j) => (j === ii ? { ...it, ...patch } : it));
@@ -123,117 +122,138 @@ export default function StudentQaEditor() {
 
   const pending = createMut.isPending || updateMut.isPending;
 
-  const th: React.CSSProperties = {
-    padding: "11px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#8b7355",
-    textTransform: "uppercase", letterSpacing: "0.05em",
-  };
-  const td: React.CSSProperties = {
-    padding: "12px 14px", borderBottom: "1px solid #f0ece6", fontSize: 13, verticalAlign: "middle",
-  };
-  const actionBtn: React.CSSProperties = {
-    fontSize: 11, padding: "4px 12px", borderRadius: 6, cursor: "pointer",
-    border: "1px solid #d4c9b8", background: "white", color: "#666", whiteSpace: "nowrap",
-  };
-  const inputStyle: React.CSSProperties = {
-    padding: "8px 12px", border: "1px solid #d4c9b8", borderRadius: 8,
-    fontSize: 13, color: "#333", background: "#fafaf9", outline: "none",
-    fontFamily: "inherit", width: "100%", boxSizing: "border-box",
-  };
-
-  if (isFetching && groups.length === 0) {
-    return <div style={{ padding: 32, color: "#b0a89a", fontSize: 13 }}>加载中…</div>;
-  }
-
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: 24, background: "#f5f3f0" }}>
-      <div style={{ maxWidth: 860, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-          <div style={{ flex: 1 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 800, color: "#1a1a1a", marginBottom: 4 }}>❓ 学生Q&A</h1>
-            <p style={{ fontSize: 13, color: "#8b7355", margin: 0 }}>管理学生端「常见问题」内容，保存后学生端即可看到最新内容。</p>
-          </div>
-          <button onClick={openNew}
-            style={{ padding: "8px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: "#d97706", color: "white" }}>
-            + 新建分组
-          </button>
+    <div className="flex min-h-0 flex-1 flex-col gap-3 p-6">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight text-[var(--app-color-text-primary)]">学生Q&A</h1>
+          <p className="mt-0.5 text-xs text-[var(--app-color-text-tertiary)]">
+            管理学生端「常见问题」内容。改完要点右上角「保存并发布」，学生端才会看到。
+          </p>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <AdminButton tone="secondary" onClick={openNew}>
+            <Plus className="h-3.5 w-3.5" aria-hidden />
+            新建分组
+          </AdminButton>
+          <AdminButton tone="primary" onClick={save} loading={pending}>
+            保存并发布
+          </AdminButton>
+        </div>
+      </div>
 
-        <div style={{ background: "white", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", border: "1px solid #e8e4df" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead style={{ background: "#fafaf9" }}>
-              <tr style={{ borderBottom: "2px solid #e8e4df" }}>
-                <th style={{ ...th, width: 200 }}>分组</th>
-                <th style={{ ...th, width: 90 }}>问答数</th>
-                <th style={{ ...th, width: 180 }}>操作</th>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="twin-table">
+            <thead>
+              <tr>
+                <th>分组</th>
+                <th className="w-[110px] text-right">问答数</th>
+                <th className="w-[170px] text-right">操作</th>
               </tr>
             </thead>
             <tbody>
               {groups.map((g, i) => (
                 <tr key={i}>
-                  <td style={{ ...td, fontWeight: 600, color: "#1a1a1a" }}>{g.category || <span style={{ color: "#b0a89a" }}>未命名分组</span>}</td>
-                  <td style={td}>{g.items.length} 条</td>
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button style={actionBtn} onClick={() => openEdit(i)}>编辑</button>
-                      <button style={{ ...actionBtn, color: "#dc2626" }} onClick={() => removeGroup(i)}>删除</button>
+                  <td className="font-medium text-[var(--app-color-text-primary)]">
+                    {g.category || <span className="text-[var(--app-color-text-tertiary)]">未命名分组</span>}
+                  </td>
+                  <td className="text-right tabular-nums text-xs">{g.items.length} 条</td>
+                  <td>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <AdminButton tone="ghost" className="h-7 px-2.5 text-xs" onClick={() => openEdit(i)}>
+                        编辑
+                      </AdminButton>
+                      <AdminButton tone="destructive" className="h-7 px-2.5 text-xs" onClick={() => removeGroup(i)}>
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        删除
+                      </AdminButton>
                     </div>
                   </td>
                 </tr>
               ))}
-              {groups.length === 0 && (
-                <tr><td colSpan={3} style={{ padding: 40, textAlign: "center", color: "#b0a89a", fontSize: 13 }}>暂无分组，点击右上角「+ 新建分组」开始</td></tr>
-              )}
             </tbody>
           </table>
-        </div>
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 16 }}>
-          <button onClick={save} disabled={pending}
-            style={{ padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "#22c55e", color: "white", opacity: pending ? 0.5 : 1 }}>
-            {pending ? "保存中…" : "✅ 保存并发布"}
-          </button>
+          {groups.length === 0 && !isFetching ? (
+            <EmptyState
+              icon={HelpCircle}
+              title="还没有问答分组"
+              description="点右上角「新建分组」，把学生常见问题按类别整理进去。"
+              className="m-4"
+            />
+          ) : null}
         </div>
       </div>
 
-      {/* 编辑弹窗 */}
-      {modalOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 24 }}>
-          <div style={{ background: "white", borderRadius: 14, width: "100%", maxWidth: 640, maxHeight: "85vh", overflowY: "auto", padding: "24px 26px", boxShadow: "0 20px 50px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", marginBottom: 16 }}>{editingIndex === null ? "新建分组" : "编辑分组"}</h3>
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingIndex === null ? "新建分组" : "编辑分组"}</DialogTitle>
+            <DialogDescription>分组名会作为学生端手风琴的小标题。</DialogDescription>
+          </DialogHeader>
 
-            <div style={{ marginBottom: 14 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#8b7355", display: "block", marginBottom: 4 }}>分组名称</span>
-              <input style={inputStyle} placeholder="如：门禁与进出" value={draftGroup.category} onChange={(e) => setDraftCategory(e.target.value)} />
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-[var(--app-color-text-secondary)]">分组名称</span>
+              <input
+                className={fieldInput}
+                placeholder="如：门禁与进出"
+                value={draftGroup.category}
+                onChange={(e) => setDraftCategory(e.target.value)}
+              />
+            </label>
+
+            <div className="text-xs font-medium text-[var(--app-color-text-secondary)]">
+              问答条目（{draftGroup.items.length} 条）
             </div>
 
-            <div style={{ fontSize: 11, fontWeight: 600, color: "#8b7355", marginBottom: 8 }}>问答条目（{draftGroup.items.length} 条）</div>
             {draftGroup.items.map((item, ii) => (
-              <div key={ii} style={{ marginBottom: 8, padding: "10px 12px", background: "#fafaf9", borderRadius: 8, border: "1px solid #e8e4df" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#b0a89a", flex: 1 }}>问答 {ii + 1}</span>
-                  {draftGroup.items.length > 1 && (
-                    <button style={{ ...actionBtn, color: "#dc2626" }} onClick={() => removeDraftItem(ii)}>删除</button>
-                  )}
+              <div
+                key={ii}
+                className="space-y-2 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 text-[11px] font-medium text-[var(--app-color-text-tertiary)]">
+                    问答 {ii + 1}
+                  </span>
+                  {draftGroup.items.length > 1 ? (
+                    <AdminButton tone="destructive" className="h-6 px-2 text-[11px]" onClick={() => removeDraftItem(ii)}>
+                      删除
+                    </AdminButton>
+                  ) : null}
                 </div>
-                <input style={{ ...inputStyle, marginBottom: 6 }} placeholder="问题" value={item.question} onChange={(e) => setDraftItem(ii, { question: e.target.value })} />
-                <textarea style={{ ...inputStyle, resize: "vertical", minHeight: 56 }} placeholder="答案" value={item.answer} onChange={(e) => setDraftItem(ii, { answer: e.target.value })} />
+                <input
+                  className={fieldInput}
+                  placeholder="问题"
+                  value={item.question}
+                  onChange={(e) => setDraftItem(ii, { question: e.target.value })}
+                />
+                <textarea
+                  className={`${fieldInput} min-h-14 resize-y`}
+                  placeholder="答案"
+                  value={item.answer}
+                  onChange={(e) => setDraftItem(ii, { answer: e.target.value })}
+                />
               </div>
             ))}
-            <button style={{ fontSize: 11, color: "#d97706", fontWeight: 600, cursor: "pointer", background: "none", border: "none", marginTop: 2 }} onClick={addDraftItem}>+ 添加问答</button>
 
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-              <button onClick={() => setModalOpen(false)}
-                style={{ padding: "8px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", background: "white", color: "#666", border: "1px solid #d4c9b8" }}>
-                取消
-              </button>
-              <button onClick={confirmModal}
-                style={{ padding: "8px 18px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none", background: "#d97706", color: "white" }}>
-                确定
-              </button>
-            </div>
+            <AdminButton tone="ghost" className="h-7 px-2 text-xs" onClick={addDraftItem}>
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              添加问答
+            </AdminButton>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <AdminButton tone="ghost" onClick={() => setModalOpen(false)}>
+              取消
+            </AdminButton>
+            <AdminButton tone="primary" onClick={confirmModal}>
+              确定
+            </AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

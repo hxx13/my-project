@@ -45,8 +45,9 @@ import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 import { RoomFloorPlan } from "./room-floor-plan/RoomFloorPlan";
 import { CellDetailPanel } from "./room-floor-plan/CellDetailPanel";
 import { useRoomFloorPlan } from "./room-floor-plan/useRoomFloorPlan";
+import { sortRoomsByCampusPreference } from "./room-floor-plan/roomOrder";
 import { useCageColors } from "@/features/cage-shelf/components/CageColorContext";
-import { fetchGroupRooms, type CageShelfCell } from "@/api/domains/cageShelf.api";
+import { fetchGroupRooms, fetchFullTree, type CageShelfCell } from "@/api/domains/cageShelf.api";
 import { useQuery } from "@tanstack/react-query";
 
 export function UiverseProfilePopup(props: PopupProps) {
@@ -113,8 +114,21 @@ export function UiverseProfilePopup(props: PopupProps) {
         enabled: Boolean(planRoomUser),
         staleTime: 5 * 60 * 1000,
     });
-    const groupRooms = groupRoomsQuery.data ?? [];
-    const planRoom = groupRooms[planRoomIdx] ?? groupRooms[0];
+    // 只用来给房间补校区（/group-rooms 不带校区字段）—— 与 useRoomFloorPlan 共用同一缓存键，不额外发请求
+    const treeQuery = useQuery({
+        queryKey: ["cageShelfFullTree"],
+        queryFn: fetchFullTree,
+        staleTime: 10 * 60 * 1000,
+        enabled: Boolean(planRoomUser),
+    });
+    // 后端按 roomId 升序下发，浦西 id 恒小于浦东 → 不排序就默认显示浦西
+    const groupRooms = useMemo(
+        () => sortRoomsByCampusPreference(groupRoomsQuery.data ?? [], treeQuery.data ?? []),
+        [groupRoomsQuery.data, treeQuery.data],
+    );
+    // 排序依赖树，树没到就先把平面图挂起 —— 否则会先按浦西渲染一帧再跳浦东
+    const roomsReady = groupRoomsQuery.isFetched && treeQuery.isFetched;
+    const planRoom = roomsReady ? groupRooms[planRoomIdx] ?? groupRooms[0] : undefined;
     const floorPlan = useRoomFloorPlan(
       planRoom?.roomId,
       planRoom?.roomName,
@@ -363,9 +377,9 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 racks={mineRacks}
                                 mineCount={mineRacks.length}
                                 columns={mineRacks.length < 3 ? 1 : 2}
-                                loading={floorPlan.isLoading || groupRoomsQuery.isLoading}
+                                loading={!roomsReady || floorPlan.isLoading || groupRoomsQuery.isLoading}
                                 error={floorPlan.isError}
-                                empty={mineRacks.length === 0}
+                                empty={roomsReady && mineRacks.length === 0}
                                 onCellClick={(c) => setDetailCell({ cell: c, masked: c.visible === false })}
                                 legendColors={cageColors}
                                 selfName={String(state.user?.name ?? "")}

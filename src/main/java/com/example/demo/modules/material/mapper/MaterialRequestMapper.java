@@ -17,6 +17,15 @@ public interface MaterialRequestMapper {
     List<MaterialRequest> selectAll(@Param("status") String status, @Param("applicantUserId") String applicantUserId,
                                      @Param("applicantGroup") String applicantGroup,
                                      @Param("offset") int offset, @Param("size") int size);
+    /**
+     * 申领审计导出页的候选单：人员/课题组/日期三条件都下沉到 SQL，取交集。
+     * 日期必须在 SQL 里过滤 —— 若先截最新 N 条再在 Java 里按日期筛，
+     * 查较早区间会得到空表（本地库 600+ 单，最新 500 条之外的老单永远看不见）。
+     */
+    List<MaterialRequest> selectAuditCandidates(@Param("applicantUserId") String applicantUserId,
+                                                @Param("applicantGroup") String applicantGroup,
+                                                @Param("from") String from, @Param("to") String to,
+                                                @Param("offset") int offset, @Param("size") int size);
     List<MaterialRequest> selectFinished(@Param("applicantUserId") String applicantUserId,
                                           @Param("applicantGroup") String applicantGroup,
                                           @Param("offset") int offset, @Param("size") int size);
@@ -57,9 +66,17 @@ public interface MaterialRequestMapper {
     List<Map<String, Object>> selectClaimLinesByItemId(@Param("itemId") Long itemId,
                                                         @Param("from") String from, @Param("to") String to,
                                                         @Param("applicantGroup") String applicantGroup,
+                                                        @Param("categoryId") Long categoryId, @Param("keyword") String keyword,
                                                         @Param("offset") int offset, @Param("size") int size);
     int countClaimLinesByItemId(@Param("itemId") Long itemId, @Param("from") String from, @Param("to") String to,
-                                @Param("applicantGroup") String applicantGroup);
+                                @Param("applicantGroup") String applicantGroup,
+                                @Param("categoryId") Long categoryId, @Param("keyword") String keyword);
+    /**
+     * 已出库却没写出库流水的申领明细（按单判缺）—— 补写流水的输入。
+     * 审计页原先只能把这种单反推成一行「申领出库（无流水补录）」且库存列必然是 [无]；
+     * 补写回流水表后这笔出库才真正进入库存倒推链。
+     */
+    List<Map<String, Object>> selectFulfilledLinesMissingOutbound(@Param("limit") int limit);
     int updateApplicantMeta(@Param("id") String id, @Param("applicantName") String applicantName,
                             @Param("applicantGroup") String applicantGroup);
     /** 撤销审核：清空审核/出库字段，回退到 PENDING */

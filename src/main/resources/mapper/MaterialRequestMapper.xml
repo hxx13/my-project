@@ -23,6 +23,14 @@
         <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
         ORDER BY created_at DESC LIMIT #{offset}, #{size}
     </select>
+    <select id="selectAuditCandidates" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE deleted = 0
+        <if test="applicantUserId != null and applicantUserId != ''">AND user_id = #{applicantUserId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
+        <if test="from != null and from != ''">AND DATE(created_at) &gt;= #{from}</if>
+        <if test="to != null and to != ''">AND DATE(created_at) &lt;= #{to}</if>
+        ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
     <select id="countAll" resultType="int">
         SELECT COUNT(1) FROM material_request WHERE deleted = 0
         <if test="status != null and status != ''">AND status = #{status}</if>
@@ -88,19 +96,35 @@
         SELECT DISTINCT applicant_group FROM material_request
         WHERE applicant_group IS NOT NULL AND applicant_group != '' AND deleted = 0
           AND status != 'DRAFT'
-        <if test="from != null and from != '' and to != null and to != ''">
-          AND DATE(created_at) BETWEEN #{from} AND #{to}
+        <if test="from != null and from != ''">
+          AND DATE(created_at) &gt;= #{from}
+        </if>
+        <if test="to != null and to != ''">
+          AND DATE(created_at) &lt;= #{to}
         </if>
         ORDER BY applicant_group
     </select>
     <select id="selectDistinctApplicants" resultType="java.util.HashMap">
         SELECT user_id AS userId, MAX(applicant_name) AS applicantName
         FROM material_request WHERE deleted = 0 AND status != 'DRAFT'
-        <if test="from != null and from != '' and to != null and to != ''">
-          AND DATE(created_at) BETWEEN #{from} AND #{to}
+        <if test="from != null and from != ''">
+          AND DATE(created_at) &gt;= #{from}
+        </if>
+        <if test="to != null and to != ''">
+          AND DATE(created_at) &lt;= #{to}
         </if>
         GROUP BY user_id ORDER BY MAX(applicant_name), user_id
     </select>
+    <!-- 按物品审计页的筛选取交集：物品/分类/关键词/课题组/日期条条独立生效（单边日期也生效）。
+         时间口径 COALESCE(出库时间, 建单时间) 与前端 buildItemFlowRows、导出 collectItemFlowExportRows 一致。 -->
+    <sql id="auditClaimFilters">
+        <if test="itemId != null and itemId > 0">AND l.item_id = #{itemId}</if>
+        <if test="categoryId != null and categoryId > 0">AND l.item_id IN (SELECT id FROM material_item WHERE category_id = #{categoryId})</if>
+        <if test="keyword != null and keyword != ''">AND l.snapshot_name LIKE CONCAT('%', #{keyword}, '%')</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND r.applicant_group = #{applicantGroup}</if>
+        <if test="from != null and from != ''">AND COALESCE(r.fulfilled_at, r.created_at) &gt;= CONCAT(#{from}, ' 00:00:00')</if>
+        <if test="to != null and to != ''">AND COALESCE(r.fulfilled_at, r.created_at) &lt; DATE_ADD(#{to}, INTERVAL 1 DAY)</if>
+    </sql>
     <select id="selectClaimLinesByItemId" resultType="java.util.HashMap">
         SELECT r.id AS requestId, r.user_id AS userId, r.applicant_name AS applicantName,
                r.applicant_group AS applicantGroup, r.status AS status,
@@ -111,19 +135,7 @@
         FROM material_request_line l
         JOIN material_request r ON l.request_id = r.id
         WHERE r.deleted = 0
-        <if test="itemId != null and itemId > 0">
-            AND l.item_id = #{itemId}
-        </if>
-        <if test="applicantGroup != null and applicantGroup != ''">
-            AND r.applicant_group = #{applicantGroup}
-        </if>
-        <if test="from != null and from != '' and to != null and to != ''">
-            AND (
-                (l.fulfilled_qty > 0 AND r.fulfilled_at IS NOT NULL AND DATE(r.fulfilled_at) BETWEEN #{from} AND #{to})
-                OR (l.fulfilled_qty &lt;= 0 AND DATE(r.created_at) BETWEEN #{from} AND #{to})
-                OR (l.fulfilled_qty > 0 AND r.fulfilled_at IS NULL AND DATE(r.created_at) BETWEEN #{from} AND #{to})
-            )
-        </if>
+        <include refid="auditClaimFilters"/>
         ORDER BY COALESCE(r.fulfilled_at, r.created_at) DESC
         LIMIT #{offset}, #{size}
     </select>
@@ -132,19 +144,26 @@
         FROM material_request_line l
         JOIN material_request r ON l.request_id = r.id
         WHERE r.deleted = 0
-        <if test="itemId != null and itemId > 0">
-            AND l.item_id = #{itemId}
-        </if>
-        <if test="applicantGroup != null and applicantGroup != ''">
-            AND r.applicant_group = #{applicantGroup}
-        </if>
-        <if test="from != null and from != '' and to != null and to != ''">
-            AND (
-                (l.fulfilled_qty > 0 AND r.fulfilled_at IS NOT NULL AND DATE(r.fulfilled_at) BETWEEN #{from} AND #{to})
-                OR (l.fulfilled_qty &lt;= 0 AND DATE(r.created_at) BETWEEN #{from} AND #{to})
-                OR (l.fulfilled_qty > 0 AND r.fulfilled_at IS NULL AND DATE(r.created_at) BETWEEN #{from} AND #{to})
-            )
-        </if>
+        <include refid="auditClaimFilters"/>
+    </select>
+    <!-- 已出库、但流水表里找不到 OUTBOUND 流水的申领明细 —— 审计页「无流水补录」的来源。
+         按**单**判缺（与前端补录的去重键一致），补写流水后此查询恒为空，等于自愈。 -->
+    <select id="selectFulfilledLinesMissingOutbound" resultType="java.util.HashMap">
+        SELECT r.id AS requestId, l.id AS lineId, l.item_id AS itemId,
+               l.fulfilled_qty AS fulfilledQty, r.user_id AS userId, r.fulfilled_by AS fulfilledBy,
+               COALESCE(r.fulfilled_at, r.created_at) AS outboundAt
+        FROM material_request_line l
+        JOIN material_request r ON l.request_id = r.id
+        WHERE r.deleted = 0
+          AND l.item_id IS NOT NULL
+          AND l.fulfilled_qty > 0
+          AND UPPER(r.status) IN ('FULFILLED', 'RECEIVED')
+          AND NOT EXISTS (
+              SELECT 1 FROM material_stock_movement m
+              WHERE m.request_id = r.id AND UPPER(m.movement_type) = 'OUTBOUND'
+          )
+        ORDER BY COALESCE(r.fulfilled_at, r.created_at)
+        LIMIT #{limit}
     </select>
     <update id="updateApplicantMeta">
         UPDATE material_request

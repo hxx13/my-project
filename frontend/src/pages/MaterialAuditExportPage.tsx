@@ -103,6 +103,8 @@ type ItemFlowRow = {
 };
 
 const PAGE_SIZE = 30;
+/** 一次取多少行参与表格/导出 —— 与后端 MaterialService.AUDIT_ROW_LIMIT 同值（两侧同窗口才不会把老单误判成「无流水补录」） */
+const AUDIT_ROW_LIMIT = 2000;
 
 function dateInRange(v: string | null | undefined, from: string, to: string): boolean {
   if (!v) return false;
@@ -135,13 +137,16 @@ function movementQtyDisplay(t: string, qty: number): string {
   return String(qty);
 }
 
-/** 物品来去流水：入库/出库/调整 + 无流水时从已出库申领补录 */
+/** 物品来去流水：入库/出库/调整 + 无流水时从已出库申领补录
+ *  @param movementWindowTruncated 流水窗口被截断（条数超上限）时不能断言「这单没有流水」——
+ *         宁可少一行补录，也不要凭空造一行库存 [无] 的假数据。 */
 function buildItemFlowRows(
   claims: MaterialItemClaimRow[],
   movements: MaterialStockMovementRow[],
   from: string,
   to: string,
   currentStockByItemId?: ReadonlyMap<number, number>,
+  movementWindowTruncated = false,
 ): ItemFlowRow[] {
   const stockAfterByMovementId = currentStockByItemId
     ? recomputeMovementStockAfter(movements, currentStockByItemId)
@@ -171,7 +176,7 @@ function buildItemFlowRows(
     });
   }
 
-  for (const c of claims) {
+  for (const c of movementWindowTruncated ? [] : claims) {
     const fulfilled = c.fulfilledQty ?? 0;
     if (fulfilled <= 0 || outboundRequestIds.has(c.requestId)) continue;
     const outboundTime = c.fulfilledAt || c.createdAt;
@@ -320,7 +325,8 @@ export default function MaterialAuditExportPage() {
     queryKey: ["material", "audit", "requests", { tab, from, to, applicantUserId: queryUserId, applicantGroup: queryGroup }],
     queryFn: () => fetchAuditExportRequests({
       page: 1,
-      size: 500,
+      // 与后端候选池 AUDIT_CANDIDATE_LIMIT 同值：以前 500 会让「最新 500 条之外」的老单永远看不见
+      size: AUDIT_ROW_LIMIT,
       ...auditDateParams(from, to),
       applicantUserId: queryUserId,
       applicantGroup: queryGroup,
@@ -384,22 +390,37 @@ export default function MaterialAuditExportPage() {
     enabled: isStaff && isItemTab,
   });
   const { data: items = [] } = useQuery({
-    queryKey: ["material", "admin", "items", categoryId, itemApplicantGroup],
-    queryFn: () => fetchAdminMaterialItems(categoryId === "" ? undefined : categoryId, itemApplicantGroup),
+    // 不带 categoryId：分类在客户端收窄下拉，这样 currentStockByItemId（库存倒推锚点）始终是全量物品，
+    // 否则选了分类之后，非该分类物品的流水行库存列会整列退化成 [无]。
+    queryKey: ["material", "admin", "items", itemApplicantGroup],
+    queryFn: () => fetchAdminMaterialItems(undefined, itemApplicantGroup),
     enabled: isStaff && isItemTab,
   });
   const selectedItemLabel = selectedItemId === ""
     ? "全部物品"
     : (items.find((it) => it.id === selectedItemId)?.name || String(selectedItemId));
 
+  /**
+   * 「按物品审计」的全部筛选取交集：物品 ∩ 分类 ∩ 关键词 ∩ 课题组 ∩ 日期。
+   * 分类/关键词以前只收窄物品下拉、不约束结果行，选了分类表格里照样混着别的分类。
+   * 日期必须下发给服务端：流水接口原先完全不接日期，只按最新 N 条截断，
+   * 于是「申领按日期取全、流水被截断」两侧窗口对不齐 —— 表格里就冒出「无流水补录」+ 库存 [无]。
+   */
+  const itemAuditFilters = useMemo(() => ({
+    ...auditDateParams(from, to),
+    ...(categoryId === "" ? {} : { categoryId }),
+    ...(itemKeyword.trim() ? { keyword: itemKeyword.trim() } : {}),
+    ...(itemApplicantGroup ? { applicantGroup: itemApplicantGroup } : {}),
+  }), [from, to, categoryId, itemKeyword, itemApplicantGroup]);
+
   const { data: movementData, isLoading: movementsLoading } = useQuery({
-    queryKey: ["material", "movements", selectedItemId || "all", from, to, itemApplicantGroup],
-    queryFn: () => fetchItemStockMovements(selectedItemId === "" ? null : Number(selectedItemId), { page: 1, size: 500, applicantGroup: itemApplicantGroup }),
+    queryKey: ["material", "movements", selectedItemId || "all", itemAuditFilters],
+    queryFn: () => fetchItemStockMovements(selectedItemId === "" ? null : Number(selectedItemId), { ...itemAuditFilters, page: 1, size: AUDIT_ROW_LIMIT }),
     enabled: isItemTab,
   });
   const { data: claimData, isLoading: claimsLoading } = useQuery({
-    queryKey: ["material", "item-claims", selectedItemId || "all", from, to, itemApplicantGroup],
-    queryFn: () => fetchItemClaimLines(selectedItemId === "" ? null : Number(selectedItemId), { ...auditDateParams(from, to), page: 1, size: 500, applicantGroup: itemApplicantGroup }),
+    queryKey: ["material", "item-claims", selectedItemId || "all", itemAuditFilters],
+    queryFn: () => fetchItemClaimLines(selectedItemId === "" ? null : Number(selectedItemId), { ...itemAuditFilters, page: 1, size: AUDIT_ROW_LIMIT }),
     enabled: isItemTab,
   });
   const currentStockByItemId = useMemo(() => {
@@ -410,7 +431,14 @@ export default function MaterialAuditExportPage() {
     return map;
   }, [items]);
   const itemFlowRows = useMemo(
-    () => buildItemFlowRows(claimData?.data ?? [], movementData?.data ?? [], from, to, currentStockByItemId),
+    () => buildItemFlowRows(
+      claimData?.data ?? [],
+      movementData?.data ?? [],
+      from,
+      to,
+      currentStockByItemId,
+      (movementData?.total ?? 0) > (movementData?.data?.length ?? 0),
+    ),
     [claimData, movementData, from, to, currentStockByItemId],
   );
   const itemFlowTotalPages = Math.max(1, Math.ceil(itemFlowRows.length / PAGE_SIZE));
@@ -427,8 +455,10 @@ export default function MaterialAuditExportPage() {
 
   const filteredItems = useMemo(() => {
     const k = itemKeyword.trim().toLowerCase();
-    return !k ? items : items.filter((it) => String(it.name || "").toLowerCase().includes(k));
-  }, [items, itemKeyword]);
+    return items.filter((it) =>
+      (categoryId === "" || it.categoryId === categoryId) &&
+      (!k || String(it.name || "").toLowerCase().includes(k)));
+  }, [items, itemKeyword, categoryId]);
 
   useEffect(() => {
     if (selectedItemId === "") return;
@@ -455,11 +485,10 @@ export default function MaterialAuditExportPage() {
     ? `个人审计-${isStaff ? (selectedUserId ? applicantLabel(selectedUserId) : "全部申领人") : "本人"}`
     : `课题组审计-${isStaff ? (selectedGroup || "全部课题组") : (selectedGroup || studentGroup || "未分配")}`);
 
-  /** 物品来去流水（按物品/物品+课题组页签）当前筛选参数。 */
+  /** 物品来去流水（按物品/物品+课题组页签）当前筛选参数 —— 与预览同一套交集条件。 */
   const itemFlowExportParams = () => ({
     itemId: selectedItemId === "" ? null : Number(selectedItemId),
-    ...auditDateParams(from, to),
-    applicantGroup: itemApplicantGroup,
+    ...itemAuditFilters,
   });
   const itemFlowExportLabel = () => {
     const groupSuffix = itemApplicantGroup ? `-${itemApplicantGroup}` : "";

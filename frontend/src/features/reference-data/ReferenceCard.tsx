@@ -185,12 +185,13 @@ export default function ReferenceCard({
         )}
 
         {quotaSegments.length > 0 && (
-          <div className="mt-0.5 truncate text-xs tabular-nums">
+          // 一个规格一行：四列网格下卡片很窄，挤成一行加省略号以后就只剩「雌性 …」，
+          // 等于看不到到底是哪个规格还剩多少
+          <div className="mt-0.5 text-xs tabular-nums">
             {quotaSegments.map((s, i) => (
-              <span key={i}>
-                {i > 0 && <span className="text-[var(--twin-mute)]"> · </span>}
-                <span className={s.unconfigured ? "text-[var(--twin-mute)]" : "text-[var(--twin-body)]"}>{s.text}</span>
-              </span>
+              <div key={i} title={s.text} className={`truncate ${s.unconfigured ? "text-[var(--twin-mute)]" : "text-[var(--twin-body)]"}`}>
+                {s.text}
+              </div>
             ))}
           </div>
         )}

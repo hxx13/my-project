@@ -24,11 +24,14 @@ import {
   SquarePen,
   Award,
   HeartPulse,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { type MobileCenterData } from "@/api/domains/mobileStudent.api";
+import type { AuthUserInfo } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { isStudentAccount } from "@/features/auth/postLoginNavigation";
+import { getImpersonationState } from "@/features/auth/impersonation";
 import { sendVerificationCode, bindEmailWithCode } from "@/api/domains/auth.api";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { toast } from "react-hot-toast";
@@ -77,6 +80,71 @@ export default function MobileMineTab({
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [currentWxPusher, setCurrentWxPusher] = useState(false);
   const personnelId = data.userId || "";
+
+  // ── 视角切换（双视角账号）──
+  // 与小程序 `pages/mine` 同一套：走 /api/auth/impersonate 换 token（身份 id 切学生、
+  // 角色沿用教职工），**并且本地把 accountSource 落成 STUDENT** —— 全站视角口径是
+  // isStudentAccount()，不落这一格的话笼架等页面仍按教职工视角判（H5 就是缺这一段）。
+  const [hasAroBinding, setHasAroBinding] = useState(false);
+  const [aroBindingName, setAroBindingName] = useState("");
+  const [viewSwitching, setViewSwitching] = useState(false);
+  const impersonating = Boolean(getImpersonationState()?.isImpersonating);
+  const canSwitchToStudent = !isStudentAccount() && hasAroBinding;
+  const canReturnToStaff = impersonating && authStorage.hasPreviousSession();
+
+  useEffect(() => {
+    if (!jwtMode || isStudentAccount()) return;
+    const token = authStorage.getToken();
+    if (!token) return;
+    fetch("/api/admin/account/binding", { headers: { Authorization: "Bearer " + token } })
+      .then((r) => r.json().catch(() => ({})))
+      .then((body) => {
+        setHasAroBinding(Boolean(body?.data?.aroUserId));
+        setAroBindingName(body?.data?.name || "");
+      })
+      .catch(() => setHasAroBinding(false));
+  }, [jwtMode]);
+
+  const handleSwitchToStudent = async () => {
+    const token = authStorage.getToken();
+    if (!token || viewSwitching) return;
+    setViewSwitching(true);
+    try {
+      const res = await fetch("/api/auth/impersonate", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token },
+      });
+      if (!res.ok) throw new Error("切换学生视图失败");
+      const wrapper = (await res.json()) as { data?: { token?: string; aroUserId?: string } };
+      const nextToken = wrapper?.data?.token;
+      const aroUserId = wrapper?.data?.aroUserId;
+      if (!nextToken || !aroUserId) throw new Error("切换学生视图失败");
+      // 先存原会话，供「返回教职工视角」恢复
+      authStorage.savePreviousSession();
+      authStorage.setAuth(nextToken, authStorage.getRole(), {
+        ...(authStorage.getUserInfo() ?? {}),
+        id: aroUserId,
+        username: aroUserId,
+        displayName: aroBindingName || aroUserId,
+        accountSource: "STUDENT",
+      } as AuthUserInfo);
+      toast.success("已切换学生视图");
+      // 视角变了要整页重判（isStudentAccount 是渲染期读的，不重载不会生效）
+      window.location.reload();
+    } catch (e) {
+      setViewSwitching(false);
+      toast.error(e instanceof Error ? e.message : "切换学生视图失败");
+    }
+  };
+
+  const handleReturnToStaff = () => {
+    if (!authStorage.restorePreviousSession()) {
+      toast.error("无原会话");
+      return;
+    }
+    toast.success("已返回教职工视角");
+    window.location.reload();
+  };
 
   // 读取本地管理的 contact_email
   useEffect(() => {
@@ -321,6 +389,56 @@ export default function MobileMineTab({
           </div>
         )}
       </div>
+
+      {/* 视角切换（双视角账号）：与小程序「我的」同一套入口 */}
+      {(canSwitchToStudent || canReturnToStaff) && (
+        <div
+          className="mx-4 mt-4 rounded-2xl overflow-hidden"
+          style={{
+            background: "rgba(255,255,255,0.55)",
+            boxShadow: "0 4px 14px rgba(15,23,42,0.03)",
+          }}
+        >
+          {canSwitchToStudent && (
+            <button
+              type="button"
+              disabled={viewSwitching}
+              onClick={handleSwitchToStudent}
+              className="flex items-center gap-3 px-4 py-3.5 w-full text-left active:bg-gray-50/50 transition-colors disabled:opacity-50"
+            >
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: "rgba(22,163,74,0.12)" }}
+              >
+                <ArrowLeftRight className="size-4" style={{ color: "#16a34a" }} strokeWidth={1.5} />
+              </div>
+              <span className="flex-1 text-[13px] font-medium" style={{ color: "#323233" }}>
+                {viewSwitching ? "切换中…" : "切换学生视图"}
+              </span>
+              <ChevronRight className="size-4" style={{ color: "#c8c9cc" }} />
+            </button>
+          )}
+          {canReturnToStaff && (
+            <button
+              type="button"
+              onClick={handleReturnToStaff}
+              className="flex items-center gap-3 px-4 py-3.5 w-full text-left active:bg-gray-50/50 transition-colors"
+              style={canSwitchToStudent ? { borderTop: "1px solid rgba(30,55,90,0.04)" } : undefined}
+            >
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: "rgba(234,88,12,0.12)" }}
+              >
+                <ArrowLeftRight className="size-4" style={{ color: "#ea580c" }} strokeWidth={1.5} />
+              </div>
+              <span className="flex-1 text-[13px] font-medium" style={{ color: "#323233" }}>
+                返回教职工视角
+              </span>
+              <ChevronRight className="size-4" style={{ color: "#c8c9cc" }} />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Quick links */}
       <div

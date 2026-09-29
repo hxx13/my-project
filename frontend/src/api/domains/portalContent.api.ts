@@ -14,6 +14,8 @@ export interface PortalCategory {
   sortOrder: number;
   status: number;
   coverUrl: string | null;
+  /** 该分类下的内容条数。仅管理端 `/portal/admin/categories` 下发 */
+  contentCount?: number;
 }
 
 export interface PortalContentView {
@@ -83,11 +85,19 @@ export async function fetchPublicCategories(scope?: ContentType): Promise<Portal
 
 /* ── 管理 API ── */
 
+/** 管理列表排序口径（与后端 listAdmin 的 ORDER BY 分支一一对应） */
+export type AdminContentSort = "updated" | "published" | "priority" | "weight";
+/** 优先级筛选值；'routine' 是兜底档，含未设置/非法值 */
+export type ContentPriority = "important" | "notice" | "routine";
+
 /** 管理：分页列表（含草稿/已删除） */
 export async function fetchAdminContents(params: {
   type?: ContentType;
   status?: ContentStatus;
   search?: string;
+  priority?: ContentPriority;
+  categoryId?: number;
+  sort?: AdminContentSort;
   page?: number;
   size?: number;
 }): Promise<PortalContentPage> {

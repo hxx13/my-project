@@ -19,6 +19,12 @@ export default function AdminPortalContentEditPage() {
   // 从列表页的 tab 带过来（`?type=NOTICE`）：新建时直接落在那一档，不用再选一遍内容类型
   const [searchParams] = useSearchParams();
   const initialType = TYPE_LABEL[searchParams.get("type") ?? ""] ?? "科研文章";
+  /**
+   * 「复制为新草稿」：带 `?copyFrom=<id>` 时读**源记录**回填内容，但保存仍走新建。
+   * 与编辑的区别只在保存分支（isNew）——所以复制来的副本不会顶掉原记录。
+   */
+  const copyFromId = Number(searchParams.get("copyFrom") || "") || undefined;
+  const isCopy = isNew && copyFromId !== undefined;
 
   const [contentType, setContentType] = useState(initialType);
   const [title, setTitle] = useState("");
@@ -41,7 +47,7 @@ export default function AdminPortalContentEditPage() {
   const [links, setLinks] = useState<{ url: string; label: string }[]>([]);
 
   const showExt = contentType === "模型资源";
-  const titleLabel = isNew ? "新建内容" : `编辑${contentType} #${id}`;
+  const titleLabel = isNew ? (isCopy ? "复制为新草稿" : "新建内容") : `编辑${contentType} #${id}`;
   const typeCode = TYPE_CODE[contentType] ?? "NEWS";
   /** 保存/取消回到列表页时带上当前档位，落地就是原来那个 tab */
   const backToList = `/content-manager/content?type=${typeCode}`;
@@ -53,11 +59,23 @@ export default function AdminPortalContentEditPage() {
   const scopeFilter = TYPE_SCOPE[typeCode];
   const catOptions = allCategories.filter((c) => c.scope === scopeFilter || c.scope === "ALL");
 
-  // 加载已有数据
+  // 加载已有数据：编辑读目标记录，复制读源记录
   const editId = isNew ? undefined : Number(id);
-  const { data: existing } = useAdminContent(editId ?? 0);
+  const { data: existing } = useAdminContent(editId ?? copyFromId ?? 0);
+  /**
+   * 表单必须等数据到位再挂载。富文本编辑器只在挂载时吃一次初始内容，之后靠 value 回灌；
+   * 先渲染空表单、再把数据补进 state，编辑器第二次进入（详情已被 react-query 缓存、
+   * 数据首帧就有）时会停在 `<p></p>`，点保存就把正文写没了。
+   *
+   * 复制（isCopy）同理要等——源记录没到之前挂载，等于又走一遍「空壳先渲染再回灌」。
+   */
+  const [formReady, setFormReady] = useState(isNew && !isCopy);
+  /** 只在首次拿到某条数据时回灌；后续重新取数不覆盖正在编辑的内容 */
+  const loadedIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (!existing) return;
+    if (loadedIdRef.current === existing.id) return;
+    loadedIdRef.current = existing.id;
     setContentType(TYPE_LABEL[existing.contentType] ?? "页面");
     setTitle(existing.title);
     setCategory(existing.categoryId ? String(existing.categoryId) : "");
@@ -83,18 +101,26 @@ export default function AdminPortalContentEditPage() {
     setSortOrder(existing.sortOrder ?? 0);
     setPriority((ext.priority as string) || "routine");
     if (Array.isArray(ext.links)) setLinks(ext.links as Array<{ url: string; label: string }>);
-  }, [existing]);
+    // 副本从草稿起算：标题加「（副本）」区分，发布时间清空 —— 不继承源记录的发布状态
+    if (isCopy) {
+      setTitle(`${existing.title}（副本）`);
+      setStatus("草稿");
+      setPublishedAt("");
+    }
+    setFormReady(true);
+  }, [existing, isCopy]);
 
   // 变更 hooks
   const createMut = useCreateContent();
   const updateMut = useUpdateContent();
 
+  // 摘要/封面传空串而不是 null：后端 update 是「null = 不动」的合并语义，传 null 等于删不掉
   const buildBody = (targetStatus: string) => ({
     contentType: typeCode,
     categoryId: category ? Number(category) : null,
     title,
-    summary: summary || null,
-    coverUrl: coverUrl || null,
+    summary,
+    coverUrl,
     contentHtml: bodyHtml || null,
     status: (targetStatus === "已发布" ? "PUBLISHED" : targetStatus === "草稿" ? "DRAFT" : "ARCHIVED") as ContentStatus,
     publishedAt: publishedAt || null,
@@ -155,6 +181,14 @@ export default function AdminPortalContentEditPage() {
   const selectStyle: React.CSSProperties = { ...inputStyle, cursor: "pointer" };
   const fg = (flex = 1): React.CSSProperties => ({ display: "flex", flexDirection: "column", gap: 4, flex });
   const row: React.CSSProperties = { display: "flex", gap: 16, marginBottom: 14 };
+
+  if (!formReady) {
+    return (
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f3f0", color: "#b0a89a", fontSize: 13 }}>
+        加载中…
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: 24, background: "#f5f3f0" }}>

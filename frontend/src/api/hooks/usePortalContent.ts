@@ -15,6 +15,8 @@ import {
   purgeContent,
   type ContentType,
   type ContentStatus,
+  type ContentPriority,
+  type AdminContentSort,
   type PortalContentUpsertRequest,
 } from "@/api/domains/portalContent.api";
 
@@ -58,12 +60,16 @@ export function useAdminContents(params: {
   type?: ContentType;
   status?: ContentStatus;
   search?: string;
+  priority?: ContentPriority;
+  categoryId?: number;
+  sort?: AdminContentSort;
   page?: number;
   size?: number;
 }) {
   return useQuery({
     queryKey: portalContentQueryKeys.adminList(params),
     queryFn: () => fetchAdminContents(params),
+    placeholderData: (prev) => prev,
   });
 }
 

@@ -67,20 +67,52 @@
         <if test="search != null and search != ''">AND (title LIKE CONCAT('%',#{search},'%') OR summary LIKE CONCAT('%',#{search},'%'))</if>
     </select>
 
+    <!-- 管理列表筛选：list / count 共用一份，避免两处条件漂移 -->
+    <sql id="adminFilter">
+        <!-- 内容管理只管三类内容；页面有独立入口（页面管理），不进这个列表。
+             放在 SQL 里而不是前端过滤：前端过滤会让「先取一页再筛」的条数与翻页全错。 -->
+        <if test="type == null or type == ''">AND content_type != 'PAGE'</if>
+        <if test="type != null and type != ''">AND content_type = #{type}</if>
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        <if test="categoryId != null">AND category_id = #{categoryId}</if>
+        <if test="search != null and search != ''">AND title LIKE CONCAT('%',#{search},'%')</if>
+        <!-- 优先级存在 extension_json 里（不是列），口径与 listPublic 的 sort='priority' 一致。
+             'routine' 是兜底档：凡不是 important/notice 的都算常规，含 NULL / 缺字段 / 非法值。
+             所以不能用 = 比较 —— NULL 参与 = 恒不成立，那一批行会整批消失。 -->
+        <if test="priority != null and priority != ''">
+            <choose>
+                <when test="priority == 'routine'">
+                    AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extension_json, '$.priority')), '') NOT IN ('important', 'notice')
+                </when>
+                <otherwise>
+                    AND JSON_UNQUOTE(JSON_EXTRACT(extension_json, '$.priority')) = #{priority}
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
     <!-- 管理列表 -->
     <select id="listAdmin" resultType="com.example.demo.modules.portal.entity.PortalContent">
         SELECT * FROM portal_content WHERE deleted = 0
-        <if test="type != null and type != ''">AND content_type = #{type}</if>
-        <if test="status != null and status != ''">AND status = #{status}</if>
-        <if test="search != null and search != ''">AND title LIKE CONCAT('%',#{search},'%')</if>
-        ORDER BY updated_at DESC LIMIT #{limit} OFFSET #{offset}
+        <include refid="adminFilter" />
+        ORDER BY
+        <choose>
+            <when test="sort == 'published'">published_at DESC</when>
+            <when test="sort == 'priority'">
+                CASE JSON_UNQUOTE(JSON_EXTRACT(extension_json, '$.priority'))
+                    WHEN 'important' THEN 2 WHEN 'notice' THEN 1 ELSE 0 END DESC,
+                published_at DESC
+            </when>
+            <!-- 权重越大越靠前（与编辑页「首页排序权重 越大越靠前」一致） -->
+            <when test="sort == 'weight'">sort_order DESC, published_at DESC</when>
+            <otherwise>updated_at DESC</otherwise>
+        </choose>
+        LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="countAdmin" resultType="int">
         SELECT COUNT(1) FROM portal_content WHERE deleted = 0
-        <if test="type != null and type != ''">AND content_type = #{type}</if>
-        <if test="status != null and status != ''">AND status = #{status}</if>
-        <if test="search != null and search != ''">AND title LIKE CONCAT('%',#{search},'%')</if>
+        <include refid="adminFilter" />
     </select>
 
     <!-- 软删除 -->
@@ -104,6 +136,14 @@
 
     <select id="countRecycle" resultType="int">
         SELECT COUNT(1) FROM portal_content WHERE deleted = 1
+    </select>
+
+    <!-- 管理端分类页：每个分类下还在的内容条数。只给管理端用，公开分类接口不查这个 -->
+    <select id="countContentsByCategory" resultType="map">
+        SELECT category_id AS categoryId, COUNT(1) AS contentCount
+        FROM portal_content
+        WHERE deleted = 0 AND category_id IS NOT NULL
+        GROUP BY category_id
     </select>
 
     <delete id="hardDeleteById">

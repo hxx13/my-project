@@ -3,7 +3,6 @@ package com.example.demo.modules.referencedata.service;
 import com.example.demo.modules.animalorder.service.AnimalOrderTimePolicyService;
 import com.example.demo.modules.referencedata.dto.OrderLineCycleUsage;
 import com.example.demo.modules.referencedata.entity.RefData;
-import com.example.demo.modules.referencedata.mapper.RefCartMapper;
 import com.example.demo.modules.referencedata.mapper.RefOrderLineMapper;
 import com.example.demo.modules.referencedata.mapper.ReferenceDataMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,8 +29,8 @@ class SpecQuotaServiceTest {
         return r;
     }
 
-    private static SpecQuotaService service(RefCartMapper cart, RefOrderLineMapper line, ReferenceDataMapper data) {
-        return new SpecQuotaService(cart, line, data, new ObjectMapper());
+    private static SpecQuotaService service(RefOrderLineMapper line, ReferenceDataMapper data) {
+        return new SpecQuotaService(line, data, new ObjectMapper());
     }
 
     private static OrderLineCycleUsage usage(int qty, String status) {
@@ -43,75 +42,61 @@ class SpecQuotaServiceTest {
 
     @Test
     void 未配上限_availableQty返回null而非0() {
-        RefCartMapper cart = mock(RefCartMapper.class);
         RefOrderLineMapper line = mock(RefOrderLineMapper.class);
         ReferenceDataMapper data = mock(ReferenceDataMapper.class);
         when(data.findById(REF)).thenReturn(refData("{\"priceEnabled\":true,\"price\":10}"));
-        when(cart.sumQtyByCycle(any(), any(), any(), anyBoolean())).thenReturn(0);
         when(line.listCycleUsage(any(), any(), any())).thenReturn(List.of());
 
-        assertNull(service(cart, line, data).availableQty(REF, SPEC, CYCLE));
+        assertNull(service(line, data).availableQty(REF, SPEC, CYCLE));
     }
 
     @Test
     void 无规格物品_读flatQuota() {
-        RefCartMapper cart = mock(RefCartMapper.class);
         RefOrderLineMapper line = mock(RefOrderLineMapper.class);
         ReferenceDataMapper data = mock(ReferenceDataMapper.class);
         when(data.findById(REF)).thenReturn(refData("{\"quota\":30}"));
-        when(cart.sumQtyByCycle(any(), any(), any(), anyBoolean())).thenReturn(0);
         when(line.listCycleUsage(any(), any(), any())).thenReturn(List.of());
 
-        SpecQuotaService svc = service(cart, line, data);
+        SpecQuotaService svc = service(line, data);
         assertEquals(30, svc.resolveCap(REF, null));
         assertEquals(30, svc.availableQty(REF, null, CYCLE));
     }
 
     @Test
-    void 占用同时算购物车与已下单() {
-        RefCartMapper cart = mock(RefCartMapper.class);
+    void 购物车不占额度_已用只算订单行() {
         RefOrderLineMapper line = mock(RefOrderLineMapper.class);
         ReferenceDataMapper data = mock(ReferenceDataMapper.class);
         when(data.findById(REF)).thenReturn(refData("{\"specQuotas\":{\"性别: 雌性\":20}}"));
-        when(cart.sumQtyByCycle(REF, SPEC, CYCLE, true)).thenReturn(3);
+        // 该规格车里还压着 3（不在本测试里体现）：加购不该吃掉额度，所以已用仍是订单那 5
         when(line.listCycleUsage(REF, SPEC, CYCLE)).thenReturn(List.of(usage(5, "PENDING")));
 
-        SpecQuotaService svc = service(cart, line, data);
-        assertEquals(8, svc.usedQty(REF, SPEC, CYCLE));
-        assertEquals(12, svc.availableQty(REF, SPEC, CYCLE));
+        SpecQuotaService svc = service(line, data);
+        assertEquals(5, svc.usedQty(REF, SPEC, CYCLE));
+        assertEquals(15, svc.availableQty(REF, SPEC, CYCLE));
     }
 
     @Test
     void 已作废订单不消耗() {
-        RefCartMapper cart = mock(RefCartMapper.class);
         RefOrderLineMapper line = mock(RefOrderLineMapper.class);
         ReferenceDataMapper data = mock(ReferenceDataMapper.class);
         when(data.findById(REF)).thenReturn(refData("{\"specQuotas\":{\"性别: 雌性\":20}}"));
-        when(cart.sumQtyByCycle(REF, SPEC, CYCLE, true)).thenReturn(0);
         when(line.listCycleUsage(REF, SPEC, CYCLE)).thenReturn(List.of(
                 usage(5, "REJECTED"),
                 usage(3, "CANCELLED"),
                 usage(2, null),
                 usage(4, "APPROVED")));
 
-        assertEquals(6, service(cart, line, data).usedQty(REF, SPEC, CYCLE));
+        assertEquals(6, service(line, data).usedQty(REF, SPEC, CYCLE));
     }
 
     @Test
-    void NULL周期按当前周期计_默认includeNull为true() {
-        RefCartMapper cart = mock(RefCartMapper.class);
+    void 上限被调小到低于已下单量_可用量为负由调用方兜底() {
         RefOrderLineMapper line = mock(RefOrderLineMapper.class);
         ReferenceDataMapper data = mock(ReferenceDataMapper.class);
-        when(data.findById(REF)).thenReturn(refData("{\"quota\":100}"));
-        when(cart.sumQtyByCycle(any(), any(), any(), anyBoolean())).thenReturn(0);
-        when(line.listCycleUsage(any(), any(), any())).thenReturn(List.of());
+        when(data.findById(REF)).thenReturn(refData("{\"specQuotas\":{\"性别: 雌性\":3}}"));
+        when(line.listCycleUsage(REF, SPEC, CYCLE)).thenReturn(List.of(usage(8, "APPROVED")));
 
-        SpecQuotaService svc = service(cart, line, data);
-        svc.usedQty(REF, SPEC, CYCLE);         // 3 参：默认把 NULL 旧行计入当前周期
-        svc.usedQty(REF, SPEC, CYCLE, false);  // 预约周期：不带 NULL
-
-        verify(cart).sumQtyByCycle(REF, SPEC, CYCLE, true);
-        verify(cart).sumQtyByCycle(REF, SPEC, CYCLE, false);
+        assertEquals(-5, service(line, data).availableQty(REF, SPEC, CYCLE));
     }
 
     @Test

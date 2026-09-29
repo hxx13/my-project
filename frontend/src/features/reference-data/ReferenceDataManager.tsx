@@ -347,7 +347,9 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   }, [items, searchKeyword]);
 
   // 一屏卡片逐规格剩余量：一次批量请求 + 15s 轮询，切校区/品类/周期时重查
-  const specQuotaByKey = useSpecQuotaBatch(filteredItems, templates, campus ?? undefined, currentCycle);
+  // quotaToken：下单会扣额度，自增一次让剩余量立刻重查，不等下一轮轮询
+  const [quotaToken, setQuotaToken] = useState(0);
+  const specQuotaByKey = useSpecQuotaBatch(filteredItems, templates, campus ?? undefined, currentCycle, quotaToken);
 
   const cartLines = useMemo((): CartLine[] => {
     return (serverCartItems || []).map((ci: RefCartItem) => {
@@ -768,6 +770,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
           setSubmitRemark("");
           void qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
           void refetchCart();
+          setQuotaToken((t) => t + 1); // 下单即扣额度：卡片剩余量立刻重查
         },
       },
     );
