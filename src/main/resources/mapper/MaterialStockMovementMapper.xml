@@ -19,7 +19,7 @@
         <if test="itemId != null and itemId > 0">AND m.item_id = #{itemId}</if>
         <if test="categoryId != null and categoryId > 0">AND i.category_id = #{categoryId}</if>
         <if test="keyword != null and keyword != ''">AND i.name LIKE CONCAT('%', #{keyword}, '%')</if>
-        <if test="applicantGroup != null and applicantGroup != ''">AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND (r.applicant_group = #{applicantGroup} OR (r.applicant_group IS NULL AND p.project_group_name = #{applicantGroup}))</if>
         <if test="from != null and from != ''">AND m.created_at &gt;= CONCAT(#{from}, ' 00:00:00')</if>
         <if test="to != null and to != ''">AND m.created_at &lt;= CONCAT(#{to}, ' 23:59:59')</if>
     </sql>
