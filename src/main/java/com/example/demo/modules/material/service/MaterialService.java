@@ -2226,21 +2226,60 @@ public class MaterialService {
         }
     }
 
+    /**
+     * 申领单的课题组 —— **以服务端人员库为准**，客户端传来的值只作兜底。
+     *
+     * <p>历史上这里反过来（preferred 优先），而学生中心前端把 {@code departmentName} 当课题组提交，
+     * 于是院系被原样写进 {@code material_request.applicant_group}：审计页的课题组列显示成部门，
+     * 按真正的课题组筛选这些单也永远筛不到。派生字段不该信任客户端。</p>
+     */
     private String resolveApplicantGroup(String userId, String preferred) {
-        if (StringUtils.hasText(preferred)) {
-            return preferred.trim();
-        }
         try {
             AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
-            if (personnel == null) return null;
-            String resolved = personnel.getResolvedProjectGroupNames();
-            if (!StringUtils.hasText(resolved)) return null;
-            List<String> groups = PersonnelProjectGroupUtil.splitGroups(resolved);
-            return groups.isEmpty() ? resolved.trim() : groups.get(0);
+            if (personnel != null) {
+                String resolved = personnel.getResolvedProjectGroupNames();
+                if (StringUtils.hasText(resolved)) {
+                    List<String> groups = PersonnelProjectGroupUtil.splitGroups(resolved);
+                    String first = groups.isEmpty() ? resolved.trim() : groups.get(0);
+                    if (StringUtils.hasText(first)) return first;
+                }
+            }
         } catch (Exception e) {
             log.warn("解析申领人课题组失败 userId={}: {}", userId, e.getMessage());
-            return null;
         }
+        return StringUtils.hasText(preferred) ? preferred.trim() : null;
+    }
+
+    /**
+     * 回修历史脏值：申领单的课题组被写成了本人的院系。
+     *
+     * <p>判据收得很窄 —— 只有当单据上的组**恰好等于这个人自己的 department_name**、且这个人现在有课题组时
+     * 才改，改成与新建单同口径的「第一课题组」。没有课题组的人（本来就该显示部门）不动，其余历史组不动，
+     * 所以不会覆盖任何人手工/正常流程写下的值。幂等：改完再探测为空。</p>
+     */
+    public int repairRequestGroupWrittenAsDepartment(int limit) {
+        List<MaterialRequest> rows;
+        try {
+            rows = requestMapper.selectGroupEqualsOwnDepartment(Math.max(1, limit));
+        } catch (Exception e) {
+            log.warn("[material] 院系当课题组的脏值探测失败: {}", e.getMessage());
+            return 0;
+        }
+        int fixed = 0;
+        for (MaterialRequest r : rows) {
+            String group = resolveApplicantGroup(r.getUserId(), null);
+            if (!StringUtils.hasText(group) || group.equals(r.getApplicantGroup())) continue;
+            try {
+                requestMapper.updateApplicantMeta(r.getId(), r.getApplicantName(), group);
+                fixed++;
+            } catch (Exception e) {
+                log.warn("[material] 回修课题组失败 id={}: {}", r.getId(), e.getMessage());
+            }
+        }
+        if (fixed > 0) {
+            log.info("[material] 已回修 {} 张申领单的课题组（原值是本人院系）", fixed);
+        }
+        return fixed;
     }
 
     private void enrichMovementApplicant(MaterialStockMovementView v) {

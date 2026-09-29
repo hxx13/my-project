@@ -178,6 +178,18 @@
         SET applicant_name = #{applicantName}, applicant_group = #{applicantGroup}
         WHERE id = #{id}
     </update>
+    <!-- 历史脏值探测：单据上的课题组恰好等于**这个人自己的部门名**（学生中心前端曾把 departmentName
+         当课题组提交），且这个人现在有正常课题组 —— 这种单在审计页按课题组永远筛不到。 -->
+    <select id="selectGroupEqualsOwnDepartment" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT r.* FROM material_request r
+        JOIN aro_personnel p ON p.user_id = r.user_id
+        WHERE r.deleted = 0
+          AND r.applicant_group = p.department_name
+          AND p.project_group_name IS NOT NULL AND p.project_group_name &lt;&gt; ''
+          AND p.project_group_name &lt;&gt; p.department_name
+        ORDER BY r.created_at
+        LIMIT #{limit}
+    </select>
     <update id="resetForRevoke">
         UPDATE material_request
         SET status = 'PENDING',

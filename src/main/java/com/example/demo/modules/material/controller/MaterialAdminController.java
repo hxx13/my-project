@@ -570,6 +570,17 @@ public class MaterialAdminController {
         return Result.success(excelExportService.summarizeItemFlow(rows));
     }
 
+    @PostMapping("/maintenance/repair-request-groups")
+    @Operation(summary = "回修「课题组被写成院系」的历史申领单（幂等，可重复执行）")
+    public Result<Map<String, Object>> repairRequestGroups(@RequestHeader(value = "Authorization", required = false) String auth) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.ADMIN.getLevel())
+            return Result.error("无权限");
+        int fixed = materialService.repairRequestGroupWrittenAsDepartment(5000);
+        return Result.success(Map.of("fixed", fixed));
+    }
+
     @PostMapping("/maintenance/backfill-outbound-movements")
     @Operation(summary = "补写缺失的出库流水（已出库却没有 OUTBOUND 流水的单；幂等，可重复执行）")
     public Result<Map<String, Object>> backfillOutboundMovements(@RequestHeader(value = "Authorization", required = false) String auth) {
