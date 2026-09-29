@@ -13,4 +13,5 @@ public class PortalContentUpsertRequest {
     private String extensionJson;
     private String status;
     private String publishedAt;
+    private Integer sortOrder;
 }

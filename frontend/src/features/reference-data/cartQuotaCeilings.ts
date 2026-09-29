@@ -1,14 +1,15 @@
 /**
  * 购物车行的周期上限算术（小程序 `_reconcileQuota` 是同一套，改这里要同步改那边）。
  *
- * 关键是 `available` **已经把本行的数量算进「已用」了**：服务端 `SpecQuotaService.usedQty`
- * 累加的是「全部购物车行 + 未作废订单行」。所以对一行来说：
+ * `available` = 上限 − **订单已占**（服务端 `SpecQuotaService.usedQty`）。**购物车不占额度**：
+ * 加购只是意向，扣减发生在提交订单那一刻，所以这里的数不会因为自己往车里加东西而变小。
  *
- * - 全组可保留总量 = `available + 全组数量`，且**下限取 0**（可用量本身可以是负数）；
- * - 本行天花板 = 本行数量 + 全组还能加的余量。
+ * 由此两条规则：
+ * - 全组可保留总量 = `max(0, available)`，且**下限取 0**（上限被调小、订单已超额时，可用量是负的）；
+ * - 本行天花板 = 本行现有数量 + 全组还能加的余量。
  *
- * 直接拿 `available` 当「本行最多可订」就是自己减自己：上限 3 加满 3 会被判超量清零，
- * 加到 5 会算出 `3 - 5 = -2` 并写回购物车。
+ * 「收敛」只在一个场景发生：**别人下单把额度吃掉**，导致本车已填数量超过剩余 —— 那时削掉超出部分
+ * 并弹提示（不静默改数）。
  */
 
 export interface CartQuotaRow {
@@ -31,7 +32,7 @@ export function planCartQuota(rows: CartQuotaRow[], available: number): CartQuot
   if (!rows.length || !Number.isFinite(available)) return { ceilings, converge };
 
   const groupTotal = rows.reduce((s, r) => s + r.qty, 0);
-  const allowedTotal = Math.max(0, available + groupTotal);
+  const allowedTotal = Math.max(0, available); // 购物车不占额度，剩余多少就能在车里留多少
   const headroom = Math.max(0, allowedTotal - groupTotal);
   let remaining = allowedTotal;
   for (const r of rows) {

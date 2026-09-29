@@ -345,14 +345,16 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/audit/item/{itemId}/claims")
-    @Operation(summary = "按物品查询申领明细（可选课题组过滤）")
+    @Operation(summary = "按物品查询申领明细（物品/分类/关键词/课题组/日期取交集，单边日期也生效）")
     public Result<Map<String, Object>> itemClaimLines(@PathVariable Long itemId,
                                                        @RequestParam(required = false) String from,
                                                        @RequestParam(required = false) String to,
                                                        @RequestParam(required = false) String applicantGroup,
+                                                       @RequestParam(required = false) Long categoryId,
+                                                       @RequestParam(required = false) String keyword,
                                                        @RequestParam(defaultValue = "1") int page,
                                                        @RequestParam(defaultValue = "50") int size) {
-        return materialService.listItemClaimLines(itemId, from, to, applicantGroup, page, size);
+        return materialService.listItemClaimLines(itemId, from, to, applicantGroup, categoryId, keyword, page, size);
     }
 
     @GetMapping("/eligible-reviewers")
@@ -408,12 +410,16 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/audit/item/{itemId}/movements")
-    @Operation(summary = "按物品查询库存流水（可选课题组过滤）")
+    @Operation(summary = "按物品查询库存流水（物品/分类/关键词/课题组/日期取交集，单边日期也生效）")
     public Result<Map<String, Object>> itemStockMovements(@PathVariable Long itemId,
                                                            @RequestParam(required = false) String applicantGroup,
+                                                           @RequestParam(required = false) Long categoryId,
+                                                           @RequestParam(required = false) String keyword,
+                                                           @RequestParam(required = false) String from,
+                                                           @RequestParam(required = false) String to,
                                                            @RequestParam(defaultValue = "1") int page,
                                                            @RequestParam(defaultValue = "20") int size) {
-        return materialService.listItemStockMovements(itemId, applicantGroup, page, size);
+        return materialService.listItemStockMovements(itemId, applicantGroup, categoryId, keyword, from, to, page, size);
     }
 
     @GetMapping("/stats/by-group")
@@ -514,6 +520,8 @@ public class MaterialAdminController {
                                                        @RequestParam(defaultValue = "2000-01-01") String from,
                                                        @RequestParam(defaultValue = "2099-12-31") String to,
                                                        @RequestParam(required = false) String applicantGroup,
+                                                       @RequestParam(required = false) Long categoryId,
+                                                       @RequestParam(required = false) String keyword,
                                                        @RequestParam(required = false) String exportLabel,
                                                        @RequestParam(value = "levels", required = false) String levels,
                                                        @RequestParam(value = "excludeBlocks", required = false) String excludeBlocks) {
@@ -527,7 +535,8 @@ public class MaterialAdminController {
                     .body("需要教职工权限".getBytes(StandardCharsets.UTF_8));
         }
         try {
-            List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(itemId, from, to, applicantGroup);
+            List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(
+                    itemId, from, to, applicantGroup, categoryId, keyword);
             byte[] body = excelExportService.buildItemFlowSheet(rows, SubtotalConfig.parse(levels, excludeBlocks));
             String label = StringUtils.hasText(exportLabel) ? exportLabel
                     : (itemId != null && itemId > 0 ? ("物品-" + itemId) : "全部物品");
@@ -548,14 +557,28 @@ public class MaterialAdminController {
                                                            @PathVariable Long itemId,
                                                            @RequestParam(defaultValue = "2000-01-01") String from,
                                                            @RequestParam(defaultValue = "2099-12-31") String to,
-                                                           @RequestParam(required = false) String applicantGroup) {
+                                                           @RequestParam(required = false) String applicantGroup,
+                                                           @RequestParam(required = false) Long categoryId,
+                                                           @RequestParam(required = false) String keyword) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
             return Result.error("需要教职工权限");
         }
-        List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(itemId, from, to, applicantGroup);
+        List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(
+                itemId, from, to, applicantGroup, categoryId, keyword);
         return Result.success(excelExportService.summarizeItemFlow(rows));
+    }
+
+    @PostMapping("/maintenance/backfill-outbound-movements")
+    @Operation(summary = "补写缺失的出库流水（已出库却没有 OUTBOUND 流水的单；幂等，可重复执行）")
+    public Result<Map<String, Object>> backfillOutboundMovements(@RequestHeader(value = "Authorization", required = false) String auth) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.ADMIN.getLevel())
+            return Result.error("无权限");
+        int written = materialService.backfillMissingOutboundMovements(2000);
+        return Result.success(Map.of("written", written));
     }
 
     @PostMapping("/maintenance/purge-orphan-movements")

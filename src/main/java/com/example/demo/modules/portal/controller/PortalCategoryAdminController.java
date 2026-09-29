@@ -24,7 +24,7 @@ public class PortalCategoryAdminController {
     @GetMapping
     @Operation(summary = "全部分类")
     public Result<List<PortalCategoryView>> listAll() {
-        return Result.success(service.listCategories(null));
+        return Result.success(service.listAdminCategories());
     }
 
     @PostMapping

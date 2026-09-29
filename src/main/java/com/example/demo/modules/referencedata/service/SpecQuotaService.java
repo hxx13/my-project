@@ -2,7 +2,6 @@ package com.example.demo.modules.referencedata.service;
 
 import com.example.demo.modules.referencedata.dto.OrderLineCycleUsage;
 import com.example.demo.modules.referencedata.entity.RefData;
-import com.example.demo.modules.referencedata.mapper.RefCartMapper;
 import com.example.demo.modules.referencedata.mapper.RefOrderLineMapper;
 import com.example.demo.modules.referencedata.mapper.ReferenceDataMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +13,10 @@ import java.util.Map;
 
 /**
  * 每周期库存上限：上限是配置（卡牌 fieldData 里的 {@code specQuotas} / {@code quota}），
- * 占用是**算出来的**（目标周期 = 该周期的、未作废行数量之和），不落表、也不需要重置任务。
+ * 占用是**算出来的**（目标周期 = 该周期的、未作废**订单行**数量之和），不落表、也不需要重置任务。
+ *
+ * <p><b>购物车不占额度。</b>加购只是意向，扣减发生在提交订单那一刻 —— 用户口径：
+ * 加购不该让卡片上的「剩余」掉下来，否则一个人把购物车塞满，别人就都订不了了，而其实谁都没下单。
  *
  * <p>规格键与价格完全同源：{@code specQuotas} 用与 {@code specPrices} 相同的键
  * {@code "模板名: 选项"}，即购物车行 {@code spec_selections.option} 的原始串，调用方已用
@@ -23,38 +25,31 @@ import java.util.Map;
 @Service
 public class SpecQuotaService {
 
-    private final RefCartMapper cartMapper;
     private final RefOrderLineMapper orderLineMapper;
     private final ReferenceDataMapper referenceDataMapper;
     private final ObjectMapper objectMapper;
 
-    public SpecQuotaService(RefCartMapper cartMapper,
-                            RefOrderLineMapper orderLineMapper,
+    public SpecQuotaService(RefOrderLineMapper orderLineMapper,
                             ReferenceDataMapper referenceDataMapper,
                             ObjectMapper objectMapper) {
-        this.cartMapper = cartMapper;
         this.orderLineMapper = orderLineMapper;
         this.referenceDataMapper = referenceDataMapper;
         this.objectMapper = objectMapper;
     }
 
-    /** 已用量 = 目标周期 = cycle 的、未作废的行数量之和（购物车行 + 已下单行）。NULL 周期按当前周期计。 */
-    public int usedQty(Long refDataId, String specOptionLabel, LocalDate cycle) {
-        return usedQty(refDataId, specOptionLabel, cycle, true);
-    }
-
     /**
-     * @param includeNullCycle 购物车侧是否把「未写周期（NULL）」的旧行也计入。旧行都是本周期加的，
-     *                         只有查当前周期时才该带它们；预约周期查询传 false。
+     * 已用量 = 目标周期 = cycle 的、未作废**订单行**数量之和（不含购物车）。
+     *
+     * <p>周期存 NULL 的历史行一律不计入任何具体周期 —— 它们没有落到某个到货日上。
      */
-    public int usedQty(Long refDataId, String specOptionLabel, LocalDate cycle, boolean includeNullCycle) {
+    public int usedQty(Long refDataId, String specOptionLabel, LocalDate cycle) {
         int orderSide = 0;
         for (OrderLineCycleUsage u : orderLineMapper.listCycleUsage(refDataId, specOptionLabel, cycle)) {
             if (consumes(u.getOrderStatus())) {
                 orderSide += u.getQuantity();
             }
         }
-        return cartMapper.sumQtyByCycle(refDataId, specOptionLabel, cycle, includeNullCycle) + orderSide;
+        return orderSide;
     }
 
     /** 订单未作废（非 REJECTED/CANCELLED，含 status 为 null 的旧行）才消耗配额。 */
@@ -63,17 +58,13 @@ public class SpecQuotaService {
                 || (!"REJECTED".equalsIgnoreCase(orderStatus) && !"CANCELLED".equalsIgnoreCase(orderStatus));
     }
 
-    /** 可用 = 上限 − 已用。**上限没配 → null（不可订）**，与「可用 0」是两回事。 */
+    /** 可用 = 上限 − 已用（已用只算订单）。**上限没配 → null（不可订）**，与「可用 0」是两回事。 */
     public Integer availableQty(Long refDataId, String specOptionLabel, LocalDate cycle) {
-        return availableQty(refDataId, specOptionLabel, cycle, true);
-    }
-
-    public Integer availableQty(Long refDataId, String specOptionLabel, LocalDate cycle, boolean includeNullCycle) {
         Integer cap = resolveCap(refDataId, specOptionLabel);
         if (cap == null) {
             return null;
         }
-        return cap - usedQty(refDataId, specOptionLabel, cycle, includeNullCycle);
+        return cap - usedQty(refDataId, specOptionLabel, cycle);
     }
 
     /**

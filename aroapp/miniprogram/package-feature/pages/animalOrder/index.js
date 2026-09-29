@@ -1686,12 +1686,12 @@ Page({
    *    以前购物车只受「单笼上限」约束，周期上限形同虚设，上限 3 也能加到 5。
    * 2. 全组确实超了才收敛，且只削超出部分（点名规格 + 弹窗，不静默改数）。
    *
-   * **关键是 `available` 已经把本行算进「已用」了**（`SpecQuotaService.usedQty` 累加的是
-   * 全部购物车行 + 未作废订单行）。所以：
-   * - 本行天花板 = 本行数量 + 本组余量。直接拿 `available` 当上限就是自己减自己 ——
-   *   上限 3 加满 3 会被判「超了」清零、加到 5 会写入 `3 - 5 = -2`，都是这么来的。
-   * - 全组可保留总量 = `available + 全组数量`，且**下限取 0**：可用量本身可以是负的
-   *   （别人把配额吃到超），负值一旦写回购物车就是负数行。
+   * **购物车不占额度**（用户口径）：`available` 只扣**订单已占**，加购只是意向，扣减发生在提交订单
+   * 那一刻。所以自己往车里加东西不会把「剩余」吃掉，也不会因此把自己的行削掉。
+   *
+   * 收敛只在一个场景发生：**别人下单把额度吃了**，导致本车已填数量超过剩余 —— 那时削掉超出部分。
+   * 全组可保留总量 = `max(0, available)`，**下限取 0**（上限被调小 / 订单已超额时可用量是负的，
+   * 负值一旦写回购物车就是负数行）。
    */
   _reconcileQuota(lines) {
     const self = this;
@@ -1728,7 +1728,7 @@ Page({
       rs.filter(Boolean).forEach(function (r) {
         const g = r.group;
         const groupTotal = g.rows.reduce(function (s, row) { return s + row.line.qty; }, 0);
-        const allowedTotal = Math.max(0, r.avail + groupTotal);  // 全组可保留的总量，不为负
+        const allowedTotal = Math.max(0, r.avail);               // 购物车不占额度：剩余多少就能在车里留多少
         const headroom = Math.max(0, allowedTotal - groupTotal); // 还能再加多少（本行天花板 = 本行数量 + 它）
         let remaining = allowedTotal;
         g.rows.forEach(function (row) {
@@ -1925,6 +1925,8 @@ Page({
       self.setData({ submitting: false, submitConfirmOpen: false, cartSheetOpen: false, submitRemark: '' });
       wx.showToast({ title: '订单已提交', icon: 'success' });
       self.loadCart();
+      // 下单即扣额度：卡片上的「剩余」立刻重查，否则要等下一轮 30s 轮询才变
+      self.loadQuota();
     }).catch(function (e) {
       self.setData({ submitting: false });
       wx.showToast({ title: (e && e.message) || '提交失败', icon: 'none' });

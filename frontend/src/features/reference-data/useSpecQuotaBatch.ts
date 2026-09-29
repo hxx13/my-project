@@ -5,12 +5,16 @@ import { specRowsOf } from "./ReferenceCard";
 /**
  * 一屏卡片逐规格剩余量：把「可见卡片列表」的全部规格拼成一次批量请求（不是每卡/每规格各发一次），
  * 每 15s 轮询一次（与购物车轮询同节奏），校区/品类/周期变化时重查。失败或加载中返回空 → 卡片不显示剩余行。
+ *
+ * @param reloadToken 外部状态变化（典型：刚提交了订单 → 额度被扣）时自增，立即重查，
+ *                    不用等下一轮 15s 轮询 —— 否则用户会觉得「下了单剩余没变」。
  */
 export function useSpecQuotaBatch(
   cards: RefDataItem[],
   templates: RefSpecTemplate[],
   campus?: string,
   cycle?: string | null,
+  reloadToken = 0,
 ): Record<string, SpecQuota> {
   const [map, setMap] = useState<Record<string, SpecQuota>>({});
 
@@ -33,7 +37,7 @@ export function useSpecQuotaBatch(
     void load();
     const timer = setInterval(load, 15_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [cards, templates, campus, cycle]);
+  }, [cards, templates, campus, cycle, reloadToken]);
 
   return map;
 }

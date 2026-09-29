@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.demo.modules.material.mapper.MaterialStockMovementMapper">
+    <!-- createdAt 仅历史补录用（正常出库走 DB 默认 NOW()）；补录必须写业务发生时间，
+         否则补出来的流水会落在"今天"，日期区间筛选与统计都会错位。 -->
     <insert id="insert">
-        INSERT INTO material_stock_movement (item_id, movement_type, qty, stock_after, request_id, request_line_id, operator_user_id, applicant_user_id, remark)
-        VALUES (#{itemId}, #{movementType}, #{qty}, #{stockAfter}, #{requestId}, #{requestLineId}, #{operatorUserId}, #{applicantUserId}, #{remark})
+        INSERT INTO material_stock_movement (item_id, movement_type, qty, stock_after, request_id, request_line_id, operator_user_id, applicant_user_id, remark<if test="createdAt != null">, created_at</if>)
+        VALUES (#{itemId}, #{movementType}, #{qty}, #{stockAfter}, #{requestId}, #{requestLineId}, #{operatorUserId}, #{applicantUserId}, #{remark}<if test="createdAt != null">, #{createdAt}</if>)
     </insert>
     <select id="selectByItemId" resultType="com.example.demo.modules.material.entity.MaterialStockMovement">
         SELECT * FROM material_stock_movement WHERE item_id = #{itemId} ORDER BY created_at DESC LIMIT #{offset}, #{size}
@@ -11,6 +13,16 @@
     <select id="countByItemId" resultType="int">
         SELECT COUNT(1) FROM material_stock_movement WHERE item_id = #{itemId}
     </select>
+    <!-- 按物品审计页的筛选取交集：物品/分类/关键词/课题组/日期条条独立生效（单边日期也生效）。
+         流水与申领两侧共用同一套条件，台账两边才不会各说各话。 -->
+    <sql id="auditItemFilters">
+        <if test="itemId != null and itemId > 0">AND m.item_id = #{itemId}</if>
+        <if test="categoryId != null and categoryId > 0">AND i.category_id = #{categoryId}</if>
+        <if test="keyword != null and keyword != ''">AND i.name LIKE CONCAT('%', #{keyword}, '%')</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})</if>
+        <if test="from != null and from != ''">AND m.created_at &gt;= CONCAT(#{from}, ' 00:00:00')</if>
+        <if test="to != null and to != ''">AND m.created_at &lt;= CONCAT(#{to}, ' 23:59:59')</if>
+    </sql>
     <select id="selectViewsByItemId" resultType="com.example.demo.modules.material.dto.MaterialStockMovementView">
         SELECT m.id, m.item_id AS itemId, COALESCE(i.name, '未知物品') AS itemName,
                m.movement_type AS movementType, m.qty, m.stock_after AS stockAfter,
@@ -29,26 +41,17 @@
         LEFT JOIN aro_personnel op ON m.operator_user_id = op.user_id
         LEFT JOIN sys_user op2 ON m.operator_user_id = op2.id
         WHERE 1=1
-        <if test="itemId != null and itemId > 0">
-            AND m.item_id = #{itemId}
-        </if>
-        <if test="applicantGroup != null and applicantGroup != ''">
-            AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
-        </if>
+        <include refid="auditItemFilters"/>
         ORDER BY m.created_at DESC
         LIMIT #{offset}, #{size}
     </select>
     <select id="countViewsByItemId" resultType="int">
         SELECT COUNT(1) FROM material_stock_movement m
+        LEFT JOIN material_item i ON m.item_id = i.id
         LEFT JOIN material_request r ON m.request_id = r.id
         LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
         WHERE 1=1
-        <if test="itemId != null and itemId > 0">
-            AND m.item_id = #{itemId}
-        </if>
-        <if test="applicantGroup != null and applicantGroup != ''">
-            AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
-        </if>
+        <include refid="auditItemFilters"/>
     </select>
     <select id="statsDailyMovements" resultType="java.util.HashMap">
         SELECT DATE(m.created_at) AS date, m.movement_type AS movementType,

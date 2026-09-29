@@ -73,6 +73,27 @@ public class PortalContentService {
         return list.stream().map(this::toCategoryView).collect(Collectors.toList());
     }
 
+    /**
+     * 管理端分类列表：多带一个「该分类下有几条内容」。
+     * 单独一个方法而不是给 listCategories 加参数 —— 公开分类接口每屏都调，
+     * 不该为后台要的一个数字多跑一次 GROUP BY。
+     */
+    public List<PortalCategoryView> listAdminCategories() {
+        Map<Long, Long> counts = new HashMap<>();
+        for (Map<String, Object> row : contentMapper.countContentsByCategory()) {
+            Object id = row.get("categoryId");
+            Object n = row.get("contentCount");
+            if (id instanceof Number && n instanceof Number) {
+                counts.put(((Number) id).longValue(), ((Number) n).longValue());
+            }
+        }
+        return categoryMapper.listAll().stream().map(c -> {
+            PortalCategoryView v = toCategoryView(c);
+            v.setContentCount(counts.getOrDefault(c.getId(), 0L));
+            return v;
+        }).collect(Collectors.toList());
+    }
+
     @Transactional
     public PortalCategoryView createCategory(String name, String scope, int sortOrder) {
         PortalCategory c = new PortalCategory();
@@ -139,11 +160,21 @@ public class PortalContentService {
 
     /* ── 管理查询 ── */
 
-    public Map<String, Object> listAdmin(String type, String status, String search, int page, int size) {
+    /**
+     * 管理列表。筛选条件全部下沉 SQL（在 LIMIT 之前），不做「先取一页再前端过滤」——
+     * 那样一翻页就会漏出本该被筛掉的行。
+     */
+    public Map<String, Object> listAdmin(String type, String status, String search, String priority,
+                                         Long categoryId, String sort, int page, int size) {
         int offset = (page - 1) * size;
-        List<PortalContent> list = contentMapper.listAdmin(type, status, search, size, offset);
-        int total = contentMapper.countAdmin(type, status, search);
-        List<PortalContentView> views = list.stream().map(this::toView).collect(Collectors.toList());
+        List<PortalContent> list = contentMapper.listAdmin(type, status, search, priority, categoryId, sort, size, offset);
+        int total = contentMapper.countAdmin(type, status, search, priority, categoryId);
+        Map<Long, String> categoryNameMap = buildCategoryNameMap();
+        List<PortalContentView> views = list.stream().map(c -> {
+            PortalContentView v = toView(c);
+            if (c.getCategoryId() != null) v.setCategoryName(categoryNameMap.get(c.getCategoryId()));
+            return v;
+        }).collect(Collectors.toList());
         enrichCreatedByNames(views);
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
@@ -163,6 +194,14 @@ public class PortalContentService {
     public PortalContentView create(PortalContentUpsertRequest req, String userId) {
         PortalContent c = fromRequest(req);
         c.setCreatedBy(userId);
+        // 默认值只在新建时补：列是 NOT NULL，但 update 是「null = 不动」的合并语义，
+        // 在 fromRequest 里补会把「只改优先级」这类局部 PATCH 的状态一起冲成草稿（实测踩到）。
+        if (c.getStatus() == null) {
+            c.setStatus("DRAFT");
+        }
+        if (c.getSortOrder() == null) {
+            c.setSortOrder(0);
+        }
         if ("PUBLISHED".equals(req.getStatus()) && c.getPublishedAt() == null) {
             c.setPublishedAt(LocalDateTime.now());
         }
@@ -177,8 +216,12 @@ public class PortalContentService {
         PortalContent c = fromRequest(req);
         c.setId(id);
         if ("PUBLISHED".equals(req.getStatus())) {
+            // 已发布过的内容，编辑保存不得改动首发时间：入参没带就用库里原来的
             PortalContent existing = contentMapper.findById(id);
-            if (existing != null && existing.getPublishedAt() == null) {
+            if (c.getPublishedAt() == null && existing != null) {
+                c.setPublishedAt(existing.getPublishedAt());
+            }
+            if (c.getPublishedAt() == null) {
                 c.setPublishedAt(LocalDateTime.now());
             }
         }
@@ -262,8 +305,9 @@ public class PortalContentService {
         c.setCoverUrl(req.getCoverUrl());
         c.setContentHtml(req.getContentHtml());
         c.setExtensionJson(req.getExtensionJson());
-        c.setStatus(req.getStatus() != null ? req.getStatus() : "DRAFT");
-        c.setSortOrder(0);
+        // 不在这里兜默认值：null 要走 mapper 的 <if> 跳过，否则局部 PATCH 会把字段冲掉
+        c.setStatus(req.getStatus());
+        c.setSortOrder(req.getSortOrder());
         if (req.getPublishedAt() != null && !req.getPublishedAt().isBlank()) {
             c.setPublishedAt(parsePublishedAt(req.getPublishedAt()));
         }

@@ -98,22 +98,4 @@
         ORDER BY id ASC
     </select>
 
-    <!-- 周期库存占用（购物车侧）：目标周期 = cycle 的行数量之和。includeNullCycle=true 时把
-         未写周期（NULL）的旧行也计入当前周期。spec_option 为空表示无规格物品，不按规格过滤。 -->
-    <select id="sumQtyByCycle" resultType="int">
-        SELECT COALESCE(SUM(quantity), 0) FROM ref_cart
-        WHERE ref_data_id = #{refDataId}
-        <if test="specOption != null and specOption != ''">
-            AND JSON_UNQUOTE(JSON_EXTRACT(spec_selections, '$.option')) = #{specOption}
-        </if>
-        <choose>
-            <when test="includeNullCycle">
-                AND (delivery_cycle = #{cycle} OR delivery_cycle IS NULL)
-            </when>
-            <otherwise>
-                AND delivery_cycle = #{cycle}
-            </otherwise>
-        </choose>
-    </select>
-
 </mapper>

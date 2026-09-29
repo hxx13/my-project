@@ -583,8 +583,7 @@ public class ReferenceDataService {
         String campus = AnimalOrderCampus.normalize(req.getCampus());
 
         // 周期库存上限：服务端权威校验（前端软校验不作数）。必须在分单/建单之前拦下。
-        boolean fromLines = req.getLines() != null && !req.getLines().isEmpty();
-        validateCycleQuotas(itemsToProcess, campus, fromLines);
+        validateCycleQuotas(itemsToProcess, campus);
 
         // ── 按（投递房间, 到货周期）分单 ──
         // 笼位路径下每行的领用房间来自它自己那个笼位，跨房间时自然落到不同组；
@@ -1883,13 +1882,14 @@ public class ReferenceDataService {
     }
 
     /**
-     * 周期库存上限的权威校验：逐个 (物品, 规格, 周期) 校验「占用 + 本次 ≤ 上限」。
+     * 周期库存上限的权威校验：逐个 (物品, 规格, 周期) 校验「已下单 + 本次 ≤ 上限」。
      * <ul>
      *   <li>未配上限 → 拒绝并点名规格；超了 → 拒绝并说明规格、上限与本次数量。</li>
-     *   <li>购物车路径下本批行已在「占用」里（提交与删除同行同事务），不重复加；显式 lines 路径才累加本次。</li>
+     *   <li>购物车不占额度（见 {@link SpecQuotaService}），所以无论走购物车还是显式 lines，
+     *       都是「订单已占 + 本次这一批」—— 这里是唯一真正扣减的地方。</li>
      * </ul>
      */
-    private void validateCycleQuotas(List<RefCart> items, String campus, boolean fromLines) {
+    private void validateCycleQuotas(List<RefCart> items, String campus) {
         record Key(Long refDataId, String specLabel, LocalDate cycle) {}
         Map<Key, Integer> batchQty = new LinkedHashMap<>();
         for (RefCart it : items) {
@@ -1908,9 +1908,8 @@ public class ReferenceDataService {
                 throw new TwinBusinessException(ErrorCodeConstants.BAD_REQUEST,
                         itemDesc + "未配置订购上限，无法提交");
             }
-            boolean isCurrentCycle = k.cycle() != null && k.cycle().equals(currentCycle(campus, k.refDataId()));
-            int used = specQuotaService.usedQty(k.refDataId(), k.specLabel(), k.cycle(), isCurrentCycle);
-            int total = fromLines ? used + thisBatch : used;
+            int used = specQuotaService.usedQty(k.refDataId(), k.specLabel(), k.cycle());
+            int total = used + thisBatch;
             if (total > cap) {
                 throw new TwinBusinessException(ErrorCodeConstants.BAD_REQUEST,
                         itemDesc + "在 " + k.cycle() + " 周期已超订购上限：上限 " + cap
@@ -2041,8 +2040,7 @@ public class ReferenceDataService {
         LocalDate local = currentCycle(c, refDataId);
         LocalDate cyc = cycle != null ? cycle : local;
         Integer cap = specQuotaService.resolveCap(refDataId, spec);
-        boolean isCurrent = cyc.equals(local);
-        int used = specQuotaService.usedQty(refDataId, spec, cyc, isCurrent);
+        int used = specQuotaService.usedQty(refDataId, spec, cyc);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("configured", cap != null);
         out.put("cap", cap);
