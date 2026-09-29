@@ -7,6 +7,8 @@ const specUtil = require('../../utils/specSchemaUtil.js');
 const AUDIT_SIZE = 20;
 const DATE_LIST_CAP = 800;
 const MIN_SELECTABLE_DATE = '2020-01-01';
+/** 多次模式明细分批渲染的批大小 */
+const RANGE_RENDER_STEP = 40;
 
 function readSpringUserId() {
   try {
@@ -217,6 +219,16 @@ Page({
     loadingPersonal: false,
     exportingPersonal: false,
     centerSheet: { visible: false, title: '', pickKind: '', rows: [] },
+    // 新外壳（对齐物资领用审计）：可收起筛选 + option-picker 选项 + 日期弹层
+    filtersOpen: false,
+    claimOptions: [],
+    categoryPickOptions: [],
+    categoryPickValues: [''],
+    itemPickOptions: [],
+    applicantPickOptions: [],
+    datePickShow: false,
+    datePickKey: '',
+    datePickMs: Date.now(),
     categoryPickLabels: ['全部分类'],
     categoryPickIndex: 0,
     categoryIds: [''],
@@ -245,10 +257,140 @@ Page({
     rangeApplicantLabel: '本人',
     rangeMeta: null,
     rangeFlatRows: [],
+    /** 多次模式明细分批渲染：一次渲染几百行会卡，先渲染 RANGE_RENDER_STEP 行，上拉再补 */
+    rangeViewRows: [],
+    rangeRenderLimit: 0,
     loadingRange: false,
     exportingRange: false,
     /** 领用区间代查他人：与后端一致，仅超级管理员及以上可切换领用人 */
     canPickRangeApplicants: false,
+  },
+
+  /** 把页面已有的「标签数组 + id 数组」折算成 option-picker 需要的 [{value,label}] */
+  syncPickerOptions() {
+    const claims = this.data.mineClaims || [];
+    const cats = this.data.categoryPickLabels || [];
+    const catIds = this.data.categoryIds || [];
+    const itemLabels = this.data.itemPickLabels || [];
+    const itemIds = this.data.itemPickIds || [];
+    const apps = this.data.applicantOptions || [];
+    this.setData({
+      claimOptions: claims.map((c) => {
+        const t = toTimeText(c.createdAt);
+        return { value: String(c.id), label: `${t.slice(0, 10)} · ${claimStatusZh(c.status)} · ${t.slice(11, 16)}` };
+      }),
+      categoryPickOptions: cats.map((label, i) => ({
+        value: String(catIds[i] == null ? '' : catIds[i]),
+        label: i === 0 ? '全部分类' : label,
+      })),
+      categoryPickValues: catIds.map((x) => String(x == null ? '' : x)),
+      itemPickOptions: itemLabels.map((label, i) => ({
+        value: String(itemIds[i] == null ? '' : itemIds[i]),
+        label: i === 0 ? '全部物品' : label,
+      })),
+      applicantPickOptions: apps.map((a) => ({
+        value: String(a.userId || ''),
+        label: a.displayName || a.userId || '—',
+      })),
+    });
+  },
+
+  // ── 新外壳：按钮行 / 可收起筛选 / 即选即筛 ──
+
+  toggleFilters() {
+    this.setData({ filtersOpen: !this.data.filtersOpen });
+  },
+
+  /** 重置：个人单次清空所选单；个人多次回到默认近一个月；审计清空分类/物品/关键词 */
+  onResetFilters() {
+    if (this.data.activeTab === 'audit') {
+      this.setData({ categoryPickIndex: 0, selectedItemId: '', itemKeyword: '', auditPage: 1 }, () => {
+        void this.loadAuditHotIds().then(() => this.loadItems());
+      });
+      return;
+    }
+    if (this.data.personalMode === 'single') {
+      this.setData({ selectedClaimId: '', singleClaimChipText: '请选择领用日期…', claimDetail: null });
+      return;
+    }
+    const dr = defaultMonthStartToToday();
+    this.setData({ rangeFrom: dr.rangeFrom, rangeTo: dr.rangeTo }, () => this.scheduleRangeQuery());
+  },
+
+  onExportUnified() {
+    if (this.data.activeTab === 'audit') void this.onExportAudit();
+    else void this.onPersonalExportUnified();
+  },
+
+  onClaimPickChange(e) {
+    const id = String((e.detail && e.detail.value) || '');
+    const hit = (this.data.mineClaims || []).find((c) => String(c.id) === id);
+    if (!hit) return;
+    const t = toTimeText(hit.createdAt);
+    this.setData(
+      { singleClaimChipText: `${t.slice(0, 10)} · ${claimStatusZh(hit.status)} · ${t.slice(11, 16)}`, selectedClaimId: hit.id },
+      () => void this.loadClaimDetail(hit.id),
+    );
+  },
+
+  onApplicantPickChange(e) {
+    const uid = String((e.detail && e.detail.value) || '');
+    const hit = (this.data.applicantOptions || []).find((a) => String(a.userId) === uid);
+    this.setData(
+      { rangeApplicantUserId: uid, rangeApplicantLabel: (hit && (hit.displayName || hit.userId)) || uid },
+      () => this.scheduleRangeQuery(),
+    );
+  },
+
+  onCategoryPickChange(e) {
+    const idx = Number((e.detail && e.detail.index) || 0);
+    this.setData({ categoryPickIndex: idx, selectedItemId: '', auditPage: 1 }, () => {
+      void this.loadAuditHotIds().then(() => this.loadItems());
+    });
+  },
+
+  onItemPickChange(e) {
+    const id = String((e.detail && e.detail.value) || '');
+    this.setData({ selectedItemId: id, auditPage: 1 }, () => this.applyItemPicker());
+  },
+
+  // ── 日期：van-datetime-picker 弹层 ──
+
+  onRangeDateTap(e) {
+    const key = String(e.currentTarget.dataset.key || 'rangeFrom');
+    const cur = key === 'rangeTo' ? this.data.rangeTo : this.data.rangeFrom;
+    const ms = cur ? new Date(`${cur}T00:00:00`).getTime() : Date.now();
+    this.setData({ datePickShow: true, datePickKey: key, datePickMs: Number.isFinite(ms) ? ms : Date.now() });
+  },
+
+  onRangeDateConfirm(e) {
+    const ms = Number(e.detail) || Date.now();
+    const d = new Date(ms);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const key = this.data.datePickKey === 'rangeTo' ? 'rangeTo' : 'rangeFrom';
+    this.setData({ [key]: iso, datePickShow: false }, () => this.scheduleRangeQuery());
+  },
+
+  onRangeDateCancel() {
+    this.setData({ datePickShow: false });
+  },
+
+  onRangeDateClear(e) {
+    const key = String(e.currentTarget.dataset.key || 'rangeFrom') === 'rangeTo' ? 'rangeTo' : 'rangeFrom';
+    this.setData({ [key]: '' }, () => this.scheduleRangeQuery());
+  },
+
+  /** 触底：审计页签翻下一页（替代原来的翻页条）；多次模式只是多渲染一批明细 */
+  onReachBottom() {
+    if (this.data.activeTab === 'audit') {
+      if (this.data.auditPagerShow && !this.data.loadingAudit) this.onAuditNext();
+      return;
+    }
+    if (this.data.personalMode !== 'multi') return;
+    const all = this.data.rangeFlatRows || [];
+    if (this.data.rangeRenderLimit >= all.length) return;
+    const limit = this.data.rangeRenderLimit + RANGE_RENDER_STEP;
+    this.setData({ rangeRenderLimit: limit, rangeViewRows: all.slice(0, limit) });
   },
 
   noop() {},
@@ -515,6 +657,7 @@ Page({
         label = list[0].displayName ? String(list[0].displayName) : uid;
       }
       this.setData({ applicantOptions: list, rangeApplicantUserId: uid, rangeApplicantLabel: label }, () => {
+        this.syncPickerOptions();
         if (this.data.personalMode === 'multi') this.scheduleRangeQuery();
       });
     } catch {
@@ -525,6 +668,7 @@ Page({
           rangeApplicantUserId: selfId,
           rangeApplicantLabel: '本人',
         },
+        () => this.syncPickerOptions(),
         () => {
           if (this.data.personalMode === 'multi') this.scheduleRangeQuery();
         },
@@ -576,6 +720,7 @@ Page({
         singleClaimChipText: chip,
         claimDetail: null,
       });
+      this.syncPickerOptions();
       if (nextSel) {
         void this.loadClaimDetail(nextSel);
       }
@@ -702,10 +847,12 @@ Page({
           to: pack.to,
         },
         rangeFlatRows: flat,
+        rangeViewRows: flat.slice(0, RANGE_RENDER_STEP),
+        rangeRenderLimit: RANGE_RENDER_STEP,
       });
       if (!silent) wx.showToast({ title: `共${pack.total}单`, icon: 'none' });
     } catch (err) {
-      this.setData({ rangeMeta: null, rangeFlatRows: [] });
+      this.setData({ rangeMeta: null, rangeViewRows: [], rangeRenderLimit: 0, rangeFlatRows: [] });
       wx.showToast({ title: (err && err.message) || '查询失败', icon: 'none' });
     } finally {
       this.setData({ loadingRange: false });
@@ -771,9 +918,11 @@ Page({
         categoryPickIndex: 0,
         categoryIds: ids,
       });
+      this.syncPickerOptions();
       this.updateAuditChips();
     } catch (e) {
       this.setData({ categoryPickLabels: ['全部分类'], categoryPickIndex: 0, categoryIds: [''] });
+      this.syncPickerOptions();
       this.updateAuditChips();
     }
   },
@@ -851,6 +1000,7 @@ Page({
       itemPickIndex: pickIdx,
       selectedItemId: nextId,
     });
+    this.syncPickerOptions();
     this.updateAuditChips();
     if (nextId) void this.loadAuditRows();
     else {

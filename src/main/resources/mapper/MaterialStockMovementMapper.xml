@@ -81,6 +81,29 @@
         DELETE FROM material_stock_movement WHERE item_id = #{itemId}
     </delete>
 
+    <!-- 重复出库流水探测：同单 + 同明细 + 同数量 + 同一秒 的 OUTBOUND 出现多次
+         （历史原因：SIMPLE 工作流重复点"通过"会整条重跑出库，一张单被写了 7 条相同流水）。
+         只取"完全同秒"的严格口径，避免误删撤销后重新出库这类正常的多条流水。 -->
+    <select id="selectDuplicateOutboundIds" resultType="java.lang.Long">
+        SELECT m.id FROM material_stock_movement m
+        JOIN (
+            SELECT request_id, request_line_id, qty, created_at, MIN(id) AS keep_id, COUNT(*) AS c
+            FROM material_stock_movement
+            WHERE movement_type = 'OUTBOUND' AND request_line_id IS NOT NULL
+            GROUP BY request_id, request_line_id, qty, created_at
+            HAVING c &gt; 1
+        ) d ON d.request_id = m.request_id AND d.request_line_id = m.request_line_id
+           AND d.qty = m.qty AND d.created_at = m.created_at
+        WHERE m.movement_type = 'OUTBOUND' AND m.id &lt;&gt; d.keep_id
+        ORDER BY m.id
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteByIds">
+        DELETE FROM material_stock_movement WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+    </delete>
+
     <delete id="deleteOrphan">
         DELETE m FROM material_stock_movement m
         LEFT JOIN material_item i ON m.item_id = i.id

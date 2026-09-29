@@ -46,13 +46,15 @@ public class MaterialExcelExportService {
             Row head = sh.createRow(r++);
             String[] cols = { "单号", "物品", "数量", "状态", "申领人", "课题组", "时间" };
             for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
+            SubtotalRowStyles.apply(head, cols.length - 1, SubtotalRowStyles.header(wb));
 
             List<MaterialAuditGridRow> sorted = sortAuditRows(rows);
             List<SubtotalEvent> details = toAuditDetails(sorted);
 
             SubtotalRowStyles styles = SubtotalRowStyles.create(wb);
             List<SubtotalEvent> plan = SubtotalPlanBuilder.build(details, config);
-            List<CellStyle> planStyles = styles.planStyles(plan);
+            // colorLevel=2：一张表里"一个人一块颜色"，同组相邻的人用交替底色区分开
+            List<CellStyle> planStyles = styles.planStyles(plan, 2);
             for (int i = 0; i < plan.size(); i++) {
                 SubtotalEvent e = plan.get(i);
                 Row data = sh.createRow(r++);
@@ -83,7 +85,7 @@ public class MaterialExcelExportService {
                 }
                 data.createCell(2).setCellValue(e.net());
                 SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
-                if (e.level() == 1) r++;   // 一级小计后空一行，隔开各板块
+                if (e.level() <= 2) r++;   // 每级小计后空一行：板块之间、以及同一板块内人与人之间都隔开
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
             wb.write(out);
@@ -144,13 +146,15 @@ public class MaterialExcelExportService {
             Row head = sh.createRow(r++);
             String[] cols = { "时间", "类型", "物品", "规格", "变动数量", "库存", "申领人", "课题组", "关联单号", "备注" };
             for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
+            SubtotalRowStyles.apply(head, cols.length - 1, SubtotalRowStyles.header(wb));
 
             List<MaterialItemFlowExportRow> sorted = sortItemFlowRows(rows);
             List<SubtotalEvent> details = toItemFlowDetails(sorted);
 
             SubtotalRowStyles styles = SubtotalRowStyles.create(wb);
             List<SubtotalEvent> plan = SubtotalPlanBuilder.build(details, config);
-            List<CellStyle> planStyles = styles.planStyles(plan);
+            // colorLevel=2：一张表里"一个人一块颜色"，同组相邻的人用交替底色区分开
+            List<CellStyle> planStyles = styles.planStyles(plan, 2);
             for (int i = 0; i < plan.size(); i++) {
                 SubtotalEvent e = plan.get(i);
                 Row data = sh.createRow(r++);
@@ -186,7 +190,7 @@ public class MaterialExcelExportService {
                 data.createCell(9).setCellValue("入库合计 +" + e.inbound()
                         + "；出库合计 " + e.outbound() + "；净变动 " + e.net());
                 SubtotalRowStyles.apply(data, cols.length - 1, planStyles.get(i));
-                if (e.level() == 1) r++;   // 一级小计后空一行，隔开各板块
+                if (e.level() <= 2) r++;   // 每级小计后空一行：板块之间、以及同一板块内人与人之间都隔开
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
             wb.write(out);

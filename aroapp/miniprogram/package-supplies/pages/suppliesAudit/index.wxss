@@ -547,3 +547,240 @@
   opacity: 0.45;
   pointer-events: none;
 }
+
+/* 版式照实验动物订购页「订单记录」：页签条 / 筛选按钮 / 可收起筛选 / 表格（横向滚动走 CSS）。
+   ord-* 这组规则是从 package-feature/pages/animalOrder/index.wxss 抄的同一套值，保持两边观感一致。 */
+
+.orders,
+.orders view,
+.orders scroll-view,
+.orders text,
+.orders input {
+  box-sizing: border-box;
+}
+
+.orders {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #eef0f6;
+}
+
+.ord-bar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 20rpx;
+  border-bottom: 1rpx solid #eef0f4;
+  flex-wrap: wrap;
+  background: #fff;
+}
+.ord-tabs {
+  display: flex;
+  background: #f1f3f7;
+  border-radius: 999rpx;
+  padding: 4rpx;
+}
+.ord-tab {
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #334155;
+  border-radius: 999rpx;
+}
+.ord-tab-on {
+  background: #fff;
+  color: #1f2937;
+  font-weight: 600;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.08);
+}
+.ord-count {
+  font-size: 22rpx;
+  color: #94a3b8;
+  margin-left: auto;
+}
+.ord-btn {
+  padding: 10rpx 26rpx;
+  background: #f1f3f7;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: #1f2937;
+}
+.ord-btn-primary {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+}
+.ord-btn-off {
+  background: #e5e7eb;
+  color: #9aa0a6;
+}
+
+.ord-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  padding: 16rpx 20rpx;
+  background: #f6f7fb;
+  border-bottom: 1rpx solid #eef0f4;
+}
+.ord-field {
+  width: calc(50% - 8rpx);
+}
+.ord-field-wide {
+  width: 100%;
+}
+.ord-flabel {
+  display: block;
+  font-size: 22rpx;
+  color: #94a3b8;
+  margin-bottom: 6rpx;
+}
+.ord-finput {
+  height: 64rpx;
+  line-height: 64rpx;
+  padding: 0 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 10rpx;
+  background: #fff;
+  font-size: 26rpx;
+  color: #1f2937;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ord-filter-actions {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+}
+
+.orders-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 20rpx 32rpx;
+}
+
+.ord-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  box-shadow: 0 4rpx 14rpx rgba(15, 23, 42, 0.06);
+  border-radius: 12rpx;
+  background: #fff;
+}
+.ord-table {
+  padding-bottom: 8rpx;
+}
+.ord-tr {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 1rpx solid #eef0f4;
+}
+.ord-tr-head {
+  background: #f6f7fb;
+  font-size: 22rpx;
+  color: #334155;
+  font-weight: 600;
+}
+.ord-td {
+  flex-shrink: 0;
+  padding: 14rpx 12rpx;
+  font-size: 22rpx;
+  color: #1f2937;
+  word-break: break-all;
+}
+.ord-td.mono {
+  font-family: monospace;
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+.w-no {
+  width: 200rpx;
+}
+.w-item {
+  width: 300rpx;
+}
+.w-xs {
+  width: 110rpx;
+  text-align: center;
+}
+.w-mid {
+  width: 160rpx;
+}
+.w-pi {
+  width: 150rpx;
+}
+.w-group {
+  width: 240rpx;
+}
+.w-date {
+  width: 220rpx;
+}
+.w-remark {
+  width: 320rpx;
+}
+
+/* 触底提示必须留在滚动区内部（放外面会让滚动区高度变化 → 微信重置 scrollTop，一触底就跳回顶部） */
+.ord-foot {
+  padding: 28rpx 0 calc(20rpx + env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.muted {
+  padding: 80rpx 0;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 26rpx;
+}
+.muted.pad {
+  padding: 48rpx 24rpx;
+}
+
+/* 日期：一行两枚内容宽度 chip（点开 van-datetime-picker 弹层），不再是两个超长输入框 */
+.ord-range {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+.ord-chip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-height: 64rpx;
+  padding: 0 18rpx;
+  background: #f7f8fa;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 10rpx;
+  box-sizing: border-box;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.ord-chip-x {
+  padding: 0 4rpx;
+  color: #94a3b8;
+  font-size: 28rpx;
+  line-height: 1;
+}
+.ord-range-sep {
+  color: #94a3b8;
+  font-size: 24rpx;
+}
+
+/* 分段控件（单次 / 多次，与小程序其它页同款：实底、直角、无描边） */
+.ord-seg { display: flex; background: #f1f3f7; border-radius: 10rpx; padding: 4rpx; }
+.ord-seg-i { flex: 1; text-align: center; padding: 12rpx 0; font-size: 26rpx; color: #334155; border-radius: 8rpx; }
+.ord-seg-on { background: #2563eb; color: #fff; font-weight: 600; }
+
+/* 单据摘要条 */
+.ord-summary { display: flex; flex-wrap: wrap; gap: 12rpx 24rpx; padding: 16rpx 20rpx; margin-bottom: 12rpx; background: #fff; border-radius: 12rpx; }
+.ord-sum-item { display: flex; flex-direction: column; gap: 4rpx; min-width: 180rpx; }
+.ord-sum-k { font-size: 22rpx; color: #94a3b8; }
+
+/* 日期 chip（内容宽度，一行两枚，可单独清除） */
+.ord-range { display: flex; align-items: center; gap: 12rpx; flex-wrap: wrap; }
+.ord-chip { display: flex; align-items: center; gap: 8rpx; min-height: 64rpx; padding: 0 18rpx; background: #f7f8fa; border: 1rpx solid #e5e7eb; border-radius: 10rpx; box-sizing: border-box; font-size: 26rpx; color: #1f2937; }
+.ord-chip-x { padding: 0 4rpx; color: #94a3b8; font-size: 28rpx; line-height: 1; }
+.ord-range-sep { color: #94a3b8; font-size: 24rpx; }

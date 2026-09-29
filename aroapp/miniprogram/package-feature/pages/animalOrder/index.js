@@ -231,6 +231,10 @@ Page({
     orderRows: [],
     orderLoading: false,
     orderExporting: false,
+    // 通用导出设置弹层（组件自包含）
+    orderCfgShow: false,
+    orderCfgParams: {},
+    orderCfgName: '', 
     orderExpanded: {},
     orderRangeInited: false,
     orderFrom: '',
@@ -2271,9 +2275,8 @@ Page({
     this.setData({ orderExpanded: expanded });
   },
 
-  async onExportOrders() {
-    const self = this;
-    if (this.data.orderExporting) return;
+  /** 点「导出 Excel」→ 开通用导出设置弹层（层级/板块开关），导出逻辑在组件里 */
+  onExportOrders() {
     const params = {
       from: this.data.orderFrom || undefined,
       to: this.data.orderTo || undefined,
@@ -2285,19 +2288,20 @@ Page({
     };
     if (this.data.orderTab === 'pending') params.status = 'PENDING';
     else params.statusNot = 'PENDING';
+    const prefix = this.data.orderScopeAll ? '全部课题组订单-' : '我的课题组订单-';
+    this.setData({
+      orderCfgShow: true,
+      orderCfgParams: params,
+      orderCfgName: `${prefix}${params.from || 'all'}_${params.to || 'now'}.xlsx`,
+    });
+  },
 
-    this.setData({ orderExporting: true });
-    wx.showLoading({ title: '导出中…', mask: true });
-    try {
-      const buf = await orderExportApi.exportOrdersExcel(params);
-      const prefix = this.data.orderScopeAll ? '全部课题组订单-' : '我的课题组订单-';
-      await springAuth.saveAndOpenDocument(buf, prefix + (params.from || 'all') + '_' + (params.to || 'now') + '.xlsx', 'xlsx');
-    } catch (e) {
-      wx.showToast({ title: (e && e.message) || '导出失败', icon: 'none' });
-    } finally {
-      wx.hideLoading();
-      self.setData({ orderExporting: false });
-    }
+  onOrderCfgClose() {
+    this.setData({ orderCfgShow: false });
+  },
+
+  onOrderCfgDone() {
+    this.setData({ orderCfgShow: false });
   },
 
   closeOrders() { this.setData({ orderHistoryOpen: false }); },

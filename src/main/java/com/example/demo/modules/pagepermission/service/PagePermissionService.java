@@ -704,6 +704,8 @@ public class PagePermissionService {
         }        if (path.startsWith("/pages/suppliesMine")) return "STAFF";
         if (path.startsWith("/pages/suppliesClaimExport")) return "STAFF";
         if (path.startsWith("/pages/materialAdmin")) return "STAFF";
+        // 「物资领用审计」= 网页版 /admin/material/audit-export 的小程序版，权限与网页版同口径：ADMIN
+        if (path.startsWith("/pages/materialAudit")) return "ADMIN";
         if (path.startsWith("/pages/studentMaterial")) return "MEMBER";
         // 走到这一支的是「领用物资」本体与领用审计（Admin/Mine/Process 上面已各自 return）——
         // STAFF 就要能进物资页下单，所以给 STAFF（2026-09-17 用户口径）

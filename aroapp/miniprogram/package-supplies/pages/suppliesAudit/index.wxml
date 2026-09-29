@@ -1,174 +1,230 @@
 <block wx:if="{{ pageGateOk }}">
-  <view class="page">
-    <view wx:if="{{ canAuditSection }}" class="tabs">
-      <view class="tab {{ activeTab === 'personal' ? 'tab-on' : '' }}" data-tab="personal" bindtap="onMainTab">个人领用单</view>
-      <view class="tab {{ activeTab === 'audit' ? 'tab-on' : '' }}" data-tab="audit" bindtap="onMainTab">按物品审计</view>
+  <view class="orders">
+    <!-- 页签：个人领用单 / 按物品审计（后者仅审核人可见） -->
+    <view class="ord-bar">
+      <view class="ord-tabs">
+        <view class="ord-tab {{ activeTab === 'personal' ? 'ord-tab-on' : '' }}" data-tab="personal" bindtap="onMainTab">个人领用单</view>
+        <view wx:if="{{ canAuditSection }}" class="ord-tab {{ activeTab === 'audit' ? 'ord-tab-on' : '' }}" data-tab="audit" bindtap="onMainTab">按物品审计</view>
+      </view>
     </view>
 
-    <block wx:if="{{ !canAuditSection || activeTab === 'personal' }}">
-      <view class="card card-tight">
-        <view class="toolbar-row">
-          <view class="seg2">
-            <view class="seg2-i {{ personalMode === 'single' ? 'seg2-on' : '' }}" data-mode="single" bindtap="onPersonalMode">单次</view>
-            <view class="seg2-i {{ personalMode === 'multi' ? 'seg2-on' : '' }}" data-mode="multi" bindtap="onPersonalMode">多次</view>
+    <!-- 按钮行：筛选 / 重置 / 导出（与物资领用审计一致） -->
+    <view class="ord-bar">
+      <view class="ord-btn" bindtap="toggleFilters">筛选 {{ filtersOpen ? '▲' : '▼' }}</view>
+      <view class="ord-btn" bindtap="onResetFilters">重置</view>
+      <view
+        class="ord-btn ord-btn-primary {{ (activeTab === 'personal' ? (exportingPersonal || exportingRange) : exportingAudit) ? 'ord-btn-off' : '' }}"
+        bindtap="onExportUnified"
+      >{{ (activeTab === 'personal' ? (exportingPersonal || exportingRange) : exportingAudit) ? '导出中…' : '导出 Excel' }}</view>
+      <text class="ord-count">
+        {{ activeTab === 'audit'
+            ? (selectedItemId ? '本页 ' + mergedRows.length + ' 行 / 共 ' + (auditTotal + restoredTotal) + ' 条' : '请选择物品')
+            : (personalMode === 'single' ? (selectedClaimId ? '已选 1 张领用单' : '请选择领用单') : (rangeMeta ? rangeMeta.total + ' 单' : '选择日期后自动汇总')) }}
+      </text>
+    </view>
+
+    <!-- 筛选（可收起，即选即筛） -->
+    <view wx:if="{{ filtersOpen }}" class="ord-filters">
+      <!-- 个人领用单：单次 / 多次 -->
+      <block wx:if="{{ activeTab === 'personal' }}">
+        <view class="ord-field ord-field-wide">
+          <view class="ord-seg">
+            <view class="ord-seg-i {{ personalMode === 'single' ? 'ord-seg-on' : '' }}" data-mode="single" bindtap="onPersonalMode">单次</view>
+            <view class="ord-seg-i {{ personalMode === 'multi' ? 'ord-seg-on' : '' }}" data-mode="multi" bindtap="onPersonalMode">多次</view>
           </view>
-          <view wx:if="{{ personalMode === 'single' }}" class="toolbar-grow picker-compact" bindtap="openClaimDateSheet">{{ singleClaimChipText }}</view>
-          <view wx:else class="toolbar-grow picker-compact hint-chip">下方日期与领用人变更后自动汇总</view>
-          <view
-            class="btn-compact btn-compact-primary {{ (exportingPersonal || exportingRange) || (personalMode === 'single' && !selectedClaimId) || (personalMode === 'multi' && (!rangeFrom || !rangeTo)) ? 'disabled' : '' }}"
-            bindtap="onPersonalExportUnified"
-          >导出</view>
         </view>
 
-        <view wx:if="{{ personalMode === 'multi' }}" class="range-toolbar range-toolbar-mt">
-          <view class="date-chip" bindtap="openRangeFromSheet">{{ rangeFrom || '开始' }}</view>
-          <text class="range-sep">～</text>
-          <view class="date-chip" bindtap="openRangeToSheet">{{ rangeTo || '结束' }}</view>
-          <view wx:if="{{ canPickRangeApplicants }}" class="picker-compact applicant-chip" bindtap="openApplicantSheet">{{ rangeApplicantLabel }}</view>
-          <view wx:else class="picker-compact applicant-chip applicant-chip-readonly">{{ rangeApplicantLabel }}</view>
+        <view wx:if="{{ personalMode === 'single' }}" class="ord-field ord-field-wide">
+          <text class="ord-flabel">领用单</text>
+          <option-picker
+            class="ma-pick"
+            options="{{ claimOptions }}"
+            value="{{ selectedClaimId }}"
+            placeholder="请选择领用单"
+            title="选择领用单"
+            searchable
+            bind:change="onClaimPickChange"
+          />
         </view>
 
-        <view wx:if="{{ loadingPersonal }}" class="muted">加载中…</view>
+        <view wx:if="{{ personalMode === 'multi' }}" class="ord-field ord-field-wide">
+          <text class="ord-flabel">日期</text>
+          <view class="ord-range">
+            <view class="ord-chip" data-key="rangeFrom" bindtap="onRangeDateTap">
+              <text>{{ rangeFrom || '开始日期' }}</text>
+              <text class="ord-chip-x" catchtap="onRangeDateClear" data-key="rangeFrom">×</text>
+            </view>
+            <text class="ord-range-sep">～</text>
+            <view class="ord-chip" data-key="rangeTo" bindtap="onRangeDateTap">
+              <text>{{ rangeTo || '结束日期' }}</text>
+              <text class="ord-chip-x" catchtap="onRangeDateClear" data-key="rangeTo">×</text>
+            </view>
+          </view>
+        </view>
+
+        <view wx:if="{{ personalMode === 'multi' }}" class="ord-field ord-field-wide">
+          <text class="ord-flabel">领用人</text>
+          <view wx:if="{{ canPickRangeApplicants }}">
+            <option-picker
+              class="ma-pick"
+              options="{{ applicantPickOptions }}"
+              value="{{ rangeApplicantUserId }}"
+              placeholder="请选择领用人"
+              title="选择领用人"
+              searchable
+              bind:change="onApplicantPickChange"
+            />
+          </view>
+          <view wx:else class="ord-finput">{{ rangeApplicantLabel }}</view>
+        </view>
+      </block>
+
+      <!-- 按物品审计：分类 / 搜索物品 / 物品 -->
+      <block wx:else>
+        <view class="ord-field ord-field-wide">
+          <text class="ord-flabel">物资分类</text>
+          <option-picker
+            class="ma-pick"
+            options="{{ categoryPickOptions }}"
+            value="{{ categoryPickValues[categoryPickIndex] }}"
+            placeholder="全部分类"
+            title="选择分类"
+            bind:change="onCategoryPickChange"
+          />
+        </view>
+        <view class="ord-field">
+          <text class="ord-flabel">搜索物品</text>
+          <input class="ord-finput" placeholder="按名称筛选" value="{{ itemKeyword }}" bindinput="onItemKeyword" />
+        </view>
+        <view class="ord-field">
+          <text class="ord-flabel">选择物品</text>
+          <option-picker
+            class="ma-pick"
+            options="{{ itemPickOptions }}"
+            value="{{ selectedItemId }}"
+            placeholder="请选择物品"
+            title="选择物品"
+            searchable
+            bind:change="onItemPickChange"
+          />
+        </view>
+      </block>
+    </view>
+
+    <!-- 日期弹层（统一用 van-datetime-picker，不用原生 picker） -->
+    <van-popup show="{{ datePickShow }}" position="bottom" round bind:close="onRangeDateCancel">
+      <van-datetime-picker
+        type="date"
+        value="{{ datePickMs }}"
+        bind:confirm="onRangeDateConfirm"
+        bind:cancel="onRangeDateCancel"
+      />
+    </van-popup>
+
+    <scroll-view scroll-y class="orders-scroll" bindscrolltolower="onReachBottom" lower-threshold="80">
+      <!-- 个人 · 单次：单据摘要 + 明细 -->
+      <block wx:if="{{ activeTab === 'personal' && personalMode === 'single' }}">
+        <view wx:if="{{ loadingPersonal }}" class="muted pad">加载中…</view>
         <block wx:elif="{{ claimDetail }}">
-          <view class="summary-grid summary-grid-tight">
-            <view><text class="summary-k">单据状态</text><view>{{ claimDetail.statusText }}</view></view>
-            <view><text class="summary-k">领用申请时间</text><view>{{ claimDetail.createdAtText }}</view></view>
-            <view><text class="summary-k">出库完成时间</text><view>{{ claimDetail.fulfilledAtText }}</view></view>
-            <view><text class="summary-k">申请领用人</text><view>{{ claimDetail.applicantDisp }}</view></view>
-            <view><text class="summary-k">出库处理人</text><view>{{ claimDetail.fulfilledByDisp }}</view></view>
+          <view class="ord-summary">
+            <view class="ord-sum-item"><text class="ord-sum-k">单据状态</text><text>{{ claimDetail.statusText }}</text></view>
+            <view class="ord-sum-item"><text class="ord-sum-k">申请时间</text><text>{{ claimDetail.createdAtText }}</text></view>
+            <view class="ord-sum-item"><text class="ord-sum-k">出库时间</text><text>{{ claimDetail.fulfilledAtText }}</text></view>
+            <view class="ord-sum-item"><text class="ord-sum-k">申请领用人</text><text>{{ claimDetail.applicantDisp }}</text></view>
+            <view class="ord-sum-item"><text class="ord-sum-k">出库处理人</text><text>{{ claimDetail.fulfilledByDisp }}</text></view>
           </view>
-          <view class="hint hint-tight">下列与「领用单明细」导出一致（无库存列）。</view>
-          <scroll-view scroll-x class="scroll-table">
-            <view class="table-inner">
-              <view class="tr tr-head">
-                <view class="td w-name">物资名称</view>
-                <view class="td w-spec">规格</view>
-                <view class="td w-time">领用申请时间</view>
-                <view class="td w-time">出库完成时间</view>
-                <view class="td w-xs">申请领用数量</view>
-                <view class="td w-xs">出库数量</view>
-                <view class="td w-sm">出入库类型</view>
-                <view class="td w-mid">出库处理人</view>
-                <view class="td w-mid">申请领用人</view>
-                <view class="td w-remark">备注</view>
+          <view class="ord-table-wrap">
+            <view class="ord-table" style="min-width: 1600rpx">
+              <view class="ord-tr ord-tr-head">
+                <view class="ord-td w-item">物资名称</view>
+                <view class="ord-td w-mid">规格</view>
+                <view class="ord-td w-xs">申请数量</view>
+                <view class="ord-td w-xs">出库数量</view>
+                <view class="ord-td w-mid">出入库类型</view>
               </view>
-              <view wx:for="{{ claimDetail.lines }}" wx:key="id" class="tr">
-                <view class="td w-name">{{ item.snapshotName }}</view>
-                <view class="td w-spec">{{ item.specLabel || '—' }}</view>
-                <view class="td w-time">{{ claimDetail.createdAtText }}</view>
-                <view class="td w-time">{{ claimDetail.fulfilledAtText }}</view>
-                <view class="td w-xs">{{ item.qty }}</view>
-                <view class="td w-xs">{{ item.fulfilledQty != null ? item.fulfilledQty : 0 }}</view>
-                <view class="td w-sm">{{ item.lineIoType }}</view>
-                <view class="td w-mid">{{ claimDetail.fulfilledByDisp }}</view>
-                <view class="td w-mid">{{ claimDetail.applicantDisp }}</view>
-                <view class="td w-remark muted">—</view>
+              <view wx:for="{{ claimDetail.lines }}" wx:key="id" class="ord-tr">
+                <view class="ord-td w-item">{{ item.snapshotName }}</view>
+                <view class="ord-td w-mid">{{ item.specLabel || '—' }}</view>
+                <view class="ord-td w-xs">{{ item.qty }}</view>
+                <view class="ord-td w-xs">{{ item.fulfilledQty != null ? item.fulfilledQty : 0 }}</view>
+                <view class="ord-td w-mid">{{ item.lineIoType }}</view>
               </view>
             </view>
-          </scroll-view>
+          </view>
         </block>
+        <view wx:else class="muted pad">请选择领用单</view>
+      </block>
 
-        <view wx:if="{{ personalMode === 'multi' && rangeMeta }}" class="range-meta-line range-meta-mt">{{ rangeMeta.applicantDisplayName || rangeMeta.applicantUserId }} · {{ rangeMeta.total }} 单 · {{ rangeMeta.from }}～{{ rangeMeta.to }}</view>
-        <scroll-view wx:if="{{ personalMode === 'multi' && rangeFlatRows.length }}" scroll-x class="scroll-table">
-          <view class="table-inner table-inner-wide">
-            <view class="tr tr-head">
-              <view class="td w-name">物资名称</view>
-              <view class="td w-spec">规格</view>
-              <view class="td w-time">领用申请时间</view>
-              <view class="td w-time">出库完成时间</view>
-              <view class="td w-xs">申请领用数量</view>
-              <view class="td w-xs">出库数量</view>
-              <view class="td w-sm">出入库类型</view>
-              <view class="td w-mid">出库处理人</view>
-              <view class="td w-mid">申请领用人</view>
-              <view class="td w-remark">备注</view>
-            </view>
-            <view wx:for="{{ rangeFlatRows }}" wx:key="_key" class="tr">
-              <view class="td w-name">{{ item.snapshotName }}</view>
-              <view class="td w-spec">{{ item.specLabel || '—' }}</view>
-              <view class="td w-time">{{ item.createdAtText }}</view>
-              <view class="td w-time">{{ item.fulfilledAtText }}</view>
-              <view class="td w-xs">{{ item.qty }}</view>
-              <view class="td w-xs">{{ item.fq }}</view>
-              <view class="td w-sm">{{ item.lineIoType }}</view>
-              <view class="td w-mid">{{ item.fulfilledByDisp }}</view>
-              <view class="td w-mid">{{ item.applicantDisp }}</view>
-              <view class="td w-remark muted">—</view>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
-    </block>
-
-    <block wx:elif="{{ activeTab === 'audit' && canAuditSection }}">
-      <view class="card card-tight">
-        <view class="audit-one-line">
-          <view class="audit-chip audit-chip-cat" bindtap="openAuditCategorySheet">{{ categoryChipShort }}</view>
-          <input class="audit-inp-inline" placeholder="搜索物品" value="{{ itemKeyword }}" bindinput="onItemKeyword" />
-          <view class="audit-chip audit-chip-item" bindtap="openAuditItemSheet">{{ itemChipShort }}</view>
-          <view class="audit-ico" bindtap="onRefreshAudit">↻</view>
-          <view class="audit-ico audit-ico-go {{ exportingAudit || !selectedItemId ? 'disabled' : '' }}" bindtap="onExportAudit">导出</view>
-        </view>
-        <view class="hint hint-tight">类型仅「入库/出库」；现存为流水快照库存；领用还原行无存库快照时留空。点刷新拉最新。</view>
-        <view wx:if="{{ loadingAudit }}" class="muted">加载中…</view>
+      <!-- 个人 · 多次：区间汇总 + 明细 -->
+      <block wx:elif="{{ activeTab === 'personal' }}">
+        <view wx:if="{{ loadingRange }}" class="muted pad">汇总中…</view>
         <block wx:else>
-          <scroll-view wx:if="{{ mergedRows.length }}" scroll-x class="scroll-table">
-            <view class="table-inner table-inner-audit">
-              <view class="tr tr-head">
-                <view class="td w-time">变动时间</view>
-                <view class="td w-name">物资名称</view>
-                <view class="td w-sm">类型</view>
-                <view class="td w-add">增加的库存</view>
-                <view class="td w-add">新增的库存</view>
-                <view class="td w-stock">现存</view>
-                <view class="td w-mid">处理人</view>
-                <view class="td w-mid">领用人</view>
-                <view class="td w-remark">备注</view>
+          <view wx:if="{{ rangeMeta }}" class="ord-summary">
+            <view class="ord-sum-item"><text class="ord-sum-k">领用人</text><text>{{ rangeMeta.applicantDisplayName || rangeMeta.applicantUserId }}</text></view>
+            <view class="ord-sum-item"><text class="ord-sum-k">单数</text><text>{{ rangeMeta.total }}</text></view>
+            <view class="ord-sum-item"><text class="ord-sum-k">区间</text><text>{{ rangeMeta.from }}～{{ rangeMeta.to }}</text></view>
+          </view>
+          <view wx:if="{{ rangeViewRows.length }}" class="ord-table-wrap">
+            <view class="ord-table" style="min-width: 1800rpx">
+              <view class="ord-tr ord-tr-head">
+                <view class="ord-td w-item">物资名称</view>
+                <view class="ord-td w-mid">规格</view>
+                <view class="ord-td w-date">申请时间</view>
+                <view class="ord-td w-date">出库时间</view>
+                <view class="ord-td w-xs">申请数量</view>
+                <view class="ord-td w-xs">出库数量</view>
+                <view class="ord-td w-mid">出入库类型</view>
               </view>
-              <view wx:for="{{ mergedRows }}" wx:key="_key" class="tr {{ item.rowTint === 'violet' ? 'tr-restored' : '' }}">
-                <view class="td w-time">{{ item.timeText }}</view>
-                <view class="td w-name">{{ item.name }}</view>
-                <view class="td w-sm">{{ item.ioType }}</view>
-                <view class="td w-add">{{ item.applyQty }}</view>
-                <view class="td w-add">{{ item.changeQty }}</view>
-                <view class="td w-stock">{{ item.stockText }}</view>
-                <view class="td w-mid">{{ item.op }}</view>
-                <view class="td w-mid">{{ item.ap }}</view>
-                <view class="td w-remark">{{ item.remark }}</view>
+              <view wx:for="{{ rangeViewRows }}" wx:key="_key" class="ord-tr">
+                <view class="ord-td w-item">{{ item.snapshotName }}</view>
+                <view class="ord-td w-mid">{{ item.specLabel || '—' }}</view>
+                <view class="ord-td w-date">{{ item.createdAtText }}</view>
+                <view class="ord-td w-date">{{ item.fulfilledAtText }}</view>
+                <view class="ord-td w-xs">{{ item.qty }}</view>
+                <view class="ord-td w-xs">{{ item.fq }}</view>
+                <view class="ord-td w-mid">{{ item.lineIoType }}</view>
               </view>
             </view>
-          </scroll-view>
-          <view wx:else class="empty-block">本页暂无数据</view>
-          <view class="hint hint-tight">本页 {{ mergedRows.length }} 行；流水共 {{ auditTotal }} 条、还原共 {{ restoredTotal }} 条。</view>
-          <view wx:if="{{ auditPagerShow }}" class="pager">
-            <view class="pager-btn" bindtap="onAuditPrev">上一页</view>
-            <text>第 {{ auditPage }} 页</text>
-            <view class="pager-btn" bindtap="onAuditNext">下一页</view>
           </view>
+          <view wx:elif="{{ !rangeMeta }}" class="muted pad">选择日期区间后自动汇总</view>
+          <view class="ord-foot">{{ rangeViewRows.length < rangeFlatRows.length ? '上拉显示更多' : (rangeFlatRows.length ? '已全部显示（' + rangeFlatRows.length + ' 行）' : '本区间无明细') }}</view>
         </block>
-      </view>
-    </block>
+      </block>
 
-    <!-- 统一中心弹窗选择（禁用微信原生 picker）；样式与项目内胶囊/卡片一致 -->
-    <view wx:if="{{ centerSheet.visible }}" class="center-mask" bindtap="closeCenterSheet">
-      <view class="center-sheet" catchtap="noop">
-        <view class="center-sheet-title">{{ centerSheet.title }}</view>
-        <scroll-view scroll-y class="center-sheet-scroll">
-          <view
-            wx:for="{{ centerSheet.rows }}"
-            wx:key="k"
-            class="center-sheet-row"
-            data-index="{{ index }}"
-            bindtap="onCenterSheetRowTap"
-          >
-            <view class="center-sheet-main">{{ item.main }}</view>
-            <view wx:if="{{ item.sub }}" class="center-sheet-sub">{{ item.sub }}</view>
+      <!-- 按物品审计：来去流水 -->
+      <block wx:else>
+        <view wx:if="{{ loadingAudit }}" class="muted pad">加载中…</view>
+        <block wx:else>
+          <view wx:if="{{ mergedRows.length }}" class="ord-table-wrap">
+            <view class="ord-table" style="min-width: 1800rpx">
+              <view class="ord-tr ord-tr-head">
+                <view class="ord-td w-date">变动时间</view>
+                <view class="ord-td w-item">物资名称</view>
+                <view class="ord-td w-xs">类型</view>
+                <view class="ord-td w-xs">申请数量</view>
+                <view class="ord-td w-xs">变动数量</view>
+                <view class="ord-td w-xs">现存</view>
+                <view class="ord-td w-pi">处理人</view>
+                <view class="ord-td w-pi">领用人</view>
+                <view class="ord-td w-remark">备注</view>
+              </view>
+              <view wx:for="{{ mergedRows }}" wx:key="_key" class="ord-tr">
+                <view class="ord-td w-date">{{ item.timeText }}</view>
+                <view class="ord-td w-item">{{ item.name }}</view>
+                <view class="ord-td w-xs">{{ item.ioType }}</view>
+                <view class="ord-td w-xs">{{ item.applyQty }}</view>
+                <view class="ord-td w-xs">{{ item.changeQty }}</view>
+                <view class="ord-td w-xs">{{ item.stockText }}</view>
+                <view class="ord-td w-pi">{{ item.op }}</view>
+                <view class="ord-td w-pi">{{ item.ap }}</view>
+                <view class="ord-td w-remark">{{ item.remark }}</view>
+              </view>
+            </view>
           </view>
-        </scroll-view>
-        <view class="center-sheet-footer">
-          <view class="center-sheet-btn" bindtap="closeCenterSheet">关闭</view>
-        </view>
-      </view>
-    </view>
+          <view wx:else class="muted pad">{{ selectedItemId ? '本页暂无数据' : '请选择物品' }}</view>
+          <view class="ord-foot">{{ auditPagerShow ? (loadingAudit ? '加载中…' : '上拉看下一页') : '已全部显示' }}</view>
+        </block>
+      </block>
+    </scroll-view>
   </view>
 </block>

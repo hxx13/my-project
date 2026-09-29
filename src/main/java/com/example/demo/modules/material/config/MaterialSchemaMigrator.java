@@ -214,6 +214,12 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
                 log.info("[material-schema] 已回修 {} 张申领单的课题组", groupsFixed);
             }
 
+            // 清理重复的出库流水（SIMPLE 重复审核的历史产物）：不清理的话导出/审计里同一笔出库会重复出现。
+            int dupMovements = materialService.repairDuplicateOutboundMovements(5000);
+            if (dupMovements > 0) {
+                log.info("[material-schema] 已清理 {} 条重复的出库流水", dupMovements);
+            }
+
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {
             log.error("[material-schema] 表结构迁移失败: {}", e.getMessage());

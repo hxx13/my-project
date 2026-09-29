@@ -2,6 +2,7 @@ package com.example.demo.common.excel;
 
 import com.example.demo.common.excel.SubtotalPlanBuilder.SubtotalEvent;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.FillPatternType;
 import org.apache.poi.ss.usermodel.Font;
@@ -15,32 +16,49 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 小计导出配色：同一板块（一级分组，如课题组 / 供应商）的明细行与其小计行铺同一底色，整块连成一片；
- * 相邻板块交替两种浅色，总计单独一色。小计行靠加粗和标签列位置区分，不再单独配色。
+ * 小计导出配色：一个「块」（一级分组=课题组/供应商，物资审计按人）占一个色系，块内按层级分深浅
+ * ——明细最浅，小计按级别递进（三级最浅 → 一级最深）并加粗；相邻块换色系，总计单独一色。
  * 三处导出（物资审计·物品流水、动物订购审核、采购汇总）共用。
  */
 public final class SubtotalRowStyles {
 
-    /** 相邻板块交替使用的底色（浅蓝 / 浅绿），ARGB 含 FF 不透明。 */
-    private static final byte[][] BLOCK_FILLS = {
-            {(byte) 0xFF, (byte) 0xDD, (byte) 0xE9, (byte) 0xF7},
-            {(byte) 0xFF, (byte) 0xDE, (byte) 0xEF, (byte) 0xDE},
+    /**
+     * 一个「块」（默认一级分组，物资审计按人）占一个色系，色系内再按**层级**分深浅：
+     * 下标 0=明细（最浅）、1=一级小计、2=二级小计、3=三级小计；
+     * 层级越靠外（1 级/课题组）越深，所以同一个人内部「物品小计 → 申领人小计 → 课题组小计」深浅递进，能一眼分清。
+     * 相邻块换色系，块与块之间也分得开。
+     */
+    private static final byte[][][] BLOCK_FILLS = {
+            { // 蓝系
+                    {(byte) 0xFF, (byte) 0xDD, (byte) 0xE9, (byte) 0xF7},   // 明细
+                    {(byte) 0xFF, (byte) 0x86, (byte) 0xAE, (byte) 0xDF},   // 一级小计（最浅的"深配色"）
+                    {(byte) 0xFF, (byte) 0xA6, (byte) 0xC4, (byte) 0xEA},   // 二级小计
+                    {(byte) 0xFF, (byte) 0xC3, (byte) 0xD8, (byte) 0xF2},   // 三级小计（最浅的小计档）
+            },
+            { // 绿系
+                    {(byte) 0xFF, (byte) 0xDE, (byte) 0xEF, (byte) 0xDE},
+                    {(byte) 0xFF, (byte) 0x8B, (byte) 0xC5, (byte) 0x8B},
+                    {(byte) 0xFF, (byte) 0xA9, (byte) 0xD6, (byte) 0xA9},
+                    {(byte) 0xFF, (byte) 0xC6, (byte) 0xE4, (byte) 0xC6},
+            },
     };
     private static final byte[] TOTAL_FILL = {(byte) 0xFF, (byte) 0xD9, (byte) 0xD9, (byte) 0xD9};
 
-    private final CellStyle[] blockPlain;
-    private final CellStyle[] blockBold;
+    /** [色系][层级 0..3] 的样式；层级 ≥1 加粗 */
+    private final CellStyle[][] blockStyles;
     private final CellStyle total;
 
     private SubtotalRowStyles(Workbook wb) {
         Font plain = wb.createFont();
         Font bold = wb.createFont();
         bold.setBold(true);
-        blockPlain = new CellStyle[BLOCK_FILLS.length];
-        blockBold = new CellStyle[BLOCK_FILLS.length];
-        for (int i = 0; i < BLOCK_FILLS.length; i++) {
-            blockPlain[i] = style(wb, BLOCK_FILLS[i], plain);
-            blockBold[i] = style(wb, BLOCK_FILLS[i], bold);
+        blockStyles = new CellStyle[BLOCK_FILLS.length][];
+        for (int hue = 0; hue < BLOCK_FILLS.length; hue++) {
+            byte[][] shades = BLOCK_FILLS[hue];
+            blockStyles[hue] = new CellStyle[shades.length];
+            for (int lv = 0; lv < shades.length; lv++) {
+                blockStyles[hue][lv] = style(wb, shades[lv], lv == 0 ? plain : bold);
+            }
         }
         total = style(wb, TOTAL_FILL, bold);
     }
@@ -50,10 +68,20 @@ public final class SubtotalRowStyles {
         return new SubtotalRowStyles(wb);
     }
 
-    /** 板块第 index 行样式；bold=true 用于小计行。 */
+    /**
+     * 指定色系与层级（0=明细，1/2/3=对应级小计）的样式。
+     * 层级越靠外越深且加粗，所以同一个人内部按小计级别深浅递进。
+     */
+    public CellStyle block(int index, int level) {
+        int hue = Math.floorMod(index, BLOCK_FILLS.length);
+        CellStyle[] shades = blockStyles[hue];
+        int lv = level < 0 ? 0 : Math.min(level, shades.length - 1);
+        return shades[lv];
+    }
+
+    /** 兼容旧口径：bold 视为二级小计的深浅档。 */
     public CellStyle block(int index, boolean bold) {
-        int slot = Math.floorMod(index, BLOCK_FILLS.length);
-        return bold ? blockBold[slot] : blockPlain[slot];
+        return block(index, bold ? 2 : 0);
     }
 
     public CellStyle total() {
@@ -62,9 +90,13 @@ public final class SubtotalRowStyles {
 
     /**
      * 生成与 plan 下标一一对应的行样式：明细行取所属板块底色，小计行同色加粗，总计单独一色。
-     * 板块按 lv1 变化切分，相邻板块底色交替。
+     * 板块按 {@code colorLevel} 变化切分，相邻板块底色交替。
+     *
+     * @param colorLevel 用哪一层作为"一块"来交替配色：1=一级（如课题组）、2=二级（如申领人）。
+     *                   物资审计要"一个人一块颜色"就传 2；只按大板块配色传 1。
      */
-    public List<CellStyle> planStyles(List<SubtotalEvent> plan) {
+    public List<CellStyle> planStyles(List<SubtotalEvent> plan, int colorLevel) {
+        int level = colorLevel <= 0 ? 1 : colorLevel;
         List<CellStyle> out = new ArrayList<>(plan.size());
         String currentBlock = null;
         int blockIndex = -1;
@@ -73,13 +105,24 @@ public final class SubtotalRowStyles {
                 out.add(total);
                 continue;
             }
-            if (!Objects.equals(e.lv1(), currentBlock)) {
-                currentBlock = e.lv1();
+            String key = switch (level) {
+                case 3 -> e.lv3();
+                case 2 -> e.lv2();
+                default -> e.lv1();
+            };
+            if (!Objects.equals(key, currentBlock)) {
+                currentBlock = key;
                 blockIndex++;
             }
-            out.add(block(blockIndex, !e.isDetail()));
+            // 明细用最浅档；小计按自己的级别取深浅（1 级最深 → 3 级最浅）
+            out.add(block(blockIndex, e.isDetail() ? 0 : e.level()));
         }
         return out;
+    }
+
+    /** 默认按一级分组（板块）交替配色。 */
+    public List<CellStyle> planStyles(List<SubtotalEvent> plan) {
+        return planStyles(plan, 1);
     }
 
     /**
@@ -104,6 +147,23 @@ public final class SubtotalRowStyles {
         s.setFillForegroundColor(new XSSFColor(rgb, null));
         s.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         s.setFont(font);
+        // 细边框：整表有格子（用户明确要求——没有边框时打印/截图看不出行列边界）
+        s.setBorderTop(BorderStyle.THIN);
+        s.setBorderBottom(BorderStyle.THIN);
+        s.setBorderLeft(BorderStyle.THIN);
+        s.setBorderRight(BorderStyle.THIN);
+        XSSFColor line = new XSSFColor(new byte[]{(byte) 0xFF, (byte) 0xBF, (byte) 0xBF, (byte) 0xBF}, null);
+        s.setTopBorderColor(line);
+        s.setBottomBorderColor(line);
+        s.setLeftBorderColor(line);
+        s.setRightBorderColor(line);
         return s;
+    }
+
+    /** 表头样式：与数据同样的细边框 + 加粗；底色沿用第一档板块浅色，和色带接得上。 */
+    public static CellStyle header(Workbook wb) {
+        Font bold = wb.createFont();
+        bold.setBold(true);
+        return style(wb, BLOCK_FILLS[0][0], bold);
     }
 }

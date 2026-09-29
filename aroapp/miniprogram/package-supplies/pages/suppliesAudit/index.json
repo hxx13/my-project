@@ -1,3 +1,8 @@
 {
-  "navigationBarTitleText": "领用审计"
+  "navigationBarTitleText": "领用审计",
+  "usingComponents": {
+    "option-picker": "/components/option-picker/index",
+    "van-popup": "@vant/weapp/popup/index",
+    "van-datetime-picker": "@vant/weapp/datetime-picker/index"
+  }
 }

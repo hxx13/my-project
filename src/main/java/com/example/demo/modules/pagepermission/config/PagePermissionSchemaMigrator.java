@@ -208,6 +208,42 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
             log.debug("[page-permission-schema] MINI supplies-audit 入口种子跳过: {}", e.getMessage());
         }
         try {
+            // 「物资领用审计」= 网页版 /admin/material/audit-export 的小程序版
+            // minRole 与网页版保持同口径：ADMIN（网页端 fallbackMinRole/inferMinRole 都是 ADMIN）
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'page:mini:material-audit', 'PAGE', '物资领用审计', '/pages/materialAudit/index', NULL,
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'entry:mini:mine:material-audit', 'ENTRY', '物资领用审计', '/pages/materialAudit/index', 'mine',
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            try {
+                jdbcTemplate.update("""
+                        UPDATE page_permission_item SET display_name = '物资领用审计'
+                        WHERE platform = 'MINI' AND node_key IN ('page:mini:material-audit', 'entry:mini:mine:material-audit')
+                        """);
+            } catch (Exception e) {
+                log.debug("[page-permission-schema] MINI material-audit 展示名同步跳过: {}", e.getMessage());
+            }
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] MINI material-audit 入口种子跳过: {}", e.getMessage());
+        }
+        try {
             jdbcTemplate.execute("""
                     INSERT IGNORE INTO page_permission_item(
                         platform, node_key, node_type, display_name, path_or_route, entry_source,

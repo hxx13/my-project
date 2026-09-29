@@ -4,6 +4,7 @@
   "usingComponents": {
     "cage-grid": "/package-feature/components/cage-grid/index",
     "subpage-nav-bar": "/components/subpage-nav-bar/index",
-    "van-popup": "@vant/weapp/popup/index"
+    "van-popup": "@vant/weapp/popup/index",
+    "export-config-sheet": "/components/export-config-sheet/index"
   }
 }

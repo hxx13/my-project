@@ -1,70 +1,180 @@
 <block wx:if="{{ pageGateOk }}">
-  <view class="page">
-    <view class="card card-tight">
-      <!-- 筛选：课题组 / 申领人 / 日期区间（都走中心弹窗，与领用审计一致） -->
-      <view class="toolbar-row">
-        <view class="picker-compact applicant-chip" bindtap="openGroupSheet">{{ groupLabel }}</view>
-        <view class="picker-compact applicant-chip" bindtap="openApplicantSheet">{{ applicantLabel }}</view>
-        <view class="audit-ico" bindtap="onRefresh">↻</view>
-        <view class="ma-clear" bindtap="onClearFilters">清空</view>
-      </view>
-      <view class="range-toolbar range-toolbar-mt">
-        <view class="date-chip" bindtap="openFromSheet">{{ rangeFrom || '开始' }}</view>
-        <text class="range-sep">～</text>
-        <view class="date-chip" bindtap="openToSheet">{{ rangeTo || '结束' }}</view>
-      </view>
-      <view class="hint hint-tight">只读审计：显示你作为物品审核人可见的申领明细（与网页版「申领审计导出」同源）。</view>
-    </view>
-
-    <view wx:if="{{ loading }}" class="card card-tight"><view class="muted">加载中…</view></view>
-
-    <block wx:elif="{{ rows.length }}">
-      <view class="ma-summary">共 {{ totalRequests }} 单 · 已加载 {{ loadedRequests }} 单 · 本页 {{ rows.length }} 行</view>
-      <view class="card card-tight">
-        <view wx:for="{{ rows }}" wx:key="key" class="ma-row">
-          <view class="ma-row-head">
-            <text class="ma-time">{{ item.timeText }}</text>
-            <text class="ma-badge">{{ item.statusText }}</text>
-          </view>
-          <view class="ma-row-main">
-            <text class="ma-item">{{ item.itemName }}</text>
-            <text class="ma-qty">×{{ item.qty }}</text>
-          </view>
-          <view class="ma-row-sub">
-            <text>规格：{{ item.specLabel }}</text>
-          </view>
-          <view class="ma-row-foot">
-            <text class="ma-who">{{ item.applicantName }}</text>
-            <text class="ma-group">{{ item.applicantGroup }}</text>
-          </view>
-          <view class="ma-row-id">{{ item.requestId }}</view>
-        </view>
-      </view>
-      <view class="ma-foot">{{ hasMore ? (loadingMore ? '加载中…' : '上拉加载更多') : '没有更多了' }}</view>
-    </block>
-
-    <view wx:else class="card card-tight"><view class="empty-block">暂无申领记录</view></view>
-
-    <!-- 统一中心弹窗选择（禁用微信原生 picker） -->
-    <view wx:if="{{ sheet.visible }}" class="center-mask" bindtap="closeSheet">
-      <view class="center-sheet" catchtap="noop">
-        <view class="center-sheet-title">{{ sheet.title }}</view>
-        <scroll-view scroll-y class="center-sheet-scroll">
-          <view
-            wx:for="{{ sheet.rows }}"
-            wx:key="k"
-            class="center-sheet-row"
-            data-index="{{ index }}"
-            bindtap="onSheetRowTap"
-          >
-            <view class="center-sheet-main">{{ item.main }}</view>
-            <view wx:if="{{ item.sub }}" class="center-sheet-sub">{{ item.sub }}</view>
-          </view>
-        </scroll-view>
-        <view class="center-sheet-footer">
-          <view class="center-sheet-btn" bindtap="closeSheet">关闭</view>
-        </view>
+  <view class="orders">
+    <!-- 四个审计维度（与网页版页签一致） -->
+    <view class="ord-bar">
+      <view class="ord-tabs">
+        <view class="ord-tab {{ tab === 'personal' ? 'ord-tab-on' : '' }}" data-tab="personal" bindtap="onTabTap">个人审计</view>
+        <view class="ord-tab {{ tab === 'group' ? 'ord-tab-on' : '' }}" data-tab="group" bindtap="onTabTap">课题组审计</view>
+        <view class="ord-tab {{ tab === 'item' ? 'ord-tab-on' : '' }}" data-tab="item" bindtap="onTabTap">按物品审计</view>
+        <view class="ord-tab {{ tab === 'itemGroup' ? 'ord-tab-on' : '' }}" data-tab="itemGroup" bindtap="onTabTap">物品+课题组</view>
       </view>
     </view>
+
+    <view class="ord-bar">
+      <view class="ord-btn" bindtap="toggleFilters">筛选 {{ filtersOpen ? '▲' : '▼' }}</view>
+      <view class="ord-btn" bindtap="resetFilters">重置</view>
+      <view class="ord-btn ord-btn-primary {{ exporting ? 'ord-btn-off' : '' }}" bindtap="onExport">{{ exporting ? '导出中…' : '导出 Excel' }}</view>
+      <text class="ord-count">{{ isItemTab ? '共 ' + rows.length + ' 行' + (viewRows.length < rows.length ? '（已显示 ' + viewRows.length + '）' : '') : '共 ' + total + ' 单' }}</text>
+    </view>
+
+    <!-- 筛选（可收起）：一律用 option-picker（可搜索 + 记住当前值），不用原生 picker -->
+    <view wx:if="{{ filtersOpen }}" class="ord-filters">
+      <view wx:if="{{ tab === 'group' || tab === 'itemGroup' }}" class="ord-field">
+        <text class="ord-flabel">课题组</text>
+        <option-picker
+          class="ma-pick ma-pick-group"
+          options="{{ groupOptions }}"
+          value="{{ groupValue }}"
+          placeholder="全部课题组"
+          title="选择课题组"
+          searchable
+          bind:change="onGroupChange"
+        />
+      </view>
+
+      <view wx:if="{{ tab === 'personal' }}" class="ord-field">
+        <text class="ord-flabel">申领人</text>
+        <option-picker
+          class="ma-pick ma-pick-applicant"
+          options="{{ applicantOptions }}"
+          value="{{ applicantValue }}"
+          placeholder="全部申领人"
+          title="选择申领人"
+          searchable
+          bind:change="onApplicantChange"
+        />
+      </view>
+
+      <view wx:if="{{ isItemTab }}" class="ord-field">
+        <text class="ord-flabel">物资分类</text>
+        <option-picker
+          class="ma-pick ma-pick-category"
+          options="{{ categoryOptions }}"
+          value="{{ categoryValue }}"
+          placeholder="全部分类"
+          title="选择物资分类"
+          bind:change="onCategoryChange"
+        />
+      </view>
+
+      <view wx:if="{{ isItemTab }}" class="ord-field">
+        <text class="ord-flabel">选择物品</text>
+        <option-picker
+          class="ma-pick ma-pick-item"
+          options="{{ itemOptions }}"
+          value="{{ itemValue }}"
+          placeholder="全部物品"
+          title="选择物品"
+          searchable
+          bind:change="onItemChange"
+        />
+      </view>
+
+      <view wx:if="{{ isItemTab }}" class="ord-field">
+        <text class="ord-flabel">搜索物品</text>
+        <input class="ord-finput" placeholder="按名称筛选" value="{{ itemKeyword }}" bindinput="onKeywordInput" />
+      </view>
+
+      <!-- 日期：一行两枚 chip（点开 van-datetime-picker），有值时可单独 ×，不占满整行 -->
+      <view class="ord-field ord-field-wide">
+        <text class="ord-flabel">日期</text>
+        <view class="ord-range">
+          <view class="ord-chip" data-key="from" bindtap="onDateChipTap">
+            <text>{{ from || '开始日期' }}</text>
+            <text wx:if="{{ from }}" class="ord-chip-x" catchtap="onDateClear" data-key="from">×</text>
+          </view>
+          <text class="ord-range-sep">～</text>
+          <view class="ord-chip" data-key="to" bindtap="onDateChipTap">
+            <text>{{ to || '结束日期' }}</text>
+            <text wx:if="{{ to }}" class="ord-chip-x" catchtap="onDateClear" data-key="to">×</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <export-config-sheet
+      class="exp-cfg"
+      show="{{ cfgShow }}"
+      summary-url="{{ cfgSummaryUrl }}"
+      export-url="{{ cfgExportUrl }}"
+      params="{{ cfgParams }}"
+      fallback-name="{{ cfgName }}"
+      bind:close="onCfgClose"
+      bind:done="onCfgDone"
+    />
+
+    <van-popup show="{{ datePickShow }}" position="bottom" round bind:close="onDatePickClose">
+      <van-datetime-picker
+        type="date"
+        value="{{ datePickMs }}"
+        bind:confirm="onDateConfirm"
+        bind:cancel="onDatePickClose"
+      />
+    </van-popup>
+
+    <scroll-view scroll-y class="orders-scroll" bindscrolltolower="onReachBottomEnd" lower-threshold="80">
+      <view wx:if="{{ rows.length === 0 }}" class="muted pad">{{ loading ? '加载中…' : '暂无数据' }}</view>
+
+      <!-- 表格：横向滚动走 CSS（外层竖滚区里再套 scroll-view 会在追加时把 scrollTop 重置成 0，见动物订购页同款注释） -->
+      <block wx:else>
+        <!-- 申领维度：单号 / 物品 / 数量 / 规格 / 状态 / 申领人 / 课题组 / 时间 -->
+        <view wx:if="{{ !isItemTab }}" class="ord-table-wrap">
+          <view class="ord-table" style="min-width: 1560rpx">
+            <view class="ord-tr ord-tr-head">
+              <view class="ord-td w-no">单号</view>
+              <view class="ord-td w-item">物品</view>
+              <view class="ord-td w-xs">数量</view>
+              <view class="ord-td w-mid">规格</view>
+              <view class="ord-td w-mid">状态</view>
+              <view class="ord-td w-pi">申领人</view>
+              <view class="ord-td w-group">课题组</view>
+              <view class="ord-td w-date">时间</view>
+            </view>
+            <view wx:for="{{ viewRows }}" wx:key="key" class="ord-tr">
+              <view class="ord-td w-no mono">{{ item.no }}</view>
+              <view class="ord-td w-item">{{ item.itemName }}</view>
+              <view class="ord-td w-xs">{{ item.qty }}</view>
+              <view class="ord-td w-mid">{{ item.spec }}</view>
+              <view class="ord-td w-mid">{{ item.statusLabel }}</view>
+              <view class="ord-td w-pi">{{ item.applicantName }}</view>
+              <view class="ord-td w-group">{{ item.group }}</view>
+              <view class="ord-td w-date">{{ item.timeText }}</view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 物品维度：时间 / 类型 / 物品 / 规格 / 变动数量 / 库存 / 申领人 / 课题组 / 关联单号 / 备注 -->
+        <view wx:else class="ord-table-wrap">
+          <view class="ord-table" style="min-width: 1960rpx">
+            <view class="ord-tr ord-tr-head">
+              <view class="ord-td w-date">时间</view>
+              <view class="ord-td w-xs">类型</view>
+              <view class="ord-td w-item">物品</view>
+              <view class="ord-td w-mid">规格</view>
+              <view class="ord-td w-xs">变动数量</view>
+              <view class="ord-td w-xs">库存</view>
+              <view class="ord-td w-pi">申领人</view>
+              <view class="ord-td w-group">课题组</view>
+              <view class="ord-td w-no">关联单号</view>
+              <view class="ord-td w-remark">备注</view>
+            </view>
+            <view wx:for="{{ viewRows }}" wx:key="key" class="ord-tr">
+              <view class="ord-td w-date">{{ item.timeText }}</view>
+              <view class="ord-td w-xs">{{ item.ioType }}</view>
+              <view class="ord-td w-item">{{ item.itemName }}</view>
+              <view class="ord-td w-mid">{{ item.spec }}</view>
+              <view class="ord-td w-xs">{{ item.changeQty }}</view>
+              <view class="ord-td w-xs">{{ item.stockText }}</view>
+              <view class="ord-td w-pi">{{ item.applicantName }}</view>
+              <view class="ord-td w-group">{{ item.group }}</view>
+              <view class="ord-td w-no mono">{{ item.no }}</view>
+              <view class="ord-td w-remark">{{ item.remark }}</view>
+            </view>
+          </view>
+        </view>
+
+        <view class="ord-foot">{{ isItemTab ? (viewRows.length < rows.length ? '上拉显示更多' : '已全部显示（' + rows.length + ' 行）') : (hasMore ? (loadingMore ? '加载中…' : '上拉加载更多') : '没有更多了') }}</view>
+      </block>
+    </scroll-view>
   </view>
 </block>

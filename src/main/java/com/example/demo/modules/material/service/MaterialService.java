@@ -1186,7 +1186,8 @@ public class MaterialService {
 
     @Transactional
     public Result<MaterialRequestView> approve(User reviewer, String id) {
-        MaterialRequest request = requestMapper.selectById(id);
+        // 行锁读：并发/重复点"通过"时串行化，第二个请求能看到已变更的状态
+        MaterialRequest request = requestMapper.selectByIdForUpdate(id);
         if (request == null) return Result.error("申领单不存在");
         if (!canReview(request, reviewer)) return Result.error("无权审核此申领单");
         // 审核人：仅在物品指定了审核人名单时才记录操作者ID，否则留空
@@ -1194,6 +1195,11 @@ public class MaterialService {
         boolean finalApproved = false;
         LocalDateTime reviewTime = LocalDateTime.now();
         if ("SIMPLE".equals(request.getWorkflowType())) {
+            // 幂等保护：已通过/已出库的单再点一次，过去会整条重跑 —— 重复写 OUTBOUND 流水、
+            // 重复扣锁定库存（实测有单据被写 7 条一模一样的出库流水）。只有 PENDING 才放行。
+            if (!"PENDING".equals(request.getStatus())) {
+                return Result.error("该申领单已审核，无需重复操作");
+            }
             requestMapper.updateReview(id, recordReviewerId, "APPROVED", reviewTime);
             logOp("REQUEST", id, "APPROVE", reviewLogDetail(recordReviewerId));
             finalApproved = true;
@@ -2248,6 +2254,39 @@ public class MaterialService {
             log.warn("解析申领人课题组失败 userId={}: {}", userId, e.getMessage());
         }
         return StringUtils.hasText(preferred) ? preferred.trim() : null;
+    }
+
+    /**
+     * 清理重复的出库流水（历史脏数据）。
+     *
+     * <p>成因为 SIMPLE 工作流重复点"通过"时整条重跑出库（现已加幂等保护），一张单会被写多条完全相同的
+     * OUTBOUND：导出/审计里同一笔出库重复出现，且库存倒推列被多减。这里只删「同单 + 同明细 + 同数量 +
+     * 同一秒」的严格重复，保留最早那条；撤销后重新出库这类正常多流水不动。幂等。</p>
+     *
+     * @param limit 单次最多删多少条（正常为 0）
+     */
+    public int repairDuplicateOutboundMovements(int limit) {
+        List<Long> ids;
+        try {
+            ids = stockMovementMapper.selectDuplicateOutboundIds(Math.max(1, limit));
+        } catch (Exception e) {
+            log.warn("[material] 重复出库流水探测失败: {}", e.getMessage());
+            return 0;
+        }
+        if (ids == null || ids.isEmpty()) return 0;
+        int deleted = 0;
+        for (int i = 0; i < ids.size(); i += 500) {
+            List<Long> chunk = ids.subList(i, Math.min(i + 500, ids.size()));
+            try {
+                deleted += stockMovementMapper.deleteByIds(chunk);
+            } catch (Exception e) {
+                log.warn("[material] 删除重复出库流水失败: {}", e.getMessage());
+            }
+        }
+        if (deleted > 0) {
+            log.info("[material] 已清理 {} 条重复的出库流水", deleted);
+        }
+        return deleted;
     }
 
     /**

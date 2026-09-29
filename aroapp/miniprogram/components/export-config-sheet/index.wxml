@@ -1,0 +1,35 @@
+<van-popup show="{{ show }}" position="bottom" round bind:close="onClose">
+  <view class="cfg-panel">
+    <view class="cfg-head">
+      <text class="cfg-title">{{ title }}</text>
+      <text class="cfg-close" bindtap="onClose">关闭</text>
+    </view>
+    <view wx:if="{{ loading }}" class="cfg-loading">加载中…</view>
+    <block wx:else>
+      <view class="cfg-meta">{{ meta }}</view>
+      <scroll-view scroll-y class="cfg-scroll">
+        <view wx:if="{{ levels.length }}" class="cfg-sec">
+          <text class="cfg-sec-title">小计层级</text>
+          <view wx:for="{{ levels }}" wx:key="key" class="cfg-row">
+            <text class="cfg-row-label">{{ item.label }}</text>
+            <van-switch checked="{{ item.on }}" size="20px" data-key="{{ item.key }}" bind:change="onLevelToggle" />
+          </view>
+        </view>
+        <view wx:if="{{ blocks.length }}" class="cfg-sec">
+          <text class="cfg-sec-title">板块（关掉即该板块不插小计）</text>
+          <view wx:for="{{ blocks }}" wx:key="key" class="cfg-row">
+            <view class="cfg-row-main">
+              <text class="cfg-row-label">{{ item.label }}</text>
+              <text class="cfg-row-sub">{{ item.sub }}</text>
+            </view>
+            <van-switch checked="{{ item.on }}" size="20px" data-key="{{ item.key }}" bind:change="onBlockToggle" />
+          </view>
+        </view>
+      </scroll-view>
+      <view class="cfg-foot">
+        <view class="cfg-btn" bindtap="onClose">取消</view>
+        <view class="cfg-btn cfg-btn-primary {{ exporting ? 'cfg-btn-off' : '' }}" bindtap="onConfirm">{{ exporting ? '导出中…' : '导出' }}</view>
+      </view>
+    </block>
+  </view>
+</van-popup>
