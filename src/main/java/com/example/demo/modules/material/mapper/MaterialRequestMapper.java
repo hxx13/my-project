@@ -77,6 +77,8 @@ public interface MaterialRequestMapper {
      * 补写回流水表后这笔出库才真正进入库存倒推链。
      */
     List<Map<String, Object>> selectFulfilledLinesMissingOutbound(@Param("limit") int limit);
+    /** 单据课题组被写成了本人的部门名（历史前端 bug），且本人现在有课题组 —— 待回修的单 */
+    List<MaterialRequest> selectGroupEqualsOwnDepartment(@Param("limit") int limit);
     int updateApplicantMeta(@Param("id") String id, @Param("applicantName") String applicantName,
                             @Param("applicantGroup") String applicantGroup);
     /** 撤销审核：清空审核/出库字段，回退到 PENDING */

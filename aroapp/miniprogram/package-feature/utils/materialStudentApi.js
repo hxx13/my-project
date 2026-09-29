@@ -80,13 +80,18 @@ function parseResponse(res) {
   return { ok: true, body };
 }
 
+/**
+ * 提交申领单时带的 applicantGroup —— 必须是**课题组**，不是院系。
+ * 历史实现取的是 departmentName，把院系写进了单子的「课题组」（审计页按课题组筛不到、列里显示部门）。
+ * 取不到课题组就返回 undefined，交给后端按人员库补，避免再写脏值。
+ */
 function resolveApplicantGroup() {
   try {
     const raw = wx.getStorageSync(springAuth.KEYS.USER_INFO);
     if (!raw) return undefined;
     const u = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    const dept = u && (u.departmentName != null ? u.departmentName : u.department_name);
-    const s = dept != null ? String(dept).trim() : '';
+    const pg = u && (u.projectGroupName != null ? u.projectGroupName : u.project_group_name);
+    const s = pg != null ? String(pg).trim() : '';
     return s || undefined;
   } catch (e) {
     return undefined;

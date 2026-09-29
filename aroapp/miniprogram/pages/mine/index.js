@@ -344,6 +344,7 @@ Page({
     canGoAccessRecordLibrary: false,
     canGoViolationAdmin: false,
     canGoSuppliesAudit: false,
+    canGoMaterialAudit: false,
     canGoStudentReview: false,
     canGoCardPrint: false,
     canGoOrderTimeConfig: false,
@@ -692,6 +693,9 @@ Page({
       canGoSuppliesAudit:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/suppliesAudit/index', role, 'STAFF'),
+      canGoMaterialAudit:
+        hasMinRole(role, 'STAFF') &&
+        pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/materialAudit/index', role, 'STAFF'),
       canGoStudentReview:
         hasMinRole(role, 'STAFF') &&
         pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF'),
@@ -1291,6 +1295,19 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-supplies/pages/suppliesAudit/index' });
+  },
+
+  goMaterialAudit() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
+    if (!hasMinRole(role, 'STAFF')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    if (!pagePermission.canShowMiniEntry('mine', '/package-supplies/pages/materialAudit/index', role, 'STAFF')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-supplies/pages/materialAudit/index' });
   },
 
   goCardPrint() {

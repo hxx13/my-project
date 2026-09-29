@@ -1,0 +1,70 @@
+<block wx:if="{{ pageGateOk }}">
+  <view class="page">
+    <view class="card card-tight">
+      <!-- 筛选：课题组 / 申领人 / 日期区间（都走中心弹窗，与领用审计一致） -->
+      <view class="toolbar-row">
+        <view class="picker-compact applicant-chip" bindtap="openGroupSheet">{{ groupLabel }}</view>
+        <view class="picker-compact applicant-chip" bindtap="openApplicantSheet">{{ applicantLabel }}</view>
+        <view class="audit-ico" bindtap="onRefresh">↻</view>
+        <view class="ma-clear" bindtap="onClearFilters">清空</view>
+      </view>
+      <view class="range-toolbar range-toolbar-mt">
+        <view class="date-chip" bindtap="openFromSheet">{{ rangeFrom || '开始' }}</view>
+        <text class="range-sep">～</text>
+        <view class="date-chip" bindtap="openToSheet">{{ rangeTo || '结束' }}</view>
+      </view>
+      <view class="hint hint-tight">只读审计：显示你作为物品审核人可见的申领明细（与网页版「申领审计导出」同源）。</view>
+    </view>
+
+    <view wx:if="{{ loading }}" class="card card-tight"><view class="muted">加载中…</view></view>
+
+    <block wx:elif="{{ rows.length }}">
+      <view class="ma-summary">共 {{ totalRequests }} 单 · 已加载 {{ loadedRequests }} 单 · 本页 {{ rows.length }} 行</view>
+      <view class="card card-tight">
+        <view wx:for="{{ rows }}" wx:key="key" class="ma-row">
+          <view class="ma-row-head">
+            <text class="ma-time">{{ item.timeText }}</text>
+            <text class="ma-badge">{{ item.statusText }}</text>
+          </view>
+          <view class="ma-row-main">
+            <text class="ma-item">{{ item.itemName }}</text>
+            <text class="ma-qty">×{{ item.qty }}</text>
+          </view>
+          <view class="ma-row-sub">
+            <text>规格：{{ item.specLabel }}</text>
+          </view>
+          <view class="ma-row-foot">
+            <text class="ma-who">{{ item.applicantName }}</text>
+            <text class="ma-group">{{ item.applicantGroup }}</text>
+          </view>
+          <view class="ma-row-id">{{ item.requestId }}</view>
+        </view>
+      </view>
+      <view class="ma-foot">{{ hasMore ? (loadingMore ? '加载中…' : '上拉加载更多') : '没有更多了' }}</view>
+    </block>
+
+    <view wx:else class="card card-tight"><view class="empty-block">暂无申领记录</view></view>
+
+    <!-- 统一中心弹窗选择（禁用微信原生 picker） -->
+    <view wx:if="{{ sheet.visible }}" class="center-mask" bindtap="closeSheet">
+      <view class="center-sheet" catchtap="noop">
+        <view class="center-sheet-title">{{ sheet.title }}</view>
+        <scroll-view scroll-y class="center-sheet-scroll">
+          <view
+            wx:for="{{ sheet.rows }}"
+            wx:key="k"
+            class="center-sheet-row"
+            data-index="{{ index }}"
+            bindtap="onSheetRowTap"
+          >
+            <view class="center-sheet-main">{{ item.main }}</view>
+            <view wx:if="{{ item.sub }}" class="center-sheet-sub">{{ item.sub }}</view>
+          </view>
+        </scroll-view>
+        <view class="center-sheet-footer">
+          <view class="center-sheet-btn" bindtap="closeSheet">关闭</view>
+        </view>
+      </view>
+    </view>
+  </view>
+</block>

@@ -50,6 +50,7 @@
         "pages/suppliesProcess/index",
         "pages/suppliesAdmin/index",
         "pages/materialAdmin/index",
+        "pages/materialAudit/index",
         "pages/purchaseRequest/index"
       ]
     },

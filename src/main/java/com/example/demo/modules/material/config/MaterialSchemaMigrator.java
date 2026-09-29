@@ -207,6 +207,13 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
                 log.info("[material-schema] 已补写 {} 条缺失的出库流水", movementsWritten);
             }
 
+            // 回修「课题组被写成院系」的历史单（学生中心前端曾把 departmentName 当课题组提交）。
+            // 判据窄、幂等，无脏值时为空集。
+            int groupsFixed = materialService.repairRequestGroupWrittenAsDepartment(5000);
+            if (groupsFixed > 0) {
+                log.info("[material-schema] 已回修 {} 张申领单的课题组", groupsFixed);
+            }
+
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {
             log.error("[material-schema] 表结构迁移失败: {}", e.getMessage());

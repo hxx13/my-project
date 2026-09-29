@@ -258,7 +258,7 @@
     </view>
   </view>
 
-  <view wx:if="{{ !isStudentView && ((canStaffOps && (canGoSuppliesAudit || canGoStudentReview || canGoFacilityMaintenance)) || (canManagePersonnel && (canGoAdminPersonnel || canGoDahuaIssue || canGoDoorControl))) }}" class="mine-menu-group">
+  <view wx:if="{{ !isStudentView && ((canStaffOps && (canGoSuppliesAudit || canGoMaterialAudit || canGoStudentReview || canGoFacilityMaintenance)) || (canManagePersonnel && (canGoAdminPersonnel || canGoDahuaIssue || canGoDoorControl))) }}" class="mine-menu-group">
     <text class="mine-menu-group-title">运维与管理</text>
     <view class="mine-list-card">
       <van-cell-group inset="{{ false }}" border="{{ false }}">
@@ -273,6 +273,12 @@
           <view slot="icon" class="mine-slot-ico"><van-icon name="bars" size="28rpx" color="#1d4ed8" /></view>
           <view slot="title" class="mine-cell-title-wrap">
             <text class="mine-cell-title-text">领用审计</text>
+          </view>
+        </van-cell>
+        <van-cell wx:if="{{ canStaffOps && canGoMaterialAudit }}" is-link bind:click="goMaterialAudit">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="orders-o" size="28rpx" color="#1d4ed8" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">物资领用审计</text>
           </view>
         </van-cell>
         <van-cell wx:if="{{ canStaffOps && canGoFacilityMaintenance }}" is-link bind:click="goFacilityMaintenance">
