@@ -93,6 +93,11 @@
   --scan-assistant-chat-card-body-weight: var(--font-weight-medium, 500);
   --scan-assistant-chat-card-body-line-height: 1.72;
   --scan-assistant-chat-card-body-letter-spacing: 0.025em;
+  /* 外扩光晕的三档半径。**必须可变量**：光晕是固定 px、卡片是内容高，两者比例会随内容变。
+     内容少时卡片矮到 220px，120px 的光晕相对面积比卡片还大，看着就像漏出一块背景板。 */
+  --scan-assistant-chat-card-halo-near: 48px;
+  --scan-assistant-chat-card-halo-mid: 88px;
+  --scan-assistant-chat-card-halo-far: 120px;
 
   pointer-events: auto;
   position: relative;
@@ -123,7 +128,20 @@
 /* Unidirectional flowing rainbow border */
 .scan-assistant-chat-card__frame {
   position: relative;
+  /* grid 而不是默认的 block：**白底面板必须撑满外框**。
+     外框有 min-height（提问卡 220px）而面板只有内容高，block 布局下子元素不会撑到 min-height，
+     于是外框自己的彩虹底渐变在面板下方露出一条（实测矮内容时露出 44px），
+     再叠上外层 120px 的光晕，看起来就是「卡片缩小、背景板漏出来了」。
+     grid 的单格默认 stretch，面板自动填满外框的 content box，那条缝从结构上消失 ——
+     不用逐状态打补丁，切换历史对话/新建对话这些改变内容高度的路径一并覆盖。 */
+  display: grid;
+  /* overflow:hidden 仍然是**可滚动容器**：装饰层（::before 那道 220% 高的彩虹光束、
+     inset:-20px 的光晕）溢出后把 scrollHeight 撑到 700+，而面板里的输入框带 autoFocus，
+     聚焦时浏览器会把外框滚下去约 62px —— 表现就是面板顶部被裁、底部露出一大条彩虹环。
+     用 clip 彻底取消可滚动性，只裁不滚。老内核（XWEB86 一线）不认识 clip，
+     会继续沿用上一行的 hidden，行为与改动前一致。 */
   overflow: hidden;
+  overflow: clip;
   border-radius: var(--app-radius-container);
   background: conic-gradient(
     from 0deg,
@@ -141,9 +159,19 @@
       --app-elevation-card,
       0 10px 32px color-mix(in srgb, var(--app-color-text-primary) 14%, transparent)
     ),
-    0 0 48px color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 38%, transparent),
-    0 0 88px color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-blue) 26%, transparent),
-    0 0 120px color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 18%, transparent);
+    0 0 var(--scan-assistant-chat-card-halo-near) color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-violet) 38%, transparent),
+    0 0 var(--scan-assistant-chat-card-halo-mid) color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-blue) 26%, transparent),
+    0 0 var(--scan-assistant-chat-card-halo-far) color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 18%, transparent);
+}
+
+/* ── 紧凑态（未展开成大窗）收紧外扩光晕 ──
+   没展开时卡片是内容高，短内容下 120px 的光晕比卡片本身还占地方，读起来像「卡片缩小、漏出背景板」。
+   展开态卡片够大，光晕是相称的，保留原强度。这就是两个状态共用同一段装饰时的比例问题，
+   不是某一处布局坏了 —— 所以调的是同一个旋钮，不新增规则分支。 */
+.scan-assistant-bubble-anchor:not(.scan-assistant-bubble-anchor--expanded) .scan-assistant-chat-card {
+  --scan-assistant-chat-card-halo-near: 20px;
+  --scan-assistant-chat-card-halo-mid: 34px;
+  --scan-assistant-chat-card-halo-far: 48px;
 }
 
 .scan-assistant-chat-card__frame::before {
@@ -256,8 +284,6 @@
     0 0 52px color-mix(in srgb, var(--scan-assistant-chat-card-rainbow-cyan) 16%, transparent);
   padding:
     calc(var(--app-space-element-gap) + 2px)
-    calc(var(--app-space-element-gap) + 28px)
-    calc(var(--app-space-element-gap) + 2px)
     var(--app-space-container-padding);
 }
 
@@ -305,34 +331,51 @@
   );
 }
 
-.scan-assistant-chat-card__dismiss {
+/* 右上角操作浮层：挂在 __frame 之外，因为 frame 是 overflow:clip，半悬出圆角的按钮会被裁掉。
+   按钮不再占布局位 —— 面板内容按对称内边距铺满。 */
+.scan-assistant-chat-card__actions {
   position: absolute;
-  top: var(--app-space-element-gap);
-  right: var(--app-space-element-gap);
-  z-index: 2;
+  top: -10px;
+  right: -10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 实色底 + 1px 描边：浮在卡片白底和页面背景上都立得住 */
+.scan-assistant-chat-card__action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: none;
-  border-radius: var(--app-radius-element);
-  background: transparent;
-  color: var(--app-color-text-tertiary);
+  padding: 0;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: 50%;
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
   cursor: pointer;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--app-color-text-primary) 16%, transparent);
   transition:
     color var(--app-motion-hover, 150ms ease-out),
-    background-color var(--app-motion-hover, 150ms ease-out);
+    background-color var(--app-motion-hover, 150ms ease-out),
+    transform var(--app-motion-hover, 150ms ease-out);
 }
 
-.scan-assistant-chat-card__dismiss:hover {
-  color: var(--app-color-text-primary);
+.scan-assistant-chat-card__action:hover {
+  color: var(--app-color-accent);
   background: var(--app-color-surface-hover);
+  transform: scale(1.06);
 }
 
-.scan-assistant-chat-card__dismiss:focus-visible {
+.scan-assistant-chat-card__action:active {
+  transform: scale(0.94);
+}
+
+.scan-assistant-chat-card__action:focus-visible {
   outline: 2px solid var(--app-color-accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 .scan-assistant-chat-card__body {
@@ -588,9 +631,17 @@
   }
 }
 
-/* ── 提问面板：内容底板比边框窄一档，露出旋转彩虹环 ── */
+/* ── 提问面板：内容底板比边框窄一档，露出旋转彩虹环 ──
+   这一档用**外框的 padding** 撑，不用面板的 margin：外框改成 overflow:clip 后不再建立 BFC，
+   子元素 margin 会塌出去，环就没了。padding 既能撑出均匀的 3px，也不受折叠影响。 */
+.scan-assistant-chat-card--ask .scan-assistant-chat-card__frame {
+  padding: 3px;
+  /* 内容还空着时（刚打开 / 刚新建对话）至少留这么高：塌成一行输入框很难受（真机反馈） */
+  min-height: 220px;
+}
+
 .scan-assistant-chat-card--ask .scan-assistant-chat-card__panel {
-  margin: 3px;
+  margin: 0;
   border-radius: calc(var(--app-radius-container) - 3px);
 }
 
@@ -599,7 +650,11 @@
   position: relative;
   z-index: 1;
   display: flex;
-  align-items: center;
+  /* 允许换行：附件来源菜单要占整行落在输入行上方（见 __attach-menu）。
+     不换行时它会被当成第四个 flex 项挤在输入框旁边，反而更难看。 */
+  flex-wrap: wrap;
+  /* 输入框长高时发送键贴底，跟最后一行对齐 */
+  align-items: flex-end;
   gap: var(--app-space-element-gap, 0.75rem);
   margin-top: var(--app-space-element-gap, 0.75rem);
 }
@@ -628,8 +683,396 @@
   justify-content: flex-start;
 }
 
-.scan-assistant-ask__bubble {
+/* 回答 + 用量：竖排，避免在 __row 的横向 flex 里被并排排开 */
+.scan-assistant-ask__answer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* 助手侧的宽度上限也放在这一层（__row 的 flex item，父层宽度确定）；
+     放在气泡上会撞同一个百分比死循环，短回复同样会被挤成每行一两个字 */
   max-width: 82%;
+}
+
+.scan-assistant-ask__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 4px;
+  padding-left: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--app-color-text-tertiary);
+  /* 等宽数字：秒针每 200ms 跳一次，比例数字会让整行宽度抖动 */
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-assistant-ask__meta-sub {
+  opacity: 0.75;
+}
+
+/* 候选项芯片：助手问「选哪个」时渲染成可点的按钮，点一下即回答。
+   实色底 + 1px 描边（不半透明）——与卡片其余部分的观感一致。 */
+.scan-assistant-ask__choices {
+  position: relative;
+  z-index: 1;
+  /* 纵向一行一个（真机反馈：横向排布不好读），宽窄天然一致。
+     **不设高度上限、不折叠**：候选全都摆出来，藏进滚动区用户会以为只有前几个 */
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  margin-top: var(--app-space-element-gap, 0.75rem);
+}
+
+/* 多问时的问题头：第几问 + 问的是谁·什么。比多占一个芯片便宜得多 */
+.scan-assistant-ask__choices-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-top: var(--app-space-element-gap, 0.75rem);
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--app-color-text-primary) 68%, transparent);
+}
+
+/* 头紧跟着选项时不要叠两份外边距 */
+.scan-assistant-ask__choices-head + .scan-assistant-ask__choices {
+  margin-top: 0.35rem;
+}
+
+.scan-assistant-ask__choices-step {
+  flex-shrink: 0;
+  padding: 0 0.35rem;
+  border-radius: var(--app-radius-element);
+  background: color-mix(in srgb, var(--app-color-accent) 14%, transparent);
+  color: var(--app-color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-assistant-ask__choices-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto; /* 贴到问句这一行的右端：它翻的是「问题」不是选项 */
+}
+
+.scan-assistant-ask__choices-title {
+  color: var(--app-color-text-primary);
+  font-weight: var(--font-weight-medium, 500);
+}
+
+/* 向导里选中的那项要亮着：用户得能一眼看出「这题我选了什么」 */
+.scan-assistant-ask__choice--picked {
+  border-color: var(--app-color-accent);
+  background: color-mix(in srgb, var(--app-color-accent) 12%, var(--app-color-surface-elevated));
+  font-weight: var(--font-weight-medium, 500);
+}
+
+/* 向导导航：上一题 / 下一题 / 提交（只在多问时出现，单问点一下即办） */
+.scan-assistant-ask__wizard {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+/*
+ * 导航键做得比候选芯片小一档：候选是内容（要看得清、点得准），这三个是控件。
+ * 一样大时整块面板从上到下全是同样体量的方框，分不出主次。
+ */
+.scan-assistant-ask__wizard-btn {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: calc(var(--app-radius-element) - 2px);
+  background: var(--app-color-surface-elevated);
+  color: color-mix(in srgb, var(--app-color-text-primary) 78%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out;
+}
+
+.scan-assistant-ask__wizard-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-warm-200) 55%, var(--app-color-surface-elevated));
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__wizard-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* 提交是这一排里唯一的实色按钮 —— 它是终点，不该和导航键长一样 */
+.scan-assistant-ask__wizard-btn--primary {
+  border-color: var(--app-color-accent);
+  background: var(--app-color-accent);
+  color: var(--app-color-text-inverse);
+}
+
+.scan-assistant-ask__wizard-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--app-color-accent) 88%, var(--app-color-text-primary));
+}
+
+/*
+ * 写操作确认的问句：服务端给的是「做了什么 + 本次参数」，分两行，参数那行可能很长。
+ * pre-line 才认服务端那个换行；占满一行免得跟芯片挤在一起。
+ */
+/*
+ * markdown 正文不吃气泡的 pre-wrap。
+ *
+ * 渲染器把段落的每一行用空格 join 成一句（见 markdownToHtml 的 flushPara），本身不需要谁来保留换行；
+ * 而它输出的 HTML 里块与块之间带着源码换行（`</p>
+<ul>`）。气泡上为了纯文本路径设了 white-space:pre-wrap，
+ * markdown 正文一并继承，就把这些源码换行显示成了空行 —— 真机反馈「对话中间空行过多」就是它。
+ */
+.scan-assistant-ask__bubble .chat-markdown-body {
+  white-space: normal;
+}
+
+.scan-assistant-ask__choices-title--confirm {
+  flex-basis: 100%;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.scan-assistant-ask__choice {
+  width: 100%;
+  text-align: center;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--color-warm-300) 55%, var(--app-color-border-default));
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.scan-assistant-ask__choice:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-warm-200) 60%, var(--app-color-surface-elevated));
+  border-color: var(--color-warm-300);
+}
+
+.scan-assistant-ask__choice:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 「自定义回答」「取消本次对话」：不是助手给的候选，做成小号文字操作，不占芯片位。
+   排成芯片会被当成候选之一，还会把候选行挤成两行、把整张卡片顶出屏幕。 */
+/* 选项下面那一排：左「自定义回答 / 取消本次对话」、右「上一题 / 下一题 / 提交」挤成一行 */
+.scan-assistant-ask__controls {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+}
+
+/* 这一排里的两撮控件不再各自加外边距（外边距由 __controls 统一给，否则白多一行高度） */
+.scan-assistant-ask__controls > * {
+  margin-top: 0;
+}
+
+.scan-assistant-ask__choice-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.9rem;
+  margin-top: 0;
+}
+
+.scan-assistant-ask__choice-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--app-color-text-primary) 62%, transparent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__choice-action:hover {
+  color: var(--app-color-text-primary);
+}
+
+/* 自定义回答的独立输入行：与提问框同族外观，但更紧凑 */
+.scan-assistant-ask__custom {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.scan-assistant-ask__custom-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-page);
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.5;
+}
+
+.scan-assistant-ask__custom-input:focus-visible {
+  outline: 2px solid var(--app-color-accent);
+  outline-offset: 1px;
+}
+
+/* 有待答题时收窄对话区：卡片总高要留在气泡锚点估算的高度内，否则会顶出屏幕下半屏。
+   收得比平时更狠 —— 用户此刻的注意力在选项上，对话区只需交代「在问什么」 */
+.scan-assistant-ask__history--with-choices {
+  max-height: 104px;
+}
+
+/* ── 历史对话（与当前对话共用同一块位置，只是换个内容） ── */
+.scan-assistant-ask__sessions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: var(--app-space-element-gap, 0.75rem);
+  max-height: 166px;
+}
+
+.scan-assistant-ask__sessions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--app-color-text-primary) 68%, transparent);
+}
+
+.scan-assistant-ask__sessions-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.scan-assistant-ask__sessions-empty {
+  padding: 0.6rem 0;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--app-color-text-primary) 55%, transparent);
+}
+
+.scan-assistant-ask__session-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.scan-assistant-ask__session-del,
+.scan-assistant-ask__session-del-ok,
+.scan-assistant-ask__session-del-cancel {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: calc(var(--app-radius-element) - 2px);
+  background: transparent;
+  color: color-mix(in srgb, var(--app-color-text-primary) 62%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__session-del:hover {
+  color: var(--app-color-feedback-danger);
+  border-color: color-mix(in srgb, var(--app-color-feedback-danger) 45%, var(--app-color-border-default));
+}
+
+.scan-assistant-ask__session-confirm {
+  display: inline-flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* 更醒目：删除是不可逆动作 */
+.scan-assistant-ask__session-del-ok {
+  color: var(--app-color-feedback-danger);
+  border-color: color-mix(in srgb, var(--app-color-feedback-danger) 45%, var(--app-color-border-default));
+}
+
+.scan-assistant-ask__session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: var(--app-radius-element);
+  background: transparent;
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.scan-assistant-ask__session-item:hover {
+  background: color-mix(in srgb, var(--color-warm-200) 55%, transparent);
+}
+
+.scan-assistant-ask__session-item--active {
+  background: color-mix(in srgb, var(--app-color-accent) 12%, transparent);
+}
+
+.scan-assistant-ask__session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-assistant-ask__session-time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--app-color-text-primary) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 回答行：行首陀螺（生成中转，落定后静止）+ 气泡 */
+.scan-assistant-ask__answer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.scan-assistant-ask__answer-row .scan-assistant-ask__bubble {
+  min-width: 0;
+}
+
+.scan-assistant-ask__bubble {
+  /* 上限**不能用百分比**：气泡的父层（__user-block / __answer-row）是收缩包紧的，
+     宽度由内容决定 —— 百分比相对一个「由内容决定、而内容又受这个百分比约束」的父层解析，
+     会绕成一个环：浏览器先把父层撑到内容宽，再算出 82% 给气泡，结果比内容还窄。
+     真机表现就是短消息被强制换行：「发布」两个字断成两行、气泡只有 43px。
+     上限挪到下面那两层（它们的父层是整行，宽度确定），这里只吃父层的 100%。 */
+  max-width: 100%;
   padding: 0.5rem 0.75rem;
   border-radius: var(--app-radius-element);
   font-size: var(--font-size-sm, 0.875rem);
@@ -650,6 +1093,8 @@
   color: var(--app-color-text-primary);
 }
 
+/* 自动增高的多行输入框：高度由 JS 按 scrollHeight 设，这里只管上限与换行行为。
+   font-family: inherit 不能少 —— textarea 默认走等宽字体。 */
 .scan-assistant-ask__input {
   flex: 1;
   min-width: 0;
@@ -658,13 +1103,298 @@
   border-radius: var(--app-radius-element);
   background: var(--app-color-surface-page);
   color: var(--app-color-text-primary);
+  font-family: inherit;
   font-size: var(--font-size-sm, 0.875rem);
   line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  max-height: 8em;
+  /* 长串（URL 之类）就地折行，免得撑出水平滚动条把高度算乱 */
+  overflow-wrap: anywhere;
 }
 
 .scan-assistant-ask__input:focus-visible {
   outline: 2px solid var(--app-color-accent);
   outline-offset: 1px;
+}
+
+/* 上传图片：与发送键同尺寸，但走次要样式，不跟主操作抢焦点 */
+.scan-assistant-ask__attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--app-motion-hover, 150ms ease-out),
+    background-color var(--app-motion-hover, 150ms ease-out),
+    border-color var(--app-motion-hover, 150ms ease-out);
+}
+
+.scan-assistant-ask__attach:hover {
+  color: var(--app-color-accent);
+  border-color: color-mix(in srgb, var(--app-color-accent) 45%, var(--app-color-border-default));
+  background: var(--app-color-surface-hover);
+}
+
+.scan-assistant-ask__attach:focus-visible {
+  outline: 2px solid var(--app-color-accent);
+  outline-offset: 2px;
+}
+
+.scan-assistant-ask__file {
+  display: none;
+}
+
+/* 待发图片：本地预览缩略图，点角标移除 */
+.scan-assistant-ask__attachments {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: var(--app-space-element-gap, 0.75rem);
+}
+
+.scan-assistant-ask__attachment {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-page);
+}
+
+.scan-assistant-ask__attachment img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--app-radius-element) - 1px);
+  object-fit: cover;
+}
+
+/* 移除角标悬在缩略图圆角外，所以缩略图本身不能设 overflow:hidden */
+.scan-assistant-ask__attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--app-color-surface-elevated);
+  border-radius: 50%;
+  background: var(--app-color-text-primary);
+  color: var(--app-color-surface-elevated);
+  cursor: pointer;
+}
+
+/*
+ * 表格 / 文本附件芯片。
+ * 图片是方缩略图、文件是长条芯片 —— **两者一眼可辨**：用户得看出这份东西会被「解析」而不是「看图」，
+ * 否则会以为表格也走视觉（那条路读数值不可靠，我们在设计里明确不走）。
+ */
+.scan-assistant-ask__filechip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-page);
+  color: var(--app-color-text-primary);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.scan-assistant-ask__filechip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-assistant-ask__filechip-size {
+  flex-shrink: 0;
+  color: var(--app-color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-assistant-ask__filechip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--app-color-text-tertiary);
+  cursor: pointer;
+}
+
+/* ── 已发出那一轮的附件回显 ──
+   发完托盘就清了，不显示的话历史里只剩一句「（见附件）」，回头看想不起发的是什么。 */
+.scan-assistant-ask__user-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  /* 宽度上限放这里：本层是 .__row 的 flex item，82% 相对整行解析才有意义（见 __bubble 的注释） */
+  max-width: 82%;
+}
+
+.scan-assistant-ask__turn-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.scan-assistant-ask__turn-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+}
+
+.scan-assistant-ask__turn-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 180px;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-page);
+  color: var(--app-color-text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.scan-assistant-ask__turn-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 附件来源菜单（本机 / 文件模板库）。
+ *
+ * **必须进文档流、不能绝对定位浮在输入行上方**：外框是 overflow:clip（为了裁装饰层），
+ * 浮出去的部分会被直接裁掉 —— 真机现象就是「点上传附件，弹窗被截断」。
+ * 所以让它作为表单的整行第一个 flex 项（表单 flex-wrap + 本项 flex-basis:100%），
+ * 卡片随内容长高，谁都裁不到它。
+ *
+ * 实色底 + 1px 描边 + 纯投影：与球球其余部分一致，不用半透明底（用户显示器 150% 缩放会显脏）。
+ */
+.scan-assistant-ask__attach-menu {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  margin-bottom: 0.35rem;
+  padding: 0.3rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  box-shadow: var(--app-elevation-card, 0 8px 24px color-mix(in srgb, #000 14%, transparent));
+}
+
+.scan-assistant-ask__attach-menu-head {
+  padding: 0.35rem 0.5rem 0.25rem;
+  font-size: 11px;
+  color: var(--app-color-text-tertiary);
+}
+
+.scan-assistant-ask__attach-menu-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.scan-assistant-ask__attach-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: var(--app-radius-element);
+  background: none;
+  color: var(--app-color-text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__attach-menu-item:hover:not(:disabled) {
+  background: var(--app-color-surface-hover);
+}
+
+.scan-assistant-ask__attach-menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.scan-assistant-ask__attach-menu-item--muted {
+  color: var(--app-color-text-tertiary);
+}
+
+.scan-assistant-ask__attach-menu-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-assistant-ask__attach-menu-size {
+  flex-shrink: 0;
+  color: var(--app-color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-assistant-ask__attach-menu-empty {
+  padding: 0.5rem;
+  font-size: 12px;
+  color: var(--app-color-text-tertiary);
+}
+
+/*
+ * 拖拽提示：盖住整块面板。
+ * 用**实底不透明**（用户显示器 150% 缩放，半透明底会把下面的字透出来显得脏）；
+ * 虚线是拖放区的通用语言，这里保留 —— 它不是按钮，不必套按钮那套实线描边。
+ */
+.scan-assistant-ask__drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--app-color-accent);
+  border-radius: var(--app-radius-container);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-primary);
+  font-size: 13px;
+  pointer-events: none;
 }
 
 .scan-assistant-ask__send {
@@ -685,6 +1415,13 @@
 .scan-assistant-ask__send:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 停止生成：与发送**同位置同尺寸**，只换底色 —— 正在生成时按钮不会跳走，用户不用重新找。
+   用中性深色（不是正红）：停掉一次生成不是危险操作。实底，不描边不加阴影，与发送一致。 */
+.scan-assistant-ask__send--stop {
+  background: var(--app-color-text-primary);
+  color: var(--app-color-text-inverse);
 }
 
 .scan-assistant-ask__send:focus-visible {

@@ -37,6 +37,21 @@ public interface ReportFormSubmissionMapper {
             "WHERE id=#{id} AND version=#{version}")
     int updateWithVersion(ReportFormSubmission entity);
 
+    /**
+     * 行锁读取：块级保存必须「锁内读-改-写」，否则同一块并发保存会互相覆盖。
+     * 块级路径不走 {@link #updateWithVersion}（那是整条记录级的乐观锁），
+     * 版本号在块内，见 ReportFormBlocks。
+     */
+    @Select("SELECT * FROM report_form_submission WHERE id = #{id} FOR UPDATE")
+    ReportFormSubmission selectByIdForUpdate(Long id);
+
+    /** 块级保存用：只写 JSON 列与时间，不动 version 列。 */
+    @Update("UPDATE report_form_submission SET field_values_json=#{fieldValuesJson}, updated_at=#{updatedAt} " +
+            "WHERE id=#{id}")
+    int updateFieldValues(@Param("id") Long id,
+                          @Param("fieldValuesJson") String fieldValuesJson,
+                          @Param("updatedAt") java.time.LocalDateTime updatedAt);
+
     @Update("UPDATE report_form_submission SET status='submitted', submitted_at=#{submittedAt}, " +
             "updated_at=#{updatedAt} WHERE id=#{id}")
     int submit(@Param("id") Long id,

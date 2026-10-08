@@ -17,11 +17,14 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
     private static final int AUP_CONFIG_MIN_LEVEL = RoleEnum.ADMIN.getLevel();
     private final JwtTokenService jwtTokenService;
     private final PersonIdentityService personIdentityService;
+    private final com.example.demo.modules.training.service.TrainingAdminGate trainingAdminGate;
 
     public AdminAuthInterceptor(JwtTokenService jwtTokenService,
-                                PersonIdentityService personIdentityService) {
+                                PersonIdentityService personIdentityService,
+                                com.example.demo.modules.training.service.TrainingAdminGate trainingAdminGate) {
         this.jwtTokenService = jwtTokenService;
         this.personIdentityService = personIdentityService;
+        this.trainingAdminGate = trainingAdminGate;
     }
 
     @Override
@@ -93,9 +96,9 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             writeUnauthorized(response, "未登录或 Token 缺失");
             return false;
         }
-        boolean studentView = "STUDENT".equalsIgnoreCase(String.valueOf(user.getAccountSource()));
-        boolean superAdmin = roleLevel(user) >= RoleEnum.SUPER_ADMIN.getLevel();
-        if (studentView || !(superAdmin || personIdentityService.isBreedingGroupLeader(user.getId()))) {
+        // 判定本身在 TrainingAdminGate#canManage（**只此一处**）—— AI 工具的能力码调的是同一个方法，
+        // 两边各写一遍必然分叉。
+        if (!trainingAdminGate.canManage(user)) {
             writeForbidden(response);
             return false;
         }

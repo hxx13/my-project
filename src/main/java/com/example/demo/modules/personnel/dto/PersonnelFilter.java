@@ -5,6 +5,8 @@ import lombok.Data;
 /** 统一人员筛选条件（全部可选，空值不参与过滤）。 */
 @Data
 public class PersonnelFilter {
+    /** personnel 主键。单条详情用；与其它条件并存时是 AND。 */
+    private Long id;
     /** 姓名/工号/双id/手机/账号 模糊 */
     private String keyword;
     /** all=不过滤（默认） / sys=有系统账号(staff_id 非空) / nosys=无系统账号 */

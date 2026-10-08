@@ -16,6 +16,7 @@ import { useMonitorSocket } from "@/hooks/useMonitorSocket";
 import { MonitorSkeleton } from "@/features/admin/monitor/MonitorSkeleton";
 import { MonitorStatusBar } from "@/features/admin/monitor/MonitorStatusBar";
 import { MonitorHealthCards, ActiveSessionsSection } from "@/features/admin/monitor/MonitorHealthCards";
+import { MonitorHealthScoreCard } from "@/features/admin/monitor/MonitorHealthScoreCard";
 import { MonitorResourceGauges } from "@/features/admin/monitor/MonitorResourceGauges";
 import { ClientVersionCard } from "@/features/admin/monitor/ClientVersionCard";
 import MonitorAnalyticsCards from "./MonitorAnalyticsCards";
@@ -65,7 +66,8 @@ function OverviewTab() {
   const sessions = useMonitorStore((s) => s.sessions);
   return (
     <div className="flex flex-col gap-[var(--app-space-section-gap)]">
-      {/* 健康卡片 + 资源指标 */}
+      {/* 健康度总分 → 各服务健康 → 资源指标 */}
+      <MonitorHealthScoreCard />
       <MonitorHealthCards />
       <ClientVersionCard />
       <MonitorResourceGauges />
@@ -97,13 +99,20 @@ export function MonitorDashboardPage() {
   const fetchSessions = useMonitorStore((s) => s.fetchSessions);
   const fetchTimerHistory = useMonitorStore((s) => s.fetchTimerHistory);
   const fetchAnalytics = useMonitorStore((s) => s.fetchAnalytics);
+  const fetchScore = useMonitorStore((s) => s.fetchScore);
 
   useEffect(() => { const t = setInterval(() => fetchAll(), POLL_MAIN_MS); return () => clearInterval(t); }, [fetchAll]);
   useEffect(() => { const t = setInterval(() => { fetchTimers(); fetchTimerHistory(); }, POLL_TIMERS_MS); return () => clearInterval(t); }, [fetchTimers, fetchTimerHistory]);
   useEffect(() => { const t = setInterval(() => fetchSessions(), POLL_SESSIONS_MS); return () => clearInterval(t); }, [fetchSessions]);
-  useEffect(() => { fetchAnalytics(); const t = setInterval(() => fetchAnalytics(), POLL_ANALYTICS_MS); return () => clearInterval(t); }, [fetchAnalytics]);
+  // 评分与访问分析同频：评分本身依赖健康/资源/错误率，没必要按更快的节奏重算
+  useEffect(() => {
+    fetchAnalytics();
+    fetchScore();
+    const t = setInterval(() => { fetchAnalytics(); fetchScore(); }, POLL_ANALYTICS_MS);
+    return () => clearInterval(t);
+  }, [fetchAnalytics, fetchScore]);
 
-  const refreshAll = () => { fetchAll(); fetchTimers(); fetchTimerHistory(); fetchSessions(); fetchAnalytics(); };
+  const refreshAll = () => { fetchAll(); fetchTimers(); fetchTimerHistory(); fetchSessions(); fetchAnalytics(); fetchScore(); };
   const isInitialLoading = jobsLoading;
 
   return (

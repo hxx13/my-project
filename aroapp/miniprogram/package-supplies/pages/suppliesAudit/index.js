@@ -5,8 +5,6 @@ const suppliesExportApi = require('../../utils/suppliesExportApi.js');
 const specUtil = require('../../utils/specSchemaUtil.js');
 
 const AUDIT_SIZE = 20;
-const DATE_LIST_CAP = 800;
-const MIN_SELECTABLE_DATE = '2020-01-01';
 /** 多次模式明细分批渲染的批大小 */
 const RANGE_RENDER_STEP = 40;
 
@@ -131,41 +129,9 @@ function defaultMonthStartToToday() {
   return { rangeFrom: isoDateFromDate(from), rangeTo: isoDateFromDate(to) };
 }
 
-function compareIsoDate(a, b) {
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
-}
 
-function parseIsoToLocal(iso) {
-  const p = String(iso || '').split('-').map((x) => Number(x));
-  if (p.length !== 3 || p.some((n) => !Number.isFinite(n))) return null;
-  return new Date(p[0], p[1] - 1, p[2]);
-}
 
-/** 自 maxIso 起向过去列出日期（含），最多 DATE_LIST_CAP 条 */
-function buildIsoDateRowsDescending(maxIso, minIso) {
-  const maxD = parseIsoToLocal(maxIso);
-  const minD = parseIsoToLocal(minIso);
-  if (!maxD || !minD) return [];
-  const out = [];
-  let d = new Date(maxD.getFullYear(), maxD.getMonth(), maxD.getDate());
-  const stop = new Date(minD.getFullYear(), minD.getMonth(), minD.getDate());
-  let n = 0;
-  while (d >= stop && n < DATE_LIST_CAP) {
-    const s = isoDateFromDate(d);
-    out.push({ k: s, main: s, sub: '' });
-    d.setDate(d.getDate() - 1);
-    n += 1;
-  }
-  return out;
-}
 
-function truncateChip(s, maxLen) {
-  const t = String(s || '').trim();
-  if (!t) return '—';
-  if (t.length <= maxLen) return t;
-  return `${t.slice(0, maxLen)}…`;
-}
 
 function buildMergedDisplayRows(movements, restored) {
   const parts = [];
@@ -218,7 +184,6 @@ Page({
     claimDetail: null,
     loadingPersonal: false,
     exportingPersonal: false,
-    centerSheet: { visible: false, title: '', pickKind: '', rows: [] },
     // 新外壳（对齐物资领用审计）：可收起筛选 + option-picker 选项 + 日期弹层
     filtersOpen: false,
     claimOptions: [],
@@ -232,13 +197,11 @@ Page({
     categoryPickLabels: ['全部分类'],
     categoryPickIndex: 0,
     categoryIds: [''],
-    categoryChipShort: '全部分类',
     itemsRaw: [],
     itemKeyword: '',
     itemPickLabels: ['请选择物品…'],
     itemPickIndex: 0,
     itemPickIds: [''],
-    itemChipShort: '请选择物品…',
     selectedItemId: '',
     auditHotIdsArr: [],
     auditRows: [],
@@ -393,8 +356,6 @@ Page({
     this.setData({ rangeRenderLimit: limit, rangeViewRows: all.slice(0, limit) });
   },
 
-  noop() {},
-
   onLoad() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
     const ok =
@@ -460,180 +421,6 @@ Page({
         rangeMeta: null,
         rangeFlatRows: [],
       });
-    }
-  },
-
-  closeCenterSheet() {
-    this.setData({ centerSheet: { visible: false, title: '', pickKind: '', rows: [] } });
-  },
-
-  openClaimDateSheet() {
-    const rows = (this.data.mineClaims || []).map((c) => {
-      const t = toTimeText(c.createdAt);
-      const day = t.slice(0, 10);
-      return {
-        k: c.id,
-        main: day,
-        sub: `${claimStatusZh(c.status)} · ${t.slice(11, 16)}`,
-        claimId: c.id,
-      };
-    });
-    if (!rows.length) {
-      wx.showToast({ title: '暂无领用记录', icon: 'none' });
-      return;
-    }
-    this.setData({
-      centerSheet: { visible: true, title: '选择领用日期', pickKind: 'claim', rows },
-    });
-  },
-
-  openRangeFromSheet() {
-    const today = isoDateFromDate(new Date());
-    const rows = buildIsoDateRowsDescending(today, MIN_SELECTABLE_DATE);
-    this.setData({
-      centerSheet: { visible: true, title: '选择开始日期', pickKind: 'rangeFrom', rows },
-    });
-  },
-
-  openRangeToSheet() {
-    const today = isoDateFromDate(new Date());
-    const rows = buildIsoDateRowsDescending(today, MIN_SELECTABLE_DATE);
-    this.setData({
-      centerSheet: { visible: true, title: '选择结束日期', pickKind: 'rangeTo', rows },
-    });
-  },
-
-  openApplicantSheet() {
-    if (!this.data.canPickRangeApplicants) return;
-    const opts = this.data.applicantOptions || [];
-    if (opts.length <= 1) {
-      wx.showToast({ title: '仅本人可选', icon: 'none' });
-      return;
-    }
-    const rows = opts.map((o) => ({
-      k: o.userId,
-      main: o.displayName || o.userId || '—',
-      sub: '',
-      userId: o.userId,
-    }));
-    this.setData({
-      centerSheet: { visible: true, title: '选择领用人', pickKind: 'applicant', rows },
-    });
-  },
-
-  openAuditCategorySheet() {
-    const labels = this.data.categoryPickLabels || [];
-    const rows = labels.map((main, idx) => ({
-      k: `c${idx}`,
-      main,
-      sub: '',
-      catIdx: idx,
-    }));
-    this.setData({
-      centerSheet: { visible: true, title: '选择分类', pickKind: 'auditCategory', rows },
-    });
-  },
-
-  openAuditItemSheet() {
-    const k = (this.data.itemKeyword || '').trim().toLowerCase();
-    const raw = this.data.itemsRaw || [];
-    const hot = new Set(this.data.auditHotIdsArr || []);
-    let list = !k ? raw.slice() : raw.filter((it) => String(it.name || '').toLowerCase().includes(k));
-    list.sort((a, b) => {
-      const ha = hot.has(a.id);
-      const hb = hot.has(b.id);
-      if (ha !== hb) return ha ? -1 : 1;
-      return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN');
-    });
-    const rows = list.map((it) => ({
-      k: String(it.id),
-      main: `${hot.has(it.id) ? '※ ' : ''}${it.name || ''}`,
-      sub: '',
-      itemId: it.id,
-    }));
-    if (!rows.length) {
-      wx.showToast({ title: '暂无物品', icon: 'none' });
-      return;
-    }
-    this.setData({
-      centerSheet: { visible: true, title: '选择物品', pickKind: 'auditItem', rows },
-    });
-  },
-
-  onCenterSheetRowTap(e) {
-    const idx = Number(e.currentTarget.dataset.index);
-    const rows = this.data.centerSheet.rows || [];
-    const row = rows[idx];
-    const kind = this.data.centerSheet.pickKind;
-    if (!row) return;
-    if (kind === 'claim') {
-      const id = row.claimId;
-      const chip = `${row.main} · ${row.sub}`;
-      this.setData({
-        centerSheet: { visible: false, title: '', pickKind: '', rows: [] },
-        singleClaimChipText: chip,
-        selectedClaimId: id,
-      });
-      void this.loadClaimDetail(id);
-      return;
-    }
-    if (kind === 'rangeFrom') {
-      const v = row.main;
-      const to = (this.data.rangeTo || '').trim();
-      if (to && compareIsoDate(v, to) > 0) {
-        wx.showToast({ title: '开始不能晚于结束', icon: 'none' });
-        return;
-      }
-      this.setData({ rangeFrom: v, centerSheet: { visible: false, title: '', pickKind: '', rows: [] } }, () =>
-        this.scheduleRangeQuery(),
-      );
-      return;
-    }
-    if (kind === 'rangeTo') {
-      const v = row.main;
-      const from = (this.data.rangeFrom || '').trim();
-      if (from && compareIsoDate(from, v) > 0) {
-        wx.showToast({ title: '结束不能早于开始', icon: 'none' });
-        return;
-      }
-      this.setData({ rangeTo: v, centerSheet: { visible: false, title: '', pickKind: '', rows: [] } }, () =>
-        this.scheduleRangeQuery(),
-      );
-      return;
-    }
-    if (kind === 'applicant') {
-      const uid = row.userId;
-      const label = row.main || uid;
-      this.setData(
-        {
-          rangeApplicantUserId: uid,
-          rangeApplicantLabel: label,
-          centerSheet: { visible: false, title: '', pickKind: '', rows: [] },
-        },
-        () => this.scheduleRangeQuery(),
-      );
-      return;
-    }
-    if (kind === 'auditCategory') {
-      const catIdx = row.catIdx;
-      this.setData({
-        categoryPickIndex: catIdx,
-        selectedItemId: '',
-        auditPage: 1,
-        centerSheet: { visible: false, title: '', pickKind: '', rows: [] },
-      });
-      void this.loadAuditHotIds().then(() => this.loadItems());
-      return;
-    }
-    if (kind === 'auditItem') {
-      const itemId = row.itemId;
-      this.setData({
-        selectedItemId: itemId === '' || itemId == null ? '' : itemId,
-        auditPage: 1,
-        centerSheet: { visible: false, title: '', pickKind: '', rows: [] },
-      });
-      this.applyItemPicker();
-      return;
     }
   },
 
@@ -891,17 +678,6 @@ Page({
     await this.loadItems();
   },
 
-  updateAuditChips() {
-    const ci = this.data.categoryPickIndex;
-    const ii = this.data.itemPickIndex;
-    const cat = (this.data.categoryPickLabels || [])[ci] || '全部分类';
-    const item = (this.data.itemPickLabels || [])[ii] || '请选择物品…';
-    this.setData({
-      categoryChipShort: truncateChip(cat, 8),
-      itemChipShort: truncateChip(item, 10),
-    });
-  },
-
   async loadCategories() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
     const admin = hasMinRole(role, 'ADMIN');
@@ -919,11 +695,9 @@ Page({
         categoryIds: ids,
       });
       this.syncPickerOptions();
-      this.updateAuditChips();
     } catch (e) {
       this.setData({ categoryPickLabels: ['全部分类'], categoryPickIndex: 0, categoryIds: [''] });
       this.syncPickerOptions();
-      this.updateAuditChips();
     }
   },
 
@@ -1001,7 +775,6 @@ Page({
       selectedItemId: nextId,
     });
     this.syncPickerOptions();
-    this.updateAuditChips();
     if (nextId) void this.loadAuditRows();
     else {
       this.setData({

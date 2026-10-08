@@ -7,7 +7,6 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageClaim;
 import com.example.demo.modules.cageshelf.service.CageInfoValueService;
 import com.example.demo.modules.cageshelf.service.CageClaimService;
-import com.example.demo.modules.identity.service.PersonIdentityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -32,16 +31,13 @@ public class AdminCageClaimController {
     private final AuthContextService authContextService;
     private final CageClaimService claimService;
     private final CageInfoValueService infoValueService;
-    private final PersonIdentityService personIdentityService;
 
     public AdminCageClaimController(AuthContextService authContextService,
                                      CageClaimService claimService,
-                                     CageInfoValueService infoValueService,
-                                     PersonIdentityService personIdentityService) {
+                                     CageInfoValueService infoValueService) {
         this.authContextService = authContextService;
         this.claimService = claimService;
         this.infoValueService = infoValueService;
-        this.personIdentityService = personIdentityService;
     }
 
     private User resolveUser(HttpServletRequest req) {
@@ -58,12 +54,16 @@ public class AdminCageClaimController {
         return null;
     }
 
-    /** 审批人 = 管理员及以上，或组长（GROUP_LEADER 身份标识，替代已废弃的 RoleEnum.PI）。 */
+    /**
+     * 审批人 = 管理员及以上，或组长（GROUP_LEADER 身份标识，替代已废弃的 RoleEnum.PI）。
+     *
+     * <p>判定本身在 {@link CageClaimService#canApprove}（**只此一处**）—— AI 工具的能力码调的是同一个方法，
+     * 两边各写一遍必然分叉。
+     */
     private Result<?> requireApprover(User u) {
         if (u == null) return Result.error("未登录");
         if (u.getStatus() != null && u.getStatus() == 0) return Result.error("账号已禁用");
-        if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) return null;
-        if (personIdentityService.isPi(u.getId())) return null;
+        if (claimService.canApprove(u)) return null;
         return Result.error("无审批权限（仅管理员或组长）");
     }
 

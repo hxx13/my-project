@@ -6,6 +6,7 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
+import com.example.demo.modules.reportform.util.ReportFormBlocks;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
@@ -77,12 +78,22 @@ public class ReportFormWordService {
             throw new RuntimeException("提交记录不存在");
         }
 
-        JsonNode fieldValues = parseFieldValues(sub.getFieldValuesJson());
-        if (fieldValuesOverrideJson != null && !fieldValuesOverrideJson.isBlank()) {
-            fieldValues = parseFieldValues(fieldValuesOverrideJson);
+        String raw = (fieldValuesOverrideJson != null && !fieldValuesOverrideJson.isBlank())
+                ? fieldValuesOverrideJson
+                : sub.getFieldValuesJson();
+        List<JsonNode> blocks = ReportFormBlocks.blockValues(ReportFormBlocks.normalize(raw));
+
+        if (blocks.size() <= 1) {
+            JsonNode only = blocks.isEmpty() ? objectMapper.createObjectNode() : blocks.get(0);
+            return fillWordDocument(form, templateBytes, bookmarkMapping, only, formId, submissionId);
         }
 
-        return fillWordDocument(form, templateBytes, bookmarkMapping, fieldValues, formId, submissionId);
+        // 每张表各回填一份完整模板，再首尾相接（块间分页）
+        List<byte[]> pages = new ArrayList<>();
+        for (JsonNode values : blocks) {
+            pages.add(fillWordDocument(form, templateBytes, bookmarkMapping, values, formId, submissionId));
+        }
+        return appendDocuments(pages);
     }
 
     /**
@@ -945,5 +956,35 @@ public class ReportFormWordService {
         if (node == null || start == null || end == null) return false;
         return (node.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_PRECEDING) != 0
                 && (node.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING) != 0;
+    }
+
+    /**
+     * 把 N 份已回填的 docx 首尾相接，块间插分页符。
+     * POI 无官方 docx 合并，这里复制正文元素（段落/表格）的 XML 到目标文档。
+     *
+     * <p>ponytail: 只复制正文 XML，不做关系（rId）重映射。模板正文若自带图片/超链接，
+     * 第 2..N 份里的 r:embed / r:id 会指向源包而悬空，Word 里表现为红叉/链接失效。
+     * 本系统 fillWordDocument 只把书签替换成文本、不插图片，故纯文本模板不受影响；
+     * 真遇到带图模板再补一层关系重映射。
+     */
+    private byte[] appendDocuments(List<byte[]> docs) throws Exception {
+        try (XWPFDocument target = new XWPFDocument(new ByteArrayInputStream(docs.get(0)))) {
+            for (int i = 1; i < docs.size(); i++) {
+                try (XWPFDocument src = new XWPFDocument(new ByteArrayInputStream(docs.get(i)))) {
+                    XWPFParagraph brk = target.createParagraph();
+                    brk.setPageBreak(true);
+                    for (IBodyElement el : src.getBodyElements()) {
+                        if (el instanceof XWPFParagraph sp) {
+                            target.createParagraph().getCTP().set(sp.getCTP().copy());
+                        } else if (el instanceof XWPFTable st) {
+                            target.createTable().getCTTbl().set(st.getCTTbl().copy());
+                        }
+                    }
+                }
+            }
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            target.write(bos);
+            return bos.toByteArray();
+        }
     }
 }

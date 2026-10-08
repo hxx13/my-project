@@ -190,7 +190,9 @@ export function looksLikeMarkdown(text: string): boolean {
   const plain = t.includes("<") ? stripSimpleHtml(t) : t;
   if (/<(h[1-6]|ul|ol|li|img|table|blockquote)\b/i.test(t) && !/^#{1,6}\s/m.test(plain)) return false;
   return /^(#{1,6}\s|[-*]\s+\S|\d+\.\s+\S|---\s*$|>\s+\S|```)/m.test(plain)
-    || /\*\*[^*]+\*\*/.test(plain) || /`[^`]+`/.test(plain) || /^\|.+\|$/m.test(plain);
+    || /\*\*[^*]+\*\*/.test(plain) || /`[^`]+`/.test(plain) || /^\|.+\|$/m.test(plain)
+    // 单独一条链接也算 markdown：不然「[下载 xx](/api/.../download)」会原样显示成方括号文本、点不动
+    || /\[[^\]]+\]\([^)]+\)/.test(plain);
 }
 
 export function renderMarkdownToSafeHtml(raw: string, theme: MarkdownTheme = "light"): string {

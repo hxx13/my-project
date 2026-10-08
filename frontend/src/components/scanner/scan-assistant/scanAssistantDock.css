@@ -117,3 +117,131 @@
       0 0 32px color-mix(in srgb, var(--app-color-accent) 48%, transparent);
   }
 }
+
+/* ── 大窗态：卡片脱离气泡锚点，居中放大 ──
+   遮罩和 anchor 与 orb 同处 .scan-assistant-dock__stack 这一层叠上下文，
+   只能用局部序号（orb 占 2）把两者排到 orb 之上。 */
+.scan-assistant-popup-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  background: color-mix(in srgb, var(--app-color-text-primary) 34%, transparent);
+  pointer-events: auto;
+  animation: scan-assistant-popup-scrim-in 220ms ease-out both;
+}
+
+.scan-assistant-popup-scrim--closing {
+  animation: scan-assistant-popup-scrim-out 260ms ease-in both;
+}
+
+/* 一级放大 —— **原来那个大窗**的尺寸。展开按钮点第一下到这里。 */
+.scan-assistant-bubble-anchor--expanded {
+  z-index: 4;
+  width: min(960px, calc(100vw - 64px));
+  max-width: none;
+  --scan-assistant-bubble-max: min(960px, calc(100vw - 64px));
+  --scan-assistant-bubble-min: min(720px, calc(100vw - 64px));
+}
+
+/* 二级放大 —— 再点一次展开按钮。与 ScanAssistantAskPanel 的 ZOOM_LEVELS[2] **同源**，改要一起改。 */
+.scan-assistant-bubble-anchor--expanded-2 {
+  width: min(1440px, calc(100vw - 48px));
+  --scan-assistant-bubble-max: min(1440px, calc(100vw - 48px));
+  --scan-assistant-bubble-min: min(1040px, calc(100vw - 48px));
+}
+
+.scan-assistant-bubble-anchor--expanded .scan-assistant-chat-card {
+  width: 100%;
+}
+
+/* 长对话在大窗里放开高度：小卡那 220px 装不下几轮 */
+.scan-assistant-bubble-anchor--expanded .scan-assistant-ask__history {
+  max-height: min(52vh, 520px);
+}
+
+.scan-assistant-bubble-anchor--expanded .scan-assistant-ask__history--with-choices {
+  max-height: min(42vh, 420px);
+}
+
+/* 二级放大再放开一档高度，并让助手那侧铺满宽度：这一档主要就是用来看宽表格/长清单的，
+   82% 的聊天气泡宽度会把表格压窄。用户那侧仍是气泡宽 —— 短问句铺满整行不好读。 */
+.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__history {
+  max-height: min(68vh, 720px);
+}
+
+.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__history--with-choices {
+  max-height: min(56vh, 600px);
+}
+
+.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__bubble--assistant {
+  max-width: 100%;
+}
+
+.scan-assistant-bubble-anchor--expanded .scan-assistant-ask__input {
+  max-height: 12em;
+}
+
+/* 展开/收起：以 --sa-popup-from-*（小卡中心相对视口中心的偏移）为起止点，飞向/飞离中心 */
+.scan-assistant-bubble-anchor--expanded-in {
+  animation: scan-assistant-popup-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.scan-assistant-bubble-anchor--expanded-out {
+  animation: scan-assistant-popup-out 260ms cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+/* 展开/收起：起止点由小卡的实测位置与宽度给出（--sa-popup-from-* / --sa-popup-scale），
+   两个方向共用同一组值，所以来回是对称的 */
+@keyframes scan-assistant-popup-in {
+  from {
+    opacity: 0.6;
+    transform: translate(-50%, -50%)
+      translate(var(--sa-popup-from-x, 0px), var(--sa-popup-from-y, 0px))
+      scale(var(--sa-popup-scale, 1));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes scan-assistant-popup-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0.6;
+    transform: translate(-50%, -50%)
+      translate(var(--sa-popup-from-x, 0px), var(--sa-popup-from-y, 0px))
+      scale(var(--sa-popup-scale, 1));
+  }
+}
+
+@keyframes scan-assistant-popup-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scan-assistant-popup-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-assistant-bubble-anchor--expanded-in,
+  .scan-assistant-bubble-anchor--expanded-out,
+  .scan-assistant-popup-scrim,
+  .scan-assistant-popup-scrim--closing {
+    animation: none !important;
+  }
+}

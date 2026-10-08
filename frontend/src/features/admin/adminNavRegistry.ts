@@ -244,6 +244,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "SUPER_ADMIN") && show(ctx, "/admin/api-docs", "SUPER_ADMIN"),
       },
       {
+        id: "ai-audit",
+        path: "/admin/ai-audit",
+        label: "AI 操作审计",
+        icon: MessagesSquare,
+        homeTone: "from-violet-400 to-purple-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "ADMIN") && show(ctx, "/admin/ai-audit", "ADMIN"),
+      },
+      {
         id: "nav-manager",
         path: "/admin/nav-manager",
         label: "侧栏导航管理",
@@ -949,6 +958,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/settings" ||
     p.startsWith("/admin/settings/") ||
     p === "/admin/api-docs" ||
+    p === "/admin/ai-audit" ||
     p === "/admin/registration-invites"
   ) {
     return "系统与安全";

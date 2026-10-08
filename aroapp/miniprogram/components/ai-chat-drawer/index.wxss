@@ -1,0 +1,655 @@
+/**
+ * 抽屉式 AI 对话框（首页底部升起）。
+ * 按钮一律实底 + 12rpx 直角（不用胶囊、不用描边、不用半透明底），与 app.wxss 的 .chip-btn 同族。
+ */
+
+.ai-drawer-popup {
+  height: 76vh;
+  max-height: 76vh;
+  background: #ffffff;
+}
+
+.ai-drawer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* ── 头部 ── */
+/* 不画分隔线：白底上的 1rpx 线在小程序里会显得很硬，层次交给留白和字重。
+   球给到 72rpx —— 再小的话 25 组眼环的差别就全糊一起，看着像没在变表情。 */
+.ai-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 24rpx 12rpx 20rpx;
+}
+
+.ai-drawer__identity {
+  display: flex;
+  align-items: center;
+}
+
+.ai-drawer__identity-text {
+  display: flex;
+  flex-direction: column;
+  margin-left: 16rpx;
+}
+
+.ai-drawer__title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ai-drawer__status {
+  margin-top: 2rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+.ai-drawer__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.ai-drawer__icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+}
+
+.ai-drawer__icon-btn--hover {
+  background: #f1f5f9;
+}
+
+.ai-drawer__icon-btn--on {
+  background: #e8f0fe;
+}
+
+.ai-drawer__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+}
+
+.ai-drawer__close--hover {
+  background: #f1f5f9;
+}
+
+/* ── 历史对话列表（与消息区共用同一块位置）── */
+.ai-drawer__sessions {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4rpx 24rpx 0;
+  box-sizing: border-box;
+}
+
+.ai-drawer__sessions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 0 16rpx;
+}
+
+.ai-drawer__sessions-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ai-drawer__sessions-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.ai-drawer__sessions-empty {
+  padding: 80rpx 0;
+  text-align: center;
+  font-size: 25rpx;
+  color: #94a3b8;
+}
+
+.ai-drawer__session-item {
+  padding: 26rpx 24rpx;
+  margin-bottom: 12rpx;
+  border-radius: 14rpx;
+  background: #f6f8fb;
+}
+
+.ai-drawer__session-item--hover {
+  background: #eef2f7;
+}
+
+.ai-drawer__session-item--on {
+  background: #e8f0fe;
+}
+
+.ai-drawer__session-title {
+  font-size: 26rpx;
+  color: #1f2937;
+}
+
+/* ── 消息列表 ── */
+.ai-drawer__list {
+  flex: 1;
+  /* flex 子项默认 min-height:auto，不压住的话 scroll-view 会被内容撑破、整条抽屉滚不动 */
+  min-height: 0;
+  padding: 22rpx 24rpx 0;
+  box-sizing: border-box;
+}
+
+.ai-drawer__row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 22rpx;
+}
+
+.ai-drawer__row--assistant {
+  justify-content: flex-start;
+}
+
+.ai-drawer__row--user {
+  justify-content: flex-end;
+}
+
+/* 气泡列：气泡 + 下方用量，宽度上限挂在这一层 */
+.ai-drawer__col {
+  display: flex;
+  flex-direction: column;
+  max-width: 76%;
+}
+
+.ai-drawer__bubble {
+  padding: 18rpx 22rpx;
+  border-radius: 16rpx;
+  font-size: 27rpx;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* 用户消息里带过来的图，直接铺在气泡内 */
+.ai-drawer__bubble-pic {
+  display: block;
+  width: 240rpx;
+  height: 240rpx;
+  margin-bottom: 10rpx;
+  border-radius: 10rpx;
+}
+
+.ai-drawer__meta {
+  margin-top: 6rpx;
+  padding-left: 4rpx;
+  font-size: 21rpx;
+  color: #a3aebd;
+}
+
+/* 正文里的模板库下载链接 → 按钮。白底描边，跟「选项」那种选择控件区分开 */
+.ai-drawer__dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 12rpx;
+  margin-right: 12rpx;
+  padding: 12rpx 22rpx;
+  border: 1rpx solid #bfdbfe;
+  border-radius: 12rpx;
+  background: #f0f7ff;
+}
+
+.ai-drawer__dl--hover {
+  background: #e0efff;
+}
+
+.ai-drawer__dl-text {
+  font-size: 24rpx;
+  color: #2563eb;
+}
+
+/* 气泡里带的附件：只列名字。用户气泡是深底，所以用 inherit 让图标跟着文字色走 */
+.ai-drawer__bubble-file {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  margin-bottom: 8rpx;
+}
+
+.ai-drawer__bubble-file-name {
+  font-size: 24rpx;
+  text-decoration: underline;
+  text-underline-offset: 3rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-drawer__row--assistant .ai-drawer__bubble {
+  margin-left: 14rpx;
+}
+
+.ai-drawer__bubble--bot {
+  background: #f4f6fa;
+  color: #0f172a;
+}
+
+.ai-drawer__bubble--me {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.ai-drawer__pending {
+  color: #94a3b8;
+}
+
+/* rich-text 里的块级元素（列表、标题、引用）自带外边距，收一收免得把气泡撑得很松 */
+.ai-drawer__md {
+  display: block;
+}
+
+.ai-drawer__empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 25rpx;
+  color: #94a3b8;
+}
+
+.ai-drawer__list-pad {
+  height: 24rpx;
+}
+
+/* ── 待答问题（助手问「选哪个」）── */
+.ai-drawer__ask {
+  padding: 8rpx 24rpx 0;
+}
+
+.ai-drawer__ask-head {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+/* 多问时的向导条：左边题号，右边上一题/下一题 */
+.ai-drawer__wizard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.ai-drawer__wizard-nav {
+  display: flex;
+  gap: 12rpx;
+}
+
+/* 导航键（上一题/下一题）：次要动作，中性实底 —— 与选项的白底描边、提交的蓝底都不一样 */
+.ai-drawer__wizard-btn {
+  padding: 10rpx 26rpx;
+  border-radius: 12rpx;
+  background: #f1f3f7;
+  color: #334155;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.ai-drawer__wizard-btn--hover {
+  background: #e2e8f0;
+}
+
+.ai-drawer__wizard-btn--off {
+  color: #cbd5e1;
+}
+
+/* 选项：一行一个，宽窄天然一致（Web 端真机反馈：横向排布不好读）。
+   候选多时自己滚，别把抽屉顶变形 */
+.ai-drawer__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  max-height: 420rpx;
+  overflow-y: auto;
+}
+
+/* 选项是「选择控件」，不是动作按钮：白底 + 1px 描边，跟下面那排动作按钮区分开 */
+.ai-drawer__choice {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 20rpx 24rpx;
+  border: 1rpx solid #e2e8f0;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #1f2937;
+  font-size: 27rpx;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.ai-drawer__choice--hover {
+  background: #f6f8fb;
+}
+
+/* 选中：淡蓝实底 + 蓝字蓝框，一眼看出这题选的是哪个 */
+.ai-drawer__choice--on {
+  border-color: #2563eb;
+  background: #e8f0fe;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+/* 问句：多问时才知道在问哪件事 */
+.ai-drawer__ask-question {
+  display: block;
+  margin-bottom: 12rpx;
+  font-size: 25rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+/* 取消在左、提交在右（右端是这一排的终点） */
+.ai-drawer__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16rpx;
+}
+
+/* 提交：多问才出现，整组答完才可点 */
+.ai-drawer__submit {
+  padding: 14rpx 40rpx;
+  border-radius: 12rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.ai-drawer__submit--hover {
+  background: #1d4ed8;
+}
+
+.ai-drawer__submit--off {
+  background: #cbd5e1;
+}
+
+/* 「自定义回答」「取消本次对话」不是助手给的候选，做成小号文字操作，不占芯片位 */
+.ai-drawer__ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 32rpx;
+  margin-top: 12rpx;
+}
+
+.ai-drawer__ask-action {
+  font-size: 23rpx;
+  color: #8592a6;
+  text-decoration: underline;
+}
+
+.ai-drawer__custom {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-top: 14rpx;
+}
+
+.ai-drawer__custom-input {
+  flex: 1;
+  min-width: 0;
+  padding: 14rpx 20rpx;
+  border-radius: 12rpx;
+  background: #f4f6fa;
+  font-size: 26rpx;
+  color: #0f172a;
+}
+
+.ai-drawer__custom-send {
+  flex-shrink: 0;
+  padding: 12rpx 28rpx;
+  border-radius: 12rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.ai-drawer__custom-send--hover {
+  background: #1d4ed8;
+}
+
+.ai-tpl__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 模板库选择弹窗 ── */
+.ai-tpl-popup {
+  height: 56vh;
+  max-height: 56vh;
+  background: #ffffff;
+}
+
+.ai-tpl {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.ai-tpl__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 28rpx 16rpx;
+}
+
+.ai-tpl__title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ai-tpl__close {
+  font-size: 25rpx;
+  color: #8592a6;
+}
+
+.ai-tpl__list {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.ai-tpl__empty {
+  padding: 80rpx 0;
+  text-align: center;
+  font-size: 25rpx;
+  color: #94a3b8;
+}
+
+.ai-tpl__item {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  padding: 26rpx 22rpx;
+  margin-bottom: 12rpx;
+  border-radius: 14rpx;
+  background: #f6f8fb;
+}
+
+.ai-tpl__item--hover {
+  background: #eef2f7;
+}
+
+/* ── 待发附件 ── */
+.ai-drawer__files {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  padding: 12rpx 24rpx 0;
+}
+
+.ai-drawer__file {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 12rpx;
+  background: #f6f8fb;
+}
+
+.ai-drawer__file-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-drawer__file-remove {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: #334155;
+}
+
+/* ── 待发图片 ── */
+.ai-drawer__pics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  padding: 12rpx 24rpx 0;
+}
+
+.ai-drawer__pic {
+  position: relative;
+  width: 120rpx;
+  height: 120rpx;
+}
+
+.ai-drawer__pic-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 12rpx;
+}
+
+/* 移除角标悬在缩略图圆角外，所以缩略图本身不能设 overflow:hidden */
+.ai-drawer__pic-remove {
+  position: absolute;
+  top: -10rpx;
+  right: -10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: #334155;
+}
+
+/* ── 输入区 ── */
+.ai-drawer__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 16rpx;
+  padding: 16rpx 24rpx 20rpx;
+  background: #ffffff;
+}
+
+/* 上传图片：与发送键同高，但走中性样式，不跟主操作抢焦点 */
+.ai-drawer__attach {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 12rpx;
+  background: #f1f3f7;
+}
+
+.ai-drawer__attach--hover {
+  background: #e2e8f0;
+}
+
+.ai-drawer__input {
+  flex: 1;
+  min-height: 72rpx;
+  max-height: 240rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 12rpx;
+  background: #f4f6fa;
+  color: #0f172a;
+  font-size: 27rpx;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.ai-drawer__input-ph {
+  color: #94a3b8;
+}
+
+.ai-drawer__send {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  padding: 0 32rpx;
+  border-radius: 12rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.ai-drawer__send--hover {
+  background: #1d4ed8;
+}
+
+.ai-drawer__send--off {
+  background: #cbd5e1;
+}
+
+/* 停止：在飞的时候顶替发送键。中性偏深实底，跟主操作区分开 */
+.ai-drawer__stop {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 12rpx;
+  background: #334155;
+}
+
+.ai-drawer__stop--hover {
+  background: #1e293b;
+}
+
+.ai-drawer__stop-square {
+  width: 22rpx;
+  height: 22rpx;
+  border-radius: 3rpx;
+  background: #ffffff;
+}

@@ -6,11 +6,13 @@ import { fetchFormById } from '../api/reportForm.api';
 import { fetchFormSubmissions } from '../api/reportFill.api';
 import FormGridRenderer, { parseLayoutJson } from '../components/FormGridRenderer';
 import type { ReportFormSubmission } from '../types';
-import { exportExcel, exportPdf, exportWord } from '../api/reportFill.api';
+import { exportExcel, exportLedger, exportPdf, exportWord } from '../api/reportFill.api';
 import { fetchWordTemplates } from '../api/reportForm.api';
 import { buildReportExportFilename, parseFillMode } from '../utils/reportFormExportFilename';
-import { Table2, Eye, User, Clock, CheckCircle, FileText, Download, FileSpreadsheet } from 'lucide-react';
+import { normalizeBlocks } from '../utils/reportFormBlocks';
+import { Table2, Eye, User, Clock, CheckCircle, FileText, Download, FileSpreadsheet, History } from 'lucide-react';
 import { formatDateTimeAsiaShanghaiShort } from '@/lib/formatDateTimeAsiaShanghai';
+import SubmissionHistoryDrawer from '../components/SubmissionHistoryDrawer';
 import toast from 'react-hot-toast';
 
 type ViewMode = 'table' | 'detail';
@@ -24,6 +26,7 @@ export default function SubmissionManagePage() {
   const formId = Number(id);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [selectedSub, setSelectedSub] = useState<ReportFormSubmission | null>(null);
+  const [historySubId, setHistorySubId] = useState<number | null>(null);
 
   const { data: form, isLoading: formLoading } = useQuery({
     queryKey: ['report-form', formId],
@@ -49,6 +52,10 @@ export default function SubmissionManagePage() {
   const fieldCells = layout.cells.filter(c => c.kind === 'field' && c.fieldKey);
   const fields = layout.fields;
   const fillMode = parseFillMode(form.fillPolicyJson);
+  /** 每条提交按其块拆成多行；非重复表单块数恒为 1，视觉不变 */
+  const rows = submissions.flatMap(sub =>
+    normalizeBlocks(sub.fieldValuesJson).map((block, i) => ({ sub, block, blockNo: i + 1 })),
+  );
   const batchExportName = (ext: string) => buildReportExportFilename({
     formName: form.name,
     extension: ext,
@@ -83,6 +90,11 @@ export default function SubmissionManagePage() {
           <Eye className="w-3.5 h-3.5" /> 逐份查看
         </button>
         <span className="w-px h-5 bg-[var(--app-color-border-default)]" />
+        <button onClick={() => exportLedger(formId, batchExportName('xlsx'))}
+          disabled={submissions.length === 0}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
+          <Table2 className="w-3.5 h-3.5" /> 汇总台账
+        </button>
         <button onClick={() => exportExcel(formId, undefined, batchExportName('xlsx'))}
           disabled={submissions.length === 0}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
@@ -135,6 +147,7 @@ export default function SubmissionManagePage() {
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-[var(--app-color-text-secondary)]">
                   <User className="w-3.5 h-3.5 inline mr-1" />填写人
                 </th>
+                <th className="px-3 py-2 text-left text-[11px] font-medium text-[var(--app-color-text-secondary)]">第几张</th>
                 {fieldCells.map(cell => (
                   <th key={cell.id} className="px-3 py-2 text-left text-[11px] font-medium text-[var(--app-color-text-secondary)]">
                     {fields[cell.fieldKey!]?.label || cell.fieldKey}
@@ -147,15 +160,19 @@ export default function SubmissionManagePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--app-color-border-default)]">
-              {submissions.map(sub => (
-                <tr key={sub.id} className="hover:bg-[var(--app-color-surface-hover)] cursor-pointer"
+              {rows.map(({ sub, block, blockNo }) => (
+                <tr key={`${sub.id}-${block.id}`} className="hover:bg-[var(--app-color-surface-hover)] cursor-pointer"
                   onClick={() => { setSelectedSub(sub); setViewMode('detail'); }}>
                   <td className="px-3 py-2 text-[var(--app-color-text-primary)]">{submissionUserLabel(sub)}</td>
-                  {fieldCells.map(cell => (
-                    <td key={cell.id} className="px-3 py-2 text-xs text-[var(--app-color-text-secondary)] max-w-[150px] truncate">
-                      {String(sub.fieldValuesJson?.[cell.fieldKey!] ?? '—')}
-                    </td>
-                  ))}
+                  <td className="px-3 py-2 text-xs text-[var(--app-color-text-tertiary)]">第 {blockNo} 张</td>
+                  {fieldCells.map(cell => {
+                    const raw = block.values[cell.fieldKey!];
+                    return (
+                      <td key={cell.id} className="px-3 py-2 text-xs text-[var(--app-color-text-secondary)] max-w-[150px] truncate">
+                        {raw == null || raw === '' ? '—' : String(raw)}
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2">{statusBadge(sub.status)}</td>
                   <td className="px-3 py-2 text-xs text-[var(--app-color-text-tertiary)]">
                     {sub.updatedAt ? formatDateTimeAsiaShanghaiShort(sub.updatedAt) : '-'}
@@ -208,14 +225,28 @@ export default function SubmissionManagePage() {
                   <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
                     v{selectedSub.version}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => setHistorySubId(selectedSub.id)}
+                    className="ml-auto px-2 py-1 rounded-[var(--app-radius-element)] text-[11px] border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1"
+                  >
+                    <History className="w-3 h-3" /> 历史
+                  </button>
                 </div>
-                <FormGridRenderer
-                  layout={layout}
-                  themeJson={form.themeJson}
-                  formSource={form.source}
-                  values={selectedSub.fieldValuesJson || {}}
-                  editable={false}
-                />
+                {normalizeBlocks(selectedSub.fieldValuesJson).map((block, i) => (
+                  <div key={block.id} className="mb-4">
+                    <div className="text-[11px] font-medium text-[var(--app-color-text-secondary)] mb-1">
+                      第 {i + 1} 张表
+                    </div>
+                    <FormGridRenderer
+                      layout={layout}
+                      themeJson={form.themeJson}
+                      formSource={form.source}
+                      values={block.values}
+                      editable={false}
+                    />
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-sm text-[var(--app-color-text-tertiary)] py-8 text-center">
@@ -224,6 +255,13 @@ export default function SubmissionManagePage() {
             )}
           </div>
         </div>
+      )}
+      {historySubId != null && (
+        <SubmissionHistoryDrawer
+          formId={formId}
+          submissionId={historySubId}
+          onClose={() => setHistorySubId(null)}
+        />
       )}
     </AdminPageShell>
   );

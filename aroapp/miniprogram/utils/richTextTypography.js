@@ -56,6 +56,15 @@ var STYLES = {
   a: 'color:#ac1736;text-decoration:none;',
   img: 'max-width:100%;height:auto;display:block;margin:8px 0;border-radius:8px;',
   hr: 'border:none;border-top:1px solid #ebedf0;margin:12px 0;',
+  /* 表格：rich-text 里没有横向滚动，所以靠 fixed 布局 + 断词把长单元格压进容器宽度，
+     而不是让它把气泡撑破 */
+  table:
+    'width:100%;border-collapse:collapse;table-layout:fixed;margin:8px 0 12px;font-size:' +
+    px(SIZES_PX.small) +
+    ';',
+  th:
+    'border:1px solid #ebedf0;padding:6px 8px;text-align:left;font-weight:600;background:#f7f8fa;word-break:break-word;',
+  td: 'border:1px solid #ebedf0;padding:6px 8px;text-align:left;word-break:break-word;',
 };
 
 function tagStyle(tag) {

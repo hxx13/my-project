@@ -156,12 +156,17 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
   const fillPolicy = parseFillPolicy(form);
   const mode = fillPolicy.mode || 'shared';
   const multi = mode === 'individual' && !!fillPolicy.allowMultipleInstances;
+  const scheduleRaw = form.scheduleJson as unknown;
+  const schedule: Record<string, unknown> = typeof scheduleRaw === 'string'
+    ? (() => { try { return JSON.parse(scheduleRaw); } catch { return {}; } })()
+    : ((scheduleRaw as Record<string, unknown>) ?? {});
+  const periodic = schedule.period !== undefined && schedule.period !== 'manual';
   const isPublisher = !!form.publisher;
 
   const { data: myInstances = [] } = useQuery({
     queryKey: ['report-fill-my-submissions', form.id],
     queryFn: () => fetchMySubmissions(form.id),
-    enabled: expanded && multi,
+    enabled: expanded && (multi || periodic),
   });
 
   const { data: publisherGroups = [] } = useQuery({
@@ -217,6 +222,10 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
     if (multi) {
       if (myInstances.length > 0) onOpen(myInstances[0].id);
       else onToggle();
+      return;
+    }
+    if (periodic) {
+      onOpen();
       return;
     }
     onOpen();
@@ -299,7 +308,29 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
 
       {expanded && (
         <div className="border-t border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-4 py-3 text-xs text-[var(--app-color-text-secondary)] space-y-3">
-          {mode === 'shared' ? (
+          {periodic ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1 text-[var(--app-color-text-secondary)]">
+                <Clock className="w-3.5 h-3.5" /> 周期表 — 每期自动生成一份，不需要的那期可以删掉
+              </div>
+              {myInstances.length === 0 ? (
+                <p className="text-[var(--app-color-text-tertiary)]">尚无历史期次</p>
+              ) : (
+                <ul className="space-y-1">
+                  {myInstances.map(sub => (
+                    <InstanceRow
+                      key={sub.id}
+                      sub={sub}
+                      fillPolicy={fillPolicy}
+                      onOpen={() => onOpen(sub.id)}
+                      onDelete={() => handleDelete(sub)}
+                      deleting={deleteMut.isPending && deleteMut.variables === sub.id}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : mode === 'shared' ? (
             <div>协同编辑模式 — 所有人共同填写同一份数据</div>
           ) : multi ? (
             <div className="space-y-2">

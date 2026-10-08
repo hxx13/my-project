@@ -275,6 +275,19 @@ export async function listSupplyClaimPdfLinks(claimId: string) {
   return res.data.data;
 }
 
+/**
+ * 取领用单 PDF 字节（预览 / 打印共用一份）。
+ *
+ * 端点本身是「令牌就是能力」的直链（WebMvcConfig 里已从 apiAuthInterceptor 白名单放行），
+ * 但这里仍走 authHttp —— 与 cardPrint 归档、转移单下载同一套写法：带上登录态不冲突，
+ * 401/登录态刷新统一交给拦截器，不用在这里各写一遍。
+ *
+ * 后端给的是带 `/api` 前缀的绝对路径，而 authHttp 的 baseURL 已经是 `/api`，去掉前缀免得拼成 `/api/api/...`。
+ */
+export async function fetchSupplyClaimFormBytes(downloadUrl: string): Promise<Blob> {
+  const res = await authHttp.get(downloadUrl.replace(/^\/api/, ""), { responseType: "blob" });
+  return res.data as Blob;
+}
 export async function deleteSupplyClaimPdfLink(claimId: string, linkId: string) {
   await authHttp.delete(`/supplies/claims/${encodeURIComponent(claimId)}/pdf-links/${encodeURIComponent(linkId)}`);
 }

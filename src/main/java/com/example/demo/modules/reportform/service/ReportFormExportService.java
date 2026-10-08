@@ -5,9 +5,11 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
+import com.example.demo.modules.reportform.util.ReportFormBlocks;
 import com.example.demo.common.time.BusinessTimeWindow;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -73,12 +75,17 @@ public class ReportFormExportService {
         if (sub == null) throw new RuntimeException("提交记录不存在");
 
         var layout = objectMapper.readTree(form.getLayoutJson());
-        var fieldValues = objectMapper.readTree(sub.getFieldValuesJson() != null ? sub.getFieldValuesJson() : "{}");
+        ObjectNode root = ReportFormBlocks.normalize(sub.getFieldValuesJson());
         var theme = parseTheme(form.getThemeJson());
 
         try (Workbook wb = new XSSFWorkbook()) {
             Sheet sheet = wb.createSheet(sanitizeSheetName(form.getName()));
-            writeGridToSheet(wb, sheet, layout, fieldValues, theme);
+            int row = 0;
+            List<JsonNode> blocks = ReportFormBlocks.blockValues(root);
+            for (int i = 0; i < blocks.size(); i++) {
+                if (i > 0) row += 1;
+                row = writeGridToSheet(wb, sheet, layout, blocks.get(i), theme, row);
+            }
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             wb.write(bos);
             return bos.toByteArray();
@@ -122,14 +129,86 @@ public class ReportFormExportService {
                     String sheetName = uniqueSheetName(base, usedNames);
                     usedNames.add(sheetName);
                     Sheet sheet = wb.createSheet(sheetName);
-                    var values = objectMapper.readTree(sub.getFieldValuesJson() != null ? sub.getFieldValuesJson() : "{}");
-                    writeGridToSheet(wb, sheet, layout, values, theme);
+                    List<JsonNode> blocks = ReportFormBlocks.blockValues(
+                            ReportFormBlocks.normalize(sub.getFieldValuesJson()));
+                    int row = 0;
+                    for (int i = 0; i < blocks.size(); i++) {
+                        if (i > 0) row += 1;
+                        row = writeGridToSheet(wb, sheet, layout, blocks.get(i), theme, row);
+                    }
                 }
             }
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
             wb.write(bos);
             return bos.toByteArray();
         }
+    }
+
+    /** 汇总台账：一张 Sheet，一行 = 一条记录的每张表；列 = 填报人 | 第N张 | 状态 | 更新时间 | 各字段 */
+    public byte[] exportLedger(Long formId) throws Exception {
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) throw new RuntimeException("报表不存在");
+
+        var layout = objectMapper.readTree(form.getLayoutJson());
+        List<JsonNode> fieldCells = new ArrayList<>();
+        for (JsonNode c : layout.path("cells")) {
+            if ("field".equals(c.path("kind").asText()) && !c.path("fieldKey").asText("").isEmpty()) {
+                fieldCells.add(c);
+            }
+        }
+        JsonNode fields = layout.path("fields");
+
+        List<ReportFormSubmission> subs = submissionMapper.selectByFormId(formId);
+        Map<Long, String> nickByUser = buildNicknameMap();
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet(sanitizeSheetName(form.getName() + "-台账"));
+            int r = 0;
+
+            Row head = sheet.createRow(r++);
+            String[] fixed = {"填报人", "第几份", "状态", "更新时间"};
+            for (int i = 0; i < fixed.length; i++) head.createCell(i).setCellValue(fixed[i]);
+            for (int i = 0; i < fieldCells.size(); i++) {
+                String fk = fieldCells.get(i).path("fieldKey").asText();
+                head.createCell(fixed.length + i)
+                        .setCellValue(fields.path(fk).path("label").asText(fk));
+            }
+
+            for (ReportFormSubmission sub : subs) {
+                List<JsonNode> blocks = ReportFormBlocks.blockValues(
+                        ReportFormBlocks.normalize(sub.getFieldValuesJson()));
+                for (int b = 0; b < blocks.size(); b++) {
+                    Row row = sheet.createRow(r++);
+                    int c = 0;
+                    row.createCell(c++).setCellValue(ledgerFillerName(sub, nickByUser));
+                    row.createCell(c++).setCellValue("第 " + (b + 1) + " 张");
+                    row.createCell(c++).setCellValue("submitted".equals(sub.getStatus()) ? "已提交" : "草稿");
+                    row.createCell(c++).setCellValue(sub.getUpdatedAt() == null ? ""
+                            : BusinessTimeWindow.toDisplayWallClock(sub.getUpdatedAt()));
+                    JsonNode values = blocks.get(b);
+                    for (JsonNode cell : fieldCells) {
+                        String fk = cell.path("fieldKey").asText();
+                        row.createCell(c++).setCellValue(
+                                ReportFormFieldValueFormatter.format(fields.path(fk), values.path(fk)));
+                    }
+                }
+            }
+
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            wb.write(bos);
+            return bos.toByteArray();
+        }
+    }
+
+    private Map<Long, String> buildNicknameMap() {
+        // 与 ReportFillService 同口径：以 user_id 直接做展示名兜底，避免在此重复引入发布者昵称解析
+        return new HashMap<>();
+    }
+
+    private String ledgerFillerName(ReportFormSubmission sub, Map<Long, String> ignored) {
+        Long uid = sub.getUserId();
+        if (uid == null || uid == 0L) return "协同填报";
+        return "用户 #" + uid;
     }
 
     public byte[] exportSinglePdf(Long formId, Long submissionId) throws Exception {
@@ -145,10 +224,30 @@ public class ReportFormExportService {
         }
 
         var layout = objectMapper.readTree(form.getLayoutJson());
-        var fieldValues = objectMapper.readTree(sub.getFieldValuesJson() != null ? sub.getFieldValuesJson() : "{}");
         var theme = parseTheme(form.getThemeJson());
+        List<JsonNode> blocks = ReportFormBlocks.blockValues(
+                ReportFormBlocks.normalize(sub.getFieldValuesJson()));
 
-        return renderGridPdf(pdfExportTitle(form), layout, fieldValues, theme, pdfExportSubtitle(form, sub, false));
+        if (blocks.size() <= 1) {
+            JsonNode only = blocks.isEmpty() ? objectMapper.createObjectNode() : blocks.get(0);
+            return renderGridPdf(pdfExportTitle(form), layout, only, theme,
+                    pdfExportSubtitle(form, sub, false));
+        }
+
+        // 多张表：每张单独渲染（各自可能跨页），再合并 —— 复用批量导出那条已验证的合并路径
+        ByteArrayOutputStream merged = new ByteArrayOutputStream();
+        PDFMergerUtility merger = new PDFMergerUtility();
+        merger.setDestinationStream(merged);
+        for (int i = 0; i < blocks.size(); i++) {
+            String subtitle = pdfExportSubtitle(form, sub, false);
+            if (!subtitle.isBlank()) {
+                subtitle = subtitle + " · 第 " + (i + 1) + " 张表";
+            }
+            merger.addSource(new RandomAccessReadBuffer(
+                    renderGridPdf(pdfExportTitle(form), layout, blocks.get(i), theme, subtitle)));
+        }
+        merger.mergeDocuments(null);
+        return merged.toByteArray();
     }
 
     /**
@@ -208,10 +307,17 @@ public class ReportFormExportService {
 
     private void writeGridToSheet(Workbook wb, Sheet sheet, JsonNode layout,
                                   JsonNode fieldValues, JsonNode theme) {
+        writeGridToSheet(wb, sheet, layout, fieldValues, theme, 0);
+    }
+
+    /** @param rowOffset 起始行（多张表在同一 Sheet 内竖排用）
+     *  @return 写完后的下一个空闲行 */
+    private int writeGridToSheet(Workbook wb, Sheet sheet, JsonNode layout,
+                                 JsonNode fieldValues, JsonNode theme, int rowOffset) {
         JsonNode cellsNode = layout.get("cells");
         if (cellsNode == null || !cellsNode.isArray() || cellsNode.isEmpty()) {
-            sheet.createRow(0).createCell(0).setCellValue("（空表格）");
-            return;
+            sheet.createRow(rowOffset).createCell(0).setCellValue("（空表格）");
+            return rowOffset + 1;
         }
 
         List<JsonNode> cells = new ArrayList<>();
@@ -227,14 +333,14 @@ public class ReportFormExportService {
             maxCol = Math.max(maxCol, cell.path("col").asInt() + cell.path("colSpan").asInt(1));
         }
         for (int r = 0; r < maxRow; r++) {
-            sheet.createRow(r);
+            sheet.createRow(r + rowOffset);
         }
 
         Map<String, CellStyle> styleCache = new HashMap<>();
         List<CellRangeAddress> merges = new ArrayList<>();
 
         for (JsonNode cell : cells) {
-            int r = cell.path("row").asInt();
+            int r = cell.path("row").asInt() + rowOffset;
             int c = cell.path("col").asInt();
             int colSpan = Math.max(1, cell.path("colSpan").asInt(1));
             int rowSpan = Math.max(1, cell.path("rowSpan").asInt(1));
@@ -263,16 +369,18 @@ public class ReportFormExportService {
         int[] colPx = ReportFormColumnWidthCalculator.resolveExportColumnWidthsPx(
                 theme, cells, layout, maxCol, textOf);
         ReportFormColumnWidthCalculator.applyToExcelSheet(sheet, colPx);
-        applyExcelRowHeights(sheet, cells, colPx, textOf, maxRow);
+        applyExcelRowHeights(sheet, cells, colPx, textOf, maxRow, rowOffset);
+        return rowOffset + maxRow;
     }
 
     /** 按列宽与换行估算行高 */
     private void applyExcelRowHeights(Sheet sheet, List<JsonNode> cells, int[] colPxWidths,
-                                      java.util.function.Function<JsonNode, String> cellText, int maxRow) {
+                                      java.util.function.Function<JsonNode, String> cellText,
+                                      int maxRow, int rowOffset) {
         float[] rowLines = ReportFormColumnWidthCalculator.estimateRowLineCounts(
                 cells, maxRow, colPxWidths, cellText);
         for (int r = 0; r < maxRow; r++) {
-            Row row = sheet.getRow(r);
+            Row row = sheet.getRow(r + rowOffset);
             if (row == null) continue;
             row.setHeightInPoints(Math.max(18f, rowLines[r] * 15f));
         }

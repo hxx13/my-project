@@ -1,0 +1,6 @@
+<view
+  class="ai-orb ai-orb--{{state}} ai-orb--e{{liveEmotion}} {{liveAction ? 'ai-orb--' + liveAction : ''}} {{switching ? 'ai-orb--switching' : ''}}"
+  style="width:{{size}}rpx;height:{{size}}rpx;--orb-size:{{size}}rpx;"
+>
+  <view class="ai-orb__eyes" />
+</view>

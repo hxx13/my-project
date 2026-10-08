@@ -26,41 +26,6 @@
         (#{automationType}, #{eventKey}, #{triggerType}, #{triggerReason}, #{userId}, #{targetId}, #{success}, #{detail}, #{eventTime}, #{createdBy})
     </insert>
 
-    <sql id="FilterWhere">
-        <where>
-            <if test="automationType != null and automationType != ''">
-                AND automation_type = #{automationType}
-            </if>
-            <if test="triggerType != null and triggerType != ''">
-                AND trigger_type = #{triggerType}
-            </if>
-            <if test="keyword != null and keyword != ''">
-                AND (
-                    user_id LIKE CONCAT('%', #{keyword}, '%')
-                    OR event_key LIKE CONCAT('%', #{keyword}, '%')
-                    OR trigger_reason LIKE CONCAT('%', #{keyword}, '%')
-                    OR detail LIKE CONCAT('%', #{keyword}, '%')
-                )
-            </if>
-            <if test="startTime != null">
-                AND event_time <![CDATA[>=]]> #{startTime}
-            </if>
-            <if test="endTime != null">
-                AND event_time <![CDATA[<=]]> #{endTime}
-            </if>
-            <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
-                AND NOT (
-                    automation_type = 'SCHEDULER'
-                    AND event_key IN (
-                        'ARO_PENETRATION_POLL',
-                        'DASHBOARD_RANKING_ACTIVITY',
-                        'DASHBOARD_RANKING_ANIMAL'
-                    )
-                )
-            </if>
-        </where>
-    </sql>
-
     <sql id="FilterWhereL">
         <where>
             <if test="automationType != null and automationType != ''">
@@ -84,7 +49,17 @@
             <if test="endTime != null">
                 AND l.event_time <![CDATA[<=]]> #{endTime}
             </if>
-            <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
+            <!-- 排除穿透轮询。NOT(...) 在 automation_type 已被限成「非 SCHEDULER 的常量」时是
+                 恒真子句：NOT('X' = 'SCHEDULER' AND ...) 恒为真。而恒真子句会让
+                 idx_auto_type_time 完全用不上（退化成全表扫）—— 门禁成功刷卡规则页
+                 （automation_type=DOOR_SWIPE_RULE，不传关键词）的 COUNT 实测由 ~4.4s 降到 ~46ms。
+                 只有 automation_type 未限定、为空、或恰好限定为 SCHEDULER 时才需要这个子句：
+                 三档里只有 SCHEDULER 会真的命中 event_key 白名单（实测 SCHEDULER 带/不带该子句
+                 分别是 1004502 / 1400399 行，其余大类两者完全相等）。
+                 注意用 equalsIgnoreCase：automation_type 列是 ci 排序规则，传小写也会命中同样的行。 -->
+            <if test="excludePenetrationPoll != null and excludePenetrationPoll == true
+                      and (automationType == null or automationType == ''
+                           or automationType.equalsIgnoreCase('SCHEDULER'))">
                 AND NOT (
                     l.automation_type = 'SCHEDULER'
                     AND l.event_key IN (
@@ -122,7 +97,12 @@
     <select id="countPage" resultType="long">
         SELECT COUNT(1)
         FROM twin_automation_log l
-        LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        <!-- p 只在关键词命中 p.name 时才被引用（见 FilterWhereL）；无条件挂着会让每个命中行
+             回表取 user_id 一次 —— 30 万行约 3.3s，去掉后走覆盖索引约 50ms。
+             开关条件必须与 FilterWhereL 里的 keyword 判据逐字一致。 -->
+        <if test="keyword != null and keyword != ''">
+            LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        </if>
         <include refid="FilterWhereL"/>
     </select>
 

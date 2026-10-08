@@ -945,3 +945,30 @@ html.portal-landing-scroll-hidden::-webkit-scrollbar {
    必须放在 tailwind 指令之后，靠源码顺序覆盖同名工具类。 */
 .overscroll-y-contain { overscroll-behavior-y: auto; }
 .overscroll-contain { overscroll-behavior: auto; }
+
+/* ═══════ AI 回答里的 markdown 表格 ═══════
+   渲染器（frontend/src/utils/markdownHtml.ts 的 renderTable）给 <table> 打的是 .docs-table，
+   但全仓只有这个类名、没有一条样式 —— 表格落到浏览器默认外观：单元格贴在一起、没有边框、
+   列宽随内容乱跳。对话的 L0 输出规范现在鼓励「多条同类记录用表格」，所以这里补上最小可读样式。
+
+   颜色一律用中性灰（rgba(128,128,128,·)）而不是黑/白：同一套规则在浅色（对话、知识库）
+   与深色（公告 H5，announcementHtml 走 dark 主题）下都看得见，不必按主题分两套。 */
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.docs-table th,
+.docs-table td {
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.docs-table th {
+  background: rgba(128, 128, 128, 0.14);
+  font-weight: 600;
+  white-space: nowrap;   /* 表头短，不折行才看得出列的分界 */
+}
+.docs-table tbody tr:nth-child(even) td { background: rgba(128, 128, 128, 0.06); }

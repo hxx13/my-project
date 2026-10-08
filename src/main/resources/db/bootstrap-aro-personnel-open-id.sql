@@ -12,14 +12,16 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- 确保索引存在（幂等：MySQL 重复创建同名索引会报错，用存储过程安全添加）
-CREATE PROCEDURE IF NOT EXISTS ensure_aro_open_id_idx()
-BEGIN
-    SET @idx = (SELECT COUNT(*) FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'aro_personnel' AND INDEX_NAME = 'idx_aro_open_id');
-    IF @idx = 0 THEN
-        ALTER TABLE aro_personnel ADD INDEX idx_aro_open_id (open_id);
-    END IF;
-END;
-CALL ensure_aro_open_id_idx();
-DROP PROCEDURE IF EXISTS ensure_aro_open_id_idx;
+-- 确保索引存在。
+-- 这里不能用 CREATE PROCEDURE + BEGIN...END：启动链用 ResourceDatabasePopulator(setSeparator(";"))，
+-- 按分号裸切且不认 DELIMITER，BEGIN...END 体内的分号会把语句切碎 → 整段报错
+-- → 被 isBenignInChain 判成「已存在」而计为成功 → 索引从来没建成过。
+-- 用与本目录其它脚本一致的 SET @sql + PREPARE 幂等写法。
+SET @idx = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'aro_personnel' AND INDEX_NAME = 'idx_aro_open_id');
+SET @sql = IF(@idx = 0,
+    'ALTER TABLE aro_personnel ADD INDEX idx_aro_open_id (open_id)',
+    'SELECT ''idx_aro_open_id already exists''');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

@@ -36,6 +36,7 @@ import PurchaseRequestPage from "@/pages/PurchaseRequestPage";
 import PurchaseProcessPage from "@/pages/PurchaseProcessPage";
 import AdminNotificationPage from "@/pages/AdminNotificationPage";
 import AdminApiDocsPage from "@/pages/AdminApiDocsPage";
+import AdminAiAuditPage from "@/pages/AdminAiAuditPage";
 import AdminLoggingConsolePage from "@/pages/AdminLoggingConsolePage";
 import { MonitorDashboardPage } from "@/features/admin/monitor/MonitorDashboardPage";
 import AgvTrackerPage from "@/pages/AgvTrackerPage";
@@ -483,6 +484,7 @@ export const router = createHashRouter([
                   { path: "personnel", element: <AdminPersonnelPage /> },
                   { path: "logging-console", element: <AdminLoggingConsolePage /> },
                   { path: "api-docs", element: <AdminApiDocsPage /> },
+                  { path: "ai-audit", element: <AdminAiAuditPage /> },
                   { path: "repair-process", element: <RepairProcessPage /> },
                   { path: "purchase-process", element: <PurchaseProcessPage /> },
                   { path: "supplies/manage", element: <AdminSuppliesManagePage /> },

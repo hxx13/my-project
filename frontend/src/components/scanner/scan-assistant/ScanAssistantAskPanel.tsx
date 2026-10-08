@@ -1,31 +1,215 @@
-import { useEffect, useRef, useState, type CSSProperties, type Ref } from "react";
-import { SendHorizonal } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
+import { FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import toast from "react-hot-toast";
 import type { BubblePlacement } from "./computeBubblePlacement";
 import { ScanAssistantChatCard } from "./ScanAssistantChatCard";
-import { streamScanAssistantAsk, streamScanAssistantGreet } from "@/api/domains/scanAssistant.api";
+import { ScanAssistantPegtopLoader } from "./ScanAssistantPegtopLoader";
+import { ChatMarkdownBody } from "@/components/markdown/ChatMarkdownBody";
+import {
+  deleteAssistantSession,
+  fetchAssistantSessionMessages,
+  fetchAssistantSessions,
+  streamScanAssistantAsk,
+  streamAiInteraction,
+  streamScanAssistantGreet,
+  type AssistantSession,
+  type ScanAssistantUsage,
+} from "@/api/domains/scanAssistant.api";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
+import { authStorage } from "@/features/auth/authStorage";
+import { getLastAckBootId } from "@/config/socketUrl";
+import {
+  downloadAdminFileTemplateBlob,
+  fetchAdminFileTemplates,
+  type AdminFileTemplateRow,
+} from "@/api/domains/fileTemplates.api";
 
-const ASK_COOLDOWN_MS = 15_000;
-const CACHE_TTL_MS = 15 * 60 * 1000;
-const CACHE_KEY = "scan-assistant-ask-cache";
+/**
+ * 球球对话缓存的 key 前缀。
+ *
+ * <p>**必须按账号分开**：localStorage 按源共享，教职工端、移动端 H5 是同一个源。
+ * key 不绑账号时，同一台机器上换个账号登录，面板会把上一个人的对话从缓存里读出来显示 ——
+ * 真机确认过：单一 key 里存着 44 条别人的问答，blob 里连用户标识都没有。
+ */
+const CACHE_KEY_PREFIX = "scan-assistant-ask-cache";
 
-type AskTurn = { role: "user" | "assistant"; text: string; typed: boolean };
+/**
+ * 缓存放 **sessionStorage**：按标签隔离。
+ *
+ * <p>用 localStorage 时同一账号开两个页面就共用一份 —— 一个页面切了历史会话，另一个刷新后
+ * 会续成前者的会话（真机观测到同账号同时段两条会话并行）。缺点是新标签页里对话不再延续显示；
+ * 相比"切了会话却发现消息发去了别处"，这个代价更小。
+ */
+const askStore = typeof window === "undefined" ? null : window.sessionStorage;
+
+/** 读缓存（sessionStorage 不可用时退化成"没有缓存"，不影响主流程） */
+function readAskCache(key: string): string | null {
+  try {
+    return askStore ? askStore.getItem(key) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeAskCache(key: string, value: string): void {
+  try {
+    askStore?.setItem(key, value);
+  } catch {
+    /* 容量/隐私模式：写不进去就当没有缓存 */
+  }
+}
+
+function dropAskCache(key: string): void {
+  try {
+    askStore?.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 当前账号的缓存 key；没登录时退到一个不落地的占位（不会和任何真实账号撞上） */
+function currentCacheKey(): string {
+  return `${CACHE_KEY_PREFIX}:${authStorage.getUserId() ?? "anon"}`;
+}
+
+/**
+ * 清掉**别的账号**留在这个浏览器里的球球缓存。
+ *
+ * <p>按账号分 key 之后已经读不错了，但上一个人那份还会留在 localStorage 里 ——
+ * 同机器换人用时随手一个 devtools 就能翻到别人的对话。真正的历史在服务端（历史对话随时能翻），
+ * 本地这份副本没有留的必要。顺带清掉旧的**不分账号**的那个 key。
+ */
+function purgeForeignAskCaches(): void {
+  try {
+    const keep = currentCacheKey();
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if ((key === CACHE_KEY_PREFIX || key.startsWith(`${CACHE_KEY_PREFIX}:`)) && key !== keep) {
+        dropAskCache(key);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+/** 待发图片张数上限，防止缩略图条把卡片顶出屏幕 */
+const MAX_ATTACHMENTS = 6;
+/**
+ * 表格 / 文本类附件的扩展名。拖拽或点选时**按扩展名自动分流** ——
+ * 拖进来的时候用户不会先声明「这是表格」，识别得由我们做。
+ */
+const ATTACH_FILE_EXTS = [".xlsx", ".xls", ".md", ".markdown", ".txt", ".pdf", ".docx"];
+/** 单份文件上限：base64 后还会涨三分之一，太大就别让它进请求（服务端也会拒）。 */
+const MAX_ATTACH_FILE_BYTES = 8 * 1024 * 1024;
+/**
+ * 展开的两档宽度 = min(最大宽, 100vw - 视口内缩)。
+ *
+ * <p>**与 scanAssistantDock.css 的 `--expanded` / `--expanded-2` 同源，改要一起改** ——
+ * 这里算的是展开/收起动画的起止点，只改一边动画就会飞偏。
+ * 一级 = 原来那个大窗；二级 = 再放大一档（数据类回答、宽表格用得上）。
+ */
+const ZOOM_LEVELS = { 1: { maxWidth: 960, inset: 64 }, 2: { maxWidth: 1440, inset: 48 } } as const;
+const popupWidthFor = (level: 1 | 2) =>
+  Math.min(ZOOM_LEVELS[level].maxWidth, window.innerWidth - ZOOM_LEVELS[level].inset);
+
+/** 一次提问的用量（跨轮累加）。latencyMs 是服务端实测耗时；前端计时另有 liveMs。 */
+type AskMeta = {
+  latencyMs: number;
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  turns: number;
+};
+/** 助手抛回来让用户点选的候选（如「该人的可选房间」）。选项是对话的一部分，跟着回合一起存。 */
+type AskChoice = { label: string; value: string };
+/**
+ * 一道待答的选择题。一次请求可能带回**好几道**（批量清单里张皓瀚缺房间、林安顺缺时长），
+ * 载体按顺序依次问，答完最后一道再把所有答案合成一条消息发出去。
+ *
+ * `kind === "confirm"` 时是**写操作的确认**：答案不能当新消息发出去，必须带着 token
+ * 回到服务端那条挂起记录上（见 submitInteraction）。
+ */
+type AskQuestion = { question: string; options: AskChoice[]; token?: string; kind?: string };
+type AskTurn = {
+  role: "user" | "assistant";
+  text: string;
+  typed: boolean;
+  meta?: AskMeta;
+  choiceQueue?: AskQuestion[];
+  /**
+   * 这一轮**带出去的**附件。发完就把待发托盘清空了，若不记在这里，历史里只剩一句「（见附件）」——
+   * 用户回头看根本想不起发的是什么。图片带 `url`（blob 预览）就能显示缩略图；刷新后 blob 失效，
+   * 退化成图标 + 名字（名字在缓存里，`url` 不进缓存 —— 那是个一次性地址）。
+   */
+  attachments?: { name: string; kind: "image" | "file"; url?: string }[];
+};
+
+/** 毫秒 → 「12.4s」，超过 60s 显示「1 分 15 秒」 */
+function fmtSec(ms: number): string {
+  if (!ms || ms < 0) return "0.0s";
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)} 分 ${total % 60} 秒`;
+}
+
+/** 附件大小：只给人一个「这份多大」的直觉，精确到 KB 就够 */
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
 
 function loadCachedTurns(): AskTurn[] {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const key = currentCacheKey();
+    const raw = readAskCache(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as { ts?: number; turns?: unknown };
-    if (Date.now() - (parsed.ts ?? 0) > CACHE_TTL_MS) {
-      localStorage.removeItem(CACHE_KEY);
-      return [];
-    }
     if (!Array.isArray(parsed.turns)) return [];
     return parsed.turns
       .map<AskTurn>((t: any) => ({
         role: t?.role === "user" ? "user" : "assistant",
         text: String(t?.text ?? ""),
         typed: true, // 恢复的历史一律视为已打完，不重新打字
+        meta: t?.meta && typeof t.meta.totalTokens === "number" ? (t.meta as AskMeta) : undefined,
+        choiceQueue: Array.isArray(t?.choiceQueue)
+          ? (t.choiceQueue as unknown[])
+              .map((q) => {
+                const item = q as { question?: unknown; options?: unknown; token?: unknown; kind?: unknown };
+                return {
+                  question: String(item?.question ?? ""),
+                  options: Array.isArray(item?.options)
+                    ? (item.options as unknown[])
+                        .map((c) => c as { label?: unknown; value?: unknown })
+                        .filter((c) => c && c.label != null && c.value != null)
+                        .map((c) => ({ label: String(c.label), value: String(c.value) }))
+                    : [],
+                  token: item?.token == null ? undefined : String(item.token),
+                  kind: item?.kind == null ? undefined : String(item.kind),
+                };
+              })
+              .filter((q) => q.options.length > 0)
+          : undefined,
+        // 附件记名字与类型即可；`url` 是 blob 地址，刷新后必然失效，不进缓存（渲染时退化成图标+名字）
+        attachments: Array.isArray(t?.attachments)
+          ? (t.attachments as unknown[])
+              .map((x) => x as { name?: unknown; kind?: unknown })
+              .filter((x) => x && x.name != null)
+              .map((x) => ({
+                name: String(x.name),
+                kind: x.kind === "image" ? ("image" as const) : ("file" as const),
+              }))
+          : undefined,
       }))
       .filter((t) => t.text.trim().length > 0); // 丢弃空回合：中断流式/问好中途缓存，避免空白气泡卡死并挡住重新问好
   } catch {
@@ -33,12 +217,74 @@ function loadCachedTurns(): AskTurn[] {
   }
 }
 
-function saveCachedTurns(turns: AskTurn[]) {
+/**
+ * 刷新后要恢复的待答问题：只认最后一条助手回合。
+ * 更早的提问早就被回答过了，再把它的选项亮出来等于在问一个已经结束的问题。
+ */
+function pendingQueueOf(turns: AskTurn[]): AskQuestion[] {
+  const last = turns[turns.length - 1];
+  return last && last.role === "assistant" && last.choiceQueue ? last.choiceQueue : [];
+}
+
+/**
+ * 多问时把所有答案合成一条消息：每行「<题目标题>：<答案>」，模型据此逐条对应。
+ * 只有一问时原样回那个值 —— 上下文已经说明了在问什么，不必加壳。
+ */
+function composeAnswers(questions: AskQuestion[], answers: string[]): string {
+  if (questions.length <= 1) {
+    return answers[0] ?? "";
+  }
+  return questions
+    .map((q, i) => `${q.question || `第 ${i + 1} 问`}：${answers[i] ?? ""}`)
+    .join("\n");
+}
+
+/**
+ * 把选项**值**换回人看的**标签**。
+ *
+ * 值可以是不该露面的内部标识（审核类候选的 value 就是单据 id），直接铺进用户气泡会变成
+ * 一串 `MR17858187453770426`；发给模型的仍是值本身，只是气泡上显示标签。
+ * 找不到对应选项（自定义回答）就原样回值。
+ */
+function labelsOf(questions: AskQuestion[], values: string[]): string[] {
+  return questions.map((q, i) => {
+    const v = values[i] ?? "";
+    return q.options.find((o) => o.value === v)?.label ?? v;
+  });
+}
+
+/** 同一份缓存里读「当前会话 id」：切到历史对话后刷新页面，下一条还得接在那条会话上 */
+function loadCachedSessionId(): number | null {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), turns }));
+    const raw = readAskCache(currentCacheKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { ts?: number; sessionId?: unknown };
+    const id = Number(parsed.sessionId);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedTurns(turns: AskTurn[], sessionId: number | null) {
+  try {
+    writeAskCache(currentCacheKey(), JSON.stringify({ ts: Date.now(), turns, sessionId }));
   } catch {
     /* ignore quota / private mode */
   }
+}
+
+/** 历史列表里的时间：只到分钟，今天的不带日期 */
+function fmtSessionTime(iso?: string): string {
+  if (!iso) return "";
+  const t = Date.parse(String(iso).replace(" ", "T"));
+  if (Number.isNaN(t)) return "";
+  const d = new Date(t);
+  const now = new Date();
+  const hhmm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toDateString() === now.toDateString()
+    ? hhmm
+    : `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hhmm}`;
 }
 
 /** 助手气泡：最新一条回答逐字打出；打完后标记 typed 避免重复打字 */
@@ -46,10 +292,16 @@ function AssistantBubble({
   text,
   type,
   onTyped,
+  meta,
+  live,
 }: {
   text: string;
   type: boolean;
   onTyped?: () => void;
+  /** 落定后的用量（跨轮累加） */
+  meta?: AskMeta;
+  /** 正在生成时的实时态：本地计时 + 每轮推来的 token */
+  live?: AskMeta;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const { displayed, done } = useTypewriterText(text, {
@@ -61,21 +313,51 @@ function AssistantBubble({
     if (done && type) onTyped?.();
   }, [done, type, onTyped]);
 
-  if (type && !text) {
-    return (
-      <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--assistant">正在思考…</div>
-    );
-  }
+  const shown: AskMeta | undefined = meta ?? live;
+  const metaNode = shown ? (
+    <div className="scan-assistant-ask__meta" aria-live="off">
+      <span>{meta ? "用时" : "思考中"} {fmtSec(shown.latencyMs)}</span>
+      {shown.totalTokens > 0 ? (
+        <span>
+          · {shown.totalTokens.toLocaleString()} tokens
+          <span className="scan-assistant-ask__meta-sub">
+            （↑{shown.promptTokens.toLocaleString()} ↓{shown.completionTokens.toLocaleString()}）
+          </span>
+        </span>
+      ) : null}
+      {shown.turns > 1 ? <span>· {shown.turns} 轮</span> : null}
+    </div>
+  ) : null;
+
   return (
-    <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--assistant">{displayed}</div>
+    <div className="scan-assistant-ask__answer">
+      <div className="scan-assistant-ask__answer-row">
+        <ScanAssistantPegtopLoader animated={type && !done} />
+        <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--assistant">
+          {type && !text ? (
+            "正在思考…"
+          ) : (
+            // 模型很爱写 `**加粗**` 和 `- 列表`：纯文本渲染会把星号和短横线原样显示出来。
+            // 打字期间仍走纯文本（半截 markdown 会解析成乱七八糟的结构），打完再转。
+            <ChatMarkdownBody text={displayed} streaming={type && !done} />
+          )}
+        </div>
+      </div>
+      {metaNode}
+    </div>
   );
 }
 
 type ScanAssistantAskPanelProps = {
-  anchorRef?: Ref<HTMLDivElement>;
+  /** 需要读 .current 量展开前的小卡位置（FLIP 动画起点） */
+  anchorRef?: RefObject<HTMLDivElement | null>;
   placement: BubblePlacement;
   positionStyle: CSSProperties;
   onDismiss: () => void;
+  /** 「新建对话」入口。行为由载体接入（清空会话 / 开新会话），这里只提供按钮 */
+  onNewChat?: () => void;
+  /** 「历史对话」入口。行为由载体接入（展开侧栏选历史会话），这里只提供按钮 */
+  onOpenHistory?: () => void;
 };
 
 export function ScanAssistantAskPanel({
@@ -83,12 +365,143 @@ export function ScanAssistantAskPanel({
   placement,
   positionStyle,
   onDismiss,
+  onNewChat,
+  onOpenHistory,
 }: ScanAssistantAskPanelProps) {
   const [draft, setDraft] = useState("");
   const [turns, setTurns] = useState<AskTurn[]>(loadCachedTurns);
   const [sending, setSending] = useState(false);
-  const lastSentAtRef = useRef(0);
-  const answerCacheRef = useRef(new Map<string, string>());
+  /**
+   * 连点闸门。**必须是 ref 而不是只看 sending**：setSending 是异步的，两次快速点击
+   * 都能在 state 落地前通过判空，于是一次「确认执行」发两遍续跑（第二遍被服务端判「已处理过」，
+   * 弹个莫名错误），一次澄清答案发两条消息（模型看到重复回答）。
+   */
+  const sendingRef = useRef(false);
+  const beginSend = () => {
+    if (sendingRef.current) return false;
+    sendingRef.current = true;
+    setSending(true);
+    return true;
+  };
+  const endSend = () => {
+    sendingRef.current = false;
+    setSending(false);
+  };
+
+  /**
+   * 正在跑的那一轮的中止柄（空 = 没在跑）。「停止生成」与「新一轮顶掉旧一轮」都靠它。
+   *
+   * <p>为什么要有它而不是只有一个 sending 标志：中止是**异步收尾**的 —— 被中止那轮的 finally
+   * 会在新一轮已经开始之后才跑到。那时若无条件 endSend()，就会把新一轮的发送态清掉，
+   * 于是「停止」按钮消失、还能再发一条（连发）。所以收尾前先比对「还是不是当前这一轮」。
+   */
+  const runRef = useRef<AbortController | null>(null);
+
+  /**
+   * 停止生成。只断客户端的流：不再收后续 delta，气泡停止打字，按钮立刻回到「发送」。
+   *
+   * <p>注意服务端那一轮**不会因此中止**（编排层没有取消令牌），它会把结果写完并落库；
+   * 也就是说停掉之后，这一轮的答复仍可能出现在刷新后的历史里。
+   */
+  const stopReply = () => {
+    const ctrl = runRef.current;
+    runRef.current = null;
+    ctrl?.abort();
+    endSend();
+  };
+
+  /**
+   * 被停止之后的收尾：把已经吐出来的部分**定稿**，一个字都没有就注明已停止。
+   *
+   * <p>不做这一步，中止那一轮的气泡会永远停在「正在思考…」——中止走的是 catch 分支，
+   * 而正文只在 onDone/onError 里落地。
+   */
+  const settleStopped = (partial: string) => {
+    setTurns((prev) => {
+      const next = prev.slice();
+      const last = next[next.length - 1];
+      if (last && last.role === "assistant" && !last.text) {
+        next[next.length - 1] = {
+          role: "assistant",
+          text: partial || "（已停止生成）",
+          typed: true,
+        };
+      }
+      return next;
+    });
+  };
+  const [liveMs, setLiveMs] = useState(0);
+  const [usage, setUsage] = useState<ScanAssistantUsage | null>(null);
+  /**
+   * 提问时把**当前页面**一并发给服务端，只用于工具路由：「在这个页面上该带哪些工具包」。
+   * 站在内容管理页说「帮我发个通知」时，光靠题目里的词路由会猜不中（「通知」不是本域独有词），
+   * 页面才是那个可靠的信号。它不参与权限判定 —— 权限只看服务端解出来的身份。
+   */
+  const { pathname: currentPath } = useLocation();
+  /** 助手抛回来的待答问题（可能一次好几道）：渲染成可点选的控件，答完一道依次往下走 */
+  const [queue, setQueue] = useState<AskQuestion[]>(() => pendingQueueOf(loadCachedTurns()));
+  /** 已答的答案，下标与 queue 对应；答满 queue.length 就把整组合成一条消息发出去 */
+  const [answers, setAnswers] = useState<string[]>([]);
+  /** 向导当前在第几题（`answers` 存选择，这个存「在看哪一题」——分开才能上一题回去改） */
+  const [current, setCurrent] = useState(0);
+  /** 自定义回答的草稿：输入框**常驻**在选项下面（不再点开才出现），回车即等于选了这一项 */
+  const [customDraft, setCustomDraft] = useState("");
+  /**
+   * 大窗态：卡片脱离气泡锚点、居中放大 —— 小卡装不下多轮对话。
+   * popupFrom 记「小卡中心相对视口中心的偏移」与「小卡宽 / 弹窗宽」，
+   * 展开从这里飞向中心、收起飞回这里；两个方向共用同一组值，动画才对得上。
+   */
+  const [expanded, setExpanded] = useState(false);
+  /** 展开后的放大档：1 = 原大窗，2 = 二级放大。收起时复位回一级，下次展开仍是可预期的「一次一级」。 */
+  const [zoom, setZoom] = useState<1 | 2>(1);
+  const [closing, setClosing] = useState(false);
+  const [popupFrom, setPopupFrom] = useState<{ x: number; y: number; smallWidth: number } | null>(null);
+  /** 待发图片：只做本地预览（objectURL），上传链路尚未接 */
+  const [images, setImages] = useState<{ url: string; name: string; dataUrl: string }[]>([]);
+  /**
+   * 表格 / 文本附件（xlsx / xls / md / txt）。
+   *
+   * <p>与图片**分开放**：两者的去向不同 —— 图片走视觉通道（只发本轮、历史里就没了），
+   * 表格交给服务端解析落库（后续追问仍看得见）。混在一个数组里会让「发出去时怎么分流」变成 if 地狱。
+   */
+  const [files, setFiles] = useState<{ name: string; size: number; dataUrl: string }[]>([]);
+  /** 正在往面板上拖文件：只用于给个视觉提示，不影响逻辑。 */
+  const [dragging, setDragging] = useState(false);
+  /**
+   * 附件按钮的第一步：**先问「从哪儿来」**（本机 / 文件模板库）。
+   * 合成一步会让「模板库里那份现成文件」这条路根本没有入口 —— 而它恰恰是最常用的。
+   */
+  const [attachSource, setAttachSource] = useState<"closed" | "choose" | "library">("closed");
+  /** 模板库列表：null = 还没拉取（先显示两个来源选项） */
+  const [libRows, setLibRows] = useState<AdminFileTemplateRow[] | null>(null);
+  const [libLoading, setLibLoading] = useState(false);
+  /** 当前会话：续历史对话时带上它；null = 用该来源最近一条（球球默认） */
+  const sessionIdRef = useRef<number | null>(loadCachedSessionId());
+  /** 点过「新建对话」还没发第一条消息：下一条提问要开新会话 */
+  const newSessionRef = useRef(false);
+  /** 历史对话：打开即拉列表，点一条就切过去 */
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyList, setHistoryList] = useState<AssistantSession[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  /** 哪一条正在等第二次点击确认删除（两步确认，避免误点） */
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** 附件（Excel / md / txt）用**另一个** input：accept 不同，而且用户要能分清两个按钮各收什么。 */
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  /** 同一问题短时间重复提问直接回放。**必须连选项一起回放** —— 只回放正文会让「该人的可选房间」这类问题
+   *  第二次问出来时没有可点的选项，看起来像功能坏了（真机踩过：连问两次同一句，第二次只剩纯文本）。 */
+  /**
+   * 同一句话的回放缓存。
+   *
+   * <p>**带上后端的 bootId**：后端重启（改完 bug 再测）之后，同一句话若还回放旧答案，
+   * 就会让人以为修复没生效 —— 真机踩过（时间闸装好以后，同一句话回放了「21:00」的旧答案）。
+   * bootId 变了就重新问后端。
+   */
+  const answerCacheRef = useRef(
+    new Map<string, { text: string; choiceQueue: AskQuestion[]; bootId: string | null }>(),
+  );
   const historyRef = useRef<HTMLDivElement | null>(null);
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
@@ -97,31 +510,278 @@ export function ScanAssistantAskPanel({
   // 只靠卸载 flush 会把最近对话丢在内存里 → 刷新后"缓存丢失不显示文字"的根因。
   // 每次提交的 turns 已含加载的缓存回写，故无需单独的卸载 flush。
   useEffect(() => {
-    saveCachedTurns(turns);
+    saveCachedTurns(turns, sessionIdRef.current);
   }, [turns]);
 
-  // 新消息 / 打字机增长时自动滚到底部
+  // 挂载时清掉别人留在这个浏览器里的对话副本（含旧的、不分账号的那个 key）
+  useEffect(() => {
+    purgeForeignAskCaches();
+  }, []);
+
+  /**
+   * 新消息 / 打字机增长时**跟随**到底部 —— 但**只在用户本来就在底部时**。
+   *
+   * <p>无条件滚到底的版本把用户按在了底部：一往上翻就被顶回来，看着像"滚不动"（真机反馈）。
+   * 判据放在滚动事件里（`stickRef`），所以用户自己往上滚过之后就一直听他的，直到他自己回到底部，
+   * 或者来了新消息（新消息要能看见，所以那时强制重新跟随）。
+   */
+  const stickToBottomRef = useRef(true);
   useEffect(() => {
     const el = historyRef.current;
     if (!el) return;
-    const scrollToBottom = () => {
-      el.scrollTop = el.scrollHeight;
+    const syncStick = () => {
+      // 距底部 48px 内都算「在底部」—— 到底时的亚像素误差与滚动条宽度都会让差值不为 0
+      stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     };
-    scrollToBottom();
-    const observer = new MutationObserver(scrollToBottom);
+    const follow = () => {
+      if (stickToBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    stickToBottomRef.current = true; // 新消息来了：这一轮要看到
+    el.addEventListener("scroll", syncStick, { passive: true });
+    follow();
+    const observer = new MutationObserver(follow);
     observer.observe(el, { subtree: true, childList: true, characterData: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      el.removeEventListener("scroll", syncStick);
+    };
   }, [turns.length]);
 
-  const cooldownLeft = sending
-    ? 0
-    : Math.max(0, ASK_COOLDOWN_MS - (Date.now() - lastSentAtRef.current));
-  const disabled = sending || cooldownLeft > 0;
+  /**
+   * 唯一的闸是「同一时刻只能有一条在飞」。
+   *
+   * <p>曾经还有一道 15 秒冷却，且在**回复结束**时才起算 —— 回复 2 秒返回、再锁 13 秒，
+   * 表现为「刚答完就发不出去」（真机反馈）。重复提问由答案缓存免费回放兜底，不需要时间锁。
+   */
+  /** 有字、有图或有附件就能发。跑着的时候也能发 —— 点了就是「停掉上一轮，发这条」。 */
+  const canSend = draft.trim().length > 0 || images.length > 0 || files.length > 0;
 
-  // 打开面板即触发 AI 主动问好（环境提示词 + 问好提示词），不等用户提问；恢复的历史对话则跳过
+  /** 展开：此刻 anchor 还停在气泡位上，正好量得到动画起点 */
+  const openExpanded = useCallback(() => {
+    const rect = anchorRef?.current?.getBoundingClientRect();
+    if (rect) {
+      setPopupFrom({
+        x: rect.left + rect.width / 2 - window.innerWidth / 2,
+        y: rect.top + rect.height / 2 - window.innerHeight / 2,
+        // 只记小卡实际宽度，缩放比例在渲染时按**当前放大档**算（见 anchorStyle）：
+        // 从二级直接收起时，结束帧要缩回小卡大小，用一级的宽度算会差一截、收尾会弹一下。
+        smallWidth: rect.width,
+      });
+    } else {
+      setPopupFrom(null);
+    }
+    setZoom(1);
+    setExpanded(true);
+  }, [anchorRef]);
+
+  /** 一级 → 二级：卡片本来就是居中定位，加宽是从中心往两边长，不必另算动画起点。 */
+  const zoomIn = useCallback(() => setZoom(2), []);
+
+  const collapseExpanded = useCallback(() => {
+    setZoom(1); // 下次展开回到一级，路径可预期
+    if (reducedMotion) {
+      setExpanded(false);
+      return;
+    }
+    setClosing(true); // 播完收起动画（onAnimationEnd）才真正卸载
+  }, [reducedMotion]);
+
   useEffect(() => {
-    if (turnsRef.current.length > 0) return;
-    let cancelled = false;
+    if (!expanded) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") collapseExpanded();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [expanded, collapseExpanded]);
+
+  // 展开后焦点落到输入框：用户展开就是要接着问，不该再让他点一次
+  useEffect(() => {
+    if (expanded && !closing) textareaRef.current?.focus();
+  }, [expanded, closing]);
+
+  // 输入框随内容长高；上限交给 CSS 的 max-height，超出部分自己滚
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    // scrollHeight 不含边框，而 box-sizing:border-box 下 height 含边框，所以要把边框补回去。
+    // 不能拿 offsetHeight - clientHeight 代替：那里还混着滚动条的占位，会把高度算大，
+    // 结果就是内容明明只有一行、输入框却比一行高，还外挂着一条滚动条。
+    const cs = getComputedStyle(el);
+    const borderY = parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    el.style.height = `${el.scrollHeight + borderY}px`;
+  }, [draft, expanded]);
+
+  /**
+   * 选图：只收图片。
+   *
+   * <p>`url` 是给缩略图看的 objectURL；`dataUrl` 才是**发出去的那份**（base64，随提问一起 POST）。
+   * 两份都要：objectURL 服务端拿不到，dataUrl 又不能当预览（长字符串塞进 img src 白占内存）。
+   */
+  const pickImages = (picked: File[]) => {
+    if (picked.length === 0) return;
+    const room = MAX_ATTACHMENTS - imagesRef.current.length;
+    if (room <= 0) return; // 先看余量再建 URL，否则超出的那几张会泄漏
+    picked.slice(0, room).forEach((f) => {
+      const url = URL.createObjectURL(f);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = typeof reader.result === "string" ? reader.result : "";
+        if (!dataUrl) {
+          URL.revokeObjectURL(url); // 读失败就别留下一个发不出去的缩略图
+          return;
+        }
+        setImages((prev) =>
+          prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { url, name: f.name, dataUrl }],
+        );
+      };
+      reader.onerror = () => URL.revokeObjectURL(url);
+      reader.readAsDataURL(f);
+    });
+  };
+
+  const removeImage = useCallback((url: string) => {
+    URL.revokeObjectURL(url);
+    setImages((prev) => prev.filter((img) => img.url !== url));
+  }, []);
+
+  const removeFile = useCallback((name: string) => {
+    setFiles((prev) => prev.filter((f) => f.name !== name));
+  }, []);
+
+  /** 拉模板库列表。失败就关掉菜单并说清 —— 别留一个空列表让用户以为库里没文件。 */
+  const loadLibrary = async () => {
+    setLibLoading(true);
+    try {
+      const { rows } = await fetchAdminFileTemplates();
+      setLibRows(rows);
+    } catch {
+      toast.error("读取文件模板库失败，请稍后再试");
+      setAttachSource("closed");
+      setLibRows(null);
+    } finally {
+      setLibLoading(false);
+    }
+  };
+
+  /**
+   * 从模板库挑一份加到待发列表。
+   *
+   * <p>实现上把文件下下来再 base64 上传一次 —— 绕了一圈，但**服务端一行都不用改**（复用同一条附件通道）。
+   * 代价是这份文件过两遍网络；内网 + 单个文件（几 MB 内）可以接受，真嫌费再改成「服务端按 templateId 直取」。
+   */
+  const pickFromLibrary = async (row: AdminFileTemplateRow) => {
+    try {
+      const { blob, fileName } = await downloadAdminFileTemplateBlob(row.id, row.originalName);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+        reader.onerror = () => reject(new Error("读取失败"));
+        reader.readAsDataURL(blob);
+      });
+      if (!dataUrl) throw new Error("空内容");
+      const name = fileName || row.originalName;
+      // **按类型分流**：模板库里既有文档也有图片。图片要走视觉通道（跟本机选的照片同一条路），
+      // 塞进附件通道会被服务端按「解析文档」处理而失败 —— 库里确实躺着 png（实测）。
+      if (blob.type.startsWith("image/")) {
+        const url = URL.createObjectURL(blob);
+        setImages((prev) =>
+          prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { url, name, dataUrl }],
+        );
+      } else {
+        setFiles((prev) =>
+          prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { name, size: blob.size, dataUrl }],
+        );
+      }
+      setAttachSource("closed");
+      setLibRows(null);
+    } catch {
+      toast.error(`「${row.originalName}」读取失败`);
+    }
+  };
+
+  /** 只收表格/文本。附件按钮走这条；拖拽走 {@link pickAttachments}（它两样都分）。 */
+  const pickDocs = (incoming: File[]) => {
+    const docs = incoming.filter((f) => {
+      const n = f.name.toLowerCase();
+      return ATTACH_FILE_EXTS.some((ext) => n.endsWith(ext));
+    });
+    if (docs.length === 0) return;
+    const room = MAX_ATTACHMENTS - filesRef.current.length;
+    if (room <= 0) return;
+    docs.slice(0, room).forEach((f) => {
+      if (f.size > MAX_ATTACH_FILE_BYTES) {
+        toast.error(`「${f.name}」超过 ${Math.round(MAX_ATTACH_FILE_BYTES / 1024 / 1024)}MB，先压缩或拆分再传`);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = typeof reader.result === "string" ? reader.result : "";
+        if (!dataUrl) return;
+        setFiles((prev) =>
+          prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { name: f.name, size: f.size, dataUrl }],
+        );
+      };
+      reader.readAsDataURL(f);
+    });
+  };
+
+  /**
+   * 拖拽入口：**按类型自动分流**。
+   *
+   * <p>点选时是两个按钮（图片 / 附件），但拖进来的时候用户不会先声明「这是表格」，
+   * 所以拖放这条路得自己认。
+   */
+  const pickAttachments = (incoming: File[]) => {
+    if (incoming.length === 0) return;
+    pickImages(incoming.filter((f) => f.type.startsWith("image/")));
+    pickDocs(incoming);
+  };
+
+  // 卸载时释放还没被删掉的预览 URL
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  useEffect(
+    () => () => {
+      imagesRef.current.forEach((img) => URL.revokeObjectURL(img.url));
+    },
+    [],
+  );
+
+  // 发送期间的本地计时：服务端只在每轮结束时报时，秒针要自己走
+  useEffect(() => {
+    if (!sending) {
+      setLiveMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = window.setInterval(() => setLiveMs(Date.now() - startedAt), 200);
+    return () => window.clearInterval(id);
+  }, [sending]);
+
+  const liveMeta: AskMeta | undefined =
+    sending && liveMs > 0
+      ? {
+          latencyMs: liveMs,
+          totalTokens: usage?.totalTokens ?? 0,
+          promptTokens: usage?.promptTokens ?? 0,
+          completionTokens: usage?.completionTokens ?? 0,
+          turns: usage?.turns ?? 0,
+        }
+      : undefined;
+
+  /**
+   * 让球球先说一句。**打开面板**和**新建对话**都走它。
+   *
+   * <p>空着只剩一个输入框时用户不知道它能干什么；新建对话之后同样如此 —— 所以新会话也重新问好，
+   * 而不是留一个塌成一行的高度（真机反馈：新建完"就一行输入框太难受"）。
+   */
+  const fireGreeting = useCallback(() => {
     setTurns([{ role: "assistant", text: "", typed: false }]);
     let acc = "";
     void streamScanAssistantGreet({
@@ -129,89 +789,536 @@ export function ScanAssistantAskPanel({
         acc += text;
       },
       onDone: (payload) => {
-        if (cancelled) return;
         const finalText = (payload.text ?? acc).trim();
         setTurns([{ role: "assistant", text: finalText, typed: false }]);
       },
       onError: (message) => {
-        if (cancelled) return;
         setTurns([{ role: "assistant", text: message, typed: false }]);
       },
     }).catch(() => {});
+  }, []);
+
+  const submit = () => {
+    // 跑着的时候又按了发送：由 submitText 统一「先停上一轮、再发这一条」——
+    // 用户按发送就是要发，卡在「上一轮还在跑」上等于按钮是死的。
+    void submitText(draft);
+  };
+
+  /**
+   * 发一句话。选项芯片、自定义回答、提问框三条入口都走这里，没有冷却差异。
+   */
+  /** 新建对话：清掉本地这几样（对话/待答题/答案缓存/待发图），并让下一条消息开一条服务端新会话 */
+  const handleNewChat = () => {
+    setTurns([]);
+    setQueue([]);
+    setAnswers([]);
+    setCustomDraft("");
+    setDraft("");
+    setImages((prev) => {
+      prev.forEach((img) => URL.revokeObjectURL(img.url));
+      return [];
+    });
+    answerCacheRef.current.clear();
+    sessionIdRef.current = null;
+    newSessionRef.current = true;
+    try {
+      dropAskCache(currentCacheKey());
+    } catch {
+      /* ignore */
+    }
+    fireGreeting(); // 新会话照样先问好，别留一块空白
+    onNewChat?.();
+  };
+
+  /** 打开历史对话：拉一次列表（只 source=scan），点一条就切过去 */
+  const openHistory = () => {
+    setHistoryOpen(true);
+    setHistoryList(null);
+    setHistoryLoading(true);
+    onOpenHistory?.();
+    void fetchAssistantSessions()
+      .then((list) => setHistoryList(list))
+      .catch(() => setHistoryList([]))
+      .finally(() => setHistoryLoading(false));
+  };
+
+  /**
+   * 删除一条对话：**服务端软删**（列表/续聊不再出现，审计留痕保留）。
+   * 删掉的如果正是当前这条，就回到「新会话」—— 否则 panel 会盯着一份已经删掉的会话继续发消息。
+   */
+  const removeSession = async (session: AssistantSession) => {
+    setPendingDeleteId(null);
+    try {
+      await deleteAssistantSession(session.id);
+    } catch {
+      return;
+    }
+    setHistoryList((prev) => (prev ?? []).filter((x) => x.id !== session.id));
+    if (sessionIdRef.current === session.id) {
+      sessionIdRef.current = null;
+      newSessionRef.current = false;
+      setTurns([]);
+      setQueue([]);
+      setAnswers([]);
+      setCurrent(0);
+      answerCacheRef.current.clear();
+      fireGreeting();
+    }
+  };
+
+  /** 切到某条历史会话：把它的消息铺成对话，并记住会话 id 让下一条接上去 */
+  const pickSession = useCallback(async (sessionId: number) => {
+    setHistoryLoading(true);
+    try {
+      const msgs = await fetchAssistantSessionMessages(sessionId);
+      setTurns(
+        msgs
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .filter((m) => (m.content ?? "").trim().length > 0) // 工具轮/空答复不铺成气泡
+          .map((m) => ({
+            role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+            text: m.content ?? "",
+            typed: true, // 恢复的历史一律视为已打完
+          })),
+      );
+      sessionIdRef.current = sessionId;
+      newSessionRef.current = false;
+      setQueue([]);
+      setAnswers([]);
+      answerCacheRef.current.clear();
+      setHistoryOpen(false);
+    } catch {
+      setHistoryList([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  /**
+   * 打开面板：先续本机缓存（含还没发出去的草稿），本机没有就去服务端拉**最近一条会话**接着聊，
+   * 都没有（全新用户）才问好。
+   *
+   * <p>不去服务端找的话，换台机器/清了缓存/点过「新建对话」之后，用户回来永远是一句问候 + 空对话，
+   * 想接着刚才那条还得自己去「历史对话」里翻 —— 但他多半就是要"接着说"。
+   *
+   * <p>写在 {@code pickSession} 之后不是排版偏好：依赖数组在**渲染期**求值，放前面会踩 TDZ。
+   */
+  useEffect(() => {
+    if (turnsRef.current.length > 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const latest = (await fetchAssistantSessions())[0];
+        if (latest?.id) {
+          if (cancelled) return;
+          await pickSession(latest.id);
+          return;
+        }
+      } catch {
+        /* 拉不到就落回问好 */
+      }
+      if (!cancelled) fireGreeting();
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fireGreeting, pickSession]);
 
-  const submit = async () => {
-    const question = draft.trim();
-    if (!question || disabled) return;
+  /** 流式结束：把最后那条 assistant 占位气泡换成最终文本 + 用量 + 待答问题。 */
+  const applyStreamResult = (
+    payload: {
+      text?: string;
+      totalTokens?: number;
+      latencyMs?: number;
+      promptTokens?: number;
+      completionTokens?: number;
+      turns?: number;
+    },
+    acc: string,
+    accQueue: AskQuestion[],
+  ) => {
+    const finalText = (payload.text ?? acc).trim();
+    const meta: AskMeta | undefined =
+      typeof payload.totalTokens === "number"
+        ? {
+            latencyMs: payload.latencyMs ?? 0,
+            totalTokens: payload.totalTokens,
+            promptTokens: payload.promptTokens ?? 0,
+            completionTokens: payload.completionTokens ?? 0,
+            turns: payload.turns ?? 1,
+          }
+        : undefined;
+    setTurns((prev) => {
+      const next = prev.slice();
+      const last = next[next.length - 1];
+      if (last && last.role === "assistant") {
+        next[next.length - 1] = {
+          role: "assistant",
+          text: finalText,
+          // 有正文就交给打字机逐个吐（typed=false）；**没正文就直接算打完** ——
+          // 否则气泡永远停在「正在思考…」+ 转圈上（挂起等确认那一轮正文本来就是空的，
+          // 点一次确认就多堆一个不结束的思考中气泡）。
+          typed: finalText.length === 0,
+          meta,
+          choiceQueue: accQueue.length > 0 ? accQueue : undefined,
+        };
+      }
+      return next;
+    });
+  };
 
-    // 缓存命中：同一问题 15s 内直接回放
-    const cached = answerCacheRef.current.get(question);
+  /** 流式出错：占位气泡还没写出正文时，把错误当这一轮的答复显示出来。 */
+  const applyStreamError = (message: string) => {
+    setTurns((prev) => {
+      const next = prev.slice();
+      const last = next[next.length - 1];
+      if (last && last.role === "assistant" && !last.text) {
+        next[next.length - 1] = { role: "assistant", text: message, typed: false };
+      }
+      return next;
+    });
+  };
+
+  /** 把球球抛回来的候选收进待答队列 —— 澄清与确认走同一条收集路径，区别只在点选后发去哪。 */
+  const collectInteraction = (
+    p: { question: string; options: AskChoice[]; token?: string; kind?: string },
+    accQueue: AskQuestion[],
+  ) => {
+    if (!p.options || p.options.length === 0) return;
+    accQueue.push({ question: p.question, options: p.options, token: p.token, kind: p.kind });
+    setQueue([...accQueue]);
+    setAnswers([]);
+  };
+
+  /**
+   * @param displayText 气泡上显示什么（可选）。**只影响显示**：发给模型、落库的仍是 raw。
+   *                    点选项时 raw 是选项的值（可能是单据 id），显示给用户的是选项标签。
+   */
+  const submitText = async (raw: string, displayText?: string) => {
+    const question = raw.trim();
+    const outgoingImages = images.map((img) => img.dataUrl).filter((s) => !!s);
+    const outgoingFiles = files.map((f) => ({ filename: f.name, data: f.dataUrl })).filter((f) => !!f.data);
+    // 只有附件没有字也放行：「这张图里是谁」「看看这份表」这类问法可能一个字都不打
+    if (!question && outgoingImages.length === 0 && outgoingFiles.length === 0) return;
+    // 连点闸门：放在**清附件之前**，否则第二次点击会把还没发出去的图清掉
+    if (sendingRef.current) return;
+    /** 存进对话/发给模型的那句：纯附件时给个占位，否则气泡是空的、历史也看不出发生了什么 */
+    const outgoingText = question || (outgoingFiles.length > 0 ? "（见附件）" : "（见图片）");
+    /** 本轮有没有附件 —— 答案缓存的开关也看它：对着附件说的答案不该被回放。 */
+    const hasAttachments = outgoingImages.length > 0 || outgoingFiles.length > 0;
+    /** 记在用户那一轮上的附件（含图片的 blob 预览地址），发完托盘清空后历史里还能看出带了什么。 */
+    const turnAttachments = [
+      ...images.map((img) => ({ name: img.name, kind: "image" as const, url: img.url })),
+      ...files.map((f) => ({ name: f.name, kind: "file" as const })),
+    ];
+
+    // 附件随本次请求发出；待发托盘立刻清掉（免得留着让人以为还在队列里）。
+    // **图片的 objectURL 不撤销** —— 它要留在这轮气泡里当缩略图；页面卸载时随之外释放。
+    setImages(() => []);
+    setFiles([]);
+
+    // 缓存命中：同一问题本次会话内直接回放（正文 + 待答问题一起回放）。
+    // **带附件那次不进缓存** —— 答案是对着那份附件说的，回放同样的问题只会给出一个不看附件的答案。
+    // **后端重启过的不回放**：旧答案是改规则之前算出来的（socket 没连上时 bootId 为 null，此时退化成原行为）
+    const hit = hasAttachments ? undefined : answerCacheRef.current.get(question);
+    const cached = hit && hit.bootId === getLastAckBootId() ? hit : undefined;
     if (cached != null) {
       setTurns((prev) => [
         ...prev,
         { role: "user", text: question, typed: true },
-        { role: "assistant", text: cached, typed: true },
+        { role: "assistant", text: cached.text, typed: true, choiceQueue: cached.choiceQueue },
       ]);
+      setQueue(cached.choiceQueue);
+      setAnswers([]);
+      setCurrent(0);
+      setCustomDraft("");
       setDraft("");
       return;
     }
 
-    setSending(true);
+    // 上一轮还在跑：先停掉它。点选项芯片、点发送、敲回车三条入口都汇到这里，口径一致。
+    if (sendingRef.current) {
+      stopReply();
+    }
+    const ctrl = new AbortController();
+    runRef.current = ctrl;
+    beginSend();
+    setUsage(null);
+    setQueue([]);
+    setAnswers([]);
+    setCustomDraft("");
     setDraft("");
     setTurns((prev) => [
       ...prev,
-      { role: "user", text: question, typed: true },
+      { role: "user", text: displayText ?? outgoingText, typed: true, attachments: turnAttachments },
       { role: "assistant", text: "", typed: false },
     ]);
 
     let acc = "";
+    /** 本次请求带回的待答问题，逐条收；答完最后一道才把它们合成一条消息发回去 */
+    const accQueue: AskQuestion[] = [];
+    /** 本轮是不是开了新会话（发完就复位，别让下一条又开一条） */
+    const startingNewSession = newSessionRef.current;
     try {
-      await streamScanAssistantAsk(question, {
-        onDelta: (text) => {
-          acc += text;
-        },
-        onDone: (payload) => {
-          const finalText = (payload.text ?? acc).trim();
-          answerCacheRef.current.set(question, finalText);
-          setTurns((prev) => {
-            const next = prev.slice();
-            const last = next[next.length - 1];
-            if (last && last.role === "assistant") {
-              next[next.length - 1] = { role: "assistant", text: finalText, typed: false };
+      await streamScanAssistantAsk(
+        outgoingText,
+        {
+          onDelta: (delta) => {
+            acc += delta;
+          },
+          onUsage: (u) => setUsage(u),
+          onInteraction: (p) => collectInteraction(p, accQueue),
+          onDone: (payload) => {
+            const finalText = (payload.text ?? acc).trim();
+            // 带附件那次不进答案缓存：缓存只按问题文本命中，回放它等于给出一个不看附件的答案
+            if (!hasAttachments) {
+              answerCacheRef.current.set(question, {
+                text: finalText,
+                choiceQueue: accQueue,
+                bootId: getLastAckBootId(),
+              });
             }
-            return next;
-          });
-        },
-        onError: (message) => {
-          setTurns((prev) => {
-            const next = prev.slice();
-            const last = next[next.length - 1];
-            if (last && last.role === "assistant" && !last.text) {
-              next[next.length - 1] = { role: "assistant", text: message, typed: false };
+            // 记住会话 id：挂起确认要拿着它去续跑（服务端只认这一个坐标）
+            if (typeof payload.sessionId === "number") {
+              sessionIdRef.current = payload.sessionId;
             }
-            return next;
-          });
+            applyStreamResult(payload, acc, accQueue);
+          },
+          onError: applyStreamError,
         },
-      });
+        {
+          // 续历史会话 / 开新会话 / 带图：三件都走这一条链路，服务端各自校验
+          sessionId: startingNewSession ? null : sessionIdRef.current,
+          newSession: startingNewSession,
+          images: outgoingImages,
+          spreadsheets: outgoingFiles,
+          contextPage: currentPath,
+          signal: ctrl.signal,
+        },
+      );
+      newSessionRef.current = false;
     } catch {
-      // 错误已在 onError 兜底
+      // 被「停止生成」掐断：中止是有意为之，不是错误 —— 把已收到的部分定稿收尾。
+      if (ctrl.signal.aborted) {
+        settleStopped(acc.trim());
+      }
+      // 其余错误已在 onError 兜底
     } finally {
-      lastSentAtRef.current = Date.now();
-      setSending(false);
+      // 只有「还是当前这一轮」才复位：被停止、或被新一轮顶掉的旧轮，收尾时不许动发送态
+      if (runRef.current === ctrl) {
+        runRef.current = null;
+        endSend();
+      }
     }
   };
 
+  /**
+   * 回应一次挂起确认（通过 / 驳回 / 取消）。
+   *
+   * 与 chooseOption 的老路（把选项当一句新消息发出去）**不能混用**：确认必须落到服务端那条
+   * 挂起记录上，前端只回传选择值。当成新消息发出去的话，那条待办的调用会被当孤儿丢掉 ——
+   * 用户点了「确认执行」，结果什么都没执行，是最难查的一类假成功。
+   */
+  const submitInteraction = async (token: string, value: string, label: string) => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) return;
+    // 同上：跑着的时候还能点确认（比如前一轮刚挂起）——先停旧的，别让按钮点不动
+    if (sendingRef.current) {
+      stopReply();
+    }
+    const ctrl = new AbortController();
+    runRef.current = ctrl;
+    beginSend();
+    setUsage(null);
+    setQueue([]);
+    setAnswers([]);
+    setCurrent(0);
+    setCustomDraft("");
+    // 用户那一侧只留他点的那一下，不把内部选项值原样摆出来
+    setTurns((prev) => [
+      ...prev,
+      { role: "user", text: label, typed: true },
+      { role: "assistant", text: "", typed: false },
+    ]);
+
+    let acc = "";
+    const accQueue: AskQuestion[] = [];
+    try {
+      await streamAiInteraction(sessionId, token, value, {
+        onDelta: (delta) => {
+          acc += delta;
+        },
+        onUsage: (u) => setUsage(u),
+        onInteraction: (p) => collectInteraction(p, accQueue),
+        onDone: (payload) => applyStreamResult(payload, acc, accQueue),
+        onError: applyStreamError,
+      }, { signal: ctrl.signal });
+    } catch {
+      if (ctrl.signal.aborted) {
+        settleStopped(acc.trim());
+      }
+      // 其余错误已在 onError 兜底
+    } finally {
+      if (runRef.current === ctrl) {
+        runRef.current = null;
+        endSend();
+      }
+    }
+  };
+
+  /**
+   * 选一项。
+   *
+   * <p>三条路分开，别混：
+   * <ul>
+   *   <li><b>写操作确认</b>（kind=confirm）：点一下就走，落到服务端那条挂起记录上；</li>
+   *   <li><b>只有一问</b>：点一下即办（一问还要先选再按提交，纯属多一步）；</li>
+   *   <li><b>多问</b>：进向导 —— 点一下只**高亮**，可来回改，最后按「提交」把整组合成一条消息发出去。</li>
+   * </ul>
+   */
+  const chooseOption = (value: string, label: string) => {
+    const q = currentQuestion;
+    if (!q) return;
+    if (q.kind === "confirm") {
+      const chosen = q.options.find((o) => o.value === value)?.label ?? label;
+      void submitInteraction(q.token ?? "", value, chosen);
+      return;
+    }
+    setCustomDraft("");
+    if (!wizardMode) {
+      setQueue([]);
+      setAnswers([]);
+      // 发给模型的是选项值；气泡上显示标签 —— 值是单据 id 这类内部标识时尤其需要
+      void submitText(value, label);
+      return;
+    }
+    setAnswers((prev) => {
+      const next = Array.from({ length: queue.length }, (_, i) => prev[i] ?? "");
+      next[safeIndex] = value;
+      return next;
+    });
+    // 选完自动进下一题 —— 否则每一题都得再点一次「下一题」。
+    // 自定义回答是例外（见 chooseCustom）：用户可能还要改字，跳走等于把输入框收了。
+    if (safeIndex < queue.length - 1) {
+      setCurrent(safeIndex + 1);
+    }
+  };
+
+  /** 自定义回答：只落这一题的答案，**不自动跳题** */
+  const chooseCustom = () => {
+    const text = customDraft.trim();
+    if (!text || !currentQuestion) return;
+    if (!wizardMode) {
+      setCustomDraft("");
+      void submitText(text);
+      return;
+    }
+    setAnswers((prev) => {
+      const next = Array.from({ length: queue.length }, (_, i) => prev[i] ?? "");
+      next[safeIndex] = text;
+      return next;
+    });
+  };
+
+  /** 向导提交：每一题都选好了才让按 */
+  const submitAllAnswers = () => {
+    if (!allAnswered || sendingRef.current) return;
+    const filled = Array.from({ length: queue.length }, (_, i) => answers[i] ?? "");
+    setQueue([]);
+    setAnswers([]);
+    setCurrent(0);
+    setCustomDraft("");
+    void submitText(composeAnswers(queue, filled), composeAnswers(queue, labelsOf(queue, filled)));
+  };
+
+  const goStep = (delta: number) => {
+    setCurrent((prev) => Math.min(Math.max(prev + delta, 0), Math.max(queue.length - 1, 0)));
+    setCustomDraft("");
+  };
+
+  /** 多问时的向导指针：不是「答到第几题」—— 两者分开，才能上一题回去改答案 */
+  const safeIndex = queue.length === 0 ? 0 : Math.min(current, queue.length - 1);
+  const wizardMode = queue.length > 1;
+  const allAnswered = queue.length > 0 && queue.every((_, i) => (answers[i] ?? "").length > 0);
+  const currentQuestion: AskQuestion | null = queue.length === 0 ? null : queue[safeIndex];
+
+  // 大窗态自带 left/top/transform，覆盖掉气泡锚点那套拖拽定位
+  const anchorStyle: CSSProperties = expanded
+    ? ({
+        position: "fixed",
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+        "--sa-popup-from-x": `${popupFrom?.x ?? 0}px`,
+        "--sa-popup-from-y": `${popupFrom?.y ?? 0}px`,
+        // 按**当前放大档**算缩放：起点是小卡本身，终点是这一档的宽度。
+        // 写死比例会让展开时先瞬间缩小、收起时结尾瞬间弹回小卡。
+        "--sa-popup-scale": popupFrom
+          ? Math.min(popupFrom.smallWidth / popupWidthFor(zoom), 1)
+          : 1,
+      } as CSSProperties)
+    : positionStyle;
+
   return (
-    <div
-      ref={anchorRef}
-      className={["scan-assistant-bubble-anchor", `scan-assistant-bubble-anchor--${placement}`].join(" ")}
-      style={positionStyle}
-      /* 后台壳全局右键菜单在此放行，保证输入框能用原生粘贴 */
-      data-admin-chrome-ctx-surface
-    >
+    <>
+      {expanded ? (
+        <div
+          className={
+            closing
+              ? "scan-assistant-popup-scrim scan-assistant-popup-scrim--closing"
+              : "scan-assistant-popup-scrim"
+          }
+          onClick={collapseExpanded}
+          aria-hidden
+        />
+      ) : null}
+
+      <div
+        ref={anchorRef}
+        className={[
+          "scan-assistant-bubble-anchor",
+          `scan-assistant-bubble-anchor--${placement}`,
+          expanded ? "scan-assistant-bubble-anchor--expanded" : "",
+          expanded && zoom === 2 ? "scan-assistant-bubble-anchor--expanded-2" : "",
+          expanded && !closing && !reducedMotion ? "scan-assistant-bubble-anchor--expanded-in" : "",
+          closing ? "scan-assistant-bubble-anchor--expanded-out" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={anchorStyle}
+        /* 拖文件到面板上即添加：图片 / xlsx / xls / md / txt 按扩展名自动分流。
+           dragover 必须 preventDefault，否则浏览器不给 drop（这是拖拽的硬要求，不是可选项）。 */
+        onDragOver={(event) => {
+          if (!event.dataTransfer?.types?.includes("Files")) return;
+          event.preventDefault();
+          if (!dragging) setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          // 只在真正离开面板时收掉提示：拖过子元素也会触发 dragleave，用 relatedTarget 判一下
+          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+          setDragging(false);
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer?.types?.includes("Files")) return;
+          event.preventDefault();
+          setDragging(false);
+          pickAttachments(Array.from(event.dataTransfer.files ?? []));
+        }}
+        onAnimationEnd={(event) => {
+          // 卡片自身的入场动画也会冒泡上来，只认落在 anchor 上的那一次
+          if (closing && event.target === event.currentTarget) {
+            setClosing(false);
+            setExpanded(false);
+          }
+        }}
+        /* 后台壳全局右键菜单在此放行，保证输入框能用原生粘贴 */
+        data-admin-chrome-ctx-surface
+      >
+        {dragging ? (
+          <div className="scan-assistant-ask__drop-hint" aria-hidden>
+            松手即可添加（图片 / Excel / md / txt）
+          </div>
+        ) : null}
       <ScanAssistantChatCard
         kind="info"
         text=""
@@ -223,35 +1330,388 @@ export function ScanAssistantAskPanel({
         onDismiss={onDismiss}
         dismissLabel="关闭提问"
         askPanel
+        actions={
+          <>
+            <button
+              type="button"
+              className="scan-assistant-chat-card__action"
+              onClick={handleNewChat}
+              aria-label="新建对话"
+              title="新建对话"
+            >
+              <SquarePen className="size-4" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              className="scan-assistant-chat-card__action"
+              onClick={() => (historyOpen ? setHistoryOpen(false) : openHistory())}
+              aria-label="历史对话"
+              title="历史对话"
+              aria-expanded={historyOpen}
+            >
+              <History className="size-4" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              className="scan-assistant-chat-card__action"
+              onClick={!expanded ? openExpanded : zoom === 1 ? zoomIn : collapseExpanded}
+              aria-label={!expanded ? "展开为大窗口" : zoom === 1 ? "再放大一级" : "收起为小卡片"}
+              aria-expanded={expanded}
+            >
+              {expanded && zoom === 2 ? (
+                <Minimize2 className="size-4" strokeWidth={2} />
+              ) : (
+                <Maximize2 className="size-4" strokeWidth={2} />
+              )}
+            </button>
+          </>
+        }
         footer={
           <>
-            {turns.length > 0 ? (
-              <div className="scan-assistant-ask__history" ref={historyRef} aria-live="polite">
-                {turns.map((turn, index) => (
-                  <div
-                    key={index}
-                    className={`scan-assistant-ask__row scan-assistant-ask__row--${turn.role}`}
+            {/*
+             * 历史对话与当前对话共用同一块位置：开列表就把对话收起来，卡片高度不变，
+             * 也不会出现「列表和对话一起往下长、把卡片顶出屏幕」。
+             */}
+            {historyOpen ? (
+              <div className="scan-assistant-ask__sessions">
+                <div className="scan-assistant-ask__sessions-head">
+                  <span>历史对话</span>
+                  <button
+                    type="button"
+                    className="scan-assistant-ask__choice-action"
+                    onClick={() => setHistoryOpen(false)}
                   >
-                    {turn.role === "assistant" ? (
-                      <AssistantBubble
-                        text={turn.text}
-                        type={!turn.typed}
-                        onTyped={() =>
-                          setTurns((prev) => {
-                            const next = prev.slice();
-                            const last = next[next.length - 1];
-                            if (last && last.role === "assistant" && !last.typed) {
-                              next[next.length - 1] = { ...last, typed: true };
-                            }
-                            return next;
-                          })
-                        }
-                      />
-                    ) : (
-                      <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--user">
-                        {turn.text}
+                    返回
+                  </button>
+                </div>
+                {historyLoading ? (
+                  <div className="scan-assistant-ask__sessions-empty">读取中…</div>
+                ) : (historyList?.length ?? 0) === 0 ? (
+                  <div className="scan-assistant-ask__sessions-empty">还没有别的对话</div>
+                ) : (
+                  <div className="scan-assistant-ask__sessions-items">
+                    {(historyList ?? []).map((s) => (
+                      <div key={s.id} className="scan-assistant-ask__session-row">
+                        <button
+                          type="button"
+                          className={
+                            s.id === sessionIdRef.current
+                              ? "scan-assistant-ask__session-item scan-assistant-ask__session-item--active"
+                              : "scan-assistant-ask__session-item"
+                          }
+                          onClick={() => void pickSession(s.id)}
+                        >
+                          <span className="scan-assistant-ask__session-title">{s.title || "未命名对话"}</span>
+                          <span className="scan-assistant-ask__session-time">{fmtSessionTime(s.updatedAt)}</span>
+                        </button>
+                        {pendingDeleteId === s.id ? (
+                          // 两步确认：避免误点把对话删了（壳里 window.confirm 可能被拦）
+                          <span className="scan-assistant-ask__session-confirm">
+                            <button
+                              type="button"
+                              className="scan-assistant-ask__session-del-ok"
+                              onClick={() => void removeSession(s)}
+                            >
+                              删除
+                            </button>
+                            <button
+                              type="button"
+                              className="scan-assistant-ask__session-del-cancel"
+                              onClick={() => setPendingDeleteId(null)}
+                            >
+                              取消
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="scan-assistant-ask__session-del"
+                            aria-label={`删除 ${s.title || "未命名对话"}`}
+                            onClick={() => setPendingDeleteId(s.id)}
+                          >
+                            <X className="size-3" strokeWidth={3} />
+                          </button>
+                        )}
                       </div>
-                    )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : turns.length > 0 ? (
+              <div
+                className={
+                  currentQuestion
+                    ? "scan-assistant-ask__history scan-assistant-ask__history--with-choices"
+                    : "scan-assistant-ask__history"
+                }
+                ref={historyRef}
+                aria-live="polite"
+                /*
+                 * 模板库下载链接的点击要**接管**：markdown 链接点出去是裸 GET，没有 Authorization 头，
+                 * 而那个下载口要 requireStaff —— 直接点只会得到 401。这里改走带 token 的 api，
+                 * 拿到 blob 再触发浏览器下载。（模型按工具给的路径原样写链接，路径本身是真的。）
+                 */
+                onClick={(event) => {
+                  const a = (event.target as HTMLElement)?.closest?.("a") as HTMLAnchorElement | null;
+                  const href = a?.getAttribute("href") ?? "";
+                  const m = /^\/api\/admin\/file-templates\/([^/]+)\/download$/.exec(href);
+                  if (!m) return;
+                  event.preventDefault();
+                  void (async () => {
+                    try {
+                      const { blob, fileName } = await downloadAdminFileTemplateBlob(
+                        m[1],
+                        (a?.textContent ?? "下载").trim(),
+                      );
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = fileName;
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    } catch {
+                      toast.error("下载失败，请到「文件模板库」页面下载");
+                    }
+                  })();
+                }}
+              >
+                {turns.map((turn, index) => {
+                  // 挂起那一轮模型常常一个字都不说（它只调了工具，正文是空的），交互全在下面那张
+                  // 选项卡片里。这种回合**不铺空气泡** —— 铺了就是一个空框占位，还容易跟
+                  // 「正在思考」混起来；对话一长就堆一片看不出来历的空白。
+                  if (
+                    turn.role === "assistant" &&
+                    turn.text.trim().length === 0 &&
+                    (turn.choiceQueue?.length ?? 0) > 0
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <div
+                      key={index}
+                      className={`scan-assistant-ask__row scan-assistant-ask__row--${turn.role}`}
+                    >
+                      {turn.role === "assistant" ? (
+                        <AssistantBubble
+                          text={turn.text}
+                          type={!turn.typed}
+                          meta={turn.meta}
+                          live={index === turns.length - 1 ? liveMeta : undefined}
+                          onTyped={() =>
+                            setTurns((prev) => {
+                              const next = prev.slice();
+                              const last = next[next.length - 1];
+                              if (last && last.role === "assistant" && !last.typed) {
+                                next[next.length - 1] = { ...last, typed: true };
+                              }
+                              return next;
+                            })
+                          }
+                        />
+                      ) : (
+                        <div className="scan-assistant-ask__user-block">
+                          <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--user">
+                            {turn.text}
+                          </div>
+                          {/*
+                           * 把这一轮带出去的附件显示出来。发完托盘就清了，不显示的话历史里只剩一句
+                           * 「（见附件）」——回头看根本想不起发的是什么。图片能显示缩略图（blob 还活着）；
+                           * 刷新后 blob 失效，退化成图标 + 文件名。
+                           */}
+                          {turn.attachments?.length ? (
+                            <div className="scan-assistant-ask__turn-attachments">
+                              {turn.attachments.map((att, i) =>
+                                att.kind === "image" && att.url ? (
+                                  <img
+                                    key={`${att.name}-${i}`}
+                                    className="scan-assistant-ask__turn-thumb"
+                                    src={att.url}
+                                    alt={att.name}
+                                    title={att.name}
+                                  />
+                                ) : (
+                                  <span
+                                    key={`${att.name}-${i}`}
+                                    className="scan-assistant-ask__turn-file"
+                                    title={att.name}
+                                  >
+                                    {att.kind === "image" ? (
+                                      <ImagePlus className="size-3" strokeWidth={2} aria-hidden />
+                                    ) : (
+                                      <Paperclip className="size-3" strokeWidth={2} aria-hidden />
+                                    )}
+                                    <span className="scan-assistant-ask__turn-file-name">{att.name}</span>
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {!historyOpen && currentQuestion ? (
+              <>
+                {/*
+                 * 问题头只在**多问**时出现：一道题时正文气泡就在上面，再写一遍是重复；
+                 * 多问时才需要「第几问 / 问的是谁·什么」来区分。
+                 *
+                 * 写操作确认是例外 —— 它**永远**要显示问句（做了什么、什么参数），
+                 * 因为这一轮模型没机会先说话，用户唯一能判断的依据就是这行字。
+                 */}
+                {currentQuestion.kind === "confirm" ? (
+                  <div className="scan-assistant-ask__choices-head">
+                    {currentQuestion.question ? (
+                      <span className="scan-assistant-ask__choices-title scan-assistant-ask__choices-title--confirm">
+                        {currentQuestion.question}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : queue.length > 1 ? (
+                  <div className="scan-assistant-ask__choices-head">
+                    <span className="scan-assistant-ask__choices-step">
+                      第 {safeIndex + 1}/{queue.length} 问
+                    </span>
+                    {currentQuestion.question ? (
+                      <span className="scan-assistant-ask__choices-title">{currentQuestion.question}</span>
+                    ) : null}
+                    {/* 翻页贴在问句这一行的右端：它翻的是「问题」，不是选项 */}
+                    <span className="scan-assistant-ask__choices-nav">
+                      <button
+                        type="button"
+                        className="scan-assistant-ask__wizard-btn"
+                        onClick={() => goStep(-1)}
+                        disabled={safeIndex === 0}
+                      >
+                        上一题
+                      </button>
+                      <button
+                        type="button"
+                        className="scan-assistant-ask__wizard-btn"
+                        onClick={() => goStep(1)}
+                        disabled={safeIndex >= queue.length - 1}
+                      >
+                        下一题
+                      </button>
+                    </span>
+                  </div>
+                ) : null}
+                <div className="scan-assistant-ask__choices" role="group" aria-label="请选择">
+                  {currentQuestion.options.map((option) => {
+                    // 向导里选中的那项要亮着：用户要能一眼看出「我这题选了哪个」
+                    const picked = wizardMode && (answers[safeIndex] ?? "") === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={
+                          picked
+                            ? "scan-assistant-ask__choice scan-assistant-ask__choice--picked"
+                            : "scan-assistant-ask__choice"
+                        }
+                        disabled={sending}
+                        aria-pressed={wizardMode ? picked : undefined}
+                        onClick={() => chooseOption(option.value, option.label)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {currentQuestion.kind === "confirm" ? null : (
+                  <>
+                {/* 自定义回答的输入框紧跟在选项行下面：它答的就是上面那道题，隔一排控件会看不出对应关系 */}
+                {/* 自定义回答就摆在选项下面：它也是一项，回车即选中；在向导里和别的选项一起提交 */}
+                <form
+                  className="scan-assistant-ask__custom"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    chooseCustom();
+                  }}
+                >
+                  <input
+                    className="scan-assistant-ask__custom-input"
+                    value={customDraft}
+                    onChange={(event) => setCustomDraft(event.target.value)}
+                    placeholder="自定义回答：直接说你的答案，输入后按回车"
+                    aria-label="自定义回答"
+                  />
+                </form>
+                {/*
+                 * 提交与取消在选项**下方**一行：取消在左、提交在右（右端是这一排的终点）。
+                 * 一问没有提交键 —— 点一下即办；写操作确认也没有 —— 它只有执行/不执行两个选项。
+                 */}
+                <div className="scan-assistant-ask__controls">
+                  <button
+                    type="button"
+                    className="scan-assistant-ask__choice-action"
+                    onClick={() => {
+                      setQueue([]);
+                      setAnswers([]);
+                      setCurrent(0);
+                      setCustomDraft("");
+                    }}
+                  >
+                    取消本次对话
+                  </button>
+                  {wizardMode ? (
+                    <button
+                      type="button"
+                      className="scan-assistant-ask__wizard-btn scan-assistant-ask__wizard-btn--primary"
+                      onClick={submitAllAnswers}
+                      disabled={!allAnswered || sending}
+                    >
+                      提交（{answers.filter((a) => a).length}/{queue.length}）
+                    </button>
+                  ) : null}
+                </div>
+                  </>
+                )}
+              </>
+            ) : null}
+
+            {!historyOpen && images.length > 0 ? (
+              <div className="scan-assistant-ask__attachments">
+                {images.map((img) => (
+                  <div key={img.url} className="scan-assistant-ask__attachment">
+                    <img src={img.url} alt={img.name} />
+                    <button
+                      type="button"
+                      className="scan-assistant-ask__attachment-remove"
+                      onClick={() => removeImage(img.url)}
+                      aria-label={`移除 ${img.name}`}
+                    >
+                      <X className="size-3" strokeWidth={3} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/*
+             * 表格/文本附件单独一排：它们**发出去的方式和图片不同**（服务端解析后落库，
+             * 消息里只拼预览、后续追问仍看得见），所以不跟缩略图混在一行里 —— 混了用户也看不出区别，
+              却在「为什么这条历史还认得那份表」上被绕晕。
+             */}
+            {!historyOpen && files.length > 0 ? (
+              <div className="scan-assistant-ask__attachments">
+                {files.map((f) => (
+                  <div key={f.name} className="scan-assistant-ask__filechip" title={f.name}>
+                    <FileSpreadsheet className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                    <span className="scan-assistant-ask__filechip-name">{f.name}</span>
+                    <span className="scan-assistant-ask__filechip-size">{fmtBytes(f.size)}</span>
+                    <button
+                      type="button"
+                      className="scan-assistant-ask__filechip-remove"
+                      onClick={() => removeFile(f.name)}
+                      aria-label={`移除 ${f.name}`}
+                    >
+                      <X className="size-3" strokeWidth={3} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -261,29 +1721,184 @@ export function ScanAssistantAskPanel({
               className="scan-assistant-ask"
               onSubmit={(event) => {
                 event.preventDefault();
-                void submit();
+                submit();
               }}
             >
-              <input
+              {/*
+                附件来源二选一。挂在 form 里用绝对定位浮在输入行上方 —— 放进文档流会把整块卡片顶高，
+                点一下弹一下的观感很跳。
+              */}
+              {attachSource !== "closed" ? (
+                <div className="scan-assistant-ask__attach-menu" role="menu" aria-label="附件来源">
+                  {attachSource === "choose" ? (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="scan-assistant-ask__attach-menu-item"
+                        onClick={() => {
+                          setAttachSource("closed");
+                          attachInputRef.current?.click();
+                        }}
+                      >
+                        从本机选择
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="scan-assistant-ask__attach-menu-item"
+                        disabled={libLoading}
+                        onClick={() => {
+                          setAttachSource("library");
+                          void loadLibrary();
+                        }}
+                      >
+                        {libLoading ? "读取模板库…" : "从文件模板库选择"}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="scan-assistant-ask__attach-menu-item scan-assistant-ask__attach-menu-item--muted"
+                        onClick={() => setAttachSource("closed")}
+                      >
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="scan-assistant-ask__attach-menu-head">
+                        文件模板库{libRows ? `（${libRows.length}）` : ""}
+                      </div>
+                      <div className="scan-assistant-ask__attach-menu-list">
+                        {libRows === null ? (
+                          <div className="scan-assistant-ask__attach-menu-empty">读取中…</div>
+                        ) : libRows.length === 0 ? (
+                          <div className="scan-assistant-ask__attach-menu-empty">库里还没有文件</div>
+                        ) : (
+                          libRows.map((row) => (
+                            <button
+                              key={row.id}
+                              type="button"
+                              role="menuitem"
+                              className="scan-assistant-ask__attach-menu-item"
+                              title={row.originalName}
+                              onClick={() => void pickFromLibrary(row)}
+                            >
+                              <span className="scan-assistant-ask__attach-menu-name">{row.originalName}</span>
+                              <span className="scan-assistant-ask__attach-menu-size">{fmtBytes(row.sizeBytes)}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="scan-assistant-ask__attach-menu-item scan-assistant-ask__attach-menu-item--muted"
+                        onClick={() => setAttachSource("choose")}
+                      >
+                        返回
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : null}
+              <textarea
+                ref={textareaRef}
                 className="scan-assistant-ask__input"
+                rows={1}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder={sending ? "正在回复…" : cooldownLeft > 0 ? "稍候再问…" : "向我提问…"}
+                onKeyDown={(event) => {
+                  // Enter 发送、Shift+Enter 换行；输入法选词那一下回车不算
+                  if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+                  event.preventDefault();
+                  submit();
+                }}
+                placeholder={sending ? "正在回复…" : "向我提问…"}
                 aria-label="向智能助手提问"
                 autoFocus
               />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="scan-assistant-ask__file"
+                onChange={(event) => {
+                  pickImages(Array.from(event.target.files ?? []));
+                  event.target.value = ""; // 清空才能再选同一张
+                }}
+                tabIndex={-1}
+                aria-hidden
+              />
               <button
-                type="submit"
-                className="scan-assistant-ask__send"
-                disabled={disabled}
-                aria-label="发送"
+                type="button"
+                className="scan-assistant-ask__attach"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="上传图片"
+                title="上传图片"
               >
-                <SendHorizonal className="size-4" strokeWidth={2} />
+                <ImagePlus className="size-4" strokeWidth={2} />
               </button>
+              {/*
+                附件按钮与图片按钮分开：两者**去向不同** —— 图片走视觉通道（只发本轮），
+                表格/文本由服务端解析落库（后续追问仍看得见）。合成一个按钮用户就分不清
+                「我发的这份东西会变成什么」，所以宁可多一个按钮。
+              */}
+              <input
+                ref={attachInputRef}
+                type="file"
+                accept=".xlsx,.xls,.md,.markdown,.txt"
+                multiple
+                className="scan-assistant-ask__file"
+                onChange={(event) => {
+                  pickDocs(Array.from(event.target.files ?? []));
+                  event.target.value = "";
+                }}
+                tabIndex={-1}
+                aria-hidden
+              />
+              <button
+                type="button"
+                className="scan-assistant-ask__attach"
+                onClick={() => setAttachSource(attachSource === "closed" ? "choose" : "closed")}
+                aria-label="上传附件"
+                aria-expanded={attachSource !== "closed"}
+                title="上传附件（Excel / PDF / Word / md / txt）"
+              >
+                <Paperclip className="size-4" strokeWidth={2} />
+              </button>
+              {/*
+                发送 / 停止共用这一个位置：
+                - **在跑且输入框空着** → 停止（点一下掐掉这一轮，按钮立刻回到发送）
+                - 其余（含「在跑但已经打了字」）→ 发送：用户打了字就是想发，这时要让他发得出去，
+                  而不是对着一个点不动的键。删除输入内容后自然又回到停止。
+              */}
+              {sending && !canSend ? (
+                <button
+                  type="button"
+                  className="scan-assistant-ask__send scan-assistant-ask__send--stop"
+                  onClick={stopReply}
+                  aria-label="停止生成"
+                  title="停止生成"
+                >
+                  <Square className="size-4" strokeWidth={2} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="scan-assistant-ask__send"
+                  disabled={!canSend}
+                  aria-label="发送"
+                >
+                  <SendHorizonal className="size-4" strokeWidth={2} />
+                </button>
+              )}
             </form>
           </>
         }
       />
-    </div>
+      </div>
+    </>
   );
 }

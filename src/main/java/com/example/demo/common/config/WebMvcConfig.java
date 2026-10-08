@@ -97,7 +97,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/upload/repair/**",
                         "/api/v1/twin/dashboard/proxy/**",
                         "/api/v1/twin/speech/file/**",
-                        "/api/v1/twin/speech/scan-auto-play");
+                        "/api/v1/twin/speech/scan-auto-play",
+                        // 领用单 PDF 的分享令牌直链：「令牌就是能力」—— 控制器签名里本来就没有
+                        // Authorization（其余方法都取），前端也是把 URL 复制给人 / 交给 iframe 用，
+                        // 拿不到请求头。被 /api/supplies/** 整体收进来是误伤，表现是预览与打印
+                        // 都弹「领用单打开失败」（401）。与 /api/upload/files/** 同待遇。
+                        "/api/supplies/claims/download/**");
 
         // AUP 模板：GET 默认收紧为 sys_user 底座 + ADMIN，仅 /published（新填）与 /{id}（续填/审核）放行登录态；写操作收紧为 ADMIN
         registry.addInterceptor(aupTemplateWriteGuard())

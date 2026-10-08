@@ -566,6 +566,26 @@ public class CageClaimService {
     // 管理端审批
     // ═══════════════════════════════════════════
 
+    /**
+     * 审批人资格 = 管理员及以上，或组长（GROUP_LEADER 身份标识，替代已废弃的 RoleEnum.PI）。
+     *
+     * <p><b>只此一处</b>：HTTP 入口（{@code AdminCageClaimController.requireApprover}）与 AI 工具
+     * （{@code CageOpReviewToolPack} 的能力码）都调它。两边各写一遍就是「同一动作两种权限口径」，
+     * 抄错一次即漏洞 —— 设计文档 §7.1 明确要求 Controller 与工具调同一个方法。
+     *
+     * <p>注意这里**不是**「能否对这张单子动手」：那由 {@link #approve} 里的区域归属判定回答，
+     * 且判定要在算完 {@code reviewAuthority} 之后逐行比（本方法不含任何查询）。
+     */
+    public boolean canApprove(User u) {
+        if (u == null) {
+            return false;
+        }
+        if (u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            return true;
+        }
+        return personIdentityService.isPi(u.getId());
+    }
+
     @Transactional
     public CageClaim approve(User approver, Long claimId, String decision, String reason) {
         // FOR UPDATE 锁住审批记录，防并发双批

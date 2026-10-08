@@ -1,5 +1,7 @@
 package com.example.demo.modules.reportform.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
@@ -10,6 +12,7 @@ import com.example.demo.modules.reportform.dto.SubmissionRequest;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
+import com.example.demo.modules.reportform.mapper.ReportFormSubmissionLogMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.service.ReportFillService;
 import com.example.demo.modules.reportform.service.ReportFormExportService;
@@ -36,23 +39,29 @@ public class ReportFillController {
 
     private final ReportFillService reportFillService;
     private final ReportFormSubmissionMapper submissionMapper;
+    private final ReportFormSubmissionLogMapper submissionLogMapper;
     private final ReportFormExportService exportService;
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormWordService wordService;
     private final UserMapper userMapper;
+    private final ObjectMapper objectMapper;
 
     public ReportFillController(ReportFillService reportFillService,
                                 UserMapper userMapper,
                                 ReportFormSubmissionMapper submissionMapper,
+                                ReportFormSubmissionLogMapper submissionLogMapper,
                                 ReportFormExportService exportService,
                                 ReportFormDefinitionMapper definitionMapper,
-                                ReportFormWordService wordService) {
+                                ReportFormWordService wordService,
+                                ObjectMapper objectMapper) {
         this.reportFillService = reportFillService;
         this.submissionMapper = submissionMapper;
+        this.submissionLogMapper = submissionLogMapper;
         this.exportService = exportService;
         this.definitionMapper = definitionMapper;
         this.wordService = wordService;
         this.userMapper = userMapper;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping("/users/search")
@@ -162,6 +171,64 @@ public class ReportFillController {
         }
     }
 
+    // ──────────── 重复表格：块级接口 ────────────
+
+    @PostMapping("/forms/{formId}/submissions/{submissionId}/blocks")
+    @Operation(summary = "新增一张空表格（追加到末尾）")
+    public Result<?> addBlock(@PathVariable Long formId, @PathVariable Long submissionId,
+                              HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+        try {
+            User cu = getCurrentUser(request);
+            String role = cu.getRole() != null ? cu.getRole().name() : "MEMBER";
+            Long userId = parseUserId(cu.getId());
+            return Result.success(reportFillService.addBlock(formId, submissionId, role, userId, cu));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PutMapping("/forms/{formId}/submissions/{submissionId}/blocks/{blockId}")
+    @Operation(summary = "按块保存（块级版本号校验）")
+    public Result<?> saveBlock(@PathVariable Long formId, @PathVariable Long submissionId,
+                               @PathVariable String blockId,
+                               @RequestBody Map<String, Object> body,
+                               HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+        try {
+            User cu = getCurrentUser(request);
+            String role = cu.getRole() != null ? cu.getRole().name() : "MEMBER";
+            Long userId = parseUserId(cu.getId());
+            JsonNode values = objectMapper.valueToTree(body.getOrDefault("values", Map.of()));
+            Integer expectedVersion = body.get("expectedVersion") == null
+                    ? null : ((Number) body.get("expectedVersion")).intValue();
+            return Result.success(reportFillService.saveBlock(formId, submissionId, blockId, values,
+                    expectedVersion, cu.getDisplayNickname(), role, userId, cu));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/forms/{formId}/submissions/{submissionId}/blocks/{blockId}")
+    @Operation(summary = "删除一张表格（空表谁都能删，非空表仅发布者/管理员）")
+    public Result<?> deleteBlock(@PathVariable Long formId, @PathVariable Long submissionId,
+                                 @PathVariable String blockId,
+                                 HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+        try {
+            User cu = getCurrentUser(request);
+            String role = cu.getRole() != null ? cu.getRole().name() : "MEMBER";
+            Long userId = parseUserId(cu.getId());
+            reportFillService.deleteBlock(formId, submissionId, blockId, role, userId, cu);
+            return Result.success(null);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/forms/{id}/my-submission")
     @Operation(summary = "获取当前用户对指定报表的填报表单")
     public Result<?> getMySubmission(@PathVariable Long id,
@@ -184,6 +251,11 @@ public class ReportFillController {
             Long effectiveUserId = "individual".equals(mode) ? userId : 0L;
             if ("individual".equals(mode) && reportFillService.readAllowMultipleInstances(form)) {
                 return Result.error("多份子文件模式请指定 submissionId 或从填报中心创建");
+            }
+            // 周期表：解析「当前期」；非周期表返回 null，走旧路径
+            var periodSub = reportFillService.resolvePeriodSubmission(id, effectiveUserId, java.time.LocalDate.now());
+            if (periodSub != null) {
+                return Result.success(periodSub);
             }
             var sub = reportFillService.getOrCreateSubmission(id, effectiveUserId);
             return Result.success(sub);
@@ -221,6 +293,13 @@ public class ReportFillController {
             ReportFormDefinition form = definitionMapper.selectById(id);
             String mode = getFillMode(form);
             Long effectiveUserId = "individual".equals(mode) ? userId : 0L;
+            // 周期表：与 GET 路径对称，先解析「当前期」，否则会写进 instance_label='' 的幽灵记录
+            var periodSub = reportFillService.resolvePeriodSubmission(id, effectiveUserId, java.time.LocalDate.now());
+            if (periodSub != null) {
+                var saved = reportFillService.saveSubmissionById(periodSub.getId(), userId,
+                        req.getFieldValuesJson(), req.getExpectedVersion(), nick, role, cu);
+                return Result.success(saved);
+            }
             var sub = reportFillService.saveSubmission(id, effectiveUserId, req.getFieldValuesJson(), req.getExpectedVersion(), nick);
             return Result.success(sub);
         } catch (Exception e) {
@@ -248,6 +327,12 @@ public class ReportFillController {
             ReportFormDefinition form = definitionMapper.selectById(id);
             String mode = getFillMode(form);
             Long effectiveUserId = "individual".equals(mode) ? userId : 0L;
+            // 周期表：与 GET 路径对称，先解析「当前期」
+            var periodSub = reportFillService.resolvePeriodSubmission(id, effectiveUserId, java.time.LocalDate.now());
+            if (periodSub != null) {
+                var submitted = reportFillService.submitSubmissionById(periodSub.getId(), userId, role, cu);
+                return Result.success(submitted);
+            }
             var sub = reportFillService.submitSubmission(id, effectiveUserId);
             return Result.success(sub);
         } catch (Exception e) {
@@ -268,6 +353,23 @@ public class ReportFillController {
             return Result.error("无权查看全部提交记录");
         }
         return Result.success(reportFillService.listSubmissionsWithUserDisplay(id));
+    }
+
+    @GetMapping("/forms/{id}/submissions/{submissionId}/logs")
+    @Operation(summary = "某一提交记录的操作历史")
+    public Result<?> submissionLogs(@PathVariable Long id, @PathVariable Long submissionId,
+                                    HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.MEMBER);
+        if (denied != null) return denied;
+        User currentUser = getCurrentUser(request);
+        ReportFormDefinition form = definitionMapper.selectById(id);
+        if (form == null) return Result.error("表单不存在");
+        boolean admin = currentUser.getRole() != null
+                && currentUser.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+        if (!admin && !reportFillService.isFormPublisher(form, currentUser)) {
+            return Result.error("无权查看操作历史");
+        }
+        return Result.success(submissionLogMapper.selectBySubmissionId(submissionId));
     }
 
     @GetMapping("/forms/{id}/export")
@@ -292,6 +394,35 @@ public class ReportFillController {
         } catch (Exception e) {
             log.error("[report-form] Excel 导出失败: form={} submission={}", id, submissionId, e);
             throw new IllegalArgumentException("Excel 导出失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/forms/{id}/export-ledger")
+    @Operation(summary = "汇总台账导出（一行 = 一条记录的一张表）")
+    public ResponseEntity<byte[]> exportLedger(@PathVariable Long id, HttpServletRequest request) {
+        try {
+            User currentUser = getCurrentUser(request);
+            ReportFormDefinition form = definitionMapper.selectById(id);
+            if (form == null) throw new IllegalArgumentException("表单不存在");
+            // 台账含全体填报人及其字段值，权限必须与 listSubmissions 同口径
+            boolean admin = currentUser != null && currentUser.getRole() != null
+                    && currentUser.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
+            if (!admin && !reportFillService.isFormPublisher(form, currentUser)) {
+                return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body("{\"success\":false,\"message\":\"无权导出台账\"}"
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            byte[] data = exportService.exportLedger(id);
+            String filename = ReportFormExportFilename.build(form, null, true, "xlsx");
+            return ResponseEntity.ok()
+                .headers(ReportFormExportFilename.attachmentHeaders(filename))
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .body(data);
+        } catch (Exception e) {
+            log.error("[report-form] 台账导出失败: form={}", id, e);
+            throw new IllegalArgumentException("台账导出失败: " + e.getMessage());
         }
     }
 

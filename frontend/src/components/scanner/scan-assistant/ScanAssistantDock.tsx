@@ -28,6 +28,9 @@ type ScanAssistantDockProps = {
   onDismissMessage: () => void;
   onAskDismiss: () => void;
   onOrbClick: () => void;
+  /** 透传给提问面板的两个入口（新建会话 / 历史会话侧栏），行为由载体接入 */
+  onNewChat?: () => void;
+  onOpenHistory?: () => void;
 };
 
 export function ScanAssistantDock({
@@ -46,6 +49,8 @@ export function ScanAssistantDock({
   onDismissMessage,
   onAskDismiss,
   onOrbClick,
+  onNewChat,
+  onOpenHistory,
 }: ScanAssistantDockProps) {
   const bubbleAnchorRef = useRef<HTMLDivElement>(null);
   const [bubbleSize, setBubbleSize] = useState<BubbleSize | null>(null);
@@ -149,6 +154,8 @@ export function ScanAssistantDock({
             placement={bubblePlacement}
             positionStyle={bubblePositionStyle}
             onDismiss={onAskDismiss}
+            onNewChat={onNewChat}
+            onOpenHistory={onOpenHistory}
           />
         ) : null}
 

@@ -22,6 +22,8 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
+import { useSocket } from "@/hooks/useSocket";
+import { SOCKET_TWIN_EXEMPT_CHANGED } from "@/config/socketEvents";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import {
@@ -159,6 +161,7 @@ export default function DebugCardMappingPage() {
     const [exemptRoomsLoading, setExemptRoomsLoading] = useState(false);
     const [exemptFilter, setExemptFilter] = useState<"all" | "exempt" | "controlled">("all");
     const queryClient = useQueryClient();
+    const socket = useSocket();
     const [scanDelayModalOpen, setScanDelayModalOpen] = useState(false);
     const [linkageModalOpen, setLinkageModalOpen] = useState(false);
     const [linkageLoading, setLinkageLoading] = useState(false);
@@ -212,6 +215,18 @@ export default function DebugCardMappingPage() {
         queryFn: () => fetchCardMappings(page, pageSize),
     });
 
+    // 「受控/豁免」的真身在服务端：别人（AI 助手、另一个管理员、审核、定时收回）改完之后，
+    // 本页的标识不会自己变 —— 此前只有本页自己点按钮才更新（mutation.onSuccess 里写缓存）。
+    // 收到服务端广播就失效这个查询，标识跟着走。
+    useEffect(() => {
+        if (!socket) return;
+        const onExemptChanged = () => queryClient.invalidateQueries({ queryKey: ["cardMappings"] });
+        socket.on(SOCKET_TWIN_EXEMPT_CHANGED, onExemptChanged);
+        return () => {
+            socket.off(SOCKET_TWIN_EXEMPT_CHANGED, onExemptChanged);
+        };
+    }, [socket, queryClient]);
+
     // 3. 增加绑卡提交的 Mutation：
     const issueDahuaMutation = useMutation({
         mutationFn: issueDahuaCard,
@@ -258,11 +273,17 @@ export default function DebugCardMappingPage() {
     // 删除大华卡片 + 本地映射
     const deleteDahuaCardMutation = useMutation({
         mutationFn: (cardNo: string) => deleteDahuaCard(cardNo),
-        onSuccess: () => {
-            toast.success("卡片已从大华删除，本地映射已清除");
+        onSuccess: (res: { data?: unknown } | undefined, cardNo: string) => {
+            // 搜索结果视图不随 refetch 刷新，必须就地剔除，否则删完这张卡还挂在屏幕上
+            setSearchResults((prev) => prev.filter((row) => row.cardNo !== cardNo));
+            toast.success(typeof res?.data === "string" ? res.data : "卡片已删除");
             refetch();
         },
-        onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "删除大华卡片失败"),
+        onError: (err: unknown) => {
+            toast.error(err instanceof Error ? err.message : "删除大华卡片失败");
+            // 大华侧没删干净时后端保留本地映射，重拉一次让列表与库内一致
+            refetch();
+        },
     });
 
     // 💥 物理映射解除引擎（仅本地，保留兼容）

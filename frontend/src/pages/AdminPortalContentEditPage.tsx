@@ -13,6 +13,16 @@ const TYPE_CODE: Record<string, ContentType> = { 科研文章: "NEWS", 通知公
 /** 分类作用域：页面类型没有自己的分类，借用模型资源那套 */
 const TYPE_SCOPE: Record<ContentType, string> = { NEWS: "NEWS", NOTICE: "NOTICE", MODEL_RESOURCE: "MODEL_RESOURCE", PAGE: "MODEL_RESOURCE" };
 
+/**
+ * 接口状态 → 表单里的中文档位。
+ *
+ * <p>抽出来是因为它要在**两处**用：首次装载、以及同一条被重新取回时只同步状态（见下面的 effect）。
+ * 写两遍的下场就是其中一处漏掉新加的档位 —— 加「已归档」时就差点漏一个。
+ */
+function statusLabelOf(status: string | undefined): string {
+  return status === "PUBLISHED" ? "已发布" : status === "DRAFT" ? "草稿" : "已归档";
+}
+
 export default function AdminPortalContentEditPage() {
   const { id } = useParams<{ id: string }>();
   const isNew = !id || id === "new";
@@ -74,12 +84,19 @@ export default function AdminPortalContentEditPage() {
   const loadedIdRef = useRef<number | null>(null);
   useEffect(() => {
     if (!existing) return;
-    if (loadedIdRef.current === existing.id) return;
+    if (loadedIdRef.current === existing.id) {
+      // 同一条被**重新取回**（别处把它下线/发布了，或窗口重新聚焦触发刷新）：**只同步状态**。
+      // 文本字段不动是故意的 —— 用户可能正在改，覆盖就成了「打字打到一半被冲掉」。
+      // 但状态是**服务端事实**：表单显示「已发布」而库里其实是「已归档」时，用户一点保存
+      // 就把旧状态写了回去 —— 实测就是这么把一条刚下线的公告又发上了门户。
+      setStatus(statusLabelOf(existing.status));
+      return;
+    }
     loadedIdRef.current = existing.id;
     setContentType(TYPE_LABEL[existing.contentType] ?? "页面");
     setTitle(existing.title);
     setCategory(existing.categoryId ? String(existing.categoryId) : "");
-    setStatus(existing.status === "PUBLISHED" ? "已发布" : existing.status === "DRAFT" ? "草稿" : "已归档");
+    setStatus(statusLabelOf(existing.status));
     setPublishedAt(toDateTimeLocalValue(existing.publishedAt));
     setSummary(existing.summary || "");
     setBodyHtml(existing.contentHtml || "");

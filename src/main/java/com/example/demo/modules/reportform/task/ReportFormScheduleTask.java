@@ -4,15 +4,17 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
+import com.example.demo.modules.reportform.service.ReportFillService;
+import com.example.demo.modules.reportform.util.ReportFormBlocks;
+import com.example.demo.modules.reportform.util.ReportFormPeriods;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -26,13 +28,16 @@ public class ReportFormScheduleTask {
 
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormSubmissionMapper submissionMapper;
+    private final ReportFillService reportFillService;
     private final ObjectMapper objectMapper;
 
     public ReportFormScheduleTask(ReportFormDefinitionMapper definitionMapper,
                                    ReportFormSubmissionMapper submissionMapper,
+                                   ReportFillService reportFillService,
                                    ObjectMapper objectMapper) {
         this.definitionMapper = definitionMapper;
         this.submissionMapper = submissionMapper;
+        this.reportFillService = reportFillService;
         this.objectMapper = objectMapper;
     }
 
@@ -60,70 +65,50 @@ public class ReportFormScheduleTask {
         if (form.getScheduleJson() == null || form.getScheduleJson().isBlank()) return;
 
         try {
+            String period = reportFillService.readPeriod(form);
+            if (!ReportFormPeriods.isPeriodic(period)) return;
+
             var schedule = objectMapper.readTree(form.getScheduleJson());
-            String period = schedule.has("period") ? schedule.get("period").asText() : "manual";
-            if ("manual".equals(period)) return;
+            Integer dow = schedule.has("dayOfWeek") && !schedule.get("dayOfWeek").isNull()
+                    ? schedule.get("dayOfWeek").asInt() : null;
+            Integer dom = schedule.has("dayOfMonth") && !schedule.get("dayOfMonth").isNull()
+                    ? schedule.get("dayOfMonth").asInt() : null;
 
-            // 检查今天是否匹配周期
-            if (!matchesToday(period, schedule)) return;
+            LocalDate today = LocalDate.now();
+            if (!ReportFormPeriods.matchesDate(period, dow, dom, today)) return;
 
-            // 检查时间窗口
-            String timeStart = schedule.has("timeWindowStart") ? schedule.get("timeWindowStart").asText() : null;
-            String timeEnd = schedule.has("timeWindowEnd") ? schedule.get("timeWindowEnd").asText() : null;
-            if (timeStart != null && timeEnd != null && !timeStart.isEmpty() && !timeEnd.isEmpty()) {
-                LocalTime now = LocalTime.now();
-                LocalTime start = LocalTime.parse(timeStart);
-                LocalTime end = LocalTime.parse(timeEnd);
-                if (now.isBefore(start) || now.isAfter(end)) {
-                    // 还在窗口外，但我们可以预先创建
-                }
-            }
+            String key = reportFillService.periodKeyOf(form, today);
+            if (key == null) return;
 
-            // 检查是否已有今天的提交记录（避免重复创建）
-            // 个人模式下，需要为每个有权限的用户创建一条空记录
-            // 协同模式下，只有一条全局记录
-
-            // 简化：协同模式只检查已存在记录；个人模式由用户访问时 fetch-or-create
             String fillMode = "shared";
             if (form.getFillPolicyJson() != null) {
                 var policy = objectMapper.readTree(form.getFillPolicyJson());
                 fillMode = policy.has("mode") ? policy.get("mode").asText() : "shared";
             }
 
+            // 协同表：到点就为该期建一份空记录（每期一份，已存在则不重复建）
+            // 个人表：不预建 —— 要为每个有权限的人预建，成本高；改为用户打开时按当前期 fetch-or-create
             if ("shared".equals(fillMode)) {
-                // 协同模式：确保存在一条 user_id=0 的记录
-                ReportFormSubmission existing = submissionMapper.selectDefaultByFormAndUser(form.getId(), 0L);
+                ReportFormSubmission existing =
+                        submissionMapper.selectByFormUserAndLabel(form.getId(), 0L, key);
                 if (existing == null) {
                     ReportFormSubmission sub = new ReportFormSubmission();
                     sub.setFormId(form.getId());
                     sub.setUserId(0L);
+                    sub.setInstanceLabel(key);
                     sub.setStatus("draft");
-                    sub.setFieldValuesJson("{}");
+                    sub.setFieldValuesJson(ReportFormBlocks.toJson(ReportFormBlocks.normalize("{}")));
                     sub.setVersion(0);
+                    LocalDateTime now = LocalDateTime.now();
+                    sub.setCreatedAt(now);
+                    sub.setUpdatedAt(now);
                     submissionMapper.insert(sub);
-                    log.info("[report-form] 周期调度创建协同实例: form={} name={}", form.getId(), form.getName());
+                    log.info("[report-form] 周期调度创建: form={} name={} period={}",
+                            form.getId(), form.getName(), key);
                 }
             }
-            // 个人模式：不做预创建，用户访问时自动 fetch-or-create
-
         } catch (Exception e) {
             log.warn("[report-form] 周期调度解析失败 form={}: {}", form.getId(), e.getMessage());
         }
-    }
-
-    private boolean matchesToday(String period, com.fasterxml.jackson.databind.JsonNode schedule) {
-        LocalDate today = LocalDate.now();
-        return switch (period) {
-            case "daily" -> true;
-            case "weekly" -> {
-                int dayOfWeek = schedule.has("dayOfWeek") ? schedule.get("dayOfWeek").asInt() : 1;
-                yield today.getDayOfWeek().getValue() == dayOfWeek;
-            }
-            case "monthly" -> {
-                int dayOfMonth = schedule.has("dayOfMonth") ? schedule.get("dayOfMonth").asInt() : 1;
-                yield today.getDayOfMonth() == Math.min(dayOfMonth, today.lengthOfMonth());
-            }
-            default -> false;
-        };
     }
 }

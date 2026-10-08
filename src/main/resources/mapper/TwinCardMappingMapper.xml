@@ -55,6 +55,12 @@
         WHERE aro_user_id = #{aroUserId}
     </select>
 
+    <select id="findByDahuaSeq" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="mappingColumns"/>
+        FROM twin_card_mapping
+        WHERE dahua_seq = #{dahuaSeq}
+    </select>
+
     <insert id="insertMapping" parameterType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
         INSERT INTO twin_card_mapping (card_no, dahua_seq, dahua_person_code, aro_user_id, card_status, freeze_exempt_flag, last_modified_time)
         VALUES (#{cardNo}, #{dahuaSeq}, #{dahuaPersonCode}, #{aroUserId}, #{cardStatus}, #{freezeExemptFlag}, #{lastModifiedTime})

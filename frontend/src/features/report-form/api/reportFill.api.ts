@@ -33,12 +33,61 @@ export function deleteSubmissionInstance(formId: number, submissionId: number): 
   return adminHttp.delete(`${BASE}/forms/${formId}/submissions/${submissionId}`).then(({ data }) => data.data);
 }
 
+export interface BlockVo {
+  id: string;
+  version: number;
+  values: Record<string, unknown>;
+}
+
+export interface SaveBlockPayload {
+  values: Record<string, unknown>;
+  expectedVersion: number;
+}
+
+export function addFormBlock(formId: number, submissionId: number): Promise<BlockVo> {
+  return adminHttp
+    .post(`${BASE}/forms/${formId}/submissions/${submissionId}/blocks`)
+    .then(({ data }) => data.data);
+}
+
+export function saveFormBlock(
+  formId: number,
+  submissionId: number,
+  blockId: string,
+  payload: SaveBlockPayload,
+): Promise<BlockVo> {
+  return adminHttp
+    .put(`${BASE}/forms/${formId}/submissions/${submissionId}/blocks/${blockId}`, payload)
+    .then(({ data }) => data.data);
+}
+
+export function deleteFormBlock(formId: number, submissionId: number, blockId: string): Promise<void> {
+  return adminHttp
+    .delete(`${BASE}/forms/${formId}/submissions/${submissionId}/blocks/${blockId}`)
+    .then(({ data }) => data.data);
+}
+
 export function fetchPublisherOverview(formId: number): Promise<PublisherFillGroup[]> {
   return adminHttp.get(`${BASE}/forms/${formId}/publisher-overview`).then(({ data }) => data.data);
 }
 
 export function fetchFormSubmissions(formId: number): Promise<ReportFormSubmission[]> {
   return adminHttp.get(`${BASE}/forms/${formId}/submissions`).then(({ data }) => data.data);
+}
+
+export interface SubmissionLogVo {
+  id: number;
+  submissionId: number;
+  userId: number;
+  action: string;
+  fieldValuesSnapshotJson: string;
+  createdAt: string;
+}
+
+export function fetchSubmissionLogs(formId: number, submissionId: number): Promise<SubmissionLogVo[]> {
+  return adminHttp
+    .get(`${BASE}/forms/${formId}/submissions/${submissionId}/logs`)
+    .then(({ data }) => data.data);
 }
 
 export interface SavePayload {
@@ -147,6 +196,13 @@ export async function exportExcel(formId: number, submissionId?: number, default
     submissionId
       ? `${BASE}/forms/${formId}/export?submissionId=${submissionId}`
       : `${BASE}/forms/${formId}/export`,
+    { defaultFilename },
+  ));
+}
+
+export async function exportLedger(formId: number, defaultFilename?: string) {
+  await runExport('台账导出', () => downloadFile(
+    `${BASE}/forms/${formId}/export-ledger`,
     { defaultFilename },
   ));
 }

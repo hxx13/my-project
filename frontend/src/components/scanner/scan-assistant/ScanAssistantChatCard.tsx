@@ -22,6 +22,8 @@ export type ScanAssistantChatCardProps = {
   onDismiss: () => void;
   /** 文案下方的交互区（提问输入框等）；播报气泡不传 */
   footer?: ReactNode;
+  /** 右上角浮层里、关闭按钮左侧的额外操作（如「展开为大窗」）；播报气泡不传 */
+  actions?: ReactNode;
   dismissLabel?: string;
   /** 提问面板：内容底板比边框窄一档，露出旋转的彩虹边框环 */
   askPanel?: boolean;
@@ -37,6 +39,7 @@ export function ScanAssistantChatCard({
   phase,
   onDismiss,
   footer,
+  actions,
   dismissLabel = "收起助手播报",
   askPanel = false,
 }: ScanAssistantChatCardProps) {
@@ -80,19 +83,11 @@ export function ScanAssistantChatCard({
             <span className="scan-assistant-chat-card__meta">{metaLabel}</span>
           ) : null}
 
-          <button
-            type="button"
-            className="scan-assistant-chat-card__dismiss"
-            onClick={onDismiss}
-            aria-label={dismissLabel}
-          >
-            <X className="size-4" strokeWidth={2} />
-          </button>
-
           <div className="scan-assistant-chat-card__body">
-            <div className="scan-assistant-chat-card__message-row">
-              <ScanAssistantPegtopLoader animated={pegtopAnimated} idle={askPanel && !pegtopAnimated} />
-              {hasMessageCopy ? (
+            {/* 陀螺只在有正文时留在正文行首；提问面板的正文是对话历史，行首图标挂在每条回答上 */}
+            {hasMessageCopy ? (
+              <div className="scan-assistant-chat-card__message-row">
+                <ScanAssistantPegtopLoader animated={pegtopAnimated} />
                 <div className="scan-assistant-chat-card__message-copy">
                   {showThinkingLabel ? (
                     <p className="scan-assistant-chat-card__loading-label">思考中…</p>
@@ -115,11 +110,24 @@ export function ScanAssistantChatCard({
                     </p>
                   ) : null}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
             {footer}
           </div>
         </div>
+      </div>
+
+      {/* 挂在外框之外：外框 overflow:clip 会把半悬出圆角的按钮裁掉 */}
+      <div className="scan-assistant-chat-card__actions">
+        {actions}
+        <button
+          type="button"
+          className="scan-assistant-chat-card__action"
+          onClick={onDismiss}
+          aria-label={dismissLabel}
+        >
+          <X className="size-4" strokeWidth={2} />
+        </button>
       </div>
     </div>
   );

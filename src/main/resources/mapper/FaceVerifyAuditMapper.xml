@@ -123,7 +123,11 @@
         SELECT COUNT(1)
         FROM face_verify_audit a
         <include refid="AdminLatestJoin"/>
-        LEFT JOIN aro_personnel p ON a.user_id = p.user_id
+        <!-- 同 TwinAutomationLogMapper.countPage：p 只在关键词命中 p.name 时才被引用，
+             无条件挂着等于每个命中行多一次回表。开关条件与 AdminWhere 的 keyword 判据一致。 -->
+        <if test="keyword != null and keyword != ''">
+            LEFT JOIN aro_personnel p ON a.user_id = p.user_id
+        </if>
         <include refid="AdminWhere"/>
     </select>
 

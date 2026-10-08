@@ -2,6 +2,7 @@ package com.example.demo.modules.twin.scan.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.scan.dto.ScanAssistantContextPackage;
 import com.example.demo.modules.twin.scan.dto.ScanAssistantContextRequest;
@@ -35,16 +36,19 @@ public class ScanAssistantController {
     private final AuthContextService authContextService;
     private final ScanAssistantLlmService scanAssistantLlmService;
     private final ScanAssistantContextService scanAssistantContextService;
+    private final CageModeVisibilityService modeVisibilityService;
     private final Executor heavyCalcExecutor;
 
     public ScanAssistantController(
             AuthContextService authContextService,
             ScanAssistantLlmService scanAssistantLlmService,
             ScanAssistantContextService scanAssistantContextService,
+            CageModeVisibilityService modeVisibilityService,
             @Qualifier("heavyCalcExecutor") Executor heavyCalcExecutor) {
         this.authContextService = authContextService;
         this.scanAssistantLlmService = scanAssistantLlmService;
         this.scanAssistantContextService = scanAssistantContextService;
+        this.modeVisibilityService = modeVisibilityService;
         this.heavyCalcExecutor = heavyCalcExecutor;
     }
 
@@ -127,15 +131,25 @@ public class ScanAssistantController {
     }
 
     @PostMapping(value = "/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    @Operation(summary = "智能载体提问（SSE：started / delta / done / error），内置占位提示词")
+    @Operation(summary = "智能载体提问（SSE：started / delta / done / error），经 AI 对话操作网关执行")
     public SseEmitter askQuestion(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody ScanAssistantSpeakRequest body) {
         try {
-            requireOperator(authorization);
+            User user = requireOperator(authorization);
             String question = body != null ? body.getQuestion() : null;
+            Long sessionId = body != null ? body.getSessionId() : null;
+            boolean newSession = body != null && Boolean.TRUE.equals(body.getNewSession());
+            java.util.List<String> images = body != null ? body.getImages() : null;
+            // 表格附件：控制器只做 DTO → 编排层入参的搬运，解析与落库在编排层（那儿才拿得到会话与消息 id）
+            final java.util.List<com.example.demo.modules.ai.service.AiOrchestrator.SpreadsheetPart> sheets =
+                    toSpreadsheetParts(body);
+            // 载体所在地页面：只喂给 L2 路由（「这个页面上该带哪些包」），权限判定一概不看它
+            final String contextPage = body != null ? body.getContextPage() : null;
             SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-            heavyCalcExecutor.execute(() -> scanAssistantLlmService.askQuestion(question, emitter));
+            heavyCalcExecutor.execute(() ->
+                    scanAssistantLlmService.askQuestion(user, question, sessionId, newSession, images, sheets,
+                            contextPage, emitter));
             return emitter;
         } catch (IllegalArgumentException e) {
             SseEmitter err = new SseEmitter(0L);
@@ -179,6 +193,25 @@ public class ScanAssistantController {
         return Map.of("ok", true, "sessionId", newSessionId != null ? newSessionId : 0);
     }
 
+    /** DTO 里的表格附件 → 编排层入参。空/无内容的一律丢掉，别把 null 传下去。 */
+    private static java.util.List<com.example.demo.modules.ai.service.AiOrchestrator.SpreadsheetPart>
+            toSpreadsheetParts(ScanAssistantSpeakRequest body) {
+        if (body == null || body.getSpreadsheets() == null || body.getSpreadsheets().isEmpty()) {
+            return null;
+        }
+        return body.getSpreadsheets().stream()
+                .filter(f -> f != null && f.getData() != null && !f.getData().isBlank())
+                .map(f -> new com.example.demo.modules.ai.service.AiOrchestrator.SpreadsheetPart(
+                        f.getFilename(), f.getData()))
+                .toList();
+    }
+
+    /**
+     * 智能助手整条模块的准入。**视角闸门下在这里而不是只挂在界面** ——
+     * 球球只渲染在 AdminLayout，学生看不见入口，但 /api/v1/twin/scan-assistant/** 是公开路径，
+     * 学生拿有效 token 直连就能打到 greet / speak / context，每一次都是真实的模型调用（花钱 + 滥用面）。
+     * 判据复用笼架域唯一出口 isStudent（account_source）。
+     */
     private User requireOperator(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) {
@@ -186,6 +219,9 @@ public class ScanAssistantController {
         }
         if (!StringUtils.hasText(user.getId())) {
             throw new IllegalArgumentException("无效用户");
+        }
+        if (modeVisibilityService.isStudent(user)) {
+            throw new IllegalArgumentException("AI 助手目前只对教职工开放");
         }
         return user;
     }

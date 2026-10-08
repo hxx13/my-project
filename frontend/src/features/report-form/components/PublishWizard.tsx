@@ -50,6 +50,7 @@ export default function PublishWizard({
   const [step, setStep] = useState(0);
   const [fillMode, setFillMode] = useState<FillMode>('shared');
   const [allowMultipleInstances, setAllowMultipleInstances] = useState(false);
+  const [repeatable, setRepeatable] = useState(false);
   const [permission, setPermission] = useState<PermissionJson>({
     visibleRoles: ['STAFF'],
     visibleUserIds: [],
@@ -67,6 +68,7 @@ export default function PublishWizard({
       setStep(0);
       setFillMode('shared');
       setAllowMultipleInstances(false);
+      setRepeatable(false);
       setPermission({
         visibleRoles: ['STAFF'],
         visibleUserIds: [],
@@ -81,6 +83,7 @@ export default function PublishWizard({
     const fp = initialFillPolicy;
     setFillMode(fp?.mode === 'individual' ? 'individual' : 'shared');
     setAllowMultipleInstances(!!fp?.allowMultipleInstances);
+    setRepeatable(!!fp?.repeatable);
     if (initialPermission) setPermission(initialPermission);
     if (initialSchedule) setSchedule(initialSchedule);
   }, [open, isReset, initialFillPolicy, initialPermission, initialSchedule]);
@@ -106,6 +109,7 @@ export default function PublishWizard({
         submitLabel: '提交',
         allowEditAfterSubmit: true,
         allowMultipleInstances: fillMode === 'individual' && allowMultipleInstances,
+        repeatable,
       }),
       permissionJson: JSON.stringify(permission),
       scheduleJson: JSON.stringify(schedule),
@@ -213,6 +217,15 @@ export default function PublishWizard({
                     允许每人创建多份子文件（如多份实验记录、多份申请）
                   </label>
                 )}
+                <label className="flex items-center gap-2 text-[12px] text-[var(--app-color-text-secondary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={repeatable}
+                    onChange={e => setRepeatable(e.target.checked)}
+                    className="rounded border-[var(--app-color-border-default)]"
+                  />
+                  允许重复填多张相同的表（一份记录内可追加第 2、3… 张）
+                </label>
                 <div>
                   <label className={labelClass}>周期</label>
                   <select value={schedule.period} onChange={e => setSchedule({ ...schedule, period: e.target.value as ScheduleJson['period'] })}

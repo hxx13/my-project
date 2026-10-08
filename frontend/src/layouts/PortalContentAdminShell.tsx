@@ -4,6 +4,7 @@ import { PortalHeader } from "@/features/portal/PortalHeader";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { useGoBack } from "@/features/aup/hooks/useGoBack";
+import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier";
 
 type NavItem = { path: string; label: string; icon: string; emphasize?: boolean };
 type NavSection = { title: string; items: NavItem[] };
@@ -145,6 +146,10 @@ export default function PortalContentAdminShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* 智能助手：这个壳是独立的全屏门户内容后台，不挂的话在这儿就调不到「内容」工具链
+          （本壳自己判 ADMIN，与本包能力码同口径；载体自行 portal 到 body） */}
+      <ScanAssistantCarrier />
     </div>
   );
 }
