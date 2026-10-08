@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -56,6 +57,16 @@ public class TrainingReviewToolPack implements AiToolPack {
     @Override
     public String displayName() {
         return "培训审批";
+    }
+
+    /**
+     * L2 路由词。**此前一个都没有**（连这个方法都没重写）—— 于是「培训报名审一下」「谁还没批」
+     * 这类说法永远命中不了本包，只能等"什么都没命中"时靠全包下发侥幸带上。
+     * 真机反馈就是「看看我有什么待审核的」答不全：物资那域命中了，培训这域根本没被带上。
+     */
+    @Override
+    public Set<String> routeHints() {
+        return Set.of("培训", "报名", "审批", "审核", "考试", "试卷", "题库", "学员", "评分", "待审", "待办");
     }
 
     @Override

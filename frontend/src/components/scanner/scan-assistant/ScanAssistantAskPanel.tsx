@@ -1637,9 +1637,21 @@ export function ScanAssistantAskPanel({
                     className="scan-assistant-ask__custom-input"
                     value={customDraft}
                     onChange={(event) => setCustomDraft(event.target.value)}
-                    placeholder="自定义回答：直接说你的答案，输入后按回车"
+                    placeholder="自定义回答：写出你的答案，点「确认」或按回车"
                     aria-label="自定义回答"
                   />
+                  {/*
+                   * 确认键：**不能只留回车**。上面那些选项都是点一下就完事，
+                   * 到这里突然变成"得知道按回车才算作答"，普通人会以为输入框是死的（真机反馈）。
+                   * 走 form 的 submit，与回车同一条 chooseCustom()，行为不会分叉。
+                   */}
+                  <button
+                    type="submit"
+                    className="scan-assistant-ask__custom-confirm"
+                    disabled={!customDraft.trim()}
+                  >
+                    确认
+                  </button>
                 </form>
                 {/*
                  * 提交与取消在选项**下方**一行：取消在左、提交在右（右端是这一排的终点）。

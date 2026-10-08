@@ -145,7 +145,13 @@ public class AiOrchestrator {
 
         saveSpreadsheets(actor, sessionId, savedUser == null ? null : savedUser.getId(), spreadsheets, sink);
 
-        List<AiToolPack> activePacks = routedPacks(actor, contextPage, routingText(sessionId, userText));
+        List<AiToolPack> activePacks = routedPacks(actor, contextPage, userText, sessionContextText(sessionId));
+        // **排错入口**：用户再遇到「我手里没有这个工具」时，先看这一行选中了哪几个包 ——
+        // 是路由没收进来（该补词），还是工具在手、模型没接上（另一类），一眼分得清。
+        // 路由自己的命中日志是 debug 级，生产（INFO）看不到，所以这里单独记一条。
+        log.info("[ai-route] 本轮选中 {} 个包 [{}] | 原话: {}", activePacks.size(),
+                String.join(",", activePacks.stream().map(AiToolPack::packKey).toList()),
+                truncate(userText, 60));
         List<Map<String, Object>> messages = baseMessages(actor, sessionId, contextPage, activePacks);
         attachImages(messages, images);
         return drive(actor, sessionId, sink, messages,
@@ -216,7 +222,7 @@ public class AiOrchestrator {
         sessionService.requireOwned(sessionId, actor.getId());
         AiInteraction it = interactionService.resolve(sessionId, token, chosenValue);
 
-        List<AiToolPack> activePacks = routedPacks(actor, null, routingText(sessionId, chosenValue));
+        List<AiToolPack> activePacks = routedPacks(actor, null, chosenValue, sessionContextText(sessionId));
         List<Map<String, Object>> messages = baseMessages(actor, sessionId, null, activePacks);
         List<ChoiceGroup> choiceGroups = new ArrayList<>();
 
@@ -637,26 +643,31 @@ public class AiOrchestrator {
      * 本请求该发哪些包：**先按能力裁，再按 L2 路由裁**。
      *
      * <p>顺序是先能力后路由：路由词命中的包如果这个人根本无权用，把它算进命中只会把别的包挤掉。
+     *
+     * <p>路由交给 {@link AiPackRouter#routeForTurn}：**当轮原话优先**，历史正文只在原话一个域
+     * 都认不出时才参与 —— 助手上一轮枚举自己能耐时会把好几个域的名字写进正文，那些域会被当成
+     * 命中，把当轮真正问的域挤出包位（真机：问「2 楼的湿度情况」答「我没有环境监测工具」）。
      */
-    private List<AiToolPack> routedPacks(User actor, String contextPage, String routingText) {
+    private List<AiToolPack> routedPacks(User actor, String contextPage, String userText, String sessionContext) {
         List<AiToolPack> usable = new ArrayList<>();
         for (AiToolPack pack : toolRegistry.packs()) {
             if (!usableTools(capabilityGate, actor, pack.tools()).isEmpty()) {
                 usable.add(pack);
             }
         }
-        return packRouter.route(usable, contextPage, routingText);
+        return packRouter.routeForTurn(usable, contextPage, userText, sessionContext);
     }
 
     /**
-     * 路由用的话：本轮输入 + 最近一轮助手正文。
+     * 路由用的**历史**材料：最近一轮助手正文 + 本会话带过的附件名。**不含当轮原话** ——
+     * 原话由 {@code routeForTurn} 先单独试，命中就不看这里。
      *
-     * <p>只要本轮原话是不够的 —— 追问「那把它出库」里一个域名词都没有，全靠上一轮助手说的
+     * <p>为什么需要它：追问「那把它出库」里一个域名词都没有，全靠上一轮助手说的
      * 「这张领用单…」才认得出是物资处理。截断到 400 字：助手正文可能很长，全塞进去反而
      * 到处都能命中，等于路由失效。
      */
-    private String routingText(Long sessionId, String input) {
-        StringBuilder sb = new StringBuilder(input == null ? "" : input);
+    private String sessionContextText(Long sessionId) {
+        StringBuilder sb = new StringBuilder();
         List<AiMessage> window = sessionService.window(sessionId);
         if (window != null) {
             for (int i = window.size() - 1; i >= 0; i--) {
@@ -678,6 +689,10 @@ public class AiOrchestrator {
         } catch (RuntimeException e) {
             log.debug("[ai-orch] 路由取附件名失败: {}", e.getMessage());
         }
+        // ⚠ 别在这里拼「本会话用过的工具名」当粘性信号（2026-10-08 试过，撤掉了）：
+        // 工具名是驼峰连写，会跨包撞子串（listPendingCageOpReviews 里含 review），
+        // 权重一抬就把当轮**真正**命中的包挤出去 —— 实测「2 楼的湿度情况」在上一轮聊过审核的
+        // 会话里变成「我手里没有环境监测类的工具」。粘性本来就由上面的「最近一轮助手正文」自带。
         return sb.toString();
     }
 

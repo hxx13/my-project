@@ -62,7 +62,7 @@ class AiPackRouterTest {
                 pack("review", "学生审核", "申领", "待审", "驳回"),
                 pack("supplies", "物资选购", "商城", "加购", "领用"),
                 pack("suppliesProcess", "物资处理", "领用单", "出库", "待处理"),
-                pack("telemetry", "环境监测", "温湿度", "压差", "告警"),
+                pack("telemetry", "环境监测", "温湿度", "湿度", "温度", "压差", "告警", "楼层"),
                 pack("unfreeze", "门禁免冻", "免冻", "豁免", "冻结"));
     }
 
@@ -125,13 +125,18 @@ class AiPackRouterTest {
     @Test
     @DisplayName("命中太多（词写太宽）→ 按命中词数收窄到上限，公共包保底，顺序不变")
     void capsWhenTooManyHit() {
-        List<AiToolPack> out = router.route(all(), null, "领用单 出库 商城 加购 免冻 豁免 温湿度 压差");
+        List<AiToolPack> out = router.route(all(), null,
+                "笼架 房间 人员 课题组 门禁 常开 闸机 门户 资讯 新闻 公告 申领 待审 驳回 商城 加购 领用"
+                        + " 领用单 出库 待处理 温湿度 压差 告警 免冻 豁免 冻结");
+        List<String> ks = keys(out);
 
-        assertEquals(AiPackRouter.MAX_PACKS_PER_TURN, out.size(), "上限是包数，不能任其膨胀");
-        // 命中词数：supplies 3（商城/加购/领用）、suppliesProcess 2、telemetry 2、unfreeze 2（免冻/豁免）；
-        // 后三个同分 → 保注册顺序，排在最后的 unfreeze 落选。
-        assertEquals(List.of("common", "supplies", "suppliesProcess", "telemetry"), keys(out));
-        assertTrue(keys(out).get(0).equals("common"), "公共包永远排在最前（注册顺序）");
+        assertEquals(AiPackRouter.MAX_PACKS_PER_TURN, ks.size(), "上限是包数，不能任其膨胀");
+        assertEquals("common", ks.get(0), "公共包永远排在最前（注册顺序）");
+        assertTrue(!ks.contains("cageQuery"), "命中词最少的（笼架/房间 = 2）先落选：" + ks);
+        // 命中词数：portalContent 4（门户/资讯/新闻/公告）；telemetry 4（温湿度/湿度 **重叠命中** + 压差/告警）；
+        // door / review / supplies / unfreeze 各 3；suppliesProcess 与 unfreeze 同为 3 但排在后面 → 收窄时落选。
+        // 取前 5 + 公共包 = 6；输出顺序恒等于注册顺序。
+        assertEquals(List.of("common", "door", "portalContent", "review", "supplies", "telemetry"), ks);
     }
 
     @Test
@@ -140,6 +145,18 @@ class AiPackRouterTest {
         List<AiToolPack> three = List.of(
                 pack("common", "公共查询"), pack("door", "门禁通道控制"), pack("telemetry", "环境监测"));
         assertEquals(three, router.route(three, null, "温湿度怎么样"));
+    }
+
+    @Test
+    @DisplayName("当轮原话命中时，历史正文不许把它挤掉 —— 助手列过能力清单也不许")
+    void currentInputBeatsHistoryInRouting() {
+        List<AiToolPack> packs = all();
+        // 真实发生过的助手正文：它解释「什么办不了」时把自己能办的域挨个念了一遍
+        String history = "你能查笼架目录、待审清单、商城物资、购物车、领用单、门禁通道、免冻豁免、门户内容这些";
+        List<AiToolPack> out = router.routeForTurn(packs, null, "查询一下2楼的湿度情况", history);
+        assertEquals(List.of("common", "telemetry"), keys(out),
+                "当轮问的是湿度，历史里那一串域不许参与投票 —— 否则包位被占满，答成「我没有环境监测工具」："
+                        + keys(out));
     }
 
     private static List<String> keys(List<AiToolPack> packs) {
