@@ -1,0 +1,20 @@
+-- aro_personnel.open_id 补挂索引 idx_aro_open_id。
+--
+-- 为什么它一直不存在（两条路径都失败）：
+--   1) V20260725002__aro_personnel_add_open_id.sql 把 ADD COLUMN 与 ADD INDEX 写在同一条
+--      ALTER 里。在 open_id 列已存在的库（本地开发库与生产都是）上，整条 ALTER 因
+--      duplicate column 失败，索引跟着一起被丢掉。
+--   2) db/bootstrap-aro-personnel-open-id.sql 随后想用 CREATE PROCEDURE + BEGIN...END 补挂。
+--      但启动链走 ResourceDatabasePopulator(setSeparator(";"))，按分号裸切、不认 DELIMITER，
+--      体内分号把语句切碎 → 报 1064 "... near '' at line 4"。
+--      这条消息恰好命中 isBenignInChain 的「syntax + near ''」规则（该规则本是为
+--      「PREPARE with NULL @sql」加的，同属切分损伤），于是被判成幂等成功：
+--      只 log.debug 一句 + benignSkips +1，文件报 true。索引从未建成，且启动摘要看不出异常。
+--
+-- 症状：AroPersonnelMapper.selectUserIdByOpenId（学生小程序登录路径，
+--       SELECT user_id FROM aro_personnel WHERE open_id = ? LIMIT 1）全表扫 aro_personnel。
+--
+-- 幂等：实际执行点在 db/bootstrap-aro-personnel-open-id.sql（已改成与本目录其它脚本一致的
+-- SET @sql + PREPARE 写法，查 information_schema 后再 ALTER），每次启动自愈。
+-- 本文件仅作归档记录，也可在生产库手动执行。
+ALTER TABLE aro_personnel ADD INDEX idx_aro_open_id (open_id);

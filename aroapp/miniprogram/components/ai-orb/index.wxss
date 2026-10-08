@@ -1,0 +1,167 @@
+@import "./emotions.wxss";
+
+/**
+ * 球球（智能助手载体）—— 小程序版。
+ *
+ * 形象与动效对齐 Web 端 emotion-ball 引擎（线上 scan.assistant.carrier = ball）：
+ * 米白色哑光球 + 两只竖直胶囊形黑眼睛（微微外倾），没有嘴、没有彩色。
+ *
+ * 引擎本体是 SVG 逐点弹簧形变（25 组轮廓眼环、32 套表情），搬到 WXSS 不现实；
+ * 这里复刻能复刻的部分：球体受光、呼吸、眨眼、思考态加快，以及待机的小动作。
+ *
+ * 所有几何量都按 --orb-size 换算 —— 写死 rpx 的话，40rpx 的头像上会顶着一圈
+ * 比球还大的阴影（踩过）。
+ */
+
+.ai-orb {
+  position: relative;
+  border-radius: 50%;
+  /* 米白球体：左上受光、右下压暗 */
+  background: radial-gradient(
+    circle at 36% 30%,
+    #fefdfb 0%,
+    #f4f1ea 42%,
+    #e8e4da 74%,
+    #dbd5c8 100%
+  );
+  box-shadow:
+    inset calc(var(--orb-size) * -0.035) calc(var(--orb-size) * -0.06) calc(var(--orb-size) * 0.13)
+      rgba(120, 110, 94, 0.16),
+    inset calc(var(--orb-size) * 0.035) calc(var(--orb-size) * 0.05) calc(var(--orb-size) * 0.11)
+      rgba(255, 255, 255, 0.72),
+    0 calc(var(--orb-size) * 0.05) calc(var(--orb-size) * 0.14) rgba(90, 80, 64, 0.14);
+  animation: ai-orb-breathe 4.6s ease-in-out infinite;
+}
+
+/* 眼睛层：形状来自 emotion-ball 引擎的 25 组眼环（emotions.wxss 一类一个）
+   48 个点连成的闭合 path，viewBox 与球同坐标系，铺满即可对齐 */
+.ai-orb__eyes {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  animation: ai-orb-blink 5.2s ease-in-out infinite;
+}
+
+/* 思考中：呼吸与眨眼都加快，像在琢磨 */
+.ai-orb--thinking {
+  animation-duration: 2.2s;
+}
+
+.ai-orb--thinking .ai-orb__eyes {
+  animation-duration: 2.4s;
+}
+
+@keyframes ai-orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+/* 换表情：合眼 → 换形状 → 睁眼。形状在闭上最深的那一帧被替换（见 index.js 的 advance），
+   观众只看到"球眨了下眼"，看不到背景图硬切。 */
+.ai-orb--switching .ai-orb__eyes {
+  animation: ai-orb-switch 260ms ease-in-out both;
+}
+
+@keyframes ai-orb-switch {
+  0% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.06);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+/* 眨眼：把整层眼睛纵向压扁，和原版「闭眼成线」同效 */
+@keyframes ai-orb-blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.12);
+  }
+}
+
+/* ── 待机小动作（引擎里叫 antics，9~18s 随机来一次）──
+   只在眨眼/呼吸之外再加一条一次性动画，播完自动回到常态。
+   两条动画都改 transform，后声明的这条在播期间覆盖呼吸 —— 正好，动作期间不需要呼吸的干扰。 */
+.ai-orb--tilt {
+  animation: ai-orb-breathe 4.6s ease-in-out infinite,
+    ai-orb-antic-tilt 1100ms cubic-bezier(0.34, 1.2, 0.5, 1) both;
+}
+
+.ai-orb--bounce {
+  animation: ai-orb-breathe 4.6s ease-in-out infinite,
+    ai-orb-antic-bounce 900ms cubic-bezier(0.34, 1.4, 0.5, 1) both;
+}
+
+.ai-orb--wobble {
+  animation: ai-orb-breathe 4.6s ease-in-out infinite, ai-orb-antic-wobble 1200ms ease-in-out both;
+}
+
+/* 歪头：绕偏下的支点转，像脑袋侧一下，不是整颗球打转 */
+@keyframes ai-orb-antic-tilt {
+  0% {
+    transform: rotate(0deg);
+  }
+  35% {
+    transform: rotate(-11deg) translateY(1.5%);
+  }
+  70% {
+    transform: rotate(4deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes ai-orb-antic-bounce {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  25% {
+    transform: translateY(-7%) scale(1.05, 0.94);
+  }
+  55% {
+    transform: translateY(0) scale(0.97, 1.05);
+  }
+  78% {
+    transform: translateY(-2%) scale(1.02, 0.99);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+@keyframes ai-orb-antic-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-7deg);
+  }
+  45% {
+    transform: rotate(6deg);
+  }
+  70% {
+    transform: rotate(-3deg);
+  }
+  90% {
+    transform: rotate(1deg);
+  }
+}

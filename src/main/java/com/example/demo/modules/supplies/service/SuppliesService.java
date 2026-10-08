@@ -52,6 +52,47 @@ import java.util.stream.Collectors;
 @Service
 public class SuppliesService {
     private static final Logger log = LoggerFactory.getLogger(SuppliesService.class);
+
+    /**
+     * 管理端实时房广播的事件名（与前端 config/socketEvents.ts 对齐）。
+     *
+     * <p>为什么需要它：手工在页面提交时，页面自己会派发一个"刷新角标"的本地事件；
+     * **AI 从服务端开的单没人派发**，于是侧栏「待处理」角标要等用户点进页面再退出来才更新
+     * （真机反馈）。所以在状态变更点由服务端广播一次，与受控标识同一个套路。
+     */
+    private static final String EVENT_CLAIM_CHANGED = "SUPPLIES_CLAIM_CHANGED";
+
+    /** 合并提交会连开多单，2 秒内只广播一次（前端收到只要刷新，一次就够） */
+    private static final long CLAIM_BROADCAST_MIN_GAP_MS = 2000;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.corundumstudio.socketio.SocketIOServer socketIOServer;
+
+    private final java.util.concurrent.atomic.AtomicLong lastClaimBroadcastAt =
+            new java.util.concurrent.atomic.AtomicLong(0);
+
+    /** 广播「领用单变了」：管理端据此刷新侧栏角标与领用相关列表。推送失败不影响主业务。 */
+    private void broadcastClaimChanged(String orderId, String status) {
+        if (socketIOServer == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long last = lastClaimBroadcastAt.get();
+        if (now - last < CLAIM_BROADCAST_MIN_GAP_MS || !lastClaimBroadcastAt.compareAndSet(last, now)) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("orderId", orderId);
+            payload.put("status", status);
+            payload.put("at", java.time.Instant.now().toString());
+            socketIOServer
+                    .getRoomOperations(com.example.demo.common.component.SocketRoomAssigner.ROOM_CONSOLE_LIVE)
+                    .sendEvent(EVENT_CLAIM_CHANGED, payload);
+        } catch (Exception e) {
+            log.warn("[领用单广播] 推送到 console:live 失败: {}", e.getMessage());
+        }
+    }
     private static final String SHELF_ON = "ON_SHELF";
     private static final String MODE_QUANTIFIED = "QUANTIFIED";
     private static final String MODE_FLAG = "FLAG";
@@ -668,6 +709,8 @@ public class SuppliesService {
         for (int i = 0; i < orderIds.size(); i++) {
             publishClaimCreated(user, orderIds.get(i), lineCounts.get(i));
         }
+        // 让管理端立刻看到"多了一张待处理"（AI 开的单页面自己不知道）
+        broadcastClaimChanged(orderIds.get(0), "PENDING");
         SupplyClaimOrderView view = toOrderView(claimOrderMapper.findById(orderIds.get(0)), true);
         if (orderIds.size() > 1) {
             view.setSplitCount(orderIds.size());
@@ -1585,6 +1628,7 @@ public class SuppliesService {
         // 出库终局就把这张带签名的领用单落档（失败只记日志，见方法注释）
         archiveClaimFormQuietly(done, admin);
         publishClaimFulfilled(admin, done, grantedItemNames);
+        broadcastClaimChanged(orderId, done.getStatus());
         return Result.success(toOrderView(done, true));
     }
 

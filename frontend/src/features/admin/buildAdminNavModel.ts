@@ -148,6 +148,15 @@ export function isAdminAreaPath(path: string): boolean {
   return p === "/admin" || p.startsWith("/admin/");
 }
 
+/**
+ * 门户内容管理后台（{@code /content-manager/**}）—— 独立全屏壳，不在 /admin 区里。
+ * 智能助手也要在这儿停靠：内容包是「模型写稿 + 用户点选配置后就地发布」，人不在这个页面上就无从谈起。
+ */
+export function isContentManagerPath(path: string): boolean {
+  const p = normalizeAdminPath(path);
+  return p === "/content-manager" || p.startsWith("/content-manager/");
+}
+
 export function isTwinFullscreenEntryPath(path: string): boolean {
   return TWIN_FULLSCREEN_ENTRY_PATHS.has(normalizeAdminPath(path));
 }

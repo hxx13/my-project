@@ -42,6 +42,10 @@ public class PersonnelSqlProvider {
     /** 所有条件参数化（#{…}），结构拼接用白名单常量，杜绝注入。 */
     private static String where(PersonnelFilter f) {
         StringBuilder sb = new StringBuilder("WHERE 1=1 ");
+        // 主键精查（单条详情）放在最前：最省事也最不容易被别的条件带偏
+        if (f.getId() != null) {
+            sb.append("AND p.id = #{id} ");
+        }
         if (hasText(f.getKeyword())) {
             sb.append("AND (p.name LIKE CONCAT('%', #{keyword}, '%') ")
               .append("OR p.staff_id LIKE CONCAT('%', #{keyword}, '%') ")

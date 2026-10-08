@@ -8,7 +8,8 @@ import { useReportFill } from '../hooks/useReportFill';
 import FormExportActions from '../components/FormExportActions';
 import { printForm, fetchCanEdit } from '../api/reportFill.api';
 import { buildReportExportFilename } from '../utils/reportFormExportFilename';
-import { Save, Send, Clock, User, Printer, Eye, ArrowLeft } from 'lucide-react';
+import { Save, Send, Clock, User, Printer, Eye, ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { appConfirm } from '@/lib/appDialog';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
@@ -19,7 +20,10 @@ export default function ReportFillPage() {
   const formId = Number(id);
   const submissionIdParam = searchParams.get('submissionId');
   const submissionId = submissionIdParam ? Number(submissionIdParam) : undefined;
-  const { form, values, submission, formLoading, updateValue, submitMut, flushSave, flushSaveForExport } = useReportFill(formId, submissionId);
+  const {
+    form, submission, blocks, repeatable, formLoading,
+    updateValue, addBlock, removeBlock, submitMut, flushSave, flushSaveForExport,
+  } = useReportFill(formId, submissionId);
 
   const { data: editInfo } = useQuery({
     queryKey: ['report-fill-can-edit', formId, submissionId ?? 'default'],
@@ -53,6 +57,8 @@ export default function ReportFillPage() {
     ? JSON.parse(form.fillPolicyJson as string)
     : (form.fillPolicyJson || {});
   const mode = fillPolicy.mode || 'shared';
+  const submittedLocked = submission?.status === 'submitted'
+    && fillPolicy.allowEditAfterSubmit === false;
   const submitLabel = fillPolicy.submitLabel || '提交';
   const instanceTitle = submission?.instanceLabel?.trim()
     ? submission.instanceLabel
@@ -120,6 +126,21 @@ export default function ReportFillPage() {
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1">
           <Printer className="w-3.5 h-3.5" /> 打印
         </button>
+        {repeatable && canEdit && (
+          <>
+            <span className="w-px h-5 bg-[var(--app-color-border-default)]" />
+            <button
+              type="button"
+              onClick={() => addBlock()}
+              className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium
+                         border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]
+                         hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> 再加一张表
+            </button>
+            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">共 {blocks.length} 张</span>
+          </>
+        )}
         <div className="ml-auto flex items-center gap-4 text-[11px] text-[var(--app-color-text-tertiary)]">
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" /> 自动保存中
@@ -136,21 +157,51 @@ export default function ReportFillPage() {
           <Eye className="w-3.5 h-3.5" /> 只读模式 — 你无权编辑此报表的内容
         </div>
       )}
-      <div className="report-canvas">
-        <div className="report-sheet">
-          <FormGridRenderer
-            layout={fillLayout ?? form.layoutJson}
-            themeJson={fillTheme ?? form.themeJson}
-            formSource={form.source}
-            values={values}
-            editable={canEdit}
-            onChange={updateValue}
-            permissionJson={form.permissionJson}
-            userRoles={[userRole]}
-            stickyFirstRow={stickyFirstRow}
-          />
+      {submittedLocked && (
+        <div className="mb-3 px-3 py-1.5 rounded-[var(--app-radius-container)] bg-[var(--app-color-feedback-warning-soft)] text-[11px] text-[var(--app-color-feedback-warning)] flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5" /> 已提交 — 该报表不允许提交后修改
         </div>
-      </div>
+      )}
+      {blocks.map((block, index) => (
+        <div key={block.id} className="relative mb-3">
+          {repeatable && (
+            <div className="flex items-center gap-1 h-4 -mt-1">
+              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                第 {index + 1} 张表
+              </span>
+              {canEdit && (
+                <button
+                  type="button"
+                  title="删除这张表"
+                  onClick={async () => {
+                    if (!await appConfirm(`确定删除「第 ${index + 1} 张表」？空白表格可删除，已填写内容只有发布者可删。`)) return;
+                    await removeBlock(block.id);
+                  }}
+                  className="p-0.5 rounded-[var(--app-radius-element)] text-[var(--app-color-feedback-danger)]
+                             hover:bg-[var(--app-color-feedback-danger-soft)]"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="report-canvas">
+            <div className="report-sheet">
+              <FormGridRenderer
+                layout={fillLayout ?? form.layoutJson}
+                themeJson={fillTheme ?? form.themeJson}
+                formSource={form.source}
+                values={block.values}
+                editable={canEdit}
+                onChange={(fieldKey, value) => updateValue(block.id, fieldKey, value)}
+                permissionJson={form.permissionJson}
+                userRoles={[userRole]}
+                stickyFirstRow={stickyFirstRow}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
     </AdminPageShell>
   );
 }

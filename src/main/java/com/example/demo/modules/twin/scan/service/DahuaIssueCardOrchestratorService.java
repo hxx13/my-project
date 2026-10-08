@@ -659,6 +659,10 @@ public class DahuaIssueCardOrchestratorService {
 
     /**
      * 删除大华侧卡片，并同步清除本地映射。不删除人员。
+     *
+     * 大华侧未删除成功时保留本地映射并如实报错：本地先删掉、大华还留着卡，会产生
+     * 「我们这里没有这张卡、那张卡还绑在别人名下」的幽灵卡，下次发同一卡号被预检拦下。
+     *
      * @param cardNo 物理卡号
      * @return 操作结果
      */
@@ -666,47 +670,44 @@ public class DahuaIssueCardOrchestratorService {
         Map<String, Object> result = new HashMap<>();
         log.info("[dahua-delete-card] start cardNo={}", cardNo);
 
-        // 1. 查询卡片获取 Dahua ID
+        // 1. 查询卡片：拿 Dahua ID、判断是否还挂在大华侧，也看它是不是该人的主卡
         Map<String, Object> cardResp = dahuaOpenApiService.queryCardByNumber(cardNo);
         Long dahuaCardId = null;
+        boolean isMainCard = false;
+        Long personId = null;
         if (dahuaOpenApiService.isSuccess(cardResp)) {
             Map<String, Object> cardData = DahuaOpenApiService.asMap(cardResp.get("data"));
-            dahuaCardId = DahuaOpenApiService.parseLong(cardData != null ? cardData.get("id") : null);
+            dahuaCardId = DahuaOpenApiService.parseLong(cardData.get("id"));
+            isMainCard = DahuaOpenApiService.parseInt(cardData.get("isMainCard"), 0) == 1;
+            personId = DahuaOpenApiService.parseLong(cardData.get("personId"));
+        }
+        boolean cardAbsentUpstream = dahuaCardId == null && isCardNotFoundUpstream(cardResp);
+
+        // 2. 退卡（激活→空白）+ 删除（文档：删除要求空白或已注销；逐卡失败藏在 failList 里）
+        UpstreamDelete attempt = cardAbsentUpstream
+                ? UpstreamDelete.clean()
+                : tryDeleteCardUpstream(cardNo, dahuaCardId);
+
+        // 3. 主卡且此人还有卡时，大华拒绝退/删（实测 28140014）→ 临时解绑同人的其他卡再删，随后恢复
+        List<TwinCardMapping> samePersonCards = personId == null
+                ? List.of() : mappingService.listByDahuaSeq(String.valueOf(personId));
+        boolean hasSiblings = samePersonCards.stream()
+                .anyMatch(m -> m.getCardNo() != null && !m.getCardNo().equalsIgnoreCase(cardNo));
+        if (!attempt.clean && isMainCard && hasSiblings) {
+            attempt = deleteMainCardKeepingSiblings(cardNo, dahuaCardId, samePersonCards, attempt);
         }
 
-        // 2. 退卡（激活→空白），需要 cardId
-        boolean returned = false;
-        if (dahuaCardId != null) {
-            Map<String, Object> returnResp = dahuaOpenApiService.returnCardById(dahuaCardId);
-            if (dahuaOpenApiService.isSuccess(returnResp)) {
-                returned = true;
-                log.info("[dahua-delete-card] 退卡成功 cardNo={} cardId={}", cardNo, dahuaCardId);
-            } else {
-                log.warn("[dahua-delete-card] 退卡失败 cardNo={} cardId={} resp={}", cardNo, dahuaCardId, returnResp);
-            }
+        // 4. 大华侧没清干净就到此为止：保留本地映射，让卡片继续显示、可重试，不制造幽灵卡
+        if (!attempt.clean) {
+            result.put("success", false);
+            result.put("message", buildUpstreamDeleteFailureMessage(
+                    attempt.errMsg, attempt.errCode, isMainCard && hasSiblings, attempt.returnFailCode));
+            log.warn("[dahua-delete-card] 大华侧未删除 cardNo={} err={} code={} 退卡失败码={}",
+                    cardNo, attempt.errMsg, attempt.errCode, attempt.returnFailCode);
+            return result;
         }
 
-        // 3. 删除卡片（退卡后状态为空白，可删除）
-        boolean dahuaDeleted = false;
-        String dahuaErrCode = "";
-        String dahuaErrMsg = "";
-        if (returned || dahuaCardId == null) {
-            Map<String, Object> delResp = dahuaOpenApiService.deleteCardByNumber(cardNo);
-            if (dahuaOpenApiService.isSuccess(delResp)) {
-                Map<String, Object> data = DahuaOpenApiService.asMap(delResp.get("data"));
-                int successNum = DahuaOpenApiService.parseInt(data.get("successNum"), 0);
-                int failNum = DahuaOpenApiService.parseInt(data.get("failNum"), 0);
-                dahuaDeleted = successNum > 0;
-                if (!dahuaDeleted) dahuaErrCode = String.valueOf(delResp.getOrDefault("code", ""));
-            } else {
-                dahuaErrCode = String.valueOf(delResp.getOrDefault("code", ""));
-                dahuaErrMsg = String.valueOf(delResp.getOrDefault("errMsg", ""));
-            }
-        } else {
-            dahuaErrMsg = "退卡未成功，跳过删除";
-        }
-
-        // 4. 删除本地映射（无论大华是否成功）
+        // 5. 删除本地映射
         boolean localDeleted = false;
         try {
             mappingService.deleteMapping(cardNo,
@@ -717,19 +718,225 @@ public class DahuaIssueCardOrchestratorService {
             log.warn("[dahua-delete-card] 本地映射删除失败 cardNo={}: {}", cardNo, e.getMessage());
         }
 
-        // 5. 返回结果
-        if (dahuaDeleted && localDeleted) {
+        // 6. 返回结果
+        if (localDeleted) {
             result.put("success", true);
-            result.put("message", "退卡+删除成功，本地映射已清除");
-        } else if (localDeleted) {
-            result.put("success", true);
-            result.put("message", "本地映射已清除（大华:" + dahuaErrMsg + " code=" + dahuaErrCode + "，请手动处理）");
+            if (attempt.restoredSiblings > 0) {
+                result.put("message", "已删除该卡（它是此人的主卡）；期间临时解绑并恢复了该人另 "
+                        + attempt.restoredSiblings + " 张卡，本地映射已清除");
+            } else {
+                result.put("message", cardAbsentUpstream ? "大华侧已无此卡，本地映射已清除" : "退卡+删除成功，本地映射已清除");
+            }
         } else {
             result.put("success", false);
-            result.put("message", "删除失败: " + dahuaErrMsg + " (code=" + dahuaErrCode + ")");
+            result.put("message", "大华卡片已删除，但本地映射清除失败，请重试");
         }
-        log.info("[dahua-delete-card] done cardNo={} returned={} deleted={} local={}",
-                cardNo, returned, dahuaDeleted, localDeleted);
+        log.info("[dahua-delete-card] done cardNo={} absentUpstream={} clean={} local={} 临时解绑副卡={}",
+                cardNo, cardAbsentUpstream, attempt.clean, localDeleted, attempt.restoredSiblings);
         return result;
+    }
+
+    /** 单张卡「退卡+删除」的上游结果 */
+    private static final class UpstreamDelete {
+        private boolean clean;
+        private String errCode = "";
+        private String errMsg = "";
+        private String returnFailCode = "";
+        /** 本次为删主卡而临时解绑又恢复的副卡数（>0 时成功文案要讲明） */
+        private int restoredSiblings;
+
+        static UpstreamDelete clean() {
+            UpstreamDelete u = new UpstreamDelete();
+            u.clean = true;
+            return u;
+        }
+    }
+
+    /**
+     * 退卡 + 删除一张卡的上游调用。
+     * 逐卡失败不回落到 code，而是 success=true + data.failList{卡号:错误码}（见大华卡片接口文档），
+     * 只看 success 会把「这张卡没退成」当成功，接着拿仍是激活态的卡去删，必然被拒。
+     */
+    private UpstreamDelete tryDeleteCardUpstream(String cardNo, Long dahuaCardId) {
+        UpstreamDelete out = new UpstreamDelete();
+        if (dahuaCardId != null) {
+            Map<String, Object> returnResp = dahuaOpenApiService.returnCardById(dahuaCardId);
+            out.returnFailCode = firstFailCode(returnResp, cardNo);
+            if (dahuaOpenApiService.isSuccess(returnResp) && out.returnFailCode.isEmpty()) {
+                log.info("[dahua-delete-card] 退卡成功 cardNo={} cardId={}", cardNo, dahuaCardId);
+            } else {
+                log.warn("[dahua-delete-card] 退卡未成功，继续尝试删除 cardNo={} cardId={} failCode={} resp={}",
+                        cardNo, dahuaCardId, out.returnFailCode, returnResp);
+            }
+        }
+        Map<String, Object> delResp = dahuaOpenApiService.deleteCardByNumber(cardNo);
+        if (dahuaOpenApiService.isSuccess(delResp)) {
+            Map<String, Object> data = DahuaOpenApiService.asMap(delResp.get("data"));
+            out.clean = DahuaOpenApiService.parseInt(data.get("successNum"), 0) > 0;
+            if (!out.clean) {
+                out.errCode = firstFailCode(delResp, cardNo);
+                if (out.errCode.isEmpty()) {
+                    out.errCode = String.valueOf(delResp.getOrDefault("code", ""));
+                }
+                out.errMsg = extractErrMsg(delResp);
+            }
+        } else {
+            out.errCode = String.valueOf(delResp.getOrDefault("code", ""));
+            out.errMsg = extractErrMsg(delResp);
+        }
+        return out;
+    }
+
+    /**
+     * 删主卡：大华在该人还有卡时拒绝退/删主卡（2026-10-08 真机实测 28140014 card operate fail）。
+     * 实测可行的绕法：把同人的其他卡先退成空白（卡仍在平台登记，只是 personId 置 0，主卡限制随之解除），
+     * 删掉主卡后，再把这些卡激活回原人员（它们会接过主卡身份）。
+     * 任何一步失败都把已退的卡激活回去，不给现场留「卡被悄悄解绑」的半残状态。
+     */
+    private UpstreamDelete deleteMainCardKeepingSiblings(String cardNo, Long dahuaCardId,
+                                                         List<TwinCardMapping> samePersonCards,
+                                                         UpstreamDelete original) {
+        List<Map<String, Object>> detached = new ArrayList<>();
+        for (TwinCardMapping sib : samePersonCards) {
+            if (sib.getCardNo() == null || sib.getCardNo().equalsIgnoreCase(cardNo)) {
+                continue;
+            }
+            Map<String, Object> sibResp = dahuaOpenApiService.queryCardByNumber(sib.getCardNo());
+            if (!dahuaOpenApiService.isSuccess(sibResp)) {
+                continue;   // 大华侧已经没有这张卡，忽略
+            }
+            Map<String, Object> sibData = DahuaOpenApiService.asMap(sibResp.get("data"));
+            Long sibId = DahuaOpenApiService.parseLong(sibData.get("id"));
+            if (sibId == null) {
+                continue;
+            }
+            Map<String, Object> ret = dahuaOpenApiService.returnCardById(sibId);
+            String failCode = firstFailCode(ret, sib.getCardNo());
+            if (!dahuaOpenApiService.isSuccess(ret) || !failCode.isEmpty()) {
+                log.warn("[dahua-delete-card] 同人副卡退卡失败，放弃并回滚 cardNo={} failCode={}",
+                        sib.getCardNo(), failCode);
+                restoreDetachedCards(detached);
+                original.errMsg = original.errMsg + "；同人副卡 " + sib.getCardNo() + " 退卡失败(" + failCode + ")";
+                return original;
+            }
+            detached.add(sibData);
+        }
+        if (detached.isEmpty()) {
+            return original;    // 找不到可临时解绑的副卡，如实回报
+        }
+        UpstreamDelete retry = tryDeleteCardUpstream(cardNo, dahuaCardId);
+        boolean restored = restoreDetachedCards(detached);
+        if (!retry.clean) {
+            if (!restored) {
+                retry.errMsg = retry.errMsg + "；且临时解绑的副卡未能重新激活，请在大华平台重新绑定该卡";
+            }
+            return retry;
+        }
+        if (!restored) {
+            retry.clean = false;
+            retry.errCode = "";
+            retry.errMsg = "主卡已删除，但临时解绑的副卡未能重新激活，请在大华平台把副卡重新绑定到该人员";
+            return retry;
+        }
+        retry.restoredSiblings = detached.size();
+        log.info("[dahua-delete-card] 主卡删除成功，已恢复 {} 张临时解绑的副卡 cardNo={}", detached.size(), cardNo);
+        return retry;
+    }
+
+    /** 把临时退成空白的卡重新激活回原人员（沿用卡片自身的有效期/介质，不改写） */
+    private boolean restoreDetachedCards(List<Map<String, Object>> cardDatas) {
+        boolean allOk = true;
+        for (Map<String, Object> card : cardDatas) {
+            Long id = DahuaOpenApiService.parseLong(card.get("id"));
+            Long ownerPersonId = DahuaOpenApiService.parseLong(card.get("personId"));
+            if (id == null || ownerPersonId == null) {
+                allOk = false;
+                continue;
+            }
+            Map<String, Object> body = new HashMap<>();
+            body.put("id", id);
+            body.put("cardNumber", card.get("cardNumber"));
+            body.put("personId", ownerPersonId);
+            body.put("departmentId", DahuaOpenApiService.parseLong(card.get("departmentId")));
+            body.put("cardPassword", null);
+            body.put("passwordKey", null);
+            body.put("startDate", card.get("startDate"));
+            body.put("endDate", card.get("endDate"));
+            body.put("availableTimes", null);
+            body.put("category", card.getOrDefault("category", "0"));
+            Map<String, Object> resp = dahuaOpenApiService.putRaw("/evo-apigw/evo-brm/1.0.0/card/active", body);
+            if (dahuaOpenApiService.isSuccess(resp)) {
+                log.info("[dahua-delete-card] 已把卡 {} 重新激活回人员 {}", card.get("cardNumber"), ownerPersonId);
+            } else {
+                allOk = false;
+                log.error("[dahua-delete-card] 卡 {} 重新激活失败 resp={}", card.get("cardNumber"), resp);
+            }
+        }
+        return allOk;
+    }
+
+    /** 与发卡预检同口径：卡号未在大华平台登记 */
+    private boolean isCardNotFoundUpstream(Map<String, Object> resp) {
+        if (dahuaOpenApiService.isSuccess(resp)) {
+            return false;
+        }
+        String code = String.valueOf(resp.getOrDefault("code", ""));
+        String err = extractErrMsg(resp);
+        return "28140001".equals(code) || err.contains("卡号不存在") || err.contains("不存在");
+    }
+
+    /**
+     * 取「逐卡失败」的错误码。大华的退卡/删除在部分卡失败时仍是 success=true，错误码只藏在
+     * data.failList{卡号:错误码} 或 data.errorInfo[{key:卡号,value:错误码}] 里（见卡片接口文档），
+     * 不看这里就会把「这张卡没退成」当成功。
+     */
+    private String firstFailCode(Map<String, Object> resp, String cardNo) {
+        if (resp == null) {
+            return "";
+        }
+        String target = cardNo == null ? "" : cardNo.trim();
+        Map<String, Object> data = DahuaOpenApiService.asMap(resp.get("data"));
+        Map<String, Object> failList = DahuaOpenApiService.asMap(data.get("failList"));
+        if (!failList.isEmpty()) {
+            for (Map.Entry<String, Object> e : failList.entrySet()) {
+                if (e.getKey() != null && e.getKey().trim().equalsIgnoreCase(target)) {
+                    return String.valueOf(e.getValue());
+                }
+            }
+            Object first = failList.values().iterator().next();
+            return first == null ? "" : String.valueOf(first);
+        }
+        for (Map<String, Object> item : DahuaOpenApiService.asListOfMap(data.get("errorInfo"))) {
+            Object key = item.get("key");
+            if (key != null && String.valueOf(key).trim().equalsIgnoreCase(target)) {
+                Object value = item.get("value");
+                return value == null ? "" : String.valueOf(value);
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 大华的卡片操作被拒都会返回 28140014 card operate fail，2026-10-08 实测+文档确认两条成因：
+     * ① 该卡是这个人的**主卡**（isMainCard=1）而此人还有副卡 → 退卡和删除都被拒（先解绑副卡后主卡就能删）；
+     * ② 该人员处于**冻结态** → 该人的一切卡片操作被拒（解冻后同一张卡立刻可删）。
+     * 文档说明删除要求卡片为「空白或已注销」、退卡要求「已激活」，主卡在有副卡时退不掉，
+     * 于是删除必然撞上 28140014。两种情况操作员要做的事不同，所以分开给提示。
+     */
+    private String buildUpstreamDeleteFailureMessage(String errMsg, String errCode,
+                                                     boolean blockedByMainCardRule, String returnFailCode) {
+        String code = errCode == null ? "" : errCode;
+        String err = errMsg == null ? "" : errMsg;
+        String ret = returnFailCode == null || returnFailCode.isEmpty()
+                ? "" : "（退卡失败码 " + returnFailCode + "）";
+        boolean cardOperateFail = "28140014".equals(code) || err.contains("28140014") || err.contains("card operate fail");
+        if (cardOperateFail && blockedByMainCardRule) {
+            return "该卡是此人的主卡，大华在有副卡时不允许删除主卡" + ret + "（" + code + " " + err
+                    + "）：请先删掉该人的其他卡，或先在大华把另一张设为主卡；此人若处于冻结态还需先解冻";
+        }
+        if (cardOperateFail) {
+            return "该人员处于冻结状态，大华拒绝卡片操作" + ret + "（" + code + " " + err + "）：请先解冻该卡片再删除";
+        }
+        return "大华侧删除未成功，本地映射已保留" + ret + "（" + err + " code=" + code + "），请在大华平台处理后重试";
     }
 }

@@ -2,6 +2,8 @@
   "component": true,
   "usingComponents": {
     "van-tabbar": "@vant/weapp/tabbar/index",
-    "van-tabbar-item": "@vant/weapp/tabbar-item/index"
+    "van-tabbar-item": "@vant/weapp/tabbar-item/index",
+    "ai-orb": "/components/ai-orb/index",
+    "ai-chat-drawer": "/components/ai-chat-drawer/index"
   }
 }

@@ -20,6 +20,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -112,6 +113,112 @@ public class DashScopeChatClient {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException("大模型调用失败(" + model + "): " + e.getMessage());
+        }
+    }
+
+    /**
+     * 带工具调用的对话（OpenAI 兼容 function calling）。**非流式** —— 一轮拿全 tool_calls，
+     * 由调用方决定执行与否，再回灌结果开下一轮。
+     *
+     * 与 {@link #chatWithFallback} 的区别在消息结构：这里用 {@code Map<String,Object>}，
+     * 因为 assistant 轮要装 {@code tool_calls} 数组、tool 轮要装 {@code tool_call_id}，
+     * 都不是纯字符串能表达的。
+     */
+    public ToolChatResult chatWithTools(List<Map<String, Object>> messages, List<Map<String, Object>> tools) {
+        llmConfigService.assertReady();
+        List<String> models = llmConfigService.getModelCandidates();
+        IllegalStateException lastError = null;
+        for (String model : models) {
+            try {
+                return chatWithToolsWithModel(model, messages, tools);
+            } catch (IllegalStateException e) {
+                lastError = e;
+                if (!isRetriableModelError(e)) {
+                    throw e;
+                }
+                log.warn("[llm] 工具调用模型 {} 失败，等待后尝试下一个: {}", model, e.getMessage());
+                sleepMs(500L * (models.indexOf(model) + 1));
+            }
+        }
+        if (lastError != null) {
+            throw new IllegalStateException("所有候选模型均失败（工具调用）: " + lastError.getMessage());
+        }
+        throw new IllegalStateException("未配置可用模型");
+    }
+
+    public ToolChatResult chatWithToolsWithModel(
+            String model, List<Map<String, Object>> messages, List<Map<String, Object>> tools) {
+        llmConfigService.assertReady();
+        String url = llmConfigService.getBaseUrl() + "/chat/completions";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("messages", messages);
+        if (tools != null && !tools.isEmpty()) {
+            body.put("tools", tools);
+            body.put("tool_choice", "auto");
+        }
+        body.put("max_tokens", toolMaxTokens());
+        body.put("temperature", llmConfigService.getTemperature());
+
+        log.info("[llm] → TOOLS REQ model={} tools={} msgs={}",
+                model, tools == null ? 0 : tools.size(), messages.size());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(llmConfigService.getApiKey());
+        headers.set("User-Agent", "TwinSystem/1.0");
+        headers.set("Accept", "application/json");
+
+        try {
+            ResponseEntity<String> resp = restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
+            return parseToolResponse(resp.getBody(), model);
+        } catch (HttpStatusCodeException e) {
+            throw new IllegalStateException(
+                    "大模型工具调用失败(" + model + "): " + e.getStatusCode() + " " + shorten(e.getResponseBodyAsString()));
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("大模型工具调用失败(" + model + "): " + e.getMessage());
+        }
+    }
+
+    /**
+     * 工具调用路径的输出预算下限。
+     *
+     * <p>{@code llm.max_tokens} 默认 1024，是为短播报类场景设的。带思考的模型（如 deepseek-flash）
+     * 会用同一份预算做推理，<b>1024 实测会被思考整轮吃满、content 返回空串</b>，用户看到的是
+     * 「助手暂时联系不上」——看着像网络问题，其实是预算不够。
+     * 工具路径比播报需要更长的结构化输出，这里兜一个下限；不动全局配置，免得影响播报那些场景。
+     */
+    private int toolMaxTokens() {
+        return Math.max(llmConfigService.getMaxTokens(), 2048);
+    }
+
+    private ToolChatResult parseToolResponse(String raw, String model) {
+        try {
+            JsonNode root = objectMapper.readTree(raw == null ? "{}" : raw);
+            JsonNode err = root.path("error");
+            if (!err.isMissingNode() && err.has("message")) {
+                throw new IllegalStateException(err.path("message").asText("未知错误"));
+            }
+            JsonNode message = root.path("choices").path(0).path("message");
+            String content = message.path("content").asText("");
+            List<ToolCall> calls = new ArrayList<>();
+            for (JsonNode tc : message.path("tool_calls")) {
+                calls.add(new ToolCall(
+                        tc.path("id").asText(""),
+                        tc.path("function").path("name").asText(""),
+                        tc.path("function").path("arguments").asText("{}")));
+            }
+            int prompt = root.path("usage").path("prompt_tokens").asInt(0);
+            int completion = root.path("usage").path("completion_tokens").asInt(0);
+            log.info("[llm] ← TOOLS RESP model={} tokens(in={} out={}) toolCalls={} content={}",
+                    model, prompt, completion, calls.size(), truncate(content, 120));
+            return new ToolChatResult(content, calls, prompt, completion, model);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("解析大模型工具响应失败: " + e.getMessage());
         }
     }
 
@@ -358,4 +465,11 @@ public class DashScopeChatClient {
     }
 
     public record ChatResult(String content, int promptTokens, int completionTokens, String model) {}
+
+    /** 模型产出的一次工具调用请求。argumentsJson 是**原样**的 JSON 字符串，审计要的就是原文。 */
+    public record ToolCall(String id, String name, String argumentsJson) {}
+
+    /** 工具调用轮的响应：可能只有文本，也可能只有 toolCalls，也可能两者都有。 */
+    public record ToolChatResult(String content, List<ToolCall> toolCalls,
+                                 int promptTokens, int completionTokens, String model) {}
 }

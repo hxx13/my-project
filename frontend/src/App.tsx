@@ -7,7 +7,8 @@ import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 
 import toast, { Toaster } from "react-hot-toast";
 import { Z_INDEX } from "@/constants/zIndex";
 import { APP_BUILD_ID, getSharedSocket } from "@/config/socketUrl";
-import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT, SOCKET_CAGE_STATUS_ALERT_CHANGED } from "@/config/socketEvents";
+import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
+import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT, SOCKET_CAGE_STATUS_ALERT_CHANGED, SOCKET_SUPPLIES_CLAIM_CHANGED } from "@/config/socketEvents";
 import { useClientVersionPoll, type ReloadTrigger } from "@/hooks/useClientVersionPoll";
 import { GracefulReloadBanner } from "@/components/GracefulReloadBanner";
 
@@ -310,6 +311,14 @@ function GlobalSocketListener() {
             queryClient.invalidateQueries({ queryKey: ["room-floor-plan-grids"] });
         });
 
+        // 📡 监听：领用单（商城）状态变更 —— 手工在页面提交时页面自己会派发刷新事件，
+        // 而 **AI 从服务端开的单没人派发**，侧栏「待处理」要等点进再退出才更新（真机反馈）。
+        socket.on(SOCKET_SUPPLIES_CLAIM_CHANGED, (payload: { orderId?: string; status?: string }) => {
+            console.log("🔄 领用单已变化:", payload?.orderId, payload?.status);
+            window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
+            queryClient.invalidateQueries({ queryKey: ["supplies"] });
+        });
+
         // 📡 监听：定时管理触发排行榜数据刷新
         socket.on("DASHBOARD_RANKING_REFRESH", (payload: { jobKey?: string; at?: string }) => {
             console.log("🔄 排行榜刷新信号:", payload?.jobKey);
@@ -362,6 +371,7 @@ function GlobalSocketListener() {
             socket.off(SOCKET_SWIPE_FAILURE_ALERT_DISMISS);
             socket.off(SOCKET_CAGE_NOTICE_ALERT);
             socket.off(SOCKET_CAGE_STATUS_ALERT_CHANGED);
+            socket.off(SOCKET_SUPPLIES_CLAIM_CHANGED);
             socket.off("DASHBOARD_RANKING_REFRESH");
             socket.off("DASHBOARD_CODEX_REFRESH", onCodexRefresh);
             delete (window as any).__swipeAlertSocket;

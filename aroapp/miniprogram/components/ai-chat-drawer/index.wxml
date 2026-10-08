@@ -1,0 +1,293 @@
+<van-popup
+  show="{{ visible }}"
+  position="bottom"
+  round
+  custom-class="ai-drawer-popup"
+  safe-area-inset-bottom="{{ true }}"
+  close-on-click-overlay="{{ true }}"
+  z-index="{{ 200000 }}"
+  bind:close="onPopupClose"
+>
+  <view class="ai-drawer">
+    <view class="ai-drawer__head">
+      <view class="ai-drawer__identity">
+        <ai-orb class="ai-orb-live" size="72" state="{{ orbState }}" auto="{{ true }}" />
+        <view class="ai-drawer__identity-text">
+          <text class="ai-drawer__title">智能助手</text>
+          <text class="ai-drawer__status">{{ statusText }}</text>
+        </view>
+      </view>
+      <view class="ai-drawer__head-actions">
+        <view
+          class="ai-drawer__icon-btn"
+          hover-class="ai-drawer__icon-btn--hover"
+          bindtap="onNewChat"
+          aria-label="新建对话"
+        >
+          <van-icon name="edit" size="19px" color="#475569" />
+        </view>
+        <view
+          class="ai-drawer__icon-btn {{ historyOpen ? 'ai-drawer__icon-btn--on' : '' }}"
+          hover-class="ai-drawer__icon-btn--hover"
+          bindtap="onOpenHistory"
+          aria-label="历史对话"
+        >
+          <van-icon name="clock-o" size="19px" color="{{ historyOpen ? '#2563eb' : '#475569' }}" />
+        </view>
+        <view class="ai-drawer__close" hover-class="ai-drawer__close--hover" bindtap="onClose">
+          <van-icon name="cross" size="18px" color="#475569" />
+        </view>
+      </view>
+    </view>
+
+    <!-- 历史对话与当前对话共用同一块位置：开列表就把对话收起来，高度不变 -->
+    <view wx:if="{{ historyOpen }}" class="ai-drawer__sessions">
+      <view class="ai-drawer__sessions-head">
+        <text class="ai-drawer__sessions-title">历史对话</text>
+        <text class="ai-drawer__ask-action" bindtap="onOpenHistory">返回</text>
+      </view>
+      <scroll-view class="ai-drawer__sessions-scroll" scroll-y>
+        <view wx:if="{{ historyLoading }}" class="ai-drawer__sessions-empty">读取中…</view>
+        <view wx:elif="{{ historyList.length === 0 }}" class="ai-drawer__sessions-empty">还没有别的对话</view>
+        <!-- wx:for 不能和 wx:else 挂同一个节点：它会打断 if/elif/else 链，编译直接报错 -->
+        <block wx:else>
+          <view
+            wx:for="{{ historyList }}"
+            wx:key="id"
+            class="ai-drawer__session-item {{ item.id === sessionId ? 'ai-drawer__session-item--on' : '' }}"
+            hover-class="ai-drawer__session-item--hover"
+            data-id="{{ item.id }}"
+            bindtap="onPickSession"
+          >
+            <text class="ai-drawer__session-title">{{ item.title || '未命名对话' }}</text>
+          </view>
+        </block>
+      </scroll-view>
+    </view>
+
+    <scroll-view
+      wx:else
+      class="ai-drawer__list"
+      scroll-y
+      scroll-into-view="{{ scrollTarget }}"
+      scroll-with-animation="{{ true }}"
+    >
+      <block wx:for="{{ messages }}" wx:key="key">
+        <!--
+          助手回合跑完却没有正文时不画气泡：这一轮干的活是「发起待办/等确认」，
+          输出的是工具调用不是文字，画出来就是个只有内边距的空气泡。
+          仍在等待中的（pending/typing）照画 —— 那时它是「正在思考…」。
+        -->
+        <view
+          wx:if="{{ !(item.role === 'assistant' && !item.pending && !item.typing && !item.text) }}"
+          id="m-{{ item.key }}"
+          class="ai-drawer__row ai-drawer__row--{{ item.role }}"
+        >
+          <ai-orb wx:if="{{ item.role === 'assistant' }}" size="40" state="{{ item.typing ? 'thinking' : 'idle' }}" />
+          <view class="ai-drawer__col">
+            <view class="ai-drawer__bubble ai-drawer__bubble--{{ item.role === 'assistant' ? 'bot' : 'me' }}">
+              <image
+                wx:for="{{ item.images }}"
+                wx:for-item="pic"
+                wx:key="*this"
+                class="ai-drawer__bubble-pic"
+                src="{{ pic }}"
+                mode="aspectFill"
+              />
+              <!-- 附件只列名字：本体是几百 KB 的 base64，进 messages 会被 setData 拒绝 -->
+              <view
+                wx:for="{{ item.files }}"
+                wx:for-item="doc"
+                wx:key="*this"
+                class="ai-drawer__bubble-file"
+              >
+                <van-icon name="description" size="13px" color="inherit" />
+                <text class="ai-drawer__bubble-file-name">{{ doc }}</text>
+              </view>
+              <text wx:if="{{ item.pending && !item.text }}" class="ai-drawer__pending">正在思考…</text>
+              <!-- 打完字才转成 html（流式中的半截 markdown 结构是错的），转出来交给 rich-text -->
+              <rich-text wx:elif="{{ item.html }}" class="ai-drawer__text ai-drawer__md" nodes="{{ item.html }}" />
+              <text wx:else class="ai-drawer__text">{{ item.text }}</text>
+            </view>
+            <!-- 正文里的模板库下载链接：富文本点不了，抽出来单独做按钮走带 token 的请求 -->
+            <view
+              wx:for="{{ item.links }}"
+              wx:for-item="lnk"
+              wx:key="id"
+              class="ai-drawer__dl"
+              hover-class="ai-drawer__dl--hover"
+              data-id="{{ lnk.id }}"
+              data-name="{{ lnk.name }}"
+              bindtap="onDownloadTemplate"
+            >
+              <van-icon name="down" size="14px" color="#2563eb" />
+              <text class="ai-drawer__dl-text">下载到本机</text>
+            </view>
+            <text wx:if="{{ item.meta }}" class="ai-drawer__meta">{{ item.meta }}</text>
+          </view>
+        </view>
+      </block>
+
+      <view wx:if="{{ messages.length === 0 }}" class="ai-drawer__empty">有什么可以帮你的？直接问我就行。</view>
+
+      <view class="ai-drawer__list-pad" id="ai-drawer-end" />
+    </scroll-view>
+
+    <!-- 待答问题。一问：点一下即办。多问：进向导，点选只高亮、可来回改，最后统一提交 -->
+    <view wx:if="{{ !historyOpen && currentOptions.length > 0 }}" class="ai-drawer__ask">
+      <view wx:if="{{ wizardMode }}" class="ai-drawer__wizard-head">
+        <text class="ai-drawer__ask-head">第 {{ current + 1 }}/{{ queueTotal }} 问</text>
+        <view class="ai-drawer__wizard-nav">
+          <view
+            class="ai-drawer__wizard-btn {{ current > 0 ? '' : 'ai-drawer__wizard-btn--off' }}"
+            hover-class="ai-drawer__wizard-btn--hover"
+            bindtap="onPrev"
+          >上一题</view>
+          <view
+            class="ai-drawer__wizard-btn {{ current < queueTotal - 1 ? '' : 'ai-drawer__wizard-btn--off' }}"
+            hover-class="ai-drawer__wizard-btn--hover"
+            bindtap="onNext"
+          >下一题</view>
+        </view>
+      </view>
+
+      <!-- 多问时才写问句：一道题时正文气泡就在上面，再写一遍是重复 -->
+      <text wx:if="{{ wizardMode && currentQuestion }}" class="ai-drawer__ask-question">{{ currentQuestion }}</text>
+
+      <view class="ai-drawer__choices">
+        <view
+          wx:for="{{ currentOptions }}"
+          wx:key="value"
+          class="ai-drawer__choice {{ item.value === currentAnswer ? 'ai-drawer__choice--on' : '' }}"
+          hover-class="ai-drawer__choice--hover"
+          data-value="{{ item.value }}"
+          bindtap="onChoiceTap"
+        >{{ item.label }}</view>
+      </view>
+
+      <!-- 写操作确认只有执行/不执行，不配自定义回答，也不用取消（那个「取消」就是选项之一） -->
+      <block wx:if="{{ !isConfirm }}">
+        <!-- 自定义回答就是选项下面这个常驻输入框（不是按钮展开）——它也是一项，回车即选中 -->
+        <view class="ai-drawer__custom">
+          <input
+            class="ai-drawer__custom-input"
+            value="{{ customDraft }}"
+            placeholder="自定义回答：直接说你的答案，输入后按回车"
+            placeholder-class="ai-drawer__input-ph"
+            bindinput="onCustomInput"
+            bindconfirm="onCustomSubmit"
+            confirm-type="done"
+          />
+        </view>
+
+        <!-- 取消在左、提交在右；提交带已答计数。一问没有提交键 —— 点一下即办 -->
+        <view class="ai-drawer__controls">
+          <text class="ai-drawer__ask-action" bindtap="onCancelQueue">取消本次对话</text>
+          <view
+            wx:if="{{ wizardMode }}"
+            class="ai-drawer__submit {{ allAnswered ? '' : 'ai-drawer__submit--off' }}"
+            hover-class="{{ allAnswered ? 'ai-drawer__submit--hover' : 'none' }}"
+            bindtap="onSubmitAll"
+          >提交（{{ answeredCount }}/{{ queueTotal }}）</view>
+        </view>
+      </block>
+    </view>
+
+    <!-- 待发图片（本地预览，发出时随本轮请求带上） -->
+    <!-- 待发附件：只列名字，不预览内容（表格/文本没有缩略图可言） -->
+    <view wx:if="{{ !historyOpen && files.length > 0 }}" class="ai-drawer__files">
+      <view wx:for="{{ files }}" wx:key="id" class="ai-drawer__file">
+        <van-icon name="description" size="14px" color="#64748b" />
+        <text class="ai-drawer__file-name">{{ item.name }}</text>
+        <view class="ai-drawer__file-remove" data-id="{{ item.id }}" bindtap="onRemoveFile">
+          <van-icon name="cross" size="10px" color="#ffffff" />
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{ !historyOpen && images.length > 0 }}" class="ai-drawer__pics">
+      <view wx:for="{{ images }}" wx:key="url" class="ai-drawer__pic">
+        <image class="ai-drawer__pic-img" src="{{ item.url }}" mode="aspectFill" />
+        <view class="ai-drawer__pic-remove" data-url="{{ item.url }}" bindtap="onRemoveImage">
+          <van-icon name="cross" size="10px" color="#ffffff" />
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{ !historyOpen }}" class="ai-drawer__composer">
+      <view class="ai-drawer__attach" hover-class="ai-drawer__attach--hover" bindtap="onPickImage">
+        <van-icon name="photograph" size="20px" color="#64748b" />
+      </view>
+      <view class="ai-drawer__attach" hover-class="ai-drawer__attach--hover" bindtap="onPickFile">
+        <van-icon name="description" size="20px" color="#64748b" />
+      </view>
+      <textarea
+        class="ai-drawer__input"
+        value="{{ draft }}"
+        placeholder="{{ sending ? '正在回复…' : '问我点什么…' }}"
+        placeholder-class="ai-drawer__input-ph"
+        auto-height
+        maxlength="500"
+        cursor-spacing="32"
+        adjust-position="{{ true }}"
+        bindinput="onDraftInput"
+        bindconfirm="onSend"
+      />
+      <!--
+        在飞的时候按钮默认是「停止」；但用户一旦开始打字就变回「发送」——
+        说明他有话要插，这时该让他发（发出去会先中止当前这条）。
+        清空输入框就又变回停止。
+      -->
+      <view
+        wx:if="{{ sending && !canSend }}"
+        class="ai-drawer__stop"
+        hover-class="ai-drawer__stop--hover"
+        bindtap="onStop"
+      >
+        <view class="ai-drawer__stop-square" />
+      </view>
+      <view
+        wx:else
+        class="ai-drawer__send {{ canSend ? '' : 'ai-drawer__send--off' }}"
+        hover-class="{{ canSend ? 'ai-drawer__send--hover' : 'none' }}"
+        bindtap="onSend"
+      >发送</view>
+    </view>
+  </view>
+</van-popup>
+
+<!-- 模板库选择：点附件后先问来源，选「模板库」才开这个。挂在外层 popup 之外，
+     z-index 更高，免得被抽屉自己的层叠上下文压住 -->
+<van-popup
+  show="{{ tplOpen }}"
+  position="bottom"
+  round
+  custom-class="ai-tpl-popup"
+  z-index="{{ 210000 }}"
+  bind:close="onCloseTemplatePicker"
+>
+  <view class="ai-tpl">
+    <view class="ai-tpl__head">
+      <text class="ai-tpl__title">从模板库选择</text>
+      <text class="ai-tpl__close" bindtap="onCloseTemplatePicker">关闭</text>
+    </view>
+    <scroll-view class="ai-tpl__list" scroll-y>
+      <view wx:if="{{ tplLoading }}" class="ai-tpl__empty">读取中…</view>
+      <view wx:elif="{{ tplList.length === 0 }}" class="ai-tpl__empty">没有可用的表格 / 文本模板</view>
+      <block wx:else>
+        <view
+          wx:for="{{ tplList }}"
+          wx:key="id"
+          class="ai-tpl__item"
+          hover-class="ai-tpl__item--hover"
+          data-id="{{ item.id }}"
+          data-name="{{ item.name }}"
+          bindtap="onPickTemplate"
+        >
+          <van-icon name="description" size="16px" color="#64748b" />
+          <text class="ai-tpl__name">{{ item.name }}</text>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</van-popup>

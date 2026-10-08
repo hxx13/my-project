@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -75,13 +76,18 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         return runAllScripts(ctx);
     }
 
-    /** 本轮启动中「判为幂等而跳过」的脚本数。逐条只记 debug，在结尾汇总一行，避免淹没真失败。 */
+    /** 本轮启动中「判为幂等而跳过」的脚本数。逐条 debug，结尾汇总一行 WARN（含文件名清单）。 */
     private int benignSkips;
+
+    /** 本轮被判为幂等而跳过的脚本 classpath；结尾那行 WARN 会全量列出，见 runAllScripts。 */
+    private final List<String> benignNames = new ArrayList<>();
 
     /** 执行全部 DDL 脚本，返回统计结果。传入 null 时跳过 progress tracing。 */
     private StartupResult runAllScripts(StartupContext ctx) {
         int success = 0, total = 0;
         benignSkips = 0;
+        benignNames.clear();
+        long batchT0 = System.nanoTime();
 
         // 先统一 collation：外部建表默认 utf8mb4_0900_ai_ci，join 项目内 unicode_ci 表会报
         // Illegal mix of collations；必须先于任何含 JOIN/UPDATE 的 bootstrap 脚本执行。
@@ -461,6 +467,18 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         String skipNote = benignSkips > 0
                 ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"
                 : "";
+
+        // 一行 WARN 汇总（每个批次各一行：早期静默批 + 跟踪批）。
+        // 为什么用 WARN 而不是 INFO：生产 root=WARN 且 logging.level.com.example.demo=WARN，
+        // INFO/DEBUG 会在源头被丢弃，等于没有。而"被判成幂等、其实什么都没做"这类问题
+        // （2026-09-29 的 idx_aro_open_id 就是这样从未建成）原先只记 debug，完全不可见。
+        // 这里把被跳过的脚本名全量列出：对着这份名单 diff 一遍就能发现该建没建的东西。
+        log.warn("[ddl] {}批 用时 {}s，成功 {}/{}，真失败 {} 个，幂等跳过 {} 个{}",
+                ctx == null ? "早期静默" : "跟踪",
+                String.format("%.1f", (System.nanoTime() - batchT0) / 1_000_000_000.0),
+                success, total, total - success, benignSkips,
+                benignNames.isEmpty() ? "" : "：" + joinedBenignNames());
+
         if (ctx == null) {
             return StartupResult.success(success + "/" + total + " (early pass)" + skipNote);
         }
@@ -558,6 +576,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             String msg = truncate(ex.getMessage() == null ? ex.toString() : ex.getMessage(), 200);
             if (benign) {
                 benignSkips++;
+                benignNames.add(classpath);
                 log.debug("[ddl] 跳过（判为幂等） {}: {}", classpath, msg);
             } else {
                 log.warn("[ddl] 执行失败 {}: {}", classpath, msg);
@@ -579,6 +598,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             String msg = truncate(ex.getMessage() == null ? ex.toString() : ex.getMessage(), 200);
             if (isBenignInChain(ex)) {
                 benignSkips++;
+                benignNames.add(classpath);
                 log.debug("[ddl] 跳过（判为幂等） {}: {}", classpath, msg);
                 return true; // 幂等：列/表/索引已存在
             }
@@ -586,6 +606,18 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
             ctx.warn(scriptLabel(classpath) + ": " + msg);
             return false;
         }
+    }
+
+    /** 把本轮被幂等跳过的脚本名拼成一行（不截断：这份名单就是排查"该建没建"的原始数据）。 */
+    private String joinedBenignNames() {
+        StringBuilder sb = new StringBuilder();
+        for (String cp : benignNames) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(scriptLabel(cp));
+        }
+        return sb.toString();
     }
 
     private static String scriptLabel(String classpath) {

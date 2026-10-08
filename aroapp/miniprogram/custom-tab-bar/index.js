@@ -13,6 +13,8 @@ Component({
   data: {
     active: 0,
     tabList: buildTabList(),
+    /** 球球抽屉开合。球球是 tabBar 正中那一项，只开抽屉、不切页 */
+    aiChatVisible: false,
   },
 
   lifetimes: {
@@ -107,6 +109,11 @@ Component({
       var tabList = this.data.tabList;
       if (Number.isNaN(index) || index < 0 || index >= tabList.length) return;
       var tab = tabList[index];
+      // 球球项：只开对话抽屉，不切页
+      if (tab.isAi) {
+        this.setData({ aiChatVisible: true });
+        return;
+      }
       if (tab.isPlaceholder) {
         wx.showToast({ title: '即将上线', icon: 'none' });
         return;
@@ -135,6 +142,10 @@ Component({
       }
       wx.switchTab({ url: tab.path });
       this.setData({ active: index });
+    },
+
+    onAiClose() {
+      this.setData({ aiChatVisible: false });
     },
   },
 });

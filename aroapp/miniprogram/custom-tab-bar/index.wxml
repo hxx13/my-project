@@ -16,17 +16,20 @@
     dot="{{ item.tabDot }}"
     info="{{ item.tabInfo }}"
   >
+    <!-- 四个节点各用独立 wx:if，不要串成 elif 链：中间夹的第二个 ai-orb 是新的 if，
+         会把后面的 image 全接到自己名下，普通 tab 的 icon-active 就永远不渲染（一选中图标消失）。 -->
+    <ai-orb wx:if="{{ item.isAi }}" slot="icon" size="56" auto="{{ true }}" class="ai-orb-live" />
+    <ai-orb wx:if="{{ item.isAi }}" slot="icon-active" size="56" auto="{{ true }}" class="ai-orb-live" />
     <image
-      wx:if="{{ item.iconSrc }}"
+      wx:if="{{ !item.isAi && item.iconSrc }}"
       slot="icon"
       class="aro-tabbar-icon-img"
       src="{{ item.iconSrc }}"
       mode="aspectFit"
       show-menu-by-longpress="{{ false }}"
     />
-    <!-- vant 选中态读 slot="icon-active"，只给 slot="icon" 会在切到该页时图标消失 -->
     <image
-      wx:if="{{ item.iconSrc }}"
+      wx:if="{{ !item.isAi && item.iconSrc }}"
       slot="icon-active"
       class="aro-tabbar-icon-img"
       src="{{ item.iconSrc }}"
@@ -36,3 +39,6 @@
     {{ item.text }}
   </van-tabbar-item>
 </van-tabbar>
+
+<!-- 抽屉挂在 tabBar 组件内：球球在哪一页都能点开，不用跨页传信号 -->
+<ai-chat-drawer class="ai-chat-drawer" visible="{{ aiChatVisible }}" bind:close="onAiClose" />

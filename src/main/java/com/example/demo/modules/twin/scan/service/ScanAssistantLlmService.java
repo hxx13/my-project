@@ -1,6 +1,10 @@
 package com.example.demo.modules.twin.scan.service;
 
 import com.example.demo.common.exception.SseClientDisconnectedException;
+import com.example.demo.modules.ai.entity.AiSession;
+import com.example.demo.modules.ai.service.AiOrchestrator;
+import com.example.demo.modules.ai.service.AiSessionService;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.llm.entity.LlmConversationMessage;
 import com.example.demo.modules.llm.entity.LlmConversationSession;
 import com.example.demo.modules.llm.service.DashScopeChatClient;
@@ -28,6 +32,8 @@ public class ScanAssistantLlmService {
     private static final String SESSION_TYPE = "scan_live"; // 每人一个实时对话会话，与 per_user（预生成）隔离
     private static final int COMPRESS_THRESHOLD_TOKENS = 4000;
     private static final int RECENT_MESSAGE_LIMIT = 10;
+    /** 球球载体在 ai_session.source 里的标识：同一用户复用同一条持续对话。 */
+    private static final String ASK_SESSION_SOURCE = "scan";
 
     private final LlmConfigService llmConfigService;
     private final DashScopeChatClient chatClient;
@@ -37,6 +43,8 @@ public class ScanAssistantLlmService {
     private final ObjectMapper objectMapper;
     private final java.util.concurrent.Executor heavyCalcExecutor;
     private final JdbcTemplate jdbcTemplate;
+    private final AiOrchestrator aiOrchestrator;
+    private final AiSessionService aiSessionService;
 
     public ScanAssistantLlmService(
             LlmConfigService llmConfigService,
@@ -46,7 +54,9 @@ public class ScanAssistantLlmService {
             PreGeneratedConversationService preGenService,
             ObjectMapper objectMapper,
             @org.springframework.beans.factory.annotation.Qualifier("heavyCalcExecutor") java.util.concurrent.Executor heavyCalcExecutor,
-            JdbcTemplate jdbcTemplate) {
+            JdbcTemplate jdbcTemplate,
+            AiOrchestrator aiOrchestrator,
+            AiSessionService aiSessionService) {
         this.llmConfigService = llmConfigService;
         this.chatClient = chatClient;
         this.conversationService = conversationService;
@@ -55,6 +65,8 @@ public class ScanAssistantLlmService {
         this.objectMapper = objectMapper;
         this.heavyCalcExecutor = heavyCalcExecutor;
         this.jdbcTemplate = jdbcTemplate;
+        this.aiOrchestrator = aiOrchestrator;
+        this.aiSessionService = aiSessionService;
     }
 
     /** 只读 per_user 存档对话；不调 LLM 批量预生成，无存档则 hasWelcome:false */
@@ -300,14 +312,49 @@ public class ScanAssistantLlmService {
         streamAskReply(messages, emitter);
     }
 
-    /** 智能载体「提问」：环境提示词（system）+ 用户问题（user）。后续接正式管理界面时改为可配置提示词与数据包 */
-    public void askQuestion(String question, SseEmitter emitter) {
+    /**
+     * 智能载体「提问」：**交给 AI 对话操作网关**处理。
+     *
+     * 这里原先是一套自带环境提示词的独立问答（占位）。现在球球是平台统一的 AI 操作入口，
+     * 它的提问必须走网关 —— 才受工具白名单、能力判定与审计约束；约束（L0/L1/L2）也由网关注入，
+     * 不再由本类自己拼环境提示词。本方法只负责把事件翻成面板认的 SSE 协议。
+     */
+    public void askQuestion(User user, String question, SseEmitter emitter) {
+        askQuestion(user, question, null, false, null, emitter);
+    }
+
+    /**
+     * @param sessionId  继续某条历史会话（归属校验在服务端，跨用户一律拒）；给了它就不再看 newSession
+     * @param newSession 开一条新会话；两者都不给才复用该来源最近一条（球球的默认行为）
+     * @param images     本轮附带的图片（data URL / 裸 base64），拼进本轮用户消息
+     */
+    public void askQuestion(User user, String question, Long sessionId, boolean newSession,
+                            java.util.List<String> images, SseEmitter emitter) {
+        askQuestion(user, question, sessionId, newSession, images, null, emitter);
+    }
+
+    /**
+     * @param spreadsheets 本轮附带的表格（xlsx/xls）。**与图片不同**：服务端解析后落库，
+     *                     消息里只拼预览，所以后续追问仍看得见这张表。
+     */
+    public void askQuestion(User user, String question, Long sessionId, boolean newSession,
+                            java.util.List<String> images,
+                            java.util.List<AiOrchestrator.SpreadsheetPart> spreadsheets, SseEmitter emitter) {
+        askQuestion(user, question, sessionId, newSession, images, spreadsheets, null, emitter);
+    }
+
+    /**
+     * @param contextPage 用户提问时所在的页面路径，**只喂给 L2 工具路由**（「这个页面上该带哪些包」）。
+     *                    权限一概不看它 —— 它是前端报的，谁都能伪造。
+     */
+    public void askQuestion(User user, String question, Long sessionId, boolean newSession,
+                            java.util.List<String> images,
+                            java.util.List<AiOrchestrator.SpreadsheetPart> spreadsheets,
+                            String contextPage, SseEmitter emitter) {
         String q = question == null ? "" : question.trim();
-        if (!canUseLlm()) {
-            sendFallbackAndComplete(emitter, ASK_UNAVAILABLE_FALLBACK, "rule");
-            return;
-        }
-        if (!StringUtils.hasText(q)) {
+        // 只有图、没有字也要放行 —— 「这张图里是谁」这种问法有时就是一个字都不打
+        boolean hasImages = images != null && !images.isEmpty();
+        if (!StringUtils.hasText(q) && !hasImages) {
             sendFallbackAndComplete(emitter, "你好，请问有什么需要帮助的吗？", "rule");
             return;
         }
@@ -315,10 +362,38 @@ public class ScanAssistantLlmService {
         try { sendEvent(emitter, "started", Map.of("kind", "ask")); }
         catch (SseClientDisconnectedException e) { return; }
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", ASK_ENV_PROMPT));
-        messages.add(Map.of("role", "user", "content", q));
-        streamAskReply(messages, emitter);
+        ScanAssistantAskSink sink = new ScanAssistantAskSink(emitter, ASK_UNAVAILABLE_FALLBACK);
+        try {
+            AiSession session;
+            if (sessionId != null) {
+                session = aiSessionService.requireOwned(sessionId, user.getId());
+            } else if (newSession) {
+                session = aiSessionService.create(user.getId(), ASK_SESSION_SOURCE, contextPage);
+            } else {
+                session = aiSessionService.findOrCreateBySource(user.getId(), ASK_SESSION_SOURCE);
+            }
+            // 会话 id 得回给面板：挂起确认要拿着它去续跑（挂起态存服务端，面板只需要这一个坐标）
+            sink.setSessionId(session.getId());
+            aiOrchestrator.run(user, session.getId(), q, contextPage, sink, images, spreadsheets);
+            emitter.complete();
+        } catch (SseClientDisconnectedException e) {
+            log.debug("[scan-assistant] ask SSE disconnected: {}", e.getMessage());
+        } catch (Exception e) {
+            if (SseClientDisconnectedException.isClientDisconnect(e)) {
+                return;
+            }
+            log.warn("[scan-assistant] ask via gateway failed: {}", e.getMessage());
+            if (!StringUtils.hasText(sink.bufferedText())) {
+                // 把**上游给的原因**带出去。全站统一显示「联系不上」时，没人分得清是网络、限额、
+                // 还是模型不吃这次请求 —— 真机排查时只能靠翻后端日志，等于把用户挡在门外。
+                sink.error("ASK_FAILED", "助手没能完成这次请求：" + reasonForUser(e.getMessage()));
+                emitter.complete();
+            } else {
+                // 已经流了一部分正文出去，补 done 让面板收尾，不要用兜底文案盖掉
+                sink.done(null);
+                emitter.complete();
+            }
+        }
     }
 
     /** 流式应答公共逻辑：delta → done；空响应回退占位文案 */
@@ -361,7 +436,6 @@ public class ScanAssistantLlmService {
             你对该系统的业务门儿清，包括：门禁与出入管理（刷卡/人脸进出、进出记录与统计、滞留监控、未签退与超时提醒、
             违规记录与处罚）、智能扫码识别与主动提醒、笼架与笼位管理（笼位申请/审核、饲养密度与分笼预警）、
             动物实验计划书（AUP）、动物订购审批、通知公告与提醒公示。
-            你的提问回答功能还在接入中：遇到需要查具体数据的问题，如实说明暂时查不到，不要编造数据，也别假装系统里已有现成答案。
             用口语化中文像同事一样自然交流，语气轻松、有人情味。每一次回复都要「换着法子说」：换个开场、换个说法、换个口气，
             同一意思尽量换不同表达，绝不允许照抄上一次的句式或模板。
             不要向用户罗列你的能力清单，也不要在回复里复述「我熟悉门禁、笼位、AUP」这类自我介绍，直接接话就好。
@@ -371,15 +445,15 @@ public class ScanAssistantLlmService {
     private static final String ASK_GREET_PROMPT = """
             现在轮到你主动开口了。想一句自然又有新鲜感的话向用户问好：开场可以变着花样来——
             关心一下今天忙不忙、随口提一句实验室近况、或者俏皮地问候一声，别一本正经地自我介绍，也别罗列你能干什么。
-            提一句你是这里的智能助手就够了，然后顺带说一句提问功能还在接入中、马上就能正式用。
+            提一句你是这里的智能助手就够了，再顺带说一句有事直接开口就行。
             注意：每次都要随机换一种开场和说法，不要每次都复读同一套词；控制在 2～3 句，
             像老朋友随口聊天那样自然，轻松随意一点。""";
 
     private static final String ASK_GREET_FALLBACK =
-            "你好，我是实验室智能助手。提问功能还在接入中，很快就能正式使用啦。";
+            "你好，我是实验室智能助手。有想查的、想办的，直接跟我说就行。";
 
     private static final String ASK_UNAVAILABLE_FALLBACK =
-            "你好，提问功能还在接入中，暂时只能简单聊两句，正式版稍后就到。";
+            "抱歉，助手暂时联系不上，过会儿再试一次。";
 
 
 
@@ -523,6 +597,15 @@ public class ScanAssistantLlmService {
             }
             return null;
         } catch (Exception e) { log.warn("[scan-assistant] proactive failed: {}", e.getMessage()); return null; }
+    }
+
+    /** 把上游原因压成一句能显示的话（去掉我们包的「所有候选模型均失败（工具调用）」前缀） */
+    private static String reasonForUser(String raw) {
+        String s = raw == null ? "" : raw.replaceAll("^.*?（工具调用）:\\s*", "").trim();
+        if (s.isEmpty()) {
+            return "未知原因";
+        }
+        return s.length() <= 160 ? s : s.substring(0, 160) + "…";
     }
 
     public Long getActiveSessionId() {

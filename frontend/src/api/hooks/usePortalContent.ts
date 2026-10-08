@@ -78,6 +78,20 @@ export function useAdminContent(id: number) {
     queryKey: portalContentQueryKeys.adminDetail(id),
     queryFn: () => fetchAdminContent(id),
     enabled: !!id,
+    /**
+     * 编辑页单独开「聚焦时重取」—— 全局是关的（staleTime 5 分钟）。
+     *
+     * <p>原因：这条记录可能在**别处**被改过（另一个页签把它下线了、球球替它改了状态），
+     * 全局策略下页签之间互相不知道，编辑页会一直显示旧状态 —— 用户盯着「已发布」一点保存，
+     * 就把那次下线悄悄撤销了。配合编辑页「同一条重取时只同步状态」那条分支，聚焦回来即自愈。
+     * 只查一条，代价很小。
+     *
+     * <p>同时把 staleTime 归零：{@code refetchOnWindowFocus} 只对**过期**的查询生效，
+     * 而全局 staleTime 是 5 分钟 —— 不归零的话「刚打开不到 5 分钟」时聚焦它根本不重取，
+     * 自愈等于没做（真机实测：改完代码聚焦仍是旧值，就是这个原因）。
+     */
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 }
 

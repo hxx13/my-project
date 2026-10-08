@@ -14,6 +14,9 @@ public interface TwinCardMappingMapper {
 
     TwinCardMapping findByAroUserId(@Param("aroUserId") String aroUserId);
 
+    /** 该大华人员名下的全部本地映射（删主卡时要临时解绑其同人的其他卡） */
+    List<TwinCardMapping> findByDahuaSeq(@Param("dahuaSeq") String dahuaSeq);
+
     // ================== 2. 管理端数据写入与状态变更 ==================
     void insertMapping(TwinCardMapping mapping);
 

@@ -6,6 +6,7 @@ import {
   createOrReuseSupplyClaimPdfLink,
   downloadPersonalClaimExcel,
   fetchSupplyClaimDetail,
+  fetchSupplyClaimFormBytes,
   fetchSupplyClaimFormsMerged,
   type SupplyClaimOrder,
   type SupplyClaimLine,
@@ -224,9 +225,13 @@ export default function AdminSuppliesProcessPage() {  const navigate = useNaviga
     const created = await createOrReuseSupplyClaimPdfLink(row.id);
     const url = created?.downloadUrl;
     if (!url) throw new Error("领用单生成失败");
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("领用单打开失败");
-    return { blob: await res.blob(), fileName: created?.fileName || `领用单-${row.id}.pdf` };
+    let blob: Blob;
+    try {
+      blob = await fetchSupplyClaimFormBytes(url);
+    } catch {
+      throw new Error("领用单打开失败");
+    }
+    return { blob, fileName: created?.fileName || `领用单-${row.id}.pdf` };
   };
 
   /** 预览：取一次字节，预览弹窗与后面的「打印」共用同一份（不再各拉一遍）。 */

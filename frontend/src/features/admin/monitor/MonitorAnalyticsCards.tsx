@@ -1,4 +1,5 @@
 import { useMonitorStore } from "@/store/useMonitorStore";
+import type { LatencyStats, SlowRequest } from "@/api/domains/monitor.api";
 import MonitorAnalyticsSkeleton from "./MonitorAnalyticsSkeleton";
 
 export default function MonitorAnalyticsCards() {
@@ -65,6 +66,8 @@ export default function MonitorAnalyticsCards() {
       <div className="flex flex-col gap-[var(--app-space-section-gap)]">
         <StatCards analytics={analytics} />
         <DistributionRow analytics={analytics} />
+        <EndpointLatencySection analytics={analytics} />
+        <SlowRequestSection analytics={analytics} />
         <RankingLists analytics={analytics} />
       </div>
     </section>
@@ -75,18 +78,24 @@ function StatCards({ analytics }: { analytics: NonNullable<ReturnType<typeof use
   const total = analytics.totalRequests;
   const statusDist = analytics.statusDistribution;
   const okCount = Number(statusDist["200"] ?? 0);
-  const err500 = Number(statusDist["500"] ?? 0);
   const okRate = total > 0 ? (okCount / total * 100).toFixed(1) : "0.0";
+  // 错误口径以后端为准（4xx+5xx 都算）。老后端不返回这几个字段时退回「只数 500」——
+  // 至少不比以前更差，但新后端的数字才是对的。
+  const errors = analytics.errorCount ?? Number(statusDist["500"] ?? 0);
+  const errRate = analytics.errorRatePercent;
+  const errDetail = analytics.count4xx != null
+    ? `4xx ${analytics.count4xx} · 5xx ${analytics.count5xx ?? 0}`
+    : undefined;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-[var(--app-space-element-gap)]">
       <InfoCard label="总请求数" value={total.toLocaleString('zh-CN')} />
       <InfoCard label="独立访客" value={analytics.uniqueVisitors.toLocaleString('zh-CN')} detail="今日" />
-      <InfoCard label="200 率" value={`${okRate}%`} detail={okRate === "100.0" ? "全部正常" : `${err500} 个错误`} />
+      <InfoCard label="200 率" value={`${okRate}%`} detail={okRate === "100.0" ? "全部正常" : `${errors} 个错误响应`} />
       <InfoCard
-        label="500 错误"
-        value={String(err500)}
-        detail={err500 === 0 ? "无错误" : undefined}
+        label="错误率"
+        value={errRate != null ? `${errRate}%` : String(errors)}
+        detail={errors === 0 ? "无错误" : errDetail}
       />
     </div>
   );
@@ -106,6 +115,7 @@ function DistributionRow({ analytics }: { analytics: NonNullable<ReturnType<type
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-[var(--app-space-element-gap)]">
       <DistributionCard title="响应时间分布">
+        {analytics.latency ? <LatencySummary stats={analytics.latency} /> : null}
         <ResponseTimeHistogram buckets={analytics.responseTimeBuckets} />
       </DistributionCard>
       <DistributionCard title="状态码分布">
@@ -263,5 +273,127 @@ function RankingCard({
         ))}
       </ol>
     </div>
+  );
+}
+
+/** 百分位摘要：分桶看分布形状，百分位看「多数人有多快、最慢那一小撮有多慢」。 */
+function LatencySummary({ stats }: { stats: LatencyStats }) {
+  const items: Array<[string, string]> = [
+    ["p50", `${stats.p50} ms`],
+    ["p95", `${stats.p95} ms`],
+    ["p99", `${stats.p99} ms`],
+    ["平均", `${stats.avg} ms`],
+    ["最慢", `${stats.max} ms`],
+  ];
+  return (
+    <div className="mb-4">
+      <div className="flex flex-wrap gap-x-5 gap-y-1">
+        {items.map(([k, v]) => (
+          <span key={k} className="text-xs text-[var(--app-color-text-tertiary)]">
+            {k}{" "}
+            <span className="font-mono tabular-nums text-[var(--app-color-text-primary)]">{v}</span>
+          </span>
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-[var(--app-color-text-tertiary)]">
+        样本 {stats.count} 次 · 最近 512 次为窗口 · 内存态，重启清零
+      </p>
+    </div>
+  );
+}
+
+/** 按端点响应时间：回答「到底哪个接口慢」。后端已按 p95 降序截断为 Top N。 */
+function EndpointLatencySection({
+  analytics,
+}: {
+  analytics: NonNullable<ReturnType<typeof useMonitorStore.getState>["analytics"]>;
+}) {
+  const rows = analytics.endpointLatency ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-baseline gap-2">
+        <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">按端点响应时间</h3>
+        <span className="text-xs text-[var(--app-color-text-tertiary)]">
+          按 p95 降序 · 内存态，重启清零
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-max border-collapse text-left text-sm whitespace-nowrap twin-table">
+            <thead>
+              <tr className="border-b-2 border-[var(--app-color-border-strong)] text-xs font-bold text-[var(--app-color-text-secondary)]">
+                <th className="p-3 pl-5">接口</th>
+                <th className="p-3 text-right">次数</th>
+                <th className="p-3 text-right">p50</th>
+                <th className="p-3 text-right">p95</th>
+                <th className="p-3 text-right">p99</th>
+                <th className="p-3 pr-5 text-right">最慢</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.path} className="border-b border-[var(--app-color-border-default)] last:border-0">
+                  <td className="p-3 pl-5 font-mono text-xs text-[var(--app-color-text-primary)]">{r.path}</td>
+                  <td className="p-3 text-right font-mono text-xs tabular-nums">{r.count}</td>
+                  <td className="p-3 text-right font-mono text-xs tabular-nums">{r.p50}</td>
+                  <td className="p-3 text-right font-mono text-xs font-semibold tabular-nums">{r.p95}</td>
+                  <td className="p-3 text-right font-mono text-xs tabular-nums">{r.p99}</td>
+                  <td className="p-3 pr-5 text-right font-mono text-xs tabular-nums">{r.max}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** 最近慢请求：阈值 1s，最新在前。这是「刚才那一下卡顿是什么」的直接答案。 */
+function SlowRequestSection({
+  analytics,
+}: {
+  analytics: NonNullable<ReturnType<typeof useMonitorStore.getState>["analytics"]>;
+}) {
+  const rows: SlowRequest[] = analytics.slowRequests ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <section>
+      <div className="mb-3 flex flex-wrap items-baseline gap-2">
+        <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">最近慢请求</h3>
+        <span className="text-xs text-[var(--app-color-text-tertiary)]">
+          超过 1000ms · 最新在前 · 内存态，重启清零
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-max border-collapse text-left text-sm whitespace-nowrap twin-table">
+            <thead>
+              <tr className="border-b-2 border-[var(--app-color-border-strong)] text-xs font-bold text-[var(--app-color-text-secondary)]">
+                <th className="p-3 pl-5">时刻</th>
+                <th className="p-3 text-right">状态</th>
+                <th className="p-3 text-right">耗时</th>
+                <th className="p-3 pr-5">接口</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={`${r.ts}-${i}`} className="border-b border-[var(--app-color-border-default)] last:border-0">
+                  <td className="p-3 pl-5 font-mono text-xs tabular-nums">
+                    {new Date(r.ts).toLocaleTimeString("zh-CN", { hour12: false })}
+                  </td>
+                  <td className="p-3 text-right font-mono text-xs tabular-nums">{r.status}</td>
+                  <td className="p-3 text-right font-mono text-xs font-semibold tabular-nums">{r.ms} ms</td>
+                  <td className="p-3 pr-5 font-mono text-xs text-[var(--app-color-text-primary)]">{r.path}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   );
 }

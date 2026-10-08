@@ -31,6 +31,21 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
     private final LongAdder totalRequests = new LongAdder();
     private final ConcurrentHashMap<String, LocalDate> uniqueVisitors = new ConcurrentHashMap<>();
 
+    /**
+     * 今日独立访客计数。原来在 {@link #afterCompletion} 里用
+     * {@code uniqueVisitors.values().stream().filter(...).count()} 求「今日已有多少」，
+     * 那是**每个请求**一次 O(上限 10 万) 的全表扫描。改成计数器 + 跨日重置。
+     */
+    private final LongAdder todayVisitors = new LongAdder();
+    private volatile LocalDate visitorDay = LocalDate.now();
+
+    /** 延迟百分位统计；见 {@link RequestLatencyTracker} 的注释。 */
+    private final RequestLatencyTracker latencyTracker;
+
+    public RequestMetricsInterceptor(RequestLatencyTracker latencyTracker) {
+        this.latencyTracker = latencyTracker;
+    }
+
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         request.setAttribute("req.startTime", System.nanoTime());
@@ -65,11 +80,13 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
                 }
             }
 
-            // response time bucket
+            // response time bucket + 延迟百分位统计
             Long startNs = (Long) request.getAttribute("req.startTime");
             if (startNs != null) {
                 long ms = (System.nanoTime() - startNs) / 1_000_000;
                 responseTimeBuckets.computeIfAbsent(bucketFor(ms), k -> new LongAdder()).increment();
+                // 复用上面已经算好的 normalized，不要再调一次 normalizeUrl
+                latencyTracker.record(normalized, status, ms);
             }
 
             // User-Agent (truncated to 80 chars, no PII)
@@ -81,12 +98,13 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
                 }
             }
 
-            // unique visitors (dedup by IP + date, limit only counts today)
+            // unique visitors（按 IP+日期去重，只统计今日）。O(1)，不再全表扫。
             if (remoteAddr != null && !remoteAddr.isEmpty()) {
-                long todayCount = uniqueVisitors.values().stream()
-                    .filter(LocalDate.now()::equals).count();
-                if (todayCount < MAX_UNIQUE_VISITORS || uniqueVisitors.containsKey(remoteAddr)) {
-                    uniqueVisitors.put(remoteAddr, LocalDate.now());
+                LocalDate today = rollVisitorDay();
+                LocalDate prev = uniqueVisitors.get(remoteAddr);
+                if (!today.equals(prev) && todayVisitors.sum() < MAX_UNIQUE_VISITORS) {
+                    uniqueVisitors.put(remoteAddr, today);
+                    todayVisitors.increment();
                 }
             }
         } catch (Throwable t) {
@@ -129,9 +147,19 @@ public class RequestMetricsInterceptor implements HandlerInterceptor {
         return "3000+";
     }
 
-    private long uniqueVisitorCount() {
+    /** 跨日则重置今日访客计数；返回今天。请求路径与取快照都先调它。 */
+    private LocalDate rollVisitorDay() {
         LocalDate today = LocalDate.now();
-        return uniqueVisitors.values().stream().filter(today::equals).count();
+        if (!today.equals(visitorDay)) {
+            visitorDay = today;
+            todayVisitors.reset();
+        }
+        return today;
+    }
+
+    private long uniqueVisitorCount() {
+        rollVisitorDay();
+        return todayVisitors.sum();
     }
 
     private Map<String, Long> copyStatusDistribution() {

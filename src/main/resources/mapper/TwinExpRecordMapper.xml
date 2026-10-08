@@ -86,8 +86,9 @@
     <select id="countPage" resultType="long">
         SELECT COUNT(1)
         FROM twin_exp_record r
-        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
-        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <!-- p / rm 的两个 LEFT JOIN 只服务于 selectPage 的名称展示，countPage 的
+             pageWhere 只引用 r.*，挂在这里纯属每个命中行多两次回表。两个连接键都是唯一键
+             （aro_personnel.user_id 主键、room_mapping_room.room_id 唯一），去掉不会改变计数。 -->
         <include refid="pageWhere"/>
     </select>
 
@@ -127,8 +128,7 @@
     <select id="countPageWithFilters" resultType="long">
         SELECT COUNT(1)
         FROM twin_exp_record r
-        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
-        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <!-- 同 countPage：filterWhere 只引用 r.*，p / rm 对计数无贡献 -->
         <include refid="filterWhere"/>
     </select>
 

@@ -82,6 +82,8 @@ export interface FillPolicyJson {
   allowEditAfterSubmit: boolean;
   /** 个人表：允许同一用户创建多份子文件 */
   allowMultipleInstances?: boolean;
+  /** 重复表格：一份记录内可追加多张相同的表（默认 false） */
+  repeatable?: boolean;
 }
 
 export interface PermissionJson {
@@ -190,4 +192,11 @@ export interface PageResult<T> {
   total: number;
   page: number;
   size: number;
+}
+
+/** 重复表格：一份填报记录内的一张表 */
+export interface FormBlock {
+  id: string;
+  version: number;
+  values: Record<string, unknown>;
 }

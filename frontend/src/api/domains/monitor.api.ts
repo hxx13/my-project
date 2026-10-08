@@ -31,6 +31,9 @@ export interface HealthItem {
   clients?: SocketClientInfo[];
 }
 
+/** 指标告警级。由后端判定并下发，前端只负责上色（阈值集中在后端 Thresholds）。 */
+export type MetricLevel = "ok" | "warn" | "crit";
+
 export interface ResourceSnapshot {
   heapUsedMB: number;
   heapMaxMB: number;
@@ -46,14 +49,29 @@ export interface ResourceSnapshot {
   threadBlocked: number;
   cpuProcessPercent: number;
   cpuSystemPercent: number;
+  /** 后端判定的分级，直接用于上色。前端不再自己比 60/80 —— 阈值只能有一处。 */
+  cpuLevel: MetricLevel;
   sysMemTotalMB: number;
+  /** 平台「空闲」内存（Linux 上不含 page cache，所以它小并不代表内存紧张）。 */
   sysMemFreeMB: number;
+  /**
+   * Linux 的「可用内存」= /proc/meminfo 的 MemAvailable（含可回收缓存）。
+   * **判断内存够不够要看它，别看 sysMemFreeMB**；-1 = 该平台取不到（Windows）。
+   */
+  sysMemAvailableMB: number;
   sysMemUsedPercent: number;
+  sysMemLevel: MetricLevel;
+  /**
+   * 进程 RSS（MB），来自 /proc/self/status 的 VmRSS。非 Linux 返回 -1。
+   * ⚠ 以前这里填的是 `Runtime.totalMemory()`（已提交的堆），与「堆外占用」完全不是一回事 —— 别再用错。
+   */
   jvmRssMB: number;
+  heapLevel: MetricLevel;
   diskPath: string;
   diskTotalGB: number;
   diskUsedGB: number;
   diskUsedPercent: number;
+  diskLevel: MetricLevel;
   hikariActive: number;
   hikariIdle: number;
   hikariPending: number;
@@ -127,6 +145,26 @@ export interface SessionSnapshot {
   studentCount: number;
 }
 
+/** 一组延迟统计（全局与按端点同构）。单位毫秒；count 为样本总数。 */
+export interface LatencyStats {
+  count: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  avg: number;
+  max: number;
+  /** 仅按端点时存在 */
+  path?: string;
+}
+
+export interface SlowRequest {
+  path: string;
+  status: number;
+  ms: number;
+  /** epoch millis */
+  ts: number;
+}
+
 export interface AnalyticsSnapshot {
   totalRequests: number;
   uniqueVisitors: number;
@@ -135,6 +173,39 @@ export interface AnalyticsSnapshot {
   topUrls: Array<{ path: string; count: number }>;
   top404Urls: Array<{ path: string; count: number }>;
   topUserAgents: Array<{ ua: string; count: number }>;
+  /**
+   * 以下为 2026-09-29 新增（内存态，进程重启清零）。
+   * 全部可选：后端未升级时前端仍能按老字段渲染。
+   */
+  /** 全局响应时间百分位；老后端不返回时按 undefined 处理 */
+  latency?: LatencyStats;
+  /** 按端点延迟，后端已按 p95 降序截断为 Top N */
+  endpointLatency?: LatencyStats[];
+  /** 超过 1s 的最近慢请求，最新在前 */
+  slowRequests?: SlowRequest[];
+  count4xx?: number;
+  count5xx?: number;
+  /** 4xx + 5xx */
+  errorCount?: number;
+  /** 错误率百分比数值（1.23 表示 1.23%），不是小数 */
+  errorRatePercent?: number;
+}
+
+/** 健康度评分的一个扣分因子。level 由后端算好，前端不再判阈值。 */
+export interface ScoreFactor {
+  key: string;
+  label: string;
+  /** 已经格式化好的展示值，如 "90.1%" / "1 个任务失败" */
+  value: string;
+  level: MetricLevel;
+  weight: number;
+  deduction: number;
+}
+
+export interface HealthScore {
+  score: number;
+  level: MetricLevel;
+  factors: ScoreFactor[];
 }
 
 // ═══════════════════════════════════════════
@@ -205,6 +276,12 @@ export async function fetchMonitorSessions(): Promise<SessionSnapshot> {
 /** 获取访问分析快照 */
 export async function fetchMonitorAnalytics(): Promise<AnalyticsSnapshot> {
   const res = await authHttp.get<{ data: AnalyticsSnapshot }>("/v1/monitor/analytics");
+  return unwrap(res);
+}
+
+/** 获取健康度评分（0-100，含扣分因子明细） */
+export async function fetchMonitorScore(): Promise<HealthScore> {
+  const res = await authHttp.get<{ data: HealthScore }>("/v1/monitor/score");
   return unwrap(res);
 }
 

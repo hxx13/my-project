@@ -2,7 +2,6 @@ var springAuth = require('./springAuth.js');
 var pagePermission = require('./pagePermission.js');
 var { isStudentAccount } = require('./roleAccess.js');
 
-var ICON_OVERVIEW = '/pages/assets/images/icon-overview.png';
 var ICON_SUPPLIES = '/pages/assets/images/icon-supplies.png';
 var ICON_CAGE = '/pages/assets/images/icon-cage.png';
 var ICON_ROOM = '/pages/assets/images/icon-room.png';
@@ -11,10 +10,17 @@ var ICON_TELEMETRY = '/pages/assets/images/icon-telemetry.png';
 var ICON_MINE = '/pages/assets/images/icon-mine.png';
 
 function buildTabList() {
-  if (isStudentAccount()) {
-    return buildStudentTabList();
-  }
-  return buildStaffTabList();
+  var tabs = isStudentAccount() ? buildStudentTabList() : buildStaffTabList();
+  // 球球（智能助手）嵌在 tabBar 正中一位。它不切页，点开是对话抽屉，
+  // 所以没有 path；activeIndexForRoute 按 path 找下标，不会认错它。
+  tabs.splice(Math.floor(tabs.length / 2), 0, {
+    isAi: true,
+    path: '',
+    text: '助手',
+    icon: '',
+    iconSrc: '',
+  });
+  return tabs;
 }
 
 function buildStaffTabList() {
@@ -27,13 +33,6 @@ function buildStaffTabList() {
       icon: '',
       iconSrc: ICON_ROOM,
       minRole: 'STUDENT',
-    },
-    {
-      path: '/pages/overview/index',
-      text: '概览',
-      icon: 'chart-trending-o',
-      iconSrc: ICON_OVERVIEW,
-      minRole: 'ADMIN',
     },
     {
       path: '/pages/telemetry/index',

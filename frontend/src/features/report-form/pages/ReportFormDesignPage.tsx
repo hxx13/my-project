@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 import ThemePanel from '../components/ThemePanel';
 import PublishWizard from '../components/PublishWizard';
 import WordTemplateManager from '../components/WordTemplateManager';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 
 function parseLayout(raw: unknown): LayoutJson {
   if (!raw) return { cells: [], fields: {}, mergeGroups: [] };
@@ -478,6 +478,12 @@ function DesignerInner({
   const hasCells = editor.layout.cells.length > 0;
   const dirty = isDirty();
 
+  const fillableFieldCount = useMemo(
+    () => editor.layout.cells.filter(c => c.kind === 'field' && c.fieldKey
+      && editor.layout.fields[c.fieldKey!]?.type !== 'STATIC').length,
+    [editor.layout],
+  );
+
   return (
     <div className="flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden">
       {/* 顶部工具栏 — 固定不随表格滚动 */}
@@ -597,6 +603,12 @@ function DesignerInner({
         onToggleGridLines={() => setShowGridLines(v => !v)}
         onToggleStickyFirstRow={() => setStickyOverride(!stickyFirstRow)}
       />
+      {fillableFieldCount === 0 && (
+        <div className="px-3 py-1.5 bg-[var(--app-color-feedback-warning-soft)] text-[11px] text-[var(--app-color-feedback-warning)] flex items-center gap-2">
+          <Info className="w-3.5 h-3.5" />
+          本表还没有可填字段。框选需要填写的格子，再用工具栏的「字段类型」下拉批量标记。
+        </div>
+      )}
       {showThemePanel && (
         <div className="shrink-0 border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-3 py-2">
           <div className="flex items-center justify-between mb-2">

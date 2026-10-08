@@ -4,6 +4,10 @@ import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.config.JwtTokenService;
 import com.example.demo.common.config.RequestMetricsInterceptor;
+import com.example.demo.common.config.RequestLatencyTracker;
+import com.example.demo.common.support.LinuxMemoryProbe;
+import com.example.demo.common.support.Thresholds;
+import com.example.demo.modules.admin.service.MonitorScoreService;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
@@ -62,6 +66,8 @@ public class MonitorController {
     private final TwinAutomationLogService twinAutomationLogService;
     private final ClientVersionService clientVersionService;
     private final RequestMetricsInterceptor requestMetricsInterceptor;
+    private final RequestLatencyTracker requestLatencyTracker;
+    private final MonitorScoreService monitorScoreService;
 
     @Autowired(required = false)
     private SocketIOServer socketIOServer;
@@ -92,7 +98,9 @@ public class MonitorController {
             UserDisplayNameService userDisplayNameService,
             TwinAutomationLogService twinAutomationLogService,
             ClientVersionService clientVersionService,
-            RequestMetricsInterceptor requestMetricsInterceptor) {
+            RequestMetricsInterceptor requestMetricsInterceptor,
+            RequestLatencyTracker requestLatencyTracker,
+            MonitorScoreService monitorScoreService) {
         this.jobSchedulerService = jobSchedulerService;
         this.jobExecutionRegistry = jobExecutionRegistry;
         this.jdbcTemplate = jdbcTemplate;
@@ -107,6 +115,8 @@ public class MonitorController {
         this.twinAutomationLogService = twinAutomationLogService;
         this.clientVersionService = clientVersionService;
         this.requestMetricsInterceptor = requestMetricsInterceptor;
+        this.requestLatencyTracker = requestLatencyTracker;
+        this.monitorScoreService = monitorScoreService;
     }
 
     // ═══════════════════════════════════════════════════════
@@ -401,7 +411,11 @@ public class MonitorController {
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         Result<?> denied = requireAdmin(authorization);
         if (denied != null) return (Result<Map<String, Object>>) denied;
+        return Result.success(buildResources());
+    }
 
+    /** 资源指标的计算体；{@code /resources} 与 {@code /score} 共用同一套口径，不各自算一份。 */
+    private Map<String, Object> buildResources() {
         Map<String, Object> data = new LinkedHashMap<>();
         OperatingSystemMXBean os = ManagementFactory.getOperatingSystemMXBean();
         com.sun.management.OperatingSystemMXBean sunOs =
@@ -412,9 +426,11 @@ public class MonitorController {
         MemoryUsage heap = memory.getHeapMemoryUsage();
         long heapUsed = heap.getUsed();
         long heapMax = heap.getMax();
+        double heapPercent = heapMax > 0 ? Math.round(heapUsed * 1000.0 / heapMax) / 10.0 : 0;
         data.put("heapUsedMB", heapUsed / (1024 * 1024));
         data.put("heapMaxMB", heapMax / (1024 * 1024));
-        data.put("heapUsedPercent", heapMax > 0 ? Math.round(heapUsed * 1000.0 / heapMax) / 10.0 : 0);
+        data.put("heapUsedPercent", heapPercent);
+        data.put("heapLevel", Thresholds.percentLevel(heapPercent));
 
         // ── 非堆 ──
         MemoryUsage nonHeap = memory.getNonHeapMemoryUsage();
@@ -458,18 +474,31 @@ public class MonitorController {
         }
         data.put("cpuProcessPercent", processCpu);
         data.put("cpuSystemPercent", systemCpu);
+        data.put("cpuLevel", Thresholds.percentLevel(processCpu));
 
         // ── 系统内存 ──
+        // 口径：Linux 上 getFreeMemorySize() 取内核 MemFree，**不含 page cache** ——
+        // 于是 (total-free)/total 永远接近满，加内存也不会降（生产 8G→16G「又被吃满」就是这个）。
+        // 改用 /proc/meminfo 的 MemAvailable（MemFree + 可回收缓存）。拿不到才退回 MemFree。
         long sysTotalMem = sunOs != null ? sunOs.getTotalMemorySize() : 0;
         long sysFreeMem  = sunOs != null ? sunOs.getFreeMemorySize() : 0;
+        long sysAvailableMem = LinuxMemoryProbe.memAvailableBytes();
+        boolean hasAvailable = sysAvailableMem >= 0;
+        long freeOrAvailable = hasAvailable ? sysAvailableMem : sysFreeMem;
+        double sysMemPercent = sysTotalMem > 0
+                ? Math.round((sysTotalMem - freeOrAvailable) * 1000.0 / sysTotalMem) / 10.0 : 0;
         data.put("sysMemTotalMB", sysTotalMem / (1024 * 1024));
         data.put("sysMemFreeMB",  sysFreeMem  / (1024 * 1024));
-        data.put("sysMemUsedPercent", sysTotalMem > 0
-                ? Math.round((sysTotalMem - sysFreeMem) * 1000.0 / sysTotalMem) / 10.0 : 0);
+        data.put("sysMemAvailableMB", hasAvailable ? sysAvailableMem / (1024 * 1024) : -1);
+        data.put("sysMemUsedPercent", sysMemPercent);
+        data.put("sysMemLevel", Thresholds.percentLevel(sysMemPercent));
 
-        // ── JVM 进程内存 (RSS 近似) ──
-        long jvmRssMB = Runtime.getRuntime().totalMemory() / (1024 * 1024);
-        data.put("jvmRssMB", jvmRssMB);
+        // ── JVM 进程内存（RSS）──
+        // 这里以前写的是 Runtime.totalMemory()，那是**已提交的堆**，跟卡片文案
+        // 「堆外 + Metaspace + CodeCache」完全不是一回事（标签与数字互相矛盾）。
+        // 真 RSS 只能从 /proc 取；非 Linux 返回 -1，前端显示「不适用」而不是编一个数。
+        long rssBytes = LinuxMemoryProbe.rssBytes();
+        data.put("jvmRssMB", rssBytes >= 0 ? rssBytes / (1024 * 1024) : -1);
 
         // ── 磁盘 ──
         File disk = new File(diskPath);
@@ -479,7 +508,9 @@ public class MonitorController {
         data.put("diskPath", diskPath);
         data.put("diskTotalGB", Math.round(totalBytes * 10.0 / (1024 * 1024 * 1024)) / 10.0);
         data.put("diskUsedGB", Math.round(usedBytes * 10.0 / (1024 * 1024 * 1024)) / 10.0);
-        data.put("diskUsedPercent", totalBytes > 0 ? Math.round(usedBytes * 1000.0 / totalBytes) / 10.0 : 0);
+        double diskPercent = totalBytes > 0 ? Math.round(usedBytes * 1000.0 / totalBytes) / 10.0 : 0;
+        data.put("diskUsedPercent", diskPercent);
+        data.put("diskLevel", Thresholds.percentLevel(diskPercent));
 
         // ── HikariCP 实际连接池 ──
         try {
@@ -496,7 +527,7 @@ public class MonitorController {
             putHikariDefaults(data);
         }
 
-        return Result.success(data);
+        return data;
     }
 
     private void putHikariDefaults(Map<String, Object> data) {
@@ -504,6 +535,111 @@ public class MonitorController {
         data.put("hikariIdle", 0);
         data.put("hikariPending", 0);
         data.put("hikariMax", 20);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 健康度评分
+    // ═══════════════════════════════════════════════════════
+
+    @GetMapping("/score")
+    @Operation(summary = "健康度评分（0-100，含扣分因子明细）")
+    public Result<Map<String, Object>> score(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return (Result<Map<String, Object>>) denied;
+
+        Map<String, Object> res = buildResources();
+        RequestMetricsInterceptor.Snapshot s = requestMetricsInterceptor.getSnapshot();
+
+        int[] health = healthProblemCounts();
+        MonitorScoreService.Inputs inputs = new MonitorScoreService.Inputs(
+                health[0],
+                health[1],
+                asDouble(res.get("heapUsedPercent")),
+                asDouble(res.get("sysMemUsedPercent")),
+                asDouble(res.get("diskUsedPercent")),
+                asDouble(res.get("cpuProcessPercent")),
+                asLong(res.get("hikariPending")),
+                monitorScoreService.fullGcPerMinute(asLong(res.get("gcFullCount"))),
+                countFailedJobs(),
+                s.totalRequests(),
+                countStatusAtLeast(s.statusDistribution(), 500));
+        return Result.success(monitorScoreService.compute(inputs));
+    }
+
+    /**
+     * 只统计「在进程内能立刻回答」的三项：Spring / MySQL / Socket.IO。
+     *
+     * <p>刻意不含 CosyVoice 与 nginx —— 那两项是带 5 秒超时的外部 HTTP 探测，
+     * 让评分去等它们会把 {@code /score} 拖成秒级；而且外部边车（TTS）挂了不等于系统不健康。
+     */
+    private int[] healthProblemCounts() {
+        int down = 0;
+        int degraded = 0;
+        for (Map<String, Object> item : List.of(checkSpring(), checkMysql(), checkSocketIO())) {
+            String status = String.valueOf(item.get("status"));
+            if ("DOWN".equals(status)) {
+                down++;
+            } else if ("DEGRADED".equals(status)) {
+                degraded++;
+            }
+        }
+        return new int[]{down, degraded};
+    }
+
+    /** 启用中、且上次执行状态为 FAILED 的定时任务数。 */
+    private int countFailedJobs() {
+        int failed = 0;
+        try {
+            for (TwinJobScheduleConfig cfg : jobSchedulerService.listAll()) {
+                boolean enabled = cfg.getEnabled() != null && cfg.getEnabled() == 1;
+                if (enabled && "FAILED".equalsIgnoreCase(cfg.getLastStatus())) {
+                    failed++;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[monitor] 统计失败定时任务数出错: {}", e.getMessage());
+        }
+        return failed;
+    }
+
+    /** 状态码分布里 >= minCode 的请求数（错误率口径：4xx/5xx 都算，不再只看 500）。 */
+    private static long countStatusAtLeast(Map<String, Long> distribution, int minCode) {
+        long n = 0;
+        for (Map.Entry<String, Long> e : distribution.entrySet()) {
+            try {
+                if (Integer.parseInt(e.getKey()) >= minCode) {
+                    n += e.getValue();
+                }
+            } catch (NumberFormatException ignored) {
+                // 非数字状态码（理论上没有）：跳过
+            }
+        }
+        return n;
+    }
+
+    /** 状态码分布里 [loInclusive, hiExclusive) 的请求数。 */
+    private static long countStatusInRange(Map<String, Long> distribution, int loInclusive, int hiExclusive) {
+        long n = 0;
+        for (Map.Entry<String, Long> e : distribution.entrySet()) {
+            try {
+                int code = Integer.parseInt(e.getKey());
+                if (code >= loInclusive && code < hiExclusive) {
+                    n += e.getValue();
+                }
+            } catch (NumberFormatException ignored) {
+                // 非数字状态码：跳过
+            }
+        }
+        return n;
+    }
+
+    private static double asDouble(Object o) {
+        return o instanceof Number n ? n.doubleValue() : 0;
+    }
+
+    private static long asLong(Object o) {
+        return o instanceof Number n ? n.longValue() : 0;
     }
 
     // ═══════════════════════════════════════════════════════
@@ -851,6 +987,23 @@ public class MonitorController {
         data.put("topUrls", s.topUrls());
         data.put("top404Urls", s.top404Urls());
         data.put("topUserAgents", s.topUserAgents());
+
+        // ── 响应时间百分位 / 按端点延迟 / 最近慢请求 ──
+        // 内存态：进程重启即清零，监控页上已标注这一点，免得数字归零被当成故障。
+        RequestLatencyTracker.LatencySnapshot latency = requestLatencyTracker.snapshot(15);
+        data.put("latency", latency.global());
+        data.put("endpointLatency", latency.endpoints());
+        data.put("slowRequests", latency.slowRequests());
+
+        // ── 错误口径：4xx/5xx 都算 ──
+        // 原来前端只数 status=="500"，于是 502/503/404 一律不算错误，错误率被系统性低报。
+        long c4xx = countStatusInRange(s.statusDistribution(), 400, 500);
+        long c5xx = countStatusAtLeast(s.statusDistribution(), 500);
+        data.put("count4xx", c4xx);
+        data.put("count5xx", c5xx);
+        data.put("errorCount", c4xx + c5xx);
+        data.put("errorRatePercent", s.totalRequests() > 0
+                ? Math.round((c4xx + c5xx) * 10000.0 / s.totalRequests()) / 100.0 : 0);
         return Result.success(data);
     }
 

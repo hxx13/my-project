@@ -44,6 +44,25 @@ public class AsyncConfig implements SchedulingConfigurer {
     }
 
     /**
+     * AI 对话操作网关专用池。
+     *
+     * <p>不复用 {@code heavyCalcExecutor}（那是 analytics 的 LLM 对话在用）：一次网关请求里
+     * 可能串起最多 8 轮模型调用，每轮都是数十秒级的阻塞外部 HTTP，与别的 LLM 功能抢同一批线程
+     * 会互相拖慢。单独一池，也方便日后按 AI 负载单独调参。
+     */
+    @Bean(name = "aiTaskExecutor")
+    public Executor aiTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(100);
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setThreadNamePrefix("ai-gateway-");
+        executor.initialize();
+        return executor;
+    }
+
+    /**
      * 裸 {@code @Scheduled} 任务的默认调度池。
      *
      * <p><b>必须用 {@link SchedulingConfigurer} 显式注册，只写

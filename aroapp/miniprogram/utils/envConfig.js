@@ -13,7 +13,7 @@ const PRESETS = {
   prod: {
     id: 'prod',
     label: '正式',
-    apiBaseUrl: 'https://aroultra.shsmu.edu.cn',
+    apiBaseUrl: 'https://arodlas.shsmu.edu.cn',
     hint: '生产环境',
     jtuAccount: '',
     jtuPassword: '',

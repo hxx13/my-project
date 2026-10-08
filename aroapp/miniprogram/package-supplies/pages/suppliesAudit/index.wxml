@@ -208,7 +208,7 @@
                 <view class="ord-td w-pi">领用人</view>
                 <view class="ord-td w-remark">备注</view>
               </view>
-              <view wx:for="{{ mergedRows }}" wx:key="_key" class="ord-tr">
+              <view wx:for="{{ mergedRows }}" wx:key="_key" class="ord-tr {{ item.rowTint === 'violet' ? 'ord-tr-restored' : '' }}">
                 <view class="ord-td w-date">{{ item.timeText }}</view>
                 <view class="ord-td w-item">{{ item.name }}</view>
                 <view class="ord-td w-xs">{{ item.ioType }}</view>

@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.ai.mapper.AiGatewayMapper">
+
+    <resultMap id="SessionMap" type="com.example.demo.modules.ai.entity.AiSession">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="source" column="source"/>
+        <result property="contextPage" column="context_page"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="MessageMap" type="com.example.demo.modules.ai.entity.AiMessage">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="seq" column="seq"/>
+        <result property="role" column="role"/>
+        <result property="content" column="content"/>
+        <result property="rawToolCalls" column="raw_tool_calls"/>
+        <result property="toolCallId" column="tool_call_id"/>
+        <result property="actorUserId" column="actor_user_id"/>
+        <result property="actorRoleSnapshot" column="actor_role_snapshot"/>
+        <result property="source" column="source"/>
+        <result property="contextJson" column="context_json"/>
+        <result property="model" column="model"/>
+        <result property="latencyMs" column="latency_ms"/>
+        <result property="promptTokens" column="prompt_tokens"/>
+        <result property="completionTokens" column="completion_tokens"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <resultMap id="InteractionMap" type="com.example.demo.modules.ai.entity.AiInteraction">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="messageId" column="message_id"/>
+        <result property="toolCallId" column="tool_call_id"/>
+        <result property="token" column="token"/>
+        <result property="kind" column="kind"/>
+        <result property="question" column="question"/>
+        <result property="optionsJson" column="options_json"/>
+        <result property="chosenValue" column="chosen_value"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="resolvedAt" column="resolved_at"/>
+    </resultMap>
+
+    <resultMap id="ToolCallMap" type="com.example.demo.modules.ai.entity.AiToolCallLog">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="messageId" column="message_id"/>
+        <result property="toolName" column="tool_name"/>
+        <result property="rawArguments" column="raw_arguments"/>
+        <result property="requiredCapability" column="required_capability"/>
+        <result property="capabilityGranted" column="capability_granted"/>
+        <result property="denialReason" column="denial_reason"/>
+        <result property="executed" column="executed"/>
+        <result property="rawResult" column="raw_result"/>
+        <result property="ok" column="ok"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="confirmedBy" column="confirmed_by"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- ══ ai_session ══ -->
+
+    <insert id="insertSession" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_session (user_id, title, source, context_page)
+        VALUES (#{userId}, #{title}, #{source}, #{contextPage})
+    </insert>
+
+    <select id="selectSessionById" resultMap="SessionMap">
+        SELECT * FROM ai_session WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <update id="updateSessionTitle">
+        UPDATE ai_session SET title = #{title} WHERE id = #{id}
+    </update>
+
+    <!-- 软删：留痕面（审计）仍能 join 到这行，但列表/续聊/归属校验都看不到它 -->
+    <update id="markSessionDeleted">
+        UPDATE ai_session SET deleted = 1 WHERE id = #{id}
+    </update>
+
+    <update id="touchSession">
+        UPDATE ai_session SET updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <select id="selectSessionsByUser" resultMap="SessionMap">
+        SELECT * FROM ai_session
+        WHERE user_id = #{userId} AND deleted = 0
+        ORDER BY updated_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSessionsByUser" resultType="int">
+        SELECT COUNT(*) FROM ai_session WHERE user_id = #{userId} AND deleted = 0
+    </select>
+
+    <select id="selectLatestSessionByUserAndSource" resultMap="SessionMap">
+        SELECT * FROM ai_session
+        WHERE user_id = #{userId} AND source = #{source} AND deleted = 0
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+    </select>
+
+    <!-- ══ ai_message（append-only） ══ -->
+
+    <insert id="insertMessage" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_message (session_id, seq, role, content, raw_tool_calls, tool_call_id,
+                                actor_user_id, actor_role_snapshot, source, context_json,
+                                model, latency_ms, prompt_tokens, completion_tokens)
+        VALUES (#{sessionId}, #{seq}, #{role}, #{content}, #{rawToolCalls}, #{toolCallId},
+                #{actorUserId}, #{actorRoleSnapshot}, #{source}, #{contextJson},
+                #{model}, #{latencyMs}, #{promptTokens}, #{completionTokens})
+    </insert>
+
+    <select id="selectMessagesBySession" resultMap="MessageMap">
+        SELECT * FROM ai_message WHERE session_id = #{sessionId} ORDER BY seq ASC, id ASC
+    </select>
+
+    <select id="selectRecentMessages" resultMap="MessageMap">
+        SELECT * FROM (
+            SELECT * FROM ai_message
+            WHERE session_id = #{sessionId}
+            ORDER BY seq DESC, id DESC
+            LIMIT #{limit}
+        ) t ORDER BY t.seq ASC, t.id ASC
+    </select>
+
+    <select id="selectMaxSeq" resultType="java.lang.Integer">
+        SELECT MAX(seq) FROM ai_message WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="selectMessageById" resultMap="MessageMap">
+        SELECT * FROM ai_message WHERE id = #{id}
+    </select>
+
+    <select id="selectAnsweredToolCallIds" resultType="java.lang.String">
+        SELECT DISTINCT tool_call_id FROM ai_message
+        WHERE session_id = #{sessionId} AND role = 'tool' AND tool_call_id IS NOT NULL
+    </select>
+
+    <!-- ══ ai_interaction ══ -->
+
+    <insert id="insertInteraction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_interaction (session_id, message_id, tool_call_id, token, kind, question, options_json, status)
+        VALUES (#{sessionId}, #{messageId}, #{toolCallId}, #{token}, #{kind}, #{question}, #{optionsJson}, #{status})
+    </insert>
+
+    <select id="selectInteractionByToken" resultMap="InteractionMap">
+        SELECT * FROM ai_interaction WHERE token = #{token}
+    </select>
+
+    <!-- 单向迁移：只允许 PENDING → RESOLVED，重复回应不会覆盖已落定的选择 -->
+    <update id="resolveInteraction">
+        UPDATE ai_interaction
+        SET chosen_value = #{chosenValue}, status = #{status}, resolved_at = NOW()
+        WHERE token = #{token} AND status = 'PENDING'
+    </update>
+
+    <!-- ══ ai_attachment（会话级附件：解析后的表格网格） ══ -->
+
+    <resultMap id="AttachmentMap" type="com.example.demo.modules.ai.entity.AiAttachment">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="messageId" column="message_id"/>
+        <result property="kind" column="kind"/>
+        <result property="filename" column="filename"/>
+        <result property="sheetCount" column="sheet_count"/>
+        <result property="rowCount" column="row_count"/>
+        <result property="colCount" column="col_count"/>
+        <result property="truncated" column="truncated"/>
+        <result property="note" column="note"/>
+        <result property="gridJson" column="grid_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insertAttachment" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_attachment (session_id, user_id, message_id, kind, filename,
+                                   sheet_count, row_count, col_count, truncated, note, grid_json)
+        VALUES (#{sessionId}, #{userId}, #{messageId}, #{kind}, #{filename},
+                #{sheetCount}, #{rowCount}, #{colCount}, #{truncated}, #{note}, #{gridJson})
+    </insert>
+
+    <select id="selectAttachmentById" resultMap="AttachmentMap">
+        SELECT * FROM ai_attachment WHERE id = #{id}
+    </select>
+
+    <select id="selectAttachmentsByMessageIds" resultMap="AttachmentMap">
+        SELECT * FROM ai_attachment
+        WHERE message_id IN
+        <foreach collection="ids" item="it" open="(" separator="," close=")">#{it}</foreach>
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectAttachmentsBySession" resultMap="AttachmentMap">
+        SELECT * FROM ai_attachment WHERE session_id = #{sessionId} ORDER BY id ASC
+    </select>
+
+    <delete id="deleteAttachmentsBySession">
+        DELETE FROM ai_attachment WHERE session_id = #{sessionId}
+    </delete>
+
+    <!-- ══ ai_tool_call_log（append-only） ══ -->
+
+    <insert id="insertToolCallLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_tool_call_log (session_id, message_id, tool_name, raw_arguments,
+                                      required_capability, capability_granted, denial_reason,
+                                      executed, raw_result, ok, error_message, confirmed_by)
+        VALUES (#{sessionId}, #{messageId}, #{toolName}, #{rawArguments},
+                #{requiredCapability}, #{capabilityGranted}, #{denialReason},
+                #{executed}, #{rawResult}, #{ok}, #{errorMessage}, #{confirmedBy})
+    </insert>
+
+    <select id="selectToolCallsBySession" resultMap="ToolCallMap">
+        SELECT * FROM ai_tool_call_log WHERE session_id = #{sessionId} ORDER BY id ASC
+    </select>
+
+    <sql id="auditWhere">
+        <where>
+            <if test="userId != null">AND s.user_id = #{userId}</if>
+            <if test="sessionId != null">AND l.session_id = #{sessionId}</if>
+            <if test="toolName != null and toolName != ''">AND l.tool_name = #{toolName}</if>
+            <if test="executed != null">AND l.executed = #{executed}</if>
+            <if test="deniedOnly != null and deniedOnly">AND l.capability_granted = 0</if>
+            <if test="from != null">AND l.created_at &gt;= #{from}</if>
+            <if test="to != null">AND l.created_at &lt;= #{to}</if>
+        </where>
+    </sql>
+
+    <!-- 审计表格页：一次工具调用一行。user_utterance 取本次调用之前最近的一条用户原话。 -->
+    <select id="selectAuditRows" resultType="java.util.LinkedHashMap">
+        SELECT
+            l.id                AS id,
+            l.created_at        AS createdAt,
+            s.user_id           AS userId,
+            (SELECT m3.actor_role_snapshot FROM ai_message m3
+              WHERE m3.session_id = l.session_id AND m3.role = 'user'
+                AND (m.seq IS NULL OR m3.seq &lt;= m.seq)
+              ORDER BY m3.seq DESC LIMIT 1) AS actorRoleSnapshot,
+            l.session_id        AS sessionId,
+            s.title             AS sessionTitle,
+            (SELECT m2.content FROM ai_message m2
+              WHERE m2.session_id = l.session_id AND m2.role = 'user'
+                AND (m.seq IS NULL OR m2.seq &lt;= m.seq)
+              ORDER BY m2.seq DESC LIMIT 1) AS userUtterance,
+            l.tool_name         AS toolName,
+            l.raw_arguments     AS rawArguments,
+            l.required_capability AS requiredCapability,
+            l.capability_granted  AS capabilityGranted,
+            l.denial_reason     AS denialReason,
+            l.executed          AS executed,
+            l.raw_result        AS rawResult,
+            l.ok                AS ok,
+            l.error_message     AS errorMessage,
+            l.confirmed_by      AS confirmedBy
+        FROM ai_tool_call_log l
+        JOIN ai_session s ON s.id = l.session_id
+        LEFT JOIN ai_message m ON m.id = l.message_id
+        <include refid="auditWhere"/>
+        ORDER BY l.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAuditRows" resultType="int">
+        SELECT COUNT(*)
+        FROM ai_tool_call_log l
+        JOIN ai_session s ON s.id = l.session_id
+        <include refid="auditWhere"/>
+    </select>
+
+    <select id="selectDistinctToolNames" resultType="java.lang.String">
+        SELECT DISTINCT tool_name FROM ai_tool_call_log ORDER BY tool_name
+    </select>
+
+</mapper>

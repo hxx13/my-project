@@ -5,7 +5,7 @@ import { ScanAssistantDock } from "@/components/scanner/scan-assistant/ScanAssis
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { CARRIER_IDS, type CarrierId } from "@/components/scanner/scan-assistant/carrier/carrier";
-import { isAdminAreaPath, isTwinDashboardHomePath } from "@/features/admin/buildAdminNavModel";
+import { isAdminAreaPath, isContentManagerPath, isTwinDashboardHomePath } from "@/features/admin/buildAdminNavModel";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 import { useScanAssistantBubbleTransition } from "@/components/scanner/scan-assistant/useScanAssistantBubbleTransition";
@@ -37,7 +37,7 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
   })();
 
   useEffect(() => {
-    if (isTwinDashboardHomePath(pathname) || isAdminAreaPath(pathname)) {
+    if (isTwinDashboardHomePath(pathname) || isAdminAreaPath(pathname) || isContentManagerPath(pathname)) {
       setDockVisible(true);
     } else if (!activeMessage) {
       setDockVisible(false);

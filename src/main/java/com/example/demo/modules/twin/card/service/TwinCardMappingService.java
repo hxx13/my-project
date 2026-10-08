@@ -55,6 +55,17 @@ public class TwinCardMappingService {
     @Autowired
     private com.example.demo.modules.student.service.MobilePresenceNotifyService mobilePresenceNotifyService;
 
+    /** 管理端实时房（console:live）广播事件名，与前端 config/socketEvents.ts 对齐 */
+    public static final String EVENT_EXEMPT_CHANGED = "TWIN_EXEMPT_CHANGED";
+
+    @Autowired
+    private com.corundumstudio.socketio.SocketIOServer socketIOServer;
+
+    /** 批量收回会在同一秒内连写多行台账，2 秒内的重复广播合并成一次（前端收到只管失效查询，一次就够） */
+    private static final long EXEMPT_BROADCAST_MIN_GAP_MS = 2000;
+    private final java.util.concurrent.atomic.AtomicLong lastExemptBroadcastAt =
+            new java.util.concurrent.atomic.AtomicLong(0);
+
     // 🚨 核心防爆盾：双向极速索引缓存 (ConcurrentHashMap 保证线程安全)
     private final Map<String, TwinCardMapping> cardNoCache = new ConcurrentHashMap<>();
     private final Map<String, TwinCardMapping> userIdCache = new ConcurrentHashMap<>();
@@ -390,6 +401,21 @@ public class TwinCardMappingService {
     }
 
     /**
+     * 当前**生效**的豁免名单（DB 直读，带姓名工号）。
+     *
+     * <p>给「查一下现在谁被豁免」「把豁免都撤了」这类需求用：不改任何状态，只读。
+     */
+    public List<TwinCardMapping> listActiveExemptions() {
+        try {
+            List<TwinCardMapping> rows = mappingMapper.findAllActiveExemptions();
+            return rows == null ? List.of() : rows;
+        } catch (Exception e) {
+            log.warn("[豁免名单] 查询失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * 设置/收回单卡冻结豁免（豁免状态唯一变更点之一，统一记 EXEMPT_GRANTED / EXEMPT_REVOKED 台账）。
      *
      * @param ctx 变更来源上下文（记账用）——所有调用方必须显式声明来源，见 {@link ExemptChangeContext} 静态工厂
@@ -543,6 +569,39 @@ public class TwinCardMappingService {
                 true,
                 detail.toString(),
                 "exempt-ledger");
+        // 通知管理端「豁免状态变了」。
+        // 豁免的真身在服务端、显示在各端：改完之后别人屏幕上不会自己变 —— 手动发卡页、AI 助手、
+        // 扫码自动授予、审核通过、定时到期/次数耗尽收回、每日回收，这七八条路径改的是同一张表，
+        // 所以广播挂在**唯一记账点**上，一处覆盖全部，不必在每个调用方各加一行。
+        broadcastExemptChanged(granted, snapshot.getCardNo());
+    }
+
+    /**
+     * 广播豁免变更给管理端（console:live）。
+     *
+     * <p>只带变化摘要不塞列表：前端收到就失效自己的查询、自己去拉（与本房间其它事件的既有约定一致）。
+     * 推送失败不影响主业务 —— 一次豁免变更不该因为推送出问题而回滚。
+     */
+    private void broadcastExemptChanged(boolean granted, String cardNo) {
+        if (socketIOServer == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long last = lastExemptBroadcastAt.get();
+        if (now - last < EXEMPT_BROADCAST_MIN_GAP_MS || !lastExemptBroadcastAt.compareAndSet(last, now)) {
+            return;
+        }
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("granted", granted);
+            payload.put("cardNo", cardNo);
+            payload.put("at", java.time.Instant.now().toString());
+            socketIOServer
+                    .getRoomOperations(com.example.demo.common.component.SocketRoomAssigner.ROOM_CONSOLE_LIVE)
+                    .sendEvent(EVENT_EXEMPT_CHANGED, payload);
+        } catch (Exception e) {
+            log.warn("[豁免广播] 推送到 console:live 失败: {}", e.getMessage());
+        }
     }
 
     /**
@@ -718,6 +777,14 @@ public class TwinCardMappingService {
      */
     public List<TwinCardMapping> getAllWithUserInfo() {
         return mappingMapper.findAllWithUserInfo();
+    }
+
+    /** 该大华人员名下的全部本地映射（DB 直读，不走缓存；删主卡时用它找同人的其他卡） */
+    public List<TwinCardMapping> listByDahuaSeq(String dahuaSeq) {
+        if (dahuaSeq == null || dahuaSeq.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        return mappingMapper.findByDahuaSeq(dahuaSeq.trim());
     }
 
     private String getCurrentTime() {
@@ -908,7 +975,13 @@ public class TwinCardMappingService {
     public synchronized void deleteMapping(String cardNo, ExemptChangeContext ctx) {
         TwinCardMapping mapping = resolveMappingByCardNo(cardNo);
         if (mapping == null) {
-            return;
+            // 缓存未命中不等于库里没有（本进程启动早于建表时 reloadCache 会整片留空，且没有二次重载；
+            // 库也可能被旁路写入）。此时静默返回会让调用方误报「本地映射已清除」——直查库兜底。
+            mapping = mappingMapper.findByCardNo(cardNo == null ? null : cardNo.trim());
+            if (mapping == null) {
+                return;
+            }
+            log.warn("[Cache/DB] 缓存未命中但库内存在，按库内记录删除: 卡号 {}", mapping.getCardNo());
         }
         String canonical = mapping.getCardNo();
         // 1. 豁免随行消失：删除前记统一台账（writeExemptLedger 内部复制快照并吞异常，不阻断解绑）
