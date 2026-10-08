@@ -344,7 +344,9 @@ Component({
           // 否则刷新后原先渲染好的回复会退化成带 ** 的明文
           .map((m) => {
             if (m.role !== 'user' && !m.html && looksLikeMarkdown(m.text)) {
-              m.html = markdown.mdToHtml(m.text);
+              const html = markdown.mdToHtml(m.text);
+              m.html = html;
+              if (html.indexOf('<table') >= 0) m.wide = true;
             }
             // 恢复的回复同样要能下载它给的模板
             if (m.role !== 'user' && !m.links) {
@@ -674,7 +676,12 @@ Component({
        */
       const body = links.length > 0 ? text.replace(TPL_MD_LINK_RE, '$1') : text;
       if (body !== text) patch['messages[' + idx + '].text'] = body;
-      if (looksLikeMarkdown(body)) patch['messages[' + idx + '].html'] = markdown.mdToHtml(body);
+      if (looksLikeMarkdown(body)) {
+        const html = markdown.mdToHtml(body);
+        patch['messages[' + idx + '].html'] = html;
+        // 表格在这条里：气泡要放行到整幅宽，否则 76% 的常规气泡把列挤成一条条
+        if (html.indexOf('<table') >= 0) patch['messages[' + idx + '].wide'] = true;
+      }
       if (links.length > 0) patch['messages[' + idx + '].links'] = links;
       if (Object.keys(patch).length) this.setData(patch);
     },

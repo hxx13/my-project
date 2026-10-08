@@ -65,7 +65,9 @@ public class StudentReviewToolPack implements AiToolPack {
     @Override
     public Set<String> routeHints() {
         // L2 路由词：这些话/页面提到本域时带上本包（见 AiPackRouter）。
-        return Set.of("申领", "待审", "驳回", "物资需求", "延迟免冻");
+        // 「待审/待办/审核/审批」与笼位审核、培训审批两个包**故意重复** —— 「我有什么待审核的」
+        // 要的是全平台待办，三个域必须一起被带上；只本包接住，答出来就只有物资那一域。
+        return Set.of("申领", "待审", "待办", "审核", "审批", "驳回", "物资需求", "延迟免冻");
     }
 
     @Override

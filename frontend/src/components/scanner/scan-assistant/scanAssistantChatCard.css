@@ -935,6 +935,28 @@
   outline-offset: 1px;
 }
 
+/* 自定义回答的确认键。实底 + 1px 描边（本面板不用半透明底）；
+   禁用态换成中性实色，不走 opacity —— 显示器缩放 150% 下半透明会看出来发虚。 */
+.scan-assistant-ask__custom-confirm {
+  flex-shrink: 0;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--app-color-accent);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-accent);
+  color: var(--app-color-text-inverse);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.scan-assistant-ask__custom-confirm:disabled {
+  border-color: var(--app-color-border-default);
+  background: var(--app-color-surface-container);
+  color: var(--app-color-text-tertiary);
+  cursor: not-allowed;
+}
+
 /* 有待答题时收窄对话区：卡片总高要留在气泡锚点估算的高度内，否则会顶出屏幕下半屏。
    收得比平时更狠 —— 用户此刻的注意力在选项上，对话区只需交代「在问什么」 */
 .scan-assistant-ask__history--with-choices {

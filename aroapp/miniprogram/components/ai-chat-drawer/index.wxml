@@ -84,7 +84,7 @@
           class="ai-drawer__row ai-drawer__row--{{ item.role }}"
         >
           <ai-orb wx:if="{{ item.role === 'assistant' }}" size="40" state="{{ item.typing ? 'thinking' : 'idle' }}" />
-          <view class="ai-drawer__col">
+          <view class="ai-drawer__col {{ item.wide ? 'ai-drawer__col--wide' : '' }}">
             <view class="ai-drawer__bubble ai-drawer__bubble--{{ item.role === 'assistant' ? 'bot' : 'me' }}">
               <image
                 wx:for="{{ item.images }}"
@@ -167,17 +167,22 @@
 
       <!-- 写操作确认只有执行/不执行，不配自定义回答，也不用取消（那个「取消」就是选项之一） -->
       <block wx:if="{{ !isConfirm }}">
-        <!-- 自定义回答就是选项下面这个常驻输入框（不是按钮展开）——它也是一项，回车即选中 -->
+        <!-- 自定义回答就是选项下面这个常驻输入框 —— 它也是一项；右侧发送键给不方便按回车的场景 -->
         <view class="ai-drawer__custom">
           <input
             class="ai-drawer__custom-input"
             value="{{ customDraft }}"
-            placeholder="自定义回答：直接说你的答案，输入后按回车"
+            placeholder="自定义回答：直接说你的答案，也可按回车"
             placeholder-class="ai-drawer__input-ph"
             bindinput="onCustomInput"
             bindconfirm="onCustomSubmit"
             confirm-type="done"
           />
+          <view
+            class="ai-drawer__custom-send {{ customDraft ? '' : 'ai-drawer__send--off' }}"
+            hover-class="{{ customDraft ? 'ai-drawer__custom-send--hover' : 'none' }}"
+            bindtap="onCustomSubmit"
+          >发送</view>
         </view>
 
         <!-- 取消在左、提交在右；提交带已答计数。一问没有提交键 —— 点一下即办 -->

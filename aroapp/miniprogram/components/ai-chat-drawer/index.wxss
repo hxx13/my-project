@@ -170,6 +170,17 @@
   max-width: 76%;
 }
 
+/* 带表格的那条放行到整幅宽：76% 会把表格列挤成一条条，读不了 */
+.ai-drawer__col--wide {
+  max-width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-drawer__col--wide .ai-drawer__bubble {
+  max-width: 100%;
+}
+
 .ai-drawer__bubble {
   padding: 18rpx 22rpx;
   border-radius: 16rpx;

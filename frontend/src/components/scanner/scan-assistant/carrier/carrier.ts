@@ -80,7 +80,17 @@ const MOOD_MATES_SCRIPTS = [
   "/vendor/mood-mates/twinkle.js",
 ];
 
-function loadScript(src: string): Promise<void> {
+/**
+ * 注入一个脚本。失败**重试一次**再放弃。
+ *
+ * <p>为什么值得重试：生产上静态资源会被中间层拒一次（实测 nginx `limit_req` 对
+ * {@code /vendor/emotion-ball/emotions.js} 回了 503），而这条链是串行的 ——
+ * 第二个脚本被拒，后面三个都不加载，整个形象变空壳。一次网络抖动不该有这种后果。
+ *
+ * <p>重试前必须把失败的那个 {@code <script>} 摘掉：上面的 querySelector 守卫认元素存在就当加载过，
+ * 留着它重试会被直接放过、等于没重试。
+ */
+function loadScript(src: string, retriesLeft = 1): Promise<void> {
   return new Promise((resolve, reject) => {
     if (document.querySelector(`script[src="${src}"]`)) {
       resolve();
@@ -90,7 +100,16 @@ function loadScript(src: string): Promise<void> {
     s.src = src;
     s.async = false;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`加载脚本失败: ${src}`));
+    s.onerror = () => {
+      s.remove();
+      if (retriesLeft > 0) {
+        setTimeout(() => {
+          loadScript(src, retriesLeft - 1).then(resolve, reject);
+        }, 400);
+        return;
+      }
+      reject(new Error(`加载脚本失败: ${src}`));
+    };
     document.head.appendChild(s);
   });
 }
@@ -101,7 +120,12 @@ export function loadEmotionBall(): Promise<void> {
     emotionBallPromise = EMOTION_BALL_SCRIPTS.reduce(
       (p, src) => p.then(() => loadScript(src)),
       Promise.resolve(),
-    );
+    )
+      // 失败不缓存：坏结果留在 memo 里，后面重挂载也永远看不到球
+      .catch((e) => {
+        emotionBallPromise = null;
+        throw e;
+      });
   }
   return emotionBallPromise;
 }
@@ -112,7 +136,10 @@ export function loadMoodMates(): Promise<void> {
     moodMatesPromise = MOOD_MATES_SCRIPTS.reduce(
       (p, src) => p.then(() => loadScript(src)),
       Promise.resolve(),
-    );
+    ).catch((e) => {
+      moodMatesPromise = null;
+      throw e;
+    });
   }
   return moodMatesPromise;
 }

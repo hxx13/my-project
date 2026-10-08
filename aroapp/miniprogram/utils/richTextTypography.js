@@ -63,8 +63,8 @@ var STYLES = {
     px(SIZES_PX.small) +
     ';',
   th:
-    'border:1px solid #ebedf0;padding:6px 8px;text-align:left;font-weight:600;background:#f7f8fa;word-break:break-word;',
-  td: 'border:1px solid #ebedf0;padding:6px 8px;text-align:left;word-break:break-word;',
+    'border:1px solid #ebedf0;padding:5px 6px;text-align:left;font-weight:600;background:#f7f8fa;word-break:break-word;',
+  td: 'border:1px solid #ebedf0;padding:5px 6px;text-align:left;word-break:break-word;',
 };
 
 function tagStyle(tag) {

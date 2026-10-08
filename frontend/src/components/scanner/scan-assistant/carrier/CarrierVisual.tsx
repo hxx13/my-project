@@ -28,7 +28,13 @@ type Props = {
   state: CarrierState;
 };
 
-/** 引擎载体通用 Hook：挂载时按序加载脚本并 create；emotionId 变化时 setEmotion */
+/** 引擎载体通用 Hook：挂载时按序加载脚本并 create；emotionId 变化时 setEmotion
+ *
+ * <p>返回 {@code failed} 让调用方**退回默认球**。引擎脚本是运行时注入 /vendor/ 的，
+ * 缺一个整个形象就没了（真机踩过：生产 nginx 限流把 `/vendor/emotion-ball/emotions.js`
+ * 拒成 503，串行加载链当场断掉，容器留个空 div —— 看着"球不见了"，界面上却一个字都不说）。
+ * 宁可退回一个纯 CSS 的球，也不能什么都没有。
+ */
 function useEngineCarrier(
   load: () => Promise<void>,
   create: (el: HTMLDivElement) => EngineInstance,
@@ -37,6 +43,7 @@ function useEngineCarrier(
   const containerRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<EngineInstance | null>(null);
   const emotionIdRef = useRef(emotionId);
+  const [failed, setFailed] = useState(false);
   emotionIdRef.current = emotionId;
 
   useEffect(() => {
@@ -48,8 +55,11 @@ function useEngineCarrier(
         instanceRef.current = inst;
         inst.setEmotion?.(emotionIdRef.current);
       })
-      .catch(() => {
-        /* 脚本加载失败静默 */
+      .catch((e) => {
+        // 别静默：退回默认球的同时留一条日志，否则界面上什么都不说、只能靠翻控制台
+        if (cancelled) return;
+        console.warn("[scan-assistant] 载体引擎脚本没加载成功，已退回默认球：", e);
+        setFailed(true);
       });
     return () => {
       cancelled = true;
@@ -63,7 +73,7 @@ function useEngineCarrier(
     instanceRef.current?.setEmotion?.(emotionId);
   }, [emotionId]);
 
-  return containerRef;
+  return { containerRef, failed };
 }
 
 /** 三组随机表情池 + 睡眠计时，解析出当前 emotionId */
@@ -125,12 +135,15 @@ function useCarrierEmotion(state: CarrierState): string {
 }
 
 function EmotionBallCarrier({ size, emotionId }: { size: number; emotionId: string }) {
-  const ref = useEngineCarrier(
+  const { containerRef, failed } = useEngineCarrier(
     loadEmotionBall,
     (el) => (window as any).EmotionBall.create(el, { emotion: "02" }),
     emotionId,
   );
-  return <div ref={ref} style={{ width: size * 100, height: size * 100 }} />;
+  if (failed) {
+    return <MorphOrbLoader size={size} />;
+  }
+  return <div ref={containerRef} style={{ width: size * 100, height: size * 100 }} />;
 }
 
 function MoodMatesCarrier({
@@ -142,12 +155,15 @@ function MoodMatesCarrier({
   emotionId: string;
   character: "nimbo" | "twinkle";
 }) {
-  const ref = useEngineCarrier(
+  const { containerRef, failed } = useEngineCarrier(
     loadMoodMates,
     (el) => (window as any).MoodMates.create(el, { character, emotion: "02" }),
     emotionId,
   );
-  return <div ref={ref} style={{ width: size * 100, height: size * 100 }} />;
+  if (failed) {
+    return <MorphOrbLoader size={size} />;
+  }
+  return <div ref={containerRef} style={{ width: size * 100, height: size * 100 }} />;
 }
 
 /** 首页智能助手视觉载体分发器 */

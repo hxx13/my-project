@@ -2,6 +2,7 @@ package com.example.demo.modules.ai.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.ai.capability.DefaultAiCapabilityGate;
+import com.example.demo.modules.ai.tool.AiPackRouter;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.SideEffect;
@@ -13,6 +14,7 @@ import com.example.demo.modules.ai.tool.pack.CommonToolPack;
 import com.example.demo.modules.ai.tool.pack.PersonnelQueryToolPack;
 import com.example.demo.modules.ai.tool.pack.PortalContentToolPack;
 import com.example.demo.modules.ai.tool.pack.StudentReviewToolPack;
+import com.example.demo.modules.ai.tool.pack.TelemetryToolPack;
 import com.example.demo.modules.ai.tool.pack.TrainingReviewToolPack;
 import com.example.demo.modules.ai.tool.pack.UnfreezeToolPack;
 import com.example.demo.modules.auth.entity.User;
@@ -143,6 +145,27 @@ class AiToolVisibilityTest {
         assertTrue(forAdmin.contains("listPortalCategories"), "读工具也一起有，否则模型拿不到分类 id");
     }
 
+    @Test
+    @DisplayName("真包路由：口语「2楼的湿度情况」要带上环境监测；「我有什么待审核的」要把三个待审域一起带上")
+    void realPacksRouteOnNaturalPhrases() {
+        ToolRegistry registry = realRegistry();
+        AiPackRouter router = new AiPackRouter();
+
+        List<String> humidity = router.route(registry.packs(), null, "查询一下2楼的湿度情况")
+                .stream().map(AiToolPack::packKey).toList();
+        assertTrue(humidity.contains("telemetry"),
+                "「湿度」是用户最自然的说法，必须命中环境监测（光有「温湿度」连写词接不住口语）：" + humidity);
+
+        List<String> pending = router.route(registry.packs(), null, "看看我当前有什么待审核的")
+                .stream().map(AiToolPack::packKey).toList();
+        assertTrue(pending.contains("review"), "物资申领 / 延迟免冻那一域：" + pending);
+        assertTrue(pending.contains("cage_op"),
+                "笼位认领/分笼/转移那一域 —— 「待审」原来只写在物资包里，这里就漏了（真机：答出「只有物资的3条」）："
+                        + pending);
+        assertTrue(pending.contains("training"),
+                "培训审批那一域 —— 这个包的 routeHints 原来是空的（连方法都没重写）：" + pending);
+    }
+
     private static ToolRegistry realRegistry() {
         // 认领那两项能力码走 CageClaimService#canApprove（会查身份，不是纯函数），
         // 这里只需验「过滤按能力码走」这条线，所以给它一个按角色判定的替身。
@@ -160,6 +183,7 @@ class AiToolVisibilityTest {
                 new AttachmentToolPack(null, null),
                 new PersonnelQueryToolPack(null, null, null),
                 new PortalContentToolPack(null, new com.fasterxml.jackson.databind.ObjectMapper()),
+                new TelemetryToolPack(null, null, null),
                 new StudentReviewToolPack(null, null)));
     }
 

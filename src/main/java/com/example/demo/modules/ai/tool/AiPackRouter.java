@@ -39,10 +39,39 @@ public class AiPackRouter {
      * 一轮最多带几个包（含 common）。
      *
      * <p>按**包数**而不是工具数设上限：每包 3~8 个工具，数量级可预期；而工具数是选包的结果，
-     * 拿结果当限制会变成「先算一遍才能决定选谁」。4 个包 ≈ 15~20 个工具，落在 §6.3 的
-     * 「10~30 需要描述调优」区间里，离「>30 明显下降」还留着一档。
+     * 拿结果当限制会变成「先算一遍才能决定选谁」。6 个包 ≈ 25~30 个工具，仍落在 §6.3 的
+     * 「10~30 需要描述调优」区间里，离「>30 明显下降」只差一档。
+     *
+     * <p>**2026-10-08 由 4 提到 6**：包数长到 12 之后 4 个位子不够用了 —— 实测「我有什么待审核的」
+     * 要同时带物资 / 笼位审核 / 笼架操作 / 培训四个域，加上常驻 common 正好 5，4 个位子根本放不下
+     * （当时只能靠把总括词在多个包里重复来勉强凑）。同一轮里环境监测也被挤掉过一次。
+     * 另外兜底规则是「一个都没命中就全包下发」（≈47 个工具），说明这个上限只是**常态优化**，
+     * 不是能力红线 —— 放宽的代价是每轮多几百 token 的工具描述。
      */
-    static final int MAX_PACKS_PER_TURN = 4;
+    static final int MAX_PACKS_PER_TURN = 6;
+
+    /**
+     * 一轮的实际选包：**当轮原话优先**，只有它一个域都认不出，才把历史正文加进来。
+     *
+     * <p>为什么必须分两段：历史正文（最近一轮助手的话）参与路由是为了接住「那把它出库」
+     * 这种没有域名词的追问。但助手在解释「什么我办不了」时会把自己**能办**的域挨个念一遍 ——
+     * 那些词于是全成了命中，把用户当轮**真正**问的那个域挤出包位。实测：上一轮列过能力清单之后，
+     * 「查询一下 2 楼的湿度情况」答的是「我这轮没有环境监测类的工具」。
+     * 原话里有明确域名词时，历史不该有投票权。
+     */
+    public List<AiToolPack> routeForTurn(Collection<AiToolPack> packs, String contextPage,
+                                         String currentInput, String sessionContext) {
+        List<AiToolPack> ordered = new ArrayList<>(packs);
+        if (ordered.size() <= MAX_PACKS_PER_TURN) {
+            return ordered;
+        }
+        String input = currentInput == null ? "" : currentInput;
+        String inputHay = join(contextPage, input);
+        boolean inputRecognized = ordered.stream()
+                .anyMatch(p -> !COMMON_PACK.equals(p.packKey()) && weight(p, inputHay) > 0);
+        String recent = inputRecognized ? input : join(input, sessionContext);
+        return route(ordered, contextPage, recent);
+    }
 
     /**
      * 选包。

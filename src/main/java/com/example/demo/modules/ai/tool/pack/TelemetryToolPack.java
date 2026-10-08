@@ -78,7 +78,10 @@ public class TelemetryToolPack implements AiToolPack {
     @Override
     public Set<String> routeHints() {
         // L2 路由词：这些话/页面提到本域时带上本包（见 AiPackRouter）。
-        return Set.of("环境", "温湿度", "温度", "湿度", "压差", "氨气", "监控", "探头", "点位", "遥测", "阈值", "越限");
+        // 「楼层/几楼/当前值/读数」是用户问环境时最自然的说法（「2楼的湿度情况」），
+        // 光有「温湿度」这种连写词接不住口语 —— 用户不会正好说那三个字。
+        return Set.of("环境", "温湿度", "温度", "湿度", "压差", "氨气", "监控", "探头", "点位", "遥测",
+                "阈值", "越限", "楼层", "几楼", "当前值", "读数");
     }
 
     @Override
