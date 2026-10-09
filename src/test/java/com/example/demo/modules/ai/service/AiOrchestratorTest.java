@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.service;
 
 import com.example.demo.modules.ai.core.AiEventSink;
+import com.example.demo.modules.ai.core.AiTurnStats;
 import com.example.demo.modules.ai.tool.AiPackRouter;
 
 import org.junit.jupiter.api.DisplayName;
@@ -180,6 +181,56 @@ class AiOrchestratorTest {
                         new AiEventSink.Option("用上次的小计配置直接导出", "last"),
                         new AiEventSink.Option("我要自己配一下小计", "custom")), false),
                 "last"), "小计配置没配过，要问");
+    }
+
+    @Test
+    @DisplayName("同一道题只问一遍 —— 模型同一轮里把查候选的工具调两次是常态")
+    void identicalQuestionsAreAskedOnce() {
+        AiOrchestrator orch = new AiOrchestrator(null, null, null, null, null, null, null, null, null,
+                new AiPackRouter(), null, null);
+        AiOrchestrator.ChoiceGroup sites = new AiOrchestrator.ChoiceGroup("是哪个机房（地点）？",
+                List.of(new AiEventSink.Option("1F机房", "FM_S_1"),
+                        new AiEventSink.Option("2F机房", "FM_S_2")), false);
+        AiOrchestrator.ChoiceGroup other = new AiOrchestrator.ChoiceGroup("换了哪些级别？",
+                List.of(new AiEventSink.Option("初效", "初效"),
+                        new AiEventSink.Option("中效", "中效")), false);
+        // 真机形状：同一个工具被调了两次 → 两组一模一样的候选进了队
+        RecordingSink sink = new RecordingSink();
+        orch.emitClarifyGroups(sink, List.of(sites, sites, other), "记录今天消耗半桶阻垢剂");
+
+        assertEquals(List.of("是哪个机房（地点）？", "换了哪些级别？"), sink.asked,
+                "重复的那道要并掉；不同的题各问一次");
+    }
+
+    /** 只记「问过哪些题」的假载体。 */
+    private static final class RecordingSink implements AiEventSink {
+        final List<String> asked = new ArrayList<>();
+
+        @Override
+        public void interaction(String token, String kind, String question,
+                                List<Option> options, boolean multiSelect) {
+            asked.add(question);
+        }
+
+        @Override
+        public void delta(String text) {
+        }
+
+        @Override
+        public void tool(String name, String status) {
+        }
+
+        @Override
+        public void usage(AiTurnStats stats) {
+        }
+
+        @Override
+        public void done(AiTurnStats stats) {
+        }
+
+        @Override
+        public void error(String code, String message) {
+        }
     }
 
     /** 上游的校验规则：每条 tool 都必须回应它紧邻前面那条 assistant 声明的某个 tool_call。 */

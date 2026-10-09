@@ -21,6 +21,7 @@ import {
   fetchAssistantSessionMessages,
   fetchAssistantSessions,
   fetchExportBlob,
+  fetchExportByUrl,
   fetchSessionExports,
   streamScanAssistantAsk,
   streamAiInteraction,
@@ -1225,7 +1226,15 @@ export function ScanAssistantAskPanel({
       }
       return;
     }
-    const filename = `material-audit-${dl.label || "export"}.xlsx`;
+    /*
+     * 后面的重跑分支是**物资审计导出专用**的（文件名前缀、浏览器里那份小计配置）。
+     * 别的导出域不能被它兜住 —— 那样会下到一份跟用户要的完全无关的文件。
+     */
+    const isMaterialAudit = !dl.kind || dl.kind === "materialAudit";
+    const url = String((dl.params as Record<string, unknown> | undefined)?.url ?? "");
+    const filename = isMaterialAudit
+      ? `material-audit-${dl.label || "export"}.xlsx`
+      : `${dl.label || "export"}.xlsx`;
     try {
       if (dl.exportId) {
         const archived = await fetchExportBlob(dl.exportId);
@@ -1234,6 +1243,24 @@ export function ScanAssistantAskPanel({
           toast.success("已开始下载");
           return;
         }
+      }
+      /*
+       * **带地址的导出**（动物订购这类）：后端给的是相对地址，按它取 —— 与页面上那个
+       * 「导出 Excel」按钮走的是同一条接口，所以小计口径、可见范围都由服务端同一处判。
+       * 取到就顺手归档：历史里再下、以及之后「改这份文件」，靠的都是这份字节。
+       */
+      if (url) {
+        const blob = await fetchExportByUrl(url);
+        downloadBlob(blob, filename);
+        if (dl.exportId) {
+          await archiveExportContent(dl.exportId, blob, filename);
+        }
+        toast.success("已开始下载");
+        return;
+      }
+      if (!isMaterialAudit) {
+        toast.error("这份导出暂时取不到文件，让助手重新导一次");
+        return;
       }
       if (!dl.params) {
         toast.error("这份导出没有文件、也没有可重跑的参数");
@@ -1297,6 +1324,12 @@ export function ScanAssistantAskPanel({
     accQueue: AskQuestion[],
   ) => {
     if (!p.options || p.options.length === 0) return;
+    // **同一轮里一模一样的问题只排一次**：模型有时会把同一个出选项的工具调两遍，
+    // 于是用户看到「两个重复的提问物资」（真机反馈 2026-10-09）。问题+选项全同就算重复。
+    const key = `${p.question}|${p.options.map((o) => `${o.label}=${o.value}`).join(",")}`;
+    if (accQueue.some((x) => `${x.question}|${x.options.map((o) => `${o.label}=${o.value}`).join(",")}` === key)) {
+      return;
+    }
     accQueue.push({
       question: p.question,
       options: p.options,

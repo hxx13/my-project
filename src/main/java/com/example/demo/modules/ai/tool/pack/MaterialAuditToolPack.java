@@ -109,6 +109,11 @@ public class MaterialAuditToolPack implements AiToolPack {
                   ② 时间段没说 → 用一句话问清（日期做不了芯片），**不要**默认导全量（全量摘要又慢又没意义）；
                   ③ 对象没说 → 问是全部还是某个组/某人/某类物资；用户给了名字但写法不确定时，
                      用 kind=groups/applicants/categories/items 查候选，候选也会变成可点选项。
+                - **每个页签的「对象」没定就先问**：按物品（item/itemGroup）问物品、个人审计问人、
+                  课题组审计问课题组。工具会**把候选做成可点选项**交回来；用户点完，把他点的 value
+                  原样放进 filterChoice 再调一次。他若说不用筛，就调「全部」那一项。
+                - **同一个问题只问一次**：工具已经把选项交回来了，就**不要再为同一件事调一遍** ——
+                  那会让用户看到两个一模一样的提问（真机 2026-10-09 撞到）。
                 - **多级筛选要一层层收窄**：先定维度再取明细 ——
                   课题组（listMaterialAuditOptions kind=groups）→ 人（kind=applicants）→
                   分类（kind=categories）→ 物资（kind=items，可再按 categoryId 收窄）；
@@ -684,6 +689,73 @@ public class MaterialAuditToolPack implements AiToolPack {
 
     // ── 三、导出准备：摘要 + 带参数的页面链接 ──
 
+    /**
+     * 这个页签的「对象」是否已经给定了。
+     *
+     * <p>判据按页签分：按物品/物品+课题组看物品（id / 名称 / 分类都算），个人审计看申请人，
+     * 课题组审计看课题组。
+     */
+    private static boolean objectGiven(String tab, String itemKeyword, String group, String applicant,
+                                       Long categoryId, Long itemId) {
+        return switch (tab) {
+            case "item", "itemGroup" -> itemId != null
+                    || (itemKeyword != null && !itemKeyword.isBlank())
+                    || categoryId != null;
+            case "personal" -> applicant != null && !applicant.isBlank();
+            default -> group != null && !group.isBlank();
+        };
+    }
+
+    /**
+     * 把「这个页签筛什么」做成可点选项交回去（顺带一个「全部…」兜底）。
+     *
+     * <p>候选**取自平台真实数据**（物品 / 课题组 / 有记录的人），并且抽不出候选时返回 null
+     * —— 一个都问不出来还硬问，只会让用户干瞪眼。
+     */
+    private Map<String, Object> askObject(User actor, String tab, String from, String to, Long categoryId) {
+        List<List<String>> pairs = new ArrayList<>();   // {label, value}
+        String what;
+        if ("item".equals(tab) || "itemGroup".equals(tab)) {
+            for (MaterialItemView it : materialService.listItemsForAdmin(categoryId, null)) {
+                if (it == null) continue;
+                pairs.add(List.of(str(it.getName()), str(it.getName())));
+                if (pairs.size() >= CHIP_MAX) break;
+            }
+            what = "哪件物品";
+        } else if ("personal".equals(tab)) {
+            Result<List<Map<String, Object>>> ar = materialService.listApplicantsWithRecords(actor, from, to);
+            for (Map<String, Object> a : ar == null || ar.getData() == null ? List.<Map<String, Object>>of() : ar.getData()) {
+                String name = str(firstOf(a, "applicantName", "name"));
+                pairs.add(List.of(name, str(firstOf(a, "userId", "id"))));
+                if (pairs.size() >= CHIP_MAX) break;
+            }
+            what = "哪个申请人";
+        } else {
+            Result<List<String>> gr = materialService.listGroupsWithRecords(actor, from, to);
+            for (String g : gr == null || gr.getData() == null ? List.<String>of() : gr.getData()) {
+                pairs.add(List.of(g, g));
+                if (pairs.size() >= CHIP_MAX) break;
+            }
+            what = "哪个课题组";
+        }
+        if (pairs.isEmpty()) {
+            return null;   // 没候选就别硬问
+        }
+        List<Map<String, Object>> options = new ArrayList<>();
+        for (List<String> p : pairs) {
+            options.add(AiChoices.option(p.get(0), p.get(1)));
+        }
+        options.add(AiChoices.option("全部" + ("哪件物品".equals(what) ? "物品" : what.replace("哪个", "")), "all"));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", false);
+        out.put("reason", "这个页签还没定要导" + what + "。**先问用户**（选项已做成可点选项，别在正文里列）；"
+                + "他若说不用筛，就把「全部」那一项的 value 传回来");
+        out.put("choices", options);
+        out.put("choicesTitle", "导" + what + "？");
+        out.put("note", "用户点完后，把他点的那项 value 原样放进 filterChoice 再调一次本工具");
+        return out;
+    }
+
     private AiTool prepareExport() {
         String schema = """
                 {
@@ -700,7 +772,11 @@ public class MaterialAuditToolPack implements AiToolPack {
                     "applicantUserId": { "type": "string", "description": "申请人 id（personal 用）" },
                     "categoryId": { "type": "integer", "description": "物资分类（item / itemGroup 用）" },
                     "itemId": { "type": "integer", "description": "物资 id（item / itemGroup 用）" },
-                    "itemKeyword": { "type": "string", "description": "物资名称过滤" }
+                    "itemKeyword": { "type": "string", "description": "物资名称过滤" },
+                    "filterChoice": {
+                      "type": "string",
+                      "description": "**只在工具把「这个页签筛什么」做成可点选项时用**：把用户点的那项 value 原样传回来（如物品名 / 课题组全称 / 申请人 id / 全部）"
+                    }
                   },
                   "required": ["tab"],
                   "additionalProperties": false
@@ -721,6 +797,32 @@ public class MaterialAuditToolPack implements AiToolPack {
                     String itemKeyword = arg(args, "itemKeyword", null);
                     NodeMaybe categoryId = longArg(args, "categoryId");
                     NodeMaybe itemId = longArg(args, "itemId");
+
+                    // 用户刚点的那个选项（如果有）：按页签落到对应的筛选参数上。
+                    String filterChoice = arg(args, "filterChoice", null);
+                    boolean filterAnswered = filterChoice != null && !filterChoice.isBlank();
+                    if (filterAnswered && !"all".equalsIgnoreCase(filterChoice)) {
+                        if ("item".equals(tab) || "itemGroup".equals(tab)) {
+                            itemKeyword = filterChoice;
+                        } else if ("personal".equals(tab)) {
+                            applicant = filterChoice;
+                        } else {
+                            group = filterChoice;
+                        }
+                    }
+
+                    // **每个页签的「对象」没定就先问**（真机反馈）：用户选了「按物品」页签，
+                    // 工具却直接跳到「小计怎么配」，一句都没问他要筛哪件物品 ——
+                    // 用户只能自己补一句「我还没筛选」。四个页签问的东西不同：
+                    // personal→人、group→课题组、item→物品、itemGroup→物品。
+                    // 放在**算摘要之前**：全量摘要又慢又没意义，先问清再算。
+                    if (!filterAnswered
+                            && !objectGiven(tab, itemKeyword, group, applicant, categoryId.value, itemId.value)) {
+                        Map<String, Object> ask = askObject(ctx.actor(), tab, from, to, categoryId.value);
+                        if (ask != null) {
+                            return ask;
+                        }
+                    }
 
                     SubtotalSummary summary;
                     if ("item".equals(tab) || "itemGroup".equals(tab)) {

@@ -159,7 +159,7 @@ public class NavToolPack implements AiToolPack {
                     }
                     // 视角来自请求上下文（服务端按唯一判据推出来的，模型影响不到）
                     Pages pages = scan(ctx.actor(), ctx.miniProgram(), ctx.studentView());
-                    Map<String, Object> out = resolve(query, pages.visible());
+                    Map<String, Object> out = resolve(query, pages);
                     if (Boolean.FALSE.equals(out.get("ok"))) {
                         // 「没这个页面」与「有、但你的角色打不开」是两回事，不能同一句回。
                         // 说成前者会让用户一遍遍换说法重试，而他真正需要的是找人开权限。
@@ -176,10 +176,11 @@ public class NavToolPack implements AiToolPack {
     // ── 匹配 ──
 
     /** 一次「跳哪儿」的决策。 */
-    private Map<String, Object> resolve(String rawQuery, List<Page> pages) {
+    private Map<String, Object> resolve(String rawQuery, Pages pages) {
         String q = flat(rawQuery);
+        List<Page> visible = pages.visible();
 
-        List<Page> exact = match(pages, p -> flat(p.label).equals(q));
+        List<Page> exact = match(visible, p -> flat(p.label).equals(q));
         if (exact.size() == 1) {
             return hit(exact.get(0));
         }
@@ -187,8 +188,16 @@ public class NavToolPack implements AiToolPack {
             return ask("「" + rawQuery + "」对应好几个页面，去哪一个？", exact);
         }
 
+        // 名字**一字不差**地落在「存在但角色不够」那一堆里 → 先把这句话说了，别再往下模糊匹配。
+        // 不拦的话，模糊匹配会拿「互含」规则把「物资领用审计」吞到 STAFF 能看的「领用审计」上
+        // （2026-10-09 实测：问物资领用审计，人被打发到了领用审计页）。
+        String exactDenied = exactDeniedLabel(rawQuery, pages.deniedLabels());
+        if (exactDenied != null) {
+            return denied(exactDenied);
+        }
+
         // 名字互含：用户说「门禁规则」命中「门禁规则配置」，说「流水线日志」命中「流水线」
-        List<Page> byLabel = match(pages, p -> {
+        List<Page> byLabel = match(visible, p -> {
             String label = flat(p.label);
             return !label.isEmpty() && (label.contains(q) || q.contains(label));
         });
@@ -200,7 +209,7 @@ public class NavToolPack implements AiToolPack {
         }
 
         // 退一步按路径找：用户点过芯片之后，回传的 query 就是路径
-        List<Page> byPath = match(pages, p -> flat(p.path).contains(q));
+        List<Page> byPath = match(visible, p -> flat(p.path).contains(q));
         if (byPath.size() == 1) {
             return hit(byPath.get(0));
         }
@@ -211,7 +220,7 @@ public class NavToolPack implements AiToolPack {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", false);
         out.put("reason", "没找到叫「" + rawQuery + "」的入口");
-        List<Page> near = nearest(rawQuery, pages);
+        List<Page> near = nearest(rawQuery, visible);
         if (!near.isEmpty()) {
             out.put("hint", "下面是名字最接近的几个，让用户从中挑一个（**不要自己挑**）");
             out.put("choices", options(near));
@@ -219,6 +228,15 @@ public class NavToolPack implements AiToolPack {
         } else {
             out.put("hint", "直接告诉用户你没找到这个入口，问他是不是记错名字了；别猜一个页面跳过去");
         }
+        return out;
+    }
+
+    /** 「存在、但角色不够」的标准答法。 */
+    private Map<String, Object> denied(String label) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", false);
+        out.put("reason", "「" + label + "」这个入口存在，但你的账号打不开（需要更高权限）");
+        out.put("hint", "如实告诉用户是权限不够，建议他找管理员开通；不要换着名字再试");
         return out;
     }
 
@@ -446,9 +464,27 @@ public class NavToolPack implements AiToolPack {
                 || !consolePaths.contains("/console" + path);
     }
 
-    /** 名字落在「存在但权限不够」那一堆里 —— 用来把话说明白，不做匹配决策。 */
-    private static String deniedNameFor(String rawQuery, List<String> deniedLabels) {
+    /**
+     * 一字不差的重名才认。
+     *
+     * <p>「存在但打不开」这句话要拦在模糊匹配**前面**，所以判据必须比 {@link #deniedNameFor} 严：
+     * 用包含关系判的话，「领用审计」会被当成「物资领用审计」，把一个能打开的页面也说成打不开。
+     */
+    private static String exactDeniedLabel(String rawQuery, List<String> deniedLabels) {
         String q = flat(rawQuery);
+        if (q.isEmpty()) {
+            return null;
+        }
+        for (String label : deniedLabels) {
+            if (flat(label).equals(q)) {
+                return label;
+            }
+        }
+        return null;
+    }
+
+    /** 名字落在「存在但权限不够」那一堆里 —— 用来把话说明白，不做匹配决策。 */
+    private static String deniedNameFor(String rawQuery, List<String> deniedLabels) {        String q = flat(rawQuery);
         if (q.isEmpty()) {
             return null;
         }

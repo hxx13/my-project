@@ -96,6 +96,25 @@ class NavToolPackTest {
     }
 
     @Test
+    @DisplayName("打不开的页面**不许**被模糊匹配吞到名字相近的另一个页面上（真机：问「物资领用审计」被送到了「领用审计」）")
+    void deniedExactNameIsNotStolenByFuzzyMatch() throws Exception {
+        Map<?, ?> out = run(user(RoleEnum.STAFF),
+                entry("/admin/supplies/audit-export", "领用审计", "STAFF"),
+                entry("/admin/material/audit-export", "物资领用审计", "ADMIN"),
+                "物资领用审计");
+        assertNull(out.get("navigate"), "名字对得上打不开的那个，就不许跳别的页：" + out);
+        assertEquals(Boolean.FALSE, out.get("ok"));
+        assertTrue(String.valueOf(out.get("reason")).contains("权限"), out.get("reason").toString());
+
+        // 反过来：能打开的那个照旧要跳得动（别为了拦它把模糊匹配一起废了）
+        Map<?, ?> ok = run(user(RoleEnum.STAFF),
+                entry("/admin/supplies/audit-export", "领用审计", "STAFF"),
+                entry("/admin/material/audit-export", "物资领用审计", "ADMIN"),
+                "领用审计");
+        assertEquals("/admin/supplies/audit-export", navPath(ok));
+    }
+
+    @Test
     @DisplayName("芯片回传的是路径 —— 拿路径再查一次要能直接命中（芯片这条路闭环）")
     void pathRoundTripResolves() throws Exception {
         Map<?, ?> out = run(user(RoleEnum.STAFF), entry("/admin/cage-shelves", "笼架信息", "STAFF"), "/admin/cage-shelves");
@@ -109,6 +128,18 @@ class NavToolPackTest {
         assertEquals(Boolean.FALSE, out.get("ok"));
         assertNull(out.get("navigate"), "找不到就不许猜一个页面跳过去");
         assertFalse(out.containsKey("choices"), "没有一点字面重合时不必硬凑建议");
+    }
+
+    @Test
+    @DisplayName("同一格被登记了两遍（扫描一份 + 手工一份）→ 名字路径都一样，直接跳，不该反问「去哪一个」")
+    void duplicatedRowsForSameDestinationDoNotAsk() throws Exception {
+        // 真实数据里 文件模板库 / 检查维护 / 领用审计 / 物资领用审计 / 笼架 都是两份：
+        // 权限表按**路径**收敛（同路径只留一条），两条不会变成「两个候选」反过来问用户。
+        Map<?, ?> out = run(user(RoleEnum.STAFF),
+                entry("/admin/cage-shelves", "笼架信息", "STAFF"),
+                entry("/admin/cage-shelves", "笼架信息", "STAFF"),
+                "笼架信息");
+        assertEquals("/admin/cage-shelves", navPath(out), "同一目的地的两份不是歧义：" + out);
     }
 
     // ── 小程序载体 ──

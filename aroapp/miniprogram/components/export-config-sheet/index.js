@@ -58,6 +58,12 @@ Component({
     /** 服务端没给文件名时用的兜底名 */
     fallbackName: { type: String, value: '导出.xlsx' },
     title: { type: String, value: '导出设置' },
+    /**
+     * **额外筛选开关**（网页版 ExportConfigDialog 的 extraFilter 同款），形如
+     * `[{key:'currentCycleOnly', label:'只导本周期订单（不含预约单）', defaultOn:true}]`。
+     * 勾上的会作为 `key=true` 并进导出查询 —— 它**只作用于导出**，不动列表筛选。
+     */
+    extraOptions: { type: Array, value: [] },
   },
 
   data: {
@@ -66,11 +72,20 @@ Component({
     levels: [],
     blocks: [],
     meta: '',
+    /** 额外开关的当前值：key → 是否勾上 */
+    extraOn: {},
   },
 
   observers: {
     show(v) {
-      if (v) this.loadSummary();
+      if (!v) return;
+      // 每次打开都回到默认值 —— 关掉弹层再打开时不该还留着上一次的临时改动
+      const on = {};
+      (this.properties.extraOptions || []).forEach((o) => {
+        if (o && o.key) on[o.key] = !!o.defaultOn;
+      });
+      this.setData({ extraOn: on });
+      this.loadSummary();
     },
   },
 
@@ -136,6 +151,15 @@ Component({
       this.triggerEvent('close');
     },
 
+    /** 额外开关（如「只导本周期订单（不含预约单）」） */
+    onExtraToggle(e) {
+      const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
+      if (!key) return;
+      const on = { ...(this.data.extraOn || {}) };
+      on[key] = !!(e && e.detail);
+      this.setData({ extraOn: on });
+    },
+
     onNoop() {},
 
     async onConfirm() {
@@ -147,6 +171,10 @@ Component({
         const q = { ...(this.data.params || {}) };
         if (cfg.levels) q.levels = cfg.levels;
         if (cfg.excludeBlocks) q.excludeBlocks = cfg.excludeBlocks;
+        // 勾上的额外开关作为 key=true 并进查询（只作用导出）
+        Object.keys(this.data.extraOn || {}).forEach((k) => {
+          if (this.data.extraOn[k]) q[k] = 'true';
+        });
         const res = await springAuth.springRequestBinary(this.data.exportUrl + buildQuery(q), {
           errorMessage: '导出失败',
           forbiddenMessage: '无权限导出',

@@ -61,8 +61,8 @@ export default function AdminOrderReviewPage({ scope = "admin" }: { scope?: "adm
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draft, setDraft] = useState<OrderReviewFilter>(() => defaultDateRange());
   const [applied, setApplied] = useState<OrderReviewFilter>(() => defaultDateRange());
-  // 导出「只导本周期」开关：只作用于导出，不进列表筛选
-  const [cycleOnly, setCycleOnly] = useState(false);
+  // 导出「只导本周期」开关：只作用于导出，不进列表筛选。**默认勾上**（口径：导出默认只要本周期的）
+  const [cycleOnly, setCycleOnly] = useState(true);
   // exporting 只服务学生端的直接下载；管理端导出中态由 ExportConfigDialog 自持
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);

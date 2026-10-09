@@ -8,6 +8,15 @@
     <block wx:else>
       <view class="cfg-meta">{{ meta }}</view>
       <scroll-view scroll-y class="cfg-scroll">
+        <!-- 额外筛选开关（网页版 ExportConfigDialog 的 extraFilter 同款）：放在层级/板块之上，
+             它决定「导哪些单」，层级决定「怎么小计」，所以先选范围再选小计。 -->
+        <view wx:if="{{ extraOptions.length }}" class="cfg-sec">
+          <text class="cfg-sec-title">导出范围</text>
+          <view wx:for="{{ extraOptions }}" wx:key="key" class="cfg-row">
+            <text class="cfg-row-label">{{ item.label }}</text>
+            <van-switch checked="{{ extraOn[item.key] }}" size="20px" data-key="{{ item.key }}" bind:change="onExtraToggle" />
+          </view>
+        </view>
         <view wx:if="{{ levels.length }}" class="cfg-sec">
           <text class="cfg-sec-title">小计层级</text>
           <view wx:for="{{ levels }}" wx:key="key" class="cfg-row">
