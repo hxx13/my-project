@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import {
   fetchAuditExportRequests,
@@ -290,24 +290,47 @@ export default function MaterialAuditExportPage() {
 
   const location = useLocation();
   const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+  // 智能助手给的导出链接会带筛选参数（?tab=&group=&from=…），这里读出来当**初始值**；
+  // 没带参数就与原来完全一致。只在首渲染用一次，用户之后照常手改。
+  const [searchParams] = useSearchParams();
+  const param = (k: string) => searchParams.get(k) ?? "";
+  const paramInt = (k: string): number | "" => {
+    const v = param(k);
+    return /^\d+$/.test(v) ? Number(v) : "";
+  };
 
-  const [tab, setTab] = useState<TabKey>("personal");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  // 链接带 openExport=1：落页后**直接把导出弹窗打开** —— 助手把用户送到「最后一步」，
+  // 不用他自己再去找「导出表格」按钮。弹层自己会拉摘要、自己读上次的小计配置。
+  useEffect(() => {
+    if (param("openExport") !== "1") return;
+    if (tab === "item" || tab === "item-group") setItemFlowExportOpen(true);
+    else setAuditExportOpen(true);
+    // 只在进入时开一次：tab 取首渲染值即可（关闭后不重开）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [tab, setTab] = useState<TabKey>(() => {
+    const t = param("tab");
+    // 链接里两种写法都收：助手那边枚举是 itemGroup，页面自己的 key 是 item-group
+    const k = t === "itemGroup" ? "item-group" : t;
+    return k === "group" || k === "item" || k === "item-group" ? (k as TabKey) : "personal";
+  });
+  const [from, setFrom] = useState(() => param("from"));
+  const [to, setTo] = useState(() => param("to"));
   const [auditExportOpen, setAuditExportOpen] = useState(false);
   const [itemFlowExportOpen, setItemFlowExportOpen] = useState(false);
   const auditLevelsRef = useRef<string[]>([]);
   const itemFlowLevelsRef = useRef<string[]>([]);
   const [listPage, setListPage] = useState(1);
 
-  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState(() => param("userId"));
   const { data: applicantList = [] } = useQuery({
     queryKey: ["material", "applicants-with-records", from, to],
     queryFn: () => fetchApplicantsWithRecords(auditDateParams(from, to)),
     enabled: isStaff && tab === "personal",
   });
 
-  const [selectedGroup, setSelectedGroup] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState(() => param("group"));
   const { data: groupList = [] } = useQuery({
     queryKey: ["material", "groups-with-records", from, to],
     queryFn: () => fetchGroupsWithRecords(auditDateParams(from, to)),
@@ -315,13 +338,13 @@ export default function MaterialAuditExportPage() {
   });
 
   // 物品+课题组 tab 的课题组筛选
-  const [selectedItemGroup, setSelectedItemGroup] = useState("");
+  const [selectedItemGroup, setSelectedItemGroup] = useState(() => param("itemGroup"));
 
   const itemApplicantGroup = tab === "item-group" ? (selectedItemGroup || undefined) : undefined;
 
-  const [categoryId, setCategoryId] = useState<number | "">("");
-  const [itemKeyword, setItemKeyword] = useState("");
-  const [selectedItemId, setSelectedItemId] = useState<number | "">("");
+  const [categoryId, setCategoryId] = useState<number | "">(() => paramInt("categoryId"));
+  const [itemKeyword, setItemKeyword] = useState(() => param("itemKeyword"));
+  const [selectedItemId, setSelectedItemId] = useState<number | "">(() => paramInt("itemId"));
   const [flowPage, setFlowPage] = useState(1);
 
   const queryUserId = tab === "personal"

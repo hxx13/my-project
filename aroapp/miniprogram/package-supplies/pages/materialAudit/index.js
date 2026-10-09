@@ -285,7 +285,7 @@ Page({
     itemsRaw: [],
   },
 
-  onLoad() {
+  onLoad(options) {
     const role = readRole();
     if (!hasMinRole(role, 'ADMIN') || !pagePermission.canAccessMiniPage(PAGE_PATH, role, 'ADMIN')) {
       this._denied = true;
@@ -293,9 +293,74 @@ Page({
       setTimeout(() => wx.navigateBack({ delta: 1 }), 400);
       return;
     }
-    this.setData({ pageGateOk: true, ...defaultReportRange() });
-    this.loadLookups();
-    this.reload();
+    // 智能助手给的链接会带参数（?tab=&from=&to=&group=&category=&item=&applicant=&keyword=）。
+    // 先记住，等候选拉回来再把值落到对应 picker 上 —— 见 applyPendingFilters。
+    this._pending = options || {};
+    const p = this._pending;
+    const tab = p.tab === 'group' || p.tab === 'item' || p.tab === 'itemGroup' ? p.tab : 'personal';
+    const patch = {
+      pageGateOk: true,
+      ...defaultReportRange(),
+      tab,
+      isItemTab: tab === 'item' || tab === 'itemGroup',
+    };
+    if (p.from) patch.from = p.from;
+    if (p.to) patch.to = p.to;
+    this.setData(patch, () => {
+      Promise.resolve(this.loadLookups()).then(() => {
+        this.applyPendingFilters();
+        this.reload();
+        // 链接带 openExport=1：直接把导出设置弹层打开（助手把用户送到「最后一步」）
+        if (p.openExport === '1') this.onExport();
+      });
+    });
+  },
+
+  /**
+   * 把链接带过来的条件落到 picker 上。
+   *
+   * 值**必须在候选里命中才落**：选中一个候选里没有的值，picker 上显示空、而查询条件却生效，
+   * 用户看到的是「筛了但界面上没选」—— 比干脆不选更难解释。
+   */
+  applyPendingFilters() {
+    const p = this._pending || {};
+    const patch = {};
+    // 链接带过来的值**可能是百分号编码还没解开的**：助手给的路径里有中文参数时实测如此
+    // （`group=%E9%83%91…` 原样进了 onLoad，命不中候选 → 筛没上，界面上还看着像「没选」）。
+    // 解一次再比；解不开就按原样比 —— 不能因为解码失败把整条筛选丢掉。
+    const dec = (v) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      if (s.indexOf('%') < 0) return s;
+      try {
+        return decodeURIComponent(s);
+      } catch (e) {
+        return s;
+      }
+    };
+    const group = dec(p.group);
+    const category = dec(p.category);
+    const applicant = dec(p.applicant);
+    if (group && (this.data.groupOptions || []).some((o) => o.value === group)) {
+      patch.groupValue = group;
+    }
+    if (category && (this.data.categoryOptions || []).some((o) => o.value === category)) {
+      patch.categoryValue = category;
+    }
+    if (applicant && (this.data.applicantOptions || []).some((o) => o.value === applicant)) {
+      patch.applicantValue = applicant;
+    }
+    if (Object.keys(patch).length) this.setData(patch);
+    if (p.item) {
+      // 物品候选是二级异步（先分类再物品）—— 落一次，再等一拍落一次
+      const applyItem = () => {
+        const opts = this.data.itemOptions || [];
+        if (opts.some((o) => o.value === String(p.item))) {
+          this.setData({ itemValue: String(p.item) }, () => this.reload());
+        }
+      };
+      applyItem();
+      setTimeout(applyItem, 700);
+    }
   },
 
   onShow() {

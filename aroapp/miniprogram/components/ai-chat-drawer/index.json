@@ -3,6 +3,7 @@
   "usingComponents": {
     "van-popup": "@vant/weapp/popup/index",
     "van-icon": "@vant/weapp/icon/index",
-    "ai-orb": "/components/ai-orb/index"
+    "ai-orb": "/components/ai-orb/index",
+    "ai-pegtop": "/components/ai-pegtop/index"
   }
 }

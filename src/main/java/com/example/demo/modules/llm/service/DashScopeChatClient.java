@@ -183,15 +183,17 @@ public class DashScopeChatClient {
     }
 
     /**
-     * 工具调用路径的输出预算下限。
+     * 工具调用路径的输出预算。
      *
-     * <p>{@code llm.max_tokens} 默认 1024，是为短播报类场景设的。带思考的模型（如 deepseek-flash）
-     * 会用同一份预算做推理，<b>1024 实测会被思考整轮吃满、content 返回空串</b>，用户看到的是
-     * 「助手暂时联系不上」——看着像网络问题，其实是预算不够。
-     * 工具路径比播报需要更长的结构化输出，这里兜一个下限；不动全局配置，免得影响播报那些场景。
+     * <p>{@code llm.max_tokens} 是为短播报类场景设的（默认 2048）。带思考的模型（如 deepseek-flash）
+     * 会用同一份预算做推理，**预算小时推理就把它整轮吃满、content 返回空串**，用户看到的是
+     * 「模型没有返回正文」——看着像故障，其实是预算不够（2026-10-09 真机撞到：一条 3.3 万 token
+     * 的编排轮，completion_tokens 正好 2048、正文长度 0）。
+     * 工具路径要「先想清楚再决定调哪个工具 + 把话说完整」，所以单独一项
+     * （{@code llm.tool.max_tokens}，默认 8192）；不动全局配置，免得影响播报那些场景。
      */
     private int toolMaxTokens() {
-        return Math.max(llmConfigService.getMaxTokens(), 2048);
+        return llmConfigService.getToolMaxTokens();
     }
 
     private ToolChatResult parseToolResponse(String raw, String model) {

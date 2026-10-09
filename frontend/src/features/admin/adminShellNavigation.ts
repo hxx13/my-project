@@ -21,6 +21,8 @@ const SECONDARY_ROUTE_TITLE: Record<string, string> = {
   "/admin/material/manage": "物品管理",
   "/admin/material/audit": "物资申领统计",
   "/admin/material/audit-export": "申领审计导出",
+  // 电子签名：入口在头像菜单、不在侧栏，但页标题得给人话，别把裸路由段露出去
+  "/admin/signature": "电子签名",
 };
 
 /** 无 location.state.returnTo 时的默认回退路径 */

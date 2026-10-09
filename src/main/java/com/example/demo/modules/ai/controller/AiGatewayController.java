@@ -273,11 +273,11 @@ public class AiGatewayController {
         if (contextPage != null && !contextPage.isBlank()) {
             ctx.append("入口页面：").append(contextPage);
         }
-        // 预览也走 L2 路由：这个接口存在的理由就是「单看任一处都看不全最终发给模型的是什么」，
-        // 不按路由裁，预览的就是一个不会发生的请求（实际下发只有命中的几个包）。
-        List<AiToolPack> packs = packRouter.route(new ArrayList<>(toolRegistry.packs()), contextPage, "");
+        // 预览走**和真实请求同一条路**（AiPackRouter.routeForTurn）：这个接口存在的理由就是
+        // 「单看任一处都看不全最终发给模型的是什么」，不按同一口径取包，预览的就是一个不会发生的请求。
+        List<AiToolPack> packs = packRouter.routeForTurn(new ArrayList<>(toolRegistry.packs()), contextPage, "（预览）", "");
         ctx.append(ctx.length() > 0 ? "；" : "")
-                .append("本轮选中的工具包：")
+                .append("本轮下发的工具包：")
                 .append(packs.stream().map(AiToolPack::packKey).collect(Collectors.joining("、")));
         return Result.success(promptService.preview(packs, ctx.toString()));
     }

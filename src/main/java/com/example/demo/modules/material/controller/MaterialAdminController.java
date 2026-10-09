@@ -360,28 +360,8 @@ public class MaterialAdminController {
     @GetMapping("/eligible-reviewers")
     @Operation(summary = "可选的审核人列表（STAFF及以上已启用账号）")
     public Result<List<Map<String, Object>>> eligibleReviewers() {
-        List<User> users = userMapper.listEnabledUsersByMinRoleLevel(2); // STAFF level = 2
-        List<String> ids = new ArrayList<>();
-        for (User u : users) {
-            if (u != null && StringUtils.hasText(u.getId())) {
-                ids.add(u.getId().trim());
-            }
-        }
-        Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(ids);
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (User u : users) {
-            if (u == null || !StringUtils.hasText(u.getId())) continue;
-            String id = u.getId().trim();
-            String resolved = displayNames.getOrDefault(id, id);
-            Map<String, Object> m = new HashMap<>();
-            m.put("id", id);
-            m.put("username", u.getUsername());
-            // 与 UserDisplayNameService 同源，便于选择器展示人员表姓名
-            m.put("displayNickname", resolved);
-            m.put("displayName", resolved);
-            list.add(m);
-        }
-        return Result.success(list);
+        // 口径在 Service 里，AI 工具调同一个方法（网关设计 §7.1：两边各写一遍必然分叉）
+        return materialService.listEligibleReviewers();
     }
 
     @GetMapping("/demands")

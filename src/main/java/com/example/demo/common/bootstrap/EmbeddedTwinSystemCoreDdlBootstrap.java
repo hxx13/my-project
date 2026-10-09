@@ -463,6 +463,12 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-ref-order-cycle.sql", ctx)) success++;
         // 房间级收藏（笼架信息页左侧树；笼架级那张老表保留只读）
         total++; if (runScript("db/bootstrap-cage-shelf-room-bookmark.sql", ctx)) success++;
+        // AI 计时器（大模型定时执行工具）：这张表被 @Scheduled 的到点扫描在启动后 20 秒就查，
+        // 属于「被启动即查」→ 必须走这里的早期 DDL（afterPropertiesSet 早于任何 @PostConstruct）
+        total++; if (runScript("db/bootstrap-ai-timer.sql", ctx)) success++;
+        // AI 对话导出产物：文件跟对话走。这张表只在请求期读写（不参与启动期查询），
+        // 但仍走早期 DDL —— 与网关那几张表同属一个域，注册在这里口径一致
+        total++; if (runScript("db/bootstrap-ai-export-artifact.sql", ctx)) success++;
 
         String skipNote = benignSkips > 0
                 ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"

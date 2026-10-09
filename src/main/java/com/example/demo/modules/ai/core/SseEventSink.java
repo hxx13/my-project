@@ -17,6 +17,10 @@ public class SseEventSink implements AiEventSink {
 
     private static final Logger log = LoggerFactory.getLogger(SseEventSink.class);
 
+    /** 只用于把 download 事件的 JSON 串转成结构化载荷（前端按字段用，不是当文本看）。 */
+    private static final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
     private final SseEmitter emitter;
     private volatile boolean closed = false;
 
@@ -58,6 +62,24 @@ public class SseEventSink implements AiEventSink {
     @Override
     public void done(AiTurnStats stats) {
         send("done", statsPayload(stats, stats == null ? null : stats.messageId()));
+    }
+
+    @Override
+    public void download(String payloadJson) {
+        try {
+            send("download", objectMapper.readTree(payloadJson));
+        } catch (Exception e) {
+            // payload 是后端自己拼的，坏不了；真坏了也不能因此中断这一轮
+            log.warn("[ai-sse] download 事件载荷不是合法 JSON，已丢弃: {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void navigate(String path, String label) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
+        data.put("label", label == null ? "" : label);
+        send("navigate", data);
     }
 
     private static Map<String, Object> statsPayload(AiTurnStats stats, Long messageId) {

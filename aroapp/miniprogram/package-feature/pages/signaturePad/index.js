@@ -45,6 +45,9 @@ Page({
     outH: CANVAS.height,
     dirty: false,
     submitting: false,
+    /** 已经签过名：本页改成**只读展示**（进页面时就判，见 onLoad） */
+    viewMode: false,
+    viewImage: '',
   },
 
   onLoad() {
@@ -87,10 +90,31 @@ Page({
       padLeft: padLeft,
       padTop: padTop,
     });
+
+    // **进页面先看有没有签过**：签名不可更改，已经签了还铺一块空画布，等于让人白写一场、
+    // 提交时才被后端拒掉（下面 onSubmit 的 catch 就是给这种情况兜底的）。
+    // 补上这一步之后，这一页「签没签都能进」—— 也才能被助手的页面导航当成一个正常入口。
+    this.loadExisting();
+  },
+
+  /** 已有签名 → 切只读展示；没有 → 什么都不做，照常铺画布 */
+  loadExisting() {
+    springAuth
+      .springRequest({ url: '/api/student/signature', method: 'GET', data: {} })
+      .then((r) => {
+        const body = (r && r.data) || {};
+        const sig = body.success ? body.data : null;
+        if (!sig || !sig.hasSignature) return;
+        this._viewOnly = true;
+        this.setData({ viewMode: true, viewImage: sig.imageData || '' });
+      })
+      .catch(() => {
+        // 读不到就当没有：留在画布页让用户能正常签，别把功能卡死在一个网络抖动上
+      });
   },
 
   onReady() {
-    if (this._denied) return;
+    if (this._denied || this._viewOnly) return;
     this.initCanvas();
   },
 

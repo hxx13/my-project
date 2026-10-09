@@ -88,6 +88,41 @@ export type ScanAssistantStreamHandlers = {
   }) => void;
   onDone?: (payload: { text?: string; model?: string; sessionId?: number } & Partial<ScanAssistantUsage>) => void;
   onError?: (message: string) => void;
+  /**
+   * 助手要把用户送到某个页面（「帮我打开流水线日志」）。
+   *
+   * path 来自服务端的页面清单，**不是模型编的**；但它是注册表里的 canonical 形式
+   * （`/admin/xxx`），真正可 navigate 的路径要用 toAdminRoutePath 转一次。
+   */
+  onNavigate?: (payload: { path: string; label?: string }) => void;
+  /**
+   * 助手算好了一次导出，让**载体**用它自己的登录态去拉文件（后端不签发公开下载链接）。
+   * 载荷形如 {kind:"materialAudit", label:"课题组审计-…", params:{tab,from,to,…}}。
+   *
+   * `exportId` 是这条导出在服务端的档案号：**下载完把那份字节交回这个号归档**，
+   * 历史里再下拿到的就与当时逐字节相同；用户要改这份文件时，也是对这条档案动手。
+   */
+  onDownload?: (payload: {
+    kind?: string;
+    label?: string;
+    params?: Record<string, unknown>;
+    exportId?: number;
+  }) => void;
+};
+
+/** 会话里的一条导出产物（历史回放据此把下载卡放回原位） */
+export type AssistantExportArtifact = {
+  exportId: number;
+  kind: string;
+  label?: string;
+  filename?: string;
+  messageId?: number;
+  sourceId?: number;
+  /** 有没有文件本体：没有 = 只是给过下载按钮，还没真下过 */
+  hasFile: boolean;
+  /** 重跑这次导出要用的参数（没归档过时靠它重建下载） */
+  params?: Record<string, unknown>;
+  createdAt?: string;
 };
 
 function parseUsage(payload: Record<string, unknown>): ScanAssistantUsage | null {
@@ -370,6 +405,20 @@ async function postAskSse(
       });
     } else if (name === "error") {
       handlers.onError?.(typeof payload.message === "string" ? payload.message : "提问失败");
+    } else if (name === "navigate" && typeof payload.path === "string" && payload.path) {
+      handlers.onNavigate?.({
+        path: payload.path,
+        label: typeof payload.label === "string" ? payload.label : undefined,
+      });
+    } else if (name === "download") {
+      // 球球那条链把载荷包成 {payload:"<json>"}（适配层只做搬运），网关那条直接给对象 —— 两种都收
+      let dl: Record<string, unknown> | null = null;
+      if (typeof payload.payload === "string" && payload.payload) {
+        try { dl = JSON.parse(payload.payload) as Record<string, unknown>; } catch { dl = null; }
+      } else if (typeof payload.kind === "string") {
+        dl = payload;
+      }
+      if (dl) handlers.onDownload?.(dl as { kind?: string; label?: string; params?: Record<string, unknown> });
     }
   };
 
@@ -526,4 +575,44 @@ export async function resetScanAssistantConversation(): Promise<{ ok: boolean; s
     throw new Error(`重置对话失败: HTTP ${res.status}`);
   }
   return (await res.json()) as { ok: boolean; sessionId: number };
+}
+
+/** 某条会话产出的全部导出产物（**不含字节**）。历史回放据此把下载卡放回它当年那一轮。 */
+export async function fetchSessionExports(sessionId: number): Promise<AssistantExportArtifact[]> {
+  const res = await fetch(`/api/v1/ai/sessions/${sessionId}/exports`, { headers: authHeaders() });
+  if (!res.ok) return [];
+  const body = (await res.json()) as { data?: AssistantExportArtifact[] };
+  return body?.data ?? [];
+}
+
+/**
+ * 取这条导出归档下来的文件字节。
+ *
+ * 返回 null = **还没有归档过**（用户只是拿到过下载按钮、没真下过）。
+ * 调用方据此回落到「用参数重跑一次导出」，那条路一直在。
+ */
+export async function fetchExportBlob(exportId: number): Promise<Blob | null> {
+  const res = await fetch(`/api/v1/ai/exports/${exportId}/download`, { headers: authHeaders() });
+  if (!res.ok) return null;
+  return res.blob();
+}
+
+/**
+ * 归档：用户下到的那份字节交回服务端，挂在这条导出上。
+ *
+ * 存的是**用户实际下到的那一份**，服务端不重算 —— 历史里再下才会与当时一模一样。
+ * 归档失败不抛：下载已经完成了，留痕失败不该让用户看到报错。
+ */
+export async function archiveExportContent(exportId: number, blob: Blob, filename: string): Promise<void> {
+  try {
+    const form = new FormData();
+    form.append("file", blob, filename);
+    await fetch(`/api/v1/ai/exports/${exportId}/content`, {
+      method: "POST",
+      headers: authHeaders(),   // **不要手写 Content-Type**：boundary 会丢，变成 200 但 success:false
+      body: form,
+    });
+  } catch {
+    // 留痕失败不影响这次下载
+  }
 }

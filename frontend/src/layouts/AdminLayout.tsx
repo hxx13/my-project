@@ -1426,7 +1426,7 @@ export default function AdminLayout() {
                   }}
                 >
                   <PenLine className="mr-2 h-4 w-4" />
-                  我的电子签名
+                  电子签名
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="text-red-700 focus:bg-red-50 focus:text-red-800"

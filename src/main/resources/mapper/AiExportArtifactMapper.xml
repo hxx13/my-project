@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.ai.export.mapper.AiExportArtifactMapper">
+
+    <resultMap id="ArtifactMap" type="com.example.demo.modules.ai.export.entity.AiExportArtifact">
+        <id property="id" column="id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="messageId" column="message_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="kind" column="kind"/>
+        <result property="label" column="label"/>
+        <result property="filename" column="filename"/>
+        <result property="paramsJson" column="params_json"/>
+        <result property="sourceId" column="source_id"/>
+        <result property="contentType" column="content_type"/>
+        <result property="contentSize" column="content_size"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <!-- 元数据列 —— **刻意不含 content**：列表一次几十条，带上字节会把列表拖垮 -->
+    <sql id="MetaCols">
+        id, session_id, message_id, user_id, kind, label, filename,
+        params_json, source_id, content_type, content_size, created_at
+    </sql>
+
+    <insert id="insert" parameterType="com.example.demo.modules.ai.export.entity.AiExportArtifact"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_export_artifact
+            (session_id, message_id, user_id, kind, label, filename, params_json, source_id)
+        VALUES
+            (#{sessionId}, #{messageId}, #{userId}, #{kind}, #{label}, #{filename}, #{paramsJson}, #{sourceId})
+    </insert>
+
+    <select id="selectById" resultMap="ArtifactMap">
+        SELECT <include refid="MetaCols"/> FROM ai_export_artifact WHERE id = #{id}
+    </select>
+
+    <select id="selectListBySession" resultMap="ArtifactMap">
+        SELECT <include refid="MetaCols"/> FROM ai_export_artifact
+        WHERE session_id = #{sessionId}
+        ORDER BY id ASC
+    </select>
+
+    <select id="selectLatestBySession" resultMap="ArtifactMap">
+        SELECT <include refid="MetaCols"/> FROM ai_export_artifact
+        WHERE session_id = #{sessionId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <update id="updateContent">
+        UPDATE ai_export_artifact
+        SET content = #{content}, content_type = #{contentType}, content_size = #{contentSize}
+        WHERE id = #{id}
+    </update>
+
+    <!--
+      blob 专用：**不写成「返回 byte[] 的单列查询」**。
+      MyBatis 会把「方法返回 byte[]」当成「返回一个数组结果」去解析，取出来的是个列表，
+      最后抛 argument type mismatch（真机就是这么炸的）。改用一个持有对象接住它。
+      javaType 写 JVM 描述符 `[B`（= byte[]）：别名表里的 `byte[]` 指的是装箱的 Byte[]，
+      写描述符就没有歧义了。
+    -->
+    <resultMap id="ContentMap" type="com.example.demo.modules.ai.export.entity.AiExportArtifact">
+        <id property="id" column="id"/>
+        <result property="content" column="content" javaType="[B"/>
+    </resultMap>
+
+    <select id="selectContent" resultMap="ContentMap">
+        SELECT id, content FROM ai_export_artifact WHERE id = #{id}
+    </select>
+
+</mapper>

@@ -1,0 +1,7 @@
+<!-- 与 Web 端同款的三枚陀螺花瓣加载图标。
+     animated=false（回答打完）时走静止档：停动画、只留一枚。 -->
+<view class="ai-pegtop {{ animated ? '' : 'ai-pegtop--static' }}">
+  <view class="ai-pegtop__one" />
+  <view class="ai-pegtop__two" />
+  <view class="ai-pegtop__three" />
+</view>

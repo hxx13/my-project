@@ -24,6 +24,8 @@ export type ScanAssistantChatCardProps = {
   footer?: ReactNode;
   /** 右上角浮层里、关闭按钮左侧的额外操作（如「展开为大窗」）；播报气泡不传 */
   actions?: ReactNode;
+  /** 本次对话的标题：浮在左上角，与右上角那排按钮同一条线，不占 layout 行 */
+  title?: string;
   dismissLabel?: string;
   /** 提问面板：内容底板比边框窄一档，露出旋转的彩虹边框环 */
   askPanel?: boolean;
@@ -40,6 +42,7 @@ export function ScanAssistantChatCard({
   onDismiss,
   footer,
   actions,
+  title,
   dismissLabel = "收起助手播报",
   askPanel = false,
 }: ScanAssistantChatCardProps) {
@@ -129,6 +132,16 @@ export function ScanAssistantChatCard({
           <X className="size-4" strokeWidth={2} />
         </button>
       </div>
+
+      {/*
+        * 本次对话的标题：**浮在左上角**，与右边那排圆按钮同处一条线上，不占任何 layout 行。
+        * 面板本来就没有标题栏，加一行会把消息整体下压；浮层则只借用边框外那点空白。
+      */}
+      {title ? (
+        <span className="scan-assistant-chat-card__title" title={title}>
+          {title}
+        </span>
+      ) : null}
     </div>
   );
 }

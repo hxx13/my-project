@@ -50,8 +50,6 @@ public class TelemetryToolPack implements AiToolPack {
 
     /** 一次最多回多少行点位（模型读不动整份快照，也费 token）。 */
     private static final int MAX_ROWS = 40;
-    /** 候选不超过这个数才给可点选项。 */
-    private static final int CHOICE_MAX = 6;
 
     private final TelemetrySnapshotService snapshotService;
     private final TelemetryArchiveService archiveService;
@@ -192,7 +190,10 @@ public class TelemetryToolPack implements AiToolPack {
                         out.put("note", "快照里没有任何点位（采集可能没起来，或该域未配置）");
                     } else if (matched.isEmpty()) {
                         out.put("note", "没有匹配的点位，换个关键词（房间号或指标名）再试");
-                    } else if (matched.size() <= CHOICE_MAX) {
+                    } else if (matched.size() > rows.size()) {
+                        // **只有结果被截断时才给选项**：那时它是真的在帮忙收窄。
+                        // 全都列出来了还弹一道「挑一个点位」，是在逼用户多点一次 ——
+                        // 他已经问得很明确了（「201A 的温度」），答案也在上面（2026-10-09 用户反馈）。
                         List<Map<String, Object>> choices = new ArrayList<>();
                         for (Map<String, Object> r : rows) {
                             Map<String, Object> c = new LinkedHashMap<>();
@@ -202,6 +203,8 @@ public class TelemetryToolPack implements AiToolPack {
                         }
                         out.put("choices", choices);
                         out.put("choicesTitle", "挑一个点位");
+                        out.put("note", "匹配到 " + matched.size() + " 个点位，只列了前 " + rows.size()
+                                + " 个；上面是本次列出的，用户想看别的可以让他给个更具体的关键词");
                     }
                     return out;
                 });

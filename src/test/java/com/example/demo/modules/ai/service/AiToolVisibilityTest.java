@@ -5,12 +5,14 @@ import com.example.demo.modules.ai.capability.DefaultAiCapabilityGate;
 import com.example.demo.modules.ai.tool.AiPackRouter;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
+import com.example.demo.modules.ai.tool.AiView;
 import com.example.demo.modules.ai.tool.SideEffect;
 import com.example.demo.modules.ai.tool.ToolRegistry;
 import com.example.demo.modules.ai.tool.pack.AttachmentToolPack;
 import com.example.demo.modules.ai.tool.pack.CageOpReviewToolPack;
 import com.example.demo.modules.ai.tool.pack.CageQueryToolPack;
 import com.example.demo.modules.ai.tool.pack.CommonToolPack;
+import com.example.demo.modules.ai.tool.pack.MaterialManageToolPack;
 import com.example.demo.modules.ai.tool.pack.PersonnelQueryToolPack;
 import com.example.demo.modules.ai.tool.pack.PortalContentToolPack;
 import com.example.demo.modules.ai.tool.pack.StudentReviewToolPack;
@@ -184,7 +186,27 @@ class AiToolVisibilityTest {
                 new PersonnelQueryToolPack(null, null, null),
                 new PortalContentToolPack(null, new com.fasterxml.jackson.databind.ObjectMapper()),
                 new TelemetryToolPack(null, null, null),
+                new MaterialManageToolPack(null, new com.fasterxml.jackson.databind.ObjectMapper()),
                 new StudentReviewToolPack(null, null)));
+    }
+
+    @Test
+    @DisplayName("视角闸：**学生视角拿不到物品管理包** —— 这跟角色无关，ADMIN 角色挂学生账号也拿不到")
+    void studentViewExcludesMaterialManage() {
+        ToolRegistry registry = realRegistry();
+        DefaultAiCapabilityGate gate = realGate(registry);
+        // 全站包对「学生视角」一律不发教职工包（AiToolPack.views 默认 STAFF，fail-closed）。
+        // 判据是 account_source（CageModeVisibilityService#isStudent），不是角色等级 ——
+        // 所以这里**故意给 ADMIN 角色**：能过能力闸却过不了视角闸，才证明这道闸真的在生效。
+        User admin = userOf(RoleEnum.ADMIN);
+        List<AiToolPack> staffPacks = AiOrchestrator.packsForView(gate, AiView.STAFF, admin, registry.packs());
+        List<AiToolPack> studentPacks = AiOrchestrator.packsForView(gate, AiView.STUDENT, admin, registry.packs());
+
+        assertTrue(staffPacks.stream().anyMatch(p -> "materialManage".equals(p.packKey())),
+                "教职工视角要能拿到物品管理包");
+        assertFalse(studentPacks.stream().anyMatch(p -> "materialManage".equals(p.packKey())),
+                "学生视角不该拿到任何教职工后台包："
+                        + studentPacks.stream().map(AiToolPack::packKey).toList());
     }
 
     /** 复刻 AiCapabilityBootstrap 的注册动作：能力码 → 判定，全部来自工具包自带。 */

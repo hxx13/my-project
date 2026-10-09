@@ -17,6 +17,10 @@
           <text class="ai-drawer__status">{{ statusText }}</text>
         </view>
       </view>
+      <!-- 当前对话的标题：**水平居中在头部这一行里**，不另起一行 ——
+           挤在身份文字下面会多占一行高度（用户明确要求）。
+           绝对定位居中，所以它既不推高头部，也不跟左右两边的元素抢位置。 -->
+      <text wx:if="{{ sessionTitle }}" class="ai-drawer__title-bar">{{ sessionTitle }}</text>
       <view class="ai-drawer__head-actions">
         <view
           class="ai-drawer__icon-btn"
@@ -57,9 +61,18 @@
             class="ai-drawer__session-item {{ item.id === sessionId ? 'ai-drawer__session-item--on' : '' }}"
             hover-class="ai-drawer__session-item--hover"
             data-id="{{ item.id }}"
+            data-title="{{ item.title || '' }}"
             bindtap="onPickSession"
           >
             <text class="ai-drawer__session-title">{{ item.title || '未命名对话' }}</text>
+            <!-- 删除必须用 catchtap：bindtap 会先冒泡到行上的 onPickSession，
+                 点「删除」反倒把那条对话打开了（Web 端也是行内删除，口径一致） -->
+            <view
+              class="ai-drawer__session-del"
+              hover-class="ai-drawer__session-del--hover"
+              data-id="{{ item.id }}"
+              catchtap="onDeleteSession"
+            >删除</view>
           </view>
         </block>
       </scroll-view>
@@ -83,7 +96,14 @@
           id="m-{{ item.key }}"
           class="ai-drawer__row ai-drawer__row--{{ item.role }}"
         >
-          <ai-orb wx:if="{{ item.role === 'assistant' }}" size="40" state="{{ item.typing ? 'thinking' : 'idle' }}" />
+          <!-- 气泡左边这颗用**与 Web 端同款**的陀螺花瓣图标（2026-10-09 用户要求）。
+               思考中/逐字输出时转，**这一轮说完就停住**（静止一枚）——
+               回答打完了还在转，会让人以为它还在干活。
+               抽屉顶部那颗大球仍是 ai-orb —— 只换这一处，别的球球形象不动。 -->
+          <ai-pegtop
+            wx:if="{{ item.role === 'assistant' }}"
+            animated="{{ !!(item.typing || item.pending) }}"
+          />
           <view class="ai-drawer__col {{ item.wide ? 'ai-drawer__col--wide' : '' }}">
             <view class="ai-drawer__bubble ai-drawer__bubble--{{ item.role === 'assistant' ? 'bot' : 'me' }}">
               <image
@@ -104,7 +124,8 @@
                 <van-icon name="description" size="13px" color="inherit" />
                 <text class="ai-drawer__bubble-file-name">{{ doc }}</text>
               </view>
-              <text wx:if="{{ item.pending && !item.text }}" class="ai-drawer__pending">正在思考…</text>
+              <!-- 流式期间显示实时态（思考中 3.2s · 1.2k tokens），与网页端同口径 -->
+              <text wx:if="{{ item.pending && !item.text }}" class="ai-drawer__pending">{{ liveMeta || '正在思考…' }}</text>
               <!-- 打完字才转成 html（流式中的半截 markdown 结构是错的），转出来交给 rich-text -->
               <rich-text wx:elif="{{ item.html }}" class="ai-drawer__text ai-drawer__md" nodes="{{ item.html }}" />
               <text wx:else class="ai-drawer__text">{{ item.text }}</text>
@@ -122,6 +143,18 @@
             >
               <van-icon name="down" size="14px" color="#2563eb" />
               <text class="ai-drawer__dl-text">下载到本机</text>
+            </view>
+            <!-- 助手产出的一份导出：**贴在气泡下面**（与网页端同一口径）。
+                 浮在输入框上面时，它跟任何一句都对不上，用户分不清是哪次导的。 -->
+            <view wx:if="{{ item.download }}" class="ai-drawer__dlcard">
+              <text class="ai-drawer__dlcard-ico">⤓</text>
+              <text class="ai-drawer__dlcard-name">{{ item.download.label || '导出文件' }}</text>
+              <view
+                class="ai-drawer__dlcard-btn {{ downloadBusy ? 'ai-drawer__dlcard-btn--off' : '' }}"
+                hover-class="ai-drawer__dlcard-btn--hover"
+                data-key="{{ item.key }}"
+                bindtap="onDownloadTap"
+              >{{ downloadBusy ? '导出中…' : '下载' }}</view>
             </view>
             <text wx:if="{{ item.meta }}" class="ai-drawer__meta">{{ item.meta }}</text>
           </view>
@@ -158,11 +191,18 @@
         <view
           wx:for="{{ currentOptions }}"
           wx:key="value"
-          class="ai-drawer__choice {{ item.value === currentAnswer ? 'ai-drawer__choice--on' : '' }}"
+          class="ai-drawer__choice {{ (currentMulti ? item._on : item.value === currentAnswer) ? 'ai-drawer__choice--on' : '' }}"
           hover-class="ai-drawer__choice--hover"
           data-value="{{ item.value }}"
           bindtap="onChoiceTap"
         >{{ item.label }}</view>
+        <!-- 多选题的提交键：勾完点它。单选不出现 —— 那边点一下即办，多一个键只会让人犹豫 -->
+        <view
+          wx:if="{{ currentMulti }}"
+          class="ai-drawer__submit"
+          hover-class="ai-drawer__submit--hover"
+          bindtap="onConfirmMulti"
+        >确认（已选 {{ multiPick.length }} 项）</view>
       </view>
 
       <!-- 写操作确认只有执行/不执行，不配自定义回答，也不用取消（那个「取消」就是选项之一） -->

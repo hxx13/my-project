@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.ai.timer.mapper.AiTimerMapper">
+
+    <resultMap id="TimerMap" type="com.example.demo.modules.ai.timer.entity.AiTimer">
+        <id property="id" column="id"/>
+        <result property="ownerUserId" column="owner_user_id"/>
+        <result property="ownerNameSnapshot" column="owner_name_snapshot"/>
+        <result property="ownerRoleSnapshot" column="owner_role_snapshot"/>
+        <result property="label" column="label"/>
+        <result property="toolName" column="tool_name"/>
+        <result property="argsJson" column="args_json"/>
+        <result property="fireAt" column="fire_at"/>
+        <result property="status" column="status"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="messageId" column="message_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="claimedAt" column="claimed_at"/>
+        <result property="firedAt" column="fired_at"/>
+        <result property="cancelledAt" column="cancelled_at"/>
+        <result property="confirmedBy" column="confirmed_by"/>
+        <result property="resultText" column="result_text"/>
+        <result property="ok" column="ok"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="deleted" column="deleted"/>
+    </resultMap>
+
+    <!-- 所有 SELECT 都读全列：列表页要一次拿全（含结果与时间），别为省几个字段拆查询 -->
+    <sql id="Cols">
+        id, owner_user_id, owner_name_snapshot, owner_role_snapshot, label,
+        tool_name, args_json, fire_at, status, session_id, message_id,
+        created_at, claimed_at, fired_at, cancelled_at, confirmed_by,
+        result_text, ok, error_message, deleted
+    </sql>
+
+    <insert id="insert" parameterType="com.example.demo.modules.ai.timer.entity.AiTimer"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_timer
+            (owner_user_id, owner_name_snapshot, owner_role_snapshot, label,
+             tool_name, args_json, fire_at, status, session_id, message_id)
+        VALUES
+            (#{ownerUserId}, #{ownerNameSnapshot}, #{ownerRoleSnapshot}, #{label},
+             #{toolName}, #{argsJson}, #{fireAt}, #{status}, #{sessionId}, #{messageId})
+    </insert>
+
+    <select id="selectById" resultMap="TimerMap">
+        SELECT <include refid="Cols"/> FROM ai_timer WHERE id = #{id} AND deleted = 0
+    </select>
+
+    <select id="selectList" resultMap="TimerMap">
+        SELECT <include refid="Cols"/> FROM ai_timer
+        WHERE deleted = 0
+        <if test="!allScope">
+            AND owner_user_id = #{ownerId}
+        </if>
+        <if test="ownerFilter != null and ownerFilter != ''">
+            AND owner_user_id = #{ownerFilter}
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY
+            CASE WHEN status IN ('AWAITING_CONFIRM', 'FIRING', 'PENDING') THEN 0 ELSE 1 END,
+            CASE WHEN status IN ('AWAITING_CONFIRM', 'FIRING', 'PENDING') THEN fire_at END ASC,
+            fire_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countOpen" resultType="int">
+        SELECT COUNT(*) FROM ai_timer
+        WHERE deleted = 0 AND status IN ('PENDING', 'FIRING', 'AWAITING_CONFIRM')
+        <if test="!allScope">
+            AND owner_user_id = #{ownerId}
+        </if>
+    </select>
+
+    <select id="selectDue" resultMap="TimerMap">
+        SELECT <include refid="Cols"/> FROM ai_timer
+        WHERE deleted = 0 AND status = 'PENDING' AND fire_at &lt;= #{now}
+        ORDER BY fire_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 认领：WHERE 带旧状态，行数即「是不是我抢到的」 -->
+    <update id="claim">
+        UPDATE ai_timer SET status = 'FIRING', claimed_at = #{claimedAt}
+        WHERE id = #{id} AND status = 'PENDING' AND deleted = 0
+    </update>
+
+    <update id="finishFired">
+        UPDATE ai_timer
+        SET status = 'FIRED', fired_at = #{firedAt}, result_text = #{resultText},
+            ok = #{ok}, error_message = NULL
+        WHERE id = #{id} AND status = 'FIRING'
+    </update>
+
+    <update id="finishFailed">
+        UPDATE ai_timer
+        SET status = 'FAILED', fired_at = #{firedAt}, ok = 0, error_message = #{errorMessage}
+        WHERE id = #{id} AND status = 'FIRING'
+    </update>
+
+    <update id="markAwaitingConfirm">
+        UPDATE ai_timer SET status = 'AWAITING_CONFIRM', claimed_at = #{claimedAt}, ok = NULL
+        WHERE id = #{id} AND status = 'FIRING'
+    </update>
+
+    <update id="confirmClaim">
+        UPDATE ai_timer
+        SET status = 'FIRING', confirmed_by = #{confirmedBy}, claimed_at = #{claimedAt}
+        WHERE id = #{id} AND status = 'AWAITING_CONFIRM' AND deleted = 0
+    </update>
+
+    <update id="cancel">
+        UPDATE ai_timer SET status = 'CANCELLED', cancelled_at = #{cancelledAt}
+        WHERE id = #{id} AND status IN ('PENDING', 'AWAITING_CONFIRM') AND deleted = 0
+    </update>
+
+    <update id="cancelOpen">
+        UPDATE ai_timer SET status = 'CANCELLED', cancelled_at = #{cancelledAt}
+        WHERE status IN ('PENDING', 'AWAITING_CONFIRM') AND deleted = 0
+        <if test="!allScope">
+            AND owner_user_id = #{ownerId}
+        </if>
+        <if test="ids != null and ids.size() > 0">
+            AND id IN
+            <foreach collection="ids" item="one" open="(" separator="," close=")">#{one}</foreach>
+        </if>
+    </update>
+
+    <update id="skipAwaiting">
+        UPDATE ai_timer
+        SET status = 'CANCELLED', cancelled_at = #{cancelledAt}, confirmed_by = #{confirmedBy},
+            error_message = '到点后未确认，已放弃'
+        WHERE id = #{id} AND status = 'AWAITING_CONFIRM' AND deleted = 0
+    </update>
+
+    <update id="recoverStale">
+        UPDATE ai_timer
+        SET status = 'FAILED', fired_at = #{now}, ok = 0,
+            error_message = '执行中断（服务重启或执行中异常），未记录结果'
+        WHERE status = 'FIRING' AND (claimed_at IS NULL OR claimed_at &lt; #{before})
+    </update>
+
+</mapper>

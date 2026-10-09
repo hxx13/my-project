@@ -4,6 +4,19 @@
      用户把手机横过来，它就是一块 8:3 的横条。
      （canvas 不跟随祖先的 CSS transform，实测过，所以写区必须放在没被转的那一层。） -->
 <view class="sig-page">
+  <!--
+    已经签过名：**只读展示**。
+    签名一经提交不可更改，再铺一块空画布只会让人白写一场、提交时才被拒。
+    有这一支之后，这一页「签没签都能进」——助手把它当页面导航目标送过来也成立。
+  -->
+  <view wx:if="{{ viewMode }}" class="sig-view">
+    <view class="sig-view-title">我的电子签名</view>
+    <image wx:if="{{ viewImage }}" src="{{ viewImage }}" mode="widthFix" class="sig-view-img" />
+    <view class="sig-view-note">签名已提交，不可更改。需要重签请找管理员重置后再签。</view>
+    <view class="chip-btn chip-btn--ghost sig-view-btn" hover-class="sig-btn-hover" bindtap="onBack">返回</view>
+  </view>
+
+  <block wx:else>
   <!-- 操作条：转到屏幕的一条边上，手机横过来看就是正常的横屏按钮条。
        pointer-events 只放给条本身，别盖住写区。 -->
   <view
@@ -41,4 +54,5 @@
 
   <!-- 出件用：把竖着的写区转 90° 放进 800×300（放屏幕外，不参与视觉） -->
   <canvas type="2d" id="sigOut" class="sig-out" style="width:{{outW}}px;height:{{outH}}px;"></canvas>
+  </block>
 </view>

@@ -7,10 +7,13 @@ import com.example.demo.modules.ai.entity.AiAttachment;
 import com.example.demo.modules.ai.entity.AiInteraction;
 import com.example.demo.modules.ai.entity.AiMessage;
 import com.example.demo.modules.ai.entity.AiToolCallLog;
+import com.example.demo.modules.ai.export.entity.AiExportArtifact;
+import com.example.demo.modules.ai.export.service.AiExportArtifactService;
 import com.example.demo.modules.ai.tool.AiPackRouter;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolContext;
 import com.example.demo.modules.ai.tool.AiToolPack;
+import com.example.demo.modules.ai.tool.AiView;
 import com.example.demo.modules.ai.tool.ToolRegistry;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.cageshelf.service.CageModeVisibilityService;
@@ -26,9 +29,11 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -75,6 +80,7 @@ public class AiOrchestrator {
     private final CageModeVisibilityService modeVisibilityService;
     private final AiPackRouter packRouter;
     private final AiAttachmentService attachmentService;
+    private final AiExportArtifactService exportArtifactService;
 
     public AiOrchestrator(DashScopeChatClient chatClient,
                           ToolRegistry toolRegistry,
@@ -86,7 +92,8 @@ public class AiOrchestrator {
                           ObjectMapper objectMapper,
                           CageModeVisibilityService modeVisibilityService,
                           AiPackRouter packRouter,
-                          AiAttachmentService attachmentService) {
+                          AiAttachmentService attachmentService,
+                          AiExportArtifactService exportArtifactService) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
@@ -98,6 +105,7 @@ public class AiOrchestrator {
         this.modeVisibilityService = modeVisibilityService;
         this.packRouter = packRouter;
         this.attachmentService = attachmentService;
+        this.exportArtifactService = exportArtifactService;
     }
 
     /**
@@ -131,9 +139,6 @@ public class AiOrchestrator {
      */
     public Long run(User actor, Long sessionId, String userText, String contextPage, AiEventSink sink,
                     List<String> images, List<SpreadsheetPart> spreadsheets) {
-        if (!requireStaffView(actor, sink)) {
-            return null;
-        }
         sessionService.requireOwned(sessionId, actor.getId());
 
         AiMessage userMsg = new AiMessage();
@@ -145,17 +150,19 @@ public class AiOrchestrator {
 
         saveSpreadsheets(actor, sessionId, savedUser == null ? null : savedUser.getId(), spreadsheets, sink);
 
-        List<AiToolPack> activePacks = routedPacks(actor, contextPage, userText, sessionContextText(sessionId));
-        // **排错入口**：用户再遇到「我手里没有这个工具」时，先看这一行选中了哪几个包 ——
-        // 是路由没收进来（该补词），还是工具在手、模型没接上（另一类），一眼分得清。
-        // 路由自己的命中日志是 debug 级，生产（INFO）看不到，所以这里单独记一条。
-        log.info("[ai-route] 本轮选中 {} 个包 [{}] | 原话: {}", activePacks.size(),
+        List<AiToolPack> activePacks = routedPacks(actor);
+        logPacksIfEmpty(actor, viewOf(actor), activePacks);
+        // **排错入口**：用户再遇到「我手里没有这个工具」时，先看这一行 ——
+        // 现在包是「能力过滤后全发」，所以这里能看出的是**这个人一共拿到几个包**；
+        // 若某个域不在里面，那是能力/权限没开，不是路由漏发（收窄已于 2026-10-09 取消）。
+        log.info("[ai-pack] 本轮下发 {} 个包 [{}] | 原话: {}", activePacks.size(),
                 String.join(",", activePacks.stream().map(AiToolPack::packKey).toList()),
                 truncate(userText, 60));
         List<Map<String, Object>> messages = baseMessages(actor, sessionId, contextPage, activePacks);
         attachImages(messages, images);
         return drive(actor, sessionId, sink, messages,
-                images != null && !images.isEmpty(), new ArrayList<>(), userText, activePacks);
+                images != null && !images.isEmpty(), new ArrayList<>(), userText,
+                contextPageSource(contextPage), activePacks);
     }
 
     /** 本轮附带的一份表格：文件名 + 内容（data URL 或裸 base64）。 */
@@ -216,13 +223,11 @@ public class AiOrchestrator {
      * tool_calls 逐条配对 tool 响应，漏一条下一轮发回上游就是非法序列。
      */
     public Long resume(User actor, Long sessionId, String token, String chosenValue, AiEventSink sink) {
-        if (!requireStaffView(actor, sink)) {
-            return null;
-        }
         sessionService.requireOwned(sessionId, actor.getId());
         AiInteraction it = interactionService.resolve(sessionId, token, chosenValue);
 
-        List<AiToolPack> activePacks = routedPacks(actor, null, chosenValue, sessionContextText(sessionId));
+        List<AiToolPack> activePacks = routedPacks(actor);
+        logPacksIfEmpty(actor, viewOf(actor), activePacks);
         List<Map<String, Object>> messages = baseMessages(actor, sessionId, null, activePacks);
         List<ChoiceGroup> choiceGroups = new ArrayList<>();
 
@@ -234,22 +239,32 @@ public class AiOrchestrator {
 
         if (!answerToolCalls(actor, sessionId, turn.getId(), parseToolCalls(turn.getRawToolCalls()),
                 it.getToolCallId(), AiInteractionService.isConfirm(chosenValue),
-                sink, messages, choiceGroups, chosenValue)) {
+                sink, messages, choiceGroups, chosenValue, RESUME_PLATFORM)) {
             // 补完的过程中又一次要确认（同一轮里的下一个写操作）——本轮到此为止，
             // 挂起事件已由 executeOne 发出，这里只做收尾。
-            emitClarifyGroups(sink, choiceGroups);
+            emitClarifyGroups(sink, choiceGroups, chosenValue);
             sink.done(null);
             return null;
         }
-        return drive(actor, sessionId, sink, messages, false, choiceGroups, chosenValue, activePacks);
+        return drive(actor, sessionId, sink, messages, false, choiceGroups, chosenValue,
+                RESUME_PLATFORM, activePacks);
     }
+
+    /**
+     * 续跑路径没有载体信息（前端只回传一个选择值，见不变量 I4），一律按 web 处理。
+     *
+     * <p>影响面：小程序上「先确认一个写操作、同一轮里模型接着又去跳页」这一条拿不到小程序路径。
+     * 已知取舍 —— 要补就把载体信息也存进挂起记录（`ai_interaction`），不值得为这条边路加一个列。
+     */
+    private static final String RESUME_PLATFORM = null;
 
     /**
      * 模型循环本体。进入前 messages 必须是**合法序列**（assistant 的每次 tool_call 都有配对应答）。
      */
     private Long drive(User actor, Long sessionId, AiEventSink sink,
                        List<Map<String, Object>> messages, boolean hasImages,
-                       List<ChoiceGroup> choiceGroups, String userText, List<AiToolPack> activePacks) {
+                       List<ChoiceGroup> choiceGroups, String userText, String platform,
+                       List<AiToolPack> activePacks) {
         // 两个方向都要洗：先删「有 tool 应答没 tool_calls」的（窗口截断常见），
         // 再删「有 tool_calls 没应答」的。顺序不能反 —— 反了会先给孤儿应答的 assistant 补上正文，
         // 之后那条 tool 还是孤立的。
@@ -271,6 +286,10 @@ public class AiOrchestrator {
             try {
                 resp = chatClient.chatWithTools(messages, tools);
             } catch (RuntimeException e) {
+                // 上游 400 里最多的是「消息序列不合法」（tool 应答配不上 tool_calls）。
+                // 光看报错看不出是哪一条 —— 把本次**实际发出去**的形状打一行（只有角色与 id，没有正文），
+                // 下次再撞上就能直接定位，不用再靠推演。2026-10-09 为这个查了半天。
+                log.warn("[ai-orch] 工具调用失败，本次报文形状: {}", shapeOf(messages));
                 // 带图首发失败 → 退回纯文字重试一次。附了图却整轮失败（上游不吃图、图太大）是最糟的结果：
                 // 用户只是想问个问题。退回时明确说一句，别让人以为「我发的图它看见了」。
                 if (turn != 0 || !hasImages || imageFallbackTried) {
@@ -313,9 +332,7 @@ public class AiOrchestrator {
                 //
                 // 一次请求可能同时挂好几问（批量清单里两个人各缺参数）——**逐问各发一条**，
                 // 每条自带标题（谁的什么），载体会按顺序依次问。合成一组会让用户点了不知道是给谁挑的。
-                for (ChoiceGroup g : choiceGroups) {
-                    sink.interaction(null, "clarify", g.title(), g.options(), false);
-                }
+                emitClarifyGroups(sink, choiceGroups, userText);
                 sink.done(new AiTurnStats(saved.getId(), resp.model(), totalLatencyMs,
                         totalPromptTokens, totalCompletionTokens, turn + 1));
                 return saved.getId();
@@ -345,14 +362,14 @@ public class AiOrchestrator {
             // 那一轮的候选就仍然要问。每轮清空会把前几轮的候选项悄悄吞掉 —— 真机踩过：
             // 两人批量、共 4 轮，第一个人的房间候选被后面的搜索调用清掉，界面上一片芯片都没有。
             if (!answerToolCalls(actor, sessionId, savedAssistant.getId(), resp.toolCalls(),
-                    null, false, sink, messages, choiceGroups, userText)) {
+                    null, false, sink, messages, choiceGroups, userText, platform)) {
                 // 有写操作要确认：本轮到此为止（挂起事件已由 executeOne 发出）。
                 // 模型这一轮已经说出的正文在这里补发 —— 挂起后用户只看到一颗球和一排选项，
                 // 模型那句「我这就给张三授权」正是回答「在确认什么」的那句。
                 if (StringUtils.hasText(resp.content())) {
                     sink.delta(resp.content());
                 }
-                emitClarifyGroups(sink, choiceGroups);
+                emitClarifyGroups(sink, choiceGroups, userText);
                 sink.done(new AiTurnStats(savedAssistant.getId(), resp.model(), totalLatencyMs,
                         totalPromptTokens, totalCompletionTokens, turn + 1));
                 return savedAssistant.getId();
@@ -385,7 +402,8 @@ public class AiOrchestrator {
 
     private String executeOne(User actor, Long sessionId, Long messageId,
                               DashScopeChatClient.ToolCall call, AiEventSink sink,
-                              List<ChoiceGroup> groupsSink, String confirmedBy, String userText) {
+                              List<ChoiceGroup> groupsSink, String confirmedBy, String userText,
+                              String platform) {
         AiTool tool = toolRegistry.tool(call.name());
         if (tool == null) {
             auditService.recordNotExecuted(sessionId, messageId, call.name(), call.argumentsJson(),
@@ -411,12 +429,16 @@ public class AiOrchestrator {
             JsonNode confirmArgs = parseArgsQuietly(call.argumentsJson());
             if (confirmArgs != null && tool.hasPreConfirmResolve()) {
                 Object pre = tool.resolveBeforeConfirmOrNull(
-                        new AiToolContext(actor, sessionId, messageId), confirmArgs);
+                        new AiToolContext(actor, sessionId, messageId, null, platform, viewOf(actor)), confirmArgs);
                 if (pre != null) {
                     // **候选必须在这里收**：预解析的结果和普通工具结果一样，可能带 choices
                     // （三签的「以哪个身份签」就是这么问的）。漏了这一步，模型只会在正文里
                     // 把候选念一遍，用户拿不到可点选芯片 —— 2026-10-08 真机就是这么漏的。
                     groupsSink.addAll(collectChoices(pre));
+                    emitNavigate(pre, sink);
+                    if (emitDownload(pre, sink, actor, sessionId, messageId)) {
+                        groupsSink.clear();
+                    }
                     // 记成**已执行**：它确实跑了（做了一次解析，也可能带 ok:false 的业务拒绝）。
                     // 记成「等待确认」会让审计页把一次真实的询问显示成一次挂起。
                     AiToolCallLog preEntry = new AiToolCallLog();
@@ -464,8 +486,17 @@ public class AiOrchestrator {
             JsonNode args = objectMapper.readTree(
                     call.argumentsJson() == null || call.argumentsJson().isBlank() ? "{}" : call.argumentsJson());
             Object out = tool.executor().execute(
-                    new AiToolContext(actor, sessionId, messageId, userText), args);
+                    new AiToolContext(actor, sessionId, messageId, userText, platform, viewOf(actor)), args);
             groupsSink.addAll(collectChoices(out));
+            emitNavigate(out, sink);
+            // **文件都递到手上了，就别再把「要怎么导」的问题挂上去**（2026-10-09 真机）：
+            // 模型一轮里可能把导出预演调好几次 —— 前几次没带模式、回来的是
+            // 「用上次 / 自己配」两个选项，最后一次带上模式才拿到下载指令。
+            // 候选是**整轮攒着最后一起发**的，后一次不会顶掉前一次，于是用户看到
+            // 「下载按钮 + 一道刚答过的问题」，像是答案没生效。递出文件即作废本轮候选。
+            if (emitDownload(out, sink, actor, sessionId, messageId)) {
+                groupsSink.clear();
+            }
             String text = toText(out);
             entry.setRawResult(text);
             entry.setOk(businessOk(out));
@@ -502,7 +533,7 @@ public class AiOrchestrator {
                                     List<DashScopeChatClient.ToolCall> calls,
                                     String pendingCallId, boolean confirmed,
                                     AiEventSink sink, List<Map<String, Object>> messages,
-                                    List<ChoiceGroup> choiceGroups, String userText) {
+                                    List<ChoiceGroup> choiceGroups, String userText, String platform) {
         // 已经办过的调用要跳过 —— 判据查库不扫窗口：长会话里那一轮可能已被窗口截掉，
         // 靠窗口判就会把「已经执行过的写」当成没执行而**再写一次**。
         Set<String> answeredIds = sessionService.answeredToolCallIds(sessionId);
@@ -522,7 +553,7 @@ public class AiOrchestrator {
                 continue;
             }
             String text = executeOne(actor, sessionId, assistantMessageId, call, sink, choiceGroups,
-                    isPending ? actor.getId() : null, userText);
+                    isPending ? actor.getId() : null, userText, platform);
             if (text == null) {
                 return false;
             }
@@ -540,10 +571,51 @@ public class AiOrchestrator {
         messages.add(toolMessageForModel(toolCallId, text));
     }
 
-    private void emitClarifyGroups(AiEventSink sink, List<ChoiceGroup> choiceGroups) {
+    /**
+     * 把本轮工具抛出的候选渲染成可点选项。
+     *
+     * <p><b>用户在本次消息里已经把候选全说出来的，就别再问</b>（2026-10-09 用户反馈「又在重复提问」）：
+     * 工具查候选（如 listMaterialAuditOptions kind=groups）本意是「确认真实取值」，
+     * 但它的返回值里带着 choices，载体就会把它当一道题抛出来 ——
+     * 于是用户刚打完「郑俊克的课题组」，界面又问他「哪个课题组？」，而唯一选项正是他刚打的那串。
+     *
+     * <p><b>只剩一个候选的、也别问</b>：一道题存在的前提是**有得挑**。查询把用户的话收敛到
+     * 唯一一个候选时，这题就已经有答案了（几十处「挑一位 / 挑一扇门 / 哪个课题组」都是这个形状）。
+     * 字面比对不够用 —— 用户打「郑俊克课题组」、平台里叫「郑俊克的课题组」，差一个「的」就漏过去，
+     * 真机 2026-10-09 就是这么又犯一次的。多选题不适用：可多选时一个候选仍然是个「要 / 不要」的选择。
+     *
+     * <p>只丢查询结果的候选，**写操作的确认不走这里**，不受影响。
+     */
+    private void emitClarifyGroups(AiEventSink sink, List<ChoiceGroup> choiceGroups, String userText) {
         for (ChoiceGroup g : choiceGroups) {
-            sink.interaction(null, "clarify", g.title(), g.options(), false);
+            if (!worthAsking(g, userText)) {
+                log.debug("[ai-orch] 候选不值得追问，跳过: {}（{} 项）", g.title(), g.options().size());
+                continue;
+            }
+            sink.interaction(null, "clarify", g.title(), g.options(), g.multiSelect());
         }
+    }
+
+    /** 这道题值不值得摆给用户：有得挑、且他还没把答案全说出来。 */
+    static boolean worthAsking(ChoiceGroup g, String userText) {
+        if (g.options().isEmpty()) {
+            return false;
+        }
+        if (!g.multiSelect() && g.options().size() == 1) {
+            return false;
+        }
+        if (!StringUtils.hasText(userText)) {
+            return true;
+        }
+        String said = userText.toLowerCase(Locale.ROOT);
+        for (AiEventSink.Option o : g.options()) {
+            boolean hit = (o.label() != null && said.contains(o.label().toLowerCase(Locale.ROOT)))
+                    || (o.value() != null && said.contains(o.value().toLowerCase(Locale.ROOT)));
+            if (!hit) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -578,14 +650,47 @@ public class AiOrchestrator {
         }
     }
 
-    /** 教职工视角闸门 —— 学生账号一律挡在门外（见设计文档；接口是公开路径，不能只靠界面不渲染）。 */
-    private boolean requireStaffView(User actor, AiEventSink sink) {
-        if (modeVisibilityService.isStudent(actor)) {
-            log.warn("[ai-orch] 学生账号尝试调用 AI 操作网关，已拒绝: user={}", actor.getId());
-            sink.error("STUDENT_VIEW_DENIED", "AI 操作助手目前只对教职工开放");
-            return false;
+    /**
+     * 视角与包的空账，只记日志、**不拒人**。
+     *
+     * <p>以前这里是硬编码「学生账号一律拒」。2026-10-09 球放开到学生视角后，这个门不合适了：
+     * 学生视角的包**暂时是空的（预期）**，但一开口就回「只对教职工开放」等于刚放开又把人挡回去。
+     * 现在的口径：**有几个包就发几个包**，一个都没有就以「无工具」状态对话 ——
+     * 模型照常答话，做不到的事如实说做不到。学生包一落地自然就被注入，不必回来改这里。
+     *
+     * <p>安全没有因此变松：能做什么仍由**能力闸门**（执行时再判一次）与页面清单把关，
+     * 而不是靠「这一端有没有包」。
+     */
+    private void logPacksIfEmpty(User actor, AiView view, List<AiToolPack> activePacks) {
+        if (activePacks.isEmpty()) {
+            log.warn("[ai-orch] {} 视角没有可用工具包，本轮以无工具状态对话: user={}", view, actor.getId());
         }
-        return true;
+    }
+
+    /** 调用者的视角。判据与三端前端同源（`account_source`），**不按角色等级** —— 学生账号可能是 STAFF 档。 */
+    private AiView viewOf(User actor) {
+        return modeVisibilityService.isStudent(actor) ? AiView.STUDENT : AiView.STAFF;
+    }
+
+    /**
+     * 这个视角能用的包：**视角筛 → 能力筛**，两层都过才注入。
+     *
+     * <p>抽成 static 是为了能在单测里直接验「学生视角拿不到任何教职工包」这条闸
+     * （它现在等同于「学生进不了对话」，漏了就是把教职工能力暴露给学生）。
+     */
+    static List<AiToolPack> packsForView(AiCapabilityGate gate, AiView view, User actor,
+                                         Collection<AiToolPack> all) {
+        List<AiToolPack> out = new ArrayList<>();
+        for (AiToolPack pack : all) {
+            if (!pack.views().contains(view)) {
+                continue;
+            }
+            if (usableTools(gate, actor, pack.tools()).isEmpty()) {
+                continue;
+            }
+            out.add(pack);
+        }
+        return out;
     }
 
     private List<Map<String, Object>> baseMessages(User actor, Long sessionId, String contextPage,
@@ -640,60 +745,17 @@ public class AiOrchestrator {
     // ── 组装 ──
 
     /**
-     * 本请求该发哪些包：**先按能力裁，再按 L2 路由裁**。
+     * 本请求该发哪些包：**按能力裁，然后全发**（2026-10-09 起不再做 L2 关键词收窄）。
      *
-     * <p>顺序是先能力后路由：路由词命中的包如果这个人根本无权用，把它算进命中只会把别的包挤掉。
-     *
-     * <p>路由交给 {@link AiPackRouter#routeForTurn}：**当轮原话优先**，历史正文只在原话一个域
-     * 都认不出时才参与 —— 助手上一轮枚举自己能耐时会把好几个域的名字写进正文，那些域会被当成
-     * 命中，把当轮真正问的域挤出包位（真机：问「2 楼的湿度情况」答「我没有环境监测工具」）。
+     * <p>为什么取消收窄见 {@link AiPackRouter}：命中一个关键词只说明「这个域被提到了」，
+     * 不说明「用户要的就只有这几个域」—— 真机上「直接下单」被历史正文里的几个域挤出上限，
+     * 物资选购静默漏发，模型答「这轮没有商城类的工具」。宁可每轮多带几万 token（前缀恒定，可命中
+     * prompt 缓存），也不能让用户看到「平台没有这个功能」。
      */
-    private List<AiToolPack> routedPacks(User actor, String contextPage, String userText, String sessionContext) {
-        List<AiToolPack> usable = new ArrayList<>();
-        for (AiToolPack pack : toolRegistry.packs()) {
-            if (!usableTools(capabilityGate, actor, pack.tools()).isEmpty()) {
-                usable.add(pack);
-            }
-        }
-        return packRouter.routeForTurn(usable, contextPage, userText, sessionContext);
-    }
-
-    /**
-     * 路由用的**历史**材料：最近一轮助手正文 + 本会话带过的附件名。**不含当轮原话** ——
-     * 原话由 {@code routeForTurn} 先单独试，命中就不看这里。
-     *
-     * <p>为什么需要它：追问「那把它出库」里一个域名词都没有，全靠上一轮助手说的
-     * 「这张领用单…」才认得出是物资处理。截断到 400 字：助手正文可能很长，全塞进去反而
-     * 到处都能命中，等于路由失效。
-     */
-    private String sessionContextText(Long sessionId) {
-        StringBuilder sb = new StringBuilder();
-        List<AiMessage> window = sessionService.window(sessionId);
-        if (window != null) {
-            for (int i = window.size() - 1; i >= 0; i--) {
-                AiMessage m = window.get(i);
-                if ("assistant".equals(m.getRole()) && StringUtils.hasText(m.getContent())) {
-                    String text = m.getContent();
-                    sb.append(' ').append(text, 0, Math.min(text.length(), 400));
-                    break;
-                }
-            }
-        }
-        // 「本会话带过表格附件」本身就是路由信号。用户传完表往往只说「把日期统一一下」，
-        // 句子里根本没有「表格」二字；而每轮只发 4 个包，附件包一旦没被命中就会**整个漏发**
-        // —— 模型手里连读表的工具都没有，只能照着预览里的几行瞎猜。这里把它显式加进路由词。
-        try {
-            for (AiAttachment a : attachmentService.listSession(sessionId)) {
-                sb.append(" 附件 表格 ").append(a.getFilename());
-            }
-        } catch (RuntimeException e) {
-            log.debug("[ai-orch] 路由取附件名失败: {}", e.getMessage());
-        }
-        // ⚠ 别在这里拼「本会话用过的工具名」当粘性信号（2026-10-08 试过，撤掉了）：
-        // 工具名是驼峰连写，会跨包撞子串（listPendingCageOpReviews 里含 review），
-        // 权重一抬就把当轮**真正**命中的包挤出去 —— 实测「2 楼的湿度情况」在上一轮聊过审核的
-        // 会话里变成「我手里没有环境监测类的工具」。粘性本来就由上面的「最近一轮助手正文」自带。
-        return sb.toString();
+    private List<AiToolPack> routedPacks(User actor) {
+        // 视角筛 → 能力筛，见 packsForView；两个方向的漏判代价不对称，所以视角这一层默认偏严。
+        List<AiToolPack> usable = packsForView(capabilityGate, viewOf(actor), actor, toolRegistry.packs());
+        return packRouter.routeForTurn(usable, null, null, null);
     }
 
     private String systemPrompt(User actor, String contextPage, List<AiToolPack> activePacks) {
@@ -711,6 +773,13 @@ public class AiOrchestrator {
         if (contextPage != null && !contextPage.isBlank()) {
             ctx.append("；入口页面：").append(contextPage);
         }
+        // 一个工具都没有时（学生视角目前就是这样）必须**明确说这一轮没有工具**：
+        // L0 全局约束是照教职工工具集写的，光靠它模型会照着把审核/免冻/笼位那串能力念一遍 ——
+        // 2026-10-09 学生视角真机实测，它答「我能做物资申领/延迟免冻/笼位认领…」，而它其实一个都没有。
+        // 这句是运行时事实（每轮算出来的），比去改库里那份全局提示词可靠。
+        if (activePacks.isEmpty()) {
+            ctx.append("；**本轮你没有任何可用工具**（当前视角还没有配到能力）");
+        }
         // L1 口径跟着工具一起裁：包是按能力 + 路由选出来的，没选的包连口径都不该出现 ——
         // 一个工具都没发的包，还留着它的域内约束，等于让模型承诺它其实做不到的事
         //（「你可以审核…」而审核工具根本没发）。
@@ -720,7 +789,14 @@ public class AiOrchestrator {
                 withTools.add(pack);
             }
         }
-        return promptService.assemble(withTools, ctx.toString());
+        String prompt = promptService.assemble(withTools, ctx.toString());
+        if (withTools.isEmpty()) {
+            // 放在**最后**：越靠近用户那句话，越压得住「照着说明书念能力」的冲动。
+            prompt = prompt + "\n\n【本轮没有工具】你现在手上一个工具都没有："
+                    + "不要列举任何具体操作、不要承诺能办，也不要猜平台有什么功能；"
+                    + "如实说明你这一轮办不了这些事，并让用户去找对应的入口或管理员。";
+        }
+        return prompt;
     }
 
     /**
@@ -908,8 +984,43 @@ public class AiOrchestrator {
      *
      * <p>修好落库之前产生的数据都是这个形状（工具结果当时没存），直接重放会被上游拒。
      * 降级只丢「这轮调用过什么」的痕迹，正文保留，对话仍可继续。
+     *
+     * <p><b>只丢没应答的那几个，不整条删</b>：一轮发了两个调用、只答回来一个时，
+     * 整条删掉会让**已经答过的那条 tool 消息也失去配对** —— 上游照样 400
+     * （`role 'tool' must be a response to a preceding message with 'tool_calls'`，真机 2026-10-09 踩到）。
+     *
+     * <p>包级可见（与 {@link #dropOrphanToolMessages} 一致）：这条规则只靠真机撞才发现的代价太大，
+     * 得让单测直接钉住它。
      */
-    private void dropOrphanToolCalls(List<Map<String, Object>> messages) {
+    /**
+     * 排错用：把「本次发给模型的消息形状」压成一行 —— **只出角色与工具 id，不出正文**。
+     *
+     * <p>上游 400 里最常见的是「tool 应答配不上 tool_calls」，而报错本身不说是哪一条。
+     * 有这一行，一眼就能看出是哪条配不上（日志里不该出现正文，那可能含隐私）。
+     */
+    private static String shapeOf(List<Map<String, Object>> messages) {
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> m : messages) {
+            String role = String.valueOf(m.get("role"));
+            sb.append(role);
+            if (m.get("tool_calls") instanceof List<?> calls) {
+                sb.append('[');
+                for (Object c : calls) {
+                    if (c instanceof Map<?, ?> cm) {
+                        sb.append(cm.get("id")).append(' ');
+                    }
+                }
+                sb.append(']');
+            }
+            if ("tool".equals(role)) {
+                sb.append('(').append(m.get("tool_call_id")).append(')');
+            }
+            sb.append(' ');
+        }
+        return sb.toString();
+    }
+
+    void dropOrphanToolCalls(List<Map<String, Object>> messages) {
         for (int i = 0; i < messages.size(); i++) {
             Map<String, Object> m = messages.get(i);
             if (!"assistant".equals(m.get("role"))) {
@@ -919,18 +1030,25 @@ public class AiOrchestrator {
             if (!(raw instanceof List<?> calls) || calls.isEmpty()) {
                 continue;
             }
-            java.util.Set<String> pending = new java.util.HashSet<>();
+            java.util.Set<String> answered = new java.util.HashSet<>();
+            for (int j = i + 1; j < messages.size() && "tool".equals(messages.get(j).get("role")); j++) {
+                answered.add(String.valueOf(messages.get(j).get("tool_call_id")));
+            }
+            List<Object> kept = new ArrayList<>();
             for (Object c : calls) {
-                if (c instanceof Map<?, ?> cm) {
-                    pending.add(String.valueOf(cm.get("id")));
+                if (c instanceof Map<?, ?> cm && answered.contains(String.valueOf(cm.get("id")))) {
+                    kept.add(c);
                 }
             }
-            for (int j = i + 1; j < messages.size() && "tool".equals(messages.get(j).get("role")); j++) {
-                pending.remove(String.valueOf(messages.get(j).get("tool_call_id")));
+            if (kept.size() == calls.size()) {
+                continue;   // 全都有应答，原样留着
             }
-            if (!pending.isEmpty()) {
+            if (kept.isEmpty()) {
                 m.remove("tool_calls");
-                log.debug("[ai-orch] 历史里缺 tool 响应的工具轮已降级，缺: {}", pending);
+                log.debug("[ai-orch] 历史里整轮无人应答的工具轮已降级为普通消息");
+            } else {
+                m.put("tool_calls", kept);
+                log.debug("[ai-orch] 历史里部分无人应答的工具轮已裁到 {} 个调用", kept.size());
             }
         }
     }
@@ -996,8 +1114,108 @@ public class AiOrchestrator {
         return out;
     }
 
-    /** 一次工具调用抛出的候选：标题（问的是谁的什么）+ 可点选项。批量清单会同时挂好几组。 */
-    private record ChoiceGroup(String title, List<AiEventSink.Option> options) {
+    /**
+     * 一次工具调用抛出的候选：标题（问的是谁的什么）+ 可点选项 + 是否多选。
+     *
+     * <p>多选是为「让用户在对话里配一次参数」加的（2026-10-09，物资申领审计导出的小计层级）：
+     * 与其把人送到页面上再配，不如在这儿勾完直接生效。载体没实现多选时按单选渲染，退化成「只能挑一个」。
+     */
+    record ChoiceGroup(String title, List<AiEventSink.Option> options, boolean multiSelect) {
+    }
+
+    /**
+     * 工具结果里的**跳转指令**：{@code {"navigate":{"path":"/console/admin/xxx","label":"…"}}}。
+     *
+     * <p>与 {@code choices} 同一类约定：结构化数据走结构化通道。让模型在正文里念一句
+     * 「你可以在左侧菜单找到它」等于没帮上忙 —— 用户要的是页面自己跳过去。
+     *
+     * <p>path **只可能来自服务端自己的页面清单**（NavToolPack 从导航清单 + 页面权限读出来的），
+     * 模型编不出路径：它只能给「入口叫什么」，映射由后端做（不变量 I2）。
+     */
+    private void emitNavigate(Object out, AiEventSink sink) {
+        if (!(out instanceof Map<?, ?> map)) {
+            return;
+        }
+        Object raw = map.get("navigate");
+        if (!(raw instanceof Map<?, ?> nav)) {
+            return;
+        }
+        Object path = nav.get("path");
+        if (path == null || String.valueOf(path).isBlank()) {
+            return;
+        }
+        Object label = nav.get("label");
+        sink.navigate(String.valueOf(path), label == null ? null : String.valueOf(label));
+    }
+
+    /**
+     * 工具结果里的**下载指令**：{@code {"download":{"kind":"materialAudit", ...}}}。
+     *
+     * <p>与 navigate 同一类约定：把「要下载什么」结构化地交给载体，由载体用它自己的登录态去拉文件
+     * （后端不签发公开下载链接，也不在聊天里塞裸 URL）。
+     *
+     * <p><b>同时落一条产物、并把产物 id 一并下发</b>（2026-10-09）：产物是「文件跟对话走」的本体 ——
+     * 载体下载完把那份字节交回这个 id 归档，历史里再下拿到的与当时逐字节相同；
+     * 用户要「删掉某一列」时，也是对这个 id 指的那份文件动手。
+     * 所以**下载指令不止是「怎么导」，还带上了「这份归哪一条」**。
+     *
+     * @return 真的发出了下载指令时为 true —— 调用方据此把本轮攒下的候选作废（见调用点注释）
+     */
+    private boolean emitDownload(Object out, AiEventSink sink, User actor, Long sessionId, Long messageId) {
+        if (!(out instanceof Map<?, ?> map)) {
+            return false;
+        }
+        Object raw = map.get("download");
+        if (!(raw instanceof Map<?, ?> download)) {
+            return false;
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : download.entrySet()) {
+            payload.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        try {
+            // **已经带 id 的就不再落一条**：改文件那条链（editMaterialAuditExport）自己已经把产物
+            // 落好了、把 id 放进载荷里。这里再落一条，同一次下载就会有两份产物 ——
+            // 多出来的那份没有字节，用户点它只会得到「找不到文件」（真机 2026-10-09 撞到）。
+            if (longOf(payload.get("exportId")) == null) {
+                String kind = payload.get("kind") == null ? null : String.valueOf(payload.get("kind"));
+                String label = payload.get("label") == null ? null : String.valueOf(payload.get("label"));
+                Object params = payload.get("params");
+                AiExportArtifact saved = exportArtifactService.record(
+                        sessionId, messageId,
+                        actor == null ? null : actor.getId(),
+                        kind, label, downloadFilename(label, kind),
+                        params == null ? null : objectMapper.writeValueAsString(params),
+                        longOf(payload.get("sourceId")));
+                if (saved != null) {
+                    // 拿不到 id 就不下发：前端退化成老路径（当场取 blob 直接下载），
+                    // 不会因为存档失败而连下载都点不动。
+                    payload.put("exportId", saved.getId());
+                }
+            }
+            sink.download(objectMapper.writeValueAsString(payload));
+            return true;
+        } catch (Exception e) {
+            log.warn("[ai-orch] download 载荷序列化失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 下载时的建议文件名：给人看的标签优先，落回类型名兜底。 */
+    private static String downloadFilename(String label, String kind) {
+        String base = label == null || label.isBlank() ? (kind == null ? "导出" : kind) : label;
+        return base.toLowerCase().endsWith(".xlsx") ? base : base + ".xlsx";
+    }
+
+    private static Long longOf(Object v) {
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return v == null ? null : Long.valueOf(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**
@@ -1014,13 +1232,12 @@ public class AiOrchestrator {
      * 载体负责渲染，编排层只做搬运、不懂业务含义。
      */
     @SuppressWarnings("unchecked")
-    private List<ChoiceGroup> collectChoices(Object out) {
-        if (!(out instanceof Map<?, ?> map)) {
+    private List<ChoiceGroup> collectChoices(Object out) {        if (!(out instanceof Map<?, ?> map)) {
             return List.of();
         }
         Map<String, Object> m = (Map<String, Object>) map;
         List<ChoiceGroup> groups = new ArrayList<>();
-        ChoiceGroup single = toGroup(m.get("choices"), m.get("choicesTitle"));
+        ChoiceGroup single = toGroup(m.get("choices"), m.get("choicesTitle"), false);
         if (single != null) {
             groups.add(single);
         }
@@ -1029,7 +1246,8 @@ public class AiOrchestrator {
             for (Object q : list) {
                 if (q instanceof Map<?, ?> qm) {
                     Map<String, Object> qmap = (Map<String, Object>) qm;
-                    ChoiceGroup g = toGroup(qmap.get("options"), qmap.get("title"));
+                    ChoiceGroup g = toGroup(qmap.get("options"), qmap.get("title"),
+                            Boolean.TRUE.equals(qmap.get("multiSelect")));
                     if (g != null) {
                         groups.add(g);
                     }
@@ -1040,7 +1258,7 @@ public class AiOrchestrator {
     }
 
     @SuppressWarnings("unchecked")
-    private static ChoiceGroup toGroup(Object rawChoices, Object rawTitle) {
+    private static ChoiceGroup toGroup(Object rawChoices, Object rawTitle, boolean multiSelect) {
         if (!(rawChoices instanceof List<?> list)) {
             return null;
         }
@@ -1054,7 +1272,8 @@ public class AiOrchestrator {
                 }
             }
         }
-        return options.isEmpty() ? null : new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options);
+        return options.isEmpty() ? null
+                : new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options, multiSelect);
     }
 
     /**
@@ -1063,8 +1282,11 @@ public class AiOrchestrator {
      * <p>工具用 {@code {"ok":false,...}} 表达**业务上的拒绝**（越界的房间、得让用户先挑一个），
      * 这类调用执行体正常返回、库也正常写，早期一律记成成功 —— 于是审计页把「被拦住没做事」
      * 显示成「成功」。约定：显式给了 ok:false 就是没成，没给这个键的按成功算。
+     *
+     * <p>public 是给 {@code AiTimerService} 用的：计时器到点执行走的不是本类，但「成没成」的
+     * 判据只能有一份，否则定时执行与对话执行对同一个工具会给出两种成败。
      */
-    static boolean businessOk(Object out) {
+    public static boolean businessOk(Object out) {
         if (out instanceof Map<?, ?> map) {
             Object ok = map.get("ok");
             if (ok instanceof Boolean b) {

@@ -124,9 +124,7 @@ public class ScanAssistantController {
             heavyCalcExecutor.execute(() -> scanAssistantLlmService.streamSpeak(kind, context, emitter));
             return emitter;
         } catch (IllegalArgumentException e) {
-            SseEmitter err = new SseEmitter(0L);
-            err.completeWithError(e);
-            return err;
+            return sseError(e.getMessage());
         }
     }
 
@@ -152,9 +150,7 @@ public class ScanAssistantController {
                             contextPage, emitter));
             return emitter;
         } catch (IllegalArgumentException e) {
-            SseEmitter err = new SseEmitter(0L);
-            err.completeWithError(e);
-            return err;
+            return sseError(e.getMessage());
         }
     }
 
@@ -168,9 +164,7 @@ public class ScanAssistantController {
             heavyCalcExecutor.execute(() -> scanAssistantLlmService.greet(emitter));
             return emitter;
         } catch (IllegalArgumentException e) {
-            SseEmitter err = new SseEmitter(0L);
-            err.completeWithError(e);
-            return err;
+            return sseError(e.getMessage());
         }
     }
 
@@ -212,6 +206,25 @@ public class ScanAssistantController {
      * 学生拿有效 token 直连就能打到 greet / speak / context，每一次都是真实的模型调用（花钱 + 滥用面）。
      * 判据复用笼架域唯一出口 isStudent（account_source）。
      */
+    /**
+     * 参数/身份类错误：**走 SSE error 事件**，不用 {@code completeWithError} —— 后者是裸 500 +
+     * 空响应体，前端只看到「HTTP 500」、拿不到原因（2026-10-09 学生视角实测就撞成这样）。
+     * 同一个接口不能有两种错误形态 —— AI 网关控制器里同样的教训。
+     */
+    private SseEmitter sseError(String message) {
+        String text = StringUtils.hasText(message) ? message : "提问失败";
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        try {
+            new com.example.demo.modules.twin.scan.service.ScanAssistantAskSink(emitter, text)
+                    .error("BAD_REQUEST", text);
+            emitter.complete();
+        } catch (Exception ignore) {
+            // 连事件都发不出去（客户端已断）—— 收干净即可
+            emitter.complete();
+        }
+        return emitter;
+    }
+
     private User requireOperator(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) {
@@ -220,9 +233,9 @@ public class ScanAssistantController {
         if (!StringUtils.hasText(user.getId())) {
             throw new IllegalArgumentException("无效用户");
         }
-        if (modeVisibilityService.isStudent(user)) {
-            throw new IllegalArgumentException("AI 助手目前只对教职工开放");
-        }
+        // 这里**不再**按视角挡人：球已放开到学生视角（/#/student/home），能办什么由编排层
+        // 按视角选包决定（学生视角目前没有包 → 以「无工具」状态对话）。两处各判一次必然会分叉 ——
+        // 2026-10-09 就是这道残留的门把学生挡成 500。
         return user;
     }
 }

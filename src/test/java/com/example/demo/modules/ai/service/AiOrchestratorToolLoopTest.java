@@ -142,7 +142,8 @@ class AiOrchestratorToolLoopTest {
 
         orchestrator = new AiOrchestrator(chatClient, new ToolRegistry(List.of(pack)), promptService,
                 sessionService, mock(AiAuditService.class), gate, interactionService,
-                new ObjectMapper(), visibility, new AiPackRouter(), attachmentService());
+                new ObjectMapper(), visibility, new AiPackRouter(), attachmentService(),
+                exportArtifactService());
     }
 
     private AiOrchestrator orchestrator;
@@ -154,6 +155,11 @@ class AiOrchestratorToolLoopTest {
         when(s.listSession(any())).thenReturn(List.of());
         when(s.byMessageIds(any())).thenReturn(List.of());
         return s;
+    }
+
+    /** 产物存档：这些用例不关心它，但下载指令那一轮会调 record()（返回 null = 不下发 exportId）。 */
+    private static com.example.demo.modules.ai.export.service.AiExportArtifactService exportArtifactService() {
+        return mock(com.example.demo.modules.ai.export.service.AiExportArtifactService.class);
     }
 
     private DashScopeChatClient.ToolChatResult toolCall(String id, String name, String argsJson) {
@@ -223,7 +229,7 @@ class AiOrchestratorToolLoopTest {
         AiOrchestrator orch = new AiOrchestrator(chatClient, new ToolRegistry(List.of(readPack)),
                 promptService, sessionService, mock(AiAuditService.class), gate,
                 interactionService, new ObjectMapper(), studentFalseVisibility(), new AiPackRouter(),
-                attachmentService());
+                attachmentService(), exportArtifactService());
 
         when(chatClient.chatWithTools(any(), any()))
                 .thenReturn(toolCall("call_1", "listThings", "{}"))
@@ -262,7 +268,7 @@ class AiOrchestratorToolLoopTest {
         AiOrchestrator orch = new AiOrchestrator(chatClient, new ToolRegistry(List.of(multiPack)),
                 promptService, sessionService, mock(AiAuditService.class), gate,
                 interactionService, new ObjectMapper(), studentFalseVisibility(), new AiPackRouter(),
-                attachmentService());
+                attachmentService(), exportArtifactService());
 
         when(chatClient.chatWithTools(any(), any()))
                 .thenReturn(toolCall("call_1", "publishThing", "{}"))

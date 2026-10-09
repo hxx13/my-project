@@ -136,7 +136,8 @@ class AiAttachmentChannelTest {
 
         orchestrator = new AiOrchestrator(chatClient, new ToolRegistry(List.of(pack)), promptService,
                 sessionService, mock(AiAuditService.class), gate, mock(AiInteractionService.class),
-                om, visibility, new AiPackRouter(), attachmentService);
+                om, visibility, new AiPackRouter(), attachmentService,
+                mock(com.example.demo.modules.ai.export.service.AiExportArtifactService.class));
     }
 
     /** 让 window 里那条用户消息（id=100）与刚存进去的附件对得上。 */

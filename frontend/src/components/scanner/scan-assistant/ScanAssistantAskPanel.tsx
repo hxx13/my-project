@@ -5,26 +5,38 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
   type RefObject,
 } from "react";
-import { FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { Download, FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import type { BubblePlacement } from "./computeBubblePlacement";
 import { ScanAssistantChatCard } from "./ScanAssistantChatCard";
 import { ScanAssistantPegtopLoader } from "./ScanAssistantPegtopLoader";
 import { ChatMarkdownBody } from "@/components/markdown/ChatMarkdownBody";
 import {
+  archiveExportContent,
   deleteAssistantSession,
   fetchAssistantSessionMessages,
   fetchAssistantSessions,
+  fetchExportBlob,
+  fetchSessionExports,
   streamScanAssistantAsk,
   streamAiInteraction,
   streamScanAssistantGreet,
+  type AssistantExportArtifact,
   type AssistantSession,
   type ScanAssistantUsage,
 } from "@/api/domains/scanAssistant.api";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
+import {
+  exportMaterialAuditSummary, exportMaterialAuditTrail,
+  exportMaterialItemFlowSummary, exportMaterialItemFlow,
+} from "@/api/domains/material.api";
+import { loadConfig, saveConfig, toQuery } from "@/features/export-config/subtotalConfig";
+import { downloadBlob } from "@/api/domains/cardPrint.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { getLastAckBootId } from "@/config/socketUrl";
 import {
@@ -139,7 +151,37 @@ type AskChoice = { label: string; value: string };
  * `kind === "confirm"` 时是**写操作的确认**：答案不能当新消息发出去，必须带着 token
  * 回到服务端那条挂起记录上（见 submitInteraction）。
  */
-type AskQuestion = { question: string; options: AskChoice[]; token?: string; kind?: string };
+/** 助手交下来的「导什么」：面板按它去调导出接口（kind=materialAudit 走申领审计那套）。 */
+type AssistantDownload = {
+  kind: string;
+  label?: string;
+  params?: Record<string, unknown>;
+  /** 服务端那条导出的档案号：下载完把字节交回它归档，历史里再下就与当时一模一样 */
+  exportId?: number;
+};
+
+/**
+ * 挂在某一轮下面的导出卡片。
+ *
+ * `key` 同时当渲染 key 与「正在下载」的记账键 —— 产物落库失败时没有 exportId，
+ * 但它仍然得有一张能点的卡片（走「用参数重跑」那条老路）。
+ */
+type TurnExport = {
+  key: string;
+  kind: string;
+  label?: string;
+  params?: Record<string, unknown>;
+  exportId?: number;
+};
+
+type AskQuestion = {
+  question: string;
+  options: AskChoice[];
+  token?: string;
+  kind?: string;
+  /** 多选题（配置类问题）：勾完按「确认」一次性提交，而不是点一个就完事 */
+  multiSelect?: boolean;
+};
 type AskTurn = {
   role: "user" | "assistant";
   text: string;
@@ -152,6 +194,13 @@ type AskTurn = {
    * 退化成图标 + 名字（名字在缓存里，`url` 不进缓存 —— 那是个一次性地址）。
    */
   attachments?: { name: string; kind: "image" | "file"; url?: string }[];
+  /**
+   * 这一轮**产出的导出文件**。
+   *
+   * 挂在轮上而不是单独一栏：卡片要回到它当年出现的位置，用户往上翻才认得出「这份是哪次导的」。
+   * 渲染时塞进气泡那一列，跟用户侧的附件同一个排法 —— 它是这条消息的一部分，不是浮在旁边的。
+   */
+  exports?: TurnExport[];
 };
 
 /** 毫秒 → 「12.4s」，超过 60s 显示「1 分 15 秒」 */
@@ -167,6 +216,45 @@ function fmtBytes(n: number): string {
   if (n < 1024) return `${n}B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
   return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+/**
+ * 一份导出文件的下载卡。**实时对话与历史回放共用同一个** —— 不另做一套历史样式。
+ *
+ * 两种形态是为了让用户一眼分清「文件的来路」：
+ * - **独立成条**（`sub` 不传）：文件就是这条消息本身，用**完整卡片**（图标块 + 文件名 + 下载按钮）；
+ * - **跟着某句回答**（`sub`）：它只是那句话的附属物，**压成小小一行**并与气泡齐头，不抢正文版面。
+ */
+function DownloadCard({
+  label,
+  busy,
+  sub,
+  onDownload,
+}: {
+  label?: string;
+  busy: boolean;
+  sub?: boolean;
+  onDownload: () => void;
+}) {
+  return (
+    <div className={`scan-assistant-ask__download${sub ? " scan-assistant-ask__download--sub" : ""}`}>
+      <span className="scan-assistant-ask__download-icon" aria-hidden>
+        <FileSpreadsheet strokeWidth={2} />
+      </span>
+      <span className="scan-assistant-ask__download-name" title={label}>
+        {label ?? "导出文件"}
+      </span>
+      <button
+        type="button"
+        className="scan-assistant-ask__download-btn"
+        disabled={busy}
+        onClick={onDownload}
+      >
+        <Download strokeWidth={2.5} aria-hidden />
+        {busy ? "导出中…" : "下载"}
+      </button>
+    </div>
+  );
 }
 
 function loadCachedTurns(): AskTurn[] {
@@ -294,6 +382,7 @@ function AssistantBubble({
   onTyped,
   meta,
   live,
+  children,
 }: {
   text: string;
   type: boolean;
@@ -302,6 +391,13 @@ function AssistantBubble({
   meta?: AskMeta;
   /** 正在生成时的实时态：本地计时 + 每轮推来的 token */
   live?: AskMeta;
+  /**
+   * 挂在这条消息下面的东西（目前是导出卡片）。
+   *
+   * **放在气泡这一列里**，与用户侧「气泡 + 附件」同一套排法 —— 卡片要看起来
+   * 属于这条消息，用户往上翻时才认得出「那份文件是哪句话给我的」。
+   */
+  children?: ReactNode;
 }) {
   const reducedMotion = usePrefersReducedMotion();
   const { displayed, done } = useTypewriterText(text, {
@@ -329,20 +425,41 @@ function AssistantBubble({
     </div>
   ) : null;
 
+  const hasText = text.trim().length > 0;
+  // 有没有「气泡行」：有正文、或正在生成时才有。没话说、只给了文件的那一轮不该留空气泡。
+  const hasBubbleRow = hasText || type;
+
   return (
     <div className="scan-assistant-ask__answer">
-      <div className="scan-assistant-ask__answer-row">
-        <ScanAssistantPegtopLoader animated={type && !done} />
-        <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--assistant">
-          {type && !text ? (
-            "正在思考…"
-          ) : (
-            // 模型很爱写 `**加粗**` 和 `- 列表`：纯文本渲染会把星号和短横线原样显示出来。
-            // 打字期间仍走纯文本（半截 markdown 会解析成乱七八糟的结构），打完再转。
-            <ChatMarkdownBody text={displayed} streaming={type && !done} />
-          )}
+      {hasBubbleRow ? (
+        <div className="scan-assistant-ask__answer-row">
+          <ScanAssistantPegtopLoader animated={type && !done} />
+          <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--assistant">
+            {type && !text ? (
+              "正在思考…"
+            ) : (
+              // 模型很爱写 `**加粗**` 和 `- 列表`：纯文本渲染会把星号和短横线原样显示出来。
+              // 打字期间仍走纯文本（半截 markdown 会解析成乱七八糟的结构），打完再转。
+              <ChatMarkdownBody text={displayed} streaming={type && !done} />
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
+      {children
+        ? hasBubbleRow
+          ? children
+          : (
+              /*
+               * 模型一个字都没说、只产出了文件：**照样给它配一列头像**。
+               * 少了这一列，它就成了一个没有起头的小挂件，和上面那些有头像的消息不在一个体系里
+               * （用户反馈「独立输出的文件前方没有图标」）。
+               */
+              <div className="scan-assistant-ask__answer-row">
+                <ScanAssistantPegtopLoader animated={false} />
+                <div className="scan-assistant-ask__download-stack">{children}</div>
+              </div>
+            )
+        : null}
       {metaNode}
     </div>
   );
@@ -438,6 +555,28 @@ export function ScanAssistantAskPanel({
    * 页面才是那个可靠的信号。它不参与权限判定 —— 权限只看服务端解出来的身份。
    */
   const { pathname: currentPath } = useLocation();
+  const navigate = useNavigate();
+  /**
+   * 服务端发来的跳转指令，**压到这一轮结束才执行**。
+   *
+   * 收到就跳不行：模型常先说「我帮你打开…」再说别的，立刻切页会把正文和待答选项一起带走；
+   * 而全屏壳子（内容管理那套）被卸载时还会顺手掐断这条 SSE。顺序交给人（用户先看完话，再换页）。
+   */
+  const pendingNavRef = useRef<{ path: string; label?: string } | null>(null);
+  /**
+   * 助手算好的一次导出（点「用上次配置直接导出」之后给的那个**下载按钮**）。
+   *
+   * <p>为什么由面板拉文件：导出接口要 Authorization 头（聊天里塞裸 URL 会 401），而「上次的小计配置」
+   * 存在浏览器 localStorage 里 —— 两边都只有载体够得着。后端只负责说「导什么」。
+   */
+  const pendingDownloadRef = useRef<AssistantDownload | null>(null);
+  /**
+   * 正在下载的是哪一张卡。历史里可能同时摆着好几张卡片，用一个布尔会把它们一起变灰 ——
+   * 所以按卡片记账（键就是那张卡的 `key`）。
+   */
+  const [busyDownloadKey, setBusyDownloadKey] = useState<string | null>(null);
+  /** 多选题当前勾中的值（勾完按「确认」一次性提交） */
+  const [multiPick, setMultiPick] = useState<string[]>([]);
   /** 助手抛回来的待答问题（可能一次好几道）：渲染成可点选的控件，答完一道依次往下走 */
   const [queue, setQueue] = useState<AskQuestion[]>(() => pendingQueueOf(loadCachedTurns()));
   /** 已答的答案，下标与 queue 对应；答满 queue.length 就把整组合成一条消息发出去 */
@@ -870,15 +1009,62 @@ export function ScanAssistantAskPanel({
   const pickSession = useCallback(async (sessionId: number) => {
     setHistoryLoading(true);
     try {
-      const msgs = await fetchAssistantSessionMessages(sessionId);
+      // 消息与产物**两路并行**取：产物要按锚点挂回它当年那一轮，否则卡片就回不到原位
+      const [msgs, exports] = await Promise.all([
+        fetchAssistantSessionMessages(sessionId),
+        fetchSessionExports(sessionId).catch(() => [] as AssistantExportArtifact[]),
+      ]);
+      // 先铺成轮次（暂时留着消息 id，用来给产物找落点）
+      const rows = msgs
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => ({
+          role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+          text: m.content ?? "",
+          typed: true, // 恢复的历史一律视为已打完
+          messageId: m.id,
+          exports: [] as TurnExport[],
+        }));
+
+      // 产物**不挂在它产生的那个工具轮上**：那一轮正文是空的，卡片会孤零零占一行，
+      // 看着像「另外单独发的文件」，分不清归属。
+      // 挂到它之后（含自己）**第一条有正文的助手回复**下面 —— 那才是「跟着这句话输出的文件」，
+      // 和实时对话里卡片落在答复气泡下面的样子一致。找不到就退到锚点之后的第一轮。
+      for (const e of exports) {
+        const anchor = e.messageId ?? null;
+        let target = -1;
+        for (let i = 0; i < rows.length; i++) {
+          if (anchor != null && rows[i].messageId < anchor) continue;
+          if (rows[i].role === "assistant" && rows[i].text.trim().length > 0) {
+            target = i;
+            break;
+          }
+        }
+        if (target < 0) {
+          target = rows.findIndex((r) => anchor == null || r.messageId >= anchor);
+        }
+        if (target < 0) {
+          target = rows.length - 1;
+        }
+        if (target >= 0) {
+          rows[target].exports.push({
+            key: `h${e.exportId}`,
+            kind: e.kind,
+            label: e.label,
+            params: e.params,
+            exportId: e.exportId,
+          });
+        }
+      }
+
       setTurns(
-        msgs
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .filter((m) => (m.content ?? "").trim().length > 0) // 工具轮/空答复不铺成气泡
-          .map((m) => ({
-            role: m.role === "user" ? ("user" as const) : ("assistant" as const),
-            text: m.content ?? "",
-            typed: true, // 恢复的历史一律视为已打完
+        rows
+          // 工具轮 / 空答复不铺成气泡 —— 但**挂了文件的那一轮要留**（卡片得有落脚点）
+          .filter((r) => r.text.trim().length > 0 || r.exports.length > 0)
+          .map((r) => ({
+            role: r.role,
+            text: r.text,
+            typed: r.typed,
+            ...(r.exports.length ? { exports: r.exports } : {}),
           })),
       );
       sessionIdRef.current = sessionId;
@@ -965,6 +1151,132 @@ export function ScanAssistantAskPanel({
       }
       return next;
     });
+
+    // 轮到跳转了：正文已落定、待答问题已挂上，现在切页不会丢掉任何东西。
+    const nav = pendingNavRef.current;
+    pendingNavRef.current = null;
+    if (nav && nav.path) {
+      // 服务端给的是注册表里的 canonical 路径（/admin/xxx），直接 navigate 会命中顶层
+      // legacy 重定向 —— 整个后台壳层卸载重建、页面闪一下。转成 /console/admin/xxx 再跳。
+      const target = toAdminRoutePath(nav.path);
+      if (target && target !== currentPath) {
+        navigate(target);
+        toast.success(nav.label ? `已打开「${nav.label}」` : "已打开");
+      }
+    }
+
+    // 下载按钮同理：压到本轮结束再出现，免得正文还没说完按钮就跳出来了。
+    // **挂在刚说完的这条助手消息上**（而不是单独浮一块）—— 用户在历史里顺着那句话就能找到那份文件。
+    const dl = pendingDownloadRef.current;
+    pendingDownloadRef.current = null;
+    if (dl && dl.kind) {
+      const one: TurnExport = {
+        key: `live${Date.now()}`,
+        kind: dl.kind,
+        label: dl.label,
+        params: dl.params,
+        exportId: dl.exportId,
+      };
+      setTurns((prev) => {
+        const next = prev.slice();
+        const lastIndex = next.length - 1;
+        const last = next[lastIndex];
+        if (last && last.role === "assistant") {
+          next[lastIndex] = { ...last, exports: [...(last.exports ?? []), one] };
+          return next;
+        }
+        // 没有助手轮可挂（模型一个字都没说）：补一轮只有卡片的，别让它无处可去
+        return [...next, { role: "assistant" as const, text: "", typed: true, exports: [one] }];
+      });
+    }
+  };
+
+  /**
+   * 执行一次导出下载。**实时那张卡和历史里的卡走同一条路** —— 用户在历史里点到的
+   * 和他当时点的是同一个东西，认知才不割裂。
+   *
+   * 两条分支：
+   * ① 这份**已经归档过** → 直接给当时那份字节（历史里再下与当时逐字节相同）；
+   * ② 还没归档过（只拿到过按钮、没真下过）→ 用参数重跑一次导出，并**把刚生成的这份交回归档**，
+   *    于是下一次再点就走 ①。
+   *
+   * 小计配置用**浏览器里那份**（与导出弹窗同一个 storageKey），所以文件与页面上导出来的一致。
+   */
+  const performDownload = async (dl: TurnExport, busyKey: string): Promise<void> => {
+    if (busyDownloadKey) return;
+    setBusyDownloadKey(busyKey);
+    /*
+     * 领用单：附件里带的是一份**免登录的下载路径**（令牌就是能力），取到字节强制保存即可。
+     * 不走下面那套「导出 + 浏览器里的小计配置 + 归档」—— 那是物资审计导出专用的。
+     */
+    if (dl.kind === "supplyClaim") {
+      const path = String((dl.params as Record<string, unknown> | undefined)?.downloadPath ?? "");
+      const name = dl.label || "领用单.pdf";
+      try {
+        if (!path) throw new Error("没有下载路径");
+        const resp = await fetch(path);
+        if (!resp.ok) throw new Error(String(resp.status));
+        downloadBlob(await resp.blob(), name);
+        toast.success("已开始下载");
+      } catch {
+        toast.error("领用单下载失败，链接可能已过期（7 天有效），让助手重新生成一份");
+      } finally {
+        setBusyDownloadKey(null);
+      }
+      return;
+    }
+    const filename = `material-audit-${dl.label || "export"}.xlsx`;
+    try {
+      if (dl.exportId) {
+        const archived = await fetchExportBlob(dl.exportId);
+        if (archived) {
+          downloadBlob(archived, filename);
+          toast.success("已开始下载");
+          return;
+        }
+      }
+      if (!dl.params) {
+        toast.error("这份导出没有文件、也没有可重跑的参数");
+        return;
+      }
+      const p = { ...dl.params } as Record<string, unknown>;
+      const itemFamily = p.tab === "item" || p.tab === "itemGroup";
+      const storageKey = itemFamily
+        ? "fm-export-subtotal:material-item-flow"
+        : "fm-export-subtotal:material-audit";
+      const base = { ...p, exportLabel: dl.label };
+      const sum = itemFamily
+        ? await exportMaterialItemFlowSummary(p as never)
+        : await exportMaterialAuditSummary(p as never);
+      // 用户在对话里勾了层级（mode=direct）就按他勾的走；没勾才用浏览器里那份「上次配置」。
+      // 后端契约：levels 是**保留**的层级逗号列表（空 = 全保留、`none` = 全不保留）。
+      const picked = Array.isArray(p.levels) ? (p.levels as string[]) : [];
+      if (picked.length) {
+        // **把这次勾的层级存成「上次的配置」**：用户下次说「用上次的」时，用的就是他这次勾的这份。
+        // 不存的话「上次」永远是浏览器里更早那份（用户会以为自己刚配的没生效）。
+        // 排除法存储：没勾的层级进 offLevels。
+        saveConfig(storageKey, {
+          offLevels: (sum.levels ?? []).filter((l) => !picked.includes(l)),
+          excludeBlocks: loadConfig(storageKey).excludeBlocks ?? [],
+        });
+      }
+      const config = picked.length
+        ? { levels: picked.join(","), excludeBlocks: "" }
+        : toQuery(loadConfig(storageKey), sum.levels ?? []);
+      const blob = itemFamily
+        ? await exportMaterialItemFlow(base as never, config)
+        : await exportMaterialAuditTrail(base as never, config);
+      downloadBlob(blob, filename);
+      // 交回归档：下过一次之后，历史里再下拿到的就是**这次这一份**，不再依赖重建
+      if (dl.exportId) {
+        await archiveExportContent(dl.exportId, blob, filename);
+      }
+      toast.success("已开始下载");
+    } catch {
+      toast.error("下载失败：去导出页面上点一次导出试试");
+    } finally {
+      setBusyDownloadKey(null);
+    }
   };
 
   /** 流式出错：占位气泡还没写出正文时，把错误当这一轮的答复显示出来。 */
@@ -981,13 +1293,20 @@ export function ScanAssistantAskPanel({
 
   /** 把球球抛回来的候选收进待答队列 —— 澄清与确认走同一条收集路径，区别只在点选后发去哪。 */
   const collectInteraction = (
-    p: { question: string; options: AskChoice[]; token?: string; kind?: string },
+    p: { question: string; options: AskChoice[]; token?: string; kind?: string; multiSelect?: boolean },
     accQueue: AskQuestion[],
   ) => {
     if (!p.options || p.options.length === 0) return;
-    accQueue.push({ question: p.question, options: p.options, token: p.token, kind: p.kind });
+    accQueue.push({
+      question: p.question,
+      options: p.options,
+      token: p.token,
+      kind: p.kind,
+      multiSelect: p.multiSelect === true,
+    });
     setQueue([...accQueue]);
     setAnswers([]);
+    setMultiPick([]);
   };
 
   /**
@@ -1048,6 +1367,7 @@ export function ScanAssistantAskPanel({
     setAnswers([]);
     setCustomDraft("");
     setDraft("");
+    pendingNavRef.current = null;
     setTurns((prev) => [
       ...prev,
       { role: "user", text: displayText ?? outgoingText, typed: true, attachments: turnAttachments },
@@ -1068,10 +1388,21 @@ export function ScanAssistantAskPanel({
           },
           onUsage: (u) => setUsage(u),
           onInteraction: (p) => collectInteraction(p, accQueue),
+          // 跳转指令先攒着，等这一轮说完再执行（见 pendingNavRef 的注释）
+          onNavigate: (p) => {
+            pendingNavRef.current = p;
+          },
+          onDownload: (p) => {
+            pendingDownloadRef.current = p as AssistantDownload;
+          },
           onDone: (payload) => {
             const finalText = (payload.text ?? acc).trim();
-            // 带附件那次不进答案缓存：缓存只按问题文本命中，回放它等于给出一个不看附件的答案
-            if (!hasAttachments) {
+            // 带附件那次不进答案缓存：缓存只按问题文本命中，回放它等于给出一个不看附件的答案。
+            //
+            // **带副作用的那一轮也不进缓存**（跳页 / 下载按钮）：缓存只存文本，回放时那句「下载按钮
+            // 已生成」还在、按钮却不在了（用户第二次点「用上次的」就会撞上）。真机 2026-10-09 踩到。
+            const producedDirective = Boolean(pendingDownloadRef.current || pendingNavRef.current);
+            if (!hasAttachments && !producedDirective) {
               answerCacheRef.current.set(question, {
                 text: finalText,
                 choiceQueue: accQueue,
@@ -1179,6 +1510,11 @@ export function ScanAssistantAskPanel({
   const chooseOption = (value: string, label: string) => {
     const q = currentQuestion;
     if (!q) return;
+    // 多选题：点一下只勾/取消勾，勾完按「确认」提交（配置类问题就是这种，一次配完）
+    if (q.multiSelect) {
+      setMultiPick((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+      return;
+    }
     if (q.kind === "confirm") {
       const chosen = q.options.find((o) => o.value === value)?.label ?? label;
       void submitInteraction(q.token ?? "", value, chosen);
@@ -1202,6 +1538,22 @@ export function ScanAssistantAskPanel({
     if (safeIndex < queue.length - 1) {
       setCurrent(safeIndex + 1);
     }
+  };
+
+  /**
+   * 多选的「确认」：把勾中的项**一次性**交给模型。
+   *
+   * <p>气泡上显示标签、发给模型的是值 —— 与单选同一条约定（值可能是内部码：小计层级就是 total/lv1/…）。
+   */
+  const confirmMulti = () => {
+    const q = currentQuestion;
+    if (!q || multiPick.length === 0) return;
+    const labels = q.options.filter((o) => multiPick.includes(o.value)).map((o) => o.label);
+    const raw = multiPick.join(",");
+    setQueue([]);
+    setAnswers([]);
+    setMultiPick([]);
+    void submitText(raw, labels.join("、"));
   };
 
   /** 自定义回答：只落这一题的答案，**不自动跳题** */
@@ -1330,6 +1682,8 @@ export function ScanAssistantAskPanel({
         onDismiss={onDismiss}
         dismissLabel="关闭提问"
         askPanel
+        // 对话标题就是第一句用户话（与服务端生成的会话标题同源），浮在左上角、不占行
+        title={turns.find((t) => t.role === "user" && t.text.trim().length > 0)?.text.trim()}
         actions={
           <>
             <button
@@ -1454,6 +1808,30 @@ export function ScanAssistantAskPanel({
                 onClick={(event) => {
                   const a = (event.target as HTMLElement)?.closest?.("a") as HTMLAnchorElement | null;
                   const href = a?.getAttribute("href") ?? "";
+                  /*
+                   * 领用单下载链接同理接管。区别：那个下载口是「令牌就是能力」（免登录、可外发），
+                   * 但直接点会在浏览器里**开 PDF 预览**而不是存成文件 —— 用户说的是「下载」，
+                   * 所以这里取到字节再触发保存，文件名用链文本（模型给的就是归档名）。
+                   */
+                  const claim = /\/api\/supplies\/claims\/download\/([A-Za-z0-9_-]+)/.exec(href);
+                  if (claim) {
+                    event.preventDefault();
+                    void (async () => {
+                      try {
+                        const resp = await fetch(`/api/supplies/claims/download/${claim[1]}`);
+                        if (!resp.ok) throw new Error(String(resp.status));
+                        const text = (a?.textContent ?? "").trim();
+                        const fileName = text.toLowerCase().endsWith(".pdf")
+                          ? text
+                          : `${text || "领用单"}.pdf`;
+                        downloadBlob(await resp.blob(), fileName);
+                        toast.success("已开始下载");
+                      } catch {
+                        toast.error("领用单下载失败，链接可能已过期（7 天有效），让助手重新生成一份");
+                      }
+                    })();
+                    return;
+                  }
                   const m = /^\/api\/admin\/file-templates\/([^/]+)\/download$/.exec(href);
                   if (!m) return;
                   event.preventDefault();
@@ -1482,7 +1860,8 @@ export function ScanAssistantAskPanel({
                   if (
                     turn.role === "assistant" &&
                     turn.text.trim().length === 0 &&
-                    (turn.choiceQueue?.length ?? 0) > 0
+                    (turn.choiceQueue?.length ?? 0) > 0 &&
+                    (turn.exports?.length ?? 0) === 0
                   ) {
                     return null;
                   }
@@ -1507,7 +1886,19 @@ export function ScanAssistantAskPanel({
                               return next;
                             })
                           }
-                        />
+                        >
+                          {turn.exports?.map((one) => (
+                            <DownloadCard
+                              key={one.key}
+                              label={one.label}
+                              busy={busyDownloadKey === one.key}
+                              // 这一轮有正文 = 文件是跟着这句话出来的 → 往里缩一点；
+                              // 没正文 = 模型只调了工具，文件自己占一条 → 不缩进。
+                              sub={turn.text.trim().length > 0}
+                              onDownload={() => void performDownload(one, one.key)}
+                            />
+                          ))}
+                        </AssistantBubble>
                       ) : (
                         <div className="scan-assistant-ask__user-block">
                           <div className="scan-assistant-ask__bubble scan-assistant-ask__bubble--user">
@@ -1603,7 +1994,9 @@ export function ScanAssistantAskPanel({
                 <div className="scan-assistant-ask__choices" role="group" aria-label="请选择">
                   {currentQuestion.options.map((option) => {
                     // 向导里选中的那项要亮着：用户要能一眼看出「我这题选了哪个」
-                    const picked = wizardMode && (answers[safeIndex] ?? "") === option.value;
+                    const picked = currentQuestion.multiSelect
+                      ? multiPick.includes(option.value)
+                      : wizardMode && (answers[safeIndex] ?? "") === option.value;
                     return (
                       <button
                         key={option.value}
@@ -1621,6 +2014,16 @@ export function ScanAssistantAskPanel({
                       </button>
                     );
                   })}
+                  {currentQuestion.multiSelect ? (
+                    <button
+                      type="button"
+                      className="scan-assistant-ask__choice"
+                      disabled={sending || multiPick.length === 0}
+                      onClick={confirmMulti}
+                    >
+                      确认（已选 {multiPick.length} 项）
+                    </button>
+                  ) : null}
                 </div>
                 {currentQuestion.kind === "confirm" ? null : (
                   <>
@@ -1729,6 +2132,8 @@ export function ScanAssistantAskPanel({
               </div>
             ) : null}
 
+            {/* 看历史时把输入条收起来 —— 这一屏是「翻旧对话」，不该同时留个提问框（旁边几个块都这么门控）。 */}
+            {!historyOpen ? (
             <form
               className="scan-assistant-ask"
               onSubmit={(event) => {
@@ -1907,6 +2312,7 @@ export function ScanAssistantAskPanel({
                 </button>
               )}
             </form>
+            ) : null}
           </>
         }
       />

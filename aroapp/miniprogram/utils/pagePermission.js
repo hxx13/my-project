@@ -85,6 +85,31 @@ function canShowMiniEntry(source, path, role, fallbackMinRole) {
   return roleAllowed(role, hit.minRole || 'STUDENT');
 }
 
+/**
+ * 「主包路径 → 可跳转路径」的候选清单。
+ *
+ * 后台「页面权限」里配的一律是**主包路径**（`/pages/x/y`），而页面多半已经搬进分包
+ * （`/package-feature/pages/x/y`）—— 智能助手报回来的就是主包路径，直接 navigateTo 会**静默失败**
+ * （2026-10-09 实测：点了「帮你打开报修申请」，页面纹丝不动）。
+ *
+ * 所以这里按分包前缀逐个试：调用方从头试到成功为止。主包路径放在最后 —— 它是页面的真实位置时才成立。
+ * `SUBPKG_PAGE_PREFIXES` 每加一个分包都要补（见上面的注释：漏一个，那个分包的页面就查不到权限配置）。
+ */
+function subPackageCandidates(path) {
+  const raw = String(path || '').trim();
+  if (!raw) return [];
+  const p = (raw.startsWith('/') ? raw : `/${raw}`).replace(/\/+/g, '/');
+  const out = [];
+  if (p.startsWith('/pages/')) {
+    const rest = p.slice('/pages/'.length);
+    for (let i = 0; i < SUBPKG_PAGE_PREFIXES.length; i += 1) {
+      out.push(`${SUBPKG_PAGE_PREFIXES[i]}${rest}`);
+    }
+  }
+  out.push(p);
+  return out;
+}
+
 function guardPageOnShow(pageCtx, pagePath, role, fallbackMinRole) {
   if (canAccessMiniPage(pagePath, role, fallbackMinRole)) return true;
   wx.showToast({ title: '页面权限受限', icon: 'none' });
@@ -94,6 +119,7 @@ function guardPageOnShow(pageCtx, pagePath, role, fallbackMinRole) {
 
 module.exports = {
   normalizePath,
+  subPackageCandidates,
   refreshMiniPermissions,
   getMiniPermissions,
   canAccessMiniPage,

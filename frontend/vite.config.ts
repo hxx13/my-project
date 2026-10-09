@@ -71,6 +71,10 @@ export default defineConfig(({ mode }) => ({
     },
 
   server: {
+        // 端口由 PORT 环境变量决定（验证用的临时服务器由 harness 分配端口下发），没给就交给 vite
+        // 自己挑（默认 5173，被占则自动 +1）。launch.json 里不再写死 --port/--strictPort ——
+        // 写死会和多会话各自的验证服务器抢同一个端口，一个在跑另一个就起不来。
+        port: process.env.PORT ? Number(process.env.PORT) : undefined,
         proxy: {
             '/api': {
                 target: 'http://localhost:8081',

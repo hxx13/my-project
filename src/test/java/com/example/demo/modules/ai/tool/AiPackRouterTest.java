@@ -1,23 +1,29 @@
 package com.example.demo.modules.ai.tool;
 
+import com.example.demo.modules.ai.tool.pack.DashboardToolPack;
+import com.example.demo.modules.ai.tool.pack.DebugLogToolPack;
+import com.example.demo.modules.ai.tool.pack.NavToolPack;
+import com.example.demo.modules.ai.tool.pack.TimerToolPack;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * L2 路由的闸。
+ * 工具包裁剪接缝（{@link AiPackRouter}）的闸。
  *
  * <p>钉住三件事：
- * ① <b>挑不出就全给</b> —— 路由是体验层，绝不能变成「用户办不了事」的功能开关；
- * ② 命中少的包该被收窄（这才是它存在的理由：§6.3 的「这一轮只有 8 个」）；
+ * ① <b>本轮路径全量下发</b> —— 收窄已停用（2026-10-09 真机漏发，见 AiPackRouter 类注释）；
+ * ② <b>保留的收窄实现仍可用</b> —— 包数涨上来要重启它，所以那套规则当前照样有测试兜着；
  * ③ <b>输出顺序恒等于注册顺序</b> —— 顺序一漂，prompt 缓存前缀全失效（§10.2）。
  *
- * <p>用假包而不是真包：真包会随业务增长而增删，这条测试要盯的是**路由规则**，不是某个域的词汇表。
+ * <p>用假包而不是真包：真包会随业务增长而增删，这条测试要盯的是**选包规则**，不是某个域的词汇表。
  * 假包的顺序刻意与注册表一致（按 packKey 字母序）—— 真跑时 {@link ToolRegistry} 就是这么排的。
  */
 class AiPackRouterTest {
@@ -148,15 +154,36 @@ class AiPackRouterTest {
     }
 
     @Test
-    @DisplayName("当轮原话命中时，历史正文不许把它挤掉 —— 助手列过能力清单也不许")
-    void currentInputBeatsHistoryInRouting() {
-        List<AiToolPack> packs = all();
-        // 真实发生过的助手正文：它解释「什么办不了」时把自己能办的域挨个念了一遍
+    @DisplayName("本轮路径**全量下发**：收窄已停用（真机复现过一次漏发，见 AiPackRouter 类注释）")
+    void turnPathFansOutEverything() {
+        List<AiToolPack> packs = withNewPacks();
+        // 复现用例：上一轮助手列过能力清单后，用户只说「直接下单」——
+        // 旧口径会拿历史正文打分，6 个包位被 审核/免冻/环境/培训/笼位 占满，物资选购被挤出去。
         String history = "你能查笼架目录、待审清单、商城物资、购物车、领用单、门禁通道、免冻豁免、门户内容这些";
-        List<AiToolPack> out = router.routeForTurn(packs, null, "查询一下2楼的湿度情况", history);
-        assertEquals(List.of("common", "telemetry"), keys(out),
-                "当轮问的是湿度，历史里那一串域不许参与投票 —— 否则包位被占满，答成「我没有环境监测工具」："
-                        + keys(out));
+        List<AiToolPack> out = router.routeForTurn(packs, null, "直接下单", history);
+        assertEquals(packs.size(), out.size(),
+                "本轮必须全量下发 —— 少发一个包，用户看到的就是「平台没有这个功能」：" + keys(out));
+        assertEquals(keys(packs), keys(out), "顺序必须恒等于注册顺序（prompt 缓存前缀）");
+    }
+
+    @Test
+    @DisplayName("已停用的收窄规则：原话命中时，历史正文不许把它挤掉（重启收窄时这条仍然要成立）")
+    void currentInputBeatsHistoryInRouting() {
+        List<AiToolPack> packs = withNewPacks();
+        // 收窄已停用，但实现保留了（包数涨上来要重启）。这条钉的是重启后不能再犯的错。
+        List<AiToolPack> byInput = router.route(packs, null, "查询一下2楼的湿度情况");
+        assertTrue(keys(byInput).contains("telemetry"), "原话问的是湿度，环境监测必须在：" + keys(byInput));
+    }
+
+    /** 新加的 4 个真包（dashboard / debug / nav / timer）+ 上面那组假包：凑够包数，让收窄规则有得选。 */
+    private List<AiToolPack> withNewPacks() {
+        List<AiToolPack> packs = new ArrayList<>();
+        packs.add(new DashboardToolPack(null, null));
+        packs.add(new DebugLogToolPack(null, null, null));
+        packs.add(new NavToolPack(null));
+        packs.add(new TimerToolPack(null));
+        packs.addAll(all());
+        return packs;
     }
 
     private static List<String> keys(List<AiToolPack> packs) {

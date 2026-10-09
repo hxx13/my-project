@@ -5,7 +5,7 @@ import { ScanAssistantDock } from "@/components/scanner/scan-assistant/ScanAssis
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { CARRIER_IDS, type CarrierId } from "@/components/scanner/scan-assistant/carrier/carrier";
-import { isAdminAreaPath, isContentManagerPath, isTwinDashboardHomePath } from "@/features/admin/buildAdminNavModel";
+import { isContentManagerPath } from "@/features/admin/buildAdminNavModel";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 import { useScanAssistantBubbleTransition } from "@/components/scanner/scan-assistant/useScanAssistantBubbleTransition";
@@ -37,7 +37,11 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
   })();
 
   useEffect(() => {
-    if (isTwinDashboardHomePath(pathname) || isAdminAreaPath(pathname) || isContentManagerPath(pathname)) {
+    // 教职工 console 命名空间下的**任何**页面都显示球：/console/dashboard、/console/debug*、
+    // /console/admin/* 都落在这个前缀里。
+    // 别只列白名单（原来只放大屏首页 + admin 区）：2026-10-09 实测从后台跳到 /console/debug
+    // （Twin 壳）后球直接消失 —— 刚说完「已帮你打开流水线日志」，用户却没法接着问。
+    if (pathname.startsWith("/console") || pathname.startsWith("/student") || isContentManagerPath(pathname)) {
       setDockVisible(true);
     } else if (!activeMessage) {
       setDockVisible(false);

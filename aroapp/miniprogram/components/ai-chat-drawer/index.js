@@ -1,6 +1,7 @@
 const aiChatStream = require('../../utils/aiChatStream.js');
 const markdown = require('../../utils/markdown.js');
 const springAuth = require('../../utils/springAuth.js');
+const pagePermission = require('../../utils/pagePermission.js');
 
 /** 模型按工具给的路径原样写链接，路径本身是真的 */
 const TPL_DOWNLOAD_RE = /\/api\/admin\/file-templates\/([^/\s)"']+)\/download/g;
@@ -145,6 +146,10 @@ Component({
     /** 当前这道题的选项与已选值（WXML 里不能算 queue[i]，所以算好放出来） */
     currentOptions: [],
     currentAnswer: '',
+    /** 当前这道题是不是多选（勾完点「确认」才提交，而不是点一下即办） */
+    currentMulti: false,
+    /** 多选题已勾的值（多选才用；单选走 currentAnswer） */
+    multiPick: [],
     /** 当前这道题的问句（多选题时显示，好知道在问哪件事） */
     currentQuestion: '',
     queueTotal: 0,
@@ -174,9 +179,16 @@ Component({
     /** 头部小球的动效节奏（表情轮换与待机动作由 ai-orb 自己管） */
     orbState: 'idle',
     statusText: '在线',
+    /** 流式期间的实时态（「思考中 3.2s · 1.2k tokens」），答完清空 */
+    liveMeta: '',
     scrollTarget: '',
+    /** 助手算好的那份导出（有就渲染成一张下载卡，用户点一下才真去取文件） */
+    downloadCard: null,
+    downloadBusy: false,
     /** 服务端回传的会话 id，后续轮次接着这条聊 */
     sessionId: null,
+    /** 当前对话的标题（抽屉顶部显示一句，让人知道自己在哪条对话里） */
+    sessionTitle: '',
     /** 历史对话列表视图：与消息区共用同一块位置，开列表就把对话收起来 */
     historyOpen: false,
     historyLoading: false,
@@ -218,8 +230,32 @@ Component({
   methods: {
     handleOpened() {
       // 只有第一次打开才主动问好；聊过再打开就接着原对话
-      if (this.data.messages.length === 0) this.greet();
+      if (this.data.messages.length === 0) {
+        this.restoreLatestSession();
+        return;
+      }
       this.scrollToEnd();
+    },
+
+    /**
+     * 本机没缓存时：**去服务端拉最近一条对话接着聊**，拉不到才问好。
+     *
+     * <p>为什么不直接问好：缓存有 15 分钟 TTL（还有换设备、清缓存的情形），过期后打开只剩一句问候，
+     * 用户看到的是「刚才那些回答全没了」（真机 2026-10-09 反馈）。服务端历史一直在，
+     * 网页端本来就会去拉最近一条，小程序缺的就是这一步 —— 两端口径对齐。
+     */
+    restoreLatestSession() {
+      aiChatStream
+        .fetchSessions()
+        .then((list) => {
+          const first = (list || [])[0];
+          if (!first) {
+            this.greet();
+            return;
+          }
+          this.onPickSession({ currentTarget: { dataset: { id: first.id, title: first.title } } });
+        })
+        .catch(() => this.greet());
     },
 
     handleClosed() {
@@ -250,6 +286,7 @@ Component({
         images: [],
         files: [],
         sessionId: null,
+        sessionTitle: '',
         historyOpen: false,
         historyList: [],
         ...this.clearedQueuePatch(),
@@ -277,32 +314,63 @@ Component({
       const id = Number(e.currentTarget.dataset.id);
       if (!id) return;
       this.setData({ historyLoading: true });
-      aiChatStream
-        .fetchSessionMessages(id)
-        .then((msgs) => {
-          const list = (msgs || [])
+      const pickedTitle = String((e.currentTarget.dataset && e.currentTarget.dataset.title) || '');
+      // 消息与**产物**两路并行取：产物要按锚点挂回它当年那一轮。
+      // 只拉消息的话，下载卡就没了 —— 服务端历史里只有文字、没有那条指令（真机 2026-10-09 反馈）。
+      Promise.all([
+        aiChatStream.fetchSessionMessages(id),
+        aiChatStream.fetchSessionExports(id).catch(() => []),
+      ])
+        .then(([msgs, exports]) => {
+          const list = [];
+          (msgs || [])
             .filter((m) => m.role === 'user' || m.role === 'assistant')
-            // 工具轮 / 空答复不铺成气泡
-            .filter((m) => String(m.content || '').trim().length > 0)
-            .map((m) => {
+            .filter((m) => String(m.content || '').trim().length > 0) // 工具轮 / 空答复不铺成气泡
+            .forEach((m) => {
               const text = String(m.content || '');
               const item = {
                 key: nextKey(),
                 role: m.role === 'user' ? 'user' : 'assistant',
                 text: text,
+                _mid: m.id, // 临时：给产物找落点用，挂完就删
               };
               // 历史里的助手答复同样可能带 markdown
               if (m.role !== 'user' && looksLikeMarkdown(text)) {
                 item.html = markdown.mdToHtml(text);
               }
-              return item;
+              list.push(item);
             });
+          // 产物挂到锚点之后第一条助手回复上（锚点那轮正文常为空、已经被滤掉）——与网页端同一规则
+          (exports || []).forEach((ex) => {
+            const anchor = ex && ex.messageId != null ? Number(ex.messageId) : null;
+            let target = -1;
+            for (let i = 0; i < list.length; i += 1) {
+              if (anchor != null && Number(list[i]._mid) < anchor) continue;
+              if (list[i].role === 'assistant') {
+                target = i;
+                break;
+              }
+            }
+            if (target < 0) target = list.length - 1;
+            if (target >= 0) {
+              list[target].download = {
+                kind: ex.kind,
+                label: ex.label,
+                params: ex.params,
+                exportId: ex.exportId,
+              };
+            }
+          });
+          list.forEach((it) => {
+            delete it._mid;
+          });
           this.newSessionFlag = false;
           this.setData({
             messages: list,
             historyOpen: false,
             historyLoading: false,
             sessionId: id,
+            sessionTitle: pickedTitle,
             ...this.clearedQueuePatch(),
           });
           this.scrollToEnd();
@@ -323,8 +391,15 @@ Component({
           role: m.role,
           text: m.text,
           meta: m.meta,
+          // 挂在消息上的导出卡也存：不然重开对话卡片就没了（它现在属于那一条消息）
+          download: m.download,
         }));
-        wx.setStorageSync(CACHE_KEY, { ts: now, messages: slim, sessionId: this.data.sessionId });
+        wx.setStorageSync(CACHE_KEY, {
+          ts: now,
+          messages: slim,
+          sessionId: this.data.sessionId,
+          sessionTitle: this.data.sessionTitle,
+        });
       } catch (e) {
         /* ignore quota */
       }
@@ -356,10 +431,45 @@ Component({
             return m;
           });
         if (list.length === 0) return;
-        this.setData({ messages: list, sessionId: raw.sessionId || null });
+        this.setData({
+          messages: list,
+          sessionId: raw.sessionId || null,
+          sessionTitle: String(raw.sessionTitle || ''),
+        });
       } catch (e) {
         /* ignore */
       }
+    },
+
+    /**
+     * 删掉一条历史对话（**软删**，与服务端同一口径：列表/续聊不再出现，审计留痕保留）。
+     *
+     * 删的正是当前这条时，要像「新建对话」一样把面板清干净 —— 否则会盯着一份已经删掉的会话继续发。
+     */
+    onDeleteSession(e) {
+      const id = Number(e.currentTarget.dataset && e.currentTarget.dataset.id);
+      if (!id) return;
+      const self = this;
+      wx.showModal({
+        title: '删除对话',
+        content: '删除后这条对话不再出现在列表里（服务端保留审计留痕）。',
+        confirmText: '删除',
+        confirmColor: '#ee0a24',
+        success(res) {
+          if (!res.confirm) return;
+          aiChatStream
+            .deleteSession(id)
+            .then(() => {
+              self.setData({
+                historyList: (self.data.historyList || []).filter((s) => s.id !== id),
+              });
+              if (self.data.sessionId === id) self.onNewChat();
+            })
+            .catch((err) => {
+              wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' });
+            });
+        },
+      });
     },
 
     clearCache() {
@@ -415,15 +525,60 @@ Component({
     /** 开一条流：统一置忙、注册回调、登记 abort */
     startStream(botKey, starter) {
       this.abortStream();
+      this.streamBotKey = botKey;
       this.setData({ sending: true, orbState: 'thinking', statusText: '正在思考…' });
       this.scrollToEnd();
+      this.startLiveMeta();
       this.stream = starter();
+    },
+
+    // ── 实时态（与网页端同口径：思考中 · 3.2s · 1.2k tokens） ──
+    // 网页端流式期间会一直显示「已耗时 / 已用 token」；小程序原先只在答完之后给一行「用时」，
+    // 等的那段时间屏幕上什么都不动，看着像卡住了（用户 2026-10-09 反馈）。
+
+    /** 起表 + 每 500ms 刷一次；用量到位时也刷（token 是一轮一轮推的，不是逐字） */
+    startLiveMeta() {
+      this.liveStartAt = Date.now();
+      this.liveTokens = 0;
+      if (this.liveMetaTimer) clearInterval(this.liveMetaTimer);
+      this.tickLiveMeta();
+      this.liveMetaTimer = setInterval(() => this.tickLiveMeta(), 500);
+    },
+
+    tickLiveMeta() {
+      if (!this.liveStartAt) return;
+      const sec = (Date.now() - this.liveStartAt) / 1000;
+      const parts = ['思考中 ' + sec.toFixed(1) + 's'];
+      if (this.liveTokens > 0) parts.push(this.liveTokens.toLocaleString() + ' tokens');
+      this.setData({ liveMeta: parts.join(' · ') });
+    },
+
+    stopLiveMeta() {
+      if (this.liveMetaTimer) {
+        clearInterval(this.liveMetaTimer);
+        this.liveMetaTimer = null;
+      }
+      this.liveStartAt = 0;
+      if (this.data.liveMeta) this.setData({ liveMeta: '' });
     },
 
     handlersFor(botKey) {
       return {
         onDelta: (text) => this.appendText(botKey, text),
         onInteraction: (payload) => this.collectInteraction(payload),
+        // 用量：每完成一轮模型调用推一次，用来刷实时 token 计数
+        onUsage: (u) => {
+          this.liveTokens = (u && u.totalTokens) || 0;
+          this.tickLiveMeta();
+        },
+        // 跳转指令先攒着：收到就跳会把模型这句「我帮你打开…」和待答选项一起带走（与服务端同一口径）
+        onNavigate: (payload) => {
+          this.pendingNav = payload;
+        },
+        // 下载指令同理攒着：这一轮的话还没说完就把卡片弹出来，用户会以为正文是卡片的注脚
+        onDownload: (payload) => {
+          this.pendingDownload = payload;
+        },
         onDone: (payload) => {
           if (payload && typeof payload.sessionId === 'number' && payload.sessionId > 0) {
             this.setData({ sessionId: payload.sessionId });
@@ -431,9 +586,178 @@ Component({
           // 标记源已结束：打字机把剩下的字吐完会自己停
           this.typeFinished = true;
           this.finishTurn(botKey, null, payload);
+          this.flushPendingNav();
+          this.flushPendingDownload(botKey);
         },
         onError: (msg) => this.finishTurn(botKey, msg),
       };
+    },
+
+    /**
+     * 执行攒下来的跳转指令（「帮我打开 X」）。
+     *
+     * path 是服务端按载体查出来的**小程序页面路径**，但那是「页面权限」里的**主包路径**
+     * （`/pages/x/y`），而页面多半已搬进分包 —— 直接跳会**静默失败**（2026-10-09 实测：
+     * 点了「帮你打开报修申请」，页面纹丝不动）。所以按分包前缀逐个试，见 subPackageCandidates。
+     * tabBar 页只能用 switchTab、普通页只能用 navigateTo：这里靠 navigateTo 失败回落，
+     * 免得在小程序里再维护一份 tabBar 名单（那份名单在 app.json，改一处漏一处）。
+     */
+    flushPendingNav() {
+      const nav = this.pendingNav;
+      this.pendingNav = null;
+      if (!nav || !nav.path) return;
+      const stack = getCurrentPages();
+      const top = stack && stack.length ? stack[stack.length - 1] : null;
+      const self = top && top.route ? '/' + String(top.route).replace(/^\/+/, '') : '';
+      const candidates = pagePermission.subPackageCandidates(nav.path);
+      if (self && candidates.indexOf(self) >= 0) {
+        if (nav.label) wx.showToast({ title: '已经在「' + nav.label + '」了', icon: 'none' });
+        return;
+      }
+      // 抽屉是盖在页面上的浮层，不关掉就把刚跳到的页面挡着了
+      this.onClose();
+      const fallback = () => wx.showToast({ title: '这个页面打不开', icon: 'none' });
+      const step = (i) => {
+        if (i >= candidates.length) {
+          // 都不是普通页 —— 可能是 tabBar 页（只能用 switchTab）
+          wx.switchTab({ url: candidates[candidates.length - 1], fail: fallback });
+          return;
+        }
+        wx.navigateTo({ url: candidates[i], fail: () => step(i + 1) });
+      };
+      step(0);
+      if (nav.label) wx.showToast({ title: '已打开「' + nav.label + '」', icon: 'none' });
+    },
+
+    /**
+     * 把攒下的下载指令**挂到产出它的那一轮消息上**（不是浮在输入框上面）。
+     *
+     * 与网页端同一口径：卡片是那句话带出来的，就该跟在那句话下面 ——
+     * 浮在底部时它跟任何一句都对不上，用户分不清是哪次导的。
+     * 挂在消息上还顺带进了缓存，重开对话卡片还在。
+     */
+    flushPendingDownload(botKey) {
+      const dl = this.pendingDownload;
+      this.pendingDownload = null;
+      if (!dl || !dl.kind) return;
+      const idx = this.indexOfKey(botKey);
+      if (idx < 0) return;
+      this.setData({ ['messages[' + idx + '].download']: dl });
+      this.scrollToEnd();
+    },
+
+    /**
+     * 真去取文件。
+     *
+     * 参数口径照抄**网页端**那套（工具给的 params 就是为它产的）：`group` / `itemKeyword` / `levels`…
+     * 小程序自己的审计页用的是另一套名字（applicantGroup），服务端两种都收，这里不混用。
+     */
+    onDownloadTap(e) {
+      // 卡是**挂在某一条消息上**的，参数就从那条消息里取（不再有全局的那一份）
+      const key = String((e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || '');
+      const idx = key ? this.indexOfKey(key) : -1;
+      const dl = idx >= 0 ? this.data.messages[idx].download : null;
+      if (!dl || this.data.downloadBusy) return;
+      const p = dl.params || {};
+      const qs = [];
+      const add = (k, v) => {
+        if (v === null || v === undefined || String(v) === '') return;
+        qs.push(k + '=' + encodeURIComponent(String(v)));
+      };
+      const itemFamily = p.tab === 'item' || p.tab === 'itemGroup';
+      add('tab', p.tab);
+      add('from', p.from);
+      add('to', p.to);
+      add('group', p.group);
+      add('applicantUserId', p.applicantUserId);
+      add('categoryId', p.categoryId);
+      add('itemId', p.itemId);
+      add('itemKeyword', p.itemKeyword);
+      add('exportLabel', dl.label);
+      const levels = this.subtotalLevelsFor(dl);
+      if (levels.length > 0) add('levels', levels.join(','));
+      add('excludeBlocks', '');
+      const path = itemFamily
+        ? '/api/material/admin/audit/item/' + (p.itemId || 0) + '/export?' + qs.join('&')
+        : '/api/material/admin/stats/export?' + qs.join('&');
+      this.setData({ downloadBusy: true });
+      wx.showLoading({ title: '正在导出…', mask: true });
+      // **有产物 id 就先取存档字节** —— 存档里那份才是用户当时看到的东西。
+      // 改过的那张卡**不带导出参数**（它改的是文件本身，不是筛选条件），照着参数重跑会导出一份
+      // 全新的、和上一条完全不同的文件；真机 2026-10-09 就是这么把改好的存档**覆盖**成了全量导出，
+      // 用户下到的还是带着「数量」列的那份。网页端一直是先取存档的，这里漏了。
+      const archived = dl.exportId
+        ? springAuth
+            .springRequestBinary('/api/v1/ai/exports/' + encodeURIComponent(dl.exportId) + '/download', {})
+            .catch(() => null)
+        : Promise.resolve(null);
+      archived
+        .then((hit) => {
+          if (hit && hit.data) return hit;
+          if (!dl.params || Object.keys(dl.params).length === 0) {
+            // 存档没了、又没有可重跑的参数 = 这份文件真的取不回来了，别拿一份别的糊过去
+            throw new Error('这份文件的存档已经取不到了，让助手重新导一次');
+          }
+          return springAuth.springRequestBinary(path,
+            { errorMessage: '导出失败', forbiddenMessage: '无权限导出' });
+        })
+        .then(async (r) => {
+          wx.hideLoading();
+          this.setData({ downloadBusy: false });
+          const safe = String((dl.label || 'export') + '.xlsx').replace(/[\\/:*?"<>|]/g, '_');
+          const file = wx.env.USER_DATA_PATH + '/exp_' + Date.now() + '_' + safe.slice(0, 60);
+          try {
+            wx.getFileSystemManager().writeFileSync(file, r.data);
+          } catch (e) {
+            wx.showToast({ title: '文件写入失败', icon: 'none' });
+            return;
+          }
+          // 交回服务端归档 —— 不归档就只能重新导一遍，改不了「刚才那份」。
+          // 归档失败不当错误报（文件已经到手了），所以它 resolve(false) 而不是 reject。
+          await springAuth.archiveExportContent(dl.exportId, file);
+          wx.openDocument({
+            filePath: file,
+            showMenu: true, // 允许「用其他应用打开」/转发，等于给了保存出口
+            fail: () => wx.showToast({ title: '打不开这个格式', icon: 'none' }),
+          });
+        })
+        .catch((err) => {
+          wx.hideLoading();
+          this.setData({ downloadBusy: false });
+          wx.showToast({ title: (err && err.message) || '导出失败', icon: 'none' });
+        });
+    },
+
+    /**
+     * 这份导出该用哪几级小计。
+     *
+     * <p>用户勾过层级的那张卡（`mode=direct`）带着 levels，**顺手记成「上次的配置」**；
+     * 「用上次的」那张卡（`mode=last`）不带 levels，就取上次记下的那组。
+     * 网页端一直是这么做的（配置存在浏览器里），小程序原先两边都没存 ——
+     * 于是「用上次的」在小程序上等于「全保留」：明明上次只要「总计」，下一次却把
+     * 课题组/申领人/物品小计全带回来（真机 2026-10-09 实测复现）。
+     *
+     * <p>按导出族分开存（按物品那两页签是另一套口径），键名与网页端一致。
+     */
+    subtotalLevelsFor(dl) {
+      const p = (dl && dl.params) || {};
+      const itemFamily = p.tab === 'item' || p.tab === 'itemGroup';
+      const key = itemFamily ? 'fm-export-subtotal:material-item-flow' : 'fm-export-subtotal:material-audit';
+      const picked = Array.isArray(p.levels) ? p.levels.filter((x) => x) : [];
+      if (picked.length > 0) {
+        try {
+          wx.setStorageSync(key, picked);
+        } catch (e) {
+          /* 存不下不影响这次导出 */
+        }
+        return picked;
+      }
+      try {
+        const saved = wx.getStorageSync(key);
+        return Array.isArray(saved) ? saved : [];
+      } catch (e) {
+        return [];
+      }
     },
 
     pushBotTurn(botKey) {
@@ -475,6 +799,8 @@ Component({
           token: payload.token || '',
           /** confirm = 写操作确认，点一下就走，不进向导 */
           kind: payload.kind || '',
+          /** 多选题：勾完点「确认」一次性提交（与网页端同一个约定） */
+          multiSelect: payload.multiSelect === true,
         },
       ]);
       const answers = [];
@@ -498,9 +824,12 @@ Component({
         queueTotal: q.length,
         wizardMode: q.length > 1,
         isConfirm: !!cur && cur.kind === 'confirm',
-        currentOptions: cur ? cur.options : [],
+        currentOptions: (cur ? cur.options : []).map((o) => ({ ...o, _on: false })),
         currentQuestion: cur ? cur.question || '' : '',
         currentAnswer: a[i] || '',
+        currentMulti: !!cur && cur.multiSelect === true,
+        // 换到下一题就把勾选清掉：上一题的勾留在这里会让人以为已经勾过了
+        multiPick: [],
         answeredCount: answered,
         allAnswered: q.length > 0 && answered === q.length,
       });
@@ -517,6 +846,24 @@ Component({
       const value = String(e.currentTarget.dataset.value || '');
       if (!value) return;
 
+      // 多选题：点一下是**勾/取消**，不是提交 —— 提交走下面的「确认」。
+      // 与网页端同一约定：选项在这里是复选，点一个就发出去反而凑不出多项。
+      if (this.data.currentMulti) {
+        const picked = this.data.multiPick.slice();
+        const at = picked.indexOf(value);
+        if (at >= 0) {
+          picked.splice(at, 1);
+        } else {
+          picked.push(value);
+        }
+        // 注意 this 的坑：map/forEach 回调里用 this 会丢上下文（本项目踩过），这里全用箭头/局部变量
+        this.setData({
+          multiPick: picked,
+          currentOptions: this.data.currentOptions.map((o) => ({ ...o, _on: picked.indexOf(o.value) >= 0 })),
+        });
+        return;
+      }
+
       const q = this.data.queue[this.data.current];
       if (q && q.kind === 'confirm') {
         const chosen = (q.options.find((o) => o.value === value) || {}).label || value;
@@ -532,6 +879,40 @@ Component({
       const next = Math.min(this.data.current + 1, this.data.queue.length - 1);
       this.setData({ answers: answers, current: next, customDraft: '' });
       this.syncWizard(null, answers, next);
+    },
+
+    /**
+     * 多选题的「确认」：把勾中的值**逗号连接**成一句回给模型。
+     *
+     * <p>与网页端同一约定：发出去的是选项的 `value`，用户那侧留的是 label。
+     * 勾完不点确认就切题/发送，等于这次勾选白勾 —— 所以这里挡一下空的。
+     */
+    onConfirmMulti() {
+      if (this.data.sending) return;
+      const picked = this.data.multiPick || [];
+      if (picked.length === 0) {
+        wx.showToast({ title: '至少勾一项', icon: 'none' });
+        return;
+      }
+      const opts = this.data.currentOptions || [];
+      const labels = picked.map((v) => {
+        const hit = opts.filter((o) => o.value === v)[0];
+        return hit ? hit.label : v;
+      });
+      const q = this.data.queue[this.data.current];
+      const joined = picked.join(',');
+      if (q && q.kind === 'confirm') {
+        this.submitInteraction(q.token, joined, labels.join('、'));
+        return;
+      }
+      if (!this.data.wizardMode) {
+        this.submit(joined);
+        return;
+      }
+      const answers = this.data.answers.slice();
+      answers[this.data.current] = joined;
+      this.setData({ answers: answers });
+      this.syncWizard(this.data.queue, answers, this.data.current);
     },
 
     /**
@@ -758,6 +1139,7 @@ Component({
 
     /** 收尾：errorText 非空表示这条是错误文案 */
     finishTurn(botKey, errorText, payload) {
+      this.stopLiveMeta();
       const idx = this.indexOfKey(botKey);
       const patch = {
         sending: false,
@@ -816,6 +1198,33 @@ Component({
         /* ignore */
       }
       this.stream = null;
+      // **中止也要给那一轮收尾**：否则那条「正在思考…」的气泡会永远挂着。
+      // 真机路径很常见：打开抽屉时问候语那条流刚起来，用户立刻打字发消息 ——
+      // submit 里的 startStream 会先把它中止，于是问候语那条就卡在「正在思考」下不来了
+      // （2026-10-09 用户报的就是这个）。
+      const key = this.streamBotKey;
+      this.streamBotKey = null;
+      if (key) this.finishAbortedTurn(key);
+    },
+
+    /** 被中止的那一轮：说过话就留成一条并标已结束；一个字都没说就整个撤掉，别留空气泡。 */
+    finishAbortedTurn(botKey) {
+      const idx = this.indexOfKey(botKey);
+      if (idx < 0) return;
+      const msg = this.data.messages[idx];
+      if (msg && String(msg.text || '').trim()) {
+        this.finishTurn(botKey, null, null);
+        return;
+      }
+      const next = this.data.messages.slice();
+      next.splice(idx, 1);
+      this.setData({
+        messages: next,
+        sending: false,
+        orbState: 'idle',
+        statusText: '在线',
+        canSend: this.data.draft.trim().length > 0,
+      });
     },
 
     // ── 滚动 ─────────────────────────────────────────────────

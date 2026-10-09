@@ -16,6 +16,9 @@ import java.util.TimeZone;
 @SpringBootApplication
 @MapperScan({
         "com.example.demo.modules.*.mapper",
+        // `*` 只匹配一个包层级：带嵌套子模块的域要单独列一层，
+        // modules.ai.timer.mapper 不被 modules.*.mapper 覆盖（twin 那两行同理）。
+        "com.example.demo.modules.ai.*.mapper",
         "com.example.demo.modules.twin.*.mapper",
         "com.example.demo.modules.twin.*.*.mapper",
         "com.example.demo.modules.accessfusion.mapper",

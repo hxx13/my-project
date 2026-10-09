@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-23T10:10:50.048Z",
+  "generatedAt": "2026-10-09T00:54:02.625Z",
   "pages": [
     {
       "path": "/about",
@@ -29,6 +29,20 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "系统与安全",
       "registryId": "agv-tracker"
+    },
+    {
+      "path": "/admin/ai-audit",
+      "label": "AI 操作审计",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "系统与安全",
+      "registryId": "ai-audit"
+    },
+    {
+      "path": "/admin/ai-timers",
+      "label": "AI 计时器",
+      "fallbackMinRole": "STAFF",
+      "groupTitle": "系统与安全",
+      "registryId": "ai-timers"
     },
     {
       "path": "/admin/analytics",

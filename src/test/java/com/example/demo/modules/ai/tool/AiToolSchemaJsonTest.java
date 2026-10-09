@@ -1,13 +1,21 @@
 package com.example.demo.modules.ai.tool;
 
+import com.example.demo.modules.ai.tool.pack.AnimalOrderToolPack;
 import com.example.demo.modules.ai.tool.pack.CageOpReviewToolPack;
 import com.example.demo.modules.ai.tool.pack.CageQueryToolPack;
 import com.example.demo.modules.ai.tool.pack.CommonToolPack;
+import com.example.demo.modules.ai.tool.pack.DashboardToolPack;
+import com.example.demo.modules.ai.tool.pack.DebugLogToolPack;
 import com.example.demo.modules.ai.tool.pack.DoorControlToolPack;
+import com.example.demo.modules.ai.tool.pack.MaterialAuditToolPack;
+import com.example.demo.modules.ai.tool.pack.MaterialManageToolPack;
+import com.example.demo.modules.ai.tool.pack.NavToolPack;
 import com.example.demo.modules.ai.tool.pack.StudentReviewToolPack;
+import com.example.demo.modules.ai.tool.pack.StudentActivityToolPack;
 import com.example.demo.modules.ai.tool.pack.SuppliesMallToolPack;
 import com.example.demo.modules.ai.tool.pack.SuppliesProcessToolPack;
 import com.example.demo.modules.ai.tool.pack.TelemetryToolPack;
+import com.example.demo.modules.ai.tool.pack.TimerToolPack;
 import com.example.demo.modules.ai.tool.pack.TrainingReviewToolPack;
 import com.example.demo.modules.ai.tool.pack.UnfreezeToolPack;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -46,7 +54,15 @@ class AiToolSchemaJsonTest {
                 new SuppliesMallToolPack(null, null),
                 new SuppliesProcessToolPack(null, null),
                 new TelemetryToolPack(null, null, null),
-                new TrainingReviewToolPack(null, null));
+                new TrainingReviewToolPack(null, null),
+                new TimerToolPack(null),
+                new NavToolPack(null),
+                new DashboardToolPack(null, null),
+                new DebugLogToolPack(null, null, null),
+                new MaterialAuditToolPack(null, null, null),
+                new MaterialManageToolPack(null, new ObjectMapper()),
+                new StudentActivityToolPack(null, null),
+                new AnimalOrderToolPack(null, null));
         for (AiToolPack pack : packs) {
             for (AiTool tool : pack.tools()) {
                 JsonNode root;
