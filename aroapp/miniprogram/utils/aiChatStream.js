@@ -4,7 +4,7 @@
  * 接口与 Web 端完全一致（同一套后端契约）：
  *   POST /api/v1/twin/scan-assistant/ask/stream
  *   POST /api/v1/twin/scan-assistant/ask/greet/stream
- * 事件名：started / delta / interaction / usage / done / error
+ * 事件名：started / delta / interaction / usage / done / error / navigate
  *
  * 【为什么不用 springRequest】那是对 wx.request 的一次性 Promise 封装，
  * 拿不到分块回调。这里必须开 enableChunked + onChunkReceived（基础库 2.20.2+），
@@ -99,10 +99,38 @@ function createSseParser(handlers) {
           kind: String(payload.kind == null ? '' : payload.kind),
           question: String(payload.question == null ? '' : payload.question),
           options: Array.isArray(payload.options) ? payload.options : [],
+          multiSelect: payload.multiSelect === true,
         });
+      }
+    } else if (name === 'download') {
+      // 助手算好了一次导出，交给**载体**用它自己的登录态去取文件（后端不签发公开下载链接）。
+      // 与 web 面板同一个事件，只是那边渲染成卡片、这边存盘后 openDocument 打开。
+      if (handlers.onDownload) {
+        let dl = null;
+        // 球球这条链把载荷包成 {payload:"<json>"}（适配层只搬不改），网关那条直接给对象 —— 两种都收
+        if (payload && typeof payload.payload === 'string' && payload.payload) {
+          try {
+            dl = JSON.parse(payload.payload);
+          } catch (e) {
+            dl = null;
+          }
+        } else if (payload && typeof payload.kind === 'string') {
+          dl = payload;
+        }
+        if (dl) handlers.onDownload(dl);
       }
     } else if (name === 'usage') {
       if (handlers.onUsage) handlers.onUsage(payload);
+    } else if (name === 'navigate') {
+      // 助手要「带用户去某个页面」（如「帮我打开报修申请」）。
+      // path 是**小程序自己的页面路径**（服务端按载体查的，不是 web 的 /admin/...），
+      // 这里原样交给载体去 wx.navigateTo / switchTab。
+      if (handlers.onNavigate && typeof payload.path === 'string' && payload.path) {
+        handlers.onNavigate({
+          path: payload.path,
+          label: typeof payload.label === 'string' ? payload.label : '',
+        });
+      }
     } else if (name === 'done') {
       if (handlers.onDone) handlers.onDone(payload);
     } else if (name === 'error') {
@@ -153,6 +181,9 @@ function streamRequest(path, body, handlers) {
     onStarted: handlers.onStarted,
     onDelta: handlers.onDelta,
     onInteraction: handlers.onInteraction,
+    // ⚠ 这里是**白名单**：新加的事件不接上就等于没实现（dispatch 只认 sink 上的字段）
+    onNavigate: handlers.onNavigate,
+    onDownload: handlers.onDownload,
     onUsage: handlers.onUsage,
     onError(msg) {
       if (settled) return;
@@ -228,7 +259,23 @@ function streamAsk(question, handlers, options) {
   if (opts.images && opts.images.length) body.images = opts.images;
   // 附件与图片不同：服务端会解析并落库，之后追问仍看得见这份文件
   if (opts.spreadsheets && opts.spreadsheets.length) body.spreadsheets = opts.spreadsheets;
+  // 载体标识：服务端靠**入口页面的 `/mp` 前缀**判别是不是小程序（contextPageSource）。
+  // 小程序自己的路由是 /pages/...，所以要补上这个前缀 —— 少了它就当 web 处理，
+  // 「帮我打开 X」会返回 web 的 /admin/... 路径，小程序跳不过去。
+  body.contextPage = '/mp' + currentRoute();
   return streamRequest(ASK_PATH, body, handlers);
+}
+
+/** 当前页面路由（"/pages/xxx/index"）；拿不到返回空串（服务端按 web 兜底）。 */
+function currentRoute() {
+  try {
+    const stack = getCurrentPages();
+    const top = stack && stack.length ? stack[stack.length - 1] : null;
+    const route = top && top.route ? String(top.route) : '';
+    return route ? '/' + route.replace(/^\/+/, '') : '';
+  } catch (e) {
+    return '';
+  }
 }
 
 /** 主动问好：打开抽屉时触发，不等用户先说话 */
@@ -277,10 +324,44 @@ function fetchSessionMessages(sessionId) {
     });
 }
 
+/**
+ * 删掉一条历史对话。**服务端软删**（列表/续聊不再出现，审计留痕保留）—— 与网页端同一个接口。
+ * 写请求必须看 success：HTTP 200 + success:false 也是失败。
+ */
+function deleteSession(sessionId) {
+  return springAuth
+    .springRequest({ url: '/api/v1/ai/sessions/' + sessionId, method: 'DELETE', data: {} })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (body && body.success === false) {
+        throw new Error(body.message || '删除失败');
+      }
+      return true;
+    });
+}
+
+/**
+ * 某条会话产出的**导出产物**（含挂载点 messageId、标签、参数、是否已有文件）。
+ *
+ * <p>为什么抽屉要它：服务端历史里只有文字，**没有那条下载指令** —— 只拉消息的话，
+ * 切走再切回来（或缓存过期后重开）卡片就没了（真机 2026-10-09 反馈）。
+ * 与网页端同一口径：产物单独取一趟，再按 messageId 挂回它当年那一轮。
+ */
+function fetchSessionExports(sessionId) {
+  return springAuth
+    .springRequest({ url: '/api/v1/ai/sessions/' + sessionId + '/exports', method: 'GET', data: {} })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      return (body && body.data) || [];
+    });
+}
+
 module.exports = {
   streamAsk,
   streamGreet,
   streamInteraction,
   fetchSessions,
   fetchSessionMessages,
+  fetchSessionExports,
+  deleteSession,
 };

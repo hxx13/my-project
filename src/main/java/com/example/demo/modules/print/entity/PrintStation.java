@@ -18,7 +18,11 @@ public class PrintStation {
     private String pageSize;
     /** 支持的文件类型分组，逗号分隔：pdf/image/word/excel/ppt。null 或空 = 全支持 */
     private String supportedTypes;
-    /** 打印机 IP，纯记录用，不参与打印逻辑 */
+    /**
+     * 打印机 IP。直发（SERVER）工位里它**就是投递目标和本机 CUPS 队列名**
+     * （`lp -d {target}` 的 {target}），不是备注 —— 队列控制三条命令也拿它当 {target}。
+     * 名字对不上队列就全是「队列不存在」。KIOSK 工位不用它。
+     */
     private String printerIp;
     private boolean enabled;
     private String createdBy;

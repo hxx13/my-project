@@ -5,9 +5,7 @@ import com.example.demo.modules.ai.tool.ToolRegistry;
 import com.example.demo.modules.auth.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.core.annotation.Order;
+import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -22,10 +20,16 @@ import java.util.function.Predicate;
  *
  * <p>重复的能力码直接启动失败：同一个码有两种判定，说明有人在两处各写了一遍，
  * 那正是要防的分叉。
+ *
+ * <p><b>为什么挂在 {@link SmartInitializingSingleton} 而不是 {@code ApplicationRunner}</b>：
+ * 后者跑在**容器刷新之后**，而 Tomcat 在刷新过程中就已经开始收请求了 —— 那段窗口里
+ * 注册表还是空的，闸门 fail-closed 会把**每一个**能力码都判成「未注册」，
+ * 于是那一轮请求拿到 0 个工具包、模型回「我手上没有可用的工具」。
+ * 真机 2026-10-09 重启后立刻就撞上（日志里一串「拒绝未注册的能力码」）。
+ * 单例初始化发生在 Web 起监听之前，注册完再收流量，窗口就没了。
  */
 @Component
-@Order(127)
-public class AiCapabilityBootstrap implements ApplicationRunner {
+public class AiCapabilityBootstrap implements SmartInitializingSingleton {
 
     private static final Logger log = LoggerFactory.getLogger(AiCapabilityBootstrap.class);
 
@@ -38,7 +42,7 @@ public class AiCapabilityBootstrap implements ApplicationRunner {
     }
 
     @Override
-    public void run(ApplicationArguments args) {
+    public void afterSingletonsInstantiated() {
         Map<String, String> owner = new HashMap<>();
         for (AiToolPack pack : toolRegistry.packs()) {
             for (Map.Entry<String, Predicate<User>> entry : pack.capabilities().entrySet()) {

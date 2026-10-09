@@ -1,0 +1,91 @@
+/*
+ * 扫描助手「三枚陀螺花瓣」加载图标 —— **与 Web 端同款**（ScanAssistantPegtopLoader）。
+ *
+ * 为什么这么搬：小程序 wxml 不能内联 SVG，而 Web 那份动画全在 CSS 关键帧上（三枚同样的形状
+ * 各自缩放/平移错开 0.3s）。所以把形状烘成 base64 背景图、把关键帧原样搬进 wxss。
+ *
+ * 颜色是**金色**（用户指定；Web 那份是橙、小程序原先的球是蓝，这里按用户要求走金色）。
+ * 气泡左边那一处用它；抽屉顶部那颗大球（ai-orb）不动。
+ */
+.ai-pegtop {
+  position: relative;
+  flex-shrink: 0;
+  width: 40rpx;
+  height: 40rpx;
+}
+
+.ai-pegtop__one,
+.ai-pegtop__two,
+.ai-pegtop__three {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+PGRlZnM+PGZpbHRlciBpZD0ic2giPjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249IjMiLz48L2ZpbHRlcj48bWFzayBpZD0ibWsiPjxwYXRoIGQ9Ik02MywzN2MtNi43LTQtNC0yNy0xMy0yN3MtNi4zLDIzLTEzLDI3LTI3LDQtMjcsMTMsMjAuMyw5LDI3LDEzLDQsMjcsMTMsMjcsNi4zLTIzLDEzLTI3LDI3LTQsMjctMTMtMjAuMy05LTI3LTEzWiIgZmlsbD0id2hpdGUiLz48L21hc2s+PHJhZGlhbEdyYWRpZW50IGlkPSJnMSIgY3g9IjUwIiBjeT0iNjYiIGZ4PSI1MCIgZnk9IjY2IiByPSIzMCIgZ3JhZGllbnRUcmFuc2Zvcm09InRyYW5zbGF0ZSgwIDM1KSBzY2FsZSgxIDAuNSkiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSJibGFjayIgc3RvcC1vcGFjaXR5PSIwLjMiLz48c3RvcCBvZmZzZXQ9IjUwJSIgc3RvcC1jb2xvcj0iYmxhY2siIHN0b3Atb3BhY2l0eT0iMC4xIi8+PHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSJibGFjayIgc3RvcC1vcGFjaXR5PSIwIi8+PC9yYWRpYWxHcmFkaWVudD48cmFkaWFsR3JhZGllbnQgaWQ9ImcyIiBjeD0iNTUiIGN5PSIyMCIgZng9IjU1IiBmeT0iMjAiIHI9IjMwIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0id2hpdGUiIHN0b3Atb3BhY2l0eT0iMC4zIi8+PHN0b3Agb2Zmc2V0PSI1MCUiIHN0b3AtY29sb3I9IndoaXRlIiBzdG9wLW9wYWNpdHk9IjAuMSIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0id2hpdGUiIHN0b3Atb3BhY2l0eT0iMCIvPjwvcmFkaWFsR3JhZGllbnQ+PHJhZGlhbEdyYWRpZW50IGlkPSJnMyIgY3g9Ijg1IiBjeT0iNTAiIGZ4PSI4NSIgZnk9IjUwIiB4bGluazpocmVmPSIjZzIiLz48cmFkaWFsR3JhZGllbnQgaWQ9Imc0IiBjeD0iNTAiIGN5PSI1OCIgZng9IjUwIiBmeT0iNTgiIHI9IjYwIiBncmFkaWVudFRyYW5zZm9ybT0idHJhbnNsYXRlKDAgNDcpIHNjYWxlKDEgMC4yKSIgeGxpbms6aHJlZj0iI2czIi8+PGxpbmVhckdyYWRpZW50IGlkPSJnNSIgeDE9IjUwIiB5MT0iOTAiIHgyPSI1MCIgeTI9IjEwIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iYmxhY2siIHN0b3Atb3BhY2l0eT0iMC4yIi8+PHN0b3Agb2Zmc2V0PSI0MCUiIHN0b3AtY29sb3I9ImJsYWNrIiBzdG9wLW9wYWNpdHk9IjAiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48Zz48cGF0aCBkPSJNNjMsMzdjLTYuNy00LTQtMjctMTMtMjdzLTYuMywyMy0xMywyNy0yNyw0LTI3LDEzLDIwLjMsOSwyNywxMyw0LDI3LDEzLDI3LDYuMy0yMywxMy0yNywyNy00LDI3LTEzLTIwLjMtOS0yNy0xM1oiIGZpbGw9IiNENEFGMzciLz48cGF0aCBkPSJNNjMsMzdjLTYuNy00LTQtMjctMTMtMjdzLTYuMywyMy0xMywyNy0yNyw0LTI3LDEzLDIwLjMsOSwyNywxMyw0LDI3LDEzLDI3LDYuMy0yMywxMy0yNywyNy00LDI3LTEzLTIwLjMtOS0yNy0xM1oiIGZpbGw9InVybCgjZzEpIi8+PHBhdGggZD0iTTYzLDM3Yy02LjctNC00LTI3LTEzLTI3cy02LjMsMjMtMTMsMjctMjcsNC0yNywxMywyMC4zLDksMjcsMTMsNCwyNywxMywyNyw2LjMtMjMsMTMtMjcsMjctNCwyNy0xMy0yMC4zLTktMjctMTNaIiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBvcGFjaXR5PSIwLjMiIHN0cm9rZS13aWR0aD0iMyIgZmlsdGVyPSJ1cmwoI3NoKSIgbWFzaz0idXJsKCNtaykiLz48cGF0aCBkPSJNNjMsMzdjLTYuNy00LTQtMjctMTMtMjdzLTYuMywyMy0xMywyNy0yNyw0LTI3LDEzLDIwLjMsOSwyNywxMyw0LDI3LDEzLDI3LDYuMy0yMywxMy0yNywyNy00LDI3LTEzLTIwLjMtOS0yNy0xM1oiIGZpbGw9InVybCgjZzIpIi8+PHBhdGggZD0iTTYzLDM3Yy02LjctNC00LTI3LTEzLTI3cy02LjMsMjMtMTMsMjctMjcsNC0yNywxMywyMC4zLDksMjcsMTMsNCwyNywxMywyNyw2LjMtMjMsMTMtMjcsMjctNCwyNy0xMy0yMC4zLTktMjctMTNaIiBmaWxsPSJ1cmwoI2czKSIvPjxwYXRoIGQ9Ik02MywzN2MtNi43LTQtNC0yNy0xMy0yN3MtNi4zLDIzLTEzLDI3LTI3LDQtMjcsMTMsMjAuMyw5LDI3LDEzLDQsMjcsMTMsMjcsNi4zLTIzLDEzLTI3LDI3LTQsMjctMTMtMjAuMy05LTI3LTEzWiIgZmlsbD0idXJsKCNnNCkiLz48cGF0aCBkPSJNNjMsMzdjLTYuNy00LTQtMjctMTMtMjdzLTYuMywyMy0xMywyNy0yNyw0LTI3LDEzLDIwLjMsOSwyNywxMyw0LDI3LDEzLDI3LDYuMy0yMywxMy0yNywyNy00LDI3LTEzLTIwLjMtOS0yNy0xM1oiIGZpbGw9InVybCgjZzUpIi8+PC9nPjwvc3ZnPgo=");
+}
+
+.ai-pegtop__one {
+  animation: ai-pegtop-flower-one 1s linear infinite;
+}
+
+.ai-pegtop__two {
+  opacity: 0;
+  transform: scale(0) translateY(-200px) translateX(-100px);
+  animation: ai-pegtop-flower-two 1s linear infinite;
+  animation-delay: 0.3s;
+}
+
+.ai-pegtop__three {
+  opacity: 0;
+  transform: scale(0) translateY(-200px) translateX(100px);
+  animation: ai-pegtop-flower-three 1s linear infinite;
+  animation-delay: 0.6s;
+}
+
+/*
+ * **静止档**（动画=false）：思考结束之后就停在这里 —— 只留一枚、位置归零、另两枚收起。
+ * 与 Web 的 --static 同一套口径：回答打完还在转，会让人以为它还在干活。
+ */
+.ai-pegtop--static .ai-pegtop__one,
+.ai-pegtop--static .ai-pegtop__two,
+.ai-pegtop--static .ai-pegtop__three {
+  animation: none;
+}
+
+.ai-pegtop--static .ai-pegtop__one {
+  opacity: 1;
+  transform: none;
+}
+
+.ai-pegtop--static .ai-pegtop__two,
+.ai-pegtop--static .ai-pegtop__three {
+  display: none;
+}
+
+@keyframes ai-pegtop-flower-one {
+  0% { opacity: 0; transform: scale(0.5) translateY(-200px); }
+  25% { opacity: 1; transform: scale(0.75) translateY(-100px); }
+  50% { opacity: 1; transform: scale(1) translateY(0); }
+  75% { opacity: 1; transform: scale(0.5) translateY(50px); }
+  100% { opacity: 0; transform: scale(0) translateY(100px); }
+}
+
+@keyframes ai-pegtop-flower-two {
+  0% { opacity: 0; transform: scale(0.5) rotate(-10deg) translateY(-200px) translateX(-100px); }
+  25% { opacity: 1; transform: scale(1) rotate(-5deg) translateY(-100px) translateX(-50px); }
+  50% { opacity: 1; transform: scale(1) rotate(0deg) translateY(0) translateX(-25px); }
+  75% { opacity: 1; transform: scale(0.5) rotate(5deg) translateY(50px) translateX(0); }
+  100% { opacity: 0; transform: scale(0) rotate(10deg) translateY(100px) translateX(25px); }
+}
+
+@keyframes ai-pegtop-flower-three {
+  0% { opacity: 0; transform: scale(0.5) rotate(10deg) translateY(-200px) translateX(100px); }
+  25% { opacity: 1; transform: scale(1) rotate(5deg) translateY(-100px) translateX(50px); }
+  50% { opacity: 1; transform: scale(1) rotate(0deg) translateY(0) translateX(25px); }
+  75% { opacity: 1; transform: scale(0.5) rotate(-5deg) translateY(50px) translateX(0); }
+  100% { opacity: 0; transform: scale(0) rotate(-10deg) translateY(100px) translateX(-25px); }
+}

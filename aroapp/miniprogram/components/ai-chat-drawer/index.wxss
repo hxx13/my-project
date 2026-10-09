@@ -3,9 +3,11 @@
  * 按钮一律实底 + 12rpx 直角（不用胶囊、不用描边、不用半透明底），与 app.wxss 的 .chip-btn 同族。
  */
 
+/* 高度：原先 76vh 在长对话下显得局促（用户要求加高）。留出顶部一截让人看见底下的页面，
+   同时别顶到状态栏。 */
 .ai-drawer-popup {
-  height: 76vh;
-  max-height: 76vh;
+  height: 88vh;
+  max-height: 88vh;
   background: #ffffff;
 }
 
@@ -20,6 +22,7 @@
 /* 不画分隔线：白底上的 1rpx 线在小程序里会显得很硬，层次交给留白和字重。
    球给到 72rpx —— 再小的话 25 组眼环的差别就全糊一起，看着像没在变表情。 */
 .ai-drawer__head {
+  position: relative;   /* 标题居中要用它当定位基准 */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -121,10 +124,27 @@
 }
 
 .ai-drawer__session-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
   padding: 26rpx 24rpx;
   margin-bottom: 12rpx;
   border-radius: 14rpx;
   background: #f6f8fb;
+}
+
+/* 「删除」贴着行的右端：它是行内次要动作，不该跟标题抢位置（Web 端也是行内删除） */
+.ai-drawer__session-del {
+  flex: none;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #e5484d;
+  background: #fdecee;
+}
+
+.ai-drawer__session-del--hover {
+  background: #f9d7db;
 }
 
 .ai-drawer__session-item--hover {
@@ -136,14 +156,40 @@
 }
 
 .ai-drawer__session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 26rpx;
   color: #1f2937;
+}
+
+/* 抽屉顶部的「当前对话」标题：**在头部这一行里水平居中**，不另占一行。
+   绝对定位居中，所以既不推高头部，也不跟左右的身份区/按钮区抢位置。 */
+.ai-drawer__title-bar {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 36%;   /* 两侧各留出身份区与按钮区，别压上去 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 24rpx;
+  color: #1f2937;
+  pointer-events: none;   /* 只是给人看，不挡按钮 */
 }
 
 /* ── 消息列表 ── */
 .ai-drawer__list {
   flex: 1;
-  /* flex 子项默认 min-height:auto，不压住的话 scroll-view 会被内容撑破、整条抽屉滚不动 */
+  /* flex 子项默认 min-height:auto，不压住的话 scroll-view 会被内容撑破、整条抽屉滚不动。
+     height:0 是**配套的另一半**：只给 flex:1 时，小程序里的 scroll-view 会按内容算自己的
+     高度（外层量到 496、内容却有 6000+），于是它既不裁、也不滚，长内容直接糊到输入框上。
+     基线归零之后它才按剩余空间自算，滚动与裁剪一起恢复正常。 */
+  height: 0;
   min-height: 0;
   padding: 22rpx 24rpx 0;
   box-sizing: border-box;
@@ -329,17 +375,18 @@
   overflow-y: auto;
 }
 
-/* 选项是「选择控件」，不是动作按钮：白底 + 1px 描边，跟下面那排动作按钮区分开 */
+/* 选项是「选择控件」，不是动作按钮：白底 + 1px 描边，跟下面那排动作按钮区分开。
+   尺寸压得比较紧（用户反馈原来的太大）：行高够点就行，不占满半个屏。 */
 .ai-drawer__choice {
   width: 100%;
   box-sizing: border-box;
-  padding: 20rpx 24rpx;
+  padding: 13rpx 20rpx;
   border: 1rpx solid #e2e8f0;
-  border-radius: 12rpx;
+  border-radius: 10rpx;
   background: #ffffff;
   color: #1f2937;
-  font-size: 27rpx;
-  line-height: 1.4;
+  font-size: 25rpx;
+  line-height: 1.35;
   text-align: center;
 }
 
@@ -374,12 +421,13 @@
 
 /* 提交：多问才出现，整组答完才可点 */
 .ai-drawer__submit {
-  padding: 14rpx 40rpx;
-  border-radius: 12rpx;
+  padding: 10rpx 28rpx;
+  border-radius: 10rpx;
   background: #2563eb;
   color: #ffffff;
-  font-size: 26rpx;
+  font-size: 24rpx;
   font-weight: 600;
+  line-height: 1.35;
 }
 
 .ai-drawer__submit--hover {
@@ -663,4 +711,67 @@
   height: 22rpx;
   border-radius: 3rpx;
   background: #ffffff;
+}
+
+/* ── 助手给的导出：**贴在气泡下面**的小小一行（图标 + 文件名 + 下载） ──
+   与网页端同一口径。下载按钮按小程序侧的规矩：**实底、直角、不要胶囊、不要只有描边**。 */
+.ai-drawer__dlcard {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  align-self: flex-start;   /* 按内容收缩，别撑满整行 */
+  max-width: 100%;
+  margin-top: 10rpx;
+  padding: 12rpx 16rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  background: #f7f8fa;
+}
+
+.ai-drawer__dlcard-ico {
+  flex: none;
+  color: #2563eb;
+  font-size: 30rpx;
+  line-height: 1;
+}
+
+/* 文件名不截断的话长名字会把按钮挤出去，这里截断 + 省略号（列表里也是这个口径） */
+.ai-drawer__dlcard-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 26rpx;
+  color: #4e5969;
+}
+
+.ai-drawer__dlcard-btn {
+  flex: none;
+  padding: 8rpx 24rpx;
+  border-radius: 8rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 1.4;
+}
+
+.ai-drawer__dlcard-btn--hover {
+  opacity: 0.88;
+}
+
+.ai-drawer__dlcard-btn--off {
+  opacity: 0.5;
+}
+
+.ai-drawer__dlcard-x {
+  flex: none;
+  padding: 0 6rpx;
+  color: #c9cdd4;
+  font-size: 32rpx;
+  line-height: 1;
+}
+
+.ai-drawer__dlcard-x--hover {
+  color: #86909c;
 }

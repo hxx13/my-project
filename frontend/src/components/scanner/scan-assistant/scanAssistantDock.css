@@ -154,23 +154,71 @@
   width: 100%;
 }
 
-/* 长对话在大窗里放开高度：小卡那 220px 装不下几轮 */
+/*
+ * **大窗的高度是「一档一个定值」**（2026-10-09 用户反馈，两轮才收对）：
+ *   · 只给 max-height（原样）→ 内容少时塌成一小条、切视图窗口乱跳；
+ *   · 只给 min-height → 内容多时卡片被**顶出边界**（历史列表那 49 条直接把圆角框撑破）。
+ * 所以上下一起定住：窗口高度稳定、两级看得出差别，**内容一律在卡片内部滚动**。
+ * 用 vh 夹住，矮屏也不会溢出视口。
+ */
+.scan-assistant-bubble-anchor--expanded .scan-assistant-chat-card--ask .scan-assistant-chat-card__frame {
+  height: min(58vh, 540px);
+}
+
+.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-chat-card--ask .scan-assistant-chat-card__frame {
+  height: min(74vh, 720px);
+}
+
+/* 长对话在大窗里放开高度：小卡那 220px 装不下几轮。
+   上限跟着上面的最小高度走 —— 只抬下限不动上限的话，多出来的高度会变成输入框下方的空白。 */
 .scan-assistant-bubble-anchor--expanded .scan-assistant-ask__history {
-  max-height: min(52vh, 520px);
+  max-height: min(58vh, 540px);
+}
+
+/*
+ * 内容链：**面板撑满 → 对话区吃掉多出来的高度 → 输入条与操作按钮落到最底部**。
+ * 主体（__body）里只有「对话区 + 输入条」两块，默认是块布局：不拉伸，于是输入条紧贴在对话区
+ * 下面飘在中部（用户反馈「操作按钮该在底部」），多出来的高度也白白空着。
+ * **小卡与大窗都要**：小卡也有 220px 的框下限（内容少时同样会富余一块底），只给大窗做会两边不一致。
+ * 小卡那边由对话区自己的 220px 上限兜着，不会因此被撑高。
+ */
+.scan-assistant-chat-card--ask .scan-assistant-chat-card__panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.scan-assistant-chat-card--ask .scan-assistant-chat-card__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.scan-assistant-chat-card--ask .scan-assistant-ask__history {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 历史列表也撑满：它和对话区共用同一块位置，不撑满就会在下面留一大片空白（用户反馈）。 */
+.scan-assistant-bubble-anchor--expanded .scan-assistant-ask__sessions {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 小卡那道 166px 上限在大窗里要放开 —— 不放就撑不满，列表下面留一大片空白（用户反馈）。 */
+  max-height: none;
 }
 
 .scan-assistant-bubble-anchor--expanded .scan-assistant-ask__history--with-choices {
-  max-height: min(42vh, 420px);
+  max-height: min(48vh, 460px);
 }
 
 /* 二级放大再放开一档高度，并让助手那侧铺满宽度：这一档主要就是用来看宽表格/长清单的，
    82% 的聊天气泡宽度会把表格压窄。用户那侧仍是气泡宽 —— 短问句铺满整行不好读。 */
 .scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__history {
-  max-height: min(68vh, 720px);
+  max-height: min(74vh, 720px);
 }
 
 .scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__history--with-choices {
-  max-height: min(56vh, 600px);
+  max-height: min(62vh, 620px);
 }
 
 .scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__bubble--assistant {

@@ -1509,6 +1509,37 @@ public class MaterialService {
         return Result.success(result);
     }
 
+    /**
+     * 可选的审核人（STAFF 及以上、已启用账号）。
+     *
+     * <p>口径只有一份：页面上的审核人选择器与 AI 工具**都调这一个方法**（网关设计 §7.1 ——
+     * 两边各写一遍迟早分叉，抄错一次就是把不同的人放进审核名单）。
+     */
+    public Result<List<Map<String, Object>>> listEligibleReviewers() {
+        List<User> users = userMapper.listEnabledUsersByMinRoleLevel(2); // STAFF level = 2
+        List<String> ids = new ArrayList<>();
+        for (User u : users) {
+            if (u != null && org.springframework.util.StringUtils.hasText(u.getId())) {
+                ids.add(u.getId().trim());
+            }
+        }
+        Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(ids);
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (User u : users) {
+            if (u == null || !org.springframework.util.StringUtils.hasText(u.getId())) continue;
+            String id = u.getId().trim();
+            String resolved = displayNames.getOrDefault(id, id);
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", id);
+            m.put("username", u.getUsername());
+            // 与 UserDisplayNameService 同源，便于选择器展示人员表姓名
+            m.put("displayNickname", resolved);
+            m.put("displayName", resolved);
+            list.add(m);
+        }
+        return Result.success(list);
+    }
+
     public Result<List<Map<String, Object>>> listApplicantsWithRecords(User viewer, String from, String to) {
         List<MaterialRequestView> visible = collectAuditExportRequestViews(viewer, from, to, null, null);
         LinkedHashMap<String, String> byUser = new LinkedHashMap<>();

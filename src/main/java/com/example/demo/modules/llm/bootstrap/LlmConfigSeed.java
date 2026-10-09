@@ -113,6 +113,18 @@ public class LlmConfigSeed implements ApplicationRunner {
                     0);
             ensureDef(
                     "llm",
+                    "llm.tool.max_tokens",
+                    "对话工具最大 Token",
+                    "带工具编排那一条的输出预算。带「思考」的模型会把这笔预算也吃掉，"
+                            + "给小了推理吃满、正文返回空串。默认给到模型上限 8192，一般不用改",
+                    "NUMBER",
+                    null,
+                    "8192",
+                    0,
+                    0,
+                    0);
+            ensureDef(
+                    "llm",
                     "llm.assistant.temperature",
                     "扫码助手温度",
                     "0–1，略高更自然",

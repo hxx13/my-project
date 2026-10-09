@@ -26,6 +26,8 @@ public class ScanAssistantAskSink implements AiEventSink {
     private volatile boolean closed = false;
     /** 本轮推过待答问题（澄清候选 / 确认挂起）。推过就不补兜底文案 —— 面板上已经有一排选项了。 */
     private volatile boolean hadInteraction = false;
+    /** 本轮推过跳转指令。同上：推过就不补兜底文案（这一轮的产出就是「跳过去了」）。 */
+    private volatile boolean hadNavigate = false;
     /** 本轮落在哪条会话上：面板拿它去续跑挂起（确认）时要用。 */
     private volatile Long sessionId;
 
@@ -80,6 +82,34 @@ public class ScanAssistantAskSink implements AiEventSink {
         send("usage", usagePayload(stats));
     }
 
+    /**
+     * 下载指令：把「导什么」原样交给面板，由面板用**它自己那份登录态**去拉文件。
+     *
+     * <p>后端不签发公开下载链接、也不在聊天里塞裸 URL（导出接口要 Authorization 头）。
+     * 小程序侧那个导出弹层不记上次配置，所以小程序上这条多半用不上（见 MaterialAuditToolPack）。
+     */
+    @Override
+    public void download(String payloadJson) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("payload", payloadJson == null ? "{}" : payloadJson);
+        send("download", data);
+    }
+
+    /**
+     * 跳转指令原样转给面板；**面板把它压到 done 之后再执行**。
+     *
+     * <p>收到就跳不行：模型常先说「我帮你打开…」再说别的，立刻切页会把正文和选项一起带走
+     * （而且全屏壳子被卸载时会顺手掐断这条 SSE）。顺序交给前端。
+     */
+    @Override
+    public void navigate(String path, String label) {
+        hadNavigate = true;
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
+        data.put("label", label == null ? "" : label);
+        send("navigate", data);
+    }
+
     private static Map<String, Object> usagePayload(AiTurnStats stats) {
         Map<String, Object> data = new LinkedHashMap<>();
         if (stats != null) {
@@ -101,11 +131,16 @@ public class ScanAssistantAskSink implements AiEventSink {
             // 否则面板上是空白气泡。必须赶在 done 之前发，顺序不能反。
             //
             // 推过选项时不补：那一排芯片就是「这轮说了什么」，补一句「联系不上」反而把确认界面盖成了故障。
-            text = fallbackText;
-            Map<String, Object> fallback = new LinkedHashMap<>();
-            fallback.put("text", text);
-            fallback.put("fallback", true);
-            send("delta", fallback);
+            //
+            // 推过跳转指令也不补：模型只调了工具没说话时，这一轮的结果就是「已经跳到那个页面了」，
+            // 补一句「联系不上」会让人以为跳转是玄学。
+            if (!hadNavigate) {
+                text = fallbackText;
+                Map<String, Object> fallback = new LinkedHashMap<>();
+                fallback.put("text", text);
+                fallback.put("fallback", true);
+                send("delta", fallback);
+            }
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("text", text);

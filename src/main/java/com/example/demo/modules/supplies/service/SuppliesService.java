@@ -2122,6 +2122,72 @@ public class SuppliesService {
         return user != null && (isAdmin(user) || canProcessClaims(user));
     }
 
+    /**
+     * 物资消耗统计：某时间窗口内每件物资的出库/入库量 + 当前库存 → 日均消耗、还能撑几天。
+     *
+     * <p>回答两类问题：「哪些物资消耗得快」（看 outboundQty / dailyAvg）与
+     * 「哪些该补货」（看 coverDays）。**口径只有这一处** —— 将来页面上要做「消耗分析」也调它，
+     * 免得页面和助手各算一套（网关设计 §7.1 的同一条道理）。
+     *
+     * <p>数据源是库存流水（与库存审计页同一份）；出库量取 OUTBOUND 的数量，本模块存的是正数。
+     * 可用量里负的锁定量按 0 处理 —— 那是脏数据，别让它把「还能撑几天」算大。
+     *
+     * @param categoryId 只看某个分类；null/0 = 全部
+     * @param days       统计窗口天数（1~365）
+     * @param limit      最多回几件（按出库量降序取前 N）
+     */
+    public Result<List<SupplyItemConsumptionView>> getItemConsumption(Long categoryId, int days, int limit) {
+        int d = Math.min(Math.max(days, 1), 365);
+        int n = Math.min(Math.max(limit, 1), 100);
+        List<SupplyItemConsumptionView> rows = supplyInventoryMovementMapper.aggregateConsumption(
+                LocalDateTime.now().minusDays(d), categoryId == null ? 0L : categoryId, n);
+        if (rows == null) {
+            return Result.success(List.of());
+        }
+        for (SupplyItemConsumptionView r : rows) {
+            if (r == null) continue;
+            int out = r.getOutboundQty() == null ? 0 : r.getOutboundQty();
+            double daily = out / (double) d;
+            r.setDailyAvg(Math.round(daily * 10) / 10.0);
+            int stock = r.getStockQty() == null ? 0 : r.getStockQty();
+            int locked = Math.max(0, r.getLockedQty() == null ? 0 : r.getLockedQty());
+            int available = Math.max(0, stock - locked);
+            r.setAvailableQty(available);
+            // 窗口内没出过货 → coverDays 留 null（不给 0：0 会被读成「马上就没」）
+            r.setCoverDays(daily > 0 ? Math.round((available / daily) * 10) / 10.0 : null);
+        }
+        return Result.success(rows);
+    }
+
+    /**
+     * 按**领取人**统计领用量（「谁领得多 / 谁最近在领」）。
+     *
+     * <p>与上一条同一张流水表、同一套权限口径；名字用与页面**同一个** {@code UserDisplayNameService}
+     * 补齐 —— 给用户看的必须是人名，不能把账号 id 抛出去。
+     */
+    public Result<List<SupplyApplicantConsumptionView>> getApplicantConsumption(int days, int limit) {
+        int d = Math.min(Math.max(days, 1), 365);
+        int n = Math.min(Math.max(limit, 1), 100);
+        List<SupplyApplicantConsumptionView> rows =
+                supplyInventoryMovementMapper.aggregateConsumptionByApplicant(LocalDateTime.now().minusDays(d), n);
+        if (rows == null || rows.isEmpty()) {
+            return Result.success(List.of());
+        }
+        List<String> ids = new ArrayList<>();
+        for (SupplyApplicantConsumptionView r : rows) {
+            if (r != null && r.getApplicantUserId() != null && !r.getApplicantUserId().isBlank()) {
+                ids.add(r.getApplicantUserId());
+            }
+        }
+        Map<String, String> names = userDisplayNameService.resolveDisplayNames(ids);
+        for (SupplyApplicantConsumptionView r : rows) {
+            if (r == null) continue;
+            String id = r.getApplicantUserId();
+            r.setApplicantName(names.getOrDefault(id, id == null ? "" : id));
+        }
+        return Result.success(rows);
+    }
+
     public Result<Map<String, Object>> listAuditInventoryMovements(User user, long itemId, int page, int size) {
         if (user == null) {
             return Result.error("未登录");

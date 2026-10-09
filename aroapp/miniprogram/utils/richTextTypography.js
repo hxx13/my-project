@@ -37,10 +37,12 @@ var STYLES = {
   h1: 'font-size:' + px(SIZES_PX.h1) + ';font-weight:700;line-height:1.35;margin:16px 0 8px;',
   h2: 'font-size:' + px(SIZES_PX.h2) + ';font-weight:600;line-height:1.4;margin:14px 0 8px;',
   h3: 'font-size:' + px(SIZES_PX.h3) + ';font-weight:600;line-height:1.45;margin:12px 0 6px;',
-  p: 'font-size:' + px(SIZES_PX.body) + ';line-height:1.55;margin:0 0 10px;',
-  li: 'font-size:' + px(SIZES_PX.body) + ';line-height:1.55;margin:0 0 6px;',
-  ul: 'padding-left:20px;margin:0 0 10px;list-style-type:disc;',
-  ol: 'padding-left:20px;margin:0 0 10px;list-style-type:decimal;',
+  /* 段间距压得比默认紧：模型爱一句一段，每段 10px 下边距在对话里就成了一片「空行」
+     （2026-10-09 用户反馈）。行高也收一档，长回答才不至于滚半天。 */
+  p: 'font-size:' + px(SIZES_PX.body) + ';line-height:1.5;margin:0 0 5px;',
+  li: 'font-size:' + px(SIZES_PX.body) + ';line-height:1.5;margin:0 0 3px;',
+  ul: 'padding-left:20px;margin:0 0 5px;list-style-type:disc;',
+  ol: 'padding-left:20px;margin:0 0 5px;list-style-type:decimal;',
   blockquote:
     'margin:8px 0 12px;padding:8px 12px;border-left:3px solid #ebedf0;color:' +
     COLOR_TEXT_SECONDARY +

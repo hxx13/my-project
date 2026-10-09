@@ -37,7 +37,9 @@ import PurchaseProcessPage from "@/pages/PurchaseProcessPage";
 import AdminNotificationPage from "@/pages/AdminNotificationPage";
 import AdminApiDocsPage from "@/pages/AdminApiDocsPage";
 import AdminAiAuditPage from "@/pages/AdminAiAuditPage";
+import AdminAiTimersPage from "@/pages/AdminAiTimersPage";
 import AdminLoggingConsolePage from "@/pages/AdminLoggingConsolePage";
+import MySignaturePage from "@/pages/MySignaturePage";
 import { MonitorDashboardPage } from "@/features/admin/monitor/MonitorDashboardPage";
 import AgvTrackerPage from "@/pages/AgvTrackerPage";
 import AgvLogPage from "@/pages/AgvLogPage";
@@ -315,6 +317,8 @@ export const router = createHashRouter([
       { path: "training/my", element: <StudentTrainingMyPage /> },
       { path: "health-survey", element: <StudentHealthSurveyPage /> },
       { path: "certificates", element: <StudentCertificatesPage /> },
+      // 电子签名：与教职工端同一页、同一份数据（对应小程序「我的 → 电子签名」）
+      { path: "signature", element: <MySignaturePage /> },
     ],
   },
 
@@ -397,6 +401,14 @@ export const router = createHashRouter([
               { path: "aup", element: <AupListPage /> },
               { path: "aup/review/:id", element: <AupReviewPage /> },
               { path: "analytics", element: <AdminAnalyticsPage /> },
+              // AI 计时器：每个教职工看自己的计时器（球球对所有教职工开放），
+              // 所以挂 AdminAccessGuard（minRole=STAFF）而不是 SuperAdminGuard ——
+              // 挂错层的话普通教职工看得见侧栏入口、点进来却被弹走。
+              // 「看全部人的 / 停全部人的」那一档由页面与服务端按 SUPER_ADMIN 再判。
+              { path: "ai-timers", element: <AdminAiTimersPage /> },
+              // 电子签名：平时是头像菜单里的弹窗，不是页。给一个真路由之后，
+              // 「打开电子签名」才有个可跳的目标（助手的路由工具包只认页面）。
+              { path: "signature", element: <MySignaturePage /> },
               { path: "asset-records", element: <AdminAssetRecordPage /> },
               { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage /> },
               { path: "cage-shelves", element: <AdminCageShelfPage /> },

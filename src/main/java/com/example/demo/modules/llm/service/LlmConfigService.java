@@ -81,6 +81,26 @@ public class LlmConfigService {
         }
     }
 
+    /**
+     * **带工具**那条路的输出预算，单独一项、默认给足。
+     *
+     * <p>为什么必须与 {@link #getMaxTokens()} 分开：播报类场景要的是短句（120 就够），
+     * 而工具编排要的是「先想清楚再决定调哪个工具 + 把话说完整」。带思考的模型
+     * （deepseek-flash）**用同一份预算做推理**，预算小的时候推理就把它吃干了 ——
+     * 表现为 content 返回空串、用户看到「模型没有返回正文」，看着像故障，其实是预算不够。
+     * 把两者绑在一起调，要么撑爆播报、要么饿死编排，所以这里各管一摊。
+     */
+    public int getToolMaxTokens() {
+        try {
+            // 默认直接给到模型的上限（deepseek / qwen 这一档多是 8192），不再留「先给小试试」的余地：
+            // 给小的代价是把推理饿死、正文返回空串，用户看到的是「模型没有返回正文」这种假故障。
+            // 上限放到 16384 只是留个可调的口子，真要往下调才需要动它。
+            return Math.min(Math.max(Integer.parseInt(get("llm.tool.max_tokens", "8192")), 1024), 16384);
+        } catch (Exception e) {
+            return 8192;
+        }
+    }
+
     public double getTemperature() {
         try {
             double t = Double.parseDouble(get("llm.temperature", "0.3"));

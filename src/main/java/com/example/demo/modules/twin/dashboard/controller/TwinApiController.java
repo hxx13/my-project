@@ -73,7 +73,6 @@ public class TwinApiController {
     @Autowired
     private com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService;
 
-    @Autowired private TwinPredictionEngineService predictionEngineService;
     @Autowired private TwinAsyncTaskService twinAsyncTaskService;
     @Autowired private TwinDashboardAggregationService aggregationService;
 
@@ -143,56 +142,15 @@ public class TwinApiController {
         return Result.success(new PagedDataResponseDTO<>(list, total));
     }
 
-    // 💥 异常滞留追踪专线 API (已升级：支持浦东/浦西校区动态切换)
+    // 💥 异常滞留追踪专线 API（浦东/浦西可切换）
+    // 逻辑在 TwinDashboardService#getActiveRetentionWarnings —— AI 工具用同一份，
+    // 别把处理再搬回控制器（2026-10-09 从这儿搬走的）。
     @GetMapping("/retention-warnings")
     public Result<ListMapDataResponseDTO> getRetentionWarnings(
             @RequestParam(defaultValue = "15") int limit,
-            @RequestParam(defaultValue = "浦东") String areaName) { // 🟢 1. 核心修改：增加 areaName 参数，默认值为"浦东"
-        // 2. 🟢 核心修改：将 areaName 传给 Mapper 进行数据库过滤
-        BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
-        List<Map<String, Object>> rawWarnings = dashboardMapper.getActiveRetentionWarnings(
-                limit, areaName, day.startInclusive(), day.endExclusive());
-        List<Map<String, Object>> processedData = new ArrayList<>();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        java.time.ZoneId zone = businessTimeWindow.getZoneId();
-        for (Map<String, Object> warning : rawWarnings) {
-            try {
-                // A. 解析入场时间
-                String enterTimeStr = (String) warning.get("enterTime");
-                LocalDateTime realEntryTime = LocalDateTime.parse(enterTimeStr.substring(0, 19), formatter);
-                // B. 业务时区当前时刻（与流水日界一致）
-                LocalDateTime currentNow = LocalDateTime.now(zone);
-                // 从 SQL 中提取预估画像数据
-                Object medianObj = warning.get("aiDurationMins");
-                Object probObj = warning.get("aiOvertimeProb");
-                int medianMins = medianObj != null ? ((Number) medianObj).intValue() : 120;
-                double prob = probObj != null ? ((Number) probObj).doubleValue() : 0.0;
-                // C. 喂给引擎计算智能离开时间
-                // 引擎内部的"软天花板"逻辑对全校区通用
-                boolean authorized = false;
-                Object permObj = warning.get("hasOfficialRoomPermission");
-                if (permObj == null) permObj = warning.get("has_official_room_permission");
-                if (permObj instanceof Number) {
-                    authorized = ((Number) permObj).intValue() == 1;
-                } else if (permObj != null) {
-                    String ps = String.valueOf(permObj);
-                    authorized = "1".equals(ps) || "true".equalsIgnoreCase(ps);
-                }
-                if (!authorized && warning.get("userId") != null) {
-                    authorized = predictionEngineService.isUserOfficialAuthorized(String.valueOf(warning.get("userId")));
-                }
-                LocalDateTime smartExitTime = predictionEngineService.calculateSmartExitTime(
-                        realEntryTime, medianMins, prob, currentNow, authorized
-                );
-                // D. 算出被引力压缩或滑动延期后的最终分钟数
-                long finalAiDurationMins = Duration.between(realEntryTime, smartExitTime).toMinutes();
-                warning.put("aiDurationMins", (int) finalAiDurationMins);
-                processedData.add(warning);
-            } catch (Exception e) {
-                processedData.add(warning);
-            }
-        }
-        return Result.success(new ListMapDataResponseDTO(processedData));
+            @RequestParam(defaultValue = "浦东") String areaName) {
+        return Result.success(new ListMapDataResponseDTO(
+                dashboardService.getActiveRetentionWarnings(limit, areaName)));
     }
 
     /**

@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
@@ -27,6 +29,9 @@ public class TwinDashboardService {
 
     @Autowired
     private BusinessTimeWindow businessTimeWindow;
+
+    @Autowired
+    private TwinPredictionEngineService predictionEngineService;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
@@ -142,6 +147,62 @@ public class TwinDashboardService {
         result.put("puxi", pxTime);
 
         return result;
+    }
+
+
+    /**
+     * 异常滞留预警（大屏「AI 滞留监控」卡）—— **今天进楼后还没离开的人**，带预计离开时间。
+     *
+     * <p>口径（SQL 里定的，别在这里改）：只取今天的 {@code accessType=1}，且此后同人同房间**没有**
+     * 出（2/3）记录；已排定自动离开（`twin_dahua_activation_state`）的不算。所以它是「当前在楼」名单，
+     * 比实时流水可靠 —— 流水是最近若干条记录，不等于现在楼里有谁。
+     *
+     * <p><b>逻辑自 2026-10-09 从 {@code TwinApiController} 搬来</b>：AI 工具也要用同一份。
+     * 留在控制器里就只能复制一遍，而两份判定必然分叉（大屏说 3 人、助手说 2 人）。
+     */
+    public List<Map<String, Object>> getActiveRetentionWarnings(int limit, String areaName) {
+        BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
+        List<Map<String, Object>> raw = dashboardMapper.getActiveRetentionWarnings(
+                limit, areaName, day.startInclusive(), day.endExclusive());
+        List<Map<String, Object>> out = new ArrayList<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        java.time.ZoneId zone = businessTimeWindow.getZoneId();
+        for (Map<String, Object> warning : raw) {
+            try {
+                // A. 入场时间
+                String enterTimeStr = (String) warning.get("enterTime");
+                LocalDateTime realEntryTime = LocalDateTime.parse(enterTimeStr.substring(0, 19), formatter);
+                // B. 业务时区当前时刻（与流水日界一致）
+                LocalDateTime currentNow = LocalDateTime.now(zone);
+                // C. 画像数据（无画像时用兜底：中位 120 分钟、超时概率 0）
+                Object medianObj = warning.get("aiDurationMins");
+                Object probObj = warning.get("aiOvertimeProb");
+                int medianMins = medianObj != null ? ((Number) medianObj).intValue() : 120;
+                double prob = probObj != null ? ((Number) probObj).doubleValue() : 0.0;
+                // D. 智能离开时间（引擎内部的「软天花板」对全校区通用）
+                boolean authorized = false;
+                Object permObj = warning.get("hasOfficialRoomPermission");
+                if (permObj == null) permObj = warning.get("has_official_room_permission");
+                if (permObj instanceof Number) {
+                    authorized = ((Number) permObj).intValue() == 1;
+                } else if (permObj != null) {
+                    String ps = String.valueOf(permObj);
+                    authorized = "1".equals(ps) || "true".equalsIgnoreCase(ps);
+                }
+                if (!authorized && warning.get("userId") != null) {
+                    authorized = predictionEngineService.isUserOfficialAuthorized(String.valueOf(warning.get("userId")));
+                }
+                LocalDateTime smartExitTime = predictionEngineService.calculateSmartExitTime(
+                        realEntryTime, medianMins, prob, currentNow, authorized);
+                // E. 被引力压缩 / 滑动延期后的最终时长，另附预计离开时刻（助手要直接报给人听）
+                warning.put("aiDurationMins", (int) Duration.between(realEntryTime, smartExitTime).toMinutes());
+                warning.put("aiExitTime", smartExitTime.format(formatter));
+                out.add(warning);
+            } catch (Exception e) {
+                out.add(warning);
+            }
+        }
+        return out;
     }
 
     // 🌀 保留大屏混合推流初始化方法

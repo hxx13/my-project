@@ -515,6 +515,36 @@ async function uploadChatAttachment(conversationId, tempFilePath, meta) {
 }
 
 /**
+ * 把刚下到本机的那份导出交回服务端归档（`/api/v1/ai/exports/{id}/content`）。
+ *
+ * <p>不归档就**改不了这份文件**：修订走的是「在已有字节上改」，服务端手里没有本体时
+ * 只能回一句「你还没点过下载」。网页端一直有这一步，小程序漏了（2026-10-09 补）。
+ * 归档是**尽力而为**：失败不该影响本次下载 —— 用户要的是文件到手，所以不往外抛。
+ */
+async function archiveExportContent(exportId, filePath) {
+  const token = wx.getStorageSync(KEYS.TOKEN) || '';
+  if (!token || !exportId || !filePath) return false;
+  const base = envConfig.getEffectiveApiBaseUrl().replace(/\/+$/, '');
+  return new Promise((resolve) => {
+    wx.uploadFile({
+      url: `${base}/api/v1/ai/exports/${encodeURIComponent(exportId)}/content`,
+      filePath,
+      name: 'file',
+      header: { Authorization: `Bearer ${token}` },
+      success(res) {
+        try {
+          const body = JSON.parse(res.data);
+          resolve(res.statusCode === 200 && body && body.success === true);
+        } catch (e) {
+          resolve(false);
+        }
+      },
+      fail() { resolve(false); },
+    });
+  });
+}
+
+/**
  * 上传文件模板到 Spring /api/admin/file-templates
  */
 async function uploadFileTemplate(tempFilePath, meta) {
@@ -773,6 +803,7 @@ module.exports = {
   saveAndOpenDocument,
   uploadSpringFile,
   uploadChatAttachment,
+  archiveExportContent,
   uploadFileTemplate,
   uploadFileDirect,
   runWechatSilentLoginOnLaunch,

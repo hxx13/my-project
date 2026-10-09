@@ -60,6 +60,58 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
+    <!-- 消耗统计：按物资汇总窗口内的出入库量。一次聚合，不把流水捞到 Java 里算。 -->
+    <resultMap id="Consumption" type="com.example.demo.modules.supplies.dto.SupplyItemConsumptionView">
+        <id property="itemId" column="item_id"/>
+        <result property="name" column="item_name"/>
+        <result property="categoryId" column="item_category_id"/>
+        <result property="categoryName" column="category_name"/>
+        <result property="outboundQty" column="outbound_qty"/>
+        <result property="inboundQty" column="inbound_qty"/>
+        <result property="adjustQty" column="adjust_qty"/>
+        <result property="stockQty" column="stock_qty"/>
+        <result property="lockedQty" column="locked_qty"/>
+    </resultMap>
+
+    <select id="aggregateConsumption" resultMap="Consumption">
+        SELECT i.id AS item_id, i.name AS item_name, i.category_id AS item_category_id, c.name AS category_name,
+               i.stock_qty, i.locked_qty,
+               COALESCE(SUM(CASE WHEN m.movement_type = 'OUTBOUND' THEN m.qty ELSE 0 END), 0) AS outbound_qty,
+               COALESCE(SUM(CASE WHEN m.movement_type = 'INBOUND'  THEN m.qty ELSE 0 END), 0) AS inbound_qty,
+               COALESCE(SUM(CASE WHEN m.movement_type = 'ADJUST'   THEN m.qty ELSE 0 END), 0) AS adjust_qty
+        FROM supply_item i
+        LEFT JOIN supply_category c ON c.id = i.category_id
+        LEFT JOIN supply_inventory_movement m ON m.item_id = i.id AND m.created_at &gt;= #{from}
+        WHERE i.deleted = 0
+          AND (#{categoryId} = 0 OR i.category_id = #{categoryId})
+        GROUP BY i.id, i.name, i.category_id, c.name, i.stock_qty, i.locked_qty
+        HAVING outbound_qty &gt; 0 OR inbound_qty &gt; 0 OR adjust_qty &gt; 0
+        ORDER BY outbound_qty DESC, i.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 按领取人汇总（谁领得多 / 谁最近在领）。名字这一层不查，由 Service 用同一套名字服务补。 -->
+    <resultMap id="ApplicantConsumption" type="com.example.demo.modules.supplies.dto.SupplyApplicantConsumptionView">
+        <id property="applicantUserId" column="applicant_user_id"/>
+        <result property="claimCount" column="claim_count"/>
+        <result property="outboundQty" column="outbound_qty"/>
+        <result property="lastAt" column="last_at"/>
+    </resultMap>
+
+    <select id="aggregateConsumptionByApplicant" resultMap="ApplicantConsumption">
+        SELECT m.applicant_user_id,
+               COUNT(DISTINCT m.claim_id) AS claim_count,
+               COALESCE(SUM(CASE WHEN m.movement_type = 'OUTBOUND' THEN m.qty ELSE 0 END), 0) AS outbound_qty,
+               DATE_FORMAT(MAX(m.created_at), '%Y-%m-%d %H:%i:%s') AS last_at
+        FROM supply_inventory_movement m
+        WHERE m.applicant_user_id IS NOT NULL AND m.applicant_user_id &lt;&gt; ''
+          AND m.created_at &gt;= #{from}
+        GROUP BY m.applicant_user_id
+        HAVING outbound_qty &gt; 0
+        ORDER BY outbound_qty DESC, last_at DESC
+        LIMIT #{limit}
+    </select>
+
     <select id="listByClaimId" resultMap="Base">
         SELECT * FROM supply_inventory_movement
         WHERE claim_id = #{claimId}

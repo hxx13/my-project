@@ -253,6 +253,17 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "ADMIN") && show(ctx, "/admin/ai-audit", "ADMIN"),
       },
       {
+        id: "ai-timers",
+        path: "/admin/ai-timers",
+        label: "AI 计时器",
+        icon: Clock,
+        homeTone: "from-amber-400 to-orange-500",
+        // 看自己的计时器是每个教职工都该有的能力（球球对所有教职工开放）；
+        // 「看全部人的 / 停全部人的」那一档在页面与服务端按 SUPER_ADMIN 判定。
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => hasMinRole(ctx.role, "STAFF") && show(ctx, "/admin/ai-timers", "STAFF"),
+      },
+      {
         id: "nav-manager",
         path: "/admin/nav-manager",
         label: "侧栏导航管理",
@@ -959,6 +970,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p.startsWith("/admin/settings/") ||
     p === "/admin/api-docs" ||
     p === "/admin/ai-audit" ||
+    p === "/admin/ai-timers" ||
     p === "/admin/registration-invites"
   ) {
     return "系统与安全";

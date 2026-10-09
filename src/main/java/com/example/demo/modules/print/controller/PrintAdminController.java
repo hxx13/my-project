@@ -330,16 +330,15 @@ public class PrintAdminController {
         // 根本问不到队列）无从判断，同样不给撤 —— 宁可不给，也不能把「已完成」改成
         // 「已撤回」，那是比原事故更坏的谎。
         boolean stillQueued = PrintJob.QUEUE_QUEUED.equals(job.getQueueState());
-        boolean serverStation = stationService.findById(job.getStationId())
-                .map(s -> PrintStation.MODE_SERVER.equals(s.getMode()))
-                .orElse(false);
+        PrintStation station = stationService.findById(job.getStationId()).orElse(null);
+        boolean serverStation = station != null && PrintStation.MODE_SERVER.equals(station.getMode());
         if (serverStation && stillQueued
                 && job.getCupsJobId() != null && !job.getCupsJobId().isBlank()) {
             try {
-                queueControlService.cancelJob(job.getCupsJobId());
+                queueControlService.cancelJob(station.getPrinterIp(), job.getCupsJobId());
             } catch (IOException e) {
-                // 命令没配才走到这（作业已不在队列时 cancelJob 自己吞掉）。
-                // 这时候不能说"撤了"——CUPS 那侧没动过，纸还会出来。
+                // 命令没配、CUPS 拒授权、或撤完回查发现它还排在队列里 —— 三种都不能说"撤了"：
+                // CUPS 那侧没动过，纸还会出来。
                 return Result.error("没能撤销打印机队列里的这条作业：" + e.getMessage());
             }
             if (!jobService.cancelAny(id)) {

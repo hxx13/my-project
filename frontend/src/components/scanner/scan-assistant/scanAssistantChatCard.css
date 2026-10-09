@@ -369,6 +369,37 @@
   transform: scale(1.06);
 }
 
+/*
+ * 本次对话的标题：**浮在边框外的左上角**，与右上角那排圆按钮同一条线上。
+ *
+ * 面板本来没有标题栏。加一行会把消息整体下压、白占一条版面；浮层只借用边框外本来就空着的
+ * 那一圈，layout 代价为零。观感与 __action 同源（实色底 + 1px 描边 + 同一档阴影），
+ * 免得浮层上两样东西看着像两个系统来的。
+ */
+.scan-assistant-chat-card__title {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  max-width: 55%;
+  height: 28px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: 14px;
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--app-color-text-primary) 16%, transparent);
+  /* 只给人看：不抢拖动，也不挡下面那层的点击 */
+  pointer-events: none;
+}
+
 .scan-assistant-chat-card__action:active {
   transform: scale(0.94);
 }
@@ -763,11 +794,166 @@
   font-weight: var(--font-weight-medium, 500);
 }
 
-/* 向导里选中的那项要亮着：用户得能一眼看出「这题我选了什么」 */
-.scan-assistant-ask__choice--picked {
+/*
+ * 选中的那项要亮着：用户得能一眼看出「这题我选了什么」。
+ *
+ * **实色填充，不用半透明**（用户明确要求，且 150% 缩放下半透明发虚）：选中态就是「按下去」的样子。
+ */
+/* 选择器写成**两个类**是刻意的：基础 .scan-assistant-ask__choice 在同文件后段、与它同权重，
+   靠源序会把它压掉（选中态一直没真正显示出来就是这个原因）。双类权重更高，与顺序无关。 */
+.scan-assistant-ask__choice.scan-assistant-ask__choice--picked {
   border-color: var(--app-color-accent);
-  background: color-mix(in srgb, var(--app-color-accent) 12%, var(--app-color-surface-elevated));
+  background: var(--app-color-accent);
+  color: #fff;
   font-weight: var(--font-weight-medium, 500);
+}
+
+/* 选中的那项**被 hover 时也要是实色**：基础 .choice:hover:not(:disabled) 带上 :not() 后权重是
+   (0,3,0)，比上面双类的 (0,2,0) 高 —— 不补这条，「刚点过、鼠标还停在上面」的那一颗会褪成
+   淡米色 + 白字，而那恰恰是用户最容易看到的一颗（真机 2026-10-09 撞到）。 */
+.scan-assistant-ask__choice.scan-assistant-ask__choice--picked:hover:not(:disabled) {
+  border-color: var(--app-color-accent);
+  background: var(--app-color-accent);
+  color: #fff;
+}
+
+/*
+ * 助手产出的一份文件。**两种形态是为了让用户一眼分清文件的来路**：
+ *
+ *   · **独立成条**（模型一个字都没说，文件就是这条消息本身）→ **完整卡片**：
+ *     图标块 + 文件名 + 下载按钮，规格与附件卡一致，站得住；
+ *   · **跟着某句回答**（`--sub`）→ **压成小小一行**并与气泡齐头，不跟正文抢版面。
+ *
+ * 判定在渲染层：那一轮有没有正文。同一套类，两种密度，别各写一份。
+ */
+.scan-assistant-ask__download {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  /* **按内容收缩**，不撑满那一列 —— 撑开就把下载按钮推到老远，变成一条长条 */
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 0.35rem 0 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-card, 0.75rem);
+  background: var(--app-color-surface-container);
+}
+
+.scan-assistant-ask__download-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-accent);
+  color: #fff;
+}
+
+.scan-assistant-ask__download-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/*
+ * 文件名**不截断**（用户明确要求）：短名字一行放得下就一行；实在长到放不下时**折行**，
+ * 也不打省略号 —— 文件名被截掉一半比多占一行更难用。
+ */
+.scan-assistant-ask__download-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--app-color-text-primary);
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.scan-assistant-ask__download-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.25rem;
+  padding: 0 1rem;
+  border: 1px solid var(--app-color-accent);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-accent);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__download-btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/*
+ * 跟着某句回答出来的那份：整张压到一行，**左缘与气泡正文齐头**。
+ *
+ * 气泡排在那颗 20px 的小图标（`__answer-row` 的首个子元素）加 0.5rem 间距之后，
+ * 所以这里补上同样的距离，两者才会齐头 —— 看着就知道它属于上面那句话。
+ */
+.scan-assistant-ask__download--sub {
+  gap: 0.4rem;
+  margin-left: 1.75rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.5rem;
+  border-color: color-mix(in srgb, var(--app-color-border-default) 70%, transparent);
+  border-radius: var(--app-radius-element);
+}
+
+.scan-assistant-ask__download--sub .scan-assistant-ask__download-icon {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: transparent;
+  color: var(--app-color-accent);
+}
+
+.scan-assistant-ask__download--sub .scan-assistant-ask__download-icon svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.scan-assistant-ask__download--sub .scan-assistant-ask__download-name {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__download--sub .scan-assistant-ask__download-btn {
+  gap: 0.2rem;
+  height: 1.5rem;
+  padding: 0 0.6rem;
+  border-radius: calc(var(--app-radius-element) * 0.75);
+  font-size: 0.75rem;
+}
+
+.scan-assistant-ask__download--sub .scan-assistant-ask__download-btn svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* 模型没说话、只有文件时，卡片排在头像右边的那一列里（可能不止一份文件）。 */
+.scan-assistant-ask__download-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.scan-assistant-ask__download-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.scan-assistant-ask__download-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* 向导导航：上一题 / 下一题 / 提交（只在多问时出现，单问点一下即办） */
@@ -1042,7 +1228,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  width: 100%;
+  /*
+   * **不能写 width:100%**：它和删除按钮同行，占满整行会把按钮挤出容器（真机：按钮被挤没、
+   * 列表还冒出横向滚动条）。要占掉剩余空间就 flex:1，并配 min-width:0 才能被压缩。
+   */
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 0.35rem 0.5rem;
   border: 0;
   border-radius: var(--app-radius-element);
@@ -1064,6 +1255,9 @@
 }
 
 .scan-assistant-ask__session-title {
+  /* flex 子项默认 min-width:auto 不肯收缩 —— 少了这一行，上面的省略号形同虚设、标题会把时间挤出去 */
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -1,0 +1,25 @@
+-- AI 计时器（大模型定时执行工具）：fire_at 是唯一时间锚点，绝不存「剩余秒数」（服务器重启后倒计时照样准）
+CREATE TABLE IF NOT EXISTS ai_timer (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id VARCHAR(50) NOT NULL COMMENT '建单人 user.id（JWT 解析所得）',
+    owner_name_snapshot VARCHAR(128) NULL COMMENT '建单人姓名快照（人要显示、人可能改名）',
+    owner_role_snapshot VARCHAR(32) NULL COMMENT '建单人当时的角色快照（角色会变故必须存）',
+    label VARCHAR(255) NULL COMMENT '人话标签，模型写的',
+    tool_name VARCHAR(64) NOT NULL COMMENT '到点要执行的工具（必须在工具注册表白名单内）',
+    args_json MEDIUMTEXT NULL COMMENT '工具参数原文 JSON（模型原样传的，不改写）',
+    fire_at DATETIME NOT NULL COMMENT '绝对触发时间 —— 倒计时与调度的唯一锚点',
+    status VARCHAR(24) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/FIRING/FIRED/AWAITING_CONFIRM/CANCELLED/FAILED',
+    session_id BIGINT NULL COMMENT '从哪次对话建的（REST 直接建的单为空）',
+    message_id BIGINT NULL COMMENT '发起建单的那条 assistant 消息',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    claimed_at DATETIME NULL COMMENT '被调度器认领的时刻（检测卡在 FIRING 的僵尸单）',
+    fired_at DATETIME NULL COMMENT '执行时刻（=「何时结束」）',
+    cancelled_at DATETIME NULL,
+    confirmed_by VARCHAR(50) NULL COMMENT '写类计时器由谁点的确认',
+    result_text MEDIUMTEXT NULL COMMENT '工具返回的原始结果',
+    ok TINYINT(1) NULL COMMENT '业务成败（工具返回 ok:false 也算失败）',
+    error_message VARCHAR(512) NULL,
+    deleted TINYINT NOT NULL DEFAULT 0 COMMENT '软删标记',
+    INDEX idx_status_fire (status, fire_at),
+    INDEX idx_owner_created (owner_user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI 计时器（大模型定时执行工具）';

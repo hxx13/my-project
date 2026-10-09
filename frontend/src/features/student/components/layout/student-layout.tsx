@@ -4,6 +4,7 @@ import { StudentSidebar } from "./student-sidebar";
 import { readStudentNavLock, appendStudentNavRecent } from "./student-nav-personalization";
 import { StudentHeader } from "./student-header";
 import { StudentCommandPalette } from "./student-command-palette";
+import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView } from "@/features/auth/impersonation";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
@@ -162,6 +163,10 @@ export default function StudentLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* 智能精灵球：学生视角也能问（2026-10-09 放开）。能办的事由服务端按视角挑包，
+          学生目前只有「页面导航」这一类跨视角能力，其余会被如实回绝。 */}
+      <ScanAssistantCarrier />
 
       {/* Idle timeout */}
       {showWarning && (
