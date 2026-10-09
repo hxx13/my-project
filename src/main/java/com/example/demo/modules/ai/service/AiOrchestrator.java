@@ -585,15 +585,34 @@ public class AiOrchestrator {
      * 真机 2026-10-09 就是这么又犯一次的。多选题不适用：可多选时一个候选仍然是个「要 / 不要」的选择。
      *
      * <p>只丢查询结果的候选，**写操作的确认不走这里**，不受影响。
+     *
+     * <p><b>一模一样的题只问一遍</b>：模型常在同一轮里把同一个查候选的工具调两次
+     * （先探一下、再正式查），两次的候选都会进队，用户就拿到两道一字不差的题
+     * （真机 2026-10-09 接「检查维护」时亲眼见到）。同一道题问第二遍在任何场景下都没有意义，
+     * 所以按「标题 + 选项 + 是否多选」去重。
      */
-    private void emitClarifyGroups(AiEventSink sink, List<ChoiceGroup> choiceGroups, String userText) {
+    void emitClarifyGroups(AiEventSink sink, List<ChoiceGroup> choiceGroups, String userText) {
+        Set<String> seen = new HashSet<>();
         for (ChoiceGroup g : choiceGroups) {
             if (!worthAsking(g, userText)) {
                 log.debug("[ai-orch] 候选不值得追问，跳过: {}（{} 项）", g.title(), g.options().size());
                 continue;
             }
+            if (!seen.add(groupKey(g))) {
+                log.debug("[ai-orch] 同一道题重复抛出，只问一遍: {}", g.title());
+                continue;
+            }
             sink.interaction(null, "clarify", g.title(), g.options(), g.multiSelect());
         }
+    }
+
+    /** 两道题「是不是同一道」的判据：标题 + 每个选项 + 是否多选。 */
+    private static String groupKey(ChoiceGroup g) {
+        StringBuilder sb = new StringBuilder(g.title()).append('|').append(g.multiSelect());
+        for (AiEventSink.Option o : g.options()) {
+            sb.append('|').append(o.label()).append('=').append(o.value());
+        }
+        return sb.toString();
     }
 
     /** 这道题值不值得摆给用户：有得挑、且他还没把答案全说出来。 */

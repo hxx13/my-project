@@ -7,6 +7,7 @@ import com.example.demo.modules.ai.tool.pack.CommonToolPack;
 import com.example.demo.modules.ai.tool.pack.DashboardToolPack;
 import com.example.demo.modules.ai.tool.pack.DebugLogToolPack;
 import com.example.demo.modules.ai.tool.pack.DoorControlToolPack;
+import com.example.demo.modules.ai.tool.pack.FacilityMaintenanceToolPack;
 import com.example.demo.modules.ai.tool.pack.MaterialAuditToolPack;
 import com.example.demo.modules.ai.tool.pack.MaterialManageToolPack;
 import com.example.demo.modules.ai.tool.pack.NavToolPack;
@@ -61,8 +62,9 @@ class AiToolSchemaJsonTest {
                 new DebugLogToolPack(null, null, null),
                 new MaterialAuditToolPack(null, null, null),
                 new MaterialManageToolPack(null, new ObjectMapper()),
+                new FacilityMaintenanceToolPack(null),
                 new StudentActivityToolPack(null, null),
-                new AnimalOrderToolPack(null, null));
+                new AnimalOrderToolPack(null, null, null));
         for (AiToolPack pack : packs) {
             for (AiTool tool : pack.tools()) {
                 JsonNode root;

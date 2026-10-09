@@ -694,6 +694,17 @@ Component({
       archived
         .then((hit) => {
           if (hit && hit.data) return hit;
+          // **带地址的导出**（动物订购这类）：后端给的是页面那个「导出」按钮同一条接口的相对地址，
+          // 按它取就行。这一支必须排在物资那套前面 —— 让它落到物资重跑不但会下到一份完全无关的文件，
+          // 还会**把错的那份归档到这条产物上**（真机 2026-10-09 就是这个形状）。
+          if (typeof p.url === 'string' && p.url) {
+            return springAuth.springRequestBinary(p.url,
+              { errorMessage: '导出失败', forbiddenMessage: '无权限导出' });
+          }
+          if (dl.kind && dl.kind !== 'materialAudit') {
+            // 未知类型又没地址：宁可说取不到，也不拿物资那套糊过去
+            throw new Error('这份导出暂时取不到文件，让助手重新导一次');
+          }
           if (!dl.params || Object.keys(dl.params).length === 0) {
             // 存档没了、又没有可重跑的参数 = 这份文件真的取不回来了，别拿一份别的糊过去
             throw new Error('这份文件的存档已经取不到了，让助手重新导一次');

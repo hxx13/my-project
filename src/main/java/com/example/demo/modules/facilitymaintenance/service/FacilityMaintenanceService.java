@@ -551,6 +551,21 @@ public class FacilityMaintenanceService {
     // ---------- Consumables ----------
 
     public Map<String, Object> listConsumableLines(String siteId, int page, int size) {
+        return listConsumableLines(siteId, null, null, null, page, size);
+    }
+
+    /**
+     * 耗材登记分页（可带关键词与时间范围）。
+     *
+     * <p>关键词与时间段**落在 SQL 里**：让调用方自己拉一页回来再筛，会得出「筛出来只有两条」
+     * 这种假结论（列表在筛之前就截断了）。返回的 {@code total} 也是同一套条件数出来的真命中数。
+     *
+     * @param keyword 耗材名含这个片段（可空）
+     * @param from    发生日期 &gt;= from（含当天，可空）
+     * @param to      发生日期 &lt;= to（含当天，可空）
+     */
+    public Map<String, Object> listConsumableLines(String siteId, String keyword, LocalDate from, LocalDate to,
+                                                   int page, int size) {
         int p = Math.max(1, page);
         int s = Math.min(Math.max(size, 1), 200);
         int offset = (p - 1) * s;
@@ -559,6 +574,18 @@ public class FacilityMaintenanceService {
         if (siteId != null && !siteId.isBlank()) {
             where.append(" AND c.site_id=?");
             args.add(siteId);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND c.consumable_name LIKE ?");
+            args.add("%" + keyword.trim() + "%");
+        }
+        if (from != null) {
+            where.append(" AND c.occurred_at >= ?");
+            args.add(from.atStartOfDay());
+        }
+        if (to != null) {
+            where.append(" AND c.occurred_at < ?");
+            args.add(to.plusDays(1).atStartOfDay());
         }
         Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM fm_consumable_line c WHERE " + where, Integer.class, args.toArray());
         args.add(s);
@@ -611,6 +638,12 @@ public class FacilityMaintenanceService {
     // ---------- Replacements ----------
 
     public Map<String, Object> listReplacementRecords(String siteId, int page, int size) {
+        return listReplacementRecords(siteId, null, null, null, page, size);
+    }
+
+    /** 更换记录分页（可带关键词与时间范围）。条件同样落在 SQL 里，理由见耗材那条。 */
+    public Map<String, Object> listReplacementRecords(String siteId, String keyword, LocalDate from, LocalDate to,
+                                                      int page, int size) {
         int p = Math.max(1, page);
         int s = Math.min(Math.max(size, 1), 200);
         int offset = (p - 1) * s;
@@ -619,6 +652,18 @@ public class FacilityMaintenanceService {
         if (siteId != null && !siteId.isBlank()) {
             where.append(" AND r.site_id=?");
             args.add(siteId);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            where.append(" AND r.filter_type LIKE ?");
+            args.add("%" + keyword.trim() + "%");
+        }
+        if (from != null) {
+            where.append(" AND r.replaced_at >= ?");
+            args.add(from.atStartOfDay());
+        }
+        if (to != null) {
+            where.append(" AND r.replaced_at < ?");
+            args.add(to.plusDays(1).atStartOfDay());
         }
         Integer total = jdbc.queryForObject("SELECT COUNT(*) FROM fm_replacement_record r WHERE " + where, Integer.class, args.toArray());
         args.add(s);

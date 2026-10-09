@@ -268,7 +268,7 @@ Page({
         'mine',
         '/package-student/pages/studentReviewHub/index',
         role,
-        'ADMIN'
+        'STAFF'
       ),
     });
     void this.refreshStudentReviewBadge();
@@ -756,11 +756,12 @@ Page({
 
   onStudentReviewTap() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
-    if (!hasMinRole(role, 'ADMIN')) {
+    // 门槛与页面自己的守卫、「我的」页入口同口径（STAFF 就能审，见 studentReviewHub 的 guardPageOnShow）
+    if (!hasMinRole(role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }
-    if (!pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'ADMIN')) {
+    if (!pagePermission.canShowMiniEntry('mine', '/package-student/pages/studentReviewHub/index', role, 'STAFF')) {
       wx.showToast({ title: '无权限', icon: 'none' });
       return;
     }

@@ -36,8 +36,59 @@ public class PagePermissionService {
     private static final Pattern MINI_FUNCTION_BLOCK = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(\\)\\s*\\{([\\s\\S]*?)\\n\\s*\\},");
     private static final Pattern MINI_NAV_URL = Pattern.compile("url:\\s*'([^']+)'");
     private static final Pattern MINI_ROLE = Pattern.compile("hasMinRole\\([^,]+,\\s*'([A-Z_]+)'\\)");
-    private static final Pattern MINI_WXML_CELL = Pattern.compile("<van-cell[^>]*title=\"([^\"]+)\"[^>]*bind:click=\"([^\"]+)\"");
+    /**
+     * 菜单页在算「这一格给不给看」时自己写在调用上的兜底角色：
+     * {@code canShowMiniEntry('mine', '<路径>', role, '<兜底角色>')}。这就是那一格**声明的门槛**，
+     * 比按路径前缀猜准 —— 有些格子（校园卡管理 / 门禁应用 / 三个门禁页）只走这个兜底，函数体里
+     * 一句 hasMinRole 都没有，光看函数体会把它们全判成「谁都能看」。
+     */
+    private static final Pattern MINI_ENTRY_ROLE =
+            Pattern.compile("canShowMiniEntry\\(\\s*'([a-z]+)'\\s*,\\s*'([^']+)'\\s*,\\s*[^,]+,\\s*'([A-Z_]+)'\\s*,?\\s*\\)");
+    /**
+     * 小程序入口单元：整块抓，名字与动作分开取。
+     *
+     * <p>原先是「一个正则同时要 {@code title="名字"} 和 {@code bind:click="动作"}」，而菜单页
+     * 早就改成**插槽标题**（{@code <view slot="title"><text class="mine-cell-title-text">学生审核</text>}）——
+     * 那个正则在真文件里一条都匹配不上，于是「学生审核」这类入口从来没进过权限表
+     * （2026-10-09 实测：球球答「没找到这个入口」）。名字改用「属性或插槽文本」两路取。
+     */
+    private static final Pattern MINI_WXML_CELL = Pattern.compile("<van-cell\\s([^>]*)>([\\s\\S]*?)</van-cell>");
+    private static final Pattern MINI_CELL_CLICK = Pattern.compile("bind:click=\"([^\"]+)\"");
+    private static final Pattern MINI_CELL_TITLE_ATTR = Pattern.compile("title=\"([^\"]+)\"");
+    private static final Pattern MINI_CELL_TITLE_SLOT = Pattern.compile("<text class=\"[^\"]*title-text[^\"]*\">([^<]+)</text>");
     private static final Pattern MINI_WXML_QUICK = Pattern.compile("class=\"quick-item\"\\s+bindtap=\"([^\"]+)\"");
+
+    /**
+     * 小程序侧的字面量小对象（底部 tab 就是这种）：整块取出来当作一条记录读。
+     * 这三条分别取块里的 path / text / minRole —— 名字与门槛都在同一个块里，不用跨行猜窗口。
+     */
+    private static final Pattern MINI_OBJECT = Pattern.compile("\\{([^{}]*)\\}");
+    private static final Pattern MINI_TS_PATH = Pattern.compile("path:\\s*'([^']*)'");
+    private static final Pattern MINI_TS_TEXT = Pattern.compile("text:\\s*'([^']*)'");
+    private static final Pattern MINI_TS_ROLE = Pattern.compile("minRole:\\s*'([A-Z_]+)'");
+
+    /** 房间页侧栏那种「可点的一整块 + 块里第一个文本就是名字」的入口。 */
+    private static final Pattern MINI_WXML_FOOTER = Pattern.compile("<view\\s([^>]*bindtap=\"[^\"]+\"[^>]*)>([\\s\\S]*?)</view>");
+    private static final Pattern MINI_WXML_TEXT = Pattern.compile("<text[^>]*>([^<]+)</text>");
+    private static final Pattern MINI_TAP = Pattern.compile("bindtap=\"([^\"]+)\"");
+    /** 整块只用一个开关控制的那种：{@code wx:if="{{ showStaffEntries }}"}。复杂的条件表达式不认（宁可不猜）。 */
+    private static final Pattern MINI_WXML_IF_FLAG =
+            Pattern.compile("wx:if=\"\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\}\\}\"");
+    /** 页面里「这个开关要什么角色」的声明：{@code showStaffEntries: hasMinRole(role, 'STAFF'),}。 */
+    private static final Pattern MINI_FLAG_ROLE =
+            Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\s*:\\s*hasMinRole\\([^,]+,\\s*'([A-Z_]+)'\\)");
+
+    /**
+     * 小程序分包前缀。页面权限表里一律记**主包形式**（{@code /pages/x/y}），与小程序运行时的口径一致
+     * （见 {@code miniprogram/utils/pagePermission.js} 的 {@code normalizePath}）：导航时它再把主包路径
+     * 展开成分包候选，页面将来搬家这里也不用改，node_key 更不会跟着漂。
+     */
+    private static final List<String> MINI_SUBPKG_PREFIXES = List.of(
+            "/package-feature/pages/",
+            "/package-supplies/pages/",
+            "/package-door/pages/",
+            "/package-student/pages/",
+            "/package-ops/pages/");
 
     private final PagePermissionMapper mapper;
     private final ObjectMapper objectMapper;
@@ -448,28 +499,122 @@ public class PagePermissionService {
 
         Map<String, FunctionRoute> mineRoutes = parseMiniFunctionRoutes(mineJs);
         Map<String, FunctionRoute> homeRoutes = parseMiniFunctionRoutes(homeJs);
-        addMiniEntriesFromWxml(out, mineWxml, mineRoutes, "mine");
+        Map<String, String> entryRoles = parseMiniEntryRoles(mineJs);
+        addMiniEntriesFromWxml(out, mineWxml, mineRoutes, entryRoles, "mine");
         addMiniQuickEntriesFromWxml(out, homeWxml, homeRoutes, "home");
+        out.addAll(parseMiniTabEntries(tabbar));
 
-        Matcher tab = Pattern.compile("path:\\s*'([^']+)'").matcher(tabbar);
-        while (tab.find()) {
-            String p = normalizeMiniPath(tab.group(1));
-            if (!StringUtils.hasText(p)) continue;
-            String role = inferMiniMinRole(p);
-            out.add(NodeSeed.miniEntry("tabbar", p, "Tab:" + p, role, miniPageKey(p)));
-        }
+        String roomJs = readText(root.resolve("aroapp/miniprogram/pages/room/index.js"));
+        String roomWxml = readText(root.resolve("aroapp/miniprogram/pages/room/index.wxml"));
+        addMiniFooterEntries(out, roomWxml, roomJs, parseMiniFunctionRoutes(roomJs));
         return dedup(out);
     }
 
-    private void addMiniEntriesFromWxml(List<NodeSeed> out, String wxml, Map<String, FunctionRoute> routes, String source) {
+    /**
+     * 底部 tab 的名字。
+     *
+     * <p>原来扫到 {@code path: '…'} 就造一条名字为 {@code Tab:/pages/x/y} 的入口 —— 那不是人话，
+     * 用户念不出来，导航那一侧也把它当噪声丢掉，等于**首页 / 房间 / 温湿度 / 我的 全都叫不上名字**
+     * （2026-10-09：问「温湿度」答没找到，而它就摆在最显眼的位置）。
+     *
+     * <p>tab 是个只有字面量的小对象，名字（`text`）和门槛（`minRole`）就在同一块里，整块读即可。
+     * 门槛取这一格自己声明的那档，与小程序渲染 tabBar 时的兜底值**同一来源**，所以写进表里不改变
+     * 任何人的 tab 可见性。
+     */
+    private List<NodeSeed> parseMiniTabEntries(String tabbarJs) {
+        List<NodeSeed> out = new ArrayList<>();
+        Matcher object = MINI_OBJECT.matcher(tabbarJs);
+        while (object.find()) {
+            String body = object.group(1);
+            String path = pick(MINI_TS_PATH, body);
+            String text = pick(MINI_TS_TEXT, body);
+            // 球球自己占的那一格没有页面（点开是对话抽屉），别当成能跳的页面
+            if (!StringUtils.hasText(path) || !StringUtils.hasText(text)) continue;
+            String normalized = normalizeMiniPath(path);
+            String role = pick(MINI_TS_ROLE, body);
+            out.add(NodeSeed.miniEntry("tabbar", normalized, text,
+                    role == null ? inferMiniMinRole(normalized) : role, miniPageKey(normalized)));
+        }
+        return out;
+    }
+
+    /**
+     * 房间页侧栏/顶栏那几个入口（历史 / 管理 / 校园卡管理 / 审核入口 / 学生审核）。
+     *
+     * <p>它们不在菜单页里，但用户就是会直接喊名字。已经被别的页面登记过的（校园卡管理、学生审核）
+     * **不再重复登记** —— 同名的两条会让导航反过来问「你指哪一个」，比没有还烦人。
+     *
+     * <p>门槛读这一格自己的开关（{@code wx:if="{{ showStaffEntries }}"}} → 页面里 {@code showStaffEntries: hasMinRole(role,'STAFF')}）。
+     * 不读的话这几格会一律按路径猜成「谁都能看」，学生问一句就被告知一个他根本进不去的入口。
+     */
+    private void addMiniFooterEntries(List<NodeSeed> out, String wxml, String jsCode, Map<String, FunctionRoute> routes) {
+        Set<String> known = new LinkedHashSet<>();
+        for (NodeSeed seed : out) {
+            known.add(seed.pathOrRoute());
+        }
+        Map<String, String> flagRoles = new LinkedHashMap<>();
+        Matcher flag = MINI_FLAG_ROLE.matcher(jsCode);
+        while (flag.find()) {
+            String role = normalizeRole(flag.group(2));
+            if (role != null) flagRoles.putIfAbsent(flag.group(1), role);
+        }
+        Matcher block = MINI_WXML_FOOTER.matcher(wxml);
+        while (block.find()) {
+            String attrs = block.group(1);
+            String fn = pick(MINI_TAP, attrs);
+            String flagName = pick(MINI_WXML_IF_FLAG, attrs);
+            Matcher title = MINI_WXML_TEXT.matcher(block.group(2));
+            if (!StringUtils.hasText(fn) || !title.find()) continue;
+            FunctionRoute route = routes.get(fn);
+            if (route == null || !route.path.startsWith("/pages/") || !known.add(route.path)) continue;
+            String role = flagName == null ? null : flagRoles.get(flagName);
+            out.add(NodeSeed.miniEntry("room", route.path, title.group(1).trim(),
+                    role == null ? inferMiniMinRole(route.path) : role, miniPageKey(route.path)));
+        }
+    }
+
+    private static String pick(Pattern pattern, String body) {
+        Matcher matcher = pattern.matcher(body);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    private void addMiniEntriesFromWxml(List<NodeSeed> out, String wxml, Map<String, FunctionRoute> routes,
+                                        Map<String, String> entryRoles, String source) {
         Matcher matcher = MINI_WXML_CELL.matcher(wxml);
         while (matcher.find()) {
-            String title = matcher.group(1);
-            String fn = matcher.group(2);
-            FunctionRoute route = routes.get(fn);
-            if (route == null || !StringUtils.hasText(route.path)) continue;
-            out.add(NodeSeed.miniEntry(source, route.path, title, route.minRole, miniPageKey(route.path)));
+            Matcher click = MINI_CELL_CLICK.matcher(matcher.group(1));
+            if (!click.find()) continue;
+            String title = miniCellTitle(matcher.group(1), matcher.group(2));
+            if (!StringUtils.hasText(title)) continue;
+            FunctionRoute route = routes.get(click.group(1));
+            // 只收页面：有些格子（切换学生视角、生成推荐码）只发接口，body 里第一个 url 是 /api/...
+            if (route == null || !route.path.startsWith("/pages/")) continue;
+            String declared = entryRoles.get(source + "|" + route.path);
+            out.add(NodeSeed.miniEntry(source, route.path, title, declared == null ? route.minRole : declared,
+                    miniPageKey(route.path)));
         }
+    }
+
+    /** 菜单页声明的「格子 → 门槛角色」（键带 source，免得不小心把别处的同名路径算进来）。 */
+    private Map<String, String> parseMiniEntryRoles(String jsCode) {
+        Map<String, String> out = new HashMap<>();
+        Matcher matcher = MINI_ENTRY_ROLE.matcher(jsCode);
+        while (matcher.find()) {
+            String path = normalizeMiniPath(matcher.group(2));
+            String role = normalizeRole(matcher.group(3));
+            if (StringUtils.hasText(path) && role != null) {
+                out.put(matcher.group(1) + "|" + path, role);
+            }
+        }
+        return out;
+    }
+
+    /** 格子名：老写法是 {@code title="名字"}，现在多半是插槽里的 {@code mine-cell-title-text}。 */
+    private static String miniCellTitle(String attrs, String body) {
+        Matcher attr = MINI_CELL_TITLE_ATTR.matcher(attrs);
+        if (attr.find()) return attr.group(1).trim();
+        Matcher slot = MINI_CELL_TITLE_SLOT.matcher(body);
+        return slot.find() ? slot.group(1).trim() : null;
     }
 
     private void addMiniQuickEntriesFromWxml(List<NodeSeed> out, String wxml, Map<String, FunctionRoute> routes, String source) {
@@ -606,7 +751,12 @@ public class PagePermissionService {
         if (!StringUtils.hasText(raw)) return null;
         String v = raw.trim();
         if (!v.startsWith("/")) v = "/" + v;
-        return v.replaceAll("/+", "/");
+        v = v.replaceAll("/+", "/");
+        // 分包页面收回主包形式：页面权限表与小程序运行时（pagePermission.js#normalizePath）同一口径
+        for (String prefix : MINI_SUBPKG_PREFIXES) {
+            if (v.startsWith(prefix)) return "/pages/" + v.substring(prefix.length());
+        }
+        return v;
     }
 
     private String inferWebMinRole(String path) {

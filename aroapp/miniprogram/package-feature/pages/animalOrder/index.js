@@ -234,7 +234,9 @@ Page({
     // 通用导出设置弹层（组件自包含）
     orderCfgShow: false,
     orderCfgParams: {},
-    orderCfgName: '', 
+    orderCfgName: '',
+    // 导出弹层的额外开关：**默认只导本周期**（不含预约单），与网页端导出弹窗同口径
+    orderCfgExtras: [{ key: 'currentCycleOnly', label: '只导本周期订单（不含预约单）', defaultOn: true }],
     orderExpanded: {},
     orderRangeInited: false,
     orderFrom: '',

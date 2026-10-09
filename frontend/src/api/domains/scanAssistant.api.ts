@@ -598,6 +598,19 @@ export async function fetchExportBlob(exportId: number): Promise<Blob | null> {
 }
 
 /**
+ * 按导出载荷里给的**相对地址**取文件（带登录态）。
+ *
+ * <p>有些导出不自己造表，走的就是页面那个「导出」按钮同一条接口 —— 后端把地址和筛选条件
+ * 交给载体（不在聊天里塞公开链接）。与 {@link fetchExportBlob} 的区别只在取哪儿：
+ * 一个是产物存档，一个是现算。
+ */
+export async function fetchExportByUrl(url: string): Promise<Blob> {
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.blob();
+}
+
+/**
  * 归档：用户下到的那份字节交回服务端，挂在这条导出上。
  *
  * 存的是**用户实际下到的那一份**，服务端不重算 —— 历史里再下才会与当时一模一样。

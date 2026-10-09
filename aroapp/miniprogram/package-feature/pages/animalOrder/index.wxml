@@ -669,6 +669,7 @@
       export-url="/api/reference-data/orders/export"
       params="{{ orderCfgParams }}"
       fallback-name="{{ orderCfgName }}"
+      extra-options="{{ orderCfgExtras }}"
       bind:close="onOrderCfgClose"
       bind:done="onOrderCfgDone"
     />

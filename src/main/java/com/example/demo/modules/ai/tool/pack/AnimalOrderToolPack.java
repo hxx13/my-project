@@ -2,20 +2,26 @@ package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.excel.SubtotalSummary;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.AiView;
 import com.example.demo.modules.ai.tool.SideEffect;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.ai.export.entity.AiExportArtifact;
 import com.example.demo.modules.referencedata.dto.RefOrderLineView;
 import com.example.demo.modules.referencedata.dto.RefOrderLogView;
 import com.example.demo.modules.referencedata.dto.RefOrderView;
 import com.example.demo.modules.referencedata.dto.RefOrderQuery;
+import com.example.demo.modules.referencedata.service.AnimalOrderExportService;
 import com.example.demo.modules.referencedata.service.RefOrderAccessPolicy;
 import com.example.demo.modules.referencedata.service.ReferenceDataService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,8 +60,17 @@ import java.util.function.Predicate;
  * 待处理→批准/驳回/取消；已批准→完成/取消/驳回；已完成/已驳回/已取消**是终态，不能再改**。
  *
  * <h2>不接的</h2>
- * 编辑待处理单（回填购物车那套）、从 ARO 导入、导出 Excel —— 前者是「购物车 + 原单替换」的多步流程，
- * 后两者是批量/文件动作，都在页面里做更稳。
+ * 编辑待处理单（回填购物车那套）、从 ARO 导入 —— 前者是「购物车 + 原单替换」的多步流程，
+ * 后者是同步动作，都在页面里做更稳。
+ *
+ * <h2>导出走的是页面那条接口</h2>
+ * 导出**不自己造表**：工具只把筛选条件拼成页面导出接口的地址（{@code /api/reference-data/orders/export}），
+ * 交给载体用它的登录态去取文件 —— 与页面「导出 Excel」按钮点下去走的是同一条路，
+ * 所以小计层级、可见范围（能不能看全量）都由服务端同一处判，不会两边不一致。
+ * 页面导出弹窗里那个「只导本周期订单（不含预约单）」开关同理由 {@code currentCycleOnly} 透传。
+ *
+ * <p>**小计那一步由工具把着**：没定小计就不给下载按钮，只回两枚可点选项 ——
+ * 光在提示词里写「先问小计」，真机上模型会直接给按钮跳过去（2026-10-09 实测）。
  */
 @Component
 public class AnimalOrderToolPack implements AiToolPack {
@@ -87,11 +102,14 @@ public class AnimalOrderToolPack implements AiToolPack {
 
     private final ReferenceDataService referenceDataService;
     private final RefOrderAccessPolicy accessPolicy;
+    private final AnimalOrderExportService exportService;
 
     public AnimalOrderToolPack(ReferenceDataService referenceDataService,
-                               RefOrderAccessPolicy accessPolicy) {
+                               RefOrderAccessPolicy accessPolicy,
+                               AnimalOrderExportService exportService) {
         this.referenceDataService = referenceDataService;
         this.accessPolicy = accessPolicy;
+        this.exportService = exportService;
     }
 
     @Override
@@ -144,7 +162,20 @@ public class AnimalOrderToolPack implements AiToolPack {
                 - 状态不能倒着改：**已完成 / 已驳回 / 已取消是终态**，用户要改这类单就如实说改不了。
                 - **审批资格看的是身份标识，不是角色**：页面上的条件是「**学生账号不给审** ＋ 持**业务**标签的人才能审」，
                   所以管理员也未必有资格。能力闸会先把没资格的人挡住 —— 你不要因为用户自称管理员就去试，
-                  被挡了就如实说「这块要业务身份的账号来批」。""";
+                  被挡了就如实说「这块要业务身份的账号来批」。
+                - **导出 Excel**（页面右上角那个按钮）走 prepareAnimalOrderExport：用户说「导出来 / 导出成表格」
+                  就调它，参数就是上面那套筛选项，别另编。
+                  **小计那一步由工具把着，不是靠你记**：第一次调（没说小计）它**不给下载按钮**，
+                  只回两枚可点选项（按默认 / 我自己挑）—— 把那道题**交给用户点**，别在正文里复述选项；
+                  他选完你再调一次（mode=default 或 mode=custom），选「自己挑」的会拿到一道多选，
+                  把用户勾的那些**值**原样放进 levels 再调一次，这时才会有下载按钮。
+                  用户自己就说了层级（「只要总计」）→ 直接带 levels 调，跳过那两问。
+                  **下载按钮不是 URL**：任何一步都**不要把地址写进正文**。
+                  导出是**只读**的（只是把当前筛出来的单子落成表），不会有确认弹窗，也不必说「已批准」之类的话。
+                - **导出默认「只导本周期订单（不含预约单）」** —— 与网页端导出弹窗、小程序导出弹层同口径。
+                  用户没提就照默认导（**不用问他**，问句里已经带了一句说明）；
+                  他说「连预约单一起导 / 全都要」才传 currentCycleOnly=false。
+                  这个开关**只作用于导出**，不影响列表查询。""";
     }
 
     @Override
@@ -158,10 +189,207 @@ public class AnimalOrderToolPack implements AiToolPack {
 
     @Override
     public List<AiTool> tools() {
-        return List.of(listOrders(), listFilterOptions(), getOrderDetail(), reviewOrder());
+        return List.of(listOrders(), listFilterOptions(), getOrderDetail(), reviewOrder(),
+                prepareOrderExport());
     }
 
-    // ── 一、查询订单（页面上的筛选项全带上） ──
+    // ── 二、导出（走页面「导出 Excel」那条接口，不自己造表） ──
+
+    private AiTool prepareOrderExport() {
+        return new AiTool(
+                "prepareAnimalOrderExport",
+                "把当前筛选的**订购单导出成 Excel** —— 与页面右上角「导出 Excel」按钮**同一条接口**，"
+                        + "编号规矩、小计层级、可见范围都跟页面一致。"
+                        + "**小计怎么配不许跳过**：第一次调（没说小计）它不给下载按钮，只回两枚可点选项"
+                        + "（按默认 / 我自己挑）；用户点完你再调一次（mode=default 或 mode=custom），"
+                        + "选「自己挑」的会拿到一道多选，勾完把那些值放进 levels 再调一次，才出下载按钮。"
+                        + "**正文里让用户点按钮，不要把地址写出来**。",
+                exportFilterSchema(), CAP_ORDER_QUERY, SideEffect.READ,
+                (ctx, args) -> doPrepareExport(ctx.actor(), args));
+    }
+
+    private Map<String, Object> doPrepareExport(User user, JsonNode args) {
+        RefOrderQuery q = buildQuery(args);
+        // **默认只导本周期订单（不含预约单）** —— 与网页端导出弹窗、小程序导出弹层现在的默认值一致。
+        // 用户明说「连预约单一起导 / 全都要」才传 currentCycleOnly=false 关掉。
+        // 它只作用于导出，所以这里单独设。
+        boolean cycleOnly = !"false".equalsIgnoreCase(text(args, "currentCycleOnly"));
+        if (cycleOnly) {
+            q.setCurrentCycleOnly(Boolean.TRUE);
+        }
+        List<RefOrderView> rows;
+        SubtotalSummary sum;
+        try {
+            rows = exportRows(user, q);
+            sum = exportService.summarizeReview(rows);
+        } catch (Exception e) {
+            return Map.of("ok", false, "reason", "没取到数：" + e.getMessage());
+        }
+        int detailRows = sum.totals() == null ? 0 : sum.totals().detailRows();
+        int blocks = sum.totals() == null ? 0 : sum.totals().blocks();
+        int subtotalRows = 0;
+        if (sum.totals() != null && sum.totals().subtotals() != null) {
+            for (Integer n : sum.totals().subtotals().values()) {
+                subtotalRows += n == null ? 0 : n;
+            }
+        }
+        if (detailRows == 0) {
+            // 空表不给按钮：造一份空文件既没用又让人以为导成功了（与物资审计导出同口径）
+            return Map.of("ok", false, "detailRows", 0, "reason",
+                    "这个筛选组合下没有订单，导出来会是空表。先让用户放宽条件再导。",
+                    "note", "如实说没有符合条件的单子，问他要不要换时间段/换课题组。");
+        }
+
+        String levels = text(args, "levels");
+        String mode = text(args, "mode");
+
+        // ① 还没定小计怎么配 → **只给选项、不给按钮**。这一步由工具强制，模型跳不过去
+        //    （光靠提示词写过「先问小计」，真机上模型照样直接给了按钮）。
+        if (levels.isEmpty() && mode.isEmpty()) {
+            List<Map<String, Object>> chips = new ArrayList<>();
+            chips.add(AiChoices.option("按默认（" + String.join(" / ", levelLabels(sum)) + " 都保留）", "default"));
+            chips.add(AiChoices.option("我自己挑要哪些小计", "custom"));
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.put("detailRows", detailRows);
+            out.put("blocks", blocks);
+            out.put("availableLevels", levelLabels(sum));
+            // 问句里把页面导出弹窗那个开关也带一句 —— 它是导出专有的，而且**默认就开着**
+            // 读法与弹窗一致：「N 个板块 · M 行明细 · 各级小计 K 条」。
+            out.putAll(AiChoices.single("这批 " + blocks + " 个板块 · " + detailRows + " 行明细 · 各级小计 "
+                    + subtotalRows + " 条 —— 小计怎么配？（默认只导本周期、不含预约单；"
+                    + "要连预约单一起导就说一声）", chips));
+            out.put("note", "把上面这枚问题**交给用户点**（界面会渲染成可点选项），**这一轮不要给下载按钮**。"
+                    + "他选「按默认」→ 再调一次本工具带 mode=default；"
+                    + "选「我自己挑」→ 再调一次带 mode=custom（会拿到一道多选）。"
+                    + "他要是另外说了「连预约单一起导 / 全都要」，再调时带上 currentCycleOnly=false。"
+                    + "**正文里不要把选项复述一遍**，就把问题交出去。");
+            return out;
+        }
+
+        // ② 他自己挑 → 回一道多选，仍然不给按钮
+        if ("custom".equalsIgnoreCase(mode)) {
+            List<Map<String, Object>> opts = new ArrayList<>();
+            for (String lv : orEmptyList(sum.levels())) {
+                opts.add(AiChoices.option(levelLabel(sum, lv), lv));
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.putAll(AiChoices.multi("要保留哪些小计层级？（可多选，勾完点确认）", opts));
+            out.put("note", "把问题交给用户勾。他勾完会把这些**值**用逗号连起来回给你 —— "
+                    + "把那一串原样放进 levels 再调一次本工具，就会有下载按钮了。");
+            return out;
+        }
+
+        // ③ 定了（mode=default 或直接给了 levels）→ 出下载
+        Map<String, Object> dl = new LinkedHashMap<>();
+        dl.put("kind", AiExportArtifact.KIND_ANIMAL_ORDER);
+        dl.put("label", exportLabel(args));
+        dl.put("params", Map.of("url", exportUrl(args, cycleOnly)));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("detailRows", detailRows);
+        out.put("levels", levels.isEmpty() ? "（全保留）" : levels);
+        out.put("download", dl);
+        out.put("note", "告诉用户这批 **" + detailRows + " 行**、点下面的按钮下载。"
+                + "**不要把任何 URL 写进正文**，也不要自己把表画一遍。");
+        return out;
+    }
+
+    private static List<String> orEmptyList(List<String> l) {
+        return l == null ? List.of() : l;
+    }
+
+    private static List<String> levelLabels(SubtotalSummary sum) {
+        List<String> out = new ArrayList<>();
+        for (String lv : orEmptyList(sum.levels())) {
+            out.add(levelLabel(sum, lv));
+        }
+        return out;
+    }
+
+    private static String levelLabel(SubtotalSummary sum, String level) {
+        Map<String, String> labels = sum.levelLabels();
+        String label = labels == null ? null : labels.get(level);
+        return label == null || label.isBlank() ? level : label;
+    }
+
+    /** 与 Controller 的取数口径一字不差：有业务标签/超管看全量，其余人只看本人课题组。 */
+    private List<RefOrderView> exportRows(User user, RefOrderQuery q) {
+        return accessPolicy.canSeeAll(user)
+                ? referenceDataService.listOrdersForExport(q)
+                : referenceDataService.listMyGroupOrdersForExport(user.getId(), q);
+    }
+
+    /** 导出的筛选项与查询**同一套**，另加两个小计参数（与页面导出弹窗传的一样）。 */
+    private static String exportFilterSchema() {
+        return """
+                {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["PENDING","APPROVED","REJECTED","COMPLETED","CANCELLED"], "description": "只看某个状态" },
+                    "statusNot": { "type": "string", "enum": ["PENDING","APPROVED","REJECTED","COMPLETED","CANCELLED"], "description": "排除某状态" },
+                    "projectGroup": { "type": "string", "description": "课题组全称" },
+                    "strain": { "type": "string", "description": "具体品系名（如 C57BL/6）" },
+                    "supplier": { "type": "string", "description": "供应商" },
+                    "room": { "type": "string", "description": "投递房间" },
+                    "collector": { "type": "string", "description": "领用人" },
+                    "aup": { "type": "string", "description": "AUP 编号" },
+                    "sn": { "type": "string", "description": "订单号" },
+                    "source": { "type": "string", "description": "来源" },
+                    "campus": { "type": "string", "description": "校区" },
+                    "from": { "type": "string", "description": "提交日期起 yyyy-MM-dd" },
+                    "to": { "type": "string", "description": "提交日期止 yyyy-MM-dd" },
+                    "isPreorder": { "type": "string", "enum": ["1","0"], "description": "1=只要预约单；0=排除预约单" },
+                    "currentCycleOnly": { "type": "string", "enum": ["true","false"], "description": "「只导本周期订单（不含预约单）」。**默认就是只导本周期**（与页面导出弹窗一致）；用户说「连预约单一起导 / 全都要」才传 false。它**只作用于导出**，不影响列表查询" },
+                    "levels": { "type": "string", "description": "**要保留**的小计层级，逗号分隔（total,lv1,lv2,lv3）。不传=默认全保留" },
+                    "excludeBlocks": { "type": "string", "description": "不要小计的板块 key，逗号分隔（可选）" },
+                    "mode": { "type": "string", "enum": ["default","custom"], "description": "用户对小计的回答：default=按默认全保留；custom=他要自己挑（会给回一道多选）" }
+                  },
+                  "additionalProperties": false
+                }""";
+    }
+
+    /** 下载卡上那行字，同时当文件名 —— 别带 `\\ / : * ? " < > |`。 */
+    private static String exportLabel(JsonNode args) {
+        String from = text(args, "from");
+        String to = text(args, "to");
+        String status = text(args, "status");
+        StringBuilder sb = new StringBuilder("订购审核");
+        sb.append('-').append(from.isEmpty() ? "全部" : from);
+        if (!to.isEmpty()) sb.append('至').append(to);
+        if (!status.isEmpty()) sb.append('-').append(STATUS_ZH.getOrDefault(status, status));
+        String group = text(args, "projectGroup");
+        if (!group.isEmpty()) sb.append('-').append(group);
+        return sb.toString().replaceAll("[\\\\/:*?\"<>|]", "_");
+    }
+
+    /**
+     * 页面导出接口的**相对**地址 —— 载体带自己的登录态去取，服务端不签发公开链接。
+     *
+     * <p>前缀是 {@code /api/reference-data}（控制器上的 {@code @RequestMapping} 就是这么挂的）：
+     * 网页端 `authHttp` 的 baseURL 是 `/api`、Vite 再把 `/api` 转到后端；小程序直接把
+     * 这个路径拼在站点根后面。**少写 `/api` 两个端都会 404。**
+     */
+    private static String exportUrl(JsonNode args, boolean cycleOnly) {
+        StringBuilder qs = new StringBuilder();
+        for (String k : new String[]{"status", "statusNot", "projectGroup", "strain", "supplier", "room",
+                "collector", "aup", "sn", "source", "campus", "from", "to", "isPreorder",
+                "levels", "excludeBlocks"}) {
+            String v = text(args, k);
+            if (v.isEmpty()) continue;
+            if (qs.length() > 0) qs.append('&');
+            qs.append(k).append('=').append(URLEncoder.encode(v, StandardCharsets.UTF_8));
+        }
+        // 默认开着，所以无论用户提没提都要显式带上（不带 = 服务端按「全部」处理，默认就失效了）
+        if (cycleOnly) {
+            if (qs.length() > 0) qs.append('&');
+            qs.append("currentCycleOnly=true");
+        }
+        return "/api/reference-data/orders/export" + (qs.length() == 0 ? "" : "?" + qs);
+    }
+
+    // ── 三、查询订单（页面上的筛选项全带上） ──
 
     private AiTool listOrders() {
         String schema = """

@@ -20,6 +20,8 @@ public class AiExportArtifact {
 
     /** 本轮只有物资申领审计这一种；以后接别的导出域就加常量。 */
     public static final String KIND_MATERIAL_AUDIT = "materialAudit";
+    /** 订购审核导出 —— 走页面那条导出接口，载体按 `params.url` 去取。 */
+    public static final String KIND_ANIMAL_ORDER = "animalOrder";
 
     private Long id;
     private Long sessionId;

@@ -2,6 +2,7 @@ package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.excel.SubtotalSummary;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolContext;
 import com.example.demo.modules.ai.tool.AiView;
@@ -9,6 +10,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.referencedata.dto.RefOrderLineView;
 import com.example.demo.modules.referencedata.dto.RefOrderQuery;
 import com.example.demo.modules.referencedata.dto.RefOrderView;
+import com.example.demo.modules.referencedata.service.AnimalOrderExportService;
 import com.example.demo.modules.referencedata.service.RefOrderAccessPolicy;
 import com.example.demo.modules.referencedata.service.ReferenceDataService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,6 +20,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +54,7 @@ class AnimalOrderToolPackTest {
 
     private ReferenceDataService referenceDataService;
     private RefOrderAccessPolicy accessPolicy;
+    private AnimalOrderExportService exportService;
     private AnimalOrderToolPack pack;
     private final ObjectMapper om = new ObjectMapper();
 
@@ -57,7 +62,8 @@ class AnimalOrderToolPackTest {
     void setUp() {
         referenceDataService = mock(ReferenceDataService.class);
         accessPolicy = mock(RefOrderAccessPolicy.class);
-        pack = new AnimalOrderToolPack(referenceDataService, accessPolicy);
+        exportService = mock(AnimalOrderExportService.class);
+        pack = new AnimalOrderToolPack(referenceDataService, accessPolicy, exportService);
     }
 
     private static User user(RoleEnum role) {
@@ -251,5 +257,149 @@ class AnimalOrderToolPackTest {
         assertNull(tool("reviewAnimalOrder").resolveBeforeConfirmOrNull(
                 new AiToolContext(user(RoleEnum.STAFF), 1L, 2L, null),
                 om.readTree("{\"order\":\"SN7\",\"decision\":\"批准\"}")));
+    }
+
+    // ── 导出：走页面那条接口，不自己造表；小计那一步由工具把着 ──
+
+    private static SubtotalSummary summary(int detailRows, int blocks) {
+        // 层级码与真机一致：total/lv1/lv2/lv3（SubtotalConfig 就认这几个）
+        return new SubtotalSummary(
+                List.of("total", "lv1", "lv2", "lv3"),
+                Map.of("total", "总计", "lv1", "课题组小计", "lv2", "申领人小计", "lv3", "物品小计"),
+                List.of(),
+                new SubtotalSummary.Totals(detailRows, blocks, Map.of()));
+    }
+
+    private void mockExportRows(int rows, int blocks) {
+        when(accessPolicy.canSeeAll(any())).thenReturn(true);
+        when(referenceDataService.listOrdersForExport(any())).thenReturn(List.of(order(1L, "SN1", "PENDING")));
+        when(exportService.summarizeReview(any())).thenReturn(summary(rows, blocks));
+    }
+
+    @Test
+    @DisplayName("导出第一步不给按钮，先问小计怎么配 —— 这一步由工具把着，模型跳不过去")
+    void prepareAsksAboutSubtotalBeforeGivingDownload() throws Exception {
+        mockExportRows(4, 3);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport", "{\"status\":\"PENDING\"}");
+        assertEquals(Boolean.TRUE, out.get("ok"));
+        assertNull(out.get("download"), "还没定小计就不该给下载按钮（真机就是这里跳过了）");
+        assertEquals(4, out.get("detailRows"), "顺手把行数报给用户");
+
+        List<?> choices = (List<?>) out.get("choices");
+        assertNotNull(choices, "要把「按默认 / 我自己挑」做成可点选项");
+        assertEquals(2, choices.size());
+        assertEquals("default", ((Map<?, ?>) choices.get(0)).get("value"));
+        assertEquals("custom", ((Map<?, ?>) choices.get(1)).get("value"));
+        assertTrue(String.valueOf(out.get("choicesTitle")).contains("4 行"), String.valueOf(out.get("choicesTitle")));
+    }
+
+    @Test
+    @DisplayName("选「自己挑」→ 回一道多选（层级码是 total/lv1/…），仍然不给按钮")
+    void prepareCustomReturnsLevelMultiSelect() throws Exception {
+        mockExportRows(4, 3);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport", "{\"status\":\"PENDING\",\"mode\":\"custom\"}");
+        assertNull(out.get("download"), "勾完层级才给按钮");
+        List<?> questions = (List<?>) out.get("questions");
+        assertNotNull(questions, "自己挑走的是多选通道");
+        Map<?, ?> q = (Map<?, ?>) questions.get(0);
+        assertEquals(Boolean.TRUE, q.get("multiSelect"));
+        List<?> opts = (List<?>) q.get("options");
+        assertEquals(4, opts.size());
+        assertEquals("total", ((Map<?, ?>) opts.get(0)).get("value"), "value 要给后端能认的层级码");
+        assertEquals("总计", ((Map<?, ?>) opts.get(0)).get("label"), "label 给人看");
+    }
+
+    @Test
+    @DisplayName("选「按默认」→ 出下载按钮，地址里带筛选项（相对地址，不带 levels）")
+    void prepareDefaultGivesDownloadUrl() throws Exception {
+        mockExportRows(8, 1);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport",
+                "{\"from\":\"2026-06-01\",\"to\":\"2026-09-30\",\"status\":\"PENDING\",\"mode\":\"default\"}");
+        assertEquals(Boolean.TRUE, out.get("ok"));
+        assertEquals(8, out.get("detailRows"));
+
+        Map<?, ?> dl = (Map<?, ?>) out.get("download");
+        assertNotNull(dl, "定了小计就该出下载卡载荷");
+        assertEquals("animalOrder", dl.get("kind"));
+        String url = String.valueOf(((Map<?, ?>) dl.get("params")).get("url"));
+        assertTrue(url.startsWith("/api/reference-data/orders/export?"), url);
+        assertFalse(url.startsWith("http"), "给相对地址 —— 载体带自己的登录态去取，后端不签发公开链接：" + url);
+        assertTrue(url.contains("from=2026-06-01"), url);
+        assertTrue(url.contains("status=PENDING"), url);
+        assertFalse(url.contains("levels="), "按默认 = 不带 levels（服务端全保留）：" + url);
+        assertTrue(url.contains("currentCycleOnly=true"),
+                "**默认就只导本周期**（与页面导出弹窗同口径），用户没提也要带上：" + url);
+        ArgumentCaptor<RefOrderQuery> cap = ArgumentCaptor.forClass(RefOrderQuery.class);
+        verify(referenceDataService).listOrdersForExport(cap.capture());
+        assertEquals(Boolean.TRUE, cap.getValue().getCurrentCycleOnly(), "取数口径也要跟导出内容一致");
+    }
+
+    @Test
+    @DisplayName("用户要连预约单一起导 → currentCycleOnly=false，默认被关掉")
+    void prepareCanTurnCycleOnlyOff() throws Exception {
+        mockExportRows(4, 3);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport",
+                "{\"status\":\"PENDING\",\"mode\":\"default\",\"currentCycleOnly\":\"false\"}");
+        Map<?, ?> dl = (Map<?, ?>) out.get("download");
+        String url = String.valueOf(((Map<?, ?>) dl.get("params")).get("url"));
+        assertFalse(url.contains("currentCycleOnly"), "关掉时不该再带这个参数（服务端按全部处理）：" + url);
+        ArgumentCaptor<RefOrderQuery> cap = ArgumentCaptor.forClass(RefOrderQuery.class);
+        verify(referenceDataService).listOrdersForExport(cap.capture());
+        assertNull(cap.getValue().getCurrentCycleOnly());
+    }
+
+    @Test
+    @DisplayName("小计层级原样进地址；中文筛选项要编码")
+    void prepareCarriesPickedLevelsAndEncodes() throws Exception {
+        mockExportRows(4, 3);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport",
+                "{\"levels\":\"total,lv1\",\"projectGroup\":\"郑俊克的课题组\"}");
+        Map<?, ?> dl = (Map<?, ?>) out.get("download");
+        assertNotNull(dl, "明确给了 levels 就直接出按钮，不再问");
+        String url = String.valueOf(((Map<?, ?>) dl.get("params")).get("url"));
+        assertTrue(url.contains("levels=total%2Clv1") || url.contains("levels=total,lv1"), url);
+        assertTrue(url.contains(URLEncoder.encode("郑俊克的课题组", StandardCharsets.UTF_8)), "中文要编码：" + url);
+    }
+
+    @Test
+    @DisplayName("导出：空表不给下载按钮（造一份空文件只会让人以为导成功了）")
+    void prepareRefusesEmptyResult() throws Exception {
+        mockExportRows(0, 0);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport", "{\"status\":\"PENDING\",\"mode\":\"default\"}");
+        assertEquals(Boolean.FALSE, out.get("ok"));
+        assertNull(out.get("download"));
+    }
+
+    @Test
+    @DisplayName("导出的可见范围由服务端判：非业务身份只导出本人课题组")
+    void prepareNarrowsScopeForNonBusinessUser() throws Exception {
+        when(accessPolicy.canSeeAll(any())).thenReturn(false);
+        when(referenceDataService.listMyGroupOrdersForExport(anyString(), any()))
+                .thenReturn(List.of(order(1L, "SN1", "PENDING")));
+        when(exportService.summarizeReview(any())).thenReturn(summary(1, 1));
+
+        Map<String, Object> out = run("prepareAnimalOrderExport", "{\"mode\":\"default\"}");
+        assertEquals(Boolean.TRUE, out.get("ok"));
+        verify(referenceDataService).listMyGroupOrdersForExport(eq("STAFF_u"), any());
+        verify(referenceDataService, never()).listOrdersForExport(any());
+    }
+
+    @Test
+    @DisplayName("下载卡上那行字干净（能当文件名，不带路径分隔符）")
+    void exportLabelIsFilenameSafe() throws Exception {
+        mockExportRows(3, 1);
+
+        Map<String, Object> out = run("prepareAnimalOrderExport",
+                "{\"from\":\"2026-06-01\",\"to\":\"2026-09-30\",\"status\":\"PENDING\",\"mode\":\"default\",\"projectGroup\":\"A/B\\\\C\"}");
+        String label = String.valueOf(((Map<?, ?>) out.get("download")).get("label"));
+        assertTrue(label.contains("2026-06-01"), label);
+        assertTrue(label.contains("待处理"), "状态要用人话：" + label);
+        assertFalse(label.matches(".*[\\\\/:*?\"<>|].*"), "不能带文件名非法字符：" + label);
     }
 }
