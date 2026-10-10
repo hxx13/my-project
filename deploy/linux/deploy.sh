@@ -56,8 +56,14 @@ fi
 # Step 1/8: git pull
 echo "=== Step 1/8: git pull ==="
 cd "$REPO_DIR"
-# 丢弃 npm build 自动生成文件的本地改动，避免冲突
+# 丢弃 npm build 自动生成文件的本地改动，避免冲突。
+# 这些文件由 frontend/package.json 的 build 前置脚本写出，每次构建都会覆盖一遍，
+# 于是工作区恒为脏、下一次 git pull 必冲突（2026-10-10 实测卡住部署）：
+#   export-admin-nav-manifest.mjs → src/main/resources/page-permission/admin-nav.manifest.json
+#   copy-mini-assets.mjs          → frontend/public/mobile-student-icons/*.png、frontend/public/images/logohs.png
+# 都是**可从源码重新生成**的产物，丢弃安全 —— 本轮构建随后会按最新源码再写一遍。
 git checkout -- src/main/resources/page-permission/admin-nav.manifest.json 2>/dev/null || true
+git checkout -- frontend/public/mobile-student-icons/ frontend/public/images/logohs.png 2>/dev/null || true
 git pull origin master
 echo "  当前 commit: $(git rev-parse --short HEAD)"
 
