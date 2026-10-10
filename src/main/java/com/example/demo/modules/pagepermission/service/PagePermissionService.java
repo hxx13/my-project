@@ -882,6 +882,7 @@ public class PagePermissionService {
                 || path.startsWith("/admin/access-fusion")
                 || path.startsWith("/admin/access-clean-rule-profiles")
                 || path.startsWith("/admin/telemetry-insights")
+                || path.startsWith("/admin/telemetry-longterm")
                 || path.startsWith("/animal-room-telemetry")
                 || path.startsWith("/animal-room-cockpit")
                 || path.startsWith("/digital-twin-screen")

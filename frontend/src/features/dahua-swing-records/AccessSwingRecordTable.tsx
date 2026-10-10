@@ -26,7 +26,7 @@ type Props = {
 
 function OpenResultBadge({ result, label }: { result?: number; label?: string }) {
   const text = labelOpenResult(result, label);
-  if (text === "-") return <span className="text-slate-400">-</span>;
+  if (text === "-") return <span className="text-[var(--app-color-text-tertiary)]">-</span>;
   const ok = result === 1 || text === "成功";
   return (
     <span
@@ -53,7 +53,7 @@ export function AccessSwingRecordTable({ rows, loading, emptyHint = "暂无记�
   return (
     <div className="admin-data-table-wrap h-full overflow-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
       <table className="w-full min-w-[1320px] text-xs">
-        <thead className="bg-slate-50 text-slate-600 sticky top-0 z-[1]">
+        <thead>
           <tr>
             <th className="px-2 py-2 text-left whitespace-nowrap">刷卡时间</th>
             <th className="px-2 py-2 text-left">拉取</th>
@@ -75,19 +75,19 @@ export function AccessSwingRecordTable({ rows, loading, emptyHint = "暂无记�
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={COL_COUNT} className="px-3 py-8 text-center text-slate-400">
+              <td colSpan={COL_COUNT} className="px-3 py-8 text-center text-[var(--app-color-text-tertiary)]">
                 加载中…
               </td>
             </tr>
           ) : rows.length === 0 ? (
             <tr>
-              <td colSpan={COL_COUNT} className="px-3 py-8 text-center text-slate-400">
+              <td colSpan={COL_COUNT} className="px-3 py-8 text-center text-[var(--app-color-text-tertiary)]">
                 {emptyHint}
               </td>
             </tr>
           ) : (
             rows.map((r) => (
-              <tr key={`${r.taskId}-${r.recordId}`} className="border-t hover:bg-slate-50/80">
+              <tr key={`${r.taskId}-${r.recordId}`}>
                 <td className="px-2 py-1.5 whitespace-nowrap">{r.swingTime || "-"}</td>
                 <td className="px-2 py-1.5">
                   {r.pullTaskType ? PULL_TYPE_LABEL[r.pullTaskType] || r.pullTaskType : "-"}
@@ -113,10 +113,13 @@ export function AccessSwingRecordTable({ rows, loading, emptyHint = "暂无记�
                 <td className="px-2 py-1.5 min-w-[100px]">
                   <div className="flex flex-wrap gap-0.5">
                     {(r.tags || []).length === 0 ? (
-                      <span className="text-slate-400">-</span>
+                      <span className="text-[var(--app-color-text-tertiary)]">-</span>
                     ) : (
                       (r.tags || []).map((t) => (
-                        <span key={t} className="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-600">
+                        <span
+                          key={t}
+                          className="rounded bg-[var(--app-color-surface-hover)] px-1 py-0.5 text-[10px] text-[var(--app-color-text-secondary)]"
+                        >
                           {TAG_LABEL[t] || t}
                         </span>
                       ))

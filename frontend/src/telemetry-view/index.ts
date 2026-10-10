@@ -20,6 +20,7 @@ export {
   ANIMAL_ROOM_SOLO_GRID_MAX_COLS_PER_ROW,
   soloMinCardPxForPartition,
   splitEvenRowSizes,
+  splitSoloSlicesBalanced,
   suiteHasChrome,
   suiteLatestMsPrepared,
   SOLO_BALANCED_GRID_MAX_COLS,

@@ -12,6 +12,7 @@
 import type { AnimalRoomHubViewChunk } from "../api/telemetryApi";
 import { ANIMAL_ROOM_HVAC_TAB_KEY } from "./animalTelemetryHvacUnits";
 import type { FloorChunk, PreparedSuite } from "./floorChunks";
+import { splitSoloSlicesBalanced } from "./floorChunks";
 import { isBasementFloorTabKey } from "./structuredTabs";
 import type { TelemetryStructuredMetricSlot, TelemetryStructuredRoomCard } from "./types";
 
@@ -80,32 +81,27 @@ function hubSoloRelayCardCount(ch: AnimalRoomHubViewChunk): number {
   return n;
 }
 
-/** 将服务端 solos partition 拆成每块 ≤3 张卡片的 viewChunk，供双栏分列拉齐累计视觉行高 */
+/** 将服务端 solos partition 拆成每块 ≤3 张卡片的 viewChunk，供双栏分列拉齐累计视觉行高。
+ *  按**整块的卡片**均分切片，避免服务端 3+1 那种「末块只剩 1 张还被拉满整行」的切法：4 张 → 2+2。 */
 function pushHubSoloRelayUnitsFromChunk(out: AnimalRoomHubViewChunk[], ch: AnimalRoomHubViewChunk): void {
   const parts = ch.partitions ?? [];
   for (let pi = 0; pi < parts.length; pi++) {
     const part = parts[pi]!;
-    const rows = part.rows ?? [];
-    for (let ri = 0; ri < rows.length; ri++) {
-      const row = rows[ri];
-      const cards = row.cards ?? [];
-      if (cards.length === 0) continue;
-      for (let ci = 0; ci < cards.length; ci += HUB_SOLO_RELAY_MAX_CARDS_PER_UNIT) {
-        const slice = cards.slice(ci, ci + HUB_SOLO_RELAY_MAX_CARDS_PER_UNIT);
-        const showHeader = ci === 0;
-        out.push({
-          kind: "solos",
-          key: `${ch.key}-relay-p${pi}-r${ri}-c${ci}`,
-          partitions: [
-            {
-              label: showHeader ? part.label : "",
-              zoneSub: showHeader ? part.zoneSub ?? undefined : undefined,
-              rows: [{ cards: slice }],
-            },
-          ],
-        } as AnimalRoomHubViewChunk);
-      }
-    }
+    const cards = (part.rows ?? []).flatMap((r) => r.cards ?? []);
+    if (cards.length === 0) continue;
+    splitSoloSlicesBalanced(cards, HUB_SOLO_RELAY_MAX_CARDS_PER_UNIT).forEach((slice, si) => {
+      out.push({
+        kind: "solos",
+        key: `${ch.key}-relay-p${pi}-c${si}`,
+        partitions: [
+          {
+            label: si === 0 ? part.label : "",
+            zoneSub: si === 0 ? part.zoneSub ?? undefined : undefined,
+            rows: [{ cards: slice }],
+          },
+        ],
+      } as AnimalRoomHubViewChunk);
+    });
   }
 }
 
@@ -207,29 +203,63 @@ export function packHubChunksIntoRows(
   return rows;
 }
 
+/**
+ * 满宽套间在「单间三列一行」量纲下的高度：**表头 + 房间按 3 列铺出的行数**。
+ *
+ * 原来用 `suitePreparedBalanceWeight / 2.8`（权重按 房间×1.15 + 满宽 +3.2 线性堆），
+ * 与实测高度不成比例：两间套间权重算下来 ≈2.75 行，实际只渲染 ≈1.3 行（223px，而一行单间 167px）。
+ * 系统性高估套间 → 分列时把套间全推向一侧，另一侧只剩单间卡，于是「一边短一边长」。
+ * 系数按实测标定（2 间 1 行 → 1.30；动力站 7 间 3 行 → 3.20，实测 1.34 / 3.36 行）。
+ */
+function suitePreparedRowEstimate(prepared: PreparedSuite): number {
+  const rooms = visibleRoomCountInPreparedSuite(prepared);
+  const rows = Math.max(1, Math.ceil(rooms / 3));
+  const slots = (prepared.titleSlots ?? []).length;
+  const sp = countSetpointParamsInPreparedSuite(prepared);
+  const h = 0.35 + rows * 0.95 + Math.min(2, slots * 0.1) + Math.min(1, sp * 0.1);
+  return Math.round(h * 100) / 100;
+}
+
 /** 单列 pack 后一行在页面上的相对高度（与 solos 三列网格行高对齐的量纲） */
-function hubPackedRowVisualHeight(row: AnimalRoomHubViewChunk[]): number {
-  if (!row.length) return 0;
-  if (row.length > 1) {
-    if (row.every((c) => hubChunkIsZoneCard(c))) return 0.55;
-    return 1;
+/** solos 单元里单张卡的**最多测点数**：一行的高度由最高的那张卡决定 */
+function hubSoloRelayMaxMetrics(ch: AnimalRoomHubViewChunk): number {
+  let m = 0;
+  for (const p of ch.partitions ?? []) {
+    for (const row of p.rows ?? []) {
+      for (const card of row.cards ?? []) {
+        m = Math.max(m, card.metrics?.length ?? 0);
+      }
+    }
   }
-  const ch = row[0]!;
+  return m;
+}
+
+/**
+ * 单间单元占一行的相对高度（1.0 = 三张三项参数卡一行）。
+ * 原来不论测点数一律算 1 行，可实测三项参数一行 167px、单项只有 101px —— 差 40%，
+ * 分列时把「一行多项」和「一行单项」当同高，算出来的左右高度自然对不上。
+ * 系数按实测标定：单项 0.60、三项 1.00。
+ */
+function hubSoloRowFactor(ch: AnimalRoomHubViewChunk): number {
+  const m = hubSoloRelayMaxMetrics(ch);
+  const f = 0.41 + 0.2 * m;
+  return Math.round(Math.max(0.55, Math.min(1.15, f)) * 100) / 100;
+}
+
+/** 单个接力单元独占一行时的相对高度 */
+function hubChunkRowHeight(ch: AnimalRoomHubViewChunk): number {
   if (hubChunkIsZoneCard(ch)) return 0.55;
-  if (hubChunkIsSolos(ch)) {
-    const c = hubSoloRelayCardCount(ch);
-    return Math.max(1, Math.ceil(c / 3));
-  }
+  if (hubChunkIsSolos(ch)) return hubSoloRowFactor(ch);
   if (hubChunkIsMicroChromeRow(ch)) return 1.25;
   if (ch.kind === "suite" && ch.prepared) {
     if (preparedSuiteWantsFullWidthRow(ch.prepared)) {
-      const w = suitePreparedBalanceWeight(ch.prepared);
-      return Math.max(1.35, Math.min(5.5, w / 2.8));
+      return suitePreparedRowEstimate(ch.prepared);
     }
     return 1;
   }
   if (ch.kind === "chromeSuiteRow" && ch.list?.length) {
-    let h = 0.9;
+    // 基数量取 0.2（行壳本身的厚度）：原来给 0.9，等于凭空多算一行，套间行被系统性高估。
+    let h = 0.2;
     for (const cell of ch.list) {
       if ((cell.webSoloMicroGrid?.filter(Boolean).length ?? 0) > 0) {
         h += 1.1;
@@ -237,16 +267,23 @@ function hubPackedRowVisualHeight(row: AnimalRoomHubViewChunk[]): number {
       }
       if (cell.prepared) {
         h += preparedSuiteWantsFullWidthRow(cell.prepared)
-          ? Math.max(1.2, Math.min(4, suitePreparedBalanceWeight(cell.prepared) / 3))
+          ? suitePreparedRowEstimate(cell.prepared)
           : 0.85;
       }
       for (const p of cell.webSidecarPreparedSuites ?? []) {
-        if (p) h += Math.max(0.9, Math.min(3, suitePreparedBalanceWeight(p) / 3.5));
+        if (p) h += suitePreparedRowEstimate(p);
       }
     }
     return Math.max(1.2, Math.min(6, h));
   }
   return 1;
+}
+
+function hubPackedRowVisualHeight(row: AnimalRoomHubViewChunk[]): number {
+  if (!row.length) return 0;
+  if (row.every((c) => hubChunkIsZoneCard(c))) return 0.55;
+  // 并排的单元共用一行高度，取其中最高的那个（原来固定返回 1，忽略并排单元本身的高低）
+  return Math.max(...row.map(hubChunkRowHeight));
 }
 
 function hubPackedColumnVisualHeight(packed: AnimalRoomHubViewChunk[][]): number {
@@ -587,21 +624,20 @@ function flattenFloorSegmentToRelayOrderInner(
           keyPrefix: string,
           opts: { firstLabel: string; firstZoneSub?: string }
         ) => {
-          for (let bi = 0; bi < sliceCards.length; bi += FLOOR_SOLO_RELAY_MAX_CARDS_PER_UNIT) {
-            const slice = sliceCards.slice(bi, bi + FLOOR_SOLO_RELAY_MAX_CARDS_PER_UNIT);
+          splitSoloSlicesBalanced(sliceCards, FLOOR_SOLO_RELAY_MAX_CARDS_PER_UNIT).forEach((slice, si) => {
             const p: (typeof ch.partitions)[number] = {
-              label: bi === 0 ? opts.firstLabel : "",
+              label: si === 0 ? opts.firstLabel : "",
               cards: slice,
             };
-            if (bi === 0 && opts.firstZoneSub != null && String(opts.firstZoneSub).trim() !== "") {
+            if (si === 0 && opts.firstZoneSub != null && String(opts.firstZoneSub).trim() !== "") {
               p.zoneSub = opts.firstZoneSub;
             }
             out.push({
               kind: "solos",
-              key: `${keyPrefix}-b${bi}`,
+              key: `${keyPrefix}-b${si}`,
               partitions: [p],
             });
-          }
+          });
         };
 
         if (anchor && part.label === "单间 · 三项参数") {
@@ -631,21 +667,20 @@ function flattenFloorSegmentToRelayOrderInner(
           continue;
         }
 
-        for (let bi = 0; bi < cards.length; bi += FLOOR_SOLO_RELAY_MAX_CARDS_PER_UNIT) {
-          const slice = cards.slice(bi, bi + FLOOR_SOLO_RELAY_MAX_CARDS_PER_UNIT);
+        splitSoloSlicesBalanced(cards, FLOOR_SOLO_RELAY_MAX_CARDS_PER_UNIT).forEach((slice, si) => {
           const p: (typeof ch.partitions)[number] = {
-            label: bi === 0 ? part.label : "",
+            label: si === 0 ? part.label : "",
             cards: slice,
           };
-          if (bi === 0 && part.zoneSub != null && String(part.zoneSub).trim() !== "") {
+          if (si === 0 && part.zoneSub != null && String(part.zoneSub).trim() !== "") {
             p.zoneSub = part.zoneSub;
           }
           out.push({
             kind: "solos",
-            key: `${ch.key}-relay-p${pi}-b${bi}`,
+            key: `${ch.key}-relay-p${pi}-b${si}`,
             partitions: [p],
           });
-        }
+        });
       }
       continue;
     }

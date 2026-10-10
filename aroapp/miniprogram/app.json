@@ -37,7 +37,8 @@
         "pages/trainingAdmin/review",
         "pages/animalOrder/index",
         "pages/orderTimeConfig/index",
-        "pages/violationAdmin/index"
+        "pages/violationAdmin/index",
+        "pages/telemetryLongterm/index"
       ]
     },
     {

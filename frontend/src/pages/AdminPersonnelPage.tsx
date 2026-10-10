@@ -192,7 +192,7 @@ export default function AdminPersonnelPage() {
       <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] flex-col gap-3">
         {/* 筛选卡 */}
         <AdminFormCard className="shrink-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-base font-bold text-[var(--app-color-text-primary)]">{pageLabel}</h2>
             <div className="flex flex-wrap items-center gap-2">
               {isSuperAdmin ? (

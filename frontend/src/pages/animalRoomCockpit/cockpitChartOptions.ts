@@ -437,7 +437,7 @@ function cockpitUnifiedFixedFiveGridBottomCoreReservePx(axisFontPx: number, shor
   const textW = COCKPIT_UNIFIED_AXIS_ALNUM_LEN * charW + 8;
   const ve = cockpitXAxisLabelVerticalExtentDeg(90, textW, fs);
   const downShift = Math.ceil(cockpitAxisAlphanumericCharWidthPx(axisFontPx));
-  const margin = (shortChart ? 6 : 10) + downShift;
+  const margin = (shortChart ? 3 : 6) + downShift;
   return Math.ceil(ve + margin);
 }
 
@@ -970,8 +970,20 @@ function cockpitComputePartitionGridLeftPx(layout: CockpitBarLayout, af: number,
 }
 
 /**
+ * 分区列内「行与行之间的上下留白」再收紧的像素数。
+ *
+ * 一行的 grid.bottom（横轴类目带）加上下一行的 grid.top（标题带），看上去就是两行柱图之间的空隙。
+ * 这两段各自留有余量，各收几个像素不会切到文字，收下来的高度让给顶栏把设备图标放大。
+ */
+const COCKPIT_PARTITION_ROW_GAP_TRIM_TOP_PX = 10;
+const COCKPIT_PARTITION_ROW_GAP_TRIM_BOTTOM_PX = 14;
+
+/**
  * 同列三图：横轴类目固定 90°、5 格英数字宽；grid.bottom = 各行按该占位估算取 max（再 floor）；
  * grid.left / grid.top 仍取各行上界。
+ *
+ * 上下两段留白按 {@link COCKPIT_PARTITION_ROW_GAP_TRIM_TOP_PX} 再收一点：同一列里「上一行的横轴带 +
+ * 下一行的标题带」看上去就是行与行之间的间隙，收下来的高度留给顶栏把图标放大。
  */
 export function computeCockpitPartitionUnifiedAxis(
   rooms: CockpitRoomBarRow[],
@@ -1038,9 +1050,9 @@ export function computeCockpitPartitionUnifiedAxis(
   }
 
   return {
-    bottom: unifiedBottom,
+    bottom: Math.max(BOTTOM_FLOOR, unifiedBottom - COCKPIT_PARTITION_ROW_GAP_TRIM_BOTTOM_PX),
     gridLeft: unifiedGridLeft,
-    gridTop: unifiedGridTop,
+    gridTop: Math.max(4, unifiedGridTop - COCKPIT_PARTITION_ROW_GAP_TRIM_TOP_PX),
     sharedAxisLabel: rotPick.axisLabel,
   };
 }

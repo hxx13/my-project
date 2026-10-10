@@ -32,17 +32,28 @@ export function useTypewriterText(fullText: string, options: Options = {}) {
     setDisplayed("");
     setDone(false);
     let index = 0;
-    const delayMs = Math.max(16, Math.round(1000 / cps));
-    const timer = window.setInterval(() => {
+    let delay = Math.max(16, Math.round(1000 / cps));
+    let timer = 0;
+    const tick = () => {
       index += 1;
       setDisplayed(text.slice(0, index));
       if (index >= text.length) {
         setDone(true);
-        window.clearInterval(timer);
+        return;
       }
-    }, delayMs);
+      /*
+       * **前段慢、越往后越快。**
+       *
+       * 开头按 cps 逐字（看得出「在生成」，不是一下子糊一整块），随后每字间隔按 1.5% 递减。
+       * 目的是长回答：700 字的表格逐字打完要 17 秒，人都等走了；这个曲线下同样的文本约 3 秒收尾，
+       * 而前十几个字仍然是逐字出来的，观感没变。下限 4ms 是浏览器定时器的实际粒度。
+       */
+      delay = Math.max(4, delay * 0.985);
+      timer = window.setTimeout(tick, delay);
+    };
+    timer = window.setTimeout(tick, delay);
 
-    return () => window.clearInterval(timer);
+    return () => window.clearTimeout(timer);
   }, [fullText, enabled, cps]);
 
   return {

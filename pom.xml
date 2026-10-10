@@ -108,6 +108,17 @@
             <artifactId>playwright</artifactId>
             <version>1.59.0</version>
         </dependency>
+        <!--
+            汉字转拼音。**只为一件事**：AI 里按姓名找人时把**谐音**也算进去 ——
+            用户名打错一个字（"王毓菲" ↔ 真名"王毓斐"，同音不同字）是常见情形，
+            只按字面比对就变成"查无此人"。谐音必须有拼音表，这个表造不出来，只能引库。
+            体积约 200KB，无传递依赖。
+        -->
+        <dependency>
+            <groupId>com.belerweb</groupId>
+            <artifactId>pinyin4j</artifactId>
+            <version>2.5.1</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-crypto</artifactId>

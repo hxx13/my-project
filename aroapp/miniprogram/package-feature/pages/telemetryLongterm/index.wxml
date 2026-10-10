@@ -1,0 +1,110 @@
+<subpage-nav-bar title="数据监测" />
+<view class="tl-page" style="min-height: calc(100vh - {{ navBarHeight }}px);">
+  <view class="tl-bar">
+    <view class="tl-day" hover-class="tl-day--hover" bindtap="openCal">
+      {{ day || '选择日期' }}<text class="tl-caret">▾</text>
+    </view>
+    <text wx:if="{{ day }}" class="tl-meta">采样槽 {{ columns.length }}/{{ slotCount }} · {{ rows.length }} 个变量</text>
+    <view class="tl-export {{ day ? '' : 'tl-export-off' }}" bindtap="openExport">导出</view>
+  </view>
+
+  <view wx:if="{{ err }}" class="tl-state tl-state-err">{{ err }}</view>
+  <view wx:elif="{{ loading && !rows.length }}" class="tl-state">加载中…</view>
+  <view wx:elif="{{ !rows.length }}" class="tl-state">这天还没有采样数据</view>
+
+  <!-- 横向滚动交给 CSS。这里**不能用内嵌 scroll-view** —— 外层竖滚区里再套一层，
+       微信在内容变化时会把外层 scrollTop 重置成 0（表现为一操作就跳回顶部）。 -->
+  <scroll-view
+    wx:else
+    class="tl-table-wrap"
+    scroll-y
+    scroll-x
+    scroll-into-view="{{ tableAnchor }}"
+    style="height: {{ tableH }}px;"
+  >
+    <view class="tl-table">
+      <view class="tl-tr tl-tr-head" id="tl-head">
+        <view class="tl-td tl-w-var">房间</view>
+        <view class="tl-td tl-w-slot" wx:for="{{ columns }}" wx:key="slot">{{ item.time }}</view>
+      </view>
+      <view class="tl-tr" wx:for="{{ rows }}" wx:key="key" id="tl-row-{{ index }}">
+        <view class="tl-td tl-w-var">
+          <text class="tl-var">{{ item.label }}</text><text wx:if="{{ item.unit }}" class="tl-unit">({{ item.unit }})</text>
+        </view>
+        <view
+          class="tl-td tl-w-slot {{ cell.cls }}"
+          wx:for="{{ item.cells }}"
+          wx:for-item="cell"
+          wx:key="i"
+        >{{ cell.text }}</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
+
+<!-- 选哪天看：原版 picker 是底部滚轮，日期一多就得一格一格转；这里改成月历点选，
+     有采样数据的日子带一个点，一眼看出哪天有数。 -->
+<view wx:if="{{ calOpen }}" class="tl-cal-mask" bindtap="closeCal">
+  <view class="tl-cal" catchtap="noop">
+    <view class="tl-cal-head">
+      <view class="tl-cal-nav" hover-class="tl-cal-nav--hover" bindtap="shiftCalMonth" data-delta="-1">‹</view>
+      <text class="tl-cal-title">{{ calYear }} 年 {{ calMonth }} 月</text>
+      <view class="tl-cal-nav" hover-class="tl-cal-nav--hover" bindtap="shiftCalMonth" data-delta="1">›</view>
+    </view>
+    <view class="tl-cal-grid">
+      <view class="tl-cal-wd" wx:for="{{ weekLabels }}" wx:key="*this">{{ item }}</view>
+      <view
+        wx:for="{{ calCells }}"
+        wx:key="key"
+        class="tl-cal-cell {{ item.selected ? 'tl-cal-cell--on' : '' }} {{ item.d && !item.has ? 'tl-cal-cell--dim' : '' }} {{ item.d ? '' : 'tl-cal-cell--pad' }}"
+        data-day="{{ item.ymd }}"
+        bindtap="onPickDay"
+      >
+        <text wx:if="{{ item.d }}">{{ item.d }}</text>
+        <view wx:if="{{ item.has }}" class="tl-cal-dot" />
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- 导出设置：选要导出的日期（可多选）。打开时默认勾上正在看的这天 —— 多数人就是想把眼前这张导出去 -->
+<view wx:if="{{ expOpen }}" class="tl-cal-mask" bindtap="closeExport">
+  <view class="tl-cal" catchtap="noop">
+    <view class="tl-cal-head">
+      <text class="tl-cal-title">导出设置</text>
+    </view>
+    <view class="tl-cal-hint-row">
+      <text class="tl-cal-hint">选要导出的日期，可多选</text>
+      <view class="tl-cal-actions">
+        <text class="tl-cal-link" bindtap="pickExpMonth">本月全选</text>
+        <text wx:if="{{ expPicked.length }}" class="tl-cal-link" bindtap="clearExpPick">清空</text>
+      </view>
+    </view>
+    <view class="tl-cal-head">
+      <view class="tl-cal-nav" hover-class="tl-cal-nav--hover" bindtap="shiftExpMonth" data-delta="-1">‹</view>
+      <text class="tl-cal-title">{{ expYear }} 年 {{ expMonth }} 月</text>
+      <view class="tl-cal-nav" hover-class="tl-cal-nav--hover" bindtap="shiftExpMonth" data-delta="1">›</view>
+    </view>
+    <view class="tl-cal-grid">
+      <view class="tl-cal-wd" wx:for="{{ weekLabels }}" wx:key="*this">{{ item }}</view>
+      <view
+        wx:for="{{ expCells }}"
+        wx:key="key"
+        class="tl-cal-cell {{ item.selected ? 'tl-cal-cell--on' : '' }} {{ item.d && !item.has ? 'tl-cal-cell--dim' : '' }} {{ item.d ? '' : 'tl-cal-cell--pad' }}"
+        data-day="{{ item.ymd }}"
+        bindtap="toggleExpDay"
+      >
+        <text wx:if="{{ item.d }}">{{ item.d }}</text>
+        <view wx:if="{{ item.has }}" class="tl-cal-dot" />
+      </view>
+    </view>
+    <view class="tl-exp-foot">
+      <text class="tl-exp-count">{{ expPicked.length ? '已选 ' + expPicked.length + ' 天' : '还没选日期' }}</text>
+      <view class="tl-exp-btn" bindtap="closeExport">取消</view>
+      <view
+        class="tl-exp-btn tl-exp-btn--primary {{ expPicked.length && !expBusy ? '' : 'tl-exp-btn--off' }}"
+        bindtap="doExport"
+      >{{ expBusy ? '导出中…' : '导出' }}</view>
+    </view>
+  </view>
+</view>

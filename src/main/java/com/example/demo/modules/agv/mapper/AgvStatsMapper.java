@@ -112,7 +112,7 @@ public interface AgvStatsMapper {
 
     // ── Trajectory: for event interceptor ──
 
-    @Select("SELECT robot_ip, recorded_at, station, task_status, odo " +
+    @Select("SELECT robot_ip, recorded_at, station, task_status, odo, fork_height " +
             "FROM agv_trajectory " +
             "WHERE robot_ip = #{ip} AND recorded_at > #{since} " +
             "ORDER BY recorded_at ASC LIMIT #{limit}")
@@ -142,5 +142,62 @@ public interface AgvStatsMapper {
     @Update("<script>UPDATE agv_stats_event_log SET consumed = 1 WHERE id IN " +
             "<foreach item='id' collection='ids' open='(' separator=',' close=')'>#{id}</foreach></script>")
     int markEventsConsumedByIds(@Param("ids") List<Long> ids);
+
+    // ── 每日指标封存 ──
+
+    /**
+     * 写一天的一个指标。回填过的行（source=BACKFILL）不会被后续 LIVE 覆盖 ——
+     * 历史一旦固定就固定，避免某天补跑定时任务把回填值冲掉。
+     */
+    @Insert("INSERT INTO agv_metric_daily (stat_date, metric_key, metric_value, source) " +
+            "VALUES (#{statDate}, #{metricKey}, #{metricValue}, #{source}) " +
+            "ON DUPLICATE KEY UPDATE " +
+            "metric_value = IF(source = 'BACKFILL', metric_value, VALUES(metric_value)), " +
+            "frozen_at = CURRENT_TIMESTAMP(3)")
+    int upsertDailyMetric(@Param("statDate") String statDate, @Param("metricKey") String metricKey,
+                          @Param("metricValue") double metricValue, @Param("source") String source);
+
+    @Select("SELECT stat_date, metric_key, metric_value, source FROM agv_metric_daily " +
+            "WHERE stat_date BETWEEN #{from} AND #{to} ORDER BY stat_date ASC, metric_key ASC")
+    List<Map<String, Object>> selectDailyMetrics(@Param("from") String from, @Param("to") String to);
+
+    @Select("SELECT COUNT(*) FROM agv_metric_daily WHERE stat_date = #{statDate}")
+    int countDailyMetricsForDate(@Param("statDate") String statDate);
+
+    /**
+     * 历史累计（不分天）：直接把两个总量指标求和。
+     * <p>不要用「按天全查回来在前端/控制器里加」——驾驶舱十秒轮询一次，
+     * 十年日行有两万多行，等于每次轮询都拉一遍全表。
+     */
+    @Select("SELECT metric_key, SUM(metric_value) AS total FROM agv_metric_daily " +
+            "WHERE metric_key IN ('CAGE_WASH_TOTAL','ODO_TOTAL') GROUP BY metric_key")
+    List<Map<String, Object>> selectDailyTotals();
+
+    /**
+     * 六台车各自的**历史累计**里程（metric_key 形如 {@code ODO_BY_ROBOT:<ip>}）。
+     * <p>同样在库里聚合，别把日行拉回来在前端按车分组求和。
+     */
+    @Select("SELECT metric_key, SUM(metric_value) AS total FROM agv_metric_daily " +
+            "WHERE metric_key LIKE 'ODO_BY_ROBOT:%' GROUP BY metric_key")
+    List<Map<String, Object>> selectOdoTotalsByRobot();
+
+    // ── 叉臂序列（每日封存与历史回填共用同一个识别器，走同一条取数） ──
+
+    @Select("SELECT fork_height FROM agv_trajectory " +
+            "WHERE robot_ip = #{ip} AND fork_height IS NOT NULL " +
+            "AND recorded_at >= #{from} AND recorded_at < #{to} " +
+            "ORDER BY recorded_at ASC")
+    List<Double> selectForkHeights(@Param("ip") String ip,
+                                   @Param("from") LocalDateTime from,
+                                   @Param("to") LocalDateTime to);
+
+    /** 指定事件类型在区间内的时间点（今日实时曲线用） */
+    @Select("SELECT event_at FROM agv_stats_event_log " +
+            "WHERE event_type = #{eventType} AND robot_ip = #{ip} " +
+            "AND event_at >= #{from} AND event_at < #{to} ORDER BY event_at ASC")
+    List<LocalDateTime> selectEventTimes(@Param("eventType") String eventType,
+                                         @Param("ip") String ip,
+                                         @Param("from") LocalDateTime from,
+                                         @Param("to") LocalDateTime to);
 
 }

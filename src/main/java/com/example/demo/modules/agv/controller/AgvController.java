@@ -24,6 +24,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.*;
 
 /**
@@ -83,11 +84,10 @@ public class AgvController {
                 robot.put("status", cs.getStatus());
                 robot.put("last_polled_at", cs.getLastPolledAt().toString());
             } else {
-                // 缓存无 → 查 DB 最新一条，映射列名到前端期望格式
-                List<Map<String, Object>> rows = trajectoryMapper.selectTrajectory(
-                    ip, LocalDateTime.now().minusHours(24), LocalDateTime.now(), 1);
-                if (!rows.isEmpty()) {
-                    Map<String, Object> db = rows.get(0);
+                // 缓存无 → 取库里**最后一条**（不带时间窗）。采集停了多久都要能回退到
+                // 最后已知位置，否则画布上六台车会凭空消失，连离线灰图标都画不出来。
+                Map<String, Object> db = trajectoryMapper.selectLatest(ip);
+                if (db != null) {
                     Map<String, Object> s = new LinkedHashMap<>();
                     s.put("x", db.get("x")); s.put("y", db.get("y")); s.put("angle", db.get("angle"));
                     s.put("battery_level", db.get("battery")); s.put("charging", db.get("charging"));
@@ -121,11 +121,15 @@ public class AgvController {
     @Operation(summary = "获取最近 N 秒的轨迹点")
     public Result<Map<String, List<Map<String, Object>>>> recent(
             @RequestParam(defaultValue = "2") int seconds) {
-        LocalDateTime since = LocalDateTime.now().minusSeconds(seconds);
+        // recorded_at 存的是 **UTC 墙钟**，而 JVM 默认时区是亚洲/上海：
+        // 两边都用 UTC 墙钟才比得上。用 now() 当上界的话窗口比数据晚 8 小时，
+        // 实时轨迹恒为空（前端因此永远画不出车、也永远判不出在线）。
+        LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime since = nowUtc.minusSeconds(seconds);
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         for (String ip : KNOWN_IPS) {
             List<Map<String, Object>> rows = trajectoryMapper.selectTrajectoryAsc(
-                ip, since, LocalDateTime.now(), 100);
+                ip, since, nowUtc, 100);
             if (!rows.isEmpty()) result.put(ip, rows);
         }
         return Result.success(result);

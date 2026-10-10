@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminPageTabs } from "@/components/admin/AdminPageTabs";
 import { AccessFusionWorkspacePanel } from "@/features/access-fusion/AccessFusionWorkspacePanel";
 import { DahuaSwingStatsAuditPanel } from "@/features/dahua-swing-stats/DahuaSwingStatsAuditPanel";
@@ -318,9 +319,10 @@ export default function AdminDahuaSwingTasksPage() {
           <div className="flex h-full min-h-0 flex-col gap-3">
             <div className="flex shrink-0 items-center justify-between">
         <h2 className="text-sm font-semibold text-[var(--app-color-text-secondary)]">实时拉取任务</h2>
-        <button
+        <AdminButton
           type="button"
-          className="h-9 rounded bg-[var(--app-color-text-primary)] px-3 text-xs text-white"
+          tone="primary"
+          size="sm"
           onClick={async () => {
             try {
               const res = await executeAllDahuaSwingTask();
@@ -341,7 +343,7 @@ export default function AdminDahuaSwingTasksPage() {
           }}
         >
           执行全部启用任务
-        </button>
+        </AdminButton>
       </div>
 
       <div className="shrink-0 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-3 space-y-2 shadow-sm">
@@ -352,24 +354,27 @@ export default function AdminDahuaSwingTasksPage() {
             <span className="ml-2 text-amber-700">（修改后请点击"更新任务"保存）</span>
           </div>
         )}
-        <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
-          任务名称（用于区分不同拉取规则）
-          <input
-            className="h-8 w-full max-w-[420px] rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
-            placeholder="例如：浦东-1号门-自动签退"
-            value={form.name}
-            onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-          />
-        </label>
-        <label className="text-xs text-[var(--app-color-text-secondary)] inline-flex items-center gap-2">
-          <AdminSwitchScaled
-            size="3.5"
-            checked={form.enabled === 1}
-            onChange={(checked) => setForm((p) => ({ ...p, enabled: checked ? 1 : 0 }))}
-          />
-          启用任务（开启后可被批量执行）
-        </label>
-        <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+          <label className="flex min-w-[240px] max-w-[420px] flex-1 flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
+            任务名称（用于区分不同拉取规则）
+            <input
+              className="h-8 w-full rounded border border-[var(--app-color-border-default)] px-2 text-[11px] text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
+              placeholder="例如：浦东-1号门-自动签退"
+              value={form.name}
+              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+            />
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs text-[var(--app-color-text-secondary)]">
+            <AdminSwitchScaled
+              size="3.5"
+              checked={form.enabled === 1}
+              onChange={(checked) => setForm((p) => ({ ...p, enabled: checked ? 1 : 0 }))}
+            />
+            启用任务（开启后可被批量执行）
+          </label>
+        </div>
+        {/* 8 个字段正好铺满 2 行（4 列），不留半空的尾行 */}
+        <div className="grid gap-1.5 grid-cols-2 md:grid-cols-4">
           <label className="flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]">
             轮询频率（秒）
             <input

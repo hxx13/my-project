@@ -1573,6 +1573,7 @@ Component({
         this.typeKey = botKey;
         this.typeFull = '';
         this.typeShown = 0;
+        this.typeShots = 0;
         this.typeFinished = false;
       }
       this.typeFull += text || '';
@@ -1588,7 +1589,17 @@ Component({
         return;
       }
       const total = this.typeFull.length;
-      this.typeShown = Math.min(total, this.typeShown + 3); // 3 字/70ms ≈ 43 字/秒
+      /*
+       * **前段慢、越往后越快**（与 Web 端 useTypewriterText 同一口径）。
+       *
+       * 节奏没法照搬 Web：那边可以靠缩短定时器间隔提速，这边 setData 是跨线程的，
+       * 拍子必须固定 70ms（拍密了反而卡），所以改从**每拍吐多少字**上加速 ——
+       * 每 4 拍多吐 1 字，从 3 字/拍涨到 24 字/拍封顶。
+       * 700 字的回答固定 3 字/拍要 16 秒；这个曲线约 4 秒收尾，而开头几拍仍是逐字感。
+       */
+      this.typeShots = (this.typeShots || 0) + 1;
+      const step = Math.min(24, 3 + Math.floor(this.typeShots / 4));
+      this.typeShown = Math.min(total, this.typeShown + step);
       const patch = {};
       patch['messages[' + idx + '].text'] = this.typeFull.slice(0, this.typeShown);
       patch['messages[' + idx + '].pending'] = false;

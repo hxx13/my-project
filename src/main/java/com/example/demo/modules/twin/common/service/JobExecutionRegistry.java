@@ -48,6 +48,8 @@ public class JobExecutionRegistry {
     public static final String JOB_TELEMETRY_WINCC_UI = "TELEMETRY_WINCC_UI";
     /** WinCC 限值低频拉取入库；不参与统一 tick，规则与 TELEMETRY_WINCC_UI 相同（窗口+周计划+轮询秒） */
     public static final String JOB_TELEMETRY_WINCC_LIMITS_UI = "TELEMETRY_WINCC_LIMITS_UI";
+    /** 变量长期归档：按定时管理的间隔对选中变量做瞬时采样 */
+    public static final String JOB_TELEMETRY_LONGTERM_SAMPLE = "TELEMETRY_LONGTERM_SAMPLE";
     /** @deprecated 旧 access_raw_event 管线，已从定时管理移除 */
     @Deprecated
     public static final String JOB_ACCESS_RAW_BACKFILL = "ACCESS_RAW_BACKFILL";
@@ -166,6 +168,9 @@ public class JobExecutionRegistry {
     private AroTrainingSyncService aroTrainingSyncService;
     @Autowired(required = false)
     private com.example.demo.modules.agv.service.AgvCollectorService agvCollectorService;
+    /** 晚绑：构造期不触碰，避免 JobExecutionRegistry → TelemetryLongtermArchiveService → JobSchedulerService 构造器环 */
+    @Autowired(required = false)
+    private com.example.demo.modules.telemetry.service.TelemetryLongtermArchiveService telemetryLongtermArchiveService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -238,6 +243,7 @@ public class JobExecutionRegistry {
         jobs.put(JOB_MATERIAL_SCHEDULED_NOTIFY, "物资申领·预约通知");
         jobs.put(JOB_TELEMETRY_WINCC_UI, "动物房·WinCC温湿度测量值（窗口内轮询）");
         jobs.put(JOB_TELEMETRY_WINCC_LIMITS_UI, "动物房·WinCC限值同步（窗口内轮询）");
+        jobs.put(JOB_TELEMETRY_LONGTERM_SAMPLE, "动物房·变量长期归档采样");
         jobs.put(
                 JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_DAY,
                 "审计门禁·昨日日批（仅 PREVIOUS_DAY 任务，回溯不参与）");
@@ -526,6 +532,20 @@ public class JobExecutionRegistry {
                     String ip = "172.22.159." + jobKey.substring(jobKey.lastIndexOf('_') + 1);
                     String msg = agvCollectorService.pollRobotNow(ip);
                     yield JobRunOutcome.ok(jobKey, msg);
+                }
+                case JOB_TELEMETRY_LONGTERM_SAMPLE -> {
+                    if (telemetryLongtermArchiveService == null) {
+                        throw new IllegalStateException("TelemetryLongtermArchiveService 未就绪");
+                    }
+                    var r = telemetryLongtermArchiveService.runSamplingRound();
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("rowsWritten", r.rowsWritten());
+                    m.put("missing", r.missing());
+                    if (!"OK".equals(r.outcome())) {
+                        yield JobRunOutcome.noop(jobKey, "本轮跳过：" + (r.reason() == null ? "未知原因" : r.reason()), m);
+                    }
+                    yield JobRunOutcome.ok(jobKey, "长期归档采样写入 " + r.rowsWritten() + " 行"
+                            + (r.missing() > 0 ? "（" + r.missing() + " 个变量不在快照里）" : ""), m);
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };

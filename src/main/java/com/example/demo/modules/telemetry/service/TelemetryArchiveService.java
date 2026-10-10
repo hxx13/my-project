@@ -43,7 +43,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.time.temporal.ChronoUnit;
-import java.util.regex.Pattern;
 
 /**
  * WinCC 测量快照异步归档 + 查询/降采样序列（{@code telemetry_value_archive}）。
@@ -56,7 +55,6 @@ public class TelemetryArchiveService {
     private static final int LOCK_RETRY_MAX = 6;
     /** 后台持续清理安全上限（批次数） */
     private static final int CONTINUOUS_MAX_BATCHES = 50_000;
-    private static final Pattern LEADING_NUMBER = Pattern.compile("^(-?\\d+(?:\\.\\d*)?)");
 
     private static final long ROLLUP_AUTO_HOURS = 48;
 
@@ -797,23 +795,7 @@ public class TelemetryArchiveService {
     }
 
     private static Double parseItemNumeric(String raw) {
-        if (!StringUtils.hasText(raw)) {
-            return null;
-        }
-        String t = raw.trim().replace(',', '.');
-        var m = LEADING_NUMBER.matcher(t);
-        if (m.find()) {
-            try {
-                return Double.parseDouble(m.group(1));
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        try {
-            return Double.parseDouble(t);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return com.example.demo.modules.telemetry.util.TelemetryNumericParseUtil.parseNumeric(raw);
     }
 
 }

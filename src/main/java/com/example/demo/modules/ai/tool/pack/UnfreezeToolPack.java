@@ -14,6 +14,11 @@ import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.scan.dto.DahuaIssueAccessPrefillVO;
 import com.example.demo.modules.twin.scan.service.DahuaIssueAccessRulePrefillService;
 import com.fasterxml.jackson.databind.JsonNode;
+import net.sourceforge.pinyin4j.PinyinHelper;
+import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
+import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
+import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
+import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -107,9 +112,14 @@ public class UnfreezeToolPack implements AiToolPack {
                   工具会把这个人可选的房间列给你 —— 你要**把这些房间列给用户让他挑**，不要自己替他选，
                   也不要照抄上文的房间列表：每次都重新问工具要。
                   **一次挑一间**（界面上的房间是可点项，点一下就是一间），用户要几间就分几次办 ——
+                - **名字或房间名差一点，不要直接回"找不到 / 不在范围里"**：工具会给出**最接近的候选**
+                  （人名按像不像挑几位、房间按接近度排好序）。把它们**以芯片交给用户点一下确认**即可 ——
+                  允许猜，但必须用户点头；不要在正文里复述候选，也不要替他认定。
                   别说「可多选」，那和界面对不上。
                 - 同样地，用户没说时长时工具会返回**时长候选**（30 分钟 / 1 小时 / … / 今天都有效），
-                  也要列给用户挑。房间与时长是两问，先问哪个由工具返回的候选决定，别自己编。
+                  也要列给用户挑。房间与时长是两问，工具**可能一次把两道都返回** ——
+                  载体用向导一次问完，用户答完那一条消息里两者都在；候选回来什么就问什么，
+                  别自己编、也别拆成两次问（拆开就会变成「答了这道、那道又没了」）。
                 - **用户没说的参数不要自己凑**：没提时长，就别照上一轮的「延迟两小时」办；
                   没提房间，就别拿上文出现过的房间顶上。缺什么就让用户挑候选、或直接问。
                 - 这个人**已经在豁免中**时，再授一次是**覆盖**不是叠加：原来的到期时间与房间会被本次的替换掉，
@@ -285,6 +295,10 @@ public class UnfreezeToolPack implements AiToolPack {
                     if (mode.isBlank()) {
                         mode = inferMode(untilTime, durationMinutes, maxCount);
                     }
+                    // 时长还缺不缺（上面那道「本轮原话没提就不采信」的闸之后再看）。
+                    // 缺的话要跟房间**一起问**，见 askForInput 的注释。
+                    boolean needTime = ("TIME".equals(mode) || "BOTH".equals(mode))
+                            && untilTime.isBlank() && durationMinutes == null;
 
                     // 房间必填：没给就把该人可选的房间交回去，让用户挑 —— 不猜
                     List<String> asked = new ArrayList<>();
@@ -296,15 +310,10 @@ public class UnfreezeToolPack implements AiToolPack {
                     }
                     List<Map<String, Object>> available = availableRooms(card.getAroUserId());
                     if (asked.isEmpty()) {
-                        Map<String, Object> out = new LinkedHashMap<>();
-                        out.put("ok", false);
-                        out.put("reason", "授权必须指定房间。让用户从候选里挑，不要替他选");
-                        out.put("person", describe(card, lookup.who()));
-                        out.put("rooms", available);
-                        // choices 是给载体的：面板会把它渲染成可点选控件，用户点一下就等于回答
-                        out.put("choices", roomChoices(available));
-                        out.put("choicesTitle", choiceTitle(card, lookup.who(), "挑授权房间"));
-                        return out;
+                        return askForInput("授权必须指定房间。让用户从候选里挑，不要替他选",
+                                describe(card, lookup.who()), available,
+                                choiceTitle(card, lookup.who(), "挑授权房间"), needTime,
+                                choiceTitle(card, lookup.who(), "挑时长"));
                     }
                     List<Map<String, Object>> chosen = pickRooms(asked, available);
 
@@ -313,38 +322,28 @@ public class UnfreezeToolPack implements AiToolPack {
                     // 而房间就是这次要授的权限本身，比时长更不能猜。判据用「房间名或 id」，
                     // 模型把 202A 归一成 id 也不冤枉它（roomChoices 的值就是名字，用户点了名字在下一条消息里）。
                     if (!chosen.isEmpty() && !mentionsAnyRoom(ctx.userText(), chosen)) {
-                        Map<String, Object> out = new LinkedHashMap<>();
-                        out.put("ok", false);
-                        out.put("reason", "用户这一轮没有提到房间。把候选列给用户让他挑，不要拿上文出现过的房间顶上");
-                        out.put("person", describe(card, lookup.who()));
-                        out.put("rooms", available);
-                        out.put("choices", roomChoices(available));
-                        out.put("choicesTitle", choiceTitle(card, lookup.who(), "挑授权房间"));
-                        return out;
+                        return askForInput("用户这一轮没有提到房间。把候选列给用户让他挑，不要拿上文出现过的房间顶上",
+                                describe(card, lookup.who()), available,
+                                choiceTitle(card, lookup.who(), "挑授权房间"), needTime,
+                                choiceTitle(card, lookup.who(), "挑时长"));
                     }
                     if (chosen.isEmpty()) {
-                        Map<String, Object> out = new LinkedHashMap<>();
-                        out.put("ok", false);
-                        out.put("reason", "给的房间不在这个人的授权范围里，别硬凑。让用户从候选里重挑");
-                        out.put("person", describe(card, lookup.who()));
-                        out.put("rooms", available);
-                        out.put("choices", roomChoices(available));
-                        out.put("choicesTitle", choiceTitle(card, lookup.who(), "重挑授权房间"));
-                        return out;
+                        // 房间名差一点就不认也太苛刻（真机反馈：「e11b 区」对不上「E11B-B105」就直接卡住）。
+                        // **允许猜**：候选按「跟用户说的那个像不像」排序，最像的排第一 —— 但只给候选，
+                        // 用户点一下才算数。绝不自动采纳（房间就是这次要授的权限本身）。
+                        return askForInput("用户说的房间不在他的授权范围里。**候选已按接近度排好序**，"
+                                        + "最像的在第一个 —— 让用户点一个确认，不要在正文里复述候选、也不要替他选",
+                                describe(card, lookup.who()), rankRoomsByCloseness(available, asked),
+                                choiceTitle(card, lookup.who(), "是不是这间"), needTime,
+                                choiceTitle(card, lookup.who(), "挑时长"));
                     }
 
                     // 时长缺失 → 给时长候选。否则 apply 会抛「时长限制模式须选择延长至时点」，
                     // 那句话是给开发看的，模型只能把它原样转述给用户 —— 等于把提问变成了报错。
-                    boolean hasTime = !untilTime.isBlank() || durationMinutes != null;
-                    if (("TIME".equals(mode) || "BOTH".equals(mode)) && !hasTime) {
-                        Map<String, Object> out = new LinkedHashMap<>();
-                        out.put("ok", false);
-                        out.put("reason", "授权必须给定时长（或到点时间）。让用户从候选里挑，不要替他选");
-                        out.put("person", describe(card, lookup.who()));
-                        out.put("rooms", chosen);
-                        out.put("choices", TIME_CHOICES);
-                        out.put("choicesTitle", choiceTitle(card, lookup.who(), "挑时长"));
-                        return out;
+                    if (needTime) {
+                        return askForInput("授权必须给定时长（或到点时间）。让用户从候选里挑，不要替他选",
+                                describe(card, lookup.who()), List.of(),
+                                "", true, choiceTitle(card, lookup.who(), "挑时长"));
                     }
 
                     Map<String, Object> updated = exemptAdminService.apply(
@@ -451,6 +450,22 @@ public class UnfreezeToolPack implements AiToolPack {
             }
         }
         if (candidates.isEmpty()) {
+            /*
+             * 名字错一个字就"查无此人"太苛刻了（真机反馈：姓名差一个字直接说不对，用起来很难受）。
+             * 兜底：按**姓氏**再捞一批，用编辑距离挑出「像的几位」，**以芯片交回给用户点一下**。
+             * 口径是"允许猜，但必须用户点头" —— 所以这里只产出候选，绝不替他认定是哪一位。
+             */
+            List<Map<String, Object>> near = fuzzyPersonnel(person);
+            if (!near.isEmpty()) {
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("ok", false);
+                out.put("reason", "没有「" + person + "」的精确匹配。下面是名字最接近的几位，"
+                        + "让用户点一个；不要在正文里复述候选，也不要替他认定是哪一位");
+                out.put("candidates", near);
+                out.put("choices", PersonChoices.of(near));
+                out.put("choicesTitle", "是不是这几位之一");
+                return new CardLookup(null, Map.of(), out);
+            }
             return new CardLookup(null, Map.of(), Map.of("ok", false,
                     "reason", "没找到这个人的卡。可能是姓名不对，或者他还没有绑卡 / 没发过大华卡"));
         }
@@ -466,6 +481,152 @@ public class UnfreezeToolPack implements AiToolPack {
         }
         // 直接用上面已经取到的卡对象，不再按卡号回查一次 —— 多一次查询只会多一个失败点
         return new CardLookup(cards.get(0), whos.get(0), null);
+    }
+
+    /**
+     * 姓名没精确命中时的兜底候选：**逐字去捞一批**，再按「有多像」排序取前几位。
+     *
+     * <p>逐字而不是只看姓氏：用户打错的那个字可能在任何一位（包括姓）。每位捞一批再合并，
+     * 覆盖面比只按姓捞大得多；捞完在内存里比字/比音，不必让数据库做相似度。
+     */
+    private List<Map<String, Object>> fuzzyPersonnel(String person) {
+        String q = person == null ? "" : person.trim();
+        if (q.length() < 2) {
+            return List.of();
+        }
+        Map<Object, Map<String, Object>> rows = new LinkedHashMap<>();
+        int tried = 0;
+        for (char c : q.toCharArray()) {
+            if (tried >= 3) {
+                break;
+            }
+            tried++;
+            List<Map<String, Object>> hits = dashboardMapper.searchPersonnelPaged(String.valueOf(c), 60, 0);
+            if (hits == null) {
+                continue;
+            }
+            for (Map<String, Object> row : hits) {
+                if (row != null && row.get("user_id") != null) {
+                    rows.putIfAbsent(row.get("user_id"), row);
+                }
+            }
+        }
+        // 先按姓名像不像排序（纯内存），**再**给最像的几位去查卡 —— 反过来的话，捞到的几十条
+        // 每条都要查一次库，白花几十次查询
+        List<Map.Entry<Integer, Map<String, Object>>> scored = new ArrayList<>();
+        for (Map<String, Object> row : rows.values()) {
+            int score = nameScore(str(row.get("name")), q);
+            if (score > 0) {
+                scored.add(new java.util.AbstractMap.SimpleEntry<>(score, row));
+            }
+        }
+        scored.sort((x, y) -> Integer.compare(y.getKey(), x.getKey()));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<Integer, Map<String, Object>> e : scored) {
+            if (out.size() >= 5) {
+                break;
+            }
+            Map<String, Object> row = e.getValue();
+            TwinCardMapping m = mappingService.getByAroUserId(String.valueOf(row.get("user_id")));
+            if (m == null || m.getCardNo() == null || m.getCardNo().isBlank()) {
+                continue;
+            }
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("name", str(row.get("name")));
+            c.put("jobNumber", str(row.get("job_number")));
+            c.put("department", str(row.get("department_name")));
+            c.put("projectGroup", str(row.get("project_group_name")));
+            c.put("cardNo", m.getCardNo());
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** 拼音格式：不要声调、全小写 —— 「菲 fēi」与「斐 fěi」才算同音。 */
+    private static final HanyuPinyinOutputFormat PY_FORMAT = pinyinFormat();
+
+    private static HanyuPinyinOutputFormat pinyinFormat() {
+        HanyuPinyinOutputFormat f = new HanyuPinyinOutputFormat();
+        f.setToneType(HanyuPinyinToneType.WITHOUT_TONE);
+        f.setCaseType(HanyuPinyinCaseType.LOWERCASE);
+        return f;
+    }
+
+    /** 两个字是不是**同音**：相同，或拼音（去声调）一致。 */
+    private static boolean sameSound(char x, char y) {
+        if (x == y) {
+            return true;
+        }
+        try {
+            String[] px = PinyinHelper.toHanyuPinyinStringArray(x, PY_FORMAT);
+            String[] py = PinyinHelper.toHanyuPinyinStringArray(y, PY_FORMAT);
+            if (px == null || py == null) {
+                return false;
+            }
+            for (String a : px) {
+                for (String b : py) {
+                    if (a.equals(b)) {
+                        return true;
+                    }
+                }
+            }
+        } catch (BadHanyuPinyinOutputFormatCombination e) {
+            // 格式是写死的合法组合，走不到这里；真走到了当不同音，不影响主流程
+        }
+        return false;
+    }
+
+    /**
+     * 两个姓名「有多像」：0 = 不像，越大越像（候选按它排序，最像的排第一）。
+     *
+     * <p>判据：长度差不超过一个字、**至少对上两个字**、且**至少有一个字是同字**。
+     *
+     * <p>为什么必须算上**同音**：打错字最常见的就是打了同音字（「王毓斐」打成「王毓菲」，
+     * 音一样字不一样）。只按字面比对时这种错会掉到"只共用一个姓"，于是查无此人 ——
+     * 真机反馈正是如此。
+     *
+     * <p>为什么还要"至少有一个同字"、且同字计分更高：纯靠谐音配对太松（同音字极多），
+     * 会把一堆不相干的人端出来。同字比同音可信，按分排序后正确答案自然排在最前。
+     */
+    private static int nameScore(String a, String b) {
+        if (a.isEmpty() || b.isEmpty() || Math.abs(a.length() - b.length()) > 1) {
+            return 0;
+        }
+        List<Character> pool = new ArrayList<>();
+        for (char c : b.toCharArray()) {
+            pool.add(c);
+        }
+        int exact = 0;
+        int sound = 0;
+        for (char c : a.toCharArray()) {
+            int at = -1;
+            for (int i = 0; i < pool.size(); i++) {
+                if (pool.get(i) == c) {
+                    at = i;
+                    break;
+                }
+            }
+            if (at >= 0) {
+                exact++;
+                pool.remove(at);
+                continue;
+            }
+            for (int i = 0; i < pool.size(); i++) {
+                if (sameSound(pool.get(i), c)) {
+                    at = i;
+                    break;
+                }
+            }
+            if (at >= 0) {
+                sound++;
+                pool.remove(at);
+            }
+        }
+        int hit = exact + sound;
+        if (exact < 1 || hit < 2 || hit < Math.min(a.length(), b.length()) - 1) {
+            return 0;
+        }
+        return exact * 10 + sound * 6 + (a.length() == b.length() ? 1 : 0);
     }
 
     /** 该人可授权的房间（与发卡页「豁免配置」弹窗同源）。 */
@@ -553,6 +714,99 @@ public class UnfreezeToolPack implements AiToolPack {
      * <p>**value 用房间名**（用户点选后这个名字会作为下一条消息发出去，模型再按名字匹配，闭环里不出现 roomId）；
      * **label 带上地域说明**（「202A · 浦东 2F」）—— 光看房号选房间等于凭记忆，界面里得能看出是哪一间。
      */
+    /**
+     * 缺参数时把**缺的几道题一次交给用户**（房间 / 时长），载体用向导一次问完。
+     *
+     * <p>为什么必须一次问齐：房间与时长是**两问**，而芯片点一下是一条用户消息、只回答一道 ——
+     * 答了时长，那句原话里就没有房间；答了房间，又没有时长。而本工具**两道闸**都要求
+     * 「本轮原话里提到」（房间见 mentionsAnyRoom、时长见 mentionsTime），于是两道题**永远凑不齐**，
+     * 用户被反复要求「把房间和时间一起重说一遍」（真机反馈的体验就是这么来的）。
+     *
+     * <p>一次把缺的都问上，载体把几道答案**合成一条消息**发回来，那一条里两者都在，两道闸一次通过。
+     * 只缺一道时就只问一道 —— 跟原来一样，点一下即办。
+     */
+    private static Map<String, Object> askForInput(String reason, Map<String, Object> person,
+                                                   List<Map<String, Object>> rooms,
+                                                   String roomTitle, boolean needTime, String timeTitle) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", false);
+        out.put("reason", reason);
+        out.put("person", person);
+        if (!rooms.isEmpty()) {
+            out.put("rooms", rooms);
+        }
+        List<Map<String, Object>> questions = new ArrayList<>();
+        if (!rooms.isEmpty()) {
+            questions.add(question(roomTitle, roomChoices(rooms)));
+        }
+        if (needTime) {
+            questions.add(question(timeTitle, TIME_CHOICES));
+        }
+        out.put("questions", questions);
+        return out;
+    }
+
+    /** 一道单选问题。载体把 {@code questions} 里的每一项都渲染成一问。 */
+    private static Map<String, Object> question(String title, List<Map<String, Object>> options) {
+        Map<String, Object> q = new LinkedHashMap<>();
+        q.put("title", title);
+        q.put("options", options);
+        return q;
+    }
+
+    /**
+     * 房间候选按「跟用户说的那个名字像不像」排序，最像的排第一。
+     *
+     * <p>真机反馈：用户说「e11b 区」、人名的房间叫「E11B-B105」，就差几个字符，系统却只说
+     * 「不在授权范围里」—— 用户得自己在候选里翻。排一下序，他点第一个就行。
+     *
+     * <p>排序只是**把最像的摆到他眼前**，不等于替他选：候选照样以芯片给出，点了才算数。
+     */
+    private static List<Map<String, Object>> rankRoomsByCloseness(
+            List<Map<String, Object>> available, List<String> asked) {
+        if (asked.isEmpty() || available.size() < 2) {
+            return available;
+        }
+        List<Map<String, Object>> out = new ArrayList<>(available);
+        out.sort((x, y) -> Integer.compare(roomScore(y, asked), roomScore(x, asked)));
+        return out;
+    }
+
+    /** 分数越大越像：归一化后互为子串给高分，否则看公共前缀有多长。 */
+    private static int roomScore(Map<String, Object> room, List<String> asked) {
+        String r = normRoom(String.valueOf(room.get("room")));
+        if (r.isEmpty()) {
+            return 0;
+        }
+        int best = 0;
+        for (String a : asked) {
+            String q = normRoom(a);
+            if (q.isEmpty()) {
+                continue;
+            }
+            if (r.contains(q) || q.contains(r)) {
+                best = Math.max(best, 100 + Math.min(q.length(), r.length()));
+            }
+            int pre = 0;
+            while (pre < q.length() && pre < r.length() && q.charAt(pre) == r.charAt(pre)) {
+                pre++;
+            }
+            best = Math.max(best, pre);
+        }
+        return best;
+    }
+
+    /** 归一化房间名：大小写、空格、连字符这些写法差异一律抹掉（「e11b 区」与「E11B-B105」才比得起来）。 */
+    private static String normRoom(String s) {
+        StringBuilder sb = new StringBuilder();
+        for (char c : String.valueOf(s).toCharArray()) {
+            if (Character.isLetterOrDigit(c)) {
+                sb.append(Character.toUpperCase(c));
+            }
+        }
+        return sb.toString();
+    }
+
     private static List<Map<String, Object>> roomChoices(List<Map<String, Object>> rooms) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map<String, Object> r : rooms) {

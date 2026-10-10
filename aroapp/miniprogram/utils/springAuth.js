@@ -53,12 +53,26 @@ function callSpringDirect(payload) {
   return new Promise((resolve, reject) => {
     const base = envConfig.getEffectiveApiBaseUrl().replace(/\/+$/, '');
     const url = `${base}${payload.path}`;
+    /*
+     * **DELETE 一律改写成 POST**，用一个头告诉后端「请按 DELETE 处理」。
+     *
+     * 起因（生产实测 2026-10-10）：小程序走公网域名时，链路上某一层不接受 DELETE ——
+     * 请求根本到不了应用（服务端访问日志里一条来自小程序的 DELETE 都没有，而网页端走
+     * 内网地址的 DELETE 全是 200）。表现是：真机上**所有删除操作**都弹一张 502 的 HTML 页，
+     * 模拟器（直连本机后端）却一切正常。
+     *
+     * 为什么改在这一处：全仓有近 50 处 DELETE 调用（人员/报修/订购/资产/门禁/违规/会话…），
+     * 一个个改写成 POST 口要动几十个接口和调用点。改在唯一的请求出口，配合后端一个
+     * 过滤器还原方法，调用点一个都不用动。网页端不受影响（它走内网，DELETE 本来就通）。
+     */
+    const wantDelete = String(payload.method || '').toUpperCase() === 'DELETE';
     wx.request({
       url,
-      method: payload.method || 'GET',
+      method: wantDelete ? 'POST' : (payload.method || 'GET'),
       data: payload.data || {},
       header: {
         'Content-Type': 'application/json',
+        ...(wantDelete ? { 'X-HTTP-Method-Override': 'DELETE' } : {}),
         ...(payload.authorization ? { Authorization: payload.authorization } : {}),
       },
       responseType: payload.responseType || 'text',

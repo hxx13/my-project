@@ -319,6 +319,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-wx-pusher-uid.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-telemetry-alarm-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-digest-telemetry-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-telemetry-longterm.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-user-notify-mute.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-personnel-open-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory.sql", ctx)) success++;
@@ -345,6 +346,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-agv-analytics-hourly.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-stats-pipeline.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-stats-config.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-agv-metric-daily.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-inventory-item-images.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-asset-location.sql", ctx)) success++;

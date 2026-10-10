@@ -18,7 +18,8 @@ public final class JobSchedulePolicy {
         }
         return JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(jobKey)
                 || JobExecutionRegistry.JOB_DASHBOARD_RANKING_ACTIVITY.equals(jobKey)
-                || JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL.equals(jobKey);
+                || JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL.equals(jobKey)
+                || JobExecutionRegistry.JOB_TELEMETRY_LONGTERM_SAMPLE.equals(jobKey);
     }
 
     /** 每日固定时刻执行一次（非窗口内轮询） */
@@ -44,6 +45,9 @@ public final class JobSchedulePolicy {
         }
         if (JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL.equals(jobKey)) {
             return 1800; // 30 分钟
+        }
+        if (JobExecutionRegistry.JOB_TELEMETRY_LONGTERM_SAMPLE.equals(jobKey)) {
+            return 7200; // 2 小时
         }
         return 60;
     }

@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li><b>COUNTER</b> — 站点访问计数：匹配 STATION_ENTER 事件，递增访问次数。
  *       使用 lastCountedStation 去重连续相同站点的帧。</li>
+ *   <li><b>EVENT_COUNTER</b> — 任意事件类型的计数：匹配 definition 里的 eventTypes，
+ *       可按 robotIps 限定车号，按 weight 换算（如「一次抬臂 = 80 个笼盒」）。</li>
  *   <li><b>TIMER（驻留）</b> — 站点驻留时长：匹配 STATION_ENTER/STATION_EXIT，
  *       计时并累积 duration。</li>
  *   <li><b>TIMER（任务）</b> — 任务执行时长：匹配 TASK_START/TASK_END，
@@ -112,8 +114,11 @@ public class AgvStatsComputeEngine {
 
         try {
             // 1. 读取激活的配置
+            //    注意：**不要**在这里「配置为空就 return」—— 那句会让下面第 4 步的排空够不着，
+            //    零配置时事件照旧堆积；等配置重新启用，积压的旧事件会被一次性计进去，
+            //    当前值出现与真实节律无关的突跳。配置为空时下游天然安全：
+            //    事件循环零次迭代、第 5/6/7 步对空列表都是无操作。
             List<Map<String, Object>> configs = statsMapper.selectAllActiveConfigs();
-            if (configs.isEmpty()) return;
 
             // 2. 读取未消费事件
             List<Map<String, Object>> events = statsMapper.selectUnconsumedEvents(EVENT_BATCH_SIZE);
@@ -151,11 +156,19 @@ public class AgvStatsComputeEngine {
                     }
                 }
 
-                // 4. 标记已消费事件
-                if (!consumedEventIds.isEmpty()) {
-                    List<Long> idList = new ArrayList<>(consumedEventIds);
+                // 4. 标记已消费事件 —— 注意是**本轮取到的全部**，不是只标被匹配的那些。
+                //    取数是「未消费 + 按时间正序 + LIMIT 500」：只要有一类事件没有任何激活配置认领，
+                //    它就会一直堆在队首，把 500 条窗口占满，让站点/任务统计**静默永久停摆**。
+                //    实测全车抬臂事件约 33 条/天，不修则约 15 天堆满；若笼盒清洗配置被关掉，计数同样停。
+                //    「标成已消费」只表示「这一轮没有任何配置要它」，行仍留在表里，不删数据。
+                List<Long> allBatchIds = new ArrayList<>();
+                for (Map<String, Object> event : events) {
+                    Long eventId = toLong(event.get("id"));
+                    if (eventId != null) allBatchIds.add(eventId);
+                }
+                if (!allBatchIds.isEmpty()) {
                     try {
-                        statsMapper.markEventsConsumedByIds(idList);
+                        statsMapper.markEventsConsumedByIds(allBatchIds);
                     } catch (Exception e) {
                         log.debug("[AgvStatsEngine] Failed to mark events consumed: {}", e.getMessage());
                     }
@@ -236,6 +249,7 @@ public class AgvStatsComputeEngine {
         return switch (configType) {
             case "COUNTER" -> processCounter(configId, slug, definition,
                 eventType, eventTarget, robotIp);
+            case "EVENT_COUNTER" -> processEventCounter(configId, slug, definition, eventType, robotIp);
             case "TIMER" -> processTimer(configId, slug, definition,
                 eventType, eventTarget, robotIp, eventAt);
             case "STATE" -> processState(configId, slug, definition,
@@ -273,6 +287,42 @@ public class AgvStatsComputeEngine {
 
         upsertSnapshotFromMap(configId, slug, robotIp, current,
             toDoubleVal(snapshot.get("current_value")), trend, false, null);
+        return true;
+    }
+
+    /**
+     * EVENT_COUNTER 处理：按定义里列的事件类型计数，可限定车号、可带换算倍率。
+     *
+     * <p>与 {@link #processCounter} 分开的原因：那个只认 STATION_ENTER、且隐含「按站点去重」，
+     * 已经在跑线上站点统计。把它的匹配放开会静默改变线上数字，所以新行为走新类型。
+     *
+     * <p>定义体形如：
+     * {@code {"eventTypes":["FORK_RAISE_STROKE"],"robotIps":["172.22.159.16"],"weight":80}}
+     * <ul>
+     *   <li>{@code eventTypes} 必填，命中其一才计</li>
+     *   <li>{@code robotIps} 选填；给了就只算这些车，不给算全部</li>
+     *   <li>{@code weight} 选填，默认 1；命中一次加这么多（笼盒清洗用 80）</li>
+     * </ul>
+     */
+    @SuppressWarnings("unchecked")
+    private boolean processEventCounter(Long configId, String slug, Map<String, Object> definition,
+                                        String eventType, String robotIp) {
+        List<String> eventTypes = (List<String>) definition.get("eventTypes");
+        if (eventTypes == null || eventTypes.isEmpty() || !eventTypes.contains(eventType)) {
+            return false;
+        }
+        List<String> robotIps = (List<String>) definition.get("robotIps");
+        if (robotIps != null && !robotIps.isEmpty() && !robotIps.contains(robotIp)) {
+            return false;
+        }
+
+        double weight = definition.get("weight") != null ? toDoubleVal(definition.get("weight")) : 1.0;
+
+        Map<String, Object> snapshot = getOrCreateSnapshot(configId, slug, robotIp);
+        double prev = toDoubleVal(snapshot.get("current_value"));
+        double current = prev + weight;
+
+        upsertSnapshotFromMap(configId, slug, robotIp, current, prev, computeTrend(current, prev), false, null);
         return true;
     }
 

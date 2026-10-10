@@ -17,3 +17,7 @@ INSERT IGNORE INTO agv_stats_config (name, config_type, definition_json, pipelin
 ('默认管道', 'METRIC_PIPE',
  '{"stationGroups": ["station-group-charging", "station-group-working"], "agvIps": [], "metrics": ["STATION_VISIT_COUNT", "STATION_DWELL_TIME", "TASK_DURATION", "TASK_COUNT", "BATTERY_LEVEL", "ODO_MILEAGE", "STATUS_DISTRIBUTION", "CHARGING_TIME", "BLOCKED_TIME", "EMERGENCY_TIME"]}',
  'default-pipe', 1);
+
+-- 笼盒清洗：1 号车叉臂抬一次 = 80 个笼盒。weight 与 Java 侧 AgvRobots.CAGES_PER_FORK_STROKE 必须一致。
+INSERT IGNORE INTO agv_stats_config (name, config_type, definition_json, pipeline_slug, is_active) VALUES
+('笼盒清洗', 'EVENT_COUNTER', '{"eventTypes":["FORK_RAISE_STROKE"],"robotIps":["172.22.159.16"],"weight":80}', 'cage-wash', 1);

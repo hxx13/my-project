@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
@@ -32,6 +33,7 @@ import java.util.*;
  *   <li><b>TASK_START</b>    — 任务开始（task_status 变为 2=执行中）</li>
  *   <li><b>TASK_END</b>      — 任务结束（task_status 从 2=执行中变为其他）</li>
  *   <li><b>STATUS_CHANGE</b> — 任务状态变更（task_status 任意变化）</li>
+ *   <li><b>FORK_RAISE_STROKE</b> — 叉臂从低位抬到高位（一次抬臂行程，不是每一帧；见 {@link AgvForkStrokeDetector}）</li>
  * </ul>
  */
 @Service
@@ -54,6 +56,9 @@ public class AgvStatsEventInterceptor {
     private final Map<String, String> lastStation = new HashMap<>();
     /** 每个机器人当前任务状态（上一次看到的 task_status） */
     private final Map<String, Integer> lastTaskStatus = new HashMap<>();
+
+    /** 叉臂「抬臂行程」识别器：跨到高位即一次行程。与在线事件同线程使用 */
+    private final AgvForkStrokeDetector forkDetector = new AgvForkStrokeDetector();
 
     public AgvStatsEventInterceptor(AgvStatsMapper statsMapper) {
         this.statsMapper = statsMapper;
@@ -97,8 +102,11 @@ public class AgvStatsEventInterceptor {
         // Determine the "since" timestamp for this robot
         LocalDateTime since = lastProcessedAt.get(robotIp);
         if (since == null) {
-            // First time seeing this robot — catch up from 5 min ago
-            since = LocalDateTime.now().minus(CATCH_UP_MINUTES, ChronoUnit.MINUTES);
+            // First time seeing this robot — catch up from 5 min ago.
+            // 必须显式取 **UTC 墙钟**：recorded_at 存的是 UTC 墙钟，而 JVM 默认时区被
+            // TwinSystemApplication 设成了 Asia/Shanghai，LocalDateTime.now() 会快 8 小时，
+            // 直接比较会一行都查不出来（站点/任务/叉臂事件全部静默停止产出）。
+            since = LocalDateTime.now(ZoneOffset.UTC).minus(CATCH_UP_MINUTES, ChronoUnit.MINUTES);
         }
 
         List<Map<String, Object>> rows = statsMapper.selectTrajectoryAfter(robotIp, since, FETCH_LIMIT);
@@ -160,6 +168,13 @@ public class AgvStatsEventInterceptor {
                 prevTaskStatus = taskStatus;
             }
 
+            // ── Fork stroke events ──
+            // 叉臂是连续浮点，一次抬臂跨几十帧；按「低位→高位」计一次，不能按帧计（实测差 3.8~10.4 倍）
+            if (forkDetector.feed(robotIp, toDoubleOrNull(row.get("fork_height")))) {
+                writeEvent(robotIp, "FORK_RAISE_STROKE", robotIp, recordedAt, null);
+                eventsWritten++;
+            }
+
             if (eventsWritten >= MAX_EVENTS_PER_TICK) break;
         }
 
@@ -203,6 +218,12 @@ public class AgvStatsEventInterceptor {
     private static Integer toIntOrNull(Object o) {
         if (o instanceof Number n) return n.intValue();
         if (o instanceof String s) try { return Integer.parseInt(s); } catch (Exception e) { /* fall through */ }
+        return null;
+    }
+
+    private static Double toDoubleOrNull(Object o) {
+        if (o instanceof Number n) return n.doubleValue();
+        if (o instanceof String s) try { return Double.parseDouble(s); } catch (Exception e) { /* fall through */ }
         return null;
     }
 

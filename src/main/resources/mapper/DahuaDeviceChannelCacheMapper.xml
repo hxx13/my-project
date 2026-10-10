@@ -112,7 +112,31 @@
         FROM dahua_device_channel_cache d
         LEFT JOIN dahua_device_channel_remark_category rc ON d.remark_category_id = rc.id
         <include refid="listWhere"/>
-        ORDER BY d.updated_at DESC, d.id DESC
+        <choose>
+            <when test="keyword != null and keyword != ''">
+                <bind name="kwPattern" value="'%' + keyword + '%'"/>
+                <!--
+                    关键词命中时要**按命中位置排序**，不能纯按更新时间。
+
+                    为什么：关键词是对 名称/编码/设备号/SN/编号 一起模糊匹配的，一个三位的片段
+                    很容易顺带命中一串**设备编号**（搜「152」会命中的 11 条通道，设备号里都含
+                    `1000152`）。纯按 updated_at 排的话，用户真正要找的那条（名字里带 152 的
+                    「业务室(152)-137-RL03」）被这 11 条无关通道挤到列表末尾，手机上不往下滚
+                    就是「搜不到」（真机报的就是这个）。
+                    名字命中放最前，编码次之，其余靠后；同档内仍按更新时间。
+                -->
+                ORDER BY
+                    CASE
+                        WHEN d.channel_name LIKE #{kwPattern} THEN 0
+                        WHEN d.channel_code LIKE #{kwPattern} THEN 1
+                        ELSE 2
+                    END,
+                    d.updated_at DESC, d.id DESC
+            </when>
+            <otherwise>
+                ORDER BY d.updated_at DESC, d.id DESC
+            </otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 

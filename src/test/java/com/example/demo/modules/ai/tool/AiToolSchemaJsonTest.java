@@ -15,6 +15,7 @@ import com.example.demo.modules.ai.tool.pack.StudentReviewToolPack;
 import com.example.demo.modules.ai.tool.pack.StudentActivityToolPack;
 import com.example.demo.modules.ai.tool.pack.SuppliesMallToolPack;
 import com.example.demo.modules.ai.tool.pack.SuppliesProcessToolPack;
+import com.example.demo.modules.ai.tool.pack.TelemetryLongtermToolPack;
 import com.example.demo.modules.ai.tool.pack.TelemetryToolPack;
 import com.example.demo.modules.ai.tool.pack.TimerToolPack;
 import com.example.demo.modules.ai.tool.pack.TrainingReviewToolPack;
@@ -55,6 +56,7 @@ class AiToolSchemaJsonTest {
                 new SuppliesMallToolPack(null, null),
                 new SuppliesProcessToolPack(null, null),
                 new TelemetryToolPack(null, null, null),
+                new TelemetryLongtermToolPack(null),
                 new TrainingReviewToolPack(null, null),
                 new TimerToolPack(null),
                 new NavToolPack(null),

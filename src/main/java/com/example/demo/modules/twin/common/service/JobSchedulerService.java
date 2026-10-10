@@ -430,6 +430,10 @@ public class JobSchedulerService {
                 // AGV 默认 24h 窗口，管理员可按需限制
                 row.setScheduleStartTime("00:00");
                 row.setScheduleEndTime("23:59");
+            } else if (JobExecutionRegistry.JOB_TELEMETRY_LONGTERM_SAMPLE.equals(e.getKey())) {
+                // 长期归档要全天采样；是否真采得到由「快照新鲜度」决定（采样服务自己会跳过期快照）
+                row.setScheduleStartTime("00:00");
+                row.setScheduleEndTime("23:59");
             } else {
                 row.setScheduleStartTime("07:00");
                 row.setScheduleEndTime("22:00");

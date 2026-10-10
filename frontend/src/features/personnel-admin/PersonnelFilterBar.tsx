@@ -35,37 +35,40 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
   const set = (patch: Partial<UnifiedPersonnelFilter>) => onChange({ ...value, ...patch });
   const selectCls =
     "h-8 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 text-xs text-[var(--app-color-text-primary)] focus:outline-none";
+  // 主筛选下拉：原生 select 按最长 option 自撑宽度，课题组 275 项/部门 33 项里各有一条超长名称
+  // 就会把框撑到 200px+，而框里显示的往往只是「全部」。统一定宽，超长选项在闭合态截断
+  // （展开列表仍显示全名）。「更多筛选」那排选项都很短，不定宽才排得下。
+  const filterSelectCls = cn(selectCls, "w-40 shrink-0 truncate");
 
   return (
-    <div className="space-y-3">
-      {/* 自动分区 Tab */}
-      <div className="flex flex-wrap items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
-        {(["all", "sys", "nosys"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => onApply({ ...value, accountType: t })}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              (value.accountType ?? "all") === t
-                ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm"
-                : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
-            )}
-          >
-            {t === "all" ? `全部 ${total}` : t === "sys" ? "有教职工账号" : "无教职工账号"}
-          </button>
-        ))}
-      </div>
-
-      {/* 回收站入口：软删除的人不混在正常列表里，单独一个视图 */}
-      <div className="flex items-center gap-1">
+    <div className="space-y-2">
+      {/* 视图切换：分区 Tab + 回收站共用一行（都是「在看哪一份名单」） */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
+          {(["all", "sys", "nosys"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => onApply({ ...value, accountType: t })}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                (value.accountType ?? "all") === t
+                  ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm"
+                  : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+              )}
+            >
+              {t === "all" ? `全部 ${total}` : t === "sys" ? "有教职工账号" : "无教职工账号"}
+            </button>
+          ))}
+        </div>
+        {/* 软删除的人不混在正常列表里，单独一个视图 */}
         <button
           type="button"
           onClick={() => onApply({ ...value, trashOnly: !value.trashOnly })}
           className={cn(
             "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
             value.trashOnly
-              ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm"
+              ? "bg-[var(--twin-canvas-soft-2)] text-[var(--twin-ink)] shadow-sm"
               : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
           )}
         >
@@ -80,37 +83,40 @@ export function PersonnelFilterBar({ value, onChange, onApply, onReset, options,
           onChange={(e) => set({ keyword: e.target.value })}
           onKeyDown={(e) => { if (e.key === "Enter") onApply({ ...value }); }}
           placeholder="姓名 / 工号 / 账号 / 手机号 / 邮箱"
-          className="min-w-0 flex-1 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5 text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none"
+          className="min-w-[180px] flex-1 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5 text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none"
         />
-        <select className={selectCls} value={value.groupId ?? ""}
+        <select className={filterSelectCls} value={value.groupId ?? ""}
           onChange={(e) => set({ groupId: e.target.value ? Number(e.target.value) : undefined })}>
           <option value="">课题组：全部</option>
           {options.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
-        <select className={selectCls} value={value.departmentId ?? ""}
+        <select className={filterSelectCls} value={value.departmentId ?? ""}
           onChange={(e) => set({ departmentId: e.target.value ? Number(e.target.value) : undefined })}>
           <option value="">部门：全部</option>
           {options.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <select className={selectCls} value={value.identityTagId ?? ""}
+        <select className={filterSelectCls} value={value.identityTagId ?? ""}
           onChange={(e) => set({ identityTagId: e.target.value ? Number(e.target.value) : undefined })}>
           <option value="">身份标识：全部</option>
           {options.identityTags.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
-        <select className={selectCls} value={value.roomName ?? ""}
+        <select className={filterSelectCls} value={value.roomName ?? ""}
           onChange={(e) => set({ roomName: e.target.value || undefined })}>
           <option value="">房间：全部</option>
           {options.rooms.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
-        <AdminButton type="button" tone="primary" size="sm" onClick={() => onApply({ ...value })}>筛选</AdminButton>
-        <AdminButton type="button" tone="ghost" size="sm" onClick={() => {
-          onChange({ accountType: value.accountType ?? "all" });
-          onReset();
-        }}>重置</AdminButton>
-        <button type="button" onClick={() => setMoreOpen((v) => !v)}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)]">
-          更多筛选 <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", moreOpen && "rotate-180")} />
-        </button>
+        {/* ml-auto：换行时按钮组贴右，不必在末行留一段空档 */}
+        <div className="ml-auto flex items-center gap-2">
+          <AdminButton type="button" tone="primary" size="sm" onClick={() => onApply({ ...value })}>筛选</AdminButton>
+          <AdminButton type="button" tone="ghost" size="sm" onClick={() => {
+            onChange({ accountType: value.accountType ?? "all" });
+            onReset();
+          }}>重置</AdminButton>
+          <button type="button" onClick={() => setMoreOpen((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)]">
+            更多筛选 <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", moreOpen && "rotate-180")} />
+          </button>
+        </div>
       </div>
 
       {/* 更多筛选 */}

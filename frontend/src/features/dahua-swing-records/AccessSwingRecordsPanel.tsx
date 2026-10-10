@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import toast from "react-hot-toast";
 
@@ -21,6 +21,8 @@ import {
 
 import { useSearchParams } from "react-router-dom";
 
+import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { appConfirm } from "@/lib/appDialog";
 const toApiDateTime = (v: string) => (v ? `${v.replace("T", " ")}:00` : "");
 
@@ -32,9 +34,20 @@ const todayRange = () => {
   return { start: `${y}-${m}-${d}T00:00`, end: `${y}-${m}-${d}T23:59` };
 };
 
-const filterLabelClass = "flex flex-col gap-1 text-[11px] text-slate-600";
+const filterLabelClass = "flex flex-col gap-1 text-[11px] text-[var(--app-color-text-secondary)]";
 
-const filterInputClass = "h-8 rounded border border-slate-200 px-2 text-xs bg-white";
+const filterInputClass =
+  "h-8 w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none";
+
+/** 筛选字段的统一「小标签在上、控件在下」外壳 */
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className={filterLabelClass}>
+      {label}
+      {children}
+    </label>
+  );
+}
 
 function emptyFilters(today: { start: string; end: string }, taskId: string, channelName: string): SwingRecordFilters {
   return {
@@ -161,123 +174,127 @@ export function AccessSwingRecordsPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
+      <AdminFormCard className="shrink-0 p-3">
         {/* 第一行：数据源 + 质量摘要 + 操作按钮 */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <span className="text-xs font-semibold text-slate-600">数据源</span>
-          {(
-            [
-              ["", "全部"],
-              ["REALTIME", "实时"],
-              ["STATS", "审计"],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k || "all"}
-              type="button"
-              className={`rounded-full px-2.5 py-0.5 text-xs border ${
-                recordSource === k ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-slate-600 border-slate-200"
-              }`}
-              onClick={() => {
-                setRecordSource(k);
-                setPage(1);
-                setFilters((p) => ({ ...p, taskId: "" }));
-              }}
-            >
-              {label}
-            </button>
-          ))}
+          <span className="text-xs font-semibold text-[var(--app-color-text-secondary)]">数据源</span>
+          <div className="inline-flex items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
+            {(
+              [
+                ["", "全部"],
+                ["REALTIME", "实时"],
+                ["STATS", "审计"],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k || "all"}
+                type="button"
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  recordSource === k
+                    ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm"
+                    : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+                }`}
+                onClick={() => {
+                  setRecordSource(k);
+                  setPage(1);
+                  setFilters((p) => ({ ...p, taskId: "" }));
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {quality ? (
-            <span className="text-xs text-slate-500">
-              共 <strong className="text-slate-700">{quality.total}</strong> 条 · 缺进出{" "}
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">
+              共 <strong className="text-[var(--app-color-text-primary)]">{quality.total}</strong> 条 · 缺进出{" "}
               <strong className="text-amber-700">{quality.missingEnterExit}</strong> 条
             </span>
           ) : null}
           <span className="flex-1" />
-          <button
-            type="button"
-            className="h-8 rounded bg-slate-900 px-3 text-xs text-white"
-            onClick={() => {
-              setPage(1);
-              void load();
-            }}
-          >
-            查询
-          </button>
-          <button
-            type="button"
-            className="h-8 rounded border border-slate-200 px-3 text-xs text-slate-600"
-            onClick={() => {
-              setFilters(emptyFilters(todayRange(), "", ""));
-              setPage(1);
-            }}
-          >
-            重置筛选
-          </button>
-          <button
-            type="button"
-            className="h-8 rounded border border-indigo-200 px-3 text-xs text-indigo-700 disabled:opacity-50"
-            disabled={enriching}
-            onClick={() => void handleEnrich()}
-          >
-            {enriching ? "补全中…" : "补全字段"}
-          </button>
-          <button
-            type="button"
-            className="h-8 rounded border border-violet-300 bg-violet-50 px-3 text-xs text-violet-900 disabled:opacity-50"
-            disabled={recalculatingAudience}
-            onClick={() => void handleRecalculateAudience()}
-          >
-            {recalculatingAudience ? "重算中…" : "重算受众"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminButton
+              type="button"
+              tone="primary"
+              size="sm"
+              onClick={() => {
+                setPage(1);
+                void load();
+              }}
+            >
+              查询
+            </AdminButton>
+            <AdminButton
+              type="button"
+              tone="ghost"
+              size="sm"
+              onClick={() => {
+                setFilters(emptyFilters(todayRange(), "", ""));
+                setPage(1);
+              }}
+            >
+              重置筛选
+            </AdminButton>
+            <AdminButton
+              type="button"
+              tone="secondary"
+              size="sm"
+              loading={enriching}
+              onClick={() => void handleEnrich()}
+            >
+              补全字段
+            </AdminButton>
+            <AdminButton
+              type="button"
+              tone="destructive"
+              size="sm"
+              loading={recalculatingAudience}
+              onClick={() => void handleRecalculateAudience()}
+            >
+              重算受众
+            </AdminButton>
+          </div>
         </div>
 
-        {/* 第二行：筛选字段 */}
-        <div className="flex flex-wrap items-end gap-x-2 gap-y-2 border-t border-slate-100 pt-2">
-          <label className={`${filterLabelClass} min-w-[180px] flex-1`}>
-            通道名称
+        {/* 第二行：筛选字段（等宽网格，12 个字段按屏宽 6/4/2 列铺满整行） */}
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <FilterField label="通道名称">
             <input
               className={filterInputClass}
               placeholder="模糊匹配名称或编码"
               value={filters.channelName}
               onChange={(e) => setFilters((p) => ({ ...p, channelName: e.target.value }))}
             />
-          </label>
-          <label className={`${filterLabelClass} min-w-[80px]`}>
-            工号
+          </FilterField>
+          <FilterField label="工号">
             <input
               className={filterInputClass}
               value={filters.personCode}
               onChange={(e) => setFilters((p) => ({ ...p, personCode: e.target.value }))}
             />
-          </label>
-          <label className={`${filterLabelClass} min-w-[140px] flex-1`}>
-            姓名
+          </FilterField>
+          <FilterField label="姓名">
             <input
               className={filterInputClass}
               value={filters.personName}
               onChange={(e) => setFilters((p) => ({ ...p, personName: e.target.value }))}
             />
-          </label>
-          <label className={`${filterLabelClass} min-w-[80px]`}>
-            卡号
+          </FilterField>
+          <FilterField label="卡号">
             <input
               className={filterInputClass}
               value={filters.cardNumber}
               onChange={(e) => setFilters((p) => ({ ...p, cardNumber: e.target.value }))}
             />
-          </label>
-          <label className={`${filterLabelClass} min-w-[90px]`}>
-            部门
+          </FilterField>
+          <FilterField label="部门">
             <input
               className={filterInputClass}
               placeholder="名称或部门ID"
               value={filters.departmentName}
               onChange={(e) => setFilters((p) => ({ ...p, departmentName: e.target.value }))}
             />
-          </label>
-          <label className={filterLabelClass}>
-            开门类型
+          </FilterField>
+          <FilterField label="开门类型">
             <select
               className={filterInputClass}
               value={filters.openType}
@@ -290,9 +307,8 @@ export function AccessSwingRecordsPanel() {
                 </option>
               ))}
             </select>
-          </label>
-          <label className={filterLabelClass}>
-            刷卡成功
+          </FilterField>
+          <FilterField label="刷卡成功">
             <select
               className={filterInputClass}
               value={filters.openResult}
@@ -302,9 +318,8 @@ export function AccessSwingRecordsPanel() {
               <option value="1">成功</option>
               <option value="0">失败</option>
             </select>
-          </label>
-          <label className={filterLabelClass}>
-            进出
+          </FilterField>
+          <FilterField label="进出">
             <select
               className={filterInputClass}
               value={filters.enterOrExit}
@@ -314,9 +329,8 @@ export function AccessSwingRecordsPanel() {
               <option value="1">进入</option>
               <option value="2">离开</option>
             </select>
-          </label>
-          <label className={filterLabelClass}>
-            受众
+          </FilterField>
+          <FilterField label="受众">
             <select
               className={filterInputClass}
               value={filters.audienceType}
@@ -326,9 +340,8 @@ export function AccessSwingRecordsPanel() {
               <option value="STUDENT">学生</option>
               <option value="STAFF">工作人员</option>
             </select>
-          </label>
-          <label className={filterLabelClass}>
-            映射
+          </FilterField>
+          <FilterField label="映射">
             <select
               className={filterInputClass}
               value={filters.mappingHit}
@@ -338,49 +351,54 @@ export function AccessSwingRecordsPanel() {
               <option value="1">已映射</option>
               <option value="0">未映射</option>
             </select>
-          </label>
-          <label className={`${filterLabelClass} min-w-[150px]`}>
-            开始时间
+          </FilterField>
+          <FilterField label="开始时间">
             <input
               type="datetime-local"
               className={filterInputClass}
               value={filters.startTime}
               onChange={(e) => setFilters((p) => ({ ...p, startTime: e.target.value }))}
             />
-          </label>
-          <label className={`${filterLabelClass} min-w-[150px]`}>
-            结束时间
+          </FilterField>
+          <FilterField label="结束时间">
             <input
               type="datetime-local"
               className={filterInputClass}
               value={filters.endTime}
               onChange={(e) => setFilters((p) => ({ ...p, endTime: e.target.value }))}
             />
-          </label>
+          </FilterField>
         </div>
-      </div>
+      </AdminFormCard>
 
       <div className="min-h-0 flex-1">
         <AccessSwingRecordTable rows={rows} loading={loading} />
       </div>
 
-      <div className="flex shrink-0 items-center justify-between text-xs text-slate-500">
+      <div className="flex shrink-0 items-center justify-between text-xs text-[var(--app-color-text-tertiary)]">
         <span>共 {total} 条</span>
-        <div className="flex gap-2">
-          <button type="button" className="underline disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+        <div className="flex items-center gap-2">
+          <AdminButton
+            type="button"
+            tone="ghost"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             上一页
-          </button>
+          </AdminButton>
           <span>
             {page}/{totalPages}
           </span>
-          <button
+          <AdminButton
             type="button"
-            className="underline disabled:opacity-40"
+            tone="ghost"
+            size="sm"
             disabled={page >= totalPages}
             onClick={() => setPage((p) => p + 1)}
           >
             下一页
-          </button>
+          </AdminButton>
         </div>
       </div>
     </div>

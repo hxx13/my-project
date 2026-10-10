@@ -1,4 +1,7 @@
-<subpage-nav-bar title="温湿度" />
+<!-- 「数据监测」（长期归档表格）的入口挂在退回键右侧。窄控件，不会压到居中的标题 -->
+<subpage-nav-bar title="温湿度">
+  <view slot="left" class="nav-entry" hover-class="nav-entry--hover" bindtap="goTelemetryLongterm">数据监测</view>
+</subpage-nav-bar>
 <view class="telemetry-page" style="min-height: calc(100vh - {{ navBarHeight }}px);">
   <view wx:if="{{ telemetryLoading && !telemetryPage }}" class="state">加载中…</view>
   <view wx:elif="{{ telemetryErr }}" class="state state-err">{{ telemetryErr }}</view>
