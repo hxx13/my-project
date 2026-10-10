@@ -18,6 +18,12 @@
    */
   overflow: hidden;
   /**
+   * 把内部的重绘**关在框里**：旋转的底板每帧都要重画，没有它内核会把这份重绘一路带到外层
+   * （滚动锚定/合成范围跟着变），键盘弹起时表现为整个抽屉发抖。
+   * `paint` 只管绘制（不裁投影、不改布局），正是这里要的那一种。
+   */
+  contain: paint;
+  /**
    * 底部安全区**从弹窗挪进卡片**（见下面 .ai-drawer__composer 的 padding-bottom）。
    *
    * vant 的 `safe-area-inset-bottom` 是给弹窗加 padding，那圈在卡片**之外** —— 于是露出光环的底色：
@@ -82,15 +88,23 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 300%;
-  height: 300%;
-  transform: translate(-50%, -50%);
+  /**
+   * **固定尺寸，不用百分比**。
+   *
+   * 用 300% 时尺寸是相对弹窗算的 —— 手机键盘一弹，弹窗的框一变，这块板子跟着重算尺寸，
+   * 锥形渐变的圆心与半径随之跳一下；它每帧都在转，于是表现为「输入框里的字跟着光圈一起上下抖」。
+   * 写成固定的 rpx（1600×2400rpx，比任何机型的抽屉都大）就与弹窗的框彻底解耦，键盘怎么动它都不变。
+   */
+  width: 1600rpx;
+  height: 2400rpx;
+  transform: translate3d(-50%, -50%, 0);
   z-index: 0;
   /**
-   * 尺寸比网页端（160%×220%）放大到 300%：那块板子要**长过抽屉的每一个角**。
-   * 板子偏小时，锥形渐变的弧在卡片拐角处弯得太急 —— 拐角上那道光会断掉（用户实测「拐角断线」）。
-   * 放得越大，射到边上的色带越接近直线，一圈才是连续的一道。
+   * 让它**独占一个合成层**：不加的话它每帧重绘会把同一个层里的文字一起带着抖
+   * （真机症状：键盘弹起时输入框文案随光圈上下抖，抽屉本身也在抖）。
    */
+  will-change: transform;
+  backface-visibility: hidden;
   /* 纯装饰：绝不参与命中测试 —— 它比抽屉大得多，会盖在页面其他内容上，
      一旦吃掉点击，用户会觉得「整个屏幕点不动」（真机踩过）。 */
   pointer-events: none;
@@ -120,20 +134,23 @@
     rgba(34, 211, 238, 1) 354deg,
     transparent 358deg 360deg
   );
-  /* 三层投影＝网页端的 drop-shadow（光带自己带的辉光） */
-  filter: drop-shadow(0 0 6px rgba(160, 61, 230, 0.58))
-    drop-shadow(0 0 14px rgba(47, 107, 245, 0.42))
-    drop-shadow(0 0 24px rgba(21, 184, 214, 0.3));
+  /**
+   * **不挂 `filter: drop-shadow`**（网页端有，这里故意去掉）。
+   *
+   * 那是给光带自己加辉光，但代价是这块比屏幕还大的板子**每一帧都要重新做一遍高斯模糊**；
+   * 小程序内核上表现为整块重绘、把同层文字一起拖着抖（真机症状），也白烧电。
+   * 外面那圈光晕由弹窗的三层投影提供，视觉上并不缺。
+   */
   animation: ai-drawer-ring-flow 2.5s linear infinite;
 }
 
 @keyframes ai-drawer-ring-flow {
   from {
-    transform: translate(-50%, -50%) rotate(0deg);
+    transform: translate3d(-50%, -50%, 0) rotate(0deg);
   }
 
   to {
-    transform: translate(-50%, -50%) rotate(360deg);
+    transform: translate3d(-50%, -50%, 0) rotate(360deg);
   }
 }
 
@@ -807,8 +824,12 @@
   display: flex;
   align-items: flex-end;
   gap: 16rpx;
-  /* 底部安全区在这里垫：弹窗那圈已经去掉，输入框才不会贴到 home 指示条上 */
-  padding: 16rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
+  /**
+   * 底部安全区**不写在这里**（原来用 env(safe-area-inset-bottom)）：键盘弹出时那个值逐帧变，
+   * 参与布局就会让卡片高度每帧变一次 → 抽屉和输入框上下抖。
+   * 现在由 JS 读一次，用行内 style 的固定 px 顶上（见组件 attached）。
+   */
+  padding: 16rpx 24rpx 20rpx;
   background: #ffffff;
 }
 

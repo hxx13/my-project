@@ -1790,6 +1790,29 @@
   background: #fff;
 }
 
+/* 兜底的关闭键：点背景之外再给一个明确的出口。
+   实色底 + 1px 描边（项目一贯口径：按钮不用半透明底）。 */
+.scan-assistant-zoom__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  background: #1e293b;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.scan-assistant-zoom__close:hover {
+  background: #334155;
+}
+
 .scan-assistant-zoom__hint {
   font-size: 0.8125rem;
   color: rgba(255, 255, 255, 0.75);

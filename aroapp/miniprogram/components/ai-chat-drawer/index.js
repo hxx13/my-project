@@ -3,6 +3,26 @@ const markdown = require('../../utils/markdown.js');
 const springAuth = require('../../utils/springAuth.js');
 const pagePermission = require('../../utils/pagePermission.js');
 
+/**
+ * 底部安全区高度（px），取不到就按 0（顶多输入框离 home 指示条近一点）。
+ *
+ * <p>只在这里读一次、之后当常量用：键盘弹出时 env(safe-area-inset-bottom) 会逐帧变，
+ * 让它参与布局就会把整个抽屉抖起来（见 attached 里的注释）。
+ */
+function readSafeBottomPx() {
+  try {
+    const info = typeof wx.getWindowInfo === 'function' ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    const safe = info && info.safeArea;
+    const screenH = (info && (info.screenHeight || info.windowHeight)) || 0;
+    if (safe && typeof safe.bottom === 'number' && screenH > 0) {
+      return Math.max(0, Math.round(screenH - safe.bottom));
+    }
+  } catch (e) {
+    /* 取不到：按 0，不至于把输入区挤没 */
+  }
+  return 0;
+}
+
 /** 模型按工具给的路径原样写链接，路径本身是真的 */
 const TPL_DOWNLOAD_RE = /\/api\/admin\/file-templates\/([^/\s)"']+)\/download/g;
 /** 把这些下载链接写成 markdown 链接的样子：`[锚文本](/api/.../download)` */
@@ -207,6 +227,8 @@ Component({
     draft: '',
     canSend: false,
     sending: false,
+    /** 底部安全区（px，attached 时读一次固定住）。见 readSafeBottomPx 的注释。 */
+    safeBottom: 0,
     /**
      * 待答问题队列。服务端的 interaction 事件**一道题来一次**（一条消息里可能问好几件
      * 事，如「张皓瀚缺房间、林安顺缺时长」），所以要多道攒着依次问，答满再合成一条发出。
@@ -284,6 +306,15 @@ Component({
 
   lifetimes: {
     attached() {
+      /**
+       * 底部安全区**只在这里读一次**，转成固定 px 交给输入区。
+       *
+       * <p>不能留在 wxss 里用 `env(safe-area-inset-bottom)`：键盘顶上来时那个值会**逐帧变化**
+       * （键盘盖住了安全区），输入区的 padding 于是逐帧重算 —— 卡片高度每帧变一次，
+       * 整个抽屉连同输入框就上下抖（真机症状：一拉起键盘，输入框里的字随着光圈一起抖）。
+       * 读一次固定住，键盘怎么动它都不变。
+       */
+      this.setData({ safeBottom: readSafeBottomPx() });
       // 非渲染态的实例字段在这里起手，省得处处判 undefined
       this.stream = null;
       this.scrollTimer = null;
@@ -994,31 +1025,71 @@ Component({
      *
      * <p>谁会绕开对话流直接往会话里写？**定时器执行完的那条汇报** —— 它跑在调度线程里，
      * 这头没有任何流连接。不补的话：通知都推到他手机上了，对话里却要重开才看得见。
+     *
+     * <p>**消息和产物必须一起补**：定时器出图那条路服务端写了两样 —— 一条汇报消息、一份锚在
+     * 它上面的图产物。只补消息，对话里就成了「说图发来了、图上没有」，退出重进才出现
+     * （重进走的是会把两者一起拉的另一条路）。
      */
     pullNewMessages() {
       const sessionId = this.data.sessionId;
       if (!sessionId) return;
-      aiChatStream
-        .fetchSessionMessages(sessionId)
-        .then((msgs) => {
+      Promise.all([
+        aiChatStream.fetchSessionMessages(sessionId),
+        aiChatStream.fetchSessionExports(sessionId).catch(() => []),
+      ])
+        .then(([msgs, exports]) => {
           const list = msgs || [];
-          if (list.length === 0) return;
+          const arts = exports || [];
           const known = this.data.messages.slice();
           const maxKnown = known.reduce((mx, m) => (m.messageId > mx ? m.messageId : mx), 0);
           // 一个 id 都不知道就**不补**：这种情况无从判断哪条是新的，硬补会把整段对话复制一遍
           if (maxKnown <= 0) return;
           const fresh = list.filter((m) => m.role === 'assistant' && Number(m.id) > maxKnown
             && String(m.content || '').trim().length > 0);
-          if (fresh.length === 0) return;
-          const appended = fresh.map((m) => {
+          // 已经挂过的产物不再挂第二遍（按产物 id 认）
+          const mounted = {};
+          known.forEach((m) => {
+            if (m.shot && m.shot.exportId != null) mounted[m.shot.exportId] = true;
+            if (m.download && m.download.exportId != null) mounted[m.download.exportId] = true;
+          });
+          const freshArts = arts.filter((e) => e && !mounted[e.exportId]);
+          if (fresh.length === 0 && freshArts.length === 0) return;
+
+          const next = known.slice();
+          fresh.forEach((m) => {
             const text = String(m.content || '');
             // fromTimer 标记：倒计时兜底找落点时要跳过它（见 mountTimers 的注释）
             const item = { key: nextKey(), role: 'assistant', text: text, typed: true,
               messageId: Number(m.id), fromTimer: true };
             if (looksLikeMarkdown(text)) item.html = markdown.mdToHtml(text);
-            return item;
+            next.push(item);
           });
-          this.setData({ messages: known.concat(appended) });
+          // 产物挂到**锚点之后第一条有正文的助手回复**上（与 onPickSession 同一套规则）
+          const shotRestores = [];
+          freshArts.forEach((ex) => {
+            const anchor = ex.messageId != null ? Number(ex.messageId) : null;
+            let target = -1;
+            for (let i = 0; i < next.length; i += 1) {
+              if (anchor != null && Number(next[i].messageId || 0) < anchor) continue;
+              if (next[i].role === 'assistant' && String(next[i].text || '').trim()) { target = i; break; }
+            }
+            if (target < 0) {
+              for (let i = next.length - 1; i >= 0; i -= 1) {
+                if (next[i].role === 'assistant') { target = i; break; }
+              }
+            }
+            if (target < 0) return;
+            if (ex.kind === 'screenshot') {
+              next[target] = { ...next[target],
+                shot: { label: ex.label || '页面截图', exportId: ex.exportId, state: 'loading', filePath: '' } };
+              shotRestores.push({ key: next[target].key, exportId: ex.exportId, label: ex.label });
+            } else {
+              next[target] = { ...next[target],
+                download: { kind: ex.kind, label: ex.label, params: ex.params, exportId: ex.exportId } };
+            }
+          });
+          this.setData({ messages: next });
+          shotRestores.forEach((s) => this.loadShot(s.key, s.exportId, s.label));
           this.scrollToEnd();
         })
         .catch(() => { /* 拉不到就算了，别把这一轮搞坏 */ });
