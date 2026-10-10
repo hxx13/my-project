@@ -63,7 +63,7 @@ public class PushTemplateSeed implements ApplicationRunner {
                         exist.setTitleTpl(title);
                         exist.setContentTpl(content);
                     }
-                    if ("SWIPE_FAILURE_ALERT".equals(src.getSourceCode())) exist.setRateLimitSeconds(0);
+                    exist.setRateLimitSeconds(rateLimitSecondsFor(src.getSourceCode()));
                     channelMapper.update(exist);
                     updated++;
                 } else {
@@ -73,7 +73,7 @@ public class PushTemplateSeed implements ApplicationRunner {
                     cfg.setEnabled(t != null);  // 有预定义模板才默认启用，否则由用户自行开启
                     cfg.setTitleTpl(title);
                     cfg.setContentTpl(content);
-                    cfg.setRateLimitSeconds("SWIPE_FAILURE_ALERT".equals(src.getSourceCode()) ? 0 : 300);
+                    cfg.setRateLimitSeconds(rateLimitSecondsFor(src.getSourceCode()));
                     cfg.setDigestMode("INSTANT");
                     channelMapper.insert(cfg);
                     created++;
@@ -85,6 +85,23 @@ public class PushTemplateSeed implements ApplicationRunner {
             }
         }
         log.info("[Push] 模板种子完成 — 新建 {} / 更新 {} / 失败 {}", created, updated, errors);
+    }
+
+    /**
+     * 这个源的限流窗（秒）。
+     *
+     * <p>默认 300 秒是**防刷**用的（别让同一个人被同一件事反复打扰）。
+     * 但有些源**每一次都是用户自己要的一件独立的事**，隔几分钟来第二次很正常 ——
+     * 那种被限流吃掉就是「该发的通知没发」（实测踩到：两次定时相隔 295 秒，第二条静默消失）。
+     */
+    private static int rateLimitSecondsFor(String sourceCode) {
+        return switch (sourceCode == null ? "" : sourceCode) {
+            // 刷卡失败告警：每次都得报，漏一次就漏了事故
+            case "SWIPE_FAILURE_ALERT" -> 0;
+            // 定时任务执行完成：每次都是他设的一件事办完了，隔几分钟来两次是常态
+            case "AI_TIMER_FIRED" -> 0;
+            default -> 300;
+        };
     }
 
     private record Template(String title, String contentEmail, String contentWechat, String contentWxpusher) {
@@ -107,6 +124,14 @@ public class PushTemplateSeed implements ApplicationRunner {
                         + "<p>计划签退时间：{scheduledExitAt}</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
                 "**签退倒计时**\n**{doorLabel}** 已启动 **{countdownSeconds} 秒** 签退倒计时\n计划签退：{scheduledExitAt}"
+        ));
+        // 这个源的标题与正文**整体由助手现写**（见 NotifySourceRegistry 的注释），
+        // 模板只负责把两段文字塞进各渠道的外壳里；要改渠道观感就改这儿，要改措辞改提示词。
+        TEMPLATES.put("AI_TIMER_FIRED", new Template(
+                "{title}",
+                "<h3>{title}</h3><p>{body}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "{title}\n{body}"
         ));
         TEMPLATES.put("MATERIAL_REQUESTED", new Template(
                 "物资申领 — {applicantName}",

@@ -2,7 +2,12 @@ package com.example.demo.modules.ai.timer.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.ai.capability.AiCapabilityGate;
+import com.example.demo.modules.ai.entity.AiMessage;
 import com.example.demo.modules.ai.service.AiOrchestrator;
+import com.example.demo.modules.ai.service.AiSessionService;
+import com.example.demo.modules.ai.shot.PageShotArchiveService;
+import com.example.demo.modules.llm.service.DashScopeChatClient;
+import com.example.demo.modules.notification.push.dispatch.PushService;
 import com.example.demo.modules.ai.timer.entity.AiTimer;
 import com.example.demo.modules.ai.timer.mapper.AiTimerMapper;
 import com.example.demo.modules.ai.tool.AiTool;
@@ -23,8 +28,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * AI 计时器 —— 大模型定的时，替**建单人**把那个工具跑一次。
@@ -72,19 +79,38 @@ public class AiTimerService {
     private final UserMapper userMapper;
     private final UserDisplayNameService displayNameService;
     private final ObjectMapper objectMapper;
+    /**
+     * 页面截图（无人值守那条产图路）。**可以直接注入**：它只依赖渲染与产物两个服务，
+     * 谁也回不到工具注册表，不会形成上面那个构造器环。
+     */
+    private final PageShotArchiveService pageShotArchive;
+    /** 到点执行完把结果**写回会话**（服务端持久化，不是本地缓存）。 */
+    private final AiSessionService sessionService;
+    /** 只用来把工具返回的 JSON 讲成人话、并现写通知内容；不参与任何判定。 */
+    private final DashScopeChatClient chatClient;
+    /** 执行完推一条通知（源/渠道/模板在 /console/admin/push-config 那套里配）。 */
+    private final PushService pushService;
 
     public AiTimerService(AiTimerMapper mapper,
                           ObjectProvider<ToolRegistry> toolRegistryProvider,
                           AiCapabilityGate capabilityGate,
                           UserMapper userMapper,
                           UserDisplayNameService displayNameService,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper,
+                          PageShotArchiveService pageShotArchive,
+                          AiSessionService sessionService,
+                          DashScopeChatClient chatClient,
+                          PushService pushService) {
         this.mapper = mapper;
         this.toolRegistryProvider = toolRegistryProvider;
         this.capabilityGate = capabilityGate;
         this.userMapper = userMapper;
         this.displayNameService = displayNameService;
         this.objectMapper = objectMapper;
+        this.pageShotArchive = pageShotArchive;
+        this.sessionService = sessionService;
+        this.chatClient = chatClient;
+        this.pushService = pushService;
     }
 
     /** 取注册表（见字段注释：不在构造期解析，避免与工具包形成环）。 */
@@ -92,9 +118,16 @@ public class AiTimerService {
         return toolRegistryProvider.getObject();
     }
 
-    /** 一次建单请求（工具层可以直接照抄模型传来的参数字段）。 */
+    /**
+     * 一次建单请求（工具层可以直接照抄模型传来的参数字段）。
+     *
+     * @param needConfirm   到点是否**先等用户确认**。默认 false（到点直接跑）—— 建单那次确认就是同意书；
+     *                      只有不可逆的高危操作才由模型/用户主动要求加这道保险。
+     * @param notifyUserIds 执行成功后**推送给谁**（逗号分隔账号 id）。空 = 推给建单人（当前对话的人）。
+     *                      模型要推给别人时，先用 searchPerson 拿到账号 id 再传进来。
+     */
     public record ScheduleSpec(String toolName, JsonNode arguments, Integer delaySeconds,
-                               String fireAt, String label) {
+                               String fireAt, String label, Boolean needConfirm, String notifyUserIds) {
     }
 
     // ── 建单 ──
@@ -138,6 +171,8 @@ public class AiTimerService {
         t.setStatus(AiTimer.STATUS_PENDING);
         t.setSessionId(sessionId);
         t.setMessageId(messageId);
+        t.setNeedConfirm(Boolean.TRUE.equals(spec.needConfirm()));
+        t.setNotifyUserIds(trim(spec.notifyUserIds(), 512));
         mapper.insert(t);
         log.info("[ai-timer] 建单 id={} owner={} tool={} fireAt={}",
                 t.getId(), actor.getId(), toolName, fireAt.format(TS));
@@ -324,11 +359,20 @@ public class AiTimerService {
             fail(t.getId(), "这个工具已经不在了：" + t.getToolName());
             return;
         }
-        if (tool.requiresConfirm()) {
+        /*
+         * **到点不再要求二次确认。**
+         *
+         * 用户建单时那条确认卡片就是同意书（他点了「确认执行」才建出这条定时）；
+         * 到点再问一次等于把「定时」打回「手动」—— 更糟的是**无人值守时根本没人能点**，
+         * 这条定时就永远停在「等待确认」，等于废掉（真机 2026-10-10 反馈：
+         * 「明明都设计成倒计时了，为什么还要我点一下」）。
+         *
+         * 需要「到点先问一句」的场景不属于定时器 —— 那是编排层的挂起（人就在对话里，能当场点）。
+         */
+        // **只有建单时明确勾了「到点先问我」才停** —— 默认到点直接跑（见 ScheduleSpec 的注释）
+        if (Boolean.TRUE.equals(t.getNeedConfirm())) {
             mapper.markAwaitingConfirm(t.getId(), LocalDateTime.now());
-            log.info("[ai-timer] id={} 到点转为等确认 tool={}", t.getId(), t.getToolName());
-            // ponytail: 不做推送通知 —— 待确认在计时器页与 listTimers 结果里都看得到。
-            // 要即时提醒再接 PushTemplateSeed 的新模板（见设计文档 §9）。
+            log.info("[ai-timer] id={} 到点转为等确认（建单时勾了） tool={}", t.getId(), t.getToolName());
             return;
         }
         runNow(t);
@@ -360,17 +404,143 @@ public class AiTimerService {
             // 身份用建单人（不是「系统」）：这次操作在业务上就是他做的，审计要落到他头上。
             Object out = tool.executor().execute(
                     new AiToolContext(owner, t.getSessionId(), t.getMessageId(), t.getLabel()), args);
-            mapper.finishFired(t.getId(), LocalDateTime.now(), truncate(toText(out), 4000),
-                    AiOrchestrator.businessOk(out));
+            String result = truncate(archiveImageIfAny(owner, t, out), 4000);
+            boolean ok = AiOrchestrator.businessOk(out);
+            mapper.finishFired(t.getId(), LocalDateTime.now(), result, ok);
+            reportFiredResult(t, result, ok);
             log.info("[ai-timer] 执行完成 id={} tool={}", t.getId(), t.getToolName());
         } catch (Exception e) {
             fail(t.getId(), truncate(e.getMessage(), 500));
+            reportFiredResult(t, e.getMessage(), false);
             log.warn("[ai-timer] 执行失败 id={} tool={}: {}", t.getId(), t.getToolName(), e.getMessage());
         }
     }
 
     private void fail(Long id, String message) {
         mapper.finishFailed(id, LocalDateTime.now(), message);
+    }
+
+    /**
+     * 到点执行完，**把结果作为一条助手消息写回会话**。
+     *
+     * <p>为什么必须写回：定时到点执行是「助手替你办了件事」，用户回到对话里就该看到一句回复 ——
+     * 只把计时器状态改成「已完成」等于没说结果；而只存在本地缓存更不行（换设备、清缓存就没了）。
+     * 这里落的是**服务端的一条普通消息**，和平时对话一样留在会话里，下次接着聊它也看得见。
+     *
+     * <p>为什么要过一遍模型：工具返回的是**写给模型看的 JSON**（{@code {"ok":true,"stats":{...}}}），
+     * 原样贴给用户不能看。这里用一次不带工具的普通调用把它讲成人话；
+     * 摘要失败就退回一句朴素的报告 —— 「定时办完了」这件事不能因为一次摘要失败而消失。
+     */
+    private void reportFiredResult(AiTimer t, String rawResult, boolean ok) {
+        String label = t.getLabel() == null || t.getLabel().isBlank() ? t.getToolName() : t.getLabel();
+        String raw = rawResult == null ? "（无）" : rawResult;
+
+        // 让模型**现场写**这次的通知：标题一行 + 正文一到两句。
+        // 每条定时的事都不一样，套固定模板只会说些放之四海皆可的废话。
+        String title;
+        String body;
+        try {
+            List<Map<String, String>> msgs = List.of(
+                    Map.of("role", "system", "content",
+                            "你是实验中心后台的智能助手。用户给你设的定时任务刚到点执行完了，"
+                                    + "请写一条给人看的通知：**第一行是标题**（不超过 20 字，结尾不要标点），"
+                                    + "**后面若干行是正文**（一到两句中文，直接说结论和关键数字，"
+                                    + "不要念技术字段名、不要贴 JSON、不要用 markdown 记号的星号）。"),
+                    Map.of("role", "user", "content",
+                            "定时任务：" + label + "\n执行结果（原始）：" + raw));
+            String spoken = String.valueOf(chatClient.chatWithFallback(msgs).content()).trim();
+            int nl = spoken.indexOf('\n');
+            title = nl > 0 ? spoken.substring(0, nl).trim() : spoken;
+            body = nl > 0 ? spoken.substring(nl + 1).trim() : spoken;
+        } catch (Exception e) {
+            log.warn("[ai-timer] 通知内容生成失败，退回朴素报告 id={}: {}", t.getId(), e.getMessage());
+            title = (ok ? "定时任务完成" : "定时任务失败") + " — " + label;
+            body = raw;
+        }
+
+        // ① 写回会话：这是**服务端持久化**的一条普通消息（换设备/清缓存都还在，下次接着聊也看得见）
+        if (t.getSessionId() != null) {
+            try {
+                AiMessage msg = new AiMessage();
+                msg.setActorUserId(t.getOwnerUserId());
+                msg.setSource("timer");
+                sessionService.append(t.getSessionId(), "assistant",
+                        "⏱ " + title + (body.isBlank() ? "" : "\n" + body), msg);
+            } catch (Exception e) {
+                log.warn("[ai-timer] 结果写回会话失败 id={}: {}", t.getId(), e.getMessage());
+            }
+        }
+
+        // ② 推一条通知。推送失败只记日志 —— 通知是附加动作，不能把「已经办好的事」记成失败
+        pushFired(t, title, body, label);
+    }
+
+    /**
+     * 执行完成后推一条通知（走 {@code /console/admin/push-config} 那套源/渠道/模板）。
+     *
+     * <p>标题与正文是**模型刚写的**，这个源只负责把它们塞进各渠道的外壳里。
+     *
+     * <p>收件人：建单时指定的那批；**没指定就是建单人**，也就是发起这次对话的人。
+     * 模型要推给别人时得先用 searchPerson 拿到账号 id（见 scheduleTimers 的参数说明）。
+     */
+    private void pushFired(AiTimer t, String title, String body, String label) {
+        Set<String> targets = new LinkedHashSet<>();
+        String raw = t.getNotifyUserIds();
+        if (raw != null) {
+            for (String one : raw.split(",")) {
+                String v = one.trim();
+                if (!v.isEmpty()) {
+                    targets.add(v);
+                }
+            }
+        }
+        if (targets.isEmpty() && t.getOwnerUserId() != null) {
+            targets.add(t.getOwnerUserId());
+        }
+        if (targets.isEmpty()) {
+            return;
+        }
+        try {
+            Map<String, String> vars = new LinkedHashMap<>();
+            vars.put("title", title);
+            vars.put("body", body);
+            vars.put("timerLabel", label);
+            vars.put("fireAt", t.getFireAt() == null ? "" : t.getFireAt().format(TS));
+            pushService.send("AI_TIMER_FIRED", vars, targets);
+        } catch (Exception e) {
+            log.warn("[ai-timer] 通知推送失败 id={}: {}", t.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * 收掉工具返回里的**出图约定**（截图），返回要存进计时器结果的文本。
+     *
+     * <p>为什么定时器这条路必须单独做：{@code image} 本来是编排层与载体之间的约定，
+     * 而定时器到点是**直接调工具执行体**的、根本不经过编排层的事件出口 ——
+     * 不收的话，定时的截图会**静默消失**（单子还标成功，但什么也没生成）。
+     *
+     * <p>产物挂在**建单时的会话/消息**上：那个页面就是这次对话里生出来的，
+     * 用户回到那段对话就能看到这张图。
+     *
+     * <p>这里**一律走服务端渲染**，不看工具给的 {@code render}：无人值守时没有载体可用，
+     * 「带用户过去看」那种方式根本无从谈起，但「给他一张这个页面的图」这个目的仍然达得成。
+     */
+    private String archiveImageIfAny(User owner, AiTimer t, Object out) {
+        String base = toText(out);
+        if (!(out instanceof Map<?, ?> map) || !(map.get("image") instanceof Map<?, ?> image)) {
+            return base;
+        }
+        Object rawPath = image.get("path");
+        String path = rawPath == null ? null : String.valueOf(rawPath);
+        Object rawLabel = image.get("label");
+        String label = rawLabel == null ? null : String.valueOf(rawLabel);
+        try {
+            Long id = pageShotArchive.renderAndArchive(owner, t.getSessionId(), t.getMessageId(), path, label);
+            return base + "\n（截图已生成，回到发起这条定时的对话里就能看到）";
+        } catch (Exception e) {
+            // 图取不到就是这一单没办成 —— 标成成功会让用户以为图在那儿，白等
+            throw new IllegalStateException("截图没取到：" + e.getMessage(), e);
+        }
     }
 
     /** 收殓卡在 FIRING 的僵尸单（认领后进程死了）。调度器每轮调一次。 */

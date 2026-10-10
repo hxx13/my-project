@@ -212,6 +212,13 @@ export async function speakScanAssistantFromAnalyze(
 
   const speechMsgId = kind === "welcome" ? undefined : undefined; // 稍后从 archive 中获取
   store.beginStreamMessage(kind, personKey);
+  // 这次刷的人没绑卡 → 卡片里要出一个**可点**的去绑卡入口（判据与弹窗底部那个入口一致）。
+  // 这里先点亮：后面存档/实时两条路都会换掉正文，但这条标记两边都得带着。
+  if (data.success !== false && data.hasPhysicalCardMapping !== true) {
+    useScanAssistantStore.setState((s) => ({
+      activeMessage: s.activeMessage ? { ...s.activeMessage, unboundCard: true } : null,
+    }));
+  }
   let streamedText = "";
 
   if (personKey && kind === "welcome") {
@@ -375,4 +382,27 @@ export function registerScanAssistantAskClose(handler: (() => void) | null) {
 /** 关闭 AI 提问面板（DebugNav 识别刷卡时调用） */
 export function closeScanAssistantAsk() {
   askPanelCloseHandler?.();
+}
+
+/* ── 去绑卡入口（跨组件） ── */
+
+let unboundBindHandler: ((userId: string) => void) | null = null;
+
+/**
+ * 扫码弹窗那边（DebugNav / ScannerPanel）挂载时注册「打开绑卡面板」的回调。
+ *
+ * <p>为什么要有这条通道：刷卡后**没绑卡**这次，入口要做成对话卡片里的一个**可点按钮**，
+ * 而不是用文案告诉用户「弹窗下方有个按钮」——说位置和给按钮体验差一大截。
+ * 卡片（球球）与弹窗（扫码）是两个平行的组件树，只能这样搭一根线。
+ *
+ * <p>用户 id 由卡片给（它知道这次刷的是谁），名字弹窗那边能补就补。
+ */
+export function registerScanAssistantUnboundBind(handler: ((userId: string) => void) | null) {
+  unboundBindHandler = handler;
+}
+
+/** 卡片上的「去绑卡」按钮调它 */
+export function openScanAssistantUnboundBind(userId: string) {
+  if (!userId) return;
+  unboundBindHandler?.(userId);
 }

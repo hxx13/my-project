@@ -89,6 +89,24 @@ public class AccessAuditSourceService {
         return out;
     }
 
+    /**
+     * 按人 / 按通道汇总门禁记录（「最近几天谁刷卡失败」「大厅都有谁进出」）。
+     *
+     * <p>聚合在 SQL 里做（{@code DahuaSwingMapper#aggregateByFilter} 与列表共用同一段 WHERE）——
+     * 列表是截断返回的，让模型拿前几条自己去数会静默少数。
+     *
+     * @param groupBy {@code person}（默认）或 {@code channel}；其它值一律按人算
+     */
+    public List<Map<String, Object>> summarizeSwing(AccessAuditFilterParams filter, String groupBy, int limit) {
+        String group = "channel".equalsIgnoreCase(groupBy) ? "channel" : "person";
+        return dahuaSwingMapper.aggregateByFilter(filter, group, Math.min(Math.max(limit, 1), 200));
+    }
+
+    /** 命中多少条（只计数，不取行）—— 汇总那一侧要拿它说清「一共多少次」。 */
+    public int countSwing(AccessAuditFilterParams filter) {
+        return dahuaSwingMapper.countRecordsByFilter(filter);
+    }
+
     public Map<String, Object> previewRaw(AccessAuditFilterParams filter, int page, int size) {
         int safeSize = Math.min(Math.max(size, 1), 500);
         int offset = (Math.max(page, 1) - 1) * safeSize;

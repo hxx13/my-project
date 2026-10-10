@@ -50,6 +50,11 @@ public class NotifySourceRegistry implements ApplicationRunner {
 
         register("MATERIAL_REQUESTED", "物资申领-新申请", "学生提交物资申领",
                 Map.of("applicantName", "申请人姓名", "applicantGroup", "课题组", "summary", "物品摘要", "bizId", "申请单号", "createdAt", "申请时间", "targetUserId", "申请人ID（自动索引）"));
+        // 标题与正文**由大模型在执行完那一刻现写**（每条定时的内容都不一样，套固定模板没意义），
+        // 所以这里只留两个占位符；渠道/免打扰/限流/个人偏好这些管道照旧走。
+        register("AI_TIMER_FIRED", "定时任务-执行完成", "AI 计时器到点执行完之后通知（内容由助手现场撰写）",
+                Map.of("title", "通知标题（助手写的）", "body", "通知正文（助手写的）",
+                        "timerLabel", "定时任务名", "fireAt", "计划执行时间"));
         register("MATERIAL_REVIEWED", "物资申领-审核结果", "审核通过/拒绝",
                 Map.of("applicantName", "申请人姓名", "auditResult", "审核结果", "summary", "结果摘要", "bizId", "申请单号"));
 

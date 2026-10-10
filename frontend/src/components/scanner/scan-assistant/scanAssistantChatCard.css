@@ -956,6 +956,60 @@
   cursor: default;
 }
 
+/*
+ * 截图卡：跟下载卡同一个语言（同一套令牌、同样按内容收缩），只是内容换成一张图。
+ * 图**限高**，不然一张长页面会把对话挤到看不见底 —— 点开大图看细节。
+ */
+.scan-assistant-ask__shot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 0.35rem 0 0;
+  padding: 0.4rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-card, 0.75rem);
+  background: var(--app-color-surface-container);
+}
+
+.scan-assistant-ask__shot--sub {
+  margin-left: 1.75rem;
+}
+
+.scan-assistant-ask__shot-img {
+  display: block;
+  max-width: 100%;
+  max-height: 22rem;
+  object-fit: contain;
+  border-radius: calc(var(--app-radius-card, 0.75rem) - 0.2rem);
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.scan-assistant-ask__shot-tip {
+  font-size: 0.8125rem;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__shot--failed {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+}
+
+.scan-assistant-ask__shot-retake {
+  align-self: flex-start;
+  padding: 0.15rem 0;
+  border: none;
+  background: none;
+  color: var(--app-color-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* 向导导航：上一题 / 下一题 / 提交（只在多问时出现，单问点一下即办） */
 .scan-assistant-ask__wizard {
   position: relative;
@@ -1703,4 +1757,148 @@
   .scan-assistant-chat-card__glow {
     filter: none;
   }
+}
+
+/*
+ * 点图放大的浮层。
+ *
+ * 面板里的图是**缩放铺**的（长页面铺满会把对话顶没），细节只有这里看得清 —— 所以点图必须能开它，
+ * 光写个 `cursor: zoom-in` 不接事等于骗人（真机被问过「为什么点不开」）。
+ *
+ * z-index 取 9950：要在球球面板（`zIndex.scanAssistantDock` = 9900）之上，
+ * 又低于人脸验证（10000）—— 那一层是安全流程，不许被任何东西盖住。
+ */
+.scan-assistant-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 9950;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  background: rgba(15, 23, 42, 0.88);
+  cursor: zoom-out;
+}
+
+.scan-assistant-zoom__img {
+  max-width: 100%;
+  max-height: calc(100vh - 6rem);
+  object-fit: contain;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.scan-assistant-zoom__hint {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/*
+ * 长任务状态（正在截图 / 设定时…）。
+ *
+ * 挂在回答下面一行，和「用时 · token」那种元信息同一层 —— 它是这一轮的过程，不是内容。
+ * **失败态要显眼**：用户得一眼知道「没成」，而不是继续等（真机反馈过：截图早黄了，
+ * 正文里那句「马上到」还挂着，人一直在等）。
+ */
+.scan-assistant-ask__toolbusy {
+  align-self: flex-start;
+  margin: 0.35rem 0 0;
+  margin-left: 1.75rem;
+  font-size: 0.75rem;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__toolbusy--failed {
+  color: var(--app-color-feedback-danger, #dc2626);
+  font-weight: 600;
+}
+
+/*
+ * 倒计时卡：像附件一样贴在气泡下面。
+ *
+ * 三个信息按重要性排：做的事（label）→ 还要等多久 / 结果（remain）→ 能不能撤（停止）。
+ * 失败态走告警色，和「长任务没成功」同一种红色，用户一眼能认出是同一类坏消息。
+ */
+.scan-assistant-ask__timer {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 0.35rem 0 0;
+  margin-left: 1.75rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element, 0.5rem);
+  background: var(--app-color-surface-container);
+  font-size: 0.78rem;
+}
+
+.scan-assistant-ask__timer--failed {
+  border-color: var(--app-color-feedback-danger, #dc2626);
+}
+
+.scan-assistant-ask__timer-ico {
+  flex: none;
+  opacity: 0.7;
+}
+
+.scan-assistant-ask__timer-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__timer-remain {
+  flex: none;
+  /* 倒计时跳秒时宽度会变，用等宽数字免得整行跟着抖 */
+  font-variant-numeric: tabular-nums;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__timer--failed .scan-assistant-ask__timer-remain {
+  color: var(--app-color-feedback-danger, #dc2626);
+  font-weight: 600;
+}
+
+.scan-assistant-ask__timer-stop {
+  flex: none;
+  margin-left: 0.25rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element, 0.5rem);
+  background: transparent;
+  color: var(--app-color-text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__timer-stop:hover {
+  color: var(--app-color-feedback-danger, #dc2626);
+  border-color: var(--app-color-feedback-danger, #dc2626);
+}
+
+/* 到点被挂起的写定时：给一个就地确认的键 —— 否则用户只看到「等待你确认」，
+   还得自己跑去「AI 计时器」页面点（那一页他多半不知道在哪）。 */
+.scan-assistant-ask__timer-confirm {
+  flex: none;
+  margin-left: 0.25rem;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--app-color-accent);
+  border-radius: var(--app-radius-element, 0.5rem);
+  background: var(--app-color-accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__timer-confirm:hover {
+  filter: brightness(1.06);
 }

@@ -88,15 +88,22 @@
         UPDATE ai_session SET updated_at = NOW() WHERE id = #{id}
     </update>
 
+    <!--
+      「历史对话」列表：**不含刷卡临时会话**（source='scan_ephemeral'，见 ScanAssistantLlmService）。
+      那个会话还在、还能接着聊，只是不该在人的历史里堆着（每次刷卡都会开一条）。
+    -->
     <select id="selectSessionsByUser" resultMap="SessionMap">
         SELECT * FROM ai_session
         WHERE user_id = #{userId} AND deleted = 0
+          AND source &lt;&gt; 'scan_ephemeral'
         ORDER BY updated_at DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
     <select id="countSessionsByUser" resultType="int">
-        SELECT COUNT(*) FROM ai_session WHERE user_id = #{userId} AND deleted = 0
+        SELECT COUNT(*) FROM ai_session
+        WHERE user_id = #{userId} AND deleted = 0
+          AND source &lt;&gt; 'scan_ephemeral'
     </select>
 
     <select id="selectLatestSessionByUserAndSource" resultMap="SessionMap">

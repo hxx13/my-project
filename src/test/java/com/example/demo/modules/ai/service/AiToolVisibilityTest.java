@@ -8,6 +8,7 @@ import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.AiView;
 import com.example.demo.modules.ai.tool.SideEffect;
 import com.example.demo.modules.ai.tool.ToolRegistry;
+import com.example.demo.modules.ai.tool.pack.AccessRecordToolPack;
 import com.example.demo.modules.ai.tool.pack.AttachmentToolPack;
 import com.example.demo.modules.ai.tool.pack.CageOpReviewToolPack;
 import com.example.demo.modules.ai.tool.pack.CageQueryToolPack;
@@ -187,7 +188,23 @@ class AiToolVisibilityTest {
                 new PortalContentToolPack(null, new com.fasterxml.jackson.databind.ObjectMapper()),
                 new TelemetryToolPack(null, null, null),
                 new MaterialManageToolPack(null, new com.fasterxml.jackson.databind.ObjectMapper()),
+                new AccessRecordToolPack(null),
                 new StudentReviewToolPack(null, null)));
+    }
+
+    @Test
+    @DisplayName("门禁记录查询：STAFF 看不到、ADMIN 起才有 —— 与页面和接口同一档（都是 ADMIN）")
+    void accessRecordNeedsAdmin() {
+        ToolRegistry registry = realRegistry();
+        DefaultAiCapabilityGate gate = realGate(registry);
+
+        List<String> forStaff = names(AiOrchestrator.usableTools(gate, userOf(RoleEnum.STAFF), registry.allTools()));
+        assertFalse(forStaff.contains("queryAccessRecords"), "门禁记录库页面与接口都是 ADMIN 起，STAFF 发出去只会被拒");
+        assertFalse(forStaff.contains("summarizeAccessRecords"));
+
+        List<String> forAdmin = names(AiOrchestrator.usableTools(gate, userOf(RoleEnum.ADMIN), registry.allTools()));
+        assertTrue(forAdmin.contains("queryAccessRecords"), "ADMIN 该拿到，否则等于这个包白做");
+        assertTrue(forAdmin.contains("summarizeAccessRecords"));
     }
 
     @Test

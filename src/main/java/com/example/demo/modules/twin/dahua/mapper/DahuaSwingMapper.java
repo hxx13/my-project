@@ -115,6 +115,17 @@ public interface DahuaSwingMapper {
 
     int countRecordsByFilter(@Param("f") AccessAuditFilterParams filter);
 
+    /**
+     * 按人 / 按通道汇总（「最近几天谁刷卡失败」「大厅都有谁进出」）。
+     *
+     * <p>WHERE 与列表查询**共用同一段**，所以汇总出来的数就是列表筛出来的那批记录的数 ——
+     * 不能拿列表前几条自己在 Java 里数，列表是截断的。
+     *
+     * @param groupBy {@code person}（默认）或 {@code channel}
+     */
+    List<Map<String, Object>> aggregateByFilter(
+            @Param("f") AccessAuditFilterParams filter, @Param("groupBy") String groupBy, @Param("limit") int limit);
+
     /** 审计任务在记录库中的 STATS 刷卡条数（与记录库筛选 taskId 一致） */
     int countStatsRecordsByTaskId(@Param("taskId") long taskId);
 

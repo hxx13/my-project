@@ -200,7 +200,7 @@ export function StudentDahuaBindPanel({
 
         <label className="mb-1 block text-[11px] font-bold text-[var(--app-color-text-tertiary)]">绑定卡号（请刷卡）</label>
         <p className="mb-2 rounded-[var(--app-radius-element)] border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_30%,transparent)] bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[10px] leading-relaxed text-[var(--app-color-text-secondary)]">
-          读卡器直接刷卡即可自动填入，无需点击输入框。卡号为 {STUDENT_DAHUA_CARD_LEN} 位字母或数字。
+          读卡器直接刷卡即可自动填入，无需点击输入框。刷完点「确认绑卡」，在弹出来的确认框里点「确认绑定」就完成了。卡号为 {STUDENT_DAHUA_CARD_LEN} 位字母或数字。
         </p>
         <input
           ref={inputRef}

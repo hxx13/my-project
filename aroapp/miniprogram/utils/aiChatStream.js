@@ -4,7 +4,7 @@
  * 接口与 Web 端完全一致（同一套后端契约）：
  *   POST /api/v1/twin/scan-assistant/ask/stream
  *   POST /api/v1/twin/scan-assistant/ask/greet/stream
- * 事件名：started / delta / interaction / usage / done / error / navigate
+ * 事件名：started / delta / interaction / tool / usage / done / error / navigate / download / image
  *
  * 【为什么不用 springRequest】那是对 wx.request 的一次性 Promise 封装，
  * 拿不到分块回调。这里必须开 enableChunked + onChunkReceived（基础库 2.20.2+），
@@ -131,6 +131,25 @@ function createSseParser(handlers) {
           label: typeof payload.label === 'string' ? payload.label : '',
         });
       }
+    } else if (name === 'tool') {
+      // 工具进度（running / done / failed）。**长任务在对话里可见全靠它** ——
+      // 用户要能看出「还在跑」还是「已经黄了」，而不是干等（真机反馈过截图那种）。
+      if (handlers.onTool) {
+        handlers.onTool({
+          name: typeof payload.name === 'string' ? payload.name : '',
+          status: typeof payload.status === 'string' ? payload.status : '',
+        });
+      }
+    } else if (name === 'image') {
+      // 助手要在对话里放一张图。小程序**截不了自己的原生界面**，所以这条链上的图一律是
+      // 服务端渲染好、按 exportId 取回来的（path 基本上是空的；真有 path 小程序也截不了）。
+      if (handlers.onImage) {
+        handlers.onImage({
+          exportId: typeof payload.exportId === 'number' ? payload.exportId : undefined,
+          label: typeof payload.label === 'string' ? payload.label : '',
+          path: typeof payload.path === 'string' ? payload.path : '',
+        });
+      }
     } else if (name === 'done') {
       if (handlers.onDone) handlers.onDone(payload);
     } else if (name === 'error') {
@@ -184,6 +203,8 @@ function streamRequest(path, body, handlers) {
     // ⚠ 这里是**白名单**：新加的事件不接上就等于没实现（dispatch 只认 sink 上的字段）
     onNavigate: handlers.onNavigate,
     onDownload: handlers.onDownload,
+    onImage: handlers.onImage,
+    onTool: handlers.onTool,
     onUsage: handlers.onUsage,
     onError(msg) {
       if (settled) return;

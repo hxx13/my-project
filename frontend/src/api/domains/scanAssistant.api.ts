@@ -86,7 +86,7 @@ export type ScanAssistantStreamHandlers = {
     options: Array<{ label: string; value: string }>;
     multiSelect?: boolean;
   }) => void;
-  onDone?: (payload: { text?: string; model?: string; sessionId?: number } & Partial<ScanAssistantUsage>) => void;
+  onDone?: (payload: { text?: string; model?: string; sessionId?: number; messageId?: number } & Partial<ScanAssistantUsage>) => void;
   onError?: (message: string) => void;
   /**
    * 助手要把用户送到某个页面（「帮我打开流水线日志」）。
@@ -108,6 +108,22 @@ export type ScanAssistantStreamHandlers = {
     params?: Record<string, unknown>;
     exportId?: number;
   }) => void;
+  /**
+   * 工具进度：running / done / failed。
+   *
+   * 长任务（截图、定时）在对话里**可见**全靠它 —— 没有它，用户看不出是在跑还是已经黄了。
+   */
+  onTool?: (payload: { name: string; status: string }) => void;
+  /**
+   * 助手要在对话里**放一张图**（截图等）。
+   *
+   * `path` 有值 = **载体自己去截**：先跳到这一页、等它渲染稳，再把当前画面截下来 ——
+   * 截到的就是提问者本人的视角（他的登录态、数据、视口），服务端不需要注入任何身份。
+   * `path` 为空 = 图**已经产好了**，按 `exportId` 去产物接口取字节显示。
+   *
+   * 两种都要把拿到的字节**交回 `exportId` 归档**（与导出同一条口径），否则切走再回来那张图就没了。
+   */
+  onImage?: (payload: { exportId?: number; label?: string; path?: string }) => void;
 };
 
 /** 会话里的一条导出产物（历史回放据此把下载卡放回原位） */
@@ -401,6 +417,8 @@ async function postAskSse(
         text: typeof payload.text === "string" ? payload.text : undefined,
         model: typeof payload.model === "string" ? payload.model : undefined,
         sessionId: typeof payload.sessionId === "number" ? payload.sessionId : undefined,
+        // 这一轮助手消息的 id：倒计时/产物要按它挂回原位，缺了就只能挂到最后一条
+        messageId: typeof payload.messageId === "number" ? payload.messageId : undefined,
         ...(parseUsage(payload) ?? {}),
       });
     } else if (name === "error") {
@@ -419,6 +437,17 @@ async function postAskSse(
         dl = payload;
       }
       if (dl) handlers.onDownload?.(dl as { kind?: string; label?: string; params?: Record<string, unknown> });
+    } else if (name === "tool") {
+      handlers.onTool?.({
+        name: typeof payload.name === "string" ? payload.name : "",
+        status: typeof payload.status === "string" ? payload.status : "",
+      });
+    } else if (name === "image") {
+      handlers.onImage?.({
+        exportId: typeof payload.exportId === "number" ? payload.exportId : undefined,
+        label: typeof payload.label === "string" ? payload.label : undefined,
+        path: typeof payload.path === "string" && payload.path ? payload.path : undefined,
+      });
     }
   };
 
@@ -451,6 +480,11 @@ export async function streamScanAssistantAsk(
     sessionId?: number | null;
     /** 开一条新会话；与 sessionId 互斥，sessionId 优先 */
     newSession?: boolean;
+    /**
+     * **临时会话**（刷卡后那次对话）：一律新开、不复用上一次的上下文，并且不进「历史对话」列表。
+     * 与 newSession 的区别就在最后一条。
+     */
+    ephemeral?: boolean;
     /** 本轮附图（data URL），按顺序拼进本轮消息 */
     images?: string[];
     /**
@@ -474,6 +508,7 @@ export async function streamScanAssistantAsk(
       question,
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
       ...(options?.newSession ? { newSession: true } : {}),
+      ...(options?.ephemeral ? { ephemeral: true } : {}),
       ...(options?.images && options.images.length > 0 ? { images: options.images } : {}),
       ...(options?.spreadsheets && options.spreadsheets.length > 0
         ? { spreadsheets: options.spreadsheets }

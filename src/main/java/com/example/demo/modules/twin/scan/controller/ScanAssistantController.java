@@ -138,6 +138,8 @@ public class ScanAssistantController {
             String question = body != null ? body.getQuestion() : null;
             Long sessionId = body != null ? body.getSessionId() : null;
             boolean newSession = body != null && Boolean.TRUE.equals(body.getNewSession());
+            // 临时会话（刷卡后那次对话）：新开且不进历史列表
+            boolean ephemeral = body != null && Boolean.TRUE.equals(body.getEphemeral());
             java.util.List<String> images = body != null ? body.getImages() : null;
             // 表格附件：控制器只做 DTO → 编排层入参的搬运，解析与落库在编排层（那儿才拿得到会话与消息 id）
             final java.util.List<com.example.demo.modules.ai.service.AiOrchestrator.SpreadsheetPart> sheets =
@@ -147,7 +149,7 @@ public class ScanAssistantController {
             SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
             heavyCalcExecutor.execute(() ->
                     scanAssistantLlmService.askQuestion(user, question, sessionId, newSession, images, sheets,
-                            contextPage, emitter));
+                            contextPage, ephemeral, emitter));
             return emitter;
         } catch (IllegalArgumentException e) {
             return sseError(e.getMessage());

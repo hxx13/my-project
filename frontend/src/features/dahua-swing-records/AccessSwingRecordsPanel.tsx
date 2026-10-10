@@ -71,9 +71,26 @@ export function AccessSwingRecordsPanel() {
   const pageSize = 100;
   const [quality, setQuality] = useState<{ total: number; missingEnterExit: number } | null>(null);
   const [recordSource, setRecordSource] = useState<"" | "REALTIME" | "STATS">("");
-  const [filters, setFilters] = useState<SwingRecordFilters>(() =>
-    emptyFilters(today, initialTaskId, initialChannel)
-  );
+  const [filters, setFilters] = useState<SwingRecordFilters>(() => {
+    const base = emptyFilters(today, initialTaskId, initialChannel);
+    // 地址里能带进来的筛选条件 —— 智能助手「帮我看一下失败的那些并截图」靠它把条件说进 URL。
+    // **只认这五个**（都是页面自己下拉里有的），不开放任意键：不然地址就成了一个注入面。
+    // 时间不给就沿用页面默认的「今天」，所以「今天失败」这条只需要 openResult。
+    const pick = (k: string) => searchParams.get(k) || "";
+    const openResult = pick("openResult");
+    const enterOrExit = pick("enterOrExit");
+    const openType = pick("openType");
+    const startTime = pick("startTime");
+    const endTime = pick("endTime");
+    return {
+      ...base,
+      ...(openResult ? { openResult } : {}),
+      ...(enterOrExit ? { enterOrExit } : {}),
+      ...(openType ? { openType } : {}),
+      ...(startTime ? { startTime } : {}),
+      ...(endTime ? { endTime } : {}),
+    };
+  });
 
   const queryParams = useCallback(
     () => toAuditFilterQuery(filters, toApiDateTime),

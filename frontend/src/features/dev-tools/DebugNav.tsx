@@ -51,6 +51,7 @@ import {
     greetScanAssistantUser,
     notifyScanPopupVisible,
     closeScanAssistantAsk,
+    registerScanAssistantUnboundBind,
 } from '@/components/scanner/scan-assistant/scanAssistantSpeak';
 import { isTwinDashboardHomePath } from '@/features/admin/buildAdminNavModel';
 import toast from 'react-hot-toast';
@@ -197,6 +198,23 @@ export default function DebugNav() {
     // 弹窗是否已打开（ref 版：全局 keydown 监听器因 [] deps 捕获过期闭包，必须用 ref 保持最新值）
     const activeResultRef = useRef<AnalyzeResponse | null>(null);
     useEffect(() => { activeResultRef.current = activeResult; }, [activeResult]);
+
+    /**
+     * 球球卡片里的「去绑卡」按钮走这条线打开绑卡面板。
+     *
+     * <p>卡片与弹窗是两个平行组件树（球球挂在大屏外壳上，弹窗在这儿），所以要注册一个入口给它们调。
+     * 人由卡片给（它知道这次刷的是谁），名字能从当前弹窗结果里对上就补上。
+     */
+    useEffect(() => {
+        registerScanAssistantUnboundBind((userId) => {
+            const cur = activeResultRef.current;
+            const name = cur?.userInfo?.userId === userId ? (cur.userInfo?.name || "") : "";
+            setStudentBindTarget({ userId, userName: name });
+            setStudentBindOpen(true);
+            setActiveResult(null);
+        });
+        return () => registerScanAssistantUnboundBind(null);
+    }, []);
 
     useEffect(() => {
         if (hasLoggedStampRef.current) return;

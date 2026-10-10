@@ -35,6 +35,7 @@ import type { AuthData } from '@/api/domains/auth.api';
 import {
     greetScanAssistantUser,
     notifyScanPopupVisible,
+    registerScanAssistantUnboundBind,
 } from '@/components/scanner/scan-assistant/scanAssistantSpeak';
 
 const toHalfWidth = (value: string) =>
@@ -59,6 +60,20 @@ export default function ScannerPanel() {
     const [studentBindTarget, setStudentBindTarget] = useState<{ userId: string; userName: string } | null>(null);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const studentCenterSuccessRef = useRef<((authData: AuthData) => void) | null>(null);
+    const activeResultRef = useRef<AnalyzeResponse | null>(null);
+    useEffect(() => { activeResultRef.current = activeResult; }, [activeResult]);
+
+    /** 球球卡片里的「去绑卡」按钮走这条线打开绑卡面板（与 DebugNav 同一套，见那边的注释） */
+    useEffect(() => {
+        registerScanAssistantUnboundBind((userId) => {
+            const cur = activeResultRef.current;
+            const name = cur?.userInfo?.userId === userId ? (cur.userInfo?.name || "") : "";
+            setStudentBindTarget({ userId, userName: name });
+            setStudentBindOpen(true);
+            setActiveResult(null);
+        });
+        return () => registerScanAssistantUnboundBind(null);
+    }, []);
 
     // ==================== 人脸验证（共享 hook） ====================
     const fv = useScanFaceVerify();

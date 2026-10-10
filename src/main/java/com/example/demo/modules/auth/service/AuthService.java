@@ -38,12 +38,25 @@ public class AuthService {
         data.setRole(user.getRole().getCode());
         data.setRoleDesc(user.getRole().getDescZh());
         data.setRoleLevel(user.getRole().getLevel());
+        data.setUserInfo(buildUserInfo(user));
+        return Result.success(data);
+    }
 
+    /**
+     * 组装前端登录后缓存在本地的用户信息（{@code auth_user_info}）。
+     *
+     * <p>单独抽出来是给**服务端自己开出去的浏览器**用：页面截图要复刻提问者的登录态，
+     * 少了这份信息前端会把任何人判成学生、落错壳层。必须与登录走同一段组装，否则两边会漂。
+     *
+     * <p>调用方若要签令牌，先自行 {@link JwtTokenService#resolveUnifiedRole(User)}，
+     * 否则角色与这里返回的不一致。
+     */
+    public AuthUserInfo buildUserInfo(User user) {
         AuthUserInfo userInfo = new AuthUserInfo();
         userInfo.setId(user.getId());
         userInfo.setUsername(user.getUsername());
         userInfo.setOpenId(user.getOpenId());
-        userInfo.setRole(user.getRole().getCode());
+        userInfo.setRole(user.getRole() == null ? null : user.getRole().getCode());
         userInfo.setDisplayNickname(user.getDisplayNickname());
         userInfo.setMiniBindType(user.getMiniBindType());
         userInfo.setDisplayName(userDisplayNameService.resolveDisplayName(user.getId()));
@@ -55,8 +68,7 @@ public class AuthService {
         if (StringUtils.hasText(projectGroup)) {
             userInfo.setProjectGroupName(projectGroup.trim());
         }
-        data.setUserInfo(userInfo);
-        return Result.success(data);
+        return userInfo;
     }
 
     /**

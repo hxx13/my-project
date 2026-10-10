@@ -96,7 +96,8 @@
     </view>
   </view>
 
-  <view wx:if="{{ springBound && ((!isStudentView && hasAroBinding) || isImpersonating) }}" class="mine-menu-group">
+  <!-- 外层判据必须与内层两条**逐字对应**：不然会出现「标题在、里面一个按钮都没有」的空壳 -->
+  <view wx:if="{{ springBound && ((!isStudentView && hasAroBinding) || (isImpersonating && isStudentView)) }}" class="mine-menu-group">
     <text class="mine-menu-group-title">视角切换</text>
     <view class="mine-list-card">
       <van-cell-group inset="{{ false }}" border="{{ false }}">
@@ -106,7 +107,13 @@
             <text class="mine-cell-title-text">切换学生视图</text>
           </view>
         </van-cell>
-        <van-cell wx:if="{{ isImpersonating }}" is-link bind:click="onReturnToStaff">
+        <!--
+          **必须带上 isStudentView**：isImpersonating 只是「存储里还留着一份旧会话」，
+          它和上面那条「切到学生视图」的判据（!isStudentView && hasAroBinding）**互不排斥** ——
+          已经回到教职工视角、旧会话还留着时，两个按钮会同时冒出来（真机反馈的「两个切换按钮同时存在」）。
+          「返回教职工」在教职工视角下本来就没有意义，所以加上这个否定，两条判据就成了互补关系。
+        -->
+        <van-cell wx:if="{{ isImpersonating && isStudentView }}" is-link bind:click="onReturnToStaff">
           <view slot="icon" class="mine-slot-ico"><van-icon name="exchange" size="28rpx" color="#ea580c" /></view>
           <view slot="title" class="mine-cell-title-wrap">
             <text class="mine-cell-title-text">返回教职工视角</text>

@@ -53,6 +53,15 @@ public class AiTimer {
     private Boolean ok;
     private String errorMessage;
     private Integer deleted;
+    /**
+     * 到点是否**先等用户确认**再执行。默认 false = 到点直接跑。
+     *
+     * <p>建单那一刻点的那次确认就是同意书；这个开关是给**不可逆的高危操作**额外加的一道保险
+     * （建单时可选）。为 true 时到点转成「等待确认」，人不点就不执行。
+     */
+    private Boolean needConfirm;
+    /** 执行成功后**推送给谁**（逗号分隔账号 id）。空 = 推给建单人（当前对话的人）。 */
+    private String notifyUserIds;
 
     /** 还在倒计时 / 等人处理的状态（列表分组与「能不能取消」都看它）。 */
     public boolean isOpen() {

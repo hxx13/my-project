@@ -22,6 +22,8 @@ public class AiExportArtifact {
     public static final String KIND_MATERIAL_AUDIT = "materialAudit";
     /** 订购审核导出 —— 走页面那条导出接口，载体按 `params.url` 去取。 */
     public static final String KIND_ANIMAL_ORDER = "animalOrder";
+    /** 页面截图 —— 字节由载体产出后回存（`params.path` 是截的那一页，用于历史里「再截一张」）。 */
+    public static final String KIND_SCREENSHOT = "screenshot";
 
     private Long id;
     private Long sessionId;

@@ -28,6 +28,8 @@ public class ScanAssistantAskSink implements AiEventSink {
     private volatile boolean hadInteraction = false;
     /** 本轮推过跳转指令。同上：推过就不补兜底文案（这一轮的产出就是「跳过去了」）。 */
     private volatile boolean hadNavigate = false;
+    /** 本轮推过一张图。同上：推过就不补兜底文案（这一轮的产出就是「图在那儿」）。 */
+    private volatile boolean hadImage = false;
     /** 本轮落在哪条会话上：面板拿它去续跑挂起（确认）时要用。 */
     private volatile Long sessionId;
 
@@ -53,10 +55,19 @@ public class ScanAssistantAskSink implements AiEventSink {
         send("delta", data);
     }
 
-    /** 球球面板目前没有「正在调用工具」的展示位；事件丢弃（保留钩子，将来加）。 */
+    /**
+     * 工具进度（running / done / failed）—— **照实转发**。
+     *
+     * <p>这里原先只记日志，理由是「球球面板没有展示位」。代价是**长任务在对话里完全不可见**：
+     * 用户看不出是在跑、还是已经失败了（真机反馈过截图那种：等半天，其实早黄了）。
+     * 现在载体会把它渲染成气泡下面的一条状态，所以必须转发出去。
+     */
     @Override
     public void tool(String name, String status) {
-        log.debug("[scan-ask] tool {} -> {}", name, status);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("name", name == null ? "" : name);
+        data.put("status", status == null ? "" : status);
+        send("tool", data);
     }
 
     /**
@@ -110,6 +121,25 @@ public class ScanAssistantAskSink implements AiEventSink {
         send("navigate", data);
     }
 
+    /**
+     * 图片指令原样转给面板。有 {@code path} = 面板自己去截那个页面；没有 = 后端已产好，去产物接口取字节。
+     *
+     * <p>与 download 同一条口径：字节由载体用它自己的登录态去拿/产出，后端不发裸链接。
+     */
+    @Override
+    public void image(Long exportId, String label, String path) {
+        hadImage = true;
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (exportId != null) {
+            data.put("exportId", exportId);
+        }
+        data.put("label", label == null ? "" : label);
+        if (path != null && !path.isBlank()) {
+            data.put("path", path);
+        }
+        send("image", data);
+    }
+
     private static Map<String, Object> usagePayload(AiTurnStats stats) {
         Map<String, Object> data = new LinkedHashMap<>();
         if (stats != null) {
@@ -134,7 +164,8 @@ public class ScanAssistantAskSink implements AiEventSink {
             //
             // 推过跳转指令也不补：模型只调了工具没说话时，这一轮的结果就是「已经跳到那个页面了」，
             // 补一句「联系不上」会让人以为跳转是玄学。
-            if (!hadNavigate) {
+            // 推过图同理：这一轮的产出就是那张图。
+            if (!hadNavigate && !hadImage) {
                 text = fallbackText;
                 Map<String, Object> fallback = new LinkedHashMap<>();
                 fallback.put("text", text);
@@ -146,6 +177,12 @@ public class ScanAssistantAskSink implements AiEventSink {
         data.put("text", text);
         if (sessionId != null) {
             data.put("sessionId", sessionId);
+        }
+        // **必须带上这一轮助手消息的 id**：载体靠它把倒计时/产物挂回原位，
+        // 也靠它判断「服务端又落进来的新消息」（定时器的汇报）有没有显示过。
+        // 不带的话，补拉新消息时无从比对，会把已经显示过的那条再追加一遍（真机看到「重复回复」）。
+        if (stats != null && stats.messageId() != null) {
+            data.put("messageId", stats.messageId());
         }
         if (stats != null) {
             data.put("latencyMs", stats.latencyMs());

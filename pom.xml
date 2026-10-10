@@ -95,6 +95,19 @@
             <artifactId>pdfbox</artifactId>
             <version>3.0.2</version>
         </dependency>
+        <!--
+            无头浏览器截图（AI 对话里「看一眼某个页面」的后端生产者）。
+            为什么需要它：小程序**没有任何 API 能截自己的原生界面**，那边要截图只能由后端渲染
+            网页版、再把图回传；另外无人值守（AI 定时器）时也没有载体浏览器可借。
+            浏览器本体**不进 JAR**：首次用
+            `java -cp <classpath> com.microsoft.playwright.CLI install chromium` 单独下载（约 150MB）；
+            生产机另需系统依赖 + **中文字体**（漏字体就是满屏豆腐块）。
+        -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.59.0</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-crypto</artifactId>

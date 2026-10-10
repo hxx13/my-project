@@ -9,6 +9,7 @@ import com.example.demo.modules.ai.entity.AiMessage;
 import com.example.demo.modules.ai.entity.AiToolCallLog;
 import com.example.demo.modules.ai.export.entity.AiExportArtifact;
 import com.example.demo.modules.ai.export.service.AiExportArtifactService;
+import com.example.demo.modules.ai.shot.PageShotArchiveService;
 import com.example.demo.modules.ai.tool.AiPackRouter;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolContext;
@@ -81,6 +82,8 @@ public class AiOrchestrator {
     private final AiPackRouter packRouter;
     private final AiAttachmentService attachmentService;
     private final AiExportArtifactService exportArtifactService;
+    /** 服务端自己产图那条路（小程序 / 无人值守）。没有它时网页端照旧用载体自截，不受影响。 */
+    private final PageShotArchiveService pageShotArchive;
 
     public AiOrchestrator(DashScopeChatClient chatClient,
                           ToolRegistry toolRegistry,
@@ -93,7 +96,8 @@ public class AiOrchestrator {
                           CageModeVisibilityService modeVisibilityService,
                           AiPackRouter packRouter,
                           AiAttachmentService attachmentService,
-                          AiExportArtifactService exportArtifactService) {
+                          AiExportArtifactService exportArtifactService,
+                          PageShotArchiveService pageShotArchive) {
         this.chatClient = chatClient;
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
@@ -106,6 +110,7 @@ public class AiOrchestrator {
         this.packRouter = packRouter;
         this.attachmentService = attachmentService;
         this.exportArtifactService = exportArtifactService;
+        this.pageShotArchive = pageShotArchive;
     }
 
     /**
@@ -497,6 +502,11 @@ public class AiOrchestrator {
             if (emitDownload(out, sink, actor, sessionId, messageId)) {
                 groupsSink.clear();
             }
+            // 图同理：这一轮的交付物就是那张图，别再挂一道刚答过的问题
+            // 载体能不能自己截，决定服务端那条失败时能不能回落 —— 小程序截不了自己的界面，回不了
+            if (emitImage(out, sink, actor, sessionId, messageId, !"mp".equalsIgnoreCase(platform))) {
+                groupsSink.clear();
+            }
             String text = toText(out);
             entry.setRawResult(text);
             entry.setOk(businessOk(out));
@@ -780,6 +790,11 @@ public class AiOrchestrator {
     private String systemPrompt(User actor, String contextPage, List<AiToolPack> activePacks) {
         StringBuilder ctx = new StringBuilder();
         ctx.append("当前时间：").append(LocalDateTime.now().format(TS));
+        // 查数据的题**每轮都要按本轮工具结果答**：真机上同一句话问第二遍时，模型把上一轮的答案
+        // 抄了回来（门禁记录那题：表格照旧、只有总数取了新值，两处自相矛盾）。数据是会变的，
+        // 所以这句每轮都在，且位置固定（不改 prompt 缓存前缀）。
+        ctx.append("；凡是查数据/查状态的问题，每轮都以**本轮工具返回的结果**为准 ——"
+                + "即使这一轮的问题和上一轮一字不差，也不要沿用上一次的答案。");
         if (actor != null) {
             // 让模型知道它在跟谁说话（「我能做什么」这类问题要靠它）。
             // 只给姓名与角色 —— 账号 id 是雪花串，对模型没用，也不必外露。
@@ -1224,6 +1239,97 @@ public class AiOrchestrator {
     private static String downloadFilename(String label, String kind) {
         String base = label == null || label.isBlank() ? (kind == null ? "导出" : kind) : label;
         return base.toLowerCase().endsWith(".xlsx") ? base : base + ".xlsx";
+    }
+
+    /**
+     * 工具结果里的**出图指令**：{@code {"image":{"path":"/admin/xxx","label":"…","render":"…"}}}。
+     *
+     * <p>两条产图路，**默认走服务端那条**：
+     * <ul>
+     *   <li>缺省 / {@code render:"server"} —— 这里**当场**调无头浏览器渲染、把字节写进产物，
+     *       下发的 path 为 null，载体只管取字节显示。**不动用户面前的页面**，任意端都能用
+     *       （小程序、网页、无人值守）。</li>
+     *   <li>{@code render:"carrier"} —— 下发 path，让**用户自己的浏览器**跳过去截
+     *       （这条会切他的页面，所以只有他明确要「带他过去看」时才走）。</li>
+     * </ul>
+     *
+     * <p>服务端那条失败时，**载体能截就回落给它**（网页端）—— 这是路线 A 留下的第二个理由。
+     * 小程序 / 无人值守没有载体，回落无处可去，只能如实告诉用户。
+     */
+    private boolean emitImage(Object out, AiEventSink sink, User actor, Long sessionId, Long messageId,
+                              boolean canCarrierCapture) {
+        if (!(out instanceof Map<?, ?> map)) {
+            return false;
+        }
+        Object raw = map.get("image");
+        if (!(raw instanceof Map<?, ?> image)) {
+            return false;
+        }
+        Object rawPath = image.get("path");
+        String path = rawPath == null ? null : String.valueOf(rawPath);
+        Object rawLabel = image.get("label");
+        String label = rawLabel == null ? null : String.valueOf(rawLabel);
+
+        if ("carrier".equals(String.valueOf(image.get("render")))) {
+            return emitCarrierImage(sink, actor, sessionId, messageId, path, label);
+        }
+        return emitServerRenderedImage(sink, actor, sessionId, messageId, path, label, canCarrierCapture);
+    }
+
+    /** 载体自截那条路：落一条产物（字节由载体回存）+ 下发 path 让它去截。 */
+    private boolean emitCarrierImage(AiEventSink sink, User actor, Long sessionId, Long messageId,
+                                     String path, String label) {
+        Long exportId = null;
+        try {
+            Map<String, Object> params = new LinkedHashMap<>();
+            if (path != null && !path.isBlank()) {
+                // 存下来是为了历史里那张卡还能「再截一张」同一页
+                params.put("path", path);
+            }
+            AiExportArtifact saved = exportArtifactService.record(
+                    sessionId, messageId, actor == null ? null : actor.getId(),
+                    AiExportArtifact.KIND_SCREENSHOT, label, "screenshot.png",
+                    objectMapper.writeValueAsString(params), null);
+            // 拿不到 id 也照样发图：产物只是「历史里还能找回来」，不该因为它失败就截不成
+            if (saved != null) {
+                exportId = saved.getId();
+            }
+        } catch (Exception e) {
+            log.warn("[ai-orch] 截图产物留痕失败（不影响本轮出图）: {}", e.getMessage());
+        }
+        sink.image(exportId, label, path);
+        return true;
+    }
+
+    /**
+     * 服务端产图：渲染 → 落产物 → 下发一张「已经有的图」。失败时按有没有载体决定回落还是明说。
+     *
+     * <p>顺序是刻意的：渲染失败就**不留产物**（否则历史里会多出一张永远取不到字节的空卡）。
+     */
+    private boolean emitServerRenderedImage(AiEventSink sink, User actor, Long sessionId, Long messageId,
+                                            String path, String label, boolean canCarrierCapture) {
+        if (pageShotArchive == null) {
+            // 测试里没注入这个依赖；生产由 Spring 保证有
+            sink.delta("（这台服务器没配页面截图能力，这张图取不到）");
+            return false;
+        }
+        Long exportId;
+        try {
+            exportId = pageShotArchive.renderAndArchive(actor, sessionId, messageId, path, label);
+        } catch (Exception e) {
+            log.warn("[ai-orch] 服务端截图失败 path={}: {}", path, e.getMessage());
+            if (canCarrierCapture && path != null && !path.isBlank()) {
+                // 后端这条走不通，但用户自己的浏览器能截 —— 回落给他，别让这一轮白问
+                log.info("[ai-orch] 服务端产图失败，回落给载体自截 path={}", path);
+                return emitCarrierImage(sink, actor, sessionId, messageId, path, label);
+            }
+            // 没有载体可回落，就如实说 —— 模型刚说过「图马上到」，不纠正那句话就成了谎
+            sink.delta("（这页的截图没取到：" + truncate(e.getMessage(), 80) + "）");
+            return false;
+        }
+        // path 传 null：图已经在这儿了，载体直接按 id 取字节即可，不需要先跳页
+        sink.image(exportId, label, null);
+        return true;
     }
 
     private static Long longOf(Object v) {

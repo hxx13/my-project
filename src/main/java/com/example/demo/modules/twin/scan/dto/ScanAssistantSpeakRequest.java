@@ -19,6 +19,13 @@ public class ScanAssistantSpeakRequest {
     private Long sessionId;
     /** ask 专用：开一条新会话；不传就复用该来源最近一条 */
     private Boolean newSession;
+    /**
+     * ask 专用：**临时会话**（刷卡后那次对话）。
+     *
+     * <p>一律新开、绝不复用上一次的上下文，且不进「历史对话」列表 —— 刷卡提示不该在人的历史里堆着。
+     * 与 newSession 的区别就在这最后一条：新开但仍进历史。
+     */
+    private Boolean ephemeral;
     /** ask 专用：本轮附带的图片（data URL 或裸 base64），按顺序拼进本轮用户消息 */
     private List<String> images;
 
