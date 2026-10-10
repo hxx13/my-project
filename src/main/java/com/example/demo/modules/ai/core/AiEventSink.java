@@ -56,6 +56,26 @@ public interface AiEventSink {
     default void download(String payloadJson) {
     }
 
+    /**
+     * 让载体在对话里**显示一张图**（截图 / 后端渲染出来的图都走这里）。
+     *
+     * <p>两个生产者共用同一个事件，区别只在 {@code path}：
+     * <ul>
+     *   <li>{@code path} 非空 —— **载体自己去截**：先跳到这个页面、等它渲染稳，再把当前画面截下来。
+     *       截到的就是**这个人自己那一份**（他的登录态、他的数据、他的视口与主题），
+     *       后端不需要注入任何人的身份。代价：页面会真的跳一下，且只截得到他能打开的页面。</li>
+     *   <li>{@code path} 为空 —— 图**已经产好了**（后端自己渲染/截的），载体按 {@code exportId}
+     *       去产物接口取字节显示即可。无人值守（定时任务）只能走这条。</li>
+     * </ul>
+     *
+     * <p>两种情况下载体都应当把拿到的字节**回存到这个 exportId 上** —— 历史回看靠产物重挂，
+     * 跟 {@link #download} 是同一条口径（见 AiExportArtifactService）。
+     *
+     * <p>{@code path} 与 {@link #navigate} 一样**只可能来自服务端自己的页面清单**，模型编不出来。
+     */
+    default void image(Long exportId, String label, String path) {
+    }
+
     record Option(String label, String value) {
     }
 }

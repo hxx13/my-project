@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Download, FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
+import { CreditCard, Download, FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import type { BubblePlacement } from "./computeBubblePlacement";
@@ -31,6 +31,7 @@ import {
   type ScanAssistantUsage,
 } from "@/api/domains/scanAssistant.api";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
+import { cancelAiTimer, confirmAiTimer, fetchAiTimers } from "@/api/domains/aiTimer.api";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import {
   exportMaterialAuditSummary, exportMaterialAuditTrail,
@@ -173,7 +174,84 @@ type TurnExport = {
   label?: string;
   params?: Record<string, unknown>;
   exportId?: number;
+  /**
+   * 截图专用：截出来的图的 blob 地址（`kind === "screenshot"` 时才有）。
+   * 历史里靠产物字节重建，实时那次靠当场截。
+   */
+  imageUrl?: string;
+  /** 截图状态：正在截/取字节、好了、或失败。失败时卡片要给个「重截」的口子。 */
+  imageState?: "loading" | "ready" | "failed";
+  /** 截图要跳的那一页（只有实时那条有；历史看 byte 就够了）。 */
+  path?: string;
 };
+
+/** 产物参数里记的那一页（截图专用：历史里那张卡还能「重截一张」）。 */
+function shotPathOf(params?: Record<string, unknown>): string | undefined {
+  const p = params?.path;
+  return typeof p === "string" && p ? p : undefined;
+}
+
+/** 等页面画稳。 */
+async function waitForPagePainted(): Promise<void> {
+  try {
+    await document.fonts?.ready;
+  } catch {
+    /* 老内核没有 fonts.ready，忽略 */
+  }
+  // ponytail: 固定等待 + 两帧。等不到异步数据就会截到骨架；要更准得让页面自己暴露「忙不忙」
+  // （比如 loading 计数或调接口前后的信号），那要改一处公共壳层，先不做。
+  await new Promise((r) => setTimeout(r, 1200));
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
+
+/**
+ * 把当前应用外壳截成一张图。
+ *
+ * 截 `#root` 而**不是** `body` —— 球球面板是 `createPortal` 到 body 下的兄弟节点，
+ * 截 #root 它就天然不在画面里，不需要另做「截图时先把自己藏起来」那套开关。
+ *
+ * <p>用 html-to-image（SVG foreignObject）而不是 html2canvas：后者自己在 JS 里解析 CSS，
+ * 认不得 `oklch()` / `color-mix()` 这类现代颜色函数，遇到就直接抛
+ * 「Attempting to parse an unsupported color function "oklch"」（本仓库主题正好在用，实测踩到）。
+ * 交给浏览器自己渲染就没这个问题 —— 浏览器认得什么样，截出来就是什么样，正是「看样式」要的。
+ */
+async function captureAppRoot(): Promise<Blob> {
+  const { toBlob } = await import("html-to-image");
+  const node = document.getElementById("root");
+  if (!node) {
+    throw new Error("找不到应用根节点");
+  }
+  const blob = await toBlob(node, {
+    backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff",
+    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+    /*
+     * 跨域图片必须跳过：html-to-image 要把每张图**内联成 data URL** 才能放进 SVG，
+     * 而跨域图没带 CORS 头时这一步直接失败 —— 症状是抛出**一个 Event 而不是 Error**
+     * （`[object Event]`，isTrusted），完全看不出原因。本仓库页脚那张学校站点的 logo 就是。
+     * 跳过它等于画面上少一张图，比整张截图失败强。
+     *
+     * ponytail: 跳过 = 该处留白。要保留就得让那些资源带 CORS 头或走同源代理，先不做。
+     */
+    filter: (n) => {
+      if (n.tagName !== "IMG") {
+        return true;
+      }
+      const src = (n as HTMLImageElement).src;
+      if (!src) {
+        return true;
+      }
+      try {
+        return new URL(src, location.origin).origin === location.origin;
+      } catch {
+        return false;
+      }
+    },
+  });
+  if (!blob) {
+    throw new Error("出图失败");
+  }
+  return blob;
+}
 
 type AskQuestion = {
   question: string;
@@ -202,6 +280,69 @@ type AskTurn = {
    * 渲染时塞进气泡那一列，跟用户侧的附件同一个排法 —— 它是这条消息的一部分，不是浮在旁边的。
    */
   exports?: TurnExport[];
+  /**
+   * 这一轮**正在跑的长任务**（截图、设定时…）。
+   *
+   * <p>没有它，用户看不出是在跑还是已经黄了 —— 只会干等（真机反馈过：截图其实早失败了，
+   * 而正文里模型那句「马上到」还挂着）。失败要**留着**，那正是用户需要看见的信息。
+   */
+  toolBusy?: { label: string; status: "running" | "failed" };
+  /** 这一轮挂着的倒计时（AI 定时器），同附件一样贴在气泡下 */
+  timers?: TurnTimer[];
+  /**
+   * 这一轮是**定时器跑完补拉进来的汇报**（不是对话里当场说出来的）。
+   *
+   * <p>倒计时兜底找落点时要**跳过**它：定时器带的是「工具调用那条消息」的 id，
+   * 与当场那条回复的 id 对不上，兜底会落到"最后一条助手消息"—— 而汇报恰好就是最后一条，
+   * 于是卡片挂到了汇报下面（真机反馈："应在第一个气泡下，不是等待回复的气泡"）。
+   */
+  fromTimer?: boolean;
+  /**
+   * 这一轮就是用户点的那一下「确认执行」（**不是新的一次提问**）。
+   *
+   * <p>收尾时要把"它之前的、同一次提问产出的附件"都收到最后这条回复上 ——
+   * 否则一次提问里有挂起时，图/文件/倒计时会各落一条气泡（真机反馈：三件分了家）。
+   */
+  isConfirmAnswer?: boolean;
+  /**
+   * 这一轮助手消息在服务端的 id。
+   *
+   * 倒计时/产物**按它挂回原位** —— 历史回放时尤其要紧：没有它就全都堆到最后一条上。
+   */
+  messageId?: number;
+};
+
+/**
+ * 挂在某一轮下面的**倒计时**（AI 定时器）。
+ *
+ * <p>和附件一样贴在气泡下 —— 它是「这一轮答应过要做的事」，用户得能看见还要等多久、
+ * 还能不能撤、最后到底办成没有。
+ */
+type TurnTimer = {
+  id: number;
+  label: string;
+  /** 到点的**绝对毫秒**（服务端基准）。本地算显示要补时钟差，见 clockSkewMs。 */
+  fireAtMillis: number;
+  status: string;
+  statusZh: string;
+  /** 服务端可能回 boolean 也可能回 0/1（tinyint），两种都收 */
+  ok?: boolean | number | null;
+  result?: string;
+  error?: string;
+};
+
+/** 还在跑的状态（要每秒走倒计时、到点要补拉一次结果）。 */
+const TIMER_LIVE_STATUSES = new Set(["PENDING", "FIRING", "AWAITING_CONFIRM"]);
+
+/**
+ * 哪些工具值得在对话里露出「正在做…」。
+ *
+ * <p>**只登记长任务**：这类要等好几秒、还可能失败，用户需要知道进度。
+ * 其余工具都是毫秒级的读，抖出来只会让每条回答下面都堆一行噪声。
+ */
+const TOOL_BUSY_LABEL: Record<string, string> = {
+  screenshotPage: "正在截图",
+  scheduleTimers: "正在设定时",
 };
 
 /** 毫秒 → 「12.4s」，超过 60s 显示「1 分 15 秒」 */
@@ -258,8 +399,133 @@ function DownloadCard({
   );
 }
 
-function loadCachedTurns(): AskTurn[] {
-  try {
+/**
+ * 截图卡：把截到的那一页铺在对话里。
+ *
+ * 正在截时给个占位（这一趟要跳页 + 等渲染，得几秒）；失败给「重截一张」——
+ * 历史里那张图的字节可能当年就没归档上（截完就关了页面），那时不能只剩一个转圈。
+ */
+function ShotCard({ shot, sub, onRetake, onZoom }: {
+  shot: TurnExport;
+  sub?: boolean;
+  onRetake: () => void;
+  onZoom: (url: string, label: string) => void;
+}) {
+  const label = shot.label || "页面截图";
+  if (shot.imageState === "ready" && shot.imageUrl) {
+    return (
+      <figure className={`scan-assistant-ask__shot${sub ? " scan-assistant-ask__shot--sub" : ""}`}>
+        <img
+          className="scan-assistant-ask__shot-img"
+          src={shot.imageUrl}
+          alt={label}
+          onClick={() => onZoom(shot.imageUrl as string, label)}
+        />
+        {shot.path ? (
+          <button type="button" className="scan-assistant-ask__shot-retake" onClick={onRetake}>
+            重截一张
+          </button>
+        ) : null}
+      </figure>
+    );
+  }
+  if (shot.imageState === "failed") {
+    return (
+      <div className="scan-assistant-ask__shot scan-assistant-ask__shot--failed">
+        <span className="scan-assistant-ask__shot-tip">{label}没截成</span>
+        {shot.path ? (
+          <button type="button" className="scan-assistant-ask__download-btn" onClick={onRetake}>
+            <ImagePlus strokeWidth={2.5} aria-hidden />
+            重截一张
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="scan-assistant-ask__shot scan-assistant-ask__shot--loading">
+      <span className="scan-assistant-ask__shot-tip">正在截「{label}」…</span>
+    </div>
+  );
+}
+
+/**
+ * 这一轮**会不会被渲染出来**。
+ *
+ * <p>判据必须与渲染处那条 `return null` **逐字一致** —— 挂起那一轮正文为空、只剩待答选项，
+ * 渲染处**故意不画它**（选项卡片另处渲染）。倒计时/产物若挂到这种轮上就永远看不见，
+ * 而服务端存的锚恰好就是那条带工具调用的消息（真机排查很久才定位到这个）。
+ */
+function isRenderableTurn(t: AskTurn): boolean {
+  if (t.role !== "assistant") return true;
+  if (t.text.trim().length > 0) return true;
+  if ((t.exports?.length ?? 0) > 0) return true;
+  return (t.choiceQueue?.length ?? 0) === 0;
+}
+
+/** 剩余时间 mm:ss（超过一小时给 h:mm:ss）。 */
+function fmtRemain(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/**
+ * 倒计时卡：像附件一样挂在气泡下面。
+ *
+ * <p>它回答用户三个问题：**还要等多久**（实时跳秒）、**能不能撤**（停止）、
+ * **最后到底办成没有**（已执行 / 失败 + 原因）。少任何一个都会变成「设了之后心里没底」。
+ */
+function TimerChip({ timer, nowMs, clockSkewMs, onStop, onConfirm }: {
+  timer: TurnTimer;
+  nowMs: number;
+  clockSkewMs: number;
+  onStop: () => void;
+  onConfirm: () => void;
+}) {
+  const live = TIMER_LIVE_STATUSES.has(timer.status);
+  /** 到点了但**在等用户点头**（写操作不能自己动手）。这不是「正在执行」，别混为一谈。 */
+  const awaiting = timer.status === "AWAITING_CONFIRM";
+  const remainMs = timer.fireAtMillis - (nowMs - clockSkewMs);
+  const failed = timer.status === "FAILED" || timer.ok === false || timer.ok === 0;
+  // 结束态要**直接说成功还是失败**：光一个「已完成」等于没说（用户问的就是这个）
+  const done = timer.status === "FIRED"
+    ? (failed ? " · 失败" : " · 成功")
+    : "";
+  const text = awaiting
+    ? "等待你确认"
+    : live
+      ? remainMs > 0
+        ? `还剩 ${fmtRemain(remainMs)}`
+        : "正在执行…"
+      : `${timer.statusZh}${done}${timer.error ? `：${timer.error}` : ""}`;
+  return (
+    <div className={`scan-assistant-ask__timer${failed ? " scan-assistant-ask__timer--failed" : ""}`}>
+      <span className="scan-assistant-ask__timer-ico" aria-hidden>
+        ⏱
+      </span>
+      <span className="scan-assistant-ask__timer-label" title={timer.label}>
+        {timer.label}
+      </span>
+      <span className="scan-assistant-ask__timer-remain">{text}</span>
+      {awaiting ? (
+        <button type="button" className="scan-assistant-ask__timer-confirm" onClick={onConfirm}>
+          确认执行
+        </button>
+      ) : null}
+      {live ? (
+        <button type="button" className="scan-assistant-ask__timer-stop" onClick={onStop}>
+          停止
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function loadCachedTurns(): AskTurn[] {  try {
     const key = currentCacheKey();
     const raw = readAskCache(key);
     if (!raw) return [];
@@ -271,6 +537,9 @@ function loadCachedTurns(): AskTurn[] {
         text: String(t?.text ?? ""),
         typed: true, // 恢复的历史一律视为已打完，不重新打字
         meta: t?.meta && typeof t.meta.totalTokens === "number" ? (t.meta as AskMeta) : undefined,
+        // **锚点必须一起恢复**：倒计时/产物"挂回原位"全靠它。缓存里存了、这里不读，
+        // 结果就是每次恢复后所有轮都没有 id，锚点永远对不上、只能兜底（真机踩到过）。
+        messageId: typeof t?.messageId === "number" ? (t.messageId as number) : undefined,
         choiceQueue: Array.isArray(t?.choiceQueue)
           ? (t.choiceQueue as unknown[])
               .map((q) => {
@@ -299,8 +568,32 @@ function loadCachedTurns(): AskTurn[] {
                 kind: x.kind === "image" ? ("image" as const) : ("file" as const),
               }))
           : undefined,
+        /*
+         * 产物卡**必须跟着缓存回来**，否则重开面板它们就凭空消失（真机反馈过：图全没了）。
+         * 但**只记产物号、不记 blob 地址** —— blob 是这一页的临时地址，刷新后必然失效。
+         * 截图的字节随后按 exportId 重取（见下面那个挂载 effect）。
+         */
+        exports: Array.isArray(t?.exports)
+          ? (t.exports as unknown[])
+              .map((x) => x as {
+                key?: unknown; kind?: unknown; label?: unknown;
+                params?: unknown; exportId?: unknown; path?: unknown;
+              })
+              .filter((x) => x && typeof x.kind === "string")
+              .map((x) => ({
+                key: String(x.key ?? `h${String(x.exportId)}`),
+                kind: String(x.kind),
+                label: x.label == null ? undefined : String(x.label),
+                params: (x.params as Record<string, unknown> | undefined) ?? undefined,
+                exportId: typeof x.exportId === "number" ? x.exportId : undefined,
+                path: x.path == null ? undefined : String(x.path),
+                ...(x.kind === "screenshot" ? { imageState: "loading" as const } : {}),
+              }))
+          : undefined,
       }))
-      .filter((t) => t.text.trim().length > 0); // 丢弃空回合：中断流式/问好中途缓存，避免空白气泡卡死并挡住重新问好
+      // 丢弃空回合：中断流式/问好中途缓存，避免空白气泡卡死并挡住重新问好 ——
+      // 但**挂了卡片的要留**（模型只调工具、一个字都没说的那轮就是这种）
+      .filter((t) => t.text.trim().length > 0 || (t.exports?.length ?? 0) > 0);
   } catch {
     return [];
   }
@@ -476,6 +769,26 @@ type ScanAssistantAskPanelProps = {
   onNewChat?: () => void;
   /** 「历史对话」入口。行为由载体接入（展开侧栏选历史会话），这里只提供按钮 */
   onOpenHistory?: () => void;
+  /**
+   * 载体的**即时播报**（刷卡后的欢迎语、提醒等）。
+   *
+   * <p>全站只有这一张卡：播报铺在这张卡的对话末尾，输入框就在它下面 —— 用户听完能直接接着问，
+   * 不用先收起再点开（原来播报走的是另一张没有输入框的小卡）。
+   * 只渲染、不进 `turns` 状态：它是载体推来的内容，不是这轮会话自己的回合。
+   */
+  incoming?: {
+    key: string | number;
+    text: string;
+    isStreaming: boolean;
+    isAwaitingFirstToken: boolean;
+    isTyping: boolean;
+    /** 这次刷的人没绑卡 → 在播报下面出一个**可点**的「绑定校园卡」入口 */
+    unboundCard?: boolean;
+    /** 被刷的人（点入口时要用它定位绑谁） */
+    personKey?: string;
+  } | null;
+  /** 点「绑定校园卡」时调它（载体接那根线，见 scanAssistantSpeak 的注册回调） */
+  onUnboundBind?: (userId: string) => void;
 };
 
 export function ScanAssistantAskPanel({
@@ -485,6 +798,8 @@ export function ScanAssistantAskPanel({
   onDismiss,
   onNewChat,
   onOpenHistory,
+  incoming,
+  onUnboundBind,
 }: ScanAssistantAskPanelProps) {
   const [draft, setDraft] = useState("");
   const [turns, setTurns] = useState<AskTurn[]>(loadCachedTurns);
@@ -495,6 +810,50 @@ export function ScanAssistantAskPanel({
    * 弹个莫名错误），一次澄清答案发两条消息（模型看到重复回答）。
    */
   const sendingRef = useRef(false);
+
+  /**
+   * 载体的即时播报，作为**最新一条助手消息**铺在对话末尾。
+   *
+   * <p>只参与渲染，不进 `turns` 状态：它是载体推来的（刷卡欢迎语等），不是这轮会话自己的回合；
+   * 混进状态会在「保存到缓存 / 续跑挂起」那条路上被当成真实历史。
+   */
+  const incomingTurn: AskTurn | null = incoming
+    ? {
+        role: "assistant",
+        text:
+          incoming.text.trim().length > 0
+            ? incoming.text
+            : incoming.isAwaitingFirstToken
+              ? "思考中…"
+              : "",
+        typed: true,
+      }
+    : null;
+  /**
+   * 播报视图：刷卡那一刻的对话**每次从零开始** —— 不把上一次的对话接着摞上来给用户看。
+   * 播报本身也不落库、不进历史（它只是载体推来的一条展示内容）。
+   *
+   * <p>`broadcastConsumed` = 用户已经在这张卡里说话了：这时视图交还给对话（播报当开场白留在最上面），
+   * 否则**他自己问的那句和回答都会被播报挡住**（真机踩到过）。
+   */
+  const broadcastMode = incomingTurn != null;
+  const [broadcastConsumed, setBroadcastConsumed] = useState(false);
+  const displayTurns =
+    broadcastMode && !broadcastConsumed ? [incomingTurn] : broadcastMode ? [incomingTurn, ...turns] : turns;
+  const incomingIndex = broadcastMode ? 0 : -1;
+
+  // 新的一次播报 = 新的一段对话：下一次提问从零开始，不接上一段会话的上下文
+  const lastBroadcastKeyRef = useRef<string | number | null>(null);
+  const [unboundBindClicked, setUnboundBindClicked] = useState(false);
+  useEffect(() => {
+    if (!incoming) return;
+    if (lastBroadcastKeyRef.current === incoming.key) return;
+    lastBroadcastKeyRef.current = incoming.key;
+    setUnboundBindClicked(false);
+    setBroadcastConsumed(false);
+    sessionIdRef.current = null;
+    newSessionRef.current = true;
+  }, [incoming]);
   const beginSend = () => {
     if (sendingRef.current) return false;
     sendingRef.current = true;
@@ -576,6 +935,20 @@ export function ScanAssistantAskPanel({
    * 所以按卡片记账（键就是那张卡的 `key`）。
    */
   const [busyDownloadKey, setBusyDownloadKey] = useState<string | null>(null);
+  /**
+   * 正在放大看的那张图。面板里的图是**缩放铺**的（长页面铺满会把对话顶没），
+   * 细节得点开看 —— 所以这个浮层不是装饰，是那张图唯一看得清的地方。
+   */
+  const [zoomShot, setZoomShot] = useState<{ url: string; label: string } | null>(null);
+  /**
+   * 服务端时间 − 本地时间。
+   *
+   * <p>倒计时必须补这个差：机器时钟快/慢几分钟时，不补就会显示成「早该到了却没执行」。
+   * 与计时器页同一口径（那个接口专门回了 serverNowMillis 就是为这个）。
+   */
+  const [clockSkewMs, setClockSkewMs] = useState(0);
+  /** 每秒走一格，只为重算倒计时显示（不参与任何判定）。 */
+  const [nowMs, setNowMs] = useState(() => Date.now());
   /** 多选题当前勾中的值（勾完按「确认」一次性提交） */
   const [multiPick, setMultiPick] = useState<string[]>([]);
   /** 助手抛回来的待答问题（可能一次好几道）：渲染成可点选的控件，答完一道依次往下走 */
@@ -1047,12 +1420,15 @@ export function ScanAssistantAskPanel({
           target = rows.length - 1;
         }
         if (target >= 0) {
+          const isShot = e.kind === "screenshot";
           rows[target].exports.push({
             key: `h${e.exportId}`,
             kind: e.kind,
             label: e.label,
             params: e.params,
             exportId: e.exportId,
+            // 截图那张卡先占位，字节待会儿单独取（消息里没有图，只有文字）
+            ...(isShot ? { imageState: "loading" as const, path: shotPathOf(e.params) } : {}),
           });
         }
       }
@@ -1065,9 +1441,19 @@ export function ScanAssistantAskPanel({
             role: r.role,
             text: r.text,
             typed: r.typed,
+            // 留着锚点：倒计时/产物按它挂回原位
+            messageId: r.messageId,
             ...(r.exports.length ? { exports: r.exports } : {}),
           })),
       );
+      // 截图的字节不在消息里，单独把图取回来铺上去；取不到那张卡会退化成「重截一张」
+      for (const e of exports) {
+        if (e.kind === "screenshot") {
+          void loadShotBytes(`h${e.exportId}`, e.exportId, shotPathOf(e.params));
+        }
+      }
+      // 倒计时按 messageId 挂回原位（与产物同一套锚点）
+      void mountTimers();
       sessionIdRef.current = sessionId;
       newSessionRef.current = false;
       setQueue([]);
@@ -1120,6 +1506,8 @@ export function ScanAssistantAskPanel({
       promptTokens?: number;
       completionTokens?: number;
       turns?: number;
+      /** 这一轮助手消息在服务端的 id：倒计时/产物按它挂回原位 */
+      messageId?: number;
     },
     acc: string,
     accQueue: AskQuestion[],
@@ -1147,9 +1535,61 @@ export function ScanAssistantAskPanel({
           // 点一次确认就多堆一个不结束的思考中气泡）。
           typed: finalText.length === 0,
           meta,
-          choiceQueue: accQueue.length > 0 ? accQueue : undefined,
+          /*
+           * **本轮没有新问题就留住上一轮未答的**。
+           *
+           * 一轮里可能有多个工具各抛一次交互：导出要选维度 + 建定时要确认。而写操作的确认
+           * 会把那一轮**挂起**（就此收尾），选项先渲染出来；点了确认续跑，续跑那轮没有新问题，
+           * 如果这里直接清空，导出那批选项就**被覆盖掉了**（真机反馈：导出的选项没了）。
+           */
+          choiceQueue: accQueue.length > 0 ? accQueue : last.choiceQueue,
+          // 「正在跑」到这儿就该撤掉；**失败要留着** —— 那正是用户需要看见的信息
+          toolBusy: last.toolBusy?.status === "failed" ? last.toolBusy : undefined,
+          messageId: payload.messageId ?? last.messageId,
+          // **已经挂在这一轮上的东西要原样带过来**：这里是「重建」不是「追加」，漏带的字段会被直接抹掉。
+          // 确认续跑会再走一次这里 —— 真机就是这么把刚挂上的倒计时卡弄没的。
+          exports: last.exports,
+          timers: last.timers,
         };
       }
+      /*
+       * **把同一次提问产出的附件收拢到最后这条回复上。**
+       *
+       * 一次提问中间可能挂起过（写操作要确认）—— 但**挂起不算这次提问结束**，
+       * 用户点完确认仍是在办同一件事。于是图/文件/倒计时原本各落一条气泡，
+       * 现在都收拢到"这次提问真正收尾的那一条"上。
+       *
+       * 往前扫的停法：遇到助手轮就收它的产物；遇到"确认执行"那条用户轮继续往前；
+       * 遇到真正的新提问就停。收空了的轮由渲染处丢掉（不再留空壳）。
+       */
+      const lastIdx = next.length - 1;
+      if (next[lastIdx] && next[lastIdx].role === "assistant") {
+        const carriedExports = [...(next[lastIdx].exports ?? [])];
+        const carriedTimers = [...(next[lastIdx].timers ?? [])];
+        for (let i = lastIdx - 1; i >= 0; i -= 1) {
+          const t = next[i];
+          if (t.role === "user") {
+            if (t.isConfirmAnswer) continue;   // 点确认不算新提问，继续往前收
+            break;                              // 上一次真正的提问 → 停
+          }
+          // **只复制、不清源**：搬走了就再也没法回头，而收拢会因为"又收尾一次"重复执行 ——
+          // 复制留下两份，由渲染处按 key 去重（只显示最后一次出现的那条），
+          // 这样"收拢"这件事**天然幂等、且不可能丢东西**。
+          if (t.exports?.length) {
+            carriedExports.unshift(...t.exports);
+          }
+          if (t.timers?.length) {
+            carriedTimers.unshift(...t.timers);
+          }
+        }
+        next[lastIdx] = {
+          ...next[lastIdx],
+          ...(carriedExports.length ? { exports: carriedExports } : {}),
+          ...(carriedTimers.length ? { timers: carriedTimers } : {}),
+        };
+      }
+      // **刚收尾的就是这一轮**（prev 是权威的，不是闭包快照）—— 之后新建的产物挂它下面
+      lastFinalizedTurnRef.current = lastIdx;
       return next;
     });
 
@@ -1190,6 +1630,11 @@ export function ScanAssistantAskPanel({
         return [...next, { role: "assistant" as const, text: "", typed: true, exports: [one] }];
       });
     }
+
+
+    // 这一轮可能刚设了定时：**锁死挂到刚说完这条**（此刻它就是最后一轮），
+    // 不锁的话等 fetch 回来时可能已经被补拉进来的汇报顶掉了落点
+    void mountTimers();
   };
 
   /**
@@ -1306,6 +1751,353 @@ export function ScanAssistantAskPanel({
     }
   };
 
+  /** 给「刚说完的那条助手消息」打补丁（长任务状态就挂在那儿）。 */
+  const patchLastAssistant = (patch: Partial<AskTurn>) => {
+    setTurns((prev) => {
+      const i = prev.length - 1;
+      if (i < 0 || prev[i].role !== "assistant") {
+        return prev;
+      }
+      const next = prev.slice();
+      next[i] = { ...next[i], ...patch };
+      return next;
+    });
+  };
+
+  /** 还有在跑的倒计时就每秒走一格；没有就停掉，别白跑一个定时器。 */
+  const hasLiveTimer = turns.some((t) => t.timers?.some((x) => TIMER_LIVE_STATUSES.has(x.status)));
+  useEffect(() => {
+    if (!hasLiveTimer) {
+      return undefined;
+    }
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [hasLiveTimer]);
+
+  /**
+   * 把这个会话的倒计时拉回来、挂到对应的那一轮上。
+   *
+   * <p>实时与历史共用：实时刚设完定时，那条还没挂上，会落到**刚说完那一条**；
+   * 历史则按 `messageId` 挂回原位（缺了就落到最后一条助手回复，总比不显示强）。
+   * 已经挂上的只刷状态 —— 等它从「等待」变成「已执行 / 失败」。
+   *
+   * <p>**归零后再拉一次**就是为了拿到那个结果。不新增推送通道：你正看着它，它自己就变；
+   * 你没看，下次打开也是对的。
+   */
+  const mountTimers = async () => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+    let res;
+    try {
+      res = await fetchAiTimers({ scope: "mine" });
+    } catch (e) {
+      // 读不到不影响对话本身，但**要留一行** —— 它失败的症状是「卡片要重开对话才出现」，
+      // 静默吞掉根本查不出是网络抖了还是逻辑错（真机排查吃过这个亏）。
+      console.warn("[scan-assistant] 倒计时读取失败：", e);
+      return;
+    }
+    setClockSkewMs(res.serverNowMillis - res.clientAt);
+    const rows = (res.list || []).filter((t) => t.sessionId === sessionId);
+    if (rows.length === 0) {
+      return;
+    }
+    const toTurn = (t: (typeof rows)[number]): TurnTimer => ({
+      id: t.id,
+      label: t.label || "定时任务",
+      fireAtMillis: t.fireAtMillis ?? 0,
+      status: t.status,
+      statusZh: t.statusZh,
+      ok: t.ok ?? null,
+      result: t.result,
+      error: t.error,
+    });
+    setTurns((prev) => {
+      const next = prev.map((t) => ({ ...t, timers: t.timers ? [...t.timers] : undefined }));
+      const mounted = new Set<number>();
+      next.forEach((t) => (t.timers || []).forEach((x) => mounted.add(x.id)));
+      next.forEach((t) => {
+        if (!t.timers) return;
+        t.timers = t.timers.map((x) => {
+          const fresh = rows.find((y) => y.id === x.id);
+          return fresh ? toTurn(fresh) : x;
+        });
+      });
+      rows
+        .filter((r) => !mounted.has(r.id))
+        .forEach((r) => {
+          /*
+           * 落点先后：按 messageId 找（历史/缓存）→ 兜底「最后一条**会渲染**的助手轮」。
+           *
+           * 兜底那条有两个**必须**的过滤，少一个就会挂到一个看不见的轮上（真机排查了很久）：
+           *   ① 跳过定时器补拉进来的汇报轮（`fromTimer`）—— 它不是"说这句话的那一轮"；
+           *   ② 跳过**正文为空**的轮 —— 挂起那一轮模型只调了工具、一个字没说，
+           *      面板**故意不给它画气泡**（选项卡片另处渲染），挂上去等于挂在空气上。
+           * 另外服务端那条锚是**工具调用消息**的 id，与面板上"最终回复"那条不是同一个 id，
+           * 所以 id 匹配多半落空、真正起作用的就是这个兜底，它必须选对人。
+           */
+          /*
+           * 落点 = **载体最近收尾的那一轮**（见 lastFinalizedTurnRef 的注释）。
+           *
+           * 不看服务端的 messageId：那个锚指的是「工具调用那条消息」，跟面板上的轮不是一回事，
+           * 而且它常常落在挂起那一轮上 —— 那一轮正文为空、面板故意不画，卡片挂上去就隐形了。
+           *
+           * 只有它不可渲染时才往后挪一格（挂起那轮不该成为落点）。
+           */
+          let idx = lastFinalizedTurnRef.current ?? -1;
+          if (idx < 0 || idx >= next.length || !isRenderableTurn(next[idx])) {
+            idx = -1;
+            for (let i = next.length - 1; i >= 0; i -= 1) {
+              if (isRenderableTurn(next[i])) {
+                idx = i;
+                break;
+              }
+            }
+          }
+          if (idx < 0) {
+            for (let i = next.length - 1; i >= 0; i -= 1) {
+              // 跳过定时器补拉进来的汇报轮：它不是"说这句话的那一轮"（见 AskTurn.fromTimer）
+              if (next[i].role === "assistant" && !next[i].fromTimer && next[i].text.trim().length > 0) {
+                idx = i;
+                break;
+              }
+            }
+          }
+          if (idx < 0) return;
+          next[idx] = { ...next[idx], timers: [...(next[idx].timers ?? []), toTurn(r)] };
+        });
+      return next;
+    });
+  };
+
+  /**
+   * 归零之后**反复补拉**，直到它不再是「在跑」的状态。
+   *
+   * <p>只补一次是不够的：服务端的调度器每 5 秒扫一遍到期单，而我们最早在 +3s 就去问 ——
+   * 那时它多半还没执行，一次问完就再也没有第二次，那一格会**永远停在「正在执行…」**（真机踩到）。
+   *
+   * <p>上限 24 次（约 2 分钟）：再久就是服务端那边出问题了，页面上没必要一直打接口。
+   */
+  const timerPollRef = useRef<Map<number, { at: number; tries: number }>>(new Map());
+  /** 上一轮看到的每个倒计时的状态 —— 用来发现「刚从在跑变成终态」那一瞬。 */
+  const timerSeenStatusRef = useRef<Map<number, string>>(new Map());
+  useEffect(() => {
+    const live = turns.flatMap((t) => t.timers || []);
+    let need = false;
+    live.forEach((x) => {
+      // 刚从「在跑」变成终态 → 必须补拉：**定时器写回会话的那条汇报就在这一刻出现**。
+      // 少了这个判断，轮询会在卡片变「已完成」的同一拍停下，正好错过那条汇报（真机踩到）。
+      const prevStatus = timerSeenStatusRef.current.get(x.id);
+      if (prevStatus && TIMER_LIVE_STATUSES.has(prevStatus) && !TIMER_LIVE_STATUSES.has(x.status)) {
+        need = true;
+      }
+      timerSeenStatusRef.current.set(x.id, x.status);
+      if (!TIMER_LIVE_STATUSES.has(x.status)) {
+        timerPollRef.current.delete(x.id);
+        return;
+      }
+      if (x.fireAtMillis <= 0 || nowMs - clockSkewMs < x.fireAtMillis + 3000) {
+        return;
+      }
+      const seen = timerPollRef.current.get(x.id);
+      if (!seen) {
+        timerPollRef.current.set(x.id, { at: nowMs, tries: 1 });
+        need = true;
+        return;
+      }
+      if (seen.tries < 24 && nowMs - seen.at >= 5000) {
+        seen.at = nowMs;
+        seen.tries += 1;
+        need = true;
+      }
+    });
+    if (need) {
+      // 两条一起补：倒计时的状态（含成败）+ 定时器写回会话的那条汇报。
+      // 后者绕开了对话流（跑在调度线程里），不主动拉就永远看不见。
+      void mountTimers();
+      void pullNewMessages();
+    }
+    // mountTimers 每次渲染都是新函数，不进依赖 —— 靠上面的 Map 防重入
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nowMs, clockSkewMs, turns]);
+
+  /**
+   * 把服务端**新落进会话**的消息补到界面上。
+   *
+   * <p>谁会绕开对话流直接往会话里写？**定时器执行完的那条汇报** —— 它跑在调度线程里，
+   * 这头没有任何 SSE 连接。不补的话：通知都推到他手机上了，对话里却要重开才看得见，
+   * 用户看到的就是「推送了，但对话里没有」。
+   *
+   * <p>只认**比已知最大消息 id 更新**的助手消息：消息是按 id 递增追加的，
+   * 用「大于」不会把已经渲染过的重复拉一遍。
+   */
+  const pullNewMessages = async () => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+    let msgs: { id: number; role: string; content: string }[] = [];
+    try {
+      msgs = await fetchAssistantSessionMessages(sessionId);
+    } catch {
+      return; // 拉不到就算了，别把这一轮搞坏
+    }
+    setTurns((prev) => {
+      const maxKnown = prev.reduce((mx, t) => (typeof t.messageId === "number" && t.messageId > mx ? t.messageId : mx), 0);
+      // 一个 id 都不知道就**不补**：这种情况无从判断哪条是新的，硬补会把整段对话复制一遍
+      if (maxKnown <= 0) {
+        return prev;
+      }
+      const fresh = (msgs || []).filter(
+        (m) => m.role === "assistant" && m.id > maxKnown && String(m.content || "").trim().length > 0,
+      );
+      if (fresh.length === 0) {
+        return prev;
+      }
+      return [
+        ...prev,
+        ...fresh.map((m) => ({
+          role: "assistant" as const,
+          text: String(m.content),
+          typed: true,
+          messageId: m.id,
+          // 打上标记：倒计时兜底找落点时要跳过它（见 AskTurn.fromTimer 的注释）
+          fromTimer: true,
+        })),
+      ];
+    });
+  };
+
+  /** 手动停止一个倒计时（走的是计时器页同一套接口）。 */
+  const stopTimer = async (timerId: number) => {
+    try {
+      await cancelAiTimer(timerId);
+      await mountTimers();
+      toast.success("已停止");
+    } catch {
+      toast.error("没能停止这个定时");
+    }
+  };
+
+  /**
+   * 确认一次**到点了但被挂起**的定时。
+   *
+   * <p>**新定时不会再进这个状态了**（确认已经前移到建单那一刻，见 AiTimerService.dispatchClaimed），
+   * 这个键留着是给**改造前就卡在「等待确认」的老单子**一个就地放行的入口 ——
+   * 否则用户在对话里只看到「等待你确认」，却得自己找到「AI 计时器」那一页去点。
+   */
+  const confirmTimer = async (timerId: number) => {
+    try {
+      await confirmAiTimer(timerId);
+      await mountTimers();
+      toast.success("已确认，正在执行");
+    } catch {
+      toast.error("确认失败，去「AI 计时器」页面看看");
+    }
+  };
+
+  /**
+   * 总是最新的 turns。
+   *
+   * <p>流式回调里闭包拿到的 `turns` 是**发起那一轮时的快照**，早就旧了 ——
+   * 用它算"最后一条"会指到别的轮上（真机就是这么把倒计时挂歪的）。
+   * 这个 ref 每渲染都刷一次，谁要用现成的就用它。
+   */
+  const latestTurnsRef = useRef<AskTurn[]>([]);
+  latestTurnsRef.current = turns;
+  /**
+   * **载体最近收尾的那一轮**的下标 —— 产物/倒计时的唯一落点。
+   *
+   * <p>为什么用它是本质正确的：服务端给的锚是「工具调用那条消息」的 id，而面板上的轮是
+   * 「最终回复那条」的 id，两者不是一回事；中间还夹着一次挂起（那一轮正文为空、面板故意不画）。
+   * 拿两边的 id 去对齐，怎么对都会错。
+   *
+   * <p>而「刚收尾的是哪一轮」**只有载体自己知道，且它一定知道**（它刚往那一轮写完正文）。
+   * 所以这个值在 `applyStreamResult` 里、**从权威的 `prev` 上**取值（不用任何过期闭包），
+   * 之后新建的产物就挂它下面 —— 不需要跟服务端对齐任何 id。
+   */
+  const lastFinalizedTurnRef = useRef<number | null>(null);
+
+  /** 给某张截图卡打补丁（按 key 找）。实时与历史两条路都用它更新状态。 */  const patchShot = (key: string, patch: Partial<TurnExport>) => {
+    setTurns((prev) =>
+      prev.map((t) => {
+        if (!t.exports?.some((e) => e.key === key)) return t;
+        return { ...t, exports: t.exports.map((e) => (e.key === key ? { ...e, ...patch } : e)) };
+      }),
+    );
+  };
+
+  /**
+   * 实时那次：跳到那一页 → 等它画稳 → 截下来 → 显示，并把字节交回产物归档。
+   *
+   * 截的是**提问者自己这份画面**（他的登录态、数据、视口），所以服务端不需要注入任何身份。
+   * 归档是为了切走再回来那张图还在（与导出同一条口径）。
+   */
+  const captureShot = async (key: string, exportId: number | undefined, path: string | undefined) => {
+    try {
+      if (path) {
+        const target = toAdminRoutePath(path);
+        if (target && target !== currentPath) {
+          navigate(target);
+        }
+        await waitForPagePainted();
+      }
+      const blob = await captureAppRoot();
+      patchShot(key, { imageUrl: URL.createObjectURL(blob), imageState: "ready" });
+      if (exportId) {
+        void archiveExportContent(exportId, blob, "screenshot.png");
+      }
+    } catch (e) {
+      // 必须留一行：截图失败是**静默**的（卡片只是变成「没截成」），不记的话
+      // 事后只能看到一个空产物，查不出是取字节失败还是渲染失败。真机踩过。
+      console.warn("[scan-assistant] 截图失败：", e);
+      patchShot(key, { imageState: "failed" });
+    }
+  };
+
+  /** 历史那次：产物里已经有字节（当年截的那一张），取回来显示。取不到就退化成「重截一张」。 */
+  const loadShotBytes = async (key: string, exportId?: number, path?: string) => {
+    if (!exportId) {
+      patchShot(key, { imageState: "failed", path });
+      return;
+    }
+    try {
+      const blob = await fetchExportBlob(exportId);
+      if (!blob) {
+        patchShot(key, { imageState: "failed", path });
+        return;
+      }
+      patchShot(key, { imageUrl: URL.createObjectURL(blob), imageState: "ready" });
+    } catch {
+      patchShot(key, { imageState: "failed", path });
+    }
+  };
+
+  /**
+   * 从缓存恢复出来的那一屏，补两样缓存里必然存不住的东西。
+   *
+   * <p>① 截图的**字节**：缓存只记了产物号（blob 地址是这一页的临时地址，重开就没），
+   * 所以要按 exportId 重新取一趟 —— 不补的话，关掉再打开面板图就全没了（真机反馈过）。
+   * ② 倒计时的**真实状态**：缓存里那份早就过期了，重新拉一次才算数。
+   *
+   * <p>只跑一次（挂载时）。成功/失败都会改写 imageState，不需要再触发；
+   * 「点开历史会话」那条路自己会取，不走这里。
+   */
+  useEffect(() => {
+    turns
+      .flatMap((t) => t.exports || [])
+      .filter((e) => e.kind === "screenshot" && e.exportId && !e.imageUrl)
+      .forEach((e) => void loadShotBytes(e.key, e.exportId, e.path));
+    if (sessionIdRef.current) {
+      void mountTimers();
+      // 面板关着的那段时间，定时器可能已经写完汇报了 —— 那时没有轮询在跑，这里补一次
+      void pullNewMessages();
+    }
+    // 只在挂载时补一次；turns/loadShotBytes 都是那一刻的快照
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 流式出错：占位气泡还没写出正文时，把错误当这一轮的答复显示出来。 */
   const applyStreamError = (message: string) => {
     setTurns((prev) => {
@@ -1401,8 +2193,10 @@ export function ScanAssistantAskPanel({
     setCustomDraft("");
     setDraft("");
     pendingNavRef.current = null;
+    // 播报视图里发问：这一段就从零开始（不摞上一次的对话），并且把视图交还给对话
+    if (broadcastMode) setBroadcastConsumed(true);
     setTurns((prev) => [
-      ...prev,
+      ...(broadcastMode ? [] : prev),
       { role: "user", text: displayText ?? outgoingText, typed: true, attachments: turnAttachments },
       { role: "assistant", text: "", typed: false },
     ]);
@@ -1427,6 +2221,49 @@ export function ScanAssistantAskPanel({
           },
           onDownload: (p) => {
             pendingDownloadRef.current = p as AssistantDownload;
+          },
+          /*
+           * **立刻挂上去，不压到这一轮结束。**
+           *
+           * 一轮里可能同时办好几件事（截图 / 导出 / 定时），压到最后等于用户全程看不到任何进展，
+           * 只觉得"特别慢、不知道发生了什么"（真机反馈）。事件到了就该在对话里出现一件。
+           */
+          onImage: (p) => {
+            const one: TurnExport = {
+              key: `shot${Date.now()}`,
+              kind: "screenshot",
+              label: p.label,
+              exportId: p.exportId,
+              path: p.path,
+              imageState: "loading",
+            };
+            setTurns((prev) => {
+              const next = prev.slice();
+              const lastIndex = next.length - 1;
+              const last = next[lastIndex];
+              if (last && last.role === "assistant") {
+                next[lastIndex] = { ...last, exports: [...(last.exports ?? []), one] };
+                return next;
+              }
+              return [...next, { role: "assistant" as const, text: "", typed: true, exports: [one] }];
+            });
+            if (p.path) {
+              void captureShot(one.key, p.exportId, p.path);
+            } else {
+              void loadShotBytes(one.key, p.exportId);
+            }
+          },
+          // 长任务进度：running 挂一行「正在截图…」，done 撤掉，failed 留着（那正是要害）
+          onTool: (p) => {
+            const label = TOOL_BUSY_LABEL[p.name];
+            if (!label) return;
+            if (p.status === "running") {
+              patchLastAssistant({ toolBusy: { label, status: "running" } });
+            } else if (p.status === "failed") {
+              patchLastAssistant({ toolBusy: { label, status: "failed" } });
+            } else {
+              patchLastAssistant({ toolBusy: undefined });
+            }
           },
           onDone: (payload) => {
             const finalText = (payload.text ?? acc).trim();
@@ -1454,6 +2291,8 @@ export function ScanAssistantAskPanel({
           // 续历史会话 / 开新会话 / 带图：三件都走这一条链路，服务端各自校验
           sessionId: startingNewSession ? null : sessionIdRef.current,
           newSession: startingNewSession,
+          // 刷卡那次对话是**临时会话**：不进「历史对话」列表（新开由上面的 newSession 保证）
+          ephemeral: broadcastMode,
           images: outgoingImages,
           spreadsheets: outgoingFiles,
           contextPage: currentPath,
@@ -1494,14 +2333,18 @@ export function ScanAssistantAskPanel({
     runRef.current = ctrl;
     beginSend();
     setUsage(null);
-    setQueue([]);
+    // **只把这一个「确认」从队列里拿掉，别整个清空。**
+    // 一轮里可能有多个工具各抛一次交互（导出要选维度 + 建定时要确认），点确认只是回答后者；
+    // 整个清空会把导出那批**还没答**的问题一起抹掉（真机反馈：导出的选项没了）。
+    setQueue((prev) => prev.filter((q) => q.kind !== "confirm"));
     setAnswers([]);
     setCurrent(0);
     setCustomDraft("");
     // 用户那一侧只留他点的那一下，不把内部选项值原样摆出来
     setTurns((prev) => [
       ...prev,
-      { role: "user", text: label, typed: true },
+      // 打标：这不是新的一次提问，是接着上面那条回复把没办完的事办完
+      { role: "user", text: label, typed: true, isConfirmAnswer: true },
       { role: "assistant", text: "", typed: false },
     ]);
 
@@ -1776,7 +2619,7 @@ export function ScanAssistantAskPanel({
                 ) : (historyList?.length ?? 0) === 0 ? (
                   <div className="scan-assistant-ask__sessions-empty">还没有别的对话</div>
                 ) : (
-                  <div className="scan-assistant-ask__sessions-items">
+                  <div className="scan-assistant-ask__sessions-items" data-modal-scroll>
                     {(historyList ?? []).map((s) => (
                       <div key={s.id} className="scan-assistant-ask__session-row">
                         <button
@@ -1824,7 +2667,7 @@ export function ScanAssistantAskPanel({
                   </div>
                 )}
               </div>
-            ) : turns.length > 0 ? (
+            ) : displayTurns.length > 0 ? (
               <div
                 className={
                   currentQuestion
@@ -1832,6 +2675,9 @@ export function ScanAssistantAskPanel({
                     : "scan-assistant-ask__history"
                 }
                 ref={historyRef}
+                /* 显式声明「这里接滚轮」：卡片是 portal 到 body 的，落在弹窗层之外，
+                   modalScrollGuard 本来会把它的滚轮拦掉（真机「卡片里滚不动」）。 */
+                data-modal-scroll
                 aria-live="polite"
                 /*
                  * 模板库下载链接的点击要**接管**：markdown 链接点出去是裸 GET，没有 Authorization 头，
@@ -1886,15 +2732,40 @@ export function ScanAssistantAskPanel({
                   })();
                 }}
               >
-                {turns.map((turn, index) => {
+                {displayTurns.map((turn, index) => {
+                  /*
+                   * **产物按 key 全局去重、只显示最后一次出现的那一条**。
+                   *
+                   * 收拢是"复制"而不是"搬"（见收集处的注释），所以同一条产物可能出现在好几轮上；
+                   * 这里保证它**只画一次、且画在最后出现的位置**（也就是这次提问真正收尾的那一轮）。
+                   * 顺带让"收拢"这件事可以随便重复执行，不会重复显示、也不会丢。
+                   */
+                  const isLastOccurrence = (key: string, kind: "e" | "t") => {
+                    for (let j = displayTurns.length - 1; j > index; j -= 1) {
+                      if (kind === "e") {
+                        if ((displayTurns[j].exports ?? []).some((x) => x.key === key)) return false;
+                      } else if ((displayTurns[j].timers ?? []).some((x) => String(x.id) === key)) {
+                        return false;
+                      }
+                    }
+                    return true;
+                  };
                   // 挂起那一轮模型常常一个字都不说（它只调了工具，正文是空的），交互全在下面那张
                   // 选项卡片里。这种回合**不铺空气泡** —— 铺了就是一个空框占位，还容易跟
                   // 「正在思考」混起来；对话一长就堆一片看不出来历的空白。
+                  const shownExports = (turn.exports ?? []).filter((one) => isLastOccurrence(one.key, "e"));
+                  const shownTimers = (turn.timers ?? []).filter((one) => isLastOccurrence(String(one.id), "t"));
                   if (
                     turn.role === "assistant" &&
                     turn.text.trim().length === 0 &&
-                    (turn.choiceQueue?.length ?? 0) > 0 &&
-                    (turn.exports?.length ?? 0) === 0
+                    // 有产物（图/文件/倒计时）的空轮**要画** —— 但要看**去重后还剩没剩**：
+                    // 收拢是复制，源轮的产物会被去重掉，那种轮就该当空轮丢掉（不然留个空壳）
+                    shownExports.length === 0 &&
+                    shownTimers.length === 0 &&
+                    // 两种该丢的空轮：① 交互都在下面那张选项卡片里（挂起那轮）；
+                    // ② 不是最后一条 —— 同一次提问的附件已经**收拢到最后那条**上，
+                    //    留在中间的就是个空壳（真机反馈过会堆一条空白）
+                    ((turn.choiceQueue?.length ?? 0) > 0 || index !== displayTurns.length - 1)
                   ) {
                     return null;
                   }
@@ -1907,8 +2778,15 @@ export function ScanAssistantAskPanel({
                         <AssistantBubble
                           text={turn.text}
                           type={!turn.typed}
-                          meta={turn.meta}
-                          live={index === turns.length - 1 ? liveMeta : undefined}
+                          meta={index === incomingIndex ? undefined : turn.meta}
+                          /* 实时态（计时/token）只属于会话自己的最后一个回合；播报那条不带 */
+                          live={
+                            index === incomingIndex
+                              ? undefined
+                              : index === turns.length - 1
+                                ? liveMeta
+                                : undefined
+                          }
                           onTyped={() =>
                             setTurns((prev) => {
                               const next = prev.slice();
@@ -1920,17 +2798,76 @@ export function ScanAssistantAskPanel({
                             })
                           }
                         >
-                          {turn.exports?.map((one) => (
-                            <DownloadCard
-                              key={one.key}
-                              label={one.label}
-                              busy={busyDownloadKey === one.key}
-                              // 这一轮有正文 = 文件是跟着这句话出来的 → 往里缩一点；
-                              // 没正文 = 模型只调了工具，文件自己占一条 → 不缩进。
-                              sub={turn.text.trim().length > 0}
-                              onDownload={() => void performDownload(one, one.key)}
+                          {turn.toolBusy ? (
+                            <div
+                              className={`scan-assistant-ask__toolbusy${
+                                turn.toolBusy.status === "failed" ? " scan-assistant-ask__toolbusy--failed" : ""
+                              }`}
+                            >
+                              {turn.toolBusy.status === "failed"
+                                ? `${turn.toolBusy.label}没成功`
+                                : `${turn.toolBusy.label}…`}
+                            </div>
+                          ) : null}
+                          {shownTimers.map((one) => (
+                            <TimerChip
+                              key={one.id}
+                              timer={one}
+                              nowMs={nowMs}
+                              clockSkewMs={clockSkewMs}
+                              onStop={() => void stopTimer(one.id)}
+                              onConfirm={() => void confirmTimer(one.id)}
                             />
                           ))}
+                          {shownExports.map((one) =>
+                            one.kind === "screenshot" ? (
+                              <ShotCard
+                                key={one.key}
+                                shot={one}
+                                sub={turn.text.trim().length > 0}
+                                onZoom={(url, label) => setZoomShot({ url, label })}
+                                onRetake={() => {
+                                  if (!one.path) return;
+                                  patchShot(one.key, { imageState: "loading" });
+                                  void captureShot(one.key, one.exportId, one.path);
+                                }}
+                              />
+                            ) : (
+                              <DownloadCard
+                                key={one.key}
+                                label={one.label}
+                                busy={busyDownloadKey === one.key}
+                                // 这一轮有正文 = 文件是跟着这句话出来的 → 往里缩一点；
+                                // 没正文 = 模型只调了工具，文件自己占一条 → 不缩进。
+                                sub={turn.text.trim().length > 0}
+                                onDownload={() => void performDownload(one, one.key)}
+                              />
+                            ),
+                          )}
+                          {/*
+                            刷卡后没绑卡这次的**可点入口**。
+                            要点：给按钮而不是在文案里说「弹窗下方有…」——说位置和给按钮体验差一大截；
+                            点完还得告诉人下一步（刷卡 → 点确认绑定），否则他点开窗口不知道要干什么。
+                          */}
+                          {index === incomingIndex && incoming?.unboundCard ? (
+                            unboundBindClicked ? (
+                              <p className="scan-assistant-ask__unbound-hint">
+                                已打开绑卡窗口：让 TA 刷一下卡，再点「确认绑定」就好了
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                className="scan-assistant-ask__unbound-chip"
+                                onClick={() => {
+                                  setUnboundBindClicked(true);
+                                  onUnboundBind?.(incoming?.personKey ?? "");
+                                }}
+                              >
+                                <CreditCard className="h-3.5 w-3.5" />
+                                绑定校园卡
+                              </button>
+                            )
+                          ) : null}
                         </AssistantBubble>
                       ) : (
                         <div className="scan-assistant-ask__user-block">
@@ -2350,6 +3287,14 @@ export function ScanAssistantAskPanel({
         }
       />
       </div>
+
+      {/* 点图放大：铺满一屏、再点关掉。点背景关闭之外没有别的操作，所以不需要标题栏和按钮。 */}
+      {zoomShot ? (
+        <div className="scan-assistant-zoom" onClick={() => setZoomShot(null)} role="dialog" aria-label="查看大图">
+          <img className="scan-assistant-zoom__img" src={zoomShot.url} alt={zoomShot.label} />
+          <span className="scan-assistant-zoom__hint">点任意处关闭</span>
+        </div>
+      ) : null}
     </>
   );
 }

@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -59,6 +60,27 @@ public class JwtTokenService {
                 .claim("role", user.getRole().name())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(30, ChronoUnit.DAYS)))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /**
+     * 短有效期令牌 —— 给**服务端自己开出去的无头浏览器**用（页面截图）。
+     *
+     * <p>不是给用户的东西：签发后只塞进一个服务端控制的浏览器上下文，不回传、不落盘、不写日志，
+     * 上下文用完即销毁。有效期就该**刚好够截一张图**。
+     *
+     * <p>为什么不用提问者本次请求里的那个 token：定时任务那条路根本没有请求（无人值守），
+     * 两条路要共用一个来源。身份仍来自已验证的 {@link User}，没有任何新的信任边界。
+     */
+    public String generateShortLivedToken(User user, Duration ttl) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(user.getId())
+                .claim("role", user.getRole().name())
+                .claim("purpose", "page-screenshot")
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(ttl)))
                 .signWith(secretKey)
                 .compact();
     }

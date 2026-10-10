@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { CreditCard, X } from "lucide-react";
 import { FaceCameraWindow } from "@/components/face-verify/FaceCameraWindow";
 import { createPortal } from "react-dom";
 import { ExpToaster } from "./ExpToaster";
@@ -307,15 +307,21 @@ export function UiverseProfilePopup(props: PopupProps) {
                 <button className="absolute top-16 right-16 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-card)] transition-colors hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger-soft)] hover:text-[var(--app-color-feedback-danger)]" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
-                {showUnboundBindHint ? (
-                    <button
-                        type="button"
-                        className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 max-w-[min(320px,90vw)] rounded-xl border border-[color-mix(in_srgb,var(--app-color-accent)_40%,transparent)] bg-[color-mix(in_srgb,var(--app-color-accent)_10%,transparent)] px-4 py-2.5 text-center text-[12px] font-bold text-[var(--app-color-text-primary)] shadow-lg hover:bg-[color-mix(in_srgb,var(--app-color-accent)_20%,transparent)] transition-colors"
-                        onClick={onOpenStudentBind}
-                    >
-                        当前未绑卡，点我绑定卡
-                    </button>
-                ) : null}
+                {showUnboundBindHint
+                    ? createPortal(
+                          /* 挂到 body：未绑卡警示是**阻断式遮罩**（800），留在弹窗层（300）里会被盖住、点不动 */
+                          <button
+                              type="button"
+                              className="fixed bottom-8 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 max-w-[min(320px,90vw)] rounded-[var(--app-radius-element)] border border-[var(--app-color-accent)] bg-[var(--app-color-accent)] px-4 py-2.5 text-center text-[13px] font-bold text-[var(--app-color-text-inverse)] shadow-[var(--app-elevation-card)] transition-all hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0"
+                              style={{ zIndex: Z_INDEX.scanUnboundBindHint }}
+                              onClick={onOpenStudentBind}
+                          >
+                              <CreditCard className="h-4 w-4 shrink-0" />
+                              当前未绑卡，点我绑定卡
+                          </button>,
+                          document.body,
+                      )
+                    : null}
                 <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-6 pb-10">
                     <div className="flex w-full max-w-[min(67.2vw,784px)] shrink-0 justify-center px-1 pt-1">
                         <ScanPopupNoticeCoordinator

@@ -8,7 +8,10 @@
   z-index="{{ 200000 }}"
   bind:close="onPopupClose"
 >
-  <view class="ai-drawer">
+  <!-- catch:touchmove 挡住**穿透滚动**：抽屉盖在首页上，拖头部/输入区这些不在 scroll-view 里
+       的地方时，触摸会一路冒泡到底下的页面，把首页滚走 —— 用户看起来就是「滚抽屉却滚了背景」。
+       与仓库里其它遮罩（cp-mask / detail-mask）同一做法；里面的 scroll-view 不受影响。 -->
+  <view class="ai-drawer" catch:touchmove="noop">
     <view class="ai-drawer__head">
       <view class="ai-drawer__identity">
         <ai-orb class="ai-orb-live" size="72" state="{{ orbState }}" auto="{{ true }}" />
@@ -50,7 +53,7 @@
         <text class="ai-drawer__sessions-title">历史对话</text>
         <text class="ai-drawer__ask-action" bindtap="onOpenHistory">返回</text>
       </view>
-      <scroll-view class="ai-drawer__sessions-scroll" scroll-y>
+      <scroll-view class="ai-drawer__sessions-scroll" scroll-y enhanced bounces="{{ false }}">
         <view wx:if="{{ historyLoading }}" class="ai-drawer__sessions-empty">读取中…</view>
         <view wx:elif="{{ historyList.length === 0 }}" class="ai-drawer__sessions-empty">还没有别的对话</view>
         <!-- wx:for 不能和 wx:else 挂同一个节点：它会打断 if/elif/else 链，编译直接报错 -->
@@ -84,15 +87,21 @@
       scroll-y
       scroll-into-view="{{ scrollTarget }}"
       scroll-with-animation="{{ true }}"
+      enhanced
+      bounces="{{ false }}"
     >
       <block wx:for="{{ messages }}" wx:key="key">
         <!--
           助手回合跑完却没有正文时不画气泡：这一轮干的活是「发起待办/等确认」，
           输出的是工具调用不是文字，画出来就是个只有内边距的空气泡。
           仍在等待中的（pending/typing）照画 —— 那时它是「正在思考…」。
+
+          **但带了附件就照画**：只出图/只给文件的那一轮模型常常一个字都不说，
+          内容全在卡片上；按「有没有正文」判会把整条连同图一起丢掉。
+          这条判据必须与 js 里的 isRenderableMsg 逐字一致（倒计时找落点也用它）。
         -->
         <view
-          wx:if="{{ !(item.role === 'assistant' && !item.pending && !item.typing && !item.text) }}"
+          wx:if="{{ !(item.role === 'assistant' && !item.pending && !item.typing && !item.text && !item.shot && !item.download && !(item.timers && item.timers.length)) }}"
           id="m-{{ item.key }}"
           class="ai-drawer__row ai-drawer__row--{{ item.role }}"
         >
@@ -105,7 +114,11 @@
             animated="{{ !!(item.typing || item.pending) }}"
           />
           <view class="ai-drawer__col {{ item.wide ? 'ai-drawer__col--wide' : '' }}">
-            <view class="ai-drawer__bubble ai-drawer__bubble--{{ item.role === 'assistant' ? 'bot' : 'me' }}">
+            <!-- 只出图/只挂卡片的那一轮正文是空的：气泡体没内容就别画，不然图上面浮个空框 -->
+            <view
+              wx:if="{{ item.text || item.pending || item.typing || (item.images && item.images.length) || (item.files && item.files.length) }}"
+              class="ai-drawer__bubble ai-drawer__bubble--{{ item.role === 'assistant' ? 'bot' : 'me' }}"
+            >
               <image
                 wx:for="{{ item.images }}"
                 wx:for-item="pic"
@@ -155,6 +168,53 @@
                 data-key="{{ item.key }}"
                 bindtap="onDownloadTap"
               >{{ downloadBusy ? '导出中…' : '下载' }}</view>
+            </view>
+            <!-- 长任务状态（正在截图／设定时…）：和「用时 · token」同一层，是这一轮的过程不是内容。
+                 失败态必须显眼 —— 用户要一眼知道没成，而不是继续干等。 -->
+            <view
+              wx:if="{{ item.toolBusy }}"
+              class="ai-drawer__toolbusy {{ item.toolBusy.status === 'failed' ? 'ai-drawer__toolbusy--failed' : '' }}"
+            >{{ item.toolBusy.status === 'failed' ? item.toolBusy.label + '没成功' : item.toolBusy.label + '…' }}</view>
+            <!-- 倒计时：和附件一样贴在气泡下。一条一个（一轮里可以有好几个），
+                 各自跳秒、各自能停；到点后原地变成「已执行 · 成功 / 失败：原因」。 -->
+            <view
+              wx:for="{{ item.timers }}"
+              wx:for-item="tm"
+              wx:key="id"
+              class="ai-drawer__timer {{ tm.ok === 0 || tm.status === 'FAILED' ? 'ai-drawer__timer--failed' : '' }}"
+            >
+              <text class="ai-drawer__timer-ico">⏱</text>
+              <text class="ai-drawer__timer-label">{{ tm.label }}</text>
+              <text class="ai-drawer__timer-remain">{{ timerTicks[tm.id] || tm.statusZh }}</text>
+              <view
+                wx:if="{{ tm.status === 'AWAITING_CONFIRM' }}"
+                class="ai-drawer__timer-confirm"
+                catchtap="onTimerConfirm"
+                data-id="{{ tm.id }}"
+              >确认执行</view>
+              <view
+                wx:if="{{ tm.status === 'PENDING' || tm.status === 'FIRING' || tm.status === 'AWAITING_CONFIRM' }}"
+                class="ai-drawer__timer-stop"
+                catchtap="onTimerStop"
+                data-id="{{ tm.id }}"
+              >停止</view>
+            </view>
+            <!-- 助手产出的截图：同样贴在气泡下面。图是**服务端渲染的网页版**（小程序截不了自己的界面）。 -->
+            <view wx:if="{{ item.shot }}" class="ai-drawer__shot">
+              <image
+                wx:if="{{ item.shot.state === 'ready' }}"
+                class="ai-drawer__shot-img"
+                src="{{ item.shot.filePath }}"
+                mode="widthFix"
+                show-menu-by-longpress
+                data-path="{{ item.shot.filePath }}"
+                bindtap="onShotTap"
+                bindload="onShotLoaded"
+              />
+              <view wx:elif="{{ item.shot.state === 'loading' }}" class="ai-drawer__shot-tip">
+                正在截「{{ item.shot.label }}」…
+              </view>
+              <view wx:else class="ai-drawer__shot-tip">「{{ item.shot.label }}」没截成</view>
             </view>
             <text wx:if="{{ item.meta }}" class="ai-drawer__meta">{{ item.meta }}</text>
           </view>
@@ -251,9 +311,13 @@
     </view>
 
     <view wx:if="{{ !historyOpen && images.length > 0 }}" class="ai-drawer__pics">
-      <view wx:for="{{ images }}" wx:key="url" class="ai-drawer__pic">
-        <image class="ai-drawer__pic-img" src="{{ item.url }}" mode="aspectFill" />
-        <view class="ai-drawer__pic-remove" data-url="{{ item.url }}" bindtap="onRemoveImage">
+      <!-- 待发图片的键是 **path**（onPickImage 存的是 {path: 临时文件路径}）。
+           这里原先读 item.url，取到的是 undefined：缩略图 src 是空的（看不见），
+           而发送那条路读的是 path，所以照样发得出去；删除也传 undefined，
+           于是点一下会把**全部**待发图清掉（2026-10-10 用户报「缩略图无法查看」）。 -->
+      <view wx:for="{{ images }}" wx:key="path" class="ai-drawer__pic">
+        <image class="ai-drawer__pic-img" src="{{ item.path }}" mode="aspectFill" />
+        <view class="ai-drawer__pic-remove" data-path="{{ item.path }}" bindtap="onRemoveImage">
           <van-icon name="cross" size="10px" color="#ffffff" />
         </view>
       </view>
@@ -316,7 +380,7 @@
       <text class="ai-tpl__title">从模板库选择</text>
       <text class="ai-tpl__close" bindtap="onCloseTemplatePicker">关闭</text>
     </view>
-    <scroll-view class="ai-tpl__list" scroll-y>
+    <scroll-view class="ai-tpl__list" scroll-y enhanced bounces="{{ false }}">
       <view wx:if="{{ tplLoading }}" class="ai-tpl__empty">读取中…</view>
       <view wx:elif="{{ tplList.length === 0 }}" class="ai-tpl__empty">没有可用的表格 / 文本模板</view>
       <block wx:else>

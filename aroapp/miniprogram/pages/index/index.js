@@ -5,6 +5,13 @@
  */
 /** 轮播大图仅网络；水印与推荐位缩略图保留本地 logohs.png（见 pages/assets/images/） */
 const LOGO_THUMB = '/pages/assets/images/logohs.png';
+/**
+ * 首页公告区各段最多摆几条。
+ *
+ * <p>两端**共用这一份**：学生端和教职工端是同一块「公告」区，各写一个数字迟早会不一致
+ * （学生那边原来写死 4，教职工不切）。要改就改这里。
+ */
+const HOME_NOTICE_LIMIT = { general: 5, personal: 3 };
 const ICON_ROOM = '/pages/assets/images/icon-room.png';
 const ICON_STUDENT_REVIEW = '/pages/assets/images/icon-student-review.png';
 const ICON_REPAIR = '/pages/assets/images/icon-repair.png';
@@ -465,8 +472,8 @@ Page({
       const sections = studentAlerts.splitAnnouncementSections(data);
       const decorate = studentAlerts.decorateBulletinListItem;
       this.setData({
-        generalBulletins: (sections.general || []).map(decorate),
-        personalBulletins: (sections.personal || []).map(decorate),
+        generalBulletins: (sections.general || []).slice(0, HOME_NOTICE_LIMIT.general).map(decorate),
+        personalBulletins: (sections.personal || []).slice(0, HOME_NOTICE_LIMIT.personal).map(decorate),
         announcementsUnread: data.announcementsUnread === true,
         bulletinLoaded: true,
       });
@@ -869,8 +876,8 @@ Page({
       var decorate = studentAlerts.decorateBulletinListItem;
       // 每段最多 4 条，与学生端 H5 首页预览口径一致
       var patch = {
-        studentGeneral: (sections.general || []).slice(0, 4).map(decorate),
-        studentPersonal: (sections.personal || []).slice(0, 4).map(decorate),
+        studentGeneral: (sections.general || []).slice(0, HOME_NOTICE_LIMIT.general).map(decorate),
+        studentPersonal: (sections.personal || []).slice(0, HOME_NOTICE_LIMIT.personal).map(decorate),
         announcementsUnread: data.announcementsUnread === true,
       };
       if (showLoading) {

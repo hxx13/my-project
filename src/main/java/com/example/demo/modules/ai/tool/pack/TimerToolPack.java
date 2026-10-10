@@ -205,7 +205,9 @@ public class TimerToolPack implements AiToolPack {
                           "arguments": { "type": "object", "description": "传给那个工具的参数，照它自己的参数说明写；不确定就传空对象 {}" },
                           "delaySeconds": { "type": "integer", "description": "多少秒后执行（相对时间优先用这个），最少 1 秒，最多 7 天" },
                           "fireAt": { "type": "string", "description": "绝对时刻 yyyy-MM-dd HH:mm:ss；与 delaySeconds 二选一，两个都给以它为准" },
-                          "label": { "type": "string", "description": "一句人话说明到点干什么，例如「5 分钟后同步门禁流水」" }
+                          "label": { "type": "string", "description": "一句人话说明到点干什么，例如「5 分钟后同步门禁流水」" },
+                          "needConfirm": { "type": "boolean", "description": "只有**不可逆的高危动作**（批量删卡、批量转移、清数据）才传 true：那样到点会先弹一张确认卡等人点头再执行。默认不传 = 到点直接执行（建单时的那次确认就是同意书，用户要的就是「到点自动做」）。" },
+                          "notifyTo": { "type": "string", "description": "执行完成后把结果通知给谁：填**账号 id**（多个用逗号隔开）。用户说「做完告诉我」时**不要传**——不传就是通知当前对话的人。只有他明确要通知**别人**时才传，且必须先用 searchPerson 拿到那个人的账号 id。" }
                         },
                         "required": ["toolName", "label"],
                         "additionalProperties": false
@@ -240,7 +242,8 @@ public class TimerToolPack implements AiToolPack {
                                     new AiTimerService.ScheduleSpec(toolName, node.path("arguments"),
                                             node.path("delaySeconds").isMissingNode() || node.path("delaySeconds").isNull()
                                                     ? null : node.path("delaySeconds").asInt(),
-                                            text(node, "fireAt"), text(node, "label")),
+                                            text(node, "fireAt"), text(node, "label"),
+                                            node.path("needConfirm").asBoolean(false), text(node, "notifyTo")),
                                     ctx.sessionId(), ctx.messageId());
                             created.add(timerService.describe(t));
                         } catch (RuntimeException e) {

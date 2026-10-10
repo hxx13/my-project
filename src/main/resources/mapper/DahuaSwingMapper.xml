@@ -471,6 +471,44 @@
         <include refid="swingRecordFilterWhere"/>
     </select>
 
+    <!--
+      按人 / 按通道汇总（「最近几天谁刷卡失败」「大厅都有谁进出」）。
+
+      与列表查询共用 WHERE（swingRecordFilterWhere），所以汇总出来的数就是列表筛出来的那批记录的数 ——
+      列表是截断返回的，拿前几条自己在 Java 里数会静默少数。
+      open_type = 52（非法刷卡）单列一列：这才是「刷卡失败/违规刷卡」的标准口径（open_result 不可靠，
+      非法刷卡也可能回 1）。
+    -->
+    <select id="aggregateByFilter" resultType="java.util.LinkedHashMap">
+        SELECT
+        <choose>
+            <when test="groupBy == 'channel'">
+                channel_code AS groupKey,
+                channel_name AS groupLabel,
+                NULL AS departmentName,
+            </when>
+            <otherwise>
+                person_code AS groupKey,
+                person_name AS groupLabel,
+                MAX(department_name) AS departmentName,
+            </otherwise>
+        </choose>
+               COUNT(1) AS swingCount,
+               SUM(CASE WHEN open_type = 52 THEN 1 ELSE 0 END) AS illegalCount,
+               SUM(CASE WHEN open_result = 0 THEN 1 ELSE 0 END) AS failedCount,
+               DATE_FORMAT(MIN(swing_time), '%Y-%m-%d %H:%i:%s') AS firstAt,
+               DATE_FORMAT(MAX(swing_time), '%Y-%m-%d %H:%i:%s') AS lastAt
+        FROM twin_dahua_swing_record
+        <include refid="swingRecordFilterWhere"/>
+        GROUP BY
+        <choose>
+            <when test="groupBy == 'channel'">channel_code, channel_name</when>
+            <otherwise>person_code, person_name</otherwise>
+        </choose>
+        ORDER BY swingCount DESC, groupLabel ASC
+        LIMIT #{limit}
+    </select>
+
     <select id="countRecords" resultType="int">
         SELECT COUNT(1)
         FROM twin_dahua_swing_record

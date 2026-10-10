@@ -293,3 +293,40 @@
     animation: none !important;
   }
 }
+
+/* ── 刷卡后没绑卡：对话里的可点入口 ──
+   给按钮，而不是在文案里说「弹窗下方有个按钮」。实色底 + 1px 描边 + 纯投影（不用半透明底）。 */
+.scan-assistant-ask__unbound-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--app-color-accent);
+  border-radius: var(--app-radius-element, 8px);
+  background: var(--app-color-accent);
+  color: var(--app-color-text-inverse, #fff);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+.scan-assistant-ask__unbound-chip:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.scan-assistant-ask__unbound-chip:active {
+  transform: translateY(0);
+}
+
+/* 点完把入口换成下一步：刷卡 → 点确认绑定。否则用户点开窗口不知道要做什么。 */
+.scan-assistant-ask__unbound-hint {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--app-color-accent);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--app-color-text-secondary, #475569);
+}

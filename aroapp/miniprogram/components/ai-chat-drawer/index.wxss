@@ -8,14 +8,190 @@
 .ai-drawer-popup {
   height: 88vh;
   max-height: 88vh;
-  background: #ffffff;
+  position: relative;
+  /**
+   * **裁在框内**：扫光和顶部柔光都只在抽屉框里活动（网页端那张卡的外框就是 `overflow: clip`）。
+   *
+   * 别为了「让光露出去」把裁切关掉 —— 关掉之后整块旋转渐变会糊满整个屏幕（用户原话「光都溢出来了」）。
+   * 光晕不需要裁切：**box-shadow 不受元素自身 overflow 影响**，它照样画在框外，
+   * 所以「框内装饰被裁 + 框外光晕照常」这两件事可以同时成立。
+   */
+  overflow: hidden;
+  /**
+   * 底部安全区**从弹窗挪进卡片**（见下面 .ai-drawer__composer 的 padding-bottom）。
+   *
+   * vant 的 `safe-area-inset-bottom` 是给弹窗加 padding，那圈在卡片**之外** —— 于是露出光环的底色：
+   * 输入框下面空出很宽一条彩色带，很丑（用户原话「丑死了」）。
+   * 但不能直接删：删了输入框会贴到 home 指示条上。所以是**搬进卡片**，不是去掉。
+   * 需要 !important —— vant 那几条是同权重的单类名，先后顺序不保证。
+   */
+  padding-bottom: 0 !important;
+  /**
+   * 底色两层，都在**子元素之下**（背景层天然如此，扫光才盖得住）：
+   * 1. 顶部柔光 —— 网页端的 `__glow` 那束从上方洒下来的椭圆光；
+   * 2. 一圈 16% 的**淡彩虹** —— 网页端外框自己的背景就是它。
+   *    没有这一层，扫光转到透明的那 120° 时边上只剩一坨紫（网页端不会，那边始终是淡彩虹）。
+   */
+  background:
+    radial-gradient(
+      ellipse 165% 115% at 50% -12%,
+      rgba(160, 61, 230, 0.42),
+      rgba(47, 107, 245, 0.32),
+      rgba(21, 184, 214, 0.24),
+      transparent 72%
+    ),
+    conic-gradient(
+      from 0deg,
+      rgba(239, 68, 68, 0.16),
+      rgba(249, 115, 22, 0.16),
+      rgba(250, 204, 21, 0.16),
+      rgba(34, 197, 94, 0.16),
+      rgba(34, 211, 238, 0.16),
+      rgba(59, 130, 246, 0.16),
+      rgba(168, 85, 247, 0.16),
+      rgba(239, 68, 68, 0.16)
+    );
+  /**
+   * 外扩光晕 —— 网页端的 48/88/120px 三层彩色投影（按 1px=2rpx 折成 96/176/240rpx）。
+   *
+   * **必须挂在弹窗（祖先）上，不能挂在卡片上**：投影跟元素自己的背景一起画，
+   * 于是它必然在「后代」之下 —— 挂在弹窗上，扫光（::before）就在它之上；
+   * 挂到卡片上则相反：卡片是扫光的兄弟且更靠上，三层彩色投影会把扫光糊成一团紫
+   * （上一版的实测数据：边缘最亮只有 (141,118,206)，而扫光亮头本该接近纯白）。
+   */
+  box-shadow:
+    0 0 96rpx rgba(160, 61, 230, 0.38),
+    0 0 176rpx rgba(47, 107, 245, 0.26),
+    0 0 240rpx rgba(21, 184, 214, 0.18);
+}
+
+/**
+ * 扫光 —— 照搬网页端那张对话卡的 `__frame::before`（用户对照过，之前我自己发挥的都不对）。
+ *
+ * 网页端的形状（一字不差抄角度）：从 0deg 起 **前 120deg 全透明**，之后从 6% 的暗红一路渐亮到
+ * 354deg 的 94% 白 —— 所以它不是一个彩虹圈，是**一道扫过去的光**，转起来才有「环」的样子。
+ *
+ * 尺寸 160% × 220% 也是网页端的：光带的中心在卡后面，亮头永远扫在可视范围之外，
+ * 所以永远看不到「板边」。
+ *
+ * 小程序内核两处限制：不能用 color-mix()（老 XWEB 不认）→ 色值全部按网页端那几个 hsl 换成
+ * 等价的 rgba；先垫一条线性渐变兜底，认不出锥形渐变的设备至少有一片彩色柔光。
+ */
+.ai-drawer-popup::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 300%;
+  height: 300%;
+  transform: translate(-50%, -50%);
+  z-index: 0;
+  /**
+   * 尺寸比网页端（160%×220%）放大到 300%：那块板子要**长过抽屉的每一个角**。
+   * 板子偏小时，锥形渐变的弧在卡片拐角处弯得太急 —— 拐角上那道光会断掉（用户实测「拐角断线」）。
+   * 放得越大，射到边上的色带越接近直线，一圈才是连续的一道。
+   */
+  /* 纯装饰：绝不参与命中测试 —— 它比抽屉大得多，会盖在页面其他内容上，
+     一旦吃掉点击，用户会觉得「整个屏幕点不动」（真机踩过）。 */
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(245, 42, 42, 0.6),
+    rgba(249, 122, 6, 0.6),
+    rgba(251, 212, 4, 0.6),
+    rgba(45, 191, 78, 0.6),
+    rgba(21, 184, 214, 0.6),
+    rgba(47, 107, 245, 0.6),
+    rgba(160, 61, 230, 0.6)
+  );
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 120deg,
+    rgba(239, 68, 68, 0.08) 136deg,
+    rgba(249, 115, 22, 0.16) 156deg,
+    rgba(250, 204, 21, 0.26) 176deg,
+    rgba(34, 197, 94, 0.42) 198deg,
+    rgba(34, 211, 238, 0.58) 220deg,
+    rgba(59, 130, 246, 0.74) 242deg,
+    rgba(168, 85, 247, 0.9) 264deg,
+    /* 亮头：不透明饱和色 —— 淡一点就会被白底冲成灰紫（实测峰值只有 176,138,215） */
+    rgba(168, 85, 247, 1) 300deg,
+    rgba(96, 165, 250, 1) 330deg,
+    rgba(34, 211, 238, 1) 354deg,
+    transparent 358deg 360deg
+  );
+  /* 三层投影＝网页端的 drop-shadow（光带自己带的辉光） */
+  filter: drop-shadow(0 0 6px rgba(160, 61, 230, 0.58))
+    drop-shadow(0 0 14px rgba(47, 107, 245, 0.42))
+    drop-shadow(0 0 24px rgba(21, 184, 214, 0.3));
+  animation: ai-drawer-ring-flow 2.5s linear infinite;
+}
+
+@keyframes ai-drawer-ring-flow {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
 }
 
 .ai-drawer {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /**
+   * 卡片让出 7rpx 给扫光（网页端约 2~3pt；这是试出来的宽度，比 5rpx 再宽 1px）。
+   *
+   * **底部不留边**（用户口径）：机型底部的屏幕圆角各家不同，底边那道光环没法适配所有人，
+   * 与其在部分机器上难看，不如统一不要。所以只让上、左、右三边，高度也只减上面这一份。
+   */
+  height: calc(100% - 7rpx);
+  margin: 7rpx 7rpx 0;
+  position: relative;
+  z-index: 1;
+  background: #ffffff;
+  /**
+   * 圆角要向里收一个 inset：弹窗圆角是 vant 的 `--popup-round-border-radius`（默认 16px = 32rpx），
+   * 卡片再缩进 7rpx，卡片圆角就得是「弹窗圆角 − 3.5px」—— 这样这条光环**在拐角处也是等宽的**；
+   * 写死 32rpx 的话拐角会比直边宽出一截、看着像断了一截。
+   * 直接引用那个变量（而不是写死 32），以后谁调弹窗圆角这里会跟着走。
+   */
+  border-radius: calc(var(--popup-round-border-radius, 16px) - 3.5px)
+    calc(var(--popup-round-border-radius, 16px) - 3.5px) 0 0;
   box-sizing: border-box;
+}
+
+/**
+ * 光晕向内渗一档。
+ *
+ * 外面那圈光晕（弹窗的三层投影）只在卡片以外；这一层是**往里**的：贴着边一圈淡彩 + 顶部洒下来一束，
+ * 让卡片的边沿像被光浸着，而不是硬切一道白边。
+ *
+ * 用伪元素盖在内容之上（inset box-shadow 会被 composer 这类有自己白底的子元素挡住），
+ * 所以必须 pointer-events: none —— 否则整张卡片点不动。
+ */
+.ai-drawer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  /* 与卡片同一个圆角算式，否则内渗的光会在拐角处露出直角边 */
+  border-radius: calc(var(--popup-round-border-radius, 16px) - 3.5px)
+    calc(var(--popup-round-border-radius, 16px) - 3.5px) 0 0;
+  background:
+    /* 顶部洒下来的一束（与网页端那层柔光同族） */
+    radial-gradient(
+      ellipse 130% 55% at 50% -8%,
+      rgba(168, 85, 247, 0.12),
+      rgba(59, 130, 246, 0.07) 45%,
+      transparent 72%
+    ),
+    /* 贴着左/右/下三边向内渗 —— 分边线性渐变，拐角处三边颜色同族所以接得上 */
+    linear-gradient(to right, rgba(168, 85, 247, 0.12), transparent 52rpx),
+    linear-gradient(to left, rgba(59, 130, 246, 0.12), transparent 52rpx),
+    linear-gradient(to top, rgba(34, 211, 238, 0.1), transparent 52rpx);
 }
 
 /* ── 头部 ── */
@@ -631,7 +807,8 @@
   display: flex;
   align-items: flex-end;
   gap: 16rpx;
-  padding: 16rpx 24rpx 20rpx;
+  /* 底部安全区在这里垫：弹窗那圈已经去掉，输入框才不会贴到 home 指示条上 */
+  padding: 16rpx 24rpx calc(20rpx + env(safe-area-inset-bottom));
   background: #ffffff;
 }
 
@@ -651,9 +828,16 @@
   background: #e2e8f0;
 }
 
+/*
+ * 输入框高度**只有一个来源**：`auto-height`。
+ *
+ * 以前这里还有 `min-height: 72rpx`，和 auto-height 打架 —— 弹层进场动画期间宽度还没定稳，
+ * auto-height 按错的宽度算换行数（有时多算一行），CSS 又强压一个下限，表现就是「抽屉一打开
+ * 输入框偶现变高」。单行高度现在由 font-size × line-height + padding 自然得出（≈76rpx），
+ * 不写死也不会塌。
+ */
 .ai-drawer__input {
   flex: 1;
-  min-height: 72rpx;
   max-height: 240rpx;
   padding: 18rpx 22rpx;
   border-radius: 12rpx;
@@ -774,4 +958,110 @@
 
 .ai-drawer__dlcard-x--hover {
   color: #86909c;
+}
+
+/* 助手产出的截图：与下载卡同一套视觉（贴在气泡下面、按内容收缩、同一组颜色）。
+   图**限宽不限高**（widthFix），长页面靠长按保存后看 —— 在抽屉里铺开会把对话顶没。 */
+.ai-drawer__shot {
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 10rpx;
+  padding: 8rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  background: #f7f8fa;
+}
+
+.ai-drawer__shot-img {
+  display: block;
+  width: 440rpx;
+  max-width: 100%;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.ai-drawer__shot-tip {
+  padding: 10rpx 8rpx;
+  font-size: 24rpx;
+  color: #8a8f99;
+}
+
+/* 长任务状态（正在截图／设定时…）。与「用时 · token」同一层：是这一轮的过程，不是内容。
+   失败态用告警色 + 加粗 —— 用户得一眼看出「没成」，而不是接着等。 */
+.ai-drawer__toolbusy {
+  margin-top: 8rpx;
+  padding-left: 4rpx;
+  font-size: 23rpx;
+  color: #8a8f99;
+}
+
+.ai-drawer__toolbusy--failed {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* 倒计时卡：像附件一样贴在气泡下。三个信息按重要性排：做的事 → 还要等多久/结果 → 能不能撤。
+   失败态走告警色，和「长任务没成功」同一种红。 */
+.ai-drawer__timer {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 10rpx;
+  padding: 10rpx 14rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  background: #f7f8fa;
+  font-size: 23rpx;
+}
+
+.ai-drawer__timer--failed {
+  border-color: #dc2626;
+}
+
+.ai-drawer__timer-ico {
+  flex: none;
+  opacity: 0.7;
+}
+
+.ai-drawer__timer-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.ai-drawer__timer-remain {
+  flex: none;
+  color: #8a8f99;
+  /* 跳秒时宽度会变，用等宽数字免得整行跟着抖 */
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-drawer__timer--failed .ai-drawer__timer-remain {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.ai-drawer__timer-confirm {
+  flex: none;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.ai-drawer__timer-stop {
+  flex: none;
+  padding: 4rpx 16rpx;
+  border: 1rpx solid #d7dbe2;
+  border-radius: 8rpx;
+  color: #64748b;
+  font-size: 22rpx;
 }

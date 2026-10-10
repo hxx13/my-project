@@ -11,6 +11,8 @@ import com.example.demo.modules.pagepermission.support.AdminNavManifestLoader.Ma
 import com.example.demo.modules.pagepermission.support.AdminNavManifestLoader.ManifestSnapshot;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,12 @@ import java.util.stream.Collectors;
 
 @Service
 public class PagePermissionService {
+
+    private static final Logger log = LoggerFactory.getLogger(PagePermissionService.class);
+
+    /** 小程序入口清单的源码位置（相对仓库根）—— 见 {@link #findMiniRoot()} 为什么不能只认工作目录。 */
+    private static final Path MINI_APP_JSON = Path.of("aroapp", "miniprogram", "app.json");
+
     private static final Pattern ROUTE_PATH = Pattern.compile("path:\\s*\"([^\"]+)\"");
     private static final Pattern NAV_TO = Pattern.compile("to=\"([^\"]+)\"");
     /** 与 {@code adminNavRegistry.ts} 中「id, path, label」顺序一致，供侧栏入口与展示名自动发现 */
@@ -473,8 +481,55 @@ public class PagePermissionService {
     }
 
     private List<NodeSeed> discoverMini() {
+        Path root = findMiniRoot();
+        List<NodeSeed> out = discoverMiniFrom(root);
+        if (out.isEmpty()) {
+            // **扫描失败必须出声**。原先这里一句日志都没有：生产上工作目录不对时整批小程序入口
+            // 一条都扫不到，而表现只是「帮我打开学生审核」被答成「没找到这个入口」——
+            // 从现象看不出是「这页不存在」还是「压根没扫到」。2026-10-10 踩到。
+            log.warn("[page-permission] 小程序入口一条都没扫到（工作目录 {}，JAR 位置也试过了）——"
+                            + "找不到 {}，需要仓库根出现在工作目录或 JAR 的上级目录里",
+                    Path.of("").toAbsolutePath(), MINI_APP_JSON);
+        } else {
+            log.info("[page-permission] 小程序入口扫到 {} 条（源码根 {}）", out.size(), root);
+        }
+        return out;
+    }
+
+    /**
+     * 找小程序源码树的根。
+     *
+     * <p><b>为什么不能只认工作目录</b>：入口清单是从 {@code aroapp/miniprogram/**} 里**读源码**扫出来的，
+     * 而 {@code aroapp/} 不进 JAR（已确认 target/classes 下没有、pom 也没拷）。所以用
+     * {@code java -jar /某处/twin.jar} 起、工作目录不是仓库根时，整批小程序入口就一条都扫不到。
+     *
+     * <p>按「工作目录 → 逐级上溯 → JAR 所在目录同样上溯」依次找，
+     * 取第一个含 {@code aroapp/miniprogram/app.json} 的目录。都找不到就退回工作目录（照旧扫不到）。
+     */
+    static Path findMiniRoot() {
+        Path cwd = Path.of("").toAbsolutePath().normalize();
+        List<Path> starts = new ArrayList<>();
+        starts.add(cwd);
+        try {
+            Path jar = Path.of(PagePermissionService.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI()).toAbsolutePath().normalize();
+            starts.add(Files.isDirectory(jar) ? jar : jar.getParent());
+        } catch (Exception ignored) {
+            // 拿不到 JAR 位置（比如跑在测试里）就只按工作目录找
+        }
+        for (Path start : starts) {
+            for (Path p = start; p != null; p = p.getParent()) {
+                if (Files.exists(p.resolve(MINI_APP_JSON))) {
+                    return p;
+                }
+            }
+        }
+        return cwd;
+    }
+
+    /** 从指定的源码根扫小程序入口（包级可见：单测拿临时目录喂它，钉住「根不对就啥也扫不到」这个事实）。 */
+    List<NodeSeed> discoverMiniFrom(Path root) {
         List<NodeSeed> out = new ArrayList<>();
-        Path root = Path.of("").toAbsolutePath().normalize();
         String appJson = readText(root.resolve("aroapp/miniprogram/app.json"));
         String mineJs = readText(root.resolve("aroapp/miniprogram/pages/mine/index.js"));
         String mineWxml = readText(root.resolve("aroapp/miniprogram/pages/mine/index.wxml"));
@@ -903,7 +958,7 @@ public class PagePermissionService {
 
     private record DbNavItem(String label, String path) {}
 
-    private record NodeSeed(String platform,
+    record NodeSeed(String platform,
                             String nodeKey,
                             String nodeType,
                             String displayName,

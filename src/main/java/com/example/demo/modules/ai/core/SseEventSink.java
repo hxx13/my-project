@@ -82,6 +82,20 @@ public class SseEventSink implements AiEventSink {
         send("navigate", data);
     }
 
+    @Override
+    public void image(Long exportId, String label, String path) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (exportId != null) {
+            data.put("exportId", exportId);
+        }
+        data.put("label", label == null ? "" : label);
+        // 有 path = 让载体自己去截这个页面；没有 = 图已经产好，载体去产物接口取字节
+        if (path != null && !path.isBlank()) {
+            data.put("path", path);
+        }
+        send("image", data);
+    }
+
     private static Map<String, Object> statsPayload(AiTurnStats stats, Long messageId) {
         Map<String, Object> data = new LinkedHashMap<>();
         if (messageId != null) {

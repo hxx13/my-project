@@ -30,7 +30,7 @@ class AiOrchestratorTest {
     @DisplayName("孤立的 tool 应答会被删掉（窗口截断后头一条是 tool → 上游 400）")
     void orphanToolMessagesAreDropped() throws Exception {
         AiOrchestrator orch = new AiOrchestrator(null, null, null, null, null, null, null, null, null,
-                new AiPackRouter(), null, null);
+                new AiPackRouter(), null, null, null);
         // 真机形状：窗口从一条 tool 开始（它上面的 assistant(tool_calls) 被截掉了）
         List<Map<String, Object>> messages = new ArrayList<>(List.of(
                 Map.of("role", "system", "content", "S"),
@@ -70,7 +70,7 @@ class AiOrchestratorTest {
     @DisplayName("长会话里的两种残缺一起洗，洗完是合法序列")
     void mixedOrphansAreCleaned() {
         AiOrchestrator orch = new AiOrchestrator(null, null, null, null, null, null, null, null, null,
-                new AiPackRouter(), null, null);
+                new AiPackRouter(), null, null, null);
         List<Map<String, Object>> messages = new ArrayList<>(List.of(
                 text("system", "S"),
                 msg("tool", "call_cut"),            // ① 窗口开头的孤儿
@@ -116,7 +116,7 @@ class AiOrchestratorTest {
     @DisplayName("只答一半的工具轮：裁到已答的那几个，别把答过的变孤儿")
     void partiallyAnsweredToolCallsAreTrimmed() {
         AiOrchestrator orch = new AiOrchestrator(null, null, null, null, null, null, null, null, null,
-                new AiPackRouter(), null, null);
+                new AiPackRouter(), null, null, null);
         List<Map<String, Object>> messages = new ArrayList<>(List.of(
                 text("system", "S"),
                 assistantWithCalls("x1", "y1"),
@@ -187,7 +187,7 @@ class AiOrchestratorTest {
     @DisplayName("同一道题只问一遍 —— 模型同一轮里把查候选的工具调两次是常态")
     void identicalQuestionsAreAskedOnce() {
         AiOrchestrator orch = new AiOrchestrator(null, null, null, null, null, null, null, null, null,
-                new AiPackRouter(), null, null);
+                new AiPackRouter(), null, null, null);
         AiOrchestrator.ChoiceGroup sites = new AiOrchestrator.ChoiceGroup("是哪个机房（地点）？",
                 List.of(new AiEventSink.Option("1F机房", "FM_S_1"),
                         new AiEventSink.Option("2F机房", "FM_S_2")), false);

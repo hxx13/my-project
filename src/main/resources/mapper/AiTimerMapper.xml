@@ -24,6 +24,8 @@
         <result property="ok" column="ok"/>
         <result property="errorMessage" column="error_message"/>
         <result property="deleted" column="deleted"/>
+        <result property="needConfirm" column="need_confirm"/>
+        <result property="notifyUserIds" column="notify_user_ids"/>
     </resultMap>
 
     <!-- 所有 SELECT 都读全列：列表页要一次拿全（含结果与时间），别为省几个字段拆查询 -->
@@ -31,17 +33,19 @@
         id, owner_user_id, owner_name_snapshot, owner_role_snapshot, label,
         tool_name, args_json, fire_at, status, session_id, message_id,
         created_at, claimed_at, fired_at, cancelled_at, confirmed_by,
-        result_text, ok, error_message, deleted
+        result_text, ok, error_message, deleted, need_confirm, notify_user_ids
     </sql>
 
     <insert id="insert" parameterType="com.example.demo.modules.ai.timer.entity.AiTimer"
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_timer
             (owner_user_id, owner_name_snapshot, owner_role_snapshot, label,
-             tool_name, args_json, fire_at, status, session_id, message_id)
+             tool_name, args_json, fire_at, status, session_id, message_id,
+             need_confirm, notify_user_ids)
         VALUES
             (#{ownerUserId}, #{ownerNameSnapshot}, #{ownerRoleSnapshot}, #{label},
-             #{toolName}, #{argsJson}, #{fireAt}, #{status}, #{sessionId}, #{messageId})
+             #{toolName}, #{argsJson}, #{fireAt}, #{status}, #{sessionId}, #{messageId},
+             #{needConfirm}, #{notifyUserIds})
     </insert>
 
     <select id="selectById" resultMap="TimerMap">

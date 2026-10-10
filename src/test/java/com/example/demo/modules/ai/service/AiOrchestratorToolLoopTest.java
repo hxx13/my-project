@@ -52,6 +52,8 @@ class AiOrchestratorToolLoopTest {
     private static final class CapturingSink implements AiEventSink {
         final List<String> interactions = new ArrayList<>();
         final List<String> deltas = new ArrayList<>();
+        /** 出图事件：exportId|label|path（path 为空的记成 <none>） */
+        final List<String> images = new ArrayList<>();
         String error;
 
         @Override public void delta(String text) { deltas.add(text); }
@@ -62,6 +64,9 @@ class AiOrchestratorToolLoopTest {
                 sb.append(o.label()).append('=').append(o.value()).append(',');
             }
             interactions.add(sb.toString());
+        }
+        @Override public void image(Long exportId, String label, String path) {
+            images.add(exportId + "|" + label + "|" + (path == null || path.isBlank() ? "<none>" : path));
         }
         @Override public void usage(AiTurnStats stats) { }
         @Override public void done(AiTurnStats stats) { }
@@ -143,7 +148,7 @@ class AiOrchestratorToolLoopTest {
         orchestrator = new AiOrchestrator(chatClient, new ToolRegistry(List.of(pack)), promptService,
                 sessionService, mock(AiAuditService.class), gate, interactionService,
                 new ObjectMapper(), visibility, new AiPackRouter(), attachmentService(),
-                exportArtifactService());
+                exportArtifactService(), null);
     }
 
     private AiOrchestrator orchestrator;
@@ -229,7 +234,7 @@ class AiOrchestratorToolLoopTest {
         AiOrchestrator orch = new AiOrchestrator(chatClient, new ToolRegistry(List.of(readPack)),
                 promptService, sessionService, mock(AiAuditService.class), gate,
                 interactionService, new ObjectMapper(), studentFalseVisibility(), new AiPackRouter(),
-                attachmentService(), exportArtifactService());
+                attachmentService(), exportArtifactService(), null);
 
         when(chatClient.chatWithTools(any(), any()))
                 .thenReturn(toolCall("call_1", "listThings", "{}"))
@@ -268,7 +273,7 @@ class AiOrchestratorToolLoopTest {
         AiOrchestrator orch = new AiOrchestrator(chatClient, new ToolRegistry(List.of(multiPack)),
                 promptService, sessionService, mock(AiAuditService.class), gate,
                 interactionService, new ObjectMapper(), studentFalseVisibility(), new AiPackRouter(),
-                attachmentService(), exportArtifactService());
+                attachmentService(), exportArtifactService(), null);
 
         when(chatClient.chatWithTools(any(), any()))
                 .thenReturn(toolCall("call_1", "publishThing", "{}"))
@@ -282,6 +287,123 @@ class AiOrchestratorToolLoopTest {
         assertTrue(sink.interactions.get(2).contains("直接发布=PUBLISHED") && sink.interactions.get(2).contains("存草稿=DRAFT"),
                 sink.interactions.get(2));
         assertEquals(null, sink.error);
+    }
+
+    /**
+     * 默认那条产图路（服务端渲染）：渲染成功才落产物，且下发的事件**不带 path**。
+     *
+     * <p>不带 path 是要紧的：带了载体就会去「跳页自截」，而小程序压根截不了自己 —— 图会一直出不来。
+     */
+    @Test
+    @DisplayName("服务端产图：渲染成功才落产物，事件不带 path（图已经在服务端了）")
+    void serverRenderedImageArchivesBytesAndEmitsWithoutPath() {
+        java.util.concurrent.atomic.AtomicReference<String> archived = new java.util.concurrent.atomic.AtomicReference<>();
+        com.example.demo.modules.ai.shot.PageShotArchiveService archiver = archiveStub(archived, 77L);
+
+        AiOrchestrator orch = orchestratorWith(archiver);
+        when(chatClient.chatWithTools(any(), any()))
+                .thenReturn(toolCall("call_1", "screenshotPage", "{}"))
+                .thenReturn(textOnly("我帮你截一张"));
+
+        orch.run(staff(), 1L, "看一下笼架信息页面", null, sink);
+
+        assertEquals(1, sink.images.size(), "应当下发一条出图事件：" + sink.images);
+        assertEquals("77|笼架信息|<none>", sink.images.get(0),
+                "服务端已产好图，事件里不该再带 path（带了载体就会去跳页自截）");
+        assertEquals("/admin/cage-shelves|笼架信息", archived.get(), "渲染要用工具解析出来的那一页");
+    }
+
+    /**
+     * 服务端产图失败时的**回落**：网页端有载体可借，就改让提问者自己的浏览器去截 ——
+     * 这一步是路线 A 留下的第二个理由（第一个是「带他过去看」）。
+     */
+    @Test
+    @DisplayName("服务端产图失败（网页端）：回落给载体自截，下发带 path 的事件")
+    void serverRenderFailureFallsBackToCarrierOnWeb() {
+        com.example.demo.modules.ai.shot.PageShotArchiveService archiver =
+                failingArchiveStub("没装浏览器");
+
+        AiOrchestrator orch = orchestratorWith(archiver);
+        when(chatClient.chatWithTools(any(), any()))
+                .thenReturn(toolCall("call_1", "screenshotPage", "{}"))
+                .thenReturn(textOnly("我帮你截一张"));
+
+        orch.run(staff(), 1L, "看一下笼架信息页面", null, sink);
+
+        assertEquals(1, sink.images.size(), "回落之后应当照旧出一张图：" + sink.images);
+        assertTrue(sink.images.get(0).endsWith("|/admin/cage-shelves"),
+                "回落那条必须**带上 path**——载体就是靠它去截哪一页：" + sink.images.get(0));
+        assertEquals(0, sink.deltas.stream().filter(d -> d.contains("没取到")).count(),
+                "已经回落成功了就别说「取不到」，那是假故障：" + sink.deltas);
+    }
+
+    /** 小程序没有载体可回落：取不到就如实说，不能让模型那句「图马上到」成为谎。 */
+    @Test
+    @DisplayName("服务端产图失败（小程序）：没有载体可回落，如实告诉用户取不到")
+    void serverRenderFailureOnMiniProgramTellsUser() {
+        com.example.demo.modules.ai.shot.PageShotArchiveService archiver =
+                failingArchiveStub("没装浏览器");
+
+        AiOrchestrator orch = orchestratorWith(archiver);
+        when(chatClient.chatWithTools(any(), any()))
+                .thenReturn(toolCall("call_1", "screenshotPage", "{}"))
+                .thenReturn(textOnly("我帮你截一张"));
+
+        // contextPage 带 /mp 前缀 = 服务端判定为小程序载体
+        orch.run(staff(), 1L, "看一下笼架信息页面", "/mp/pages/index/index", sink);
+
+        assertEquals(0, sink.images.size(), "小程序截不了自己，回不了就只能不发声：" + sink.images);
+        assertTrue(sink.deltas.stream().anyMatch(d -> d.contains("没取到")),
+                "得说一句，否则模型那句「图马上到」就成了谎：" + sink.deltas);
+    }
+
+    private AiOrchestrator orchestratorWith(
+            com.example.demo.modules.ai.shot.PageShotArchiveService archiver) {
+        return new AiOrchestrator(chatClient, new ToolRegistry(List.of(imagePack())),
+                promptService, sessionService, mock(AiAuditService.class), gateAllowing(),
+                interactionService, new ObjectMapper(), studentFalseVisibility(), new AiPackRouter(),
+                attachmentService(), exportArtifactService(), archiver);
+    }
+
+    /** 产图成功的替身：记下「用哪一页渲染的」，返回一个固定产物 id。 */
+    private static com.example.demo.modules.ai.shot.PageShotArchiveService archiveStub(
+            java.util.concurrent.atomic.AtomicReference<String> seen, Long id) {
+        return new com.example.demo.modules.ai.shot.PageShotArchiveService(null, null) {
+            @Override public Long renderAndArchive(User owner, Long sessionId, Long messageId,
+                                                   String path, String label) {
+                seen.set(path + "|" + label);
+                return id;
+            }
+        };
+    }
+
+    private static com.example.demo.modules.ai.shot.PageShotArchiveService failingArchiveStub(String reason) {
+        return new com.example.demo.modules.ai.shot.PageShotArchiveService(null, null) {
+            @Override public Long renderAndArchive(User owner, Long sessionId, Long messageId,
+                                                   String path, String label) {
+                throw new IllegalStateException(reason);
+            }
+        };
+    }
+
+    private static AiCapabilityGate gateAllowing() {
+        AiCapabilityGate gate = mock(AiCapabilityGate.class);
+        when(gate.check(any(), anyString())).thenReturn(null);
+        return gate;
+    }
+
+    /** 一个只会说「截这一页，交给服务端渲染」的读工具。 */
+    private static AiToolPack imagePack() {
+        return new AiToolPack() {
+            @Override public String packKey() { return "shot"; }
+            @Override public String displayName() { return "截图包"; }
+            @Override public String defaultPrompt() { return ""; }
+            @Override public List<AiTool> tools() {
+                return List.of(new AiTool("screenshotPage", "截一张图。", "{}", "cap.read", SideEffect.READ,
+                        (ctx, args) -> Map.of("ok", true, "image", Map.of(
+                                "path", "/admin/cage-shelves", "label", "笼架信息", "render", "server"))));
+            }
+        };
     }
 
     private CageModeVisibilityService studentFalseVisibility() {

@@ -16,4 +16,12 @@ export const Z_INDEX = {
   facePhotoGallery: 10000,   // 底库照片管理（dahua-issue 等）
   faceEnrollment: 10001,     // 现场人脸录入（高于画廊 / 失败提示 Toast）
   scannerHintBubble: 311,   // 扫码弹窗禁入帮助气泡（浮于 scannerPopup 300 / scanDelayMenu 310 之上，popupModal 320 之下）
+  /**
+   * 扫码弹窗底部的「当前未绑卡，点我绑定卡」入口。
+   *
+   * <p>**必须 portal 到 body 再用这一层**：未绑卡警示是阻断式遮罩（800，`--blocking`），而按钮原先在
+   * 弹窗层（300）里 —— z 值再大也只在自己那个层叠上下文里比大小，真机上被遮罩盖住、点不动。
+   * 挂到 body 才和遮罩同场竞技。低于人脸验证（10000）与助手球（9900），高于公告遮罩与 Toast。
+   */
+  scanUnboundBindHint: 9000,
 } as const;

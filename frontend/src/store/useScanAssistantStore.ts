@@ -12,6 +12,13 @@ export type ScanAssistantMessage = {
   isStreaming?: boolean;
   /** 服务端音频文件对应的消息 ID（用于 /api/v1/twin/speech/file/{id}） */
   speechMessageId?: number;
+  /**
+   * 这次刷的人**没绑物理卡**。
+   *
+   * <p>卡片据此**在对话里出一个可点入口**（去绑卡），而不是让文案去说「弹窗下方有…」——
+   * 说位置和给按钮，体验差一大截。
+   */
+  unboundCard?: boolean;
 };
 
 type ScanAssistantState = {

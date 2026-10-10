@@ -43,9 +43,30 @@ function resolveModalRootForTarget(target: EventTarget | null): Element | null {
   return layers[layers.length - 1]!;
 }
 
+/** 从事件目标往上找显式标记的滚动区（它可能在弹窗层之外 —— 见 onWheel 里那段注释）。 */
+function markedScrollArea(start: EventTarget | null): HTMLElement | null {
+  const node = start instanceof HTMLElement ? start : null;
+  const hit = node?.closest?.("[data-modal-scroll]");
+  return hit instanceof HTMLElement ? hit : null;
+}
+
 function onWheel(e: WheelEvent) {
   const modalRoot = resolveModalRootForTarget(e.target);
   if (!modalRoot) {
+    return;
+  }
+
+  /**
+   * portal 到 body 的浮层（球球对话卡片）**不在任何弹窗层里**：刷卡弹窗一开，鼠标落在卡片上时
+   * 上面那步会把 modalRoot 认成刷卡弹窗，往下找不到滚动区 → 直接 preventDefault，
+   * 卡片里的对话就滚不动了（真机反馈“滚轮失效”）。
+   *
+   * <p>显式标了 `data-modal-scroll` 的滚动区，就算在弹窗层之外也照常滚 —— 它自己声明了「我要接滚轮」。
+   */
+  const marked = markedScrollArea(e.target);
+  if (marked && !modalRoot.contains(marked)) {
+    e.preventDefault();
+    marked.scrollTop += e.deltaY;
     return;
   }
 

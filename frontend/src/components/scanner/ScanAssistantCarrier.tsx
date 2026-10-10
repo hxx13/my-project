@@ -9,7 +9,10 @@ import { isContentManagerPath } from "@/features/admin/buildAdminNavModel";
 import { usePrefersReducedMotion, useTypewriterText } from "@/hooks/useTypewriterText";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 import { useScanAssistantBubbleTransition } from "@/components/scanner/scan-assistant/useScanAssistantBubbleTransition";
-import { registerScanAssistantAskClose } from "@/components/scanner/scan-assistant/scanAssistantSpeak";
+import {
+  openScanAssistantUnboundBind,
+  registerScanAssistantAskClose,
+} from "@/components/scanner/scan-assistant/scanAssistantSpeak";
 
 type ScanAssistantCarrierProps = {
   /** orb 缩放（相对 100px 基准），默认 0.76（2× 原 0.38） */
@@ -49,7 +52,8 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
   }, [pathname, activeMessage, setDockVisible]);
 
   const reducedMotion = usePrefersReducedMotion();
-  const { renderedMessage, phase } = useScanAssistantBubbleTransition(activeMessage, {
+  // phase 只有那张「没有输入框的播报卡」用它做退场动画；播报统一进对话卡后不再需要
+  const { renderedMessage } = useScanAssistantBubbleTransition(activeMessage, {
     reducedMotion,
   });
   // 有 activeMessage 时始终以 store 为准；renderedMessage 仅用于退出动画期间
@@ -133,16 +137,19 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
       carrier={carrier}
       isSpeaking={speaking}
       activeMessage={bubbleMessage}
-      bubblePhase={phase}
       bubbleText={bubbleText}
       isStreaming={isStreaming}
       isAwaitingFirstToken={isAwaitingFirstToken}
       isTyping={isTyping}
       bubbleCollapsed={false}
       askOpen={askOpen}
-      onDismissMessage={dismissMessage}
-      onAskDismiss={() => setAskOpen(false)}
+      onAskDismiss={() => {
+        setAskOpen(false);
+        // 播报也铺在这张卡里：关掉卡就等于收起它 —— 不 dismiss 的话 hasBroadcast 会把它又撑开
+        if (activeMessage) dismissMessage();
+      }}
       onOrbClick={handleOrbClick}
+      onUnboundBind={openScanAssistantUnboundBind}
     />,
     document.body,
   );

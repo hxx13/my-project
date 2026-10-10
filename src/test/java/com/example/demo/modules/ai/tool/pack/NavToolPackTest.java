@@ -180,7 +180,128 @@ class NavToolPackTest {
         assertNull(miss.get("navigate"));
     }
 
+    // ── 截图（与导航共用同一份页面解析，所以歧义/权限的结局必须一致） ──
+
+    @Test
+    @DisplayName("截图：唯一命中 → 给 image.path（是去截那一页，不是跳过去）")
+    void screenshotResolvesToImagePath() throws Exception {
+        Map<?, ?> out = shot(user(RoleEnum.STAFF),
+                List.of(entry("/admin/cage-shelves", "笼架信息", "STAFF")), "笼架信息");
+        assertEquals(Boolean.TRUE, out.get("ok"));
+        assertNull(out.get("navigate"), "截图不是跳页");
+        Map<?, ?> image = (Map<?, ?>) out.get("image");
+        assertNotNull(image, "应当给 image 约定：" + out);
+        assertEquals("/admin/cage-shelves", String.valueOf(image.get("path")));
+    }
+
+    @Test
+    @DisplayName("截图：同名多个页面照旧出芯片 —— 不许自己挑一个截给他看")
+    void screenshotKeepsAmbiguityAsChoices() throws Exception {
+        Map<?, ?> out = shot(user(RoleEnum.STAFF), List.of(
+                entry("/admin/portal/content", "内容管理", "STAFF"),
+                entry("/content-manager/content", "内容管理", "STAFF")), "内容管理");
+        assertNull(out.get("image"), "有歧义时不许直接截：" + out);
+        assertEquals(2, ((List<?>) out.get("choices")).size());
+    }
+
+    @Test
+    @DisplayName("截图：小程序上按 **web 端**解析（那边只有网页版能截），并标成服务端渲染")
+    void screenshotOnMiniProgramResolvesAgainstWebPages() throws Exception {
+        AiTool tool = toolNamed("screenshotPage",
+                List.of(entry("/admin/cage-shelves", "笼架信息", "STAFF")),
+                List.of(entryMini("/pages/xx/index", "某小程序独有页", "STAFF")));
+
+        Object o = tool.executor().execute(
+                new AiToolContext(user(RoleEnum.STAFF), null, null, null, "mp", AiView.STAFF),
+                OM.readTree("{\"query\":\"笼架信息\"}"));
+        Map<?, ?> out = (Map<?, ?>) o;
+        assertEquals(Boolean.TRUE, out.get("ok"), "小程序上该能截（后端渲染网页版）：" + out);
+        Map<?, ?> image = (Map<?, ?>) out.get("image");
+        assertEquals("/admin/cage-shelves", String.valueOf(image.get("path")),
+                "小程序上必须解析到 **web** 路径 —— 小程序的 /pages/... 浏览器渲染不了");
+        assertEquals("server", String.valueOf(image.get("render")), "这条必须由服务端产图");
+
+        // 小程序独有的页面（没有网页版）应当如实说找不到，而不是拿一个别的页面糊过去
+        Object o2 = tool.executor().execute(
+                new AiToolContext(user(RoleEnum.STAFF), null, null, null, "mp", AiView.STAFF),
+                OM.readTree("{\"query\":\"某小程序独有页\"}"));
+        Map<?, ?> out2 = (Map<?, ?>) o2;
+        assertEquals(Boolean.FALSE, out2.get("ok"), "只在小程序清单里的页面不该被截：" + out2);
+        assertNull(out2.get("image"));
+    }
+
+    @Test
+    @DisplayName("截图带筛选：语义条件翻成地址参数；没登记的页面原样忽略条件")
+    void screenshotWithSemanticFilter() throws Exception {
+        // 登记过的页面（门禁记录库）：failed → openResult=0
+        Map<?, ?> out = shotWithFilter(user(RoleEnum.STAFF),
+                List.of(entry("/admin/dahua-swing-records", "门禁记录库", "STAFF")),
+                "门禁记录库", "failed");
+        Map<?, ?> image = (Map<?, ?>) out.get("image");
+        assertEquals("/admin/dahua-swing-records?openResult=0", String.valueOf(image.get("path")),
+                "用户要看的就是筛过的那一屏，条件得带进地址：" + out);
+
+        // 没登记过的页面：不把条件拼上去（页面也不认，拼了只是脏地址）
+        Map<?, ?> plain = shotWithFilter(user(RoleEnum.STAFF),
+                List.of(entry("/admin/cage-shelves", "笼架信息", "STAFF")),
+                "笼架信息", "failed");
+        assertEquals("/admin/cage-shelves", String.valueOf(((Map<?, ?>) plain.get("image")).get("path")),
+                "没登记过筛选条件的页面原样忽略：" + plain);
+    }
+
+    @Test
+    @DisplayName("截图默认走服务端（不动用户页面）；只有 guide=true 才改由载体自截，小程序上一律服务端")
+    void screenshotRenderRouteDecision() throws Exception {
+        List<PagePermissionItem> rows = List.of(entry("/admin/cage-shelves", "笼架信息", "STAFF"));
+        AiTool tool = toolNamed("screenshotPage", rows, List.of());
+
+        // 缺省：服务端渲染 —— 不动用户面前的页面
+        Map<?, ?> plain = (Map<?, ?>) tool.executor().execute(
+                new AiToolContext(user(RoleEnum.STAFF), null, null, "笼架信息", "web", AiView.STAFF),
+                OM.readTree("{\"query\":\"笼架信息\"}"));
+        assertEquals("server", String.valueOf(((Map<?, ?>) plain.get("image")).get("render")),
+                "默认必须是服务端产图：" + plain);
+
+        // guide=true：改成载体自截（会把他带过去）
+        Map<?, ?> guided = (Map<?, ?>) tool.executor().execute(
+                new AiToolContext(user(RoleEnum.STAFF), null, null, "带我去看笼架信息", "web", AiView.STAFF),
+                OM.readTree("{\"query\":\"笼架信息\",\"guide\":true}"));
+        assertEquals("carrier", String.valueOf(((Map<?, ?>) guided.get("image")).get("render")),
+                "明确要带他过去时才用载体那条：" + guided);
+
+        // 小程序上就算传了 guide 也只能服务端 —— 那边没有载体那条路
+        Map<?, ?> miniGuided = (Map<?, ?>) tool.executor().execute(
+                new AiToolContext(user(RoleEnum.STAFF), null, null, null, "mp", AiView.STAFF),
+                OM.readTree("{\"query\":\"笼架信息\",\"guide\":true}"));
+        assertEquals("server", String.valueOf(((Map<?, ?>) miniGuided.get("image")).get("render")),
+                "小程序截不了自己的界面，guide 在这儿不成立：" + miniGuided);
+    }
+
     // ── 脚手架 ──
+
+    private static Map<?, ?> shotWithFilter(User actor, List<PagePermissionItem> webRows,
+                                            String query, String filter) throws Exception {
+        Object o = toolNamed("screenshotPage", webRows, List.of()).executor().execute(
+                new AiToolContext(actor, null, null, query, "web", AiView.STAFF),
+                OM.readTree("{\"query\":\"" + query + "\",\"filter\":\"" + filter + "\"}"));
+        return (Map<?, ?>) o;
+    }
+
+    private static Map<?, ?> shot(User actor, List<PagePermissionItem> webRows, String query) throws Exception {
+        Object out = toolNamed("screenshotPage", webRows, List.of()).executor().execute(
+                new AiToolContext(actor, null, null, query, "web", AiView.STAFF),
+                OM.readTree("{\"query\":\"" + query + "\"}"));
+        return (Map<?, ?>) out;
+    }
+
+    /** 按**名字**取工具：按下标取的话，以后加一个工具就会把测试悄悄指到别的工具上。 */
+    private static AiTool toolNamed(String name, List<PagePermissionItem> webRows,
+                                    List<PagePermissionItem> miniRows) {
+        return new NavToolPack(stubService(webRows, miniRows)).tools().stream()
+                .filter(t -> t.name().equals(name))
+                .findFirst()
+                .orElseThrow();
+    }
 
     private static String navPath(Map<?, ?> out) {
         Object nav = out.get("navigate");

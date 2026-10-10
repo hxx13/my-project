@@ -34,6 +34,11 @@ public class ScanAssistantLlmService {
     private static final int RECENT_MESSAGE_LIMIT = 10;
     /** 球球载体在 ai_session.source 里的标识：同一用户复用同一条持续对话。 */
     private static final String ASK_SESSION_SOURCE = "scan";
+    /**
+     * 刷卡后那次对话的来源标记：**临时会话**，不进「历史对话」列表（列表按来源滤掉它）。
+     * 与 {@link #ASK_SESSION_SOURCE} 分开，是为了既保住「不复用上一次」，又不污染正常历史。
+     */
+    private static final String EPHEMERAL_SESSION_SOURCE = "scan_ephemeral";
 
     private final LlmConfigService llmConfigService;
     private final DashScopeChatClient chatClient;
@@ -351,6 +356,17 @@ public class ScanAssistantLlmService {
                             java.util.List<String> images,
                             java.util.List<AiOrchestrator.SpreadsheetPart> spreadsheets,
                             String contextPage, SseEmitter emitter) {
+        askQuestion(user, question, sessionId, newSession, images, spreadsheets, contextPage, false, emitter);
+    }
+
+    /**
+     * @param ephemeral 刷卡后那次对话：**临时会话**。一律新开、绝不复用（复用就是接着上一次的上下文），
+     *                  并且用另一个来源标记，好让「历史对话」列表把它滤掉 —— 刷卡提示不该在人的历史里堆着。
+     */
+    public void askQuestion(User user, String question, Long sessionId, boolean newSession,
+                            java.util.List<String> images,
+                            java.util.List<AiOrchestrator.SpreadsheetPart> spreadsheets,
+                            String contextPage, boolean ephemeral, SseEmitter emitter) {
         String q = question == null ? "" : question.trim();
         // 只有图、没有字也要放行 —— 「这张图里是谁」这种问法有时就是一个字都不打
         boolean hasImages = images != null && !images.isEmpty();
@@ -367,6 +383,9 @@ public class ScanAssistantLlmService {
             AiSession session;
             if (sessionId != null) {
                 session = aiSessionService.requireOwned(sessionId, user.getId());
+            } else if (ephemeral) {
+                // 刷卡那次对话：**一律新开**（绝不复用上一次的上下文），并用临时来源，历史列表里看不到
+                session = aiSessionService.create(user.getId(), EPHEMERAL_SESSION_SOURCE, contextPage);
             } else if (newSession) {
                 session = aiSessionService.create(user.getId(), ASK_SESSION_SOURCE, contextPage);
             } else {

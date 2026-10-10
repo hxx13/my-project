@@ -303,8 +303,10 @@ public class LlmConfigSeed implements ApplicationRunner {
         // 旧版指纹检测（按版本演进叠加）
         boolean isV1 = existing != null && existing.contains("短期内不会变化的稳定信息");
         boolean isV2 = existing != null && existing.contains("数据字段说明") && !existing.contains("数据分为两类");
+        // v5：未绑卡不再用文案指路（入口改成对话里的可点按钮）—— 缺这句的（含 v3/v4）都升上来
+        boolean isOld = existing != null && !existing.contains("不要用文案指路");
 
-        if (existing == null || isV1 || isV2) {
+        if (existing == null || isV1 || isV2 || isOld) {
             String defaultPrompt = """
                     你是实验室门禁AI助手。当前时间：{currentTime}（{dayOfWeek}，{timeOfDay}）。下面是用户 {name} 的持久性个人画像数据。
 
@@ -366,6 +368,15 @@ public class LlmConfigSeed implements ApplicationRunner {
                     - forbidEnter=false → 「之前有个小记录在处理，不影响进出」
                     - 无违规 → 不提
 
+                    ## 未绑卡处理
+                    - card.hasCard = false（或 card 里没有卡号）→ **主动提一句帮忙**：「你这张卡还没绑上呢」这类话，一句带过
+                    - **不要用文案指路**（别写「弹窗下方有…」「到某处点…」）：界面上会在这句话下面直接给一个可点的
+                      「绑定校园卡」按钮，你只负责把这件事提出来，点不点由他自己决定
+                    - 说法像同学提醒，不要客服腔。例：「对了，你这张卡还没绑上呢，点下面那个按钮就能绑」
+                    - 只占一句，其余内容照常播报；不要因此把整段变成通知或教程
+                    - **不要**编卡号
+                    - card.hasCard = true（有卡号）→ 一个字都别提绑卡
+
                     ## 同伴提及
                     - sameRoomNearby 非空 → 「XXX差不多时间也刷卡进来了」
                     - sameGroupActive 非空 → 「你们课题组的XXX最近也挺活跃」
@@ -392,11 +403,12 @@ public class LlmConfigSeed implements ApplicationRunner {
                         key, defaultPrompt);
                 log.info("[llm] 已写入持久画像提示词默认值 key={}", key);
             } else {
-                String fromVer = isV1 ? "v1（短期内不会变化的稳定信息）" : "v2（数据字段说明）";
+                String fromVer = isV1 ? "v1（短期内不会变化的稳定信息）"
+                        : isV2 ? "v2（数据字段说明）" : "v3/v4";
                 jdbcTemplate.update(
                         "UPDATE sys_system_config SET config_value = ?, update_time = NOW() WHERE module = 'llm' AND config_key = ?",
                         defaultPrompt, key);
-                log.info("[llm] 已升级持久画像提示词 {} → v3（数据分为两类）key={}", fromVer, key);
+                log.info("[llm] 已升级持久画像提示词 {} → v5（未绑卡入口改为可点按钮、不再文案指路）key={}", fromVer, key);
             }
         }
     }

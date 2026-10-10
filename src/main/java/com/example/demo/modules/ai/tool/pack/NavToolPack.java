@@ -79,6 +79,25 @@ public class NavToolPack implements AiToolPack {
     /** 教职工 console 之外的壳子（学生门户自己的页面在 STUDENT 视角里才收） */
     private static final String STUDENT_PREFIX = "/student";
 
+    /**
+     * 「看一眼这个页面的某个状态」—— 页面自己支持从地址读的**只读筛选**。
+     *
+     * <p>为什么要有它：用户说的是「帮我看一下**今天失败**的门禁记录并截图」，光跳到页面没用 ——
+     * 页面上摆着全部记录，他要看的那一类混在里面。而让模型自己拼地址参数（`openResult=0`）
+     * 就是让它产出可执行物（不变量 I2），也不行。
+     *
+     * <p>所以条件用**语义名**（失败/成功/进/出），落到地址参数的映射只对下面登记过的页面生效；
+     * 没登记的页面**原样忽略条件**（宁可不筛，也不能拿一个它不认识的参数去污染地址）。
+     * 登记一个页面前先确认：那个页面的筛选**确实从地址读**（PAGE_QUERY 只在对接过的页面上加）。
+     */
+    private static final Map<String, Map<String, String>> PAGE_QUERY = Map.of(
+            // 门禁记录库：刷卡成功 0=失败 1=成功；进出/开门类型同页面下拉
+            "/admin/dahua-swing-records", Map.of(
+                    "failed", "openResult=0",
+                    "success", "openResult=1",
+                    "enter", "enterOrExit=ENTER",
+                    "exit", "enterOrExit=EXIT"));
+
     private final PagePermissionService pagePermissionService;
 
     public NavToolPack(PagePermissionService pagePermissionService) {
@@ -120,7 +139,14 @@ public class NavToolPack implements AiToolPack {
                 - 只能跳到用户有权限打开的页面（服务端按页面权限判定；它没返回的东西就是你不能送他去的）。
                   **web 与小程序都适用** —— 服务端按用户所在的载体返回那一端的页面路径，
                   所以你不用关心是哪个端，照常报名字即可。
-                - 这一包只管「跳到哪个页面」，不管页面上要做什么 —— 进去了要办事是别的工具的事。""";
+                - 这一包只管「跳到哪个页面」，不管页面上要做什么 —— 进去了要办事是别的工具的事。
+                - 用户不是要**去**某个页面，而是要**看**它长什么样（「看一下 X 页面」「截个图看看」）→ 用 screenshotPage，
+                  同样只报名字、不报 URL。截出来的图会作为一条消息出现，你**不要**替用户描述页面内容。
+                - 用户点名了要看**哪一类**（「只看今天失败的记录」「成功的那些」）→ 在 screenshotPage 上带 `filter`，
+                  图上就是筛过的那一屏；**不要**只截一整屏再让他自己找。
+                - screenshotPage **默认只出一张图、不动用户面前的页面**，所以别对他说「已帮你打开了」。
+                  只有他明确要「带他过去看」「在那页上打开再截」时才带 `guide:true`（那会真的切他的页面）。
+                - screenshotPage 在小程序上同样能用（图由服务端渲染后发过来），但只覆盖**有网页版**的页面。""";
     }
 
     @Override
@@ -130,7 +156,109 @@ public class NavToolPack implements AiToolPack {
 
     @Override
     public List<AiTool> tools() {
-        return List.of(openPage());
+        return List.of(openPage(), screenshotPage());
+    }
+
+    /**
+     * 截图：把某个后台页面**截一张图**放进对话。
+     *
+     * <p>与 openPage 同一个域名（「页面叫什么 → 是哪一个」），所以**复用同一份页面清单与
+     * {@link #resolve} 的匹配规则** —— 用户说「看一下动物订购审核页」时的歧义处理
+     * （多个同名页面出芯片）与跳转完全一致，不必各写一份。
+     *
+     * <p>本工具**只负责说「截哪一个、怎么截」**，真去截是别人的事（不变量 I2）。
+     *
+     * <h4>两条产图路，默认走后端那条</h4>
+     * <ul>
+     *   <li>缺省 {@code render:"server"} —— 服务端渲染一张。**任意端都能用**（小程序、网页、定时器），
+     *       而且**不动用户面前的页面**。</li>
+     *   <li>{@code guide:true} 时 {@code render:"carrier"} —— 由用户自己的浏览器截：**会先把他带到那一页**
+     *       （这是「引导」的代价，也是它的价值：他跟着一起看到）。只有网页端做得到。</li>
+     * </ul>
+     *
+     * <p><b>小程序上一律走服务端</b>：它没有任何 API 能截自己的原生界面，载体那条路不存在。
+     * 而且查询清单换成 **WEB** 那份 —— 能被浏览器渲染的只有网页版，用户说「笼架」要去匹配 web 的
+     * 「笼架信息」；小程序独有的页面（首页/我的/房间）在这里查不到，如实说找不到即可。
+     */
+    private AiTool screenshotPage() {
+        String schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string",
+                      "description": "用户说的页面名字，尽量照原话（「动物订购审核」「门禁规则」）；用户从芯片里点了候选时也可传路径"
+                    },
+                    "filter": {
+                      "type": "string",
+                      "enum": ["failed", "success"],
+                      "description": "只有用户明确说「只看失败/成功的」时才传：failed=失败、success=成功。**只对门禁记录这类页面有效**，别的页面会忽略它。用户没说就别传。"
+                    },
+                    "guide": {
+                      "type": "boolean",
+                      "description": "用户明确要「带他过去看」「在那页上打开再截」时传 true —— 那样会**把他所在的页面切到那一页**再截。默认不传：只出一张图给他看，不动他面前的页面。"
+                    }
+                  },
+                  "required": ["query"],
+                  "additionalProperties": false
+                }""";
+        return new AiTool(
+                "screenshotPage",
+                "把某个后台页面**截一张图**放到对话里给用户看。用户说「看一下 X 页面的样子」"
+                        + "「截个图看看这个页面」「这个页面现在长什么样」时用它。"
+                        + "query 传页面名字（照原话），**不要传 URL**。"
+                        + "名字对应多个页面时会返回候选芯片让用户挑，这时不要自己在正文里列候选。"
+                        + "默认只出图、不打断用户；只有他明确说「带我过去看」时才传 guide=true。",
+                schema, CAP_NAV_OPEN, SideEffect.READ,
+                (ctx, args) -> {
+                    String query = text(args, "query");
+                    if (query.isEmpty()) {
+                        return Map.of("ok", false, "reason", "没说要截哪个页面");
+                    }
+                    // 一张都不许按小程序清单查：能被渲染/截到的只有网页版
+                    Pages pages = scan(ctx.actor(), false, ctx.studentView());
+                    Map<String, Object> out = new LinkedHashMap<>(resolve(query, pages));
+                    // 命中的那一个：把「跳过去」换成「截一张」。歧义/没找到/权限不够三种结局原样保留
+                    // （芯片与「权限不够」的说法跟导航一字不差，用户不必学两套）。
+                    Object hit = out.remove("navigate");
+                    if (hit instanceof Map<?, ?> nav) {
+                        String pagePath = String.valueOf(nav.get("path"));
+                        // 语义化条件 → 地址参数（只对登记过的页面生效；没登记的原样忽略）
+                        String extra = queryFor(pagePath, text(args, "filter"));
+                        // 载体那条路只有网页端走得通；小程序一律服务端
+                        boolean guide = booleanOf(args, "guide") && !ctx.miniProgram();
+                        Map<String, Object> image = new LinkedHashMap<>();
+                        image.put("path", extra.isEmpty() ? pagePath : pagePath + "?" + extra);
+                        image.put("label", nav.get("label"));
+                        image.put("render", guide ? "carrier" : "server");
+                        out.put("ok", true);
+                        out.put("image", image);
+                        out.put("note", guide
+                                ? "已经带用户过去了，图随后到；用一句话说「帮你打开并截了一张」即可，"
+                                + "**不要在正文里念路径**，也不要凭空描述页面长什么样。"
+                                : "图由服务端渲染后发过来，可能要等几秒；用一句话说「我帮你截一张」即可，"
+                                + "**不要**说「帮你打开了」——并没有动他面前的页面；也不要凭空描述页面长什么样。");
+                    }
+                    return out;
+                });
+    }
+
+    /**
+     * 把语义化条件翻成地址参数（{@code failed → openResult=0}）。
+     *
+     * <p>只在 {@link #PAGE_QUERY} 登记过的页面上生效 —— 没登记的页面**原样返回空串**，
+     * 宁可这次不筛，也不能拿一个那个页面不认识的参数去污染地址。
+     */
+    private static String queryFor(String pagePath, String semanticFilter) {
+        if (semanticFilter == null || semanticFilter.isBlank()) {
+            return "";
+        }
+        Map<String, String> known = PAGE_QUERY.get(pagePath);
+        if (known == null) {
+            return "";
+        }
+        String q = known.get(semanticFilter.trim().toLowerCase(Locale.ROOT));
+        return q == null ? "" : q;
     }
 
     private AiTool openPage() {
@@ -564,5 +692,14 @@ public class NavToolPack implements AiToolPack {
     private static String text(JsonNode args, String field) {
         JsonNode n = args == null ? null : args.path(field);
         return n == null || !n.isTextual() ? "" : n.asText("").trim();
+    }
+
+    /** 缺省一律 false：布尔开关只认显式的 true（模型给 "true" 字符串也认）。 */
+    private static boolean booleanOf(JsonNode args, String field) {
+        JsonNode n = args == null ? null : args.path(field);
+        if (n == null || n.isNull() || n.isMissingNode()) {
+            return false;
+        }
+        return n.isBoolean() ? n.asBoolean() : "true".equalsIgnoreCase(String.valueOf(n.asText("")).trim());
     }
 }

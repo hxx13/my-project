@@ -31,6 +31,8 @@ export interface AiTimerRow {
   result?: string;
   error?: string;
   sessionId?: number;
+  /** 产出它的那一轮助手消息 —— 对话里把倒计时挂回原位要靠它 */
+  messageId?: number;
 }
 
 export interface AiTimerList {

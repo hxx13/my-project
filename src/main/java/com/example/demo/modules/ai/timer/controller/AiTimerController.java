@@ -159,6 +159,8 @@ public class AiTimerController {
         m.put("result", t.getResultText());
         m.put("error", t.getErrorMessage());
         m.put("sessionId", t.getSessionId());
+        // 产出它的那一轮助手消息：对话里要把倒计时**挂回原位**（与截图/导出产物同一套锚点）
+        m.put("messageId", t.getMessageId());
         return m;
     }
 

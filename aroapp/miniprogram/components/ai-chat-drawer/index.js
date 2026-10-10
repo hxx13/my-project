@@ -76,11 +76,87 @@ const MIME_BY_EXT = {
   bmp: 'image/bmp',
 };
 
+/**
+ * 有没有登录态。
+ *
+ * <p>token 和身份信息**两个都要有**：只有 token 时问话也是白问 —— 服务端认得出人，
+ * 但页面上的身份判断（学生/教职工视角、可办的页面）都拿不到，助手会一路答错或报错。
+ * 退登录或从没登录过时，助手整体不可用。
+ */
+function hasSession() {
+  try {
+    return !!wx.getStorageSync(springAuth.KEYS.TOKEN) && !!wx.getStorageSync(springAuth.KEYS.USER_INFO);
+  } catch (e) {
+    return false;
+  }
+}
+
 /** 对话缓存：刷新/重进小程序后恢复，超时即弃 */
-const CACHE_KEY = 'ai-chat-cache';
+const CACHE_KEY_PREFIX = 'ai-chat-cache';
+/** 早先那个**不分账号**的键。留着会被下一个人读到 —— 见到就顺手清掉。 */
+const LEGACY_CACHE_KEY = 'ai-chat-cache';
 const CACHE_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * 当前账号的缓存键。
+ *
+ * <p>**必须按账号分**：存储是按机器共享的，同一个微信换个人登录（或用别人的手机），
+ * 抽屉会把上一个人的对话读出来显示给他 —— 那不只是体验问题，是**把别人的对话内容泄给下一个人**。
+ * 网页端早就按账号分了（真机确认过：单一 key 里存着别人的 44 条问答，连用户标识都没有），
+ * 小程序这边是同一台机器、同一个源，风险一模一样。
+ */
+function currentCacheKey() {
+  var info = null;
+  try {
+    info = JSON.parse(wx.getStorageSync('springUserInfo') || 'null');
+  } catch (e) {
+    info = null;
+  }
+  var uid = info && (info.id || info.userId);
+  // 没登录时退到一个不落地的占位，不会和任何真实账号撞上
+  return CACHE_KEY_PREFIX + ':' + (uid || 'anon');
+}
+
+/** 清掉别的账号留在这台机器上的对话缓存（含旧的那个不分账号的键）。 */
+function purgeForeignCaches() {
+  var keep = currentCacheKey();
+  try {
+    var keys = (wx.getStorageInfoSync() || {}).keys || [];
+    keys.forEach(function (k) {
+      if (k === LEGACY_CACHE_KEY || (k.indexOf(CACHE_KEY_PREFIX + ':') === 0 && k !== keep)) {
+        wx.removeStorageSync(k);
+      }
+    });
+  } catch (e) {
+    /* 读不到存储列表就跳过，不影响主流程 */
+  }
+}
 /** 打字机每 70ms 改一次 messages，缓存写入要跟着限流 */
 const CACHE_THROTTLE_MS = 1000;
+
+/**
+ * 哪些工具值得在对话里露出「正在做…」。
+ *
+ * <p>**只登记长任务**：这类要等好几秒、还可能失败，用户需要知道进度（不然就是在干等，
+ * 或者干脆以为它失败了）。其余工具都是毫秒级的读，抖出来只会让每条回答下面都堆一行噪声。
+ */
+const TOOL_BUSY_LABEL = {
+  screenshotPage: '正在截图',
+  scheduleTimers: '正在设定时',
+};
+
+/** 还在跑的状态（要每秒走倒计时、到点要补拉结果）。 */
+const TIMER_LIVE_STATUSES = ['PENDING', 'FIRING', 'AWAITING_CONFIRM'];
+
+/** 剩余时间 mm:ss（超过一小时给 h:mm:ss）。 */
+function fmtRemain(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n) => (n < 10 ? '0' + n : String(n));
+  return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : pad(m) + ':' + pad(s);
+}
 
 /** 按扩展名推 MIME —— 服务端拿 data URL 的这部分判类型 */
 function mimeOfPath(filePath) {
@@ -182,6 +258,8 @@ Component({
     /** 流式期间的实时态（「思考中 3.2s · 1.2k tokens」），答完清空 */
     liveMeta: '',
     scrollTarget: '',
+    /** 倒计时每秒重算的文案（id -> '还剩 00:31'），wxml 按 id 取 */
+    timerTicks: {},
     /** 助手算好的那份导出（有就渲染成一张下载卡，用户点一下才真去取文件） */
     downloadCard: null,
     downloadBusy: false,
@@ -215,8 +293,27 @@ Component({
       this.typeShown = 0;
       this.typeFinished = false;
       this.cacheSavedAt = 0;
+      /** 节流窗口内排下的那次补写（尾触发）。见 saveCache 的注释。 */
+      this.cachePending = null;
+      /** 服务端时间 − 本地时间：倒计时要补这个差，机器时钟偏几分钟才不会显示成「早该到了」 */
+      this.timerSkewMs = 0;
+      /** 归零后补拉结果的记账（每 5 秒一次、最多 24 次） */
+      this.timerPoll = {};
+      /**
+       * **刚刚收尾的那条消息**的 key —— 倒计时/产物的唯一落点。
+       *
+       * <p>为什么这是本质正确的：服务端给的锚是「工具调用那条消息」的 id，而这里是「最终回复那条」，
+       * 两者不是一回事；中间还夹着一次挂起（正文为空、抽屉故意不画）。拿两边的 id 对齐怎么都会错。
+       * 「刚收尾的是哪一条」**只有载体自己知道**，收尾那一刻记下来即可。
+       */
+      this.lastFinalizedKey = null;
+      /** 上一轮看到的每个倒计时的状态（用来发现「刚从在跑变成终态」那一刻）。 */
+      this.timerSeenStatus = {};
+      this.timerTickHandle = null;
       /** 下一轮是否开新会话（新建对话后置 true，发过一次即复位） */
       this.newSessionFlag = false;
+      // 先清掉别的账号留在这台机器上的对话（含旧的不分账号那个键），再恢复自己的
+      purgeForeignCaches();
       this.restoreCache();
       if (this.data.visible) this.handleOpened();
     },
@@ -224,11 +321,28 @@ Component({
       this.abortStream();
       this.stopTypewriter();
       if (this.scrollTimer) clearTimeout(this.scrollTimer);
+      if (this.cachePending) clearTimeout(this.cachePending);
+      if (this.timerTickHandle) clearInterval(this.timerTickHandle);
     },
   },
 
   methods: {
     handleOpened() {
+      // **没登录就别开**：助手要靠会话身份才能办事（所有请求都带 token），开着只会一路报错。
+      // 关掉并说明原因 —— 按钮点了没反应比报错更让人困惑。
+      if (!hasSession()) {
+        wx.showToast({ title: '请先登录后再使用助手', icon: 'none' });
+        this.triggerEvent('close');
+        return;
+      }
+      // 每次打开都清一遍别的账号留下的对话（含旧的不分账号那个键）。
+      // 放这里而不是 attached：小程序热重载/切页不一定会重跑 attached，这里一定会跑到。
+      purgeForeignCaches();
+      // 倒计时挂回来（缓存里那份状态早就过期了，重新拉一次才算数）
+      this.mountTimers();
+      // 抽屉关着的那段时间，定时器可能已经执行完并往会话里写了汇报 ——
+      // 那时跳秒定时器早停了，没人拉。这里补一次，否则卡片显示「已完成」而对话里看不到那条回复。
+      this.pullNewMessages();
       // 只有第一次打开才主动问好；聊过再打开就接着原对话
       if (this.data.messages.length === 0) {
         this.restoreLatestSession();
@@ -341,6 +455,7 @@ Component({
               list.push(item);
             });
           // 产物挂到锚点之后第一条助手回复上（锚点那轮正文常为空、已经被滤掉）——与网页端同一规则
+          const shotRestores = [];
           (exports || []).forEach((ex) => {
             const anchor = ex && ex.messageId != null ? Number(ex.messageId) : null;
             let target = -1;
@@ -353,15 +468,23 @@ Component({
             }
             if (target < 0) target = list.length - 1;
             if (target >= 0) {
-              list[target].download = {
-                kind: ex.kind,
-                label: ex.label,
-                params: ex.params,
-                exportId: ex.exportId,
-              };
+              if (ex.kind === 'screenshot') {
+                // 截图不挂下载卡，挂图位：消息里只有文字，**图得按产物 id 单独取一趟**
+                list[target].shot = { label: ex.label || '页面截图', exportId: ex.exportId, state: 'loading', filePath: '' };
+                shotRestores.push({ key: list[target].key, exportId: ex.exportId, label: ex.label });
+              } else {
+                list[target].download = {
+                  kind: ex.kind,
+                  label: ex.label,
+                  params: ex.params,
+                  exportId: ex.exportId,
+                };
+              }
             }
           });
           list.forEach((it) => {
+            // 留着锚点（倒计时按它挂回原位），只把临时字段去掉
+            it.messageId = it._mid;
             delete it._mid;
           });
           this.newSessionFlag = false;
@@ -373,6 +496,8 @@ Component({
             sessionTitle: pickedTitle,
             ...this.clearedQueuePatch(),
           });
+          // 铺完再逐张取图：loadShot 要按 key 在那条消息上打补丁，得等 setData 之后
+          shotRestores.forEach((s) => this.loadShot(s.key, s.exportId, s.label));
           this.scrollToEnd();
         })
         .catch(() => this.setData({ historyLoading: false }));
@@ -382,7 +507,19 @@ Component({
 
     saveCache() {
       const now = Date.now();
-      if (this.cacheSavedAt && now - this.cacheSavedAt < CACHE_THROTTLE_MS) return;
+      if (this.cacheSavedAt && now - this.cacheSavedAt < CACHE_THROTTLE_MS) {
+        // **被节流掉的那一次必须补上（尾触发）**：打字过程中 messages 每几十毫秒变一次，
+        // 一轮结束时那最后一次写入（最终正文 + 刚挂上去的图）几乎必然落在节流窗口内 ——
+        // 少了这个补写，缓存里留的就是一份**中途快照**，用户关掉抽屉再打开会发现最新一条没了。
+        // 真机反馈过这个现象，就是这里。
+        if (!this.cachePending) {
+          this.cachePending = setTimeout(() => {
+            this.cachePending = null;
+            this.saveCache();
+          }, CACHE_THROTTLE_MS);
+        }
+        return;
+      }
       this.cacheSavedAt = now;
       try {
         // 图片是本地临时路径（或几百 KB 的 data URL），存了没用还撑爆 storage
@@ -393,8 +530,13 @@ Component({
           meta: m.meta,
           // 挂在消息上的导出卡也存：不然重开对话卡片就没了（它现在属于那一条消息）
           download: m.download,
+          // 截图只存「是哪一份产物」——**临时文件路径不能跨会话用**（会被清掉），
+          // 恢复时按 exportId 重取一份，见 restoreCache。
+          shot: m.shot && m.shot.exportId
+            ? { label: m.shot.label, exportId: m.shot.exportId, state: 'loading', filePath: '' }
+            : undefined,
         }));
-        wx.setStorageSync(CACHE_KEY, {
+        wx.setStorageSync(currentCacheKey(), {
           ts: now,
           messages: slim,
           sessionId: this.data.sessionId,
@@ -407,14 +549,16 @@ Component({
 
     restoreCache() {
       try {
-        const raw = wx.getStorageSync(CACHE_KEY);
+        const raw = wx.getStorageSync(currentCacheKey());
         if (!raw || !raw.ts) return;
         if (Date.now() - raw.ts > CACHE_TTL_MS) {
-          wx.removeStorageSync(CACHE_KEY);
+          wx.removeStorageSync(currentCacheKey());
           return;
         }
         const list = (raw.messages || [])
-          .filter((m) => m && String(m.text || '').trim())
+          // 只按「有没有正文」筛会把**只出图/只给文件**的那一轮整条丢掉 ——
+          // 那种回合模型常常一个字都不说（它只调了工具），可内容全在卡片上。
+          .filter((m) => m && (String(m.text || '').trim() || m.shot || m.download))
           // 缓存里存的是纯文本，恢复时补一次 markdown 转换 ——
           // 否则刷新后原先渲染好的回复会退化成带 ** 的明文
           .map((m) => {
@@ -436,6 +580,11 @@ Component({
           sessionId: raw.sessionId || null,
           sessionTitle: String(raw.sessionTitle || ''),
         });
+        // 缓存里只留了「是哪一份产物」，图得按 exportId 重取一份（临时文件早没了）
+        list.forEach((m) => {
+          if (m.shot && m.shot.exportId) this.loadShot(m.key, m.shot.exportId, m.shot.label);
+        });
+        this.mountTimers();
       } catch (e) {
         /* ignore */
       }
@@ -475,7 +624,7 @@ Component({
     clearCache() {
       this.cacheSavedAt = 0;
       try {
-        wx.removeStorageSync(CACHE_KEY);
+        wx.removeStorageSync(currentCacheKey());
       } catch (e) {
         /* ignore */
       }
@@ -489,7 +638,12 @@ Component({
       this.startStream(botKey, () => aiChatStream.streamGreet(this.handlersFor(botKey)));
     },
 
-    submit(question, images, spreadsheets) {
+    /**
+     * @param isFollowUp 这条不是**新的一次提问**，而是接着上面那条回复把没办完的事办完
+     *   （点了确认执行、答了「导出要哪几维小计」这类工具抛出来的问题）。收拢附件时靠它判断
+     *   「是不是还在同一次提问里」—— 少了它，一次提问中间插一个问题，附件就会被切成两条气泡。
+     */
+    submit(question, images, spreadsheets, isFollowUp) {
       const pics = images || [];
       const docs = spreadsheets || [];
       const userKey = nextKey();
@@ -501,6 +655,7 @@ Component({
             role: 'user',
             text: question,
             images: pics,
+            isFollowUp: !!isFollowUp,
             // 只留文件名：附件本体是几百 KB 的 base64，进 messages 会被 setData 拒绝
             files: docs.map((d) => d.filename).filter((n) => !!n),
           },
@@ -579,6 +734,25 @@ Component({
         onDownload: (payload) => {
           this.pendingDownload = payload;
         },
+        // **立刻挂上去，不压到这一轮结束**：一轮里可能同时办好几件事（截图/导出/定时），
+        // 压到最后用户全程看不到进展，只觉得「特别慢、不知道发生了什么」（真机反馈）。
+        onImage: (payload) => {
+          this.flushPendingImageNow(payload, botKey);
+        },
+        // 长任务进度：running 挂一行「正在截图…」，done 撤掉，failed 留着（那正是要害）
+        onTool: (payload) => {
+          const label = TOOL_BUSY_LABEL[payload && payload.name];
+          if (!label) return;
+          const idx = this.indexOfKey(botKey);
+          if (idx < 0) return;
+          const status = payload.status;
+          this.setData({
+            ['messages[' + idx + '].toolBusy']:
+              status === 'running' ? { label: label, status: 'running' }
+                : status === 'failed' ? { label: label, status: 'failed' }
+                  : null,
+          });
+        },
         onDone: (payload) => {
           if (payload && typeof payload.sessionId === 'number' && payload.sessionId > 0) {
             this.setData({ sessionId: payload.sessionId });
@@ -588,6 +762,8 @@ Component({
           this.finishTurn(botKey, null, payload);
           this.flushPendingNav();
           this.flushPendingDownload(botKey);
+          // 这一轮可能刚设了定时：拉回来挂到这条消息下（也顺带刷新旧的，等它出结果）
+          this.mountTimers();
         },
         onError: (msg) => this.finishTurn(botKey, msg),
       };
@@ -644,6 +820,294 @@ Component({
       if (idx < 0) return;
       this.setData({ ['messages[' + idx + '].download']: dl });
       this.scrollToEnd();
+    },
+
+    /** 空上下文：给 wxml 里 `catch:touchmove` 用，只吃掉事件不做事（挡穿透滚动）。 */
+    noop() {},
+
+    /**
+     * 点图放大。抽屉里的图是缩放铺的（长页面不铺会把对话顶没），看不清细节，
+     * 所以必须给一个点击进系统级预览的口子 —— 那是小程序里唯一能真正放大/手势缩放的地方。
+     */
+    onShotTap(e) {
+      const path = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.path) || '';
+      if (!path) return;
+      wx.previewImage({ urls: [path], current: path });
+    },
+
+    /**
+     * 图加载完补一次滚到底。
+     *
+     * <p>为什么必须补：图是 `widthFix`，**加载完才撑开高度**。而取图那一步的 `scrollToEnd` 发生在
+     * 加载之前 —— 那时算出来的「底部」是没算这张图的高度的，等图画出来，底部就跑到屏幕下面去了。
+     * 表现是：图上一直在最后一条回复的下面一屏，怎么都看不到（真机反馈过）。
+     */
+    onShotLoaded() {
+      this.scrollToEnd();
+    },
+
+    /**
+     * 把这个会话的倒计时拉回来、挂到对应那条消息上。
+     *
+     * <p>与网页端同一口径：实时那轮挂到刚说完那条；历史/缓存恢复按 messageId 挂回原位。
+     * 已经挂上的只刷状态 —— 等它从「等待」变成「已执行 / 失败」。
+     *
+     * <p>归零后会**反复补拉**（见 startTimerTick）直到出结果：服务端调度器每 5 秒才扫一遍，
+     * 早问一次多半扑空，只补一次的话卡片会永远停在「正在执行…」。
+     */
+    mountTimers() {
+      const sessionId = this.data.sessionId;
+      if (!sessionId) return;
+      springAuth
+        .springRequest({ url: '/api/v1/ai/timers?scope=mine', method: 'GET', data: {} })
+        .then((res) => {
+          const body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+          const data = (body && body.data) || {};
+          const rows = (data.list || []).filter((t) => t && t.sessionId === sessionId);
+          // 倒计时要对表：服务端时间与本地差多少就补多少（和计时器页同一口径）
+          const serverNow = Number(data.serverNowMillis) || 0;
+          if (serverNow > 0) this.timerSkewMs = serverNow - Date.now();
+          if (rows.length === 0) return;
+          const msgs = this.data.messages.slice();
+          const mounted = {};
+          msgs.forEach((m) => (m.timers || []).forEach((x) => { mounted[x.id] = true; }));
+          // ① 已挂上的刷状态 ② 新的找落点
+          msgs.forEach((m, i) => {
+            if (!m.timers) return;
+            msgs[i] = {
+              ...m,
+              timers: m.timers.map((x) => {
+                const fresh = rows.find((y) => y.id === x.id);
+                return fresh ? this.toTurnTimer(fresh) : x;
+              }),
+            };
+          });
+          rows.filter((r) => !mounted[r.id]).forEach((r) => {
+            /*
+             * 落点 = **载体刚收尾的那一条**（见 lastFinalizedKey 的注释）。
+             * 不看服务端的 messageId：那个锚指的是「工具调用那条消息」，跟这里的消息不是一回事，
+             * 而且常常落在挂起那一条上（正文为空、抽屉故意不画），挂上去就隐形了。
+             *
+             * 判「能不能挂」用 isRenderableMsg 而不是「有没有正文」：只出了图/只挂了卡片的那一轮
+             * 同样画得出来。用「有没有正文」会一路回退到最早的问候语上（真机就是这么挂错位置的）。
+             */
+            let idx = this.lastFinalizedKey ? this.indexOfKey(this.lastFinalizedKey) : -1;
+            if (idx < 0 || msgs[idx].role !== 'assistant' || !this.isRenderableMsg(msgs[idx])) {
+              idx = -1;
+              for (let i = msgs.length - 1; i >= 0; i -= 1) {
+                if (msgs[i].role === 'assistant' && this.isRenderableMsg(msgs[i]) && !msgs[i].fromTimer) {
+                  idx = i;
+                  break;
+                }
+              }
+            }
+            if (idx < 0) return;
+            msgs[idx] = { ...msgs[idx], timers: [...(msgs[idx].timers || []), this.toTurnTimer(r)] };
+          });
+          this.setData({ messages: msgs });
+          this.tickTimers();
+          this.applyTimerTicks();
+        })
+        .catch(() => { /* 倒计时读不到不影响对话 */ });
+    },
+
+    /** 服务端那条计时器 → 这一页要渲染的形状。 */
+    toTurnTimer(t) {
+      return {
+        id: t.id,
+        label: t.label || '定时任务',
+        fireAtMillis: Number(t.fireAtMillis) || 0,
+        status: t.status,
+        statusZh: t.statusZh,
+        ok: t.ok === undefined ? null : t.ok,
+        error: t.error,
+      };
+    },
+
+    /** 还有在跑的倒计时就每秒走一格（挂在 timerTicks 上，wxml 按 id 取）。 */
+    tickTimers() {
+      const live = [];
+      this.data.messages.forEach((m) => (m.timers || []).forEach((x) => {
+        if (TIMER_LIVE_STATUSES.indexOf(x.status) >= 0) live.push(x);
+      }));
+      if (live.length === 0) {
+        if (this.timerTickHandle) { clearInterval(this.timerTickHandle); this.timerTickHandle = null; }
+        if (Object.keys(this.data.timerTicks || {}).length) this.setData({ timerTicks: {} });
+        return;
+      }
+      this.applyTimerTicks();
+      if (this.timerTickHandle) return;
+      this.timerTickHandle = setInterval(() => this.applyTimerTicks(), 1000);
+    },
+
+    /**
+     * 重算所有倒计时的显示文案（不止在跑的那些 —— 已结束的也要出一句「已执行 · 成功」）。
+     * 结果放在 `timerTicks` 上，wxml 按 id 取。
+     */
+    applyTimerTicks() {
+      const now = Date.now() - (this.timerSkewMs || 0);
+      const ticks = {};
+      let needRefetch = false;
+      const finished = [];
+      this.data.messages.forEach((m) => (m.timers || []).forEach((x) => finished.push(x)));
+      finished.forEach((x) => {
+        // 刚从「在跑」变终态 → 必须补拉：定时器写回会话的那条汇报就在这一刻出现。
+        // 少了这个判断，跳秒会在卡片变「已完成」的同一拍停下，正好错过那条汇报（真机踩到）。
+        const prevStatus = this.timerSeenStatus[x.id];
+        if (prevStatus && TIMER_LIVE_STATUSES.indexOf(prevStatus) >= 0
+            && TIMER_LIVE_STATUSES.indexOf(x.status) < 0) {
+          needRefetch = true;
+        }
+        this.timerSeenStatus[x.id] = x.status;
+        if (TIMER_LIVE_STATUSES.indexOf(x.status) < 0) {
+          const failed = x.status === 'FAILED' || x.ok === false || x.ok === 0;
+          ticks[x.id] = x.statusZh + (x.status === 'FIRED' ? (failed ? ' · 失败' : ' · 成功') : '')
+            + (x.error ? '：' + x.error : '');
+          return;
+        }
+        if (x.status === 'AWAITING_CONFIRM') {
+          ticks[x.id] = '等待你确认';
+          return;
+        }
+        const remain = x.fireAtMillis - now;
+        if (remain > 0) {
+          ticks[x.id] = '还剩 ' + fmtRemain(remain);
+          return;
+        }
+        ticks[x.id] = '正在执行…';
+        // 归零之后补拉：每 5 秒一次、最多 24 次（见 mountTimers 的注释）
+        const seen = this.timerPoll[x.id] || { at: 0, tries: 0 };
+        if (seen.tries < 24 && Date.now() - seen.at >= 5000) {
+          this.timerPoll[x.id] = { at: Date.now(), tries: seen.tries + 1 };
+          needRefetch = true;
+        }
+      });
+      this.setData({ timerTicks: ticks });
+      if (needRefetch) {
+        this.mountTimers();
+        this.pullNewMessages();
+      }
+    },
+
+    /**
+     * 把服务端**新落进会话**的消息补到界面上。
+     *
+     * <p>谁会绕开对话流直接往会话里写？**定时器执行完的那条汇报** —— 它跑在调度线程里，
+     * 这头没有任何流连接。不补的话：通知都推到他手机上了，对话里却要重开才看得见。
+     */
+    pullNewMessages() {
+      const sessionId = this.data.sessionId;
+      if (!sessionId) return;
+      aiChatStream
+        .fetchSessionMessages(sessionId)
+        .then((msgs) => {
+          const list = msgs || [];
+          if (list.length === 0) return;
+          const known = this.data.messages.slice();
+          const maxKnown = known.reduce((mx, m) => (m.messageId > mx ? m.messageId : mx), 0);
+          // 一个 id 都不知道就**不补**：这种情况无从判断哪条是新的，硬补会把整段对话复制一遍
+          if (maxKnown <= 0) return;
+          const fresh = list.filter((m) => m.role === 'assistant' && Number(m.id) > maxKnown
+            && String(m.content || '').trim().length > 0);
+          if (fresh.length === 0) return;
+          const appended = fresh.map((m) => {
+            const text = String(m.content || '');
+            // fromTimer 标记：倒计时兜底找落点时要跳过它（见 mountTimers 的注释）
+            const item = { key: nextKey(), role: 'assistant', text: text, typed: true,
+              messageId: Number(m.id), fromTimer: true };
+            if (looksLikeMarkdown(text)) item.html = markdown.mdToHtml(text);
+            return item;
+          });
+          this.setData({ messages: known.concat(appended) });
+          this.scrollToEnd();
+        })
+        .catch(() => { /* 拉不到就算了，别把这一轮搞坏 */ });
+    },
+
+    /** 停止一个倒计时。 */
+    onTimerStop(e) {
+      const id = e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.id : null;
+      if (!id) return;
+      springAuth
+        .springRequest({ url: '/api/v1/ai/timers/' + encodeURIComponent(id) + '/cancel', method: 'POST', data: {} })
+        .then(() => { wx.showToast({ title: '已停止', icon: 'none' }); this.mountTimers(); })
+        .catch(() => wx.showToast({ title: '没能停止', icon: 'none' }));
+    },
+
+    /**
+     * 确认一次**到点了但被挂起**的定时。新定时不会再进这个状态（确认前移到建单那一刻），
+     * 这个入口是给改造前就卡在「等待确认」的老单子留的。
+     */
+    onTimerConfirm(e) {
+      const id = e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.id : null;
+      if (!id) return;
+      springAuth
+        .springRequest({ url: '/api/v1/ai/timers/' + encodeURIComponent(id) + '/confirm', method: 'POST', data: {} })
+        .then(() => { wx.showToast({ title: '已确认', icon: 'none' }); this.mountTimers(); })
+        .catch(() => wx.showToast({ title: '确认失败', icon: 'none' }));
+    },
+
+    /**
+     * 把攒下的图片指令挂到产出它的那一轮消息上，并把图取回来。
+     *
+     * <p>**小程序截不了自己的原生界面**（没有这个 API），所以这条链上的图一律是
+     * **服务端渲染好、按产物 id 取回来的**：工具在小程序上返回 `render:'server'`，
+     * 编排层当场用无头浏览器把**网页版**渲染出来写进产物，下发的 path 是空的。
+     * 代价是截到的是网页版而不是他手机上的界面，而且只有**有网页版的页面**才截得到。
+     *
+     * <p>图要先落到本地文件才能给 `<image>` 显示（拿的是 arrayBuffer），所以是异步三步：
+     * 占位 → 取字节写文件 → ready。中途失败就停在 failed，让卡片自己说清楚。
+     */
+    /** 图事件到了就立刻挂（见 onImage 的注释）。 */
+    flushPendingImageNow(shot, botKey) {
+      if (!shot || !shot.exportId) return;
+      this.loadShot(botKey, shot.exportId, shot.label);
+    },
+
+    /**
+     * 把一张截图取回来挂到指定那条消息上。**实时与历史两条路共用**（网页端也是同一口径：
+     * 用户在历史里看到的，和他当时看到的是同一个东西）。
+     *
+     * <p>图要先落到本地文件才能给 `<image>` 显示（拿的是 arrayBuffer），所以是异步三步：
+     * 占位 → 取字节写文件 → ready。中途失败就停在 failed，让卡片自己说清楚。
+     */
+    /**
+     * 图取回来之后要写回哪一条 —— **按产物 id 现找**，不能记着当初那个下标。
+     *
+     * <p>取图是异步三步（占位 → 拉字节 → 写文件），这中间可能刚好有一次「收拢」把这张图
+     * 从挂起那条气泡搬到了收尾那条上。按下标写回去会**在旧气泡上又冒出一张**，
+     * 而新气泡永远停在「正在截…」。
+     */
+    patchShotByExport(exportId, shot) {
+      const patch = {};
+      this.data.messages.forEach((m, i) => {
+        if (m.shot && String(m.shot.exportId) === String(exportId)) {
+          patch['messages[' + i + '].shot'] = shot;
+        }
+      });
+      if (Object.keys(patch).length) this.setData(patch);
+    },
+
+    loadShot(msgKey, exportId, label) {
+      const idx = this.indexOfKey(msgKey);
+      if (idx < 0) return;
+      const name = label || '页面截图';
+      // exportId 一并留在数据里：缓存只存这个（临时文件路径不能跨会话用），恢复时靠它重取
+      this.setData({ ['messages[' + idx + '].shot']: { label: name, exportId: exportId, state: 'loading', filePath: '' } });
+      springAuth
+        .springRequestBinary('/api/v1/ai/exports/' + encodeURIComponent(exportId) + '/download', {
+          errorMessage: '这张图暂时取不到',
+          forbiddenMessage: '没有权限看这张图',
+        })
+        .then((r) => {
+          const file = wx.env.USER_DATA_PATH + '/shot_' + Date.now() + '.png';
+          wx.getFileSystemManager().writeFileSync(file, r.data);
+          this.patchShotByExport(exportId, { label: name, exportId: exportId, state: 'ready', filePath: file });
+          this.scrollToEnd();
+        })
+        .catch(() => {
+          this.patchShotByExport(exportId, { label: name, exportId: exportId, state: 'failed', filePath: '' });
+        });
     },
 
     /**
@@ -772,12 +1236,23 @@ Component({
     },
 
     pushBotTurn(botKey) {
+      /*
+       * **别把未答的普通问题一起清掉。**
+       *
+       * 一轮里可能有多个工具各抛一次交互（导出要选维度 + 建定时要确认）。写操作的确认会把那一轮
+       * **挂起收尾**、选项先渲染出来；点「确认执行」续跑时要开新的一轮 —— 如果这里无条件清队列，
+       * 导出那批未答的选项就被**覆盖没了**（真机反馈）。
+       * 只清「确认」类（这一次就是回答它），普通问题留着继续问。
+       */
+      const kept = (this.data.queue || []).filter((q) => q.kind !== 'confirm');
       this.setData({
         messages: this.data.messages.concat([
           { key: botKey, role: 'assistant', text: '', pending: true, typing: true },
         ]),
         ...this.clearedQueuePatch(),
+        queue: kept,
       });
+      if (kept.length > 0) this.syncWizard(kept, [], 0);
     },
 
     // ── 待答问题队列 ──────────────────────────────────────────
@@ -882,7 +1357,7 @@ Component({
         return;
       }
       if (!this.data.wizardMode) {
-        this.submit(value);
+        this.submit(value, null, null, true);
         return;
       }
       const answers = this.data.answers.slice();
@@ -917,7 +1392,7 @@ Component({
         return;
       }
       if (!this.data.wizardMode) {
-        this.submit(joined);
+        this.submit(joined, null, null, true);
         return;
       }
       const answers = this.data.answers.slice();
@@ -939,15 +1414,22 @@ Component({
       }
       const userKey = nextKey();
       const botKey = nextKey();
+      // **只把这一个「确认」拿掉，别整个清空**：一轮里可能有多个工具各抛一次交互
+      // （导出要选维度 + 建定时要确认），点确认只是回答后者 —— 整个清空会把导出那批
+      // 还没答的问题一起抹掉（真机反馈过「导出的选项没了」）。
+      const kept = (this.data.queue || []).filter((q) => q.kind !== 'confirm');
       this.setData({
         messages: this.data.messages.concat([
-          { key: userKey, role: 'user', text: label },
+          // isFollowUp：这不是新的一次提问，是接着上面那条回复把没办完的事办完
+          { key: userKey, role: 'user', text: label, isFollowUp: true },
           { key: botKey, role: 'assistant', text: '', pending: true, typing: true },
         ]),
         draft: '',
         canSend: false,
         ...this.clearedQueuePatch(),
+        queue: kept,
       });
+      if (kept.length > 0) this.syncWizard(kept, [], 0);
       this.startStream(botKey, () =>
         aiChatStream.streamInteraction(sessionId, token, value, this.handlersFor(botKey)),
       );
@@ -983,7 +1465,7 @@ Component({
       const text = (this.data.customDraft || '').trim();
       if (!text || this.data.sending) return;
       if (!this.data.wizardMode) {
-        this.submit(text);
+        this.submit(text, null, null, true);
         return;
       }
       const answers = this.data.answers.slice();
@@ -997,7 +1479,7 @@ Component({
       if (!this.data.allAnswered || this.data.sending) return;
       const q = this.data.queue;
       const filled = q.map((_, i) => this.data.answers[i] || '');
-      this.submit(composeAnswers(q, filled));
+      this.submit(composeAnswers(q, filled), null, null, true);
     },
 
     onCancelQueue() {
@@ -1148,9 +1630,64 @@ Component({
       this.setData(patch, () => this.markdownize(idx));
     },
 
+    /**
+     * 把同一次提问产出的附件**并到这一次提问真正收尾的那条气泡上**。
+     *
+     * <p>一次提问中间可能挂起过（写操作要确认）—— 挂起**不算这次提问结束**，点完确认办的还是同一件事。
+     * 可挂起那轮的正文是空的（抽屉故意不画它），图/导出卡挂上去就等于没挂。于是往前收：
+     * 遇到助手轮就搬它的附件；遇到「确认执行」那条用户轮继续往前；遇到真正的新提问就停。
+     *
+     * <p>**搬完清空源**：源那条本来就不画，清掉不损失任何东西，同时让「又收尾一次」不会重复搬 ——
+     * 天然幂等。
+     */
+    gatherArtifacts(botKey) {
+      const msgs = this.data.messages.slice();
+      const lastIdx = this.indexOfKey(botKey);
+      if (lastIdx < 0 || msgs[lastIdx].role !== 'assistant') return;
+      const target = msgs[lastIdx];
+      // 目标自己已经有的算「更新的」，保留（一次提问里连截两张时，要留后一张）
+      let shot = target.shot || null;
+      let download = target.download || null;
+      const timers = (target.timers || []).slice();
+      const sources = [];
+      for (let i = lastIdx - 1; i >= 0; i -= 1) {
+        const t = msgs[i];
+        if (t.role === 'user') {
+          if (t.isFollowUp) continue; // 续答（点确认、答工具抛的问题）不算新提问，继续往前收
+          break; // 上一次真正的提问 → 停
+        }
+        if (!t.shot && !t.download && !(t.timers && t.timers.length)) continue;
+        if (t.shot && !shot) shot = t.shot;
+        if (t.download && !download) download = t.download;
+        (t.timers || []).forEach((x) => {
+          if (!timers.some((y) => String(y.id) === String(x.id))) timers.push(x);
+        });
+        sources.push(i);
+      }
+      if (sources.length === 0) return;
+      const patch = {};
+      if (shot) patch['messages[' + lastIdx + '].shot'] = shot;
+      if (download) patch['messages[' + lastIdx + '].download'] = download;
+      if (timers.length) patch['messages[' + lastIdx + '].timers'] = timers;
+      sources.forEach((i) => {
+        patch['messages[' + i + '].shot'] = null;
+        patch['messages[' + i + '].download'] = null;
+        patch['messages[' + i + '].timers'] = null;
+      });
+      this.setData(patch);
+    },
+
+    /** 这一条会不会被画出来 —— 判据必须与 wxml 那条 wx:if **逐字一致**（见 index.wxml）。 */
+    isRenderableMsg(m) {
+      if (m.role !== 'assistant') return true;
+      return !!(String(m.text || '').trim() || m.shot || m.download || (m.timers && m.timers.length));
+    },
+
     /** 收尾：errorText 非空表示这条是错误文案 */
     finishTurn(botKey, errorText, payload) {
       this.stopLiveMeta();
+      // **刚收尾的就是这一条**（key 是稳定的，不像 id 那样两头对不上）
+      this.lastFinalizedKey = botKey;
       const idx = this.indexOfKey(botKey);
       const patch = {
         sending: false,
@@ -1166,8 +1703,15 @@ Component({
         patch['messages[' + idx + '].typing'] = false;
         const meta = this.metaTextOf(payload);
         if (meta) patch['messages[' + idx + '].meta'] = meta;
+        // 记下这一轮助手消息的 id：补拉新消息、把倒计时挂回原位都靠它。
+        // 不记的话，「服务端又落进来的消息」无从比对，会把已显示的再追加一遍（真机看到重复回复）
+        if (payload && payload.messageId != null) {
+          patch['messages[' + idx + '].messageId'] = Number(payload.messageId);
+        }
       }
       this.setData(patch);
+      // 这一次提问真正收尾了：把中间挂起那几轮上的附件并到这条上（见 gatherArtifacts）
+      this.gatherArtifacts(botKey);
       this.scrollToEnd();
     },
 
@@ -1218,12 +1762,13 @@ Component({
       if (key) this.finishAbortedTurn(key);
     },
 
-    /** 被中止的那一轮：说过话就留成一条并标已结束；一个字都没说就整个撤掉，别留空气泡。 */
+    /** 被中止的那一轮：说过话、或已经挂上了附件就留成一条；什么都没有才整个撤掉，别留空气泡。 */
     finishAbortedTurn(botKey) {
       const idx = this.indexOfKey(botKey);
       if (idx < 0) return;
       const msg = this.data.messages[idx];
-      if (msg && String(msg.text || '').trim()) {
+      // 判据带上附件：图已经贴上了却被当成空气泡撤掉，等于把用户刚看到的东西吞了
+      if (msg && this.isRenderableMsg(msg)) {
         this.finishTurn(botKey, null, null);
         return;
       }
@@ -1319,9 +1864,11 @@ Component({
     },
 
     onRemoveImage(e) {
-      const url = e.currentTarget.dataset.url;
+      // 键是 **path**（onPickImage 存的就是它）。以前这里取 dataset.url —— 那是 undefined，
+      // 过滤条件 `i.path !== undefined` 恒真，于是点任意一张都会把**全部**待发图清掉。
+      const path = e.currentTarget.dataset.path;
       this.setData({
-        images: this.data.images.filter((i) => i.path !== url),
+        images: this.data.images.filter((i) => i.path !== path),
       });
     },
 
