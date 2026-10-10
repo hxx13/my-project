@@ -72,6 +72,21 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         min_role, default_min_role, enabled, parent_node_key, chain_key,
                         auto_discovered, manual_override
                     ) VALUES (
+                        'WEB', 'entry:web:admin:telemetry-longterm', 'ENTRY', '数据监测', '/admin/telemetry-longterm', 'sidebar',
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] telemetry-longterm 入口种子跳过: {}", e.getMessage());
+        }
+        try {
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
                         'WEB', 'entry:web:admin:facility-maintenance', 'ENTRY', '检查维护', '/admin/facility-maintenance', 'sidebar',
                         'STAFF', 'STAFF', 1, NULL, NULL,
                         0, 0
@@ -395,6 +410,25 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                     """);
         } catch (Exception e) {
             log.debug("[page-permission-schema] 填报报表入口种子跳过: {}", e.getMessage());
+        }
+
+        // ========== 数据监测（长期归档）小程序页 ==========
+        // 网页版那条 entry:web:admin:telemetry-longterm 在上面已有；这里是**小程序侧**的页面节点。
+        // 不登记也不会漏权限（页面自己带 ADMIN 兜底），登记了后台「页面权限设置」里才看得见、能按角色调。
+        try {
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'page:mini:telemetry-longterm', 'PAGE', '数据监测', '/pages/telemetryLongterm/index', NULL,
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] telemetry-longterm 小程序页种子跳过: {}", e.getMessage());
         }
 
         int added = rowCount() - existing;

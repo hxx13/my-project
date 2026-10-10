@@ -164,6 +164,30 @@
 }
 
 /* 动物房温湿度页：超限报警——数字保持深红可读，仅光晕强弱呼吸（与小程序 art-metric-oor-breathe 一致） */
+/* 动物房温湿度页：开关量「带电」闪电 —— 合闸（开）时琥珀实心 + 光晕呼吸；
+   断开（关）走 text-zinc-300 静态灰，不挂这个类。与上面报警呼吸同一套写法（含 reduced-motion 门控）。 */
+.telemetry-switch-live {
+  color: #f59e0b;
+}
+
+@keyframes telemetry-switch-live-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 1px rgba(245, 158, 11, 0.5));
+    opacity: 1;
+  }
+  50% {
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.95)) drop-shadow(0 0 9px rgba(251, 191, 36, 0.55));
+    opacity: 0.78;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .telemetry-switch-live {
+    animation: telemetry-switch-live-breathe 1.15s ease-in-out infinite;
+  }
+}
+
 @keyframes telemetry-alarm-breathe {
   0%,
   100% {

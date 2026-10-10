@@ -196,20 +196,24 @@ export default function AgvDualQuadrant(props: Props) {
           onCoordFrameRotate={onCoordFrameRotate}
         />
 
-        {/* 每车叉臂抬升指示器 — 横向排列，不遮挡 */}
+        {/* 每车叉臂抬升指示器 — 各车横向并排；每格两列：
+            第一列是竖条（滑块位置=叉臂高度），第二列文字纵向排布：标注 → 数值 → 小车标识 */}
         <div className="absolute top-2 left-2 flex items-start gap-2 pointer-events-none flex-wrap">
           {agvs.map(agv => {
             const fPct = agv.forkHeight != null ? Math.min(1, Math.max(0, agv.forkHeight / FORK_MAX_M)) * 100 : 0;
             return (
               <div key={agv.ip} className="flex items-center gap-1.5 bg-[color-mix(in_srgb,var(--app-color-surface-container)_80%,transparent)] rounded px-1.5 py-1">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: agv.color }} />
                 <div className="relative w-2.5 h-24 rounded-full bg-[var(--app-color-border-default)]">
                   <div className="absolute left-1/2 -translate-x-1/2 w-5 h-5 rounded-full border-2 border-white shadow-md"
                     style={{ bottom: `${fPct}%`, transform: `translate(-50%, 50%)`, backgroundColor: agv.color, transition: "bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }} />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-semibold text-[var(--app-color-text-primary)]">{agv.label}</span>
-                  <span className="text-[8px] text-[var(--app-color-text-secondary)] tabular-nums">{agv.forkHeight != null ? agv.forkHeight.toFixed(3) : "—"} m</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[12px] font-bold leading-none text-[var(--app-color-text-secondary)]">叉臂高度</span>
+                  <span className="text-[14px] font-bold tabular-nums leading-none text-[var(--app-color-text-primary)]">
+                    {agv.forkHeight != null ? (agv.forkHeight * 100).toFixed(1) : "—"}
+                    <span className="ml-0.5 text-[10px] font-semibold text-[var(--app-color-text-secondary)]">cm</span>
+                  </span>
+                  <span className="text-[12px] font-bold text-[var(--app-color-text-primary)]">{agv.label}</span>
                 </div>
               </div>
             );

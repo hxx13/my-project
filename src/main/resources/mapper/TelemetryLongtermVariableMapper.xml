@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryLongtermVariableMapper">
+
+    <resultMap id="VariableMap" type="com.example.demo.modules.telemetry.entity.TelemetryLongtermVariableRow">
+        <id column="id" property="id"/>
+        <result column="wincc_variable_name" property="winccVariableName"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="display_label" property="displayLabel"/>
+        <result column="unit" property="unit"/>
+        <result column="enabled" property="enabled"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectAllOrdered" resultMap="VariableMap">
+        SELECT * FROM telemetry_longterm_variable ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <delete id="deleteAll">
+        DELETE FROM telemetry_longterm_variable
+    </delete>
+
+    <insert id="insertBatch">
+        INSERT INTO telemetry_longterm_variable
+            (wincc_variable_name, sort_order, display_label, unit, enabled)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.winccVariableName}, #{item.sortOrder}, #{item.displayLabel}, #{item.unit}, #{item.enabled})
+        </foreach>
+    </insert>
+</mapper>

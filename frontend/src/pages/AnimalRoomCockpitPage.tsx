@@ -8,7 +8,6 @@ import {
   fetchWinccAnimalRoomTelemetry,
   formatTelemetryTs,
 } from "@/api/telemetryApi";
-import { buildSyntheticHvacStructTab } from "@/telemetry-view/animalTelemetryHvacUnits";
 import {
   ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY,
   useTwinFullscreenReturn,
@@ -18,8 +17,9 @@ import type { CockpitFloorBlock } from "./animalRoomCockpit/buildCockpitFloorBlo
 import { buildCockpitFloorBlocks, COCKPIT_B1F_MERGED_TAB_KEY, mergeB1FPrefixedRoomsIntoSingleCockpitColumn } from "./animalRoomCockpit/buildCockpitFloorBlocks";
 import { cockpitSplitMetricVerticalBarOption, computeCockpitPartitionUnifiedAxis, metricHasAnyDataIn } from "./animalRoomCockpit/cockpitChartOptions";
 import { CockpitAutoResizeChart } from "./animalRoomCockpit/CockpitAutoResizeChart";
-import { CockpitMachineRoomSidebar } from "./animalRoomCockpit/CockpitMachineRoomSidebar";
 import { CockpitPowerStationMetrics } from "./animalRoomCockpit/CockpitPowerStationMetrics";
+import { CockpitAgvMetrics } from "./animalRoomCockpit/CockpitAgvMetrics";
+import { CockpitMetricsBoard } from "./animalRoomCockpit/CockpitMetricsBoard";
 import {
   CockpitRobotArmMetricSlots,
   COCKPIT_COMPACT_METRIC_PILL_BASE,
@@ -27,7 +27,7 @@ import {
 } from "./animalRoomCockpit/CockpitRobotArmMetricSlots";
 import { CockpitTopBarFirstRow } from "./animalRoomCockpit/CockpitTopBarLayout";
 import { AnimalRoomConsoleBackButton } from "./animalRoomShared/AnimalRoomConsoleBackButton";
-import { ChevronLeft, ChevronRight, Clock, Cpu, Factory, Forklift, Gauge, Zap } from "lucide-react";
+import { Clock, Cpu, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import "./animalRoomCockpit/cockpitPage.css";
@@ -36,33 +36,17 @@ const COCKPIT_HIDDEN_PARTITIONS_KEY = "animalRoomCockpit.hiddenPartitionTabKeys"
 /** 旧版仅 B1F 开关，迁移一次后删除 */
 const COCKPIT_SHOW_B1F_LEGACY_KEY = "animalRoomCockpit.showB1F";
 
-const COCKPIT_SIDEBAR_DOCK_KEY = "animalRoomCockpit.sidebarDockV3";
-/** 展开侧栏固定宽度（px），不可拖拽缩放 */
-const COCKPIT_SIDEBAR_PANEL_PX = 240;
+/** v2：默认档位从「温湿度压强」改成「运行指标」，换键让旧默认值失效一次 */
+const COCKPIT_VIEW_KEY = "twin.cockpit.viewModeV2";
 
-type CockpitSidebarDock = { leftOpen: boolean; rightOpen: boolean };
+type CockpitViewMode = "env" | "metrics";
 
-function readSidebarDockFromStorage(): CockpitSidebarDock {
+function readCockpitViewMode(): CockpitViewMode {
   try {
-    const raw = sessionStorage.getItem(COCKPIT_SIDEBAR_DOCK_KEY);
-    if (raw) {
-      const j = JSON.parse(raw) as { leftOpen?: unknown; rightOpen?: unknown };
-      return {
-        leftOpen: typeof j.leftOpen === "boolean" ? j.leftOpen : false,
-        rightOpen: typeof j.rightOpen === "boolean" ? j.rightOpen : false,
-      };
-    }
+    // 默认「运行指标」；只有明确切过「温湿度压强」才记 env
+    return localStorage.getItem(COCKPIT_VIEW_KEY) === "env" ? "env" : "metrics";
   } catch {
-    /* ignore */
-  }
-  return { leftOpen: false, rightOpen: false };
-}
-
-function saveSidebarDockToStorage(d: CockpitSidebarDock): void {
-  try {
-    sessionStorage.setItem(COCKPIT_SIDEBAR_DOCK_KEY, JSON.stringify(d));
-  } catch {
-    /* ignore */
+    return "metrics";
   }
 }
 
@@ -243,11 +227,15 @@ export default function AnimalRoomCockpitPage() {
   const powerStationMetricsRef = useRef<HTMLDivElement>(null);
   const [stripRect, setStripRect] = useState({ w: 800, h: 420 });
   const [metricsLaneAlignPx, setMetricsLaneAlignPx] = useState<number | null>(null);
-  const [sidebarDock, setSidebarDock] = useState<CockpitSidebarDock>(() => readSidebarDockFromStorage());
+  const [viewMode, setViewMode] = useState<CockpitViewMode>(readCockpitViewMode);
 
   useEffect(() => {
-    saveSidebarDockToStorage(sidebarDock);
-  }, [sidebarDock]);
+    try {
+      localStorage.setItem(COCKPIT_VIEW_KEY, viewMode);
+    } catch {
+      /* 隐私模式下写不进，忽略 */
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     try {
@@ -301,11 +289,6 @@ export default function AnimalRoomCockpitPage() {
   const cockpitFloors = useMemo(
     () =>
       mergeB1FPrefixedRoomsIntoSingleCockpitColumn(buildCockpitFloorBlocks(structTabs, facilityLayoutRules)),
-    [structTabs, facilityLayoutRules]
-  );
-
-  const cockpitMachineRoomTab = useMemo(
-    () => buildSyntheticHvacStructTab(structTabs, facilityLayoutRules),
     [structTabs, facilityLayoutRules]
   );
 
@@ -383,7 +366,14 @@ export default function AnimalRoomCockpitPage() {
     const ro = new ResizeObserver(apply);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [cockpitVisibleFloors.length, pageQ.isSuccess, sidebarDock.leftOpen, sidebarDock.rightOpen]);
+  }, [
+    cockpitVisibleFloors.length,
+    pageQ.isSuccess,
+    // viewMode 必须在依赖里：切到「运行指标」时这条 div 被卸载，观察者会对一个已脱离文档的
+    // 元素报 0×0 把 stripRect 写成 0；切回来时 div 是新的，若这里不重跑，观察者还盯着旧节点，
+    // 柱图高度就再也量不回来（表现为整片柱图被压扁成一条）。
+    viewMode,
+  ]);
 
   if (pageQ.isError) {
     console.warn("[AnimalRoomCockpit] GET /animal-room failed", pageQ.error);
@@ -450,6 +440,26 @@ export default function AnimalRoomCockpitPage() {
           middle={
             cockpitFloors.length > 0 ? (
               <>
+                <div className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900/70 p-0.5">
+                  {([
+                    ["env", "温湿度压强"],
+                    ["metrics", "运行指标"],
+                  ] as const).map(([k, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setViewMode(k)}
+                      className={cn(
+                        "rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                        viewMode === k
+                          ? "bg-cyan-500/20 text-cyan-100 shadow-sm"
+                          : "text-slate-400 hover:text-slate-200"
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <span className="pointer-events-none shrink-0 text-[9px] font-medium text-cyan-500/90 sm:text-[10px]">分区</span>
                 {cockpitFloors.map((f) => (
                   <div
@@ -486,9 +496,15 @@ export default function AnimalRoomCockpitPage() {
                   <span>{formatTelemetryTs(page.fetchedAt)}</span>
                 </span>
               ) : null}
-              {showRefreshing ? (
-                <span className="shrink-0 whitespace-nowrap text-[9px] text-cyan-300/80 sm:text-[10px]">刷新中…</span>
-              ) : null}
+              {/* 「刷新中」常驻占位、只切可见性：文本一出现一消失会把左边的拉取时间戳推来推去 */}
+              <span
+                className={cn(
+                  "shrink-0 whitespace-nowrap text-[9px] text-cyan-300/80 sm:text-[10px]",
+                  !showRefreshing && "invisible"
+                )}
+              >
+                刷新中…
+              </span>
             </>
           }
         />
@@ -498,11 +514,9 @@ export default function AnimalRoomCockpitPage() {
             className="flex min-h-0 min-w-0 flex-nowrap items-stretch gap-2 overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={metricsLaneAlignPx != null ? { minHeight: metricsLaneAlignPx } : undefined}
           >
-            <StatPlaceholder variant="metricsPill" icon={Zap} title="耗电" hint="占位：后续由算法汇总用电" />
-            <StatPlaceholder variant="metricsPill" icon={Gauge} title="耗能" hint="占位：后续由算法汇总能耗" />
-            <StatPlaceholder variant="metricsPill" icon={Forklift} title="AGV" hint="占位：运行台数/任务/故障" />
+            <CockpitAgvMetrics />
             {page?.winccEnabled === true && cockpitRobotArmTags.length > 0 ? (
-              <CockpitRobotArmMetricSlots tagItems={page.tagItems} telemetryFetching={showRefreshing} />
+              <CockpitRobotArmMetricSlots tagItems={page.tagItems} />
             ) : (
               <StatPlaceholder
                 variant="metricsPill"
@@ -511,12 +525,10 @@ export default function AnimalRoomCockpitPage() {
                 hint="WinCC 启用且变量名/展示名含「机械臂」时，此处按台数各占一槽（1 台 1 槽、2 台 2 槽）；1=运行中，0=停机"
               />
             )}
-            <StatPlaceholder variant="metricsPill" icon={Factory} title="洗笼机" hint="占位：运行周期/状态" />
             {page?.winccEnabled === true ? (
               <CockpitPowerStationMetrics
                 ref={powerStationMetricsRef}
                 tagItems={page.tagItems}
-                telemetryFetching={showRefreshing}
               />
             ) : null}
           </div>
@@ -524,56 +536,11 @@ export default function AnimalRoomCockpitPage() {
       </header>
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-row overflow-hidden">
-        {sidebarDock.leftOpen ? (
-          <aside
-            style={{ width: COCKPIT_SIDEBAR_PANEL_PX, minWidth: COCKPIT_SIDEBAR_PANEL_PX }}
-            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-cyan-500/15 bg-slate-950/40"
-            aria-label="左侧边栏"
-          >
-            <div className="flex shrink-0 items-center justify-between gap-1 border-b border-cyan-500/10 px-2 py-1">
-              <span className="min-w-0 truncate text-[10px] font-semibold text-cyan-200/90" title="与动物房「机房」Tab 同源">
-                机房参数
-              </span>
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-cyan-500/25 bg-slate-900/80 text-cyan-200/90 shadow-sm hover:bg-cyan-500/10"
-                title="收起左侧栏"
-                aria-label="收起左侧栏"
-                onClick={() => setSidebarDock((d) => ({ ...d, leftOpen: false }))}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:p-3" data-animal-cockpit-sidebar-scroll>
-              <CockpitMachineRoomSidebar tab={cockpitMachineRoomTab} winccEnabled={page?.winccEnabled === true} />
-            </div>
-          </aside>
-        ) : null}
-
         <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-1.5 sm:p-2.5">
-            {!sidebarDock.leftOpen ? (
-              <button
-                type="button"
-                className="pointer-events-auto absolute left-2 top-1/2 z-30 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-cyan-500/35 bg-slate-950/90 text-cyan-200/95 shadow-md shadow-black/35 backdrop-blur-sm transition hover:border-cyan-400/50 hover:bg-slate-900/95 hover:text-cyan-50 active:scale-95"
-                title="展开左侧栏"
-                aria-label="展开左侧栏"
-                onClick={() => setSidebarDock((d) => ({ ...d, leftOpen: true }))}
-              >
-                <ChevronRight className="h-3 w-3" aria-hidden />
-              </button>
-            ) : null}
-            {!sidebarDock.rightOpen ? (
-              <button
-                type="button"
-                className="pointer-events-auto absolute right-2 top-1/2 z-30 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-cyan-500/35 bg-slate-950/90 text-cyan-200/95 shadow-md shadow-black/35 backdrop-blur-sm transition hover:border-cyan-400/50 hover:bg-slate-900/95 hover:text-cyan-50 active:scale-95"
-                title="展开右侧栏"
-                aria-label="展开右侧栏"
-                onClick={() => setSidebarDock((d) => ({ ...d, rightOpen: true }))}
-              >
-                <ChevronLeft className="h-3 w-3" aria-hidden />
-              </button>
-            ) : null}
             <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-cyan-500/20 bg-slate-950/30 shadow-inner shadow-black/30">
+              {viewMode === "metrics" ? (
+                <CockpitMetricsBoard />
+              ) : (
             <div
               ref={stripRef}
               className="flex h-full min-h-0 min-w-0 flex-1 flex-row gap-1.5 overflow-hidden px-1 pb-0.5 pt-0 sm:gap-2 sm:px-2 sm:pb-1"
@@ -606,34 +573,9 @@ export default function AnimalRoomCockpitPage() {
                 />
               ))}
             </div>
+              )}
           </section>
         </div>
-
-        {sidebarDock.rightOpen ? (
-          <aside
-            style={{ width: COCKPIT_SIDEBAR_PANEL_PX, minWidth: COCKPIT_SIDEBAR_PANEL_PX }}
-            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-cyan-500/15 bg-slate-950/40"
-            aria-label="右侧边栏"
-          >
-            <div className="flex shrink-0 items-center justify-between gap-1 border-b border-cyan-500/10 px-2 py-1">
-              <button
-                type="button"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-cyan-500/25 bg-slate-900/80 text-cyan-200/90 shadow-sm hover:bg-cyan-500/10"
-                title="收起右侧栏"
-                aria-label="收起右侧栏"
-                onClick={() => setSidebarDock((d) => ({ ...d, rightOpen: false }))}
-              >
-                <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-              </button>
-              <span className="text-[10px] font-semibold text-cyan-200/90">右侧</span>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:p-3" data-animal-cockpit-sidebar-scroll>
-              <p className="text-[10px] leading-relaxed text-slate-400">
-                固定宽度 {COCKPIT_SIDEBAR_PANEL_PX}px；收起后主区边缘会显示悬浮展开钮。
-              </p>
-            </div>
-          </aside>
-        ) : null}
       </div>
     </div>
   );

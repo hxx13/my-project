@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { router } from "@/router";
 import type { Socket } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
-import toast, { Toaster } from "react-hot-toast";
+import { Toaster } from "react-hot-toast";
+import { ServerRestartNotice } from "@/components/ServerRestartNotice";
+import { useServerDownStore } from "@/store/useServerDownStore";
 import { Z_INDEX } from "@/constants/zIndex";
 import { APP_BUILD_ID, getSharedSocket } from "@/config/socketUrl";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
@@ -134,7 +136,6 @@ function GlobalSocketListener() {
                 clearTimeout(disconnectTimerRef.current);
                 disconnectTimerRef.current = null;
             }
-            toast.dismiss("socket-disconnect");
             // Expose socket globally for swipe-alert ACK emission
             (window as any).__swipeAlertSocket = socket;
         });
@@ -148,7 +149,6 @@ function GlobalSocketListener() {
                 clearTimeout(disconnectTimerRef.current);
                 disconnectTimerRef.current = null;
             }
-            toast.dismiss("socket-disconnect");
             // Re-expose after reconnect (new socket instance)
             (window as any).__swipeAlertSocket = socket;
         });
@@ -156,13 +156,10 @@ function GlobalSocketListener() {
         socket.on("disconnect", (reason) => {
             console.warn("🔴 [数字孪生基站] WebSocket 链路断开，将持续重连。原因:", reason);
             setConnected(false);
-            // 30 秒后仍未恢复 → 用户可见提示
+            // 30 秒后仍未恢复 → 交给全局弹窗；红色 toast 的原文（网络错误码）现场没人看得懂
             if (!disconnectTimerRef.current) {
                 disconnectTimerRef.current = setTimeout(() => {
-                    toast.error(
-                        "实时连接已断开超过 30 秒，数据可能已过期。正在尝试恢复…",
-                        { id: "socket-disconnect", duration: 6000 },
-                    );
+                    useServerDownStore.getState().markDown();
                 }, 30_000);
             }
         });
@@ -363,7 +360,6 @@ function GlobalSocketListener() {
                 clearTimeout(disconnectTimerRef.current);
                 disconnectTimerRef.current = null;
             }
-            toast.dismiss("socket-disconnect");
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
             socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
@@ -406,6 +402,8 @@ function App() {
               <CageColorProvider>
                 {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
                 <GlobalSocketListener />
+                {/* 🛠 后端不可达时的全局弹窗（任何路由下都要在，含门户首页与扫码工位） */}
+                <ServerRestartNotice />
                 {/* 🔒 读卡器 Enter 键全局防护（capture 阶段） */}
                 <GlobalCardReaderGuard />
                 <DiagnosticErrorBoundary>

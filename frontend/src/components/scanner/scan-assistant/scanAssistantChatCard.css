@@ -1539,6 +1539,8 @@
   object-fit: cover;
   border: 1px solid var(--app-color-border-default);
   border-radius: var(--app-radius-element);
+  /* 可点开看大图（与助手那张截图的浮层同一个）；不给提示等于藏了个功能 */
+  cursor: zoom-in;
 }
 
 .scan-assistant-ask__turn-file {

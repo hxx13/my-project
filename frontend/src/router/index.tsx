@@ -99,6 +99,7 @@ import DigitalTwinScreenPage from "@/pages/DigitalTwinScreenPage";
 import DigitalTwin3DPage from "@/pages/DigitalTwin3DPage";
 import AdminTelemetryWatchlistsPage from "@/pages/AdminTelemetryWatchlistsPage";
 import AdminTelemetryArchivePage from "@/pages/AdminTelemetryArchivePage";
+import AdminTelemetryLongtermPage from "@/pages/AdminTelemetryLongtermPage";
 import AdminTelemetryInsightsPage from "@/pages/AdminTelemetryInsightsPage";
 import AdminTelemetryInsightsConfigPage from "@/pages/AdminTelemetryInsightsConfigPage";
 import StaffMessagesPage from "@/pages/StaffMessagesPage";
@@ -462,6 +463,7 @@ export const router = createHashRouter([
                   { path: "report-form/:id/submissions", element: <SubmissionManagePage /> },
                   { path: "telemetry-insights", element: <AdminTelemetryInsightsPage /> },
                   { path: "telemetry-insights/config", element: <AdminTelemetryInsightsConfigPage /> },
+                  { path: "telemetry-longterm", element: <AdminTelemetryLongtermPage /> },
                   { path: "dahua-swing-tasks", element: <AdminDahuaSwingTasksPage /> },
                   { path: "dahua-swing-stats-tasks", element: <AdminDahuaSwingStatsDailyPage /> },
                   { path: "dahua-swing-stats-backfill", element: <AdminDahuaSwingStatsBackfillPage /> },

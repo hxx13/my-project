@@ -49,6 +49,11 @@ Page({
     });
   },
 
+  /** 进「数据监测」（长期归档的表格视图）。本页已经是 ADMIN 起，入口也就只有管理员看得见 */
+  goTelemetryLongterm() {
+    wx.navigateTo({ url: '/package-feature/pages/telemetryLongterm/index' });
+  },
+
   clearTelemetryPoll() {
     if (this._telemetryPollTimer) {
       clearInterval(this._telemetryPollTimer);

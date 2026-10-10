@@ -219,36 +219,88 @@ async function waitForPagePainted(): Promise<void> {
 async function captureAppRoot(): Promise<Blob> {
   const { toBlob } = await import("html-to-image");
   const node = pickCaptureNode();
-  const blob = await toBlob(node, {
-    backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff",
-    pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-    /*
-     * 跨域图片必须跳过：html-to-image 要把每张图**内联成 data URL** 才能放进 SVG，
-     * 而跨域图没带 CORS 头时这一步直接失败 —— 症状是抛出**一个 Event 而不是 Error**
-     * （`[object Event]`，isTrusted），完全看不出原因。本仓库页脚那张学校站点的 logo 就是。
-     * 跳过它等于画面上少一张图，比整张截图失败强。
-     *
-     * ponytail: 跳过 = 该处留白。要保留就得让那些资源带 CORS 头或走同源代理，先不做。
-     */
-    filter: (n) => {
-      if (n.tagName !== "IMG") {
-        return true;
-      }
-      const src = (n as HTMLImageElement).src;
-      if (!src) {
-        return true;
-      }
-      try {
-        return new URL(src, location.origin).origin === location.origin;
-      } catch {
-        return false;
-      }
-    },
-  });
-  if (!blob) {
-    throw new Error("出图失败");
+  /*
+   * 出图前把节点内的**滚动容器临时展开成全高**，出完再还原。
+   *
+   * 为什么必须这样做：截图抓的是「眼前这一屏」——壳层是 `fixed inset-0 h-screen`，
+   * 页面自己的列表区又是 `overflow:auto`。结果内部滚动区的**第二屏以后全丢**，
+   * 助手给用户看的截图只有半张表。与其给模型加一个「滚动 API」（要坐标、要多轮、要拼接，
+   * 模型还不一定调得对），不如让**截图自己带上全高**：一次调用拿到整页。
+   */
+  const undo = expandScrollContainers(node);
+  try {
+    const blob = await toBlob(node, {
+      backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff",
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      /*
+       * 跨域图片必须跳过：html-to-image 要把每张图**内联成 data URL** 才能放进 SVG，
+       * 而跨域图没带 CORS 头时这一步直接失败 —— 症状是抛出**一个 Event 而不是 Error**
+       * （`[object Event]`，isTrusted），完全看不出原因。本仓库页脚那张学校站点的 logo 就是。
+       * 跳过它等于画面上少一张图，比整张截图失败强。
+       *
+       * ponytail: 跳过 = 该处留白。要保留就得让那些资源带 CORS 头或走同源代理，先不做。
+       */
+      filter: (n) => {
+        if (n.tagName !== "IMG") {
+          return true;
+        }
+        const src = (n as HTMLImageElement).src;
+        if (!src) {
+          return true;
+        }
+        try {
+          return new URL(src, location.origin).origin === location.origin;
+        } catch {
+          return false;
+        }
+      },
+    });
+    if (!blob) {
+      throw new Error("出图失败");
+    }
+    return blob;
+  } finally {
+    undo();
   }
-  return blob;
+}
+
+/**
+ * 把子树里的滚动容器逐个撑到内容全高，返回还原函数。
+ *
+ * <p>**后序**遍历（先子后父）：外层的 `scrollHeight` 取决于内层撑开后的高度，先撑子节点，
+ * 父节点再撑时才拿得到真正的全高。顺带记下 scrollTop 一起还原，免得用户回来发现滚动位置跑了。
+ */
+function expandScrollContainers(root: HTMLElement): () => void {
+  const restore: Array<() => void> = [];
+  const visit = (el: HTMLElement) => {
+    Array.from(el.children).forEach((child) => {
+      if (child instanceof HTMLElement) {
+        visit(child);
+      }
+    });
+    const cs = getComputedStyle(el);
+    const scrollable = /(auto|scroll|hidden|clip)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 2;
+    if (!scrollable) {
+      return;
+    }
+    const prev = {
+      height: el.style.height,
+      maxHeight: el.style.maxHeight,
+      overflowY: el.style.overflowY,
+      scrollTop: el.scrollTop,
+    };
+    el.style.height = `${el.scrollHeight}px`;
+    el.style.maxHeight = "none";
+    el.style.overflowY = "visible";
+    restore.push(() => {
+      el.style.height = prev.height;
+      el.style.maxHeight = prev.maxHeight;
+      el.style.overflowY = prev.overflowY;
+      el.scrollTop = prev.scrollTop;
+    });
+  };
+  visit(root);
+  return () => restore.reverse().forEach((fn) => fn());
 }
 
 /**
@@ -961,6 +1013,62 @@ export function ScanAssistantAskPanel({
    * 存在浏览器 localStorage 里 —— 两边都只有载体够得着。后端只负责说「导什么」。
    */
   const pendingDownloadRef = useRef<AssistantDownload | null>(null);
+  /**
+   * 提问链路与「挂起确认后接着跑」链路**共用**的四个流事件处理。
+   *
+   * <p>挂起续跑那条链路一度漏掉了它们 —— 于是「确认导出」之后后端把下载载荷发过来了、
+   * 前端没人接，模型在正文里说「点下面的下载按钮」，而界面上根本没有按钮
+   * （真机 2026-10-10 撞到）。跳页、截图、工具进度同理。放在一处，两条链路就不会再走岔。
+   */
+  const turnEventHandlers = {
+    onNavigate: (p: { path: string; label?: string }) => {
+      pendingNavRef.current = p;
+    },
+    onDownload: (p: { kind?: string; label?: string; params?: Record<string, unknown>; exportId?: number }) => {
+      pendingDownloadRef.current = p as AssistantDownload;
+    },
+    /*
+     * 截图**立刻挂上去**，不压到这一轮结束。一轮里可能同时办好几件事（截图 / 导出 / 定时），
+     * 压到最后等于用户全程看不到任何进展，只觉得「特别慢、不知道发生了什么」（真机反馈）。
+     */
+    onImage: (p: { exportId?: number; label?: string; path?: string }) => {
+      const one: TurnExport = {
+        key: `shot${Date.now()}`,
+        kind: "screenshot",
+        label: p.label,
+        exportId: p.exportId,
+        path: p.path,
+        imageState: "loading",
+      };
+      setTurns((prev) => {
+        const next = prev.slice();
+        const lastIndex = next.length - 1;
+        const last = next[lastIndex];
+        if (last && last.role === "assistant") {
+          next[lastIndex] = { ...last, exports: [...(last.exports ?? []), one] };
+          return next;
+        }
+        return [...next, { role: "assistant" as const, text: "", typed: true, exports: [one] }];
+      });
+      if (p.path) {
+        void captureShot(one.key, p.exportId, p.path);
+      } else {
+        void loadShotBytes(one.key, p.exportId);
+      }
+    },
+    // 长任务进度：running 挂一行「正在截图…」，done 撤掉，failed 留着（那正是要害）
+    onTool: (p: { name: string; status: string }) => {
+      const label = TOOL_BUSY_LABEL[p.name];
+      if (!label) return;
+      if (p.status === "running") {
+        patchLastAssistant({ toolBusy: { label, status: "running" } });
+      } else if (p.status === "failed") {
+        patchLastAssistant({ toolBusy: { label, status: "failed" } });
+      } else {
+        patchLastAssistant({ toolBusy: undefined });
+      }
+    },
+  };
   /**
    * 正在下载的是哪一张卡。历史里可能同时摆着好几张卡片，用一个布尔会把它们一起变灰 ——
    * 所以按卡片记账（键就是那张卡的 `key`）。
@@ -1721,9 +1829,14 @@ export function ScanAssistantAskPanel({
      */
     const isMaterialAudit = !dl.kind || dl.kind === "materialAudit";
     const url = String((dl.params as Record<string, unknown> | undefined)?.url ?? "");
+    /*
+     * 扩展名按**真实取件地址**判：曲线导出给的是 PDF 地址，一律套 .xlsx 会让用户存下一个
+     * 打不开的文件（真机 2026-10-10：文件名写着「…监测数据曲线图.xlsx」、内容是 PDF）。
+     */
+    const ext = url.includes("/pdf/") ? ".pdf" : ".xlsx";
     const filename = isMaterialAudit
       ? `material-audit-${dl.label || "export"}.xlsx`
-      : `${dl.label || "export"}.xlsx`;
+      : `${dl.label || "export"}${ext}`;
     try {
       if (dl.exportId) {
         const archived = await fetchExportBlob(dl.exportId);
@@ -2325,56 +2438,7 @@ export function ScanAssistantAskPanel({
           },
           onUsage: (u) => setUsage(u),
           onInteraction: (p) => collectInteraction(p, accQueue),
-          // 跳转指令先攒着，等这一轮说完再执行（见 pendingNavRef 的注释）
-          onNavigate: (p) => {
-            pendingNavRef.current = p;
-          },
-          onDownload: (p) => {
-            pendingDownloadRef.current = p as AssistantDownload;
-          },
-          /*
-           * **立刻挂上去，不压到这一轮结束。**
-           *
-           * 一轮里可能同时办好几件事（截图 / 导出 / 定时），压到最后等于用户全程看不到任何进展，
-           * 只觉得"特别慢、不知道发生了什么"（真机反馈）。事件到了就该在对话里出现一件。
-           */
-          onImage: (p) => {
-            const one: TurnExport = {
-              key: `shot${Date.now()}`,
-              kind: "screenshot",
-              label: p.label,
-              exportId: p.exportId,
-              path: p.path,
-              imageState: "loading",
-            };
-            setTurns((prev) => {
-              const next = prev.slice();
-              const lastIndex = next.length - 1;
-              const last = next[lastIndex];
-              if (last && last.role === "assistant") {
-                next[lastIndex] = { ...last, exports: [...(last.exports ?? []), one] };
-                return next;
-              }
-              return [...next, { role: "assistant" as const, text: "", typed: true, exports: [one] }];
-            });
-            if (p.path) {
-              void captureShot(one.key, p.exportId, p.path);
-            } else {
-              void loadShotBytes(one.key, p.exportId);
-            }
-          },
-          // 长任务进度：running 挂一行「正在截图…」，done 撤掉，failed 留着（那正是要害）
-          onTool: (p) => {
-            const label = TOOL_BUSY_LABEL[p.name];
-            if (!label) return;
-            if (p.status === "running") {
-              patchLastAssistant({ toolBusy: { label, status: "running" } });
-            } else if (p.status === "failed") {
-              patchLastAssistant({ toolBusy: { label, status: "failed" } });
-            } else {
-              patchLastAssistant({ toolBusy: undefined });
-            }
-          },
+          ...turnEventHandlers,
           onDone: (payload) => {
             const finalText = (payload.text ?? acc).trim();
             // 带附件那次不进答案缓存：缓存只按问题文本命中，回放它等于给出一个不看附件的答案。
@@ -2467,6 +2531,13 @@ export function ScanAssistantAskPanel({
         },
         onUsage: (u) => setUsage(u),
         onInteraction: (p) => collectInteraction(p, accQueue),
+        /*
+         * 与提问链路共用同一套（下载 / 跳页 / 截图 / 工具进度）。
+         *
+         * 少了它，这条路上后端发来的下载载荷没人接：正文说「点下面的下载按钮即可保存」，
+         * 而界面上根本没有按钮 —— 所有「确认之后才产出文件」的导出都会这样（真机 2026-10-10 撞到）。
+         */
+        ...turnEventHandlers,
         onDone: (payload) => applyStreamResult(payload, acc, accQueue),
         onError: applyStreamError,
       }, { signal: ctrl.signal });
@@ -2993,12 +3064,15 @@ export function ScanAssistantAskPanel({
                             <div className="scan-assistant-ask__turn-attachments">
                               {turn.attachments.map((att, i) =>
                                 att.kind === "image" && att.url ? (
+                                  // 点开看大图：跟助手那张截图同一个浮层。
+                                  // 用户自己发的图原先只能看 36px 的缩略图，想确认发没发错都做不到。
                                   <img
                                     key={`${att.name}-${i}`}
                                     className="scan-assistant-ask__turn-thumb"
                                     src={att.url}
                                     alt={att.name}
-                                    title={att.name}
+                                    title={`${att.name}（点击看大图）`}
+                                    onClick={() => setZoomShot({ url: att.url as string, label: att.name })}
                                   />
                                 ) : (
                                   <span

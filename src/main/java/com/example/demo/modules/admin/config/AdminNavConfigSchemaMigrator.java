@@ -34,6 +34,31 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10)");
 
             jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-longterm', 'access-meta-env', 'ITEM', '数据监测', '/admin/telemetry-longterm', 'Archive', 15)");
+
+            // 上面按**字符串分组键**插；但本表分组的真实 id 可能是 UUID ——
+            // 用户在「管理侧边栏文件夹」里重组过之后就是这样，此时新条目会挂到一个不存在的父节点上，
+            // 表现是**侧栏里直接看不见、且不报错**（2026-10-10 真机踩到：21 个同组条目挂在 UUID
+            // 分组下，只有新加的这条挂在字面量 'access-meta-env' 上）。
+            // 所以插完跟一步：只有父节点仍是那个字面量键时才把它对齐到同组既有条目的父节点。
+            // 条件写死 parent_id='access-meta-env' 是护栏 —— 用户手工挪过的位置一律不覆盖。
+            String telemetryGroupId = null;
+            try {
+                telemetryGroupId = jdbcTemplate.queryForObject(
+                        "SELECT parent_id FROM admin_nav_config WHERE item_path = '/admin/telemetry-insights'",
+                        String.class);
+            } catch (Exception ignored) {
+                // 全新库还没有兄弟条目可参照，此时字面量键本身就是分组 id，无需处理
+            }
+            if (telemetryGroupId != null) {
+                jdbcTemplate.update(
+                        "UPDATE admin_nav_config SET parent_id = ? " +
+                        "WHERE id = 'item-telemetry-longterm' AND parent_id = 'access-meta-env'",
+                        telemetryGroupId);
+            }
+
+            jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
                 "VALUES ('material-review', NULL, 'GROUP', '学生审核', 7)");
             jdbcTemplate.update(
@@ -204,6 +229,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("access-meta-env", 8, "item-telemetry-wl", "/admin/telemetry-watchlists", "WinCC 变量导入", "Table2", null);
         seedItem("access-meta-env", 9, "item-telemetry-arch", "/admin/telemetry-archive", "温湿度数据归档", "Archive", null);
         seedItem("access-meta-env", 10, "item-telemetry-insights", "/admin/telemetry-insights", "遥测历史分析", "PieChart", null);
+        seedItem("access-meta-env", 15, "item-telemetry-longterm", "/admin/telemetry-longterm", "数据监测", "Archive", null);
         seedItem("access-meta-env", 12, "item-animal-tel", "/animal-room-telemetry", "动物房温湿度监测", "Thermometer", null);
         seedItem("access-meta-env", 13, "item-animal-cockpit", "/animal-room-cockpit", "动物房驾驶舱", "BarChart3", null);
         seedItem("access-meta-env", 14, "item-digital-twin-screen", "/digital-twin-screen", "数字孪生大屏", "Monitor", null);

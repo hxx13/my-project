@@ -305,8 +305,27 @@ export function splitEvenRowSizes(n: number, rowCount: number): number[] {
   return sizes;
 }
 
-export const SOLO_GRID_GAP_PX = 8;
+/**
+ * 按每块最多 maxPer 张切块，**块数取最少并按张数均分**，因此不会出现只剩 1 张的孤块：
+ * 4 张 → 2+2、5 张 → 3+2、7 张 → 3+2+2。
+ *
+ * 单间接力单元原来按「每满 3 张切一刀」切，余 1 时那 1 张会自成一块，渲染时又被拉满整行
+ * （一块只显示一张卡却占满宽度）。凡是「一行最多 N 个」的铺排都该用它。
+ */
+export function splitSoloSlicesBalanced<T>(items: T[], maxPer: number): T[][] {
+  if (!items.length) return [];
+  const cap = Math.max(1, maxPer);
+  const sizes = splitEvenRowSizes(items.length, Math.ceil(items.length / cap));
+  const out: T[][] = [];
+  let off = 0;
+  for (const sz of sizes) {
+    out.push(items.slice(off, off + sz));
+    off += sz;
+  }
+  return out;
+}
 
+export const SOLO_GRID_GAP_PX = 8;
 /** Web 单间网格：再宽也不超过该列数，避免单测点卡片一行 7+ 个时内部信息挤叠 */
 export const SOLO_BALANCED_GRID_MAX_COLS = 6;
 

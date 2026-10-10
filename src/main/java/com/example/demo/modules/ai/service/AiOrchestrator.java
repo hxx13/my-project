@@ -1218,7 +1218,7 @@ public class AiOrchestrator {
                 AiExportArtifact saved = exportArtifactService.record(
                         sessionId, messageId,
                         actor == null ? null : actor.getId(),
-                        kind, label, downloadFilename(label, kind),
+                        kind, label, downloadFilename(label, kind, params),
                         params == null ? null : objectMapper.writeValueAsString(params),
                         longOf(payload.get("sourceId")));
                 if (saved != null) {
@@ -1235,10 +1235,18 @@ public class AiOrchestrator {
         }
     }
 
-    /** 下载时的建议文件名：给人看的标签优先，落回类型名兜底。 */
-    private static String downloadFilename(String label, String kind) {
+    /**
+     * 下载时的建议文件名：给人看的标签优先，落回类型名兜底。
+     *
+     * <p>扩展名**按真实取件地址判**，不要一律套 .xlsx —— 曲线导出下发的就是 PDF
+     * （{@code …/export/pdf/download}），套上 .xlsx 用户存下来是个打不开的文件
+     * （真机 2026-10-10 撞到：存档里写着「…监测数据曲线图.xlsx」，内容却是 PDF）。
+     */
+    private static String downloadFilename(String label, String kind, Object params) {
         String base = label == null || label.isBlank() ? (kind == null ? "导出" : kind) : label;
-        return base.toLowerCase().endsWith(".xlsx") ? base : base + ".xlsx";
+        boolean pdf = params instanceof Map<?, ?> m && String.valueOf(m.get("url")).contains("/pdf/");
+        String ext = pdf ? ".pdf" : ".xlsx";
+        return base.toLowerCase().endsWith(ext) ? base : base + ext;
     }
 
     /**

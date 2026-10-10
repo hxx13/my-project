@@ -1,0 +1,286 @@
+/* 数据监测（长期归档）小程序页。
+   表格照订购页「订单记录 · 表格视图」那一套：flex 行 + 固定列宽 + CSS 横向滚动，
+   列宽用 rpx 写死，行数/槽数变化不影响对齐。 */
+
+.tl-page {
+  background: #f6f7fb;
+  box-sizing: border-box;
+}
+
+/* ── 顶部日期与导出 ── */
+.tl-bar {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 24rpx;
+  background: #ffffff;
+  border-bottom: 1rpx solid #eef0f4;
+}
+.tl-day {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.tl-day--hover {
+  opacity: 0.65;
+}
+.tl-caret {
+  margin-left: 6rpx;
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+.tl-meta {
+  flex: 1;
+  margin-left: 16rpx;
+  font-size: 22rpx;
+  color: #64748b;
+}
+.tl-export {
+  flex-shrink: 0;
+  padding: 10rpx 26rpx;
+  border: 1rpx solid #1d4ed8;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #1d4ed8;
+}
+.tl-export-off {
+  opacity: 0.4;
+}
+
+/* ── 状态 ── */
+.tl-state {
+  padding: 100rpx 24rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: #94a3b8;
+}
+.tl-state-err {
+  color: #dc2626;
+}
+
+/* 表格区。
+   **它自己滚，不跟着页面滚** —— 容器为了横向滚动必然带 overflow，而「一个方向不是 visible 时
+   另一个方向也会被当成滚动容器」，竖向 sticky 就没了参照、表头吸不住（真机反馈「往上滚表头没吸顶」）。
+   做成独立滚动区之后，表头的 sticky 相对它生效，左侧列的 left 也相对它生效。 */
+.tl-table-wrap {
+  width: 100%;
+  background: #ffffff;
+}
+.tl-table {
+  display: inline-block;
+  min-width: 100%;
+  padding-bottom: 8rpx;
+}
+.tl-tr {
+  display: flex;
+  flex-direction: row;
+  border-bottom: 1rpx solid #eef0f4;
+}
+/* 表头：竖向滚动时钉在滚动区顶部。z 要高过数据行，否则数字会压在表头上滚过去 */
+.tl-tr-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #f6f7fb;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #334155;
+}
+/* 左上角那一格要同时钉住上下和左右，层级再高一档（否则会被表头其它格或数据行盖住） */
+.tl-tr-head .tl-w-var {
+  z-index: 5;
+  background: #f6f7fb;
+}
+.tl-td {
+  flex-shrink: 0;
+  padding: 16rpx 12rpx;
+  font-size: 22rpx;
+  color: #1f2937;
+  box-sizing: border-box;
+}
+/* 变量列：**横向滚动时钉在左边不动**（sticky 元素必须有底色，不然滚过来的数字会透上去）。
+   一行显示「房间 (单位)」、居中、不换行。宽度按订购页单号列的量级取 240rpx ——
+   再宽就把时间槽挤得只剩三列（一屏能看的时刻太少），再窄则稍长的房间名一律省略号。 */
+.tl-w-var {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 240rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+.tl-var {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #1f2937;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tl-unit {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+/* 时间槽列：数值居中，一位小数 */
+.tl-w-slot {
+  width: 130rpx;
+  text-align: center;
+}
+
+/* 当天极值自动高亮，与网页版同口径：要有两个以上不同数值才标 */
+.cell-max {
+  background: #fef3c7;
+  color: #b45309;
+  font-weight: 600;
+}
+.cell-min {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+/* ── 弹层外壳（查看日历 / 导出设置共用）── */
+.tl-cal-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(15, 23, 42, 0.45);
+}
+.tl-cal {
+  width: 100%;
+  padding: 8rpx 24rpx calc(32rpx + env(safe-area-inset-bottom));
+  background: #ffffff;
+  border-radius: 24rpx 24rpx 0 0;
+  box-sizing: border-box;
+}
+.tl-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 0 12rpx;
+}
+.tl-cal-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.tl-cal-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4rpx;
+}
+.tl-cal-hint {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.tl-cal-actions {
+  display: flex;
+  align-items: center;
+}
+/* 「本月全选 / 清空」——文字动作，与网页版同一处位置（提示行右侧） */
+.tl-cal-link {
+  margin-left: 24rpx;
+  font-size: 22rpx;
+  color: #1d4ed8;
+}
+.tl-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56rpx;
+  height: 56rpx;
+  font-size: 36rpx;
+  color: #64748b;
+}
+.tl-cal-nav--hover {
+  background: #f1f5f9;
+  border-radius: 8rpx;
+}
+.tl-cal-grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+.tl-cal-wd {
+  width: 14.28%;
+  padding: 8rpx 0;
+  text-align: center;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.tl-cal-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14.28%;
+  height: 72rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+  border-radius: 12rpx;
+  box-sizing: border-box;
+}
+/* 补位的空格不占视觉（保留占位，让 1 号落在正确的星期列） */
+.tl-cal-cell--pad {
+  visibility: hidden;
+}
+/* 没采样的日子只是变淡，**仍可点** —— 点进去会看到「这天还没有采样数据」 */
+.tl-cal-cell--dim {
+  color: #cbd5e1;
+}
+/* 选中态写在 dim 之后：同一天两个类都在时，以选中为准（CSS 按定义顺序定胜负） */
+.tl-cal-cell--on {
+  background: #2563eb;
+  color: #ffffff;
+}
+.tl-cal-dot {
+  position: absolute;
+  bottom: 8rpx;
+  left: 50%;
+  width: 8rpx;
+  height: 8rpx;
+  margin-left: -4rpx;
+  border-radius: 50%;
+  background: #2563eb;
+}
+.tl-cal-cell--on .tl-cal-dot {
+  background: #ffffff;
+}
+
+/* ── 导出设置的底部一行 ── */
+.tl-exp-foot {
+  display: flex;
+  align-items: center;
+  margin-top: 8rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #eef0f4;
+}
+.tl-exp-count {
+  flex: 1;
+  font-size: 24rpx;
+  color: #1f2937;
+}
+.tl-exp-btn {
+  margin-left: 16rpx;
+  padding: 14rpx 36rpx;
+  border: 1rpx solid #cbd5e1;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.tl-exp-btn--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #ffffff;
+}
+.tl-exp-btn--off {
+  opacity: 0.45;
+}

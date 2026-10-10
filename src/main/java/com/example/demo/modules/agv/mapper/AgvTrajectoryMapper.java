@@ -58,6 +58,17 @@ public interface AgvTrajectoryMapper {
                                                @Param("to") LocalDateTime to,
                                                @Param("limit") int limit);
 
+    /**
+     * 某台车**最后一条**轨迹（不限时间）。
+     *
+     * <p>与 {@link #selectTrajectory} 的区别是**不带时间窗**：采集断掉多久都要能回退到
+     * 最后已知位置，否则画布上连「离线灰图标」都画不出来（车会凭空消失）。走
+     * idx_robot_time(robot_ip, recorded_at) 反序取一条，4 百万行的表也是瞬时。
+     */
+    @Select("SELECT * FROM agv_trajectory WHERE robot_ip = #{ip} " +
+            "ORDER BY recorded_at DESC LIMIT 1")
+    Map<String, Object> selectLatest(@Param("ip") String ip);
+
     @Select("SELECT * FROM agv_trajectory " +
             "WHERE recorded_at BETWEEN #{from} AND #{to} " +
             "AND FIND_IN_SET(robot_ip, #{ips}) > 0 " +

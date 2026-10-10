@@ -57,6 +57,12 @@ public class PageScreenshotService {
     /** 桌面视口。截图是给「看这个页面长什么样」用的，按桌面宽度渲染信息量最大。 */
     private static final int VIEWPORT_W = 1440;
     private static final int VIEWPORT_H = 900;
+    /** 出 PDF 时等「打印视图已就绪」的上限（多天数据 + 图表渲染，比截图宽松） */
+    private static final double PRINT_READY_TIMEOUT_MS = 45_000;
+    /** A4 内容区宽度（210mm − 左右各 10mm 页边距，按 96dpi 折算）。出 PDF 前把视口对到它 */
+    private static final int A4_CONTENT_W = 718;
+    /** 视口改宽后留给图表重画的时间（recharts 无动画，一次 ResizeObserver 回调即可） */
+    private static final int PRINT_REFLOW_MS = 600;
 
     /** 请求静默多久算「这一页画完了」。太短会截到半成品，太长白等。 */
     private static final int QUIET_MS = 800;
@@ -177,13 +183,41 @@ public class PageScreenshotService {
             throw new UnavailableException("截图任务排队过久，稍后再试");
         }
         try {
-            return render(user, route);
+            return render(user, route, null, null, false);
         } finally {
             slots.release();
         }
     }
 
-    private byte[] render(User user, String route) {
+    /**
+     * 把某个页面按**打印视图**出成 A4 纵向 PDF，与截图**共用同一个无头 Chromium**。
+     *
+     * <p>为什么走这条路而不是自己画图：报表要的是「页面里那种曲线」，前端那套图表组件只能在浏览器里跑；
+     * 无头 Chromium 已经把页面渲染好了，`page.pdf()` 直接按 A4 + 打印 CSS 分页，一天一页、一行两张
+     * 全由打印 CSS 控制，后端一行绘图代码都不用写（PDFBox 在手边也不该拿来自绘曲线 —— 那是重复造轮子）。
+     *
+     * @param extraSeed  额外注入的 init script（业务侧把打印参数写进 localStorage，页面据此渲染打印视图）
+     * @param readyJs    业务侧「打印视图已就绪」的判据表达式，返回 true 才开始出图
+     */
+    public byte[] renderPanelPdf(User user, String route, String extraSeed, String readyJs) {
+        boolean acquired;
+        try {
+            acquired = slots.tryAcquire(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new UnavailableException("出图排队被中断");
+        }
+        if (!acquired) {
+            throw new UnavailableException("出图任务排队过久，稍后再试");
+        }
+        try {
+            return render(user, route, extraSeed, readyJs, true);
+        } finally {
+            slots.release();
+        }
+    }
+
+    private byte[] render(User user, String route, String extraSeed, String readyJs, boolean pdf) {
         // 与登录同口径：先合并两个 id 的最高角色，否则令牌里的角色会和这份用户信息对不上
         jwtTokenService.resolveUnifiedRole(user);
         String token = jwtTokenService.generateShortLivedToken(user, TOKEN_TTL);
@@ -204,6 +238,9 @@ public class PageScreenshotService {
                     + "localStorage.setItem('auth_user_info'," + js(M.writeValueAsString(info)) + ");"
                     + "}catch(e){}";
             ctx.addInitScript(seed);
+            if (extraSeed != null && !extraSeed.isBlank()) {
+                ctx.addInitScript(extraSeed);
+            }
 
             // ② 请求静默追踪器必须**先于页面脚本**装上，否则首屏那批请求不计数，会误判成已静默（约束 3）
             ctx.addInitScript("() => {"
@@ -241,9 +278,80 @@ public class PageScreenshotService {
                             + " return performance.now() - window.__quietSince > " + QUIET_MS + "; }",
                     null, new Page.WaitForFunctionOptions().setTimeout(QUIET_TIMEOUT_MS));
 
+            // ⑥.5 出 PDF 时再等业务侧把「打印视图已就绪」置起来（数据到位、图表画完）
+            if (readyJs != null && !readyJs.isBlank()) {
+                try {
+                    page.waitForFunction(readyJs, null,
+                            new Page.WaitForFunctionOptions().setTimeout(PRINT_READY_TIMEOUT_MS));
+                } catch (PlaywrightException e) {
+                    /*
+                     * 超时要能自己说清卡在哪 —— 否则只剩一句「Timeout」，
+                     * 而最常见的两种原因（页面根本没进入打印视图 / 打印参数没注入进去）表现完全一样。
+                     */
+                    String diag;
+                    try {
+                        diag = String.valueOf(page.evaluate("() => {"
+                                + " let seed = null;"
+                                + " try { seed = localStorage.getItem('twin-longterm-print'); } catch (e) { seed = '?'; }"
+                                + " return { url: location.href, hash: location.hash,"
+                                + "   seed: seed ? seed.slice(0, 60) : null, ready: !!window.__longtermPrintReady,"
+                                + "   charts: document.querySelectorAll('svg.recharts-surface').length,"
+                                + "   printRoot: !!document.querySelector('.longterm-print-root'),"
+                                + "   tail: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(-120) }; }"));
+                    } catch (RuntimeException inner) {
+                        diag = "取诊断失败: " + inner.getMessage();
+                    }
+                    throw new UnavailableException("打印视图未就绪：" + diag, e);
+                }
+            }
+
             // ⑦ 球球自己是页面的一部分，藏掉再截（约束 5）
             page.addStyleTag(new Page.AddStyleTagOptions()
                     .setContent(".scan-assistant-dock{display:none !important}"));
+
+            if (pdf) {
+                /*
+                 * 出图前把视口缩到**与 A4 内容区同宽**，等图表按这个宽度重画完再截。
+                 *
+                 * 为什么必须这么做：页面里的图表宽度是 JS 用 ResizeObserver 量出来的**固定像素值**
+                 * （recharts 只认数字宽度）。而 `page.pdf()` 是在 print 媒体下按纸张宽度重新布局的，
+                 * 这中间 ResizeObserver 的重画是**异步**的 —— pdf() 在同一帧就抓图了，重画还没发生。
+                 * 结果是 SVG 仍按桌面宽度（1440 下卡片约 495px）渲染，而 A4 下卡片只有约 349px，
+                 * SVG 溢出卡片、相邻卡片的 X 轴刻度会互相压上来（实测：两张卡的刻度叠在一起）。
+                 * 先把视口改到 A4 内容宽，就让「屏幕布局」与「打印布局」宽度一致，重画后的尺寸才对得上。
+                 *
+                 * 718px = A4 宽 210mm 减去左右各 10mm 页边距，再按 96dpi 折算。
+                 */
+                page.setViewportSize(A4_CONTENT_W, VIEWPORT_H);
+                page.waitForTimeout(PRINT_REFLOW_MS);
+                // A4 纵向；一天一页、一行两张由页面里的打印 CSS（@page / break-after）控制
+                return page.pdf(new Page.PdfOptions().setFormat("A4").setPrintBackground(true));
+            }
+
+            /*
+             * ⑧ 把滚动容器**撑成全高**再截（约束 6）。只 setFullPage(true) 是不够的：
+             * 后台壳层是 `position: fixed; inset: 0`，页面自己的列表区又是 `overflow: auto`，
+             * 文档高度就等于视口高度 —— 截出来只有第一屏，第二屏以后全丢。
+             * 与网页端载体同一套做法（ScanAssistantAskPanel#expandScrollContainers）：让**截图自己带全高**，
+             * 模型一次调用拿到整页，不必给它加「滚动 API」（要坐标、要多轮、还要拼接）。
+             * fixed 元素不撑文档高度，所以额外把 documentElement/body 的高度也顶上去。
+             */
+            page.evaluate("() => {"
+                    + " const visit = (el) => {"
+                    + "   Array.from(el.children).forEach((c) => { if (c instanceof HTMLElement) visit(c); });"
+                    + "   const cs = getComputedStyle(el);"
+                    + "   if (/(auto|scroll|hidden|clip)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 2) {"
+                    + "     el.style.height = el.scrollHeight + 'px';"
+                    + "     el.style.maxHeight = 'none';"
+                    + "     el.style.overflowY = 'visible';"
+                    + "   }"
+                    + " };"
+                    + " const root = document.getElementById('root') || document.body;"
+                    + " visit(root);"
+                    + " const h = Math.max(root.scrollHeight, document.documentElement.scrollHeight);"
+                    + " document.documentElement.style.height = h + 'px';"
+                    + " document.body.style.height = h + 'px';"
+                    + "}");
 
             return page.screenshot(new Page.ScreenshotOptions().setFullPage(true));
         } catch (UnavailableException e) {

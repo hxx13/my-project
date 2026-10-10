@@ -259,11 +259,13 @@ Page({
         ['remarkByLineCache.' + id]: remarkByLine,
         ['remarkExpandedByLineCache.' + id]: remarkExpandedByLine,
       });
+    }).then(function() {
+      wx.hideLoading();
     }).catch(function(e) {
+      // 先收 loading 再弹提示（两者共用浮层，顺序反了提示会被收掉）
+      wx.hideLoading();
       wx.showToast({ title: (e && e.message) || '加载详情失败', icon: 'none' });
       that.setData({ ['expandedIds.' + id]: false });
-    }).finally(function() {
-      wx.hideLoading();
     });
   },
 
@@ -326,10 +328,10 @@ Page({
       const res = await suppliesExportApi.fetchClaimFormPdf(token);
       // 文件名用后端给的（就是单号，如 20260923-位亚磊-1.pdf），与纸面印的一致
       await springAuth.saveAndOpenDocument(res.data, (link && link.fileName) || `领用单-${id}.pdf`, 'pdf');
+      wx.hideLoading(); // 先收 loading 再弹提示（两者共用浮层，顺序反了提示会被收掉）
     } catch (err) {
-      wx.showToast({ title: (err && err.message) || '打开领用单失败', icon: 'none' });
-    } finally {
       wx.hideLoading();
+      wx.showToast({ title: (err && err.message) || '打开领用单失败', icon: 'none' });
     }
   },
 
@@ -467,12 +469,12 @@ Page({
     try {
       const { data } = await suppliesExportApi.exportPersonalClaimExcel(claim.id);
       await springAuth.saveAndOpenDocument(data, `supply-claim-${claim.id.replace(/[^A-Za-z0-9_-]/g, '_')}.xlsx`, 'xlsx');
+      wx.hideLoading(); // 先收 loading 再弹提示（两者共用浮层，顺序反了提示会被收掉）
     } catch (e) {
-      wx.showToast({ title: (e && e.message) || '导出失败', icon: 'none' });
-    } finally {
       wx.hideLoading();
-      this.setData({ exportClaimBusy: false, linkPopupShow: false });
+      wx.showToast({ title: (e && e.message) || '导出失败', icon: 'none' });
     }
+    this.setData({ exportClaimBusy: false, linkPopupShow: false });
   },
 
   closeLinkPopup() {
@@ -499,13 +501,19 @@ Page({
           });
           const p = parseResponse(res);
           if (!p.ok) throw new Error(p.message);
-          wx.showToast({ title: '已删除', icon: 'success' });
           this.collapseOne(id);
           await this.loadAll();
-        } catch (err) {
-          wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' });
-        } finally {
+          /*
+           * **收 loading 必须在弹提示之前。**
+           * wx.showToast 与 wx.showLoading 共用同一个浮层 —— 先 showToast 再 hideLoading，
+           * 会把刚弹出来的提示一起收掉。表现就是：点「确定」后弹窗消失、屏幕上一句提示都没有，
+           * 用户以为「点了没反应」，成功失败都看不出来（真机报的就是这个）。
+           */
           wx.hideLoading();
+          wx.showToast({ title: '已删除', icon: 'success' });
+        } catch (err) {
+          wx.hideLoading();
+          wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' });
         }
       },
     });

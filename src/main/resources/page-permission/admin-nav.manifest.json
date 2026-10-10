@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-09T00:54:02.625Z",
+  "generatedAt": "2026-10-10T12:14:44.771Z",
   "pages": [
     {
       "path": "/about",
@@ -463,6 +463,13 @@
       "fallbackMinRole": "ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-insights"
+    },
+    {
+      "path": "/admin/telemetry-longterm",
+      "label": "数据监测",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "telemetry-longterm"
     },
     {
       "path": "/admin/telemetry-watchlists",

@@ -159,13 +159,35 @@ public final class JobScheduleDueEvaluator {
         return !nowTime.isBefore(start) || !nowTime.isAfter(end);
     }
 
-    private static boolean shouldRunByPollInterval(TwinJobScheduleConfig cfg, LocalDateTime now) {
+    static boolean shouldRunByPollInterval(TwinJobScheduleConfig cfg, LocalDateTime now) {
+        int pollSec = JobSchedulePolicy.clampPollInterval(cfg.getJobKey(), cfg.getPollIntervalSeconds());
         LocalDateTime lastRun = cfg.getLastRunAt();
         if (lastRun == null) {
             return true;
         }
-        int pollSec = JobSchedulePolicy.clampPollInterval(cfg.getJobKey(), cfg.getPollIntervalSeconds());
+        if (JobExecutionRegistry.JOB_TELEMETRY_LONGTERM_SAMPLE.equals(cfg.getJobKey())) {
+            /*
+             * 长期归档要**对齐到「从当天 0 点起按间隔平分出来的槽位」**，不能用「上次跑完 + 间隔」：
+             * 后者起点是随机的（17:40 启动就永远 17:40 / 19:40 …），采到的时刻落不进整齐的槽，
+             * 表里按槽分列时就会错位（用户 2026-10-10 明确指出）。
+             * 同一槽内只触发一次：上一次跑在**本槽起点之前**才算到点。
+             */
+            return lastRun.isBefore(slotStartOf(now, pollSec));
+        }
         return !lastRun.plusSeconds(pollSec).isAfter(now);
+    }
+
+    /**
+     * 当前时刻所在槽的起点：自当天 0 点起把一天按间隔平分后，所属那一段的起点。
+     *
+     * <p>与矩阵取槽的口径保持一致（{@code slotsPerDay = round(86400 / interval)}），
+     * 否则「触发用的槽」和「表里显示的槽」会差一格。
+     */
+    static LocalDateTime slotStartOf(LocalDateTime now, int pollSec) {
+        int slotsPerDay = Math.max(1, (int) Math.round(86400.0 / Math.max(1, pollSec)));
+        long len = Math.max(1, 86400L / slotsPerDay);
+        long secOfDay = now.toLocalTime().toSecondOfDay();
+        return now.toLocalDate().atStartOfDay().plusSeconds((secOfDay / len) * len);
     }
 
     /**

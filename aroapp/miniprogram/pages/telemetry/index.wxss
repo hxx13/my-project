@@ -23,3 +23,18 @@ page {
 .state-err {
   color: #b91c1c;
 }
+
+/* 导航栏上的「数据监测」入口（退回键右侧，跟在 flex 流里；窄控件，不压标题） */
+.nav-entry {
+  margin-left: 8rpx;
+  padding: 6rpx 16rpx;
+  border: 1rpx solid #1d4ed8;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  color: #1d4ed8;
+  line-height: 1.4;
+}
+
+.nav-entry--hover {
+  background: #eff6ff;
+}

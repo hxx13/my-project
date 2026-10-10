@@ -29,6 +29,18 @@ export type TelemetrySeriesChartProps = {
   height?: number;
   seriesLabel?: string;
   stroke?: string;
+  /**
+   * Y 轴**最小跨度** = 该指标合规区间跨度 × 本比例（默认 0 = 贴紧数据，与既有页面观感一致）。
+   *
+   * <p>为什么要有它：默认域是 `[最小−8%, 最大+8%]`，数据波动小时曲线会顶满整幅，
+   * 几度的差异看起来像剧烈起伏。传 0.5 这类值把纵轴拉开，波动才显得平缓。
+   */
+  yMinSpanRatio?: number;
+  /**
+   * 给上下两条虚线（当天最小/最大）**标上数值**。默认关 —— 其它页面线条多，标了会挤；
+   * 单日归档这种「就看这一条的波动」的场景标上更好读。
+   */
+  showExtremeLabels?: boolean;
 };
 
 function metricBand(metricKind?: string) {
@@ -49,6 +61,8 @@ export function TelemetrySeriesChart({
   height = 120,
   seriesLabel,
   stroke,
+  yMinSpanRatio,
+  showExtremeLabels = false,
 }: TelemetrySeriesChartProps) {
   const chartData = useMemo(() => {
     return (points ?? [])
@@ -89,9 +103,14 @@ export function TelemetrySeriesChart({
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
       return { chartYMin: null, chartYMax: null, yAxisDomain: undefined as [number, number] | undefined };
     }
-    const pad = Math.max((hi - lo) * 0.08, 0.35);
-    return { chartYMin: lo, chartYMax: hi, yAxisDomain: [lo - pad, hi + pad] as [number, number] };
-  }, [chartData, displayProfile, metricKind]);
+    // 纵轴最小跨度：比例取 0 时与改造前**逐字等价**（span 仍是 hi-lo、中点仍是 (lo+hi)/2，
+    // 于是域仍是 [lo-pad, hi+pad]），所以既有页面观感不变。
+    const span = Math.max(hi - lo, (band.max - band.min) * Math.max(0, yMinSpanRatio ?? 0));
+    const mid = (lo + hi) / 2;
+    const pad = Math.max(span * 0.08, 0.35);
+    const half = span / 2 + pad;
+    return { chartYMin: lo, chartYMax: hi, yAxisDomain: [mid - half, mid + half] as [number, number] };
+  }, [chartData, displayProfile, metricKind, yMinSpanRatio]);
 
   const lineColor = stroke ?? "var(--app-color-accent-primary, #d97706)";
 
@@ -132,21 +151,56 @@ export function TelemetrySeriesChart({
             <ReferenceArea
               y1={band.min}
               y2={band.max}
-              fill="var(--app-color-status-success-subtle, rgba(34,197,94,0.08))"
+              fill="var(--app-color-feedback-success-soft, rgba(34,197,94,0.08))"
               strokeOpacity={0}
             />
           ) : null}
           {displayProfile === "STANDARD" && chartYMin != null ? (
-            <ReferenceLine y={chartYMin} stroke="var(--app-color-border-strong)" strokeDasharray="4 3" />
+            <ReferenceLine
+              y={chartYMin}
+              stroke="var(--app-color-border-strong)"
+              strokeDasharray="4 3"
+              label={
+                showExtremeLabels
+                  ? {
+                      value: `最小 ${chartYMin.toFixed(1)}`,
+                      position: "insideTopRight",
+                      fontSize: 9,
+                      /*
+                       * 颜色写**具体色值**，不要写 CSS 变量：这是 SVG 的呈现属性，带 var(...) 时
+                       * 屏幕上看没问题，但浏览器导出 PDF 会把这几段文字整段丢掉（实测：同一张图里
+                       * 轴刻度在、这两行不在）。选的是原变量对应的中性灰。
+                       */
+                      fill: "#6b7280",
+                    }
+                  : undefined
+              }
+            />
           ) : null}
           {displayProfile === "STANDARD" && chartYMax != null ? (
-            <ReferenceLine y={chartYMax} stroke="var(--app-color-border-strong)" strokeDasharray="4 3" />
+            <ReferenceLine
+              y={chartYMax}
+              stroke="var(--app-color-border-strong)"
+              strokeDasharray="4 3"
+              label={
+                showExtremeLabels
+                  ? {
+                      value: `最大 ${chartYMax.toFixed(1)}`,
+                      position: "insideBottomRight",
+                      fontSize: 9,
+                      fill: "#6b7280",
+                    }
+                  : undefined
+              }
+            />
           ) : null}
           {aMin != null ? (
-            <ReferenceLine y={aMin} stroke="var(--app-color-status-warning)" strokeDasharray="2 4" />
+            /* 令牌名照实际存在的用：`--app-color-status-*` 在主题里**没有定义**，
+               写了等于没写（stroke 取不到值 → 线画不出来、也不报错，静默消失）。 */
+            <ReferenceLine y={aMin} stroke="var(--app-color-feedback-warning)" strokeDasharray="2 4" />
           ) : null}
           {aMax != null ? (
-            <ReferenceLine y={aMax} stroke="var(--app-color-status-danger)" strokeDasharray="2 4" />
+            <ReferenceLine y={aMax} stroke="var(--app-color-feedback-danger)" strokeDasharray="2 4" />
           ) : null}
           <Tooltip
             contentStyle={{

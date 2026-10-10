@@ -60,7 +60,6 @@ import {
   stripSuiteTitlePrefixForDisplay,
   isHvacMechanicalSuiteGroup,
   suiteIsBoilerRoomSuite,
-  suiteIsPowerStationSuite,
 } from "@/telemetry-view/index";
 import type { FloorChunk, PreparedSuite } from "@/telemetry-view/index";
 import { compareMetricsInRoomRowOrder } from "@/telemetry-view/roomMetricDisplayOrder";
@@ -86,6 +85,7 @@ import {
   RefreshCw,
   Thermometer,
   ToggleLeft,
+  Zap,
 } from "lucide-react";
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTelemetryArchiveRollingSeries } from "@/hooks/useTelemetryArchiveRollingSeries";
@@ -569,6 +569,12 @@ function metricStyleFromKind(
 }
 
 /** 仅 UP/DOWN 显示箭头；死区/平缓（null 或 FLAT）仅占位不画箭头 */
+/** 只有 UP/DOWN 会画出箭头；其余取值 ValueTrendMark 只渲染一个空占位 */
+function valueTrendHasArrow(trend: string | null | undefined): boolean {
+  const u = (trend || "").trim().toUpperCase();
+  return u === "UP" || u === "DOWN";
+}
+
 function ValueTrendMark({
   trend,
   size = "md",
@@ -600,6 +606,26 @@ function ValueTrendMark({
     );
   }
   return <span className={cn(dim, "inline-block shrink-0")} aria-hidden />;
+}
+
+/**
+ * 开关量的「带电」闪电，放在与趋势箭头同一格（趋势位）上：
+ * 合闸（开）= 琥珀实心 + 光晕呼吸（动效见 index.css .telemetry-switch-live）；
+ * 断开（关）= 同款闪电但灰色静态；状态未知（—）不渲染。
+ * 开关量本来没有上下趋势，这一格空着，正好放它，也不影响同列数值对齐。
+ */
+function SwitchLiveBolt({ state, size = "md" }: { state: boolean | null; size?: "sm" | "md" }) {
+  if (state === null) return null;
+  const dim = size === "sm" ? "h-4 w-4" : "h-5 w-5";
+  return (
+    <Zap
+      data-animal-telemetry-switch-live={state ? "on" : "off"}
+      className={cn(dim, "shrink-0", state ? "telemetry-switch-live" : "text-zinc-300")}
+      strokeWidth={2.2}
+      fill="currentColor"
+      aria-hidden
+    />
+  );
 }
 
 /** 详情归档：服务端 ROLLING 定窗（小时）+ 降采样点数；前端仅轮询整包 */
@@ -657,37 +683,55 @@ function MetricTrendValueUnit({
   display,
   unit,
   suiteTight,
+  liveState = null,
 }: {
   item?: TelemetryTagItem;
   display: string;
   unit: string;
   /** 套间标题行胶囊：收窄列距，避免把时间戳挤换行 */
   suiteTight?: boolean;
+  /** 开关量状态（true 开 / false 关 / null 非开关量）：占用趋势位画带电闪电 */
+  liveState?: boolean | null;
 }) {
   const tc = suiteTight ? SUITE_HDR_TREND_COL : METRIC_TREND_COL;
   const vc = suiteTight ? SUITE_HDR_VALUE_COL : METRIC_VALUE_COL;
   const uc = suiteTight ? SUITE_HDR_UNIT_COL : METRIC_UNIT_COL;
+  // 无趋势时不占那一列：绝大多数测点没有趋势，原来无条件留 1.25rem 空块架在
+  // 变量名和数值之间，把名字挤窄到被截断。开关量例外——那一格改画带电闪电。
+  const trend = interventionValueTrendForDisplay(item);
+  const hasTrend = valueTrendHasArrow(trend);
+  const isOnOff = liveState !== null;
+  const leadCol = hasTrend || isOnOff;
+  // 开/关行整行只有「开」或「关」一个字，不再照常预留 7ch 数值列和 2rem 空单位列
+  // （那是按「+999.0 Pa」留的），省下的宽度还给左边的变量名。
+  const valueCol = isOnOff ? "2.5ch" : vc;
   return (
     <div
       className={cn("grid shrink-0 items-center justify-self-end", suiteTight ? "gap-x-px" : "gap-x-0.5")}
       style={{
-        gridTemplateColumns: `${tc} ${vc} ${uc}`,
+        gridTemplateColumns: isOnOff
+          ? `${tc} ${valueCol}`
+          : leadCol
+            ? `${tc} ${valueCol} ${uc}`
+            : `${valueCol} ${uc}`,
       }}
     >
-      <div
-        className="flex shrink-0 items-center justify-center"
-        style={{
-          width: tc,
-          minWidth: tc,
-          height: tc,
-          minHeight: tc,
-        }}
-      >
-        <ValueTrendMark trend={interventionValueTrendForDisplay(item)} size="md" />
-      </div>
+      {leadCol ? (
+        <div
+          className="flex shrink-0 items-center justify-center"
+          style={{
+            width: tc,
+            minWidth: tc,
+            height: tc,
+            minHeight: tc,
+          }}
+        >
+          {hasTrend ? <ValueTrendMark trend={trend} size="md" /> : <SwitchLiveBolt state={liveState} />}
+        </div>
+      ) : null}
       <div
         className="flex min-h-[1.25rem] items-center justify-end overflow-hidden"
-        style={{ width: vc, minWidth: vc, maxWidth: vc }}
+        style={{ width: valueCol, minWidth: valueCol, maxWidth: valueCol }}
       >
         <span
           data-animal-telemetry-value=""
@@ -699,16 +743,18 @@ function MetricTrendValueUnit({
           {display}
         </span>
       </div>
-      <div
-        className="flex min-h-[1.25rem] items-center justify-start"
-        style={{ width: uc, minWidth: uc, maxWidth: uc }}
-      >
-        {unit ? (
-          <span className="min-w-0 truncate text-left text-sm font-medium tabular-nums text-zinc-500">{unit}</span>
-        ) : (
-          <span className="block w-full min-w-0" aria-hidden />
-        )}
-      </div>
+      {isOnOff ? null : (
+        <div
+          className="flex min-h-[1.25rem] items-center justify-start"
+          style={{ width: uc, minWidth: uc, maxWidth: uc }}
+        >
+          {unit ? (
+            <span className="min-w-0 truncate text-left text-sm font-medium tabular-nums text-zinc-500">{unit}</span>
+          ) : (
+            <span className="block w-full min-w-0" aria-hidden />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1169,9 +1215,20 @@ function MetricRow({
   const switchChecked = tri === true;
   const switchUnknown = tri === null;
   const switchDisabled = switchUnknown || !winccW?.canWrite || !(item?.variableName || "").trim();
+  /** 开/关行在趋势位画带电闪电：状态测点读「开/关」文案，可写开关读三态 */
+  const switchLiveState: boolean | null = isSwitch
+    ? switchUnknown
+      ? null
+      : switchChecked
+    : statusText === "开"
+      ? true
+      : statusText === "关"
+        ? false
+        : null;
 
   const middle = isSwitch ? (
-    <div className="flex min-h-[1.25rem] items-center justify-end">
+    <div className="flex min-h-[1.25rem] items-center justify-end gap-0.5">
+      <SwitchLiveBolt state={switchLiveState} />
       <WinccStripSwitch
         checked={switchChecked}
         unknown={switchUnknown}
@@ -1221,10 +1278,10 @@ function MetricRow({
         }
       }}
     >
-      <MetricTrendValueUnit item={item} display={display} unit={unit} />
+      <MetricTrendValueUnit item={item} display={display} unit={unit} liveState={switchLiveState} />
     </button>
   ) : (
-    <MetricTrendValueUnit item={item} display={display} unit={unit} />
+    <MetricTrendValueUnit item={item} display={display} unit={unit} liveState={switchLiveState} />
   );
 
   return (
@@ -1599,6 +1656,50 @@ function SuiteTitleMetricPill({
 }
 
 /**
+ * 铺满父格的套间房间行：按容器宽度定列数（最多 3 列），行数取最少并**均分**，
+ * 所以不会出现「3+3+1」那种末行只剩一张、被拉满整行的排法（7 间 → 3+2+2、4 间 → 2+2）。
+ * minCardPx 取 168（{@link soloMinCardPxForPartition} 里最宽松的一档），
+ * 保证窄栏下两间并排的现状不被压成上下叠。
+ */
+function SuiteRoomFillRows({ tabKey, cards }: { tabKey: string; cards: TelemetryStructuredRoomCard[] }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [cw, setCw] = useState(0);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => setCw(el.getBoundingClientRect().width);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const rows = useMemo(
+    () =>
+      rowSplitsForBalancedSoloGrid(cards, cw, 168, {
+        maxCols: ANIMAL_ROOM_SOLO_GRID_MAX_COLS_PER_ROW,
+      }),
+    [cards, cw]
+  );
+  return (
+    <div ref={wrapRef} className="w-full min-w-0 space-y-2 pb-0.5">
+      {rows.map((row, ri) => (
+        <div
+          key={`${tabKey}-fill-r${ri}`}
+          className="grid w-full min-w-0 gap-2"
+          style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}
+        >
+          {row.map((card) => (
+            <div key={`${tabKey}-${card.roomCanonical}-cell`} className="min-w-0">
+              <StructuredRoomCard card={card} widthMode="suiteRowFill" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * 套间壳：默认宽度随内容（w-max）；fillGridCell 时占满父级 flex 格，用于一行内多套间平分宽度。
  */
 function SuiteSection({
@@ -1610,7 +1711,7 @@ function SuiteSection({
   tabKey: string;
   prepared: PreparedSuite;
   fillGridCell?: boolean;
-  /** 用于识别动力站套间（四间时改 2×2 网格，避免一行挤满） */
+  /** 设施布局规则（系统设置 telemetry_facility）：识别锅炉房套间的蒸汽特效 */
   facilityLayoutRules?: FacilityLayoutRulesV1;
 }) {
   const { suite, titleSlots, visibleRooms } = prepared;
@@ -1629,30 +1730,12 @@ function SuiteSection({
   const fxVariant = useAnimalTelemetryFxIconVariant();
   const boilerSteamSciFi =
     fxVariant === "scifi" && suiteIsBoilerRoomSuite(suite, layoutRulesForSuite);
-  const powerStationFourRoomsTwoRows =
-    fillGridCell && n === 4 && suiteIsPowerStationSuite(suite, layoutRulesForSuite);
   const maxM = n > 0 ? Math.max(1, ...visibleRooms.map((r) => r.metrics.length)) : 1;
   const suiteRoomWRem = n > 0 ? soloRoomCardWidthRem(n, maxM) : 15;
   const roomRow =
     n >= 2 ? (
       fillGridCell ? (
-        <div
-          className={cn(
-            "grid w-full min-w-0 gap-2 pb-0.5",
-            powerStationFourRoomsTwoRows && "grid-cols-2"
-          )}
-          style={
-            powerStationFourRoomsTwoRows
-              ? undefined
-              : { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }
-          }
-        >
-          {visibleRooms.map((card) => (
-            <div key={`${tabKey}-${card.roomCanonical}-cell`} className="min-w-0">
-              <StructuredRoomCard card={card} widthMode="suiteRowFill" />
-            </div>
-          ))}
-        </div>
+        <SuiteRoomFillRows tabKey={tabKey} cards={visibleRooms} />
       ) : (
         <div className="flex w-full min-w-0 gap-2 pb-0.5">
           {visibleRooms.map((card) => (

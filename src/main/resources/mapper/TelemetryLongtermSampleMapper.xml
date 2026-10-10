@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleMapper">
+
+    <resultMap id="SampleMap" type="com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleRow">
+        <id column="id" property="id"/>
+        <result column="sample_at" property="sampleAt"/>
+        <result column="variable_name" property="variableName"/>
+        <result column="numeric_value" property="numericValue"/>
+        <result column="raw_value" property="rawValue"/>
+        <result column="metric_kind_code" property="metricKindCode"/>
+        <result column="room_canonical" property="roomCanonical"/>
+        <result column="floor_code" property="floorCode"/>
+        <result column="bundle_code" property="bundleCode"/>
+        <result column="snapshot_at" property="snapshotAt"/>
+        <result column="tick_batch_id" property="tickBatchId"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="filterWhere">
+        <where>
+            <if test="variableQ != null and variableQ != ''">
+                AND variable_name LIKE CONCAT('%', #{variableQ}, '%')
+            </if>
+            <if test="from != null">AND sample_at &gt;= #{from}</if>
+            <if test="to != null">AND sample_at &lt;= #{to}</if>
+        </where>
+    </sql>
+
+    <insert id="insertBatch">
+        INSERT INTO telemetry_longterm_sample
+            (sample_at, variable_name, numeric_value, raw_value, metric_kind_code,
+             room_canonical, floor_code, bundle_code, snapshot_at, tick_batch_id)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.sampleAt}, #{item.variableName}, #{item.numericValue}, #{item.rawValue},
+             #{item.metricKindCode}, #{item.roomCanonical}, #{item.floorCode}, #{item.bundleCode},
+             #{item.snapshotAt}, #{item.tickBatchId})
+        </foreach>
+    </insert>
+
+    <select id="countByFilter" resultType="long">
+        SELECT COUNT(1) FROM telemetry_longterm_sample
+        <include refid="filterWhere"/>
+    </select>
+
+    <select id="selectPageByFilter" resultMap="SampleMap">
+        SELECT * FROM telemetry_longterm_sample
+        <include refid="filterWhere"/>
+        ORDER BY sample_at DESC, variable_name ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectForExport" resultMap="SampleMap">
+        SELECT * FROM telemetry_longterm_sample
+        <where>
+            <if test="from != null">AND sample_at &gt;= #{from}</if>
+            <if test="to != null">AND sample_at &lt;= #{to}</if>
+            <if test="variableNames != null and variableNames.size() > 0">
+                AND variable_name IN
+                <foreach collection="variableNames" item="v" open="(" separator="," close=")">#{v}</foreach>
+            </if>
+        </where>
+        ORDER BY sample_at ASC, variable_name ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectDistinctMonths" resultType="string">
+        SELECT DISTINCT DATE_FORMAT(sample_at, '%Y-%m') AS m
+        FROM telemetry_longterm_sample
+        ORDER BY m DESC
+    </select>
+
+    <select id="selectDistinctDays" resultType="string">
+        SELECT DISTINCT DATE_FORMAT(sample_at, '%Y-%m-%d') AS d
+        FROM telemetry_longterm_sample
+        <where>
+            <if test="from != null">AND sample_at &gt;= #{from}</if>
+            <if test="to != null">AND sample_at &lt;= #{to}</if>
+        </where>
+        ORDER BY d DESC
+    </select>
+</mapper>

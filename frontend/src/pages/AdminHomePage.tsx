@@ -332,7 +332,7 @@ export default function AdminHomePage() {
           const isCollapsed = collapsed.has(title);
           return (
             <section key={title} className="rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]">
-              <div className="rounded-t-2xl bg-[#fef7e6] px-4 py-2">
+              <div className="rounded-t-2xl bg-[var(--app-color-surface-page)] px-4 py-2">
               <button
                 type="button"
                 onClick={() => toggleGroup(title)}

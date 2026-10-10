@@ -447,6 +447,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/telemetry-archive", "SUPER_ADMIN"),
       },
       {
+        id: "telemetry-longterm",
+        path: "/admin/telemetry-longterm",
+        label: "数据监测",
+        icon: Archive,
+        homeTone: "from-teal-400 to-cyan-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/telemetry-longterm", "ADMIN"),
+      },
+      {
         id: "telemetry-insights",
         path: "/admin/telemetry-insights",
         label: "遥测历史分析",
