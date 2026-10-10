@@ -323,7 +323,7 @@
       </view>
     </view>
 
-    <view wx:if="{{ !historyOpen }}" class="ai-drawer__composer">
+    <view wx:if="{{ !historyOpen }}" class="ai-drawer__composer" style="padding-bottom: {{ safeBottom + 10 }}px">
       <view class="ai-drawer__attach" hover-class="ai-drawer__attach--hover" bindtap="onPickImage">
         <van-icon name="photograph" size="20px" color="#64748b" />
       </view>

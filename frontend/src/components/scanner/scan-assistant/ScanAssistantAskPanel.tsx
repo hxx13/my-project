@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 import { CreditCard, Download, FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import type { BubblePlacement } from "./computeBubblePlacement";
@@ -217,10 +218,7 @@ async function waitForPagePainted(): Promise<void> {
  */
 async function captureAppRoot(): Promise<Blob> {
   const { toBlob } = await import("html-to-image");
-  const node = document.getElementById("root");
-  if (!node) {
-    throw new Error("找不到应用根节点");
-  }
+  const node = pickCaptureNode();
   const blob = await toBlob(node, {
     backgroundColor: getComputedStyle(document.body).backgroundColor || "#ffffff",
     pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
@@ -251,6 +249,39 @@ async function captureAppRoot(): Promise<Blob> {
     throw new Error("出图失败");
   }
   return blob;
+}
+
+/**
+ * 该拿哪个节点去出图。
+ *
+ * <p>**不能无条件用 `#root`**：后台那套壳把整页内容放在 `position: fixed` 的子节点里，
+ * `#root` 自身的高度就是 **0**。对 0 高的节点出图 → 画布高 0 → 浏览器 `toBlob` 直接返回
+ * **null**（不抛异常、控制台一个字都没有），表现就是卡片上一句「没截成」，查不出所以然。
+ * 真机踩过：同一个助手，截登录后的普通页面能成，截主大屏必失败。
+ *
+ * <p>所以：`#root` 有盒子尺寸就用它（门户那类正常文档流的页面就是这种）；塌成 0 高就往下
+ * 找**第一个真的有尺寸**的后代顶上 —— 后台壳那层 `fixed inset-0 h-screen` 会被选中，
+ * 而它正是用户眼前这一屏。
+ */
+function pickCaptureNode(): HTMLElement {
+  const root = document.getElementById("root");
+  if (!root) {
+    throw new Error("找不到应用根节点");
+  }
+  const sized = (el: HTMLElement) => el.offsetWidth > 0 && el.offsetHeight > 0;
+  if (sized(root)) {
+    return root;
+  }
+  const queue: HTMLElement[] = Array.from(root.children) as HTMLElement[];
+  while (queue.length > 0) {
+    const node = queue.shift() as HTMLElement;
+    if (sized(node)) {
+      return node;
+    }
+    queue.push(...(Array.from(node.children) as HTMLElement[]));
+  }
+  // 一个带尺寸的都没有：照旧用 #root，让上层照常走「出图失败」那条路
+  return root;
 }
 
 type AskQuestion = {
@@ -940,6 +971,19 @@ export function ScanAssistantAskPanel({
    * 细节得点开看 —— 所以这个浮层不是装饰，是那张图唯一看得清的地方。
    */
   const [zoomShot, setZoomShot] = useState<{ url: string; label: string } | null>(null);
+  /** 大图开着时按 Esc 也关掉 —— 它是个模态浮层，键盘用户得有个出口。 */
+  useEffect(() => {
+    if (!zoomShot) {
+      return undefined;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setZoomShot(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomShot]);
   /**
    * 服务端时间 − 本地时间。
    *
@@ -1931,6 +1975,10 @@ export function ScanAssistantAskPanel({
    *
    * <p>只认**比已知最大消息 id 更新**的助手消息：消息是按 id 递增追加的，
    * 用「大于」不会把已经渲染过的重复拉一遍。
+   *
+   * <p>**消息和产物必须一起补**。定时器出图那条路，服务端同时写了两样东西：一条汇报消息、
+   * 一份锚在那条消息上的图产物。只补消息的话，对话里就是「说图发来了、图上没有」——
+   * 退出重进才看得见（重进走的是另一条会把两者一起拉的路径）。真机报的就是这个。
    */
   const pullNewMessages = async () => {
     const sessionId = sessionIdRef.current;
@@ -1938,11 +1986,19 @@ export function ScanAssistantAskPanel({
       return;
     }
     let msgs: { id: number; role: string; content: string }[] = [];
+    let artifacts: AssistantExportArtifact[] = [];
     try {
-      msgs = await fetchAssistantSessionMessages(sessionId);
+      const [fetchedMsgs, fetchedArtifacts] = await Promise.all([
+        fetchAssistantSessionMessages(sessionId),
+        fetchSessionExports(sessionId).catch(() => [] as AssistantExportArtifact[]),
+      ]);
+      msgs = fetchedMsgs;
+      artifacts = fetchedArtifacts;
     } catch {
       return; // 拉不到就算了，别把这一轮搞坏
     }
+    /** 新挂上的截图要把字节取回来。setTurns 的更新函数里不做副作用，所以先攒着，出来再取。 */
+    const toLoad: { key: string; exportId: number; path?: string }[] = [];
     setTurns((prev) => {
       const maxKnown = prev.reduce((mx, t) => (typeof t.messageId === "number" && t.messageId > mx ? t.messageId : mx), 0);
       // 一个 id 都不知道就**不补**：这种情况无从判断哪条是新的，硬补会把整段对话复制一遍
@@ -1952,10 +2008,13 @@ export function ScanAssistantAskPanel({
       const fresh = (msgs || []).filter(
         (m) => m.role === "assistant" && m.id > maxKnown && String(m.content || "").trim().length > 0,
       );
-      if (fresh.length === 0) {
+      // 已经挂过的产物不再挂第二遍（按产物 id 认，跟它当初用的 key 前缀无关）
+      const mounted = new Set(prev.flatMap((t) => (t.exports ?? []).map((x) => x.exportId)));
+      const freshArtifacts = artifacts.filter((a) => !mounted.has(a.exportId));
+      if (fresh.length === 0 && freshArtifacts.length === 0) {
         return prev;
       }
-      return [
+      let next: AskTurn[] = [
         ...prev,
         ...fresh.map((m) => ({
           role: "assistant" as const,
@@ -1966,7 +2025,58 @@ export function ScanAssistantAskPanel({
           fromTimer: true,
         })),
       ];
+      /*
+       * 产物挂到**锚点之后第一条有正文的助手回复**上 —— 与 pickSession 逐字同一套规则。
+       * 定时器出图那份的锚点就是刚补进来的那条汇报，于是图正好跟在「图已生成」那句话下面，
+       * 和用户当时盯着它跑出来是同一个位置。
+       */
+      for (const a of freshArtifacts) {
+        const anchor = a.messageId ?? null;
+        let target = -1;
+        for (let i = 0; i < next.length; i++) {
+          if (anchor != null && (next[i].messageId ?? 0) < anchor) continue;
+          if (next[i].role === "assistant" && next[i].text.trim().length > 0) {
+            target = i;
+            break;
+          }
+        }
+        if (target < 0) {
+          target = next.findIndex(
+            (t) => t.role === "assistant" && (anchor == null || (t.messageId ?? 0) >= anchor),
+          );
+        }
+        if (target < 0) {
+          for (let i = next.length - 1; i >= 0; i -= 1) {
+            if (next[i].role === "assistant") {
+              target = i;
+              break;
+            }
+          }
+        }
+        if (target < 0) {
+          continue;
+        }
+        const key = `t${a.exportId}`;
+        const isShot = a.kind === "screenshot";
+        const one: TurnExport = {
+          key,
+          kind: a.kind,
+          label: a.label,
+          params: a.params,
+          exportId: a.exportId,
+          // 截图那张卡先占位，字节等这一轮 setTurns 落定后单独取
+          ...(isShot ? { imageState: "loading" as const, path: shotPathOf(a.params) } : {}),
+        };
+        next = next.map((t, i) => (i === target ? { ...t, exports: [...(t.exports ?? []), one] } : t));
+        if (isShot) {
+          toLoad.push({ key, exportId: a.exportId, path: shotPathOf(a.params) });
+        }
+      }
+      return next;
     });
+    for (const item of toLoad) {
+      void loadShotBytes(item.key, item.exportId, item.path);
+    }
   };
 
   /** 手动停止一个倒计时（走的是计时器页同一套接口）。 */
@@ -3288,13 +3398,38 @@ export function ScanAssistantAskPanel({
       />
       </div>
 
-      {/* 点图放大：铺满一屏、再点关掉。点背景关闭之外没有别的操作，所以不需要标题栏和按钮。 */}
-      {zoomShot ? (
-        <div className="scan-assistant-zoom" onClick={() => setZoomShot(null)} role="dialog" aria-label="查看大图">
-          <img className="scan-assistant-zoom__img" src={zoomShot.url} alt={zoomShot.label} />
-          <span className="scan-assistant-zoom__hint">点任意处关闭</span>
-        </div>
-      ) : null}
+      {/*
+        点图放大：铺满一屏、再点关掉。除关闭外没有别的操作。
+        **必须用 portal 挂到 body**：这段 JSX 的父级是 `.scan-assistant-bubble-anchor`，
+        它既带 transform（`position: fixed` 会被那个祖先困住，不再相对视口），
+        又是 `pointer-events: none`（渲染在它里面的东西整块点击穿透）——
+        两条叠加的结果就是「遮罩看得见、点哪儿都关不掉」（真机报过，加按钮也救不了）。
+        挂到 body 上一次绕开两条，仓库里其它弹窗也是这个做法。
+      */}
+      {zoomShot
+        ? createPortal(
+            <div
+              className="scan-assistant-zoom"
+              onClick={() => setZoomShot(null)}
+              role="dialog"
+              aria-modal="true"
+              aria-label="查看大图"
+            >
+              <img className="scan-assistant-zoom__img" src={zoomShot.url} alt={zoomShot.label} />
+              {/* 兜底的关闭键：点背景之外再给一个明确的出口 */}
+              <button
+                type="button"
+                className="scan-assistant-zoom__close"
+                onClick={() => setZoomShot(null)}
+                aria-label="关闭大图"
+              >
+                <X className="size-5" strokeWidth={2} />
+              </button>
+              <span className="scan-assistant-zoom__hint">点任意处关闭</span>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
