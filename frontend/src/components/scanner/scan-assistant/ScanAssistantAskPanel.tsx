@@ -8,25 +8,35 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { CreditCard, Download, FileSpreadsheet, History, ImagePlus, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, X } from "lucide-react";
+import { Bookmark, Check, ChevronDown, ChevronUp, CreditCard, Download, FileSpreadsheet, HelpCircle, History, ImagePlus, ListChecks, Maximize2, Minimize2, Paperclip, SendHorizonal, Square, SquarePen, ThumbsDown, ThumbsUp, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import type { BubblePlacement } from "./computeBubblePlacement";
 import { ScanAssistantChatCard } from "./ScanAssistantChatCard";
 import { ScanAssistantPegtopLoader } from "./ScanAssistantPegtopLoader";
+import { ScanAssistantDetailView } from "./ScanAssistantDetailView";
+import { ScanAssistantPreferenceView } from "./ScanAssistantPreferenceView";
+import { normalizeRecommended, type CapabilityItem } from "./aiDrawerDetail.logic";
+import { fetchAiDrawerRecommended } from "@/api/domains/aiDrawer.api";
 import { ChatMarkdownBody } from "@/components/markdown/ChatMarkdownBody";
+import { useAiDrawerCopy } from "./aiDrawerCopy";
+import { hasMinRole } from "@/features/auth/roleAccess";
 import {
   archiveExportContent,
+  cancelAssistantVote,
   deleteAssistantSession,
   fetchAssistantSessionMessages,
+  fetchMessageReasoning,
   fetchAssistantSessions,
   fetchExportBlob,
   fetchExportByUrl,
+  fetchMyMessageVotes,
   fetchSessionExports,
   streamScanAssistantAsk,
   streamAiInteraction,
   streamScanAssistantGreet,
+  voteAssistantMessage,
   type AssistantExportArtifact,
   type AssistantSession,
   type ScanAssistantUsage,
@@ -139,14 +149,36 @@ const popupWidthFor = (level: 1 | 2) =>
 
 /** 一次提问的用量（跨轮累加）。latencyMs 是服务端实测耗时；前端计时另有 liveMs。 */
 type AskMeta = {
+  /** 模型调用累计耗时。**不含工具执行** —— 用户实际等待时长用 wallMs。 */
   latencyMs: number;
   totalTokens: number;
   promptTokens: number;
   completionTokens: number;
   turns: number;
+  /** 其中模型调用占的毫秒（服务端分开统计）。 */
+  modelMs?: number;
+  /**
+   * 其中工具执行占的毫秒。
+   *
+   * 以前只有一个 latencyMs、且它不含工具执行，于是用户等了 20 秒界面显示 4 秒。
+   * 差额全在这里，所以必须分开显示。
+   */
+  toolMs?: number;
+  /** 用户实际等待的墙钟时长（模型 + 工具）。「用时」该显示的是它。 */
+  wallMs?: number;
+  /**
+   * **真正的思考用时**（毫秒）：请求发出 → 第一个非思考增量到达。
+   *
+   * <p>这才是要显示给用户看的那个数（用户 2026-10-11 明确）。`wallMs` 是「等了多久」，
+   * 里面大头往往是工具在查数据；拿它冒充「思考」会让人以为模型想了老半天。
+   * 负值/缺省 = 没测到（非流式、或老消息），此时退回显示总用时。
+   */
+  thinkingMs?: number;
+  /** 思考消耗的 token（上游精确给出），用于折叠标题「思考了 N 字」。 */
+  reasoningTokens?: number;
 };
 /** 助手抛回来让用户点选的候选（如「该人的可选房间」）。选项是对话的一部分，跟着回合一起存。 */
-type AskChoice = { label: string; value: string };
+type AskChoice = { label: string; value: string; note?: string };
 /**
  * 一道待答的选择题。一次请求可能带回**好几道**（批量清单里张皓瀚缺房间、林安顺缺时长），
  * 载体按顺序依次问，答完最后一道再把所有答案合成一条消息发出去。
@@ -348,6 +380,15 @@ type AskTurn = {
   role: "user" | "assistant";
   text: string;
   typed: boolean;
+  /**
+   * 这一轮模型的**思考正文**（上游 reasoning_content）。
+   *
+   * 默认**折叠**展示：又长又乱（实测一段 129 字只为决定调哪个工具），原样全铺比不铺更糟。
+   * 但它在**等待期间**就到手了 —— 正好填上「用户在干等、却看不到它在干什么」那个空。
+   */
+  reasoning?: string;
+  /** 思考消耗的 token，用于折叠标题。 */
+  reasoningTokens?: number;
   meta?: AskMeta;
   choiceQueue?: AskQuestion[];
   /**
@@ -422,10 +463,12 @@ const TIMER_LIVE_STATUSES = new Set(["PENDING", "FIRING", "AWAITING_CONFIRM"]);
  *
  * <p>**只登记长任务**：这类要等好几秒、还可能失败，用户需要知道进度。
  * 其余工具都是毫秒级的读，抖出来只会让每条回答下面都堆一行噪声。
+ *
+ * <p>文案本身走 ai.copy.toolBusy.*（后台可改）；`fallback` 是界面原文，取不到就用它。
  */
-const TOOL_BUSY_LABEL: Record<string, string> = {
-  screenshotPage: "正在截图",
-  scheduleTimers: "正在设定时",
+const TOOL_BUSY_COPY: Record<string, { key: string; fallback: string }> = {
+  screenshotPage: { key: "ai.copy.toolBusy.screenshot", fallback: "正在截图" },
+  scheduleTimers: { key: "ai.copy.toolBusy.timer", fallback: "正在设定时" },
 };
 
 /** 毫秒 → 「12.4s」，超过 60s 显示「1 分 15 秒」 */
@@ -434,6 +477,40 @@ function fmtSec(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   const total = Math.round(ms / 1000);
   return `${Math.floor(total / 60)} 分 ${total % 60} 秒`;
+}
+
+/**
+ * 历史消息里存的用量 → 界面那行「用时 · tokens」。
+ *
+ * <p>服务端**一直存着**（`ai_message` 的 latency/prompt/completion），只是回看这条路上
+ * 此前没接出来。不接的后果很怪：同一行上的赞/踩图标照常显示，数字却是空的，
+ * 看着像「点赞把数字挤掉了」（用户 2026-10-11 反馈）。
+ *
+ * <p>历史只有 `latencyMs`（那一轮最后一次模型调用），没有工具耗时那两段 ——
+ * 界面上会走 `wallMs` 缺省时的「用时 Xs」那条分支，符合它本来就只是模型耗时的原语义。
+ */
+function metaOfHistory(m: {
+  latencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  reasoningTokens?: number;
+  thinkingMs?: number;
+}): AskMeta | undefined {
+  const promptTokens = m.promptTokens ?? 0;
+  const completionTokens = m.completionTokens ?? 0;
+  const totalTokens = promptTokens + completionTokens;
+  // 两样都没有就别硬造一行空的（老消息可能确实没记用量）
+  if (!m.latencyMs && totalTokens <= 0) return undefined;
+  return {
+    latencyMs: m.latencyMs ?? 0,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    turns: 1,
+    reasoningTokens: m.reasoningTokens,
+    // 老消息这一列是空的 → 界面上退回显示总用时（而不是假报一个 0 秒的思考）
+    thinkingMs: m.thinkingMs,
+  };
 }
 
 /** 附件大小：只给人一个「这份多大」的直觉，精确到 KB 就够 */
@@ -461,13 +538,14 @@ function DownloadCard({
   sub?: boolean;
   onDownload: () => void;
 }) {
+  const copy = useAiDrawerCopy();
   return (
     <div className={`scan-assistant-ask__download${sub ? " scan-assistant-ask__download--sub" : ""}`}>
       <span className="scan-assistant-ask__download-icon" aria-hidden>
         <FileSpreadsheet strokeWidth={2} />
       </span>
       <span className="scan-assistant-ask__download-name" title={label}>
-        {label ?? "导出文件"}
+        {label ?? copy("ai.copy.card.download.default", "导出文件")}
       </span>
       <button
         type="button"
@@ -476,7 +554,7 @@ function DownloadCard({
         onClick={onDownload}
       >
         <Download strokeWidth={2.5} aria-hidden />
-        {busy ? "导出中…" : "下载"}
+        {busy ? copy("ai.copy.card.download.busy", "导出中…") : "下载"}
       </button>
     </div>
   );
@@ -494,6 +572,7 @@ function ShotCard({ shot, sub, onRetake, onZoom }: {
   onRetake: () => void;
   onZoom: (url: string, label: string) => void;
 }) {
+  const copy = useAiDrawerCopy();
   const label = shot.label || "页面截图";
   if (shot.imageState === "ready" && shot.imageUrl) {
     return (
@@ -506,7 +585,7 @@ function ShotCard({ shot, sub, onRetake, onZoom }: {
         />
         {shot.path ? (
           <button type="button" className="scan-assistant-ask__shot-retake" onClick={onRetake}>
-            重截一张
+            {copy("ai.copy.card.screenshot.retry", "重截一张")}
           </button>
         ) : null}
       </figure>
@@ -515,11 +594,13 @@ function ShotCard({ shot, sub, onRetake, onZoom }: {
   if (shot.imageState === "failed") {
     return (
       <div className="scan-assistant-ask__shot scan-assistant-ask__shot--failed">
-        <span className="scan-assistant-ask__shot-tip">{label}没截成</span>
+        <span className="scan-assistant-ask__shot-tip">
+          {copy("ai.copy.card.screenshot.fail", `${label}没截成`, { name: label })}
+        </span>
         {shot.path ? (
           <button type="button" className="scan-assistant-ask__download-btn" onClick={onRetake}>
             <ImagePlus strokeWidth={2.5} aria-hidden />
-            重截一张
+            {copy("ai.copy.card.screenshot.retry", "重截一张")}
           </button>
         ) : null}
       </div>
@@ -527,7 +608,9 @@ function ShotCard({ shot, sub, onRetake, onZoom }: {
   }
   return (
     <div className="scan-assistant-ask__shot scan-assistant-ask__shot--loading">
-      <span className="scan-assistant-ask__shot-tip">正在截「{label}」…</span>
+      <span className="scan-assistant-ask__shot-tip">
+        {copy("ai.copy.card.screenshot.loading", `正在截「${label}」…`, { name: label })}
+      </span>
     </div>
   );
 }
@@ -569,6 +652,7 @@ function TimerChip({ timer, nowMs, clockSkewMs, onStop, onConfirm }: {
   onStop: () => void;
   onConfirm: () => void;
 }) {
+  const copy = useAiDrawerCopy();
   const live = TIMER_LIVE_STATUSES.has(timer.status);
   /** 到点了但**在等用户点头**（写操作不能自己动手）。这不是「正在执行」，别混为一谈。 */
   const awaiting = timer.status === "AWAITING_CONFIRM";
@@ -578,12 +662,13 @@ function TimerChip({ timer, nowMs, clockSkewMs, onStop, onConfirm }: {
   const done = timer.status === "FIRED"
     ? (failed ? " · 失败" : " · 成功")
     : "";
+  const remainText = fmtRemain(remainMs);
   const text = awaiting
-    ? "等待你确认"
+    ? copy("ai.copy.card.timer.waitConfirm", "等待你确认")
     : live
       ? remainMs > 0
-        ? `还剩 ${fmtRemain(remainMs)}`
-        : "正在执行…"
+        ? copy("ai.copy.card.timer.left", `还剩 ${remainText}`, { "mm:ss": remainText })
+        : copy("ai.copy.card.timer.running", "正在执行…")
       : `${timer.statusZh}${done}${timer.error ? `：${timer.error}` : ""}`;
   return (
     <div className={`scan-assistant-ask__timer${failed ? " scan-assistant-ask__timer--failed" : ""}`}>
@@ -596,12 +681,12 @@ function TimerChip({ timer, nowMs, clockSkewMs, onStop, onConfirm }: {
       <span className="scan-assistant-ask__timer-remain">{text}</span>
       {awaiting ? (
         <button type="button" className="scan-assistant-ask__timer-confirm" onClick={onConfirm}>
-          确认执行
+          {copy("ai.copy.card.timer.confirm", "确认执行")}
         </button>
       ) : null}
       {live ? (
         <button type="button" className="scan-assistant-ask__timer-stop" onClick={onStop}>
-          停止
+          {copy("ai.copy.card.timer.stop", "停止")}
         </button>
       ) : null}
     </div>
@@ -733,7 +818,13 @@ function loadCachedSessionId(): number | null {
 
 function saveCachedTurns(turns: AskTurn[], sessionId: number | null) {
   try {
-    writeAskCache(currentCacheKey(), JSON.stringify({ ts: Date.now(), turns, sessionId }));
+    /*
+     * **思考正文不进缓存**。它可能很长（实测一段就上百字），几条就能把 sessionStorage 撑爆 ——
+     * 而撑爆是**静默的**（下面的 catch 吞掉），表现为「缓存忽然不生效了」，很难查。
+     * 它也不是回看对话的必要内容：真要看，历史里从服务端拿得到。
+     */
+    const slim = turns.map((t) => (t.reasoning ? { ...t, reasoning: undefined } : t));
+    writeAskCache(currentCacheKey(), JSON.stringify({ ts: Date.now(), turns: slim, sessionId }));
   } catch {
     /* ignore quota / private mode */
   }
@@ -752,6 +843,70 @@ function fmtSessionTime(iso?: string): string {
     : `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${hhmm}`;
 }
 
+/**
+ * 思考过程。**常驻显示入口**（只要这条回复在服务端有 id），点开时才去后端取正文。
+ *
+ * <p>为什么不把正文挂在本地状态上：它很长，各端**故意不缓存**（会撑爆存储），
+ * 而「切走再切回来」「历史翻页」「小程序重开抽屉」这些路径上都可能把它弄丢 ——
+ * 实测撞过三次（只存了工具轮 / 历史回调的二次重建 / 缓存不存它）。
+ *
+ * <p>与其在每个状态流转处各堵一遍，不如让**展开这个动作直接去后端要**：库是唯一真相源。
+ * 拉到空串时如实说「这一轮没有思考内容」—— 有些轮次模型真的没想（实测简单请求只 46 字、甚至 0 字），
+ * 那不是故障，别显示成故障。
+ */
+function ReasoningBlock({
+  messageId,
+  reasoning,
+  reasoningTokens,
+  live,
+}: {
+  /** 服务端那条回复的 id；没有 id 就没法按需拉（未落库的播报） */
+  messageId?: number;
+  /** 已经在手上的思考正文（流式刚下来的那条会有） */
+  reasoning?: string;
+  reasoningTokens?: number;
+  /** 正在流式进来的思考正文 —— 生成中直接显示它，不用去拉 */
+  live?: string;
+}) {
+  const [text, setText] = useState<string | undefined>(reasoning);
+  const [tokens, setTokens] = useState<number | undefined>(reasoningTokens);
+  const [loading, setLoading] = useState(false);
+
+  // 换了消息 / 上层给了新值就跟着走（打字机那几帧会反复触发，值没变时是空操作）
+  useEffect(() => {
+    setText(reasoning);
+    setTokens(reasoningTokens);
+  }, [messageId, reasoning, reasoningTokens]);
+
+  const open = async (isOpen: boolean) => {
+    if (!isOpen || text !== undefined || messageId == null) return;
+    setLoading(true);
+    try {
+      const r = await fetchMessageReasoning(messageId);
+      setText(r.reasoning ?? "");
+      if (r.reasoningTokens != null) setTokens(r.reasoningTokens);
+    } catch {
+      setText("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const shown = live ?? text;
+  if (shown === undefined && messageId == null) return null;
+
+  return (
+    <details className="scan-assistant-ask__reasoning" onToggle={(e) => void open((e.target as HTMLDetailsElement).open)}>
+      <summary>
+        思考过程{tokens && tokens > 0 ? `（${tokens} 字）` : ""}
+      </summary>
+      <pre className="scan-assistant-ask__reasoning-body">
+        {loading ? "正在取…" : shown ? shown : "这一轮没有思考内容"}
+      </pre>
+    </details>
+  );
+}
+
 /** 助手气泡：最新一条回答逐字打出；打完后标记 typed 避免重复打字 */
 function AssistantBubble({
   text,
@@ -759,6 +914,13 @@ function AssistantBubble({
   onTyped,
   meta,
   live,
+  reasoning,
+  reasoningTokens,
+  liveReasoning,
+  liveToolPhrase,
+  voteMessageId,
+  myVote,
+  onVote,
   children,
 }: {
   text: string;
@@ -768,6 +930,19 @@ function AssistantBubble({
   meta?: AskMeta;
   /** 正在生成时的实时态：本地计时 + 每轮推来的 token */
   live?: AskMeta;
+  /** 落定后的思考正文（默认折叠） */
+  reasoning?: string;
+  reasoningTokens?: number;
+  /** 正在流进来的思考正文 */
+  liveReasoning?: string;
+  /** 正在跑的工具的人话短语 */
+  liveToolPhrase?: string;
+  /** 这条回复在服务端的消息 id —— 投票要拿它当坐标。没有 id（还在流式/播报）就不显示投票 */
+  voteMessageId?: number;
+  /** 我投过什么：'up' / 'down' / undefined */
+  myVote?: "up" | "down";
+  /** 点赞踩。乐观更新在调用方做，这里只管发出去 */
+  onVote?: (messageId: number, vote: "up" | "down") => void;
   /**
    * 挂在这条消息下面的东西（目前是导出卡片）。
    *
@@ -787,9 +962,37 @@ function AssistantBubble({
   }, [done, type, onTyped]);
 
   const shown: AskMeta | undefined = meta ?? live;
+  /**
+   * 量到真正的思考用时了吗。
+   *
+   * <p>**负值/缺省都算「没测到」** —— 它不是「0 秒」，而是这条数据当时根本不存在
+   * （非流式那会儿、或老消息）。这时退回显示总用时，而不是假报一个 0.0s 的思考。
+   */
+  const hasThinking =
+    shown != null && typeof shown.thinkingMs === "number" && shown.thinkingMs >= 0;
   const metaNode = shown ? (
     <div className="scan-assistant-ask__meta" aria-live="off">
-      <span>{meta ? "用时" : "思考中"} {fmtSec(shown.latencyMs)}</span>
+      <span>
+        {meta
+          ? hasThinking
+            ? /* 落定后**要显示的就是思考用时**（用户 2026-10-11 明确）：不是「用户等了多久」，
+                 而是「模型想了多久」—— 等待里的大头往往是工具在查数据。 */
+              `思考 ${fmtSec(shown.thinkingMs as number)}`
+            : shown.wallMs != null
+              ? `用时 ${fmtSec(shown.wallMs)}`
+              : `用时 ${fmtSec(shown.latencyMs)}`
+          : /* 等待期**不能再叫「思考中」**——这个数是从点发送算起的墙钟，里面绝大部分是工具在查数据。
+               叫它等待中，慢在哪一头由旁边的工具短语说。 */
+            liveToolPhrase
+            ? `等待中 · ${liveToolPhrase}`
+            : `等待中 ${fmtSec(shown.latencyMs)}`}
+      </span>
+      {/* 思考之外花在哪了：用户等了 20 秒、思考只有 4 秒时，这句解释剩下那 16 秒 */}
+      {meta && hasThinking && shown.wallMs != null ? (
+        <span className="scan-assistant-ask__meta-sub">
+          · 总 {fmtSec(shown.wallMs)}（工具 {fmtSec(shown.toolMs ?? 0)}）
+        </span>
+      ) : null}
       {shown.totalTokens > 0 ? (
         <span>
           · {shown.totalTokens.toLocaleString()} tokens
@@ -808,6 +1011,25 @@ function AssistantBubble({
 
   return (
     <div className="scan-assistant-ask__answer">
+      {/*
+        思考过程**放在回答前面** —— 它是先发生的（模型先想、再调工具、最后才说话），
+        排在回答下面会让人以为是「回答的补充」。
+
+        两态是有意分开的：
+        · **生成中**常显 —— 那正是用户在干等的时候，收起来就等于没有；
+        · **落定后**折叠 —— 又长又乱（实测一段 129 字只为决定调哪个工具），原样全铺比不铺更糟。
+      */}
+      {!meta && liveReasoning ? (
+        <div className="scan-assistant-ask__reasoning scan-assistant-ask__reasoning--live">
+          <div className="scan-assistant-ask__reasoning-head">思考中…</div>
+          <pre className="scan-assistant-ask__reasoning-body">{liveReasoning}</pre>
+        </div>
+      ) : null}
+      <ReasoningBlock
+        messageId={voteMessageId}
+        reasoning={reasoning}
+        reasoningTokens={reasoningTokens}
+      />
       {hasBubbleRow ? (
         <div className="scan-assistant-ask__answer-row">
           <ScanAssistantPegtopLoader animated={type && !done} />
@@ -837,7 +1059,43 @@ function AssistantBubble({
               </div>
             )
         : null}
-      {metaNode}
+      {/*
+        赞/踩：**常驻**（要就给，不藏进菜单里让用户找不到）。
+        只有拿到服务端消息 id 的那条才显示 —— 还在流式、或那条是播报（没有落库的回复）时没有坐标可投。
+        它同时是判据里**显式**的那一路；样本稀，所以只当辅助，主判据是行为。
+      */}
+      {/*
+        用量与赞/踩**同一行**（用户 2026-10-11 定）：左端贴气泡左边缘放用量，右端收着操作图标。
+        分两行的话，一块回复下面会拖两行小字、纵向很浪费；而且这两样本就是同一类东西
+        （这条回复自己的元信息），拆开摆反而像两件事。
+      */}
+      {metaNode || (voteMessageId != null && onVote) ? (
+        <div className="scan-assistant-ask__footer">
+          {metaNode}
+          {voteMessageId != null && onVote ? (
+            <div className="scan-assistant-ask__vote" role="group" aria-label="这条回复怎么样">
+              <button
+                type="button"
+                className={`scan-assistant-ask__vote-btn${myVote === "up" ? " scan-assistant-ask__vote-btn--on" : ""}`}
+                aria-pressed={myVote === "up"}
+                title="这条回复有用"
+                onClick={() => onVote(voteMessageId, "up")}
+              >
+                <ThumbsUp className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                className={`scan-assistant-ask__vote-btn${myVote === "down" ? " scan-assistant-ask__vote-btn--on" : ""}`}
+                aria-pressed={myVote === "down"}
+                title="这条回复不对"
+                onClick={() => onVote(voteMessageId, "down")}
+              >
+                <ThumbsDown className="size-3.5" />
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -893,6 +1151,15 @@ export function ScanAssistantAskPanel({
    * 弹个莫名错误），一次澄清答案发两条消息（模型看到重复回答）。
    */
   const sendingRef = useRef(false);
+
+  /** 抽屉固定文案（后台可改）；取不到就走各处的兜底原文。挂载时拉一次并缓存。 */
+  const copy = useAiDrawerCopy();
+
+  /**
+   * 超管判定：**复用仓库既有的角色等级判定**（hasMinRole），不另写一套比较。
+   * 详情视图里「我的 / 全部」切换、每条「回复改状态」两处都以此为准（后端各自再判一次）。
+   */
+  const isAdmin = hasMinRole(authStorage.getRole(), "SUPER_ADMIN");
 
   /**
    * 载体的即时播报，作为**最新一条助手消息**铺在对话末尾。
@@ -983,7 +1250,7 @@ export function ScanAssistantAskPanel({
       if (last && last.role === "assistant" && !last.text) {
         next[next.length - 1] = {
           role: "assistant",
-          text: partial || "（已停止生成）",
+          text: partial || copy("ai.copy.chat.stopped", "（已停止生成）"),
           typed: true,
         };
       }
@@ -991,6 +1258,20 @@ export function ScanAssistantAskPanel({
     });
   };
   const [liveMs, setLiveMs] = useState(0);
+  /**
+   * 本轮**边来边显**的思考正文。
+   *
+   * 必须实时、不能等收尾：思考是模型在调工具**之前**吐出来的 —— 那段正是用户在干等的时候。
+   * 等到结束才显示，就等于没有（设计文档 §10.3）。
+   */
+  const [liveReasoning, setLiveReasoning] = useState("");
+  /**
+   * 本轮思考正文的**累计缓冲**。用 ref 而不是 state：收尾时（onDone）要拿到完整值写进轮里，
+   * 而 onDone 的闭包里读 state 会读到旧的。
+   */
+  const reasoningRef = useRef("");
+  /** 当前正在跑的工具的人话短语（「正在汇总 148 个板块…」），由服务端在工具开跑前推来。 */
+  const [liveToolPhrase, setLiveToolPhrase] = useState("");
   const [usage, setUsage] = useState<ScanAssistantUsage | null>(null);
   /**
    * 提问时把**当前页面**一并发给服务端，只用于工具路由：「在这个页面上该带哪些工具包」。
@@ -1021,6 +1302,16 @@ export function ScanAssistantAskPanel({
    * （真机 2026-10-10 撞到）。跳页、截图、工具进度同理。放在一处，两条链路就不会再走岔。
    */
   const turnEventHandlers = {
+    /*
+     * 思考正文**边来边显**。这一段是模型在调工具**之前**吐出来的 —— 正是用户干等的那几秒，
+     * 所以必须实时，不能等收尾（等结束才显等于没显）。
+     */
+    onReasoning: (t: string) => {
+      reasoningRef.current += t;
+      setLiveReasoning((s) => s + t);
+    },
+    /* 工具开跑前服务端推来的人话短语（「正在汇总 148 个板块…」）。慢的是查数据，不是模型。 */
+    onToolProgress: (_n: string, phrase: string) => setLiveToolPhrase(phrase),
     onNavigate: (p: { path: string; label?: string }) => {
       pendingNavRef.current = p;
     },
@@ -1058,8 +1349,9 @@ export function ScanAssistantAskPanel({
     },
     // 长任务进度：running 挂一行「正在截图…」，done 撤掉，failed 留着（那正是要害）
     onTool: (p: { name: string; status: string }) => {
-      const label = TOOL_BUSY_LABEL[p.name];
-      if (!label) return;
+      const entry = TOOL_BUSY_COPY[p.name];
+      if (!entry) return;
+      const label = copy(entry.key, entry.fallback);
       if (p.status === "running") {
         patchLastAssistant({ toolBusy: { label, status: "running" } });
       } else if (p.status === "failed") {
@@ -1111,6 +1403,18 @@ export function ScanAssistantAskPanel({
   const [current, setCurrent] = useState(0);
   /** 自定义回答的草稿：输入框**常驻**在选项下面（不再点开才出现），回车即等于选了这一项 */
   const [customDraft, setCustomDraft] = useState("");
+  /** 「其他想法…」输入框默认收着：二选一的题也常显一个自定义输入框，噪音太大（用户反馈） */
+  const [customOpen, setCustomOpen] = useState(false);
+  /** 选项区可折叠：候选一多就铺满整屏，正文全被盖住 —— 收起后先看对话（用户反馈） */
+  const [choicesFolded, setChoicesFolded] = useState(false);
+  /**
+   * **已点但未提交**的选项。
+   *
+   * <p>原先是「点一下就把这题答了、直接继续」，用户反馈「我想先看看选了哪个」——
+   * 选择题一律改成**先高亮、按提交才继续**。写操作确认（执行/不执行）不走这条路：
+   * 那两个不是选项，是按钮，点一下即办。
+   */
+  const [picked, setPicked] = useState<string | null>(null);
   /**
    * 大窗态：卡片脱离气泡锚点、居中放大 —— 小卡装不下多轮对话。
    * popupFrom 记「小卡中心相对视口中心的偏移」与「小卡宽 / 弹窗宽」，
@@ -1146,6 +1450,72 @@ export function ScanAssistantAskPanel({
   const newSessionRef = useRef(false);
   /** 历史对话：打开即拉列表，点一条就切过去 */
   const [historyOpen, setHistoryOpen] = useState(false);
+  /**
+   * 「详情」视图：**卡片内容区整块换成能力清单 + 反馈**（不是浮层/弹窗），输入区仍在卡片底部。
+   * 与历史列表同一块位置，互斥；点入口再点一次、或点视图里的「返回对话」切回对话。
+   */
+  const [detailOpen, setDetailOpen] = useState(false);
+  /**
+   * 「我记住的习惯」是否展开。
+   *
+   * <p>与详情/历史同一块位置、互斥。**这一页是为了让偏好看得见** ——
+   * 只有「在对话里问一句」的话，用户根本不知道自己被记了什么。
+   */
+  const [prefOpen, setPrefOpen] = useState(false);
+  /**
+   * 输入框上方的**推荐指令条**。
+   *
+   * 进面板取一次即可：频次变化很慢，不值得每轮刷新（也就不会每轮打扰服务端）。
+   * 服务端已按「个人频次 → 全站热度 → 原排序」排好，**这里不再重排** —— 排两次迟早两边不一致。
+   */
+  const [recommended, setRecommended] = useState<CapabilityItem[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    fetchAiDrawerRecommended()
+      .then((raw) => {
+        if (alive) setRecommended(normalizeRecommended(raw));
+      })
+      .catch(() => {
+        // 接口挂掉不显示整条即可，绝不能让对话本身受影响
+        if (alive) setRecommended([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /**
+   * 指令条的左右翻动。
+   *
+   * **为什么必须有**：小卡片里滚动条是隐藏的（`scrollbar-width: none`），
+   * 鼠标用户没有触摸拖动，放不下的那几条就**永远够不到** —— 一排芯片看着像被截断了。
+   */
+  const recommendBarRef = useRef<HTMLDivElement | null>(null);
+  const [recommendScroll, setRecommendScroll] = useState({ left: false, right: false });
+
+  const syncRecommendScroll = useCallback(() => {
+    const el = recommendBarRef.current;
+    if (!el) return;
+    setRecommendScroll({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+  }, []);
+
+  /** 翻一屏（留一点重叠，让用户看得出是「接着刚才」而不是跳了）。 */
+  const pageRecommended = useCallback((dir: number) => {
+    const el = recommendBarRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(160, el.clientWidth * 0.8), behavior: "smooth" });
+  }, []);
+
+  // 拿到数据后、以及窗口尺寸变化后都要重算一次能否翻动（不然按钮会一直灰着）
+  useEffect(() => {
+    syncRecommendScroll();
+    window.addEventListener("resize", syncRecommendScroll);
+    return () => window.removeEventListener("resize", syncRecommendScroll);
+  }, [recommended, syncRecommendScroll]);
   const [historyList, setHistoryList] = useState<AssistantSession[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   /** 哪一条正在等第二次点击确认删除（两步确认，避免误点） */
@@ -1191,15 +1561,30 @@ export function ScanAssistantAskPanel({
    * 或者来了新消息（新消息要能看见，所以那时强制重新跟随）。
    */
   const stickToBottomRef = useRef(true);
+  /**
+   * 「刚刚是我们自己滚的」。
+   *
+   * <p>不加这个标记会有个**竞态**（2026-10-11 实测复现：滚完离底部还差 951px、从此不再跟随）：
+   * `follow()` 把 scrollTop 设到底 → 浏览器随后派发 scroll 事件 → `syncStick()` 在**那一刻**重算，
+   * 而内容在这中间已经又长高了 → 差值 > 48 → 判定成「用户自己滚上去了」→ 把跟随关掉。
+   * 打字机一次吐一大块时尤其容易触发。
+   */
+  const selfScrollingRef = useRef(false);
   useEffect(() => {
     const el = historyRef.current;
     if (!el) return;
     const syncStick = () => {
+      // 刚刚那一下是我们自己滚的，不能当作用户意图
+      if (selfScrollingRef.current) {
+        selfScrollingRef.current = false;
+        return;
+      }
       // 距底部 48px 内都算「在底部」—— 到底时的亚像素误差与滚动条宽度都会让差值不为 0
       stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     };
     const follow = () => {
       if (stickToBottomRef.current) {
+        selfScrollingRef.current = true;
         el.scrollTop = el.scrollHeight;
       }
     };
@@ -1213,6 +1598,130 @@ export function ScanAssistantAskPanel({
       el.removeEventListener("scroll", syncStick);
     };
   }, [turns.length]);
+
+  /**
+   * 历史分页：一页拉多少条。
+   *
+   * 60 大概三到四屏 —— 够用户看清「接着哪句聊」，又不至于把长会话一次全拉回来。
+   */
+  const HISTORY_PAGE = 60;
+  /** 往前翻的游标：当前已加载的最老一条的 seq。null = 到头了。 */
+  const historyBeforeSeqRef = useRef<number | null>(null);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  /** 防重入：滚动事件连着来，不能同时发两次请求。 */
+  const historyLoadingMoreRef = useRef(false);
+
+  /**
+   * 往上滚到顶时拉更早的一页。
+   *
+   * <p><b>必须补偿滚动位置</b>：新内容插在顶部会把当前视口整体往下推，用户看到的是「画面自己跳了」。
+   * 做法：记住插入前的 scrollHeight，插完把差量加回 scrollTop —— 视口钉在原地，内容在它上面长出来。
+   */
+  const loadOlderHistory = useCallback(async () => {
+    const sid = sessionIdRef.current;
+    const before = historyBeforeSeqRef.current;
+    if (!sid || before == null || before <= 0) return;
+    if (historyLoadingMoreRef.current || !historyHasMore) return;
+    historyLoadingMoreRef.current = true;
+    const el = historyRef.current;
+    const prevHeight = el?.scrollHeight ?? 0;
+    try {
+      const older = await fetchAssistantSessionMessages(sid, { beforeSeq: before, limit: HISTORY_PAGE });
+      if (older.length === 0) {
+        setHistoryHasMore(false);
+        return;
+      }
+      const oldest = older.reduce<number | null>(
+        (min, m) => (typeof m.seq === "number" && (min == null || m.seq < min) ? m.seq : min),
+        null,
+      );
+      historyBeforeSeqRef.current = oldest;
+      setHistoryHasMore(oldest != null && oldest > 0 && older.length >= HISTORY_PAGE);
+
+      /*
+       * 更早那几页**不带产物**（导出卡片 / 截图）—— 那些要按锚点单独取，翻页时再取一遍不值得。
+       * ponytail: 只影响「翻到更早的对话时看不到它当年的文件卡片」；要补就在这儿加一次按页取产物。
+       */
+      const olderTurns: AskTurn[] = older
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .filter((m) => (m.content ?? "").trim().length > 0)
+        .map((m) => ({
+          role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+          text: m.content ?? "",
+          typed: true,
+          messageId: m.id,
+          reasoning: m.reasoningContent || undefined,
+          reasoningTokens: m.reasoningTokens,
+          meta: metaOfHistory(m),
+        }));
+      if (olderTurns.length > 0) {
+        // 插到**最前面**（更早的在上面）
+        setTurns((prev) => [...olderTurns, ...prev]);
+      }
+      // 插完补偿，别让视口跳
+      requestAnimationFrame(() => {
+        const el2 = historyRef.current;
+        if (el2) el2.scrollTop += el2.scrollHeight - prevHeight;
+      });
+    } catch {
+      // 拉更早失败就当没有更早的，别为这个打扰用户
+      setHistoryHasMore(false);
+    } finally {
+      historyLoadingMoreRef.current = false;
+    }
+  }, [historyHasMore]);
+
+  // 滚到接近顶部就去拉更早的。挂在同一个滚动容器上，与「粘底」那条互不干扰。
+  useEffect(() => {
+    const el = historyRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (el.scrollTop < 60) void loadOlderHistory();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [loadOlderHistory, turns.length]);
+
+  /** 我在本会话投过什么：messageId → up/down。用来回填按钮的选中态。 */
+  const [myVotes, setMyVotes] = useState<Record<number, "up" | "down">>({});
+
+  /** 拉一次本会话我投过的票。**切会话时必须重拉** —— 否则会带着上一条会话的选中态。 */
+  const loadMyVotes = useCallback(async (sessionId: number) => {
+    try {
+      setMyVotes(await fetchMyMessageVotes(sessionId));
+    } catch {
+      setMyVotes({});
+    }
+  }, []);
+
+  /**
+   * 点赞 / 踩，**再点一次同一个 = 取消**。
+   *
+   * <p>**乐观更新**：先点亮再发请求 —— 点赞是个小动作，等一个来回才亮灯会显得迟钝。
+   * 发失败就**回滚并提示**，不能静默吞掉：那会让用户以为投上了，而判据会少一票。
+   */
+  const handleVote = useCallback(async (messageId: number, vote: "up" | "down") => {
+    const prev = myVotes[messageId];
+    const canceling = prev === vote;
+    setMyVotes((m) => {
+      const next = { ...m };
+      if (canceling) delete next[messageId];
+      else next[messageId] = vote;
+      return next;
+    });
+    try {
+      if (canceling) await cancelAssistantVote(messageId);
+      else await voteAssistantMessage(messageId, vote);
+    } catch (e) {
+      setMyVotes((m) => {
+        const next = { ...m };
+        if (prev) next[messageId] = prev;
+        else delete next[messageId];
+        return next;
+      });
+      toast.error(e instanceof Error ? e.message : "操作失败");
+    }
+  }, [myVotes]);
 
   /**
    * 唯一的闸是「同一时刻只能有一条在飞」。
@@ -1437,6 +1946,9 @@ export function ScanAssistantAskPanel({
           promptTokens: usage?.promptTokens ?? 0,
           completionTokens: usage?.completionTokens ?? 0,
           turns: usage?.turns ?? 0,
+          // 等待期间也把两段分开：用户能看出这二十秒是模型在跑、还是工具在查数据。
+          modelMs: usage?.modelMs,
+          toolMs: usage?.toolMs,
         }
       : undefined;
 
@@ -1447,6 +1959,9 @@ export function ScanAssistantAskPanel({
    * 而不是留一个塌成一行的高度（真机反馈：新建完"就一行输入框太难受"）。
    */
   const fireGreeting = useCallback(() => {
+    // 上一轮留下的流式态先清掉 —— 否则它会挂在新气泡上（下面 done 时还要再清一次）
+    setLiveReasoning("");
+    setLiveToolPhrase("");
     setTurns([{ role: "assistant", text: "", typed: false }]);
     let acc = "";
     void streamScanAssistantGreet({
@@ -1455,12 +1970,41 @@ export function ScanAssistantAskPanel({
       },
       onDone: (payload) => {
         const finalText = (payload.text ?? acc).trim();
-        setTurns([{ role: "assistant", text: finalText, typed: false }]);
+        /*
+         * **流式态必须在这里清掉**：那块「思考中… + 思考正文」的显示条件是「还没有 meta」，
+         * 而问候这条路**从不设 meta**（它没落库、没有用量）—— 不清就永远挂着，看着就是卡住。
+         * 提问链路之所以没暴露这个问题，是因为它收尾时会设 meta，把那块顺带藏住了。
+         */
+        setLiveReasoning("");
+        setLiveToolPhrase("");
+        /*
+         * **没正文就直接算打完**（`typed: true`）—— 与提问链路 `applyStreamResult` 同一口径。
+         *
+         * 少了这一手也会卡死：打字机的 `done` 判据是「文本非空且打完」，**空文本时它恒为 false**，
+         * 于是 `onTyped` 永不触发、`typed` 停在 false、气泡永远停在「正在思考…」并一直转。
+         */
+        setTurns([{ role: "assistant", text: finalText, typed: finalText.length === 0 }]);
       },
       onError: (message) => {
+        setLiveReasoning("");
+        setLiveToolPhrase("");
         setTurns([{ role: "assistant", text: message, typed: false }]);
       },
-    }).catch(() => {});
+    })
+      .catch(() => {
+        // 被中止（用户抢着发了下一句）时 onDone/onError 都不会来，同样要收尾，别留一个转不完的气泡
+        setLiveReasoning("");
+        setLiveToolPhrase("");
+        setTurns((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "assistant" && !last.typed && !last.text) {
+            const next = prev.slice();
+            next[next.length - 1] = { ...last, typed: true };
+            return next;
+          }
+          return prev;
+        });
+      });
   }, []);
 
   const submit = () => {
@@ -1474,6 +2018,8 @@ export function ScanAssistantAskPanel({
    */
   /** 新建对话：清掉本地这几样（对话/待答题/答案缓存/待发图），并让下一条消息开一条服务端新会话 */
   const handleNewChat = () => {
+    setDetailOpen(false); // 新建对话是回到对话本身，详情/偏好视图先收起
+    setPrefOpen(false);
     setTurns([]);
     setQueue([]);
     setAnswers([]);
@@ -1497,6 +2043,8 @@ export function ScanAssistantAskPanel({
 
   /** 打开历史对话：拉一次列表（只 source=scan），点一条就切过去 */
   const openHistory = () => {
+    setDetailOpen(false); // 详情、偏好、历史是同一块位置，互斥
+    setPrefOpen(false);
     setHistoryOpen(true);
     setHistoryList(null);
     setHistoryLoading(true);
@@ -1537,9 +2085,18 @@ export function ScanAssistantAskPanel({
     try {
       // 消息与产物**两路并行**取：产物要按锚点挂回它当年那一轮，否则卡片就回不到原位
       const [msgs, exports] = await Promise.all([
-        fetchAssistantSessionMessages(sessionId),
+        // **只取最后一屏**：长会话几百条，一次全量既慢又白费；更早的等用户往上滚再要
+        fetchAssistantSessionMessages(sessionId, { limit: HISTORY_PAGE }),
         fetchSessionExports(sessionId).catch(() => [] as AssistantExportArtifact[]),
       ]);
+      // 记下往前翻的游标：本页最老那一条的 seq。拿不到 seq 就当作没有更早的（宁可不翻，别翻重）
+      const oldestSeq = msgs.reduce<number | null>(
+        (min, m) => (typeof m.seq === "number" && (min == null || m.seq < min) ? m.seq : min),
+        null,
+      );
+      historyBeforeSeqRef.current = oldestSeq;
+      // 满一页才可能还有更早的；不满就是到头了
+      setHistoryHasMore(oldestSeq != null && oldestSeq > 0 && msgs.length >= HISTORY_PAGE);
       // 先铺成轮次（暂时留着消息 id，用来给产物找落点）
       const rows = msgs
         .filter((m) => m.role === "user" || m.role === "assistant")
@@ -1549,6 +2106,13 @@ export function ScanAssistantAskPanel({
           typed: true, // 恢复的历史一律视为已打完
           messageId: m.id,
           exports: [] as TurnExport[],
+          /*
+           * 思考正文**从服务端捞回来** —— 本地缓存里故意没放它（太长，会撑爆 sessionStorage），
+           * 所以「切走再切回来」时那一段只能靠这一路补上（用户 2026-10-11 反馈看不到）。
+           */
+          reasoning: m.reasoningContent || undefined,
+          reasoningTokens: m.reasoningTokens,
+          meta: metaOfHistory(m),
         }));
 
       // 产物**不挂在它产生的那个工具轮上**：那一轮正文是空的，卡片会孤零零占一行，
@@ -1595,6 +2159,15 @@ export function ScanAssistantAskPanel({
             typed: r.typed,
             // 留着锚点：倒计时/产物按它挂回原位
             messageId: r.messageId,
+            /*
+             * **这几项必须原样带过来**：这里是「重建」不是「追加」，漏带的字段会被直接抹掉
+             * （与 applyStreamResult 里那句是同一个教训）。用量那行「用时 · tokens」和折叠的
+             * 思考过程都挂在这上面 —— 少了它，翻历史时那两个东西整条都不显示，
+             * 而同一行上的赞/踩图标（只认锚点）照常出现，看着像「点赞把数字挤掉了」。
+             */
+            meta: r.meta,
+            reasoning: r.reasoning,
+            reasoningTokens: r.reasoningTokens,
             ...(r.exports.length ? { exports: r.exports } : {}),
           })),
       );
@@ -1606,6 +2179,8 @@ export function ScanAssistantAskPanel({
       }
       // 倒计时按 messageId 挂回原位（与产物同一套锚点）
       void mountTimers();
+      // 「我投过哪条」按会话取一次 —— 切会话必须重拉，否则带着上一条的选中态
+      void loadMyVotes(sessionId);
       sessionIdRef.current = sessionId;
       newSessionRef.current = false;
       setQueue([]);
@@ -1655,6 +2230,12 @@ export function ScanAssistantAskPanel({
       text?: string;
       totalTokens?: number;
       latencyMs?: number;
+      modelMs?: number;
+      toolMs?: number;
+      wallMs?: number;
+      /** 真正的思考用时（毫秒）。负值 = 没测到。 */
+      thinkingMs?: number;
+      reasoningTokens?: number;
       promptTokens?: number;
       completionTokens?: number;
       turns?: number;
@@ -1663,6 +2244,7 @@ export function ScanAssistantAskPanel({
     },
     acc: string,
     accQueue: AskQuestion[],
+    accReasoning: string,
   ) => {
     const finalText = (payload.text ?? acc).trim();
     const meta: AskMeta | undefined =
@@ -1673,6 +2255,11 @@ export function ScanAssistantAskPanel({
             promptTokens: payload.promptTokens ?? 0,
             completionTokens: payload.completionTokens ?? 0,
             turns: payload.turns ?? 1,
+            modelMs: payload.modelMs,
+            toolMs: payload.toolMs,
+            wallMs: payload.wallMs,
+            thinkingMs: payload.thinkingMs,
+            reasoningTokens: payload.reasoningTokens,
           }
         : undefined;
     setTurns((prev) => {
@@ -1687,6 +2274,9 @@ export function ScanAssistantAskPanel({
           // 点一次确认就多堆一个不结束的思考中气泡）。
           typed: finalText.length === 0,
           meta,
+          // 思考正文跟着轮一起留档：默认折叠，但它正是「刚才那二十秒它在干什么」的答案。
+          reasoning: accReasoning || undefined,
+          reasoningTokens: meta?.reasoningTokens,
           /*
            * **本轮没有新问题就留住上一轮未答的**。
            *
@@ -2370,7 +2960,11 @@ export function ScanAssistantAskPanel({
     // 连点闸门：放在**清附件之前**，否则第二次点击会把还没发出去的图清掉
     if (sendingRef.current) return;
     /** 存进对话/发给模型的那句：纯附件时给个占位，否则气泡是空的、历史也看不出发生了什么 */
-    const outgoingText = question || (outgoingFiles.length > 0 ? "（见附件）" : "（见图片）");
+    const outgoingText =
+      question ||
+      (outgoingFiles.length > 0
+        ? copy("ai.copy.bubble.attachment", "（见附件）")
+        : copy("ai.copy.bubble.image", "（见图片）"));
     /** 本轮有没有附件 —— 答案缓存的开关也看它：对着附件说的答案不该被回放。 */
     const hasAttachments = outgoingImages.length > 0 || outgoingFiles.length > 0;
     /** 记在用户那一轮上的附件（含图片的 blob 预览地址），发完托盘清空后历史里还能看出带了什么。 */
@@ -2427,6 +3021,10 @@ export function ScanAssistantAskPanel({
     let acc = "";
     /** 本次请求带回的待答问题，逐条收；答完最后一道才把它们合成一条消息发回去 */
     const accQueue: AskQuestion[] = [];
+    // 思考与工具进度都是「这一轮」的：开跑前清干净，免得上一轮的留在界面上
+    reasoningRef.current = "";
+    setLiveReasoning("");
+    setLiveToolPhrase("");
     /** 本轮是不是开了新会话（发完就复位，别让下一条又开一条） */
     const startingNewSession = newSessionRef.current;
     try {
@@ -2457,7 +3055,7 @@ export function ScanAssistantAskPanel({
             if (typeof payload.sessionId === "number") {
               sessionIdRef.current = payload.sessionId;
             }
-            applyStreamResult(payload, acc, accQueue);
+            applyStreamResult(payload, acc, accQueue, reasoningRef.current);
           },
           onError: applyStreamError,
         },
@@ -2524,6 +3122,9 @@ export function ScanAssistantAskPanel({
 
     let acc = "";
     const accQueue: AskQuestion[] = [];
+    reasoningRef.current = "";
+    setLiveReasoning("");
+    setLiveToolPhrase("");
     try {
       await streamAiInteraction(sessionId, token, value, {
         onDelta: (delta) => {
@@ -2538,7 +3139,7 @@ export function ScanAssistantAskPanel({
          * 而界面上根本没有按钮 —— 所有「确认之后才产出文件」的导出都会这样（真机 2026-10-10 撞到）。
          */
         ...turnEventHandlers,
-        onDone: (payload) => applyStreamResult(payload, acc, accQueue),
+        onDone: (payload) => applyStreamResult(payload, acc, accQueue, reasoningRef.current),
         onError: applyStreamError,
       }, { signal: ctrl.signal });
     } catch {
@@ -2564,10 +3165,10 @@ export function ScanAssistantAskPanel({
    *   <li><b>多问</b>：进向导 —— 点一下只**高亮**，可来回改，最后按「提交」把整组合成一条消息发出去。</li>
    * </ul>
    */
+  /** 点选项：**只高亮**（多选是勾选，写操作确认仍是点一下即办）。真要作答走 {@link submitPicked}。 */
   const chooseOption = (value: string, label: string) => {
     const q = currentQuestion;
     if (!q) return;
-    // 多选题：点一下只勾/取消勾，勾完按「确认」提交（配置类问题就是这种，一次配完）
     if (q.multiSelect) {
       setMultiPick((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
       return;
@@ -2577,20 +3178,31 @@ export function ScanAssistantAskPanel({
       void submitInteraction(q.token ?? "", value, chosen);
       return;
     }
-    setCustomDraft("");
-    if (!wizardMode) {
-      setQueue([]);
-      setAnswers([]);
-      // 发给模型的是选项值；气泡上显示标签 —— 值是单据 id 这类内部标识时尤其需要
-      void submitText(value, label);
-      return;
+    setPicked(value);
+    if (wizardMode) {
+      // 向导里先把这一题的答案记上（计数用），但**不自动跳下一题** —— 由用户按下一题/提交
+      setAnswers((prev) => {
+        const next = Array.from({ length: queue.length }, (_, i) => prev[i] ?? "");
+        next[safeIndex] = value;
+        return next;
+      });
     }
-    setAnswers((prev) => {
-      const next = Array.from({ length: queue.length }, (_, i) => prev[i] ?? "");
-      next[safeIndex] = value;
-      return next;
-    });
-    // 选完自动进下一题 —— 否则每一题都得再点一次「下一题」。
+    return;
+  };
+
+  /** 提交当前单选：把高亮那项作为回答发给模型。 */
+  const submitPicked = () => {
+    const q = currentQuestion;
+    if (!q || !picked) return;
+    const label = q.options.find((o) => o.value === picked)?.label ?? picked;
+    setCustomDraft("");
+    setQueue([]);
+    setAnswers([]);
+    setPicked(null);
+    // 发给模型的是选项值；气泡上显示标签 —— 值是单据 id 这类内部标识时尤其需要
+    void submitText(picked, label);
+  };
+  /* 老路的收尾（自动跳下一题）已由「按提交才继续」取代，见上。
     // 自定义回答是例外（见 chooseCustom）：用户可能还要改字，跳走等于把输入框收了。
     if (safeIndex < queue.length - 1) {
       setCurrent(safeIndex + 1);
@@ -2650,6 +3262,13 @@ export function ScanAssistantAskPanel({
   const wizardMode = queue.length > 1;
   const allAnswered = queue.length > 0 && queue.every((_, i) => (answers[i] ?? "").length > 0);
   const currentQuestion: AskQuestion | null = queue.length === 0 ? null : queue[safeIndex];
+
+  // 换题/翻页时恢复展开：收起与自定义输入都是「这一题的临时状态」，不该带到下一题
+  useEffect(() => {
+    setChoicesFolded(false);
+    setCustomOpen(false);
+    setPicked(null);
+  }, [currentQuestion?.question, safeIndex]);
 
   // 大窗态自带 left/top/transform，覆盖掉气泡锚点那套拖拽定位
   const anchorStyle: CSSProperties = expanded
@@ -2725,7 +3344,7 @@ export function ScanAssistantAskPanel({
       >
         {dragging ? (
           <div className="scan-assistant-ask__drop-hint" aria-hidden>
-            松手即可添加（图片 / Excel / md / txt）
+            {copy("ai.copy.card.attach.drop", "松手即可添加（图片 / Excel / md / txt）")}
           </div>
         ) : null}
       <ScanAssistantChatCard
@@ -2751,6 +3370,39 @@ export function ScanAssistantAskPanel({
               title="新建对话"
             >
               <SquarePen className="size-4" strokeWidth={2} />
+            </button>
+            {/* 我记住的习惯：夹在「新建对话」与「详情」中间（用户 2026-10-11 定的位置）。
+                它存在的理由是**知情权** —— 助手在对话里替你记了什么，你得随时翻得到、还能改。 */}
+            <button
+              type="button"
+              className="scan-assistant-chat-card__action"
+              onClick={() => {
+                // 与详情/历史同一块位置：开它就收起另两个
+                setPrefOpen((v) => !v);
+                setDetailOpen(false);
+                setHistoryOpen(false);
+              }}
+              aria-label="我记住的习惯"
+              title="我记住的习惯"
+              aria-pressed={prefOpen}
+            >
+              <Bookmark className="size-4" strokeWidth={2} />
+            </button>
+            {/* 详情：紧挨「新建对话」、同排同组。点一下把卡片内容区换成详情视图，再点一次切回对话 */}
+            <button
+              type="button"
+              className="scan-assistant-chat-card__action"
+              onClick={() => {
+                // 详情、偏好、历史是同一块位置：开一个就收起另两个
+                setDetailOpen((v) => !v);
+                setPrefOpen(false);
+                setHistoryOpen(false);
+              }}
+              aria-label={copy("ai.copy.detail.open", "详情")}
+              title={copy("ai.copy.detail.open", "详情")}
+              aria-pressed={detailOpen}
+            >
+              <ListChecks className="size-4" strokeWidth={2} />
             </button>
             <button
               type="button"
@@ -2848,6 +3500,22 @@ export function ScanAssistantAskPanel({
                   </div>
                 )}
               </div>
+            ) : prefOpen ? (
+              <ScanAssistantPreferenceView onBack={() => setPrefOpen(false)} />
+            ) : detailOpen ? (
+              /*
+               * 详情视图：**换掉「消息列表那块区域」**，输入区仍在卡片底部（下面不动）。
+               * 与历史列表互斥、同一块位置，故同一屏只有一个滚动容器。
+               */
+              <ScanAssistantDetailView
+                isAdmin={isAdmin}
+                onBack={() => setDetailOpen(false)}
+                onPickPrompt={(text) => {
+                  // 点一条提示词：填进输入框、**不发送**，并切回对话让用户当场看到字进了框
+                  setDraft(text);
+                  setDetailOpen(false);
+                }}
+              />
             ) : displayTurns.length > 0 ? (
               <div
                 className={
@@ -2968,6 +3636,19 @@ export function ScanAssistantAskPanel({
                                 ? liveMeta
                                 : undefined
                           }
+                          reasoning={index === incomingIndex ? undefined : turn.reasoning}
+                          reasoningTokens={index === incomingIndex ? undefined : turn.reasoningTokens}
+                          /* 思考与工具短语是「正在跑」的实时态，同样只属于会话自己的最后一条 */
+                          liveReasoning={
+                            index === incomingIndex || index !== turns.length - 1 ? undefined : liveReasoning
+                          }
+                          liveToolPhrase={
+                            index === incomingIndex || index !== turns.length - 1 ? undefined : liveToolPhrase
+                          }
+                          /* 赞/踩：播报那条不显示（它没落库、没有消息 id 可投） */
+                          voteMessageId={index === incomingIndex ? undefined : turn.messageId}
+                          myVote={turn.messageId != null ? myVotes[turn.messageId] : undefined}
+                          onVote={handleVote}
                           onTyped={() =>
                             setTurns((prev) => {
                               const next = prev.slice();
@@ -3099,33 +3780,54 @@ export function ScanAssistantAskPanel({
               </div>
             ) : null}
 
-            {!historyOpen && currentQuestion ? (
-              <>
+            {!historyOpen && !detailOpen && !prefOpen && currentQuestion ? (
+              /*
+               * 题头 + 选项 + 操作行**整块封装**：卡片高度是定值，这三块若各自为政，
+               * 加起来超过卡高时会把「对话区」这个可压缩的弹性项压到 0 高 ——
+               * 实测小卡里对话区被压成 0，题头与选项直接溢出到框外（用户报「收起有 bug」）。
+               * 封装之后：这整块自己有上限、选项在里面滚，对话区永远留得住。
+               */
+              <div className="scan-assistant-ask__askwrap">
                 {/*
-                 * 问题头只在**多问**时出现：一道题时正文气泡就在上面，再写一遍是重复；
-                 * 多问时才需要「第几问 / 问的是谁·什么」来区分。
+                 * 提问卡：**只要这一轮有问句就显示**。
                  *
-                 * 写操作确认是例外 —— 它**永远**要显示问句（做了什么、什么参数），
-                 * 因为这一轮模型没机会先说话，用户唯一能判断的依据就是这行字。
+                 * 原先只在「多问」或「写操作确认」时才出题头，理由是「一道题时气泡就在上面，再写一遍是重复」——
+                 * 实测下来这是错的：气泡里那句话混在整段回答里，选项却悬在下面，用户看到的是**没有题目的按钮**
+                 * （用户原话「文案题目都是裸露出来的」）。问句就是这一屏的主标题，永远给出来。
+                 *
+                 * 多问时才额外挂「第几问」与翻页 —— 它们是导航，不是题目本身。
                  */}
-                {currentQuestion.kind === "confirm" ? (
-                  <div className="scan-assistant-ask__choices-head">
+                <div className="scan-assistant-ask__ask">
+                  <HelpCircle className="scan-assistant-ask__ask-ico" strokeWidth={2} aria-hidden />
+                  <div className="scan-assistant-ask__ask-body">
+                    {queue.length > 1 ? (
+                      <span className="scan-assistant-ask__ask-step">
+                        第 {safeIndex + 1} / {queue.length} 问
+                      </span>
+                    ) : null}
                     {currentQuestion.question ? (
-                      <span className="scan-assistant-ask__choices-title scan-assistant-ask__choices-title--confirm">
-                        {currentQuestion.question}
+                      <span className="scan-assistant-ask__ask-title">{currentQuestion.question}</span>
+                    ) : null}
+                    {/* 候选多了会在下面内部滚动 —— 给一句计数，免得用户以为「就这几个」 */}
+                    {currentQuestion.options.length > 6 ? (
+                      <span className="scan-assistant-ask__ask-count">
+                        共 {currentQuestion.options.length} 项，可上下滑动
                       </span>
                     ) : null}
                   </div>
-                ) : queue.length > 1 ? (
-                  <div className="scan-assistant-ask__choices-head">
-                    <span className="scan-assistant-ask__choices-step">
-                      第 {safeIndex + 1}/{queue.length} 问
-                    </span>
-                    {currentQuestion.question ? (
-                      <span className="scan-assistant-ask__choices-title">{currentQuestion.question}</span>
-                    ) : null}
-                    {/* 翻页贴在问句这一行的右端：它翻的是「问题」，不是选项 */}
-                    <span className="scan-assistant-ask__choices-nav">
+                  {/* 收起/展开：候选铺满时先折起来看对话 */}
+                  <button
+                    type="button"
+                    className="scan-assistant-ask__ask-fold"
+                    aria-expanded={!choicesFolded}
+                    title={choicesFolded ? "展开选项" : "收起选项，先看对话"}
+                    onClick={() => setChoicesFolded((v) => !v)}
+                  >
+                    {choicesFolded ? <ChevronUp className="size-4" strokeWidth={2} /> : <ChevronDown className="size-4" strokeWidth={2} />}
+                  </button>
+                  {/* 翻页贴在题目这一行的右端：它翻的是「问题」，不是选项 */}
+                  {queue.length > 1 ? (
+                    <span className="scan-assistant-ask__ask-nav">
                       <button
                         type="button"
                         className="scan-assistant-ask__wizard-btn"
@@ -3143,28 +3845,44 @@ export function ScanAssistantAskPanel({
                         下一题
                       </button>
                     </span>
-                  </div>
-                ) : null}
+                  ) : null}
+                </div>
+                {choicesFolded ? null : (
                 <div className="scan-assistant-ask__choices" role="group" aria-label="请选择">
                   {currentQuestion.options.map((option) => {
                     // 向导里选中的那项要亮着：用户要能一眼看出「我这题选了哪个」
-                    const picked = currentQuestion.multiSelect
-                      ? multiPick.includes(option.value)
-                      : wizardMode && (answers[safeIndex] ?? "") === option.value;
+                    const isPicked =
+                      currentQuestion.kind === "confirm"
+                        ? false
+                        : currentQuestion.multiSelect
+                          ? multiPick.includes(option.value)
+                          : wizardMode
+                            ? (answers[safeIndex] ?? "") === option.value
+                            : picked === option.value;
                     return (
                       <button
                         key={option.value}
                         type="button"
                         className={
-                          picked
+                          isPicked
                             ? "scan-assistant-ask__choice scan-assistant-ask__choice--picked"
                             : "scan-assistant-ask__choice"
                         }
                         disabled={sending}
-                        aria-pressed={wizardMode ? picked : undefined}
+                        aria-pressed={isPicked}
                         onClick={() => chooseOption(option.value, option.label)}
                       >
-                        {option.label}
+                        {/* 标记：未选是空心点，选中是勾 —— 一行一个的清单里，光靠底色不够说明「点没点上」 */}
+                        <span className="scan-assistant-ask__choice-mark" aria-hidden>
+                          {isPicked ? <Check className="size-3" strokeWidth={3} /> : null}
+                        </span>
+                        <span className="scan-assistant-ask__choice-label">
+                          {option.label}
+                          {/* 备注：选它会怎样。模型自己写的选项靠这行小字才说得清 ——「猜你想问」那一类 */}
+                          {option.note ? (
+                            <span className="scan-assistant-ask__choice-note">{option.note}</span>
+                          ) : null}
+                        </span>
                       </button>
                     );
                   })}
@@ -3179,10 +3897,15 @@ export function ScanAssistantAskPanel({
                     </button>
                   ) : null}
                 </div>
+                )}
                 {currentQuestion.kind === "confirm" ? null : (
                   <>
-                {/* 自定义回答的输入框紧跟在选项行下面：它答的就是上面那道题，隔一排控件会看不出对应关系 */}
-                {/* 自定义回答就摆在选项下面：它也是一项，回车即选中；在向导里和别的选项一起提交 */}
+                {/*
+                 * 自定义回答**默认收着**：二选一的题也先摆一个输入框 + 确认键，噪音太大
+                 * （用户原话「实在太简陋了…提问也啰嗦」）。点「其他想法…」才展开，
+                 * 展开后它就贴在选项下面 —— 它答的就是上面那道题。
+                 */}
+                {customOpen ? (
                 <form
                   className="scan-assistant-ask__custom"
                   onSubmit={(event) => {
@@ -3210,40 +3933,120 @@ export function ScanAssistantAskPanel({
                     确认
                   </button>
                 </form>
+                ) : null}
                 {/*
                  * 提交与取消在选项**下方**一行：取消在左、提交在右（右端是这一排的终点）。
                  * 一问没有提交键 —— 点一下即办；写操作确认也没有 —— 它只有执行/不执行两个选项。
                  */}
                 <div className="scan-assistant-ask__controls">
-                  <button
-                    type="button"
-                    className="scan-assistant-ask__choice-action"
-                    onClick={() => {
-                      setQueue([]);
-                      setAnswers([]);
-                      setCurrent(0);
-                      setCustomDraft("");
-                    }}
-                  >
-                    取消本次对话
-                  </button>
-                  {wizardMode ? (
+                  {/* 左端：其他想法（展开后换成输入框，这行就只剩右端）；右端：取消 +（向导）提交 */}
+                  {customOpen ? null : (
                     <button
                       type="button"
-                      className="scan-assistant-ask__wizard-btn scan-assistant-ask__wizard-btn--primary"
-                      onClick={submitAllAnswers}
-                      disabled={!allAnswered || sending}
+                      className="scan-assistant-ask__choice-action"
+                      onClick={() => setCustomOpen(true)}
                     >
-                      提交（{answers.filter((a) => a).length}/{queue.length}）
+                      其他想法…
                     </button>
-                  ) : null}
+                  )}
+                  <span className="scan-assistant-ask__controls-right">
+                    <button
+                      type="button"
+                      className="scan-assistant-ask__choice-action"
+                      onClick={() => {
+                        setQueue([]);
+                        setAnswers([]);
+                        setCurrent(0);
+                        setCustomDraft("");
+                        setCustomOpen(false);
+                      }}
+                    >
+                      取消
+                    </button>
+                    {wizardMode ? (
+                      <button
+                        type="button"
+                        className="scan-assistant-ask__wizard-btn scan-assistant-ask__wizard-btn--primary"
+                        onClick={submitAllAnswers}
+                        disabled={!allAnswered || sending}
+                      >
+                        提交（{answers.filter((a) => a).length}/{queue.length}）
+                      </button>
+                    ) : currentQuestion.kind === "confirm" || currentQuestion.multiSelect ? null : (
+                      /* 单选：点选项只高亮，**按这颗才继续**（用户反馈：点一下就直接走了，来不及看选了哪个） */
+                      <button
+                        type="button"
+                        className="scan-assistant-ask__wizard-btn scan-assistant-ask__wizard-btn--primary"
+                        onClick={submitPicked}
+                        disabled={!picked || sending}
+                      >
+                        提交
+                      </button>
+                    )}
+                  </span>
                 </div>
                   </>
                 )}
-              </>
+              </div>
             ) : null}
 
-            {!historyOpen && images.length > 0 ? (
+            {/* 推荐指令条：一排横滚，**条数不写死**（放不下就左右滑），点一条**只回填、不发送**
+                —— 与详情页点选同口径。「更多」跳现有详情页（那份是全量分组）。
+                **左右翻动按钮是必需的**：小卡片里滚动条是隐藏的，鼠标用户没有触摸拖动就够不到后面的。 */}
+            {!historyOpen && !detailOpen && !prefOpen && recommended.length > 0 ? (
+              <div className="scan-assistant-ask__recommend-wrap">
+                <button
+                  type="button"
+                  className="scan-assistant-ask__recommend-nav"
+                  disabled={!recommendScroll.left}
+                  onClick={() => pageRecommended(-1)}
+                  aria-label="往前翻"
+                >
+                  ‹
+                </button>
+                <div
+                  className="scan-assistant-ask__recommend"
+                  role="list"
+                  aria-label="常用指令"
+                  ref={recommendBarRef}
+                  onScroll={syncRecommendScroll}
+                >
+                  {recommended.map((it) => (
+                    <button
+                      key={it.id}
+                      type="button"
+                      role="listitem"
+                      className="scan-assistant-ask__recommend-chip"
+                      title={it.note || it.title}
+                      onClick={() => {
+                        setDraft(it.promptText);
+                        textareaRef.current?.focus();
+                      }}
+                    >
+                      {it.title}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="scan-assistant-ask__recommend-chip scan-assistant-ask__recommend-chip--more"
+                    onClick={() => setDetailOpen(true)}
+                  >
+                    更多
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="scan-assistant-ask__recommend-nav"
+                  disabled={!recommendScroll.right}
+                  onClick={() => pageRecommended(1)}
+                  aria-label="往后翻"
+                >
+                  ›
+                </button>
+              </div>
+            ) : null}
+
+            {!historyOpen && !detailOpen && !prefOpen && images.length > 0 ? (
               <div className="scan-assistant-ask__attachments">
                 {images.map((img) => (
                   <div key={img.url} className="scan-assistant-ask__attachment">
@@ -3266,7 +4069,7 @@ export function ScanAssistantAskPanel({
              * 消息里只拼预览、后续追问仍看得见），所以不跟缩略图混在一行里 —— 混了用户也看不出区别，
               却在「为什么这条历史还认得那份表」上被绕晕。
              */}
-            {!historyOpen && files.length > 0 ? (
+            {!historyOpen && !detailOpen && !prefOpen && files.length > 0 ? (
               <div className="scan-assistant-ask__attachments">
                 {files.map((f) => (
                   <div key={f.name} className="scan-assistant-ask__filechip" title={f.name}>
@@ -3286,8 +4089,9 @@ export function ScanAssistantAskPanel({
               </div>
             ) : null}
 
-            {/* 看历史时把输入条收起来 —— 这一屏是「翻旧对话」，不该同时留个提问框（旁边几个块都这么门控）。 */}
-            {!historyOpen ? (
+            {/* 看历史、看详情时都把输入条收起来 —— 那两屏是「翻旧对话 / 挑一句话」，不该同时留个提问框
+                （旁边几个块都这么门控）。详情里点一条提示词会自己回填输入框并切回对话，不必在这儿露出输入条。 */}
+            {!historyOpen && !detailOpen && !prefOpen ? (
             <form
               className="scan-assistant-ask"
               onSubmit={(event) => {

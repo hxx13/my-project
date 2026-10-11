@@ -68,6 +68,12 @@ public class AiGatewaySchemaMigrator implements ApplicationRunner {
                         actor_role_snapshot VARCHAR(32) NULL COMMENT '发起人当时的角色快照，角色会变故必须存',
                         source VARCHAR(16) NULL,
                         context_json VARCHAR(512) NULL COMMENT '载体上报的页面/实体',
+                        tools_offered MEDIUMTEXT NULL COMMENT '本轮实际发给模型的工具名清单（逗号分隔，已按能力过滤）',
+                        reasoning_content MEDIUMTEXT NULL COMMENT '本轮模型的思考正文（上游 reasoning_content）',
+                        reasoning_tokens INT NULL COMMENT '本轮思考消耗的 token（上游精确给出）',
+                        prompt_cache_hit_tokens INT NULL COMMENT '本轮输入命中缓存的 token 数（上游分开给，用于实测命中率）',
+                        prompt_cache_miss_tokens INT NULL COMMENT '本轮输入未命中缓存的 token 数（同上）',
+                        thinking_ms BIGINT NULL COMMENT '真正的思考用时（毫秒）：请求发出到第一个非思考增量到达',
                         model VARCHAR(64) NULL,
                         latency_ms INT NULL,
                         prompt_tokens INT NULL,
@@ -146,6 +152,11 @@ public class AiGatewaySchemaMigrator implements ApplicationRunner {
             // 增量列：建表语句加了列，但对「已按旧版建过表」的库不生效 —— 补吞异常的 ALTER。
             execIgnore("ALTER TABLE ai_message ADD COLUMN tool_call_id VARCHAR(64) NULL "
                     + "COMMENT 'role=tool 时对应哪次调用'");
+
+            // 注：tools_offered / reasoning_content / reasoning_tokens 三列的**增量迁移不在这里** ——
+            // 走 db/bootstrap-ai-message-*.sql（在 EmbeddedTwinSystemCoreDdlBootstrap 注册）。
+            // 这个 ApplicationRunner 实测时灵时不灵（2026-10-11：老列 tool_call_id 在、新加的三列一列没落地），
+            // 同一个 DDL 写两份必然漂移，所以增量只留 bootstrap 那一份；这里只保留建表定义。
 
             // 挂起记录要能指回「同一条 assistant 轮里的哪一次调用」—— 一轮可能有多次调用，
             // 只说 message_id 定位不到是哪一条，续跑时就得靠猜（猜错就是执行了另一次调用）。

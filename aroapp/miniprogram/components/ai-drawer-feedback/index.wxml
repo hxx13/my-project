@@ -1,0 +1,183 @@
+<!-- 反馈半屏：头部固定 + 内容区（表单 + 列表）独立滚动 + 吸底提交。
+     结构照 export-config-sheet：head / scroll-view / foot 三段；任一时刻只有一个滚动容器。
+     超管多「我的 / 全部」切换与每条下方的回复区；非超管整块不渲染。 -->
+<van-popup
+  show="{{ show }}"
+  position="bottom"
+  round
+  custom-class="fd-popup"
+  z-index="{{ 220000 }}"
+  bind:close="onClose"
+>
+  <view class="fd-panel" catch:touchmove="noop">
+    <view class="fd-head">
+      <text class="fd-title">{{ titleText }}</text>
+      <text class="fd-close" bindtap="onClose">{{ closeText }}</text>
+    </view>
+
+    <!-- 超管：我的 / 全部 -->
+    <view wx:if="{{ isAdmin }}" class="fd-tabs">
+      <text
+        class="fd-tab {{ scope === 'mine' ? 'fd-tab--on' : '' }}"
+        data-scope="mine"
+        bindtap="onSwitchScope"
+      >{{ mineText }}</text>
+      <text
+        class="fd-tab {{ scope === 'all' ? 'fd-tab--on' : '' }}"
+        data-scope="all"
+        bindtap="onSwitchScope"
+      >{{ allText }}</text>
+    </view>
+
+    <scroll-view
+      scroll-y
+      class="fd-scroll"
+      enhanced
+      bounces="{{ false }}"
+      bindscrolltolower="onReachBottom"
+    >
+      <!-- 表单 -->
+      <view class="fd-form">
+        <text class="fd-sec-title">{{ formTitleText }}</text>
+        <textarea
+          class="fd-area"
+          value="{{ content }}"
+          bindinput="onContentInput"
+          maxlength="2000"
+          placeholder="{{ contentPh }}"
+          auto-height
+        />
+        <view class="fd-imgs">
+          <view wx:for="{{ images }}" wx:key="*this" class="fd-img">
+            <image
+              class="fd-img-thumb"
+              src="{{ item }}"
+              mode="aspectFill"
+              data-url="{{ item }}"
+              bindtap="onPreviewFormImage"
+            />
+            <text class="fd-img-del" data-index="{{ index }}" bindtap="onRemoveImage">×</text>
+          </view>
+          <view wx:if="{{ images.length < maxImages }}" class="fd-img fd-img-add" bindtap="onChooseImage">+</view>
+        </view>
+        <text class="fd-hint">{{ imgHintText }}</text>
+      </view>
+
+      <!-- 列表 -->
+      <view class="fd-list-title">{{ listTitleText }}</view>
+      <view wx:if="{{ loading }}" class="fd-loading">{{ loadingText }}</view>
+      <block wx:elif="{{ list.length > 0 }}">
+        <view wx:for="{{ list }}" wx:key="id" class="fd-item">
+          <view class="fd-item-head">
+            <text class="fd-item-user">{{ item.userName }}</text>
+            <text class="fd-item-status {{ item.status === 'REPLIED' ? 'fd-item-status--done' : 'fd-item-status--pending' }}">
+              {{ item.status === 'REPLIED' ? repliedText : pendingText }}
+            </text>
+          </view>
+          <text class="fd-item-content">{{ item.content }}</text>
+          <view wx:if="{{ item.imageUrls.length > 0 }}" class="fd-item-imgs">
+            <image
+              wx:for="{{ item.imageUrls }}"
+              wx:for-item="url"
+              wx:key="*this"
+              class="fd-item-img"
+              src="{{ url }}"
+              mode="aspectFill"
+              data-url="{{ url }}"
+              data-index="{{ index }}"
+              bindtap="onPreviewRowImage"
+            />
+          </view>
+          <text class="fd-item-time">{{ item.createdAt }}</text>
+          <!-- 官方回复串：按时间升序逐条画（作者/时间/文字/附图）；没有回复就不画这块 -->
+          <view wx:if="{{ item.replies.length > 0 }}" class="fd-reply">
+            <text class="fd-reply-label">{{ replyLabelText }}</text>
+            <view
+              wx:for="{{ item.replies }}"
+              wx:for-item="rep"
+              wx:for-index="ri"
+              wx:key="key"
+              class="fd-reply-item"
+            >
+              <view class="fd-reply-meta">
+                <text class="fd-reply-by">{{ rep.repliedByName }}</text>
+                <text class="fd-reply-at">{{ rep.repliedAt }}</text>
+              </view>
+              <text wx:if="{{ rep.content }}" class="fd-reply-text">{{ rep.content }}</text>
+              <!-- 该条回复自己的附图：点击看大图 -->
+              <view wx:if="{{ rep.imageUrls.length > 0 }}" class="fd-item-imgs">
+                <image
+                  wx:for="{{ rep.imageUrls }}"
+                  wx:for-item="rurl"
+                  wx:for-index="ii"
+                  wx:key="*this"
+                  class="fd-item-img"
+                  src="{{ rurl }}"
+                  mode="aspectFill"
+                  data-url="{{ rurl }}"
+                  data-index="{{ index }}"
+                  data-ri="{{ ri }}"
+                  bindtap="onPreviewReplyImage"
+                />
+              </view>
+            </view>
+          </view>
+          <!-- 超管：回复 + 改状态 -->
+          <view wx:if="{{ isAdmin }}" class="fd-admin">
+            <input
+              class="fd-reply-input"
+              value="{{ item.replyDraft }}"
+              data-index="{{ index }}"
+              bindinput="onReplyInput"
+              placeholder="{{ replyPhText }}"
+            />
+            <!-- 回复附图（选图 + 缩略图可删，上限 6） -->
+            <view class="fd-imgs">
+              <view
+                wx:for="{{ item.replyImages }}"
+                wx:for-item="rurl"
+                wx:for-index="ri"
+                wx:key="*this"
+                class="fd-img"
+              >
+                <image
+                  class="fd-img-thumb"
+                  src="{{ rurl }}"
+                  mode="aspectFill"
+                  data-url="{{ rurl }}"
+                  data-index="{{ index }}"
+                  bindtap="onPreviewDraftReplyImage"
+                />
+                <text class="fd-img-del" data-index="{{ index }}" data-img="{{ ri }}" bindtap="onReplyRemoveImage">×</text>
+              </view>
+              <view
+                wx:if="{{ item.replyImages.length < maxImages }}"
+                class="fd-img fd-img-add"
+                data-index="{{ index }}"
+                bindtap="onReplyChooseImage"
+              >+</view>
+            </view>
+            <text class="fd-hint">{{ replyImgHintText }}</text>
+            <view class="fd-admin-foot">
+              <text
+                class="fd-mini {{ item.replyStatus === 'REPLIED' ? 'fd-mini--on' : '' }}"
+                data-index="{{ index }}"
+                bindtap="onToggleStatus"
+              >{{ item.replyStatus === 'REPLIED' ? repliedText : pendingText }}</text>
+              <text class="fd-mini fd-mini--primary" data-index="{{ index }}" bindtap="onReply">{{ replyText }}</text>
+            </view>
+          </view>
+        </view>
+        <view wx:if="{{ finished }}" class="fd-end">{{ endText }}</view>
+        <view wx:elif="{{ loadingMore }}" class="fd-loading">{{ loadingText }}</view>
+      </block>
+      <view wx:else class="fd-empty">{{ emptyText }}</view>
+    </scroll-view>
+
+    <view class="fd-foot">
+      <view class="fd-submit {{ canSubmit && !submitting ? '' : 'fd-submit--off' }}" bindtap="onSubmit">
+        {{ submitting ? submittingText : submitText }}
+      </view>
+    </view>
+  </view>
+</van-popup>

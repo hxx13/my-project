@@ -90,6 +90,18 @@ function createSseParser(handlers) {
 
     if (name === 'delta') {
       if (typeof payload.text === 'string' && handlers.onDelta) handlers.onDelta(payload.text);
+    } else if (name === 'reasoning') {
+      // 模型的思考正文。**与 delta 分开**：界面上思考要折叠、正文常显，混一条流就没法只折前半段。
+      // 它在**调工具之前**就来 —— 正是用户在干等的那段，所以必须实时渲染，不能等收尾。
+      if (typeof payload.text === 'string' && handlers.onReasoning) handlers.onReasoning(payload.text);
+    } else if (name === 'toolProgress') {
+      // 工具的人话短语（「正在汇总 148 个板块…」）。与 tool 的机器码 status 不是一回事。
+      if (handlers.onToolProgress) {
+        handlers.onToolProgress(
+          typeof payload.name === 'string' ? payload.name : '',
+          typeof payload.phrase === 'string' ? payload.phrase : '',
+        );
+      }
     } else if (name === 'started') {
       if (handlers.onStarted) handlers.onStarted();
     } else if (name === 'interaction') {
@@ -335,10 +347,19 @@ function fetchSessions() {
     });
 }
 
-/** 某条历史会话的全部消息（用于「点开旧对话接着聊」） */
-function fetchSessionMessages(sessionId) {
+/**
+ * 某条历史会话的消息（「点开旧对话接着聊」）。
+ *
+ * **默认只取最后一屏**（`limit`），更早的靠 `beforeSeq` 往前翻一页 —— 长会话几百条，
+ * 一次全量既慢又白费，而用户打开旧对话先看的几乎总是最后那几屏。
+ * **不传 options.limit 仍是全量**（老调用方行为不变）。
+ */
+function fetchSessionMessages(sessionId, options) {
+  var q = '';
+  if (options && options.limit > 0) q += (q ? '&' : '?') + 'limit=' + options.limit;
+  if (options && options.beforeSeq != null) q += (q ? '&' : '?') + 'beforeSeq=' + options.beforeSeq;
   return springAuth
-    .springRequest({ url: '/api/v1/ai/sessions/' + sessionId + '/messages', method: 'GET', data: {} })
+    .springRequest({ url: '/api/v1/ai/sessions/' + sessionId + '/messages' + q, method: 'GET', data: {} })
     .then(function (res) {
       var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
       return (body && body.data) || [];
@@ -377,6 +398,101 @@ function fetchSessionExports(sessionId) {
     });
 }
 
+/**
+ * 赞 / 踩一条助手回复。同一条重复投 = **改那一票**（服务端靠唯一键 upsert，不堆行）。
+ *
+ * 写请求必须看 success：HTTP 200 + success:false 也是失败（本仓库的既有约定）。
+ */
+function voteMessage(messageId, vote) {
+  return springAuth
+    .springRequest({
+      url: '/api/v1/ai/messages/' + messageId + '/feedback',
+      method: 'POST',
+      data: { vote: vote, reason: '' },
+    })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!body || !body.success) throw new Error((body && body.message) || '投票失败');
+      return true;
+    });
+}
+
+/** 我在某个会话里投过的票：messageId → up/down。界面用它回填「我点过哪条」。 */
+function fetchMyMessageVotes(sessionId) {
+  return springAuth
+    .springRequest({ url: '/api/v1/ai/sessions/' + sessionId + '/my-feedback', method: 'GET', data: {} })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      var out = {};
+      ((body && body.data) || []).forEach(function (r) {
+        if (r && r.messageId != null) out[r.messageId] = r.vote;
+      });
+      return out;
+    })
+    .catch(function () {
+      return {};
+    });
+}
+
+/** **撤掉**这一票（再点一次同一个图标）。与 voteMessage 分开：那个是「我要投」，这个是「我不投了」。 */
+function cancelMessageVote(messageId) {
+  return springAuth
+    .springRequest({
+      url: '/api/v1/ai/messages/' + messageId + '/feedback',
+      method: 'DELETE',
+      data: {},
+    })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (!body || !body.success) throw new Error((body && body.message) || '取消失败');
+      return true;
+    });
+}
+
+/**
+ * **我自己的**偏好 —— 看得见、改得了（与 Web 端同一套接口）。
+ *
+ * <p>为什么要有这条路：只用「在对话里问一句」的话，用户根本不知道助手记了什么。
+ * 知情权不能只靠他想得起来问。
+ */
+function fetchMyPreferences() {
+  return springAuth
+    .springRequest({ url: '/api/v1/ai/preferences/mine', method: 'GET', data: {} })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      return (body && body.data) || [];
+    })
+    .catch(function () {
+      return [];
+    });
+}
+
+/** 自己加一条。业务错误（如「太长了」）要抛出 —— 只看 HTTP 状态会显示成成功。 */
+function addMyPreference(content) {
+  return springAuth
+    .springRequest({ url: '/api/v1/ai/preferences/mine', method: 'POST', data: { content: content } })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (body && body.success === false) throw new Error((body && body.message) || '保存失败');
+      return true;
+    });
+}
+
+/** 自己删一条。 */
+function deleteMyPreference(content) {
+  return springAuth
+    .springRequest({
+      url: '/api/v1/ai/preferences/mine?content=' + encodeURIComponent(content),
+      method: 'DELETE',
+      data: {},
+    })
+    .then(function (res) {
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (body && body.success === false) throw new Error((body && body.message) || '删除失败');
+      return true;
+    });
+}
+
 module.exports = {
   streamAsk,
   streamGreet,
@@ -385,4 +501,10 @@ module.exports = {
   fetchSessionMessages,
   fetchSessionExports,
   deleteSession,
+  voteMessage,
+  cancelMessageVote,
+  fetchMyMessageVotes,
+  fetchMyPreferences,
+  addMyPreference,
+  deleteMyPreference,
 };

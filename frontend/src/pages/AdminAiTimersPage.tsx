@@ -132,8 +132,8 @@ export default function AdminAiTimersPage() {
     `${r.ownerName || r.ownerUserId || "—"}${r.ownerRole ? ` · ${r.ownerRole}` : ""}`;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <header className="flex flex-wrap items-end justify-between gap-2">
+    <div className="flex max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-0 flex-col gap-3">
+      <header className="flex shrink-0 flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-base font-semibold text-[var(--app-color-text-primary)]">AI 计时器</h1>
           <p className="text-xs text-[var(--app-color-text-tertiary)]">
@@ -185,7 +185,7 @@ export default function AdminAiTimersPage() {
         empty={!isLoading && rows.length === 0}
         emptyMessage="还没有计时器。在智能精灵球里说「10 秒后帮我查一下 2 楼湿度」试试。"
         scrollable
-        className="min-h-0 flex-1"
+        fill
       >
         <table className="w-full min-w-max border-collapse text-left text-sm twin-table">
           <thead>

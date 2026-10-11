@@ -5,6 +5,7 @@ import com.example.demo.modules.ai.capability.AiCapabilityGate;
 import com.example.demo.modules.ai.core.AiEventSink;
 import com.example.demo.modules.ai.core.AiTurnStats;
 import com.example.demo.modules.ai.entity.AiMessage;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiPackRouter;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
@@ -91,6 +92,9 @@ class AiOrchestratorToolLoopTest {
                     }
                     return Map.of("ok", false,
                             "reason", "有多个身份，让用户挑一个",
+                            // **必须问**：不问就拿不到身份，这次签署根本办不成。
+                            // 编排层现在默认不弹候选，要弹就得带这个标记（见 AiChoices.ASK_REQUIRED）。
+                            AiChoices.ASK_REQUIRED, Boolean.TRUE,
                             "choices", List.of(
                                     Map.of("label", "以「归属地」身份签署", "value", "ORIGIN"),
                                     Map.of("label", "以「兽医」身份签署", "value", "VET")),
@@ -126,7 +130,8 @@ class AiOrchestratorToolLoopTest {
         when(gate.check(any(), anyString())).thenReturn(null);
 
         AiPromptService promptService = mock(AiPromptService.class);
-        when(promptService.assemble(any(), anyString())).thenReturn("");
+        // 三参数：编排层现在会把发起人 id 一并传进来（拼「个人偏好」那层要用）
+        when(promptService.assemble(any(), anyString(), any())).thenReturn("");
         this.promptService = promptService;
 
         when(sessionService.answeredToolCallIds(any())).thenReturn(java.util.Set.of());
@@ -169,11 +174,11 @@ class AiOrchestratorToolLoopTest {
 
     private DashScopeChatClient.ToolChatResult toolCall(String id, String name, String argsJson) {
         return new DashScopeChatClient.ToolChatResult("", List.of(new DashScopeChatClient.ToolCall(id, name, argsJson)),
-                10, 5, "test-model");
+                10, 5, "test-model", "", 0);
     }
 
     private DashScopeChatClient.ToolChatResult textOnly(String text) {
-        return new DashScopeChatClient.ToolChatResult(text, List.of(), 10, 5, "test-model");
+        return new DashScopeChatClient.ToolChatResult(text, List.of(), 10, 5, "test-model", "", 0);
     }
 
     @Test
@@ -257,7 +262,10 @@ class AiOrchestratorToolLoopTest {
                 return List.of(new AiTool("publishThing", "发布东西。", "{}", "cap.write",
                         SideEffect.EXTERNAL_WRITE,
                         (ctx, args) -> Map.of("ok", true),
-                        (ctx, args) -> Map.of("ok", false, "needUserChoice", true, "questions", List.of(
+                        (ctx, args) -> Map.of("ok", false, "needUserChoice", true,
+                                // 作者明确写的一道题 → 必须问（默认不弹，见 AiChoices.ASK_REQUIRED）
+                                AiChoices.ASK_REQUIRED, Boolean.TRUE,
+                                "questions", List.of(
                                 Map.of("title", "发到哪个栏目？", "options", List.of(
                                         Map.of("label", "公告", "value", "NOTICE"))),
                                 Map.of("title", "优先级？", "options", List.of(
@@ -281,11 +289,18 @@ class AiOrchestratorToolLoopTest {
 
         orch.run(staff(), 1L, "发个公告", null, sink);
 
-        assertEquals(3, sink.interactions.size(), "三问就该有三条事件，合成一条用户点了不知在答哪题：" + sink.interactions);
-        assertTrue(sink.interactions.get(0).contains("发到哪个栏目？"), sink.interactions.get(0));
-        assertTrue(sink.interactions.get(1).contains("优先级？"), sink.interactions.get(1));
-        assertTrue(sink.interactions.get(2).contains("直接发布=PUBLISHED") && sink.interactions.get(2).contains("存草稿=DRAFT"),
-                sink.interactions.get(2));
+        /*
+         * **期望 2 条，不是 3 条** —— 这条期望原先写的是 3，是**在「用户原话里已经说全了就别问」那条规则
+         * 之前**留下的，之后一直红着（2026-10-11 定位到）。
+         *
+         * 三问里第一问是「发到哪个栏目？」唯一选项「公告」，而用户原话正是「发个公告」——
+         * 他已经说了，模型手里就有答案，再问一遍是 2026-10-09 抱怨的「又在重复提问」。
+         * 后两问（优先级 / 现在就发）他没提过，照问。所以是 2 条。
+         */
+        assertEquals(2, sink.interactions.size(), "用户已经说过的那个选项不必再问，其余照问：" + sink.interactions);
+        assertTrue(sink.interactions.get(0).contains("优先级？"), sink.interactions.get(0));
+        assertTrue(sink.interactions.get(1).contains("直接发布=PUBLISHED") && sink.interactions.get(1).contains("存草稿=DRAFT"),
+                sink.interactions.get(1));
         assertEquals(null, sink.error);
     }
 

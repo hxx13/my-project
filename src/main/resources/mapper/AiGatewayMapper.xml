@@ -25,6 +25,12 @@
         <result property="actorRoleSnapshot" column="actor_role_snapshot"/>
         <result property="source" column="source"/>
         <result property="contextJson" column="context_json"/>
+        <result property="toolsOffered" column="tools_offered"/>
+        <result property="reasoningContent" column="reasoning_content"/>
+        <result property="reasoningTokens" column="reasoning_tokens"/>
+        <result property="promptCacheHitTokens" column="prompt_cache_hit_tokens"/>
+        <result property="promptCacheMissTokens" column="prompt_cache_miss_tokens"/>
+        <result property="thinkingMs" column="thinking_ms"/>
         <result property="model" column="model"/>
         <result property="latencyMs" column="latency_ms"/>
         <result property="promptTokens" column="prompt_tokens"/>
@@ -117,15 +123,35 @@
 
     <insert id="insertMessage" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_message (session_id, seq, role, content, raw_tool_calls, tool_call_id,
-                                actor_user_id, actor_role_snapshot, source, context_json,
+                                actor_user_id, actor_role_snapshot, source, context_json, tools_offered,
+                                reasoning_content, reasoning_tokens,
+                                prompt_cache_hit_tokens, prompt_cache_miss_tokens, thinking_ms,
                                 model, latency_ms, prompt_tokens, completion_tokens)
         VALUES (#{sessionId}, #{seq}, #{role}, #{content}, #{rawToolCalls}, #{toolCallId},
-                #{actorUserId}, #{actorRoleSnapshot}, #{source}, #{contextJson},
+                #{actorUserId}, #{actorRoleSnapshot}, #{source}, #{contextJson}, #{toolsOffered},
+                #{reasoningContent}, #{reasoningTokens},
+                #{promptCacheHitTokens}, #{promptCacheMissTokens}, #{thinkingMs},
                 #{model}, #{latencyMs}, #{promptTokens}, #{completionTokens})
     </insert>
 
     <select id="selectMessagesBySession" resultMap="MessageMap">
         SELECT * FROM ai_message WHERE session_id = #{sessionId} ORDER BY seq ASC, id ASC
+    </select>
+
+    <!--
+      **取尾分页**：默认只给最近 limit 条；带 beforeSeq 就取更早的那一页（用户往上滚时才要）。
+
+      为什么不一次全量：长会话动辄几百条，全量拉一次既慢又白费 —— 用户先看的几乎总是最后一屏。
+      返回仍是 seq 升序（外层再排一次），调用方直接铺进列表，不用自己反转。
+    -->
+    <select id="selectMessagesTail" resultMap="MessageMap">
+        SELECT * FROM (
+            SELECT * FROM ai_message
+            WHERE session_id = #{sessionId}
+            <if test="beforeSeq != null">AND seq &lt; #{beforeSeq}</if>
+            ORDER BY seq DESC, id DESC
+            LIMIT #{limit}
+        ) t ORDER BY t.seq ASC, t.id ASC
     </select>
 
     <select id="selectRecentMessages" resultMap="MessageMap">
@@ -264,7 +290,14 @@
             l.raw_result        AS rawResult,
             l.ok                AS ok,
             l.error_message     AS errorMessage,
-            l.confirmed_by      AS confirmedBy
+            l.confirmed_by      AS confirmedBy,
+            <!-- 这一轮的用量。缓存那两列是**实测**「共享在前、个性化在后」这套拼装顺序收益的唯一依据
+                 （设计 §1.1）：命中率 = 命中 /（命中 + 未命中）。只在这里露，对话界面不放。 -->
+            m.prompt_tokens             AS promptTokens,
+            m.completion_tokens         AS completionTokens,
+            m.reasoning_tokens          AS reasoningTokens,
+            m.prompt_cache_hit_tokens   AS promptCacheHitTokens,
+            m.prompt_cache_miss_tokens  AS promptCacheMissTokens
         FROM ai_tool_call_log l
         JOIN ai_session s ON s.id = l.session_id
         LEFT JOIN ai_message m ON m.id = l.message_id

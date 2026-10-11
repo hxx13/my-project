@@ -143,10 +143,14 @@ Page({
       const distinct = new Set(valid).size > 1;
       const min = valid.length ? Math.min.apply(null, valid) : null;
       const max = valid.length ? Math.max.apply(null, valid) : null;
+      const label = r.roomCanonical || r.displayLabel || r.variableName || '';
+      const unit = r.unit || '';
       return {
         key: r.variableName || `row${ri}`,
-        label: r.roomCanonical || r.displayLabel || r.variableName || '',
-        unit: r.unit || '',
+        label,
+        unit,
+        // 列里放不下会省略号，点一下弹全称（见 onRoomTap）。这里把显示出去的整串先拼好
+        full: unit ? `${label}(${unit})` : label,
         cells: cols.map((_, i) => {
           const v = raw[i];
           const empty = v == null || String(v).trim() === '';
@@ -161,6 +165,20 @@ Page({
         }),
       };
     });
+  },
+
+  /**
+   * 房间名太长时列里只到省略号，点一下看全称。
+   *
+   * <p>没去判「这一格到底有没有被截断」—— 那要看渲染后的实际字宽，逻辑层量不准，
+   * 判错了就正好在最需要看全称的时候点不出来。所以一律可点：名字不长时点了就是原样回显。
+   */
+  onRoomTap(e) {
+    const full = String((e.currentTarget.dataset && e.currentTarget.dataset.full) || '').trim();
+    if (!full) {
+      return;
+    }
+    wx.showModal({ title: '房间', content: full, showCancel: false, confirmText: '知道了' });
   },
 
   // ── 日历（查看单日 / 导出多选共用同一套铺法）──────────────────

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 隔离服主口径：清洗总库 {@code access_clean_package_item}。
@@ -24,6 +25,39 @@ public class AccessCleanPackageAnalyticsService {
     public static final String DATA_SOURCE = "access_package";
 
     private static final Logger log = LoggerFactory.getLogger(AccessCleanPackageAnalyticsService.class);
+
+    /**
+     * 「查不到数据」那条诊断日志的**限流表**：参数指纹 → 上次打的时间。
+     *
+     * <p>为什么要限流：查不到数据**不是异常**，是正常情况（那天那个通道就是没数据），
+     * 而管理端对这张报表是**轮询**的（隔离服使用统计每 2 分钟刷一次、审计列表订阅时每 20 秒），
+     * 于是同一句「0 条」在日志里反复重来，把真正该看的 WARN 全淹了。
+     */
+    private static final long EMPTY_LOG_INTERVAL_MS = 10 * 60 * 1000L;
+    /** 指纹表的上限 —— 兜住「参数组合千奇百怪」时无界增长。超了整体清一次，罕见路径，代价可忽略。 */
+    private static final int EMPTY_LOG_MAX_KEYS = 2000;
+    private final Map<String, Long> emptyLoggedAt = new ConcurrentHashMap<>();
+
+    /** 同一组参数 N 分钟内只放一条。**可单测**（把 now 传进来）。 */
+    static boolean throttleOk(Map<String, Long> table, String key, long now, long intervalMs, int maxKeys) {
+        Long last = table.get(key);
+        if (last != null && now - last < intervalMs) {
+            return false;
+        }
+        if (table.size() > maxKeys) {
+            table.clear();
+        }
+        table.put(key, now);
+        return true;
+    }
+
+    private boolean shouldLogEmpty(String start, String end, List<String> codes, ChannelScope scope) {
+        String key = start + '|' + end + '|' + scope.label() + '|'
+                + (codes == null ? "<ALL>" : String.join(",", codes));
+        return throttleOk(emptyLoggedAt, key, System.currentTimeMillis(),
+                EMPTY_LOG_INTERVAL_MS, EMPTY_LOG_MAX_KEYS);
+    }
+
 
     private final AccessCleanPackageItemMapper packageItemMapper;
     private final AccessCleanChannelScopeMapper channelScopeMapper;
@@ -73,9 +107,17 @@ public class AccessCleanPackageAnalyticsService {
             totalEvents = longVal(counts.get("totalSets"));
         }
 
-        // 诊断日志：当查询结果为空时记录关键参数，方便排查
-        if (totalEvents == 0) {
-            log.warn(
+        /*
+         * 诊断：查不到数据时记一条。
+         *
+         * **降到 DEBUG 并限流** —— 原来写的是 WARN，而「那天那个通道没有数据」是**正常情况**，
+         * 不是异常。管理端对这张报表是**轮询**的（隔离服使用统计每 2 分钟刷一次），
+         * 于是同一句「0 条」每两分钟重来一遍，把真正该看的 WARN 全淹了。
+         * 限流之后：正常运行安静，真要排查「为什么没数据」时日志里仍找得到（见 shouldLogEmpty）。
+         */
+        if (totalEvents == 0 && log.isDebugEnabled()
+                && shouldLogEmpty(startTime, endTime, channelCodes, scope)) {
+            log.debug(
                     "[analytics-query] buildReport returned 0 events: "
                             + "startTime={} endTime={} channelCodes={} channelScope={} rowsScanned={} queryMs={}",
                     startTime, endTime,

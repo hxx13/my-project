@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.SideEffect;
@@ -134,7 +135,7 @@ public class SuppliesMallToolPack implements AiToolPack {
                   （**别自己拿回来的那几十行去比** —— 清单是截断返回的，自己筛会漏掉没回给你的那些）。
                 - **「哪些消耗得快 / 哪些该进货」**：用 querySupplyConsumption。
                   它按时间窗口统计每件物资出了多少、日均多少、当前可用量还够撑几天；
-                  回答时**要说清统计区间**（如「最近 90 天」），并把「还能撑几天」照实报。
+                  回答时**要说清统计区间**（如「最近 30 天」），并把「还能撑几天」照实报。
                   用户问「够不够用一周」这类，就用覆盖天数（coverDays）那一路，别自己拿日均去除。
                 - **「谁领得多 / 谁最近在领」**：用 listSupplyTopConsumers（按人排行，带单人订单数、件数、
                   最近一次时间）。这是内部使用记录，**照数报、不要加评价**。
@@ -335,7 +336,7 @@ public class SuppliesMallToolPack implements AiToolPack {
     /**
      * 消耗统计：回答「哪些物资消耗得快 / 哪些该补货 / 某某还够用多久」。
      *
-     * <p>数据源是**库存流水**（与库存审计页同一份）。窗口默认 90 天 —— 物资领用是低频动作，
+     * <p>数据源是**库存流水**（与库存审计页同一份）。窗口默认 30 天 —— 物资领用是低频动作，
      * 30 天的窗口经常一件都没出过，看不出趋势。
      *
      * <p>能力码 {@code ai.supplies.inventory}：流水是全局经营数据，平台里能看它的地方
@@ -347,7 +348,7 @@ public class SuppliesMallToolPack implements AiToolPack {
                 {
                   "type": "object",
                   "properties": {
-                    "days": { "type": "integer", "description": "统计最近多少天，默认 90，上限 365" },
+                    "days": { "type": "integer", "description": "统计最近多少天，默认 30，上限 365" },
                     "categoryId": { "type": "integer", "description": "只看某个分类（来自 listSupplyCategories），不传就是全部" },
                     "coverDays": { "type": "integer", "description": "「还能撑几天」的阈值，默认 7：撑不到这么多天就算该补货。用户说「够不够用一周」传 7、「半个月」传 15" },
                     "limit": { "type": "integer", "description": "最多回几件（按出库量降序），默认 15，上限 50" }
@@ -358,10 +359,11 @@ public class SuppliesMallToolPack implements AiToolPack {
                 "querySupplyConsumption",
                 "按时间窗口统计物资**消耗**：每件出了多少、日均多少、当前可用量还够撑几天。"
                         + "回答「哪些物资消耗得快」「哪些该进货/该补货」「某某还够用多久」用它。"
-                        + "**回答时说清统计区间**（如「最近 90 天」）和判定阈值；数字都在这儿，别自己算。",
+                        + "**回答时说清统计区间**（如「最近 30 天」）和判定阈值；数字都在这儿，别自己算。",
                 schema, CAP_SUPPLIES_INVENTORY, SideEffect.READ,
                 (ctx, args) -> {
-                    int days = clamp(args.path("days").asInt(90), 1, 365);
+                    // 默认窗口收到 30 天：90 天会把全部历史拉出来算，慢且没必要（用户反馈「不要一口气全查」）
+                    int days = clamp(args.path("days").asInt(30), 1, 365);
                     int limit = clamp(args.path("limit").asInt(15), 1, 50);
                     int coverDays = clamp(args.path("coverDays").asInt(7), 1, 365);
                     Long categoryId = args.path("categoryId").isNumber() ? args.path("categoryId").asLong() : null;
@@ -421,7 +423,7 @@ public class SuppliesMallToolPack implements AiToolPack {
                 {
                   "type": "object",
                   "properties": {
-                    "days": { "type": "integer", "description": "统计最近多少天，默认 90，上限 365" },
+                    "days": { "type": "integer", "description": "统计最近多少天，默认 30，上限 365" },
                     "limit": { "type": "integer", "description": "最多回几个人，默认 10，上限 50" }
                   },
                   "additionalProperties": false
@@ -434,7 +436,8 @@ public class SuppliesMallToolPack implements AiToolPack {
                         + "报的时候说清统计区间；这是内部使用记录，**按数据实报、不要加评价**。",
                 schema, CAP_SUPPLIES_INVENTORY, SideEffect.READ,
                 (ctx, args) -> {
-                    int days = clamp(args.path("days").asInt(90), 1, 365);
+                    // 默认窗口收到 30 天：90 天会把全部历史拉出来算，慢且没必要（用户反馈「不要一口气全查」）
+                    int days = clamp(args.path("days").asInt(30), 1, 365);
                     int limit = clamp(args.path("limit").asInt(10), 1, 50);
                     Result<List<SupplyApplicantConsumptionView>> res =
                             suppliesService.getApplicantConsumption(days, limit);
@@ -678,6 +681,7 @@ public class SuppliesMallToolPack implements AiToolPack {
             chips.add(option(claimChipLabel(o), str(o.getId())));
         }
         out.put("choices", chips);
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         out.put("choicesTitle", person + " · 下载哪一张领用单？");
         return new ClaimLookup(null, out);
     }
@@ -1013,6 +1017,7 @@ public class SuppliesMallToolPack implements AiToolPack {
         out.put("reason", "你手上已有可并入的待处理领用单。**问用户**：这次的货要并进那张单，还是新建一张？"
                 + "不要自己替他决定，也不要在正文里把单号念一遍 —— 选项已做成可点芯片。");
         out.put("questions", questions);
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         out.put("note", "用户点选后，把选中值**原样**放进 submitSupplyClaim 的 mergeChoices"
                 + "（形如 \"regular=SC_xxx\"、\"indep:7=new\"）再调一次；items（或省略=购物车）保持不变。");
         return out;

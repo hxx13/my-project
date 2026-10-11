@@ -277,7 +277,6 @@ public class ScanAssistantLlmService {
                             emitter.complete();
                         }
                     },
-                    llmConfigService.getAssistantMaxTokens(),
                     llmConfigService.getAssistantTemperature());
         } catch (SseClientDisconnectedException e) {
             log.debug("[scan-assistant] SSE disconnected kind={}", normalizedKind);
@@ -393,6 +392,15 @@ public class ScanAssistantLlmService {
             }
             // 会话 id 得回给面板：挂起确认要拿着它去续跑（挂起态存服务端，面板只需要这一个坐标）
             sink.setSessionId(session.getId());
+            /*
+             * 会话标题也给面板：抽屉顶部那行副标题要显示「本次对话的标题」。
+             * **给的是查询动作、不是当下那一份实体** —— 标题要等这一轮第一句提问落库时才写进去
+             * （见 sink 里的注释），现在读只会读到「新对话」。
+             */
+            sink.setTitleLookup(sid -> {
+                AiSession cur = aiSessionService.get(sid);
+                return cur == null ? null : cur.getTitle();
+            });
             aiOrchestrator.run(user, session.getId(), q, contextPage, sink, images, spreadsheets);
             emitter.complete();
         } catch (SseClientDisconnectedException e) {
@@ -438,7 +446,6 @@ public class ScanAssistantLlmService {
                             emitter.complete();
                         }
                     },
-                    llmConfigService.getAssistantMaxTokens(),
                     llmConfigService.getAssistantTemperature());
         } catch (SseClientDisconnectedException e) {
             log.debug("[scan-assistant] ask SSE disconnected: {}", e.getMessage());

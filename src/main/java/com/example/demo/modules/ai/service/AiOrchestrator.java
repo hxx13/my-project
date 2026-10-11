@@ -10,6 +10,7 @@ import com.example.demo.modules.ai.entity.AiToolCallLog;
 import com.example.demo.modules.ai.export.entity.AiExportArtifact;
 import com.example.demo.modules.ai.export.service.AiExportArtifactService;
 import com.example.demo.modules.ai.shot.PageShotArchiveService;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiPackRouter;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolContext;
@@ -146,16 +147,20 @@ public class AiOrchestrator {
                     List<String> images, List<SpreadsheetPart> spreadsheets) {
         sessionService.requireOwned(sessionId, actor.getId());
 
+        // 本轮下发的包**必须在写 user 消息之前**算出来 —— 那条消息要记下「这一轮模型手上有什么工具」。
+        List<AiToolPack> activePacks = routedPacks(actor);
+
         AiMessage userMsg = new AiMessage();
         userMsg.setActorUserId(actor.getId());
         userMsg.setActorRoleSnapshot(actor.getRole() == null ? null : actor.getRole().name());
         userMsg.setSource(contextPageSource(contextPage));
         userMsg.setContextJson(trimTo(contextPage, 512));
+        userMsg.setToolsOffered(String.join(",", offeredTools(actor, activePacks).stream()
+                .map(AiTool::name).toList()));
         AiMessage savedUser = sessionService.append(sessionId, "user", userText, userMsg);
 
         saveSpreadsheets(actor, sessionId, savedUser == null ? null : savedUser.getId(), spreadsheets, sink);
 
-        List<AiToolPack> activePacks = routedPacks(actor);
         logPacksIfEmpty(actor, viewOf(actor), activePacks);
         // **排错入口**：用户再遇到「我手里没有这个工具」时，先看这一行 ——
         // 现在包是「能力过滤后全发」，所以这里能看出的是**这个人一共拿到几个包**；
@@ -167,11 +172,45 @@ public class AiOrchestrator {
         attachImages(messages, images);
         return drive(actor, sessionId, sink, messages,
                 images != null && !images.isEmpty(), new ArrayList<>(), userText,
-                contextPageSource(contextPage), activePacks);
+                contextPageSource(contextPage), activePacks, null);
     }
 
     /** 本轮附带的一份表格：文件名 + 内容（data URL 或裸 base64）。 */
     public record SpreadsheetPart(String filename, String data) {
+    }
+
+    /**
+     * **服务端发起的一轮** —— 不是用户在说话，是系统替用户起个头。
+     *
+     * <h2>它解决什么</h2>
+     * 条件触发器（「大厅门开了就开监控室的门」）到点时，**前端多半不在**：没人能点确认、也没人看得到流。
+     * 但那一轮仍然要**模型在场** —— 它得知道之前答应过什么、得能调工具、得说一句人话交代结果。
+     * 所以这里开一个编排层入口：喂一句触发说明进去、跑完整的一轮、回复**落进那条会话**
+     * （落库由 {@code drive} 里的 append 完成，不依赖任何客户端连上来）。
+     *
+     * <h2>与 {@link #run} 的三处不同</h2>
+     * <ol>
+     *   <li><b>不落用户消息</b>：没有「用户说了这句话」这回事，那句触发词是我们自己编的。
+     *       用户看到的是**助手的回复**（普通 assistant 消息，与定时器写回会话同一形态）。</li>
+     *   <li><b>触发说明只进本轮上下文</b>，并且带【系统触发】标记 —— 让模型知道这不是用户新提的要求。</li>
+     *   <li><b>写操作预授权</b>：动作在**建计划那次**已经被人点过一次确认了。
+     *       这是对「写操作必须确认」的**扩展而不是豁免**：确认的对象从「这一次执行」变成「这个计划」，
+     *       而且建计划时把动作参数**原样展示**给人看过。那一刻没人看着，不这样做这条计划就永远不执行。</li>
+     * </ol>
+     *
+     * @param nudge           触发说明（模型看到的那句话）
+     * @param preAuthorizedBy 预授权标记，进审计的「确认人」那一栏，例如 {@code "计划#36"}
+     */
+    public Long runTriggered(User actor, Long sessionId, String nudge, String preAuthorizedBy,
+                             AiEventSink sink) {
+        sessionService.requireOwned(sessionId, actor.getId());
+        List<AiToolPack> activePacks = routedPacks(actor);
+        List<Map<String, Object>> messages = baseMessages(actor, sessionId, null, activePacks);
+        // 用 user 角色而不是 system：上游对「夹在中间的 system」不保证兼容（协议里 system 通常在开头）。
+        // 头部那四个字用来抵消「把它当成用户新要求」的误读。
+        messages.add(Map.of("role", "user", "content", "【系统触发】" + nudge));
+        return drive(actor, sessionId, sink, messages, false, new ArrayList<>(), nudge,
+                "system-trigger", activePacks, preAuthorizedBy);
     }
 
     /**
@@ -244,7 +283,7 @@ public class AiOrchestrator {
 
         if (!answerToolCalls(actor, sessionId, turn.getId(), parseToolCalls(turn.getRawToolCalls()),
                 it.getToolCallId(), AiInteractionService.isConfirm(chosenValue),
-                sink, messages, choiceGroups, chosenValue, RESUME_PLATFORM)) {
+                sink, messages, choiceGroups, chosenValue, RESUME_PLATFORM, null)) {
             // 补完的过程中又一次要确认（同一轮里的下一个写操作）——本轮到此为止，
             // 挂起事件已由 executeOne 发出，这里只做收尾。
             emitClarifyGroups(sink, choiceGroups, chosenValue);
@@ -252,7 +291,7 @@ public class AiOrchestrator {
             return null;
         }
         return drive(actor, sessionId, sink, messages, false, choiceGroups, chosenValue,
-                RESUME_PLATFORM, activePacks);
+                RESUME_PLATFORM, activePacks, null);
     }
 
     /**
@@ -269,7 +308,13 @@ public class AiOrchestrator {
     private Long drive(User actor, Long sessionId, AiEventSink sink,
                        List<Map<String, Object>> messages, boolean hasImages,
                        List<ChoiceGroup> choiceGroups, String userText, String platform,
-                       List<AiToolPack> activePacks) {
+                       List<AiToolPack> activePacks,
+                       /**
+                        * **预授权标记**：非空 = 这一轮里的写操作**不再逐条挂起等确认**，
+                        * 直接以这个值记进审计的「确认人」。只有服务端发起的轮（条件触发器到点）才传它，
+                        * 而那个值来自「建计划时用户点的那一次确认」—— 见 {@link #runTriggered}。
+                        */
+                       String preAuthorizedBy) {
         // 两个方向都要洗：先删「有 tool 应答没 tool_calls」的（窗口截断常见），
         // 再删「有 tool_calls 没应答」的。顺序不能反 —— 反了会先给孤儿应答的 assistant 补上正文，
         // 之后那条 tool 还是孤立的。
@@ -282,6 +327,35 @@ public class AiOrchestrator {
         int totalLatencyMs = 0;
         int totalPromptTokens = 0;
         int totalCompletionTokens = 0;
+        /** 其中**模型调用**占的毫秒。与工具耗时分开，用户才知道慢在哪一头（见 totalToolMs）。 */
+        int totalModelMs = 0;
+        /**
+         * 其中**工具执行**占的毫秒。
+         *
+         * <p>为什么必须单独记：此前只有一个 {@code totalLatencyMs}，而它**只包住模型调用、不含工具执行**
+         * —— 于是用户等了 20 秒、界面显示 4 秒（实测反馈）。差额全在这里。
+         */
+        int totalToolMs = 0;
+        /** 思考消耗的 token（跨轮累加）。上游精确给出。 */
+        int totalReasoningTokens = 0;
+        /**
+         * 思考正文（跨轮拼接）。
+         *
+         * <p>为什么要累加、而不是只存最后一轮：**用户看到的「思考过程」是整轮的**——
+         * 模型第一轮想「该调哪个工具」、第二轮想「结果怎么答」，两段都属于这一次提问。
+         * 而**最终那条回复**才是界面上留下的那条，所以必须把整轮的思考挂到它身上，
+         * 否则「切走再切回来」那段思考就没了（此前正是如此：只有工具轮存了思考正文，
+         * 而工具轮正文为空、在界面上根本不显示）。
+         */
+        StringBuilder totalReasoning = new StringBuilder();
+        /**
+         * **真正的思考用时**（跨轮累加）。
+         *
+         * <p>与 {@link #totalLatencyMs} 是两码事：那个是模型调用的总耗时，**含思考也含正文生成**，
+         * 而这个是**只到思考结束那一刻**。用户要的是后者 —— 拿前者冒充，会让「思考」看起来比实际长得多。
+         * 负值（没测到）不参与累加。
+         */
+        long totalThinkingMs = 0;
         /** 已退回纯文字重试过一次（只退一次，别再抖） */
         boolean imageFallbackTried = false;
 
@@ -310,12 +384,22 @@ public class AiOrchestrator {
             }
             long latency = System.currentTimeMillis() - started;
             totalLatencyMs += (int) latency;
+            totalModelMs += (int) latency;
             totalPromptTokens += resp.promptTokens();
             totalCompletionTokens += resp.completionTokens();
+            totalReasoningTokens += resp.reasoningTokens();
+            if (resp.thinkingMs() >= 0) {
+                totalThinkingMs += resp.thinkingMs();
+            }
+            if (StringUtils.hasText(resp.reasoningContent())) {
+                if (totalReasoning.length() > 0) totalReasoning.append("\n\n");
+                totalReasoning.append(resp.reasoningContent());
+            }
 
             // 每轮结束就把用量推出去：载体据此实时刷新「已耗时 / 已用 token」
             sink.usage(new AiTurnStats(null, resp.model(), totalLatencyMs,
-                    totalPromptTokens, totalCompletionTokens, turn + 1));
+                    totalPromptTokens, totalCompletionTokens, turn + 1,
+                    totalModelMs, totalToolMs, totalReasoningTokens, totalThinkingMs));
 
             if (resp.toolCalls().isEmpty()) {
                 AiMessage assistant = new AiMessage();
@@ -323,6 +407,15 @@ public class AiOrchestrator {
                 assistant.setLatencyMs((int) latency);
                 assistant.setPromptTokens(resp.promptTokens());
                 assistant.setCompletionTokens(resp.completionTokens());
+                // **整轮的**思考挂在这条上：它是界面上留下的那条回复，「切走再切回来」全靠它。
+                // 只存最后一轮是不够的——模型先想「调哪个工具」、再想「结果怎么答」，两段都属于这次提问。
+                assistant.setReasoningContent(totalReasoning.length() > 0 ? totalReasoning.toString() : null);
+                assistant.setReasoningTokens(totalReasoningTokens);
+                assistant.setPromptCacheHitTokens(resp.promptCacheHitTokens());
+                assistant.setPromptCacheMissTokens(resp.promptCacheMissTokens());
+                // 整轮的思考用时。**-1 = 没测到**（那一轮没出现非思考增量），留空而不是写 0：
+                // 写成 0 会在界面上显示「思考 0.0 秒」，那是句假话。
+                assistant.setThinkingMs(totalThinkingMs > 0 ? totalThinkingMs : null);
                 AiMessage saved = sessionService.append(sessionId, "assistant", resp.content(), assistant);
                 if (resp.content() == null || resp.content().isBlank()) {
                     // 有用量、但没正文：多半是输出预算被思考吃满（实测 max_tokens=1024 时如此）。
@@ -339,18 +432,36 @@ public class AiOrchestrator {
                 // 每条自带标题（谁的什么），载体会按顺序依次问。合成一组会让用户点了不知道是给谁挑的。
                 emitClarifyGroups(sink, choiceGroups, userText);
                 sink.done(new AiTurnStats(saved.getId(), resp.model(), totalLatencyMs,
-                        totalPromptTokens, totalCompletionTokens, turn + 1));
+                        totalPromptTokens, totalCompletionTokens, turn + 1,
+                        totalModelMs, totalToolMs, totalReasoningTokens, totalThinkingMs));
                 return saved.getId();
             }
 
             // 模型要调工具：先把这条 assistant 轮原样落库（含 tool_calls），再逐个处理
             String rawCalls = serializeToolCalls(resp.toolCalls());
+
+            // **这一段此前被吞**：模型在调工具前可能已经写了正文、一定想了思考内容，而用户一个字看不到。
+            // 实测「帮我查一下张鹏的工号」那一次：content 是空串、reasoning_content 有 129 字 ——
+            // 用户在干等的那几秒里，模型其实「说」了话，只是被丢弃了（设计文档 §10.3）。
+            // 顺序按生成顺序推：思考 → 正文。
+            if (StringUtils.hasText(resp.reasoningContent())) {
+                sink.reasoning(resp.reasoningContent());
+            }
+            if (StringUtils.hasText(resp.content())) {
+                sink.delta(resp.content());
+            }
+
             AiMessage assistant = new AiMessage();
             assistant.setModel(resp.model());
             assistant.setLatencyMs((int) latency);
             assistant.setPromptTokens(resp.promptTokens());
             assistant.setCompletionTokens(resp.completionTokens());
             assistant.setRawToolCalls(rawCalls);
+            assistant.setReasoningContent(resp.reasoningContent());
+            assistant.setReasoningTokens(resp.reasoningTokens());
+            assistant.setPromptCacheHitTokens(resp.promptCacheHitTokens());
+            assistant.setPromptCacheMissTokens(resp.promptCacheMissTokens());
+            assistant.setThinkingMs(resp.thinkingMs() >= 0 ? resp.thinkingMs() : null);
             AiMessage savedAssistant = sessionService.append(sessionId, "assistant", resp.content(), assistant);
 
             messages.add(assistantMessageForModel(resp.content(), resp.toolCalls()));
@@ -366,8 +477,13 @@ public class AiOrchestrator {
             // （查这个人 → 发现缺房间 → 再查另一个人），只要最后那句回答里还挂着没答的问题，
             // 那一轮的候选就仍然要问。每轮清空会把前几轮的候选项悄悄吞掉 —— 真机踩过：
             // 两人批量、共 4 轮，第一个人的房间候选被后面的搜索调用清掉，界面上一片芯片都没有。
-            if (!answerToolCalls(actor, sessionId, savedAssistant.getId(), resp.toolCalls(),
-                    null, false, sink, messages, choiceGroups, userText, platform)) {
+            // 工具执行单独计时：慢的其实是查数据那一段（实测 148 个板块 / 10972 行），
+            // 而它此前一个数都没记 —— 用户等了 20 秒界面显示 4 秒就是这么来的。
+            long toolStarted = System.currentTimeMillis();
+            boolean answered = answerToolCalls(actor, sessionId, savedAssistant.getId(), resp.toolCalls(),
+                    null, false, sink, messages, choiceGroups, userText, platform, preAuthorizedBy);
+            totalToolMs += (int) (System.currentTimeMillis() - toolStarted);
+            if (!answered) {
                 // 有写操作要确认：本轮到此为止（挂起事件已由 executeOne 发出）。
                 // 模型这一轮已经说出的正文在这里补发 —— 挂起后用户只看到一颗球和一排选项，
                 // 模型那句「我这就给张三授权」正是回答「在确认什么」的那句。
@@ -376,7 +492,8 @@ public class AiOrchestrator {
                 }
                 emitClarifyGroups(sink, choiceGroups, userText);
                 sink.done(new AiTurnStats(savedAssistant.getId(), resp.model(), totalLatencyMs,
-                        totalPromptTokens, totalCompletionTokens, turn + 1));
+                        totalPromptTokens, totalCompletionTokens, turn + 1,
+                        totalModelMs, totalToolMs, totalReasoningTokens, totalThinkingMs));
                 return savedAssistant.getId();
             }
         }
@@ -478,6 +595,11 @@ public class AiOrchestrator {
         }
 
         sink.tool(call.name(), "running");
+        // 机器码给状态机（上面那条），人话给用户（这条）。慢的其实是**工具在查数据**
+        // （实测 148 个板块 / 10972 行），而这句话在工具开跑**之前**就发出去了 ——
+        // 用户立刻知道在等什么，不用干等（设计文档 §10.5 ②）。
+        // 短语取描述首句：与确认弹窗同一个来源（AiTool.confirmPhrase），不另写一份措辞。
+        sink.toolProgress(call.name(), tool.confirmPhrase());
         AiToolCallLog entry = new AiToolCallLog();
         entry.setSessionId(sessionId);
         entry.setMessageId(messageId);
@@ -543,7 +665,8 @@ public class AiOrchestrator {
                                     List<DashScopeChatClient.ToolCall> calls,
                                     String pendingCallId, boolean confirmed,
                                     AiEventSink sink, List<Map<String, Object>> messages,
-                                    List<ChoiceGroup> choiceGroups, String userText, String platform) {
+                                    List<ChoiceGroup> choiceGroups, String userText, String platform,
+                                    String preAuthorizedBy) {
         // 已经办过的调用要跳过 —— 判据查库不扫窗口：长会话里那一轮可能已被窗口截掉，
         // 靠窗口判就会把「已经执行过的写」当成没执行而**再写一次**。
         Set<String> answeredIds = sessionService.answeredToolCallIds(sessionId);
@@ -563,7 +686,9 @@ public class AiOrchestrator {
                 continue;
             }
             String text = executeOne(actor, sessionId, assistantMessageId, call, sink, choiceGroups,
-                    isPending ? actor.getId() : null, userText, platform);
+                    // 挂了起等确认的那一条：确认人就是本人；**服务端发起的轮**：整个计划在建的时候
+                    // 已经点过一次确认，到点不再逐条拦（那一刻没人看着，拦了就是永远不执行）
+                    isPending ? actor.getId() : preAuthorizedBy, userText, platform);
             if (text == null) {
                 return false;
             }
@@ -630,7 +755,11 @@ public class AiOrchestrator {
         if (g.options().isEmpty()) {
             return false;
         }
-        if (!g.multiSelect() && g.options().size() == 1) {
+        // 「只剩一个候选就别问」**只对 choices 成立** —— 那是「查询收敛出来的候选」，
+        // 收敛到唯一一个就说明用户问的事已经有答案了，再问是逼他多点一次。
+        // 对 questions（作者刻意写的一道题）**不成立**：一个选项也是在请他拍板，
+        // 按同一套规则丢掉，那道题就静默消失、写操作永远不执行（2026-10-11 定位到）。
+        if (!g.authored() && !g.multiSelect() && g.options().size() == 1) {
             return false;
         }
         if (!StringUtils.hasText(userText)) {
@@ -698,7 +827,7 @@ public class AiOrchestrator {
 
     /** 调用者的视角。判据与三端前端同源（`account_source`），**不按角色等级** —— 学生账号可能是 STAFF 档。 */
     private AiView viewOf(User actor) {
-        return modeVisibilityService.isStudent(actor) ? AiView.STUDENT : AiView.STAFF;
+        return AiView.of(modeVisibilityService.isStudent(actor));
     }
 
     /**
@@ -823,7 +952,8 @@ public class AiOrchestrator {
                 withTools.add(pack);
             }
         }
-        String prompt = promptService.assemble(withTools, ctx.toString());
+        // 带上发起人 id：拼装最末的「个人偏好」那层要靠它取（只挂本人的，绝不挂别人的）
+        String prompt = promptService.assemble(withTools, ctx.toString(), actor == null ? null : actor.getId());
         if (withTools.isEmpty()) {
             // 放在**最后**：越靠近用户那句话，越压得住「照着说明书念能力」的冲动。
             prompt = prompt + "\n\n【本轮没有工具】你现在手上一个工具都没有："
@@ -860,19 +990,31 @@ public class AiOrchestrator {
      * 发给模型的 tools 载荷。只放这个身份用得上的（见 {@link #usableTools}）；
      * 空表时不带 tools 参数，模型就只会回文本。
      */
-    private List<Map<String, Object>> toolsPayload(User actor, List<AiToolPack> activePacks) {
-        // 顺序沿用注册表那份（包名序 + 工具名序）—— 只做筛选，不重排。顺序一漂，prompt 缓存前缀全失效。
+    /**
+     * 本轮**真正发给模型**的工具（已按能力过滤），顺序沿用注册表那份。
+     *
+     * <p>载荷与审计快照共用这一份 —— 「发给模型的是什么」与「记下来它当时有什么」必须是同一次计算，
+     * 各算一次早晚会漂。
+     */
+    private List<AiTool> offeredTools(User actor, List<AiToolPack> activePacks) {
         Set<String> allowed = new HashSet<>();
         for (AiToolPack pack : activePacks) {
             for (AiTool t : pack.tools()) {
                 allowed.add(t.name());
             }
         }
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<AiTool> out = new ArrayList<>();
         for (AiTool t : usableTools(capabilityGate, actor, toolRegistry.allTools())) {
-            if (!allowed.contains(t.name())) {
-                continue;
+            if (allowed.contains(t.name())) {
+                out.add(t);
             }
+        }
+        return out;
+    }
+
+    private List<Map<String, Object>> toolsPayload(User actor, List<AiToolPack> activePacks) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AiTool t : offeredTools(actor, activePacks)) {
             Map<String, Object> fn = new LinkedHashMap<>();
             fn.put("name", t.name());
             fn.put("description", t.description());
@@ -1154,7 +1296,21 @@ public class AiOrchestrator {
      * <p>多选是为「让用户在对话里配一次参数」加的（2026-10-09，物资申领审计导出的小计层级）：
      * 与其把人送到页面上再配，不如在这儿勾完直接生效。载体没实现多选时按单选渲染，退化成「只能挑一个」。
      */
-    record ChoiceGroup(String title, List<AiEventSink.Option> options, boolean multiSelect) {
+    /**
+     * 一组要问用户的选择。
+     *
+     * @param authored **是不是工具作者明确写的一道题**（来自返回里的 {@code questions}）。
+     *
+     * <p>为什么要这个标记：{@code choices} 与 {@code questions} **形状相同、语义相反**——
+     * <ul>
+     *   <li>{@code choices} 是「查询收敛出来的候选」：只剩一个，说明用户问的事已经有答案了，
+     *       再问一遍是逼他多点一次（2026-10-09 用户反馈「又在重复提问」）；</li>
+     *   <li>{@code questions} 是作者**刻意写的一道题**：哪怕只有一个选项，也是在请用户**拍板**
+     *       （「发到哪个栏目？→ 公告」）。</li>
+     * </ul>
+     * 按同一套规则丢掉后者，会让一道题**静默消失** —— 用户看不到问题，那个写操作就永远不执行。
+     */
+    record ChoiceGroup(String title, List<AiEventSink.Option> options, boolean multiSelect, boolean authored) {
     }
 
     /**
@@ -1369,8 +1525,22 @@ public class AiOrchestrator {
             return List.of();
         }
         Map<String, Object> m = (Map<String, Object>) map;
+        /*
+         * **默认不弹**：只有工具**明确标了「必须问」**的才收（见 AiChoices.ASK_REQUIRED 与设计文档 §9.6）。
+         *
+         * <p>为什么要翻转默认：`choices` / `questions` 承载两种**形状相同、语义相反**的东西 ——
+         * 「我查到几个候选，帮你收窄一下」（用户只是问问情况时不该弹）与「不问就办不成」（必须弹）。
+         * 代码分不出来，过去一律弹，实测就是用户被追着问：问一句「有哪些断货物资」，
+         * 答案已经给全了，界面还追一道「挑一件」。
+         *
+         * <p>两种错的代价不对称：**漏标 = 少给一个可选项**（用户还能打字说），
+         * **错弹 = 无谓地甩一张表**（用户必须处理它才能继续）。所以宁可漏标。
+         */
+        if (!Boolean.TRUE.equals(m.get(AiChoices.ASK_REQUIRED))) {
+            return List.of();
+        }
         List<ChoiceGroup> groups = new ArrayList<>();
-        ChoiceGroup single = toGroup(m.get("choices"), m.get("choicesTitle"), false);
+        ChoiceGroup single = toGroup(m.get("choices"), m.get("choicesTitle"), false, false);
         if (single != null) {
             groups.add(single);
         }
@@ -1380,7 +1550,7 @@ public class AiOrchestrator {
                 if (q instanceof Map<?, ?> qm) {
                     Map<String, Object> qmap = (Map<String, Object>) qm;
                     ChoiceGroup g = toGroup(qmap.get("options"), qmap.get("title"),
-                            Boolean.TRUE.equals(qmap.get("multiSelect")));
+                            Boolean.TRUE.equals(qmap.get("multiSelect")), true);
                     if (g != null) {
                         groups.add(g);
                     }
@@ -1391,7 +1561,7 @@ public class AiOrchestrator {
     }
 
     @SuppressWarnings("unchecked")
-    private static ChoiceGroup toGroup(Object rawChoices, Object rawTitle, boolean multiSelect) {
+    private static ChoiceGroup toGroup(Object rawChoices, Object rawTitle, boolean multiSelect, boolean authored) {
         if (!(rawChoices instanceof List<?> list)) {
             return null;
         }
@@ -1401,12 +1571,15 @@ public class AiOrchestrator {
                 Object label = ((Map<String, Object>) m).get("label");
                 Object value = ((Map<String, Object>) m).get("value");
                 if (label != null && value != null) {
-                    options.add(new AiEventSink.Option(String.valueOf(label), String.valueOf(value)));
+                    // 备注可以没有（绝大多数选项没有）；有就带上，载体拿它做那行小字说明
+                    Object note = ((Map<String, Object>) m).get("note");
+                    options.add(new AiEventSink.Option(String.valueOf(label), String.valueOf(value),
+                            note == null ? "" : String.valueOf(note)));
                 }
             }
         }
         return options.isEmpty() ? null
-                : new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options, multiSelect);
+                : new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options, multiSelect, authored);
     }
 
     /**

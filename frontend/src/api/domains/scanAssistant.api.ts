@@ -66,7 +66,24 @@ export type ScanAssistantSpeakContext = Record<string, string | number | boolean
 
 /** 用量进度：每完成一轮模型调用推一次（粒度是「轮」，不是逐 token）。 */
 export interface ScanAssistantUsage {
+  /** 模型调用累计耗时。**不含工具执行** —— 想拿用户实际等待时长用 wallMs。 */
   latencyMs: number;
+  /** 其中模型调用占的毫秒。 */
+  modelMs?: number;
+  /** 其中工具执行占的毫秒。用户等了 20 秒却显示 4 秒，差额就在这里。 */
+  toolMs?: number;
+  /** 用户实际等待的墙钟时长（模型 + 工具）。「用时」该显示的是它。 */
+  wallMs?: number;
+  /**
+   * **真正的思考用时**（毫秒）：请求发出 → 第一个非思考增量到达。
+   *
+   * <p>与 {@link wallMs} 是两个数：那个是「用户等了多久」（大头往往是工具在查数据），
+   * 这个是「模型想了多久」。**界面上要显示的是后者**（用户 2026-10-11 明确）。
+   * 负值 = 这一轮没测到，别显示。
+   */
+  thinkingMs?: number;
+  /** 思考消耗的 token（上游精确给出）。用来显示「思考了多少」。 */
+  reasoningTokens?: number;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -77,13 +94,21 @@ export interface ScanAssistantUsage {
 export type ScanAssistantStreamHandlers = {
   onStarted?: () => void;
   onDelta?: (text: string, fallback?: boolean) => void;
+  /**
+   * 模型的**思考正文**。与 onDelta 分开：界面上思考要折叠、正文常显，
+   * 混进一条流就没法只折叠前半段。
+   */
+  onReasoning?: (text: string) => void;
+  /** 工具的**人话动作短语**（「正在汇总 148 个板块…」）。与 onTool 的机器码 status 不是一回事。 */
+  onToolProgress?: (name: string, phrase: string) => void;
   onUsage?: (usage: ScanAssistantUsage) => void;
   /** 载体需要用户从候选项里挑一个时触发（如「该人的可选房间」）。选项是结构化的，不是正文。 */
   onInteraction?: (payload: {
     token: string;
     kind: string;
     question: string;
-    options: Array<{ label: string; value: string }>;
+    /** `note` 是「选它会怎样」的一句备注，可空（模型自己写的选项常带，工具查出来的通常没有）。 */
+    options: Array<{ label: string; value: string; note?: string }>;
     multiSelect?: boolean;
   }) => void;
   onDone?: (payload: { text?: string; model?: string; sessionId?: number; messageId?: number } & Partial<ScanAssistantUsage>) => void;
@@ -145,6 +170,11 @@ function parseUsage(payload: Record<string, unknown>): ScanAssistantUsage | null
   if (typeof payload.totalTokens !== "number") return null;
   return {
     latencyMs: typeof payload.latencyMs === "number" ? payload.latencyMs : 0,
+    modelMs: typeof payload.modelMs === "number" ? payload.modelMs : undefined,
+    toolMs: typeof payload.toolMs === "number" ? payload.toolMs : undefined,
+    wallMs: typeof payload.wallMs === "number" ? payload.wallMs : undefined,
+    thinkingMs: typeof payload.thinkingMs === "number" ? payload.thinkingMs : undefined,
+    reasoningTokens: typeof payload.reasoningTokens === "number" ? payload.reasoningTokens : undefined,
     promptTokens: typeof payload.promptTokens === "number" ? payload.promptTokens : 0,
     completionTokens: typeof payload.completionTokens === "number" ? payload.completionTokens : 0,
     totalTokens: payload.totalTokens,
@@ -286,6 +316,13 @@ export async function streamScanAssistantSpeak(
 
     if (name === "delta" && typeof payload.text === "string") {
       handlers.onDelta?.(payload.text, payload.fallback === true);
+    } else if (name === "reasoning" && typeof payload.text === "string") {
+      handlers.onReasoning?.(payload.text);
+    } else if (name === "toolProgress") {
+      handlers.onToolProgress?.(
+        typeof payload.name === "string" ? payload.name : "",
+        typeof payload.phrase === "string" ? payload.phrase : "",
+      );
     } else if (name === "started") {
       handlers.onStarted?.();
     } else if (name === "interaction") {
@@ -294,7 +331,7 @@ export async function streamScanAssistantSpeak(
         kind: String(payload.kind ?? ""),
         question: String(payload.question ?? ""),
         options: Array.isArray(payload.options)
-          ? (payload.options as Array<{ label: string; value: string }>)
+          ? (payload.options as Array<{ label: string; value: string; note?: string }>)
           : [],
         multiSelect: payload.multiSelect === true,
       });
@@ -397,6 +434,13 @@ async function postAskSse(
 
     if (name === "delta" && typeof payload.text === "string") {
       handlers.onDelta?.(payload.text, payload.fallback === true);
+    } else if (name === "reasoning" && typeof payload.text === "string") {
+      handlers.onReasoning?.(payload.text);
+    } else if (name === "toolProgress") {
+      handlers.onToolProgress?.(
+        typeof payload.name === "string" ? payload.name : "",
+        typeof payload.phrase === "string" ? payload.phrase : "",
+      );
     } else if (name === "started") {
       handlers.onStarted?.();
     } else if (name === "interaction") {
@@ -405,7 +449,7 @@ async function postAskSse(
         kind: String(payload.kind ?? ""),
         question: String(payload.question ?? ""),
         options: Array.isArray(payload.options)
-          ? (payload.options as Array<{ label: string; value: string }>)
+          ? (payload.options as Array<{ label: string; value: string; note?: string }>)
           : [],
         multiSelect: payload.multiSelect === true,
       });
@@ -552,7 +596,32 @@ export type AssistantSession = {
 };
 
 /** 历史对话里的消息（展示用） */
-export type AssistantHistoryMessage = { id: number; role: string; content: string; createdAt?: string };
+export type AssistantHistoryMessage = {
+  id: number;
+  role: string;
+  content: string;
+  createdAt?: string;
+  /** 会话内**顺序号**（服务端权威顺序）。分页往前翻时按它做游标（`beforeSeq`）。 */
+  seq?: number;
+  /**
+   * 这一轮模型的**思考正文**。服务端一直存着（`ai_message.reasoning_content`），
+   * 回看历史时照常返回 —— 本地缓存里**故意不放**它（太长，会撑爆 sessionStorage），
+   * 所以「切走再切回来」靠这一路把它捞回来。
+   */
+  reasoningContent?: string;
+  /** 思考消耗的 token，用于折叠标题。 */
+  reasoningTokens?: number;
+  /**
+   * 那一轮的用量。服务端**一直存着**（`ai_message` 的 latency/prompt/completion），
+   * 只是回看历史这条路上此前没接出来 —— 于是翻旧对话时「用时 · tokens」那行是空的，
+   * 而同一行上的赞/踩图标却照常显示，看起来像「点赞把数字挤掉了」。
+   */
+  latencyMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  /** 真正的思考用时（毫秒）。老消息是空的（那一列当初还不存在），回看时就只显示总量。 */
+  thinkingMs?: number;
+};
 
 /**
  * 会话列表。**只留 source=scan 的** —— 那是球球自己的会话；同一个人可能还有别的来源会话，
@@ -572,12 +641,87 @@ export async function deleteAssistantSession(sessionId: number): Promise<void> {
   if (!res.ok) throw new Error(`删除失败: HTTP ${res.status}`);
 }
 
-/** 某条历史会话的全部消息（用于「点开旧对话接着聊」） */
-export async function fetchAssistantSessionMessages(sessionId: number): Promise<AssistantHistoryMessage[]> {
-  const res = await fetch(`/api/v1/ai/sessions/${sessionId}/messages`, { headers: authHeaders() });
+/**
+ * 某条历史会话的消息（用于「点开旧对话接着聊」）。
+ *
+ * **默认只取最后一屏**（`limit`），更早的靠 `beforeSeq` 往前翻一页 —— 长会话几百条，
+ * 一次全量既慢又白费，而用户打开旧对话先看的几乎总是最后那几屏。
+ * **不传 limit 仍是全量**（老调用方行为不变）。
+ */
+export async function fetchAssistantSessionMessages(
+  sessionId: number,
+  options?: { limit?: number; beforeSeq?: number },
+): Promise<AssistantHistoryMessage[]> {
+  const params = new URLSearchParams();
+  if (options?.limit && options.limit > 0) params.set("limit", String(options.limit));
+  if (options?.beforeSeq != null) params.set("beforeSeq", String(options.beforeSeq));
+  const qs = params.toString();
+  const res = await fetch(
+    `/api/v1/ai/sessions/${sessionId}/messages${qs ? `?${qs}` : ""}`,
+    { headers: authHeaders() },
+  );
   if (!res.ok) throw new Error(`历史消息读取失败: HTTP ${res.status}`);
   const body = (await res.json()) as { data?: AssistantHistoryMessage[] };
   return body?.data ?? [];
+}
+
+/** 一条回复的思考正文（按需拉取）。 */
+export type MessageReasoning = {
+  reasoning: string;
+  reasoningTokens?: number;
+  thinkingMs?: number;
+};
+
+/**
+ * 按需取一条回复的思考正文。
+ *
+ * <p>为什么不从本地状态里读：它很长，各端**故意不缓存**（会撑爆存储），
+ * 而「切走再切回来」「重开抽屉」「历史翻页」这些路径上都可能把它弄丢（实测撞过三次）。
+ * 让展开这个动作**直接去后端要**，库是唯一真相源，中间哪一层丢了都不影响。
+ */
+export async function fetchMessageReasoning(messageId: number): Promise<MessageReasoning> {
+  const res = await fetch(`/api/v1/ai/messages/${messageId}/reasoning`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`思考正文读取失败: HTTP ${res.status}`);
+  const body = (await res.json()) as { data?: MessageReasoning };
+  return body?.data ?? { reasoning: "" };
+}
+
+/** 我自己的一条偏好。 */
+export type MyPreference = { id: number; content: string; source?: string; updatedAt?: string };
+
+/**
+ * **我自己的**偏好。
+ *
+ * <p>为什么要有这条路：只用「对话里问一句」的话，用户根本不知道助手记了什么 ——
+ * 知情权不能只靠他想得起来问。
+ */
+export async function fetchMyPreferences(): Promise<MyPreference[]> {
+  const res = await fetch("/api/v1/ai/preferences/mine", { headers: authHeaders() });
+  if (!res.ok) throw new Error(`偏好读取失败: HTTP ${res.status}`);
+  const body = (await res.json()) as { data?: MyPreference[] };
+  return body?.data ?? [];
+}
+
+/** 自己加一条。 */
+export async function addMyPreference(content: string): Promise<void> {
+  const res = await fetch("/api/v1/ai/preferences/mine", {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  const body = (await res.json().catch(() => null)) as { success?: boolean; message?: string } | null;
+  // 业务错误也要抛：只看 HTTP 状态会把「太长了」显示成成功（这个仓库踩过这个坑）
+  if (!res.ok || body?.success === false) throw new Error(body?.message || `保存失败: HTTP ${res.status}`);
+}
+
+/** 自己删一条。 */
+export async function deleteMyPreference(content: string): Promise<void> {
+  const res = await fetch(`/api/v1/ai/preferences/mine?content=${encodeURIComponent(content)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  const body = (await res.json().catch(() => null)) as { success?: boolean; message?: string } | null;
+  if (!res.ok || body?.success === false) throw new Error(body?.message || `删除失败: HTTP ${res.status}`);
 }
 
 /** 智能载体主动问好（打开面板即触发，SSE 流式） */
@@ -588,8 +732,60 @@ export async function streamScanAssistantGreet(
   return postAskSse("/api/v1/twin/scan-assistant/ask/greet/stream", {}, handlers, options);
 }
 
-/** 触发一次主动播报，返回播报文本或空 */
-export async function triggerProactiveBroadcast(): Promise<{ text: string; hasBroadcast: boolean }> {
+/**
+ * 赞 / 踩一条助手回复。
+ *
+ * 同一条重复投 = **改那一票**（赞↔踩），不堆行 —— 服务端靠唯一键保证「同一人同一回复只算一次」。
+ */
+export async function voteAssistantMessage(
+  messageId: number,
+  vote: "up" | "down",
+  reason = "",
+): Promise<void> {
+  const res = await fetch(`/api/v1/ai/messages/${messageId}/feedback`, {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ vote, reason }),
+  });
+  const body = (await res.json().catch(() => null)) as { success?: boolean; message?: string } | null;
+  // 写请求必须看 success：HTTP 200 + success:false 也是失败（本仓库的既有约定）
+  if (!res.ok || !body?.success) {
+    throw new Error(body?.message || `投票失败: HTTP ${res.status}`);
+  }
+}
+
+/**
+ * **撤掉**这一票 —— 再点一次同一个图标。
+ *
+ * 与 {@link voteAssistantMessage} 分开：那个是「我要投 up/down」，这个是「我不投了」。
+ * 服务端把后者做成 DELETE（整行删），不是用空串投票 —— 那样语义会糊在参数里。
+ */
+export async function cancelAssistantVote(messageId: number): Promise<void> {
+  const res = await fetch(`/api/v1/ai/messages/${messageId}/feedback`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  const body = (await res.json().catch(() => null)) as { success?: boolean; message?: string } | null;
+  if (!res.ok || !body?.success) {
+    throw new Error(body?.message || `取消失败: HTTP ${res.status}`);
+  }
+}
+
+/** 我在某个会话里投过的票：messageId → up/down。界面用它回填「我点过哪条」。 */
+export async function fetchMyMessageVotes(sessionId: number): Promise<Record<number, "up" | "down">> {
+  const res = await fetch(`/api/v1/ai/sessions/${sessionId}/my-feedback`, { headers: authHeaders() });
+  if (!res.ok) return {};
+  const body = (await res.json()) as { data?: Array<{ messageId: number; vote: string }> };
+  const out: Record<number, "up" | "down"> = {};
+  for (const r of body?.data ?? []) {
+    if (r?.messageId != null && (r.vote === "up" || r.vote === "down")) {
+      out[r.messageId] = r.vote;
+    }
+  }
+  return out;
+}
+
+/** 触发一次主动播报，返回播报文本或空 */export async function triggerProactiveBroadcast(): Promise<{ text: string; hasBroadcast: boolean }> {
   const res = await fetch("/api/v1/twin/scan-assistant/broadcast/proactive", {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },

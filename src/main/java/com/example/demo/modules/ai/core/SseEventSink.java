@@ -44,6 +44,21 @@ public class SseEventSink implements AiEventSink {
     }
 
     @Override
+    public void reasoning(String text) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("text", text);
+        send("reasoning", data);
+    }
+
+    @Override
+    public void toolProgress(String name, String phrase) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("name", name);
+        data.put("phrase", phrase == null ? "" : phrase);
+        send("toolProgress", data);
+    }
+
+    @Override
     public void interaction(String token, String kind, String question, List<Option> options, boolean multiSelect) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("token", token);
@@ -103,6 +118,15 @@ public class SseEventSink implements AiEventSink {
         }
         if (stats != null) {
             data.put("latencyMs", stats.latencyMs());
+            // 模型耗时与工具耗时**分开给**：以前只有一个 latencyMs、且它不含工具执行，
+            // 于是用户等了 20 秒界面显示 4 秒。载体据此把「用时」拆开显示（设计文档 §10.4）。
+            data.put("modelMs", stats.modelMs());
+            data.put("toolMs", stats.toolMs());
+            data.put("wallMs", stats.wallMs());
+            // **真正的思考用时**。与 wallMs 是两个数：那个是「用户等了多久」（大头是工具在查数据），
+            // 这个是「模型想了多久」。界面要显示的是后者。负值 = 这一轮没测到，别当 0。
+            data.put("thinkingMs", stats.thinkingMs());
+            data.put("reasoningTokens", stats.reasoningTokens());
             data.put("promptTokens", stats.promptTokens());
             data.put("completionTokens", stats.completionTokens());
             data.put("totalTokens", stats.totalTokens());

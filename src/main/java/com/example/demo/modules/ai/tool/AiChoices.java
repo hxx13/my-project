@@ -68,4 +68,35 @@ public final class AiChoices {
         }
         return out;
     }
+
+    /**
+     * 「这组候选**必须问**」的标记键。
+     *
+     * <p><b>为什么要有它</b>：{@code choices} / {@code questions} 承载的是**两件性质相反的事**
+     * （见设计文档 §9.2）：
+     * <ul>
+     *   <li>「我查到几个候选，帮你收窄一下」——用户**只是想问问情况**时不该弹出来；</li>
+     *   <li>「不问就办不成」（不给下载按钮 / 不跳转 / 不落库）——必须弹。</li>
+     * </ul>
+     * 两者**形状完全一样**，代码分不出来，于是编排层过去一律弹 —— 实测用户就是被这个烦到的
+     * （问一句「有哪些断货物资」，答完还追一道「挑一件」）。
+     *
+     * <p><b>所以改成默认不弹</b>：只有显式标了这个键的才弹。
+     * 忘了标 = 少给一个可选项（用户还能打字说），比「无谓地甩一张表」代价小得多 —— 两种错不对称。
+     */
+    public static final String ASK_REQUIRED = "askRequired";
+
+    /** 单选，且**必须问**。用在「不问就拿不到主产物」的地方。 */
+    public static Map<String, Object> requiredSingle(String title, List<Map<String, Object>> options) {
+        Map<String, Object> out = single(title, options);
+        out.put(ASK_REQUIRED, Boolean.TRUE);
+        return out;
+    }
+
+    /** 多选，且**必须问**。 */
+    public static Map<String, Object> requiredMulti(String title, List<Map<String, Object>> options) {
+        Map<String, Object> out = multi(title, options);
+        out.put(ASK_REQUIRED, Boolean.TRUE);
+        return out;
+    }
 }

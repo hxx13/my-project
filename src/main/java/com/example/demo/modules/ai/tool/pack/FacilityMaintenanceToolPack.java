@@ -205,7 +205,7 @@ public class FacilityMaintenanceToolPack implements AiToolPack {
                     out.put("note", "没有匹配的机房。别硬编一个，问清用户指的是哪个机房。");
                 } else if (chips.size() <= CHIP_MAX) {
                     // 机房是必填的单选题 —— 做成可点选项，用户点一下比打字准
-                    out.putAll(AiChoices.single("是哪个机房（地点）？", chips));
+                    out.putAll(AiChoices.requiredSingle("是哪个机房（地点）？", chips));
                     out.put("note", "把上面这枚问题**交给用户点**（界面会渲染成可点选项），"
                             + "他点完你再拿 siteId 去记。**不要在正文里把候选再列一遍**。");
                 } else {
@@ -245,7 +245,7 @@ public class FacilityMaintenanceToolPack implements AiToolPack {
                 out.put("types", labels);
                 if (!chips.isEmpty() && chips.size() <= CHIP_MAX) {
                     // 一个机房一次可能换好几级 → 多选题
-                    out.putAll(AiChoices.multi("换了哪些级别（可多选，勾完点确认）", chips));
+                    out.putAll(AiChoices.requiredMulti("换了哪些级别？", chips));
                     out.put("note", "把上面这枚问题**交给用户勾**。他勾完你按这些级别逐条记；"
                             + "**别自己替他挑一个**，也别把「过滤网」这类用户口语当成级别写进去。");
                 } else {

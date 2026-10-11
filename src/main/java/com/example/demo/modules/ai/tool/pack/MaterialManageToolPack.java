@@ -2,6 +2,7 @@ package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.AiView;
@@ -818,6 +819,7 @@ public class MaterialManageToolPack implements AiToolPack {
                             out.put("reason", "回收站里有 " + hits.size() + " 件对得上，让用户确认是哪一件，不要自己选");
                             if (hits.size() <= CHIP_MAX) {
                                 out.put("choices", choicesOf(hits));
+                                out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
                                 out.put("choicesTitle", "恢复哪一件？");
                             }
                             return out;
@@ -1042,6 +1044,7 @@ public class MaterialManageToolPack implements AiToolPack {
                     chips.add(option(firstStr(u, "displayName", "displayNickname", "username"), str(u.get("id"))));
                 }
                 out.put("choices", chips);
+                out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
                 out.put("choicesTitle", "哪位审核人？");
             }
             return new PeopleLookup(null, out);

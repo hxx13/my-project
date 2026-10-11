@@ -5,8 +5,14 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.ai.core.SseEventSink;
 import com.example.demo.modules.ai.entity.AiMessage;
+import com.example.demo.modules.ai.entity.AiLearnEntry;
 import com.example.demo.modules.ai.entity.AiSession;
+import com.example.demo.modules.ai.entity.AiUserPreference;
+import com.example.demo.modules.ai.mapper.AiLearnEntryMapper;
+import com.example.demo.modules.ai.mapper.AiUserPreferenceMapper;
 import com.example.demo.modules.ai.service.AiAuditService;
+import com.example.demo.modules.ai.service.AiLearnRunner;
+import com.example.demo.modules.ai.service.AiMessageFeedbackService;
 import com.example.demo.modules.ai.service.AiOrchestrator;
 import com.example.demo.modules.ai.service.AiPromptService;
 import com.example.demo.modules.ai.service.AiSessionService;
@@ -51,6 +57,10 @@ public class AiGatewayController {
     private final ToolRegistry toolRegistry;
     private final Executor aiTaskExecutor;
     private final AiPackRouter packRouter;
+    private final AiMessageFeedbackService feedbackService;
+    private final AiLearnRunner learnRunner;
+    private final AiLearnEntryMapper learnEntryMapper;
+    private final AiUserPreferenceMapper preferenceMapper;
 
     public AiGatewayController(AuthContextService authContextService,
                                AiSessionService sessionService,
@@ -59,7 +69,11 @@ public class AiGatewayController {
                                AiPromptService promptService,
                                ToolRegistry toolRegistry,
                                @Qualifier("aiTaskExecutor") Executor aiTaskExecutor,
-                               AiPackRouter packRouter) {
+                               AiPackRouter packRouter,
+                               AiMessageFeedbackService feedbackService,
+                               AiLearnRunner learnRunner,
+                               AiLearnEntryMapper learnEntryMapper,
+                               AiUserPreferenceMapper preferenceMapper) {
         this.authContextService = authContextService;
         this.sessionService = sessionService;
         this.orchestrator = orchestrator;
@@ -68,6 +82,10 @@ public class AiGatewayController {
         this.toolRegistry = toolRegistry;
         this.aiTaskExecutor = aiTaskExecutor;
         this.packRouter = packRouter;
+        this.feedbackService = feedbackService;
+        this.learnRunner = learnRunner;
+        this.learnEntryMapper = learnEntryMapper;
+        this.preferenceMapper = preferenceMapper;
     }
 
     // ── 会话 ──
@@ -123,10 +141,13 @@ public class AiGatewayController {
     }
 
     @GetMapping("/sessions/{id}/messages")
-    @Operation(summary = "会话历史（全量，前端展示用）")
+    @Operation(summary = "会话历史。不给 limit = 全量（老行为不变）；给了 limit 就取**尾页**，"
+            + "带 beforeSeq 往前翻（打开旧对话先给最后一屏，往上滚再要更早的）")
     public Result<List<AiMessage>> history(
             @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable Long id) {
+            @PathVariable Long id,
+            @RequestParam(value = "beforeSeq", required = false) Integer beforeSeq,
+            @RequestParam(value = "limit", required = false, defaultValue = "0") int limit) {
         User user = currentUser(authorization);
         if (user == null) {
             return Result.error("未登录");
@@ -136,7 +157,79 @@ public class AiGatewayController {
         } catch (IllegalStateException e) {
             return Result.error(e.getMessage());
         }
-        return Result.success(sessionService.history(id));
+        if (limit <= 0) {
+            return Result.success(sessionService.history(id));
+        }
+        // 上限拦一道：别让一个 limit=99999 把长会话整本拉回来（那正是分页要避免的）
+        return Result.success(sessionService.historyTail(id, beforeSeq, Math.min(limit, MAX_HISTORY_PAGE)));
+    }
+
+    /** 一页历史最多几条。 */
+    private static final int MAX_HISTORY_PAGE = 200;
+
+    /**
+     * 给一条助手回复点**赞 / 踩**。
+     *
+     * <p>同一条回复重复投 = **改那一票**（赞↔踩），不堆行 —— 唯一键保证「只算一次」。
+     * 只能评自己会话里的回复（归属判据与读历史同一套）。
+     */
+    @PostMapping("/messages/{id}/feedback")
+    @Operation(summary = "回复级反馈：赞/踩挂在具体那条回复上，同一人同一回复只算一票")
+    public Result<?> voteMessage(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        User user = currentUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        try {
+            feedbackService.vote(user, id,
+                    body == null ? null : body.get("vote"),
+                    body == null ? null : body.get("reason"));
+            return Result.success(true);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * **撤掉**这一票 —— 用户再点一次同一个图标。
+     *
+     * <p>与投票分开成两个方法：那个是「我要投 up/down」（幂等 upsert），
+     * 这个是「我不投了」（整行删）。合成一个用空串表示取消也行，但语义会糊在参数里。
+     */
+    @DeleteMapping("/messages/{id}/feedback")
+    @Operation(summary = "撤掉赞/踩（再点一次同一个图标就是取消）")
+    public Result<?> cancelVote(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = currentUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        try {
+            feedbackService.cancelVote(user, id);
+            return Result.success(true);
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /** 某个会话里**我自己**投过的票 —— 界面用它回填「我点过哪条」。 */    @GetMapping("/sessions/{id}/my-feedback")
+    @Operation(summary = "我自己在这个会话里的赞/踩（只回本人的）")
+    public Result<List<Map<String, Object>>> myFeedback(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = currentUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        try {
+            return Result.success(feedbackService.myVotes(user, id));
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
+        }
     }
 
     // ── 发消息（SSE）──
@@ -259,14 +352,222 @@ public class AiGatewayController {
         return Result.success(auditService.toolNames());
     }
 
-    // ── 约束预览 ──
+    // ── 学习池 ──
 
+    /**
+     * 立刻跑一轮学习，**跳过触发条件**（不看新候选够不够数、不看冷却期）。
+     *
+     * <p>定期那轮由 {@code AiLearnScheduler} 喊，但「池子里怎么一点动静都没有」只能靠手动跑一次
+     * 才分得清：是**没到点**，还是**到了点却捞不出候选**。两者的处置完全不同。
+     */
+    @PostMapping("/learn/run")
+    @Operation(summary = "立刻跑一轮学习（跳过触发条件）")
+    public Result<Map<String, Object>> runLearn(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限");
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("absorbed", learnRunner.runNow());
+        return Result.success(data);
+    }
+
+    // ── 单条消息的思考正文（按需拉取）──
+
+    /**
+     * 取**一条**助手回复的思考正文。
+     *
+     * <p>为什么要这个接口：思考正文很长，各端**故意不把它放进本地缓存**（会撑爆存储），
+     * 于是「切走再切回来」时只能靠历史接口补 —— 而历史接口那条路上有好几处会把它弄丢
+     * （实测撞过三次：只存了工具轮、历史回调的二次重建、小程序重开走缓存不拉历史）。
+     *
+     * <p>与其在每个本地状态流转处都堵一遍，不如**让展开这个动作直接去后端要** ——
+     * 库是唯一真相源，中间任何一层的状态丢了都不影响。
+     */
+    @GetMapping("/messages/{id}/reasoning")
+    @Operation(summary = "单条回复的思考正文（展开时按需拉取）")
+    public Result<Map<String, Object>> messageReasoning(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = currentUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        AiMessage m = sessionService.message(id);
+        if (m == null || !"assistant".equals(m.getRole())) {
+            return Result.error("找不到这条回复");
+        }
+        try {
+            sessionService.requireOwned(m.getSessionId(), user.getId());
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        // 没有就回空串 —— 有些轮次模型**真的没思考**（实测简单请求只 46 字、甚至 0 字），
+        // 那不是丢了。载体拿到空串时应如实显示「这一轮没有思考内容」，别显示成故障。
+        data.put("reasoning", m.getReasoningContent() == null ? "" : m.getReasoningContent());
+        data.put("reasoningTokens", m.getReasoningTokens());
+        data.put("thinkingMs", m.getThinkingMs());
+        return Result.success(data);
+    }
+
+    // ── 学习池 / 个人偏好（后台）──
+
+    /**
+     * 学习池全量 —— 后台看「学出了什么、没学什么、各是什么原因」。
+     *
+     * <p>按状态筛选：观察中 / 生效 / 停用 / 淘汰。**淘汰的那些不删是有意的** ——
+     * 判死的理由就写在它们的 note 里（如「模型判定这是我们给的选项措辞」），删了就查不到了。
+     */
+    @GetMapping("/learn/entries")
+    @Operation(summary = "学习池全量（可按状态筛）")
+    public Result<List<AiLearnEntry>> learnEntries(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String status) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限查看");
+        }
+        return Result.success(learnEntryMapper.list(status, 500));
+    }
+
+    /** 停用 / 启回一条。停用的不进提示词（超管的手工总闸，兜底用）。 */
+    @PostMapping("/learn/entries/{id}/status")
+    @Operation(summary = "改学习池条目的状态（停用 / 启回）")
+    public Result<Boolean> setLearnEntryStatus(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id,
+            @RequestParam String status) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限");
+        }
+        // 只允许人手动切这两态：观察中/淘汰是判定跑出来的，人工改回去等于伪造证据
+        if (!AiLearnEntry.ACTIVE.equals(status) && !AiLearnEntry.DISABLED.equals(status)) {
+            return Result.error("只能切成「生效」或「停用」");
+        }
+        return Result.success(learnEntryMapper.updateStatus(id, status) > 0);
+    }
+
+    /** 某一批学了多少条 —— 回滚前让超管看清影响面，别盲点。 */
+    @GetMapping("/learn/batch/{batchNo}/size")
+    @Operation(summary = "按批看影响面（回滚前用）")
+    public Result<Integer> learnBatchSize(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String batchNo) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限");
+        }
+        return Result.success(learnEntryMapper.countBatch(batchNo));
+    }
+
+    /** **整批回滚**：撤掉某一批学出来的东西（学歪了、或某天数据异常时的兜底）。 */
+    @PostMapping("/learn/batch/{batchNo}/rollback")
+    @Operation(summary = "按批回滚")
+    public Result<Integer> rollbackLearnBatch(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String batchNo) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限");
+        }
+        return Result.success(learnEntryMapper.deleteBatch(batchNo));
+    }
+
+    /**
+     * 看**某个人**的偏好。
+     *
+     * <p>这是审计用的第三条腿（前两条：写入时当场明说、用户随时可以问）。
+     * **用户自己的控制入口是对话**，这个页面只服务事后审计与兜底重置。
+     */
+    @GetMapping("/preferences")
+    @Operation(summary = "按人查看偏好（超管）")
+    public Result<List<AiUserPreference>> preferences(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String userId) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限查看");
+        }
+        return Result.success(preferenceMapper.listByUser(userId, 200));
+    }
+
+    /** 清空某人的偏好 —— 兜底与重置。 */
+    @DeleteMapping("/preferences")
+    @Operation(summary = "清空某人的偏好（超管）")
+    public Result<Integer> clearPreferences(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String userId) {
+        if (requireAuditor(authorization) == null) {
+            return Result.error("无权限");
+        }
+        return Result.success(preferenceMapper.clear(userId));
+    }
+
+    // ── 个人偏好：用户自助（只能碰自己的）──
+
+    /**
+     * **我自己的**偏好。
+     *
+     * <p>为什么必须有这条路：只用「对话里问一句」的话，用户**根本不知道助手记了什么** ——
+     * 知情权不能只靠他想得起来问。所以给一个看得见的列表，还能直接改。
+     * 这与「用户的控制入口是对话」不冲突：对话是最快的那条路，这里是**兜底与可见性**。
+     */
+    @GetMapping("/preferences/mine")
+    @Operation(summary = "我自己的偏好")
+    public Result<List<AiUserPreference>> myPreferences(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        User me = currentUser(authorization);
+        if (me == null) {
+            return Result.error("未登录");
+        }
+        return Result.success(preferenceMapper.listByUser(me.getId(), 200));
+    }
+
+    /** 自己加一条。**不需要审计权限** —— 谁都能管自己的偏好，但也只能管自己的。 */
+    @PostMapping("/preferences/mine")
+    @Operation(summary = "自己加一条偏好")
+    public Result<Boolean> addMyPreference(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, String> body) {
+        User me = currentUser(authorization);
+        if (me == null) {
+            return Result.error("未登录");
+        }
+        String content = body == null ? null : body.get("content");
+        if (content == null || content.isBlank()) {
+            return Result.error("内容不能为空");
+        }
+        String c = content.strip();
+        // 上限与工具那条一致：太长的不像「偏好」，像一段说明
+        if (c.length() > 120) {
+            return Result.error("太长了（" + c.length() + " 字），偏好要短 —— 一句话说清");
+        }
+        AiUserPreference p = new AiUserPreference();
+        p.setUserId(me.getId());
+        p.setContent(c);
+        p.setSource("USER");
+        preferenceMapper.remember(p);
+        return Result.success(true);
+    }
+
+    /** 自己删一条。 */
+    @DeleteMapping("/preferences/mine")
+    @Operation(summary = "自己删一条偏好")
+    public Result<Boolean> deleteMyPreference(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam String content) {
+        User me = currentUser(authorization);
+        if (me == null) {
+            return Result.error("未登录");
+        }
+        return Result.success(preferenceMapper.forget(me.getId(), content) > 0);
+    }
+
+    // ── 约束预览 ──
     @GetMapping("/prompt-preview")
     @Operation(summary = "约束拼装预览（L0/L1 在库、L2 在代码，单看任一处都看不全最终发给模型的内容）")
     public Result<AiPromptService.PromptPreview> promptPreview(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestParam(required = false) String contextPage) {
-        if (requireAuditor(authorization) == null) {
+        User auditor = requireAuditor(authorization);
+        if (auditor == null) {
             return Result.error("无权限查看");
         }
         StringBuilder ctx = new StringBuilder();
@@ -279,7 +580,9 @@ public class AiGatewayController {
         ctx.append(ctx.length() > 0 ? "；" : "")
                 .append("本轮下发的工具包：")
                 .append(packs.stream().map(AiToolPack::packKey).collect(Collectors.joining("、")));
-        return Result.success(promptService.preview(packs, ctx.toString()));
+        // 带上「看的人」自己的 id —— 预览要把**个人偏好**那层也拼出来，
+        // 否则管理员看不到「加了偏好之后整段长什么样」，而那正是这个接口存在的理由
+        return Result.success(promptService.preview(packs, ctx.toString(), auditor.getId()));
     }
 
     // ── 公共 ──

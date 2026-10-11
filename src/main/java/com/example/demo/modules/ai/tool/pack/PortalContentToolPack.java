@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolContext;
 import com.example.demo.modules.ai.tool.AiToolPack;
@@ -396,6 +397,7 @@ public class PortalContentToolPack implements AiToolPack {
                 + "第 1 问→contentType，第 2 问→categoryId，第 3 问→priority，第 4 问→status。"
                 + "四个答案没拿齐之前，先把内容贴出来让用户看着，不要说「已发布」。");
         out.put("questions", questions);
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         return out;
     }
 
@@ -661,6 +663,7 @@ public class PortalContentToolPack implements AiToolPack {
         out.put("reason", why + "。重新问一次分类（面板会渲染成可选项），拿到后再调一次本工具。"
                 + "候选是空的话，说明这个栏目下还没建分类，得先去「内容管理 → 分类」。");
         out.put("questions", List.of(question("换个分类？", categoryOptions(type))));
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         return out;
     }
 

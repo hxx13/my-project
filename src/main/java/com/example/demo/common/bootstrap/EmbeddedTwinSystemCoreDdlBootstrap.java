@@ -471,6 +471,34 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         // AI 对话导出产物：文件跟对话走。这张表只在请求期读写（不参与启动期查询），
         // 但仍走早期 DDL —— 与网关那几张表同属一个域，注册在这里口径一致
         total++; if (runScript("db/bootstrap-ai-export-artifact.sql", ctx)) success++;
+        // AI 抽屉能力提示词清单（超管可维护）：提示词域与网关同批注册，口径一致
+        total++; if (runScript("db/bootstrap-ai-capability-prompt.sql", ctx)) success++;
+        // 能力清单增列 note（操作备注：这条提示词点了会做什么，给用户看的说明）
+        total++; if (runScript("db/bootstrap-ai-capability-prompt-note.sql", ctx)) success++;
+        // AI 抽屉反馈（提交/回复）：同上，只在请求期读写
+        total++; if (runScript("db/bootstrap-ai-drawer-feedback.sql", ctx)) success++;
+        // AI 抽屉反馈增列 replies_json（官方回复改成回复串；旧单回复列保留作兼容读）
+        total++; if (runScript("db/bootstrap-ai-drawer-feedback-replies.sql", ctx)) success++;
+        // ai_message 增三列（审计补全：模型当时手上有哪些工具 / 思考正文 / 思考 token）。
+        // **必须走这里，不能只写 AiGatewaySchemaMigrator** —— 那个 ApplicationRunner 实测时灵时不灵，
+        // 2026-10-11 我照它加列，用户重启后三列一列都没建出来（老列 tool_call_id 有、新列全无）。
+        // 一个文件只放一条 DDL，所以拆三个文件。
+        total++; if (runScript("db/bootstrap-ai-message-tools-offered.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ai-message-reasoning-content.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ai-message-reasoning-tokens.sql", ctx)) success++;
+        // 缓存命中/未命中：上游分开给，用来实测「共享在前、个性化在后」那套拼装顺序的收益（设计 §1.1）
+        total++; if (runScript("db/bootstrap-ai-message-cache-hit-tokens.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-ai-message-cache-miss-tokens.sql", ctx)) success++;
+        // 真正的思考用时（只有流式拿得到）：与 latency_ms 不是一回事，别混用
+        total++; if (runScript("db/bootstrap-ai-message-thinking-ms.sql", ctx)) success++;
+        // AI 回复级反馈（赞/踩）：判据的显式那一路，挂在**消息**上（不是人身上，与意见箱不同）
+        total++; if (runScript("db/bootstrap-ai-message-feedback.sql", ctx)) success++;
+        // AI 学习池（说法 → 工具/取值）：分析器写、影子期判定去留，超管可停用/回滚
+        total++; if (runScript("db/bootstrap-ai-learn-entry.sql", ctx)) success++;
+        // 用户偏好层：每个人自己的习惯，仅本人可见、不走影子期（与学习池**不共用表**）
+        total++; if (runScript("db/bootstrap-ai-user-preference.sql", ctx)) success++;
+        // 条件触发器：当「查出来的条件」成立时执行一个动作（前端不在也照跑）
+        total++; if (runScript("db/bootstrap-ai-watch.sql", ctx)) success++;
 
         String skipNote = benignSkips > 0
                 ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"

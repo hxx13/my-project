@@ -81,6 +81,17 @@ public record AiTool(
         }
     }
 
+    /**
+     * 这个工具自己写了确认文案吗。
+     *
+     * <p>给「**转述**别人确认文案」的场景用（条件触发器的确认框会去问动作工具要怎么描述自己）：
+     * 没写的工具，{@link #confirmDetailOf} 会回落到参数原文 JSON ——
+     * 那份 JSON 摆在监视器的确认框里毫无用处，所以调用方宁可自己换一种说法。
+     */
+    public boolean hasConfirmDetail() {
+        return confirmDetail != null;
+    }
+
     public boolean requiresConfirm() {
         return sideEffect.requiresConfirm();
     }

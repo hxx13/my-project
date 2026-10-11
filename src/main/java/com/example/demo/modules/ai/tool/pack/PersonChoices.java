@@ -34,9 +34,7 @@ final class PersonChoices {
                 continue;
             }
             StringBuilder label = new StringBuilder(name.isEmpty() ? value : name);
-            if (!job.isEmpty()) {
-                label.append(" · ").append(job);
-            }
+            // 工号不露：它是内部标识，用户靠姓名 + 部门就能认人（用户反馈「参数都露出来」）
             if (!dept.isEmpty()) {
                 label.append(" · ").append(dept);
             }

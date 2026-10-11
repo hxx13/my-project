@@ -247,7 +247,8 @@ public class AnimalOrderToolPack implements AiToolPack {
         //    （光靠提示词写过「先问小计」，真机上模型照样直接给了按钮）。
         if (levels.isEmpty() && mode.isEmpty()) {
             List<Map<String, Object>> chips = new ArrayList<>();
-            chips.add(AiChoices.option("按默认（" + String.join(" / ", levelLabels(sum)) + " 都保留）", "default"));
+            // 选项只写用户视角的动作：原先把四个内部小计层级名平铺进标签（用户反馈「参数都露出来」）
+            chips.add(AiChoices.option("按常规导出（带各级小计）", "default"));
             chips.add(AiChoices.option("我自己挑要哪些小计", "custom"));
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("ok", true);
@@ -256,10 +257,13 @@ public class AnimalOrderToolPack implements AiToolPack {
             out.put("availableLevels", levelLabels(sum));
             // 问句里把页面导出弹窗那个开关也带一句 —— 它是导出专有的，而且**默认就开着**
             // 读法与弹窗一致：「N 个板块 · M 行明细 · 各级小计 K 条」。
-            out.putAll(AiChoices.single("这批 " + blocks + " 个板块 · " + detailRows + " 行明细 · 各级小计 "
-                    + subtotalRows + " 条 —— 小计怎么配？（默认只导本周期、不含预约单；"
-                    + "要连预约单一起导就说一声）", chips));
-            out.put("note", "把上面这枚问题**交给用户点**（界面会渲染成可点选项），**这一轮不要给下载按钮**。"
+            out.putAll(AiChoices.requiredSingle("这张订购单的小计怎么配？", chips));
+            // 数（板块/行/小计条数）挪出问句、只放这里 —— 问句里**别**写内部参数（用户反馈）。
+            // ⚠ 必须与下面那段合成**同一条** note：同一个 map 连着 put("note", …) 会当场覆盖前一条，
+            // 数就永远到不了模型（2026-10-10 实测踩到，注释里写着"这些数写进正文"却没写成）。
+            out.put("note", "明细有 " + blocks + " 个板块 / " + detailRows + " 行、各级小计 " + subtotalRows
+                    + " 条 —— 这些数写进正文，别塞进问题里。默认只导本周期、不含预约单。"
+                    + "把上面这枚问题**交给用户点**（界面会渲染成可点选项），**这一轮不要给下载按钮**。"
                     + "他选「按默认」→ 再调一次本工具带 mode=default；"
                     + "选「我自己挑」→ 再调一次带 mode=custom（会拿到一道多选）。"
                     + "他要是另外说了「连预约单一起导 / 全都要」，再调时带上 currentCycleOnly=false。"
@@ -275,7 +279,8 @@ public class AnimalOrderToolPack implements AiToolPack {
             }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("ok", true);
-            out.putAll(AiChoices.multi("要保留哪些小计层级？（可多选，勾完点确认）", opts));
+            // 「可多选，勾完点确认」不用写进题面：面板本来就渲染成多选 + 确认键
+            out.putAll(AiChoices.requiredMulti("要保留哪些小计层级？", opts));
             out.put("note", "把问题交给用户勾。他勾完会把这些**值**用逗号连起来回给你 —— "
                     + "把那一串原样放进 levels 再调一次本工具，就会有下载按钮了。");
             return out;
@@ -719,6 +724,8 @@ public class AnimalOrderToolPack implements AiToolPack {
         }
         out.put("choices", chips);
         out.put("choicesTitle", "哪一张单？");
+        // 不问就办不成：单号没对齐就没法审批。必须问（见 AiChoices.ASK_REQUIRED）
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         return new OrderLookup(null, out);
     }
 

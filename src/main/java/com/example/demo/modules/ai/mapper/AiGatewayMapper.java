@@ -7,6 +7,7 @@ import com.example.demo.modules.ai.entity.AiSession;
 import com.example.demo.modules.ai.entity.AiToolCallLog;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,11 +44,35 @@ public interface AiGatewayMapper {
     AiSession selectLatestSessionByUserAndSource(@Param("userId") String userId,
                                                  @Param("source") String source);
 
+    /**
+     * 最近有活动的会话 id（按 updated_at 降序）。
+     *
+     * <p>给**学习池的分析器**用：它按会话切轮、再按「这句话对上哪条工具」计数。
+     * 只取最近若干个 —— 学的是**当前**的说法，翻半年前的老会话没有意义，还慢。
+     */
+    @Select("""
+            SELECT id FROM ai_session
+            WHERE deleted = 0
+            ORDER BY updated_at DESC, id DESC
+            LIMIT #{limit}
+            """)
+    List<Long> selectRecentSessionIds(@Param("limit") int limit);
+
     // ── ai_message ──
     int insertMessage(AiMessage message);
 
     /** 前端展示：全量。 */
     List<AiMessage> selectMessagesBySession(@Param("sessionId") Long sessionId);
+
+    /**
+     * 会话历史**取尾分页**：默认只给最近 {@code limit} 条；{@code beforeSeq} 非空时取更早的一页。
+     *
+     * <p>长会话动辄几百条，全量拉一次既慢又白费 —— 用户先看的几乎总是最后一屏。
+     * 返回按 seq 升序（SQL 里外层再排过一次），调用方直接铺列表即可。
+     */
+    List<AiMessage> selectMessagesTail(@Param("sessionId") Long sessionId,
+                                       @Param("beforeSeq") Integer beforeSeq,
+                                       @Param("limit") int limit);
 
     /** 发模型：只取最近 N 条（调用方拿到后自行反转成正序）。 */
     List<AiMessage> selectRecentMessages(@Param("sessionId") Long sessionId,

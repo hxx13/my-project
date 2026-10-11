@@ -1,0 +1,197 @@
+<!-- 详情二级抽屉：头部（标题+编辑/取消+关闭）固定，说明一句话常显，清单区独立滚动（不出两层嵌套滚动）。
+     结构照 export-config-sheet：head / scroll-view / 编辑态另有 foot。
+     编辑态与只读态**互斥渲染**（block wx:if/else），所以任一时刻只有一个 scroll-view。 -->
+<van-popup
+  show="{{ show }}"
+  position="bottom"
+  round
+  custom-class="ai-detail-popup"
+  close-on-click-overlay="{{ !editing }}"
+  z-index="{{ 210000 }}"
+  bind:close="onClose"
+>
+  <view class="detail-panel" catch:touchmove="noop">
+    <view class="detail-head">
+      <text class="detail-title">{{ editing ? editTitleText : titleText }}</text>
+      <view class="detail-head-actions">
+        <!-- 编辑入口：仅 ≥超管、且只在只读态露出 -->
+        <text wx:if="{{ isAdmin && !editing }}" class="detail-edit" bindtap="onEdit">{{ editText }}</text>
+        <text wx:if="{{ editing }}" class="detail-cancel" bindtap="onCancelEdit">{{ cancelText }}</text>
+        <text class="detail-close" bindtap="onClose">{{ closeText }}</text>
+      </view>
+    </view>
+
+    <!-- ── 编辑态（仅超管） ─────────────────────────────── -->
+    <block wx:if="{{ editing }}">
+      <view class="edit-tabs">
+        <text
+          class="edit-tab {{ editTab === 'copy' ? 'edit-tab--on' : '' }}"
+          data-tab="copy"
+          bindtap="onSwitchTab"
+        >{{ tabCopyText }}</text>
+        <text
+          class="edit-tab {{ editTab === 'caps' ? 'edit-tab--on' : '' }}"
+          data-tab="caps"
+          bindtap="onSwitchTab"
+        >{{ tabCapsText }}</text>
+      </view>
+      <view wx:if="{{ contentLoading }}" class="detail-loading">{{ loadingText }}</view>
+      <scroll-view wx:else scroll-y class="detail-scroll" enhanced bounces="{{ false }}">
+        <block wx:if="{{ editTab === 'copy' }}">
+          <view wx:for="{{ copyList }}" wx:key="key" class="edit-row">
+            <view class="edit-row-head">
+              <text class="edit-row-label">{{ item.label || item.key }}</text>
+              <text wx:if="{{ item.value === '' }}" class="edit-row-tag">{{ resetText }}</text>
+            </view>
+            <input
+              class="edit-input"
+              value="{{ item.value }}"
+              data-index="{{ index }}"
+              bindinput="onCopyInput"
+            />
+            <text class="edit-row-reset" data-index="{{ index }}" bindtap="onResetCopy">{{ resetText }}</text>
+          </view>
+        </block>
+        <block wx:else>
+          <view wx:if="{{ capList.length === 0 }}" class="detail-empty">{{ noCapText }}</view>
+          <view wx:for="{{ capList }}" wx:key="uid" class="edit-card">
+            <input
+              class="edit-input"
+              value="{{ item.title }}"
+              data-index="{{ index }}"
+              bindinput="onCapTitle"
+              maxlength="256"
+              placeholder="{{ titlePh }}"
+            />
+            <textarea
+              class="edit-area"
+              value="{{ item.promptText }}"
+              data-index="{{ index }}"
+              bindinput="onCapPrompt"
+              maxlength="512"
+              placeholder="{{ promptPh }}"
+              auto-height
+            />
+            <input
+              class="edit-input"
+              value="{{ item.note }}"
+              data-index="{{ index }}"
+              bindinput="onCapNote"
+              maxlength="255"
+              placeholder="{{ notePh }}"
+            />
+            <view class="edit-card-meta">
+              <view class="edit-enabled">
+                <text class="edit-meta-label">{{ enabledText }}</text>
+                <mini-switch
+                  checked="{{ item.enabled }}"
+                  data-index="{{ index }}"
+                  bind:change="onCapEnabled"
+                />
+              </view>
+              <view class="edit-audience">
+                <text class="edit-meta-label">{{ audienceText }}</text>
+                <view class="edit-seg">
+                  <text
+                    class="edit-seg-item {{ item.audience === '' ? 'edit-seg-item--on' : '' }}"
+                    data-index="{{ index }}"
+                    data-value=""
+                    bindtap="onCapAudience"
+                  >{{ audienceAllText }}</text>
+                  <text
+                    class="edit-seg-item {{ item.audience === 'STAFF' ? 'edit-seg-item--on' : '' }}"
+                    data-index="{{ index }}"
+                    data-value="STAFF"
+                    bindtap="onCapAudience"
+                  >{{ audienceStaffText }}</text>
+                  <text
+                    class="edit-seg-item {{ item.audience === 'STUDENT' ? 'edit-seg-item--on' : '' }}"
+                    data-index="{{ index }}"
+                    data-value="STUDENT"
+                    bindtap="onCapAudience"
+                  >{{ audienceStudentText }}</text>
+                  <text
+                    class="edit-seg-item {{ item.audience === 'ADMIN' ? 'edit-seg-item--on' : '' }}"
+                    data-index="{{ index }}"
+                    data-value="ADMIN"
+                    bindtap="onCapAudience"
+                  >{{ audienceAdminText }}</text>
+                  <text
+                    class="edit-seg-item {{ item.audience === 'SUPER_ADMIN' ? 'edit-seg-item--on' : '' }}"
+                    data-index="{{ index }}"
+                    data-value="SUPER_ADMIN"
+                    bindtap="onCapAudience"
+                  >{{ audienceSuperText }}</text>
+                </view>
+              </view>
+            </view>
+            <view class="edit-card-foot">
+              <text class="edit-mini" data-index="{{ index }}" bindtap="onMoveUp">{{ upText }}</text>
+              <text class="edit-mini" data-index="{{ index }}" bindtap="onMoveDown">{{ downText }}</text>
+              <text class="edit-mini edit-mini--danger" data-index="{{ index }}" bindtap="onRemoveCap">{{ removeText }}</text>
+            </view>
+          </view>
+          <view class="edit-add" bindtap="onAddCap">{{ addText }}</view>
+        </block>
+      </scroll-view>
+      <view class="edit-foot">
+        <view class="edit-save {{ saving ? 'edit-save--off' : '' }}" bindtap="onSave">
+          {{ saving ? savingText : saveText }}
+        </view>
+      </view>
+    </block>
+
+    <!-- ── 只读态 ──────────────────────────────────────── -->
+    <block wx:else>
+      <view class="detail-desc">{{ descText }}</view>
+      <view wx:if="{{ loading }}" class="detail-loading">{{ loadingText }}</view>
+      <scroll-view wx:else scroll-y class="detail-scroll" enhanced bounces="{{ false }}">
+        <view wx:if="{{ groups.length === 0 }}" class="detail-empty">{{ emptyText }}</view>
+        <block wx:else>
+          <view wx:for="{{ groups }}" wx:key="groupName" class="detail-group">
+            <!-- 分组头可点：清单二十来条、一屏放不下，收起来才好扫 -->
+            <view
+              wx:if="{{ item.groupName }}"
+              class="detail-group-head"
+              hover-class="detail-group-head--hover"
+              data-gi="{{ index }}"
+              bindtap="onToggleGroup"
+            >
+              <text class="detail-group-title">{{ item.groupName }}</text>
+              <text class="detail-group-arrow {{ item.folded ? 'detail-group-arrow--folded' : '' }}">▾</text>
+            </view>
+            <block wx:if="{{ !item.folded }}">
+              <view class="detail-items">
+                <view
+                  wx:for="{{ item.items }}"
+                  wx:for-item="cap"
+                  wx:key="id"
+                  class="detail-item"
+                  hover-class="detail-item--hover"
+                  data-text="{{ cap.promptText }}"
+                  bindtap="onPickItem"
+                >
+                  <view class="detail-item-line">
+                    <text class="detail-item-cmd">❯</text>
+                    <text class="detail-item-title">{{ cap.title }}</text>
+                  </view>
+                  <view wx:if="{{ cap.note }}" class="detail-item-note">
+                    <text class="detail-item-note-tag">{{ noteTagText }}</text>
+                    <text class="detail-item-note-text">{{ cap.note }}</text>
+                  </view>
+                </view>
+              </view>
+            </block>
+          </view>
+        </block>
+      </scroll-view>
+      <!-- 吸底「我要反馈」：在滚动区之外，不占滚动容器 -->
+      <view class="detail-foot">
+        <view class="detail-feedback" bindtap="onOpenFeedback">{{ feedbackText }}</view>
+      </view>
+    </block>
+  </view>
+</van-popup>
+
+<!-- 反馈半屏：挂在详情 popup **之外**（同 ai-chat-drawer 挂详情的做法），z-index 更高，免得被裁。 -->
+<ai-drawer-feedback show="{{ feedbackOpen }}" bind:close="onCloseFeedback" />

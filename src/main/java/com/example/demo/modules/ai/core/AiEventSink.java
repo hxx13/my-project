@@ -14,6 +14,28 @@ public interface AiEventSink {
     /** 正在调用某个工具（可选展示过程）。 */
     void tool(String name, String status);
 
+    /**
+     * 模型的**思考正文**（上游 {@code reasoning_content}）。
+     *
+     * <p>为什么与 {@link #delta} 分开、不混进一条流：思考与正文在界面上要**分开呈现**
+     * （思考折叠、正文常显）。混在一起，载体就没法只折叠前半段。
+     *
+     * <p>默认空实现：载体不接就是接不上，不该为一个可选展示把接口撑成抽象方法（同 {@link #navigate}）。
+     */
+    default void reasoning(String text) {
+    }
+
+    /**
+     * 工具的**人话动作短语**（取该工具描述的首句，与确认弹窗同一套来源）。
+     *
+     * <p>用来显示「正在汇总 148 个板块…」。{@link #tool(String, String)} 的 status 是**机器码**
+     * （running / denied / needs-confirm），载体拿它做状态切换；这一条才是给用户看的。
+     *
+     * <p>为什么由编排层推、而不让模型去说：工具一开始跑就推，**确定性** —— 不依赖模型愿不愿意开口。
+     */
+    default void toolProgress(String name, String phrase) {
+    }
+
     /** 需要用户回应。options 是**结构化**的，前端渲染成可点选控件，不要当文本用。 */
     void interaction(String token, String kind, String question, List<Option> options, boolean multiSelect);
 
@@ -76,6 +98,20 @@ public interface AiEventSink {
     default void image(Long exportId, String label, String path) {
     }
 
-    record Option(String label, String value) {
+    /**
+     * 一个可点选项。
+     *
+     * @param label 用户看到的文字
+     * @param value 点下去回给模型的值
+     * @param note  **一句备注**：选它会怎样。给用户看的说明，可空。
+     *              <p>「猜你想问」那类选项（模型自己写的）有了它才说得清「选这个会发生什么」——
+     *              大厂那种问句体验的关键就在这一行小字（设计文档 §9.2）。
+     */
+    record Option(String label, String value, String note) {
+
+        /** 不带备注的选项（绝大多数）。 */
+        public Option(String label, String value) {
+            this(label, value, "");
+        }
     }
 }
