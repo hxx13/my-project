@@ -1,0 +1,319 @@
+/* 详情二级抽屉 —— 观感跟随抽屉与 export-config-sheet 的 .cfg-* 一族：实底、直角/浅圆角、
+   不用胶囊、不用渐变、不用半透明底。 */
+.detail-panel {
+  /* 高度上限约七成屏：头部/说明/关闭在框内，清单区自己滚（不与页面嵌套滚动）——
+     与 export-config-sheet 同一做法：面板自适应高度，只给 scroll-view 上封顶。 */
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+}
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx 12rpx;
+}
+.detail-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.detail-close {
+  font-size: 26rpx;
+  color: #94a3b8;
+}
+.detail-desc {
+  padding: 0 32rpx 12rpx;
+  font-size: 24rpx;
+  color: #64748b;
+  line-height: 1.5;
+}
+.detail-loading {
+  padding: 20rpx 32rpx 8rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+.detail-scroll {
+  max-height: 60vh;
+}
+.detail-empty {
+  padding: 48rpx 32rpx;
+  font-size: 26rpx;
+  color: #94a3b8;
+  text-align: center;
+}
+.detail-group {
+  padding: 2rpx 28rpx 0;
+}
+/* 分组头可点（折叠/展开）：一行放下组名与箭头，不占额外高度 */
+.detail-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12rpx 4rpx 6rpx;
+}
+.detail-group-head--hover {
+  opacity: 0.65;
+}
+.detail-group-title {
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+.detail-group-arrow {
+  font-size: 22rpx;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+}
+/* ▾ 收起来时转成 ▸，一眼看出这组是折着的 */
+.detail-group-arrow--folded {
+  transform: rotate(-90deg);
+}
+/* 指令清单：**两列**方格。一行一条时右边会空一大截（标题多是一行四五个字），两列刚好把宽度用满。
+   两列的写法要挑兼容性最好的那种：**不用 flex-basis: calc()、也不用 gap** ——
+   小程序的渲染层对「calc 里混 rpx」和「flex gap」都不稳（gap 不生效时两条 50% 正好溢出、
+   于是各自独占一行，右边留空）。改成 width: 48.6% + space-between，老内核也稳。 */
+.detail-items {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.detail-item {
+  box-sizing: border-box;
+  width: 48.6%;
+  margin-bottom: 8rpx;
+  display: flex;
+  /* 纵向：第一行是指令（动作符 + 标题），第二行是备注（说明微标签 + 正文） */
+  flex-direction: column;
+  align-items: stretch;
+  padding: 16rpx 20rpx;
+  border-radius: 10rpx;
+  background: #f8fafc;
+}
+
+.detail-item-line {
+  display: flex;
+  align-items: baseline;
+}
+
+/* 动作符：这句就是要被发出去的那句 */
+.detail-item-cmd {
+  flex: 0 0 auto;
+  margin-right: 8rpx;
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+.detail-item--hover {
+  background: #eef2f7;
+}
+.detail-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.detail-item-fill {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #2563eb;
+}
+
+/* ── 编辑态（仅超管）——沿用同一套令牌：实底、浅圆角（12rpx，**不做成胶囊**）、无渐变、无半透明底 ── */
+.detail-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+}
+.detail-edit {
+  font-size: 26rpx;
+  color: #2563eb;
+}
+.detail-cancel {
+  font-size: 26rpx;
+  color: #94a3b8;
+}
+.edit-tabs {
+  display: flex;
+  gap: 16rpx;
+  padding: 0 32rpx 8rpx;
+}
+.edit-tab {
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #64748b;
+}
+.edit-tab--on {
+  border-color: #2563eb;
+  color: #2563eb;
+  font-weight: 600;
+}
+.edit-row {
+  padding: 16rpx 32rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+.edit-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.edit-row-label {
+  font-size: 24rpx;
+  color: #64748b;
+  word-break: break-all;
+}
+.edit-row-tag {
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.edit-input {
+  margin-top: 8rpx;
+  padding: 12rpx 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.edit-area {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72rpx;
+  margin-top: 8rpx;
+  padding: 12rpx 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.edit-row-reset {
+  display: inline-block;
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #2563eb;
+}
+.edit-card {
+  margin: 12rpx 32rpx;
+  padding: 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+}
+.edit-card-foot {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 12rpx;
+}
+/* 启用 / 谁看得见：与卡片同一套令牌（实底、浅圆角、不胶囊、无渐变） */
+.edit-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16rpx 32rpx;
+  margin-top: 12rpx;
+}
+.edit-enabled,
+.edit-audience {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.edit-meta-label {
+  font-size: 24rpx;
+  color: #64748b;
+}
+.edit-seg {
+  display: flex;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  overflow: hidden;
+}
+.edit-seg-item {
+  padding: 8rpx 20rpx;
+  font-size: 24rpx;
+  color: #64748b;
+}
+.edit-seg-item + .edit-seg-item {
+  border-left: 1rpx solid #e5e7eb;
+}
+.edit-seg-item--on {
+  background: #2563eb;
+  color: #fff;
+}
+.edit-mini {
+  padding: 8rpx 20rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #1f2937;
+}
+.edit-mini--danger {
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+.edit-add {
+  margin: 16rpx 32rpx 8rpx;
+  padding: 16rpx;
+  border: 1rpx solid #2563eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #2563eb;
+  text-align: center;
+}
+.edit-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16rpx 32rpx 8rpx;
+}
+.edit-save {
+  padding: 14rpx 48rpx;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  background: #2563eb;
+  color: #fff;
+}
+.edit-save--off {
+  background: #e5e7eb;
+  color: #9aa0a6;
+}
+
+/* 吸底「我要反馈」：实底、浅圆角（不做胶囊）、无渐变、无半透明底，令牌同抽屉 */
+.detail-foot {
+  padding: 16rpx 32rpx 0;
+}
+.detail-feedback {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 18rpx 0;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  text-align: center;
+  background: #2563eb;
+  color: #fff;
+}
+
+/* 备注行：一枚「说明」微标签 + 正文，与上面的指令行靠标记区分（不加描边） */
+.detail-item-note {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 6rpx;
+}
+
+.detail-item-note-tag {
+  flex: 0 0 auto;
+  margin-right: 8rpx;
+  padding: 0 6rpx;
+  border-radius: 4rpx;
+  background: #e8edf4;
+  color: #7b8698;
+  font-size: 20rpx;
+  line-height: 1.6;
+}
+
+.detail-item-note-text {
+  font-size: 22rpx;
+  line-height: 1.4;
+  color: #8a94a6;
+}

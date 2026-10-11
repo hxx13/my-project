@@ -197,7 +197,9 @@ public class TelemetryToolPack implements AiToolPack {
                         List<Map<String, Object>> choices = new ArrayList<>();
                         for (Map<String, Object> r : rows) {
                             Map<String, Object> c = new LinkedHashMap<>();
-                            c.put("label", r.get("summary"));
+                            // **选项里不带当前值**：这一步是「挑哪个点位」，值属于选完之后的答案。
+                            // 原来直接把 summary（房间 · 指标 · 值）当标签，用户在一串数字里找房间名（用户反馈）。
+                            c.put("label", pickLabel(r));
                             c.put("value", r.get("variable"));
                             choices.add(c);
                         }
@@ -401,6 +403,14 @@ public class TelemetryToolPack implements AiToolPack {
         row.put("summary", (where.isEmpty() ? "" : where + " · ") + (metric.isEmpty() ? str(it.getVariableName()) : metric)
                 + " · " + str(it.getValue()));
         return row;
+    }
+
+    /** 挑点位的选项标签：{@code 房间（指标）}，不带当前值。/ 房间取不到时退回变量名。 */
+    private static String pickLabel(Map<String, Object> r) {
+        String where = str(r.get("roomCanonical"));
+        String metric = String.valueOf(r.get("metric") == null ? "" : r.get("metric")).trim();
+        String base = where.isEmpty() ? String.valueOf(r.get("variableName")) : where;
+        return metric.isEmpty() ? base : base + "（" + metric + "）";
     }
 
     private static double round(double v) {

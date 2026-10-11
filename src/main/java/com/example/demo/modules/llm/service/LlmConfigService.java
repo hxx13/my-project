@@ -57,7 +57,7 @@ public class LlmConfigService {
     }
 
     public String getModel() {
-        return get("llm.model", "deepseek-v4-pro");
+        return get("llm.model", "deepseek-flash");
     }
 
     /**
@@ -66,40 +66,23 @@ public class LlmConfigService {
     public List<String> getModelCandidates() {
         Set<String> ordered = new LinkedHashSet<>();
         addModels(ordered, getModel());
-        addModels(ordered, get("llm.model_fallback", "deepseek-v4-flash"));
+        addModels(ordered, get("llm.model_fallback", "deepseek-v4-pro"));
         if (ordered.isEmpty()) {
-            ordered.add("deepseek-v4-pro");
+            ordered.add("deepseek-flash");
         }
         return new ArrayList<>(ordered);
     }
 
-    public int getMaxTokens() {
-        try {
-            return Math.min(Math.max(Integer.parseInt(get("llm.max_tokens", "2048")), 256), 8192);
-        } catch (Exception e) {
-            return 2048;
-        }
-    }
-
     /**
-     * **带工具**那条路的输出预算，单独一项、默认给足。
+     * **没有任何「输出上限」读取口**（2026-10-11 删）。
      *
-     * <p>为什么必须与 {@link #getMaxTokens()} 分开：播报类场景要的是短句（120 就够），
-     * 而工具编排要的是「先想清楚再决定调哪个工具 + 把话说完整」。带思考的模型
-     * （deepseek-flash）**用同一份预算做推理**，预算小的时候推理就把它吃干了 ——
-     * 表现为 content 返回空串、用户看到「模型没有返回正文」，看着像故障，其实是预算不够。
-     * 把两者绑在一起调，要么撑爆播报、要么饿死编排，所以这里各管一摊。
+     * <p>曾经有三个：全局、工具编排、扫码助手各一个。删掉是因为它们全都指向同一个误解 ——
+     * 「上限只是把输出压短」。带思考的模型**用同一份额度做推理**，上限给小了不是短一点，
+     * 而是正文一个字都出不来（实测播报配 80 → 正文 0 字）。已改为**不发这个字段**，
+     * 长度交给提示词管。详见 {@code DashScopeChatClient} 类注释。
+     *
+     * <p>库里的 {@code llm.*.max_tokens} 行**保留不删**（那是用户的数据），只是不再被读。
      */
-    public int getToolMaxTokens() {
-        try {
-            // 默认直接给到模型的上限（deepseek / qwen 这一档多是 8192），不再留「先给小试试」的余地：
-            // 给小的代价是把推理饿死、正文返回空串，用户看到的是「模型没有返回正文」这种假故障。
-            // 上限放到 16384 只是留个可调的口子，真要往下调才需要动它。
-            return Math.min(Math.max(Integer.parseInt(get("llm.tool.max_tokens", "8192")), 1024), 16384);
-        } catch (Exception e) {
-            return 8192;
-        }
-    }
 
     public double getTemperature() {
         try {
@@ -134,14 +117,6 @@ public class LlmConfigService {
 
                 一律禁止：「您好用户」「尊敬的」套话、列表、markdown。
                 只输出播报正文，不要引号或前缀。""";
-    }
-
-    public int getAssistantMaxTokens() {
-        try {
-            return Math.min(Math.max(Integer.parseInt(get("llm.assistant.max_tokens", "120")), 32), 512);
-        } catch (Exception e) {
-            return 120;
-        }
     }
 
     public double getAssistantTemperature() {

@@ -146,7 +146,7 @@ class AiOrchestratorTest {
         AiOrchestrator.ChoiceGroup one = new AiOrchestrator.ChoiceGroup(
                 "哪个课题组？",
                 List.of(new AiEventSink.Option("郑俊克的课题组", "郑俊克的课题组")),
-                false);
+                false, false);
 
         assertFalse(AiOrchestrator.worthAsking(one, "郑俊克的课题组"), "只有一个候选，没得挑");
         // 用户打的少了个「的」——字面比对漏得过去，但一个候选就是没得挑
@@ -156,15 +156,43 @@ class AiOrchestratorTest {
         // 多选题例外：可多选时一个候选仍然是个「要 / 不要」的选择
         assertTrue(AiOrchestrator.worthAsking(
                 new AiOrchestrator.ChoiceGroup("按哪些层级小计？",
-                        List.of(new AiEventSink.Option("总计", "total")), true),
+                        List.of(new AiEventSink.Option("总计", "total")), true, false),
                 "导出"), "多选题不适用「一个候选」这条");
+    }
+
+    @Test
+    @DisplayName("工具作者明确写的题，哪怕只有一个选项也必须问")
+    void authoredQuestionIsAskedEvenWithSingleOption() {
+        // questions 与 choices 形状相同、语义相反：前者是作者刻意写的一道题（一个选项也是在请他拍板），
+        // 后者是查询收敛出来的候选（只剩一个说明答案已经明了）。
+        // 按同一套规则丢掉前者，那道题就静默消失 —— 用户看不到问题，写操作永远不执行（2026-10-11 定位到）。
+        AiOrchestrator.ChoiceGroup authored = new AiOrchestrator.ChoiceGroup(
+                "发到哪个栏目？",
+                List.of(new AiEventSink.Option("公告", "NOTICE")),
+                false, true);
+
+        assertTrue(AiOrchestrator.worthAsking(authored, ""), "没原话可比时，作者写的题要问");
+        assertTrue(AiOrchestrator.worthAsking(authored, "把这份稿子发出去"),
+                "用户没提过那个选项，就得问 —— 这正是静默失败的那条路");
+
+        // **但「用户原话里已经说全了」那条规则对谁都成立**：他既然说了「公告」，
+        // 模型手里就有答案，再问一遍就是 2026-10-09 抱怨的「又在重复提问」。
+        assertFalse(AiOrchestrator.worthAsking(authored, "发个公告"),
+                "他说过那个选项了 → 不必再问（与是不是作者写的无关）");
+
+        // 同一形状但来自 choices（authored=false）→ 单选项仍然不问
+        AiOrchestrator.ChoiceGroup fromChoices = new AiOrchestrator.ChoiceGroup(
+                "发到哪个栏目？",
+                List.of(new AiEventSink.Option("公告", "NOTICE")),
+                false, false);
+        assertFalse(AiOrchestrator.worthAsking(fromChoices, ""), "choices 收敛到唯一一个，没得挑");
     }
 
     @Test
     @DisplayName("候选用户已说全 → 不再追问；还差一个 → 照问")
     void choiceAlreadySaidByUserIsNotAskedAgain() {
         AiOrchestrator.ChoiceGroup two = new AiOrchestrator.ChoiceGroup("哪个人？",
-                List.of(new AiEventSink.Option("张三", "张三"), new AiEventSink.Option("李四", "李四")), false);
+                List.of(new AiEventSink.Option("张三", "张三"), new AiEventSink.Option("李四", "李四")), false, false);
 
         assertFalse(AiOrchestrator.worthAsking(two, "张三和李四都看一下"), "两个都提过，没得挑");
         assertTrue(AiOrchestrator.worthAsking(two, "张三"), "李四他没提过，这题还有东西可问");
@@ -174,12 +202,12 @@ class AiOrchestratorTest {
         assertTrue(AiOrchestrator.worthAsking(
                 new AiOrchestrator.ChoiceGroup("按哪个维度导？", List.of(
                         new AiEventSink.Option("个人审计", "personal"),
-                        new AiEventSink.Option("课题组审计", "group")), false),
+                        new AiEventSink.Option("课题组审计", "group")), false, false),
                 "导出物资领用审计"), "维度还没选过，要问");
         assertTrue(AiOrchestrator.worthAsking(
                 new AiOrchestrator.ChoiceGroup("小计怎么配？", List.of(
                         new AiEventSink.Option("用上次的小计配置直接导出", "last"),
-                        new AiEventSink.Option("我要自己配一下小计", "custom")), false),
+                        new AiEventSink.Option("我要自己配一下小计", "custom")), false, false),
                 "last"), "小计配置没配过，要问");
     }
 
@@ -190,10 +218,10 @@ class AiOrchestratorTest {
                 new AiPackRouter(), null, null, null);
         AiOrchestrator.ChoiceGroup sites = new AiOrchestrator.ChoiceGroup("是哪个机房（地点）？",
                 List.of(new AiEventSink.Option("1F机房", "FM_S_1"),
-                        new AiEventSink.Option("2F机房", "FM_S_2")), false);
+                        new AiEventSink.Option("2F机房", "FM_S_2")), false, false);
         AiOrchestrator.ChoiceGroup other = new AiOrchestrator.ChoiceGroup("换了哪些级别？",
                 List.of(new AiEventSink.Option("初效", "初效"),
-                        new AiEventSink.Option("中效", "中效")), false);
+                        new AiEventSink.Option("中效", "中效")), false, false);
         // 真机形状：同一个工具被调了两次 → 两组一模一样的候选进了队
         RecordingSink sink = new RecordingSink();
         orch.emitClarifyGroups(sink, List.of(sites, sites, other), "记录今天消耗半桶阻垢剂");

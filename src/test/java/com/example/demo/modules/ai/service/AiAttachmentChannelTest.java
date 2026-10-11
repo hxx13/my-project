@@ -120,7 +120,8 @@ class AiAttachmentChannelTest {
         AiCapabilityGate gate = mock(AiCapabilityGate.class);
         when(gate.check(any(), anyString())).thenReturn(null);
         AiPromptService promptService = mock(AiPromptService.class);
-        when(promptService.assemble(any(), anyString())).thenReturn("");
+        // 三参数：编排层现在会把发起人 id 一并传进来（拼「个人偏好」那层要用）
+        when(promptService.assemble(any(), anyString(), any())).thenReturn("");
 
         when(sessionService.answeredToolCallIds(any())).thenReturn(java.util.Set.of());
         when(sessionService.append(any(), anyString(), any(), any())).thenAnswer(inv -> {
@@ -155,7 +156,7 @@ class AiAttachmentChannelTest {
                                                             AiAttachment captured) {
         stubWindowAndAttachments(captured);
         when(chatClient.chatWithTools(any(), any()))
-                .thenReturn(new DashScopeChatClient.ToolChatResult("好的", List.of(), 10, 5, "m"));
+                .thenReturn(new DashScopeChatClient.ToolChatResult("好的", List.of(), 10, 5, "m", "", 0));
         orchestrator.run(staff(), 1L, "把这些日期统一成 YYYY-MM-DD", null, sink, null, sheets);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Map<String, Object>>> captor = ArgumentCaptor.forClass(List.class);
@@ -207,7 +208,7 @@ class AiAttachmentChannelTest {
         when(sessionService.window(any())).thenReturn(List.of());
         when(mapper.selectAttachmentsByMessageIds(any())).thenReturn(List.of());
         when(chatClient.chatWithTools(any(), any()))
-                .thenReturn(new DashScopeChatClient.ToolChatResult("我看看", List.of(), 10, 5, "m"));
+                .thenReturn(new DashScopeChatClient.ToolChatResult("我看看", List.of(), 10, 5, "m", "", 0));
 
         orchestrator.run(staff(), 1L, "看看这份", null, sink, null,
                 List.of(new AiOrchestrator.SpreadsheetPart("坏文件.xlsx", notXlsx)));

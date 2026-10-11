@@ -119,6 +119,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 名字放不下时列里只到省略号，点一下弹全称 —— 给个按下反馈，否则没人知道这格能点 */
+.tl-w-var--hover {
+  background: #f1f5f9;
+}
 .tl-unit {
   flex-shrink: 0;
   font-size: 20rpx;

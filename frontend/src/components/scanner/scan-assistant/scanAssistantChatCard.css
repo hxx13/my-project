@@ -93,8 +93,8 @@
   --scan-assistant-chat-card-body-weight: var(--font-weight-medium, 500);
   --scan-assistant-chat-card-body-line-height: 1.72;
   --scan-assistant-chat-card-body-letter-spacing: 0.025em;
-  /* 外扩光晕的三档半径。**必须可变量**：光晕是固定 px、卡片是内容高，两者比例会随内容变。
-     内容少时卡片矮到 220px，120px 的光晕相对面积比卡片还大，看着就像漏出一块背景板。 */
+  /* 外扩光晕的三档半径。**必须可变量**：光晕是固定 px、卡片高度按档位定，两者比例随档位变。
+     小卡矮（300px），120px 的光晕相对面积比卡片还大，看着就像漏出一块背景板。 */
   --scan-assistant-chat-card-halo-near: 48px;
   --scan-assistant-chat-card-halo-mid: 88px;
   --scan-assistant-chat-card-halo-far: 120px;
@@ -665,10 +665,25 @@
 /* ── 提问面板：内容底板比边框窄一档，露出旋转彩虹环 ──
    这一档用**外框的 padding** 撑，不用面板的 margin：外框改成 overflow:clip 后不再建立 BFC，
    子元素 margin 会塌出去，环就没了。padding 既能撑出均匀的 3px，也不受折叠影响。 */
+/* ── 卡片高度：**唯一来源**（2026-10-11 收口）──
+   以前是「视图 × 档位」逐格手写：外框一遍、对话区一遍、历史一遍、详情一遍，540/720 在文件里各写两次，
+   全靠一句「改要一起改」的注释维持同步。写漏一格（详情忘了补大窗）就撑不满，值过期没删（历史 166）
+   就只占一半 —— 每次都是这两种坏法。
+   现在三档各声明一对变量，下面所有视图一律 max-height: var(...)，加视图 = 0 条新规则。
+   大窗两档在 scanAssistantDock.css 的 anchor 修饰类里覆盖这组变量，别处不要再写高度字面量。 */
+.scan-assistant-chat-card--ask {
+  /* 小卡：定高。对话 / 历史 / 详情三屏共用 */
+  --sa-ask-h: 300px;
+  /* 带选项那档要矮一截（下面还挂着提交/取消那排按钮），另给一个值 */
+  --sa-ask-h-choices: 104px;
+}
+
 .scan-assistant-chat-card--ask .scan-assistant-chat-card__frame {
   padding: 3px;
-  /* 内容还空着时（刚打开 / 刚新建对话）至少留这么高：塌成一行输入框很难受（真机反馈） */
-  min-height: 220px;
+  /* 小卡这一档**定高**，与另两档同一个写法（一级 540 / 二级 720，见 scanAssistantDock.css）。
+     原先只写 min-height 220，是个下限不是定高：对话态按内容停在 222，详情态按自己的上限长到 420 ——
+     同一档里两屏高度差一倍（2026-10-11 用户报「一个偏大一个偏小」）。定死后两屏共用这个值，内容在卡内滚。 */
+  height: var(--sa-ask-h);
 }
 
 .scan-assistant-chat-card--ask .scan-assistant-chat-card__panel {
@@ -697,7 +712,8 @@
   flex-direction: column;
   gap: var(--app-space-element-gap, 0.75rem);
   margin-top: var(--app-space-element-gap, 0.75rem);
-  max-height: 220px;
+  /* 与所在档位的框同值：读同一个变量，不再自己写数 —— 对话区只在自己那一档里滚 */
+  max-height: var(--sa-ask-h);
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -722,6 +738,23 @@
   /* 助手侧的宽度上限也放在这一层（__row 的 flex item，父层宽度确定）；
      放在气泡上会撞同一个百分比死循环，短回复同样会被挤成每行一两个字 */
   max-width: 82%;
+  /*
+   * ┌──────────────────────────────────────────────────────────────────┐
+   * │ 气泡左边缘的偏移量 —— **全站这一族元素的唯一对齐锚点**            │
+   * └──────────────────────────────────────────────────────────────────┘
+   *
+   * 助手那行的排法是：`[头像 20px] + [0.5rem 间距] + [气泡]`，所以**图像不算数**：
+   * 气泡的左边缘在 20px + 8px = 1.75rem 处。
+   *
+   * **凡是要「贴在气泡下面 / 与气泡左端齐头」的东西，一律引这个变量** ——
+   * 思考过程、用量行、附件卡、截图、长任务状态、倒计时卡都是这一类。
+   * 它们如果从 __answer 的左端（也就是头像那边）起排，就会**比气泡更靠左**，
+   * 看起来像是「不属于这条回复」的浮块 —— 这正是要避免的那种错位。
+   *
+   * 以前这个 1.75rem 在五六个地方各写一遍，改一处忘一处就会对不齐；收成一个变量之后，
+   * 锚点只有一个定义。
+   */
+  --ask-bubble-offset: 1.75rem;
 }
 
 .scan-assistant-ask__meta {
@@ -732,7 +765,13 @@
   padding-left: 2px;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--app-color-text-tertiary);
+  /*
+   * 用 secondary 而不是 tertiary：tertiary 是 slate-400，白底上对比度只有约 2.5:1，
+   * 而这行 11px 的小字正是「思考用时 / token 消耗」—— 用户点名要看的东西。
+   * 看不清等于没有（他先前就说过「数字都没了」）。secondary（slate-600）约 7.4:1，
+   * 仍是次要信息的观感，但读得清。
+   */
+  color: var(--app-color-text-secondary);
   /* 等宽数字：秒针每 200ms 跳一次，比例数字会让整行宽度抖动 */
   font-variant-numeric: tabular-nums;
 }
@@ -746,12 +785,21 @@
 .scan-assistant-ask__choices {
   position: relative;
   z-index: 1;
-  /* 纵向一行一个（真机反馈：横向排布不好读），宽窄天然一致。
-     **不设高度上限、不折叠**：候选全都摆出来，藏进滚动区用户会以为只有前几个 */
+  /* 纵向一行一个（真机反馈：横向排布不好读），宽窄一致。
+     候选**要设上限、内部滚**（2026-10-11 用户反馈）：20 项时整块把卡片顶得老高，
+     一屏全是选项、正文被挤没。上限用档位高度的一半，矮屏再夹一道；
+     题头是 sticky 的，滚选项时题目一直在。 */
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.35rem;
   margin-top: var(--app-space-element-gap, 0.75rem);
+  /* 钉住：**不许被上层弹性布局压缩**。只给 max-height 而不给 flex 的话，
+     父级（对话区）是 flex 列、它会被挤到几十像素高（实测 9 项时只剩 67px，
+     反而比不设上限更难用）。flex:0 0 auto = 按内容走、到上限才自己滚。 */
+  flex: 0 0 auto;
+  max-height: min(52vh, calc(var(--sa-ask-h, 300px) * 0.62));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* 多问时的问题头：第几问 + 问的是谁·什么。比多占一个芯片便宜得多 */
@@ -900,7 +948,7 @@
  */
 .scan-assistant-ask__download--sub {
   gap: 0.4rem;
-  margin-left: 1.75rem;
+  margin-left: var(--ask-bubble-offset);
   padding: 0.2rem 0.3rem 0.2rem 0.5rem;
   border-color: color-mix(in srgb, var(--app-color-border-default) 70%, transparent);
   border-radius: var(--app-radius-element);
@@ -974,7 +1022,7 @@
 }
 
 .scan-assistant-ask__shot--sub {
-  margin-left: 1.75rem;
+  margin-left: var(--ask-bubble-offset);
 }
 
 .scan-assistant-ask__shot-img {
@@ -1200,7 +1248,7 @@
 /* 有待答题时收窄对话区：卡片总高要留在气泡锚点估算的高度内，否则会顶出屏幕下半屏。
    收得比平时更狠 —— 用户此刻的注意力在选项上，对话区只需交代「在问什么」 */
 .scan-assistant-ask__history--with-choices {
-  max-height: 104px;
+  max-height: var(--sa-ask-h-choices);
 }
 
 /* ── 历史对话（与当前对话共用同一块位置，只是换个内容） ── */
@@ -1211,7 +1259,10 @@
   flex-direction: column;
   gap: 0.4rem;
   margin-top: var(--app-space-element-gap, 0.75rem);
-  max-height: 166px;
+  /* 与所在档位的框同值：读同一个变量（原先封 166，是小卡还没定高那版留下的化石值，
+     定高 300 之后列表只占一半、下面空出一大片）。自己滚，别溢出到框外（框是 clip，溢出的直接看不到）。 */
+  max-height: var(--sa-ask-h);
+  overflow-y: auto;
 }
 
 .scan-assistant-ask__sessions-head {
@@ -1830,7 +1881,7 @@
 .scan-assistant-ask__toolbusy {
   align-self: flex-start;
   margin: 0.35rem 0 0;
-  margin-left: 1.75rem;
+  margin-left: var(--ask-bubble-offset);
   font-size: 0.75rem;
   color: var(--app-color-text-secondary);
 }
@@ -1853,7 +1904,7 @@
   align-self: flex-start;
   max-width: 100%;
   margin: 0.35rem 0 0;
-  margin-left: 1.75rem;
+  margin-left: var(--ask-bubble-offset);
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--app-color-border-default);
   border-radius: var(--app-radius-element, 0.5rem);
@@ -1926,4 +1977,1000 @@
 
 .scan-assistant-ask__timer-confirm:hover {
   filter: brightness(1.06);
+}
+
+/* ── 详情视图：卡片内容区换成能力清单 + 反馈 ──
+   这块就是「消息列表那块区域」的替身：与 __history 同处一块位置，故**一屏只有一个滚动容器**。
+   输入区（form）在这一屏是收起来的（见 ScanAssistantAskPanel 的 !detailOpen 门控）。
+   高度读同一个变量 —— 原来自己封在 380，小卡被顶高、大窗又撑不满，两头不讨好。 */
+.scan-assistant-ask__detail {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: var(--app-space-element-gap, 0.75rem);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: var(--sa-ask-h);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.scan-assistant-ask__detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.scan-assistant-ask__detail-desc {
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.5;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__detail-title {
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__detail-empty {
+  padding: 0.5rem 0.25rem;
+  font-size: 13px;
+  color: var(--app-color-text-tertiary, var(--app-color-text-secondary));
+}
+
+/* 分组 + 条目：条目是「点一下填进输入框」的一句话，做成实底描边键，不是半透明底、不是胶囊 */
+.scan-assistant-ask__caps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.scan-assistant-ask__caps-group {
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--app-color-text-primary) 62%, transparent);
+}
+
+.scan-assistant-ask__caps-items {
+  /* **等宽两列**，不是按内容宽度流动排。
+     流动排的后果：备注一长，块宽就在 166~286 之间飘，多数块两个并排塞不下 → 整列塌成一行一个，
+     看着像列表又不像列表。等宽网格才不会因为文案长短变阵。 */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.scan-assistant-ask__cap {
+  padding: 0.42rem 0.7rem;
+  /* 实底块、**不描边**（原先那种描边按钮的观感用户明确否掉了）。
+     与小程序端同一形态：小程序那边本来就是 #f8fafc 的实底块，web 这边用主题面令牌跟住。 */
+  border: 0;
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-hover);
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.scan-assistant-ask__cap:hover {
+  background: color-mix(in srgb, var(--app-color-surface-hover) 78%, var(--color-warm-300));
+}
+
+/* 反馈表单：文字 + 选图 + 提交 */
+.scan-assistant-ask__fb {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--app-color-border-default) 60%, transparent);
+}
+
+.scan-assistant-ask__fb-title {
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__fb-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element, 0.5rem);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.scan-assistant-ask__fb-input:focus-visible {
+  outline: 2px solid var(--app-color-accent);
+  outline-offset: 1px;
+}
+
+.scan-assistant-ask__fb-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scan-assistant-ask__fb-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--app-color-text-tertiary, var(--app-color-text-secondary));
+}
+
+.scan-assistant-ask__fb-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.scan-assistant-ask__fb-thumb {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--app-radius-element);
+  overflow: hidden;
+}
+
+.scan-assistant-ask__fb-thumb img,
+.scan-assistant-ask__fb-thumb-img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--app-radius-element);
+  border: 1px solid var(--app-color-border-default);
+}
+
+.scan-assistant-ask__fb-thumb .scan-assistant-ask__attachment-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+/* 我的反馈：列表在同一个滚动容器里顺排，不另开滚动 */
+.scan-assistant-ask__fb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--app-color-border-default) 60%, transparent);
+}
+
+.scan-assistant-ask__fb-listhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__fb-scope {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.scan-assistant-ask__fb-scope-btn {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__fb-scope-btn--on {
+  border-color: var(--app-color-accent);
+  background: var(--app-color-accent);
+  color: #fff;
+}
+
+.scan-assistant-ask__fb-empty {
+  padding: 0.35rem 0.25rem;
+  font-size: 12px;
+  color: var(--app-color-text-tertiary, var(--app-color-text-secondary));
+}
+
+.scan-assistant-ask__fb-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+}
+
+.scan-assistant-ask__fb-itemhead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scan-assistant-ask__fb-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__fb-status {
+  flex: none;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  font-size: 11px;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__fb-status--replied {
+  border-color: var(--app-color-accent);
+  color: var(--app-color-accent);
+}
+
+.scan-assistant-ask__fb-time {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--app-color-text-primary) 55%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-assistant-ask__fb-content {
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.5;
+  color: var(--app-color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.scan-assistant-ask__fb-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border-left: 2px solid var(--app-color-accent);
+  background: color-mix(in srgb, var(--app-color-accent) 6%, transparent);
+  border-radius: 0 var(--app-radius-element) var(--app-radius-element) 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--app-color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.scan-assistant-ask__fb-replylabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--app-color-accent);
+}
+
+/* 回复串：多条按时间升序顺排，一个标签 + 若干条 */
+.scan-assistant-ask__fb-replythread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.scan-assistant-ask__fb-replyhead {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.scan-assistant-ask__fb-replyby {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__fb-replytext {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 回复附图：包一层无框按钮，点击开大图 */
+.scan-assistant-ask__fb-thumb-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  cursor: zoom-in;
+}
+
+/* 超管回复区：输入 + 附图/状态/回复三个小键 */
+.scan-assistant-ask__fb-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed color-mix(in srgb, var(--app-color-border-default) 70%, transparent);
+}
+
+.scan-assistant-ask__fb-replyinput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  font-family: inherit;
+}
+
+.scan-assistant-ask__fb-adminrow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.scan-assistant-ask__fb-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-primary);
+  cursor: pointer;
+}
+
+.scan-assistant-ask__fb-mini:hover {
+  background: color-mix(in srgb, var(--color-warm-200) 55%, var(--app-color-surface-elevated));
+}
+
+.scan-assistant-ask__fb-statusbtn {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__fb-statusbtn--on {
+  border-color: var(--app-color-accent);
+  color: var(--app-color-accent);
+}
+
+/* ── 详情视图的编辑态（仅 ≥超管）──────────────────────────────────────
+   与小程序那套同构：一张卡一行，行内「分组名 + 标题 + 提示词 + 谁看得见 + 启用」，脚下一个保存。
+   保存是**整份提交**（提交里没有的 id 即删除），所以只有底部一个键，行内不放「单条保存」。 */
+.scan-assistant-ask__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scan-assistant-ask__edit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-page);
+}
+
+.scan-assistant-ask__edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.scan-assistant-ask__edit-row--meta {
+  flex-wrap: wrap;
+}
+
+.scan-assistant-ask__edit-row--ops {
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.scan-assistant-ask__edit-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  /* 直角：本抽屉的动作件一律不圆角（与小程序同一套视觉约定） */
+  border-radius: 0;
+  background: var(--app-color-surface-elevated, #fff);
+  color: var(--app-color-text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.scan-assistant-ask__edit-input--group {
+  flex: 0 0 7rem;
+}
+
+.scan-assistant-ask__edit-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__edit-seg {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.scan-assistant-ask__edit-seg-item {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--app-color-border-default);
+  border-left-width: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--app-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__edit-seg-item:first-child {
+  border-left-width: 1px;
+}
+
+/* 选中态用实色底（半透明底在这个抽屉里被明确否掉） */
+.scan-assistant-ask__edit-seg-item--on {
+  background: var(--app-color-accent, #2563eb);
+  border-color: var(--app-color-accent, #2563eb);
+  color: #fff;
+}
+
+.scan-assistant-ask__edit-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-assistant-ask__edit-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+/* 保存键：实底 + 1px 描边，不透明、不胶囊 —— 与后台按钮基线一致 */
+.scan-assistant-ask__choice-action--primary {
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--app-color-accent, #2563eb);
+  border-radius: 0;
+  background: var(--app-color-accent, #2563eb);
+  color: #fff;
+  text-decoration: none;
+}
+
+.scan-assistant-ask__choice-action--primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 推荐词芯片改成两行：标题 + 操作备注。
+   只写标题时用户不知道点下去会发生什么（「待出库领用单」是只看、还是也办？）——
+   备注就是回答这个。备注可空，空了就退回单行芯片。 */
+.scan-assistant-ask__cap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.scan-assistant-ask__cap-title {
+  font-weight: 500;
+}
+
+.scan-assistant-ask__cap-note {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--app-color-text-secondary);
+}
+
+/* 指令 vs 备注：**靠标记区分，不靠加边框**。
+   指令带一个动作符（「这句会被发出去」），备注带一枚「说明」微标签；
+   两者各自成行、字号与灰度分明，扫一眼就知道哪个是点下去会发生的那句。 */
+.scan-assistant-ask__cap-cmd {
+  flex: 0 0 auto;
+  color: var(--app-color-accent, #2563eb);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* 指令与动作符同一行（芯片本身是纵向 flex，不套一层会被拆成两行） */
+.scan-assistant-ask__cap-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.scan-assistant-ask__cap-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.scan-assistant-ask__cap-note-tag {
+  flex: 0 0 auto;
+  padding: 0 0.25rem;
+  border-radius: 2px;
+  /* 微标签用实底（禁半透明底），比备注正文再淡一档 */
+  background: color-mix(in srgb, var(--app-color-surface-elevated) 70%, var(--app-color-border-default));
+  color: var(--app-color-text-tertiary, var(--app-color-text-secondary));
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.scan-assistant-ask__cap-note-text {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--app-color-text-secondary);
+}
+
+/* ── 提问卡 + 选项清单（2026-10-11 重做）────────────────────────────────
+   改的是三件事：
+   1. **问句提成主标题**：原先只在「多问/写操作确认」时才出题头，一道题时就只剩气泡里那句
+      混在整段回答里 + 下面一串悬空的按钮 —— 用户看到的是「没有题目的选项」。
+   2. **选项换成实底块**：跟推荐词同一形态（去描边），并给每项一个标记位（空心点 / 选中打勾）。
+   3. **自定义回答与取消降到弱操作**：二选一的题不该先摆一个输入框。 */
+.scan-assistant-ask__ask {
+  /* 吸在滚动区顶部：候选多的时候（实测有 20 项的）题目会被列表顶出去，
+     用户滚到下面只看见一串选项 —— 「没有题目」的一半是这么来的。 */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: var(--app-space-element-gap, 0.75rem);
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--app-radius-element);
+  background: color-mix(in srgb, var(--app-color-accent) 8%, var(--app-color-surface-elevated));
+}
+
+.scan-assistant-ask__ask-ico {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  color: var(--app-color-accent);
+}
+
+.scan-assistant-ask__ask-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.scan-assistant-ask__ask-step {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--app-color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.scan-assistant-ask__ask-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__ask-nav {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+/* 选项：实底块、无描边（与推荐词同一形态），左侧一个标记位 */
+.scan-assistant-ask__choice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border: 0;
+  border-radius: var(--app-radius-element);
+  background: var(--app-color-surface-hover);
+  color: var(--app-color-text-primary);
+  font-size: var(--font-size-sm, 0.875rem);
+  line-height: 1.45;
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+
+.scan-assistant-ask__choice:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--app-color-surface-hover) 78%, var(--color-warm-300));
+}
+
+/* 标记位：未选是空心点，选中变成实底 + 勾 */
+.scan-assistant-ask__choice-mark {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid color-mix(in srgb, var(--app-color-text-primary) 32%, transparent);
+  border-radius: 50%;
+}
+
+.scan-assistant-ask__choice--picked .scan-assistant-ask__choice-mark {
+  border-color: var(--app-color-accent);
+  background: var(--app-color-accent);
+  color: #fff;
+}
+
+.scan-assistant-ask__choice-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scan-assistant-ask__controls-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.scan-assistant-ask__ask-count {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--app-color-text-tertiary, var(--app-color-text-secondary));
+}
+
+/* 题头右侧的收起/展开开关：候选一多就铺满整屏，先折起来看对话 */
+.scan-assistant-ask__ask-fold {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--app-radius-element);
+  background: transparent;
+  color: var(--app-color-text-secondary);
+  cursor: pointer;
+}
+
+.scan-assistant-ask__ask-fold:hover {
+  background: color-mix(in srgb, var(--app-color-accent) 12%, transparent);
+  color: var(--app-color-accent);
+}
+
+/* 题头 + 选项 + 操作行的整体封装：见 ScanAssistantAskPanel 里的注释。
+   上限按卡高给（不写死像素），选项在它内部滚。 */
+.scan-assistant-ask__askwrap {
+  display: flex;
+  /* **不参与收缩**：它一被压缩，里面的选项区就塌成 0 高（实测 5 个选项全看不见）。
+     上限用档位高度的一半，矮屏再夹一道 vh。 */
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(58vh, calc(var(--sa-ask-h, 300px) * 0.5));
+  overflow: hidden;
+}
+
+/* 封装内：选项吃掉剩余空间并在内部滚（外层的 max-height 已封顶，这里不用再写一道） */
+.scan-assistant-ask__askwrap .scan-assistant-ask__choices {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+/* 出题时对话区**不许被压没**：至少留两行，用户才看得到上下文 */
+.scan-assistant-ask__history--with-choices {
+  min-height: 3.25rem;
+}
+
+/*
+ * 思考过程。两态有意分开：
+ * · 生成中（--live）常显 —— 它是模型在调工具**之前**想的那段，正是用户干等的时候；
+ * · 落定后（details）折叠 —— 又长又乱，原样全铺比不铺更糟。
+ */
+.scan-assistant-ask__reasoning {
+  margin: 2px 0 8px;
+  max-width: 100%;
+  /* 与气泡左边缘齐头（锚点是**气泡**，不是头像 —— 见 --ask-bubble-offset 的定义） */
+  padding-left: var(--ask-bubble-offset);
+  font-size: var(--font-size-xs, 0.8125rem);
+  /*
+   * ⚠️ **别用 `var(--muted)`**：全站的 `--muted` 在 index.css 里指向 `--app-color-surface-hover`
+   * —— 那是个**面板色**，拿来当文字色会渲染成近白（实测算出 oklch(0.96 …)），
+   * 在浅底上等于看不见。文字色一律用 `--app-color-text-*` 这一族。
+   */
+  color: var(--app-color-text-secondary);
+  /* 面板是竖向 flex：不加这条会被压扁（实测这一块只剩 16px 高、里面的芯片 13px） */
+  flex: none;
+  min-height: max-content;
+}
+
+.scan-assistant-ask__reasoning > summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--app-color-text-tertiary);
+}
+
+.scan-assistant-ask__reasoning-head {
+  margin-bottom: 4px;
+  color: var(--app-color-text-tertiary);
+}
+
+.scan-assistant-ask__reasoning-body {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  max-height: 16rem;
+  overflow-y: auto;
+  border-left: 2px solid color-mix(in srgb, var(--app-color-text-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--app-color-text-primary) 3%, transparent);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+/*
+ * 推荐指令条：一排横滚。**条数不写死**——放不下就左右滑，不换行堆高。
+ * 卡片 `flex: 0 0 auto` 是关键：不然会被挤成省略号。直角 + 实色底，不用胶囊。
+ */
+.scan-assistant-ask__recommend-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* 面板竖向 flex：不加这条整条会被压成一条线（实测 47px → 16px） */
+  flex: none;
+  min-height: max-content;
+}
+
+/* 翻动按钮：滚动条是隐藏的，没有这两个键鼠标用户就够不到后面的芯片 */
+.scan-assistant-ask__recommend-nav {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--app-color-text-primary) 12%, transparent);
+  border-radius: 6px;
+  background: var(--card, #fff);
+  color: var(--app-color-text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__recommend-nav:hover:not(:disabled) {
+  background: var(--app-color-surface-hover);
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__recommend-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.scan-assistant-ask__recommend {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 2px 8px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  /* 在 wrap 里吃剩余宽度；min-width:0 不加的话 flex 子项不肯收缩，横滚就失效了 */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scan-assistant-ask__recommend::-webkit-scrollbar {
+  display: none;
+}
+
+.scan-assistant-ask__recommend-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--app-color-text-primary) 12%, transparent);
+  border-radius: 8px;
+  background: var(--card, #fff);
+  color: var(--app-color-text-secondary);
+  font-size: var(--font-size-xs, 0.8125rem);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__recommend-chip:hover {
+  background: var(--app-color-surface-hover);
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__recommend-chip--more {
+  color: var(--app-color-accent);
+  border-color: color-mix(in srgb, var(--app-color-accent) 32%, transparent);
+}
+
+/* 选项备注：选它会怎样。压在标签下面一行小字，别抢标签的注意力 */
+.scan-assistant-ask__choice-note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--app-color-text-tertiary);
+  font-weight: 400;
+}
+
+/*
+ * 回复底部的元信息行：左端是用量（用时 · tokens），右端是赞/踩。
+ *
+ * 起点对齐到**气泡的左边缘**（不是头像那边）—— 引 --ask-bubble-offset，
+ * 与思考过程、附件卡用的是同一个锚点。
+ */
+.scan-assistant-ask__footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding-left: var(--ask-bubble-offset);
+  margin-top: 2px;
+}
+
+/* 进了 footer 两者各让一步：用量去掉自己的外边距；赞/踩不再占满整行（那层 width:100%
+   是为了它单独成行时能右对齐才加的），改用 margin-left:auto 顶到右端。 */
+.scan-assistant-ask__footer .scan-assistant-ask__meta {
+  margin-top: 0;
+  padding-left: 0;
+}
+
+.scan-assistant-ask__footer .scan-assistant-ask__vote {
+  width: auto;
+  margin: 0 0 0 auto;
+}
+
+/*
+ * 赞/踩。**常驻**、与用量同一行 —— 要就给，不藏进菜单让用户找不到。
+ * 图标按钮走直角 + 描边（与全站按钮同一个规范），选中态用实底区分。
+ */
+.scan-assistant-ask__vote {
+  display: flex;
+  /* 靠右对齐（用户 2026-10-11 定）：正文左对齐，操作图标收到右侧，视线扫完正文才落到它上面。
+     **width:100% 是关键** —— 不加它这一行会被内容撑成窄条，flex-end 就无处可右对齐（踩过）。 */
+  width: 100%;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+
+.scan-assistant-ask__vote-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--app-color-text-primary) 12%, transparent);
+  border-radius: 6px;
+  background: var(--card, #fff);
+  color: var(--app-color-text-tertiary);
+  cursor: pointer;
+}
+
+.scan-assistant-ask__vote-btn:hover {
+  background: var(--app-color-surface-hover);
+  color: var(--app-color-text-primary);
+}
+
+.scan-assistant-ask__vote-btn--on {
+  border-color: color-mix(in srgb, var(--app-color-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--app-color-accent) 12%, transparent);
+  color: var(--app-color-accent);
+}
+
+/*
+ * 「我记住的习惯」页 —— 看得见、改得了。
+ *
+ * 为什么要有这一页：设计里原本只给了「在对话里问一句」这条路，
+ * 但那样用户**根本不知道助手记了什么** —— 知情权不能只靠他想得起来问。
+ * 与「对话是最快的入口」不冲突：说得出来的用对话，想看全/说不清的来这里。
+ */
+.scan-assistant-ask__pref {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.scan-assistant-ask__pref-back {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--app-color-accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__pref-tip {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--app-color-text-tertiary);
+}
+
+.scan-assistant-ask__pref-add {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.scan-assistant-ask__pref-btn {
+  flex: 0 0 auto;
+  height: 1.9rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--app-color-border-default);
+  border-radius: calc(var(--app-radius-element) * 0.75);
+  background: var(--card, #fff);
+  color: var(--app-color-text-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__pref-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.scan-assistant-ask__pref-del {
+  flex: 0 0 auto;
+  height: 1.9rem;
+  padding: 0 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--app-color-feedback-danger) 30%, transparent);
+  border-radius: calc(var(--app-radius-element) * 0.75);
+  background: var(--app-color-feedback-danger-soft);
+  color: var(--app-color-feedback-danger);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.scan-assistant-ask__pref-del:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.scan-assistant-ask__pref-err {
+  font-size: 0.75rem;
+  color: var(--app-color-feedback-danger);
 }

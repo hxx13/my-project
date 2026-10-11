@@ -63,6 +63,13 @@ type AdminTableShellProps = {
   className?: string;
   /** 长表纵向滚动时表头 sticky（见 index.css .admin-table-shell-inner thead th） */
   scrollable?: boolean;
+  /**
+   * 高度由父级 flex 链给定：卡片撑满剩余空间、表体自身滚动。
+   *
+   * <p>配合 `flex-1` 的页面使用，**替代** `scrollable` 那个 `max-h-[min(72vh,780px)]` 封顶 ——
+   * 封顶只压内层，外层卡片照样被 flex-1 拉到整屏，于是表格在 72vh 处停住、底下留一大块空白。
+   */
+  fill?: boolean;
 };
 
 /** 列表页表格容器：统一边框、横向滚动、加载/错误/空态 */
@@ -75,6 +82,7 @@ export function AdminTableShell({
   children,
   className,
   scrollable,
+  fill,
 }: AdminTableShellProps) {
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -114,13 +122,15 @@ export function AdminTableShell({
       ref={tableRef}
       className={cn(
         "overflow-x-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm",
+        fill && "flex min-h-0 flex-1 flex-col",
         className
       )}
     >
       <div
         className={cn(
           "admin-table-shell-inner min-w-0",
-          scrollable && "max-h-[min(72vh,780px)] overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]"
+          scrollable && "overflow-y-auto overscroll-y-contain [scrollbar-gutter:stable]",
+          scrollable && (fill ? "min-h-0 flex-1" : "max-h-[min(72vh,780px)]")
         )}
       >
         {children}

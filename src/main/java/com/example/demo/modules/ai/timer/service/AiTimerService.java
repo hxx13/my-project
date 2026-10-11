@@ -568,7 +568,11 @@ public class AiTimerService {
         }
     }
 
-    private static boolean isSuper(User u) {
+    /**
+     * 超管及以上判据（本仓库**唯一一处**口径）。同模块的其它写入口（如 AI 抽屉写接口）
+     * 一律引用这里，不另写第二套。
+     */
+    public static boolean isSuper(User u) {
         return u != null && u.getRole() != null && u.getRole().getLevel() >= RoleEnum.SUPER_ADMIN.getLevel();
     }
 

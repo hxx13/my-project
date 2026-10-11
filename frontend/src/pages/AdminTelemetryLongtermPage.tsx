@@ -448,7 +448,7 @@ export default function AdminTelemetryLongtermPage() {
   // 导出抽屉：形式（表格 / 曲线）+ **日历点选时间范围**（不选不允许导出）
   const [exportOpen, setExportOpen] = useState(false);
   const [exportForm, setExportForm] = useState<"TABLE" | "CURVE">("TABLE");
-  const [exportLayout, setExportLayout] = useState<"LONG" | "WIDE">("LONG");
+  const [exportLayout, setExportLayout] = useState<"LONG" | "WIDE">("WIDE");
   const [exportDays, setExportDays] = useState<string[]>([]);
   const openExport = () => {
     setExportForm("TABLE");
@@ -1139,7 +1139,7 @@ export default function AdminTelemetryLongtermPage() {
                 {exportForm === "CURVE"
                   ? "曲线出 A4 纵向 PDF：一天一页、一行两张，多天合到一份文件里"
                   : exportLayout === "WIDE"
-                    ? "宽表 Excel：一行一个时间点、变量一列；多天按天分段上下堆叠"
+                    ? "宽表 Excel：跟页面上一样 —— 一行一个房间、一列一个时刻；多天按天分段上下堆叠"
                     : "长表 Excel：一行一条采样；多天连成一张表、多一列「日期」从上往下排"}
               </p>
 

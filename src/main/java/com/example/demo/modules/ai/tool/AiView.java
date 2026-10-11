@@ -19,4 +19,15 @@ public enum AiView {
     STAFF,
     /** 学生视角。 */
     STUDENT;
+
+    /**
+     * 由「是不是学生」映射到视角 —— **全平台唯一的映射点**（判据仍是
+     * {@code CageModeVisibilityService#isStudent(User)}，本方法只做取值）。
+     *
+     * <p>工具包注入（{@code AiOrchestrator#viewOf}）与抽屉能力清单过滤共用这一处，
+     * 避免两处各写一遍 `isStudent ? STUDENT : STAFF` 而分叉。
+     */
+    public static AiView of(boolean student) {
+        return student ? STUDENT : STAFF;
+    }
 }

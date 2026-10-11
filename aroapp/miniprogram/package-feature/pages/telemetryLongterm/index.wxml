@@ -28,7 +28,12 @@
         <view class="tl-td tl-w-slot" wx:for="{{ columns }}" wx:key="slot">{{ item.time }}</view>
       </view>
       <view class="tl-tr" wx:for="{{ rows }}" wx:key="key" id="tl-row-{{ index }}">
-        <view class="tl-td tl-w-var">
+        <view
+          class="tl-td tl-w-var"
+          hover-class="tl-w-var--hover"
+          bindtap="onRoomTap"
+          data-full="{{ item.full }}"
+        >
           <text class="tl-var">{{ item.label }}</text><text wx:if="{{ item.unit }}" class="tl-unit">({{ item.unit }})</text>
         </view>
         <view

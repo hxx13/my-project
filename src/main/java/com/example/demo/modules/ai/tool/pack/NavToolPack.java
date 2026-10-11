@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.SideEffect;
@@ -352,6 +353,7 @@ public class NavToolPack implements AiToolPack {
         if (!near.isEmpty()) {
             out.put("hint", "下面是名字最接近的几个，让用户从中挑一个（**不要自己挑**）");
             out.put("choices", options(near));
+            out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
             out.put("choicesTitle", "你是想找这几个里的哪一个？");
         } else {
             out.put("hint", "直接告诉用户你没找到这个入口，问他是不是记错名字了；别猜一个页面跳过去");
@@ -385,6 +387,7 @@ public class NavToolPack implements AiToolPack {
         out.put("ok", true);
         out.put("multi", true);
         out.put("choices", options(candidates));
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         out.put("choicesTitle", title);
         out.put("note", "把候选交给用户点选，**不要**在正文里把这几项念一遍");
         return out;

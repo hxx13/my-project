@@ -92,7 +92,8 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                 - **导出必须先确定时间范围，不选时间范围不允许导出**：先用 listLongtermExportDays
                   把有数据的日期摆给用户挑（可多选，也接受他直接说的范围），拿到 `days` 再调导出；
                   用户没给范围时**不要**自己替他挑几天。
-                - 两种形式：**表格**（exportLongtermTable → Excel；多天连成一张表、多一列「日期」）与
+                - 两种形式：**表格**（exportLongtermTable → Excel；默认是**跟页面上那张表一样的宽表** ——
+                  一行一个房间、一列一个时刻，多天按天分段堆叠；他要「一行一条采样」那种再传长表）与
                   **曲线**（exportLongtermCurves → A4 纵向 PDF，一天一页、一行两张，多天合一份）。
                   用户没说形式时问一句再导。
                 - 变量的**顺序就是宽表导出的列序**，调整顺序（setLongtermVariableOrder）要说清它会影响导出。
@@ -190,9 +191,10 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     if (!scoped && byFloor.size() > 1) {
                         List<Map<String, Object>> choices = new ArrayList<>();
                         for (Map.Entry<String, Integer> e : byFloor.entrySet()) {
-                            choices.add(AiChoices.option(e.getKey() + " · " + e.getValue() + " 个变量", e.getKey()));
+                            // 选项只给楼层名：变量数属于正文里的说明，不是「选哪个」的依据
+                            choices.add(AiChoices.option(e.getKey(), e.getKey()));
                         }
-                        out.putAll(AiChoices.single("看哪个楼层？", choices));
+                        out.putAll(AiChoices.requiredSingle("看哪个楼层？", choices));
                         out.put("note", "候选跨多个楼层，先挑一层再列；用户给了房间号或指标就不用问");
                         return out;
                     }
@@ -211,7 +213,10 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                         // **只有结果被截断时才给候选芯片**：那时它才是真的在帮忙收窄
                         List<Map<String, Object>> choices = new ArrayList<>();
                         for (Map<String, Object> r : rows) {
-                            choices.add(AiChoices.option(String.valueOf(r.get("summary")),
+                            // 挑变量时不给当前值：值属于选完之后看的
+                            choices.add(AiChoices.option(
+                                    str(r.get("room")).isEmpty() ? str(r.get("label"))
+                                            : str(r.get("room")) + (str(r.get("metric")).isEmpty() ? "" : "（" + str(r.get("metric")) + "）"),
                                     String.valueOf(r.get("variable"))));
                         }
                         out.putAll(AiChoices.single("挑一个变量", choices));
@@ -665,7 +670,7 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     for (String d : limited) {
                         choices.add(AiChoices.option(d, d));
                     }
-                    out.putAll(AiChoices.multi("要导出哪些日期？（可多选）", choices));
+                    out.putAll(AiChoices.requiredMulti("要导出哪些日期？（可多选）", choices));
                     out.put("note", "用户选完把这些日期作为 days 传给导出工具；他直接说范围（如「10月1日到7日」）也行");
                     return out;
                 });
@@ -701,7 +706,7 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     "layout": {
                       "type": "string",
                       "enum": ["LONG", "WIDE"],
-                      "description": "长表（一行一条采样，多天连成一张、多一列日期）还是宽表（一行一个时间点、变量一列，多天按天分段堆叠）。默认 LONG"
+                      "description": "宽表（**跟页面上那张表一样**：一行一个房间、一列一个时刻；多天按天分段堆叠）还是长表（一行一条采样，多天连成一张、多一列日期）。默认 WIDE"
                     },
                     "variableNames": {
                       "type": "array",
@@ -723,7 +728,7 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                         return Map.of("ok", false, "reason", bad);
                     }
                     String layout = text(args, "layout");
-                    String effLayout = "WIDE".equalsIgnoreCase(layout) ? "WIDE" : "LONG";
+                    String effLayout = "LONG".equalsIgnoreCase(layout) ? "LONG" : "WIDE";
                     List<String> variableNames = stringList(args.path("variableNames"));
 
                     List<String> qs = new ArrayList<>();

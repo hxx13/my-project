@@ -69,10 +69,10 @@ public class LlmConfigSeed implements ApplicationRunner {
                     "llm",
                     "llm.model",
                     "主模型",
-                    "优先使用；失败时按备用列表自动切换。填供应商当前的模型 ID（如 deepseek-chat）",
+                    "优先使用；失败时按备用列表自动切换。填供应商当前的模型 ID（如 deepseek-flash）",
                     "STRING",
                     null,
-                    "deepseek-v4-pro",
+                    "deepseek-flash",
                     0,
                     0,
                     0);
@@ -83,7 +83,7 @@ public class LlmConfigSeed implements ApplicationRunner {
                     "逗号分隔，主模型失败或限流时依次尝试。2～5 个即可",
                     "STRING",
                     null,
-                    "deepseek-v4-flash",
+                    "deepseek-v4-pro",
                     0,
                     0,
                     0);

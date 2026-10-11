@@ -335,9 +335,21 @@ public class PageScreenshotService {
              * 与网页端载体同一套做法（ScanAssistantAskPanel#expandScrollContainers）：让**截图自己带全高**，
              * 模型一次调用拿到整页，不必给它加「滚动 API」（要坐标、要多轮、还要拼接）。
              * fixed 元素不撑文档高度，所以额外把 documentElement/body 的高度也顶上去。
+             *
+             * <p>**高度由内容区定，不是由侧栏菜单定**（2026-10-11 补）：左侧菜单动辄 1600~1900px，
+             * 把它一起撑开就等于让菜单长度决定画布高度 —— 右侧表格只有几百 px，下半张全是空白
+             * （用户原话：「右侧大片空白，左侧滚动栏却截取完整」）。所以侧栏子树**跳过不撑**，
+             * 画布高度取内容区；再把侧栏高度对齐到画布高度，左边那一列照样铺满，
+             * 菜单比画布长就裁到底部为止（菜单是壳层，不是用户要看的内容）。
              */
             page.evaluate("() => {"
+                    + " const aside = document.querySelector('aside');"
+                    + " const row = aside && aside.parentElement;"
+                    // 只在「侧栏与内容并排」这种壳层里做（横排至少两块）；别的页面 aside 语义不同，别乱动
+                    + " const content = (row && row.children.length > 1)"
+                    + "   ? Array.from(row.children).find((c) => c !== aside) : null;"
                     + " const visit = (el) => {"
+                    + "   if (el === aside) return;"
                     + "   Array.from(el.children).forEach((c) => { if (c instanceof HTMLElement) visit(c); });"
                     + "   const cs = getComputedStyle(el);"
                     + "   if (/(auto|scroll|hidden|clip)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 2) {"
@@ -348,7 +360,13 @@ public class PageScreenshotService {
                     + " };"
                     + " const root = document.getElementById('root') || document.body;"
                     + " visit(root);"
-                    + " const h = Math.max(root.scrollHeight, document.documentElement.scrollHeight);"
+                    + " const h = Math.max(content ? content.scrollHeight : 0, root.scrollHeight,"
+                    + "   document.documentElement.clientHeight);"
+                    + " if (aside) {"
+                    + "   aside.style.height = h + 'px';"
+                    + "   aside.style.maxHeight = h + 'px';"
+                    + "   aside.style.overflow = 'hidden';"
+                    + " }"
                     + " document.documentElement.style.height = h + 'px';"
                     + " document.body.style.height = h + 'px';"
                     + "}");

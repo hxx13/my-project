@@ -155,32 +155,32 @@
 }
 
 /*
- * **大窗的高度是「一档一个定值」**（2026-10-09 用户反馈，两轮才收对）：
- *   · 只给 max-height（原样）→ 内容少时塌成一小条、切视图窗口乱跳；
- *   · 只给 min-height → 内容多时卡片被**顶出边界**（历史列表那 49 条直接把圆角框撑破）。
- * 所以上下一起定住：窗口高度稳定、两级看得出差别，**内容一律在卡片内部滚动**。
- * 用 vh 夹住，矮屏也不会溢出视口。
+ * **卡片高度：档位只在这里定义一次**（2026-10-11 收口）。
+ *
+ * 以前每个视图各写一遍：外框、对话区、历史、详情各一条，540/720 在文件里出现四次，靠注释同步；
+ * 写漏一格就撑不满（详情没补大窗那档）、值过期没删就只占一半（历史那条 166）—— 每次都是这两种坏法。
+ * 现在外框与所有内容区一律读同一对变量：加视图 = 0 条新规则，改档位 = 只改下面这两组。
+ *
+ * 为什么是定高（2026-10-09 用户反馈，两轮才收对）：只给 max-height → 内容少时塌成一条；
+ * 只给 min-height → 内容多时卡片被顶出边界。上下一起定住，内容一律在卡片内部滚。
+ * 用 vh 夹住，矮屏也不会溢出视口。小卡那档在 chatCard.css 里给的是 300。
  */
-.scan-assistant-bubble-anchor--expanded .scan-assistant-chat-card--ask .scan-assistant-chat-card__frame {
-  height: min(58vh, 540px);
+.scan-assistant-bubble-anchor--expanded .scan-assistant-chat-card--ask {
+  --sa-ask-h: min(58vh, 540px);
+  --sa-ask-h-choices: min(48vh, 460px);
 }
 
-.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-chat-card--ask .scan-assistant-chat-card__frame {
-  height: min(74vh, 720px);
-}
-
-/* 长对话在大窗里放开高度：小卡那 220px 装不下几轮。
-   上限跟着上面的最小高度走 —— 只抬下限不动上限的话，多出来的高度会变成输入框下方的空白。 */
-.scan-assistant-bubble-anchor--expanded .scan-assistant-ask__history {
-  max-height: min(58vh, 540px);
+.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-chat-card--ask {
+  --sa-ask-h: min(74vh, 720px);
+  --sa-ask-h-choices: min(62vh, 620px);
 }
 
 /*
  * 内容链：**面板撑满 → 对话区吃掉多出来的高度 → 输入条与操作按钮落到最底部**。
  * 主体（__body）里只有「对话区 + 输入条」两块，默认是块布局：不拉伸，于是输入条紧贴在对话区
  * 下面飘在中部（用户反馈「操作按钮该在底部」），多出来的高度也白白空着。
- * **小卡与大窗都要**：小卡也有 220px 的框下限（内容少时同样会富余一块底），只给大窗做会两边不一致。
- * 小卡那边由对话区自己的 220px 上限兜着，不会因此被撑高。
+ * **小卡与大窗都要**：三档都是定高（小卡 300、大窗 540/720），框里总有富余的一块底，只给大窗做会两边不一致。
+ * 内容是读同一个高度变量封顶的，所以拉伸填满不会把卡片撑高。
  */
 .scan-assistant-chat-card--ask .scan-assistant-chat-card__panel {
   display: flex;
@@ -199,28 +199,16 @@
   min-height: 0;
 }
 
-/* 历史列表也撑满：它和对话区共用同一块位置，不撑满就会在下面留一大片空白（用户反馈）。 */
+/* 历史列表也撑满：它和对话区共用同一块位置，不撑满就会在下面留一大片空白（用户反馈）。
+   高度不用在这儿写 —— 读的就是上面那对变量。 */
 .scan-assistant-bubble-anchor--expanded .scan-assistant-ask__sessions {
   flex: 1 1 auto;
   min-height: 0;
-  /* 小卡那道 166px 上限在大窗里要放开 —— 不放就撑不满，列表下面留一大片空白（用户反馈）。 */
-  max-height: none;
 }
 
-.scan-assistant-bubble-anchor--expanded .scan-assistant-ask__history--with-choices {
-  max-height: min(48vh, 460px);
-}
-
-/* 二级放大再放开一档高度，并让助手那侧铺满宽度：这一档主要就是用来看宽表格/长清单的，
-   82% 的聊天气泡宽度会把表格压窄。用户那侧仍是气泡宽 —— 短问句铺满整行不好读。 */
-.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__history {
-  max-height: min(74vh, 720px);
-}
-
-.scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__history--with-choices {
-  max-height: min(62vh, 620px);
-}
-
+/* 二级放大让助手那侧铺满宽度：这一档主要就是用来看宽表格/长清单的，
+   82% 的聊天气泡宽度会把表格压窄。用户那侧仍是气泡宽 —— 短问句铺满整行不好读。
+   （高度不在这里写，见上面两组变量。） */
 .scan-assistant-bubble-anchor--expanded-2 .scan-assistant-ask__bubble--assistant {
   max-width: 100%;
 }

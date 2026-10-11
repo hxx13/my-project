@@ -284,6 +284,23 @@ public class DoorControlToolPack implements AiToolPack {
                         out.put("upstream", resp);
                     }
                     return out;
+                },
+                // 这个工具没有「挂起前预解析」（要动哪扇门由模型从候选里挑好了）
+                null,
+                /*
+                 * **确认详情**：没有它，弹窗里那一行就是参数原文 ——
+                 * 用户看到的是 `{"mode":"OPEN","channels":["业务室(152)-137-RL03"]}`。
+                 *
+                 * 而这一签是**碰硬件**的：点下去门就开了。让人看着内部码点「确认执行」，
+                 * 这道确认就退化成走形式 —— 设计文档 §14 把这种缺失列为「静默降级」，
+                 * 因为钩子忘了写不会报错，只会悄悄回落到裸 JSON。
+                 */
+                args -> {
+                    String mode = text(args, "mode").toUpperCase();
+                    String label = MODES.getOrDefault(mode, mode);
+                    List<String> doors = stringList(args, "channels");
+                    String who = doors.isEmpty() ? "（未指明是哪扇门）" : "「" + String.join("」「", doors) + "」";
+                    return "对 " + who + " 执行：" + label;
                 });
     }
 

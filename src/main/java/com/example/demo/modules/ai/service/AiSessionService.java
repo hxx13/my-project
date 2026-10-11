@@ -53,6 +53,16 @@ public class AiSessionService {
         return session;
     }
 
+    /**
+     * 按 id 取会话，取不到返回 {@code null}（与 {@link #requireOwned} 相对：那个是用来守门的，会抛）。
+     *
+     * <p>给「回合结束时现查一下标题」这种展示用途用 —— 标题要在第一条提问落库时才写，
+     * 拿早先加载的那份实体去读只会得到「新对话」。
+     */
+    public AiSession get(Long sessionId) {
+        return sessionId == null ? null : mapper.selectSessionById(sessionId);
+    }
+
     public List<AiSession> list(String userId, int page, int size) {
         int safeSize = Math.min(Math.max(size, 1), 100);
         int offset = Math.max(page, 0) * safeSize;
@@ -79,6 +89,15 @@ public class AiSessionService {
 
     public List<AiMessage> history(Long sessionId) {
         return mapper.selectMessagesBySession(sessionId);
+    }
+
+    /**
+     * 会话历史**取尾页**：默认给最近 {@code limit} 条，{@code beforeSeq} 非空时往前翻一页。
+     *
+     * <p>给「打开旧对话」用 —— 先给最后一屏，用户往上滚再要更早的（见设计文档 §7 的历史分页）。
+     */
+    public List<AiMessage> historyTail(Long sessionId, Integer beforeSeq, int limit) {
+        return mapper.selectMessagesTail(sessionId, beforeSeq, limit);
     }
 
     /** 按 id 取一条消息 —— 挂起续跑时用它取回那条带 tool_calls 的 assistant 轮。 */

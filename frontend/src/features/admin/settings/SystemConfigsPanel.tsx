@@ -16,16 +16,28 @@ const LLM_CONFIG_ORDER = [
   "llm.base_url",
   "llm.model",
   "llm.model_fallback",
-  "llm.max_tokens",
   "llm.temperature",
   "llm.assistant.enabled",
-  "llm.assistant.max_tokens",
   "llm.assistant.temperature",
   "llm.assistant.prompt.archive",
   "llm.auto_insight",
   "llm.auto_insight_on_open",
   "llm.auto_insight_batch_limit",
 ];
+
+/**
+ * 已退役的配置键 —— **不上界面**。
+ *
+ * 生成上限（max_tokens）已改为**不发这个字段**：思考正文与最终正文共用同一份额度，
+ * 上限给小了不是「输出短一点」，而是正文一个字都出不来（实测播报配 80 → 正文 0 字）。
+ * 留着这个输入框有害无益：调它不但没用，还会让人以为「调了就会短一点」。
+ * 详见 {@code DashScopeChatClient} 类注释。
+ */
+const LLM_RETIRED_KEYS = new Set([
+  "llm.max_tokens",
+  "llm.assistant.max_tokens",
+  "llm.tool.max_tokens",
+]);
 
 function llmConfigSortRank(key: string): number {
   const i = LLM_CONFIG_ORDER.indexOf(key);
@@ -72,10 +84,16 @@ export function SystemConfigsPanel({
   const defMap = useMemo(() => new Map(configDefs.map((d) => [d.configKey, d])), [configDefs]);
 
   const scopedConfigs = useMemo(() => {
-    if (!configKeys?.length) return configs;
-    const map = new Map(configs.map((c) => [c.configKey, c]));
-    return configKeys.map((k) => map.get(k)).filter((c): c is SystemConfigRecord => c != null);
-  }, [configs, configKeys]);
+    let base: SystemConfigRecord[];
+    if (!configKeys?.length) {
+      base = configs;
+    } else {
+      const map = new Map(configs.map((c) => [c.configKey, c]));
+      base = configKeys.map((k) => map.get(k)).filter((c): c is SystemConfigRecord => c != null);
+    }
+    // llm 模块：退役键不上界面（见 LLM_RETIRED_KEYS 的说明）
+    return moduleKey === "llm" ? base.filter((c) => !LLM_RETIRED_KEYS.has(c.configKey)) : base;
+  }, [configs, configKeys, moduleKey]);
 
   const sortedConfigs = useMemo(() => {
     if (moduleKey === "llm") return [...scopedConfigs].sort((a, b) => llmConfigSortRank(a.configKey) - llmConfigSortRank(b.configKey));

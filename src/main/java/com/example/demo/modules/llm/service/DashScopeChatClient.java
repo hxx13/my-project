@@ -30,6 +30,23 @@ import java.util.function.Consumer;
  * LLM 对话客户端（OpenAI 兼容协议）。
  * 注：类名保留 "DashScope" 仅为历史兼容，当前实现为纯 DeepSeek + OpenAI 兼容协议，
  * 与阿里云 DashScope 无关。
+ *
+ * <h2>为什么不发 {@code max_tokens}（2026-10-11 定）</h2>
+ * 这个字段管的是「这次生成总共能产出多少 token」，而**思考正文和最终正文是同一份额度**。
+ * 它是**我们自己**在请求里带的（不发时服务端用自己的默认值，实测正常收尾），原本是为了
+ * 让播报短一点。但在思考模型上它起的是反作用：额度被思考吃光后不是「输出短一点」，
+ * 而是**正文一个字都出不来**——表现为「模型没有返回正文」，看着像故障。
+ *
+ * <p>实测（同一份真实播报提示词）：上限 80 → 生成 80、其中思考 80、**正文 0 字**、
+ * 结束原因就是「打满上限」；**不发上限** → 生成 838（思考 775）、正文 88 字、正常收尾。
+ * 注意思考要 775，**比旧代码允许的最大值还高**——所以调大这条路走不通，只能不发。
+ *
+ * <p>长度该由提示词管（播报那条本来就写着 80～150 字）。配置里的几个上限键保留只为兼容，
+ * **已不再影响请求**。
+ *
+ * <p>这条坑不是第一次撞：2026-10-09 就有一条 3.3 万 token 的编排轮，生成数正好卡在 2048 的上限、
+ * 正文长度 0。当时的处置是**给工具路径单独开一个更大的额度**（8192）——那只把症状往后推了，
+ * 根源（思考与正文共用一份额度）没动。现在整个字段不发，才算修到根上。
  */
 @Component
 public class DashScopeChatClient {
@@ -86,11 +103,10 @@ public class DashScopeChatClient {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
-        body.put("max_tokens", llmConfigService.getMaxTokens());
         body.put("temperature", llmConfigService.getTemperature());
 
-        log.info("[llm] → REQ model={} max_tokens={} temp={} msgs={} preview={}",
-                model, llmConfigService.getMaxTokens(), llmConfigService.getTemperature(),
+        log.info("[llm] → REQ model={} temp={} msgs={} preview={}",
+                model, llmConfigService.getTemperature(),
                 messages.size(), summarizeMessages(messages));
 
         HttpHeaders headers = new HttpHeaders();
@@ -157,54 +173,172 @@ public class DashScopeChatClient {
             body.put("tools", tools);
             body.put("tool_choice", "auto");
         }
-        body.put("max_tokens", toolMaxTokens());
         body.put("temperature", llmConfigService.getTemperature());
+        // **走流式**（2026-10-11 定）。不是为了逐字显示，而是为了量出「思考了多久」——
+        // 整包返回没有「思考结束」这个时刻，流式才有。理由与代价见 streamToolCall 的注释。
+        body.put("stream", true);
 
-        log.info("[llm] → TOOLS REQ model={} tools={} msgs={}",
+        log.info("[llm] → TOOLS REQ(stream) model={} tools={} msgs={}",
                 model, tools == null ? 0 : tools.size(), messages.size());
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(llmConfigService.getApiKey());
-        headers.set("User-Agent", "TwinSystem/1.0");
-        headers.set("Accept", "application/json");
-
-        try {
-            ResponseEntity<String> resp = restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
-            return parseToolResponse(resp.getBody(), model);
-        } catch (HttpStatusCodeException e) {
-            throw new IllegalStateException(
-                    "大模型工具调用失败(" + model + "): " + e.getStatusCode() + " " + shorten(e.getResponseBodyAsString()));
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("大模型工具调用失败(" + model + "): " + e.getMessage());
-        }
+        return streamToolCall(url, body, model);
     }
 
     /**
-     * 工具调用路径的输出预算。
+     * 带工具的**流式**调用，顺带量出**思考时长**。
      *
-     * <p>{@code llm.max_tokens} 是为短播报类场景设的（默认 2048）。带思考的模型（如 deepseek-flash）
-     * 会用同一份预算做推理，**预算小时推理就把它整轮吃满、content 返回空串**，用户看到的是
-     * 「模型没有返回正文」——看着像故障，其实是预算不够（2026-10-09 真机撞到：一条 3.3 万 token
-     * 的编排轮，completion_tokens 正好 2048、正文长度 0）。
-     * 工具路径要「先想清楚再决定调哪个工具 + 把话说完整」，所以单独一项
-     * （{@code llm.tool.max_tokens}，默认 8192）；不动全局配置，免得影响播报那些场景。
+     * <h2>为什么非得流式</h2>
+     * 非流式只回一个整包，**没有「思考结束」这个时刻** —— 于是界面上那个「用时」只能拿墙钟冒充，
+     * 而墙钟里大半是工具在查数据，不是思考。流式增量天然把两段分开：先是 {@code reasoning_content}
+     * 一串，然后才轮到正文或工具调用。**第一个非思考增量到达的那一刻，就是思考结束的时刻**，
+     * 从请求发出到那一刻的时长就是真正的思考用时。
+     *
+     * <h2>改成流式不会丢数字（实测 2026-10-11）</h2>
+     * 最后一块里照样给**全套用量**：输入、输出、思考 token、缓存命中/未命中。所以刚接好的那些数
+     * 一个都不会少。实测同时确认分片形状：{@code role} → {@code reasoning_content}×N →
+     * {@code tool_calls}（按 {@code index} 分片，首片带 id 与函数名、后续片只带参数片段）。
      */
-    private int toolMaxTokens() {
-        return llmConfigService.getToolMaxTokens();
+    private ToolChatResult streamToolCall(String url, Map<String, Object> body, String model) {
+        long startedAt = System.currentTimeMillis();
+        /** 思考结束的时刻（相对请求发出）。**-1 = 这一轮没出现非思考增量**，别当成 0 秒。 */
+        long thinkingMs = -1;
+        StringBuilder content = new StringBuilder();
+        StringBuilder reasoning = new StringBuilder();
+        // index → [id, 函数名, 参数片段拼接]。参数是**分片**给的，必须按 index 拼回去。
+        Map<Integer, String[]> callParts = new LinkedHashMap<>();
+        int promptTokens = 0, completionTokens = 0, reasoningTokens = 0, cacheHit = 0, cacheMiss = 0;
+
+        HttpURLConnection conn = null;
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(30_000);
+            conn.setReadTimeout(300_000);
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setRequestProperty("Accept", "text/event-stream");
+            conn.setRequestProperty("User-Agent", "TwinSystem/1.0");
+            conn.setRequestProperty("Authorization", "Bearer " + llmConfigService.getApiKey());
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(json.getBytes(StandardCharsets.UTF_8));
+            }
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                String err = readAll(conn.getErrorStream());
+                throw new IllegalStateException("大模型工具调用失败(" + model + "): " + code + " " + shorten(err));
+            }
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data:")) {
+                        continue; // 夹在流里的 `: keep-alive` 注释行走这里，无害
+                    }
+                    String data = line.substring(5).trim();
+                    if ("[DONE]".equals(data)) {
+                        break;
+                    }
+                    if (data.isEmpty()) {
+                        continue;
+                    }
+                    JsonNode root = objectMapper.readTree(data);
+                    JsonNode err = root.path("error");
+                    if (!err.isMissingNode() && err.has("message")) {
+                        throw new IllegalStateException(err.path("message").asText("未知错误"));
+                    }
+                    JsonNode u = root.path("usage");
+                    if (!u.isMissingNode()) {
+                        promptTokens = u.path("prompt_tokens").asInt(0);
+                        completionTokens = u.path("completion_tokens").asInt(0);
+                        reasoningTokens = u.path("completion_tokens_details").path("reasoning_tokens").asInt(0);
+                        cacheHit = u.path("prompt_cache_hit_tokens").asInt(0);
+                        cacheMiss = u.path("prompt_cache_miss_tokens").asInt(0);
+                    }
+                    JsonNode delta = root.path("choices").path(0).path("delta");
+                    String r = delta.path("reasoning_content").asText("");
+                    String c = delta.path("content").asText("");
+                    JsonNode tcs = delta.path("tool_calls");
+                    boolean nonThinking = StringUtils.hasText(c) || (tcs.isArray() && !tcs.isEmpty());
+                    // **思考结束的第一时间**：这一段之前是思考，之后是正文/工具调用
+                    if (thinkingMs < 0 && nonThinking) {
+                        thinkingMs = System.currentTimeMillis() - startedAt;
+                    }
+                    if (StringUtils.hasText(r)) {
+                        reasoning.append(r);
+                    }
+                    if (StringUtils.hasText(c)) {
+                        content.append(c);
+                    }
+                    if (tcs.isArray()) {
+                        for (JsonNode tc : tcs) {
+                            int idx = tc.path("index").asInt(0);
+                            String[] parts = callParts.computeIfAbsent(idx, k -> new String[]{"", "", ""});
+                            if (tc.hasNonNull("id")) {
+                                parts[0] = tc.path("id").asText("");
+                            }
+                            String fn = tc.path("function").path("name").asText("");
+                            if (StringUtils.hasText(fn)) {
+                                parts[1] = fn;
+                            }
+                            parts[2] = parts[2] + tc.path("function").path("arguments").asText("");
+                        }
+                    }
+                }
+            }
+            List<ToolCall> calls = new ArrayList<>();
+            for (String[] p : callParts.values()) {
+                if (StringUtils.hasText(p[1])) {
+                    calls.add(new ToolCall(p[0], p[1], StringUtils.hasText(p[2]) ? p[2] : "{}"));
+                }
+            }
+            log.info("[llm] ← TOOLS RESP(stream) model={} tokens(in={} out={} reason={} cache={}/{}) toolCalls={} thinkMs={} content={}",
+                    model, promptTokens, completionTokens, reasoningTokens, cacheHit, cacheMiss,
+                    calls.size(), thinkingMs, truncate(content.toString(), 120));
+            return new ToolChatResult(content.toString(), calls, promptTokens, completionTokens, model,
+                    reasoning.toString(), reasoningTokens, cacheHit, cacheMiss, thinkingMs);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            if (SseClientDisconnectedException.isClientDisconnect(e)) {
+                if (e instanceof RuntimeException runtimeEx) {
+                    throw runtimeEx;
+                }
+                throw new SseClientDisconnectedException(e.getMessage(), e);
+            }
+            throw new IllegalStateException("大模型工具调用失败(" + model + "): " + e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
     }
 
     private ToolChatResult parseToolResponse(String raw, String model) {
+        return parseToolResponse(raw, model, objectMapper);
+    }
+
+    /**
+     * 纯解析：从上游响应原文里抽出**正文 / 思考正文 / 思考token / 工具调用 / 用量**。
+     *
+     * <p><b>静态无状态</b>（objectMapper 由调用方传入）只为让它可单测——不必为测一段解析去构造
+     * 整个客户端（它还要 RestTemplate 与配置服务）。
+     *
+     * <p><b>思考那两项一直存在、此前一直没读</b>（2026-10-11 真实调用实测）：带工具那一轮
+     * {@code content} 是空串而 {@code reasoning_content} 有内容——用户干等的那几秒里，
+     * 模型其实「说」了话，只是被丢弃了。详见设计文档 §10。
+     */
+    static ToolChatResult parseToolResponse(String raw, String model, ObjectMapper mapper) {
         try {
-            JsonNode root = objectMapper.readTree(raw == null ? "{}" : raw);
+            JsonNode root = mapper.readTree(raw == null ? "{}" : raw);
             JsonNode err = root.path("error");
             if (!err.isMissingNode() && err.has("message")) {
                 throw new IllegalStateException(err.path("message").asText("未知错误"));
             }
             JsonNode message = root.path("choices").path(0).path("message");
             String content = message.path("content").asText("");
+            // 思考正文：模型在决定「调哪个工具」之前会先想一段，实测那一段有 129 字。
+            String reasoning = message.path("reasoning_content").asText("");
             List<ToolCall> calls = new ArrayList<>();
             for (JsonNode tc : message.path("tool_calls")) {
                 calls.add(new ToolCall(
@@ -214,9 +348,21 @@ public class DashScopeChatClient {
             }
             int prompt = root.path("usage").path("prompt_tokens").asInt(0);
             int completion = root.path("usage").path("completion_tokens").asInt(0);
-            log.info("[llm] ← TOOLS RESP model={} tokens(in={} out={}) toolCalls={} content={}",
-                    model, prompt, completion, calls.size(), truncate(content, 120));
-            return new ToolChatResult(content, calls, prompt, completion, model);
+            // 思考 token 是**精确值**，不是估的——用来显示「思考了多少」，比拿墙钟冒充可靠。
+            int reasoningTokens = root.path("usage").path("completion_tokens_details")
+                    .path("reasoning_tokens").asInt(0);
+            // 缓存命中/未命中：上游**分开给**。落进结果里是为了**入库后实测命中率**——
+            // 设计文档 §1.1 那套「缓存命中比未命中便宜约 50 倍 → 拼装顺序必须共享在前」的论证，
+            // 到今天一直缺一个真实数字。**同会话内第二轮起命中应显著大于 0；恒为 0 就是拼装顺序出了问题。**
+            int cacheHit = root.path("usage").path("prompt_cache_hit_tokens").asInt(0);
+            int cacheMiss = root.path("usage").path("prompt_cache_miss_tokens").asInt(0);
+            log.info("[llm] ← TOOLS RESP model={} tokens(in={} out={} reason={} cache={}/{}) toolCalls={} content={}",
+                    model, prompt, completion, reasoningTokens, cacheHit, cacheMiss,
+                    calls.size(), truncate(content, 120));
+            // 这条是**非流式**的解析，只有整包、没有「思考结束」那一刻 —— 思考用时给 -1（= 没测到），
+            // 不是 0。真正量思考时长的是 streamToolCall。
+            return new ToolChatResult(content, calls, prompt, completion, model, reasoning, reasoningTokens,
+                    cacheHit, cacheMiss, -1L);
         } catch (IllegalStateException e) {
             throw e;
         } catch (Exception e) {
@@ -233,16 +379,18 @@ public class DashScopeChatClient {
      * 流式对话（OpenAI SSE 兼容）；onDelta 收到增量文本，完成后 onComplete 携带模型名。
      */
     public void streamChatWithFallback(List<Map<String, String>> messages, StreamConsumer consumer) {
-        streamChatWithFallback(messages, consumer, llmConfigService.getMaxTokens(), llmConfigService.getTemperature());
+        streamChatWithFallback(messages, consumer, llmConfigService.getTemperature());
     }
 
     /**
-     * 流式对话（OpenAI SSE 兼容）；可指定 maxTokens / temperature（扫码助手等场景）。
+     * 流式对话（OpenAI SSE 兼容）；可指定温度（扫码助手那类场景用助手自己的温度）。
+     *
+     * <p>**没有 maxTokens 参数**（2026-10-11 去掉）：生成上限已改为不发，见类注释。
+     * 留着这个参数比去掉更糟 —— 它会让调用方以为「播报长度是这里控制的」。
      */
     public void streamChatWithFallback(
             List<Map<String, String>> messages,
             StreamConsumer consumer,
-            int maxTokens,
             double temperature) {
         llmConfigService.assertReady();
         List<String> models = llmConfigService.getModelCandidates();
@@ -251,7 +399,7 @@ public class DashScopeChatClient {
         IllegalStateException lastError = null;
         for (String model : models) {
             try {
-                streamChatWithModel(model, messages, consumer, maxTokens, temperature);
+                streamChatWithModel(model, messages, consumer, temperature);
                 return;
             } catch (IllegalStateException e) {
                 lastError = e;
@@ -269,24 +417,21 @@ public class DashScopeChatClient {
     }
 
     private void streamChatWithModel(String model, List<Map<String, String>> messages, StreamConsumer consumer) {
-        streamChatWithModel(
-                model, messages, consumer, llmConfigService.getMaxTokens(), llmConfigService.getTemperature());
+        streamChatWithModel(model, messages, consumer, llmConfigService.getTemperature());
     }
 
     private void streamChatWithModel(
             String model,
             List<Map<String, String>> messages,
             StreamConsumer consumer,
-            int maxTokens,
             double temperature) {
         String url = llmConfigService.getBaseUrl() + "/chat/completions";
-        log.info("[llm] → SSE model={} max_tokens={} temp={} msgs={} preview={}",
-                model, maxTokens, temperature, messages.size(), summarizeMessages(messages));
+        log.info("[llm] → SSE model={} temp={} msgs={} preview={}",
+                model, temperature, messages.size(), summarizeMessages(messages));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
         body.put("stream", true);
-        body.put("max_tokens", maxTokens);
         body.put("temperature", temperature);
 
         HttpURLConnection conn = null;
@@ -473,5 +618,28 @@ public class DashScopeChatClient {
 
     /** 工具调用轮的响应：可能只有文本，也可能只有 toolCalls，也可能两者都有。 */
     public record ToolChatResult(String content, List<ToolCall> toolCalls,
-                                 int promptTokens, int completionTokens, String model) {}
+                                 int promptTokens, int completionTokens, String model,
+                                 /** 思考正文，无则空串。此前一直被丢弃（见设计文档 §10）。 */
+                                 String reasoningContent,
+                                 /** 思考消耗的 token，无则 0。上游精确给出，不是估的。 */
+                                 int reasoningTokens,
+                                 /** 输入里**命中缓存**的 token 数。用于实测拼装顺序的收益（设计 §1.1）。 */
+                                 int promptCacheHitTokens,
+                                 /** 输入里**未命中缓存**的 token 数。与上者成对，两者一起才算得出命中率。 */
+                                 int promptCacheMissTokens,
+                                 /**
+                                  * **真正的思考用时**：从请求发出到「第一个非思考增量」到达的毫秒数。
+                                  *
+                                  * <p>这是走流式的唯一目的（见 streamToolCall）。**-1 = 这一轮没出现非思考增量**
+                                  * —— 别当成 0 秒显示。
+                                  */
+                                 long thinkingMs) {
+
+        /** 便捷构造：缓存两项与思考时长缺省为 0。测试用，读法与旧签名一致。 */
+        public ToolChatResult(String content, List<ToolCall> toolCalls, int promptTokens, int completionTokens,
+                              String model, String reasoningContent, int reasoningTokens) {
+            this(content, toolCalls, promptTokens, completionTokens, model, reasoningContent,
+                    reasoningTokens, 0, 0, 0);
+        }
+    }
 }

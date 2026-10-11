@@ -54,6 +54,17 @@ export interface AiAuditRow {
   ok?: number | boolean;
   errorMessage?: string;
   confirmedBy?: string;
+  /**
+   * 这一轮的用量。缓存那两列是**实测**「共享内容拼在前、个性化追加在后」这套顺序收益的唯一依据
+   * （设计 §1.1）：命中率 = 命中 /（命中 + 未命中）。
+   *
+   * <p>只在后台审计里露 —— 对话界面上放「缓存命中 1024」对普通用户没有意义。
+   */
+  promptTokens?: number;
+  completionTokens?: number;
+  reasoningTokens?: number;
+  promptCacheHitTokens?: number;
+  promptCacheMissTokens?: number;
 }
 
 export interface AiPromptPreview {

@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.SideEffect;
@@ -743,6 +744,7 @@ public class UnfreezeToolPack implements AiToolPack {
             questions.add(question(timeTitle, TIME_CHOICES));
         }
         out.put("questions", questions);
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         return out;
     }
 

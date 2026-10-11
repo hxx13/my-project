@@ -55,11 +55,10 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
       const parsed = Number(raw);
       return raw === "" || Number.isNaN(parsed) ? fallback : parsed;
     };
+    // 只拿温度比。生成上限已不再发送（见 llmProfiles 注释），还拿它比会导致档位永远点不亮。
     const match = LLM_PARAMS_PRESETS.find(
       (p) =>
-        p.maxTokens === num("llm.max_tokens", 2048) &&
         p.temperature === num("llm.temperature", 0.3) &&
-        p.assistantMaxTokens === num("llm.assistant.max_tokens", 120) &&
         p.assistantTemperature === num("llm.assistant.temperature", 0.7),
     );
     return match?.id ?? null;
@@ -136,10 +135,9 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
     try {
       // 只写数值参数。模型名/Base URL 不在这里改 —— 供应商改名或换代理后，
       // 点一下档位就把模型名顶回旧值是个陷阱。
+      // 生成上限**不写**：那个字段已不再发送（见 llmProfiles 注释），写它只会留下一个假旋钮。
       const keysToSave: Array<{ key: string; value: string }> = [
-        { key: "llm.max_tokens", value: String(preset.maxTokens) },
         { key: "llm.temperature", value: String(preset.temperature) },
-        { key: "llm.assistant.max_tokens", value: String(preset.assistantMaxTokens) },
         { key: "llm.assistant.temperature", value: String(preset.assistantTemperature) },
       ];
 
@@ -268,7 +266,7 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
             输出参数档位
           </span>
           <span className="text-xs text-[var(--app-color-text-tertiary)]">
-            点卡片一键改 token 与温度，不动模型名
+            点卡片一键改温度，不动模型名
           </span>
         </div>
 
@@ -316,15 +314,8 @@ export function LlmSettingsPanel({ configs, configDefs, onConfigsChange }: LlmSe
                 </p>
 
                 <div className="mt-auto flex flex-wrap gap-x-3 gap-y-1 pt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
-                  <span>
-                    max_tokens: {preset.maxTokens}
-                  </span>
-                  <span>
-                    temperature: {preset.temperature}
-                  </span>
-                  <span>
-                    assistant: {preset.assistantMaxTokens}/{preset.assistantTemperature}
-                  </span>
+                  <span>temperature: {preset.temperature}</span>
+                  <span>播报 temperature: {preset.assistantTemperature}</span>
                 </div>
               </button>
             );

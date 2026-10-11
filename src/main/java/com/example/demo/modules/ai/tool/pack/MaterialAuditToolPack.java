@@ -751,6 +751,7 @@ public class MaterialAuditToolPack implements AiToolPack {
         out.put("reason", "这个页签还没定要导" + what + "。**先问用户**（选项已做成可点选项，别在正文里列）；"
                 + "他若说不用筛，就把「全部」那一项的 value 传回来");
         out.put("choices", options);
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         out.put("choicesTitle", "导" + what + "？");
         out.put("note", "用户点完后，把他点的那项 value 原样放进 filterChoice 再调一次本工具");
         return out;
@@ -857,10 +858,7 @@ public class MaterialAuditToolPack implements AiToolPack {
 
                     // ② 先问一次（一次问完）：多少行 + 可按哪些层级小计 + 用不用上次的配置
                     if ("ask".equals(mode)) {
-                        out.putAll(AiChoices.single("这批明细 " + summary.totals().detailRows() + " 行，"
-                                        + summary.totals().blocks() + " 个板块，可按「"
-                                        + String.join(" / ", (List<String>) sum.get("subtotalLevels")) + "」小计 —— "
-                                        + "用上次的小计配置直接导出，还是自己配一下？",
+                        out.putAll(AiChoices.requiredSingle("小计怎么配？",
                                 List.of(AiChoices.option("用上次的小计配置直接导出", "last"),
                                         AiChoices.option("我要自己配一下小计", "custom"))));
                         out.put("note", "**把上面这枚问题交给用户点**（面板渲染成两个可点选项）；"
@@ -877,7 +875,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                         levels.put("lv1", "课题组小计");
                         levels.put("lv2", "申领人小计");
                         levels.put("lv3", "物品小计");
-                        out.putAll(AiChoices.multi("按哪些层级小计？（可多选，勾完点确认）",
+                        out.putAll(AiChoices.requiredMulti("按哪些层级小计？",
                                 AiChoices.optionsOf(levels)));
                         out.put("note", "用户在选项里勾完会回一句他勾中的层级；然后**用 mode=last 之外的方式**："
                                 + "再调一次本工具并把 levels 传成他勾的那些（如 [\"total\",\"lv1\"]），"

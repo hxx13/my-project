@@ -1,21 +1,32 @@
 package com.example.demo.modules.telemetry.service;
 
-import com.example.demo.common.excel.ExcelExportColumnAutosizer;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermExportRequest;
+import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermVariableDto;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleRow;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleMapper;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.WorkbookUtil;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
+import org.apache.poi.xssf.usermodel.XSSFFont;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -26,8 +37,8 @@ import java.util.Set;
 /**
  * 变量长期归档导出。
  *
- * <p>表格（{@code layout}）：**LONG** 一行一条「时间 + 变量 + 值」；**WIDE** 一行一个时间点、变量一列
- * （列序 = 配置顺序）。
+ * <p>表格（{@code layout}）：**LONG** 一行一条「时间 + 变量 + 值」；**WIDE** 一行一个房间、一列一个时刻
+ * —— **与页面上那张矩阵同一个形状**（行 = 房间、列 = 时刻），用户在页面上核对完再来导，两边长得一样才对得上。
  *
  * <p>多天（{@code days} 多选）：**长表连成一张表、加一列「日期」**（时间拆成日期 + 时刻），
  * 各天的行按时间顺序**从上往下接排**，不是一天一张表；宽表因为列轴是时刻，只能按天分段上下堆叠。
@@ -45,9 +56,34 @@ public class TelemetryLongtermExportService {
     private static final int EXPORT_ROW_LIMIT = 200_000;
 
     private final TelemetryLongtermSampleMapper sampleMapper;
+    private final TelemetryLongtermArchiveService archiveService;
 
-    public TelemetryLongtermExportService(TelemetryLongtermSampleMapper sampleMapper) {
+    public TelemetryLongtermExportService(TelemetryLongtermSampleMapper sampleMapper,
+                                          TelemetryLongtermArchiveService archiveService) {
         this.sampleMapper = sampleMapper;
+        this.archiveService = archiveService;
+    }
+
+    /**
+     * 变量 → 单位。页面第一列是「房间(单位)」，导出要照同一个样子写，就得把单位取回来 ——
+     * 采样行上没这个字段（单位属于变量配置，不在样本里）。
+     */
+    private Map<String, String> unitByVar() {
+        Map<String, String> m = new LinkedHashMap<>();
+        List<TelemetryLongtermVariableDto> vars = archiveService.listVariables();
+        if (vars == null) {
+            return m;
+        }
+        for (TelemetryLongtermVariableDto v : vars) {
+            if (v == null) {
+                continue;
+            }
+            String n = trim(v.getWinccVariableName());
+            if (n != null) {
+                m.put(n, trim(v.getUnit()));
+            }
+        }
+        return m;
     }
 
     public byte[] exportXlsx(TelemetryLongtermExportRequest req) {
@@ -87,12 +123,11 @@ public class TelemetryLongtermExportService {
             boolean wide = req != null && "WIDE".equalsIgnoreCase(req.getLayout());
             boolean multiDay = distinctDayCount(rows) > 1;
             if (wide) {
-                writeWide(sh, rows, requested, multiDay);
+                writeWide(sh, rows, requested, unitByVar(), multiDay);
             } else {
                 writeLong(sh, rows, multiDay);
             }
-            Row head = sh.getRow(0);
-            ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, head.getLastCellNum() - 1);
+            setColumnWidths(sh);
             wb.write(out);
             return out.toByteArray();
         } catch (IllegalArgumentException e) {
@@ -140,18 +175,19 @@ public class TelemetryLongtermExportService {
         }
     }
 
-    /** 宽表：单天一张表；多天**按天分段上下堆叠**（列轴是时刻，跨天没法共用一个表头）。 */
-    private void writeWide(Sheet sh, List<TelemetryLongtermSampleRow> rows, List<String> requested, boolean multiDay) {
-        // 列序 = 配置顺序；请求里没点名但数据里出现的变量，按首次出现追加在后
-        List<String> cols = new ArrayList<>(requested);
-        Set<String> colSet = new LinkedHashSet<>(requested);
-        for (TelemetryLongtermSampleRow row : rows) {
-            String n = trim(row.getVariableName());
-            if (n != null && colSet.add(n)) {
-                cols.add(n);
-            }
-        }
-
+    /**
+     * 宽表：**行 = 房间、列 = 时刻**，列头直接写那个时刻 —— 与页面上那张矩阵同一个形状。
+     *
+     * <p>之所以反过来（早先是「一行一个时刻、变量一列」）：用户在页面上核对完再来导，
+     * 两边长得一样才对得上，否则每导一次都得自己在脑子里转置一遍。
+     *
+     * <p>行只含**当天有数据的**房间，配置里有的按配置顺序排前面、其余按首次出现追加在后 ——
+     * 与页面列表同一条口径。
+     *
+     * <p>多天时按天分段上下堆叠（列轴是时刻，跨天没法共用一个表头），段间空一行。
+     */
+    private void writeWide(Sheet sh, List<TelemetryLongtermSampleRow> rows, List<String> requested,
+                           Map<String, String> unitByVar, boolean multiDay) {
         // 按天分组（数据已按 sample_at 升序）：LinkedHashMap 保序，同一天的分到一组
         LinkedHashMap<String, List<TelemetryLongtermSampleRow>> byDay = new LinkedHashMap<>();
         for (TelemetryLongtermSampleRow row : rows) {
@@ -159,44 +195,219 @@ public class TelemetryLongtermExportService {
             byDay.computeIfAbsent(day, k -> new ArrayList<>()).add(row);
         }
 
+        // 极值底色（最大/最小），与页面上的高亮同一个色；两个样式整张表复用，别一格建一个
+        CellStyle[] ext = extremeStyles(sh.getWorkbook());
+        CellStyle stMax = ext[0];
+        CellStyle stMin = ext[1];
+
         int r = 0;
         boolean first = true;
         for (Map.Entry<String, List<TelemetryLongtermSampleRow>> e : byDay.entrySet()) {
+            if (!first) {
+                r++; // 段间空一行
+            }
             if (multiDay) {
-                if (!first) {
-                    r++; // 段间空一行
-                }
                 Row title = sh.createRow(r++);
                 title.createCell(0).setCellValue("日期");
                 title.createCell(1).setCellValue(e.getKey());
             }
-            Row head = sh.createRow(r++);
-            head.createCell(0).setCellValue("时间");
-            for (int i = 0; i < cols.size(); i++) {
-                head.createCell(i + 1).setCellValue(cols.get(i));
-            }
-            LinkedHashMap<String, Map<String, String>> byTime = new LinkedHashMap<>();
+
+            // 走一遍这天的数据，同时收齐三样：有哪些房间、时刻的先后、每个格子里的值
+            Set<String> inDay = new LinkedHashSet<>();
+            LinkedHashMap<String, String> labelOf = new LinkedHashMap<>();
+            List<String> slots = new ArrayList<>();
+            Map<String, Map<String, String>> bySlot = new LinkedHashMap<>();
             for (TelemetryLongtermSampleRow row : e.getValue()) {
                 String n = trim(row.getVariableName());
                 if (n == null) {
                     continue;
                 }
-                byTime.computeIfAbsent(formatTime(row.getSampleAt()), k -> new LinkedHashMap<>())
-                        .put(n, safe(row.getRawValue()));
+                inDay.add(n);
+                if (!labelOf.containsKey(n)) {
+                    labelOf.put(n, roomLabel(row, unitByVar.get(n)));
+                }
+                // 列头只写时刻 —— 一段就是一天，带上日期既啰嗦又把列撑宽（页面上的列头也是这个粒度）
+                String t = row.getSampleAt() == null ? "" : row.getSampleAt().format(TIME_ONLY);
+                Map<String, String> bucket = bySlot.get(t);
+                if (bucket == null) {
+                    bucket = new LinkedHashMap<>();
+                    bySlot.put(t, bucket);
+                    slots.add(t);
+                }
+                bucket.put(n, safe(row.getRawValue()));
             }
-            for (Map.Entry<String, Map<String, String>> t : byTime.entrySet()) {
+
+            Row head = sh.createRow(r++);
+            head.createCell(0).setCellValue("房间");
+            for (int i = 0; i < slots.size(); i++) {
+                head.createCell(i + 1).setCellValue(slots.get(i));
+            }
+
+            List<String> order = new ArrayList<>();
+            for (String v : requested) {
+                if (inDay.contains(v)) {
+                    order.add(v);
+                }
+            }
+            for (String v : inDay) {
+                if (!order.contains(v)) {
+                    order.add(v);
+                }
+            }
+            for (String v : order) {
                 Row out = sh.createRow(r++);
-                out.createCell(0).setCellValue(t.getKey());
-                for (int i = 0; i < cols.size(); i++) {
-                    String v = t.getValue().get(cols.get(i));
-                    out.createCell(i + 1).setCellValue(v == null ? "" : v);
+                out.createCell(0).setCellValue(labelOf.getOrDefault(v, v));
+                // 这一行有哪些数值，先解析出来才好定极值 —— 与页面同一条口径：
+                // **要有两个以上不同的数值才标**（只采到一个值时标「最大」等于没标），
+                // 且有多个格子同值时它们都标（页面上也是这么标的）。
+                int slotN = slots.size();
+                Double[] nums = new Double[slotN];
+                List<Double> valid = new ArrayList<>();
+                for (int i = 0; i < slotN; i++) {
+                    nums[i] = displayNumber(bySlot.get(slots.get(i)).get(v));
+                    if (nums[i] != null) {
+                        valid.add(nums[i]);
+                    }
+                }
+                boolean distinct = new HashSet<>(valid).size() > 1;
+                double min = distinct ? Collections.min(valid) : 0;
+                double max = distinct ? Collections.max(valid) : 0;
+                for (int i = 0; i < slotN; i++) {
+                    CellStyle st = null;
+                    if (distinct && nums[i] != null) {
+                        if (nums[i] == max) {
+                            st = stMax;
+                        } else if (nums[i] == min) {
+                            st = stMin;
+                        }
+                    }
+                    writeValue(out, i + 1, bySlot.get(slots.get(i)).get(v), st);
                 }
             }
             first = false;
         }
         if (r == 0) {
-            sh.createRow(0).createCell(0).setCellValue("时间");
+            sh.createRow(0).createCell(0).setCellValue("房间");
         }
+    }
+
+    /** 第一列写什么：与页面同一个口径 —— 房间名，变量配了单位就带上「(单位)」 */
+    private static String roomLabel(TelemetryLongtermSampleRow row, String unit) {
+        String room = trim(row.getRoomCanonical());
+        if (room == null) {
+            room = trim(row.getVariableName());
+        }
+        if (room == null) {
+            room = "";
+        }
+        return unit == null ? room : room + "(" + unit + ")";
+    }
+
+    /**
+     * 写一个数值格：能当数字读的**取一位小数写进去**（页面上显示的就是一位），
+     * 「OFF」这类非数值原样留成文本，空值留空格。
+     *
+     * <p>写成数字而不是文本，是为了让它还能排序、还能直接拉图 —— 存成文本的数字在 Excel 里是废的。
+     */
+    private static void writeValue(Row row, int col, String raw, CellStyle style) {
+        Cell cell = row.createCell(col);
+        if (style != null) {
+            cell.setCellStyle(style);
+        }
+        String v = raw == null ? "" : raw.trim();
+        if (v.isEmpty()) {
+            cell.setCellValue("");
+            return;
+        }
+        try {
+            cell.setCellValue(new BigDecimal(v).setScale(1, RoundingMode.HALF_UP).doubleValue());
+        } catch (NumberFormatException e) {
+            cell.setCellValue(v);
+        }
+    }
+
+    /** 极值底色：与页面上一个色 —— 最大淡黄、最小淡蓝，字换成对应深色 */
+    private static CellStyle[] extremeStyles(Workbook wb) {
+        return new CellStyle[]{
+                solidFill(wb, new byte[]{(byte) 0xFE, (byte) 0xF3, (byte) 0xC7},
+                        new byte[]{(byte) 0xB4, (byte) 0x53, (byte) 0x09}),
+                solidFill(wb, new byte[]{(byte) 0xDB, (byte) 0xEA, (byte) 0xFE},
+                        new byte[]{(byte) 0x1D, (byte) 0x4E, (byte) 0xD8}),
+        };
+    }
+
+    private static CellStyle solidFill(Workbook wb, byte[] bg, byte[] fg) {
+        XSSFCellStyle st = (XSSFCellStyle) wb.createCellStyle();
+        st.setFillForegroundColor(new XSSFColor(bg, null));
+        st.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        XSSFFont f = (XSSFFont) wb.createFont();
+        f.setColor(new XSSFColor(fg, null));
+        st.setFont(f);
+        return st;
+    }
+
+    /**
+     * 能当数字读的给出**写进格子的那个数**（已取一位小数），读不出来（OFF 之类）给 null。
+     *
+     * <p>取整要跟写格子那步一致：极值是按这个数比的 —— 文件里两格都写着 64.9，
+     * 却只标了其中一个，看着就是标错了（原始值一个 64.94 一个 64.85，肉眼分不出来）。
+     */
+    private static Double displayNumber(String raw) {
+        String v = raw == null ? "" : raw.trim();
+        if (v.isEmpty()) {
+            return null;
+        }
+        try {
+            return new BigDecimal(v).setScale(1, RoundingMode.HALF_UP).doubleValue();
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 列宽。
+     *
+     * <p>没用公共的 ExcelExportColumnAutosizer：那个工具按「每个字符都算中文宽」估，
+     * 而这张表以时刻和数字为主，量出来的宽度差不多是需要的两倍 —— 第一列的房间名宽出一大截、
+     * 8 个字符的时刻列也被撑到 20。这里按实际字符算：中文（含全角）算 2、其余算 1。
+     */
+    private static void setColumnWidths(Sheet sh) {
+        DataFormatter fmt = new DataFormatter();
+        int lastRow = Math.min(sh.getLastRowNum(), 200); // 只为列宽，不必扫全表
+        int lastCol = 0;
+        for (Row row : sh) {
+            if (row != null) {
+                lastCol = Math.max(lastCol, row.getLastCellNum());
+            }
+        }
+        for (int c = 0; c < lastCol; c++) {
+            int need = 0;
+            for (int r = 0; r <= lastRow; r++) {
+                Row row = sh.getRow(r);
+                if (row == null) {
+                    continue;
+                }
+                Cell cell = row.getCell(c);
+                if (cell != null) {
+                    need = Math.max(need, displayWidth(fmt.formatCellValue(cell)));
+                }
+            }
+            // POI 的宽度单位是 1/256 个字符宽；留 3 字余量、封顶 40 字（再长就让它自己截断）
+            int units = (Math.min(need, 40) + 3) * 256;
+            sh.setColumnWidth(c, Math.max(units, 2200));
+        }
+    }
+
+    /** 显示宽度：中文（含全角）算 2，其余算 1 */
+    private static int displayWidth(String s) {
+        if (s == null) {
+            return 0;
+        }
+        int w = 0;
+        for (int i = 0; i < s.length(); i++) {
+            w += s.charAt(i) > 0x2E80 ? 2 : 1;
+        }
+        return w;
     }
 
     /** 数据里跨了几个自然日（决定长表要不要加日期列）。 */

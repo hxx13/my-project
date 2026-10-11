@@ -1,0 +1,282 @@
+/* 反馈半屏 —— 观感跟随抽屉与 export-config-sheet 的既有令牌：实底、浅圆角（12rpx，**不做胶囊**）、
+   无渐变、无半透明底。网格类布局**不用 flex 的 calc() / gap**（小程序渲染层不稳），走 width + space-between。 */
+.fd-panel {
+  padding-bottom: calc(20rpx + env(safe-area-inset-bottom));
+}
+.fd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 32rpx 12rpx;
+}
+.fd-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.fd-close {
+  font-size: 26rpx;
+  color: #94a3b8;
+}
+
+/* 我的 / 全部 切换（仅超管） */
+.fd-tabs {
+  display: flex;
+  padding: 0 32rpx 8rpx;
+  gap: 16rpx;
+}
+.fd-tab {
+  padding: 8rpx 28rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #64748b;
+}
+.fd-tab--on {
+  border-color: #2563eb;
+  color: #2563eb;
+  font-weight: 600;
+}
+
+/* 内容区：唯一滚动容器 */
+.fd-scroll {
+  max-height: 62vh;
+}
+
+/* ── 表单 ── */
+.fd-form {
+  padding: 8rpx 32rpx 4rpx;
+}
+.fd-sec-title {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.fd-area {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 120rpx;
+  margin-top: 12rpx;
+  padding: 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.fd-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 16rpx;
+}
+.fd-img {
+  position: relative;
+  box-sizing: border-box;
+  width: 31.6%;
+  height: 180rpx;
+  margin-bottom: 12rpx;
+  border-radius: 12rpx;
+  overflow: hidden;
+  background: #f8fafc;
+}
+.fd-img-thumb {
+  width: 100%;
+  height: 100%;
+}
+.fd-img-add {
+  border: 1rpx solid #e5e7eb;
+  color: #94a3b8;
+  font-size: 56rpx;
+  line-height: 180rpx;
+  text-align: center;
+}
+.fd-img-del {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 36rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: #fff;
+  background: #1f2937;
+}
+.fd-hint {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+
+/* ── 列表 ── */
+.fd-list-title {
+  padding: 16rpx 32rpx 8rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+.fd-loading {
+  padding: 20rpx 32rpx;
+  font-size: 24rpx;
+  color: #94a3b8;
+  text-align: center;
+}
+.fd-empty {
+  padding: 48rpx 32rpx;
+  font-size: 26rpx;
+  color: #94a3b8;
+  text-align: center;
+}
+.fd-end {
+  padding: 16rpx 32rpx 24rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+  text-align: center;
+}
+.fd-item {
+  margin: 0 32rpx 16rpx;
+  padding: 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+}
+.fd-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.fd-item-user {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #1f2937;
+}
+.fd-item-status {
+  padding: 4rpx 16rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+}
+.fd-item-status--pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+.fd-item-status--done {
+  background: #dcfce7;
+  color: #15803d;
+}
+.fd-item-content {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.fd-item-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 12rpx;
+}
+.fd-item-img {
+  box-sizing: border-box;
+  width: 31.6%;
+  height: 150rpx;
+  margin-bottom: 8rpx;
+  border-radius: 10rpx;
+  background: #f8fafc;
+}
+.fd-item-time {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #94a3b8;
+}
+.fd-reply {
+  margin-top: 12rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background: #f8fafc;
+}
+.fd-reply-label {
+  display: block;
+  font-size: 22rpx;
+  color: #2563eb;
+}
+/* 回复串：每条之间用上边框分隔（实底、浅圆角、无渐变/半透明） */
+.fd-reply-item {
+  margin-top: 12rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #e5e7eb;
+}
+.fd-reply-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.fd-reply-by {
+  font-size: 22rpx;
+  color: #2563eb;
+}
+.fd-reply-at {
+  font-size: 20rpx;
+  color: #94a3b8;
+}
+.fd-reply-text {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #1f2937;
+  word-break: break-all;
+}
+
+/* ── 超管回复区 ── */
+.fd-admin {
+  margin-top: 12rpx;
+}
+.fd-reply-input {
+  padding: 12rpx 16rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  color: #1f2937;
+}
+.fd-admin-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12rpx;
+  gap: 16rpx;
+}
+.fd-mini {
+  padding: 8rpx 24rpx;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #1f2937;
+}
+.fd-mini--on {
+  border-color: #2563eb;
+  color: #2563eb;
+}
+.fd-mini--primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+/* ── 吸底提交 ── */
+.fd-foot {
+  padding: 16rpx 32rpx 8rpx;
+}
+.fd-submit {
+  padding: 18rpx 0;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  text-align: center;
+  background: #2563eb;
+  color: #fff;
+}
+.fd-submit--off {
+  background: #e5e7eb;
+  color: #9aa0a6;
+}

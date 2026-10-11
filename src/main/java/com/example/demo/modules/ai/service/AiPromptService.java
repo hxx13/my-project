@@ -88,9 +88,15 @@ public class AiPromptService {
             - 不要输出 JSON、代码块，也不要复述工具调用的原始格式。""";
 
     private final NotificationSettingsService notificationSettingsService;
+    private final AiLearnInjectionService learnInjectionService;
+    private final AiPreferenceInjectionService preferenceInjectionService;
 
-    public AiPromptService(NotificationSettingsService notificationSettingsService) {
+    public AiPromptService(NotificationSettingsService notificationSettingsService,
+                           AiLearnInjectionService learnInjectionService,
+                           AiPreferenceInjectionService preferenceInjectionService) {
         this.notificationSettingsService = notificationSettingsService;
+        this.learnInjectionService = learnInjectionService;
+        this.preferenceInjectionService = preferenceInjectionService;
     }
 
     public static String packPromptKey(String packKey) {
@@ -106,12 +112,19 @@ public class AiPromptService {
     }
 
     /**
-     * 拼装发给模型的 system prompt。顺序固定为 L0 → L1（按包名序）→ L3，
-     * **稳定的内容在前** —— 否则每轮都变的部分会让 prompt 缓存前缀失效（§10.2）。
+     * 拼装发给模型的 system prompt。顺序固定为 L0 → L1（按包名序）→ L3 → 学习池 → 个人偏好，
+     * **越私人的越靠后** —— 否则每轮都变的部分会让 prompt 缓存前缀失效（§10.2）。
+     *
+     * <p>不带 userId 的重载留给「不针对某个人」的场景（如约束预览的粗看）；
+     * 真实对话一律走带 userId 的那个，否则个人偏好不会挂上去。
      */
     public String assemble(Collection<AiToolPack> packs, String runtimeContext) {
+        return assemble(packs, runtimeContext, null);
+    }
+
+    public String assemble(Collection<AiToolPack> packs, String runtimeContext, String userId) {
         StringBuilder sb = new StringBuilder();
-        for (Layer layer : layers(packs, runtimeContext)) {
+        for (Layer layer : layers(packs, runtimeContext, userId)) {
             if (!StringUtils.hasText(layer.content())) {
                 continue;
             }
@@ -129,7 +142,11 @@ public class AiPromptService {
      * L0/L1 在数据库、L2 在代码，**单看任何一处都看不全最终发给模型的是什么** —— 所以必须有这个。
      */
     public PromptPreview preview(Collection<AiToolPack> packs, String runtimeContext) {
-        List<Layer> all = layers(packs, runtimeContext);
+        return preview(packs, runtimeContext, null);
+    }
+
+    public PromptPreview preview(Collection<AiToolPack> packs, String runtimeContext, String userId) {
+        List<Layer> all = layers(packs, runtimeContext, userId);
         List<PreviewLayer> out = new ArrayList<>();
         for (Layer l : all) {
             if (!StringUtils.hasText(l.content())) {
@@ -137,10 +154,10 @@ public class AiPromptService {
             }
             out.add(new PreviewLayer(l.title(), l.source(), l.content().strip()));
         }
-        return new PromptPreview(out, assemble(packs, runtimeContext));
+        return new PromptPreview(out, assemble(packs, runtimeContext, userId));
     }
 
-    private List<Layer> layers(Collection<AiToolPack> packs, String runtimeContext) {
+    private List<Layer> layers(Collection<AiToolPack> packs, String runtimeContext, String userId) {
         List<Layer> layers = new ArrayList<>();
         layers.add(new Layer("全局约束", sourceOf(GLOBAL_PROMPT_KEY), globalPrompt()));
 
@@ -156,6 +173,22 @@ public class AiPromptService {
         if (StringUtils.hasText(runtimeContext)) {
             layers.add(new Layer("当前情况", "运行时拼装", runtimeContext));
         }
+
+        /*
+         * **附加层排在最末**，这是硬规矩不是排版偏好（设计 §12.10）：
+         * 提示词缓存是逐字比对前缀的，命中比未命中便宜约 50 倍 —— 把这段**个性化**内容
+         * 插到任何共享内容之前，都会把全体用户的缓存前缀一起打断。
+         *
+         * 它是「自学习」闭环真正写回线上的那一步：池子里学到的说法，
+         * 由 AiLearnInjectionService 按**这一轮实际下发的工具**筛过再挂出来。
+         */
+        layers.add(new Layer("常见说法", "学习池（自动统计）", learnInjectionService.blockFor(packs)));
+        /*
+         * **个人偏好排在最末** —— 它是最私人的一层（只对这个人、只在他的会话里存在）。
+         * 学习池虽也是个性化内容，但它是全站学出来的；**越私人越靠后**，这条顺序不能反。
+         * 这也是三层「能不能被个性化覆盖」里最弱的一层：它只补充，绝不覆盖前面的硬约束与平台口径。
+         */
+        layers.add(new Layer("你记住的习惯", "个人偏好（本人）", preferenceInjectionService.blockFor(userId)));
         return layers;
     }
 

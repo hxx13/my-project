@@ -2,6 +2,7 @@ const aiChatStream = require('../../utils/aiChatStream.js');
 const markdown = require('../../utils/markdown.js');
 const springAuth = require('../../utils/springAuth.js');
 const pagePermission = require('../../utils/pagePermission.js');
+const aiCopy = require('../../utils/aiCopy.js');
 
 /**
  * 底部安全区高度（px），取不到就按 0（顶多输入框离 home 指示条近一点）。
@@ -68,8 +69,52 @@ function nextKey() {
   return 'm' + Date.now().toString(36) + '_' + seq;
 }
 
+/**
+ * 一段助手正文该以什么形态渲染 —— **唯一实现**。
+ *
+ * 首次回答走打字机收尾时的 `markdownize`、重开会话走历史加载，两条路**过去各写了一份判定**：
+ * 前者还置了 `wide`（表格要放行到整幅宽），后者没有 —— 于是同一张表格「刚答完」与
+ * 「关掉再打开」宽度不一样（用户 2026-10-11 反馈）。
+ * **收敛到这一处，两条路都调它**，从根上不可能再漂。
+ *
+ * @returns {{text: string, links: Array, html: (string|undefined), wide: (boolean|undefined)}}
+ */
+function renderableOf(text) {
+  const raw = String(text || '');
+  const links = extractDownloadLinks(raw);
+  /*
+   * 正文里的下载链接抹成纯文本锚名：rich-text 点不了链接，留着就是给用户一个点了没反应的假入口；
+   * 真正的入口是那排按钮。**要写回 text**，不能只替换喂给 mdToHtml 的那一份 ——
+   * 抹平之后这段文字往往就没有 markdown 语法了，会走纯文本分支，而纯文本渲染的正是 text。
+   */
+  const body = links.length > 0 ? raw.replace(TPL_MD_LINK_RE, '$1') : raw;
+  const out = { text: body, links: links };
+  if (looksLikeMarkdown(body)) {
+    const html = markdown.mdToHtml(body);
+    out.html = html;
+    /*
+     * **列多才放行整幅宽。**
+     *
+     * 表格的宽度在 rich-text 里改不动（小程序只支持一部分样式），能控制的只有外面这层气泡 ——
+     * 所以「撑宽」是唯一的手段。但**列少时撑宽只会在右侧留一大片死白**（用户 2026-10-11 反馈的
+     * 就是这种：三列表格配一个整幅宽气泡）；列多时才真需要，否则 76% 的常规气泡把列挤成一条条。
+     * 4 列是分界：3 列及以下常规宽就够。
+     */
+    const headerCells = (html.match(/<th[\s>]/g) || []).length;
+    out.wide = headerCells >= 4;
+  }
+  return out;
+}
+
 /** 最多带几张图 */
 const MAX_IMAGES = 6;
+/**
+ * 历史对话**一页拉多少条**。
+ *
+ * 60 大概三到四屏 —— 够用户看清「接着哪句聊」，又不至于把长会话一次全拉回来。
+ * 更早的等用户往上滚到顶再要（见 onHistoryScrollTop）。
+ */
+const HISTORY_PAGE = 60;
 /** 最多带几个表格/文本附件 */
 const MAX_FILES = 3;
 /**
@@ -155,14 +200,27 @@ function purgeForeignCaches() {
 const CACHE_THROTTLE_MS = 1000;
 
 /**
+ * 每条消息缓存里最多留多少字思考正文。
+ *
+ * <p>为什么现在**要存**（2026-10-11 改的口径）：原先故意不存，理由是「太长」。
+ * 但代价是**思考过程只在第一次打开时看得到** —— 因为抽屉重开时走的是缓存、
+ * 不去服务端拉历史（见 handleOpened 的 `messages.length === 0` 那一岔），
+ * 本地那份快照里没有思考，就再也补不回来了（用户反复反馈的「思考过程又没了」）。
+ *
+ * <p>限一个上限只是兜住最坏情况：一条几百到几千字，几十条也就百来 KB，
+ * 离 wx 的存储上限还很远。真超了也只是那一条的思考被截断，不影响别的。
+ */
+const REASONING_CACHE_MAX = 4000;
+
+/**
  * 哪些工具值得在对话里露出「正在做…」。
  *
  * <p>**只登记长任务**：这类要等好几秒、还可能失败，用户需要知道进度（不然就是在干等，
  * 或者干脆以为它失败了）。其余工具都是毫秒级的读，抖出来只会让每条回答下面都堆一行噪声。
  */
-const TOOL_BUSY_LABEL = {
-  screenshotPage: '正在截图',
-  scheduleTimers: '正在设定时',
+const TOOL_BUSY_COPY = {
+  screenshotPage: { key: 'ai.copy.toolBusy.screenshot', fallback: '正在截图' },
+  scheduleTimers: { key: 'ai.copy.toolBusy.timer', fallback: '正在设定时' },
 };
 
 /** 还在跑的状态（要每秒走倒计时、到点要补拉结果）。 */
@@ -224,6 +282,10 @@ Component({
 
   data: {
     messages: [],
+    /** 输入框上方的推荐指令条（按人排序，服务端排好，前端不重排）。 */
+    recommended: [],
+    /** 我在本会话投过的票：messageId → up/down。用来回填按钮的选中态。 */
+    myVotes: {},
     draft: '',
     canSend: false,
     sending: false,
@@ -260,6 +322,10 @@ Component({
     allAnswered: false,
     /** 自定义回答框常驻在选项下面，回车即选中这题 */
     customDraft: '',
+    /** 「其他想法…」输入框默认收着；选项区可折叠；单选先高亮、按提交才继续 */
+    customOpen: false,
+    choicesFolded: false,
+    pickedValue: '',
     /**
      * 待发图片。**只存临时路径**（渲染用），不上 data —— 图片 base64 动辄几百 KB，
      * setData 有 1MB 上限，塞进来会直接报错。发送时才读成 data URL 传给接口。
@@ -276,7 +342,6 @@ Component({
     tplList: [],
     /** 头部小球的动效节奏（表情轮换与待机动作由 ai-orb 自己管） */
     orbState: 'idle',
-    statusText: '在线',
     /** 流式期间的实时态（「思考中 3.2s · 1.2k tokens」），答完清空 */
     liveMeta: '',
     scrollTarget: '',
@@ -291,8 +356,28 @@ Component({
     sessionTitle: '',
     /** 历史对话列表视图：与消息区共用同一块位置，开列表就把对话收起来 */
     historyOpen: false,
+    /** 「我记住的习惯」是否展开（与 web 端同一个入口，位置也对齐）。 */
+    prefOpen: false,
+    /** 我自己的偏好列表 */
+    prefs: [],
+    prefDraft: '',
+    prefBusy: false,
+    prefErr: '',
     historyLoading: false,
     historyList: [],
+    /** 详情二级抽屉（能力提示词清单）开合 */
+    detailOpen: false,
+    /** 详情按钮的无障碍名（后端可配，取不到就用这里这版） */
+    detailAriaLabel: '详情',
+    /** 卡片固定文案（走 ai.copy.*，后端可配，取不到就用这里这版，逐字同界面原文） */
+    copyDownloadSave: '下载到本机',
+    copyDownloadDefault: '导出文件',
+    copyDownloadBusy: '导出中…',
+    /** 截图提示：库里存的是带 {name} 的模板，界面自行替换 */
+    copyShotLoading: '正在截「{name}」…',
+    copyShotFail: '「{name}」没截成',
+    copyTimerConfirm: '确认执行',
+    copyTimerStop: '停止',
   },
 
   observers: {
@@ -347,6 +432,22 @@ Component({
       purgeForeignCaches();
       this.restoreCache();
       if (this.data.visible) this.handleOpened();
+      // 详情按钮的无障碍名走后端配置（取不到就用 data 里那版兜底）
+      aiCopy.loadCopy().then(() => {
+        this.setData({
+          detailAriaLabel: aiCopy.copy('ai.copy.detail.open', '详情'),
+          copyDownloadSave: aiCopy.copy('ai.copy.card.download.save', '下载到本机'),
+          copyDownloadDefault: aiCopy.copy('ai.copy.card.download.default', '导出文件'),
+          copyDownloadBusy: aiCopy.copy('ai.copy.card.download.busy', '导出中…'),
+          copyShotLoading: aiCopy.copy('ai.copy.card.screenshot.loading', '正在截「{name}」…'),
+          copyShotFail: aiCopy.copy('ai.copy.card.screenshot.fail', '「{name}」没截成'),
+          copyTimerConfirm: aiCopy.copy('ai.copy.card.timer.confirm', '确认执行'),
+          copyTimerStop: aiCopy.copy('ai.copy.card.timer.stop', '停止'),
+        });
+      });
+
+      // 推荐指令条：进抽屉取一次。**不缓存**（它是按人的），失败返回空数组 → 整条不显示，不影响对话。
+      aiCopy.loadRecommended().then((list) => this.setData({ recommended: list }));
     },
     detached() {
       this.abortStream();
@@ -427,12 +528,20 @@ Component({
         canSend: false,
         sending: false,
         orbState: 'idle',
-        statusText: '在线',
         images: [],
         files: [],
         sessionId: null,
         sessionTitle: '',
+        /*
+         * **两块覆盖面板都要收掉**：历史对话与「我记住的习惯」各自占着整块正文
+         * （wxml 里是 if / elif 那一对分支）。
+         *
+         * 只清 historyOpen 的话，人正停在习惯页上点「新建对话」会**看着毫无反应** ——
+         * prefOpen 还是 true，习惯页照样盖在上面，新会话在下面默默建好了却看不见。
+         * 真机就是这么被发现的。
+         */
         historyOpen: false,
+        prefOpen: false,
         historyList: [],
         ...this.clearedQueuePatch(),
       });
@@ -442,12 +551,62 @@ Component({
       this.greet();
     },
 
+    /**
+     * 开/关「我记住的习惯」。与 web 端同一个入口 ——
+     * 助手在对话里替你记了什么，得随时翻得到、还能改（光靠「想起来问一句」不够）。
+     */
+    onOpenPreference() {
+      if (this.data.prefOpen) {
+        this.setData({ prefOpen: false });
+        return;
+      }
+      this.setData({ prefOpen: true, historyOpen: false, prefErr: '' });
+      this.loadPreferences();
+    },
+
+    loadPreferences() {
+      aiChatStream
+        .fetchMyPreferences()
+        .then((list) => this.setData({ prefs: list || [] }))
+        .catch(() => this.setData({ prefs: [] }));
+    },
+
+    onPrefInput(e) {
+      this.setData({ prefDraft: e.detail.value });
+    },
+
+    onPrefAdd() {
+      var c = String(this.data.prefDraft || '').trim();
+      if (!c || this.data.prefBusy) return;
+      this.setData({ prefBusy: true, prefErr: '' });
+      aiChatStream
+        .addMyPreference(c)
+        .then(() => {
+          this.setData({ prefDraft: '', prefBusy: false });
+          this.loadPreferences();
+        })
+        .catch((err) => this.setData({ prefBusy: false, prefErr: (err && err.message) || '保存失败' }));
+    },
+
+    onPrefDelete(e) {
+      var content = String((e.currentTarget.dataset && e.currentTarget.dataset.content) || '');
+      if (!content || this.data.prefBusy) return;
+      this.setData({ prefBusy: true, prefErr: '' });
+      aiChatStream
+        .deleteMyPreference(content)
+        .then(() => {
+          this.setData({ prefBusy: false });
+          this.loadPreferences();
+        })
+        .catch((err) => this.setData({ prefBusy: false, prefErr: (err && err.message) || '删不掉' }));
+    },
+
     onOpenHistory() {
       if (this.data.historyOpen) {
         this.setData({ historyOpen: false });
         return;
       }
-      this.setData({ historyOpen: true, historyLoading: true, historyList: [] });
+      this.setData({ historyOpen: true, prefOpen: false, historyLoading: true, historyList: [] });
       aiChatStream
         .fetchSessions()
         .then((list) => this.setData({ historyList: list || [], historyLoading: false }))
@@ -463,10 +622,18 @@ Component({
       // 消息与**产物**两路并行取：产物要按锚点挂回它当年那一轮。
       // 只拉消息的话，下载卡就没了 —— 服务端历史里只有文字、没有那条指令（真机 2026-10-09 反馈）。
       Promise.all([
-        aiChatStream.fetchSessionMessages(id),
+        aiChatStream.fetchSessionMessages(id, { limit: HISTORY_PAGE }),
         aiChatStream.fetchSessionExports(id).catch(() => []),
+        // 「我投过哪条」也要一起拿：切会话必须重拉，否则带着上一条的选中态
+        aiChatStream.fetchMyMessageVotes(id).catch(() => ({})),
       ])
-        .then(([msgs, exports]) => {
+        .then(([msgs, exports, votes]) => {
+          this.setData({ myVotes: votes || {} });
+          // 往前翻的游标：本页**最老**那一条的 seq。满一页才可能还有更早的。
+          const seqs = (msgs || []).map((m) => m.seq).filter((s) => typeof s === 'number');
+          this.historyBeforeSeq = seqs.length ? Math.min.apply(null, seqs) : null;
+          this.historyHasMore =
+            seqs.length > 0 && this.historyBeforeSeq > 0 && (msgs || []).length >= HISTORY_PAGE;
           const list = [];
           (msgs || [])
             .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -479,9 +646,30 @@ Component({
                 text: text,
                 _mid: m.id, // 临时：给产物找落点用，挂完就删
               };
-              // 历史里的助手答复同样可能带 markdown
-              if (m.role !== 'user' && looksLikeMarkdown(text)) {
-                item.html = markdown.mdToHtml(text);
+              /*
+               * 思考正文**从服务端捞回来** —— 本地不存它（太长），所以「切走再切回来」时
+               * 那一段只能靠这一路补上（用户 2026-10-11 反馈看不到）。
+               */
+              if (m.role !== 'user' && m.reasoningContent) {
+                item.reasoning = m.reasoningContent;
+                item.reasoningTokens = m.reasoningTokens;
+              }
+              // 用量那行「用时 · tokens」：服务端一直存着，只是回看这条路此前没接出来。
+              // 不接的后果很怪 —— 赞/踩图标（按 messageId 挂）照常显示，数字却空着，
+              // 看着像「点赞把数字挤掉了」（用户 2026-10-11 反馈）。
+              if (m.role !== 'user') {
+                const hm = this.metaTextOfMessage(m);
+                if (hm) item.meta = hm;
+              }
+              // 渲染形态与打字机收尾那条统一（renderableOf）—— 过去这里没有 wide，同一张表格
+              // 「刚答完」和「重开」宽度不一样（用户 2026-10-11 反馈）
+              if (m.role !== 'user') {
+                const r = renderableOf(text);
+                item.text = r.text;
+                if (r.html) {
+                  item.html = r.html;
+                  item.wide = !!r.wide;
+                }
               }
               list.push(item);
             });
@@ -559,6 +747,18 @@ Component({
           role: m.role,
           text: m.text,
           meta: m.meta,
+          /*
+           * **`messageId` 必须存**：赞/踩的显示条件是「有服务端消息 id」，
+           * 而缓存恢复出来的消息如果没这个字段，投票图标就**一个都不显示**。
+           * 2026-10-11 就是这么中的：模拟器里查 `c.data.messages`，40 条全是 `mid=-`。
+           */
+          messageId: m.messageId,
+          /*
+           * **思考正文要一起存**（2026-10-11 改的口径，见 REASONING_CACHE_MAX 的说明）。
+           * 不存的话，抽屉重开时走缓存、不拉历史，思考就再也回不来了。
+           */
+          reasoning: m.reasoning ? String(m.reasoning).slice(0, REASONING_CACHE_MAX) : undefined,
+          reasoningTokens: m.reasoningTokens,
           // 挂在消息上的导出卡也存：不然重开对话卡片就没了（它现在属于那一条消息）
           download: m.download,
           // 截图只存「是哪一份产物」——**临时文件路径不能跨会话用**（会被清掉），
@@ -593,10 +793,12 @@ Component({
           // 缓存里存的是纯文本，恢复时补一次 markdown 转换 ——
           // 否则刷新后原先渲染好的回复会退化成带 ** 的明文
           .map((m) => {
-            if (m.role !== 'user' && !m.html && looksLikeMarkdown(m.text)) {
-              const html = markdown.mdToHtml(m.text);
-              m.html = html;
-              if (html.indexOf('<table') >= 0) m.wide = true;
+            if (m.role !== 'user' && !m.html) {
+              const r = renderableOf(m.text);
+              if (r.html) {
+                m.html = r.html;
+                m.wide = !!r.wide;
+              }
             }
             // 恢复的回复同样要能下载它给的模板
             if (m.role !== 'user' && !m.links) {
@@ -712,7 +914,7 @@ Component({
     startStream(botKey, starter) {
       this.abortStream();
       this.streamBotKey = botKey;
-      this.setData({ sending: true, orbState: 'thinking', statusText: '正在思考…' });
+      this.setData({ sending: true, orbState: 'thinking' });
       this.scrollToEnd();
       this.startLiveMeta();
       this.stream = starter();
@@ -751,6 +953,21 @@ Component({
     handlersFor(botKey) {
       return {
         onDelta: (text) => this.appendText(botKey, text),
+        // 思考正文：**边来边显**。它是模型在调工具**之前**想的，正是用户干等的那段 ——
+        // 等收尾才显示就等于没有（设计文档 §10.3）。
+        onReasoning: (text) => {
+          const idx = this.indexOfKey(botKey);
+          if (idx < 0) return;
+          const prev = this.data.messages[idx].reasoning || '';
+          this.setData({ ['messages[' + idx + '].reasoning']: prev + text });
+        },
+        // 工具开跑前服务端推来的人话短语（「正在汇总 148 个板块…」）。
+        // 慢的其实是查数据、不是模型，所以这句话比一个笼统的「正在思考」有用得多。
+        onToolProgress: (_name, phrase) => {
+          const idx = this.indexOfKey(botKey);
+          if (idx < 0) return;
+          this.setData({ ['messages[' + idx + '].toolPhrase']: phrase || '' });
+        },
         onInteraction: (payload) => this.collectInteraction(payload),
         // 用量：每完成一轮模型调用推一次，用来刷实时 token 计数
         onUsage: (u) => {
@@ -772,8 +989,9 @@ Component({
         },
         // 长任务进度：running 挂一行「正在截图…」，done 撤掉，failed 留着（那正是要害）
         onTool: (payload) => {
-          const label = TOOL_BUSY_LABEL[payload && payload.name];
-          if (!label) return;
+          const entry = TOOL_BUSY_COPY[payload && payload.name];
+          if (!entry) return;
+          const label = aiCopy.copy(entry.key, entry.fallback);
           const idx = this.indexOfKey(botKey);
           if (idx < 0) return;
           const status = payload.status;
@@ -782,11 +1000,23 @@ Component({
               status === 'running' ? { label: label, status: 'running' }
                 : status === 'failed' ? { label: label, status: 'failed' }
                   : null,
+            // 工具跑完就把那句人话短语撤掉：留着会让下一轮的等待期显示上一轮的话
+            ['messages[' + idx + '].toolPhrase']: status === 'running' ? this.data.messages[idx].toolPhrase : '',
           });
         },
         onDone: (payload) => {
           if (payload && typeof payload.sessionId === 'number' && payload.sessionId > 0) {
             this.setData({ sessionId: payload.sessionId });
+          }
+          /*
+           * 顶部副标题 = **本次对话的标题**（用户 2026-10-11 定）。
+           *
+           * 标题由服务端在**第一句提问落库**时起好，这一轮结束时随 done 带回来。
+           * 以前只有「从历史对话里挑一条」那条路才拿得到它，所以正常聊完永远显示回落值「在线」——
+           * 这次真机验出来的就是这个。
+           */
+          if (payload && payload.sessionTitle) {
+            this.setData({ sessionTitle: payload.sessionTitle });
           }
           // 标记源已结束：打字机把剩下的字吐完会自己停
           this.typeFinished = true;
@@ -1044,6 +1274,38 @@ Component({
           const maxKnown = known.reduce((mx, m) => (m.messageId > mx ? m.messageId : mx), 0);
           // 一个 id 都不知道就**不补**：这种情况无从判断哪条是新的，硬补会把整段对话复制一遍
           if (maxKnown <= 0) return;
+          /*
+           * **先把本地缺的思考正文补上**（2026-10-11 加）。
+           *
+           * 为什么非有这一步不可：抽屉重开时走的是本地缓存、**不拉历史**（见 handleOpened），
+           * 而缓存里原本不存思考正文 —— 于是「思考过程」只在**第一次打开**看得到，
+           * 之后每次打开都没了（用户反复反馈）。服务端一直存着（`ai_message.reasoning_content`，
+           * 网页端就是从后端拿的），小程序这边只是从来没去要过。
+           *
+           * 这一趟既然已经把整份历史拿回来了，就顺手补上 —— 只补**本地没有的**，
+           * 不覆盖已有的（本地那份可能是刚流式收下来的，比历史更全）。
+           */
+          const byId = {};
+          list.forEach((m) => { if (m && m.id != null) byId[Number(m.id)] = m; });
+          let backfilled = false;
+          const knownFixed = known.map((m) => {
+            if (m.role !== 'assistant' || m.messageId == null) return m;
+            const src = byId[Number(m.messageId)];
+            if (!src) return m;
+            const patch = {};
+            if (!m.reasoning && src.reasoningContent) {
+              patch.reasoning = src.reasoningContent;
+              patch.reasoningTokens = src.reasoningTokens;
+            }
+            // 用量那行也一并补：老缓存里它可能也是缺的（同一类「缓存没存、又不拉历史」）
+            if (!m.meta) {
+              const hm = this.metaTextOfMessage(src);
+              if (hm) patch.meta = hm;
+            }
+            if (Object.keys(patch).length === 0) return m;
+            backfilled = true;
+            return Object.assign({}, m, patch);
+          });
           const fresh = list.filter((m) => m.role === 'assistant' && Number(m.id) > maxKnown
             && String(m.content || '').trim().length > 0);
           // 已经挂过的产物不再挂第二遍（按产物 id 认）
@@ -1053,15 +1315,20 @@ Component({
             if (m.download && m.download.exportId != null) mounted[m.download.exportId] = true;
           });
           const freshArts = arts.filter((e) => e && !mounted[e.exportId]);
-          if (fresh.length === 0 && freshArts.length === 0) return;
+          // 没有新消息、也没有新产物、**思考也没补着** → 什么都不用做（回到调用方那一步）
+          if (fresh.length === 0 && freshArts.length === 0 && !backfilled) return;
 
-          const next = known.slice();
+          const next = knownFixed.slice();
           fresh.forEach((m) => {
             const text = String(m.content || '');
             // fromTimer 标记：倒计时兜底找落点时要跳过它（见 mountTimers 的注释）
             const item = { key: nextKey(), role: 'assistant', text: text, typed: true,
               messageId: Number(m.id), fromTimer: true };
-            if (looksLikeMarkdown(text)) item.html = markdown.mdToHtml(text);
+            const r = renderableOf(text);
+            if (r.html) {
+              item.html = r.html;
+              item.wide = !!r.wide;
+            }
             next.push(item);
           });
           // 产物挂到**锚点之后第一条有正文的助手回复**上（与 onPickSession 同一套规则）
@@ -1193,6 +1460,43 @@ Component({
       const idx = key ? this.indexOfKey(key) : -1;
       const dl = idx >= 0 ? this.data.messages[idx].download : null;
       if (!dl || this.data.downloadBusy) return;
+      /*
+       * 领用单：附件里带的是一份**免登录的下载路径**（令牌就在路径里，令牌即能力），
+       * 取到字节落盘再打开即可 —— 与网页端同一支（那边也是拿 downloadPath 取字节）。
+       * 下面那套「物资审计导出 + 小计配置 + 归档」是物资审计导出专用的，别让它兜住这一类，
+       * 否则只会抛「取不到文件」把用户堵死（真机 2026-10-10 用户截图报的就是这条）。
+       * 取字节与落盘打开用的是页面里打开领用单那条既有链路。
+       */
+      if (dl.kind === 'supplyClaim') {
+        const hideBusy = () => {
+          wx.hideLoading();
+          this.setData({ downloadBusy: false });
+        };
+        const path = String((dl.params || {}).downloadPath || '');
+        const name = dl.label || '领用单.pdf';
+        this.setData({ downloadBusy: true });
+        wx.showLoading({ title: '正在下载…', mask: true });
+        if (!path) {
+          hideBusy();
+          wx.showToast({ title: '领用单下载失败，让助手重新生成一份', icon: 'none' });
+          return;
+        }
+        springAuth
+          .springRequestBinary(path, { errorMessage: '领用单打开失败' })
+          .then((r) => {
+            // 先撤 loading 再打开文档，否则遮罩会盖在文档查看器上（与物资那条同一顺序）
+            hideBusy();
+            return springAuth.saveAndOpenDocument(r.data, name, 'pdf');
+          })
+          .catch(() => {
+            hideBusy();
+            wx.showToast({
+              title: '领用单下载失败，链接可能已过期（7 天有效），让助手重新生成一份',
+              icon: 'none',
+            });
+          });
+        return;
+      }
       const p = dl.params || {};
       const qs = [];
       const add = (k, v) => {
@@ -1250,8 +1554,13 @@ Component({
         .then(async (r) => {
           wx.hideLoading();
           this.setData({ downloadBusy: false });
-          const safe = String((dl.label || 'export') + '.xlsx').replace(/[\\/:*?"<>|]/g, '_');
-          const file = wx.env.USER_DATA_PATH + '/exp_' + Date.now() + '_' + safe.slice(0, 60);
+          // 扩展名按**真实取件地址**判：曲线导出下发的就是 PDF 地址，一律套 .xlsx 会让文件打不开 ——
+          // 这里比网页端后果更重：openDocument 按扩展名挑解析器，.xlsx 里装着 PDF 就是满屏乱码
+          // （真机 2026-10-10：文件名写着「…监测数据曲线图.xlsx」，字节头却是 %PDF-1.4）。
+          const wantExt = (typeof p.url === 'string' && p.url.indexOf('/pdf/') >= 0) ? '.pdf' : '.xlsx';
+          // 先裁短名字再补后缀 —— 顺序反了的话，长标签会把后缀一起截掉，又退回同一个毛病
+          const safe = String(dl.label || 'export').replace(/[\\/:*?"<>|]/g, '_').slice(0, 56) + wantExt;
+          const file = wx.env.USER_DATA_PATH + '/exp_' + Date.now() + '_' + safe;
           try {
             wx.getFileSystemManager().writeFileSync(file, r.data);
           } catch (e) {
@@ -1342,6 +1651,9 @@ Component({
         answeredCount: 0,
         currentQuestion: '',
         customDraft: '',
+        customOpen: false,
+        choicesFolded: false,
+        pickedValue: '',
       };
     },
 
@@ -1398,6 +1710,24 @@ Component({
      *   只有一问：点一下即办；
      *   多问：进向导，点选只高亮、可来回改，最后统一提交。
      */
+    /** 单选提交：把高亮那项作为回答发给模型。 */
+    onSubmitPicked() {
+      const v = this.data.pickedValue;
+      if (!v || this.data.sending) return;
+      this.setData({ pickedValue: '' });
+      this.submit(v, null, null, true);
+    },
+
+    /** 展开「其他想法…」输入框。 */
+    onOpenCustom() {
+      this.setData({ customOpen: true });
+    },
+
+    /** 收起/展开选项区（候选铺满时先看对话）。 */
+    onToggleChoices() {
+      this.setData({ choicesFolded: !this.data.choicesFolded });
+    },
+
     onChoiceTap(e) {
       if (this.data.sending) return;
       const value = String(e.currentTarget.dataset.value || '');
@@ -1427,15 +1757,16 @@ Component({
         this.submitInteraction(q.token, value, chosen);
         return;
       }
+      // 单选：**只高亮**，按「提交」才继续 —— 点一下就走，用户来不及看自己选了哪个（用户反馈）
       if (!this.data.wizardMode) {
-        this.submit(value, null, null, true);
+        this.setData({ pickedValue: value });
         return;
       }
+      // 向导里先把这一题记上（计数用），但**不自动跳下一题**，交给「下一题 / 提交」
       const answers = this.data.answers.slice();
       answers[this.data.current] = value;
-      const next = Math.min(this.data.current + 1, this.data.queue.length - 1);
-      this.setData({ answers: answers, current: next, customDraft: '' });
-      this.syncWizard(null, answers, next);
+      this.setData({ pickedValue: value, answers: answers, customDraft: '' });
+      this.syncWizard(null, answers, this.data.current);
     },
 
     /**
@@ -1598,7 +1929,16 @@ Component({
        * 700 字的回答固定 3 字/拍要 16 秒；这个曲线约 4 秒收尾，而开头几拍仍是逐字感。
        */
       this.typeShots = (this.typeShots || 0) + 1;
-      const step = Math.min(24, 3 + Math.floor(this.typeShots / 4));
+      /*
+       * 到最快之后还剩一大截时，**改成一块一块地出**（与 Web 端 useTypewriterText 同口径，
+       * 用户 2026-10-11 提）：那时再逐字纯粹是让用户干等 —— 「生成中」早就表达过了，没有信息量。
+       * 块大小按剩余量取 10%，越到最后收得越快。
+       */
+      const remaining = total - this.typeShown;
+      let step = Math.min(24, 3 + Math.floor(this.typeShots / 4));
+      if (step >= 24 && remaining > 120) {
+        step = Math.max(step, Math.ceil(remaining * 0.1));
+      }
       this.typeShown = Math.min(total, this.typeShown + step);
       const patch = {};
       patch['messages[' + idx + '].text'] = this.typeFull.slice(0, this.typeShown);
@@ -1618,27 +1958,15 @@ Component({
     markdownize(idx) {
       const msg = this.data.messages[idx];
       if (!msg || msg.html) return;
-      const text = msg.text || '';
-      const links = extractDownloadLinks(text);
+      // 渲染形态**统一由 renderableOf 决定** —— 与历史加载/缓存恢复同一条路，宽度不会再漂
+      const r = renderableOf(msg.text || '');
       const patch = {};
-
-      /*
-       * 正文里的下载链接抹成纯文本锚名：rich-text 点不了链接，留着就是给用户一个点了没反应的
-       * 假入口；真正的入口是下面那排按钮。
-       *
-       * **要写回 text，不能只替换喂给 mdToHtml 的那一份** —— 抹平之后这段文字往往就没有
-       * markdown 语法了，会走纯文本分支，而纯文本渲染的正是 text（踩过：按钮出来了，正文里
-       * 却还挂着一长串 /api/... 的裸链接）。
-       */
-      const body = links.length > 0 ? text.replace(TPL_MD_LINK_RE, '$1') : text;
-      if (body !== text) patch['messages[' + idx + '].text'] = body;
-      if (looksLikeMarkdown(body)) {
-        const html = markdown.mdToHtml(body);
-        patch['messages[' + idx + '].html'] = html;
-        // 表格在这条里：气泡要放行到整幅宽，否则 76% 的常规气泡把列挤成一条条
-        if (html.indexOf('<table') >= 0) patch['messages[' + idx + '].wide'] = true;
+      if (r.text !== (msg.text || '')) patch['messages[' + idx + '].text'] = r.text;
+      if (r.html) {
+        patch['messages[' + idx + '].html'] = r.html;
+        patch['messages[' + idx + '].wide'] = !!r.wide;
       }
-      if (links.length > 0) patch['messages[' + idx + '].links'] = links;
+      if (r.links.length > 0) patch['messages[' + idx + '].links'] = r.links;
       if (Object.keys(patch).length) this.setData(patch);
     },
 
@@ -1774,7 +2102,6 @@ Component({
       const patch = {
         sending: false,
         orbState: 'idle',
-        statusText: '在线',
         canSend: this.data.draft.trim().length > 0,
       };
       if (idx >= 0) {
@@ -1790,6 +2117,10 @@ Component({
         if (payload && payload.messageId != null) {
           patch['messages[' + idx + '].messageId'] = Number(payload.messageId);
         }
+        // 思考 token：折叠标题「思考过程（N 字）」拿它显示。上游**精确给出**，不是估的。
+        if (payload && payload.reasoningTokens) {
+          patch['messages[' + idx + '].reasoningTokens'] = payload.reasoningTokens;
+        }
       }
       this.setData(patch);
       // 这一次提问真正收尾了：把中间挂起那几轮上的附件并到这条上（见 gatherArtifacts）
@@ -1797,13 +2128,46 @@ Component({
       this.scrollToEnd();
     },
 
-    /** 用量：与 Web 端同一个口径（latencyMs / totalTokens） */
+    /** 用量：与 Web 端同一个口径（思考用时 / totalTokens） */
     metaTextOf(payload) {
       if (!payload) return '';
       const parts = [];
-      const sec = fmtSec(payload.latencyMs);
-      if (sec) parts.push('用时 ' + sec);
+      // **要显示的是「模型想了多久」，不是「用户等了多久」**（用户 2026-10-11 明确）：
+      // 等待里的大头往往是工具在查数据。这个数只有流式给得出；拿不到就退回总用时，
+      // 不假报一个 0 秒的「思考」。
+      const think = typeof payload.thinkingMs === 'number' && payload.thinkingMs >= 0
+        ? fmtSec(payload.thinkingMs)
+        : '';
+      if (think) {
+        parts.push('思考 ' + think);
+      } else {
+        const sec = fmtSec(payload.latencyMs);
+        if (sec) parts.push('用时 ' + sec);
+      }
       if (payload.totalTokens) parts.push(payload.totalTokens + ' tokens');
+      return parts.join(' · ');
+    },
+
+    /**
+     * 同上一行，但原料是**服务端历史里存的那条消息**（不是流式载荷）。
+     *
+     * <p>思考用时这一列是后加的，**老消息是空的** —— 那时退回显示总用时，
+     * 而不是编一个数出来。
+     */
+    metaTextOfMessage(m) {
+      if (!m) return '';
+      const parts = [];
+      const think = typeof m.thinkingMs === 'number' && m.thinkingMs >= 0
+        ? fmtSec(m.thinkingMs)
+        : '';
+      if (think) {
+        parts.push('思考 ' + think);
+      } else {
+        const sec = fmtSec(m.latencyMs);
+        if (sec) parts.push('用时 ' + sec);
+      }
+      const total = (m.promptTokens || 0) + (m.completionTokens || 0);
+      if (total) parts.push(total + ' tokens');
       return parts.join(' · ');
     },
 
@@ -1811,7 +2175,7 @@ Component({
     clearTyping() {
       const list = this.data.messages;
       const idx = list.length - 1;
-      const patch = { sending: false, orbState: 'idle', statusText: '在线' };
+      const patch = { sending: false, orbState: 'idle' };
       if (idx >= 0 && list[idx].typing) {
         patch['messages[' + idx + '].typing'] = false;
         patch['messages[' + idx + '].pending'] = false;
@@ -1860,7 +2224,6 @@ Component({
         messages: next,
         sending: false,
         orbState: 'idle',
-        statusText: '在线',
         canSend: this.data.draft.trim().length > 0,
       });
     },
@@ -1905,7 +2268,11 @@ Component({
         return;
       }
       Promise.all([this.readAllAsDataUrl(pics), this.readAllFiles(docs)]).then(([dataUrls, spreadsheets]) => {
-        const text = question || (spreadsheets.length > 0 ? '（见附件）' : '（见图片）');
+        const text =
+          question ||
+          (spreadsheets.length > 0
+            ? aiCopy.copy('ai.copy.bubble.attachment', '（见附件）')
+            : aiCopy.copy('ai.copy.bubble.image', '（见图片）'));
         this.submit(text, dataUrls.filter((s) => !!s), spreadsheets.filter((f) => !!f.data));
       });
     },
@@ -1917,7 +2284,7 @@ Component({
       const list = this.data.messages;
       const last = list[list.length - 1];
       if (last && last.role === 'assistant') this.finishTurn(last.key, null);
-      this.setData({ sending: false, orbState: 'idle', statusText: '在线' });
+      this.setData({ sending: false, orbState: 'idle' });
     },
 
     // ── 图片 ─────────────────────────────────────────────────
@@ -2087,6 +2454,149 @@ Component({
 
     onClose() {
       this.triggerEvent('close');
+    },
+
+    // ── 详情二级抽屉 ──────────────────────────────────────────
+
+    onOpenDetail() {
+      this.setData({ detailOpen: true });
+    },
+
+    /**
+     * 点赞 / 踩，**再点一次同一个 = 取消**。
+     *
+     * **乐观更新**：先点亮再发请求 —— 点赞是小动作，等一个来回才亮灯会显得迟钝。
+     * 失败就**回滚并提示**，不能静默吞掉：那会让用户以为投上了，而判据会少一票。
+     */
+    onVoteTap(e) {
+      const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+      const mid = Number(ds.id);
+      const vote = ds.vote;
+      if (!mid || (vote !== 'up' && vote !== 'down')) return;
+      const prev = this.data.myVotes || {};
+      const was = prev[mid];
+      const canceling = was === vote;
+      const next = Object.assign({}, prev);
+      if (canceling) delete next[mid];
+      else next[mid] = vote;
+      this.setData({ myVotes: next });
+      const req = canceling ? aiChatStream.cancelMessageVote(mid) : aiChatStream.voteMessage(mid, vote);
+      req.catch((err) => {
+        const back = Object.assign({}, this.data.myVotes || {});
+        if (was) back[mid] = was;
+        else delete back[mid];
+        this.setData({ myVotes: back });
+        wx.showToast({ title: (err && err.message) || '操作失败', icon: 'none' });
+      });
+    },
+
+    /**
+     * 历史对话**滚到顶** → 拉更早的一页。
+     *
+     * <p><b>补偿用 `scroll-into-view`，不是估高度</b>：新内容插在顶部会把视口整体往下推，
+     * 用户看到的是「画面自己跳了」。这里把**插入前那一条**当锚点（插完它还在原位、只是更靠下了），
+     * 让 scroll-view 对齐到它 —— 视口精确钉住，不靠猜。行上本来就有 `id="m-{{item.key}}"`，直接可用。
+     */
+    onHistoryScrollTop() {
+      if (!this.historyHasMore || this.historyLoadingMore) return;
+      const sid = this.data.sessionId;
+      const before = this.historyBeforeSeq;
+      if (!sid || before == null || before <= 0) return;
+      this.historyLoadingMore = true;
+      // 记住插之前的第一条 —— 它就是补偿锚点
+      const anchorKey = this.data.messages.length ? this.data.messages[0].key : null;
+      aiChatStream
+        .fetchSessionMessages(sid, { beforeSeq: before, limit: HISTORY_PAGE })
+        .then((older) => {
+          if (!older || older.length === 0) {
+            this.historyHasMore = false;
+            return;
+          }
+          const seqs = older.map((m) => m.seq).filter((s) => typeof s === 'number');
+          this.historyBeforeSeq = seqs.length ? Math.min.apply(null, seqs) : null;
+          this.historyHasMore =
+            seqs.length > 0 && this.historyBeforeSeq > 0 && older.length >= HISTORY_PAGE;
+
+          const olderItems = [];
+          older
+            .filter((m) => (m.role === 'user' || m.role === 'assistant') && String(m.content || '').trim())
+            .forEach((m) => {
+              // 渲染形态与打字机收尾、历史加载同一条路（renderableOf）
+              const r = renderableOf(String(m.content || ''));
+              const item = {
+                key: nextKey(),
+                role: m.role === 'user' ? 'user' : 'assistant',
+                text: r.text,
+                typed: true,
+              };
+              if (r.html) {
+                item.html = r.html;
+                item.wide = !!r.wide;
+              }
+              if (m.role !== 'user' && m.reasoningContent) {
+                item.reasoning = m.reasoningContent;
+                item.reasoningTokens = m.reasoningTokens;
+              }
+              // 用量那行：与首次加载同一条口径（见上面那段注释）
+              if (m.role !== 'user') {
+                const hm = this.metaTextOfMessage(m);
+                if (hm) item.meta = hm;
+              }
+              olderItems.push(item);
+            });
+          if (olderItems.length === 0) {
+            this.historyHasMore = false;
+            return;
+          }
+          /*
+           * 更早那几页**不带产物**（导出卡片 / 截图）—— 那些要按锚点单独取，翻页时再取一遍不值得。
+           * ponytail: 只影响「翻到更早的对话时看不到它当年的文件卡片」，要补就在这儿按页取一次产物。
+           */
+          this.setData({ messages: olderItems.concat(this.data.messages) }, () => {
+            // 插完把视口对回原来那条（它现在更靠下了）—— 对齐它，视口就没动
+            if (anchorKey) this.setData({ scrollTarget: 'm-' + anchorKey });
+          });
+        })
+        .catch(() => {
+          // 拉更早失败就当没有更早的，别为这个打扰用户
+          this.historyHasMore = false;
+        })
+        .then(() => {
+          this.historyLoadingMore = false;
+        });
+    },
+
+    onCloseDetail() {
+      this.setData({ detailOpen: false });
+    },
+
+    /**
+     * 详情里点了一条提示词：**只回填输入框、不发送**。
+     * 填好后顺手收起二级抽屉，让用户直接看到输入框里的内容（要不要发由他自己按发送键）。
+     */
+    onDetailPick(e) {
+      const text = (e && e.detail && e.detail.text) || '';
+      if (!text) return;
+      this.setData({ draft: text, canSend: true, detailOpen: false });
+    },
+
+    /**
+     * 推荐指令条里点了一条：**只回填输入框、不发送** —— 与详情页点选同口径。
+     * 要不要发由用户自己按发送键。
+     */
+    onRecommendPick(e) {
+      const text = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.text) || '';
+      if (!text) return;
+      this.setData({ draft: text, canSend: true });
+    },
+
+    /** 展开/收起某一条的思考过程。生成中本来就常显，点了也只是切落定态的记忆位，无害。 */
+    onToggleReasoning(e) {
+      const key = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key) || '';
+      if (!key) return;
+      const idx = this.indexOfKey(key);
+      if (idx < 0) return;
+      this.setData({ ['messages[' + idx + '].reasoningOpen']: !this.data.messages[idx].reasoningOpen });
     },
 
     onPopupClose() {

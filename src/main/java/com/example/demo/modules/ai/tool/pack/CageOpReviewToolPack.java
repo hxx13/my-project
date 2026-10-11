@@ -1,5 +1,6 @@
 package com.example.demo.modules.ai.tool.pack;
 
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolContext;
 import com.example.demo.modules.ai.tool.AiToolPack;
@@ -412,6 +413,7 @@ public class CageOpReviewToolPack implements AiToolPack {
                 + "），**让用户挑一个**，不要自己选");
         out.put("request", target.row);
         out.put("choices", roleChoices(roles));
+        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
         out.put("choicesTitle", "以哪个身份签署");
         out.put("note", "用户点选后，把选中的 role（" + String.join(" / ", roles) + "）传给 signCageTransfer 再调一次");
         return out;
@@ -695,6 +697,7 @@ public class CageOpReviewToolPack implements AiToolPack {
                 out.put("reason", "「" + person + "」有 " + hits.size() + " 条待签转移单，让用户挑一条，不要自己选");
                 out.put("candidates", hits);
                 out.put("choices", choicesOf(hits));
+                out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
                 out.put("choicesTitle", person + " · 挑一张转移单");
                 out.put("note", "用户点选后，把选中的 requestId 传给 signCageTransfer 再调一次");
                 return new Target(null, List.of(), null, null, out);

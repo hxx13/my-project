@@ -1,3 +1,11 @@
+<!-- 卡片文案里的 {name} 占位符替换：模板存 data（走 ai.copy.*），渲染时把名字填进去。
+     与 utils/aiCopy.js 的 applyCopyVars 同一口径（wxml 里跑不了 js，故用这行 wxs 代填）。 -->
+<wxs module="copyfmt">
+module.exports.fill = function (tpl, name) {
+  return tpl ? tpl.split('{name}').join(name || '') : '';
+};
+</wxs>
+
 <van-popup
   show="{{ visible }}"
   position="bottom"
@@ -17,13 +25,24 @@
         <ai-orb class="ai-orb-live" size="72" state="{{ orbState }}" auto="{{ true }}" />
         <view class="ai-drawer__identity-text">
           <text class="ai-drawer__title">智能助手</text>
-          <text class="ai-drawer__status">{{ statusText }}</text>
+          <!--
+            副标题显示**本次对话的标题**（用户 2026-10-11 定），不再显示「正在思考…」那类状态 ——
+            那种指示本行里已经有别的表达（气泡里的「等待中…」、球球自己在转），
+            标题才是这一行更该占的位置。还没起标题（新会话）时回落「在线」。
+          -->
+          <text class="ai-drawer__status">{{ sessionTitle ? sessionTitle : '在线' }}</text>
         </view>
       </view>
-      <!-- 当前对话的标题：**水平居中在头部这一行里**，不另起一行 ——
-           挤在身份文字下面会多占一行高度（用户明确要求）。
-           绝对定位居中，所以它既不推高头部，也不跟左右两边的元素抢位置。 -->
-      <text wx:if="{{ sessionTitle }}" class="ai-drawer__title-bar">{{ sessionTitle }}</text>
+      <!--
+        对话标题**不再单独居中显示**（用户 2026-10-11 定）：它已经挪到「智能助手」下面那一行，
+        同一块信息没必要在一屏里出现两次。原先那个绝对定位的居中标题连同样式一起删了。
+      -->
+      <!--
+        右侧按钮的顺序**与 Web 端保持一致**（用户 2026-10-11 定）：
+        新建对话 → 我记住的习惯 → 详情 → 历史对话（后接关闭）。
+        Web 那边还有个「放大」，小程序没有那个能力，所以不摆。
+        顺序一致是为了让两端肌肉记忆通用 —— 换个端不用重新找按钮。
+      -->
       <view class="ai-drawer__head-actions">
         <view
           class="ai-drawer__icon-btn"
@@ -32,6 +51,22 @@
           aria-label="新建对话"
         >
           <van-icon name="edit" size="19px" color="#475569" />
+        </view>
+        <view
+          class="ai-drawer__icon-btn {{ prefOpen ? 'ai-drawer__icon-btn--on' : '' }}"
+          hover-class="ai-drawer__icon-btn--hover"
+          bindtap="onOpenPreference"
+          aria-label="我记住的习惯"
+        >
+          <van-icon name="notes-o" size="19px" color="{{ prefOpen ? '#2563eb' : '#475569' }}" />
+        </view>
+        <view
+          class="ai-drawer__icon-btn"
+          hover-class="ai-drawer__icon-btn--hover"
+          bindtap="onOpenDetail"
+          aria-label="{{ detailAriaLabel }}"
+        >
+          <van-icon name="info-o" size="19px" color="#475569" />
         </view>
         <view
           class="ai-drawer__icon-btn {{ historyOpen ? 'ai-drawer__icon-btn--on' : '' }}"
@@ -81,6 +116,45 @@
       </scroll-view>
     </view>
 
+    <!--
+      我记住的习惯：与 Web 端同一个入口，位置也排在「新建对话」与「详情」之间。
+      为什么要有这一页 —— 只用「在对话里问一句」的话，用户根本不知道助手记了什么；
+      知情权不能只靠他想得起来问。看得见，还得能直接改。
+    -->
+    <view wx:elif="{{ prefOpen }}" class="ai-drawer__prefs">
+      <view class="ai-drawer__pref-add">
+        <input
+          class="ai-drawer__pref-input"
+          value="{{ prefDraft }}"
+          placeholder="加一条，例如：导出订购单固定保留两级小计"
+          confirm-type="done"
+          bindinput="onPrefInput"
+          bindconfirm="onPrefAdd"
+        />
+        <view
+          class="ai-drawer__pref-btn {{ prefBusy || !prefDraft ? 'ai-drawer__pref-btn--off' : '' }}"
+          hover-class="ai-drawer__pref-btn--hover"
+          bindtap="onPrefAdd"
+        >添加</view>
+      </view>
+      <view wx:if="{{ prefErr }}" class="ai-drawer__pref-err">{{ prefErr }}</view>
+      <view wx:if="{{ prefs.length === 0 }}" class="ai-drawer__pref-empty">还没记过任何习惯</view>
+      <view
+        wx:for="{{ prefs }}"
+        wx:for-item="p"
+        wx:key="id"
+        class="ai-drawer__pref-row"
+      >
+        <text class="ai-drawer__pref-text">{{ p.content }}</text>
+        <view
+          class="ai-drawer__pref-del"
+          hover-class="ai-drawer__pref-del--hover"
+          data-content="{{ p.content }}"
+          bindtap="onPrefDelete"
+        >删掉</view>
+      </view>
+    </view>
+
     <scroll-view
       wx:else
       class="ai-drawer__list"
@@ -89,6 +163,8 @@
       scroll-with-animation="{{ true }}"
       enhanced
       bounces="{{ false }}"
+      bindscrolltoupper="onHistoryScrollTop"
+      upper-threshold="80"
     >
       <block wx:for="{{ messages }}" wx:key="key">
         <!--
@@ -137,8 +213,29 @@
                 <van-icon name="description" size="13px" color="inherit" />
                 <text class="ai-drawer__bubble-file-name">{{ doc }}</text>
               </view>
-              <!-- 流式期间显示实时态（思考中 3.2s · 1.2k tokens），与网页端同口径 -->
-              <text wx:if="{{ item.pending && !item.text }}" class="ai-drawer__pending">{{ liveMeta || '正在思考…' }}</text>
+              <!--
+                思考过程：生成中**常显**（它是模型在调工具之前想的，正是用户干等的那段），
+                落定后**折叠**（又长又乱，原样全铺比不铺更糟）。点标题展开/收起。
+              -->
+              <view wx:if="{{ item.reasoning }}" class="ai-drawer__reasoning" data-key="{{ item.key }}" bindtap="onToggleReasoning">
+                <!--
+                  ⚠️ 这一整行**必须写在同一行**，不许换行缩进。
+                  小程序 `<text>` 会把标签内的换行/缩进**当真实空白渲染**，于是文字上方多出一个空行 ——
+                  实测那一块因此高 44pt（一行只要 19pt，正好两行高），看着就是气泡顶部糊了一块空白
+                  （用户 2026-10-11 报的「顶部为什么还有一块空白」就是这个）。
+
+                  那个三角是**展开指示**（用户 2026-10-11 报「没有箭头，不知道可以展开」）：
+                  收起朝右、展开转 90° 朝下。少了它，这行看着就是一句静态小字。
+                -->
+                <view class="ai-drawer__reasoning-head"><van-icon class="ai-drawer__reasoning-caret{{ (item.pending || item.reasoningOpen) ? ' ai-drawer__reasoning-caret--open' : '' }}" name="arrow" size="11px" color="#94a3b8" /><text>{{ item.pending ? '思考中…' : ((item.reasoningOpen ? '收起思考' : '思考过程') + (item.reasoningTokens ? '（' + item.reasoningTokens + ' 字）' : '')) }}</text></view>
+                <text
+                  wx:if="{{ item.pending || item.reasoningOpen }}"
+                  class="ai-drawer__reasoning-body"
+                >{{ item.reasoning }}</text>
+              </view>
+              <!-- 流式期间显示实时态（等待 3.2s · 1.2k tokens），与网页端同口径。
+                   **不再叫「思考中」**：这个数是从发出算起的墙钟，里面多半是工具在查数据。 -->
+              <text wx:if="{{ item.pending && !item.text }}" class="ai-drawer__pending">{{ item.toolPhrase ? '等待中 · ' + item.toolPhrase : (liveMeta || '等待中…') }}</text>
               <!-- 打完字才转成 html（流式中的半截 markdown 结构是错的），转出来交给 rich-text -->
               <rich-text wx:elif="{{ item.html }}" class="ai-drawer__text ai-drawer__md" nodes="{{ item.html }}" />
               <text wx:else class="ai-drawer__text">{{ item.text }}</text>
@@ -155,19 +252,19 @@
               bindtap="onDownloadTemplate"
             >
               <van-icon name="down" size="14px" color="#2563eb" />
-              <text class="ai-drawer__dl-text">下载到本机</text>
+              <text class="ai-drawer__dl-text">{{ copyDownloadSave }}</text>
             </view>
             <!-- 助手产出的一份导出：**贴在气泡下面**（与网页端同一口径）。
                  浮在输入框上面时，它跟任何一句都对不上，用户分不清是哪次导的。 -->
             <view wx:if="{{ item.download }}" class="ai-drawer__dlcard">
               <text class="ai-drawer__dlcard-ico">⤓</text>
-              <text class="ai-drawer__dlcard-name">{{ item.download.label || '导出文件' }}</text>
+              <text class="ai-drawer__dlcard-name">{{ item.download.label || copyDownloadDefault }}</text>
               <view
                 class="ai-drawer__dlcard-btn {{ downloadBusy ? 'ai-drawer__dlcard-btn--off' : '' }}"
                 hover-class="ai-drawer__dlcard-btn--hover"
                 data-key="{{ item.key }}"
                 bindtap="onDownloadTap"
-              >{{ downloadBusy ? '导出中…' : '下载' }}</view>
+              >{{ downloadBusy ? copyDownloadBusy : '下载' }}</view>
             </view>
             <!-- 长任务状态（正在截图／设定时…）：和「用时 · token」同一层，是这一轮的过程不是内容。
                  失败态必须显眼 —— 用户要一眼知道没成，而不是继续干等。 -->
@@ -191,13 +288,13 @@
                 class="ai-drawer__timer-confirm"
                 catchtap="onTimerConfirm"
                 data-id="{{ tm.id }}"
-              >确认执行</view>
+              >{{ copyTimerConfirm }}</view>
               <view
                 wx:if="{{ tm.status === 'PENDING' || tm.status === 'FIRING' || tm.status === 'AWAITING_CONFIRM' }}"
                 class="ai-drawer__timer-stop"
                 catchtap="onTimerStop"
                 data-id="{{ tm.id }}"
-              >停止</view>
+              >{{ copyTimerStop }}</view>
             </view>
             <!-- 助手产出的截图：同样贴在气泡下面。图是**服务端渲染的网页版**（小程序截不了自己的界面）。 -->
             <view wx:if="{{ item.shot }}" class="ai-drawer__shot">
@@ -212,11 +309,51 @@
                 bindload="onShotLoaded"
               />
               <view wx:elif="{{ item.shot.state === 'loading' }}" class="ai-drawer__shot-tip">
-                正在截「{{ item.shot.label }}」…
+                {{ copyfmt.fill(copyShotLoading, item.shot.label) }}
               </view>
-              <view wx:else class="ai-drawer__shot-tip">「{{ item.shot.label }}」没截成</view>
+              <view wx:else class="ai-drawer__shot-tip">{{ copyfmt.fill(copyShotFail, item.shot.label) }}</view>
             </view>
             <text wx:if="{{ item.meta }}" class="ai-drawer__meta">{{ item.meta }}</text>
+          </view>
+          <!--
+            赞/踩：**放在气泡列之外**（列宽上限 76%，塞进列里会把气泡挤窄 —— 2026-10-11 踩过）。
+            它是行（`ai-drawer__row`）的第三个子项，占的是气泡右侧本来就空着的那片；
+            `align-self: flex-end` 让它与气泡**底边对齐**（「右侧边缘靠下」），不额外占高度。
+
+            显示条件两条都是踩过的坑：不判角色 → 用户自己发的那条也挂上点赞；
+            不判 messageId → 流式中/播报那条没有坐标可投，而且缓存恢复的消息曾经丢过这个字段。
+          -->
+          <view
+            wx:if="{{ item.role === 'assistant' && item.messageId && !item.pending }}"
+            class="ai-drawer__vote"
+          >
+            <view
+              class="ai-drawer__vote-btn {{ myVotes[item.messageId] === 'up' ? 'ai-drawer__vote-btn--on' : '' }}"
+              hover-class="ai-drawer__vote-btn--hover"
+              data-id="{{ item.messageId }}"
+              data-vote="up"
+              bindtap="onVoteTap"
+            >
+              <van-icon
+                name="{{ myVotes[item.messageId] === 'up' ? 'good-job' : 'good-job-o' }}"
+                size="12px"
+                color="{{ myVotes[item.messageId] === 'up' ? '#2563eb' : '#94a3b8' }}"
+              />
+            </view>
+            <!-- 踩：Vant 没有拇指朝下的图标，用同一个转 180°（见 wxss 的 --down） -->
+            <view
+              class="ai-drawer__vote-btn ai-drawer__vote-btn--down {{ myVotes[item.messageId] === 'down' ? 'ai-drawer__vote-btn--on' : '' }}"
+              hover-class="ai-drawer__vote-btn--hover"
+              data-id="{{ item.messageId }}"
+              data-vote="down"
+              bindtap="onVoteTap"
+            >
+              <van-icon
+                name="{{ myVotes[item.messageId] === 'down' ? 'good-job' : 'good-job-o' }}"
+                size="12px"
+                color="{{ myVotes[item.messageId] === 'down' ? '#2563eb' : '#94a3b8' }}"
+              />
+            </view>
           </view>
         </view>
       </block>
@@ -227,7 +364,7 @@
     </scroll-view>
 
     <!-- 待答问题。一问：点一下即办。多问：进向导，点选只高亮、可来回改，最后统一提交 -->
-    <view wx:if="{{ !historyOpen && currentOptions.length > 0 }}" class="ai-drawer__ask">
+    <view wx:if="{{ !historyOpen && !prefOpen && currentOptions.length > 0 }}" class="ai-drawer__ask">
       <view wx:if="{{ wizardMode }}" class="ai-drawer__wizard-head">
         <text class="ai-drawer__ask-head">第 {{ current + 1 }}/{{ queueTotal }} 问</text>
         <view class="ai-drawer__wizard-nav">
@@ -244,18 +381,38 @@
         </view>
       </view>
 
-      <!-- 多问时才写问句：一道题时正文气泡就在上面，再写一遍是重复 -->
-      <text wx:if="{{ wizardMode && currentQuestion }}" class="ai-drawer__ask-question">{{ currentQuestion }}</text>
+      <!-- 提问卡：**只要这一轮有问句就显示**。原先只在多问时写问句，
+           一道题时那句混在正文气泡里，下面却是一串没有题目的选项（用户反馈「题目裸露」）。 -->
+      <view wx:if="{{ currentQuestion }}" class="ai-drawer__ask-card">
+        <van-icon name="question-o" size="14px" color="#2563eb" custom-class="ai-drawer__ask-ico" />
+        <view class="ai-drawer__ask-body">
+          <text wx:if="{{ wizardMode }}" class="ai-drawer__ask-step">第 {{ current + 1 }} / {{ queueTotal }} 问</text>
+          <text class="ai-drawer__ask-title">{{ currentQuestion }}</text>
+          <text wx:if="{{ currentOptions.length > 6 }}" class="ai-drawer__ask-count">共 {{ currentOptions.length }} 项，可上下滑动</text>
+        </view>
+        <!-- 收起/展开：候选铺满时先折起来看对话 -->
+        <view class="ai-drawer__ask-fold" hover-class="ai-drawer__ask-fold--hover" bindtap="onToggleChoices">
+          <van-icon name="{{ choicesFolded ? 'arrow-up' : 'arrow-down' }}" size="14px" color="#5b6472" />
+        </view>
+      </view>
 
-      <view class="ai-drawer__choices">
+      <!-- 候选多了要限高内滚：20 项时整块把抽屉顶得老高，正文被挤没（用户反馈） -->
+      <scroll-view wx:if="{{ !choicesFolded }}" scroll-y class="ai-drawer__choices" enhanced bounces="{{ false }}">
         <view
           wx:for="{{ currentOptions }}"
           wx:key="value"
-          class="ai-drawer__choice {{ (currentMulti ? item._on : item.value === currentAnswer) ? 'ai-drawer__choice--on' : '' }}"
+          class="ai-drawer__choice {{ (currentMulti ? item._on : (wizardMode ? item.value === currentAnswer : item.value === pickedValue)) ? 'ai-drawer__choice--on' : '' }}"
           hover-class="ai-drawer__choice--hover"
           data-value="{{ item.value }}"
           bindtap="onChoiceTap"
-        >{{ item.label }}</view>
+        >
+          <view class="ai-drawer__choice-mark {{ (currentMulti ? item._on : (wizardMode ? item.value === currentAnswer : item.value === pickedValue)) ? 'ai-drawer__choice-mark--on' : '' }}">
+            <van-icon wx:if="{{ currentMulti ? item._on : (wizardMode ? item.value === currentAnswer : item.value === pickedValue) }}" name="success" size="10px" color="#ffffff" />
+          </view>
+          <text class="ai-drawer__choice-label">{{ item.label }}</text>
+          <!-- 备注：选它会怎样。模型自己写的选项靠这行小字才说得清（工具查出来的通常没有） -->
+          <text wx:if="{{ item.note }}" class="ai-drawer__choice-note">{{ item.note }}</text>
+        </view>
         <!-- 多选题的提交键：勾完点它。单选不出现 —— 那边点一下即办，多一个键只会让人犹豫 -->
         <view
           wx:if="{{ currentMulti }}"
@@ -263,12 +420,13 @@
           hover-class="ai-drawer__submit--hover"
           bindtap="onConfirmMulti"
         >确认（已选 {{ multiPick.length }} 项）</view>
-      </view>
+      </scroll-view>
 
       <!-- 写操作确认只有执行/不执行，不配自定义回答，也不用取消（那个「取消」就是选项之一） -->
       <block wx:if="{{ !isConfirm }}">
-        <!-- 自定义回答就是选项下面这个常驻输入框 —— 它也是一项；右侧发送键给不方便按回车的场景 -->
-        <view class="ai-drawer__custom">
+        <!-- 自定义回答**默认收着**：二选一的题也先摆一个输入框，噪音太大（用户反馈）。
+             点「其他想法…」才展开 -->
+        <view wx:if="{{ customOpen }}" class="ai-drawer__custom">
           <input
             class="ai-drawer__custom-input"
             value="{{ customDraft }}"
@@ -287,7 +445,15 @@
 
         <!-- 取消在左、提交在右；提交带已答计数。一问没有提交键 —— 点一下即办 -->
         <view class="ai-drawer__controls">
-          <text class="ai-drawer__ask-action" bindtap="onCancelQueue">取消本次对话</text>
+          <text wx:if="{{ !customOpen }}" class="ai-drawer__ask-action" bindtap="onOpenCustom">其他想法…</text>
+          <text class="ai-drawer__ask-action" bindtap="onCancelQueue">取消</text>
+          <!-- 单选：点选项只高亮，**按这颗才继续** -->
+          <view
+            wx:if="{{ !wizardMode && !isConfirm && !currentMulti }}"
+            class="ai-drawer__submit {{ pickedValue ? '' : 'ai-drawer__submit--off' }}"
+            hover-class="{{ pickedValue ? 'ai-drawer__submit--hover' : 'none' }}"
+            bindtap="onSubmitPicked"
+          >提交</view>
           <view
             wx:if="{{ wizardMode }}"
             class="ai-drawer__submit {{ allAnswered ? '' : 'ai-drawer__submit--off' }}"
@@ -300,7 +466,7 @@
 
     <!-- 待发图片（本地预览，发出时随本轮请求带上） -->
     <!-- 待发附件：只列名字，不预览内容（表格/文本没有缩略图可言） -->
-    <view wx:if="{{ !historyOpen && files.length > 0 }}" class="ai-drawer__files">
+    <view wx:if="{{ !historyOpen && !prefOpen && files.length > 0 }}" class="ai-drawer__files">
       <view wx:for="{{ files }}" wx:key="id" class="ai-drawer__file">
         <van-icon name="description" size="14px" color="#64748b" />
         <text class="ai-drawer__file-name">{{ item.name }}</text>
@@ -310,7 +476,7 @@
       </view>
     </view>
 
-    <view wx:if="{{ !historyOpen && images.length > 0 }}" class="ai-drawer__pics">
+    <view wx:if="{{ !historyOpen && !prefOpen && images.length > 0 }}" class="ai-drawer__pics">
       <!-- 待发图片的键是 **path**（onPickImage 存的是 {path: 临时文件路径}）。
            这里原先读 item.url，取到的是 undefined：缩略图 src 是空的（看不见），
            而发送那条路读的是 path，所以照样发得出去；删除也传 undefined，
@@ -323,7 +489,35 @@
       </view>
     </view>
 
-    <view wx:if="{{ !historyOpen }}" class="ai-drawer__composer" style="padding-bottom: {{ safeBottom + 10 }}px">
+    <!--
+      推荐指令条：一排横滚，**条数不写死**（放不下就左右滑，不换行堆高）。
+      点一条**只回填、不发送** —— 与详情页点选同口径。「更多」复用详情抽屉那个入口。
+    -->
+    <scroll-view
+      wx:if="{{ !historyOpen && !prefOpen && recommended.length > 0 }}"
+      class="ai-drawer__recommend"
+      scroll-x
+      enhanced
+      show-scrollbar="{{ false }}"
+    >
+      <view class="ai-drawer__recommend-row">
+        <view
+          wx:for="{{ recommended }}"
+          wx:key="id"
+          class="ai-drawer__recommend-chip"
+          hover-class="ai-drawer__recommend-chip--hover"
+          data-text="{{ item.promptText }}"
+          bindtap="onRecommendPick"
+        >{{ item.title }}</view>
+        <view
+          class="ai-drawer__recommend-chip ai-drawer__recommend-chip--more"
+          hover-class="ai-drawer__recommend-chip--hover"
+          bindtap="onOpenDetail"
+        >更多</view>
+      </view>
+    </scroll-view>
+
+    <view wx:if="{{ !historyOpen && !prefOpen }}" class="ai-drawer__composer" style="padding-bottom: {{ safeBottom + 10 }}px">
       <view class="ai-drawer__attach" hover-class="ai-drawer__attach--hover" bindtap="onPickImage">
         <van-icon name="photograph" size="20px" color="#64748b" />
       </view>
@@ -400,3 +594,11 @@
     </scroll-view>
   </view>
 </van-popup>
+
+<!-- 详情二级抽屉：挂在抽屉 popup **之外**（与模板库弹窗同一处理），
+     z-index 更高，免得被抽屉自己的层叠上下文 / overflow 裁掉。点一条回填输入框、不发送。 -->
+<ai-drawer-detail
+  show="{{ detailOpen }}"
+  bind:pick="onDetailPick"
+  bind:close="onCloseDetail"
+/>

@@ -27,8 +27,8 @@ public final class LlmProfilePresets {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("provider", PROVIDER_DEEPSEEK);
         m.put("base_url", DEEPSEEK_BASE_URL);
-        m.put("model", "deepseek-v4-pro");
-        m.put("model_fallback", "deepseek-v4-flash");
+        m.put("model", "deepseek-flash");
+        m.put("model_fallback", "deepseek-v4-pro");
         return m;
     }
 

@@ -217,6 +217,8 @@ public class AccessRecordToolPack implements AiToolPack {
                     "channel": { "type": "string", "description": "通道名称或编码的片段（模糊匹配），例如「大厅」" },
                     "personName": { "type": "string", "description": "姓名片段（模糊匹配）" },
                     "jobNumber": { "type": "string", "description": "工号（精确匹配）" },
+                    "cardNumber": { "type": "string", "description": "卡号（精确匹配）。只在用户**报了卡号**时用；他报名字就用 personName，别把卡号当工号" },
+                    "taskId": { "type": "integer", "description": "拉取任务号 —— 只在这条记录是从哪个同步任务来的这一点**对用户有意义**时才填（几乎不用）。用户没明确给任务号就别填" },
                     "department": { "type": "string", "description": "门禁侧部门（大华归属类下的部门名或部门ID片段，如「学生卡」「工作人员」「临时施工卡」）——不是人员档案里的部门/课题组" },
                     "openType": { "type": "string", "enum": ["合法刷卡", "非法刷卡", "远程开门", "按钮开门"],
                                   "description": "开门类型。「刷卡失败/违规刷卡」用「非法刷卡」" },
@@ -255,8 +257,12 @@ public class AccessRecordToolPack implements AiToolPack {
             return new Parsed(null, defaultLimit, Map.of("ok", false,
                     "reason", "开始时间比结束时间还晚（" + from + " > " + to + "），先跟用户核一下时间段"));
         }
+        // 拉取任务号：schema 里是 integer，没给就是 MissingNode。**只认数字** ——
+        // 用户随口说的「任务」多半不是这个号，认不出来宁可整条不查（下面那条规矩）
+        JsonNode taskNode = args.path("taskId");
+        Long taskId = taskNode.isNumber() ? taskNode.asLong() : null;
         AccessAuditFilterParams filter = new AccessAuditFilterParams(
-                null,
+                taskId,
                 null,
                 nullIfEmpty(text(args, "jobNumber")),
                 nullIfEmpty(text(args, "personName")),
@@ -267,7 +273,7 @@ public class AccessRecordToolPack implements AiToolPack {
                 false,
                 false,
                 nullIfEmpty(text(args, "channel")),
-                null,
+                nullIfEmpty(text(args, "cardNumber")),
                 nullIfEmpty(text(args, "department")),
                 swipeResult,
                 null,

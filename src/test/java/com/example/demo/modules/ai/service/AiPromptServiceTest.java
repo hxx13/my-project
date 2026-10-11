@@ -14,6 +14,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -28,13 +29,20 @@ import static org.mockito.Mockito.when;
 class AiPromptServiceTest {
 
     private NotificationSettingsService settings;
+    private AiLearnInjectionService learnInjection;
+    private AiPreferenceInjectionService preferenceInjection;
     private AiPromptService service;
 
     @BeforeEach
     void setUp() {
         settings = mock(NotificationSettingsService.class);
         when(settings.listConfigs(AiPromptService.MODULE)).thenReturn(List.of());
-        service = new AiPromptService(settings);
+        // 默认没有可挂的词条/偏好 —— 大多数用例只关心前几层的层序
+        learnInjection = mock(AiLearnInjectionService.class);
+        when(learnInjection.blockFor(any())).thenReturn("");
+        preferenceInjection = mock(AiPreferenceInjectionService.class);
+        when(preferenceInjection.blockFor(any())).thenReturn("");
+        service = new AiPromptService(settings, learnInjection, preferenceInjection);
     }
 
     private static SystemConfigItem cfg(String key, String value) {
@@ -112,8 +120,49 @@ class AiPromptServiceTest {
         assertEquals("运行时拼装", preview.layers().get(2).source());
     }
 
-    private static boolean outputOrdered(int... positions) {
-        for (int i = 1; i < positions.length; i++) {
+    @Test
+    @DisplayName("学习到的说法必须**排在最末** —— 插到共享内容之前会打断全体用户的缓存前缀")
+    void learnedLayerGoesLast() {
+        when(learnInjection.blockFor(any())).thenReturn("- 「拖把」→ listSupplies");
+
+        String out = service.assemble(List.of(pack("alpha", "A包", "A口径")), "上下文");
+
+        int learned = out.indexOf("## 常见说法");
+        int runtime = out.indexOf("## 当前情况");
+        int packLayer = out.indexOf("## A包 · 专属口径");
+        assertTrue(learned >= 0, "附加层没拼进去");
+        assertTrue(learned > runtime && runtime > packLayer,
+                "附加层必须排在最后，实际 pack=%d runtime=%d learned=%d".formatted(packLayer, runtime, learned));
+        assertTrue(out.strip().endsWith("→ listSupplies"), "附加层必须是收尾的那一段");
+    }
+
+    @Test
+    @DisplayName("个人偏好排在学习池之后 —— 越私人越靠后，这条顺序不能反")
+    void preferenceGoesAfterLearnedPhrases() {
+        when(learnInjection.blockFor(any())).thenReturn("- 「拖把流水」→ listSupplyItemFlow");
+        when(preferenceInjection.blockFor("STAFF_x")).thenReturn("- 回答先说结论");
+
+        String out = service.assemble(List.of(pack("alpha", "A包", "A口径")), "上下文", "STAFF_x");
+
+        int learned = out.indexOf("## 常见说法");
+        int pref = out.indexOf("## 你记住的习惯");
+        assertTrue(learned >= 0 && pref > learned,
+                "个人偏好必须排在常见说法之后，实际 learned=%d pref=%d".formatted(learned, pref));
+        assertTrue(out.strip().endsWith("- 回答先说结论"), "个人偏好必须是收尾的那一段");
+    }
+
+    @Test
+    @DisplayName("不带 userId 时不挂个人偏好 —— 偏好只对本人，不能漏给别人")
+    void noUserIdMeansNoPreferenceLayer() {
+        // 桩要**忠实于真实实现**：拿不到人就返回空串（拿不到身份就当作没记过任何偏好）
+        when(preferenceInjection.blockFor(null)).thenReturn("");
+
+        String out = service.assemble(List.of(pack("alpha", "A包", "A口径")), "上下文");
+
+        assertFalse(out.contains("你记住的习惯"), "没有 userId 就不该有偏好层");
+    }
+
+    private static boolean outputOrdered(int... positions) {        for (int i = 1; i < positions.length; i++) {
             if (positions[i - 1] < 0 || positions[i] < positions[i - 1]) {
                 return false;
             }
