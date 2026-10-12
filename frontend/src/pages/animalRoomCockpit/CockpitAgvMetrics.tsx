@@ -347,6 +347,11 @@ export function CockpitAgvMetrics() {
     queryKey: ["cockpitAgvCurrent"],
     queryFn: fetchAgvCurrent,
     refetchInterval: 2000,
+    /* 驾驶舱是挂在墙上的看板：窗口没被聚焦（切到别的窗口/别的标签）时也必须继续拉。
+       react-query 默认在后台标签里**暂停** interval 轮询 ——
+       这台卡片是纯 HTTP 轮询（没有 socket 推送），一暂停就整块冻在旧状态上，
+       表现就是「顶部的状态指示一直不动」。 */
+    refetchIntervalInBackground: true,
     staleTime: 0,
     refetchOnWindowFocus: true,
   });

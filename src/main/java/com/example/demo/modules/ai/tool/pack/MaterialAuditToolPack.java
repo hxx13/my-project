@@ -593,14 +593,29 @@ public class MaterialAuditToolPack implements AiToolPack {
                     // 候选**一律走芯片**（面板渲染成可点选项）：用户是点一下，不是照着正文手打。
                     // 太多就没法点 —— 只把前 5 个做成芯片，其余靠 keyword 收窄（L1 里交代了怎么说）。
                     if (!rows.isEmpty()) {
-                        List<Map<String, Object>> chips = rows.size() <= CHIP_MAX
-                                ? rows : new ArrayList<>(rows.subList(0, CHIP_MAX));
-                        out.put("choices", chips);
-                        out.put("choicesTitle", chipTitle(kind));
+                        if (rows.size() == 1) {
+                            /*
+                             * **只有一个候选不成其为「选」**：条件定死之后候选自然只剩一个，
+                             * 再追一道「挑一个」纯属空转（2026-10-12 用户反馈）。直接说清楚就用它。
+                             * 编排层也不会弹单项（见 AiOrchestrator#toGroup），这里把话说在前面，
+                             * 免得模型自己又跑去正文里问一遍。
+                             */
+                            out.put("note", "这个维度只有一个候选「" + str(rows.get(0).get("label"))
+                                    + "」，**直接拿它往下走**，不要问用户挑（没得挑）");
+                        } else {
+                            // 多个候选才做成芯片（面板渲染成可点选项）：用户是点一下，不是照着正文手打。
+                            // 太多就没法点 —— 只把前 5 个做成芯片，其余靠 keyword 收窄（L1 里交代了怎么说）。
+                            List<Map<String, Object>> chips = rows.size() <= CHIP_MAX
+                                    ? rows : new ArrayList<>(rows.subList(0, CHIP_MAX));
+                            // **打「必须问」标记**：这个工具的活就是「让用户挑一个筛选值」，
+                            // 不打标记编排层会按「默认不弹」丢掉，用户说「给我几个选项」时什么都看不到
+                            // （2026-10-12 用户反馈）。选中即收窄，不是「答完还追着问」。
+                            out.putAll(AiChoices.requiredSingle(chipTitle(kind), chips));
+                        }
                     }
                     if (rows.isEmpty()) {
                         out.put("note", "这个条件下没有候选；时间段放宽一点或换个名字写法再试");
-                    } else if (truncated || rows.size() > CHIP_MAX) {
+                    } else if (rows.size() > 1 && (truncated || rows.size() > CHIP_MAX)) {
                         out.put("note", "候选很多：芯片只给了前 " + CHIP_MAX + " 个，剩下的让用户给个关键词再查一次");
                     }
                     return out;
@@ -1147,7 +1162,11 @@ public class MaterialAuditToolPack implements AiToolPack {
                         params.put("from", from);
                         params.put("to", to);
                         if ("group".equals(tab) || "itemGroup".equals(tab)) {
-                            params.put("group", fl.group);
+                            // 导出接口认的是 **applicantGroup**（页面自己的导出按钮也传这个名）。
+                            // 传成页面地址用的 `group` 会被后端当空值丢掉 —— 查询侧筛住了、
+                            // 落盘却是全部课题组，2026-10-12 真机踩到（文件名写着「郑俊克的课题组」、
+                            // 内容 20 个组都有）。两个载体的下载路径都按参数名原样透传，所以这里改名即可。
+                            params.put("applicantGroup", fl.group);
                         }
                         if ("personal".equals(tab)) {
                             params.put("applicantUserId", fl.applicant);

@@ -421,15 +421,20 @@ public class NavToolPack implements AiToolPack {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", false);
         out.put("reason", "没找到叫「" + rawQuery + "」的入口");
+        /*
+         * 没找到就**如实说没找到**，别把「名字最像的几个」做成候选项让用户挑 ——
+         * 那不是他要找的东西，摆成一排反而像在说「这些里没有你要的」（2026-10-12 用户反馈：
+         * 问「学生审核」，弹了四个同类页面让他挑）。让用户把菜单里的原话报过来再找。
+         *
+         * <p>相似的名字只作为**数据**留着（`similar`）：他明确问「有没有类似的」时才念一两个。
+         */
         List<Page> near = nearest(rawQuery, visible);
         if (!near.isEmpty()) {
-            out.put("hint", "下面是名字最接近的几个，让用户从中挑一个（**不要自己挑**）");
-            out.put("choices", options(near));
-            out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
-            out.put("choicesTitle", "你是想找这几个里的哪一个？");
-        } else {
-            out.put("hint", "直接告诉用户你没找到这个入口，问他是不是记错名字了；别猜一个页面跳过去");
+            out.put("similar", near.stream().map(p -> p.label).toList());
         }
+        out.put("hint", "先如实告诉用户你没找到这个入口，请他报菜单里看到的原话（例如带括号的写法）；"
+                + "**不要**猜一个页面跳过去，也**不要**把别的页面当候选项摆出来；"
+                + "只有他明确问「有没有类似的」时，才把 similar 里的一两个念给他");
         return out;
     }
 
@@ -509,7 +514,12 @@ public class NavToolPack implements AiToolPack {
         return out;
     }
 
-    /** 一个都没命中时给的建议：按「与 query 共有的字符数」挑最像的几个。 */
+    /**
+     * 一个都没命中时，按「与 query 共有的字符数」挑最像的几个。
+     *
+     * <p>**只作为数据**放进结果的 {@code similar}（用户明确问「有没有类似的」时模型才念），
+     * 绝不直接做成候选项 —— 见 {@link #resolve} 里没找到那段的说明。</p>
+     */
     private List<Page> nearest(String rawQuery, List<Page> pages) {
         Set<Character> q = chars(rawQuery);
         if (q.isEmpty()) {

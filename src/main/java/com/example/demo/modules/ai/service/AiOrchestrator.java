@@ -1590,8 +1590,15 @@ public class AiOrchestrator {
                 }
             }
         }
-        return options.isEmpty() ? null
-                : new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options, multiSelect, authored);
+        /*
+         * **只有一个选项不成其为「选」**：用户被问「挑一个」、点开却只有一项，纯属空转。
+         * 单项的候选（比如条件已经定死、「候选」只剩那一个）在工具结果里照样留着，
+         * 模型看得到、直接用它就行 —— 但不要弹给用户。2026-10-12 用户反馈。
+         */
+        if (options.size() < 2) {
+            return null;
+        }
+        return new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options, multiSelect, authored);
     }
 
     /**

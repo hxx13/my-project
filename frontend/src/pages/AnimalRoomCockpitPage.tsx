@@ -282,6 +282,9 @@ export default function AnimalRoomCockpitPage() {
     staleTime: 8_000,
     placeholderData: (prev) => prev,
     retry: 1,
+    /* 驾驶舱挂在墙上，窗口常年不是「聚焦」状态；react-query 默认会在后台标签里暂停 interval 轮询，
+       那样整页参数就停在最后一次拉到的值上（数值早变了、画面还是旧的）。看板必须一直拉。 */
+    refetchIntervalInBackground: true,
     refetchInterval: (query) => {
       void gateTick;
       const d = query.state.data;

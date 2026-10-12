@@ -1545,7 +1545,9 @@ Component({
       add('tab', p.tab);
       add('from', p.from);
       add('to', p.to);
-      add('group', p.group);
+      // 课题组筛选：导出接口认 applicantGroup（页面自己那条导出也传这个名）。
+      // 早先这里传成 `group`，后端当空值丢掉 → 文件里是全部课题组，2026-10-12 真机踩到。
+      add('applicantGroup', p.applicantGroup || p.group);
       add('applicantUserId', p.applicantUserId);
       add('categoryId', p.categoryId);
       add('itemId', p.itemId);

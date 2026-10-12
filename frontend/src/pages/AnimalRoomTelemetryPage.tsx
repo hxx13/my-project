@@ -2504,6 +2504,9 @@ export default function AnimalRoomTelemetryPage() {
     staleTime: 8_000,
     placeholderData: (prev) => prev,
     retry: 1,
+    /* 这页也是挂在墙上看的：窗口没被聚焦（切到别的窗口/标签）时也要继续拉。
+       react-query 默认在窗口失焦/标签不可见时暂停 interval 轮询，那样数值早变了、画面还停在旧值上。 */
+    refetchIntervalInBackground: true,
     refetchInterval: (query) => {
       void gateTick;
       const d = query.state.data;
