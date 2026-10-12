@@ -60,14 +60,23 @@ export function CockpitAgvMap() {
 
   // ── 数据层：与小车台调用同一批钩子、同样的参数 ──
   const coordConfigs = useQuery({ queryKey: ["agvCoordConfigs"], queryFn: fetchCoordConfigs, staleTime: 60_000 });
+  /* refetchIntervalInBackground：驾驶舱挂在墙上，窗口常年不是聚焦状态；
+     react-query 默认在窗口失焦/标签不可见时暂停 interval 轮询，一暂停地图上的车就不动了。 */
   const recentData = useQuery({
     queryKey: ["agvRecent"],
     queryFn: () => fetchAgvRecent(2),
     refetchInterval: 2_000,
+    refetchIntervalInBackground: true,
     staleTime: 0,
     refetchOnWindowFocus: true,
   });
-  const currentData = useQuery({ queryKey: ["agvCurrent"], queryFn: fetchAgvCurrent, refetchInterval: 5_000, staleTime: 0 });
+  const currentData = useQuery({
+    queryKey: ["agvCurrent"],
+    queryFn: fetchAgvCurrent,
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
+  });
   const zones = useSpatialElements();
   const routeTopology = useRouteTopology();
 

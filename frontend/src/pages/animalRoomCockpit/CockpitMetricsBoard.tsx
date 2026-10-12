@@ -470,12 +470,16 @@ export function CockpitMetricsBoard() {
     queryFn: fetchAgvMetricsOverview,
     // 驾驶舱要「实时」，5 秒一次（与顶栏 AGV 状态同一节奏）
     refetchInterval: 5_000,
+    /* 挂墙看板：窗口没聚焦时也得继续拉（react-query 默认在后台标签里暂停 interval 轮询，
+       一暂停整块指标就冻在旧值上） */
+    refetchIntervalInBackground: true,
     staleTime: 0,
   });
   const todayCurve = useQuery({
     queryKey: ["agvCageWashToday"],
     queryFn: () => fetchCageWashCurve("today"),
     refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
     staleTime: 0,
   });
   const daysCurve = useQuery({
