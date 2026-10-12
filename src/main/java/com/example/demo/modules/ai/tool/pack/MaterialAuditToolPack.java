@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -111,7 +112,9 @@ public class MaterialAuditToolPack implements AiToolPack {
                      用 kind=groups/applicants/categories/items 查候选，候选也会变成可点选项。
                 - **每个页签的「对象」没定就先问**：按物品（item/itemGroup）问物品、个人审计问人、
                   课题组审计问课题组。工具会**把候选做成可点选项**交回来；用户点完，把他点的 value
-                  原样放进 filterChoice 再调一次。他若说不用筛，就调「全部」那一项。
+                  原样放进 filterChoice 再调一次（value **自带维度前缀**，形如 `group:郑俊克的课题组`
+                  / `item:白色运输盒` —— 原样传、别拆开：工具靠前缀把它归回原来的维度，
+                  页签换了也不会串槽）。他若说不用筛，就调「全部」那一项。
                 - **同一个问题只问一次**：工具已经把选项交回来了，就**不要再为同一件事调一遍** ——
                   那会让用户看到两个一模一样的提问（真机 2026-10-09 撞到）。
                 - **多级筛选要一层层收窄**：先定维度再取明细 ——
@@ -125,6 +128,11 @@ public class MaterialAuditToolPack implements AiToolPack {
                   listMaterialAuditOptions(kind=groups) 把它摆成选项 —— 载体会把这一轮抛出的候选
                   按顺序排队，于是「哪个课题组」会和真正该问的那题一起出现，变成一次答两问。
                   **一轮只问真正还缺的那一件**。
+                - **每次调用都要把已经确定的筛选条件原样带上**（group / itemKeyword / applicantUserId /
+                  categoryId / itemId）：**工具是无状态的**，它不记得上一轮问出来过什么。
+                  漏带一个 = 那个筛选条件当场消失 —— 实测就栽在这：用户点完「郑俊克的课题组」，
+                  导出那次调用里课题组整个没了，导出来变成全量。
+                  「已经确认过」的意思是**别重复问**，不是**可以不传**。
                 - **用户已经说清了就别再问**（2026-10-09 用户点名）：他若已经说了「用上次的配置 / 上次那份」，
                   直接 mode=last；已经点名要哪些小计层级，直接 mode=direct 带上 levels。
                   **不要**再摆一次「用上次的还是自己配」—— 参数都在手上了还问，是在浪费他一轮。
@@ -537,7 +545,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                             Result<List<String>> gr = materialService.listGroupsWithRecords(ctx.actor(), from, to);
                             for (String g : gr == null || gr.getData() == null ? List.<String>of() : gr.getData()) {
                                 if (keyword != null && !contains(g, keyword)) continue;
-                                rows.add(AiChoices.option(g, g));
+                                rows.add(AiChoices.option(g, tag(DIM_GROUP, g)));
                             }
                         }
                         case "applicants" -> {
@@ -547,14 +555,16 @@ public class MaterialAuditToolPack implements AiToolPack {
                                     ? List.<Map<String, Object>>of() : ar.getData()) {
                                 String name = str(firstOf(a, "applicantName", "name"));
                                 if (keyword != null && !contains(name, keyword)) continue;
-                                rows.add(AiChoices.option(name, str(firstOf(a, "userId", "id"))));
+                                rows.add(AiChoices.option(name,
+                                        tag(DIM_APPLICANT, str(firstOf(a, "userId", "id")))));
                             }
                         }
                         case "categories" -> {
                             for (MaterialCategoryView c : materialService.listCategoriesForAdmin(group)) {
                                 String name = str(c.getName());
                                 if (keyword != null && !contains(name, keyword)) continue;
-                                rows.add(AiChoices.option(name, c.getId() == null ? "" : String.valueOf(c.getId())));
+                                rows.add(AiChoices.option(name,
+                                        tag(DIM_CATEGORY, c.getId() == null ? "" : String.valueOf(c.getId()))));
                             }
                         }
                         case "items" -> {
@@ -564,7 +574,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                                 String sub = str(it.getSubtitle());
                                 if (keyword != null && !contains(name + " " + sub, keyword)) continue;
                                 rows.add(AiChoices.option(sub.isEmpty() ? name : name + " · " + sub,
-                                        it.getId() == null ? "" : String.valueOf(it.getId())));
+                                        tag(DIM_ITEM_ID, it.getId() == null ? "" : String.valueOf(it.getId()))));
                             }
                         }
                         default -> {
@@ -611,7 +621,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                     },
                     "from": { "type": "string", "description": "起始日期 yyyy-MM-dd" },
                     "to": { "type": "string", "description": "结束日期 yyyy-MM-dd" },
-                    "group": { "type": "string", "description": "课题组全称（group 与 itemGroup 用）" },
+                    "group": { "type": "string", "description": "课题组全称（**group / item / itemGroup 三个页签都吃它**：按物品看时它收窄成「这个组的某样东西」）" },
                     "applicantUserId": { "type": "string", "description": "申请人 id（personal 用，来自 kind=applicants）" },
                     "categoryId": { "type": "integer", "description": "物资分类（item / itemGroup 用）" },
                     "itemId": { "type": "integer", "description": "物资 id（item / itemGroup 用；不传=全部物资）" },
@@ -630,18 +640,15 @@ public class MaterialAuditToolPack implements AiToolPack {
                     String tab = arg(args, "tab", "group");
                     String from = arg(args, "from", null);
                     String to = arg(args, "to", null);
-                    String group = arg(args, "group", null);
-                    String applicant = arg(args, "applicantUserId", null);
-                    String itemKeyword = arg(args, "itemKeyword", null);
-                    NodeMaybe categoryId = longArg(args, "categoryId");
-                    NodeMaybe itemId = longArg(args, "itemId");
+                    // 筛选一律走这一层：显式参数 ⊕ 用户刚点的那项 ⊕ 会话里已定的（模型漏带时补上）
+                    Filters fl = resolveFilters(ctx, tab, args);
                     int limit = Math.min(Math.max(args.path("limit").asInt(20), 1), MAX_ROWS);
 
                     List<Map<String, Object>> rows = new ArrayList<>();
                     int total;
                     if ("item".equals(tab) || "itemGroup".equals(tab)) {
                         List<MaterialItemFlowExportRow> all = materialService.collectItemFlowExportRows(
-                                itemId.value, from, to, group, categoryId.value, itemKeyword);
+                                fl.itemId, from, to, fl.group, fl.categoryId, fl.itemKeyword);
                         total = all.size();
                         for (MaterialItemFlowExportRow r : all) {
                             if (rows.size() >= limit) break;
@@ -659,7 +666,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                         }
                     } else {
                         List<MaterialAuditGridRow> all = materialService.collectAuditGridRows(
-                                ctx.actor(), from, to, applicant, group);
+                                ctx.actor(), from, to, fl.applicant, fl.group);
                         total = all.size();
                         for (MaterialAuditGridRow r : all) {
                             if (rows.size() >= limit) break;
@@ -683,11 +690,243 @@ public class MaterialAuditToolPack implements AiToolPack {
                     out.put("note", rows.isEmpty()
                             ? "这个筛选组合下没有记录；放宽时间段或换维度再试"
                             : (total > rows.size() ? "只回了前 " + rows.size() + " 条，完整数据走导出" : null));
+                    // 查询这条路上同样回显：用户核对「查的到底是不是我要的」，模型核对「条件还在不在」
+                    putAppliedMemo(out, ctx, fl);
                     return out;
                 });
     }
 
     // ── 三、导出准备：摘要 + 带参数的页面链接 ──
+
+    // ── 筛选项的「归位」与「记性」 ─────────────────────────────
+
+    /*
+     * 这一块治的是同一个病根：**工具调用是无状态的**，而「课题组 / 物品」这类条件是上一轮
+     * 问出来、这一轮才用到的。用户实测：点完「郑俊克的课题组」，导出那次调用里课题组整个没了，
+     * 导出来直接是全量；把 40 个课题组列在正文里让他自己打字；只有一个候选还非要再问一次。
+     *
+     * 两手治：
+     *  ① **选项的值带维度前缀**（`group:xxx`）—— 页签再怎么换、模型把它塞进哪个参数，
+     *     都能归回原来的维度，不会串槽（把课题组写成物品名那种）；
+     *  ② **会话里记一份已定的筛选**（只记用户点出来的那一下，15 分钟过期）——
+     *     下一轮模型漏带时自动补上。
+     */
+
+    private static final String DIM_GROUP = "group";
+    private static final String DIM_ITEM = "item";
+    private static final String DIM_ITEM_ID = "itemId";
+    private static final String DIM_APPLICANT = "applicant";
+    private static final String DIM_CATEGORY = "category";
+
+    /**
+     * 会话级临时条件记忆（与订购单导出共用同一套实现）。
+     *
+     * <p>工具调用无状态，而课题组/物品这类条件是上一轮才问出来的；漏带就等于筛选条件没了。
+     * 存下来的同时**还要打包回给模型**（见 {@code appliedFilters}）——不然它不知道我们记住了什么，
+     * 下一轮照样漏（用户 2026-10-12 定调）。
+     */
+    private final AiSessionFilterMemo filterMemo = new AiSessionFilterMemo();
+
+    /** 回显给模型时的中文名。 */
+    private static final Map<String, String> MEMO_LABELS = Map.of(
+            DIM_GROUP, "课题组", DIM_APPLICANT, "申请人",
+            DIM_ITEM, "物品", DIM_ITEM_ID, "物品id", DIM_CATEGORY, "分类id");
+
+    /** 选项的值带上维度：`group:郑俊克的课题组`。 */
+    static String tag(String dim, String value) {
+        return value == null || value.isBlank() ? value : dim + ':' + value;
+    }
+
+    /** 拆 `维度:值`；没带维度（老写法 / 模型自己写的话）返回 null。 */
+    static String[] untag(String raw) {
+        if (raw == null) return null;
+        int i = raw.indexOf(':');
+        if (i <= 0) return null;
+        String dim = raw.substring(0, i);
+        return switch (dim) {
+            case DIM_GROUP, DIM_ITEM, DIM_ITEM_ID, DIM_APPLICANT, DIM_CATEGORY ->
+                    new String[]{dim, raw.substring(i + 1)};
+            default -> null;
+        };
+    }
+
+    /** 某个页签问的是哪个维度。 */
+    static String dimOf(String tab) {
+        return switch (tab == null ? "" : tab) {
+            case "item", "itemGroup" -> DIM_ITEM;
+            case "personal" -> DIM_APPLICANT;
+            default -> DIM_GROUP;
+        };
+    }
+
+    /** 一次调用里最终生效的筛选。 */
+    static final class Filters {
+        String group;
+        String applicant;
+        String itemKeyword;
+        Long categoryId;
+        Long itemId;
+        /** 用户已经就「这个页签筛什么」给过答案（点过选项，或明确说了「全部」）。 */
+        boolean answered;
+        /** 用户点了「全部」的那一维 —— 要显式清掉，并且**不许被会话记忆再填回来**。 */
+        String clearedDim;
+
+        /** 生效的筛选，给结果里回显用 —— 用户得看得见「到底按什么筛的」。 */
+        Map<String, Object> applied() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            if (has(group)) m.put("课题组", group);
+            if (has(applicant)) m.put("申请人", applicant);
+            if (has(itemKeyword)) m.put("物品", itemKeyword);
+            if (itemId != null) m.put("物品id", itemId);
+            if (categoryId != null) m.put("分类id", categoryId);
+            return m;
+        }
+
+        static boolean has(String s) {
+            return s != null && !s.isBlank();
+        }
+    }
+
+    /**
+     * 把「显式参数 ⊕ 刚点的那项 ⊕ 会话记忆」合成最终筛选。**纯函数**，可单测。
+     *
+     * @param filterChoice 用户刚点的那项 value。带维度前缀按前缀归位；不带就按页签推断（老写法，
+     *                     保持兼容）；`all` = 这一维度不筛
+     * @param memo         该会话记下的筛选，可为 null
+     */
+    static Filters mergeFilters(String tab, String group, String applicant, String itemKeyword,
+                                Long categoryId, Long itemId, String filterChoice,
+                                Map<String, String> memo) {
+        Filters f = new Filters();
+        f.group = blankToNull(group);
+        f.applicant = blankToNull(applicant);
+        f.itemKeyword = blankToNull(itemKeyword);
+        f.categoryId = categoryId;
+        f.itemId = itemId;
+
+        if (filterChoice != null && !filterChoice.isBlank()) {
+            String[] tv = untag(filterChoice);
+            String dim = tv != null ? tv[0] : dimOf(tab);
+            String val = tv != null ? tv[1] : filterChoice;
+            f.answered = true;
+            if ("all".equalsIgnoreCase(val)) {
+                // 「全部」= 这一维不筛。**要显式清掉**：不然会话记忆里那个值会把它又筛回来
+                // —— 用户明明说了全部，导出却悄悄还按上次那个组筛，比丢筛选更坏。
+                f.clearedDim = dim;
+                put(f, dim, null);
+            } else {
+                put(f, dim, val);
+            }
+        }
+        // 记忆补缺：这一轮模型漏带的那些条件（无状态调用漏带是常态）。
+        // 「全部」那一维跳过 —— 那是用户明确说了不筛的。
+        if (memo != null) {
+            if (f.group == null && !DIM_GROUP.equals(f.clearedDim)) {
+                f.group = blankToNull(memo.get(DIM_GROUP));
+            }
+            if (f.applicant == null && !DIM_APPLICANT.equals(f.clearedDim)) {
+                f.applicant = blankToNull(memo.get(DIM_APPLICANT));
+            }
+            if (f.itemKeyword == null && !DIM_ITEM.equals(f.clearedDim)) {
+                f.itemKeyword = blankToNull(memo.get(DIM_ITEM));
+            }
+            if (f.itemId == null && !DIM_ITEM_ID.equals(f.clearedDim)) {
+                f.itemId = parseLongOrNull(memo.get(DIM_ITEM_ID));
+            }
+            if (f.categoryId == null && !DIM_CATEGORY.equals(f.clearedDim)) {
+                f.categoryId = parseLongOrNull(memo.get(DIM_CATEGORY));
+            }
+        }
+        return f;
+    }
+
+    private static void put(Filters f, String dim, String v) {
+        switch (dim == null ? "" : dim) {
+            case DIM_GROUP -> f.group = v;
+            case DIM_ITEM -> f.itemKeyword = v;
+            case DIM_ITEM_ID -> f.itemId = parseLongOrNull(v);
+            case DIM_APPLICANT -> f.applicant = v;
+            case DIM_CATEGORY -> f.categoryId = parseLongOrNull(v);
+            default -> { }
+        }
+    }
+
+    /** 这个会话还记着哪些筛选（过期就是没记）。 */
+    private Map<String, String> readMemo(Long sessionId) {
+        return filterMemo.values(sessionId);
+    }
+
+    /**
+     * 记住这次定下来的筛选（**每次调用都记**，不只是点了选项那一次）。
+     *
+     * <p>一开始我把它收得很窄——「只记用户点出来的那一下」，怕把模型的即兴猜测也记成长期条件。
+     * 但压力测试当场打脸：用户**直接说出**「郑俊克组这个月」，模型照传；下一轮「改成按物品看」，
+     * 模型没再传课题组（它以为那个页签不吃），于是**用户明明白白说过的条件就这么丢了**。
+     * 用户点不点选项，跟这个条件算不算数没有关系 —— 所以改成每次都记。
+     *
+     * <p>用户点了「全部」的那一维记**空串** = 从记忆里删掉（沿用 {@link AiSessionFilterMemo} 的约定），
+     * 不删的话下一次调用又会被填回来 —— 那就成了「他说了全部、却还按上次那个组筛」。
+     */
+    private void remember(Long sessionId, Filters f) {
+        if (sessionId == null) return;
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put(DIM_GROUP, DIM_GROUP.equals(f.clearedDim) ? "" : f.group);
+        m.put(DIM_APPLICANT, DIM_APPLICANT.equals(f.clearedDim) ? "" : f.applicant);
+        m.put(DIM_ITEM, DIM_ITEM.equals(f.clearedDim) ? "" : f.itemKeyword);
+        m.put(DIM_ITEM_ID, DIM_ITEM_ID.equals(f.clearedDim) || f.itemId == null
+                ? "" : String.valueOf(f.itemId));
+        m.put(DIM_CATEGORY, DIM_CATEGORY.equals(f.clearedDim) || f.categoryId == null
+                ? "" : String.valueOf(f.categoryId));
+        filterMemo.remember(sessionId, m);
+    }
+
+    /**
+     * 工具里那一段：合成筛选（显式参数 + 刚点的项 + 会话记忆），并把这次定下来的记进去。
+     */
+    private Filters resolveFilters(AiToolContext ctx, String tab, JsonNode args) {
+        String filterChoice = arg(args, "filterChoice", null);
+        Filters f = mergeFilters(tab,
+                arg(args, "group", null),
+                arg(args, "applicantUserId", null),
+                arg(args, "itemKeyword", null),
+                longArg(args, "categoryId").value,
+                longArg(args, "itemId").value,
+                filterChoice,
+                readMemo(ctx.sessionId()));
+        remember(ctx.sessionId(), f);
+        return f;
+    }
+
+    /**
+     * 把「本会话已确定的条件」塞进结果。
+     *
+     * <p>两层都要：{@code appliedFilters} 是**这一次**真正生效的筛选（用户+模型都该核对），
+     * {@code sessionFilters} 是**会话里攒着**的条件（模型下一轮要靠它把条件接着带上）。
+     * 光在服务端兜底不够 —— 模型不知道我们记住了什么，就没法接着带、也没法跟用户对一句。
+     */
+    private void putAppliedMemo(Map<String, Object> out, AiToolContext ctx, Filters f) {
+        Map<String, Object> applied = f.applied();
+        if (!applied.isEmpty()) {
+            out.put("appliedFilters", applied);
+        }
+        String memo = filterMemo.describe(ctx.sessionId(), MEMO_LABELS);
+        if (memo != null) {
+            out.put("sessionFilters", memo);
+        }
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s;
+    }
+
+    private static Long parseLongOrNull(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return Long.parseLong(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 
     /**
      * 这个页签的「对象」是否已经给定了。
@@ -711,8 +950,12 @@ public class MaterialAuditToolPack implements AiToolPack {
      *
      * <p>候选**取自平台真实数据**（物品 / 课题组 / 有记录的人），并且抽不出候选时返回 null
      * —— 一个都问不出来还硬问，只会让用户干瞪眼。
+     *
+     * <p>**只有一个候选时不问**：没得挑就没什么可确认的（用户明确反馈过），直接把值填进
+     * {@code f} 并返回 null，调用方接着往下走。选项的值都带维度前缀（见 {@link #tag}）。
      */
-    private Map<String, Object> askObject(User actor, String tab, String from, String to, Long categoryId) {
+    private Map<String, Object> askObject(User actor, String tab, String from, String to, Long categoryId,
+                                          Filters f) {
         List<List<String>> pairs = new ArrayList<>();   // {label, value}
         String what;
         if ("item".equals(tab) || "itemGroup".equals(tab)) {
@@ -741,9 +984,20 @@ public class MaterialAuditToolPack implements AiToolPack {
         if (pairs.isEmpty()) {
             return null;   // 没候选就别硬问
         }
+        /*
+         * **只有一个候选 = 根本没得挑**：再问一次纯属添堵（用户反馈「本身就是唯一选项还要我确认」）。
+         * 直接采用它，返回 null 让调用方接着往下走。
+         */
+        if (pairs.size() == 1 && f != null) {
+            put(f, dimOf(tab), pairs.get(0).get(1));
+            f.answered = true;
+            return null;
+        }
+        // 选项的值**带上维度**：用户点回来的那个字符串自带出处，换页签/换参数也不会串槽
+        String dim = dimOf(tab);
         List<Map<String, Object>> options = new ArrayList<>();
         for (List<String> p : pairs) {
-            options.add(AiChoices.option(p.get(0), p.get(1)));
+            options.add(AiChoices.option(p.get(0), tag(dim, p.get(1))));
         }
         options.add(AiChoices.option("全部" + ("哪件物品".equals(what) ? "物品" : what.replace("哪个", "")), "all"));
         Map<String, Object> out = new LinkedHashMap<>();
@@ -793,46 +1047,41 @@ public class MaterialAuditToolPack implements AiToolPack {
                     String tab = arg(args, "tab", "group");
                     String from = arg(args, "from", null);
                     String to = arg(args, "to", null);
-                    String group = arg(args, "group", null);
-                    String applicant = arg(args, "applicantUserId", null);
-                    String itemKeyword = arg(args, "itemKeyword", null);
-                    NodeMaybe categoryId = longArg(args, "categoryId");
-                    NodeMaybe itemId = longArg(args, "itemId");
-
-                    // 用户刚点的那个选项（如果有）：按页签落到对应的筛选参数上。
-                    String filterChoice = arg(args, "filterChoice", null);
-                    boolean filterAnswered = filterChoice != null && !filterChoice.isBlank();
-                    if (filterAnswered && !"all".equalsIgnoreCase(filterChoice)) {
-                        if ("item".equals(tab) || "itemGroup".equals(tab)) {
-                            itemKeyword = filterChoice;
-                        } else if ("personal".equals(tab)) {
-                            applicant = filterChoice;
-                        } else {
-                            group = filterChoice;
-                        }
-                    }
+                    // 筛选一律走这一层：显式参数 ⊕ 用户刚点的那项 ⊕ 会话里已定的（模型漏带时补上）
+                    Filters fl = resolveFilters(ctx, tab, args);
 
                     // **每个页签的「对象」没定就先问**（真机反馈）：用户选了「按物品」页签，
                     // 工具却直接跳到「小计怎么配」，一句都没问他要筛哪件物品 ——
                     // 用户只能自己补一句「我还没筛选」。四个页签问的东西不同：
                     // personal→人、group→课题组、item→物品、itemGroup→物品。
                     // 放在**算摘要之前**：全量摘要又慢又没意义，先问清再算。
-                    if (!filterAnswered
-                            && !objectGiven(tab, itemKeyword, group, applicant, categoryId.value, itemId.value)) {
-                        Map<String, Object> ask = askObject(ctx.actor(), tab, from, to, categoryId.value);
+                    if (!fl.answered
+                            && !objectGiven(tab, fl.itemKeyword, fl.group, fl.applicant, fl.categoryId, fl.itemId)) {
+                        Map<String, Object> ask = askObject(ctx.actor(), tab, from, to, fl.categoryId, fl);
                         if (ask != null) {
                             return ask;
                         }
+                        if (!objectGiven(tab, fl.itemKeyword, fl.group, fl.applicant, fl.categoryId, fl.itemId)) {
+                            /*
+                             * 抽不出候选**不等于可以导全量** —— 静默导全量正是用户报的那个
+                             * 「最后导出的时候并没有筛选这个课题组」。宁可退回让他放宽条件。
+                             */
+                            return Map.of("ok", false, "reason",
+                                    "这个时间段里抽不出可筛的候选，导出来会变成全量（他报的「筛选丢了」就是这么来的）。"
+                                            + "先放宽时间段，或者明确说一句「全部」表示不筛这一维。");
+                        }
+                        // 唯一候选已直接采用 → 记进会话，下一轮模型漏带也能补上
+                        remember(ctx.sessionId(), fl);
                     }
 
                     SubtotalSummary summary;
                     if ("item".equals(tab) || "itemGroup".equals(tab)) {
                         summary = excelExportService.summarizeItemFlow(
                                 materialService.collectItemFlowExportRows(
-                                        itemId.value, from, to, group, categoryId.value, itemKeyword));
+                                        fl.itemId, from, to, fl.group, fl.categoryId, fl.itemKeyword));
                     } else {
                         summary = excelExportService.summarizeAuditGrid(
-                                materialService.collectAuditGridRows(ctx.actor(), from, to, applicant, group));
+                                materialService.collectAuditGridRows(ctx.actor(), from, to, fl.applicant, fl.group));
                     }
 
                     Map<String, Object> sum = new LinkedHashMap<>();
@@ -846,6 +1095,12 @@ public class MaterialAuditToolPack implements AiToolPack {
                     Map<String, Object> out = new LinkedHashMap<>();
                     out.put("ok", true);
                     out.put("summary", sum);
+                    /*
+                     * **把生效的筛选 + 会话里攒着的条件一起回显**：用户得看得见「这批到底按什么筛的」，
+                     * 模型得看得见「哪些条件已经定了」才能在下一轮接着带上。筛选一旦被悄悄丢掉
+                     * （他报的就是这个），这是他当场能发现的那个口子 —— 否则只有下载完打开表才发现是全量。
+                     */
+                    putAppliedMemo(out, ctx, fl);
                     boolean mini = ctx.miniProgram();
                     String mode = arg(args, "mode", "ask");
 
@@ -892,25 +1147,25 @@ public class MaterialAuditToolPack implements AiToolPack {
                         params.put("from", from);
                         params.put("to", to);
                         if ("group".equals(tab) || "itemGroup".equals(tab)) {
-                            params.put("group", group);
+                            params.put("group", fl.group);
                         }
                         if ("personal".equals(tab)) {
-                            params.put("applicantUserId", applicant);
+                            params.put("applicantUserId", fl.applicant);
                         }
-                        if (categoryId.value != null) {
-                            params.put("categoryId", categoryId.value);
+                        if (fl.categoryId != null) {
+                            params.put("categoryId", fl.categoryId);
                         }
-                        if (itemId.value != null) {
-                            params.put("itemId", itemId.value);
+                        if (fl.itemId != null) {
+                            params.put("itemId", fl.itemId);
                         }
-                        params.put("itemKeyword", itemKeyword);
+                        params.put("itemKeyword", fl.itemKeyword);
                         List<String> chosen = levelsArg(args);
                         if (!chosen.isEmpty()) {
                             params.put("levels", chosen);
                         }
                         Map<String, Object> dl = new LinkedHashMap<>();
                         dl.put("kind", "materialAudit");
-                        dl.put("label", exportLabel(tab, group, itemKeyword));
+                        dl.put("label", exportLabel(tab, fl.group, fl.itemKeyword));
                         dl.put("params", params);
                         out.put("download", dl);
                         out.put("note", "已让载体生成**下载按钮**（内置本次导出：网页端用他浏览器里那份小计配置，"
@@ -922,8 +1177,8 @@ public class MaterialAuditToolPack implements AiToolPack {
                     // ⑤ 跳页 + 自动打开导出弹窗（**只给小程序用**：那边没有多选 UI、也不记上次配置）
                     out.put("navigate", Map.of(
                             "path", mini
-                                    ? miniLink(tab, from, to, group, applicant, categoryId.value, itemId.value, itemKeyword)
-                                    : webLink(tab, from, to, group, applicant, categoryId.value, itemId.value, itemKeyword),
+                                    ? miniLink(tab, from, to, fl.group, fl.applicant, fl.categoryId, fl.itemId, fl.itemKeyword)
+                                    : webLink(tab, from, to, fl.group, fl.applicant, fl.categoryId, fl.itemId, fl.itemKeyword),
                             "label", "申领审计导出"));
                     out.put("note", mini
                             ? "已把小程序页面带过去、筛选也带上了，并在那页直接打开导出设置弹层 —— 让用户确认后导出。"

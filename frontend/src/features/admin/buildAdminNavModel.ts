@@ -116,30 +116,43 @@ export const TWIN_FULLSCREEN_ENTRY_PATHS = new Set([
 ]);
 
 /**
+ * 拆出「路径」与「查询串」。**匹配只用路径部分，查询串原样带回** ——
+ * 否则 `?tab=` 这类由 AI 跳转/截图带过来的参数会在归一化时被吃掉。
+ */
+function splitQuery(path: string): { bare: string; query: string } {
+  const i = path.indexOf("?");
+  return i >= 0 ? { bare: path.slice(0, i), query: path.slice(i) } : { bare: path, query: "" };
+}
+
+/**
  * 规范化为注册表用的 canonical 路径（/admin/...）。
  * 兼容 location.pathname（/console/admin/...）与旧 /admin/... 链接。
  */
 export function normalizeAdminPath(path: string): string {
   if (!path) return "";
-  let withSlash = path.startsWith("/") ? path : `/${path}`;
+  const { bare, query } = splitQuery(path);
+  let withSlash = bare.startsWith("/") ? bare : `/${bare}`;
   withSlash = withSlash.replace(/\/+/g, "/");
-  if (withSlash === `${STAFF_CONSOLE_NS}/admin`) return "/admin";
+  if (withSlash === `${STAFF_CONSOLE_NS}/admin`) return "/admin" + query;
   if (withSlash.startsWith(`${STAFF_CONSOLE_NS}/admin/`)) {
-    return withSlash.slice(STAFF_CONSOLE_NS.length);
+    return withSlash.slice(STAFF_CONSOLE_NS.length) + query;
   }
   if (withSlash.startsWith(`${STAFF_CONSOLE_NS}/`)) {
     const withoutConsole = withSlash.slice(STAFF_CONSOLE_NS.length);
-    if (TWIN_FULLSCREEN_ENTRY_PATHS.has(withoutConsole)) return withoutConsole;
+    if (TWIN_FULLSCREEN_ENTRY_PATHS.has(withoutConsole)) return withoutConsole + query;
   }
-  return withSlash;
+  return withSlash + query;
 }
 
 /** canonical /admin/... → 可 navigate 的 /console/admin/... */
 export function toAdminRoutePath(path: string): string {
   const canonical = normalizeAdminPath(path);
   if (!canonical || canonical === "/admin") return `${STAFF_CONSOLE_NS}/admin`;
-  if (canonical.startsWith("/admin/")) return `${STAFF_CONSOLE_NS}${canonical}`;
-  if (TWIN_FULLSCREEN_ENTRY_PATHS.has(canonical)) return `${STAFF_CONSOLE_NS}${canonical}`;
+  // 用**去掉查询串**的路径去比对：集合里存的是裸路径，带 `?tab=` 会比不中，
+  // 于是退回原路径 → 命中顶层 legacy 重定向（整壳闪一下）且参数被吞。
+  const { bare, query } = splitQuery(canonical);
+  if (bare.startsWith("/admin/")) return `${STAFF_CONSOLE_NS}${bare}${query}`;
+  if (TWIN_FULLSCREEN_ENTRY_PATHS.has(bare)) return `${STAFF_CONSOLE_NS}${bare}${query}`;
   return path;
 }
 
@@ -153,12 +166,12 @@ export function isAdminAreaPath(path: string): boolean {
  * 智能助手也要在这儿停靠：内容包是「模型写稿 + 用户点选配置后就地发布」，人不在这个页面上就无从谈起。
  */
 export function isContentManagerPath(path: string): boolean {
-  const p = normalizeAdminPath(path);
+  const p = splitQuery(normalizeAdminPath(path)).bare;
   return p === "/content-manager" || p.startsWith("/content-manager/");
 }
 
 export function isTwinFullscreenEntryPath(path: string): boolean {
-  return TWIN_FULLSCREEN_ENTRY_PATHS.has(normalizeAdminPath(path));
+  return TWIN_FULLSCREEN_ENTRY_PATHS.has(splitQuery(normalizeAdminPath(path)).bare);
 }
 
 /** Twin 主大屏首页（含 /console 命名空间下的 index 与 dashboard 路由） */

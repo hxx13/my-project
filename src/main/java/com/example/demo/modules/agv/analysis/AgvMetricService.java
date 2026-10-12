@@ -11,7 +11,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,9 +21,11 @@ import java.util.Map;
  * AGV 每日指标：封存、历史回填、日行聚合、今日曲线。
  *
  * <h3>日界口径（容易搞错，先看这条）</h3>
- * 轨迹表里的 {@code recorded_at} 存的是 <b>UTC 墙钟</b>——实测北京日 2026-10-10 的数据
- * 落在 2026-10-09 16:00 起。Java 侧一律传**无时区的 LocalDateTime**，JDBC 不做转换，
- * 因此「北京日 D」= UTC 墙钟 {@code [D-1 16:00, D 16:00)}，见 {@link #beijingDayUtcBounds}。
+ * 轨迹表里的 {@code recorded_at} 就是**写库那套墙钟**：采集写的是 {@code LocalDateTime.now()}，
+ * 实测与库自动写的 {@code created_at}（JDBC 会话被强制 +08:00）逐行只差 0~1 秒，全库一致。
+ * Java 侧一律传**无时区的 LocalDateTime**，JDBC 不做转换，所以读取侧必须用同一套墙钟划窗口 ——
+ * 见 {@link #beijingDayBounds}（它把北京日的瞬间换算到 JVM 墙钟，不写死任何一侧）。
+ * 历史上这里曾按「库里存 UTC 墙钟」划窗口，采集改成写 JVM 墙钟之后整整错 8 小时，今日指标恒为 0。
  *
  * <h3>为什么日值直接扫轨迹、不数事件</h3>
  * 事件是拦截器**在线增量**产的（重启只回追 5 分钟），历史天根本没有事件行。
@@ -51,12 +53,19 @@ public class AgvMetricService {
     }
 
     /**
-     * 北京日 D 对应的 UTC 墙钟半开区间 {@code [D-1 16:00, D 16:00)}。
-     * 实测依据：北京日 2026-10-10 的轨迹落在 2026-10-09 16:00 起。
+     * 北京日 D 的半开区间，用**写库那套墙钟**表达（{@code ZoneId.systemDefault()}）。
+     *
+     * 把「北京日 00:00」这个**瞬间**换算到 JVM 墙钟上：JVM 是北京就是 {@code [D 00:00, D+1 00:00)}，
+     * JVM 是 UTC 就是 {@code [D-1 16:00, D 16:00)} —— 换机器、换时区都不用改代码。
+     * 关键点：**不要写死某一侧**。读取侧与写库的墙钟一旦差 8 小时，今日指标会静默恒为 0。
      */
-    public static LocalDateTime[] beijingDayUtcBounds(LocalDate day) {
-        LocalDateTime from = day.minusDays(1).atTime(16, 0);
-        return new LocalDateTime[] { from, from.plusDays(1) };
+    public static LocalDateTime[] beijingDayBounds(LocalDate day) {
+        ZoneId jvm = ZoneId.systemDefault();
+        ZonedDateTime from = day.atStartOfDay(BEIJING);
+        return new LocalDateTime[] {
+            LocalDateTime.ofInstant(from.toInstant(), jvm),
+            LocalDateTime.ofInstant(from.plusDays(1).toInstant(), jvm),
+        };
     }
 
     /**
@@ -71,7 +80,7 @@ public class AgvMetricService {
             log.debug("[AgvMetric] {} 已有封存行，跳过（source={}）", dateStr, source);
             return 0;
         }
-        LocalDateTime[] bounds = beijingDayUtcBounds(day);
+        LocalDateTime[] bounds = beijingDayBounds(day);
         int written = 0;
 
         // 1) 笼盒清洗：1 号车当天叉臂序列 → 行程数 × 80
@@ -197,9 +206,10 @@ public class AgvMetricService {
      */
     public Map<String, Object> todayLiveMeters() {
         LocalDate today = LocalDate.now(BEIJING);
-        LocalDateTime[] bounds = beijingDayUtcBounds(today);
-        LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
-        LocalDateTime to = nowUtc.isBefore(bounds[1]) ? nowUtc : bounds[1];
+        LocalDateTime[] bounds = beijingDayBounds(today);
+        // 上界取「现在」，且必须是**与写库同一套墙钟**（LocalDateTime.now()），否则差 8 小时、当天一条都扫不到
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime to = now.isBefore(bounds[1]) ? now : bounds[1];
 
         Map<String, Double> byRobot = new LinkedHashMap<>();
         double total = 0;
@@ -221,10 +231,10 @@ public class AgvMetricService {
      */
     public List<Map<String, Object>> todayCageWashCurve() {
         LocalDate today = LocalDate.now(BEIJING);
-        LocalDateTime[] bounds = beijingDayUtcBounds(today);
-        // 今日尚未结束：区间上界取「现在」对应的 UTC 墙钟
-        LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
-        LocalDateTime to = nowUtc.isBefore(bounds[1]) ? nowUtc : bounds[1];
+        LocalDateTime[] bounds = beijingDayBounds(today);
+        // 今日尚未结束：上界取「现在」——同样是写库那套墙钟
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime to = now.isBefore(bounds[1]) ? now : bounds[1];
 
         List<LocalDateTime> times = statsMapper.selectEventTimes(
             EVENT_FORK_RAISE_STROKE, AgvRobots.CAGE_WASH_ROBOT, bounds[0], to);
@@ -250,7 +260,7 @@ public class AgvMetricService {
         for (Map.Entry<LocalDateTime, Double> e : buckets.entrySet()) {
             cum += e.getValue();
             Map<String, Object> point = new LinkedHashMap<>();
-            point.put("at", e.getKey().plusHours(8).toString());  // 还原成北京墙钟给前端画轴
+            point.put("at", e.getKey().toString());  // 桶键就是写库墙钟，直接给前端画轴（别再 +8 小时）
             point.put("cages", cum);
             out.add(point);
         }

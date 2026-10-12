@@ -1,0 +1,61 @@
+/**
+ * 动力站设备动画 —— `CockpitPowerStationMetrics.tsx` 里那排泵/冷机/冷凝塔的样式。
+ *
+ * 放在静态样式表里、由组件自己 import，而不是运行时往 <head> 注入一串字符串：
+ * 注入那套挂在 mount-only 的 effect 上，热更新不会重跑，页里就会留着旧 CSS ——
+ * 新标记配旧规则，动画看着「改了没反应」。静态表由构建/HMR 整张替换，没这个中间态。
+ * （机械臂那套同样的坑，见 cockpitRobotArm.css）
+ */
+
+/* 泵叶轮 / 冷机雪花轮：匀速自转 */
+@keyframes cockpitSpin { to { transform: rotate(360deg); } }
+
+/* 冷凝塔顶那台大风扇：塔顶本来就是一台会转的轴流风扇，原来只用几根风线带过 */
+@keyframes cockpitFanSpin { to { transform: rotate(360deg); } }
+
+/* 管内水流：虚线往下游爬 */
+@keyframes cockpitFlow { to { stroke-dashoffset: -18; } }
+
+/* 塔顶排汽：一边升一边散，带一点横向漂移 */
+@keyframes cockpitVapor {
+  0% { transform: translateY(4px) translateX(0); opacity: 0; }
+  25% { opacity: 0.95; }
+  60% { transform: translateY(-3px) translateX(0.6px); opacity: 0.6; }
+  100% { transform: translateY(-9px) translateX(-0.6px); opacity: 0; }
+}
+
+/**
+ * 飘雪：**真的往下飘**（顺便自转），飘完淡出重来。
+ * 原来只有原地明暗闪（cockpitFrost），用户的原话是「只是原地闪烁，没有什么效果」——
+ * 雪花必须位移才读得出「在下雪」。
+ */
+@keyframes cockpitSnow {
+  0% { transform: translateY(0) rotate(0deg); opacity: 0; }
+  14% { opacity: 0.95; }
+  70% { opacity: 0.8; }
+  100% { transform: translateY(9px) rotate(150deg); opacity: 0; }
+}
+
+/* 运行态整格泛光 */
+@keyframes cockpitLiveGlow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
+}
+
+.cockpitPumpSpin { animation: cockpitSpin 0.9s linear infinite; }
+.cockpitChillerSpin { animation: cockpitSpin 2.2s linear infinite; }
+/* 大风扇转速比叶轮慢：扇叶大，转太快在小格子里只会糊成一片 */
+.cockpitFanSpin { animation: cockpitFanSpin 1.7s linear infinite; }
+.cockpitFlow { stroke-dasharray: 4.5 3.5; animation: cockpitFlow 0.75s linear infinite; }
+.cockpitVapor { animation: cockpitVapor 2s ease-in-out infinite; }
+.cockpitSnow { animation: cockpitSnow 3.4s linear infinite; }
+.cockpitLiveGlow { animation: cockpitLiveGlow 2.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpitPumpSpin, .cockpitChillerSpin, .cockpitFanSpin, .cockpitFlow, .cockpitVapor, .cockpitSnow, .cockpitLiveGlow {
+    animation: none;
+  }
+  .cockpitFlow { stroke-dashoffset: -5; }
+  .cockpitVapor { opacity: 0.7; }
+  .cockpitSnow { opacity: 0.7; }
+}

@@ -6,7 +6,6 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,15 +80,14 @@ class AgvStatsEventInterceptorForkTest {
     }
 
     /**
-     * 增量起点必须是 **UTC 墙钟**。
+     * 增量起点必须与**写库同一套墙钟**（采集写的是 {@code LocalDateTime.now()}）。
      *
-     * <p>轨迹里的 recorded_at 存的是 UTC 墙钟，而 JVM 默认时区被设成了 Asia/Shanghai；
-     * 若这里用 LocalDateTime.now()（北京墙钟），查询条件会比库里所有时间戳快 8 小时、
-     * 一行都查不出来，站点/任务/叉臂事件会全部静默停止产出。
-     * 这条用例把口径钉死：断言传给 mapper 的 since 应当接近「UTC 现在 − 5 分钟」。
+     * <p>历史教训：这里曾写死 UTC 墙钟去比，而库里的 recorded_at 就是 JVM 墙钟，整整差 8 小时 ——
+     * 重启后第一次回追一行都扫不到（只在 lastProcessedAt 还没值的车型上暴露）。
+     * 这条用例把口径钉死：断言传给 mapper 的 since 应当接近「现在 − 5 分钟」，用的是同一个 now 口径。
      */
     @Test
-    void catchUpSinceUsesUtcWallClock() {
+    void catchUpSinceUsesSameWallClockAsWriter() {
         AgvStatsMapper mapper = mock(AgvStatsMapper.class);
         when(mapper.selectActiveRobotIps(any())).thenReturn(List.of(AGV1));
         when(mapper.selectTrajectoryAfter(eq(AGV1), any(), anyInt())).thenReturn(Collections.emptyList());
@@ -99,9 +97,9 @@ class AgvStatsEventInterceptorForkTest {
         ArgumentCaptor<LocalDateTime> cap = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(mapper).selectTrajectoryAfter(eq(AGV1), cap.capture(), anyInt());
 
-        LocalDateTime expected = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(5);
+        LocalDateTime expected = LocalDateTime.now().minusMinutes(5);
         long offMinutes = Math.abs(Duration.between(expected, cap.getValue()).toMinutes());
         assertTrue(offMinutes <= 1,
-            "增量起点不是 UTC 墙钟（与「UTC 现在 − 5 分钟」差了 " + offMinutes + " 分钟）：" + cap.getValue());
+            "增量起点与「现在 − 5 分钟」差了 " + offMinutes + " 分钟（疑似又写死了别的时区）：" + cap.getValue());
     }
 }

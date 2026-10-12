@@ -195,6 +195,8 @@ module.exports.fill = function (tpl, name) {
               wx:if="{{ item.text || item.pending || item.typing || (item.images && item.images.length) || (item.files && item.files.length) }}"
               class="ai-drawer__bubble ai-drawer__bubble--{{ item.role === 'assistant' ? 'bot' : 'me' }}"
             >
+              <!-- 自己发出去的图**点得开**：发图多半就是要核「是不是这一张 / 上面写的字对不对」，
+                   点不开就没法核。同一条消息里的图一起给进去，左右滑能连着看。 -->
               <image
                 wx:for="{{ item.images }}"
                 wx:for-item="pic"
@@ -202,6 +204,9 @@ module.exports.fill = function (tpl, name) {
                 class="ai-drawer__bubble-pic"
                 src="{{ pic }}"
                 mode="aspectFill"
+                data-idx="{{ index }}"
+                data-src="{{ pic }}"
+                bindtap="onBubblePicTap"
               />
               <!-- 附件只列名字：本体是几百 KB 的 base64，进 messages 会被 setData 拒绝 -->
               <view
@@ -227,9 +232,9 @@ module.exports.fill = function (tpl, name) {
                   那个三角是**展开指示**（用户 2026-10-11 报「没有箭头，不知道可以展开」）：
                   收起朝右、展开转 90° 朝下。少了它，这行看着就是一句静态小字。
                 -->
-                <view class="ai-drawer__reasoning-head"><van-icon class="ai-drawer__reasoning-caret{{ (item.pending || item.reasoningOpen) ? ' ai-drawer__reasoning-caret--open' : '' }}" name="arrow" size="11px" color="#94a3b8" /><text>{{ item.pending ? '思考中…' : ((item.reasoningOpen ? '收起思考' : '思考过程') + (item.reasoningTokens ? '（' + item.reasoningTokens + ' 字）' : '')) }}</text></view>
+                <view class="ai-drawer__reasoning-head"><van-icon class="ai-drawer__reasoning-caret{{ (item.reasoningLive || item.reasoningOpen) ? ' ai-drawer__reasoning-caret--open' : '' }}" name="arrow" size="11px" color="#94a3b8" /><text>{{ item.reasoningLive ? '思考中…' : ((item.reasoningOpen ? '收起思考' : '思考过程') + (item.reasoningTokens ? '（' + item.reasoningTokens + ' tokens）' : '')) }}</text></view>
                 <text
-                  wx:if="{{ item.pending || item.reasoningOpen }}"
+                  wx:if="{{ item.reasoningLive || item.reasoningOpen }}"
                   class="ai-drawer__reasoning-body"
                 >{{ item.reasoning }}</text>
               </view>

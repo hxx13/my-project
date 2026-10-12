@@ -950,16 +950,39 @@ Component({
       if (this.data.liveMeta) this.setData({ liveMeta: '' });
     },
 
+    /**
+     * 思考结束：把摊开的「思考中…」收起来。
+     *
+     * 判据是**正文开始来**（这一轮第一次 delta），而不是整轮 done ——
+     * 模型想完了才动笔写答案，那中间几秒思考块还摊着，正好挡在往下走的正文前面。
+     * （用户 2026-10-12 要求「思考完毕之后要自动收起」。）
+     */
+    endLiveReasoning(botKey) {
+      const idx = this.indexOfKey(botKey);
+      if (idx < 0) return;
+      if (!this.data.messages[idx].reasoningLive) return;
+      this.setData({ ['messages[' + idx + '].reasoningLive']: false });
+    },
+
     handlersFor(botKey) {
       return {
-        onDelta: (text) => this.appendText(botKey, text),
+        onDelta: (text) => {
+          // 正文一来就说明想完了 —— 先收思考块，再落字
+          this.endLiveReasoning(botKey);
+          this.appendText(botKey, text);
+        },
         // 思考正文：**边来边显**。它是模型在调工具**之前**想的，正是用户干等的那段 ——
         // 等收尾才显示就等于没有（设计文档 §10.3）。
         onReasoning: (text) => {
           const idx = this.indexOfKey(botKey);
           if (idx < 0) return;
           const prev = this.data.messages[idx].reasoning || '';
-          this.setData({ ['messages[' + idx + '].reasoning']: prev + text });
+          // reasoningLive = 「正在想」：块在这段时间里**自动摊开**，
+          // 想完（正文开始来）自动收起，或用户自己点开/合上（reasoningOpen）。
+          this.setData({
+            ['messages[' + idx + '].reasoning']: prev + text,
+            ['messages[' + idx + '].reasoningLive']: true,
+          });
         },
         // 工具开跑前服务端推来的人话短语（「正在汇总 148 个板块…」）。
         // 慢的其实是查数据、不是模型，所以这句话比一个笼统的「正在思考」有用得多。
@@ -1094,6 +1117,21 @@ Component({
       const path = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.path) || '';
       if (!path) return;
       wx.previewImage({ urls: [path], current: path });
+    },
+
+    /**
+     * 点气泡里的图放大 —— **用户自己发出去的那些**。
+     *
+     * 发图多半就是要确认「刚才那张是不是它 / 上面写的字对不对」，点不开就没法核。
+     * urls 给**同一条消息里的全部图**，这样左右滑能连着看，而不是只看得到点中的那一张。
+     */
+    onBubblePicTap(e) {
+      const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+      const src = ds.src || '';
+      if (!src) return;
+      const msg = (this.data.messages || [])[ds.idx] || {};
+      const all = (msg.images || []).filter(Boolean);
+      wx.previewImage({ current: src, urls: all.length ? all : [src] });
     },
 
     /**
@@ -2110,6 +2148,9 @@ Component({
         if (errorText && !msg.text) patch['messages[' + idx + '].text'] = errorText;
         patch['messages[' + idx + '].pending'] = false;
         patch['messages[' + idx + '].typing'] = false;
+        // 兜底：只调工具、没有正文的那一轮不会触发 endLiveReasoning（没有 delta），
+        // 收尾时一并关掉，免得留给下一轮的「思考中…」一直摊着。
+        patch['messages[' + idx + '].reasoningLive'] = false;
         const meta = this.metaTextOf(payload);
         if (meta) patch['messages[' + idx + '].meta'] = meta;
         // 记下这一轮助手消息的 id：补拉新消息、把倒计时挂回原位都靠它。
@@ -2117,7 +2158,8 @@ Component({
         if (payload && payload.messageId != null) {
           patch['messages[' + idx + '].messageId'] = Number(payload.messageId);
         }
-        // 思考 token：折叠标题「思考过程（N 字）」拿它显示。上游**精确给出**，不是估的。
+        // 思考 token：折叠标题「思考过程（N tokens）」拿它显示。上游**精确给出**，不是估的。
+        // 单位就是 token，别标成「字」—— 同一个数标错单位会让人以为模型写了那么多字。
         if (payload && payload.reasoningTokens) {
           patch['messages[' + idx + '].reasoningTokens'] = payload.reasoningTokens;
         }
@@ -2459,7 +2501,15 @@ Component({
     // ── 详情二级抽屉 ──────────────────────────────────────────
 
     onOpenDetail() {
-      this.setData({ detailOpen: true });
+      /*
+       * **两块覆盖面板先收掉。**
+       *
+       * 详情是挂在抽屉 popup **之外**的二级抽屉（z-index 更高），但底下的正文照样被
+       * 历史对话 / 习惯页盖着。不收的话：从历史页点进详情、选一条回填输入框、详情自己关上，
+       * 人看到的还是那张历史列表 —— 表现为「卡在这一页、没跳回去、也没填进对话」（真机反馈）。
+       * 与「新建对话」同一处病根：覆盖面板各管各的开关，谁都不负责收别人。
+       */
+      this.setData({ detailOpen: true, historyOpen: false, prefOpen: false });
     },
 
     /**

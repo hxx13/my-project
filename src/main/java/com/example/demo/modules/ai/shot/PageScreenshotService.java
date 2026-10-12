@@ -394,15 +394,39 @@ public class PageScreenshotService {
      * （裸 {@code /admin/x} 会命中顶层 legacy 重定向、整页闪一下）。
      * 学生页 {@code /student/x} 本来就在顶层，不动。
      */
+    /**
+     * 可后端渲染的路径 → 实际要打开的 route（查询串原样保留，用于 `?tab=…` 选页签）。
+     *
+     * <p>认得三类：{@code /admin…}、{@code /student/…}、{@code /content-manager…}，
+     * 外加两个**全屏孪生入口**（{@code /animal-room-telemetry}、{@code /animal-room-cockpit}）——
+     * 它们的路由挂在 {@code /console} 下而不是 {@code /admin} 下，加错前缀会落到 404 错误页。其余返回 null。</p>
+     */
     private static String toConsoleRoute(String webPath) {
         String p = webPath.trim();
-        if (p.startsWith("/admin") && (p.length() == 6 || p.charAt(6) == '/')) {
-            return "/console" + p;
+        int q = p.indexOf('?');
+        String path = q >= 0 ? p.substring(0, q) : p;
+        String query = q >= 0 ? p.substring(q) : "";
+        if (path.startsWith("/admin") && (path.length() == 6 || path.charAt(6) == '/')) {
+            return "/console" + path + query;
         }
-        if (p.startsWith("/student/") || p.startsWith("/content-manager")) {
-            return p;
+        if (path.startsWith("/student/") || path.startsWith("/content-manager")) {
+            return path + query;
+        }
+        if ("/animal-room-telemetry".equals(path) || "/animal-room-cockpit".equals(path)) {
+            return "/console" + path + query;
         }
         return null;
+    }
+
+    /**
+     * 这个路径能不能后端渲染（判断与 {@link #toConsoleRoute} 同一份口径，不做浏览器预热）。
+     *
+     * <p>给工具侧「先问一句再答」用：{@code screenshotPage} 必须先知道截不截得了，
+     * 否则它会先回成功、模型照着说「图稍等几秒」，真渲染时才失败，
+     * {@code AiOrchestrator} 再追一句「截图没取到」—— 同一段话里自相矛盾。</p>
+     */
+    public static boolean canRenderServerSide(String webPath) {
+        return toConsoleRoute(webPath) != null;
     }
 
     /** 拿共用浏览器；没起过就起，死了就重起。 */

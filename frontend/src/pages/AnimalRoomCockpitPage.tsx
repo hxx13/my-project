@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import {
   ANIMAL_ROOM_TELEMETRY_PAGE_QUERY_KEY,
   buildStructuredFloorTabs,
@@ -23,6 +24,7 @@ import { CockpitMetricsBoard } from "./animalRoomCockpit/CockpitMetricsBoard";
 import {
   CockpitRobotArmMetricSlots,
   COCKPIT_COMPACT_METRIC_PILL_BASE,
+  COCKPIT_METRIC_PILL_SIZE,
   findRobotArmTagItems,
 } from "./animalRoomCockpit/CockpitRobotArmMetricSlots";
 import { CockpitTopBarFirstRow } from "./animalRoomCockpit/CockpitTopBarLayout";
@@ -104,6 +106,7 @@ function StatPlaceholder({
           COCKPIT_COMPACT_METRIC_PILL_BASE,
           "flex h-full min-h-0 min-w-0 shrink-0 flex-col justify-center sm:min-w-[9rem] sm:max-w-[11.5rem]"
         )}
+        style={COCKPIT_METRIC_PILL_SIZE}
         title={hint || title}
       >
         <div className="flex items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold text-cyan-100/95 sm:text-xs">
@@ -228,6 +231,27 @@ export default function AnimalRoomCockpitPage() {
   const [stripRect, setStripRect] = useState({ w: 800, h: 420 });
   const [metricsLaneAlignPx, setMetricsLaneAlignPx] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<CockpitViewMode>(readCockpitViewMode);
+
+  /**
+   * `?tab=env|metrics`（也认中文「温湿度压强」「运行指标」）预选视图页签。
+   *
+   * <p>给服务端截图与 AI 跳转用：页面本身只有右上角两个按钮能切，地址里没法指定。
+   * **只种一次**，之后用户自己点按钮不受影响。</p>
+   */
+  const [urlParams] = useSearchParams();
+  const viewSeededRef = useRef(false);
+  useEffect(() => {
+    if (viewSeededRef.current) return;
+    const want = (urlParams.get("tab") ?? "").trim().toLowerCase();
+    if (!want) return;
+    if (want === "env" || want === "温湿度压强" || want === "温湿度") {
+      setViewMode("env");
+      viewSeededRef.current = true;
+    } else if (want === "metrics" || want === "运行指标" || want === "指标") {
+      setViewMode("metrics");
+      viewSeededRef.current = true;
+    }
+  }, [urlParams]);
 
   useEffect(() => {
     try {

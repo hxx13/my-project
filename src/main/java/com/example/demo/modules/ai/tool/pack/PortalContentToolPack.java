@@ -375,6 +375,13 @@ public class PortalContentToolPack implements AiToolPack {
     private Object askPublishOptions(JsonNode args) {
         String type = text(args, "contentType").toUpperCase();
         boolean hasCategory = !args.path("categoryId").isMissingNode() && !args.path("categoryId").isNull();
+        /*
+         * **这里只查「配置齐没齐」，不查「分类放不放得进栏目」** —— 后者是执行器在写库前干的
+         * （见 createPortalContent 的校验，用例 refusesScopeMismatch 钉着它）。
+         * 2026-10-12 我一度在这边又加了一道同样的一致性校验：既是重复，又把「分类 id 不在
+         * 管理端清单里」这种正常情形也拦住了（既有用例 goesToConfirmOnceAllOptionsGiven 当场挂）。
+         * **同一件事只在一处判**，否则两边迟早分叉。
+         */
         boolean ready = TYPES.contains(type)
                 && hasCategory
                 && PRIORITIES.contains(text(args, "priority").toLowerCase())
