@@ -733,7 +733,7 @@ export default function AdminTelemetryLongtermPage() {
                   <tr className="h-9 font-bold text-[var(--app-color-text-secondary)]">
                     {/* 变量列：**不换行、不截断**（名字要显示完整），列宽随内容自适应到 360px 上限；
                         行高由行上的 h-9 定死，单元格 align-middle 保证垂直居中 —— 名字长的行不会再被顶高。 */}
-                    <th className="w-[240px] min-w-[240px] max-w-[360px] whitespace-nowrap px-2 py-1.5 text-center">房间</th>
+                    <th className="w-[240px] min-w-[240px] max-w-[360px] whitespace-nowrap px-2 py-1.5 text-center">展示映射</th>
                     {dayTable.columns.map((c) => (
                       <th key={c.slot} className="w-[72px] px-2 py-1.5 whitespace-nowrap text-center">
                         {/* 槽序号弱化、**时间点用主色加粗**：表头继承的是 tertiary 灰，
@@ -751,11 +751,11 @@ export default function AdminTelemetryLongtermPage() {
                       <tr key={r.variableName} className="h-9 border-b hover:bg-[var(--twin-canvas-soft)]">
                         <td
                           className="w-[240px] min-w-[240px] max-w-[360px] whitespace-nowrap px-2 py-1.5 text-center"
-                          title={`${r.roomCanonical || r.displayLabel || r.variableName}\n${r.variableName}`}
+                          title={`${r.displayLabel || r.roomCanonical || r.variableName}\n${r.variableName}`}
                         >
-                          {/* 显示的是**变量映射的房间**（用户看的是「哪个房间的温湿度」）；
-                              变量名只在 title 里留一份便于追溯 */}
-                          {r.roomCanonical || r.displayLabel || r.variableName}
+                          {/* 列头是「展示映射」，这一格就跟着取展示映射（与变量库那张表同一口径）；
+                              没有展示映射的老数据再退回房间名，变量名只在 title 里留一份便于追溯 */}
+                          {r.displayLabel || r.roomCanonical || r.variableName}
                           {r.unit ? <span className="ml-1 text-[10px] text-[var(--twin-mute)]">({r.unit})</span> : null}
                         </td>
                         {r.values.map((v, i) => {
