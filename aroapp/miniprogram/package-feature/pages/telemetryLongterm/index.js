@@ -143,7 +143,9 @@ Page({
       const distinct = new Set(valid).size > 1;
       const min = valid.length ? Math.min.apply(null, valid) : null;
       const max = valid.length ? Math.max.apply(null, valid) : null;
-      const label = r.roomCanonical || r.displayLabel || r.variableName || '';
+      // 列头是「展示映射」，这一格就跟着取展示映射（与变量库那边同一口径）；
+      // 没有展示映射的老数据再退回房间名，变量名只作最后兜底
+      const label = r.displayLabel || r.roomCanonical || r.variableName || '';
       const unit = r.unit || '';
       return {
         key: r.variableName || `row${ri}`,
@@ -168,7 +170,7 @@ Page({
   },
 
   /**
-   * 房间名太长时列里只到省略号，点一下看全称。
+   * 展示映射太长时列里只到省略号，点一下看全称。
    *
    * <p>没去判「这一格到底有没有被截断」—— 那要看渲染后的实际字宽，逻辑层量不准，
    * 判错了就正好在最需要看全称的时候点不出来。所以一律可点：名字不长时点了就是原样回显。
@@ -178,7 +180,7 @@ Page({
     if (!full) {
       return;
     }
-    wx.showModal({ title: '房间', content: full, showCancel: false, confirmText: '知道了' });
+    wx.showModal({ title: '展示映射', content: full, showCancel: false, confirmText: '知道了' });
   },
 
   // ── 日历（查看单日 / 导出多选共用同一套铺法）──────────────────

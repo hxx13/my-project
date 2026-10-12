@@ -24,7 +24,7 @@
   >
     <view class="tl-table">
       <view class="tl-tr tl-tr-head" id="tl-head">
-        <view class="tl-td tl-w-var">房间</view>
+        <view class="tl-td tl-w-var">展示映射</view>
         <view class="tl-td tl-w-slot" wx:for="{{ columns }}" wx:key="slot">{{ item.time }}</view>
       </view>
       <view class="tl-tr" wx:for="{{ rows }}" wx:key="key" id="tl-row-{{ index }}">
