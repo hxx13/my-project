@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.excel.SubtotalSummary;
 import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
+import com.example.demo.modules.ai.tool.AiToolContext;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.AiView;
 import com.example.demo.modules.ai.tool.SideEffect;
@@ -18,6 +19,7 @@ import com.example.demo.modules.referencedata.service.AnimalOrderExportService;
 import com.example.demo.modules.referencedata.service.RefOrderAccessPolicy;
 import com.example.demo.modules.referencedata.service.ReferenceDataService;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -150,6 +152,8 @@ public class AnimalOrderToolPack implements AiToolPack {
                 - **筛选值不确定时先要候选**：用户报的名字写法不定（课题组 / 品系 / 供应商 / 领用人 / 房间）
                   时，先用候选工具把平台里的**真实取值**列出来（会做成可点选项让用户挑），
                   别拿用户原话硬传 —— 名字差一个字就查成空。
+                  **同一个候选只查一次**：已经拿到「郑俊克的课题组」这个准确写法了，就别为了同一列
+                  再调一遍候选工具（压力测试里实测重复调了两次，白烧一轮）。
                 - **「小鼠使用情况」这类要当心**：平台里的**品系是具体品系名**
                   （C57BL/6、BALB/c、ICR、新西兰兔 这种），**没有「小鼠」这个物种筛选项**。
                   用户说物种时，要么先给品系候选让他挑，要么如实说「品系要具体到品系名」，别编一个筛不上。
@@ -175,7 +179,13 @@ public class AnimalOrderToolPack implements AiToolPack {
                 - **导出默认「只导本周期订单（不含预约单）」** —— 与网页端导出弹窗、小程序导出弹层同口径。
                   用户没提就照默认导（**不用问他**，问句里已经带了一句说明）；
                   他说「连预约单一起导 / 全都要」才传 currentCycleOnly=false。
-                  这个开关**只作用于导出**，不影响列表查询。""";
+                  这个开关**只作用于导出**，不影响列表查询。
+                - **每次调用都要把已经确定的筛选条件原样带上**（课题组 / 品系 / 供应商 / 房间 / 领用人 /
+                  AUP / 时间窗 / 状态……）：**工具是无状态的**，它不记得前面聊过什么。
+                  漏带一个 = 那个筛选条件当场消失，导出来是全表 —— 而且界面上看着一切正常。
+                  工具结果里的 `appliedFilters` 就是**本会话已确定的条件**，照着它带；
+                  用户这轮说了新范围就以新的为准，说了「不筛了 / 全部」就把对应的那一维**传空串**清掉。
+                  回复里也把生效的筛选说一句，让他当场能核。""";
     }
 
     @Override
@@ -205,10 +215,80 @@ public class AnimalOrderToolPack implements AiToolPack {
                         + "选「自己挑」的会拿到一道多选，勾完把那些值放进 levels 再调一次，才出下载按钮。"
                         + "**正文里让用户点按钮，不要把地址写出来**。",
                 exportFilterSchema(), CAP_ORDER_QUERY, SideEffect.READ,
-                (ctx, args) -> doPrepareExport(ctx.actor(), args));
+                (ctx, args) -> doPrepareExport(ctx, args));
     }
 
-    private Map<String, Object> doPrepareExport(User user, JsonNode args) {
+    /**
+     * 会话级临时条件记忆。
+     *
+     * <p>导出是**两轮舞**（先问小计 → 带 mode 再调一次），而筛选往往是更早一轮才问出来的 ——
+     * 每次调用都得重带一遍。实测模型会漏带，后果是**静默按全量导**（用户以为筛了、拿到的是全表），
+     * 而且 {@code exportLabel} 只回显时间/状态/课题组，漏掉的品系/供应商/领用人根本看不出来。
+     * 所以这里把条件存下来，并**打包回给模型**（见 {@link AiSessionFilterMemo#describe}，
+     * 用户 2026-10-12 定调：光存不够，得让模型看得见才不会漏）。
+     */
+    private final AiSessionFilterMemo orderMemo = new AiSessionFilterMemo();
+
+    /** 参与记忆的筛选维度（直接用参数名 —— 显式参数、记忆、回显三处共用一套键）。 */
+    private static final List<String> MEMO_DIMS = List.of(
+            "projectGroup", "strain", "supplier", "room", "collector", "aup",
+            "status", "statusNot", "from", "to", "sn", "source", "campus", "isPreorder");
+
+    /** 回显给模型时的中文名。 */
+    private static final Map<String, String> MEMO_LABELS = new LinkedHashMap<>();
+
+    static {
+        MEMO_LABELS.put("projectGroup", "课题组");
+        MEMO_LABELS.put("strain", "品系");
+        MEMO_LABELS.put("supplier", "供应商");
+        MEMO_LABELS.put("room", "房间");
+        MEMO_LABELS.put("collector", "领用人");
+        MEMO_LABELS.put("aup", "AUP");
+        MEMO_LABELS.put("status", "状态");
+        MEMO_LABELS.put("statusNot", "排除状态");
+        MEMO_LABELS.put("from", "起始");
+        MEMO_LABELS.put("to", "截止");
+        MEMO_LABELS.put("sn", "单号");
+        MEMO_LABELS.put("source", "来源");
+        MEMO_LABELS.put("campus", "校区");
+        MEMO_LABELS.put("isPreorder", "仅预约单");
+    }
+
+    private static final Map<String, String> MEMO_LABELS_VIEW = java.util.Collections.unmodifiableMap(MEMO_LABELS);
+
+    /** 本轮**显式**给的筛选：给了就是新值（空串 = 明确清掉），没给 = null（沿用记忆）。 */
+    private static Map<String, String> explicitFilters(JsonNode args) {
+        Map<String, String> m = new LinkedHashMap<>();
+        for (String dim : MEMO_DIMS) {
+            m.put(dim, args.has(dim) ? text(args, dim) : null);
+        }
+        return m;
+    }
+
+    /** 把生效条件写回参数树 —— 下游 buildQuery / exportUrl / exportLabel 照旧读参数，一处都不用改。 */
+    private static JsonNode withFilters(JsonNode raw, Map<String, String> effective) {
+        if (!(raw instanceof ObjectNode obj)) return raw;
+        ObjectNode out = obj.deepCopy();
+        effective.forEach(out::put);
+        // 本轮明确清掉的维度要**从参数里删掉**，否则 buildQuery 还会读到它
+        List<String> stale = new ArrayList<>();
+        out.fieldNames().forEachRemaining(k -> {
+            if (MEMO_DIMS.contains(k) && !effective.containsKey(k)) stale.add(k);
+        });
+        stale.forEach(out::remove);
+        return out;
+    }
+
+    private Map<String, Object> doPrepareExport(AiToolContext ctx, JsonNode rawArgs) {
+        /*
+         * **先合成「本轮生效的条件」**：本轮的显式参数优先，缺的用会话记忆补
+         * —— 模型漏带上一轮问出来的条件时，就是靠这一层兜住的。
+         */
+        Map<String, String> effective = orderMemo.merge(ctx.sessionId(), explicitFilters(rawArgs));
+        orderMemo.remember(ctx.sessionId(), effective);
+        JsonNode args = withFilters(rawArgs, effective);
+        User user = ctx.actor();
+
         RefOrderQuery q = buildQuery(args);
         // **默认只导本周期订单（不含预约单）** —— 与网页端导出弹窗、小程序导出弹层现在的默认值一致。
         // 用户明说「连预约单一起导 / 全都要」才传 currentCycleOnly=false 关掉。
@@ -255,6 +335,7 @@ public class AnimalOrderToolPack implements AiToolPack {
             out.put("detailRows", detailRows);
             out.put("blocks", blocks);
             out.put("availableLevels", levelLabels(sum));
+            putAppliedMemo(out, ctx);
             // 问句里把页面导出弹窗那个开关也带一句 —— 它是导出专有的，而且**默认就开着**
             // 读法与弹窗一致：「N 个板块 · M 行明细 · 各级小计 K 条」。
             out.putAll(AiChoices.requiredSingle("这张订购单的小计怎么配？", chips));
@@ -296,9 +377,25 @@ public class AnimalOrderToolPack implements AiToolPack {
         out.put("detailRows", detailRows);
         out.put("levels", levels.isEmpty() ? "（全保留）" : levels);
         out.put("download", dl);
+        putAppliedMemo(out, ctx);
         out.put("note", "告诉用户这批 **" + detailRows + " 行**、点下面的按钮下载。"
-                + "**不要把任何 URL 写进正文**，也不要自己把表画一遍。");
+                + "**不要把任何 URL 写进正文**，也不要自己把表画一遍。"
+                + "顺带把**实际生效的筛选**说一句（见 appliedFilters）—— 筛选一旦被漏掉，"
+                + "用户看表才发现就晚了。");
         return out;
+    }
+
+    /**
+     * 把「本会话已确定的条件」塞进结果。
+     *
+     * <p>模型得**看得见**才不会在下一轮把它漏掉 —— 光在服务端兜底它不知道我们记住了什么
+     * （用户 2026-10-12 定调：存下来，还要**打包回给模型**）。
+     */
+    private void putAppliedMemo(Map<String, Object> out, AiToolContext ctx) {
+        String memo = orderMemo.describe(ctx.sessionId(), MEMO_LABELS_VIEW);
+        if (memo != null) {
+            out.put("appliedFilters", memo);
+        }
     }
 
     private static List<String> orEmptyList(List<String> l) {
@@ -509,6 +606,14 @@ public class AnimalOrderToolPack implements AiToolPack {
                     out.put("values", options);
                     if (all.isEmpty()) {
                         out.put("note", "这一列现在没有候选值（可能确实没数据）。**如实说没有**，别编");
+                    } else if (all.size() == 1) {
+                        /*
+                         * **只有一个候选 = 没得挑**：再弹一次确认只是让用户多点一下
+                         * （用户 2026-10-12 反馈「本身就是唯一选项还要我确认」）。直接用它。
+                         */
+                        out.put("onlyValue", all.get(0).get("value"));
+                        out.put("note", "这一列只有 **" + all.get(0).get("label") + "** 一个候选 —— "
+                                + "直接拿它当筛选值用，**不要再弹一次确认**，也别在正文里列。");
                     } else if (all.size() <= CHIP_MAX) {
                         out.put("choices", all);
                         out.put("choicesTitle", "选哪个" + zh + "？");

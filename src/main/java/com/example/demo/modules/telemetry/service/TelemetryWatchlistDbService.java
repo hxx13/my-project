@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,8 +43,13 @@ public class TelemetryWatchlistDbService {
     private static final int INSERT_CHUNK = 200;
 
     /**
-     * WinCC 点名与库内 {@code wincc_variable_name} 对齐用：NFKC + 全角句号等与半角点统一，
-     * 避免 REST 返回与入库字符串逐字不一致时报警缓存lookup失败。
+     * WinCC 点名与库内 {@code wincc_variable_name} 对齐用：**只**做「去掉行首 BOM/零宽字符」+「全角句号统一成半角点」。
+     *
+     * <p><b>这里不能做 NFKC</b>：NFKC 会把全角括号 {@code （）}、全角字母数字一并折成半角，
+     * 于是 {@code 冷机3.蒸发器出水温度（平均）} 被改写成 {@code 冷机3.蒸发器出水温度(平均)} 再 POST 出去 ——
+     * WinCC 里没有这个名字，取值恒为空（现场反馈：带括号的点位全拉不到值）。
+     * 库里的点名就应当**原样**发给 WinCC；真正需要统一的只有「同名不同形的句号」这一种。</p>
+     *
      * <p>行首 {@code U+FEFF}（BOM）、零宽空格等会先去掉，否则 POST /Values 可能得到空响应。</p>
      */
     public static String normalizeWinCcVariableKey(String raw) {
@@ -64,11 +68,10 @@ public class TelemetryWatchlistDbService {
         if (!StringUtils.hasText(s)) {
             return "";
         }
-        s = Normalizer.normalize(s, Normalizer.Form.NFKC);
         StringBuilder sb = new StringBuilder(s.length());
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (c == '\uFF0E' || c == '\u3002') {
+            if (c == '\uFF0E' || c == '\u3002' || c == '\uFF61') {
                 sb.append('.');
             } else {
                 sb.append(c);

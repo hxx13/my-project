@@ -1,15 +1,14 @@
-import { useEffect, useMemo, forwardRef } from "react";
+import { useMemo, forwardRef } from "react";
 import type { TelemetryTagItem } from "@/telemetry-view/types";
 import { cn } from "@/lib/utils";
-import { COCKPIT_COMPACT_METRIC_PILL_BASE, parseRobotArmRun01 } from "./CockpitRobotArmMetricSlots";
+import { COCKPIT_COMPACT_METRIC_PILL_BASE, COCKPIT_METRIC_PILL_SIZE, parseRobotArmRun01 } from "./CockpitRobotArmMetricSlots";
 import {
   pickChillerMachineTags,
   pickCoolingTowerTags,
   pickCoolingWaterPumpTags,
   pickFrozenChilledWaterPumpTags,
 } from "./cockpitPowerStationTags";
-
-const KF_ID = "cockpit-power-station-metric-kf";
+import "./cockpitPowerStation.css";
 
 /** 与水泵「冷冻01」同级的极小号标签（inline px，减轻浏览器最小字号把 Tailwind 极小类顶大的问题） */
 const PS_NAME_LABEL_CLASS =
@@ -49,42 +48,39 @@ function twoDigit(n: number): string {
   return String(Math.max(0, Math.min(99, n))).padStart(2, "0");
 }
 
-function injectPowerStationKeyframesOnce() {
-  if (typeof document === "undefined") return;
-  if (document.getElementById(KF_ID)) return;
-  const el = document.createElement("style");
-  el.id = KF_ID;
-  el.textContent = `
-@keyframes cockpitSpin { to { transform: rotate(360deg); } }
-@keyframes cockpitFlow { to { stroke-dashoffset: -18; } }
-@keyframes cockpitVapor {
-  0% { transform: translateY(4px) translateX(0); opacity: 0; }
-  25% { opacity: 0.95; }
-  60% { transform: translateY(-3px) translateX(0.6px); opacity: 0.6; }
-  100% { transform: translateY(-9px) translateX(-0.6px); opacity: 0; }
-}
-@keyframes cockpitLiveGlow {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.3); }
-}
-@keyframes cockpitFrost {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
-}
-.cockpitPumpSpin { animation: cockpitSpin 0.9s linear infinite; }
-.cockpitChillerSpin { animation: cockpitSpin 2.2s linear infinite; }
-.cockpitFlow { stroke-dasharray: 4.5 3.5; animation: cockpitFlow 0.75s linear infinite; }
-.cockpitVapor { animation: cockpitVapor 2s ease-in-out infinite; }
-.cockpitFrost { animation: cockpitFrost 3.2s ease-in-out infinite; }
-.cockpitLiveGlow { animation: cockpitLiveGlow 2.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .cockpitPumpSpin, .cockpitChillerSpin, .cockpitFlow, .cockpitVapor, .cockpitFrost, .cockpitLiveGlow { animation: none; }
-  .cockpitFlow { stroke-dashoffset: -5; }
-  .cockpitVapor { opacity: 0.7; }
-  .cockpitFrost { opacity: 0.7; }
-}
-`;
-  document.head.appendChild(el);
+/**
+ * 一片雪花：三条交叉线，位置/延迟由调用处给。
+ *
+ * `transform-origin` 写成自己的坐标（px 按用户坐标解析），这样 `cockpitSnow` 里的自转是绕雪花自己转，
+ * 而位移照旧往下走 —— 少了这行，几片雪花会一起绕着画布左上角甩。
+ */
+function SnowFlake({
+  x,
+  y,
+  r,
+  delay,
+  on,
+}: {
+  x: number;
+  y: number;
+  r: number;
+  delay: string;
+  on: boolean;
+}) {
+  const k = r * 0.87;
+  return (
+    <g
+      className={cn(on && "cockpitSnow")}
+      style={{ transformOrigin: `${x}px ${y}px`, animationDelay: delay, opacity: on ? undefined : 0.3 }}
+      stroke="#7dd3fc"
+      strokeWidth="0.95"
+      strokeLinecap="round"
+    >
+      <line x1={x} y1={y - r} x2={x} y2={y + r} />
+      <line x1={x - k} y1={y - r / 2} x2={x + k} y2={y + r / 2} />
+      <line x1={x - k} y1={y + r / 2} x2={x + k} y2={y - r / 2} />
+    </g>
+  );
 }
 
 function binaryRunning(it: TelemetryTagItem | null): boolean {
@@ -115,13 +111,17 @@ function RunLed({ on, bound, kind }: { on: boolean; bound: boolean; kind: Statio
 }
 
 /**
- * 小型离心泵符号：停机无动效；运行态叶轮旋转 + 进出口两段水流。
+ * 小型离心泵符号：**电机 + 联轴器 + 蜗壳（含叶轮）+ 底座**，停机无动效，运行时叶轮转、进出口两段水在爬。
+ *
+ * 早先只画了一个圆疙瘩加三根叶片，看不出是台泵；现在按真机的几个特征件画：
+ * 右侧胶囊形电机（带散热筋、接线盒、地脚）、中间联轴器护罩、左侧蜗壳，蜗壳里是叶轮。
+ * 叶轮占满蜗壳内腔，小尺寸下才看得出在转。
  *
  * **同一台机器，两路靠接管走向区分**：冷冻水左侧进水、向上出水；冷却水整体镜像（右侧进水、向上出水），
  * 水流方向随之相反。接管怎么接是一路水的真实差别，比给两台泵各加一套装饰更能说明问题。
  *
- * 叶轮刻意做成**不对称**的（叶片压暗、其中一片 + 轮缘一点是高亮的）：三重对称的图形旋转 120°
- * 后与原来一模一样，等于看不出在转 —— 必须有一个高亮标记绕着圆心走，小尺寸下才读得出「在转」。
+ * 叶轮刻意做成**不对称**的（一片亮、其余压暗，另加轮缘一点）：五片叶旋转 72° 后与原来一模一样，
+ * 等于看不出在转 —— 必须有一个高亮标记绕着圆心走。
  */
 function PumpGlyphSvg({
   running,
@@ -136,44 +136,70 @@ function PumpGlyphSvg({
 }) {
   return (
     <svg
-      viewBox="0 0 28 22"
+      viewBox="0 0 34 22"
       className={cn(className)}
       style={{ color: tone, transform: mirrored ? "scaleX(-1)" : undefined }}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      {/* 进口管 */}
-      <path d="M1 13 H9" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" opacity="0.7" />
+      {/* 底座 */}
+      <rect x="1" y="18.5" width="32" height="2.5" rx="0.9" fill="currentColor" opacity="0.18" />
+
+      {/* 吸入管 + 水 */}
+      <path d="M0.8 13.8 H6.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.75" />
       {running ? (
-        <path d="M0.6 13 H9.6" className="cockpitFlow" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M0.4 13.8 H7.2" className="cockpitFlow" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" />
       ) : null}
-      {/* 泵体 */}
+
+      {/* 蜗壳（含出口喉部） */}
       <path
-        d="M9 8.5 L9 16.5 Q9 18 11 18 H17 Q20.5 18 21.5 14.5 L22.5 10 Q23 7.5 19.5 6.5 L13 5.5 Q10 5.5 9 8.5 Z"
+        d="M12.4 9.6 L13.6 6 L13.6 3.4 H33"
         stroke="currentColor"
-        strokeWidth="0.95"
-        fill="currentColor"
-        fillOpacity="0.1"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-      {/* 出口管 */}
-      <path d="M15 5.5 V3.5 H25" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" opacity="0.7" />
       {running ? (
-        <path d="M15.6 3.5 H25.4" className="cockpitFlow" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      ) : null}
-      <g style={{ transformOrigin: "14px 12px" }} className={running ? "cockpitPumpSpin" : undefined}>
-        <circle cx="14" cy="12" r="4.8" stroke="currentColor" strokeWidth="0.85" fill="currentColor" fillOpacity="0.12" />
-        {/* 叶片压暗，当底色 */}
         <path
-          d="M14 12 L14 7.5 M14 12 L17.8 14 M14 12 L10.2 14"
+          d="M13.6 6.6 L13.6 3.4 H32.6"
+          className="cockpitFlow"
           stroke="currentColor"
-          strokeWidth="1.05"
+          strokeWidth="2.1"
           strokeLinecap="round"
-          opacity="0.45"
+          strokeLinejoin="round"
         />
-        {/* 高亮叶 + 轮缘点：转起来才看得出的那个标记 */}
-        <path d="M14 12 L14 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="14" cy="6.4" r="1.2" fill="currentColor" />
+      ) : null}
+      <circle cx="11.6" cy="13.8" r="5.4" stroke="currentColor" strokeWidth="0.95" fill="currentColor" fillOpacity="0.1" />
+
+      {/* 联轴器护罩：把蜗壳和电机连起来，读起来才是「一台机组」而不是两个零件 */}
+      <rect x="16.2" y="11.6" width="1.8" height="4.6" rx="0.5" stroke="currentColor" strokeWidth="0.8" opacity="0.5" />
+
+      {/* 电机：胶囊壳 + 散热筋 + 接线盒 + 地脚 */}
+      <rect x="17.6" y="8.9" width="14.6" height="7.3" rx="3.4" stroke="currentColor" strokeWidth="0.95" fill="currentColor" fillOpacity="0.12" />
+      {[21.4, 24.8, 28.2].map((x) => (
+        <line key={x} x1={x} y1="9.9" x2={x} y2="15.2" stroke="currentColor" strokeWidth="0.8" opacity="0.45" />
+      ))}
+      <rect x="22.2" y="6.8" width="5.4" height="2.2" rx="0.5" stroke="currentColor" strokeWidth="0.8" opacity="0.6" />
+      <rect x="19.2" y="16.2" width="2" height="2.4" rx="0.4" fill="currentColor" opacity="0.32" />
+      <rect x="28.6" y="16.2" width="2" height="2.4" rx="0.4" fill="currentColor" opacity="0.32" />
+
+      {/* 叶轮：五片弯叶，第一片高亮 + 轮缘一点（唯一的不对称标记） */}
+      <g style={{ transformOrigin: "11.6px 13.8px" }} className={running ? "cockpitPumpSpin" : undefined}>
+        <circle cx="11.6" cy="13.8" r="3.7" stroke="currentColor" strokeWidth="0.8" opacity="0.3" />
+        {[0, 72, 144, 216, 288].map((a) => (
+          <path
+            key={a}
+            d="M11.6 13.8 Q13 12.2 11.6 10.4"
+            transform={`rotate(${a} 11.6 13.8)`}
+            stroke="currentColor"
+            strokeWidth="1.05"
+            strokeLinecap="round"
+            opacity={a === 0 ? 1 : 0.5}
+          />
+        ))}
+        <circle cx="11.6" cy="9.6" r="1.1" fill="currentColor" />
+        <circle cx="11.6" cy="13.8" r="1.25" fill="currentColor" opacity="0.85" />
       </g>
     </svg>
   );
@@ -304,68 +330,81 @@ function HvacChillerTowerCell({
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center py-px">
         {isCh ? (
-          <div className={cn("relative h-full w-full", on ? "cockpitChillerSpin" : "")}>
-            {/* 冷机画成雪花轮：六臂雪花本身就是「制冷」的通用语汇 */}
-            <svg viewBox="0 0 36 36" className="h-full w-full" style={{ color: iconTone }} fill="none" stroke="currentColor" aria-hidden>
-              <circle cx="18" cy="18" r="16" strokeWidth="1" opacity="0.28" />
-              {[0, 60, 120, 180, 240, 300].map((a) => (
-                <g key={a} transform={`rotate(${a} 18 18)`} strokeWidth="1.15" strokeLinecap="round" opacity={a === 0 ? 0.95 : 0.5}>
-                  <line x1="18" y1="18" x2="18" y2="5.6" />
-                  <line x1="18" y1="10.4" x2="14.2" y2="6.8" />
-                  <line x1="18" y1="10.4" x2="21.8" y2="6.8" />
-                </g>
-              ))}
-              {/* 顶点那一点是**唯一**的不对称标记：六重对称的雪花转 60° 就回到原样，没这个点看不出在转 */}
-              <circle cx="18" cy="5.6" r="1.7" fill="currentColor" stroke="none" />
-              <circle cx="18" cy="18" r="2.2" fill="currentColor" stroke="none" opacity="0.85" />
+          <div className="relative h-full w-full">
+            {/* 转动层：雪花轮 */}
+            <div className={cn("absolute inset-0", on ? "cockpitChillerSpin" : "")}>
+              {/* 冷机画成雪花轮：六臂雪花本身就是「制冷」的通用语汇 */}
+              <svg viewBox="0 0 36 36" className="h-full w-full" style={{ color: iconTone }} fill="none" stroke="currentColor" aria-hidden>
+                <circle cx="18" cy="18" r="16" strokeWidth="1" opacity="0.28" />
+                {[0, 60, 120, 180, 240, 300].map((a) => (
+                  <g key={a} transform={`rotate(${a} 18 18)`} strokeWidth="1.15" strokeLinecap="round" opacity={a === 0 ? 0.95 : 0.5}>
+                    <line x1="18" y1="18" x2="18" y2="5.6" />
+                    <line x1="18" y1="10.4" x2="14.2" y2="6.8" />
+                    <line x1="18" y1="10.4" x2="21.8" y2="6.8" />
+                  </g>
+                ))}
+                {/* 顶点那一点是**唯一**的不对称标记：六重对称的雪花转 60° 就回到原样，没这个点看不出在转 */}
+                <circle cx="18" cy="5.6" r="1.7" fill="currentColor" stroke="none" />
+                <circle cx="18" cy="18" r="2.2" fill="currentColor" stroke="none" opacity="0.85" />
+              </svg>
+            </div>
+            {/* 飘雪另起一层：放进上面那层就会跟着轮子一起转，不成「雪在下」 */}
+            <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full" fill="none" aria-hidden>
+              <SnowFlake x={6.5} y={3.5} r={1.5} delay="0s" on={on} />
+              <SnowFlake x={13} y={10} r={1.3} delay="0.9s" on={on} />
+              <SnowFlake x={22} y={5} r={1.5} delay="1.7s" on={on} />
+              <SnowFlake x={29.5} y={11} r={1.3} delay="0.5s" on={on} />
+              <SnowFlake x={17.5} y={16} r={1.4} delay="2.4s" on={on} />
             </svg>
           </div>
         ) : (
           <svg viewBox="0 0 40 36" className="h-full w-full" style={{ color: iconTone }} fill="none" aria-hidden>
-            <path d="M8 30 L12 12 L28 12 L32 30 Z" stroke="currentColor" strokeWidth="1" fill="currentColor" fillOpacity="0.15" />
-            <line x1="20" y1="12" x2="20" y2="6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-            <path d="M14 8 Q20 4 26 8" stroke="currentColor" strokeWidth="1" fill="none" opacity="0.7" />
-            {/* 水汽从塔顶往外冒：画在塔身上方，不画在塔身里（画在里面读起来像格栅不是汽） */}
+            {/* 塔身 */}
+            <path d="M8.5 30 L12 15.5 L28 15.5 L31.5 30 Z" stroke="currentColor" strokeWidth="1" fill="currentColor" fillOpacity="0.15" />
+            <ellipse cx="20" cy="30" rx="10.4" ry="2" fill="currentColor" opacity="0.2" />
+            {/* 塔顶风筒（俯视的椭圆口） */}
+            <ellipse cx="20" cy="15.3" rx="9.2" ry="2.1" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+            {/* 顶上的大风扇：塔顶本来就是一整台会转的轴流风扇，之前只用几根风线带过。
+                五片叶（奇数片）旋转后才不会看着像没动，另外第一片提亮当不对称标记。 */}
+            <g style={{ transformOrigin: "20px 13.4px" }} className={on ? "cockpitFanSpin" : undefined}>
+              {[0, 72, 144, 216, 288].map((a) => (
+                <path
+                  key={a}
+                  d="M20 13.4 Q23.6 10.2 20.9 6.4 Q17.4 10.2 20 13.4 Z"
+                  transform={`rotate(${a} 20 13.4)`}
+                  fill="currentColor"
+                  opacity={a === 0 ? 0.62 : 0.34}
+                />
+              ))}
+              <circle cx="20" cy="13.4" r="1.6" fill="currentColor" opacity="0.9" />
+            </g>
+            {/* 水汽从塔顶往外冒：一条微微打弯的短笔往上飘。
+                画成直愣愣的粗线段会被读成三根烟囱，弯一下、细一点才像汽。 */}
             <g>
               {[
-                { x: 16, y1: 8.5, y2: 1.5, d: "0s" },
-                { x: 19.4, y1: 6.6, y2: 1, d: "0.5s" },
-                { x: 22.8, y1: 8.5, y2: 1.5, d: "1s" },
+                { x: 16.2, y: 7.4, d: "0s" },
+                { x: 20, y: 6.4, d: "0.5s" },
+                { x: 23.8, y: 7.4, d: "1s" },
               ].map((v) => (
-                <line
+                <path
                   key={`v${v.x}`}
-                  x1={v.x}
-                  y1={v.y1}
-                  x2={v.x}
-                  y2={v.y2}
+                  d={`M${v.x} ${v.y} q 1.5 -2.5 -0.3 -5.2`}
                   className={cn(on && "cockpitVapor")}
                   style={{ animationDelay: v.d, opacity: on ? undefined : 0.18 }}
                   stroke="currentColor"
-                  strokeWidth="1.4"
+                  strokeWidth="1.15"
                   strokeLinecap="round"
+                  fill="none"
                 />
               ))}
             </g>
-            <ellipse cx="20" cy="30" rx="10" ry="2" fill="currentColor" opacity="0.2" />
-            {/* 塔底霜花：冷的一侧用雪花语汇点题，和塔顶排汽（琥珀）各管一头 */}
-            {[
-              { x: 11, y: 33, d: "0s" },
-              { x: 20, y: 34.4, d: "1.1s" },
-              { x: 29, y: 33, d: "2.2s" },
-            ].map((f) => (
-              <g
-                key={`fr${f.x}`}
-                className={cn(on && "cockpitFrost")}
-                style={{ animationDelay: f.d, opacity: on ? undefined : 0.35 }}
-                stroke="#7dd3fc"
-                strokeWidth="0.95"
-                strokeLinecap="round"
-              >
-                <line x1={f.x} y1={f.y - 2.1} x2={f.x} y2={f.y + 2.1} />
-                <line x1={f.x - 1.8} y1={f.y - 1.05} x2={f.x + 1.8} y2={f.y + 1.05} />
-                <line x1={f.x - 1.8} y1={f.y + 1.05} x2={f.x + 1.8} y2={f.y - 1.05} />
-              </g>
-            ))}
+            {/* 塔底霜花：冷的一侧用雪花语汇点题，和塔顶排汽（琥珀）各管一头。
+                现在是**往下飘**的飘雪，不是原来的原地明暗闪。 */}
+            <SnowFlake x={10.5} y={20} r={1.5} delay="0s" on={on} />
+            <SnowFlake x={17} y={24} r={1.3} delay="1.1s" on={on} />
+            <SnowFlake x={26} y={20.5} r={1.5} delay="0.6s" on={on} />
+            <SnowFlake x={31} y={25} r={1.3} delay="1.9s" on={on} />
+            <SnowFlake x={21.5} y={27.5} r={1.4} delay="2.6s" on={on} />
           </svg>
         )}
       </div>
@@ -393,10 +432,6 @@ export const CockpitPowerStationMetrics = forwardRef<HTMLDivElement, Props>(func
   const chillers3 = useMemo(() => padTags(pickChillerMachineTags(tagItems, 3), 3), [tagItems]);
   const towers3 = useMemo(() => padTags(pickCoolingTowerTags(tagItems, 3), 3), [tagItems]);
 
-  useEffect(() => {
-    injectPowerStationKeyframesOnce();
-  }, []);
-
   return (
     <div
       ref={ref}
@@ -404,12 +439,15 @@ export const CockpitPowerStationMetrics = forwardRef<HTMLDivElement, Props>(func
         COCKPIT_COMPACT_METRIC_PILL_BASE,
         "flex h-full min-h-0 max-h-full w-fit shrink-0 flex-row flex-nowrap items-stretch self-stretch overflow-hidden px-1 py-1 sm:px-1.5 sm:py-1.5"
       )}
+      /* 权重=本卡基准宽度：顶栏余量按各卡宽度比例分配，宽屏铺满、比例不变 */
+      style={{ ...COCKPIT_METRIC_PILL_SIZE, flex: "620 1 620px" }}
       title="动力站：第1行冷冻泵01–04+冷机01–03，第2行冷却泵01–04+冷凝塔01–03（7×2）；与机械臂指标同高；运行指示灯；悬停看变量全名"
     >
       <div
         className="grid h-full min-h-0 shrink-0 gap-px overflow-hidden"
         style={{
-          width: "38rem",
+          // 宽度跟随卡片（卡片按比例撑满顶栏）；minWidth 只是窄屏下的不压缩下限
+          width: "100%",
           minWidth: "38rem",
           maxWidth: "none",
           gridTemplateColumns: "repeat(7, minmax(0, 1fr))",

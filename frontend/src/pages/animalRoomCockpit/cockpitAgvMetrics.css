@@ -1,0 +1,68 @@
+/**
+ * 驾驶舱 AGV 小车格的状态动画 —— `CockpitAgvMetrics.tsx` 里那台叉车各工况的动作。
+ *
+ * 放在静态样式表里、由组件自己 import，而不是运行时往 <head> 注入一串字符串：
+ * 注入那套挂在 mount-only 的 effect 上，热更新不会重跑，页里就会留着旧 CSS ——
+ * 新标记配旧规则，动画看着「改了没反应」。静态表由构建/HMR 整张替换，没这个中间态。
+ * （机械臂、动力站两处同样的坑，见 cockpitRobotArm.css / cockpitPowerStation.css）
+ *
+ * 一个工况只让一个部位动，别一起动：运输=车轮 + 拖尾，寻路=车轮 + 前方扫描，
+ * 载货=货叉举升，充电=电能脉冲，休息=待机灯呼吸，异常=整格报警弧。
+ */
+
+/* 车轮 */
+@keyframes cockpitAgvWheel { to { transform: rotate(360deg); } }
+/* 行走拖尾：从车后往后飘并淡出 */
+@keyframes cockpitAgvStreak {
+  0% { transform: translateX(4px); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: translateX(-10px); opacity: 0; }
+}
+/* 前方扫描波：来回一张一缩 */
+@keyframes cockpitAgvScan {
+  0%, 100% { opacity: 0.2; transform: translateX(-3px) scaleX(0.55); }
+  55% { opacity: 1; transform: translateX(1px) scaleX(1.05); }
+}
+/* 货叉举升循环 */
+@keyframes cockpitAgvLift {
+  0%, 100% { transform: translateY(3px); }
+  45%, 60% { transform: translateY(-2.6px); }
+}
+/* 充电闪电脉冲 */
+@keyframes cockpitAgvBolt {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  45% { opacity: 1; transform: scale(1.15); }
+}
+/* 充电时车身整体明暗脉动 */
+@keyframes cockpitAgvChargeBody {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+/* 休息：待机灯呼吸 */
+@keyframes cockpitAgvStandby {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.85; }
+}
+/* 异常（阻塞/急停）：报警弧频闪 */
+@keyframes cockpitAgvAlarm {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+.cockpitAgvWheel { animation: cockpitAgvWheel 0.58s linear infinite; }
+.cockpitAgvStreak { animation: cockpitAgvStreak 0.8s linear infinite; }
+.cockpitAgvScan { animation: cockpitAgvScan 1.05s ease-in-out infinite; transform-origin: 33.4px 10px; }
+.cockpitAgvLift { animation: cockpitAgvLift 1.8s cubic-bezier(0.45, 0, 0.4, 1) infinite; }
+.cockpitAgvBolt { animation: cockpitAgvBolt 1s ease-in-out infinite; transform-origin: center; }
+.cockpitAgvChargeBody { animation: cockpitAgvChargeBody 1.3s ease-in-out infinite; }
+.cockpitAgvStandby { animation: cockpitAgvStandby 2.4s ease-in-out infinite; }
+.cockpitAgvAlarm { animation: cockpitAgvAlarm 0.72s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpitAgvWheel, .cockpitAgvStreak, .cockpitAgvScan, .cockpitAgvLift,
+  .cockpitAgvBolt, .cockpitAgvChargeBody, .cockpitAgvStandby, .cockpitAgvAlarm { animation: none; }
+  .cockpitAgvStreak { opacity: 0.55; }
+  .cockpitAgvScan, .cockpitAgvBolt { opacity: 0.8; }
+  .cockpitAgvStandby { opacity: 0.5; }
+  .cockpitAgvChargeBody, .cockpitAgvAlarm { opacity: 1; }
+}

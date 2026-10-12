@@ -7,7 +7,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
@@ -103,10 +102,9 @@ public class AgvStatsEventInterceptor {
         LocalDateTime since = lastProcessedAt.get(robotIp);
         if (since == null) {
             // First time seeing this robot — catch up from 5 min ago.
-            // 必须显式取 **UTC 墙钟**：recorded_at 存的是 UTC 墙钟，而 JVM 默认时区被
-            // TwinSystemApplication 设成了 Asia/Shanghai，LocalDateTime.now() 会快 8 小时，
-            // 直接比较会一行都查不出来（站点/任务/叉臂事件全部静默停止产出）。
-            since = LocalDateTime.now(ZoneOffset.UTC).minus(CATCH_UP_MINUTES, ChronoUnit.MINUTES);
+            // 起点必须与**写库同一套墙钟**：采集写的是 LocalDateTime.now()，库里的 recorded_at 就是它。
+            // 曾经这里写死 UTC 墙钟，比数据早 8 小时（而且只在重启后第一次生效）。
+            since = LocalDateTime.now().minus(CATCH_UP_MINUTES, ChronoUnit.MINUTES);
         }
 
         List<Map<String, Object>> rows = statsMapper.selectTrajectoryAfter(robotIp, since, FETCH_LIMIT);

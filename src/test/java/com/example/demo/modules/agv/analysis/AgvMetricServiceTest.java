@@ -4,8 +4,10 @@ import com.example.demo.modules.agv.mapper.AgvStatsMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -72,10 +74,16 @@ class AgvMetricServiceTest {
     }
 
     @Test
-    void beijingDayBounds_areUtcWallClock() {
-        // 北京日 D 的数据落在 UTC 墙钟 [D-1 16:00, D 16:00)
-        LocalDateTime[] b = AgvMetricService.beijingDayUtcBounds(LocalDate.of(2026, 10, 8));
-        assertEquals(LocalDateTime.of(2026, 10, 7, 16, 0), b[0]);
-        assertEquals(LocalDateTime.of(2026, 10, 8, 16, 0), b[1]);
+    void beijingDayBounds_coverExactlyTheBeijingCalendarDay() {
+        // 契约：区间恒为「北京日 D 的整整 24 小时」，只是用 JVM 墙钟表达。
+        // 不写死具体墙钟值 —— 换机器/换时区语义不变（写死那一侧正是当初错 8 小时的根源）。
+        LocalDate day = LocalDate.of(2026, 10, 8);
+        LocalDateTime[] b = AgvMetricService.beijingDayBounds(day);
+        ZoneId jvm = ZoneId.systemDefault();
+        ZoneId beijing = ZoneId.of("Asia/Shanghai");
+
+        assertEquals(day.atStartOfDay(beijing).toInstant(), b[0].atZone(jvm).toInstant());
+        assertEquals(day.plusDays(1).atStartOfDay(beijing).toInstant(), b[1].atZone(jvm).toInstant());
+        assertEquals(24 * 60, Duration.between(b[0], b[1]).toMinutes());
     }
 }

@@ -898,7 +898,7 @@ function ReasoningBlock({
   return (
     <details className="scan-assistant-ask__reasoning" onToggle={(e) => void open((e.target as HTMLDetailsElement).open)}>
       <summary>
-        思考过程{tokens && tokens > 0 ? `（${tokens} 字）` : ""}
+        思考过程{tokens && tokens > 0 ? `（${tokens} tokens）` : ""}
       </summary>
       <pre className="scan-assistant-ask__reasoning-body">
         {loading ? "正在取…" : shown ? shown : "这一轮没有思考内容"}
@@ -1301,6 +1301,15 @@ export function ScanAssistantAskPanel({
    * 前端没人接，模型在正文里说「点下面的下载按钮」，而界面上根本没有按钮
    * （真机 2026-10-10 撞到）。跳页、截图、工具进度同理。放在一处，两条链路就不会再走岔。
    */
+  /**
+   * 正文一开始流，就说明**思考那一段结束了** —— 把「思考中…」那块收起来。
+   *
+   * <p>收起条件以前是「这一轮落定（`meta` 到了）」，于是模型想完之后**写答案的那几秒**，
+   * 一大段思考还铺在正文上面，正好挡着往下滚的内容。改成与小程序同口径：
+   * **正文的首个字一到就收**（用户 2026-10-12 定）。
+   */
+  const endLiveReasoning = useCallback(() => setLiveReasoning(""), []);
+
   const turnEventHandlers = {
     /*
      * 思考正文**边来边显**。这一段是模型在调工具**之前**吐出来的 —— 正是用户干等的那几秒，
@@ -3032,6 +3041,7 @@ export function ScanAssistantAskPanel({
         outgoingText,
         {
           onDelta: (delta) => {
+            endLiveReasoning();
             acc += delta;
           },
           onUsage: (u) => setUsage(u),
@@ -3128,6 +3138,7 @@ export function ScanAssistantAskPanel({
     try {
       await streamAiInteraction(sessionId, token, value, {
         onDelta: (delta) => {
+          endLiveReasoning();
           acc += delta;
         },
         onUsage: (u) => setUsage(u),

@@ -24,7 +24,6 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.*;
 
 /**
@@ -121,15 +120,14 @@ public class AgvController {
     @Operation(summary = "获取最近 N 秒的轨迹点")
     public Result<Map<String, List<Map<String, Object>>>> recent(
             @RequestParam(defaultValue = "2") int seconds) {
-        // recorded_at 存的是 **UTC 墙钟**，而 JVM 默认时区是亚洲/上海：
-        // 两边都用 UTC 墙钟才比得上。用 now() 当上界的话窗口比数据晚 8 小时，
-        // 实时轨迹恒为空（前端因此永远画不出车、也永远判不出在线）。
-        LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
-        LocalDateTime since = nowUtc.minusSeconds(seconds);
+        // 上界必须与**写库同一套墙钟**：采集写的是 LocalDateTime.now()，库里的 recorded_at 就是它。
+        // 曾经这里写死 UTC 墙钟去比，整整差 8 小时 → 窗口恒空、实时轨迹永远画不出车。
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime since = now.minusSeconds(seconds);
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         for (String ip : KNOWN_IPS) {
             List<Map<String, Object>> rows = trajectoryMapper.selectTrajectoryAsc(
-                ip, since, nowUtc, 100);
+                ip, since, now, 100);
             if (!rows.isEmpty()) result.put(ip, rows);
         }
         return Result.success(result);

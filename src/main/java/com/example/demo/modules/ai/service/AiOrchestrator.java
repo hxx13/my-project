@@ -424,6 +424,18 @@ public class AiOrchestrator {
                             "模型这次没有返回正文（输出长度上限可能被思考占满），换个说法再问一次");
                     return saved.getId();
                 }
+                /*
+                 * **这一轮的思考也要发出去。**
+                 *
+                 * 以前只有「要调工具」那一轮发（见下面那段），最后那句正式答复不发 ——
+                 * 于是载体在实时期间一个字都看不到：小程序那边表现得最明显（真机反馈
+                 * 「压根没有自己的思考过程，只能同步回来的才有」），因为网页端另有一个
+                 * 按需取思考的接口在兜底，把这条缺口盖住了。
+                 * 顺序与工具轮一致：**思考 → 正文**。
+                 */
+                if (StringUtils.hasText(resp.reasoningContent())) {
+                    sink.reasoning(resp.reasoningContent());
+                }
                 sink.delta(resp.content());
                 // 本轮工具抛出了候选（如「该人的可选房间」）→ 交给载体渲染成可点选控件，
                 // 别让用户照着正文手打。事件顺序：delta（问题）→ interaction（逐问）→ done。

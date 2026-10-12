@@ -180,7 +180,7 @@ class AiToolVisibilityTest {
         return new ToolRegistry(List.of(
                 new CommonToolPack(null, null, null),
                 new UnfreezeToolPack(null, null, null, null, null),
-                new CageQueryToolPack(null),
+                new CageQueryToolPack(null, null, null),
                 new CageOpReviewToolPack(claimService, null, null),
                 new TrainingReviewToolPack(null, new TrainingAdminGate(mock(PersonIdentityService.class))),
                 new AttachmentToolPack(null, null),

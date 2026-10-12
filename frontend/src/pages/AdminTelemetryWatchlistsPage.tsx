@@ -22,7 +22,6 @@ import {
 import {
   ChevronDown,
   ChevronRight,
-  Database,
   Gauge,
   Link2,
   Plus,
@@ -41,7 +40,7 @@ import {
   sortTagsByManagementTreeOrderDesc,
 } from "@/utils/watchlistTagManagementTree";
 import { TELEMETRY_ANIMAL_ROOM_QUERY_KEY_PREFIX } from "@/api/telemetryApi";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminPagination } from "@/components/admin/AdminPagination";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { randomUUID } from "@/utils/randomUUID";
 
@@ -61,7 +60,14 @@ function emptyGlobalLimits(): TelemetryGlobalAlarmLimits {
   };
 }
 
-function GlobalAlarmLimitsPanel({ queryClient }: { queryClient: QueryClient }) {
+function GlobalAlarmLimitsPanel({
+  queryClient,
+  trailing,
+}: {
+  queryClient: QueryClient;
+  /** 挤进同一行右端的附加控件（导入 CSV）——单起一行会白占一条高度 */
+  trailing?: ReactNode;
+}) {
   const limitsQ = useQuery({
     queryKey: GLOBAL_LIMITS_KEY,
     queryFn: getTelemetryGlobalAlarmLimits,
@@ -138,6 +144,7 @@ function GlobalAlarmLimitsPanel({ queryClient }: { queryClient: QueryClient }) {
           <Save className="h-4 w-4" />
           保存
         </button>
+        {trailing}
       </div>
     </div>
   );
@@ -388,8 +395,11 @@ function ZoneEditor({
   const [dragPaintActive, setDragPaintActive] = useState(false);
   /** 收起的父行 parentKey（Set 内有 key 则隐藏其限值子行）；默认含已绑定限值的组全部收起 */
   const [collapsedParentKeys, setCollapsedParentKeys] = useState<Set<string>>(() => new Set());
-  /** 表格 DOM 最大行数（含横幅行）；选「全部」时不截断 */
-  const [tableRowCap, setTableRowCap] = useState(50);
+  /** 表格分页（0 基）。原先是「表格行数」上限 + 提示「另有 N 条未渲染」，要看完还得手动改成全部 */
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
+  /** 表体纵向滚动容器：新增一行后要把它滚到顶部，见 onAddRow */
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const merged = zone.tags.map((t) => mergeInferredWatchlistBlanks({ ...t }, metricKinds));
@@ -681,12 +691,30 @@ function ZoneEditor({
     return items;
   }, [managementTree, filterQ, collapsedParentKeys, toggleCollapseParent]);
 
-  const displayedTableBodyItems = useMemo(() => {
-    const cap = tableRowCap >= 9999 ? tableBodyItems.length : tableRowCap;
-    return tableBodyItems.slice(0, cap);
-  }, [tableBodyItems, tableRowCap]);
+  const pageCount = Math.max(1, Math.ceil(tableBodyItems.length / pageSize));
+  const safePage = Math.min(page, Math.max(0, pageCount - 1));
+  const pagedTableBodyItems = useMemo(
+    () => tableBodyItems.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [tableBodyItems, safePage, pageSize]
+  );
 
-  const tableBodyOmitted = tableBodyItems.length - displayedTableBodyItems.length;
+  /** 回到第一页并让表体滚回顶部；筛选/折叠/每页条数变化后停在原页码上可能落到空页 */
+  const backToFirstPage = useCallback(() => {
+    setPage(0);
+    tableScrollRef.current?.scrollTo({ top: 0 });
+  }, []);
+
+  useEffect(() => {
+    backToFirstPage();
+    // 只依赖会改变行数的输入；backToFirstPage 自身是稳定的
+  }, [filterQ, collapsedParentKeys, pageSize, backToFirstPage]);
+
+  const onAddRow = useCallback(() => {
+    // **加在最前**：加在末尾时新行在几十行之外，得自己滚下去找；在顶上则紧挨着工具栏。
+    // 保存顺序由「重排」按钮负责，这里只管让人看得见新行。
+    setDraftRows((prev) => [createEmptyWatchlistDraftRow(prev), ...prev]);
+    backToFirstPage();
+  }, [backToFirstPage]);
 
   const enableCheckboxTitle =
     "可拖动连续勾选；有展示映射或「限值后缀 + 楼层/房间/类别齐备」时可启用（限值可用「同步限值←主测量」）";
@@ -821,7 +849,7 @@ function ZoneEditor({
   );
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1">
+    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-1">
       <div className="flex shrink-0 flex-col gap-2 border-b border-slate-100 pb-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 overflow-x-auto">
           <span className="hidden max-w-[14rem] truncate text-xs text-slate-500 md:inline" title={zone.bundle.sourceFilename ?? undefined}>
@@ -849,24 +877,10 @@ function ZoneEditor({
             placeholder="筛选变量名、映射、楼层…"
             className="min-w-[8rem] flex-1 basis-[12rem] rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
-          <label className="inline-flex shrink-0 items-center gap-2 text-sm text-slate-600">
-            <span className="whitespace-nowrap">表格行数</span>
-            <select
-              className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
-              value={tableRowCap}
-              onChange={(e) => setTableRowCap(Number(e.target.value))}
-              aria-label="表格最多显示行数"
-            >
-              <option value={50}>50 行</option>
-              <option value={80}>80 行</option>
-              <option value={120}>120 行</option>
-              <option value={9999}>全部</option>
-            </select>
-          </label>
           <button
             type="button"
-            title="新增一行"
-            onClick={() => setDraftRows((prev) => [...prev, createEmptyWatchlistDraftRow(prev)])}
+            title="新增一行（加在列表最前）"
+            onClick={onAddRow}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 hover:bg-sky-100"
           >
             <Plus className="h-4 w-4" />
@@ -917,18 +931,20 @@ function ZoneEditor({
           </button>
           <span className="ml-auto min-w-0 shrink-0 text-right text-xs leading-snug text-slate-500">
             共 {draftRows.length} · 匹配 {visibleRowCount}
-            {tableBodyOmitted > 0 ? (
-              <span className="text-amber-800">
-                {" "}
-                · 表内仅前 {tableRowCap >= 9999 ? "全部" : tableRowCap} 行（另有 {tableBodyOmitted} 条未渲染）
-              </span>
-            ) : null}
           </span>
         </div>
       </div>
 
-      {/* 横向滚动与表头 sticky 由 AdminDataTableWrap + index.css；纵向仍由布局 main 承载（未开启 scrollable） */}
-      <AdminDataTableWrap className="w-full min-w-0 overscroll-x-contain bg-slate-50/40">
+      {/* 纵向由表体自己滚（scrollable + min-h-0 flex-1，高度由页面根节点封顶给到）——
+          原先整页下滚，几十行要滚到底才能看到分页，与本仓「区域内滚」的约定相反 */}
+      {/* 单层滚动容器（照 /admin/dahua-swing-tasks 的 AccessSwingRecordTable）：
+          外层再套一层 overflow-x 会让表体的溢出重复计进文档高度。
+          `relative z-0` 必须有：行里的启用开关是 transform 缩放过的替换控件，
+          没有这一层它会把溢出透到文档上 —— 表格被裁掉了，整页却仍被撑高，滚下去一大片空白。 */}
+      <div
+        ref={tableScrollRef}
+        className="admin-data-table-wrap relative z-0 min-h-0 w-full flex-1 overflow-auto overscroll-contain rounded-xl border border-slate-200 bg-slate-50/40 [scrollbar-gutter:stable]"
+      >
         <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
           <thead className="bg-slate-100">
             <tr className="[&_th]:border-b [&_th]:border-slate-200">
@@ -959,7 +975,7 @@ function ZoneEditor({
             </tr>
           </thead>
           <tbody>
-            {displayedTableBodyItems.map((item) =>
+            {pagedTableBodyItems.map((item) =>
               item.type === "orphan-banner" ? (
                 <tr key="orphan-banner">
                   <td
@@ -973,14 +989,6 @@ function ZoneEditor({
                 renderTelemetryTableRow(item.row, item.tierCell, item.trClassName)
               )
             )}
-            {tableBodyOmitted > 0 ? (
-              <tr>
-                <td className="border-b border-slate-100 bg-slate-50 px-2 py-2 text-center text-sm text-slate-600" colSpan={8}>
-                  为减轻页面高度，仅渲染前 {tableRowCap >= 9999 ? tableBodyItems.length : tableRowCap} 行（当前匹配共 {tableBodyItems.length}{" "}
-                  条）；请缩小筛选或把上方「表格」改为「全部」。
-                </td>
-              </tr>
-            ) : null}
             {!visibleRowCount ? (
               <tr>
                 <td className="px-4 py-8 text-center text-slate-500" colSpan={8}>
@@ -990,7 +998,19 @@ function ZoneEditor({
             ) : null}
           </tbody>
         </table>
-      </AdminDataTableWrap>
+      </div>
+
+      <AdminPagination
+        className="shrink-0 px-1 pt-2"
+        total={tableBodyItems.length}
+        page={safePage + 1}
+        size={pageSize}
+        onPageChange={(p) => {
+          setPage(p - 1);
+          tableScrollRef.current?.scrollTo({ top: 0 });
+        }}
+        onSizeChange={setPageSize}
+      />
     </div>
   );
 }
@@ -1096,36 +1116,9 @@ export default function AdminTelemetryWatchlistsPage() {
   const totalVars = sortedZones.reduce((n, z) => n + z.tags.length, 0);
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden pb-2">
-      <div className="flex w-full max-w-full min-w-0 flex-col gap-4 p-6">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-50/90 py-1">
-        <h1 className="flex min-w-0 items-center gap-1.5 text-base font-semibold text-slate-900">
-          <Database className="h-4 w-4 shrink-0 text-blue-600" />
-          <span className="truncate">WinCC 变量</span>
-        </h1>
-        <span className="text-xs text-slate-500">
-          {sortedZones.length} 分区 · {totalVars} 条
-          {importM.isPending ? <span className="text-sky-600"> · 导入中…</span> : null}
-        </span>
-        <label
-          className="ml-auto inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-blue-400 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100"
-          title="导入 CSV 变量表"
-        >
-          <Upload className="h-4 w-4" />
-          导入 CSV
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.currentTarget.files?.[0];
-              onImportFile(f);
-              e.currentTarget.value = "";
-            }}
-          />
-        </label>
-      </div>
-
+    <div className="w-full max-w-full overflow-x-hidden">
+      {/* 页面根封顶到视口：外壳只保证 min-h-screen，靠自己封；表体才有确定高度可滚（同 /admin/dahua-swing-tasks） */}
+      <div className="flex max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-0 w-full max-w-full min-w-0 flex-col gap-3 p-4">
       {lastImportHint && (
         <p className="shrink-0 truncate px-0.5 py-0.5 text-[11px] text-emerald-800" title={lastImportHint}>
           {lastImportHint}
@@ -1133,7 +1126,34 @@ export default function AdminTelemetryWatchlistsPage() {
       )}
 
       <div className="shrink-0 px-0.5">
-        <GlobalAlarmLimitsPanel queryClient={qc} />
+        <GlobalAlarmLimitsPanel
+          queryClient={qc}
+          trailing={
+            <>
+              <span className="shrink-0 whitespace-nowrap text-xs text-slate-500">
+                {sortedZones.length} 分区 · {totalVars} 条
+                {importM.isPending ? <span className="text-sky-600"> · 导入中…</span> : null}
+              </span>
+              <label
+                className="inline-flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-blue-400 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-100"
+                title="导入 CSV 变量表"
+              >
+                <Upload className="h-4 w-4" />
+                导入 CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0];
+                    onImportFile(f);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            </>
+          }
+        />
       </div>
 
       <div className="shrink-0 rounded border border-slate-200 bg-white px-2 py-1 text-sm">
@@ -1229,7 +1249,7 @@ export default function AdminTelemetryWatchlistsPage() {
       ) : null}
 
       {sortedZones.length > 0 ? (
-        <div className="w-full min-w-0 max-w-full flex flex-col">
+        <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col">
           <div className="flex w-full min-w-0 shrink-0 items-stretch gap-1 border-b border-slate-200 bg-slate-50/80 px-1 pb-0 pt-1 sm:px-2">
             {sortedZones.map((z) => {
               const on = z.bundle.code === activeCode;
@@ -1254,7 +1274,7 @@ export default function AdminTelemetryWatchlistsPage() {
             })}
           </div>
 
-          <div className="w-full min-w-0 max-w-full border-x border-slate-200 bg-white px-2 pb-2 pt-1">
+          <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col border-x border-slate-200 bg-white px-2 pb-2 pt-1">
             {activeZone ? (
               <ZoneEditor
                 key={activeZone.bundle.code}

@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { LucideIcon } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import {
   createContext,
   useCallback,
@@ -1413,6 +1414,83 @@ function soloRoomCardWidthRem(totalRooms: number, maxMetricCount: number): numbe
   return Math.min(20, Math.max(9.25, w));
 }
 
+/** 卡片内一条测点的稳定 key（与渲染 MetricRow 的 key 同口径） */
+function metricSlotKey(m: TelemetryStructuredMetricSlot): string {
+  return `${m.item?.variableName ?? ""}-${m.metricKindCode}`;
+}
+
+/** 行标签的基准取法：状态类走状态展示名，其余取类别名 */
+function baseMetricLabel(m: TelemetryStructuredMetricSlot): string {
+  const isSt = isStatusTelemetryMetric(m.metricKindCode, m.item?.metricKindLabel);
+  return (
+    (isSt ? statusMetricSlotDisplayLabel(m.item) : "") ||
+    (m.metricKindLabel ?? m.metricKindCode) ||
+    "—"
+  );
+}
+
+/**
+ * 同一张卡里同类别测点的去重标签。
+ *
+ * <p>动力站的冷机卡把 4 个温度（蒸发/冷凝 × 进/出水）和高压/低压压差吸进了同一张卡，
+ * 而行标签只取类别名 —— 4 行全叫「温度」、2 行全叫「压差」，谁是谁分不出来。
+ * 撞名时改用「该测点自己的房间名甩掉本卡公共前缀」后的那段（蒸发进水温度 / 冷机高压），
+ * 尾部的 `-01` 若全卡一致就一并去掉（卡片标题已经写了冷机01）。</p>
+ *
+ * <p>只在**确实撞名**时才改写：单条温度、单条压差的卡片保持原样，
+ * 其它套间（VAV、饲养室…）不受影响。</p>
+ */
+function disambiguatedMetricLabels(
+  slots: TelemetryStructuredMetricSlot[]
+): Map<string, string> {
+  const baseByKey = new Map<string, string>();
+  const seen = new Map<string, number>();
+  for (const m of slots) {
+    const label = baseMetricLabel(m);
+    baseByKey.set(metricSlotKey(m), label);
+    seen.set(label, (seen.get(label) ?? 0) + 1);
+  }
+
+  const segmentsOf = (m: TelemetryStructuredMetricSlot): string[] =>
+    (m.item?.roomCanonical ?? "")
+      .split("-")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
+  const allSegs = slots.map(segmentsOf).filter((s) => s.length > 0);
+  let common = 0;
+  if (allSegs.length > 1) {
+    const first = allSegs[0]!;
+    for (let i = 0; i < first.length; i += 1) {
+      if (allSegs.every((s) => s[i] === first[i])) common = i + 1;
+      else break;
+    }
+  }
+  const tails = new Map<string, string>();
+  for (const m of slots) {
+    const segs = segmentsOf(m);
+    const rest = segs.slice(Math.min(common, segs.length));
+    tails.set(metricSlotKey(m), rest.join("-"));
+  }
+  // 尾部编号全卡一致 = 就是卡片自己的编号，去掉
+  const lastSegs = new Set([...tails.values()].map((t) => t.split("-").pop() ?? ""));
+  const dropTrailingIndex = lastSegs.size === 1 && /^\d+$/.test([...lastSegs][0] ?? "");
+
+  const out = new Map<string, string>();
+  for (const m of slots) {
+    const key = metricSlotKey(m);
+    const label = baseByKey.get(key) ?? "—";
+    if ((seen.get(label) ?? 0) < 2) {
+      out.set(key, label);
+      continue;
+    }
+    let tail = tails.get(key) ?? "";
+    if (dropTrailingIndex) tail = tail.replace(/-\d+$/, "");
+    out.set(key, tail || label);
+  }
+  return out;
+}
+
 function StructuredRoomCard({
   card,
   className,
@@ -1427,6 +1505,8 @@ function StructuredRoomCard({
     () => [...card.metrics].sort(compareMetricsInRoomRowOrder),
     [card.metrics]
   );
+  /** 同卡同类撞名时的去重标签（动力站冷机卡的多温度/多压差），不撞名的卡原样 */
+  const labelByKey = useMemo(() => disambiguatedMetricLabels(metricsOrdered), [metricsOrdered]);
   const roomFx = useMemo(() => inferAnimalTelemetryRoomFx(card.displayTitle ?? ""), [card.displayTitle]);
   const airFx = roomFx === "supply-air" || roomFx === "exhaust-air";
   const fxVariant = useAnimalTelemetryFxIconVariant();
@@ -1455,10 +1535,7 @@ function StructuredRoomCard({
       <div className="relative z-10 min-h-0 flex-1">
         {metricsOrdered.map((m) => {
           const isSt = isStatusTelemetryMetric(m.metricKindCode, m.item?.metricKindLabel);
-          const label =
-            (isSt ? statusMetricSlotDisplayLabel(m.item) : "") ||
-            (m.metricKindLabel ?? m.metricKindCode) ||
-            "—";
+          const label = labelByKey.get(metricSlotKey(m)) ?? baseMetricLabel(m);
           const detailLabel = isSt
             ? (m.item?.metricKindLabel?.trim() || m.metricKindCode || "—")
             : label;
@@ -1517,9 +1594,12 @@ function LegacyRoomCard({ card, className }: { card: TelemetryRoomCardModel; cla
 function SuiteTitleMetricPill({
   m,
   compactTitleSlots,
+  labelOverride,
 }: {
   m: TelemetryStructuredMetricSlot;
   compactTitleSlots?: boolean;
+  /** 同套间同类测点撞名时的区分标签（动力站那排多个「温度」）；不传就还按类别名显示 */
+  labelOverride?: string;
 }) {
   const dialogs = useTelemetryDialogs();
   const winccW = useContext(WinccAnimalRoomWriteContext);
@@ -1648,7 +1728,7 @@ function SuiteTitleMetricPill({
       )}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-400" aria-hidden />
-      <span className="shrink-0 text-zinc-500">{rawLabel}</span>
+      <span className="shrink-0 text-zinc-500">{labelOverride ?? rawLabel}</span>
       <MetricTrendValueUnit item={m.item} display={display} unit={unit} suiteTight />
       <MetricInfoPopover item={m.item} label={rawLabel} />
     </span>
@@ -1716,6 +1796,8 @@ function SuiteSection({
 }) {
   const { suite, titleSlots, visibleRooms } = prepared;
   const compactTitleSlots = titleSlots.length > 4;
+  /** 升到标题行的同类测点撞名时的区分标签（动力站那排多个「温度」），不撞名的不动 */
+  const titleLabelByKey = useMemo(() => disambiguatedMetricLabels(titleSlots), [titleSlots]);
   const suiteLatest = suiteLatestMsPrepared(prepared);
   const suiteFx = useMemo(
     () =>
@@ -1808,6 +1890,7 @@ function SuiteSection({
                 key={`${m.item.variableName}-${m.metricKindCode}`}
                 m={m}
                 compactTitleSlots={compactTitleSlots}
+                labelOverride={titleLabelByKey.get(metricSlotKey(m))}
               />
             ))}
           </div>
@@ -2509,6 +2592,44 @@ export default function AnimalRoomTelemetryPage() {
 
   const itemCount = page?.tagItems?.length ?? 0;
   const [activeTab, setActiveTab] = useState(0);
+
+  /**
+   * `?tab=<页签键 或 标题>` 预选楼层页签。
+   *
+   * <p>页面自己没有任何外部入口能做这件事，而服务端截图与 AI 跳转需要一个「直接落到某个楼层」的地址
+   * （如 `?tab=机`）。**只种一次**：命中后就不再插手，用户随后怎么点都不受参数影响。</p>
+   */
+  const [urlParams] = useSearchParams();
+  const tabSeededRef = useRef(false);
+  useEffect(() => {
+    if (tabSeededRef.current) return;
+    const want = (urlParams.get("tab") ?? "").trim();
+    if (!want) return;
+    // 三种 tab 模型的字段名不同：结构化/服务端是 tabKey+title，旧版按分区分组是 bundleCode+bundleTitle
+    const list: Array<{ key: string; title: string }> = useServerTabs
+      ? displayServerTabs.map((t) => ({ key: String(t.tabKey ?? ""), title: String(t.title ?? "") }))
+      : useStructuredLocal
+        ? displayStructTabs.map((t) => ({ key: String(t.tabKey ?? ""), title: String(t.title ?? "") }))
+        : legacyTabs.map((t) => ({ key: String(t.bundleCode ?? ""), title: String(t.bundleTitle ?? "") }));
+    const lower = want.toLowerCase();
+    // 先按「键相等 / 标题相等 / 标题包含参数」找；都没有再放宽到**反向包含** ——
+    // 用户和模型常把「机」这个页签说成「机房那一页」，只靠正向包含会匹配不上。
+    let idx = list.findIndex((t) => {
+      const key = t.key.trim().toLowerCase();
+      const title = t.title.trim();
+      return key === lower || title === want || (title.length > 0 && title.includes(want));
+    });
+    if (idx < 0) {
+      idx = list.findIndex((t) => {
+        const title = t.title.trim();
+        return title.length > 0 && want.includes(title);
+      });
+    }
+    if (idx >= 0) {
+      setActiveTab(idx);
+      tabSeededRef.current = true;
+    }
+  }, [urlParams, useServerTabs, useStructuredLocal, displayServerTabs, displayStructTabs, legacyTabs]);
 
   const tabCount = useServerTabs
     ? displayServerTabs.length

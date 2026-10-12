@@ -1,0 +1,142 @@
+/**
+ * 机械臂工位动画 —— `CockpitRobotArmMetricSlots.tsx` 里那张 SVG 的样式。
+ *
+ * 放在静态样式表里、由组件自己 import，而不是运行时往 <head> 注入一串字符串：
+ * 注入那套没有模块边界，热更新/旧页面残留时会「新标记 + 旧 CSS」，新类名一条规则都匹配不到 ——
+ * 动画全静默、`cockpitPkgOff` 也失效（货物会一直黏在爪子上、取料位的备货会冒出来），
+ * 而且看着像「没改」，排查半天。静态表由构建/HMR 整张替换，不存在这种状态。
+ *
+ * 时间轴：一个周期 = 两趟搬运；两台臂在传送带两端「交接」，货流不中断。
+ * 每个半周期同构：带边放货(停) → 空载摆回取料位(快) → 取料位夹紧(停) → 载货摆回带边(慢)。
+ * 载货段占 22~23%、空载回程占 13~17%、两处停顿各 5% —— 载货明显慢于回程，两个动作一眼能分辨。
+ * 角度：0° = 悬臂停在带边（爪子正对带上那件货），70° = 摆到外侧地面取/放货。
+ */
+
+@keyframes cockpitArmLeft {
+  0%, 6%   { transform: rotate(0deg); }
+  17%      { transform: rotate(74deg); }
+  19%, 24% { transform: rotate(70deg); }
+  50%, 56% { transform: rotate(0deg); }
+  67%      { transform: rotate(74deg); }
+  69%, 74% { transform: rotate(70deg); }
+  100%     { transform: rotate(0deg); }
+}
+@keyframes cockpitArmRight {
+  0%, 5%   { transform: rotate(0deg); }
+  31%, 36% { transform: rotate(-70deg); }
+  47%      { transform: rotate(3deg); }
+  50%, 55% { transform: rotate(0deg); }
+  81%, 86% { transform: rotate(-70deg); }
+  97%      { transform: rotate(3deg); }
+  100%     { transform: rotate(0deg); }
+}
+/* 末端总成（腕上的爪子 + 手里的货）反向补偿：悬臂摆，姿态永远水平。
+   逐帧取负 + 同一 easing，两边才能严丝合缝抵消；差一点箱子就会边晃边走。 */
+@keyframes cockpitUprightLeft {
+  0%, 6%   { transform: rotate(0deg); }
+  17%      { transform: rotate(-74deg); }
+  19%, 24% { transform: rotate(-70deg); }
+  50%, 56% { transform: rotate(0deg); }
+  67%      { transform: rotate(-74deg); }
+  69%, 74% { transform: rotate(-70deg); }
+  100%     { transform: rotate(0deg); }
+}
+@keyframes cockpitUprightRight {
+  0%, 5%   { transform: rotate(0deg); }
+  31%, 36% { transform: rotate(70deg); }
+  47%      { transform: rotate(-3deg); }
+  50%, 55% { transform: rotate(0deg); }
+  81%, 86% { transform: rotate(70deg); }
+  97%      { transform: rotate(-3deg); }
+  100%     { transform: rotate(0deg); }
+}
+/* 夹爪分合：0 = 合拢夹住箱体，34° = 张开 */
+@keyframes cockpitJawLeft {
+  0%, 2%    { transform: rotate(0deg); }
+  6%, 17%   { transform: rotate(34deg); }
+  22%, 52%  { transform: rotate(0deg); }
+  56%, 67%  { transform: rotate(34deg); }
+  72%, 100% { transform: rotate(0deg); }
+}
+@keyframes cockpitJawRight {
+  0%, 1%    { transform: rotate(34deg); }
+  5%, 31%   { transform: rotate(0deg); }
+  35%, 51%  { transform: rotate(34deg); }
+  55%, 81%  { transform: rotate(0deg); }
+  85%, 100% { transform: rotate(34deg); }
+}
+@keyframes cockpitBeltTread { to { transform: translateX(3.6px); } }
+/* 滚筒：一根偏心辐条转起来 —— 对称的十字转起来看着像没动，必须是不对称的 */
+@keyframes cockpitRoller { to { transform: rotate(360deg); } }
+/* 带上跑的货：走到右端被右臂取走（瞬间隐去），再回到左端重来。另一件错开半周期。 */
+@keyframes cockpitBeltPkg {
+  0%   { transform: translateX(0);    opacity: 1; }
+  50%  { transform: translateX(32px); opacity: 1; }
+  51%  { transform: translateX(32px); opacity: 0; }
+  100% { transform: translateX(0);    opacity: 0; }
+}
+/* 手里那件的可见段必须压在夹爪「已合拢」之后、松开之前，否则会出现「爪子还没夹住货就淡出」 */
+@keyframes cockpitCarryLeftVis {
+  0%, 20%   { opacity: 0; }
+  23%, 50%  { opacity: 1; }
+  53%, 70%  { opacity: 0; }
+  73%, 100% { opacity: 1; }
+}
+@keyframes cockpitCarryRightVis {
+  0%, 3%    { opacity: 0; }
+  7%, 34%   { opacity: 1; }
+  37%, 56%  { opacity: 0; }
+  57%, 84%  { opacity: 1; }
+  87%, 100% { opacity: 0; }
+}
+/* 左取料位待取的货：臂不在时它就在那儿等着，免得箱子凭空出现 */
+@keyframes cockpitWaitLeftVis {
+  0%, 3%    { opacity: 0; }
+  6%, 20%   { opacity: 1; }
+  25%, 53%  { opacity: 0; }
+  56%, 70%  { opacity: 1; }
+  75%, 100% { opacity: 0; }
+}
+
+.cockpitArmLeft, .cockpitArmRight, .cockpitArmUprightL, .cockpitArmUprightR {
+  animation-duration: 4.6s;
+  animation-iteration-count: infinite;
+  animation-timing-function: cubic-bezier(0.45, 0.05, 0.35, 1);
+}
+.cockpitArmLeft { animation-name: cockpitArmLeft; }
+.cockpitArmRight { animation-name: cockpitArmRight; }
+.cockpitArmUprightL { animation-name: cockpitUprightLeft; }
+.cockpitArmUprightR { animation-name: cockpitUprightRight; }
+
+.cockpitJawLeft, .cockpitJawRight {
+  animation-duration: 4.6s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+.cockpitJawLeft { animation-name: cockpitJawLeft; }
+.cockpitJawRight { animation-name: cockpitJawRight; }
+
+.cockpitCarryLeft, .cockpitCarryRight, .cockpitWaitLeft {
+  animation-duration: 4.6s;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+.cockpitCarryLeft { animation-name: cockpitCarryLeftVis; }
+.cockpitCarryRight { animation-name: cockpitCarryRightVis; }
+.cockpitWaitLeft { animation-name: cockpitWaitLeftVis; }
+
+.cockpitBeltPkg { animation: cockpitBeltPkg 4.6s linear infinite; }
+.cockpitPkgAlt { animation-delay: -2.3s; }
+/* 带纹一格 3.6px ÷ 带速 13.9px/秒 */
+.cockpitBeltTread { animation: cockpitBeltTread 0.26s linear infinite; }
+/* 滚筒转一圈 = 周长（13.2）÷ 带速（13.9/秒），跟带面线速度对得上 */
+.cockpitRoller { animation: cockpitRoller 0.95s linear infinite; }
+
+/* 停机（不给动画类）时用来藏起「手上的货」「待取的货」「第二件货」 */
+.cockpitPkgOff { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpitArmLeft, .cockpitArmRight, .cockpitArmUprightL, .cockpitArmUprightR,
+  .cockpitJawLeft, .cockpitJawRight, .cockpitCarryLeft, .cockpitCarryRight,
+  .cockpitWaitLeft, .cockpitBeltPkg, .cockpitBeltTread, .cockpitRoller { animation: none; }
+}

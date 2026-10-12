@@ -209,15 +209,17 @@ function streamRequest(path, body, handlers) {
 
   // 包一层：done 事件与 success 回调只会收尾一次
   const sink = {
-    onStarted: handlers.onStarted,
-    onDelta: handlers.onDelta,
-    onInteraction: handlers.onInteraction,
-    // ⚠ 这里是**白名单**：新加的事件不接上就等于没实现（dispatch 只认 sink 上的字段）
-    onNavigate: handlers.onNavigate,
-    onDownload: handlers.onDownload,
-    onImage: handlers.onImage,
-    onTool: handlers.onTool,
-    onUsage: handlers.onUsage,
+    /*
+     * **摊开转发，不再逐个列名。**
+     *
+     * 以前这里是手写白名单，新加的事件忘了登记就**静默丢掉** ——
+     * dispatch 只认 sink 上的字段，没接上跟没实现一模一样，而且两端都不报错。
+     * 2026-10-12 实测就栽在这儿：`reasoning`（模型的思考正文）与
+     * `toolProgress`（「正在查门禁明细…」这类人话动作短语）两条都不在名单里，于是
+     * 实时期间思考过程一个字都没有（只有从历史同步回来的才显示）、工具在干什么也看不到。
+     * 摊开写之后，解析器认得的字段自动就通，不用再记得来补名单。
+     */
+    ...handlers,
     onError(msg) {
       if (settled) return;
       settled = true;

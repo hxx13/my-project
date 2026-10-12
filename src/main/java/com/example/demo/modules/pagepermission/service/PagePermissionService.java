@@ -296,6 +296,10 @@ public class PagePermissionService {
         for (DbNavItem dbItem : loadAdminNavConfigItems()) {
             String path = normalizeWebPath(dbItem.path());
             if (!StringUtils.hasText(path)) continue;
+            // 菜单表里出现过 /admin/animal-room-telemetry 这类错件：这四个全屏孪生入口真正的路由是
+            // /console/<名字>，不在 /admin 下。登记进来会被 AI 导航当成合法页面，用户点过去 404
+            // （见 NavToolPack#usable 的同名护栏）。它们的正确条目已经由清单扫出来了，这里直接跳过。
+            if (isMisplacedTwinEntryPath(path)) continue;
             ManifestPage mp = manifest.pageByPath().get(path);
             ManifestEntry me = manifest.sidebarByPath().get(path);
             String fallback = me != null ? me.fallbackMinRole() : (mp != null ? mp.fallbackMinRole() : null);
@@ -409,6 +413,18 @@ public class PagePermissionService {
             out.add(NodeSeed.webEntry("sidebar", path, entryTitle, role, webPageKey(path)));
         }
         return dedup(out);
+    }
+
+    /**
+     * 全屏孪生入口的名字（真正的路由是 `/console/<名字>`，不在 `/admin/` 下）。
+     * 与前端 {@code TWIN_FULLSCREEN_ENTRY_PATHS}、{@code NavToolPack.TWIN_FULLSCREEN_ENTRY_NAMES} 同一份口径。
+     */
+    private static final Set<String> TWIN_FULLSCREEN_ENTRY_NAMES = Set.of(
+            "animal-room-telemetry", "animal-room-cockpit", "digital-twin-screen", "digital-twin-3d");
+
+    private static boolean isMisplacedTwinEntryPath(String path) {
+        return path.startsWith("/admin/")
+                && TWIN_FULLSCREEN_ENTRY_NAMES.contains(path.substring("/admin/".length()));
     }
 
     private Set<String> discoverAdminRoutePaths(String router) {

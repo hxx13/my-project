@@ -19,7 +19,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -111,5 +113,83 @@ class MaterialAuditToolPackTest {
         ArgumentCaptor<String> kw = ArgumentCaptor.forClass(String.class);
         verify(materialService).collectItemFlowExportRows(any(), anyString(), anyString(), isNull(), isNull(), kw.capture());
         assertTrue(kw.getValue() == null || kw.getValue().isBlank(), "「全部」= 不带物品过滤：" + kw.getValue());
+    }
+
+    // ── 「筛选条件别丢」：真机现场是课题组整个没了，导出变成全量（用户 2026-10-12 报） ──
+
+    @Test
+    @DisplayName("带维度的选项值按维度归位 —— 页签是「按物品」也拦不住课题组的归位")
+    void taggedValueGoesToItsOwnDimension() {
+        MaterialAuditToolPack.Filters f = MaterialAuditToolPack.mergeFilters(
+                "item", null, null, null, null, null, "group:郑俊克的课题组", null);
+
+        assertEquals("郑俊克的课题组", f.group, "课题组要落进 group");
+        assertNull(f.itemKeyword, "**绝不能**顺手写进物品里 —— 那正是串槽");
+        assertTrue(f.answered);
+    }
+
+    @Test
+    @DisplayName("模型漏带已定的条件时，用会话记忆补上 —— 这就是「课题组丢了」那一处")
+    void memoFillsWhatTheModelDropped() {
+        Map<String, String> memo = Map.of("group", "郑俊克的课题组");
+
+        // 模型这次只传了物品，课题组一个字没提
+        MaterialAuditToolPack.Filters f = MaterialAuditToolPack.mergeFilters(
+                "item", null, null, "白色运输盒", null, null, null, memo);
+
+        assertEquals("郑俊克的课题组", f.group, "漏带的课题组要能从记忆里补回来");
+        assertEquals("白色运输盒", f.itemKeyword);
+    }
+
+    @Test
+    @DisplayName("显式参数优先于记忆 —— 换了个组就得听新的")
+    void explicitBeatsMemo() {
+        Map<String, String> memo = Map.of("group", "郑俊克的课题组");
+        MaterialAuditToolPack.Filters f = MaterialAuditToolPack.mergeFilters(
+                "group", "卢今的课题组", null, null, null, null, null, memo);
+
+        assertEquals("卢今的课题组", f.group);
+    }
+
+    @Test
+    @DisplayName("老写法（值不带维度）按页签推断，与既有行为一致")
+    void untaggedStillWorks() {
+        assertEquals("郑俊克的课题组", MaterialAuditToolPack.mergeFilters(
+                "group", null, null, null, null, null, "郑俊克的课题组", null).group);
+        assertEquals("1837104181878464513", MaterialAuditToolPack.mergeFilters(
+                "personal", null, null, null, null, null, "1837104181878464513", null).applicant);
+    }
+
+    @Test
+    @DisplayName("点了「全部」= 这一维不筛，但记下「已经答过了」，别再问一遍")
+    void allMeansAnsweredWithoutFilter() {
+        MaterialAuditToolPack.Filters f = MaterialAuditToolPack.mergeFilters(
+                "group", null, null, null, null, null, "all", Map.of("group", "郑俊克的课题组"));
+
+        assertTrue(f.answered, "明确说了全部，就不该再弹一次「导哪个课题组」");
+        assertNull(f.group, "「全部」不该把记忆里的组又筛回来");
+    }
+
+    @Test
+    @DisplayName("id 类选项同理归位：分类 / 物品 id 各回各家")
+    void idDimensions() {
+        assertEquals(3L, MaterialAuditToolPack.mergeFilters(
+                "group", null, null, null, null, null, "category:3", null).categoryId);
+
+        MaterialAuditToolPack.Filters f = MaterialAuditToolPack.mergeFilters(
+                "group", null, null, null, null, null, "itemId:900001", null);
+        assertEquals(900001L, f.itemId);
+        assertNull(f.itemKeyword, "物品 id 不该顺手变成物品名过滤");
+    }
+
+    @Test
+    @DisplayName("抽不出候选时**不许静默导全量** —— 宁可退回让用户放宽条件")
+    void noCandidatesRefusesInsteadOfExportingEverything() throws Exception {
+        when(materialService.listItemsForAdmin(any(), any())).thenReturn(List.of());
+
+        Map<String, Object> out = run("{\"tab\":\"item\",\"from\":\"2026-10-01\",\"to\":\"2026-10-09\"}");
+
+        assertEquals(Boolean.FALSE, out.get("ok"), "不能默默按全量往下走：" + out);
+        verify(excelExportService, never()).summarizeItemFlow(any());
     }
 }

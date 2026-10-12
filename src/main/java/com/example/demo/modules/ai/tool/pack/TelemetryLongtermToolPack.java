@@ -3,6 +3,7 @@ package com.example.demo.modules.ai.tool.pack;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
+import com.example.demo.modules.ai.tool.AiToolContext;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.SideEffect;
 import com.example.demo.modules.auth.entity.User;
@@ -97,6 +98,11 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                   **曲线**（exportLongtermCurves → A4 纵向 PDF，一天一页、一行两张，多天合一份）。
                   用户没说形式时问一句再导。
                 - 变量的**顺序就是宽表导出的列序**，调整顺序（setLongtermVariableOrder）要说清它会影响导出。
+                - **只导某几个变量时，那串变量名每一轮都要带上**（variableNames）：工具是无状态的，
+                  漏带就**静默退成「页面已选的全部」**，用户打开表才发现多了一堆列。
+                  工具结果里的 `appliedFilters` 就是这次实际生效的变量，照着它带；
+                  用户这轮说「全都要」，就把 variableNames 传**空数组**清掉。
+                  回复里把生效的变量说一句（不限变量时也要说明「按页面已选的全部导」）。
                 - 采样间隔不归这个包管（在定时管理页），要改间隔就说清去哪改。""";
     }
 
@@ -636,6 +642,50 @@ public class TelemetryLongtermToolPack implements AiToolPack {
      * <p>用户口径：**导出必须先确定时间范围，不选不允许导出** —— 所以模型得先拿到这份清单，
      * 摆给用户选（可多选），不能自己替他决定导哪些天。
      */
+    // ── 会话级临时条件：变量筛选是上一轮问出来、这一轮才用的 ──
+
+    /**
+     * 会话级临时条件记忆（与物资审计 / 订购单导出共用同一套实现）。
+     *
+     * <p>{@code days} 是必填且会校验，丢不了；会丢的是 {@code variableNames} ——
+     * 用户上一轮挑了「只导这几个变量」，这一轮导出时模型没带上，就**静默退成「页面已选的全部」**，
+     * 多导几列出来。所以这里兜一层，并且**把生效的变量回显给模型**（用户 2026-10-12 定调）。
+     */
+    private final AiSessionFilterMemo exportMemo = new AiSessionFilterMemo();
+    private static final String DIM_VARIABLES = "variables";
+
+    /**
+     * 生效的变量清单：**本轮显式给的优先 → 没给就沿用会话记忆 → 都没有才是「页面已选的全部」**。
+     *
+     * <p>显式传空数组 = 明确回到「全部」（会把记忆清掉）—— 这是模型唯一能表达「这次不限定变量」的方式。
+     */
+    private List<String> effectiveVariables(AiToolContext ctx, JsonNode args) {
+        List<String> eff;
+        if (args.has("variableNames")) {
+            eff = stringList(args.path("variableNames"));
+        } else {
+            String remembered = exportMemo.get(ctx.sessionId(), DIM_VARIABLES);
+            eff = (remembered == null || remembered.isBlank())
+                    ? List.of()
+                    : List.of(remembered.split(","));
+        }
+        // 整体替换式写回：没写进去的就是「这次没限定」
+        exportMemo.remember(ctx.sessionId(), Map.of(DIM_VARIABLES, String.join(",", eff)));
+        return eff;
+    }
+
+    /**
+     * 把**实际生效的变量**回显出去。
+     *
+     * <p>这一条是「静默」的解药：走默认（不限变量）时以前什么都不说，用户以为按他挑的导了，
+     * 打开表才发现多了一堆列。现在无论哪条路都写清楚。
+     */
+    private static void putAppliedVars(Map<String, Object> out, List<String> vars) {
+        out.put("appliedFilters", vars.isEmpty()
+                ? "变量=页面已选的全部（本会话没有单独限定）"
+                : "变量=" + String.join("、", vars));
+    }
+
     private AiTool listExportDays() {
         String schema = """
                 {
@@ -664,6 +714,16 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     out.put("days", limited);
                     if (limited.isEmpty()) {
                         out.put("note", "这段时间还没有采样数据，导不出东西");
+                        return out;
+                    }
+                    /*
+                     * **只有一天就别弹多选确认了**：就一个候选，点它跟直接导没区别，
+                     * 多一道确认只是让用户多点一下（用户 2026-10-12 反馈「唯一选项还要我确认」）。
+                     */
+                    if (limited.size() == 1) {
+                        out.put("onlyDay", limited.get(0));
+                        out.put("note", "这段时间只有 **" + limited.get(0) + "** 这一天有数据 —— "
+                                + "直接把它作为 days 调导出工具即可，**不要再弹一次确认**。");
                         return out;
                     }
                     List<Map<String, Object>> choices = new ArrayList<>();
@@ -729,7 +789,8 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     }
                     String layout = text(args, "layout");
                     String effLayout = "LONG".equalsIgnoreCase(layout) ? "LONG" : "WIDE";
-                    List<String> variableNames = stringList(args.path("variableNames"));
+                    // 变量：本轮显式 → 会话记忆 → 页面已选的全部（见 effectiveVariables）
+                    List<String> variableNames = effectiveVariables(ctx, args);
 
                     List<String> qs = new ArrayList<>();
                     qs.add("days=" + enc(String.join(",", days)));
@@ -738,7 +799,9 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                         qs.add("variables=" + enc(String.join(",", variableNames)));
                     }
                     String url = "/api/admin/telemetry/longterm/export/download?" + String.join("&", qs);
-                    return downloadPayload(url, days, "监测数据表格", effLayout, variableNames);
+                    Map<String, Object> out = downloadPayload(url, days, "监测数据表格", effLayout, variableNames);
+                    putAppliedVars(out, variableNames);
+                    return out;
                 });
     }
 
@@ -772,14 +835,16 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     if (bad != null) {
                         return Map.of("ok", false, "reason", bad);
                     }
-                    List<String> variableNames = stringList(args.path("variableNames"));
+                    List<String> variableNames = effectiveVariables(ctx, args);
                     List<String> qs = new ArrayList<>();
                     qs.add("days=" + enc(String.join(",", days)));
                     if (!variableNames.isEmpty()) {
                         qs.add("variables=" + enc(String.join(",", variableNames)));
                     }
                     String url = "/api/admin/telemetry/longterm/export/pdf/download?" + String.join("&", qs);
-                    return downloadPayload(url, days, "监测数据曲线图", "CURVE", variableNames);
+                    Map<String, Object> out = downloadPayload(url, days, "监测数据曲线图", "CURVE", variableNames);
+                    putAppliedVars(out, variableNames);
+                    return out;
                 });
     }
 

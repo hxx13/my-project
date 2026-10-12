@@ -38,7 +38,8 @@ class CageQueryToolPackTest {
     @BeforeEach
     void setUp() {
         cageShelfService = mock(CageShelfService.class);
-        pack = new CageQueryToolPack(cageShelfService);
+        // 后两个依赖只有 listCageCells 用得到；本测试只打 listRooms，传 null 即可
+        pack = new CageQueryToolPack(cageShelfService, null, null);
     }
 
     private static Map<String, Object> node(String id, String name, String level) {

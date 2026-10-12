@@ -24,7 +24,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * 动物房环境监测（{@code /#/console/admin/animal-room-telemetry}）的工具包。
+ * 动物房环境监测（{@code /#/console/animal-room-telemetry}）的工具包。
  *
  * <p>三件事：**看在值**（点位目录 + 当前值 + 是否越限）、**看趋势**（某点的历史曲线摘要）、
  * **下发**（开关 / 设定值）。

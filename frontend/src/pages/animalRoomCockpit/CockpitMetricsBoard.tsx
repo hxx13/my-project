@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import type { EChartsOption } from "echarts";
@@ -21,42 +21,96 @@ const AXIS = {
 
 const TITLE = { textStyle: { color: "rgba(186,230,253,.95)", fontSize: 12 } };
 
+/* 今日曲线两条线的颜色。图例写在外层 HTML 里，颜色只能有这么一处来源，免得改了线色忘了图例 */
+const SERIES_AMBER = "#f59e0b";
+const SERIES_CYAN = "#38bdf8";
+
 /**
- * 今日清洗爬升 —— **面积折线**。
- * 这是时间序列（一天内累加），线/面积是它的本命形式，所以这一处保留折线，也保留坐标。
+ * 纵轴上限取整到 1/2/2.5/5×10ⁿ。左右两条轴**共用这一个上限**：
+ * 各开各的刻度时两条线量级对不上（累计几百、每桶几十），看的人没法把两条放一起比；
+ * 共用之后左右刻度完全一致，右轴只是把同一把尺子摆到右边。
+ */
+function niceCeil(v: number): number {
+  if (!(v > 0)) return 1;
+  const e = 10 ** Math.floor(Math.log10(v));
+  const m = v / e;
+  const step = m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10;
+  return step * e;
+}
+
+/**
+ * 今日清洗 —— 两条线叠一张图：
+ * <ul>
+ *   <li>**累计**（琥珀实线 + 渐变面积）：今天到此刻一共洗了多少；</li>
+ *   <li>**实时数量**（青色阶梯线）：每个 5 分钟桶洗了多少个。桶值 = 累计的逐桶差值，不另向后端要一份数据。</li>
+ * </ul>
+ * 横轴只画 07:00–20:00：线体这个时段才动，其余时间全是平线，画出来只会把有效的部分压扁。
+ *
+ * 标题与图例**不画在画布上**（由外层 HTML 表头承担）：小格子里画布顶部要同时塞标题、图例、
+ * 和纵轴最高那一格刻度，三者会叠在一起 —— 标题正好压住「120」这类刻度。
  */
 function cageTodayOption(points: MetricPoint[]): EChartsOption {
+  const inShift = points.filter((p) => {
+    const hm = p.at.slice(11, 16);
+    return hm >= "07:00" && hm <= "20:00";
+  });
+  const cum = inShift.map((p) => p.cages ?? 0);
+  // 逐桶增量：累计是有重叠桶的累加值，后一个减前一个就是这一桶洗的数量
+  const perBucket = cum.map((v, i) => (i === 0 ? v : Math.max(0, Math.round(v - cum[i - 1]))));
+  const maxY = niceCeil(Math.max(...cum, 0));
   return {
-    title: { text: "今日笼盒清洗（实时累计）", ...TITLE, left: 4, top: 2 },
-    grid: { left: 40, right: 10, top: 20, bottom: 14 },
+    /* 必须显式关掉：图表实例是合并更新的（notMerge=false），只把 key 删掉的话，
+       上一版的标题/图例还会留在画布上。 */
+    title: { show: false },
+    legend: { show: false },
+    // 顶部只留最高那格刻度的位置（标题搬走后能压到很小），把高度让给曲线
+    grid: { left: 40, right: 34, top: 12, bottom: 14 },
     xAxis: {
       type: "category",
-      data: points.map((p) => p.at.slice(11, 16)),
+      data: inShift.map((p) => p.at.slice(11, 16)),
       ...AXIS,
       boundaryGap: false,
+      /* 曲线本身是 5 分钟一个点（156 个点）。标签放不下 156 个「07:05」，所以隔 6 个显示一个（=30 分钟一档）
+         并旋转 40°，已经是这个宽度下最密的可读档位；要 5 分钟一档的标签得把图再加宽或加缩放条。 */
+      axisLabel: { ...AXIS.axisLabel, fontSize: 10, rotate: 40, interval: 5 },
     },
-    yAxis: { type: "value", ...AXIS },
-    series: [{
-      type: "line",
-      smooth: true,
-      showSymbol: false,
-      data: points.map((p) => p.cages ?? null),
-      lineStyle: { width: 2, color: "#f59e0b" },
-      areaStyle: { color: "rgba(245,158,11,.18)" },
-    }],
+    yAxis: [
+      { type: "value", ...AXIS, min: 0, max: maxY },
+      { type: "value", ...AXIS, min: 0, max: maxY, splitLine: { show: false } },
+    ],
+    series: [
+      {
+        name: "累计",
+        type: "line",
+        smooth: true,
+        showSymbol: false,
+        data: cum,
+        lineStyle: { width: 2, color: SERIES_AMBER },
+        areaStyle: { color: "rgba(245,158,11,.18)" },
+      },
+      {
+        name: "实时数量",
+        type: "line",
+        step: "middle",
+        showSymbol: false,
+        data: perBucket,
+        yAxisIndex: 1,
+        lineStyle: { width: 1.6, color: SERIES_CYAN },
+      },
+    ],
   };
 }
 
 /**
- * 近 30 天清洗 —— **柱状图**（不是折线）。
- * 按天的量是离散的，柱状才读得出「哪天多、哪天没洗」；缺数据的天不出柱（不补 0）；
+ * 近 7 天清洗 —— **柱状图**（不是折线）。
+ * 按天的量是离散的，柱状才读得出「哪天多、哪天没洗」；**7 天一根不少，没洗的那天立一根 0 高的柱**
+ * （横轴由 daysBarsPts 补齐，后端缺数据的天在这里补 0，不跳过）。
  * 今天那根用亮琥珀实心，往期半透明，一眼能分出「今天还在涨」。
  */
 function cageDaysBarsOption(points: MetricPoint[]): EChartsOption {
   const today = bjToday();
-  const few = points.length <= 12;
   return {
-    title: { text: "笼盒清洗 · 近 30 天", ...TITLE, left: 4, top: 2 },
+    title: { text: "笼盒清洗 · 近 7 天", ...TITLE, left: 4, top: 2 },
     grid: { left: 10, right: 10, top: 20, bottom: 18 },
     xAxis: {
       type: "category",
@@ -65,7 +119,7 @@ function cageDaysBarsOption(points: MetricPoint[]): EChartsOption {
       axisTick: { show: false },
       axisLabel: { color: "rgba(203,213,225,.8)", fontSize: 11 },
     },
-    // 纵轴不必画：柱高本身表达量级，数量少时直接在柱顶标数
+    // 纵轴不必画：柱高本身表达量级，数量少时直接在柱顶标数（0 的那天也标，柱子空着但说明「这天没洗」）
     yAxis: { type: "value", show: false, scale: true },
     series: [{
       type: "bar",
@@ -74,9 +128,8 @@ function cageDaysBarsOption(points: MetricPoint[]): EChartsOption {
         value: p.cages ?? 0,
         itemStyle: { color: p.at.slice(0, 10) === today ? "#f59e0b" : "rgba(245,158,11,.4)" },
       })),
-      label: few
-        ? { show: true, position: "top", fontSize: 11, color: "rgba(203,213,225,.9)", formatter: "{c}" }
-        : { show: false },
+      // 固定 7 根，柱顶都标数（0 的那天也标 —— 柱子空着，但说明「这天没洗」）
+      label: { show: true, position: "top", fontSize: 11, color: "rgba(203,213,225,.9)", formatter: "{c}" },
     }],
   };
 }
@@ -98,6 +151,10 @@ function darken(hex: string, f: number): string {
 /** 侧壁层数（每层下移 1.1% 容器高，5 层约 3~4px 视觉厚度） */
 const WALL_LAYERS = 5;
 const WALL_STEP = 1.1;
+/** 顶面半径。侧壁必须用**同一个半径**，只把圆心往下挪 —— 见 robotsPieOption 的注释。
+    环不能太大：半径是按容器**短边**算的，格子接近正方形时环会撑到贴住左右两边，
+    外面的标签就没地方放（会被挤掉或截成「380. . . .」）。留出两侧各 ~60px 给标签。 */
+const PIE_RADIUS: [string, string] = ["38%", "62%"];
 
 /**
  * 六台车里程占比 —— **2.5D 环形饼**（每台车一个色，与小车台配色同源），洞心写区间合计。
@@ -105,9 +162,8 @@ const WALL_STEP = 1.1;
  * 厚度是**叠饼**做的：同一份数据画 5 层，自下而上逐层上移并逐层提亮，
  * 只留最上层出标签。这是纯配置实现，不引 echarts-gl（为了一个饼图加 3D 渲染器不值当）。
  *
- * 标签把车名和公里数一起写进扇区名（`name`），这样 formatter 只用模板就够、
- * 不必写回调函数（回调参数在 ECharts 6 里的类型很难看）。
- * 标题不画在画布上，由外层 HTML 表头写 —— 表头上还要挂区间切换按钮。
+ * 每片都标「车名 + 里程（米）」，只给数值分不清是哪台车；压不下的大扇区改成压在环上，小扇区才引到外面。
+ * 标题不画在画布上，由外层 HTML 表头写 —— 表头上还要挂区间切换按钮，单位（m）也写在表头上。
  */
 function robotsPieOption(totalMeters: number, parts: RobotPart[]): EChartsOption {
   const slices = parts.map((p) => ({
@@ -116,25 +172,29 @@ function robotsPieOption(totalMeters: number, parts: RobotPart[]): EChartsOption
     itemStyle: { color: p.color },
   }));
   return {
-    // 洞心的合计：环饼的圆心 = 容器中心，所以直接居中放一行字
+    // 洞心的合计：环饼的圆心 = 容器中心，所以直接居中放一行字。
+    // **只放数字不放单位**（单位在卡片表头写），字号又要压到洞里放得下 —— 七位数按米写得很长。
     graphic: [{
       type: "text",
       left: "center",
       top: "middle",
       silent: true,
       style: {
-        text: `${km(totalMeters)} km`,
+        text: int(totalMeters),
         fill: "rgba(207,250,254,.95)",
-        font: "600 20px ui-monospace, SFMono-Regular, Menlo, monospace",
+        font: "600 14px ui-monospace, SFMono-Regular, Menlo, monospace",
       },
     }],
     series: [
-      // 侧壁：从最底层往上画，每层比上一层深一点 → 顶面之下露出渐变的一圈「厚度」
+      /* 侧壁：同一份数据多画几层，每层圆心往下挪一点、颜色压暗一点，最深的画在最下面。
+         半径必须和顶面**完全一致**（早先侧壁写成 ["42%","70%"]、比顶面大一圈，
+         结果那一圈从顶面四周全露出来 —— 看着不是「厚度」，是一圈灰边）。同半径时
+         侧壁只在下方露出来，才是立体的侧壁。 */
       ...Array.from({ length: WALL_LAYERS - 1 }, (_, k) => {
         const depth = WALL_LAYERS - 1 - k;
         return {
           type: "pie" as const,
-          radius: ["42%", "70%"],
+          radius: PIE_RADIUS,
           center: ["50%", `${50 + depth * WALL_STEP}%`],
           silent: true,
           label: { show: false },
@@ -147,46 +207,59 @@ function robotsPieOption(totalMeters: number, parts: RobotPart[]): EChartsOption
       }),
       {
         type: "pie" as const,
-        radius: ["42%", "70%"],
+        radius: PIE_RADIUS,
         center: ["50%", "50%"],
-        // 整块宽的格子两侧有充足横向余量，标签引到外面比塞图例更省高度。
-        // 车名一行、里程一行：数字是本图重点，单独放大加粗；不显示占比（洞心有合计，占比意义不大）
+        avoidLabelOverlap: true,
+        // 大扇区把数字**压在饼上**（不再全部甩到外面把窗口顶出去）；小扇区塞不下才引出去
+        data: slices.map((s) => ({
+          ...s,
+          label: {
+            position:
+              totalMeters > 0 && s.value / totalMeters >= 0.14 ? ("inside" as const) : ("outside" as const),
+          },
+        })),
         label: {
           show: true,
-          position: "outside",
+          /* **每一片都要写出是哪台车** —— 只给个数值，看的人分不清是谁。
+             压在饼上时字号小一号（环带就二十来像素，两行大字塞不下），引到外面才用大字号。
+             数值按米、**不带千分位**：带上的话「1,840,000」比留给标签的宽度还长，会被截断。 */
           formatter: (p: { dataIndex: number }) => {
             const it = parts[p.dataIndex];
-            return it ? `{n|${it.label}}\n{k|${dist(it.value)}}` : "";
+            if (!it) return "";
+            const inside = totalMeters > 0 && it.value / totalMeters >= 0.14;
+            const num = String(Math.round(it.value));
+            return inside ? `{ni|${it.label}}\n{ki|${num}}` : `{no|${it.label}}\n{ko|${num}}`;
           },
           rich: {
-            n: { fontSize: 13, color: "rgba(226,232,240,.92)" },
-            k: {
-              fontSize: 17,
+            no: { fontSize: 11, color: "rgba(226,232,240,.92)" },
+            ko: {
+              fontSize: 12,
               fontWeight: "bold",
               color: "#e0f2fe",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              padding: [2, 0, 0, 0],
+              padding: [1, 0, 0, 0],
+              textShadowColor: "rgba(2,6,23,.65)",
+              textShadowBlur: 4,
+            },
+            ni: { fontSize: 9, color: "rgba(226,232,240,.9)" },
+            ki: {
+              fontSize: 11,
+              fontWeight: "bold",
+              color: "#e0f2fe",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              padding: [1, 0, 0, 0],
+              textShadowColor: "rgba(2,6,23,.65)",
+              textShadowBlur: 3,
             },
           },
         },
-        labelLine: { length: 6, length2: 8, lineStyle: { color: "rgba(148,163,184,.4)" } },
-        data: slices,
+        labelLine: { length: 5, length2: 6, lineStyle: { color: "rgba(148,163,184,.4)" } },
       },
     ],
   };
 }
 
-/** 米 → 公里，保留一位小数 */
-function km(meters: number | null | undefined): string {
-  return ((Number(meters) || 0) / 1000).toFixed(1);
-}
-
-/** 不到 1 公里就报米，免得小里程都显示成「0.0 km」 */
-function dist(meters: number): string {
-  return meters < 1000 ? `${Math.round(meters)} m` : `${km(meters)} km`;
-}
-
-/** 千分位整数 */
+/** 千分位整数。驾驶舱的里程一律按**米**显示（公里带一位小数太粗，看不出当天涨了多少），所以就是它 */
 function int(n: number | null | undefined): string {
   return Math.round(Number(n) || 0).toLocaleString("en-US");
 }
@@ -212,29 +285,147 @@ const PIE_RANGES = [
 ] as const;
 type PieRange = (typeof PIE_RANGES)[number]["key"];
 
-const DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+/**
+ * 翻牌的两种节奏：
+ * <ul>
+ *   <li>`default`：按差值长短滚一段（每单位 40ms，夹在 0.4~3.6 秒），缓出 —— 里程那类小数值用；</li>
+ *   <li>`cage`：**每秒 +1 匀速**（笼盒统计口径）。一次抬臂 +80，所以一次要慢慢滚 80 秒。
+ *       **必须线性**：缓出的话前几秒就冲掉一大半，「每秒 +1」变成「每秒两三只」。
+ *       上限 2 分钟只是兜底：停机几小时再上来、一次补几百只时，不至于要数到一个小时后。</li>
+ * </ul>
+ */
+const PACES = {
+  default: { perUnit: 40, minMs: 400, maxMs: 3_600, linear: false },
+  cage: { perUnit: 1000, minMs: 0, maxMs: 120_000, linear: true },
+} as const;
+type Pace = keyof typeof PACES;
 
 /**
- * 数字翻牌：**按位纵向滚动**，数字一变就滚到新位（进位也一起滚）。
- * 千分位逗号、小数点这类非数字字符原样显示、不参与滚动。
+ * 连续翻牌：目标值一变，就用 rAF 把显示值从当前慢慢数到新值，**中途每个整数都真的翻过去**。
  *
- * 宽度靠等宽字体保证（父级已经是 font-mono），所以位数变化时不会左右跳动。
+ * 之前是直接跳到新值、只让位图滚 0.7 秒 —— 一次触发加 80（一台车臂一次抬臂的量）就「啪」地跳过去，
+ * 看着不像产线在持续出货。现在按 `pace` 一格一格滚上来。
+ *
+ * 首次挂载不滚；**数据第一次回来那次也直接落位**（挂载时是「还没加载」的 0，
+ * 按每秒 +1 数到几万只得一整天，所以只对之后的变化做补间）。
  */
-function Odometer({ text }: { text: string }) {
+function useCountUp(target: number, pace: Pace = "default") {
+  const { perUnit, minMs, maxMs, linear } = PACES[pace];
+  const [shown, setShown] = useState(target);
+  const shownRef = useRef(target);
+  /* 挂载时还是 0（查询没回来）→ 头一次变化是「数据到了」，直接落位，别从 0 慢慢数上去 */
+  const jumpNext = useRef(!(target > 0));
+
+  useEffect(() => {
+    const from = shownRef.current;
+    if (!Number.isFinite(target) || from === target) return;
+    if (jumpNext.current) {
+      jumpNext.current = false;
+      shownRef.current = target;
+      setShown(target);
+      return;
+    }
+    // 系统开了「减少动态效果」就直接落到目标值（与 CSS 里那套 motion-reduce 一个口径）
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      shownRef.current = target;
+      setShown(target);
+      return;
+    }
+    const dur = Math.min(maxMs, Math.max(minMs, Math.abs(target - from) * perUnit));
+    const t0 = performance.now();
+    let raf = requestAnimationFrame(function step(now) {
+      const t = Math.min(1, (now - t0) / dur);
+      const k = linear ? t : 1 - (1 - t) ** 3; // 默认缓出：冲得快、停得稳
+      const v = from + (target - from) * k;
+      shownRef.current = v;
+      setShown(v);
+      if (t < 1) raf = requestAnimationFrame(step);
+      else shownRef.current = target;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [target, perUnit, minMs, maxMs, linear]);
+
+  return shown;
+}
+
+/**
+ * 逐位滚动位置。`places` 由低位到高位。
+ *
+ * 低位一直在滚（3.2 = 正从 3 滚向 4）；**高位只在下一位从 9 滚到 0 的那一小段里跟着滚**。
+ * 不这么做的话，1234.7 的千位会一直半露着「2」—— 像块坏掉的里程表。
+ */
+function digitPositions(value: number, places: number[]): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < places.length; i++) {
+    if (i === 0) {
+      out.push((((value / places[0]) % 10) + 10) % 10);
+      continue;
+    }
+    const base = ((Math.floor(value / places[i]) % 10) + 10) % 10;
+    out.push(base + Math.max(0, out[i - 1] - 9));
+  }
+  return out;
+}
+
+/** 一位数的滚轮：`pos` 是这一位连续停在哪儿（0~10）。只渲染窗口上下两位，不铺 0~9 十条 */
+function DigitRoll({ pos }: { pos: number }) {
+  const whole = Math.floor(pos);
+  const d1 = whole % 10;
+  const frac = pos - whole;
+  return (
+    <span className="inline-block overflow-hidden" style={{ height: "1em" }}>
+      <span className="flex flex-col" style={{ transform: `translateY(-${frac}em)` }}>
+        <span style={{ height: "1em", lineHeight: 1 }}>{d1}</span>
+        <span style={{ height: "1em", lineHeight: 1 }}>{(d1 + 1) % 10}</span>
+      </span>
+    </span>
+  );
+}
+
+/**
+ * 数字翻牌：值一变就连续数上去（见 useCountUp），每一位纵向滚动。
+ * 千分位逗号、小数点这类非数字字符原样显示、不参与滚动。
+ * 宽度靠等宽字体保证（父级已经是 font-mono）。
+ */
+function Odometer({ value, format, pace }: {
+  value: number;
+  format: (n: number) => string;
+  /** 翻牌节奏，见 PACES；不传走默认 */
+  pace?: Pace;
+}) {
+  const shown = useCountUp(value, pace);
+  const text = format(shown);
+  const display = Number(text.replace(/,/g, "")) || 0;
+
+  // 每个数字字符占哪一位：整数部分从右往左 1/10/100…，小数部分从左往右 0.1/0.01…
+  const chars = [...text];
+  const placeOf = new Array<number>(chars.length).fill(0);
+  const dot = text.indexOf(".");
+  let place = 1;
+  for (let i = (dot < 0 ? chars.length : dot) - 1; i >= 0; i--) {
+    if (chars[i] >= "0" && chars[i] <= "9") {
+      placeOf[i] = place;
+      place *= 10;
+    }
+  }
+  if (dot >= 0) {
+    let f = 0.1;
+    for (let i = dot + 1; i < chars.length; i++) {
+      if (chars[i] >= "0" && chars[i] <= "9") {
+        placeOf[i] = f;
+        f /= 10;
+      }
+    }
+  }
+  const order = chars.map((_, i) => i).filter((i) => placeOf[i] > 0).sort((a, b) => placeOf[a] - placeOf[b]);
+  const pos = digitPositions(display, order.map((i) => placeOf[i]));
+  const posAt = new Map(order.map((i, k) => [i, pos[k]]));
+
   return (
     <span className="inline-flex">
-      {[...text].map((ch, i) =>
-        ch >= "0" && ch <= "9" ? (
-          <span key={i} className="inline-block overflow-hidden" style={{ height: "1em" }}>
-            <span
-              className="flex flex-col transition-transform duration-700 ease-out motion-reduce:transition-none"
-              style={{ transform: `translateY(-${Number(ch) * 10}%)` }}
-            >
-              {DIGITS.map((d) => (
-                <span key={d} style={{ height: "1em", lineHeight: 1 }}>{d}</span>
-              ))}
-            </span>
-          </span>
+      {chars.map((ch, i) =>
+        placeOf[i] > 0 ? (
+          <DigitRoll key={i} pos={posAt.get(i) ?? 0} />
         ) : (
           <span key={i} style={{ lineHeight: 1 }}>{ch}</span>
         ),
@@ -267,7 +458,7 @@ const TILE = "relative min-h-0 min-w-0 rounded-lg border border-cyan-500/20 bg-s
  * <ul>
  *   <li>顶部两块大指标：<b>笼盒统计</b>（总清洗笼盒 / 今日实时清洗）与
  *       <b>总累计路程</b>（总里程 / 今日实时总里程，后面挂六台车的横向明细）；</li>
- *   <li>左 40% 上下平分：上半再平分为「今日清洗爬升（折线）」与「近 30 天清洗（柱状）」；
+ *   <li>左 40% 上下平分：上半再平分为「今日清洗爬升（折线）」与「近 7 天清洗（柱状，含今天）」；
  *       下半整块给「六台车里程占比」（2.5D 环饼，带总计/近 30 天/近 7 天/今天的区间切换，
  *       宽格子才放得下车名+公里标签）；</li>
  *   <li>右 60%：AGV 实况地图（画布与配置全部复用小车台）。</li>
@@ -289,7 +480,7 @@ export function CockpitMetricsBoard() {
   });
   const daysCurve = useQuery({
     queryKey: ["agvCageWashDays"],
-    queryFn: () => fetchCageWashCurve("days", 30),
+    queryFn: () => fetchCageWashCurve("days", 7),
     staleTime: 5 * 60_000,
   });
   // 饼图的数据源：日行表里每台车每天的里程（跟顶部「总累计路程」同一个来源）。
@@ -299,7 +490,7 @@ export function CockpitMetricsBoard() {
     queryFn: () => fetchDistanceCurve(365),
     staleTime: 5 * 60_000,
   });
-  const [pieRange, setPieRange] = useState<PieRange>("d30");
+  const [pieRange, setPieRange] = useState<PieRange>("today");
 
   const todayPts = todayCurve.data ?? [];
   const daysPts = daysCurve.data ?? [];
@@ -335,7 +526,24 @@ export function CockpitMetricsBoard() {
 
   const loading = overview.isLoading || todayCurve.isLoading;
   const todayChart = useMemo(() => cageTodayOption(todayPts), [todayPts]);
-  const daysChart = useMemo(() => cageDaysBarsOption(daysPts), [daysPts]);
+  // 柱状要含「今天」：日行表里今天那行要等次日 00:05 才封存，白天查表就是没有今天这一根 ——
+  // 拿今日曲线的实时值补上，否则柱状图永远比顶部的今日数字少一根。
+  // 而且**后端只回有数据的天**（缺数据的那天连点都不出），横轴必须自己补齐整整 7 天：
+  // 那天没洗也要立一根 0 高的柱，否则「哪几天没洗」根本数不出来。
+  const daysBarsPts = useMemo(() => {
+    const todayStr = bjToday();
+    const byDay = new Map<string, number>();
+    for (const p of daysPts) byDay.set(p.at.slice(0, 10), p.cages ?? 0);
+    if (!byDay.has(todayStr)) {
+      const live = todayPts.length ? todayPts[todayPts.length - 1]?.cages : undefined;
+      if (live != null) byDay.set(todayStr, live);
+    }
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = shiftDay(todayStr, i - 6);
+      return { at: d, cages: byDay.get(d) ?? 0 };
+    });
+  }, [daysPts, todayPts]);
+  const daysChart = useMemo(() => cageDaysBarsOption(daysBarsPts), [daysBarsPts]);
   const pieChart = useMemo(
     () => robotsPieOption(pie.total, pie.parts),
     [pie.parts, pie.total],
@@ -367,11 +575,11 @@ export function CockpitMetricsBoard() {
         <StatBlock title="笼盒统计" className="sm:flex-none">
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="font-mono text-3xl font-semibold leading-none text-cyan-100">
-              <Odometer text={int(cageTotal)} />
+              <Odometer value={cageTotal} format={int} pace="cage" />
             </span>
             <span className="font-mono text-xl leading-none text-slate-600">/</span>
             <span className="font-mono text-xl font-semibold leading-none text-amber-300">
-              <Odometer text={int(liveCages)} />
+              <Odometer value={liveCages} format={int} pace="cage" />
             </span>
             <span className="text-sm text-slate-400">个 · 总清洗 / 今日实时</span>
           </div>
@@ -383,20 +591,20 @@ export function CockpitMetricsBoard() {
           <div className="mt-1 flex flex-wrap items-stretch gap-x-3 gap-y-1">
             <span className="flex flex-wrap items-baseline gap-x-2 self-center">
               <span className="font-mono text-3xl font-semibold leading-none text-cyan-100">
-                <Odometer text={km(odoTotalAll)} />
+                <Odometer value={odoTotalAll} format={int} />
               </span>
               <span className="font-mono text-xl leading-none text-slate-600">/</span>
               <span className="font-mono text-xl font-semibold leading-none text-amber-300">
-                <Odometer text={km(todayFrozen ? 0 : odoTodayTotal)} />
+                <Odometer value={todayFrozen ? 0 : odoTodayTotal} format={int} />
               </span>
-              <span className="text-sm text-slate-400">km · 六台车累计 / 今日实时</span>
+              <span className="text-sm text-slate-400">m · 六台车累计 / 今日实时</span>
             </span>
             <span className="flex min-w-0 flex-1 items-stretch justify-end gap-1">
               {AGV_ROBOTS.map((r) => (
                 <span
                   key={r.ip}
                   className="flex min-w-0 flex-1 flex-col justify-center rounded border border-cyan-500/15 bg-slate-900/40 px-1.5 py-0.5"
-                  title={`${r.label} · 累计 ${km(cumOf(r.ip))} km · 今日 ${km(todayFrozen ? 0 : todayByRobot[r.ip])} km`}
+                  title={`${r.label} · 累计 ${int(cumOf(r.ip))} m · 今日 ${int(todayFrozen ? 0 : Number(todayByRobot[r.ip]) || 0)} m`}
                 >
                   <span className="flex min-w-0 items-center gap-1">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.color }} aria-hidden />
@@ -404,13 +612,13 @@ export function CockpitMetricsBoard() {
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-baseline gap-x-1">
                     <span className="font-mono text-base font-semibold leading-none text-slate-100">
-                      <Odometer text={km(cumOf(r.ip))} />
+                      <Odometer value={cumOf(r.ip)} format={int} />
                     </span>
                     <span className="font-mono text-xs leading-none text-slate-600">/</span>
                     <span className="font-mono text-xs leading-none text-amber-300/90">
-                      <Odometer text={km(todayFrozen ? 0 : todayByRobot[r.ip])} />
+                      <Odometer value={todayFrozen ? 0 : Number(todayByRobot[r.ip]) || 0} format={int} />
                     </span>
-                    <span className="text-[10px] text-slate-500">km</span>
+                    <span className="text-[10px] text-slate-500">m</span>
                   </span>
                 </span>
               ))}
@@ -425,56 +633,74 @@ export function CockpitMetricsBoard() {
           加载指标…
         </div>
       ) : (
-        /* 主区：左 40%（上下平分，上半再平分 → 今日折线 | 近 30 天柱状；下半整块给 2.5D 环饼，够横放标签），
+        /* 主区：左 40%（上下平分，上半再平分 → 今日折线 | 近 7 天柱状；下半整块给 2.5D 环饼，够横放标签），
            右 60% 整块地图。
            每层都要 min-w-0：图与地图画布内在宽度都不小，不给 min-w-0 网格会按最小内容宽度撑开
            （实测两列各约 1000px、整块溢出视口，2fr/3fr 形同虚设）。 */
         <div className="grid min-h-0 min-w-0 flex-1 gap-1 sm:gap-1.5 lg:grid-cols-[2fr_3fr]">
           <div className="grid min-h-0 min-w-0 grid-rows-2 gap-1 sm:gap-1.5">
             <div className="grid min-h-0 min-w-0 grid-cols-2 gap-1 sm:gap-1.5">
-              <div className={TILE}>
-                <CockpitAutoResizeChart option={todayChart} className="h-full min-h-0 w-full min-w-0" style={{ height: "100%" }} />
-                {todayAllZero ? (
-                  <div className="pointer-events-none absolute inset-x-0 top-8 flex flex-col items-center gap-0.5 text-center">
-                    <span className="text-sm text-slate-400">今日暂无抬臂记录</span>
-                  </div>
-                ) : null}
+              <div className={cn(TILE, "flex flex-col")}>
+                {/* 表头兼区间切换：标题不画在画布上，让给这排按钮 */}
+                <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-0.5 pb-0.5">
+                  <span className="text-xs font-medium tracking-wide text-cyan-100/90">
+                    六台车里程占比 · {pie.label}（m）
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 rounded-md bg-slate-900/70 p-0.5">
+                    {PIE_RANGES.map((r) => (
+                      <button
+                        key={r.key}
+                        type="button"
+                        onClick={() => setPieRange(r.key)}
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+                          pieRange === r.key
+                            ? "bg-cyan-500/25 text-cyan-50 shadow-sm"
+                            : "text-slate-400 hover:text-slate-200",
+                        )}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+                <div className="relative min-h-0 flex-1">
+                  <CockpitAutoResizeChart option={pieChart} className="h-full min-h-0 w-full min-w-0" style={{ height: "100%" }} />
+                  {pie.total === 0 ? (
+                    <div className="pointer-events-none absolute inset-x-0 top-6 flex flex-col items-center gap-0.5 text-center">
+                      <span className="text-sm text-slate-400">
+                        {pieRange === "today" ? "今日暂无行驶记录" : "该区间暂无行驶记录"}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
               <div className={TILE}>
                 <CockpitAutoResizeChart option={daysChart} className="h-full min-h-0 w-full min-w-0" style={{ height: "100%" }} />
               </div>
             </div>
             <div className={cn(TILE, "flex flex-col")}>
-              {/* 表头兼区间切换：标题不画在画布上，让给这排按钮 */}
-              <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-0.5 pb-0.5">
-                <span className="text-xs font-medium tracking-wide text-cyan-100/90">
-                  六台车里程占比 · {pie.label}
-                </span>
-                <span className="inline-flex items-center gap-0.5 rounded-md bg-slate-900/70 p-0.5">
-                  {PIE_RANGES.map((r) => (
-                    <button
-                      key={r.key}
-                      type="button"
-                      onClick={() => setPieRange(r.key)}
-                      className={cn(
-                        "rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
-                        pieRange === r.key
-                          ? "bg-cyan-500/25 text-cyan-50 shadow-sm"
-                          : "text-slate-400 hover:text-slate-200",
-                      )}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
+              {/* 标题和图例都由这排 HTML 承担，不画进画布：小格子里画布顶部塞不下「标题 + 图例 + 最高那格刻度」，
+                  硬塞的结果就是标题压住纵轴刻度。搬出来之后 grid.top 也能压得更小，把高度让给曲线。 */}
+              <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5 px-0.5 pb-0.5">
+                <span className="text-[11px] font-medium tracking-wide text-cyan-100/90">今日笼盒清洗</span>
+                {/* 图例条目要 whitespace-nowrap：格子只有 200 出头，不加会把「累积」拆成上下两行 */}
+                <span className="flex shrink-0 items-center gap-2 text-[10px] text-slate-300/85">
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+                    <span className="h-0.5 w-3 shrink-0 rounded-full" style={{ backgroundColor: SERIES_AMBER }} aria-hidden />
+                    累计
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 whitespace-nowrap">
+                    <span className="h-0.5 w-3 shrink-0 rounded-full" style={{ backgroundColor: SERIES_CYAN }} aria-hidden />
+                    实时 5 分钟
+                  </span>
                 </span>
               </div>
               <div className="relative min-h-0 flex-1">
-                <CockpitAutoResizeChart option={pieChart} className="h-full min-h-0 w-full min-w-0" style={{ height: "100%" }} />
-                {pie.total === 0 ? (
+                <CockpitAutoResizeChart option={todayChart} className="h-full min-h-0 w-full min-w-0" style={{ height: "100%" }} />
+                {todayAllZero ? (
                   <div className="pointer-events-none absolute inset-x-0 top-6 flex flex-col items-center gap-0.5 text-center">
-                    <span className="text-sm text-slate-400">
-                      {pieRange === "today" ? "今日暂无行驶记录" : "该区间暂无行驶记录"}
-                    </span>
+                    <span className="text-sm text-slate-400">今日暂无抬臂记录</span>
                   </div>
                 ) : null}
               </div>

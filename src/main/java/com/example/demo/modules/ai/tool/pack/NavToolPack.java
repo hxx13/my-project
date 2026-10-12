@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.ai.shot.PageScreenshotService;
 import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
@@ -11,6 +12,8 @@ import com.example.demo.modules.pagepermission.service.PagePermissionService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -195,6 +198,10 @@ public class NavToolPack implements AiToolPack {
                       "enum": ["failed", "success"],
                       "description": "只有用户明确说「只看失败/成功的」时才传：failed=失败、success=成功。**只对门禁记录这类页面有效**，别的页面会忽略它。用户没说就别传。"
                     },
+                    "tab": {
+                      "type": "string",
+                      "description": "用户点名了页面上某个页签/视图时才传，照原话：楼层页签传楼层（「机房」「B1F」「2F」），驾驶舱传「温湿度压强」或「运行指标」。没说就别传 —— 不传就按页面默认的那个页签截。"
+                    },
                     "guide": {
                       "type": "boolean",
                       "description": "用户明确要「带他过去看」「在那页上打开再截」时传 true —— 那样会**把他所在的页面切到那一页**再截。默认不传：只出一张图给他看，不动他面前的页面。"
@@ -228,8 +235,24 @@ public class NavToolPack implements AiToolPack {
                         String extra = queryFor(pagePath, text(args, "filter"));
                         // 载体那条路只有网页端走得通；小程序一律服务端
                         boolean guide = booleanOf(args, "guide") && !ctx.miniProgram();
+                        // 走服务端渲染之前**先问一句截不截得了**。后端只认 /admin… 、/student/… 、
+                        // /content-manager…，四个全屏孪生入口（/animal-room-*、/digital-twin-*）截不了。
+                        // 不问就答的后果：工具回 ok → 模型说「图稍等几秒」→ 真渲染失败 →
+                        // AiOrchestrator 追一句「截图没取到」，同一段话里自相矛盾（真机见过）。
+                        if (!guide && !PageScreenshotService.canRenderServerSide(pagePath)) {
+                            out.put("ok", false);
+                            out.put("reason", "「" + String.valueOf(nav.get("label")) + "」这个页面截不了图，要看只能自己打开");
+                            return out;
+                        }
                         Map<String, Object> image = new LinkedHashMap<>();
-                        image.put("path", extra.isEmpty() ? pagePath : pagePath + "?" + extra);
+                        // 页签：用户点名了某个页签（「机房」「运行指标」）时带上，页面自己按 `?tab=` 预选
+                        String tab = text(args, "tab").trim();
+                        StringBuilder qs = new StringBuilder(extra);
+                        if (!tab.isEmpty()) {
+                            if (qs.length() > 0) qs.append('&');
+                            qs.append("tab=").append(URLEncoder.encode(tab, StandardCharsets.UTF_8));
+                        }
+                        image.put("path", qs.length() == 0 ? pagePath : pagePath + "?" + qs);
                         image.put("label", nav.get("label"));
                         image.put("render", guide ? "carrier" : "server");
                         out.put("ok", true);
@@ -270,6 +293,10 @@ public class NavToolPack implements AiToolPack {
                     "query": {
                       "type": "string",
                       "description": "用户说的入口名字，尽量照原话（「流水线」「门禁规则」「资产记录」）；用户从芯片里点了候选时也可传路径"
+                    },
+                    "tab": {
+                      "type": "string",
+                      "description": "用户点名了进去之后要看某个页签/视图时才传，照原话：楼层页签传楼层（「机房」「B1F」「2F」），驾驶舱传「温湿度压强」或「运行指标」。没说就别传 —— 不传就落在页面默认页签。"
                     }
                   },
                   "required": ["query"],
@@ -289,6 +316,12 @@ public class NavToolPack implements AiToolPack {
                     // 视角来自请求上下文（服务端按唯一判据推出来的，模型影响不到）
                     Pages pages = scan(ctx.actor(), ctx.miniProgram(), ctx.studentView());
                     Map<String, Object> out = resolve(query, pages);
+                    // 页签：把 `?tab=` 挂到这次跳转的落点上（单命中、以及多候选时的每个芯片）。
+                    // 认不得这个参数的页面会忽略它，所以可以无条件挂。
+                    String tab = text(args, "tab").trim();
+                    if (!tab.isEmpty()) {
+                        withTab(out, tab);
+                    }
                     if (Boolean.FALSE.equals(out.get("ok"))) {
                         // 「没这个页面」与「有、但你的角色打不开」是两回事，不能同一句回。
                         // 说成前者会让用户一遍遍换说法重试，而他真正需要的是找人开权限。
@@ -300,6 +333,45 @@ public class NavToolPack implements AiToolPack {
                     }
                     return out;
                 });
+    }
+
+    /**
+     * 给这次跳转的落点挂上 `?tab=`。
+     *
+     * <p>单命中挂 `navigate.path`；**多候选时每个芯片都挂** —— 否则用户点完芯片页签参数就丢了。
+     * 页面自己按 `?tab=` 预选页签（遥测的楼层、驾驶舱的视图），认不得这个参数的页面会忽略它。</p>
+     */
+    @SuppressWarnings("unchecked")
+    private static void withTab(Map<String, Object> out, String tab) {
+        String pair = "tab=" + URLEncoder.encode(tab, StandardCharsets.UTF_8);
+        Object nav = out.get("navigate");
+        if (nav instanceof Map<?, ?> rawNav) {
+            Map<String, Object> navMap = (Map<String, Object>) rawNav;
+            Object path = navMap.get("path");
+            if (path != null) {
+                navMap.put("path", appendQuery(String.valueOf(path), pair));
+            }
+        }
+        Object choices = out.get("choices");
+        if (choices instanceof List<?> groups) {
+            for (Object group : groups) {
+                if (!(group instanceof Map<?, ?> rawGroup)) continue;
+                Object opts = ((Map<String, Object>) rawGroup).get("options");
+                if (!(opts instanceof List<?> optList)) continue;
+                for (Object opt : optList) {
+                    if (!(opt instanceof Map<?, ?> rawOpt)) continue;
+                    Map<String, Object> optMap = (Map<String, Object>) rawOpt;
+                    Object value = optMap.get("value");
+                    if (value != null) {
+                        optMap.put("value", appendQuery(String.valueOf(value), pair));
+                    }
+                }
+            }
+        }
+    }
+
+    private static String appendQuery(String path, String pair) {
+        return path.contains("?") ? path + "&" + pair : path + "?" + pair;
     }
 
     // ── 匹配 ──
@@ -571,6 +643,22 @@ public class NavToolPack implements AiToolPack {
         return out;
     }
 
+    /**
+     * 全屏孪生入口：真正的路由是 `/console/<名字>`，**不在 `/admin/` 下**。
+     *
+     * <p>页面权限表里出现过 `/admin/animal-room-telemetry` 这类条目（菜单项 + 自动扫描写进去的重复件）。
+     * 前端把 `/admin/xxx` 一律加前缀成 `/console/admin/xxx`，而那条路由不存在 ——
+     * 用户点过去看见的就是 React Router 的默认 404 错误页（「Unexpected Application Error! 404 Not Found」）。
+     * 在这儿拦一道：名字对上就不认，别把它摆给用户挑。</p>
+     */
+    private static final Set<String> TWIN_FULLSCREEN_ENTRY_NAMES = Set.of(
+            "animal-room-telemetry", "animal-room-cockpit", "digital-twin-screen", "digital-twin-3d");
+
+    private static boolean isMisplacedTwinEntry(String path) {
+        return path.startsWith("/admin/")
+                && TWIN_FULLSCREEN_ENTRY_NAMES.contains(path.substring("/admin/".length()));
+    }
+
     /** 这个入口值不值得摆给用户挑（两端的噪声不同，见 {@link #scan}）。 */
     private static boolean usable(boolean miniProgram, boolean studentView, String path, String label,
                                   Set<String> consolePaths) {
@@ -588,6 +676,9 @@ public class NavToolPack implements AiToolPack {
         }
         if (studentView) {
             return true;
+        }
+        if (isMisplacedTwinEntry(path)) {
+            return false;
         }
         // 老式裸路径（/debug）与 /console/debug 是同一个页面：只留后者。
         // 走老路径会命中顶层 legacy 重定向 —— 整个后台壳层卸载重建、页面闪一下（真机踩过）。
