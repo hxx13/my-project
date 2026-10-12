@@ -161,7 +161,7 @@ function PrintCurves({ seed, tables }: { seed: PrintSeed; tables: LongtermDayMat
                 <div key={r.variableName} className="break-inside-avoid rounded border border-neutral-300 bg-white p-2">
                   <div className="mb-1 flex items-baseline justify-between gap-2">
                     <span className="truncate text-[11px] font-semibold">
-                      {r.roomCanonical || r.displayLabel || r.variableName}
+                      {r.displayLabel || r.roomCanonical || r.variableName}
                       {r.unit ? <span className="ml-1 font-normal text-neutral-500">({r.unit})</span> : null}
                     </span>
                     <span className="shrink-0 text-[10px] text-neutral-500">{extremeText(r)}</span>
@@ -652,7 +652,7 @@ export default function AdminTelemetryLongtermPage() {
               {(dayTable?.rows ?? variables.map((v) => ({ variableName: v.winccVariableName, roomCanonical: null, displayLabel: v.displayLabel }))).map(
                 (r) => (
                   <option key={r.variableName} value={r.variableName}>
-                    {r.roomCanonical || r.displayLabel || r.variableName}
+                    {r.displayLabel || r.roomCanonical || r.variableName}
                   </option>
                 )
               )}

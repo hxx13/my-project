@@ -86,6 +86,32 @@ public class TelemetryLongtermExportService {
         return m;
     }
 
+    /**
+     * 变量名 → 展示映射。
+     *
+     * <p>归档采样表里**没有**展示映射这一列（见 {@code TelemetryLongtermSampleRow}），只有房间名；
+     * 而页面上那一列显示的是展示映射（列头也是「展示映射」）。导出要和页面对得上，
+     * 就得照变量配置把它查回来 —— 与 {@link #unitByVar()} 同一个来源。</p>
+     */
+    private Map<String, String> displayByVar() {
+        Map<String, String> m = new LinkedHashMap<>();
+        List<TelemetryLongtermVariableDto> vars = archiveService.listVariables();
+        if (vars == null) {
+            return m;
+        }
+        for (TelemetryLongtermVariableDto v : vars) {
+            if (v == null) {
+                continue;
+            }
+            String n = trim(v.getWinccVariableName());
+            String label = trim(v.getDisplayLabel());
+            if (n != null && label != null) {
+                m.put(n, label);
+            }
+        }
+        return m;
+    }
+
     public byte[] exportXlsx(TelemetryLongtermExportRequest req) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             List<String> days = normalizeDays(req == null ? null : req.getDays());
@@ -122,10 +148,11 @@ public class TelemetryLongtermExportService {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("数据监测"));
             boolean wide = req != null && "WIDE".equalsIgnoreCase(req.getLayout());
             boolean multiDay = distinctDayCount(rows) > 1;
+            Map<String, String> displayByVar = displayByVar();
             if (wide) {
-                writeWide(sh, rows, requested, unitByVar(), multiDay);
+                writeWide(sh, rows, requested, unitByVar(), displayByVar, multiDay);
             } else {
-                writeLong(sh, rows, multiDay);
+                writeLong(sh, rows, multiDay, displayByVar);
             }
             setColumnWidths(sh);
             wb.write(out);
@@ -138,7 +165,8 @@ public class TelemetryLongtermExportService {
     }
 
     /** 长表：多天时**加一列日期**、时间列只留时刻，各天的行按时间从上往下接排（一整张连续表）。 */
-    private void writeLong(Sheet sh, List<TelemetryLongtermSampleRow> rows, boolean multiDay) {
+    private void writeLong(Sheet sh, List<TelemetryLongtermSampleRow> rows, boolean multiDay,
+                           Map<String, String> displayByVar) {
         Row head = sh.createRow(0);
         List<String> cols = new ArrayList<>();
         if (multiDay) {
@@ -147,7 +175,7 @@ public class TelemetryLongtermExportService {
         } else {
             cols.add("时间");
         }
-        cols.addAll(List.of("变量", "值", "原始值", "房间", "楼层"));
+        cols.addAll(List.of("变量", "值", "原始值", "展示映射", "楼层"));
         for (int i = 0; i < cols.size(); i++) {
             head.createCell(i).setCellValue(cols.get(i));
         }
@@ -170,7 +198,7 @@ public class TelemetryLongtermExportService {
                 c++;
             }
             out.createCell(c++).setCellValue(safe(row.getRawValue()));
-            out.createCell(c++).setCellValue(safe(row.getRoomCanonical()));
+            out.createCell(c++).setCellValue(labelOf(row, displayByVar));
             out.createCell(c).setCellValue(safe(row.getFloorCode()));
         }
     }
@@ -187,7 +215,7 @@ public class TelemetryLongtermExportService {
      * <p>多天时按天分段上下堆叠（列轴是时刻，跨天没法共用一个表头），段间空一行。
      */
     private void writeWide(Sheet sh, List<TelemetryLongtermSampleRow> rows, List<String> requested,
-                           Map<String, String> unitByVar, boolean multiDay) {
+                           Map<String, String> unitByVar, Map<String, String> displayByVar, boolean multiDay) {
         // 按天分组（数据已按 sample_at 升序）：LinkedHashMap 保序，同一天的分到一组
         LinkedHashMap<String, List<TelemetryLongtermSampleRow>> byDay = new LinkedHashMap<>();
         for (TelemetryLongtermSampleRow row : rows) {
@@ -224,7 +252,7 @@ public class TelemetryLongtermExportService {
                 }
                 inDay.add(n);
                 if (!labelOf.containsKey(n)) {
-                    labelOf.put(n, roomLabel(row, unitByVar.get(n)));
+                    labelOf.put(n, roomLabel(row, unitByVar.get(n), displayByVar));
                 }
                 // 列头只写时刻 —— 一段就是一天，带上日期既啰嗦又把列撑宽（页面上的列头也是这个粒度）
                 String t = row.getSampleAt() == null ? "" : row.getSampleAt().format(TIME_ONLY);
@@ -238,7 +266,7 @@ public class TelemetryLongtermExportService {
             }
 
             Row head = sh.createRow(r++);
-            head.createCell(0).setCellValue("房间");
+            head.createCell(0).setCellValue("展示映射");
             for (int i = 0; i < slots.size(); i++) {
                 head.createCell(i + 1).setCellValue(slots.get(i));
             }
@@ -291,16 +319,27 @@ public class TelemetryLongtermExportService {
         }
     }
 
-    /** 第一列写什么：与页面同一个口径 —— 房间名，变量配了单位就带上「(单位)」 */
-    private static String roomLabel(TelemetryLongtermSampleRow row, String unit) {
+    /**
+     * 第一列写什么：与页面同一个口径 —— **展示映射**，变量配了单位就带上「(单位)」。
+     * 归档表里没存展示映射，靠 {@code displayByVar} 现查；查不到的老数据退回房间名。
+     */
+    private static String roomLabel(TelemetryLongtermSampleRow row, String unit, Map<String, String> displayByVar) {
+        String label = labelOf(row, displayByVar);
+        return unit == null ? label : label + "(" + unit + ")";
+    }
+
+    /** 展示映射 → 房间名 → 变量名，与页面上那一列的取值顺序一致 */
+    private static String labelOf(TelemetryLongtermSampleRow row, Map<String, String> displayByVar) {
+        String vn = trim(row.getVariableName());
+        String mapped = vn == null ? null : displayByVar.get(vn);
+        if (mapped != null) {
+            return mapped;
+        }
         String room = trim(row.getRoomCanonical());
-        if (room == null) {
-            room = trim(row.getVariableName());
+        if (room != null) {
+            return room;
         }
-        if (room == null) {
-            room = "";
-        }
-        return unit == null ? room : room + "(" + unit + ")";
+        return vn == null ? "" : vn;
     }
 
     /**
