@@ -568,7 +568,7 @@ public class AiOrchestrator {
                     // **候选必须在这里收**：预解析的结果和普通工具结果一样，可能带 choices
                     // （三签的「以哪个身份签」就是这么问的）。漏了这一步，模型只会在正文里
                     // 把候选念一遍，用户拿不到可点选芯片 —— 2026-10-08 真机就是这么漏的。
-                    groupsSink.addAll(collectChoices(pre));
+                    groupsSink.addAll(collectChoices(pre, userText));
                     emitNavigate(pre, sink);
                     if (emitDownload(pre, sink, actor, sessionId, messageId)) {
                         groupsSink.clear();
@@ -626,7 +626,7 @@ public class AiOrchestrator {
                     call.argumentsJson() == null || call.argumentsJson().isBlank() ? "{}" : call.argumentsJson());
             Object out = tool.executor().execute(
                     new AiToolContext(actor, sessionId, messageId, userText, platform, viewOf(actor)), args);
-            groupsSink.addAll(collectChoices(out));
+            groupsSink.addAll(collectChoices(out, userText));
             emitNavigate(out, sink);
             // **文件都递到手上了，就别再把「要怎么导」的问题挂上去**（2026-10-09 真机）：
             // 模型一轮里可能把导出预演调好几次 —— 前几次没带模式、回来的是
@@ -876,6 +876,20 @@ public class AiOrchestrator {
             messages.add(toModelMessage(m));
         }
         injectAttachmentPreviews(messages, userIndex);
+        /*
+         * **把会话的原始需求固定带上**。窗口只留最近 {@code MODEL_WINDOW_MESSAGES} 条，而一轮工具对话
+         * 就要吃掉好几条（用户 / assistant+tool_calls / 工具结果 ×N / assistant）—— 兜两三轮回合之后，
+         * 用户最初那句话就被挤出去了：他一次提了两个人、说了「到 22:00」，模型却只记得最后那一问，
+         * 于是反复重问同两件事（2026-10-12 真机：一句话里两个人，它只问了一个）。
+         *
+         * <p>钉在 system 之后、并标明是早先的需求 —— 不标的话模型会以为这是刚说的，把已答过的再问一遍。
+         */
+        AiMessage firstUser = sessionService.firstUserMessage(sessionId);
+        if (firstUser != null && firstUser.getId() != null && StringUtils.hasText(firstUser.getContent())
+                && !userIndex.containsKey(firstUser.getId())) {
+            messages.add(1, Map.of("role", "user", "content",
+                    "【用户最初的需求（已隔了若干轮，仍要照着办）】" + firstUser.getContent()));
+        }
         return messages;
     }
 
@@ -1533,7 +1547,8 @@ public class AiOrchestrator {
      * 载体负责渲染，编排层只做搬运、不懂业务含义。
      */
     @SuppressWarnings("unchecked")
-    private List<ChoiceGroup> collectChoices(Object out) {        if (!(out instanceof Map<?, ?> map)) {
+    private List<ChoiceGroup> collectChoices(Object out, String userText) {
+        if (!(out instanceof Map<?, ?> map)) {
             return List.of();
         }
         Map<String, Object> m = (Map<String, Object>) map;
@@ -1547,12 +1562,26 @@ public class AiOrchestrator {
          *
          * <p>两种错的代价不对称：**漏标 = 少给一个可选项**（用户还能打字说），
          * **错弹 = 无谓地甩一张表**（用户必须处理它才能继续）。所以宁可漏标。
+         *
+         * <p><b>但「宁可漏标」有个下限：工具自己说了没办成的时候不许漏。</b>
+         * 2026-10-13 真机喂了一句大白话（两个人 + 房间 + 时点，名字还打错一个字），助手正文写着
+         * 「最接近的几位已列成选项，请点一下」，而界面上**一个选项都没有** —— 免冻包的人名候选那一支
+         * 没打标记，于是那一问被静默丢掉。同形状的还有「挑一扇门」「挑一张要处理的单」「挑一条报名」……
+         * 十几处各写各的标记，漏哪一处哪一处就哑掉。
+         *
+         * <p>所以补一条**结构判据**：**结果里 `ok` 明确为 false、又带着候选** —— 那就是「这次没办成，
+         * 只能让用户挑一个才能继续」，工具自己的 reason 里也正是这么写的（「让用户挑，不要自己选」）。
+         * 判据落在 `ok` 上而不是 reason 文案上：`ok=false` 是「没办成」的机器可读表达，文案会改、字段不会。
+         * 成功返回（如「有哪些断货物资」那种）`ok` 不为 false，不会被这条误伤。
          */
-        if (!Boolean.TRUE.equals(m.get(AiChoices.ASK_REQUIRED))) {
+        boolean mustAsk = Boolean.TRUE.equals(m.get(AiChoices.ASK_REQUIRED))
+                || (Boolean.FALSE.equals(m.get("ok"))
+                    && (m.containsKey("choices") || m.containsKey("questions")));
+        if (!mustAsk) {
             return List.of();
         }
         List<ChoiceGroup> groups = new ArrayList<>();
-        ChoiceGroup single = toGroup(m.get("choices"), m.get("choicesTitle"), false, false);
+        ChoiceGroup single = toGroup(m.get("choices"), m.get("choicesTitle"), false, false, userText);
         if (single != null) {
             groups.add(single);
         }
@@ -1562,7 +1591,7 @@ public class AiOrchestrator {
                 if (q instanceof Map<?, ?> qm) {
                     Map<String, Object> qmap = (Map<String, Object>) qm;
                     ChoiceGroup g = toGroup(qmap.get("options"), qmap.get("title"),
-                            Boolean.TRUE.equals(qmap.get("multiSelect")), true);
+                            Boolean.TRUE.equals(qmap.get("multiSelect")), true, userText);
                     if (g != null) {
                         groups.add(g);
                     }
@@ -1573,7 +1602,8 @@ public class AiOrchestrator {
     }
 
     @SuppressWarnings("unchecked")
-    private static ChoiceGroup toGroup(Object rawChoices, Object rawTitle, boolean multiSelect, boolean authored) {
+    private static ChoiceGroup toGroup(Object rawChoices, Object rawTitle, boolean multiSelect, boolean authored,
+                                       String userText) {
         if (!(rawChoices instanceof List<?> list)) {
             return null;
         }
@@ -1590,13 +1620,30 @@ public class AiOrchestrator {
                 }
             }
         }
-        /*
-         * **只有一个选项不成其为「选」**：用户被问「挑一个」、点开却只有一项，纯属空转。
-         * 单项的候选（比如条件已经定死、「候选」只剩那一个）在工具结果里照样留着，
-         * 模型看得到、直接用它就行 —— 但不要弹给用户。2026-10-12 用户反馈。
-         */
-        if (options.size() < 2) {
+        if (options.isEmpty()) {
             return null;
+        }
+        /*
+         * **他这句话里已经说过的答案，就别再问一遍**。
+         *
+         * <p>此前这条规则只写在测试的期望里、代码里没有实现，那条用例于是一直红着（2026-10-12 补上）。
+         * 判据：单选组里**每一个**选项都出现在用户原话里 —— 用户说「发个公告」而这一问只有「公告」，
+         * 答案就在他手上，再摆一道就是他被烦过的那句「又在重复提问」。
+         */
+        if (!multiSelect && StringUtils.hasText(userText)
+                && options.stream().allMatch(o -> userText.contains(o.label()) || userText.contains(o.value()))) {
+            return null;
+        }
+        /*
+         * **只剩一个候选时，把它变成一次确认**，而不是丢掉。
+         *
+         * <p>用户被问「挑一个」、点开却只有一项，是空转；但**直接丢掉更糟**：模型只能在正文里喊
+         * 「请你点一下下面那个」，而界面上根本没有可点的东西（2026-10-12 用户反馈：
+         * 「就一个可以选择的，他非要让我选择」）。补一条**否定的出路**，它就成了一次确认
+         * （候选 / 都不是），而不是一次选择 —— 既不是「只有一个还让人选」，用户也不至于没得点。
+         */
+        if (options.size() == 1) {
+            options.add(new AiEventSink.Option("都不是，我重新说", "都不是，我重新说一遍", ""));
         }
         return new ChoiceGroup(rawTitle == null ? "" : String.valueOf(rawTitle), options, multiSelect, authored);
     }

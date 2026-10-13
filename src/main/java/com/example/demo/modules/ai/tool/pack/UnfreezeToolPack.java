@@ -12,14 +12,10 @@ import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.card.service.TwinExemptAdminService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.common.util.ChineseNameSimilarity;
 import com.example.demo.modules.twin.scan.dto.DahuaIssueAccessPrefillVO;
 import com.example.demo.modules.twin.scan.service.DahuaIssueAccessRulePrefillService;
 import com.fasterxml.jackson.databind.JsonNode;
-import net.sourceforge.pinyin4j.PinyinHelper;
-import net.sourceforge.pinyin4j.format.HanyuPinyinCaseType;
-import net.sourceforge.pinyin4j.format.HanyuPinyinOutputFormat;
-import net.sourceforge.pinyin4j.format.HanyuPinyinToneType;
-import net.sourceforge.pinyin4j.format.exception.BadHanyuPinyinOutputFormatCombination;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -58,15 +54,42 @@ public class UnfreezeToolPack implements AiToolPack {
      * 时长候选。
      *
      * <p>value 用**自然语言**：芯片点下去就是下一条用户消息，模型按本包 L1 口径
-     * （「延迟 2 小时」→ durationMinutes=120；「今天都有效」→ -1）换算成参数。
+     * （「延迟 2 小时」→ durationMinutes=120；「今天都有效」→ -1；「到 22:00」→ untilTime）换算成参数。
      * 换成裸数字（如 "120"）模型得猜单位，猜错就是另一种事故。
+     *
+     * <p><b>以「到几点」为主、相对时长只留一档兜底</b>（2026-10-12 用户反馈）：
+     * 现场绝大多数说法是**时间节点**（「延迟到 22:00」「晚点到八点」），不是「延迟几小时」。
+     * 之前只有 30 分钟/1 小时/2 小时/4 小时，用户要「到 22:00」时芯片里根本没有那一项，
+     * 模型只能说「系统只给了预设档」——把选择硬塞进一个不合适的维度。
      */
     private static final List<Map<String, Object>> TIME_CHOICES = List.of(
-            Map.of("label", "30 分钟", "value", "延迟 30 分钟"),
-            Map.of("label", "1 小时", "value", "延迟 1 小时"),
-            Map.of("label", "2 小时", "value", "延迟 2 小时"),
-            Map.of("label", "4 小时", "value", "延迟 4 小时"),
-            Map.of("label", "今天都有效", "value", "今天都有效"));
+            Map.of("label", "到 18:00", "value", "延迟到 18:00"),
+            Map.of("label", "到 20:00", "value", "延迟到 20:00"),
+            Map.of("label", "到 22:00", "value", "延迟到 22:00"),
+            Map.of("label", "到 24:00（今晚）", "value", "延迟到 24:00"),
+            Map.of("label", "今天都有效", "value", "今天都有效"),
+            Map.of("label", "再延迟 2 小时", "value", "延迟 2 小时"));
+
+    /**
+     * 会话级的「这个人这一单已经定下来的房间 / 时长」记忆。
+     *
+     * <p><b>为什么非有不可</b>（2026-10-13 真机兜圈）：房间与时长是**两问**，点一个芯片 = 一条用户消息，
+     * 而本工具两道闸都要求「**本轮原话里**提到」（{@link #mentionsTime} / {@link #mentionsAnyRoom}）。
+     * 于是答了房间那条里没有时间、答了时间那条里没有房间 —— 两道闸**永远凑不齐**，
+     * 用户被反复要求「把房间和时间一起重说一遍」。这道记忆就是补上跨轮的那一半：
+     * 本轮没提的维度，先看**这个人在本会话里点过**的值。
+     *
+     * <p><b>按人分槽</b>（维度名带着人）：不然「给王毓菲办完」紧接着一句「李四也开一下」
+     * 会把王毓菲的房间悄悄授给李四 —— 那正是这两道闸当初要防的事。
+     */
+    private final AiSessionFilterMemo slotMemo = new AiSessionFilterMemo();
+
+    private static final String DIM_ROOM = "room";
+    private static final String DIM_UNTIL = "until";
+    private static final String DIM_DURATION = "duration";
+
+    /** 多间房时在记忆里用竖线分隔（房间名本身不含竖线）。 */
+    private static final String ROOM_SEP = "|";
 
     private final TwinCardMappingService mappingService;
     private final TwinExemptAdminService exemptAdminService;
@@ -117,10 +140,15 @@ public class UnfreezeToolPack implements AiToolPack {
                   （人名按像不像挑几位、房间按接近度排好序）。把它们**以芯片交给用户点一下确认**即可 ——
                   允许猜，但必须用户点头；不要在正文里复述候选，也不要替他认定。
                   别说「可多选」，那和界面对不上。
-                - 同样地，用户没说时长时工具会返回**时长候选**（30 分钟 / 1 小时 / … / 今天都有效），
-                  也要列给用户挑。房间与时长是两问，工具**可能一次把两道都返回** ——
+                - 同样地，用户没说时长时工具会返回**时长候选**（到 18:00 / 到 20:00 / 到 22:00 /
+                  到 24:00 / 今天都有效 / 再延迟 2 小时），也要列给用户挑。
+                  现场的说法以**时间节点**为主（「延迟到 22:00」）—— 用户报的就是个时点、
+                  而候选里正好有那一档时，**直接点它**，别去换算成「还能用几小时」再挑剔；
+                  候选里没有他说的那个时点，就按 untilTime 原样传（例如「到 21:30」），
+                  **不要**说「系统只给了预设档」——预设档只是给他点着方便，不是能力边界。房间与时长是两问，工具**可能一次把两道都返回** ——
                   载体用向导一次问完，用户答完那一条消息里两者都在；候选回来什么就问什么，
-                  别自己编、也别拆成两次问（拆开就会变成「答了这道、那道又没了」）。
+                  别自己编、也别拆成两次问。用户一次只答了一道也没关系，工具已经把
+                  **这个人这一单**答过的那道记住了，下一轮只问你还没拿到的那道。
                 - **用户没说的参数不要自己凑**：没提时长，就别照上一轮的「延迟两小时」办；
                   没提房间，就别拿上文出现过的房间顶上。缺什么就让用户挑候选、或直接问。
                 - 这个人**已经在豁免中**时，再授一次是**覆盖**不是叠加：原来的到期时间与房间会被本次的替换掉，
@@ -280,6 +308,13 @@ public class UnfreezeToolPack implements AiToolPack {
                     Integer durationMinutes = intOrNull(args, "durationMinutes");
                     Integer maxCount = intOrNull(args, "maxCount");
 
+                    Long sid = ctx.sessionId();
+                    // 记忆按**人**分槽：跨轮记住的值只对这个人成立，不能顺手套给下一个。
+                    String whoName = pick(lookup.who().get("name"), card.getUserName());
+                    String roomDim = DIM_ROOM + ":" + whoName;
+                    String untilDim = DIM_UNTIL + ":" + whoName;
+                    String durationDim = DIM_DURATION + ":" + whoName;
+
                     // 执行侧的兜底闸：**本轮用户原话里没提时间，就不采信模型给的时长/时点**。
                     //
                     // 模型有个顽固倾向：把上一轮的时长搬到这一轮。真机两次 —— 第一次它说「我就照
@@ -287,9 +322,27 @@ public class UnfreezeToolPack implements AiToolPack {
                     // 只说「给张皓瀚授予免冻豁免，房间 202A」，21:00 是前几轮对话里的。参数描述里
                     // 写「只在用户明确说了才填」压不住它，所以在执行侧再兜一道：当成没给 → 走「缺时长」
                     // 分支去问。宁可多问一句，也不能拿上下文里的时间替用户拍板。
-                    if (!mentionsTime(ctx.userText())) {
-                        durationMinutes = null;
-                        untilTime = "";
+                    //
+                    // 但「本轮没说」分两种，2026-10-13 才分清：
+                    //   (a) 模型自己搬前文 —— 该拦，就是这个闸要挡的；
+                    //   (b) 用户**前几轮已经点过**、这一轮只是答了房间那道题 —— 不该拦，拦了就是兜圈。
+                    // 差别在于「这个值用户到底说没说」：说过就记在 slotMemo 里（写点在下面提到时），
+                    // 于是这里回落到记忆里那个值；记忆里也没有，才当成没给去问。
+                    if (mentionsTime(ctx.userText())) {
+                        if (!untilTime.isBlank() || durationMinutes != null) {
+                            slotMemo.remember(sid, slotMemo.merge(sid, timeSlots(
+                                    untilDim, untilTime, durationDim, durationMinutes)));
+                        }
+                    } else {
+                        String memoUntil = slotMemo.get(sid, untilDim);
+                        String memoDuration = slotMemo.get(sid, durationDim);
+                        if (memoUntil != null || memoDuration != null) {
+                            untilTime = memoUntil == null ? "" : memoUntil;
+                            durationMinutes = parseIntOrNull(memoDuration);
+                        } else {
+                            durationMinutes = null;
+                            untilTime = "";
+                        }
                     }
 
                     String mode = text(args, "mode");
@@ -310,25 +363,35 @@ public class UnfreezeToolPack implements AiToolPack {
                         });
                     }
                     List<Map<String, Object>> available = availableRooms(card.getAroUserId());
-                    if (asked.isEmpty()) {
-                        return askForInput("授权必须指定房间。让用户从候选里挑，不要替他选",
-                                describe(card, lookup.who()), available,
-                                choiceTitle(card, lookup.who(), "挑授权房间"), needTime,
-                                choiceTitle(card, lookup.who(), "挑时长"));
-                    }
-                    List<Map<String, Object>> chosen = pickRooms(asked, available);
 
-                    // 同时间那道闸：**本轮原话里没提到这个房间 → 当没给**。
+                    // 同时间那道闸：**本轮原话里没提到这个房间 → 不采信**。
                     // 模型会把上文出现过的房间搬到这一轮来（跟时间一个病），那等于替用户选了房间 ——
                     // 而房间就是这次要授的权限本身，比时长更不能猜。判据用「房间名或 id」，
                     // 模型把 202A 归一成 id 也不冤枉它（roomChoices 的值就是名字，用户点了名字在下一条消息里）。
-                    if (!chosen.isEmpty() && !mentionsAnyRoom(ctx.userText(), chosen)) {
-                        return askForInput("用户这一轮没有提到房间。把候选列给用户让他挑，不要拿上文出现过的房间顶上",
-                                describe(card, lookup.who()), available,
-                                choiceTitle(card, lookup.who(), "挑授权房间"), needTime,
-                                choiceTitle(card, lookup.who(), "挑时长"));
+                    List<Map<String, Object>> matched = pickRooms(asked, available);
+                    List<Map<String, Object>> chosen =
+                            mentionsAnyRoom(ctx.userText(), matched) ? matched : List.of();
+                    // 本轮没说 → 回落到「这个人在本会话里点过的那几间」（跨轮那一半，见 slotMemo）。
+                    // 取回时仍要按当前可选范围再对一遍：范围变了（比如房间被收回）就当没记过。
+                    if (chosen.isEmpty()) {
+                        String memoRoom = slotMemo.get(sid, roomDim);
+                        if (memoRoom != null && !memoRoom.isBlank()) {
+                            chosen = pickRooms(List.of(memoRoom.split("\\" + ROOM_SEP)), available);
+                        }
                     }
                     if (chosen.isEmpty()) {
+                        if (asked.isEmpty()) {
+                            return askForInput("授权必须指定房间。让用户从候选里挑，不要替他选",
+                                    describe(card, lookup.who()), available,
+                                    choiceTitle(card, lookup.who(), "挑授权房间"), needTime,
+                                    choiceTitle(card, lookup.who(), "挑时长"));
+                        }
+                        if (!matched.isEmpty()) {
+                            return askForInput("用户这一轮没有提到房间。把候选列给用户让他挑，不要拿上文出现过的房间顶上",
+                                    describe(card, lookup.who()), available,
+                                    choiceTitle(card, lookup.who(), "挑授权房间"), needTime,
+                                    choiceTitle(card, lookup.who(), "挑时长"));
+                        }
                         // 房间名差一点就不认也太苛刻（真机反馈：「e11b 区」对不上「E11B-B105」就直接卡住）。
                         // **允许猜**：候选按「跟用户说的那个像不像」排序，最像的排第一 —— 但只给候选，
                         // 用户点一下才算数。绝不自动采纳（房间就是这次要授的权限本身）。
@@ -338,6 +401,8 @@ public class UnfreezeToolPack implements AiToolPack {
                                 choiceTitle(card, lookup.who(), "是不是这间"), needTime,
                                 choiceTitle(card, lookup.who(), "挑时长"));
                     }
+                    // 用户点过的房间记下来，供后面几轮（比如这一轮只是来补时长）接着用
+                    slotMemo.remember(sid, slotMemo.merge(sid, Map.of(roomDim, roomNames(chosen))));
 
                     // 时长缺失 → 给时长候选。否则 apply 会抛「时长限制模式须选择延长至时点」，
                     // 那句话是给开发看的，模型只能把它原样转述给用户 —— 等于把提问变成了报错。
@@ -434,6 +499,21 @@ public class UnfreezeToolPack implements AiToolPack {
                 if (uid == null) {
                     continue;
                 }
+                /*
+                 * **姓名对不上的一律不算命中**（2026-10-13 真机，这是一次真事故）。
+                 *
+                 * <p>人员检索的 SQL 把「姓名 / 工号 / 课题组 / 部门」四个字段一起模糊匹配 ——
+                 * 用户报的是**组长**的名字（「李劲松」），命中的却是他课题组里的**组员**（张文静，
+                 * 因为她的 project_group_name 里带着「李劲松」三个字）。组里恰好只有她一个人绑了卡，
+                 * 于是候选只剩一条 → 工具**默默把豁免授给了她**：用户点名要开的人一个没动，
+                 * 另一个人拿到了门禁权限。这不是「多给一个候选」，是把权限给了另一个真实的人。
+                 *
+                 * <p>所以这一层只认「姓名或工号」命中：命中课题组名的行留到下一层（模糊候选）去，
+                 * 由用户点头才算数。
+                 */
+                if (!nameLooksLike(row, person)) {
+                    continue;
+                }
                 TwinCardMapping m = mappingService.getByAroUserId(String.valueOf(uid));
                 if (m == null || m.getCardNo() == null || m.getCardNo().isBlank()) {
                     continue;
@@ -490,6 +570,30 @@ public class UnfreezeToolPack implements AiToolPack {
      * <p>逐字而不是只看姓氏：用户打错的那个字可能在任何一位（包括姓）。每位捞一批再合并，
      * 覆盖面比只按姓捞大得多；捞完在内存里比字/比音，不必让数据库做相似度。
      */
+    /**
+     * 这一行是不是用户说的那个人：**姓名或工号**命中才算。
+     *
+     * <p>为什么不认课题组 / 部门字段（见 {@link #resolveCard} 里的注释）：同一条 SQL 把它们也一起
+     * 模糊匹配了，而它们命中的是「跟这个名字有关的一群人」，不是这个人本身 ——
+     * 用户报组长名字时，那样会把组员认成他，并且因为候选只剩一条而**默默照做**。
+     */
+    private static boolean nameLooksLike(Map<String, Object> row, String query) {
+        String q = query == null ? "" : query.trim();
+        if (q.isEmpty()) {
+            return false;
+        }
+        String job = str(row.get("job_number"));
+        if (!job.isEmpty() && job.equalsIgnoreCase(q)) {
+            return true;
+        }
+        String name = str(row.get("name"));
+        if (name.isEmpty()) {
+            return false;
+        }
+        // 姓名包含（与原来 SQL 对 name 字段的语义一致）+ 同音 / 近形兜底
+        return name.contains(q) || ChineseNameSimilarity.score(name, q) > 0;
+    }
+
     private List<Map<String, Object>> fuzzyPersonnel(String person) {
         String q = person == null ? "" : person.trim();
         if (q.length() < 2) {
@@ -516,7 +620,7 @@ public class UnfreezeToolPack implements AiToolPack {
         // 每条都要查一次库，白花几十次查询
         List<Map.Entry<Integer, Map<String, Object>>> scored = new ArrayList<>();
         for (Map<String, Object> row : rows.values()) {
-            int score = nameScore(str(row.get("name")), q);
+            int score = ChineseNameSimilarity.score(str(row.get("name")), q);
             if (score > 0) {
                 scored.add(new java.util.AbstractMap.SimpleEntry<>(score, row));
             }
@@ -541,93 +645,6 @@ public class UnfreezeToolPack implements AiToolPack {
             out.add(c);
         }
         return out;
-    }
-
-    /** 拼音格式：不要声调、全小写 —— 「菲 fēi」与「斐 fěi」才算同音。 */
-    private static final HanyuPinyinOutputFormat PY_FORMAT = pinyinFormat();
-
-    private static HanyuPinyinOutputFormat pinyinFormat() {
-        HanyuPinyinOutputFormat f = new HanyuPinyinOutputFormat();
-        f.setToneType(HanyuPinyinToneType.WITHOUT_TONE);
-        f.setCaseType(HanyuPinyinCaseType.LOWERCASE);
-        return f;
-    }
-
-    /** 两个字是不是**同音**：相同，或拼音（去声调）一致。 */
-    private static boolean sameSound(char x, char y) {
-        if (x == y) {
-            return true;
-        }
-        try {
-            String[] px = PinyinHelper.toHanyuPinyinStringArray(x, PY_FORMAT);
-            String[] py = PinyinHelper.toHanyuPinyinStringArray(y, PY_FORMAT);
-            if (px == null || py == null) {
-                return false;
-            }
-            for (String a : px) {
-                for (String b : py) {
-                    if (a.equals(b)) {
-                        return true;
-                    }
-                }
-            }
-        } catch (BadHanyuPinyinOutputFormatCombination e) {
-            // 格式是写死的合法组合，走不到这里；真走到了当不同音，不影响主流程
-        }
-        return false;
-    }
-
-    /**
-     * 两个姓名「有多像」：0 = 不像，越大越像（候选按它排序，最像的排第一）。
-     *
-     * <p>判据：长度差不超过一个字、**至少对上两个字**、且**至少有一个字是同字**。
-     *
-     * <p>为什么必须算上**同音**：打错字最常见的就是打了同音字（「王毓斐」打成「王毓菲」，
-     * 音一样字不一样）。只按字面比对时这种错会掉到"只共用一个姓"，于是查无此人 ——
-     * 真机反馈正是如此。
-     *
-     * <p>为什么还要"至少有一个同字"、且同字计分更高：纯靠谐音配对太松（同音字极多），
-     * 会把一堆不相干的人端出来。同字比同音可信，按分排序后正确答案自然排在最前。
-     */
-    private static int nameScore(String a, String b) {
-        if (a.isEmpty() || b.isEmpty() || Math.abs(a.length() - b.length()) > 1) {
-            return 0;
-        }
-        List<Character> pool = new ArrayList<>();
-        for (char c : b.toCharArray()) {
-            pool.add(c);
-        }
-        int exact = 0;
-        int sound = 0;
-        for (char c : a.toCharArray()) {
-            int at = -1;
-            for (int i = 0; i < pool.size(); i++) {
-                if (pool.get(i) == c) {
-                    at = i;
-                    break;
-                }
-            }
-            if (at >= 0) {
-                exact++;
-                pool.remove(at);
-                continue;
-            }
-            for (int i = 0; i < pool.size(); i++) {
-                if (sameSound(pool.get(i), c)) {
-                    at = i;
-                    break;
-                }
-            }
-            if (at >= 0) {
-                sound++;
-                pool.remove(at);
-            }
-        }
-        int hit = exact + sound;
-        if (exact < 1 || hit < 2 || hit < Math.min(a.length(), b.length()) - 1) {
-            return 0;
-        }
-        return exact * 10 + sound * 6 + (a.length() == b.length() ? 1 : 0);
     }
 
     /** 该人可授权的房间（与发卡页「豁免配置」弹窗同源）。 */
@@ -776,8 +793,11 @@ public class UnfreezeToolPack implements AiToolPack {
 
     /** 分数越大越像：归一化后互为子串给高分，否则看公共前缀有多长。 */
     private static int roomScore(Map<String, Object> room, List<String> asked) {
-        String r = normRoom(String.valueOf(room.get("room")));
-        if (r.isEmpty()) {
+        String name = normRoom(String.valueOf(room.get("room")));
+        // **地域说明也要比**：现场报的常常是区域（「为学C区」），而房间自己叫「地下E11C」——
+        // 只比房号的话它和「210A」同分、排不到前面，用户还是得从候选里翻（2026-10-13 真机）。
+        String where = normRoom(String.valueOf(room.get("where")));
+        if (name.isEmpty()) {
             return 0;
         }
         int best = 0;
@@ -786,16 +806,21 @@ public class UnfreezeToolPack implements AiToolPack {
             if (q.isEmpty()) {
                 continue;
             }
-            if (r.contains(q) || q.contains(r)) {
-                best = Math.max(best, 100 + Math.min(q.length(), r.length()));
+            if (containsEither(name, q) || (!where.isEmpty() && containsEither(where, q))) {
+                best = Math.max(best, 100 + Math.min(q.length(), Math.max(name.length(), where.length())));
             }
             int pre = 0;
-            while (pre < q.length() && pre < r.length() && q.charAt(pre) == r.charAt(pre)) {
+            while (pre < q.length() && pre < name.length() && q.charAt(pre) == name.charAt(pre)) {
                 pre++;
             }
             best = Math.max(best, pre);
         }
         return best;
+    }
+
+    /** 互为子串（空串不算命中 —— 否则「任何东西都包含空串」，全部同分）。 */
+    private static boolean containsEither(String a, String b) {
+        return !a.isEmpty() && !b.isEmpty() && (a.contains(b) || b.contains(a));
     }
 
     /** 归一化房间名：大小写、空格、连字符这些写法差异一律抹掉（「e11b 区」与「E11B-B105」才比得起来）。 */
@@ -943,11 +968,45 @@ public class UnfreezeToolPack implements AiToolPack {
         if (n.canConvertToInt()) {
             return n.asInt();
         }
-        try {
-            return Integer.valueOf(n.asText("").trim());
-        } catch (Exception e) {
+        return parseIntOrNull(n.asText(""));
+    }
+
+    /** 记忆里取回的数字（存的是字符串）。解析不了当没记过 —— 宁可多问一句。 */
+    private static Integer parseIntOrNull(String s) {
+        if (s == null || s.isBlank()) {
             return null;
         }
+        try {
+            return Integer.valueOf(s.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 时长那两个槽位（{@link AiSessionFilterMemo#merge} 的入参约定：空串 = **清掉这一维**）。
+     *
+     * <p>「本轮说了时长」时整个替换才对：用户从「延迟 2 小时」改成「到 22:00」，
+     * 旧的 durationMinutes 必须一起清掉，否则两轮的值叠在一起，apply 拿到的是混合体。
+     */
+    private static Map<String, String> timeSlots(String untilDim, String untilTime,
+                                                 String durationDim, Integer durationMinutes) {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put(untilDim, untilTime == null ? "" : untilTime);
+        m.put(durationDim, durationMinutes == null ? "" : String.valueOf(durationMinutes));
+        return m;
+    }
+
+    /** 定下来的房间写成记忆里的一个值（多间用竖线连）。 */
+    private static String roomNames(List<Map<String, Object>> rooms) {
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> r : rooms) {
+            if (sb.length() > 0) {
+                sb.append(ROOM_SEP);
+            }
+            sb.append(r.get("room"));
+        }
+        return sb.toString();
     }
 
     private static String text(JsonNode args, String field) {

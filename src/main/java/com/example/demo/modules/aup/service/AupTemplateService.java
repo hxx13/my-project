@@ -442,15 +442,28 @@ public class AupTemplateService {
             } else if (!ALLOWED_FIELD_TYPES.contains(field.getType().trim())) {
                 errors.add(path + " 字段类型非法: " + field.getType());
             }
-            if (StringUtils.hasText(field.getDictKey()) && dictMapper.findByKey(field.getDictKey().trim()) == null) {
-                errors.add(path + " 引用的字典不存在: " + field.getDictKey());
+            if (StringUtils.hasText(field.getDictKey())) {
+                String dk = field.getDictKey().trim();
+                if (dictMapper.findByKey(dk) == null) {
+                    errors.add(path + " 引用的字典不存在: " + dk);
+                } else if (dictMapper.findPublishedVersionByKey(dk) == null) {
+                    // 发布时会把 dict_version 钉成「当前已发布版本」，没有已发布版本就钉不上，
+                    // 填写页取不到选项 —— 拦在发布前，别等填表才发现。
+                    errors.add(path + " 引用的字典尚未发布: " + dk);
+                }
             }
-            lintNestedConfigFields(field.getConfig(), path, fieldKeys, errors);
+            lintNestedConfigFields(field.getConfig(), path, errors);
         }
     }
 
+    /**
+     * 容器字段（表格 columns / 字段组 fields）的嵌套子字段校验。
+     *
+     * <p>子字段的 fieldKey 作用域**只在容器内**（每个表格都有自己的 name/dose/route），
+     * 因此不做全局唯一性检查，只在同一容器内查重 —— 否则多个表格共用列名会被误判成重复字段键。
+     */
     @SuppressWarnings("unchecked")
-    private void lintNestedConfigFields(Object config, String parentPath, Set<String> fieldKeys, List<String> errors) {
+    private void lintNestedConfigFields(Object config, String parentPath, List<String> errors) {
         if (!(config instanceof Map<?, ?> cfg)) {
             return;
         }
@@ -459,6 +472,7 @@ public class AupTemplateService {
             if (!(nested instanceof List<?> list)) {
                 continue;
             }
+            Set<String> localKeys = new HashSet<>();
             for (int i = 0; i < list.size(); i++) {
                 Object item = list.get(i);
                 if (!(item instanceof Map<?, ?> m)) {
@@ -470,8 +484,8 @@ public class AupTemplateService {
                     errors.add(path + " 缺少 fieldKey");
                 } else {
                     String key = String.valueOf(fk).trim();
-                    if (!fieldKeys.add(key)) {
-                        errors.add("重复的 fieldKey: " + key);
+                    if (!localKeys.add(key)) {
+                        errors.add(path + " 同一容器内重复的 fieldKey: " + key);
                     }
                 }
                 Object label = m.get("label");
@@ -489,6 +503,8 @@ public class AupTemplateService {
                     String dk = String.valueOf(dictKey).trim();
                     if (dictMapper.findByKey(dk) == null) {
                         errors.add(path + " 引用的字典不存在: " + dk);
+                    } else if (dictMapper.findPublishedVersionByKey(dk) == null) {
+                        errors.add(path + " 引用的字典尚未发布: " + dk);
                     }
                 }
             }

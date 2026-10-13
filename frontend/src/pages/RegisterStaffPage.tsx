@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { registerStaff } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
+import { validatePassword } from "@/utils/passwordPolicy";
 
 export default function RegisterStaffPage() {
   const navigate = useNavigate();
@@ -25,8 +26,9 @@ export default function RegisterStaffPage() {
       toast.error("真实姓名过长");
       return;
     }
-    if (password.length < 6) {
-      toast.error("密码至少 6 位");
+    const pwErr = validatePassword(password);
+    if (pwErr) {
+      toast.error(pwErr);
       return;
     }
     if (password !== confirmPassword) {

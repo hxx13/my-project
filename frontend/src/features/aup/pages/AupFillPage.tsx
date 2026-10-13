@@ -14,7 +14,7 @@ import {
   useReviewSessions,
 } from "../hooks/useAup";
 import { useGoBack } from "../hooks/useGoBack";
-import { fetchAupPrintData, fetchAupValidate, saveAup, submitAup } from "../api/aup.api";
+import { fetchAupPrintData, fetchAupValidate, saveAup, saveMinorAmendment, startMajorAmendment, submitAup } from "../api/aup.api";
 import type { FormField as FormFieldDef, FormSection, FormSubSection } from "../schema/formTemplate";
 import type { ReviewItem } from "../schema/review";
 import Toolbar from "../components/Toolbar";
@@ -45,8 +45,10 @@ export default function AupFillPage() {
   const [searchParams] = useSearchParams();
   const snapshotId = searchParams.get("snapshot");
 
+  const amendRequested = searchParams.get("amend") === "1";
   const createMut = useCreateAup();
-  const draft = useAupDraft(id);
+  // 修订模式关闭自动保存：编辑走专用接口，不落草稿保存端点
+  const draft = useAupDraft(id, !amendRequested);
   const tracesQuery = useAupTraces(id);
   const record = draft.detail.data?.record;
   // 有 id = 续填：用记录冻结的模板快照；无 id = 新建：直接用当前已发布模板（本地填写，不建 id）
@@ -83,7 +85,19 @@ export default function AupFillPage() {
   const rawSections = id ? templateQuery.data?.sections : publishedQuery.data?.sections;
   const templateName = id ? templateQuery.data?.name : publishedQuery.data?.name;
   const currentStage = record?.currentStage ?? "draft";
-  const readOnly = id ? (currentStage !== "draft" || !!snapshotId) : false;
+  // 修订模式（?amend=1）：已通过的计划书由课题组长修改；逐字段可编辑性由字段「修改等级」决定
+  const amendMode = amendRequested && !!id && currentStage === "approved" && !snapshotId;
+  const readOnly = id ? ((currentStage !== "draft" && !amendMode) || !!snapshotId) : false;
+
+  /** 字段键 → 中文标签（把后端返回的 fieldKey 提示翻成人话） */
+  const fieldLabels = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const s of rawSections ?? []) {
+      for (const f of s.fields ?? []) m[f.fieldKey] = f.label;
+      for (const sub of s.subsections ?? []) for (const f of sub.fields ?? []) m[f.fieldKey] = f.label;
+    }
+    return m;
+  }, [rawSections]);
 
   const isLoading = id
     ? draft.detail.isLoading || templateQuery.isLoading || !rawSections
@@ -392,10 +406,84 @@ export default function AupFillPage() {
     }
   };
 
+  /** 把后端 "AMEND_XXX:a.b,c.d" 里的字段键翻成中文标签 */
+  const describeKeys = (msg: string, tag: string) => {
+    const i = msg.indexOf(tag + ":");
+    if (i < 0) return "";
+    return msg
+      .slice(i + tag.length + 1)
+      .split(",")
+      .map((k) => fieldLabels[k.trim()] ?? k.trim())
+      .filter(Boolean)
+      .join("、");
+  };
+
+  /** 更新版本（大修）：整份内容进修订轨道并提交完整审核 */
+  const handleMajorAmend = async () => {
+    if (saving || !id) return;
+    setSaving(true);
+    try {
+      // 修订走服务端当前版本落库，不携带草稿乐观锁版本
+      await startMajorAmendment(id, { dataJson: draft.buildPayload().dataJson });
+      toast.success("已提交更新版本，等待审核");
+      navigate("/student/aup");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/AMEND_NO_MAJOR/.test(msg)) {
+        toast.error("本次修改不含需要更新版本的条目，请使用「保存当前」");
+      } else if (/AMEND_LOCKED/.test(msg)) {
+        toast.error("以下关键信息禁止修改：" + describeKeys(msg, "AMEND_LOCKED"));
+      } else if (/VALIDATION_FAILED/.test(msg)) {
+        toast.error("内容校验未通过，请补全必填项后再提交更新版本");
+      } else {
+        toast.error("提交更新版本失败：" + msg);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 保存当前（小修）：直接生效；命中大修条目时引导改用「更新版本」 */
+  const handleMinorAmend = async () => {
+    if (saving || !id) return;
+    setSaving(true);
+    try {
+      // 修订走服务端当前版本落库，不携带草稿乐观锁版本
+      await saveMinorAmendment(id, { dataJson: draft.buildPayload().dataJson });
+      toast.success("已保存");
+      draft.detail.refetch();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/AMEND_LOCKED/.test(msg)) {
+        toast.error("以下关键信息禁止修改：" + describeKeys(msg, "AMEND_LOCKED"));
+      } else if (/AMEND_MAJOR_REQUIRED/.test(msg)) {
+        const names = describeKeys(msg, "AMEND_MAJOR_REQUIRED");
+        if (await appConfirm(`以下条目属于大修改，需使用「更新版本」重新审核：\n\n${names}\n\n是否现在提交更新版本？`)) {
+          await handleMajorAmend();
+        }
+      } else {
+        toast.error("保存失败：" + msg);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const renderField = (f: FormFieldDef) => {
     const reviews = reviewsByField[f.fieldKey];
+    // 修订模式下逐字段判定：关键信息（LOCKED）禁改并显示禁止符号，其余可编辑
+    const locked = amendMode && f.config?.amendmentLevel === "LOCKED";
     return (
       <div key={f.fieldKey}>
+        {locked && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2, fontSize: 12, color: "#c0392b" }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.4" />
+              <line x1="5.6" y1="5.6" x2="18.4" y2="18.4" stroke="currentColor" strokeWidth="2.4" />
+            </svg>
+            关键信息，禁止修改
+          </div>
+        )}
         {reviews && reviews.length > 0 && (
           <div style={{ marginBottom: 4 }}>
             <FieldReviewTag fieldKey={f.fieldKey} fieldLabel={f.label} editable={false} existing={reviews} />
@@ -406,7 +494,7 @@ export default function AupFillPage() {
           value={effectiveValues[f.fieldKey]}
           values={effectiveValues}
           onChange={draft.updateValue}
-          readOnly={readOnly}
+          readOnly={readOnly || locked}
           aupId={id}
           error={errorKeys.has(f.fieldKey)}
         />
@@ -459,9 +547,10 @@ export default function AupFillPage() {
         autosaveState={draft.autosaveState}
         isNew={!id}
         readOnly={readOnly}
-        onSave={handleSave}
+        amendMode={amendMode}
+        onSave={amendMode ? handleMinorAmend : handleSave}
         saving={saving}
-        onSubmit={handleSubmit}
+        onSubmit={amendMode ? handleMajorAmend : handleSubmit}
         submitting={saving}
         canSave={hasContent}
         canSubmit={canSubmit}

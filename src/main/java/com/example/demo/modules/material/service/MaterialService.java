@@ -1672,14 +1672,34 @@ public class MaterialService {
      */
     public List<MaterialAuditGridRow> collectAuditGridRows(User viewer, String from, String to,
                                                             String applicantUserId, String applicantGroup) {
+        return collectAuditGridRows(viewer, from, to, applicantUserId, applicantGroup, null, null);
+    }
+
+    /**
+     * 同上，外加**按物品收窄**。
+     *
+     * <p><b>为什么非补不可</b>（2026-10-13 真机）：AI 那条导出把「课题组 + 物品 + 时间」三个条件
+     * 都算对了递过来，出表这一步却只认课题组和时间 —— 物品条件被**静默丢掉**，导出来的表里混着
+     * 别的物品（实测：要的是白色运输盒，表里还夹着三行卡其色运输盒）。而对话里说的是「已按它筛」。
+     * 这类「筛了等于没筛」比报错坏得多：用户拿到的是一份看起来没问题、实际范围错的表。
+     *
+     * @param itemId      只要这一件物品的行；{@code null} = 不按 id 收窄
+     * @param itemKeyword 物品名片段；物品没解析成 id 时用它兜底。两者都给则**同时成立**
+     */
+    public List<MaterialAuditGridRow> collectAuditGridRows(User viewer, String from, String to,
+                                                            String applicantUserId, String applicantGroup,
+                                                            Long itemId, String itemKeyword) {
         if (viewer == null) return List.of();
         List<MaterialRequestView> requests = collectAuditExportRequestViews(
                 viewer, from, to, applicantUserId, applicantGroup);
 
+        String kw = StringUtils.hasText(itemKeyword) ? itemKeyword.trim() : null;
         List<MaterialAuditGridRow> rows = new ArrayList<>();
         for (MaterialRequestView req : requests) {
             if (req == null || req.getLines() == null) continue;
             for (MaterialRequestLineView line : req.getLines()) {
+                if (itemId != null && !itemId.equals(line.getItemId())) continue;
+                if (kw != null && (line.getSnapshotName() == null || !line.getSnapshotName().contains(kw))) continue;
                 MaterialAuditGridRow row = new MaterialAuditGridRow();
                 row.setRequestId(displayCell(req.getId()));
                 row.setItemName(displayCell(line.getSnapshotName()));

@@ -124,6 +124,27 @@ class CommonToolPackTest {
         assertEquals(2, out.get("total"));
         assertNotNull(out.get("note"), "多条命中必须提示让用户确认");
         assertTrue(String.valueOf(out.get("note")).contains("确认"));
+        /*
+         * 还得**真的把选项交出去**：不打「必须问」的标记，编排层默认把它丢掉 ——
+         * 于是正文里写着「命中 4 位，请点一下是哪一位」，界面上一个选项都没有
+         * （真机 2026-10-13 就是这么消失的）。
+         */
+        assertEquals(Boolean.TRUE, out.get("askRequired"), "重名候选必须打「必须问」标记：" + out);
+        assertNotNull(out.get("choices"), "重名候选要能点：" + out);
+    }
+
+    @Test
+    @DisplayName("命中唯一时不当成一道题摆出来（只有一个可选的还非要人选，是用户点名过的那种烦）")
+    void singleHitIsNotOfferedAsAChoice() throws Exception {
+        when(dashboardMapper.searchPersonnelPaged(anyString(), anyInt(), anyInt()))
+                .thenReturn(List.of(wideRow()));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) tool("searchPerson")
+                .executor().execute(ctx(RoleEnum.ADMIN), args("{\"keyword\":\"张三\"}"));
+
+        assertEquals(1, out.get("total"));
+        assertNull(out.get("choices"), "唯一命中没什么可挑的，别摆一张「挑一位」：" + out);
     }
 
     @Test

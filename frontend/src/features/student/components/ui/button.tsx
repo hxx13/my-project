@@ -11,7 +11,7 @@ const studentButtonVariants = cva(
         primary:
           "bg-[var(--student-primary)] text-[var(--student-primary-foreground)] hover:opacity-90 border border-transparent",
         secondary:
-          "bg-white text-[var(--student-primary)] border border-[var(--student-border)] hover:bg-[color-mix(in_srgb,var(--student-mute)_10%,transparent)]",
+          "bg-[var(--student-surface-raised)] text-[var(--student-primary)] border border-[var(--student-border)] hover:bg-[color-mix(in_srgb,var(--student-mute)_10%,transparent)]",
         ghost:
           "text-[var(--student-primary)] hover:bg-[color-mix(in_srgb,var(--student-mute)_10%,transparent)] border border-transparent",
         destructive:

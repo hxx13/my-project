@@ -55,6 +55,21 @@ public interface AupRecordMapper {
     /** 解锁返修时清空动物白名单与 registry status */
     int clearRegistryMeta(@Param("id") Long id);
 
+    /**
+     * 修订轨道 CAS：推进 amendment_stage，version+1。
+     * toStage 传 null = 清空轨道（修订通过/作废）；fromStage 非空才校验当前轨道阶段。
+     * planVersion/roundNo 非空才更新，null 保持原值。修订内容由 updateAmendmentData 单独写。
+     */
+    int updateAmendmentStageCas(@Param("id") Long id,
+                                @Param("fromStage") String fromStage,
+                                @Param("toStage") String toStage,
+                                @Param("planVersion") Integer planVersion,
+                                @Param("roundNo") Integer roundNo,
+                                @Param("expectedVersion") Long expectedVersion);
+
+    /** 修订草稿内容保存（高频，不动阶段与版本） */
+    int updateAmendmentData(@Param("id") Long id, @Param("data") String data);
+
     /** 订购侧：按课题组名（可多个，任一命中）查已批准 AUP 下拉（id/registerNo/projectGroupName/projectGroupId） */
     List<Map<String, Object>> selectApprovedForOrder(@Param("projectGroupNames") List<String> projectGroupNames);
 

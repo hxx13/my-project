@@ -8,6 +8,7 @@ import {
     LayoutDashboard,
     Link2,
     LogOut,
+    Maximize,
     Moon,
     MousePointerClick,
     RefreshCw,
@@ -41,10 +42,16 @@ import { ThemeAnimatedSwitch } from "@/components/ui/ThemeAnimatedSwitch";
 import { TwinChromeMenuSwitch } from "./TwinChromeMenuSwitch";
 import { TwinThemePickerPanel } from "./TwinThemePickerPanel";
 import { TWIN_THEME_MENU_ROWS } from "./twinChromeMenu.config";
+import { useDashboardAutoReturn } from "./DashboardAutoReturnContext";
+import {
+    DASHBOARD_AUTO_RETURN_MAX_MINUTES,
+    DASHBOARD_AUTO_RETURN_MIN_MINUTES,
+    normalizeIdleMinutes,
+} from "@/utils/dashboardAutoReturn";
 import type { TwinWebChromeThemeId } from "@/api/domains/me.api";
 
 import { appConfirm } from "@/lib/appDialog";
-type TwinChromeSubPanel = "schedule" | "twinTheme";
+type TwinChromeSubPanel = "schedule" | "twinTheme" | "autoReturn";
 
 const CTX_SCROLL_NONE =
     "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-y-auto overscroll-contain";
@@ -94,6 +101,46 @@ function ScheduleTimeFields({
 }
 function MenuDivider() {
     return <div className="my-0.5 h-px bg-white/10" role="separator" aria-hidden />;
+}
+
+/** 「无人操作自动回大屏」的无操作时长。失焦/回车才提交，敲一半的中间值不落库 */
+function AutoReturnMinutesField({
+    minutes,
+    onCommit,
+}: {
+    minutes: number;
+    onCommit: (minutes: number) => void;
+}) {
+    const [draft, setDraft] = useState(() => String(minutes));
+
+    const commit = () => {
+        const next = normalizeIdleMinutes(draft);
+        setDraft(String(next));
+        if (next !== minutes) onCommit(next);
+    };
+
+    return (
+        <div className="space-y-1 px-2 py-1">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">无操作时长</p>
+            <div className="flex items-center gap-1">
+                <input
+                    type="number"
+                    min={DASHBOARD_AUTO_RETURN_MIN_MINUTES}
+                    max={DASHBOARD_AUTO_RETURN_MAX_MINUTES}
+                    step={1}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={commit}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    className="w-16 min-w-0 rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-[11px] text-slate-100"
+                    aria-label="无操作分钟数"
+                />
+                <span className="text-[10px] text-slate-500">分钟后触发</span>
+            </div>
+        </div>
+    );
 }
 
 function MenuRow({
@@ -172,6 +219,7 @@ export function TwinChromeContextMenu({
     const rootRef = useRef<HTMLDivElement>(null);
     const scheduleRowRef = useRef<HTMLButtonElement>(null);
     const twinThemeRowRef = useRef<HTMLButtonElement>(null);
+    const autoReturnRowRef = useRef<HTMLButtonElement>(null);
     const subRef = useRef<HTMLDivElement>(null);
     const [rootPos, setRootPos] = useState<{ left: number; top: number } | null>(null);
     const [activeSubPanel, setActiveSubPanel] = useState<TwinChromeSubPanel | null>(null);
@@ -189,6 +237,12 @@ export function TwinChromeContextMenu({
         setScheduleTimes,
     } = useTheme();
     const { themeId: twinThemeId, setThemeId: setTwinThemeId } = useTwinChromeTheme();
+    const {
+        enabled: autoReturnEnabled,
+        idleMinutes: autoReturnMinutes,
+        setEnabled: setAutoReturnEnabled,
+        setIdleMinutes: setAutoReturnMinutes,
+    } = useDashboardAutoReturn();
     const navigate = useNavigate();
     const location = useLocation();
     const isDashPreview = location.pathname.includes("/dashboard-preview");
@@ -211,7 +265,11 @@ export function TwinChromeContextMenu({
         }
         const placeSub = () => {
             const anchor =
-                activeSubPanel === "schedule" ? scheduleRowRef.current : twinThemeRowRef.current;
+                activeSubPanel === "schedule"
+                    ? scheduleRowRef.current
+                    : activeSubPanel === "autoReturn"
+                      ? autoReturnRowRef.current
+                      : twinThemeRowRef.current;
             const subEl = subRef.current;
             if (!anchor || !subEl) return;
             const ar = anchor.getBoundingClientRect();
@@ -223,7 +281,7 @@ export function TwinChromeContextMenu({
         } else {
             requestAnimationFrame(placeSub);
         }
-    }, [open, payload, bentoThemeId, activeSubPanel, lightStart, lightEnd, autoScheduleEnabled, twinThemeId]);
+    }, [open, payload, bentoThemeId, activeSubPanel, lightStart, lightEnd, autoScheduleEnabled, twinThemeId, autoReturnEnabled, autoReturnMinutes]);
     /* eslint-enable react-hooks/set-state-in-effect */
 
     useEffect(() => {
@@ -494,6 +552,38 @@ export function TwinChromeContextMenu({
                         />
                     </button>
 
+                    <MenuDivider />
+
+                    <button
+                        ref={autoReturnRowRef}
+                        type="button"
+                        role="menuitem"
+                        aria-expanded={activeSubPanel === "autoReturn"}
+                        aria-haspopup="menu"
+                        className={cn(
+                            "flex w-full items-start gap-2 rounded-md px-2 py-1 text-left text-xs",
+                            activeSubPanel === "autoReturn" ? "bg-white/10" : "hover:bg-white/10"
+                        )}
+                        onClick={() => setActiveSubPanel((v) => (v === "autoReturn" ? null : "autoReturn"))}
+                    >
+                        <Maximize className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                        <span className="min-w-0 flex-1 leading-snug">
+                            <span className="flex items-center gap-1 font-medium text-slate-100">无人操作自动回大屏</span>
+                            <span className="mt-0.5 block text-[10px] text-slate-500">
+                                {autoReturnEnabled
+                                    ? `${autoReturnMinutes} 分钟无操作 → 全屏回到仪表盘`
+                                    : "未启用"}
+                            </span>
+                        </span>
+                        <ChevronRight
+                            className={cn(
+                                "mt-0.5 h-3.5 w-3.5 shrink-0",
+                                activeSubPanel === "autoReturn" ? "text-cyan-300" : "text-slate-400"
+                            )}
+                            aria-hidden
+                        />
+                    </button>
+
                     {!autoScheduleEnabled
                         ? bentoThemes.map((t) => {
                               const Icon = BENTO_THEME_ICONS[t.id] || Sun;
@@ -525,13 +615,19 @@ export function TwinChromeContextMenu({
                     ref={subRef}
                     data-twin-chrome-ctx-surface
                     role="menu"
-                    aria-label={activeSubPanel === "schedule" ? "定时自动切换设置" : "Twin 霓虹主题"}
+                    aria-label={
+                        activeSubPanel === "autoReturn"
+                            ? "无人操作自动回大屏设置"
+                            : activeSubPanel === "schedule"
+                              ? "定时自动切换设置"
+                              : "Twin 霓虹主题"
+                    }
                     className={cn(
                         "fixed flex w-[13.75rem] max-w-[min(100vw-1rem,13.75rem)] flex-col overflow-hidden rounded-lg border bg-slate-900 text-sm shadow-2xl",
-                        activeSubPanel === "schedule" ? "border-cyan-500/35" : "border-slate-600",
-                        activeSubPanel === "schedule"
-                            ? "max-h-[min(100dvh-1rem,16rem)]"
-                            : "max-h-[min(100dvh-1rem,14rem)]",
+                        activeSubPanel === "twinTheme" ? "border-slate-600" : "border-cyan-500/35",
+                        activeSubPanel === "twinTheme"
+                            ? "max-h-[min(100dvh-1rem,14rem)]"
+                            : "max-h-[min(100dvh-1rem,16rem)]",
                         CTX_SCROLL_NONE,
                         !subPos && "pointer-events-none opacity-0"
                     )}
@@ -571,6 +667,36 @@ export function TwinChromeContextMenu({
                                 ) : (
                                     <p className="px-2 py-1 text-[10px] leading-snug text-slate-500">
                                         启用后可设置每日亮色时段
+                                    </p>
+                                )}
+                            </div>
+                        </>
+                    ) : activeSubPanel === "autoReturn" ? (
+                        <>
+                            <div className="shrink-0 border-b border-cyan-500/25 bg-cyan-950/35 px-3 py-2">
+                                <div className="text-xs font-semibold text-cyan-100">无人操作自动回大屏</div>
+                            </div>
+                            <div className="min-h-0 flex-1 px-1 py-1">
+                                <div className="flex items-center justify-between gap-2 rounded-md px-2 py-1 text-xs hover:bg-white/10">
+                                    <span id="twin-chrome-auto-return-toggle-label" className="font-medium text-slate-100">
+                                        启用
+                                    </span>
+                                    <TwinChromeMenuSwitch
+                                        checked={autoReturnEnabled}
+                                        onCheckedChange={setAutoReturnEnabled}
+                                        aria-labelledby="twin-chrome-auto-return-toggle-label"
+                                        onClick={(event) => event.stopPropagation()}
+                                    />
+                                </div>
+                                {autoReturnEnabled ? (
+                                    <AutoReturnMinutesField
+                                        key={autoReturnMinutes}
+                                        minutes={autoReturnMinutes}
+                                        onCommit={setAutoReturnMinutes}
+                                    />
+                                ) : (
+                                    <p className="px-2 py-1 text-[10px] leading-snug text-slate-500">
+                                        启用后长时间无人操作时自动全屏并回到仪表盘，防误点走丢
                                     </p>
                                 )}
                             </div>

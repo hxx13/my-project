@@ -51,6 +51,10 @@ export interface AupRecord {
   registerYear?: number;
   registerSeq?: number;
   currentStage: AupStage;
+  /** 修订轨道阶段；非空表示「更新版本审核中」（此时 currentStage 仍为 approved） */
+  amendmentStage?: AupStage | null;
+  /** 计划书版本号 */
+  planVersion?: number;
   /** 第几轮（≥1） */
   roundNo: number;
   draftSource: DraftSource;
@@ -86,6 +90,10 @@ export interface AupListItem {
   currentStage: AupStage;
   roundNo: number;
   draftSource: DraftSource;
+  /** 修订轨道阶段；非空表示「更新版本审核中」（此时 currentStage 仍为 approved） */
+  amendmentStage?: AupStage | null;
+  /** 计划书版本号 */
+  planVersion?: number;
   submittedAt?: string;
   approvedAt?: string;
   createdAt?: string;

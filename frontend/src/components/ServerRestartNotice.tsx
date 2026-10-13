@@ -155,11 +155,15 @@ export function ServerRestartNotice() {
     };
   }, [down, markUp, doReload]);
 
-  /** 催一下：先撒彩带，等它飞完再刷新，别刚撒出去页面就没了 */
+  /**
+   * 催一下。
+   *
+   * <p>**故意不接刷新**：服务器起来之后探测会自己刷新页面（见上面那个 effect），
+   * 按钮再挂一个刷新就是两条路抢着跳，也容易在没连上时白刷一次。
+   * 这里就专心撒彩带。
+   */
   const handleProd = () => {
     if (prodButtonRef.current) burstConfetti(prodButtonRef.current);
-    markReloaded();
-    window.setTimeout(doReload, 900);
   };
 
   if (!down || !visible) return null;

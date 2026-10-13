@@ -508,6 +508,7 @@
 >
   <view class="bind-panel bind-panel--center">
     <view class="bind-title">账号登录</view>
+    <view class="bind-sub">用系统账号或邮箱登录学生中心</view>
     <input
       class="bind-input bind-input-block"
       value="{{ loginUsername }}"
@@ -548,6 +549,48 @@
     <!-- ====== 学生注册 ====== -->
     <block wx:if="{{ registerType === 'student' }}">
 
+      <!-- 两条路：老人员用编号/二维码绑定；新人直接填资料注册（与 Web 端两个 tab 对齐） -->
+      <view class="reg-mode-tabs">
+        <view
+          class="reg-mode-tab {{ regStudentMode === 'existing' ? 'reg-mode-tab--on' : '' }}"
+          data-mode="existing"
+          bindtap="onRegStudentMode"
+        >已有人员编号</view>
+        <view
+          class="reg-mode-tab {{ regStudentMode === 'new' ? 'reg-mode-tab--on' : '' }}"
+          data-mode="new"
+          bindtap="onRegStudentMode"
+        >我是新用户</view>
+      </view>
+
+      <!-- ===== 新用户：直接填资料 ===== -->
+      <block wx:if="{{ regStudentMode === 'new' }}">
+        <text class="bind-tip">不在人员库里的新人，填这份资料开账号</text>
+        <view class="reg-name-gender-row">
+          <input class="bind-input reg-name-input" value="{{ regNewName }}" bindinput="onRegNewNameInput" placeholder="真实姓名" maxlength="128" />
+          <view
+            class="reg-gender-chip {{ regNewGender === '1' ? 'reg-gender-chip--on' : '' }}"
+            data-gender="1"
+            bindtap="onRegNewGender"
+          >男</view>
+          <view
+            class="reg-gender-chip {{ regNewGender === '2' ? 'reg-gender-chip--on' : '' }}"
+            data-gender="2"
+            bindtap="onRegNewGender"
+          >女</view>
+        </view>
+        <input class="bind-input bind-input-block" value="{{ regNewMobile }}" bindinput="onRegNewMobileInput" placeholder="手机号（也可以用它登录）" maxlength="20" type="number" />
+        <input class="bind-input bind-input-block" value="{{ regNewJobNumber }}" bindinput="onRegNewJobNumberInput" placeholder="工号 / 学号（选填）" maxlength="64" />
+        <input class="bind-input bind-input-block" value="{{ regNewEmail }}" bindinput="onRegNewEmailInput" placeholder="邮箱（选填）" maxlength="128" />
+        <input class="bind-input bind-input-block" value="{{ regNewUsername }}" bindinput="onRegNewUsernameInput" placeholder="账号名（3-64位，用作登录名）" maxlength="64" />
+        <input class="bind-input bind-input-block" value="{{ regNewPassword }}" bindinput="onRegNewPasswordInput" placeholder="密码（8位起）" password="true" maxlength="64" />
+        <view class="bind-pwd-hint">8-64 位，大写 / 小写 / 数字 / 特殊字符至少凑三类</view>
+        <input class="bind-input bind-input-block" value="{{ regNewPassword2 }}" bindinput="onRegNewPassword2Input" placeholder="确认密码" password="true" maxlength="64" />
+        <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
+        <van-button block type="primary" round custom-class="bind-submit" bindtap="submitNewUserRegister" loading="{{ registerSubmitting }}" disabled="{{ registerSubmitting }}">完成注册</van-button>
+      </block>
+
+      <block wx:else>
       <!-- Step 1: QR 扫码（wx.scanCode 支持拍照+相册选图） -->
       <view hidden="{{ regStep !== 'qr' }}">
         <text class="bind-tip">拍照或选择你的身份 QR 码图片进行验证</text>
@@ -556,7 +599,7 @@
           <text class="reg-qr-btn-text">拍照 / 上传 QR 码</text>
         </view>
         <view wx:if="{{ regQrScanning }}" class="reg-qr-scanning">
-          <van-loading size="32rpx" color="#ac1736" /><text>正在验证…</text>
+          <van-loading size="32rpx" color="#2563eb" /><text>正在验证…</text>
         </view>
         <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
       </view>
@@ -579,18 +622,23 @@
       <view hidden="{{ regStep !== 'credentials' }}">
         <text class="bind-tip">创建你的登录凭据</text>
         <input class="bind-input bind-input-block" value="{{ regUsername }}" bindinput="onRegUsernameInput" placeholder="用户名（3-64位）" maxlength="64" />
-        <input class="bind-input bind-input-block" value="{{ regPassword }}" bindinput="onRegPasswordInput" placeholder="密码（至少6位）" password="true" maxlength="64" />
+        <input class="bind-input bind-input-block" value="{{ regPassword }}" bindinput="onRegPasswordInput" placeholder="密码（8位起）" password="true" maxlength="64" />
+        <view class="bind-pwd-hint">8-64 位，大写 / 小写 / 数字 / 特殊字符至少凑三类</view>
         <input class="bind-input bind-input-block" value="{{ regPassword2 }}" bindinput="onRegPassword2Input" placeholder="确认密码" password="true" maxlength="64" />
         <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
         <van-button block type="primary" round custom-class="bind-submit" bindtap="submitRegister" loading="{{ registerSubmitting }}" disabled="{{ registerSubmitting }}">完成注册</van-button>
       </view>
+      </block>
     </block>
 
     <!-- ====== 教职工注册 ====== -->
     <block wx:else>
-      <input class="bind-input bind-input-block" value="{{ registerStaffInvite }}" bindinput="onRegStaffInviteInput" placeholder="邀请码" maxlength="64" />
-      <input class="bind-input bind-input-block" value="{{ registerStaffUser }}" bindinput="onRegStaffUserInput" placeholder="账号 / 工号" maxlength="64" />
-      <input class="bind-input bind-input-block" value="{{ registerStaffPassword }}" bindinput="onRegStaffPwdInput" placeholder="密码（至少6位）" password="true" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffInvite }}" bindinput="onRegStaffInviteInput" placeholder="推荐码" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffName }}" bindinput="onRegStaffNameInput" placeholder="真实姓名（人员库显示用，≠ 登录账号）" maxlength="128" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffUser }}" bindinput="onRegStaffUserInput" placeholder="系统账号（登录用，3-64位）" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffJobNumber }}" bindinput="onRegStaffJobNumberInput" placeholder="工号 / 学号（选填）" maxlength="64" />
+      <input class="bind-input bind-input-block" value="{{ registerStaffPassword }}" bindinput="onRegStaffPwdInput" placeholder="密码（8位起）" password="true" maxlength="64" />
+      <view class="bind-pwd-hint">8-64 位，大写 / 小写 / 数字 / 特殊字符至少凑三类</view>
       <input class="bind-input bind-input-block" value="{{ registerStaffPassword2 }}" bindinput="onRegStaffPwd2Input" placeholder="确认密码" password="true" maxlength="64" />
       <view wx:if="{{ regError }}" class="reg-error-text">{{ regError }}</view>
       <van-button block type="primary" round custom-class="bind-submit" bindtap="submitRegister" loading="{{ registerSubmitting }}" disabled="{{ registerSubmitting }}">注册</van-button>

@@ -195,9 +195,19 @@ class AnimalOrderToolPackTest {
 
         when(referenceDataService.distinctFilterValues("strain_name")).thenReturn(Result.success(List.of("C57BL/6")));
         when(accessPolicy.canSeeAll(any())).thenReturn(true);
-        Map<String, Object> good = run("listAnimalOrderFilterOptions", "{\"column\":\"品系\"}");
-        assertEquals(Boolean.TRUE, good.get("ok"));
-        assertNotNull(good.get("choices"), "候选少时要做成可点选项：" + good);
+        Map<String, Object> single = run("listAnimalOrderFilterOptions", "{\"column\":\"品系\"}");
+        assertEquals(Boolean.TRUE, single.get("ok"));
+        // **只有一个候选就不摆「挑一个」**（用户 2026-10-12 反馈）：直接给出唯一值，让模型拿去用
+        assertEquals("C57BL/6", single.get("onlyValue"), "唯一候选直接采用：" + single);
+        assertNull(single.get("choices"), "唯一候选不该再弹一次确认：" + single);
+
+        // 两个以上才是「一道题」，而且**必须打标记** —— 不打的话编排层默认丢掉，
+        // 正文里写着「从下面挑一个」而界面上一个选项都没有
+        when(referenceDataService.distinctFilterValues("strain_name"))
+                .thenReturn(Result.success(List.of("C57BL/6", "BALB/c")));
+        Map<String, Object> multi = run("listAnimalOrderFilterOptions", "{\"column\":\"品系\"}");
+        assertNotNull(multi.get("choices"), "多个候选要做成可点选项：" + multi);
+        assertEquals(Boolean.TRUE, multi.get("askRequired"), "必须问的标记不能漏：" + multi);
     }
 
     @Test
@@ -291,7 +301,9 @@ class AnimalOrderToolPackTest {
         assertEquals(2, choices.size());
         assertEquals("default", ((Map<?, ?>) choices.get(0)).get("value"));
         assertEquals("custom", ((Map<?, ?>) choices.get(1)).get("value"));
-        assertTrue(String.valueOf(out.get("choicesTitle")).contains("4 行"), String.valueOf(out.get("choicesTitle")));
+        // 数（板块/行/小计条数）**故意不写在问句里**（用户反馈：问句里别露内部参数），
+        // 改放在 note 里让模型写进正文。此前这条断言盯的是问句，代码改了它就没跟上。
+        assertTrue(String.valueOf(out.get("note")).contains("4 行"), String.valueOf(out.get("note")));
     }
 
     @Test

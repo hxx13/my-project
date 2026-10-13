@@ -78,6 +78,15 @@ public interface AiGatewayMapper {
     List<AiMessage> selectRecentMessages(@Param("sessionId") Long sessionId,
                                          @Param("limit") int limit);
 
+    /**
+     * 本会话的**第一条用户消息**（原始需求）。
+     *
+     * <p>为什么单独取：一轮工具对话要吃好几条消息（用户 / assistant+tool_calls / 工具结果 ×N / assistant），
+     * 而发模型的窗口只有 {@code MODEL_WINDOW_MESSAGES} 条 —— 兜圈两三轮回合之后，最初那句需求就被挤出去了，
+     * 模型于是忘了用户一次提的另一个人、也忘了说过的时点（2026-10-12 真机）。
+     */
+    AiMessage selectFirstUserMessage(@Param("sessionId") Long sessionId);
+
     Integer selectMaxSeq(@Param("sessionId") Long sessionId);
 
     AiMessage selectMessageById(@Param("id") Long id);

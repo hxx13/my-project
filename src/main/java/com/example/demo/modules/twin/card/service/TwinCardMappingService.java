@@ -328,20 +328,31 @@ public class TwinCardMappingService {
 
     /**
      * 计算豁免到期时间：延长至当日 {@code HH:mm}（如 18:00）。
+     *
+     * <p><b>{@code 24:00} 单独认</b>（2026-10-13 真机）：它是深夜档最常见的说法，可
+     * {@code HH:mm} 解不出来它 —— {@code LocalTime.parse("24:00")} 在 SMART 解析下会落到**当天 00:00**，
+     * 于是下一行判成「所选时点已过」，用户点「到 24:00（今晚）」这一档**必失败**，而且报的是一句
+     * 看不出所以然的话。它想说的是「今晚有效到零点」，按**当天最后一刻**算才对。
      */
     public String computeExemptExpireAtUntil(String extendUntilTime) {
         if (extendUntilTime == null || extendUntilTime.isBlank()) {
             throw new IllegalArgumentException("开启豁免须指定 extendUntilTime（HH:mm）");
         }
-        java.time.LocalTime target;
-        try {
-            target = java.time.LocalTime.parse(extendUntilTime.trim(), java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
-        } catch (Exception e) {
-            throw new IllegalArgumentException("extendUntilTime 格式须为 HH:mm");
-        }
-        LocalDateTime expire = LocalDate.now().atTime(target);
-        if (!expire.isAfter(LocalDateTime.now())) {
-            throw new IllegalArgumentException("所选时点已过，请选择更晚的时间");
+        String raw = extendUntilTime.trim();
+        LocalDateTime expire;
+        if ("24:00".equals(raw)) {
+            expire = LocalDate.now().atTime(java.time.LocalTime.of(23, 59, 59));
+        } else {
+            java.time.LocalTime target;
+            try {
+                target = java.time.LocalTime.parse(raw, java.time.format.DateTimeFormatter.ofPattern("HH:mm"));
+            } catch (Exception e) {
+                throw new IllegalArgumentException("extendUntilTime 格式须为 HH:mm");
+            }
+            expire = LocalDate.now().atTime(target);
+            if (!expire.isAfter(LocalDateTime.now())) {
+                throw new IllegalArgumentException("所选时点已过，请选择更晚的时间");
+            }
         }
         return expire.format(EXEMPT_EXPIRE_FMT);
     }

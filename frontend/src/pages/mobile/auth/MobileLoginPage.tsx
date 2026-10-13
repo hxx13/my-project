@@ -6,6 +6,7 @@ import { startIamOAuthLogin } from "@/features/auth/iamOAuth";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
 import AccountChooser from "@/components/auth/AccountChooser";
+import { PASSWORD_RULE_PLACEHOLDER, validatePassword } from "@/utils/passwordPolicy";
 
 export default function MobileLoginPage() {
   const navigate = useNavigate();
@@ -129,8 +130,9 @@ export default function MobileLoginPage() {
   };
 
   const handleForgotReset = async () => {
-    if (!forgotNewPassword || forgotNewPassword.length < 6) {
-      toast.error("密码至少6位");
+    const pwErr = validatePassword(forgotNewPassword);
+    if (pwErr) {
+      toast.error(pwErr);
       return;
     }
     setForgotSubmitting(true);
@@ -194,8 +196,9 @@ export default function MobileLoginPage() {
   };
 
   const handleEmailReset = async () => {
-    if (!forgotNewPassword || forgotNewPassword.length < 8) {
-      toast.error("密码至少8位，需含大小写字母、数字、特殊符号中至少三类"); return;
+    const pwErr = validatePassword(forgotNewPassword);
+    if (pwErr) {
+      toast.error(pwErr); return;
     }
     setForgotSubmitting(true);
     try {
@@ -347,7 +350,7 @@ export default function MobileLoginPage() {
                     <input type="password" value={forgotNewPassword}
                       onChange={(e) => setForgotNewPassword(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleForgotReset(); }}
-                      placeholder="至少6位" autoComplete="new-password"
+                      placeholder={PASSWORD_RULE_PLACEHOLDER} autoComplete="new-password"
                       className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                       style={{ background: bg, borderColor: border, color: primary }} />
                   </div>

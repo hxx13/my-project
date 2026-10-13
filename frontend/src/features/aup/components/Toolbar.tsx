@@ -18,6 +18,8 @@ interface ToolbarProps {
   onOpenReview?: () => void;
   canSubmit?: boolean;
   canSave?: boolean;
+  /** 修订模式（已通过计划书的修改）：保存/提交按钮换成「保存当前 / 更新版本」 */
+  amendMode?: boolean;
 }
 
 const AUTOSAVE_TEXT: Record<AutosaveState, string> = {
@@ -46,6 +48,7 @@ export default function Toolbar({
   onOpenReview,
   canSubmit,
   canSave,
+  amendMode,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -71,10 +74,10 @@ export default function Toolbar({
       {!readOnly && (
         <>
           <button className="btn ghost" onClick={onSave} disabled={saving || canSave === false}>
-            {saving ? "保存中…" : isNew ? "保存到草稿箱" : "保存草稿"}
+            {saving ? "保存中…" : amendMode ? "保存当前" : isNew ? "保存到草稿箱" : "保存草稿"}
           </button>
           <button className="btn primary" onClick={onSubmit} disabled={submitting || canSubmit === false}>
-            {submitting ? "提交中…" : "提交"}
+            {submitting ? "提交中…" : amendMode ? "更新版本" : "提交"}
           </button>
         </>
       )}

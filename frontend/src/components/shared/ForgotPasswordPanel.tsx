@@ -9,6 +9,7 @@ import {
   forgotPasswordByEmailVerify,
   forgotPasswordByEmailReset,
 } from "@/api/domains/auth.api";
+import { PASSWORD_RULE_PLACEHOLDER, validatePassword } from "@/utils/passwordPolicy";
 
 /* ================================================================== */
 /*  Theme tokens                                                        */
@@ -182,7 +183,8 @@ const ForgotPasswordPanel: FC<ForgotPasswordPanelProps> = ({
   };
 
   const handleForgotReset = async () => {
-    if (!forgotNewPassword || forgotNewPassword.length < 6) { toast.error("密码至少6位"); return; }
+    const pwErr = validatePassword(forgotNewPassword);
+    if (pwErr) { toast.error(pwErr); return; }
     setForgotSubmitting(true);
     try {
       const newUsername = forgotNewUsername.trim() !== forgotExistingUsername ? forgotNewUsername.trim() : undefined;
@@ -226,8 +228,9 @@ const ForgotPasswordPanel: FC<ForgotPasswordPanelProps> = ({
   };
 
   const handleEmailReset = async () => {
-    if (!forgotNewPassword || forgotNewPassword.length < 8) {
-      toast.error("密码至少8位，需含大小写字母、数字、特殊符号中至少三类"); return;
+    const pwErr = validatePassword(forgotNewPassword);
+    if (pwErr) {
+      toast.error(pwErr); return;
     }
     setForgotSubmitting(true);
     try {
@@ -325,7 +328,7 @@ const ForgotPasswordPanel: FC<ForgotPasswordPanelProps> = ({
             <label className={`mb-2 block text-sm font-medium ${t.label}`}>新密码</label>
             <input type="password" value={forgotNewPassword} onChange={(e) => setForgotNewPassword(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void handleForgotReset(); }}
-              className={t.input} placeholder="至少6位" autoComplete="new-password" />
+              className={t.input} placeholder={PASSWORD_RULE_PLACEHOLDER} autoComplete="new-password" />
           </div>
           <button type="button" disabled={forgotSubmitting}
             onClick={() => void handleForgotReset()}

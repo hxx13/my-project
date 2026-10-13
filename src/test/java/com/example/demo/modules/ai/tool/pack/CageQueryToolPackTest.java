@@ -19,6 +19,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -145,5 +148,54 @@ class CageQueryToolPackTest {
             assertNotNull(pack.capabilities().get(t.capability()),
                     "工具 " + t.name() + " 声明的能力码没有对应判定");
         }
+    }
+
+    /**
+     * **合计要覆盖整间，明细才截**（2026-10-13 真机）。
+     *
+     * <p>原先在计数之前就把架子截成 5 架，于是「这间房还剩多少空位」永远答不全 ——
+     * 用户拿到的是「已翻到的那几架里 0 个」，模型只能解释这是部分结果。
+     * 会撑爆上下文的是每一格的明细，不是合计。
+     */
+    @Test
+    @DisplayName("合计覆盖整间、明细才截：7 架房里数要算 7 架的，明细只列前 5 架")
+    void countsCoverWholeRoomWhileDetailIsCapped() throws Exception {
+        var studentSvc = mock(com.example.demo.modules.student.service.StudentCageShelfService.class);
+        var shelfMapper = mock(com.example.demo.modules.cageshelf.mapper.CageShelfMapper.class);
+        CageQueryToolPack cellPack = new CageQueryToolPack(cageShelfService, shelfMapper, studentSvc);
+        when(shelfMapper.listRoomIdsMatchingName("X")).thenReturn(List.of("room:1"));
+        List<String> shelfIds = new java.util.ArrayList<>();
+        for (int i = 1; i <= 7; i++) {
+            shelfIds.add("shelf:" + i);
+        }
+        when(shelfMapper.listShelveIdsByRoomIds(anyList())).thenReturn(shelfIds);
+        // 每架一格：第 1 架空着、其余占着 —— 合计应当是 1 空 6 占
+        when(studentSvc.getShelfDetail(any(), anyString())).thenAnswer(inv -> {
+            boolean empty = "shelf:1".equals(inv.getArgument(1));
+            Map<String, Object> cell = new LinkedHashMap<>();
+            cell.put("empty", empty);
+            cell.put("position", "A-1");
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("shelveId", inv.getArgument(1));
+            meta.put("shelveName", "架子" + inv.getArgument(1));
+            Map<String, Object> grid = new LinkedHashMap<>();
+            grid.put("grid", List.of(cell));
+            grid.put("shelfMeta", meta);
+            return grid;
+        });
+
+        AiTool tool = cellPack.tools().stream()
+                .filter(t -> t.name().equals("listCageCells")).findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out = (Map<String, Object>) tool.executor()
+                .execute(new AiToolContext(user(RoleEnum.STAFF), 1L, 2L),
+                        om.readTree("{\"roomKeyword\":\"X\"}"));
+
+        assertEquals(1, out.get("emptyCells"), "7 架里 1 架空着：" + out);
+        assertEquals(6, out.get("filledCells"), "合计必须是整间的：" + out);
+        assertEquals(7, out.get("countsCoverShelves"), "合计覆盖的架数：" + out);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> shelves = (List<Map<String, Object>>) out.get("shelves");
+        assertEquals(5, shelves.size(), "明细只列前 5 架：" + out);
     }
 }

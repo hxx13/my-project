@@ -2,6 +2,7 @@ const springAuth = require('../../../utils/springAuth.js');
 const { hasMinRole } = require('../../../utils/roleAccess.js');
 const pagePermission = require('../../../utils/pagePermission.js');
 const { shouldRefreshOnShow } = require('../../../utils/pageShowRefresh.js');
+const { checkPasswordRule } = require('../../../utils/passwordPolicy.js');
 
 const ROLE_CODES = ['MEMBER', 'STAFF', 'SENIOR', 'ADMIN', 'SUPER_ADMIN', 'PLATFORM_OWNER'];
 const ROLE_LABELS = ['学生', '普通员工', '高级员工', '管理员', '超级管理员', '平台所有者'];
@@ -1187,8 +1188,9 @@ Page({
       wx.showToast({ title: '登录名至少2字符', icon: 'none' });
       return;
     }
-    if (password.length < 6) {
-      wx.showToast({ title: '密码至少6位', icon: 'none' });
+    const pwdErr = checkPasswordRule(password);
+    if (pwdErr) {
+      wx.showToast({ title: pwdErr, icon: 'none' });
       return;
     }
     this.setData({ createSubmitting: true });

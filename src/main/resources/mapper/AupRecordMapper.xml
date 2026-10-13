@@ -77,6 +77,27 @@
         WHERE id = #{id}
     </update>
 
+    <!-- 修订轨道 CAS：推进 amendment_stage，version+1。toStage=null 清空轨道；fromStage 非空才校验轨道阶段 -->
+    <update id="updateAmendmentStageCas">
+        UPDATE aup_record
+        SET version = version + 1,
+            amendment_stage = #{toStage,jdbcType=VARCHAR},
+            <if test="planVersion != null">plan_version = #{planVersion},</if>
+            <if test="roundNo != null">round_no = #{roundNo},</if>
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND version = #{expectedVersion}
+          <if test="fromStage != null">AND amendment_stage = #{fromStage}</if>
+    </update>
+
+    <!-- 修订草稿内容保存（高频，不动阶段与版本） -->
+    <update id="updateAmendmentData">
+        UPDATE aup_record
+        SET amendment_data = #{data,jdbcType=LONGVARCHAR},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
     <select id="selectMaxSeqByYear" resultType="int">
         SELECT COALESCE(MAX(register_seq), 0) FROM aup_record WHERE register_year = #{year} FOR UPDATE
     </select>
@@ -205,6 +226,7 @@
     <select id="selectPage" resultType="com.example.demo.modules.aup.dto.AupListItem">
         SELECT r.id, r.register_no, r.project_name, r.pi_name, r.dept, r.project_source AS project_source,
                r.current_stage, r.round_no, r.draft_source,
+               r.amendment_stage, r.plan_version,
                r.submitted_at, r.approved_at, r.created_at, r.is_demo AS is_demo,
                r.created_by AS created_by, r.pi_user_id AS pi_user_id,
                (SELECT COUNT(*) FROM aup_snapshot s WHERE s.aup_id = r.id) AS snapshot_count,

@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -113,5 +114,44 @@ class MiniPreferencesServiceTest {
 
         assertEquals(List.of("/student/rooms"), out.getStudentNavRecent());
         assertNull(out.getStudentNavLock());
+    }
+
+    @Test
+    void 无人操作自动回大屏_别人只提交主题时不冲掉它() throws Exception {
+        stored = "{\"dashboardAutoReturn\":{\"enabled\":true,\"idleMinutes\":12}}";
+
+        MiniPreferencesVo out = saveJson("{\"twinWebChromeTheme\":\"dashboardSciFi\"}");
+
+        assertNotNull(out.getDashboardAutoReturn());
+        assertEquals(Boolean.TRUE, out.getDashboardAutoReturn().getEnabled());
+        assertEquals(12, out.getDashboardAutoReturn().getIdleMinutes().intValue());
+    }
+
+    @Test
+    void 无人操作自动回大屏_提交它时不冲掉主题与侧栏() throws Exception {
+        stored = "{\"twinWebChromeTheme\":\"dashboardSciFi\",\"adminNavStars\":[\"/admin/aup\"]}";
+
+        MiniPreferencesVo out = saveJson("{\"dashboardAutoReturn\":{\"enabled\":true,\"idleMinutes\":12}}");
+
+        assertEquals("dashboardSciFi", out.getTwinWebChromeTheme());
+        assertEquals(List.of("/admin/aup"), out.getAdminNavStars());
+        assertEquals(Boolean.TRUE, out.getDashboardAutoReturn().getEnabled());
+        assertEquals(12, out.getDashboardAutoReturn().getIdleMinutes().intValue());
+    }
+
+    @Test
+    void 无人操作自动回大屏_分钟数越界被夹到区间内() throws Exception {
+        MiniPreferencesVo tooBig = saveJson("{\"dashboardAutoReturn\":{\"enabled\":true,\"idleMinutes\":9999}}");
+        assertEquals(120, tooBig.getDashboardAutoReturn().getIdleMinutes().intValue());
+
+        MiniPreferencesVo tooSmall = saveJson("{\"dashboardAutoReturn\":{\"enabled\":true,\"idleMinutes\":0}}");
+        assertEquals(1, tooSmall.getDashboardAutoReturn().getIdleMinutes().intValue());
+    }
+
+    @Test
+    void 无人操作自动回大屏_没配过就保持_null_不让别的模块替它打开() throws Exception {
+        MiniPreferencesVo out = saveJson("{\"twinWebChromeTheme\":\"standard\"}");
+
+        assertNull(out.getDashboardAutoReturn());
     }
 }

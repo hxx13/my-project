@@ -18,8 +18,24 @@ import java.util.Set;
 @Service
 public class AiSessionService {
 
-    /** 发给模型时保留的最近消息条数（约 10 轮）。存全量、发窗口 —— 见设计文档 §9。 */
-    public static final int MODEL_WINDOW_MESSAGES = 20;
+    /**
+     * 发模型时保留的最近消息条数。
+     *
+     * <p><b>2026-10-13 从 20 提到 200（用户要求「不要限制他的能力」）。</b> 20 条只够装三四轮工具对话
+     * （一轮就要吃好几条：用户 / assistant+tool_calls / 每个工具结果 / 收尾 assistant），
+     * 于是聊过几轮以后**最原始那句需求就被挤出窗口**，模型开始「忘了第二个人」「忘了自己说过的时点」
+     * 并一遍遍重问 —— 看上去像没把历史发过去，其实是窗口太小。
+     *
+     * <p>为什么不是「不设上限」：上游上下文窗口是有硬顶的，而**工具清单本身就占掉一大半**
+     * （几十个工具的定义一次发，实测前缀 8 万字符起步）。真把几千条历史全塞进去，结果不是「更准」，
+     * 而是**整个请求被上游拒掉**——一次都答不出来，比少记几句糟得多。200 条约合四十轮，
+     * 已经远超真实会话的长度，它现在的作用只是**挡住跑飞的长会话**，不是日常的截断点。
+     *
+     * <p>顺带说明缓存：上游的上下文缓存认的是**前缀**，拼装顺序（共享的提示词与工具在前、
+     * 每轮变化的内容在后）对了，第二轮起就有命中，命中量落库在 ai_message 里可查。
+     * 多发历史不会把缓存打掉 —— 它命中的正是那段历史。
+     */
+    public static final int MODEL_WINDOW_MESSAGES = 200;
 
     private static final int TITLE_MAX = 40;
 
@@ -113,6 +129,11 @@ public class AiSessionService {
     /** 发模型用：窗口截断。 */
     public List<AiMessage> window(Long sessionId) {
         return mapper.selectRecentMessages(sessionId, MODEL_WINDOW_MESSAGES);
+    }
+
+    /** 本会话的**第一条用户消息**（原始需求）；没有就 null。见 mapper 上为什么单独取它。 */
+    public AiMessage firstUserMessage(Long sessionId) {
+        return mapper.selectFirstUserMessage(sessionId);
     }
 
     /**

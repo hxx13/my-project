@@ -11,6 +11,7 @@ import {
 } from "@/api/domains/auth.api";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
+import { validatePassword } from "@/utils/passwordPolicy";
 
 const DEFAULT_STATUS: PasswordChangeStatus = {
   requiredReset: false,
@@ -122,8 +123,9 @@ export default function ProfileSecurityPage() {
       toast.error("请完整填写密码信息");
       return;
     }
-    if (newPassword.length < 6) {
-      toast.error("新密码至少6位");
+    const pwErr = validatePassword(newPassword);
+    if (pwErr) {
+      toast.error(pwErr);
       return;
     }
     if (newPassword !== confirmPassword) {

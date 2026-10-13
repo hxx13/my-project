@@ -10,6 +10,7 @@
 const springAuth = require('../../utils/springAuth.js');
 const { readCustomNavMetrics } = require('../../utils/customNavMetrics.js');
 const { hasMinRole, isStudentAccount } = require('../../utils/roleAccess.js');
+const { checkPasswordRule } = require('../../utils/passwordPolicy.js');
 const pagePermission = require('../../utils/pagePermission.js');
 const twinScan = require('../../utils/twinScanAnalyze.js');
 const { shouldRefreshOnShow } = require('../../utils/pageShowRefresh.js');
@@ -383,7 +384,19 @@ Page({
     regUsername: '',
     regPassword: '',
     regPassword2: '',
+    /* 学生注册的两条路：existing=已有人员编号/扫码, new=新用户直接填资料 */
+    regStudentMode: 'existing',
+    regNewName: '',
+    regNewGender: '0',
+    regNewMobile: '',
+    regNewJobNumber: '',
+    regNewEmail: '',
+    regNewUsername: '',
+    regNewPassword: '',
+    regNewPassword2: '',
     registerStaffUser: '',
+    registerStaffName: '',
+    registerStaffJobNumber: '',
     registerStaffPassword: '',
     registerStaffPassword2: '',
     registerStaffInvite: '',
@@ -1681,7 +1694,9 @@ Page({
       regQrVerified: false,
       regVerifiedData: null,
       regUsername: '', regPassword: '', regPassword2: '',
-      registerStaffUser: '', registerStaffPassword: '', registerStaffPassword2: '', registerStaffInvite: '',
+      regStudentMode: 'existing', regNewName: '', regNewGender: '0', regNewMobile: '',
+      regNewJobNumber: '', regNewEmail: '', regNewUsername: '', regNewPassword: '', regNewPassword2: '',
+      registerStaffUser: '', registerStaffName: '', registerStaffJobNumber: '', registerStaffPassword: '', registerStaffPassword2: '', registerStaffInvite: '',
       regError: '',
     });
   },
@@ -1747,9 +1762,86 @@ Page({
   onRegPasswordInput: function (e) { this.setData({ regPassword: e.detail.value }); },
   onRegPassword2Input: function (e) { this.setData({ regPassword2: e.detail.value }); },
   onRegStaffUserInput: function (e) { this.setData({ registerStaffUser: e.detail.value }); },
+  onRegStaffNameInput: function (e) { this.setData({ registerStaffName: e.detail.value }); },
+  onRegStaffJobNumberInput: function (e) { this.setData({ registerStaffJobNumber: e.detail.value }); },
   onRegStaffPwdInput: function (e) { this.setData({ registerStaffPassword: e.detail.value }); },
   onRegStaffPwd2Input: function (e) { this.setData({ registerStaffPassword2: e.detail.value }); },
   onRegStaffInviteInput: function (e) { this.setData({ registerStaffInvite: e.detail.value }); },
+
+  /* ---- 学生注册：已有编号 / 新用户 两条路 ---- */
+  onRegStudentMode: function (e) {
+    var mode = e.currentTarget.dataset.mode === 'new' ? 'new' : 'existing';
+    this.setData({ regStudentMode: mode, regError: '' });
+  },
+  onRegNewNameInput: function (e) { this.setData({ regNewName: e.detail.value }); },
+  onRegNewMobileInput: function (e) { this.setData({ regNewMobile: e.detail.value }); },
+  onRegNewJobNumberInput: function (e) { this.setData({ regNewJobNumber: e.detail.value }); },
+  onRegNewEmailInput: function (e) { this.setData({ regNewEmail: e.detail.value }); },
+  onRegNewUsernameInput: function (e) { this.setData({ regNewUsername: e.detail.value }); },
+  onRegNewPasswordInput: function (e) { this.setData({ regNewPassword: e.detail.value }); },
+  onRegNewPassword2Input: function (e) { this.setData({ regNewPassword2: e.detail.value }); },
+  /** 性别必选（后端「性别不能为空」）：只切不取消，避免把已答的题又清成未答 */
+  onRegNewGender: function (e) {
+    var g = String(e.currentTarget.dataset.gender || '');
+    if (!g) return;
+    this.setData({ regNewGender: g });
+  },
+
+  /** 新用户注册（不在人员库里的新人）：POST /api/auth/register/new，与 Web 端同一接口同一套字段 */
+  submitNewUserRegister: function () {
+    var self = this;
+    if (self.data.registerSubmitting) return;
+    var name = (self.data.regNewName || '').trim();
+    var mobile = (self.data.regNewMobile || '').trim();
+    var username = (self.data.regNewUsername || '').trim();
+    var pwd = self.data.regNewPassword || '';
+    var pwd2 = self.data.regNewPassword2 || '';
+    if (!name) { wx.showToast({ title: '请填写真实姓名', icon: 'none' }); return; }
+    if (self.data.regNewGender !== '1' && self.data.regNewGender !== '2') {
+      wx.showToast({ title: '请选择性别', icon: 'none' });
+      return;
+    }
+    if (!mobile) { wx.showToast({ title: '请填写手机号', icon: 'none' }); return; }
+    if (username.length < 3) { wx.showToast({ title: '账号名至少3位', icon: 'none' }); return; }
+    var pwdErr = checkPasswordRule(pwd);
+    if (pwdErr) { wx.showToast({ title: pwdErr, icon: 'none' }); return; }
+    if (pwd !== pwd2) { wx.showToast({ title: '两次密码不一致', icon: 'none' }); return; }
+
+    self.setData({ registerSubmitting: true, regError: '' });
+    wx.showLoading({ title: '注册中…', mask: true });
+    springAuth.springRequest({
+      url: '/api/auth/register/new',
+      method: 'POST',
+      data: {
+        username: username,
+        name: name,
+        mobilePhone: mobile,
+        gender: Number(self.data.regNewGender || 0),
+        jobNumber: (self.data.regNewJobNumber || '').trim() || undefined,
+        email: (self.data.regNewEmail || '').trim() || undefined,
+        password: pwd,
+      },
+    }).then(function (res) {
+      wx.hideLoading();
+      var body = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+      if (res.statusCode === 200 && body && body.success) {
+        self.setData({
+          showRegisterForm: false, showLoginForm: true, registerSubmitting: false,
+          regError: '', regNewName: '', regNewGender: '0', regNewMobile: '',
+          regNewJobNumber: '', regNewEmail: '', regNewUsername: '', regNewPassword: '', regNewPassword2: '',
+        });
+        wx.showToast({ title: '注册成功，请登录', icon: 'success' });
+      } else {
+        var msg = (body && body.message) || '注册失败';
+        self.setData({ registerSubmitting: false, regError: msg });
+        wx.showToast({ title: msg.length > 18 ? msg.slice(0, 18) + '…' : msg, icon: 'none', duration: 3000 });
+      }
+    }).catch(function () {
+      wx.hideLoading();
+      self.setData({ registerSubmitting: false, regError: '网络错误' });
+      wx.showToast({ title: '网络错误', icon: 'none' });
+    });
+  },
 
   onRegGoCredentials: function () { this.setData({ regStep: 'credentials', regError: '' }); },
   onRegBackToQr: function () { this.setData({ regStep: 'qr', regQrVerified: false, regVerifiedData: null, regError: '' }); },
@@ -1766,15 +1858,23 @@ Page({
       var spwd = self.data.regPassword || '';
       var spwd2 = self.data.regPassword2 || '';
       if (!uname || uname.length < 3) { wx.showToast({ title: '用户名至少3位', icon: 'none' }); return; }
-      if (!spwd || spwd.length < 6) { wx.showToast({ title: '密码至少6位', icon: 'none' }); return; }
+      var pwdErr = checkPasswordRule(spwd);
+      if (pwdErr) { wx.showToast({ title: pwdErr, icon: 'none' }); return; }
       if (spwd !== spwd2) { wx.showToast({ title: '两次密码不一致', icon: 'none' }); return; }
     } else {
       var suser = (self.data.registerStaffUser || '').trim();
+      var sname = (self.data.registerStaffName || '').trim();
+      var sjob = (self.data.registerStaffJobNumber || '').trim();
       var spwd = self.data.registerStaffPassword || '';
       var spwd2 = self.data.registerStaffPassword2 || '';
       var sinv = (self.data.registerStaffInvite || '').trim();
-      if (!suser || !spwd || !sinv) { wx.showToast({ title: '请填写完整信息', icon: 'none' }); return; }
-      if (spwd.length < 6) { wx.showToast({ title: '密码至少6位', icon: 'none' }); return; }
+      if (!suser || !sinv) { wx.showToast({ title: '请填写推荐码与系统账号', icon: 'none' }); return; }
+      // 后端对真实姓名是硬性必填；表单不给这一栏，用户会卡在「请填写真实姓名」而无处可填
+      if (!sname) { wx.showToast({ title: '请填写真实姓名', icon: 'none' }); return; }
+      if (sname.length > 128) { wx.showToast({ title: '真实姓名过长', icon: 'none' }); return; }
+      if (suser.length < 3) { wx.showToast({ title: '账号至少3位', icon: 'none' }); return; }
+      var pwdErr2 = checkPasswordRule(spwd);
+      if (pwdErr2) { wx.showToast({ title: pwdErr2, icon: 'none' }); return; }
       if (spwd !== spwd2) { wx.showToast({ title: '两次密码不一致', icon: 'none' }); return; }
     }
 
@@ -1783,8 +1883,8 @@ Page({
 
     var url = isStudent ? '/api/auth/register/student' : '/api/auth/register/staff';
     var body = isStudent
-      ? { userId: self.data.regVerifiedData.userId, name: self.data.regVerifiedData.name || uname, password: spwd }
-      : { username: suser, password: spwd, inviteCode: sinv };
+      ? { userId: self.data.regVerifiedData.userId, username: uname, password: spwd }
+      : { username: suser, password: spwd, inviteCode: sinv, name: sname, jobNumber: sjob };
 
     springAuth.springRequest({ url: url, method: 'POST', data: body }).then(function (res) {
       wx.hideLoading();
@@ -1793,7 +1893,7 @@ Page({
         self.setData({
           showRegisterForm: false, showLoginForm: true, registerSubmitting: false,
           regUsername: '', regPassword: '', regPassword2: '',
-          registerStaffUser: '', registerStaffPassword: '', registerStaffPassword2: '', registerStaffInvite: '',
+          registerStaffUser: '', registerStaffName: '', registerStaffJobNumber: '', registerStaffPassword: '', registerStaffPassword2: '', registerStaffInvite: '',
           regQrVerified: false, regVerifiedData: null, regStep: 'qr', regError: '',
         });
         wx.showToast({ title: '注册成功，请登录', icon: 'success' });
@@ -2187,8 +2287,9 @@ Page({
       wx.showToast({ title: '请填写完整信息', icon: 'none' });
       return;
     }
-    if (newPwd.length < 6) {
-      wx.showToast({ title: '新密码至少6位', icon: 'none' });
+    var newPwdErr = checkPasswordRule(newPwd);
+    if (newPwdErr) {
+      wx.showToast({ title: newPwdErr, icon: 'none' });
       return;
     }
     if (newPwd !== confirm) {
@@ -2403,7 +2504,8 @@ Page({
     var self = this;
     var newPwd = self.data.forgotNewPwd || '';
     var newPwd2 = self.data.forgotNewPwd2 || '';
-    if (!newPwd || newPwd.length < 6) { wx.showToast({ title: '新密码至少6位', icon: 'none' }); return; }
+    var forgotPwdErr = checkPasswordRule(newPwd);
+    if (forgotPwdErr) { wx.showToast({ title: forgotPwdErr, icon: 'none' }); return; }
     if (newPwd !== newPwd2) { wx.showToast({ title: '两次密码不一致', icon: 'none' }); return; }
     if (self.data.forgotSubmitting) return;
 

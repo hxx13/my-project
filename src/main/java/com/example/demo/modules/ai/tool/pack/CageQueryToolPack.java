@@ -44,8 +44,16 @@ public class CageQueryToolPack implements AiToolPack {
 
     /** 房间目录一次最多回这么多行：全量树在房间多时会很长，超出就截断并注明。 */
     private static final int MAX_ROOMS = 200;
-    /** 一次最多翻几个架子 —— 每个架子都要拉一遍网格，翻几十架又慢又没用。 */
+    /** 一次最多**列明细**几个架子 —— 每个架子都要拉一遍网格，明细翻几十架又慢又没用。 */
     private static final int MAX_SHELVES = 5;
+    /**
+     * 一次最多**扫**几个架子（合计的口径）。
+     *
+     * <p>比 {@link #MAX_SHELVES} 宽得多，是因为两者省的不是一回事：明细会撑爆模型的上下文，
+     * 合计不会 —— 而用户问的「这间房还剩多少空位」要的正是合计。扫描上限只是兜住
+     * 「关键词匹配到很多房间」那种情况（逐架取详情是有代价的）。
+     */
+    private static final int MAX_SCAN_SHELVES = 30;
 
     private final CageShelfService cageShelfService;
     private final CageShelfMapper cageShelfMapper;
@@ -193,16 +201,30 @@ public class CageQueryToolPack implements AiToolPack {
                         return Map.of("ok", false, "reason", "要么给 roomKeyword（房间名片段），要么给 shelveId");
                     }
 
-                    boolean truncated = shelveIds.size() > MAX_SHELVES;
-                    if (truncated) {
-                        shelveIds = new ArrayList<>(shelveIds.subList(0, MAX_SHELVES));
+                    /*
+                     * **计数覆盖整间，明细只取前几架**（2026-10-13）。
+                     *
+                     * <p>原先在**计数之前**就把架子截成 {@code MAX_SHELVES} 架，于是「这间房还剩多少空位」
+                     * 永远答不全 —— 真机问「E11A-B110 还剩多少空的」，拿到的只是「已翻到的那几架里 0 个」，
+                     * 模型还得跟用户解释这是部分结果。用户要的就是那间房的数。
+                     *
+                     * <p>会撑爆上下文的是**每一格的明细**，不是合计 —— 该省的省它。
+                     * 扫描本身仍留一个上限（{@code MAX_SCAN_SHELVES}）：关键词匹配到很多房间时，
+                     * 逐架取详情是有代价的。
+                     */
+                    boolean scanTruncated = shelveIds.size() > MAX_SCAN_SHELVES;
+                    if (scanTruncated) {
+                        shelveIds = new ArrayList<>(shelveIds.subList(0, MAX_SCAN_SHELVES));
                     }
+                    boolean detailTruncated = shelveIds.size() > MAX_SHELVES;
 
                     List<Map<String, Object>> shelvesOut = new ArrayList<>();
                     List<String> skipped = new ArrayList<>();
                     int emptyCount = 0, filledCount = 0, emitted = 0;
-                    outer:
-                    for (String id : shelveIds) {
+                    boolean detailFull = false;
+                    for (int si = 0; si < shelveIds.size(); si++) {
+                        String id = shelveIds.get(si);
+                        boolean wantDetail = si < MAX_SHELVES && !detailFull;
                         Map<String, Object> grid;
                         try {
                             // 权限校验 + 脱敏都在这一个调用里（无权限直接抛）
@@ -222,8 +244,12 @@ public class CageQueryToolPack implements AiToolPack {
                                         ? !Boolean.FALSE.equals(cell.get("empty"))
                                         : isBlank(cell.get("animalCageId"));
                                 if (empty) emptyCount++; else filledCount++;
+                                if (!wantDetail) continue;
                                 if (onlyEmpty && !empty) continue;
-                                if (emitted >= limit) break outer;
+                                if (emitted >= limit) {
+                                    detailFull = true;
+                                    continue;
+                                }
                                 Map<String, Object> row = new LinkedHashMap<>();
                                 row.put("position", str(cell.get("position")));
                                 row.put("empty", empty);
@@ -240,6 +266,9 @@ public class CageQueryToolPack implements AiToolPack {
                                 emitted++;
                             }
                         }
+                        if (!wantDetail) {
+                            continue;
+                        }
                         Map<String, Object> sh = new LinkedHashMap<>();
                         if (grid.get("shelfMeta") instanceof Map<?, ?> m) {
                             sh.put("shelveId", str(m.get("shelveId")));
@@ -253,6 +282,9 @@ public class CageQueryToolPack implements AiToolPack {
 
                     Map<String, Object> out = new LinkedHashMap<>();
                     out.put("ok", true);
+                    // 合计是**整间**的口径（在扫描上限内），明细才是部分的 —— 这一行要跟模型说清，
+                    // 否则它会把「明细只给了 5 架」误当成「总数也只有 5 架」。
+                    out.put("countsCoverShelves", shelveIds.size() - skipped.size());
                     out.put("emptyCells", emptyCount);
                     out.put("filledCells", filledCount);
                     out.put("returnedCells", emitted);
@@ -261,9 +293,12 @@ public class CageQueryToolPack implements AiToolPack {
                         // 如实说：这些架子不是「没有笼位」，是**你没权限看**
                         out.put("skipped", skipped);
                     }
-                    if (truncated) {
-                        out.put("note", "匹配到的架子较多，只翻了前 " + MAX_SHELVES
-                                + " 架。要更全就换个更具体的房间名再查一次。");
+                    if (scanTruncated) {
+                        out.put("note", "这间房匹配到的架子很多，只扫了前 " + MAX_SCAN_SHELVES
+                                + " 架 —— 上面的合计只覆盖这部分。要更全就换个更具体的房间名。");
+                    } else if (detailTruncated) {
+                        out.put("note", "合计覆盖了整间（" + shelveIds.size() + " 架，总数是全的）；"
+                                + "逐格明细只列了前 " + MAX_SHELVES + " 架。");
                     }
                     return out;
                 });

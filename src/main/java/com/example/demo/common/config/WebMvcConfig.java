@@ -112,9 +112,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(aupDictConfigGuard())
                 .addPathPatterns("/api/aup-dict/**");
 
-        // AUP 配置面新增三页（文件夹 / 字段字典 / 变更记录）：读+写均收紧为 sys_user 底座 + ADMIN
+        // AUP 配置面新增三页（文件夹 / 字段字典 / 变更记录 / 内置种子导入）：读+写均收紧为 sys_user 底座 + ADMIN
         registry.addInterceptor(aupConfigAdminGuard())
-                .addPathPatterns("/api/aup-folder/**", "/api/aup-field/**", "/api/aup-config-audit/**");
+                .addPathPatterns("/api/aup-folder/**", "/api/aup-field/**", "/api/aup-config-audit/**",
+                        "/api/aup-seed/**");
 
         // AUP 名册配置：写操作 sys_user 底座 + ADMIN；读操作仅 sys_user 底座（角色仍由控制器按 admin/secretary 裁决）
         registry.addInterceptor(aupReviewerConfigGuard())

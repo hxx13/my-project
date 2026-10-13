@@ -4,6 +4,7 @@ import { useLocation } from "react-router-dom";
 import { PortalHeader } from "@/features/portal/PortalHeader";
 import { PortalFooter } from "@/features/portal/PortalFooter";
 import { PortalLoginModal } from "@/features/portal/PortalLoginModal";
+import { DashboardAutoReturnProvider } from "@/features/twin-chrome/DashboardAutoReturnContext";
 import { useState } from "react";
 
 export default function PortalLayout({ children }: { children?: ReactNode }) {
@@ -14,11 +15,14 @@ export default function PortalLayout({ children }: { children?: ReactNode }) {
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
 
   return (
-    <div className="min-h-screen bg-white">
-      <PortalHeader onOpenLogin={() => setLoginOpen(true)} />
-      {children}
-      <PortalFooter onRequestLogin={() => setLoginOpen(true)} />
-      <PortalLoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
-    </div>
+    // 「无人操作自动回大屏」也罩住门户：误点摸到门户首页的人等一会儿会被送回去
+    <DashboardAutoReturnProvider>
+      <div className="min-h-screen bg-white">
+        <PortalHeader onOpenLogin={() => setLoginOpen(true)} />
+        {children}
+        <PortalFooter onRequestLogin={() => setLoginOpen(true)} />
+        <PortalLoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      </div>
+    </DashboardAutoReturnProvider>
   );
 }

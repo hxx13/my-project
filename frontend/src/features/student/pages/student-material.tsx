@@ -364,7 +364,7 @@ export default function StudentMaterialPage() {
             {activeCategoryId === "root" && (
               <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))" }}>
                 {categories?.map((c, i) => (
-                  <div key={c.id} className="relative min-h-[9rem] rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-5 shadow-sm animate-[card-in_0.4s_ease-out_both]" style={{ animationDelay: `${i * 60}ms` }}>
+                  <div key={c.id} className="relative min-h-[9rem] rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-5 shadow-sm animate-[card-in_0.4s_ease-out_both]" style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}>
                     <button type="button" onClick={() => setActiveCategoryId(c.id)}
                       className="flex h-full w-full cursor-pointer flex-col items-center justify-center gap-3 transition-colors hover:text-[var(--student-primary)]">
                       <div className="relative flex aspect-square w-24 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--student-canvas-soft)]">
