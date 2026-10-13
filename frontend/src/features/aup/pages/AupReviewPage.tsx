@@ -232,13 +232,15 @@ function ReviewContent({ id }: { id: string }) {
     progress,
     myRolesQuery.data?.isPi ?? false
   );
-  const stage = record?.currentStage ?? "draft";
+  // 修订轨道进行中时，审核对象是修订内容，阶段也取修订轨道（此时主状态仍是 approved）
+  const stage = record?.amendmentStage ?? record?.currentStage ?? "draft";
   // 已投票判定：被分配专家且不在未投名单中（后端不再返回 reviews 列表）
   const alreadyVoted =
     role === "expert" && !!progress && !(progress.unvoted ?? []).includes(currentUserId ?? "");
 
-  const canVoteExpert = stage === "expertReview" && role === "expert" && !alreadyVoted;
-  const secretaryCanAct = stage === "formatReview" && role === "secretary";
+  // 平台管理员同样可代审（后端已放行），否则卡单只能靠接口处理
+  const canVoteExpert = stage === "expertReview" && (role === "expert" || isAdmin) && !alreadyVoted;
+  const secretaryCanAct = stage === "formatReview" && (role === "secretary" || isAdmin);
   const piCanAct = stage === "piReview" && (role === "pi" || isAdmin);
   const fieldTagEditable = canVoteExpert || secretaryCanAct;
   const fieldTagRole: "expert" | "secretary" = secretaryCanAct ? "secretary" : "expert";
@@ -517,7 +519,7 @@ function ReviewContent({ id }: { id: string }) {
           )}
           {stage === "formatReview" && (
             <FormatReviewPanel
-              canAct={role === "secretary"}
+              canAct={secretaryCanAct}
               experts={experts}
               submitting={review.formatReview.isPending}
               suggestionCount={secretarySuggestionCount}

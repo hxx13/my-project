@@ -231,6 +231,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-aup-dict-source.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-dict-item-value-width.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aup-field-role.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-amendment-cols.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-amend-levels.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-aup-delete-log.sql", ctx)) success++;
         total++; if (runScript("db/migration/V20260815__person_identity_recreate.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-identity.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-drop-person-identity-scope.sql", ctx)) success++;

@@ -1183,6 +1183,22 @@ function FieldEditorInline({
         </label>
       </div>
 
+      <div className="aup-row" style={{ alignItems: "center", flexWrap: "wrap" }}>
+        <label>修改等级</label>
+        <select
+          className="aup-select"
+          style={{ width: 220, flex: "0 0 220px" }}
+          value={cfg.amendmentLevel ?? "MINOR"}
+          disabled={!editable}
+          title="计划书通过后修改该字段时的处理方式"
+          onChange={(e) => setCfg({ amendmentLevel: e.target.value as FieldConfig["amendmentLevel"] })}
+        >
+          <option value="MINOR">小修 · 可直接保存</option>
+          <option value="MAJOR">大修 · 须更新版本重审</option>
+          <option value="LOCKED">禁改 · 通过后不可修改</option>
+        </select>
+      </div>
+
       {renderTypeConfig()}
 
       <details className="aup-adv" open={advOpen} onToggle={(e) => setAdvOpen(e.currentTarget.open)}>

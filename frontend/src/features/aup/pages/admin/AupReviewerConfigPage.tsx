@@ -7,22 +7,19 @@ import type { Reviewer } from "../../schema/review";
 import "../../aup.css";
 
 /**
- * 审查人名册配置页。
- * 配置格式审查人（秘书）与专家候选（写入 aup_reviewer）；
- * 选人复用通用 {@link PersonnelPicker}（学生/教职工分 tab + 多选），选中人员的 userId 记录到本地草稿，
- * 保存为全量替换，需点击右上角「保存名册配置」才落库。
+ * 审查人名册（只读）。
+ *
+ * 名单实际由「人员页 → 身份标识」维护（秘书 / 专家两个身份码），本页只做展示与指引。
+ * 后端不再写 aup_reviewer，原先的「保存名册配置」必然失败（接口固定返回提示），
+ * 那个按钮已移除，避免让人以为能在这里配。
  */
 export default function AupReviewerConfigPage() {
   const configQuery = useReviewerConfig();
-  const updateMut = useUpdateReviewerConfig();
-
   const [formatReviewers, setFormatReviewers] = useState<Reviewer[]>([]);
   const [expertCandidates, setExpertCandidates] = useState<Reviewer[]>([]);
   const [hydrated, setHydrated] = useState(false);
-  /** 当前打开的选人弹窗要写入哪个面板 */
-  const [pickerFor, setPickerFor] = useState<"secretary" | "expert" | null>(null);
 
-  // 首次拿到后端配置时水合到本地草稿
+  // 首次拿到后端配置时水合到本地展示态
   useEffect(() => {
     if (configQuery.data && !hydrated) {
       setFormatReviewers(configQuery.data.formatReviewers ?? []);
@@ -31,43 +28,21 @@ export default function AupReviewerConfigPage() {
     }
   }, [configQuery.data, hydrated]);
 
-  const save = () => {
-    updateMut.mutate({
-      formatReviewers: formatReviewers.map((r) => r.userId),
-      expertCandidates: expertCandidates.map((r) => r.userId),
-    });
-  };
-
-  const handleConfirm = (ids: string[], names: string[]) => {
-    const isSecretary = pickerFor === "secretary";
-    const current = isSecretary ? formatReviewers : expertCandidates;
-    const existing = new Set(current.map((r) => r.userId));
-    const next = [...current];
-    let added = 0;
-    ids.forEach((id, i) => {
-      if (!id || existing.has(id)) return;
-      existing.add(id);
-      next.push({ userId: id, name: names[i] || id });
-      added++;
-    });
-    if (ids.length > 0 && added === 0) {
-      toast.error("所选人员已在名单中");
-    }
-    if (isSecretary) setFormatReviewers(next);
-    else setExpertCandidates(next);
-    setPickerFor(null);
-  };
-
   return (
     <div className="aup-app" style={{ padding: "24px" }}>
       <div className="page-hd">
         <div>
           <h1>审查人名册</h1>
-          <div className="sub">配置格式审查人（秘书）与专家候选；格式审查通过时在此范围内分配专家，修改后请点击右上角保存</div>
+          <div className="sub">格式审查人（秘书）与专家候选，由「人员页 → 身份标识」维护</div>
         </div>
-        <button className="btn primary" disabled={updateMut.isPending} onClick={save}>
-          {updateMut.isPending ? "保存中…" : "保存名册配置"}
-        </button>
+      </div>
+
+      <div
+        className="card"
+        style={{ padding: "14px 18px", marginBottom: 16, background: "var(--primary-weak, #eef2ff)", color: "var(--primary, #002fa7)", fontSize: 13 }}
+      >
+        名单已改为按人员身份标识自动识别，本页仅作查看。
+        如需增删，请到 <a href="#/console/admin/personnel" style={{ color: "inherit", textDecoration: "underline" }}>人员页</a> 为对应人员设置「秘书」或「专家」身份标识。
       </div>
 
       {configQuery.isLoading ? (
@@ -80,27 +55,14 @@ export default function AupReviewerConfigPage() {
             title="格式审查人（秘书）"
             hint="负责格式审查；格式审查通过时在此范围内选定专家"
             members={formatReviewers}
-            onChange={setFormatReviewers}
-            onAdd={() => setPickerFor("secretary")}
           />
           <ReviewerPanel
             title="专家候选（专家）"
             hint="参与专家审查投票；格式审查时从此名单中分配"
             members={expertCandidates}
-            onChange={setExpertCandidates}
-            onAdd={() => setPickerFor("expert")}
           />
         </div>
       )}
-
-      {pickerFor &&
-        createPortal(
-          <PersonnelPicker
-            onClose={() => setPickerFor(null)}
-            onConfirm={handleConfirm}
-          />,
-          document.body
-        )}
     </div>
   );
 }
@@ -109,17 +71,11 @@ function ReviewerPanel({
   title,
   hint,
   members,
-  onChange,
-  onAdd,
 }: {
   title: string;
   hint: string;
   members: Reviewer[];
-  onChange: (next: Reviewer[]) => void;
-  onAdd: () => void;
 }) {
-  const remove = (userId: string) => onChange(members.filter((m) => m.userId !== userId));
-
   return (
     <div className="card" style={{ padding: "18px 20px" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
@@ -129,9 +85,11 @@ function ReviewerPanel({
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>{hint}</div>
 
       {members.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0 14px" }}>暂无成员，请点击下方「添加人员」选择</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", padding: "8px 0 6px" }}>
+          暂无成员。请到人员页为对应人员设置身份标识。
+        </div>
       ) : (
-        <div style={{ marginBottom: 14 }}>
+        <div>
           {members.map((m) => (
             <div key={m.userId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: "1px solid #f0f2f6" }}>
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -139,13 +97,10 @@ function ReviewerPanel({
                 {m.dept ? <span style={{ color: "var(--muted)", fontSize: 12, marginLeft: 8 }}>{m.dept}</span> : null}
               </span>
               <span style={{ color: "var(--muted)", fontSize: 11, fontFamily: "monospace" }}>{m.userId}</span>
-              <button className="btn ghost small" style={{ color: "var(--danger)" }} onClick={() => remove(m.userId)}>移除</button>
             </div>
           ))}
         </div>
       )}
-
-      <button className="btn ghost" onClick={onAdd}>＋ 添加人员</button>
     </div>
   );
 }

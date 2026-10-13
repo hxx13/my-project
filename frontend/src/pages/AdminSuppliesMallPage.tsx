@@ -1043,7 +1043,7 @@ export default function AdminSuppliesMallPage() {
                 <div
                   key={c.id}
                   className="relative rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-sm min-h-[9rem] animate-[card-in_0.4s_ease-out_both]"
-                  style={{ animationDelay: `${i * 60}ms` }}
+                  style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}
                 >
                   {showAdminEntry && (
                     <button
@@ -1062,7 +1062,7 @@ export default function AdminSuppliesMallPage() {
                   >
                     <div className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)] flex items-center justify-center aspect-square w-24">
                       {catCover ? (
-                        <img src={catCover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                        <img src={catCover} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
                       ) : (
                         <span className="text-3xl font-bold text-[var(--twin-mute)] select-none">{String(c.name || "?").charAt(0)}</span>
                       )}
@@ -1110,7 +1110,9 @@ export default function AdminSuppliesMallPage() {
                   key={item.id}
                   data-item-id={item.id}
                   className="relative flex min-w-0 flex-col rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm animate-[card-in_0.4s_ease-out_both]"
-                  style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H, animationDelay: `${i * 50}ms` }}
+                  // 入场延迟必须封顶：动画起手是 opacity:0 且 fill-mode=both，延迟期间卡片完全不可见。
+                  // 按序号线性累加时，100+ 商品的最后一张要等 5 秒多才显形（表现为"后面的图加载不出来"）。
+                  style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H, animationDelay: `${Math.min(i, 12) * 40}ms` }}
                 >
                   {showAdminEntry && (
                     <button
@@ -1133,7 +1135,7 @@ export default function AdminSuppliesMallPage() {
                         className="absolute inset-0 block"
                         onClick={() => setPreviewSrc(cover)}
                       >
-                        <img src={cover} alt="" className="h-full w-full object-cover" />
+                        <img src={cover} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                       </button>
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-base font-semibold text-[var(--twin-mute)]">

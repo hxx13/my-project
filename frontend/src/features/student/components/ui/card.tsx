@@ -8,11 +8,13 @@ const studentCardVariants = cva(
   {
     variants: {
       variant: {
+        /* 底色走令牌，别写 bg-white：--student-canvas 亮色就是 #fff（外观不变），暗色才有对应深底。
+           硬写白底会让卡片在暗色下变成「白卡片 + 近白字」。 */
         default:
-          "bg-white shadow-student-card hover:shadow-student-card-hover",
+          "bg-[var(--student-canvas)] shadow-student-card hover:shadow-student-card-hover",
         soft: "bg-[var(--student-card-soft-bg)]",
         bordered:
-          "bg-white border border-[var(--student-border)]",
+          "bg-[var(--student-canvas)] border border-[var(--student-border)]",
       },
       padding: {
         md: "p-4",

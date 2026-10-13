@@ -251,6 +251,52 @@ class AiOrchestratorToolLoopTest {
         assertEquals(0, sink.interactions.size());
     }
 
+    /**
+     * 工具自己说「没办成、候选交回来」时，**没打标记也必须问**（2026-10-13 真机）。
+     *
+     * <p>真机喂了一句大白话（两个名字 + 房间 + 时点，名字还打错一个字），助手正文写着
+     * 「最接近的几位已列成选项，请点一下」，而界面上**一个选项都没有** —— 免冻包的人名候选那一支
+     * 没打「必须问」的标记，那一问就被静默丢掉了。同形状的还有「挑一扇门」「挑一张要处理的单」
+     * 「挑一条报名」……十几处各写各的标记，漏哪一处哪一处哑掉。
+     *
+     * <p>所以判据收到编排层一处：`ok` 明确为 false 又带着候选 = 「只能让用户挑才能继续」。
+     */
+    @Test
+    @DisplayName("工具没办成又交回候选 —— 没打标记也要问（漏标就是正文说「已列成选项」而界面空白）")
+    void unmarkedFailureChoicesAreStillAsked() {
+        AiToolPack pack = new AiToolPack() {
+            @Override public String packKey() { return "unmarked"; }
+            @Override public String displayName() { return "漏标包"; }
+            @Override public String defaultPrompt() { return ""; }
+            @Override public List<AiTool> tools() {
+                // 幂等写 + **执行体直接回候选** —— 这正是免冻包那两支的形状（它们不走「需确认」的预解析）
+                return List.of(new AiTool("pickPerson", "挑人。", "{}", "cap.write",
+                        SideEffect.IDEMPOTENT_WRITE,
+                        (ctx, args) -> Map.of("ok", false,
+                                "reason", "名字对不上，让用户挑一位，不要自己选",
+                                "choices", List.of(
+                                        Map.of("label", "王毓斐", "value", "王毓斐"),
+                                        Map.of("label", "王毓菲", "value", "王毓菲")),
+                                "choicesTitle", "是不是这几位之一")));
+            }
+        };
+        AiCapabilityGate gate = mock(AiCapabilityGate.class);
+        when(gate.check(any(), anyString())).thenReturn(null);
+        AiOrchestrator orch = new AiOrchestrator(chatClient, new ToolRegistry(List.of(pack)),
+                promptService, sessionService, mock(AiAuditService.class), gate,
+                interactionService, new ObjectMapper(), studentFalseVisibility(), new AiPackRouter(),
+                attachmentService(), exportArtifactService(), null);
+
+        when(chatClient.chatWithTools(any(), any()))
+                .thenReturn(toolCall("call_1", "pickPerson", "{}"))
+                .thenReturn(textOnly("库里没有完全同名的，选项已经列出来了"));
+
+        orch.run(staff(), 1L, "给王玉菲开一下免冻", null, sink);
+
+        assertEquals(1, sink.interactions.size(), "没办成又给了候选，必须问：" + sink.interactions);
+        assertTrue(sink.interactions.get(0).contains("王毓斐"), sink.interactions.get(0));
+    }
+
     @Test
     @DisplayName("一个工具一次问多件事：questions 数组要变成多条可点选事件，载体按顺序问")
     void multiQuestionToolEmitsOneEventPerQuestion() {

@@ -167,6 +167,10 @@ public class AupDictService {
         if (ro != null) {
             return ro;
         }
+        Result<DictItemVO> rs = requireEditable(d);
+        if (rs != null) {
+            return rs;
+        }
         String value = trim(req.getValue());
         if (value.isEmpty()) {
             return Result.fail(400, "value 不能为空");
@@ -194,6 +198,10 @@ public class AupDictService {
         if (ro != null) {
             return ro;
         }
+        Result<?> rs = requireEditable(d);
+        if (rs != null) {
+            return rs;
+        }
         DictItem item = dictItemMapper.findById(itemId);
         if (item == null || !d.getId().equals(item.getDictId())) {
             return Result.error("字典项不存在");
@@ -218,6 +226,10 @@ public class AupDictService {
         if (ro != null) {
             return ro;
         }
+        Result<?> rs = requireEditable(d);
+        if (rs != null) {
+            return rs;
+        }
         DictItem item = dictItemMapper.findById(itemId);
         if (item == null || !d.getId().equals(item.getDictId())) {
             return Result.error("字典项不存在");
@@ -236,6 +248,10 @@ public class AupDictService {
         Result<?> ro = requireLocal(d);
         if (ro != null) {
             return ro;
+        }
+        Result<?> rs = requireEditable(d);
+        if (rs != null) {
+            return rs;
         }
         if (itemIds == null) {
             itemIds = List.of();
@@ -481,6 +497,19 @@ public class AupDictService {
     private <T> Result<T> requireLocal(Dict d) {
         if ("EXTERNAL".equalsIgnoreCase(d.getSource())) {
             return Result.fail(400, "外部引用码表只读，请到源模块编辑");
+        }
+        return null;
+    }
+
+    /**
+     * 码表项可编辑性：仅草稿态可增删改排序。
+     *
+     * <p>已发布/待审核的版本可能已被模板字段按 dict_version 钉住，改项会让已填数据与选项对不上
+     * （再编辑时命中字典白名单校验）。要改先新建版本。
+     */
+    private <T> Result<T> requireEditable(Dict d) {
+        if (!"DRAFT".equals(d.getStatus())) {
+            return Result.fail(400, "码表当前为「" + d.getStatus() + "」状态，不可改项，请先新建版本");
         }
         return null;
     }

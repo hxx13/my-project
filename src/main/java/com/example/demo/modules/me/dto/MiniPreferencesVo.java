@@ -57,6 +57,12 @@ public class MiniPreferencesVo {
      */
     private RoomWatchVo roomWatch;
 
+    /**
+     * 无人操作自动回大屏：前台 kiosk 用。长时间无操作后自动全屏并跳回仪表盘。
+     * {@code null} = 未启用（默认关闭，避免影响正常操作）。
+     */
+    private DashboardAutoReturnVo dashboardAutoReturn;
+
     @Data
     public static class RoomWatchVo {
         private List<RoomWatchSelectionVo> selections;
@@ -66,5 +72,13 @@ public class MiniPreferencesVo {
     public static class RoomWatchSelectionVo {
         private String campus;
         private String floor;
+    }
+
+    @Data
+    public static class DashboardAutoReturnVo {
+        /** 是否启用 */
+        private Boolean enabled;
+        /** 无操作多少分钟后触发（分钟），服务端归一化到 1..120 */
+        private Integer idleMinutes;
     }
 }

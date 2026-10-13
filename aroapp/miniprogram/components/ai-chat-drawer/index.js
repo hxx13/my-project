@@ -1814,6 +1814,9 @@ Component({
      *
      * <p>与网页端同一约定：发出去的是选项的 `value`，用户那侧留的是 label。
      * 勾完不点确认就切题/发送，等于这次勾选白勾 —— 所以这里挡一下空的。
+     *
+     * <p>**勾了选项又在「其他想法…」里补了话，两样一起带上**（用户 2026-10-13 反馈）：
+     * 拆成两条消息就是「一个选项一条消息」，模型只看到一半，会把另一半再问一遍。
      */
     onConfirmMulti() {
       if (this.data.sending) return;
@@ -1828,9 +1831,13 @@ Component({
         return hit ? hit.label : v;
       });
       const q = this.data.queue[this.data.current];
-      const joined = picked.join(',');
+      // 「其他想法」里那句话与勾中的选项**合成一条**发给模型；气泡上显示人话
+      const extra = (this.data.customDraft || '').trim();
+      const joined = extra ? picked.join(',') + '、' + extra : picked.join(',');
+      const shown = extra ? labels.join('、') + '、' + extra : labels.join('、');
+      this.setData({ multiPick: [], customDraft: '' });
       if (q && q.kind === 'confirm') {
-        this.submitInteraction(q.token, joined, labels.join('、'));
+        this.submitInteraction(q.token, joined, shown);
         return;
       }
       if (!this.data.wizardMode) {

@@ -1,6 +1,7 @@
 package com.example.demo.modules.ai.tool.pack;
 
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.ai.tool.AiChoices;
 import com.example.demo.modules.ai.tool.AiTool;
 import com.example.demo.modules.ai.tool.AiToolPack;
 import com.example.demo.modules.ai.tool.SideEffect;
@@ -8,6 +9,7 @@ import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
+import com.example.demo.modules.twin.common.util.ChineseNameSimilarity;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
@@ -122,7 +124,10 @@ public class CommonToolPack implements AiToolPack {
                         + "**也别拿它当课题组名单用** —— 它是关键词匹配，用组名搜只会命中名字里带那几个字的人，"
                         + "不全也不准，把这种结果说成「全部成员」就是编答案。"
                         + "要完整名单用 listProjectGroupMembers；若你的可用工具里没有它，说明你没这个权限，"
-                        + "就直说办不了，或只说「这几个跟你搜的词沾边」并讲清这不是完整名单。",
+                        + "就直说办不了，或只说「这几个跟你搜的词沾边」并讲清这不是完整名单。"
+                        + "**名字写成同音字照样查得到**（「王玉菲」能找到「王毓菲」）：精确查不到时工具会按"
+                        + "**姓名相似度**给出最像的几位，把它们交给用户点一个确认即可，"
+                        + "**别直接回「查无此人」** —— 生活里写错名字最常见的形态就是谐音。",
                 schema,
                 CAP_PERSON_SEARCH,
                 SideEffect.READ,
@@ -153,23 +158,43 @@ public class CommonToolPack implements AiToolPack {
                             }
                         }
                     }
+                    /*
+                     * 一个字都没命中 → 多半是**打了同音字**（「王玉菲」vs「王毓菲」）。
+                     * 生活里写错名字最常见的形态就是谐音，而关键词搜索对这类一点用都没有：
+                     * 它只会说「查不到」，用户再报一遍同样的音、再查不到。按姓名相似度捞一批顶上。
+                     * 判据见 ChineseNameSimilarity：长度要差不多、至少对上两个字（音或字都算）。
+                     */
+                    boolean fuzzy = false;
+                    if (candidates.isEmpty()) {
+                        candidates.addAll(fuzzyPersonnel(keyword, limit));
+                        fuzzy = !candidates.isEmpty();
+                    }
                     Map<String, Object> out = new LinkedHashMap<>();
                     out.put("total", candidates.size());
                     out.put("candidates", candidates);
+                    if (fuzzy) {
+                        out.put("matchedBy", "姓名相似度（关键词一个字都没精确命中，下面是名字最像的几位）");
+                        out.put("note", "让用户点一个确认是哪一位，不要在正文里复述候选、也不要替他认定");
+                    }
                     if (fromRemote) {
                         out.put("source", "ARO 官方（本地档案未命中）");
                     }
                     if (candidates.size() > 1) {
                         out.put("note", "命中多条，请让用户确认是哪一位，不要自己选");
                     }
-                    // 让用户**点选**而不是照正文手打。扩词搜索（「王毓」→ 王毓斐）、重名、多命中，
-                    // 模型都会在正文里问「是哪一位」，但选项不给出来，用户就只能自己敲名字（真机反馈）。
-                    // 上限定 6：人名标签比房间长，再多会把卡片顶出屏幕；超过 6 条仍由模型在正文里问。
-                    if (!candidates.isEmpty() && candidates.size() <= CHOICE_MAX_PERSON) {
-                        out.put("choices", PersonChoices.of(candidates));
-                        // 标题带上关键词：面板里显示成「第 1/2 问 · 郑本风 挑一位」，
-                        // 只写「挑一位」的话，多问时用户看不出这一问在问谁
-                        out.put("choicesTitle", keyword + " · 挑一位");
+                    /*
+                     * 让用户**点选**而不是照正文手打。扩词搜索（「王毓」→ 王毓斐）、重名、多命中，
+                     * 模型都会在正文里问「是哪一位」，但选项不给出来，用户就只能自己敲名字（真机反馈）。
+                     * 上限定 6：人名标签比房间长，再多会把卡片顶出屏幕；超过 6 条仍由模型在正文里问。
+                     *
+                     * <p><b>只有 2 位以上才当「一道题」摆出来</b>（2026-10-13）：命中唯一时没什么可挑的，
+                     * 再摆一张「挑一位」就是用户点名过的那种「只有一个可选的还非要我选」。
+                     * 而且必须打「必须问」的标记 —— 不打的话编排层默认丢掉，正文里写着「请点一下」
+                     * 而界面上一个选项都没有（真机 2026-10-13：重名的 4 位就是这么消失的）。
+                     */
+                    if (candidates.size() > 1 && candidates.size() <= CHOICE_MAX_PERSON) {
+                        out.putAll(AiChoices.requiredSingle(keyword + " · 挑一位",
+                                PersonChoices.of(candidates)));
                     }
                     return out;
                 });
@@ -190,7 +215,11 @@ public class CommonToolPack implements AiToolPack {
                 "searchProjectGroup",
                 "按关键词查课题组名，用来把用户口中的组名对准库里的完整组名。"
                         + "**它只回答「组名是什么」**，不回答「组里有谁」—— 要成员名单接下来调 listProjectGroupMembers。"
-                        + "库里课题组名是逗号分隔的多值字段，这里返回的是拆好的单个组名。",
+                        + "库里课题组名是逗号分隔的多值字段，这里返回的是拆好的单个组名。"
+                        + "**关键词要按用户原话整段传**（「郑均克」就传「郑均克」，别只传「郑」）："
+                        + "查不到时本工具自己会按**姓名相似度**给出最像的几个（同音字打错也能捞到），"
+                        + "你再把这些列给用户点一个确认即可。你自己把关键词缩成一两个字再搜是错的 ——"
+                        + "那样回来的全是只跟用户共一个姓、与要找的人无关的组，只会拿一堆不相干的人烦用户。",
                 schema,
                 CAP_GROUP_SEARCH,
                 SideEffect.READ,
@@ -201,7 +230,17 @@ public class CommonToolPack implements AiToolPack {
                     }
                     int limit = clamp(args.path("limit").asInt(20), 1, 50);
                     List<String> groups = archiveQueryService.searchProjectGroupNames(keyword, limit);
-                    return Map.of("total", groups.size(), "groups", groups);
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    out.put("total", groups.size());
+                    out.put("groups", groups);
+                    // 命中里没有一个是含着关键词的 → 走的**相似度兜底**（精确一个字都没对上）。
+                    // 得说清楚：这些是「像的」不是「就是」，交给用户点头，别自己认定。
+                    // 判据能这么写，是因为精确那条路上返回的每个组名必然含关键词（见 distinctGroupsMatchingKeyword）。
+                    if (!groups.isEmpty() && groups.stream().noneMatch(g -> g.contains(keyword))) {
+                        out.put("matchedBy", "姓名相似度（关键词一个字都没精确命中，下面是名字最像的组名）");
+                        out.put("note", "让用户点一个确认是不是它，不要在正文里复述候选、也不要替他认定");
+                    }
+                    return out;
                 });
     }
 
@@ -258,6 +297,51 @@ public class CommonToolPack implements AiToolPack {
         m.put("department", str(row.get("department_name")));
         m.put("projectGroup", str(row.get("project_group_name")));
         return m;
+    }
+
+    /**
+     * 关键词一个字都没命中时的兜底：**逐字去捞一批**，再按「有多像」排序取前几位。
+     *
+     * <p>逐字而不是只看姓氏：打错的那个字可能在任何一位（包括姓）。每位捞一批再合并，
+     * 覆盖面比只按姓捞大得多；捞完在内存里比字、比音，不必让数据库做相似度。
+     *
+     * <p>只取前 {@code CHOICE_MAX_PERSON} 位：人名标签长，再多就把卡片顶出屏幕，
+     * 而且候选一多「最像的那个」反而不显眼。
+     */
+    private List<Map<String, Object>> fuzzyPersonnel(String keyword, int limit) {
+        String q = keyword == null ? "" : keyword.trim();
+        if (q.length() < 2) {
+            return List.of();
+        }
+        Map<Object, Map<String, Object>> rows = new LinkedHashMap<>();
+        int tried = 0;
+        for (char c : q.toCharArray()) {
+            if (tried >= 3) {
+                break;
+            }
+            tried++;
+            List<Map<String, Object>> hits = dashboardMapper.searchPersonnelPaged(String.valueOf(c), 60, 0);
+            if (hits == null) {
+                continue;
+            }
+            for (Map<String, Object> row : hits) {
+                if (row != null && row.get("user_id") != null) {
+                    rows.putIfAbsent(row.get("user_id"), row);
+                }
+            }
+        }
+        List<Map.Entry<Integer, Map<String, Object>>> scored = new ArrayList<>();
+        for (Map<String, Object> row : rows.values()) {
+            int score = ChineseNameSimilarity.score(str(row.get("name")), q);
+            if (score > 0) {
+                scored.add(new java.util.AbstractMap.SimpleEntry<>(score, row));
+            }
+        }
+        scored.sort((x, y) -> Integer.compare(y.getKey(), x.getKey()));
+        return scored.stream()
+                .limit(Math.min(Math.max(limit, 1), CHOICE_MAX_PERSON))
+                .map(e -> projectPerson(e.getValue()))
+                .toList();
     }
 
     private static int level(User user) {

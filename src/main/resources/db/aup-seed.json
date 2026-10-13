@@ -1247,14 +1247,20 @@
           "label": "实验计划注册号码",
           "type": "text",
           "description": "申请提交后由 IACUC 指定，仅限于 IACUC 填写",
-          "sortOrder": 0
+          "sortOrder": 0,
+          "config": {
+            "amendmentLevel": "LOCKED"
+          }
         },
         {
           "fieldKey": "0.oldRegNo",
           "label": "已有实验计划注册号码",
           "type": "text",
           "description": "仅限更新实验动物研究及使用计划时填写，由申请部门填写",
-          "sortOrder": 1
+          "sortOrder": 1,
+          "config": {
+            "amendmentLevel": "LOCKED"
+          }
         },
         {
           "fieldKey": "0.regNote",
@@ -1283,7 +1289,10 @@
               "label": "项目名称",
               "type": "text",
               "required": true,
-              "sortOrder": 0
+              "sortOrder": 0,
+              "config": {
+                "amendmentLevel": "LOCKED"
+              }
             },
             {
               "fieldKey": "A1.source",
@@ -1313,14 +1322,20 @@
               "label": "项目起止日期",
               "type": "dateRange",
               "required": true,
-              "sortOrder": 3
+              "sortOrder": 3,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "A1.no",
               "label": "项目编号",
               "type": "text",
               "required": true,
-              "sortOrder": 4
+              "sortOrder": 4,
+              "config": {
+                "amendmentLevel": "LOCKED"
+              }
             },
             {
               "fieldKey": "A1.pi",
@@ -1359,14 +1374,20 @@
               "label": "课题组长",
               "type": "text",
               "required": true,
-              "sortOrder": 1
+              "sortOrder": 1,
+              "config": {
+                "amendmentLevel": "LOCKED"
+              }
             },
             {
               "fieldKey": "A2.employeeNo",
               "label": "工号",
               "type": "text",
               "required": true,
-              "sortOrder": 2
+              "sortOrder": 2,
+              "config": {
+                "amendmentLevel": "LOCKED"
+              }
             },
             {
               "fieldKey": "A2.department",
@@ -1488,7 +1509,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "description": "是否一切动物实验（包括饲养、给药、观察、采样以及一切动物相关操作过程）都在上海交通大学医学院校内进行（包括实验动物科学部黄浦6#楼，周浦E10#，E11A#E11B#E11C#地下室，两个校区校内教研室，校内研究机构）？",
               "dictKey": "a5Scope"
@@ -1502,6 +1524,9 @@
                 "field": "A5.scope",
                 "op": "equals",
                 "value": "部分校外"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -1515,7 +1540,8 @@
                 "value": "部分校外"
               },
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "a5IacucApproved"
             },
@@ -1528,6 +1554,9 @@
                 "field": "A5.scope",
                 "op": "equals",
                 "value": "部分校外"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -1539,6 +1568,9 @@
                 "field": "A5.scope",
                 "op": "equals",
                 "value": "部分校外"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -1550,6 +1582,9 @@
                 "field": "A5.scope",
                 "op": "equals",
                 "value": "部分校外"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -1595,7 +1630,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "a7Export"
             },
@@ -1608,6 +1644,9 @@
                 "field": "A7.export",
                 "op": "equals",
                 "value": "是"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -1617,7 +1656,8 @@
               "required": true,
               "sortOrder": 2,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "a7Import"
             },
@@ -1630,6 +1670,9 @@
                 "field": "A7.import",
                 "op": "equals",
                 "value": "是"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -1672,7 +1715,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请从专业角度简单阐述本项目选择动物实验的依据及目的（限5000字内）"
             }
@@ -1753,7 +1797,8 @@
               "required": true,
               "sortOrder": 4,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "description": "本项目动物实验过程中所选择的操作程序是否涉及动物福利所关心的疼痛问题（包括：手术过程，自发性疾病，基因诱导型疾病，肿瘤形成等）？",
               "dictKey": "b3HasPain"
@@ -1770,7 +1815,8 @@
                 "value": "是"
               },
               "config": {
-                "maxLength": 250
+                "maxLength": 250,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请说明导致动物疼痛的程序（例如：手术、毒理、辐照、移植、肿瘤、败血症、感染等，限250字内）"
             }
@@ -1860,7 +1906,8 @@
                     },
                     "description": "请对以上所选依据进行说明（限5000字以内）"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2046,7 +2093,8 @@
                     "type": "text",
                     "sortOrder": 14
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2063,7 +2111,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "b7Basis"
             },
@@ -2078,7 +2127,8 @@
                 "op": "notEmpty"
               },
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请从预实验，正式实验，以及动物分组等多因素对以上所选依据进行说明（限5000字内）："
             }
@@ -2096,7 +2146,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请提供简单的动物实验整体设计概要，概要内容应包括分组实验，分组样本大小，预期或者已经确定的动物死亡情况，以及动物分组后进行观察和检测的程序和内容。此概要不需要填写具体的操作步骤和手术过程，如使用特殊药物或操作技术请在概要中说明（限5000字内）。"
             },
@@ -2107,7 +2158,8 @@
               "required": true,
               "sortOrder": 1,
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请描述预期的动物实验时间节点，例如：动物的引入，预实验，正式实验，手术，测试，样品收集，安乐死等（限5000字内）。如果实验方案涉及到肿瘤模型，请前往实验动物管理系统（ARO）的 SOP 模块-管理政策-ANIM(动物管理政策）-DLAS-MP-ANIM.11，查看最新版肿瘤模型动物研究政策。"
             }
@@ -2126,7 +2178,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "b9NonPharma"
             },
@@ -2140,7 +2193,10 @@
                 "op": "equals",
                 "value": "是"
               },
-              "description": "请对所使用非药用级别化合物进行逐一说明"
+              "description": "请对所使用非药用级别化合物进行逐一说明",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             }
           ]
         }
@@ -2165,7 +2221,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "c1Space"
             },
@@ -2210,7 +2267,8 @@
                     "type": "text",
                     "required": true
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2228,7 +2286,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "c2HasRequest"
             },
@@ -2243,7 +2302,8 @@
                 "value": "是"
               },
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "c2Requests"
             },
@@ -2259,7 +2319,8 @@
                 "value": "是"
               },
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请对以上特殊饲养请求进行说明（主要阐述特殊饲养操作时间段，限5000字内）："
             }
@@ -2277,7 +2338,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "description": "根据《实验动物饲养管理和使用指南》（Guide）规定，社会型动物需要集体饲养，以符合动物福利要求。实验过程中是否出现单笼饲养的情况？",
               "dictKey": "c3SingleCage"
@@ -2291,6 +2353,9 @@
                 "field": "C3.singleCage",
                 "op": "equals",
                 "value": "是"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2348,7 +2413,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "description": "实验过程中是否需要对动物在清醒状态（非麻醉）下进行保定（不是短时间的抓取）？",
               "dictKey": "d2Restraint"
@@ -2364,7 +2430,8 @@
                 "value": "是"
               },
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "d2Confirm"
             },
@@ -2380,7 +2447,8 @@
                 "value": "是"
               },
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               },
               "description": "请对动物保定程序进行说明（应包括：保定方法、保定装置、持续时间、保定过程可能对动物产生压力等，限5000字内）"
             }
@@ -2399,7 +2467,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "d3Exempt"
             },
@@ -2442,7 +2511,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "description": "请确认执行安乐死的人员：",
               "dictKey": "e1Operator"
@@ -2458,7 +2528,8 @@
                 "value": "由于特殊需求不执行安乐死，请说明依据（限5000字内）"
               },
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -2486,7 +2557,8 @@
                     "label": "药物注射剂量 / 给药途径",
                     "type": "text"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               },
               "description": "请选择美国兽医协会（AVMA）可接受的安乐死方法"
             },
@@ -2497,7 +2569,8 @@
               "required": true,
               "sortOrder": 3,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "description": "根据 AVMA 规定，任何安乐死动物应采取第二种方法进行死亡确认，请选择（可多选）。",
               "dictKey": "e1Confirm"
@@ -2511,6 +2584,9 @@
                 "field": "E1.confirm",
                 "op": "contains",
                 "value": "组织采样"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -2522,6 +2598,9 @@
                 "field": "E1.confirm",
                 "op": "contains",
                 "value": "其他方法"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -2544,7 +2623,8 @@
                     "type": "select",
                     "dictKey": "euthanasiaMethod"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               },
               "description": "如需使用 AVMA 条件性接受的安乐死方法，请选择："
             },
@@ -2553,7 +2633,10 @@
               "label": "条件性方法依据",
               "type": "textarea",
               "sortOrder": 7,
-              "description": "请说明选择该方法依据："
+              "description": "请说明选择该方法依据：",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "E1.otherTable",
@@ -2574,7 +2657,8 @@
                     "label": "安乐死方法",
                     "type": "text"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               },
               "description": "如需使用其他安乐死方法，请描述："
             },
@@ -2583,7 +2667,10 @@
               "label": "其他方法依据",
               "type": "textarea",
               "sortOrder": 9,
-              "description": "请说明选择该方法依据："
+              "description": "请说明选择该方法依据：",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             }
           ]
         },
@@ -2599,7 +2686,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "e2Disposal"
             },
@@ -2614,7 +2702,8 @@
                 "value": "其他处理渠道，请说明（限5000字内）："
               },
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2632,7 +2721,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "e3Method"
             },
@@ -2647,7 +2737,8 @@
                 "value": "其他方法"
               },
               "config": {
-                "maxLength": 5000
+                "maxLength": 5000,
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2664,7 +2755,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "description": "实验后期样本收集阶段，是否与本研究计划以外的课题组共同采集动物组织或器官？",
               "dictKey": "e4Cooperate"
@@ -2680,7 +2772,9 @@
                 "op": "equals",
                 "value": "是"
               },
-              "config": {},
+              "config": {
+                "amendmentLevel": "MAJOR"
+              },
               "dictKey": "projectGroup"
             },
             {
@@ -2693,6 +2787,9 @@
                 "field": "E4.cooperate",
                 "op": "equals",
                 "value": "是"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -2705,6 +2802,9 @@
                 "field": "E4.cooperate",
                 "op": "equals",
                 "value": "是"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -2780,14 +2880,20 @@
           "fieldKey": "F.coLeaderName",
           "label": "合作单位课题组长姓名（选填）",
           "type": "text",
-          "sortOrder": 1
+          "sortOrder": 1,
+          "config": {
+            "amendmentLevel": "MAJOR"
+          }
         },
         {
           "fieldKey": "F.leaderSignature",
           "label": "课题组长签名",
           "type": "signature",
           "required": true,
-          "sortOrder": 2
+          "sortOrder": 2,
+          "config": {
+            "amendmentLevel": "LOCKED"
+          }
         },
         {
           "fieldKey": "F.coLeaderSignature",
@@ -2819,7 +2925,8 @@
               "type": "choice",
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "g1Chemicals"
             },
@@ -2853,6 +2960,9 @@
                 "field": "G1.chemicals",
                 "op": "contains",
                 "value": "其他有害化合物（请列入下表）"
+              },
+              "config": {
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2894,7 +3004,8 @@
                     "type": "text",
                     "required": true
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -2970,7 +3081,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "h1TransportBy"
             },
@@ -2985,13 +3097,19 @@
                 "op": "equals",
                 "value": "self"
               },
-              "description": "请描述在校园内自行运输动物的具体措施（主要包括：如何保证动物福利，运输工具描述，防止动物逃跑措施）"
+              "description": "请描述在校园内自行运输动物的具体措施（主要包括：如何保证动物福利，运输工具描述，防止动物逃跑措施）",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "H1.none",
               "label": "无相关操作。",
               "type": "checkbox",
-              "sortOrder": 2
+              "sortOrder": 2,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             }
           ]
         },
@@ -3007,7 +3125,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "h2TransportBy"
             },
@@ -3022,13 +3141,19 @@
                 "op": "equals",
                 "value": "self"
               },
-              "description": "请描述自行运输动物至校外机构的相关信息（主要包括：如何保证动物福利，运输工具描述，防止动物逃跑措施）。"
+              "description": "请描述自行运输动物至校外机构的相关信息（主要包括：如何保证动物福利，运输工具描述，防止动物逃跑措施）。",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "H2.none",
               "label": "无相关操作。",
               "type": "checkbox",
-              "sortOrder": 2
+              "sortOrder": 2,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             }
           ]
         }
@@ -3118,7 +3243,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "multiple"
+                "choiceType": "multiple",
+                "amendmentLevel": "MAJOR"
               },
               "description": "根据中华人民共和国《动物保护法》第三章第十五条，并参照美国农业部（USDA）对动物实验过程中动物的分类标准请选择动物所承受疼痛的级别。如选择目录D请在下列表格填写止痛药物具体信息。",
               "dictKey": "i2PainLevel"
@@ -3159,7 +3285,8 @@
                     "type": "text",
                     "required": true
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -3198,7 +3325,8 @@
                     "type": "text",
                     "required": true
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -3215,7 +3343,8 @@
               "required": true,
               "sortOrder": 0,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "i3Anesthesia"
             },
@@ -3252,7 +3381,8 @@
                     "label": "维持给药时间",
                     "type": "text"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -3335,7 +3465,8 @@
                     },
                     "dictKey": "j2DetailsPhenotypeInduction"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             }
           ]
@@ -3700,21 +3831,30 @@
               "label": "课题组长",
               "type": "text",
               "required": true,
-              "sortOrder": 0
+              "sortOrder": 0,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.buildingNo",
               "label": "建筑编号",
               "type": "text",
               "required": true,
-              "sortOrder": 1
+              "sortOrder": 1,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.roomNo",
               "label": "房间编号",
               "type": "text",
               "required": true,
-              "sortOrder": 2
+              "sortOrder": 2,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.absLevel",
@@ -3723,7 +3863,8 @@
               "required": true,
               "sortOrder": 3,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "l1AbsLevel"
             },
@@ -3734,7 +3875,8 @@
               "required": true,
               "sortOrder": 4,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "dictKey": "l1Cycle"
             },
@@ -3743,28 +3885,40 @@
               "label": "课题组管理区域饲养动物种类",
               "type": "textarea",
               "required": true,
-              "sortOrder": 5
+              "sortOrder": 5,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.cageCount",
               "label": "笼盒数目（笼）",
               "type": "number",
               "required": true,
-              "sortOrder": 6
+              "sortOrder": 6,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.animalCount",
               "label": "动物数量（只）",
               "type": "number",
               "required": true,
-              "sortOrder": 7
+              "sortOrder": 7,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.maxDays",
               "label": "最长时间（天）",
               "type": "number",
               "required": true,
-              "sortOrder": 8
+              "sortOrder": 8,
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L1.staff",
@@ -3795,7 +3949,8 @@
                     "label": "E-mail地址",
                     "type": "text"
                   }
-                ]
+                ],
+                "amendmentLevel": "MAJOR"
               }
             },
             {
@@ -3805,7 +3960,8 @@
               "required": true,
               "sortOrder": 10,
               "config": {
-                "choiceType": "single"
+                "choiceType": "single",
+                "amendmentLevel": "MAJOR"
               },
               "description": "根据Guide要求，实验所使用的测试工具需被设计成可以表面消毒，便于应用于不同的研究过程。",
               "dictKey": "l1Disinfectable"
@@ -3820,7 +3976,10 @@
                 "op": "contains",
                 "value": "不可以表面消毒"
               },
-              "description": "如检测工具不可以表面消毒，请解释如下："
+              "description": "如检测工具不可以表面消毒，请解释如下：",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             }
           ]
         },
@@ -3835,7 +3994,10 @@
               "type": "textarea",
               "required": true,
               "sortOrder": 0,
-              "description": "医学院实验动物科学部动物设施将实施标准的饲养管理程序，可以充分的保证动物福利以及动物饲养质量。如动物需饲养在课题组管理区域，请给出合理的理由（例如：便于项目检测、特殊操作过程等），并详述如何保证动物福利的实施。"
+              "description": "医学院实验动物科学部动物设施将实施标准的饲养管理程序，可以充分的保证动物福利以及动物饲养质量。如动物需饲养在课题组管理区域，请给出合理的理由（例如：便于项目检测、特殊操作过程等），并详述如何保证动物福利的实施。",
+              "config": {
+                "amendmentLevel": "MAJOR"
+              }
             },
             {
               "fieldKey": "L2.other",

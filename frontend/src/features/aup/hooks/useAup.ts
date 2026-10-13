@@ -199,7 +199,11 @@ function parseDraftData(raw?: string | Record<string, unknown> | null): Record<s
   return raw;
 }
 
-export function useAupDraft(id?: string) {
+/**
+ * @param autosaveEnabled 关闭自动保存（修订模式用：已通过计划书的编辑走专用接口，
+ *   不能落到草稿保存端点，否则会被「非草稿状态」拒绝）
+ */
+export function useAupDraft(id?: string, autosaveEnabled = true) {
   const qc = useQueryClient();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [version, setVersion] = useState(0);
@@ -271,7 +275,7 @@ export function useAupDraft(id?: string) {
   );
 
   const scheduleAutosave = useCallback(() => {
-    if (!id) return;
+    if (!id || !autosaveEnabled) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       void doSave(true).catch(async (e: Error) => {
@@ -282,9 +286,18 @@ export function useAupDraft(id?: string) {
         toast.error("自动保存失败：" + e.message);
       });
     }, 800);
-  }, [id, doSave]);
+  }, [id, autosaveEnabled, doSave]);
 
   const flushSave = useCallback(() => doSave(false), [doSave]);
+
+  /**
+   * 取当前编辑内容的保存载荷（含尚未落盘的 pending 改动），供修订接口使用。
+   * 修订模式不自动保存，因此必须把内存里的编辑一并带出。
+   */
+  const buildPayload = useCallback((): { dataJson: string; expectedVersion: number } => {
+    const merged = { ...valuesRef.current, ...pendingRef.current };
+    return { dataJson: JSON.stringify(merged), expectedVersion: versionRef.current };
+  }, []);
 
   const updateValue = useCallback(
     (fieldKey: string, value: unknown) => {
@@ -356,6 +369,7 @@ export function useAupDraft(id?: string) {
     updateValue,
     updateValues,
     flushSave,
+    buildPayload,
     saveMutation,
     submitMutation,
   };

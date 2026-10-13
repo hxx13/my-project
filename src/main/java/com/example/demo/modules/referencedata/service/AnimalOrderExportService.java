@@ -169,7 +169,12 @@ public class AnimalOrderExportService {
         rows.sort(Comparator.comparing((Detail d) -> d.group())
                 .thenComparing(d -> d.person())
                 .thenComparing(d -> d.item())
-                .thenComparing(d -> d.order().getCreatedAt(), Comparator.nullsLast(Comparator.reverseOrder())));
+                // 末位排序用**和「提交时间」列同一个口径**的字段：拿入库时间排、拿提交时间印，
+                // 同一列看起来就是乱序的（补录单上两个时间能差十几天）
+                .thenComparing(d -> {
+                    RefOrderView o = d.order();
+                    return o.getSubmittedAt() != null ? o.getSubmittedAt() : o.getCreatedAt();
+                }, Comparator.nullsLast(Comparator.reverseOrder())));
         return rows;
     }
 
@@ -216,8 +221,17 @@ public class AnimalOrderExportService {
         };
     }
 
+    /**
+     * 「提交时间」列的值。
+     *
+     * <p><b>口径必须和筛选一致</b>（2026-10-13 真机）：导出的日期范围筛的是
+     * {@code COALESCE(submitted_at, created_at)}（提交时间优先），而这一列原先反过来优先印
+     * {@code created_at}（入库时间）。两者在**补录/导入**的单子上会差出一大截 ——
+     * 实测：某单 提交时间 8-29、入库时间 9-10，用户按「八月」导出，表里却印着 9-10，
+     * 他照着表一核就会认定「筛选没生效」。筛选没错、数也没错，是**这一列在说谎**。
+     */
     private static String timeText(RefOrderView o) {
-        LocalDateTime t = o.getCreatedAt() != null ? o.getCreatedAt() : o.getSubmittedAt();
+        LocalDateTime t = o.getSubmittedAt() != null ? o.getSubmittedAt() : o.getCreatedAt();
         return t == null ? "" : TS.format(t);
     }
 

@@ -4,9 +4,11 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -205,5 +207,47 @@ public final class PersonnelProjectGroupUtil {
             }
         }
         return out;
+    }
+
+    /**
+     * 一个字都没精确命中时的兜底：按**姓名相似度**挑出最像的几个组名。
+     *
+     * <p>为什么不能退回「按姓氏子串搜」（2026-10-13 真机）：用户找「郑均克」的组（库里叫「郑俊克的课题组」），
+     * 子串搜一个字都不命中，于是退成按「郑」搜 —— 回来的「郑杰的课题组」「郑铨的课题组」只跟用户
+     * 共一个姓，跟要找的人毫无关系，用户的原话是「我是三个音节，问我两个音节的，太死板」。
+     * 换成相似度（同字优先、同音次之、长度差不超过一个字）之后，三字名只会对上三字名。
+     *
+     * <p>比的是组名里的 **PI 前缀**（「郑俊克的课题组」→「郑俊克」），不是整个组名 ——
+     * 否则「的课题组」这四个字会白送四分，把只共一个姓的人一起抬上来。
+     *
+     * @param rawFields 宽口径捞回来的 project_group_name 原值（含逗号分隔的多组）
+     * @return 按相似度降序，最多 {@code max} 个；一个都不像就空
+     */
+    public static List<String> rankGroupsBySimilarity(List<String> rawFields, String keyword, int max) {
+        if (rawFields == null || rawFields.isEmpty()) {
+            return List.of();
+        }
+        String kw = keyword == null ? "" : keyword.trim();
+        if (kw.length() < 2) {
+            return List.of();
+        }
+        Map<String, Integer> scored = new LinkedHashMap<>();
+        for (String field : rawFields) {
+            for (String token : splitGroups(field)) {
+                if (!StringUtils.hasText(token)) {
+                    continue;
+                }
+                String pi = extractPiPrefixFromGroupName(token);
+                int score = ChineseNameSimilarity.score(pi.isEmpty() ? token : pi, kw);
+                if (score > 0) {
+                    scored.merge(token, score, Math::max);
+                }
+            }
+        }
+        return scored.entrySet().stream()
+                .sorted((x, y) -> Integer.compare(y.getValue(), x.getValue()))
+                .map(Map.Entry::getKey)
+                .limit(Math.max(max, 1))
+                .toList();
     }
 }

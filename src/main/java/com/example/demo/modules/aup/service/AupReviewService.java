@@ -2,6 +2,7 @@ package com.example.demo.modules.aup.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.aup.AupStages;
 import com.example.demo.modules.aup.dto.AupRecordView;
 import com.example.demo.modules.aup.dto.ExpertCandidate;
 import com.example.demo.modules.aup.dto.FormatReviewRequest;
@@ -52,12 +53,12 @@ import java.util.Set;
 public class AupReviewService {
 
     // 阶段
-    private static final String STAGE_PI_REVIEW = "piReview";
-    private static final String STAGE_FORMAT_REVIEW = "formatReview";
-    private static final String STAGE_EXPERT_REVIEW = "expertReview";
-    private static final String STAGE_DRAFT = "draft";
-    private static final String STAGE_APPROVED = "approved";
-    private static final String STAGE_TERMINATED = "terminated";
+    private static final String STAGE_PI_REVIEW = AupStages.PI_REVIEW;
+    private static final String STAGE_FORMAT_REVIEW = AupStages.FORMAT_REVIEW;
+    private static final String STAGE_EXPERT_REVIEW = AupStages.EXPERT_REVIEW;
+    private static final String STAGE_DRAFT = AupStages.DRAFT;
+    private static final String STAGE_APPROVED = AupStages.APPROVED;
+    private static final String STAGE_TERMINATED = AupStages.TERMINATED;
 
     // 整体 verdict
     private static final String V_AGREE = "agree";
@@ -171,7 +172,7 @@ public class AupReviewService {
             throw TwinBusinessException.of(400, "action 仅支持 approve/return");
         }
         AupRecordView record = requireRecord(aupId);
-        if (!STAGE_PI_REVIEW.equals(record.getCurrentStage())) {
+        if (!STAGE_PI_REVIEW.equals(record.activeStage())) {
             throw TwinBusinessException.of(409, "当前阶段非组长审核，无法操作");
         }
         accessPolicy.assertPiCanReview(record.getProjectGroupName(), user);
@@ -197,7 +198,7 @@ public class AupReviewService {
             throw TwinBusinessException.of(400, "缺少请求体");
         }
         AupRecordView record = requireRecord(aupId);
-        if (!STAGE_FORMAT_REVIEW.equals(record.getCurrentStage())) {
+        if (!STAGE_FORMAT_REVIEW.equals(record.activeStage())) {
             throw TwinBusinessException.of(409, "当前阶段非格式审查，无法操作");
         }
         String comment = req.getComment();
@@ -302,7 +303,7 @@ public class AupReviewService {
         if (rec == null) {
             throw TwinBusinessException.of(404, "计划书不存在");
         }
-        if (!STAGE_EXPERT_REVIEW.equals(rec.getCurrentStage())) {
+        if (!STAGE_EXPERT_REVIEW.equals(rec.activeStage())) {
             throw TwinBusinessException.of(409, "当前阶段非专家审查，无法投票");
         }
         int roundNo = rec.getRoundNo() == null ? 1 : rec.getRoundNo();
@@ -782,7 +783,7 @@ public class AupReviewService {
      */
     private static int defaultReviewRound(AupRecordView record) {
         int current = roundOf(record);
-        if (STAGE_DRAFT.equals(record.getCurrentStage())) {
+        if (STAGE_DRAFT.equals(record.activeStage())) {
             String ds = record.getDraftSource();
             if ("formatReturn".equals(ds) || "expertReturn".equals(ds)) {
                 return Math.max(1, current - 1);

@@ -19,12 +19,15 @@ import com.example.demo.modules.material.dto.MaterialItemFlowExportRow;
 import com.example.demo.modules.material.dto.MaterialItemView;
 import com.example.demo.modules.material.service.MaterialExcelExportService;
 import com.example.demo.modules.material.service.MaterialService;
+import com.example.demo.modules.twin.common.util.ChineseNameSimilarity;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -107,9 +110,18 @@ public class MaterialAuditToolPack implements AiToolPack {
                 - **参数不齐就先问，一次只问一件**，而且能做成芯片的就做芯片：
                   ① 用户没说按什么维度导（只说「导出物资审计」）→ 先调 listMaterialAuditOptions(kind=tabs)，
                      四个页签会变成可点选项，**别在正文里列**；
-                  ② 时间段没说 → 用一句话问清（日期做不了芯片），**不要**默认导全量（全量摘要又慢又没意义）；
+                  ② 时间段没说 → 调 listMaterialAuditOptions(kind=dateRanges)，预设档会变成**可点芯片**
+                     （今天 / 近 7 天 / 近 30 天 / 本月 / 上月，每一档的 label 里就写着实际日期）；
+                     用户点了之后，把他点的 value **原样**放进 filterChoice —— 起止日期由工具从那一串里取，
+                     **你不用自己换算**。千万别只在正文里问一句「要哪段时间」却不给选项：界面上没有可点的东西，
+                     他只能自己敲日期，而那一句里往往把刚定的课题组又丢了，于是必然再兜一轮。
+                     **不要**默认导全量（全量摘要又慢又没意义）；
                   ③ 对象没说 → 问是全部还是某个组/某人/某类物资；用户给了名字但写法不确定时，
                      用 kind=groups/applicants/categories/items 查候选，候选也会变成可点选项。
+                     **他把名字说出口了（哪怕写错字），调导出工具时就把那句话原文放进 objectHint 传过去** ——
+                     不传的话工具只能给他摆一份跟他的话毫无关系的前几个，等于让他从无关列表里认人。
+                     已经用别的工具把对象查清（手里有准确全称）时，直接放进 group / applicantUserId / itemKeyword，
+                     别再让工具问一次。
                 - **每个页签的「对象」没定就先问**：按物品（item/itemGroup）问物品、个人审计问人、
                   课题组审计问课题组。工具会**把候选做成可点选项**交回来；用户点完，把他点的 value
                   原样放进 filterChoice 再调一次（value **自带维度前缀**，形如 `group:郑俊克的课题组`
@@ -499,6 +511,64 @@ public class MaterialAuditToolPack implements AiToolPack {
 
     // ── 一、候选选项（多级筛选的每一层） ──
 
+    /**
+     * 拿用户嘴里那个名字把候选筛一遍（2026-10-13 真机）。
+     *
+     * <p>用户说「郑均克那个组」，工具却摆了跟他的话毫无关系的前五个组 —— 等于逼他从一份无关列表里认人。
+     * 候选只在**对不上库里的写法**时才有存在的意义，而那种时候恰恰最该拿他的原话去筛。
+     *
+     * <p>两级：先按字面包含；一个都不中时按**姓名相似度**再筛 —— 名字写错一个字是最常见的写法
+     * （「郑均克」对「郑俊克」），字面包含对这种情况一点用都没有。
+     * 两级都筛不出东西就**退回全量**：宁可给一份宽的，也不能给一份空的（空列表等于没得点）。
+     */
+    private static List<List<String>> narrowByHint(List<List<String>> pairs, String hint) {
+        if (hint == null || hint.isBlank() || pairs.isEmpty()) {
+            return pairs;
+        }
+        String needle = hint.trim();
+        String low = needle.toLowerCase(Locale.ROOT);
+        List<List<String>> hit = pairs.stream()
+                .filter(p -> p.get(0).toLowerCase(Locale.ROOT).contains(low)
+                        || p.get(1).toLowerCase(Locale.ROOT).contains(low))
+                .toList();
+        if (!hit.isEmpty()) {
+            return new ArrayList<>(hit);
+        }
+        List<List<String>> fuzzy = pairs.stream()
+                .filter(p -> {
+                    String pi = PersonnelProjectGroupUtil.extractPiPrefixFromGroupName(p.get(0));
+                    return ChineseNameSimilarity.score(pi.isEmpty() ? p.get(0) : pi, needle) > 0;
+                })
+                .toList();
+        return fuzzy.isEmpty() ? pairs : new ArrayList<>(fuzzy);
+    }
+
+    /**
+     * 时间段预设档 —— **日期在服务端算好**写进 value，不让模型自己从「近 7 天」推今天几号。
+     *
+     * <p>正好 5 档（芯片上限）：现场说得最多的就是这几种；真要别的，用户直接说日期（模型会填 from/to）。
+     * 「今天」排在第一个：日常审计问得最多的就是它。
+     */
+    private static List<Map<String, Object>> dateRangeChoices() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<Map<String, Object>> out = new ArrayList<>();
+        out.add(rangeChoice("今天", today, today));
+        out.add(rangeChoice("近 7 天", today.minusDays(6), today));
+        out.add(rangeChoice("近 30 天", today.minusDays(29), today));
+        out.add(rangeChoice("本月", today.withDayOfMonth(1), today));
+        java.time.LocalDate lastMonthEnd = today.withDayOfMonth(1).minusDays(1);
+        out.add(rangeChoice("上月", lastMonthEnd.withDayOfMonth(1), lastMonthEnd));
+        return out;
+    }
+
+    /** 一档时间范围：label 里带上**实际日期**，用户点之前就知道自己选的是哪一段。 */
+    private static Map<String, Object> rangeChoice(String name, java.time.LocalDate from, java.time.LocalDate to) {
+        String f = from.toString();
+        String t = to.toString();
+        return AiChoices.option(name + "（" + f.substring(5) + " ~ " + t.substring(5) + "）",
+                f + " ~ " + t);
+    }
+
     private AiTool listOptions() {
         String schema = """
                 {
@@ -506,8 +576,8 @@ public class MaterialAuditToolPack implements AiToolPack {
                   "properties": {
                     "kind": {
                       "type": "string",
-                      "enum": ["tabs", "groups", "applicants", "categories", "items"],
-                      "description": "要列哪一层：tabs=四个页签（用户没说按什么维度导时先用它，选项会变成可点芯片）/ 课题组 / 申请人 / 物资分类 / 物资"
+                      "enum": ["tabs", "groups", "applicants", "categories", "items", "dateRanges"],
+                      "description": "要列哪一层：tabs=四个页签（用户没说按什么维度导时先用它，选项会变成可点芯片）/ 课题组 / 申请人 / 物资分类 / 物资 / dateRanges=时间段预设档（用户没给起止日期时用它，选项会变成可点芯片）"
                     },
                     "from": { "type": "string", "description": "起始日期 yyyy-MM-dd（课题组与申请人只列这段时间内有记录的）" },
                     "to": { "type": "string", "description": "结束日期 yyyy-MM-dd" },
@@ -540,6 +610,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                             rows.add(AiChoices.option("按物品审计（某样东西谁领了、领多少）", "item"));
                             rows.add(AiChoices.option("物品+课题组（某样东西在某个组的分布）", "itemGroup"));
                         }
+                        case "dateRanges" -> rows.addAll(dateRangeChoices());
                         case "groups" -> {
                             // 这两条服务方法返回的是 Result 包装（与页面接口同源），要取 getData()
                             Result<List<String>> gr = materialService.listGroupsWithRecords(ctx.actor(), from, to);
@@ -578,7 +649,7 @@ public class MaterialAuditToolPack implements AiToolPack {
                             }
                         }
                         default -> {
-                            return Map.of("ok", false, "reason", "kind 只能是 groups / applicants / categories / items");
+                            return Map.of("ok", false, "reason", "kind 只能是 tabs / groups / applicants / categories / items / dateRanges");
                         }
                     }
                     boolean truncated = rows.size() > MAX_OPTIONS;
@@ -655,6 +726,12 @@ public class MaterialAuditToolPack implements AiToolPack {
                     String tab = arg(args, "tab", "group");
                     String from = arg(args, "from", null);
                     String to = arg(args, "to", null);
+                    // 用户点的是**时间范围芯片**时，起止日期在这里定下来（见 rangeOf）
+                    String[] rng = rangeOf(arg(args, "filterChoice", null));
+                    if (rng != null) {
+                        from = rng[0];
+                        to = rng[1];
+                    }
                     // 筛选一律走这一层：显式参数 ⊕ 用户刚点的那项 ⊕ 会话里已定的（模型漏带时补上）
                     Filters fl = resolveFilters(ctx, tab, args);
                     int limit = Math.min(Math.max(args.path("limit").asInt(20), 1), MAX_ROWS);
@@ -765,6 +842,36 @@ public class MaterialAuditToolPack implements AiToolPack {
         };
     }
 
+    /**
+     * 时间范围芯片的值长这样：{@code 2026-10-07 ~ 2026-10-13}。
+     *
+     * <p><b>为什么用「人话 + 认形状」而不是加个 {@code range:} 前缀</b>：芯片的值会被载体原样铺进
+     * 用户那条消息的气泡里（`导出哪个时间段：<值>`）—— 带前缀就是一串 `range:2026-10-07~…` 摆在对话里。
+     * 而范围本来就长得独一无二，认形状既省一个前缀，又顺手把「日期反着写」掰正。
+     */
+    private static final java.util.regex.Pattern RANGE_VALUE =
+            java.util.regex.Pattern.compile("^(\\d{4}-\\d{2}-\\d{2})\\s*[~～]\\s*(\\d{4}-\\d{2}-\\d{2})$");
+
+    /**
+     * 这一轮的 filterChoice 是不是一个时间范围。是就给出 {from, to}（**已按大小排好**）。
+     *
+     * <p>日期由服务端算好写进芯片的值，不让模型自己从「近 7 天」推今天几号 —— 它不掌握当天日期，
+     * 推错了没有任何人会发现（导出的批次悄悄变了）。模型只负责把这一串原样传回来。
+     */
+    static String[] rangeOf(String filterChoice) {
+        if (filterChoice == null) {
+            return null;
+        }
+        java.util.regex.Matcher m = RANGE_VALUE.matcher(filterChoice.trim());
+        if (!m.matches()) {
+            return null;
+        }
+        String a = m.group(1);
+        String b = m.group(2);
+        // 用户/模型把先后写反了也认，别拿反的区间去查（查出来是空的，还看不出原因）
+        return a.compareTo(b) <= 0 ? new String[]{a, b} : new String[]{b, a};
+    }
+
     /** 某个页签问的是哪个维度。 */
     static String dimOf(String tab) {
         return switch (tab == null ? "" : tab) {
@@ -820,11 +927,17 @@ public class MaterialAuditToolPack implements AiToolPack {
         f.itemId = itemId;
 
         if (filterChoice != null && !filterChoice.isBlank()) {
-            String[] tv = untag(filterChoice);
+            f.answered = true;
+            // 时间范围**不是「筛选维度」**：它去 from/to（由 rangeOf 取回），这里只表示「这一维答过了」。
+            // 这道判断必须放在 untag 之前 —— 范围串里没有冒号，untag 给 null，
+            // 于是兜底走 dimOf(tab)，把 `2026-10-07 ~ 2026-10-13` 当成课题组名去筛（查出来是空的，还看不出原因）。
+            boolean isRange = rangeOf(filterChoice) != null;
+            String[] tv = isRange ? null : untag(filterChoice);
             String dim = tv != null ? tv[0] : dimOf(tab);
             String val = tv != null ? tv[1] : filterChoice;
-            f.answered = true;
-            if ("all".equalsIgnoreCase(val)) {
+            if (isRange) {
+                // 什么都不筛，交给下面的记忆补缺
+            } else if ("all".equalsIgnoreCase(val)) {
                 // 「全部」= 这一维不筛。**要显式清掉**：不然会话记忆里那个值会把它又筛回来
                 // —— 用户明明说了全部，导出却悄悄还按上次那个组筛，比丢筛选更坏。
                 f.clearedDim = dim;
@@ -970,7 +1083,7 @@ public class MaterialAuditToolPack implements AiToolPack {
      * {@code f} 并返回 null，调用方接着往下走。选项的值都带维度前缀（见 {@link #tag}）。
      */
     private Map<String, Object> askObject(User actor, String tab, String from, String to, Long categoryId,
-                                          Filters f) {
+                                          Filters f, String hint) {
         List<List<String>> pairs = new ArrayList<>();   // {label, value}
         String what;
         if ("item".equals(tab) || "itemGroup".equals(tab)) {
@@ -996,6 +1109,7 @@ public class MaterialAuditToolPack implements AiToolPack {
             }
             what = "哪个课题组";
         }
+        pairs = narrowByHint(pairs, hint);
         if (pairs.isEmpty()) {
             return null;   // 没候选就别硬问
         }
@@ -1015,15 +1129,41 @@ public class MaterialAuditToolPack implements AiToolPack {
             options.add(AiChoices.option(p.get(0), tag(dim, p.get(1))));
         }
         options.add(AiChoices.option("全部" + ("哪件物品".equals(what) ? "物品" : what.replace("哪个", "")), "all"));
+        /*
+         * 一次把「筛什么」和「哪段时间」都问上：两问都是点一下就完的，合成一条消息回给模型即可。
+         * 拆成两轮问是用户反复吐槽的那种兜圈 —— 答了组，模型才发现还差时间，界面上又没得点。
+         */
+        List<Map<String, Object>> questions = new ArrayList<>();
+        questions.add(question("导" + what + "？", options));
+        if (rangeMissing(from, to)) {
+            questions.add(question(chipTitle("dateRanges"), dateRangeChoices()));
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", false);
         out.put("reason", "这个页签还没定要导" + what + "。**先问用户**（选项已做成可点选项，别在正文里列）；"
                 + "他若说不用筛，就把「全部」那一项的 value 传回来");
-        out.put("choices", options);
+        out.put("questions", questions);
         out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
-        out.put("choicesTitle", "导" + what + "？");
         out.put("note", "用户点完后，把他点的那项 value 原样放进 filterChoice 再调一次本工具");
         return out;
+    }
+
+    /**
+     * 时间段还是空的吗。
+     *
+     * <p>空 = 用户没说、也没点过范围芯片。这时要**把预设档做成芯片**递过去，而不是在正文里干问一句 ——
+     * 界面上没有可点项时用户只能自己敲日期，而敲出去那句里往往又把刚定的课题组丢了（真机就是这么兜圈的）。
+     */
+    private static boolean rangeMissing(String from, String to) {
+        return from == null || from.isBlank() || to == null || to.isBlank();
+    }
+
+    /** 一道单选问题（载体把 {@code questions} 里每一项都渲染成一问）。 */
+    private static Map<String, Object> question(String title, List<Map<String, Object>> options) {
+        Map<String, Object> q = new LinkedHashMap<>();
+        q.put("title", title);
+        q.put("options", options);
+        return q;
     }
 
     private AiTool prepareExport() {
@@ -1046,6 +1186,10 @@ public class MaterialAuditToolPack implements AiToolPack {
                     "filterChoice": {
                       "type": "string",
                       "description": "**只在工具把「这个页签筛什么」做成可点选项时用**：把用户点的那项 value 原样传回来（如物品名 / 课题组全称 / 申请人 id / 全部）"
+                    },
+                    "objectHint": {
+                      "type": "string",
+                      "description": "**用户嘴里说的那个对象，原文照传**（组名 / 人名 / 物品名，写错字也照传）。工具拿它把候选筛成跟他有关的几个；不传就给他摆一份跟他的话无关的列表"
                     }
                   },
                   "required": ["tab"],
@@ -1062,6 +1206,12 @@ public class MaterialAuditToolPack implements AiToolPack {
                     String tab = arg(args, "tab", "group");
                     String from = arg(args, "from", null);
                     String to = arg(args, "to", null);
+                    // 用户点的是**时间范围芯片**时，起止日期在这里定下来（见 rangeOf）
+                    String[] rng = rangeOf(arg(args, "filterChoice", null));
+                    if (rng != null) {
+                        from = rng[0];
+                        to = rng[1];
+                    }
                     // 筛选一律走这一层：显式参数 ⊕ 用户刚点的那项 ⊕ 会话里已定的（模型漏带时补上）
                     Filters fl = resolveFilters(ctx, tab, args);
 
@@ -1072,7 +1222,8 @@ public class MaterialAuditToolPack implements AiToolPack {
                     // 放在**算摘要之前**：全量摘要又慢又没意义，先问清再算。
                     if (!fl.answered
                             && !objectGiven(tab, fl.itemKeyword, fl.group, fl.applicant, fl.categoryId, fl.itemId)) {
-                        Map<String, Object> ask = askObject(ctx.actor(), tab, from, to, fl.categoryId, fl);
+                        Map<String, Object> ask = askObject(ctx.actor(), tab, from, to, fl.categoryId, fl,
+                                arg(args, "objectHint", null));
                         if (ask != null) {
                             return ask;
                         }
@@ -1089,14 +1240,33 @@ public class MaterialAuditToolPack implements AiToolPack {
                         remember(ctx.sessionId(), fl);
                     }
 
+                    // 时间段还没定 → 把预设档做成芯片问一次（上面「筛什么」那一问已经问过就别重复，见 askObject）
+                    if (rangeMissing(from, to)) {
+                        List<Map<String, Object>> ranges = dateRangeChoices();
+                        Map<String, Object> out = new LinkedHashMap<>();
+                        out.put("ok", false);
+                        out.put("reason", "时间段还没定。**预设档已经做成可点选项了**，让用户点一个"
+                                + "（他要点别的就直接说日期，你按 from/to 传）；"
+                                + "**不要在正文里只问一句却不给选项** —— 那样他只能自己敲日期，"
+                                + "敲出去那句里往往又把刚定的筛选丢了");
+                        out.put("questions", List.of(question(chipTitle("dateRanges"), ranges)));
+                        out.put(AiChoices.ASK_REQUIRED, Boolean.TRUE);
+                        return out;
+                    }
+
                     SubtotalSummary summary;
                     if ("item".equals(tab) || "itemGroup".equals(tab)) {
                         summary = excelExportService.summarizeItemFlow(
                                 materialService.collectItemFlowExportRows(
                                         fl.itemId, from, to, fl.group, fl.categoryId, fl.itemKeyword));
                     } else {
+                        // **筛选要一项不落地带进来**（2026-10-13）：这里只传了人和组，
+                        // 于是「物品」那一维在**报数**这一步就被丢了 —— 对话里说「共 4 行明细」，
+                        // 而真正导出的文件只有 1 行（出表那侧已经按物品筛过）。用户看到的是
+                        // 「说好的 4 行怎么只剩 1 行」，像是掉了数据。
                         summary = excelExportService.summarizeAuditGrid(
-                                materialService.collectAuditGridRows(ctx.actor(), from, to, fl.applicant, fl.group));
+                                materialService.collectAuditGridRows(ctx.actor(), from, to,
+                                        fl.applicant, fl.group, fl.itemId, fl.itemKeyword));
                     }
 
                     Map<String, Object> sum = new LinkedHashMap<>();
@@ -1330,6 +1500,7 @@ public class MaterialAuditToolPack implements AiToolPack {
             case "applicants" -> "哪个申领人？";
             case "categories" -> "哪一类物资？";
             case "items" -> "哪样物资？";
+            case "dateRanges" -> "导出哪个时间段？";
             default -> "选一个";
         };
     }

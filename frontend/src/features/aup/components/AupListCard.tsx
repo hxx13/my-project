@@ -13,6 +13,10 @@ export type ItemAction = { key: string; label: string; primary?: boolean; danger
 
 /** 阶段 → 状态徽标（列表视图用） */
 export function stageBadge(item: AupListItem): { text: string; cls: string } {
+  // 修订轨道优先：已通过的计划书在更新版本审核期间，主状态仍是 approved
+  if (item.amendmentStage) {
+    return { text: "更新版本审核中", cls: "review" };
+  }
   switch (item.currentStage) {
     case "approved":
       return { text: "已批准", cls: "approved" };
@@ -47,6 +51,9 @@ export function stageBadge(item: AupListItem): { text: string; cls: string } {
 
 /** 阶段 → 印章（计划书卡片用，短文字分行） */
 export function stageSeal(item: AupListItem): { lines: string[]; cls: string } {
+  if (item.amendmentStage) {
+    return { lines: ["更新版本", "审核中"], cls: "review" };
+  }
   switch (item.currentStage) {
     case "approved":
       return { lines: ["已", "批准"], cls: "approved" };

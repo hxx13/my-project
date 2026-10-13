@@ -64,6 +64,37 @@ export default function StudentAupPage() {
     if (await appConfirm("确定删除该计划书？删除后不可恢复。")) deleteMut.mutate(id);
   };
 
+  /** 已通过计划书的修改说明（点击「编辑」时展示） */
+  const AMEND_NOTICE = [
+    "在原实验计划书上可直接修改的条目，属于小修改（minor amendments），可直接修改后点击「保存当前」保存；如果某条目不能直接「保存当前」，则该条目属于大修改（major amendments）。",
+    "实验计划书的关键信息，例如项目名称等，禁止修改，并以禁止符号显示。",
+    "如需更改 AUP 以下内容（major amendments），则需要使用「更新版本」功能：",
+    "1. 修改项目起止日期；",
+    "2. 修改合作单位；",
+    "3. 修改动物进出口活动；",
+    "4. 增加或删减附表格（有害物质的使用、动物运输、基因工程动物信息）；",
+    "5. 更改实验目的；",
+    "6. 新增可能会导致动物疼痛的程序；动物保定程序；修改实验动物所属的疼痛等级；麻醉止痛药物的使用；安乐死程序；",
+    "7. 修改动物实验内容及实验节点；",
+    "8. 修改实验计划所用动物品种；",
+    "9. 修改 3 年所用实验动物数量，以及计算依据；",
+    "10. 增加非药用化合物；",
+    "11. 修改动科部以外动物饲养空间（即课题组饲养空间）申请，以及特殊饲养要求，单笼饲养等情况；",
+    "12. 修改动物尸体的处置。",
+    "",
+    "注：",
+    "● 如果点击并提交实验计划书的更新版本，原实验计划书将变更为历史版本。更新版本的审核流程与新计划书一致。审核通过后将给予新实验计划更新版本号。",
+  ].join("\n");
+
+  const handleAmend = async (id: number) => {
+    const ok = await appConfirm(AMEND_NOTICE, {
+      title: "修改实验计划书提示",
+      confirmText: "进入修改",
+      cancelText: "取消",
+    });
+    if (ok) navigate(`/aup/fill/${id}?amend=1`);
+  };
+
   const getActions = (item: AupListItem): ItemAction[] => {
     const acts: ItemAction[] = [];
     const isDraft = item.currentStage === "draft";
@@ -86,6 +117,10 @@ export default function StudentAupPage() {
 
     if (item.currentStage === "expired" && (isPi || isOwn)) {
       acts.push({ key: "renew", label: "续期", primary: true, onClick: () => handleRenew(item.id) });
+    }
+    // 已通过的计划书：仅该计划书课题组长可修改；已有进行中更新版本时不重复发起
+    if (item.currentStage === "approved" && isPi && !item.amendmentStage) {
+      acts.push({ key: "amend", label: "编辑", primary: true, onClick: () => handleAmend(item.id) });
     }
     const canDelete =
       item.isDemo !== 1 &&

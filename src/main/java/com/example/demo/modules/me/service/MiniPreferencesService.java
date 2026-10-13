@@ -24,6 +24,10 @@ public class MiniPreferencesService {
     /** 侧栏路径前缀：管理员端 /admin、学生端 /student（与前端侧栏作用域一致） */
     private static final String ADMIN_PATH_PREFIX = "/admin";
     private static final String STUDENT_PATH_PREFIX = "/student";
+    /** 无人操作自动回大屏：分钟数的收敛区间与默认值（与前端 utils/dashboardAutoReturn.ts 对齐） */
+    private static final int AUTO_RETURN_MIN_MINUTES = 1;
+    private static final int AUTO_RETURN_MAX_MINUTES = 120;
+    private static final int AUTO_RETURN_DEFAULT_MINUTES = 5;
 
     private final UserMapper userMapper;
     private final ObjectMapper objectMapper;
@@ -62,6 +66,7 @@ public class MiniPreferencesService {
             vo.setStudentNavRecent(sanitizeNavPaths(vo.getStudentNavRecent(), MAX_STUDENT_NAV_RECENT, STUDENT_PATH_PREFIX));
             vo.setStudentNavStars(sanitizeNavPaths(vo.getStudentNavStars(), MAX_STUDENT_NAV_STARS, STUDENT_PATH_PREFIX));
             vo.setStudentNavLock(sanitizeNavLock(vo.getStudentNavLock(), STUDENT_PATH_PREFIX));
+            vo.setDashboardAutoReturn(sanitizeDashboardAutoReturn(vo.getDashboardAutoReturn()));
             return vo;
         } catch (Exception e) {
             return empty();
@@ -120,6 +125,10 @@ public class MiniPreferencesService {
         }
         if (incoming.getStudentNavLock() == null && existing.getStudentNavLock() != null) {
             incoming.setStudentNavLock(existing.getStudentNavLock());
+        }
+        // 整个对象一起提交（前端总是给全 enabled + idleMinutes），所以按「整体缺省」补齐即可
+        if (incoming.getDashboardAutoReturn() == null) {
+            incoming.setDashboardAutoReturn(existing.getDashboardAutoReturn());
         }
     }
 
@@ -211,6 +220,26 @@ public class MiniPreferencesService {
         return out;
     }
 
+    /**
+     * 无人操作自动回大屏。
+     *
+     * <p>null 保持 null —— 表示「没配过 / 已关闭」，不要在这里补一个默认对象，
+     * 否则别的模块局部保存时会把一个未经用户开启的配置写进库里。
+     * 给了对象就收敛分钟数：非法值回默认，越界夹到区间内。
+     */
+    private static MiniPreferencesVo.DashboardAutoReturnVo sanitizeDashboardAutoReturn(
+            MiniPreferencesVo.DashboardAutoReturnVo raw) {
+        if (raw == null) {
+            return null;
+        }
+        MiniPreferencesVo.DashboardAutoReturnVo out = new MiniPreferencesVo.DashboardAutoReturnVo();
+        out.setEnabled(Boolean.TRUE.equals(raw.getEnabled()));
+        Integer minutes = raw.getIdleMinutes();
+        int n = minutes == null ? AUTO_RETURN_DEFAULT_MINUTES : minutes;
+        out.setIdleMinutes(Math.max(AUTO_RETURN_MIN_MINUTES, Math.min(AUTO_RETURN_MAX_MINUTES, n)));
+        return out;
+    }
+
     private static String sanitizeNavLock(String raw, String prefix) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -271,6 +300,7 @@ public class MiniPreferencesService {
         out.setStudentNavRecent(sanitizeNavPaths(in.getStudentNavRecent(), MAX_STUDENT_NAV_RECENT, STUDENT_PATH_PREFIX));
         out.setStudentNavStars(sanitizeNavPaths(in.getStudentNavStars(), MAX_STUDENT_NAV_STARS, STUDENT_PATH_PREFIX));
         out.setStudentNavLock(sanitizeNavLock(in.getStudentNavLock(), STUDENT_PATH_PREFIX));
+        out.setDashboardAutoReturn(sanitizeDashboardAutoReturn(in.getDashboardAutoReturn()));
         MiniPreferencesVo.RoomWatchVo rw = new MiniPreferencesVo.RoomWatchVo();
         List<MiniPreferencesVo.RoomWatchSelectionVo> list =
                 in.getRoomWatch() != null && in.getRoomWatch().getSelections() != null

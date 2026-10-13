@@ -50,4 +50,8 @@ public class AupListItem {
     private String summaryJson;
     /** 迷你阶段指示 JSON */
     private String miniSteps;
+    /** 修订轨道阶段（NULL=无修订进行中）；非空表示「更新版本审核中」，此时 currentStage 仍为 approved */
+    private String amendmentStage;
+    /** 计划书版本号 */
+    private Integer planVersion;
 }

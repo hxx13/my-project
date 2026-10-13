@@ -22,7 +22,7 @@ const StudentSelect = React.forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             disabled={disabled}
             className={cn(
-              "w-full rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-white px-3 py-2 text-sm text-[var(--student-ink)] placeholder:text-[var(--student-mute)] transition-colors outline-none appearance-none pr-8",
+              "w-full rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-surface-raised)] px-3 py-2 text-sm text-[var(--student-ink)] placeholder:text-[var(--student-mute)] transition-colors outline-none appearance-none pr-8",
               "focus-visible:border-[var(--student-primary)] focus-visible:ring-[3px] focus-visible:ring-[var(--student-primary-soft)]",
               "disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[var(--student-canvas-soft)]",
               error &&

@@ -143,8 +143,11 @@ export function fetchAupDetail(id: string): Promise<AupDetailVO> {
 export interface SaveAupBody {
   /** 整表填报内容 JSON 字符串 */
   dataJson: string;
-  /** 乐观锁版本（CAS） */
-  expectedVersion: number;
+  /**
+   * 乐观锁版本（CAS）。草稿保存必须传；
+   * 修订通道（已通过计划书的修改）不传——由服务端按当前版本落库，避免与草稿版本口径串味。
+   */
+  expectedVersion?: number;
 }
 
 export interface SaveAupResult {
@@ -170,6 +173,49 @@ export interface StageChangeResult {
 /** POST /aup/{id}/submit —— 校验 + 签名 + CAS 流转 draft→piReview */
 export function submitAup(id: string): Promise<StageChangeResult> {
   return authHttp.post<Result<StageChangeResult>>(`/aup/${id}/submit`).then(({ data }) => data.data);
+}
+
+/* ===================== 修订通道（通过后修改：小修直接保存 / 大修走完整审核） ===================== */
+
+export interface AmendState {
+  id: string;
+  currentStage: AupStage;
+  /** 修订轨道阶段；null 表示无修订进行中 */
+  amendmentStage: AupStage | null;
+  /** 计划书版本号 */
+  planVersion?: number;
+  /** 修订中的内容（仅 GET /amend 返回） */
+  data?: string | null;
+}
+
+/** GET /aup/{id}/amend —— 修订状态与内容 */
+export function fetchAmendState(id: string): Promise<AmendState> {
+  return authHttp.get<Result<AmendState>>(`/aup/${id}/amend`).then(({ data }) => data.data);
+}
+
+/** PUT /aup/{id}/amend/minor —— 小修直接保存生效（命中禁改报 403、命中大修报 409 引导走更新版本） */
+export function saveMinorAmendment(id: string, body: SaveAupBody): Promise<SaveAupResult> {
+  return authHttp.put<Result<SaveAupResult>>(`/aup/${id}/amend/minor`, body).then(({ data }) => data.data);
+}
+
+/** POST /aup/{id}/amend/major —— 更新版本：修订内容进轨道并提交完整审核 */
+export function startMajorAmendment(id: string, body: SaveAupBody): Promise<AmendState> {
+  return authHttp.post<Result<AmendState>>(`/aup/${id}/amend/major`, body).then(({ data }) => data.data);
+}
+
+/** PUT /aup/{id}/amend/draft —— 保存修订草稿（更新版本提交前继续编辑） */
+export function saveAmendmentDraft(id: string, body: SaveAupBody): Promise<AmendState> {
+  return authHttp.put<Result<AmendState>>(`/aup/${id}/amend/draft`, body).then(({ data }) => data.data);
+}
+
+/** POST /aup/{id}/amend/submit —— 提交修订草稿进入完整审核 */
+export function submitAmendment(id: string): Promise<AmendState> {
+  return authHttp.post<Result<AmendState>>(`/aup/${id}/amend/submit`).then(({ data }) => data.data);
+}
+
+/** POST /aup/{id}/amend/withdraw —— 撤回更新版本（原已通过版本继续有效） */
+export function withdrawAmendment(id: string): Promise<AmendState> {
+  return authHttp.post<Result<AmendState>>(`/aup/${id}/amend/withdraw`).then(({ data }) => data.data);
 }
 
 /** 结构化校验错误（提交前预检用） */

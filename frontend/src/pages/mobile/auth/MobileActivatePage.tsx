@@ -7,6 +7,7 @@ import { activateStudent } from "@/features/student/api";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
 
 import { appAlert } from "@/lib/appDialog";
+import { PASSWORD_RULE_PLACEHOLDER, validatePassword } from "@/utils/passwordPolicy";
 type Step = "qr" | "credentials" | "success";
 
 interface VerifiedData {
@@ -44,8 +45,9 @@ export default function MobileActivatePage() {
     const errors: typeof formErrors = {};
     if (!username.trim() || username.trim().length < 3 || username.trim().length > 64)
       errors.username = "用户名长度需在 3-64 位之间";
-    if (!password || password.length < 6)
-      errors.password = "密码长度至少 6 位";
+    const pwErr = validatePassword(password);
+    if (pwErr)
+      errors.password = pwErr;
     if (password !== confirmPassword)
       errors.confirmPassword = "两次输入的密码不一致";
     setFormErrors(errors);
@@ -129,7 +131,7 @@ export default function MobileActivatePage() {
             <div className="mt-6 space-y-4">
               {[
                 { label: "设置用户名", value: username, setter: setUsername, placeholder: "自定义一个登录用户名（3-64位）", error: formErrors.username, type: "text", autoComplete: "username" },
-                { label: "密码", value: password, setter: setPassword, placeholder: "至少 6 位", error: formErrors.password, type: "password", autoComplete: "new-password" },
+                { label: "密码", value: password, setter: setPassword, placeholder: PASSWORD_RULE_PLACEHOLDER, error: formErrors.password, type: "password", autoComplete: "new-password" },
                 { label: "确认密码", value: confirmPassword, setter: setConfirmPassword, placeholder: "再次输入密码", error: formErrors.confirmPassword, type: "password", autoComplete: "new-password" },
               ].map((f) => (
                 <div key={f.label}>

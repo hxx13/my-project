@@ -82,12 +82,24 @@ export interface MiniPreferencesRoomWatchSelection {
   floor: string;
 }
 
+/**
+ * 无人操作自动回大屏（前台 kiosk）：长时间无操作后自动全屏并跳回仪表盘。
+ * 与账号绑定存后端；`null` = 未启用。
+ */
+export interface DashboardAutoReturnPreferences {
+  enabled?: boolean;
+  /** 无操作多少分钟后触发（服务端归一化到 1..120） */
+  idleMinutes?: number;
+}
+
 export interface MiniPreferences {
   roomWatch: {
     selections: MiniPreferencesRoomWatchSelection[];
   };
   twinWebChromeTheme?: TwinWebChromeThemeId | string | null;
   appearanceSchedule?: AppearanceSchedulePreferences;
+  /** 无人操作自动回大屏；未配置为 null */
+  dashboardAutoReturn?: DashboardAutoReturnPreferences | null;
   /** 页面帮助「我已知晓」记录：path -> help.updatedAt */
   pageHelpIntroAck?: Record<string, string>;
   /** 管理后台侧栏「常用」 */

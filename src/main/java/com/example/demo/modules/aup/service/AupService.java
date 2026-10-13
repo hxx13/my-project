@@ -2,6 +2,7 @@ package com.example.demo.modules.aup.service;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.aup.AupStages;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
@@ -65,14 +66,14 @@ public class AupService {
 
     public static final String FORM_KEY = "aup";
 
-    // 状态机
-    public static final String STAGE_DRAFT = "draft";
-    public static final String STAGE_PI_REVIEW = "piReview";
-    public static final String STAGE_FORMAT_REVIEW = "formatReview";
-    public static final String STAGE_EXPERT_REVIEW = "expertReview";
-    public static final String STAGE_APPROVED = "approved";
-    public static final String STAGE_TERMINATED = "terminated";
-    public static final String STAGE_EXPIRED = "expired";
+    // 状态机（常量统一取自 AupStages，单一真相源）
+    public static final String STAGE_DRAFT = AupStages.DRAFT;
+    public static final String STAGE_PI_REVIEW = AupStages.PI_REVIEW;
+    public static final String STAGE_FORMAT_REVIEW = AupStages.FORMAT_REVIEW;
+    public static final String STAGE_EXPERT_REVIEW = AupStages.EXPERT_REVIEW;
+    public static final String STAGE_APPROVED = AupStages.APPROVED;
+    public static final String STAGE_TERMINATED = AupStages.TERMINATED;
+    public static final String STAGE_EXPIRED = AupStages.EXPIRED;
 
     // 通知源
     private static final String SRC_SUBMITTED = "AUP_SUBMITTED";
@@ -319,7 +320,10 @@ public class AupService {
         if (isDemo(record)) {
             throw TwinBusinessException.of(409, "演示示例已阻止流转，不可推进到下一步");
         }
-        if (!fromStage.equals(record.getCurrentStage())) {
+        // 修订轨道进行中时，流转作用于 amendment_stage；现行 current_stage 保持 approved 不动
+        boolean onAmendment = record.getAmendmentStage() != null;
+        String trackStage = onAmendment ? record.getAmendmentStage() : record.getCurrentStage();
+        if (!fromStage.equals(trackStage)) {
             throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
         }
 
@@ -360,6 +364,12 @@ public class AupService {
             LocalDateTime now = LocalDateTime.now();
             approvedAt = now;
             expireAt = now.plusYears(3);
+        }
+
+        // 修订轨道：走独立分支，不生成注册号、不动有效期，通过时归档历史版本并递增版本号
+        if (onAmendment) {
+            return finishAmendmentTransition(record, fromStage, toStage, act, operatorId, operatorRole,
+                    comment, roundNo, isApprove);
         }
 
         int rows = 0;
@@ -410,6 +420,255 @@ public class AupService {
         notifyForTransition(record, fromStage, toStage, act, operatorId, comment);
 
         return recordMapper.selectById(aupId);
+    }
+
+    // ======================================================================
+    // 修订通道（通过后修改）：小修直接保存 / 大修走完整审核
+    // ======================================================================
+
+    /**
+     * 修订轨道流转（transition 的修订分支）。
+     *
+     * <p>通过：先把现行内容归档为历史版本快照，再把修订内容落为现行，清空轨道并递增版本号；
+     * 终止：本次修订作废，原已通过版本继续有效（不是把整条计划书打成终止）；
+     * 其余（组长/格式/专家流转、退回草稿）：只推进 amendment_stage。
+     */
+    private AupRecord finishAmendmentTransition(AupRecord record, String fromStage, String toStage, String action,
+                                                String operatorId, String operatorRole, String comment,
+                                                int roundNo, boolean isApprove) {
+        Long aupId = record.getId();
+        int rows;
+        if (isApprove) {
+            // 1) 归档现行内容为历史版本（此时 aup_data 仍是旧版）
+            AupData oldData = dataMapper.selectByAupId(aupId);
+            snapshotService.createSnapshot(record, STAGE_APPROVED, record.getDraftSource(),
+                    oldData == null ? null : oldData.getData(), operatorId);
+            // 2) 修订内容落为现行
+            String newData = record.getAmendmentData();
+            persistDraftData(aupId, newData, null, operatorId);
+            // 3) 清空轨道 + 版本号递增
+            int planVersion = (record.getPlanVersion() == null ? 1 : record.getPlanVersion()) + 1;
+            rows = recordMapper.updateAmendmentStageCas(aupId, fromStage, null, planVersion, roundNo, record.getVersion());
+            if (rows == 0) {
+                throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
+            }
+            recordMapper.updateAmendmentData(aupId, null);
+            // 4) 品种/数量可能变化，重建订购白名单
+            recordMapper.updateRegistryMeta(aupId, allowlistCompat.buildFromFormJson(newData), "active");
+        } else if (STAGE_TERMINATED.equals(toStage)) {
+            // 修订被终止 = 本次修订作废，原已通过版本继续有效
+            rows = recordMapper.updateAmendmentStageCas(aupId, fromStage, null, null, roundNo, record.getVersion());
+            if (rows == 0) {
+                throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
+            }
+            recordMapper.updateAmendmentData(aupId, null);
+        } else {
+            rows = recordMapper.updateAmendmentStageCas(aupId, fromStage, toStage, null, roundNo, record.getVersion());
+            if (rows == 0) {
+                throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
+            }
+        }
+
+        audit(aupId, operatorId, operatorRole, action, fromStage, toStage, comment);
+        notifyForTransition(record, fromStage, toStage, action, operatorId, comment);
+        return recordMapper.selectById(aupId);
+    }
+
+    /**
+     * 加载字段的修改等级映射（fieldKey → LOCKED/MINOR/MAJOR），缺失按 MINOR。
+     *
+     * <p>以「当前已发布模板」为准，再补上记录冻结模板里已发布模板没有的字段 —— 这样在模板编辑器里
+     * 改了等级后，**已通过的计划书也立即按新配置判定**，不会因为记录冻结了旧模板版本而沿用旧规则。
+     */
+    public Map<String, String> loadAmendmentLevels(Long recordTemplateId) {
+        Map<String, String> levels = new LinkedHashMap<>();
+        levels.putAll(queryAmendmentLevels(recordTemplateId));
+        Long publishedId = currentPublishedTemplateId();
+        if (publishedId != null) {
+            levels.putAll(queryAmendmentLevels(publishedId));
+        }
+        return levels;
+    }
+
+    /** 当前已发布 AUP 模板 id（无则 null，不影响判定回退到记录冻结模板） */
+    private Long currentPublishedTemplateId() {
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT id FROM form_template WHERE form_key = ? AND status = 'PUBLISHED' "
+                            + "ORDER BY version DESC LIMIT 1", FORM_KEY);
+            return rows.isEmpty() ? null : ((Number) rows.get(0).get("id")).longValue();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Map<String, String> queryAmendmentLevels(Long templateId) {
+        Map<String, String> levels = new LinkedHashMap<>();
+        if (templateId == null) {
+            return levels;
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT f.field_key, f.config FROM form_field f "
+                        + "WHERE f.section_id IN (SELECT id FROM form_section WHERE template_id = ?) "
+                        + "   OR f.subsection_id IN (SELECT id FROM form_subsection "
+                        + "       WHERE section_id IN (SELECT id FROM form_section WHERE template_id = ?))",
+                templateId, templateId);
+        for (Map<String, Object> row : rows) {
+            String key = str(row.get("field_key"));
+            if (key == null || key.isBlank()) {
+                continue;
+            }
+            levels.put(key, AupAmendmentClassifier.parseLevel(str(row.get("config"))));
+        }
+        return levels;
+    }
+
+    /** 判定新提交内容相对现行内容的改动分类（LOCKED / MAJOR / MINOR 各自命中的字段） */
+    public AupAmendmentClassifier.Classification classifyAmendment(AupRecord record, String newDataJson) {
+        AupData cur = dataMapper.selectByAupId(record.getId());
+        String oldJson = cur == null ? "{}" : cur.getData();
+        Map<String, Object> newMap = parseMap(newDataJson);
+        // 被条件隐藏的字段在提交时会被清空，与旧值比对必然「不同」——那是隐藏导致的，不算用户改动
+        Set<String> hidden = new LinkedHashSet<>();
+        for (FieldDef f : loadFieldDefs(record.getTemplateId())) {
+            if (StringUtils.hasText(f.fieldKey) && isFieldHidden(f, newMap)) {
+                hidden.add(f.fieldKey);
+            }
+        }
+        return AupAmendmentClassifier.classify(loadAmendmentLevels(record.getTemplateId()), oldJson,
+                newDataJson, hidden);
+    }
+
+    /** 修订前提：须为已通过；已有审核中的修订则拒绝（草稿态可继续修订/重新提交） */
+    private void requireAmendable(AupRecord record) {
+        if (!STAGE_APPROVED.equals(record.getCurrentStage())) {
+            throw TwinBusinessException.of(409, "仅已通过的计划书可修改");
+        }
+        if (record.getAmendmentStage() != null && !STAGE_DRAFT.equals(record.getAmendmentStage())) {
+            throw TwinBusinessException.of(409, "该计划书有进行中的更新版本，请先完成或撤回");
+        }
+    }
+
+    /**
+     * 小修：直接覆盖现行内容，状态与有效期不变，仅留痕（不通知）。
+     * 命中禁改条目直接拒绝；命中大修条目则拒绝并引导走「更新版本」。
+     */
+    @Transactional
+    public Map<String, Object> saveMinorAmendment(Long aupId, String dataJson, Long expectedVersion, User user) {
+        AupRecord record = requireRecord(aupId);
+        accessPolicy.assertCanAmend(record, user);
+        requireAmendable(record);
+        String cleaned = stripHiddenFields(record.getTemplateId(), aupId, dataJson, user.getId());
+        AupAmendmentClassifier.Classification c = classifyAmendment(record, cleaned);
+        if (c.hasLocked()) {
+            throw TwinBusinessException.of(403, "AMEND_LOCKED:" + String.join(",", c.locked()));
+        }
+        if (c.hasMajor()) {
+            throw TwinBusinessException.of(409, "AMEND_MAJOR_REQUIRED:" + String.join(",", c.major()));
+        }
+        Map<String, Object> result = persistDraftData(aupId, cleaned, expectedVersion, user.getId());
+        audit(aupId, user.getId(), accessPolicy.resolveOperatorRole(record, user),
+                "minorAmend", STAGE_APPROVED, STAGE_APPROVED, "小修：" + String.join(",", c.minor()));
+        return result;
+    }
+
+    /**
+     * 更新版本（大修）：修订内容进修订轨道并直接提交审核。
+     * 要求确有 MAJOR 改动且无 LOCKED 改动；现行版本在审核期间继续有效。
+     */
+    @Transactional
+    public AupRecord startMajorAmendment(Long aupId, String dataJson, User user) {
+        AupRecord record = requireRecord(aupId);
+        accessPolicy.assertCanAmend(record, user);
+        requireAmendable(record);
+        String cleaned = stripHiddenFields(record.getTemplateId(), aupId, dataJson, user.getId());
+        AupAmendmentClassifier.Classification c = classifyAmendment(record, cleaned);
+        if (c.hasLocked()) {
+            throw TwinBusinessException.of(403, "AMEND_LOCKED:" + String.join(",", c.locked()));
+        }
+        if (!c.hasMajor()) {
+            throw TwinBusinessException.of(400, "AMEND_NO_MAJOR:本次修改不含需要更新版本的条目，请使用「保存当前」");
+        }
+        // 首次发起才开新一轮（返修后再次提交保持同一轮，避免轮次虚增）
+        int roundNo = record.getAmendmentStage() == null
+                ? (record.getRoundNo() == null ? 1 : record.getRoundNo()) + 1
+                : record.getRoundNo();
+        int rows = recordMapper.updateAmendmentStageCas(aupId, null, STAGE_DRAFT, null, roundNo, record.getVersion());
+        if (rows == 0) {
+            throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
+        }
+        recordMapper.updateAmendmentData(aupId, cleaned);
+        audit(aupId, user.getId(), accessPolicy.resolveOperatorRole(record, user),
+                "amendStart", STAGE_APPROVED, STAGE_DRAFT, "发起更新版本：" + String.join(",", c.major()));
+        return submitAmendment(aupId, user);
+    }
+
+    /** 保存修订草稿（更新版本审核前可继续编辑） */
+    @Transactional
+    public Map<String, Object> saveAmendmentDraft(Long aupId, String dataJson, User user) {
+        AupRecord record = requireRecord(aupId);
+        accessPolicy.assertCanAmend(record, user);
+        if (!STAGE_DRAFT.equals(record.getAmendmentStage())) {
+            throw TwinBusinessException.of(409, "当前无可编辑的更新版本草稿");
+        }
+        String cleaned = stripHiddenFieldsQuiet(record.getTemplateId(), dataJson);
+        recordMapper.updateAmendmentData(aupId, cleaned);
+        Map<String, Object> out = new HashMap<>();
+        out.put("aupId", aupId);
+        out.put("amendmentStage", record.getAmendmentStage());
+        return out;
+    }
+
+    /** 提交修订草稿进入完整审核（组长审 / 格式审 → 专家审，与新计划书同流程） */
+    @Transactional
+    public AupRecord submitAmendment(Long aupId, User user) {
+        AupRecord record = requireRecord(aupId);
+        accessPolicy.assertCanAmend(record, user);
+        if (!STAGE_DRAFT.equals(record.getAmendmentStage())) {
+            throw TwinBusinessException.of(409, "当前没有待提交的更新版本");
+        }
+        String raw = record.getAmendmentData() == null ? "{}" : record.getAmendmentData();
+        List<AupValidationErrorDTO> errors = validateData(record.getTemplateId(), parseMap(raw));
+        if (!errors.isEmpty()) {
+            throw TwinBusinessException.of(400, "VALIDATION_FAILED:" + errors.size());
+        }
+        String role = accessPolicy.resolveOperatorRole(record, user);
+        boolean skipPiReview = accessPolicy.isAdmin(user) || accessPolicy.isPi(user)
+                || (user.getRole() != null && user.getRole().getLevel() >= RoleEnum.STAFF.getLevel());
+        String targetStage = skipPiReview ? STAGE_FORMAT_REVIEW : STAGE_PI_REVIEW;
+        return transition(aupId, STAGE_DRAFT, targetStage, "amendSubmit", user.getId(), role, null);
+    }
+
+    /** 撤回更新版本：清空轨道，原已通过版本继续有效 */
+    @Transactional
+    public AupRecord withdrawAmendment(Long aupId, User user) {
+        AupRecord record = requireRecord(aupId);
+        accessPolicy.assertCanAmend(record, user);
+        if (record.getAmendmentStage() == null) {
+            throw TwinBusinessException.of(409, "当前没有进行中的更新版本");
+        }
+        String from = record.getAmendmentStage();
+        int rows = recordMapper.updateAmendmentStageCas(aupId, from, null, null, null, record.getVersion());
+        if (rows == 0) {
+            throw TwinBusinessException.of(409, "计划书状态已变更，请刷新后重试");
+        }
+        recordMapper.updateAmendmentData(aupId, null);
+        audit(aupId, user.getId(), accessPolicy.resolveOperatorRole(record, user),
+                "amendWithdraw", from, null, "撤回更新版本");
+        return recordMapper.selectById(aupId);
+    }
+
+    /** 修订状态与内容（无修订进行中时 amendmentStage 为 null、data 为空） */
+    public Map<String, Object> amendState(Long aupId, User user) {
+        AupRecord record = requireRecord(aupId);
+        accessPolicy.assertViewable(record, user);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", record.getId());
+        out.put("currentStage", record.getCurrentStage());
+        out.put("amendmentStage", record.getAmendmentStage());
+        out.put("planVersion", record.getPlanVersion());
+        out.put("data", record.getAmendmentData());
+        return out;
     }
 
     private String returnSourceOf(String fromStage) {
@@ -875,7 +1134,11 @@ public class AupService {
         // 内容对所有阶段一律返回：前端「查看」也走 AupFillPage，只在 draft 阶段返回会让
         // 已提交/已批准的计划书整页空白（快照里有同样的内容，printData 本来也不设这道闸）。
         AupData d = dataMapper.selectByAupId(aupId);
-        vo.setDraftData(d == null ? null : d.getData());
+        // 修订进行中：编辑/查看对象是修订内容（通过前 aup_data 仍是现行有效版本，历史版本见快照）
+        String content = record.getAmendmentStage() != null && record.getAmendmentData() != null
+                ? record.getAmendmentData()
+                : (d == null ? null : d.getData());
+        vo.setDraftData(content);
         vo.setSnapshotCount(snapshotService.count(aupId));
         vo.setSnapshots(listSnapshots(aupId, user));
         vo.setTraces(listTraces(aupId, user));
@@ -1025,6 +1288,7 @@ public class AupService {
     public AupAttachmentVO uploadAttachment(Long aupId, MultipartFile file, User user) {
         AupRecord record = requireRecord(aupId);
         accessPolicy.assertDraftWritable(record, user);
+        assertAttachmentWritable(record);
         if (file == null || file.isEmpty()) {
             throw TwinBusinessException.of(400, "文件不能为空");
         }
@@ -1086,6 +1350,7 @@ public class AupService {
     public void deleteAttachment(Long aupId, Long fileId, User user) {
         AupRecord record = requireRecord(aupId);
         accessPolicy.assertDraftWritable(record, user);
+        assertAttachmentWritable(record);
         AupAttachment att = attachmentMapper.selectByAupIdAndFileId(aupId, fileId);
         if (att == null || (att.getDeleted() != null && att.getDeleted() == 1)) {
             throw TwinBusinessException.of(404, "附件不存在");
@@ -1093,6 +1358,16 @@ public class AupService {
         attachmentMapper.softDeleteById(att.getId());
         audit(aupId, user.getId(), accessPolicy.resolveOperatorRole(record, user),
                 "delFile", record.getCurrentStage(), record.getCurrentStage(), att.getFileName());
+    }
+
+    /**
+     * 附件可写性：草稿阶段，或修订进行中。
+     * 原先只校验「可写」未校验阶段，导致已通过/已终止的计划书仍可被增删附件。
+     */
+    private void assertAttachmentWritable(AupRecord record) {
+        if (!STAGE_DRAFT.equals(record.getCurrentStage()) && record.getAmendmentStage() == null) {
+            throw TwinBusinessException.of(403, "计划书当前状态不可增删附件");
+        }
     }
 
     // ======================================================================
@@ -1171,6 +1446,12 @@ public class AupService {
                 throw TwinBusinessException.of(403, "仅申请人或平台管理者可删除");
             }
         }
+        // 级联硬删之前先落一条删除留痕：aup_audit_log 会随级联一起清掉，删完就无从追溯了
+        String reason = platformOwner
+                ? "平台管理者删除（原状态 " + record.getCurrentStage() + "）"
+                : "申请人删除首次草稿";
+        recordDelete(aupId, record, adminUser, reason);
+
         jdbcTemplate.update("DELETE FROM aup_review_item WHERE aup_id = ?", aupId);
         jdbcTemplate.update("DELETE FROM aup_review WHERE aup_id = ?", aupId);
         jdbcTemplate.update("DELETE FROM aup_review_assignment WHERE aup_id = ?", aupId);
@@ -1179,6 +1460,23 @@ public class AupService {
         jdbcTemplate.update("DELETE FROM aup_attachment WHERE aup_id = ?", aupId);
         jdbcTemplate.update("DELETE FROM aup_data WHERE aup_id = ?", aupId);
         jdbcTemplate.update("DELETE FROM aup_record WHERE id = ?", aupId);
+    }
+
+    /**
+     * 删除留痕：写独立表（不参与级联删除），供事后追溯「谁在何时删了哪份计划书」。
+     * 留痕失败不阻断删除本身。
+     */
+    private void recordDelete(Long aupId, AupRecord record, User operator, String reason) {
+        try {
+            jdbcTemplate.update(
+                    "INSERT INTO aup_delete_log(aup_id, register_no, project_name, current_stage, plan_version, "
+                            + "operator, operator_name, reason, deleted_at) VALUES (?,?,?,?,?,?,?,?,NOW())",
+                    aupId, record.getRegisterNo(), record.getProjectName(), record.getCurrentStage(),
+                    record.getPlanVersion(), operator == null ? null : operator.getId(),
+                    operator == null ? null : resolveName(operator.getId()), reason);
+        } catch (Exception e) {
+            log.warn("[AUP] 删除留痕写入失败 aupId={}: {}", aupId, e.getMessage());
+        }
     }
 
     /**

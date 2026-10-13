@@ -3224,16 +3224,31 @@ export function ScanAssistantAskPanel({
    * 多选的「确认」：把勾中的项**一次性**交给模型。
    *
    * <p>气泡上显示标签、发给模型的是值 —— 与单选同一条约定（值可能是内部码：小计层级就是 total/lv1/…）。
+   *
+   * <p><b>勾了选项又在「其他想法…」里补了话，两样一起带上</b>（用户 2026-10-13 反馈）：拆成两条消息
+   * 是这套提问最容易出事的地方 —— 模型只看到其中一半，就会把另一半再问一遍。
+   * 而**向导里只落这一题、不当场提交**：当场发出去会把还没答的那几道一起丢掉（小程序那侧本来就是这么做的）。
    */
   const confirmMulti = () => {
     const q = currentQuestion;
     if (!q || multiPick.length === 0) return;
     const labels = q.options.filter((o) => multiPick.includes(o.value)).map((o) => o.label);
-    const raw = multiPick.join(",");
+    const extra = customDraft.trim();
+    const raw = extra ? `${multiPick.join(",")}、${extra}` : multiPick.join(",");
+    const shown = extra ? `${labels.join("、")}、${extra}` : labels.join("、");
+    setMultiPick([]);
+    setCustomDraft("");
+    if (wizardMode) {
+      setAnswers((prev) => {
+        const next = Array.from({ length: queue.length }, (_, i) => prev[i] ?? "");
+        next[safeIndex] = raw;
+        return next;
+      });
+      return;
+    }
     setQueue([]);
     setAnswers([]);
-    setMultiPick([]);
-    void submitText(raw, labels.join("、"));
+    void submitText(raw, shown);
   };
 
   /** 自定义回答：只落这一题的答案，**不自动跳题** */

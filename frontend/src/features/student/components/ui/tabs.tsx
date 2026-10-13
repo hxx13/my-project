@@ -26,7 +26,7 @@ export function Tabs({ tabs, activeTab, onTabChange, variant = "underline" }: Ta
             className={cn(
               "px-3 py-1.5 text-sm font-medium rounded-[var(--student-radius-md)] transition-colors",
               activeTab === tab.id
-                ? "bg-white text-[var(--student-primary)] shadow-sm"
+                ? "bg-[var(--student-surface-raised)] text-[var(--student-primary)] shadow-sm"
                 : "text-[var(--student-mute)] hover:text-[var(--student-body)]"
             )}
           >

@@ -70,7 +70,7 @@
         id, current_stage AS currentStage, round_no AS roundNo, review_form AS reviewForm,
         draft_source AS draftSource, template_id AS templateId, template_version AS templateVersion,
         pi_user_id AS piUserId, created_by AS createdBy, project_name AS projectName, register_no AS registerNo,
-        project_group_name AS projectGroupName, is_demo AS isDemo
+        project_group_name AS projectGroupName, is_demo AS isDemo, amendment_stage AS amendmentStage
     </sql>
 
     <select id="selectRecordBasic" resultType="com.example.demo.modules.aup.dto.AupRecordView">
@@ -90,38 +90,39 @@
         UPDATE aup_record SET review_form = #{reviewForm} WHERE id = #{aupId}
     </update>
 
+    <!-- 待办一律按「实际流转阶段」取：修订轨道进行中时为 amendment_stage，否则 current_stage -->
     <sql id="TodoColumns">
         id, register_no AS registerNo, project_name AS projectName, pi_name AS piName, dept,
-        current_stage AS currentStage, round_no AS roundNo, draft_source AS draftSource, submitted_at AS submittedAt
+        COALESCE(amendment_stage, current_stage) AS currentStage, round_no AS roundNo, draft_source AS draftSource, submitted_at AS submittedAt
     </sql>
 
     <select id="selectSecretaryTodo" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
         SELECT <include refid="TodoColumns"/>
         FROM aup_record
-        WHERE current_stage = 'formatReview'
+        WHERE COALESCE(amendment_stage, current_stage) = 'formatReview'
         ORDER BY submitted_at DESC, id DESC
     </select>
 
     <select id="selectExpertTodo" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
         SELECT r.id, r.register_no AS registerNo, r.project_name AS projectName, r.pi_name AS piName, r.dept,
-               r.current_stage AS currentStage, r.round_no AS roundNo, r.draft_source AS draftSource, r.submitted_at AS submittedAt
+               COALESCE(r.amendment_stage, r.current_stage) AS currentStage, r.round_no AS roundNo, r.draft_source AS draftSource, r.submitted_at AS submittedAt
         FROM aup_record r
         JOIN aup_review_assignment a ON a.aup_id = r.id AND a.round_no = r.round_no AND a.reviewer_id = #{reviewerId} AND a.status = 'pending'
-        WHERE r.current_stage = 'expertReview'
+        WHERE COALESCE(r.amendment_stage, r.current_stage) = 'expertReview'
         ORDER BY r.submitted_at DESC, r.id DESC
     </select>
 
     <select id="selectPiTodo" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
         SELECT <include refid="TodoColumns"/>
         FROM aup_record
-        WHERE current_stage = 'piReview' AND pi_user_id = #{piUserId}
+        WHERE COALESCE(amendment_stage, current_stage) = 'piReview' AND pi_user_id = #{piUserId}
         ORDER BY submitted_at DESC, id DESC
     </select>
 
     <select id="selectPiTodoAll" resultType="com.example.demo.modules.aup.dto.ReviewTodoItem">
         SELECT <include refid="TodoColumns"/>
         FROM aup_record
-        WHERE current_stage = 'piReview'
+        WHERE COALESCE(amendment_stage, current_stage) = 'piReview'
         ORDER BY submitted_at DESC, id DESC
     </select>
 </mapper>

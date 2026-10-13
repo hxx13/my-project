@@ -21,4 +21,14 @@ public class AupRecordView {
     private String registerNo;
     private String projectGroupName;
     private Integer isDemo;
+    /** 修订轨道阶段（NULL=无修订进行中） */
+    private String amendmentStage;
+
+    /**
+     * 当前实际流转阶段：修订轨道进行中时为 amendment_stage，否则为 current_stage。
+     * 审核链路判定「现在该谁审」一律用它。
+     */
+    public String activeStage() {
+        return amendmentStage != null ? amendmentStage : currentStage;
+    }
 }

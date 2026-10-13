@@ -615,8 +615,12 @@ public class AnimalOrderToolPack implements AiToolPack {
                         out.put("note", "这一列只有 **" + all.get(0).get("label") + "** 一个候选 —— "
                                 + "直接拿它当筛选值用，**不要再弹一次确认**，也别在正文里列。");
                     } else if (all.size() <= CHIP_MAX) {
-                        out.put("choices", all);
-                        out.put("choicesTitle", "选哪个" + zh + "？");
+                        /*
+                         * **必须走 requiredSingle**（2026-10-13）：光放 `choices` 不打「必须问」标记，
+                         * 编排层会按默认**静默丢掉** —— 正文里写着「从下面挑一个」，界面上一个选项都没有。
+                         * 这个包的另一个候选分支（挑单）本来就打了标记，漏的是这一处。
+                         */
+                        out.putAll(AiChoices.requiredSingle("选哪个" + zh + "？", all));
                     } else if (truncated) {
                         out.put("note", "这一列共 " + all.size() + " 个候选，这里只回了前 " + MAX_OPTIONS
                                 + " 个 —— **如实说「共 N 个、列不全」**，并让用户给个名字片段再筛一次");

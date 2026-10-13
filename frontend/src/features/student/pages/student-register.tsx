@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, IdCard, QrCode } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { QrUploader } from "../components/qr";
+import { PasswordRuleHint } from "../components/PasswordRuleHint";
+import { PASSWORD_RULE_PLACEHOLDER, validatePassword } from "@/utils/passwordPolicy";
 import { StudentButton, StudentInput, StudentCard, showToast, Tabs } from "../components/ui";
 import { authStorage } from "@/features/auth/authStorage";
 import { registerStudent, verifyUserId } from "../api";
@@ -96,13 +99,13 @@ export default function StudentRegisterPage() {
     if (!username.trim() || username.trim().length < 3 || username.trim().length > 64) {
       errors.username = "用户名长度需在 3-64 位之间";
     }
-    if (!password || password.length < 6) {
-      errors.password = "密码长度至少 6 位";
+    const pwError = validatePassword(password);
+    if (pwError) {
+      errors.password = pwError;
     }
     if (password !== confirmPassword) {
       errors.confirmPassword = "两次输入的密码不一致";
     }
-
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -166,38 +169,51 @@ export default function StudentRegisterPage() {
           <div className="flex flex-col items-center text-center">
             <h1 className="text-2xl font-bold text-[var(--student-ink)]">学生注册</h1>
             <p className="mt-2 text-sm text-[var(--student-mute)]">
-              输入你的 19 位人员编号或上传 QR 码进行验证
+              输入你的 19 位人员编号，或上传 ARO 二维码完成身份验证
             </p>
 
-            {/* 手动输入人员编号 */}
-            <div className="mt-8 w-full space-y-3">
-              <div className="text-left">
-                <label className="mb-1.5 block text-sm font-medium text-[var(--student-ink)]">
-                  人员编号（19 位）
-                </label>
-                <StudentInput
-                  value={manualUserId}
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, "").slice(0, 19);
-                    setManualUserId(v);
-                    setManualError(null);
-                  }}
-                  placeholder="手动输入 19 位人员编号"
-                  error={manualError ?? undefined}
-                  autoComplete="off"
-                />
+            {/* 手动输入：给一块有分量的面板，和下面的扫码卡对等，并在角上显示位数进度 */}
+            <div className="mt-7 w-full rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] p-4 text-left">
+              <div className="flex items-center gap-2">
+                <IdCard className="h-4 w-4 shrink-0 text-[var(--student-primary)]" />
+                <span className="text-sm font-semibold text-[var(--student-ink)]">
+                  输入人员编号
+                </span>
+                <span
+                  className={cn(
+                    "ml-auto text-xs tabular-nums",
+                    manualUserId.length === 19
+                      ? "text-[var(--student-success)]"
+                      : "text-[var(--student-mute)]",
+                  )}
+                >
+                  {manualUserId.length}/19
+                </span>
               </div>
+              <StudentInput
+                value={manualUserId}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 19);
+                  setManualUserId(v);
+                  setManualError(null);
+                }}
+                placeholder="19 位数字，与 ARO 人员库一致"
+                error={manualError ?? undefined}
+                inputMode="numeric"
+                autoComplete="off"
+                className="mt-3"
+              />
               <StudentButton
                 onClick={handleManualVerify}
                 disabled={manualVerifying || manualUserId.trim().length !== 19}
-                className="w-full"
+                className="mt-3 w-full"
               >
                 {manualVerifying ? "验证中..." : "验证"}
               </StudentButton>
             </div>
 
             {/* 分割线 */}
-            <div className="my-6 flex w-full items-center gap-3">
+            <div className="my-5 flex w-full items-center gap-3">
               <div className="flex-1 border-t border-[var(--student-hairline)]" />
               <span className="text-xs text-[var(--student-mute)]">或</span>
               <div className="flex-1 border-t border-[var(--student-hairline)]" />
@@ -205,6 +221,12 @@ export default function StudentRegisterPage() {
 
             {/* QR 上传 */}
             <div className="w-full">
+              <div className="mb-3 flex items-center justify-center gap-2">
+                <QrCode className="h-4 w-4 shrink-0 text-[var(--student-primary)]" />
+                <span className="text-sm font-semibold text-[var(--student-ink)]">
+                  扫码 / 上传二维码
+                </span>
+              </div>
               <QrUploader onVerified={handleVerified} />
             </div>
 
@@ -290,10 +312,11 @@ export default function StudentRegisterPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="至少 6 位"
+                  placeholder={PASSWORD_RULE_PLACEHOLDER}
                   error={formErrors.password}
                   autoComplete="new-password"
                 />
+                <PasswordRuleHint password={password} />
               </div>
 
               <div>

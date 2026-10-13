@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import ForgotPasswordPanel from "@/components/shared/ForgotPasswordPanel";
 import "./loginPortalLayout.css";
+import { validatePassword } from "@/utils/passwordPolicy";
 
 const SJTU_ORIGIN = "https://130.sjtu.edu.cn";
 
@@ -388,8 +389,9 @@ export default function LoginPage() {
   };
 
   const handleForgotReset = async () => {
-    if (!forgotNewPassword || forgotNewPassword.length < 6) {
-      toast.error("密码至少6位");
+    const pwErr = validatePassword(forgotNewPassword);
+    if (pwErr) {
+      toast.error(pwErr);
       return;
     }
     setForgotSubmitting(true);
@@ -452,8 +454,9 @@ export default function LoginPage() {
   };
 
   const handleEmailReset = async () => {
-    if (!forgotNewPassword || forgotNewPassword.length < 8) {
-      toast.error("密码至少8位，需含大小写字母、数字、特殊符号中至少三类"); return;
+    const pwErr = validatePassword(forgotNewPassword);
+    if (pwErr) {
+      toast.error(pwErr); return;
     }
     setForgotSubmitting(true);
     try {

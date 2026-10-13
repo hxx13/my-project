@@ -453,6 +453,8 @@ public class MaterialAdminController {
                                                          @RequestParam(required = false) String applicantUserId,
                                                          @RequestParam(required = false) String applicantGroup,
                                                          @RequestParam(required = false) String groupId,
+                                                         @RequestParam(required = false) Long itemId,
+                                                         @RequestParam(required = false) String itemKeyword,
                                                          @RequestParam(required = false) String exportLabel,
                                                          @RequestParam(value = "levels", required = false) String levels,
                                                          @RequestParam(value = "excludeBlocks", required = false) String excludeBlocks) {
@@ -464,7 +466,7 @@ public class MaterialAdminController {
         try {
             String group = StringUtils.hasText(applicantGroup) ? applicantGroup : groupId;
             List<MaterialAuditGridRow> rows = materialService.collectAuditGridRows(
-                    user, from, to, applicantUserId, group);
+                    user, from, to, applicantUserId, group, itemId, itemKeyword);
             byte[] body = excelExportService.buildAuditGridSheet(rows, SubtotalConfig.parse(levels, excludeBlocks));
             String fn = MaterialService.buildAuditExportFilename(
                     StringUtils.hasText(exportLabel) ? exportLabel : "申领审计", from, to);
@@ -485,11 +487,14 @@ public class MaterialAdminController {
                                                              @RequestParam(defaultValue = "2099-12-31") String to,
                                                              @RequestParam(required = false) String applicantUserId,
                                                              @RequestParam(required = false) String applicantGroup,
-                                                             @RequestParam(required = false) String groupId) {
+                                                             @RequestParam(required = false) String groupId,
+                                                             @RequestParam(required = false) Long itemId,
+                                                             @RequestParam(required = false) String itemKeyword) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         String group = StringUtils.hasText(applicantGroup) ? applicantGroup : groupId;
-        List<MaterialAuditGridRow> rows = materialService.collectAuditGridRows(user, from, to, applicantUserId, group);
+        List<MaterialAuditGridRow> rows =
+                materialService.collectAuditGridRows(user, from, to, applicantUserId, group, itemId, itemKeyword);
         return Result.success(excelExportService.summarizeAuditGrid(rows));
     }
 

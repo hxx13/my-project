@@ -425,6 +425,9 @@ export async function fetchMaterialAuditTrail(params: {
 export async function exportMaterialAuditTrail(
   params: {
     from?: string; to?: string; categoryId?: number; groupId?: string;
+    /** 按物品收窄。**必须带上**：少了它，「课题组 + 物品 + 时间」里物品那一维会被静默丢掉，
+     *  导出来的表混着别的物品（2026-10-13 真机就是这么漏的）。 */
+    itemId?: number;
     applicantUserId?: string; applicantGroup?: string; exportLabel?: string;
   },
   config?: { levels?: string; excludeBlocks?: string },
@@ -438,7 +441,7 @@ export async function exportMaterialAuditTrail(
 
 /** 申领审计导出结构摘要（全量层级与板块，供勾选；忽略 levels/excludeBlocks）。 */
 export async function exportMaterialAuditSummary(params: {
-  from?: string; to?: string; applicantUserId?: string; applicantGroup?: string;
+  from?: string; to?: string; applicantUserId?: string; applicantGroup?: string; itemId?: number;
 }): Promise<SubtotalSummary> {
   const res = await authHttp.get<Result<SubtotalSummary>>("/material/admin/stats/export/summary", { params });
   return res.data.data;

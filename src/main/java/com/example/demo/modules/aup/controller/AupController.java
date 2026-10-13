@@ -179,8 +179,71 @@ public class AupController {
         return Result.success(data);
     }
 
-    @GetMapping("/{id}/validate")
-    public Result<List<AupValidationErrorDTO>> validate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    // ===================== 修订通道（通过后修改：小修直接保存 / 大修走完整审核） =====================
+
+    /** 修订状态与内容：无修订时 amendmentStage 为 null */
+    @GetMapping("/{id}/amend")
+    public Result<?> amendState(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                @PathVariable("id") Long id) {
+        User user = requireUser(authorization);
+        return Result.success(aupService.amendState(id, user));
+    }
+
+    /** 小修：直接保存生效（命中禁改条目报 403，命中大修条目报 409 引导走更新版本） */
+    @PutMapping("/{id}/amend/minor")
+    public Result<?> minorAmend(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                @PathVariable("id") Long id,
+                                @RequestBody AupSaveRequest request) {
+        User user = requireUser(authorization);
+        return Result.success(aupService.saveMinorAmendment(id, request.getDataJson(),
+                request.getExpectedVersion(), user));
+    }
+
+    /** 更新版本（大修）：修订内容进轨道并提交完整审核 */
+    @PostMapping("/{id}/amend/major")
+    public Result<?> majorAmend(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                @PathVariable("id") Long id,
+                                @RequestBody AupSaveRequest request) {
+        User user = requireUser(authorization);
+        AupRecord record = aupService.startMajorAmendment(id, request.getDataJson(), user);
+        return Result.success(amendResult(record));
+    }
+
+    /** 保存修订草稿（更新版本提交前继续编辑） */
+    @PutMapping("/{id}/amend/draft")
+    public Result<?> saveAmendDraft(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable("id") Long id,
+                                    @RequestBody AupSaveRequest request) {
+        User user = requireUser(authorization);
+        return Result.success(aupService.saveAmendmentDraft(id, request.getDataJson(), user));
+    }
+
+    /** 提交修订草稿进入完整审核 */
+    @PostMapping("/{id}/amend/submit")
+    public Result<?> submitAmend(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                 @PathVariable("id") Long id) {
+        User user = requireUser(authorization);
+        return Result.success(amendResult(aupService.submitAmendment(id, user)));
+    }
+
+    /** 撤回更新版本：原已通过版本继续有效 */
+    @PostMapping("/{id}/amend/withdraw")
+    public Result<?> withdrawAmend(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   @PathVariable("id") Long id) {
+        User user = requireUser(authorization);
+        return Result.success(amendResult(aupService.withdrawAmendment(id, user)));
+    }
+
+    private Map<String, Object> amendResult(AupRecord record) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", record.getId());
+        data.put("currentStage", record.getCurrentStage());
+        data.put("amendmentStage", record.getAmendmentStage());
+        data.put("planVersion", record.getPlanVersion());
+        return data;
+    }
+
+    @GetMapping("/{id}/validate")    public Result<List<AupValidationErrorDTO>> validate(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                         @PathVariable("id") Long id) {
         User user = requireUser(authorization);
         return Result.success(aupService.validate(id, user));

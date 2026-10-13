@@ -163,6 +163,13 @@
         ) t ORDER BY t.seq ASC, t.id ASC
     </select>
 
+    <select id="selectFirstUserMessage" resultMap="MessageMap">
+        SELECT * FROM ai_message
+        WHERE session_id = #{sessionId} AND role = 'user'
+        ORDER BY seq ASC, id ASC
+        LIMIT 1
+    </select>
+
     <select id="selectMaxSeq" resultType="java.lang.Integer">
         SELECT MAX(seq) FROM ai_message WHERE session_id = #{sessionId}
     </select>

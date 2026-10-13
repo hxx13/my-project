@@ -47,8 +47,9 @@ export function MonitorRecentLogFeed() {
                 "motion-safe:animate-[slideIn_200ms_ease-out_both]",
               )}
               style={
-                // stagger: 50ms per item, 在支持动画时生效
-                { animationDelay: `${i * 50}ms` }
+                // stagger 封顶：动画 fill-mode 是 both，延迟期间元素不可见；按序号线性累加时
+                // 长列表尾部会长时间空白（物资页 100+ 商品曾因此等 5 秒才显形）
+                { animationDelay: `${Math.min(i, 10) * 40}ms` }
               }
             >
               {/* 时间戳 */}

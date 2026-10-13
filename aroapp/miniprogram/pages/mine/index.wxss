@@ -251,7 +251,8 @@ page {
   gap: 12rpx;
 }
 
-/* 头部右上角操作按钮（AI画像 / 详情），与上方指示 chip 右对齐成列 */
+/* 头部右上角操作按钮（AI画像 / 详情），与上方指示 chip 右对齐成列。
+   实底、无渐变、非胶囊。 */
 .mine-badge-actions {
   display: flex;
   align-items: center;
@@ -265,15 +266,14 @@ page {
   align-items: center;
   gap: 4rpx;
   padding: 8rpx 18rpx;
-  border-radius: 999rpx;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  box-shadow: 0 6rpx 16rpx rgba(79, 70, 229, 0.28);
+  border-radius: 10rpx;
+  background: #2563eb;
+  border: none;
 }
 
 .mine-archive-action--ghost {
   background: #ffffff;
-  border: 1rpx solid rgba(99, 102, 241, 0.28);
-  box-shadow: 0 6rpx 18rpx rgba(79, 70, 229, 0.12);
+  border: 1rpx solid #bfdbfe;
 }
 
 .mine-archive-action-text {
@@ -283,7 +283,7 @@ page {
 }
 
 .mine-archive-action-text--ghost {
-  color: #4f46e5;
+  color: #2563eb;
 }
 
 .mine-archive-action-arrow {
@@ -552,25 +552,29 @@ page {
   border-top: 1rpx solid rgba(226, 232, 240, 0.9);
 }
 
+/* 按钮一律「实底 + 无渐变 + 无半透明」：rgba/渐变在浅色底上会透出背景，看着脏。
+   主操作统一 #2563eb；次要动作走浅色实底 + 实色描边（不是半透明）。 */
 .mine-foot-btn {
   min-width: 200rpx !important;
   height: 72rpx !important;
   line-height: 70rpx !important;
   font-size: 28rpx !important;
   font-weight: 700 !important;
+  border-radius: 12rpx !important;
   border: none !important;
 }
 
-.mine-foot-btn--bind {
-  background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+.mine-foot-btn--bind,
+.mine-foot-btn--login {
+  background: #2563eb !important;
   color: #fff !important;
-  box-shadow: 0 10rpx 28rpx rgba(79, 70, 229, 0.35) !important;
+  box-shadow: 0 8rpx 20rpx rgba(37, 99, 235, 0.22) !important;
 }
 
 .mine-foot-btn--logout {
-  background: rgba(254, 226, 226, 0.95) !important;
+  background: #fef2f2 !important;
   color: #dc2626 !important;
-  border: 1rpx solid rgba(248, 113, 113, 0.45) !important;
+  border: 1rpx solid #fecaca !important;
 }
 
 .mine-profile-popup {
@@ -781,20 +785,29 @@ page {
 }
 
 .bind-panel {
-  padding: 36rpx 32rpx 48rpx;
-  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+  padding: 32rpx 28rpx 40rpx;
+  padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
 }
 
 .bind-panel--center {
-  padding-bottom: 48rpx;
+  padding-bottom: 36rpx;
 }
 
 .bind-title {
-  font-size: 36rpx;
+  font-size: 34rpx;
   font-weight: 800;
-  margin-bottom: 12rpx;
+  margin-bottom: 18rpx;
   color: #0f172a;
   letter-spacing: -0.5rpx;
+}
+
+/* 标题下的一句话说明：光一个「账号登录」太干，用户不知道能填什么 */
+.bind-sub {
+  display: block;
+  font-size: 23rpx;
+  color: #94a3b8;
+  line-height: 1.45;
+  margin-bottom: 24rpx;
 }
 
 .bind-tip {
@@ -826,25 +839,109 @@ page {
 
 .bind-input {
   min-height: 80rpx;
-  padding: 0 24rpx;
-  border: 1rpx solid #ebedf0;
+  padding: 0 22rpx;
+  border: 1rpx solid #e5e7eb;
   border-radius: 12rpx;
-  font-size: 28rpx;
-  background: #fafafa;
+  font-size: 27rpx;
+  color: #0f172a;
+  background: #fff;
   box-sizing: border-box;
 }
 
 .bind-input-block {
   display: block;
   width: 100%;
-  margin-bottom: 20rpx;
+  margin-bottom: 16rpx;
 }
 
+/* 密码规则提示：规则提前说清，别让用户提交后才被后端打回 */
+.bind-pwd-hint {
+  display: block;
+  font-size: 21rpx;
+  color: #94a3b8;
+  line-height: 1.45;
+  margin: -6rpx 0 14rpx;
+}
+
+/* 学生注册两条路：已有人员编号 / 我是新用户（与 Web 端两个 tab 对齐） */
+.reg-mode-tabs {
+  display: flex;
+  gap: 8rpx;
+  padding: 6rpx;
+  margin-bottom: 20rpx;
+  border-radius: 14rpx;
+  background: #f1f5f9;
+}
+
+.reg-mode-tab {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.reg-mode-tab--on {
+  background: #fff;
+  color: #2563eb;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.08);
+}
+
+/* 姓名与性别同行：性别只有两个选项，单独占一行太费高度 */
+.reg-name-gender-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.reg-name-input {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.reg-gender-chip {
+  flex-shrink: 0;
+  min-width: 88rpx;
+  height: 80rpx;
+  line-height: 78rpx;
+  text-align: center;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  background: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #334155;
+  box-sizing: border-box;
+}
+
+.reg-gender-chip--on {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+/* 主按钮：实底 + 直角圆角 + 无渐变无半透明。
+   早先是「酒红半透明渐变 + 胶囊」，既显脏，又和全站其它实底按钮不是一套。 */
 .bind-submit {
+  height: 84rpx !important;
+  line-height: 84rpx !important;
   margin-top: 12rpx !important;
-  background: linear-gradient(135deg, rgba(172, 23, 54, 0.9), rgba(120, 18, 38, 0.94)) !important;
+  border-radius: 12rpx !important;
+  background: #2563eb !important;
   border: none !important;
   color: #fff !important;
+  font-size: 29rpx !important;
+  font-weight: 600 !important;
+  box-shadow: 0 6rpx 16rpx rgba(37, 99, 235, 0.2) !important;
+}
+
+/* vant 按钮自带 1rpx 描边伪元素：圆角改小后它会从边上露出来 */
+.bind-submit::after {
+  border: none !important;
 }
 
 /* WxPusher 双二维码区 */
@@ -881,26 +978,29 @@ page {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 24rpx;
-  padding: 12rpx 0;
+  margin-top: 4rpx;
+  padding: 6rpx 0;
+  min-height: 56rpx;
 }
 
 .login-register-text {
   font-size: 26rpx;
-  color: #6366f1;
+  color: #2563eb;
   font-weight: 500;
 }
 
 /* ====== 注册表单 ====== */
+/* 拍照/上传：主操作就走实底，和提交按钮同一套（浅底描边那版看着像"线条按钮"，不用） */
 .reg-qr-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
-  padding: 48rpx 16rpx;
-  margin: 24rpx 0 16rpx;
-  border-radius: 20rpx;
-  background: linear-gradient(135deg, rgba(172, 23, 54, 0.9), rgba(120, 18, 38, 0.94));
+  gap: 12rpx;
+  padding: 32rpx 16rpx;
+  margin: 16rpx 0 12rpx;
+  border-radius: 14rpx;
+  background: #2563eb;
+  border: none;
 }
 
 .reg-qr-btn-text {
@@ -916,7 +1016,7 @@ page {
   gap: 12rpx;
   padding: 20rpx;
   font-size: 24rpx;
-  color: #ac1736;
+  color: #2563eb;
 }
 
 .reg-error-text {
@@ -972,12 +1072,6 @@ page {
   font-size: 26rpx;
   font-weight: 600;
   color: #334155;
-}
-
-.mine-foot-btn--login {
-  background: linear-gradient(135deg, rgba(172, 23, 54, 0.92), rgba(120, 18, 38, 0.94)) !important;
-  color: #fff !important;
-  box-shadow: 0 10rpx 28rpx rgba(172, 23, 54, 0.28) !important;
 }
 
 /* 邮箱绑定弹窗 */
@@ -1123,6 +1217,7 @@ page {
   margin-bottom: 20rpx;
 }
 
+/* 实底，不用渐变/半透明：那两种在浅色底上会透出背景 */
 .forgot-qr-btn {
   flex-shrink: 0;
   display: flex;
@@ -1130,7 +1225,8 @@ page {
   justify-content: center;
   padding: 16rpx 28rpx;
   border-radius: 12rpx;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.9), rgba(79, 70, 229, 0.94));
+  background: #2563eb;
+  border: none;
 }
 
 .forgot-qr-btn-text {

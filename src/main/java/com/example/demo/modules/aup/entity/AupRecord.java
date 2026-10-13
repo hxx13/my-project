@@ -49,6 +49,12 @@ public class AupRecord {
     private String animalAllowlist;
     /** 有效期状态 active/expired（与 current_stage 流程状态互补） */
     private String status;
+    /** 修订轨道阶段（NULL=无修订进行中）：draft/piReview/formatReview/expertReview。修订期间 current_stage 恒为 approved */
+    private String amendmentStage;
+    /** 修订中的完整内容；修订期间 aup_data.data 保持为现行有效版本不动 */
+    private String amendmentData;
+    /** 计划书版本号，大修审核通过后 +1 */
+    private Integer planVersion;
     private LocalDateTime submittedAt;
     private LocalDateTime approvedAt;
     private String createdBy;
@@ -56,4 +62,17 @@ public class AupRecord {
     private Integer isDemo;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /**
+     * 当前实际流转阶段：修订轨道进行中时为 amendment_stage，否则为 current_stage。
+     * 审核流程判定「现在该谁审」时一律用它，而非直接读 current_stage。
+     */
+    public String activeStage() {
+        return amendmentStage != null ? amendmentStage : currentStage;
+    }
+
+    /** 是否有进行中的修订（更新版本） */
+    public boolean amending() {
+        return amendmentStage != null;
+    }
 }

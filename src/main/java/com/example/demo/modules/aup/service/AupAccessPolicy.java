@@ -203,6 +203,27 @@ public class AupAccessPolicy {
         }
     }
 
+    /**
+     * 通过后修订鉴权：仅该计划书的课题组长本人（或平台管理者）。
+     *
+     * <p>与 {@link #assertPiCanReview} 同判据（PI 身份 + 同课题组），但独立成方法，
+     * 使修订通道不复用草稿协作口径（{@link #assertDraftWritable} 允许全组可写，此处不允许）。
+     */
+    public void assertCanAmend(AupRecord record, User user) {
+        if (record == null || user == null) {
+            throw TwinBusinessException.of(403, "无权修改该计划书");
+        }
+        if (isAdmin(user)) {
+            return;
+        }
+        if (!isPi(user)) {
+            throw TwinBusinessException.of(403, "仅该计划书的课题组长可修改已通过的计划书");
+        }
+        if (!sameProjectGroup(record.getProjectGroupName(), user.getId())) {
+            throw TwinBusinessException.of(403, "您不是该计划书所在课题组的组长，无法修改");
+        }
+    }
+
     /** 用户与计划书是否同课题组（课题组成员协作查看/编辑用） */
     private boolean sameProjectGroup(AupRecord record, User user) {
         return sameProjectGroup(record == null ? null : record.getProjectGroupName(),
@@ -236,7 +257,7 @@ public class AupAccessPolicy {
         if (sameProjectGroup(record, user)) {
             return true;
         }
-        if (isSecretary(uid) && ("formatReview".equals(record.getCurrentStage()) || isActor(record.getId(), uid))) {
+        if (isSecretary(uid) && ("formatReview".equals(record.activeStage()) || isActor(record.getId(), uid))) {
             return true;
         }
         return isExpert(uid) && isAssignedExpert(record.getId(), uid);

@@ -122,6 +122,11 @@ export interface FieldConfig {
   width?: number;
   /** select：下拉数据源改为本地 ref_data 类型（ANIMAL_BREED / ANIMAL_STRAIN），选项取 fieldData.title */
   refDataSource?: string;
+  /**
+   * 修改等级（计划书通过后修改用）：
+   * LOCKED=关键信息禁止修改；MAJOR=须走「更新版本」重审；缺省/其它=MINOR 可直接保存。
+   */
+  amendmentLevel?: "LOCKED" | "MAJOR" | "MINOR";
 }
 
 /** 字段（可配置的最小单元），对齐后端 FieldVO */
