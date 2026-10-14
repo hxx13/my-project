@@ -55,8 +55,11 @@ public class StudentActivityController {
         try {
             AroPersonnel personnel = aroPersonnelMapper.findByUserId(user.getId());
             if (personnel != null) {
-                String resolved = personnel.getResolvedProjectGroupNames();
-                if (resolved != null && !resolved.isBlank()) return resolved;
+                // projectGroupName 是多值字段（逗号拼接）。活跃度查询只认单个组名，
+                // 整串传下去会拼成 "A, B" 去 LIKE 匹配 → 命中不到任何人。
+                // 取主课题组（第一个）。
+                String primary = personnel.getPrimaryProjectGroupName();
+                if (primary != null && !primary.isBlank()) return primary;
             }
         } catch (Exception ignored) { /* fall through */ }
         return requestedGroup; // 解析失败则保持原值（前端会显示空态）
@@ -75,12 +78,12 @@ public class StudentActivityController {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
-        // 学生：自动用课题组名作为 keyword，只返回自己的组
+        // 学生：自动用课题组名作为 keyword，只返回自己的组（多组取主组，拼接串匹配不到）
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             try {
                 AroPersonnel p = aroPersonnelMapper.findByUserId(user.getId());
                 if (p != null) {
-                    String gn = p.getResolvedProjectGroupNames();
+                    String gn = p.getPrimaryProjectGroupName();
                     if (gn != null && !gn.isBlank()) keyword = gn;
                 }
             } catch (Exception ignored) { /* fall through */ }

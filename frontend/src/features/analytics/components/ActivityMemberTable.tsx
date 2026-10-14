@@ -43,8 +43,8 @@ export function ActivityMemberTable({
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+      <div className="min-h-0 flex-1 overflow-auto">
         <table className="min-w-full text-xs">
           <thead className="bg-neutral-50 text-[11px] font-semibold text-neutral-600">
             <tr>
@@ -93,7 +93,7 @@ export function ActivityMemberTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between border-t border-neutral-100 bg-neutral-50/50 px-4 py-2">
+      <div className="flex shrink-0 items-center justify-between border-t border-neutral-100 bg-neutral-50/50 px-4 py-2">
         <div className="flex items-center gap-2 text-xs text-neutral-500">
           共 {total} 人
           <select

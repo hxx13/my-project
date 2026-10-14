@@ -89,4 +89,10 @@ public class AroPersonnel {
         // 兜底返回外层的字符串
         return this.projectGroupName != null ? this.projectGroupName : "";
     }
+
+    /** 主课题组名（多组时取第一个）。活跃度等只认单个组名的查询用它，别用逗号拼接串。 */
+    public String getPrimaryProjectGroupName() {
+        return com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil
+                .primaryGroup(getResolvedProjectGroupNames());
+    }
 }

@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "网络广播",
+  "usingComponents": {
+    "van-icon": "@vant/weapp/icon/index",
+    "van-popup": "@vant/weapp/popup/index",
+    "mini-switch": "/components/mini-switch/index",
+    "option-picker": "/components/option-picker/index"
+  }
+}

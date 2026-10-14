@@ -28,8 +28,10 @@ import {
   LockKeyhole,
   MapPin,
   Megaphone,
+  RadioTower,
   MessagesSquare,
   Monitor,
+  MonitorPlay,
   Package,
   Server,
   ScrollText,
@@ -337,6 +339,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
     title: "门禁、元数据与环境",
     items: [
       {
+        id: "broadcast",
+        path: "/admin/broadcast",
+        label: "网络广播",
+        icon: RadioTower,
+        alias: ["广播", "喊话", "定时播放", "音乐", "broadcast", "audio"],
+        homeTone: "from-amber-400 to-orange-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => show(ctx, "/admin/broadcast", "ADMIN"),
+      },
+      {
         id: "dahua-issue",
         path: "/admin/dahua-issue",
         label: "大华发卡",
@@ -344,6 +356,17 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-fuchsia-400 to-pink-500",
         fallbackMinRole: "ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/dahua-issue", "ADMIN"),
+      },
+      {
+        id: "video-wall",
+        path: "/admin/video-wall",
+        label: "视频上墙",
+        icon: MonitorPlay,
+        alias: ["电视墙", "上墙", "视频墙", "大屏", "video wall", "tvwall"],
+        homeTone: "from-indigo-400 to-violet-500",
+        // 整机操控展厅大屏，只放给超管（路由侧同样是 SuperAdminGuard）
+        fallbackMinRole: "SUPER_ADMIN",
+        sidebarVisible: (ctx) => show(ctx, "/admin/video-wall", "SUPER_ADMIN"),
       },
       {
         id: "face-debug",

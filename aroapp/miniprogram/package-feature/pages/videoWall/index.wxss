@@ -1,0 +1,1449 @@
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f4f5f7;
+  box-sizing: border-box;
+}
+
+/* ---------- 顶部工具栏 ---------- */
+.vw-bar {
+  flex-shrink: 0;
+  padding: 12rpx 14rpx 10rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #ebedf0;
+}
+
+.vw-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.vw-bar-row + .vw-bar-row {
+  margin-top: 10rpx;
+}
+
+/* 两个选择框**定宽做窄**，余量留给「立即上墙」 */
+.vw-pick {
+  flex: 0 0 200rpx;
+  min-width: 0;
+}
+
+.vw-pick--layout {
+  flex: 0 0 220rpx;
+}
+
+.vw-btn {
+  flex-shrink: 0;
+  padding: 0 22rpx;
+  height: 64rpx;
+  line-height: 64rpx;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-btn--primary {
+  color: #fff;
+  background: #ea6a1e;
+  border-color: #ea6a1e;
+  font-weight: 600;
+}
+
+.vw-btn--more {
+  width: 64rpx;
+  padding: 0;
+  text-align: center;
+  font-size: 32rpx;
+  color: #646566;
+}
+
+.vw-mode {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.vw-mode-txt {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-mode-txt.on {
+  color: #ea6a1e;
+  font-weight: 600;
+}
+
+.vw-dirty {
+  margin-top: 10rpx;
+  padding: 10rpx 16rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  color: #b42318;
+  background: #fef3f2;
+  border: 1rpx solid #fecdca;
+}
+
+.vw-hint {
+  margin-top: 10rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1rpx solid #fde68a;
+}
+
+/* ---------- 画布 ---------- */
+.vw-canvas {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin: 10rpx 14rpx 0;
+}
+
+/* 每块电视**各自一块**画布：两块就是上下两个独立的块，不是把一块切成两半 */
+.vw-screen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border-radius: 14rpx;
+  overflow: hidden;
+  background: #0b1220;
+  border: 1rpx solid #1e293b;
+}
+
+.vw-screen-lbl {
+  position: absolute;
+  left: 8rpx;
+  top: 4rpx;
+  z-index: 2;
+  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.vw-cell {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.28);
+  padding: 4rpx;
+}
+
+.vw-cell--sel {
+  border: 2rpx solid #ea6a1e;
+  box-shadow: inset 0 0 0 2rpx rgba(234, 106, 30, 0.35);
+}
+
+.vw-cell-name {
+  font-size: 24rpx;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  word-break: break-all;
+}
+
+.vw-cell-name--sm {
+  font-size: 18rpx;
+}
+
+.vw-cell-idx {
+  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.vw-cell-x {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40rpx;
+  height: 40rpx;
+  line-height: 40rpx;
+  text-align: center;
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.vw-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ---------- 底部通道列表 ---------- */
+.vw-list {
+  flex-shrink: 0;
+  height: 42vh;
+  display: flex;
+  flex-direction: column;
+  margin: 10rpx 14rpx 0;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 14rpx;
+  overflow: hidden;
+}
+
+.vw-crumbs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 12rpx 16rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.vw-crumb-back {
+  font-size: 24rpx;
+  color: #576b95;
+}
+
+.vw-crumb-cur {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vw-crumb-new {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #ea6a1e;
+}
+
+.vw-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.vw-folder {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 18rpx 16rpx;
+  border-bottom: 1rpx solid #f7f8fa;
+}
+
+.vw-folder-ico {
+  font-size: 30rpx;
+}
+
+.vw-folder-name {
+  font-size: 27rpx;
+  color: #323233;
+}
+
+.vw-folder-desc {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-folder-desc.warn {
+  color: #dc2626;
+}
+
+.vw-folder-more {
+  flex-shrink: 0;
+  width: 56rpx;
+  text-align: center;
+  font-size: 30rpx;
+  color: #969799;
+}
+
+.vw-ch {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 16rpx;
+  border-bottom: 1rpx solid #f7f8fa;
+}
+
+.vw-ch--on {
+  background: #fff7ed;
+}
+
+.vw-dot {
+  flex-shrink: 0;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #d1d5db;
+}
+
+.vw-dot.on {
+  background: #16a34a;
+}
+
+.vw-ch-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: #323233;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vw-empty-sm {
+  padding: 40rpx 16rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #969799;
+}
+
+/* ---------- 弹层 ---------- */
+.vw-sheet {
+  padding: 8rpx 0 12rpx;
+}
+
+.vw-sheet-title {
+  padding: 20rpx 32rpx 10rpx;
+  font-size: 26rpx;
+  color: #969799;
+}
+
+.vw-sheet-item {
+  padding: 26rpx 32rpx;
+  font-size: 29rpx;
+  color: #323233;
+  border-top: 1rpx solid #f2f3f5;
+}
+
+.vw-sheet-item.dis {
+  color: #c8c9cc;
+}
+
+.vw-sheet-cancel {
+  margin-top: 10rpx;
+  padding: 26rpx 32rpx;
+  text-align: center;
+  font-size: 29rpx;
+  color: #646566;
+  border-top: 8rpx solid #f7f8fa;
+}
+
+.vw-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.vw-dialog {
+  width: 600rpx;
+  padding: 32rpx;
+  border-radius: 16rpx;
+  background: #fff;
+}
+
+.vw-dialog-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.vw-dialog-input {
+  margin-top: 24rpx;
+  height: 76rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+}
+
+.vw-dialog-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 28rpx;
+}
+
+.vw-dialog-btn {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  color: #323233;
+  background: #f2f3f5;
+}
+
+.vw-dialog-btn--primary {
+  color: #fff;
+  background: #ea6a1e;
+  font-weight: 600;
+}
+
+/* 切分按钮：左边小字「切分」，右边当前布局名 */
+.vw-btn--split {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  justify-content: center;
+}
+
+.vw-btn-split-lbl {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.vw-btn-split-val {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 24rpx;
+  color: #323233;
+}
+
+.vw-split-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 26rpx;
+}
+
+.vw-split-input {
+  width: 150rpx;
+  height: 76rpx;
+  text-align: center;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+  font-size: 30rpx;
+}
+
+.vw-split-x {
+  font-size: 30rpx;
+  color: #969799;
+}
+
+.vw-split-tip {
+  font-size: 24rpx;
+  color: #969799;
+}
+
+.vw-split-hint {
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+/* 预设切分：一排可点的胶囊 */
+.vw-split-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 22rpx;
+}
+
+.vw-split-chip {
+  padding: 10rpx 20rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-split-chip.on {
+  color: #fff;
+  background: #ea6a1e;
+  border-color: #ea6a1e;
+}
+
+/* 立即上墙跟着两个选择器同一行；选择器收窄让位 */
+.vw-btn--push {
+  flex: 1;
+  padding: 0 12rpx;
+  font-size: 24rpx;
+  text-align: center;
+}
+
+/* 预设下拉：点开就在下面铺一层，不起底部抽屉 */
+.vw-dd {
+  position: relative;
+  z-index: 30;
+}
+
+.vw-dd-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6rpx;
+  height: 64rpx;
+  padding: 0 16rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+  background: #fff;
+}
+
+.vw-dd-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  color: #323233;
+}
+
+.vw-dd-text.ph {
+  color: #c8c9cc;
+}
+
+.vw-dd-caret {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-dd-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 72rpx;
+  max-height: 520rpx;
+  overflow-y: auto;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+}
+
+.vw-dd-item {
+  padding: 20rpx 20rpx;
+  font-size: 26rpx;
+  color: #323233;
+  border-bottom: 1rpx solid #f7f8fa;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vw-dd-item.on {
+  color: #ea6a1e;
+  font-weight: 600;
+  background: #fff7ed;
+}
+
+.vw-dd-empty {
+  padding: 28rpx 20rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #969799;
+}
+
+/* 两个选择器再收小：矮一点、字小一点 */
+.vw-dd-trigger {
+  height: 52rpx;
+  padding: 0 10rpx;
+}
+
+.vw-dd-text {
+  font-size: 23rpx;
+}
+
+.vw-dd-caret {
+  font-size: 20rpx;
+}
+
+.vw-dd-panel {
+  top: 58rpx;
+  max-height: 460rpx;
+}
+
+/* 第二行：两个实色开关 + 当前切分 + 更多 */
+.vw-bar-spacer {
+  flex: 1;
+}
+
+.vw-bar-tip {
+  flex-shrink: 0;
+  max-width: 200rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-toggle {
+  flex-shrink: 0;
+  height: 58rpx;
+  line-height: 58rpx;
+  padding: 0 20rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  color: #646566;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-toggle.on {
+  color: #fff;
+  background: #ea6a1e;
+  border-color: #ea6a1e;
+  font-weight: 600;
+}
+
+/* 列表头：搜索框 + 新建文件夹小图标 */
+.vw-search {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 12rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.vw-search-ico {
+  flex-shrink: 0;
+  font-size: 24rpx;
+}
+
+.vw-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 58rpx;
+  padding: 0 12rpx;
+  font-size: 25rpx;
+  background: #f7f8fa;
+  border-radius: 10rpx;
+}
+
+.vw-search-clear {
+  flex-shrink: 0;
+  padding: 0 6rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-folder-add {
+  flex-shrink: 0;
+  width: 58rpx;
+  height: 58rpx;
+  line-height: 58rpx;
+  text-align: center;
+  font-size: 26rpx;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+}
+
+/* 拖拽时跟着手指的影子 */
+.vw-ghost {
+  position: fixed;
+  z-index: 300;
+  transform: translate(-50%, -50%);
+  max-width: 420rpx;
+  padding: 10rpx 20rpx;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  color: #fff;
+  background: #ea6a1e;
+  box-shadow: 0 6rpx 18rpx rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* 文件夹按钮：正方形小图标 */
+.vw-folder-add {
+  width: 58rpx;
+  padding: 0;
+  line-height: 58rpx;
+  font-size: 30rpx;
+  color: #323233;
+}
+
+.vw-search .vw-crumb-back {
+  flex-shrink: 0;
+  padding-right: 4rpx;
+  font-size: 28rpx;
+  color: #576b95;
+}
+
+.vw-search-ico {
+  flex-shrink: 0;
+}
+
+/* 全部并到第一行：条间距收紧、控件再小一档 */
+.vw-bar-row {
+  gap: 8rpx;
+}
+
+.vw-bar-row + .vw-bar-row {
+  margin-top: 0;
+}
+
+.vw-pick {
+  flex: 0 0 172rpx;
+}
+
+.vw-btn,
+.vw-toggle {
+  height: 52rpx;
+  line-height: 52rpx;
+  padding: 0 12rpx;
+  font-size: 23rpx;
+}
+
+.vw-btn--push {
+  flex: 1;
+  font-size: 23rpx;
+}
+
+.vw-btn--more {
+  width: 52rpx;
+  padding: 0;
+  font-size: 28rpx;
+}
+
+.vw-toggle {
+  padding: 0 14rpx;
+  font-size: 22rpx;
+}
+
+/* 展开的菜单**不跟着触发框变小**：按内容丰富显示，够长才读得出名字 */
+.vw-dd-panel {
+  left: 0;
+  right: auto;
+  width: 460rpx;
+  max-width: calc(100vw - 28rpx);
+}
+
+.vw-dd-item {
+  padding: 22rpx 24rpx;
+  font-size: 27rpx;
+}
+
+/* 间距收紧、两个选择框拉长 */
+.vw-bar {
+  padding: 10rpx 10rpx 8rpx;
+}
+
+.vw-bar-row {
+  gap: 6rpx;
+}
+
+.vw-pick {
+  flex: 0 0 216rpx;
+}
+
+.vw-dd-trigger {
+  padding: 0 12rpx;
+}
+
+.vw-toggle {
+  padding: 0 12rpx;
+}
+
+.vw-btn--push {
+  padding: 0 10rpx;
+}
+
+.vw-btn--more {
+  width: 48rpx;
+}
+
+/* 选择框维持窄宽；「长度」指的是展开菜单的高度 —— 拉高，一屏能多看几项 */
+.vw-pick {
+  flex: 0 0 172rpx;
+}
+
+.vw-dd-panel {
+  max-height: 760rpx;
+}
+
+/* 页内提示条：白底小卡 + 一颗语义圆点。
+   不铺饱和色底 —— 全站视觉基准里「成功/失败只留一颗圆点或一条色条」，
+   绿红只在圆点和文案上用，不做大红大绿的色块。 */
+.vw-flash {
+  position: fixed;
+  left: 50%;
+  top: 46%;
+  z-index: 400;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  max-width: 560rpx;
+  padding: 22rpx 32rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  border: 1rpx solid #eef0f4;
+  box-shadow: 0 12rpx 36rpx rgba(15, 23, 42, 0.16);
+  /* 浮在画布中间，别把底下的点击吞掉 */
+  pointer-events: none;
+}
+
+.vw-flash-dot {
+  flex-shrink: 0;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #15803d;
+}
+
+.vw-flash-txt {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  line-height: 1.4;
+  color: #334155;
+}
+
+.vw-flash--err .vw-flash-dot {
+  background: #dc2626;
+}
+
+/* 预设项：左边名字（点了就选），右边 ⋯（重命名/删除） */
+.vw-dd-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1rpx solid #f7f8fa;
+}
+
+.vw-dd-row.on {
+  background: #fff7ed;
+}
+
+.vw-dd-row .vw-dd-item {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.vw-dd-row.on .vw-dd-item {
+  color: #ea6a1e;
+  font-weight: 600;
+  background: transparent;
+}
+
+.vw-dd-more {
+  flex-shrink: 0;
+  width: 64rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #96979a;
+}
+
+/* ================= 页面自然往下排（不再锁 100vh） ================= */
+.page {
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+}
+
+.vw-canvas {
+  flex: none;
+  gap: 10rpx;
+}
+
+/* 每块电视固定一块高度（比原来矮一截）；双屏＝两块叠加，列表跟着往下排 */
+.vw-screen {
+  flex: none;
+  height: 34vh;
+}
+
+.vw-list {
+  flex: none;
+  height: 42vh;
+  margin-bottom: 24rpx;
+}
+
+/* ================= 树行（模板共用） ================= */
+.vw-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1rpx solid #f7f8fa;
+}
+
+.vw-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 16rpx 0;
+}
+
+.vw-caret {
+  flex-shrink: 0;
+  width: 26rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-row-ico {
+  flex-shrink: 0;
+  font-size: 28rpx;
+}
+
+.vw-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  color: #323233;
+}
+
+.vw-row-desc {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-row-desc.warn {
+  color: #dc2626;
+}
+
+.vw-row-sub {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+.vw-row-more {
+  flex-shrink: 0;
+  width: 56rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #969799;
+}
+
+/* 列表右上角的「展开成抽屉」 */
+.vw-list-expand {
+  flex-shrink: 0;
+  width: 58rpx;
+  height: 58rpx;
+  line-height: 58rpx;
+  text-align: center;
+  font-size: 28rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+}
+
+/* ================= 抽屉 ================= */
+.vw-drawer-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.vw-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 301;
+  height: 78vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 20rpx 20rpx 0 0;
+  transform: translateY(100%);
+  transition: transform 0.22s ease-out;
+}
+
+.vw-drawer--open {
+  transform: translateY(0);
+}
+
+.vw-drawer-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 24rpx 10rpx;
+}
+
+.vw-drawer-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.vw-drawer-close {
+  font-size: 26rpx;
+  color: #576b95;
+}
+
+.vw-drawer-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 悬浮提示条：贴在画布下沿、列表上方 */
+.vw-float {
+  position: fixed;
+  left: 24rpx;
+  right: 24rpx;
+  bottom: 46vh;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 14rpx;
+  background: #fff7ed;
+  border: 1rpx solid #fdba74;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+}
+
+.vw-float-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 25rpx;
+  color: #92400e;
+}
+
+.vw-float-x {
+  flex-shrink: 0;
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  border-radius: 50%;
+  font-size: 26rpx;
+  color: #92400e;
+  background: #fed7aa;
+}
+
+/* 列表**不再锁高度**：随内容撑开，超出交给整页滚动（底下不留死白） */
+.vw-list {
+  height: auto;
+  min-height: 200rpx;
+  margin-bottom: 40rpx;
+}
+
+.vw-scroll {
+  display: block;
+}
+
+/* 悬浮条改成贴屏幕底：列表不再有固定高，锚不到它上沿 */
+.vw-float {
+  bottom: 32rpx;
+}
+
+/* 页面锁一屏高的滚动模型：只有列表内部滚 —— 整页滚会抢掉拖拽手势 */
+.page {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vw-canvas {
+  flex: none;
+}
+
+/* 列表占满画布以下的剩余高度，自己滚；下方不留死白 */
+.vw-list {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  margin-bottom: 20rpx;
+}
+
+.vw-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 影子以触点为中心（按用户要求，不再偏移） */
+.vw-ghost {
+  transform: translate(-50%, -50%);
+}
+
+/* 定位到的那一行：高亮一下，1.8 秒后褪去 */
+.vw-row--hl {
+  background: #fff7ed;
+  box-shadow: inset 3rpx 0 0 #ea6a1e;
+}
+
+/* 选中的通道行：底色 + 左侧色条（持续选中态，不是一闪而过） */
+.vw-row--on {
+  background: #ffedd5;
+  box-shadow: inset 6rpx 0 0 #ea6a1e;
+  border-radius: 8rpx;
+}
+
+/* 放大态格子右下角的提示 */
+.vw-cell-tip {
+  position: absolute;
+  right: 8rpx;
+  bottom: 6rpx;
+  font-size: 20rpx;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ================= 参观模式：遥控盘 ================= */
+/* 下方不再是通道列表，改成「当前/下一个 + 边缘上下 + 中间操纵杆 + 队列」 */
+.vw-tour {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 10rpx 14rpx 20rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 14rpx;
+  overflow: hidden;
+}
+
+/* 遥控盘面板：只有操纵杆与队列两块，不留标题行 */
+.vw-tour-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 12rpx;
+  padding: 14rpx;
+}
+
+/* 操纵杆那半边：与右侧列表各占一半 */
+.vw-pad-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 操纵杆：定死正方形（宽高同一个值，别让 flex 拉伸破坏方正），里面全是圆钮 */
+.vw-pad {
+  position: relative;
+  flex: none;
+  width: 280rpx;
+  height: 280rpx;
+}
+
+.vw-pad-btn {
+  position: absolute;
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 24rpx;
+  color: #646566;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-pad-up {
+  left: 50%;
+  top: 0;
+  margin-left: -36rpx;
+}
+
+.vw-pad-down {
+  left: 50%;
+  bottom: 0;
+  margin-left: -36rpx;
+}
+
+.vw-pad-left {
+  top: 50%;
+  left: 0;
+  margin-top: -36rpx;
+}
+
+.vw-pad-right {
+  top: 50%;
+  right: 0;
+  margin-top: -36rpx;
+}
+
+/* 圆心那颗 OK：实色圆，等于双击格子 */
+.vw-pad-ok {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 108rpx;
+  height: 108rpx;
+  margin-left: -54rpx;
+  margin-top: -54rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #fff;
+  background: #ea6a1e;
+  box-shadow: 0 4rpx 12rpx rgba(234, 106, 30, 0.35);
+}
+
+/* 右列：上半队列、下半切预设，两块上下分 */
+.vw-tour-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+/* 右列下半：上一个 / 下一个 */
+.vw-tour-edge {
+  flex: 0 0 92rpx;
+  display: flex;
+  gap: 12rpx;
+}
+
+.vw-edge-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  border-radius: 10rpx;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-edge-ico {
+  font-size: 24rpx;
+  color: #ea6a1e;
+}
+
+.vw-edge-sub {
+  font-size: 22rpx;
+  color: #646566;
+}
+
+.vw-tour-queue {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  overflow: hidden;
+}
+
+.vw-tour-queue-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  padding: 10rpx 12rpx;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+
+.vw-tour-queue-title {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-tour-cfg {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  border-radius: 10rpx;
+  font-size: 22rpx;
+  color: #fff;
+  background: #ea6a1e;
+}
+
+.vw-tour-queue-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.vw-tour-item {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 14rpx 12rpx;
+  border-bottom: 1rpx solid #f7f8fa;
+}
+
+.vw-tour-item.on {
+  background: #fff7ed;
+}
+
+.vw-tour-no {
+  flex-shrink: 0;
+  width: 36rpx;
+  height: 36rpx;
+  line-height: 36rpx;
+  text-align: center;
+  border-radius: 8rpx;
+  font-size: 20rpx;
+  color: #969799;
+  background: #f2f3f5;
+}
+
+.vw-tour-item.on .vw-tour-no {
+  color: #fff;
+  background: #ea6a1e;
+}
+
+.vw-tour-item-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: #323233;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vw-tour-item.on .vw-tour-item-name {
+  color: #ea6a1e;
+  font-weight: 600;
+}
+
+/* ================= 配置参观队列（抽屉） ================= */
+.vw-queue {
+  padding: 8rpx 0 12rpx;
+}
+
+.vw-queue-title {
+  padding: 20rpx 32rpx 10rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.vw-queue-walls {
+  width: 100%;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 0 24rpx 6rpx;
+  box-sizing: border-box;
+}
+
+.vw-queue-wall {
+  display: inline-block;
+  margin-right: 12rpx;
+  padding: 10rpx 22rpx;
+  border-radius: 10rpx;
+  font-size: 24rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-queue-wall.on {
+  color: #fff;
+  background: #ea6a1e;
+  border-color: #ea6a1e;
+  font-weight: 600;
+}
+
+.vw-queue-sec {
+  padding: 16rpx 32rpx 8rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-queue-scroll {
+  max-height: 320rpx;
+}
+
+.vw-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 18rpx 32rpx;
+  border-top: 1rpx solid #f7f8fa;
+}
+
+.vw-queue-no {
+  flex-shrink: 0;
+  width: 40rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-queue-plus {
+  flex-shrink: 0;
+  width: 40rpx;
+  font-size: 26rpx;
+  color: #ea6a1e;
+}
+
+.vw-queue-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 27rpx;
+  color: #323233;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.vw-queue-op {
+  flex-shrink: 0;
+  width: 56rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  text-align: center;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #323233;
+  background: #f2f3f5;
+  border: 1rpx solid #ebedf0;
+}
+
+.vw-queue-op--del {
+  color: #b42318;
+  background: #fef3f2;
+  border-color: #fecdca;
+}
+
+/* ================= 参观模式 ================= */
+/* 画布尺寸保持原样（不动画布）。只给全面屏的 home 条留安全区。 */
+.page--tour {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 遥控盘贴到底了，给全面屏的 home 条留出安全区 */
+.page--tour {
+  padding-bottom: env(safe-area-inset-bottom);
+}

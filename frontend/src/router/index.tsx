@@ -120,6 +120,8 @@ import AdminPushDashboardPage from "@/pages/AdminPushDashboardPage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
+import AdminVideoWallPage from "@/pages/AdminVideoWallPage";
+import AdminBroadcastPage from "@/pages/AdminBroadcastPage";
 import StudentOrderRecordsPage from "@/pages/StudentOrderRecordsPage";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
@@ -445,6 +447,7 @@ export const router = createHashRouter([
                 element: <AdminGuard />,
                 children: [
                   { path: "monitor", element: <MonitorDashboardPage /> },
+                  { path: "broadcast", element: <AdminBroadcastPage /> },
                   { path: "agv-tracker", element: <AgvTrackerPage /> },
                   { path: "agv-tracker/logs", element: <AgvLogPage /> },
                   { path: "agv-tracker/analytics", element: <AgvAnalyticsPage /> },
@@ -509,6 +512,9 @@ export const router = createHashRouter([
                   { path: "door-swipe-rules", element: <AdminDoorSwipeRulesPage /> },
                   { path: "face-debug", element: <FaceDebugPage /> },
                   { path: "door-control", element: <AdminDoorControlPage /> },
+                  // 视频上墙整机操控展厅大屏（含下发给现场大屏的实时推流），只放给超管。
+                  // 别挪回上面 AdminAccessGuard 那块：那块 minRole=STAFF，普通教职工也能进。
+                  { path: "video-wall", element: <AdminVideoWallPage /> },
                   { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage /> },
                   { path: "telemetry-archive", element: <AdminTelemetryArchivePage /> },
                   {

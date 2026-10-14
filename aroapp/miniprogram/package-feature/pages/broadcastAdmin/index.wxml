@@ -1,0 +1,359 @@
+<view class="page">
+
+  <!-- 连接状态一行 + 右上角「更多」：方案/记录/重连都收进更多菜单，别占状态行 -->
+  <view class="bc-status">
+    <view class="bc-status-line">
+      <van-icon name="{{statusIcon}}" size="30rpx" color="{{statusColor}}" />
+      <text class="bc-status-text">{{statusText}}</text>
+      <view class="bc-more" hover-class="bc-more--hover" bindtap="onMore">
+        <van-icon name="ellipsis" size="34rpx" color="#646566" />
+      </view>
+    </view>
+    <text wx:if="{{lastError}}" class="bc-status-err">{{lastError}}</text>
+  </view>
+
+  <view class="bc-main">
+    <!-- 立即播放：固定，不滚动 -->
+    <view class="bc-play-section">
+      <view class="bc-sec-title"><text>立即播放</text></view>
+
+      <view class="bc-card">
+        <!-- 正在播放 + 进度条。平台**不提供播放进度**（分区对象里没有任何时间字段，
+             也没有 seek 命令），所以位置取不到、跳转做不到 —— 画一条呼吸的实心条
+             表示「在放、位置未知」，比一条永远空着的死条诚实。 -->
+        <view class="bc-np">
+          <text class="bc-np-name">{{songName || '未选曲目'}}</text>
+          <text class="bc-np-dur">{{songDurText}}</text>
+        </view>
+        <view class="bc-np-track">
+          <view wx:if="{{playingCount}}" class="bc-np-fill"></view>
+        </view>
+
+        <view class="bc-playbar">
+          <view class="chip-btn chip-btn--sm chip-btn--primary {{canPlay ? '' : 'chip-btn--off'}}" bindtap="onPlay">{{playLabel}}</view>
+          <view class="chip-btn chip-btn--sm bc-stop-btn {{selCount ? '' : 'chip-btn--off'}}" bindtap="onStop">{{stopLabel}}</view>
+
+          <!-- 音量紧跟在播放/停止后面同一行：这三样是一组操作。
+               拖动设，松手即作用到已选分区（原来是输入框 + 应用按钮） -->
+          <view class="bc-volrow">
+            <text class="bc-vol-label">音量</text>
+            <slider
+              class="bc-vol-slider"
+              value="{{volume}}"
+              min="0"
+              max="100"
+              step="1"
+              block-size="24"
+              activeColor="#2563eb"
+              backgroundColor="#e5e7eb"
+              disabled="{{!selCount}}"
+              bindchanging="onVolumeChanging"
+              bindchange="onVolumeCommit"
+            />
+            <text class="bc-vol-num">{{volume}}</text>
+          </view>
+        </view>
+
+        <view class="bc-hint">只试听时请只勾「监听音箱」，别影响现场。音量对已选分区生效。</view>
+      </view>
+    </view>
+
+    <!-- 音乐列表：独立滚动，曲目再多也不把分区顶出屏 -->
+    <view class="bc-list-section">
+      <view class="bc-sec-title">
+        <text>音乐列表</text>
+        <view class="chip-btn chip-btn--xs chip-btn--ghost" bindtap="onCreateSongList">+ 新建列表</view>
+      </view>
+
+      <scroll-view scroll-y class="bc-list-scroll">
+        <view class="bc-card">
+          <view wx:if="{{!songs.length}}" class="bc-empty">曲库为空</view>
+          <block wx:for="{{songs}}" wx:key="pathName">
+            <view wx:if="{{index === 0 || songs[index - 1].listId !== item.listId}}" class="bc-song-group">
+              <text>{{item.listName}} · {{item.listCount}} 首</text>
+              <view class="bc-song-group-acts">
+                <text class="bc-song-group-act" data-list="{{item.listId}}" data-name="{{item.listName}}" bindtap="onRenameSongList">改名</text>
+                <text class="bc-song-group-act bc-song-group-act--danger" data-list="{{item.listId}}" data-name="{{item.listName}}" data-count="{{item.listCount}}" bindtap="onRemoveSongList">删除</text>
+              </view>
+            </view>
+            <!-- 左滑这一行会露出底下的「移动 / 移出」。touch 事件挂在行上，含未滑动时的点击 -->
+            <view
+              class="bc-song {{item.selected ? 'bc-song--on' : ''}}"
+              data-key="{{item.pathName}}"
+              bindtouchstart="onSongTouchStart"
+              bindtouchmove="onSongTouchMove"
+              bindtouchend="onSongTouchEnd"
+              bindtouchcancel="onSongTouchEnd"
+              bindtap="onTapSong"
+            >
+              <view class="bc-song-content" style="transform: translateX({{item.offsetX}}rpx);">
+                <text class="bc-song-cur">{{item.selected ? '▶' : ''}}</text>
+                <text class="bc-song-name">{{item.fileName}}</text>
+                <text class="bc-song-dur">{{item.durText}}</text>
+              </view>
+              <!-- 没滑动就不显示：内容层有圆角，直角操作层会在圆角处透出细缝 -->
+              <view class="bc-song-acts" style="opacity: {{item.offsetX < 0 ? 1 : 0}}">
+                <view class="bc-song-act bc-song-act--move" catchtap="onMoveSong" data-key="{{item.pathName}}">移动</view>
+                <view class="bc-song-act bc-song-act--del" catchtap="onRemoveSong" data-key="{{item.pathName}}">移出</view>
+              </view>
+            </view>
+          </block>
+          <view class="bc-hint">点一下选中该曲目；左滑可「移动」到别的列表或「移出」当前列表。移出不会删音频文件。</view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 分区列表：独立滚动 -->
+    <view class="bc-list-section">
+      <view class="bc-sec-title">
+        <text>分区（已选 {{selCount}}）</text>
+        <text class="bc-meta" bindtap="onSelectAll">{{selAll ? '全不选' : '全选'}}</text>
+      </view>
+
+      <scroll-view scroll-y class="bc-list-scroll">
+        <view class="bc-card">
+          <view wx:if="{{!zones.length}}" class="bc-empty">{{zonesHint}}</view>
+          <view
+            wx:for="{{zones}}"
+            wx:key="mac"
+            class="bc-zone {{item.selected ? 'bc-zone--sel' : ''}}"
+            data-mac="{{item.mac}}"
+            bindtap="onToggleZone"
+          >
+            <text class="bc-zone-check {{item.selected ? 'bc-zone-check--on' : ''}}">{{item.selected ? '☑' : '☐'}}</text>
+            <view class="bc-zone-main">
+              <view class="bc-zone-name">
+                <text class="bc-zone-name-t">{{item.name}}</text>
+                <text class="bc-zone-ip">{{item.ip}}</text>
+              </view>
+              <!-- catchtap 吞掉冒泡：拖滑条不能顺手把这一行勾选/取消 -->
+              <view class="bc-zone-slidewrap" catchtap="noop">
+                <slider
+                  value="{{item.volume}}"
+                  min="0"
+                  max="100"
+                  step="1"
+                  block-size="26"
+                  activeColor="{{item.selected ? '#ffffff' : '#2563eb'}}"
+                  backgroundColor="{{item.selected ? '#7ea8f0' : '#e5e7eb'}}"
+                  data-mac="{{item.mac}}"
+                  bindchanging="onZoneVolumeChanging"
+                  bindchange="onZoneVolumeChange"
+                />
+              </view>
+            </view>
+            <view class="bc-zone-right">
+              <view class="bc-zone-vol">{{item.volume}}</view>
+              <view class="bc-zone-state bc-zone-state--{{item.stateKind}}">
+                <view class="bc-state-dot"></view>
+                <text>{{item.stateText}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- ============ 定时方案（抽屉） ============ -->
+  <van-popup show="{{plansOpen}}" position="bottom" round z-index="1100" bind:close="onClosePlans">
+    <view class="bc-panel">
+      <view class="bc-panel-head">定时播放方案</view>
+      <scroll-view scroll-y class="bc-panel-body">
+        <view wx:if="{{!plans.length}}" class="bc-empty">还没有定时方案</view>
+        <view wx:for="{{plans}}" wx:key="id" class="bc-card">
+          <view class="bc-card-head">
+            <text class="bc-title">{{item.planName}}</text>
+            <mini-switch checked="{{item.enabled}}" data-id="{{item.id}}" bindchange="onTogglePlan" />
+          </view>
+          <view class="bc-meta-line">
+            <text class="bc-meta">{{item.windowText}}</text>
+            <text class="bc-meta">{{item.periodText}}</text>
+            <text class="bc-meta">{{item.zoneCount}} 区 · {{item.songCount}} 首</text>
+          </view>
+          <view class="bc-meta">上次触发：{{item.lastFiredText}}</view>
+          <view class="bc-actions">
+            <view class="chip-btn chip-btn--xs chip-btn--ghost" data-id="{{item.id}}" bindtap="onRunPlan">试跑</view>
+            <view class="chip-btn chip-btn--xs chip-btn--ghost" data-id="{{item.id}}" bindtap="onEditPlan">编辑</view>
+            <view class="chip-btn chip-btn--xs chip-btn--danger" data-id="{{item.id}}" bindtap="onDeletePlan">删除</view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="bc-panel-foot">
+        <view class="chip-btn chip-btn--ghost" bindtap="onClosePlans">关闭</view>
+        <view class="chip-btn chip-btn--primary" bindtap="onOpenCreate">新建方案</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- ============ 播放记录（抽屉） ============ -->
+  <van-popup show="{{logsOpen}}" position="bottom" round z-index="1100" bind:close="onCloseLogs">
+    <view class="bc-panel">
+      <view class="bc-panel-head">播放记录</view>
+      <scroll-view scroll-y class="bc-panel-body" bindscrolltolower="onScrollToLower" lower-threshold="80">
+        <view wx:if="{{!logs.length && !logLoading}}" class="bc-empty">还没有播放记录</view>
+        <view wx:for="{{logs}}" wx:key="id" class="bc-card">
+          <view class="bc-card-head">
+            <text class="bc-title">{{item.actionText}} · {{item.planName}}</text>
+            <text style="font-size:22rpx;color:{{item.success ? '#16a34a' : '#dc2626'}}">{{item.success ? '成功' : '失败'}}</text>
+          </view>
+          <view class="bc-meta-line">
+            <text class="bc-meta">{{item.firedText}}</text>
+            <text class="bc-meta">{{item.sourceText}}</text>
+          </view>
+          <view class="bc-meta">{{item.message}}</view>
+        </view>
+        <view class="bc-loadmore">{{logLoading ? '加载中…' : (logHasMore ? '上拉加载更多' : '没有更多了')}}</view>
+      </scroll-view>
+      <view class="bc-panel-foot">
+        <view class="chip-btn chip-btn--ghost" bindtap="onCloseLogs">关闭</view>
+        <view class="chip-btn chip-btn--ghost" bindtap="onRefreshLogs">刷新</view>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- 方案编辑器：从「定时方案」抽屉里拉起，层级必须高于那两个抽屉 -->
+  <van-popup show="{{editorOpen}}" position="bottom" round z-index="1200" bind:close="onEditorClose">
+    <view class="bc-panel">
+      <view class="bc-panel-head">{{editorId ? '编辑定时方案' : '新建定时方案'}}</view>
+
+      <scroll-view scroll-y class="bc-panel-body">
+        <view class="bc-field">
+          <view class="bc-field-label"><text>方案名称</text></view>
+          <input
+            class="bc-input"
+            value="{{f.planName}}"
+            placeholder="如：大动物-上午场"
+            placeholder-style="color:#c8c9cc;"
+            data-field="planName"
+            bindinput="onFieldInput"
+          />
+        </view>
+
+        <view class="bc-field">
+          <view class="bc-field-label">
+            <text>启用</text>
+            <mini-switch checked="{{f.enabled}}" bindchange="onEnabledChange" />
+          </view>
+        </view>
+
+        <view class="bc-field">
+          <view class="bc-field-label"><text>定时方式</text></view>
+          <option-picker
+            options="{{timeModeOptions}}"
+            value="{{f.timeMode}}"
+            title="定时方式"
+            bindchange="onTimeModeChange"
+          />
+        </view>
+
+        <block wx:if="{{f.timeMode === '0'}}">
+          <view class="bc-field">
+            <view class="bc-field-label"><text>星期</text></view>
+            <view class="bc-week">
+              <view
+                wx:for="{{weekItems}}"
+                wx:key="day"
+                class="bc-week-item {{item.on ? 'bc-week-item--on' : ''}}"
+                data-day="{{item.day}}"
+                bindtap="onToggleWeek"
+              >{{item.label}}</view>
+            </view>
+          </view>
+        </block>
+
+        <block wx:else>
+          <view class="bc-field-row">
+            <view class="bc-field">
+              <view class="bc-field-label"><text>开始日期</text></view>
+              <picker mode="date" value="{{f.startDate}}" data-field="startDate" bindchange="onDateChange">
+                <view class="bc-input">{{f.startDate || '请选择'}}</view>
+              </picker>
+            </view>
+            <view class="bc-field">
+              <view class="bc-field-label"><text>结束日期</text></view>
+              <picker mode="date" value="{{f.endDate}}" start="{{f.startDate}}" data-field="endDate" bindchange="onDateChange">
+                <view class="bc-input">{{f.endDate || '请选择'}}</view>
+              </picker>
+            </view>
+          </view>
+        </block>
+
+        <view class="bc-field-row">
+          <view class="bc-field">
+            <view class="bc-field-label"><text>开始时刻</text></view>
+            <picker mode="time" value="{{f.startTime}}" data-field="startTime" bindchange="onTimeChange">
+              <view class="bc-input">{{f.startTime}}</view>
+            </picker>
+          </view>
+          <view class="bc-field">
+            <view class="bc-field-label"><text>结束时刻</text></view>
+            <picker mode="time" value="{{f.endTime}}" data-field="endTime" bindchange="onTimeChange">
+              <view class="bc-input">{{f.endTime}}</view>
+            </picker>
+          </view>
+        </view>
+
+        <view class="bc-field">
+          <view class="bc-field-label"><text>音量（留空则不改动）</text></view>
+          <input
+            class="bc-input"
+            type="number"
+            value="{{f.volume}}"
+            placeholder="0-100"
+            placeholder-style="color:#c8c9cc;"
+            data-field="volume"
+            bindinput="onFieldInput"
+          />
+        </view>
+
+        <view class="bc-field">
+          <view class="bc-field-label">
+            <text>目标分区（已选 {{f.zoneSel.length}}）</text>
+            <text class="bc-meta" bindtap="onToggleAllEditorZones">{{allZonesPicked ? '全不选' : '全选'}}</text>
+          </view>
+          <view class="bc-pick-list">
+            <view
+              wx:for="{{zones}}"
+              wx:key="mac"
+              class="bc-pick-row"
+              data-mac="{{item.mac}}"
+              bindtap="onToggleEditorZone"
+            >
+              <text class="bc-zone-check {{item.picked ? 'bc-zone-check--on' : ''}}">{{item.picked ? '☑' : '☐'}}</text>
+              <text class="bc-pick-name">{{item.name}}</text>
+            </view>
+            <view wx:if="{{!zones.length}}" class="bc-empty">未读取到分区</view>
+          </view>
+        </view>
+
+        <view class="bc-field">
+          <view class="bc-field-label">
+            <text>曲目（已选 {{f.songSel.length}}）</text>
+            <text class="bc-meta" bindtap="onToggleAllEditorSongs">{{allSongsPicked ? '全不选' : '全选'}}</text>
+          </view>
+          <view class="bc-pick-list">
+            <view
+              wx:for="{{songOptions}}"
+              wx:key="value"
+              class="bc-pick-row"
+              data-path="{{item.value}}"
+              bindtap="onToggleEditorSong"
+            >
+              <text class="bc-zone-check {{item.picked ? 'bc-zone-check--on' : ''}}">{{item.picked ? '☑' : '☐'}}</text>
+              <text class="bc-pick-name">{{item.label}}</text>
+            </view>
+            <view wx:if="{{!songOptions.length}}" class="bc-empty">曲库为空</view>
+          </view>
+          <view class="bc-hint">到点后从第一首开始放，平台会自动接着放完整个列表。</view>
+        </view>
+      </scroll-view>
+
+      <view class="bc-panel-foot">
+        <view class="chip-btn chip-btn--ghost" bindtap="onEditorClose">取消</view>
+        <view class="chip-btn chip-btn--primary {{saving ? 'chip-btn--off' : ''}}" bindtap="onSavePlan">保存</view>
+      </view>
+    </view>
+  </van-popup>
+
+</view>

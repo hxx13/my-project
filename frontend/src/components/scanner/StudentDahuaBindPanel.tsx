@@ -8,6 +8,7 @@ import {
   type StudentDahuaBindResult,
 } from "@/api/domains/scanner.api";
 import { DahuaCardMappingStatusPanel } from "./DahuaCardMappingStatusPanel";
+import { Z_INDEX } from "@/constants/zIndex";
 import {
   isValidStudentDahuaCardNo,
   sanitizeStudentDahuaCardNo,
@@ -183,7 +184,9 @@ export function StudentDahuaBindPanel({
   const cardReady = isValidStudentDahuaCardNo(cardNo);
 
   return createPortal(
-    <div {...SCAN_MODAL_LAYER_PROPS} className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <div {...SCAN_MODAL_LAYER_PROPS}
+         style={{ zIndex: Z_INDEX.studentBindPanel }}
+         className="fixed inset-0 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-[var(--app-elevation-modal)] text-[var(--app-color-text-primary)]">
         <h3 className="mb-1 text-base font-black">绑定校园卡</h3>
         <p className="mb-4 text-[11px] text-[var(--app-color-text-tertiary)]">

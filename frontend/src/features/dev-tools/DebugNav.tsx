@@ -381,6 +381,31 @@ export default function DebugNav() {
         executeMutation.reset();
     };
 
+    /**
+     * 助手的「打开某人档案」走**地址参数**进来：跳到带 {@code ?scan=<卡号>} 的首页，这里读一次就跑识别。
+     *
+     * <p>为什么复用地址参数、不另加一种事件：助手那侧本来就有「跳转」这条通道（服务端发跳转指令、
+     * 载体跳过去），复用它就不用往事件层再加一种类型，也不用改小程序那端。
+     *
+     * <p>**跑完立刻把参数抹掉**（replace，不进历史）：否则刷新、或从别的页切回来会一遍遍重弹同一个人的档案。
+     */
+    const scanDeepLinkRef = useRef<string | null>(null);
+    useEffect(() => {
+        const code = new URLSearchParams(location.search).get("scan");
+        if (!code) {
+            scanDeepLinkRef.current = null;
+            return;
+        }
+        if (scanDeepLinkRef.current === code) return;
+        scanDeepLinkRef.current = code;
+        lastScannedIdRef.current = code;
+        setLastScannedId(code);
+        analyzeMutation.mutate(code);
+        navigate(location.pathname, { replace: true });
+        // analyzeMutation 每次渲染都是新对象，进依赖会变成死循环；这里只认地址变化
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.pathname, location.search, navigate]);
+
     // 💥 动态监听：只有在发请求的这几十毫秒内，扫码枪才是锁定的
     const isWorking = analyzeMutation.isPending || executeMutation.isPending;
     useEffect(() => {

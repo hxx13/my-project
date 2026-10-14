@@ -13,8 +13,22 @@ import java.util.Map;
 @Service
 public class DahuaDeviceChannelCacheService {
     public static final int DEFAULT_DEVICE_CATEGORY = 8;
+    /** 视频大类：IPC + NVR 通道，电视墙上墙的通道源。 */
+    public static final int VIDEO_DEVICE_CATEGORY = 1;
+    /**
+     * 解码器/电视墙大类：设备「大屏」的输入槽位（槽位02-01…）、各解码器的 HDMIOUT 等。
+     * 这些不在 1 类里，预设与真实上墙却会引用（如 `1000072$1$0$32`），不拉就永远选不到。
+     */
+    public static final int DECODER_DEVICE_CATEGORY = 45;
     /** 入库占位值：0 = 未按小类过滤（大华通道分页接口不回传设备小类，本地仅作标记）。 */
     public static final int DEVICE_TYPE_ALL = 0;
+
+    /** 一次刷新要拉的大类：门禁 + 视频 + 解码器槽位。 */
+    private static final int[] REFRESH_CATEGORIES = {
+            DEFAULT_DEVICE_CATEGORY, VIDEO_DEVICE_CATEGORY, DECODER_DEVICE_CATEGORY};
+    /** 电视墙的通道源：摄像机通道 + 解码器槽位 */
+    private static final List<Integer> WALL_CHANNEL_CATEGORIES =
+            List.of(VIDEO_DEVICE_CATEGORY, DECODER_DEVICE_CATEGORY);
 
     private final DahuaDeviceChannelCacheMapper mapper;
     private final DahuaOpenApiService openApiService;
@@ -32,21 +46,34 @@ public class DahuaDeviceChannelCacheService {
     }
 
     public Map<String, Object> refreshFromUpstream() {
-        List<Map<String, Object>> all = openApiService.fetchAllDeviceChannels(DEFAULT_DEVICE_CATEGORY, null);
-        int synced = 0;
-        for (Map<String, Object> item : all) {
-            DahuaDeviceChannelCache d = fromUpstreamMap(item);
-            if (d.getId() == null) {
-                continue;
-            }
-            synced += mapper.upsert(d);
-        }
         Map<String, Object> stats = new HashMap<>();
-        stats.put("upstreamCount", all.size());
+        Map<String, Integer> byCategory = new LinkedHashMap<>();
+        int total = 0;
+        int synced = 0;
+        for (int category : REFRESH_CATEGORIES) {
+            List<Map<String, Object>> all = openApiService.fetchAllDeviceChannels(category, null);
+            for (Map<String, Object> item : all) {
+                DahuaDeviceChannelCache d = fromUpstreamMap(item, category);
+                if (d.getId() == null) {
+                    continue;
+                }
+                synced += mapper.upsert(d);
+            }
+            byCategory.put(String.valueOf(category), all.size());
+            total += all.size();
+        }
+        stats.put("upstreamCount", total);
         stats.put("syncedRows", synced);
+        stats.put("byCategory", byCategory);
+        // 兼容旧字段
         stats.put("deviceCategory", DEFAULT_DEVICE_CATEGORY);
         stats.put("deviceType", DEVICE_TYPE_ALL);
         return stats;
+    }
+
+    /** 视频通道（IPC + NVR + 解码器槽位），读本地缓存。 */
+    public List<DahuaDeviceChannelCache> listVideoChannels() {
+        return mapper.listByDeviceCategory(WALL_CHANNEL_CATEGORIES);
     }
 
     public Map<String, Object> list(String keyword, String channelType, String ownerCode, Integer unitType,
@@ -121,7 +148,7 @@ public class DahuaDeviceChannelCacheService {
         return out;
     }
 
-    private DahuaDeviceChannelCache fromUpstreamMap(Map<String, Object> item) {
+    private DahuaDeviceChannelCache fromUpstreamMap(Map<String, Object> item, int deviceCategory) {
         DahuaDeviceChannelCache d = new DahuaDeviceChannelCache();
         d.setId(DahuaOpenApiService.parseLong(item.get("id")));
         d.setDeviceCode(str(item.get("deviceCode")));
@@ -147,7 +174,7 @@ public class DahuaDeviceChannelCacheService {
         d.setCapability(toJsonText(item.get("capability")));
         d.setChExt(toJsonText(firstObj(item, "chExt", "ch_ext")));
         d.setIsVirtual(parseTinyInt(item.get("isVirtual")));
-        d.setDeviceCategory(DEFAULT_DEVICE_CATEGORY);
+        d.setDeviceCategory(deviceCategory);
         d.setDeviceType(DEVICE_TYPE_ALL);
         return d;
     }

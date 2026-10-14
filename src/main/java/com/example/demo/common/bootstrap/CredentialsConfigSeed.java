@@ -67,6 +67,14 @@ public class CredentialsConfigSeed implements ApplicationRunner {
                 "WinCC REST 接口登录密码", "STRING", null,
                 "", 1, 0, 0);
 
+        // ---- DSPPA 网络广播 ----
+        def("credentials", "dsppa.username", "广播平台登录用户名",
+                "DSPPA 广播对讲系统登录账号", "STRING", null,
+                "admin", 0, 0, 0);
+        def("credentials", "dsppa.password", "广播平台登录密码",
+                "DSPPA 广播对讲系统登录密码", "STRING", null,
+                "", 1, 0, 0);
+
         // ---- 安全杂项 ----
         def("credentials", "invite_code_pepper", "邀请码哈希 Pepper",
                 "注册推荐码 SHA-256 加盐值，泄露后需轮换", "STRING", null,
@@ -98,6 +106,14 @@ public class CredentialsConfigSeed implements ApplicationRunner {
         def("integration", "dahua.ssl_insecure", "大华跳过 SSL 校验",
                 "大华使用自签证书时设为 true", "BOOLEAN", boolOpts,
                 "true", 0, 0, 0);
+
+        // ---- DSPPA 网络广播 ----
+        def("integration", "dsppa.ws_url", "广播控制通道地址",
+                "DSPPA 广播平台 WebSocket 控制通道，如 ws://172.22.161.230:8081", "STRING", null,
+                "ws://172.22.161.230:8081", 0, 0, 0);
+        def("integration", "dsppa.http_base", "广播 HTTP 基址",
+                "用于读曲库清单与上传音频，如 http://172.22.161.230:9999", "STRING", null,
+                "http://172.22.161.230:9999", 0, 0, 0);
 
         // ---- 扫码与调试 ----
         def("integration", "access_rule_dahua_debug", "门禁规则大华联动调试",
