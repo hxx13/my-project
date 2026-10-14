@@ -347,6 +347,14 @@
           </view>
           <view class="bc-hint">到点后从第一首开始放，平台会自动接着放完整个列表。</view>
         </view>
+
+        <view class="bc-field">
+          <view class="bc-field-label">
+            <text>循环播放</text>
+            <mini-switch checked="{{f.loopPlay}}" bindchange="onLoopPlayChange" />
+          </view>
+          <view class="bc-hint">开启后窗口内列表播完自动从头循环，直到结束</view>
+        </view>
       </scroll-view>
 
       <view class="bc-panel-foot">

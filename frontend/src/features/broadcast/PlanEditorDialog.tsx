@@ -52,6 +52,7 @@ export default function PlanEditorDialog({
   const [volume, setVolume] = useState<string>("");
   const [zoneMacs, setZoneMacs] = useState<Set<string>>(new Set());
   const [songPaths, setSongPaths] = useState<Set<string>>(new Set());
+  const [loopPlay, setLoopPlay] = useState(false);
 
   // 打开时按传入的方案回填
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function PlanEditorDialog({
       setVolume(plan.volume == null ? "" : String(plan.volume));
       setZoneMacs(new Set(parseJsonArray(plan.zoneMacs)));
       setSongPaths(new Set(parseJsonArray(plan.songPaths)));
+      setLoopPlay(plan.loopPlay ?? false);
     } else {
       setName("");
       setEnabled(true);
@@ -80,6 +82,7 @@ export default function PlanEditorDialog({
       setVolume("");
       setZoneMacs(new Set());
       setSongPaths(new Set());
+      setLoopPlay(false);
     }
   }, [open, plan]);
 
@@ -131,6 +134,7 @@ export default function PlanEditorDialog({
       zoneMacs: [...zoneMacs],
       songPaths: [...songPaths],
       songListId: list?.id ?? null,
+      loopPlay,
     });
   }
 
@@ -300,6 +304,11 @@ export default function PlanEditorDialog({
             <p className={`${adminHintClass} mt-1`}>
               到点后从<b>第一首</b>开始放，平台会自动接着放完整个列表。
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              <AdminSwitch checked={loopPlay} onChange={setLoopPlay} />
+              <span className="text-sm text-[var(--app-color-text-primary)]">循环播放</span>
+              <span className={adminHintClass}>窗口内列表播完自动从头循环，直到结束</span>
+            </div>
           </div>
         </div>
 

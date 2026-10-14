@@ -18,6 +18,7 @@
         <result property="zoneMacs" column="zone_macs"/>
         <result property="songPaths" column="song_paths"/>
         <result property="songListId" column="song_list_id"/>
+        <result property="loopPlay" column="loop_play"/>
         <result property="lastFiredDate" column="last_fired_date"/>
         <result property="lastFiredAt" column="last_fired_at"/>
         <result property="lastStopDate" column="last_stop_date"/>
@@ -29,7 +30,7 @@
 
     <sql id="cols">
         id, plan_name, enabled, time_mode, week_days, start_date, end_date,
-        start_time, end_time, volume, zone_macs, song_paths, song_list_id,
+        start_time, end_time, volume, zone_macs, song_paths, song_list_id, loop_play,
         last_fired_date, last_fired_at, last_stop_date, last_result, created_by, created_at, updated_at
     </sql>
 
@@ -49,10 +50,10 @@
             useGeneratedKeys="true" keyProperty="id">
         INSERT INTO broadcast_plan
         (plan_name, enabled, time_mode, week_days, start_date, end_date,
-         start_time, end_time, volume, zone_macs, song_paths, song_list_id, created_by)
+         start_time, end_time, volume, zone_macs, song_paths, song_list_id, loop_play, created_by)
         VALUES
         (#{planName}, #{enabled}, #{timeMode}, #{weekDays}, #{startDate}, #{endDate},
-         #{startTime}, #{endTime}, #{volume}, #{zoneMacs}, #{songPaths}, #{songListId}, #{createdBy})
+         #{startTime}, #{endTime}, #{volume}, #{zoneMacs}, #{songPaths}, #{songListId}, #{loopPlay}, #{createdBy})
     </insert>
 
     <update id="update" parameterType="com.example.demo.modules.broadcast.entity.BroadcastPlan">
@@ -69,6 +70,7 @@
             zone_macs   = #{zoneMacs},
             song_paths  = #{songPaths},
             song_list_id = #{songListId},
+            loop_play   = #{loopPlay},
             updated_at  = NOW()
         WHERE id = #{id}
     </update>

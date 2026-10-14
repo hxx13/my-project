@@ -54,25 +54,29 @@ function callSpringDirect(payload) {
     const base = envConfig.getEffectiveApiBaseUrl().replace(/\/+$/, '');
     const url = `${base}${payload.path}`;
     /*
-     * **DELETE 一律改写成 POST**，用一个头告诉后端「请按 DELETE 处理」。
+     * **DELETE 与 PUT 一律改写成 POST**，用一个头告诉后端「请按原方法处理」。
      *
-     * 起因（生产实测 2026-10-10）：小程序走公网域名时，链路上某一层不接受 DELETE ——
+     * 起因（生产实测）：小程序走公网域名 arodlas 时，链路上某一层不接受 DELETE ——
      * 请求根本到不了应用（服务端访问日志里一条来自小程序的 DELETE 都没有，而网页端走
-     * 内网地址的 DELETE 全是 200）。表现是：真机上**所有删除操作**都弹一张 502 的 HTML 页，
-     * 模拟器（直连本机后端）却一切正常。
+     * 内网地址 aroultra 的 DELETE 全是 200）。表现是：真机上**所有删除操作**都弹一张 502
+     * 的 HTML 页，模拟器（直连本机后端）却一切正常。2026-10-10 修过一次。
      *
-     * 为什么改在这一处：全仓有近 50 处 DELETE 调用（人员/报修/订购/资产/门禁/违规/会话…），
+     * 2026-10-14 又发现 **PUT 被同一条链路同样拦成 502**（视频上墙存参观队列、广播改
+     * 音量/改计划都中招）—— 所以这里把 PUT 一起纳进来。PATCH 实测能过，不用管。
+     *
+     * 为什么改在这一处：全仓有近 50 处 PUT/DELETE 调用（人员/报修/订购/资产/门禁/违规/会话…），
      * 一个个改写成 POST 口要动几十个接口和调用点。改在唯一的请求出口，配合后端一个
-     * 过滤器还原方法，调用点一个都不用动。网页端不受影响（它走内网，DELETE 本来就通）。
+     * 过滤器还原方法，调用点一个都不用动。网页端不受影响（它走内网，本来就通）。
      */
-    const wantDelete = String(payload.method || '').toUpperCase() === 'DELETE';
+    const rawMethod = String(payload.method || 'GET').toUpperCase();
+    const override = rawMethod === 'DELETE' || rawMethod === 'PUT' ? rawMethod : '';
     wx.request({
       url,
-      method: wantDelete ? 'POST' : (payload.method || 'GET'),
+      method: override ? 'POST' : (payload.method || 'GET'),
       data: payload.data || {},
       header: {
         'Content-Type': 'application/json',
-        ...(wantDelete ? { 'X-HTTP-Method-Override': 'DELETE' } : {}),
+        ...(override ? { 'X-HTTP-Method-Override': override } : {}),
         ...(payload.authorization ? { Authorization: payload.authorization } : {}),
       },
       responseType: payload.responseType || 'text',
