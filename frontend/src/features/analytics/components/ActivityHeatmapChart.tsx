@@ -3,29 +3,25 @@ import type { HeatmapCell } from "@/api/domains/analytics.api";
 import { cn } from "@/lib/utils";
 
 const DAY_LABELS = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const DAY_COL_PCT = 10;
+/** 只显示 6:00–23:00（去掉凌晨 0–5 点）：列数从 24 降到 18，每列更宽，也不再为无人时段占位 */
+const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
+const DAY_COL_PCT = 9;
 const HOUR_COL_PCT = (100 - DAY_COL_PCT) / HOURS.length;
-/** 固定行高，避免容器拉高后色块变成长条 */
-const HEADER_ROW_PX = 14;
-const BODY_ROW_PX = 15;
+/** 表头固定行高；表体行自适应，撑满容器高度 */
+const HEADER_ROW_PX = 18;
 
 type Props = { data: HeatmapCell[]; loading?: boolean; className?: string };
 
 export function ActivityHeatmapChart({ data, loading, className }: Props) {
   const maxCount = useMemo(() => Math.max(1, ...data.map((d) => d.count)), [data]);
 
-  const shell = cn(
-    "flex w-full min-w-0 flex-col overflow-hidden",
-    className,
-  );
+  const shell = cn("flex h-full w-full min-w-0 flex-col", className);
 
   const stateShell = cn(shell, "items-center justify-center text-sm text-[var(--app-color-text-tertiary)]");
-  const stateMinH = HEADER_ROW_PX + 7 * BODY_ROW_PX + 8;
 
   if (loading) {
     return (
-      <div className={stateShell} style={{ minHeight: stateMinH }}>
+      <div className={stateShell}>
         加载中…
       </div>
     );
@@ -33,7 +29,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
 
   if (data.length === 0) {
     return (
-      <div className={stateShell} style={{ minHeight: stateMinH }}>
+      <div className={stateShell}>
         暂无热力数据
       </div>
     );
@@ -41,10 +37,10 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
 
   return (
     <div className={shell}>
-      <div className="w-full overflow-x-auto rounded-md border border-[var(--app-color-border-default)]">
+      <div className="h-full w-full overflow-auto rounded-md border border-[var(--app-color-border-default)]">
         <table
           className="border-collapse leading-tight"
-          style={{ width: "100%", tableLayout: "fixed", minWidth: 320, maxWidth: "100%" }}
+          style={{ width: "100%", height: "100%", tableLayout: "fixed", minWidth: 340 }}
         >
           <colgroup>
             <col style={{ width: `${DAY_COL_PCT}%` }} />
@@ -56,7 +52,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
             <tr className="bg-[var(--app-color-surface-elevated)]">
               <th
                 className="truncate p-0.5 text-left text-[8px] font-semibold text-[var(--app-color-text-tertiary)]"
-                style={{ fontSize: 8, height: HEADER_ROW_PX, maxHeight: HEADER_ROW_PX }}
+                style={{ height: HEADER_ROW_PX }}
               >
                 时\日
               </th>
@@ -64,7 +60,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
                 <th
                   key={h}
                   className="truncate p-0 text-center font-normal text-[var(--app-color-text-tertiary)]"
-                  style={{ fontSize: 7, height: HEADER_ROW_PX, maxHeight: HEADER_ROW_PX }}
+                  style={{ fontSize: 7, height: HEADER_ROW_PX }}
                 >
                   {h}
                 </th>
@@ -76,7 +72,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
               <tr key={dow}>
                 <td
                   className="truncate bg-[var(--app-color-surface-elevated)] p-0.5 font-medium text-[var(--app-color-text-secondary)]"
-                  style={{ fontSize: 8, height: BODY_ROW_PX, maxHeight: BODY_ROW_PX }}
+                  style={{ fontSize: 8 }}
                 >
                   {DAY_LABELS[dow]}
                 </td>
@@ -89,10 +85,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
                       key={h}
                       className="truncate p-0 text-center"
                       style={{
-                        fontSize: 7,
-                        height: BODY_ROW_PX,
-                        maxHeight: BODY_ROW_PX,
-                        lineHeight: `${BODY_ROW_PX}px`,
+                        fontSize: 8,
                         backgroundColor:
                           intensity > 0
                             ? `color-mix(in srgb, var(--app-color-accent) ${Math.round(Math.max(8, intensity * 88))}%, transparent)`

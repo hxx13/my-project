@@ -1,0 +1,408 @@
+<view class="page {{tour ? 'page--tour' : ''}}">
+
+  <!-- 页内提示条：做动作后一定看得见（原生 toast 是半透明底，在开发者工具里几乎看不见） -->
+  <view wx:if="{{flash}}" class="vw-flash {{flashErr ? 'vw-flash--err' : ''}}">
+    <view class="vw-flash-dot"></view>
+    <text class="vw-flash-txt">{{flash}}</text>
+  </view>
+
+  <!-- 顶部工具栏：选墙 / 选预设 → 切分 / 上墙 / 实时 / 参观 / 更多 -->
+  <view class="vw-bar">
+    <view class="vw-bar-row">
+      <view class="vw-pick vw-dd">
+        <view class="vw-dd-trigger" bindtap="onToggleWallOpen">
+          <text class="vw-dd-text {{wallName ? '' : 'ph'}}">{{wallName || '电视墙'}}</text>
+          <text class="vw-dd-caret">{{wallOpen ? '▴' : '▾'}}</text>
+        </view>
+        <view wx:if="{{wallOpen}}" class="vw-dd-panel">
+          <view
+            wx:for="{{wallOptions}}"
+            wx:key="value"
+            class="vw-dd-item {{item.value === wallId ? 'on' : ''}}"
+            data-id="{{item.value}}"
+            bindtap="onPickWall"
+          >{{item.label}}</view>
+        </view>
+      </view>
+      <view class="vw-pick vw-dd">
+        <view class="vw-dd-trigger" bindtap="onTogglePresetOpen">
+          <text class="vw-dd-text {{presetName ? '' : 'ph'}}">{{presetName || '预设'}}</text>
+          <text class="vw-dd-caret">{{presetOpen ? '▴' : '▾'}}</text>
+        </view>
+        <view wx:if="{{presetOpen}}" class="vw-dd-panel">
+          <view class="vw-dd-item {{!presetId ? 'on' : ''}}" data-id="" bindtap="onPickPreset">不预览任何预设</view>
+          <view
+            wx:for="{{presetOptions}}"
+            wx:key="value"
+            class="vw-dd-row {{item.value === presetId ? 'on' : ''}}"
+          >
+            <view class="vw-dd-item" data-id="{{item.value}}" bindtap="onPickPreset">{{item.label}}</view>
+            <view
+              class="vw-dd-more"
+              data-id="{{item.value}}"
+              data-name="{{item.label}}"
+              catchtap="onPresetMore"
+            >⋯</view>
+          </view>
+          <view wx:if="{{!presetOptions.length}}" class="vw-dd-empty">这面墙还没有预设</view>
+        </view>
+      </view>
+      <view class="vw-btn vw-btn--primary vw-btn--push" bindtap="onPush">立即上墙</view>
+      <view class="vw-toggle {{live ? 'on' : ''}}" bindtap="onToggleLive">实时</view>
+      <view class="vw-toggle {{tour ? 'on' : ''}}" bindtap="onToggleTour">参观</view>
+      <view class="vw-btn vw-btn--more" bindtap="onOpenMore">⋯</view>
+    </view>
+
+    <view wx:if="{{dirty}}" class="vw-dirty" bindtap="onOverwritePreset">
+      画布已改 · 点这里保存当前预设「{{presetName}}」
+    </view>
+  </view>
+
+  <!-- 树行模板：内嵌列表与抽屉共用一份，避免两处各写一遍 -->
+  <template name="vwTree">
+    <view
+      wx:for="{{treeRows}}"
+      wx:key="index"
+      class="vw-row"
+      style="{{item.style}}"
+    >
+      <block wx:if="{{item.kind === 'folder'}}">
+        <view class="vw-row-main" data-id="{{item.id}}" bindtap="onTapFolder">
+          <text class="vw-caret">{{item.open ? '▾' : '▸'}}</text>
+          <text class="vw-row-ico">📁</text>
+          <text class="vw-row-name">{{item.name}}</text>
+          <text class="vw-row-desc {{item.warn ? 'warn' : ''}}">{{item.desc}}</text>
+        </view>
+        <text
+          class="vw-row-more"
+          data-id="{{item.id}}"
+          data-name="{{item.name}}"
+          catchtap="onFolderMore"
+        >⋯</text>
+      </block>
+      <block wx:else>
+        <view
+          id="{{item.rowId}}"
+          class="vw-row-main {{item.picked ? 'vw-row--on' : ''}}"
+          data-code="{{item.code}}"
+          data-name="{{item.name}}"
+          bindtap="onTapChannel"
+          bindtouchstart="onChTouchStart"
+          bindtouchmove="onChTouchMove"
+          bindtouchend="onChTouchEnd"
+          bindtouchcancel="onChTouchEnd"
+        >
+          <view class="vw-dot {{item.online ? 'on' : ''}}"></view>
+          <text class="vw-row-name">{{item.name}}</text>
+          <text wx:if="{{item.desc}}" class="vw-row-sub">{{item.desc}}</text>
+        </view>
+        <text
+          class="vw-row-more"
+          data-code="{{item.code}}"
+          data-name="{{item.name}}"
+          catchtap="onChannelMore"
+        >⋯</text>
+      </block>
+    </view>
+  </template>
+
+  <!-- 画布：一块电视一块，固定高度；两块就再加一块，页面自然往下排 -->
+  <view class="vw-canvas">
+    <view wx:for="{{canvasScreens}}" wx:key="sid" class="vw-screen">
+      <text wx:if="{{item.label}}" class="vw-screen-lbl">{{item.label}}</text>
+      <view
+        wx:for="{{item.cells}}"
+        wx:for-item="cell"
+        wx:key="key"
+        class="vw-cell {{cell.selected ? 'vw-cell--sel' : ''}}"
+        style="{{cell.style}}"
+        data-key="{{cell.key}}"
+        bindtap="onTapCell"
+      >
+        <text wx:if="{{cell.name}}" class="vw-cell-name {{cell.small ? 'vw-cell-name--sm' : ''}}">{{cell.name}}</text>
+        <text wx:else class="vw-cell-idx">{{cell.index + 1}}</text>
+        <view wx:if="{{cell.name}}" class="vw-cell-x" data-key="{{cell.key}}" catchtap="onClearCell">×</view>
+        <text wx:if="{{cell.zoomed}}" class="vw-cell-tip">双击还原</text>
+      </view>
+    </view>
+    <view wx:if="{{!canvasScreens.length}}" class="vw-empty">{{loading ? '载入中…' : '这面墙没有可用的屏幕'}}</view>
+  </view>
+
+  <!-- 参观模式：下方换成遥控盘（讲解时只按按钮，不翻列表） -->
+  <view wx:if="{{tour}}" class="vw-tour">
+    <view class="vw-tour-body">
+      <!-- 操纵杆：正方形，圆钮；方向挪选中框，圆心 OK = 双击那个格子 -->
+      <view class="vw-pad-wrap">
+        <view class="vw-pad">
+          <view class="vw-pad-btn vw-pad-up" data-dir="up" bindtap="onPadMove">▲</view>
+          <view class="vw-pad-btn vw-pad-left" data-dir="left" bindtap="onPadMove">◀</view>
+          <view class="vw-pad-ok" bindtap="onPadOk">OK</view>
+          <view class="vw-pad-btn vw-pad-right" data-dir="right" bindtap="onPadMove">▶</view>
+          <view class="vw-pad-btn vw-pad-down" data-dir="down" bindtap="onPadMove">▼</view>
+        </view>
+      </view>
+
+      <view class="vw-tour-right">
+        <!-- 右列上半：队列，点哪一项就以它为锚点切过去 -->
+        <view class="vw-tour-queue">
+          <view class="vw-tour-queue-head">
+            <text class="vw-tour-queue-title">参观顺序</text>
+            <view class="vw-tour-cfg" bindtap="onOpenQueueSheet">配置预设</view>
+          </view>
+          <scroll-view scroll-y class="vw-tour-queue-scroll">
+            <view
+              wx:for="{{tourQueue}}"
+              wx:key="taskId"
+              class="vw-tour-item {{index === tourIndex ? 'on' : ''}}"
+              data-index="{{index}}"
+              bindtap="onPickTourItem"
+            >
+              <text class="vw-tour-no">{{index + 1}}</text>
+              <text class="vw-tour-item-name">{{item.name}}</text>
+            </view>
+            <view wx:if="{{!tourQueue.length}}" class="vw-empty-sm">还没排队列，点「配置预设」</view>
+          </scroll-view>
+        </view>
+
+        <!-- 右列下半：按人排好的参观顺序切预设（跟操纵杆的上下不是一回事） -->
+        <view class="vw-tour-edge">
+          <view class="vw-edge-btn" data-dir="prev" bindtap="onTourStep">
+            <text class="vw-edge-ico">▲</text>
+            <text class="vw-edge-sub">上一个</text>
+          </view>
+          <view class="vw-edge-btn" data-dir="next" bindtap="onTourStep">
+            <text class="vw-edge-ico">▼</text>
+            <text class="vw-edge-sub">下一个</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="vw-list">
+    <view class="vw-search">
+      <text class="vw-search-ico">🔍</text>
+      <input
+        class="vw-search-input"
+        value="{{keyword}}"
+        placeholder="搜通道名称"
+        confirm-type="search"
+        bindinput="onKeywordInput"
+      />
+      <text wx:if="{{keyword}}" class="vw-search-clear" bindtap="onClearKeyword">✕</text>
+      <view class="vw-folder-add" bindtap="onOpenCreateFolder">＋</view>
+      <view class="vw-list-expand" bindtap="onOpenDrawer">⤢</view>
+    </view>
+    <scroll-view
+      scroll-y="{{ !dragOn }}"
+      class="vw-scroll"
+      lower-threshold="60"
+      scroll-into-view="{{scrollIntoView}}"
+    >
+      <template is="vwTree" data="{{treeRows: treeRows}}" />
+      <view wx:if="{{!treeRows.length}}" class="vw-empty-sm">
+        {{keyword ? '没搜到匹配的通道' : '还没有分类，点 ＋ 建一个'}}
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 把通道挪到别的文件夹 -->
+  <view wx:if="{{moveOpen}}" class="vw-mask" catchtouchmove="noop">
+    <view class="vw-dialog">
+      <view class="vw-dialog-title">把「{{moveName}}」移动到</view>
+      <view class="vw-move-pick">
+        <option-picker
+          options="{{moveOptions}}"
+          value="{{moveTarget}}"
+          title="选择文件夹"
+          placeholder="选择文件夹"
+          searchable
+          bindchange="onMovePick"
+        />
+      </view>
+      <view class="vw-dialog-actions">
+        <view class="vw-dialog-btn" bindtap="onCloseMove">取消</view>
+        <view class="vw-dialog-btn vw-dialog-btn--primary" bindtap="onMoveSubmit">移动</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 抽屉：把通道树拉大来看，仍然可搜索 -->
+  <view wx:if="{{drawerOpen}}" class="vw-drawer-mask" bindtap="onCloseDrawer"></view>
+  <view class="vw-drawer {{drawerOpen ? 'vw-drawer--open' : ''}}">
+    <view class="vw-drawer-head">
+      <text class="vw-drawer-title">通道分类</text>
+      <text class="vw-drawer-close" bindtap="onCloseDrawer">收起 ▾</text>
+    </view>
+    <view class="vw-search">
+      <text class="vw-search-ico">🔍</text>
+      <input
+        class="vw-search-input"
+        value="{{keyword}}"
+        placeholder="搜通道名称"
+        confirm-type="search"
+        bindinput="onKeywordInput"
+      />
+      <text wx:if="{{keyword}}" class="vw-search-clear" bindtap="onClearKeyword">✕</text>
+      <view class="vw-folder-add" bindtap="onOpenCreateFolder">＋</view>
+    </view>
+    <scroll-view scroll-y class="vw-drawer-scroll">
+      <template is="vwTree" data="{{treeRows: treeRows}}" />
+      <view wx:if="{{!treeRows.length}}" class="vw-empty-sm">
+        {{keyword ? '没搜到匹配的通道' : '还没有分类，点 ＋ 建一个'}}
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 悬浮提示：选中通道后浮在列表上方，✕ 直接取消；再点同一个通道也能取消 -->
+  <view wx:if="{{pickedKey}}" class="vw-float">
+    <text class="vw-float-txt">已选「{{pickedName}}」→ 点画布格子放入</text>
+    <view class="vw-float-x" bindtap="onCancelPick">✕</view>
+  </view>
+
+  <!-- 拖拽跟随手指的影子 -->
+  <view wx:if="{{dragOn}}" class="vw-ghost" style="left:{{dragX}}px;top:{{dragY}}px;">{{dragName}}</view>
+
+  <!-- 更多 -->
+  <van-popup show="{{moreOpen}}" position="bottom" round custom-style="padding-bottom: env(safe-area-inset-bottom);" bind:close="onCloseMore">
+    <view class="vw-sheet">
+      <view class="vw-sheet-title">更多操作</view>
+      <view class="vw-sheet-item" bindtap="onOpenSplitSheet">切分（{{layoutLabel}}）</view>
+      <view class="vw-sheet-item" bindtap="onOpenPresetSheet">另存为新预设…</view>
+      <view class="vw-sheet-item {{presetId ? '' : 'dis'}}" bindtap="onOverwritePreset">保存当前预设（覆盖）</view>
+      <view class="vw-sheet-item {{presetId ? '' : 'dis'}}" bindtap="onDeletePreset">删除当前预设</view>
+      <view class="vw-sheet-item" bindtap="onClear">清空这面墙</view>
+      <view class="vw-sheet-item" bindtap="onReload">刷新（重新拉通道）</view>
+      <view class="vw-sheet-cancel" bindtap="onCloseMore">取消</view>
+    </view>
+  </van-popup>
+
+  <!-- 文件夹新建 / 改名 -->
+  <view wx:if="{{folderSheet}}" class="vw-mask" catchtouchmove="noop">
+    <view class="vw-dialog">
+      <view class="vw-dialog-title">{{folderForm.mode === 'rename' ? '重命名文件夹' : '新建文件夹'}}</view>
+      <input
+        class="vw-dialog-input"
+        value="{{folderForm.name}}"
+        placeholder="名称"
+        focus
+        bindinput="onFolderFormInput"
+      />
+      <view class="vw-dialog-actions">
+        <view class="vw-dialog-btn" bindtap="onCloseFolderSheet">取消</view>
+        <view class="vw-dialog-btn vw-dialog-btn--primary" bindtap="onFolderFormSubmit">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 切分：行 × 列 平均分 -->
+  <view wx:if="{{splitSheet}}" class="vw-mask" catchtouchmove="noop">
+    <view class="vw-dialog">
+      <view class="vw-dialog-title">切分</view>
+      <!-- 预设切分：跟网页端同一套，点一下就套上 -->
+      <view class="vw-split-presets">
+        <view
+          wx:for="{{splitLayouts}}"
+          wx:key="key"
+          class="vw-split-chip {{item.key === layoutKey ? 'on' : ''}}"
+          data-key="{{item.key}}"
+          bindtap="onSplitPickLayout"
+        >{{item.label}}</view>
+      </view>
+      <view class="vw-split-hint">或按行 × 列平均分：</view>
+      <view class="vw-split-row">
+        <input
+          class="vw-split-input"
+          type="number"
+          value="{{splitForm.rows}}"
+          data-field="rows"
+          bindinput="onSplitInput"
+        />
+        <text class="vw-split-x">×</text>
+        <input
+          class="vw-split-input"
+          type="number"
+          value="{{splitForm.cols}}"
+          data-field="cols"
+          bindinput="onSplitInput"
+        />
+        <text class="vw-split-tip">行 × 列</text>
+      </view>
+      <view class="vw-split-hint">选中某块画布就只切它，没选就切这面墙所有电视</view>
+      <view class="vw-dialog-actions">
+        <view class="vw-dialog-btn" bindtap="onCloseSplitSheet">取消</view>
+        <view class="vw-dialog-btn vw-dialog-btn--primary" bindtap="onSplitSubmit">应用</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 预设命名 -->
+  <view wx:if="{{presetSheet}}" class="vw-mask" catchtouchmove="noop">
+    <view class="vw-dialog">
+      <view class="vw-dialog-title">存为预设</view>
+      <input
+        class="vw-dialog-input"
+        value="{{presetForm}}"
+        placeholder="预设名称"
+        focus
+        bindinput="onPresetFormInput"
+      />
+      <view class="vw-dialog-actions">
+        <view class="vw-dialog-btn" bindtap="onClosePresetSheet">取消</view>
+        <view class="vw-dialog-btn vw-dialog-btn--primary" bindtap="onSavePreset">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 配置参观队列：先选电视墙，再挑预设入队，然后上下排顺序 -->
+  <van-popup
+    show="{{queueOpen}}"
+    position="bottom"
+    round
+    custom-style="padding-bottom: env(safe-area-inset-bottom);"
+    bind:close="onCloseQueueSheet"
+  >
+    <view class="vw-queue">
+      <view class="vw-queue-title">配置参观队列</view>
+
+      <scroll-view scroll-x class="vw-queue-walls">
+        <view
+          wx:for="{{wallOptions}}"
+          wx:key="value"
+          class="vw-queue-wall {{item.value === queueWallId ? 'on' : ''}}"
+          data-id="{{item.value}}"
+          bindtap="onQueueWallPick"
+        >{{item.label}}</view>
+      </scroll-view>
+
+      <view class="vw-queue-sec">按这个顺序切换（{{queueOrderRows.length}} 个）</view>
+      <scroll-view scroll-y class="vw-queue-scroll">
+        <view wx:for="{{queueOrderRows}}" wx:key="taskId" class="vw-queue-row">
+          <text class="vw-queue-no">{{index + 1}}</text>
+          <text class="vw-queue-name">{{item.name}}</text>
+          <text class="vw-queue-op" data-id="{{item.taskId}}" data-dir="-1" catchtap="onQueueMove">↑</text>
+          <text class="vw-queue-op" data-id="{{item.taskId}}" data-dir="1" catchtap="onQueueMove">↓</text>
+          <text class="vw-queue-op vw-queue-op--del" data-id="{{item.taskId}}" catchtap="onQueueRemove">✕</text>
+        </view>
+        <view wx:if="{{!queueOrderRows.length}}" class="vw-empty-sm">还没选预设</view>
+      </scroll-view>
+
+      <view class="vw-queue-sec">全部预设（点一下加入队列）</view>
+      <scroll-view scroll-y class="vw-queue-scroll">
+        <view
+          wx:for="{{queueRestRows}}"
+          wx:key="taskId"
+          class="vw-queue-row"
+          data-id="{{item.taskId}}"
+          bindtap="onQueueAdd"
+        >
+          <text class="vw-queue-plus">＋</text>
+          <text class="vw-queue-name">{{item.name}}</text>
+        </view>
+        <view wx:if="{{!queueRestRows.length}}" class="vw-empty-sm">这面墙的预设都已在队列里</view>
+      </scroll-view>
+
+      <view class="vw-sheet-cancel" bindtap="onCloseQueueSheet">完成</view>
+    </view>
+  </van-popup>
+
+</view>

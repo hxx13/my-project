@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.broadcast.mapper.BroadcastPlayLogMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.broadcast.entity.BroadcastPlayLog">
+        <id property="id" column="id"/>
+        <result property="planId" column="plan_id"/>
+        <result property="planName" column="plan_name"/>
+        <result property="source" column="source"/>
+        <result property="action" column="action"/>
+        <result property="firedAt" column="fired_at"/>
+        <result property="zoneMacs" column="zone_macs"/>
+        <result property="songPaths" column="song_paths"/>
+        <result property="success" column="success"/>
+        <result property="message" column="message"/>
+        <result property="operator" column="operator"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.demo.modules.broadcast.entity.BroadcastPlayLog"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO broadcast_play_log
+        (plan_id, plan_name, source, action, fired_at, zone_macs, song_paths, success, message, operator)
+        VALUES
+        (#{planId}, #{planName}, #{source}, #{action}, #{firedAt}, #{zoneMacs}, #{songPaths},
+         #{success}, #{message}, #{operator})
+    </insert>
+
+    <select id="selectRecent" resultMap="BaseMap">
+        SELECT * FROM broadcast_play_log
+        <where>
+            <if test="planId != null">plan_id = #{planId}</if>
+        </where>
+        ORDER BY fired_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

@@ -1,0 +1,686 @@
+
+
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f4f5f7;
+  box-sizing: border-box;
+}
+
+/* ---------- 连接状态条（常驻） ---------- */
+.bc-status {
+  flex-shrink: 0;
+  margin: 12rpx 14rpx 0;
+  padding: 16rpx 20rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 14rpx;
+}
+
+.bc-status-line {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.bc-status-text {
+  flex-shrink: 0;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+  white-space: nowrap;
+}
+
+.bc-status-err {
+  display: block;
+  font-size: 22rpx;
+  color: #dc2626;
+  margin-top: 8rpx;
+  word-break: break-all;
+}
+
+/* 按钮并到状态行右侧：手机屏窄，别再多占一行 */
+/* ---------- 主区：立即播放固定，音乐/分区各自独立滚动 ---------- */
+.bc-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12rpx 14rpx 24rpx;
+  box-sizing: border-box;
+}
+
+/* 立即播放：固定，不参与滚动 */
+.bc-play-section {
+  flex-shrink: 0;
+}
+
+/* 音乐列表 / 分区列表：各占剩余高度一半，内部滚动，互不挤压 */
+.bc-list-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bc-list-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- 卡片 ---------- */
+.bc-card {
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 14rpx;
+  padding: 18rpx 20rpx;
+  margin-bottom: 12rpx;
+}
+
+.bc-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bc-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.bc-meta {
+  font-size: 22rpx;
+  color: #969799;
+  margin-top: 8rpx;
+}
+
+.bc-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx 20rpx;
+  margin-top: 8rpx;
+}
+
+.bc-actions {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.bc-sec-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+  margin: 8rpx 4rpx 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bc-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #c8c9cc;
+}
+
+/* 分区行 = 一个可点选的**选项**，圆角块。
+   与仓库既有选项一致（.spec-opt / .station-item 都是圆角卡片 + 选中实心），
+   不是通铺的整行 —— 通铺的话选中就是个直角色块。 */
+.bc-zone {
+  display: flex;
+  align-items: center;
+  padding: 10rpx 16rpx;
+  margin-bottom: 8rpx;
+  border-radius: 18rpx;
+  background: #f6f7fb;
+}
+
+.bc-zone:last-child {
+  margin-bottom: 0;
+}
+
+/* 选中：整块**实心主色 + 同色投影 + 文字反白**。
+   对齐仓库现有做法（.spec-opt--on / .station-item--on 同一套：
+   #2563eb + 0 6rpx 16rpx rgba(37,99,235,.28)，次级文字 #dbeafe）。
+   块内所有元素都得换反白配色（滑条填充、勾选框、状态点），
+   否则主色底上主色元素糊成一片。 */
+.bc-zone--sel {
+  background: #2563eb;
+  box-shadow: 0 6rpx 16rpx rgba(37, 99, 235, 0.28);
+}
+
+.bc-zone--sel .bc-zone-check {
+  color: #dbeafe;
+}
+
+.bc-zone--sel .bc-zone-check--on {
+  color: #ffffff;
+}
+
+.bc-zone--sel .bc-zone-name-t,
+.bc-zone--sel .bc-zone-vol {
+  color: #ffffff;
+}
+
+.bc-zone--sel .bc-zone-ip,
+.bc-zone--sel .bc-zone-state {
+  color: #dbeafe;
+}
+
+/* 状态点：原色在主色底上发脏，换亮一档 */
+.bc-zone--sel .bc-state-dot {
+  background: #dbeafe;
+}
+
+.bc-zone--sel .bc-zone-state--playing .bc-state-dot {
+  background: #86efac;
+}
+
+.bc-zone--sel .bc-zone-state--paused .bc-state-dot {
+  background: #fcd34d;
+}
+
+.bc-zone--sel .bc-zone-state--idle .bc-state-dot {
+  background: transparent;
+  border-color: #93c5fd;
+}
+
+/* 滑条滑块：默认白块在主色行上会跟白色填充糊在一起，改成主色 + 白圈 */
+.bc-zone--sel .bc-zone-slidewrap .wx-slider-handle {
+  background: #2563eb;
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.28);
+}
+
+/* 停止：**实底红**。
+   注意全局 .chip-btn--danger 是「中性底 + 红字、不铺红底」，本页按用户口径覆盖成实底红；
+   只在本页生效，不动全局。 */
+.bc-stop-btn {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+/* 按钮圆角：全局 .chip-btn 是 12rpx（偏方），本页提到圆角方形。
+   只在本页覆盖 —— 不动全局，免得影响其它页面的既有观感。 */
+.page .chip-btn {
+  border-radius: 18rpx;
+}
+
+.bc-zone-check {
+  width: 40rpx;
+  flex-shrink: 0;
+  font-size: 30rpx;
+  color: #c8c9cc;
+}
+
+.bc-zone-check--on {
+  color: #2563eb;
+}
+
+.bc-zone-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.bc-zone-name {
+  display: flex;
+  align-items: baseline;
+  gap: 10rpx;
+  min-width: 0;
+}
+
+.bc-zone-name-t {
+  font-size: 26rpx;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-zone-ip {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+/* 滑条占满名字那一栏的宽度（原来的 100% 设计）。 */
+.bc-zone-slidewrap {
+  margin-top: 2rpx;
+}
+
+.bc-zone-slidewrap slider {
+  /* 原生滑条自带左右内边距（保证圆点到两端不越界），别再叠负边距抵消 ——
+     抵消多了轨道会戳到容器左边外面。对齐靠下面的 padding 微调。 */
+  margin: 0;
+}
+
+.bc-zone-slidewrap .wx-slider-handle-wrapper {
+  height: 14rpx !important;
+  border-radius: 999rpx;
+}
+
+.bc-zone-slidewrap .wx-slider-track {
+  height: 14rpx !important;
+  border-radius: 999rpx;
+}
+
+.bc-zone-slidewrap .wx-slider-handle {
+  width: 32rpx !important;
+  height: 32rpx !important;
+  border-radius: 50% !important;
+  background: #fff;
+  border: 1rpx solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.16);
+  box-sizing: border-box;
+}
+
+.bc-zone-slidewrap .wx-slider-handle.active {
+  box-shadow: 0 4rpx 12rpx rgba(37, 99, 235, 0.28);
+}
+
+/* 右列**必须固定宽度**：它是滑条的右边界。宽度随文字走的话，
+   「已暂停」(3 字) 会比「空闲」(2 字) 宽，同一列滑条长短不一，看着就乱。 */
+.bc-zone-right {
+  flex-shrink: 0;
+  width: 96rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 12rpx;
+}
+
+.bc-zone-vol {
+  font-size: 24rpx;
+  color: #323233;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 状态：圆点 + 同色文字。扫一眼这一列就知道谁在响 */
+.bc-zone-state {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+.bc-state-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #c8c9cc;
+}
+
+/* 空闲：空心灰点 —— 不抢视线 */
+.bc-zone-state--idle .bc-state-dot {
+  background: transparent;
+  border: 2rpx solid #d4d7dc;
+  box-sizing: border-box;
+}
+
+/* 已暂停：琥珀实心 —— 跟「空闲」要分得开：那是设备没在放，这是被停下来了 */
+.bc-zone-state--paused {
+  color: #d97706;
+}
+
+.bc-zone-state--paused .bc-state-dot {
+  background: #d97706;
+}
+
+/* 播放中：绿色实心 + 呼吸 —— 现场最该一眼看出来的就是它 */
+.bc-zone-state--playing {
+  color: #16a34a;
+}
+
+.bc-zone-state--playing .bc-state-dot {
+  background: #16a34a;
+  animation: bc-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.78);
+  }
+}
+
+.bc-playbar {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+  margin-bottom: 4rpx;
+}
+
+.bc-hint {
+  font-size: 20rpx;
+  color: #969799;
+  margin-top: 10rpx;
+  line-height: 1.5;
+}
+
+/* 弹窗表单：**必须给确定高度**（不能用 max-height）——
+   scroll-view 要确定高度才会滚，用 max-height 时它按内容撑开，
+   结果是底部按钮浮到内容中间、面板顶出屏幕。 */
+.bc-panel {
+  height: 82vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.bc-panel-head {
+  flex-shrink: 0;
+  padding: 24rpx 28rpx 12rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.bc-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 28rpx;
+  box-sizing: border-box;
+}
+
+.bc-field {
+  margin-bottom: 20rpx;
+}
+
+.bc-field-label {
+  font-size: 24rpx;
+  color: #646566;
+  margin-bottom: 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bc-input {
+  width: 100%;
+  height: 72rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #fafafa;
+  box-sizing: border-box;
+}
+
+.bc-field-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.bc-field-row > .bc-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.bc-week {
+  display: flex;
+  gap: 10rpx;
+}
+
+.bc-week-item {
+  flex: 1;
+  text-align: center;
+  padding: 12rpx 0;
+  font-size: 24rpx;
+  color: #646566;
+  background: #f1f3f7;
+  border-radius: 10rpx;
+}
+
+.bc-week-item--on {
+  background: #2563eb;
+  color: #fff;
+}
+
+.bc-pick-list {
+  max-height: 340rpx;
+  overflow: auto;
+  border: 1rpx solid #ebedf0;
+  border-radius: 10rpx;
+  padding: 8rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.bc-pick-row {
+  display: flex;
+  align-items: center;
+  padding: 14rpx 0;
+  border-bottom: 1rpx dashed #eceef0;
+}
+
+.bc-pick-row:last-child {
+  border-bottom: none;
+}
+
+.bc-pick-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 25rpx;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-panel-foot {
+  flex-shrink: 0;
+  display: flex;
+  gap: 16rpx;
+  padding: 16rpx 28rpx 28rpx;
+  border-top: 1rpx solid #f2f3f5;
+}
+
+.bc-panel-foot .chip-btn {
+  flex: 1;
+}
+
+.bc-loadmore {
+  text-align: center;
+  font-size: 22rpx;
+  color: #c8c9cc;
+  padding: 20rpx 0;
+}
+
+/* ---------- 音乐列表（曲目行支持左滑露出操作） ---------- */
+.bc-song-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4rpx 16rpx 8rpx;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+.bc-song {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18rpx;
+  margin-bottom: 8rpx;
+}
+
+.bc-song:last-child {
+  margin-bottom: 0;
+}
+
+.bc-song-content {
+  /* 必须压在操作层之上：操作是绝对定位、且 DOM 里排在后面，
+     不给层级的话它永远画在内容上面 —— 表现是每一行都露着「移动/移出」 */
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 12rpx 16rpx;
+  background: #f6f7fb;
+  border-radius: 18rpx;
+}
+
+.bc-song--on .bc-song-content {
+  background: #2563eb;
+}
+
+.bc-song-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-song--on .bc-song-name {
+  color: #ffffff;
+}
+
+.bc-song-dur {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+.bc-song--on .bc-song-dur {
+  color: #dbeafe;
+}
+
+.bc-song-cur {
+  flex-shrink: 0;
+  width: 28rpx;
+  font-size: 24rpx;
+  color: #2563eb;
+}
+
+.bc-song--on .bc-song-cur {
+  color: #ffffff;
+}
+
+/* 左滑后露在底下的操作 */
+.bc-song-acts {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  transition: opacity 0.15s ease;
+}
+
+.bc-song-act {
+  width: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22rpx;
+  color: #ffffff;
+}
+
+.bc-song-act--move {
+  background: #475569;
+}
+
+.bc-song-act--del {
+  background: #dc2626;
+}
+
+/* ---------- 右上角「更多」：方案/记录/重连都收进这里的菜单，状态行只留状态 ---------- */
+.bc-more {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 8rpx 6rpx;
+}
+
+.bc-more--hover {
+  opacity: 0.55;
+}
+
+/* ---------- 正在播放 + 进度条 ---------- */
+.bc-np {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.bc-np-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-np-dur {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: #969799;
+}
+
+.bc-np-track {
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: #eceef1;
+  overflow: hidden;
+  margin-bottom: 18rpx;
+}
+
+/* 播放中：呼吸的实心条（位置未知，不做假进度） */
+.bc-np-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 999rpx;
+  background: #2563eb;
+  animation: bc-pulse 1.4s ease-in-out infinite;
+}
+
+/* ---------- 音量滑条（跟在播放/停止后面同一行） ---------- */
+.bc-volrow {
+  flex: 1;
+  min-width: 260rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.bc-vol-label {
+  flex-shrink: 0;
+  font-size: 24rpx;
+  color: #646566;
+}
+
+.bc-vol-slider {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.bc-vol-num {
+  flex-shrink: 0;
+  width: 56rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #323233;
+  font-variant-numeric: tabular-nums;
+}

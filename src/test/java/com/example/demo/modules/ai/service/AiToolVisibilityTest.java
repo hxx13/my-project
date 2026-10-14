@@ -178,7 +178,7 @@ class AiToolVisibilityTest {
             return u != null && u.getRole() != null && u.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
         });
         return new ToolRegistry(List.of(
-                new CommonToolPack(null, null, null),
+                new CommonToolPack(null, null, null, null),
                 new UnfreezeToolPack(null, null, null, null, null),
                 new CageQueryToolPack(null, null, null),
                 new CageOpReviewToolPack(claimService, null, null),

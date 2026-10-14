@@ -337,6 +337,8 @@ Page({
     canGoFileTemplates: false,
     canGoAssetRecord: false,
     canGoFacilityMaintenance: false,
+    canGoBroadcast: false,
+    canGoVideoWall: false,
     canGoAssetTransferRecord: false,
     canGoAdminPersonnel: false,
     canGoDahuaIssue: false,
@@ -680,6 +682,10 @@ Page({
         role,
         'STAFF',
       ),
+      // 网络广播：与后台页同权限（网页走 /api/admin/**，是 ADMIN）
+      canGoBroadcast: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/broadcastAdmin/index', role, 'ADMIN'),
+      // 视频上墙：整机操控展厅大屏，只放给超管（与网页端 SuperAdminGuard 同档）
+      canGoVideoWall: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/videoWall/index', role, 'SUPER_ADMIN'),
       canGoAssetTransferRecord: pagePermission.canShowMiniEntry('mine', '/package-ops/pages/assetTransferRecord/index', role, 'STAFF'),
       canGoAdminPersonnel: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/adminPersonnel/index', role, 'SUPER_ADMIN'),
       canGoDahuaIssue: pagePermission.canShowMiniEntry('mine', '/package-door/pages/dahuaIssue/index', role, 'ADMIN'),
@@ -1255,6 +1261,24 @@ Page({
       return;
     }
     wx.navigateTo({ url: '/package-ops/pages/facilityMaintenance/index' });
+  },
+
+  goBroadcast() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE);
+    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/broadcastAdmin/index', role, 'ADMIN')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/broadcastAdmin/index' });
+  },
+
+  goVideoWall() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE);
+    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/videoWall/index', role, 'SUPER_ADMIN')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/videoWall/index' });
   },
 
   goOrderTimeConfig() {

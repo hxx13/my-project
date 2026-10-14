@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-12T06:27:42.534Z",
+  "generatedAt": "2026-10-14T12:37:19.104Z",
   "pages": [
     {
       "path": "/about",
@@ -113,6 +113,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "auto-logs"
+    },
+    {
+      "path": "/admin/broadcast",
+      "label": "网络广播",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "broadcast"
     },
     {
       "path": "/admin/cage-shelf-indexes",
@@ -477,6 +484,13 @@
       "fallbackMinRole": "SUPER_ADMIN",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-wl"
+    },
+    {
+      "path": "/admin/video-wall",
+      "label": "视频上墙",
+      "fallbackMinRole": "SUPER_ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "video-wall"
     },
     {
       "path": "/animal-room-cockpit",

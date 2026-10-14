@@ -175,6 +175,11 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-swipe-alert-notify-user-ids.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-swipe-alert-notify-cardholder.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-dahua-record-id-unique.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-dahua-video-category.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-dahua-video-category-col.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-dahua-video-link.sql", ctx)) success++;
+        // 电视墙参观模式：预设播放队列（顺序由人排，落库各端共用）
+        total++; if (runScript("db/bootstrap-dahua-tvwall-tour.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-door-swipe-rule.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-exam-paper-folder.sql", ctx)) success++;
@@ -502,6 +507,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-ai-user-preference.sql", ctx)) success++;
         // 条件触发器：当「查出来的条件」成立时执行一个动作（前端不在也照跑）
         total++; if (runScript("db/bootstrap-ai-watch.sql", ctx)) success++;
+        // 广播定时播放方案：我方调度、平台只执行（平台自带定时不可靠）
+        total++; if (runScript("db/bootstrap-broadcast-plan.sql", ctx)) success++;
+        // 广播播放记录：「今天到底响没响」看这里
+        total++; if (runScript("db/bootstrap-broadcast-play-log.sql", ctx)) success++;
 
         String skipNote = benignSkips > 0
                 ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"

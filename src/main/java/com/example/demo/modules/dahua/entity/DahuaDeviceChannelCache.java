@@ -33,5 +33,9 @@ public class DahuaDeviceChannelCache {
     /** 本地备注分类 ID，与 {@link #remarkCategoryName} 一并用于列表展示 */
     private Long remarkCategoryId;
     private String remarkCategoryName;
+    /** 监控分类树节点（仅视频通道用，与门禁的 remarkCategoryId 独立） */
+    private Long videoCategoryId;
+    /** 设备跳转地址（摄像机自己的管理页），没配则为空 */
+    private String linkUrl;
     private String updatedAt;
 }

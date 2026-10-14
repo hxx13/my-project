@@ -132,6 +132,11 @@ export type TreeProps<T extends TreeLike<T>> = {
 
   /** 行内「⋯」菜单项；DropdownMenuContent 已由本组件套好 */
   renderMenu?: (node: T, helpers: TreeMenuHelpers) => ReactNode;
+  /**
+   * 行**右端**的补充内容（如「(12/14)」在线数）。
+   * 名称是 flex-1，所以这里的东西天然贴右，把行尾那段空宽用起来。
+   */
+  renderSuffix?: (node: T) => ReactNode;
   /** 行下方、子节点上方的内容（空间树用来列该空间直接挂的物品） */
   renderExtras?: (node: T, depth: number) => ReactNode;
 
@@ -149,6 +154,16 @@ export type TreeProps<T extends TreeLike<T>> = {
   /** 顶部「新建 X」按钮文案；不传则不显示顶部按钮 */
   createRootLabel?: string;
   onCreate?: (parentId: number | null, name: string) => void;
+
+  /**
+   * 展开后是否把新露出的内容滚进视野。
+   *
+   * 默认开：节点内容不多时「展开了却看不见」很像没反应。
+   * 但节点下挂的内容很长时（如一个文件夹里几十上百条），`block:'nearest'`
+   * 会把整行顶到视口顶部、连带外层容器一起滚 —— 观感就是展开一下画面乱跳。
+   * 这类调用方传 false。
+   */
+  revealOnExpand?: boolean;
 
   emptyText?: string;
   noMatchText?: string;
@@ -172,6 +187,7 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
     onToggle,
     keyword = "",
     renderMenu,
+    renderSuffix,
     renderExtras,
     draggable = false,
     droppable = false,
@@ -182,6 +198,7 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
     emptyText = "暂无数据",
     noMatchText = "没有匹配项",
     move,
+    revealOnExpand = true,
   } = props;
 
   const [creating, setCreating] = useState<{ parentId: number | null; name: string } | null>(null);
@@ -202,7 +219,7 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
     const id = getId(n);
     const willOpen = !(searching || expanded.has(id));
     onToggle(id);
-    if (!willOpen) return;
+    if (!willOpen || !revealOnExpand) return;
     requestAnimationFrame(() => {
       rootRef.current?.querySelector(`[data-tree-children="${id}"]`)?.scrollIntoView({ block: "nearest" });
     });
@@ -380,6 +397,7 @@ export function Tree<T extends TreeLike<T>>(props: TreeProps<T>) {
             >
               {getName(n)}
             </span>
+            {renderSuffix?.(n)}
           </button>
           {renderMenu && (
             <DropdownMenu>

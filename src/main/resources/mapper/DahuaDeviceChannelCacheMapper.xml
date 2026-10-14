@@ -49,6 +49,42 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updateVideoCategory">
+        UPDATE dahua_device_channel_cache
+        SET video_category_id = #{videoCategoryId}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateVideoCategoryByNode">
+        UPDATE dahua_device_channel_cache
+        SET video_category_id = #{videoCategoryId}
+        WHERE video_category_id = #{nodeId}
+    </update>
+
+    <update id="updateLinkUrl">
+        UPDATE dahua_device_channel_cache
+        SET link_url = #{linkUrl}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 种子：只填空着的，重复执行不会覆盖人工改过的值 -->
+    <update id="seedLinkUrlIfEmpty">
+        UPDATE dahua_device_channel_cache
+        SET link_url = #{linkUrl}
+        WHERE channel_code = #{channelCode}
+          AND (link_url IS NULL OR link_url = '')
+    </update>
+
+    <!-- 重建分类树前，把这些大类的通道全部退回未分类 -->
+    <update id="clearVideoCategory">
+        UPDATE dahua_device_channel_cache
+        SET video_category_id = NULL
+        WHERE device_category IN
+        <foreach collection="deviceCategories" item="cat" open="(" separator="," close=")">
+            #{cat}
+        </foreach>
+    </update>
+
     <sql id="listWhere">
         <where>
             <if test="keyword != null and keyword != ''">
@@ -199,6 +235,35 @@
         <foreach collection="codes" item="c" open="(" separator="," close=")">
             #{c}
         </foreach>
+    </select>
+
+    <select id="listByDeviceCategory"
+            resultType="com.example.demo.modules.dahua.entity.DahuaDeviceChannelCache">
+        SELECT d.id,
+               d.device_code AS deviceCode,
+               d.unit_type AS unitType,
+               d.unit_seq AS unitSeq,
+               d.channel_seq AS channelSeq,
+               d.channel_code AS channelCode,
+               d.channel_sn AS channelSn,
+               d.channel_name AS channelName,
+               d.channel_type AS channelType,
+               d.camera_type AS cameraType,
+               d.owner_code AS ownerCode,
+               d.is_online AS isOnline,
+               d.stat,
+               d.device_category AS deviceCategory,
+               d.device_type AS deviceType,
+               d.video_category_id AS videoCategoryId,
+               d.link_url AS linkUrl
+        FROM dahua_device_channel_cache d
+        LEFT JOIN dahua_video_channel_category vc ON d.video_category_id = vc.id
+        WHERE d.device_category IN
+        <foreach collection="deviceCategories" item="cat" open="(" separator="," close=")">
+            #{cat}
+        </foreach>
+        <!-- 按监控分类节点排（节点排序号 + 名称），未分类的排最后；同类内按原始名称 -->
+        ORDER BY vc.sort_order IS NULL, vc.sort_order, vc.name, d.channel_name
     </select>
 
 </mapper>

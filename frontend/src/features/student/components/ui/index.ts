@@ -40,6 +40,8 @@ export { ViewToggle } from "./view-toggle";
 export type { ViewToggleProps } from "./view-toggle";
 export { BarChart } from "./bar-chart";
 export type { BarChartProps, BarChartDataItem } from "./bar-chart";
+export { AreaChart } from "./area-chart";
+export type { AreaChartProps, AreaChartPoint } from "./area-chart";
 
 // 业务组件
 export { StatPanel } from "./stat-panel";

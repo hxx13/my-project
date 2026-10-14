@@ -10,6 +10,8 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
 import com.example.demo.modules.twin.common.util.ChineseNameSimilarity;
+import com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO;
+import com.example.demo.modules.twin.scan.dto.scan.ScanUserInfoDTO;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
@@ -43,13 +45,16 @@ public class CommonToolPack implements AiToolPack {
     private final TwinDashboardMapper dashboardMapper;
     private final TwinPersonnelArchiveQueryService archiveQueryService;
     private final AroService aroService;
+    private final com.example.demo.modules.twin.scan.service.TwinScanAppService scanAppService;
 
     public CommonToolPack(TwinDashboardMapper dashboardMapper,
                           TwinPersonnelArchiveQueryService archiveQueryService,
-                          AroService aroService) {
+                          AroService aroService,
+                          com.example.demo.modules.twin.scan.service.TwinScanAppService scanAppService) {
         this.dashboardMapper = dashboardMapper;
         this.archiveQueryService = archiveQueryService;
         this.aroService = aroService;
+        this.scanAppService = scanAppService;
     }
 
     @Override
@@ -70,6 +75,12 @@ public class CommonToolPack implements AiToolPack {
                 - 一个人可能对应多条记录（重名、多处任职）。候选多于一条时**不要自己挑**，
                   把候选交回给用户确认。
                 - 一个都查不到就如实说查不到，不要拿名字相近的人顶替。
+                - **用户只丢一串 8 位编号、或问「这卡是谁的」→ 用 lookupCardHolder**（它跟首页程序坞那个
+                  输入框是同一个识别服务）；**别拿 searchPerson 去查卡号**，它的关键词只认姓名/工号/
+                  课题组/部门，卡号一个字都匹配不上。
+                  认出来之后**先把这个人报给用户**（姓名、部门、课题组、有没有绑卡），
+                  **再问要不要打开他的档案**；他点头了才带 open=true 再调一次去开弹窗 —— 别自己替他打开。
+                  （小屏那端没有档案页，带了 open 也不会跳，只会把结果留在对话里，不用你另行处理。）
                 - 课题组名在库里是逗号分隔的多值字段，本包返回的已经是拆好的单个组名。""";
     }
 
@@ -92,7 +103,7 @@ public class CommonToolPack implements AiToolPack {
 
     @Override
     public List<AiTool> tools() {
-        return List.of(searchPerson(), searchProjectGroup(), listProjectGroupMembers());
+        return List.of(searchPerson(), searchProjectGroup(), listProjectGroupMembers(), lookupCardHolder());
     }
 
     // ── 工具 ──
@@ -195,6 +206,94 @@ public class CommonToolPack implements AiToolPack {
                     if (candidates.size() > 1 && candidates.size() <= CHOICE_MAX_PERSON) {
                         out.putAll(AiChoices.requiredSingle(keyword + " · 挑一位",
                                 PersonChoices.of(candidates)));
+                    }
+                    return out;
+                });
+    }
+
+    /**
+     * 按**卡号**认人 —— 与首页程序坞那个输入框（{@code scan/analyze}）**同一个服务**。
+     *
+     * <p><b>为什么要它</b>（2026-10-13 用户反馈）：现场常见的是「刷了卡，把卡面那串 8 位编号敲进对话」。
+     * 在这条工具之前，模型只能看出「这像卡号」，却没有任何一条能把它落成人 ——
+     * {@code searchPerson} 的关键词只匹配姓名/工号/课题组/部门，**不认卡号**，模型只能建议去翻刷卡记录。
+     *
+     * <p>口径刻意与程序坞输入框保持一致（同一个 {@code analyzeScan}）：那边认得出的人这边也认得出，
+     * 那边认不出的这边同样如实说认不出，**绝不猜一个相近的人顶上**。
+     *
+     * <p><b>两步走</b>（用户定的口径）：默认只把这个人报出来；用户点头要看档案了，
+     * 才带 {@code open=true} 再调一次，由载体打开档案弹窗。
+     */
+    private AiTool lookupCardHolder() {
+        String schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "cardNo": { "type": "string", "description": "卡片上那串 8 位字母数字编号" },
+                    "open": { "type": "boolean", "description": "用户**已经点头**要看这个人的档案时才传 true（会在他那边打开档案弹窗）；默认 false，只做识别" }
+                  },
+                  "required": ["cardNo"],
+                  "additionalProperties": false
+                }""";
+        return new AiTool(
+                "lookupCardHolder",
+                "**按卡号认人**：给一串卡号，返回这张卡对应的持卡人（姓名/工号/部门/课题组/身份，以及有没有绑卡）。"
+                        + "用户只丢一串 8 位编号、或问「这卡是谁的」时用它；**别拿 searchPerson 查卡号**（它不认卡号）。"
+                        + "认出来之后**先把人报给用户**，再问他要不要打开这人的档案；他点头了才带 open=true 再调一次。",
+                schema,
+                CAP_PERSON_SEARCH,
+                SideEffect.READ,
+                (ctx, args) -> {
+                    String cardNo = text(args, "cardNo");
+                    if (cardNo.isBlank()) {
+                        return Map.of("ok", false, "reason", "没给卡号");
+                    }
+                    ScanAnalyzeResponseDTO dto;
+                    try {
+                        dto = scanAppService.analyzeScan(cardNo, ctx.actor(), null);
+                    } catch (Exception e) {
+                        return Map.of("ok", false, "cardNo", cardNo,
+                                "reason", "按卡号识别失败：" + (e.getMessage() == null ? "未知错误" : e.getMessage()),
+                                "note", "如实说这回认不出来，**别猜一个相近的人顶上**");
+                    }
+                    if (dto == null || dto.getUserInfo() == null) {
+                        return Map.of("ok", false, "cardNo", cardNo,
+                                "reason", "这串号认不出人（可能不是卡号，或者这张卡没绑到人）",
+                                "note", "如实说认不出，别编一个人；也可以问用户是不是想按姓名/工号找");
+                    }
+                    ScanUserInfoDTO u = dto.getUserInfo();
+                    Map<String, Object> person = new LinkedHashMap<>();
+                    person.put("name", str(u.getName()));
+                    person.put("userId", str(u.getUserId()));
+                    person.put("department", str(u.getDepartmentName()));
+                    person.put("projectGroup", str(u.getProjectGroupName()));
+                    person.put("identity", str(u.getUserTypeNames()));
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    out.put("ok", true);
+                    out.put("cardNo", cardNo);
+                    out.put("person", person);
+                    out.put("cardBound", dto.getHasPhysicalCardMapping());
+                    if (str(dto.getCurrentState()).length() > 0) {
+                        out.put("state", str(dto.getCurrentState()));
+                    }
+                    if (Boolean.FALSE.equals(dto.getHasPhysicalCardMapping())) {
+                        out.put("note", "这个人**还没绑卡**。绑卡走卡片上那个「去绑卡」入口；"
+                                + "**不要**拿卡号去调免冻那类工具（那些只认姓名或工号）");
+                    }
+                    if (args.path("open").asBoolean(false)) {
+                        if (ctx.miniProgram()) {
+                            // 小程序那端没有首页程序坞这个页面，跳过去只会落到一个不存在的地方 ——
+                            // 那边就只把结果留在对话里（人已经报出来了，用户想干嘛接着说）
+                            out.put("note", "这人已经报出来了；小屏那端没有程序坞那个档案页，"
+                                    + "就不再跳转了 —— 需要办什么直接跟用户说");
+                        } else {
+                            Map<String, Object> nav = new LinkedHashMap<>();
+                            nav.put("path", "/console/dashboard?scan="
+                                    + java.net.URLEncoder.encode(cardNo, java.nio.charset.StandardCharsets.UTF_8));
+                            nav.put("label", person.get("name") + " 的档案");
+                            out.put("navigate", nav);
+                            out.put("note", "已让载体在他那边打开这人的档案弹窗（这一步只能发生在用户点头之后）");
+                        }
                     }
                     return out;
                 });

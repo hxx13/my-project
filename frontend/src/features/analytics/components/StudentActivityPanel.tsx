@@ -59,6 +59,17 @@ interface Props {
   className?: string;
   /** 塞在标题栏右侧控件组末尾（如「弹窗展开」按钮），避免调用方在卡片外面另起一行 */
   headerExtra?: ReactNode;
+  /**
+   * 只渲染指定分区：图表（热力图+房间榜）与成员表分开成两张卡，避免挤在一起把图表压扁。
+   * all=都渲染（默认）；charts=只图表；members=只成员表。
+   */
+  sections?: "all" | "charts" | "members";
+  /** 标题，默认「课题组活跃度」 */
+  title?: string;
+  /** 嵌入外部合并板块：不出自己的 StudentCard、不出标题（外层已有 tab 标题） */
+  embedded?: boolean;
+  /** 嵌入时塞在标题行最前面的内容（如外层的主 tab 按钮），与控件同处一行 */
+  headerPrefix?: ReactNode;
 }
 
 export function StudentActivityPanel({
@@ -68,8 +79,15 @@ export function StudentActivityPanel({
   variant = "student",
   className,
   headerExtra,
+  sections = "all",
+  title = "课题组活跃度",
+  embedded = false,
+  headerPrefix,
 }: Props) {
   const isMobile = variant === "mobile";
+  const showCharts = sections !== "members";
+  const showMembers = sections !== "charts";
+  const standalone = sections !== "all";
   const initialRange = presetToRange("month");
   const [startTime, setStartTime] = useState(initialRange.start);
   const [endTime, setEndTime] = useState(initialRange.end);
@@ -81,6 +99,8 @@ export function StudentActivityPanel({
   const [order, setOrder] = useState<"desc" | "asc">("desc");
   const [memberPage, setMemberPage] = useState(1);
   const [memberSize, setMemberSize] = useState(10);
+  /** 活跃度两张图（热力图/房间榜）拆成 tab，一次只显示一张 */
+  const [chartTab, setChartTab] = useState<"heatmap" | "room">("heatmap");
 
   const applyPreset = (p: TimePreset) => {
     setPreset(p);
@@ -173,7 +193,7 @@ export function StudentActivityPanel({
           active ? "text-white" : "text-[#64748b]",
         )
       : cn(
-          "rounded-[var(--student-radius-sm)] px-2.5 py-1 text-[11px] font-medium transition-colors",
+          "rounded-[var(--student-radius-sm)] px-1.5 py-0.5 text-[10px] font-medium transition-colors",
           active
             ? "bg-[var(--student-primary)] text-white"
             : "bg-[var(--student-card-soft-bg)] text-[var(--student-mute)] hover:text-[var(--student-ink)]",
@@ -184,38 +204,57 @@ export function StudentActivityPanel({
       ? { background: `linear-gradient(135deg, ${ACCENT}, #8B1229)` }
       : undefined;
 
+  // 只出成员表：表格自带边框容器，直接就是板块（不再套外层卡片和「课题组成员」标题），自然撑满
+  if (!isMobile && sections === "members") {
+    return (
+      <div className={cn("h-full min-h-0", className)}>
+        <ActivityMemberTable
+          members={members}
+          sortBy={sortBy}
+          order={order}
+          onSort={handleSort}
+          loading={membersQuery.isLoading}
+          page={memberPage}
+          total={memberTotal}
+          size={memberSize}
+          onPageChange={setMemberPage}
+          onSizeChange={setMemberSize}
+        />
+      </div>
+    );
+  }
+
   const content = (
     <>
       <div
         className={cn(
-          "flex flex-wrap items-center justify-between gap-2 mb-4",
+          // 标题 + 时间范围 + 图表 tab 全部压在同一行（不换行、不两端撑开）
+          "flex shrink-0 flex-nowrap items-center gap-2 mb-3",
           isMobile && "flex-col items-stretch mb-3",
         )}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <h3
-            className={cn(
-              "font-semibold shrink-0",
-              isMobile
-                ? "text-[15px] text-[#1e293b]"
-                : "text-[15px] text-[var(--student-foreground)]",
-            )}
-          >
-            课题组活跃度
-          </h3>
-          <span
-            className={cn(
-              "truncate",
-              isMobile ? "text-[12px] text-[#64748b]" : "text-[11px] text-[var(--student-mute)]",
-            )}
-          >
-            {groupName}
-          </span>
-        </div>
+        {headerPrefix}
+        {!embedded && (
+          <div className="flex min-w-0 shrink items-center gap-1.5">
+            <h3
+              className={cn(
+                "shrink-0 font-semibold",
+                isMobile
+                  ? "text-[15px] text-[#1e293b]"
+                  : "text-[15px] text-[var(--student-foreground)]",
+              )}
+              title={groupName}
+            >
+              {title}
+            </h3>
+          </div>
+        )}
 
+        {sections !== "members" && (
+        <>
         <div
           className={cn(
-            "flex flex-wrap items-center gap-1.5",
+            "flex shrink-0 items-center gap-1 ml-auto",
             isMobile && "overflow-x-auto flex-nowrap pb-1 -mx-1 px-1",
           )}
         >
@@ -246,7 +285,7 @@ export function StudentActivityPanel({
               setMemberPage(1);
             }}
             className={cn(
-              "ml-1 rounded-[var(--student-radius-sm)] border px-2 py-1 text-[11px] outline-none shrink-0",
+              "ml-0.5 rounded-[var(--student-radius-sm)] border px-1.5 py-0.5 text-[10px] outline-none shrink-0",
               isMobile
                 ? "border-[rgba(30,55,90,0.12)] bg-white text-[#334155]"
                 : "border-[var(--student-border)] bg-white text-[var(--student-ink)] focus:ring-1 focus:ring-[var(--student-primary)]",
@@ -256,6 +295,24 @@ export function StudentActivityPanel({
             <option value="浦东">浦东</option>
             <option value="浦西">浦西</option>
           </select>
+          {/* 图表切换 tab：与时间范围/校区并入同一行，不再单独占一行 */}
+          {showCharts && (
+            <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-[var(--student-hairline)] pl-2">
+              {([
+                { key: "heatmap", label: "时段热力图" },
+                { key: "room", label: "房间排行" },
+              ] as const).map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setChartTab(t.key)}
+                  className={presetBtnClass(chartTab === t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
           {headerExtra}
         </div>
 
@@ -284,6 +341,8 @@ export function StudentActivityPanel({
             </button>
           </div>
         )}
+        </>
+        )}
       </div>
 
       {!enabled ? (
@@ -307,65 +366,75 @@ export function StudentActivityPanel({
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 mb-4">
-            <KpiCard
-              variant={variant}
-              title={`课题组人数（${displayTimeLabel}）`}
-              value={summary?.memberCount}
-              color="violet"
-            />
-            <KpiCard
-              variant={variant}
-              title={`总进出次数（${displayTimeLabel}）`}
-              value={summary?.totalEntries}
-              color="emerald"
-            />
-            <KpiCard
-              variant={variant}
-              title={`人均频次（${summary?.rateLabel || "本月"}）`}
-              value={summary?.perCapitaWeeklyFreq}
-              color="blue"
-            />
-            <KpiCard
-              variant={variant}
-              title={`活跃度占比（${summary?.rateLabel || "本月"}）`}
-              value={summary?.activeSharePct != null ? `${summary.activeSharePct}%` : undefined}
-              color="amber"
-            />
-          </div>
-
-          <div className="mb-4">
-            <SectionTitle variant={variant}>课题组成员</SectionTitle>
-            <ActivityMemberTable
-              members={members}
-              sortBy={sortBy}
-              order={order}
-              onSort={handleSort}
-              loading={membersQuery.isLoading}
-              page={memberPage}
-              total={memberTotal}
-              size={memberSize}
-              onPageChange={setMemberPage}
-              onSizeChange={setMemberSize}
-            />
-          </div>
-
-          <div className={cn("grid grid-cols-1 gap-4", !isMobile && "xl:grid-cols-2")}>
-            <ChartSection variant={variant} title="进出时段热力图">
-              <ActivityHeatmapChart
-                data={heatmapQuery.data ?? []}
-                loading={heatmapQuery.isLoading}
+          {/* 学生端不展示 4 张 KPI 卡（课题组人数/总进出次数/人均频次/活跃度占比）：
+              这些是课题组口径的汇总数字，对学生本人价值低且独占一行高度，用户 2026-10-14 口径移除。 */}
+          {isMobile && sections === "all" && (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 mb-3">
+              <KpiCard
+                variant={variant}
+                title={`课题组人数（${displayTimeLabel}）`}
+                value={summary?.memberCount}
+                color="violet"
               />
-            </ChartSection>
-            <ChartSection variant={variant} title="喜好进出房间排行">
-              <ActivityRoomChart data={roomQuery.data ?? []} loading={roomQuery.isLoading} />
-            </ChartSection>
-          </div>
+              <KpiCard
+                variant={variant}
+                title={`总进出次数（${displayTimeLabel}）`}
+                value={summary?.totalEntries}
+                color="emerald"
+              />
+              <KpiCard
+                variant={variant}
+                title={`人均频次（${summary?.rateLabel || "本月"}）`}
+                value={summary?.perCapitaWeeklyFreq}
+                color="blue"
+              />
+              <KpiCard
+                variant={variant}
+                title={`活跃度占比（${summary?.rateLabel || "本月"}）`}
+                value={summary?.activeSharePct != null ? `${summary.activeSharePct}%` : undefined}
+                color="amber"
+              />
+            </div>
+          )}
+
+          {/* 成员表：单独成卡时按内容自然高度（不压缩）；与图表同卡时占剩余高度内部滚动 */}
+          {showMembers && (
+            <div className={cn(isMobile ? "mb-4" : standalone ? "flex-1 min-h-0 overflow-y-auto" : "mb-3 min-h-[120px] max-h-[200px] overflow-y-auto")}>
+              {sections === "all" && <SectionTitle variant={variant}>课题组成员</SectionTitle>}
+              <ActivityMemberTable
+                members={members}
+                sortBy={sortBy}
+                order={order}
+                onSort={handleSort}
+                loading={membersQuery.isLoading}
+                page={memberPage}
+                total={memberTotal}
+                size={memberSize}
+                onPageChange={setMemberPage}
+                onSizeChange={setMemberSize}
+              />
+            </div>
+          )}
+
+          {showCharts && (
+            <div className={cn("flex min-h-0 flex-1 flex-col", !isMobile && !standalone && "shrink-0")}>
+              {/* 图表容器：切换 tab 已并入标题栏那一行 */}
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas-soft)] p-3">
+                {chartTab === "heatmap" ? (
+                  <ActivityHeatmapChart data={heatmapQuery.data ?? []} loading={heatmapQuery.isLoading} />
+                ) : (
+                  <ActivityRoomChart data={roomQuery.data ?? []} loading={roomQuery.isLoading} />
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </>
   );
 
+  // 学生端（非移动）：卡片本身作为定高容器，内容铺满；成员表吃满剩余高度并内部滚动。
+  // 不用 absolute（弹窗里卡片无定高会塌成 0），改用 h-full + flex-1：有定高时撑满，无定高时按内容自然排列。
   if (isMobile) {
     return (
       <div
@@ -377,7 +446,16 @@ export function StudentActivityPanel({
     );
   }
 
-  return <StudentCard className={cn(className)}>{content}</StudentCard>;
+  // 嵌入外部合并板块：不出 StudentCard，直接给内容
+  if (embedded) {
+    return <div className={cn("flex h-full min-h-0 flex-col", className)}>{content}</div>;
+  }
+
+  return (
+    <StudentCard className={cn("flex h-full min-h-0 flex-col overflow-hidden", className)}>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{content}</div>
+    </StudentCard>
+  );
 }
 
 function SectionTitle({
@@ -398,36 +476,6 @@ function SectionTitle({
     >
       {children}
     </h4>
-  );
-}
-
-function ChartSection({
-  variant,
-  title,
-  children,
-}: {
-  variant: "student" | "mobile";
-  title: string;
-  children: ReactNode;
-}) {
-  if (variant === "mobile") {
-    return (
-      <div className="min-w-0 rounded-2xl border border-[rgba(30,55,90,0.08)] bg-white/95 p-3 shadow-sm">
-        <div className="mb-3 border-b border-[rgba(30,55,90,0.06)] pb-2">
-          <h4 className="text-[13px] font-semibold text-[#334155]">{title}</h4>
-        </div>
-        {children}
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-w-0 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas-soft)] p-4">
-      <div className="mb-3 border-b border-[var(--student-border)] pb-2">
-        <h4 className="text-[12px] font-semibold text-[var(--student-ink)]">{title}</h4>
-      </div>
-      {children}
-    </div>
   );
 }
 

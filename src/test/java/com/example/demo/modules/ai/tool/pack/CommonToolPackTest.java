@@ -48,7 +48,8 @@ class CommonToolPackTest {
         dashboardMapper = mock(TwinDashboardMapper.class);
         archiveQueryService = mock(TwinPersonnelArchiveQueryService.class);
         aroService = mock(AroService.class);
-        pack = new CommonToolPack(dashboardMapper, archiveQueryService, aroService);
+        pack = new CommonToolPack(dashboardMapper, archiveQueryService, aroService,
+                org.mockito.Mockito.mock(com.example.demo.modules.twin.scan.service.TwinScanAppService.class));
     }
 
     private static User user(RoleEnum role) {
@@ -192,10 +193,64 @@ class CommonToolPackTest {
     @DisplayName("包自描述完整：三个工具，能力码与工具一一对应")
     void packMetaIsComplete() {
         assertEquals("common", pack.packKey());
-        assertEquals(3, pack.tools().size());
+        // 4 条：找人 / 找组 / 组员名单 / **按卡号认人**（2026-10-13 加的）
+        assertEquals(4, pack.tools().size());
         for (AiTool t : pack.tools()) {
             assertNotNull(pack.capabilities().get(t.capability()),
                     "工具 " + t.name() + " 声明的能力码没有对应判定 —— 会被 fail-closed 闸门全拒");
         }
+    }
+
+    /**
+     * 按卡号认人（2026-10-13 用户反馈）：现场常把卡面那串 8 位编号敲进对话。
+     *
+     * <p>钉住三件：**认得出就报人**、**没确认就不跳转**（用户定的口径：先识别、再问要不要开档案）、
+     * **认不出就如实说**（绝不猜一个相近的人顶上去）。
+     */
+    @Test
+    @DisplayName("卡号 → 人：默认只报人不开档案；open=true 才给跳转；认不出就如实说")
+    void cardLookupIdentifiesThenOffersJumpOnlyWhenAsked() throws Exception {
+        var scanSvc = org.mockito.Mockito.mock(com.example.demo.modules.twin.scan.service.TwinScanAppService.class);
+        var info = new com.example.demo.modules.twin.scan.dto.scan.ScanUserInfoDTO();
+        info.setUserId("STAFF_u1");
+        info.setName("王毓斐");
+        info.setDepartmentName("基础医学院");
+        info.setProjectGroupName("徐楠杰的课题组");
+        var dto = new com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO();
+        dto.setUserInfo(info);
+        dto.setHasPhysicalCardMapping(Boolean.TRUE);
+        org.mockito.Mockito.when(scanSvc.analyzeScan(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any())).thenReturn(dto);
+
+        CommonToolPack p = new CommonToolPack(dashboardMapper, archiveQueryService, aroService, scanSvc);
+        var tool = p.tools().stream().filter(t -> t.name().equals("lookupCardHolder")).findFirst().orElseThrow();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> identified = (Map<String, Object>) tool.executor()
+                .execute(new AiToolContext(user(RoleEnum.STAFF), 1L, 2L), args("{\"cardNo\":\"02069EEE\"}"));
+        assertEquals(Boolean.TRUE, identified.get("ok"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> person = (Map<String, Object>) identified.get("person");
+        assertEquals("王毓斐", person.get("name"));
+        assertEquals("徐楠杰的课题组", person.get("projectGroup"));
+        assertNull(identified.get("navigate"), "**没点头就不该跳转**：" + identified);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> opened = (Map<String, Object>) tool.executor()
+                .execute(new AiToolContext(user(RoleEnum.STAFF), 1L, 2L), args("{\"cardNo\":\"02069EEE\",\"open\":true}"));
+        assertNotNull(opened.get("navigate"), "点头之后才给跳转：" + opened);
+
+        // 认不出：如实说、别猜一个人顶上
+        var unknownSvc = org.mockito.Mockito.mock(com.example.demo.modules.twin.scan.service.TwinScanAppService.class);
+        org.mockito.Mockito.when(unknownSvc.analyzeScan(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO());
+        CommonToolPack p2 = new CommonToolPack(dashboardMapper, archiveQueryService, aroService, unknownSvc);
+        var tool2 = p2.tools().stream().filter(t -> t.name().equals("lookupCardHolder")).findFirst().orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> miss = (Map<String, Object>) tool2.executor()
+                .execute(new AiToolContext(user(RoleEnum.STAFF), 1L, 2L), args("{\"cardNo\":\"DEADBEEF\"}"));
+        assertEquals(Boolean.FALSE, miss.get("ok"));
+        assertNull(miss.get("person"), "认不出时不能给出一个「人」：" + miss);
     }
 }

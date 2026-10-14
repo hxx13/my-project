@@ -259,6 +259,44 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
             log.debug("[page-permission-schema] MINI material-audit 入口种子跳过: {}", e.getMessage());
         }
         try {
+            // 「网络广播」= 网页版 /admin/broadcast 的小程序版。
+            // minRole 与网页版保持同口径（网页走 /api/admin/** 那层闸门，是 ADMIN）；
+            // path 写**主包形式** —— 后台「页面权限」一律按 /pages/... 配，
+            // 小程序侧 canShowMiniEntry 会把分包路径归一化回来再比对（见 utils/pagePermission.js）。
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'page:mini:broadcast-admin', 'PAGE', '网络广播', '/pages/broadcastAdmin/index', NULL,
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'entry:mini:mine:broadcast-admin', 'ENTRY', '网络广播', '/pages/broadcastAdmin/index', 'mine',
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            try {
+                jdbcTemplate.update("""
+                        UPDATE page_permission_item SET display_name = '网络广播'
+                        WHERE platform = 'MINI' AND node_key IN ('page:mini:broadcast-admin', 'entry:mini:mine:broadcast-admin')
+                        """);
+            } catch (Exception e) {
+                log.debug("[page-permission-schema] MINI broadcast-admin 展示名同步跳过: {}", e.getMessage());
+            }
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] MINI broadcast-admin 入口种子跳过: {}", e.getMessage());
+        }
+        try {
             jdbcTemplate.execute("""
                     INSERT IGNORE INTO page_permission_item(
                         platform, node_key, node_type, display_name, path_or_route, entry_source,

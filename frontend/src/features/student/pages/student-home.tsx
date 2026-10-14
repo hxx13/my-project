@@ -51,6 +51,7 @@ import {
   ErrorRetry,
   Avatar,
   BarChart,
+  AreaChart,
   StatPanel,
   Dialog,
   DialogHeader,
@@ -58,6 +59,7 @@ import {
 } from "../components/ui";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { displayPosition } from "@/features/cage-shelf/constants";
+import { splitGroups } from "@/components/scanner/room-floor-plan/groupMatch";
 
 /* ------------------------------------------------------------------ */
 /*  级联入场                                                            */
@@ -118,7 +120,7 @@ function SectionCard({
           </button>
         )}
       </header>
-      <div className={cn("min-h-0 flex-1 overflow-y-auto", bodyClassName)}>{children}</div>
+      <div className={cn("min-h-0 flex-1 overflow-y-auto overflow-x-hidden", bodyClassName)}>{children}</div>
     </StudentCard>
   );
 }
@@ -288,7 +290,7 @@ function StatTile({ tile, index = 0 }: { tile: TileSpec; index?: number }) {
       title={tile.hint}
       style={cascadeStyle(index * 35)}
       className={cn(
-        "flex animate-fade-in items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-white px-3.5 py-3 text-left shadow-student-card transition-all duration-200",
+        "flex animate-fade-in items-center gap-2.5 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-white px-3 py-2 text-left shadow-student-card transition-all duration-200",
         interactive
           ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-student-card-hover active:scale-[0.98]"
           : "cursor-default",
@@ -298,11 +300,11 @@ function StatTile({ tile, index = 0 }: { tile: TileSpec; index?: number }) {
         <span className="block truncate text-[12px] text-[var(--student-mute-foreground)]">
           {tile.label}
         </span>
-        <span className="mt-0.5 block truncate text-[20px] font-bold leading-tight text-[var(--student-ink)] tabular-nums">
+        <span className="mt-0.5 block truncate text-[19px] font-bold leading-tight text-[var(--student-ink)] tabular-nums">
           {tile.value ?? "—"}
         </span>
       </span>
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--student-radius-sm)] bg-[var(--student-primary-soft)]">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--student-radius-sm)] bg-[var(--student-primary-soft)]">
         <Icon
           aria-hidden="true"
           className="size-4 text-[var(--student-primary)]"
@@ -324,10 +326,11 @@ function genderLabel(g?: number): string {
 }
 
 function InfoRow({ icon: Icon, iconClass, children }: { icon: LucideIcon; iconClass?: string; children: ReactNode }) {
+  const title = typeof children === "string" ? children : undefined;
   return (
-    <div className="flex items-start gap-1.5 text-[12px] text-[var(--student-mute-foreground)]">
-      <Icon className={cn("mt-0.5 size-3 shrink-0", iconClass)} strokeWidth={1.5} />
-      <span className="min-w-0 flex-1 break-words">{children}</span>
+    <div className="flex items-center gap-1.5 text-[12px] text-[var(--student-mute-foreground)]" title={title}>
+      <Icon className={cn("size-3 shrink-0", iconClass)} strokeWidth={1.5} />
+      <span className="min-w-0 flex-1 truncate">{children}</span>
     </div>
   );
 }
@@ -417,13 +420,13 @@ function PersonnelBlock({
   return (
     <StudentCard
       padding="md"
-      className="flex w-full animate-fade-in flex-col gap-3 border border-[var(--student-border)] shadow-student-card lg:w-[360px] lg:shrink-0"
+      className="flex w-full animate-fade-in flex-col gap-3 border border-[var(--student-border)] shadow-student-card lg:h-full lg:min-h-0 lg:overflow-y-auto"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         <Avatar
           src={profile.head ? resolvePersonnelAvatarUrl(profile.head) : undefined}
           name={profile.name || ""}
-          size="md"
+          size="sm"
           onClick={() => headFileRef.current?.click()}
           title="点击更换头像"
           className="cursor-pointer ring-2 ring-[var(--student-primary-soft)] transition-shadow hover:ring-[var(--student-primary)]"
@@ -469,7 +472,8 @@ function PersonnelBlock({
         <MySignatureCard />
       </Dialog>
 
-      <div className="space-y-1.5 border-t border-[var(--student-border)] pt-2.5">
+      {/* 左栏竖向空间充足，信息单列排，比双列更清晰 */}
+      <div className="space-y-1.5 border-t border-[var(--student-border)] pt-2">
         <InfoRow icon={IdCard}>
           {identityLabels.length > 0 ? identityLabels.join(" · ") : "未标识身份"}
         </InfoRow>
@@ -510,17 +514,17 @@ function PersonnelBlock({
         )}
       </div>
 
-      <div className="mt-auto flex flex-wrap gap-0.5 border-t border-[var(--student-border)] pt-2">
+      <div className="mt-auto grid grid-cols-4 gap-0.5 border-t border-[var(--student-border)] pt-2">
         {quick.map((it) => (
           <button
             key={it.key}
             type="button"
             onClick={it.onClick}
             title={it.label}
-            className="flex flex-1 cursor-pointer flex-col items-center gap-0.5 rounded-[var(--student-radius-sm)] px-1 py-1.5 transition-colors hover:bg-[var(--student-primary-soft)] active:scale-[0.98]"
+            className="flex cursor-pointer flex-col items-center gap-0.5 rounded-[var(--student-radius-sm)] px-1 py-1 transition-colors hover:bg-[var(--student-primary-soft)] active:scale-[0.98]"
           >
             <it.icon className="size-4 text-[var(--student-primary)]" strokeWidth={1.5} />
-            <span className="whitespace-nowrap text-[10px] text-[var(--student-mute-foreground)]">
+            <span className="truncate text-[10px] text-[var(--student-mute-foreground)]">
               {it.label}
             </span>
           </button>
@@ -553,47 +557,51 @@ function StatsSummaryBar({
     { label: "违规记录", value: data.summary.violationCount, unit: "次" },
   ];
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+    <div className="flex flex-col gap-2">
       <button
         type="button"
         onClick={onCycle}
         title={`统计周期 · 点击切换（${PERIOD_LABEL[period] ?? period}）`}
-        className="group flex shrink-0 cursor-pointer items-center gap-2 transition-opacity hover:opacity-80"
+        className="group flex shrink-0 items-center gap-2 transition-opacity hover:opacity-80"
       >
         <Calendar className="size-4 shrink-0 text-[var(--student-mute-foreground)] transition-colors group-hover:text-[var(--student-primary)]" strokeWidth={1.5} />
         <span className="text-left">
-          <span className="block text-[11px] text-[var(--student-mute-foreground)]">
+          <span className="text-[11px] text-[var(--student-mute-foreground)]">
             统计周期 · <span className="font-medium text-[var(--student-primary)]">{PERIOD_LABEL[period] ?? period}</span>
           </span>
-          <span className="mt-0.5 block text-[13px] font-semibold tabular-nums text-[var(--student-ink)]">
+          <span className="ml-2 text-[13px] font-semibold tabular-nums text-[var(--student-ink)]">
             {data.period.start}
             <span className="mx-1 font-normal text-[var(--student-mute-foreground)]">~</span>
             {data.period.end}
           </span>
         </span>
       </button>
-      {cells.map((c) => (
-        <div key={c.label} className="shrink-0">
-          <span className="block text-[11px] text-[var(--student-mute-foreground)]">{c.label}</span>
-          <span className="mt-0.5 block">
-            <span className="text-lg font-bold tabular-nums text-[var(--student-ink)]">{c.value.toLocaleString()}</span>
-            <span className="ml-1 text-[11px] text-[var(--student-mute-foreground)]">{c.unit}</span>
-          </span>
-        </div>
-      ))}
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {cells.map((c) => (
+          <div key={c.label} className="shrink-0">
+            <span className="block text-[11px] text-[var(--student-mute-foreground)]">{c.label}</span>
+            <span className="mt-0.5 block">
+              <span className="text-lg font-bold tabular-nums text-[var(--student-ink)]">{c.value.toLocaleString()}</span>
+              <span className="ml-1 text-[11px] text-[var(--student-mute-foreground)]">{c.unit}</span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function TrendLegend() {
+function TrendLegend({ single = false }: { single?: boolean }) {
   return (
     <div className="mb-2 flex items-center gap-3 text-[11px]">
       <span className="inline-flex items-center gap-1">
         <span className="h-3 w-3 rounded-sm bg-[var(--student-primary)]" /> 进入
       </span>
-      <span className="inline-flex items-center gap-1">
-        <span className="h-3 w-3 rounded-sm bg-[var(--student-primary-soft)]" /> 离开
-      </span>
+      {!single && (
+        <span className="inline-flex items-center gap-1">
+          <span className="h-3 w-3 rounded-sm bg-[var(--student-primary-soft)]" /> 离开
+        </span>
+      )}
     </div>
   );
 }
@@ -614,6 +622,8 @@ export default function StudentHomePage() {
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [showRemainingModal, setShowRemainingModal] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
+  /** 出入统计 / 课题组活跃度 合并成一个板块，tab 切换，默认「出入统计」 */
+  const [mainTab, setMainTab] = useState<"stats" | "activity">("stats");
 
   // 本课题组特殊状态：本地笼位表单口径（cage_cell_detail），不用 ARO 扫描快照
   const { data: statusSummary } = useQuery({
@@ -640,6 +650,11 @@ export default function StudentHomePage() {
   }
 
   const { profile, homeSummary } = data;
+  // 一个人可能挂多个课题组（project_group_name 是逗号分隔的多值字段）。
+  // 活跃度接口只认单个组名，整串传下去会拼成 "A, B" 去 LIKE 匹配 → 命中不到任何人。
+  // 取主课题组（第一个）查询，全部组名留作 tooltip。
+  const groupNames = splitGroups(profile.projectGroupName);
+  const primaryGroup = groupNames[0] ?? "";
   const cyclePeriod = () => setPeriod(period === "7d" ? "30d" : period === "30d" ? "90d" : "7d");
   const stats = statsData && statsData.period.days >= 7 ? statsData : null;
 
@@ -710,13 +725,37 @@ export default function StudentHomePage() {
     },
   ];
 
+  // 出入统计 / 课题组活跃度 的主 tab（复用在两个位置：stats 版放在板块标题行，activity 版传给活跃度面板当 headerPrefix）
+  const mainTabs = (
+    <>
+      {([
+        { k: "stats", label: "出入统计" },
+        { k: "activity", label: "课题组活跃度" },
+      ] as const).map((t) => (
+        <button
+          key={t.k}
+          type="button"
+          onClick={() => setMainTab(t.k)}
+          className={cn(
+            "shrink-0 rounded-[var(--student-radius-sm)] px-2.5 py-1 text-[12px] font-semibold transition-colors",
+            mainTab === t.k
+              ? "bg-[var(--student-primary)] text-white"
+              : "bg-[var(--student-card-soft-bg)] text-[var(--student-mute)] hover:text-[var(--student-ink)]",
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </>
+  );
+
   return (
     <AdminFullWidthPage>
-      {/* page-full-bleed 抵消了横向内边距，这里补回来：卡片描边+阴影需要离屏幕边缘有呼吸 */}
-      <div className="flex min-h-0 flex-col gap-4 px-5 py-2 h-[calc(100dvh-var(--student-chrome-offset,64px))]">
+      {/* 整页固定比例：高度锁一屏、按比例切分各板块，内容各自内部滚动，整页不滚 */}
+      <div className="flex h-[calc(100dvh-var(--student-chrome-offset,64px))] flex-col gap-3 overflow-hidden px-4 py-3">
         {/* ── 资料未完善引导（仅缺手机号时出现，轻量提醒 + 链接，不整页拦截） ── */}
         {!profile.mobilePhone && (
-          <div className="flex shrink-0 items-center gap-2 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-primary-soft)] px-4 py-2.5 text-[13px] text-[var(--student-ink)]">
+          <div className="flex shrink-0 items-center gap-2 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-primary-soft)] px-4 py-2 text-[13px] text-[var(--student-ink)]">
             <Phone className="size-4 shrink-0 text-[var(--student-primary)]" strokeWidth={1.6} />
             <span className="min-w-0 flex-1">你的资料尚未完善（缺少手机号），补全后便于接收通知。</span>
             <button
@@ -729,84 +768,110 @@ export default function StudentHomePage() {
           </div>
         )}
 
-        {/* ── 上行：左上人员块 + 右侧方块入口（入口行高随人员块拉伸，不留空） ── */}
-        <div className="flex shrink-0 flex-wrap items-stretch gap-4">
-          <PersonnelBlock
-            profile={profile}
-            onAi={() => setShowAiModal(true)}
-            onStats={() => setShowStatsModal(true)}
-          />
-          <div className="grid min-w-[300px] flex-1 auto-rows-fr grid-cols-2 gap-3.5 sm:grid-cols-3 xl:grid-cols-4">
-            {tiles.map((t, i) => (
-              <StatTile key={t.key} tile={t} index={i} />
-            ))}
+        {/* ── 左栏（~22%）：人员卡 + 左下角 8 指标；右栏：Bento ── */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          {/* 左栏 */}
+          <div className="flex min-h-0 w-full flex-col gap-3 lg:w-[clamp(260px,22%,330px)] lg:shrink-0">
+            {/* 人员卡：定高，内容内部滚动 */}
+            <div className="flex min-h-0 flex-[1.35] flex-col">
+              <PersonnelBlock
+                profile={profile}
+                onAi={() => setShowAiModal(true)}
+                onStats={() => setShowStatsModal(true)}
+              />
+            </div>
+            {/* 左下角：8 个指标 2×4，行均分填满整块（不留底部空白） */}
+            <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-2.5">
+              {tiles.map((t, i) => (
+                <StatTile key={t.key} tile={t} index={i} />
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* ── 下行：统计分区，吃掉剩余高度，各自内部消化 ── */}
-        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-          {/* 出入统计 */}
-          <SectionCard
-            title="出入统计"
-            subtitle={
-              <span className="truncate text-[11px] text-[var(--student-mute-foreground)]">
-                {statsLoading ? "加载中…" : stats ? `${stats.period.start} ~ ${stats.period.end}` : "暂无数据"}
-              </span>
-            }
-            onExpand={stats ? () => setShowStatsModal(true) : undefined}
-            bodyClassName="flex flex-col overflow-hidden"
-            style={cascadeStyle(160)}
-          >
-            {statsLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-4 w-full" />
-                ))}
-              </div>
-            ) : !stats ? (
-              <div className="py-6 text-center text-[12px] text-[var(--student-mute-foreground)]">
-                暂无出入统计数据
-              </div>
-            ) : (
-              <>
-                <div className="shrink-0">
-                  <StatsSummaryBar period={period} onCycle={cyclePeriod} data={stats} />
-                </div>
-                <div className="mt-3 flex min-h-0 flex-1 flex-col">
-                  <TrendLegend />
-                  {/* 图表撑满剩余高度：!h-full 压过组件内的 style.height，柱子按 180 常量算高 */}
-                  <BarChart
-                    className="!h-full min-h-[110px]"
-                    data={stats.dailyTrend.map((d) => ({
-                      label: d.date.slice(5),
-                      value: d.entryCount,
-                      value2: d.exitCount,
-                    }))}
-                    height={180}
-                    barColor="var(--student-primary)"
-                    barColor2="var(--student-primary-soft)"
-                  />
-                </div>
-              </>
-            )}
-          </SectionCard>
+          {/* 右栏 Bento */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+            {/* 出入统计 + 课题组活跃度 合并为一个板块，tab 切换，默认「出入统计」，占满整行不再挤 */}
+            <StudentCard
+              padding="md"
+              className="flex min-h-0 flex-[2] flex-col border border-[var(--student-border)]"
+              style={cascadeStyle(160)}
+            >
+              {mainTab === "stats" ? (
+                <>
+                  {/* 标题行：主 tab + 展开 */}
+                  <div className="mb-3 flex shrink-0 items-center gap-1.5">
+                    {mainTabs}
+                    <span className="ml-auto">
+                      {stats ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowStatsModal(true)}
+                          title="弹窗展开"
+                          className="cursor-pointer rounded-[var(--student-radius-sm)] p-1.5 text-[var(--student-mute)] transition-colors hover:bg-[var(--student-primary-soft)] hover:text-[var(--student-primary)]"
+                        >
+                          <Expand className="size-3.5" strokeWidth={1.5} />
+                        </button>
+                      ) : null}
+                    </span>
+                  </div>
 
-          {/* 课题组活跃度：展开按钮走面板自己的标题栏（headerExtra），不再在外面另起一行 */}
-          <div className="flex min-h-0 animate-fade-in flex-col" style={cascadeStyle(220)}>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="min-h-0 flex-1">
+                    {statsLoading ? (
+                      <div className="space-y-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                          <Skeleton key={i} className="h-4 w-full" />
+                        ))}
+                      </div>
+                    ) : !stats ? (
+                      <div className="py-6 text-center text-[12px] text-[var(--student-mute-foreground)]">
+                        暂无出入统计数据
+                      </div>
+                    ) : (
+                      <div className="flex h-full min-h-0 flex-col">
+                        <div className="shrink-0">
+                          <StatsSummaryBar period={period} onCycle={cyclePeriod} data={stats} />
+                        </div>
+                        <div className="mt-3 flex min-h-0 flex-1 flex-col">
+                          <TrendLegend single />
+                          {/* 单序列面积图：进出趋势（进入），撑满剩余高度 */}
+                          <div className="min-h-0 flex-1">
+                            <AreaChart
+                              data={stats.dailyTrend.map((d) => ({ label: d.date.slice(5), value: d.entryCount }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                /* 活跃度：主 tab 作为 headerPrefix 与时间范围/校区/图表 tab 同处一行，把高度留给图表 */
+                <StudentActivityDashboard
+                  groupName={primaryGroup}
+                  sections="charts"
+                  embedded
+                  className="h-full min-h-0"
+                  headerPrefix={mainTabs}
+                  headerExtra={
+                    <button
+                      type="button"
+                      onClick={() => setShowActivityModal(true)}
+                      title="弹窗展开"
+                      className="cursor-pointer rounded-[var(--student-radius-sm)] p-1.5 text-[var(--student-mute)] transition-colors hover:bg-[var(--student-primary-soft)] hover:text-[var(--student-primary)]"
+                    >
+                      <Expand className="size-3.5" strokeWidth={1.5} />
+                    </button>
+                  }
+                />
+              )}
+            </StudentCard>
+
+            {/* 下排：课题组成员表——表格本身即板块（自带边框），无外层卡片/标题，自然撑满 */}
+            <div className="flex min-h-0 flex-[3] animate-fade-in flex-col" style={cascadeStyle(280)}>
               <StudentActivityDashboard
-                groupName={profile.projectGroupName || ""}
-                className="h-full border border-[var(--student-border)]"
-                headerExtra={
-                  <button
-                    type="button"
-                    onClick={() => setShowActivityModal(true)}
-                    title="弹窗展开"
-                    className="ml-1 shrink-0 cursor-pointer rounded-[var(--student-radius-sm)] p-1.5 text-[var(--student-mute)] transition-colors hover:bg-[var(--student-primary-soft)] hover:text-[var(--student-primary)]"
-                  >
-                    <Expand className="size-3.5" strokeWidth={1.5} />
-                  </button>
-                }
+                groupName={primaryGroup}
+                sections="members"
+                className="h-full min-h-0"
               />
             </div>
           </div>
@@ -864,16 +929,10 @@ export default function StudentHomePage() {
             <StatsSummaryBar period={period} onCycle={cyclePeriod} data={statsData} />
             <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 320px" }}>
               <StatPanel title="进出趋势">
-                <TrendLegend />
-                <BarChart
-                  data={statsData.dailyTrend.map((d) => ({
-                    label: d.date.slice(5),
-                    value: d.entryCount,
-                    value2: d.exitCount,
-                  }))}
-                  height={140}
-                  barColor="var(--student-primary)"
-                  barColor2="var(--student-primary-soft)"
+                <TrendLegend single />
+                <AreaChart
+                  data={statsData.dailyTrend.map((d) => ({ label: d.date.slice(5), value: d.entryCount }))}
+                  height={160}
                 />
               </StatPanel>
               <StatPanel
@@ -904,11 +963,14 @@ export default function StudentHomePage() {
               <StatPanel title="时段分布">
                 <TrendLegend />
                 <BarChart
-                  data={statsData.hourlyDistribution.map((d) => ({
-                    label: d.bucket.slice(0, 5),
-                    value: d.entryCount,
-                    value2: d.exitCount,
-                  }))}
+                  data={statsData.hourlyDistribution
+                    // 与热力图口径一致：不显示 0–6 点的统计区间
+                    .filter((d) => parseInt(d.bucket.slice(0, 2), 10) >= 6)
+                    .map((d) => ({
+                      label: d.bucket.slice(0, 5),
+                      value: d.entryCount,
+                      value2: d.exitCount,
+                    }))}
                   height={100}
                   barColor="var(--student-primary)"
                   barColor2="var(--student-primary-soft)"
@@ -940,11 +1002,11 @@ export default function StudentHomePage() {
       {/* ── 弹窗：课题组活跃度 ── */}
       <SectionModal
         open={showActivityModal}
-        title={`课题组活跃度 · ${profile.projectGroupName || "未关联课题组"}`}
+        title={`课题组活跃度 · ${primaryGroup || "未关联课题组"}`}
         onClose={() => setShowActivityModal(false)}
         width="max-w-4xl"
       >
-        <StudentActivityDashboard groupName={profile.projectGroupName || ""} />
+        <StudentActivityDashboard groupName={primaryGroup} />
       </SectionModal>
 
       {/* ── 弹窗：本课题组某状态的笼位明细（本地表单口径） ── */}
@@ -1021,7 +1083,7 @@ export default function StudentHomePage() {
 function DashboardSkeleton() {
   return (
     <AdminFullWidthPage>
-      <div className="flex min-h-0 flex-col gap-4 h-[calc(100dvh-var(--student-chrome-offset,64px))]">
+      <div className="flex min-h-[calc(100dvh-var(--student-chrome-offset,64px))] flex-col gap-4 px-5 py-4">
         <div className="flex shrink-0 flex-wrap items-stretch gap-4">
           <StudentCard
             padding="md"
@@ -1039,16 +1101,17 @@ function DashboardSkeleton() {
             <Skeleton className="h-3 w-2/3" />
             <Skeleton className="mt-auto h-10 w-full" />
           </StudentCard>
-          <div className="grid min-w-[300px] flex-1 auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+          <div className="grid min-w-[300px] flex-1 content-start auto-rows-min grid-cols-2 gap-2.5 self-start sm:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-full min-h-[58px] w-full" />
+              <Skeleton key={i} className="h-[61px] w-full" />
             ))}
           </div>
         </div>
-        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-          <Skeleton className="h-full w-full" />
-          <Skeleton className="h-full w-full" />
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <Skeleton className="h-[420px] w-full" />
+          <Skeleton className="h-[420px] w-full" />
         </div>
+        <Skeleton className="h-[320px] w-full" />
       </div>
     </AdminFullWidthPage>
   );

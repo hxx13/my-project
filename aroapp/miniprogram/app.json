@@ -14,6 +14,7 @@
       "root": "package-feature",
       "name": "feature",
       "pages": [
+        "pages/broadcastAdmin/index",
         "pages/animalRoomRun/index",
         "pages/roomAudit/index",
         "pages/aiPortrait/index",
@@ -38,7 +39,8 @@
         "pages/animalOrder/index",
         "pages/orderTimeConfig/index",
         "pages/violationAdmin/index",
-        "pages/telemetryLongterm/index"
+        "pages/telemetryLongterm/index",
+        "pages/videoWall/index"
       ]
     },
     {
