@@ -13,6 +13,7 @@ import java.util.List;
  * @param zoneMacs   目标分区 MAC
  * @param songPaths  曲目路径（平台上的绝对路径）
  * @param songListId 曲目所属曲库列表编号
+ * @param loopPlay   循环播放：true 窗口内列表循环 / false 播完即停
  */
 public record PlanRequest(
         String planName,
@@ -26,6 +27,7 @@ public record PlanRequest(
         Integer volume,
         List<String> zoneMacs,
         List<String> songPaths,
-        String songListId
+        String songListId,
+        Boolean loopPlay
 ) {
 }

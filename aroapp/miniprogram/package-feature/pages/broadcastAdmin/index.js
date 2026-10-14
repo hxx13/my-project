@@ -42,6 +42,7 @@ function emptyForm() {
     zoneSel: [],
     songSel: [],
     songListId: '',
+    loopPlay: false,
   };
 }
 
@@ -333,6 +334,7 @@ Page({
       zoneSel: zoneSel.slice(),
       songSel: songSel.slice(),
       songListId: plan.songListId || '',
+      loopPlay: !!plan.loopPlay,
     };
     this.setData({
       editorOpen: true,
@@ -363,6 +365,10 @@ Page({
 
   onEnabledChange(e) {
     this.setData({ 'f.enabled': !!(e.detail && e.detail.value) });
+  },
+
+  onLoopPlayChange(e) {
+    this.setData({ 'f.loopPlay': !!(e.detail && e.detail.value) });
   },
 
   onTimeModeChange(e) {
@@ -487,6 +493,7 @@ Page({
       zoneMacs: f.zoneSel,
       songPaths: f.songSel,
       songListId: f.songListId || null,
+      loopPlay: !!f.loopPlay,
     };
 
     this.setData({ saving: true });

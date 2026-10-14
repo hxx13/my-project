@@ -509,6 +509,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-ai-watch.sql", ctx)) success++;
         // 广播定时播放方案：我方调度、平台只执行（平台自带定时不可靠）
         total++; if (runScript("db/bootstrap-broadcast-plan.sql", ctx)) success++;
+        // 循环播放开关（已存在的表加列，须排在建表之后）
+        total++; if (runScript("db/bootstrap-broadcast-plan-loop.sql", ctx)) success++;
         // 广播播放记录：「今天到底响没响」看这里
         total++; if (runScript("db/bootstrap-broadcast-play-log.sql", ctx)) success++;
 

@@ -48,6 +48,9 @@ public class BroadcastPlan {
     /** 曲目所属曲库列表编号 */
     private String songListId;
 
+    /** 循环播放：0 播完即停 / 1 窗口内列表循环 */
+    private Boolean loopPlay;
+
     /** 上次触发日期 yyyy-MM-dd —— 防同一天重复触发 */
     private String lastFiredDate;
 

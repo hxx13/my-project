@@ -80,6 +80,8 @@ export interface BroadcastPlan {
   zoneMacs: string | null;
   songPaths: string | null;
   songListId: string | null;
+  /** 循环播放：true 窗口内列表循环 / false 播完即停 */
+  loopPlay: boolean;
   lastFiredDate: string | null;
   lastFiredAt: string | null;
   lastStopDate: string | null;
@@ -102,6 +104,7 @@ export interface PlanUpsert {
   zoneMacs: string[];
   songPaths: string[];
   songListId: string | null;
+  loopPlay: boolean;
 }
 
 export interface BroadcastPlayLog {

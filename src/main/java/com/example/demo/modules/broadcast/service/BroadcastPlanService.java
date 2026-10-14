@@ -45,6 +45,9 @@ public class BroadcastPlanService {
 
     @Value("${app.broadcast.resume-check-ms:60000}")
     private long resumeCheckMs;
+    /** 循环播放时「播完就重发」的巡检间隔（比兜底短，减少两轮之间的静默空隙）。 */
+    @Value("${app.broadcast.loop-check-ms:10000}")
+    private long loopCheckMs;
 
     private final BroadcastPlanMapper planMapper;
     private final BroadcastPlayService playService;
@@ -207,16 +210,23 @@ public class BroadcastPlanService {
     }
 
     /**
-     * 「播着播着没声了」的兜底：隔一段时间看一眼目标分区到底还在不在播，不在就重新下发。
+     * 窗口内「播着播着没声了」的处理：隔一段时间看一眼目标分区到底还在不在播，不在就重新下发。
      *
-     * <p>现场反馈原平台「时好时坏」，这一条就是针对它 —— 不假定下发一次就万事大吉。
+     * <p>两个用途共用一个巡检：
+     * <ul>
+     *   <li><b>循环播放</b>（loopPlay=true）：列表播完平台会停，这里检测到「没在播」就从头再放，
+     *       用较短的间隔（loop-check-ms）减少两轮之间的静默空隙，一直循环到窗口结束收播；</li>
+     *   <li><b>异常兜底</b>（loopPlay=false）：现场反馈原平台「时好时坏」，不假定下发一次就万事大吉，
+     *       用较长间隔（resume-check-ms）兜底一次异常无声。</li>
+     * </ul>
      *
      * @return 重新下发时的说明；没做事返回 null
      */
     private String resumeIfSilent(BroadcastPlan plan) {
         long nowMs = System.currentTimeMillis();
+        long interval = Boolean.TRUE.equals(plan.getLoopPlay()) ? loopCheckMs : resumeCheckMs;
         Long last = lastResumeCheckAt.get(plan.getId());
-        if (last != null && nowMs - last < resumeCheckMs) {
+        if (last != null && nowMs - last < interval) {
             return null;
         }
         lastResumeCheckAt.put(plan.getId(), nowMs);
@@ -315,6 +325,7 @@ public class BroadcastPlanService {
         plan.setZoneMacs(writeJson(req.zoneMacs()));
         plan.setSongPaths(writeJson(req.songPaths()));
         plan.setSongListId(req.songListId());
+        plan.setLoopPlay(Boolean.TRUE.equals(req.loopPlay()));
     }
 
     private static LocalTime parseTime(String raw) {
