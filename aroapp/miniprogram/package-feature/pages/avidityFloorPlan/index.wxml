@@ -1,0 +1,85 @@
+<!-- 饮水流量监测 · 平面图（小程序端，只读） -->
+<subpage-nav-bar title="饮水监测" />
+
+<view class="chan-bar">
+  <!-- 通道多、名字长时这里自己横滑；右边两个动作按钮恒定贴在栏尾，整条栏永远只有一行 -->
+  <view class="chan-list">
+    <view
+      wx:for="{{channels}}"
+      wx:key="channelId"
+      class="chan {{item.channelId === activeChannelId ? 'chan--on' : ''}}"
+      data-id="{{item.channelId}}"
+      bindtap="switchChannel"
+      hover-class="tap-hover"
+    >{{item.channelName}}<text wx:if="{{chanBadges[item.channelId] > 0}}" class="chan-badge">{{chanBadges[item.channelId]}}</text></view>
+  </view>
+
+  <!-- 离屏底图画布：把静态内容（房间/点位/文字/图例/管道）烘成一张图，
+       整页只在进页面、换通道、切横竖屏时画一次，没有逐帧循环 -->
+  <canvas type="2d" id="avidityBaseCanvas" class="offscreen-canvas"></canvas>
+
+  <view class="chan-actions">
+    <view class="chip-btn chip-btn--xs chip-btn--ghost" bindtap="openHistory" hover-class="tap-hover">报警历史</view>
+    <view class="chip-btn chip-btn--xs chip-btn--ghost" bindtap="toggleRotate" hover-class="tap-hover">{{rotated ? '竖屏' : '横屏'}}</view>
+  </view>
+</view>
+
+<view class="plan-area" style="height: {{planH}}px;">
+  <view wx:if="{{loading}}" class="state">加载中…</view>
+  <view wx:elif="{{err}}" class="state state-err">{{err}}</view>
+  <!-- 画布铺满可视区，缩放/平移全由手势控制（不用 scroll-view：
+       滚动与重绘抢渲染，拖起来卡） -->
+  <!-- 抽屉开着时把画布摘掉：小程序 canvas 是**原生层**，z-index 压不住它，
+       留着会把整个抽屉盖穿（实测）。关掉抽屉再挂回来重画一次。 -->
+  <canvas
+    wx:elif="{{!historyVisible}}"
+    type="2d"
+    id="avidityPlanCanvas"
+    class="plan-canvas"
+    style="width: {{planW}}px; height: {{planH}}px;"
+    catchtouchstart="onTouchStart"
+    catchtouchmove="onTouchMove"
+    catchtouchend="onTouchEnd"
+  ></canvas>
+</view>
+
+<!-- 报警历史：底部抽屉。遮罩挡页面上滚，抽屉自己竖滚 -->
+<view wx:if="{{historyVisible}}" class="hist-layer">
+  <view class="hist-mask" bindtap="closeHistory" catchtouchmove="noop"></view>
+  <view class="hist-sheet">
+    <view class="hist-hd">
+      <view class="hist-hd-left">
+        <text class="hist-title">报警历史</text>
+        <text wx:if="{{historyCount}}" class="hist-sub">近 7 天共 {{historyCount}} 次</text>
+      </view>
+      <view class="hist-close chip-btn chip-btn--xs chip-btn--ghost" bindtap="closeHistory" hover-class="tap-hover">关闭</view>
+    </view>
+    <!-- 按平面图上的房间归成文件夹：分区 → 内间 → 点位事件（每条带开始/结束时间） -->
+    <scroll-view scroll-y class="hist-body" show-scrollbar="{{false}}">
+      <view wx:if="{{historyLoading}}" class="hist-state">加载中…</view>
+      <view wx:elif="{{historyErr}}" class="hist-state hist-state-err">{{historyErr}}</view>
+      <view wx:elif="{{!historyRooms.length}}" class="hist-state">近 7 天没有报警记录</view>
+      <block wx:else>
+        <view wx:for="{{historyRooms}}" wx:key="room" wx:for-item="r">
+          <view class="hist-folder">
+            <text class="hist-folder-name">{{r.room}}</text>
+            <text class="hist-folder-n">{{r.count}}</text>
+          </view>
+          <view wx:for="{{r.racks}}" wx:key="rack" wx:for-item="k">
+            <view class="hist-folder hist-folder--sub">
+              <text class="hist-folder-name">{{k.rack}}</text>
+              <text class="hist-folder-n">{{k.count}}</text>
+            </view>
+            <view wx:for="{{k.items}}" wx:key="id" wx:for-item="it" class="hist-row {{it.ongoing ? 'hist-row--on' : ''}}">
+              <view class="hist-row-hd">
+                <text class="hist-pos">第{{it.no}}点位</text>
+                <text class="hist-clock">{{it.ongoing ? '报警中 · ' : ''}}{{it.duration}}</text>
+              </view>
+              <text class="hist-msg">{{it.startedAt}} → {{it.ongoing ? '仍在报警' : it.endedAt}}</text>
+            </view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+</view>

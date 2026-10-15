@@ -9,12 +9,17 @@ const ROOM_PATH = '/pages/room/index';
 const CAGE_PATH = '/package-student/pages/studentCageShelf/index';
 const DOT_PENDING_PATHS = ['/pages/index/index', '/pages/mine/index'];
 
+/** 这些页面要整屏显示，进来就把底栏藏掉 */
+const TABBAR_HIDDEN_ROUTES = ['/pages/telemetry/index'];
+
 Component({
   data: {
     active: 0,
     tabList: buildTabList(),
     /** 球球抽屉开合。球球是 tabBar 正中那一项，只开抽屉、不切页 */
     aiChatVisible: false,
+    /** 整屏数据页（见 TABBAR_HIDDEN_ROUTES）藏掉整条底栏 */
+    tabBarHidden: false,
   },
 
   lifetimes: {
@@ -47,6 +52,11 @@ Component({
       const cur = pages[pages.length - 1];
       const route = cur && cur.route ? `/${cur.route}` : '';
       const active = route ? activeIndexForRoute(route) : 0;
+
+      /* 整屏数据页藏掉整条底栏（含中间的球球），切回别的 tab 时 pageLifetimes.show 会再算一次自动恢复。
+         自定义 tabBar 走 wx.hideTabBar 是无效的（那套只认原生 tabBar），只能自己按路由判。 */
+      const hidden = TABBAR_HIDDEN_ROUTES.indexOf(route) >= 0;
+      if (hidden !== this.data.tabBarHidden) this.setData({ tabBarHidden: hidden });
 
       const token = wx.getStorageSync(springAuth.KEYS.TOKEN);
       if (!token) {

@@ -12,21 +12,44 @@
     <text wx:if="{{lastError}}" class="bc-status-err">{{lastError}}</text>
   </view>
 
+  <!-- 正在执行的方案（常驻）。方案只是**批量启动器**：启动之后每一路归自己，
+       单路的暂停在下面分区行里，这里只管方案级的暂停/恢复。 -->
+  <view wx:if="{{activePlans.length}}" class="bc-active">
+    <view class="bc-active-head">正在执行</view>
+    <view wx:for="{{activePlans}}" wx:key="id" class="bc-active-item">
+      <view class="bc-active-line">
+        <view class="bc-state-dot bc-active-dot--{{item.kind}}"></view>
+        <text class="bc-active-name">{{item.planName}}</text>
+        <text class="bc-active-run bc-active-run--{{item.kind}}">{{item.runText}}</text>
+        <text class="bc-active-meta">{{item.countText}}</text>
+      </view>
+      <view class="bc-active-line bc-active-line--sub">
+        <text class="bc-active-meta">{{item.windowText}}{{item.loopText}}{{item.manualText}}</text>
+        <view
+          class="chip-btn chip-btn--xs {{item.paused ? 'chip-btn--primary' : 'chip-btn--ghost'}}"
+          data-id="{{item.id}}"
+          data-resume="{{item.paused}}"
+          bindtap="onTogglePlanRun"
+        >{{item.paused ? '恢复方案' : '暂停方案'}}</view>
+      </view>
+    </view>
+  </view>
+
   <view class="bc-main">
     <!-- 立即播放：固定，不滚动 -->
     <view class="bc-play-section">
       <view class="bc-sec-title"><text>立即播放</text></view>
 
       <view class="bc-card">
-        <!-- 正在播放 + 进度条。平台**不提供播放进度**（分区对象里没有任何时间字段，
-             也没有 seek 命令），所以位置取不到、跳转做不到 —— 画一条呼吸的实心条
-             表示「在放、位置未知」，比一条永远空着的死条诚实。 -->
+        <!-- 正在播放 + 进度条。平台**不提供播放位置**（分区对象里没有任何时间字段，
+             也没有 seek 命令），所以位置是按「曲名 + 曲库里的时长 + 侦测到这一首的时刻」
+             推算的 —— 换曲会重新起算，跟着实际播放走。 -->
         <view class="bc-np">
-          <text class="bc-np-name">{{songName || '未选曲目'}}</text>
-          <text class="bc-np-dur">{{songDurText}}</text>
+          <text class="bc-np-name">{{npSong || '未在播放'}}</text>
+          <text class="bc-np-dur">{{npTimeText}}</text>
         </view>
         <view class="bc-np-track">
-          <view wx:if="{{playingCount}}" class="bc-np-fill"></view>
+          <view wx:if="{{npRatio > 0}}" class="bc-np-fill" style="width: {{npRatio}}%"></view>
         </view>
 
         <view class="bc-playbar">
@@ -146,8 +169,18 @@
               <view class="bc-zone-vol">{{item.volume}}</view>
               <view class="bc-zone-state bc-zone-state--{{item.stateKind}}">
                 <view class="bc-state-dot"></view>
-                <text>{{item.stateText}}</text>
+                <text>{{item.paused ? '已停' : item.stateText}}</text>
               </view>
+            </view>
+            <!-- 单分区播放/暂停：**放在行尾**，不跟音量滑条抢同一条泳道 ——
+                 滑条的圆点在音量 0 时会从轨道左端探出半个圆，夹在滑条左边就会被它压住。
+                 catchtap 免得连带勾选整行。 -->
+            <view
+              class="bc-zone-play"
+              catchtap="onZonePlayPause"
+              data-mac="{{item.mac}}"
+            >
+              <van-icon name="{{item.playing ? 'pause' : 'play'}}" size="24rpx" color="#2563eb" />
             </view>
           </view>
         </view>

@@ -1,6 +1,6 @@
-<!-- 「数据监测」（长期归档表格）的入口挂在退回键右侧。窄控件，不会压到居中的标题 -->
+<!-- 退回键右侧：两个监测入口合成一个，点开再选（原来两颗并排太挤，还会压到标题） -->
 <subpage-nav-bar title="温湿度">
-  <view slot="left" class="nav-entry" hover-class="nav-entry--hover" bindtap="goTelemetryLongterm">数据监测</view>
+  <view slot="left" class="nav-entry" hover-class="nav-entry--hover" bindtap="openMonitorMenu">监测</view>
 </subpage-nav-bar>
 <view class="telemetry-page" style="min-height: calc(100vh - {{ navBarHeight }}px);">
   <view wx:if="{{ telemetryLoading && !telemetryPage }}" class="state">加载中…</view>
@@ -10,6 +10,7 @@
     id="telemetry-comp"
     telemetry-page="{{ telemetryPage }}"
     show-room-overview-entry="{{ false }}"
+    sticky-top="{{ navBarHeight }}"
     bind:telemetryreload="onTelemetryReload"
     bind:telemetrytagmerge="onTelemetryTagMerge"
     bind:telemetrytabchange="onTelemetryTabChange"

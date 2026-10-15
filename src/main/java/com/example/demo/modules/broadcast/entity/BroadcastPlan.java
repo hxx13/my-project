@@ -51,6 +51,17 @@ public class BroadcastPlan {
     /** 循环播放：0 播完即停 / 1 窗口内列表循环 */
     private Boolean loopPlay;
 
+    /**
+     * 运行态：IDLE 未运行 / RUNNING 执行中 / PAUSED 已人工暂停。
+     *
+     * <p>方案只是**批量启动器** —— 启动之后每个分区独立可控。PAUSED 表示整体被人工暂停，
+     * 调度器不再自动重发；单个分区的暂停记在 {@code broadcast_plan_zone_state}。
+     */
+    private String runState;
+
+    /** 本轮开始时刻 */
+    private LocalDateTime runStartedAt;
+
     /** 上次触发日期 yyyy-MM-dd —— 防同一天重复触发 */
     private String lastFiredDate;
 

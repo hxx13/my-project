@@ -11,9 +11,11 @@ import com.example.demo.modules.broadcast.dto.SongListNameRequest;
 import com.example.demo.modules.broadcast.dto.SongMoveRequest;
 import com.example.demo.modules.broadcast.dto.StopRequest;
 import com.example.demo.modules.broadcast.dto.VolumeRequest;
+import com.example.demo.modules.broadcast.dto.ZoneResumeRequest;
 import com.example.demo.modules.broadcast.service.BroadcastPlanService;
 import com.example.demo.modules.broadcast.service.BroadcastPlayService;
 import com.example.demo.modules.broadcast.service.BroadcastSongsService;
+import com.example.demo.modules.broadcast.service.BroadcastZoneControlService;
 import com.example.demo.modules.broadcast.service.BroadcastZonesService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,6 +48,7 @@ public class AdminBroadcastController {
     private final BroadcastSongsService songsService;
     private final BroadcastPlayService playService;
     private final BroadcastPlanService planService;
+    private final BroadcastZoneControlService zoneControlService;
     private final AuthContextService authContextService;
 
     public AdminBroadcastController(DsppaClient client,
@@ -53,12 +56,14 @@ public class AdminBroadcastController {
                                     BroadcastSongsService songsService,
                                     BroadcastPlayService playService,
                                     BroadcastPlanService planService,
+                                    BroadcastZoneControlService zoneControlService,
                                     AuthContextService authContextService) {
         this.client = client;
         this.zonesService = zonesService;
         this.songsService = songsService;
         this.playService = playService;
         this.planService = planService;
+        this.zoneControlService = zoneControlService;
         this.authContextService = authContextService;
     }
 
@@ -174,6 +179,57 @@ public class AdminBroadcastController {
             return Result.error(e.getMessage());
         } catch (Exception e) {
             return Result.error("停止失败: " + readableError(e));
+        }
+    }
+
+    // ---------------------------------------------------------------- 分区级独立控制
+    //
+    // 方案只是「批量启动器」：启动之后每一路分区独立。下面这两组接口就是「只动这一路」，
+    // 不会波及其它分区；被人工暂停的分区，方案的循环/兜底也不会再把它带起来。
+
+    @PostMapping("/zones/pause")
+    @Operation(summary = "只暂停这几路分区（其余不受影响）")
+    public Result<?> pauseZones(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                @RequestBody StopRequest body) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireAdmin(user);
+        if (denied != null) return denied;
+        try {
+            zoneControlService.pauseZones(body.macs(), operatorOf(user));
+            return Result.success(null, "已暂停所选分区");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("暂停失败: " + readableError(e));
+        }
+    }
+
+    @PostMapping("/zones/resume")
+    @Operation(summary = "只恢复这几路分区")
+    public Result<?> resumeZones(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                 @RequestBody ZoneResumeRequest body) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireAdmin(user);
+        if (denied != null) return denied;
+        try {
+            zoneControlService.resumeZones(body.macs(), body.songPath(), operatorOf(user));
+            return Result.success(null, "已恢复所选分区");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("恢复失败: " + readableError(e));
+        }
+    }
+
+    @GetMapping("/active")
+    @Operation(summary = "正在执行的方案与逐分区状态")
+    public Result<?> active(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            return Result.success(zoneControlService.activeView());
+        } catch (Exception e) {
+            return Result.error("读取执行状态失败: " + readableError(e));
         }
     }
 
@@ -412,6 +468,40 @@ public class AdminBroadcastController {
             return Result.error(e.getMessage());
         } catch (Exception e) {
             return Result.error("试跑失败: " + readableError(e));
+        }
+    }
+
+    @PostMapping("/plans/{id}/pause")
+    @Operation(summary = "暂停整个方案（调度器不再自动重发）")
+    public Result<?> pausePlan(@RequestHeader(value = "Authorization", required = false) String authorization,
+                               @PathVariable("id") Long id) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireAdmin(user);
+        if (denied != null) return denied;
+        try {
+            planService.pausePlan(id, operatorOf(user));
+            return Result.success(null, "方案已暂停");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("暂停方案失败: " + readableError(e));
+        }
+    }
+
+    @PostMapping("/plans/{id}/resume")
+    @Operation(summary = "恢复整个方案")
+    public Result<?> resumePlan(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                @PathVariable("id") Long id) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireAdmin(user);
+        if (denied != null) return denied;
+        try {
+            planService.resumePlan(id, operatorOf(user));
+            return Result.success(null, "方案已恢复");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("恢复方案失败: " + readableError(e));
         }
     }
 

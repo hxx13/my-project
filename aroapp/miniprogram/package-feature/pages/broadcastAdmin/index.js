@@ -91,6 +91,8 @@ Page({
     songName: '',
     songDurText: '--:--',
     playingCount: 0,
+    /** 正在执行的方案（顶部常驻条）。方案只是批量启动器，启动后每一路归自己 */
+    activePlans: [],
     /** 底栏音量滑条的值，松手才作用到已选分区 */
     volume: 50,
     selCount: 0,
@@ -98,6 +100,10 @@ Page({
     playLabel: '播放',
     stopLabel: '停止',
     canPlay: false,
+    /** 真实播放进度（平台不给位置，按曲名 + 时长推算） */
+    npSong: '',
+    npRatio: 0,
+    npTimeText: '--:-- / --:--',
 
     logs: [],
     logLoading: false,
@@ -121,6 +127,8 @@ Page({
     // 触摸位移是 px、滑条偏移用 rpx，换算比只跟屏幕宽有关，进页面算一次
     const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     this._rpxPerPx = 750 / (win.windowWidth || 375);
+    // 逐分区的「这一首从什么时候开始算」，进页面重置（每次都是新的一轮推算）
+    this._track = {};
 
     const role = wx.getStorageSync(springAuth.KEYS.ROLE) || '';
     if (!hasMinRole(role, FALLBACK_ROLE)) {
@@ -134,6 +142,39 @@ Page({
       return;
     }
     this.refreshAll();
+    this.startTimers();
+  },
+
+  onHide() {
+    this.stopTimers();
+  },
+
+  onUnload() {
+    this.stopTimers();
+  },
+
+  /** 进度条每秒走一格；分区块状态每 10 秒回一次（换曲、被别处停掉都要能看见）。 */
+  startTimers() {
+    this.stopTimers();
+    const self = this;
+    this._progressTimer = setInterval(function () {
+      self.refreshNowPlaying();
+    }, 1000);
+    this._pollTimer = setInterval(function () {
+      self.loadZones();
+      self.loadActive();
+    }, 10000);
+  },
+
+  stopTimers() {
+    if (this._progressTimer) {
+      clearInterval(this._progressTimer);
+      this._progressTimer = null;
+    }
+    if (this._pollTimer) {
+      clearInterval(this._pollTimer);
+      this._pollTimer = null;
+    }
   },
 
   refreshAll() {
@@ -141,7 +182,117 @@ Page({
     this.loadZones();
     this.loadSongs();
     this.loadPlans();
+    this.loadActive();
     this.loadLogs(true);
+  },
+
+  // ------------------------------------------------------------ 正在执行的方案
+
+  async loadActive() {
+    try {
+      const d = await broadcastApi.getActive();
+      const self = this;
+      const pausedMacs = [];
+      const plans = (d.plans || []).map(function (p) {
+        (p.zones || []).forEach(function (z) {
+          if (z.paused) pausedMacs.push(z.mac);
+        });
+        const paused = p.runState === 'PAUSED';
+        const manual = (p.zones || []).filter(function (z) {
+          return z.paused;
+        }).length;
+        return {
+          id: p.id,
+          planName: p.planName,
+          paused: paused,
+          kind: paused ? 'paused' : p.playingCount > 0 ? 'playing' : 'idle',
+          runText: paused ? '已暂停' : '执行中',
+          windowText: String(p.startTime || '').slice(0, 5) + '–' + String(p.endTime || '').slice(0, 5),
+          loopText: p.loopPlay ? ' · 循环' : '',
+          countText: p.playingCount + '/' + p.zoneCount + ' 路在响',
+          manualText: manual > 0 ? ' · ' + manual + ' 路已人工停' : '',
+        };
+      });
+      // 标回分区列表：被人工停过的分区显示「已停」，方案不会自动把它带起来
+      const zones = this.data.zones.map(function (z) {
+        return Object.assign({}, z, { paused: pausedMacs.indexOf(z.mac) >= 0 });
+      });
+      this.setData({ activePlans: plans, zones: zones });
+    } catch (e) {
+      // 「正在执行」是只读展示，读不到就静默留着上一次的值，不打扰用户
+    }
+  },
+
+  /** 方案级暂停 / 恢复 */
+  async onTogglePlanRun(e) {
+    const id = e.currentTarget.dataset.id;
+    const resume = !!e.currentTarget.dataset.resume;
+    try {
+      if (resume) await broadcastApi.resumePlan(id);
+      else await broadcastApi.pausePlan(id);
+      wx.showToast({ title: resume ? '方案已恢复' : '方案已暂停', icon: 'none' });
+      this.loadActive();
+      this.loadZones();
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    }
+  },
+
+  // ------------------------------------------------------------ 真实播放进度
+  //
+  // 平台不提供播放位置（分区对象里没有任何时间字段，也没有 seek 命令），所以按
+  // 「这一路当前的曲名 + 曲库里这首歌的时长 + 侦测到这一首的时刻」推算；曲名一变就重新起算，
+  // 所以它跟着实际播放走。精度上限就是分区回读间隔（10 秒）。
+
+  refreshNowPlaying() {
+    const zones = this.data.zones || [];
+    const sel = zones.filter(function (z) {
+      return z.selected;
+    });
+    const pool = sel.length ? sel : zones;
+    const np = pool.find(function (z) {
+      return z.playing && z.currentSong;
+    });
+    if (!np) {
+      this.setData({ npSong: '', npRatio: 0, npTimeText: '--:-- / --:--' });
+      return;
+    }
+    const track = this._track[np.mac];
+    if (!track || track.song !== np.currentSong) {
+      this._track[np.mac] = { song: np.currentSong, startedAt: Date.now() };
+    }
+    const t = this._track[np.mac];
+    const song = (this.data.songs || []).find(function (s) {
+      return s.fileName === np.currentSong;
+    });
+    const dur = song && song.durationSeconds ? Number(song.durationSeconds) : 0;
+    const elapsed = Math.max(0, (Date.now() - t.startedAt) / 1000);
+    const pos = dur ? Math.min(elapsed, dur) : elapsed;
+    this.setData({
+      npSong: np.currentSong,
+      npRatio: dur ? Math.min(100, Math.round((elapsed / dur) * 100)) : 0,
+      npTimeText: fmtDur(pos) + ' / ' + (dur ? fmtDur(dur) : '--:--'),
+    });
+  },
+
+  /** 单分区播放 / 暂停：只动这一路 */
+  async onZonePlayPause(e) {
+    const mac = e.currentTarget.dataset.mac;
+    const zone = (this.data.zones || []).find(function (z) {
+      return z.mac === mac;
+    });
+    if (!zone) return;
+    const resume = !zone.playing;
+    try {
+      // 恢复时把当前选中的曲目带上：停止走的是「置空闲」，平台会清掉该路曲名，不带就可能无曲可放
+      if (resume) await broadcastApi.resumeZones([mac], this.data.songPath);
+      else await broadcastApi.pauseZones([mac]);
+      wx.showToast({ title: resume ? '已恢复该分区' : '已暂停该分区', icon: 'none' });
+      this.loadZones();
+      this.loadActive();
+    } catch (err) {
+      wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+    }
   },
 
   // ------------------------------------------------------------ 连接
@@ -538,8 +689,11 @@ Page({
           playing: !!z.playing,
           stateKind: status === 1 ? 'playing' : status === 2 ? 'paused' : 'idle',
           stateText: z.playStatusText || '',
+          // 平台没播时也留着上一次的曲名 —— 照样带下来：算进度、暂停后恢复都靠它
           currentSong: z.currentSong || '',
           selected: sel.indexOf(z.mac) >= 0,
+          // 被人工停过（loadActive 回填）：显示的文案要跟平台状态区分开
+          paused: false,
         };
       });
       this.setData({
@@ -636,6 +790,7 @@ Page({
             listId: l.id,
             listName: l.name,
             listCount: l.songCount,
+            durationSeconds: s.durationSeconds,
             durText: fmtDur(s.durationSeconds),
             offsetX: 0,
             selected: s.pathName === self.data.songPath,

@@ -35,7 +35,9 @@ export default function AdminAccessGuard() {
     return <div className="p-6 text-sm text-slate-500">权限加载中...</div>;
   }
   if (!canAccessWebPage(nodes, location.pathname, role, "STAFF")) {
-    return <Navigate to="/console/dashboard" replace />;
+    // 兜底回后台首页，而不是把人扔出后台。已经在首页说明首页本身就不够权限，
+    // 再指向首页会变成重定向死循环（整页卡白），此时才退回工作台。
+    return <Navigate to={location.pathname === "/console/admin" ? "/console/dashboard" : "/console/admin"} replace />;
   }
   return <Outlet />;
 }

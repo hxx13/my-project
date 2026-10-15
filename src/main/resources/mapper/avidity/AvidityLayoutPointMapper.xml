@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.avidity.mapper.AvidityLayoutPointMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.avidity.entity.AvidityLayoutPoint">
+        <id property="id" column="id"/>
+        <result property="channelId" column="channel_id"/>
+        <result property="roomCode" column="room_code"/>
+        <result property="rackCode" column="rack_code"/>
+        <result property="pointNo" column="point_no"/>
+        <result property="posX" column="pos_x"/>
+        <result property="posY" column="pos_y"/>
+    </resultMap>
+
+    <select id="selectByChannel" resultMap="BaseMap">
+        SELECT * FROM avidity_layout_point WHERE channel_id = #{channelId}
+    </select>
+
+    <insert id="upsert" parameterType="com.example.demo.modules.avidity.entity.AvidityLayoutPoint">
+        INSERT INTO avidity_layout_point
+        (channel_id, room_code, rack_code, point_no, pos_x, pos_y)
+        VALUES
+        (#{channelId}, #{roomCode}, #{rackCode}, #{pointNo}, #{posX}, #{posY})
+        ON DUPLICATE KEY UPDATE
+            pos_x = VALUES(pos_x),
+            pos_y = VALUES(pos_y)
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM avidity_layout_point
+        WHERE channel_id = #{channelId}
+          AND room_code = #{roomCode}
+          AND rack_code = #{rackCode}
+          AND point_no = #{pointNo}
+    </delete>
+
+    <delete id="deleteByChannel">
+        DELETE FROM avidity_layout_point WHERE channel_id = #{channelId}
+    </delete>
+
+</mapper>

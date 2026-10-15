@@ -349,6 +349,16 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/broadcast", "ADMIN"),
       },
       {
+        id: "avidity",
+        path: "/admin/avidity",
+        label: "饮水流量监测",
+        icon: Activity,
+        alias: ["饮水", "流量", "平面图", "安维迪", "云组态", "avidity", "笼架", "报警"],
+        homeTone: "from-cyan-400 to-violet-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => show(ctx, "/admin/avidity", "ADMIN"),
+      },
+      {
         id: "dahua-issue",
         path: "/admin/dahua-issue",
         label: "大华发卡",

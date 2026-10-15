@@ -41,6 +41,97 @@
   word-break: break-all;
 }
 
+/* ---------- 正在执行的方案（常驻条） ----------
+   方案只是**批量启动器**：启动之后每一路归自己。这一条负责「哪个方案在跑、带了几路、
+   其中几路在响、有没有被人工停掉的」，并给方案级的暂停/恢复。
+   单路的暂停在下面分区行里，不在这儿。 */
+.bc-active {
+  flex-shrink: 0;
+  margin: 12rpx 14rpx 0;
+  padding: 12rpx 20rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 14rpx;
+}
+
+.bc-active-head {
+  font-size: 22rpx;
+  color: #969799;
+  margin-bottom: 6rpx;
+}
+
+.bc-active-item + .bc-active-item {
+  margin-top: 10rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx dashed #eceef0;
+}
+
+.bc-active-line {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.bc-active-line--sub {
+  justify-content: space-between;
+  margin-top: 6rpx;
+}
+
+.bc-active-name {
+  flex-shrink: 0;
+  max-width: 300rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bc-active-run {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+}
+
+.bc-active-run--playing {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.bc-active-run--paused {
+  color: #d97706;
+  background: #fef3c7;
+}
+
+.bc-active-run--idle {
+  color: #969799;
+  background: #f1f3f7;
+}
+
+.bc-active-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.bc-active-dot--playing {
+  background: #16a34a;
+  animation: bc-pulse 1.4s ease-in-out infinite;
+}
+
+.bc-active-dot--paused {
+  background: #d97706;
+}
+
+.bc-active-dot--idle {
+  background: transparent;
+  border: 2rpx solid #d4d7dc;
+  box-sizing: border-box;
+}
+
 /* 按钮并到状态行右侧：手机屏窄，别再多占一行 */
 /* ---------- 主区：立即播放固定，音乐/分区各自独立滚动 ---------- */
 .bc-main {
@@ -221,6 +312,27 @@
   color: #2563eb;
 }
 
+/* 单分区播放/暂停。**排在行尾**：滑条的圆点在音量 0 时会从轨道左端探出半个圆，
+   放在滑条左边必定被它压住。实色底 + 细描边（不铺半透明底），选中行上换白底。 */
+.bc-zone-play {
+  flex-shrink: 0;
+  width: 44rpx;
+  height: 44rpx;
+  margin-left: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: #eef2ff;
+  border: 1rpx solid #dbeafe;
+  box-sizing: border-box;
+}
+
+.bc-zone--sel .bc-zone-play {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
 .bc-zone-main {
   flex: 1;
   min-width: 0;
@@ -253,9 +365,11 @@
 }
 
 .bc-zone-slidewrap slider {
-  /* 原生滑条自带左右内边距（保证圆点到两端不越界），别再叠负边距抵消 ——
-     抵消多了轨道会戳到容器左边外面。对齐靠下面的 padding 微调。 */
-  margin: 0;
+  /* 圆点是自己放大的（见下面的 .wx-slider-handle，宽 32rpx），**半宽就是 16rpx**。
+     原生滑条自带的内边距只够它默认大小的圆点，圆点放大后，音量到 0 时圆点会从轨道左端
+     探出去、压到左边的播放/暂停键上。所以这里补足「圆点半径」的左右边距，
+     两点到两端就都不会越界。别用负边距抵消 —— 那正是原来的毛病。 */
+  margin: 0 16rpx;
 }
 
 .bc-zone-slidewrap .wx-slider-handle-wrapper {
@@ -646,13 +760,12 @@
   margin-bottom: 18rpx;
 }
 
-/* 播放中：呼吸的实心条（位置未知，不做假进度） */
+/* 播放中：实心进度条，宽度按真实已播比例（平台不给位置，按曲名 + 时长推算）。 */
 .bc-np-fill {
-  width: 100%;
   height: 100%;
   border-radius: 999rpx;
   background: #2563eb;
-  animation: bc-pulse 1.4s ease-in-out infinite;
+  transition: width 0.9s linear;
 }
 
 /* ---------- 音量滑条（跟在播放/停止后面同一行） ---------- */
@@ -673,7 +786,8 @@
 .bc-vol-slider {
   flex: 1;
   min-width: 0;
-  margin: 0;
+  /* 同上：block-size 24rpx，半宽 12rpx，音量到 0 时圆点才不压到左边的「音量」二字 */
+  margin: 0 12rpx;
 }
 
 .bc-vol-num {

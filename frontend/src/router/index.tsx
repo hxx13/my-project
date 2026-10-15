@@ -122,6 +122,7 @@ import ReferenceDataPage from "@/pages/ReferenceDataPage";
 import AdminOrderReviewPage from "@/pages/AdminOrderReviewPage";
 import AdminVideoWallPage from "@/pages/AdminVideoWallPage";
 import AdminBroadcastPage from "@/pages/AdminBroadcastPage";
+import AdminAvidityPage from "@/pages/AdminAvidityPage";
 import StudentOrderRecordsPage from "@/pages/StudentOrderRecordsPage";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
@@ -448,6 +449,7 @@ export const router = createHashRouter([
                 children: [
                   { path: "monitor", element: <MonitorDashboardPage /> },
                   { path: "broadcast", element: <AdminBroadcastPage /> },
+                  { path: "avidity", element: <AdminAvidityPage /> },
                   { path: "agv-tracker", element: <AgvTrackerPage /> },
                   { path: "agv-tracker/logs", element: <AgvLogPage /> },
                   { path: "agv-tracker/analytics", element: <AgvAnalyticsPage /> },

@@ -1,4 +1,5 @@
 <van-tabbar
+  wx:if="{{ !tabBarHidden }}"
   custom-class="aro-tabbar-root"
   active="{{ active }}"
   bind:change="onChange"

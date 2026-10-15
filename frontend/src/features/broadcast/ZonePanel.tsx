@@ -1,33 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { Pause, Play } from "lucide-react";
 import type { ZoneView } from "@/api/domains/broadcast.api";
 import { blockBodyClass, blockHeadClass, blockTitleClass, panelClass } from "./ui";
+import { fmtClock, type ZoneProgress } from "./useZoneProgress";
 
 /**
- * 分区列表（页面右栏）。勾选 = 这一路参与中间那组操作。
+ * 分区列表（页面左栏）。勾选 = 这一路参与底栏那组批量操作。
+ *
+ * **每一路是独立的播放单元**：行内那个 ▶/⏸ 只作用于这一路，暂停它不会动别的分区；
+ * 被人工停过的分区，方案的循环/兜底也不会再把它带起来（后端记了覆盖）。
  *
  * 视觉与小程序端保持一致：
- * - 每行是一个**圆角矩形选项**（未选中浅底、选中实心主色 + 同色投影 + 文字反白），
- *   对齐仓库既有选项样式（.spec-opt--on / .station-item--on）。
+ * - 每行是一个**圆角矩形选项**（未选中浅底、选中实心主色 + 同色投影 + 文字反白）。
  * - 状态用**圆点 + 同色文字**：播放中绿、已暂停琥珀、空闲空心灰。
- * - 每行的滑条松手才提交，拖动途中只改本地值，免得一路狂发请求。
+ * - 行底部一条 2px 细线是**真实播放进度**（按曲名 + 时长推算，见 useZoneProgress）。
  */
 export default function ZonePanel({
   zones,
   loading,
   hint,
   selected,
+  pausedMacs,
+  progress,
   onToggle,
   onSelectAll,
   onVolumeCommit,
+  onZonePlay,
+  onZonePause,
 }: {
   zones: ZoneView[];
   loading: boolean;
   hint: string;
   selected: Set<string>;
+  /** 被人工停过的分区（方案不会自动恢复它们） */
+  pausedMacs: Set<string>;
+  progress: Map<string, ZoneProgress>;
   onToggle: (mac: string) => void;
   onSelectAll: (all: boolean) => void;
   onVolumeCommit: (mac: string, volume: number) => void;
+  onZonePlay: (mac: string) => void;
+  onZonePause: (mac: string) => void;
 }) {
   const allSelected = zones.length > 0 && selected.size === zones.length;
 
@@ -53,11 +66,13 @@ export default function ZonePanel({
           zones.map((z) => {
             const sel = selected.has(z.mac);
             const kind = stateKind(z.playStatus);
+            const p = progress.get(z.mac);
+            const manualPaused = pausedMacs.has(z.mac);
             return (
               <div
                 key={z.mac}
                 className={
-                  "flex items-center gap-3 rounded-[14px] px-3 py-1.5 text-sm transition-colors " +
+                  "relative flex items-center gap-2 overflow-hidden rounded-[14px] px-2 py-1.5 text-sm transition-colors " +
                   (sel
                     ? "bg-[var(--app-color-accent)] text-white shadow-[0_2px_10px_rgba(37,99,235,0.28)]"
                     : "bg-[var(--app-color-surface-container)] hover:bg-[var(--app-color-surface-hover)]")
@@ -69,7 +84,20 @@ export default function ZonePanel({
                   onChange={() => onToggle(z.mac)}
                   aria-label={`选择 ${z.name}`}
                 />
-                <span className="w-24 shrink-0 truncate font-medium" title={z.name}>
+                {/* 只动这一路：播放中显示暂停，其余显示播放 */}
+                <button
+                  type="button"
+                  className={
+                    "grid h-6 w-6 shrink-0 place-items-center rounded-md " +
+                    (sel ? "hover:bg-white/20" : "hover:bg-[var(--app-color-surface-hover)]")
+                  }
+                  title={z.playing ? `暂停 ${z.name}` : `播放 ${z.name}`}
+                  aria-label={z.playing ? `暂停 ${z.name}` : `播放 ${z.name}`}
+                  onClick={() => (z.playing ? onZonePause(z.mac) : onZonePlay(z.mac))}
+                >
+                  {z.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                </button>
+                <span className="w-20 shrink-0 truncate font-medium" title={z.name}>
                   {z.name}
                 </span>
                 {/* 音量条 + 数值 + 状态收成一组（组内 gap 收紧），与名称、曲目之间保持原有间距 */}
@@ -90,16 +118,42 @@ export default function ZonePanel({
                       className={"inline-block h-2 w-2 shrink-0 rounded-full" + (kind === "playing" ? " animate-pulse" : "")}
                       style={dotStyle(kind, sel)}
                     />
-                    <span style={{ color: stateTextColor(kind, sel) }}>{z.playStatusText}</span>
+                    <span style={{ color: stateTextColor(kind, sel) }}>{manualPaused ? "已停" : z.playStatusText}</span>
                   </span>
                 </span>
-                <span
-                  className="min-w-0 flex-1 truncate text-xs"
-                  style={{ color: sel ? "#dbeafe" : "var(--app-color-text-secondary)" }}
-                  title={z.currentSong}
-                >
-                  {z.playing ? z.currentSong : ""}
+                <span className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+                  <span
+                    className="min-w-0 flex-1 truncate"
+                    style={{ color: sel ? "#dbeafe" : "var(--app-color-text-secondary)" }}
+                    title={p?.song || z.currentSong}
+                  >
+                    {p?.song || z.currentSong || ""}
+                  </span>
+                  {p ? (
+                    <span
+                      className="shrink-0 tabular-nums"
+                      style={{ color: sel ? "#dbeafe" : "var(--app-color-text-tertiary)" }}
+                      title={p.duration ? "按曲目时长推算（平台不提供播放位置）" : "未知时长"}
+                    >
+                      {fmtClock(p.position)}
+                      {p.duration ? ` / ${fmtClock(p.duration)}` : ""}
+                    </span>
+                  ) : null}
                 </span>
+
+                {/* 真实进度：贴行底的一条细线。拿不到时长就不画（不假装） */}
+                {p?.ratio != null ? (
+                  <span
+                    className="absolute inset-x-0 bottom-0 h-[2px]"
+                    style={{ background: sel ? "rgba(255,255,255,0.25)" : "var(--app-color-surface-hover)" }}
+                    aria-hidden
+                  >
+                    <span
+                      className="block h-full"
+                      style={{ width: `${(p.ratio * 100).toFixed(1)}%`, background: sel ? "#ffffff" : "var(--app-color-accent)" }}
+                    />
+                  </span>
+                ) : null}
               </div>
             );
           })
@@ -164,7 +218,7 @@ function VolumeSlider({
       min={0}
       max={100}
       value={local}
-      className="h-4 w-24 shrink-0 cursor-pointer"
+      className="h-4 w-20 shrink-0 cursor-pointer"
       style={{ accentColor: onAccent ? "#ffffff" : "var(--app-color-accent)" }}
       onChange={(e) => {
         dirty.current = true;
@@ -181,5 +235,3 @@ function VolumeSlider({
     />
   );
 }
-
-/** 空心灰点用 border 画，实心点用背景 */

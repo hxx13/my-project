@@ -900,6 +900,11 @@ Component({
       type: Boolean,
       value: false,
     },
+    /** 楼层条吸顶的粘附位置（px，一般是宿主页固定导航栏的高度）；传 0 表示不吸顶 */
+    stickyTop: {
+      type: Number,
+      value: 0,
+    },
   },
 
   data: {
@@ -912,7 +917,6 @@ Component({
     /** 轮询替换列表后恢复纵向位置，减轻「先弹回顶部再回去」的闪烁感 */
     mainScrollTop: 0,
     fetchedAtText: '—',
-    panelMetaLine: '',
     metricDetailVisible: false,
     setpointSheetVisible: false,
     setpointSheetVn: '',
@@ -1006,11 +1010,6 @@ Component({
   methods: {
     onRoomOverviewTap() {
       this.triggerEvent('openroomoverview', {}, { bubbles: false });
-    },
-    /** 顶栏仅显示更新时间（与 Web 对齐，节省空间） */
-    buildPanelMeta(tab, fetchedAtText) {
-      const ft = fetchedAtText || '—';
-      return `更新 ${ft}`;
     },
 
     /** 套间块数据；标题区始终带参数名，房间内三列套间隐藏参数名由 wxml 控制 */
@@ -1161,8 +1160,6 @@ Component({
         const patch = {};
         if (fetchedAtText !== this.data.fetchedAtText) {
           patch.fetchedAtText = fetchedAtText;
-          const bar = this.data.structTabs[idx];
-          if (bar) patch.panelMetaLine = this.buildPanelMeta(bar, fetchedAtText);
         }
         if (Object.keys(patch).length) this.setData(patch);
         return;
@@ -1190,7 +1187,6 @@ Component({
         activeTabIndex: idx,
         viewChunks: normalizedChunks,
         fetchedAtText,
-        panelMetaLine: this.buildPanelMeta(sidebar[idx], fetchedAtText),
         mainScrollTop: scrollRestore,
       };
       this.setData(payload);
@@ -1236,7 +1232,6 @@ Component({
         this.triggerEvent('telemetrytabchange', { tabKey: tk }, { bubbles: false });
       }
       this._telemetryMainScrollTop = 0;
-      const bar = this.data.structTabs[idx];
       let rawChunks =
         tk &&
         animalRoomHvacUnits.isSyntheticHvacTabKey(tk) &&
@@ -1267,7 +1262,6 @@ Component({
         this.setData({
           activeTabIndex: idx,
           viewChunks: previewChunks,
-          panelMetaLine: this.buildPanelMeta(bar, this.data.fetchedAtText),
           mainScrollTop: 0,
         });
         return;
@@ -1275,7 +1269,6 @@ Component({
       this.setData({
         activeTabIndex: idx,
         viewChunks: this.normalizeViewChunks(rawChunks),
-        panelMetaLine: this.buildPanelMeta(bar, this.data.fetchedAtText),
         mainScrollTop: 0,
       });
     },

@@ -3,19 +3,26 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
+  getActive,
   getStatus,
   listPlans,
   listSongLists,
   listZones,
+  pausePlan,
+  pauseZones,
   play,
   reconnect,
   relogin,
+  resumePlan,
+  resumeZones,
   setVolume as setZonesVolume,
   stop,
 } from "@/api/domains/broadcast.api";
 import SongPanel, { type PickedSong } from "@/features/broadcast/SongPanel";
 import ZonePanel from "@/features/broadcast/ZonePanel";
-import PlayerBar from "@/features/broadcast/PlayerBar";
+import PlayerBar, { type NowPlaying } from "@/features/broadcast/PlayerBar";
+import ActivePlanStrip from "@/features/broadcast/ActivePlanStrip";
+import { useZoneProgress } from "@/features/broadcast/useZoneProgress";
 import PlanPanel from "@/features/broadcast/PlanPanel";
 import PlayLogPanel from "@/features/broadcast/PlayLogPanel";
 
@@ -25,9 +32,9 @@ import PlayLogPanel from "@/features/broadcast/PlayLogPanel";
  * <p>**为什么有这一页**：现场广播主机自带的定时播放不可靠（播放日志连续 8 天零播放、
  * 且只执行「当前方案」）。这里由我方调度到点下发播放指令，平台降级为播放终端。
  *
- * <p>排布照**现代音乐播放器**：主区只有两栏（选曲 | 选分区），
- * 传输控制、当前曲目、音量、两个收纳入口、连接状态全都收进**底部一条播放条**。
- * 早先把操作单独摆成中间一列，又窄又白占一栏宽度；合成底栏后主区更干净。
+ * <p>**口径（现场反馈后定的）**：定时方案只是**批量启动器**。到点把若干分区带起来之后，
+ * 每一路就是独立的播放单元 —— 想停哪一路就停哪一路，方案的循环/兜底不会再把它带起来。
+ * 所以左侧每个分区行有自己的播放/暂停按钮，顶部一条常驻的「正在执行」显示方案级状态。
  *
  * <p>高度按仓库里全高页的写法自己写死（`100dvh - chrome offset`）+ 逐层 `min-h-0`，
  * 每个区块各自内滚，整页不滚。标题由 AdminLayout 提供，这里不重复渲染。
@@ -37,10 +44,9 @@ export default function AdminBroadcastPage() {
   const [plansOpen, setPlansOpen] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
 
-  // 选曲（单选：从哪一首开始播，平台会自己接着放完整个列表）
+  // 选曲（从哪一首开始播，平台会自己接着放完整个列表）
   const [songPath, setSongPath] = useState("");
-  const [songName, setSongName] = useState("");
-  // 勾选参与操作的分区
+  // 勾选参与**批量**操作的分区
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /** 底栏音量滑条的当前值，松手才作用到已选分区 */
   const [volume, setVolume] = useState(50);
@@ -57,16 +63,37 @@ export default function AdminBroadcastPage() {
   });
   const songsQ = useQuery({ queryKey: ["broadcast", "songLists"], queryFn: listSongLists });
   const plansQ = useQuery({ queryKey: ["broadcast", "plans"], queryFn: listPlans });
+  const activeQ = useQuery({
+    queryKey: ["broadcast", "active"],
+    queryFn: getActive,
+    refetchInterval: 10000,
+  });
 
   const zones = zonesQ.data?.zones ?? [];
+  const songLists = songsQ.data ?? [];
   const macs = useMemo(() => [...selected], [selected]);
-  const playingCount = zones.filter((z) => z.playing && selected.has(z.mac)).length;
   const canApplyVolume = selected.size > 0;
-  /** 当前曲目总时长；平台不给进度，只有时长这一半信息，进度条靠它渲染 */
-  const songDuration = useMemo(() => {
-    const all = (songsQ.data ?? []).flatMap((l) => l.songs);
-    return all.find((s) => s.pathName === songPath)?.durationSeconds ?? null;
-  }, [songsQ.data, songPath]);
+
+  const activePlans = activeQ.data?.plans ?? [];
+  /** 被人工停过的分区（方案不会自动恢复它们） */
+  const pausedMacs = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of activePlans) {
+      for (const z of p.zones) {
+        if (z.paused) s.add(z.mac);
+      }
+    }
+    return s;
+  }, [activePlans]);
+
+  // 逐分区真实进度（曲名 + 时长推算）。底栏那条取「已选分区里第一个在播的」
+  const progress = useZoneProgress(zones, songLists);
+  const nowPlaying: NowPlaying | null = (() => {
+    const z = zones.find((x) => x.playing && (selected.size === 0 || selected.has(x.mac)));
+    if (!z) return null;
+    const p = progress.get(z.mac);
+    return p ? { song: p.song, position: p.position, duration: p.duration, ratio: p.ratio } : null;
+  })();
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["broadcast"] });
 
@@ -116,6 +143,28 @@ export default function AdminBroadcastPage() {
     onError: (e: Error) => toast.error(e.message || "设置音量失败"),
   });
 
+  /** 单分区播放/暂停：只动这一路 */
+  const zoneMut = useMutation({
+    mutationFn: (args: { macs: string[]; resume: boolean; songPath?: string }) =>
+      args.resume ? resumeZones(args.macs, args.songPath) : pauseZones(args.macs),
+    onSuccess: (_d, args) => {
+      toast.success(args.resume ? "已恢复该分区" : "已暂停该分区");
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message || "操作失败"),
+  });
+
+  /** 方案级暂停/恢复 */
+  const planRunMut = useMutation({
+    mutationFn: (args: { id: number; resume: boolean }) =>
+      args.resume ? resumePlan(args.id) : pausePlan(args.id),
+    onSuccess: (_d, args) => {
+      toast.success(args.resume ? "方案已恢复" : "方案已暂停");
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message || "操作失败"),
+  });
+
   function onToggleZone(mac: string) {
     const next = new Set(selected);
     if (next.has(mac)) next.delete(mac);
@@ -129,11 +178,19 @@ export default function AdminBroadcastPage() {
 
   function onPickSong(s: PickedSong) {
     setSongPath(s.pathName);
-    setSongName(s.fileName);
   }
 
   return (
     <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-0 flex-col gap-2">
+      {/* 正在执行什么，一眼可见；方案级暂停/恢复就在这里 */}
+      <ActivePlanStrip
+        plans={activePlans}
+        loading={activeQ.isLoading}
+        busyPlanId={planRunMut.isPending ? (planRunMut.variables?.id ?? null) : null}
+        onPausePlan={(id) => planRunMut.mutate({ id, resume: false })}
+        onResumePlan={(id) => planRunMut.mutate({ id, resume: true })}
+      />
+
       {/* 主次分明的两栏：分区靠左占三成（是"选谁"的清单），音乐靠右占七成（是主体） */}
       <div className="grid min-h-0 flex-1 gap-2 lg:grid-cols-[3fr_7fr]">
         <ZonePanel
@@ -141,20 +198,22 @@ export default function AdminBroadcastPage() {
           loading={zonesQ.isLoading}
           hint={zonesQ.data?.loggedIn ? "未读取到分区" : "广播平台未登录，点底栏「重新登录」"}
           selected={selected}
+          pausedMacs={pausedMacs}
+          progress={progress}
           onToggle={onToggleZone}
           onSelectAll={onSelectAll}
           onVolumeCommit={(mac, v) => volumeMut.mutate({ macs: [mac], volume: v })}
+          onZonePlay={(mac) => zoneMut.mutate({ macs: [mac], resume: true, songPath })}
+          onZonePause={(mac) => zoneMut.mutate({ macs: [mac], resume: false })}
         />
-        <SongPanel lists={songsQ.data ?? []} loading={songsQ.isLoading} songPath={songPath} onPick={onPickSong} />
+        <SongPanel lists={songLists} loading={songsQ.isLoading} songPath={songPath} onPick={onPickSong} />
       </div>
 
       <PlayerBar
         status={statusQ.data}
         planCount={(plansQ.data ?? []).length}
-        songName={songName}
-        songDuration={songDuration}
+        nowPlaying={nowPlaying}
         zoneCount={selected.size}
-        playingCount={playingCount}
         volume={volume}
         onVolumeApply={(v) => {
           setVolume(v);

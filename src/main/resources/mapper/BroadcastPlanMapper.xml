@@ -19,6 +19,8 @@
         <result property="songPaths" column="song_paths"/>
         <result property="songListId" column="song_list_id"/>
         <result property="loopPlay" column="loop_play"/>
+        <result property="runState" column="run_state"/>
+        <result property="runStartedAt" column="run_started_at"/>
         <result property="lastFiredDate" column="last_fired_date"/>
         <result property="lastFiredAt" column="last_fired_at"/>
         <result property="lastStopDate" column="last_stop_date"/>
@@ -31,6 +33,7 @@
     <sql id="cols">
         id, plan_name, enabled, time_mode, week_days, start_date, end_date,
         start_time, end_time, volume, zone_macs, song_paths, song_list_id, loop_play,
+        run_state, run_started_at,
         last_fired_date, last_fired_at, last_stop_date, last_result, created_by, created_at, updated_at
     </sql>
 
@@ -94,6 +97,14 @@
 
     <update id="markStopped">
         UPDATE broadcast_plan SET last_stop_date = #{stopDate}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="setRunState">
+        UPDATE broadcast_plan
+        SET run_state = #{runState},
+            run_started_at = CASE WHEN #{runState} = 'RUNNING' THEN NOW() ELSE run_started_at END,
+            updated_at = NOW()
+        WHERE id = #{id}
     </update>
 
 </mapper>

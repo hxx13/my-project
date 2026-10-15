@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.avidity.mapper.AvidityAlarmEventMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.avidity.entity.AvidityAlarmEvent">
+        <id property="id" column="id"/>
+        <result property="virtualDeviceId" column="virtual_device_id"/>
+        <result property="alarmName" column="alarm_name"/>
+        <result property="room" column="room"/>
+        <result property="rack" column="rack"/>
+        <result property="pointNo" column="point_no"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="endedAt" column="ended_at"/>
+        <result property="lastSeenAt" column="last_seen_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="Cols">
+        virtual_device_id, alarm_name, room, rack, point_no, started_at, ended_at, last_seen_at, created_at
+    </sql>
+
+    <insert id="openIfAbsent" parameterType="com.example.demo.modules.avidity.entity.AvidityAlarmEvent">
+        INSERT IGNORE INTO avidity_alarm_event
+        (<include refid="Cols"/>)
+        VALUES
+        (#{virtualDeviceId}, #{alarmName}, #{room}, #{rack}, #{pointNo}, #{startedAt}, #{endedAt},
+         #{lastSeenAt}, #{createdAt})
+    </insert>
+
+    <update id="touchOpen">
+        UPDATE avidity_alarm_event SET last_seen_at = #{seenAt}
+        WHERE virtual_device_id = #{virtualDeviceId} AND alarm_name = #{alarmName} AND ended_at IS NULL
+    </update>
+
+    <update id="closeOpen">
+        UPDATE avidity_alarm_event SET ended_at = #{endedAt}
+        WHERE virtual_device_id = #{virtualDeviceId} AND alarm_name = #{alarmName} AND ended_at IS NULL
+    </update>
+
+    <select id="selectOpen" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_event
+        WHERE ended_at IS NULL
+        <if test="deviceIds != null and deviceIds.size() > 0">
+            AND virtual_device_id IN
+            <foreach collection="deviceIds" item="d" open="(" separator="," close=")">#{d}</foreach>
+        </if>
+        ORDER BY started_at DESC
+    </select>
+
+    <select id="selectSince" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_event
+        WHERE started_at &gt;= #{since}
+        <if test="deviceIds != null and deviceIds.size() > 0">
+            AND virtual_device_id IN
+            <foreach collection="deviceIds" item="d" open="(" separator="," close=")">#{d}</foreach>
+        </if>
+        <if test="alarmName != null and alarmName != ''">
+            AND alarm_name = #{alarmName}
+        </if>
+        ORDER BY started_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countSince" resultType="int">
+        SELECT COUNT(*) FROM avidity_alarm_event
+        WHERE virtual_device_id = #{virtualDeviceId} AND alarm_name = #{alarmName}
+          AND started_at &gt;= #{since}
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM avidity_alarm_event
+        WHERE virtual_device_id = #{virtualDeviceId} AND alarm_name = #{alarmName}
+    </select>
+
+</mapper>

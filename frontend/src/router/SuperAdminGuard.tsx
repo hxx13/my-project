@@ -5,7 +5,8 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 export default function SuperAdminGuard() {
   const role = authStorage.getRole();
   if (!hasMinRole(role, "SUPER_ADMIN")) {
-    return <Navigate to="/console/dashboard" replace />;
+    // 兜底回后台首页，而不是把人扔出后台
+    return <Navigate to="/console/admin" replace />;
   }
   return <Outlet />;
 }

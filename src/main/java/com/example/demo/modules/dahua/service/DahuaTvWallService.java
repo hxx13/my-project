@@ -196,7 +196,7 @@ public class DahuaTvWallService {
             throw new IllegalStateException("这面墙没有可识别的物理屏: tvWallId=" + tvWallId);
         }
         String decodeId = String.valueOf(wallScreens.get(0).getOrDefault("decodeId", ""));
-        String xml = buildScheme(wallScreens, screens, "matrix");
+        String xml = buildScheme(tvWallId, wallScreens, screens, "matrix", channelExternPool(tvWallId, screens));
         return operate(tvWallId, decodeId, xml);
     }
 
@@ -235,7 +235,7 @@ public class DahuaTvWallService {
     public Map<String, Object> savePreset(String tvWallId, String taskId, String taskName,
                                           List<Map<String, Object>> screens) {
         List<Map<String, Object>> wallScreens = listWallScreens(tvWallId);
-        String xml = buildScheme(wallScreens, screens, taskName);
+        String xml = buildScheme(tvWallId, wallScreens, screens, taskName, channelExternPool(tvWallId, screens));
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("tvWallId", tvWallId);
@@ -330,6 +330,65 @@ public class DahuaTvWallService {
         return out;
     }
 
+    // ---------------- 通道的设备直连信息（ChnlExtern） ----------------
+
+    private static final Pattern EXTERN_CHANNEL =
+            Pattern.compile("<Channel\\b[^>]*\\bid=\"([^\"]+)\"[^>]*/>");
+
+    /**
+     * 收集「通道 → 设备直连信息」。
+     *
+     * <p>为什么必须有：方案 XML 里 `</Tasks>` 之后那段 `<ChnlExtern>` 是每个通道的
+     * **设备直连信息**（录像机 ip/port/账号/口令/通道号）。解码器靠它直连录像机取流；
+     * 不发就只能挤平台的转发通道，**用尽之后靠后的格子全没码流**（2026-10-15 实测：
+     * 二层视频 36 格黑一片、25 格黑得少；大屏不发也没事，因为它的通道是解码器自己的槽位）。
+     *
+     * <p>数据从哪来：**平台已存的预设里本来就有这段**（抓包比对客户端下发报文确认）。
+     * 所以从该墙的预设里把用得到的通道那条**原文照抄**回来 —— 我们不落任何设备口令。
+     * 凑齐所需通道就提前收工，不把整墙预设全拉一遍。
+     */
+    private Map<String, String> channelExternPool(String tvWallId, List<Map<String, Object>> requested) {
+        Map<String, String> out = new LinkedHashMap<>();
+        java.util.Set<String> needed = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> r : requested == null ? List.<Map<String, Object>>of() : requested) {
+            for (Map<String, Object> w : asListOfMap(r.get("windows"))) {
+                Object cc = w.get("channelCode");
+                if (cc != null && !String.valueOf(cc).isBlank()) {
+                    needed.add(String.valueOf(cc));
+                }
+            }
+        }
+        if (needed.isEmpty()) {
+            return out;
+        }
+        try {
+            for (Map<String, Object> t : listTasks(tvWallId)) {
+                if (out.keySet().containsAll(needed)) {
+                    break;
+                }
+                try {
+                    Object xml = getTask(tvWallId, String.valueOf(t.get("taskId"))).get("data");
+                    if (xml == null) {
+                        continue;
+                    }
+                    Matcher m = EXTERN_CHANNEL.matcher(String.valueOf(xml));
+                    while (m.find()) {
+                        String code = m.group(1);
+                        if (needed.contains(code) && !out.containsKey(code)) {
+                            out.put(code, m.group(0));
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // 单条预设读失败不影响整体：缺的那几个通道退回旧行为（没有直连信息）
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[电视墙] 取设备直连信息失败，本次不带 ChnlExtern：{}", e.getMessage());
+        }
+        log.info("[电视墙] 设备直连信息：需要 {} 条，集齐 {} 条", needed.size(), out.size());
+        return out;
+    }
+
     // ---------------- 布局几何 ----------------
 
     /**
@@ -404,8 +463,9 @@ public class DahuaTvWallService {
      * 拼一份多屏 TVWallScheme：每块物理屏一个 `<Screen>`，各自带 splitNum 与窗口。
      * requested 里没提到的屏输出成自闭合 —— 语义就是「清空那块屏」，所以「整墙一起推」时前端要把每块屏都带上。
      */
-    String buildScheme(List<Map<String, Object>> wallScreens, List<Map<String, Object>> requested,
-                       String taskName) {
+    String buildScheme(String tvWallId, List<Map<String, Object>> wallScreens,
+                       List<Map<String, Object>> requested, String taskName,
+                       Map<String, String> chnlExtern) {
         Map<String, Map<String, Object>> req = new HashMap<>();
         for (Map<String, Object> r : requested == null ? List.<Map<String, Object>>of() : requested) {
             req.put(String.valueOf(r.get("screenId")), r);
@@ -414,9 +474,14 @@ public class DahuaTvWallService {
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<TVWallScheme>\n\t<Tasks>\n");
         sb.append("\t\t<Task id=\"0\"").append(taskName == null ? "" : " name=\"" + esc(taskName) + "\"")
           .append(" screen=\"").append(Math.max(1, wallScreens.size()))
-          .append("\" tvWallCfgId=\"1\" desc=\"\" isOnlineSend=\"false\" isAlarmTime=\"0\"")
+          // tvWallCfgId 是**这面墙的配置号**，必须填本墙的 id。原来写死 1：只有「大屏」正好是 1，
+          // 别的墙都在告诉平台一份对不上的墙配置（实测客户端 7 面墙逐个都是填墙号）。
+          .append("\" tvWallCfgId=\"").append(tvWallId == null ? "0" : tvWallId)
+          .append("\" desc=\"\" isOnlineSend=\"false\" isAlarmTime=\"0\"")
           .append(" prefTime=\"0\" recordType=\"2\" taskType=\"0\" isDevAutoCycle=\"false\" planType=\"0\">\n");
         int seq = 0;
+        // 本方案实际用到的通道，最后要按这个顺序补 ChnlExtern
+        java.util.Set<String> usedCodes = new java.util.LinkedHashSet<>();
         for (Map<String, Object> s : wallScreens) {
             String sid = String.valueOf(s.get("screenId"));
             Map<String, Object> r = req.get(sid);
@@ -429,7 +494,8 @@ public class DahuaTvWallService {
               .append("\" tvIdx=\"").append(sid)
               .append("\" splitNum=\"").append(split)
               .append("\" visitorMode=\"1\" screenId=\"").append(sid)
-              .append("\" screenMode=\"2\" isCombined=\"").append(w >= 100 && h >= 100)
+              // 下发时客户端一律写 true（预设里存的是 false，是真·下发那一刻才置真）
+              .append("\" screenMode=\"2\" isCombined=\"true")
               .append("\" name=\"").append(esc(String.valueOf(s.getOrDefault("name", ""))))
               .append("\" left=\"").append(fmt(numOf(s.get("left"))))
               .append("\" top=\"").append(fmt(numOf(s.get("top"))))
@@ -441,13 +507,42 @@ public class DahuaTvWallService {
                 continue;
             }
             sb.append(">\n");
+            // 取流档位按**本屏实际要放的窗口数**定，与 ICC 客户端一致：
+            // 实测客户端存下来的预设里，1/2/4/9 宫格用 subStream=1，13/16/25/26/36 用 subStream=2。
+            // 写死 1 的后果：64 宫格那种密排放上去大片黑屏 —— 解码器拉不住那么多路 704×576，
+            // 而客户端自己上墙却是好的，差别就在这个属性上。
+            int withChannel = 0;
             for (Map<String, Object> win : wins) {
-                appendWindow(sb, split, win);
+                Object cc = win.get("channelCode");
+                if (cc != null && !String.valueOf(cc).isBlank()) {
+                    withChannel++;
+                }
+            }
+            int subStream = withChannel <= 9 ? 1 : 2;
+            for (Map<String, Object> win : wins) {
+                Object cc = win.get("channelCode");
+                if (cc != null && !String.valueOf(cc).isBlank()) {
+                    usedCodes.add(String.valueOf(cc));
+                }
+                appendWindow(sb, split, win, subStream);
             }
             sb.append("\t\t\t</Screen>\n");
             seq++;
         }
-        sb.append("\t\t</Task>\n\t</Tasks>\n</TVWallScheme>\n");
+        sb.append("\t\t</Task>\n\t</Tasks>\n");
+        // 每个通道的设备直连信息（录像机 ip/端口/账号/口令）。没有这段，解码器只能挤平台转发，
+        // 路数用尽后靠后的格子就没码流 —— 见 channelExternPool 的注释。
+        if (chnlExtern != null && !chnlExtern.isEmpty()) {
+            sb.append("\t<ChnlExtern>\n");
+            for (String code : usedCodes) {
+                String line = chnlExtern.get(code);
+                if (line != null) {
+                    sb.append("\t\t").append(line).append("\n");
+                }
+            }
+            sb.append("\t</ChnlExtern>\n");
+        }
+        sb.append("</TVWallScheme>\n");
         return sb.toString();
     }
 
@@ -455,8 +550,10 @@ public class DahuaTvWallService {
      * 一个窗口 + 它上面挂的通道。空窗口不输出（与客户端一致）。
      * 窗口矩形优先取请求里带的 left/top/width/height（自定义切分就是任意矩形），
      * 没带才按宫格均分算 —— 与前端 rect() 同一套算法。
+     *
+     * @param subStream 取流档位：密排必须退到 2，否则解码器拉不住、上墙后黑屏
      */
-    private void appendWindow(StringBuilder sb, int splitNum, Map<String, Object> win) {
+    private void appendWindow(StringBuilder sb, int splitNum, Map<String, Object> win, int subStream) {
         Object cc = win.get("channelCode");
         if (cc == null || String.valueOf(cc).isBlank()) {
             return;
@@ -476,7 +573,7 @@ public class DahuaTvWallService {
           .append("\" isAlarm=\"0\" isHighLight=\"0\" isOpenAudio=\"0\" subWinNum=\"0\">\n");
         sb.append("\t\t\t\t\t<Channel id=\"").append(code)
           .append("\" name=\"").append(esc(name))
-          .append("\" subStream=\"1\" timeSpan=\"15\" presetPos=\"0\"")
+          .append("\" subStream=\"").append(subStream).append("\" timeSpan=\"15\" presetPos=\"0\"")
           .append(" deviceId=\"").append(deviceId)
           .append("\" no=\"").append(no)
           .append("\" devType=\"1\" alarmType=\"0\" manufacturerType=\"2\" trackID=\"501\"")

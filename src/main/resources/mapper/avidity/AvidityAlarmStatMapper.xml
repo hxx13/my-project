@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.avidity.mapper.AvidityAlarmStatMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.avidity.entity.AvidityAlarmStat">
+        <id property="id" column="id"/>
+        <result property="statDate" column="stat_date"/>
+        <result property="virtualDeviceId" column="virtual_device_id"/>
+        <result property="deviceName" column="device_name"/>
+        <result property="alarmName" column="alarm_name"/>
+        <result property="alarmContent" column="alarm_content"/>
+        <result property="alarmCount" column="alarm_count"/>
+        <result property="syncedAt" column="synced_at"/>
+    </resultMap>
+
+    <insert id="upsert" parameterType="com.example.demo.modules.avidity.entity.AvidityAlarmStat">
+        INSERT INTO avidity_alarm_stat
+        (stat_date, virtual_device_id, device_name, alarm_name, alarm_content, alarm_count, synced_at)
+        VALUES
+        (#{statDate}, #{virtualDeviceId}, #{deviceName}, #{alarmName}, #{alarmContent},
+         #{alarmCount}, #{syncedAt})
+        ON DUPLICATE KEY UPDATE
+            alarm_content = VALUES(alarm_content),
+            alarm_count   = VALUES(alarm_count),
+            device_name   = VALUES(device_name),
+            synced_at     = VALUES(synced_at)
+    </insert>
+
+    <select id="selectByDate" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_stat
+        WHERE stat_date = #{statDate}
+        <if test="deviceIds != null and deviceIds.size() > 0">
+            AND virtual_device_id IN
+            <foreach collection="deviceIds" item="d" open="(" separator="," close=")">#{d}</foreach>
+        </if>
+        ORDER BY alarm_name, device_name
+    </select>
+
+</mapper>

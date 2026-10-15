@@ -136,6 +136,8 @@ public class AdminPushTestController {
                         "jobNumber", "S2026001", "projectGroup", "测试课题组")));
         sources.add(source("DIGEST_TEST", "聚合通知测试",
                 Map.of("title", "聚合通知测试", "content", "这是一条测试聚合通知内容")));
+        // 安维迪饮水流量监测：样例照真实报警填，渲染出来跟实际收到的一条一样
+        sources.add(source("AVIDITY_FLOW_ALARM", "饮水流量报警", aviditySimVars()));
         return Result.success(sources);
     }
 
@@ -205,12 +207,49 @@ public class AdminPushTestController {
             case "ACCESS_EXIT" -> new LinkedHashMap<>(Map.of("roomName","A203","doorLabel","B区出口","personName","测试学生","department","测试课题组","exitTime",now()));
             case "ARO_TRAINING_PENDING" -> new LinkedHashMap<>(Map.of("sessionTitle","动物实验安全培训","traineeName","测试学生","jobNumber","S2026001","projectGroup","测试课题组"));
             case "DIGEST_TEST" -> new LinkedHashMap<>(Map.of("title","聚合通知测试","content","这是一条测试聚合通知内容"));
+            case "AVIDITY_FLOW_ALARM" -> new LinkedHashMap<>(aviditySimVars());
             default -> null;
         };
     }
 
     private static String now() { return LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(); }
     private static String nowPlus(int seconds) { return LocalDateTime.now().plusSeconds(seconds).truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString(); }
+
+    /** 中文场景用的时间戳：跟真实推送里那套格式一致（别拿 ISO 的 T 去预览） */
+    private static String stamp() {
+        return LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    /**
+     * 饮水流量报警的样例变量。在报一览那张表照真实的两行填：
+     * 一行是刚触发的（状态列写「新触发」），一行是已经在报的（写已持续多久）。
+     */
+    private static Map<String, String> aviditySimVars() {
+        String cell = "border:1px solid #e2e8f0;padding:4px 8px;";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("deviceName", "交大医学院-B1");
+        vars.put("alarmName", "RM_A_B106_SLV_11");
+        vars.put("positionLabel", "A-B106 第11点位");
+        vars.put("alarmContent", "A-B106 第11点位 流量报警");
+        vars.put("alarmGroup", "默认组");
+        vars.put("ruleLabel", "新报警出现");
+        vars.put("triggeredAt", stamp());
+        vars.put("todaySeq", "3");
+        vars.put("totalSeq", "47");
+        vars.put("openCount", "2");
+        vars.put("alarmRows",
+                "| A-B106 第11点位 | 今日 3 次 / 累计 47 次 | 新触发 |\n"
+                        + "| A-B106 第12点位 | 今日 5 次 / 累计 12 次 | 已持续 2 小时 5 分 |");
+        vars.put("alarmRowsHtml",
+                "<tr><td style='" + cell + "'>A-B106 第11点位</td>"
+                        + "<td style='" + cell + "'>今日 3 次 / 累计 47 次</td>"
+                        + "<td style='" + cell + "color:#b91c1c;font-weight:700'>新触发</td></tr>"
+                        + "<tr><td style='" + cell + "'>A-B106 第12点位</td>"
+                        + "<td style='" + cell + "'>今日 5 次 / 累计 12 次</td>"
+                        + "<td style='" + cell + "'>已持续 2 小时 5 分</td></tr>");
+        return vars;
+    }
 
     private static Map<String, Object> source(String code, String name, Map<String, String> vars) {
         Map<String, Object> m = new LinkedHashMap<>();

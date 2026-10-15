@@ -1,0 +1,260 @@
+/* 永远一行：通道区自己横滑，动作区贴尾（用户明确要求不许换行） */
+.chan-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10rpx;
+  padding: 12rpx 20rpx;
+  background: #fff;
+  border-bottom: 1rpx solid #e5e7eb;
+}
+
+.chan-list {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* 横滑条又细又像进度条，隐掉 */
+.chan-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 通道切换：实色块 —— 选中＝主色实底白字。不描边、不半透明 */
+.chan {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 8rpx 18rpx;
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #334155;
+  background: #f1f3f7;
+}
+
+/* 通道上的报警角标：数字是此刻在报的点位数（跟画面上的灯一致） */
+.chan-badge {
+  margin-left: 8rpx;
+  min-width: 26rpx;
+  height: 26rpx;
+  padding: 0 6rpx;
+  border-radius: 13rpx;
+  font-size: 20rpx;
+  line-height: 26rpx;
+  text-align: center;
+  color: #fff;
+  background: #e5484d;
+}
+
+.chan--on {
+  color: #fff;
+  background: #2563eb;
+}
+
+.tap-hover { opacity: 0.86; }
+
+/* 高度由页面按画幅算，但**加载中/出错时这个高度还没算出来（=0）**，
+   加上 overflow:hidden 就把提示文字也一起裁没了 —— 表现成「一片空白只剩旋转按钮」。
+   给个最小高度兜住这两种状态。 */
+.plan-area { position: relative; width: 100%; overflow: hidden; min-height: 480rpx; }
+
+/* 右侧动作区（报警历史 / 横竖屏），贴着整条栏的右边 */
+.chan-actions {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex: none;
+  padding-left: 12rpx;
+  border-left: 1rpx solid #e5e7eb;
+}
+
+.plan-canvas { display: block; }
+
+/* 离屏画布：挪到屏幕外、透明、不接事件 */
+.offscreen-canvas {
+  position: fixed;
+  left: -2000px;
+  top: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.state {
+  padding: 80rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #6b7280;
+}
+
+.state-err { color: #dc2626; }
+
+/* ── 报警历史抽屉 ───────────────────────────────────────── */
+
+.hist-layer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+}
+
+.hist-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.42);
+  animation: hist-fade 0.18s ease-out;
+}
+
+.hist-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 20rpx 20rpx 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: hist-up 0.22s ease-out;
+}
+
+@keyframes hist-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes hist-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.hist-hd {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 22rpx 24rpx 16rpx;
+  border-bottom: 1rpx solid #e5e7eb;
+}
+
+.hist-hd-left {
+  display: flex;
+  align-items: baseline;
+  gap: 14rpx;
+  min-width: 0;
+}
+
+.hist-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.hist-sub {
+  font-size: 22rpx;
+  color: #6b7280;
+}
+
+/* 只负责把关闭钮顶到最右；外观走全局 .chip-btn */
+.hist-close {
+  margin-left: auto;
+  flex: none;
+}
+
+.hist-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.hist-state {
+  padding: 90rpx 0;
+  text-align: center;
+  font-size: 26rpx;
+  color: #9ca3af;
+}
+
+.hist-state-err { color: #dc2626; }
+
+/* 房间文件夹头：分区一层，内间再缩进一层 */
+.hist-folder {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  padding: 14rpx 24rpx 8rpx;
+  background: #fafafa;
+}
+
+.hist-folder--sub {
+  padding-left: 44rpx;
+  background: #fff;
+  padding-top: 10rpx;
+  padding-bottom: 6rpx;
+}
+
+.hist-folder-name {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #374151;
+}
+
+.hist-folder--sub .hist-folder-name {
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.hist-folder-n {
+  margin-left: auto;
+  font-size: 22rpx;
+  color: #9ca3af;
+}
+
+.hist-row {
+  padding: 16rpx 24rpx 16rpx 44rpx;
+  border-top: 1rpx solid #f4f4f5;
+}
+
+/* 还在报的那条，左侧给一道红条 */
+.hist-row--on {
+  border-left: 6rpx solid #e5484d;
+  background: rgba(229, 72, 77, 0.06);
+}
+
+.hist-row-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+}
+
+/* 位置号是这行里最要认的信息，其余都往后退 */
+.hist-pos {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #b42318;
+}
+
+.hist-clock {
+  margin-left: auto;
+  flex: none;
+  font-size: 22rpx;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-msg {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 24rpx;
+  color: #6b7280;
+  line-height: 1.35;
+}
