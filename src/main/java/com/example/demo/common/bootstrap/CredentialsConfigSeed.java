@@ -75,6 +75,17 @@ public class CredentialsConfigSeed implements ApplicationRunner {
                 "DSPPA 广播对讲系统登录密码", "STRING", null,
                 "", 1, 0, 0);
 
+        // ---- 安维迪「云组态」饮水流量监测 ----
+        // 这里填的值**真的会被用**：AvidityClient 每次取令牌前先读这一对
+        // （库里优先 → 空了读 AVIDITY_USERNAME/AVIDITY_PASSWORD → 再退回配置文件），
+        // 发现和当前令牌用的账号口令不一样就立刻重登，不必等令牌自己过期。
+        def("credentials", "avidity.username", "安维迪(云组态) 登录账号",
+                "饮水流量监测平台的登录账号，如 SHSMU-Admin", "STRING", null,
+                "", 0, 0, 0);
+        def("credentials", "avidity.password", "安维迪(云组态) 登录密码",
+                "饮水流量监测平台的登录密码", "STRING", null,
+                "", 1, 0, 0);
+
         // ---- 安全杂项 ----
         def("credentials", "invite_code_pepper", "邀请码哈希 Pepper",
                 "注册推荐码 SHA-256 加盐值，泄露后需轮换", "STRING", null,
