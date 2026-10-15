@@ -1,6 +1,7 @@
 package com.example.demo.modules.avidity.client;
 
 import com.example.demo.modules.avidity.config.AvidityProperties;
+import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -55,9 +56,32 @@ public class AvidityClient {
      */
     private volatile String encryptedAccessToken;
 
-    public AvidityClient(AvidityProperties properties, ObjectMapper objectMapper) {
+    /** 令牌是用哪一对账号口令换来的 —— 跟现在该用的那对比，不等就作废重登。 */
+    private volatile String tokenUser;
+    private volatile String tokenPass;
+
+    private final NotificationSettingsService settingsService;
+
+    public AvidityClient(AvidityProperties properties, ObjectMapper objectMapper,
+                         NotificationSettingsService settingsService) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.settingsService = settingsService;
+    }
+
+    /**
+     * 当前该用的账号口令，三档优先级：后台配置（库）→ 环境变量 → 配置文件。
+     * 所以生产上既可以在后台页面上填，也可以用 AVIDITY_USERNAME / AVIDITY_PASSWORD。
+     */
+    private String[] credentials() {
+        String user = settingsService.getEffectiveValue("credentials", "avidity.username", properties.getUsername());
+        String pass = settingsService.getEffectiveValue("credentials", "avidity.password", properties.getPassword());
+        return new String[]{user == null ? "" : user, pass == null ? "" : pass};
+    }
+
+    private boolean credentialsChanged() {
+        String[] want = credentials();
+        return !want[0].equals(tokenUser) || !want[1].equals(tokenPass);
     }
 
     public boolean isEnabled() {
@@ -105,6 +129,12 @@ public class AvidityClient {
     }
 
     private String token() {
+        // 账号口令可能在后台「系统设置 → 集成」里被改过。跟当前令牌用的不是同一对就立刻作废重登 ——
+        // 否则改了口令要等令牌自然过期（最长 5 天）才轮到，用起来像「改了没反应」。
+        if (StringUtils.hasText(accessToken) && credentialsChanged()) {
+            log.info("[安维迪] 账号口令已变更，作废旧令牌重新登录");
+            invalidateToken();
+        }
         String cached = accessToken;
         if (StringUtils.hasText(cached) && System.currentTimeMillis() / 1000L < tokenExpiresAtEpochSecond) {
             return cached;
@@ -123,12 +153,15 @@ public class AvidityClient {
         if (!StringUtils.hasText(properties.getBaseUrl())) {
             throw new IllegalStateException("未配置 app.avidity.base-url");
         }
-        if (!StringUtils.hasText(properties.getUsername()) || !StringUtils.hasText(properties.getPassword())) {
-            throw new IllegalStateException("未配置 app.avidity.username / password");
+        String[] cred = credentials();
+        if (!StringUtils.hasText(cred[0]) || !StringUtils.hasText(cred[1])) {
+            throw new IllegalStateException(
+                    "未配置安维迪账号口令：到后台「系统设置 → 集成 → 外部系统凭证」里填，"
+                            + "或给环境变量 AVIDITY_USERNAME / AVIDITY_PASSWORD");
         }
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("userNameOrEmailAddressOrPhoneNumber", properties.getUsername());
-        payload.put("password", xor(properties.getPassword(), PWD_XOR_KEY));
+        payload.put("userNameOrEmailAddressOrPhoneNumber", cred[0]);
+        payload.put("password", xor(cred[1], PWD_XOR_KEY));
         payload.put("rememberClient", false);
         payload.put("twoFactorRememberClientToken", null);
         payload.put("singleSignIn", false);
@@ -148,8 +181,10 @@ public class AvidityClient {
         long expireInSeconds = result.path("expireInSeconds").asLong(3600L);
         accessToken = token;
         encryptedAccessToken = result.path("encryptedAccessToken").asText(null);
+        tokenUser = cred[0];
+        tokenPass = cred[1];
         tokenExpiresAtEpochSecond = System.currentTimeMillis() / 1000L + Math.max(60L, expireInSeconds - TOKEN_EARLY_RENEW_SECONDS);
-        log.info("[安维迪] 登录成功 user={} 有效期={}s", properties.getUsername(), expireInSeconds);
+        log.info("[安维迪] 登录成功 user={} 有效期={}s", cred[0], expireInSeconds);
     }
 
     private JsonNode exchange(HttpMethod method, String path, Object body, Map<String, ?> query, String bearer) {
