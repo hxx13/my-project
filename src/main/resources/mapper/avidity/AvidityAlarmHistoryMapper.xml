@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.avidity.mapper.AvidityAlarmHistoryMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.avidity.entity.AvidityAlarmHistory">
+        <id property="id" column="id"/>
+        <result property="alarmId" column="alarm_id"/>
+        <result property="virtualDeviceId" column="virtual_device_id"/>
+        <result property="deviceName" column="device_name"/>
+        <result property="alarmName" column="alarm_name"/>
+        <result property="message" column="message"/>
+        <result property="state" column="state"/>
+        <result property="alarmLevel" column="alarm_level"/>
+        <result property="alarmGroupName" column="alarm_group_name"/>
+        <result property="triggeredTime" column="triggered_time"/>
+        <result property="syncedAt" column="synced_at"/>
+    </resultMap>
+
+    <insert id="upsert" parameterType="com.example.demo.modules.avidity.entity.AvidityAlarmHistory">
+        INSERT INTO avidity_alarm_history
+        (alarm_id, virtual_device_id, device_name, alarm_name, message, state, alarm_level,
+         alarm_group_name, triggered_time, synced_at)
+        VALUES
+        (#{alarmId}, #{virtualDeviceId}, #{deviceName}, #{alarmName}, #{message}, #{state}, #{alarmLevel},
+         #{alarmGroupName}, #{triggeredTime}, #{syncedAt})
+        ON DUPLICATE KEY UPDATE
+            state          = VALUES(state),
+            message        = VALUES(message),
+            triggered_time = VALUES(triggered_time),
+            synced_at      = VALUES(synced_at)
+    </insert>
+
+    <select id="selectByAlarmName" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_history
+        WHERE alarm_name = #{alarmName}
+        ORDER BY triggered_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countByDay" resultType="java.util.Map">
+        SELECT DATE(triggered_time) AS d, COUNT(*) AS n
+        FROM avidity_alarm_history
+        WHERE alarm_name = #{alarmName}
+          AND triggered_time &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        GROUP BY DATE(triggered_time)
+        ORDER BY d
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM avidity_alarm_history
+    </select>
+
+    <select id="selectRecent" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_history
+        <where>
+            <if test="deviceIds != null and deviceIds.size() > 0">
+                virtual_device_id IN
+                <foreach collection="deviceIds" item="d" open="(" separator="," close=")">#{d}</foreach>
+            </if>
+        </where>
+        ORDER BY triggered_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countByDayAll" resultType="java.util.Map">
+        SELECT DATE(triggered_time) AS d, COUNT(*) AS n
+        FROM avidity_alarm_history
+        <where>
+            triggered_time &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+            <if test="deviceIds != null and deviceIds.size() > 0">
+                AND virtual_device_id IN
+                <foreach collection="deviceIds" item="d" open="(" separator="," close=")">#{d}</foreach>
+            </if>
+        </where>
+        GROUP BY DATE(triggered_time)
+        ORDER BY d
+    </select>
+
+</mapper>

@@ -3,21 +3,29 @@ import { Play, Square, Volume2, RefreshCw, LogIn, CalendarClock, History } from 
 import { AdminButton } from "@/components/admin/AdminButton";
 import type { BroadcastStatus } from "@/api/domains/broadcast.api";
 import { dotClass, dotColor } from "./ui";
+import { fmtClock } from "./useZoneProgress";
+
+/** 底栏显示的「实际在放什么」。没有分区在播时传 null。 */
+export interface NowPlaying {
+  song: string;
+  position: number;
+  duration: number | null;
+  ratio: number | null;
+}
 
 /**
- * 底部播放条 —— 照现代音乐播放器那样摆：**左曲目 / 中传输 / 右其余**。
+ * 底部播放条 —— 照现代音乐播放器那样摆：**左传输 / 中当前曲目 / 右其余**。
  * 传输按钮居中是有意的：它是这一页最常用的动作，位置固定才形成肌肉记忆。
  *
- * 原来这几样分在「顶栏」和「中间一列」两处，中间那列很窄、又白占一栏宽度，
- * 合成一条底栏后主区就是干净的两栏（选曲 | 选分区）。
+ * 中间那条进度是**真实的**：平台不提供播放位置（分区对象里没有任何时间字段，
+ * 也没有 seek 命令），所以按「分区当前曲名 + 该曲时长 + 侦测到这一首的时刻」推算，
+ * 换曲自动重新起算 —— 跟着实际播放走，不再是原来那条只表示「在放、位置未知」的呼吸条。
  */
 export default function PlayerBar({
   status,
   planCount,
-  songName,
-  songDuration,
+  nowPlaying,
   zoneCount,
-  playingCount,
   volume,
   onVolumeApply,
   canPlay,
@@ -35,11 +43,8 @@ export default function PlayerBar({
 }: {
   status?: BroadcastStatus;
   planCount: number;
-  songName: string;
-  /** 当前曲目总时长（秒）；取不到传 null */
-  songDuration: number | null;
+  nowPlaying: NowPlaying | null;
   zoneCount: number;
-  playingCount: number;
   volume: number;
   onVolumeApply: (v: number) => void;
   canPlay: boolean;
@@ -64,15 +69,13 @@ export default function PlayerBar({
   return (
     <div className="flex shrink-0 items-center gap-3 rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 shadow-twin-level-2">
       {/* 传输 + 当前曲目 + 进度条 **合成一行**（底栏就真的一行）。
-          进度条**只渲染、不可拖**：实测平台的分区对象里没有任何时间/进度字段，
-          也没有 seek 命令 —— 位置取不到、跳转做不到。播放中画一条呼吸的实心条，
-          表示「在放、位置未知」，比一条永远空着的死条诚实。 */}
+          进度条**只渲染、不可拖**：平台没有 seek 命令，位置也拿不到，
+          所以按「曲名 + 时长 + 侦测到这一首的时刻」推算；拿不到时长就不画。 */}
       <span
         className="flex min-w-0 flex-1 items-center gap-3"
         title={
-          `曲目：${songName || "未选"}` +
-          (zoneCount > 0 ? ` · 已选 ${zoneCount} 区` : "") +
-          (playingCount > 0 ? ` · ${playingCount} 区在播` : "")
+          (nowPlaying ? `正在播放：${nowPlaying.song}` : "当前没有分区在播放") +
+          (zoneCount > 0 ? ` · 已选 ${zoneCount} 区` : "")
         }
       >
         <span className="flex shrink-0 items-center gap-2">
@@ -103,21 +106,26 @@ export default function PlayerBar({
         <VolumeControl value={volume} disabled={!canApplyVolume} onCommit={onVolumeApply} />
 
         <span className="min-w-0 shrink truncate text-sm">
-          <span className="text-[var(--app-color-text-tertiary)]">{songName ? "正在播放 " : ""}</span>
-          <b className="text-[var(--app-color-text-primary)]">{songName || "未选曲目"}</b>
+          <span className="text-[var(--app-color-text-tertiary)]">{nowPlaying ? "正在播放 " : ""}</span>
+          <b className="text-[var(--app-color-text-primary)]">{nowPlaying?.song || "未在播放"}</b>
         </span>
 
         <span
-          className="h-1 min-w-[72px] flex-1 overflow-hidden rounded-full bg-[var(--app-color-surface-hover)]"
-          title="平台不提供播放进度，也无法跳转，所以这里只显示状态"
+          className="relative h-1 min-w-[72px] flex-1 overflow-hidden rounded-full bg-[var(--app-color-surface-hover)]"
+          title="按曲目时长推算（平台不提供播放位置，无法跳转）"
         >
-          {playingCount > 0 ? (
-            <span className="block h-full w-full animate-pulse rounded-full bg-[var(--app-color-accent)]" />
+          {nowPlaying?.ratio != null ? (
+            <span
+              className="block h-full rounded-full bg-[var(--app-color-accent)]"
+              style={{ width: `${(nowPlaying.ratio * 100).toFixed(1)}%` }}
+            />
           ) : null}
         </span>
 
         <span className="shrink-0 text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">
-          {formatDuration(songDuration)}
+          {nowPlaying
+            ? `${fmtClock(nowPlaying.position)} / ${nowPlaying.duration ? fmtClock(nowPlaying.duration) : "--:--"}`
+            : "--:-- / --:--"}
         </span>
       </span>
 
@@ -152,16 +160,6 @@ export default function PlayerBar({
       </span>
     </div>
   );
-}
-
-/** 秒 → m:ss；取不到就显示占位 */
-function formatDuration(seconds: number | null): string {
-  if (seconds == null || seconds <= 0) {
-    return "--:--";
-  }
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 /** 音量滑条：拖动只改本地值，松手才作用到已选分区（对齐分区行滑条的交互）。 */

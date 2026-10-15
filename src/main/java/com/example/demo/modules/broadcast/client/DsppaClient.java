@@ -679,14 +679,26 @@ public class DsppaClient {
         assertSuccess(resp, "play_source");
     }
 
-    /** 停止播放。 */
+    /**
+     * 停止指定分区的播放。**只作用于这些分区。**
+     *
+     * <p>用的是 {@code set_idle_status}（把选中分区置为空闲），**不是** {@code pause_source}。
+     * 2026-10-15 实测判定：{@code pause_source} 是**全局**的 —— 只选中一路下发，整个平台一起停；
+     * 现场「想只停一路，结果全停」就是它造成的。{@code set_idle_status} 走同一套选中机制，
+     * 但作用域就是被选中的那几路（实测只停 A、B 照常播）。音量与空闲两条命令都有作用域，
+     * 只有 pause 没有。
+     *
+     * <p>副作用：置空闲后平台会把这一路的曲名清掉（{@code source_name} 变空，不像「已暂停」那样保留），
+     * 所以「恢复这一路」必须由调用方给出要放什么曲目，见
+     * {@code BroadcastZoneControlService.resumeZones}。
+     */
     public void stop(List<String> macs) {
         int selectedId = selectZones(macs);
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("command", "pause_source");
+        body.put("command", "set_idle_status");
         body.put("selected_id", selectedId);
-        Map<String, Object> resp = exchange("pause_source", null, body, true, requestTimeoutMs);
-        assertSuccess(resp, "pause_source");
+        Map<String, Object> resp = exchange("set_idle_status", null, body, true, requestTimeoutMs);
+        assertSuccess(resp, "set_idle_status");
     }
 
     /** 通知平台：某个曲目已通过 HTTP 上传到曲库列表，请登记。 */

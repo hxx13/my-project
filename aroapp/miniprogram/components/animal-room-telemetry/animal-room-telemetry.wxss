@@ -28,8 +28,9 @@
   font-size: 26rpx;
 }
 
-/* 楼层分页：横向均分、加大点击区（地下室 B1F-E10 等多 tab） */
+/* 楼层分页：横向排布、加大点击区（地下室 B1F-E10 等多 tab） */
 .art-tabs-head {
+  position: relative;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -40,9 +41,30 @@
   border-bottom: 1rpx solid #e4e4e7;
 }
 
+/* 右侧渐隐：内容没排满时它盖在空白上，看不出来；真被截断时才提示「右边还有」。
+   常驻、不靠 JS 判定 —— 楼层数量变了不用改代码。 */
+.art-tabs-head::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44rpx;
+  height: 80rpx;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff);
+}
+
 .art-tabs-head-embedded {
   padding-left: 2rpx;
   padding-right: 2rpx;
+}
+
+/* 吸顶：宿主页给一个粘附位置（通常是它自己那条固定导航栏的高度）才启用。
+   纯 CSS 粘附 —— 页面仍可整页下拉刷新，不用把外层改成定高容器。
+   没传位置（如 hub 内嵌）就维持原样，免得粘到别人的滚动容器上。 */
+.art-tabs-head-sticky {
+  position: sticky;
+  z-index: 10;
 }
 
 .art-tabs-row {
@@ -57,14 +79,23 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* 原生的横向滚动条又细又像进度条，留着反而让人误读成「加载到一半」——隐掉，交给上面的渐隐提示 */
+.art-tabs-row::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 宽度按标签内容走（只留一个触摸下限）：以前一律 52px，
+   「1F」「2F」这种两字标签被撑出大片空档，9 个楼层也排不下 */
 .art-tab {
   flex: 0 0 auto;
-  min-width: 100rpx;
+  min-width: 64rpx;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  padding: 16rpx 20rpx 14rpx;
+  padding: 16rpx 16rpx 14rpx;
   border-bottom: 4rpx solid transparent;
   box-sizing: border-box;
 }
@@ -101,24 +132,6 @@
 
 .art-link-hover {
   opacity: 0.88;
-}
-
-.art-tabs-caption {
-  flex-shrink: 0;
-  padding: 0 8rpx 6rpx;
-  background: #ffffff;
-  border-bottom: 1rpx solid #e4e4e7;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.art-tabs-caption-txt,
-.art-tabs-caption-dim {
-  font-size: 24rpx;
-  line-height: 1.25;
-  color: #94a3b8;
-  font-weight: 400;
 }
 
 .art-main {

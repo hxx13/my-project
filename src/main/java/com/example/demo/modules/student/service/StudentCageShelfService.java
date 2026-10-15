@@ -879,13 +879,34 @@ public class StudentCageShelfService {
         if (isAdminUser(user)) return true;
         Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
         if (scope.isEmpty()) return false; // 无补充 → 不额外放开任何笼架
-        List<String> rooms = scope.getOrDefault("ROOM", List.of());
-        List<String> floors = scope.getOrDefault("FLOOR", List.of());
-        List<String> campuses = scope.getOrDefault("CAMPUS", List.of());
-        if (roomId != null && rooms.contains(roomId)) return true;
-        if (floorId != null && floors.contains(floorId)) return true;
-        if (campusId != null && campuses.contains(campusId)) return true;
-        return false; // 都没命中 → 不额外放开，回到基本权限
+        // 都没命中 → 不额外放开，回到基本权限
+        return scopeHits(scope, roomId, floorId, campusId);
+    }
+
+    /** roomId/floorId/campusId 任一命中负责范围即可见（取并集）。 */
+    private static boolean scopeHits(Map<String, List<String>> scope, String roomId, String floorId, String campusId) {
+        if (roomId != null && scope.getOrDefault("ROOM", List.of()).contains(roomId)) return true;
+        if (floorId != null && scope.getOrDefault("FLOOR", List.of()).contains(floorId)) return true;
+        if (campusId != null && scope.getOrDefault("CAMPUS", List.of()).contains(campusId)) return true;
+        return false;
+    }
+
+    /**
+     * 特殊状态总览里的一条笼位是否落在负责范围内。
+     * 总览只带 shelveId / 名称，范围和 id 都要回查笼架索引，故按 shelveId 缓存。
+     */
+    private boolean isShelveInScope(Map<String, Object> cage, Map<String, List<String>> scope,
+                                    Map<String, Boolean> cache) {
+        if (scope.isEmpty()) return false;
+        String shelveId = objToStr(cage.get("shelveId"));
+        if (shelveId.isEmpty()) return false;
+        Boolean cached = cache.get(shelveId);
+        if (cached != null) return cached;
+        CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
+        boolean hit = idx != null && scopeHits(scope,
+                String.valueOf(idx.getRoomId()), String.valueOf(idx.getFloorId()), String.valueOf(idx.getCampusId()));
+        cache.put(shelveId, hit);
+        return hit;
     }
 
     /** 全局可见者（SUPER_ADMIN+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
@@ -1208,8 +1229,11 @@ public class StudentCageShelfService {
         }
 
         List<String> groupNames = resolveUserGroupNames(user.getId());
-        if (groupNames.isEmpty()) {
-            // 没有课题组信息 → 返回空
+        // 负责范围（校区/楼层/房间）与课题组取并集，口径同 isShelfVisibleForUser：
+        // 网格里看得到的笼位，这里也要看得到，否则配了范围的教职工会出现「网格有、统计空」。
+        Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
+        if (groupNames.isEmpty() && scope.isEmpty()) {
+            // 没有课题组、也没有负责范围 → 返回空
             return Map.of("groups", List.of(), "totalAbnormal", 0, "scannedAt",
                     adminOverview.getOrDefault("scannedAt", ""));
         }
@@ -1218,12 +1242,13 @@ public class StudentCageShelfService {
         List<Map<String, Object>> allGroups = (List<Map<String, Object>>) adminOverview.get("groups");
         List<Map<String, Object>> filteredGroups = new ArrayList<>();
         int totalAbnormal = 0;
+        Map<String, Boolean> scopeHitCache = new HashMap<>();
 
         for (Map<String, Object> group : allGroups) {
             List<Map<String, Object>> cages = (List<Map<String, Object>>) group.get("cages");
             List<Map<String, Object>> visible = new ArrayList<>();
             for (Map<String, Object> cage : cages) {
-                if (isCellVisible(cage, groupNames)) {
+                if (isCellVisible(cage, groupNames) || isShelveInScope(cage, scope, scopeHitCache)) {
                     visible.add(cage);
                 }
             }

@@ -4,6 +4,7 @@ import com.example.demo.modules.broadcast.client.DsppaClient;
 import com.example.demo.modules.broadcast.dto.PlanRequest;
 import com.example.demo.modules.broadcast.entity.BroadcastPlan;
 import com.example.demo.modules.broadcast.mapper.BroadcastPlanMapper;
+import com.example.demo.modules.broadcast.mapper.BroadcastPlanZoneStateMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -40,6 +41,11 @@ public class BroadcastPlanService {
     /** 开播时刻过了这么久才算「补播」（服务重启后没赶上的那种）。 */
     private static final long CATCHUP_AFTER_SECONDS = 120;
 
+    /** 方案运行态：未运行 / 执行中 / 已人工暂停。 */
+    public static final String RUN_IDLE = "IDLE";
+    public static final String RUN_RUNNING = "RUNNING";
+    public static final String RUN_PAUSED = "PAUSED";
+
     /** 上次「是否还在播」巡检时刻，按方案记。重启后丢失只会导致多巡检一次，无副作用。 */
     private final Map<Long, Long> lastResumeCheckAt = new ConcurrentHashMap<>();
 
@@ -50,15 +56,57 @@ public class BroadcastPlanService {
     private long loopCheckMs;
 
     private final BroadcastPlanMapper planMapper;
+    private final BroadcastPlanZoneStateMapper zoneStateMapper;
     private final BroadcastPlayService playService;
     private final DsppaClient client;
 
     public BroadcastPlanService(BroadcastPlanMapper planMapper,
+                                BroadcastPlanZoneStateMapper zoneStateMapper,
                                 BroadcastPlayService playService,
                                 DsppaClient client) {
         this.planMapper = planMapper;
+        this.zoneStateMapper = zoneStateMapper;
         this.playService = playService;
         this.client = client;
+    }
+
+    /** 方案下被人工暂停的分区（调度器下发时要排除）。 */
+    public List<String> pausedMacs(Long planId) {
+        return zoneStateMapper.selectPausedMacs(planId);
+    }
+
+    /**
+     * 方案实际要下发的分区 = 方案配置的分区 − 被人工暂停的那些。
+     *
+     * <p>这就是「方案只是批量启动器」的落点：启动了之后每一路归自己，人工停掉的不再被带起来。
+     */
+    public List<String> effectiveMacs(BroadcastPlan plan) {
+        List<String> all = readList(plan.getZoneMacs());
+        if (all.isEmpty()) {
+            return all;
+        }
+        java.util.Set<String> paused = new java.util.HashSet<>(pausedMacs(plan.getId()));
+        if (paused.isEmpty()) {
+            return all;
+        }
+        List<String> live = new ArrayList<>(all.size());
+        for (String mac : all) {
+            if (!paused.contains(mac)) {
+                live.add(mac);
+            }
+        }
+        return live;
+    }
+
+    /** 当前处于执行中/已暂停的方案（前端「正在执行」用它）。 */
+    public List<BroadcastPlan> activePlans() {
+        List<BroadcastPlan> out = new ArrayList<>();
+        for (BroadcastPlan p : planMapper.selectAll()) {
+            if (RUN_RUNNING.equals(p.getRunState()) || RUN_PAUSED.equals(p.getRunState())) {
+                out.add(p);
+            }
+        }
+        return out;
     }
 
     // ---------------------------------------------------------------- 增删改查
@@ -98,6 +146,7 @@ public class BroadcastPlanService {
             throw new IllegalArgumentException("方案不存在");
         }
         planMapper.deleteById(id);
+        zoneStateMapper.deleteByPlan(id);
         lastResumeCheckAt.remove(id);
         log.info("[广播] 删除定时方案 #{}", id);
     }
@@ -112,11 +161,12 @@ public class BroadcastPlanService {
 
     /** 人工「立刻试跑一次」：等同于到点触发，但记成 MANUAL。 */
     public void runNow(Long id, String operator) {
-        BroadcastPlan plan = planMapper.selectById(id);
-        if (plan == null) {
-            throw new IllegalArgumentException("方案不存在");
+        BroadcastPlan plan = requirePlan(id);
+        List<String> live = effectiveMacs(plan);
+        if (live.isEmpty()) {
+            throw new IllegalArgumentException("该方案的分区都处于人工暂停，先恢复分区");
         }
-        playFirstSong(plan, BroadcastPlayService.SOURCE_MANUAL, operator);
+        playFirstSong(plan, BroadcastPlayService.SOURCE_MANUAL, operator, live);
     }
 
     // ---------------------------------------------------------------- 调度执行
@@ -138,6 +188,10 @@ public class BroadcastPlanService {
 
         for (BroadcastPlan plan : planMapper.selectEnabled()) {
             try {
+                // 人工暂停的方案：调度器完全不碰 —— 等人工恢复，或窗口自然结束
+                if (RUN_PAUSED.equals(plan.getRunState())) {
+                    continue;
+                }
                 if (!matchDay(plan, now.toLocalDate())) {
                     continue;
                 }
@@ -149,15 +203,19 @@ public class BroadcastPlanService {
                 }
 
                 if (!nowTime.isBefore(start) && !nowTime.isAfter(end)) {
-                    // 窗口内
+                    // 窗口内。**只带没被人工暂停的分区** —— 停掉的那几路归自己，不再被方案带起来
+                    List<String> live = effectiveMacs(plan);
+                    if (live.isEmpty()) {
+                        continue;
+                    }
                     if (!today.equals(plan.getLastFiredDate())) {
                         String source = nowTime.isAfter(start.plusSeconds(CATCHUP_AFTER_SECONDS))
                                 ? BroadcastPlayService.SOURCE_CATCHUP
                                 : BroadcastPlayService.SOURCE_SCHEDULE;
-                        String msg = playFirstSong(plan, source, null);
+                        String msg = playFirstSong(plan, source, null, live);
                         acted.add("方案「" + plan.getPlanName() + "」开播(" + source + ")：" + msg);
                     } else {
-                        String msg = resumeIfSilent(plan);
+                        String msg = resumeIfSilent(plan, live);
                         if (msg != null) {
                             acted.add("方案「" + plan.getPlanName() + "」重新下发：" + msg);
                         }
@@ -177,36 +235,80 @@ public class BroadcastPlanService {
         return acted;
     }
 
-    /** 到点开播：播方案曲目列表的**第一首**，后续由平台按列表续播。 */
-    private String playFirstSong(BroadcastPlan plan, String source, String operator) {
-        List<String> macs = readList(plan.getZoneMacs());
+    /**
+     * 到点开播：向给定的分区下发方案曲目列表的**第一首**，后续由平台按列表续播。
+     *
+     * @param macs 实际要下发的分区（已排除被人工暂停的）
+     */
+    private String playFirstSong(BroadcastPlan plan, String source, String operator, List<String> macs) {
         List<String> songs = readList(plan.getSongPaths());
         if (macs.isEmpty()) {
-            throw new IllegalArgumentException("方案未配置目标分区");
+            throw new IllegalArgumentException("方案未配置目标分区（或分区均已被暂停）");
         }
         if (songs.isEmpty()) {
             throw new IllegalArgumentException("方案未配置曲目");
         }
         String first = songs.get(0);
         playService.play(macs, first, plan.getVolume(), source, plan, operator);
-        planMapper.markFired(plan.getId(),
-                client.scheduleNow().toLocalDate().toString(),
-                client.scheduleNow(),
-                "已开播，首曲：" + first);
-        plan.setLastFiredDate(client.scheduleNow().toLocalDate().toString());
+        String today = client.scheduleNow().toLocalDate().toString();
+        planMapper.markFired(plan.getId(), today, client.scheduleNow(), "已开播，首曲：" + first);
+        planMapper.setRunState(plan.getId(), RUN_RUNNING);
+        plan.setLastFiredDate(today);
+        plan.setRunState(RUN_RUNNING);
         lastResumeCheckAt.put(plan.getId(), System.currentTimeMillis());
         return first;
     }
 
+    /** 窗口结束收播：整组停掉，并清空分区级覆盖 —— 别把昨天的暂停带到明天。 */
     private void stopPlan(BroadcastPlan plan) {
         List<String> macs = readList(plan.getZoneMacs());
-        if (macs.isEmpty()) {
-            return;
+        String today = client.scheduleNow().toLocalDate().toString();
+        if (!macs.isEmpty()) {
+            playService.stop(macs, BroadcastPlayService.SOURCE_SCHEDULE, plan, null);
         }
-        playService.stop(macs, BroadcastPlayService.SOURCE_SCHEDULE, plan, null);
-        planMapper.markStopped(plan.getId(), client.scheduleNow().toLocalDate().toString());
-        plan.setLastStopDate(client.scheduleNow().toLocalDate().toString());
+        planMapper.markStopped(plan.getId(), today);
+        planMapper.setRunState(plan.getId(), RUN_IDLE);
+        zoneStateMapper.deleteByPlan(plan.getId());
+        plan.setLastStopDate(today);
         lastResumeCheckAt.remove(plan.getId());
+    }
+
+    // ---------------------------------------------------------------- 人工暂停 / 恢复
+
+    /**
+     * 暂停整个方案：把它还没被暂停的分区全部停掉，并置 PAUSED，调度器从此不再自动重发。
+     *
+     * <p>与单分区暂停的区别：单分区暂停后其余路继续跑；暂停方案是把这一轮整体按下。
+     */
+    public void pausePlan(Long id, String operator) {
+        BroadcastPlan plan = requirePlan(id);
+        List<String> live = effectiveMacs(plan);
+        if (!live.isEmpty()) {
+            playService.stop(live, BroadcastPlayService.SOURCE_MANUAL, plan, operator);
+        }
+        planMapper.setRunState(id, RUN_PAUSED);
+        lastResumeCheckAt.remove(id);
+        log.info("[广播] 方案 #{} 已人工暂停（停 {} 路）", id, live.size());
+    }
+
+    /** 恢复整个方案：置回 RUNNING 并把有效分区重新带起来（从方案第一首开始）。 */
+    public void resumePlan(Long id, String operator) {
+        BroadcastPlan plan = requirePlan(id);
+        List<String> live = effectiveMacs(plan);
+        if (live.isEmpty()) {
+            throw new IllegalArgumentException("该方案的分区都处于人工暂停，先恢复分区再恢复方案");
+        }
+        planMapper.setRunState(id, RUN_RUNNING);
+        playFirstSong(plan, BroadcastPlayService.SOURCE_MANUAL, operator, live);
+        log.info("[广播] 方案 #{} 已恢复（带起 {} 路）", id, live.size());
+    }
+
+    private BroadcastPlan requirePlan(Long id) {
+        BroadcastPlan plan = planMapper.selectById(id);
+        if (plan == null) {
+            throw new IllegalArgumentException("方案不存在");
+        }
+        return plan;
     }
 
     /**
@@ -220,9 +322,10 @@ public class BroadcastPlanService {
      *       用较长间隔（resume-check-ms）兜底一次异常无声。</li>
      * </ul>
      *
+     * @param live 本方案**未被人工暂停**的分区；重发只针对这些路
      * @return 重新下发时的说明；没做事返回 null
      */
-    private String resumeIfSilent(BroadcastPlan plan) {
+    private String resumeIfSilent(BroadcastPlan plan, List<String> live) {
         long nowMs = System.currentTimeMillis();
         long interval = Boolean.TRUE.equals(plan.getLoopPlay()) ? loopCheckMs : resumeCheckMs;
         Long last = lastResumeCheckAt.get(plan.getId());
@@ -231,22 +334,21 @@ public class BroadcastPlanService {
         }
         lastResumeCheckAt.put(plan.getId(), nowMs);
 
-        List<String> macs = readList(plan.getZoneMacs());
         List<String> songs = readList(plan.getSongPaths());
-        if (macs.isEmpty() || songs.isEmpty()) {
+        if (live.isEmpty() || songs.isEmpty()) {
             return null;
         }
         try {
             boolean anyPlaying = client.fetchZones().stream()
-                    .filter(z -> macs.contains(String.valueOf(z.get("mac"))))
+                    .filter(z -> live.contains(String.valueOf(z.get("mac"))))
                     .anyMatch(z -> toInt(z.get("play_status"), -1) == 1);
             if (anyPlaying) {
                 return null;
             }
-            log.warn("[广播] 方案 #{} 窗口内但目标分区未在播放，重新下发", plan.getId());
-            playService.play(macs, songs.get(0), plan.getVolume(),
+            log.warn("[广播] 方案 #{} 窗口内但 {} 路目标分区均未在播放，重新下发", plan.getId(), live.size());
+            playService.play(live, songs.get(0), plan.getVolume(),
                     BroadcastPlayService.SOURCE_CATCHUP, plan, null);
-            return "检测到未在播放，已重新下发";
+            return "检测到未在播放，已按 " + live.size() + " 路重新下发";
         } catch (Exception e) {
             log.warn("[广播] 方案 #{} 巡检失败: {}", plan.getId(), e.getMessage());
             return null;

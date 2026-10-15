@@ -32,4 +32,7 @@ public interface BroadcastPlanMapper {
 
     /** 记一次收播：窗口结束后只收一次。 */
     int markStopped(@Param("id") Long id, @Param("stopDate") String stopDate);
+
+    /** 改运行态（IDLE/RUNNING/PAUSED）。转到 RUNNING 时顺带刷新本轮开始时刻。 */
+    int setRunState(@Param("id") Long id, @Param("runState") String runState);
 }

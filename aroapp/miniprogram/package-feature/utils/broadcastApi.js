@@ -76,6 +76,25 @@ function stop(macs) {
   return call('/stop', 'POST', { macs: macs });
 }
 
+// ---------------------------------------------------------------- 分区级独立控制
+//
+// 定时方案只是「批量启动器」：到点把若干分区带起来之后，每一路就是独立的播放单元。
+// 下面这几个接口**只作用于指定的那几路**，不会波及其它分区。
+
+function pauseZones(macs) {
+  return call('/zones/pause', 'POST', { macs: macs });
+}
+
+function resumeZones(macs, songPath) {
+  return call('/zones/resume', 'POST', { macs: macs, songPath: songPath || null });
+}
+
+/** 正在执行的方案与逐分区实时状态 */
+async function getActive() {
+  const d = await call('/active', 'GET');
+  return { plans: (d && Array.isArray(d.plans) ? d.plans : []) };
+}
+
 // ---------------------------------------------------------------- 曲库
 
 async function listSongLists() {
@@ -153,6 +172,15 @@ function runPlan(id) {
   return call('/plans/' + id + '/run', 'POST');
 }
 
+/** 暂停整个方案：调度器不再自动重发，等人工恢复或窗口自然结束 */
+function pausePlan(id) {
+  return call('/plans/' + id + '/pause', 'POST');
+}
+
+function resumePlan(id) {
+  return call('/plans/' + id + '/resume', 'POST');
+}
+
 // ---------------------------------------------------------------- 播放记录
 
 function listPlayLogs(planId, limit) {
@@ -210,6 +238,9 @@ module.exports = {
   setVolume: setVolume,
   play: play,
   stop: stop,
+  pauseZones: pauseZones,
+  resumeZones: resumeZones,
+  getActive: getActive,
   listSongLists: listSongLists,
   listSongOptions: listSongOptions,
   createSongList: createSongList,
@@ -223,6 +254,8 @@ module.exports = {
   removePlan: removePlan,
   togglePlan: togglePlan,
   runPlan: runPlan,
+  pausePlan: pausePlan,
+  resumePlan: resumePlan,
   listPlayLogs: listPlayLogs,
   weekText: weekText,
 };

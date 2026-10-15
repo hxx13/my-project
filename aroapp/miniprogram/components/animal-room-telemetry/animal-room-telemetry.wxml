@@ -12,7 +12,10 @@
   <view wx:if="{{loading}}" class="art-muted art-pad">加载中…</view>
   <view wx:elif="{{err}}" class="art-err art-pad">{{err}}</view>
   <view wx:else class="art-fill">
-    <view class="art-tabs-head {{ embeddedHost ? 'art-tabs-head-embedded' : '' }}">
+    <view
+      class="art-tabs-head {{ embeddedHost ? 'art-tabs-head-embedded' : '' }} {{ stickyTop ? 'art-tabs-head-sticky' : '' }}"
+      style="top: {{stickyTop}}px;"
+    >
       <view class="art-tabs-row">
         <view
           wx:for="{{structTabs}}"
@@ -34,9 +37,6 @@
       >
         房间概览
       </view>
-    </view>
-    <view class="art-tabs-caption">
-      <text class="art-tabs-caption-txt">{{panelMetaLine}}</text>
     </view>
     <scroll-view
       scroll-y

@@ -109,6 +109,29 @@ public class NotifySourceRegistry implements ApplicationRunner {
                         "metricKind", "指标类型", "currentValue", "当前读数",
                         "recoveryAt", "恢复时间"));
 
+        // ========== 安维迪饮水流量监测 ==========
+        // 供应商是安维迪「云组态」平台。数据两条路进本地：报表/报警表定时拉回落库，
+        // 点位实时状态走一条到厂平台的长连接。两个口径（新报警 / 当日累计超阈值）
+        // 的开关在 avidity_alarm_rule 表，本页只管渠道、免打扰、模板、接收人。
+        // 变量的取用见 AvidityAlarmService。
+        register("AVIDITY_FLOW_ALARM", "饮水流量报警",
+                "实验动物自动饮水系统的饮水点位流量报警：平面图上某个点位的灯翻红（绑定变量当前值变为报警），或某点位当日累计次数超过阈值",
+                Map.ofEntries(Map.entry("deviceName", "设备名"),
+                        Map.entry("alarmName", "告警名称（厂平台原始标识，如 RM205_A_SLV_13）"),
+                        Map.entry("positionLabel", "位置（如 205-A 第13点位）"),
+                        Map.entry("alarmContent", "告警内容"),
+                        Map.entry("alarmGroup", "告警组"),
+                        Map.entry("ruleLabel", "触发口径（新报警出现 / 当日累计超阈值）"),
+                        Map.entry("alarmCount", "当日累计次数（仅超阈值口径有值）"),
+                        Map.entry("thresholdCount", "阈值（仅超阈值口径有值）"),
+                        Map.entry("statDate", "统计日（仅超阈值口径有值）"),
+                        Map.entry("triggeredAt", "触发时间"),
+                        Map.entry("todaySeq", "该点位今日第几次报警"),
+                        Map.entry("totalSeq", "该点位累计第几次报警"),
+                        Map.entry("openCount", "此刻一共几个点位在报"),
+                        Map.entry("alarmRows", "在报点位一览的表格行（企微/微信，Markdown）"),
+                        Map.entry("alarmRowsHtml", "在报点位一览的表格行（邮件，HTML）")));
+
         register("SWIPE_FAILURE_ALERT", "刷卡失败告警",
                 "同一通道在时间窗口内累计刷卡事件达到阈值时触发",
                 Map.of("channelName", "通道名称", "personName", "人员姓名",

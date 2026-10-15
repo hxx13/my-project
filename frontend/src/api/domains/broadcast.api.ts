@@ -82,6 +82,9 @@ export interface BroadcastPlan {
   songListId: string | null;
   /** 循环播放：true 窗口内列表循环 / false 播完即停 */
   loopPlay: boolean;
+  /** IDLE 未运行 / RUNNING 执行中 / PAUSED 已人工暂停 */
+  runState: string;
+  runStartedAt: string | null;
   lastFiredDate: string | null;
   lastFiredAt: string | null;
   lastStopDate: string | null;
@@ -164,6 +167,57 @@ export async function play(macs: string[], songPath: string, volume?: number | n
 
 export async function stop(macs: string[]): Promise<void> {
   await adminHttp.post<Result<null>>("/broadcast/stop", { macs });
+}
+
+// ---------------------------------------------------------------- 分区级独立控制
+//
+// 定时方案只是「批量启动器」：到点把若干分区带起来之后，每一路就是独立的播放单元。
+// 下面这几个接口**只作用于指定的那几路**，不会波及其它分区。
+
+export async function pauseZones(macs: string[]): Promise<void> {
+  await adminHttp.post<Result<null>>("/broadcast/zones/pause", { macs });
+}
+
+/**
+ * 恢复这几路。`songPath` 传当前选中的曲目最稳妥 ——
+ * 停止时走的是「置空闲」，平台会把该路的曲名清掉，不带曲目就可能无曲可放。
+ */
+export async function resumeZones(macs: string[], songPath?: string | null): Promise<void> {
+  await adminHttp.post<Result<null>>("/broadcast/zones/resume", { macs, songPath: songPath ?? null });
+}
+
+/** 正在执行的方案与逐分区实时状态。 */
+export async function getActive(): Promise<ActiveView> {
+  const res = await adminHttp.get<Result<ActiveView>>("/broadcast/active");
+  return (res.data?.data as ActiveView) ?? { plans: [] };
+}
+
+export interface ActiveZone {
+  mac: string;
+  name: string;
+  /** 被人工停过：方案的循环/兜底不会再把它带起来 */
+  paused: boolean;
+  playing: boolean;
+  playStatus: number;
+  currentSong: string;
+}
+
+export interface ActivePlan {
+  id: number;
+  planName: string;
+  runState: string;
+  loopPlay: boolean;
+  startTime: string;
+  endTime: string;
+  /** 本轮开始的时刻；没跑过为 null */
+  runStartedAt: string | null;
+  zoneCount: number;
+  playingCount: number;
+  zones: ActiveZone[];
+}
+
+export interface ActiveView {
+  plans: ActivePlan[];
 }
 
 // ---------------------------------------------------------------- 曲库
@@ -249,6 +303,16 @@ export async function togglePlan(id: number, enabled: boolean): Promise<Broadcas
 /** 立刻试跑一次（等同于到点触发，记成手动）。 */
 export async function runPlan(id: number): Promise<void> {
   await adminHttp.post<Result<null>>(`/broadcast/plans/${id}/run`);
+}
+
+/** 暂停整个方案：调度器不再自动重发，等人工恢复或窗口自然结束。 */
+export async function pausePlan(id: number): Promise<void> {
+  await adminHttp.post<Result<null>>(`/broadcast/plans/${id}/pause`);
+}
+
+/** 恢复整个方案。 */
+export async function resumePlan(id: number): Promise<void> {
+  await adminHttp.post<Result<null>>(`/broadcast/plans/${id}/resume`);
 }
 
 // ---------------------------------------------------------------- 播放记录

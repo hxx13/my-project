@@ -1,0 +1,447 @@
+/* ============================================================================
+   安维迪饮水流量监测 · 平面图页
+
+   **配色一律挂到我们的语义令牌（--app-color-*）上**，不写死色值：
+   标准 / 暗色 / 科幻流光三套主题切换时，这一页跟着变，不用每个主题各写一套。
+   只有「管道两色」语义令牌里没有对应概念，自己定，并给暗色一套。
+
+   三层信息：① 房间轮廓 ② 管道（外主管 / 进房间支管，带流动） ③ 点位格（报警态才是重点）
+   动效只碰 transform / opacity / stroke-dashoffset，不触发重排。
+   本文件所有选择器都在 .avidity-page 下 —— 弹窗要 portal 到 body，所以每个
+   DialogContent 也要挂这个类才用得上同一套令牌（见 AdminAvidityPage 的 DIALOG_CLS）。
+   ========================================================================== */
+
+.avidity-page {
+  /* ── 语义令牌别名：以下全部来自主题层 ── */
+  --av-surface:        var(--app-color-surface-container);
+  --av-surface-raised: var(--app-color-surface-elevated);
+  --av-surface-hover:  var(--app-color-surface-hover);
+  --av-line:           var(--app-color-border-default);
+  --av-line-2:         var(--app-color-border-strong);
+  --av-text:           var(--app-color-text-primary);
+  --av-text-dim:       var(--app-color-text-secondary);
+  --av-text-soft:      var(--app-color-text-tertiary);
+  --av-accent:         var(--app-color-accent);
+  --av-accent-soft:    var(--app-color-accent-soft);
+  --av-outline:        var(--app-color-border-strong);
+  --av-warn:           var(--app-color-feedback-warning);
+  --av-warn-soft:      var(--app-color-feedback-warning-soft);
+  --av-alarm:          var(--app-color-feedback-danger);
+  --av-alarm-soft:     var(--app-color-feedback-danger-soft);
+
+  /* ── 管道两色：主管走蓝紫（房间外）、支管走青绿（进房间）。造型令牌里没有这一对，自定 ── */
+  --av-pipe:        #cdeef2;
+  --av-pipe-main:   #c9d4fb;
+  --av-flow:        #0d95a6;
+  --av-flow-main:   #4338ca;
+
+  --av-mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* 这个类只定义令牌与文字色，**不设 position / background** ——
+     弹窗 portal 到 body 后也要挂它；写了 position/background 会把弹窗的
+     fixed 定位和底色一起顶掉。 */
+  color: var(--av-text);
+}
+
+/* 暗色（含标准暗色与科幻流光）：管道换成发光的青 / 靛 */
+.dark .avidity-page {
+  --av-pipe:      color-mix(in srgb, #22d3ee 30%, transparent);
+  --av-pipe-main: color-mix(in srgb, #818cf8 30%, transparent);
+  --av-flow:      #22d3ee;
+  --av-flow-main: #818cf8;
+}
+
+/* 白卡片：面板、弹窗内容都用它 */
+.avidity-page .av-card {
+  background: var(--av-surface);
+  border: 1px solid var(--av-line);
+  border-radius: 12px;
+}
+
+.avidity-page .av-mono {
+  font-family: var(--av-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- 通道切换 */
+
+.avidity-page .av-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 15px;
+  border-radius: 9px;
+  border: 1px solid var(--av-line);
+  background: var(--av-surface);
+  color: var(--av-text-dim);
+  font-size: 13px;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.avidity-page .av-tab:hover { color: var(--av-text); border-color: var(--av-line-2); }
+
+.avidity-page .av-tab[data-active="true"] {
+  color: var(--av-text);
+  background: var(--av-accent-soft);
+  border-color: var(--av-accent);
+}
+
+/* 通道上的报警角标：数字是真的 */
+.avidity-page .av-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--av-alarm);
+  color: var(--app-color-text-inverse);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: var(--av-mono);
+}
+
+/* 报警列表的分区文件夹头：分区一层、内间再缩一层 */
+.avidity-page .av-folder {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--av-surface-hover);
+}
+
+.avidity-page .av-folder--sub {
+  background: transparent;
+  padding: 2px 8px;
+}
+
+.avidity-page .av-folder-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--av-text);
+}
+
+.avidity-page .av-folder--sub .av-folder-name {
+  font-weight: 500;
+  color: var(--av-text-dim);
+}
+
+.avidity-page .av-folder-n {
+  margin-left: auto;
+  font-family: var(--av-mono);
+  font-size: 11px;
+  color: var(--av-text-soft);
+}
+
+/* 顶栏那一排工具按钮：三块次要信息收进弹窗后的入口，加两个动作按钮。
+   尺寸压紧一点 —— 这一排按钮多，撑大了顶栏就喧宾夺主。 */
+.avidity-page .av-tool {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--av-line);
+  background: var(--av-surface);
+  color: var(--av-text-dim);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.avidity-page .av-tool:hover { color: var(--av-text); border-color: var(--av-line-2); }
+.avidity-page .av-tool:disabled { opacity: 0.5; cursor: default; }
+
+.avidity-page .av-tool[data-active="true"],
+.avidity-page .av-tool-primary {
+  color: var(--av-text);
+  background: var(--av-accent-soft);
+  border-color: var(--av-accent);
+}
+
+.avidity-page .av-tool-primary { font-weight: 500; }
+
+/* ---------------------------------------------------------------- 平面图 */
+
+.avidity-page .av-plan { display: block; width: 100%; height: 100%; }
+
+/* ⓪ 前室（走廊条）。前室与内间是**并列的两类格子**，都用普通线框画，
+   不做高亮/色底 —— 用户明确要求「正常渲染线框即可」。
+   描边用**中性灰**：`border-strong` 在亮色主题里是桃色，画成框线不像工程图；
+   `border-default` 又太浅看不见。这里取次级文字色调淡，两套主题下都是干净的灰。 */
+.avidity-page .av-room-panel {
+  fill: var(--av-surface-raised);
+  stroke: color-mix(in srgb, var(--av-text-dim) 55%, transparent);
+  stroke-width: 1.3;
+}
+
+/* 编辑模式：点位可拖 */
+.avidity-page .av-plan[data-editing="true"] .av-point { cursor: grab; }
+.avidity-page .av-plan[data-editing="true"] .av-point:active { cursor: grabbing; }
+.avidity-page .av-plan[data-editing="true"] .av-cell { stroke-dasharray: 3 2; }
+
+/* ①b 内间框：前室里的分隔线。原图那批轮廓是散线段、带断头，这里一律画闭合矩形。 */
+.avidity-page .av-inner-room {
+  fill: transparent;
+  stroke: color-mix(in srgb, var(--av-text-dim) 35%, transparent);
+  stroke-width: 1;
+}
+
+/* ② 管道：外壳 + 流动芯。外面那根主管比进房间的支管更粗、颜色更深。
+
+   渲染方式：外壳是一根**圆头圆角**的实心管（不是方头矩形条 —— 方头在接缝处会露直角，
+   整根管子看着就是一截截矩形），拐角靠 round join 收成圆角；
+   流动用**圆头短液段**沿管推进（dasharray 里那截短划线配合 round 端帽就是一个圆头小段），
+   不是密密麻麻的虚线 —— 虚线在小尺寸下就是像素点。
+   位移量取 dash 周期的整数倍，循环处不会跳。 */
+.avidity-page .av-pipe-casing {
+  fill: none;
+  stroke: var(--av-pipe);
+  stroke-width: 5.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.avidity-page .av-pipe-casing.main {
+  stroke: var(--av-pipe-main);
+  stroke-width: 8.5;
+}
+
+.avidity-page .av-pipe-flow {
+  fill: none;
+  stroke: var(--av-flow);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 10 34;
+  animation: av-flow 1800ms linear infinite;
+}
+
+.avidity-page .av-pipe-flow.main {
+  stroke: var(--av-flow-main);
+  stroke-width: 4;
+  stroke-dasharray: 14 48;
+  animation: av-flow-main 2600ms linear infinite;
+}
+
+/* 注意：**不要**因为有报警就把整张管网染红。
+   实测这么做过一次 —— 主管+分支上百条线一起变红，整张图糊成一团，
+   反而看不出是哪条线有事。报警只由点位格表达，管道始终是沉静的。 */
+
+/* 水流方向取自原图的 flowDirection：原版把每条管道的方向写在这个字段上
+   （几何里没有方向 —— 同一组两条 path 完全一样，管网本身还是断开的）。
+   实测 2F 是 53 条 0 / 49 条 1，与绘制走向无相关性，所以就是「顺画 / 反过来」这一对。 */
+.avidity-page .av-pipe-flow[data-rev="true"] { animation-direction: reverse; }
+
+/* 周期：支管 10+34=44，主管 14+48=62（走两轮） */
+@keyframes av-flow {
+  to { stroke-dashoffset: -44; }
+}
+
+@keyframes av-flow-main {
+  to { stroke-dashoffset: -124; }
+}
+
+.avidity-page .av-room-name {
+  /* 房间号是找房间时的第一落点，要一眼看到：用主文字色 + 加粗放大 */
+  fill: var(--av-text);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-family: var(--av-mono);
+}
+
+.avidity-page .av-rack-name {
+  fill: var(--av-text-dim);
+  font-size: 13px;
+  font-family: var(--av-mono);
+  opacity: 0.9;
+}
+
+.avidity-page .av-reg-name {
+  fill: var(--av-text-soft);
+  font-size: 12.5px;
+  font-family: var(--av-mono);
+  opacity: 0.6;
+}
+
+/* ③ 点位格：描边用中性那档。亮色主题里 border-strong 是桃色，
+   铺满每个格子会显得「处处是高亮」，反而看不出哪个才要紧。 */
+.avidity-page .av-cell {
+  fill: var(--av-surface-raised);
+  stroke: var(--av-line);
+  stroke-width: 1;
+  transition: fill 180ms ease, stroke 180ms ease, transform 150ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.avidity-page .av-cell-no {
+  fill: var(--av-text-dim);
+  font-size: 13px;
+  font-family: var(--av-mono);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.avidity-page .av-point:hover .av-cell {
+  fill: var(--av-accent-soft);
+  stroke: var(--av-accent);
+  transform: scale(1.16);
+}
+
+.avidity-page .av-point:hover .av-cell-no { fill: var(--av-text); }
+
+/* 报警态：唯一允许「跳出来」的元素 */
+.avidity-page .av-point[data-state="alarm"] .av-cell {
+  fill: var(--av-alarm-soft);
+  stroke: var(--av-alarm);
+  stroke-width: 1.6;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: av-alarm-breathe 1500ms ease-in-out infinite;
+}
+
+@keyframes av-alarm-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.62; }
+}
+
+.avidity-page .av-point[data-state="alarm"] .av-cell-no { fill: var(--app-color-feedback-danger-ink, var(--av-alarm)); font-weight: 600; }
+
+/* 声呐环 */
+.avidity-page .av-cell-ring {
+  fill: none;
+  stroke: var(--av-alarm);
+  stroke-width: 1.3;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.avidity-page .av-point[data-state="alarm"] .av-cell-ring {
+  animation: av-ring 1900ms cubic-bezier(0.16, 0.8, 0.4, 1) infinite;
+}
+
+@keyframes av-ring {
+  0%   { opacity: 0.9; transform: scale(1); }
+  70%  { opacity: 0;   transform: scale(2.5); }
+  100% { opacity: 0;   transform: scale(2.5); }
+}
+
+/* 「今天报过但已恢复」：底色深浅由组件按真实次数内联给出，这里只留兜底 */
+.avidity-page .av-point[data-state="warn"] .av-cell {
+  fill: var(--av-warn-soft);
+  stroke: var(--av-warn);
+}
+
+/* warn 档的数字也要偏暖，否则跟正常格完全分不出来 */
+.avidity-page .av-point[data-state="warn"] .av-cell-no { fill: var(--av-text); font-weight: 600; }
+
+/* ---------------------------------------------------------------- 图例 */
+
+/* 钉在平面图左上角，做成一竖条小矩形（不是横贯画布的一条）。
+   紧凑到 10.5px / 6px 行距，不接收鼠标事件、不挡点位。 */
+.avidity-page .av-legend {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--av-surface-raised) 92%, transparent);
+  border: 1px solid var(--av-line);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--av-text-dim);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.avidity-page .av-legend-row { display: inline-flex; align-items: center; gap: 6px; }
+
+/* 管道色条：长度一致、粗细不同，圆头，跟画布上的管型对齐 */
+.avidity-page .av-swatch-pipe {
+  width: 18px;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--av-flow);
+  flex: none;
+}
+
+.avidity-page .av-swatch-pipe.main { height: 6px; background: var(--av-flow-main); }
+
+.avidity-page .av-swatch-cell {
+  width: 11px;
+  height: 9px;
+  border-radius: 2.5px;
+  border: 1px solid;
+  flex: none;
+}
+
+.avidity-page .av-swatch-cell.normal { background: var(--av-surface-raised); border-color: var(--av-line-2); }
+.avidity-page .av-swatch-cell.warn { background: var(--av-warn-soft); border-color: var(--av-warn); }
+.avidity-page .av-swatch-cell.alarm { background: var(--av-alarm-soft); border-color: var(--av-alarm); }
+
+/* ---------------------------------------------------------------- 弹窗内容 */
+
+.avidity-page .av-side-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--av-line-2) transparent;
+}
+
+.avidity-page .av-side-scroll::-webkit-scrollbar { width: 6px; }
+.avidity-page .av-side-scroll::-webkit-scrollbar-thumb { background: var(--av-line-2); border-radius: 3px; }
+
+.avidity-page .av-row-alarm { animation: av-row-in 380ms ease both; }
+
+@keyframes av-row-in {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.avidity-page .av-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--av-alarm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--av-alarm) 18%, transparent);
+  flex: none;
+}
+
+/* 排行条：长度是真实次数 */
+.avidity-page .av-bar {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--av-warn);
+  transform-origin: left center;
+  animation: av-bar-in 520ms cubic-bezier(0.22, 0.9, 0.28, 1) both;
+}
+
+@keyframes av-bar-in {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.avidity-page .av-hot-row { transition: background 140ms ease; }
+.avidity-page .av-hot-row:hover { background: var(--av-surface-hover); }
+
+/* ---------------------------------------------------------------- 尊重减少动效 */
+
+@media (prefers-reduced-motion: reduce) {
+  .avidity-page .av-row-alarm,
+  .avidity-page .av-bar,
+  .avidity-page .av-cell-ring { animation: none; }
+  .avidity-page .av-point[data-state="alarm"] .av-cell { animation: none; }
+  .avidity-page .av-pipe-flow,
+  .avidity-page .av-pipe-flow.main { animation: none; }
+}

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.avidity.mapper.AvidityAlarmRuleMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.avidity.entity.AvidityAlarmRule">
+        <id property="id" column="id"/>
+        <result property="ruleCode" column="rule_code"/>
+        <result property="ruleName" column="rule_name"/>
+        <result property="enabled" column="enabled"/>
+        <result property="thresholdCount" column="threshold_count"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_rule ORDER BY id
+    </select>
+
+    <select id="selectByCode" resultMap="BaseMap">
+        SELECT * FROM avidity_alarm_rule WHERE rule_code = #{ruleCode}
+    </select>
+
+    <update id="update">
+        UPDATE avidity_alarm_rule
+        SET enabled = #{enabled},
+            threshold_count = #{thresholdCount}
+        WHERE rule_code = #{ruleCode}
+    </update>
+
+</mapper>

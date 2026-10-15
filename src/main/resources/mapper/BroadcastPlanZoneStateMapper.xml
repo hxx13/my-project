@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.broadcast.mapper.BroadcastPlanZoneStateMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.broadcast.entity.BroadcastPlanZoneState">
+        <id property="id" column="id"/>
+        <result property="planId" column="plan_id"/>
+        <result property="mac" column="mac"/>
+        <result property="paused" column="paused"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectPausedMacs" resultType="java.lang.String">
+        SELECT mac FROM broadcast_plan_zone_state WHERE plan_id = #{planId} AND paused = 1
+    </select>
+
+    <select id="selectAll" resultMap="BaseMap">
+        SELECT id, plan_id, mac, paused, updated_at FROM broadcast_plan_zone_state
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO broadcast_plan_zone_state (plan_id, mac, paused)
+        VALUES (#{planId}, #{mac}, #{paused})
+        ON DUPLICATE KEY UPDATE paused = VALUES(paused), updated_at = NOW()
+    </insert>
+
+    <delete id="deleteByPlan">
+        DELETE FROM broadcast_plan_zone_state WHERE plan_id = #{planId}
+    </delete>
+
+</mapper>

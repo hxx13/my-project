@@ -65,8 +65,8 @@ public class BroadcastZonesService {
         Integer status = toInt(z.get("play_status"));
         Object song = z.get("source_name");
         String songText = song == null ? "" : String.valueOf(song);
-        // 平台在没播时也会留着上一次的曲名，所以「有没有在播」只认状态码
-        boolean playing = status != null && status == 1;
+        // 平台没播时也留着上一次的曲名。**照样往下传**：暂停一路后要能按这个曲名把它放回来，
+        // 前端也算进度条用得上。「有没有在播」一律只认状态码，不看这个字段是否为空。
         return new ZoneView(
                 toInt(z.get("id")),
                 str(z.get("name")),
@@ -75,8 +75,8 @@ public class BroadcastZonesService {
                 toInt(z.get("volume")),
                 status,
                 ZoneView.playStatusText(status),
-                playing ? songText : "",
-                playing);
+                songText,
+                status != null && status == 1);
     }
 
     private static String str(Object o) {

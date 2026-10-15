@@ -11,6 +11,8 @@ Page({
     telemetryErr: '',
     telemetryLoading: false,
     lastSoloPx: 360,
+    /** 自定义导航栏高度（px）：传给组件当楼层条的吸顶位置 */
+    navBarHeight: 0,
   },
 
   onLoad() {
@@ -49,9 +51,27 @@ Page({
     });
   },
 
+  /** 「数据监测」「饮水监测」两个入口合成一个：点开再选，省出导航栏的位置 */
+  openMonitorMenu() {
+    wx.showActionSheet({
+      itemList: ['数据监测（温湿度长期归档）', '饮水监测（流量平面图）'],
+      success: (res) => {
+        if (res.tapIndex === 0) this.goTelemetryLongterm();
+        else if (res.tapIndex === 1) this.goAvidityFloorPlan();
+      },
+      // 用户点取消会走 fail，这里不是错误
+      fail: () => {},
+    });
+  },
+
   /** 进「数据监测」（长期归档的表格视图）。本页已经是 ADMIN 起，入口也就只有管理员看得见 */
   goTelemetryLongterm() {
     wx.navigateTo({ url: '/package-feature/pages/telemetryLongterm/index' });
+  },
+
+  /** 进「饮水监测」（饮水流量平面图）。本页已经是 ADMIN 起，入口也就只有管理员看得见 */
+  goAvidityFloorPlan() {
+    wx.navigateTo({ url: '/package-feature/pages/avidityFloorPlan/index' });
   },
 
   clearTelemetryPoll() {

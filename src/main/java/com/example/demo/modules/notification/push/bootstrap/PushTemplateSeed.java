@@ -60,6 +60,11 @@ public class PushTemplateSeed implements ApplicationRunner {
                 if (exist != null) {
                     // 已有记录 → 仅当预定义模板存在时更新模板（保留 enable/quiet 等已有设置）
                     if (t != null) {
+                        // 模板还空着 ＝ 当初播这个源时还没有预设，行是按「没模板不启用」建出来的。
+                        // 现在补上预设，顺手启用一次；已经配过模板的行不动它（那是用户自己的设置）。
+                        if (exist.getContentTpl() == null || exist.getContentTpl().isBlank()) {
+                            exist.setEnabled(true);
+                        }
                         exist.setTitleTpl(title);
                         exist.setContentTpl(content);
                     }
@@ -501,6 +506,28 @@ public class PushTemplateSeed implements ApplicationRunner {
                 "<h3>预约单已进入本周期</h3><p>课题组 <b>{projectGroupName}</b> 的预约单（订单号 {orderId}）已进入到货周期（{deliveryDate}），锁定的笼位已转入饲养中。</p>"
                         + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
                 "**预约单已进入本周期**\n课题组 **{projectGroupName}**\n订单号：{orderId}\n到货周期：{deliveryDate}\n锁定的笼位已转入饲养中"
+        ));
+
+        // ========== 安维迪饮水流量监测 ==========
+        // 正文用**表格**列在报的点位：单看一格判断不出严重程度，一片红和零星一格
+        // 处理优先级完全不同 —— 收到的人一眼要能看出「此刻一共几格在报」。
+        // 刚触发的那条在「状态」列标「新触发」，其余标已持续多久。不用表情符号。
+        TEMPLATES.put("AVIDITY_FLOW_ALARM", new Template(
+                "饮水流量报警 — {positionLabel}",
+                "<h3>饮水流量报警</h3>"
+                        + "<p><b>{positionLabel}</b> 出现流量报警（{ruleLabel}）。"
+                        + "此刻共 <b>{openCount}</b> 个点位在报：</p>"
+                        + "<table style='border-collapse:collapse;font-size:13px;margin:8px 0'>"
+                        + "<tr><th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>位置</th>"
+                        + "<th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>次数</th>"
+                        + "<th style='border:1px solid #e2e8f0;padding:4px 8px;text-align:left'>状态</th></tr>"
+                        + "{alarmRowsHtml}</table>"
+                        + "<p style='color:#666;font-size:12px'>设备：{deviceName}　触发时间：{triggeredAt}</p>"
+                        + "<hr><p style='color:#999;font-size:12px'>此邮件由 ARO 系统自动发送。</p>",
+                "**饮水流量报警 · {ruleLabel}**\n\n"
+                        + "{positionLabel} 出现流量报警，此刻共 {openCount} 个点位在报：\n\n"
+                        + "| 位置 | 次数 | 状态 |\n|:--|:--|:--|\n{alarmRows}\n"
+                        + "设备：{deviceName}\n触发时间：{triggeredAt}"
         ));
     }
 }

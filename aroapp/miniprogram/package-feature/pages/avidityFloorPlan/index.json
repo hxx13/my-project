@@ -1,0 +1,6 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "subpage-nav-bar": "/components/subpage-nav-bar/index"
+  }
+}

@@ -511,8 +511,28 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-broadcast-plan.sql", ctx)) success++;
         // 循环播放开关（已存在的表加列，须排在建表之后）
         total++; if (runScript("db/bootstrap-broadcast-plan-loop.sql", ctx)) success++;
+        // 方案运行态（IDLE/RUNNING/PAUSED）与分区独立运行态：方案只是批量启动器
+        total++; if (runScript("db/bootstrap-broadcast-plan-run-state.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-broadcast-plan-run-started-at.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-broadcast-plan-zone-state.sql", ctx)) success++;
         // 广播播放记录：「今天到底响没响」看这里
         total++; if (runScript("db/bootstrap-broadcast-play-log.sql", ctx)) success++;
+        // 安维迪(云组态)仪表盘对接：通道 / 告警统计 / 当前报警（三张表各自一个文件）
+        total++; if (runScript("db/bootstrap-avidity-channel.sql", ctx)) success++;
+        // 通道加「组态画面 ID」列（已存在的表加列，须排在建表之后）
+        total++; if (runScript("db/bootstrap-avidity-channel-view-id.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-avidity-alarm-stat.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-avidity-alarm-current.sql", ctx)) success++;
+        // 安维迪报警推送：口径配置、口径初始两行、已推送台账（种子须排在建表之后）
+        total++; if (runScript("db/bootstrap-avidity-alarm-rule.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-avidity-alarm-rule-seed.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-avidity-alarm-notified.sql", ctx)) success++;
+        // 平面图点位的手动摆位覆盖（拖拽保存用）
+        total++; if (runScript("db/bootstrap-avidity-layout-point.sql", ctx)) success++;
+        // 平面图点位「看历史」用的报警逐条流水
+        total++; if (runScript("db/bootstrap-avidity-alarm-history.sql", ctx)) success++;
+        // 我们自己按实时状态记的报警事件（含起止时间与地图分区）
+        total++; if (runScript("db/bootstrap-avidity-alarm-event.sql", ctx)) success++;
 
         String skipNote = benignSkips > 0
                 ? "，另有 " + benignSkips + " 个已存在（幂等跳过，逐条见 debug）"
