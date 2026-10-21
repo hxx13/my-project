@@ -99,7 +99,7 @@ export function buildTree(rows: CageShelfTreeNode[]): TreeNode[] {
  *   pageMode                    — "view" | "allocate" | "booking"
  *   bookingRooms                — 预约模式下的房间数据
  */
-export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark }: {
+export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, onOpenShelf, alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark, myRoomIds }: {
   tree: TreeNode[]; exp: Set<string>; search: string; onToggle: (k: string) => void; onOpenRoom: (roomId: string, roomName: string) => void;
   viewMode: "room" | "shelf"; onOpenShelf: (shelveId: string, overrideRoomId?: string) => void;
   alertStatusesByShelf: Map<string, Set<string>>; alertStatusesByRoom: Map<string, Set<string>>;
@@ -108,11 +108,59 @@ export function CampusTree({ tree, exp, search, onToggle, onOpenRoom, viewMode, 
   highlightShelveIds?: Set<string>;
   /** 房间收藏：星标 + 「只看收藏」。不传 = 没有收藏能力（其它弹窗的树照旧） */
   bookmark?: RoomBookmarkOpts;
+  /** 本人课题组的房间 id：命中时在列表顶部单列「我的区域」快捷块 */
+  myRoomIds?: Set<string>;
 }) {
   const q = search.trim().toLowerCase();
   const searching = !!q;
   const tg = (k: string) => { const n = new Set(exp); n.has(k) ? n.delete(k) : n.add(k); onToggle(k); };
+
+  /** 树里所有房间节点（收藏/我的区域都要按 roomId 反查） */
+  const roomNodes = React.useMemo(() => {
+    const out: TreeNode[] = [];
+    const walk = (ns: TreeNode[]) => {
+      for (const n of ns) {
+        if (n.type === "room") out.push(n);
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(tree);
+    return out;
+  }, [tree]);
+  const myRooms = React.useMemo(
+    () => (myRoomIds && myRoomIds.size ? roomNodes.filter((n) => myRoomIds.has(roomIdOf(n))) : []),
+    [roomNodes, myRoomIds],
+  );
+  const favRooms = React.useMemo(
+    () => (bookmark?.bookmarkedRooms?.size ? roomNodes.filter((n) => bookmark.bookmarkedRooms!.has(roomIdOf(n))) : []),
+    [roomNodes, bookmark?.bookmarkedRooms],
+  );
+
+  /** 顶部快捷块的房间行：与主列表同一套 renderNode（样式、展开、收藏星完全一致） */
+  const quickRow = (n: TreeNode) => renderNode(n, exp, "", tg, onOpenRoom, viewMode, onOpenShelf,
+    alertStatusesByShelf, alertStatusesByRoom, pageMode, bookingRooms, hideProgress, highlightShelveIds, bookmark);
+
+  /** 搜索/收藏视图下不画快捷块（搜索结果与收藏视图本身已经足够聚焦，重复反而乱） */
+  const showQuick = !searching && !bookmark?.onlyBookmarked;
+  const quickSection = (title: string, nodes: TreeNode[], emptyHint: string) => (
+    <div className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5">
+      <div className="flex items-center justify-between px-1 pb-1">
+        <span className="text-[10px] font-semibold text-[var(--twin-ink)]">{title}</span>
+        <span className="text-[10px] text-[var(--twin-mute)]">{nodes.length} 间</span>
+      </div>
+      {nodes.length === 0 ? (
+        <div className="px-1 py-1.5 text-[10px] leading-relaxed text-[var(--twin-mute)]">{emptyHint}</div>
+      ) : (
+        <div className="space-y-0.5">{nodes.map((n) => quickRow(n))}</div>
+      )}
+    </div>
+  );
+
   return <div className="text-[11px] space-y-1.5">
+    {showQuick && myRoomIds !== undefined
+      && quickSection("我的区域", myRooms, "暂无本课题组房间")}
+    {showQuick && bookmark?.bookmarkedRooms !== undefined
+      && quickSection("收藏区域", favRooms, "暂无收藏房间，点房间名后的 ☆ 收藏")}
     {tree.map(c => {
       if (searching && !subtreeMatches(c, q)) return null;
       // 收藏视图：整支都没有收藏项（房间或笼架）的校区不画

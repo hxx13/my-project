@@ -338,6 +338,7 @@ Page({
     canGoAssetRecord: false,
     canGoFacilityMaintenance: false,
     canGoBroadcast: false,
+    canGoRemoteScreens: false,
     canGoVideoWall: false,
     canGoAssetTransferRecord: false,
     canGoAdminPersonnel: false,
@@ -618,8 +619,7 @@ Page({
         return;
       }
       this.refreshSpringUiState();
-      const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
-      if (tabBar && typeof tabBar.refreshTabs === 'function') tabBar.refreshTabs();
+      this.refreshTabBar();
       wx.showToast({ title: '角色已更新', icon: 'success' });
     } finally {
       this.__springRoleRefreshing = false;
@@ -684,6 +684,7 @@ Page({
       ),
       // 网络广播：与后台页同权限（网页走 /api/admin/**，是 ADMIN）
       canGoBroadcast: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/broadcastAdmin/index', role, 'ADMIN'),
+      canGoRemoteScreens: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/remoteScreens/index', role, 'ADMIN'),
       // 视频上墙：整机操控展厅大屏，只放给超管（与网页端 SuperAdminGuard 同档）
       canGoVideoWall: pagePermission.canShowMiniEntry('mine', '/package-feature/pages/videoWall/index', role, 'SUPER_ADMIN'),
       canGoAssetTransferRecord: pagePermission.canShowMiniEntry('mine', '/package-ops/pages/assetTransferRecord/index', role, 'STAFF'),
@@ -850,6 +851,7 @@ Page({
       });
       wx.showToast({ title: '已切换学生视图', icon: 'success' });
       this.refreshSpringUiState();
+      this.refreshTabBar();
     }).catch((err) => {
       wx.showToast({ title: (err && err.message) || '切换失败', icon: 'none' });
     });
@@ -860,6 +862,7 @@ Page({
     if (springAuth.restorePreviousSession()) {
       wx.showToast({ title: '已返回教职工视角', icon: 'success' });
       this.refreshSpringUiState();
+      this.refreshTabBar();
     } else {
       wx.showToast({ title: '无原会话', icon: 'none' });
     }
@@ -1272,6 +1275,15 @@ Page({
     wx.navigateTo({ url: '/package-feature/pages/broadcastAdmin/index' });
   },
 
+  goRemoteScreens() {
+    const role = wx.getStorageSync(springAuth.KEYS.ROLE);
+    if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/remoteScreens/index', role, 'ADMIN')) {
+      wx.showToast({ title: '无权限', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: '/package-feature/pages/remoteScreens/index' });
+  },
+
   goVideoWall() {
     const role = wx.getStorageSync(springAuth.KEYS.ROLE);
     if (!pagePermission.canShowMiniEntry('mine', '/package-feature/pages/videoWall/index', role, 'SUPER_ADMIN')) {
@@ -1524,6 +1536,15 @@ Page({
     }
   },
 
+  /**
+   * 自定义 tabBar 是页面级实例：登录态/视角变化后必须主动重建，
+   * 否则底栏会一直保留上一个账号的那套项与角标（tab 页不切页时 pageLifetimes.show 不触发）。
+   */
+  refreshTabBar() {
+    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
+    if (tabBar && typeof tabBar.refreshTabs === 'function') tabBar.refreshTabs();
+  },
+
   clearSpringBind() {
     wx.showModal({
       title: '确认退出登录',
@@ -1533,6 +1554,7 @@ Page({
           springAuth.clearSpringSession();
           clearPendingBadgeCache();
           this.refreshSpringUiState();
+          this.refreshTabBar();
           wx.showToast({ title: '已退出登录', icon: 'none' });
         }
       },

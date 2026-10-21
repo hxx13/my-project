@@ -190,6 +190,10 @@ public class CageOrderReservationService {
         AupRecord aup = aupRecordMapper.selectById(aupRecordId);
         if (aup == null) throw new TwinBusinessException(400, "所选 AUP 不存在");
 
+        // 开抽屉前先对一次账：购物车行已经没了的预定不能继续冒充「已在购物车」，
+        // 否则用户按提示去购物车删行也找不到，笼位又谁都选不了。
+        releaseDanglingCartReservations();
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("aupRecordId", String.valueOf(aupRecordId));
         out.put("aupRegisterNo", aup.getRegisterNo());
@@ -624,9 +628,13 @@ public class CageOrderReservationService {
      * 留下「购物车行还写着这个笼位、但笼位已经没人占」的不一致，别人还能把它选走。
      */
     @Transactional(rollbackFor = Exception.class)
-    public void release(Long reservationId, String reason) {
+    public void release(Long reservationId, String requesterId, String reason) {
         CageOrderReservation r = reservationMapper.findById(reservationId);
         if (r == null || !"LOCKED".equals(r.getStatus())) return;
+        // 只能放自己锁的：id 是自增的，不校验的话任何人遍历 id 就能把别人的选购锁定清掉
+        if (!personIdentityService.samePerson(r.getReserverId(), requesterId)) {
+            throw new TwinBusinessException(403, "该笼位不是你预定的，不能释放");
+        }
         if (r.getCartId() != null) {
             log.debug("[cage-reservation] 预定 {} 已挂购物车行 {}，忽略主动释放", reservationId, r.getCartId());
             return;
@@ -741,6 +749,27 @@ public class CageOrderReservationService {
             clearWrittenFields(r);
         }
         return reservationMapper.releaseOrphans("购物车行已不存在，自动释放");
+    }
+
+    /**
+     * 运行期自愈：购物车行已经没了、但预定还挂着 cart_id 且没进订单的 LOCKED 行。
+     *
+     * <p>这类行会让笼位对本人永远显示「已在你的购物车中」（{@link #reservableCages} 只看
+     * cart_id 是否非空），可购物车里早没有那一行——用户按提示去删行也找不到。
+     * 典型来源是老版本漏释放或下单删行与释放的竞态；启动清理只在重启时跑一次，运行期得兜住。
+     *
+     * <p>**只碰 cart_id 非空的**：cart_id 为空是「已锁、还没加购」，那种正在被用户挑选，
+     * 运行期清掉会误伤，只能留给启动清理。
+     */
+    public int releaseDanglingCartReservations() {
+        List<CageOrderReservation> rows = reservationMapper.listDanglingCart();
+        if (rows.isEmpty()) return 0;
+        for (CageOrderReservation r : rows) {
+            clearWrittenFields(r);
+            reservationMapper.releaseById(r.getId(), "购物车行已不存在，自动释放");
+        }
+        log.info("[cage-reservation] 清理购物车行已不存在的预定 {} 条", rows.size());
+        return rows.size();
     }
 
     /** 只撤销预定自己写进去的字段，不碰笼位上其它既有值。 */

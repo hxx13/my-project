@@ -12,6 +12,8 @@ public class Training {
     private Integer type;
     private String typeName;
     private String paperIdsJson;
+    /** 绑定学习视频 id JSON 数组；全部看完才允许报名 */
+    private String videoIdsJson;
     private String ownerIdsJson;
     private String recurrence;
     private Integer recurrenceDay;

@@ -297,7 +297,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       themes: THEME_REGISTRY,
       cycleTheme,
       effectiveMode,
-      autoScheduleEnabled: normalized.autoScheduleEnabled !== false,
+      autoScheduleEnabled: normalized.autoScheduleEnabled === true,
       setAutoScheduleEnabled,
       toggleLightDark,
       lightStart: normalized.lightStart ?? defaultAppearanceSchedulePrefs().lightStart!,

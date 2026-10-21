@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryLongtermPartitionMapper">
+
+    <resultMap id="PartitionMap" type="com.example.demo.modules.telemetry.entity.TelemetryLongtermPartitionRow">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="sort_order" property="sortOrder"/>
+        <result column="variable_count" property="variableCount"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectAllOrdered" resultMap="PartitionMap">
+        SELECT p.id, p.name, p.sort_order, p.created_at, p.updated_at,
+               COUNT(v.id) AS variable_count
+        FROM telemetry_longterm_partition p
+        LEFT JOIN telemetry_longterm_variable v ON v.partition_id = p.id
+        GROUP BY p.id, p.name, p.sort_order, p.created_at, p.updated_at
+        ORDER BY p.sort_order ASC, p.id ASC
+    </select>
+
+    <select id="selectById" resultMap="PartitionMap">
+        SELECT id, name, sort_order, created_at, updated_at
+        FROM telemetry_longterm_partition
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO telemetry_longterm_partition (name, sort_order)
+        VALUES (#{name}, #{sortOrder})
+    </insert>
+
+    <update id="updateName">
+        UPDATE telemetry_longterm_partition SET name = #{name} WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM telemetry_longterm_partition WHERE id = #{id}
+    </delete>
+
+    <update id="unassignVariables">
+        UPDATE telemetry_longterm_variable SET partition_id = NULL WHERE partition_id = #{id}
+    </update>
+</mapper>

@@ -101,11 +101,35 @@ function cageTodayOption(points: MetricPoint[]): EChartsOption {
   };
 }
 
+/** 近 7 天柱子的配色：往期用冷色渐变（原来那种低透明度琥珀压在深底上会发脏、发褐），今天单独暖色点出来 */
+const DAY_BAR_PAST = {
+  type: "linear" as const,
+  x: 0,
+  y: 0,
+  x2: 0,
+  y2: 1,
+  colorStops: [
+    { offset: 0, color: "rgba(56,189,248,.62)" },
+    { offset: 1, color: "rgba(56,189,248,.16)" },
+  ],
+};
+const DAY_BAR_TODAY = {
+  type: "linear" as const,
+  x: 0,
+  y: 0,
+  x2: 0,
+  y2: 1,
+  colorStops: [
+    { offset: 0, color: "#fbbf24" },
+    { offset: 1, color: "rgba(245,158,11,.55)" },
+  ],
+};
+
 /**
- * 近 7 天清洗 —— **柱状图**（不是折线）。
+ * 近 7 天清洗 —— **圆角柱状图**（不是折线）。
  * 按天的量是离散的，柱状才读得出「哪天多、哪天没洗」；**7 天一根不少，没洗的那天立一根 0 高的柱**
  * （横轴由 daysBarsPts 补齐，后端缺数据的天在这里补 0，不跳过）。
- * 今天那根用亮琥珀实心，往期半透明，一眼能分出「今天还在涨」。
+ * 今天那根用暖色实心，往期冷色渐变，一眼能分出「今天还在涨」。
  */
 function cageDaysBarsOption(points: MetricPoint[]): EChartsOption {
   const today = bjToday();
@@ -119,14 +143,23 @@ function cageDaysBarsOption(points: MetricPoint[]): EChartsOption {
       axisTick: { show: false },
       axisLabel: { color: "rgba(203,213,225,.8)", fontSize: 11 },
     },
-    // 纵轴不必画：柱高本身表达量级，数量少时直接在柱顶标数（0 的那天也标，柱子空着但说明「这天没洗」）
-    yAxis: { type: "value", show: false, scale: true },
+    /* 纵轴不画：柱高本身表达量级，数量少时直接在柱顶标数（0 的那天也标）。
+       但要**留出余量**——按最大值当上限的话，最高那两根会顶到画布上沿、柱顶的数字被裁掉。
+       柱状图必须从 0 起，不然差一点的天看起来差很多。 */
+    yAxis: {
+      type: "value",
+      show: false,
+      min: 0,
+      max: (v: { max: number }) => Math.max(1, Math.ceil(v.max * 1.18)),
+    },
     series: [{
       type: "bar",
       barMaxWidth: 26,
+      // 圆角矩形：只圆上面两角（贴地那两角圆了会像漂浮的胶囊）
+      itemStyle: { borderRadius: [7, 7, 0, 0] },
       data: points.map((p) => ({
         value: p.cages ?? 0,
-        itemStyle: { color: p.at.slice(0, 10) === today ? "#f59e0b" : "rgba(245,158,11,.4)" },
+        itemStyle: { color: p.at.slice(0, 10) === today ? DAY_BAR_TODAY : DAY_BAR_PAST },
       })),
       // 固定 7 根，柱顶都标数（0 的那天也标 —— 柱子空着，但说明「这天没洗」）
       label: { show: true, position: "top", fontSize: 11, color: "rgba(203,213,225,.9)", formatter: "{c}" },

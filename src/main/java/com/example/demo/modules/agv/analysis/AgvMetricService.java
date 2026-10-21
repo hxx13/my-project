@@ -4,6 +4,9 @@ import com.example.demo.modules.agv.AgvRobots;
 import com.example.demo.modules.agv.mapper.AgvStatsMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -144,6 +147,35 @@ public class AgvMetricService {
         } catch (Exception e) {
             log.warn("[AgvMetric] 封存 {} 失败：{}", yesterday, e.getMessage());
         }
+    }
+
+    /**
+     * 启动补封存：服务在 00:05 没跑的那些天，封存那一次就永久漏了。
+     * 原始轨迹回收前必须先把缺口填上，否则驾驶舱累计值会一直少算。
+     */
+    @Async("coreTaskExecutor")
+    @EventListener(ApplicationReadyEvent.class)
+    public void backfillMissedDaysOnStartup() {
+        try {
+            String earliest = statsMapper.selectEarliestTrajectoryDate();
+            if (earliest == null) return;
+            backfillMissingDays(LocalDate.parse(earliest), LocalDate.now(BEIJING).minusDays(1));
+        } catch (Exception e) {
+            log.warn("[AgvMetric] 启动补封存失败：{}", e.getMessage());
+        }
+    }
+
+    /** 逐日补缺：已有封存行的天跳过。返回写入的指标条数。 */
+    int backfillMissingDays(LocalDate from, LocalDate to) {
+        int written = 0;
+        int days = 0;
+        for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+            if (statsMapper.countDailyMetricsForDate(d.toString()) > 0) continue;
+            written += freezeDay(d, "BACKFILL");
+            days++;
+        }
+        if (days > 0) log.info("[AgvMetric] 启动补封存 {} ~ {}，补 {} 天 / {} 条", from, to, days, written);
+        return written;
     }
 
     /** 近 N 天日行（含今天），按指标键分组 */

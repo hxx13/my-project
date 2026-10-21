@@ -70,11 +70,12 @@ public class TelemetryController {
     }
 
     private static AnimalRoomTelemetryPageDto toAnimalRoomPage(AnimalRoomHubDto hub, TelemetrySnapshotDto snap) {
+        TelemetrySnapshotDto visible = hub.getSnapshot() != null ? hub.getSnapshot() : snap;
         return AnimalRoomTelemetryPageDto.builder()
                 .fetchedAt(snap.getFetchedAt())
                 .winccEnabled(snap.isWinccEnabled())
                 .tabs(hub.getStructuredTabs() != null ? hub.getStructuredTabs() : List.of())
-                .tagItems(snap.getItems() != null ? snap.getItems() : List.of())
+                .tagItems(visible.getItems() != null ? visible.getItems() : List.of())
                 .pollIntervalMs(hub.getClientPollIntervalMs())
                 .runningStatusRooms(hub.getRunningStatusRooms() != null ? hub.getRunningStatusRooms() : List.of())
                 .build();

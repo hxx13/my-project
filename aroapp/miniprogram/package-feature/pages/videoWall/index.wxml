@@ -128,54 +128,32 @@
     <view wx:if="{{!canvasScreens.length}}" class="vw-empty">{{loading ? '载入中…' : '这面墙没有可用的屏幕'}}</view>
   </view>
 
-  <!-- 参观模式：下方换成遥控盘（讲解时只按按钮，不翻列表） -->
+  <!-- 参观模式：下方整块就是参观顺序。宫格大按钮，点哪块切哪块 ——
+       不再有操纵杆和「上一个/下一个」，讲解时直接点方块。 -->
   <view wx:if="{{tour}}" class="vw-tour">
-    <view class="vw-tour-body">
-      <!-- 操纵杆：正方形，圆钮；方向挪选中框，圆心 OK = 双击那个格子 -->
-      <view class="vw-pad-wrap">
-        <view class="vw-pad">
-          <view class="vw-pad-btn vw-pad-up" data-dir="up" bindtap="onPadMove">▲</view>
-          <view class="vw-pad-btn vw-pad-left" data-dir="left" bindtap="onPadMove">◀</view>
-          <view class="vw-pad-ok" bindtap="onPadOk">OK</view>
-          <view class="vw-pad-btn vw-pad-right" data-dir="right" bindtap="onPadMove">▶</view>
-          <view class="vw-pad-btn vw-pad-down" data-dir="down" bindtap="onPadMove">▼</view>
+    <view class="vw-tour-queue">
+      <view class="vw-tour-queue-head">
+        <text class="vw-tour-queue-title">参观顺序 · 点方块直接切换</text>
+        <view class="vw-tour-head-acts">
+          <view class="vw-tour-cfg vw-tour-cfg--web" bindtap="onOpenWebCtrl">控制网页</view>
+          <view class="vw-tour-cfg" bindtap="onOpenQueueSheet">配置预设</view>
         </view>
       </view>
-
-      <view class="vw-tour-right">
-        <!-- 右列上半：队列，点哪一项就以它为锚点切过去 -->
-        <view class="vw-tour-queue">
-          <view class="vw-tour-queue-head">
-            <text class="vw-tour-queue-title">参观顺序</text>
-            <view class="vw-tour-cfg" bindtap="onOpenQueueSheet">配置预设</view>
-          </view>
-          <scroll-view scroll-y class="vw-tour-queue-scroll">
-            <view
-              wx:for="{{tourQueue}}"
-              wx:key="taskId"
-              class="vw-tour-item {{index === tourIndex ? 'on' : ''}}"
-              data-index="{{index}}"
-              bindtap="onPickTourItem"
-            >
-              <text class="vw-tour-no">{{index + 1}}</text>
-              <text class="vw-tour-item-name">{{item.name}}</text>
-            </view>
-            <view wx:if="{{!tourQueue.length}}" class="vw-empty-sm">还没排队列，点「配置预设」</view>
-          </scroll-view>
-        </view>
-
-        <!-- 右列下半：按人排好的参观顺序切预设（跟操纵杆的上下不是一回事） -->
-        <view class="vw-tour-edge">
-          <view class="vw-edge-btn" data-dir="prev" bindtap="onTourStep">
-            <text class="vw-edge-ico">▲</text>
-            <text class="vw-edge-sub">上一个</text>
-          </view>
-          <view class="vw-edge-btn" data-dir="next" bindtap="onTourStep">
-            <text class="vw-edge-ico">▼</text>
-            <text class="vw-edge-sub">下一个</text>
+      <scroll-view scroll-y class="vw-tour-queue-scroll">
+        <view class="vw-tour-grid">
+          <view
+            wx:for="{{tourQueue}}"
+            wx:key="taskId"
+            class="vw-tour-tile {{index === tourIndex ? 'on' : ''}}"
+            data-index="{{index}}"
+            bindtap="onPickTourItem"
+          >
+            <text class="vw-tour-tile-no">{{index + 1}}</text>
+            <text class="vw-tour-tile-name">{{item.name}}</text>
           </view>
         </view>
-      </view>
+        <view wx:if="{{!tourQueue.length}}" class="vw-empty-sm">还没排队列，点「配置预设」</view>
+      </scroll-view>
     </view>
   </view>
   <view wx:else class="vw-list">
@@ -402,6 +380,96 @@
       </scroll-view>
 
       <view class="vw-sheet-cancel" bindtap="onCloseQueueSheet">完成</view>
+    </view>
+  </van-popup>
+
+  <!-- ===== 控制网页：一级选哪台，二级选页面 ===== -->
+  <van-popup
+    show="{{webCtrlOpen}}"
+    position="bottom"
+    round
+    z-index="1100"
+    custom-style="padding-bottom: env(safe-area-inset-bottom);"
+    bind:close="onCloseWebCtrl"
+  >
+    <view class="vw-web">
+      <view class="vw-web-title">控制哪个网页</view>
+
+      <view class="vw-web-pair">
+        <input
+          class="vw-web-input"
+          value="{{webPairCode}}"
+          placeholder="或输入页面上的 6 位配对码"
+          maxlength="6"
+          confirm-type="done"
+          bindinput="onWebPairInput"
+          bindconfirm="onWebPair"
+        />
+        <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="onWebPair">连接</view>
+      </view>
+
+      <scroll-view scroll-y class="vw-web-scroll">
+        <view
+          wx:for="{{webScreens}}"
+          wx:key="screenId"
+          class="vw-web-item"
+          data-id="{{item.screenId}}"
+          bindtap="onPickWebScreen"
+        >
+          <view class="vw-web-item-top">
+            <view class="vw-web-dot"></view>
+            <text class="vw-web-name">{{item.name}}</text>
+          </view>
+          <text class="vw-web-route">{{item.route}}</text>
+        </view>
+        <view wx:if="{{!webScreens.length}}" class="vw-empty-sm">没有在线的网页；用上面的配对码也能连</view>
+      </scroll-view>
+
+      <view class="vw-sheet-cancel" bindtap="onCloseWebCtrl">取消</view>
+    </view>
+  </van-popup>
+
+  <van-popup
+    show="{{webRouteOpen}}"
+    position="bottom"
+    round
+    z-index="1200"
+    custom-style="padding-bottom: env(safe-area-inset-bottom);"
+    bind:close="onCloseWebRoute"
+  >
+    <view class="vw-web">
+      <view class="vw-web-title">让「{{webTarget.name}}」切到</view>
+      <view class="vw-web-now">当前：{{webTarget.route}}</view>
+
+      <input
+        class="vw-web-input vw-web-input--search"
+        value="{{webRouteQuery}}"
+        placeholder="搜索页面名称"
+        bindinput="onWebRouteInput"
+      />
+
+      <scroll-view scroll-y class="vw-web-scroll">
+        <view class="vw-web-grid">
+          <view
+            wx:for="{{webRouteRows}}"
+            wx:key="value"
+            class="vw-web-tile {{item.starred ? 'vw-web-tile--star' : ''}}"
+            data-route="{{item.value}}"
+            bindtap="onPickWebRoute"
+          >
+            <text class="vw-web-tile-label">{{item.label}}</text>
+            <!-- 收藏：按**页面**记（与控制在哪一台上无关），收藏的置顶 -->
+            <view
+              class="vw-web-star {{item.starred ? 'on' : ''}}"
+              data-route="{{item.value}}"
+              catchtap="onToggleWebStar"
+            >★</view>
+          </view>
+        </view>
+        <view wx:if="{{!webRouteRows.length}}" class="vw-empty-sm">没有匹配的页面</view>
+      </scroll-view>
+
+      <view class="vw-sheet-cancel" bindtap="onCloseWebRoute">取消</view>
     </view>
   </van-popup>
 

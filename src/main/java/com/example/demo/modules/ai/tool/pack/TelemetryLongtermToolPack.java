@@ -312,7 +312,7 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                         int size = Math.min(200, limit - samples.size());
                         TelemetryLongtermQueryPageDto p = service.querySamples(page, size,
                                 variableName.isEmpty() ? null : variableName,
-                                month.isEmpty() ? null : month, null, null);
+                                month.isEmpty() ? null : month, null, null, null);
                         if (p == null) {
                             break;
                         }
@@ -704,7 +704,7 @@ public class TelemetryLongtermToolPack implements AiToolPack {
                     if (!month.isEmpty() && !month.matches("\\d{4}-\\d{2}")) {
                         return Map.of("ok", false, "reason", "月份格式不对，应是 2026-10 这种写法");
                     }
-                    List<String> days = service.listDaysWithData(month.isEmpty() ? null : month, null, null);
+                    List<String> days = service.listDaysWithData(month.isEmpty() ? null : month, null, null, null);
                     if (days == null) {
                         days = List.of();
                     }

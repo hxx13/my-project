@@ -214,6 +214,7 @@ function createEmptyWatchlistDraftRow(existing: TelemetryWatchlistTag[]): Teleme
     draftUid: newDraftUid(),
     winccVariableName: "",
     enabled: false,
+    showInAnimalRoom: true,
     sortOrder: maxSo + 1,
     structureType: null,
     dataType: null,
@@ -735,6 +736,14 @@ function ZoneEditor({
             title={enableCheckboxTitle}
           />
         </td>
+        <td className="border-b border-slate-100 px-1.5 py-2 align-middle">
+          <AdminSwitchScaled
+            size="sm"
+            checked={row.showInAnimalRoom !== false}
+            onChange={(checked) => patchRow(row, { showInAnimalRoom: checked })}
+            title="关闭后仍参与统一拉取与长期归档，只是不出现在动物房温湿度页与驾驶舱"
+          />
+        </td>
         <td className="border-b border-slate-100 px-1 py-2 align-middle min-w-0">
           <div className="flex min-w-0 items-center gap-1">
             <span className="shrink-0">{tierCell}</span>
@@ -951,6 +960,12 @@ function ZoneEditor({
               <th className="px-1.5 py-1 text-left align-bottom text-sm font-semibold leading-none text-slate-800 whitespace-nowrap">
                 启用
               </th>
+              <th
+                className="px-1.5 py-1 text-left align-bottom text-sm font-semibold leading-none text-slate-800 whitespace-nowrap"
+                title="关闭后仍参与统一拉取与长期归档，只是不出现在动物房温湿度页与驾驶舱"
+              >
+                动物房页
+              </th>
               <th className="px-1 py-1 text-left align-bottom text-sm font-semibold leading-none text-slate-800 whitespace-nowrap">
                 名称
               </th>
@@ -980,7 +995,7 @@ function ZoneEditor({
                 <tr key="orphan-banner">
                   <td
                     className="border-b border-amber-100 bg-amber-50/95 px-2 py-2 text-sm font-medium text-amber-900"
-                    colSpan={8}
+                    colSpan={9}
                   >
                     未匹配主测量的限值（核对后缀 _PT_Floor/_TT_Top 等及主行指标类别是否与后缀一致）
                   </td>
@@ -991,7 +1006,7 @@ function ZoneEditor({
             )}
             {!visibleRowCount ? (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={8}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={9}>
                   {draftRows.length ? "无匹配筛选" : "本分区暂无变量，可点「新增」或导入 CSV。"}
                 </td>
               </tr>

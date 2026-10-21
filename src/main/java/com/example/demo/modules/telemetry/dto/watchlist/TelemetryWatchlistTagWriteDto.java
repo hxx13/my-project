@@ -27,5 +27,7 @@ public class TelemetryWatchlistTagWriteDto {
     /** 每点报警上限覆盖 */
     private String alarmOverrideMax;
     private Boolean enabled;
+    /** false=仅拉数与长期归档；省略时服务端保留原值（新行默认显示） */
+    private Boolean showInAnimalRoom;
     private Integer sortOrder;
 }

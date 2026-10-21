@@ -2,8 +2,8 @@ import { AdminSwitch, type AdminSwitchProps } from "@/components/admin/AdminSwit
 import { cn } from "@/lib/utils";
 
 /** Layout box of AdminSwitch track (px). */
-const SWITCH_W = 51;
-const SWITCH_H = 31;
+const SWITCH_W = 40;
+const SWITCH_H = 22;
 
 /**
  * Scale tiers aligned with former native checkbox / adjacent label text sizes.
@@ -16,8 +16,8 @@ const SCALE_BY_SIZE: Record<AdminSwitchScale, number> = {
   "3": 12 / SWITCH_W,
   "3.5": 14 / SWITCH_W,
   "4": 16 / SWITCH_W,
-  sm: 0.78,
-  md: 0.88,
+  sm: 0.85,
+  md: 0.95,
   lg: 1,
 };
 

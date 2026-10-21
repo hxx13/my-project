@@ -26,6 +26,15 @@ function formatBackendDateOnly(dt) {
   return s.slice(0, 10);
 }
 
+/** 后端时间串在 iOS 上必须用 T 分隔；空格格式的部分 iOS 会解析成 Invalid Date */
+function backendTimeMs(v) {
+  if (!v) return 0;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === 'number') return v;
+  const t = new Date(String(v).trim().replace(' ', 'T')).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 /** 自定义日期选择弹层：今天起向前 120 天 */
 function buildDateSheetRows() {
   const out = [];
@@ -86,8 +95,8 @@ function groupByKey(rows, keyFn, prevOpen) {
   const groups = [];
   map.forEach((list, name) => {
     list.sort((a, b) => {
-      const ta = new Date(a.occurredAt || a.replacedAt || 0).getTime();
-      const tb = new Date(b.occurredAt || b.replacedAt || 0).getTime();
+      const ta = backendTimeMs(a.occurredAt || a.replacedAt);
+      const tb = backendTimeMs(b.occurredAt || b.replacedAt);
       return tb - ta;
     });
     const day = (x) => ((x && (x.occurredAtText || x.replacedAtText)) || '').slice(0, 10);
@@ -121,6 +130,24 @@ function openStateOf(groups) {
 /** 台账取数：后端 size 上限就是 200；页数上限纯粹是防失控的兜底（200 × 50 = 1 万条） */
 const LEDGER_PAGE_SIZE = 200;
 const LEDGER_MAX_PAGES = 50;
+
+/* 快捷项：点一下只回填表单，仍由用户确认后提交；长按删除。 */
+const QUICK_KEYS = { cons: 'fmQuickCons', rep: 'fmQuickRep' };
+function readQuickOptions(scope) {
+  try {
+    const v = wx.getStorageSync(QUICK_KEYS[scope]);
+    return Array.isArray(v) ? v : [];
+  } catch (e) {
+    return [];
+  }
+}
+function writeQuickOptions(scope, list) {
+  try {
+    wx.setStorageSync(QUICK_KEYS[scope], list || []);
+  } catch (e) {
+    // 存储不可用时快捷项只在本次会话有效，不影响台账本身
+  }
+}
 
 function rebuildMatrixFromSheet(sheet) {
   if (!sheet) {
@@ -190,6 +217,8 @@ Page({
     repRows: [],
     consGroups: [],
     repGroups: [],
+    quickCons: [],
+    quickRep: [],
     addPopup: false,
     editingId: '',
     popupSiteSheetShow: false,
@@ -231,8 +260,8 @@ Page({
     timePickerShow: false,
     timePickerFor: '',
     timePickerValue: Date.now(),
-    pickerMinTs: Date.now() - 86400000 * 365 * 10,
-    pickerMaxTs: Date.now() + 86400000 * 365 * 2,
+    pickerMinTs: Date.now() - 86400000 * 365 * 3,
+    pickerMaxTs: Date.now() + 86400000 * 365 * 1,
   },
 
   _pendingCells: {},
@@ -304,6 +333,8 @@ Page({
           presetPickList: buildPresetPickList(presetList, []),
           repSelectedPresets: [],
           repSelectedText: '',
+          quickCons: readQuickOptions('cons'),
+          quickRep: readQuickOptions('rep'),
         },
         () => this.loadActive(true),
       );
@@ -746,6 +777,156 @@ Page({
     });
   },
 
+  /** 指定分类/快捷项打开新增弹窗：只回填，不直接提交 */
+  _openAddWithPrefill(scope, prefill) {
+    const p = prefill || {};
+    const sites = this.data.sites || [];
+    let popupSitePickerIndex = -1;
+    const sid = p.siteId || this.siteIdFilter();
+    if (sid) {
+      popupSitePickerIndex = sites.findIndex((s) => s.id === sid);
+    }
+    if (popupSitePickerIndex < 0 && sites.length === 1) popupSitePickerIndex = 0;
+    const popupSiteName =
+      popupSitePickerIndex >= 0 && sites[popupSitePickerIndex] ? sites[popupSitePickerIndex].name || '' : '';
+    if (scope === 'cons') {
+      const name = p.name || '';
+      let catalogPickerIndex = 0;
+      const ci = (this.data.consumableCatalog || []).findIndex((c) => (c.name || '') === name);
+      if (ci >= 0) catalogPickerIndex = ci + 1;
+      this.setData({
+        addPopup: true,
+        editingId: '',
+        popupSiteSheetShow: false,
+        popupSitePickerIndex,
+        popupSiteName,
+        formConsName: name,
+        formConsQty: p.qty != null && p.qty !== '' ? String(p.qty) : '1',
+        formConsUnit: p.unit || '',
+        formConsNote: p.note || '',
+        formConsOccurredAt: todayStr(),
+        catalogPickerIndex,
+      });
+      return;
+    }
+    const types = (p.types && p.types.length ? p.types : p.type ? [p.type] : []).filter(Boolean);
+    const presetPickList = buildPresetPickList(this.data.replacementPresets, types);
+    const repSelectedPresets = selectedLabelsFromPickList(presetPickList);
+    this.setData({
+      addPopup: true,
+      editingId: '',
+      popupSiteSheetShow: false,
+      popupSitePickerIndex,
+      popupSiteName,
+      formRepType: types[0] || '',
+      formRepNote: p.note || '',
+      formRepAt: todayStr(),
+      presetPickList,
+      repSelectedPresets,
+      repSelectedText: selectedLabelsText(repSelectedPresets),
+    });
+  },
+
+  /** 分组标题上的「+」：继承该分类最近一条的机房/数量/单位/备注 */
+  openAddForGroup(e) {
+    const name = e.currentTarget.dataset.name;
+    if (!name) return;
+    if (this.data.activeTab === 'cons') {
+      const g = (this.data.consGroups || []).find((x) => x.name === name);
+      const last = (g && g.rows && g.rows[0]) || {};
+      this._openAddWithPrefill('cons', {
+        name: last.consumableName || name,
+        qty: last.qty,
+        unit: last.unit,
+        note: last.note,
+        siteId: last.siteId,
+      });
+      return;
+    }
+    const g = (this.data.repGroups || []).find((x) => x.name === name);
+    const last = (g && g.rows && g.rows[0]) || {};
+    this._openAddWithPrefill('rep', {
+      types: [last.filterType || name],
+      note: last.note,
+      siteId: last.siteId,
+    });
+  },
+
+  tapQuickOption(e) {
+    const id = e.currentTarget.dataset.id;
+    const scope = this.data.activeTab === 'cons' ? 'cons' : 'rep';
+    const list = scope === 'cons' ? this.data.quickCons : this.data.quickRep;
+    const opt = (list || []).find((o) => o.id === id);
+    if (!opt) return;
+    this._openAddWithPrefill(scope, opt.data || {});
+  },
+
+  deleteQuickOption(e) {
+    const id = e.currentTarget.dataset.id;
+    const scope = this.data.activeTab === 'cons' ? 'cons' : 'rep';
+    const list = scope === 'cons' ? this.data.quickCons : this.data.quickRep;
+    const opt = (list || []).find((o) => o.id === id);
+    if (!opt) return;
+    wx.showModal({
+      title: '删除快捷项',
+      content: opt.label || '',
+      success: (res) => {
+        if (!res.confirm) return;
+        const next = (list || []).filter((o) => o.id !== id);
+        writeQuickOptions(scope, next);
+        this.setData(scope === 'cons' ? { quickCons: next } : { quickRep: next });
+      },
+    });
+  },
+
+  /** 把当前表单存成快捷项；只存内容，不提交记录 */
+  saveCurrentAsQuick() {
+    const scope = this.data.activeTab === 'cons' ? 'cons' : 'rep';
+    const sites = this.data.sites || [];
+    const site = sites[this.data.popupSitePickerIndex];
+    const siteId = site ? site.id : this.selectedSiteIdForWrite();
+    const siteName = site ? site.name || '' : '';
+    if (!siteId) {
+      wx.showToast({ title: '请先选择机房', icon: 'none' });
+      return;
+    }
+    let data;
+    let label;
+    if (scope === 'cons') {
+      const name = (this.data.formConsName || '').trim();
+      if (!name) {
+        wx.showToast({ title: '请先填写耗材名称', icon: 'none' });
+        return;
+      }
+      data = {
+        name,
+        qty: this.data.formConsQty || '1',
+        unit: (this.data.formConsUnit || '').trim(),
+        note: (this.data.formConsNote || '').trim(),
+        siteId,
+      };
+      label = `${name} × ${data.qty}${siteName ? ' · ' + siteName : ''}`;
+    } else {
+      const selected = this.data.repSelectedPresets || [];
+      const types = selected.length
+        ? selected
+        : (this.data.formRepType || '').trim()
+          ? [this.data.formRepType.trim()]
+          : [];
+      if (types.length === 0) {
+        wx.showToast({ title: '请先选择更换类型', icon: 'none' });
+        return;
+      }
+      data = { types, note: (this.data.formRepNote || '').trim(), siteId };
+      label = `${types.join(' + ')}${siteName ? ' · ' + siteName : ''}`;
+    }
+    const list = scope === 'cons' ? this.data.quickCons : this.data.quickRep;
+    const next = (list || []).concat([{ id: String(Date.now()), label, data }]);
+    writeQuickOptions(scope, next);
+    this.setData(scope === 'cons' ? { quickCons: next } : { quickRep: next });
+    wx.showToast({ title: '已存为快捷项', icon: 'success' });
+  },
+
   /** 同步预设多选 UI（WXML 只读 item.selected，禁止在模板里 indexOf） */
   _applyPresetSelection(selectedLabels) {
     const presetPickList = buildPresetPickList(this.data.replacementPresets, selectedLabels);
@@ -788,11 +969,11 @@ Page({
   onConsNote(e) {
     this.setData({ formConsNote: e.detail || '' });
   },
-  _tsFromDatetimePickerDetail(detail) {
+  _tsFromDateDetail(detail) {
     if (detail == null) return Date.now();
     if (typeof detail === 'number') return detail;
     if (typeof detail === 'object' && typeof detail.getTime === 'function') return detail.getTime();
-    const t = new Date(detail).getTime();
+    const t = new Date(String(detail).trim().replace(' ', 'T')).getTime();
     return Number.isNaN(t) ? Date.now() : t;
   },
 
@@ -816,13 +997,9 @@ Page({
     this.setData({ timePickerShow: false, timePickerFor: '' });
   },
 
-  onTimePickerInput(e) {
-    const ts = this._tsFromDatetimePickerDetail(e.detail);
-    this.setData({ timePickerValue: ts });
-  },
-
-  confirmTimePicker(e) {
-    const ts = this._tsFromDatetimePickerDetail(e.detail != null ? e.detail : this.data.timePickerValue);
+  /** 日历点选即确认（show-confirm=false），不必再拖动滚轮 */
+  onCalendarConfirm(e) {
+    const ts = this._tsFromDateDetail(e.detail != null ? e.detail : this.data.timePickerValue);
     const text = tsToDateStr(ts);
     const forKey = this.data.timePickerFor;
     if (forKey === 'cons') this.setData({ formConsOccurredAt: text, timePickerShow: false, timePickerFor: '' });

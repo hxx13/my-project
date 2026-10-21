@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
+  ChevronDown,
+  ChevronUp,
   Download,
   ExternalLink,
   Eye,
@@ -46,6 +48,20 @@ import {
 import toast from "react-hot-toast";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
 import { refreshDahuaDeviceChannels } from "@/api/twinApi";
+import {
+  fetchRemoteRouteStars,
+  listRemoteScreens,
+  navigateRemoteScreen,
+  pairRemoteScreen,
+  toggleRemoteRouteStar,
+  type RemoteScreenView,
+} from "@/api/domains/remoteScreen.api";
+import { getCurrentScreenId } from "@/features/remote-screen/RemoteScreenAgent";
+import { fetchAdminNavConfig } from "@/api/domains/adminNavConfig.api";
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems } from "@/features/admin/adminNavRegistry";
+import { normalizeAdminPath, toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
+import { shouldHideAdminSidebarPath } from "@/features/admin/hiddenAdminNavPaths";
+import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   applyTvWallTask,
@@ -60,10 +76,12 @@ import {
   fetchVideoChannels,
   fetchTvWallTask,
   fetchTvWallDetail,
+  fetchTvWallTour,
   operateTvWallLayout,
   renameVideoCategory,
   renameTvWallPreset,
   saveTvWallPreset,
+  saveTvWallTour,
   setChannelLink,
   type TaskScreen,
   type TvWallTaskItem,
@@ -181,6 +199,28 @@ const signatureOf = (rects: Record<string, Rect[]>, slots: Record<string, VideoC
 const CUSTOM_LABEL = "自定义（拖边框调整）";
 const LAYOUT_OPTIONS = [...LAYOUTS.map((l) => l.label), CUSTOM_LABEL];
 
+/** 参观卡片的区分色：**整张卡片实色**，按顺序循环；白字在 600 档上对比够 */
+const TOUR_COLORS = ["#d97706", "#0284c7", "#059669", "#7c3aed", "#e11d48", "#0d9488", "#4f46e5", "#65a30d"];
+
+/**
+ * 可以远程切换的页面 —— **直接取后台导航注册表的名称与路径**（就是 nav-manager 里展示的那份），
+ * 不再手写一份列表：导航改名/调整后这里自动跟着变。
+ */
+const REMOTE_ROUTES: { label: string; value: string }[] = (() => {
+  const seen = new Set<string>();
+  const out: { label: string; value: string }[] = [];
+  for (const g of ADMIN_NAV_REGISTRY) {
+    for (const it of collectRegistryGroupItems(g)) {
+      if (!it?.path || shouldHideAdminSidebarPath(it.path)) continue;
+      const value = toAdminRoutePath(it.path);
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push({ label: it.label, value });
+    }
+  }
+  return out;
+})();
+
 export default function AdminVideoWallPage() {
   const qc = useQueryClient();
 
@@ -201,6 +241,22 @@ export default function AdminVideoWallPage() {
   const [live, setLive] = useState(false);
   /** 参观模式：选预设＝直接上墙并同步预览（适合展厅演示），选预设不会把这个开关关掉 */
   const [tour, setTour] = useState(false);
+  /** 参观顺序弹窗：点「参观模式」即弹出，关掉后可用按钮右侧的小箭头再打开 */
+  const [tourOpen, setTourOpen] = useState(false);
+  /** 参观弹窗里当前切到的那个预设，用于高亮 */
+  const [tourActiveId, setTourActiveId] = useState("");
+  /** 参观弹窗的两个页签：参观顺序 / 网页控制 */
+  const [tourTab, setTourTab] = useState<"presets" | "screens">("presets");
+  /** 网页控制里选中的那台；null = 显示屏幕列表 */
+  const [tourScreenId, setTourScreenId] = useState<string | null>(null);
+  /** 网页控制里的页面搜索词 */
+  const [routeQuery, setRouteQuery] = useState("");
+  /** 配对码输入；pairedCode = 当前选中那台的码（同账号列表进来时为空） */
+  const [pairCode, setPairCode] = useState("");
+  const [pairedCode, setPairedCode] = useState("");
+  const [pairedScreen, setPairedScreen] = useState<RemoteScreenView | null>(null);
+  /** 收藏的页面（**远程切换专用**，与侧栏收藏分开；按路由记，与控制哪台无关） */
+  const [starPaths, setStarPaths] = useState<string[]>([]);
   /** 正在「移动到文件夹」的那路通道；null = 弹窗关着 */
   const [moveTarget, setMoveTarget] = useState<VideoChannel | null>(null);
   /** 左树里当前「定位到」的那一路通道：持续选中态（不是闪一下），换一个才变 */
@@ -265,6 +321,12 @@ export default function AdminVideoWallPage() {
   const tasksQ = useQuery({
     queryKey: ["tvwall", "tasks", tvWallId],
     queryFn: () => fetchTvWallTasks(tvWallId),
+    enabled: !!tvWallId,
+  });
+  /** 参观顺序（预设 id 有序）：两端共用同一份 */
+  const tourQ = useQuery({
+    queryKey: ["tvwall", "tour", tvWallId],
+    queryFn: () => fetchTvWallTour(tvWallId),
     enabled: !!tvWallId,
   });
 
@@ -770,8 +832,174 @@ export default function AdminVideoWallPage() {
     delM.mutate(String(t.taskId));
   };
 
-  const delM = useMutation({
-    mutationFn: (taskId: string) => deleteTvWallPreset(tvWallId, taskId),
+  // ── 参观顺序 ──
+  // 两端共用一份队列；这里改动后先用本地缓存即时反馈，再落库。
+
+  const tourSaveM = useMutation({
+    mutationFn: (ids: string[]) => saveTvWallTour(tvWallId, ids),
+    onSuccess: (rows) => qc.setQueryData(["tvwall", "tour", tvWallId], rows),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "保存参观顺序失败"),
+  });
+
+  const tourIds = tourQ.data ?? [];
+  const taskById = useMemo(() => {
+    const m = new Map<string, TvWallTaskItem>();
+    for (const t of tasksQ.data ?? []) m.set(String(t.taskId), t);
+    return m;
+  }, [tasksQ.data]);
+  const tourItems = useMemo(
+    () => tourIds.map((id) => taskById.get(String(id))).filter((t): t is TvWallTaskItem => !!t),
+    [tourIds, taskById]
+  );
+  /** 还没进队的预设 */
+  const tourRest = useMemo(
+    () => (tasksQ.data ?? []).filter((t) => !tourIds.some((id) => String(id) === String(t.taskId))),
+    [tasksQ.data, tourIds]
+  );
+
+  const setTourIds = (ids: string[]) => {
+    qc.setQueryData(["tvwall", "tour", tvWallId], ids);
+    tourSaveM.mutate(ids);
+  };
+
+  /** 点方块 = 切到这个预设（同时把画布预览也带过去） */
+  const tourApply = (taskId: string) => {
+    setTourActiveId(String(taskId));
+    setPresetId(String(taskId));
+    void previewPreset(tvWallId, String(taskId));
+    applyM.mutate(String(taskId));
+  };
+
+  /** 主按钮：开关参观模式；打开时顺带把顺序弹窗也弹出来 */
+  const toggleTour = () => {
+    const next = !tour;
+    setTour(next);
+    setLive(false);
+    setTourOpen(next);
+  };
+
+  // ── 网页控制（集成在参观弹窗里）：同账号登录的在线页面 ──
+  const screensQ = useQuery({
+    queryKey: ["tvwall", "remoteScreens"],
+    queryFn: listRemoteScreens,
+    enabled: tourOpen,
+    refetchInterval: tourOpen ? 5000 : false,
+  });
+  const tourScreens = screensQ.data ?? [];
+  const tourScreen =
+    tourScreens.find((s) => s.screenId === tourScreenId) ??
+    (pairedScreen && pairedScreen.screenId === tourScreenId ? pairedScreen : null);
+  /** 配对：凭码连别的账号/别的设备上的页面 */
+  const pairM = useMutation({
+    mutationFn: (code: string) => pairRemoteScreen(code),
+    onSuccess: (s) => {
+      setPairedScreen(s);
+      setPairedCode(s.code || "");
+      setTourScreenId(s.screenId);
+      setPairCode("");
+      toast.success(`已连上「${s.label || "未命名屏幕"}」`);
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "配对失败"),
+  });
+  const screenNavM = useMutation({
+    mutationFn: (args: { screenId: string; route: string; code?: string }) =>
+      navigateRemoteScreen(args.screenId, args.route, args.code),
+    onSuccess: (_d, args) => {
+      toast.success("已下发跳转");
+      qc.invalidateQueries({ queryKey: ["tvwall", "remoteScreens"] });
+      // 配对来的那台不在列表里，重新配一次把「当前页面」刷新出来
+      if (args.code) {
+        window.setTimeout(() => pairM.mutate(args.code as string), 1200);
+      }
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "下发失败"),
+  });
+
+  // 关掉弹窗时回到屏幕列表，下次打开不会停在上次那台
+  useEffect(() => {
+    if (!tourOpen) {
+      setTourScreenId(null);
+      setRouteQuery("");
+      setPairCode("");
+      setPairedCode("");
+      setPairedScreen(null);
+    }
+  }, [tourOpen]);
+
+  // 收藏从账号配置里读（远程切换专用字段），打开弹窗时拉一次
+  useEffect(() => {
+    if (!tourOpen) return;
+    let alive = true;
+    void fetchRemoteRouteStars().then((list) => {
+      if (alive) setStarPaths(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tourOpen]);
+
+  /** 点星号：**交后端按单个路由切换**（不传整份列表，避免多端互相覆盖） */
+  const toggleStar = async (value: string) => {
+    try {
+      const list = await toggleRemoteRouteStar(normalizeAdminPath(value));
+      setStarPaths(list);
+    } catch {
+      toast.error("收藏保存失败");
+    }
+  };
+
+  /**
+   * 可跳转的页面清单：**优先读后端持久化的导航配置**（nav-manager 里改的名字/顺序存在那儿），
+   * 读不到才退回注册表快照 —— 这样后台改了页面名称，这里立刻跟着变。
+   */
+  const navConfigQ = useQuery({
+    queryKey: ["tvwall", "navRoutes"],
+    queryFn: () => fetchAdminNavConfig("ADMIN"),
+    enabled: tourOpen,
+    staleTime: 60000,
+  });
+  const navRoutes = useMemo(() => {
+    const out: { label: string; value: string }[] = [];
+    const seen = new Set<string>();
+    const walk = (nodes: typeof navConfigQ.data) => {
+      for (const n of nodes ?? []) {
+        if (n.type === "ITEM" && n.itemPath && n.visible !== false) {
+          const value = `/console${n.itemPath}`;
+          if (!seen.has(value)) {
+            seen.add(value);
+            out.push({ label: n.title, value });
+          }
+        }
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(navConfigQ.data);
+    return out.length ? out : REMOTE_ROUTES;
+  }, [navConfigQ.data]);
+
+  /** 列表 = 同账号在线页面 + 配对来的那台（若不在列表里） */
+  const screenRows = useMemo(() => {
+    if (!pairedScreen || tourScreens.some((s) => s.screenId === pairedScreen.screenId)) {
+      return tourScreens;
+    }
+    return [pairedScreen, ...tourScreens];
+  }, [tourScreens, pairedScreen]);
+
+  /** 按名称/路径过滤；收藏的排在前面 */
+  const starredSet = useMemo(() => new Set(starPaths.map(normalizeAdminPath)), [starPaths]);
+  const routeRows = useMemo(() => {
+    const q = routeQuery.trim().toLowerCase();
+    const matched = navRoutes.filter(
+      (r) => !q || r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q)
+    );
+    return [...matched].sort((a, b) => {
+      const as = starredSet.has(normalizeAdminPath(a.value)) ? 0 : 1;
+      const bs = starredSet.has(normalizeAdminPath(b.value)) ? 0 : 1;
+      return as - bs;
+    });
+  }, [routeQuery, starredSet, navRoutes]);
+
+  const delM = useMutation({    mutationFn: (taskId: string) => deleteTvWallPreset(tvWallId, taskId),
     onSuccess: (_d, taskId) => {
       toast.success("预设已删除");
       // 删的正好是当前选中的才清选中；删别人别把选中态也带没了
@@ -1170,20 +1398,42 @@ export default function AdminVideoWallPage() {
           </button>
         </div>
 
-        {/* 参观：本质也是切换按钮，但它是「整场演示」的主开关，做得更显眼 */}
-        <AdminButton
-          size="sm"
-          tone={tour ? "primary" : "secondary"}
-          active={tour}
-          className="shrink-0"
-          onClick={() => {
-            setTour((v) => !v);
-            setLive(false);
-          }}
-          title="参观模式：选预设直接上墙并同步预览（展厅演示用）；选预设不会关掉此模式"
+        {/* 参观：主按钮是开关（打开即弹出参观顺序），右侧小箭头随时再打开配置 */}
+        <div
+          className={cn(
+            "flex shrink-0 items-stretch overflow-hidden rounded-lg border",
+            tour ? "border-[var(--app-color-accent)]" : "border-[var(--app-color-border-default)]"
+          )}
         >
-          <Eye className="mr-1.5 h-4 w-4" />参观模式
-        </AdminButton>
+          <AdminButton
+            size="sm"
+            tone={tour ? "primary" : "secondary"}
+            className="rounded-none border-0 shadow-none"
+            onClick={toggleTour}
+            title="参观模式：点开即弹参观顺序；点方块直接切换大屏"
+          >
+            <Eye className="mr-1.5 h-4 w-4" />参观模式
+          </AdminButton>
+          <button
+            type="button"
+            onClick={() => {
+              if (!tour) {
+                setTour(true);
+                setLive(false);
+              }
+              setTourOpen(true);
+            }}
+            title="配置参观顺序"
+            className={cn(
+              "flex items-center border-l px-2 transition-colors",
+              tour
+                ? "border-[var(--app-color-accent)] bg-[var(--app-color-surface-container)] text-[var(--app-color-accent)]"
+                : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+            )}
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       <Dialog open={presetDialogOpen} onOpenChange={setPresetDialogOpen}>
@@ -1270,6 +1520,346 @@ export default function AdminVideoWallPage() {
               复制
             </AdminButton>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 参观顺序：大宫格，点方块直接切大屏；顺序就是讲解顺序 */}
+      <Dialog open={tourOpen} onOpenChange={setTourOpen}>
+        <DialogContent className="flex h-[84vh] w-[92vw] max-w-[1100px] flex-col gap-3 p-5">
+          <DialogHeader>
+            <DialogTitle>参观顺序</DialogTitle>
+            <DialogDescription>
+              点方块直接切到那个预设；方块顺序就是讲解顺序。改动会自动保存，两端共用。
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* 页签：参观顺序 / 网页控制。**选中项用实色主色**，否则两个页签会跟容器糊在一起 */}
+          <div className="flex shrink-0 items-center gap-1 self-start rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
+            <button
+              type="button"
+              onClick={() => setTourTab("presets")}
+              className={cn(
+                "rounded-md px-4 py-1.5 text-xs font-medium transition-colors",
+                tourTab === "presets"
+                  ? "bg-[var(--app-color-accent)] text-white shadow-sm"
+                  : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+              )}
+            >
+              参观顺序
+            </button>
+            <button
+              type="button"
+              onClick={() => setTourTab("screens")}
+              className={cn(
+                "rounded-md px-4 py-1.5 text-xs font-medium transition-colors",
+                tourTab === "screens"
+                  ? "bg-[var(--app-color-accent)] text-white shadow-sm"
+                  : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+              )}
+            >
+              网页控制{tourScreens.length > 0 ? ` (${tourScreens.length})` : ""}
+            </button>
+          </div>
+
+          {tourTab === "presets" ? (
+            <>
+          {tourItems.length === 0 ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-[var(--app-color-border-default)] text-sm text-[var(--app-color-text-tertiary)]">
+              还没有参观顺序，从下面挑预设加进来
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <div
+                className="grid gap-3"
+                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}
+              >
+                {tourItems.map((t, i) => {
+                  const id = String(t.taskId);
+                  const active = tourActiveId === id;
+                  const color = TOUR_COLORS[i % TOUR_COLORS.length];
+                  return (
+                    /* 整块可点，但**不再用一个 absolute 兄弟层盖上去** ——
+                       那样「当前」标记和操作按钮会互相压住。操作按钮直接放进卡片底部。 */
+                    <div
+                      key={id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => tourApply(id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          tourApply(id);
+                        }
+                      }}
+                      title={t.taskName}
+                      className={cn(
+                        "relative flex min-h-[152px] w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl px-4 pb-12 pt-8 text-center text-white transition",
+                        active
+                          ? "ring-4 ring-inset ring-white shadow-[0_8px_24px_rgba(0,0,0,0.28)]"
+                          : "hover:brightness-110"
+                      )}
+                      style={{ backgroundColor: color }}
+                    >
+                      <span className="absolute left-3 top-2 text-xs font-semibold tabular-nums text-white/85">
+                        {i + 1}
+                      </span>
+                      {active ? (
+                        <span className="absolute right-2 top-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-800">
+                          当前
+                        </span>
+                      ) : null}
+                      <span className="line-clamp-3 break-all text-base font-semibold leading-snug">
+                        {t.taskName}
+                      </span>
+
+                      {/* 排序 / 移出：固定在卡片底部一排。**实色白底**（半透明在实色卡上看不见） */}
+                      <span className="absolute inset-x-0 bottom-2 flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          title="上移"
+                          disabled={i === 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (i === 0) return;
+                            const next = [...tourIds];
+                            [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                            setTourIds(next);
+                          }}
+                          className="rounded-md bg-white px-1.5 py-1 text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="下移"
+                          disabled={i === tourIds.length - 1}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (i === tourIds.length - 1) return;
+                            const next = [...tourIds];
+                            [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                            setTourIds(next);
+                          }}
+                          className="rounded-md bg-white px-1.5 py-1 text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="移出参观顺序"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTourIds(tourIds.filter((x) => String(x) !== id));
+                          }}
+                          className="rounded-md bg-white px-1.5 py-1 text-red-600 shadow-sm transition hover:bg-red-50"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="shrink-0 border-t border-[var(--twin-hairline)] pt-3">
+            <div className="mb-2 text-xs text-[var(--app-color-text-tertiary)]">
+              加入参观顺序（这面墙还有 {tourRest.length} 个预设没进去）
+            </div>
+            <div className="flex max-h-24 flex-wrap gap-2 overflow-auto">
+              {tourRest.map((t) => (
+                <button
+                  key={String(t.taskId)}
+                  type="button"
+                  onClick={() => setTourIds([...tourIds, String(t.taskId)])}
+                  className="flex items-center gap-1 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5 text-xs text-[var(--app-color-text-primary)] transition hover:border-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]"
+                >
+                  ＋ {t.taskName}
+                </button>
+              ))}
+              {tourRest.length === 0 ? (
+                <span className="text-xs text-[var(--app-color-text-tertiary)]">这面墙的预设都已在顺序里</span>
+              ) : null}
+            </div>
+          </div>
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
+              {tourScreen ? (
+                <>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTourScreenId(null)}
+                      className="rounded-md border border-[var(--app-color-border-default)] px-2 py-1 text-xs text-[var(--app-color-text-secondary)] transition hover:bg-[var(--app-color-surface-hover)]"
+                    >
+                      ‹ 返回列表
+                    </button>
+                    <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+                      {tourScreen.label || "未命名屏幕"}
+                    </span>
+                    <span className="text-xs text-[var(--app-color-text-tertiary)]">
+                      当前：{tourScreen.route || "—"}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <input
+                      value={routeQuery}
+                      onChange={(e) => setRouteQuery(e.target.value)}
+                      placeholder="搜索页面名称…"
+                      className="h-8 w-60 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 text-xs text-[var(--app-color-text-primary)] outline-none placeholder:text-[var(--app-color-text-tertiary)]"
+                    />
+                    <span className="text-xs text-[var(--app-color-text-tertiary)]">
+                      {routeRows.length} 个页面 · 收藏的排在最前
+                    </span>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    <div
+                      className="grid gap-3"
+                      style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}
+                    >
+                      {routeRows.length === 0 ? (
+                        <div className="col-span-full py-10 text-center text-sm text-[var(--app-color-text-tertiary)]">
+                          没有匹配的页面
+                        </div>
+                      ) : null}
+                      {routeRows.map((r) => {
+                        const on = tourScreen.route === r.value;
+                        const starred = starredSet.has(normalizeAdminPath(r.value));
+                        return (
+                          <div key={r.value} className="relative">
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => screenNavM.mutate({ screenId: tourScreen.screenId, route: r.value, code: pairedCode || undefined })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  screenNavM.mutate({ screenId: tourScreen.screenId, route: r.value, code: pairedCode || undefined });
+                                }
+                              }}
+                              className={cn(
+                                "flex min-h-[104px] w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border p-3 pr-6 text-center transition",
+                                on
+                                  ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)] text-white"
+                                  : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] hover:border-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]"
+                              )}
+                            >
+                              <span className="text-sm font-semibold">{r.label}</span>
+                              <span
+                                className={cn(
+                                  "break-all text-[10px]",
+                                  on ? "text-white/80" : "text-[var(--app-color-text-tertiary)]"
+                                )}
+                              >
+                                {r.value}
+                              </span>
+                              {on ? <span className="text-[10px] font-medium">当前</span> : null}
+                            </div>
+                            {/* 收藏：与侧栏「收藏」同一份数据，点星号加入/移出 */}
+                            <button
+                              type="button"
+                              title={starred ? "取消收藏" : "收藏这个页面"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleStar(r.value);
+                              }}
+                              className={cn(
+                                "absolute right-1.5 top-1.5 rounded p-1 transition",
+                                on ? "text-white/80 hover:text-white" : "text-[var(--app-color-text-tertiary)] hover:text-amber-500",
+                                starred && !on ? "text-amber-500" : ""
+                              )}
+                            >
+                              <Star className={cn("h-3.5 w-3.5", starred && "fill-current")} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col gap-3">
+                  {/* 配对码：平板/手机连别的账号、别的设备上打开的页面 */}
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <input
+                      value={pairCode}
+                      onChange={(e) => setPairCode(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && pairCode.trim()) pairM.mutate(pairCode.trim());
+                      }}
+                      maxLength={6}
+                      placeholder="输入页面上的 6 位配对码"
+                      className="h-8 w-56 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 font-mono text-sm tracking-[0.2em] text-[var(--app-color-text-primary)] outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-[var(--app-color-text-tertiary)]"
+                    />
+                    <AdminButton
+                      tone="primary"
+                      className="h-8 px-3 text-xs"
+                      loading={pairM.isPending}
+                      disabled={!pairCode.trim()}
+                      onClick={() => pairM.mutate(pairCode.trim())}
+                    >
+                      连接
+                    </AdminButton>
+                    <span className="text-xs text-[var(--app-color-text-tertiary)]">
+                      同账号的页面自动列在下面；别的账号/设备用上面的配对码
+                    </span>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    {screenRows.length === 0 ? (
+                      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-[var(--app-color-border-default)] px-6 text-center text-sm text-[var(--app-color-text-tertiary)]">
+                        没有在线网页。用同一个账号打开网站页面，它会自动出现在这里；别的账号用上面的配对码。
+                      </div>
+                    ) : (
+                      <div
+                        className="grid gap-3"
+                        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+                      >
+                        {screenRows.map((s) => {
+                          // 当前这个标签页自己也在列表里：标出来且不允许控制自己
+                          const isSelf = s.screenId === getCurrentScreenId();
+                          return (
+                            <button
+                              key={s.screenId}
+                              type="button"
+                              disabled={isSelf}
+                              onClick={() => {
+                                setPairedCode("");
+                                setTourScreenId(s.screenId);
+                              }}
+                              className={cn(
+                                "relative flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-2xl border p-4 text-center transition",
+                                isSelf
+                                  ? "cursor-not-allowed border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] opacity-70"
+                                  : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] hover:border-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]"
+                              )}
+                            >
+                              {isSelf ? (
+                                <span className="absolute right-2 top-2 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] text-[var(--app-color-text-secondary)]">
+                                  本页
+                                </span>
+                              ) : null}
+                              <span className="text-base font-semibold text-[var(--app-color-text-primary)]">
+                                {s.label || "未命名屏幕"}
+                              </span>
+                              <span className="break-all text-[11px] text-[var(--app-color-text-secondary)]">
+                                {s.route || "—"}
+                              </span>
+                              <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                                {isSelf ? "这是你正在操作的这个页面" : s.ip}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

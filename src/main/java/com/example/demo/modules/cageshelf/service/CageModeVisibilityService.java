@@ -46,6 +46,9 @@ public class CageModeVisibilityService {
     /** 代认领（把笼位再次分配给某人）的能力码。 */
     public static final String CAP_CLAIM_ON_BEHALF = "cage.op.claim_on_behalf";
 
+    /** 状态照片的保底管理身份：饲养员 / 饲养组长。拍照是这两个身份的日常动作，不随「状态」模式收窄。 */
+    public static final Set<String> PHOTO_MANAGER_IDENTITIES = Set.of("BREEDER", "BREEDING_GROUP_LEADER");
+
     /**
      * 学生**状态模式**下的动作：action code → 表单 canonical。
      *
@@ -225,6 +228,20 @@ public class CageModeVisibilityService {
         if ("view".equals(modeKey)) return true;
         if (isSuperAdmin(user)) return true;
         return effectiveModeCapabilities(user).contains(modeCapability(modeKey));
+    }
+
+    /**
+     * 能否管理笼位的状态照片（上传/删除/写备注）。
+     *
+     * <p>与「状态」模式同源（{@code cage.mode.edit}），另加一条保底：饲养员 / 饲养组长始终放行——
+     * 拍照归档是这两类身份的日常工作，不应因为矩阵把「状态」模式收窄、或组员级模式勾选覆盖而丢失。
+     * 学生账号仍一律拒绝（学生只被下放合笼等状态动作，不含照片）。
+     */
+    public boolean canManageCagePhotos(User user) {
+        if (user == null || isStudent(user)) return false;
+        if (isSuperAdmin(user)) return true;
+        if (canUseMode(user, "edit")) return true;
+        return !Collections.disjoint(PHOTO_MANAGER_IDENTITIES, identityCodesOf(user.getId()));
     }
 
     /** 教职工视角可见模式 key 列表（含恒可见的 view）。 */

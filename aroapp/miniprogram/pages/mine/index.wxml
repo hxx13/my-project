@@ -300,6 +300,12 @@
             <text class="mine-cell-title-text">网络广播</text>
           </view>
         </van-cell>
+        <van-cell wx:if="{{ canStaffOps && canGoRemoteScreens }}" is-link bind:click="goRemoteScreens">
+          <view slot="icon" class="mine-slot-ico"><van-icon name="desktop-o" size="28rpx" color="#0284c7" /></view>
+          <view slot="title" class="mine-cell-title-wrap">
+            <text class="mine-cell-title-text">远程屏幕</text>
+          </view>
+        </van-cell>
         <van-cell wx:if="{{ canStaffOps && canGoVideoWall }}" is-link bind:click="goVideoWall">
           <view slot="icon" class="mine-slot-ico"><van-icon name="desktop-o" size="28rpx" color="#2563eb" /></view>
           <view slot="title" class="mine-cell-title-wrap">

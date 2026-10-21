@@ -26,6 +26,11 @@ var HEALTH_SEVERITY_DICT = 'health_abnormality_severity';
 var HEALTH_ITCH_CANONICAL = 'health_abnormality_itch';
 var HEALTH_ITCH_LABEL = '瘙痒';
 var HEALTH_ITCH_TRUE = '1';
+
+/** 状态照片桶里可混入视频：按扩展名判定（与 Web 同口径），缩略图与灯箱据此分流。 */
+function isVideoUrl(url) {
+  return /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(String(url || '').trim());
+}
 /* 学生侧动作码：与后端 CageModeVisibilityService.STUDENT_EDIT_ACTIONS 的键一致 */
 var HEALTH_CHECK_ACTION = 'HEALTH_CHECK';
 var assetApi = require('../../utils/assetApi.js');
@@ -467,6 +472,10 @@ Page({
     favShelfIds: [],          // 已收藏笼架 id
     scrollIntoViewId: '',     // 收藏里点房间 → 滚到它
     allShelfGroups: [],       // unfiltered, for filter dropdown
+    // 顶部快捷块：我的区域（含本课题组笼位的房间）/ 收藏区域（收藏的真实房间）
+    // 只存计数，用来决定两块的显隐；行数据直接复用 shelfGroups，展开状态天然与主列表同步
+    myRoomCount: 0,
+    favRoomCount: 0,
     totalCount: 0,
 
     // Search & filter
@@ -488,7 +497,7 @@ Page({
     // 模式系统（三端对齐：pageMode 单一真相源）
     pageMode: 'view',             // view|allocate|edit|confirm|archive|reserve|record|booking|studentClaim
     /** 连续扫码：扫一台加入选中后自动重开扫码机（分配/状态/认领/预定四个模式） */
-    scanContinuous: true,
+    scanContinuous: false,
     /** 当前模式的呼吸光晕色（由 switchMode 按 MODE_COLOR 同步） */
     modeColor: '',
     isStaffView: false,
@@ -677,9 +686,11 @@ Page({
     actionSubmitting: false,
     editActionCell: null,       // 编辑模式弹出的 cell
     editActionPopup: false,     // 弹窗显隐
-    editActionPhotos: [],       // 弹窗内上传的照片
+    editActionPhotosByKey: {},  // 状态照片/视频：statusField → 展示用 URL[]（每个状态各归各的桶）
+    photoIsVideo: {},           // URL → true（视频）；缩略图与灯箱按此分流
+    editActionPhotoDirty: {},   // 本次动过的桶（只回写这些 key，避免把别人的照片扇出覆盖）
+    editActionUploadingKey: '', // 正在上传照片的状态桶
     editActionNote: "",         // 弹窗内备注
-    editActionUploading: false,
     editHistory: [],            // 弹窗内历史记录
     editHistoryLoading: false,
     confirmLookup: null,        // 扫码确认的 lookup 结果（含 cageCell + claim）
@@ -692,6 +703,12 @@ Page({
     selectedCell: null,
     cellDetailMeta: null,
     showCellDetail: false,
+    /** 媒体灯箱（含视频时使用）：视频自动播放 + 右上角关闭，模拟器与真机都能退出 */
+    mediaPreview: null,
+    mediaPreviewIndex: 0,
+    mediaPreviewIsVideo: false,
+    /** 查看详情三页签：overview | media | records */
+    detailTab: 'overview',
     // 弹窗分区折叠态（查看/状态弹窗共用；记录弹窗不使用）
     openSections: { info: true, status: true, exp: true, history: false },
     cellDetail: null,
@@ -704,6 +721,7 @@ Page({
     expCouldWrite: false,
     expOpen: false,        // 编辑器展开
     expHistOpen: true,    // 历史记录折叠态（默认折叠，点标题展开）
+    expShowAll: false,    // 实验记录页签：默认只展开最近 3 条
     expViewOpen: false,    // 单条记录「查看」弹窗
     expViewRec: null,      // 弹窗里那条记录
     expUploading: false,
@@ -802,6 +820,8 @@ Page({
       ui = rawUi ? (typeof rawUi === 'string' ? JSON.parse(rawUi) : rawUi) : null;
     } catch (e) { ui = null; }
     cageCellVisual.setAccountId(ui && ui.id != null ? ui.id : '');
+    // 详情抽屉记住上次页签（按账号分开存，换人打开互不影响）
+    self._detailTabKey = 'cageShelf.detailTab.' + ((ui && ui.id) || 'anon');
     self._myGroupName = (ui && ui.projectGroupName) || '';
 
     // 拉取用户自定义配色（与 web/H5 共享 /v1/cage-shelves/user-colors），失败回退默认色
@@ -1022,6 +1042,7 @@ Page({
       });
       // 列表就绪后拉一次收藏（房间级 + 笼架级），把 ☆ 状态贴上去
       self.loadFavorites();
+      self._refreshQuickCounts();
 
       // 扫码跳转：自动展开并导航到目标笼位
       if (self.data.highlightTarget) {
@@ -1306,8 +1327,22 @@ Page({
       }
     }
     this.setData({ shelfGroups: groups });
+    this._refreshQuickCounts();
   },
 
+  /** 顶部快捷块计数：只驱动两块是否渲染（行本身直接复用列表数据，不另存副本） */
+  _refreshQuickCounts: function() {
+    var my = 0, fav = 0;
+    (this.data.shelfGroups || []).forEach(function(c) {
+      (c.rooms || []).forEach(function(r) {
+        if (r.hasHighlight) my += 1;
+        (r.shelfGroups || []).forEach(function(g) { if (g._fav) fav += 1; });
+      });
+    });
+    if (my !== this.data.myRoomCount || fav !== this.data.favRoomCount) {
+      this.setData({ myRoomCount: my, favRoomCount: fav });
+    }
+  },
   /** 弹层数据：按收藏顺序平铺（房间一条、笼架一条），名字从当前列表里查。
       房间条目自带它下面的笼架列表 —— 收藏夹里点房间是**原地展开**看笼架，不再跳回列表。 */
   buildFavItems: function() {
@@ -1562,6 +1597,7 @@ Page({
       self.applyPoolToGrid();
       self.applySelectionToGrid();
       self.applyMyClaimToGrid();
+      self.applyDivisionBlockedToGrid();
       // 选位模式下切架：不重投影 op 池高亮，绿色可选环会消失、要再点一次格子才回来
       self.applyOpToGrid();
       self.loadCageOpMarkers();
@@ -1847,6 +1883,7 @@ Page({
       showCellDetail: false
     }, function() {
       self.applyCacheToGrid();
+      self.applyDivisionBlockedToGrid();
       if (mode === 'allocate') self.loadAupList();
       else if (mode === 'booking') self.loadBookingAups();
       else if (mode === 'studentClaim') self.loadPoolCells();
@@ -1942,6 +1979,21 @@ Page({
   toggleDivisionCell: function(cell) {
     if (cageTypeOf(cell) === 1) { wx.showToast({ title: '待分配状态的笼位未归属课题组，不能划分', icon: 'none' }); return; }
     this.toggleCellInSelection(cell);
+  },
+
+  /**
+   * 划分模式：type1（待分配）不可选 → 网格盖红色细斜线。
+   * 只做视觉标记；点击仍由 toggleDivisionCell 给完整原因（toast）。
+   * 离开划分模式时同一函数把标记清掉。
+   */
+  applyDivisionBlockedToGrid: function() {
+    var grid = this.data.grid || [];
+    var on = this.data.pageMode === 'division';
+    var patch = {};
+    for (var i = 0; i < grid.length; i++) {
+      patch['grid[' + i + ']._divisionBlocked'] = on && cageTypeOf(grid[i]) === 1;
+    }
+    this.setData(patch);
   },
 
   /** 把选中集投影到 grid 的 _selected 标记 */
@@ -2246,6 +2298,52 @@ Page({
     }).catch(function(e) {
       self.setData({ divisionSubmitting: false });
       wx.showToast({ title: (e && e.message) || '划分失败', icon: 'none' });
+    });
+  },
+
+  /**
+   * 取消所选笼位的划分（不选人，直接清空）。
+   * 与「划分 N」的选人覆盖分开：已划分的笼位改派走选人，想变回未划分必须走这里；
+   * 不传 assigneeIds 即清空这批笼位的全部划分。
+   */
+  onClearDivisionSelected: function() {
+    var self = this;
+    if (self.data.divisionSubmitting) return;
+    var sel = self.data.selectedCells || {};
+    var cageIds = [];
+    for (var k in sel) { if (Object.prototype.hasOwnProperty.call(sel, k) && sel[k]) cageIds.push(sel[k]); }
+    // 只处理「确实有划分」的格子；没划分的格子清空是空操作，没必要混进确认弹窗
+    var dividedById = {};
+    var grid = self.data.grid || [];
+    for (var gi = 0; gi < grid.length; gi++) {
+      var gid = String(grid[gi].id || grid[gi].animalCageId || '');
+      if (gid) dividedById[gid] = !!grid[gi]._divisionNames;
+    }
+    cageIds = cageIds.filter(function(id) { return dividedById[id]; });
+    if (cageIds.length === 0) { wx.showToast({ title: '所选笼位没有划分，无需取消', icon: 'none' }); return; }
+    wx.showModal({
+      title: '取消划分',
+      content: '将清空这 ' + cageIds.length + ' 个笼位的全部划分，继续？',
+      confirmText: '取消划分',
+      confirmColor: '#dc2626',
+      success: function(r) {
+        if (!r.confirm) return;
+        self.setData({ divisionSubmitting: true });
+        springAuth.springRequest({
+          url: '/api/cage-division/clear',
+          method: 'POST',
+          data: { animalCageIds: cageIds }
+        }).then(function(res) {
+          var p = unwrap(res);
+          if (!p.ok) { self.setData({ divisionSubmitting: false }); wx.showToast({ title: p.message || '取消划分失败', icon: 'none' }); return; }
+          self.setData({ divisionSubmitting: false, selectedCells: {}, selectedCount: 0 });
+          wx.showToast({ title: '已取消 ' + cageIds.length + ' 个笼位的划分', icon: 'success' });
+          self.loadShelfDetail(self.data.selectedShelf ? self.data.selectedShelf.shelveId : '');
+        }).catch(function(e) {
+          self.setData({ divisionSubmitting: false });
+          wx.showToast({ title: (e && e.message) || '取消划分失败', icon: 'none' });
+        });
+      }
     });
   },
 
@@ -2973,6 +3071,14 @@ Page({
         room._total = total;
       });
       self.setData({ myRecordsLoading: false, myRecordsRooms: rooms });
+      // 我的实验记录里同样可能有视频：补齐缩略图分流标记
+      var media = [];
+      rooms.forEach(function(room) {
+        (room.cages || []).forEach(function(cage) {
+          (cage.records || []).forEach(function(rec) { (rec._imgs || []).forEach(function(u) { media.push(u); }); });
+        });
+      });
+      self._markVideoUrls(media);
     }).catch(function() {
       self.setData({ myRecordsLoading: false });
       wx.showToast({ title: '加载我的实验记录失败', icon: 'none' });
@@ -3030,7 +3136,7 @@ Page({
       });
     });
     if (urls.indexOf(url) < 0) urls.push(url);
-    wx.previewImage({ current: url, urls: urls });
+    this._openMediaPreview(urls, url);
   },
 
   /** 「我的转移单」列表：本人提交的转移请求（含已通过/已驳回，网格标记消失后仍可回看）。 */
@@ -3173,7 +3279,10 @@ Page({
       self.setData({
         editActionCell: cell,
         editActionPopup: true,
-        editActionPhotos: [],
+        editActionPhotosByKey: {},
+        photoIsVideo: {},
+        editActionPhotoDirty: {},
+        editActionUploadingKey: '',
         editActionNote: '',
         editHistory: [],
         editHistoryLoading: true,
@@ -3231,16 +3340,24 @@ Page({
           if (up.ok && up.data) {
             var d = up.data;
             var note = '';
-            var all = [];
+            var byKey = {};
             if (d.statusPhotos) {
               try {
                 var sp = typeof d.statusPhotos === 'string' ? JSON.parse(d.statusPhotos) : d.statusPhotos;
                 if (typeof sp._note === 'string') note = sp._note;
-                // 合并所有 key 的照片（跳过 _note 字符串）
-                for (var k in sp) { if (k !== '_note' && Object.prototype.hasOwnProperty.call(sp, k) && Array.isArray(sp[k])) all = all.concat(sp[k]); }
+                // 按状态分桶读入（key = statusField）；每个桶各自显示、各自回写
+                for (var k in sp) {
+                  if (k !== '_note' && Object.prototype.hasOwnProperty.call(sp, k) && Array.isArray(sp[k])) {
+                    byKey[k] = mpMedia.mapMediaUrlList(sp[k]);
+                  }
+                }
               } catch (e) {}
             }
-            self.setData({ editActionNote: note, editActionPhotos: mpMedia.mapMediaUrlList(all) });
+            var videoMap = {};
+            for (var bk in byKey) {
+              (byKey[bk] || []).forEach(function(u) { if (isVideoUrl(u)) videoMap[u] = true; });
+            }
+            self.setData({ editActionNote: note, editActionPhotosByKey: byKey, photoIsVideo: videoMap, editActionPhotoDirty: {} });
           }
         });
       }
@@ -3251,6 +3368,15 @@ Page({
     // 详情弹窗对外的唯一权限位。原先还有个 buildCellDetailMeta 挂了一堆「表外固定字段」，
     // wxml 只读 permitted，2026-09-17 清掉。
     var detailMeta = { permitted: cell.visible !== false };
+
+    // 上次看的是哪个页签就开哪个（按账号存；没有/非法值回落到概况）
+    var savedDetailTab = '';
+    try {
+      savedDetailTab = (self._detailTabKey && wx.getStorageSync(self._detailTabKey)) || '';
+    } catch (e) { savedDetailTab = ''; }
+    if (savedDetailTab !== 'overview' && savedDetailTab !== 'media' && savedDetailTab !== 'records') {
+      savedDetailTab = 'overview';
+    }
 
     self.setData({
       selectedCell: cell,
@@ -3266,12 +3392,15 @@ Page({
       expCouldWrite: false,
       expOpen: false,
       expHistOpen: true,
+      expShowAll: false,
       expViewOpen: false,
       expViewRec: null,
       // 换笼位必须清空上一只的标注照片：loadCellAnnotation 在「无标注」时提前 return，不会覆盖
       detailStatusPhotos: {},
       detailHasStatusBlock: false,
       detailAnnotationLoading: detailMeta.permitted,
+      // 查看详情：三页签（概况 / 状态 / 实验记录），记住上次选择
+      detailTab: savedDetailTab,
       canEditStatusPhotos: canEditStatusPhotos(self.data.isStaffView, self.data.visibleModes),
       detailOpMark: self._pendingOpOf(cell)   // 未决分笼/转移 → 详情一句话提示
     });
@@ -3393,6 +3522,16 @@ Page({
         .map(function(a) { return { code: a.statusField, label: a.label, abbr: a.abbr, color: a.color, bg: a.bg, statusField: a.statusField }; });
       // 按模板分区建树：弹窗按分区渲染；formRows 是扁平副本，扫码确认弹窗仍按平铺渲染
       var tree = buildFormTree(tpl.entries, arr[1], tpl.dict);
+      /* 角色优先：学生先看动物信息，教职工先看项目/归属。
+         必须在标 `_g` 下标**之前**排序，否则编辑回写的 (g,s,r) 会和渲染顺序对不上。 */
+      var groupOrder = self.data.isStaffView
+        ? ['项目信息', '动物信息', '状态标记', '未分类']
+        : ['动物信息', '项目信息', '状态标记', '未分类'];
+      var groupRank = function (g) {
+        var i = groupOrder.indexOf(g && g.title);
+        return i < 0 ? 99 : i;
+      };
+      tree.groups.sort(function (a, b) { return groupRank(a) - groupRank(b); });
       refreshDirty(tree.groups);
       // 编辑权**只认服务端**（cageEditInfo，读矩阵能力 cage.edit.form）。
       // 原先客户端还有一道「角色≥ADMIN 或身份含饲养组长」并与服务端取或——那是旁路，
@@ -3475,6 +3614,64 @@ Page({
   },
 
   onFormInput: function(e) { this._patchFormRow(e, e.detail.value); },
+
+  /* ── combo 字段（如动物品系）：可直接输入，也可从预设候选点选，与 Web 同口径 ── */
+  _formRowOf: function(ds) {
+    var groups = this.data.formGroups || [];
+    var g = groups[Number(ds.g)];
+    return g && g.subs[Number(ds.s)] && g.subs[Number(ds.s)].rows[Number(ds.r)];
+  },
+
+  _comboMatchesOf: function(row, keyword) {
+    var kw = String(keyword || '').trim().toLowerCase();
+    var opts = (row && row.options) || [];
+    var out = [];
+    for (var i = 0; i < opts.length; i++) {
+      var o = opts[i] || {};
+      var value = o.value === undefined || o.value === null ? '' : String(o.value);
+      var label = o.label === undefined || o.label === null ? value : String(o.label);
+      if (!kw || label.toLowerCase().indexOf(kw) >= 0 || value.toLowerCase().indexOf(kw) >= 0) {
+        out.push({ value: value, label: label });
+      }
+      if (out.length >= 8) break;
+    }
+    return out;
+  },
+
+  onFormComboFocus: function(e) {
+    var ds = e.currentTarget.dataset;
+    var row = this._formRowOf(ds);
+    if (!row) return;
+    var base = 'formGroups[' + Number(ds.g) + '].subs[' + Number(ds.s) + '].rows[' + Number(ds.r) + ']';
+    var patch = {};
+    patch[base + '._comboOpen'] = true;
+    patch[base + '._comboMatches'] = this._comboMatchesOf(row, row.raw);
+    this.setData(patch);
+  },
+
+  onFormComboInput: function(e) {
+    this._patchFormRow(e, e.detail.value, e.detail.value);
+    var ds = e.currentTarget.dataset;
+    var row = this._formRowOf(ds);
+    if (!row) return;
+    var base = 'formGroups[' + Number(ds.g) + '].subs[' + Number(ds.s) + '].rows[' + Number(ds.r) + ']';
+    var patch = {};
+    patch[base + '._comboOpen'] = true;
+    patch[base + '._comboMatches'] = this._comboMatchesOf(row, e.detail.value);
+    this.setData(patch);
+  },
+
+  onFormComboPick: function(e) {
+    var ds = e.currentTarget.dataset;
+    var value = ds.value === undefined ? '' : String(ds.value);
+    var label = ds.label === undefined || ds.label === null ? value : String(ds.label);
+    this._patchFormRow(e, value, label);
+    var base = 'formGroups[' + Number(ds.g) + '].subs[' + Number(ds.s) + '].rows[' + Number(ds.r) + ']';
+    var patch = {};
+    patch[base + '._comboOpen'] = false;
+    patch[base + '._comboMatches'] = [];
+    this.setData(patch);
+  },
 
   /** 布尔：自绘开关（原生 switch 只有 color 一个可调项，撑不起设计稿）。取反当前 raw。 */
   onFormToggleBool: function(e) {
@@ -3594,8 +3791,14 @@ loadCellAnnotation: function(cell) {
       }
       // 转绝对地址：库里是相对路径，<image> 直接渲染会是空框（台账那处踩过同一个坑）
       statusPhotos = absMediaMap(statusPhotos);
+      // 详情弹窗也会展示状态照片：把视频 URL 记进同一张标记表，缩略图/灯箱分流
+      var videoMap = Object.assign({}, self.data.photoIsVideo || {});
+      Object.keys(statusPhotos).forEach(function(k) {
+        if (Array.isArray(statusPhotos[k])) statusPhotos[k].forEach(function(u) { if (isVideoUrl(u)) videoMap[u] = true; });
+      });
       self.setData({
         detailStatusPhotos: statusPhotos,
+        photoIsVideo: videoMap,
         detailHasStatusBlock: hasStatusContent(statusPhotos),
         detailAnnotationLoading: false
       });
@@ -3655,6 +3858,11 @@ loadCellAnnotation: function(cell) {
       if (prevId) { next.expDraftContent = ''; next.expDraftImages = []; }
     }
     self.setData(next);
+    // 台账里可能混有视频：把 URL 标进 photoIsVideo，缩略图与灯箱才能分流
+    var media = [];
+    (next.expRecords || []).forEach(function(r) { (r._imgs || []).forEach(function(u) { media.push(u); }); });
+    (next.expDraftImages || []).forEach(function(u) { media.push(u); });
+    self._markVideoUrls(media);
   },
 
   /** 新增：有草稿时 wxml 就不出这个入口，这里再兜一道 */
@@ -3693,40 +3901,67 @@ loadCellAnnotation: function(cell) {
     }
   },
 
-  /** 草稿照片上传（与状态照片同一套 uploadFileDirect） */
+  /** 草稿照片/视频上传（与状态照片同一套 uploadFileDirect；视频带实验记录用途放行） */
   onExpRecordChooseImage: function() {
     var self = this;
     if (self.data.expUploading) return;
+    /** items: [{ path, type: 'image' | 'video' }] */
+    var start = function(items) {
+      if (!items.length) return;
+      self.setData({ expUploading: true });
+      var uploaded = [];
+      var videoMap = Object.assign({}, self.data.photoIsVideo || {});
+      var next = function(idx) {
+        if (idx >= items.length) {
+          self.setData({ expUploading: false });
+          if (uploaded.length > 0) {
+            self.setData({
+              expDraftImages: (self.data.expDraftImages || []).concat(uploaded),
+              photoIsVideo: videoMap
+            });
+          }
+          return;
+        }
+        var it = items[idx];
+        springAuth.uploadFileDirect(it.path, { purpose: 'experiment-record' }).then(function(url) {
+          if (url) {
+            uploaded.push(url);
+            if (it.type === 'video') videoMap[url] = true;
+          }
+          next(idx + 1);
+        }).catch(function() {
+          wx.showToast({ title: '有文件上传失败', icon: 'none' });
+          next(idx + 1);
+        });
+      };
+      next(0);
+    };
+    if (wx.chooseMedia) {
+      wx.chooseMedia({
+        count: 9,
+        mediaType: ['image', 'video'],
+        sourceType: ['album', 'camera'],
+        camera: 'back',
+        maxDuration: 60,
+        success: function(res) {
+          start((res.tempFiles || []).map(function(f) {
+            return { path: f.tempFilePath, type: f.fileType === 'video' ? 'video' : 'image' };
+          }));
+        }
+      });
+      return;
+    }
     wx.chooseImage({
       count: 9,
       sizeType: ['compressed'],
       sourceType: ['album', 'camera'],
       success: function(res) {
-        if (!res.tempFilePaths || res.tempFilePaths.length === 0) return;
-        self.setData({ expUploading: true });
-        var uploaded = [];
-        var next = function(idx) {
-          if (idx >= res.tempFilePaths.length) {
-            self.setData({ expUploading: false });
-            if (uploaded.length > 0) {
-              self.setData({ expDraftImages: (self.data.expDraftImages || []).concat(uploaded) });
-            }
-            return;
-          }
-          springAuth.uploadFileDirect(res.tempFilePaths[idx], {}).then(function(url) {
-            uploaded.push(url);
-            next(idx + 1);
-          }).catch(function() {
-            wx.showToast({ title: '有图片上传失败', icon: 'none' });
-            next(idx + 1);
-          });
-        };
-        next(0);
+        start((res.tempFilePaths || []).map(function(p) { return { path: p, type: 'image' }; }));
       }
     });
   },
 
-  /** 台账照片预览：只汇台账自己的图，和状态照片各自预览互不干扰 */
+  /** 台账照片/视频预览：只汇台账自己的媒体，和状态照片各自预览互不干扰 */
   onExpPreviewImage: function(e) {
     var url = e.currentTarget.dataset.url;
     if (!url) return;
@@ -3735,7 +3970,7 @@ loadCellAnnotation: function(cell) {
     (this.data.expRecords || []).forEach(function(r) { (r._imgs || []).forEach(push); });
     (this.data.expDraftImages || []).forEach(push);
     push(url); // 兜底：被点的那张一定在列表里
-    wx.previewImage({ current: url, urls: urls });
+    this._openMediaPreview(urls, url);
   },
 
   onExpRecordSaveDraft: function() { this._submitExpRecord('draft'); },
@@ -3751,7 +3986,7 @@ loadCellAnnotation: function(cell) {
     var content = self.data.expDraftContent || '';
     var images = self.data.expDraftImages || [];
     if (action === 'submit' && !content.trim() && images.length === 0) {
-      wx.showToast({ title: '请先填写文字或添加照片', icon: 'none' });
+      wx.showToast({ title: '请先填写文字或添加照片/视频', icon: 'none' });
       return;
     }
     self.setData({ expSaving: true });
@@ -3774,6 +4009,30 @@ loadCellAnnotation: function(cell) {
     });
   },
 
+  /** 把一组媒体 URL 里的视频标进 photoIsVideo（缩略图与灯箱共用同一张表） */
+  _markVideoUrls: function(urls) {
+    var map = Object.assign({}, this.data.photoIsVideo || {});
+    var changed = false;
+    (urls || []).forEach(function(u) {
+      if (u && !map[u] && isVideoUrl(u)) { map[u] = true; changed = true; }
+    });
+    if (changed) this.setData({ photoIsVideo: map });
+  },
+
+  /** 统一预览：含视频走自建灯箱（自动播放 + 明确关闭），纯图片仍走微信原生大图 */
+  _openMediaPreview: function(urls, url) {
+    var list = (urls || []).slice();
+    if (url && list.indexOf(url) < 0) list.push(url);
+    var hasVideo = list.some(function(u) { return isVideoUrl(u); });
+    if (hasVideo) {
+      var idx = list.indexOf(url);
+      if (idx < 0) idx = 0;
+      this.setData({ mediaPreview: { urls: list }, mediaPreviewIndex: idx, mediaPreviewIsVideo: isVideoUrl(list[idx]) });
+      return;
+    }
+    wx.previewImage({ current: url, urls: list });
+  },
+
   /**
    * 照片预览（状态照片一线）：把当前弹窗里状态照片汇成一个可左右滑动的大图列表。
    * 实验记录自己的照片走 onExpPreviewImage —— 台账独立成卷，别和状态照片混在一个列表里。
@@ -3788,15 +4047,33 @@ loadCellAnnotation: function(cell) {
     Object.keys(sp).forEach(function(k) {
       if (Array.isArray(sp[k])) sp[k].forEach(push);
     });
-    (this.data.editActionPhotos || []).forEach(push);
+    var byKey = this.data.editActionPhotosByKey || {};
+    Object.keys(byKey).forEach(function(k) {
+      if (Array.isArray(byKey[k])) byKey[k].forEach(push);
+    });
     (this.data.editHistory || []).forEach(function(h) {
       (h._imgs || []).forEach(push);
     });
     push(url); // 兜底：无论图片来自哪个字段，被点的那张一定在列表里
-    wx.previewImage({
-      current: url,
-      urls: urls
-    });
+    this._openMediaPreview(urls, url);
+  },
+
+  onMediaPreviewPrev: function() {
+    var mp = this.data.mediaPreview;
+    if (!mp || !mp.urls || !mp.urls.length) return;
+    var idx = (this.data.mediaPreviewIndex + mp.urls.length - 1) % mp.urls.length;
+    this.setData({ mediaPreviewIndex: idx, mediaPreviewIsVideo: isVideoUrl(mp.urls[idx]) });
+  },
+
+  onMediaPreviewNext: function() {
+    var mp = this.data.mediaPreview;
+    if (!mp || !mp.urls || !mp.urls.length) return;
+    var idx = (this.data.mediaPreviewIndex + 1) % mp.urls.length;
+    this.setData({ mediaPreviewIndex: idx, mediaPreviewIsVideo: isVideoUrl(mp.urls[idx]) });
+  },
+
+  onCloseMediaPreview: function() {
+    this.setData({ mediaPreview: null });
   },
 
   /**
@@ -3860,6 +4137,17 @@ loadCellAnnotation: function(cell) {
   },
 
 onCloseCellDetail: function() { this._closeDetail(); },
+
+  /** 查看详情三页签：概况 / 状态 / 实验记录；按账号记住上次选择 */
+  onDetailTab: function(e) {
+    var tab = e.currentTarget.dataset.tab;
+    if (tab !== 'overview' && tab !== 'media' && tab !== 'records') return;
+    this.setData({ detailTab: tab });
+    try { if (this._detailTabKey) wx.setStorageSync(this._detailTabKey, tab); } catch (err) {}
+  },
+
+  /** 实验记录只先展开最近 3 条，避免记录一多就把页签拉很长 */
+  onExpShowAll: function() { this.setData({ expShowAll: true }); },
 _closeDetail: function() {
     // 注意：这里**不能**清 formRows / formGroups。
     // van-popup 的离场动画有 ~300ms，而 setData 是和「隐藏」在同一次里生效的 ——
@@ -5533,45 +5821,113 @@ getCellStyleWxs: function(cell) {
     this.applySeverityValue(code, !on);
   },
 
-  onEditActionChoosePhoto: function() {
+  /** 给某一个状态桶加照片或视频（data-field = 该状态的 statusField） */
+  onEditActionChoosePhoto: function(e) {
     var self = this;
+    var field = e.currentTarget.dataset.field;
+    if (!field) return;
+    if (self.data.editActionUploadingKey) return;
+    /** items: [{ path, type: 'image' | 'video' }] */
+    var start = function(items) {
+      if (!items.length) return;
+      self.setData({ editActionUploadingKey: field });
+      var uploaded = [];
+      var lastErr = '';
+      var next = function(idx) {
+        if (idx >= items.length) {
+          self.setData({ editActionUploadingKey: '' });
+          if (uploaded.length === 0 && items.length > 0) {
+            wx.showToast({ title: lastErr || '上传失败', icon: 'none' });
+            return;
+          }
+          if (uploaded.length > 0) {
+            var byKey = Object.assign({}, self.data.editActionPhotosByKey || {});
+            var videoMap = Object.assign({}, self.data.photoIsVideo || {});
+            var urls = (byKey[field] || []).slice();
+            uploaded.forEach(function(it) {
+              urls.push(it.url);
+              if (it.video) videoMap[it.url] = true;
+            });
+            byKey[field] = urls;
+            var dirty = Object.assign({}, self.data.editActionPhotoDirty || {});
+            dirty[field] = true; // 只标脏这一桶，保存时不动别的状态
+            self.setData({ editActionPhotosByKey: byKey, photoIsVideo: videoMap, editActionPhotoDirty: dirty });
+          }
+          return;
+        }
+        var it = items[idx];
+        springAuth.uploadFileDirect(it.path, {}).then(function(url) {
+          if (url) uploaded.push({ url: url, video: it.type === 'video' });
+          next(idx + 1);
+        }).catch(function(e) { lastErr = (e && e.message) || lastErr; next(idx + 1); });
+      };
+      next(0);
+    };
+    // 原生相机里拍照/拍视频是一体的（长按快门录像），chooseMedia 同时放开两种媒体即可
+    if (wx.chooseMedia) {
+      wx.chooseMedia({
+        count: 6,
+        mediaType: ['image', 'video'],
+        sourceType: ['album', 'camera'],
+        camera: 'back',
+        maxDuration: 60,
+        success: function(res) {
+          start((res.tempFiles || []).map(function(f) {
+            return { path: f.tempFilePath, type: f.fileType === 'video' ? 'video' : 'image' };
+          }));
+        }
+      });
+      return;
+    }
+    // 旧基础库兜底：仅图片
     wx.chooseImage({
       count: 6,
       sizeType: ['compressed'],
       sourceType: ['album', 'camera'],
       success: function(res) {
-        if (!res.tempFilePaths || res.tempFilePaths.length === 0) return;
-        self.setData({ editActionUploading: true });
-        var uploaded = [];
-        var next = function(idx) {
-          if (idx >= res.tempFilePaths.length) {
-            self.setData({ editActionUploading: false });
-            if (uploaded.length > 0) {
-              var cur = self.data.editActionPhotos || [];
-              var np = cur.concat(uploaded);
-              self.setData({ editActionPhotos: np });
-              // 不再自动保存，统一由「保存标注」按钮提交
-            }
-            return;
-          }
-          springAuth.uploadFileDirect(res.tempFilePaths[idx], {}).then(function(url) {
-            uploaded.push(url);
-            next(idx + 1);
-          }).catch(function() { next(idx + 1); });
-        };
-        next(0);
+        start((res.tempFilePaths || []).map(function(p) { return { path: p, type: 'image' }; }));
       }
     });
   },
 
   onEditActionRemovePhoto: function(e) {
+    var field = e.currentTarget.dataset.field;
     var idx = e.currentTarget.dataset.index;
-    var photos = (this.data.editActionPhotos || []).slice();
-    if (idx >= 0 && idx < photos.length) { photos.splice(idx, 1); this.setData({ editActionPhotos: photos }); }
+    if (!field) return;
+    var byKey = Object.assign({}, this.data.editActionPhotosByKey || {});
+    var arr = (byKey[field] || []).slice();
+    if (idx >= 0 && idx < arr.length) {
+      arr.splice(idx, 1);
+      byKey[field] = arr;
+      var dirty = Object.assign({}, this.data.editActionPhotoDirty || {});
+      dirty[field] = true;
+      this.setData({ editActionPhotosByKey: byKey, editActionPhotoDirty: dirty });
+    }
   },
 
   onEditActionNoteInput: function(e) {
     this.setData({ editActionNote: e.detail.value || '' });
+  },
+
+  /**
+   * 把本次动过的状态照片桶合并进 statusPhotos（就地修改并返回）。
+   * 只写 dirty 过的 key —— 不再把一份照片扇出写进每个已开启状态；
+   * 桶空了就删键；展示用绝对地址还原成存储用相对路径。
+   */
+  mergeDirtyActionPhotos: function(sp) {
+    var dirty = this.data.editActionPhotoDirty || {};
+    var byKey = this.data.editActionPhotosByKey || {};
+    var toStored = function(u) {
+      var s = String(u || '');
+      var i = s.indexOf('/api/upload/');
+      return i >= 0 ? s.slice(i) : s;
+    };
+    for (var k in dirty) {
+      if (!Object.prototype.hasOwnProperty.call(dirty, k)) continue;
+      var urls = (byKey[k] || []).map(toStored).filter(Boolean);
+      if (urls.length) sp[k] = urls; else delete sp[k];
+    }
+    return sp;
   },
 
   onEditActionSave: function() {
@@ -5587,9 +5943,7 @@ getCellStyleWxs: function(cell) {
       if (up.ok && up.data && up.data.statusPhotos) {
         try { var ex = typeof up.data.statusPhotos === 'string' ? JSON.parse(up.data.statusPhotos) : up.data.statusPhotos; if (typeof ex === 'object' && !Array.isArray(ex)) sp = ex; } catch(e) {}
       }
-      var photos = self.data.editActionPhotos || [];
-      cageStatus.statusPhotoKeys(cageStatus.actionsFromFormValues(self.data.editFormValues)).forEach(function (k) { sp[k] = photos; });
-      if (photos.length > 0) sp._status = photos;
+      self.mergeDirtyActionPhotos(sp);
       var note = (self.data.editActionNote || '').trim();
       if (note) sp._note = note; // 标注文本存入 statusPhotos，与实验记录分离
       var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
@@ -5598,6 +5952,7 @@ getCellStyleWxs: function(cell) {
       // 业务错误是 HTTP 200 + {success:false}，不解包会把「被服务端拦下」显示成「已保存」
       var up2 = unwrap(res2);
       if (!up2.ok) { wx.showToast({ title: up2.message || '保存失败', icon: 'none' }); return; }
+      self.setData({ editActionPhotoDirty: {} }); // 已落库的桶不再算脏
       wx.showToast({ title: '标注已保存', icon: 'success' });
     }).catch(function(e) {
       wx.showToast({ title: '保存失败: ' + ((e && e.message) || ''), icon: 'none' });
@@ -5617,9 +5972,7 @@ getCellStyleWxs: function(cell) {
       if (up.ok && up.data && up.data.statusPhotos) {
         try { var ex = typeof up.data.statusPhotos === 'string' ? JSON.parse(up.data.statusPhotos) : up.data.statusPhotos; if (typeof ex === 'object' && !Array.isArray(ex)) sp = ex; } catch(e) {}
       }
-      var photos = self.data.editActionPhotos || [];
-      cageStatus.statusPhotoKeys(cageStatus.actionsFromFormValues(self.data.editFormValues)).forEach(function (k) { sp[k] = photos; });
-      if (photos.length > 0) sp._status = photos;
+      self.mergeDirtyActionPhotos(sp);
       var note = (self.data.editActionNote || '').trim();
       if (note) sp._note = note;
       var body = { animalCageId: animalCageId, statusPhotos: JSON.stringify(sp) };
@@ -5629,7 +5982,7 @@ getCellStyleWxs: function(cell) {
       var up2 = unwrap(res2);
       if (!up2.ok) { wx.showToast({ title: up2.message || '保存失败', icon: 'none' }); return; }
       // 清空表单 + 刷新历史
-      self.setData({ editActionPhotos: [], editActionNote: '' });
+      self.setData({ editActionPhotosByKey: {}, photoIsVideo: {}, editActionPhotoDirty: {}, editActionUploadingKey: '', editActionNote: '' });
       if (animalCageId) {
         springAuth.springRequest({ url: '/api/local/history/' + animalCageId, method: 'GET', data: {} }).then(function(hres) {
           var hp = unwrap(hres);
@@ -5644,7 +5997,7 @@ getCellStyleWxs: function(cell) {
   },
 
   onEditActionJustClose: function() {
-    this.setData({ editActionPopup: false, editActionCell: null, editActionPhotos: [], editActionNote: '', editHistory: [] });
+    this.setData({ editActionPopup: false, editActionCell: null, editActionPhotosByKey: {}, photoIsVideo: {}, editActionPhotoDirty: {}, editActionUploadingKey: '', editActionNote: '', editHistory: [] });
   },
 
   onEditHistoryDelete: function(e) {

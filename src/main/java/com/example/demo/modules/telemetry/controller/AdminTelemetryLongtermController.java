@@ -8,6 +8,8 @@ import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermBundleOp
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermCandidateDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermMatrixDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermExportRequest;
+import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermPartitionDto;
+import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermPartitionWriteDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermPlanDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermQueryPageDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermVariableDto;
@@ -21,7 +23,9 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -57,6 +61,52 @@ public class AdminTelemetryLongtermController {
         this.pdfService = pdfService;
     }
 
+    @GetMapping("/partitions")
+    @Operation(summary = "数据监测的自定义分区（tab）")
+    public Result<List<TelemetryLongtermPartitionDto>> partitions(HttpServletRequest request) {
+        Result<?> denied = requireAdmin(request);
+        if (denied != null) {
+            return cast(denied);
+        }
+        return Result.success(service.listPartitions());
+    }
+
+    @PostMapping("/partitions")
+    @Operation(summary = "新增自定义分区")
+    public Result<TelemetryLongtermPartitionDto> createPartition(
+            HttpServletRequest request,
+            @RequestBody TelemetryLongtermPartitionWriteDto body) {
+        Result<?> denied = requireAdmin(request);
+        if (denied != null) {
+            return cast(denied);
+        }
+        return Result.success(service.createPartition(body == null ? null : body.getName()), "已新增");
+    }
+
+    @PutMapping("/partitions/{id}")
+    @Operation(summary = "重命名自定义分区")
+    public Result<TelemetryLongtermPartitionDto> renamePartition(
+            HttpServletRequest request,
+            @PathVariable long id,
+            @RequestBody TelemetryLongtermPartitionWriteDto body) {
+        Result<?> denied = requireAdmin(request);
+        if (denied != null) {
+            return cast(denied);
+        }
+        return Result.success(service.renamePartition(id, body == null ? null : body.getName()), "已保存");
+    }
+
+    @DeleteMapping("/partitions/{id}")
+    @Operation(summary = "删除自定义分区（其变量归入未分区）")
+    public Result<Void> deletePartition(HttpServletRequest request, @PathVariable long id) {
+        Result<?> denied = requireAdmin(request);
+        if (denied != null) {
+            return cast(denied);
+        }
+        service.deletePartition(id);
+        return Result.success();
+    }
+
     @GetMapping("/candidates")
     @Operation(summary = "候选变量（来自变量目录，可按分区 / 关键词 / 楼层收窄）")
     public Result<List<TelemetryLongtermCandidateDto>> candidates(
@@ -88,12 +138,13 @@ public class AdminTelemetryLongtermController {
             @RequestParam(value = "day", required = false) String day,
             @RequestParam(value = "month", required = false) String month,
             @RequestParam(value = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+            @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(value = "partitionId", required = false) Long partitionId) {
         Result<?> denied = requireAdmin(request);
         if (denied != null) {
             return cast(denied);
         }
-        return Result.success(service.queryMatrix(day, month, from, to));
+        return Result.success(service.queryMatrix(day, month, from, to, partitionId));
     }
 
     @GetMapping("/days")
@@ -102,12 +153,13 @@ public class AdminTelemetryLongtermController {
             HttpServletRequest request,
             @RequestParam(value = "month", required = false) String month,
             @RequestParam(value = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
-            @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+            @RequestParam(value = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(value = "partitionId", required = false) Long partitionId) {
         Result<?> denied = requireAdmin(request);
         if (denied != null) {
             return cast(denied);
         }
-        return Result.success(service.listDaysWithData(month, from, to));
+        return Result.success(service.listDaysWithData(month, from, to, partitionId));
     }
 
     @GetMapping("/variables")
@@ -154,22 +206,25 @@ public class AdminTelemetryLongtermController {
             @RequestParam(value = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(value = "to", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(value = "partitionId", required = false) Long partitionId) {
         Result<?> denied = requireAdmin(request);
         if (denied != null) {
             return cast(denied);
         }
-        return Result.success(service.querySamples(page, size, variableQ, month, from, to));
+        return Result.success(service.querySamples(page, size, variableQ, month, from, to, partitionId));
     }
 
     @GetMapping("/months")
     @Operation(summary = "有数据的月份（月份下拉）")
-    public Result<List<String>> months(HttpServletRequest request) {
+    public Result<List<String>> months(
+            HttpServletRequest request,
+            @RequestParam(value = "partitionId", required = false) Long partitionId) {
         Result<?> denied = requireAdmin(request);
         if (denied != null) {
             return cast(denied);
         }
-        return Result.success(service.listMonths());
+        return Result.success(service.listMonths(partitionId));
     }
 
     @PostMapping("/export")
@@ -216,7 +271,8 @@ public class AdminTelemetryLongtermController {
             @RequestParam(value = "from", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(value = "to", required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(value = "partitionId", required = false) Long partitionId) {
         Result<?> denied = requireAdmin(request);
         if (denied != null) {
             return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN)
@@ -231,6 +287,7 @@ public class AdminTelemetryLongtermController {
             req.setDays(splitVariables(days));
             req.setFrom(from);
             req.setTo(to);
+            req.setPartitionId(partitionId);
             byte[] body = exportService.exportXlsx(req);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -269,7 +326,8 @@ public class AdminTelemetryLongtermController {
         }
         try {
             byte[] body = pdfService.renderPdf(currentUser(request), days,
-                    req == null ? null : req.getVariableNames(), displayStem(req));
+                    req == null ? null : req.getVariableNames(), displayStem(req),
+                    req == null ? null : req.getPartitionId());
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             disposition("telemetry-longterm-" + asciiStem(req) + "-curves.pdf",

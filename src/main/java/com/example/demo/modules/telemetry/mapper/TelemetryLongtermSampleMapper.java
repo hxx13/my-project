@@ -14,11 +14,13 @@ public interface TelemetryLongtermSampleMapper {
 
     long countByFilter(
             @Param("variableQ") String variableQ,
+            @Param("variableNames") List<String> variableNames,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
     List<TelemetryLongtermSampleRow> selectPageByFilter(
             @Param("variableQ") String variableQ,
+            @Param("variableNames") List<String> variableNames,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to,
             @Param("offset") int offset,
@@ -32,12 +34,13 @@ public interface TelemetryLongtermSampleMapper {
             @Param("limit") int limit);
 
     /** 月份下拉：已有哪些月份有数据 */
-    List<String> selectDistinctMonths();
+    List<String> selectDistinctMonths(@Param("variableNames") List<String> variableNames);
 
     /**
      * 区间内**有数据的日期**（{@code yyyy-MM-dd}，新的在前）。
      * 日历上标「哪天有数据」靠它；矩阵按天取数也先经它定位。
      */
     List<String> selectDistinctDays(@Param("from") LocalDateTime from,
-                                    @Param("to") LocalDateTime to);
+                                    @Param("to") LocalDateTime to,
+                                    @Param("variableNames") List<String> variableNames);
 }

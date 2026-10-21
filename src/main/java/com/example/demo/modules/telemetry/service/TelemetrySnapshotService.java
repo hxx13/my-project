@@ -192,6 +192,7 @@ public class TelemetrySnapshotService {
                 .alarmOutOfRange(existing.getAlarmOutOfRange())
                 .alarmBand(existing.getAlarmBand())
                 .watchlistTagId(existing.getWatchlistTagId())
+                .showInAnimalRoom(existing.getShowInAnimalRoom())
                 .alarmOverrideMin(existing.getAlarmOverrideMin())
                 .alarmOverrideMax(existing.getAlarmOverrideMax())
                 .value(fresh.getValue())
@@ -585,6 +586,7 @@ public class TelemetrySnapshotService {
                 .alarmBand(null)
                 .valueTrend(x.getValueTrend())
                 .watchlistTagId(x.getWatchlistTagId())
+                .showInAnimalRoom(x.getShowInAnimalRoom())
                 .alarmOverrideMin(x.getAlarmOverrideMin())
                 .alarmOverrideMax(x.getAlarmOverrideMax())
                 .value(x.getValue())
@@ -631,6 +633,7 @@ public class TelemetrySnapshotService {
                 .alarmBand(null)
                 .valueTrend(x.getValueTrend())
                 .watchlistTagId(x.getWatchlistTagId())
+                .showInAnimalRoom(x.getShowInAnimalRoom())
                 .alarmOverrideMin(x.getAlarmOverrideMin())
                 .alarmOverrideMax(x.getAlarmOverrideMax())
                 .value(x.getValue())
@@ -657,6 +660,7 @@ public class TelemetrySnapshotService {
         Map<String, String> kindLabels = en.getMetricKindLabelByVariable();
         Map<String, String> kindRoles = en.getMetricKindRoleByVariable();
         Map<String, Long> tagIds = en.getWatchlistTagIdByVariable();
+        Set<String> hiddenInAnimalRoom = en.getHiddenInAnimalRoomVariables();
         for (TelemetryTagItemDto dto : items) {
             if (dto == null || !StringUtils.hasText(dto.getVariableName())) {
                 continue;
@@ -698,6 +702,8 @@ public class TelemetrySnapshotService {
             if (tid != null) {
                 dto.setWatchlistTagId(tid);
             }
+            String canon = TelemetryWatchlistDbService.normalizeWinCcVariableKey(vn);
+            dto.setShowInAnimalRoom(!hiddenInAnimalRoom.contains(vn) && !hiddenInAnimalRoom.contains(canon));
         }
         return items;
     }

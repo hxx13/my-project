@@ -161,7 +161,6 @@ import StudentMaterialPage from "@/features/student/pages/student-material";
 import StudentExamPage from "@/features/student/pages/student-exam";
 import StudentExamAnswerPage from "@/features/student/pages/student-exam-answer";
 import StudentTrainingPage from "@/features/student/pages/student-training";
-import StudentTrainingMyPage from "@/features/student/pages/student-training-my";
 import StudentHealthSurveyPage from "@/features/student/pages/student-health-survey";
 import StudentCertificatesPage from "@/features/student/pages/student-certificates";
 import ReportFormListPage from "@/features/report-form/pages/ReportFormListPage";
@@ -317,8 +316,9 @@ export const router = createHashRouter([
       { path: "aup/review/:id", element: <AupReviewPage /> },
       { path: "exam", element: <StudentExamPage /> },
       { path: "exam/:paperId", element: <StudentExamAnswerPage /> },
-      { path: "training", element: <StudentTrainingPage /> },
-      { path: "training/my", element: <StudentTrainingMyPage /> },
+      { path: "training", element: <Navigate to="/student/training/list" replace /> },
+      { path: "training/list", element: <StudentTrainingPage /> },
+      { path: "training/my", element: <Navigate to="/student/training/list" replace /> },
       { path: "health-survey", element: <StudentHealthSurveyPage /> },
       { path: "certificates", element: <StudentCertificatesPage /> },
       // 电子签名：与教职工端同一页、同一份数据（对应小程序「我的 → 电子签名」）

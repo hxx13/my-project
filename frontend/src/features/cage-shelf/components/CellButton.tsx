@@ -36,7 +36,7 @@ const HATCH_STYLE: React.CSSProperties = { backgroundImage: CAGE_HATCH_BG };
  *
  * Props 共 22 个 — 如需新增请评估是否该拆出子组件
  */
-export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor, disabledReason, qty, compact }: {
+export const CellButton = memo(function CellButton({ cell, onClick, alert, selectable, selected, onToggle, allocMode, clickMode, editCacheEntry, isLastScanned, bindHighlight, bindPending, editMode, bindMode, isCrossCol, isCrossRow, flashOverlay, claimMode, isPoolCell, confirmMode, isMyClaimCell, restrictSelectToPool, pairColor, opMarker, lockState, divisionLabel, poolColor, poolLabel, disabledReason, qty, compact }: {
   cell: CageShelfCell; onClick?: (c: CageShelfCell) => void; alert?: PersistedAlert;
   selectable?: boolean; selected?: boolean; onToggle?: (e: React.MouseEvent) => void; allocMode?: boolean;
   clickMode?: "toggle" | "checkbox";
@@ -46,6 +46,8 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
   claimMode?: boolean; isPoolCell?: boolean; confirmMode?: boolean;
   /** 「当前可选」标签的底色；跟随当前模式配色，不传则用 emerald 兜底 */
   poolColor?: string;
+  /** 「当前可选」标签的文字；划分模式传「可选择」，默认「当前可选」 */
+  poolLabel?: string;
   /** 认领/扫码确认模式：该笼位是「本人待确认到位」的认领，高亮以便一眼找到 */
   isMyClaimCell?: boolean;
   /** 只有池内格子可勾选（分笼/转移选位用；否则同架其他格子也会冒复选框） */
@@ -200,6 +202,11 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
     className={`${cls} outline-none focus-visible:ring-2 focus-visible:ring-[var(--twin-primary)]`}
     style={selected ? { ...style, borderColor: "#3b82f6", borderWidth: "2px" } : style}
     onClick={isDisabled ? undefined : handleCardClick}
+    onMouseDown={(e) => {
+      // Shift+点击做矩形多选时，浏览器会顺手开始选文字（整片蓝色高亮）。
+      // 在 mousedown 阶段拦掉默认行为，click 仍然照常派发。
+      if (e.shiftKey) e.preventDefault();
+    }}
     onKeyDown={(e) => {
       if (isDisabled || (e.key !== "Enter" && e.key !== " ")) return;
       e.preventDefault();
@@ -230,12 +237,13 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       claimMode 的语义就是「这格在当前池子里可选」，全 web 统一用这个标签表达。
       注意：扫码/购物车「定位」的红色十字高亮是另一套（flashOverlay / crossX·crossY），别动。
     */}
-    {claimMode && isPoolCell && !compact && (
+    {claimMode && isPoolCell && !compact && !(allocMode && selected) && (
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md text-center text-[8px] font-bold leading-[13px] text-white"
-        style={{ backgroundColor: poolColor || "#10b981" }}
+        /* 划分模式的「可选择」固定绿：跟同屏的玫红「已划分」拉开色相，别共用模式主色 */
+        style={{ backgroundColor: poolLabel ? "#10b981" : (poolColor || "#10b981") }}
       >
-        当前可选
+        {poolLabel ?? "当前可选"}
       </div>
     )}
     {/* 批量转移配对色：源与目标同色同环，靠颜色在网格上认出「谁转给谁」 */}
@@ -276,12 +284,18 @@ export const CellButton = memo(function CellButton({ cell, onClick, alert, selec
       return <>
         <div className="absolute inset-0 z-10 rounded-twin-md bg-rose-500/10 pointer-events-none" />
         <div className={`absolute inset-0 z-10 rounded-twin-md pointer-events-none ring-inset ${mine ? "ring-2 ring-rose-500" : "ring-1 ring-rose-400/60"}`} />
-        {!compact && (
+        {!compact && !(allocMode && selected) && (
           <div className="absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md bg-rose-600 text-center text-[8px] font-bold leading-[13px] text-white pointer-events-none"
             title={divisionLabel}>{divisionLabel}</div>
         )}
       </>;
     })()}
+    {/* 已选择：压在「可选择 / 已划分」之上，当前到底选了哪些一眼可见（三者不再混在一起） */}
+    {allocMode && isSelectable && selected && (
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 truncate rounded-b-twin-md bg-blue-600 text-center text-[8px] font-bold leading-[13px] text-white">
+        已选择
+      </div>
+    )}
     {cell.claimStatus && (() => {
       const badge: Record<string, { txt: string; cls: string; pos: string }> = {
         locked: { txt: "未到位", cls: "bg-amber-500 text-white", pos: "left-0.5" },

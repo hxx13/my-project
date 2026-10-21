@@ -14,8 +14,13 @@ public final class ExcelExportColumnAutosizer {
     private static final DataFormatter FMT = new DataFormatter();
     /** 单列宽度上限（POI 单位为 1/256 字符宽），约 85 个英文字符 */
     private static final int MAX_COL_WIDTH_UNITS = 22000;
-    /** 每个字符的估算宽度单位（中文约 512，英文约 256，取保守值） */
-    private static final int UNITS_PER_CHAR = 512;
+    /** 列宽下限（POI 单位）；按内容估算后不低于此值，避免表头过窄 */
+    private static final int MIN_COL_WIDTH_UNITS = 1800;
+    /** ASCII 字符宽度单位；中文/全角约为其两倍 */
+    private static final int ASCII_UNITS = 256;
+    private static final int WIDE_CHAR_UNITS = 512;
+    /** 左右留白（POI 单位） */
+    private static final int CELL_PADDING_UNITS = 512;
 
     private ExcelExportColumnAutosizer() {
     }
@@ -38,7 +43,7 @@ public final class ExcelExportColumnAutosizer {
                 if (w > dataW) dataW = w;
             }
             int w = Math.max(headerW, dataW);
-            if (w < 3000) w = 3000;
+            if (w < MIN_COL_WIDTH_UNITS) w = MIN_COL_WIDTH_UNITS;
             if (w > MAX_COL_WIDTH_UNITS) w = MAX_COL_WIDTH_UNITS;
             sheet.setColumnWidth(c, w);
         }
@@ -58,7 +63,7 @@ public final class ExcelExportColumnAutosizer {
             // 只有表头，按表头文字估算
             for (int c = firstCol; c <= lastColInclusive; c++) {
                 int w = textWidth(sheet, 0, c);
-                if (w < 3000) w = 3000;
+                if (w < MIN_COL_WIDTH_UNITS) w = MIN_COL_WIDTH_UNITS;
                 sheet.setColumnWidth(c, w);
             }
         }
@@ -70,7 +75,13 @@ public final class ExcelExportColumnAutosizer {
         Cell cell = row.getCell(col);
         String t = cell == null ? "" : FMT.formatCellValue(cell).trim();
         if (t.isEmpty()) return 0;
+        // 逐字符估算：数字/字母按窄字符算，中文与全角标点按宽字符算。
+        // 以前所有字符都按宽字符算，时间戳这类纯 ASCII 列会被撑成两倍宽。
+        int units = CELL_PADDING_UNITS;
         int len = Math.min(t.length(), 100);
-        return (len + 2) * UNITS_PER_CHAR;
+        for (int i = 0; i < len; i++) {
+            units += t.charAt(i) >= 0x2E80 ? WIDE_CHAR_UNITS : ASCII_UNITS;
+        }
+        return units;
     }
 }

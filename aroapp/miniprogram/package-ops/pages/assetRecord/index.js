@@ -263,12 +263,17 @@ Page({
     }
     if (!pagePermission.guardPageOnShow(this, '/package-ops/pages/assetRecord/index', role, 'STAFF')) return;
 
-    // 扫码跳转：自动搜索资产编号
+    // 扫码跳转：自动搜索资产编号。
+    // 列表真正吃的字段是 appliedKeyword（keyword 只负责输入框回显），
+    // 只写 searchKeyword 属于另一个弹层的输入，扫完会停在未筛选的列表上。
     const searchCode = this._pendingSearchCode;
     if (searchCode) {
       this._pendingSearchCode = null;
       this.ensureLocationTree();
-      this.setData({ page: 1, rows: [], searchKeyword: searchCode }, () => this.loadData(1));
+      this.setData(
+        { page: 1, rows: [], keyword: searchCode, appliedKeyword: searchCode },
+        () => this.loadData(1),
+      );
       this.loadFacets();
       return;
     }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-14T12:37:19.104Z",
+  "generatedAt": "2026-10-21T10:50:45.141Z",
   "pages": [
     {
       "path": "/about",
@@ -113,6 +113,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "门禁、元数据与环境",
       "registryId": "auto-logs"
+    },
+    {
+      "path": "/admin/avidity",
+      "label": "饮水流量监测",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "avidity"
     },
     {
       "path": "/admin/broadcast",

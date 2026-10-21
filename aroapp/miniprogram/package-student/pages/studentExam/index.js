@@ -89,6 +89,11 @@ Page({
     Promise.resolve(this.load()).then(done, done);
   },
 
+  /** 视频学习入口（培训报名门禁里的「去学习」也跳这里） */
+  onGoVideos() {
+    wx.navigateTo({ url: '/package-student/pages/studentVideos/index' });
+  },
+
   load() {
     this.setData({ loading: true });
     return api

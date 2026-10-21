@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Square, Volume2, RefreshCw, LogIn, CalendarClock, History } from "lucide-react";
 import { AdminButton } from "@/components/admin/AdminButton";
-import type { BroadcastStatus } from "@/api/domains/broadcast.api";
+import { AdminSelect } from "@/components/admin/AdminSelect";
+import { PLAY_MODES, type BroadcastStatus } from "@/api/domains/broadcast.api";
 import { dotClass, dotColor } from "./ui";
 import { fmtClock } from "./useZoneProgress";
 
@@ -28,6 +29,8 @@ export default function PlayerBar({
   zoneCount,
   volume,
   onVolumeApply,
+  playMode,
+  onPlayModeChange,
   canPlay,
   canStop,
   canApplyVolume,
@@ -47,6 +50,9 @@ export default function PlayerBar({
   zoneCount: number;
   volume: number;
   onVolumeApply: (v: number) => void;
+  /** 播放模式（平台全局）：3 顺序 / 4 列表循环 / 2 单曲循环 / 5 随机 */
+  playMode: number;
+  onPlayModeChange: (mode: number) => void;
   canPlay: boolean;
   canStop: boolean;
   canApplyVolume: boolean;
@@ -101,6 +107,20 @@ export default function PlayerBar({
             停止{zoneCount > 0 ? `(${zoneCount})` : ""}
           </AdminButton>
         </span>
+
+        {/* 播放模式：手动播放时用。平台全局，改了也会影响正在跑的方案，标题里写明 */}
+        <AdminSelect
+          className="h-9 w-[104px] shrink-0 text-xs"
+          value={playMode}
+          onChange={(e) => onPlayModeChange(Number(e.target.value))}
+          title="播放模式（平台全局设置，定时方案同样生效）"
+        >
+          {PLAY_MODES.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </AdminSelect>
 
         {/* 音量紧挨着传输按钮 —— 这三样是一组操作，摆在一起才好用 */}
         <VolumeControl value={volume} disabled={!canApplyVolume} onCommit={onVolumeApply} />
@@ -162,7 +182,7 @@ export default function PlayerBar({
   );
 }
 
-/** 音量滑条：拖动只改本地值，松手才作用到已选分区（对齐分区行滑条的交互）。 */
+/** 音量滑条：拖动时数值实时跟手（数字读的是本地值），**松手才提交**。 */
 function VolumeControl({
   value,
   disabled,
@@ -182,7 +202,7 @@ function VolumeControl({
   return (
     <span
       className="flex shrink-0 items-center gap-1.5"
-      title={disabled ? "先勾选分区才能调音量" : "对已选分区生效，松手即应用"}
+      title={disabled ? "先勾选分区才能调音量" : "对已选分区生效，拖动即时预览、松手应用"}
     >
       <Volume2
         className="h-4 w-4 shrink-0"
@@ -200,13 +220,13 @@ function VolumeControl({
           dirty.current = true;
           setLocal(Number(e.target.value));
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
           dirty.current = false;
-          onCommit(local);
+          onCommit(Number((e.currentTarget as HTMLInputElement).value));
         }}
-        onKeyUp={() => {
+        onKeyUp={(e) => {
           dirty.current = false;
-          onCommit(local);
+          onCommit(Number((e.currentTarget as HTMLInputElement).value));
         }}
       />
       <span className="w-7 shrink-0 text-right text-xs tabular-nums text-[var(--app-color-text-secondary)]">

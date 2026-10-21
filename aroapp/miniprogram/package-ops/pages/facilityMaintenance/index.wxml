@@ -23,6 +23,19 @@
         </view>
         <view class="fm-pill fm-pill-sm fm-pill-ghost {{ exportBusy ? 'fm-disabled' : '' }}" bindtap="exportConsExcel">导出</view>
       </view>
+      <scroll-view scroll-x="true" class="quick-scroll" wx:if="{{ quickCons.length }}">
+        <text class="quick-hint">快捷：</text>
+        <view
+          wx:for="{{ quickCons }}"
+          wx:key="id"
+          class="quick-chip"
+          data-id="{{ item.id }}"
+          bindtap="tapQuickOption"
+        >
+          <text class="quick-chip-label">{{ item.label }}</text>
+          <text class="quick-chip-x" data-id="{{ item.id }}" catchtap="deleteQuickOption">×</text>
+        </view>
+      </scroll-view>
       <view class="list-pad">
         <van-empty wx:if="{{ !loading && consRows.length === 0 }}" description="暂无耗材记录" />
         <block wx:for="{{ consGroups }}" wx:key="name">
@@ -31,18 +44,32 @@
               <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
               <text class="group-title-ellipsis">{{ item.name }}</text>
               <text class="group-meta">× {{ item.count }} · {{ item.rangeText }}</text>
+              <view class="group-add" data-name="{{ item.name }}" catchtap="openAddForGroup">+</view>
             </view>
             <view wx:if="{{ item.open }}" class="group-body">
-              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
-                <view class="card-head-row">
-                  <text class="card-title-ellipsis">{{ r.consumableName }} × {{ r.qty }} {{ r.unit || '' }}</text>
-                  <view class="card-inline-actions">
-                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editCons">编辑</view>
-                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteCons">删除</view>
+              <scroll-view scroll-x="true" class="gt-scroll">
+                <view>
+                  <view class="gt-row gt-head">
+                    <text class="gt-cell gt-name">物品</text>
+                    <text class="gt-cell gt-qty">数量</text>
+                    <text class="gt-cell gt-date">日期</text>
+                    <text class="gt-cell gt-site">机房</text>
+                    <text class="gt-cell gt-note">备注</text>
+                    <text class="gt-cell gt-act">操作</text>
+                  </view>
+                  <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="gt-row">
+                    <text class="gt-cell gt-name">{{ r.consumableName }}</text>
+                    <text class="gt-cell gt-qty">{{ r.qty }}{{ r.unit ? ' ' + r.unit : '' }}</text>
+                    <text class="gt-cell gt-date">{{ r.occurredAtText }}</text>
+                    <text class="gt-cell gt-site">{{ r.siteName || '' }}</text>
+                    <text class="gt-cell gt-note">{{ r.note || '' }}</text>
+                    <view class="gt-cell gt-act gt-actions">
+                      <text class="gt-link" data-id="{{ r.id }}" catchtap="editCons">编辑</text>
+                      <text class="gt-link gt-link-danger" data-id="{{ r.id }}" catchtap="onDeleteCons">删除</text>
+                    </view>
                   </view>
                 </view>
-                <view class="card-sub">{{ r.occurredAtText }} · {{ r.siteName || '' }}{{ r.note ? ' · ' + r.note : '' }}</view>
-              </view>
+              </scroll-view>
             </view>
           </view>
         </block>
@@ -66,6 +93,19 @@
           bindtap="tapPreset"
         >{{ item.label }}</text>
       </scroll-view>
+      <scroll-view scroll-x="true" class="quick-scroll" wx:if="{{ quickRep.length }}">
+        <text class="quick-hint">快捷：</text>
+        <view
+          wx:for="{{ quickRep }}"
+          wx:key="id"
+          class="quick-chip"
+          data-id="{{ item.id }}"
+          bindtap="tapQuickOption"
+        >
+          <text class="quick-chip-label">{{ item.label }}</text>
+          <text class="quick-chip-x" data-id="{{ item.id }}" catchtap="deleteQuickOption">×</text>
+        </view>
+      </scroll-view>
       <view class="list-pad">
         <van-empty wx:if="{{ !loading && repRows.length === 0 }}" description="暂无更换记录" />
         <block wx:for="{{ repGroups }}" wx:key="name">
@@ -74,18 +114,30 @@
               <text class="group-arrow">{{ item.open ? '▼' : '▶' }}</text>
               <text class="group-title-ellipsis">{{ item.name }}</text>
               <text class="group-meta">× {{ item.count }} · {{ item.rangeText }}</text>
+              <view class="group-add" data-name="{{ item.name }}" catchtap="openAddForGroup">+</view>
             </view>
             <view wx:if="{{ item.open }}" class="group-body">
-              <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="card card--sub">
-                <view class="card-head-row">
-                  <text class="card-title-ellipsis">{{ r.filterType }} · {{ r.replacedAtText }}</text>
-                  <view class="card-inline-actions">
-                    <view class="fm-chip fm-chip-xs fm-chip-ghost" data-id="{{ r.id }}" catchtap="editRep">编辑</view>
-                    <view class="fm-chip fm-chip-xs fm-chip-danger" data-id="{{ r.id }}" catchtap="onDeleteRep">删除</view>
+              <scroll-view scroll-x="true" class="gt-scroll">
+                <view class="gt-rep">
+                  <view class="gt-row gt-head">
+                    <text class="gt-cell gt-date">日期</text>
+                    <text class="gt-cell gt-site">机房</text>
+                    <text class="gt-cell gt-days">距上次</text>
+                    <text class="gt-cell gt-note">备注</text>
+                    <text class="gt-cell gt-act">操作</text>
+                  </view>
+                  <view wx:for="{{ item.rows }}" wx:for-item="r" wx:key="id" class="gt-row">
+                    <text class="gt-cell gt-date">{{ r.replacedAtText }}</text>
+                    <text class="gt-cell gt-site">{{ r.siteName || '' }}</text>
+                    <text class="gt-cell gt-days">{{ r.daysSincePrevious != null ? r.daysSincePrevious + ' 天' : '-' }}</text>
+                    <text class="gt-cell gt-note">{{ r.note || '' }}</text>
+                    <view class="gt-cell gt-act gt-actions">
+                      <text class="gt-link" data-id="{{ r.id }}" catchtap="editRep">编辑</text>
+                      <text class="gt-link gt-link-danger" data-id="{{ r.id }}" catchtap="onDeleteRep">删除</text>
+                    </view>
                   </view>
                 </view>
-                <view class="card-sub">{{ r.siteName || '' }} · 距上次 {{ r.daysSincePrevious != null ? r.daysSincePrevious : '-' }} 天</view>
-              </view>
+              </scroll-view>
             </view>
           </view>
         </block>
@@ -195,23 +247,24 @@
         <van-field label="备注" type="textarea" autosize="{{ true }}" value="{{ formRepNote }}" placeholder="选填" bind:change="onRepNote" />
       </view>
       <view class="popup-actions-row">
+        <view class="fm-chip fm-chip-ghost" style="margin-right:auto;" bindtap="saveCurrentAsQuick">存为快捷</view>
         <view class="fm-chip fm-chip-ghost" bindtap="closeAddPopup">取消</view>
         <view class="fm-chip fm-chip-primary" bindtap="submitAdd">提交</view>
       </view>
     </view>
   </van-popup>
 
-  <van-popup show="{{ timePickerShow }}" position="bottom" round bind:close="closeTimePicker">
-    <van-datetime-picker
-      type="date"
-      value="{{ timePickerValue }}"
-      min-date="{{ pickerMinTs }}"
-      max-date="{{ pickerMaxTs }}"
-      bind:input="onTimePickerInput"
-      bind:confirm="confirmTimePicker"
-      bind:cancel="closeTimePicker"
-    />
-  </van-popup>
+  <van-calendar
+    show="{{ timePickerShow }}"
+    type="single"
+    color="#2563eb"
+    min-date="{{ pickerMinTs }}"
+    max-date="{{ pickerMaxTs }}"
+    default-date="{{ timePickerValue }}"
+    show-confirm="{{ false }}"
+    bind:confirm="onCalendarConfirm"
+    bind:close="closeTimePicker"
+  />
 
   <van-popup show="{{ siteFilterSheetShow }}" position="bottom" round bind:close="closeSiteFilterSheet">
     <view class="fm-sheet">

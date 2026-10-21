@@ -8,6 +8,10 @@ export type LongtermVariable = {
   displayLabel: string | null;
   unit: string | null;
   enabled: boolean;
+  /** 自定义分区 id；空=未分区 */
+  partitionId?: number | null;
+  /** 自定义分区名称 */
+  partitionName?: string | null;
   floorCode?: string | null;
   roomCanonical?: string | null;
   metricKindCode?: string | null;
@@ -25,6 +29,14 @@ export type LongtermCandidate = {
   /** 所属分区（变量目录原本的导入分区）—— 加入变量时按它逐层加载 */
   bundleCode: string | null;
   bundleDisplayName: string | null;
+};
+
+/** 数据监测的自定义分区（tab） */
+export type LongtermPartition = {
+  id: number;
+  name: string;
+  sortOrder: number;
+  variableCount: number;
 };
 
 /** 变量目录的分区选项（含各分区变量数） */
@@ -99,6 +111,8 @@ export type LongtermExportRequest = {
   variableNames: string[];
   /** **精确选中的日期**（yyyy-MM-dd，可多选）；时间范围必填，不选不允许导出 */
   days: string[];
+  /** 自定义分区 id；0=未分区，不传=全部 */
+  partitionId?: number | null;
   month?: string | null;
   from?: string | null;
   to?: string | null;
@@ -127,6 +141,27 @@ export async function fetchLongtermVariables() {
   return unwrap(res.data, "加载已选变量失败");
 }
 
+/** 数据监测的自定义分区（tab）。 */
+export async function fetchLongtermPartitions() {
+  const res = await adminHttp.get<ApiResult<LongtermPartition[]>>("telemetry/longterm/partitions");
+  return unwrap(res.data, "加载分区失败");
+}
+
+export async function createLongtermPartition(name: string) {
+  const res = await adminHttp.post<ApiResult<LongtermPartition>>("telemetry/longterm/partitions", { name });
+  return unwrap(res.data, "新增分区失败");
+}
+
+export async function renameLongtermPartition(id: number, name: string) {
+  const res = await adminHttp.put<ApiResult<LongtermPartition>>(`telemetry/longterm/partitions/${id}`, { name });
+  return unwrap(res.data, "重命名分区失败");
+}
+
+export async function deleteLongtermPartition(id: number) {
+  const res = await adminHttp.delete<ApiResult<void>>(`telemetry/longterm/partitions/${id}`);
+  return unwrap(res.data, "删除分区失败");
+}
+
 export async function saveLongtermVariables(list: LongtermVariable[]) {
   const res = await adminHttp.put<ApiResult<LongtermVariable[]>>("telemetry/longterm/variables", list);
   return unwrap(res.data, "保存失败");
@@ -142,13 +177,14 @@ export async function fetchLongtermSamples(params: {
   size: number;
   variableQ?: string;
   month?: string;
+  partitionId?: number;
 }) {
   const res = await adminHttp.get<ApiResult<LongtermSamplePage>>("telemetry/longterm/samples", { params });
   return unwrap(res.data, "加载明细失败");
 }
 
-export async function fetchLongtermMonths() {
-  const res = await adminHttp.get<ApiResult<string[]>>("telemetry/longterm/months");
+export async function fetchLongtermMonths(params?: { partitionId?: number }) {
+  const res = await adminHttp.get<ApiResult<string[]>>("telemetry/longterm/months", { params });
   return unwrap(res.data, "加载月份失败");
 }
 
@@ -157,13 +193,24 @@ export async function fetchLongtermMonths() {
  * 列用槽位序号而不是实际采样时刻 —— 实际采样有延迟，用时刻当列名会错位。
  * 传了 day 就只取那一天（日历选天）；否则按 month / from-to。
  */
-export async function fetchLongtermMatrix(params: { day?: string; month?: string; from?: string; to?: string }) {
+export async function fetchLongtermMatrix(params: {
+  day?: string;
+  month?: string;
+  from?: string;
+  to?: string;
+  partitionId?: number;
+}) {
   const res = await adminHttp.get<ApiResult<LongtermMatrix>>("telemetry/longterm/matrix", { params });
   return unwrap(res.data, "加载归档矩阵失败");
 }
 
 /** 区间内有哪些天有数据（日历上标点用） */
-export async function fetchLongtermDays(params: { month?: string; from?: string; to?: string }) {
+export async function fetchLongtermDays(params: {
+  month?: string;
+  from?: string;
+  to?: string;
+  partitionId?: number;
+}) {
   const res = await adminHttp.get<ApiResult<string[]>>("telemetry/longterm/days", { params });
   return unwrap(res.data, "加载有数据的日期失败");
 }

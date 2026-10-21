@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import toast from "react-hot-toast";
+import { ClipboardList } from "lucide-react";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { fetchCardFields, fetchCardTemplates } from "@/api/domains/cardPrint.api";
 import { fetchSelectableStations, type PrintStationOption } from "@/api/domains/print.api";
+import { createCart, type CartState } from "@/features/print-station/printCart";
+import { PrintCartDrawer } from "@/features/print-station/PrintCartDrawer";
 import type { CardFieldOption, CardTemplate } from "../types";
 import { CardTemplateEditor } from "../components/CardTemplateEditor";
 import { CardPrintPanel, type CardPrintPanelHandle, type ViewMode } from "../components/CardPrintPanel";
@@ -37,6 +41,40 @@ export default function CardPrintPage() {
   const [stations, setStations] = useState<PrintStationOption[]>([]);
 
   const panelRef = useRef<CardPrintPanelHandle>(null);
+  /** 待打清单：与文件模板页共用同一份 cart 逻辑（落 localStorage，本地文件仅会话内有效） */
+  const [cart] = useState(() => createCart(window.localStorage));
+  const [cartState, setCartState] = useState<CartState>(() => cart.getState());
+  const cartCount = cartState.templateItems.length + cartState.localFiles.length;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [failReasons, setFailReasons] = useState<Record<string, string>>({});
+  const [dragging, setDragging] = useState(false);
+
+  const addFiles = useCallback(
+    (files: FileList | File[]) => {
+      const list = Array.from(files);
+      if (list.length === 0) return;
+      setCartState(cart.addLocalFiles(list));
+      toast.success(`已加入待打清单 ${list.length} 项`);
+    },
+    [cart],
+  );
+
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    setDragging(true);
+  };
+
+  const onDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false);
+  };
+
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    setTab("print");
+    addFiles(e.dataTransfer.files);
+  };
 
   // 工位列表加载失败不该挡住生成 PDF —— 那才是这个页面的主业
   useEffect(() => {
@@ -67,6 +105,12 @@ export default function CardPrintPage() {
 
   return (
     <AdminPageShell fillHeight>
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-hairline)] pb-2">
         <div className="flex items-center gap-0.5 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5">
           {tabs.map(([k, label]) => (
@@ -108,12 +152,22 @@ export default function CardPrintPage() {
             <span className="text-[12px] text-[var(--app-color-text-tertiary)]">已选 {selectedCount} / {selectedTotal}</span>
             <input value={nameSuffix} onChange={(e) => setNameSuffix(e.target.value)}
               placeholder="文件名备注（可选）" className={inputCls + " w-44"} />
-            <button type="button" className={BTN_OUTLINE} disabled={busy}
-              onClick={() => void panelRef.current?.generate()}>生成 PDF</button>
             <button type="button" className={BTN_PRIMARY} disabled={busy}
               title="先预览要打的内容，确认后再派给打印机"
               onClick={() => panelRef.current?.print()}>打印…</button>
             <PrintQueueButton />
+            <button
+              type="button"
+              className={BTN_OUTLINE + " inline-flex items-center gap-1.5"}
+              disabled={cartCount === 0}
+              onClick={() => setDrawerOpen(true)}
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+              待打清单
+              <span className="rounded-full bg-[var(--twin-link-deep)] px-1.5 text-[11px] font-medium leading-5 text-white">
+                {cartCount}
+              </span>
+            </button>
             {msg ? <span className="min-w-0 truncate text-[12px] text-[var(--app-color-text-secondary)]">{msg}</span> : null}
           </>
         ) : null}
@@ -147,6 +201,22 @@ export default function CardPrintPage() {
         {tab === "archive" ? <CardArchivePanel /> : null}
         {tab === "valuemap" ? <CardValueMapPanel /> : null}
       </div>
+      </div>
+      <PrintCartDrawer
+        cart={cart}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        onChanged={() => setCartState(cart.getState())}
+        failReasons={failReasons}
+        setFailReasons={setFailReasons}
+      />
+      {dragging ? (
+        <div className="pointer-events-none fixed inset-0 z-[2000] flex items-center justify-center bg-black/30">
+          <div className="rounded-xl border-2 border-dashed border-white/80 bg-black/40 px-10 py-8 text-base font-semibold text-white">
+            松手加入待打清单
+          </div>
+        </div>
+      ) : null}
     </AdminPageShell>
   );
 }

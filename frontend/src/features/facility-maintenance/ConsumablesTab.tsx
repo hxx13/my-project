@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, Fragment } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Plus, X, Zap } from "lucide-react";
 
 import {
   createFmConsumableLine,
@@ -26,16 +26,22 @@ import { AdminSelect } from "@/components/admin/AdminSelect";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import { appConfirm } from "@/lib/appDialog";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
-import { PaginationBar } from "@/features/facility-maintenance/shared/PaginationBar";
 import { FmToolbar, type FmTabItem } from "@/features/facility-maintenance/shared/FmToolbar";
+import {
+  groupByCategory,
+  loadQuickOptions,
+  saveQuickOptions,
+  type LedgerGroup,
+  type QuickOption,
+} from "@/features/facility-maintenance/shared/ledgerGroups";
 
 /* ================================================================== */
 /*  ConsumablesTab — 设施检查维护「耗材」台账 tab                          */
-/*  自持数据（React Query）：机房筛选/分页均为本地 state。                   */
-/*  列表只认后端已有参数（siteId/page/size）。                              */
+/*  一次拉全后按耗材名称分组；组头可直接新增并继承上一组内容。                 */
+/*  快捷项保存在本地，点击只回填表单，仍由用户确认后提交。                     */
 /* ================================================================== */
 
-const PAGE_SIZE = 20;
+const QUICK_KEY = "fm-quick-consumables";
 
 type Row = Record<string, unknown>;
 
@@ -58,21 +64,23 @@ function str(v: unknown): string {
   return v == null ? "" : String(v);
 }
 
-/** 后端时间串 → datetime-local 需要的 `YYYY-MM-DDTHH:mm` */
-function toDatetimeLocal(raw: unknown): string {
+/** 后端时间串 → 日期输入框需要的 `YYYY-MM-DD`（台账只记日期） */
+function toDateInput(raw: unknown): string {
   const s = str(raw).trim().replace(" ", "T");
-  return s.length >= 16 ? s.slice(0, 16) : s;
+  return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-function nowDatetimeLocal(): string {
+function nowDate(): string {
   const d = new Date();
   const z = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
 
-/** datetime-local（16 位）→ 后端可解析的秒级墙钟串 */
+/** `YYYY-MM-DD` → 后端可解析的当天零点墙钟串 */
 function toBackendDatetime(v: string): string {
   const t = v.trim();
+  if (!t) return t;
+  if (t.length === 10) return `${t}T00:00:00`;
   return t.length === 16 ? `${t}:00` : t;
 }
 
@@ -85,6 +93,23 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+/** 台账一次拉全：分组与组内继承都需要完整数据，分页会把同一分类截成两半。 */
+async function fetchAllConsumables(siteId: string) {
+  const size = 200;
+  let page = 1;
+  let all: Row[] = [];
+  let total = 0;
+  for (let i = 0; i < 50; i += 1) {
+    const data = await fetchFmConsumableLines({ siteId: siteId || undefined, page, size });
+    const batch = (data.rows ?? []) as Row[];
+    total = Number(data.total ?? 0);
+    all = all.concat(batch);
+    if (batch.length < size || all.length >= total) break;
+    page += 1;
+  }
+  return { rows: all, total };
+}
+
 type ConsumablesTabProps = {
   tabs: FmTabItem[];
   activeTab: string;
@@ -94,11 +119,25 @@ type ConsumablesTabProps = {
 export default function ConsumablesTab({ tabs, activeTab, onTabChange }: ConsumablesTabProps) {
   const qc = useQueryClient();
 
-  // 列表筛选 / 分页（本地 state）
+  // 列表筛选（本地 state）
   const [siteId, setSiteId] = useState("");
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState(PAGE_SIZE);
   const [exporting, setExporting] = useState(false);
+
+  // 弹层表单
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formCatalogId, setFormCatalogId] = useState("");
+  const [formName, setFormName] = useState("");
+  const [formSiteId, setFormSiteId] = useState("");
+  const [formQty, setFormQty] = useState("1");
+  const [formUnit, setFormUnit] = useState("件");
+  const [formOccurredAt, setFormOccurredAt] = useState("");
+  const [formNote, setFormNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // 分类默认收起：先看分类概览，点组头再展开明细
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [quickOptions, setQuickOptions] = useState<QuickOption[]>(() => loadQuickOptions(QUICK_KEY));
 
   // 与页面壳共用 ["fmSites"]，命中缓存、不重复发 /sites
   const { data: sites = [] } = useQuery({
@@ -116,36 +155,97 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
   });
   const enabledCatalog = useMemo(() => catalog.filter((c) => Number(c.disabled) !== 1), [catalog]);
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ["fmConsumableLines", { siteId: siteId || undefined, page, size }] as const,
-    queryFn: () => fetchFmConsumableLines({ siteId: siteId || undefined, page, size }),
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["fmConsumableLines", { siteId: siteId || undefined }] as const,
+    queryFn: () => fetchAllConsumables(siteId),
     placeholderData: (prev) => prev,
   });
 
   const total = Number(data?.total ?? 0);
   const rows = (data?.rows ?? []) as Row[];
 
-  // 弹层表单
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formCatalogId, setFormCatalogId] = useState("");
-  const [formName, setFormName] = useState("");
-  const [formSiteId, setFormSiteId] = useState("");
-  const [formQty, setFormQty] = useState("1");
-  const [formUnit, setFormUnit] = useState("件");
-  const [formOccurredAt, setFormOccurredAt] = useState("");
-  const [formNote, setFormNote] = useState("");
-  const [saving, setSaving] = useState(false);
+  const groups = useMemo(
+    () =>
+      groupByCategory(
+        rows,
+        (row) => str(pick(row, "consumableName", "consumable_name")) || "未命名",
+        (row) => formatDateTimeAsiaShanghai(pick(row, "occurredAt", "occurred_at")).slice(0, 10),
+      ),
+    [rows],
+  );
 
-  const openNew = () => {
+  const toggleGroup = (name: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const persistQuick = (list: QuickOption[]) => {
+    setQuickOptions(list);
+    saveQuickOptions(QUICK_KEY, list);
+  };
+
+  const saveAsQuick = () => {
+    const name = formName.trim();
+    if (!name || !formSiteId) {
+      toast.error("先填好耗材名称和机房，再存为快捷项");
+      return;
+    }
+    const siteName = enabledSites.find((s) => s.id === formSiteId)?.name ?? "";
+    persistQuick([
+      ...quickOptions,
+      {
+        id: String(Date.now()),
+        label: `${name} × ${formQty || 1} · ${siteName}`,
+        data: {
+          name,
+          qty: formQty,
+          unit: formUnit.trim(),
+          siteId: formSiteId,
+          note: formNote.trim(),
+        },
+      },
+    ]);
+    toast.success("已存为快捷项");
+  };
+
+  const applyQuick = (opt: QuickOption) => {
+    const d = opt.data as { name?: string; qty?: string; unit?: string; siteId?: string; note?: string };
+    const name = d.name ?? "";
     setEditingId(null);
-    setFormCatalogId("");
-    setFormName("");
-    setFormSiteId(siteId || enabledSites[0]?.id || "");
-    setFormQty("1");
-    setFormUnit("件");
-    setFormOccurredAt(nowDatetimeLocal());
-    setFormNote("");
+    setFormCatalogId(enabledCatalog.find((c) => c.name === name)?.id ?? "");
+    setFormName(name);
+    setFormSiteId(d.siteId || siteId || enabledSites[0]?.id || "");
+    setFormQty(d.qty || "1");
+    setFormUnit(d.unit || "件");
+    setFormNote(d.note ?? "");
+    setFormOccurredAt(nowDate());
+    setFormOpen(true);
+  };
+
+  const openNew = (group?: LedgerGroup<Row>) => {
+    setEditingId(null);
+    if (group) {
+      // 组内新增：继承该分类最近一条的机房、数量、单位与备注，名称锁定为当前分类
+      const last = group.latest;
+      setFormName(str(pick(last, "consumableName", "consumable_name")));
+      setFormCatalogId(enabledCatalog.find((c) => c.name === group.name)?.id ?? "");
+      setFormSiteId(str(pick(last, "siteId", "site_id")) || siteId || enabledSites[0]?.id || "");
+      setFormQty(str(last.qty) || "1");
+      setFormUnit(str(last.unit) || "件");
+      setFormNote(str(last.note));
+    } else {
+      setFormCatalogId("");
+      setFormName("");
+      setFormSiteId(siteId || enabledSites[0]?.id || "");
+      setFormQty("1");
+      setFormUnit("件");
+      setFormNote("");
+    }
+    setFormOccurredAt(nowDate());
     setFormOpen(true);
   };
 
@@ -156,7 +256,7 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
     setFormSiteId(str(pick(row, "siteId", "site_id")));
     setFormQty(str(row.qty));
     setFormUnit(str(row.unit));
-    setFormOccurredAt(toDatetimeLocal(pick(row, "occurredAt", "occurred_at")));
+    setFormOccurredAt(toDateInput(pick(row, "occurredAt", "occurred_at")));
     setFormNote(str(row.note));
     setFormOpen(true);
   };
@@ -234,7 +334,7 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
     try {
       const blob = await exportFmExcel("consumables");
       downloadBlob(blob, `facility-maintenance-consumables-${Date.now()}.xlsx`);
-      toast.success("已导出");
+      toast.success("已导出（按耗材名称分组）");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -267,10 +367,7 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
             className="h-8 text-xs"
             aria-label="按机房筛选"
             value={siteId}
-            onChange={(e) => {
-              setSiteId(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSiteId(e.target.value)}
           >
             <option value="">全部</option>
             {enabledSites.map((s) => (
@@ -280,7 +377,38 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
             ))}
           </AdminSelect>
         </div>
+        {quickOptions.length > 0 && (
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <span className="inline-flex items-center gap-1 text-[10px] text-[var(--app-color-text-tertiary)]">
+              <Zap className="h-3 w-3" /> 快捷
+            </span>
+            {quickOptions.map((opt) => (
+              <span
+                key={opt.id}
+                className="inline-flex items-center overflow-hidden rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)]"
+              >
+                <button
+                  type="button"
+                  className="max-w-[11rem] truncate px-2 py-0.5 text-[11px] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
+                  title={opt.label}
+                  onClick={() => applyQuick(opt)}
+                >
+                  {opt.label}
+                </button>
+                <button
+                  type="button"
+                  className="px-1 py-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-feedback-danger)]"
+                  title="删除快捷项"
+                  onClick={() => persistQuick(quickOptions.filter((o) => o.id !== opt.id))}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="min-w-0 flex-1" />
+        <span className="text-[11px] text-[var(--app-color-text-tertiary)]">共 {total} 条</span>
         <button type="button" className={toolbarBtn} disabled={exporting} onClick={() => void doExport()}>
           <span className="inline-flex items-center gap-1">
             <Download className="h-4 w-4" /> {exporting ? "导出中…" : "导出"}
@@ -293,14 +421,14 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
         >
           导入
         </AdminFilePickButton>
-        <button type="button" className={toolbarBtnPrimary} onClick={openNew}>
+        <button type="button" className={toolbarBtnPrimary} onClick={() => openNew()}>
           <span className="inline-flex items-center gap-1">
             <Plus className="h-4 w-4" /> 新增
           </span>
         </button>
       </FmToolbar>
 
-      {/* 表格：唯一滚动区 */}
+      {/* 表格：唯一滚动区，按耗材名称分组 */}
       <AdminFillScrollRegion className="px-3 py-3">
         {isLoading ? (
           <DataSkeleton variant="table" rows={6} />
@@ -318,62 +446,89 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
                   <th className="text-right">数量</th>
                   <th>单位</th>
                   <th>机房</th>
-                  <th>发生时间</th>
+                  <th>发生日期</th>
                   <th>登记人</th>
                   <th>备注</th>
                   <th className="text-right">操作</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={String(row.id)}>
-                    <td className="min-w-[8rem] whitespace-normal break-words px-3 py-2">
-                      {str(pick(row, "consumableName", "consumable_name"))}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{str(row.qty)}</td>
-                    <td className="whitespace-nowrap px-3 py-2">{str(row.unit)}</td>
-                    <td className="min-w-[7rem] whitespace-normal break-words px-3 py-2">
-                      {str(pick(row, "siteName", "site_name"))}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      {formatDateTimeAsiaShanghai(pick(row, "occurredAt", "occurred_at"))}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-[var(--twin-mute)]">
-                      {str(pick(row, "createdByName", "created_by_name")) || "—"}
-                    </td>
-                    <td className="max-w-[16rem] whitespace-normal break-words px-3 py-2">{str(row.note)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button type="button" className={rowBtn} onClick={() => openEdit(row)}>
-                          编辑
-                        </button>
-                        <button type="button" className={rowDangerBtn} onClick={() => void remove(row)}>
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {groups.map((group) => {
+                const collapsed = !expandedGroups.has(group.name);
+                return (
+                  <Fragment key={group.name}>
+                    <tbody>
+                      <tr
+                        className="cursor-pointer bg-[var(--app-color-surface-elevated)] hover:bg-[var(--app-color-surface-hover)]"
+                        onClick={() => toggleGroup(group.name)}
+                      >
+                        <td colSpan={8} className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {collapsed ? (
+                              <ChevronRight className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)]" />
+                            )}
+                            <span className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+                              {group.name}
+                            </span>
+                            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
+                              × {group.count}
+                              {group.rangeText ? ` · ${group.rangeText}` : ""}
+                            </span>
+                            <button
+                              type="button"
+                              className="ml-auto inline-flex items-center gap-1 rounded-md border border-[var(--app-color-border-default)] px-2 py-0.5 text-[11px] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openNew(group);
+                              }}
+                            >
+                              <Plus className="h-3 w-3" /> 在「{group.name}」新增
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                    {!collapsed && (
+                      <tbody>
+                        {group.rows.map((row) => (
+                          <tr key={String(row.id)}>
+                            <td className="min-w-[8rem] whitespace-normal break-words px-3 py-2">
+                              {str(pick(row, "consumableName", "consumable_name"))}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{str(row.qty)}</td>
+                            <td className="whitespace-nowrap px-3 py-2">{str(row.unit)}</td>
+                            <td className="min-w-[7rem] whitespace-normal break-words px-3 py-2">
+                              {str(pick(row, "siteName", "site_name"))}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2">
+                              {formatDateTimeAsiaShanghai(pick(row, "occurredAt", "occurred_at")).slice(0, 10)}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2 text-[var(--twin-mute)]">
+                              {str(pick(row, "createdByName", "created_by_name")) || "—"}
+                            </td>
+                            <td className="max-w-[16rem] whitespace-normal break-words px-3 py-2">{str(row.note)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right">
+                              <div className="flex justify-end gap-1">
+                                <button type="button" className={rowBtn} onClick={() => openEdit(row)}>
+                                  编辑
+                                </button>
+                                <button type="button" className={rowDangerBtn} onClick={() => void remove(row)}>
+                                  删除
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    )}
+                  </Fragment>
+                );
+              })}
             </table>
           </AdminTableShell>
         )}
       </AdminFillScrollRegion>
-
-      {/* 分页：固定区（PaginationBar 根节点自带 shrink-0） */}
-      <div className="shrink-0 border-t border-[var(--twin-hairline)] px-3 py-2">
-        <PaginationBar
-          page={page}
-          size={size}
-          total={total}
-          onPageChange={setPage}
-          onSizeChange={(s) => {
-            setSize(s);
-            setPage(1);
-          }}
-          disabled={isFetching}
-        />
-      </div>
 
       {/* 新增 / 编辑弹层 */}
       <AdminCenteredPanelShell
@@ -426,9 +581,9 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
             <AdminFormField label="单位">
               <AdminFormInput value={formUnit} disabled={saving} onChange={(e) => setFormUnit(e.target.value)} />
             </AdminFormField>
-            <AdminFormField label="发生时间">
+            <AdminFormField label="发生日期">
               <AdminFormInput
-                type="datetime-local"
+                type="date"
                 value={formOccurredAt}
                 disabled={saving}
                 onChange={(e) => setFormOccurredAt(e.target.value)}
@@ -440,13 +595,20 @@ export default function ConsumablesTab({ tabs, activeTab, onTabChange }: Consuma
           </AdminFormGrid>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
-          <button type="button" className={toolbarBtn} disabled={saving} onClick={() => setFormOpen(false)}>
-            取消
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
+          <button type="button" className={toolbarBtn} disabled={saving} onClick={saveAsQuick}>
+            <span className="inline-flex items-center gap-1">
+              <Zap className="h-4 w-4" /> 存为快捷项
+            </span>
           </button>
-          <button type="button" className={toolbarBtnPrimary} disabled={saving} onClick={() => void save()}>
-            {saving ? "保存中…" : "保存"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" className={toolbarBtn} disabled={saving} onClick={() => setFormOpen(false)}>
+              取消
+            </button>
+            <button type="button" className={toolbarBtnPrimary} disabled={saving} onClick={() => void save()}>
+              {saving ? "保存中…" : "保存"}
+            </button>
+          </div>
         </div>
       </AdminCenteredPanelShell>
     </div>

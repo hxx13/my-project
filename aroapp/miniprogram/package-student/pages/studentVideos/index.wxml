@@ -1,0 +1,27 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view class="tip">报名前需完成的视频在这里观看，进度会自动保存。</view>
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <van-empty wx:elif="{{ rows.length === 0 }}" description="暂无学习视频" />
+  <view wx:else class="list">
+    <view
+      wx:for="{{ rows }}"
+      wx:key="id"
+      class="row-card {{ item.completed ? 'row-card-ok' : '' }}"
+      data-id="{{ item.id }}"
+      bindtap="onWatchTap"
+    >
+      <view class="row-head">
+        <text class="row-title">{{ item.title }}</text>
+        <text class="state-tag {{ item.completed ? 'state-ok' : '' }}">{{ item.stateText }}</text>
+      </view>
+      <view class="progress"><view class="progress-bar" style="width: {{ item.percent }}%"></view></view>
+      <view class="meta-line">
+        <text class="meta-k">时长</text>
+        <text class="meta-v">{{ item.durationText }}</text>
+        <text class="watch-btn">观看</text>
+      </view>
+    </view>
+  </view>
+</view>
+</block>

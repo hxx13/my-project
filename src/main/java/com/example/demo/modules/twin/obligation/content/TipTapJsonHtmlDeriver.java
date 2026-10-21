@@ -76,12 +76,8 @@ public final class TipTapJsonHtmlDeriver {
             }
             case "hardBreak" -> sb.append("<br/>");
             case "horizontalRule" -> sb.append("<hr/>");
-            case "image" -> {
-                String src = escapeAttr(n.path("attrs").path("src").asText(""));
-                if (!src.isEmpty()) {
-                    sb.append("<img src=\"").append(src).append("\" alt=\"\"/>");
-                }
-            }
+            case "image" -> appendImage(n, sb);
+            case "video" -> appendVideo(n, sb);
             case "text" -> renderText(n, sb);
             default -> {
                 if (n.has("content")) {
@@ -103,9 +99,29 @@ public final class TipTapJsonHtmlDeriver {
                 renderText(n, sb);
             } else if ("hardBreak".equals(type)) {
                 sb.append("<br/>");
+            } else if ("image".equals(type)) {
+                // 本仓编辑器把图片设为 inline，图片节点会落在段落内部
+                appendImage(n, sb);
+            } else if ("video".equals(type)) {
+                appendVideo(n, sb);
             } else if (n.has("content")) {
                 renderInline(n.get("content"), sb);
             }
+        }
+    }
+
+    private static void appendImage(JsonNode n, StringBuilder sb) {
+        String src = escapeAttr(n.path("attrs").path("src").asText(""));
+        if (!src.isEmpty()) {
+            sb.append("<img src=\"").append(src).append("\" alt=\"\"/>");
+        }
+    }
+
+    private static void appendVideo(JsonNode n, StringBuilder sb) {
+        String src = escapeAttr(n.path("attrs").path("src").asText(""));
+        if (!src.isEmpty()) {
+            sb.append("<video src=\"").append(src)
+                    .append("\" controls preload=\"metadata\" playsinline></video>");
         }
     }
 

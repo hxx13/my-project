@@ -367,6 +367,7 @@ public class TelemetryWatchlistDbService {
             Map<String, Long> tagIds = new LinkedHashMap<>();
             Map<String, String> ovMin = new LinkedHashMap<>();
             Map<String, String> ovMax = new LinkedHashMap<>();
+            java.util.Set<String> hiddenInAnimalRoom = new java.util.LinkedHashSet<>();
             if (rows != null) {
                 for (TelemetryWatchlistTagRow r : rows) {
                     if (r.getWinccVariableName() == null) {
@@ -407,12 +408,15 @@ public class TelemetryWatchlistDbService {
                     if (StringUtils.hasText(r.getAlarmOverrideMax())) {
                         ovMax.putIfAbsent(key, r.getAlarmOverrideMax().trim());
                     }
+                    if (r.getShowInAnimalRoom() != null && r.getShowInAnimalRoom() == 0) {
+                        hiddenInAnimalRoom.add(key);
+                    }
                 }
             }
             AlarmLimitMaps alarm = buildAlarmLimitMaps(rows);
             return new TelemetryWatchlistEnrichment(labels, bundleCodes, bundleTitles, floors, roomCanon,
                     kindCodes, kindLabels, kindRoles, alarm.minByParent(), alarm.maxByParent(),
-                    tagIds, ovMin, ovMax);
+                    tagIds, ovMin, ovMax, hiddenInAnimalRoom);
         } catch (Exception e) {
             log.warn("[WinCC遥测] 加载 watchlist 映射与分区信息失败: {}", e.getMessage());
             return TelemetryWatchlistEnrichment.empty();
@@ -590,6 +594,7 @@ public class TelemetryWatchlistDbService {
         TelemetryWatchlistBundleRow b = requireBundle(code);
         Map<String, AlarmCachePreserve> preserve = new LinkedHashMap<>();
         Map<String, AlarmOverridePreserve> preserveOv = new LinkedHashMap<>();
+        Map<String, Integer> preserveShow = new LinkedHashMap<>();
         for (TelemetryWatchlistTagRow old : tagMapper.selectAllByBundleId(b.getId())) {
             AlarmCachePreserve snap = AlarmCachePreserve.fromRow(old);
             if (snap != null && StringUtils.hasText(old.getWinccVariableName())) {
@@ -598,6 +603,9 @@ public class TelemetryWatchlistDbService {
             AlarmOverridePreserve ov = AlarmOverridePreserve.fromRow(old);
             if (ov != null && StringUtils.hasText(old.getWinccVariableName())) {
                 preserveOv.put(normalizeWinCcVariableKey(old.getWinccVariableName()), ov);
+            }
+            if (StringUtils.hasText(old.getWinccVariableName())) {
+                preserveShow.put(normalizeWinCcVariableKey(old.getWinccVariableName()), old.getShowInAnimalRoom());
             }
         }
         tagMapper.deleteByBundleId(b.getId());
@@ -666,6 +674,12 @@ public class TelemetryWatchlistDbService {
                 row.setAlarmOverrideMax(null);
             }
             row.setEnabled(effectiveEnabledForStore(w) ? 1 : 0);
+            if (w.getShowInAnimalRoom() != null) {
+                row.setShowInAnimalRoom(w.getShowInAnimalRoom() ? 1 : 0);
+            } else {
+                Integer preserved = preserveShow.get(name);
+                row.setShowInAnimalRoom(preserved != null ? preserved : 1);
+            }
             row.setSortOrder(w.getSortOrder() != null ? w.getSortOrder() : order);
             batch.add(row);
             order++;
@@ -770,6 +784,8 @@ public class TelemetryWatchlistDbService {
             }
             TelemetryWatchlistTagWriteDto merged = mergeWriteForEnable(w, prev);
             row.setEnabled(effectiveEnabledForStore(merged) ? 1 : 0);
+            row.setShowInAnimalRoom(prev != null && prev.getShowInAnimalRoom() != null
+                    ? prev.getShowInAnimalRoom() : 1);
             row.setSortOrder(w.getSortOrder() != null ? w.getSortOrder() : order);
             tagMapper.upsertOne(row);
             order++;
@@ -903,6 +919,7 @@ public class TelemetryWatchlistDbService {
                 .alarmOverrideMin(r.getAlarmOverrideMin())
                 .alarmOverrideMax(r.getAlarmOverrideMax())
                 .enabled(r.getEnabled() == null || r.getEnabled() != 0)
+                .showInAnimalRoom(r.getShowInAnimalRoom() == null || r.getShowInAnimalRoom() != 0)
                 .sortOrder(r.getSortOrder() == null ? 0 : r.getSortOrder())
                 .build();
     }

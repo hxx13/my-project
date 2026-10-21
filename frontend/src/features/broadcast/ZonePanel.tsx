@@ -43,6 +43,17 @@ export default function ZonePanel({
   onZonePause: (mac: string) => void;
 }) {
   const allSelected = zones.length > 0 && selected.size === zones.length;
+  /** 拖动中的音量预览值（按 MAC）。拖动时数字要实时跟手，松手才真正下发。 */
+  const [draftVol, setDraftVol] = useState<Record<string, number>>({});
+
+  const setDraft = (mac: string, v: number | null) => {
+    setDraftVol((prev) => {
+      const next = { ...prev };
+      if (v == null) delete next[mac];
+      else next[mac] = v;
+      return next;
+    });
+  };
 
   return (
     <div className={panelClass}>
@@ -105,13 +116,17 @@ export default function ZonePanel({
                   <VolumeSlider
                     value={z.volume ?? 0}
                     onAccent={sel}
-                    onCommit={(v) => onVolumeCommit(z.mac, v)}
+                    onPreview={(v) => setDraft(z.mac, v)}
+                    onCommit={(v) => {
+                      setDraft(z.mac, null);
+                      onVolumeCommit(z.mac, v);
+                    }}
                   />
                   <span
                     className="w-9 shrink-0 text-right text-xs tabular-nums"
                     style={{ color: sel ? "#ffffff" : "var(--app-color-text-secondary)" }}
                   >
-                    {z.volume ?? "-"}
+                    {draftVol[z.mac] ?? z.volume ?? "-"}
                   </span>
                   <span className="flex w-16 shrink-0 items-center gap-1 text-xs">
                     <span
@@ -195,14 +210,17 @@ function stateTextColor(kind: "playing" | "paused" | "idle", onAccent: boolean):
   return "var(--app-color-text-tertiary)";
 }
 
-/** 单行音量滑杆：拖动只改本地值，松手才提交。选中行上主色填充会看不见，改反白。 */
+/** 单行音量滑杆：拖动时只更新本地显示（数值实时跟手），**松手才提交**。
+ *  数值由外层用 draft 渲染 —— 外层那个数字原来读服务端值，拖动时不跟手。 */
 function VolumeSlider({
   value,
   onAccent,
+  onPreview,
   onCommit,
 }: {
   value: number;
   onAccent: boolean;
+  onPreview: (v: number) => void;
   onCommit: (v: number) => void;
 }) {
   const [local, setLocal] = useState(value);
@@ -221,16 +239,18 @@ function VolumeSlider({
       className="h-4 w-20 shrink-0 cursor-pointer"
       style={{ accentColor: onAccent ? "#ffffff" : "var(--app-color-accent)" }}
       onChange={(e) => {
+        const v = Number(e.target.value);
         dirty.current = true;
-        setLocal(Number(e.target.value));
+        setLocal(v);
+        onPreview(v);
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
         dirty.current = false;
-        if (local !== value) onCommit(local);
+        onCommit(Number((e.currentTarget as HTMLInputElement).value));
       }}
-      onKeyUp={() => {
+      onKeyUp={(e) => {
         dirty.current = false;
-        if (local !== value) onCommit(local);
+        onCommit(Number((e.currentTarget as HTMLInputElement).value));
       }}
     />
   );

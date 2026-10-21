@@ -2189,11 +2189,11 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   }, []);
 
   const handleEditHistoryDelete = useCallback(async (id: number) => {
-    if (!await appConfirm("确定删除该条历史记录？")) return;
+    if (!await appConfirm("确定隐藏该条历史记录？\n\n照片/视频与变更留痕不会被删除，只是不再显示在这份归档里。")) return;
     authHttp.delete(`/local/history/${id}`).then(() => {
       setEditHistory(p => p.filter(h => h.id !== id));
-      toast.success("已删除");
-    }).catch(() => toast.error("删除失败"));
+      toast.success("已隐藏（留痕保留）");
+    }).catch(() => toast.error("隐藏失败"));
   }, []);
 
   // 从勾选集提取笼位 cageId（H5 单笼架，key = sid:x:y）

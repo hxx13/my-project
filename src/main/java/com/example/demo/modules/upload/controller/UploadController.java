@@ -17,7 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRange;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -34,6 +35,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -85,7 +87,8 @@ public class UploadController {
     @PostMapping
     @Operation(summary = "上传文件")
     public Result<?> upload(@RequestHeader(value = "Authorization", required = false) String authorization,
-                            @RequestParam("file") MultipartFile file) throws Exception {
+                            @RequestParam("file") MultipartFile file,
+                            @RequestParam(value = "purpose", required = false) String purpose) throws Exception {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) {
             return Result.error("未登录或Token无效");
@@ -104,6 +107,15 @@ public class UploadController {
         */
         if (file == null || file.isEmpty()) {
             return Result.error("文件不能为空");
+        }
+        // 视频体积上限远高于图片；默认只给教职工开。学生写「实验记录」需要传视频，
+        // 所以带 purpose=experiment-record 的学生放行（日志/台账入口），其它用途仍按原规则挡。
+        String ext = extractExtension(file.getOriginalFilename());
+        if (UploadFileStorageService.VIDEO_EXTENSIONS.contains(ext)
+                && user.getRole() != null
+                && user.getRole().getLevel() < RoleEnum.STAFF.getLevel()
+                && !"experiment-record".equalsIgnoreCase(purpose)) {
+            return Result.error("无权限上传视频");
         }
 
         try {
@@ -188,53 +200,120 @@ public class UploadController {
         }
     }
 
-    /** 公开访问的图片/媒体扩展名 */
+    /** 公开访问的图片/视频扩展名 */
     private static final Set<String> PUBLIC_EXTENSIONS = Set.of(
-            "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico"
+            "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico",
+            "mp4", "webm", "mov", "m4v"
+    );
+
+    /**
+     * 显式 MIME 映射。Linux 的 mime.types 未必认得 mp4/webm，
+     * 探测失败会退成 application/octet-stream，浏览器就当下载而不是播放。
+     */
+    private static final Map<String, MediaType> MEDIA_TYPES = Map.of(
+            "mp4", MediaType.parseMediaType("video/mp4"),
+            "m4v", MediaType.parseMediaType("video/x-m4v"),
+            "webm", MediaType.parseMediaType("video/webm"),
+            "mov", MediaType.parseMediaType("video/quicktime"),
+            "svg", MediaType.parseMediaType("image/svg+xml"),
+            "webp", MediaType.parseMediaType("image/webp"),
+            "ico", MediaType.parseMediaType("image/x-icon")
     );
 
     @GetMapping("/files/**")
     @Operation(summary = "按路径读取文件")
-    public ResponseEntity<Resource> getFile(jakarta.servlet.http.HttpServletRequest request) {
+    public void getFile(jakarta.servlet.http.HttpServletRequest request,
+                        jakarta.servlet.http.HttpServletResponse response,
+                        @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) throws java.io.IOException {
         String uri = request.getRequestURI();
         int idx = uri.indexOf("/api/upload/files/");
         if (idx < 0) {
-            return ResponseEntity.notFound().build();
+            response.sendError(404);
+            return;
         }
         String relativePath = uri.substring(idx + "/api/upload/files/".length());
         if (!StringUtils.hasText(relativePath) || relativePath.contains("..")) {
-            return ResponseEntity.badRequest().build();
+            response.sendError(400);
+            return;
         }
 
         // 非公开扩展名（文档/压缩包等）需要 JWT 认证
         String ext = extractExtension(relativePath);
-        if (!PUBLIC_EXTENSIONS.contains(ext)) {
+        boolean publicFile = PUBLIC_EXTENSIONS.contains(ext);
+        if (!publicFile) {
             String authHeader = request.getHeader("Authorization");
             User user = authContextService.resolveUserFromBearer(authHeader);
             if (user == null) {
-                return ResponseEntity.status(401).build();
+                response.sendError(401);
+                return;
             }
         }
 
         File file = uploadFileService.resolveBaseDir().resolve(relativePath).toFile();
         if (!file.exists() || !file.isFile()) {
-            return ResponseEntity.notFound().build();
+            response.sendError(404);
+            return;
         }
-        Resource resource = new FileSystemResource(file);
-        MediaType mediaType = resolveMediaType(file.toPath());
 
-        var resp = ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(7, java.util.concurrent.TimeUnit.DAYS).cachePublic())
-                .contentType(mediaType)
-                .header("X-Content-Type-Options", "nosniff");
+        long length = file.length();
+        long start = 0;
+        long end = length - 1;
+        boolean partial = false;
+        // 视频拖进度条与 iOS Safari 播放依赖 206
+        if (StringUtils.hasText(rangeHeader)) {
+            try {
+                List<HttpRange> ranges = HttpRange.parseRanges(rangeHeader);
+                if (!ranges.isEmpty()) {
+                    HttpRange range = ranges.get(0);
+                    start = range.getRangeStart(length);
+                    end = range.getRangeEnd(length);
+                    if (start >= length || start > end) {
+                        response.sendError(416);
+                        return;
+                    }
+                    partial = true;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Range 非法：整文件返回
+            }
+        }
 
+        response.setStatus(partial ? jakarta.servlet.http.HttpServletResponse.SC_PARTIAL_CONTENT
+                : jakarta.servlet.http.HttpServletResponse.SC_OK);
+        response.setContentType(resolveMediaType(file.toPath(), ext).toString());
+        response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "max-age=604800, public");
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        response.setContentLengthLong(end - start + 1);
+        if (partial) {
+            response.setHeader(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + length);
+        }
         // 非图片/视频文件强制下载，防止浏览器执行脚本
-        if (!PUBLIC_EXTENSIONS.contains(ext)) {
+        if (!publicFile) {
             String safeName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
-            resp.header("Content-Disposition", "attachment; filename=\"" + safeName + "\"");
+            response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeName + "\"");
+        }
+        if ("HEAD".equalsIgnoreCase(request.getMethod())) {
+            return;
         }
 
-        return resp.body(resource);
+        // 直接写字节流：若交给消息转换器，ResponseEntity<?> 会被 Jackson 接管，
+        // 分段请求会回成 JSON（200/206 但 body 不是视频），浏览器就永远播不了。
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            raf.seek(start);
+            java.io.OutputStream out = response.getOutputStream();
+            byte[] buffer = new byte[64 * 1024];
+            long remaining = end - start + 1;
+            while (remaining > 0) {
+                int read = raf.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+                if (read < 0) {
+                    break;
+                }
+                out.write(buffer, 0, read);
+                remaining -= read;
+            }
+            out.flush();
+        }
     }
 
     /**
@@ -356,6 +435,14 @@ public class UploadController {
     }
 
     private MediaType resolveMediaType(Path filePath) {
+        return resolveMediaType(filePath, extractExtension(filePath.getFileName().toString()));
+    }
+
+    private MediaType resolveMediaType(Path filePath, String ext) {
+        MediaType known = MEDIA_TYPES.get(ext);
+        if (known != null) {
+            return known;
+        }
         try {
             String contentType = Files.probeContentType(filePath);
             if (StringUtils.hasText(contentType)) {

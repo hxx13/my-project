@@ -30,6 +30,68 @@
 
   <view class="card">
     <view class="card-title-row">
+      <text class="card-title">试卷</text>
+      <view class="chip-btn chip-btn--xs chip-btn--ghost" bindtap="openPaperPicker">选择</view>
+    </view>
+    <view wx:if="{{ papers.length === 0 }}" class="empty-tip">暂无可选试卷（需先在网页端发布）</view>
+    <view wx:else class="field-owners" bindtap="openPaperPicker">
+      <text wx:if="{{ pickedPapers.length === 0 }}" class="field-ph">未选择</text>
+      <text wx:for="{{ pickedPapers }}" wx:key="id" class="owner-tag">{{ item.title }}</text>
+      <text class="field-arrow">›</text>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title-row">
+      <text class="card-title">学习视频</text>
+      <view class="chip-btn chip-btn--xs chip-btn--ghost" bindtap="openVideoPicker">选择</view>
+    </view>
+    <view wx:if="{{ videos.length === 0 }}" class="empty-tip">暂无可选视频（需先在网页端上传并上架）</view>
+    <view wx:else class="field-owners" bindtap="openVideoPicker">
+      <text wx:if="{{ pickedVideos.length === 0 }}" class="field-ph">未选择</text>
+      <text wx:for="{{ pickedVideos }}" wx:key="id" class="owner-tag">{{ item.title }}</text>
+      <text class="field-arrow">›</text>
+    </view>
+    <view class="empty-tip">绑定后学生报名前必须全部看完。</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">循环发布</view>
+    <view class="field">
+      <text class="field-k">循环</text>
+      <picker mode="selector" range="{{ recurrenceLabels }}" value="{{ recurrenceIndex }}" bindchange="onRecurrenceChange">
+        <view class="field-picker">{{ recurrenceLabels[recurrenceIndex] }}</view>
+      </picker>
+    </view>
+    <view wx:if="{{ dayLabels.length > 0 }}" class="field">
+      <text class="field-k">{{ recurrenceIsWeekly ? '星期几' : '几号' }}</text>
+      <picker mode="selector" range="{{ dayLabels }}" value="{{ dayIndex }}" bindchange="onRecurrenceDayChange">
+        <view class="field-picker">{{ dayLabels[dayIndex] }}</view>
+      </picker>
+    </view>
+    <view wx:if="{{ recurrenceIndex > 0 }}" class="field">
+      <text class="field-k">起始时刻</text>
+      <picker mode="time" value="{{ recurrenceTime }}" bindchange="onRecurrenceTimeChange">
+        <view class="field-picker">{{ recurrenceTime || '选择时刻' }}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="field-k">起始日期</text>
+      <picker mode="date" value="{{ recurrenceStart }}" bindchange="onRecurrenceStartChange">
+        <view class="field-picker">{{ recurrenceStart || '不限' }}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="field-k">截至日期</text>
+      <picker mode="date" value="{{ recurrenceEnd }}" bindchange="onRecurrenceEndChange">
+        <view class="field-picker">{{ recurrenceEnd || '不限' }}</view>
+      </picker>
+    </view>
+    <view class="empty-tip">保存后由后台按循环自动生成场次；场次仍可手动增删改。</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title-row">
       <text class="card-title">场次</text>
       <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="openOcc">＋ 添加场次</view>
     </view>
@@ -71,6 +133,52 @@
         <view class="staff-dot {{ item.picked ? 'staff-dot-on' : '' }}"><text wx:if="{{ item.picked }}">✓</text></view>
         <text class="staff-name">{{ item.name }}</text>
         <text class="staff-job">{{ item.jobNumber }}</text>
+      </view>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 试卷选择 -->
+<van-popup show="{{ paperPickerShow }}" position="bottom" round custom-style="height:70vh;" bind:close="closePaperPicker">
+  <view class="sheet">
+    <view class="sheet-head">
+      <text class="sheet-title">选择试卷</text>
+      <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="closePaperPicker">确定（{{ pickedPaperIds.length }}）</view>
+    </view>
+    <scroll-view scroll-y class="sheet-body">
+      <view wx:if="{{ papers.length === 0 }}" class="empty-tip">暂无可选试卷</view>
+      <view
+        wx:for="{{ papers }}"
+        wx:key="id"
+        class="staff-row {{ item.picked ? 'staff-row-on' : '' }}"
+        data-id="{{ item.id }}"
+        bindtap="onTogglePaper"
+      >
+        <view class="staff-dot {{ item.picked ? 'staff-dot-on' : '' }}"><text wx:if="{{ item.picked }}">✓</text></view>
+        <text class="staff-name">{{ item.title }}</text>
+      </view>
+    </scroll-view>
+  </view>
+</van-popup>
+
+<!-- 学习视频选择 -->
+<van-popup show="{{ videoPickerShow }}" position="bottom" round custom-style="height:70vh;" bind:close="closeVideoPicker">
+  <view class="sheet">
+    <view class="sheet-head">
+      <text class="sheet-title">选择学习视频</text>
+      <view class="chip-btn chip-btn--xs chip-btn--primary" bindtap="closeVideoPicker">确定（{{ pickedVideoIds.length }}）</view>
+    </view>
+    <scroll-view scroll-y class="sheet-body">
+      <view wx:if="{{ videos.length === 0 }}" class="empty-tip">暂无可选视频</view>
+      <view
+        wx:for="{{ videos }}"
+        wx:key="id"
+        class="staff-row {{ item.picked ? 'staff-row-on' : '' }}"
+        data-id="{{ item.id }}"
+        bindtap="onToggleVideo"
+      >
+        <view class="staff-dot {{ item.picked ? 'staff-dot-on' : '' }}"><text wx:if="{{ item.picked }}">✓</text></view>
+        <text class="staff-name">{{ item.title }}</text>
       </view>
     </scroll-view>
   </view>

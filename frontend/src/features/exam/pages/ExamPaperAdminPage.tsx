@@ -5,8 +5,18 @@ import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
 import { Download, FileText, Loader2, Plus, Save, Search, Trash2, Undo2, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { appConfirm, appPrompt } from "@/lib/appDialog";
+import { uploadVideoFile } from "@/api/domains/upload.api";
+import {
+  createLearningVideo,
+  deleteLearningVideo,
+  fetchLearningVideos,
+  updateLearningVideo,
+  type LearningVideoRow,
+} from "@/api/domains/learningVideo.api";
+import { VideoLearnPlayer } from "@/features/learning-video/VideoLearnPlayer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   createExamFolder,
@@ -76,7 +86,7 @@ const FOLDER_LABELS = {
 
 export default function ExamPaperAdminPage() {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<0 | 1 | 2 | 3>(0);
+  const [tab, setTab] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [keyword, setKeyword] = useState("");
 
   const [currentId, setCurrentId] = useState<number | null>(null);
@@ -869,6 +879,223 @@ export default function ExamPaperAdminPage() {
     </AdminFormCard>
   );
 
+  // ── 视频学习 ──
+  const videoFileRef = useRef<HTMLInputElement>(null);
+  const [videoEdit, setVideoEdit] = useState<LearningVideoRow | null>(null);
+  const [videoPreview, setVideoPreview] = useState<LearningVideoRow | null>(null);
+  const { data: videos = [] } = useQuery({
+    queryKey: ["learning-videos"],
+    queryFn: fetchLearningVideos,
+  });
+
+  const handleUploadVideo = async (file: File) => {
+    try {
+      const uploaded = await uploadVideoFile(file);
+      const title = await appPrompt("视频标题", file.name.replace(/\.[^.]+$/, ""), { allowEmpty: false });
+      if (title == null) return;
+      await createLearningVideo({
+        title: title.trim(),
+        fileUrl: uploaded.publicUrl || uploaded.url,
+        fileRecordId: uploaded.recordId,
+        sizeBytes: file.size,
+      });
+      toast.success("已上传并上架");
+      qc.invalidateQueries({ queryKey: ["learning-videos"] });
+    } catch (e: any) {
+      toast.error(e?.message || "上传失败");
+    }
+  };
+
+  const toggleVideoActive = async (v: LearningVideoRow) => {
+    try {
+      await updateLearningVideo(v.id, { active: v.active === 1 ? 0 : 1 });
+      qc.invalidateQueries({ queryKey: ["learning-videos"] });
+    } catch (e: any) {
+      toast.error(e?.message || "操作失败");
+    }
+  };
+
+  const removeVideo = async (v: LearningVideoRow) => {
+    if (!(await appConfirm(`确定删除「${v.title}」？学生端进度会一并失去关联。`))) return;
+    try {
+      await deleteLearningVideo(v.id);
+      toast.success("已删除");
+      qc.invalidateQueries({ queryKey: ["learning-videos"] });
+    } catch (e: any) {
+      toast.error(e?.message || "删除失败");
+    }
+  };
+
+  const saveVideoSettings = async () => {
+    if (!videoEdit) return;
+    try {
+      await updateLearningVideo(videoEdit.id, {
+        title: videoEdit.title,
+        allowSeek: videoEdit.allowSeek ? 1 : 0,
+        rememberPosition: videoEdit.rememberPosition ? 1 : 0,
+        requireFullWatch: videoEdit.requireFullWatch ? 1 : 0,
+        completeThreshold: Number(videoEdit.completeThreshold ?? 95),
+      });
+      toast.success("已保存");
+      qc.invalidateQueries({ queryKey: ["learning-videos"] });
+      setVideoEdit(null);
+    } catch (e: any) {
+      toast.error(e?.message || "保存失败");
+    }
+  };
+
+  const fmtDuration = (s?: number) => {
+    if (!s || s <= 0) return "—";
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, "0")}`;
+  };
+
+  const videoTab = (
+    <AdminFormCard title="视频学习" fill>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          ref={videoFileRef}
+          type="file"
+          accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void handleUploadVideo(f);
+          }}
+        />
+        <AdminButton type="button" tone="primary" size="sm" onClick={() => videoFileRef.current?.click()}>
+          <Plus className="mr-1 h-3.5 w-3.5" />上传视频
+        </AdminButton>
+        <span className="text-xs text-[var(--app-color-text-tertiary)]">
+          上传后默认上架；学生报名绑定了视频的培训前必须先看完。支持 mp4 / webm / mov，单个不超过 200MB。
+        </span>
+      </div>
+      {videos.length === 0 ? (
+        <div className="py-8 text-center text-sm text-neutral-400">还没有学习视频</div>
+      ) : (
+        <table className="twin-table w-full min-w-max border-collapse text-left text-sm">
+          <thead>
+            <tr>
+              <th className="px-3 py-2">标题</th>
+              <th className="px-3 py-2">时长</th>
+              <th className="px-3 py-2">大小</th>
+              <th className="px-3 py-2">播放规则</th>
+              <th className="px-3 py-2">状态</th>
+              <th className="px-3 py-2 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {videos.map((v) => (
+              <tr key={v.id} className="border-b">
+                <td className="px-3 py-2">{v.title}</td>
+                <td className="px-3 py-2 text-[var(--app-color-text-tertiary)]">{fmtDuration(v.durationSeconds)}</td>
+                <td className="px-3 py-2 text-[var(--app-color-text-tertiary)]">
+                  {v.sizeBytes ? `${(v.sizeBytes / 1024 / 1024).toFixed(1)} MB` : "—"}
+                </td>
+                <td className="px-3 py-2 text-xs text-[var(--app-color-text-tertiary)]">
+                  {v.allowSeek ? "可快进" : "禁止快进"} · {v.rememberPosition ? "记住位置" : "不记位置"} ·{" "}
+                  {v.requireFullWatch ? "未看完重来" : "可续播"} · 完成 {v.completeThreshold ?? 95}%
+                </td>
+                <td className="px-3 py-2">
+                  {v.active === 1 ? (
+                    <span className="text-emerald-600">已上架</span>
+                  ) : (
+                    <span className="text-neutral-400">已下架</span>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => setVideoPreview(v)}>
+                      观看
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => setVideoEdit({ ...v })}>
+                      编辑
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => void toggleVideoActive(v)}>
+                      {v.active === 1 ? "下架" : "上架"}
+                    </AdminButton>
+                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => void removeVideo(v)}>
+                      删除
+                    </AdminButton>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <Dialog open={videoEdit != null} onOpenChange={(open) => { if (!open) setVideoEdit(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>视频播放规则</DialogTitle>
+          </DialogHeader>
+          {videoEdit ? (
+            <div className="flex flex-col gap-3 text-sm">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[var(--app-color-text-tertiary)]">标题</span>
+                <input
+                  value={videoEdit.title}
+                  onChange={(e) => setVideoEdit({ ...videoEdit, title: e.target.value })}
+                  className="h-9 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2"
+                />
+              </label>
+              <div className="flex items-center justify-between">
+                <span>允许拖动进度条（快进）</span>
+                <AdminSwitchScaled
+                  size="sm"
+                  checked={videoEdit.allowSeek === 1}
+                  onChange={(checked) => setVideoEdit({ ...videoEdit, allowSeek: checked ? 1 : 0 })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span>记住上次播放位置</span>
+                <AdminSwitchScaled
+                  size="sm"
+                  checked={videoEdit.rememberPosition === 1}
+                  onChange={(checked) => setVideoEdit({ ...videoEdit, rememberPosition: checked ? 1 : 0 })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span>没看完下次必须从头播放</span>
+                <AdminSwitchScaled
+                  size="sm"
+                  checked={videoEdit.requireFullWatch === 1}
+                  onChange={(checked) => setVideoEdit({ ...videoEdit, requireFullWatch: checked ? 1 : 0 })}
+                />
+              </div>
+              <label className="flex items-center justify-between">
+                <span>完成标准（累计观看达到时长的百分比）</span>
+                <input
+                  type="number"
+                  min={10}
+                  max={100}
+                  value={videoEdit.completeThreshold ?? 95}
+                  onChange={(e) => setVideoEdit({ ...videoEdit, completeThreshold: Number(e.target.value) })}
+                  className="h-8 w-20 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 text-right"
+                />
+              </label>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <AdminButton type="button" tone="secondary" onClick={() => setVideoEdit(null)}>
+              取消
+            </AdminButton>
+            <AdminButton type="button" tone="primary" onClick={() => void saveVideoSettings()}>
+              保存
+            </AdminButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {videoPreview ? (
+        <VideoLearnPlayer previewOnly video={videoPreview} onClose={() => setVideoPreview(null)} />
+      ) : null}
+    </AdminFormCard>
+  );
+
   return (
     <AdminPageShell>
       <div className="flex flex-col h-[calc(100dvh-var(--admin-chrome-offset))]">
@@ -879,6 +1106,7 @@ export default function ExamPaperAdminPage() {
               {tabBtn(tab === 1, "发布题目", () => setTab(1))}
               {tabBtn(tab === 2, "成绩管理", () => setTab(2))}
               {tabBtn(tab === 3, "学习资料", () => setTab(3))}
+              {tabBtn(tab === 4, "视频学习", () => setTab(4))}
             </div>
             <div className="flex items-center gap-2">
               <AdminButton type="button" tone="secondary" size="sm" onClick={handleNew}><Plus className="h-4 w-4 mr-1" />新建试卷</AdminButton>
@@ -887,7 +1115,7 @@ export default function ExamPaperAdminPage() {
             </div>
           </div>
         </AdminFormCard>
-        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : learningTab}</div>
+        <div className="flex-1 min-h-0">{tab === 0 ? configTab : tab === 1 ? publishTab : tab === 2 ? scoresTab : tab === 3 ? learningTab : videoTab}</div>
       </div>
 
       <Dialog open={seedOpen} onOpenChange={(v) => { if (!v) setSeedOpen(false); }}>

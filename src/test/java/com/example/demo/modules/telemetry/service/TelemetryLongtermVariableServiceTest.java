@@ -3,6 +3,7 @@ package com.example.demo.modules.telemetry.service;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermPlanDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermVariableDto;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermVariableRow;
+import com.example.demo.modules.telemetry.mapper.TelemetryLongtermPartitionMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleLogMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermVariableMapper;
@@ -46,10 +47,16 @@ class TelemetryLongtermVariableServiceTest {
             captured = new ArrayList<>(list);
             return list.size();
         }
+
+        @Override
+        public List<String> selectEnabledNamesByPartition(Long partitionId, boolean unassigned) {
+            return List.of();
+        }
     }
 
     private static TelemetryLongtermArchiveService service(CapturingMapper mapper) {
-        return new TelemetryLongtermArchiveService(mapper, Mockito.mock(TelemetryLongtermSampleLogMapper.class),
+        return new TelemetryLongtermArchiveService(mapper, Mockito.mock(TelemetryLongtermPartitionMapper.class),
+                Mockito.mock(TelemetryLongtermSampleLogMapper.class),
                 Mockito.mock(TelemetryWatchlistDbService.class),
                 Mockito.mock(TwinJobScheduleConfigMapper.class),
                 Mockito.mock(TelemetryLongtermSampleMapper.class),
@@ -105,9 +112,10 @@ class TelemetryLongtermVariableServiceTest {
         TwinJobScheduleConfigMapper scheduleMapper = Mockito.mock(TwinJobScheduleConfigMapper.class);
         Mockito.when(scheduleMapper.selectByJobKey(Mockito.anyString())).thenReturn(null);
         TelemetryLongtermSampleMapper sampleMapper = Mockito.mock(TelemetryLongtermSampleMapper.class);
-        Mockito.when(sampleMapper.countByFilter(null, null, null)).thenReturn(7L);
+        Mockito.when(sampleMapper.countByFilter(null, null, null, null)).thenReturn(7L);
         TelemetryLongtermArchiveService svc = new TelemetryLongtermArchiveService(
-                mapper, logMapper, Mockito.mock(TelemetryWatchlistDbService.class), scheduleMapper,
+                mapper, Mockito.mock(TelemetryLongtermPartitionMapper.class), logMapper,
+                Mockito.mock(TelemetryWatchlistDbService.class), scheduleMapper,
                 sampleMapper, Mockito.mock(TelemetrySnapshotService.class));
 
         TelemetryLongtermPlanDto plan = svc.getPlanView();

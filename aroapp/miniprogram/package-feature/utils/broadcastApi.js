@@ -95,6 +95,27 @@ async function getActive() {
   return { plans: (d && Array.isArray(d.plans) ? d.plans : []) };
 }
 
+// ---------------------------------------------------------------- 播放模式
+//
+// 1 单曲播放 / 2 单曲循环 / 3 顺序播放 / 4 循环播放 / 5 随机播放。
+// **平台全局设置**：不是按分区、也不是按方案各一份，改了也会影响正在跑的定时方案。
+
+const PLAY_MODES = [
+  { value: 3, label: '顺序' },
+  { value: 4, label: '列表循环' },
+  { value: 2, label: '单曲循环' },
+  { value: 5, label: '随机' },
+];
+
+async function getPlayMode() {
+  const d = await call('/play-mode', 'GET');
+  return d || { mode: -1, text: '' };
+}
+
+function setPlayMode(mode) {
+  return call('/play-mode', 'PUT', { mode: mode });
+}
+
 // ---------------------------------------------------------------- 曲库
 
 async function listSongLists() {
@@ -241,6 +262,9 @@ module.exports = {
   pauseZones: pauseZones,
   resumeZones: resumeZones,
   getActive: getActive,
+  PLAY_MODES: PLAY_MODES,
+  getPlayMode: getPlayMode,
+  setPlayMode: setPlayMode,
   listSongLists: listSongLists,
   listSongOptions: listSongOptions,
   createSongList: createSongList,

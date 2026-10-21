@@ -80,7 +80,8 @@
             <text wx:if="{{ item.description }}" class="goods-desc">{{ item.description }}</text>
             <!-- 价格与操作控件同一行：操作区不再绝对定位独占一列/一行 -->
             <view class="goods-foot">
-              <text class="goods-price {{ item.priceText ? '' : 'goods-price-empty' }}">{{ item.priceText || '待定' }}</text>
+              <text wx:if="{{ item.priceText }}" class="goods-price">{{ item.priceText }}</text>
+              <text wx:elif="{{ item.purchasable }}" class="goods-price goods-price-empty">待定</text>
               <view wx:if="{{ item.purchasable }}" class="goods-spec" catchtap="onBuyTap" data-id="{{ item.id }}">
                 <text>选择规格</text>
                 <view wx:if="{{ totalQtyByItem[item.id] > 0 }}" class="goods-spec-badge">{{ totalQtyByItem[item.id] }}</view>

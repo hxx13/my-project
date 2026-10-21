@@ -111,3 +111,13 @@ test('submittableLines: READY 行 + PI 本人加购的行，其余不算', () =>
   assert.deepEqual(submittableLines(null, true, 'pi1'), []);
   assert.deepEqual(submittableLines(cart, true, '').map((l) => l.id), [1], '拿不到账号时别把空串当「本人」');
 });
+
+test('submittableLines: 同一人两个账号时按服务端 mine 认本人行', () => {
+  const cart = [
+    { id: 7, packageStatus: 'DRAFT', addedBy: 'STAFF_100', mine: true },   // 本人用教职工账号加的
+    { id: 8, packageStatus: 'DRAFT', addedBy: 'STAFF_200', mine: false },
+  ];
+  assert.deepEqual(submittableLines(cart, true, 'aro_1').map((l) => l.id), [7],
+    '只看 addedBy 会漏掉本人的另一个账号，提交后这行留在购物车、笼位也一直被占');
+  assert.deepEqual(submittableLines(cart, true, '').map((l) => l.id), [7], '拿不到当前账号时仍认 mine');
+});

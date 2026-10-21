@@ -22,6 +22,7 @@
         <result column="metric_kind_role" property="metricKindRole"/>
         <result column="metric_kind_label" property="metricKindLabel"/>
         <result column="enabled" property="enabled"/>
+        <result column="show_in_animal_room" property="showInAnimalRoom"/>
         <result column="alarm_enabled" property="alarmEnabled"/>
         <result column="alarm_cooldown_minutes" property="alarmCooldownMinutes"/>
         <result column="sort_order" property="sortOrder"/>
@@ -39,14 +40,14 @@
             floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
             cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
             alarm_override_min, alarm_override_max,
-            enabled, sort_order)
+            enabled, show_in_animal_room, sort_order)
         VALUES
         <foreach collection="list" item="item" separator=",">
             (#{item.bundleId}, #{item.winccVariableName}, #{item.structureType}, #{item.dataType}, #{item.displayLabel},
             #{item.floorCode}, #{item.roomBase}, #{item.roomCanonical}, #{item.suiteSuffix}, #{item.metricKindCode},
             #{item.cachedAlarmMinValue}, #{item.cachedAlarmMaxValue}, #{item.cachedAlarmLimitsAt},
             #{item.alarmOverrideMin}, #{item.alarmOverrideMax},
-            #{item.enabled}, #{item.sortOrder})
+            #{item.enabled}, COALESCE(#{item.showInAnimalRoom}, 1), #{item.sortOrder})
         </foreach>
     </insert>
 
@@ -55,12 +56,12 @@
             floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
             cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
             alarm_override_min, alarm_override_max,
-            enabled, sort_order)
+            enabled, show_in_animal_room, sort_order)
         VALUES (#{bundleId}, #{winccVariableName}, #{structureType}, #{dataType}, #{displayLabel},
             #{floorCode}, #{roomBase}, #{roomCanonical}, #{suiteSuffix}, #{metricKindCode},
             #{cachedAlarmMinValue}, #{cachedAlarmMaxValue}, #{cachedAlarmLimitsAt},
             #{alarmOverrideMin}, #{alarmOverrideMax},
-            #{enabled}, #{sortOrder})
+            #{enabled}, COALESCE(#{showInAnimalRoom}, 1), #{sortOrder})
         ON DUPLICATE KEY UPDATE
             structure_type = VALUES(structure_type),
             data_type = VALUES(data_type),
@@ -76,6 +77,7 @@
             alarm_override_min = COALESCE(VALUES(alarm_override_min), alarm_override_min),
             alarm_override_max = COALESCE(VALUES(alarm_override_max), alarm_override_max),
             enabled = VALUES(enabled),
+            show_in_animal_room = VALUES(show_in_animal_room),
             sort_order = VALUES(sort_order)
     </insert>
 
@@ -85,7 +87,7 @@
                t.cached_alarm_min_value, t.cached_alarm_max_value, t.cached_alarm_limits_at,
                t.alarm_override_min, t.alarm_override_max,
                t.alarm_enabled, t.alarm_cooldown_minutes,
-               t.enabled, t.sort_order, t.created_at,
+               t.enabled, t.show_in_animal_room, t.sort_order, t.created_at,
                b.code AS bundle_code, b.display_name AS bundle_display_name,
                mk.kind_role AS metric_kind_role,
                mk.label_zh AS metric_kind_label
@@ -110,7 +112,7 @@
                floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
                cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
                alarm_override_min, alarm_override_max,
-               enabled, sort_order, created_at
+               enabled, show_in_animal_room, sort_order, created_at
         FROM telemetry_watchlist_tag
         WHERE bundle_id = #{bundleId}
         <if test="q != null and q != ''">
@@ -131,7 +133,7 @@
                floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
                cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
                alarm_override_min, alarm_override_max,
-               enabled, sort_order, created_at
+               enabled, show_in_animal_room, sort_order, created_at
         FROM telemetry_watchlist_tag
         WHERE bundle_id = #{bundleId} AND enabled = 1
         ORDER BY sort_order ASC, id ASC
@@ -142,7 +144,7 @@
                floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
                cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
                alarm_override_min, alarm_override_max,
-               enabled, sort_order, created_at
+               enabled, show_in_animal_room, sort_order, created_at
         FROM telemetry_watchlist_tag
         WHERE bundle_id = #{bundleId} AND enabled = 1
         ORDER BY sort_order ASC, id ASC
@@ -160,7 +162,7 @@
                floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
                cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
                alarm_override_min, alarm_override_max,
-               enabled, sort_order, created_at
+               enabled, show_in_animal_room, sort_order, created_at
         FROM telemetry_watchlist_tag
         WHERE bundle_id = #{bundleId}
         ORDER BY sort_order ASC, id ASC
@@ -171,7 +173,7 @@
                floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
                cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
                alarm_override_min, alarm_override_max,
-               enabled, sort_order, created_at
+               enabled, show_in_animal_room, sort_order, created_at
         FROM telemetry_watchlist_tag
         WHERE bundle_id = #{bundleId} AND wincc_variable_name = #{variableName}
         LIMIT 1
@@ -182,7 +184,7 @@
                floor_code, room_base, room_canonical, suite_suffix, metric_kind_code,
                cached_alarm_min_value, cached_alarm_max_value, cached_alarm_limits_at,
                alarm_override_min, alarm_override_max,
-               enabled, sort_order, created_at
+               enabled, show_in_animal_room, sort_order, created_at
         FROM telemetry_watchlist_tag
         WHERE id = #{id}
         LIMIT 1

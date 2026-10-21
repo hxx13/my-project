@@ -165,6 +165,15 @@
     border-top: 1px solid var(--app-color-border-default);
   }
 
+  /* 编辑器/直出正文里的视频：不撑破容器 */
+  .page-help-rich-editor .ProseMirror :where(video),
+  .page-help-prose :where(video),
+  .rich-text-content :where(video) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--app-radius-element);
+  }
+
   /* ── 文字色 / 高亮色块（语义变量 + 粘贴内容修正） ── */
   .rich-text-content :where(mark),
   .page-help-rich-editor .ProseMirror :where(mark) {

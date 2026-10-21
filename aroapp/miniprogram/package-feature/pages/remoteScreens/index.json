@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "远程屏幕",
+  "usingComponents": {
+    "van-popup": "@vant/weapp/popup/index"
+  }
+}

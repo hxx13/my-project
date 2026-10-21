@@ -9,6 +9,10 @@ public class TelemetryLongtermVariableDto {
     private int sortOrder;
     private String displayLabel;
     private String unit;
+    /** 自定义分区 id；空=未分区 */
+    private Long partitionId;
+    /** 自定义分区名称（读取时按分区表解析） */
+    private String partitionName;
     private boolean enabled;
     private String floorCode;
     private String roomCanonical;

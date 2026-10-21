@@ -99,6 +99,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { adminInputClass } from "@/features/admin/adminFormUi";
 import { decodeQrFromFile } from "@/utils/decodeQrFromFile";
 import { AdminChromeContextMenu, type AdminChromeContextMenuPayload } from "@/features/admin/AdminChromeContextMenu";
+import { findEditableContextTarget, resolveEditableContextTarget } from "@/features/admin/adminChromeClipboard";
 import {
   parseAdminNavLinkFromEventTarget,
   parseFriendRowFromEventTarget,
@@ -666,6 +667,8 @@ export default function AdminLayout() {
     const onCtx = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       if (e.target.closest("[data-admin-chrome-ctx-surface]")) return;
+      // 输入框/富文本走浏览器原生右键菜单：自定义菜单读剪贴板会被权限策略拒绝
+      if (findEditableContextTarget(e.target)) return;
       e.preventDefault();
       // 触摸长按（iPad / 安卓平板）不是「右键」意图：拖拽时极易误触，
       // 吃掉菜单就够了，不能顺手在长按坐标弹出后台自己的右键菜单。
@@ -677,7 +680,14 @@ export default function AdminLayout() {
       let friend = parseFriendRowFromEventTarget(e.target);
       if (sensitive && !hasMinRole(role, sensitive.configureMinRole)) sensitive = null;
       if (!friendOk) friend = null;
-      setChromeCtx({ x: e.clientX, y: e.clientY, nav, sensitive, friend });
+      setChromeCtx({
+        x: e.clientX,
+        y: e.clientY,
+        nav,
+        sensitive,
+        friend,
+        editable: resolveEditableContextTarget(e.target),
+      });
     };
     document.addEventListener("contextmenu", onCtx, true);
     return () => document.removeEventListener("contextmenu", onCtx, true);

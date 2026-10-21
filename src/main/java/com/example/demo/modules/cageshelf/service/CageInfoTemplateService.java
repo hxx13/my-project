@@ -285,7 +285,8 @@ public class CageInfoTemplateService {
             }
             String domain = f.getDomainCode();
             if (domain == null || domain.isBlank()) {
-                domain = f.getFolder() != null && !f.getFolder().isBlank() ? "D5" : "D5";
+                // 域编码缺失的字段归「未分类」；folder 是旧的分类维度，不再参与定域
+                domain = "D5";
             }
             domain = domain.toUpperCase(Locale.ROOT);
             m.computeIfAbsent(domain, k -> new ArrayList<>()).add(f);

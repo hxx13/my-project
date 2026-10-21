@@ -192,3 +192,17 @@ export async function assignChannelCategory(id: number, categoryId: number | nul
 export async function setChannelLink(id: number, linkUrl: string): Promise<void> {
   await authHttp.patch(`/v1/dahua/tvwall/channels/${id}/link`, { linkUrl });
 }
+
+// ── 参观顺序（预设 id 有序，跨端共用一份） ──
+
+/** 这面墙的参观顺序：按顺序排列的预设 taskId */
+export async function fetchTvWallTour(tvWallId: string): Promise<string[]> {
+  const res = await authHttp.get<{ data: string[] }>("/v1/dahua/tvwall/tour", { params: { tvWallId } });
+  return res.data.data ?? [];
+}
+
+/** 整队替换参观顺序（数组顺序即切换顺序） */
+export async function saveTvWallTour(tvWallId: string, taskIds: string[]): Promise<string[]> {
+  const res = await authHttp.put<{ data: string[] }>("/v1/dahua/tvwall/tour", { tvWallId, taskIds });
+  return res.data.data ?? [];
+}

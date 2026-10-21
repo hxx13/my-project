@@ -17,6 +17,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +40,8 @@ class TelemetryLongtermExportServiceTest {
         // 变量配置（宽表第一列要拿它的单位）。这里给空表 —— 第一列就退回变量名。
         TelemetryLongtermArchiveService archive = mock(TelemetryLongtermArchiveService.class);
         when(archive.listVariables()).thenReturn(List.of());
+        when(archive.partitionVariableNames(nullable(Long.class)))
+                .thenReturn(rows.stream().map(TelemetryLongtermSampleRow::getVariableName).distinct().toList());
         return new TelemetryLongtermExportService(mapper, archive);
     }
 
@@ -292,6 +295,37 @@ class TelemetryLongtermExportServiceTest {
             assertEquals("09:00:00", sh.getRow(5).getCell(1).getStringCellValue());
             assertEquals(22.0, sh.getRow(6).getCell(1).getNumericCellValue(), 0.001);
             assertEquals(6, sh.getLastRowNum());
+        }
+    }
+
+    @Test
+    void exportFiltersToPartitionVariableNames() throws Exception {
+        LocalDateTime t = LocalDateTime.of(2026, 10, 10, 8, 0, 0);
+        List<TelemetryLongtermSampleRow> rows = List.of(
+                row(t, "VAR_A", "10"),
+                row(t, "VAR_B", "20"));
+
+        TelemetryLongtermSampleMapper mapper = mock(TelemetryLongtermSampleMapper.class);
+        when(mapper.selectForExport(any(), any(), any(), anyInt())).thenAnswer(inv -> {
+            List<String> names = inv.getArgument(0);
+            return rows.stream()
+                    .filter((r) -> names == null || names.contains(r.getVariableName()))
+                    .toList();
+        });
+        TelemetryLongtermArchiveService archive = mock(TelemetryLongtermArchiveService.class);
+        when(archive.listVariables()).thenReturn(List.of());
+        when(archive.partitionVariableNames(nullable(Long.class))).thenReturn(List.of("VAR_A"));
+
+        TelemetryLongtermExportRequest req = new TelemetryLongtermExportRequest();
+        req.setLayout("WIDE");
+        req.setDays(List.of("2026-10-10"));
+
+        byte[] bytes = new TelemetryLongtermExportService(mapper, archive).exportXlsx(req);
+        try (XSSFWorkbook wb = readBack(bytes)) {
+            assertEquals(1, wb.getNumberOfSheets(), "只导当前分区，仍是单表");
+            Sheet sh = wb.getSheetAt(0);
+            assertEquals("VAR_A", sh.getRow(1).getCell(0).getStringCellValue());
+            assertEquals(1, sh.getLastRowNum(), "VAR_B 不属于该分区，不应出现");
         }
     }
 }

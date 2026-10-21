@@ -13,6 +13,7 @@ import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendin
 import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT, SOCKET_CAGE_STATUS_ALERT_CHANGED, SOCKET_SUPPLIES_CLAIM_CHANGED } from "@/config/socketEvents";
 import { useClientVersionPoll, type ReloadTrigger } from "@/hooks/useClientVersionPoll";
 import { GracefulReloadBanner } from "@/components/GracefulReloadBanner";
+import RemoteScreenAgent from "@/features/remote-screen/RemoteScreenAgent";
 
 // 记录页面加载时间戳，用于防重复 reload（pending reload 机制会使重连后再次收到广播）
 const PAGE_LOAD_AT = Date.now();
@@ -402,6 +403,8 @@ function App() {
               <CageColorProvider>
                 {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
                 <GlobalSocketListener />
+                {/* 🖥 让当前标签页可被小程序远程切路由（编号 + 名称 + 当前页面） */}
+                <RemoteScreenAgent />
                 {/* 🛠 后端不可达时的全局弹窗（任何路由下都要在，含门户首页与扫码工位） */}
                 <ServerRestartNotice />
                 {/* 🔒 读卡器 Enter 键全局防护（capture 阶段） */}

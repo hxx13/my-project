@@ -61,15 +61,23 @@ function parseSpecLabel(ss) {
  * 小程序无打包通道只能内联（同 studentCageShelf 的 allocVerdict 惯例），改那边必须同步这里。
  */
 function canEditCartLine(line, isPi, currentUserId) {
-  return !!isPi || line.addedBy === currentUserId;
+  // mine 由服务端按 person.id 判出（同一人换视角也算本人）；回退到账号 id 比对待旧数据
+  return !!isPi || line.mine === true || line.addedBy === currentUserId;
+}
+
+/** 是否本人加购的行（人员级：STAFF_ 与 aro 两个账号都算同一人） */
+function isMyCartLine(line, currentUserId) {
+  return !!line && (line.mine === true || line.addedBy === currentUserId);
 }
 
 function splitCartByUser(lines) {
   const order = [];
   const byUser = {};
   lines.forEach(function (l) {
-    if (!byUser[l.addedBy]) { byUser[l.addedBy] = []; order.push(l.addedBy); }
-    byUser[l.addedBy].push(l);
+    // 按人员键分组：同一人用两个账号加的行不能被拆成两个「实验员」
+    const uid = l.addedByKey || l.addedBy;
+    if (!byUser[uid]) { byUser[uid] = []; order.push(uid); }
+    byUser[uid].push(l);
   });
   return order.map(function (uid) {
     const userLines = byUser[uid];
@@ -284,6 +292,8 @@ Page({
   onSelectCampus(e) {
     const campus = String(e.currentTarget.dataset.campus || '');
     if (!campus || campus === this.data.campus) { this.setData({ campusSheetOpen: false }); return; }
+    // 换校区前放掉本轮已锁笼位：笼位在另一个校区的架子上，不能带进本单
+    if (this.data.specSheetOpen || (this.data.pickedCages || []).length) this.closeSpec();
     const first = !this.data.campus;
     try { wx.setStorageSync('animal_order_campus', campus); } catch (err) { /* ignore */ }
     this.setData({ campus: campus, campusSheetOpen: false }, function () {
@@ -533,7 +543,10 @@ Page({
           remark: ci.remark || '',
           deliveryCycle: ci.deliveryCycle || '',
           addedBy: ci.addedBy,
-          addedByLabel: addedByName || (ci.addedBy === currentUserId ? displayName : '') || ci.addedBy || '',
+          // 服务端按 person 判的本人标记（双账号场景只看 addedBy 会漏掉本人行）
+          mine: ci.mine === true,
+          addedByKey: ci.addedByKey || null,
+          addedByLabel: addedByName || (ci.mine === true ? displayName : '') || ci.addedBy || '',
         };
         line.canEdit = canEditCartLine(line, isPi, currentUserId);
         return line;
@@ -557,8 +570,8 @@ Page({
       const curQty = curLines.reduce(function (s, l) { return s + l.qty; }, 0);
       // PI 是最终提交人，本人加购的行不必再走「提交给 PI」确认，直接纳入提交范围
       const ready = picker.submittableLines(cart, self.data.isPi, currentUserId);
-      const myDraft = cart.filter(function (l) { return l.addedBy === currentUserId && l.packageStatus !== 'READY'; });
-      const myReady = cart.filter(function (l) { return l.addedBy === currentUserId && l.packageStatus === 'READY'; });
+      const myDraft = cart.filter(function (l) { return isMyCartLine(l, currentUserId) && l.packageStatus !== 'READY'; });
+      const myReady = cart.filter(function (l) { return isMyCartLine(l, currentUserId) && l.packageStatus === 'READY'; });
       const totalQtyByItem = {};
       cart.forEach(function (l) {
         const rid = l.refDataId;
@@ -971,12 +984,20 @@ Page({
     const self = this;
     const aupRecordId = Number(this.data.selectedAupId);
     if (!aupRecordId) return;
-    this.setData({ cageLoading: true, cageError: '', pickedCages: [], cageShelves: [], cageRooms: [], cageCells: {}, cageAllocPinned: {}, cageAllocOpen: false });
-    Promise.all([
-      api.fetchGroupShelves(self.data.campus),
-      api.fetchReservableCages(aupRecordId),
-      api.fetchActiveReservations().catch(function () { return []; }),
-    ])
+    // 开新一轮前先把上一轮的锁定放掉：页面状态马上要清空，不放就既看不见也释放不掉
+    const stale = this.data.pickedCages || [];
+    Promise.all(stale.map(function (c) {
+      return (c && c.reservationId != null)
+        ? api.releaseCage(c.reservationId).catch(function () {})
+        : Promise.resolve();
+    })).then(function () {
+      self.setData({ cageLoading: true, cageError: '', pickedCages: [], cageShelves: [], cageRooms: [], cageCells: {}, cageAllocPinned: {}, cageAllocOpen: false });
+      return Promise.all([
+        api.fetchGroupShelves(self.data.campus),
+        api.fetchReservableCages(aupRecordId),
+        api.fetchActiveReservations().catch(function () { return []; }),
+      ]);
+    })
       .then(function (r) {
         const rooms = picker.groupShelvesByRoom(r[0] || []);
         const meta = r[1] || {};
@@ -994,12 +1015,73 @@ Page({
           cageCells: cells,
           cageMaxPerCage: cap > 0 ? cap : 5,
           cageLoading: false,
+          // 接回本人已锁、还没加购的笼位（重进页面/换会话后内存状态没了）
+          pickedCages: self._adoptLockedCages(meta.cells || [], r[2] || []),
         });
         self.loadCageShelves(0);
       })
       .catch(function (e) {
         self.setData({ cageLoading: false, cageError: (e && e.message) || '加载笼位失败' });
       });
+  },
+
+  /**
+   * 接回本人已锁定、还没加购（SELECTING）的笼位。
+   *
+   * 预定是持久的，小程序页面重进后内存状态没了；不接回来它们会显示成可点的空格子，
+   * 点了撞唯一索引报 409，又没有任何入口能主动释放。已加购/已下单的不接（那不是「还在选」）。
+   * 位置信息先留空，等对应房间的网格加载后再补（见 `_enrichPickedCages`）。
+   */
+  _adoptLockedCages(cells, active) {
+    const byCage = {};
+    (active || []).forEach(function (a) { if (a && a.animalCageId != null) byCage[String(a.animalCageId)] = a; });
+    const out = [];
+    (cells || []).forEach(function (c) {
+      if (!c || c.animalCageId == null || c.reservedByMe !== true) return;
+      if (c.cartState && c.cartState !== 'SELECTING') return;
+      const id = String(c.animalCageId);
+      const a = byCage[id];
+      if (!a || a.reservationId == null) return;
+      out.push({
+        reservationId: a.reservationId,
+        animalCageId: id,
+        label: '已锁定',
+        shelveId: '', shelveName: '', roomId: '', roomName: '',
+        // 位置还没解析出来：加购时不能拿别的房间顶替，必须先切到它所在的房间 tab
+        roomUnknown: true,
+      });
+    });
+    return out;
+  },
+
+  /** 网格加载后给接回的笼位补位置（房间/架子/坐标）——加购要按笼位带领用房间 */
+  _enrichPickedCages(shelves) {
+    const picked = this.data.pickedCages || [];
+    if (!picked.length) return;
+    const byId = {};
+    (shelves || []).forEach(function (sh) {
+      (sh.grid || []).forEach(function (cell) {
+        const id = cell && cell.id != null ? String(cell.id) : '';
+        if (id) byId[id] = { sh: sh, cell: cell };
+      });
+    });
+    let changed = false;
+    const next = picked.map(function (c) {
+      if (c.roomId) return c;   // 已有位置，不覆盖
+      const hit = byId[String(c.animalCageId)];
+      if (!hit) return c;
+      changed = true;
+      const label = hit.cell._displayPosition || hit.cell.position || '';
+      return Object.assign({}, c, {
+        label: label || c.label,
+        shelveId: hit.sh.shelveId || '',
+        shelveName: hit.sh.shelveName || '',
+        roomId: hit.sh.roomId || '',
+        roomName: hit.sh.roomName || '',
+        roomUnknown: false,
+      });
+    });
+    if (changed) this.setData({ pickedCages: next });
   },
 
   /** 拉某房间各架的本地网格（补满 80 格），再标注可点/已选 */
@@ -1028,6 +1110,7 @@ Page({
       const out = [];
       rows.forEach(function (r) { if (r) out.push(r); });
       self.setData({ cageShelves: out, cageLoading: false });
+      self._enrichPickedCages(out);
       self.refreshCageMarks();
     });
   },
@@ -1488,6 +1571,8 @@ Page({
     this.setData({ submitting: true });
     let chain = Promise.resolve();
     let ok = 0;
+    let failed = 0;
+    let lastError = '';
     rows.forEach(function (r) {
       const qty = self.data.specQtys[r.key] || 0;
       chain = chain.then(function () {
@@ -1509,7 +1594,13 @@ Page({
         if (self.data.collectorId) body.collectorId = self.data.collectorId;
         if (self.data.collectorName) body.collectorName = self.data.collectorName;
         if (self.data.editOrderId) body.editingOrderId = self.data.editOrderId;
-        return api.addToCart(body, self.data.groupId).then(function () { ok += 1; });
+        // 单条失败不打断其余规格行，避免用户重试时把成功的又加一遍
+        return api.addToCart(body, self.data.groupId)
+          .then(function () { ok += 1; })
+          .catch(function (e) {
+            failed += 1;
+            if (!lastError) lastError = (e && e.message) || '加入失败';
+          });
       });
     });
     chain
@@ -1521,8 +1612,13 @@ Page({
           cageAllocPinned: {}, cageAllocOpen: false, cageAllocRows: [], cageAllocEntry: false,
           cageAllocText: '', cageWarnText: '', cageError: '', pickupMode: 'FARM',
         });
-        wx.showToast({ title: '已加入清单（' + ok + ' 项）', icon: 'success' });
-        self.loadCart();
+        wx.showToast({
+          title: ok > 0
+            ? ('已加入清单（' + ok + ' 项' + (failed ? '，' + failed + ' 项失败' : '') + '）')
+            : (lastError || '加入失败'),
+          icon: ok > 0 ? 'success' : 'none',
+        });
+        if (ok > 0) self.loadCart();
       })
       .catch(function (e) {
         self.setData({ submitting: false });
@@ -1533,6 +1629,8 @@ Page({
   // PI 才显示的分组切换；非 PI 固定 AUP→实验员
   /** 加入清单：按笼位逐条（一条购物车行 = 一个笼位），数量按选中顺序铺满 */
   onSpecConfirm(e) {
+    // 防连点：一次加购会锁/释放多个笼位，重复进入会把同一笼位重复挂进购物车
+    if (this.data.submitting) return;
     const self = this;
     const confirmed = !!(e && e.confirmed);   // 二次进入：上面那条确认弹窗已经点过「继续」
     const item = this.data.specItem;
@@ -1542,12 +1640,6 @@ Page({
     const picked = this.data.pickedCages || [];
     if (!picked.length) {
       wx.showToast({ title: '请先在下面选笼位（一笼一规格）', icon: 'none' });
-      return;
-    }
-    // 领用房间默认跟随笼位；只有当某格连房间都取不到、也没手选过时才拦
-    const lackRoom = picked.filter(function (c) { return !(c.roomId || self.data.pickupRoomId); });
-    if (lackRoom.length) {
-      wx.showToast({ title: '请选择领用房间', icon: 'none' });
       return;
     }
     const opt = this._activeSpecOption();
@@ -1565,16 +1657,6 @@ Page({
       wx.showToast({ title: '数量超出笼位容量，请加笼位或减数量', icon: 'none' });
       return;
     }
-    // 复检性别（选笼位时可能还没定规格）
-    const specSex = this._specSex();
-    const sexBad = picked.filter(function (c) {
-      const meta = self.data.cageCells[String(c.animalCageId)];
-      return !!meta && picker.isSexMismatch(meta.sex, specSex);
-    });
-    if (sexBad.length) {
-      wx.showToast({ title: '有 ' + sexBad.length + ' 个笼位性别与规格不符，请先取消它们', icon: 'none' });
-      return;
-    }
     // 与刷新角标同一份分配（含用户手改的钉子），不再各自算一遍
     const alloc = picker.allocateInOrder(
       total,
@@ -1582,6 +1664,28 @@ Page({
       this.data.cageMaxPerCage,
       this.data.cageAllocPinned || {}
     ).alloc;
+    const allocatedQty = function (c) { return alloc[String(c.animalCageId)] || 0; };
+
+    // 房间 / 性别只在「真要放进去的笼位」上校验：一只都没分到的马上会被释放，不拦。
+    // 接回但还没定位到房间的笼位，不能拿别的房间顶替，必须切到它所在房间 tab 再选。
+    const lackRoom = picked.filter(function (c) {
+      return allocatedQty(c) > 0 && !(c.roomId || (!c.roomUnknown && self.data.pickupRoomId));
+    });
+    if (lackRoom.length) {
+      wx.showToast({ title: '请选择领用房间', icon: 'none' });
+      return;
+    }
+    // 复检性别（选笼位时可能还没定规格）
+    const specSex = this._specSex();
+    const sexBad = picked.filter(function (c) {
+      if (allocatedQty(c) <= 0) return false;
+      const meta = self.data.cageCells[String(c.animalCageId)];
+      return !!meta && picker.isSexMismatch(meta.sex, specSex);
+    });
+    if (sexBad.length) {
+      wx.showToast({ title: '有 ' + sexBad.length + ' 个笼位性别与规格不符，请先取消它们', icon: 'none' });
+      return;
+    }
 
     /**
      * 一只都没分到的笼位 → 加购成功后会被释放（取消预定）。
@@ -1612,7 +1716,9 @@ Page({
 
     let chain = Promise.resolve();
     let ok = 0;
-    const idle = [];   // 一格没分到数量：加购完成后释放，别留孤儿预定
+    let lastError = '';
+    const idle = [];     // 一格没分到数量：加购完成后释放，别留孤儿预定
+    const failed = [];   // 加购失败的笼位：同样要释放，否则它永远锁着、界面上又已经看不到
     picked.forEach(function (c) {
       const qty = alloc[String(c.animalCageId)] || 0;
       if (qty <= 0) { idle.push(c); return; }
@@ -1635,13 +1741,20 @@ Page({
         if (self.data.collectorName) body.collectorName = self.data.collectorName;
         if (remark) body.remark = remark;
         if (self.data.editOrderId) body.editingOrderId = self.data.editOrderId;
-        return api.addToCart(body, self.data.groupId).then(function () { ok += 1; });
+        // 单条失败不打断其余笼位（以前整条链中断，用户再点一次就把已成功的又加一遍）
+        return api.addToCart(body, self.data.groupId)
+          .then(function () { ok += 1; })
+          .catch(function (e) {
+            failed.push(c);
+            if (!lastError) lastError = (e && e.message) || '加入失败';
+          });
       });
     });
 
     chain
       .then(function () {
-        return Promise.all(idle.map(function (c) {
+        // 没分到数量的 + 加购失败的都释放（已挂车行的释放后端会忽略，不会有副作用）
+        return Promise.all(idle.concat(failed).map(function (c) {
           return api.releaseCage(c.reservationId).catch(function () {});
         }));
       })
@@ -1653,11 +1766,15 @@ Page({
           cageAllocPinned: {}, cageAllocOpen: false, cageAllocRows: [], cageAllocEntry: false,
           cageAllocText: '', cageWarnText: '', cageError: '',
         });
-        wx.showToast({ title: '已加入清单（' + ok + ' 笼）', icon: 'success' });
-        self.loadCart();
+        wx.showToast({
+          title: ok > 0
+            ? ('已加入清单（' + ok + ' 笼' + (failed.length ? '，' + failed.length + ' 笼失败' : '') + '）')
+            : (lastError || '加入清单失败'),
+          icon: ok > 0 ? 'success' : 'none',
+        });
+        if (ok > 0) self.loadCart();
       })
       .catch(function (e) {
-        // 失败不动抽屉与已锁笼位，用户可改完再试
         self.setData({ submitting: false });
         wx.showToast({ title: (e && e.message) || '加入清单失败', icon: 'none' });
       });
@@ -1742,8 +1859,9 @@ Page({
           const keep = Math.min(l.qty, Math.max(0, remaining));  // 前面的行先占，后面的削
           remaining -= keep;
           // 不能改的行照占配额（上面 groupTotal 已算进去），但**不改写它**——
-          // 改了会被服务端「只能修改本人加购的行」挡回来，弹窗还点了别人的名
-          if (!self._canEditLine(l)) return;
+          // 改了会被服务端「只能修改本人加购的行」挡回来，弹窗还点了别人的名。
+          // 这里只看 canEdit，不走 _canEditLine：对账是后台动作，不能给别人的行弹提示。
+          if (!l.canEdit) return;
           patch['cart[' + row.index + ']._quotaMax'] = l.qty + headroom;
           const key = String(l.id);
           if (keep >= l.qty) { delete seen[key]; return; }
@@ -1760,7 +1878,10 @@ Page({
       self.setData(patch);
       if (!clamps.length) return;
       const msgs = clamps.map(function (c) {
-        return c.label + '：' + c.from + ' → ' + c.qty + ' 只';
+        // 收敛到 0 = 这行留不住了：改数量接口不收 0，直接删行（顺带释放它锁的笼位）
+        return c.qty <= 0
+          ? c.label + '：超出本周期可用量，已移除'
+          : c.label + '：' + c.from + ' → ' + c.qty + ' 只';
       });
       wx.showModal({
         title: '数量超出周期可用量，已收敛',
@@ -1768,7 +1889,8 @@ Page({
         showCancel: false,
       });
       Promise.all(clamps.map(function (c) {
-        return api.updateCartItem(c.id, { quantity: c.qty }).catch(function () {});
+        return (c.qty <= 0 ? api.removeCartItem(c.id) : api.updateCartItem(c.id, { quantity: c.qty }))
+          .catch(function () {});
       })).then(function () {
         self.loadCart();
       });
@@ -1903,6 +2025,8 @@ Page({
   onSubmitRemarkInput(e) { this.setData({ submitRemark: e.detail.value }); },
 
   onSubmitOrder() {
+    // 防连点：同一批购物车行提交两次就是两张单
+    if (this.data.submitting) return;
     const self = this;
     const u = readUserInfo() || {};
     const currentUserId = (u.id != null ? u.id : u.userId) != null ? String(u.id != null ? u.id : u.userId) : '';
@@ -1945,6 +2069,11 @@ Page({
   onSelectAup(e) {
     const id = String(e.currentTarget.dataset.id);
     const aup = this.data.aups.find(function (a) { return String(a.id) === id; }) || null;
+    // 换 AUP 前放掉本轮已锁笼位：那些笼位是按旧 AUP 选的，带过去会串 AUP
+    if (id !== String(this.data.selectedAupId) &&
+        (this.data.specSheetOpen || (this.data.pickedCages || []).length)) {
+      this.closeSpec();
+    }
     // 记住这次选择（下次进来直接用它；失效时按上面的白名单校验自动忽略）
     try { wx.setStorageSync('animal_order_aup_id', id); } catch (err) { /* ignore */ }
     this.setData({

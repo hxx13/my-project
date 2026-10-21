@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS telemetry_watchlist_tag (
     suite_suffix         VARCHAR(16)   NULL COMMENT '套间后缀 A/B',
     metric_kind_code     VARCHAR(64)   NULL COMMENT '指标类型，对应 telemetry_metric_kind.code',
     enabled              TINYINT(1)    NOT NULL DEFAULT 1,
+    show_in_animal_room  TINYINT(1)    NOT NULL DEFAULT 1 COMMENT '1=显示在动物房页/驾驶舱；0=仅拉数与长期归档',
     sort_order           INT           NOT NULL DEFAULT 0,
     created_at           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_telemetry_watchlist_tag_bundle

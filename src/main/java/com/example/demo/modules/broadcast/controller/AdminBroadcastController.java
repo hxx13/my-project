@@ -6,6 +6,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.broadcast.client.DsppaClient;
 import com.example.demo.modules.broadcast.dto.PlanRequest;
+import com.example.demo.modules.broadcast.dto.PlayModeRequest;
 import com.example.demo.modules.broadcast.dto.PlayRequest;
 import com.example.demo.modules.broadcast.dto.SongListNameRequest;
 import com.example.demo.modules.broadcast.dto.SongMoveRequest;
@@ -233,6 +234,50 @@ public class AdminBroadcastController {
         }
     }
 
+    // ---------------------------------------------------------------- 播放模式
+    //
+    // 单曲播放 / 单曲循环 / 顺序 / 列表循环 / 随机。**平台全局设置**，不分分区、不分方案。
+
+    @GetMapping("/play-mode")
+    @Operation(summary = "查询播放模式")
+    public Result<?> playMode(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            int mode = client.getPlayMode();
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("mode", mode);
+            out.put("text", DsppaClient.playModeText(mode));
+            return Result.success(out);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("读取播放模式失败: " + readableError(e));
+        }
+    }
+
+    @PutMapping("/play-mode")
+    @Operation(summary = "设置播放模式（平台全局）")
+    public Result<?> setPlayMode(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                 @RequestBody PlayModeRequest body) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            if (body.mode() == null) {
+                return Result.error("未指定播放模式");
+            }
+            client.setPlayMode(body.mode());
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("mode", body.mode());
+            out.put("text", DsppaClient.playModeText(body.mode()));
+            return Result.success(out, "已切换为" + DsppaClient.playModeText(body.mode()));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("设置播放模式失败: " + readableError(e));
+        }
+    }
+
     // ---------------------------------------------------------------- 曲库
 
     @GetMapping("/song-lists")
@@ -332,14 +377,21 @@ public class AdminBroadcastController {
     }
 
     @PostMapping("/songs/move")
-    @Operation(summary = "把曲目移到另一个列表（不动音频文件）")
+    @Operation(summary = "把曲目移到另一个列表（不动音频文件，支持批量）")
     public Result<?> moveSong(@RequestHeader(value = "Authorization", required = false) String authorization,
                               @RequestBody SongMoveRequest body) {
         Result<?> denied = requireAdmin(authorization);
         if (denied != null) return denied;
         try {
-            songsService.moveSong(body.fromListId(), body.toListId(), body.songPath());
-            return Result.success(null, "已移动");
+            // 批量传 songPaths；老调用方（小程序）仍按单首传 songPath
+            java.util.List<String> paths = body.songPaths() != null && !body.songPaths().isEmpty()
+                    ? body.songPaths()
+                    : (body.songPath() == null || body.songPath().isBlank()
+                            ? java.util.List.of() : java.util.List.of(body.songPath()));
+            java.util.List<java.util.Map<String, Object>> rows =
+                    songsService.moveSongs(body.fromListId(), body.toListId(), paths);
+            long ok = rows.stream().filter(r -> Boolean.TRUE.equals(r.get("success"))).count();
+            return Result.success(rows, "已移动 " + ok + "/" + rows.size());
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         } catch (Exception e) {
@@ -377,7 +429,10 @@ public class AdminBroadcastController {
             results.add(one);
         }
         String msg = "上传完成：" + ok + "/" + files.length + " 成功";
-        return ok == files.length ? Result.success(results, msg) : Result.fail(500, msg);
+        // **一律返回成功 + 逐文件结果**：失败原因在 data 里（文件名 + message），前端按文件显示。
+        // 原来失败时返回 fail，axios 拦截器会抛错，data 被丢掉，界面上就只剩「0/1 失败」——
+        // 等于没告诉人为什么失败。
+        return Result.success(results, msg);
     }
 
     // ---------------------------------------------------------------- 定时方案

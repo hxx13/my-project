@@ -58,6 +58,7 @@ export default function CageOpDrawer({
   hint,
   collapseLabel,
   onClose,
+  closeAsCollapse = false,
   headerExtra,
   children,
   footer,
@@ -78,6 +79,11 @@ export default function CageOpDrawer({
   /** 收起后竖排标签上的文字 */
   collapseLabel: string;
   onClose?: () => void;
+  /**
+   * true = 头部「关闭」按钮只做**收起**（滑出屏幕、留左侧把手），不真正关闭抽屉。
+   * 笼架页的抽屉常驻在侧边切换模式，用户要的是「缩回去」而不是消失。
+   */
+  closeAsCollapse?: boolean;
   /** 头部额外操作区（放在关闭按钮左侧） */
   headerExtra?: ReactNode;
   children: ReactNode;
@@ -130,11 +136,11 @@ export default function CageOpDrawer({
       {onClose && (
         <button
           type="button"
-          onClick={onClose}
+          onClick={closeAsCollapse ? () => setCollapsed(true) : onClose}
           className="ml-auto text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-          title="关闭"
+          title={closeAsCollapse ? "收起抽屉" : "关闭"}
         >
-          <X className="h-4 w-4" />
+          {closeAsCollapse ? <ChevronRight className="h-4 w-4" /> : <X className="h-4 w-4" />}
         </button>
       )}
     </div>

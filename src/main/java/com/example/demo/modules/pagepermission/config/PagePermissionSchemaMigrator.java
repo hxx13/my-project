@@ -297,6 +297,34 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
             log.debug("[page-permission-schema] MINI broadcast-admin 入口种子跳过: {}", e.getMessage());
         }
         try {
+            // 「远程屏幕」：用手机指挥本账号登录的网页切页面。
+            // 与网页端同档（远程控制接口在 /api/admin/** 下，ADMIN+），同账号作用域由后端保证。
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'page:mini:remote-screens', 'PAGE', '远程屏幕', '/pages/remoteScreens/index', NULL,
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'entry:mini:mine:remote-screens', 'ENTRY', '远程屏幕', '/pages/remoteScreens/index', 'mine',
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] MINI remote-screens 入口种子跳过: {}", e.getMessage());
+        }
+        try {
             jdbcTemplate.execute("""
                     INSERT IGNORE INTO page_permission_item(
                         platform, node_key, node_type, display_name, path_or_route, entry_source,

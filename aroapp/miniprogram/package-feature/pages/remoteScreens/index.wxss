@@ -1,0 +1,249 @@
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f4f5f7;
+  box-sizing: border-box;
+}
+
+.rs-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 20rpx 24rpx 12rpx;
+}
+
+.rs-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.rs-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.rs-hint {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.rs-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.rs-empty {
+  padding: 80rpx 32rpx;
+  text-align: center;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #c8c9cc;
+}
+
+/* ---------- 配对码 ---------- */
+.rs-pair {
+  padding: 20rpx 22rpx;
+  margin-bottom: 16rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 18rpx;
+}
+
+.rs-pair-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #323233;
+  margin-bottom: 12rpx;
+}
+
+.rs-pair-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.rs-pair-input {
+  flex: 1;
+  min-width: 0;
+  height: 76rpx;
+  padding: 0 18rpx;
+  font-size: 30rpx;
+  letter-spacing: 6rpx;
+  color: #323233;
+  background: #fafafa;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  box-sizing: border-box;
+}
+
+.rs-paired {
+  margin-top: 16rpx;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid #bfdbfe;
+  border-radius: 14rpx;
+  background: #eff6ff;
+}
+
+/* ---------- 屏幕卡片 ---------- */
+.rs-card {
+  padding: 20rpx 22rpx;
+  margin-bottom: 16rpx;
+  background: #fff;
+  border: 1rpx solid #ebedf0;
+  border-radius: 18rpx;
+}
+
+.rs-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.rs-dot {
+  flex-shrink: 0;
+  width: 14rpx;
+  height: 14rpx;
+  border-radius: 50%;
+  background: #16a34a;
+}
+
+.rs-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rs-rename {
+  flex-shrink: 0;
+  padding: 6rpx 16rpx;
+  font-size: 22rpx;
+  color: #2563eb;
+  background: #eef2ff;
+  border: 1rpx solid #dbeafe;
+  border-radius: 10rpx;
+}
+
+/* 当前路由：等宽字体，路径一眼看得清 */
+.rs-route {
+  margin-top: 12rpx;
+  padding: 10rpx 14rpx;
+  font-size: 22rpx;
+  color: #475569;
+  background: #f6f7fb;
+  border-radius: 10rpx;
+  word-break: break-all;
+}
+
+.rs-meta {
+  margin-top: 10rpx;
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.rs-go {
+  margin-top: 12rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #2563eb;
+}
+
+/* ---------- 页面宫格（抽屉） ---------- */
+.rs-sheet {
+  height: 72vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.rs-sheet-head {
+  flex-shrink: 0;
+  padding: 24rpx 28rpx 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.rs-sheet-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.rs-sheet-now {
+  font-size: 22rpx;
+  color: #969799;
+  word-break: break-all;
+}
+
+.rs-sheet-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 28rpx;
+  box-sizing: border-box;
+}
+
+/* 双列大按钮：伸手就能按中 */
+.rs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  padding-bottom: 8rpx;
+}
+
+.rs-tile {
+  min-height: 112rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+  background: #f6f7fb;
+  border: 1rpx solid #ebedf0;
+  border-radius: 18rpx;
+}
+
+.rs-custom {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin: 18rpx 0 8rpx;
+}
+
+.rs-input {
+  flex: 1;
+  min-width: 0;
+  height: 76rpx;
+  padding: 0 18rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #fafafa;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  box-sizing: border-box;
+}
+
+.rs-sheet-foot {
+  flex-shrink: 0;
+  padding: 16rpx 28rpx 28rpx;
+}
+
+.rs-sheet-foot .chip-btn {
+  width: 100%;
+}

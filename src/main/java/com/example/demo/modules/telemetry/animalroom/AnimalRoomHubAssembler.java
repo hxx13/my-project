@@ -288,7 +288,17 @@ public class AnimalRoomHubAssembler {
                                      String hubClient) {
         rulebook.set(facilityLayoutRules.getRulebook());
         try {
-            List<TelemetryTagItemDto> items = snapshot.getItems() == null ? List.of() : snapshot.getItems();
+            List<TelemetryTagItemDto> allItems = snapshot.getItems() == null ? List.of() : snapshot.getItems();
+            List<TelemetryTagItemDto> items = allItems.stream()
+                    .filter(AnimalRoomHubAssembler::isVisibleInAnimalRoom)
+                    .toList();
+            TelemetrySnapshotDto visibleSnapshot = TelemetrySnapshotDto.builder()
+                    .winccEnabled(snapshot.isWinccEnabled())
+                    .fetchedAt(snapshot.getFetchedAt())
+                    .items(items)
+                    .lastError(snapshot.getLastError())
+                    .winccReachable(snapshot.isWinccReachable())
+                    .build();
             List<FloorTab> tabs = buildStructuredFloorTabs(items);
             List<MpStructuredTabDto> out = new ArrayList<>();
             int w = Math.max(48, soloWidthPx);
@@ -313,7 +323,7 @@ public class AnimalRoomHubAssembler {
             List<RoomDashboardRenderDTO> running =
                     new ArrayList<>(twinDashboardAggregationService.getWechatMiniProgramData(campus));
             return AnimalRoomHubDto.builder()
-                    .snapshot(snapshot)
+                    .snapshot(visibleSnapshot)
                     .dockPollConfig(dockPollConfig)
                     .structuredTabs(out)
                     .clientPollIntervalMs(clientPoll)
@@ -491,6 +501,11 @@ public class AnimalRoomHubAssembler {
         return !seg.isEmpty() && seg.equals(normalizeRoomForGrouping(seg));
     }
 
+    /** 变量级开关：false=仅拉数与长期归档，不出现在动物房页/驾驶舱；null 视为显示。 */
+    static boolean isVisibleInAnimalRoom(TelemetryTagItemDto it) {
+        return it != null && !Boolean.FALSE.equals(it.getShowInAnimalRoom());
+    }
+
     /** LIMIT_MIN / LIMIT_MAX 不入动物房结构化卡（限值并入主测量 DTO）。 */
     private static boolean isStructuredLimitRole(String kindRole) {
         if (kindRole == null || kindRole.isBlank()) {
@@ -502,6 +517,9 @@ public class AnimalRoomHubAssembler {
 
     /** 具备楼层+房间+类别且非限值后缀（含 SWITCH，与其它指标一同进入套间分组）。 */
     private static boolean hasStructuredFields(TelemetryTagItemDto it) {
+        if (!isVisibleInAnimalRoom(it)) {
+            return false;
+        }
         if (WinccLimitVariableNaming.isLimitSuffixVariable(it.getVariableName())) {
             return false;
         }

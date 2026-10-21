@@ -9,6 +9,8 @@ export interface TrainingSeries {
   type?: number | null;
   typeName?: string | null;
   paperIds?: number[];
+  /** 绑定学习视频 id；全部看完才允许报名 */
+  videoIds?: number[];
   ownerIds?: string[];
   /** 所属人展示名，与 ownerIds 同序（后端 UserDisplayNameService 解析） */
   ownerNames?: string[];

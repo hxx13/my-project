@@ -192,6 +192,33 @@ export async function getActive(): Promise<ActiveView> {
   return (res.data?.data as ActiveView) ?? { plans: [] };
 }
 
+// ---------------------------------------------------------------- 播放模式
+//
+// **平台全局设置**：不是按分区、也不是按方案各一份。改了会影响正在跑的定时方案。
+
+export interface PlayModeView {
+  mode: number;
+  text: string;
+}
+
+/** 手动播放时可选的模式（顺序/列表循环/单曲循环/随机）。 */
+export const PLAY_MODES: { value: number; label: string }[] = [
+  { value: 3, label: "顺序播放" },
+  { value: 4, label: "列表循环" },
+  { value: 2, label: "单曲循环" },
+  { value: 5, label: "随机播放" },
+];
+
+export async function getPlayMode(): Promise<PlayModeView> {
+  const res = await adminHttp.get<Result<PlayModeView>>("/broadcast/play-mode");
+  return (res.data?.data as PlayModeView) ?? { mode: -1, text: "" };
+}
+
+export async function setPlayMode(mode: number): Promise<PlayModeView> {
+  const res = await adminHttp.put<Result<PlayModeView>>("/broadcast/play-mode", { mode });
+  return (res.data?.data as PlayModeView) ?? { mode, text: "" };
+}
+
 export interface ActiveZone {
   mac: string;
   name: string;
@@ -266,8 +293,33 @@ export async function removeSongFromList(listId: string, songPath: string): Prom
   });
 }
 
+/** 批量移动的逐首结果 */
+export interface MoveOutcome {
+  pathName: string;
+  fileName: string;
+  success: boolean;
+  message?: string;
+}
+
+/**
+ * 批量移到另一个列表（不动音频文件）。某一首已不在源列表时不会拖垮整批，
+ * 那首会在结果里带失败原因。
+ */
+export async function moveSongsToList(
+  fromListId: string,
+  toListId: string,
+  songPaths: string[],
+): Promise<MoveOutcome[]> {
+  const res = await adminHttp.post<Result<MoveOutcome[]>>("/broadcast/songs/move", {
+    fromListId,
+    toListId,
+    songPaths,
+  });
+  return res.data?.data ?? [];
+}
+
 export async function moveSongToList(fromListId: string, toListId: string, songPath: string): Promise<void> {
-  await adminHttp.post<Result<null>>("/broadcast/songs/move", { fromListId, toListId, songPath });
+  await moveSongsToList(fromListId, toListId, [songPath]);
 }
 
 // ---------------------------------------------------------------- 定时方案

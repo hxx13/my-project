@@ -46,11 +46,12 @@ public class TelemetryLongtermPdfService {
         this.screenshotService = screenshotService;
     }
 
-    public byte[] renderPdf(User user, List<String> days, List<String> variables, String title) {
+    public byte[] renderPdf(User user, List<String> days, List<String> variables, String title, Long partitionId) {
         try {
             Map<String, Object> print = new LinkedHashMap<>();
             print.put("days", days);
             print.put("variables", variables == null ? List.of() : variables);
+            print.put("partitionId", partitionId);
             print.put("title", title);
             /*
              * 过期时间：页面读到即删（一次性消费），但万一这次渲染根本没读上（超时/排队丢弃），

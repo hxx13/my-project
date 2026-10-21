@@ -216,14 +216,14 @@ page,
 .list-search-bar {
   flex: 1;
   min-width: 0;
-  min-height: 88rpx;          /* 44px：42px 略低于可点标准，且它旁边就是易误触的「展开全部」 */
+  min-height: 72rpx;          /* 从 88 压到 72：整排更轻，按钮不再跟着变胖 */
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  padding: 18rpx 24rpx;
+  gap: 10rpx;
+  padding: 10rpx 18rpx;
   background: rgba(255,255,255,0.92);
-  border-radius: 20rpx;
+  border-radius: 16rpx;
   border: 1rpx solid rgba(30,55,90,0.08);
   box-shadow: 0 2rpx 8rpx rgba(15,23,42,0.04);
 }
@@ -326,14 +326,14 @@ page,
   align-items: center;
   justify-content: center;
   gap: 4rpx;
-  /* 高度**必须**与搜索框齐平 88rpx：它俩紧贴输入框，矮了容易误触（见上一条注释）。
+  /* 高度与搜索框齐平 72rpx（2026-10-21 从 88 收紧）：整排更轻，仍然是同一行卡片。
      三个胶囊并排会挤，挤的是**宽度**不是高度 —— 所以只压横向：
      内边距 24→14rpx、gap 6→4rpx、字号 24→22rpx、圆角 20→16rpx，
      再配合把「展开全部/收起全部」缩成「展开/收起」。 */
-  min-height: 88rpx;
-  padding: 0 14rpx;
+  min-height: 72rpx;
+  padding: 0 12rpx;
   box-sizing: border-box;
-  border-radius: 16rpx;
+  border-radius: 14rpx;
   border: 1rpx solid rgba(30, 55, 90, 0.08);
   background: var(--paper);
   box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
@@ -541,11 +541,15 @@ page,
 .rs-stat {
   font-size: 20rpx;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .rs-sep {
   font-size: 18rpx;
   color: var(--off);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .rgh-bar-wrap {
@@ -566,7 +570,7 @@ page,
 }
 
 .shelf-card-bar-wrap {
-  width: 80%;
+  width: 100%;
 }
 
 .shelf-card-bar {
@@ -667,11 +671,15 @@ page,
 .ss-stat {
   font-size: 20rpx;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ss-sep {
   font-size: 18rpx;
   color: var(--off);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sgh-bar-wrap {
@@ -769,9 +777,10 @@ page,
 .shelf-card-metrics {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 3rpx;
-  flex: 1;
+  align-items: stretch;
+  gap: 4rpx;
+  width: 100%;
+  margin-top: 6rpx;
   min-width: 0;
 }
 
@@ -779,17 +788,22 @@ page,
   display: flex;
   align-items: center;
   gap: 4rpx;
-  flex-shrink: 0;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
 .sc-stat {
-  font-size: 20rpx;
+  font-size: 18rpx;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sc-sep {
-  font-size: 18rpx;
+  font-size: 16rpx;
   color: var(--off);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .shelf-card-highlight .shelf-card-name {
@@ -1508,6 +1522,25 @@ page,
   text-overflow: ellipsis;
   white-space: nowrap;
   background: #e11d48;
+}
+
+/* 划分模式不可选（待分配）：整格半透明红色细斜线，位号/名单仍透得出来。
+   与 Web / cage-grid 的网纹同口径；完整原因点击时 toast 给。 */
+.gcell-hatch {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(220, 38, 38, 0.28) 0,
+    rgba(220, 38, 38, 0.28) 2rpx,
+    rgba(220, 38, 38, 0) 2rpx,
+    rgba(220, 38, 38, 0) 16rpx
+  );
 }
 
 /* 选中态（分配/认领/学生申请） */
@@ -2502,6 +2535,17 @@ page,
   border-radius: 22rpx;
   box-shadow: 0 12rpx 44rpx rgba(15, 23, 42, 0.16), 0 2rpx 6rpx rgba(15, 23, 42, 0.06);
 }
+/* 状态标注：底部抽屉（80% 屏高），只影响这一处；查看/记录弹窗仍用上面的居中壳 */
+.cs-sheet--drawer {
+  width: 100vw;
+  max-width: none;
+  height: 80vh;
+  max-height: 80vh;
+  border-radius: 24rpx 24rpx 0 0;
+}
+.cs-sheet--drawer .cs-body {
+  max-height: none;
+}
 
 /* 编辑态：不再套红环，头部染一层极浅蓝 + 徽标换成蓝底，够醒目又不吵 */
 .cs-sheet--editing .cs-id {
@@ -3043,10 +3087,10 @@ page,
   color: #fff;
 }
 
-/* 次级动作：**浅蓝实底 + 蓝字**，不再是灰底 —— 灰底在这套界面里跟禁用态分不开 */
+/* 次级动作：实色浅灰底 + 深色字（不用半透明/描边） */
 .cs-btn--soft {
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--fill-2);
+  color: var(--ink);
 }
 
 /* 禁用：压成实心中灰，不靠 opacity 把底下的东西透出来 */
@@ -3076,10 +3120,10 @@ page,
   box-sizing: border-box;
   border: none;
   border-radius: 8rpx;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
   font-size: 22rpx;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .cs-op-btn--primary {
@@ -3089,8 +3133,8 @@ page,
 
 /* 破坏性动作（清空划分）：仍是实底，只是把字压淡，不与主操作抢 */
 .cs-op-btn--danger {
-  background: var(--fill-2);
-  color: var(--mute);
+  background: var(--danger);
+  color: #fff;
 }
 
 .cs-op-hint {
@@ -3158,6 +3202,34 @@ page,
   gap: 10rpx;
 }
 
+/* 分状态照片：一档一组，标题用该状态的强调色，和上面的状态开关一眼对得上 */
+.cs-photo-hint {
+  margin-bottom: 12rpx;
+}
+.cs-photo-group {
+  margin-top: 14rpx;
+}
+.cs-photo-group:first-of-type {
+  margin-top: 0;
+}
+.cs-photo-group-hd {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-bottom: 8rpx;
+}
+.cs-photo-group-name {
+  font-size: 22rpx;
+  font-weight: 700;
+}
+.cs-photo-group-name--muted {
+  color: var(--mute);
+}
+.cs-photo-group-n {
+  font-size: 20rpx;
+  color: var(--mute);
+}
+
 .cs-photo-wrap {
   position: relative;
 }
@@ -3167,6 +3239,37 @@ page,
   height: 100rpx;
   border-radius: 12rpx;
   background: var(--fill);
+}
+
+/* 视频缩略：深色方块 + 播放符号；点开走 wx.previewMedia 原生灯箱播放 */
+.cs-photo--video {
+  position: relative;
+  overflow: hidden;
+  background: #111827;
+}
+.cs-photo-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 12rpx;
+}
+/* 覆盖在首帧上的播放标记：catchtap 打开灯箱，不让原生 video 就地播放 */
+.cs-photo-play-mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: rgba(0, 0, 0, 0.22);
+}
+.cs-photo-play {
+  color: #fff;
+  font-size: 34rpx;
+  line-height: 1;
 }
 
 .cs-photo--sm {
@@ -4352,3 +4455,219 @@ page,
   box-shadow: 0 4rpx 12rpx rgba(37, 99, 235, 0.28);
 }
 .bt-chip-txt { font-variant-numeric: tabular-nums; }
+
+/* ===== 媒体灯箱（含视频）：点缩略即自动播放；固定关闭按钮，模拟器/真机都能退出 ===== */
+.mp-media-lightbox {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 22000;
+  background: #000;
+}
+.mp-media-body {
+  width: 100%;
+  height: 100%;
+}
+.mp-media-close {
+  position: absolute;
+  /* 放左上角：右上角是微信胶囊/模拟器菜单，会被挡住 */
+  top: calc(env(safe-area-inset-top) + 28rpx);
+  left: 28rpx;
+  right: auto;
+  z-index: 3;
+  width: 80rpx;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 34rpx;
+  line-height: 1;
+}
+.mp-media-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  color: #fff;
+  font-size: 64rpx;
+  line-height: 1;
+  padding: 24rpx 28rpx;
+}
+.mp-media-nav--prev { left: 8rpx; }
+.mp-media-nav--next { right: 8rpx; }
+
+/* ===== 查看详情抽屉：三页签 + 一屏摘要 + 分组字段 ===== */
+.cs-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 12rpx;
+  padding: 3rpx;
+  background: var(--fill-2);
+  border-radius: 999rpx;
+}
+.cs-tab {
+  padding: 7rpx 18rpx;
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--body);
+  border-radius: 999rpx;
+  transition: background 0.08s, color 0.08s;
+}
+.cs-tab--on {
+  color: var(--ink);
+  background: var(--paper);
+  font-weight: 600;
+  box-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.08);
+}
+.cs-fgroup {
+  margin-top: 18rpx;
+}
+.cs-fgroup:first-child {
+  margin-top: 0;
+}
+.cs-fgroup-hd {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 6rpx 4rpx 10rpx;
+}
+.cs-fsub-hd {
+  font-size: 21rpx;
+  color: var(--mute);
+  padding: 2rpx 4rpx 6rpx;
+}
+
+/* 实验记录页签：默认只展开最近 3 条，底部一个「查看全部」 */
+.exp-more {
+  margin-top: 12rpx;
+  padding: 14rpx 0;
+  text-align: center;
+  font-size: 22rpx;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-radius: 10rpx;
+}
+
+/* 笼位级动作收进头部右侧：紧贴关闭按钮左侧，横向排列不换行 */
+.cs-ops--top {
+  margin-top: 0;
+  margin-left: auto;
+  flex-wrap: nowrap;
+  gap: 8rpx;
+  overflow-x: auto;
+}
+.cs-ops--top .cs-op-btn {
+  flex-shrink: 0;
+  padding: 8rpx 14rpx;
+  font-size: 21rpx;
+}
+/* 操作提示单独一行（原来是和按钮混在 .cs-ops 里） */
+.cs-op-hint--line {
+  width: auto;
+  margin-top: 10rpx;
+}
+
+/* ===== 实验记录媒体（图片/视频混排） ===== */
+.exp-media {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.exp-media-video {
+  width: 100%;
+  height: 100%;
+  border-radius: 10rpx;
+}
+.exp-media-play {
+  position: absolute;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* combo 字段（动物品系等）：输入框 + 候选下拉，与 Web 的可输入可选一致 */
+.cs-combo {
+  position: relative;
+}
+.cs-combo-pop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 62rpx;
+  z-index: 30;
+  max-height: 260rpx;
+  overflow-y: auto;
+  background: #fff;
+  border: 1rpx solid var(--line-strong);
+  border-radius: 10rpx;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
+}
+.cs-combo-opt {
+  padding: 12rpx 16rpx;
+  font-size: 24rpx;
+  color: var(--ink);
+  border-bottom: 1rpx solid var(--line);
+}
+.cs-combo-opt:last-child {
+  border-bottom: none;
+}
+
+/* ── 顶部快捷区域（我的区域 / 收藏区域）─────────────────────────────
+   行本身复用主列表的 room/shelf 模板；这里只加分组容器，避免两套样式漂移 */
+.quick-sec {
+  /* 与下方校区卡片同宽：滚动态的内容区已经有左右内边距，这里再加外边距会显得窄一圈 */
+  margin: 8rpx 0 4rpx;
+  padding: 10rpx 0 2rpx;
+  border-radius: 16rpx;
+  background: #fff;
+  border: 1rpx solid #e9ebef;
+  box-shadow: 0 2rpx 8rpx rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+.quick-sec-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20rpx 10rpx;
+}
+.quick-sec-title {
+  display: flex;
+  align-items: center;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--ink, #1f2937);
+}
+.quick-sec-title::before {
+  content: '';
+  display: inline-block;
+  width: 6rpx;
+  height: 22rpx;
+  margin-right: 10rpx;
+  border-radius: 3rpx;
+  background: #ac1736;
+}
+.quick-sec-count {
+  font-size: 20rpx;
+  color: var(--mute, #969799);
+}
+.quick-sec-item {
+  margin-bottom: 8rpx;
+}
+.quick-sec-item .room-group {
+  margin-bottom: 0;
+}

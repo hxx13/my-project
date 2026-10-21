@@ -27,5 +27,7 @@ public class TelemetryWatchlistTagDto {
     private String alarmOverrideMin;
     private String alarmOverrideMax;
     private boolean enabled;
+    /** false=仅拉数与长期归档，不出现在动物房页/驾驶舱 */
+    private boolean showInAnimalRoom;
     private int sortOrder;
 }

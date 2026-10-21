@@ -7,7 +7,7 @@ page {
 .page {
   position: relative;
   box-sizing: border-box;
-  background: #f4f5f7;
+  background: #eef0f6;
   overflow: hidden;
 }
 
@@ -87,16 +87,14 @@ page {
   font-size: 11px;
   line-height: 1;
   padding: 7px 10px;
-  border-radius: 999px;
-  color: #576b95;
-  background: #f0f2f5;
-  border: 1px solid #e6e8eb;
+  border-radius: 12rpx;
+  color: #334155;
+  background: #f1f3f7;
 }
 
 .mall-top-pill-admin {
-  color: #1989fa;
-  background: #ecf4ff;
-  border-color: #d4e5fc;
+  color: #fff;
+  background: #2563eb;
 }
 
 .mall-top-pill-badge-wrap,
@@ -115,7 +113,7 @@ page {
   font-size: 10px;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #ff6034, #ee0a24);
+  background: #ef4444;
   border-radius: 999px;
   text-align: center;
   box-sizing: border-box;
@@ -123,7 +121,7 @@ page {
 }
 
 .mall-top-mini-badge-mine {
-  background: linear-gradient(135deg, #3d9eff, #1989fa);
+  background: #2563eb;
 }
 
 .mall-top-pill-hover {
@@ -142,8 +140,8 @@ page {
 .cat-side {
   width: 84px;
   flex-shrink: 0;
-  background: #fff;
-  border-right: 1px solid #ebecef;
+  background: #f6f7fb;
+  border-right: 1rpx solid #eef0f4;
   box-sizing: border-box;
 }
 
@@ -160,19 +158,22 @@ page {
 }
 
 .cat-item {
-  padding: 11px 6px;
-  font-size: 12px;
-  color: #646566;
-  text-align: center;
-  border-left: 2px solid transparent;
-  line-height: 1.35;
+  margin-bottom: 8rpx;
+  padding: 16rpx 12rpx;
+  border-radius: 12rpx;
+  font-size: 24rpx;
+  color: #334155;
+  line-height: 1.4;
+  word-break: break-all;
+  /* 聚焦切换的缓动：与订购页左侧栏同一套观感 */
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .cat-item-on {
-  color: #1989fa;
+  color: #fff;
   font-weight: 600;
-  background: #f4f9ff;
-  border-left-color: #1989fa;
+  background: #2563eb;
+  box-shadow: 0 6rpx 16rpx rgba(37, 99, 235, 0.28);
 }
 
 .content-side {
@@ -198,9 +199,9 @@ page {
   flex-direction: row;
   align-items: stretch;
   background: #fff;
-  border-radius: 10px;
+  border-radius: 12rpx;
   margin-bottom: 8px;
-  border: 1px solid #ebecef;
+  box-shadow: 0 4rpx 14rpx rgba(15, 23, 42, 0.06);
   overflow: hidden;
   padding: 8px 10px;
   gap: 10px;
@@ -236,11 +237,16 @@ page {
 }
 
 .name-step-row {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  display: block;
+}
+
+/* 规格/数量控件脱离文本流，钉在卡片右下角：标题行与副标题可吃满整行宽度 */
+.name-step-row .step-inline,
+.name-step-row .spec-anchor {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: 2;
 }
 
 .goods-name-wrap {
@@ -289,6 +295,11 @@ page {
   font-size: 11px;
   color: #969799;
   margin-top: 4px;
+  /* 给右下角控件让位，库存文字与控件同一水平线 */
+  min-height: 24px;
+  line-height: 24px;
+  padding-right: 92px;
+  box-sizing: border-box;
 }
 
 .step-inline {
@@ -296,18 +307,18 @@ page {
   display: flex;
   flex-direction: row;
   align-items: center;
-  border: 1px solid #dcdee0;
-  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12rpx;
   overflow: hidden;
   background: #fff;
 }
 
 .si-btn {
-  width: 28px;
-  height: 28px;
-  line-height: 28px;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
   text-align: center;
-  font-size: 16px;
+  font-size: 14px;
   color: #323233;
 }
 
@@ -318,7 +329,7 @@ page {
 
 .si-btn-plus {
   color: #fff;
-  background: #ac1736;
+  background: #2563eb;
 }
 
 .si-btn-hover {
@@ -326,8 +337,8 @@ page {
 }
 
 .si-num-input {
-  width: 38px;
-  height: 24px;
+  width: 32px;
+  height: 22px;
   text-align: center;
   font-size: 12px;
   font-weight: 600;
@@ -337,7 +348,7 @@ page {
   border-left: 1px solid #ebecef;
   border-right: 1px solid #ebecef;
   box-sizing: border-box;
-  line-height: 24px;
+  line-height: 22px;
 }
 
 .cart-bar {
@@ -363,9 +374,8 @@ page {
   justify-content: center;
   min-width: 88px;
   padding: 10px 14px;
-  border-radius: 999px;
-  background: #f7f8fa;
-  border: 1px solid #e6e8eb;
+  border-radius: 12rpx;
+  background: #f1f3f7;
 }
 
 .cart-entry-hover {
@@ -375,7 +385,7 @@ page {
 .cart-entry-txt {
   font-size: 14px;
   font-weight: 500;
-  color: #323233;
+  color: #334155;
 }
 
 .cart-badge {
@@ -389,7 +399,7 @@ page {
   font-size: 10px;
   color: #fff;
   text-align: center;
-  background: #ee0a24;
+  background: #ef4444;
   border-radius: 999px;
 }
 
@@ -400,9 +410,9 @@ page {
   font-weight: 600;
   color: #fff;
   padding: 11px 16px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #42a5f5 0%, #1989fa 100%);
-  box-shadow: 0 4px 12px rgba(25, 137, 250, 0.22);
+  border-radius: 12rpx;
+  background: #2563eb;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.22);
 }
 
 .cart-submit-hover {
@@ -514,14 +524,14 @@ page {
 
 .sheet-btn {
   font-size: 14px;
-  color: #1989fa;
+  color: #2563eb;
   padding: 6px 12px;
 }
 
 .sheet-btn-primary {
   color: #fff;
-  background: #1989fa;
-  border-radius: 999px;
+  background: #2563eb;
+  border-radius: 12rpx;
   font-weight: 600;
   padding: 8px 18px;
 }
@@ -595,19 +605,18 @@ page {
   min-width: 160rpx;
   text-align: center;
   font-size: 26rpx;
-  border-radius: 10rpx;
+  border-radius: 12rpx;
   padding: 12rpx 10rpx;
 }
 
 .pop-btn.ghost {
-  color: #646566;
-  border: 1px solid #dcdee0;
-  background: #fff;
+  color: #334155;
+  background: #f1f3f7;
 }
 
 .pop-btn.primary {
   color: #fff;
-  background: #1989fa;
+  background: #2563eb;
 }
 
 .pop-btn-disabled {
@@ -634,7 +643,7 @@ page {
 }
 
 .merge-radio-on {
-  border: 9rpx solid #1989fa;
+  border: 9rpx solid #2563eb;
 }
 
 .merge-req-mid {
@@ -650,7 +659,7 @@ page {
 }
 
 .merge-req-title-on {
-  color: #1989fa;
+  color: #2563eb;
   font-weight: 600;
 }
 
@@ -732,7 +741,7 @@ page {
 .spec-toggle {
   margin-top: 6px;
   font-size: 12px;
-  color: #ac1736;
+  color: #2563eb;
 }
 
 .spec-pick-btn {
@@ -741,14 +750,12 @@ page {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 88px;
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: rgba(172, 23, 54, 0.08);
-  border: 1px solid rgba(172, 23, 54, 0.25);
-  color: #ac1736;
-  font-size: 12px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12rpx;
+  background: #f6f7fb;
+  color: #1f2937;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -757,8 +764,8 @@ page {
 }
 
 .spec-pick-btn--on {
-  background: rgba(172, 23, 54, 0.14);
-  border-color: #ac1736;
+  background: #2563eb;
+  color: #fff;
 }
 
 .spec-anchor {
@@ -773,7 +780,7 @@ page {
   height: 16px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #ee0a24;
+  background: #ef4444;
   color: #fff;
   font-size: 10px;
   line-height: 16px;
@@ -833,7 +840,7 @@ page {
   justify-content: center;
   font-size: 20px;
   font-weight: 700;
-  color: rgba(172, 23, 54, 0.25);
+  color: #cbd5e1;
 }
 
 .spec-item-text {
@@ -904,7 +911,7 @@ page {
   flex-shrink: 0;
   max-width: 45%;
   font-size: 12px;
-  color: #ac1736;
+  color: #2563eb;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -978,10 +985,9 @@ page {
   min-height: 44px;
   line-height: 24px;
   font-size: 13px;
-  color: #646566;
-  border: 1px solid #dcdee0;
-  border-radius: 10px;
-  background: #fff;
+  color: #334155;
+  border-radius: 12rpx;
+  background: #f1f3f7;
   box-sizing: border-box;
 }
 
@@ -989,8 +995,8 @@ page {
   padding: 10px 20px;
   min-height: 44px;
   line-height: 24px;
-  border-radius: 10px;
-  background: #ac1736;
+  border-radius: 12rpx;
+  background: #2563eb;
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -1000,7 +1006,7 @@ page {
 .spec-oos-hint {
   text-align: center;
   font-size: 12px;
-  color: #ee0a24;
+  color: #ef4444;
   padding: 10px 0 4px;
 }
 
@@ -1080,9 +1086,9 @@ page {
 }
 
 .spec-selected {
-  color: #ac1736;
-  background: rgba(172, 23, 54, 0.1);
-  border-color: #ac1736;
+  color: #2563eb;
+  background: #eaf1ff;
+  border-color: #2563eb;
   border-width: 2px;
   font-weight: 600;
 }
@@ -1121,7 +1127,7 @@ page {
 .sheet-spec-label {
   display: block;
   font-size: 11px;
-  color: #ac1736;
+  color: #2563eb;
   margin-top: 2px;
 }
 
@@ -1129,15 +1135,14 @@ page {
 .confirm-spec-label {
   display: block;
   font-size: 20rpx;
-  color: #ac1736;
+  color: #2563eb;
   margin-top: 2rpx;
 }
 
 /* ---- 确认弹窗第三按钮：预约领取 ---- */
 .pop-btn.outline {
-  color: #323233;
-  border: 1px solid #ac1736;
-  background: #fff;
+  color: #2563eb;
+  background: #eaf1ff;
 }
 
 /* ---- 预约时间选择 ---- */
@@ -1176,15 +1181,15 @@ page {
 }
 
 .pickup-preset-on {
-  color: #ac1736;
-  background: rgba(172, 23, 54, 0.08);
-  border-color: #ac1736;
+  color: #2563eb;
+  background: #eaf1ff;
+  border-color: #2563eb;
   font-weight: 600;
 }
 
 .pickup-preset-custom {
-  color: #576b95;
-  background: #f0f2f5;
+  color: #334155;
+  background: #f1f3f7;
   border: 1px dashed #d4d7db;
   display: block;
   width: 100%;
@@ -1203,12 +1208,12 @@ page {
 .pickup-label {
   font-size: 26rpx;
   font-weight: 600;
-  color: #ac1736;
+  color: #2563eb;
 }
 
 .pickup-label-edit {
   margin-left: 12rpx;
   font-size: 22rpx;
-  color: #576b95;
+  color: #2563eb;
   text-decoration: underline;
 }

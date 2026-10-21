@@ -46,6 +46,8 @@ export type TelemetryWatchlistTag = {
   cachedAlarmMaxValue?: string | null;
   cachedAlarmLimitsAt?: string | null;
   enabled: boolean;
+  /** false=仅拉数与长期归档，不出现在动物房页/驾驶舱；默认显示 */
+  showInAnimalRoom?: boolean;
   sortOrder: number;
 };
 
@@ -190,6 +192,7 @@ export async function replaceTelemetryWatchlistTags(
     cachedAlarmMinValue: "",
     cachedAlarmMaxValue: "",
     enabled: t.enabled,
+    showInAnimalRoom: t.showInAnimalRoom !== false,
     sortOrder: t.sortOrder,
   }));
   return unwrap(

@@ -19,11 +19,14 @@
     </insert>
 
     <select id="selectByAnimalCageId" resultMap="CageCellHistoryMap">
-        SELECT * FROM cage_cell_history WHERE animal_cage_id = #{animalCageId} ORDER BY created_at DESC
+        SELECT * FROM cage_cell_history
+        WHERE animal_cage_id = #{animalCageId} AND deleted_at IS NULL
+        ORDER BY created_at DESC
     </select>
 
-    <delete id="deleteById">
-        DELETE FROM cage_cell_history WHERE id = #{id}
-    </delete>
+    <!-- 照片/视频留痕只软删除：删行会让历史里的附件引用永久丢失，文件也再也没有入口可查。 -->
+    <update id="softDeleteById">
+        UPDATE cage_cell_history SET deleted_at = NOW() WHERE id = #{id} AND deleted_at IS NULL
+    </update>
 
 </mapper>

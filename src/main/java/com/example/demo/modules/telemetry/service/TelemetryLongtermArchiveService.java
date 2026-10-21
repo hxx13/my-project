@@ -7,6 +7,7 @@ import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermCandidat
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermDayMatrixDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermMatrixDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermMatrixRowDto;
+import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermPartitionDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermPlanDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermQueryPageDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermSampleDto;
@@ -15,9 +16,11 @@ import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermSlotDto;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermVariableDto;
 import com.example.demo.modules.telemetry.dto.watchlist.TelemetryWatchlistTagDto;
 import com.example.demo.modules.telemetry.dto.watchlist.TelemetryWatchlistZoneAdminDto;
+import com.example.demo.modules.telemetry.entity.TelemetryLongtermPartitionRow;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleLogRow;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleRow;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermVariableRow;
+import com.example.demo.modules.telemetry.mapper.TelemetryLongtermPartitionMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleLogMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermVariableMapper;
@@ -50,6 +53,7 @@ public class TelemetryLongtermArchiveService {
     private static final Logger log = LoggerFactory.getLogger(TelemetryLongtermArchiveService.class);
 
     private final TelemetryLongtermVariableMapper variableMapper;
+    private final TelemetryLongtermPartitionMapper partitionMapper;
     private final TelemetryLongtermSampleLogMapper sampleLogMapper;
     private final TelemetryLongtermSampleMapper sampleMapper;
     private final TelemetrySnapshotService snapshotService;
@@ -68,12 +72,14 @@ public class TelemetryLongtermArchiveService {
     private int staleMinutes = 30;
 
     public TelemetryLongtermArchiveService(TelemetryLongtermVariableMapper variableMapper,
+                                           TelemetryLongtermPartitionMapper partitionMapper,
                                            TelemetryLongtermSampleLogMapper sampleLogMapper,
                                            TelemetryWatchlistDbService watchlistDbService,
                                            TwinJobScheduleConfigMapper scheduleMapper,
                                            TelemetryLongtermSampleMapper sampleMapper,
                                            TelemetrySnapshotService snapshotService) {
         this.variableMapper = variableMapper;
+        this.partitionMapper = partitionMapper;
         this.sampleLogMapper = sampleLogMapper;
         this.sampleMapper = sampleMapper;
         this.snapshotService = snapshotService;
@@ -188,10 +194,120 @@ public class TelemetryLongtermArchiveService {
         return t.length() > max ? t.substring(0, max) : t;
     }
 
-    /** 已选变量（含顺序）。 */
+    /** 已选变量（含顺序与自定义分区）。 */
     public List<TelemetryLongtermVariableDto> listVariables() {
         List<TelemetryLongtermVariableRow> rows = variableMapper.selectAllOrdered();
-        return rows.stream().map(this::toDto).toList();
+        Map<Long, String> partitionNames = partitionNameById();
+        return rows.stream().map(r -> toDto(r, partitionNames)).toList();
+    }
+
+    /** 数据监测的自定义分区（tab），按配置顺序返回，带变量数。 */
+    public List<TelemetryLongtermPartitionDto> listPartitions() {
+        List<TelemetryLongtermPartitionDto> out = new ArrayList<>();
+        for (TelemetryLongtermPartitionRow r : partitionMapper.selectAllOrdered()) {
+            if (r == null || r.getId() == null) {
+                continue;
+            }
+            out.add(TelemetryLongtermPartitionDto.builder()
+                    .id(r.getId())
+                    .name(r.getName())
+                    .sortOrder(r.getSortOrder() == null ? 0 : r.getSortOrder())
+                    .variableCount(r.getVariableCount() == null ? 0 : r.getVariableCount())
+                    .build());
+        }
+        return out;
+    }
+
+    @Transactional
+    public TelemetryLongtermPartitionDto createPartition(String name) {
+        String n = requirePartitionName(name);
+        for (TelemetryLongtermPartitionRow r : partitionMapper.selectAllOrdered()) {
+            if (r != null && n.equalsIgnoreCase(trim(r.getName()))) {
+                throw new IllegalArgumentException("分区名称已存在: " + n);
+            }
+        }
+        int nextOrder = 0;
+        for (TelemetryLongtermPartitionRow r : partitionMapper.selectAllOrdered()) {
+            if (r != null && r.getSortOrder() != null) {
+                nextOrder = Math.max(nextOrder, r.getSortOrder() + 1);
+            }
+        }
+        TelemetryLongtermPartitionRow row = new TelemetryLongtermPartitionRow();
+        row.setName(n);
+        row.setSortOrder(nextOrder);
+        partitionMapper.insert(row);
+        return TelemetryLongtermPartitionDto.builder()
+                .id(row.getId())
+                .name(n)
+                .sortOrder(nextOrder)
+                .variableCount(0)
+                .build();
+    }
+
+    @Transactional
+    public TelemetryLongtermPartitionDto renamePartition(long id, String name) {
+        String n = requirePartitionName(name);
+        TelemetryLongtermPartitionRow row = partitionMapper.selectById(id);
+        if (row == null) {
+            throw new IllegalArgumentException("分区不存在");
+        }
+        for (TelemetryLongtermPartitionRow r : partitionMapper.selectAllOrdered()) {
+            if (r != null && r.getId() != null && r.getId() != id && n.equalsIgnoreCase(trim(r.getName()))) {
+                throw new IllegalArgumentException("分区名称已存在: " + n);
+            }
+        }
+        partitionMapper.updateName(id, n);
+        return TelemetryLongtermPartitionDto.builder()
+                .id(id)
+                .name(n)
+                .sortOrder(row.getSortOrder() == null ? 0 : row.getSortOrder())
+                .variableCount(row.getVariableCount() == null ? 0 : row.getVariableCount())
+                .build();
+    }
+
+    /** 删除分区：其变量先归入「未分区」，数据不删。 */
+    @Transactional
+    public void deletePartition(long id) {
+        if (partitionMapper.selectById(id) == null) {
+            throw new IllegalArgumentException("分区不存在");
+        }
+        partitionMapper.unassignVariables(id);
+        partitionMapper.deleteById(id);
+    }
+
+    private static String requirePartitionName(String name) {
+        String n = trim(name);
+        if (n == null) {
+            throw new IllegalArgumentException("分区名称不能为空");
+        }
+        if (n.length() > 64) {
+            throw new IllegalArgumentException("分区名称不能超过 64 个字");
+        }
+        return n;
+    }
+
+    private Map<Long, String> partitionNameById() {
+        Map<Long, String> out = new HashMap<>();
+        for (TelemetryLongtermPartitionRow r : partitionMapper.selectAllOrdered()) {
+            if (r != null && r.getId() != null && StringUtils.hasText(r.getName())) {
+                out.put(r.getId(), r.getName().trim());
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 某自定义分区下的已启用变量点名。
+     * 入参约定：{@code null}=全部分区，{@code 0}=未分区，正数=指定分区。
+     */
+    public List<String> partitionVariableNames(Long partitionId) {
+        if (partitionId == null) {
+            return variableMapper.selectEnabledNamesByPartition(null, false);
+        }
+        if (partitionId == 0L) {
+            return variableMapper.selectEnabledNamesByPartition(null, true);
+        }
+        return variableMapper.selectEnabledNamesByPartition(partitionId, false);
     }
 
     /**
@@ -282,17 +398,23 @@ public class TelemetryLongtermArchiveService {
     @Transactional
     public void saveVariables(List<TelemetryLongtermVariableDto> incoming) {
         List<TelemetryLongtermVariableRow> rows = new ArrayList<>();
+        Map<Long, String> partitions = partitionNameById();
         if (incoming != null) {
             int order = 0;
             for (TelemetryLongtermVariableDto d : incoming) {
                 if (d == null || !StringUtils.hasText(d.getWinccVariableName())) {
                     continue;
                 }
+                Long pid = d.getPartitionId();
+                if (pid != null && !partitions.containsKey(pid)) {
+                    throw new IllegalArgumentException("分区不存在: " + pid);
+                }
                 TelemetryLongtermVariableRow r = new TelemetryLongtermVariableRow();
                 r.setWinccVariableName(d.getWinccVariableName().trim());
                 r.setSortOrder(order++);
                 r.setDisplayLabel(trim(d.getDisplayLabel()));
                 r.setUnit(trim(d.getUnit()));
+                r.setPartitionId(pid);
                 r.setEnabled(d.isEnabled());
                 rows.add(r);
             }
@@ -324,7 +446,7 @@ public class TelemetryLongtermArchiveService {
             dto.setScheduleEndTime("23:59");
         }
         dto.setVariableCount(variableMapper.selectAllOrdered().size());
-        dto.setSampleRows(sampleMapper.countByFilter(null, null, null));
+        dto.setSampleRows(sampleMapper.countByFilter(null, null, null, null));
         dto.setRecentRuns(recentLogs(20));
         return dto;
     }
@@ -360,7 +482,8 @@ public class TelemetryLongtermArchiveService {
      *   <li>行只取**当天有数据的变量**，顺序仍按配置里的排序。</li>
      * </ul>
      */
-    public TelemetryLongtermMatrixDto queryMatrix(String day, String month, LocalDateTime from, LocalDateTime to) {
+    public TelemetryLongtermMatrixDto queryMatrix(String day, String month, LocalDateTime from, LocalDateTime to,
+                                                  Long partitionId) {
         LocalDateTime effFrom;
         LocalDateTime effTo;
         if (StringUtils.hasText(day) && day.trim().length() == 10) {
@@ -379,16 +502,24 @@ public class TelemetryLongtermArchiveService {
             effTo = range != null ? range[1] : to;
         }
 
-        List<TelemetryLongtermSampleRow> rows = sampleMapper.selectForExport(null, effFrom, effTo, MATRIX_ROW_LIMIT);
+        List<String> names = partitionVariableNames(partitionId);
+        if (names.isEmpty()) {
+            return TelemetryLongtermMatrixDto.builder().days(List.of()).dayTables(List.of()).build();
+        }
+        List<TelemetryLongtermSampleRow> rows = sampleMapper.selectForExport(names, effFrom, effTo, MATRIX_ROW_LIMIT);
 
         int intervalSec = currentIntervalSeconds();
         int slotCount = Math.max(1, (int) Math.round(86400.0 / intervalSec));
         int slotLenSec = Math.max(1, 86400 / slotCount);
 
+        java.util.Set<String> nameSet = new java.util.LinkedHashSet<>(names);
         Map<String, TelemetryLongtermVariableRow> cfgByVar = new java.util.LinkedHashMap<>();
         for (TelemetryLongtermVariableRow v : variableMapper.selectAllOrdered()) {
             if (v != null && StringUtils.hasText(v.getWinccVariableName())) {
-                cfgByVar.put(v.getWinccVariableName().trim(), v);
+                String n = v.getWinccVariableName().trim();
+                if (nameSet.contains(n)) {
+                    cfgByVar.put(n, v);
+                }
             }
         }
 
@@ -538,17 +669,22 @@ public class TelemetryLongtermArchiveService {
      * 长期归档明细分页。时间条件二选一：给了 month 就按整月，否则用 from/to。
      */
     public TelemetryLongtermQueryPageDto querySamples(int page, int size, String variableQ,
-                                                      String month, LocalDateTime from, LocalDateTime to) {
+                                                      String month, LocalDateTime from, LocalDateTime to,
+                                                      Long partitionId) {
         int p = Math.max(1, page);
         int s = Math.max(1, Math.min(200, size));
         LocalDateTime[] range = monthRange(month);
         LocalDateTime effFrom = range != null ? range[0] : from;
         LocalDateTime effTo = range != null ? range[1] : to;
         String q = variableQ == null || variableQ.isBlank() ? null : variableQ.trim();
-        long total = sampleMapper.countByFilter(q, effFrom, effTo);
+        List<String> names = partitionVariableNames(partitionId);
+        if (names.isEmpty()) {
+            return TelemetryLongtermQueryPageDto.builder().total(0).page(p).size(s).items(List.of()).build();
+        }
+        long total = sampleMapper.countByFilter(q, names, effFrom, effTo);
         Map<String, String> unitByName = unitByVariableName();
         List<TelemetryLongtermSampleDto> items = new ArrayList<>();
-        for (TelemetryLongtermSampleRow r : sampleMapper.selectPageByFilter(q, effFrom, effTo, (p - 1) * s, s)) {
+        for (TelemetryLongtermSampleRow r : sampleMapper.selectPageByFilter(q, names, effFrom, effTo, (p - 1) * s, s)) {
             TelemetryLongtermSampleDto d = new TelemetryLongtermSampleDto();
             d.setSampleAt(r.getSampleAt());
             d.setVariableName(r.getVariableName());
@@ -575,21 +711,29 @@ public class TelemetryLongtermArchiveService {
     }
 
     /** 月份下拉：已有哪些月份有数据。 */
-    public List<String> listMonths() {
-        return sampleMapper.selectDistinctMonths();
+    public List<String> listMonths(Long partitionId) {
+        return sampleMapper.selectDistinctMonths(partitionVariableNames(partitionId));
     }
 
     /** 区间内「有数据的日期」（{@code yyyy-MM-dd}，新的在前）—— 日历上标注哪天有数据。 */
-    public List<String> listDaysWithData(String month, LocalDateTime from, LocalDateTime to) {
+    public List<String> listDaysWithData(String month, LocalDateTime from, LocalDateTime to, Long partitionId) {
         LocalDateTime[] range = monthRange(month);
-        return sampleMapper.selectDistinctDays(range != null ? range[0] : from, range != null ? range[1] : to);
+        return sampleMapper.selectDistinctDays(range != null ? range[0] : from, range != null ? range[1] : to,
+                partitionVariableNames(partitionId));
     }
 
-    private TelemetryLongtermVariableDto toDto(TelemetryLongtermVariableRow r) {        TelemetryLongtermVariableDto d = new TelemetryLongtermVariableDto();
+    private TelemetryLongtermVariableDto toDto(TelemetryLongtermVariableRow r,
+                                              Map<Long, String> partitionNames) {
+        TelemetryLongtermVariableDto d = new TelemetryLongtermVariableDto();
         d.setWinccVariableName(r.getWinccVariableName());
         d.setSortOrder(r.getSortOrder() == null ? 0 : r.getSortOrder());
         d.setDisplayLabel(r.getDisplayLabel());
         d.setUnit(r.getUnit());
+        d.setPartitionId(r.getPartitionId());
+        if (r.getPartitionId() != null) {
+            String name = partitionNames.get(r.getPartitionId());
+            d.setPartitionName(StringUtils.hasText(name) ? name : null);
+        }
         d.setEnabled(r.getEnabled() == null || r.getEnabled());
         return d;
     }

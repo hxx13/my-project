@@ -88,7 +88,7 @@ public class CageOrderReservationController {
             @PathVariable Long id) {
         User user = resolveUser(authorization);
         if (user == null) return Result.fail(401, "未登录");
-        service.release(id, "手动释放");
+        service.release(id, user.getId(), "手动释放");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         return Result.success(out);

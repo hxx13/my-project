@@ -219,10 +219,14 @@ public class CageShelfSchemaMigrator implements ApplicationRunner {
                         toggled_by VARCHAR(128) NULL COMMENT '操作人',
                         action VARCHAR(16) NOT NULL COMMENT 'marked/unmarked',
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        deleted_at DATETIME NULL COMMENT '软删除时间：照片/视频留痕不物理删除',
                         KEY idx_animal_cage (animal_cage_id),
                         KEY idx_created (created_at)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼位图片笔记历史归档'
                     """);
+            // 兼容旧表：图片/视频只软删除，历史记录不能物理删（删了历史里的附件引用就找不回来了）
+            try { jdbcTemplate.execute("ALTER TABLE cage_cell_history ADD COLUMN deleted_at DATETIME NULL COMMENT '软删除时间：照片/视频留痕不物理删除'"); }
+            catch (Exception ignored) { /* 列已存在 */ }
             log.info("[cage-shelf-schema] cage_cell_history 表已就绪");
 
             // ── 笼位认领表 ──

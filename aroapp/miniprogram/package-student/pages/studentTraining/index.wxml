@@ -1,8 +1,8 @@
 <block wx:if="{{ pageGateOk }}">
 <view class="page">
   <view class="tabs">
-    <view class="tab {{ tab === 'list' ? 'tab-on' : '' }}" data-tab="list" bindtap="onSwitchTab">培训列表</view>
     <view class="tab {{ tab === 'mine' ? 'tab-on' : '' }}" data-tab="mine" bindtap="onSwitchTab">我的报名</view>
+    <view class="tab {{ tab === 'list' ? 'tab-on' : '' }}" data-tab="list" bindtap="onSwitchTab">培训列表</view>
   </view>
 
   <!-- 培训列表：校区分区走 tab 切换（对齐房间页），不把各区堆成一列 -->
@@ -122,8 +122,12 @@
           <text class="gate-k">健康调查表</text>
           <text class="gate-v {{ target.healthOk ? 'gate-ok' : 'gate-bad' }}">{{ target.healthOk ? '已提交' : '未提交，点此填写' }}</text>
         </view>
+        <view wx:if="{{ target.videoCount > 0 }}" class="gate-line" bindtap="onGateVideos">
+          <text class="gate-k">学习视频</text>
+          <text class="gate-v {{ target.videoPassed ? 'gate-ok' : 'gate-bad' }}">{{ target.videoPassed ? '已看完' : '未看完 ' + target.videoDone + '/' + target.videoCount + '，点此观看' }}</text>
+        </view>
       </view>
-      <text wx:if="{{ !target.eligible }}" class="gate-tip">需先通过门槛试卷并提交健康调查表：健康调查表点上面那一行即可填写（也可以从「我的」进），门槛试卷在「答题」里。</text>
+      <text wx:if="{{ !target.eligible }}" class="gate-tip">需先通过门槛试卷、提交健康调查表并看完学习视频（对应项点上面那一行即可完成），再来报名。</text>
       <view class="enroll-ops">
         <view class="chip-btn chip-btn--ghost enroll-btn" bindtap="onEnrollClose">关闭</view>
         <view

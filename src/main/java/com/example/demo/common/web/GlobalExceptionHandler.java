@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.Locale;
@@ -99,6 +100,25 @@ public class GlobalExceptionHandler {
         }
         log.warn("Async request timeout: {} {}", request.getMethod(), request.getRequestURI());
         return Result.fail(ErrorCodeConstants.INTERNAL_ERROR, "请求处理超时，请稍后重试");
+    }
+
+    /**
+     * 上传超出 multipart 上限。
+     *
+     * <p>这个异常在**进入控制器之前**就抛了（解析请求体时），所以业务代码里的「文件太大」提示永远不会执行——
+     * 不在这里接住，前端就拿不到可读原因，只会看到一个 500。
+     * 上限见 {@code spring.servlet.multipart.max-file-size / max-request-size}；
+     * 多文件上传时按**整个请求**算，所以批量传要逐个发。
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Result<Void> handleMaxUploadSize(
+            MaxUploadSizeExceededException ex, HttpServletRequest request, HttpServletResponse response) {
+        log.warn("上传超出大小上限: {} {}", request.getMethod(), request.getRequestURI());
+        if (response.isCommitted()) {
+            return null;
+        }
+        return Result.fail(ErrorCodeConstants.BAD_REQUEST,
+                "文件太大，超出上传上限（单个文件 30MB）。多个文件请逐个上传。");
     }
 
     /** 静态资源 404 须返回空 body + 404，不能 JSON（否则 module script MIME 报错） */

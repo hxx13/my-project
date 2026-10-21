@@ -13,5 +13,6 @@ public interface CageCellHistoryMapper {
 
     List<CageCellHistory> selectByAnimalCageId(@Param("animalCageId") Long animalCageId);
 
-    int deleteById(@Param("id") Long id);
+    /** 软删除：照片/视频留痕不能物理删（历史里的附件引用会永久丢失）。 */
+    int softDeleteById(@Param("id") Long id);
 }

@@ -1133,136 +1133,12 @@
   overflow: hidden;
 }
 
-/* 遥控盘面板：只有操纵杆与队列两块，不留标题行 */
-.vw-tour-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: stretch;
-  gap: 12rpx;
-  padding: 14rpx;
-}
-
-/* 操纵杆那半边：与右侧列表各占一半 */
-.vw-pad-wrap {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 操纵杆：定死正方形（宽高同一个值，别让 flex 拉伸破坏方正），里面全是圆钮 */
-.vw-pad {
-  position: relative;
-  flex: none;
-  width: 280rpx;
-  height: 280rpx;
-}
-
-.vw-pad-btn {
-  position: absolute;
-  width: 72rpx;
-  height: 72rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 24rpx;
-  color: #646566;
-  background: #f2f3f5;
-  border: 1rpx solid #ebedf0;
-}
-
-.vw-pad-up {
-  left: 50%;
-  top: 0;
-  margin-left: -36rpx;
-}
-
-.vw-pad-down {
-  left: 50%;
-  bottom: 0;
-  margin-left: -36rpx;
-}
-
-.vw-pad-left {
-  top: 50%;
-  left: 0;
-  margin-top: -36rpx;
-}
-
-.vw-pad-right {
-  top: 50%;
-  right: 0;
-  margin-top: -36rpx;
-}
-
-/* 圆心那颗 OK：实色圆，等于双击格子 */
-.vw-pad-ok {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 108rpx;
-  height: 108rpx;
-  margin-left: -54rpx;
-  margin-top: -54rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #fff;
-  background: #ea6a1e;
-  box-shadow: 0 4rpx 12rpx rgba(234, 106, 30, 0.35);
-}
-
-/* 右列：上半队列、下半切预设，两块上下分 */
-.vw-tour-right {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-}
-
-/* 右列下半：上一个 / 下一个 */
-.vw-tour-edge {
-  flex: 0 0 92rpx;
-  display: flex;
-  gap: 12rpx;
-}
-
-.vw-edge-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  border-radius: 10rpx;
-  background: #f2f3f5;
-  border: 1rpx solid #ebedf0;
-}
-
-.vw-edge-ico {
-  font-size: 24rpx;
-  color: #ea6a1e;
-}
-
-.vw-edge-sub {
-  font-size: 22rpx;
-  color: #646566;
-}
-
+/* 参观区：整块就是参观顺序，宫格铺满 */
 .vw-tour-queue {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border: 1rpx solid #ebedf0;
-  border-radius: 12rpx;
-  overflow: hidden;
 }
 
 .vw-tour-queue-head {
@@ -1289,53 +1165,232 @@
   background: #ea6a1e;
 }
 
-.vw-tour-queue-scroll {
+/* 参观头部两个动作并排 */
+.vw-tour-head-acts {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.vw-tour-cfg--web {
+  color: #2563eb;
+  background: #eef2ff;
+  border: 1rpx solid #dbeafe;
+}
+
+/* ---------- 控制网页：一级选屏幕 / 二级选页面 ---------- */
+.vw-web {
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+  padding: 24rpx 24rpx 12rpx;
+  box-sizing: border-box;
+}
+
+.vw-web-title {
+  flex-shrink: 0;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #323233;
+}
+
+.vw-web-now {
+  flex-shrink: 0;
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: #969799;
+  word-break: break-all;
+}
+
+.vw-web-pair {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin: 18rpx 0 12rpx;
+}
+
+.vw-web-input {
+  flex: 1;
+  min-width: 0;
+  height: 76rpx;
+  padding: 0 18rpx;
+  font-size: 26rpx;
+  color: #323233;
+  background: #fafafa;
+  border: 1rpx solid #ebedf0;
+  border-radius: 12rpx;
+  box-sizing: border-box;
+}
+
+/* 二级抽屉里的搜索框：**不能继承 .vw-web-input 的 flex:1** ——
+   抽屉是竖向 flex，flex:1 会把输入框拉成一整块，把下面的宫格挤走。 */
+.vw-web-input--search {
+  flex: none;
+  height: 76rpx;
+  margin: 18rpx 0 12rpx;
+  letter-spacing: 0;
+}
+
+.vw-web-scroll {
   flex: 1;
   min-height: 0;
 }
 
-.vw-tour-item {
+.vw-web-item {
+  padding: 18rpx 20rpx;
+  margin-bottom: 12rpx;
+  background: #f6f7fb;
+  border: 1rpx solid #ebedf0;
+  border-radius: 14rpx;
+}
+
+.vw-web-item-top {
   display: flex;
   align-items: center;
   gap: 10rpx;
-  padding: 14rpx 12rpx;
-  border-bottom: 1rpx solid #f7f8fa;
 }
 
-.vw-tour-item.on {
-  background: #fff7ed;
-}
-
-.vw-tour-no {
+.vw-web-dot {
   flex-shrink: 0;
-  width: 36rpx;
-  height: 36rpx;
-  line-height: 36rpx;
-  text-align: center;
-  border-radius: 8rpx;
-  font-size: 20rpx;
-  color: #969799;
-  background: #f2f3f5;
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #16a34a;
 }
 
-.vw-tour-item.on .vw-tour-no {
-  color: #fff;
-  background: #ea6a1e;
-}
-
-.vw-tour-item-name {
+.vw-web-name {
   flex: 1;
   min-width: 0;
-  font-size: 24rpx;
+  font-size: 28rpx;
+  font-weight: 600;
   color: #323233;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.vw-tour-item.on .vw-tour-item-name {
-  color: #ea6a1e;
+.vw-web-route {
+  display: block;
+  margin-top: 8rpx;
+  font-size: 22rpx;
+  color: #646566;
+  word-break: break-all;
+}
+
+/* 二级：页面宫格，双列大按钮 */
+.vw-web-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+}
+
+.vw-web-tile {
+  position: relative;
+  min-height: 112rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16rpx 28rpx;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 28rpx;
   font-weight: 600;
+  color: #323233;
+  background: #f6f7fb;
+  border: 1rpx solid #ebedf0;
+  border-radius: 18rpx;
+}
+
+/* 已收藏的页面：淡黄底 + 边框 */
+.vw-web-tile--star {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.vw-web-tile-label {
+  min-width: 0;
+  word-break: break-all;
+}
+
+/* 星标：按页面记，点它不触发跳转。
+   点按区域要**做大**（56rpx 见方起步）——太小的话手指稍微偏一点就落到方块上，
+   变成「想收藏却把大屏切走了」。 */
+.vw-web-star {
+  position: absolute;
+  right: 2rpx;
+  top: 0;
+  min-width: 64rpx;
+  min-height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  line-height: 1;
+  color: #d4d7dc;
+}
+
+.vw-web-star.on {
+  color: #f59e0b;
+}
+
+.vw-tour-queue-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 14rpx;
+  box-sizing: border-box;
+}
+
+/* 双列宫格：大按钮，手一按就中 */
+.vw-tour-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+}
+
+.vw-tour-tile {
+  min-height: 150rpx;
+  display: flex;
+  flex-direction: column;
+  /* 文字**居中**（水平+垂直），别贴着方块底部 */
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 18rpx;
+  border-radius: 18rpx;
+  background: #f6f7fb;
+  border: 1rpx solid #ebedf0;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.vw-tour-tile.on {
+  background: #ea6a1e;
+  border-color: #ea6a1e;
+  box-shadow: 0 6rpx 16rpx rgba(234, 106, 30, 0.28);
+}
+
+.vw-tour-tile-no {
+  font-size: 22rpx;
+  color: #969799;
+}
+
+.vw-tour-tile.on .vw-tour-tile-no {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.vw-tour-tile-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #323233;
+  line-height: 1.35;
+  word-break: break-all;
+  text-align: center;
+}
+
+.vw-tour-tile.on .vw-tour-tile-name {
+  color: #ffffff;
 }
 
 /* ================= 配置参观队列（抽屉） ================= */

@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 笼位表单四页对齐 NHP 的增量建表迁移器。
@@ -347,14 +348,18 @@ public class CageInfoFormSchemaMigrator implements ApplicationRunner {
         return sb.toString();
     }
 
-    /** 种子字段按现有 folder 回填 domain_code；未分类归 D5。幂等：仅填 NULL。 */
+    /** 种子字段按现有 folder 回填 domain_code；未分类归 D5。幂等。 */
     private void backfillFieldDomainCodes() {
         String[][] folderToDomain = {
             {"笼位身份", "D1"}, {"项目信息", "D2"}, {"动物信息", "D3"}, {"状态标记", "D4"},
         };
         for (String[] f : folderToDomain) {
+            // 除了「从未归域」（NULL/空），还要修「被误归成 D5」的：
+            // 早期 seed 在 folder 回填之后才插入新字段（如使用时间），首次启动 folder 还是空 →
+            // 被归入未分类；之后回填只看 NULL，这个错误就永远修不回来。
             jdbcTemplate.update(
-                "UPDATE cage_info_field SET domain_code = ? WHERE folder = ? AND domain_code IS NULL",
+                "UPDATE cage_info_field SET domain_code = ? " +
+                "WHERE folder = ? AND (domain_code IS NULL OR domain_code = '' OR domain_code = 'D5')",
                 f[1], f[0]);
         }
         // 未分类（folder 为空）归 D5，保证有归属；D5 域不进默认大纲，由结构接口合并呈现。
@@ -363,6 +368,77 @@ public class CageInfoFormSchemaMigrator implements ApplicationRunner {
         // 已发布字段 status 回填 FROZEN（published=1 ⟺ status=FROZEN 不变量），自定义草稿字段维持 DRAFT。
         jdbcTemplate.update(
             "UPDATE cage_info_field SET status = 'FROZEN' WHERE published = 1 AND (status IS NULL OR status = '' OR status = 'DRAFT')");
+        // 字段域修好后，把被固化进「未分类」原子模板的字段挪回它所属的域原子。
+        // 独立 try：模板快照有问题也不能挡住后面的字典/值同步。
+        try {
+            rehomeUncategorizedAtomFields();
+        } catch (Exception e) {
+            log.warn("[cage-info-form-schema] 修正未分类原子模板失败: {}", e.getMessage());
+        }
         log.info("[cage-info-form-schema] 字段域编码与状态回填完成");
+    }
+
+    /**
+     * 把「未分类」原子模板里、字段域已明确的字段挪回对应域的原子模板。
+     *
+     * <p>原子模板是生成快照，不会跟着 {@code cage_info_field.domain_code} 自动变。历史误归一次之后，
+     * 表单页就会一直把「使用时间」这类字段显示在“未分类”下 —— 只修字典不修快照，页面看起来没变化。
+     * 只处理 D5 原子里的字段（不动管理员在其它域原子里的编排），目标原子/章节不存在时跳过。
+     */
+    private void rehomeUncategorizedAtomFields() {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+            "SELECT ff.id, ff.field_id, ff.canonical, f.domain_code, f.submodule_code " +
+            "FROM cage_form_field ff " +
+            "JOIN cage_form_template t ON t.id = ff.template_id AND t.form_key = 'D5' AND t.kind = 'ATOM' " +
+            "JOIN cage_info_field f ON f.id = ff.field_id " +
+            "WHERE f.domain_code IN ('D1','D2','D3','D4')");
+        int moved = 0;
+        for (Map<String, Object> r : rows) {
+            String domain = String.valueOf(r.get("domain_code")).trim().toUpperCase();
+            Long atomId = queryLong("SELECT id FROM cage_form_template WHERE form_key = ? AND kind = 'ATOM'", domain);
+            if (atomId == null) continue;
+            Long rootSectionId = queryLong(
+                "SELECT id FROM cage_form_section WHERE template_id = ? AND parent_id IS NULL AND code = ?",
+                atomId, domain);
+            if (rootSectionId == null) continue;
+            // 有子模块的字段挂到同名子模块章节，否则挂域直属
+            String submodule = r.get("submodule_code") == null ? "" : String.valueOf(r.get("submodule_code")).trim();
+            Long sectionId = rootSectionId;
+            if (!submodule.isEmpty()) {
+                Long subSectionId = queryLong(
+                    "SELECT id FROM cage_form_section WHERE template_id = ? AND parent_id = ? AND code = ?",
+                    atomId, rootSectionId, submodule);
+                if (subSectionId != null) sectionId = subSectionId;
+            }
+            String canonical = String.valueOf(r.get("canonical"));
+            Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM cage_form_field ff JOIN cage_form_template t ON t.id = ff.template_id " +
+                "WHERE t.form_key = ? AND ff.canonical = ?",
+                Integer.class, domain, canonical);
+            if (exists == null || exists == 0) {
+                jdbcTemplate.update(
+                    "INSERT INTO cage_form_field (template_id, section_id, field_id, canonical, label, data_type, " +
+                    "field_type, dict_key, role, editable, config, required, sort_order) " +
+                    "SELECT ?, ?, ff.field_id, ff.canonical, ff.label, ff.data_type, ff.field_type, ff.dict_key, " +
+                    "       ff.role, ff.editable, ff.config, ff.required, " +
+                    "       COALESCE((SELECT MAX(x.sort_order) FROM cage_form_field x WHERE x.section_id = ?), 0) + 10 " +
+                    "FROM cage_form_field ff WHERE ff.id = ?",
+                    atomId, sectionId, sectionId, r.get("id"));
+            }
+            jdbcTemplate.update("DELETE FROM cage_form_field WHERE id = ?", r.get("id"));
+            moved++;
+        }
+        if (moved > 0) {
+            log.info("[cage-info-form-schema] 已把 {} 个误归「未分类」的字段挪回所属域原子", moved);
+        }
+    }
+
+    private Long queryLong(String sql, Object... args) {
+        try {
+            List<Long> ids = jdbcTemplate.queryForList(sql, Long.class, args);
+            return ids.isEmpty() ? null : ids.get(0);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

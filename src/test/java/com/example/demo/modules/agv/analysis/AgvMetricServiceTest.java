@@ -74,6 +74,21 @@ class AgvMetricServiceTest {
     }
 
     @Test
+    void backfillMissingDays_fillsOnlyDaysWithoutFrozenRows() {
+        AgvStatsMapper mapper = mock(AgvStatsMapper.class);
+        when(mapper.countDailyMetricsForDate("2026-10-01")).thenReturn(8);
+
+        AgvMetricService svc = spy(new AgvMetricService(mapper));
+        doReturn(0).when(svc).freezeDay(any(LocalDate.class), eq("BACKFILL"));
+
+        svc.backfillMissingDays(LocalDate.of(2026, 9, 30), LocalDate.of(2026, 10, 2));
+
+        verify(svc).freezeDay(LocalDate.of(2026, 9, 30), "BACKFILL");
+        verify(svc, never()).freezeDay(LocalDate.of(2026, 10, 1), "BACKFILL");
+        verify(svc).freezeDay(LocalDate.of(2026, 10, 2), "BACKFILL");
+    }
+
+    @Test
     void beijingDayBounds_coverExactlyTheBeijingCalendarDay() {
         // 契约：区间恒为「北京日 D 的整整 24 小时」，只是用 JVM 墙钟表达。
         // 不写死具体墙钟值 —— 换机器/换时区语义不变（写死那一侧正是当初错 8 小时的根源）。

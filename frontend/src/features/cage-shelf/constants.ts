@@ -401,6 +401,11 @@ export function displayPosition(pos: string): string {
   return pos;
 }
 
+/** 状态照片桶里可混入视频：按扩展名判定，缩略图/预览据此选 <video> 还是 <img>。 */
+export function isVideoMediaUrl(url: string | null | undefined): boolean {
+  return /\.(mp4|webm|mov|m4v)(?:[?#].*)?$/i.test(String(url ?? "").trim());
+}
+
 /* ═══════════════════════════════════════════════════════════
    校区 — 排序 & 样式
    CampusTree 组件依赖这些常量渲染左侧目录树

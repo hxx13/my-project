@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,19 +28,25 @@ import { AdminSelect } from "@/components/admin/AdminSelect";
 import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
+import { appConfirm } from "@/lib/appDialog";
 import {
+  createLongtermPartition,
+  deleteLongtermPartition,
   exportLongtermPdf,
   exportLongtermXlsx,
   fetchLongtermCandidateBundles,
   fetchLongtermCandidates,
   fetchLongtermDays,
   fetchLongtermMatrix,
+  fetchLongtermPartitions,
   fetchLongtermPlan,
   fetchLongtermVariables,
+  renameLongtermPartition,
   saveLongtermVariables,
   type LongtermDayMatrix,
   type LongtermExportRequest,
   type LongtermMatrixRow,
+  type LongtermPartition,
   type LongtermVariable,
 } from "@/api/domains/telemetryLongterm.api";
 
@@ -85,7 +91,7 @@ function intervalText(seconds: number): string {
  */
 const PRINT_SEED_KEY = "twin-longterm-print";
 
-type PrintSeed = { days?: string[]; variables?: string[]; title?: string; exp?: number };
+type PrintSeed = { days?: string[]; variables?: string[]; partitionId?: number | null; title?: string; exp?: number };
 
 function readPrintSeed(): PrintSeed | null {
   try {
@@ -246,6 +252,8 @@ function SortableVariableRow({
   onMove,
   onRemove,
   onToggleEnabled,
+  partitions,
+  onPartitionChange,
 }: {
   variable: LongtermVariable;
   index: number;
@@ -253,6 +261,8 @@ function SortableVariableRow({
   onMove: (index: number, dir: -1 | 1) => void;
   onRemove: (index: number) => void;
   onToggleEnabled: (index: number, enabled: boolean) => void;
+  partitions: LongtermPartition[];
+  onPartitionChange: (variableName: string, partitionId: number | null) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: variable.winccVariableName,
@@ -278,6 +288,24 @@ function SortableVariableRow({
           </button>
           <span className="font-mono">{index + 1}</span>
         </div>
+      </td>
+      <td className="px-2 py-1">
+        <AdminSelect
+          /* 表格内全局样式会给 select 加 6px 上下内边距和 14px 字号；这里用 important 压回去，
+             否则 24px 高度里只露出半行字。 */
+          className="h-7 w-[8rem] !py-0 !text-[11px] leading-none"
+          value={variable.partitionId ?? ""}
+          onChange={(e) =>
+            onPartitionChange(variable.winccVariableName, e.target.value ? Number(e.target.value) : null)
+          }
+        >
+          <option value="">未分区</option>
+          {partitions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </AdminSelect>
       </td>
       <td className="px-3 py-1 font-mono">{variable.winccVariableName}</td>
       <td className="px-3 py-1">{variable.displayLabel || "—"}</td>
@@ -323,6 +351,50 @@ export default function AdminTelemetryLongtermPage() {
     staleTime: 0,
   });
 
+  const { data: partitions = [] } = useQuery({
+    queryKey: ["telemetryLongterm", "partitions"] as const,
+    queryFn: fetchLongtermPartitions,
+    staleTime: 0,
+  });
+
+  const PARTITION_KEY = "twin-longterm-partition";
+  const [activePartitionId, setActivePartitionId] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(PARTITION_KEY);
+      if (raw == null) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const tabs = useMemo(() => {
+    const list = partitions.map((p) => ({ id: p.id, name: p.name, count: p.variableCount }));
+    const unassigned = variables.filter((v) => v.partitionId == null).length;
+    if (unassigned > 0 || list.length === 0) {
+      list.push({ id: 0, name: "未分区", count: unassigned });
+    }
+    return list;
+  }, [partitions, variables]);
+
+  const effectivePartitionId = useMemo(() => {
+    if (activePartitionId != null && tabs.some((t) => t.id === activePartitionId)) {
+      return activePartitionId;
+    }
+    return tabs[0]?.id ?? 0;
+  }, [activePartitionId, tabs]);
+
+  const selectPartition = (id: number) => {
+    setActivePartitionId(id);
+    setVariableFilter("");
+    try {
+      localStorage.setItem(PARTITION_KEY, String(id));
+    } catch {
+      /* ignore */
+    }
+  };
+
   // 日历选**一天**：默认今天。只加载那一天 —— 整月一次性下发（31 天 × 二十几个变量 × 上百个槽）
   // 是实打实的数据压力，前后端都吃不消。
   const [day, setDay] = useState<string>(todayYmd());
@@ -341,8 +413,8 @@ export default function AdminTelemetryLongtermPage() {
     error: matrixError,
     refetch: refetchMatrix,
   } = useQuery({
-    queryKey: ["telemetryLongterm", "matrix", day] as const,
-    queryFn: () => fetchLongtermMatrix({ day }),
+    queryKey: ["telemetryLongterm", "matrix", day, effectivePartitionId] as const,
+    queryFn: () => fetchLongtermMatrix({ day, partitionId: effectivePartitionId }),
     // 数据会被定时任务持续写入，也必须每次重取
     staleTime: 0,
   });
@@ -350,10 +422,17 @@ export default function AdminTelemetryLongtermPage() {
   // 日历上标「哪天有数据」
   const calMonthKey = `${calYm.year}-${String(calYm.month).padStart(2, "0")}`;
   const { data: daysWithData = [] } = useQuery({
-    queryKey: ["telemetryLongterm", "days", calMonthKey] as const,
-    queryFn: () => fetchLongtermDays({ month: calMonthKey }),
+    queryKey: ["telemetryLongterm", "days", calMonthKey, effectivePartitionId] as const,
+    queryFn: () => fetchLongtermDays({ month: calMonthKey, partitionId: effectivePartitionId }),
     staleTime: 0,
   });
+
+  // 切分区/首次进来时，当前日期不一定有数据 → 自动落到最近一个有数据的日期。
+  useEffect(() => {
+    if (daysWithData.length > 0 && !daysWithData.includes(day)) {
+      setDay(daysWithData[0]);
+    }
+  }, [daysWithData, day]);
 
   const saveVars = useMutation({
     mutationFn: (list: LongtermVariable[]) => saveLongtermVariables(list),
@@ -361,6 +440,7 @@ export default function AdminTelemetryLongtermPage() {
       toast.success("已保存");
       void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "variables"] });
       void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "plan"] });
+      void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "partitions"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "保存失败"),
   });
@@ -393,6 +473,47 @@ export default function AdminTelemetryLongtermPage() {
   // 设置弹窗：常用操作是「变量选择」，归档计划配好之后不必常看 → 默认收起
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+
+  // 自定义分区管理（tab 的来源）
+  const [partitionMgrOpen, setPartitionMgrOpen] = useState(false);
+  const [newPartitionName, setNewPartitionName] = useState("");
+  const createPartitionM = useMutation({
+    mutationFn: (name: string) => createLongtermPartition(name),
+    onSuccess: (p) => {
+      setNewPartitionName("");
+      toast.success(`已新增分区「${p.name}」`);
+      void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "partitions"] });
+      selectPartition(p.id);
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "新增分区失败"),
+  });
+  const renamePartitionM = useMutation({
+    mutationFn: (v: { id: number; name: string }) => renameLongtermPartition(v.id, v.name),
+    onSuccess: () => {
+      toast.success("分区已重命名");
+      void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "partitions"] });
+      void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "variables"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "重命名失败"),
+  });
+  const deletePartitionM = useMutation({
+    mutationFn: (id: number) => deleteLongtermPartition(id),
+    onSuccess: () => {
+      toast.success("分区已删除，变量已归入未分区");
+      void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "partitions"] });
+      void queryClient.invalidateQueries({ queryKey: ["telemetryLongterm", "variables"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "删除分区失败"),
+  });
+
+  const onPartitionChange = (variableName: string, partitionId: number | null) => {
+    const name = partitionId == null ? null : partitions.find((p) => p.id === partitionId)?.name ?? null;
+    saveVars.mutate(
+      variables.map((v) =>
+        v.winccVariableName === variableName ? { ...v, partitionId, partitionName: name } : v
+      )
+    );
+  };
 
   // 候选变量抽屉：先选**分区**（变量目录原本的导入分区），再列该分区的变量
   const [addOpen, setAddOpen] = useState(false);
@@ -439,6 +560,10 @@ export default function AdminTelemetryLongtermPage() {
         floorCode: c.floorCode,
         roomCanonical: c.roomCanonical,
         metricKindCode: c.metricKindCode,
+        partitionId: effectivePartitionId > 0 ? effectivePartitionId : null,
+        partitionName: effectivePartitionId > 0
+          ? tabs.find((t) => t.id === effectivePartitionId)?.name ?? null
+          : null,
       }));
     setAddOpen(false);
     if (toAdd.length === 0) return;
@@ -472,8 +597,9 @@ export default function AdminTelemetryLongtermPage() {
   const buildExportReq = (): LongtermExportRequest => ({
     form: exportForm,
     layout: exportLayout,
-    // 不勾变量：一律导出全部已选变量（空数组 = 全部，后端同口径）
+    // 不勾变量：一律导出当前分区全部已选变量（空数组 = 全部，后端同口径）
     variableNames: [],
+    partitionId: effectivePartitionId,
     // 时间范围必填：后端也卡（未选直接 400）
     days: exportDays,
   });
@@ -498,6 +624,14 @@ export default function AdminTelemetryLongtermPage() {
       ? dayTable.rows.filter((r) => r.variableName === variableFilter)
       : dayTable.rows
     : [];
+  const partitionVariables = variables.filter((v) =>
+    effectivePartitionId === 0 ? v.partitionId == null : v.partitionId === effectivePartitionId
+  );
+  const filterOptions = dayTable?.rows ?? partitionVariables.map((v) => ({
+    variableName: v.winccVariableName,
+    roomCanonical: v.roomCanonical ?? null,
+    displayLabel: v.displayLabel,
+  }));
 
   const shiftDay = (delta: number) => {
     const p = parseYmd(day);
@@ -520,9 +654,10 @@ export default function AdminTelemetryLongtermPage() {
   const printSortedDays = [...(printSeed?.days ?? [])].sort();
   const printFrom = printSortedDays.length ? `${printSortedDays[0]}T00:00:00` : null;
   const printTo = printSortedDays.length ? `${printSortedDays[printSortedDays.length - 1]}T23:59:59` : null;
+  const printPartitionId = printSeed?.partitionId ?? undefined;
   const { data: printMatrix } = useQuery({
-    queryKey: ["telemetryLongterm", "printMatrix", printFrom, printTo] as const,
-    queryFn: () => fetchLongtermMatrix({ from: printFrom as string, to: printTo as string }),
+    queryKey: ["telemetryLongterm", "printMatrix", printFrom, printTo, printPartitionId] as const,
+    queryFn: () => fetchLongtermMatrix({ from: printFrom as string, to: printTo as string, partitionId: printPartitionId }),
     enabled: !!printFrom && !!printTo,
     staleTime: 0,
   });
@@ -649,13 +784,11 @@ export default function AdminTelemetryLongtermPage() {
               onChange={(e) => setVariableFilter(e.target.value)}
             >
               <option value="">全部变量</option>
-              {(dayTable?.rows ?? variables.map((v) => ({ variableName: v.winccVariableName, roomCanonical: null, displayLabel: v.displayLabel }))).map(
-                (r) => (
-                  <option key={r.variableName} value={r.variableName}>
-                    {r.displayLabel || r.roomCanonical || r.variableName}
-                  </option>
-                )
-              )}
+              {filterOptions.map((r) => (
+                <option key={r.variableName} value={r.variableName}>
+                  {r.displayLabel || r.roomCanonical || r.variableName}
+                </option>
+              ))}
             </AdminSelect>
             <div className="ml-auto flex flex-wrap items-center gap-2">
               <AdminSegmentedControl
@@ -679,6 +812,31 @@ export default function AdminTelemetryLongtermPage() {
               </AdminButton>
             </div>
           </div>
+          {/* 自定义分区 tab：切换后整页（表格/曲线/日期圆点/导出）只作用于该分区 */}
+          <div className="mt-2 flex items-center gap-1 overflow-x-auto border-t border-[var(--app-color-border-default)] pt-2">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => selectPartition(t.id)}
+                className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  t.id === effectivePartitionId
+                    ? "border-[var(--app-color-primary,#2563eb)] bg-[var(--app-color-primary,#2563eb)] text-white"
+                    : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+                }`}
+              >
+                {t.name}
+                <span className={`text-[10px] font-normal ${t.id === effectivePartitionId ? "text-white/80" : "text-[var(--app-color-text-tertiary)]"}`}>
+                  {t.count}
+                </span>
+              </button>
+            ))}
+            {tabs.length === 0 && (
+              <span className="text-xs text-[var(--app-color-text-tertiary)]">
+                先在「设置 → 管理分区」新建分区，并给已选变量分配分区
+              </span>
+            )}
+          </div>
         </AdminFormCard>
 
         {/* ═══ 第二层：表卡（单个双轴滚动区 + 底部信息条，照 automation-logs 的范式） ═══ */}
@@ -700,7 +858,7 @@ export default function AdminTelemetryLongtermPage() {
                 {day} 没有采样数据
               </div>
             ) : viewMode === "chart" ? (
-              /* 曲线：每个变量一张小多图，复用环境监测那套标准图表（合规区间/参考线都现成） */
+              /* 曲线：每个变量一张小多图（合规区间/参考线都现成） */
               <div className="grid grid-cols-1 gap-3 p-3 xl:grid-cols-2">
                 {visibleRows.map((r) => (
                   <div key={r.variableName} className="rounded-twin-lg border border-[var(--twin-hairline)] p-2">
@@ -917,23 +1075,86 @@ export default function AdminTelemetryLongtermPage() {
                   <span className="text-xs font-semibold text-[var(--twin-ink)]">
                     变量选择（{variables.length}）
                     <span className="ml-2 font-normal text-[var(--twin-mute)]">
-                      拖拽左侧抓手或上移/下移调整顺序 —— 顺序即宽表导出的列序
+                      拖拽左侧抓手或上移/下移调整顺序 —— 分区内顺序即宽表导出的列序
                     </span>
                   </span>
-                  <AdminButton tone="primary" size="sm" onClick={openAdd}>
-                    加入变量
-                  </AdminButton>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <AdminButton tone="secondary" size="sm" onClick={() => setPartitionMgrOpen((v) => !v)}>
+                      管理分区
+                    </AdminButton>
+                    <AdminButton tone="primary" size="sm" onClick={openAdd}>
+                      加入变量
+                    </AdminButton>
+                  </div>
                 </div>
+
+                {partitionMgrOpen && (
+                  <div className="mb-2 shrink-0 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] p-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={newPartitionName}
+                        onChange={(e) => setNewPartitionName(e.target.value)}
+                        placeholder="新分区名称"
+                        className={`${compactInputClass} max-w-[12rem]`}
+                      />
+                      <AdminButton
+                        tone="primary"
+                        size="sm"
+                        disabled={!newPartitionName.trim() || createPartitionM.isPending}
+                        onClick={() => createPartitionM.mutate(newPartitionName.trim())}
+                      >
+                        新增
+                      </AdminButton>
+                      <span className="ml-auto text-[10px] text-[var(--app-color-text-tertiary)]">
+                        删除分区不删数据，变量会归入「未分区」
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {partitions.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2">
+                          <input
+                            defaultValue={p.name}
+                            className={`${compactInputClass} max-w-[12rem]`}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (v && v !== p.name) renamePartitionM.mutate({ id: p.id, name: v });
+                            }}
+                          />
+                          <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                            {p.variableCount} 个变量
+                          </span>
+                          <button
+                            type="button"
+                            className="ml-auto text-[11px] text-[var(--app-color-feedback-danger-ink)] hover:underline"
+                            onClick={async () => {
+                              if (await appConfirm(`删除分区「${p.name}」？变量会归入未分区，数据不删。`)) {
+                                deletePartitionM.mutate(p.id);
+                              }
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      ))}
+                      {partitions.length === 0 && (
+                        <p className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                          还没有分区，先在上方新增。
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="min-h-0 flex-1 overflow-y-auto">
                   <AdminDataTableWrap>
                     <table className="min-w-full text-[11px] twin-table">
                       <thead>
                         <tr>
                           <th className="text-center">顺序</th>
+                          <th>分区</th>
                           <th>变量名</th>
                           <th>显示标签</th>
-                          <th>单位</th>
-                          <th className="text-center">启用</th>
+                          <th className="whitespace-nowrap">单位</th>
+                          <th className="whitespace-nowrap text-center">启用</th>
                           <th className="text-right">操作</th>
                         </tr>
                       </thead>
@@ -958,13 +1179,15 @@ export default function AdminTelemetryLongtermPage() {
                                 onMove={move}
                                 onRemove={remove}
                                 onToggleEnabled={toggleEnabled}
+                                partitions={partitions}
+                                onPartitionChange={onPartitionChange}
                               />
                             ))}
                           </SortableContext>
                         </DndContext>
                         {variables.length === 0 && (
                           <tr>
-                            <td colSpan={6} className="py-6 text-center text-[var(--twin-mute)]">
+                            <td colSpan={7} className="py-6 text-center text-[var(--twin-mute)]">
                               还没有选择变量，点「加入变量」开始
                             </td>
                           </tr>
@@ -1137,10 +1360,10 @@ export default function AdminTelemetryLongtermPage() {
               </div>
               <p className="text-[11px] text-[var(--twin-mute)]">
                 {exportForm === "CURVE"
-                  ? "曲线出 A4 纵向 PDF：一天一页、一行两张，多天合到一份文件里"
+                  ? "曲线出 A4 纵向 PDF：一天一页、一行两张，只含当前分区，多天合到一份文件里"
                   : exportLayout === "WIDE"
-                    ? "宽表 Excel：跟页面上一样 —— 一行一个房间、一列一个时刻；多天按天分段上下堆叠"
-                    : "长表 Excel：一行一条采样；多天连成一张表、多一列「日期」从上往下排"}
+                    ? "宽表 Excel：只含当前分区 —— 一行一个房间、一列一个时刻；多天按天分段上下堆叠"
+                    : "长表 Excel：只含当前分区 —— 一行一条采样；多天连成一张表、多一列「日期」从上往下排"}
               </p>
 
             {/* 时间范围：**日历点选**（点中的高亮）；必选 —— 不选不允许导出 */}

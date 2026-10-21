@@ -20,6 +20,7 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
   const visual = useDashboardVisual();
   const isGroup = Boolean(item.groupName);
   const images = (item.imageUrls ?? []).filter((u) => (u ?? "").trim() !== "");
+  const videos = (item.videoUrls ?? []).filter((u) => (u ?? "").trim() !== "");
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   const previewOpenRef = useRef(false);
@@ -34,7 +35,7 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
   const summaryTone = dashTone(visual, "text-fuchsia-100/85", DASH_NIGHT_CLASS.textMuted, "text-rose-950/85");
   const borderTone = dashTone(visual, "border-fuchsia-500/15", DASH_NIGHT_CLASS.header, "border-rose-200/50");
 
-  const ImageStrip = images.length > 0 ? (
+  const MediaStrip = images.length > 0 || videos.length > 0 ? (
     <div className="mt-1.5 flex flex-wrap gap-1.5">
       {images.map((u) => (
         <button
@@ -56,6 +57,18 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
             }`}
           />
         </button>
+      ))}
+      {videos.map((u) => (
+        <video
+          key={u}
+          src={u}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          className="h-16 w-24 shrink-0 rounded-md bg-black object-cover md:h-20 md:w-32"
+        />
       ))}
     </div>
   ) : null;
@@ -92,7 +105,7 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
             </span>
           ))}
         </div>
-        {ImageStrip}
+        {MediaStrip}
       </div>
     </div>
   );
@@ -135,7 +148,7 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
           ))}
         </div>
       ) : null}
-      {ImageStrip}
+      {MediaStrip}
     </div>
   ) : isCagePerson ? (
     cagePersonCard
@@ -153,7 +166,7 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
         {item.summary ? (
           <p className={`text-[11px] leading-snug md:text-xs ${summaryTone}`}>{item.summary}</p>
         ) : null}
-        {ImageStrip}
+        {MediaStrip}
       </div>
     </div>
   );

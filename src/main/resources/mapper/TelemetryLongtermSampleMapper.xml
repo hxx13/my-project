@@ -22,6 +22,10 @@
             <if test="variableQ != null and variableQ != ''">
                 AND variable_name LIKE CONCAT('%', #{variableQ}, '%')
             </if>
+            <if test="variableNames != null and variableNames.size() > 0">
+                AND variable_name IN
+                <foreach collection="variableNames" item="v" open="(" separator="," close=")">#{v}</foreach>
+            </if>
             <if test="from != null">AND sample_at &gt;= #{from}</if>
             <if test="to != null">AND sample_at &lt;= #{to}</if>
         </where>
@@ -68,6 +72,12 @@
     <select id="selectDistinctMonths" resultType="string">
         SELECT DISTINCT DATE_FORMAT(sample_at, '%Y-%m') AS m
         FROM telemetry_longterm_sample
+        <where>
+            <if test="variableNames != null and variableNames.size() > 0">
+                AND variable_name IN
+                <foreach collection="variableNames" item="v" open="(" separator="," close=")">#{v}</foreach>
+            </if>
+        </where>
         ORDER BY m DESC
     </select>
 
@@ -75,6 +85,10 @@
         SELECT DISTINCT DATE_FORMAT(sample_at, '%Y-%m-%d') AS d
         FROM telemetry_longterm_sample
         <where>
+            <if test="variableNames != null and variableNames.size() > 0">
+                AND variable_name IN
+                <foreach collection="variableNames" item="v" open="(" separator="," close=")">#{v}</foreach>
+            </if>
             <if test="from != null">AND sample_at &gt;= #{from}</if>
             <if test="to != null">AND sample_at &lt;= #{to}</if>
         </where>

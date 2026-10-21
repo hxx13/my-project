@@ -3,6 +3,7 @@ package com.example.demo.modules.telemetry.service;
 import com.example.demo.modules.telemetry.dto.longterm.TelemetryLongtermMatrixDto;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleRow;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermVariableRow;
+import com.example.demo.modules.telemetry.mapper.TelemetryLongtermPartitionMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleLogMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermVariableMapper;
@@ -15,6 +16,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -68,10 +70,13 @@ class TelemetryLongtermMatrixTest {
         });
         TelemetryLongtermVariableMapper vm = mock(TelemetryLongtermVariableMapper.class);
         when(vm.selectAllOrdered()).thenReturn(vars);
+        when(vm.selectEnabledNamesByPartition(any(), anyBoolean()))
+                .thenReturn(vars.stream().map(TelemetryLongtermVariableRow::getWinccVariableName).toList());
         // 调度行取不到 → 走策略默认值（本任务默认 7200 秒 = 一天 12 个槽）
         TwinJobScheduleConfigMapper scheduleMapper = mock(TwinJobScheduleConfigMapper.class);
         when(scheduleMapper.selectByJobKey(anyString())).thenReturn(null);
         return new TelemetryLongtermArchiveService(vm,
+                mock(TelemetryLongtermPartitionMapper.class),
                 mock(TelemetryLongtermSampleLogMapper.class),
                 mock(TelemetryWatchlistDbService.class),
                 scheduleMapper,
@@ -90,7 +95,7 @@ class TelemetryLongtermMatrixTest {
                         row("VAR_A", d1b, "3"), row("VAR_A", d2, "9")),
                 List.of(cfg("VAR_A", 0, "A 标签", "C"), cfg("VAR_B", 1, null, null)));
 
-        TelemetryLongtermMatrixDto m = svc.queryMatrix(null, "2026-10", null, null);
+        TelemetryLongtermMatrixDto m = svc.queryMatrix(null, "2026-10", null, null, null);
 
         assertEquals(List.of("2026-10-10", "2026-10-09"), m.getDays(), "日期新的在前");
 
@@ -126,7 +131,7 @@ class TelemetryLongtermMatrixTest {
         TelemetryLongtermArchiveService svc = service(List.of(row("VAR_A", t, "1")),
                 List.of(cfg("VAR_A", 0, null, null), cfg("VAR_B", 1, null, null)));
 
-        var day = svc.queryMatrix(null, "2026-10", null, null).getDayTables().get(0);
+        var day = svc.queryMatrix(null, "2026-10", null, null, null).getDayTables().get(0);
 
         assertEquals(1, day.getRows().size(), "当天一条都没有的变量不出行，否则整行都是空");
         assertEquals("VAR_A", day.getRows().get(0).getVariableName());
@@ -139,7 +144,7 @@ class TelemetryLongtermMatrixTest {
         r.setNumericValue(23.5);
         TelemetryLongtermArchiveService svc = service(List.of(r), List.of(cfg("VAR_A", 0, null, null)));
 
-        var day = svc.queryMatrix(null, "2026-10", null, null).getDayTables().get(0);
+        var day = svc.queryMatrix(null, "2026-10", null, null, null).getDayTables().get(0);
 
         assertEquals("23.5", day.getRows().get(0).getValues().get(0));
     }
@@ -152,7 +157,7 @@ class TelemetryLongtermMatrixTest {
                 List.of(row("VAR_A", d1, "1"), row("VAR_A", d2, "9")),
                 List.of(cfg("VAR_A", 0, null, null)));
 
-        var only9th = svc.queryMatrix("2026-10-09", null, null, null);
+        var only9th = svc.queryMatrix("2026-10-09", null, null, null, null);
 
         assertEquals(List.of("2026-10-09"), only9th.getDays(), "给了 day 就只回那一天");
         assertEquals(1, only9th.getDayTables().size());
@@ -163,7 +168,7 @@ class TelemetryLongtermMatrixTest {
     void emptyWhenNoSamples() {
         TelemetryLongtermArchiveService svc = service(List.of(), List.of(cfg("VAR_A", 0, null, null)));
 
-        TelemetryLongtermMatrixDto m = svc.queryMatrix(null, "2026-10", null, null);
+        TelemetryLongtermMatrixDto m = svc.queryMatrix(null, "2026-10", null, null, null);
 
         assertTrue(m.getDays().isEmpty());
         assertTrue(m.getDayTables().isEmpty());

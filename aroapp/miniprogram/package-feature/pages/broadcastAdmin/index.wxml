@@ -78,6 +78,18 @@
         </view>
 
         <view class="bc-hint">只试听时请只勾「监听音箱」，别影响现场。音量对已选分区生效。</view>
+
+        <!-- 播放模式：平台全局设置，改了也会影响正在跑的定时方案 -->
+        <view class="bc-mode">
+          <text class="bc-mode-label">播放模式</text>
+          <view
+            wx:for="{{playModes}}"
+            wx:key="value"
+            class="chip-btn chip-btn--xs {{playMode === item.value ? 'chip-btn--primary' : 'chip-btn--ghost'}}"
+            data-mode="{{item.value}}"
+            bindtap="onPlayModeChange"
+          >{{item.label}}</view>
+        </view>
       </view>
     </view>
 

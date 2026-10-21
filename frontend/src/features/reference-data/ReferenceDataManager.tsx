@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams, useBlocker } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -21,6 +21,7 @@ import {
   useApprovedAups,
   useMarkCartPackageReady,
   useWithdrawCartPackage,
+  invalidateCageAvailability,
 } from "@/api/hooks/useReferenceData";
 import { useAnimalOrderTimePolicy } from "@/api/hooks/useAnimalOrderTime";
 import {
@@ -561,7 +562,9 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
         await releaseCageReservation(r.reservationId);
       } catch { /* 启动清理兜底 */ }
     }
-  }, [pickedCages]);
+    // 刚放掉的笼位立刻对账：不然重开抽屉时 /reservable 还是旧快照，会把它们又接回「已选」
+    if (cur.length > 0) invalidateCageAvailability(qc);
+  }, [pickedCages, qc]);
 
   /** 领用方式切换：取走要放掉已选笼位并关抽屉，饲养再把抽屉打开 */
   const handlePickupModeChange = useCallback((mode: PickupMode) => {
@@ -580,7 +583,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     [],
   );
 
-  const handleSpecConfirm = useCallback(async (
+  const doSpecConfirm = useCallback(async (
     entries: {
       optionLabel: string;
       qty: number;
@@ -598,6 +601,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     if (!specSelectItem || !selectedAupId || !groupId) return;
     const aupId = Number(selectedAupId);
     let ok = 0;
+    /** 真正加购成功的预定 id —— 失败的不能算「已用」，否则会被漏释放、永久占着笼位 */
+    const addedReservationIds = new Set<string>();
     for (const entry of entries) {
       // 笼位路径下房间来自该行自己的笼位；非笼位路径用弹窗里选的那个房间
       const roomId = entry.pickupRoomId || pickup.pickupRoomId;
@@ -632,6 +637,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
           },
         });
         ok += 1;
+        if (entry.reservationId) addedReservationIds.add(entry.reservationId);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "加入失败";
         if (msg.includes("请先选择 AUP")) toast.error("请先选择 AUP");
@@ -643,18 +649,37 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
       toast.success(`已加入购物车 (${ok} 项)`);
       void refetchCart();
     }
-    // 多选的盒子最后没分到老鼠 → 自动取消掉它（释放预定），别白占着
-    const usedReservationIds = new Set(entries.map((e) => e.reservationId).filter(Boolean) as string[]);
+    // 没分到老鼠的、以及加购失败的笼位都释放（失败的不释放会永远锁着，且已从界面上清掉）
+    let releasedUnused = false;
     for (const c of pickedCages) {
-      if (usedReservationIds.has(c.reservationId)) continue;
+      if (addedReservationIds.has(c.reservationId)) continue;
+      releasedUnused = true;
       try {
         await releaseCageReservation(c.reservationId);
       } catch { /* 启动清理兜底 */ }
     }
+    // 释放完必须对账：否则抽屉里这些笼位还停在「已选/可点」的旧快照，
+    // 用户再点一次会把已在购物车的笼位当成新的来选。
+    if (releasedUnused) invalidateCageAvailability(qc);
     setPickedCages([]);
     setAllocPinned({});
     setSpecSelectItem(null);
-  }, [orderingBlocked, timePolicy?.closedReason, specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, pickedCages, editingOrderId]);
+  }, [orderingBlocked, timePolicy?.closedReason, specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, pickedCages, editingOrderId, qc]);
+
+  /**
+   * 防连点：一次加购会锁/释放多个笼位，重复进入会把同一笼位重复挂进购物车，
+   * 还把预定 cart_id 指向新行、留下两条引用同一个笼位的订单行。
+   */
+  const confirmBusyRef = useRef(false);
+  const handleSpecConfirm = useCallback(async (...args: Parameters<typeof doSpecConfirm>) => {
+    if (confirmBusyRef.current) return;
+    confirmBusyRef.current = true;
+    try {
+      await doSpecConfirm(...args);
+    } finally {
+      confirmBusyRef.current = false;
+    }
+  }, [doSpecConfirm]);
 
   // 每行周期上限 + 被挤占收敛：他人提交吃掉了某 (规格, 周期) 的可用量时，本车才收敛并提示（不静默）
   const cartQuotaMax = useCartQuotaConvergence({
@@ -663,6 +688,11 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
     isPi,
     currentUserId,
     onConverge: (line, newQty) => {
+      // 收敛到 0 = 这行留不住了：改数量接口不收 0，直接删行（顺带释放它锁着的笼位）
+      if (newQty <= 0) {
+        removeCartMut.mutate(line.id, { onSuccess: () => void refetchCart() });
+        return;
+      }
       updateCartMut.mutate({ id: line.id, body: { quantity: newQty } }, { onSuccess: () => void refetchCart() });
     },
   });
@@ -740,6 +770,7 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
   }, [myReadyLines.length, withdrawMut, groupId, refetchCart]);
 
   const handleSubmitOrder = useCallback(() => {
+    if (submitOrderMut.isPending) return;   // 防连点：同一批购物车行不能提交两次
     if (orderingBlocked) {
       toast.error(timePolicy?.closedReason ?? "当前不可购");
       return;
@@ -769,6 +800,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
           setSubmitConfirmOpen(false);
           setSubmitRemark("");
           void qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
+          // 预定的阶段从「已在购物车」变成「已下单待审批」：不对账的话抽屉还会拦着说在购物车里
+          invalidateCageAvailability(qc);
           void refetchCart();
           setQuotaToken((t) => t + 1); // 下单即扣额度：卡片剩余量立刻重查
         },
@@ -814,6 +847,8 @@ export default function ReferenceDataManager({ mode }: ReferenceDataManagerProps
                 key={c}
                 type="button"
                 onClick={() => {
+                  // 换校区前先放掉已锁笼位：那些笼位在另一个校区的架子上，不能带进本单
+                  if (c !== campus && pickedCages.length > 0) void closeCagePicker();
                   storeCampus(c);
                   setCampus(c);
                 }}

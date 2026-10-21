@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS telemetry_longterm_variable (
     sort_order INT NOT NULL DEFAULT 0 COMMENT '顺序：宽表列序与导出列序',
     display_label VARCHAR(512) NULL COMMENT '导出表头用，默认取变量目录展示名',
     unit VARCHAR(32) NULL COMMENT '单位，取不到留空不猜',
+    bundle_code VARCHAR(128) NULL COMMENT '所属导入分区 code；空=未分区',
+    partition_id BIGINT NULL COMMENT '自定义分区 id；空=未分区',
     enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '单变量级临时停采',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

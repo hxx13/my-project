@@ -64,4 +64,13 @@ public interface CageOrderReservationMapper {
 
     /** 同上判据的待释放行：释放前要先按 written_json 撤掉预填进笼位表单的值。 */
     List<CageOrderReservation> listOrphans();
+
+    /**
+     * 运行期可清理的一档孤儿：cart_id 指向的购物车行已经不存在、也没挂订单的 LOCKED 行。
+     *
+     * <p>与 {@link #listOrphans()} 的区别是**不包含 cart_id 为空**的那批——那是用户正在选、
+     * 还没加购的锁定，运行期不能动。这里只清「曾经挂过购物车、行后来没了」的残留，
+     * 否则笼位会对本人永远显示「已在你的购物车中」，而购物车里其实早没有那一行了。
+     */
+    List<CageOrderReservation> listDanglingCart();
 }

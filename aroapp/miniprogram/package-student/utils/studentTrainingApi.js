@@ -147,6 +147,22 @@ function openPdfFile(filePath) {
   });
 }
 
+/** 学习视频列表（含我的进度与续播点，规则由后端折算）。 */
+async function fetchMyLearningVideos() {
+  const res = await springAuth.springRequest({ url: '/api/student/learning-videos', method: 'GET', data: {} });
+  return unwrap(res.data) || [];
+}
+
+/** 观看心跳：{ position, watchedDelta, duration, ended }。 */
+async function reportLearningVideoProgress(videoId, payload) {
+  const res = await springAuth.springRequest({
+    url: `/api/student/learning-videos/${videoId}/progress`,
+    method: 'POST',
+    data: payload || {},
+  });
+  return unwrap(res.data);
+}
+
 module.exports = {
   isFullyPassed,
   isRejected,
@@ -163,4 +179,6 @@ module.exports = {
   fetchMyCertificates,
   downloadCertificatePdf,
   openPdfFile,
+  fetchMyLearningVideos,
+  reportLearningVideoProgress,
 };
