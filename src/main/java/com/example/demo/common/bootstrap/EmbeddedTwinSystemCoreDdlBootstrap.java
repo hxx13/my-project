@@ -114,6 +114,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-print-job-note.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-job-priority.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-job-ephemeral.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-print-job-seq.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-station-last-seen.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-station-printer-online.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-print-station-printer-checked-at.sql", ctx)) success++;
@@ -189,6 +190,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-exam-submission.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-person-qualification.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-learning-material.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-learning-video.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-learning-video-progress.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-node.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-document.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-sop-favorite.sql", ctx)) success++;
@@ -202,6 +205,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-training-recurrence.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-recurrence-period.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-paper-ids.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-training-video-ids.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-owner-ids.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-type-name.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-training-type-preset.sql", ctx)) success++;
@@ -328,6 +332,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-telemetry-alarm-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-digest-telemetry-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-telemetry-longterm.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-telemetry-longterm-variable-bundle.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-telemetry-longterm-partition.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-telemetry-longterm-variable-partition.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-user-notify-mute.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-aro-personnel-open-id.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-agv-trajectory.sql", ctx)) success++;
@@ -515,6 +522,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
         total++; if (runScript("db/bootstrap-broadcast-plan-run-state.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-broadcast-plan-run-started-at.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-broadcast-plan-zone-state.sql", ctx)) success++;
+        // 远程屏幕：标签页编号与人工名称（后端重启后名字不丢）
+        total++; if (runScript("db/bootstrap-remote-screen.sql", ctx)) success++;
         // 广播播放记录：「今天到底响没响」看这里
         total++; if (runScript("db/bootstrap-broadcast-play-log.sql", ctx)) success++;
         // 安维迪(云组态)仪表盘对接：通道 / 告警统计 / 当前报警（三张表各自一个文件）

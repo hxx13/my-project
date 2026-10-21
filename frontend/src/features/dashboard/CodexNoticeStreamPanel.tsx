@@ -25,6 +25,24 @@ type Props = {
   scrollMode?: "loop" | "cycle";
 };
 
+/**
+ * 正文视频在展示态原地自动循环播放：大屏是常亮展示，不弹窗、不占交互。
+ * 浏览器只允许静音自动播放，所以固定 muted（声音不是大屏的诉求）。
+ */
+function prepareInlineVideos(html: string): string {
+  if (!html.includes("<video")) return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.querySelectorAll("video").forEach((video) => {
+    video.removeAttribute("controls");
+    video.setAttribute("autoplay", "");
+    video.setAttribute("muted", "");
+    video.setAttribute("loop", "");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("preload", "auto");
+  });
+  return doc.body.innerHTML;
+}
+
 function SafeHtmlBlock({
   raw,
   className = "",
@@ -32,13 +50,13 @@ function SafeHtmlBlock({
   raw: string;
   className?: string;
 }) {
-  const html = useMemo(() => prepareAnnouncementHtml(raw ?? ""), [raw]);
+  const html = useMemo(() => prepareInlineVideos(prepareAnnouncementHtml(raw ?? "")), [raw]);
   if (!html) {
     return <p className={className}>暂无内容。</p>;
   }
   return (
     <div
-      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)] [&_img]:cursor-zoom-in`}
+      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)] [&_img]:cursor-zoom-in [&_video]:block [&_video]:w-full [&_video]:max-w-[560px] [&_video]:mx-auto [&_video]:my-2 [&_video]:rounded-[var(--app-radius-element)]`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

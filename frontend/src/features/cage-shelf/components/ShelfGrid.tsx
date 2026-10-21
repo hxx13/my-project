@@ -55,6 +55,7 @@ export function ShelfGrid({
   claimMode,
   confirmMode,
   poolCells,
+  poolLabel,
   myClaimCageIds,
   restrictSelectToPool,
   pairColorByCageId,
@@ -90,6 +91,8 @@ export function ShelfGrid({
   claimMode?: boolean;
   confirmMode?: boolean;
   poolCells?: Map<string, PoolCell>;
+  /** 池内可选标签的文字（划分模式传「可选择」；缺省「当前可选」） */
+  poolLabel?: string;
   /** 本人待确认到位的 animalCageId 集合；认领/确认模式下高亮 */
   myClaimCageIds?: Set<string>;
   /** 只有池内格子可勾选（分笼/转移选位用） */
@@ -194,6 +197,7 @@ export function ShelfGrid({
               flashOverlay={!!(scanLockTarget && scanLockTarget.sid === sid && scanLockTarget.x === c.x && scanLockTarget.y === c.y)}
               claimMode={claimMode}
               poolColor={glowColor}
+              poolLabel={poolLabel}
               confirmMode={confirmMode}
               // isPoolCell 只决定「可否勾选」；绿环是否画由 CellButton 里的 claimMode 控制
               isPoolCell={poolCells ? poolCells.has(String((c as any).id ?? (c as any).animalCageId ?? "")) : false}

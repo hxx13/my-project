@@ -69,6 +69,7 @@ public class TrainingService {
     private final PersonKeyResolver personKeyResolver;
     private final ObjectMapper objectMapper;
     private final TrainingCertificateService certificateService;
+    private final LearningVideoService learningVideoService;
 
     public TrainingService(TrainingMapper trainingMapper,
                            TrainingOccurrenceMapper occurrenceMapper,
@@ -83,7 +84,8 @@ public class TrainingService {
                            UserDisplayNameService displayNameService,
                            PersonKeyResolver personKeyResolver,
                            ObjectMapper objectMapper,
-                           TrainingCertificateService certificateService) {
+                           TrainingCertificateService certificateService,
+                           LearningVideoService learningVideoService) {
         this.trainingMapper = trainingMapper;
         this.occurrenceMapper = occurrenceMapper;
         this.enrollmentMapper = enrollmentMapper;
@@ -98,6 +100,7 @@ public class TrainingService {
         this.personKeyResolver = personKeyResolver;
         this.objectMapper = objectMapper;
         this.certificateService = certificateService;
+        this.learningVideoService = learningVideoService;
     }
 
     // ========================================================================
@@ -106,6 +109,19 @@ public class TrainingService {
 
     public List<Map<String, Object>> list(String keyword) {
         List<Training> all = trainingMapper.list();
+        // 与「学生端培训排序」同口径：校区（有校区在前）→ 校区名 → 组内序号 → id。
+        // 管理端列表也吃这套顺序，三端看到的先后才一致。
+        all.sort((a, b) -> {
+            int c = Integer.compare(campusRank(a.getCampus()), campusRank(b.getCampus()));
+            if (c != 0) return c;
+            String ca = a.getCampus() == null ? "" : a.getCampus();
+            String cb = b.getCampus() == null ? "" : b.getCampus();
+            c = ca.compareTo(cb);
+            if (c != 0) return c;
+            c = Integer.compare(sortOf(a.getStudentSort()), sortOf(b.getStudentSort()));
+            if (c != 0) return c;
+            return Long.compare(a.getId(), b.getId());
+        });
         String k = keyword == null ? null : keyword.trim().toLowerCase();
         // 所属人姓名批量解析一次，避免逐行查库
         Set<String> ownerIdSet = new HashSet<>();
@@ -142,6 +158,7 @@ public class TrainingService {
         t.setType(toInt(body.get("type")));
         t.setTypeName(str(body.get("typeName")));
         t.setPaperIdsJson(toJson(body.get("paperIds")));
+        t.setVideoIdsJson(toJson(body.get("videoIds")));
         log.info("[Training] create paperIds={} json={}", body.get("paperIds"), t.getPaperIdsJson());
         List<String> ownerIds = strList(body.get("ownerIds"));
         t.setOwnerIdsJson(toJson(ownerIds != null && !ownerIds.isEmpty() ? ownerIds : List.of(operatorId)));
@@ -165,6 +182,7 @@ public class TrainingService {
         if (body.containsKey("type")) t.setType(toInt(body.get("type")));
         if (body.containsKey("typeName")) t.setTypeName(str(body.get("typeName")));
         if (body.containsKey("paperIds")) t.setPaperIdsJson(toJson(body.get("paperIds")));
+        if (body.containsKey("videoIds")) t.setVideoIdsJson(toJson(body.get("videoIds")));
         log.info("[Training] update id={} paperIds={} json={}", id, body.get("paperIds"), t.getPaperIdsJson());
         if (body.containsKey("ownerIds")) t.setOwnerIdsJson(toJson(strList(body.get("ownerIds"))));
         if (body.containsKey("recurrence")) t.setRecurrence(str(body.get("recurrence")));
@@ -548,6 +566,8 @@ public class TrainingService {
             m.put("eligible", gate.get("eligible"));
             m.put("examPassed", gate.get("examPassed"));
             m.put("healthOk", gate.get("healthOk"));
+            m.put("videoPassed", gate.get("videoPassed"));
+            m.put("videos", gate.get("videos"));
             m.put("papers", gate.get("papers"));
             List<Map<String, Object>> occs = new ArrayList<>();
             for (TrainingOccurrence o : occurrenceMapper.listByTrainingId(t.getId())) {
@@ -609,11 +629,16 @@ public class TrainingService {
         // 报名门槛只要求「已提交」；是否合格属事后审核，不阻断报名
         boolean healthOk = q != null && q.getFileRef() != null && !q.getFileRef().isBlank();
         int healthState = (q == null || q.getState() == null) ? 0 : q.getState();
+        // 学习视频门槛：绑定了视频就必须全部看完（无绑定 = 通过）
+        Map<String, Object> videoGate = learningVideoService.completionFor(personId, parseLongList(t.getVideoIdsJson()));
+        boolean videoPassed = Boolean.TRUE.equals(videoGate.get("allCompleted"));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("examPassed", examPassed);
         out.put("healthOk", healthOk);
         out.put("healthState", healthState);
-        out.put("eligible", examPassed && healthOk);
+        out.put("videoPassed", videoPassed);
+        out.put("videos", videoGate.get("videos"));
+        out.put("eligible", examPassed && healthOk && videoPassed);
         out.put("papers", papers);
         return out;
     }
@@ -625,7 +650,7 @@ public class TrainingService {
         Training t = requireTraining(o.getTrainingId());
         Map<String, Object> gate = checkEnroll(personId, t.getId());
         if (!Boolean.TRUE.equals(gate.get("eligible"))) {
-            throw TwinBusinessException.of(403, "不满足报名资格（门槛试卷合格 + 已提交健康调查表）");
+            throw TwinBusinessException.of(403, "不满足报名资格（门槛试卷合格 + 已提交健康调查表 + 学习视频看完）");
         }
         for (TrainingEnrollment e : enrollmentMapper.listByOccurrenceId(occurrenceId)) {
             if (personId.equals(e.getTraineeId())) throw TwinBusinessException.of(409, "已报名该场次");
@@ -658,6 +683,8 @@ public class TrainingService {
                 m.put("address", o.getAddress());
                 Training t = trainingMapper.findById(o.getTrainingId());
                 m.put("trainingName", t != null ? t.getName() : null);
+                // 已报名也要按校区划分标签
+                m.put("campus", t != null ? t.getCampus() : null);
             }
             out.add(m);
         }
@@ -728,6 +755,7 @@ public class TrainingService {
         m.put("type", t.getType());
         m.put("typeName", t.getTypeName());
         m.put("paperIds", parseLongList(t.getPaperIdsJson()));
+        m.put("videoIds", parseLongList(t.getVideoIdsJson()));
         log.info("[Training] toSeriesJson id={} paperIdsJson={}", t.getId(), t.getPaperIdsJson());
         List<String> ownerIds = parseOwnerIds(t.getOwnerIdsJson());
         m.put("ownerIds", ownerIds);

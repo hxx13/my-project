@@ -52,6 +52,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
 ) {
   const [exp, setExp] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [detail, setDetail] = useState<CageShelfDetail | null>(null);
   /** 全房间模式：当前房间各笼架的网格（单笼架模式下不用） */
   const [roomDetails, setRoomDetails] = useState<CageShelfDetail[]>([]);
@@ -285,6 +286,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
       onMessage("请先选择模板与至少一个笼位");
       return;
     }
+    setGenerating(true);
     onBusyChange(true);
     onMessage("");
     try {
@@ -296,6 +298,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
     } catch (e) {
       onMessage(e instanceof Error ? e.message : "生成失败");
     } finally {
+      setGenerating(false);
       onBusyChange(false);
     }
   };
@@ -313,6 +316,17 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
   useImperativeHandle(ref, () => ({ generate, print: openPrint }));
 
   /** 卡面预览：全房间模式进右抽屉、单笼架模式放右栏，两处共用同一份 */
+  const generateButton = (
+    <button
+      type="button"
+      onClick={() => void generate()}
+      disabled={generating}
+      className="w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-[12px] font-semibold text-[var(--app-color-text-primary)] transition hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50"
+    >
+      {generating ? "生成中…" : "生成 PDF"}
+    </button>
+  );
+
   const renderPreview = () =>
     !activeTemplate ? (
       <div className="text-[13px] text-[var(--app-color-text-tertiary)]">请先选择模板</div>
@@ -377,6 +391,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
                           loading={false}
                           alertMap={EMPTY_ALERTS}
                           selectable
+                          allocMode
                           clickMode="toggle"
                           selectedCells={selectedCells}
                           onToggleCell={handleToggleCell}
@@ -394,6 +409,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
                 emptyHint="在左侧选择笼架后，此处显示该架笼位"
                 alertMap={EMPTY_ALERTS}
                 selectable
+                allocMode
                 clickMode="toggle"
                 selectedCells={selectedCells}
                 onToggleCell={handleToggleCell}
@@ -405,6 +421,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
         {/* 右栏：只服务单笼架模式；全房间模式的预览走右抽屉，主区要让给多架网格 */}
         {viewMode === "shelf" ? (
           <div className="w-[320px] shrink-0 min-h-0 overflow-y-auto overscroll-y-contain rounded-xl border border-[var(--app-color-border-default)] p-3">
+            <div className="mb-2">{generateButton}</div>
             {renderPreview()}
           </div>
         ) : null}
@@ -420,6 +437,7 @@ export const CardPrintPanel = forwardRef<CardPrintPanelHandle, Props>(function C
             collapseLabel="卡面预览"
             onClose={() => setPreviewOpen(false)}
           >
+            <div className="mb-2">{generateButton}</div>
             {renderPreview()}
           </CageOpDrawer>
         ) : (

@@ -891,6 +891,9 @@ export interface StudentTraining {
   examPassed?: boolean;
   healthOk?: boolean;
   healthState?: number;
+  /** 绑定的学习视频是否全部看完（无绑定 = true） */
+  videoPassed?: boolean;
+  videos?: { videoId: number; title: string; active: boolean; completed: boolean }[];
   papers?: { paperId: number; passed: boolean }[];
   occurrences: StudentTrainingOccurrence[];
 }
@@ -901,6 +904,8 @@ export interface MyEnrollment {
   startTime?: string;
   endTime?: string;
   address?: string;
+  /** 所属培训的校区（浦东/浦西），用于已报名按校区划分 */
+  campus?: string | null;
   testYn?: number;
   testFraction?: number;
   createdAt?: string;

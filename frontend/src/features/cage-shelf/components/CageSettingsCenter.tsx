@@ -175,7 +175,7 @@ export default function CageSettingsCenter({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="z-[var(--z-modal)] flex h-[82vh] max-h-[82vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
+      <DialogContent className="z-[var(--z-modal)] flex h-[82vh] max-h-[82vh] w-[min(1280px,95vw)] max-w-[min(1280px,95vw)] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-[var(--twin-hairline)] px-5 py-3.5 text-left">
           <DialogTitle className="text-[14px] text-[var(--twin-ink)]">设置中心</DialogTitle>
           <DialogDescription className="text-[11px] text-[var(--twin-mute)]">

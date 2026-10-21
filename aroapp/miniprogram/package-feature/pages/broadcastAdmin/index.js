@@ -93,6 +93,9 @@ Page({
     playingCount: 0,
     /** 正在执行的方案（顶部常驻条）。方案只是批量启动器，启动后每一路归自己 */
     activePlans: [],
+    /** 播放模式（平台全局）：3 顺序 / 4 列表循环 / 2 单曲循环 / 5 随机 */
+    playMode: 3,
+    playModes: broadcastApi.PLAY_MODES,
     /** 底栏音量滑条的值，松手才作用到已选分区 */
     volume: 50,
     selCount: 0,
@@ -183,7 +186,34 @@ Page({
     this.loadSongs();
     this.loadPlans();
     this.loadActive();
+    this.loadPlayMode();
     this.loadLogs(true);
+  },
+
+  async loadPlayMode() {
+    try {
+      const d = await broadcastApi.getPlayMode();
+      if (d && d.mode > 0) this.setData({ playMode: d.mode });
+    } catch (e) {
+      // 只读展示，读不到保持原值
+    }
+  },
+
+  /** 播放模式（平台全局）。改了会影响正在跑的定时方案，提示里说明。 */
+  async onPlayModeChange(e) {
+    const mode = Number(e.currentTarget.dataset.mode);
+    if (!mode || mode === this.data.playMode) return;
+    try {
+      await broadcastApi.setPlayMode(mode);
+      const item = this.data.playModes.find(function (m) {
+        return m.value === mode;
+      });
+      wx.showToast({ title: '已切换为' + (item ? item.label : mode), icon: 'none' });
+      this.setData({ playMode: mode });
+    } catch (err) {
+      wx.showToast({ title: err.message || '切换失败', icon: 'none' });
+      this.loadPlayMode();
+    }
   },
 
   // ------------------------------------------------------------ 正在执行的方案
@@ -741,7 +771,7 @@ Page({
   /** 滑条外层用 catchtap 吞冒泡，需要一个空处理器接住 */
   noop() {},
 
-  /** 拖动过程中只改本地显示，不发请求（否则一路狂发） */
+  /** 拖动过程中只更新本地显示（数字实时跟手），**松手才下发** */
   onZoneVolumeChanging(e) {
     const mac = e.currentTarget.dataset.mac;
     const v = Number(e.detail.value);
@@ -1025,7 +1055,7 @@ Page({
     });
   },
 
-  /** 音量滑条：拖动中只改本地值 */
+  /** 音量滑条：拖动中只改本地值（数字实时跟手），松手才下发 */
   onVolumeChanging(e) {
     this.setData({ volume: Number(e.detail.value) });
   },

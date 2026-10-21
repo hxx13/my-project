@@ -27,6 +27,8 @@ export type DashboardViolationBoardItem = {
   summary: string;
   /** 展示图片列表（正文图片 + 旧记录单独上传图片，兼容历史） */
   imageUrls?: string[] | null;
+  /** 展示视频列表（正文视频提取，与图片同一存储） */
+  videoUrls?: string[] | null;
   createdAt?: string | null;
 };
 

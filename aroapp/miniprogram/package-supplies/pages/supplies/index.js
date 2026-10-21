@@ -399,7 +399,7 @@ Page({
     navBarHeight: 64,
     pageHeight: 667,
     /** 搜索栏+提示条占位（fixed 下方文档流垫片） */
-    headerBodyH: 46,
+    headerBodyH: 53,
     /** 列表区 scroll-view 显式高度（px） */
     mainScrollH: 400,
     listRefreshing: false,

@@ -10,12 +10,14 @@ import { AdminFilePickButton } from "@/components/admin/AdminFilePickButton";
 import {
   createSongList,
   deleteSongList,
-  moveSongToList,
+  moveSongsToList,
   removeSongFromList,
   renameSongList,
   uploadSongs,
+  type MoveOutcome,
   type SongListView,
   type SongView,
+  type UploadOutcome,
 } from "@/api/domains/broadcast.api";
 import { blockBodyClass, blockHeadClass, blockTitleClass, panelClass } from "./ui";
 
@@ -44,10 +46,37 @@ export default function SongPanel({
 }) {
   const qc = useQueryClient();
   const [uploadListId, setUploadListId] = useState("");
-  /** 待移动的曲目；null = 没在移动 */
-  const [moving, setMoving] = useState<{ song: SongView; fromListId: string } | null>(null);
+  /** 待移动的曲目（支持批量）；null = 没在移动 */
+  const [moving, setMoving] = useState<{ songs: { pathName: string; fileName: string; listId: string }[] } | null>(
+    null,
+  );
+  /** 勾选的曲目路径 —— 批量移动用 */
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   /** 折叠的列表编号：点列表头收起/展开曲目 */
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const toggleChecked = (pathName: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(pathName)) next.delete(pathName);
+      else next.add(pathName);
+      return next;
+    });
+  };
+
+  /** 勾选的曲目按所属列表分组 —— 移动是按「源列表 → 目标列表」做的 */
+  const checkedGroups = () => {
+    const groups = new Map<string, { pathName: string; fileName: string; listId: string }[]>();
+    for (const l of lists) {
+      for (const s of l.songs) {
+        if (!checked.has(s.pathName)) continue;
+        const g = groups.get(l.id) ?? [];
+        g.push({ pathName: s.pathName, fileName: s.fileName, listId: l.id });
+        groups.set(l.id, g);
+      }
+    }
+    return groups;
+  };
 
   const toggleCollapse = (id: string) => {
     setCollapsed((prev) => {
@@ -64,25 +93,50 @@ export default function SongPanel({
     }
   }, [lists, uploadListId]);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["broadcast"] });
+  // 曲库操作只刷曲库，不连累分区列表
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["broadcast", "songLists"] });
+  /**
+   * 曲库操作后稍等一下再重读：平台写 Playlist 文件是**异步**的（实测 2~3 秒落定），
+   * 立刻重读会拿回旧列表 —— 表现就是刚移动/上传完，再看还是原样，接着操作就报「目标不存在」。
+   */
+  const invalidateSoon = () => window.setTimeout(invalidate, 1800);
 
+  // 上传**逐个文件发请求**，不把多个文件塞进同一个 multipart：
+  // 服务端的请求体上限是按整个请求算的，几首大一点的歌加起来很容易撞线
+  // （实测 3 个文件 61MB 就超了 35MB 的请求上限）。逐个发也让失败按文件归责。
   const uploadMut = useMutation({
-    mutationFn: (files: File[]) => uploadSongs(uploadListId, files),
+    mutationFn: async (files: File[]) => {
+      const out: UploadOutcome[] = [];
+      for (const f of files) {
+        try {
+          const rows = await uploadSongs(uploadListId, [f]);
+          out.push(...rows);
+        } catch (e) {
+          out.push({ fileName: f.name, size: f.size, success: false, message: (e as Error).message || "上传失败" });
+        }
+      }
+      return out;
+    },
     onSuccess: (rows) => {
       const ok = rows.filter((r) => r.success).length;
       if (ok === rows.length) {
         toast.success(`已上传 ${ok} 首`);
       } else {
-        toast.error(`上传完成 ${ok}/${rows.length}，失败的看是否重名或格式不支持`);
+        // 把每一首失败的原因都摆出来 —— 只报「0/1」等于没说
+        const first = rows.find((r) => !r.success);
+        toast.error(
+          `${ok}/${rows.length} 成功` + (first ? `；「${first.fileName}」${first.message || "失败"}` : ""),
+          { duration: 8000 },
+        );
       }
-      invalidate();
+      invalidateSoon();
     },
     onError: (e: Error) => toast.error(e.message || "上传失败"),
   });
 
   const opMut = useMutation({
     mutationFn: (fn: () => Promise<unknown>) => fn(),
-    onSuccess: () => invalidate(),
+    onSuccess: () => invalidateSoon(),
     onError: (e: Error) => toast.error(e.message || "操作失败"),
   });
 
@@ -126,6 +180,19 @@ export default function SongPanel({
       <div className={blockHeadClass}>
         <span className={blockTitleClass}>音乐列表</span>
         <span className="flex items-center gap-1.5">
+          {checked.size > 0 ? (
+            <AdminButton
+              tone="primary"
+              className="h-7 px-2 text-xs"
+              onClick={() => {
+                const groups = checkedGroups();
+                setMoving({ songs: [...groups.values()].flat() });
+              }}
+            >
+              <FolderInput className="mr-1 h-3.5 w-3.5" />
+              移动所选 ({checked.size})
+            </AdminButton>
+          ) : null}
           <AdminButton tone="secondary" className="h-7 px-2 text-xs" onClick={onCreateList}>
             <Plus className="mr-1 h-3.5 w-3.5" />
             新建列表
@@ -222,6 +289,15 @@ export default function SongPanel({
                         }
                         title={s.pathName}
                       >
+                        {/* 批量移动用。点它不触发「选这首播放」 */}
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 shrink-0"
+                          checked={checked.has(s.pathName)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => toggleChecked(s.pathName)}
+                          aria-label={`勾选 ${s.fileName}`}
+                        />
                         <button
                           type="button"
                           className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -246,7 +322,9 @@ export default function SongPanel({
                               (active ? "hover:bg-white/20" : "hover:bg-[var(--app-color-surface-container)]")
                             }
                             title="移到别的列表"
-                            onClick={() => setMoving({ song: s, fromListId: l.id })}
+                            onClick={() =>
+                              setMoving({ songs: [{ pathName: s.pathName, fileName: s.fileName, listId: l.id }] })
+                            }
                           >
                             <FolderInput className="h-3.5 w-3.5" />
                           </button>
@@ -282,8 +360,28 @@ export default function SongPanel({
           const m = moving;
           if (!m) return;
           opMut.mutate(async () => {
-            await moveSongToList(m.fromListId, toListId, m.song.pathName);
-            toast.success("已移动");
+            // 按源列表分组调用：平台的一次移动只针对一个源列表
+            const byList = new Map<string, string[]>();
+            for (const s of m.songs) {
+              const arr = byList.get(s.listId) ?? [];
+              arr.push(s.pathName);
+              byList.set(s.listId, arr);
+            }
+            const rows: MoveOutcome[] = [];
+            for (const [from, paths] of byList) {
+              rows.push(...(await moveSongsToList(from, toListId, paths)));
+            }
+            const ok = rows.filter((r) => r.success).length;
+            if (ok === rows.length) {
+              toast.success(`已移动 ${ok} 首`);
+            } else {
+              const first = rows.find((r) => !r.success);
+              toast.error(
+                `${ok}/${rows.length} 成功` + (first ? `；「${first.fileName}」${first.message || "失败"}` : ""),
+                { duration: 8000 },
+              );
+            }
+            setChecked(new Set());
             setMoving(null);
           });
         }}
@@ -292,19 +390,20 @@ export default function SongPanel({
   );
 }
 
-/** 移动曲目：选个目标列表即可（源与目标不同才给确定）。 */
+/** 移动曲目：选个目标列表即可（目标不能是任何一个源列表）。 */
 function MoveSongDialog({
   moving,
   lists,
   onClose,
   onConfirm,
 }: {
-  moving: { song: SongView; fromListId: string } | null;
+  moving: { songs: { pathName: string; fileName: string; listId: string }[] } | null;
   lists: SongListView[];
   onClose: () => void;
   onConfirm: (toListId: string) => void;
 }) {
-  const targets = lists.filter((l) => l.id !== moving?.fromListId);
+  const sourceIds = new Set(moving?.songs.map((s) => s.listId) ?? []);
+  const targets = lists.filter((l) => !sourceIds.has(l.id));
   const [to, setTo] = useState("");
 
   useEffect(() => {
@@ -313,12 +412,15 @@ function MoveSongDialog({
   }, [moving]);
 
   if (!moving) return null;
+  const n = moving.songs.length;
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="w-[420px] max-w-[94vw] gap-3 p-4">
         <DialogHeader>
-          <DialogTitle className="text-sm">移动「{moving.song.fileName}」</DialogTitle>
+          <DialogTitle className="text-sm">
+            {n === 1 ? `移动「${moving.songs[0].fileName}」` : `移动所选 ${n} 首`}
+          </DialogTitle>
         </DialogHeader>
         {targets.length === 0 ? (
           <div className="text-sm text-[var(--app-color-text-tertiary)]">

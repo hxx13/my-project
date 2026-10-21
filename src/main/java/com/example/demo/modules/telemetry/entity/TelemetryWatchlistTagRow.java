@@ -35,6 +35,8 @@ public class TelemetryWatchlistTagRow {
     /** JOIN telemetry_metric_kind.label_zh，非表列 */
     private String metricKindLabel;
     private Integer enabled;
+    /** 1=显示在动物房页/驾驶舱；0=仅拉数与长期归档（null 视为显示） */
+    private Integer showInAnimalRoom;
     private Integer alarmEnabled;
     private Integer alarmCooldownMinutes;
     private Integer sortOrder;

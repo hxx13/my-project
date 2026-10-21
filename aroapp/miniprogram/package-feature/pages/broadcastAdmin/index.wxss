@@ -484,6 +484,21 @@
   line-height: 1.5;
 }
 
+/* 播放模式：平台全局，一行胶囊 */
+.bc-mode {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 16rpx;
+}
+
+.bc-mode-label {
+  font-size: 24rpx;
+  color: #646566;
+  margin-right: 4rpx;
+}
+
 /* 弹窗表单：**必须给确定高度**（不能用 max-height）——
    scroll-view 要确定高度才会滚，用 max-height 时它按内容撑开，
    结果是底部按钮浮到内容中间、面板顶出屏幕。 */

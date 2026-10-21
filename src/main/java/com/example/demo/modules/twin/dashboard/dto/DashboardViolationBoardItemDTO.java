@@ -24,6 +24,8 @@ public class DashboardViolationBoardItemDTO {
     private String summary;
     /** 展示图片列表（正文图片 + 旧记录单独上传图片） */
     private List<String> imageUrls;
+    /** 展示视频列表（正文 &lt;video&gt; 提取，与图片同一存储与提取口径） */
+    private List<String> videoUrls;
     private LocalDateTime createdAt;
     /** 该人各条笼架违规的标签（笼位坐标 + 处置策略）；组卡/个人卡为 null */
     private List<CageTagDTO> cageTags;

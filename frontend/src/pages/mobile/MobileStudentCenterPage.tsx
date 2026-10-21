@@ -131,6 +131,8 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [error, setError] = useState<string | null>(null);
   const [tokenDead, setTokenDead] = useState<{ code: number; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<MobileShellTabKey>("home");
+  /** 培训报名页点「去学习」：切到答题页并打开一次视频列表 */
+  const [videoRequest, setVideoRequest] = useState(false);
   /**
    * 子页返回锚点：从哪个「底栏主 Tab」进的子页，返回就回那儿。
    * 原先写死回首页 —— 从「我的」点进健康调查表/证书再返回会被甩到首页。
@@ -557,8 +559,22 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         )}
         {activeTab === "animalOrder" && <MobileAnimalOrderView jwtMode={jwtMode} onRegisterExitGuard={registerEditExitGuard} />}
         {/* 培训报名 / 答题：只做登录态（/m/home），扫码特殊通道不走这两个接口 */}
-        {activeTab === "training" && jwtMode && <MobileTrainingTab />}
-        {activeTab === "exam" && jwtMode && <MobileExamTab ref={examRef} onBarChange={setExamBar} />}
+        {activeTab === "training" && jwtMode && (
+          <MobileTrainingTab
+            onGoVideoLearning={() => {
+              setVideoRequest(true);
+              goTab("exam");
+            }}
+          />
+        )}
+        {activeTab === "exam" && jwtMode && (
+          <MobileExamTab
+            ref={examRef}
+            onBarChange={setExamBar}
+            initialVideosOpen={videoRequest}
+            onVideosOpened={() => setVideoRequest(false)}
+          />
+        )}
         {activeTab === "certificates" && jwtMode && <MobileCertificatesTab />}
         {activeTab === "health" && jwtMode && <MobileHealthTab />}
       </main>

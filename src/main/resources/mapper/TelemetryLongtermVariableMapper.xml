@@ -8,6 +8,8 @@
         <result column="sort_order" property="sortOrder"/>
         <result column="display_label" property="displayLabel"/>
         <result column="unit" property="unit"/>
+        <result column="bundle_code" property="bundleCode"/>
+        <result column="partition_id" property="partitionId"/>
         <result column="enabled" property="enabled"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
@@ -23,10 +25,22 @@
 
     <insert id="insertBatch">
         INSERT INTO telemetry_longterm_variable
-            (wincc_variable_name, sort_order, display_label, unit, enabled)
+            (wincc_variable_name, sort_order, display_label, unit, bundle_code, partition_id, enabled)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.winccVariableName}, #{item.sortOrder}, #{item.displayLabel}, #{item.unit}, #{item.enabled})
+            (#{item.winccVariableName}, #{item.sortOrder}, #{item.displayLabel}, #{item.unit}, #{item.bundleCode}, #{item.partitionId}, #{item.enabled})
         </foreach>
     </insert>
+
+    <select id="selectEnabledNamesByPartition" resultType="string">
+        SELECT wincc_variable_name
+        FROM telemetry_longterm_variable
+        WHERE enabled = 1
+          AND wincc_variable_name IS NOT NULL AND TRIM(wincc_variable_name) &lt;&gt; ''
+        <choose>
+            <when test="unassigned">AND partition_id IS NULL</when>
+            <when test="partitionId != null">AND partition_id = #{partitionId}</when>
+        </choose>
+        ORDER BY sort_order ASC, id ASC
+    </select>
 </mapper>

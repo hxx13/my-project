@@ -1,3 +1,112 @@
+<template name="cageShelfGroupRow">
+              <view class="shelf-group {{ grp.hasHighlight ? 'shelf-group--hl' : '' }}">
+                <view class="shelf-group-hd" data-room-name="{{ roomName }}" data-group-key="{{ grp.key }}" bindtap="onToggleShelfGroup">
+                  <view class="sgh-arrow">
+                    <van-icon name="{{ grp.expanded ? 'arrow-down' : 'arrow' }}" size="24rpx" color="{{ grp.hasHighlight ? '#ac1736' : '#969799' }}" />
+                  </view>
+                  <text class="sgh-name {{ grp.hasHighlight ? 'sgh-name--hl' : '' }}">{{ grp.name }}</text>
+                  <!-- 房间收藏 ☆ 挂在**真实房间**（组名就是真实房号 201A/201B）上，一个房间一个 roomId ——
+                       与 Web 树「房间名后面一枚星、roomIdOf 判定」同粒度。
+                       catchtap：别冒泡到整组的展开/收起。 -->
+                  <view class="fav-star fav-star--sm {{ grp._fav ? 'fav-star--on' : '' }}" data-room-id="{{ grp.roomId }}" catchtap="onToggleRoomFav">
+                    <van-icon name="{{ grp._fav ? 'star' : 'star-o' }}" size="26rpx" color="{{ grp._fav ? '#2563eb' : '#cbd5e1' }}" />
+                  </view>
+                  <view class="sgh-metrics">
+                    <view wx:if="{{ grp.c1 + grp.c2 + grp.c3 + grp.c4 > 0 }}" class="sgh-stats">
+                      <text wx:if="{{ grp.c3 > 0 }}" class="ss-stat" style="color:#f43f5e;">饲{{ grp.c3 }}</text>
+                      <text wx:if="{{ grp.c3 > 0 && (grp.c1 > 0 || grp.c4 > 0 || grp.c2 > 0) }}" class="ss-sep">/</text>
+                      <text wx:if="{{ grp.c1 > 0 }}" class="ss-stat" style="color:#f59e0b;">待{{ grp.c1 }}</text>
+                      <text wx:if="{{ grp.c1 > 0 && (grp.c4 > 0 || grp.c2 > 0) }}" class="ss-sep">/</text>
+                      <text wx:if="{{ grp.c4 > 0 }}" class="ss-stat" style="color:#3b82f6;">异{{ grp.c4 }}</text>
+                      <text wx:if="{{ grp.c4 > 0 && grp.c2 > 0 }}" class="ss-sep">/</text>
+                      <text wx:if="{{ grp.c2 > 0 }}" class="ss-stat" style="color:#10b981;">空{{ grp.c2 }}</text>
+                    </view>
+                    <view wx:if="{{ grp.c1 + grp.c2 + grp.c3 + grp.c4 > 0 }}" class="sgh-bar-wrap">
+                      <view class="sgh-bar">
+                        <view wx:if="{{ grp.c3 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c3 }};background:#f43f5e;"></view>
+                        <view wx:if="{{ grp.c1 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c1 }};background:#f59e0b;"></view>
+                        <view wx:if="{{ grp.c4 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c4 }};background:#3b82f6;"></view>
+                        <view wx:if="{{ grp.c2 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c2 }};background:#10b981;"></view>
+                      </view>
+                    </view>
+                  </view>
+                  <text class="sgh-count">{{ grp.shelves.length }}架</text>
+                </view>
+                <view wx:if="{{ grp.expanded }}" class="room-shelf-grid">
+                  <view wx:for="{{ grp.shelves }}" wx:key="shelveId" wx:for-item="shelf" class="shelf-card {{ shelf.highlight ? 'shelf-card-highlight' : '' }}" data-shelve-id="{{ shelf.shelveId }}" bindtap="onShelfTap">
+                    <view wx:if="{{ shelf.highlight }}" class="shelf-card-icon"><view class="shelf-card-icon-dot"></view></view>
+                    <view class="shelf-card-head">
+                      <text class="shelf-card-name">{{ shelf.shelveName || shelf.shelveId }}</text>
+                      <!-- 笼架名后面的 ☆（catchtap 别冒泡到整卡的进入） -->
+                      <view class="fav-star fav-star--sm {{ shelf._fav ? 'fav-star--on' : '' }}"
+                        data-shelve-id="{{ shelf.shelveId }}" data-room-id="{{ shelf.roomId }}" catchtap="onToggleShelfFav">
+                        <van-icon name="{{ shelf._fav ? 'star' : 'star-o' }}" size="26rpx" color="{{ shelf._fav ? '#2563eb' : '#cbd5e1' }}" />
+                      </view>
+                    </view>
+                    <!-- 统计另起一行：半宽卡片里「笼架名 + 星标 + 三组两位数」挤在一行会把数字拆成两行 -->
+                    <view class="shelf-card-metrics">
+                      <view wx:if="{{ shelf.c1 + shelf.c2 + shelf.c3 + shelf.c4 > 0 }}" class="shelf-card-stats">
+                        <text wx:if="{{ shelf.c3 > 0 }}" class="sc-stat" style="color:#f43f5e;">饲{{ shelf.c3 }}</text>
+                        <text wx:if="{{ shelf.c3 > 0 && (shelf.c1 > 0 || shelf.c4 > 0 || shelf.c2 > 0) }}" class="sc-sep">/</text>
+                        <text wx:if="{{ shelf.c1 > 0 }}" class="sc-stat" style="color:#f59e0b;">待{{ shelf.c1 }}</text>
+                        <text wx:if="{{ shelf.c1 > 0 && (shelf.c4 > 0 || shelf.c2 > 0) }}" class="sc-sep">/</text>
+                        <text wx:if="{{ shelf.c4 > 0 }}" class="sc-stat" style="color:#3b82f6;">异{{ shelf.c4 }}</text>
+                        <text wx:if="{{ shelf.c4 > 0 && shelf.c2 > 0 }}" class="sc-sep">/</text>
+                        <text wx:if="{{ shelf.c2 > 0 }}" class="sc-stat" style="color:#10b981;">空{{ shelf.c2 }}</text>
+                      </view>
+                      <view wx:if="{{ shelf.c1 + shelf.c2 + shelf.c3 + shelf.c4 > 0 }}" class="shelf-card-bar-wrap">
+                        <view class="shelf-card-bar">
+                          <view wx:if="{{ shelf.c3 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c3 }};background:#f43f5e;"></view>
+                          <view wx:if="{{ shelf.c1 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c1 }};background:#f59e0b;"></view>
+                          <view wx:if="{{ shelf.c4 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c4 }};background:#3b82f6;"></view>
+                          <view wx:if="{{ shelf.c2 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c2 }};background:#10b981;"></view>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </view>
+</template>
+
+<template name="cageRoomRow">
+          <view class="room-group-header {{ room.hasHighlight ? 'room-group-header--hl' : '' }}" data-room-name="{{ room.roomName }}" bindtap="onToggleRoom">
+            <view class="rgh-arrow">
+              <van-icon name="{{ room.expanded ? 'arrow-down' : 'arrow' }}" size="28rpx" color="{{ room.hasHighlight ? '#ac1736' : '#969799' }}" />
+            </view>
+            <view class="rgh-main">
+              <view class="rgh-top">
+                <text class="rgh-name {{ room.hasHighlight ? 'rgh-name--hl' : '' }}">{{ room.roomName }}房间</text>
+                <view class="rgh-metrics">
+                  <view wx:if="{{ room.c1 + room.c2 + room.c3 + room.c4 > 0 }}" class="rgh-stats">
+                    <text wx:if="{{ room.c3 > 0 }}" class="rs-stat" style="color:#f43f5e;">饲{{ room.c3 }}</text>
+                    <text wx:if="{{ room.c3 > 0 && (room.c1 > 0 || room.c4 > 0 || room.c2 > 0) }}" class="rs-sep">/</text>
+                    <text wx:if="{{ room.c1 > 0 }}" class="rs-stat" style="color:#f59e0b;">待{{ room.c1 }}</text>
+                    <text wx:if="{{ room.c1 > 0 && (room.c4 > 0 || room.c2 > 0) }}" class="rs-sep">/</text>
+                    <text wx:if="{{ room.c4 > 0 }}" class="rs-stat" style="color:#3b82f6;">异{{ room.c4 }}</text>
+                    <text wx:if="{{ room.c4 > 0 && room.c2 > 0 }}" class="rs-sep">/</text>
+                    <text wx:if="{{ room.c2 > 0 }}" class="rs-stat" style="color:#10b981;">空{{ room.c2 }}</text>
+                  </view>
+                  <view wx:if="{{ room.c1 + room.c2 + room.c3 + room.c4 > 0 }}" class="rgh-bar-wrap">
+                    <view class="rgh-bar">
+                      <view wx:if="{{ room.c3 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c3 }};background:#f43f5e;"></view>
+                      <view wx:if="{{ room.c1 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c1 }};background:#f59e0b;"></view>
+                      <view wx:if="{{ room.c4 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c4 }};background:#3b82f6;"></view>
+                      <view wx:if="{{ room.c2 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c2 }};background:#10b981;"></view>
+                    </view>
+                  </view>
+                </view>
+                <text class="rgh-count">{{ room.shelfCount }}架</text>
+              </view>
+            </view>
+          </view>
+
+          <view wx:if="{{ room.expanded }}" class="room-shelf-body">
+            <block wx:for="{{ room.shelfGroups }}" wx:key="key" wx:for-item="grp">
+              <template is="cageShelfGroupRow" data="{{ grp: grp, roomName: room.roomName }}" />
+            </block>
+          </view>
+</template>
+
 <!-- List View -->
 <!-- ponytail: 列表始终渲染，grid 以固定覆盖层叠在上面，列表 scroll-view 从不 display:none → 滚动位置原生保留 -->
 <view class="page">
@@ -77,6 +186,36 @@
         <view class="lrl-item"><view class="lrl-dot" style="background:#3b82f6;"></view><text class="lrl-text">异常</text></view>
         <view class="lrl-item"><view class="lrl-dot" style="background:#10b981;"></view><text class="lrl-text">空笼位</text></view>
       </view>
+      <!-- 顶部快捷区域：含本课题组笼位的房间 / 收藏的真实房间。
+           行数据直接复用 shelfGroups，展开状态与主列表共用，不另存副本。 -->
+      <view wx:if="{{ myRoomCount > 0 && !searchQuery && !roomFilter }}" class="quick-sec">
+        <view class="quick-sec-hd">
+          <text class="quick-sec-title">我的区域</text>
+          <text class="quick-sec-count">{{ myRoomCount }} 个房间</text>
+        </view>
+        <block wx:for="{{ shelfGroups }}" wx:key="campusName" wx:for-item="qc">
+          <block wx:for="{{ qc.rooms }}" wx:key="roomName" wx:for-item="room">
+            <view wx:if="{{ room.hasHighlight }}" class="quick-sec-item">
+              <template is="cageRoomRow" data="{{ room: room }}" />
+            </view>
+          </block>
+        </block>
+      </view>
+      <view wx:if="{{ favRoomCount > 0 && !searchQuery && !roomFilter }}" class="quick-sec">
+        <view class="quick-sec-hd">
+          <text class="quick-sec-title">收藏区域</text>
+          <text class="quick-sec-count">{{ favRoomCount }} 个房间</text>
+        </view>
+        <block wx:for="{{ shelfGroups }}" wx:key="campusName" wx:for-item="qc">
+          <block wx:for="{{ qc.rooms }}" wx:key="roomName" wx:for-item="room">
+            <block wx:for="{{ room.shelfGroups }}" wx:key="key" wx:for-item="grp">
+              <view wx:if="{{ grp._fav }}" class="quick-sec-item">
+                <template is="cageShelfGroupRow" data="{{ grp: grp, roomName: room.roomName }}" />
+              </view>
+            </block>
+          </block>
+        </block>
+      </view>
       <!-- 「我的申请」入口在吸顶搜索行里（见 .list-search-row），这里不再重复放。 -->
       <view wx:if="{{ shelfGroups.length === 0 }}" class="no-match-box">
         <text class="no-match-text">没有匹配的房间</text>
@@ -93,107 +232,7 @@
         </view>
         <view wx:if="{{ !item._collapsed }}" class="campus-group-body">
         <view wx:for="{{ item.rooms }}" wx:key="roomName" wx:for-item="room" class="room-group" id="fav-room-{{ item.campusName }}-{{ room.roomName }}">
-          <view class="room-group-header {{ room.hasHighlight ? 'room-group-header--hl' : '' }}" data-room-name="{{ room.roomName }}" bindtap="onToggleRoom">
-            <view class="rgh-arrow">
-              <van-icon name="{{ room.expanded ? 'arrow-down' : 'arrow' }}" size="28rpx" color="{{ room.hasHighlight ? '#ac1736' : '#969799' }}" />
-            </view>
-            <view class="rgh-main">
-              <view class="rgh-top">
-                <text class="rgh-name {{ room.hasHighlight ? 'rgh-name--hl' : '' }}">{{ room.roomName }}房间</text>
-                <view class="rgh-metrics">
-                  <view wx:if="{{ room.c1 + room.c2 + room.c3 + room.c4 > 0 }}" class="rgh-stats">
-                    <text wx:if="{{ room.c3 > 0 }}" class="rs-stat" style="color:#f43f5e;">饲{{ room.c3 }}</text>
-                    <text wx:if="{{ room.c3 > 0 && (room.c1 > 0 || room.c4 > 0 || room.c2 > 0) }}" class="rs-sep">/</text>
-                    <text wx:if="{{ room.c1 > 0 }}" class="rs-stat" style="color:#f59e0b;">待{{ room.c1 }}</text>
-                    <text wx:if="{{ room.c1 > 0 && (room.c4 > 0 || room.c2 > 0) }}" class="rs-sep">/</text>
-                    <text wx:if="{{ room.c4 > 0 }}" class="rs-stat" style="color:#3b82f6;">异{{ room.c4 }}</text>
-                    <text wx:if="{{ room.c4 > 0 && room.c2 > 0 }}" class="rs-sep">/</text>
-                    <text wx:if="{{ room.c2 > 0 }}" class="rs-stat" style="color:#10b981;">空{{ room.c2 }}</text>
-                  </view>
-                  <view wx:if="{{ room.c1 + room.c2 + room.c3 + room.c4 > 0 }}" class="rgh-bar-wrap">
-                    <view class="rgh-bar">
-                      <view wx:if="{{ room.c3 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c3 }};background:#f43f5e;"></view>
-                      <view wx:if="{{ room.c1 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c1 }};background:#f59e0b;"></view>
-                      <view wx:if="{{ room.c4 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c4 }};background:#3b82f6;"></view>
-                      <view wx:if="{{ room.c2 > 0 }}" class="rgh-bar-seg" style="flex:{{ room.c2 }};background:#10b981;"></view>
-                    </view>
-                  </view>
-                </view>
-                <text class="rgh-count">{{ room.shelfCount }}架</text>
-              </view>
-            </view>
-          </view>
-
-          <view wx:if="{{ room.expanded }}" class="room-shelf-body">
-            <block wx:for="{{ room.shelfGroups }}" wx:key="key" wx:for-item="grp">
-              <view class="shelf-group {{ grp.hasHighlight ? 'shelf-group--hl' : '' }}">
-                <view class="shelf-group-hd" data-room-name="{{ room.roomName }}" data-group-key="{{ grp.key }}" bindtap="onToggleShelfGroup">
-                  <view class="sgh-arrow">
-                    <van-icon name="{{ grp.expanded ? 'arrow-down' : 'arrow' }}" size="24rpx" color="{{ grp.hasHighlight ? '#ac1736' : '#969799' }}" />
-                  </view>
-                  <text class="sgh-name {{ grp.hasHighlight ? 'sgh-name--hl' : '' }}">{{ grp.name }}</text>
-                  <!-- 房间收藏 ☆ 挂在**真实房间**（组名就是真实房号 201A/201B）上，一个房间一个 roomId ——
-                       与 Web 树「房间名后面一枚星、roomIdOf 判定」同粒度。
-                       catchtap：别冒泡到整组的展开/收起。 -->
-                  <view class="fav-star fav-star--sm {{ grp._fav ? 'fav-star--on' : '' }}" data-room-id="{{ grp.roomId }}" catchtap="onToggleRoomFav">
-                    <van-icon name="{{ grp._fav ? 'star' : 'star-o' }}" size="26rpx" color="{{ grp._fav ? '#2563eb' : '#cbd5e1' }}" />
-                  </view>
-                  <view class="sgh-metrics">
-                    <view wx:if="{{ grp.c1 + grp.c2 + grp.c3 + grp.c4 > 0 }}" class="sgh-stats">
-                      <text wx:if="{{ grp.c3 > 0 }}" class="ss-stat" style="color:#f43f5e;">饲{{ grp.c3 }}</text>
-                      <text wx:if="{{ grp.c3 > 0 && (grp.c1 > 0 || grp.c4 > 0 || grp.c2 > 0) }}" class="ss-sep">/</text>
-                      <text wx:if="{{ grp.c1 > 0 }}" class="ss-stat" style="color:#f59e0b;">待{{ grp.c1 }}</text>
-                      <text wx:if="{{ grp.c1 > 0 && (grp.c4 > 0 || grp.c2 > 0) }}" class="ss-sep">/</text>
-                      <text wx:if="{{ grp.c4 > 0 }}" class="ss-stat" style="color:#3b82f6;">异{{ grp.c4 }}</text>
-                      <text wx:if="{{ grp.c4 > 0 && grp.c2 > 0 }}" class="ss-sep">/</text>
-                      <text wx:if="{{ grp.c2 > 0 }}" class="ss-stat" style="color:#10b981;">空{{ grp.c2 }}</text>
-                    </view>
-                    <view wx:if="{{ grp.c1 + grp.c2 + grp.c3 + grp.c4 > 0 }}" class="sgh-bar-wrap">
-                      <view class="sgh-bar">
-                        <view wx:if="{{ grp.c3 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c3 }};background:#f43f5e;"></view>
-                        <view wx:if="{{ grp.c1 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c1 }};background:#f59e0b;"></view>
-                        <view wx:if="{{ grp.c4 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c4 }};background:#3b82f6;"></view>
-                        <view wx:if="{{ grp.c2 > 0 }}" class="sgh-bar-seg" style="flex:{{ grp.c2 }};background:#10b981;"></view>
-                      </view>
-                    </view>
-                  </view>
-                  <text class="sgh-count">{{ grp.shelves.length }}架</text>
-                </view>
-                <view wx:if="{{ grp.expanded }}" class="room-shelf-grid">
-                  <view wx:for="{{ grp.shelves }}" wx:key="shelveId" wx:for-item="shelf" class="shelf-card {{ shelf.highlight ? 'shelf-card-highlight' : '' }}" data-shelve-id="{{ shelf.shelveId }}" bindtap="onShelfTap">
-                    <view wx:if="{{ shelf.highlight }}" class="shelf-card-icon"><view class="shelf-card-icon-dot"></view></view>
-                    <view class="shelf-card-head">
-                      <text class="shelf-card-name">{{ shelf.shelveName || shelf.shelveId }}</text>
-                      <!-- 笼架名后面的 ☆（catchtap 别冒泡到整卡的进入） -->
-                      <view class="fav-star fav-star--sm {{ shelf._fav ? 'fav-star--on' : '' }}"
-                        data-shelve-id="{{ shelf.shelveId }}" data-room-id="{{ shelf.roomId }}" catchtap="onToggleShelfFav">
-                        <van-icon name="{{ shelf._fav ? 'star' : 'star-o' }}" size="26rpx" color="{{ shelf._fav ? '#2563eb' : '#cbd5e1' }}" />
-                      </view>
-                      <view class="shelf-card-metrics">
-                        <view wx:if="{{ shelf.c1 + shelf.c2 + shelf.c3 + shelf.c4 > 0 }}" class="shelf-card-stats">
-                          <text wx:if="{{ shelf.c3 > 0 }}" class="sc-stat" style="color:#f43f5e;">饲{{ shelf.c3 }}</text>
-                          <text wx:if="{{ shelf.c3 > 0 && (shelf.c1 > 0 || shelf.c4 > 0 || shelf.c2 > 0) }}" class="sc-sep">/</text>
-                          <text wx:if="{{ shelf.c1 > 0 }}" class="sc-stat" style="color:#f59e0b;">待{{ shelf.c1 }}</text>
-                          <text wx:if="{{ shelf.c1 > 0 && (shelf.c4 > 0 || shelf.c2 > 0) }}" class="sc-sep">/</text>
-                          <text wx:if="{{ shelf.c4 > 0 }}" class="sc-stat" style="color:#3b82f6;">异{{ shelf.c4 }}</text>
-                          <text wx:if="{{ shelf.c4 > 0 && shelf.c2 > 0 }}" class="sc-sep">/</text>
-                          <text wx:if="{{ shelf.c2 > 0 }}" class="sc-stat" style="color:#10b981;">空{{ shelf.c2 }}</text>
-                        </view>
-                        <view wx:if="{{ shelf.c1 + shelf.c2 + shelf.c3 + shelf.c4 > 0 }}" class="shelf-card-bar-wrap">
-                          <view class="shelf-card-bar">
-                            <view wx:if="{{ shelf.c3 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c3 }};background:#f43f5e;"></view>
-                            <view wx:if="{{ shelf.c1 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c1 }};background:#f59e0b;"></view>
-                            <view wx:if="{{ shelf.c4 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c4 }};background:#3b82f6;"></view>
-                            <view wx:if="{{ shelf.c2 > 0 }}" class="shelf-bar-seg" style="flex:{{ shelf.c2 }};background:#10b981;"></view>
-                          </view>
-                        </view>
-                      </view>
-                    </view>
-                  </view>
-                </view>
-              </view>
-            </block>
-          </view>
+          <template is="cageRoomRow" data="{{ room: room }}" />
         </view>
         </view>
       </view>
@@ -374,6 +413,7 @@
       <view wx:if="{{ pageMode === 'allocate' && selectedCount > 0 && allocBatchKind === 'cancel' }}" class="mb-btn mb-btn--danger" bindtap="handleCancelAssign">撤回 {{ selectedCount }}</view>
       <view wx:if="{{ pageMode === 'reserve' && selectedCount > 0 }}" class="mb-btn mb-btn--primary" bindtap="openReservePerson">预定 {{ selectedCount }}</view>
       <view wx:if="{{ pageMode === 'studentClaim' && selectedCount > 0 }}" class="mb-btn mb-btn--primary" bindtap="handleStudentClaim">申请 {{ selectedCount }}</view>
+      <view wx:if="{{ pageMode === 'division' && selectedCount > 0 }}" class="mb-btn mb-btn--danger" bindtap="onClearDivisionSelected">{{ divisionSubmitting ? '处理中…' : '取消划分' }}</view>
       <view wx:if="{{ pageMode === 'division' && selectedCount > 0 }}" class="mb-btn mb-btn--primary" bindtap="openDivisionPerson">划分 {{ selectedCount }}</view>
       <view wx:if="{{ pageMode === 'edit' && scanTotalActions > 0 }}" class="mb-btn mb-btn--primary" bindtap="onSubmitScanActions">提交 {{ scanTotalActions }} 项</view>
       <view wx:if="{{ pageMode === 'edit' && scanCacheSize > 0 }}" class="mb-btn" bindtap="onExitScanMode">清除</view>
@@ -496,6 +536,8 @@
             <view class="gcell-opmark-icon" style="background:{{ item._opMark.color }};">{{ item._opMark.abbr }}</view>
             <view class="gcell-opmark-bar" style="background:{{ item._opMark.color }};">{{ item._opMark.label }}</view>
           </view>
+          <!-- 划分模式：待分配（type1）不可选 → 红色细斜线；完整原因点击时 toast -->
+          <view wx:if="{{ item._divisionBlocked }}" class="gcell-hatch"></view>
         </view>
       </view>
       <view class="grid-pad-bottom" />
@@ -503,7 +545,7 @@
   </scroll-view>
 
   <!-- ── 左下角模式坞（对齐 H5 CageModeIsland；与右下角扫码 FAB 同尺寸齐平）── -->
-  <mode-dock modes="{{ modeOptions }}" current="{{ pageMode }}" bind:change="onDockMode" />
+  <mode-dock class="mode-dock" modes="{{ modeOptions }}" current="{{ pageMode }}" bind:change="onDockMode" />
 
   <!-- ── 扫码定位 FAB（右下悬浮圆形按钮，常驻）── -->
   <view class="scan-float-btn" bindtap="onScanLock">
@@ -511,13 +553,14 @@
   </view>
 </view>
 
-<!-- Cell Detail Popup（居中弹窗 · 标本卡式：等宽字 + 点线规格表 + 模板分组） -->
+<!-- Cell Detail Drawer（底部抽屉 · 三页签：概况 / 状态与影像 / 实验记录） -->
 <van-popup
   show="{{ showCellDetail }}"
-  position="center"
+  position="bottom"
   root-portal="{{ true }}"
   z-index="{{ 20000 }}"
-  custom-class="cs-sheet {{ formEditing ? 'cs-sheet--editing' : '' }}"
+  custom-class="cs-sheet cs-sheet--drawer {{ formEditing ? 'cs-sheet--editing' : '' }}"
+  custom-style="height:85vh;max-height:85vh;"
   bind:close="onCloseCellDetail"
 >
   <!-- 身份条：位置 + 编辑徽标 + 关闭；状态标签与笼位动作钉在顶部，滚正文时不动 -->
@@ -525,6 +568,19 @@
     <view class="cs-id-top">
       <text class="cs-id-pos">{{ cellDetail.position }}</text>
       <view wx:if="{{ formEditing }}" class="cs-badge">编辑中</view>
+      <!-- 笼位级动作与内容阅读无关：独立在关闭按钮左侧，不再单独占一行 -->
+      <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted && (detailOperable || detailOperableCode === 'NOT_CLAIMED' || detailCanClaimOnBehalf || selectedCell._divisionNames) }}" class="cs-ops cs-ops--top">
+        <block wx:if="{{ detailOperable }}">
+          <view class="cs-op-btn" data-kind="divide" bindtap="onStartDivide">分笼</view>
+          <!-- 转移只有这一个入口（2026-09-21 用户口径）：抽屉支持跨房间多选，N=1 就是原来的单笼转移，
+               所以不再并列一个「单笼转移」按钮 —— 两个按钮做同一件事只会让人犹豫点哪个。
+               data-kind 留着标语义，分流由 bindtap 的 handler 决定。 -->
+          <view class="cs-op-btn" data-kind="transfer" bindtap="onStartBatchTransfer">转移</view>
+        </block>
+        <view wx:if="{{ detailOperableCode === 'NOT_CLAIMED' }}" class="cs-op-btn cs-op-btn--primary" bindtap="onSelfClaim">{{ detailClaiming ? '认领中…' : '认领' }}</view>
+        <view wx:if="{{ detailCanClaimOnBehalf }}" class="cs-op-btn" bindtap="onOpenClaimOnBehalf">认领</view>
+        <view wx:if="{{ selectedCell._divisionNames }}" class="cs-op-btn cs-op-btn--danger" bindtap="onClearDivision">{{ detailClearingDivision ? '清空中…' : '清空划分' }}</view>
+      </view>
       <view class="cs-x" bindtap="onCloseCellDetail">✕</view>
     </view>
     <view wx:if="{{ cellDetail.statusChips.length }}" class="cs-ticks">
@@ -533,24 +589,14 @@
         <text>{{ item.label }}</text>
       </view>
     </view>
-    <!-- 笼位级动作：分笼 / 转移 / 认领 / 清空划分。贴着身份放在固定区，不埋进正文里 -->
-    <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted && (detailOperable || detailOperableCode === 'NOT_CLAIMED' || detailCanClaimOnBehalf || selectedCell._divisionNames) }}" class="cs-ops">
-      <block wx:if="{{ detailOperable }}">
-        <view class="cs-op-btn" data-kind="divide" bindtap="onStartDivide">分笼</view>
-        <!-- 转移只有这一个入口（2026-09-21 用户口径）：抽屉支持跨房间多选，N=1 就是原来的单笼转移，
-             所以不再并列一个「单笼转移」按钮 —— 两个按钮做同一件事只会让人犹豫点哪个。
-             data-kind 留着标语义，分流由 bindtap 的 handler 决定。 -->
-        <view class="cs-op-btn" data-kind="transfer" bindtap="onStartBatchTransfer">转移笼位</view>
-      </block>
-      <block wx:if="{{ detailOperableCode === 'NOT_CLAIMED' }}">
-        <text class="cs-op-hint">{{ detailOperableReason }}</text>
-        <view class="cs-op-btn cs-op-btn--primary" bindtap="onSelfClaim">{{ detailClaiming ? '认领中…' : '认领该笼位' }}</view>
-      </block>
-      <view wx:if="{{ detailCanClaimOnBehalf }}" class="cs-op-btn" bindtap="onOpenClaimOnBehalf">认领</view>
-      <block wx:if="{{ selectedCell._divisionNames }}">
-        <text class="cs-op-hint">已划分给：{{ selectedCell._divisionNames }}</text>
-        <view class="cs-op-btn cs-op-btn--danger" bindtap="onClearDivision">{{ detailClearingDivision ? '清空中…' : '清空划分' }}</view>
-      </block>
+    <!-- 操作相关的说明文字单独一行，不跟按钮挤在一起 -->
+    <view wx:if="{{ detailOperableCode === 'NOT_CLAIMED' && detailOperableReason }}" class="cs-op-hint cs-op-hint--line">{{ detailOperableReason }}</view>
+    <view wx:if="{{ selectedCell._divisionNames }}" class="cs-op-hint cs-op-hint--line">已划分给：{{ selectedCell._divisionNames }}</view>
+    <!-- 三页签（固定头）：胶囊式切换，内容紧凑、不带数字角标 -->
+    <view class="cs-tabs">
+      <view class="cs-tab {{ detailTab === 'overview' ? 'cs-tab--on' : '' }}" data-tab="overview" bindtap="onDetailTab">概况</view>
+      <view class="cs-tab {{ detailTab === 'media' ? 'cs-tab--on' : '' }}" data-tab="media" bindtap="onDetailTab">状态</view>
+      <view class="cs-tab {{ detailTab === 'records' ? 'cs-tab--on' : '' }}" data-tab="records" bindtap="onDetailTab">实验记录</view>
     </view>
   </view>
 
@@ -562,8 +608,13 @@
       <text wx:if="{{ detailOpMark.kind === 'transfer' && detailOpMark.requestId }}" class="cs-notice-link" bindtap="onViewTransferForm">查看转移单</text>
     </view>
 
-    <!-- 关键信息：**不分类别**的一张平铺两列卡网格（对齐 web 详情弹窗 CageFormFill 阅读态：
-         只有字段卡，没有分区/子模块标题、序号与计数）；顺序沿用模板字段序，长文本跨两列 -->
+    <block wx:if="{{ detailTab === 'overview' }}">
+    <!-- 权限门禁：不在本课题组时，表单字段一律不渲染，避免品系/数量等泄漏 -->
+    <view wx:if="{{ !cellDetailMeta || !cellDetailMeta.permitted }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">仅限所属课题组及管理员查看详情</text></view>
+    </view>
+    <block wx:else>
+    <!-- 关键信息：按模板分组的两列卡网格；学生先动物信息、教职工先项目信息 -->
     <view wx:if="{{ formLoading }}" class="cs-sec">
       <view class="cs-sec-bd"><text class="cs-hint">加载表单…</text></view>
     </view>
@@ -576,8 +627,12 @@
     <view wx:else class="cs-sec">
       <view class="cs-sec-bd">
         <text wx:if="{{ !formEditing }}" class="cs-form-hint">{{ formEditable ? '只读 · 点「编辑」可修改' : '只读' }}</text>
-        <view class="cs-fields">
-          <block wx:for="{{ formRows }}" wx:key="key" wx:for-item="row" wx:for-index="ri">
+        <view wx:for="{{ formGroups }}" wx:key="key" wx:for-item="grp" class="cs-fgroup">
+          <view class="cs-fgroup-hd">{{ grp.title }}</view>
+          <block wx:for="{{ grp.subs }}" wx:key="key" wx:for-item="sub">
+            <view wx:if="{{ sub.title }}" class="cs-fsub-hd">{{ sub.title }}</view>
+            <view class="cs-fields">
+              <block wx:for="{{ sub.rows }}" wx:key="key" wx:for-item="row" wx:for-index="ri">
 
             <!-- 长文本字段：跨两列铺开；阅读态且为空时退回卡片显示 —，避免一个大空盒子 -->
             <block wx:if="{{ (row.fieldType === 'textarea' || row.fieldType === 'richText') && (formEditing || row.value !== '—') }}">
@@ -619,6 +674,24 @@
                   </view>
                 </picker>
 
+                <!-- combo（如动物品系）：可直接输入，也可从候选点选，与 Web 的 CageFieldEditor 同口径 -->
+                <block wx:elif="{{ row.fieldType === 'combo' }}">
+                  <view class="cs-combo">
+                    <input
+                      class="cs-ctl {{ row._error ? 'cs-ctl--err' : '' }}"
+                      value="{{ row.raw }}"
+                      placeholder="可直接输入，或从候选中选"
+                      data-g="{{ row._g }}" data-s="{{ row._s }}" data-r="{{ row._r }}"
+                      bindinput="onFormComboInput" bindfocus="onFormComboFocus" />
+                    <view wx:if="{{ row._comboOpen && row._comboMatches.length }}" class="cs-combo-pop">
+                      <view wx:for="{{ row._comboMatches }}" wx:for-item="opt" wx:key="value" class="cs-combo-opt"
+                        data-g="{{ row._g }}" data-s="{{ row._s }}" data-r="{{ row._r }}"
+                        data-value="{{ opt.value }}" data-label="{{ opt.label }}"
+                        catchtap="onFormComboPick">{{ opt.label }}</view>
+                    </view>
+                  </view>
+                </block>
+
                 <input wx:else
                   class="cs-ctl {{ row.fieldType === 'number' || row.dataType === 'INTEGER' || row.dataType === 'DECIMAL' ? 'cs-ctl--mono' : '' }} {{ row._error ? 'cs-ctl--err' : '' }}"
                   type="{{ row.fieldType === 'number' || row.dataType === 'INTEGER' || row.dataType === 'DECIMAL' ? 'digit' : 'text' }}"
@@ -633,17 +706,25 @@
               <text class="cs-row-label">{{ row.label }}<text wx:if="{{ row.auto }}" class="cs-auto">自动获取</text></text>
               <text class="cs-row-val {{ row.fieldType === 'number' || row.dataType === 'INTEGER' || row.dataType === 'DECIMAL' ? 'cs-row-val--mono' : '' }} {{ row.value === '—' ? 'cs-row-val--blank' : '' }}">{{ row.value }}</text>
             </view>
+              </block>
+            </view>
           </block>
         </view>
       </view>
     </view>
 
-    <!-- 无权限 -->
-    <view wx:if="{{ cellDetailMeta && !cellDetailMeta.permitted }}" class="cs-sec">
-      <view class="cs-sec-bd"><text class="cs-hint">仅限所属课题组及管理员查看详情</text></view>
-    </view>
+    </block>
+    </block>
 
     <!-- 状态与照片。有「状态」模式权限的人可以在这里直接删照片（删了立即落库，不再需要保存按钮） -->
+    <block wx:elif="{{ detailTab === 'media' }}">
+    <view wx:if="{{ !cellDetailMeta || !cellDetailMeta.permitted }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">仅限所属课题组及管理员查看状态与影像</text></view>
+    </view>
+    <block wx:else>
+    <view wx:if="{{ !detailHasStatusBlock }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">暂无状态影像</text></view>
+    </view>
     <view wx:if="{{ detailHasStatusBlock }}" class="cs-sec">
       <view class="cs-sec-hd">
         <text class="cs-sec-title">状态与照片</text>
@@ -658,7 +739,11 @@
             </view>
             <view class="cs-photos">
               <view wx:for="{{ detailStatusPhotos[item.statusField] }}" wx:key="*this" wx:for-item="img" wx:for-index="imgIdx" class="cs-photo-wrap">
-                <image src="{{ img }}" mode="aspectFill" class="cs-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
+                <view wx:if="{{ photoIsVideo[img] }}" class="cs-photo cs-photo--video">
+                  <video class="cs-photo-video" src="{{ img }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                  <view class="cs-photo-play-mask" data-url="{{ img }}" catchtap="onDetailPreviewImage"><text class="cs-photo-play">▶</text></view>
+                </view>
+                <image wx:else src="{{ img }}" mode="aspectFill" class="cs-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
                 <view wx:if="{{ canEditStatusPhotos }}" class="cs-photo-del" data-field="{{ item.statusField }}" data-index="{{ imgIdx }}" catchtap="onDetailRemoveStatusPhoto">✕</view>
               </view>
             </view>
@@ -674,7 +759,11 @@
           </view>
           <view class="cs-photos">
             <view wx:for="{{ grp.urls }}" wx:key="*this" wx:for-item="img" wx:for-index="imgIdx" class="cs-photo-wrap">
-              <image src="{{ img }}" mode="aspectFill" class="cs-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
+              <view wx:if="{{ photoIsVideo[img] }}" class="cs-photo cs-photo--video">
+                <video class="cs-photo-video" src="{{ img }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                <view class="cs-photo-play-mask" data-url="{{ img }}" catchtap="onDetailPreviewImage"><text class="cs-photo-play">▶</text></view>
+              </view>
+              <image wx:else src="{{ img }}" mode="aspectFill" class="cs-photo" data-url="{{ img }}" bindtap="onDetailPreviewImage"></image>
               <view wx:if="{{ canEditStatusPhotos }}" class="cs-photo-del" data-field="{{ grp.key }}" data-index="{{ imgIdx }}" catchtap="onDetailRemoveStatusPhoto">✕</view>
             </view>
           </view>
@@ -686,9 +775,15 @@
         </view>
       </view>
     </view>
+    </block>
+    </block>
 
     <!-- 实验记录台账（追加式）：一条一个时间戳，提交后只读不可编辑不可删除。
          不是实验员本人时服务端不下发内容，这里只渲染 *** 占位。 -->
+    <block wx:else>
+    <view wx:if="{{ cellDetailMeta && !cellDetailMeta.permitted }}" class="cs-sec">
+      <view class="cs-sec-bd"><text class="cs-hint">仅限所属课题组及管理员查看实验记录</text></view>
+    </view>
     <view wx:if="{{ cellDetailMeta && cellDetailMeta.permitted }}" class="cs-sec">
       <view class="cs-sec-hd" bindtap="onExpToggleHistory">
         <text class="cs-sec-title">实验记录</text>
@@ -702,7 +797,7 @@
         <block wx:else>
           <block wx:if="{{ expHistOpen }}">
             <view wx:if="{{ !expRecords.length }}" class="cs-lockhint">还没有实验记录</view>
-            <view wx:for="{{ expRecords }}" wx:key="id" class="exp-rec">
+            <view wx:for="{{ expRecords }}" wx:key="id" wx:if="{{ expShowAll || index < 3 }}" class="exp-rec">
               <view class="exp-rec-hd">
                 <text class="exp-rec-time">{{ item._time }}</text>
                 <text class="exp-rec-by">{{ item.authorName }}</text>
@@ -710,9 +805,16 @@
               </view>
               <text wx:if="{{ item.content }}" class="exp-rec-txt">{{ item._brief }}</text>
               <view wx:if="{{ item._imgs.length }}" class="exp-rec-imgs">
-                <image wx:for="{{ item._imgs }}" wx:for-item="imgUrl" wx:key="*this" class="exp-rec-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onExpPreviewImage" />
+                <block wx:for="{{ item._imgs }}" wx:for-item="imgUrl" wx:key="*this">
+                  <view wx:if="{{ photoIsVideo[imgUrl] }}" class="exp-rec-img exp-media" data-url="{{ imgUrl }}" catchtap="onExpPreviewImage">
+                    <video class="exp-media-video" src="{{ imgUrl }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                    <text class="exp-media-play">▶</text>
+                  </view>
+                  <image wx:else class="exp-rec-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onExpPreviewImage" />
+                </block>
               </view>
             </view>
+            <view wx:if="{{ !expShowAll && expRecords.length > 3 }}" class="exp-more" bindtap="onExpShowAll">查看全部 {{ expRecords.length }} 条</view>
           </block>
 
           <!-- 编辑器：有草稿时只能接着写或提交，wxml 层就不给「新增下一条」的入口 -->
@@ -728,12 +830,16 @@
             />
             <view class="exp-editor-photos">
               <view wx:for="{{ expDraftImages }}" wx:key="*this" wx:for-item="imgUrl" wx:for-index="imgIdx" class="exp-photo-wrap">
-                <image class="exp-photo" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onExpPreviewImage" />
+                <view wx:if="{{ photoIsVideo[imgUrl] }}" class="exp-photo exp-media" data-url="{{ imgUrl }}" catchtap="onExpPreviewImage">
+                  <video class="exp-media-video" src="{{ imgUrl }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                  <text class="exp-media-play">▶</text>
+                </view>
+                <image wx:else class="exp-photo" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onExpPreviewImage" />
                 <view class="exp-photo-del" data-index="{{ imgIdx }}" catchtap="onExpRecordRemoveImage">✕</view>
               </view>
               <view class="exp-photo-add {{ expUploading ? 'is-off' : '' }}" bindtap="onExpRecordChooseImage">
                 <text class="exp-photo-add-i">+</text>
-                <text>{{ expUploading ? '上传中' : '照片' }}</text>
+                <text>{{ expUploading ? '上传中' : '照片/视频' }}</text>
               </view>
             </view>
             <view class="exp-editor-foot">
@@ -746,6 +852,7 @@
         </block>
       </view>
     </view>
+    </block>
 
   </scroll-view>
 
@@ -757,7 +864,7 @@
       <view class="cs-btn cs-btn--primary cs-dock-push {{ formSaving ? 'cs-btn--disabled' : '' }}" bindtap="onFormSave">{{ formSaving ? '保存中…' : '保存关键信息' }}</view>
     </block>
     <block wx:else>
-      <view wx:if="{{ formEditable }}" class="cs-btn cs-btn--soft" bindtap="onFormEditStart">编辑关键信息</view>
+      <view wx:if="{{ formEditable }}" class="cs-btn cs-btn--primary" bindtap="onFormEditStart">编辑关键信息</view>
       <!-- 不可编辑时把后端给的原因说出来：只把按钮藏掉，用户只会觉得按钮"没了" -->
       <text wx:elif="{{ formEditableReason }}" class="cs-dock-hint">{{ formEditableReason }}</text>
     </block>
@@ -908,13 +1015,14 @@
   </view>
 </van-popup>
 
-<!-- 状态模式：笼位状态标注（居中弹窗 · 四态状态机） -->
+<!-- 状态模式：笼位状态标注（底部抽屉 · 80% 屏高 · 四态状态机 + 分状态照片） -->
 <van-popup
   show="{{ editActionPopup }}"
-  position="center"
+  position="bottom"
   root-portal="{{ true }}"
   z-index="{{ 21000 }}"
-  custom-class="cs-sheet"
+  custom-class="cs-sheet cs-sheet--drawer"
+  custom-style="height:80vh;max-height:80vh;"
   bind:close="onEditActionJustClose"
 >
   <view class="cs-id">
@@ -990,22 +1098,51 @@
       </view>
     </view>
 
-    <!-- 照片 -->
+    <!-- 照片：按状态分桶 —— 每个状态各加各的照片，保存时只回写动过的桶（与 Web 状态卡同一口径） -->
     <view class="cs-sec">
       <view class="cs-sec-hd">
         <text class="cs-sec-no">02</text>
-        <text class="cs-sec-title">照片</text>
-        <text wx:if="{{ editActionPhotos.length }}" class="cs-sec-n">{{ editActionPhotos.length }}</text>
+        <text class="cs-sec-title">状态照片</text>
       </view>
       <view class="cs-sec-bd">
-        <view class="cs-photos">
-          <view wx:for="{{ editActionPhotos }}" wx:key="*this" wx:for-index="idx" class="cs-photo-wrap">
-            <image src="{{ item }}" mode="aspectFill" class="cs-photo" data-url="{{ item }}" bindtap="onDetailPreviewImage"/>
-            <view class="cs-photo-del" data-index="{{ idx }}" catchtap="onEditActionRemovePhoto">✕</view>
+        <view class="cs-hint cs-photo-hint">勾选状态后可分别添加照片；本次只保存动过的状态</view>
+        <block wx:for="{{ editActionOptions }}" wx:key="action" wx:for-item="a">
+          <view wx:if="{{ editActionCurrent[a.action] || (editActionPhotosByKey[a.statusField] && editActionPhotosByKey[a.statusField].length) }}" class="cs-photo-group">
+            <view class="cs-photo-group-hd">
+              <text class="cs-photo-group-name" style="color:{{ a.color }};">{{ a.label }}</text>
+              <text wx:if="{{ editActionPhotosByKey[a.statusField] && editActionPhotosByKey[a.statusField].length }}" class="cs-photo-group-n">{{ editActionPhotosByKey[a.statusField].length }} 张</text>
+            </view>
+            <view class="cs-photos">
+              <view wx:for="{{ editActionPhotosByKey[a.statusField] }}" wx:key="*this" wx:for-item="p" wx:for-index="pi" class="cs-photo-wrap">
+                <view wx:if="{{ photoIsVideo[p] }}" class="cs-photo cs-photo--video">
+                  <video class="cs-photo-video" src="{{ p }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                  <view class="cs-photo-play-mask" data-url="{{ p }}" catchtap="onDetailPreviewImage"><text class="cs-photo-play">▶</text></view>
+                </view>
+                <image wx:else src="{{ p }}" mode="aspectFill" class="cs-photo" data-url="{{ p }}" bindtap="onDetailPreviewImage"/>
+                <view class="cs-photo-del" data-field="{{ a.statusField }}" data-index="{{ pi }}" catchtap="onEditActionRemovePhoto">✕</view>
+              </view>
+              <view class="cs-photo-add {{ editActionUploadingKey === a.statusField ? 'cs-btn--disabled' : '' }}" data-field="{{ a.statusField }}" bindtap="onEditActionChoosePhoto">
+                <text class="cs-photo-add-icon">{{ editActionUploadingKey === a.statusField ? '⏳' : '+' }}</text>
+                <text>{{ editActionUploadingKey === a.statusField ? '上传中' : '添加' }}</text>
+              </view>
+            </view>
           </view>
-          <view class="cs-photo-add {{ editActionUploading ? 'cs-btn--disabled' : '' }}" bindtap="onEditActionChoosePhoto">
-            <text class="cs-photo-add-icon">{{ editActionUploading ? '⏳' : '+' }}</text>
-            <text>{{ editActionUploading ? '上传中' : '添加' }}</text>
+        </block>
+        <!-- 历史遗留的「未归类照片」桶：不隐藏，允许查看/删除；不再往这里新增 -->
+        <view wx:if="{{ editActionPhotosByKey._status && editActionPhotosByKey._status.length }}" class="cs-photo-group">
+          <view class="cs-photo-group-hd">
+            <text class="cs-photo-group-name cs-photo-group-name--muted">未归类照片</text>
+            <text class="cs-photo-group-n">{{ editActionPhotosByKey._status.length }} 张</text>
+          </view>
+          <view class="cs-photos">
+            <view wx:for="{{ editActionPhotosByKey._status }}" wx:key="*this" wx:for-item="p" wx:for-index="pi" class="cs-photo-wrap">
+              <view wx:if="{{ photoIsVideo[p] }}" class="cs-photo cs-photo--video">
+                <video class="cs-photo-video" src="{{ p }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                <view class="cs-photo-play-mask" data-url="{{ p }}" catchtap="onDetailPreviewImage"><text class="cs-photo-play">▶</text></view>
+              </view>
+              <image wx:else src="{{ p }}" mode="aspectFill" class="cs-photo" data-url="{{ p }}" bindtap="onDetailPreviewImage"/>
+              <view class="cs-photo-del" data-field="_status" data-index="{{ pi }}" catchtap="onEditActionRemovePhoto">✕</view>
+            </view>
           </view>
         </view>
       </view>
@@ -1451,9 +1588,15 @@
     </view>
     <scroll-view scroll-y class="exp-scroll exp-view-scroll">
       <text wx:if="{{ expViewRec.content }}" class="exp-view-text">{{ expViewRec.content }}</text>
-      <text wx:else class="exp-empty">本条只有照片</text>
+      <text wx:else class="exp-empty">本条只有照片/视频</text>
       <view wx:if="{{ expViewRec._imgs.length }}" class="exp-view-imgs">
-        <image wx:for="{{ expViewRec._imgs }}" wx:for-item="imgUrl" wx:key="*this" class="exp-view-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onExpPreviewImage" />
+        <block wx:for="{{ expViewRec._imgs }}" wx:for-item="imgUrl" wx:key="*this">
+          <view wx:if="{{ photoIsVideo[imgUrl] }}" class="exp-view-img exp-media" data-url="{{ imgUrl }}" catchtap="onExpPreviewImage">
+            <video class="exp-media-video" src="{{ imgUrl }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+            <text class="exp-media-play">▶</text>
+          </view>
+          <image wx:else class="exp-view-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onExpPreviewImage" />
+        </block>
       </view>
     </scroll-view>
   </view>
@@ -1507,7 +1650,13 @@
                   </view>
                   <text wx:if="{{ rec.content }}" class="exp-rec-txt">{{ rec._brief }}</text>
                   <view wx:if="{{ rec._imgs.length }}" class="exp-rec-imgs">
-                    <image wx:for="{{ rec._imgs }}" wx:for-item="imgUrl" wx:key="*this" class="exp-rec-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onMyRecordsPreview" />
+                    <block wx:for="{{ rec._imgs }}" wx:for-item="imgUrl" wx:key="*this">
+                      <view wx:if="{{ photoIsVideo[imgUrl] }}" class="exp-rec-img exp-media" data-url="{{ imgUrl }}" catchtap="onMyRecordsPreview">
+                        <video class="exp-media-video" src="{{ imgUrl }}" object-fit="cover" controls="{{ false }}" show-center-play-btn="{{ false }}" show-play-btn="{{ false }}" show-fullscreen-btn="{{ false }}" enable-progress-gesture="{{ false }}"></video>
+                        <text class="exp-media-play">▶</text>
+                      </view>
+                      <image wx:else class="exp-rec-img" src="{{ imgUrl }}" mode="aspectFill" data-url="{{ imgUrl }}" bindtap="onMyRecordsPreview" />
+                    </block>
                   </view>
                 </view>
               </view>
@@ -1518,3 +1667,17 @@
     </scroll-view>
   </view>
 </van-popup>
+
+<!-- 媒体灯箱（含视频）：点缩略即自动播放；右上角固定关闭按钮，模拟器/真机都能退出 -->
+<view wx:if="{{ mediaPreview }}" class="mp-media-lightbox" catchtouchmove="true">
+  <!-- 关闭按钮避开手机顶部状态栏：top 用系统状态栏高度 + 12px，不用 env()（安卓上它恒为 0） -->
+  <view class="mp-media-close" style="top: {{ statusBarHeight + 12 }}px;" bindtap="onCloseMediaPreview">✕</view>
+  <video wx:if="{{ mediaPreviewIsVideo }}"
+    src="{{ mediaPreview.urls[mediaPreviewIndex] }}"
+    class="mp-media-body"
+    controls autoplay object-fit="contain"
+    show-center-play-btn enable-play-gesture></video>
+  <image wx:else src="{{ mediaPreview.urls[mediaPreviewIndex] }}" mode="aspectFit" class="mp-media-body"/>
+  <view wx:if="{{ mediaPreview.urls.length > 1 }}" class="mp-media-nav mp-media-nav--prev" bindtap="onMediaPreviewPrev">‹</view>
+  <view wx:if="{{ mediaPreview.urls.length > 1 }}" class="mp-media-nav mp-media-nav--next" bindtap="onMediaPreviewNext">›</view>
+</view>

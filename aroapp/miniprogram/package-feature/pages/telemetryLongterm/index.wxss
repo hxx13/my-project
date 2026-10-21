@@ -7,6 +7,37 @@
   box-sizing: border-box;
 }
 
+/* ── 自定义分区 tab ── */
+.tl-tabs {
+  display: flex;
+  overflow-x: auto;
+  padding: 14rpx 20rpx 0;
+  background: #ffffff;
+  border-bottom: 1rpx solid #eef0f4;
+  white-space: nowrap;
+}
+.tl-tab {
+  flex-shrink: 0;
+  padding: 14rpx 26rpx;
+  margin-right: 8rpx;
+  border: 1rpx solid #e2e8f0;
+  border-bottom: none;
+  border-radius: 10rpx 10rpx 0 0;
+  font-size: 25rpx;
+  color: #475569;
+  background: #f8fafc;
+}
+.tl-tab--on {
+  color: #ffffff;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.tl-tab-count {
+  margin-left: 6rpx;
+  font-size: 20rpx;
+  opacity: 0.75;
+}
+
 /* ── 顶部日期与导出 ── */
 .tl-bar {
   display: flex;

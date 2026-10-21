@@ -187,7 +187,7 @@ Page({
     showSuppliesSwitch: false,
     navBarHeight: 64,
     pageHeight: 667,
-    headerBodyH: 46,
+    headerBodyH: 53,
     mainScrollH: 400,
     /** Spec fields */
     specSelections: {},

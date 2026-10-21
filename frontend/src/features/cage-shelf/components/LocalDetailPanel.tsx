@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { appConfirm } from "@/lib/appDialog";
 import { QRCodeSVG } from "qrcode.react";
 import { authHttp } from "@/api/core/authHttp";
-import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues } from "../constants";
+import { CAGE_TYPE_COLORS, CAGE_BOX_ACTIONS, actionsFromFormValues, isVideoMediaUrl } from "../constants";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DEFAULT_COLORS } from "./CageColorContext";
 import { fetchCageInfoValues, type CageInfoValueRow } from "../api/cageForm.api";
 import { type CageShelfCell, clearCageDivision } from "@/api/domains/cageShelf.api";
+import { authStorage } from "@/features/auth/authStorage";
 import CageFormFill from "./CageFormFill";
 import CageExperimentRecordPanel from "./CageExperimentRecordPanel";
 import CageOperationActions from "./CageOperationActions";
@@ -76,7 +78,8 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     setStatusPhotoSaving(true);
     try {
       await authHttp.post("/local/annotate", { animalCageId, statusPhotos: JSON.stringify(next) });
-      toast.success("已删除");
+      // 只去掉当前值里的引用（软删除）：文件与历史留痕都保留，历史弹窗还要按旧地址回放
+      toast.success("已移除（历史留痕保留）");
     } catch (e: any) {
       setStatusPhotos(prev);
       toast.error(e?.message || "删除失败");
@@ -85,24 +88,37 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     }
   };
 
-  /** 一张状态照片 + （有权限时）右上角删除 */
-  const statusPhotoThumb = (field: string, url: string, index: number) => (
-    <div key={`${field}:${index}`} className="relative group">
-      <img src={url} alt="" onClick={() => setPreviewUrl(url)}
-        className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)] cursor-pointer hover:opacity-80 transition" />
-      {canEditStatusPhotos && (
-        <button
-          type="button"
-          disabled={statusPhotoSaving}
-          onClick={(e) => { e.stopPropagation(); void removeStatusPhoto(field, index); }}
-          title="删除这张照片"
-          className="absolute -top-1.5 -right-1.5 hidden size-4 items-center justify-center rounded-full bg-[var(--twin-danger,#dc2626)] text-[10px] leading-none text-white group-hover:flex disabled:opacity-50"
-        >
-          ✕
+  /** 一张状态照片/视频 + （有权限时）右上角删除；点开走下面的灯箱（图片看大图、视频直接播） */
+  const statusPhotoThumb = (field: string, url: string, index: number) => {
+    const video = isVideoMediaUrl(url);
+    return (
+      <div key={`${field}:${index}`} className="relative group">
+        <button type="button" onClick={() => setPreviewUrl(url)} className="relative block cursor-pointer transition hover:opacity-80"
+          title={video ? "点击播放视频" : "点击查看大图"}>
+          {video ? (
+            <>
+              <video src={url} muted preload="metadata"
+                className="pointer-events-none h-10 w-10 rounded border border-[var(--twin-hairline)] object-cover" />
+              <span className="absolute inset-0 grid place-items-center rounded bg-black/35 text-[10px] leading-none text-white">▶</span>
+            </>
+          ) : (
+            <img src={url} alt="" className="h-10 w-10 object-cover rounded border border-[var(--twin-hairline)]" />
+          )}
         </button>
-      )}
-    </div>
-  );
+        {canEditStatusPhotos && (
+          <button
+            type="button"
+            disabled={statusPhotoSaving}
+            onClick={(e) => { e.stopPropagation(); void removeStatusPhoto(field, index); }}
+            title={video ? "从当前笼位移除（历史留痕保留）" : "从当前笼位移除（历史留痕保留）"}
+            className="absolute -top-1.5 -right-1.5 hidden size-4 items-center justify-center rounded-full bg-[var(--twin-danger,#dc2626)] text-[10px] leading-none text-white group-hover:flex disabled:opacity-50"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    );
+  };
 
   /** 局部清空：只清当前这一个笼位的划分，不动其他笼位 */
   const handleClearDivision = async () => {
@@ -120,6 +136,21 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
     }
   };
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  /**
+   * 详情页签：概况 / 状态 / 实验记录。
+   * 按账号记住上次选择（和小程序同一口径），下次打开同一人的详情直接落在上次的页签。
+   */
+  const detailTabKey = `cageShelf.detailTab:${authStorage.getUserInfo()?.id ?? "anon"}`;
+  const [detailTab, setDetailTab] = useState<"overview" | "status" | "records">(() => {
+    try {
+      const v = localStorage.getItem(detailTabKey);
+      return v === "status" || v === "records" ? v : "overview";
+    } catch { return "overview"; }
+  });
+  const pickDetailTab = (t: "overview" | "status" | "records") => {
+    setDetailTab(t);
+    try { localStorage.setItem(detailTabKey, t); } catch { /* 隐私模式等写不了就算了 */ }
+  };
   const [qrZoom, setQrZoom] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
   const [statusPhotos, setStatusPhotos] = useState<Record<string, string[]>>({});
@@ -167,14 +198,14 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
   /** 删除单条历史归档（后端 /local/history/{id} 只给教职工）。删完就地移出列表，不去重拉。 */
   const handleDeleteHistory = async (id: unknown) => {
     if (id == null) return;
-    if (!(await appConfirm("确定删除该条历史记录？"))) return;
+    if (!(await appConfirm("确定隐藏该条历史记录？\n\n照片/视频与变更留痕不会被删除，只是不再显示在这份归档里。"))) return;
     try {
       const r = await authHttp.delete(`/local/history/${id}`);
-      if (!r.data?.success) throw new Error(r.data?.message || "删除失败");
+      if (!r.data?.success) throw new Error(r.data?.message || "隐藏失败");
       setHistory((prev: any[]) => prev.filter((x: any) => x.id !== id));
-      toast.success("已删除");
+      toast.success("已隐藏（留痕保留）");
     } catch (e: any) {
-      toast.error(e?.message || "删除失败");
+      toast.error(e?.message || "隐藏失败");
     }
   };
 
@@ -246,6 +277,17 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       </div>;
     })()}
 
+    {/* 三页签（胶囊）：概况 / 状态 / 实验记录；按账号记住上次选择 */}
+    <div className="inline-flex self-start items-center gap-0.5 rounded-full bg-[var(--twin-canvas-soft)] p-0.5">
+      {([["overview", "概况"], ["status", "状态"], ["records", "实验记录"]] as const).map(([k, label]) => (
+        <button key={k} type="button" onClick={() => pickDetailTab(k)}
+          className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${detailTab === k ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+
+    {detailTab === "overview" && (<>
     {/* 二级：关键信息 — 复用发布模板结构（内联填表，不跳答题页） */}
     <div className="flex items-center justify-between">
       <div className="text-[11px] font-semibold text-[var(--twin-ink)]">关键信息</div>
@@ -260,9 +302,10 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       )}
     </div>
     <CageFormFill animalCageId={animalCageId || null} claimed={claimed} onBatchEdit={onBatchEdit} />
+    </>)}
 
     {/* 三级：状态标记 + 通道一：状态标记照片（只读，仅编辑模式可管理） */}
-    {(statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) && <div className="space-y-2">
+    {detailTab === "status" && ((statusChips.length > 0 || Object.keys(statusPhotos).some(k => k.startsWith("_") && (statusPhotos[k] || []).length > 0)) ? (<div className="space-y-2">
       {statusChips.map(a => {
         const sImgs: string[] = statusPhotos[a.statusField] || [];
         const c = DEFAULT_COLORS[a.statusCode] ?? { bg: "#ccc", border: "#999" };
@@ -302,8 +345,9 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
         <div className="text-[11px] text-[var(--twin-ink)] whitespace-pre-wrap">{(statusPhotos as any)._note}</div>
         <div className="text-[9px] text-[var(--twin-mute)] mt-1 italic">通过编辑模式管理</div>
       </div>}
-    </div>}
+    </div>) : <div className="rounded-twin-sm border border-dashed border-[var(--twin-hairline)] px-2 py-4 text-center text-[11px] text-[var(--twin-mute)]">暂无状态影像</div>)}
 
+    {detailTab === "records" && (<>
     {/* 实验记录台账：一条一个时间戳，提交后只读 —— 取代原来的「一格一份文本 + 照片」通道 */}
     <div className="border-t border-[var(--twin-hairline)] pt-2">
       <CageExperimentRecordPanel animalCageId={animalCageId} />
@@ -323,7 +367,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
               <span className={h.action === "unmarked" ? "text-red-600" : h.action === "annotated" ? "text-blue-600" : "text-green-600"}>{h.action === "unmarked" ? "✕" : h.action === "annotated" ? "📝" : "✓"} {label}</span>
               {h.toggledBy && <span className="ml-auto text-[var(--twin-mute)]">{h.toggledBy}</span>}
               {h.id != null && (
-                <button type="button" onClick={() => void handleDeleteHistory(h.id)} title="删除这条记录"
+                <button type="button" onClick={() => void handleDeleteHistory(h.id)} title="隐藏这条记录（附件与留痕保留）"
                   className="shrink-0 rounded px-1 text-[9px] leading-none text-red-500 transition hover:bg-red-50 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">✕</button>
               )}
             </div>
@@ -336,6 +380,7 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
         })}
       </div>
     </details>
+    </>)}
 
     {/* 笼位二维码（payload = 纯数字 animal_cage_id）：默认折叠 + 缩小，放到最后 —— 它是最后才需要的东西 */}
     <details className="border-t border-[var(--twin-hairline)] pt-2">
@@ -351,14 +396,24 @@ export default function LocalDetailPanel({ cell, onClose, onStartOp, onChanged, 
       </div>
     </details>
 
-    {/* 照片预览放大（双通道共享） */}
-    {previewUrl !== null && (() => { const curIdx = allPreviewUrls.indexOf(previewUrl); return <div className="fixed inset-0 z-[var(--z-modal)] bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewUrl(null)}>
-      <img src={previewUrl} alt="预览" className="max-w-full max-h-full object-contain rounded-twin-lg" onClick={e => e.stopPropagation()} />
-      <button className="absolute top-4 right-4 text-white text-xl" onClick={() => setPreviewUrl(null)}>✕</button>
-      {allPreviewUrls.length > 1 && <>
-        <button className="absolute left-4 top-1/2 -translate-y-1/2 text-white text-2xl" onClick={e => { e.stopPropagation(); const prev = curIdx > 0 ? curIdx - 1 : allPreviewUrls.length - 1; setPreviewUrl(allPreviewUrls[prev]); }}>‹</button>
-        <button className="absolute right-4 top-1/2 -translate-y-1/2 text-white text-2xl" onClick={e => { e.stopPropagation(); const next = curIdx < allPreviewUrls.length - 1 ? curIdx + 1 : 0; setPreviewUrl(allPreviewUrls[next]); }}>›</button>
-      </>}
-    </div>; })()}
+    {/* 照片/视频预览（双通道共享）：统一走站内弹窗，视频直接播放 */}
+    <Dialog open={previewUrl !== null} onOpenChange={(o) => { if (!o) setPreviewUrl(null); }}>
+      <DialogContent className="relative max-w-[min(1100px,94vw)] overflow-hidden border-0 bg-black p-0 [&>button]:text-white">
+        <DialogTitle className="sr-only">照片/视频预览</DialogTitle>
+        <DialogDescription className="sr-only">点击右上角关闭；多张时可左右切换</DialogDescription>
+        {previewUrl && (isVideoMediaUrl(previewUrl) ? (
+          <video src={previewUrl} controls autoPlay playsInline className="max-h-[86vh] w-full bg-black object-contain" />
+        ) : (
+          <img src={previewUrl} alt="预览" className="max-h-[86vh] w-full object-contain" />
+        ))}
+        {previewUrl && allPreviewUrls.length > 1 && (() => {
+          const curIdx = allPreviewUrls.indexOf(previewUrl);
+          return <>
+            <button className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-white" onClick={() => { const prev = curIdx > 0 ? curIdx - 1 : allPreviewUrls.length - 1; setPreviewUrl(allPreviewUrls[prev]); }}>‹</button>
+            <button className="absolute right-4 top-1/2 -translate-y-1/2 text-2xl text-white" onClick={() => { const next = curIdx < allPreviewUrls.length - 1 ? curIdx + 1 : 0; setPreviewUrl(allPreviewUrls[next]); }}>›</button>
+          </>;
+        })()}
+      </DialogContent>
+    </Dialog>
   </div>;
 }

@@ -248,16 +248,22 @@ export function useDeleteSpecTemplate() {
 }
 
 /**
+ * 笼位可点池 / 预定标记对账。释放预定、下单（预定点从购物车挂到订单）之后必须调：
+ * 这两个查询各有 5s / 15s 的 staleTime，不对账的话抽屉会拿旧快照把
+ * 「已加购 / 已下单」的笼位当成还能选、或把刚释放的笼位又接回「已选」。
+ */
+export function invalidateCageAvailability(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ["cage-reservations", "active"] });
+  qc.invalidateQueries({ queryKey: ["animalOrderReservableCages"] });
+}
+
+/**
  * 购物车的任何一次变更都会动到笼位预定：加购把预定挂上车行、改数量同步数量、删行/清空则释放预定
  * （后端 ReferenceDataService.clearCart → releaseByCartIds，连预填进笼位表单的性别/数量也一并撤销）。
- *
- * 只 invalidate 购物车本身的话，笼位那边停在旧快照（`/active` staleTime 15s、`/reservable` 5s），
- * 表现就是「清空了购物车，那个笼位还显示已在购物车 / 还点不动」。
  */
 function invalidateCartAndCages(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: ["referenceData", "cart"] });
-  qc.invalidateQueries({ queryKey: ["cage-reservations", "active"] });
-  qc.invalidateQueries({ queryKey: ["animalOrderReservableCages"] });
+  invalidateCageAvailability(qc);
 }
 
 export function useAddToCart() {

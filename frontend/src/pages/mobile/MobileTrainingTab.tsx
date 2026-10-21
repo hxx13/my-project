@@ -94,9 +94,9 @@ function ActionButtons({
   );
 }
 
-export default function MobileTrainingTab() {
+export default function MobileTrainingTab({ onGoVideoLearning }: { onGoVideoLearning?: () => void }) {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"list" | "mine">("list");
+  const [tab, setTab] = useState<"list" | "mine">("mine");
   const [campus, setCampus] = useState("");
   const [busy, setBusy] = useState(false);
   const [target, setTarget] = useState<StudentTraining | null>(null);
@@ -210,7 +210,7 @@ export default function MobileTrainingTab() {
     <div className="flex h-full min-h-0 flex-col">
       {/* 顶部：浅灰轨道 + 白色选中块（同 web 端 aup-view-toggle，不铺主色块） */}
       <div className="mx-3 mt-3 flex w-fit shrink-0 gap-0.5 rounded-lg bg-[var(--app-color-surface-hover)] p-0.5">
-        {(["list", "mine"] as const).map((k) => (
+        {(["mine", "list"] as const).map((k) => (
           <button
             key={k}
             type="button"
@@ -307,8 +307,8 @@ export default function MobileTrainingTab() {
       </div>
 
       {target && (
-        <div className="fixed inset-0 z-[1200] flex items-end justify-center bg-black/40" onClick={() => setTarget(null)}>
-          <div className="w-full max-w-lg rounded-t-2xl bg-white p-5 pb-[calc(20px+env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/40 p-4" onClick={() => setTarget(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[16px] font-bold text-[var(--app-color-text-primary)]">{target.name}</div>
@@ -336,11 +336,31 @@ export default function MobileTrainingTab() {
                   {target.healthOk ? "已提交" : "未提交"}
                 </span>
               </div>
+              {(target.videos?.length ?? 0) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--app-color-text-secondary)]">学习视频</span>
+                  {target.videoPassed ? (
+                    <span className="font-semibold text-emerald-600">已看完</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="font-semibold text-amber-600"
+                      onClick={() => {
+                        setTarget(null);
+                        onGoVideoLearning?.();
+                      }}
+                    >
+                      未看完 {(target.videos ?? []).filter((v) => v.completed).length}/
+                      {(target.videos ?? []).length} · 去学习
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {!target.eligible && (
               <p className="mt-3 text-[12px] leading-relaxed text-amber-600">
-                需先通过门槛试卷并提交健康调查表，可在学生中心完成后再来报名。
+                需先通过门槛试卷、提交健康调查表并看完学习视频，可在学生中心完成后再来报名。
               </p>
             )}
 

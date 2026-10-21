@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { Play } from "lucide-react";
 import { authHttp } from "@/api/core/authHttp";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { isVideoMediaUrl } from "@/features/cage-shelf/constants";
 import {
   fetchCageExperimentRecords,
   saveCageExperimentRecord,
@@ -78,16 +81,18 @@ export default function CageExperimentRecordPanel({ animalCageId }: { animalCage
     try {
       const urls: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        if (!files[i].type.startsWith("image/")) continue;
+        const f = files[i];
+        if (!f.type.startsWith("image/") && !f.type.startsWith("video/")) continue;
         const fd = new FormData();
-        fd.append("file", files[i]);
-        // 不手写 Content-Type：拦截器已统一摘掉，手写反而丢 boundary（全仓踩过的坑）
+        fd.append("file", f);
+        // 学生账号默认不能传视频；实验记录是允许的例外，后端按这个用途放行
+        fd.append("purpose", "experiment-record");
         const r = await authHttp.post("/upload", fd);
         if (r.data?.success && r.data.data?.url) urls.push(r.data.data.url);
       }
       if (urls.length) setImages((prev) => [...prev, ...urls]);
     } catch {
-      toast.error("图片上传失败");
+      toast.error("图片/视频上传失败");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -184,27 +189,21 @@ export default function CageExperimentRecordPanel({ animalCageId }: { animalCage
           />
           <div className="flex flex-wrap items-center gap-1.5">
             {images.map((url, i) => (
-              <img
-                key={`${url}:${i}`}
-                src={url}
-                alt=""
-                onClick={() => setPreview(url)}
-                className="h-14 w-14 cursor-pointer rounded border border-[var(--student-hairline)] object-cover"
-              />
+              <MediaThumb key={`${url}:${i}`} url={url} className="h-14 w-14 rounded" onClick={() => setPreview(url)} />
             ))}
             <button
               type="button"
               disabled={uploading}
               onClick={() => fileRef.current?.click()}
               className="h-14 w-14 rounded border border-dashed border-[var(--student-hairline)] text-[18px] text-[var(--student-mute)] disabled:opacity-50"
-              title="添加照片"
+              title="添加照片/视频"
             >
               {uploading ? "…" : "+"}
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               multiple
               className="sr-only"
               onChange={(e) => void handleUpload(e.target.files)}
@@ -232,11 +231,17 @@ export default function CageExperimentRecordPanel({ animalCageId }: { animalCage
         </div>
       )}
 
-      {preview !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPreview(null)}>
-          <img src={preview} alt="" className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
-        </div>
-      )}
+      <Dialog open={preview !== null} onOpenChange={(o) => { if (!o) setPreview(null); }}>
+        <DialogContent className="max-w-[min(1100px,94vw)] overflow-hidden border-0 bg-black p-0 [&>button]:text-white">
+          <DialogTitle className="sr-only">{isVideoMediaUrl(preview) ? "视频预览" : "照片预览"}</DialogTitle>
+          <DialogDescription className="sr-only">点击右上角关闭</DialogDescription>
+          {preview && (isVideoMediaUrl(preview) ? (
+            <video src={preview} controls autoPlay playsInline className="max-h-[86vh] w-full bg-black object-contain" />
+          ) : (
+            <img src={preview} alt="预览" className="max-h-[86vh] w-full object-contain" />
+          ))}
+        </DialogContent>
+      </Dialog>
 
       {viewRecord && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setViewRecord(null)}>
@@ -276,22 +281,36 @@ export default function CageExperimentRecordPanel({ animalCageId }: { animalCage
   );
 }
 
+/** 实验记录里的媒体缩略：图片直接显示，视频显示首帧 + 播放标记 */
+function MediaThumb({ url, className = "", onClick }: { url: string; className?: string; onClick: () => void }) {
+  const video = isVideoMediaUrl(url);
+  return (
+    <button type="button" onClick={onClick} title={video ? "点击播放视频" : "点击查看大图"}
+      className={`relative block cursor-pointer overflow-hidden border border-[var(--student-hairline)] ${className}`}>
+      {video ? (
+        <>
+          <video src={url} muted preload="metadata" className="pointer-events-none h-full w-full object-cover" />
+          <span className="absolute inset-0 grid place-items-center bg-black/35 text-white">
+            <Play className="size-4" fill="currentColor" />
+          </span>
+        </>
+      ) : (
+        <img src={url} alt="" className="h-full w-full object-cover" />
+      )}
+    </button>
+  );
+}
+
 /** 「查看」弹窗里的照片：大图网格，点开还是走同一个预览器 */
 function ViewPhotos({ row, onPreview }: { row: CageExperimentRecordRow; onPreview: (url: string) => void }) {
   const imgs = parseImages(row.imagesJson);
   if (imgs.length === 0) return null;
   return (
     <div className="mt-3">
-      <div className="mb-1.5 text-[10px] text-[var(--student-mute)]">照片（{imgs.length}）</div>
+      <div className="mb-1.5 text-[10px] text-[var(--student-mute)]">照片/视频（{imgs.length}）</div>
       <div className="grid grid-cols-3 gap-2">
         {imgs.map((url, i) => (
-          <img
-            key={`${url}:${i}`}
-            src={url}
-            alt=""
-            onClick={() => onPreview(url)}
-            className="aspect-square w-full cursor-pointer rounded-lg border border-[var(--student-hairline)] object-cover"
-          />
+          <MediaThumb key={`${url}:${i}`} url={url} className="aspect-square w-full rounded-lg" onClick={() => onPreview(url)} />
         ))}
       </div>
     </div>
@@ -332,13 +351,7 @@ function RecordRow({
       {imgs.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {imgs.slice(0, 6).map((url, i) => (
-            <img
-              key={`${url}:${i}`}
-              src={url}
-              alt=""
-              onClick={() => onPreview(url)}
-              className="h-14 w-14 cursor-pointer rounded border border-[var(--student-hairline)] object-cover"
-            />
+            <MediaThumb key={`${url}:${i}`} url={url} className="h-14 w-14 rounded" onClick={() => onPreview(url)} />
           ))}
           {imgs.length > 6 && (
             <button

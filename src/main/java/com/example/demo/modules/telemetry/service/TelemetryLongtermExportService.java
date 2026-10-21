@@ -43,6 +43,8 @@ import java.util.Set;
  * <p>多天（{@code days} 多选）：**长表连成一张表、加一列「日期」**（时间拆成日期 + 时刻），
  * 各天的行按时间顺序**从上往下接排**，不是一天一张表；宽表因为列轴是时刻，只能按天分段上下堆叠。
  *
+ * <p>分区：按当前自定义分区导出，只包含该分区下的已选变量；不传分区时导出全部。
+ *
  * <p>时间范围**必填**：days / month / from-to 三样都没给就报错 —— 不默认导今天，避免误导出整表。
  */
 @Service
@@ -62,54 +64,6 @@ public class TelemetryLongtermExportService {
                                           TelemetryLongtermArchiveService archiveService) {
         this.sampleMapper = sampleMapper;
         this.archiveService = archiveService;
-    }
-
-    /**
-     * 变量 → 单位。页面第一列是「房间(单位)」，导出要照同一个样子写，就得把单位取回来 ——
-     * 采样行上没这个字段（单位属于变量配置，不在样本里）。
-     */
-    private Map<String, String> unitByVar() {
-        Map<String, String> m = new LinkedHashMap<>();
-        List<TelemetryLongtermVariableDto> vars = archiveService.listVariables();
-        if (vars == null) {
-            return m;
-        }
-        for (TelemetryLongtermVariableDto v : vars) {
-            if (v == null) {
-                continue;
-            }
-            String n = trim(v.getWinccVariableName());
-            if (n != null) {
-                m.put(n, trim(v.getUnit()));
-            }
-        }
-        return m;
-    }
-
-    /**
-     * 变量名 → 展示映射。
-     *
-     * <p>归档采样表里**没有**展示映射这一列（见 {@code TelemetryLongtermSampleRow}），只有房间名；
-     * 而页面上那一列显示的是展示映射（列头也是「展示映射」）。导出要和页面对得上，
-     * 就得照变量配置把它查回来 —— 与 {@link #unitByVar()} 同一个来源。</p>
-     */
-    private Map<String, String> displayByVar() {
-        Map<String, String> m = new LinkedHashMap<>();
-        List<TelemetryLongtermVariableDto> vars = archiveService.listVariables();
-        if (vars == null) {
-            return m;
-        }
-        for (TelemetryLongtermVariableDto v : vars) {
-            if (v == null) {
-                continue;
-            }
-            String n = trim(v.getWinccVariableName());
-            String label = trim(v.getDisplayLabel());
-            if (n != null && label != null) {
-                m.put(n, label);
-            }
-        }
-        return m;
     }
 
     public byte[] exportXlsx(TelemetryLongtermExportRequest req) {
@@ -135,8 +89,20 @@ public class TelemetryLongtermExportService {
             }
 
             List<String> requested = normalize(req == null ? null : req.getVariableNames());
-            List<TelemetryLongtermSampleRow> rows = sampleMapper.selectForExport(
-                    requested.isEmpty() ? null : requested, from, to, EXPORT_ROW_LIMIT);
+            List<String> partitionNames = archiveService.partitionVariableNames(
+                    req == null ? null : req.getPartitionId());
+            List<String> queryNames;
+            if (partitionNames.isEmpty()) {
+                queryNames = List.of();
+            } else if (requested.isEmpty()) {
+                queryNames = partitionNames;
+            } else {
+                Set<String> allowed = new HashSet<>(partitionNames);
+                queryNames = requested.stream().filter(allowed::contains).toList();
+            }
+            List<TelemetryLongtermSampleRow> rows = queryNames.isEmpty()
+                    ? List.of()
+                    : sampleMapper.selectForExport(queryNames, from, to, EXPORT_ROW_LIMIT);
             // 非连续多选时上面取的是并集区间，这里按真正选中的那些天精确筛一遍
             if (!days.isEmpty()) {
                 Set<String> daySet = new HashSet<>(days);
@@ -145,14 +111,40 @@ public class TelemetryLongtermExportService {
                         .toList();
             }
 
-            Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("数据监测"));
             boolean wide = req != null && "WIDE".equalsIgnoreCase(req.getLayout());
-            boolean multiDay = distinctDayCount(rows) > 1;
-            Map<String, String> displayByVar = displayByVar();
-            if (wide) {
-                writeWide(sh, rows, requested, unitByVar(), displayByVar, multiDay);
+            Map<String, String> displayByVar = new LinkedHashMap<>();
+            Map<String, String> unitByVar = new LinkedHashMap<>();
+            List<TelemetryLongtermVariableDto> configured = archiveService.listVariables();
+            if (configured != null) {
+                for (TelemetryLongtermVariableDto v : configured) {
+                    if (v == null) {
+                        continue;
+                    }
+                    String name = trim(v.getWinccVariableName());
+                    if (name == null) {
+                        continue;
+                    }
+                    String label = trim(v.getDisplayLabel());
+                    if (label != null) {
+                        displayByVar.put(name, label);
+                    }
+                    String unit = trim(v.getUnit());
+                    if (unit != null) {
+                        unitByVar.put(name, unit);
+                    }
+                }
+            }
+
+            Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("数据监测"));
+            if (rows.isEmpty()) {
+                sh.createRow(0).createCell(0).setCellValue("展示映射");
             } else {
-                writeLong(sh, rows, multiDay, displayByVar);
+                boolean multiDay = distinctDayCount(rows) > 1;
+                if (wide) {
+                    writeWide(sh, rows, queryNames, unitByVar, displayByVar, multiDay);
+                } else {
+                    writeLong(sh, rows, multiDay, displayByVar);
+                }
             }
             setColumnWidths(sh);
             wb.write(out);

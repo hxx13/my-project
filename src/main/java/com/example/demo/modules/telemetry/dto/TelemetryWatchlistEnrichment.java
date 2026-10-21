@@ -2,7 +2,9 @@ package com.example.demo.modules.telemetry.dto;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 数据库 watchlist 合并后，按变量名索引的展示与结构化字段（供快照 enrich）。
@@ -26,6 +28,8 @@ public class TelemetryWatchlistEnrichment {
     private final Map<String, Long> watchlistTagIdByVariable;
     private final Map<String, String> alarmOverrideMinByVariable;
     private final Map<String, String> alarmOverrideMaxByVariable;
+    /** 仅拉数与长期归档、不出现在动物房页/驾驶舱的变量名 */
+    private final Set<String> hiddenInAnimalRoomVariables;
 
     public TelemetryWatchlistEnrichment(Map<String, String> displayLabelByVariable,
                                         Map<String, String> bundleCodeByVariable,
@@ -39,7 +43,8 @@ public class TelemetryWatchlistEnrichment {
                                         Map<String, String> alarmMaxVariableByParentVariable,
                                         Map<String, Long> watchlistTagIdByVariable,
                                         Map<String, String> alarmOverrideMinByVariable,
-                                        Map<String, String> alarmOverrideMaxByVariable) {
+                                        Map<String, String> alarmOverrideMaxByVariable,
+                                        Set<String> hiddenInAnimalRoomVariables) {
         this.displayLabelByVariable = copyMap(displayLabelByVariable);
         this.bundleCodeByVariable = copyMap(bundleCodeByVariable);
         this.bundleDisplayNameByVariable = copyMap(bundleDisplayNameByVariable);
@@ -53,6 +58,8 @@ public class TelemetryWatchlistEnrichment {
         this.watchlistTagIdByVariable = copyLongMap(watchlistTagIdByVariable);
         this.alarmOverrideMinByVariable = copyMap(alarmOverrideMinByVariable);
         this.alarmOverrideMaxByVariable = copyMap(alarmOverrideMaxByVariable);
+        this.hiddenInAnimalRoomVariables = hiddenInAnimalRoomVariables == null
+                ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(hiddenInAnimalRoomVariables));
     }
 
     private static Map<String, String> copyMap(Map<String, String> m) {
@@ -66,7 +73,7 @@ public class TelemetryWatchlistEnrichment {
     public static TelemetryWatchlistEnrichment empty() {
         Map<String, String> e = Map.of();
         Map<String, Long> ez = Map.of();
-        return new TelemetryWatchlistEnrichment(e, e, e, e, e, e, e, e, e, e, ez, e, e);
+        return new TelemetryWatchlistEnrichment(e, e, e, e, e, e, e, e, e, e, ez, e, e, Set.of());
     }
 
     public boolean isEmpty() {
@@ -82,7 +89,8 @@ public class TelemetryWatchlistEnrichment {
                 && alarmMaxVariableByParentVariable.isEmpty()
                 && watchlistTagIdByVariable.isEmpty()
                 && alarmOverrideMinByVariable.isEmpty()
-                && alarmOverrideMaxByVariable.isEmpty();
+                && alarmOverrideMaxByVariable.isEmpty()
+                && hiddenInAnimalRoomVariables.isEmpty();
     }
 
     public Map<String, String> getDisplayLabelByVariable() {
@@ -135,5 +143,9 @@ public class TelemetryWatchlistEnrichment {
 
     public Map<String, String> getAlarmOverrideMaxByVariable() {
         return alarmOverrideMaxByVariable;
+    }
+
+    public Set<String> getHiddenInAnimalRoomVariables() {
+        return hiddenInAnimalRoomVariables;
     }
 }

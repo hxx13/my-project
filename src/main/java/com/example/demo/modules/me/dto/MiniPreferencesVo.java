@@ -40,6 +40,14 @@ public class MiniPreferencesVo {
     /** 管理后台侧栏「收藏」路径 */
     private List<String> adminNavStars;
 
+    /**
+     * 远程控制可切换页面的收藏（按**路由**记，与侧栏收藏分开）。
+     *
+     * <p>不复用 adminNavStars 的原因：侧栏收藏是「我自己常用的入口」，
+     * 远程切换收藏是「讲解时要切给大屏看的页面」——复用会让侧栏那几条全冒到远程页面列表顶部。
+     */
+    private List<String> remoteRouteStars;
+
     /** 管理后台锁定入口路径（同一时间仅一个；null 表示未锁定） */
     private String adminNavLock;
 

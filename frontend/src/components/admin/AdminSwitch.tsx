@@ -27,14 +27,15 @@ const HiddenCheckbox = styled.input`
 `;
 
 const Track = styled.span<{ $checked: boolean; $disabled?: boolean }>`
-  width: 51px;
-  height: 31px;
+  width: 40px;
+  height: 22px;
   position: relative;
   display: block;
-  border-radius: 16px;
+  border-radius: 11px;
   cursor: ${({ $disabled }) => ($disabled ? "not-allowed" : "pointer")};
   background-color: var(--app-color-border-default);
-  transition: background-color 0.2s ease-out;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: background-color 0.16s ease-out;
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;
@@ -48,18 +49,17 @@ const Track = styled.span<{ $checked: boolean; $disabled?: boolean }>`
 `;
 
 const Thumb = styled.span<{ $checked: boolean }>`
-  width: 27px;
-  height: 27px;
+  width: 18px;
+  height: 18px;
   position: absolute;
-  left: ${({ $checked }) =>
-    $checked ? "calc(50% - 27px / 2 + 10px)" : "calc(50% - 27px / 2 - 10px)"};
-  top: calc(50% - 27px / 2);
+  left: ${({ $checked }) => ($checked ? "20px" : "2px")};
+  top: 2px;
   border-radius: 50%;
   background: var(--app-color-surface-raised, #ffffff);
   box-shadow:
-    0 3px 8px rgba(0, 0, 0, 0.15),
-    0 3px 1px rgba(0, 0, 0, 0.06);
-  transition: left 0.2s ease-out;
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  transition: left 0.16s ease-out;
 
   @media (prefers-reduced-motion: reduce) {
     transition: none;

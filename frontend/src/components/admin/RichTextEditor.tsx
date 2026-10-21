@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import toast from "react-hot-toast";
-import { FileText, Image as ImageIcon } from "lucide-react";
+import { FileText, Image as ImageIcon, Video as VideoIcon } from "lucide-react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { NodeSelection } from "prosemirror-state";
 import StarterKit from "@tiptap/starter-kit";
@@ -9,7 +9,10 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { Color } from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
 import { uploadRichImage } from "@/api/domains/mpContentHub.api";
+import { uploadVideoFile, VIDEO_ACCEPT } from "@/api/domains/upload.api";
+import { RichTextVideo } from "./richTextVideoNode";
 import { isRichTextEmpty } from "@/utils/announcementHtml";
+import { resolveApiMediaUrl } from "@/utils/mediaUrl";
 import { cn } from "@/lib/utils";
 import {
   formatMaxWidthPercent,
@@ -144,6 +147,7 @@ function applyImageWidthStyles(
 export function RichTextEditor({ value, onChange, onChangeJson, disabled, className, maxWidth, rowMax }: Props) {
   const lastEmittedHtmlRef = useRef<string | null>(null);
   const mdFileInputRef = useRef<HTMLInputElement>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -313,6 +317,7 @@ export function RichTextEditor({ value, onChange, onChangeJson, disabled, classN
         inline: true,
         allowBase64: false,
       }),
+      RichTextVideo,
     ],
     content: value || "",
     editable: !disabled,
@@ -424,8 +429,36 @@ export function RichTextEditor({ value, onChange, onChangeJson, disabled, classN
     input.click();
   }, [editor, disabled, insertUploadedImages]);
 
-  const onImportMarkdownClick = useCallback(() => {
-    if (disabled) return;
+  const [videoUploading, setVideoUploading] = useState(false);
+
+  const onVideoFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file || !editor || disabled) return;
+      if (!/^video\//i.test(file.type) && !/\.(mp4|webm|mov|m4v)$/i.test(file.name)) {
+        toast.error("请选择 mp4 / webm / mov 格式的视频");
+        return;
+      }
+      setVideoUploading(true);
+      try {
+        const result = await uploadVideoFile(file);
+        // 入库前存绝对地址：后端消毒器只放行 http/https，相对路径会被丢掉
+        const raw = (result.publicUrl || result.url || "").trim();
+        const src = resolveApiMediaUrl(raw) ?? raw;
+        if (!src) throw new Error("上传未返回视频地址");
+        editor.chain().focus().insertContent({ type: "video", attrs: { src } }).run();
+        toast.success("视频已插入");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "视频上传失败");
+      } finally {
+        setVideoUploading(false);
+      }
+    },
+    [editor, disabled],
+  );
+
+  const onImportMarkdownClick = useCallback(() => {    if (disabled) return;
     mdFileInputRef.current?.click();
   }, [disabled]);
 
@@ -503,6 +536,15 @@ export function RichTextEditor({ value, onChange, onChangeJson, disabled, classN
         </button>
         <button
           type="button"
+          disabled={disabled || videoUploading}
+          className={cn(toolbarBtnClass, "inline-flex items-center gap-1")}
+          onClick={() => videoFileInputRef.current?.click()}
+        >
+          <VideoIcon className="h-3.5 w-3.5" />
+          {videoUploading ? "上传中…" : "视频"}
+        </button>
+        <button
+          type="button"
           disabled={disabled}
           className={cn(toolbarBtnClass, "inline-flex items-center gap-1")}
           onClick={onImportMarkdownClick}
@@ -511,6 +553,7 @@ export function RichTextEditor({ value, onChange, onChangeJson, disabled, classN
           导入 MD
         </button>
         <input ref={mdFileInputRef} type="file" accept=".md,.markdown,.txt,text/plain" className="hidden" onChange={(e) => void onMarkdownFileChange(e)} />
+        <input ref={videoFileInputRef} type="file" accept={VIDEO_ACCEPT} className="hidden" onChange={(e) => void onVideoFileChange(e)} />
           <span className="mx-0.5 h-4 w-px bg-[var(--app-color-border-default)] self-center" aria-hidden />
           <label className="inline-flex min-w-[148px] flex-1 items-center gap-2 text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
             <span className="shrink-0">图宽</span>

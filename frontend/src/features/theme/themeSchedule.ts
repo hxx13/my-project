@@ -5,7 +5,7 @@ export const DEFAULT_LIGHT_END = "16:30";
 export type ColorMode = "light" | "dark";
 
 export interface AppearanceSchedulePrefs {
-  /** 是否启用定时自动切换；缺省视为 true */
+  /** 是否启用定时自动切换；缺省视为 false（默认不自动切换） */
   autoScheduleEnabled?: boolean;
   /** 手动覆盖亮/暗色，至下一 schedule 边界前有效 */
   manualOverride?: ColorMode | null;
@@ -13,6 +13,11 @@ export interface AppearanceSchedulePrefs {
   lightEnd?: string;
   /** 关闭自动切换时用户自选主题 id（standard | standard-dark | scifi） */
   manualThemeId?: string;
+  /**
+   * 偏好版本。没有这个字段的是旧数据（旧默认是「跟随时间自动切换」），
+   * 读取时统一迁到「不自动切换、亮色」；写入时固定带 2，之后的用户选择才会被尊重。
+   */
+  prefsVersion?: number;
 }
 
 export const APPEARANCE_SCHEDULE_STORAGE_KEY = "twin-appearance-schedule";
@@ -22,7 +27,8 @@ export function defaultAppearanceSchedulePrefs(): Required<
 > &
   AppearanceSchedulePrefs {
   return {
-    autoScheduleEnabled: true,
+    // 默认关闭自动切换，固定在亮色主题
+    autoScheduleEnabled: false,
     manualOverride: null,
     lightStart: DEFAULT_LIGHT_START,
     lightEnd: DEFAULT_LIGHT_END,
@@ -98,14 +104,17 @@ export function normalizeAppearanceSchedulePrefs(
   raw: AppearanceSchedulePrefs | null | undefined
 ): AppearanceSchedulePrefs {
   const d = defaultAppearanceSchedulePrefs();
-  if (!raw) return d;
+  if (!raw) return { ...d, prefsVersion: 2 };
+  // 旧数据（无版本）一律迁到「不自动切换」；之后用户手动开启会带版本落库
+  const legacy = raw.prefsVersion == null;
   return {
-    autoScheduleEnabled: raw.autoScheduleEnabled !== false,
+    autoScheduleEnabled: legacy ? false : raw.autoScheduleEnabled === true,
     manualOverride:
       raw.manualOverride === "light" || raw.manualOverride === "dark" ? raw.manualOverride : null,
     lightStart: formatScheduleTimeForInput(raw.lightStart?.trim() || d.lightStart || DEFAULT_LIGHT_START),
     lightEnd: formatScheduleTimeForInput(raw.lightEnd?.trim() || d.lightEnd || DEFAULT_LIGHT_END),
     manualThemeId: raw.manualThemeId?.trim() || d.manualThemeId,
+    prefsVersion: 2,
   };
 }
 

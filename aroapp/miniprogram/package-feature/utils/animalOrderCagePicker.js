@@ -125,7 +125,9 @@ function submittableLines(cart, isPi, currentUserId) {
   return (Array.isArray(cart) ? cart : []).filter(function (l) {
     if (!l) return false;
     if (l.packageStatus === 'READY') return true;
-    return !!isPi && me !== '' && String(l.addedBy == null ? '' : l.addedBy) === me;
+    // mine 由服务端按 person.id 判出：同一人可能持 STAFF_ 与 aro 两个账号，
+    // 只比 addedBy 会把 PI 自己的草稿行漏掉，提交后它们留在购物车、笼位也一直占着。
+    return !!isPi && (l.mine === true || (me !== '' && String(l.addedBy == null ? '' : l.addedBy) === me));
   });
 }
 

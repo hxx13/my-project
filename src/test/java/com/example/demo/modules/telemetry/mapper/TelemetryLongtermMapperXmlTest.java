@@ -25,6 +25,7 @@ class TelemetryLongtermMapperXmlTest {
 
     private static final String[] XMLS = {
             "mapper/TelemetryLongtermVariableMapper.xml",
+            "mapper/TelemetryLongtermPartitionMapper.xml",
             "mapper/TelemetryLongtermSampleMapper.xml",
             "mapper/TelemetryLongtermSampleLogMapper.xml",
     };
@@ -65,7 +66,16 @@ class TelemetryLongtermMapperXmlTest {
         if (xmlPath.endsWith("VariableMapper.xml")) {
             return new String[]{NS + "TelemetryLongtermVariableMapper.selectAllOrdered",
                     NS + "TelemetryLongtermVariableMapper.deleteAll",
-                    NS + "TelemetryLongtermVariableMapper.insertBatch"};
+                    NS + "TelemetryLongtermVariableMapper.insertBatch",
+                    NS + "TelemetryLongtermVariableMapper.selectEnabledNamesByPartition"};
+        }
+        if (xmlPath.endsWith("PartitionMapper.xml")) {
+            return new String[]{NS + "TelemetryLongtermPartitionMapper.selectAllOrdered",
+                    NS + "TelemetryLongtermPartitionMapper.selectById",
+                    NS + "TelemetryLongtermPartitionMapper.insert",
+                    NS + "TelemetryLongtermPartitionMapper.updateName",
+                    NS + "TelemetryLongtermPartitionMapper.deleteById",
+                    NS + "TelemetryLongtermPartitionMapper.unassignVariables"};
         }
         if (xmlPath.endsWith("SampleLogMapper.xml")) {
             return new String[]{NS + "TelemetryLongtermSampleLogMapper.insert",

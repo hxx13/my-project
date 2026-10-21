@@ -19,6 +19,7 @@ public class MiniPreferencesService {
     private static final int MAX_SELECTIONS = 64;
     private static final int MAX_ADMIN_NAV_RECENT = 8;
     private static final int MAX_ADMIN_NAV_STARS = 64;
+    private static final int MAX_REMOTE_ROUTE_STARS = 128;
     private static final int MAX_STUDENT_NAV_RECENT = 8;
     private static final int MAX_STUDENT_NAV_STARS = 64;
     /** 侧栏路径前缀：管理员端 /admin、学生端 /student（与前端侧栏作用域一致） */
@@ -62,6 +63,7 @@ public class MiniPreferencesService {
             vo.setPageHelpIntroAck(sanitizePageHelpIntroAck(vo.getPageHelpIntroAck()));
             vo.setAdminNavRecent(sanitizeNavPaths(vo.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT, ADMIN_PATH_PREFIX));
             vo.setAdminNavStars(sanitizeNavPaths(vo.getAdminNavStars(), MAX_ADMIN_NAV_STARS, ADMIN_PATH_PREFIX));
+            vo.setRemoteRouteStars(sanitizeRouteStars(vo.getRemoteRouteStars(), MAX_REMOTE_ROUTE_STARS));
             vo.setAdminNavLock(sanitizeNavLock(vo.getAdminNavLock(), ADMIN_PATH_PREFIX));
             vo.setStudentNavRecent(sanitizeNavPaths(vo.getStudentNavRecent(), MAX_STUDENT_NAV_RECENT, STUDENT_PATH_PREFIX));
             vo.setStudentNavStars(sanitizeNavPaths(vo.getStudentNavStars(), MAX_STUDENT_NAV_STARS, STUDENT_PATH_PREFIX));
@@ -81,6 +83,30 @@ public class MiniPreferencesService {
         String json = objectMapper.writeValueAsString(normalized);
         userMapper.updateMiniPreferencesJsonById(userId, json);
         return normalized;
+    }
+
+    /**
+     * 按**单个页面**切换远程控制收藏（加/移），返回切换后的完整列表。
+     *
+     * <p>不让客户端传整份列表：两端/多标签同时改时，各自拿的是旧列表，
+     * 整份回写会把对方刚加的那条冲掉（实测出现过收藏凭空消失）。
+     * 这里以**库里的当前值为准**做一次原子切换。
+     */
+    public List<String> toggleRemoteRouteStar(String userId, String path) throws Exception {
+        String p = path == null ? "" : path.trim();
+        if (p.isEmpty() || !p.startsWith("/") || p.contains("..")) {
+            throw new IllegalArgumentException("路径不合法");
+        }
+        MiniPreferencesVo existing = load(userId);
+        List<String> stars = new ArrayList<>(
+                existing.getRemoteRouteStars() == null ? List.of() : existing.getRemoteRouteStars());
+        if (!stars.remove(p)) {
+            stars.add(p);
+        }
+        MiniPreferencesVo body = new MiniPreferencesVo();
+        body.setRemoteRouteStars(stars);
+        MiniPreferencesVo saved = save(userId, body);
+        return saved.getRemoteRouteStars() == null ? List.of() : saved.getRemoteRouteStars();
     }
 
     /**
@@ -113,6 +139,10 @@ public class MiniPreferencesService {
         }
         if (incoming.getAdminNavStars() == null) {
             incoming.setAdminNavStars(new ArrayList<>(existing.getAdminNavStars() == null ? List.of() : existing.getAdminNavStars()));
+        }
+        if (incoming.getRemoteRouteStars() == null) {
+            incoming.setRemoteRouteStars(new ArrayList<>(
+                    existing.getRemoteRouteStars() == null ? List.of() : existing.getRemoteRouteStars()));
         }
         if (incoming.getAdminNavLock() == null && existing.getAdminNavLock() != null) {
             incoming.setAdminNavLock(existing.getAdminNavLock());
@@ -196,6 +226,31 @@ public class MiniPreferencesService {
     }
 
     /** 侧栏路径白名单：必须落在 prefix 下（管理员 /admin、学生端 /student） */
+    /** 远程切换收藏：只要求是站内绝对路径（页面清单里也有 /animal-room-telemetry 这类非 /admin 路径） */
+    private static List<String> sanitizeRouteStars(List<String> raw, int max) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) {
+            return out;
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (String p : raw) {
+            if (p == null) {
+                continue;
+            }
+            String path = p.trim();
+            if (path.isEmpty() || !path.startsWith("/") || path.length() > 512 || path.contains("..")) {
+                continue;
+            }
+            if (seen.add(path)) {
+                out.add(path);
+            }
+            if (out.size() >= max) {
+                break;
+            }
+        }
+        return out;
+    }
+
     private static List<String> sanitizeNavPaths(List<String> raw, int max, String prefix) {
         List<String> out = new ArrayList<>();
         if (raw == null) {
@@ -280,6 +335,7 @@ public class MiniPreferencesService {
         vo.setPageHelpIntroAck(new LinkedHashMap<>());
         vo.setAdminNavRecent(new ArrayList<>());
         vo.setAdminNavStars(new ArrayList<>());
+        vo.setRemoteRouteStars(new ArrayList<>());
         vo.setAdminNavLock(null);
         vo.setStudentNavRecent(new ArrayList<>());
         vo.setStudentNavStars(new ArrayList<>());
@@ -296,6 +352,7 @@ public class MiniPreferencesService {
         out.setPageHelpIntroAck(sanitizePageHelpIntroAck(in.getPageHelpIntroAck()));
         out.setAdminNavRecent(sanitizeNavPaths(in.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT, ADMIN_PATH_PREFIX));
         out.setAdminNavStars(sanitizeNavPaths(in.getAdminNavStars(), MAX_ADMIN_NAV_STARS, ADMIN_PATH_PREFIX));
+        out.setRemoteRouteStars(sanitizeRouteStars(in.getRemoteRouteStars(), MAX_REMOTE_ROUTE_STARS));
         out.setAdminNavLock(sanitizeNavLock(in.getAdminNavLock(), ADMIN_PATH_PREFIX));
         out.setStudentNavRecent(sanitizeNavPaths(in.getStudentNavRecent(), MAX_STUDENT_NAV_RECENT, STUDENT_PATH_PREFIX));
         out.setStudentNavStars(sanitizeNavPaths(in.getStudentNavStars(), MAX_STUDENT_NAV_STARS, STUDENT_PATH_PREFIX));

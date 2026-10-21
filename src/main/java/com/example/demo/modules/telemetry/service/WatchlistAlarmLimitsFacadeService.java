@@ -120,6 +120,7 @@ public class WatchlistAlarmLimitsFacadeService {
                 .alarmBand(null)
                 .valueTrend(x.getValueTrend())
                 .watchlistTagId(x.getWatchlistTagId())
+                .showInAnimalRoom(x.getShowInAnimalRoom())
                 .alarmOverrideMin(null)
                 .alarmOverrideMax(null)
                 .value(x.getValue())

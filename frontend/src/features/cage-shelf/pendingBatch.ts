@@ -45,6 +45,8 @@ export interface PendingItem {
   aupId?: string;
   /** 预定模式：该笼位归属给哪个账号 */
   assigneeAccountId?: string;
+  /** 划分模式：拖进「取消划分」区 = 提交时清掉该笼位已有的划分（与 assigneeAccountId 互斥） */
+  divisionClear?: boolean;
   /** 分配模式：该笼位的动作类型（allocate=下发AUP / cancel=撤销分配），同批必须一致 */
   kind?: string;
   /** 确认模式：到场的认领 id */

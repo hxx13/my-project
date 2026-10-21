@@ -14,12 +14,96 @@
  * 不做 IP 跳转（手机上没有意义），其余与网页端一致。
  */
 const api = require('../../utils/videoWallApi.js');
+const remoteApi = require('../../utils/remoteScreenApi.js');
 const pagePermission = require('../../../utils/pagePermission.js');
 const springAuth = require('../../../utils/springAuth.js');
 
 const PAGE_PATH = '/package-feature/pages/videoWall/index';
 /** 整机操控展厅大屏（含向现场推流），只放给超管；网页端同档（SuperAdminGuard） */
 const FALLBACK_ROLE = 'SUPER_ADMIN';
+
+/**
+ * 可远程切换的页面：**名称与后台导航注册表（nav-manager 里看到的那份）逐条对齐**。
+ * 小程序拿不到网页端的注册表源码，所以这里是它的快照 —— 那边改名/增删后要同步更新这一份；
+ * 网页端（参观弹窗 → 网页控制）是直接读注册表的，不受影响。
+ */
+const WEB_ROUTES = [
+  { label: '消息与通讯录', value: '/console/admin/staff-messages' },
+  { label: '人员授权', value: '/console/admin/personnel' },
+  { label: '消息通知', value: '/console/admin/notifications' },
+  { label: '警告与弹窗公告', value: '/console/admin/student-violations' },
+  { label: '小程序内容中心', value: '/console/admin/content-hub' },
+  { label: '系统设置', value: '/console/admin/settings' },
+  { label: '日志控制台', value: '/console/admin/logging-console' },
+  { label: 'AGV 小车', value: '/console/admin/agv-tracker' },
+  { label: '系统监控', value: '/console/admin/monitor' },
+  { label: '接口中心', value: '/console/admin/api-docs' },
+  { label: 'AI 操作审计', value: '/console/admin/ai-audit' },
+  { label: 'AI 计时器', value: '/console/admin/ai-timers' },
+  { label: '侧栏导航管理', value: '/console/admin/nav-manager' },
+  { label: '账号与安全', value: '/console/admin/profile-security' },
+  { label: '知识库', value: '/console/admin/knowledge' },
+  { label: '注册推荐码', value: '/console/admin/registration-invites' },
+  { label: '推送仪表盘', value: '/console/admin/push-dashboard' },
+  { label: '推送配置', value: '/console/admin/push-config' },
+  { label: '通知聚合', value: '/console/admin/notification-digest' },
+  { label: '网络广播', value: '/console/admin/broadcast' },
+  { label: '饮水流量监测', value: '/console/admin/avidity' },
+  { label: '大华发卡', value: '/console/admin/dahua-issue' },
+  { label: '视频上墙', value: '/console/admin/video-wall' },
+  { label: '人脸识别调试', value: '/console/admin/face-debug' },
+  { label: '门禁控制', value: '/console/admin/door-control' },
+  { label: '门禁规则配置', value: '/console/admin/access-rules' },
+  { label: '门禁数据工作台', value: '/console/admin/dahua-swing-tasks' },
+  { label: '门禁联动规则', value: '/console/admin/dahua-swing-rules' },
+  { label: '门禁成功刷卡规则', value: '/console/admin/door-swipe-rules' },
+  { label: '自动化日志', value: '/console/admin/automation-logs' },
+  { label: '经验值统计', value: '/console/admin/exp-stats' },
+  { label: '部门落库', value: '/console/admin/department-storage' },
+  { label: 'WinCC 变量导入', value: '/console/admin/telemetry-watchlists' },
+  { label: '温湿度数据归档', value: '/console/admin/telemetry-archive' },
+  { label: '数据监测', value: '/console/admin/telemetry-longterm' },
+  { label: '遥测历史分析', value: '/console/admin/telemetry-insights' },
+  { label: '动物房温湿度监测', value: '/console/animal-room-telemetry' },
+  { label: '动物房驾驶舱', value: '/console/animal-room-cockpit' },
+  { label: '数字孪生大屏', value: '/console/digital-twin-screen' },
+  { label: '3D 楼盘', value: '/console/digital-twin-3d' },
+  { label: '门组落库', value: '/console/admin/door-group-storage' },
+  { label: '通道编码', value: '/console/admin/device-channels' },
+  { label: 'ARO房间', value: '/console/admin/aro-rooms' },
+  { label: '笼架信息', value: '/console/admin/cage-shelves' },
+  { label: '笼架与笼位索引', value: '/console/admin/cage-shelf-indexes' },
+  { label: '卡牌打印', value: '/console/admin/card-print' },
+  { label: '笼架特殊状态', value: '/console/admin/cage-shelves/special-status' },
+  { label: '表单发布', value: '/console/admin/cage-shelves/forms' },
+  { label: '表单审计', value: '/console/admin/cage-shelves/forms/audit' },
+  { label: '培训管理', value: '/console/admin/aro-binding' },
+  { label: '试卷管理', value: '/console/admin/exam-papers' },
+  { label: '检查维护', value: '/console/admin/facility-maintenance' },
+  { label: '资产记录', value: '/console/admin/asset-records' },
+  { label: '物品台账', value: '/console/admin/inventory' },
+  { label: '转移记录', value: '/console/admin/asset-transfer-records' },
+  { label: '文件模板库', value: '/console/admin/file-templates' },
+  { label: '打印工位配置', value: '/console/admin/print-stations' },
+  { label: '打印工位机', value: '/console/admin/print-station' },
+  { label: 'SOP 操作', value: '/console/admin/sop' },
+  { label: '填报报表管理', value: '/console/admin/report-form' },
+  { label: '填报中心', value: '/console/admin/report-fill' },
+  { label: 'AUP 计划书', value: '/console/admin/aup' },
+  { label: '统计与审计', value: '/console/admin/analytics' },
+  { label: '报修申请', value: '/console/admin/repair-request' },
+  { label: '报修处理', value: '/console/admin/repair-process' },
+  { label: '采购申请', value: '/console/admin/purchase-request' },
+  { label: '采购处理', value: '/console/admin/purchase-process' },
+  { label: '领用物资', value: '/console/admin/supplies' },
+  { label: '领用导出', value: '/console/admin/supplies/audit-export' },
+  { label: '学生审核', value: '/console/admin/material/review' },
+  { label: '物品管理', value: '/console/admin/material/manage' },
+  { label: '申领审计导出', value: '/console/admin/material/audit-export' },
+  { label: '用户对话存档', value: '/console/admin/conversation-archive' },
+  { label: '实验动物订购', value: '/console/admin/animal-order' },
+  { label: '动物订购审核', value: '/console/admin/animal-order-review' },
+];
 
 Page({
   data: {
@@ -86,6 +170,18 @@ Page({
     tourQueue: [],
     /** 当前预设在这条队列里的位次，-1 = 当前预设不在队列里 */
     tourIndex: -1,
+    /** 控制网页：一级抽屉（选哪台）+ 二级抽屉（选页面） */
+    webCtrlOpen: false,
+    webScreens: [],
+    webPairCode: '',
+    webTarget: null,
+    webRouteOpen: false,
+    webRouteQuery: '',
+    /** 全部可选页面（优先用后端持久化的导航配置，读不到才用内置快照） */
+    webAllRoutes: WEB_ROUTES,
+    webRouteRows: WEB_ROUTES,
+    /** 收藏的页面（与后台侧栏同一份数据） */
+    webStarPaths: [],
     /** 打开「配置参观队列」抽屉 */
     queueOpen: false,
     queueWallId: '',
@@ -120,7 +216,8 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadAll().then(() => wx.stopPullDownRefresh());
+    // 用 finally：loadAll 内部即使抛错也要把转圈收回去，否则会一直挂着
+    this.loadAll().finally(() => wx.stopPullDownRefresh());
   },
 
   // ------------------------------------------------------------ 载入
@@ -1235,24 +1332,180 @@ Page({
     this.setData({ tourIndex: idx });
   },
 
-  /** 边缘的上下：按人排的顺序切预设 */
-  onTourStep(e) {
-    const dir = e.currentTarget.dataset.dir;
-    const q = this.data.tourQueue || [];
-    if (!q.length) {
-      this.toast('先点「配置预设」排一条参观队列');
-      return;
-    }
-    const cur = this.data.tourIndex;
-    const i = cur < 0
-      ? (dir === 'prev' ? q.length - 1 : 0)
-      : (cur + (dir === 'prev' ? -1 : 1) + q.length) % q.length;
-    this.gotoTourIndex(i);
-  },
-
   /** 队列里直接点某一项：当锚点切过去 */
   onPickTourItem(e) {
     this.gotoTourIndex(Number(e.currentTarget.dataset.index));
+  },
+
+  // ---- 控制网页（参观模式里用）----
+  //
+  // 参观讲解时经常要顺带给展厅那台电脑切页面。一级抽屉选哪台网页，
+  // 选中后展开二级抽屉选要跳到的页面；别的账号的页面用配对码连。
+
+  onOpenWebCtrl() {
+    this.setData({ webCtrlOpen: true, webPairCode: '' });
+    this.loadWebScreens();
+    this.loadWebRoutes();
+    this.loadWebStars();
+  },
+
+  /** 收藏：读回来之后重排（收藏排前面） */
+  async loadWebStars() {
+    const paths = await remoteApi.fetchStarredRoutes();
+    this.setData({
+      webStarPaths: paths || [],
+      webRouteRows: this.filterRoutes(this.data.webAllRoutes, this.data.webRouteQuery, paths || []),
+    });
+  },
+
+  /** 点星号：**交后端按单个路由切换**（不传整份列表，避免多端互相覆盖） */
+  async onToggleWebStar(e) {
+    const value = e.currentTarget.dataset.route;
+    const key = remoteApi.normalizeRoute(value);
+    try {
+      const stars = await remoteApi.toggleStarRoute(key);
+      this.setData({
+        webStarPaths: stars,
+        webRouteRows: this.filterRoutes(this.data.webAllRoutes, this.data.webRouteQuery, stars),
+      });
+    } catch (err) {
+      this.toast('收藏保存失败：' + (err.message || ''));
+    }
+  },
+
+  /** 页面清单取后端持久化的导航配置（nav-manager 改的名字立刻生效） */
+  async loadWebRoutes() {
+    const self = this;
+    try {
+      const routes = await remoteApi.fetchNavRoutes();
+      if (routes && routes.length) {
+        self.setData({
+          webAllRoutes: routes,
+          webRouteRows: self.filterRoutes(routes, self.data.webRouteQuery, self.data.webStarPaths),
+        });
+      }
+    } catch (e) {
+      // 读不到就用内置快照，不影响使用
+      console.warn('[视频上墙] 读取页面清单失败，用内置列表:', e.message || e);
+    }
+  },
+
+  /**
+   * @param starList 显式传入的收藏列表。**必须传**：setData 是异步的，
+   *   刚改完收藏就调这个方法时 this.data 里还是旧值，不传就会出现
+   *   「刚收藏的那条没上移、也没标成已收藏」。
+   */
+  filterRoutes(routes, rawQuery, starList) {
+    const q = String(rawQuery || '').trim().toLowerCase();
+    const stars = starList || this.data.webStarPaths || [];
+    const rows = (routes || [])
+      .filter(function (r) {
+        if (!q) return true;
+        return r.label.toLowerCase().indexOf(q) >= 0 || r.value.toLowerCase().indexOf(q) >= 0;
+      })
+      .map(function (r) {
+        return Object.assign({}, r, {
+          starred: stars.indexOf(remoteApi.normalizeRoute(r.value)) >= 0,
+        });
+      });
+    // 收藏置顶，其余保持原有顺序
+    rows.sort(function (a, b) {
+      if (a.starred === b.starred) return 0;
+      return a.starred ? -1 : 1;
+    });
+    return rows;
+  },
+
+  onCloseWebCtrl() {
+    this.setData({ webCtrlOpen: false });
+  },
+
+  async loadWebScreens() {
+    const self = this;
+    try {
+      const rows = await remoteApi.list();
+      this.setData({
+        webScreens: (rows || []).map(function (s) {
+          return {
+            screenId: s.screenId,
+            code: s.code || '',
+            name: s.label || '未命名屏幕',
+            route: s.route || '—',
+          };
+        }),
+      });
+    } catch (e) {
+      self.toast(e.message || '读取网页列表失败');
+    }
+  },
+
+  onPickWebScreen(e) {
+    const id = e.currentTarget.dataset.id;
+    const s = (this.data.webScreens || []).find(function (x) {
+      return x.screenId === id;
+    });
+    if (!s) return;
+    this.setData({
+      webTarget: s,
+      webRouteOpen: true,
+      webRouteQuery: '',
+      webRouteRows: WEB_ROUTES,
+    });
+  },
+
+  onWebPairInput(e) {
+    this.setData({ webPairCode: String(e.detail.value || '').toUpperCase() });
+  },
+
+  async onWebPair() {
+    const code = String(this.data.webPairCode || '').trim();
+    if (!code) {
+      this.toast('请输入页面上的配对码');
+      return;
+    }
+    try {
+      const s = await remoteApi.pair(code);
+      this.setData({
+        webTarget: {
+          screenId: s.screenId,
+          code: s.code || code,
+          name: s.label || '未命名屏幕',
+          route: s.route || '—',
+        },
+        webRouteOpen: true,
+        webRouteQuery: '',
+        webRouteRows: WEB_ROUTES,
+      });
+    } catch (e) {
+      this.toast(e.message || '配对失败');
+    }
+  },
+
+  onCloseWebRoute() {
+    this.setData({ webRouteOpen: false, webTarget: null });
+  },
+
+  onWebRouteInput(e) {
+    const raw = e.detail.value || '';
+    this.setData({
+      webRouteQuery: raw,
+      webRouteRows: this.filterRoutes(this.data.webAllRoutes, raw, this.data.webStarPaths),
+    });
+  },
+
+  async onPickWebRoute(e) {
+    const route = e.currentTarget.dataset.route;
+    const t = this.data.webTarget;
+    if (!t || !route) return;
+    try {
+      await remoteApi.navigate(t.screenId, route, t.code);
+      // **不关抽屉**：讲解时经常要连着切好几页；关掉还会让人误以为「入口丢了」。
+      // 把当前页面就地更新，下面「当前：」立刻跟着变。
+      this.setData({ webTarget: Object.assign({}, t, { route: route }) });
+      this.toast('已让「' + t.name + '」切过去');
+    } catch (err) {
+      this.toast(err.message || '下发失败');
+    }
   },
 
   gotoTourIndex(i) {
@@ -1260,119 +1513,6 @@ Page({
     if (!q[i]) return;
     this.setData({ tourIndex: i });
     this.onPresetChange({ detail: { value: q[i].taskId } });
-  },
-
-  // ---- 中心操纵杆：挪选中框 / 确认放大 ----
-
-  onPadMove(e) {
-    const dir = e.currentTarget.dataset.dir;
-    const screens = this._screens || [];
-    if (!screens.length) return;
-    let sel = this.data.selectedKey;
-    // 放大态下按方向键＝先还原再挪一格：不然选择框画在放大那一格里，根本看不见
-    if (this.data.zoomKey) {
-      sel = this.data.zoomKey;
-      const z = sel.split(':');
-      this.toggleZoom(z[0], Number(z[1]));
-      this.setData({ selectedKey: sel });
-    }
-    if (!sel) {
-      this.selectPadCell(String(screens[0].screenId), 0);
-      return;
-    }
-    const sid = sel.split(':')[0];
-    const index = Number(sel.split(':')[1]);
-    const target = this.padTarget(sid, index, dir);
-    if (target >= 0) {
-      this.selectPadCell(sid, target);
-      return;
-    }
-    // 这块屏在这个方向到此为止：双屏墙就顺着翻到相邻那块屏
-    let si = -1;
-    screens.forEach(function (s, i) {
-      if (String(s.screenId) === sid) si = i;
-    });
-    if (si < 0) return;
-    const forward = dir === 'down' || dir === 'right';
-    const ns = forward ? si + 1 : si - 1;
-    if (ns < 0 || ns >= screens.length) return;
-    const nsid = String(screens[ns].screenId);
-    const nrects = this._rects[nsid] || api.DEFAULT_LAYOUT.rects;
-    this.selectPadCell(nsid, forward ? 0 : nrects.length - 1);
-  },
-
-  /**
-   * 该方向上的下一个格子。
-   * 宫格不一定等分（左大右小这种），所以按格子中心点算：先要求方向一致，
-   * 再用「主轴距离 + 2×横向偏移」挑最近的 —— 同列/同行的优先，隔着不对称布局也能走到。
-   */
-  padTarget(sid, index, dir) {
-    const rects = this._rects[sid] || api.DEFAULT_LAYOUT.rects;
-    const cur = rects[index];
-    if (!cur) return -1;
-    const cx = cur.left + cur.width / 2;
-    const cy = cur.top + cur.height / 2;
-    let best = -1;
-    let bestScore = Infinity;
-    rects.forEach(function (r, i) {
-      if (i === index) return;
-      const dx = r.left + r.width / 2 - cx;
-      const dy = r.top + r.height / 2 - cy;
-      let main;
-      let cross;
-      if (dir === 'left') {
-        if (dx >= -0.5) return;
-        main = -dx;
-        cross = Math.abs(dy);
-      } else if (dir === 'right') {
-        if (dx <= 0.5) return;
-        main = dx;
-        cross = Math.abs(dy);
-      } else if (dir === 'up') {
-        if (dy >= -0.5) return;
-        main = -dy;
-        cross = Math.abs(dx);
-      } else {
-        if (dy <= 0.5) return;
-        main = dy;
-        cross = Math.abs(dx);
-      }
-      const score = main + cross * 2;
-      if (score < bestScore) {
-        bestScore = score;
-        best = i;
-      }
-    });
-    return best;
-  },
-
-  selectPadCell(sid, index) {
-    this.setData({ selectedKey: sid + ':' + index });
-    this.refreshCanvas();
-  },
-
-  /** 中间那颗圆 OK：等于双击选中的格子 */
-  onPadOk() {
-    let sel = this.data.selectedKey;
-    if (!sel) {
-      // 还没选就按 OK：直接取第一格有画面的，别只弹一句提示让人干等
-      const s0 = this._screens[0];
-      if (!s0) return;
-      const sid = String(s0.screenId);
-      const rects = this._rects[sid] || api.DEFAULT_LAYOUT.rects;
-      for (let i = 0; i < rects.length; i += 1) {
-        if (this._slots[sid + ':' + i]) {
-          sel = sid + ':' + i;
-          break;
-        }
-      }
-      if (!sel) {
-        this.toast('这面屏还没有画面');
-        return;
-      }
-      this.setData({ selectedKey: sel });
-    }
-    this.toggleZoom(sel.split(':')[0], Number(sel.split(':')[1]));
   },
 
   // ---- 配置参观队列（抽屉） ----

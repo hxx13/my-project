@@ -33,6 +33,7 @@ import {
   adminChromeCopySelectionOrPageUrl,
   adminChromePasteIntoFocused,
   adminChromeSelectAllInContext,
+  type EditableTarget,
 } from "@/features/admin/adminChromeClipboard";
 import { AdminEntryPermQuickSection } from "@/features/admin/AdminEntryPermQuickSection";
 import { ADMIN_STAFF_CONTACTS_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
@@ -118,6 +119,8 @@ export type AdminChromeContextMenuPayload = {
   nav: AdminNavContextMenuTarget | null;
   sensitive: AdminSensitiveContextMenuTarget | null;
   friend: AdminFriendRowContextMenuTarget | null;
+  /** 右键按下时的输入框/富文本目标；菜单自身会抢焦点，粘贴时不能用 activeElement */
+  editable: EditableTarget | null;
 };
 
 export type AdminChromeContextMenuProps = {
@@ -499,7 +502,7 @@ export function AdminChromeContextMenu({
             label="粘贴"
             onClick={async () => {
               try {
-                await adminChromePasteIntoFocused();
+                await adminChromePasteIntoFocused(payload.editable);
                 toast.success("已粘贴");
                 onClose();
               } catch (e) {
@@ -512,7 +515,7 @@ export function AdminChromeContextMenu({
             label="全选"
             onClick={() => {
               try {
-                adminChromeSelectAllInContext();
+                adminChromeSelectAllInContext(payload.editable);
                 toast.success("已尝试全选");
                 onClose();
               } catch (e) {

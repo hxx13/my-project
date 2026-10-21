@@ -57,6 +57,18 @@ export function PlainSelect({
   const close = useCallback(() => setOpen(false), []);
   const { panelStyle } = useMultiSelectPopover({ triggerRef, panelRef, open, onClose: close });
 
+  /**
+   * 浮层搜索框要不要自动聚焦。
+   *
+   * <p>**触屏设备上不能自动聚焦**：平板一点开下拉就会弹软键盘，视口被顶起来，
+   * 浮层被挤出屏幕/被当成「点外面」关掉 —— 表现是「点预设打不开，还总弹键盘」。
+   * 有实体指针（鼠标/触控板）时自动聚焦仍然好用，所以按主要指针类型区分。
+   */
+  const autoFocusSearch = useMemo(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(pointer: fine)").matches;
+  }, []);
+
   const filtered = useMemo(() => {
     const k = keyword.trim().toLowerCase();
     return k ? options.filter((o) => o.toLowerCase().includes(k)) : options;
@@ -115,7 +127,7 @@ export function PlainSelect({
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--app-color-text-tertiary)]" />
                 <input
-                  autoFocus
+                  autoFocus={autoFocusSearch}
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   placeholder={searchPlaceholder ?? `搜索${placeholder}`}

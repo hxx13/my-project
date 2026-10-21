@@ -10,6 +10,11 @@
  * 纯展示组件：模式清单/可见范围/当前模式由宿主传入，点选只抛事件；
  * 再点当前模式会抛 `mode: 'view'`（与 H5 `pickMode` 同规则）。
  *
+ * 圆钮语义（2026-10-21 用户口径）：
+ *   - 查看模式：点圆钮 = 展开模式列表（原逻辑不变）；
+ *   - 非查看模式：**收起状态下**点圆钮 = 直接退出当前模式回到查看，不再先展开；
+ *   - 已经展开时点圆钮仍然只是收起列表。
+ *
  * 用法：<mode-dock modes="{{ modeOptions }}" current="{{ pageMode }}" bind:change="onDockMode" />
  * 事件：change，detail = { mode }
  */
@@ -94,7 +99,16 @@ Component({
   },
 
   methods: {
-    onToggle() { this.setData({ open: !this.data.open }); },
+    onToggle() {
+      // 非查看模式下、列表还没展开 → 圆钮直接当作「退出到查看」，不先展开
+      var cur = this.data.current;
+      if (!this.data.open && cur && cur !== 'view') {
+        this.setData({ open: false });
+        this.triggerEvent('change', { mode: 'view' });
+        return;
+      }
+      this.setData({ open: !this.data.open });
+    },
     onPick(e) {
       var mode = e.currentTarget.dataset.mode;
       if (!mode) return;

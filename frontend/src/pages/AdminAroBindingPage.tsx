@@ -112,6 +112,7 @@ export default function AdminAroBindingPage() {
   const isPlatformOwner = authStorage.getRole() === "PLATFORM_OWNER";
 
   const [sPage, setSPage] = useState(1);
+  const [campusTab, setCampusTab] = useState("");
   const [kwInput, setKwInput] = useState("");
   const [keyword, setKeyword] = useState("");
   const [selected, setSelected] = useState<TrainingSeries | null>(null);
@@ -215,8 +216,9 @@ export default function AdminAroBindingPage() {
   }, [expanded]);
 
   const { data: sd, isLoading: sl } = useQuery({
-    queryKey: ["training-list", sPage, keyword],
-    queryFn: async () => fetchTrainings({ page: sPage, pageSize: PAGE_SIZE, keyword: keyword || undefined }),
+    queryKey: ["training-list", keyword],
+    // 一次取全量：校区 tab 的分组/计数与管理端排序都基于完整列表，分页在前端切片
+    queryFn: async () => fetchTrainings({ page: 1, pageSize: 1000, keyword: keyword || undefined }),
     placeholderData: (prev) => prev,
   });
   const { data: detail, isLoading: dl } = useQuery({
@@ -279,8 +281,31 @@ export default function AdminAroBindingPage() {
   const handlePublish = (s: TrainingSeries) => seriesAction(() => publishTraining(s.id), "已发布");
   const handleUnpublish = (s: TrainingSeries) => seriesAction(() => unpublishTraining(s.id), "已取消发布");
 
-  const series = sd?.list ?? [];
-  const sTotal = sd?.total ?? 0;
+  // 校区 tab：顺序与「排序配置」一致（有校区在前，未分组最后），组内顺序由后端按配置序号返回
+  const allSeries = sd?.list ?? [];
+  const campusKeyOf = (s: TrainingSeries) => (s.campus ?? "").trim();
+  const campusTabs = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of allSeries) {
+      const k = campusKeyOf(s);
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()]
+      .sort((a, b) => {
+        const ka = a[0] ? 0 : 1;
+        const kb = b[0] ? 0 : 1;
+        if (ka !== kb) return ka - kb;
+        return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+      })
+      .map(([key, count]) => ({ key, label: key || "其他", count }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allSeries]);
+  const activeCampusKey = campusTabs.some((t) => t.key === campusTab)
+    ? campusTab
+    : campusTabs[0]?.key ?? "";
+  const campusSeries = allSeries.filter((s) => campusKeyOf(s) === activeCampusKey);
+  const series = campusSeries.slice((sPage - 1) * PAGE_SIZE, sPage * PAGE_SIZE);
+  const sTotal = campusSeries.length;
   const sPages = Math.max(1, Math.ceil(sTotal / PAGE_SIZE));
   const canWrite = !!selected && (isPlatformOwner || (selected.ownerIds ?? []).includes(currentUserId));
   const showExam = (detail?.paperIds ?? []).length > 0;
@@ -475,6 +500,36 @@ export default function AdminAroBindingPage() {
           </div>
         </div>
       </AdminFormCard>
+      {campusTabs.length > 1 && (
+        <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5" role="tablist" aria-label="校区筛选">
+          {campusTabs.map((t) => {
+            const active = t.key === activeCampusKey;
+            return (
+              <button
+                key={t.key || "__none__"}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => {
+                  setCampusTab(t.key);
+                  setSPage(1);
+                }}
+                className={cn(
+                  "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                  active
+                    ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)] text-white"
+                    : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]",
+                )}
+              >
+                {t.label}
+                <span className={cn("ml-1 tabular-nums", active ? "opacity-80" : "text-[var(--app-color-text-tertiary)]")}>
+                  {t.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
           {sl ? <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]"><Loader2 className="h-4 w-4 animate-spin mr-2" />加载中…</div>

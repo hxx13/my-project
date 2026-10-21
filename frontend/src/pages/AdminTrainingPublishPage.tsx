@@ -23,6 +23,7 @@ import {
 } from "@/api/domains/training.api";
 import { fetchExamPapers, fetchExamFolders } from "@/features/exam/api/examPaper.api";
 import type { ExamPaperSummary, ExamPaperFolder } from "@/features/exam/api/examPaper.api";
+import { fetchLearningVideos, type LearningVideoRow } from "@/api/domains/learningVideo.api";
 import { appPrompt } from "@/lib/appDialog";
 import {
   Dialog,
@@ -177,6 +178,83 @@ function PaperPicker({
   );
 }
 
+/** 学习视频多选下拉（只列已上架；学生报名前必须全部看完） */
+function VideoPicker({
+  videos,
+  selected,
+  onToggle,
+}: {
+  videos: LearningVideoRow[];
+  selected: number[];
+  onToggle: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const q = search.trim().toLowerCase();
+  const filtered = q ? videos.filter((v) => (v.title ?? "").toLowerCase().includes(q)) : videos;
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(adminInputClass, "flex items-center justify-between text-left")}
+      >
+        <span className={selected.length ? "text-neutral-900" : "text-neutral-400"}>
+          {selected.length ? `已选 ${selected.length} 个视频` : "选择学习视频…"}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-neutral-400" />
+      </button>
+      {open && (
+        <div className="absolute z-30 mt-1 w-full min-w-[18rem] rounded-lg border border-neutral-200 bg-white shadow-lg">
+          <div className="p-2 pb-1">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="搜索视频标题"
+                className={cn(adminInputClass, "pl-8")}
+              />
+            </div>
+          </div>
+          <div className="max-h-64 space-y-0.5 overflow-auto p-2">
+            {filtered.length === 0 ? (
+              <div className="px-2 py-3 text-center text-xs text-neutral-400">暂无已上架视频，请先在「考试试卷 → 视频学习」上传</div>
+            ) : (
+              filtered.map((v) => (
+                <label
+                  key={v.id}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(v.id)}
+                    onChange={() => onToggle(v.id)}
+                    className="h-3.5 w-3.5 shrink-0 accent-[var(--app-color-primary)]"
+                  />
+                  <span className="truncate">{v.title}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminTrainingPublishPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -195,6 +273,7 @@ export default function AdminTrainingPublishPage() {
   const [ownerNames, setOwnerNames] = useState<string[]>([]);
   const [campus, setCampus] = useState("");
   const [paperIds, setPaperIds] = useState<number[]>([]);
+  const [videoIds, setVideoIds] = useState<number[]>([]);
   const [occurrences, setOccurrences] = useState<OccurrenceRow[]>([]);
   const [form, setForm] = useState<OccurrenceRow>(emptyOccurrence());
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -214,6 +293,12 @@ export default function AdminTrainingPublishPage() {
     () => (paperData?.list ?? []).filter((p) => p.status === "PUBLISHED"),
     [paperData],
   );
+
+  const { data: videoData = [] } = useQuery({
+    queryKey: ["learning-videos"],
+    queryFn: fetchLearningVideos,
+  });
+  const videos = useMemo(() => videoData.filter((v) => v.active === 1), [videoData]);
 
   const { data: locations = [], refetch: refetchLocations } = useQuery({
     queryKey: ["training-locations"],
@@ -249,6 +334,7 @@ export default function AdminTrainingPublishPage() {
     setOwnerNames(editDetail.ownerNames ?? editDetail.ownerIds ?? []);
     setCampus(editDetail.campus ?? "");
     setPaperIds((editDetail.paperIds ?? []).map((id) => Number(id)));
+    setVideoIds((editDetail.videoIds ?? []).map((id) => Number(id)));
     const occs = (editDetail.occurrences ?? []).map((o) => ({
       id: o.id,
       startTime: toDatetimeLocal(o.startTime),
@@ -282,6 +368,9 @@ export default function AdminTrainingPublishPage() {
   const togglePaper = (id: number) =>
     setPaperIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
+  const toggleVideo = (id: number) =>
+    setVideoIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
   const toggleManyPapers = (ids: number[], value: boolean) =>
     setPaperIds((prev) => {
       const set = new Set(prev);
@@ -310,6 +399,7 @@ export default function AdminTrainingPublishPage() {
         name: name.trim(),
         typeName: typeName || undefined,
         paperIds,
+        videoIds,
         ownerIds,
         campus: campus || null,
         recurrence: recurrence.trim() || null,
@@ -490,6 +580,10 @@ export default function AdminTrainingPublishPage() {
                   onToggle={togglePaper}
                   onToggleMany={toggleManyPapers}
                 />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className={adminLabelClass}>学习视频（可选，多选；报名前必须全部看完）</label>
+                <VideoPicker videos={videos} selected={videoIds} onToggle={toggleVideo} />
               </div>
             </div>
           </AdminFormCard>

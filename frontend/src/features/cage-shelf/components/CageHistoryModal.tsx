@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Play } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,12 +11,22 @@ import { fetchCageHistory, type CageHistoryEvent, type CageHistoryView } from "@
 import { fetchCageTemplate, type CageTemplateDetail } from "../api/cageForm.api";
 import { flattenFields } from "./CageFormFill";
 import { CAGE_FORM_KEY } from "../cageFormConstants";
+import { CAGE_BOX_ACTIONS, isVideoMediaUrl } from "../constants";
 
 type FieldRef = { canonical: string; label: string };
 type ChangeRow = { canonical?: string | null; label?: string | null; before?: string | null; after?: string | null };
 
 function fmt(s?: string | null): string {
   return s ? s.replace("T", " ").substring(0, 16) : "—";
+}
+
+/** 时间轴左栏用：日期一行、时分一行，倒序阅读时第一眼就是「什么时候」。 */
+function splitAt(s?: string | null): { date: string; time: string } {
+  if (!s) return { date: "—", time: "" };
+  const t = s.replace("T", " ").trim();
+  const [date, rest] = t.split(/\s+/);
+  const time = (rest ?? "").substring(0, 5);
+  return { date: date || "—", time: time || t.substring(0, 16) };
 }
 
 /** 审计落库的布尔是字面量 "true"/"false"，其余值写库时已是可读文本。空值单独返回 null 好让调用方显式标注。 */
@@ -46,28 +57,240 @@ const KIND_META: Record<string, { label: string; tone: string; dot: string }> = 
   EDIT: { label: "原地编辑", tone: "none", dot: "var(--app-color-border-strong)" },
 };
 
-const isNoop = (c: ChangeRow) => (c.before ?? "") === (c.after ?? "");
+/* ── 值展示：历史里存的是表单原始值，「本地扩展数据」是一段 JSON + 一串上传地址。
+      直接打印既看不懂，也会把「换了个主机名」当成一次变更；所以按字段拆开、附件出缩略图。 ── */
 
-/** 单条变更：旧值弱化划掉 → 新值强调；清空显式写「（清空）」而不是留白。 */
-function DiffLine({ label, before, after }: { label: string; before?: string | null; after?: string | null }) {
-  const b = show(before);
-  const a = show(after);
+/** 历史里可能存着别的主机写进数据的绝对地址（http://localhost:8081/api/upload/…），
+ *  统一收敛到当前站点同路径 —— 否则预览图会打到用户本机的 8081。文件本身是软删除的，
+ *  从笼位移除后仍留在磁盘上，历史里的旧地址必须还能打开。 */
+function mediaUrl(raw: string): string {
+  const u = raw.trim();
+  const i = u.indexOf("/api/upload/");
+  return i >= 0 ? u.slice(i) : u;
+}
+
+const MEDIA_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v)(?:[?#]|$)/i;
+const isMediaUrl = (v: unknown): v is string => typeof v === "string" && MEDIA_EXT_RE.test(v);
+
+/** 只有 `{…}` / `[…]` 且解析得出来才当结构化数据；普通文本原样显示。 */
+function tryParseJson(raw?: string | null): unknown {
+  const s = (raw ?? "").trim();
+  if (!s || (s[0] !== "{" && s[0] !== "[") || !/[}\]]$/.test(s)) return null;
+  try {
+    const v = JSON.parse(s);
+    return v && typeof v === "object" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 扩展数据里的 key → 人话（状态照片点位的 key 就是状态字段 canonical）。 */
+const EXTRA_KEY_LABELS: Record<string, string> = {
+  _note: "标注备注",
+  _status: "状态照片",
+  ...Object.fromEntries(CAGE_BOX_ACTIONS.map((a) => [a.statusField, a.label])),
+};
+const keyLabel = (k: string) => EXTRA_KEY_LABELS[k] ?? k;
+
+/** 归一化：上传地址的主机前缀、JSON 键顺序、照片顺序都不算「真变更」。 */
+function canonicalLeaf(v: unknown): string {
+  if (Array.isArray(v)) return "[" + v.map(canonicalLeaf).sort().join(",") + "]";
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return "{" + Object.keys(o).sort().map((k) => JSON.stringify(k) + ":" + canonicalLeaf(o[k])).join(",") + "}";
+  }
+  if (typeof v === "string") return JSON.stringify(mediaUrl(v));
+  return JSON.stringify(v ?? null);
+}
+
+function normalizedValue(v?: string | null): string {
+  const raw = (v ?? "").trim();
+  if (!raw) return "";
+  const parsed = tryParseJson(raw);
+  return parsed ? canonicalLeaf(parsed) : mediaUrl(raw);
+}
+
+const isNoop = (c: ChangeRow) => normalizedValue(c.before) === normalizedValue(c.after);
+
+/** 附件缩略图：图片出图、视频出首帧 + 播放角标，点开在弹层里看大图/播放。 */
+function MediaThumbs({ urls, small = false }: { urls: string[]; small?: boolean }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [broken, setBroken] = useState<Set<string>>(new Set());
+  const size = small ? "h-8 w-8" : "h-10 w-10";
   return (
-    <div className="flex min-w-0 items-baseline gap-2 text-[12px] leading-5">
-      <span className="w-[76px] shrink-0 truncate text-[var(--app-color-text-tertiary)]" title={label}>
+    <>
+      {urls.map((u, i) => {
+        const src = mediaUrl(u);
+        const video = isVideoMediaUrl(src);
+        const dead = broken.has(src);
+        return (
+          <button
+            key={`${u}:${i}`}
+            type="button"
+            onClick={() => { if (!dead) setPreview(src); }}
+            className="relative block shrink-0 cursor-pointer transition hover:opacity-80 disabled:cursor-default"
+            disabled={dead}
+            title={dead ? "附件已不可用" : video ? "点击播放视频" : "点击查看大图"}
+          >
+            {dead ? (
+              <span className={`${size} grid place-items-center rounded-md border border-dashed border-[var(--app-color-border-default)] text-[9px] text-[var(--app-color-text-tertiary)]`}>
+                失效
+              </span>
+            ) : video ? (
+              <>
+                <video
+                  src={src}
+                  muted
+                  preload="metadata"
+                  onError={() => setBroken((s) => new Set(s).add(src))}
+                  className={`${size} rounded-md border border-[var(--app-color-border-default)] object-cover`}
+                />
+                <span className="absolute inset-0 grid place-items-center rounded-md bg-black/35 text-white">
+                  <Play className="size-3.5" fill="currentColor" />
+                </span>
+              </>
+            ) : (
+              <img
+                src={src}
+                alt=""
+                onError={() => setBroken((s) => new Set(s).add(src))}
+                className={`${size} rounded-md border border-[var(--app-color-border-default)] object-cover`}
+              />
+            )}
+          </button>
+        );
+      })}
+      <Dialog open={!!preview} onOpenChange={(o) => { if (!o) setPreview(null); }}>
+        <DialogContent className="z-[calc(var(--z-modal)+5)] max-w-[min(1100px,94vw)] overflow-hidden border-0 bg-black p-0 [&>button]:text-white">
+          <DialogTitle className="sr-only">附件预览</DialogTitle>
+          <DialogDescription className="sr-only">点击右上角关闭</DialogDescription>
+          {preview && (isVideoMediaUrl(preview) ? (
+            <video src={preview} controls autoPlay playsInline className="max-h-[86vh] w-full bg-black object-contain" />
+          ) : (
+            <img src={preview} alt="预览" className="max-h-[86vh] w-full object-contain" />
+          ))}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** 一个 JSON 叶子值：媒体出缩略图，数组拆开，其余转成文字。 */
+function LeafView({ value, emptyLabel = "（空）" }: { value: unknown; emptyLabel?: string }) {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-[var(--app-color-text-tertiary)]">{emptyLabel}</span>;
+  }
+  if (isMediaUrl(value)) return <MediaThumbs urls={[value]} small />;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-[var(--app-color-text-tertiary)]">（无）</span>;
+    const media = value.filter(isMediaUrl);
+    const rest = value.filter((v) => !isMediaUrl(v));
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        {media.length > 0 && <MediaThumbs urls={media} small />}
+        {rest.length > 0 && (
+          <span className="break-all">{rest.map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join("、")}</span>
+        )}
+      </span>
+    );
+  }
+  if (typeof value === "boolean") return <span>{value ? "是" : "否"}</span>;
+  if (typeof value === "object") return <span className="break-all">{JSON.stringify(value)}</span>;
+  return <span className="break-all">{String(value)}</span>;
+}
+
+/** 整段值：JSON 按 key 拆成「字段名 + 值」，附件直接出图。 */
+function ValueView({ value, emptyLabel = "（空）" }: { value?: string | null; emptyLabel?: string }) {
+  if (value === null || value === undefined || value === "") {
+    return <span className="text-[var(--app-color-text-tertiary)]">{emptyLabel}</span>;
+  }
+  const parsed = tryParseJson(value);
+  if (parsed && !Array.isArray(parsed)) {
+    return (
+      <span className="flex flex-col gap-0.5">
+        {Object.entries(parsed as Record<string, unknown>).map(([k, v]) => (
+          <span key={k} className="flex flex-wrap items-baseline gap-1.5">
+            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">{keyLabel(k)}</span>
+            <LeafView value={v} />
+          </span>
+        ))}
+      </span>
+    );
+  }
+  if (parsed) return <LeafView value={parsed} />;
+  const text = show(value) ?? "";
+  if (isMediaUrl(text)) return <MediaThumbs urls={[text]} small />;
+  return <span className="whitespace-pre-wrap break-all">{text}</span>;
+}
+
+type KeyDiff = { key: string; before: unknown; after: unknown };
+
+/** JSON 对象按 key 做差：只列真的变了的 key（整段 JSON 原样对比会把键序、主机前缀当变化）。 */
+function jsonKeyDiff(before?: string | null, after?: string | null): KeyDiff[] | null {
+  const b = tryParseJson(before);
+  const a = tryParseJson(after);
+  if (!b || !a || Array.isArray(b) || Array.isArray(a)) return null;
+  const bk = b as Record<string, unknown>;
+  const ak = a as Record<string, unknown>;
+  const labelOrder = Object.keys(EXTRA_KEY_LABELS);
+  const rank = (k: string) => {
+    const i = labelOrder.indexOf(k);
+    return i >= 0 ? i : 999;
+  };
+  return [...new Set([...Object.keys(bk), ...Object.keys(ak)])]
+    .sort((x, y) => rank(x) - rank(y) || x.localeCompare(y))
+    .filter((k) => canonicalLeaf(bk[k]) !== canonicalLeaf(ak[k]))
+    .map((k) => ({ key: k, before: bk[k], after: ak[k] }));
+}
+
+/** 单条变更：旧值弱化 → 新值强调；清空显式写「（清空）」而不是留白。 */
+function DiffLine({ label, before, after }: { label: string; before?: string | null; after?: string | null }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-baseline gap-2 text-[12px] leading-5">
+      <span className="w-[64px] shrink-0 truncate text-[var(--app-color-text-tertiary)] sm:w-[76px]" title={label}>
         {label}
       </span>
-      <span
-        className={`min-w-0 break-all ${
-          b === null
-            ? "text-[var(--app-color-text-tertiary)]"
-            : "text-[var(--app-color-text-tertiary)] line-through decoration-1"
-        }`}
-      >
-        {b ?? "（空）"}
+      <span className="min-w-0 text-[var(--app-color-text-tertiary)]">
+        <ValueView value={before} />
       </span>
       <span className="shrink-0 text-[var(--app-color-text-tertiary)]">→</span>
-      <span className="min-w-0 break-all font-medium text-[var(--app-color-text-primary)]">{a ?? "（清空）"}</span>
+      <span className="min-w-0 font-medium text-[var(--app-color-text-primary)]">
+        <ValueView value={after} emptyLabel="（清空）" />
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 字段级 diff：JSON 值（「本地扩展数据」）按 key 拆开，只显示真正变了的键。
+ * 这样历史里看到的是「健康异常：1 张 → 2 张」而不是两坨 JSON 文本。
+ */
+function FieldDiff({ label, before, after }: { label: string; before?: string | null; after?: string | null }) {
+  const keys = jsonKeyDiff(before, after);
+  if (!keys) return <DiffLine label={label} before={before} after={after} />;
+  return (
+    <div className="min-w-0">
+      <div className="mb-0.5 text-[11px] text-[var(--app-color-text-tertiary)]">{label}</div>
+      {keys.length === 0 ? (
+        <div className="text-[12px] text-[var(--app-color-text-tertiary)]">无字段变化</div>
+      ) : (
+        <div className="space-y-1">
+          {keys.map(({ key, before: b, after: a }) => (
+            <div key={key} className="flex min-w-0 flex-wrap items-baseline gap-1.5 text-[12px] leading-5">
+              <span className="w-[64px] shrink-0 truncate text-[var(--app-color-text-tertiary)] sm:w-[76px]" title={keyLabel(key)}>
+                {keyLabel(key)}
+              </span>
+              <span className="min-w-0 text-[var(--app-color-text-tertiary)]">
+                <LeafView value={b} />
+              </span>
+              <span className="shrink-0 text-[var(--app-color-text-tertiary)]">→</span>
+              <span className="min-w-0 font-medium text-[var(--app-color-text-primary)]">
+                <LeafView value={a} emptyLabel="（清空）" />
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -86,7 +309,7 @@ function SectionBar({ children }: { children: React.ReactNode }) {
 }
 
 /** 字段点开后的变更台账：时间 / 操作人 / 前后值。 */
-function FieldLedger({ rows }: { rows: Array<{ at?: string | null; operator?: string | null; before?: string | null; after?: string | null }> }) {
+function FieldLedger({ label, rows }: { label: string; rows: Array<{ at?: string | null; operator?: string | null; before?: string | null; after?: string | null }> }) {
   return (
     <div className="space-y-1.5 border-l-2 border-[var(--app-color-border-default)] pl-3 ml-3 pb-2">
       {rows.map((h, i) => (
@@ -95,9 +318,9 @@ function FieldLedger({ rows }: { rows: Array<{ at?: string | null; operator?: st
             <span className="tabular-nums">{fmt(h.at)}</span>
             {h.operator && <span>{h.operator}</span>}
           </div>
-          <DiffLine label="变更" before={h.before} after={h.after} />
+          <FieldDiff label={label} before={h.before} after={h.after} />
         </div>
-      ))}
+      )).reverse()}
     </div>
   );
 }
@@ -128,25 +351,20 @@ function MigrationBody({ changes, labels }: { changes: ChangeRow[]; labels: Reco
         {side === "before" ? "变更前" : "变更后"}
       </div>
       <div className="space-y-1">
-        {changed.map((c, i) => {
-          const v = show(side === "before" ? c.before : c.after);
-          return (
-            <div key={`${c.canonical}-${i}`} className="text-[12px] leading-5">
-              <div className="text-[11px] text-[var(--app-color-text-tertiary)]">{labelOf(c)}</div>
-              <div
-                className={`break-all ${
-                  v === null
-                    ? "text-[var(--app-color-text-tertiary)]"
-                    : side === "after"
-                      ? "font-semibold text-[var(--app-color-text-primary)]"
-                      : "text-[var(--app-color-text-secondary)]"
-                }`}
-              >
-                {v ?? "（空）"}
-              </div>
+        {changed.map((c, i) => (
+          <div key={`${c.canonical}-${i}`} className="text-[12px] leading-5">
+            <div className="text-[11px] text-[var(--app-color-text-tertiary)]">{labelOf(c)}</div>
+            <div
+              className={
+                side === "after"
+                  ? "font-semibold text-[var(--app-color-text-primary)]"
+                  : "text-[var(--app-color-text-secondary)]"
+              }
+            >
+              <ValueView value={side === "before" ? c.before : c.after} />
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -181,42 +399,58 @@ function TimelineNode({
   const meta = KIND_META[event.kind] ?? KIND_META.EDIT;
   const changed = event.changes.filter((c) => !isNoop(c));
   const labelOf = (c: ChangeRow) => labels[c.canonical ?? ""] ?? c.label ?? c.canonical ?? "—";
+  const when = splitAt(event.at);
 
   return (
-    <div className="relative pl-5">
-      {/* 轨道：首节点不画上半段，末节点不画下半段 */}
-      <span
-        className="absolute left-[4px] w-px bg-[var(--app-color-border-default)]"
-        style={{ top: first ? 14 : 0, bottom: last ? "auto" : 0, height: last ? 0 : undefined }}
-      />
-      <span
-        className="absolute left-0 top-[9px] h-[9px] w-[9px] rounded-full ring-2 ring-[var(--app-color-surface-container)]"
-        style={{ background: meta.dot }}
-      />
-      <div className="review-card mb-3" data-tone={meta.tone}>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2">
-          <span className="text-[12px] font-semibold text-[var(--app-color-text-primary)]">{meta.label}</span>
-          <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
-            {CHANGE_TYPE_LABEL[event.changeType] ?? event.changeType}
-          </span>
-          <span className="ml-auto text-[11px] tabular-nums text-[var(--app-color-text-tertiary)]">{fmt(event.at)}</span>
-          {event.operator && (
-            <span className="text-[11px] text-[var(--app-color-text-secondary)]">{event.operator}</span>
-          )}
+    <div className="flex gap-2 sm:gap-3">
+      {/* 时间放在最前：倒序时先看到「什么时候」，再读「改了什么」 */}
+      <div className="w-[64px] shrink-0 pt-1.5 text-right sm:w-[84px]">
+        <div className="text-[11px] leading-4 tabular-nums text-[var(--app-color-text-tertiary)]">{when.date}</div>
+        <div className="text-[13px] font-semibold leading-5 tabular-nums text-[var(--app-color-text-primary)] sm:text-[15px]">
+          {when.time}
         </div>
+      </div>
 
-        <div className="border-t border-[var(--app-color-border-default)] px-3 py-2">
-          {changed.length === 0 ? (
-            <div className="text-[12px] text-[var(--app-color-text-tertiary)]">无字段变化</div>
-          ) : event.kind === "EDIT" ? (
-            <div className="space-y-1">
-              {changed.map((c, i) => (
-                <DiffLine key={i} label={labelOf(c)} before={c.before} after={c.after} />
-              ))}
-            </div>
-          ) : (
-            <MigrationBody changes={event.changes} labels={labels} />
-          )}
+      <div className="relative min-w-0 flex-1 pb-3 pl-5">
+        {/* 轨道：首节点不画上半段，末节点只画到圆点为止；只有一个节点时整条不画 */}
+        {!(first && last) && (
+          <span
+            className="absolute left-[4px] w-[2px] rounded-full bg-[var(--app-color-border-strong)] opacity-60"
+            style={{
+              top: first ? 12 : 0,
+              bottom: last ? "auto" : 0,
+              height: last ? 12 : undefined,
+            }}
+          />
+        )}
+        <span
+          className="absolute left-0 top-[9px] h-[10px] w-[10px] rounded-full ring-2 ring-[var(--app-color-surface-container)]"
+          style={{ background: meta.dot }}
+        />
+        <div className="review-card" data-tone={meta.tone}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2">
+            <span className="text-[12px] font-semibold text-[var(--app-color-text-primary)]">{meta.label}</span>
+            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
+              {CHANGE_TYPE_LABEL[event.changeType] ?? event.changeType}
+            </span>
+            {event.operator && (
+              <span className="ml-auto text-[11px] text-[var(--app-color-text-secondary)]">{event.operator}</span>
+            )}
+          </div>
+
+          <div className="border-t border-[var(--app-color-border-default)] px-3 py-2">
+            {changed.length === 0 ? (
+              <div className="text-[12px] text-[var(--app-color-text-tertiary)]">无字段变化</div>
+            ) : event.kind === "EDIT" ? (
+              <div className="space-y-1">
+                {changed.map((c, i) => (
+                  <FieldDiff key={i} label={labelOf(c)} before={c.before} after={c.after} />
+                ))}
+              </div>
+            ) : (
+              <MigrationBody changes={event.changes} labels={labels} />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -302,7 +536,8 @@ export default function CageHistoryModal({ animalCageId, onClose }: { animalCage
     return out;
   }, [template, labels, fieldHistory, view]);
 
-  const events = view?.events ?? [];
+  // 倒序：最新的变更排在最前。后端按时间正序聚合，事件里的 before/after 快照已经固化，反转不影响对比。
+  const events = useMemo(() => [...(view?.events ?? [])].reverse(), [view]);
   const structuralCount = events.filter((e) => e.kind !== "EDIT").length;
   const changedFieldCount = new Set(
     events.flatMap((e) => e.changes.filter((c) => !isNoop(c)).map((c) => c.canonical)),
@@ -322,7 +557,7 @@ export default function CageHistoryModal({ animalCageId, onClose }: { animalCage
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
               {events.length > 0 && (
                 <>
-                  <span>{events.length} 次变更 · {changedFieldCount} 个字段受影响</span>
+                  <span>{events.length} 次变更 · {changedFieldCount} 个字段受影响 · 最新在上</span>
                   {structuralCount > 0 && (
                     <span
                       className="rounded px-1.5 py-0.5"
@@ -357,7 +592,6 @@ export default function CageHistoryModal({ animalCageId, onClose }: { animalCage
                   <SectionBar>{g.title}</SectionBar>
                   {g.fields.map(({ canonical, label }) => {
                     const hist = fieldHistory[canonical];
-                    const value = show(view?.current[canonical]);
                     const open = openField === canonical;
                     return (
                       <div key={canonical} className="border-b border-[var(--app-color-border-default)] last:border-b-0">
@@ -370,14 +604,8 @@ export default function CageHistoryModal({ animalCageId, onClose }: { animalCage
                             <span className="truncate text-[12px] text-[var(--app-color-text-tertiary)]" title={label}>
                               {label}
                             </span>
-                            <span
-                              className={`break-all text-[12px] ${
-                                value === null
-                                  ? "text-[var(--app-color-text-tertiary)]"
-                                  : "font-semibold text-[var(--app-color-text-primary)]"
-                              }`}
-                            >
-                              {value ?? "（空）"}
+                            <span className="break-all text-[12px] font-semibold text-[var(--app-color-text-primary)]">
+                              <ValueView value={view?.current[canonical]} />
                             </span>
                             <span className="shrink-0 rounded bg-[var(--app-color-surface-hover)] px-1.5 py-0.5 text-[10px] text-[var(--app-color-text-secondary)]">
                               {hist.length} 次 {open ? "▴" : "▾"}
@@ -389,12 +617,12 @@ export default function CageHistoryModal({ animalCageId, onClose }: { animalCage
                               {label}
                             </span>
                             <span className="break-all text-[12px] font-semibold text-[var(--app-color-text-primary)]">
-                              {value ?? "（空）"}
+                              <ValueView value={view?.current[canonical]} />
                             </span>
                             <span />
                           </div>
                         )}
-                        {open && hist && <FieldLedger rows={hist} />}
+                        {open && hist && <FieldLedger label={label} rows={hist} />}
                       </div>
                     );
                   })}

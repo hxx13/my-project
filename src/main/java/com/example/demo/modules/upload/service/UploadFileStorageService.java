@@ -25,9 +25,13 @@ public class UploadFileStorageService {
     public record StoredUploadFile(String url, String publicUrl, Long recordId) {
     }
 
+    /** 视频扩展名（浏览器可直接播放的容器；转码不在服务端做） */
+    public static final Set<String> VIDEO_EXTENSIONS = Set.of("mp4", "webm", "mov", "m4v");
+
     /** 允许上传的文件扩展名白名单（public for cross-service validation） */
     public static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", // 图片
+            "mp4", "webm", "mov", "m4v",                        // 视频
             "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", // 文档
             "txt", "csv", "zip"                                   // 通用
     );
@@ -51,6 +55,14 @@ public class UploadFileStorageService {
     @Value("${app.public-base-url:}")
     private String publicBaseUrl;
 
+    /** 普通文件上限，保持原 30MB 行为（multipart 上限已放开到能容纳视频） */
+    @Value("${app.upload.max-bytes:31457280}")
+    private long maxBytes;
+
+    /** 视频单文件上限，默认 200MB */
+    @Value("${app.upload.video-max-bytes:209715200}")
+    private long videoMaxBytes;
+
     public UploadFileStorageService(UploadFileService uploadFileService,
                                     UploadFileRecordService uploadFileRecordService) {
         this.uploadFileService = uploadFileService;
@@ -68,6 +80,13 @@ public class UploadFileStorageService {
         // 1. 扩展名白名单校验
         if (ext.isEmpty() || !ALLOWED_EXTENSIONS.contains(ext)) {
             throw new IllegalArgumentException("不支持的文件类型: " + (ext.isEmpty() ? "未知" : "." + ext));
+        }
+
+        // 2. 体积上限（视频与非视频分开；multipart 层已放宽，这里才是真正的门）
+        boolean video = VIDEO_EXTENSIONS.contains(ext);
+        long limit = video ? videoMaxBytes : maxBytes;
+        if (file.getSize() > limit) {
+            throw new IllegalArgumentException((video ? "视频" : "文件") + "不能超过 " + (limit / 1024 / 1024) + "MB");
         }
 
         // 2. Magic Bytes 校验（仅对已知签名的类型）

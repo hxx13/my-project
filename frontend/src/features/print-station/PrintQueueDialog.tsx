@@ -133,7 +133,7 @@ export function PrintQueueDialog({
     if (!tabs.some((t) => t.id === activeStation)) setActiveStation(tabs[0].id);
   }, [tabs, activeStation]);
 
-  /** 当前 tab 的内容：未结束的在前，其余按时间倒序 */
+  /** 当前 tab 的内容：未结束的在前（**按入队先后升序**，下一条要打的就是第一行），其余按时间倒序 */
   const rows = useMemo(
     () =>
       jobs
@@ -141,7 +141,9 @@ export function PrintQueueDialog({
         .sort((a, b) => {
           const ra = ACTIVE.includes(a.status) ? 0 : 1;
           const rb = ACTIVE.includes(b.status) ? 0 : 1;
-          return ra - rb || (a.createdAt < b.createdAt ? 1 : -1);
+          if (ra !== rb) return ra - rb;
+          if (ra === 0) return a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0;
+          return a.createdAt < b.createdAt ? 1 : -1;
         }),
     [jobs, activeStation],
   );

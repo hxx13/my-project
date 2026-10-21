@@ -532,6 +532,17 @@ export async function fetchGroupRooms(userId: string): Promise<GroupRoom[]> {
   return res.data.data ?? [];
 }
 
+/**
+ * GET /api/v1/cage-shelves/my-group-rooms
+ * 当前登录人的课题组房间（左侧树「我的区域」快捷块）。
+ * 与按人员查询的区别：超管的课题组名对不上笼位 PI 时，服务端会按部门兜底。
+ */
+export async function fetchMyGroupRooms(): Promise<GroupRoom[]> {
+  const res = await authHttp.get<Result<GroupRoom[]>>("/v1/cage-shelves/my-group-rooms");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载我的区域失败");
+  return res.data.data ?? [];
+}
+
 /** GET /api/cage-shelves/bookmarks */
 export async function fetchBookmarks(): Promise<BookmarkEntry[]> {
   const res = await authHttp.get<Result<Record<string, unknown>[]>>(`/cage-shelves/bookmarks`);
@@ -2580,6 +2591,10 @@ export interface CageModeVisibleResult {
   modes: string[];
   isStudent: boolean;
   isSuperAdmin: boolean;
+  /** 能否标记/取消状态（矩阵 cage.mode.edit）。缺省按 modes 是否含 edit 处理。 */
+  canEditStatus?: boolean;
+  /** 能否管理状态照片（饲养员/饲养组长保底放行，学生 false）。缺省按 canEditStatus 处理。 */
+  canManageStatusPhotos?: boolean;
   /**
    * 「模式 → 可用动作 code」矩阵。只在后端收窄了动作范围时下发
    * （当前仅有学生视角的 edit → ["COHABITATION"]）。前端据此过滤渲染动作按钮；

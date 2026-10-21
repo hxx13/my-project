@@ -87,13 +87,14 @@ public class PrintJobMapper {
     }
 
     /**
-     * 待领取的候选 id。加急的排在前面，同级按先进先出。
-     * 每个工位的待打队列通常只有个位数，priority 上不额外建索引 —— 排序成本可以忽略。
+     * 待领取的候选 id。加急的排在前面，同级按**入队序号**先进先出。
+     * created_at 只有秒级精度，同一秒批量建单会并列，必须用 seq 兜底，
+     * 否则同一批任务可能被倒序领走。
      */
     public List<String> findPendingIds(String stationId, int limit) {
         return jdbc.queryForList(
                 "SELECT id FROM print_job WHERE station_id = ? AND status = ?"
-              + " ORDER BY priority DESC, created_at ASC" + limitClause(limit, 20),
+              + " ORDER BY priority DESC, seq ASC" + limitClause(limit, 20),
                 String.class, stationId, PrintJob.STATUS_PENDING);
     }
 
@@ -253,7 +254,8 @@ public class PrintJobMapper {
 
     /**
      * 队列：还没结束的任务（排队中 / 已派给工位 / 失败待处理）。
-     * 加急排前面，同级按派发时间倒序 —— 现场的人关心的是「接下来打什么」。
+     * 加急排前面，同级按入队序号**升序** —— 与领取顺序一致，
+     * 界面上看到的先后就是真正会打印的先后。
      */
     public List<PrintJob> listQueue(String stationId, String viewerId, int limit) {
         StringBuilder sql = new StringBuilder(
@@ -268,7 +270,7 @@ public class PrintJobMapper {
         }
         sql.append(" AND (ephemeral = 0 OR created_by = ?)");
         args.add(viewerId);
-        sql.append(" ORDER BY priority DESC, created_at DESC").append(limitClause(limit, 200));
+        sql.append(" ORDER BY priority DESC, seq ASC").append(limitClause(limit, 200));
         return jdbc.query(sql.toString(), ROW, args.toArray());
     }
 

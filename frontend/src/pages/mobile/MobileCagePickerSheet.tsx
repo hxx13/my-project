@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { ChevronLeft } from "lucide-react";
 import { GridCellButton, useGridCellWidth } from "@/pages/mobile/MobileCageShelfTab";
@@ -34,6 +34,7 @@ import {
   type PickedCage,
 } from "@/pages/mobile/cagePickerLogic";
 import { authStorage } from "@/features/auth/authStorage";
+import { invalidateCageAvailability } from "@/api/hooks/useReferenceData";
 
 interface Props {
   aupRecordId: string | number;
@@ -93,6 +94,7 @@ export default function MobileCagePickerSheet({
   submitDisabled,
   openAllocTick,
 }: Props) {
+  const qc = useQueryClient();
   /** 分配浮层开合（不是内容切换：网格保持挂载，滚动位置不丢） */
   const [allocOpen, setAllocOpen] = useState(false);
   /** 当前房间：与小程序一致，按房间切 tab、房间内所有架子纵向铺开（不再先进「架子列表」页） */
@@ -321,6 +323,7 @@ export default function MobileCagePickerSheet({
     } catch {
       // 启动清理兜底
     }
+    invalidateCageAvailability(qc);
   };
 
   const handleLock = async (cell: CageShelfCell, cageId: string) => {
@@ -335,6 +338,9 @@ export default function MobileCagePickerSheet({
         quantity: 0,
       });
       const where = [shelfMeta?.roomName, shelfMeta?.shelveName].filter(Boolean).join(" ");
+      // 本会话点过的笼位也记下：取消后 /active 仍可能停在释放前的快照，
+      // 不记的话「接回」会把它当成没选过的孤儿又塞回已选。
+      adoptedRef.current.add(cageId);
       onPickedCagesChange([
         ...pickedCages,
         {
@@ -384,6 +390,7 @@ export default function MobileCagePickerSheet({
         // 启动清理兜底
       });
     }
+    if (cur.length > 0) invalidateCageAvailability(qc);
   };
 
   const allocated = allocatedTotal(alloc);

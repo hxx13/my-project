@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import {
   cancelMyEnrollment,
   enrollOccurrence,
+  fetchMyEnrollments,
   fetchMyTrainings,
   type StudentTraining,
   type StudentTrainingOccurrence,
@@ -12,10 +13,10 @@ import { useStudentQuery } from "../hooks/use-student-query";
 import { enrollStatus, isFullyPassed, isRejected } from "../utils/trainingEnrollStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { ShrinkText } from "../components/shrink-text";
+import { StudentTrainingMyContent } from "./student-training-my";
 import "./student-list.css";
 
 type Status = "未报名" | "待审核" | "已通过" | "已拒绝";
-type Filter = "all" | "passed" | "unpassed";
 
 function trainingStatus(t: StudentTraining): Status {
   const occs = t.occurrences ?? [];
@@ -32,12 +33,6 @@ const STATUS_SEAL: Record<Status, { lines: string[]; cls: string }> = {
   已通过: { lines: ["已", "通过"], cls: "approved" },
   已拒绝: { lines: ["已", "拒绝"], cls: "terminated" },
 };
-
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "全部" },
-  { id: "unpassed", label: "未通过" },
-  { id: "passed", label: "已通过" },
-];
 
 function firstOcc(t: StudentTraining): StudentTrainingOccurrence | undefined {
   return (t.occurrences ?? [])[0];
@@ -126,31 +121,44 @@ export default function StudentTrainingPage() {
     () => fetchMyTrainings(),
   );
   const [view, setView] = useState<"card" | "list">("card");
-  const [filter, setFilter] = useState<Filter>("all");
+  /** 已报名 / 培训报名 */
+  const [tab, setTab] = useState<"enrolled" | "list">("enrolled");
+  const [campusTab, setCampusTab] = useState("");
   const [target, setTarget] = useState<{ training: StudentTraining; occ: StudentTrainingOccurrence } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [acting, setActing] = useState(false);
 
-  const filtered = useMemo(() => {
-    return data.filter((t) => {
-      const s = trainingStatus(t);
-      if (filter === "passed") return s === "已通过";
-      if (filter === "unpassed") return s !== "已通过";
-      return true;
-    });
-  }, [data, filter]);
-
   /** 后端已按「校区 → 配置序号」排好序，这里只按顺序切开分组。 */
   const groups = useMemo(() => {
     const map = new Map<string, StudentTraining[]>();
-    for (const t of filtered) {
+    for (const t of data) {
       const k = (t.campus ?? "").trim();
       const arr = map.get(k);
       if (arr) arr.push(t);
       else map.set(k, [t]);
     }
     return [...map.entries()].map(([key, items]) => ({ key, label: key || "其他", items }));
-  }, [filtered]);
+  }, [data]);
+
+  const trainingCampusTabs = useMemo(
+    () => groups.map((g) => ({ key: g.key, label: g.label, count: g.items.length })),
+    [groups],
+  );
+
+  // 已报名同样按校区划分：与培训列表共用一套校区标签与切换状态
+  const { data: myEnrollments = [] } = useStudentQuery(["my-enrollments"], () => fetchMyEnrollments());
+  const enrolledCampusTabs = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of myEnrollments) {
+      const k = (e.campus ?? "").trim();
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return [...m.entries()].map(([key, count]) => ({ key, label: key || "其他", count }));
+  }, [myEnrollments]);
+
+  const campusTabs = tab === "enrolled" ? enrolledCampusTabs : trainingCampusTabs;
+  const activeCampus = campusTabs.some((g) => g.key === campusTab) ? campusTab : campusTabs[0]?.key ?? "";
+  const activeItems = groups.find((g) => g.key === activeCampus)?.items ?? [];
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["student"] });
 
@@ -257,37 +265,46 @@ export default function StudentTrainingPage() {
       <div className="stu-list" style={{ height: "100%" }}>
         <div className="list-card list-card-top">
           <div className="aup-filter-toolbar">
+            <div className="aup-view-toggle" role="tablist" aria-label="培训分类">
+              <button className={tab === "enrolled" ? "on" : ""} onClick={() => setTab("enrolled")}>已报名</button>
+              <button className={tab === "list" ? "on" : ""} onClick={() => setTab("list")}>培训报名</button>
+            </div>
             <div className="aup-view-toggle" role="tablist" aria-label="视图切换">
               <button className={view === "card" ? "on" : ""} onClick={() => setView("card")}>▦ 卡片</button>
               <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>☰ 列表</button>
             </div>
-            <div className="aup-view-toggle" role="tablist" aria-label="报名状态">
-              {FILTERS.map((f) => (
-                <button key={f.id} className={filter === f.id ? "on" : ""} onClick={() => setFilter(f.id)}>{f.label}</button>
-              ))}
-            </div>
-            <button className="btn ghost small" onClick={() => navigate("/student/training/my")}>我的报名</button>
+            {campusTabs.length > 1 && (
+              <div className="aup-view-toggle" role="tablist" aria-label="校区">
+                {campusTabs.map((g) => (
+                  <button
+                    key={g.key || "__none__"}
+                    className={activeCampus === g.key ? "on" : ""}
+                    onClick={() => setCampusTab(g.key)}
+                  >
+                    {g.label} ({g.count})
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="list-card list-card-body">
           <div className="list-card-scroll">
-            <div className="list-count">共 {filtered.length} 条培训</div>
-            {isLoading ? (
-              <div className="aup-empty">加载中…</div>
-            ) : isError ? (
-              <div className="aup-empty">加载失败，<button className="btn ghost small" onClick={() => refetch()}>重试</button></div>
-            ) : filtered.length === 0 ? (
-              <div className="aup-empty">暂无培训</div>
-            ) : view === "card" ? (
-              groups.map((g) => (
-                <div key={g.key || "__none__"}>
-                  <div className="campus-head">
-                    <span>{g.label}</span>
-                    <span className="campus-count">{g.items.length} 条</span>
-                  </div>
+            {tab === "enrolled" ? (
+              <StudentTrainingMyContent view={view} campus={activeCampus} />
+            ) : (
+              <>
+                <div className="list-count">共 {activeItems.length} 条培训</div>
+                {isLoading ? (
+                  <div className="aup-empty">加载中…</div>
+                ) : isError ? (
+                  <div className="aup-empty">加载失败，<button className="btn ghost small" onClick={() => refetch()}>重试</button></div>
+                ) : activeItems.length === 0 ? (
+                  <div className="aup-empty">暂无培训</div>
+                ) : view === "card" ? (
                   <div className="aup-card-grid">
-                    {g.items.map((t) => (
+                    {activeItems.map((t) => (
                       <TrainingCard
                         key={t.id}
                         t={t}
@@ -298,18 +315,10 @@ export default function StudentTrainingPage() {
                       />
                     ))}
                   </div>
-                </div>
-              ))
-            ) : (
-              groups.map((g) => (
-                <div key={g.key || "__none__"}>
-                  <div className="campus-head">
-                    <span>{g.label}</span>
-                    <span className="campus-count">{g.items.length} 条</span>
-                  </div>
-                  <div className="campus-list">{trainingTable(g.items)}</div>
-                </div>
-              ))
+                ) : (
+                  <div className="campus-list">{trainingTable(activeItems)}</div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -340,6 +349,26 @@ export default function StudentTrainingPage() {
                   {target.training.healthOk ? "已提交" : "未提交 · 去填写"}
                 </button>
               </div>
+              {(target.training.videos?.length ?? 0) > 0 && (
+                <div className="flex items-center justify-between">
+                  <span>学习视频</span>
+                  {target.training.videoPassed ? (
+                    <span className="text-emerald-600">已看完</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-amber-600 hover:underline"
+                      onClick={() => {
+                        setTarget(null);
+                        navigate("/student/exam", { state: { openVideos: true } });
+                      }}
+                    >
+                      未看完 {(target.training.videos ?? []).filter((v) => v.completed).length}/
+                      {(target.training.videos ?? []).length} · 去学习
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {target.training.eligible ? (
@@ -359,6 +388,14 @@ export default function StudentTrainingPage() {
                 {!target.training.healthOk && (
                   <button className="rounded-md bg-amber-500 px-3 py-1.5 text-sm text-white" onClick={() => { setTarget(null); navigate("/student/health-survey"); }}>
                     去填写健康调查表
+                  </button>
+                )}
+                {(target.training.videos?.length ?? 0) > 0 && !target.training.videoPassed && (
+                  <button
+                    className="rounded-md bg-amber-500 px-3 py-1.5 text-sm text-white"
+                    onClick={() => { setTarget(null); navigate("/student/exam", { state: { openVideos: true } }); }}
+                  >
+                    去观看学习视频
                   </button>
                 )}
                 <button className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600" onClick={() => setTarget(null)}>关闭</button>

@@ -125,6 +125,8 @@ public class DsppaClient {
     private final AtomicLong pendingSeq = new AtomicLong();
     /** 选中分区序号，平台要求每次选择自增。 */
     private final AtomicInteger selectSeq = new AtomicInteger(1);
+    /** 最近一次选区编号：改播放模式时平台要求带上它。 */
+    private volatile int lastSelectedId;
     /** 未完成的分片文本（平台消息都很小，一般用不上）。 */
     private final StringBuilder inboundBuffer = new StringBuilder();
     /** 建连互斥：保活轮与「重新连接」按钮可能同时触发，别开出两条连接。 */
@@ -605,6 +607,7 @@ public class DsppaClient {
             throw new BroadcastException("未指定目标分区");
         }
         int id = selectSeq.getAndIncrement();
+        lastSelectedId = id;
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("command", "set_select_zones");
         body.put("selected_id", id);
@@ -701,14 +704,45 @@ public class DsppaClient {
         assertSuccess(resp, "set_idle_status");
     }
 
-    /** 通知平台：某个曲目已通过 HTTP 上传到曲库列表，请登记。 */
-    public void notifySongUploaded(String listId, String songName) {
+    // ---------------------------------------------------------------- 播放模式
+    //
+    // 1 单曲播放 / 2 单曲循环 / 3 顺序播放 / 4 循环播放 / 5 随机播放。
+    // **这是平台全局设置**（厂家前端也只有一个播放模式按钮），不是按分区或按方案各一份 ——
+    // 所以改了会同时影响正在跑的定时方案，界面上要如实说明。
+
+    /** 播放模式 → 人话。 */
+    public static String playModeText(int mode) {
+        return switch (mode) {
+            case 1 -> "单曲播放";
+            case 2 -> "单曲循环";
+            case 3 -> "顺序播放";
+            case 4 -> "列表循环";
+            case 5 -> "随机播放";
+            default -> "未知(" + mode + ")";
+        };
+    }
+
+    /** 查当前播放模式。 */
+    public int getPlayMode() {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("command", "request_upload_song_to_server");
-        body.put("list_id", listId);
-        body.put("song_name", songName);
-        Map<String, Object> resp = exchange("request_upload_song_to_server", null, body, true, requestTimeoutMs);
-        assertSuccess(resp, "request_upload_song_to_server");
+        body.put("command", "play_mode");
+        body.put("set", 0);
+        Map<String, Object> resp = exchange("play_mode", null, body, true, requestTimeoutMs);
+        assertSuccess(resp, "play_mode");
+        return toInt(resp.get("play_mode"), -1);
+    }
+
+    /** 设播放模式（平台全局）。 */
+    public void setPlayMode(int mode) {
+        if (mode < 1 || mode > 5) {
+            throw new BroadcastException("播放模式只能是 1-5");
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("command", "play_mode");
+        body.put("set", 1);
+        body.put("selected_id", lastSelectedId > 0 ? lastSelectedId : 1);
+        body.put("play_mode", mode);
+        assertSuccess(exchange("play_mode", null, body, true, requestTimeoutMs), "play_mode");
     }
 
     // ---------------------------------------------------------------- 曲库列表管理
@@ -740,13 +774,24 @@ public class DsppaClient {
     }
 
     public void addSongToList(String listId, String songName) {
+        addSongsToList(listId, List.of(songName));
+    }
+
+    /**
+     * 批量把曲目加入列表。平台原生支持数组（song_count + song_names），不用逐条发。
+     *
+     * <p>字段是 song_names（数组）+ song_count；传单数字符串 song_name 平台会静默无响应。
+     * 另外这里认的是**文件名**，不是完整路径（play_source 才认完整路径）—— 同一平台两套口径。
+     */
+    public void addSongsToList(String listId, List<String> songNames) {
+        if (songNames == null || songNames.isEmpty()) {
+            return;
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("command", "add_song_to_list");
         body.put("list_id", listId);
-        // 字段是 song_names（数组）+ song_count；传单数字符串 song_name 平台会静默无响应。
-        // 另外这里认的是**文件名**，不是完整路径（play_source 才认完整路径）—— 同一平台两套口径。
-        body.put("song_count", 1);
-        body.put("song_names", List.of(songName));
+        body.put("song_count", songNames.size());
+        body.put("song_names", new ArrayList<>(songNames));
         assertSuccess(exchange("add_song_to_list", null, body, true, requestTimeoutMs), "add_song_to_list");
     }
 

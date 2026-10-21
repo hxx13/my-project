@@ -16,6 +16,8 @@ import {
   submitExamPaper,
   type StudentPaperSummary,
 } from "@/features/student/api/student.api";
+import { fetchMyLearningVideos, type MyLearningVideo } from "@/api/domains/learningVideo.api";
+import { VideoLearnPlayer } from "@/features/learning-video/VideoLearnPlayer";
 import { useStudentQuery } from "@/features/student/hooks/use-student-query";
 
 export interface ExamBarState {
@@ -76,14 +78,33 @@ interface Sec {
   questions: Q[];
 }
 
-const MobileExamTab = forwardRef<MobileExamTabHandle, { onBarChange?: (s: ExamBarState | null) => void }>(
-  function MobileExamTab({ onBarChange }, ref) {
+const MobileExamTab = forwardRef<
+  MobileExamTabHandle,
+  {
+    onBarChange?: (s: ExamBarState | null) => void;
+    /** 培训报名页「去学习」跳过来时置位：打开一次视频列表后回调复位 */
+    initialVideosOpen?: boolean;
+    onVideosOpened?: () => void;
+  }
+>(function MobileExamTab({ onBarChange, initialVideosOpen, onVideosOpened }, ref) {
     const qc = useQueryClient();
     const [paperId, setPaperId] = useState<number | null>(null);
     const [answers, setAnswers] = useState<Record<string, unknown>>({});
     const [submitting, setSubmitting] = useState(false);
+    const [videosOpen, setVideosOpen] = useState(false);
+    const [playingVideo, setPlayingVideo] = useState<MyLearningVideo | null>(null);
 
     const { data: papers = [], isLoading } = useStudentQuery(["exam-papers"], () => fetchMyExamPapers());
+    const { data: videos = [], refetch: refetchVideos } = useStudentQuery(
+      ["my-learning-videos"],
+      () => fetchMyLearningVideos(),
+    );
+
+    useEffect(() => {
+      if (!initialVideosOpen) return;
+      setVideosOpen(true);
+      onVideosOpened?.();
+    }, [initialVideosOpen, onVideosOpened]);
     const { data: paper, isLoading: paperLoading } = useStudentQuery(
       ["exam-paper", paperId ?? 0],
       () => fetchMyExamPaper(paperId as number),
@@ -274,7 +295,23 @@ const MobileExamTab = forwardRef<MobileExamTabHandle, { onBarChange?: (s: ExamBa
 
     /* ---------------- 试卷列表 ---------------- */
     return (
+      <>
       <div className="h-full min-h-0 overflow-y-auto overscroll-contain px-3 pb-6 pt-3">
+        <button
+          type="button"
+          onClick={() => setVideosOpen(true)}
+          className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-[var(--app-color-border-default)] bg-white px-4 py-3 text-left shadow-[0_2px_10px_rgba(31,56,88,0.06)]"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-semibold text-[var(--app-color-text-primary)]">视频学习</div>
+            <div className="mt-0.5 text-[12px] text-[var(--app-color-text-tertiary)]">
+              {videos.length === 0
+                ? "暂无学习视频"
+                : `${videos.filter((v) => v.completed).length}/${videos.length} 已完成`}
+            </div>
+          </div>
+          <span className="text-[13px] text-[var(--app-color-text-tertiary)]">›</span>
+        </button>
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-[13px] text-[var(--app-color-text-tertiary)]">
             <Loader2 className="mr-2 size-4 animate-spin" />加载中…
@@ -334,6 +371,60 @@ const MobileExamTab = forwardRef<MobileExamTabHandle, { onBarChange?: (s: ExamBa
           </div>
         )}
       </div>
+
+      {videosOpen && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/40 p-4" onClick={() => setVideosOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-[16px] font-bold text-[var(--app-color-text-primary)]">视频学习</span>
+              <button type="button" onClick={() => setVideosOpen(false)} className="p-1 text-[var(--app-color-text-tertiary)]" aria-label="关闭">
+                ✕
+              </button>
+            </div>
+            {videos.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-[var(--app-color-text-tertiary)]">暂无学习视频</p>
+            ) : (
+              <div className="max-h-[60vh] space-y-1 overflow-auto">
+                {videos.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left text-[14px] hover:bg-[var(--app-color-surface-hover)]"
+                    onClick={() => {
+                      setVideosOpen(false);
+                      setPlayingVideo(v);
+                    }}
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium text-[var(--app-color-text-primary)]">{v.title}</span>
+                    {v.completed ? (
+                      <span className="shrink-0 text-[12px] text-emerald-600">已完成</span>
+                    ) : (
+                      <span className="shrink-0 text-[12px] text-[var(--app-color-text-tertiary)]">已看 {v.percent}%</span>
+                    )}
+                    <span className="shrink-0 text-[12px] text-[var(--app-color-accent)]">观看</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {playingVideo && (
+        <VideoLearnPlayer
+          video={playingVideo}
+          onClose={() => {
+            setPlayingVideo(null);
+            refetchVideos();
+            // 培训报名的资格判定也要跟着刷新，否则 30s 内回培训页仍显示未看完
+            qc.invalidateQueries({ queryKey: ["student"] });
+          }}
+        />
+      )}
+      </>
     );
   },
 );

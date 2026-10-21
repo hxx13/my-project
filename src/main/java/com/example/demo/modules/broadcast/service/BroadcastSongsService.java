@@ -39,8 +39,14 @@ public class BroadcastSongsService {
     private static final String PLAYLIST_XML = "/Data/Xml/Playlist.xml";
     /** 平台的上传入口（相对 HTTP 基址）。 */
     private static final String UPLOAD_CGI = "/cgi-bin/Addsong.cgi";
-    /** 单个音频上限：整份读进内存，别让它把堆撑爆。 */
-    private static final long MAX_UPLOAD_BYTES = 100L * 1024 * 1024;
+    /** 平台只认这两种：厂家自己的上传页校验的就是 wav / mp3。 */
+    private static final java.util.regex.Pattern ALLOWED_EXT =
+            java.util.regex.Pattern.compile("(?i).*\\.(mp3|wav)$");
+    /**
+     * 单个音频上限。**必须与 spring.servlet.multipart.max-file-size 对齐**：
+     * 超过容器上限时请求在进入控制器前就被拒了，这里的分支根本走不到。
+     */
+    private static final long MAX_UPLOAD_BYTES = 30L * 1024 * 1024;
 
     private final DsppaClient client;
     private final HttpClient http = HttpClient.newBuilder()
@@ -165,16 +171,67 @@ public class BroadcastSongsService {
      * 两步都**不删文件**（原厂那个 remove_local 开关一律传 0）。
      */
     public void moveSong(String fromListId, String toListId, String songPath) {
+        moveSongs(fromListId, toListId, java.util.List.of(songPath));
+    }
+
+    /**
+     * 批量移动。逐首从原列表摘出，**再一次性**加入目标列表（平台的加入接口原生收数组）。
+     *
+     * <p>某一首在原列表里已经不存在（比如刚被别的操作移动/删除、界面数据是旧的）时，
+     * 不整体失败，按首记失败原因继续 —— 否则一首过期就会让整批白做。
+     *
+     * @return 逐首结果（pathName / fileName / success / message）
+     */
+    public java.util.List<java.util.Map<String, Object>> moveSongs(
+            String fromListId, String toListId, java.util.List<String> songPaths) {
         String from = requireListId(fromListId);
         String to = requireListId(toListId);
         if (from.equals(to)) {
             throw new IllegalArgumentException("源列表与目标列表相同");
         }
-        String song = requireSong(songPath);
-        String fileName = fileNameOf(song);
-        client.removeSongFromList(from, fileName, false);
-        client.addSongToList(to, fileName);
-        log.info("[广播] 曲目移列表 {} -> {} : {}", from, to, song);
+        if (songPaths == null || songPaths.isEmpty()) {
+            throw new IllegalArgumentException("未选择曲目");
+        }
+
+        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
+        java.util.List<String> movedNames = new java.util.ArrayList<>();
+        for (String raw : songPaths) {
+            String song = requireSong(raw);
+            String fileName = fileNameOf(song);
+            java.util.Map<String, Object> one = new java.util.LinkedHashMap<>();
+            one.put("pathName", song);
+            one.put("fileName", fileName);
+            try {
+                client.removeSongFromList(from, fileName, false);
+                movedNames.add(fileName);
+                one.put("success", true);
+            } catch (BroadcastException e) {
+                one.put("success", false);
+                // 3/7 = 目标不存在：几乎都是「界面上的列表已经过期」
+                one.put("message", (e.getResult() == 3 || e.getResult() == 7)
+                        ? "已不在原列表（可能刚被移动或删除），请刷新后再试"
+                        : e.getMessage());
+            }
+            out.add(one);
+        }
+
+        if (!movedNames.isEmpty()) {
+            try {
+                client.addSongsToList(to, movedNames);
+            } catch (RuntimeException e) {
+                // 已经摘出来了但没加进去：不补偿的话这些歌会从两个列表里同时消失。
+                // 音频文件本身不受影响，这里先把它们放回原列表再报错。
+                try {
+                    client.addSongsToList(from, movedNames);
+                } catch (Exception ignored) {
+                    // 补偿也失败就照实抛，至少调用方能知道状态不确定
+                }
+                throw new BroadcastException("移动到目标列表失败，已退回原列表：" + e.getMessage());
+            }
+        }
+        log.info("[广播] 曲目移列表 {} -> {} : {} 首（成功 {}）",
+                from, to, songPaths.size(), movedNames.size());
+        return out;
     }
 
     /** 把曲目加入列表。入参仍是**路径**（上层统一口径），转成文件名是平台的要求，封在这一层。 */
@@ -226,12 +283,15 @@ public class BroadcastSongsService {
             throw new IllegalArgumentException("上传文件为空");
         }
         if (file.getSize() > MAX_UPLOAD_BYTES) {
-            throw new IllegalArgumentException("音频超过上限 " + (MAX_UPLOAD_BYTES / 1024 / 1024) + "MB");
+            throw new IllegalArgumentException("单个文件超过上限 " + (MAX_UPLOAD_BYTES / 1024 / 1024) + "MB");
         }
         if (listId == null || listId.isBlank()) {
             throw new IllegalArgumentException("未指定目标曲库列表");
         }
         String fileName = file.getOriginalFilename() == null ? "upload.mp3" : file.getOriginalFilename();
+        if (!ALLOWED_EXT.matcher(fileName).matches()) {
+            throw new IllegalArgumentException("平台只接受 mp3 / wav 格式（当前：" + fileName + "）");
+        }
         byte[] bytes;
         try {
             bytes = file.getBytes();
@@ -240,9 +300,12 @@ public class BroadcastSongsService {
         }
 
         postMultipart(fileName, bytes);
-        client.notifySongUploaded(listId, fileName);
+        // **必须再发一次「加入列表」**。只发登记类命令（request_upload_song_to_server）实测
+        // 回执成功、文件也传上去了，但歌曲**不会出现在任何列表里** —— 现场「传完看不到」就是它。
+        // 厂家自己的上传页做的也是这一步（add_song_to_list，song_count + song_names）。
+        client.addSongToList(listId, fileName);
         String path = "/Data/Program/Other/" + fileName;
-        log.info("[广播] 曲目已上传并登记: {} -> {}", fileName, listId);
+        log.info("[广播] 曲目已上传并加入列表: {} -> {}", fileName, listId);
         return path;
     }
 
@@ -270,7 +333,14 @@ public class BroadcastSongsService {
                     .build();
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() != 200) {
-                throw new BroadcastException("上传音频失败，HTTP " + resp.statusCode());
+                // 把平台回的内容带出来：只报一个 HTTP 500 等于什么都没说，
+                // 现场排查时「平台为什么拒」全在这个响应体里。
+                String respBody = resp.body() == null ? "" : resp.body().replaceAll("\\s+", " ").trim();
+                if (respBody.length() > 200) {
+                    respBody = respBody.substring(0, 200) + "…";
+                }
+                throw new BroadcastException("上传音频失败，HTTP " + resp.statusCode()
+                        + (respBody.isEmpty() ? "" : "：" + respBody));
             }
         } catch (BroadcastException e) {
             throw e;

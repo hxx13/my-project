@@ -24,6 +24,8 @@ public class TelemetryLongtermExportRequest {
     private List<String> days;
     /** 只导出这些变量；为空/空表 = 全部 */
     private List<String> variableNames;
+    /** 自定义分区 id；不传=全部分区，0=未分区 */
+    private Long partitionId;
     /** 形如 2026-10；非空时优先于 from/to */
     private String month;
     private LocalDateTime from;

@@ -429,14 +429,17 @@ public class CageLocalController {
         if (wantsStatusPhoto) {
             // 学生只被下放「合笼」这一个标记动作，状态照片不跟着开 —— 这条必须显式判 isStudent：
             // 光看 canUseMode 会漏，因为带 BREEDER/LEADER 身份 code 的学生本来就能过那一道。
-            if (modeVisibilityService.isStudent(u) || !modeVisibilityService.canUseMode(u, "edit")) {
-                return Result.fail(403, "无状态照片编辑权限（仅状态模式身份可操作）");
+            // 饲养员 / 饲养组长始终可管理照片（见 canManageCagePhotos），不受「状态」模式收窄影响。
+            if (!modeVisibilityService.canManageCagePhotos(u)) {
+                return Result.fail(403, "无状态照片编辑权限（仅状态模式身份或饲养员/饲养组长可操作）");
             }
         }
 
         Map<String, Object> values = new HashMap<>();
         if (experimentDesc != null) values.put("experiment_desc", experimentDesc);
         if (imagesJson != null) values.put("images_json", imagesJson);
+        // 照片/视频的「删除」只把地址从当前 extra_data 里去掉（软删除）：文件永远留在磁盘上，
+        // 变更历史还要按旧地址回放。此处**禁止**调用上传文件的物理删除 —— 删了文件，历史里的附件就没了。
         if (statusPhotos != null) values.put("extra_data", statusPhotos);
         infoValueService.saveLocalFields(animalCageId, values, u.getId());
 
@@ -551,13 +554,13 @@ public class CageLocalController {
     }
 
     @DeleteMapping("/history/{id}")
-    @Operation(summary = "删除单条归档历史记录")
+    @Operation(summary = "隐藏单条归档历史记录（软删除，附件与留痕不物理删除）")
     public Result<?> deleteHistory(@PathVariable Long id, HttpServletRequest req) {
         User u = resolveUser(req.getHeader("Authorization"));
         Result<?> denied = requireRole(u, RoleEnum.STAFF);
         if (denied != null) return denied;
-        int affected = historyMapper.deleteById(id);
-        return affected > 0 ? Result.success("已删除") : Result.fail(404, "记录不存在");
+        int affected = historyMapper.softDeleteById(id);
+        return affected > 0 ? Result.success("已隐藏") : Result.fail(404, "记录不存在");
     }
 
     // ═══════════════════════════════════════════

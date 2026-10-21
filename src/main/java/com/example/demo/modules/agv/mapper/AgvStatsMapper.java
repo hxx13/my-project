@@ -164,6 +164,10 @@ public interface AgvStatsMapper {
     @Select("SELECT COUNT(*) FROM agv_metric_daily WHERE stat_date = #{statDate}")
     int countDailyMetricsForDate(@Param("statDate") String statDate);
 
+    /** 轨迹表里最早的一天（yyyy-MM-dd）；空表返回 null。启动补封存从这天开始查缺口。 */
+    @Select("SELECT DATE_FORMAT(MIN(recorded_at), '%Y-%m-%d') FROM agv_trajectory")
+    String selectEarliestTrajectoryDate();
+
     /**
      * 历史累计（不分天）：直接把两个总量指标求和。
      * <p>不要用「按天全查回来在前端/控制器里加」——驾驶舱十秒轮询一次，

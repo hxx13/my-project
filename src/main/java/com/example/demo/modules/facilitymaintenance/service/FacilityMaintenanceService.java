@@ -32,6 +32,7 @@ public class FacilityMaintenanceService {
 
     private static final Logger log = LoggerFactory.getLogger(FacilityMaintenanceService.class);
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter DATE_ONLY = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final UserDisplayNameService userDisplayNameService;
@@ -760,6 +761,14 @@ public class FacilityMaintenanceService {
         return null;
     }
 
+    /** 耗材/更换台账只记日期：导出不再带时分秒 */
+    private static String formatDateForExcel(Object v) {
+        if (v == null) return null;
+        if (v instanceof LocalDateTime ldt) return DATE_ONLY.format(ldt);
+        if (v instanceof java.sql.Timestamp ts) return DATE_ONLY.format(ts.toLocalDateTime());
+        return null;
+    }
+
     /**
      * @param scope all | sites | inspection | consumables | replacements；台账三页分别导出单 Sheet
      */
@@ -853,7 +862,7 @@ public class FacilityMaintenanceService {
     private void writeConsumableSheet(Workbook wb) {
         Sheet sh = wb.createSheet("Consumables");
         Row h = sh.createRow(0);
-        String[] cols = {"机房名称", "耗材名称", "数量", "单位", "发生时间", "备注", "创建人"};
+        String[] cols = {"机房名称", "耗材名称", "数量", "单位", "发生日期", "备注", "创建人"};
         for (int i = 0; i < cols.length; i++) h.createCell(i).setCellValue(cols[i]);
         List<Map<String, Object>> rows = jdbc.query(
                 """
@@ -862,7 +871,7 @@ public class FacilityMaintenanceService {
                         FROM fm_consumable_line c
                         LEFT JOIN fm_site s ON s.id = c.site_id
                         LEFT JOIN sys_user u ON u.id = c.created_by
-                        ORDER BY c.occurred_at DESC
+                        ORDER BY c.consumable_name, c.occurred_at DESC
                         """,
                 rowMapperSimple());
         int r = 1;
@@ -872,7 +881,7 @@ public class FacilityMaintenanceService {
             row1.createCell(1).setCellValue(Objects.toString(row.get("consumableName"), ""));
             row1.createCell(2).setCellValue(row.get("qty") != null ? ((BigDecimal) row.get("qty")).doubleValue() : 0);
             row1.createCell(3).setCellValue(Objects.toString(row.get("unit"), ""));
-            String occurredAtStr = formatDateTimeForExcel(row.get("occurredAt"));
+            String occurredAtStr = formatDateForExcel(row.get("occurredAt"));
             if (occurredAtStr != null) {
                 row1.createCell(4).setCellValue(occurredAtStr);
             }
@@ -885,30 +894,29 @@ public class FacilityMaintenanceService {
     private void writeReplacementSheet(Workbook wb) {
         Sheet sh = wb.createSheet("Replacements");
         Row h = sh.createRow(0);
-        String[] cols = {"记录ID", "机房名称", "过滤器类型", "更换时间", "备注", "创建人"};
+        String[] cols = {"机房名称", "过滤器类型", "更换日期", "备注", "创建人"};
         for (int i = 0; i < cols.length; i++) h.createCell(i).setCellValue(cols[i]);
         List<Map<String, Object>> rows = jdbc.query(
                 """
-                        SELECT r.id, s.name siteName, r.filter_type filterType, r.replaced_at replacedAt, r.note,
+                        SELECT s.name siteName, r.filter_type filterType, r.replaced_at replacedAt, r.note,
                                COALESCE(NULLIF(TRIM(u.display_nickname), ''), u.username, r.created_by) createdByName
                         FROM fm_replacement_record r
                         LEFT JOIN fm_site s ON s.id = r.site_id
                         LEFT JOIN sys_user u ON u.id = r.created_by
-                        ORDER BY r.replaced_at DESC
+                        ORDER BY r.filter_type, r.replaced_at DESC
                         """,
                 rowMapperSimple());
         int r = 1;
         for (Map<String, Object> row : rows) {
             Row row1 = sh.createRow(r++);
-            row1.createCell(0).setCellValue(Objects.toString(row.get("id"), ""));
-            row1.createCell(1).setCellValue(Objects.toString(row.get("siteName"), ""));
-            row1.createCell(2).setCellValue(Objects.toString(row.get("filterType"), ""));
-            String replacedAtStr = formatDateTimeForExcel(row.get("replacedAt"));
+            row1.createCell(0).setCellValue(Objects.toString(row.get("siteName"), ""));
+            row1.createCell(1).setCellValue(Objects.toString(row.get("filterType"), ""));
+            String replacedAtStr = formatDateForExcel(row.get("replacedAt"));
             if (replacedAtStr != null) {
-                row1.createCell(3).setCellValue(replacedAtStr);
+                row1.createCell(2).setCellValue(replacedAtStr);
             }
-            row1.createCell(4).setCellValue(Objects.toString(row.get("note"), ""));
-            row1.createCell(5).setCellValue(Objects.toString(row.get("createdByName"), ""));
+            row1.createCell(3).setCellValue(Objects.toString(row.get("note"), ""));
+            row1.createCell(4).setCellValue(Objects.toString(row.get("createdByName"), ""));
         }
         ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
     }
@@ -1087,16 +1095,19 @@ public class FacilityMaintenanceService {
 
     private int importReplacementSheet(Sheet sh) {
         int cnt = 0;
+        // 旧版导出首列为「记录ID」；新版已去掉该列，首列是机房名称
+        boolean legacyWithRecordId = replacementImportUsesLegacyRecordIdColumn(sh);
+        int off = legacyWithRecordId ? 1 : 0;
         for (int r = 1; r <= sh.getLastRowNum(); r++) {
             Row row = sh.getRow(r);
             if (row == null) continue;
-            String id = cellStr(row, 0);
-            String siteId = resolveSiteIdFromImportCell(cellStr(row, 1));
-            String ft = cellStr(row, 2);
+            String id = legacyWithRecordId ? cellStr(row, 0) : "";
+            String siteId = resolveSiteIdFromImportCell(cellStr(row, off));
+            String ft = cellStr(row, off + 1);
             if (siteId.isEmpty() || ft.isEmpty()) continue;
-            LocalDateTime at = parseDateTime(cellStr(row, 3));
-            String note = cellStr(row, 4);
-            String createdBy = resolveUserIdFromImportCell(cellStr(row, 5));
+            LocalDateTime at = parseDateTime(cellStr(row, off + 2));
+            String note = cellStr(row, off + 3);
+            String createdBy = resolveUserIdFromImportCell(cellStr(row, off + 4));
             if (id.isEmpty()) id = newId("FM_R_");
             jdbc.update("""
                             INSERT INTO fm_replacement_record(id,site_id,filter_type,replaced_at,note,created_by)
@@ -1107,6 +1118,12 @@ public class FacilityMaintenanceService {
             cnt++;
         }
         return cnt;
+    }
+
+    private static boolean replacementImportUsesLegacyRecordIdColumn(Sheet sh) {
+        Row h = sh.getRow(0);
+        if (h == null) return false;
+        return cellStr(h, 0).startsWith("记录");
     }
 
     private static final DataFormatter CELL_FMT = new DataFormatter();

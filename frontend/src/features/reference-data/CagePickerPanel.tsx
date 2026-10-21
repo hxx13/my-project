@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { ChevronUp, ChevronDown, X } from "lucide-react";
 import { ShelfGrid } from "@/features/cage-shelf/components/ShelfGrid";
@@ -20,6 +20,7 @@ import {
   type ReservableCell,
 } from "@/api/domains/animalOrderCage.api";
 import { buildCageOpMarks } from "@/features/cage-shelf/useCageOpSelect";
+import { invalidateCageAvailability } from "@/api/hooks/useReferenceData";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import CageOpDrawer from "@/components/cage/CageOpDrawer";
 import { allocatedTotal } from "./cageAllocation";
@@ -100,6 +101,7 @@ export default function CagePickerPanel({
   embedded = false,
 }: Props) {
   const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
   /** 网格「完整/简洁」：简洁档收起格子上的文字标签（底色/网纹/图标留着） */
   const [compactGrid, setCompactGrid] = useState(false);
   const mySex = useMemo(() => sexOf(specOptionLabel), [specOptionLabel]);
@@ -343,7 +345,15 @@ export default function CagePickerPanel({
    * 把自己**已锁定**的笼位接回「已选」态。
    * 预定是持久的（笼位保持 type2，只有 cage_order_reservation 记着），刷新页面或重开抽屉
    * 后页面状态会丢；不接回来的话它们会显示成「可点的空格子」，点了反而撞唯一索引报 409。
+   *
+   * 「接回」只在**刷新/重开抽屉**时补状态用。本抽屉会话里已经处理过的笼位（点选过 / 接回过）
+   * 一律不再接：加购成功后页面会清空 pickedCages，此时 /reservable、/active 可能还停在
+   * 加购前的快照，没有这道闸门它们会被重新接回「已选」——用户看着像还没加购，再点一次
+   * 就把同一个笼位又挂进购物车（重复行），或是把已在车里的笼位当成「没分到老鼠」去取消
+   * （后端拒绝释放，它其实还在车里）。
    */
+  const handledIdsRef = useRef<Set<string>>(new Set());
+
   const myReservedIds = useMemo(
     () => new Set((reservable?.cells ?? []).filter((c) => c.reservedByMe).map((c) => String(c.animalCageId))),
     [reservable],
@@ -353,7 +363,7 @@ export default function CagePickerPanel({
     const have = new Set(reservations.map((r) => r.animalCageId));
     const add: PickedCage[] = [];
     for (const id of myReservedIds) {
-      if (have.has(id)) continue;
+      if (have.has(id) || handledIdsRef.current.has(id)) continue;
       const active = activeReservations.find((r) => String(r.animalCageId) === id);
       if (!active) continue;
       // 已经挂到购物车行的属于「加购已完成」，不接回选择态 —— 否则加购完上次的选择又冒出来
@@ -363,6 +373,7 @@ export default function CagePickerPanel({
       );
       const cell = detail?.grid.find((c) => String((c as { id?: string }).id ?? "") === id);
       const where = [detail?.shelfMeta?.roomName, detail?.shelfMeta?.shelveName].filter(Boolean).join(" ");
+      handledIdsRef.current.add(id);
       add.push({
         reservationId: String(active.reservationId),
         animalCageId: id,
@@ -422,6 +433,7 @@ export default function CagePickerPanel({
       } catch {
         // 启动清理兜底
       }
+      invalidateCageAvailability(qc);
       return;
     }
 
@@ -439,6 +451,7 @@ export default function CagePickerPanel({
       const where = [detail?.shelfMeta?.roomName, detail?.shelfMeta?.shelveName]
         .filter(Boolean)
         .join(" ");
+      handledIdsRef.current.add(cageId);
       onReservationsChange([
         ...reservations,
         {
@@ -468,6 +481,7 @@ export default function CagePickerPanel({
         /* 启动清理兜底 */
       });
     }
+    invalidateCageAvailability(qc);
   };
 
   const moveCage = (index: number, delta: number) => {
@@ -645,6 +659,7 @@ export default function CagePickerPanel({
                         } catch {
                           /* 启动清理兜底 */
                         }
+                        invalidateCageAvailability(qc);
                       }}
                       className="text-[var(--twin-mute)] hover:text-red-500"
                     >

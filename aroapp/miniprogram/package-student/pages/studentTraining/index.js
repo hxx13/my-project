@@ -58,6 +58,9 @@ function mapTraining(t, opts) {
     examPassed: !!t.examPassed,
     healthOk: !!t.healthOk,
     paperCount: (t.papers || []).length,
+    videoPassed: !!t.videoPassed,
+    videoCount: (t.videos || []).length,
+    videoDone: (t.videos || []).filter(function (v) { return v.completed; }).length,
     mine: isOwner && !!o.canManage,
   };
 }
@@ -93,7 +96,7 @@ function mapEnrollment(e) {
 Page({
   data: {
     pageGateOk: false,
-    tab: 'list',
+    tab: 'mine',
     loading: false,
     campusTabs: [],
     activeCampus: '',
@@ -133,7 +136,8 @@ Page({
   onShow() {
     this._shown = true;
     if (this._accessDenied || !this.data.pageGateOk) return;
-    this.loadList();
+    if (this.data.tab === 'mine') this.loadMine();
+    else this.loadList();
   },
 
   onPullDownRefresh() {
@@ -284,6 +288,14 @@ Page({
     const t = this.data.target;
     if (t && t.healthOk) return;
     wx.navigateTo({ url: '/package-student/pages/studentHealthSurvey/index' });
+  },
+
+  /** 门槛里的「学习视频」：去视频学习页（未看完才跳） */
+  onGateVideos() {
+    const t = this.data.target;
+    if (t && t.videoPassed) return;
+    this.setData({ enrollShow: false });
+    wx.navigateTo({ url: '/package-student/pages/studentVideos/index' });
   },
 
   /** 重新报名：被驳回的报名仍占着场次，先退再报 */

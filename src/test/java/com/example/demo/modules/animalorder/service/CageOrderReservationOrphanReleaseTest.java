@@ -63,4 +63,23 @@ class CageOrderReservationOrphanReleaseTest {
         verify(infoValue, never()).clearByCanonicals(anyLong(), any(), anyString(), anyString());
         verify(mapper).releaseOrphans("购物车行已不存在，自动释放");
     }
+
+    @Test
+    void 清悬空购物车预定_撤预填并逐条释放() {
+        CageOrderReservationMapper mapper = mock(CageOrderReservationMapper.class);
+        CageInfoValueService infoValue = mock(CageInfoValueService.class);
+        CageOrderReservation dangling = new CageOrderReservation();
+        dangling.setId(9L);
+        dangling.setAnimalCageId(11L);
+        dangling.setCartId(123L);
+        dangling.setWrittenJson("{\"experimenter_name\":\"林安顺\"}");
+        when(mapper.listDanglingCart()).thenReturn(List.of(dangling));
+
+        int released = serviceWith(mapper, infoValue).releaseDanglingCartReservations();
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, released);
+        verify(infoValue).clearByCanonicals(eq(11L), eq(Set.of("experimenter_name")),
+                eq("UPDATE"), eq("ORDER_RELEASE"));
+        verify(mapper).releaseById(eq(9L), eq("购物车行已不存在，自动释放"));
+    }
 }

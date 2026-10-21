@@ -1,5 +1,5 @@
-/** 物资商城页：文档流工具条单行高度（搜索 50% + 右侧入口） */
-const MALL_TOOLBAR_H = 46;
+/** 物资商城页：文档流工具条实际高度 = 入口行 36 + 上下 padding 16 + 底边 1 */
+const MALL_TOOLBAR_H = 53;
 
 /** 进货/上新提示条占用高度（含 margin-top 6px） */
 const NOVELTY_HINT_BLOCK_H = 42;

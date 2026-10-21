@@ -44,6 +44,8 @@ public class TelemetryTagItemDto {
     private String valueTrend;
     /** 数据库 telemetry_watchlist_tag.id（首分区命中）；详情 PATCH 用 */
     private Long watchlistTagId;
+    /** false=仅拉数与长期归档，不出现在动物房页/驾驶舱；null/true=显示 */
+    private Boolean showInAnimalRoom;
     /** 库内每点覆盖原始值（与 alarmMinValue 区分：后者为合并后的有效限） */
     private String alarmOverrideMin;
     private String alarmOverrideMax;

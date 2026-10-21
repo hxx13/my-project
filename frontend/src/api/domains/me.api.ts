@@ -106,6 +106,8 @@ export interface MiniPreferences {
   adminNavRecent?: string[];
   /** 管理后台侧栏「收藏」 */
   adminNavStars?: string[];
+  /** 远程控制可切换页面的收藏（按路由记，与侧栏收藏分开） */
+  remoteRouteStars?: string[];
   /** 管理后台锁定入口 */
   adminNavLock?: string | null;
   /** 学生端侧栏「常用」 */

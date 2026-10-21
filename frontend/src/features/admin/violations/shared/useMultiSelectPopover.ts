@@ -87,7 +87,18 @@ export function useMultiSelectPopover({
       }
       onClose();
     };
-    const onResize = () => onClose();
+    /**
+     * 只在**宽度**变化时关闭（旋转屏幕、侧栏收放这类真正的布局变化）。
+     *
+     * <p>软键盘弹出只会改变视口**高度**。平板上一聚焦输入框就触发 resize，
+     * 原来这里一律 onClose，表现就是「点开下拉、键盘一弹、浮层立刻没了」。
+     */
+    let lastWidth = typeof window === "undefined" ? 0 : window.innerWidth;
+    const onResize = () => {
+      if (window.innerWidth === lastWidth) return;
+      lastWidth = window.innerWidth;
+      onClose();
+    };
 
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);

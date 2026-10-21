@@ -59,12 +59,13 @@ import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown, MapPin, Stethoscope } from "lucide-react";
+import { LayoutGrid, Star, Search, Info, PanelLeftClose, PanelLeft, Loader2, Scan, Check, X, QrCode, ImagePlus, RefreshCw, Settings2, ChevronDown, ChevronLeft, MapPin, Stethoscope, Camera } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail, fetchLocalPipelineProgress, refreshCellDetail,
   type CageShelfCell, type CageShelfDetail,
-  fetchFullTree, type CageShelfTreeNode,
+  fetchFullTree, fetchMyGroupRooms, fetchGroupRooms, type GroupRoom,
+  type CageShelfTreeNode,
   type PersistedAlert,
   fetchActiveCageStatusAlerts,
   fetchCageVetInbox,
@@ -77,7 +78,7 @@ import {
   cancelCageBoxColor, ACTION_CANCEL_COLOR, type CancelColor,
   updateAnimalCage, type AnimalCageUpdatePayload,
   fetchCellIndexByShelf, fetchLocalShelfGridByShelveId, localAllocate, localCancelAllocate, localEdit, saveStatusDetail, localAnnotate, fetchLocalAnnotate, type CageCellIndexEntry, type PoolCell,
-  syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds, fetchSyncLocks, saveCageDivision,
+  syncLocalCagePipeline, localPipelineStepLabel, syncAllCellIds, fetchSyncLocks, saveCageDivision, clearCageDivision,
   searchPersonnelByKeyword,
   fetchCageModeVisible,
   fetchCageOpMarkers, lookupCode, locateTargetOf, adminConfirmClaim, archiveCage, reconcileCageOccupancy, type CodeLookupResult,
@@ -211,6 +212,8 @@ const serverActionsOfCell=(cell:any,formValues:CageInfoValueRow[]|null,dataSourc
  * 内联 style 覆盖成紫色（内联 style 优先级高于类，不用为它单开一套类）。
  */
 const TOOL_PILL = "flex items-center gap-1 rounded-full border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--twin-ink)] transition hover:brightness-95";
+/** 划分抽屉里的固定撤销区：把已划分的笼位拖进来 = 提交时清掉它的划分 */
+const DIVISION_CLEAR_ZONE = "__division_clear__";
 
 function Inner(){
   // ═══════════════════════════════════════════════════════════
@@ -247,8 +250,20 @@ function Inner(){
   const isPlatformOwner = useMemo(() => hasMinRole(authStorage.getRole(), "PLATFORM_OWNER"), []);
   // 可见模式（按身份），null = 尚未加载；加载失败回退到 canEdit 全量。
   const [visibleModes, setVisibleModes] = useState<string[] | null>(null);
+  /**
+   * 状态权限拆成两半（与后端 `/cage-mode/visible` 同口径）：
+   *   canEditStatus          = 能不能标记/取消状态（矩阵 cage.mode.edit）
+   *   canManageStatusPhotos  = 能不能管理状态照片（饲养员/饲养组长保底放行）
+   * 拆开是为了「只管理照片」的账号进来时不显示会被 403 的状态开关。
+   */
+  const [canEditStatus, setCanEditStatus] = useState(true);
+  const [canManageStatusPhotos, setCanManageStatusPhotos] = useState(true);
   useEffect(() => {
-    fetchCageModeVisible().then(r => setVisibleModes(r.modes)).catch(() => setVisibleModes(null));
+    fetchCageModeVisible().then(r => {
+      setVisibleModes(r.modes);
+      setCanEditStatus(r.canEditStatus ?? r.modes.includes("edit"));
+      setCanManageStatusPhotos(r.canManageStatusPhotos ?? r.canEditStatus ?? r.modes.includes("edit"));
+    }).catch(() => setVisibleModes(null));
   }, []);
   // 模式下拉过滤：SUPER_ADMIN 看全部；否则按后端下发的可见模式收口。
   const allowedModeKeys = useMemo(() => {
@@ -276,6 +291,8 @@ function Inner(){
    *   true  = 直接改：点格子开原状态弹窗，弹窗里点一下立刻写服务端（不走缓存）
    */
   const[editDirect,setEditDirect]=useState(false);
+  /** 从顶部悬浮岛进入拍照模式后的引导提示：第一次点中笼位（或超时）即消失 */
+  const[photoHint,setPhotoHint]=useState(false);
   /** 只有「拖色区」才谈得上攒着提交 */
   const editStaged = editMode && !editDirect;
   /**
@@ -489,6 +506,26 @@ function Inner(){
     staleTime:10*60*1000,
   });
   const tree=useMemo(()=>buildTree(fullTree),[fullTree]);
+
+  // 本人课题组占用的房间：左侧树顶部「我的区域」快捷块用（与刷卡平面图同一口径）
+  const myUserId = authStorage.getUserInfo()?.id ?? "";
+  const { data: myGroupRooms = [] as GroupRoom[] } = useQuery({
+    queryKey: ["cageShelfMyGroupRooms", myUserId],
+    queryFn: async () => {
+      try {
+        return await fetchMyGroupRooms();
+      } catch {
+        // 老后端还没有 /my-group-rooms：退回按人员查询，至少课题组房间照常显示
+        return myUserId ? await fetchGroupRooms(myUserId) : [];
+      }
+    },
+    enabled: !!myUserId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const myRoomIds = useMemo(
+    () => new Set((myGroupRooms ?? []).map((r) => String(r.roomId))),
+    [myGroupRooms],
+  );
 
   // 首屏默认展开前两级（校区 + 区域/楼层）；已存过后端展开态的账号会以那份为准（hook 拉到就覆盖）
   const expInited=useRef(false);
@@ -1397,64 +1434,43 @@ function Inner(){
   }, []);
 
   /**
-   * 「不可选」网纹：把当前模式下**选不了**的笼位整格盖上红色细斜线 + 底部原因条
-   * （对齐小程序订购选笼位那套）。只在有网格选择的模式画 —— 查看/记录/预约本来就没有
-   * 「可选的格子」，盖满屏红网纹只是吵。
+   * 「不可选」网纹：把当前模式下**选不了**的笼位整格盖上红色细斜线（**不再挂底部小字**）。
+   * 只在有网格选择的模式画 —— 查看/记录/预约本来就没有「可选的格子」，盖满屏红网纹只是吵。
    *
-   * 每格原因与对应模式的 toggle 判定**同源**：网纹说不能点、点下去却成功，是最伤信任的一类不一致。
+   * 每格判定与对应模式的 toggle **同源**：网纹说不能点、点下去却成功，是最伤信任的一类不一致；
+   * 完整原因点下去仍由各模式的 toast 给出。
    * 没有 ID 的位置（空位）不参与 —— 它们本来就不是笼位，格子上已有「空位」字样。
+   */
+  /**
+   * 不可选格子：**只盖斜线，不再挂底部小字**。
+   * 斜线已经表达「点不了」；逐格短标签会把状态机话术铺满网格（划分模式尤其明显），
+   * 而且同一句话在几十个格子上重复几十遍。完整原因点下去仍由各模式的 toast 给出。
    */
   const modeDisabledReasons = useMemo(() => {
     if (!gridMultiSelect) return undefined;
-    /**
-     * null = 该格可选；字符串 = 网纹上的短标签。
-     * 「能不能选」复用各模式现成的 verdict（只有一份判定），标签只是同一批条件的短说法
-     * —— 格子 70px 宽放不下完整 reason，完整版点下去照旧 toast。
-     */
-    const labelOf = (c: unknown): string | null => {
+    const blockedOf = (c: unknown): boolean => {
       const cell = c as any;
       const ct = cell?.cageTypeCode ?? cell?.animalCageType;
-      const claimBusy = ["pending_approval", "locked", "confirmed", "pending_release_approval"].includes(cell?.claimStatus);
-      if (editStaged) return ct === 3 || ct === 4 ? null : "不可编辑";
-      if (pageMode === "allocate") {
-        if (allocCellVerdict(c).ok) return null;
-        if (claimBusy) return "认领在办";
-        if (opMarkWithReservations.has(cageIdOfCell(c))) return "有待审请求";
-        return ct === 3 || ct === 4 ? "需先归档" : "状态未知";
-      }
-      if (reserveMode) {
-        if (reserveCellVerdict(c).ok) return null;
-        if (claimBusy) return "已有认领";
-        const mark = opMarkWithReservations.get(cageIdOfCell(c));
-        if (mark) return mark.label;
-        return ct === 2 ? "不可预定" : "非空笼盒";
-      }
-      if (divisionMode) return ct !== 1 ? null : "待分配";
-      if (archiveMode) return ct === 3 ? null : "无需归档";
-      if (confirmMode) {
-        if (confirmCellVerdict(c).ok) return null;
-        const st = cell?.claimStatus;
-        if (!st) return "未分配";
-        if (st === "confirmed") return "已到位";
-        if (st === "pending_approval") return "待审批";
-        if (st === "pending_release_approval") return "待释放";
-        return String(st);
-      }
-      return null;
+      if (editStaged) return !(ct === 3 || ct === 4);
+      if (pageMode === "allocate") return !allocCellVerdict(c).ok;
+      if (reserveMode) return !reserveCellVerdict(c).ok;
+      if (divisionMode) return ct === 1;
+      if (archiveMode) return ct !== 3;
+      if (confirmMode) return !confirmCellVerdict(c).ok;
+      return false;
     };
     const m = new Map<string, string>();
     const add = (grid: unknown[] | undefined) => {
       for (const c of grid ?? []) {
         const id = cageIdOfCell(c);
         if (!id) continue;
-        const label = labelOf(c);
-        if (label) m.set(id, label);
+        if (blockedOf(c)) m.set(id, "");
       }
     };
     for (const d of details) add(d.grid as never);
     add(shelfDetail?.grid as never);
     return m;
-  }, [gridMultiSelect, editStaged, pageMode, reserveMode, divisionMode, archiveMode, confirmMode, opMarkWithReservations, allocCellVerdict, reserveCellVerdict, confirmCellVerdict, cageIdOfCell, details, shelfDetail]);
+  }, [gridMultiSelect, editStaged, pageMode, reserveMode, divisionMode, archiveMode, confirmMode, allocCellVerdict, reserveCellVerdict, confirmCellVerdict, cageIdOfCell, details, shelfDetail]);
 
   /** 哪些笼架有可选笼位 —— 供左侧树与笼架边框高亮 */
   const selectableShelveIds = useMemo(() => {
@@ -1518,6 +1534,7 @@ function Inner(){
    * 网格点击和抽屉条目的「点击继续编辑」都走这里，两条入口的落点才不会各走各的。
    */
   const openEditCell=useCallback((cell:CageShelfCell,sidHint?:string)=>{
+    setPhotoHint(false);
     const cageId=String((cell as any).id ?? (cell as any).animalCageId ?? "");
     // 拉取表单值(cage_info_value)：状态标记唯一真相源，编辑弹窗据此反向使能按钮
     setEditFormValues(null);
@@ -1928,6 +1945,25 @@ function Inner(){
     setPendingOpen(mode !== "view" && mode !== "record" && mode !== "booking");
   },[allowedModeKeys]);
 
+  /**
+   * 顶部悬浮岛的「进入拍照模式」：
+   *   切到逐格编辑 → 收起右侧待提交抽屉 → 提示选笼位。
+   * 与抽屉里的切换按钮走同一份状态（editDirect），两条入口不会各说各话。
+   */
+  const enterPhotoMode=useCallback(()=>{
+    if(!editMode) return;
+    setEditDirect(true);
+    setPendingOpen(false);
+    setPhotoHint(true);
+  },[editMode]);
+  useEffect(()=>{
+    if(!photoHint) return;
+    const t=setTimeout(()=>setPhotoHint(false),6000);
+    return()=>clearTimeout(t);
+  },[photoHint]);
+  /** 只有拍照权、没有状态标记权：固定逐格拍照，不提供会 403 的拖色区 */
+  useEffect(()=>{ if(editMode&&!canEditStatus) setEditDirect(true); },[editMode,canEditStatus]);
+
   /* 模式悬浮岛形态 —— 两种都做了，先用开关切换对比，定稿后固定一种并删掉开关 */
   const [islandVariant, toggleIslandVariant] = useIslandVariant();
 
@@ -1983,7 +2019,11 @@ function Inner(){
   /** 划分模式的人员区域（accountId → 姓名），与预定同构 */
   const divisionPersons = (pending.params.persons as Record<string, string> | undefined) ?? {};
   const divisionZones = useMemo(
-    () => Object.entries(divisionPersons).map(([key, name]) => ({ key, title: name, color: "#e11d48", removable: true })),
+    () => [
+      ...Object.entries(divisionPersons).map(([key, name]) => ({ key, title: name, color: "#e11d48", removable: true })),
+      /* 固定撤销区：已划分的笼位拖进来 = 清掉原划分；不随人员增删消失 */
+      { key: DIVISION_CLEAR_ZONE, title: "取消划分", color: "#64748b", removable: false },
+    ],
     [divisionPersons],
   );
   const searchDivisionPerson = useCallback(
@@ -2097,6 +2137,7 @@ function Inner(){
         }
         continue;
       }
+      if (currentMode === "division" && it.divisionClear) { push(DIVISION_CLEAR_ZONE, it); continue; }
       const k = currentMode === "allocate" ? it.aupId : it.assigneeAccountId;
       if (k) push(String(k), it);
     }
@@ -2214,7 +2255,11 @@ function Inner(){
           if (!it) continue;
           next = upsertItem(next, mode === "allocate"
             ? { ...it, aupId: zoneKey ?? undefined }
-            : { ...it, assigneeAccountId: zoneKey ?? undefined });
+            : mode === "division"
+              ? zoneKey === DIVISION_CLEAR_ZONE
+                ? { ...it, assigneeAccountId: undefined, divisionClear: true }
+                : { ...it, assigneeAccountId: zoneKey ?? undefined, divisionClear: false }
+              : { ...it, assigneeAccountId: zoneKey ?? undefined });
         }
         return next;
       });
@@ -2715,10 +2760,21 @@ function Inner(){
     return rows;
   }, [aRid, aupList, dataSource]);
 
-  /** 划分：按人员分组，每组一次 saveCageDivision（接口一次一人），逐条汇总结果 */
+  /** 划分：按人员分组，每组一次 saveCageDivision（接口一次一人）；「取消划分」区整批一次清空 */
   const runDivisionPending = useCallback(async (items: PendingItem[]): Promise<SubmitResult[]> => {
     const rows: SubmitResult[] = [];
-    const groups = groupItems(items, (it) => it.assigneeAccountId ?? "");
+    const clears = items.filter((it) => it.divisionClear);
+    if (clears.length > 0) {
+      const ids = clears.map((it) => it.cageId);
+      try {
+        await clearCageDivision(ids);
+        ids.forEach((cageId) => rows.push({ cageId, ok: true }));
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : "取消划分失败";
+        ids.forEach((cageId) => rows.push({ cageId, ok: false, reason }));
+      }
+    }
+    const groups = groupItems(items.filter((it) => !it.divisionClear), (it) => it.assigneeAccountId ?? "");
     for (const g of groups.values()) {
       const first = g[0]!;
       const accountId = first.assigneeAccountId ?? "";
@@ -3158,13 +3214,13 @@ function Inner(){
         {!collapsed&&<div className="cage-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]">
           {/* 一棵树两种视图：只换 onlyBookmarked，不换组件 —— 切 tab 不卸载，展开与滚动位置都留着。
               「收藏」tab：只画收藏过的房间（房间名后面的 ☆ 切换），进 tab 自动展开第一个。 */}
-          <CampusTree tree={tree} exp={exp} search={search} onToggle={toggleNode} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={alertStatusesByShelf} alertStatusesByRoom={alertStatusesByRoom} pageMode={pageMode} bookingRooms={bookingRooms} highlightShelveIds={selectableShelveIds}
+          <CampusTree tree={tree} exp={exp} search={search} onToggle={toggleNode} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={alertStatusesByShelf} alertStatusesByRoom={alertStatusesByRoom} pageMode={pageMode} bookingRooms={bookingRooms} highlightShelveIds={selectableShelveIds} myRoomIds={myRoomIds}
             bookmark={{bookmarkedRooms,bookmarkedShelves,onToggleBookmarkRoom:toggleRoom,onToggleBookmarkShelf: toggleBookmarkShelf,onlyBookmarked:tab==="bookmarks"}}/>
         </div>}
       </div>
 
       {/* ======== RIGHT PANEL ======== */}
-      <div ref={rightPanelRef} className="relative flex-1 min-w-0 grid grid-rows-[auto_1fr] h-full pr-1 overflow-hidden">
+      <div ref={rightPanelRef} className="relative flex-1 min-w-0 grid grid-rows-[auto_1fr] h-full pr-1">
         <div className="shrink-0 space-y-2">
         {scan&&scan.status!=="idle"&&!scanDismissed&&<CageScanProgressBanner progress={scan} onDismiss={()=>setScanDismissed(true)}/>}
         {/* Top toolbar: tabs + view mode + actions */}
@@ -3305,7 +3361,54 @@ function Inner(){
         {legend&&<CageShelfLegend/>}
         {opActive&&<div className="shrink-0"><CageOpSelectBanner sel={opSel} allowBatch/></div>}
         </div>
-        <div className="cage-scroll flex-1 min-h-0 overflow-y-auto space-y-2 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]" style={islandPadStyle}>
+        {/* 悬浮岛脱出文档流：挂在右侧面板上，浮在「页面 header 下、工具栏上」的中间带，不占网格高度 */}
+        {/* 抽屉开着时让出它的整块宽度（状态抽屉 480 + 右侧缓冲区列），岛才会落在可见网格的正中 */}
+        {/* 贴着页头下沿、又不压到工具栏：-28px 刚好落在两者的空档里（再往上会被页面 header 盖住） */}
+        {editMode && (
+          <div className="pointer-events-none absolute inset-x-0 -top-7 z-30 flex justify-center transition-[padding] duration-200"
+            style={{ paddingRight: pendingOpen ? 664 : 0 }}>
+            <div className="pointer-events-auto overflow-hidden rounded-2xl border-2 backdrop-blur"
+              style={{
+                borderColor: modeColor,
+                background: `color-mix(in srgb, ${modeColor} 12%, var(--twin-canvas))`,
+                boxShadow: `0 14px 36px color-mix(in srgb, ${modeColor} 30%, transparent)`,
+              }}>
+              <div className="flex items-center gap-2 py-0.5 pl-4 pr-1">
+                {photoHint && (editDirect || !canEditStatus) ? (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-1 py-1 text-[12.5px] font-bold text-amber-700">
+                    <Camera className="size-4" /> 请选择要拍照的笼位
+                  </span>
+                ) : (
+                  <button type="button" onClick={() => { if (editDirect || !canEditStatus) setPhotoHint(true); else enterPhotoMode(); }}
+                    title={editDirect || !canEditStatus ? "再点一次可重新提示选笼位" : "点击进入拍照模式"}
+                    className="inline-flex items-center gap-2 whitespace-nowrap rounded-full px-1 py-0.5 text-[12.5px] font-bold transition hover:opacity-70"
+                    style={{ color: modeColor }}>
+                    <span className="size-3 rounded-full ring-2 ring-white" style={{ background: modeColor }} />
+                    状态 · {(editDirect || !canEditStatus) ? "拍照模式" : "拖色区"}
+                  </button>
+                )}
+                {!canEditStatus ? (
+                  <span className="ml-0.5 inline-flex items-center gap-1.5 rounded-full bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-[11.5px] font-semibold text-[var(--twin-mute)]">
+                    <Camera className="size-4" /> 仅照片
+                  </span>
+                ) : editDirect ? (
+                  <button type="button" onClick={() => { setEditDirect(false); setPhotoHint(false); setPendingOpen(true); }}
+                    className="ml-0.5 inline-flex items-center gap-1 rounded-full border border-[var(--twin-hairline)] px-3 py-1 text-[12px] font-semibold text-[var(--twin-mute)] transition hover:bg-[var(--twin-canvas-soft)] hover:text-[var(--twin-ink)]">
+                    <ChevronLeft className="size-4" /> 返回拖色区
+                  </button>
+                ) : (
+                  <button type="button" onClick={enterPhotoMode}
+                    className="ml-0.5 inline-flex items-center gap-1.5 rounded-full px-4 py-1 text-[12.5px] font-bold text-white shadow-sm transition hover:brightness-110 active:scale-[0.98]"
+                    style={{ background: modeColor }}>
+                    <Camera className="size-4" /> 进入拍照模式
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="relative min-h-0">
+        <div className="cage-scroll h-full min-h-0 overflow-y-auto space-y-2 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]" style={islandPadStyle}>
         {/* 主区两个 tab（筛选 / 收藏）**共用**：收藏视图只是左侧树换了过滤，
             右侧照样要点得进笼架 —— 原来整块挂在 tab==="filter" 上，切到收藏右侧空白、点树没反应（2026-09-19 用户报）。 */}
         <>
@@ -3350,7 +3453,7 @@ function Inner(){
             {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
             {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
             {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??"");
-              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={gridSelectable} selectedCells={gridSelectedCells} onToggleCell={gridToggleCell} allocMode={gridAllocMode} clickMode={gridClickMode} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/></div>;
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,sid):(c:any)=>handleGridCellClick(c,sid)} alertMap={alertMap} selectable={gridSelectable} selectedCells={gridSelectedCells} onToggleCell={gridToggleCell} allocMode={gridAllocMode} clickMode={gridClickMode} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} poolLabel={divisionMode ? "可选择" : undefined} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/></div>;
             })}</div>}
           </>}
 
@@ -3360,7 +3463,7 @@ function Inner(){
             <div className="w-1/2 flex flex-col min-w-0">
               {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
               {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
-              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={gridSelectable} selectedCells={gridSelectedCells} onToggleCell={gridToggleCell} allocMode={gridAllocMode} clickMode={gridClickMode} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={pageMode==="allocate"?(c:any)=>{if(!c.empty)setCell(c);}:confirmMode?(c:any)=>handleConfirmCell(c,String(shelfDetail?.shelfMeta?.shelveId??"")):handleGridCellClick} alertMap={alertMap} selectable={gridSelectable} selectedCells={gridSelectedCells} onToggleCell={gridToggleCell} allocMode={gridAllocMode} clickMode={gridClickMode} scanCache={scanCache} lastScannedKey={lastScannedKey} editMode={editMode} confirmMode={confirmMode} crossX={highlightCross.crossX} crossY={highlightCross.crossY} crossSid={highlightCross.crossSid} scanLockTarget={scanLockTarget} poolCells={modePoolCells} poolLabel={divisionMode ? "可选择" : undefined} claimMode={modeClaimMode} highlightShelveIds={selectableShelveIds} disabledReasonByCageId={modeDisabledReasons} compact={compactGrid} {...opGridProps} {...modeGlowProps}/>}
             </div>
             {/* Right: cell detail / edit actions / bind confirm */}
             <div className="w-1/2 flex flex-col min-w-0 gap-2">
@@ -3371,8 +3474,8 @@ function Inner(){
                   <div className="flex-1 overflow-y-auto p-3 space-y-3" style={islandPadStyle}>
                     <div className="flex flex-col gap-2">{CAGE_BOX_ACTIONS.map(({action:a,label,statusCode,statusField})=>{const c= cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode];const cbi2=cell.cageBoxInfo as Record<string,any>|undefined;const cvo2=cbi2?.cageBoxVo??cbi2?.["cageBoxVo"]??{};const ld=(cell as any).detail as Record<string,any>|undefined;const localActions=dataSource==="local"?actionsFromFormValues(editFormValues):actionsFromCageBoxInfo(cbi2,cvo2);const srvHas=!entry&&(localActions.has(a)||((a==="SPECIAL_BREEDING"&&!!cbi2?.specialBreedingName)||(a==="HEALTH_CHECK"&&!!cbi2?.animalHealthEntity)));const has=entry?entry.currentActions.has(a):srvHas;const init=entry?entry.initialActions.has(a):srvHas;const changed=has!==init;
                       return<div key={a} className="rounded-twin-md border-2 px-3 py-2" style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
-                        <button type="button" onClick={()=>toggleEditStatus(cell,sid,a,has)}
-                          className="flex w-full items-center gap-2 text-sm font-semibold transition hover:brightness-95 disabled:opacity-50">
+                        <button type="button" disabled={!canEditStatus} onClick={()=>toggleEditStatus(cell,sid,a,has)}
+                          className="flex w-full items-center gap-2 text-sm font-semibold transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50">
                           {/* 色块预览：选中即用该状态配置的背景/边框色（与图例说明一致） */}
                           <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
                           <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
@@ -3485,7 +3588,7 @@ function Inner(){
                 {/* 面板自己的吸顶条就是「笼盒详情 · 位号 + 关闭」，外面这条标题行是重复的，
                     而且它会把吸顶条顶下去（滚动后吸顶条盖住它）—— 去掉，只留面板那一行。 */}
                 {dataSource==="local"
-                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={allowedModeKeys.includes("edit")} onBatchEdit={enterBatchPick}/>
+                  ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>setCell(null)} onStartOp={(k,s)=>{setCell(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={canManageStatusPhotos} onBatchEdit={enterBatchPick}/>
                   : <div className="grid grid-cols-2 gap-2 p-3 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
                   return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
                 })}</div>
@@ -3500,12 +3603,13 @@ function Inner(){
         {/* 收藏视图不再单独占一块说明：左侧树本来就只列收藏项，右侧与筛选模式共用
             （点房间展开、点笼架进网格），所以这里什么都不渲染。 */}
       </div>
+        </div>
     </div>
 
     {cell&&viewMode!=="shelf"&&!editMode&&!confirmMode&&!archiveMode&&!reserveMode&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
-      <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
+      <div className="w-[min(760px,94vw)] h-[min(760px,82vh)] max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         {dataSource==="local"
-          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={allowedModeKeys.includes("edit")} onBatchEdit={enterBatchPick}/>
+          ? <LocalDetailPanel cell={cell} opMarkByCageId={opMarkWithReservations} onClose={()=>{setCell(null);setShelfId(null);}} onStartOp={(k,s)=>{setCell(null);setShelfId(null);void opSel.start(k,s);}} onChanged={()=>setDetailReloadKey(k=>k+1)} canDivide={allowedModeKeys.includes("division")} canEditStatusPhotos={canManageStatusPhotos} onBatchEdit={enterBatchPick}/>
           : <>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {displayPosition(cell.position)}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v,k);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
@@ -3549,20 +3653,20 @@ function Inner(){
         }}
         onSubmit={()=>void submitPending()}
         onEditItem={currentMode==="edit"?openEditItemById:undefined}
-        /* 状态模式两种改法的切换：拖色区（点笼位攒进待提交，拖到色区标记） / 逐格编辑（点笼位开弹窗） */
         headerToggle={<>
-          {currentMode==="edit"&&(
-            <button type="button" onClick={()=>setEditDirect(v=>!v)}
-              title={editDirect
-                ? "当前：点笼位直接开状态弹窗，在里面改状态/明细/拍照/备注。点这里改回「拖到色区」"
-                : "当前：点笼位攒进待提交，拖到色区标记后统一提交。点这里改成「逐格编辑」"}
-              className={`rounded-twin-md border px-2 py-0.5 text-[11px] font-semibold transition ${
-                editDirect
-                  ? "border-[var(--twin-warning)] bg-amber-50 text-[var(--twin-warning)]"
-                  : "border-[var(--twin-hairline)] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
-              }`}>
-              {editDirect?"逐格编辑":"拖色区"}
-            </button>
+          {/* 状态模式两种改法：拖色区（点笼位攒进待提交，拖到色区标记） / 拍照模式（点笼位开弹窗）
+              做成两段式，当前档实心高亮 —— 单按钮来回显示「当前是什么」看不出能点。 */}
+          {currentMode==="edit"&&canEditStatus&&(
+            <AdminSegmentedControl
+              size="sm"
+              aria-label="状态模式操作方式"
+              value={editDirect ? "photo" : "drag"}
+              onChange={(v) => { setEditDirect(v === "photo"); if (v === "photo") setPhotoHint(true); }}
+              options={[
+                { value: "drag", label: "拖色区" },
+                { value: "photo", label: "拍照模式" },
+              ]}
+            />
           )}
           {/* 网格完整/简洁：只收起格子上的文字标签，底色/网纹/图标一律不动 */}
           <AdminSegmentedControl
@@ -3577,11 +3681,12 @@ function Inner(){
           />
         </>}
         onClose={()=>setPendingOpen(false)}
+        closeAsCollapse
         selectedIds={bufferSelected}
         onSelectedChange={setBufferSelected}
         needsTarget={currentMode === "allocate" || currentMode === "reserve" || currentMode === "division"}
         targetNoun={currentMode === "allocate" ? "AUP / 撤销区" : "人员"}
-        targetKeyOf={(it) => (currentMode === "allocate" ? it.aupId : it.assigneeAccountId)}
+        targetKeyOf={(it) => (currentMode === "allocate" ? it.aupId : (it.divisionClear ? DIVISION_CLEAR_ZONE : it.assigneeAccountId))}
         onDrop={(ids, zoneKey, fromZone) => {
           if (currentMode === "edit") { handleEditZoneDrop(ids, zoneKey, fromZone); return; }
           if (currentMode === "allocate" || currentMode === "reserve" || currentMode === "division") dropToZone(currentMode, ids, zoneKey);
@@ -3733,9 +3838,27 @@ function Inner(){
     <Dialog open={!!editDialogCell} onOpenChange={(o)=>{
       if(!o){setEditDialogCell(null);setStatusPhotos({});setActionNote("");}
     }}>
-      <DialogContent className="max-w-xs">
-        <DialogHeader><DialogTitle>选择操作 · {editDialogCell?.position}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-2">
+      <DialogContent className="flex max-h-[90vh] w-[min(1120px,94vw)] max-w-[min(1120px,94vw)] flex-col gap-0 overflow-hidden rounded-twin-xl p-0">
+        {/* 头部：笼位标识 + 当前权限口径，一眼知道「这是给谁改、能改什么」 */}
+        <div className="flex shrink-0 items-center gap-3 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-5 py-3.5 pr-12">
+          <span className="grid size-9 shrink-0 place-items-center rounded-twin-md bg-[var(--twin-primary)]/10 text-[var(--twin-primary)]">
+            <Camera className="size-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <DialogTitle className="text-[15px] font-bold leading-tight text-[var(--twin-ink)]">
+              笼位状态与照片 · {editDialogCell ? displayPosition(editDialogCell.position) : ""}
+            </DialogTitle>
+            <DialogDescription className="sr-only">选择笼位状态，并为每个状态单独归档照片</DialogDescription>
+            <div className="mt-0.5 text-[11px] text-[var(--twin-mute)]">
+              {canEditStatus ? "点状态卡片标记/取消，每个状态可单独归档照片" : "当前账号仅可管理状态照片"}
+              <span className="mx-1.5 text-[var(--twin-hairline)]">·</span>
+              保存后立即生效
+            </div>
+          </div>
+        </div>
+        {/* 内容区：宽屏 3 列、中屏 2 列，整页只在这里滚动 */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           {CAGE_BOX_ACTIONS.map(({action:a,label,statusCode,statusField})=>{
             const c= cageStatusColors[statusCode] ?? DEFAULT_COLORS[statusCode];
             const key=editDialogCell?(()=>{const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);return`${sid}:${editDialogCell.x}:${editDialogCell.y}`;})():null;
@@ -3746,20 +3869,46 @@ function Inner(){
             const init=entry?entry.initialActions.has(a):serverHas;
             /* 照片挂在**这一档状态**自己身上（key=表单字段名）：不上传就不写、传了也只归这一档，
                顺带让「已标记但没拍过」和「拍过照片」一眼分得开。 */
-            return <div key={a} className="rounded-twin-md border-2 px-3 py-2" style={{borderColor:has?c?.border:"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
-              <button type="button" onClick={()=>{
-                if(!editDialogCell)return;
-                const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);if(!sid)return;
-                toggleEditStatus(editDialogCell,sid,a,has);
-              }}
-                className="flex w-full items-center gap-2 text-sm font-semibold transition hover:brightness-95">
-                <span className="w-8 h-5 rounded border-2 shrink-0" style={{backgroundColor: has ? (c?.bg ?? "#ccc") : "#f1f5f9", borderColor: has ? (c?.border ?? "#999") : "#cbd5e1"}} />
-                <span className="flex-1 text-left" style={{color:"var(--twin-ink)"}}>{label}</span>
-                <span className="text-[11px]" style={{color:has!==init?"var(--twin-warning)":has?c?.border:"var(--twin-mute)"}}>{has!==init?"已变更":has?"✓ 已选":"点击选择"}</span>
+            return <div key={a} className="relative overflow-hidden rounded-twin-lg border transition-colors"
+              style={has
+                ? { borderColor: c?.border ?? "var(--twin-primary)", background: `${c?.bg ?? "#e2e8f0"}12` }
+                : { borderColor: "var(--twin-hairline)", background: "var(--twin-canvas)" }}>
+              {/* 左侧色条 + 实心勾：选中不再只靠一圈细边和一个小对号 */}
+              <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: has ? (c?.border ?? "var(--twin-primary)") : "transparent" }} />
+              <button type="button" disabled={!canEditStatus}
+                title={canEditStatus ? (has ? "点击取消该状态" : "点击标记该状态") : "当前账号只能管理照片"}
+                onClick={()=>{
+                  if(!editDialogCell||!canEditStatus)return;
+                  const sid=editDialogShelfId||findShelfIdForCell(editDialogCell);if(!sid)return;
+                  toggleEditStatus(editDialogCell,sid,a,has);
+                }}
+                className="flex w-full items-start gap-3 px-3.5 pl-4 pt-3 text-left transition enabled:hover:brightness-[0.98] disabled:cursor-not-allowed disabled:opacity-75">
+                <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border-2 transition"
+                  style={has
+                    ? { background: c?.border ?? "var(--twin-primary)", borderColor: c?.border ?? "var(--twin-primary)", color: "#fff" }
+                    : { background: "var(--twin-canvas)", borderColor: "var(--twin-hairline)", color: "transparent" }}>
+                  <Check className="size-3.5" strokeWidth={3.5} />
+                </span>
+                <span className="min-w-0 flex-1 pb-2.5">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[13px] font-bold" style={{ color: has ? (c?.border ?? "var(--twin-ink)") : "var(--twin-ink)" }}>{label}</span>
+                    {has && <span className="rounded-full px-1.5 py-px text-[9px] font-bold" style={{ background: c?.bg ?? "#e2e8f0", color: c?.border ?? "var(--twin-ink)" }}>已标记</span>}
+                    {has!==init && <span className="text-[9px] font-bold text-[var(--twin-warning)]">本次{has?"新增":"撤销"}</span>}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] text-[var(--twin-mute)]">
+                    {has ? "已纳入本笼位状态" : "未标记"}
+                    {!canEditStatus && " · 仅可管理照片"}
+                  </span>
+                </span>
               </button>
-              <StatusPhotoStrip variant="twin" label={label}
-                value={statusPhotos[statusField]??[]}
-                onChange={(urls)=>setPhotosFor(statusField,urls)}/>
+              <div className="border-t border-dashed border-[var(--twin-hairline)] px-3.5 pb-3 pl-4 pt-2">
+                <div className="mb-1 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-[var(--twin-mute)]">
+                  <Camera className="size-3" /> 状态照片
+                </div>
+                <StatusPhotoStrip variant="twin" label={label}
+                  value={statusPhotos[statusField]??[]}
+                  onChange={(urls)=>setPhotosFor(statusField,urls)}/>
+              </div>
             </div>;
           })}
         </div>
@@ -3786,9 +3935,9 @@ function Inner(){
                    所以照片同样按它自己归档，不并进「需特殊饲养」那一档。 */
                 const pk = detailPhotoKey(o.itemCode);
                 return <div key={o.itemCode} className="rounded-twin-md border-2 px-2 py-1.5" style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)",background:"var(--twin-canvas)"}}>
-                  <button type="button"
+                  <button type="button" disabled={!canEditStatus}
                     onClick={()=>toggleEditDetail(editDialogCell,sid,o.itemCode)}
-                    className={`text-[11px] font-semibold transition hover:brightness-95 ${
+                    className={`text-[11px] font-semibold transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${
                       on?"text-[var(--twin-primary)]":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
                     }`}>
                     {on?"✓ ":""}{o.itemLabel}
@@ -3823,14 +3972,18 @@ function Inner(){
             <div className="mt-2 flex flex-wrap gap-2">
               {severityOptions.map(o => {
                 const on = cur === o.itemCode;
-                return <div key={o.itemCode} className="relative rounded-twin-md border-2 px-2.5 py-1"
-                  style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)"}}>
-                  <button type="button"
+                return <div key={o.itemCode} className="relative rounded-twin-md border-2 px-3 py-1.5 transition-colors"
+                  style={{borderColor:on?"var(--twin-primary)":"var(--twin-hairline)", background:on?"color-mix(in srgb, var(--twin-primary) 8%, var(--twin-canvas))":"var(--twin-canvas)"}}>
+                  <button type="button" disabled={!canEditStatus}
                     onClick={()=>void applyEditSeverity(editDialogCell,sid,on?null:o.itemCode,on?false:curItch)}
-                    className={`text-[11px] font-semibold transition hover:brightness-95 ${
+                    className={`flex items-center gap-1.5 text-[11px] font-semibold transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60 ${
                       on?"text-[var(--twin-primary)]":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"
                     }`}>
-                    {on?"✓ ":""}{o.itemLabel}
+                    <span className="grid size-4 shrink-0 place-items-center rounded-full border-2"
+                      style={on?{background:"var(--twin-primary)",borderColor:"var(--twin-primary)",color:"#fff"}:{borderColor:"var(--twin-hairline)",color:"transparent"}}>
+                      <Check className="size-2.5" strokeWidth={3.5}/>
+                    </span>
+                    {o.itemLabel}
                   </button>
                   {/* 勾选框贴在本档右上角：勾上 = 该档 + 瘙痒（瘙痒不单独立档，数据上仍是一个布尔） */}
                   <label className="absolute -right-1.5 -top-2 flex cursor-pointer items-center gap-0.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 text-[9px] font-semibold"
@@ -3847,53 +4000,8 @@ function Inner(){
             </div>
           </div>;
         })()}
-        {/* 备注 + 写盘：照片已经在上面按状态各归各位，这里只管收尾 */}
-        <div className="space-y-2 pt-1 border-t border-[var(--twin-hairline)]">
-          <textarea value={actionNote} onChange={e=>{setActionNote(e.target.value);setNoteDirty(true);}} placeholder="备注（清空后保存即删除）..." rows={2}
-            className="w-full rounded border border-[var(--twin-hairline)] px-2 py-1 text-[11px] resize-y"/>
-          <div className="flex gap-2 justify-end">
-          <button onClick={async()=>{
-            const cell=editDialogCell;
-            if(!cell) return;
-            const cageId=String((cell as any).id??(cell as any).animalCageId??"");
-            if(!cageId) return;
-            setActionSubmitting(true);
-            try{
-              await saveAnnotation(cageId);
-              toast.success("标注已保存");
-            }catch(e:any){toast.error("保存失败: "+(e?.message||""));}
-            finally{setActionSubmitting(false);}
-          }}
-            disabled={actionSubmitting}
-            className="rounded-twin-md px-3 py-1 text-[11px] font-semibold bg-[var(--twin-primary)] text-white hover:brightness-95 disabled:opacity-50 transition">
-            {actionSubmitting?"保存中...":"💾 保存标注"}
-          </button>
-          <button onClick={async()=>{
-            const cell=editDialogCell;
-            if(!cell) return;
-            const cageId=String((cell as any).id??(cell as any).animalCageId??"");
-            if(!cageId) return;
-            setActionSubmitting(true);
-            try{
-              await saveAnnotation(cageId);
-              toast.success("已归档为新记录");
-              // 清空表单，开始新一版
-              setStatusPhotos({}); setActionNote("");
-              // 刷新历史
-              authHttp.get(`/local/history/${cageId}`).then(r=>{
-                if(r.data?.success) setEditHistory(r.data.data||[]);
-              }).catch(()=>{});
-            }catch(e:any){toast.error("保存失败: "+(e?.message||""));}
-            finally{setActionSubmitting(false);}
-          }}
-            disabled={actionSubmitting}
-            className="rounded-twin-md px-3 py-1 text-[11px] font-semibold border border-[var(--twin-primary)] text-[var(--twin-primary)] hover:bg-[var(--twin-primary)] hover:text-white disabled:opacity-50 transition">
-            📄 存为新记录
-          </button>
-          </div>
-        </div>
-        {/* 📦 历史记录折叠区 */}
-        <details className="border-t border-[var(--twin-hairline)] pt-2">
+        {/* 📦 历史记录折叠区（留在内容区，随长内容一起滚） */}
+        <details className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
           <summary className="text-[11px] font-semibold text-[var(--twin-mute)] cursor-pointer">📦 历史记录</summary>
           <div className="mt-2 space-y-1.5 max-h-[180px] overflow-y-auto">
             {(()=>{
@@ -3908,11 +4016,11 @@ function Inner(){
                       <span className="text-[var(--twin-mute)]">{h.createdAt?.substring(0,16)||""}</span>
                       <button onClick={async () =>{
                         if(!h.id) return;
-                        if(!await appConfirm("确定删除该条历史记录？")) return;
+                        if(!await appConfirm("确定隐藏该条历史记录？\n\n照片/视频与变更留痕不会被删除，只是不再显示在这份归档里。")) return;
                         authHttp.delete(`/local/history/${h.id}`).then(()=>{
                           setEditHistory(p=>p.filter(x=>x.id!==h.id));
-                          toast.success("已删除");
-                        }).catch(()=>toast.error("删除失败"));
+                          toast.success("已隐藏（留痕保留）");
+                        }).catch(()=>toast.error("隐藏失败"));
                       }}
                         /* 触摸屏没有 hover：只写 group-hover 的话手机上永远删不掉这条记录 */
                         className="text-[9px] text-red-400 hover:text-red-600 leading-none px-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">✕</button>
@@ -3925,10 +4033,59 @@ function Inner(){
             })()}
           </div>
         </details>
-        <DialogFooter>
-          <button onClick={()=>{setEditDialogCell(null);setStatusPhotos({});setActionNote("");}}
-            className="rounded-twin-md px-5 py-1.5 text-sm font-semibold text-[var(--twin-ink)] border border-[var(--twin-hairline)] hover:bg-[var(--twin-canvas-soft)] transition">关闭</button>
-        </DialogFooter>
+        </div>
+        {/* 底部固定操作区：备注与保存不再跟着长内容滚走 */}
+        <div className="shrink-0 border-t border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-5 py-3">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end">
+            <label className="min-w-0 flex-1">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--twin-mute)]">备注（清空后保存即删除）</span>
+              <textarea value={actionNote} onChange={e=>{setActionNote(e.target.value);setNoteDirty(true);}} placeholder="本次状态变更或拍照的说明…" rows={2}
+                className="w-full resize-y rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 text-[11px] text-[var(--twin-ink)] outline-none focus:border-[var(--twin-primary)]"/>
+            </label>
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <button onClick={()=>{setEditDialogCell(null);setStatusPhotos({});setActionNote("");}}
+                className="rounded-twin-md border border-[var(--twin-hairline)] px-4 py-1.5 text-[12px] font-semibold text-[var(--twin-ink)] transition hover:bg-[var(--twin-canvas-soft)]">关闭</button>
+              <button onClick={async()=>{
+                const cell=editDialogCell;
+                if(!cell) return;
+                const cageId=String((cell as any).id??(cell as any).animalCageId??"");
+                if(!cageId) return;
+                setActionSubmitting(true);
+                try{
+                  await saveAnnotation(cageId);
+                  toast.success("已归档为新记录");
+                  // 清空表单，开始新一版
+                  setStatusPhotos({}); setActionNote("");
+                  // 刷新历史
+                  authHttp.get(`/local/history/${cageId}`).then(r=>{
+                    if(r.data?.success) setEditHistory(r.data.data||[]);
+                  }).catch(()=>{});
+                }catch(e:any){toast.error("保存失败: "+(e?.message||""));}
+                finally{setActionSubmitting(false);}
+              }}
+                disabled={actionSubmitting}
+                className="rounded-twin-md border border-[var(--twin-primary)] px-4 py-1.5 text-[12px] font-semibold text-[var(--twin-primary)] transition hover:bg-[var(--twin-primary)] hover:text-white disabled:opacity-50">
+                存为新记录
+              </button>
+              <button onClick={async()=>{
+                const cell=editDialogCell;
+                if(!cell) return;
+                const cageId=String((cell as any).id??(cell as any).animalCageId??"");
+                if(!cageId) return;
+                setActionSubmitting(true);
+                try{
+                  await saveAnnotation(cageId);
+                  toast.success("标注已保存");
+                }catch(e:any){toast.error("保存失败: "+(e?.message||""));}
+                finally{setActionSubmitting(false);}
+              }}
+                disabled={actionSubmitting}
+                className="rounded-twin-md bg-[var(--twin-primary)] px-4 py-1.5 text-[12px] font-semibold text-white transition hover:brightness-95 disabled:opacity-50">
+                {actionSubmitting?"保存中...":"保存照片与备注"}
+              </button>
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
     {/* ---- 扫码确认核对面板（居中 Dialog） ---- */}

@@ -51,6 +51,8 @@ public class CageModeController {
         if (u.getRole() == null) u.setRole(RoleEnum.MEMBER);
 
         boolean student = visibilityService.isStudent(u);
+        // 状态照片的保底管理权：饲养员/饲养组长始终可拍照与管理照片（学生一律 false）。
+        boolean canManagePhotos = !student && visibilityService.canManageCagePhotos(u);
         Map<String, Object> out = new LinkedHashMap<>();
         if (student) {
             // 学生视角：查看 / 申请预约 / 划分 / 确认 / 状态。
@@ -79,10 +81,15 @@ public class CageModeController {
             }
             out.put("modes", modes);
         } else {
-            out.put("modes", visibilityService.visibleStaffModes(u));
+            List<String> modes = new ArrayList<>(visibilityService.visibleStaffModes(u));
+            // 拍照保底：饲养员/饲养组长的「状态」入口不因矩阵收窄而消失（他们只管理照片时也要进得去）
+            if (canManagePhotos && !modes.contains("edit")) modes.add("edit");
+            out.put("modes", modes);
         }
         out.put("isStudent", student);
         out.put("isSuperAdmin", visibilityService.isSuperAdmin(u));
+        out.put("canEditStatus", !student && visibilityService.canUseMode(u, "edit"));
+        out.put("canManageStatusPhotos", canManagePhotos);
         return Result.success(out);
     }
 }

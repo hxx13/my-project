@@ -581,7 +581,7 @@ Page({
     if (detail == null) return Date.now();
     if (typeof detail === 'number') return detail;
     if (typeof detail === 'object' && typeof detail.getTime === 'function') return detail.getTime();
-    const t = new Date(detail).getTime();
+    const t = new Date(String(detail).trim().replace(' ', 'T')).getTime();
     return Number.isNaN(t) ? Date.now() : t;
   },
 

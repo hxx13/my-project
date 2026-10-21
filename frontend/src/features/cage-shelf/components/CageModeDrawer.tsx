@@ -37,6 +37,7 @@ export default function CageModeDrawer({
   onSubmit,
   onEditItem,
   onClose,
+  closeAsCollapse = false,
   headerToggle,
   width = 400,
   embedded = false,
@@ -76,6 +77,8 @@ export default function CageModeDrawer({
   /** 标题右侧的切换控件（状态模式的「拖色区 / 直接改」）；渲染在模式名之后、关闭按钮之前 */
   headerToggle?: ReactNode;
   onClose: () => void;
+  /** true = 头部关闭按钮只收起（滑出屏幕留把手），不真正关闭抽屉 */
+  closeAsCollapse?: boolean;
   width?: number;
   /** true=作为 flex 子元素并排；默认 false=portal 固定右侧（与批量转移面板一致，不改页面布局） */
   embedded?: boolean;
@@ -140,6 +143,7 @@ export default function CageModeDrawer({
         bottom={84}
         collapseLabel={`${modeLabel}待提交`}
         onClose={onClose}
+        closeAsCollapse={closeAsCollapse}
         rightColumn={zonesSlot}
         headerExtra={
           <div className="flex items-center gap-2">

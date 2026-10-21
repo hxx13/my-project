@@ -141,6 +141,33 @@ public class MeController {
         }
     }
 
+    /**
+     * 切换「远程控制页面收藏」里的某一条（加/移），返回切换后的完整列表。
+     *
+     * <p>按**单个路由**切换，不让客户端传整份列表 —— 两端/多标签同时改时，
+     * 各自手里的旧列表会把对方刚加的那条冲掉。
+     */
+    @PostMapping("/mini-preferences/remote-route-stars/toggle")
+    @Operation(summary = "切换远程控制页面收藏（按单个路由）")
+    public Result<List<String>> toggleRemoteRouteStar(HttpServletRequest request,
+                                                      @RequestBody Map<String, Object> body) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.error("未登录或Token无效");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error("账号已禁用");
+        }
+        try {
+            String path = body == null ? "" : String.valueOf(body.getOrDefault("path", ""));
+            return Result.success(miniPreferencesService.toggleRemoteRouteStar(user.getId(), path));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("保存失败");
+        }
+    }
+
     @GetMapping("/page-help")
     @Operation(summary = "读取当前页帮助与新功能介绍弹出状态（按账号）")
     public Result<Map<String, Object>> pageHelp(HttpServletRequest request, @RequestParam("path") String path) {

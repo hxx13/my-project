@@ -7,6 +7,7 @@ import { appendAdminNavRecent, resolveAdminNavUserId } from "@/features/admin/ad
 import { isTwinFullscreenEntryPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import { AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { TwinChromeContextMenu, type TwinChromeContextMenuPayload } from "@/features/twin-chrome/TwinChromeContextMenu";
+import { findEditableContextTarget, resolveEditableContextTarget } from "@/features/admin/adminChromeClipboard";
 import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier";
 import { twinChromeGlobalPointerShouldBypass } from "@/features/twin-chrome/twinChromeGlobalPointerBypass";
 import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
@@ -58,8 +59,10 @@ export default function TwinLayoutInner() {
     useEffect(() => {
         const onCtx = (e: MouseEvent) => {
             if (twinChromeGlobalPointerShouldBypass(e.target)) return;
+            // 输入框/富文本走浏览器原生右键菜单：自定义菜单读剪贴板会被权限策略拒绝
+            if (findEditableContextTarget(e.target)) return;
             e.preventDefault();
-            setCtxMenu({ x: e.clientX, y: e.clientY });
+            setCtxMenu({ x: e.clientX, y: e.clientY, editable: resolveEditableContextTarget(e.target) });
         };
         /**
          * 右键按下 capture 阶段 preventDefault：减轻 Chromium 下「右键按下 + 拖动」等浏览器默认前奏；
@@ -69,6 +72,8 @@ export default function TwinLayoutInner() {
             if (e.pointerType !== "mouse") return;
             if (e.button !== 2) return;
             if (twinChromeGlobalPointerShouldBypass(e.target)) return;
+            // 不拦输入框/富文本的右键按下，否则原生菜单起不来
+            if (findEditableContextTarget(e.target)) return;
             e.preventDefault();
         };
         document.addEventListener("contextmenu", onCtx, true);

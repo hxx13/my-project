@@ -5,6 +5,7 @@ import com.example.demo.modules.telemetry.dto.TelemetryTagItemDto;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleLogRow;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermSampleRow;
 import com.example.demo.modules.telemetry.entity.TelemetryLongtermVariableRow;
+import com.example.demo.modules.telemetry.mapper.TelemetryLongtermPartitionMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleLogMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermSampleMapper;
 import com.example.demo.modules.telemetry.mapper.TelemetryLongtermVariableMapper;
@@ -65,7 +66,8 @@ class TelemetryLongtermSamplingTest {
         });
         TelemetrySnapshotService snapshotService = mock(TelemetrySnapshotService.class);
         when(snapshotService.getSnapshot()).thenReturn(snap);
-        TelemetryLongtermArchiveService svc = new TelemetryLongtermArchiveService(vm, lm,
+        TelemetryLongtermArchiveService svc = new TelemetryLongtermArchiveService(vm,
+                mock(TelemetryLongtermPartitionMapper.class), lm,
                 mock(TelemetryWatchlistDbService.class), mock(TwinJobScheduleConfigMapper.class), sm, snapshotService);
         ReflectionTestUtils.setField(svc, "staleMinutes", staleMinutes);
         return svc;

@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { fetchMyExamPapers, fetchMyQualificationReport, fetchMyQualifications, fetchLearningMaterialsForStudent, fetchLearningMaterialFile, type StudentPaperSummary } from "../api/student.api";
+import { fetchMyLearningVideos, type MyLearningVideo } from "@/api/domains/learningVideo.api";
+import { VideoLearnPlayer } from "@/features/learning-video/VideoLearnPlayer";
 import { useStudentQuery } from "../hooks/use-student-query";
 import { ShrinkText } from "../components/shrink-text";
 import { PdfPreviewDialog } from "@/components/common/PdfPreviewDialog";
@@ -103,6 +106,8 @@ function PaperCard({ p, onOpen }: { p: StudentPaperSummary; onOpen: () => void }
 
 export default function StudentExamPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const qc = useQueryClient();
   const { data = [], isLoading, isError, error, refetch } = useStudentQuery(
     ["exam-papers"],
     () => fetchMyExamPapers(),
@@ -113,7 +118,19 @@ export default function StudentExamPage() {
   const [previewMaterialId, setPreviewMaterialId] = useState<number | null>(null);
   const { data: quals = [] } = useStudentQuery(["my-qualifications"], fetchMyQualifications);
   const { data: materials = [] } = useStudentQuery(["learning-materials"], fetchLearningMaterialsForStudent);
+  const { data: videos = [], refetch: refetchVideos } = useStudentQuery(["my-learning-videos"], fetchMyLearningVideos);
+  const [videosOpen, setVideosOpen] = useState(false);
+  const [playingVideo, setPlayingVideo] = useState<MyLearningVideo | null>(null);
   const healthFile = quals.find((q) => q.itemKey === "health_report")?.fileRef ?? null;
+
+  // 培训报名页「去学习」跳过来时自动展开视频列表
+  useEffect(() => {
+    const state = location.state as { openVideos?: boolean } | null;
+    if (state?.openVideos) {
+      setVideosOpen(true);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const filtered = useMemo(() => {
     return data.filter((p) => {
@@ -152,6 +169,13 @@ export default function StudentExamPage() {
             onClick={() => setMaterialsOpen(true)}
           >
             学习PDF
+          </button>
+          <button
+            type="button"
+            className="btn ghost small"
+            onClick={() => setVideosOpen(true)}
+          >
+            视频学习
           </button>
           <button
             type="button"
@@ -260,6 +284,54 @@ export default function StudentExamPage() {
           fileName={`${materials.find((m) => m.id === previewMaterialId)?.title ?? "学习资料"}.pdf`}
           fetchPdf={() => fetchLearningMaterialFile(previewMaterialId)}
           onClose={() => setPreviewMaterialId(null)}
+        />
+      )}
+
+      {videosOpen && (
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }} onClick={() => setVideosOpen(false)}>
+          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-bold">视频学习</h3>
+              <button type="button" onClick={() => setVideosOpen(false)} aria-label="关闭">✕</button>
+            </div>
+            {videos.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[var(--muted)]">暂无学习视频</p>
+            ) : (
+              <div className="max-h-[60vh] space-y-1 overflow-auto">
+                {videos.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--app-color-surface-hover)]"
+                    onClick={() => {
+                      setVideosOpen(false);
+                      setPlayingVideo(v);
+                    }}
+                  >
+                    <span className="min-w-0 flex-1 truncate font-medium">{v.title}</span>
+                    {v.completed ? (
+                      <span className="shrink-0 text-xs text-emerald-600">已完成</span>
+                    ) : (
+                      <span className="shrink-0 text-xs text-[var(--muted)]">已看 {v.percent}%</span>
+                    )}
+                    <span className="shrink-0 text-xs text-[var(--app-color-primary)]">观看</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {playingVideo && (
+        <VideoLearnPlayer
+          video={playingVideo}
+          onClose={() => {
+            setPlayingVideo(null);
+            refetchVideos();
+            // 培训页的报名资格缓存也一并失效，避免 30 秒内仍显示未看完
+            qc.invalidateQueries({ queryKey: ["student"] });
+          }}
         />
       )}
     </div>

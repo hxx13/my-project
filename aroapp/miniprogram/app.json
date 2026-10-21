@@ -15,6 +15,7 @@
       "name": "feature",
       "pages": [
         "pages/broadcastAdmin/index",
+        "pages/remoteScreens/index",
         "pages/animalRoomRun/index",
         "pages/roomAudit/index",
         "pages/aiPortrait/index",
@@ -88,6 +89,8 @@
         "pages/studentMaterialRequests/index",
         "pages/studentReviewHub/index",
         "pages/studentTraining/index",
+        "pages/studentVideoPlay/index",
+        "pages/studentVideos/index",
         "pages/studentViolations/index"
       ]
     },

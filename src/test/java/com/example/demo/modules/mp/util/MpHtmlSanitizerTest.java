@@ -33,4 +33,20 @@ class MpHtmlSanitizerTest {
         assertTrue(out.contains("width: 45%"), () -> out);
         assertTrue(out.contains("max-width: 100%"), () -> out);
     }
+
+    @Test
+    void preservesVideoWithControls() {
+        String raw =
+                "<p>演示</p><video src=\"https://host/api/upload/files/20261020/a.mp4\" controls preload=\"metadata\" playsinline></video>";
+        String out = MpHtmlSanitizer.sanitizeBodyHtml(raw);
+        assertTrue(out.contains("<video"), () -> out);
+        assertTrue(out.contains("controls"), () -> out);
+        assertTrue(out.contains("a.mp4"), () -> out);
+    }
+
+    @Test
+    void dropsJavascriptVideoSrc() {
+        String out = MpHtmlSanitizer.sanitizeBodyHtml("<video src=\"javascript:alert(1)\" controls></video>");
+        assertTrue(!out.contains("javascript"), () -> out);
+    }
 }

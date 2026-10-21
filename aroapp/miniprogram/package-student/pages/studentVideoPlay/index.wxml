@@ -1,0 +1,26 @@
+<block wx:if="{{ pageGateOk }}">
+<view class="page">
+  <view wx:if="{{ loading }}" class="muted">加载中…</view>
+  <view wx:else class="player-wrap">
+    <video
+      id="learnVideo"
+      class="player"
+      src="{{ src }}"
+      controls="{{ controls }}"
+      autoplay="{{ false }}"
+      show-center-play-btn="{{ true }}"
+      enable-progress-gesture="{{ allowSeek }}"
+      bindplay="onPlay"
+      bindpause="onPause"
+      bindtimeupdate="onTimeUpdate"
+      bindseeked="onSeeked"
+      bindended="onEnded"
+    ></video>
+    <view class="status">
+      <text class="status-txt {{ completed ? 'status-ok' : '' }}">{{ completed ? '已完成' : '已看 ' + percent + '%' }}</text>
+      <text wx:if="{{ !allowSeek }}" class="status-hint">本视频不允许拖动进度</text>
+    </view>
+    <view class="tip">观看进度会自动保存；未看完时按培训要求可能需要重新观看。</view>
+  </view>
+</view>
+</block>

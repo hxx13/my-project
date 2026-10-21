@@ -1,15 +1,21 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ChevronLeft, MapPin, Clock, GraduationCap } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { AdminPageShell } from "@/components/admin/AdminPageShell";
+import { GraduationCap } from "lucide-react";
 import { cancelMyEnrollment, fetchMyEnrollments, type MyEnrollment } from "../api/student.api";
 import { useStudentQuery } from "../hooks/use-student-query";
 import { enrollStatus, isFullyPassed } from "../utils/trainingEnrollStatus";
 import { useQueryClient } from "@tanstack/react-query";
 
-export default function StudentTrainingMyPage() {
-  const navigate = useNavigate();
+type Props = {
+  /** 与「培训报名」共用卡片/列表切换 */
+  view: "card" | "list";
+  /** 当前校区标签（与培训列表共用切换） */
+  campus: string;
+};
+
+/**
+ * 「已报名」内容：按校区标签过滤，卡片/列表两种视图与外层一致。
+ */
+export function StudentTrainingMyContent({ view, campus }: Props) {
   const qc = useQueryClient();
   const { data = [], isLoading, isError, error, refetch } = useStudentQuery(
     ["my-enrollments"],
@@ -29,61 +35,106 @@ export default function StudentTrainingMyPage() {
     }
   };
 
-  const statusBadge = (e: MyEnrollment) => {
+  const statusText = (e: MyEnrollment) => {
     const s = enrollStatus(true, e.testYn, e.testFraction);
-    if (s === "已通过") return <span className="text-xs text-emerald-600 font-medium">已通过</span>;
-    if (s === "已拒绝") return <span className="text-xs text-rose-600 font-medium">已拒绝</span>;
-    return <span className="text-xs text-amber-600 font-medium">待审核</span>;
+    return s;
+  };
+  const statusBadge = (e: MyEnrollment) => {
+    const s = statusText(e);
+    if (s === "已通过") return <span className="text-xs font-medium text-emerald-600">已通过</span>;
+    if (s === "已拒绝") return <span className="text-xs font-medium text-rose-600">已拒绝</span>;
+    return <span className="text-xs font-medium text-amber-600">待审核</span>;
   };
 
-  return (
-    <AdminPageShell>
-      <div className="min-h-full p-6">
-        <div className="mb-4 flex items-center gap-3">
-          <button className="inline-flex items-center gap-1 text-sm text-[var(--student-mute)] hover:text-[var(--student-body)]" onClick={() => navigate("/student/training")}>
-            <ChevronLeft className="size-4" />返回
-          </button>
-          <h2 className="text-lg font-semibold text-[var(--student-ink)]">我的报名</h2>
-        </div>
+  if (isLoading) return <div className="p-4 text-sm text-[var(--student-mute)]">加载中…</div>;
+  if (isError) {
+    return (
+      <div className="p-4 text-sm text-[var(--student-error)]">
+        {error instanceof Error ? error.message : "加载失败"}
+        <button className="ml-3 underline" onClick={() => refetch()}>重试</button>
+      </div>
+    );
+  }
 
-        {isLoading ? (
-          <div className="text-sm text-[var(--student-mute)]">加载中…</div>
-        ) : isError ? (
-          <div className="text-sm text-[var(--student-error)]">
-            {error instanceof Error ? error.message : "加载失败"}
-            <button className="ml-3 underline" onClick={() => refetch()}>重试</button>
-          </div>
-        ) : data.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-[var(--student-mute)]">
-            <GraduationCap className="size-8 mb-2" />
-            <span>暂无报名记录</span>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {data.map((e) => (
-              <div key={e.id} className="flex items-center gap-3 rounded-[var(--student-radius-md)] bg-[var(--student-surface)] px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-[var(--student-body)] truncate">{e.trainingName || "—"}</div>
-                  <div className="text-xs text-[var(--student-mute)] mt-0.5">
-                    <span className="inline-flex items-center gap-1"><Clock className="size-3" />{e.startTime ?? "—"}</span>
-                    <span className="inline-flex items-center gap-1 ml-3"><MapPin className="size-3" />{e.address ?? "—"}</span>
+  const items = data.filter((e) => (e.campus ?? "").trim() === campus);
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-[var(--student-mute)]">
+        <GraduationCap className="mb-2 size-8" />
+        <span>暂无报名记录</span>
+      </div>
+    );
+  }
+
+  const cancelBtn = (e: MyEnrollment) =>
+    isFullyPassed(e.testYn, e.testFraction) ? null : (
+      <button
+        className="text-xs text-[var(--student-mute)] hover:text-[var(--student-error)] disabled:opacity-50"
+        disabled={canceling === e.id}
+        onClick={() => doCancel(e)}
+      >
+        {canceling === e.id ? "取消中…" : "取消报名"}
+      </button>
+    );
+
+  if (view === "card") {
+    return (
+      <div className="p-4">
+        <div className="aup-card-grid">
+          {items.map((e) => (
+            <div key={e.id} className="aup-card-cell">
+              <div className="aup-doc">
+                <div className="aup-doc-hd">
+                  <div className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--student-ink)]">
+                    {e.trainingName || "—"}
+                  </div>
+                  {statusBadge(e)}
+                </div>
+                <div className="aup-doc-body">
+                  <div className="aup-f">
+                    <div className="aup-f-k">时间</div>
+                    <div className="aup-f-v">{e.startTime ?? "—"}</div>
+                  </div>
+                  <div className="aup-f">
+                    <div className="aup-f-k">地点</div>
+                    <div className="aup-f-v">{e.address ?? "—"}</div>
                   </div>
                 </div>
-                {statusBadge(e)}
-                {!isFullyPassed(e.testYn, e.testFraction) && (
-                  <button
-                    className="text-xs text-[var(--student-mute)] hover:text-[var(--student-error)] disabled:opacity-50"
-                    disabled={canceling === e.id}
-                    onClick={() => doCancel(e)}
-                  >
-                    {canceling === e.id ? "取消中…" : "取消报名"}
-                  </button>
-                )}
+                <div className="aup-doc-foot">
+                  <div className="aup-doc-acts">{cancelBtn(e)}</div>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
       </div>
-    </AdminPageShell>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      <table className="list-table w-full text-left text-sm">
+        <thead>
+          <tr>
+            <th>培训</th>
+            <th>时间</th>
+            <th>地点</th>
+            <th>状态</th>
+            <th className="text-right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((e) => (
+            <tr key={e.id} className="row">
+              <td><span className="proj-name">{e.trainingName || "—"}</span></td>
+              <td>{e.startTime ?? "—"}</td>
+              <td>{e.address ?? "—"}</td>
+              <td>{statusBadge(e)}</td>
+              <td className="text-right">{cancelBtn(e)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

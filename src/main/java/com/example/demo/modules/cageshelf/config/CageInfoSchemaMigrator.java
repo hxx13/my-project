@@ -55,6 +55,9 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
             ensureAuditFieldIndex();
             seedFromMapping();
             seedLocalFields();
+            // 必须在播种之后：upsert 不写 folder，新增字段（如 cage_use_time）首次插入时 folder 为空，
+            // 若此时就做域回填会被归到 D5（未分类），且之后再也不会被修正（回填只看 NULL）。
+            backfillDefaultFolders();
             ensureAnimalFieldsEditable();
             ensureExtraFieldsEditable();
             patchStrainCombo();
@@ -144,7 +147,6 @@ public class CageInfoSchemaMigrator implements ApplicationRunner {
         try {
             jdbcTemplate.execute("CREATE INDEX idx_cage_info_field_folder ON cage_info_field (folder)");
         } catch (Exception ignored) { /* 索引已存在 */ }
-        backfillDefaultFolders();
         log.info("[cage-info-schema] {} folder 列就绪{}", TABLE, added ? "（新加）" : "");
     }
 

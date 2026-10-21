@@ -165,6 +165,18 @@ public class CageShelfController {
         return Result.success(studentCageShelfService.roomsForUserGroup(userId));
     }
 
+    /** 当前登录人的「我的区域」房间：课题组优先，超管课题组对不上时按部门兜底。 */
+    @GetMapping("/my-group-rooms")
+    @Operation(summary = "当前登录人的课题组房间（我的区域快捷块）")
+    public Result<?> myGroupRooms(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(studentCageShelfService.roomsForCurrentUser(user));
+    }
+
     @GetMapping("/{shelveId}/detail")
     @Operation(summary = "获取笼架详情（优先缓存，缓存未命中时实时拉取 ARO）")
     public Result<?> detail(@RequestHeader(value = "Authorization", required = false) String authorization,

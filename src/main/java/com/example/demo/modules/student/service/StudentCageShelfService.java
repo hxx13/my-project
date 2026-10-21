@@ -1,5 +1,6 @@
 package com.example.demo.modules.student.service;
 
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
@@ -670,6 +671,49 @@ public class StudentCageShelfService {
         return distinctRooms(scope, shelveIds);
     }
 
+    /**
+     * 当前登录人的「我的区域」房间。
+     *
+     * <p>课题组优先；**全局管理者**（超管）的课题组名往往不是 PI 名（如实验动物管理部），
+     * 与笼位归属上的 PI 永远对不上，这里按人员部门兜底 —— 否则这类账号的「我的区域」永远为空。
+     * 兜底只对全局管理者生效，避免普通学生按院系匹配到别的课题组的笼位。
+     */
+    public List<Map<String, Object>> roomsForCurrentUser(User user) {
+        if (user == null) return List.of();
+        Set<String> shelveIds = resolveOwnGroupShelveIdsByUserId(user.getId());
+        if (shelveIds.isEmpty() && user.getRole() != null
+                && user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            shelveIds = resolveShelveIdsByDepartment(user.getId());
+        }
+        if (shelveIds.isEmpty()) {
+            return List.of();
+        }
+        List<CageShelfIndex> scope = cageShelfMapper.listIndexesByShelveIds(new ArrayList<>(shelveIds));
+        return distinctRooms(scope, shelveIds);
+    }
+
+    /** 按人员所属部门匹配笼位（仅作为全局管理者课题组对不上时的兜底）。 */
+    private Set<String> resolveShelveIdsByDepartment(String userId) {
+        try {
+            AroPersonnel personnel = findPersonnel(userId);
+            String dept = personnel == null ? "" : objToStr(personnel.getDepartmentName()).trim();
+            if (dept.length() < 4) return Set.of();
+            Set<String> out = new LinkedHashSet<>();
+            for (Map<String, Object> row : localAggCache.attribution()) {
+                String sid = objToStr(row.get("shelveId"));
+                if (sid.isBlank()) continue;
+                String cellDept = objToStr(row.get("departmentName")).trim();
+                if (!cellDept.isEmpty() && (cellDept.equals(dept) || cellDept.contains(dept) || dept.contains(cellDept))) {
+                    out.add(sid);
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("[student-cage-shelf] 按部门解析笼架失败 userId={} err={}", userId, e.getMessage());
+            return Set.of();
+        }
+    }
+
     private Map<String, Object> buildScopedFilterOptions(List<CageShelfIndex> scope,
                                                          Set<String> ownGroupShelveIds,
                                                          Integer campusId,
@@ -824,15 +868,7 @@ public class StudentCageShelfService {
      */
     public List<String> resolveUserGroupNames(String userId) {
         try {
-            // STAFF_* 账号须经 user_aro_binding 展开到 aro 人员编号，否则 aro_personnel 查不到课题组
-            String personnelUserId = userId;
-            if (userId != null && userId.startsWith("STAFF_")) {
-                UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
-                if (binding != null && binding.getAroUserId() != null && !binding.getAroUserId().isBlank()) {
-                    personnelUserId = binding.getAroUserId();
-                }
-            }
-            AroPersonnel personnel = aroPersonnelMapper.findByUserId(personnelUserId);
+            AroPersonnel personnel = findPersonnel(userId);
             if (personnel == null) {
                 return List.of();
             }
@@ -842,6 +878,18 @@ public class StudentCageShelfService {
             log.warn("[student-cage-shelf] 解析用户课题组失败 userId={} err={}", userId, e.getMessage());
             return List.of();
         }
+    }
+
+    /** STAFF_* 账号须经 user_aro_binding 展开到 aro 人员编号，否则 aro_personnel 查不到。 */
+    private AroPersonnel findPersonnel(String userId) {
+        String personnelUserId = userId;
+        if (userId != null && userId.startsWith("STAFF_")) {
+            UserAroBinding binding = userAroBindingMapper.selectByUserId(userId);
+            if (binding != null && binding.getAroUserId() != null && !binding.getAroUserId().isBlank()) {
+                personnelUserId = binding.getAroUserId();
+            }
+        }
+        return aroPersonnelMapper.findByUserId(personnelUserId);
     }
 
     /** 全局可见者（SUPER_ADMIN+）越过课题组限制。判据见 {@link CageVisibilityPolicy}。 */

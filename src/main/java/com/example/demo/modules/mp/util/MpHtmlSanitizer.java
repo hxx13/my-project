@@ -10,11 +10,16 @@ import org.jsoup.safety.Safelist;
  */
 public final class MpHtmlSanitizer {
 
-    /** relaxed + mark + 行内 style（TipTap 字色 / 高亮色块） */
+    /** relaxed + mark + 行内 style（TipTap 字色 / 高亮色块）+ 站内视频播放 */
     private static final Safelist RICH_TEXT_BODY = Safelist.relaxed()
-            .addTags("mark")
+            .addTags("mark", "video", "source", "audio")
             .addAttributes(":all", "style")
-            .addAttributes("mark", "data-color");
+            .addAttributes("mark", "data-color")
+            .addAttributes("video", "src", "controls", "preload", "poster", "playsinline", "muted", "loop")
+            .addAttributes("source", "src", "type")
+            .addProtocols("video", "src", "http", "https")
+            .addProtocols("video", "poster", "http", "https")
+            .addProtocols("source", "src", "http", "https");
 
     private MpHtmlSanitizer() {
     }

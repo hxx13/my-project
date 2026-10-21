@@ -132,6 +132,16 @@
         WHERE <include refid="orphanConds"/>
     </select>
 
+    <!-- 运行期可清的一档：cart_id 指向的购物车行已经不存在。cart_id 为空的「正在选、还没加购」
+         锁定不在内（那种清掉会误伤用户正在挑的笼位，只留给启动清理）。 -->
+    <select id="listDanglingCart" resultMap="base">
+        SELECT <include refid="cols"/> FROM cage_order_reservation
+        WHERE cage_order_reservation.status = 'LOCKED'
+          AND cage_order_reservation.order_id IS NULL
+          AND cage_order_reservation.cart_id IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM ref_cart c WHERE c.id = cage_order_reservation.cart_id)
+    </select>
+
     <update id="releaseOrphans">
         UPDATE cage_order_reservation
         SET status = 'RELEASED', active_cage_id = NULL, release_reason = #{reason}

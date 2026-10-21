@@ -8,6 +8,6 @@
     "van-field": "@vant/weapp/field/index",
     "van-popup": "@vant/weapp/popup/index",
     "van-empty": "@vant/weapp/empty/index",
-    "van-datetime-picker": "@vant/weapp/datetime-picker/index"
+    "van-calendar": "@vant/weapp/calendar/index"
   }
 }

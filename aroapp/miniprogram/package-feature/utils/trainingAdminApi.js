@@ -123,6 +123,34 @@ function fetchRooms() {
   });
 }
 
+/** 已发布的试卷（培训绑定的门槛试卷） */
+function fetchPublishedPapers() {
+  return req('/api/admin/exam-papers?page=1&pageSize=500', 'GET').then(function (d) {
+    const list = (d && d.list) || [];
+    return list
+      .filter(function (p) {
+        return p && p.status === 'PUBLISHED';
+      })
+      .map(function (p) {
+        return { id: Number(p.id), title: p.title || '未命名试卷' };
+      });
+  });
+}
+
+/** 已上架的学习视频（培训绑定的报名门禁） */
+function fetchLearningVideos() {
+  return req('/api/admin/learning-videos', 'GET').then(function (d) {
+    const rows = Array.isArray(d) ? d : [];
+    return rows
+      .filter(function (v) {
+        return v && Number(v.active) === 1;
+      })
+      .map(function (v) {
+        return { id: Number(v.id), title: v.title || '未命名视频' };
+      });
+  });
+}
+
 module.exports = {
   fetchTrainings: fetchTrainings,
   fetchTraining: fetchTraining,
@@ -140,4 +168,6 @@ module.exports = {
   fetchLocations: fetchLocations,
   fetchSystemUsers: fetchSystemUsers,
   fetchRooms: fetchRooms,
+  fetchPublishedPapers: fetchPublishedPapers,
+  fetchLearningVideos: fetchLearningVideos,
 };

@@ -18,6 +18,7 @@ import {
   useMarkCartPackageReady,
   useWithdrawCartPackage,
   useOrders,
+  invalidateCageAvailability,
 } from "@/api/hooks/useReferenceData";
 import { useAnimalOrderTimePolicy } from "@/api/hooks/useAnimalOrderTime";
 import {
@@ -77,6 +78,7 @@ function fieldVal(item: RefDataItem, key: string): string {
 }
 
 export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExitGuard }: { jwtMode?: boolean; onRegisterExitGuard?: (fn: (() => Promise<boolean>) | null) => void }) {
+  const qc = useQueryClient();
   const [activeTypeKey, setActiveTypeKey] = useState("SUPPLIER");
   const [drillStack, setDrillStack] = useState<DrillSegment[]>([]);
   const [specSelectItem, setSpecSelectItem] = useState<RefDataItem | null>(null);
@@ -137,20 +139,27 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     [],
   );
 
-  /** 退出选购：有已锁笼位先确认，再清状态并逐个释放预定 */
-  const exitCageSession = useCallback(async () => {
-    if (pickedCages.length > 0) {
-      if (!await appConfirm(`已选 ${pickedCages.length} 个笼位将被释放，确定退出？`)) return;
-    }
+  /** 放掉本轮已锁笼位并收起选购浮层（切 AUP / 校区、取走时用；调用方决定要不要二次确认） */
+  const resetCageSession = useCallback(() => {
+    const cur = pickedCages;
     setPickedCages([]);
     setAllocPinned({});
     setCagePickerOpen(false);
     setSpecSelectItem(null);
     setLocateCageId(null);
-    for (const r of pickedCages) {
-      try { await releaseCageReservation(r.reservationId); } catch { /* 启动清理兜底 */ }
+    for (const r of cur) {
+      void releaseCageReservation(r.reservationId).catch(() => {});
     }
-  }, [pickedCages]);
+    if (cur.length > 0) invalidateCageAvailability(qc);
+  }, [pickedCages, qc]);
+
+  /** 退出选购：有已锁笼位先确认，再清状态并逐个释放预定 */
+  const exitCageSession = useCallback(async () => {
+    if (pickedCages.length > 0) {
+      if (!await appConfirm(`已选 ${pickedCages.length} 个笼位将被释放，确定退出？`)) return;
+    }
+    resetCageSession();
+  }, [pickedCages.length, resetCageSession]);
 
   /** 领用方式切换：取走关掉笼位抽屉并放掉已选笼位，饲养再打开 */
   const handlePickupModeChange = useCallback((mode: PickupMode) => {
@@ -163,12 +172,11 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
       for (const r of cur) {
         void releaseCageReservation(r.reservationId).catch(() => {});
       }
+      if (cur.length > 0) invalidateCageAvailability(qc);
     } else {
       setCagePickerOpen(true);
     }
-  }, [pickedCages]);
-
-  const qc = useQueryClient();
+  }, [pickedCages, qc]);
 
   const userInfo = authStorage.getUserInfo();
   const currentUserName = userInfo?.displayName?.trim() || userInfo?.username?.trim() || userInfo?.id?.trim() || "";
@@ -285,10 +293,24 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
         packageRemark: ci.packageRemark,
         remark: ci.remark,
         addedBy: ci.addedBy,
-        addedByLabel: addedByName || (ci.addedBy === currentUserId ? currentUserName : "") || ci.addedBy || "",
+        // 服务端按 person 判的本人标记：同一人可能持 STAFF_ 与 aro 两个账号，
+        // 只用 addedBy 比较会把本人行判成别人的（提交时少行、笼位留在购物车）。
+        mine: ci.mine === true,
+        addedByKey: ci.addedByKey ?? null,
+        addedByLabel: addedByName || (ci.mine === true ? currentUserName : "") || ci.addedBy || "",
+        // 笼位信息随行带出：购物车要显示「下到哪个笼位」并支持定位（与 PC 同口径）
+        targetAnimalCageId: ci.targetAnimalCageId ?? null,
+        targetCageLabel: ci.targetCageLabel ?? null,
+        targetCageLocation: ci.targetCageLocation ?? null,
       };
     });
   }, [serverCartItems, itemLabelMap, aupLabelById, currentUserId, currentUserName]);
+
+  /** 是不是「本人」的行：以服务端 mine 为准，回退到账号 id（与 PC 同口径）。 */
+  const isMyLine = useCallback(
+    (l: { mine?: boolean; addedBy?: string }) => l.mine === true || l.addedBy === currentUserId,
+    [currentUserId],
+  );
 
   /** 每个商品在购物车里的总数量（含规格/无规格），「选择规格」按钮角标用 */
   const qtyByRefDataId = useMemo(() => {
@@ -313,17 +335,17 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     return any ? sum : null;
   }, [cartLines]);
   const myDraftLines = useMemo(
-    () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus !== "READY"),
-    [cartLines, currentUserId],
+    () => cartLines.filter((l) => isMyLine(l) && l.packageStatus !== "READY"),
+    [cartLines, isMyLine],
   );
   const myReadyLines = useMemo(
-    () => cartLines.filter((l) => l.addedBy === currentUserId && l.packageStatus === "READY"),
-    [cartLines, currentUserId],
+    () => cartLines.filter((l) => isMyLine(l) && l.packageStatus === "READY"),
+    [cartLines, isMyLine],
   );
   // PI 是最终提交人，本人加购的行不必再走「提交给 PI」确认，直接纳入提交范围
   const readyLines = useMemo(
-    () => cartLines.filter((l) => l.packageStatus === "READY" || (isPi && l.addedBy === currentUserId)),
-    [cartLines, isPi, currentUserId],
+    () => cartLines.filter((l) => l.packageStatus === "READY" || (isPi && isMyLine(l))),
+    [cartLines, isPi, isMyLine],
   );
 
   // ── Navigation ──
@@ -406,7 +428,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     specConfirmRef.current = fn;
   }, []);
 
-  const handleSpecConfirm = useCallback(async (
+  const doSpecConfirm = useCallback(async (
     entries: {
       optionLabel: string;
       qty: number;
@@ -420,6 +442,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     if (!specSelectItem || !selectedAupId || !groupId) return;
     const aupId = Number(selectedAupId);
     let ok = 0;
+    /** 真正加购成功的预定 id —— 失败的不能算「已用」，否则会被漏释放、永久占着笼位 */
+    const addedReservationIds = new Set<string>();
     for (const entry of entries) {
       // 笼位路径下房间来自该行自己的笼位；非笼位路径用弹窗里选的那个房间
       const roomId = entry.pickupRoomId || pickup.pickupRoomId;
@@ -454,22 +478,40 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
           },
         });
         ok += 1;
+        if (entry.reservationId) addedReservationIds.add(entry.reservationId);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "加入失败");
       }
     }
     if (ok > 0) { toast.success(`已加入购物车 (${ok} 项)`); void refetchCart(); }
-    // 多选的盒子最后没分到老鼠 → 自动取消掉它（释放预定），别白占着
-    const usedReservationIds = new Set(entries.map((e) => e.reservationId).filter(Boolean) as string[]);
+    // 没分到老鼠的、以及加购失败的笼位都释放（失败的不释放会永远锁着，且已从界面上清掉）
+    let releasedUnused = false;
     for (const c of pickedCages) {
-      if (usedReservationIds.has(c.reservationId)) continue;
+      if (addedReservationIds.has(c.reservationId)) continue;
+      releasedUnused = true;
       try { await releaseCageReservation(c.reservationId); } catch { /* 启动清理兜底 */ }
     }
+    if (releasedUnused) invalidateCageAvailability(qc);
     setPickedCages([]);
     setAllocPinned({});
     setSpecSelectItem(null);
     setCagePickerOpen(false);
-  }, [specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, editOrderId, pickedCages]);
+  }, [specSelectItem, selectedAupId, groupId, addToCartMut, refetchCart, editOrderId, pickedCages, qc]);
+
+  /**
+   * 防连点：一次加购会锁/释放多个笼位，重复进入会把同一笼位重复挂进购物车，
+   * 还把预定 cart_id 指向新行、留下两条引用同一个笼位的订单行。
+   */
+  const confirmBusyRef = useRef(false);
+  const handleSpecConfirm = useCallback(async (...args: Parameters<typeof doSpecConfirm>) => {
+    if (confirmBusyRef.current) return;
+    confirmBusyRef.current = true;
+    try {
+      await doSpecConfirm(...args);
+    } finally {
+      confirmBusyRef.current = false;
+    }
+  }, [doSpecConfirm]);
 
   // ── 编辑模式：从订单记录页点「编辑」进入 ──
   // 编辑期间原单不动，回填行带 editing_order_id 标记；保存才写回原单，放弃只清回填行。
@@ -561,12 +603,17 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
     isPi,
     currentUserId,
     onConverge: (line, newQty) => {
+      // 收敛到 0 = 这行留不住了：改数量接口不收 0，直接删行（顺带释放它锁着的笼位）
+      if (newQty <= 0) {
+        removeCartMut.mutate(line.id, { onSuccess: () => void refetchCart() });
+        return;
+      }
       updateCartMut.mutate({ id: line.id, body: { quantity: newQty } }, { onSuccess: () => void refetchCart() });
     },
   });
 
-  const handleCartQtyChange = useCallback((line: { id: number; addedBy: string; itemLabel?: string; specLabel?: string }, qty: number) => {
-    if (!isPi && line.addedBy !== currentUserId) { toast.error("只能修改本人加购的行"); return; }
+  const handleCartQtyChange = useCallback((line: { id: number; addedBy: string; mine?: boolean; itemLabel?: string; specLabel?: string }, qty: number) => {
+    if (!isPi && !isMyLine(line)) { toast.error("只能修改本人加购的行"); return; }
     if (qty <= 0) { removeCartMut.mutate(line.id, { onSuccess: () => void refetchCart() }); return; }
     // 周期上限闸门。天花板已扣掉他人占用、且不把本行算进去（见 useCartQuotaConvergence）；
     // 没取到（未配上限 / 端点失败）时不拦，提交时后端仍是权威校验。
@@ -576,7 +623,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
       return;
     }
     updateCartMut.mutate({ id: line.id, body: { quantity: qty } }, { onSuccess: () => void refetchCart() });
-  }, [isPi, currentUserId, removeCartMut, updateCartMut, refetchCart, cartQuotaMax]);
+  }, [isPi, isMyLine, currentUserId, removeCartMut, updateCartMut, refetchCart, cartQuotaMax]);
 
   const handleClearCart = useCallback(async () => {
     if (!isPi) { toast.error("仅组长可清空共享购物车"); return; }
@@ -610,6 +657,7 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
   }, [myReadyLines.length, withdrawMut, groupId, refetchCart]);
 
   const handleSubmitOrder = useCallback(() => {
+    if (submitOrderMut.isPending) return;   // 防连点：同一批购物车行不能提交两次
     if (orderingBlocked) { toast.error(timePolicy?.closedReason ?? "当前不可购"); return; }
     if (!isPi) { toast.error("仅组长可正式提交申领单"); return; }
     if (readyLines.length === 0) { toast.error("没有可提交的行：本人加购的行，或实验员已提交给 PI 的订单包"); return; }
@@ -629,6 +677,8 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
           setSubmitConfirmOpen(false);
           setSubmitRemark("");
           void qc.invalidateQueries({ queryKey: queryKeys.referenceData.all });
+          // 预定阶段变成「已下单待审批」：笼位抽屉必须立刻对账，否则还拦着说在购物车里
+          invalidateCageAvailability(qc);
           void refetchCart();
           setQuotaToken((t) => t + 1); // 下单即扣额度：卡片剩余量立刻重查
         },
@@ -1048,7 +1098,13 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                 <button
                   key={c}
                   type="button"
-                  onClick={() => { storeCampus(c); setCampus(c); setCampusSheetOpen(false); }}
+                  onClick={() => {
+                    // 换校区前放掉已锁笼位：笼位属于另一个校区的架子，不能带进本单
+                    if (campus !== c) resetCageSession();
+                    storeCampus(c);
+                    setCampus(c);
+                    setCampusSheetOpen(false);
+                  }}
                   className={cn(
                     "mb-2 flex w-full items-center gap-2 rounded-[var(--student-radius-sm)] border px-3 py-2.5 text-left text-sm",
                     campus === c
@@ -1085,7 +1141,12 @@ export default function MobileAnimalOrderView({ jwtMode: _jwtMode, onRegisterExi
                   <button
                     key={aup.id}
                     type="button"
-                    onClick={() => { setSelectedAupId(String(aup.id)); setAupPickerOpen(false); }}
+                    onClick={() => {
+                      // 换 AUP 前先放掉已锁笼位：那些笼位是按旧 AUP 选的，带过去会串 AUP
+                      if (String(selectedAupId) !== String(aup.id)) resetCageSession();
+                      setSelectedAupId(String(aup.id));
+                      setAupPickerOpen(false);
+                    }}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-[var(--student-radius-sm)] px-3 py-2.5 text-left",
                       String(selectedAupId) === String(aup.id)

@@ -715,6 +715,7 @@ public class TwinStudentViolationService {
                     String text = applyTemplateVariables(single.getViolationText(), single.getTargetUserId());
                     dto.setSummary(prefix + buildSummary(text, maxLen));
                     dto.setImageUrls(mergeImages(extractBodyImageSrcs(text), parseImageUrls(single.getImageUrls())));
+                    dto.setVideoUrls(extractBodyVideoSrcs(text));
                     dto.setCreatedAt(single.getCreatedAt());
                     cageOut.add(dto);
                 } else {
@@ -738,6 +739,7 @@ public class TwinStudentViolationService {
                     }
                     dto.setMembers(memberDtos);
                     dto.setImageUrls(mergeImages(extractBodyImageSrcs(groupText), parseImageUrls(first.getImageUrls())));
+                    dto.setVideoUrls(extractBodyVideoSrcs(groupText));
                     dto.setCreatedAt(latestCageTime);
                     cageOut.add(dto);
                 }
@@ -790,6 +792,7 @@ public class TwinStudentViolationService {
                 String ownText = applyTemplateVariables(firstOwn.getViolationText(), firstOwn.getTargetUserId());
                 dto.setSummary(buildSummary(ownText, maxLen));
                 dto.setImageUrls(mergeImages(extractBodyImageSrcs(ownText), parseImageUrls(firstOwn.getImageUrls())));
+                dto.setVideoUrls(extractBodyVideoSrcs(ownText));
                 dto.setCreatedAt(own.get(0).getCreatedAt());
                 cagePersonOut.add(dto);
             }
@@ -804,6 +807,7 @@ public class TwinStudentViolationService {
             String text = applyTemplateVariables(row.getViolationText(), row.getTargetUserId());
             dto.setSummary(buildSummary(text, maxLen));
             dto.setImageUrls(mergeImages(extractBodyImageSrcs(text), parseImageUrls(row.getImageUrls())));
+            dto.setVideoUrls(extractBodyVideoSrcs(text));
             dto.setCreatedAt(row.getCreatedAt());
             out.add(dto);
         }
@@ -938,6 +942,22 @@ public class TwinStudentViolationService {
             out.add(m.group(1));
         }
         return out;
+    }
+
+    /** 正文视频地址（编辑器插入的 &lt;video src&gt;），与图片同一存储与提取口径 */
+    private static List<String> extractBodyVideoSrcs(String html) {
+        if (!StringUtils.hasText(html)) {
+            return Collections.emptyList();
+        }
+        // 去重保序：同一视频在正文里出现两次时前端列表 key 会撞车
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("<video[^>]+src=[\"']([^\"']+)[\"']", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(html);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
+        return new ArrayList<>(out);
     }
 
     /** 正文图片 + 旧记录单独上传图片（兼容历史），去重保序 */

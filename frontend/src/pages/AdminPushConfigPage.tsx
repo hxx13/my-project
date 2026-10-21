@@ -828,7 +828,12 @@ function ChannelConfigSection({
                 {!hasTemplate && <span className="ml-0.5 text-[10px] text-[var(--app-color-feedback-warning)]" title={noTemplateHint}>⚠</span>}
               </AdminButton>
               <AdminSwitchScaled size="sm" checked={enabled}
-                  onChange={(v) => { const c = source.channels.find(x => x.channelCode === def.code); if (c) onUpdate(source.sourceId, c.id, { enabled: v }); }} />
+                  disabled={!ch}
+                  onChange={(v) => {
+                    if (!ch) return;
+                    onUpdate(source.sourceId, ch.id, { enabled: v });
+                    onSave(source.sourceId, ch.channelCode, { ...(draft ?? toChannelDraft(ch)), enabled: v });
+                  }} />
             </div>
           );
         })}

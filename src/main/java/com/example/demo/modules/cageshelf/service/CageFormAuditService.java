@@ -96,8 +96,8 @@ public class CageFormAuditService {
         row.setTargetLabel(targetLabel);
         row.setFieldCode(fieldCode);
         row.setFieldName(fieldName);
-        row.setBeforeValue(truncate(beforeValue, 2000));
-        row.setAfterValue(truncate(afterValue, 2000));
+        row.setBeforeValue(truncateUtf8(beforeValue, AUDIT_VALUE_MAX_BYTES));
+        row.setAfterValue(truncateUtf8(afterValue, AUDIT_VALUE_MAX_BYTES));
         auditLogMapper.insert(row);
         kickAlertEngineIfStatus(fieldCode);
     }
@@ -493,9 +493,26 @@ public class CageFormAuditService {
         return t.isEmpty() ? null : t;
     }
 
-    private static String truncate(String s, int max) {
+    /**
+     * 审计值落库上限（UTF-8 字节）。before_value / after_value 是 TEXT（65535 字节），留 5k 余量。
+     *
+     * <p>以前按 **2000 字符**截断：「本地扩展数据」这种带照片/视频地址的 JSON 很容易超，
+     * 一旦截断，历史里的附件地址就解析不出来 —— 等于把留痕弄丢了。正常值现在一律原样落库。
+     */
+    private static final int AUDIT_VALUE_MAX_BYTES = 60_000;
+
+    private static String truncateUtf8(String s, int maxBytes) {
         if (s == null) return null;
-        return s.length() <= max ? s : s.substring(0, max);
+        int bytes = 0;
+        int end = 0;
+        while (end < s.length()) {
+            int cp = s.codePointAt(end);
+            int n = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+            if (bytes + n > maxBytes) break;
+            bytes += n;
+            end += Character.charCount(cp);
+        }
+        return end == s.length() ? s : s.substring(0, end);
     }
 
     private static String toJson(Object o) {

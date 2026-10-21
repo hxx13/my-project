@@ -151,7 +151,7 @@ export default function CagePermissionMatrixPanel() {
               </thead>
               <tbody>
                 {identities.map((idt) => (
-                  <tr key={idt.code} className="odd:bg-[var(--twin-canvas-soft)]">
+                  <tr key={idt.code} className="odd:bg-[var(--twin-canvas-soft)] even:bg-[var(--twin-canvas)]">
                     <td className="sticky left-0 z-10 border-b border-r border-[var(--twin-hairline)] bg-inherit px-2.5 py-2">
                       <div className="font-semibold text-[var(--twin-ink)]">{idt.label}</div>
                       <div className="text-[9px] text-[var(--twin-mute)]">{idt.code}</div>

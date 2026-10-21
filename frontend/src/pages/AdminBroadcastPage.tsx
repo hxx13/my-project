@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   getActive,
+  getPlayMode,
   getStatus,
   listPlans,
   listSongLists,
@@ -15,6 +16,7 @@ import {
   relogin,
   resumePlan,
   resumeZones,
+  setPlayMode,
   setVolume as setZonesVolume,
   stop,
 } from "@/api/domains/broadcast.api";
@@ -68,6 +70,11 @@ export default function AdminBroadcastPage() {
     queryFn: getActive,
     refetchInterval: 10000,
   });
+  const playModeQ = useQuery({
+    queryKey: ["broadcast", "playMode"],
+    queryFn: getPlayMode,
+    refetchInterval: 30000,
+  });
 
   const zones = zonesQ.data?.zones ?? [];
   const songLists = songsQ.data ?? [];
@@ -95,13 +102,26 @@ export default function AdminBroadcastPage() {
     return p ? { song: p.song, position: p.position, duration: p.duration, ratio: p.ratio } : null;
   })();
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["broadcast"] });
+  /**
+   * 只刷该刷的那一块。
+   *
+   * <p>原来每次操作都 invalidate 整个 broadcast 前缀，连分区列表一起重取 ——
+   * 调个音量、暂停一路，左边分区列表都跟着"刷一下"。分区状态本来就有 10 秒轮询兜着，
+   * 没必要每次操作都重拉。
+   */
+  const refreshZones = () => qc.invalidateQueries({ queryKey: ["broadcast", "zones"] });
+  const refreshActive = () => qc.invalidateQueries({ queryKey: ["broadcast", "active"] });
+  const refreshPlans = () => qc.invalidateQueries({ queryKey: ["broadcast", "plans"] });
+  const refreshStatusAndZones = () => {
+    qc.invalidateQueries({ queryKey: ["broadcast", "status"] });
+    refreshZones();
+  };
 
   const reconnectMut = useMutation({
     mutationFn: reconnect,
     onSuccess: () => {
       toast.success("已发起重连");
-      refresh();
+      refreshStatusAndZones();
     },
     onError: (e: Error) => toast.error(e.message || "重连失败"),
   });
@@ -110,7 +130,7 @@ export default function AdminBroadcastPage() {
     mutationFn: relogin,
     onSuccess: () => {
       toast.success("已发起重新登录");
-      refresh();
+      refreshStatusAndZones();
     },
     onError: (e: Error) => toast.error(e.message || "重新登录失败"),
   });
@@ -120,7 +140,8 @@ export default function AdminBroadcastPage() {
     mutationFn: () => play(macs, songPath, null),
     onSuccess: () => {
       toast.success("已下发播放");
-      refresh();
+      refreshZones();
+      refreshActive();
     },
     onError: (e: Error) => toast.error(e.message || "播放失败"),
   });
@@ -129,7 +150,8 @@ export default function AdminBroadcastPage() {
     mutationFn: () => stop(macs),
     onSuccess: () => {
       toast.success("已下发停止");
-      refresh();
+      refreshZones();
+      refreshActive();
     },
     onError: (e: Error) => toast.error(e.message || "停止失败"),
   });
@@ -137,8 +159,7 @@ export default function AdminBroadcastPage() {
   const volumeMut = useMutation({
     mutationFn: (args: { macs: string[]; volume: number }) => setZonesVolume(args.macs, args.volume),
     onSuccess: () => {
-      toast.success("音量已设置");
-      refresh();
+      refreshZones();
     },
     onError: (e: Error) => toast.error(e.message || "设置音量失败"),
   });
@@ -149,7 +170,8 @@ export default function AdminBroadcastPage() {
       args.resume ? resumeZones(args.macs, args.songPath) : pauseZones(args.macs),
     onSuccess: (_d, args) => {
       toast.success(args.resume ? "已恢复该分区" : "已暂停该分区");
-      refresh();
+      refreshZones();
+      refreshActive();
     },
     onError: (e: Error) => toast.error(e.message || "操作失败"),
   });
@@ -160,9 +182,21 @@ export default function AdminBroadcastPage() {
       args.resume ? resumePlan(args.id) : pausePlan(args.id),
     onSuccess: (_d, args) => {
       toast.success(args.resume ? "方案已恢复" : "方案已暂停");
-      refresh();
+      refreshZones();
+      refreshActive();
+      refreshPlans();
     },
     onError: (e: Error) => toast.error(e.message || "操作失败"),
+  });
+
+  /** 播放模式（平台全局） */
+  const playModeMut = useMutation({
+    mutationFn: (mode: number) => setPlayMode(mode),
+    onSuccess: (r) => {
+      toast.success(`已切换为${r.text}`);
+      qc.invalidateQueries({ queryKey: ["broadcast", "playMode"] });
+    },
+    onError: (e: Error) => toast.error(e.message || "切换失败"),
   });
 
   function onToggleZone(mac: string) {
@@ -219,6 +253,8 @@ export default function AdminBroadcastPage() {
           setVolume(v);
           volumeMut.mutate({ macs, volume: v });
         }}
+        playMode={playModeQ.data?.mode ?? 3}
+        onPlayModeChange={(m) => playModeMut.mutate(m)}
         canPlay={selected.size > 0 && !!songPath}
         canStop={selected.size > 0}
         canApplyVolume={canApplyVolume}

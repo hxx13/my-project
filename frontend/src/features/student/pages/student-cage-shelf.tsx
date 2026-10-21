@@ -15,7 +15,8 @@ import { displayPosition, CAGE_BOX_ACTIONS, detailParentsLast, cageBoxAction, ac
 import StatusPhotoStrip from "@/features/cage-shelf/components/StatusPhotoStrip";
 import { DEFAULT_COLORS } from "@/features/cage-shelf/components/CageColorContext";
 import { fetchCageInfoValues, fetchCageInfoCodelist, type CageInfoValueRow, type CageCodelistItem } from "@/features/cage-shelf/api/cageForm.api";
-import { fetchFullTree, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, localEdit, localArchiveCage, saveStatusDetail, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { fetchFullTree, fetchMyGroupRooms, fetchGroupRooms, fetchLocalShelfGridByShelveId, fetchMyClaims, fetchPoolCells, claimCage, confirmClaim, lookupCode, locateTargetOf, fetchCageModeVisible, fetchCageOpMarkers, saveCageDivision, searchPersonnelByKeyword, localEdit, localArchiveCage, saveStatusDetail, type CageShelfCell, type CageShelfTreeNode, type CageClaimItem, type PoolCell, type CageBoxAction } from "@/api/domains/cageShelf.api";
+import { authStorage } from "@/features/auth/authStorage";
 import { fetchStudentMobileSpecialStatusOverview } from "@/api/domains/studentMobile.api";
 import { authHttp } from "@/api/core/authHttp";
 import { fetchActiveCageReservations } from "@/api/domains/animalOrderCage.api";
@@ -67,6 +68,25 @@ export default function StudentCageShelfPage() {
   // Tree
   const emptyTree = useMemo(() => [] as CageShelfTreeNode[], []);
   const { data: fullTree = emptyTree } = useQuery({ queryKey: ["cageShelfFullTree"], queryFn: fetchFullTree, staleTime: 10 * 60 * 1000 });
+  // 本人课题组占用的房间：左侧列表顶部「我的区域」快捷块用（与刷卡平面图同一口径）
+  const myUserId = authStorage.getUserInfo()?.id ?? "";
+  const { data: myGroupRooms = [] } = useQuery({
+    queryKey: ["cageShelfMyGroupRooms", myUserId],
+    queryFn: async () => {
+      try {
+        return await fetchMyGroupRooms();
+      } catch {
+        // 老后端还没有 /my-group-rooms：退回按人员查询，至少课题组房间照常显示
+        return myUserId ? await fetchGroupRooms(myUserId) : [];
+      }
+    },
+    enabled: !!myUserId,
+    staleTime: 5 * 60 * 1000,
+  });
+  const myRoomIds = useMemo(
+    () => new Set((myGroupRooms ?? []).map((r) => String(r.roomId))),
+    [myGroupRooms],
+  );
   const tree = useMemo(() => buildTree(fullTree), [fullTree]);
   /**
    * 左侧树展开态：**存后端**（跟账号走，换设备也记得）；房间级收藏：房间名后的星标 + 收藏视图过滤。
@@ -1590,7 +1610,7 @@ export default function StudentCageShelfPage() {
           {/* 一棵树两种视图：只换 onlyBookmarked，不换组件 —— 切视图不卸载，展开与滚动位置都留着。
               「收藏」视图只画收藏过的房间（房间名后的 ☆ 切换），进视图自动展开第一个。 */}
           {!collapsed && <div className="cage-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-student-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5">
-            <CampusTree tree={tree} exp={exp} search={search} onToggle={toggleNode} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={new Map()} alertStatusesByRoom={new Map()}
+            <CampusTree tree={tree} exp={exp} search={search} onToggle={toggleNode} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf} alertStatusesByShelf={new Map()} alertStatusesByRoom={new Map()} myRoomIds={myRoomIds}
               bookmark={{ bookmarkedRooms, bookmarkedShelves, onToggleBookmarkRoom: toggleRoom, onToggleBookmarkShelf: toggleBookmarkShelf, onlyBookmarked: leftView === "bookmarks" }} />
           </div>}
         </div>

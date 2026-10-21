@@ -25,6 +25,9 @@ Page({
     loading: false,
     days: [],
     day: '',
+    /** 自定义分区（tab）；0 = 未分区 */
+    partitions: [],
+    activePartitionId: 0,
     slotCount: 0,
     columns: [],
     rows: [],
@@ -59,7 +62,7 @@ Page({
       win = { windowHeight: 667, windowWidth: 375 };
     }
     const rpx2px = (win.windowWidth || 375) / 750;
-    const toolbar = 96 * rpx2px; // 顶部工具条（日期 + 导出）连同上下间距
+    const toolbar = 166 * rpx2px; // 分区 tab + 顶部工具条（日期 + 导出）连同上下间距
     const tableH = Math.max(240, Math.round((win.windowHeight || 667) - nav.navBarHeight - toolbar));
     this.setData({ navBarHeight: nav.navBarHeight, tableH });
   },
@@ -71,7 +74,7 @@ Page({
       this.setData({ err: '需要管理员及以上权限' });
       return;
     }
-    void this.loadDays();
+    void this.loadPartitions();
   },
 
   onShow() {
@@ -80,11 +83,60 @@ Page({
     pagePermission.guardPageOnShow(this, '/pages/telemetryLongterm/index', role, 'ADMIN');
   },
 
+  /** 拉自定义分区（tab）。没有分区时至少给一个「未分区」，让已有数据仍能看。 */
+  async loadPartitions() {
+    let parts = [];
+    try {
+      const list = await this.getJson(`${API}/partitions`);
+      if (Array.isArray(list)) {
+        parts = list.map((p) => ({
+          id: Number(p.id),
+          name: p.name || '未分区',
+          count: Number(p.variableCount) || 0,
+        }));
+      }
+    } catch (e) {
+      parts = [];
+    }
+    parts.push({ id: 0, name: '未分区', count: 0 });
+    let stored = '';
+    try {
+      stored = wx.getStorageSync('twin-longterm-partition') || '';
+    } catch (e) {
+      stored = '';
+    }
+    const hit = parts.find((p) => String(p.id) === String(stored));
+    const active = hit ? hit.id : parts[0].id;
+    this.setData({ partitions: parts, activePartitionId: active });
+    await this.loadDays();
+  },
+
+  /** 切分区 = 整页换数据：清空当前表，按新分区重拉日期与矩阵。 */
+  onPartitionTap(e) {
+    const pid = Number(e.currentTarget.dataset.pid);
+    if (!Number.isFinite(pid) || pid === this.data.activePartitionId) return;
+    try {
+      wx.setStorageSync('twin-longterm-partition', String(pid));
+    } catch (e) {
+      /* ignore */
+    }
+    this.setData({
+      activePartitionId: pid,
+      days: [],
+      day: '',
+      columns: [],
+      rows: [],
+      slotCount: 0,
+    });
+    void this.loadDays();
+  },
+
   /** 拉「有数据的日期」，默认落在最近一天。这份清单同时也是日历上「哪些天有数」的依据 */
   async loadDays() {
     this.setData({ loading: true, err: '' });
     try {
-      const list = await this.getJson(`${API}/days`);
+      const pid = this.data.activePartitionId;
+      const list = await this.getJson(`${API}/days?partitionId=${encodeURIComponent(pid)}`);
       const days = Array.isArray(list) ? list : [];
       if (!days.length) {
         this.setData({ loading: false, days: [], rows: [], columns: [], day: '' });
@@ -100,7 +152,10 @@ Page({
   async loadMatrix(day) {
     this.setData({ loading: true, err: '' });
     try {
-      const dto = await this.getJson(`${API}/matrix?day=${encodeURIComponent(day)}`);
+      const pid = this.data.activePartitionId;
+      const dto = await this.getJson(
+        `${API}/matrix?day=${encodeURIComponent(day)}&partitionId=${encodeURIComponent(pid)}`
+      );
       const table = dto && Array.isArray(dto.dayTables) && dto.dayTables.length ? dto.dayTables[0] : null;
       if (!table) {
         this.setData({ loading: false, day, columns: [], rows: [], slotCount: 0 });
@@ -323,7 +378,7 @@ Page({
     wx.showLoading({ title: '导出中…', mask: true });
     try {
       // 宽表：行=变量、列=时间槽，跟屏幕上看到的一致；多天时后端按天分段接在同一张表里
-      const path = `${API}/export/download?days=${encodeURIComponent(picked.join(','))}&layout=WIDE`;
+      const path = `${API}/export/download?days=${encodeURIComponent(picked.join(','))}&layout=WIDE&partitionId=${encodeURIComponent(this.data.activePartitionId)}`;
       const res = await springAuth.springRequestBinary(path, {
         errorMessage: '导出失败',
         forbiddenMessage: '无权限导出',

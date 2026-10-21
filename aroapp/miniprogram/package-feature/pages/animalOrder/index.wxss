@@ -102,6 +102,7 @@
   color: #334155;
   word-break: break-all;
   line-height: 1.4;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 .side-item-on {
   background: #2563eb;

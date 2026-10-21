@@ -8,9 +8,16 @@ import java.util.List;
 @Mapper
 public interface TrainingMapper {
 
+    /**
+     * 新建培训。
+     *
+     * <p>student_sort 用 COALESCE 兜底到 0：这一列是 NOT NULL，而**显式传 NULL 不会走列默认值**，
+     * 会直接报 "Column 'student_sort' cannot be null"。ARO 同步建行时根本不会设这个字段，
+     * 2026-10-19 每轮同步都因此整批失败。兜在 SQL 里，所有调用点都不会再踩。
+     */
     @Insert("""
-            INSERT INTO training (code, name, type, type_name, paper_ids_json, owner_ids_json, recurrence, recurrence_day, recurrence_time, recurrence_start, recurrence_end, campus, student_sort, status, created_by, created_at, updated_at)
-            VALUES (#{code}, #{name}, #{type}, #{typeName}, #{paperIdsJson}, #{ownerIdsJson}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{recurrenceStart}, #{recurrenceEnd}, #{campus}, #{studentSort}, #{status}, #{createdBy}, NOW(), NOW())
+            INSERT INTO training (code, name, type, type_name, paper_ids_json, video_ids_json, owner_ids_json, recurrence, recurrence_day, recurrence_time, recurrence_start, recurrence_end, campus, student_sort, status, created_by, created_at, updated_at)
+            VALUES (#{code}, #{name}, #{type}, #{typeName}, #{paperIdsJson}, #{videoIdsJson}, #{ownerIdsJson}, #{recurrence}, #{recurrenceDay}, #{recurrenceTime}, #{recurrenceStart}, #{recurrenceEnd}, #{campus}, COALESCE(#{studentSort}, 0), #{status}, #{createdBy}, NOW(), NOW())
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Training training);
@@ -19,6 +26,7 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
+                   video_ids_json AS videoIdsJson,
                    owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
@@ -39,6 +47,7 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
+                   video_ids_json AS videoIdsJson,
                    owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
@@ -59,6 +68,7 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
+                   video_ids_json AS videoIdsJson,
                    owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
@@ -79,6 +89,7 @@ public interface TrainingMapper {
             SELECT id, code, name, type,
                    type_name AS typeName,
                    paper_ids_json AS paperIdsJson,
+                   video_ids_json AS videoIdsJson,
                    owner_ids_json AS ownerIdsJson,
                    recurrence,
                    recurrence_day AS recurrenceDay,
@@ -101,6 +112,7 @@ public interface TrainingMapper {
                 type = #{type},
                 type_name = #{typeName},
                 paper_ids_json = #{paperIdsJson},
+                video_ids_json = #{videoIdsJson},
                 owner_ids_json = #{ownerIdsJson},
                 recurrence = #{recurrence},
                 recurrence_day = #{recurrenceDay},
