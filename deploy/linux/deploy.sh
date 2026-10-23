@@ -1,10 +1,8 @@
 #!/bin/bash
 # deploy.sh — 生产环境自动部署脚本
 # 用法:
-#   bash deploy.sh                        # 完整流程（含 git pull + 备份 + 构建）
-#   bash deploy.sh --skip-build           # 跳过构建（已手动 npm + mvn 完成时使用）
-#   bash deploy.sh --skip-backup          # 跳过部署前 DB 备份（每日 01:30 已有全量备份时用）
-#   bash deploy.sh --skip-build --skip-backup   # 两个都跳（可用空格分隔，顺序随意）
+#   bash deploy.sh              # 完整流程（含 git pull + 构建）
+#   bash deploy.sh --skip-build # 跳过构建（已手动 npm + mvn 完成时使用）
 set -e
 
 APP_DIR=/opt/twin/app
@@ -13,13 +11,9 @@ BACKUP_DIR=/opt/twin/backups/pre-deploy
 ENV_FILE=/opt/twin/.env
 
 SKIP_BUILD=false
-SKIP_BACKUP=false
-for arg in "$@"; do
-    case "$arg" in
-        --skip-build)  SKIP_BUILD=true ;;
-        --skip-backup) SKIP_BACKUP=true ;;
-    esac
-done
+if [ "${1:-}" = "--skip-build" ]; then
+    SKIP_BUILD=true
+fi
 
 # 加载环境变量
 if [ -f "$ENV_FILE" ]; then
@@ -31,9 +25,6 @@ echo "  Twin System Deploy"
 echo "  $(date '+%Y-%m-%d %H:%M:%S')"
 if $SKIP_BUILD; then
     echo "  模式: 跳过构建（快速部署）"
-fi
-if $SKIP_BACKUP; then
-    echo "  模式: 跳过部署前 DB 备份"
 fi
 echo "=========================================="
 
@@ -77,9 +68,6 @@ git pull origin master
 echo "  当前 commit: $(git rev-parse --short HEAD)"
 
 # Step 2/8: DB 备份
-if $SKIP_BACKUP; then
-    echo "=== Step 2/8: 跳过 DB 备份（--skip-backup） ==="
-else
 echo "=== Step 2/8: DB 备份 ==="
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/backup-$(date +%Y%m%d-%H%M%S).sql.gz"
@@ -93,7 +81,6 @@ fi
 
 # 只保留最近 5 次部署备份
 sudo ls -t "$BACKUP_DIR"/backup-*.sql.gz 2>/dev/null | tail -n +6 | xargs sudo rm -f 2>/dev/null || true
-fi
 
 if $SKIP_BUILD; then
     echo "=== Step 3-4/8: 跳过构建（--skip-build） ==="
