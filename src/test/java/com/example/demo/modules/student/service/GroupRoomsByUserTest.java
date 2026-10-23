@@ -104,4 +104,30 @@ class GroupRoomsByUserTest {
         when(aroPersonnelMapper.findByUserId(USER_ID)).thenReturn(null);
         assertEquals(List.of(), service.roomsForUserGroup(USER_ID));
     }
+
+    /**
+     * 行政组（如「DLAS-实验动物管理」）在笼位上没有同名 PI，笼位 PI 是「DLAS-实验动物科学部管理组」；
+     * 组名永远对不上。这类账号要按**部门**补一维，否则有课题组却什么都看不见、只剩身份区域。
+     */
+    @Test
+    void roomsForUserGroup_administrativeGroup_fallsBackToDepartment() {
+        AroPersonnel p = new AroPersonnel();
+        p.setProjectGroupName("DLAS-实验动物管理");
+        p.setDepartmentName("基础医学院-实验动物科学部");
+        when(aroPersonnelMapper.findByUserId(USER_ID)).thenReturn(p);
+
+        when(localAggCache.attribution()).thenReturn(new ArrayList<>(List.of(
+                attribution("21", "DLAS-实验动物科学部管理组", null, "基础医学院-实验动物科学部"),
+                attribution("22", "张三", null, "药理学与化学生物学系")
+        )));
+        stubShelfIndexes(Map.of(
+                "21", shelf(21L, 301L, "301A"),
+                "22", shelf(22L, 302L, "302A")
+        ));
+
+        List<Map<String, Object>> rooms = service.roomsForUserGroup(USER_ID);
+
+        assertEquals(List.of("301"),
+                rooms.stream().map(r -> String.valueOf(r.get("roomId"))).toList());
+    }
 }

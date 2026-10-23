@@ -281,7 +281,7 @@ public class StudentCageShelfService {
             return List.of();
         }
         boolean isAdmin = isAdminUser(user);
-        List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
+        List<String> groupNames = isAdmin ? List.of() : baseGroupTokens(user.getId());
         return applyCellMask(grid, isAdmin, groupNames);
     }
 
@@ -297,7 +297,7 @@ public class StudentCageShelfService {
         if (grid == null) {
             return List.of();
         }
-        return applyCellMask(grid, false, resolveUserGroupNames(userId));
+        return applyCellMask(grid, false, baseGroupTokens(userId));
     }
 
     /** 课题组脱敏循环体 —— 两个入口共用一份，改判据只改这里。 */
@@ -377,7 +377,16 @@ public class StudentCageShelfService {
             stripExperimentRecordIfNotOwner(user, detail);
             return detail;
         }
-        List<String> groupNames = resolveUserGroupNames(user.getId());
+        /*
+          兜底：整架已按「我的区域」识别为本课题组时，整架不再逐格脱敏。
+          逐格只看表单里的 PI/部门，字段缺失或口径不一致时会出现「列表认得出、点开全是 ***」。
+          与 resolveOwnGroupShelveIdsByUserId 同源（笼架级锚点），不另写一套判据。
+        */
+        if (detail.getAnimalCageId() != null && cageInOwnGroupShelf(user.getId(), detail.getAnimalCageId())) {
+            stripExperimentRecordIfNotOwner(user, detail);
+            return detail;
+        }
+        List<String> groupNames = baseGroupTokens(user.getId());
         String pi = detail.getProjectPiName() != null && !detail.getProjectPiName().isBlank()
                 ? detail.getProjectPiName()
                 : detail.getPiName();
@@ -388,6 +397,35 @@ public class StudentCageShelfService {
         }
         blankSensitiveFields(detail);
         return detail;
+    }
+
+    /**
+     * 该笼位所在笼架是否属于本人课题组（笼架级归属，与左侧「我的区域」同一份判据）。
+     * 用于详情脱敏：格子级字段可能缺失/不同步，不能只靠它判「是不是本组」。
+     */
+    private boolean cageInOwnGroupShelf(String userId, Long animalCageId) {
+        try {
+            Map<String, Object> loc = cageCellIndexService.lookupByAnimalCageId(animalCageId);
+            String sid = loc == null ? "" : objToStr(loc.get("shelveId")).trim();
+            if (sid.isEmpty()) return false;
+            return resolveOwnGroupShelveIdsByUserId(userId).contains(sid);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 整架详情批量脱敏：整架属于本人课题组时只收实验记录，不逐格重新计算课题组集合。
+     * 其余情况仍走 {@link #maskDetailForUser}（可能命中区域补充）。
+     */
+    public List<CageCellDetail> maskDetailsForShelf(User user, List<CageCellDetail> details) {
+        if (details == null || details.isEmpty() || isAdminUser(user)) return details;
+        Long probe = details.get(0).getAnimalCageId();
+        if (probe != null && cageInOwnGroupShelf(user.getId(), probe)) {
+            for (CageCellDetail d : details) stripExperimentRecordIfNotOwner(user, d);
+            return details;
+        }
+        return details.stream().map(d -> maskDetailForUser(user, d)).toList();
     }
 
     /**
@@ -635,7 +673,7 @@ public class StudentCageShelfService {
      * 刷卡弹窗要按**被扫人**（而非当前登录人）取课题组房间，故不能走 {@link #resolveOwnGroupShelveIds(User)}。
      */
     public Set<String> resolveOwnGroupShelveIdsByUserId(String userId) {
-        List<String> groupNames = resolveUserGroupNames(userId);
+        List<String> groupNames = baseGroupTokens(userId);
         if (groupNames.isEmpty()) {
             return Set.of();
         }
@@ -890,6 +928,30 @@ public class StudentCageShelfService {
             }
         }
         return aroPersonnelMapper.findByUserId(personnelUserId);
+    }
+
+    /**
+     * 「本人课题组」的基础可见 token。
+     *
+     * <p>普通课题组的笼位归属记成 PI（「卢今的课题组」↔ PI「卢今」），按组名就能匹配。
+     * 但行政组（如「DLAS-实验动物管理」）在笼位上没有同名 PI —— 设施自己的笼位 PI 是
+     * 「DLAS-实验动物科学部管理组」、部门是「基础医学院-实验动物科学部」，组名永远对不上。
+     * 这类账号明明有课题组，基础可见范围却是空的，只剩身份授予的区域能看（区域外整片 ***）。
+     *
+     * <p>因此：组名不是「…的课题组」形态时，再补一维**人员部门**参与匹配。
+     * 普通课题组（含学生）不受影响，避免按院系把别人的笼位一起放开。
+     */
+    private List<String> baseGroupTokens(String userId) {
+        List<String> groups = resolveUserGroupNames(userId);
+        if (groups.isEmpty()) return groups;
+        boolean piLike = groups.stream().anyMatch(g -> g.endsWith("课题组"));
+        if (piLike) return groups;
+        AroPersonnel p = findPersonnel(userId);
+        String dept = p == null ? "" : objToStr(p.getDepartmentName()).trim();
+        if (dept.length() < 4) return groups;
+        List<String> out = new ArrayList<>(groups);
+        if (!out.contains(dept)) out.add(dept);
+        return out;
     }
 
     /** 全局可见者（SUPER_ADMIN+）越过课题组限制。判据见 {@link CageVisibilityPolicy}。 */
@@ -1276,8 +1338,7 @@ public class StudentCageShelfService {
             return adminOverview;
         }
 
-        List<String> groupNames = resolveUserGroupNames(user.getId());
-        // 负责范围（校区/楼层/房间）与课题组取并集，口径同 isShelfVisibleForUser：
+        List<String> groupNames = baseGroupTokens(user.getId());
         // 网格里看得到的笼位，这里也要看得到，否则配了范围的教职工会出现「网格有、统计空」。
         Map<String, List<String>> scope = regionGrantService.visibilityScopes(user.getId());
         if (groupNames.isEmpty() && scope.isEmpty()) {

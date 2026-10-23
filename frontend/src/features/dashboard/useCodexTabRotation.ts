@@ -10,8 +10,10 @@ export function useCodexTabRotation(options: {
   hasViolations: boolean;
   /** 公告 Tab 最长停留秒数（定时兜底切换） */
   autoRotateSeconds: number;
+  /** 公告里的视频正在吸附播放：定时轮播暂停，播完由面板主动触发切换 */
+  paused?: boolean;
 }) {
-  const { violationEnabled, hasViolations, autoRotateSeconds } = options;
+  const { violationEnabled, hasViolations, autoRotateSeconds, paused = false } = options;
   const [tab, setTab] = useState<CodexTabId>("notice");
   const [generation, setGeneration] = useState(0);
   const tabRef = useRef(tab);
@@ -46,13 +48,13 @@ export function useCodexTabRotation(options: {
   }, [switchTo]);
 
   useEffect(() => {
-    if (!violationEnabled || !hasViolations) return;
+    if (!violationEnabled || !hasViolations || paused) return;
     const ms = Math.max(300_000, autoRotateSeconds * 1000); // ≥5min, 给 3轮×30s 留足时间
     const id = window.setInterval(() => {
       toggleTab();
     }, ms);
     return () => window.clearInterval(id);
-  }, [violationEnabled, hasViolations, autoRotateSeconds, toggleTab, generation]);
+  }, [violationEnabled, hasViolations, autoRotateSeconds, toggleTab, generation, paused]);
 
   return {
     tab,

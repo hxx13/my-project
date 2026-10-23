@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { fetchDashboardViolationBoard } from "@/api/domains/dashboardViolationBoard.api";
@@ -128,6 +129,8 @@ function CodexTabButtons({
 
 export function RuleCodexCard() {
   const visual = useDashboardVisual();
+  /** 公告视频吸附播放中：暂停 Tab 定时轮播，由面板在视频播完后主动切换 */
+  const [mediaHold, setMediaHold] = useState(false);
 
   const { data: cfg, isLoading, isError } = useQuery({
     queryKey: ["public-runtime-config"],
@@ -175,6 +178,7 @@ export function RuleCodexCard() {
     violationEnabled: showViolationTab,
     hasViolations,
     autoRotateSeconds: noticeTabSeconds,
+    paused: mediaHold,
   });
 
   const tabs: CodexTabId[] = showViolationTab ? ["notice", "violation"] : ["notice"];
@@ -231,6 +235,7 @@ export function RuleCodexCard() {
             onCycleComplete={onPanelCycleComplete}
             fallbackSeconds={noticeTabSeconds}
             scrollMode={showViolationTab && hasViolations ? "cycle" : "loop"}
+            onMediaHoldChange={setMediaHold}
           />
         ) : (
           <CodexViolationBoardPanel

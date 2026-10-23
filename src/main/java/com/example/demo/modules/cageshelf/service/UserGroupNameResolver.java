@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -38,7 +39,21 @@ public class UserGroupNameResolver {
             if (personnel == null) {
                 return List.of();
             }
-            return PersonnelProjectGroupUtil.splitGroups(personnel.getResolvedProjectGroupNames());
+            List<String> groups = PersonnelProjectGroupUtil.splitGroups(personnel.getResolvedProjectGroupNames());
+            /*
+              行政组（如「DLAS-实验动物管理」）在笼位上没有同名 PI：设施笼位的 PI 是
+              「DLAS-实验动物科学部管理组」、归属记在部门上，组名永远对不上。这类账号明明有课题组，
+              基础可见范围却是空的 —— 「我的区域」按部门能识别、点开却被脱敏，就是这条不一致造成的。
+              组名不是「…的课题组」形态时补一维人员部门；普通 PI 组与学生不受影响。
+            */
+            if (!groups.isEmpty() && groups.stream().noneMatch(g -> g.endsWith("课题组"))) {
+                String dept = personnel.getDepartmentName() == null ? "" : personnel.getDepartmentName().trim();
+                if (dept.length() >= 4 && !groups.contains(dept)) {
+                    groups = new ArrayList<>(groups);
+                    groups.add(dept);
+                }
+            }
+            return groups;
         } catch (Exception e) {
             log.warn("[cage-group] 解析用户课题组失败 userId={} err={}", userId, e.getMessage());
             return List.of();

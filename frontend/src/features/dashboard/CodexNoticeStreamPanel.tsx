@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Megaphone } from "lucide-react";
 import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
 import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
@@ -23,23 +23,44 @@ type Props = {
   onCycleComplete: () => void;
   fallbackSeconds: number;
   scrollMode?: "loop" | "cycle";
+  /** 视频吸附播放期间为 true：外层据此暂停 Tab 定时轮播 */
+  onMediaHoldChange?: (held: boolean) => void;
 };
 
 /**
- * 正文视频在展示态原地自动循环播放：大屏是常亮展示，不弹窗、不占交互。
- * 浏览器只允许静音自动播放，所以固定 muted（声音不是大屏的诉求）。
+ * 正文视频：所有视频收进一个可吸附的竖排容器。
+ *
+ * - 跟随正文滚动，容器顶部到达视口顶部后自动吸附（CSS sticky）；
+ * - 多个视频按顺序往下排，一起循环播放；
+ * - 大屏只允许静音自动播放，所以固定 muted。
  */
 function prepareInlineVideos(html: string): string {
   if (!html.includes("<video")) return html;
   const doc = new DOMParser().parseFromString(html, "text/html");
-  doc.querySelectorAll("video").forEach((video) => {
+  const source = Array.from(doc.querySelectorAll("video"));
+  if (source.length === 0) return html;
+
+  const slots: HTMLElement[] = [];
+  for (const video of source) {
     video.removeAttribute("controls");
     video.setAttribute("autoplay", "");
     video.setAttribute("muted", "");
     video.setAttribute("loop", "");
     video.setAttribute("playsinline", "");
     video.setAttribute("preload", "auto");
-  });
+    const slot = doc.createElement("div");
+    video.replaceWith(slot);
+    slot.appendChild(video);
+    slots.push(slot);
+  }
+
+  const stack = doc.createElement("div");
+  stack.className = "rt-video-stack";
+  for (const slot of slots) {
+    while (slot.firstChild) stack.appendChild(slot.firstChild);
+  }
+  slots[0].replaceWith(stack);
+  slots.slice(1).forEach((s) => s.remove());
   return doc.body.innerHTML;
 }
 
@@ -74,12 +95,97 @@ export function CodexNoticeStreamPanel({
   onCycleComplete,
   fallbackSeconds,
   scrollMode = "cycle",
+  onMediaHoldChange,
 }: Props) {
   const visual = useDashboardVisual();
   const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([noticeBody, returnRules]);
+  const [mediaHold, setMediaHold] = useState(false);
+  const holdCbRef = useRef(onMediaHoldChange);
+  holdCbRef.current = onMediaHoldChange;
+  const cycleCbRef = useRef(onCycleComplete);
+  cycleCbRef.current = onCycleComplete;
+
+  useEffect(() => {
+    holdCbRef.current?.(mediaHold);
+    return () => holdCbRef.current?.(false);
+  }, [mediaHold]);
+
+  /**
+   * 视频吸附后暂停滚动，并以「最长视频时长」为上限挂起 Tab 轮播；到点再切下一个。
+   * 切回本 Tab 时组件重新挂载，视频自然从头播放。
+   */
+  useEffect(() => {
+    if (!active) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const stack = container.querySelector<HTMLElement>(".rt-video-stack");
+    const videos = Array.from(container.querySelectorAll<HTMLVideoElement>("video"));
+    if (!stack || videos.length === 0) return;
+
+    let cancelled = false;
+    let started = false;
+    let timer: number | null = null;
+    let retry: number | null = null;
+    const beganAt = Date.now();
+
+    videos.forEach((v) => {
+      v.muted = true;
+      v.loop = true;
+      try {
+        v.currentTime = 0;
+      } catch {
+        /* 尚未加载元数据 */
+      }
+      void v.play().catch(() => {});
+    });
+
+    const begin = () => {
+      if (started || cancelled) return;
+      const known = videos
+        .map((v) => (Number.isFinite(v.duration) ? v.duration : 0))
+        .filter((d) => d > 0);
+      // 元数据没到齐先等一会儿，不能按 10 秒把长视频切掉
+      if (known.length === 0 && Date.now() - beganAt < 5000) {
+        retry = window.setTimeout(begin, 400);
+        return;
+      }
+      started = true;
+      const holdMs = Math.max(10, ...(known.length ? known : [10])) * 1000;
+      setMediaHold(true);
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        setMediaHold(false);
+        cycleCbRef.current();
+      }, holdMs);
+    };
+
+    const onScroll = () => {
+      if (started) return;
+      const cTop = container.getBoundingClientRect().top;
+      const sTop = stack.getBoundingClientRect().top;
+      if (sTop <= cTop + 2) begin();
+    };
+
+    const raf = requestAnimationFrame(() => {
+      if (cancelled) return;
+      if (container.scrollHeight <= container.clientHeight + 2) begin();
+      else onScroll();
+    });
+    container.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      container.removeEventListener("scroll", onScroll);
+      if (timer != null) clearTimeout(timer);
+      if (retry != null) clearTimeout(retry);
+      setMediaHold(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, generation, noticeBody, returnRules]);
 
   const scrollHandlers = useVerticalAutoScroll(containerRef, {
-    enabled: active && !lightbox,
+    enabled: active && !lightbox && !mediaHold,
     pauseStartMs: 1500,
     pauseEndMs: 2000,
     msPerPx: 24,
