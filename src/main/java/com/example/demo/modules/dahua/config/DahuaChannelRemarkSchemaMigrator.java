@@ -55,22 +55,6 @@ public class DahuaChannelRemarkSchemaMigrator implements ApplicationRunner {
                         """);
                 log.info("[dahua-schema] 已移除旧的分类名称全局唯一索引");
             }
-            Integer newUk = jdbcTemplate.queryForObject(
-                    """
-                            SELECT COUNT(*) FROM information_schema.STATISTICS
-                            WHERE TABLE_SCHEMA = DATABASE()
-                              AND TABLE_NAME = 'dahua_device_channel_remark_category'
-                              AND INDEX_NAME = 'uk_dcc_remark_cat_parent_name'
-                            """,
-                    Integer.class);
-            if (newUk != null && newUk == 0) {
-                jdbcTemplate.execute("""
-                        ALTER TABLE dahua_device_channel_remark_category
-                        ADD UNIQUE KEY uk_dcc_remark_cat_parent_name (parent_id, name)
-                        """);
-                log.info("[dahua-schema] 已添加分类「父级+名称」唯一索引");
-            }
-
             Integer parentColCount = jdbcTemplate.queryForObject(
                     """
                             SELECT COUNT(*) FROM information_schema.COLUMNS
@@ -90,6 +74,28 @@ public class DahuaChannelRemarkSchemaMigrator implements ApplicationRunner {
                         """);
                 log.info("[dahua-schema] 已添加列 dahua_device_channel_remark_category.parent_id");
             }
+
+            Integer newUk = jdbcTemplate.queryForObject(
+                    """
+                            SELECT COUNT(*) FROM information_schema.STATISTICS
+                            WHERE TABLE_SCHEMA = DATABASE()
+                              AND TABLE_NAME = 'dahua_device_channel_remark_category'
+                              AND INDEX_NAME = 'uk_dcc_remark_cat_parent_name'
+                            """,
+                    Integer.class);
+            if (newUk != null && newUk == 0) {
+                try {
+                    jdbcTemplate.execute("""
+                            ALTER TABLE dahua_device_channel_remark_category
+                            ADD UNIQUE KEY uk_dcc_remark_cat_parent_name (parent_id, name)
+                            """);
+                    log.info("[dahua-schema] 已添加分类「父级+名称」唯一索引");
+                } catch (Exception e) {
+                    // 索引失败不能阻断后面的迁移（缓存表加列等），下一次启动会再试
+                    log.warn("[dahua-schema] 添加分类唯一索引失败：{}", e.getMessage());
+                }
+            }
+
 
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS dahua_door_category_seed (
