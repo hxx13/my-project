@@ -524,11 +524,9 @@ public class CageCellIndexController {
         Result<?> denied = requireMinRole(user, RoleEnum.MEMBER);
         if (denied != null) return Result.fail(403, denied.getMessage());
         List<CageCellDetail> details = detailMapper.selectByShelfIndexId(shelfIndexId);
-        // 非全局可见者按课题组脱敏
+        // 非全局可见者按课题组脱敏（整架属于本人课题组时只收实验记录）
         if (!visibilityPolicy.isGlobalViewer(user)) {
-            details = details.stream()
-                    .map(d -> studentCageShelfService.maskDetailForUser(user, d))
-                    .toList();
+            details = studentCageShelfService.maskDetailsForShelf(user, details);
         }
         return Result.success(details);
     }

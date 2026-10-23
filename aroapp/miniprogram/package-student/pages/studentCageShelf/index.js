@@ -5684,14 +5684,17 @@ getCellStyleWxs: function(cell) {
     var newCache = {};
     for (var k in cache) { if (Object.prototype.hasOwnProperty.call(cache, k)) newCache[k] = cache[k]; }
     if (!newCache[key]) {
-      // 首次创建缓存条目：以表单值为真相源
+      // 弹窗已打开时以页面级初值/当前值为准：
+      // 之前这里只从 editFormValues 重建，回到初始态后缓存条目被删、表单值又可能还没拉回来（扫码路径），
+      // 会把初值当成「全 0」，导致已开状态取消后永远勾不回去。
       var ld = cell.detail || {};
-      var initAct = cageStatus.actionsFromFormValues(this.data.editFormValues);
+      var initAct = this.data.editActionInitial || cageStatus.actionsFromFormValues(this.data.editFormValues);
+      var currAct = this.data.editActionCurrent ? Object.assign({}, this.data.editActionCurrent) : Object.assign({}, initAct);
       newCache[key] = {
         cell: cell,
         code: ld.cageBoxCode || '',
         initialActions: Object.assign({}, initAct),
-        currentActions: Object.assign({}, initAct)
+        currentActions: currAct
       };
     }
     // 切换动作
@@ -5709,8 +5712,11 @@ getCellStyleWxs: function(cell) {
       && Object.keys(det1).every(function (c) { return !!det0[c] === !!det1[c]; });
     var sameSev = (e0.initialSeverity || '') === (e0.currentSeverity || '');
     if (sameAct && sameDet && sameSev) delete newCache[key];
-    // 同步更新 editActionCurrent（弹窗内显示用）；明细/严重程度块的强绑定判据各跟自己的父状态位走
-    var ec = newCache[key] ? Object.assign({}, newCache[key].currentActions) : cageStatus.newActionState();
+    // 回到初始态时当前态要还原成「初值」，不能落成全 0 —— 否则取消一个已开状态后，
+    // 界面上再点一次也勾不回来（缓存条目已删，重建时又拿不到初值）。
+    var ec = newCache[key]
+      ? Object.assign({}, newCache[key].currentActions)
+      : Object.assign({}, init);
     this.setData({
       scanCache: newCache,
       editActionCurrent: ec,
